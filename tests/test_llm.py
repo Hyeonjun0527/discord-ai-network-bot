@@ -20,6 +20,7 @@ from discord_assistant.llm import (
     OpenAIClient,
     OpenAIError,
     TokenUsage,
+    ToolSpec,
     _is_retryable,
     _parse_anthropic_usage,
     _parse_gemini_usage,
@@ -963,6 +964,281 @@ class ImageInputTest(unittest.TestCase):
                 client.generate("describe", images=[("image/png", self._IMG)])
             )
         self.assertEqual(result, "안녕하세요")
+
+
+# ---------------------------------------------------------------------------
+# #20: 함수/툴 호출 (OpenAI tools / Anthropic tool_use) 경량 에이전트 루프
+# ---------------------------------------------------------------------------
+
+
+def _sequential_urlopen(payloads: list[dict]) -> tuple[list, object]:
+    """호출 순서대로 payloads 를 돌려주는 urlopen 페이크를 만든다 (#20).
+
+    반환: (전송된 body dict 리스트, fake_urlopen). 각 호출마다 다음 payload 를
+    소비하므로 다단계 에이전트 루프(tool_call → tool_result → 최종 답변)를 흉내낼 수 있다.
+    """
+    sent_bodies: list = []
+    remaining = list(payloads)
+
+    def fake_urlopen(req, timeout=None):  # type: ignore[no-untyped-def]
+        sent_bodies.append(json.loads(req.data.decode("utf-8")))
+        payload = remaining.pop(0)
+        return _json_response(payload)
+
+    return sent_bodies, fake_urlopen
+
+
+_SEARCH_TOOL = ToolSpec(
+    name="search_messages",
+    description="Search the channel.",
+    parameters={
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
+    },
+)
+
+
+class OpenAIToolLoopTest(unittest.TestCase):
+    """OpenAIClient.generate_with_tools 경량 에이전트 루프 (#20)."""
+
+    def setUp(self) -> None:
+        self.client = OpenAIClient(api_key="sk-x")
+
+    def test_no_tools_falls_back_to_generate(self) -> None:
+        # 툴이 비어 있으면 일반 generate 경로(텍스트)와 동일하게 동작한다.
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response(_OPENAI_OK_PAYLOAD),
+        ):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "hi", tools=[], tool_runner=_make_tool_runner({})
+                )
+            )
+        self.assertEqual(result, "안녕하세요")
+
+    def test_tool_call_then_final_answer(self) -> None:
+        # 1차 응답: search_messages 호출. 2차 응답: 최종 텍스트.
+        first = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "search_messages",
+                                    "arguments": json.dumps({"query": "회의"}),
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+        final = {"choices": [{"message": {"role": "assistant", "content": "최종 답변"}}]}
+        ran: dict = {}
+
+        async def runner(name: str, args: dict) -> str:
+            ran["name"] = name
+            ran["args"] = args
+            return "찾은 메시지: 회의는 3시"
+
+        sent, fake = _sequential_urlopen([first, final])
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "회의 언제야?", tools=[_SEARCH_TOOL], tool_runner=runner
+                )
+            )
+        self.assertEqual(result, "최종 답변")
+        # 툴 러너가 모델이 준 인자로 호출됐는지 확인.
+        self.assertEqual(ran["name"], "search_messages")
+        self.assertEqual(ran["args"], {"query": "회의"})
+        # 2번째 요청에 tool 결과 메시지가 포함됐는지 확인.
+        second_messages = sent[1]["messages"]
+        tool_msgs = [m for m in second_messages if m.get("role") == "tool"]
+        self.assertEqual(len(tool_msgs), 1)
+        self.assertEqual(tool_msgs[0]["content"], "찾은 메시지: 회의는 3시")
+        # 첫 요청에 tools 가 실렸는지 확인.
+        self.assertIn("tools", sent[0])
+
+    def test_no_tool_call_returns_text_immediately(self) -> None:
+        # 모델이 툴을 호출하지 않고 바로 텍스트를 주면 1회 호출로 끝난다.
+        payload = {"choices": [{"message": {"role": "assistant", "content": "바로 답변"}}]}
+        sent, fake = _sequential_urlopen([payload])
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "hi", tools=[_SEARCH_TOOL], tool_runner=_make_tool_runner({})
+                )
+            )
+        self.assertEqual(result, "바로 답변")
+        self.assertEqual(len(sent), 1)
+
+    def test_tool_runner_failure_does_not_break_loop(self) -> None:
+        # 툴 실행 예외는 모델에 관측값으로 전달되고 루프는 계속된다.
+        first = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {"name": "search_messages", "arguments": "{}"},
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+        final = {"choices": [{"message": {"role": "assistant", "content": "복구된 답변"}}]}
+
+        async def failing_runner(name: str, args: dict) -> str:
+            raise RuntimeError("boom")
+
+        sent, fake = _sequential_urlopen([first, final])
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "q", tools=[_SEARCH_TOOL], tool_runner=failing_runner
+                )
+            )
+        self.assertEqual(result, "복구된 답변")
+        tool_msgs = [m for m in sent[1]["messages"] if m.get("role") == "tool"]
+        self.assertIn("failed", tool_msgs[0]["content"])
+
+
+class AnthropicToolLoopTest(unittest.TestCase):
+    """AnthropicClient.generate_with_tools 경량 에이전트 루프 (#20)."""
+
+    def setUp(self) -> None:
+        self.client = AnthropicClient(api_key="sk-ant-x")
+
+    def test_no_tools_falls_back_to_generate(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response(_ANTHROPIC_OK_PAYLOAD),
+        ):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "hi", tools=[], tool_runner=_make_tool_runner({})
+                )
+            )
+        self.assertEqual(result, "반갑습니다")
+
+    def test_tool_use_then_final_answer(self) -> None:
+        first = {
+            "stop_reason": "tool_use",
+            "content": [
+                {"type": "text", "text": "찾아볼게요"},
+                {
+                    "type": "tool_use",
+                    "id": "tu_1",
+                    "name": "search_messages",
+                    "input": {"query": "회의"},
+                },
+            ],
+        }
+        final = {
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "최종 답변"}],
+        }
+        ran: dict = {}
+
+        async def runner(name: str, args: dict) -> str:
+            ran["name"] = name
+            ran["args"] = args
+            return "회의는 3시"
+
+        sent, fake = _sequential_urlopen([first, final])
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "회의 언제?", tools=[_SEARCH_TOOL], tool_runner=runner
+                )
+            )
+        self.assertEqual(result, "최종 답변")
+        self.assertEqual(ran["args"], {"query": "회의"})
+        # 2번째 요청 messages 에 tool_result 가 user role 로 실린다.
+        second_messages = sent[1]["messages"]
+        user_results = [
+            m
+            for m in second_messages
+            if m.get("role") == "user"
+            and isinstance(m.get("content"), list)
+            and any(
+                isinstance(b, dict) and b.get("type") == "tool_result"
+                for b in m["content"]
+            )
+        ]
+        self.assertEqual(len(user_results), 1)
+        # input_schema 규격으로 tools 가 실렸는지 확인.
+        self.assertIn("tools", sent[0])
+        self.assertIn("input_schema", sent[0]["tools"][0])
+
+    def test_no_tool_use_returns_text(self) -> None:
+        payload = {
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "바로 답변"}],
+        }
+        sent, fake = _sequential_urlopen([payload])
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "hi", tools=[_SEARCH_TOOL], tool_runner=_make_tool_runner({})
+                )
+            )
+        self.assertEqual(result, "바로 답변")
+        self.assertEqual(len(sent), 1)
+
+
+class FallbackToolLoopTest(unittest.TestCase):
+    """툴 미지원 제공자(Ollama/Gemini)는 generate 로 폴백한다 (#20)."""
+
+    def test_ollama_falls_back_to_generate(self) -> None:
+        client = OllamaClient(base_url="http://x", default_model="llama3.1:8b")
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response({"response": "오라마 답변"}),
+        ):
+            result = asyncio.run(
+                client.generate_with_tools(
+                    "hi", tools=[_SEARCH_TOOL], tool_runner=_make_tool_runner({})
+                )
+            )
+        # 툴을 무시하고 일반 generate 텍스트를 반환한다(폴백).
+        self.assertEqual(result, "오라마 답변")
+
+    def test_gemini_falls_back_to_generate(self) -> None:
+        client = GeminiClient(api_key="x", default_model="gemini-1.5-flash")
+        payload = {"candidates": [{"content": {"parts": [{"text": "제미니 답변"}]}}]}
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response(payload),
+        ):
+            result = asyncio.run(
+                client.generate_with_tools(
+                    "hi", tools=[_SEARCH_TOOL], tool_runner=_make_tool_runner({})
+                )
+            )
+        self.assertEqual(result, "제미니 답변")
+
+
+def _make_tool_runner(_mapping: dict):  # type: ignore[no-untyped-def]
+    """간단한 no-op 툴 러너(폴백/툴 미사용 경로용)."""
+
+    async def _runner(name: str, args: dict) -> str:  # pragma: no cover - 호출되지 않음
+        return ""
+
+    return _runner
 
 
 if __name__ == "__main__":

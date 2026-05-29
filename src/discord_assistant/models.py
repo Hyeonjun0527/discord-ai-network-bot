@@ -58,6 +58,9 @@ class GuildConfig:
     custom_summarize_prompt: str | None = None
     custom_ask_prompt: str | None = None
     allowed_role_id: int | None = None
+    # #19: 서버별 일일 토큰 상한. None = 무제한(기존 동작). 기본값 None 이라
+    # 기존 GuildConfig 생성부/테스트와 100% 백워드 호환된다.
+    daily_token_budget: int | None = None
 
     def __post_init__(self) -> None:
         if not self.model:
@@ -69,6 +72,9 @@ class GuildConfig:
             raise ValueError(
                 f"auto_summary_interval must be >= {MIN_AUTO_SUMMARY_INTERVAL_MINUTES} minutes"
             )
+        # #19: 음수 예산은 무의미하므로 거부한다(0 = 사실상 즉시 차단, 허용).
+        if self.daily_token_budget is not None and self.daily_token_budget < 0:
+            raise ValueError("daily_token_budget must be >= 0 or None")
 
 
 @dataclass(frozen=True, slots=True)

@@ -163,6 +163,91 @@ class AutoSummaryQueryTest(_FileStoreCase):
         self.assertEqual(await self.store.get_guilds_with_auto_summary(), [(1, 5)])
 
 
+class DailyTokenBudgetTest(_FileStoreCase):
+    """#19 서버별 일일 토큰 상한 setter + 당일 사용량 집계."""
+
+    async def test_default_budget_is_none(self) -> None:
+        # 새 길드는 상한이 None(무제한)이어야 한다(백워드 호환 기본값).
+        cfg = await self.store.get_guild_config(1)
+        self.assertIsNone(cfg.daily_token_budget)
+
+    async def test_set_and_read_budget(self) -> None:
+        cfg = await self.store.set_daily_token_budget(1, 10_000)
+        self.assertEqual(cfg.daily_token_budget, 10_000)
+        # 다시 읽어도 동일하게 유지된다.
+        reread = await self.store.get_guild_config(1)
+        self.assertEqual(reread.daily_token_budget, 10_000)
+
+    async def test_set_budget_none_clears(self) -> None:
+        await self.store.set_daily_token_budget(1, 5_000)
+        cfg = await self.store.set_daily_token_budget(1, None)
+        self.assertIsNone(cfg.daily_token_budget)
+
+    async def test_negative_budget_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            await self.store.set_daily_token_budget(1, -1)
+
+    async def test_zero_budget_allowed(self) -> None:
+        # 0 은 유효(사실상 즉시 차단). setter 는 거부하지 않는다.
+        cfg = await self.store.set_daily_token_budget(1, 0)
+        self.assertEqual(cfg.daily_token_budget, 0)
+
+    async def test_budget_persists_alongside_other_fields(self) -> None:
+        # 다른 setter 와 섞어 써도 상한이 보존된다(upsert 컬럼 누락 회귀 방지).
+        await self.store.set_daily_token_budget(1, 1_234)
+        await self.store.set_model(1, "qwen2.5:7b")
+        cfg = await self.store.get_guild_config(1)
+        self.assertEqual(cfg.daily_token_budget, 1_234)
+        self.assertEqual(cfg.model, "qwen2.5:7b")
+
+    async def test_today_usage_empty_is_zero(self) -> None:
+        self.assertEqual(await self.store.get_today_token_usage(1), 0)
+
+    async def test_today_usage_sums_prompt_and_completion(self) -> None:
+        await self.store.log_usage(
+            UsageLog(
+                guild_id=1, channel_id=2, user_id=3, command="ask", status="ok",
+                latency_ms=10, prompt_tokens=100, completion_tokens=50,
+            )
+        )
+        await self.store.log_usage(
+            UsageLog(
+                guild_id=1, channel_id=2, user_id=3, command="chat", status="ok",
+                latency_ms=10, prompt_tokens=30, completion_tokens=20,
+            )
+        )
+        # 100 + 50 + 30 + 20 = 200
+        self.assertEqual(await self.store.get_today_token_usage(1), 200)
+
+    async def test_today_usage_isolated_per_guild(self) -> None:
+        await self.store.log_usage(
+            UsageLog(
+                guild_id=1, channel_id=2, user_id=3, command="ask", status="ok",
+                latency_ms=10, prompt_tokens=100, completion_tokens=50,
+            )
+        )
+        self.assertEqual(await self.store.get_today_token_usage(2), 0)
+
+    async def test_today_usage_excludes_old_rows(self) -> None:
+        # 어제 날짜의 usage 행은 오늘 집계에서 제외돼야 한다.
+        await self.store.log_usage(
+            UsageLog(
+                guild_id=1, channel_id=2, user_id=3, command="ask", status="ok",
+                latency_ms=10, prompt_tokens=100, completion_tokens=50,
+            )
+        )
+        conn = self.store._connect()
+        try:
+            # created_at 을 어제로 조정한다(라우팅이 date('now') 기준이므로 제외돼야 함).
+            conn.execute(
+                "UPDATE usage_log SET created_at = datetime('now', '-2 days') WHERE guild_id = 1"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertEqual(await self.store.get_today_token_usage(1), 0)
+
+
 class ChatHistoryTest(_FileStoreCase):
     async def test_pagination_offset(self) -> None:
         for i in range(5):
@@ -672,6 +757,7 @@ class LegacyMigrationVersionTest(unittest.IsolatedAsyncioTestCase):
                     "custom_summarize_prompt",
                     "custom_ask_prompt",
                     "allowed_role_id",
+                    "daily_token_budget",
                 ):
                     self.assertIn(expected_col, cols)
                 tables = {

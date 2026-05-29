@@ -67,6 +67,9 @@ CREATE TABLE IF NOT EXISTS guild_config (
     custom_summarize_prompt TEXT,
     custom_ask_prompt       TEXT,
     allowed_role_id         INTEGER,
+    -- #19: 서버별 일일 토큰 상한(NULL = 무제한). 신규 빈 DB 는 여기서 컬럼을
+    -- 곧바로 만들고, 레거시 DB 는 마이그레이션(버전 7)으로 보강한다.
+    daily_token_budget      INTEGER,
     updated_at              TEXT    NOT NULL
 );
 
@@ -373,6 +376,17 @@ def _add_usage_log_token_columns(conn: sqlite3.Connection) -> None:
             )
 
 
+def _add_guild_config_daily_budget(conn: sqlite3.Connection) -> None:
+    """guild_config 에 daily_token_budget 컬럼을 멱등하게 보강한다 (#19).
+
+    기존 배포 DB(이 컬럼이 없는 guild_config)에도 안전하게 적용된다. 컬럼 존재
+    검사를 거쳐 없을 때만 ALTER 하므로 두 번 호출해도 안전하다(NULL = 무제한).
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(guild_config)")}
+    if "daily_token_budget" not in existing:
+        conn.execute("ALTER TABLE guild_config ADD COLUMN daily_token_budget INTEGER")
+
+
 def _create_query_indexes(conn: sqlite3.Connection) -> None:
     """주요 쿼리 경로 인덱스를 멱등하게 보강한다 (#32/#39)."""
     conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_log_guild_created ON usage_log(guild_id, created_at)")
@@ -392,6 +406,7 @@ MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (4, _create_audit_log_table),
     (5, _create_query_indexes),
     (6, _add_usage_log_token_columns),
+    (7, _add_guild_config_daily_budget),
 ]
 
 # 코드가 도달 가능한 최신 스키마 버전. MIGRATIONS 가 비어 있으면 0.
@@ -610,7 +625,8 @@ class ConfigStore:
         cur = await conn.execute(
             "SELECT guild_id, model, summary_limit, language, admin_role_id, "
             "provider, api_key_encrypted, auto_summary_interval, persona, "
-            "custom_summarize_prompt, custom_ask_prompt, allowed_role_id "
+            "custom_summarize_prompt, custom_ask_prompt, allowed_role_id, "
+            "daily_token_budget "
             "FROM guild_config WHERE guild_id = ?",
             (guild_id,),
         )
@@ -630,6 +646,11 @@ class ConfigStore:
             custom_summarize_prompt=row["custom_summarize_prompt"],
             custom_ask_prompt=row["custom_ask_prompt"],
             allowed_role_id=(int(row["allowed_role_id"]) if row["allowed_role_id"] is not None else None),
+            # #19: 일일 토큰 상한(NULL = 무제한). 레거시 행은 컬럼이 없을 수 있으나
+            # 마이그레이션(버전 7)으로 항상 존재한다. 음수 방어는 GuildConfig 측에서.
+            daily_token_budget=(
+                int(row["daily_token_budget"]) if row["daily_token_budget"] is not None else None
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -716,8 +737,9 @@ class ConfigStore:
                 INSERT INTO guild_config
                     (guild_id, model, summary_limit, language, admin_role_id,
                      provider, api_key_encrypted, auto_summary_interval, persona,
-                     custom_summarize_prompt, custom_ask_prompt, allowed_role_id, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     custom_summarize_prompt, custom_ask_prompt, allowed_role_id,
+                     daily_token_budget, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id) DO UPDATE SET
                     model                   = excluded.model,
                     summary_limit           = excluded.summary_limit,
@@ -730,6 +752,7 @@ class ConfigStore:
                     custom_summarize_prompt = excluded.custom_summarize_prompt,
                     custom_ask_prompt       = excluded.custom_ask_prompt,
                     allowed_role_id         = excluded.allowed_role_id,
+                    daily_token_budget      = excluded.daily_token_budget,
                     updated_at              = excluded.updated_at
                 """,
                 (
@@ -745,6 +768,7 @@ class ConfigStore:
                     config.custom_summarize_prompt,
                     config.custom_ask_prompt,
                     config.allowed_role_id,
+                    config.daily_token_budget,
                     _utc_now(),
                 ),
             )
@@ -974,6 +998,40 @@ class ConfigStore:
         updated = replace(current, allowed_role_id=role_id)
         await self._upsert(updated)
         return updated
+
+    async def set_daily_token_budget(
+        self, guild_id: int, budget: int | None
+    ) -> GuildConfig:
+        """서버별 일일 토큰 상한을 설정한다. None = 무제한(기본) (#19).
+
+        음수 예산은 의미가 없으므로 ValueError 로 거부한다(GuildConfig 가
+        동일하게 검증하지만, 저장 직전 명확한 에러를 위해 여기서도 막는다).
+        """
+        if budget is not None and budget < 0:
+            raise ValueError("daily_token_budget must be >= 0 or None")
+        current = await self.get_guild_config(guild_id)
+        updated = replace(current, daily_token_budget=budget)
+        await self._upsert(updated)
+        return updated
+
+    async def get_today_token_usage(self, guild_id: int) -> int:
+        """오늘(UTC) 해당 길드가 사용한 누적 토큰 수를 반환한다 (#19).
+
+        usage_log 의 prompt_tokens + completion_tokens 합을, created_at 이 오늘
+        (UTC, SQLite ``date('now')``)인 행에 한해 집계한다. 기록이 없으면 0.
+        일일 상한 초과 여부 판단(bot.py)에 사용한다.
+        """
+        conn = await self._ensure_conn()
+        cur = await conn.execute(
+            "SELECT COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total "
+            "FROM usage_log "
+            "WHERE guild_id = ? AND date(created_at) = date('now')",
+            (guild_id,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return 0
+        return int(row["total"] or 0)
 
     # ------------------------------------------------------------------
     # Feedback

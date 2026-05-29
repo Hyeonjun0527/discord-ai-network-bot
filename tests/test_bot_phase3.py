@@ -6,22 +6,28 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
 
+import discord
+
 from discord_assistant.bot import (
     _DM_COOLDOWN_GUILD,
     COOLDOWN_SECONDS,
     MAX_DISCORD_MESSAGE_CHARS,
     MAX_SEARCH_MATCHES,
+    CommandTranslator,
     UserFacingError,
     _check_cooldown,
+    _enforce_token_budget,
     _get_llm,
+    _loc,
     _parse_since,
     _sanitize_persona,
     _split_discord_text,
     reset_cooldowns,
 )
 from discord_assistant.llm import OllamaClient
-from discord_assistant.models import GuildConfig, LLMProvider
+from discord_assistant.models import GuildConfig, LLMProvider, UsageLog
 from discord_assistant.settings import AppSettings, _get_float
+from discord_assistant.storage import ConfigStore
 
 
 class ParseSinceTest(unittest.TestCase):
@@ -184,6 +190,121 @@ class GetFloatTest(unittest.TestCase):
         with patch.dict(os.environ, {"X_TEST_FLOAT": "-1"}):
             with self.assertRaises(ValueError):
                 _get_float("X_TEST_FLOAT", 0.2, minimum=0.0)
+
+
+def _cfg(**overrides: object) -> GuildConfig:
+    defaults: dict = {
+        "guild_id": 1,
+        "model": "llama3.1:8b",
+        "summary_limit": 50,
+        "language": "ko",
+    }
+    defaults.update(overrides)
+    return GuildConfig(**defaults)
+
+
+class EnforceTokenBudgetTest(unittest.IsolatedAsyncioTestCase):
+    """#19 일일 토큰 상한 차단 헬퍼."""
+
+    async def asyncSetUp(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        self._tmp = tempfile.TemporaryDirectory()
+        db_path = Path(self._tmp.name) / "budget.db"
+        self.store = ConfigStore(
+            f"sqlite:///{db_path}",
+            default_model="llama3.1:8b",
+            default_summary_limit=50,
+            default_language="ko",
+        )
+        await self.store.initialize()
+
+    async def asyncTearDown(self) -> None:
+        await self.store.close()
+        self._tmp.cleanup()
+
+    async def _log_tokens(self, guild_id: int, prompt: int, completion: int) -> None:
+        await self.store.log_usage(
+            UsageLog(
+                guild_id=guild_id, channel_id=2, user_id=3, command="ask", status="ok",
+                latency_ms=10, prompt_tokens=prompt, completion_tokens=completion,
+            )
+        )
+
+    async def test_none_budget_never_blocks(self) -> None:
+        # budget=None(무제한) 이면 사용량과 무관하게 통과한다(기존 동작).
+        await self._log_tokens(1, 10_000, 10_000)
+        await _enforce_token_budget(self.store, _cfg(daily_token_budget=None), 1)
+
+    async def test_none_guild_id_skips(self) -> None:
+        # guild_id None(DM 등)은 서버 상한 검사를 건너뛴다.
+        await _enforce_token_budget(self.store, _cfg(daily_token_budget=1), None)
+
+    async def test_under_budget_passes(self) -> None:
+        await self._log_tokens(1, 100, 50)  # 150 누적
+        await _enforce_token_budget(self.store, _cfg(daily_token_budget=1000), 1)
+
+    async def test_over_budget_blocks(self) -> None:
+        await self._log_tokens(1, 600, 500)  # 1100 누적 ≥ 1000
+        with self.assertRaises(UserFacingError):
+            await _enforce_token_budget(self.store, _cfg(daily_token_budget=1000), 1)
+
+    async def test_exactly_at_budget_blocks(self) -> None:
+        # used >= budget 이면 차단(경계값 포함).
+        await self._log_tokens(1, 500, 500)  # 정확히 1000
+        with self.assertRaises(UserFacingError):
+            await _enforce_token_budget(self.store, _cfg(daily_token_budget=1000), 1)
+
+
+class CommandTranslatorTest(unittest.IsolatedAsyncioTestCase):
+    """#88 슬래시 명령 현지화 번역기."""
+
+    def setUp(self) -> None:
+        self.tr = CommandTranslator()
+
+    async def _translate(self, text: str, locale: "discord.Locale") -> str | None:
+        # TranslationContext 는 번역기 본문에서 사용하지 않으므로 더미를 넘긴다.
+        return await self.tr.translate(_loc(text), locale, object())  # type: ignore[arg-type]
+
+    async def test_english_translation_returned(self) -> None:
+        result = await self._translate(
+            "최근 채널 대화를 로컬 LLM으로 요약합니다.", discord.Locale.american_english
+        )
+        self.assertEqual(result, "Summarize the recent channel conversation with the LLM.")
+
+    async def test_korean_falls_back_to_none(self) -> None:
+        # 원문이 한국어이므로 ko 로케일은 None(원문 표시)으로 폴백한다.
+        result = await self._translate(
+            "최근 채널 대화를 로컬 LLM으로 요약합니다.", discord.Locale.korean
+        )
+        self.assertIsNone(result)
+
+    async def test_unsupported_locale_falls_back_to_none(self) -> None:
+        result = await self._translate(
+            "최근 채널 대화를 로컬 LLM으로 요약합니다.", discord.Locale.japanese
+        )
+        self.assertIsNone(result)
+
+    async def test_unknown_string_falls_back_to_none(self) -> None:
+        result = await self._translate(
+            "카탈로그에 없는 임의 문자열", discord.Locale.american_english
+        )
+        self.assertIsNone(result)
+
+    async def test_british_english_also_translated(self) -> None:
+        # en-GB 도 'en' 으로 매핑되어 번역된다.
+        result = await self._translate(
+            "봇 명령어 사용법을 안내합니다.", discord.Locale.british_english
+        )
+        self.assertEqual(result, "Show how to use the bot's commands.")
+
+    def test_english_translations_within_discord_limit(self) -> None:
+        # Discord 슬래시 명령 설명은 100자 제한. 모든 영어 번역이 한도 내여야 한다.
+        from discord_assistant.bot import _COMMAND_TRANSLATIONS_EN
+
+        too_long = [k for k, v in _COMMAND_TRANSLATIONS_EN.items() if len(v) > 100]
+        self.assertEqual(too_long, [])
 
 
 if __name__ == "__main__":

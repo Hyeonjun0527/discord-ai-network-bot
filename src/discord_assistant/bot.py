@@ -32,6 +32,7 @@ from .llm import (
     OllamaClient,
     OllamaManager,
     OpenAIClient,
+    ToolSpec,
     supports_vision,
 )
 from .models import GuildConfig, LLMProvider, Reminder, UsageLog
@@ -67,6 +68,168 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _SLOW_RESPONSE_THRESHOLD_MS = 30_000
+
+
+# ---------------------------------------------------------------------------
+# #88: app_commands locale_str 현지화
+# ---------------------------------------------------------------------------
+#
+# 슬래시 명령의 description / 옵션 설명을 app_commands.locale_str 로 감싸고,
+# discord.app_commands.Translator 를 구현해 클라이언트 로케일(ko/en)에 맞춰
+# 표시되도록 한다. 카탈로그에 없는 문자열이나 미지원 로케일은 None 을 반환해
+# 기본(원문, 한국어) 문자열로 자연스럽게 폴백한다. 명령 이름/동작은 불변이다.
+
+
+def _loc(text: str) -> "app_commands.locale_str":
+    """description/옵션 설명을 현지화 가능한 locale_str 로 감싸는 단축 헬퍼 (#88).
+
+    원문(한국어)을 그대로 message 로 보관하므로, 번역 카탈로그에 항목이 없거나
+    번역기가 비활성/미등록이어도 원문이 그대로 표시된다(백워드 호환).
+    """
+    return app_commands.locale_str(text)
+
+
+# 원문(한국어) → 영어 번역 카탈로그 (#88). 키는 _loc 에 넘긴 원문과 정확히 일치해야
+# 한다. 여기 없는 문자열은 영어 로케일에서도 원문(한국어)으로 폴백한다.
+_COMMAND_TRANSLATIONS_EN: dict[str, str] = {
+    # --- 명령 설명 ---
+    "봇 설정 패널을 엽니다. (관리자 전용)": "Open the bot settings panel. (admins only)",
+    "최근 채널 대화를 로컬 LLM으로 요약합니다.": "Summarize the recent channel conversation with the LLM.",
+    "최근 채널 대화 맥락으로 질문에 답합니다.": "Answer a question using the recent channel context.",
+    "선택 기능: 짧은 텍스트를 지정 언어로 번역합니다.": "Optional: translate a short text into a target language.",
+    "채널 맥락 없이 AI에게 자유롭게 질문합니다.": "Chat freely with the AI without channel context.",
+    "봇 명령어 사용법을 안내합니다.": "Show how to use the bot's commands.",
+    "지정한 시간 뒤 DM으로 알림을 보냅니다. (메시지 미지정 시 마지막 요약)": (
+        "Send a DM reminder after a delay. (uses last summary if no message given)"
+    ),
+    "내 예약 알림 목록을 보고 취소합니다.": "View and cancel your scheduled reminders.",
+    "내 데이터를 모두 삭제합니다. (되돌릴 수 없음)": "Delete all of your data. (irreversible)",
+    "요약을 실행하고 결과를 채널에 고정합니다.": "Summarize and pin the result to the channel.",
+    "여러 채널을 선택해 통합 요약합니다.": "Select multiple channels and summarize them together.",
+    "채널 메시지를 마크다운 파일로 내보내기 (DM 전송)": (
+        "Export channel messages to a markdown file (sent via DM)."
+    ),
+    "서버 봇 사용 통계를 표시합니다.": "Show this server's bot usage statistics.",
+    "채널에서 키워드로 메시지를 검색하고 요약합니다.": (
+        "Search the channel by keyword and summarize the matches."
+    ),
+    "지정한 기간의 대화를 핵심·결정·액션으로 정리합니다.": (
+        "Digest a time range into key points, decisions, and action items."
+    ),
+    "내 사용량과 쿨다운, 서버 한도를 확인합니다.": (
+        "Check your usage, cooldown, and the server's limits."
+    ),
+    "서버별 봇 설정을 관리합니다.": "Manage per-server bot settings.",
+    "서버 기본 Ollama 모델명을 저장합니다.": "Save the server's default Ollama model name.",
+    "기본 메시지 요약 범위를 저장합니다.": "Save the default message summary range.",
+    "기본 응답 언어를 저장합니다.": "Save the default response language.",
+    "봇 설정 권한을 가진 역할을 지정합니다.": "Set the role allowed to manage bot settings.",
+    "/chat 페르소나를 설정합니다.": "Set the /chat persona.",
+    "자동 요약 간격을 설정합니다. (최소 5분, 0이면 비활성화)": (
+        "Set the auto-summary interval. (min 5 minutes, 0 to disable)"
+    ),
+    "커스텀 프롬프트를 설정합니다.": "Set a custom prompt.",
+    "명령어 사용 가능 역할을 설정합니다.": "Set which role may use the commands.",
+    "서버의 일일 토큰 사용 상한을 설정합니다. (0이면 무제한)": (
+        "Set the server's daily token usage cap. (0 = unlimited)"
+    ),
+    # --- 옵션 설명 ---
+    "최근 몇 개 메시지를 읽을지 지정합니다. 기본값은 서버 설정입니다.": (
+        "How many recent messages to read. Defaults to the server setting."
+    ),
+    "시간 기반 필터. 예: 1h, 30m, 2d": "Time-based filter. e.g. 1h, 30m, 2d",
+    "True면 요약 결과를 채널에 새 스레드를 만들어 게시합니다.": (
+        "If true, post the summary in a new thread in the channel."
+    ),
+    "최근 대화에 대해 물어볼 질문입니다.": "The question to ask about the recent conversation.",
+    "True면 AI가 필요 시 채널에서 추가 메시지를 검색합니다. (OpenAI/Anthropic)": (
+        "If true, the AI may search the channel for more messages. (OpenAI/Anthropic)"
+    ),
+    "번역할 텍스트": "Text to translate",
+    "목표 언어입니다. 예: ko, en, ja": "Target language. e.g. ko, en, ja",
+    "AI에게 보낼 메시지입니다.": "The message to send to the AI.",
+    "True로 설정하면 채널에 공개 메시지로 표시됩니다. 기본값은 비공개입니다.": (
+        "If true, post a public message in the channel. Defaults to private."
+    ),
+    "언제 보낼지. 예: 30m, 2h, 1d (단위 없으면 분). 최대 30일.": (
+        "When to send. e.g. 30m, 2h, 1d (minutes if no unit). Max 30 days."
+    ),
+    "알림으로 받을 임의 텍스트. 비우면 마지막 /summarize 결과를 사용합니다.": (
+        "Free text to be reminded of. Empty uses your last /summarize result."
+    ),
+    "(선택) 반복 표시용 라벨. 예: daily, weekly (실제 반복 없이 표시만)": (
+        "(optional) Repeat label for display only. e.g. daily, weekly"
+    ),
+    "취소할 알림의 ID. 비우면 목록만 표시합니다.": (
+        "ID of the reminder to cancel. Empty shows the list only."
+    ),
+    "최근 몇 개 메시지를 요약할지 지정합니다.": "How many recent messages to summarize.",
+    "내보낼 메시지 수 (기본값: 서버 설정)": "Number of messages to export (default: server setting).",
+    "검색할 키워드입니다.": "The keyword to search for.",
+    "최대 몇 개 메시지를 검색할지 지정합니다. 기본값: 200": (
+        "Max number of messages to search. Default: 200."
+    ),
+    "정리할 기간. 예: 30m, 1h, 6h, 1d (기본: 1d)": (
+        "Time range to digest. e.g. 30m, 1h, 6h, 1d (default: 1d)"
+    ),
+    "예: llama3.1:8b, qwen2.5:7b, gemma2:9b": "e.g. llama3.1:8b, qwen2.5:7b, gemma2:9b",
+    "1~200 사이의 메시지 개수": "A number of messages between 1 and 200.",
+    "예: ko, en, ja": "e.g. ko, en, ja",
+    "설정 권한을 부여할 역할입니다.": "The role to grant settings permission.",
+    "봇의 페르소나 설명입니다. 비워두면 초기화합니다.": (
+        "The bot's persona description. Empty resets it."
+    ),
+    "자동 요약 간격 (분, 최소 5). 0이면 비활성화.": (
+        "Auto-summary interval in minutes (min 5). 0 disables it."
+    ),
+    "프롬프트 유형: summarize 또는 ask": "Prompt type: summarize or ask.",
+    "커스텀 프롬프트 내용. 비워두면 초기화.": "Custom prompt text. Empty resets it.",
+    "명령어를 사용할 수 있는 역할입니다.": "The role allowed to use the commands.",
+    "하루 동안 사용할 수 있는 최대 토큰 수. 0이면 무제한.": (
+        "Max tokens usable per day. 0 = unlimited."
+    ),
+}
+
+# locale_str.message → {locale_code: translated} 형태의 다국어 카탈로그 (#88).
+# 현재는 영어(en 계열)만 채운다. ko 는 원문이 한국어이므로 카탈로그가 없어도
+# 그대로 표시된다. 다른 언어는 None 폴백(원문 표시).
+_TRANSLATION_CATALOG: dict[str, dict[str, str]] = {
+    src: {"en": en} for src, en in _COMMAND_TRANSLATIONS_EN.items()
+}
+
+
+def _locale_to_lang(locale: "discord.Locale") -> str | None:
+    """discord.Locale 을 카탈로그 언어 키(en/ko)로 매핑한다 (#88).
+
+    영어 계열(en-US/en-GB)은 'en', 한국어는 'ko'. 그 외는 None(원문 폴백).
+    """
+    value = str(getattr(locale, "value", locale))
+    if value.startswith("en"):
+        return "en"
+    if value == "ko":
+        return "ko"
+    return None
+
+
+class CommandTranslator(app_commands.Translator):
+    """슬래시 명령 description/옵션 설명을 클라이언트 로케일로 현지화한다 (#88).
+
+    discord.py 가 명령 동기화 시 각 locale_str 에 대해 모든 지원 로케일로
+    translate() 를 호출한다. 카탈로그에 매칭되는 번역이 있으면 반환하고, 없으면
+    None 을 반환해 원문(한국어)으로 폴백한다(미지원 로케일/미등록 문자열 안전).
+    """
+
+    async def translate(
+        self,
+        string: "app_commands.locale_str",
+        locale: "discord.Locale",
+        context: "app_commands.TranslationContextTypes",
+    ) -> str | None:
+        lang = _locale_to_lang(locale)
+        if lang is None or lang == "ko":
+            # 원문이 한국어이므로 ko/미지원 로케일은 폴백(None).
+            return None
+        return _TRANSLATION_CATALOG.get(string.message, {}).get(lang)
 
 # --- #46 correlation id ---
 # 명령마다 interaction.id 를 바인딩해 로그에 cid 를 끼워 넣는다. contextvars 는
@@ -840,6 +1003,98 @@ def _get_llm(config: GuildConfig, settings: AppSettings) -> BaseLLMClient:
     )
 
 
+# --- #19 서버별 일일 토큰 상한 ---
+# LLM 호출 전에 당일(UTC) 누적 토큰이 서버 설정 상한을 넘었는지 검사한다. budget 이
+# None(무제한)이면 검사 자체를 건너뛰어 기존 동작과 100% 동일하다. guild_id 가 없는
+# (DM 등) 경로는 서버 단위 상한이 의미 없으므로 검사하지 않는다.
+async def _enforce_token_budget(
+    store: ConfigStore, config: GuildConfig, guild_id: int | None
+) -> None:
+    """당일 누적 토큰이 서버 일일 상한을 초과했으면 UserFacingError 로 차단한다 (#19).
+
+    - budget 이 None(무제한)이거나 guild_id 가 None 이면 검사를 건너뛴다(기존 동작).
+    - 초과 시 사용자에게 보여줄 안내 메시지와 함께 UserFacingError 를 던진다.
+    """
+    budget = config.daily_token_budget
+    if budget is None or guild_id is None:
+        return
+    used = await store.get_today_token_usage(guild_id)
+    if used >= budget:
+        raise UserFacingError(
+            f"오늘 사용량 한도를 초과했어요. (오늘 {used:,} / 한도 {budget:,} 토큰) "
+            "자정(UTC) 이후 초기화되며, 서버 관리자가 `/config daily_token_budget` 로 한도를 조정할 수 있어요."
+        )
+
+
+# --- #20 함수/툴 호출: search_messages 툴 ---
+# LLM 이 "더 많은 메시지가 필요하다"고 판단하면 search_messages(query) 를 호출하고,
+# 봇이 채널 히스토리에서 키워드로 검색해 결과를 돌려준다(경량 에이전트 루프).
+# OpenAI/Anthropic 만 실제 툴 루프를 돌리고, 그 외 제공자는 일반 generate 로 폴백한다.
+_SEARCH_MESSAGES_TOOL = ToolSpec(
+    name="search_messages",
+    description=(
+        "Search the current Discord channel's recent message history for messages "
+        "containing a keyword or phrase. Use this when the provided transcript does "
+        "not contain enough information to answer the question, and you need to look "
+        "for additional related messages. Returns matching messages with author and "
+        "timestamp."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Keyword or phrase to search for in the channel history.",
+            }
+        },
+        "required": ["query"],
+    },
+)
+
+# search_messages 한 번에 훑는 최대 메시지 수 / 돌려주는 최대 일치 건수.
+_TOOL_SEARCH_SCAN_LIMIT = 200
+_TOOL_SEARCH_MAX_MATCHES = 15
+
+
+def _make_search_messages_runner(
+    channel: Any, *, before: datetime
+) -> "Callable[[str, dict[str, Any]], Awaitable[str]]":
+    """채널에 바인딩된 search_messages 툴 실행기를 만든다 (#20).
+
+    LLM 이 호출한 search_messages(query) 를 받아 채널 히스토리를 키워드로 검색해
+    일치 메시지들을 문자열로 돌려준다. 권한/오류는 모델에 관측 가능한 문자열로
+    변환해 루프가 멈추지 않게 한다.
+    """
+
+    async def _runner(name: str, args: dict[str, Any]) -> str:
+        if name != _SEARCH_MESSAGES_TOOL.name:
+            return f"(unknown tool: {name})"
+        query = str(args.get("query") or "").strip()
+        if not query:
+            return "(no query provided)"
+        if channel is None or not hasattr(channel, "history"):
+            return "(this channel does not support message history search)"
+        needle = query.lower()
+        matches: list[str] = []
+        try:
+            async for msg in channel.history(limit=_TOOL_SEARCH_SCAN_LIMIT, before=before):
+                if needle in (msg.content or "").lower():
+                    ts = msg.created_at.strftime("%H:%M") if msg.created_at else ""
+                    author = getattr(msg.author, "display_name", "?")
+                    matches.append(f"[{ts}] {author}: {msg.content[:200]}")
+                    if len(matches) >= _TOOL_SEARCH_MAX_MATCHES:
+                        break
+        except discord.Forbidden:
+            return "(no permission to read message history)"
+        except discord.HTTPException as exc:
+            return f"(search failed: {exc})"
+        if not matches:
+            return f"No messages found matching '{query}'."
+        return "\n".join(matches)
+
+    return _runner
+
+
 async def _collect_transcript(
     channel: Any,
     *,
@@ -1015,6 +1270,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
         async def setup_hook(self) -> None:
             await store.initialize()
+            # #88: 명령 동기화 전에 현지화 번역기를 등록한다(ko/en). 등록 실패는
+            # 봇 기동을 막지 않도록 흡수하고 경고만 남긴다(현지화는 부가 기능).
+            try:
+                await self.tree.set_translator(CommandTranslator())
+            except Exception as exc:  # pragma: no cover — 번역기 등록 방어
+                logger.warning("명령 현지화 번역기 등록 실패: %s", exc)
             if settings.auto_sync_commands:
                 synced = await self.tree.sync()
                 logger.info("Synced %d application command(s).", len(synced))
@@ -1096,7 +1357,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # /settings — interactive admin panel
     # ------------------------------------------------------------------
 
-    @bot.tree.command(name="settings", description="봇 설정 패널을 엽니다. (관리자 전용)")
+    @bot.tree.command(name="settings", description=_loc("봇 설정 패널을 엽니다. (관리자 전용)"))
     async def settings_command(interaction: discord.Interaction) -> None:
         if interaction.guild is None:
             await interaction.response.send_message("⚠️ 이 명령은 서버 안에서만 사용할 수 있어요.", ephemeral=True)
@@ -1228,6 +1489,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             else:
                 prompt = build_summarize_prompt(transcript, language=effective_language)
 
+            # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+            await _enforce_token_budget(store, config, guild_id)
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
             # #17: 응답 직후 토큰 사용량을 읽어 둔다(이후 record 경로에서 사용).
@@ -1282,11 +1545,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 command="summarize", status="error", started_at=started, error=str(exc),
             )
 
-    @bot.tree.command(name="summarize", description="최근 채널 대화를 로컬 LLM으로 요약합니다.")
+    @bot.tree.command(name="summarize", description=_loc("최근 채널 대화를 로컬 LLM으로 요약합니다."))
     @app_commands.describe(
-        limit="최근 몇 개 메시지를 읽을지 지정합니다. 기본값은 서버 설정입니다.",
-        since="시간 기반 필터. 예: 1h, 30m, 2d",
-        thread="True면 요약 결과를 채널에 새 스레드를 만들어 게시합니다.",
+        limit=_loc("최근 몇 개 메시지를 읽을지 지정합니다. 기본값은 서버 설정입니다."),
+        since=_loc("시간 기반 필터. 예: 1h, 30m, 2d"),
+        thread=_loc("True면 요약 결과를 채널에 새 스레드를 만들어 게시합니다."),
     )
     @app_commands.autocomplete(since=_since_autocomplete)
     async def summarize_command(
@@ -1306,6 +1569,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         question: str,
         limit: int | None,
         _transcript_override: str | None = None,
+        *,
+        search: bool = False,
     ) -> None:
         started = perf_counter()
         guild_id, channel_id, user_id = _ids_from_interaction(interaction)
@@ -1351,8 +1616,25 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             else:
                 prompt = build_ask_prompt(transcript, question, language=effective_language)
 
+            # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+            await _enforce_token_budget(store, config, guild_id)
             llm = _get_llm(config, settings)
-            answer = await llm.generate(prompt, model=config.model)
+            # #20: search=True 면 LLM 이 search_messages 툴로 채널에서 더 많은
+            # 메시지를 찾아볼 수 있는 경량 에이전트 루프를 돈다. 툴 미지원 제공자
+            # (Ollama/Gemini)는 generate_with_tools 가 일반 generate 로 폴백한다.
+            # _transcript_override(후속질문) 경로에는 채널 검색이 의미가 없어 건너뛴다.
+            if search and _transcript_override is None and interaction.channel is not None:
+                runner = _make_search_messages_runner(
+                    interaction.channel, before=interaction.created_at
+                )
+                answer = await llm.generate_with_tools(
+                    prompt,
+                    tools=[_SEARCH_MESSAGES_TOOL],
+                    tool_runner=runner,
+                    model=config.model,
+                )
+            else:
+                answer = await llm.generate(prompt, model=config.model)
             p_tokens, c_tokens = _usage_tokens(llm)  # #17
 
             # Follow-up view (#36) — capture transcript for follow-up
@@ -1391,7 +1673,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except (UserFacingError, LLMError) as exc:
             # #92: 유형별 친절 안내 임베드 + 재시도 버튼. 같은 질문/한도로 다시 시도한다.
             async def _retry(retry_interaction: discord.Interaction) -> None:
-                await run_ask(retry_interaction, question, limit, _transcript_override)
+                await run_ask(retry_interaction, question, limit, _transcript_override, search=search)
 
             await _send_error_embed(interaction, exc, retry=_retry)
             await _record_usage(
@@ -1399,24 +1681,26 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 command="ask", status="error", started_at=started, error=str(exc),
             )
 
-    @bot.tree.command(name="ask", description="최근 채널 대화 맥락으로 질문에 답합니다.")
+    @bot.tree.command(name="ask", description=_loc("최근 채널 대화 맥락으로 질문에 답합니다."))
     @app_commands.describe(
-        question="최근 대화에 대해 물어볼 질문입니다.",
-        limit="최근 몇 개 메시지를 읽을지 지정합니다. 기본값은 서버 설정입니다.",
+        question=_loc("최근 대화에 대해 물어볼 질문입니다."),
+        limit=_loc("최근 몇 개 메시지를 읽을지 지정합니다. 기본값은 서버 설정입니다."),
+        search=_loc("True면 AI가 필요 시 채널에서 추가 메시지를 검색합니다. (OpenAI/Anthropic)"),
     )
     async def ask_command(
         interaction: discord.Interaction,
         question: str,
         limit: int | None = None,
+        search: bool = False,
     ) -> None:
-        await run_ask(interaction, question, limit)
+        await run_ask(interaction, question, limit, search=search)
 
     # ------------------------------------------------------------------
     # /translate
     # ------------------------------------------------------------------
 
-    @bot.tree.command(name="translate", description="선택 기능: 짧은 텍스트를 지정 언어로 번역합니다.")
-    @app_commands.describe(text="번역할 텍스트", target_language="목표 언어입니다. 예: ko, en, ja")
+    @bot.tree.command(name="translate", description=_loc("선택 기능: 짧은 텍스트를 지정 언어로 번역합니다."))
+    @app_commands.describe(text=_loc("번역할 텍스트"), target_language=_loc("목표 언어입니다. 예: ko, en, ja"))
     @app_commands.autocomplete(target_language=_language_autocomplete)
     async def translate_command(
         interaction: discord.Interaction,
@@ -1447,6 +1731,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 return
             config = await store.get_guild_config(guild_id or 0)
             prompt = build_translate_prompt(text, target_language=target_language)
+            # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+            await _enforce_token_budget(store, config, guild_id)
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
             p_tokens, c_tokens = _usage_tokens(llm)  # #17
@@ -1499,6 +1785,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             else:
                 # Apply persona if set (#37)
                 prompt = build_chat_prompt(message, language=config.language, persona=config.persona)
+            # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+            await _enforce_token_budget(store, config, guild_id)
             llm = _get_llm(config, settings)
             # #16: 스트리밍 우선 — 점진 출력 후 최종 확정. 스트림이 한 글자도
             # 내지 못했거나 실패하면 기존 비스트리밍 경로로 폴백한다.
@@ -1556,10 +1844,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 command="chat", status="error", started_at=started, error=str(exc),
             )
 
-    @bot.tree.command(name="chat", description="채널 맥락 없이 AI에게 자유롭게 질문합니다.")
+    @bot.tree.command(name="chat", description=_loc("채널 맥락 없이 AI에게 자유롭게 질문합니다."))
     @app_commands.describe(
-        message="AI에게 보낼 메시지입니다.",
-        public="True로 설정하면 채널에 공개 메시지로 표시됩니다. 기본값은 비공개입니다.",
+        message=_loc("AI에게 보낼 메시지입니다."),
+        public=_loc("True로 설정하면 채널에 공개 메시지로 표시됩니다. 기본값은 비공개입니다."),
     )
     async def chat_command(
         interaction: discord.Interaction,
@@ -1572,7 +1860,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # /help — command reference
     # ------------------------------------------------------------------
 
-    @bot.tree.command(name="help", description="봇 명령어 사용법을 안내합니다.")
+    @bot.tree.command(name="help", description=_loc("봇 명령어 사용법을 안내합니다."))
     async def help_command(interaction: discord.Interaction) -> None:
         embed = discord.Embed(
             title="명령어 안내",
@@ -1658,7 +1946,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # /config — legacy CLI-style setters (kept for backward compat)
     # ------------------------------------------------------------------
 
-    config_group = app_commands.Group(name="config", description="서버별 봇 설정을 관리합니다.")
+    config_group = app_commands.Group(name="config", description=_loc("서버별 봇 설정을 관리합니다."))
 
     async def require_guild_admin(interaction: discord.Interaction) -> int:
         if interaction.guild is None:
@@ -1692,8 +1980,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except Exception as exc:  # pragma: no cover — 감사 로깅 방어
             logger.warning("감사 로그 기록 실패(action=%s): %s", action, exc)
 
-    @config_group.command(name="model", description="서버 기본 Ollama 모델명을 저장합니다.")
-    @app_commands.describe(model="예: llama3.1:8b, qwen2.5:7b, gemma2:9b")
+    @config_group.command(name="model", description=_loc("서버 기본 Ollama 모델명을 저장합니다."))
+    @app_commands.describe(model=_loc("예: llama3.1:8b, qwen2.5:7b, gemma2:9b"))
     async def config_model(interaction: discord.Interaction, model: str) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
@@ -1706,8 +1994,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except (UserFacingError, ValueError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
 
-    @config_group.command(name="summary_limit", description="기본 메시지 요약 범위를 저장합니다.")
-    @app_commands.describe(limit="1~200 사이의 메시지 개수")
+    @config_group.command(name="summary_limit", description=_loc("기본 메시지 요약 범위를 저장합니다."))
+    @app_commands.describe(limit=_loc("1~200 사이의 메시지 개수"))
     async def config_summary_limit(interaction: discord.Interaction, limit: int) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
@@ -1724,8 +2012,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except (UserFacingError, ValueError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
 
-    @config_group.command(name="language", description="기본 응답 언어를 저장합니다.")
-    @app_commands.describe(language="예: ko, en, ja")
+    @config_group.command(name="language", description=_loc("기본 응답 언어를 저장합니다."))
+    @app_commands.describe(language=_loc("예: ko, en, ja"))
     @app_commands.autocomplete(language=_language_autocomplete)
     async def config_language(interaction: discord.Interaction, language: str) -> None:
         try:
@@ -1749,12 +2037,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # --- #1/#2 /remind --- 영속화된 리마인더 (요약 결과 또는 임의 텍스트)
     @bot.tree.command(
         name="remind",
-        description="지정한 시간 뒤 DM으로 알림을 보냅니다. (메시지 미지정 시 마지막 요약)",
+        description=_loc("지정한 시간 뒤 DM으로 알림을 보냅니다. (메시지 미지정 시 마지막 요약)"),
     )
     @app_commands.describe(
-        when="언제 보낼지. 예: 30m, 2h, 1d (단위 없으면 분). 최대 30일.",
-        message="알림으로 받을 임의 텍스트. 비우면 마지막 /summarize 결과를 사용합니다.",
-        repeat="(선택) 반복 표시용 라벨. 예: daily, weekly (실제 반복 없이 표시만)",
+        when=_loc("언제 보낼지. 예: 30m, 2h, 1d (단위 없으면 분). 최대 30일."),
+        message=_loc("알림으로 받을 임의 텍스트. 비우면 마지막 /summarize 결과를 사용합니다."),
+        repeat=_loc("(선택) 반복 표시용 라벨. 예: daily, weekly (실제 반복 없이 표시만)"),
     )
     async def remind_command(
         interaction: discord.Interaction,
@@ -1820,8 +2108,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         )
 
     # --- #3 /reminders --- 본인 예약 목록 표시 + 취소
-    @bot.tree.command(name="reminders", description="내 예약 알림 목록을 보고 취소합니다.")
-    @app_commands.describe(cancel="취소할 알림의 ID. 비우면 목록만 표시합니다.")
+    @bot.tree.command(name="reminders", description=_loc("내 예약 알림 목록을 보고 취소합니다."))
+    @app_commands.describe(cancel=_loc("취소할 알림의 ID. 비우면 목록만 표시합니다."))
     async def reminders_command(
         interaction: discord.Interaction, cancel: int | None = None
     ) -> None:
@@ -1872,7 +2160,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # --- #40 /forget-me --- 본인 데이터 전체 삭제 (GDPR)
-    @bot.tree.command(name="forget-me", description="내 데이터를 모두 삭제합니다. (되돌릴 수 없음)")
+    @bot.tree.command(name="forget-me", description=_loc("내 데이터를 모두 삭제합니다. (되돌릴 수 없음)"))
     async def forget_me_command(interaction: discord.Interaction) -> None:
         maybe_user_id = interaction.user.id if interaction.user else None
         if maybe_user_id is None:
@@ -1935,8 +2223,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         )
 
     # --- #34 /pin-summary --- pin the summarize result
-    @bot.tree.command(name="pin-summary", description="요약을 실행하고 결과를 채널에 고정합니다.")
-    @app_commands.describe(limit="최근 몇 개 메시지를 요약할지 지정합니다.")
+    @bot.tree.command(name="pin-summary", description=_loc("요약을 실행하고 결과를 채널에 고정합니다."))
+    @app_commands.describe(limit=_loc("최근 몇 개 메시지를 요약할지 지정합니다."))
     async def pin_summary_command(interaction: discord.Interaction, limit: int | None = None) -> None:
         if interaction.guild is None:
             await interaction.response.send_message("⚠️ 이 명령은 서버 안에서만 사용할 수 있어요.", ephemeral=True)
@@ -1962,6 +2250,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             if not transcript:
                 raise UserFacingError("요약할 메시지가 없어요.")
             prompt = build_summarize_prompt(transcript, language=config.language)
+            # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+            await _enforce_token_budget(store, config, guild_id)
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
             p_tokens, c_tokens = _usage_tokens(llm)  # #17
@@ -1988,7 +2278,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             )
 
     # --- #35 /summarize-channels --- multi-channel summary
-    @bot.tree.command(name="summarize-channels", description="여러 채널을 선택해 통합 요약합니다.")
+    @bot.tree.command(name="summarize-channels", description=_loc("여러 채널을 선택해 통합 요약합니다."))
     async def summarize_channels_command(interaction: discord.Interaction) -> None:
         guild = interaction.guild
         if guild is None:
@@ -2012,6 +2302,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             try:
                 config = await store.get_guild_config(guild_id or 0)
                 message_limit = config.summary_limit
+                # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+                await _enforce_token_budget(store, config, guild_id)
                 # Build the LLM client once and reuse it across all channels (#35)
                 llm = _get_llm(config, settings)
 
@@ -2062,8 +2354,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         await interaction.response.send_message("요약할 채널을 선택하세요:", view=view, ephemeral=True)
 
     # --- #41 /export --- export channel messages as markdown file
-    @bot.tree.command(name="export", description="채널 메시지를 마크다운 파일로 내보내기 (DM 전송)")
-    @app_commands.describe(limit="내보낼 메시지 수 (기본값: 서버 설정)")
+    @bot.tree.command(name="export", description=_loc("채널 메시지를 마크다운 파일로 내보내기 (DM 전송)"))
+    @app_commands.describe(limit=_loc("내보낼 메시지 수 (기본값: 서버 설정)"))
     async def export_command(interaction: discord.Interaction, limit: int | None = None) -> None:
         started = perf_counter()
         guild_id, channel_id, user_id = _ids_from_interaction(interaction)
@@ -2129,7 +2421,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             )
 
     # --- #43 /stats --- server usage statistics
-    @bot.tree.command(name="stats", description="서버 봇 사용 통계를 표시합니다.")
+    @bot.tree.command(name="stats", description=_loc("서버 봇 사용 통계를 표시합니다."))
     async def stats_command(interaction: discord.Interaction) -> None:
         if interaction.guild is None:
             await interaction.response.send_message("⚠️ 이 명령은 서버 안에서만 사용할 수 있어요.", ephemeral=True)
@@ -2169,10 +2461,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         await interaction.followup.send(embed=embed)
 
     # --- #47 /search --- keyword search + LLM summary
-    @bot.tree.command(name="search", description="채널에서 키워드로 메시지를 검색하고 요약합니다.")
+    @bot.tree.command(name="search", description=_loc("채널에서 키워드로 메시지를 검색하고 요약합니다."))
     @app_commands.describe(
-        query="검색할 키워드입니다.",
-        limit="최대 몇 개 메시지를 검색할지 지정합니다. 기본값: 200",
+        query=_loc("검색할 키워드입니다."),
+        limit=_loc("최대 몇 개 메시지를 검색할지 지정합니다. 기본값: 200"),
     )
     async def search_command(
         interaction: discord.Interaction,
@@ -2207,6 +2499,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
             transcript = "\n".join(matching)
             prompt = build_search_result_prompt(transcript, query, language=config.language)
+            # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+            await _enforce_token_budget(store, config, guild_id)
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
             p_tokens, c_tokens = _usage_tokens(llm)  # #17
@@ -2232,8 +2526,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             )
 
     # --- #11 /digest --- 기간 기반 '오늘의 정리'
-    @bot.tree.command(name="digest", description="지정한 기간의 대화를 핵심·결정·액션으로 정리합니다.")
-    @app_commands.describe(since="정리할 기간. 예: 30m, 1h, 6h, 1d (기본: 1d)")
+    @bot.tree.command(name="digest", description=_loc("지정한 기간의 대화를 핵심·결정·액션으로 정리합니다."))
+    @app_commands.describe(since=_loc("정리할 기간. 예: 30m, 1h, 6h, 1d (기본: 1d)"))
     @app_commands.autocomplete(since=_since_autocomplete)
     async def digest_command(
         interaction: discord.Interaction,
@@ -2271,6 +2565,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 effective_language = detect_language_from_transcript(transcript)
             # build_summarize_prompt 를 재사용해 '핵심·결정·액션' 구조 요약을 만든다 (#11).
             prompt = build_summarize_prompt(transcript, language=effective_language)
+            # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+            await _enforce_token_budget(store, config, guild_id)
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
             p_tokens, c_tokens = _usage_tokens(llm)  # #17
@@ -2294,7 +2590,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             )
 
     # --- #94 /usage --- 본인 사용량 + 쿨다운 + 서버 한도 안내
-    @bot.tree.command(name="usage", description="내 사용량과 쿨다운, 서버 한도를 확인합니다.")
+    @bot.tree.command(name="usage", description=_loc("내 사용량과 쿨다운, 서버 한도를 확인합니다."))
     async def usage_command(interaction: discord.Interaction) -> None:
         guild_id, _channel_id, user_id = _ids_from_interaction(interaction)
         config = await store.get_guild_config(guild_id or 0)
@@ -2359,6 +2655,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             )
             return None
         config = await store.get_guild_config(guild_id or 0)
+        # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+        await _enforce_token_budget(store, config, guild_id)
         llm = _get_llm(config, settings)
         return config, llm
 
@@ -2465,8 +2763,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
     # --- Phase 3 /config subcommands ---
 
-    @config_group.command(name="admin_role", description="봇 설정 권한을 가진 역할을 지정합니다.")
-    @app_commands.describe(role="설정 권한을 부여할 역할입니다.")
+    @config_group.command(name="admin_role", description=_loc("봇 설정 권한을 가진 역할을 지정합니다."))
+    @app_commands.describe(role=_loc("설정 권한을 부여할 역할입니다."))
     async def config_admin_role(interaction: discord.Interaction, role: discord.Role) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
@@ -2482,8 +2780,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     _MAX_PERSONA_CHARS = 500
     _MAX_CUSTOM_PROMPT_CHARS = 2000
 
-    @config_group.command(name="persona", description="/chat 페르소나를 설정합니다.")
-    @app_commands.describe(description="봇의 페르소나 설명입니다. 비워두면 초기화합니다.")
+    @config_group.command(name="persona", description=_loc("/chat 페르소나를 설정합니다."))
+    @app_commands.describe(description=_loc("봇의 페르소나 설명입니다. 비워두면 초기화합니다."))
     async def config_persona(interaction: discord.Interaction, description: str = "") -> None:
         try:
             guild_id = await require_guild_admin(interaction)
@@ -2509,8 +2807,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except (UserFacingError, ValueError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
 
-    @config_group.command(name="auto_summary", description="자동 요약 간격을 설정합니다. (최소 5분, 0이면 비활성화)")
-    @app_commands.describe(interval="자동 요약 간격 (분, 최소 5). 0이면 비활성화.")
+    @config_group.command(name="auto_summary", description=_loc("자동 요약 간격을 설정합니다. (최소 5분, 0이면 비활성화)"))
+    @app_commands.describe(interval=_loc("자동 요약 간격 (분, 최소 5). 0이면 비활성화."))
     async def config_auto_summary(interaction: discord.Interaction, interval: int) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
@@ -2529,10 +2827,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except (UserFacingError, ValueError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
 
-    @config_group.command(name="custom_prompt", description="커스텀 프롬프트를 설정합니다.")
+    @config_group.command(name="custom_prompt", description=_loc("커스텀 프롬프트를 설정합니다."))
     @app_commands.describe(
-        prompt_type="프롬프트 유형: summarize 또는 ask",
-        text="커스텀 프롬프트 내용. 비워두면 초기화.",
+        prompt_type=_loc("프롬프트 유형: summarize 또는 ask"),
+        text=_loc("커스텀 프롬프트 내용. 비워두면 초기화."),
     )
     @app_commands.autocomplete(prompt_type=_prompt_type_autocomplete)
     async def config_custom_prompt(
@@ -2569,8 +2867,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except (UserFacingError, ValueError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
 
-    @config_group.command(name="allowed_role", description="명령어 사용 가능 역할을 설정합니다.")
-    @app_commands.describe(role="명령어를 사용할 수 있는 역할입니다.")
+    @config_group.command(name="allowed_role", description=_loc("명령어 사용 가능 역할을 설정합니다."))
+    @app_commands.describe(role=_loc("명령어를 사용할 수 있는 역할입니다."))
     async def config_allowed_role(interaction: discord.Interaction, role: discord.Role | None = None) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
@@ -2586,6 +2884,40 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 )
             else:
                 await _send_interaction_chunks(interaction, "✅ 역할 제한을 해제했어요.", ephemeral=True)
+        except (UserFacingError, ValueError) as exc:
+            await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
+
+    # --- #19 /config daily_token_budget --- 서버별 일일 토큰 상한
+    @config_group.command(
+        name="daily_token_budget",
+        description=_loc("서버의 일일 토큰 사용 상한을 설정합니다. (0이면 무제한)"),
+    )
+    @app_commands.describe(budget=_loc("하루 동안 사용할 수 있는 최대 토큰 수. 0이면 무제한."))
+    async def config_daily_token_budget(
+        interaction: discord.Interaction, budget: int
+    ) -> None:
+        try:
+            guild_id = await require_guild_admin(interaction)
+            if budget < 0:
+                raise UserFacingError("일일 토큰 상한은 0 이상이어야 해요. (0이면 무제한)")
+            # 0 은 '무제한'(None)으로 해석한다 — 자동 요약 간격(0=비활성)과 동일한 관용.
+            effective_budget = None if budget == 0 else budget
+            before = (await store.get_guild_config(guild_id)).daily_token_budget
+            await store.set_daily_token_budget(guild_id, effective_budget)
+            await _audit_config_change(
+                interaction, guild_id, "set_daily_token_budget", before, effective_budget
+            )
+            if effective_budget is not None:
+                await _send_interaction_chunks(
+                    interaction,
+                    f"✅ 일일 토큰 상한을 {effective_budget:,} 토큰으로 설정했어요. "
+                    "(매일 자정 UTC 기준 초기화)",
+                    ephemeral=True,
+                )
+            else:
+                await _send_interaction_chunks(
+                    interaction, "✅ 일일 토큰 상한을 해제했어요. (무제한)", ephemeral=True
+                )
         except (UserFacingError, ValueError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
 
@@ -2748,6 +3080,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 prompt = build_chat_with_history_prompt(
                     follow_question, history, language=config.language
                 )
+                # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+                await _enforce_token_budget(store, config, guild_id)
                 llm = _get_llm(config, settings)
                 async with message.channel.typing():
                     answer = await llm.generate(prompt, model=config.model)
@@ -2781,6 +3115,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
         try:
             config = await store.get_guild_config(guild_id or 0)
+            # #19: 멘션 응답(이미지 분석/질문/요약) 모두 LLM 을 호출하므로, 분기 전에
+            # 한 번 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사한다.
+            await _enforce_token_budget(store, config, guild_id)
 
             # 이미지 분석 (#12/#13) — 첨부에 이미지가 있고, 현재 제공자·모델이
             # 비전을 지원하면 첨부 bytes 를 실제 멀티모달 입력으로 전달한다.
@@ -2977,6 +3314,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                             if not transcript:
                                 break
                             prompt = build_summarize_prompt(transcript, language=config.language)
+                            # #19: 자동 요약도 토큰을 소비하므로 서버 일일 상한을 검사.
+                            # 초과 시 UserFacingError 가 except 로 흡수돼 이번 주기를 건너뛴다.
+                            await _enforce_token_budget(store, config, gid)
                             llm = _get_llm(config, settings)
                             answer = await llm.generate(prompt, model=config.model)
                             await ch.send(f"**자동 요약** (매 {config.auto_summary_interval}분)\n{answer[:1800]}")
@@ -3080,6 +3420,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         config = await store.get_guild_config(guild_id or 0)
         command_name = "reaction_summarize" if emoji_str == REACTION_SUMMARIZE else "reaction_translate"
         try:
+            # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
+            await _enforce_token_budget(store, config, guild_id)
             llm = _get_llm(config, settings)
             if emoji_str == REACTION_SUMMARIZE:
                 language = config.language

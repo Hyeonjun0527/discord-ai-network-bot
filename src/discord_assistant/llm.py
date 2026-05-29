@@ -9,14 +9,19 @@ import queue
 import shutil
 import time
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
-from dataclasses import dataclass
-from typing import Any
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Iterator
+from dataclasses import dataclass, field
+from typing import Any, TypeVar
 from urllib import error, parse, request
 
 from .models import LLMProvider, OllamaModel
 
 logger = logging.getLogger(__name__)
+
+# #20: _with_retry / _with_circuit_breaker 의 반환 타입을 일반화하기 위한 TypeVar.
+# 텍스트(str)를 반환하던 generate 경로뿐 아니라, 툴 루프의 payload(dict) 반환에도
+# 같은 재시도/서킷 브레이커 헬퍼를 재사용한다(시그니처·동작 불변).
+_R = TypeVar("_R")
 
 
 # ---------------------------------------------------------------------------
@@ -30,6 +35,59 @@ logger = logging.getLogger(__name__)
 ImageInput = bytes | tuple[str, bytes]
 # 기본 이미지 MIME. (mime, bytes) 형태가 아니라 raw bytes 만 넘어온 경우 사용한다.
 _DEFAULT_IMAGE_MIME = "image/png"
+
+
+# ---------------------------------------------------------------------------
+# #20: 함수/툴 호출 (OpenAI tools / Anthropic tool_use) 경량 에이전트 루프 타입
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ToolSpec:
+    """LLM 에 노출할 단일 툴(함수) 정의 (#20).
+
+    - ``name``: 모델이 호출할 함수 이름(예: "search_messages").
+    - ``description``: 모델이 언제 이 툴을 써야 하는지 알 수 있는 설명.
+    - ``parameters``: JSON Schema(object) 형태의 파라미터 명세. 제공자별
+      규격(OpenAI ``parameters`` / Anthropic ``input_schema``)에 그대로 매핑된다.
+
+    제공자 비종속(provider-agnostic) 표현이며, 각 어댑터가 자신의 와이어 포맷으로
+    변환한다. 기본값은 인자 없는 빈 object 스키마다.
+    """
+
+    name: str
+    description: str
+    parameters: dict[str, Any] = field(
+        default_factory=lambda: {"type": "object", "properties": {}}
+    )
+
+
+# 툴 실행기: (tool_name, arguments dict) → 결과 문자열(모델에 되돌려줄 관측값).
+# bot.py 가 search_messages 같은 실제 동작을 여기에 연결한다. 비동기다.
+ToolRunner = Callable[[str, dict[str, Any]], Awaitable[str]]
+
+# 에이전트 루프의 안전 상한(과도한 왕복/비용 폭증 방지). 2~3회면 충분하다.
+_DEFAULT_TOOL_ITERATIONS = 3
+# 한 번에 모델에 되돌려줄 툴 결과의 최대 길이(컨텍스트 폭증 방지).
+_MAX_TOOL_RESULT_CHARS = 4000
+
+
+async def _run_tool_safely(
+    tool_runner: "ToolRunner", name: str, args: dict[str, Any]
+) -> str:
+    """tool_runner 를 호출하되 실패해도 루프를 깨지 않도록 결과 문자열로 흡수한다 (#20).
+
+    툴 실행 중 예외가 나면 모델에 되돌려줄 수 있는 오류 문자열로 변환한다(루프가
+    멈추지 않고 모델이 상황을 인지해 답변할 수 있게 한다). LLMError(제공자 오류)는
+    루프 자체를 중단시켜야 하므로 그대로 다시 던진다.
+    """
+    try:
+        return await tool_runner(name, args)
+    except LLMError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — 툴 실패는 모델에 관측값으로 전달
+        logger.warning("툴 실행 실패 (name=%s): %s", name, exc)
+        return f"(tool '{name}' failed: {exc})"
 
 
 def _normalize_image(image: ImageInput) -> tuple[str, bytes]:
@@ -181,10 +239,10 @@ def _is_retryable(exc: LLMError) -> bool:
 
 
 async def _with_retry(
-    coro_fn: Callable[[], Coroutine[Any, Any, str]],
+    coro_fn: Callable[[], Coroutine[Any, Any, _R]],
     max_attempts: int = 2,
     delay: float = 1.0,
-) -> str:
+) -> _R:
     """Run ``coro_fn`` up to ``max_attempts`` times, retrying on retryable LLMError with backoff.
 
     재시도 불가능한 오류(4xx 클라이언트 오류 등)는 즉시 다시 던진다.
@@ -265,11 +323,11 @@ class CircuitBreaker:
 
 async def _with_circuit_breaker(
     breaker: CircuitBreaker | None,
-    coro_fn: Callable[[], Coroutine[Any, Any, str]],
+    coro_fn: Callable[[], Coroutine[Any, Any, _R]],
     *,
     max_attempts: int = 2,
     delay: float = 1.0,
-) -> str:
+) -> _R:
     """서킷 브레이커와 재시도를 결합해 ``coro_fn``을 실행한다.
 
     ``breaker``가 None이면 기존 ``_with_retry``와 동일하게 동작(백워드 호환).
@@ -330,6 +388,28 @@ class BaseLLMClient(ABC):
         절대 바뀌지 않으므로(백워드 호환), 비스트리밍 호출부는 그대로 동작한다.
         """
         yield await self.generate(prompt, model=model)
+
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        *,
+        tools: list[ToolSpec],
+        tool_runner: ToolRunner,
+        model: str | None = None,
+        max_iterations: int = _DEFAULT_TOOL_ITERATIONS,
+    ) -> str:
+        """툴(함수) 호출을 지원하는 경량 에이전트 루프로 최종 텍스트를 반환한다 (#20).
+
+        기본 구현은 툴을 사용하지 않고 ``generate()`` 로 폴백한다(미지원 제공자 —
+        Ollama/Gemini 등). 실제 툴 루프를 지원하는 어댑터(OpenAI/Anthropic)는 이
+        메서드를 오버라이드해, 모델이 ``tools`` 중 하나를 호출하면 ``tool_runner``
+        로 실행하고 그 결과를 다시 모델에 돌려주는 식으로 최대 ``max_iterations``
+        회 반복한 뒤 최종 텍스트를 만든다.
+
+        ``generate()`` 의 시그니처·반환(텍스트)은 절대 바뀌지 않으므로, 기존
+        호출부·테스트는 영향을 받지 않는다.
+        """
+        return await self.generate(prompt, model=model)
 
 
 # ---------------------------------------------------------------------------
@@ -715,6 +795,154 @@ class OpenAIClient(BaseLLMClient):
                 "응답 시간이 초과됐습니다. 더 작은 모델을 사용하거나 `/settings`에서 제공자를 변경해보세요."
             ) from exc
 
+    # ------------------------------------------------------------------
+    # #20: 함수/툴 호출 (OpenAI tools + tool_calls) 경량 에이전트 루프
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _tools_to_openai(tools: list[ToolSpec]) -> list[dict[str, Any]]:
+        """ToolSpec 목록을 OpenAI tools(function) 와이어 포맷으로 변환한다 (#20)."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                },
+            }
+            for t in tools
+        ]
+
+    def _chat_sync(
+        self, messages: list[dict[str, Any]], model: str, tools: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """messages + tools 로 한 번의 Chat Completions 호출을 수행해 payload 를 반환한다 (#20).
+
+        ``_generate_sync`` 와 동일한 HTTP/에러 처리지만, content 만 뽑지 않고 전체
+        payload(choices[0].message — tool_calls 포함)를 돌려준다. last_usage 도
+        호출마다 갱신한다(여러 왕복의 합산은 호출부가 관리할 수 있다).
+        """
+        body_dict: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": self.temperature,
+        }
+        if tools:
+            body_dict["tools"] = tools
+        body = json.dumps(body_dict).encode("utf-8")
+        req = request.Request(
+            f"{self._BASE}/chat/completions",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:  # noqa: S310
+                payload: dict[str, Any] = json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            logger.debug("OpenAI(tools) HTTP %s error body: %s", exc.code, detail)
+            raise OpenAIError(
+                f"OpenAI API 요청 실패 (HTTP {exc.code})", status_code=exc.code
+            ) from exc
+        except error.URLError as exc:
+            raise OpenAIError(f"Cannot reach OpenAI: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise OpenAIError(
+                "응답 시간이 초과됐습니다. 더 작은 모델을 사용하거나 `/settings`에서 제공자를 변경해보세요."
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise OpenAIError("OpenAI returned invalid JSON") from exc
+        self.last_usage = _parse_openai_usage(payload)
+        return payload
+
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        *,
+        tools: list[ToolSpec],
+        tool_runner: ToolRunner,
+        model: str | None = None,
+        max_iterations: int = _DEFAULT_TOOL_ITERATIONS,
+    ) -> str:
+        """OpenAI tools(function calling) 기반 경량 에이전트 루프 (#20).
+
+        모델이 tool_calls 를 내면 각 호출을 ``tool_runner`` 로 실행해 결과를 role=
+        "tool" 메시지로 되돌려주고 다시 모델을 호출한다. tool_calls 가 없으면(또는
+        반복 상한 도달) 최종 텍스트를 반환한다. 툴이 비어 있으면 일반 generate 로
+        폴백한다(기존 동작과 동일).
+        """
+        if not tools:
+            return await self.generate(prompt, model=model)
+        resolved_model = model or self.default_model
+        openai_tools = self._tools_to_openai(tools)
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+        last_text = ""
+        for _ in range(max(1, max_iterations)):
+            payload = await _with_circuit_breaker(
+                self.circuit_breaker,
+                lambda: asyncio.to_thread(
+                    self._chat_sync, messages, resolved_model, openai_tools
+                ),
+            )
+            try:
+                message = payload["choices"][0]["message"]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise OpenAIError("OpenAI 응답 형식을 해석할 수 없습니다.") from exc
+            tool_calls = message.get("tool_calls") or []
+            content = message.get("content")
+            if isinstance(content, str) and content.strip():
+                last_text = content.strip()
+            if not tool_calls:
+                # 더 호출할 툴이 없으면 최종 텍스트를 반환한다.
+                return last_text
+            # assistant 의 tool_calls 메시지를 대화에 추가한 뒤 각 결과를 되돌려준다.
+            messages.append(message)
+            for call in tool_calls:
+                fn = call.get("function") or {}
+                name = str(fn.get("name") or "")
+                raw_args = fn.get("arguments") or "{}"
+                try:
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    args = {}
+                result = await _run_tool_safely(tool_runner, name, args)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.get("id", ""),
+                        "content": result[:_MAX_TOOL_RESULT_CHARS],
+                    }
+                )
+        # 반복 상한 도달 — 마지막 텍스트가 없으면 도구 결과 기반 최종 답변을 한 번 더 요청.
+        if not last_text:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "위 도구 결과를 바탕으로 최종 답변을 작성해 주세요.",
+                }
+            )
+            payload = await _with_circuit_breaker(
+                self.circuit_breaker,
+                lambda: asyncio.to_thread(
+                    self._chat_sync, messages, resolved_model, []
+                ),
+            )
+            try:
+                final = payload["choices"][0]["message"].get("content")
+            except (KeyError, IndexError, TypeError):
+                final = None
+            if isinstance(final, str) and final.strip():
+                last_text = final.strip()
+        return last_text
+
 
 # ---------------------------------------------------------------------------
 # Anthropic
@@ -836,6 +1064,161 @@ class AnthropicClient(BaseLLMClient):
         # #17: 응답 파싱 성공 후에만 usage 를 기록한다.
         self.last_usage = _parse_anthropic_usage(payload)
         return text.strip()
+
+    # ------------------------------------------------------------------
+    # #20: 함수/툴 호출 (Anthropic tool_use 블록) 경량 에이전트 루프
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _tools_to_anthropic(tools: list[ToolSpec]) -> list[dict[str, Any]]:
+        """ToolSpec 목록을 Anthropic tools(input_schema) 와이어 포맷으로 변환한다 (#20)."""
+        return [
+            {
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.parameters,
+            }
+            for t in tools
+        ]
+
+    def _messages_sync(
+        self, messages: list[dict[str, Any]], model: str, tools: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """messages + tools 로 한 번의 Messages 호출을 수행해 payload 전체를 반환한다 (#20).
+
+        ``_generate_sync`` 와 동일한 HTTP/에러 처리지만 text 만 뽑지 않고 전체
+        payload(content 블록들 — tool_use 포함)를 돌려준다. 호출마다 usage 갱신.
+        """
+        body_dict: dict[str, Any] = {
+            "model": model,
+            "max_tokens": self.max_tokens,
+            "system": self.system_prompt,
+            "messages": messages,
+        }
+        if tools:
+            body_dict["tools"] = tools
+        body = json.dumps(body_dict).encode("utf-8")
+        req = request.Request(
+            f"{self._BASE}/messages",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": self.api_key,
+                "anthropic-version": self._VERSION,
+            },
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:  # noqa: S310
+                payload: dict[str, Any] = json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            logger.debug("Anthropic(tools) HTTP %s error body: %s", exc.code, detail)
+            raise AnthropicError(
+                f"Anthropic API 요청 실패 (HTTP {exc.code})", status_code=exc.code
+            ) from exc
+        except error.URLError as exc:
+            raise AnthropicError(f"Cannot reach Anthropic: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise AnthropicError(
+                "응답 시간이 초과됐습니다. 더 작은 모델을 사용하거나 `/settings`에서 제공자를 변경해보세요."
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise AnthropicError("Anthropic returned invalid JSON") from exc
+        self.last_usage = _parse_anthropic_usage(payload)
+        return payload
+
+    @staticmethod
+    def _extract_text_blocks(content: list[dict[str, Any]]) -> str:
+        """Anthropic content 블록들에서 type=="text" 텍스트를 모아 이어붙인다 (#20)."""
+        parts = [
+            block["text"]
+            for block in content
+            if isinstance(block, dict)
+            and block.get("type") == "text"
+            and isinstance(block.get("text"), str)
+        ]
+        return "".join(parts).strip()
+
+    async def generate_with_tools(
+        self,
+        prompt: str,
+        *,
+        tools: list[ToolSpec],
+        tool_runner: ToolRunner,
+        model: str | None = None,
+        max_iterations: int = _DEFAULT_TOOL_ITERATIONS,
+    ) -> str:
+        """Anthropic tool_use 기반 경량 에이전트 루프 (#20).
+
+        응답 content 에 ``tool_use`` 블록이 있으면 각 호출을 ``tool_runner`` 로
+        실행해 ``tool_result`` 블록(user role)으로 되돌려주고 다시 모델을 호출한다.
+        ``stop_reason`` 이 tool_use 가 아니면(또는 반복 상한 도달) 최종 텍스트를
+        반환한다. 툴이 비어 있으면 일반 generate 로 폴백한다(기존 동작과 동일).
+        """
+        if not tools:
+            return await self.generate(prompt, model=model)
+        resolved_model = model or self.default_model
+        anthropic_tools = self._tools_to_anthropic(tools)
+        messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+        last_text = ""
+        for _ in range(max(1, max_iterations)):
+            payload = await _with_circuit_breaker(
+                self.circuit_breaker,
+                lambda: asyncio.to_thread(
+                    self._messages_sync, messages, resolved_model, anthropic_tools
+                ),
+            )
+            content = payload.get("content")
+            if not isinstance(content, list):
+                raise AnthropicError("Anthropic 응답 형식을 해석할 수 없습니다.")
+            text = self._extract_text_blocks(content)
+            if text:
+                last_text = text
+            tool_uses = [
+                block
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "tool_use"
+            ]
+            if payload.get("stop_reason") != "tool_use" or not tool_uses:
+                return last_text
+            # assistant 의 tool_use 응답을 대화에 그대로 추가한 뒤 결과를 되돌려준다.
+            messages.append({"role": "assistant", "content": content})
+            tool_results: list[dict[str, Any]] = []
+            for use in tool_uses:
+                name = str(use.get("name") or "")
+                args = use.get("input")
+                if not isinstance(args, dict):
+                    args = {}
+                result = await _run_tool_safely(tool_runner, name, args)
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": use.get("id", ""),
+                        "content": result[:_MAX_TOOL_RESULT_CHARS],
+                    }
+                )
+            messages.append({"role": "user", "content": tool_results})
+        # 반복 상한 도달 — 도구 결과를 바탕으로 최종 답변을 한 번 더 요청(툴 없이).
+        if not last_text:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "위 도구 결과를 바탕으로 최종 답변을 작성해 주세요.",
+                }
+            )
+            payload = await _with_circuit_breaker(
+                self.circuit_breaker,
+                lambda: asyncio.to_thread(
+                    self._messages_sync, messages, resolved_model, []
+                ),
+            )
+            content = payload.get("content")
+            if isinstance(content, list):
+                final = self._extract_text_blocks(content)
+                if final:
+                    last_text = final
+        return last_text
 
 
 # ---------------------------------------------------------------------------

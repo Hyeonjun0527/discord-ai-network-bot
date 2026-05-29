@@ -26,8 +26,8 @@
 - [x] 16. 스트리밍 응답: `generate_stream` + Discord 메시지 점진 edit · L
 - [x] 17. 토큰 사용량 집계: 제공자 응답 usage 파싱 → `UsageLog` 저장 · M
 - [x] 18. 제공자·모델별 단가 테이블 기반 호출 비용 계산 + `/stats` 표시 · M
-- [ ] 19. 서버별 일일 토큰/비용 상한 설정 + 초과 시 차단 · M
-- [ ] 20. 함수/툴 호출(OpenAI tools, Anthropic tool_use)로 메시지 검색 툴 노출 · L
+- [x] 19. 서버별 일일 토큰/비용 상한 설정 + 초과 시 차단 · M
+- [x] 20. 함수/툴 호출(OpenAI tools, Anthropic tool_use)로 메시지 검색 툴 노출 · L
 - [x] 21. `_with_retry`: 4xx 즉시 실패, 429/5xx만 재시도 · S
 - [x] 22. OpenAI/Anthropic 하드코딩 파라미터(temperature·max_tokens·system) 설정값 연동 · M
 - [x] 23. 프롬프트 회귀 평가 하니스: 고정 트랜스크립트 골든 출력 채점 · L
@@ -116,7 +116,7 @@
 ## 🌐 UX / 국제화 (87~94)
 
 - [ ] 87. 번역 카탈로그 도입 + 모든 View/Embed에 길드 언어 주입 (#70 i18n) · L
-- [ ] 88. app_commands locale_str로 명령 설명/옵션 클라이언트 로케일 현지화 · L
+- [x] 88. app_commands locale_str로 명령 설명/옵션 클라이언트 로케일 현지화 · L
 - [x] 89. 언어 설정을 자유 텍스트 모달 → 지원 언어 Select 드롭다운으로 · M
 - [x] 90. 온보딩 강화: 제공자 미설정 감지 + '지금 설정하기' 버튼 흐름 · M
 - [x] 91. API 키 미설정 에러의 잘못된 메뉴 경로 수정 + 버튼형 안내 · S

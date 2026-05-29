@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/sidebar";
-import { getToken, clearToken } from "@/lib/auth";
+import { clearLoginHint, markLoggedIn } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 
@@ -24,14 +24,12 @@ export default function DashboardLayout({
   const [selectedGuildId, setSelectedGuildId] = useState<string>("");
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.replace("/");
-      return;
-    }
-
+    // #34: 토큰은 httpOnly 쿠키라 JS 로 못 읽으므로, /auth/me 호출 자체가 인증
+    // 판정이 된다. 쿠키로 인증되면 200 + guilds, 무효면 401 → catch 에서 로그인으로.
     apiFetch<{ sub: string; guilds: Guild[] }>("/auth/me")
       .then((data) => {
+        // 인증 확인됨 → 라우팅 힌트를 켜둔다(새로고침/직접 진입 대비).
+        markLoggedIn();
         setGuilds(data.guilds ?? []);
         if (data.guilds && data.guilds.length > 0) {
           const stored = localStorage.getItem("selectedGuildId");
@@ -41,8 +39,8 @@ export default function DashboardLayout({
         setLoading(false);
       })
       .catch(() => {
-        // Token is expired or invalid
-        clearToken();
+        // 쿠키가 만료/무효 — 로컬 힌트 정리 후 로그인 페이지로.
+        clearLoginHint();
         router.replace("/");
       });
   }, [router]);

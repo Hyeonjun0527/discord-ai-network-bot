@@ -8,12 +8,7 @@
  *   const config = await apiFetch<GuildConfig>('/api/guilds/123/config');
  */
 
-import {
-  getToken,
-  clearToken,
-  isTokenExpiringSoon,
-  refreshToken,
-} from "./auth";
+import { clearLoginHint, refreshToken } from "./auth";
 
 /** Base URL for direct backend calls.  Defaults to "" so Next.js rewrites apply. */
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -29,10 +24,13 @@ export class ApiError extends Error {
 }
 
 /**
- * Fetch a JSON resource from the backend with automatic Authorization header.
+ * Fetch a JSON resource from the backend.
+ *
+ * #34: 인증은 httpOnly 쿠키로 처리한다. `credentials: 'include'` 로 쿠키를 자동
+ * 전송하므로 JS 가 토큰을 다루지 않는다(XSS 토큰 탈취 방지).
  *
  * Throws `ApiError` on non-2xx responses.
- * Automatically clears the token and redirects to `/` on 401.
+ * 401 시 토큰 갱신(refresh)을 한 번 시도하고, 실패하면 로그인 페이지로 보낸다.
  */
 export async function apiFetch<T>(
   path: string,
@@ -40,23 +38,18 @@ export async function apiFetch<T>(
   // #85: 401 후 토큰 갱신에 성공하면 한 번 재시도한다. 무한 루프 방지용 내부 플래그.
   _retried = false
 ): Promise<T> {
-  // 만료 임박 시 요청 전에 선제적으로 토큰을 갱신한다 (#85).
-  // refresh 라우트 자체를 다시 갱신하려 들지 않도록 제외한다.
-  if (!path.startsWith("/auth/refresh") && isTokenExpiringSoon()) {
-    await refreshToken();
-  }
-
-  const token = getToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...(init.headers as Record<string, string> | undefined),
   };
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-  }
 
   const url = `${BASE_URL}${path}`;
-  const response = await fetch(url, { ...init, headers });
+  // #34: 쿠키 기반 인증이므로 항상 credentials 를 포함한다.
+  const response = await fetch(url, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
 
   if (response.status === 401) {
     // #85: 만료 등으로 401 이 떨어지면 토큰 갱신을 한 번 시도하고 성공 시 재시도한다.
@@ -66,8 +59,8 @@ export async function apiFetch<T>(
         return apiFetch<T>(path, init, true);
       }
     }
-    // 갱신 실패 → Token is invalid / expired — log out
-    clearToken();
+    // 갱신 실패 → 세션 만료. 로컬 힌트를 정리하고 로그인 페이지로 보낸다.
+    clearLoginHint();
     if (typeof window !== "undefined") {
       window.location.href = "/";
     }
@@ -98,7 +91,16 @@ export interface GuildConfig {
   summary_limit: number;
   language: string;
   provider: string;
+  // #80: 자동 요약 주기(분). null 이면 자동 요약 비활성화.
+  auto_summary_interval: number | null;
   updated_at: string | null;
+}
+
+// #82: 토큰 사용량 합계. 모델 단가를 모르므로 토큰 수만 노출한다.
+export interface TokenUsage {
+  prompt: number;
+  completion: number;
+  total: number;
 }
 
 export interface GuildStats {
@@ -107,6 +109,8 @@ export interface GuildStats {
   avg_latency_ms: number;
   error_rate: number;
   daily: { day: string; count: number }[];
+  // #82: 토큰 사용량 합계(백워드 호환을 위해 optional).
+  tokens?: TokenUsage;
 }
 
 export interface OllamaModelsResponse {

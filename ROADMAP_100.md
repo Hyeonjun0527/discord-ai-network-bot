@@ -30,7 +30,7 @@
 - [ ] 20. 함수/툴 호출(OpenAI tools, Anthropic tool_use)로 메시지 검색 툴 노출 · L
 - [x] 21. `_with_retry`: 4xx 즉시 실패, 429/5xx만 재시도 · S
 - [x] 22. OpenAI/Anthropic 하드코딩 파라미터(temperature·max_tokens·system) 설정값 연동 · M
-- [ ] 23. 프롬프트 회귀 평가 하니스: 고정 트랜스크립트 골든 출력 채점 · L
+- [x] 23. 프롬프트 회귀 평가 하니스: 고정 트랜스크립트 골든 출력 채점 · L
 
 ## 🗄️ 데이터 / 스토리지 (24~33)
 
@@ -41,23 +41,23 @@
 - [x] 28. 백업 복원 스크립트(`scripts/restore.sh`) + 백업→복원 왕복 테스트 · M
 - [ ] 29. 대시보드 중복 DB 접근 로직을 공용 storage 레이어로 통합 · M
 - [x] 30. 대시보드 guild_config PUT의 컬럼 누락(스키마 drift) 수정 · M
-- [ ] 31. `DATABASE_URL` postgresql:// 지원을 위한 스토리지 백엔드 추상화 · L
+- [x] 31. `DATABASE_URL` postgresql:// 지원을 위한 스토리지 백엔드 추상화 · L
 - [x] 32. 쿼리 경로 인덱스 점검(EXPLAIN QUERY PLAN 기반 보강) · M
 - [x] 33. 주기적 VACUUM / WAL checkpoint 운영 작업으로 파일 비대화 방지 · S
 
 ## 🔐 보안 / 프라이버시 (34~44)
 
-- [ ] 34. 대시보드 JWT를 httpOnly+Secure 쿠키로 전환 (#38) · L
-- [ ] 35. JWT 서명키와 Fernet 암호화키 분리(독립 회전 가능) · M
+- [x] 34. 대시보드 JWT를 httpOnly+Secure 쿠키로 전환 (#38) · L
+- [x] 35. JWT 서명키와 Fernet 암호화키 분리(독립 회전 가능) · M
 - [x] 36. `SECRET_KEY` 기본값이면 프로덕션 기동 하드 실패 처리 · S
-- [ ] 37. 저장된 API 키 재암호화 마이그레이션(시크릿 회전 지원) · M
+- [x] 37. 저장된 API 키 재암호화 마이그레이션(시크릿 회전 지원) · M
 - [x] 38. 프롬프트 인젝션 방어: 트랜스크립트/질문 본문 구분자 래핑·role 토큰 무력화 · M
 - [x] 39. 관리자 작업 감사 로그(audit_log) 테이블 + 변경 이력 기록 · M
 - [x] 40. 사용자 데이터 삭제(`/forget-me`) 명령 + 백엔드 삭제 엔드포인트 · M
-- [ ] 41. usage_log.error의 PII/시크릿 마스킹 · S
+- [x] 41. usage_log.error의 PII/시크릿 마스킹 · S
 - [x] 42. CORS 와일드카드(allow_methods/headers='*') 제거 + 허용목록 명시 · S
 - [x] 43. 보호 대상 API 전체에 레이트리밋 일괄 적용(미들웨어) · S
-- [ ] 44. JWT 무효화 메커니즘(jti 블랙리스트 또는 단기 access+refresh) · L
+- [x] 44. JWT 무효화 메커니즘(jti 블랙리스트 또는 단기 access+refresh) · L
 
 ## 📈 신뢰성 / 관측성 (45~55)
 
@@ -75,15 +75,15 @@
 
 ## 🧪 테스트 / 품질 (56~67)
 
-- [ ] 56. `discord.Interaction` mock 픽스처를 conftest에 추가 · M
+- [x] 56. `discord.Interaction` mock 픽스처를 conftest에 추가 · M
 - [ ] 57. `/summarize`·`/ask`·`/chat` 핸들러 통합테스트(쿨다운·권한·에러 분기) · L
 - [ ] 58. on_message 멘션 플로우 테스트(ask vs summarize 분기, DM 쿨다운) · L
 - [ ] 59. on_reaction_add 피드백·on_guild_join 핸들러 테스트 · M
 - [x] 60. OpenAI/Anthropic `_generate_sync` 응답 파싱·에러 테스트 · M
-- [ ] 61. `_with_retry` 재시도/백오프 단위테스트 · S
+- [x] 61. `_with_retry` 재시도/백오프 단위테스트 · S
 - [x] 62. UI View/Modal 콜백 상호작용 테스트 · L
 - [ ] 63. e2e_scenarios.md 5개 시나리오를 자동 e2e 테스트로 전환 · L
-- [ ] 64. load_test를 Ollama mock 기반 CI 실행 가능하게 재작성 · M
+- [x] 64. load_test를 Ollama mock 기반 CI 실행 가능하게 재작성 · M
 - [ ] 65. 카오스/폴트 인젝션 테스트(타임아웃·연결거부·부분응답) · M
 - [x] 66. CI 커버리지 게이트(--cov-fail-under 임계) · S
 - [x] 67. mypy strict 단계적 도입 + pre-commit 훅 · M
@@ -105,9 +105,9 @@
 
 - [x] 78. 피드백 열람 API(GET /feedback) + 명령별 만족도 차트 페이지 · M
 - [x] 79. 길드 설정 편집 권한을 멤버십이 아닌 Administrator 권한으로 강화 · M
-- [ ] 80. 설정 UI에 auto_summary_interval 컨트롤 추가(백엔드 모델 확장) · M
+- [x] 80. 설정 UI에 auto_summary_interval 컨트롤 추가(백엔드 모델 확장) · M
 - [x] 81. 모델명 입력을 /api/models 기반 드롭다운으로 교체 · S
-- [ ] 82. usage_log 토큰/비용 컬럼 + stats 엔드포인트·차트 반영 · L
+- [x] 82. usage_log 토큰/비용 컬럼 + stats 엔드포인트·차트 반영 · L
 - [x] 83. 명령별 평균 응답시간(latency) 막대 차트 · M
 - [x] 84. 통계 기간 필터(7/30/90일) + 백엔드 daily 쿼리 파라미터화 · M
 - [x] 85. JWT 만료 임박 시 자동 갱신/refresh 처리 · M
@@ -118,10 +118,10 @@
 - [ ] 87. 번역 카탈로그 도입 + 모든 View/Embed에 길드 언어 주입 (#70 i18n) · L
 - [ ] 88. app_commands locale_str로 명령 설명/옵션 클라이언트 로케일 현지화 · L
 - [x] 89. 언어 설정을 자유 텍스트 모달 → 지원 언어 Select 드롭다운으로 · M
-- [ ] 90. 온보딩 강화: 제공자 미설정 감지 + '지금 설정하기' 버튼 흐름 · M
-- [ ] 91. API 키 미설정 에러의 잘못된 메뉴 경로 수정 + 버튼형 안내 · S
-- [ ] 92. `_make_error_embed`에 원인별 복구 힌트 + '다시 시도' 버튼 · M
-- [ ] 93. 긴 응답 UX 통일(/ask·/summarize·멘션도 프리뷰+DM 버튼) · M
+- [x] 90. 온보딩 강화: 제공자 미설정 감지 + '지금 설정하기' 버튼 흐름 · M
+- [x] 91. API 키 미설정 에러의 잘못된 메뉴 경로 수정 + 버튼형 안내 · S
+- [x] 92. `_make_error_embed`에 원인별 복구 힌트 + '다시 시도' 버튼 · M
+- [x] 93. 긴 응답 UX 통일(/ask·/summarize·멘션도 프리뷰+DM 버튼) · M
 - [x] 94. `/usage` 명령(사용량·쿨다운·한도 안내) + summary_limit 클램프 고지 · M
 
 ## 📚 문서 / 거버넌스 (95~100)

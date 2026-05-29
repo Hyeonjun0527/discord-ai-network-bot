@@ -57,7 +57,10 @@ def _seed_db(db_file: Path) -> None:
         CREATE TABLE usage_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER, channel_id INTEGER,
             user_id INTEGER, command TEXT NOT NULL, status TEXT NOT NULL,
-            latency_ms INTEGER, error TEXT, created_at TEXT NOT NULL
+            latency_ms INTEGER, error TEXT,
+            prompt_tokens INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
         );
         CREATE TABLE feedback (
             id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER,
@@ -84,17 +87,20 @@ def _seed_db(db_file: Path) -> None:
     #   ask:       ok 100 / ok 300  → avg 200
     #   summarize: ok 1000          → avg 1000
     #   error 행과 latency NULL 행은 평균에서 제외돼야 한다.
+    # 토큰 컬럼(prompt_tokens, completion_tokens)도 함께 넣어 #82 집계를 검증한다.
+    #   prompt 합계 = 10+20+30+0+0 = 60, completion 합계 = 5+15+25+0+0 = 45, total 105
     usage_rows = [
-        (123, 1, 11, "ask", "ok", 100, None, "2026-05-01T00:00:00+00:00"),
-        (123, 1, 11, "ask", "ok", 300, None, "2026-05-02T00:00:00+00:00"),
-        (123, 1, 11, "summarize", "ok", 1000, None, "2026-05-03T00:00:00+00:00"),
-        (123, 1, 11, "ask", "error", None, "boom", "2026-05-04T00:00:00+00:00"),
-        (123, 1, 11, "ask", "ok", None, None, "2026-05-05T00:00:00+00:00"),
+        (123, 1, 11, "ask", "ok", 100, None, 10, 5, "2026-05-01T00:00:00+00:00"),
+        (123, 1, 11, "ask", "ok", 300, None, 20, 15, "2026-05-02T00:00:00+00:00"),
+        (123, 1, 11, "summarize", "ok", 1000, None, 30, 25, "2026-05-03T00:00:00+00:00"),
+        (123, 1, 11, "ask", "error", None, "boom", 0, 0, "2026-05-04T00:00:00+00:00"),
+        (123, 1, 11, "ask", "ok", None, None, 0, 0, "2026-05-05T00:00:00+00:00"),
     ]
     conn.executemany(
         "INSERT INTO usage_log "
-        "(guild_id, channel_id, user_id, command, status, latency_ms, error, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "(guild_id, channel_id, user_id, command, status, latency_ms, error, "
+        "prompt_tokens, completion_tokens, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         usage_rows,
     )
     conn.commit()
@@ -285,3 +291,198 @@ def test_refresh_rejects_invalid_token(client: TestClient) -> None:
 def test_refresh_requires_bearer(client: TestClient) -> None:
     resp = client.post("/auth/refresh")
     assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# #34 cookie 인증 (httpOnly 쿠키 발급/사용)
+# ---------------------------------------------------------------------------
+
+
+def test_protected_route_accepts_cookie(client: TestClient) -> None:
+    """Authorization 헤더 없이 httpOnly 쿠키만으로도 보호 라우트가 통과한다 (#34)."""
+    token = _admin_token(client)
+    # 쿠키 이름은 auth.JWT_COOKIE_NAME 과 동일해야 한다.
+    cookie_name = client._auth_mod.JWT_COOKIE_NAME  # type: ignore[attr-defined]
+    client.cookies.set(cookie_name, token)
+    try:
+        resp = client.get("/api/guilds/123/config")
+        assert resp.status_code == 200, resp.text
+    finally:
+        client.cookies.clear()
+
+
+def test_refresh_sets_cookie(client: TestClient) -> None:
+    """refresh 응답이 httpOnly 쿠키를 Set-Cookie 로 내려준다 (#34)."""
+    token = _admin_token(client)
+    resp = client.post("/auth/refresh", headers=_headers(token))
+    assert resp.status_code == 200, resp.text
+    cookie_name = client._auth_mod.JWT_COOKIE_NAME  # type: ignore[attr-defined]
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert cookie_name in set_cookie
+    assert "httponly" in set_cookie.lower()
+
+
+# ---------------------------------------------------------------------------
+# #44 로그아웃 시 토큰 무효화(블랙리스트)
+# ---------------------------------------------------------------------------
+
+
+def test_logout_revokes_token(client: TestClient) -> None:
+    """로그아웃하면 같은 토큰이 즉시 무효화되어 보호 라우트가 401 을 받는다 (#44)."""
+    auth_mod = client._auth_mod  # type: ignore[attr-defined]
+    token = auth_mod.create_jwt(
+        "1", [{"id": "123", "name": "T", "icon": None, "permissions": str(0x8)}]
+    )
+    # 로그아웃 전에는 통과
+    assert client.get("/api/guilds/123/config", headers=_headers(token)).status_code == 200
+
+    logout = client.post("/auth/logout", headers=_headers(token))
+    assert logout.status_code == 200, logout.text
+    assert logout.json()["logged_out"] is True
+
+    # 로그아웃 후에는 만료 전이라도 무효화되어 401
+    after = client.get("/api/guilds/123/config", headers=_headers(token))
+    assert after.status_code == 401
+
+
+def test_logout_clears_cookie(client: TestClient) -> None:
+    """로그아웃 응답이 인증 쿠키를 삭제(만료)한다 (#34)."""
+    token = _admin_token(client)
+    resp = client.post("/auth/logout", headers=_headers(token))
+    assert resp.status_code == 200
+    cookie_name = client._auth_mod.JWT_COOKIE_NAME  # type: ignore[attr-defined]
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert cookie_name in set_cookie
+
+
+def test_logout_is_idempotent_without_token(client: TestClient) -> None:
+    """토큰 없이 로그아웃해도 멱등하게 성공한다 (#34)."""
+    resp = client.post("/auth/logout")
+    assert resp.status_code == 200
+    assert resp.json()["logged_out"] is True
+
+
+# ---------------------------------------------------------------------------
+# #35 JWT 서명 키 분리(JWT_SECRET_KEY) — SECRET_KEY 와 독립
+# ---------------------------------------------------------------------------
+
+
+def test_jwt_secret_key_overrides_secret_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """JWT_SECRET_KEY 가 설정되면 그것으로 서명/검증하고, SECRET_KEY 와 분리된다 (#35)."""
+    monkeypatch.setenv("SECRET_KEY", "fernet-key-not-for-jwt")
+    monkeypatch.setenv("JWT_SECRET_KEY", "dedicated-jwt-signing-key")
+    import importlib
+
+    from dashboard.backend import auth as auth_mod
+
+    importlib.reload(auth_mod)
+    try:
+        token = auth_mod.create_jwt("1", [])
+        # 전용 키로 디코드 성공
+        assert auth_mod.decode_jwt(token) is not None
+        # SECRET_KEY(=Fernet 키)로는 검증되지 않아야 한다(키 분리 증명).
+        import jwt as pyjwt
+
+        try:
+            pyjwt.decode(token, "fernet-key-not-for-jwt", algorithms=["HS256"])
+            assert False, "SECRET_KEY 로 JWT 가 검증되면 안 된다"
+        except pyjwt.PyJWTError:
+            pass
+    finally:
+        monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+        importlib.reload(auth_mod)
+
+
+# ---------------------------------------------------------------------------
+# #80 auto_summary_interval 저장/검증
+# ---------------------------------------------------------------------------
+
+
+def test_update_auto_summary_interval(client: TestClient) -> None:
+    """auto_summary_interval 이 저장되고 GET 으로 다시 읽힌다 (#80)."""
+    token = _admin_token(client)
+    resp = client.put(
+        "/api/guilds/123/config",
+        headers=_headers(token),
+        json={"auto_summary_interval": 30},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["auto_summary_interval"] == 30
+
+    got = client.get("/api/guilds/123/config", headers=_headers(token))
+    assert got.json()["auto_summary_interval"] == 30
+
+
+def test_auto_summary_interval_rejects_too_small(client: TestClient) -> None:
+    """5분 미만은 400 으로 거절된다 (#80)."""
+    token = _admin_token(client)
+    resp = client.put(
+        "/api/guilds/123/config",
+        headers=_headers(token),
+        json={"auto_summary_interval": 3},
+    )
+    assert resp.status_code == 400
+
+
+def test_auto_summary_interval_none_disables(client: TestClient) -> None:
+    """None 을 명시 전송하면 자동 요약 비활성화로 저장된다 (#80)."""
+    token = _admin_token(client)
+    # 먼저 켜둔 뒤
+    client.put(
+        "/api/guilds/123/config",
+        headers=_headers(token),
+        json={"auto_summary_interval": 30},
+    )
+    # None 으로 끈다
+    resp = client.put(
+        "/api/guilds/123/config",
+        headers=_headers(token),
+        json={"auto_summary_interval": None},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["auto_summary_interval"] is None
+
+
+def test_config_update_without_interval_preserves_existing(client: TestClient) -> None:
+    """interval 필드를 보내지 않으면 기존 값이 보존된다(부분 갱신) (#80)."""
+    token = _admin_token(client)
+    client.put(
+        "/api/guilds/123/config",
+        headers=_headers(token),
+        json={"auto_summary_interval": 45},
+    )
+    # interval 미포함으로 다른 필드만 갱신
+    resp = client.put(
+        "/api/guilds/123/config",
+        headers=_headers(token),
+        json={"summary_limit": 20},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["auto_summary_interval"] == 45
+
+
+# ---------------------------------------------------------------------------
+# #82 토큰 사용량 집계
+# ---------------------------------------------------------------------------
+
+
+def test_stats_token_aggregation(client: TestClient) -> None:
+    """stats 가 prompt/completion/total 토큰 합계를 반환한다 (#82)."""
+    token = _admin_token(client)
+    resp = client.get("/api/guilds/123/stats", headers=_headers(token))
+    assert resp.status_code == 200, resp.text
+    tokens = resp.json()["tokens"]
+    assert tokens["prompt"] == 60
+    assert tokens["completion"] == 45
+    assert tokens["total"] == 105
+
+
+def test_stats_token_aggregation_empty_guild(client: TestClient) -> None:
+    """사용 로그가 없는 길드는 토큰 합계가 모두 0 이다 (#82)."""
+    token = client._auth_mod.create_jwt(  # type: ignore[attr-defined]
+        "999", [{"id": "777", "name": "Empty", "icon": None, "owner": True}]
+    )
+    resp = client.get("/api/guilds/777/stats", headers=_headers(token))
+    assert resp.json()["tokens"] == {"prompt": 0, "completion": 0, "total": 0}

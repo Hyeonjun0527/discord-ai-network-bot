@@ -15,7 +15,7 @@ import {
   ChevronDown,
   MessageSquareHeart,
 } from "lucide-react";
-import { clearToken } from "@/lib/auth";
+import { logout } from "@/lib/auth";
 
 interface Guild {
   id: string;
@@ -64,8 +64,9 @@ export default function Sidebar({ guilds, selectedGuildId, onGuildChange }: Side
 
   const selectedGuild = guilds.find((g) => g.id === selectedGuildId);
 
-  const handleLogout = () => {
-    clearToken();
+  const handleLogout = async () => {
+    // #34/#44: 백엔드에서 토큰을 무효화(jti 블랙리스트)하고 httpOnly 쿠키를 지운다.
+    await logout();
     router.push("/");
   };
 

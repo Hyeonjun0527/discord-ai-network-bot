@@ -16,13 +16,22 @@ from urllib.parse import urlencode
 
 import httpx
 import jwt
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
 
 # In-memory state store for CSRF protection (maps state → expiry timestamp)
 # For multi-process deployments, replace with Redis or DB-backed store.
 _oauth_states: dict[str, datetime] = {}
 _STATE_TTL_SECONDS = 600
+
+# JWT 를 담는 httpOnly 쿠키 이름 (#34). 프론트는 JS 로 읽지 않고 브라우저가
+# credentials: 'include' 로 자동 전송한다.
+JWT_COOKIE_NAME = "dashboard_token"
+
+# 로그아웃 시 무효화된 토큰의 jti 블랙리스트 (#44).
+# jti → 해당 토큰의 exp(만료 시각). 만료가 지나면 자연히 거절되므로 정리한다.
+# 다중 프로세스 배포에서는 Redis/DB 백엔드로 교체해야 한다.
+_revoked_jti: dict[str, datetime] = {}
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -83,11 +92,47 @@ def _redirect_uri() -> str:
 
 
 def _secret_key() -> str:
+    """JWT 서명에 쓰는 키를 돌려준다 (#35).
+
+    JWT 서명 키를 Fernet 암호화용 ``SECRET_KEY`` 와 분리한다. 전용
+    ``JWT_SECRET_KEY`` 가 설정돼 있으면 그것을 쓰고, 없으면 기존 ``SECRET_KEY``
+    로 폴백한다(백워드 호환). 이렇게 하면 봇 측 crypto(SECRET_KEY) 를 건드리지
+    않고도 대시보드 토큰 서명 키를 독립적으로 회전할 수 있다.
+    """
+    jwt_key = os.getenv("JWT_SECRET_KEY")
+    if jwt_key:
+        return jwt_key
     return os.getenv("SECRET_KEY", "change-me-in-production")
 
 
 def _jwt_algorithm() -> str:
     return "HS256"
+
+
+def _is_secure_cookie() -> bool:
+    """쿠키에 Secure 플래그를 붙일지 결정한다 (#34).
+
+    기본은 True(운영 가정). 로컬 HTTP 개발에서는 Secure 쿠키가 전송되지 않으므로
+    ``COOKIE_SECURE=false`` 로 끌 수 있다.
+    """
+    return os.getenv("COOKIE_SECURE", "true").strip().lower() not in {"false", "0", "no"}
+
+
+def _set_auth_cookie(response: Response, token: str) -> None:
+    """JWT 를 httpOnly+SameSite=Lax(+옵션 Secure) 쿠키로 심는다 (#34).
+
+    XSS 로 토큰을 탈취당하지 않도록 httpOnly 로 두고, CSRF 완화를 위해
+    SameSite=Lax 를 적용한다. max_age 는 토큰 수명(24h)과 맞춘다.
+    """
+    response.set_cookie(
+        key=JWT_COOKIE_NAME,
+        value=token,
+        max_age=24 * 60 * 60,
+        httponly=True,
+        secure=_is_secure_cookie(),
+        samesite="lax",
+        path="/",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -113,18 +158,66 @@ def create_jwt(user_id: str, guilds: list[dict]) -> str:
             }
             for g in guilds
         ],
+        # 토큰마다 고유한 jti 를 부여해 로그아웃 시 개별 무효화(블랙리스트)할 수 있게 한다 (#44).
+        "jti": secrets.token_urlsafe(16),
         "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(hours=24),
     }
     return jwt.encode(payload, _secret_key(), algorithm=_jwt_algorithm())
 
 
-def decode_jwt(token: str) -> dict | None:
-    """Decode and verify a JWT.  Returns the payload or None on failure."""
+def _prune_revoked(now: datetime | None = None) -> None:
+    """만료가 지난 jti 항목을 블랙리스트에서 제거한다 (#44).
+
+    만료된 토큰은 서명 검증 단계에서 어차피 거절되므로 블랙리스트에 남겨둘
+    필요가 없다. 메모리 증가를 막기 위해 주기적으로 청소한다.
+    """
+    moment = now or datetime.now(timezone.utc)
+    expired = [j for j, exp in _revoked_jti.items() if exp < moment]
+    for j in expired:
+        del _revoked_jti[j]
+
+
+def revoke_jwt(token: str) -> bool:
+    """주어진 토큰의 jti 를 블랙리스트에 올려 즉시 무효화한다 (#44).
+
+    유효(서명/만료 정상)한 토큰의 jti 를 토큰 만료 시각까지 블랙리스트에 보관한다.
+    이후 ``decode_jwt`` 가 해당 jti 를 거절한다. 토큰이 무효이거나 jti 가 없으면
+    False 를 돌려준다(이미 사용할 수 없으므로 무효화 불필요).
+    """
     try:
-        return jwt.decode(token, _secret_key(), algorithms=[_jwt_algorithm()])
+        payload = jwt.decode(token, _secret_key(), algorithms=[_jwt_algorithm()])
+    except jwt.PyJWTError:
+        return False
+    jti = payload.get("jti")
+    if not jti:
+        return False
+    exp = payload.get("exp")
+    # exp(epoch) → aware datetime. 누락 시 24h 후로 보수적으로 잡는다.
+    expiry = (
+        datetime.fromtimestamp(exp, tz=timezone.utc)
+        if isinstance(exp, (int, float))
+        else datetime.now(timezone.utc) + timedelta(hours=24)
+    )
+    _revoked_jti[jti] = expiry
+    _prune_revoked()
+    return True
+
+
+def decode_jwt(token: str) -> dict | None:
+    """Decode and verify a JWT.  Returns the payload or None on failure.
+
+    서명/만료 검증에 더해, 로그아웃으로 무효화된 jti(블랙리스트) 토큰도 거절한다 (#44).
+    """
+    try:
+        payload = jwt.decode(token, _secret_key(), algorithms=[_jwt_algorithm()])
     except jwt.PyJWTError:
         return None
+    jti = payload.get("jti")
+    if jti and jti in _revoked_jti:
+        # 무효화된(로그아웃된) 토큰은 거절한다.
+        return None
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -154,12 +247,28 @@ async def login() -> RedirectResponse:
     return RedirectResponse(url=f"{DISCORD_OAUTH_URL}?{params}")
 
 
+def _token_from_request(request: Request) -> str | None:
+    """요청에서 JWT 를 꺼낸다 (#34).
+
+    우선 httpOnly 쿠키(``JWT_COOKIE_NAME``)를 보고, 없으면 기존
+    ``Authorization: Bearer`` 헤더로 폴백한다(한동안 병행 허용 — 백워드 호환).
+    """
+    cookie_token = request.cookies.get(JWT_COOKIE_NAME)
+    if cookie_token:
+        return cookie_token
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth.removeprefix("Bearer ").strip() or None
+    return None
+
+
 @router.get("/callback")
 async def callback(code: str | None = None, error: str | None = None, state: str | None = None) -> JSONResponse:
     """Exchange the authorization code for a token and issue a JWT.
 
-    On success the response contains ``{"token": "<jwt>"}`` so that the
-    Next.js app can store it and include it in subsequent API requests.
+    토큰은 응답 바디(JSON)가 아니라 httpOnly+SameSite=Lax(+Secure) 쿠키로 발급한다 (#34).
+    XSS 로 토큰을 읽지 못하게 하기 위함이다. 바디에는 사용자 식별 정보만 담는다.
+    기존 클라이언트 호환을 위해 ``token`` 필드도 한동안 함께 반환한다.
     """
     if error:
         raise HTTPException(
@@ -232,7 +341,15 @@ async def callback(code: str | None = None, error: str | None = None, state: str
     guilds = guilds_resp.json() if guilds_resp.status_code == 200 else []
 
     jwt_token = create_jwt(str(user["id"]), guilds if isinstance(guilds, list) else [])
-    return JSONResponse({"token": jwt_token, "user": {"id": user["id"], "username": user.get("username", "")}})
+    resp = JSONResponse(
+        {
+            # 백워드 호환: 기존 클라이언트가 바디 token 을 읽던 흐름을 한동안 유지한다.
+            "token": jwt_token,
+            "user": {"id": user["id"], "username": user.get("username", "")},
+        }
+    )
+    _set_auth_cookie(resp, jwt_token)
+    return resp
 
 
 @router.post("/refresh")
@@ -242,11 +359,11 @@ async def refresh(request: Request) -> JSONResponse:
     프론트(apiFetch)가 만료 임박 또는 401 직전에 호출해 사용자를 재로그인 없이
     유지한다. 만료/위조 토큰은 401 로 거절되어 재로그인 플로우로 빠진다.
     guilds 클레임(admin 플래그 포함)은 그대로 보존해 권한 정보를 유지한다.
+    토큰은 httpOnly 쿠키(우선) 또는 Authorization 헤더에서 읽고, 새 토큰도 쿠키로 심는다 (#34).
     """
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+    token = _token_from_request(request)
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
-    token = auth.removeprefix("Bearer ").strip()
     payload = decode_jwt(token)
     if payload is None:
         # 만료되었거나 위조된 토큰은 재발급하지 않는다(재로그인 필요).
@@ -259,16 +376,33 @@ async def refresh(request: Request) -> JSONResponse:
     # create_jwt 는 admin/icon 키를 그대로 통과시키므로 권한 정보가 유지된다.
     guilds = payload.get("guilds", [])
     new_token = create_jwt(str(payload["sub"]), guilds if isinstance(guilds, list) else [])
-    return JSONResponse({"token": new_token})
+    resp = JSONResponse({"token": new_token})
+    _set_auth_cookie(resp, new_token)
+    return resp
+
+
+@router.post("/logout")
+async def logout(request: Request) -> JSONResponse:
+    """로그아웃: 현재 토큰을 무효화하고 인증 쿠키를 삭제한다 (#34, #44).
+
+    토큰의 jti 를 블랙리스트에 올려 만료 전이라도 즉시 무효화하고(#44),
+    httpOnly 쿠키를 지운다(#34). 토큰이 없거나 이미 무효여도 멱등하게 성공한다.
+    """
+    token = _token_from_request(request)
+    if token:
+        revoke_jwt(token)
+    resp = JSONResponse({"logged_out": True})
+    # 쿠키 삭제: set 과 동일한 path 로 만료시킨다.
+    resp.delete_cookie(key=JWT_COOKIE_NAME, path="/")
+    return resp
 
 
 @router.get("/me")
 async def me(request: Request) -> JSONResponse:
-    """Return the current user's info decoded from the Bearer JWT."""
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
+    """Return the current user's info decoded from the JWT (cookie 우선, 헤더 폴백) (#34)."""
+    token = _token_from_request(request)
+    if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
-    token = auth.removeprefix("Bearer ").strip()
     payload = decode_jwt(token)
     if payload is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

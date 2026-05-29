@@ -116,6 +116,142 @@ class WithRetryTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# #61: _with_retry 단위 테스트 (asyncio.sleep 을 mock 해 결정적 검증)
+#
+# 위 WithRetryTest 가 delay=0 으로 시간 없이 돌리는 반면, 여기서는 백오프 sleep
+# 호출 자체를 검증/차단하기 위해 asyncio.sleep 을 mock 한다. 또한 경계 조건
+# (max_attempts<1 → ValueError)과 "전부 실패 시 마지막 예외 재전파"를 다룬다.
+# ---------------------------------------------------------------------------
+
+
+class WithRetrySleepMockedTest(unittest.TestCase):
+    def test_max_attempts_below_one_raises_value_error(self) -> None:
+        async def never_called() -> str:  # pragma: no cover - 호출되면 안 됨
+            raise AssertionError("coro_fn 이 호출되면 안 된다")
+
+        async def run() -> None:
+            with self.assertRaises(ValueError):
+                await _with_retry(never_called, max_attempts=0, delay=1.0)
+
+        asyncio.run(run())
+
+    def test_success_after_one_failure_sleeps_once(self) -> None:
+        calls = {"n": 0}
+
+        async def flaky() -> str:
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise LLMError("server error", status_code=503)
+            return "ok"
+
+        async def run() -> str:
+            return await _with_retry(flaky, max_attempts=3, delay=1.0)
+
+        with mock.patch(
+            "discord_assistant.llm.asyncio.sleep", new=mock.AsyncMock()
+        ) as sleep_mock:
+            result = asyncio.run(run())
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(calls["n"], 2)
+        # 1회 실패 → 1회 백오프(sleep)만 발생.
+        self.assertEqual(sleep_mock.await_count, 1)
+
+    def test_all_failures_reraise_last_exception(self) -> None:
+        calls = {"n": 0}
+        # 매 시도마다 서로 구분되는 예외 객체를 던져 "마지막 것"이 재전파되는지 확인.
+        exceptions = [
+            LLMError("first", status_code=500),
+            LLMError("second", status_code=502),
+            LLMError("third-last", status_code=503),
+        ]
+
+        async def always_fail() -> str:
+            exc = exceptions[calls["n"]]
+            calls["n"] += 1
+            raise exc
+
+        async def run() -> None:
+            with self.assertRaises(LLMError) as cm:
+                await _with_retry(always_fail, max_attempts=3, delay=1.0)
+            # 마지막 시도의 예외가 그대로 재전파된다.
+            self.assertIs(cm.exception, exceptions[-1])
+            self.assertIn("third-last", str(cm.exception))
+
+        with mock.patch(
+            "discord_assistant.llm.asyncio.sleep", new=mock.AsyncMock()
+        ) as sleep_mock:
+            asyncio.run(run())
+
+        self.assertEqual(calls["n"], 3)
+        # 마지막 시도 후에는 sleep 하지 않으므로 (max_attempts-1)=2 회만 백오프.
+        self.assertEqual(sleep_mock.await_count, 2)
+
+    def test_4xx_fails_immediately_without_sleep(self) -> None:
+        calls = {"n": 0}
+
+        async def fail_403() -> str:
+            calls["n"] += 1
+            raise LLMError("forbidden", status_code=403)
+
+        async def run() -> None:
+            with self.assertRaises(LLMError) as cm:
+                await _with_retry(fail_403, max_attempts=5, delay=1.0)
+            self.assertEqual(cm.exception.status_code, 403)
+
+        with mock.patch(
+            "discord_assistant.llm.asyncio.sleep", new=mock.AsyncMock()
+        ) as sleep_mock:
+            asyncio.run(run())
+
+        # 4xx 는 재시도 불가 → 1회 호출, sleep 미발생.
+        self.assertEqual(calls["n"], 1)
+        sleep_mock.assert_not_called()
+
+    def test_429_and_5xx_are_retried(self) -> None:
+        for code in (429, 500, 503):
+            with self.subTest(code=code):
+                calls = {"n": 0}
+
+                async def fail() -> str:
+                    calls["n"] += 1
+                    raise LLMError("transient", status_code=code)
+
+                async def run() -> None:
+                    with self.assertRaises(LLMError):
+                        await _with_retry(fail, max_attempts=3, delay=1.0)
+
+                with mock.patch(
+                    "discord_assistant.llm.asyncio.sleep", new=mock.AsyncMock()
+                ) as sleep_mock:
+                    asyncio.run(run())
+
+                # 재시도 가능 → max_attempts 만큼 호출, 그 사이 sleep (max_attempts-1)회.
+                self.assertEqual(calls["n"], 3)
+                self.assertEqual(sleep_mock.await_count, 2)
+
+    def test_single_attempt_no_retry_no_sleep(self) -> None:
+        calls = {"n": 0}
+
+        async def fail() -> str:
+            calls["n"] += 1
+            raise LLMError("server error", status_code=500)
+
+        async def run() -> None:
+            with self.assertRaises(LLMError):
+                await _with_retry(fail, max_attempts=1, delay=1.0)
+
+        with mock.patch(
+            "discord_assistant.llm.asyncio.sleep", new=mock.AsyncMock()
+        ) as sleep_mock:
+            asyncio.run(run())
+
+        # max_attempts=1 이면 재시도 여지가 없으므로 sleep 미발생.
+        self.assertEqual(calls["n"], 1)
+        sleep_mock.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # #52: 서킷 브레이커
 # ---------------------------------------------------------------------------
 

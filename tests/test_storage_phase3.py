@@ -11,12 +11,19 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from discord_assistant.crypto import decrypt_api_key, encrypt_api_key
 from discord_assistant.models import UsageLog
 from discord_assistant.storage import (
+    BACKEND_POSTGRES,
+    BACKEND_SQLITE,
     LATEST_SCHEMA_VERSION,
     ConfigStore,
     _get_schema_version,
+    _mask_secrets,
     _migrate,
+    _sanitize_error,
+    backend_from_database_url,
+    sqlite_path_from_database_url,
 )
 
 # 일관된 UTC ISO8601 시각 헬퍼 — due_at 비교는 문자열 사전식이므로 포맷을 맞춘다.
@@ -866,6 +873,253 @@ class LegacyUsageLogTokenMigrationTest(unittest.IsolatedAsyncioTestCase):
                     verify.close()
             finally:
                 await store.close()
+
+
+class SecretMaskingTest(unittest.TestCase):
+    """#41: usage_log.error 의 PII/시크릿 마스킹 단위 테스트."""
+
+    def test_bearer_token_masked(self) -> None:
+        masked = _mask_secrets("Authorization: Bearer abc123XYZ_token-value")
+        self.assertNotIn("abc123XYZ_token-value", masked)
+        self.assertIn("***", masked)
+
+    def test_openai_key_masked(self) -> None:
+        masked = _mask_secrets("call failed with key sk-proj-ABCDEFGH12345678abcdefgh")
+        self.assertNotIn("sk-proj-ABCDEFGH12345678abcdefgh", masked)
+        self.assertIn("***", masked)
+
+    def test_anthropic_key_masked(self) -> None:
+        masked = _mask_secrets("auth error: sk-ant-api03-XYZ1234567890abcdef")
+        self.assertNotIn("sk-ant-api03-XYZ1234567890abcdef", masked)
+        self.assertIn("***", masked)
+
+    def test_google_key_masked(self) -> None:
+        masked = _mask_secrets("bad request AIzaSyA1234567890abcdefghIJK")
+        self.assertNotIn("AIzaSyA1234567890abcdefghIJK", masked)
+        self.assertIn("***", masked)
+
+    def test_email_masked(self) -> None:
+        masked = _mask_secrets("user alice.smith@example.com was rejected")
+        self.assertNotIn("alice.smith@example.com", masked)
+        self.assertIn("***", masked)
+
+    def test_key_value_credential_masks_value_keeps_key(self) -> None:
+        masked = _mask_secrets("error: api_key=supersecretvalue123 invalid")
+        self.assertNotIn("supersecretvalue123", masked)
+        # 키 이름은 디버깅 단서로 보존된다.
+        self.assertIn("api_key", masked)
+        self.assertIn("***", masked)
+
+    def test_discord_bot_token_masked(self) -> None:
+        token = "MTk4NjIyNDgzNDcxOTI1MjQ4.Cl2FMQ.ABCdefGHIjklMNOpqrSTUvwxyz12"
+        masked = _mask_secrets(f"login failed token={token}")
+        self.assertNotIn(token, masked)
+        self.assertIn("***", masked)
+
+    def test_benign_message_unchanged(self) -> None:
+        msg = "timeout after 30 seconds while contacting upstream"
+        self.assertEqual(_mask_secrets(msg), msg)
+
+    def test_sanitize_none_passthrough(self) -> None:
+        self.assertIsNone(_sanitize_error(None))
+
+    def test_sanitize_masks_and_clamps_length(self) -> None:
+        # 마스킹 후에도 500자 클램프가 유지된다.
+        long_error = "x" * 600 + " token=secretvalue"
+        sanitized = _sanitize_error(long_error)
+        assert sanitized is not None
+        self.assertLessEqual(len(sanitized), 500)
+        self.assertTrue(sanitized.endswith("..."))
+
+
+class LogUsageMaskingTest(_FileStoreCase):
+    """#41: log_usage 가 저장 직전에 민감 패턴을 마스킹하는지 검증."""
+
+    async def test_stored_error_is_masked(self) -> None:
+        await self.store.log_usage(
+            UsageLog(
+                guild_id=1,
+                channel_id=2,
+                user_id=3,
+                command="ask",
+                status="error",
+                error="auth failed: api_key=sk-proj-VERYSECRETKEY1234567890",
+            )
+        )
+        conn = self.store._connect()
+        try:
+            row = conn.execute(
+                "SELECT error FROM usage_log WHERE command = 'ask'"
+            ).fetchone()
+        finally:
+            conn.close()
+        stored = str(row[0])
+        self.assertNotIn("sk-proj-VERYSECRETKEY1234567890", stored)
+        self.assertIn("***", stored)
+
+
+class DatabaseBackendDetectionTest(unittest.TestCase):
+    """#31: DATABASE_URL 스킴으로부터 백엔드 식별 + sqlite 경로 보존."""
+
+    def test_sqlite_urls_detected_as_sqlite(self) -> None:
+        self.assertEqual(backend_from_database_url("sqlite:///./data/a.db"), BACKEND_SQLITE)
+        self.assertEqual(backend_from_database_url(":memory:"), BACKEND_SQLITE)
+        self.assertEqual(backend_from_database_url("/var/lib/app.db"), BACKEND_SQLITE)
+
+    def test_postgres_urls_detected(self) -> None:
+        for url in (
+            "postgresql://user:pw@localhost:5432/db",
+            "postgres://user:pw@localhost/db",
+            "postgresql+asyncpg://user:pw@localhost/db",
+            "POSTGRESQL://USER@HOST/DB",  # 대소문자 무관
+        ):
+            self.assertEqual(backend_from_database_url(url), BACKEND_POSTGRES, url)
+
+    def test_sqlite_path_preserved(self) -> None:
+        # sqlite 경로 변환 동작은 100% 불변.
+        self.assertEqual(sqlite_path_from_database_url("sqlite:///./data/a.db"), "./data/a.db")
+        self.assertEqual(sqlite_path_from_database_url(":memory:"), ":memory:")
+
+    def test_postgres_url_not_a_sqlite_path(self) -> None:
+        with self.assertRaises(ValueError):
+            sqlite_path_from_database_url("postgresql://user:pw@localhost/db")
+
+    def test_construction_with_postgres_url_does_not_raise(self) -> None:
+        # 생성자는 어떤 백엔드든 ValueError 로 죽지 않아야 한다(#31).
+        store = ConfigStore(
+            "postgresql://user:pw@localhost:5432/db",
+            default_model="m",
+            default_summary_limit=10,
+            default_language="ko",
+        )
+        self.assertEqual(store.backend, BACKEND_POSTGRES)
+
+    def test_construction_with_sqlite_url_sets_sqlite_backend(self) -> None:
+        store = ConfigStore(
+            "sqlite:///./data/a.db",
+            default_model="m",
+            default_summary_limit=10,
+            default_language="ko",
+        )
+        self.assertEqual(store.backend, BACKEND_SQLITE)
+
+
+class RekeyApiKeysTest(unittest.TestCase):
+    """#37: scripts/rekey_api_keys.py 의 재암호화 동작(구→신 SECRET_KEY)."""
+
+    @staticmethod
+    def _import_rekey():
+        import importlib.util
+
+        script = Path(__file__).resolve().parent.parent / "scripts" / "rekey_api_keys.py"
+        spec = importlib.util.spec_from_file_location("rekey_api_keys", script)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def _seed_db(self, db_path: Path, *, secret: str, plaintext: str) -> None:
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            """CREATE TABLE guild_config (
+                guild_id          INTEGER PRIMARY KEY,
+                api_key_encrypted TEXT
+            )"""
+        )
+        conn.execute(
+            "INSERT INTO guild_config (guild_id, api_key_encrypted) VALUES (?, ?)",
+            (1, encrypt_api_key(plaintext, secret)),
+        )
+        # api_key 가 없는 길드(NULL)는 건드리지 않아야 한다.
+        conn.execute("INSERT INTO guild_config (guild_id, api_key_encrypted) VALUES (2, NULL)")
+        conn.commit()
+        conn.close()
+
+    def test_rekey_reencrypts_with_new_secret(self) -> None:
+        rekey_mod = self._import_rekey()
+        old_secret, new_secret = "old-secret-value", "new-secret-value"
+        plaintext = "sk-plaintext-api-key-12345"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "rekey.db"
+            self._seed_db(db_path, secret=old_secret, plaintext=plaintext)
+
+            rekeyed, skipped = rekey_mod.rekey(
+                database_url=f"sqlite:///{db_path}",
+                old_secret=old_secret,
+                new_secret=new_secret,
+                dry_run=False,
+            )
+            self.assertEqual((rekeyed, skipped), (1, 0))
+
+            # 새 토큰은 신 SECRET_KEY 로만 복호화되어야 한다.
+            conn = sqlite3.connect(db_path)
+            token = conn.execute(
+                "SELECT api_key_encrypted FROM guild_config WHERE guild_id = 1"
+            ).fetchone()[0]
+            conn.close()
+            self.assertEqual(decrypt_api_key(token, new_secret), plaintext)
+
+    def test_dry_run_does_not_modify(self) -> None:
+        rekey_mod = self._import_rekey()
+        old_secret, new_secret = "old-secret-value", "new-secret-value"
+        plaintext = "sk-plaintext-api-key-12345"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "rekey.db"
+            self._seed_db(db_path, secret=old_secret, plaintext=plaintext)
+
+            conn = sqlite3.connect(db_path)
+            before = conn.execute(
+                "SELECT api_key_encrypted FROM guild_config WHERE guild_id = 1"
+            ).fetchone()[0]
+            conn.close()
+
+            rekeyed, skipped = rekey_mod.rekey(
+                database_url=f"sqlite:///{db_path}",
+                old_secret=old_secret,
+                new_secret=new_secret,
+                dry_run=True,
+            )
+            self.assertEqual((rekeyed, skipped), (1, 0))
+
+            conn = sqlite3.connect(db_path)
+            after = conn.execute(
+                "SELECT api_key_encrypted FROM guild_config WHERE guild_id = 1"
+            ).fetchone()[0]
+            conn.close()
+            self.assertEqual(before, after)  # dry-run 은 DB 를 변경하지 않는다.
+
+    def test_undecryptable_rows_skipped(self) -> None:
+        rekey_mod = self._import_rekey()
+        # DB 에는 신 키로 암호화된 토큰이 있고, 구 키로는 복호화 불가 → 스킵.
+        old_secret, new_secret = "old-secret-value", "new-secret-value"
+        plaintext = "sk-plaintext-api-key-12345"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "rekey.db"
+            self._seed_db(db_path, secret=new_secret, plaintext=plaintext)
+
+            rekeyed, skipped = rekey_mod.rekey(
+                database_url=f"sqlite:///{db_path}",
+                old_secret=old_secret,
+                new_secret=new_secret,
+                dry_run=False,
+            )
+            self.assertEqual((rekeyed, skipped), (0, 1))
+
+
+class PostgresInitializeTest(unittest.IsolatedAsyncioTestCase):
+    """#31: postgres 백엔드는 의존성 없이도 안전하게 분기하고 명확히 안내한다."""
+
+    async def test_initialize_postgres_raises_friendly_error(self) -> None:
+        store = ConfigStore(
+            "postgresql://user:pw@localhost:5432/db",
+            default_model="m",
+            default_summary_limit=10,
+            default_language="ko",
+        )
+        # asyncpg 미설치 → RuntimeError(의존성 안내), 설치 → NotImplementedError.
+        # 어느 경우든 ValueError/예기치 못한 충돌로 죽지 않아야 한다.
+        with self.assertRaises((RuntimeError, NotImplementedError)):
+            await store.initialize()
 
 
 if __name__ == "__main__":

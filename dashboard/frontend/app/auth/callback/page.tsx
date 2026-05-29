@@ -17,7 +17,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { setToken } from "@/lib/auth";
+import { markLoggedIn } from "@/lib/auth";
 
 // useSearchParams() 를 쓰는 컴포넌트는 정적 빌드 시 Suspense 경계로 감싸야 한다.
 // (#86: next build 가 prerender 단계에서 실패하던 문제 해결)
@@ -27,7 +27,6 @@ function CallbackInner() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = params.get("token");
     const err = params.get("error");
 
     if (err) {
@@ -35,14 +34,11 @@ function CallbackInner() {
       return;
     }
 
-    if (token) {
-      setToken(token);
-      router.replace("/dashboard");
-      return;
-    }
-
-    // No token in params — this page was hit without expected data
-    setError("No token received. Please try logging in again.");
+    // #34: 토큰은 httpOnly 쿠키로 백엔드가 이미 설정했다(JS 가 읽지 않는다).
+    // 여기서는 라우팅 힌트만 켜고 대시보드로 보낸다. 쿠키가 실제로 유효한지는
+    // 대시보드 레이아웃이 /auth/me 로 검증한다(무효면 다시 로그인 페이지로).
+    markLoggedIn();
+    router.replace("/dashboard");
   }, [params, router]);
 
   if (error) {

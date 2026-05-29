@@ -10,6 +10,8 @@ interface GuildConfig {
   summary_limit: number;
   language: string;
   provider: string;
+  // #80: 자동 요약 주기(분). null 이면 자동 요약 비활성화.
+  auto_summary_interval: number | null;
   updated_at: string | null;
 }
 
@@ -49,6 +51,9 @@ export default function SettingsPage() {
   const [summaryLimit, setSummaryLimit] = useState(50);
   const [language, setLanguage] = useState("ko");
   const [provider, setProvider] = useState("ollama");
+  // #80: 자동 요약 주기(분). 토글 on 일 때만 값을 보낸다(off → null = 비활성화).
+  const [autoSummaryEnabled, setAutoSummaryEnabled] = useState(false);
+  const [autoSummaryInterval, setAutoSummaryInterval] = useState(60);
 
   // #81: /api/models 로 받은 설치된 모델 목록 + "직접 입력" 토글 상태
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -69,6 +74,13 @@ export default function SettingsPage() {
         setSummaryLimit(data.summary_limit);
         setLanguage(data.language);
         setProvider(data.provider);
+        // #80: null 이면 비활성화, 값이 있으면 토글 on + 그 값을 표시한다.
+        if (data.auto_summary_interval != null) {
+          setAutoSummaryEnabled(true);
+          setAutoSummaryInterval(data.auto_summary_interval);
+        } else {
+          setAutoSummaryEnabled(false);
+        }
         setLoading(false);
       })
       .catch((err: Error) => {
@@ -103,6 +115,13 @@ export default function SettingsPage() {
     setSaving(true);
     setError(null);
     const id = guildId();
+    // #80: 토글 on 이면 주기(분, 최소 5)를, off 면 null(비활성화)을 보낸다.
+    const interval = autoSummaryEnabled ? autoSummaryInterval : null;
+    if (interval != null && interval < 5) {
+      setError("Auto-summary interval must be at least 5 minutes.");
+      setSaving(false);
+      return;
+    }
     try {
       const updated = await apiFetch<GuildConfig>(`/api/guilds/${id}/config`, {
         method: "PUT",
@@ -111,6 +130,7 @@ export default function SettingsPage() {
           summary_limit: summaryLimit,
           language,
           provider,
+          auto_summary_interval: interval,
         }),
       });
       setConfig(updated);
@@ -272,6 +292,35 @@ export default function SettingsPage() {
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Auto-summary interval (#80) */}
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-300 mb-2">
+            <input
+              type="checkbox"
+              checked={autoSummaryEnabled}
+              onChange={(e) => setAutoSummaryEnabled(e.target.checked)}
+              className="accent-discord-blurple w-4 h-4"
+            />
+            Automatic summaries
+          </label>
+          {autoSummaryEnabled ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={5}
+                value={autoSummaryInterval}
+                onChange={(e) => setAutoSummaryInterval(Number(e.target.value))}
+                className="w-28 bg-discord-dark border border-white/10 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-discord-blurple"
+              />
+              <span className="text-sm text-gray-400">minutes between auto-summaries</span>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">
+              Enable to have the bot post a summary on a fixed interval (minimum 5 minutes).
+            </p>
+          )}
         </div>
       </div>
 

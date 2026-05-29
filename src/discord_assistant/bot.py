@@ -12,7 +12,7 @@ import signal
 import sys
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import discord
 from discord import app_commands
@@ -51,10 +51,16 @@ from .ui import (
     ChannelSelectView,
     FollowUpView,
     HelpView,
+    LongResponseView,
+    RetryView,
     SettingsView,
     ViewCtx,
+    error_hint,
     settings_embed,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -377,24 +383,130 @@ async def _track_for_feedback(
 
 
 def _make_error_embed(exc: Exception) -> discord.Embed:
+    """예외를 사용자용 오류 임베드로 변환한다 (#92).
+
+    - UserFacingError: 의도된 사용자 메시지를 그대로 보여준다.
+    - LLMError 계열(타임아웃/연결/권한/키만료 등): ui.error_hint 로 유형별 친절
+      복구 힌트를 만들어 보여준다. status_code(401/403/429/5xx) 와 구체 예외
+      타입을 함께 보고 가장 행동 가능한 안내를 고른다.
+    - 그 밖의 예기치 못한 오류: 내부 detail 은 숨기고 일반 재시도 안내만 한다.
+    """
     if isinstance(exc, UserFacingError):
         description = str(exc)
+        color = discord.Color.red()
+    elif isinstance(exc, LLMError):
+        # 유형별(타임아웃/연결/권한/키만료/레이트리밋) 친절 문구로 뭉뚱그리지 않는다.
+        description = error_hint(exc)
+        color = discord.Color.orange()
     else:
         description = "예기치 않은 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+        color = discord.Color.red()
         logger.debug("Suppressed error detail from user: %s", exc)
     return discord.Embed(
         title="오류",
         description=description,
-        color=discord.Color.red(),
+        color=color,
     )
 
 
-async def _send_error_embed(interaction: discord.Interaction, exc: Exception) -> None:
+def _is_retryable_error(exc: Exception) -> bool:
+    """재시도 버튼을 붙일 가치가 있는 오류인지 판정한다 (#92).
+
+    LLMError 계열(연결/타임아웃/일시 서버 오류 등)은 재시도로 회복될 수 있다.
+    단, 키/권한 문제(401/403)는 재시도해도 동일하게 실패하므로 제외한다(설정
+    수정이 필요). UserFacingError 등 입력성 오류도 재시도 대상이 아니다.
+    """
+    if not isinstance(exc, LLMError):
+        return False
+    return getattr(exc, "status_code", None) not in (401, 403)
+
+
+async def _send_error_embed(
+    interaction: discord.Interaction,
+    exc: Exception,
+    *,
+    retry: "Callable[[discord.Interaction], Awaitable[None]] | None" = None,
+) -> None:
+    """오류 임베드를 보낸다. 재시도 가능한 LLM 오류면 RetryView 를 붙인다 (#92).
+
+    ``retry`` 콜백이 주어지고 ``exc`` 가 재시도 가치가 있으면 ``ui.RetryView`` 를
+    함께 보내, 버튼 클릭만으로 마지막 작업을 다시 시도할 수 있게 한다.
+    """
     embed = _make_error_embed(exc)
+    view: discord.ui.View | None = None
+    if retry is not None and _is_retryable_error(exc):
+        view = RetryView(on_retry=retry)
+    kwargs: dict[str, Any] = {"embed": embed, "ephemeral": True}
+    if view is not None:
+        kwargs["view"] = view
     if interaction.response.is_done():
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(**kwargs)
     else:
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(**kwargs)
+
+
+# --- #90 온보딩 강화 ---
+# 봇이 바로 쓸 수 있는 상태인지(제공자·모델 설정 완료) 판정한다. 설정이 덜 됐으면
+# on_guild_join 환영 메시지에 '지금 설정하기' 체크리스트/버튼을 덧붙인다.
+_EXTERNAL_PROVIDERS = (LLMProvider.OPENAI, LLMProvider.ANTHROPIC, LLMProvider.GEMINI)
+
+# ui.COLORS 의 warning 색과 동일(직접 import 하지 않고 상수만 둔다 — 소유 파일 한정).
+COLORS_WARNING = discord.Color.yellow()
+
+
+def _needs_provider_setup(config: GuildConfig, *, ollama_has_model: bool) -> bool:
+    """봇이 바로 응답할 수 없는(설정 미완료) 상태인지 판정한다 (#90).
+
+    - 외부 제공자(OpenAI/Anthropic/Gemini): API 키가 없으면 설정 필요.
+    - Ollama(로컬): 설치된 모델이 하나도 없으면 설정 필요.
+
+    ``ollama_has_model`` 은 호출부가 OllamaManager.list_models 결과로 채워 넘긴다
+    (네트워크 의존을 분리해 순수 판정 함수로 둔다).
+    """
+    if config.provider in _EXTERNAL_PROVIDERS:
+        return not config.api_key_encrypted
+    # Ollama: 설치된 모델이 없으면 첫 사용 시 실패하므로 설정이 필요하다.
+    return not ollama_has_model
+
+
+def _onboarding_embed(config: GuildConfig, *, ollama_has_model: bool) -> discord.Embed:
+    """설정 미완료 안내 체크리스트 임베드를 만든다 (#90).
+
+    제공자별로 남은 설정 단계(API 키 등록 / Ollama 모델 설치)를 체크리스트로 보여
+    주고, 함께 붙는 버튼으로 바로 /settings 패널을 열 수 있게 안내한다.
+    """
+    embed = discord.Embed(
+        title="⚙️ 시작하기 전에 — AI 설정이 필요해요",
+        description=(
+            "아직 AI 제공자/모델 설정이 끝나지 않아 명령이 동작하지 않을 수 있어요. "
+            "아래 **지금 설정하기** 버튼으로 설정을 마무리해 주세요. (관리자 전용)"
+        ),
+        color=COLORS_WARNING,
+    )
+    if config.provider in _EXTERNAL_PROVIDERS:
+        embed.add_field(
+            name="체크리스트",
+            value=(
+                f"☐ **{config.provider.display_name()}** API 키 등록\n"
+                "  → `/settings` → 제공자 변경 → 모델 선택 → **API 키 등록 / 변경**\n"
+                "☑ 제공자 선택 완료"
+            ),
+            inline=False,
+        )
+    else:
+        # Ollama: 모델 미설치 안내.
+        embed.add_field(
+            name="체크리스트",
+            value=(
+                "☐ **Ollama 모델 설치** (로컬 PC에 모델이 없어요)\n"
+                "  → `/settings` → 모델 관리 → **새 모델 설치**\n"
+                "  → 또는 다른 제공자(OpenAI/Anthropic/Gemini)로 변경 후 API 키 등록\n"
+                "☑ 제공자: Ollama (로컬)"
+            ),
+            inline=False,
+        )
+    embed.set_footer(text="설정을 마치면 /summarize · /ask · /chat 을 바로 사용할 수 있어요.")
+    return embed
 
 
 def _split_discord_text(text: str, *, max_chars: int = MAX_DISCORD_MESSAGE_CHARS) -> list[str]:
@@ -486,6 +598,76 @@ async def _send_channel_chunks(channel: discord.abc.Messageable, text: str) -> N
         await channel.send(chunk)
         if i < len(chunks) - 1:
             await asyncio.sleep(0.5)  # avoid Discord rate limit on bulk sends
+
+
+# --- #93 긴 응답 UX 통일 ---
+# /chat 이 쓰던 '프리뷰 한 메시지 + DM 버튼(LongResponseView)' 방식을 헬퍼로
+# 추출해 /ask·/summarize·@멘션 등 다른 응답 경로에서도 동일하게 쓴다. 임계 초과
+# 시 여러 메시지로 도배하지 않고, 첫 메시지에 잘라낸 프리뷰와 'DM 으로 전체 받기'
+# 버튼만 붙인다. full_text 에는 헤더를 포함한 전체 텍스트를 넘긴다(DM 도 동일 내용).
+
+
+async def _send_channel_answer_with_overflow(
+    channel: discord.abc.Messageable, full_text: str
+) -> None:
+    """채널 응답(@멘션 등)을 프리뷰 + LongResponseView(DM 버튼)로 통일해 보낸다 (#93).
+
+    한 메시지 한도 이내면 그대로 보낸다. 초과 시 메시지 폭탄(_send_channel_chunks)
+    대신 프리뷰 1개 + 'DM 으로 전체 받기' 버튼만 보내 채널 도배를 막는다.
+    """
+    body = full_text.strip() or "(empty response)"
+    if len(body) <= MAX_DISCORD_MESSAGE_CHARS:
+        await channel.send(body)
+        return
+    preview = body[: MAX_DISCORD_MESSAGE_CHARS - 1] + "…"
+    await channel.send(preview, view=LongResponseView(full_text=body))
+
+
+async def _send_answer_with_overflow(
+    interaction: discord.Interaction,
+    full_text: str,
+    *,
+    ephemeral: bool = False,
+    return_message: bool = False,
+) -> discord.Message | None:
+    """긴 응답을 프리뷰 + LongResponseView(DM 버튼)로 통일해 전송한다 (#93).
+
+    - 한 메시지 한도 이내면 그대로 보낸다(_send_interaction_chunks 와 동일 동작).
+    - 한도를 넘으면 첫 메시지를 프리뷰로 자르고 '전체 응답 보기(DM)' 버튼을 붙여
+      메시지 폭탄 대신 단일 프리뷰로 보여준다.
+    - ``return_message`` 가 True 면 (피드백 추적용으로) 보낸 메시지를 반환한다.
+    """
+    body = full_text.strip() or "(empty response)"
+    over_limit = len(body) > MAX_DISCORD_MESSAGE_CHARS
+    # 한도 초과 시에만 프리뷰로 자르고 DM 버튼(LongResponseView)을 붙인다.
+    if over_limit:
+        # 끝부분이 잘렸음을 알리는 말줄임표를 붙여 프리뷰임을 명확히 한다.
+        content = body[: MAX_DISCORD_MESSAGE_CHARS - 1] + "…"
+        view: discord.ui.View | None = LongResponseView(full_text=body)
+    else:
+        content = body
+        view = None
+
+    if not interaction.response.is_done():
+        # 아직 응답 전이면 첫 응답으로 보낸다(메시지 핸들 반환은 followup 경로만).
+        if view is not None:
+            await interaction.response.send_message(content, view=view, ephemeral=ephemeral)
+        else:
+            await interaction.response.send_message(content, ephemeral=ephemeral)
+        return None
+
+    # 이미 defer/응답 완료 → followup 으로 보낸다. 피드백 추적이 필요하면 wait=True.
+    if return_message:
+        if view is not None:
+            return await interaction.followup.send(
+                content, view=view, ephemeral=ephemeral, wait=True
+            )
+        return await interaction.followup.send(content, ephemeral=ephemeral, wait=True)
+    if view is not None:
+        await interaction.followup.send(content, view=view, ephemeral=ephemeral)
+    else:
+        await interaction.followup.send(content, ephemeral=ephemeral)
+    return None
 
 
 # --- #16 스트리밍 응답 throttle ---
@@ -588,13 +770,26 @@ def _has_config_permission(interaction: discord.Interaction, admin_role_id: int 
     return False
 
 
+# --- #91 API 키 미설정 안내 문구 ---
+# 실제 /settings UI 흐름과 일치하는 안내를 한곳에서 만든다. 외부 제공자(OpenAI/
+# Anthropic/Gemini)는 모두 [제공자 변경] → 모델 선택 → [API 키 등록 / 변경] 버튼
+# 경로를 거친다(ui.SettingsView/ExternalModelView 의 실제 버튼 라벨과 동일).
+_API_KEY_SETUP_HINT = (
+    "`/settings` → **제공자 변경**에서 제공자를 고른 뒤, 모델 선택 화면의 "
+    "**API 키 등록 / 변경** 버튼으로 키를 등록해 주세요."
+)
+
+
+def _missing_api_key_message(provider: LLMProvider) -> str:
+    """제공자별 API 키 미설정 안내 문구를 실제 UI 라벨에 맞춰 만든다 (#91)."""
+    return f"{provider.display_name()} API 키가 설정되지 않았습니다. {_API_KEY_SETUP_HINT}"
+
+
 def _get_llm(config: GuildConfig, settings: AppSettings) -> BaseLLMClient:
     """Return the correct LLM client for the guild's provider setting."""
     if config.provider == LLMProvider.OPENAI:
         if not config.api_key_encrypted:
-            raise UserFacingError(
-                "OpenAI API 키가 설정되지 않았습니다. `/settings` → 📦 모델 관리 → 🔑 API 키 등록"
-            )
+            raise UserFacingError(_missing_api_key_message(config.provider))
         try:
             api_key = decrypt_api_key(config.api_key_encrypted, settings.secret_key)
         except CryptoError as exc:
@@ -607,9 +802,7 @@ def _get_llm(config: GuildConfig, settings: AppSettings) -> BaseLLMClient:
 
     if config.provider == LLMProvider.ANTHROPIC:
         if not config.api_key_encrypted:
-            raise UserFacingError(
-                "Anthropic API 키가 설정되지 않았습니다. `/settings` → 📦 모델 관리 → 🔑 API 키 등록"
-            )
+            raise UserFacingError(_missing_api_key_message(config.provider))
         try:
             api_key = decrypt_api_key(config.api_key_encrypted, settings.secret_key)
         except CryptoError as exc:
@@ -623,9 +816,7 @@ def _get_llm(config: GuildConfig, settings: AppSettings) -> BaseLLMClient:
     if config.provider == LLMProvider.GEMINI:
         # #15: Google Gemini — API 키 복호화 후 GeminiClient 를 구성한다.
         if not config.api_key_encrypted:
-            raise UserFacingError(
-                "Gemini API 키가 설정되지 않았습니다. `/settings` → 📦 모델 관리 → 🔑 API 키 등록"
-            )
+            raise UserFacingError(_missing_api_key_message(config.provider))
         try:
             api_key = decrypt_api_key(config.api_key_encrypted, settings.secret_key)
         except CryptoError as exc:
@@ -987,10 +1178,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     await interaction.followup.send(
                         "⚠️ 스레드를 만들 권한이 없어 여기에 표시할게요.", ephemeral=True
                     )
-                first, *rest = _split_discord_text(header + cached)
-                msg = await interaction.followup.send(first, wait=True)
-                for chunk in rest:
-                    await interaction.followup.send(chunk)
+                # #93: 긴 요약은 프리뷰 1개 + 'DM 으로 전체 받기' 버튼으로 통일한다.
+                msg = await _send_answer_with_overflow(
+                    interaction, header + cached, return_message=True
+                )
                 # Track cached results too, for parity with the live path (#71)
                 await _track_for_feedback(guild_id, msg, "summarize")
                 await _record_usage(
@@ -1051,10 +1242,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 await interaction.followup.send(
                     "⚠️ 스레드를 만들 권한이 없어 여기에 표시할게요.", ephemeral=True
                 )
-            first, *rest = _split_discord_text(header + answer)
-            msg = await interaction.followup.send(first, wait=True)
-            for chunk in rest:
-                await interaction.followup.send(chunk)
+            # #93: 긴 요약은 프리뷰 1개 + 'DM 으로 전체 받기' 버튼으로 통일한다.
+            msg = await _send_answer_with_overflow(
+                interaction, header + answer, return_message=True
+            )
             # Track this message for reaction feedback (consistent with /ask)
             await _track_for_feedback(guild_id, msg, "summarize")
             await _record_usage(
@@ -1063,7 +1254,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
-            await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
+            # #92: 유형별 친절 안내 임베드 + 재시도 버튼(재시도 가능한 LLM 오류일 때).
+            async def _retry(retry_interaction: discord.Interaction) -> None:
+                await run_summarize(retry_interaction, limit, since, thread)
+
+            await _send_error_embed(interaction, exc, retry=_retry)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="summarize", status="error", started_at=started, error=str(exc),
@@ -1151,13 +1346,21 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
             follow_view = FollowUpView(on_follow_up=_handle_follow_up)
 
-            chunks = _split_discord_text(f"**질문:** {question}\n\n{answer}")
-            first, *rest = chunks
+            full_text = f"**질문:** {question}\n\n{answer}"
             # run_ask always defers before reaching here (both call sites defer),
             # so the response is done — send via followup (#23: removed dead else).
-            msg = await interaction.followup.send(first, view=follow_view, wait=True)
-            for chunk in rest:
-                await interaction.followup.send(chunk)
+            if len(full_text) > MAX_DISCORD_MESSAGE_CHARS:
+                # #93: 긴 응답은 메시지 폭탄 대신 프리뷰 1개 + 후속질문 + 'DM 으로 전체
+                # 받기' 버튼으로 통일한다. LongResponseView 의 DM 버튼을 후속질문 뷰에
+                # 합쳐 한 메시지에서 둘 다 제공한다(기존 ui 헬퍼 재사용).
+                long_view = LongResponseView(full_text=full_text)
+                for child in list(long_view.children):
+                    long_view.remove_item(child)
+                    follow_view.add_item(child)
+                preview = full_text[: MAX_DISCORD_MESSAGE_CHARS - 1] + "…"
+                msg = await interaction.followup.send(preview, view=follow_view, wait=True)
+            else:
+                msg = await interaction.followup.send(full_text, view=follow_view, wait=True)
 
             # Track this message for reaction feedback (#42, #71)
             await _track_for_feedback(guild_id, msg, "ask")
@@ -1168,7 +1371,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
-            await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
+            # #92: 유형별 친절 안내 임베드 + 재시도 버튼. 같은 질문/한도로 다시 시도한다.
+            async def _retry(retry_interaction: discord.Interaction) -> None:
+                await run_ask(retry_interaction, question, limit, _transcript_override)
+
+            await _send_error_embed(interaction, exc, retry=_retry)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="ask", status="error", started_at=started, error=str(exc),
@@ -1247,12 +1454,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # /chat — free-form AI conversation without channel context
     # ------------------------------------------------------------------
 
-    @bot.tree.command(name="chat", description="채널 맥락 없이 AI에게 자유롭게 질문합니다.")
-    @app_commands.describe(
-        message="AI에게 보낼 메시지입니다.",
-        public="True로 설정하면 채널에 공개 메시지로 표시됩니다. 기본값은 비공개입니다.",
-    )
-    async def chat_command(
+    async def _run_chat(
         interaction: discord.Interaction,
         message: str,
         public: bool = False,
@@ -1299,18 +1501,17 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             if not streamed:
                 # 폴백: 비스트리밍 generate (기존 경로 그대로 유지).
                 answer = await llm.generate(prompt, model=config.model)
-                if len(answer) > MAX_DISCORD_MESSAGE_CHARS:
-                    from .ui import LongResponseView as _LRV
-                    view = _LRV(full_text=answer)
-                    preview = answer[:MAX_DISCORD_MESSAGE_CHARS]
-                    await interaction.followup.send(preview, view=view, ephemeral=ephemeral)
-                else:
-                    await _send_interaction_chunks(interaction, answer, ephemeral=ephemeral)
+                await _send_answer_with_overflow(
+                    interaction, answer, ephemeral=ephemeral
+                )
             elif len(answer) > MAX_DISCORD_MESSAGE_CHARS:
-                # 스트리밍으로 첫 메시지(한도 내)는 이미 표시했으니, 나머지 분량을
-                # 이어서 추가 메시지로 보낸다(_stream_to_interaction 은 첫 메시지만 담당).
-                for chunk in _split_discord_text(answer)[1:]:
-                    await interaction.followup.send(chunk, ephemeral=ephemeral)
+                # #93: 스트리밍으로 첫 메시지(프리뷰)는 이미 표시했으니, 나머지 분량을
+                # 메시지 폭탄 대신 'DM 으로 전체 받기' 버튼 한 개로 통일해 제공한다.
+                await interaction.followup.send(
+                    "📄 응답이 길어 일부만 표시했어요. 아래 버튼으로 전체 내용을 DM 으로 받을 수 있어요.",
+                    view=LongResponseView(full_text=answer),
+                    ephemeral=ephemeral,
+                )
             if user_id is not None:
                 await store.save_chat_message(
                     user_id, "user", message, guild_id=guild_id, channel_id=channel_id
@@ -1327,11 +1528,27 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
-            await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
+            # #92: 유형별 친절 안내 임베드 + 재시도 버튼. 같은 메시지로 다시 시도한다.
+            async def _retry(retry_interaction: discord.Interaction) -> None:
+                await _run_chat(retry_interaction, message, public)
+
+            await _send_error_embed(interaction, exc, retry=_retry)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="chat", status="error", started_at=started, error=str(exc),
             )
+
+    @bot.tree.command(name="chat", description="채널 맥락 없이 AI에게 자유롭게 질문합니다.")
+    @app_commands.describe(
+        message="AI에게 보낼 메시지입니다.",
+        public="True로 설정하면 채널에 공개 메시지로 표시됩니다. 기본값은 비공개입니다.",
+    )
+    async def chat_command(
+        interaction: discord.Interaction,
+        message: str,
+        public: bool = False,
+    ) -> None:
+        await _run_chat(interaction, message, public)
 
     # ------------------------------------------------------------------
     # /help — command reference
@@ -2573,7 +2790,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                                 img_prompt, model=config.model, images=images
                             )
                         p_tokens, c_tokens = _usage_tokens(llm)
-                        await _send_channel_chunks(
+                        # #93: 긴 분석 결과도 프리뷰 + DM 버튼으로 통일한다.
+                        await _send_channel_answer_with_overflow(
                             message.channel, f"**이미지 분석**\n{img_answer}"
                         )
                         await _record_usage(
@@ -2617,7 +2835,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             async with message.channel.typing():
                 answer = await llm.generate(prompt, model=config.model)
             p_tokens, c_tokens = _usage_tokens(llm)  # #17
-            await _send_channel_chunks(message.channel, heading + answer)
+            # #93: 긴 @멘션 응답도 프리뷰 + 'DM 으로 전체 받기' 버튼으로 통일한다.
+            await _send_channel_answer_with_overflow(message.channel, heading + answer)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command=command_name, status="ok", started_at=started,
@@ -2876,6 +3095,41 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # Phase 3 — Guild join welcome message (#50)
     # ------------------------------------------------------------------
 
+    class _OnboardingView(discord.ui.View):
+        """온보딩 환영 메시지에 붙는 '지금 설정하기' 버튼 (#90).
+
+        버튼을 누른 사용자가 관리자(또는 설정 권한 역할)면 실제 /settings 패널
+        (SettingsView)을 ephemeral 로 열어 곧바로 제공자/모델/키를 설정하게 한다.
+        권한이 없으면 안내만 하고 패널은 열지 않는다.
+        """
+
+        def __init__(self) -> None:
+            super().__init__(timeout=900)
+
+        @discord.ui.button(label="지금 설정하기", style=discord.ButtonStyle.success, emoji="⚙️")
+        async def open_settings(
+            self, btn_interaction: discord.Interaction, _button: discord.ui.Button
+        ) -> None:
+            if btn_interaction.guild is None:
+                await btn_interaction.response.send_message(
+                    "⚠️ 서버 안에서만 사용할 수 있어요.", ephemeral=True
+                )
+                return
+            config = await store.get_guild_config(btn_interaction.guild.id)
+            if not _has_config_permission(btn_interaction, config.admin_role_id):
+                await btn_interaction.response.send_message(
+                    "⚠️ 설정을 변경하려면 Manage Server 또는 관리자 권한이 필요해요.",
+                    ephemeral=True,
+                )
+                return
+            embed = settings_embed(config, btn_interaction.guild.name)
+            view = SettingsView(
+                ctx=view_ctx, guild_id=btn_interaction.guild.id, provider=config.provider
+            )
+            await btn_interaction.response.send_message(
+                embed=embed, view=view, ephemeral=True
+            )
+
     @bot.event
     async def on_guild_join(guild: discord.Guild) -> None:
         logger.info("Joined guild: %s (id=%s, members=%s)", guild.name, guild.id, guild.member_count)
@@ -2889,11 +3143,33 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         help_embed.add_field(name="/chat message:...", value="자유 대화", inline=True)
         help_embed.add_field(name="/settings", value="서버 설정 (관리자 전용) — `/settings`로 AI 제공자와 모델을 설정하세요.", inline=False)
         help_embed.set_footer(text="/help 명령어로 전체 안내를 볼 수 있어요.")
+
+        # #90: 제공자/모델 설정이 덜 된 경우 '지금 설정하기' 체크리스트/버튼을 함께 보낸다.
+        embeds = [help_embed]
+        onboarding_view: discord.ui.View | None = None
+        try:
+            config = await store.get_guild_config(guild.id)
+            ollama_has_model = True
+            if config.provider == LLMProvider.OLLAMA:
+                # Ollama 는 설치된 모델 유무를 확인(외부 제공자는 키 유무만 본다).
+                installed = await ollama_manager.list_models()
+                ollama_has_model = bool(installed)
+            if _needs_provider_setup(config, ollama_has_model=ollama_has_model):
+                embeds.append(
+                    _onboarding_embed(config, ollama_has_model=ollama_has_model)
+                )
+                onboarding_view = _OnboardingView()
+        except Exception as exc:  # pragma: no cover — 온보딩 판정 실패는 환영 메시지를 막지 않는다
+            logger.warning("온보딩 설정 점검 실패(guild=%s): %s", guild.id, exc)
+
         sent = False
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).send_messages:
                 try:
-                    await channel.send(embed=help_embed)
+                    if onboarding_view is not None:
+                        await channel.send(embeds=embeds, view=onboarding_view)
+                    else:
+                        await channel.send(embeds=embeds)
                     sent = True
                 except Exception:
                     pass

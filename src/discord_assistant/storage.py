@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import sqlite3
 from collections.abc import Callable
 from dataclasses import replace
@@ -145,19 +146,133 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_guild         ON audit_log(guild_id, cr
 """
 
 
+# #31: 지원하는 DB 백엔드(드라이버) 식별자. DATABASE_URL 스킴으로부터 결정된다.
+#   * "sqlite"   — 기존 aiosqlite 경로(완전 구현, 기본값).
+#   * "postgres" — postgresql:// 계열. URL 인식·백엔드 분기 골격만 제공하며,
+#                  실제 asyncpg 쿼리 구현은 아직 없다(NotImplementedError 안내).
+BACKEND_SQLITE = "sqlite"
+BACKEND_POSTGRES = "postgres"
+
+# postgresql 계열 URL 스킴. SQLAlchemy/asyncpg 관용에 맞춰 여러 별칭을 인식한다.
+_POSTGRES_SCHEMES = (
+    "postgresql://",
+    "postgres://",
+    "postgresql+asyncpg://",
+    "postgresql+psycopg://",
+    "postgresql+psycopg2://",
+)
+
+
+def backend_from_database_url(database_url: str) -> str:
+    """DATABASE_URL 스킴으로부터 백엔드 식별자를 결정한다 (#31).
+
+    postgresql:// 계열이면 ``BACKEND_POSTGRES``, 그 외(sqlite:/// · :memory: ·
+    드라이버 없는 평문 경로)는 ``BACKEND_SQLITE`` 를 반환한다. URL 인식만
+    수행하므로 asyncpg 등 외부 의존성이 없어도 안전하게 호출할 수 있다.
+    """
+    lowered = database_url.strip().lower()
+    if any(lowered.startswith(scheme) for scheme in _POSTGRES_SCHEMES):
+        return BACKEND_POSTGRES
+    return BACKEND_SQLITE
+
+
 def sqlite_path_from_database_url(database_url: str) -> str:
-    """Convert supported DATABASE_URL values into sqlite3 paths."""
+    """Convert supported DATABASE_URL values into sqlite3 paths.
+
+    #31: postgresql:// 계열 URL 은 sqlite 경로로 변환할 수 없으므로 명확한
+    ValueError 를 던진다(상위에서 백엔드 분기로 처리됨). sqlite 경로 동작은 불변.
+    """
     if database_url == ":memory:":
         return database_url
     if database_url.startswith("sqlite:///"):
         return database_url.removeprefix("sqlite:///")
     if database_url.startswith("sqlite://"):
         raise ValueError("Use sqlite:///path/to/file.db for SQLite DATABASE_URL")
+    if backend_from_database_url(database_url) == BACKEND_POSTGRES:
+        raise ValueError(
+            "postgresql:// DATABASE_URL is not a SQLite path; "
+            "use the Postgres backend instead."
+        )
     return database_url
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+# ----------------------------------------------------------------------
+# usage_log.error PII/시크릿 마스킹 (#41)
+# ----------------------------------------------------------------------
+#
+# 에러 문자열에는 종종 디스코드 토큰·API 키·Bearer 토큰·이메일 등 민감 정보가
+# 그대로 섞여 들어온다(예: 외부 API 클라이언트의 4xx 응답 본문, 스택트레이스).
+# usage_log 에 저장되기 전에 이런 패턴을 정규식으로 ``***`` 마스킹한다. 길이
+# 제한(기존 500자 클램프)은 마스킹 후에도 그대로 유지한다.
+
+_ERROR_MAX_LEN = 500
+
+# 정규식은 위→아래 순서대로 적용된다. 더 구체적(접두사 있는)인 패턴을 먼저
+# 두어 부분 매칭으로 인한 토막 노출을 방지한다.
+_SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # "Authorization: Bearer <token>" / "Bearer <token>"
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-]+"),
+    # OpenAI 스타일 키: sk-... / sk-proj-...
+    re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9._\-]{8,}"),
+    # Anthropic 스타일 키: sk-ant-...
+    re.compile(r"\bsk-ant-[A-Za-z0-9._\-]{8,}"),
+    # Google API 키: AIza...
+    re.compile(r"\bAIza[A-Za-z0-9._\-]{10,}"),
+    # Discord 봇 토큰: <base64 id>.<base64>.<base64> (마침표 2개로 구분)
+    re.compile(r"\b[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{5,}\.[A-Za-z0-9_\-]{20,}\b"),
+    # "api_key=...", "token: ...", "secret = ..." 등 key=value 형태의 자격증명.
+    re.compile(
+        r"(?i)\b(?:api[_-]?key|token|secret|password|passwd|pwd|access[_-]?token)\b"
+        r"\s*[:=]\s*[^\s,;'\"]+"
+    ),
+    # 이메일 주소.
+    re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"),
+)
+
+
+def _mask_secrets(error: str) -> str:
+    """에러 문자열에서 토큰/API키/Bearer/이메일 등 민감 패턴을 ``***`` 로 가린다 (#41).
+
+    key=value 형태(``api_key=abc``)는 키 이름과 구분자를 보존하고 값만 가려서
+    어떤 종류의 자격증명이 노출됐었는지(디버깅 단서)는 남긴다. 그 외 단독
+    토큰/이메일 패턴은 매칭 전체를 ``***`` 로 치환한다.
+    """
+    # key=value 패턴은 값 부분만 마스킹(키 이름 보존)하기 위해 별도 처리한다.
+    kv_pattern = _SECRET_PATTERNS[-2]
+
+    def _kv_repl(match: re.Match[str]) -> str:
+        text = match.group(0)
+        sep_match = re.search(r"[:=]", text)
+        if sep_match is None:  # pragma: no cover - 패턴상 도달 불가
+            return "***"
+        sep_idx = sep_match.start()
+        return f"{text[: sep_idx + 1]}***"
+
+    masked = error
+    for pattern in _SECRET_PATTERNS:
+        if pattern is kv_pattern:
+            masked = pattern.sub(_kv_repl, masked)
+        else:
+            masked = pattern.sub("***", masked)
+    return masked
+
+
+def _sanitize_error(error: str | None) -> str | None:
+    """저장 직전의 error 문자열을 마스킹하고 길이를 클램프한다 (#41).
+
+    None 은 그대로 통과한다. 마스킹 후 ``_ERROR_MAX_LEN`` 을 넘으면 잘라낸다
+    (기존 500자 클램프 동작 보존, 단 마스킹을 먼저 적용한다).
+    """
+    if error is None:
+        return None
+    masked = _mask_secrets(error)
+    if len(masked) > _ERROR_MAX_LEN:
+        masked = masked[: _ERROR_MAX_LEN - 3] + "..."
+    return masked
 
 
 # ----------------------------------------------------------------------
@@ -353,8 +468,17 @@ class ConfigStore:
         default_language: str,
     ) -> None:
         self.database_url = database_url
-        raw_path = sqlite_path_from_database_url(database_url)
-        self.path = raw_path if raw_path == ":memory:" else str(Path(raw_path).expanduser())
+        # #31: 백엔드(드라이버) 선택을 URL 스킴에서 추상화한다. postgresql:// 계열은
+        # BACKEND_POSTGRES, 그 외는 BACKEND_SQLITE. 생성 시점에는 어떤 백엔드든
+        # ValueError 로 죽지 않는다(친절한 에러는 실제 사용 시점으로 미룬다).
+        self.backend = backend_from_database_url(database_url)
+        if self.backend == BACKEND_POSTGRES:
+            # Postgres 경로: sqlite 경로 변환은 의미가 없으므로 건너뛴다. 실제
+            # asyncpg 쿼리는 아직 미구현이라 initialize() 에서 명확히 안내한다.
+            self.path = database_url
+        else:
+            raw_path = sqlite_path_from_database_url(database_url)
+            self.path = raw_path if raw_path == ":memory:" else str(Path(raw_path).expanduser())
         self.default_config = GuildConfig(
             guild_id=0,
             model=default_model,
@@ -371,7 +495,14 @@ class ConfigStore:
 
         멱등하다: 이미 연결이 열려 있으면 스키마/마이그레이션만 다시 보장한다
         (멱등 마이그레이션이므로 버전·데이터 불변).
+
+        #31: postgresql:// 백엔드는 별도 경로로 분기한다. asyncpg 미설치 환경에서는
+        친절한 의존성 안내를, 설치되어 있어도 실제 쿼리는 아직 미구현이라 명확한
+        NotImplementedError 를 던진다. sqlite 경로는 기존과 100% 동일하다.
         """
+        if self.backend == BACKEND_POSTGRES:
+            await self._initialize_postgres()
+            return
         if self.path != ":memory:":
             Path(self.path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         if self._conn is None:
@@ -388,6 +519,29 @@ class ConfigStore:
         # 콜러블을 직렬 실행한다.
         await self._run_sync(_apply_pragmas)
         await self._run_sync(_initialize_schema)
+
+    async def _initialize_postgres(self) -> None:
+        """postgresql:// 백엔드 초기화 골격 (#31).
+
+        현실적 범위: URL 인식 + 백엔드 분기 + 의존성 안내까지만 책임진다. 실제
+        asyncpg 기반 쿼리(스키마/CRUD)는 아직 구현되지 않았다. asyncpg 미설치
+        환경을 고려해 import 는 이 시점까지 **지연**하며, 미설치 시에는 설치
+        방법을 안내하는 ``RuntimeError`` 를, 설치되어 있으나 구현이 없으면
+        ``NotImplementedError`` 를 던진다. 어느 경우든 ValueError 로 죽지 않는다.
+        """
+        try:
+            import asyncpg  # noqa: F401  # 지연 import: postgres 선택 시에만 요구.
+        except ImportError as exc:
+            raise RuntimeError(
+                "PostgreSQL DATABASE_URL 을 사용하려면 asyncpg 가 필요합니다. "
+                "`pip install asyncpg` 로 설치한 뒤 다시 시도해 주세요. "
+                "(SQLite 를 사용하려면 DATABASE_URL 을 sqlite:///path/to/file.db 로 설정하세요.)"
+            ) from exc
+        raise NotImplementedError(
+            "PostgreSQL 백엔드는 아직 쿼리 구현이 완료되지 않았습니다(#31). "
+            "현재는 URL 인식과 백엔드 분기 골격까지만 제공합니다. "
+            "운영에는 SQLite(DATABASE_URL=sqlite:///...) 를 사용해 주세요."
+        )
 
     async def close(self) -> None:
         """영속 aiosqlite 연결을 정리한다 (#50).
@@ -686,9 +840,9 @@ class ConfigStore:
     # ------------------------------------------------------------------
 
     async def log_usage(self, log: UsageLog) -> None:
-        error = log.error
-        if error is not None and len(error) > 500:
-            error = error[:497] + "..."
+        # #41: 저장 전에 토큰/API키/Bearer/이메일 등 민감 패턴을 ``***`` 로
+        # 마스킹하고 길이를 클램프한다(마스킹 → 클램프 순서).
+        error = _sanitize_error(log.error)
         conn = await self._ensure_conn()
         async with self._lock:
             await conn.execute(

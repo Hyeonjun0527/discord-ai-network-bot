@@ -164,6 +164,8 @@ class GuildConfigUpdate(BaseModel):
     summary_limit: int | None = None
     language: str | None = None
     provider: str | None = None
+    # 자동 요약 주기(분) (#80). None 이면 자동 요약 비활성화, 그 외에는 5분 이상.
+    auto_summary_interval: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +181,8 @@ async def get_guild_config(guild_id: int, user: CurrentUser, request: Request) -
     db = await _get_db()
     try:
         async with db.execute(
-            "SELECT guild_id, model, summary_limit, language, provider, updated_at "
+            "SELECT guild_id, model, summary_limit, language, provider, "
+            "auto_summary_interval, updated_at "
             "FROM guild_config WHERE guild_id = ?",
             (guild_id,),
         ) as cursor:
@@ -196,6 +199,8 @@ async def get_guild_config(guild_id: int, user: CurrentUser, request: Request) -
                 "summary_limit": 50,
                 "language": "ko",
                 "provider": "ollama",
+                # #80: 기본은 자동 요약 비활성화(None).
+                "auto_summary_interval": None,
                 "updated_at": None,
             }
         )
@@ -259,6 +264,17 @@ async def update_guild_config(
             current["language"] = body.language.strip()
         if body.provider is not None:
             current["provider"] = body.provider.strip()
+        # 자동 요약 주기(분) (#80). None 이 '미전송'이 아니라 '자동요약 끄기'를
+        # 뜻할 수 있으므로, 필드가 실제로 전송됐는지(model_fields_set)로 판별한다.
+        if "auto_summary_interval" in body.model_fields_set:
+            interval = body.auto_summary_interval
+            if interval is not None and interval < 5:
+                # 너무 잦은 자동 요약은 막는다(최소 5분). None 은 비활성화로 허용.
+                raise HTTPException(
+                    status_code=400,
+                    detail="auto_summary_interval must be None (off) or >= 5 minutes",
+                )
+            current["auto_summary_interval"] = interval
 
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         await db.execute(
@@ -310,6 +326,8 @@ async def update_guild_config(
             "summary_limit": current["summary_limit"],
             "language": current["language"],
             "provider": current["provider"],
+            # #80: 자동 요약 주기(분) 도 노출한다.
+            "auto_summary_interval": current["auto_summary_interval"],
             "updated_at": now,
         }
     )
@@ -380,6 +398,11 @@ async def get_guild_stats(
             err_row = await c.fetchone()
         error_count: int = err_row["cnt"] if err_row else 0
 
+        # 토큰 사용량 집계 (#82). usage_log.prompt_tokens/completion_tokens 합계.
+        # 구(舊) 배포 DB 에는 토큰 컬럼이 없을 수 있으므로, 컬럼 존재 여부를 먼저
+        # 확인하고 없으면 0 으로 폴백한다(백워드 호환).
+        token_totals = await _aggregate_tokens(db, guild_id)
+
         # 최근 N일 daily 집계 (#84: '-30 days' 하드코딩 제거).
         # days 는 1~365 범위로 검증된 int 이므로 datetime() modifier 에
         # 바인드 파라미터로 안전하게 전달한다.
@@ -412,8 +435,34 @@ async def get_guild_stats(
             "error_rate": error_rate,
             "days": days,  # 집계에 사용된 기간(일) (#84)
             "daily": [{"day": r["day"], "count": r["cnt"]} for r in daily_rows],
+            # 토큰 사용량 집계 (#82). 모델 단가를 모르므로 토큰 수만 노출한다.
+            "tokens": token_totals,
         }
     )
+
+
+async def _aggregate_tokens(db: aiosqlite.Connection, guild_id: int) -> dict[str, int]:
+    """길드의 prompt/completion 토큰 사용량 합계를 집계한다 (#82).
+
+    ``usage_log`` 에 ``prompt_tokens``/``completion_tokens`` 컬럼이 존재할 때만
+    합계를 내고, 구(舊) 스키마(컬럼 없음)에서는 0 으로 폴백한다(백워드 호환).
+    모델별 단가 정보가 없으므로 비용 대신 토큰 수만 반환한다.
+    """
+    async with db.execute("PRAGMA table_info(usage_log)") as c:
+        cols = {row["name"] for row in await c.fetchall()}
+    if not {"prompt_tokens", "completion_tokens"} <= cols:
+        return {"prompt": 0, "completion": 0, "total": 0}
+
+    async with db.execute(
+        "SELECT COALESCE(SUM(prompt_tokens), 0) AS p, "
+        "COALESCE(SUM(completion_tokens), 0) AS c "
+        "FROM usage_log WHERE guild_id = ?",
+        (guild_id,),
+    ) as c:
+        row = await c.fetchone()
+    prompt = int(row["p"]) if row else 0
+    completion = int(row["c"]) if row else 0
+    return {"prompt": prompt, "completion": completion, "total": prompt + completion}
 
 
 # ---------------------------------------------------------------------------

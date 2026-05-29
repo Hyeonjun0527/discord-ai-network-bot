@@ -25,6 +25,8 @@ interface Stats {
   latency_by_command?: { command: string; avg_latency_ms: number }[];
   error_rate: number;
   daily: { day: string; count: number }[];
+  // 토큰 사용량 합계 (#82). 백워드 호환을 위해 optional.
+  tokens?: { prompt: number; completion: number; total: number };
 }
 
 const COLORS = ["#5865F2", "#57F287", "#FEE75C", "#ED4245", "#EB459E", "#3BA55D"];
@@ -98,9 +100,33 @@ export default function StatsPage() {
     avg: c.avg_latency_ms,
   }));
 
+  // 토큰 사용량 카드 데이터 (#82). 모델 단가를 모르므로 토큰 수만 보여준다.
+  const tokens = stats.tokens;
+
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-white">Usage Statistics</h1>
+
+      {/* Token usage cards (#82) */}
+      {tokens && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[
+            { label: "Prompt tokens", value: tokens.prompt },
+            { label: "Completion tokens", value: tokens.completion },
+            { label: "Total tokens", value: tokens.total },
+          ].map(({ label, value }) => (
+            <div
+              key={label}
+              className="bg-discord-darker rounded-xl p-4 sm:p-5 border border-white/5"
+            >
+              <p className="text-gray-400 text-xs mb-1">{label}</p>
+              <p className="text-white font-bold text-2xl">
+                {value.toLocaleString()}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Daily usage bar chart */}
       <div className="bg-discord-darker rounded-xl p-4 sm:p-6 border border-white/5">

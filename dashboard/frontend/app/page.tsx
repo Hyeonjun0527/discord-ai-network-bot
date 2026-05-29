@@ -3,14 +3,15 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Bot, BarChart3, Settings, Key, Shield } from "lucide-react";
-import { redirectToDiscordLogin, getToken } from "@/lib/auth";
+import { redirectToDiscordLogin, hasLoginHint } from "@/lib/auth";
 
 export default function LandingPage() {
   const router = useRouter();
 
-  // If a token is already stored, go straight to the dashboard
+  // #34: 토큰은 httpOnly 쿠키라 JS 로 못 읽으므로, 로그인 힌트가 있으면 대시보드로
+  // 보낸다. 쿠키가 실제로 유효한지는 대시보드 레이아웃이 /auth/me 로 확인한다.
   useEffect(() => {
-    if (getToken()) {
+    if (hasLoginHint()) {
       router.replace("/dashboard");
     }
   }, [router]);

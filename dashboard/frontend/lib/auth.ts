@@ -1,92 +1,80 @@
 /**
- * OAuth2 helpers and token storage for the Next.js dashboard.
+ * OAuth2 helpers and auth-state for the Next.js dashboard.
  *
- * Token is stored in localStorage so it survives page refreshes.
- * In production you may prefer httpOnly cookies — update the relevant
- * backend endpoint to Set-Cookie and remove localStorage usage here.
+ * #34: JWT 는 더 이상 localStorage 에 저장하지 않는다. 백엔드가 httpOnly+SameSite=Lax
+ * (+Secure) 쿠키로 발급하므로 JS 는 토큰을 읽을 수 없고, 브라우저가 모든 요청에
+ * `credentials: 'include'` 로 자동 전송한다(XSS 토큰 탈취 방지).
+ *
+ * 라우팅 가드에 쓸 "로그인된 것 같다" 신호만 localStorage 에 둔다(민감정보 아님).
+ * 실제 인증 판정은 백엔드 /auth/me 가 권위를 가진다.
  */
 
-const TOKEN_KEY = "dashboard_token";
+/** 비민감 로그인 힌트 플래그 키. 실제 토큰이 아니라 라우팅 힌트일 뿐이다. */
+const LOGGED_IN_HINT_KEY = "dashboard_logged_in";
 
 /** Redirect the user to the Discord OAuth2 login endpoint (proxied via Next.js). */
 export function redirectToDiscordLogin(): void {
   window.location.href = "/auth/login";
 }
 
-/** Persist the JWT returned by the backend. */
-export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-/** Return the stored JWT, or null if not logged in. */
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-/** Remove the stored JWT (logout). */
-export function clearToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
-}
-
 /**
- * Decode the JWT payload (without verifying the signature — the backend
- * does the authoritative verification).  Returns null on parse failure.
+ * 로그인 힌트를 켠다 (#34). 콜백 처리 직후 호출해 라우팅 가드가 대시보드로
+ * 보낼 수 있게 한다. 토큰 자체는 httpOnly 쿠키에 있으므로 여기 저장하지 않는다.
  */
-export function decodeToken(token: string): Record<string, unknown> | null {
-  try {
-    const [, payloadB64] = token.split(".");
-    const padded = payloadB64.replace(/-/g, "+").replace(/_/g, "/");
-    const json = atob(padded);
-    return JSON.parse(json) as Record<string, unknown>;
-  } catch {
-    return null;
+export function markLoggedIn(): void {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(LOGGED_IN_HINT_KEY, "1");
   }
 }
 
-/** Check whether the stored token is still valid (not expired client-side). */
-export function isTokenValid(): boolean {
-  const token = getToken();
-  if (!token) return false;
-  const payload = decodeToken(token);
-  if (!payload) return false;
-  const exp = payload["exp"];
-  if (typeof exp !== "number") return true; // no exp claim — treat as valid
-  return Date.now() / 1000 < exp;
+/** 로그인 힌트가 켜져 있는지(=대시보드를 시도해볼 만한지) 반환한다 (#34). */
+export function hasLoginHint(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(LOGGED_IN_HINT_KEY) === "1";
+}
+
+/** 로그인 힌트를 끈다(로컬 정리). 실제 토큰 무효화는 백엔드 /auth/logout 이 한다. */
+export function clearLoginHint(): void {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(LOGGED_IN_HINT_KEY);
+  }
 }
 
 /**
- * 토큰 만료가 임박했는지 판단한다 (#85).
+ * 로그아웃 (#34, #44).
  *
- * exp 까지 `thresholdSeconds`(기본 5분) 이하로 남았으면 true 를 돌려준다.
- * 이미 만료됐거나 토큰이 없으면 false(갱신 대상 아님 — 재로그인 영역)로 본다.
+ * 백엔드 /auth/logout 을 호출해 토큰을 무효화(jti 블랙리스트)하고 httpOnly 쿠키를
+ * 삭제한다. 네트워크 실패와 무관하게 로컬 힌트는 항상 정리한다.
  */
-export function isTokenExpiringSoon(thresholdSeconds = 300): boolean {
-  const token = getToken();
-  if (!token) return false;
-  const payload = decodeToken(token);
-  if (!payload) return false;
-  const exp = payload["exp"];
-  if (typeof exp !== "number") return false; // exp 없으면 갱신 불필요
-  const secondsLeft = exp - Date.now() / 1000;
-  return secondsLeft > 0 && secondsLeft <= thresholdSeconds;
+export async function logout(): Promise<void> {
+  const base =
+    typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL
+      ? process.env.NEXT_PUBLIC_API_URL
+      : "";
+  try {
+    await fetch(`${base}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {
+    // 무시: 쿠키는 서버 응답으로만 지워지지만, 실패해도 힌트는 정리한다.
+  } finally {
+    clearLoginHint();
+  }
 }
 
 /** 진행 중인 refresh 요청을 공유해 동시 다중 호출을 한 번으로 묶는다 (#85). */
 let _refreshInFlight: Promise<boolean> | null = null;
 
 /**
- * 현재 토큰으로 백엔드 /auth/refresh 를 호출해 새 토큰을 받아 저장한다 (#85).
+ * 백엔드 /auth/refresh 를 호출해 새 토큰을 받아 쿠키를 갱신한다 (#85, #34).
  *
- * 성공 시 true 를 반환하고 새 JWT 를 localStorage 에 저장한다. 실패(401 등)하면
- * false 를 반환하며 호출 측이 재로그인 플로우로 처리하도록 한다.
- * 동시에 여러 요청이 갱신을 시도해도 단일 네트워크 호출만 수행한다.
+ * 토큰은 쿠키로 자동 전송/수신되므로 JS 는 토큰 문자열을 다루지 않는다.
+ * 성공 시 true, 실패(401 등) 시 false 를 반환한다. 동시 호출은 단일 네트워크
+ * 요청으로 합친다.
  */
 export function refreshToken(): Promise<boolean> {
   if (_refreshInFlight) return _refreshInFlight;
-
-  const token = getToken();
-  if (!token) return Promise.resolve(false);
 
   const base =
     typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL
@@ -95,17 +83,9 @@ export function refreshToken(): Promise<boolean> {
 
   _refreshInFlight = fetch(`${base}/auth/refresh`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
   })
-    .then(async (res) => {
-      if (!res.ok) return false;
-      const data = (await res.json()) as { token?: string };
-      if (data.token) {
-        setToken(data.token);
-        return true;
-      }
-      return false;
-    })
+    .then((res) => res.ok)
     .catch(() => false)
     .finally(() => {
       _refreshInFlight = null;

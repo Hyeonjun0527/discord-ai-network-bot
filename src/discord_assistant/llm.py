@@ -36,6 +36,11 @@ _R = TypeVar("_R")
 ImageInput = bytes | tuple[str, bytes]
 # 기본 이미지 MIME. (mime, bytes) 형태가 아니라 raw bytes 만 넘어온 경우 사용한다.
 _DEFAULT_IMAGE_MIME = "image/png"
+# #51: Anthropic 멀티모달이 허용하는 이미지 MIME 화이트리스트. 미지원 MIME(image/svg 등)
+# 을 그대로 보내면 400 이 나므로, 빌더에서 미리 걸러낸다.
+_ANTHROPIC_SUPPORTED_IMAGE_MIME = frozenset(
+    {"image/jpeg", "image/png", "image/gif", "image/webp"}
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1155,6 +1160,12 @@ class AnthropicClient(BaseLLMClient):
         parts: list[dict[str, Any]] = []
         for img in images:
             mime, b64 = _encode_image_b64(img)
+            # #51: 미지원 MIME 은 400 을 유발하므로 보내지 않고 건너뛴다(경고만).
+            if mime not in _ANTHROPIC_SUPPORTED_IMAGE_MIME:
+                logger.warning(
+                    "Anthropic 미지원 이미지 MIME 건너뜀: %s (지원: jpeg/png/gif/webp)", mime
+                )
+                continue
             parts.append(
                 {
                     "type": "image",
@@ -1165,6 +1176,9 @@ class AnthropicClient(BaseLLMClient):
                     },
                 }
             )
+        # 모든 이미지가 미지원이라 걸러졌으면 평문 경로로 폴백(백워드 호환).
+        if not parts:
+            return prompt
         parts.append({"type": "text", "text": prompt})
         return parts
 

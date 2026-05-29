@@ -21,6 +21,7 @@ from .llm import (
     OllamaManager,
     OpenAIError,
 )
+from .messages import t
 from .models import GuildConfig, LLMProvider, OllamaModel
 from .prompts import _LANGUAGE_LABELS
 from .prompts import language_label as _language_label_from_prompts
@@ -129,47 +130,52 @@ def _supported_language_options() -> list[discord.SelectOption]:
     return options[:25]
 
 
-def _api_key_status(config: GuildConfig) -> str:
+def _api_key_status(config: GuildConfig, lang: str = "ko") -> str:
     if config.provider == LLMProvider.OLLAMA:
-        return "N/A"
+        return t("settings.api_key.na", lang)
     if config.api_key_encrypted:
-        return "✅ 등록됨 (●●●●●●)"
-    return "⚠️ 미등록"
+        return t("settings.api_key.registered", lang)
+    return t("settings.api_key.missing", lang)
 
 
-def settings_embed(config: GuildConfig, guild_name: str) -> discord.Embed:
+def settings_embed(config: GuildConfig, guild_name: str, lang: str = "ko") -> discord.Embed:
     embed = discord.Embed(
-        title="서버 AI 설정",
+        title=t("settings.title", lang),
         description=f"-# {guild_name}",
         color=COLORS["main"],
     )
-    embed.add_field(name="제공자", value=config.provider.display_name(), inline=True)
-    embed.add_field(name="모델", value=f"`{config.model}`", inline=True)
-    embed.add_field(name="API 키", value=_api_key_status(config), inline=True)
     embed.add_field(
-        name="언어",
+        name=t("settings.field.provider", lang), value=config.provider.display_name(), inline=True
+    )
+    embed.add_field(name=t("settings.field.model", lang), value=f"`{config.model}`", inline=True)
+    embed.add_field(
+        name=t("settings.field.api_key", lang), value=_api_key_status(config, lang), inline=True
+    )
+    embed.add_field(
+        name=t("settings.field.language", lang),
         value=f"{_language_label(config.language)} ({config.language})",
         inline=True,
     )
-    embed.add_field(name="요약 범위", value=f"{config.summary_limit}개 메시지", inline=True)
+    embed.add_field(
+        name=t("settings.field.summary_limit", lang),
+        value=t("settings.summary_limit.value", lang, count=config.summary_limit),
+        inline=True,
+    )
     embed.add_field(name="​", value="​", inline=True)
-    embed.set_footer(text="이 서버에만 적용 • 관리자 전용")
+    embed.set_footer(text=t("settings.footer", lang))
     return embed
 
 
-def _provider_embed(current: LLMProvider) -> discord.Embed:
+def _provider_embed(current: LLMProvider, lang: str = "ko") -> discord.Embed:
     embed = discord.Embed(
-        title="AI 제공자 변경",
-        description=(
-            "**Ollama (로컬)** — 인터넷 불필요, 내 PC에서 직접 실행\n"
-            "**OpenAI (GPT)** — ChatGPT API 키 필요\n"
-            "**Anthropic (Claude)** — Claude API 키 필요\n"
-            "**Google (Gemini)** — Gemini API 키 필요"
-        ),
+        title=t("provider.title", lang),
+        description=t("provider.description", lang),
         color=COLORS["main"],
     )
-    embed.add_field(name="현재", value=current.display_name(), inline=False)
-    embed.set_footer(text="OpenAI / Anthropic / Gemini 선택 시 API 키 입력이 필요합니다")
+    embed.add_field(
+        name=t("provider.field.current", lang), value=current.display_name(), inline=False
+    )
+    embed.set_footer(text=t("provider.footer", lang))
     return embed
 
 
@@ -200,15 +206,21 @@ def _install_embed(model_name: str, status: str) -> discord.Embed:
     return embed
 
 
-def _external_model_embed(provider: LLMProvider, current_model: str, has_key: bool) -> discord.Embed:
+def _external_model_embed(
+    provider: LLMProvider, current_model: str, has_key: bool, lang: str = "ko"
+) -> discord.Embed:
     embed = discord.Embed(
-        title=f"{provider.emoji()}  {provider.display_name()} 설정",
+        title=t("external.title", lang, emoji=provider.emoji(), provider=provider.display_name()),
         color=COLORS["main"],
     )
-    embed.add_field(name="현재 모델", value=f"`{current_model}`", inline=True)
     embed.add_field(
-        name="API 키",
-        value="✅ 등록됨" if has_key else "⚠️ 미등록 — 아래 버튼으로 등록하세요",
+        name=t("external.field.current_model", lang), value=f"`{current_model}`", inline=True
+    )
+    embed.add_field(
+        name=t("settings.field.api_key", lang),
+        value=t("external.api_key.registered", lang)
+        if has_key
+        else t("external.api_key.missing", lang),
         inline=True,
     )
     if not has_key:
@@ -216,30 +228,34 @@ def _external_model_embed(provider: LLMProvider, current_model: str, has_key: bo
     return embed
 
 
-def _general_settings_embed(config: GuildConfig) -> discord.Embed:
-    embed = discord.Embed(title="⚙️  일반 설정", color=COLORS["main"])
+def _general_settings_embed(config: GuildConfig, lang: str = "ko") -> discord.Embed:
+    embed = discord.Embed(title=t("general.title", lang), color=COLORS["main"])
     embed.add_field(
-        name="🌐  응답 언어",
+        name=t("general.field.language", lang),
         value=f"{_language_label(config.language)} (`{config.language}`)",
         inline=True,
     )
-    embed.add_field(name="📊  요약 범위", value=f"{config.summary_limit}개 메시지", inline=True)
-    embed.set_footer(text="ko · en · ja · zh · fr · de · es 등 지원 언어 중에서 선택하세요")
+    embed.add_field(
+        name=t("general.field.summary_limit", lang),
+        value=t("settings.summary_limit.value", lang, count=config.summary_limit),
+        inline=True,
+    )
+    embed.set_footer(text=t("general.footer", lang))
     return embed
 
 
-def _language_select_embed(config: GuildConfig) -> discord.Embed:
+def _language_select_embed(config: GuildConfig, lang: str = "ko") -> discord.Embed:
     embed = discord.Embed(
-        title="🌐  응답 언어 선택",
-        description="아래 드롭다운에서 봇이 응답할 언어를 선택하세요.",
+        title=t("language_select.title", lang),
+        description=t("language_select.description", lang),
         color=COLORS["main"],
     )
     embed.add_field(
-        name="현재 언어",
+        name=t("language_select.field.current", lang),
         value=f"{_language_label(config.language)} (`{config.language}`)",
         inline=False,
     )
-    embed.set_footer(text="'자동 감지'를 선택하면 대화 언어를 자동으로 따라갑니다")
+    embed.set_footer(text=t("language_select.footer", lang))
     return embed
 
 
@@ -362,7 +378,9 @@ class _APIKeyModal(ui.Modal, title="🔑  API 키 등록"):
             model=self.model,
             api_key_encrypted=encrypted,
         )
-        embed = settings_embed(config, interaction.guild.name if interaction.guild else "서버")
+        embed = settings_embed(
+            config, interaction.guild.name if interaction.guild else "서버", config.language
+        )
         view = SettingsView(ctx=self.ctx, guild_id=self.guild_id, provider=config.provider)
         await interaction.edit_original_response(embed=embed, view=view)
 
@@ -404,7 +422,7 @@ class _SummaryLimitModal(ui.Modal, title="📊  요약 범위 변경"):
         except ValueError as exc:
             await interaction.response.send_message(f"⚠️ {exc}", ephemeral=True)
             return
-        embed = _general_settings_embed(config)
+        embed = _general_settings_embed(config, config.language)
         view = GeneralSettingsView(ctx=self.ctx, guild_id=self.guild_id)
         await interaction.response.edit_message(embed=embed, view=view)
 
@@ -474,7 +492,7 @@ class SettingsView(ui.View):
 
     async def _change_provider(self, interaction: discord.Interaction) -> None:
         config = await self.ctx.store.get_guild_config(self.guild_id)
-        embed = _provider_embed(config.provider)
+        embed = _provider_embed(config.provider, config.language)
         view = ProviderView(ctx=self.ctx, guild_id=self.guild_id)
         await interaction.response.edit_message(embed=embed, view=view)
 
@@ -487,13 +505,15 @@ class SettingsView(ui.View):
             view: ui.View = OllamaModelView(ctx=self.ctx, guild_id=self.guild_id, installed=installed)
         else:
             models = _external_models_for(config.provider)
-            embed = _external_model_embed(config.provider, config.model, bool(config.api_key_encrypted))
+            embed = _external_model_embed(
+                config.provider, config.model, bool(config.api_key_encrypted), config.language
+            )
             view = ExternalModelView(ctx=self.ctx, guild_id=self.guild_id, provider=config.provider, models=models)
         await interaction.edit_original_response(embed=embed, view=view)
 
     async def _general_settings(self, interaction: discord.Interaction) -> None:
         config = await self.ctx.store.get_guild_config(self.guild_id)
-        embed = _general_settings_embed(config)
+        embed = _general_settings_embed(config, config.language)
         view = GeneralSettingsView(ctx=self.ctx, guild_id=self.guild_id)
         await interaction.response.edit_message(embed=embed, view=view)
 
@@ -552,14 +572,18 @@ class ProviderView(ui.View):
                 model=default_model,
                 api_key_encrypted=None,
             )
-            embed = settings_embed(config, interaction.guild.name if interaction.guild else "서버")
+            embed = settings_embed(
+                config, interaction.guild.name if interaction.guild else "서버", config.language
+            )
             await interaction.response.edit_message(embed=embed, view=SettingsView(ctx=self.ctx, guild_id=self.guild_id, provider=selected))
 
         else:
             models = _external_models_for(selected)
             current = await self.ctx.store.get_guild_config(self.guild_id)
             default_model = PROVIDER_DEFAULT_MODELS[selected]
-            embed = _external_model_embed(selected, default_model, bool(current.api_key_encrypted))
+            embed = _external_model_embed(
+                selected, default_model, bool(current.api_key_encrypted), current.language
+            )
             view = ExternalModelView(ctx=self.ctx, guild_id=self.guild_id, provider=selected, models=models)
             await interaction.response.edit_message(embed=embed, view=view)
 
@@ -599,7 +623,9 @@ class ExternalModelView(ui.View):
             model=self._selected_model,
             api_key_encrypted=config.api_key_encrypted,
         )
-        embed = _external_model_embed(self.provider, self._selected_model, bool(updated.api_key_encrypted))
+        embed = _external_model_embed(
+            self.provider, self._selected_model, bool(updated.api_key_encrypted), updated.language
+        )
         await interaction.response.edit_message(embed=embed, view=self)
 
     @ui.button(label="API 키 등록 / 변경", style=discord.ButtonStyle.success, row=1)
@@ -615,7 +641,7 @@ class ExternalModelView(ui.View):
     @ui.button(label="API 키 삭제", style=discord.ButtonStyle.danger, row=1)
     async def clear_api_key(self, interaction: discord.Interaction, button: ui.Button) -> None:
         config = await self.ctx.store.clear_api_key(self.guild_id)
-        embed = _external_model_embed(self.provider, config.model, False)
+        embed = _external_model_embed(self.provider, config.model, False, config.language)
         await interaction.response.edit_message(embed=embed, view=self)
 
 
@@ -662,7 +688,9 @@ class OllamaModelView(ui.View):
             await interaction.response.send_message("⚠️ 먼저 모델을 선택하세요.", ephemeral=True)
             return
         config = await self.ctx.store.set_model(self.guild_id, self._selected)
-        embed = settings_embed(config, interaction.guild.name if interaction.guild else "서버")
+        embed = settings_embed(
+            config, interaction.guild.name if interaction.guild else "서버", config.language
+        )
         await interaction.response.edit_message(embed=embed, view=SettingsView(ctx=self.ctx, guild_id=self.guild_id, provider=config.provider))
 
     @ui.button(label="새 모델 설치", style=discord.ButtonStyle.primary, row=1)
@@ -776,76 +804,68 @@ class ModelInstallView(ui.View):
 
 
 class HelpView(ui.View):
-    """Section navigation for /help command."""
+    """Section navigation for /help command.
 
-    _SECTIONS = {
-        "ai": "AI 기능",
-        "analysis": "채널 분석",
-        "settings": "설정",
-    }
+    #87: 길드 언어(``lang``)를 받아 임베드 텍스트와 버튼 라벨을 현지화한다. 기본값은
+    'ko' 로 두어 기존 호출부/테스트(한국어 단언)와 100% 호환된다. 섹션 임베드 빌더는
+    정적 메서드를 유지하되 ``lang`` 인자를 받도록 확장했다(기본 'ko'). 버튼은 라벨을
+    동적으로 지정해야 하므로 ``@ui.button`` 데코레이터 대신 ``add_item`` 으로 구성한다.
+    """
 
-    def __init__(self) -> None:
+    _HELP_COLOR = discord.Color.from_str("#5865F2")
+
+    def __init__(self, lang: str = "ko") -> None:
         super().__init__(timeout=180)
+        self.lang = lang
+
+        ai_btn: ui.Button[Any] = ui.Button(
+            label=t("help.button.ai", lang), style=discord.ButtonStyle.primary, row=0
+        )
+        ai_btn.callback = self.show_ai  # type: ignore[method-assign]
+        self.add_item(ai_btn)
+
+        analysis_btn: ui.Button[Any] = ui.Button(
+            label=t("help.button.analysis", lang), style=discord.ButtonStyle.primary, row=0
+        )
+        analysis_btn.callback = self.show_analysis  # type: ignore[method-assign]
+        self.add_item(analysis_btn)
+
+        settings_btn: ui.Button[Any] = ui.Button(
+            label=t("help.button.settings", lang), style=discord.ButtonStyle.primary, row=0
+        )
+        settings_btn.callback = self.show_settings  # type: ignore[method-assign]
+        self.add_item(settings_btn)
+
+        close_btn: ui.Button[Any] = ui.Button(
+            label=t("help.button.close", lang), style=discord.ButtonStyle.danger, row=0
+        )
+        close_btn.callback = self.close_help  # type: ignore[method-assign]
+        self.add_item(close_btn)
 
     @staticmethod
-    def main_embed() -> discord.Embed:
+    def main_embed(lang: str = "ko") -> discord.Embed:
         embed = discord.Embed(
-            title="명령어 안내",
-            color=discord.Color.from_str("#5865F2"),
+            title=t("help.title", lang),
+            color=HelpView._HELP_COLOR,
         )
+        embed.add_field(name="/summarize", value=t("help.field.summarize.value", lang), inline=False)
+        embed.add_field(name="/ask", value=t("help.field.ask.value", lang), inline=False)
+        embed.add_field(name="/chat", value=t("help.field.chat.value", lang), inline=False)
+        embed.add_field(name="/translate", value=t("help.field.translate.value", lang), inline=False)
+        embed.add_field(name="@ 멘션", value=t("help.field.mention.value", lang), inline=False)
         embed.add_field(
-            name="/summarize",
-            value=(
-                "채널의 최근 대화를 AI가 요약합니다.\n"
-                "```\n/summarize\n/summarize limit:100\n```"
-            ),
+            name=t("help.field.settings.name", lang),
+            value=t("help.field.settings.value", lang),
             inline=False,
         )
-        embed.add_field(
-            name="/ask",
-            value=(
-                "채널의 최근 대화에서 근거를 찾아 질문에 답합니다.\n"
-                "```\n/ask question:오늘 회의 결론이 뭐야?\n```"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="/chat",
-            value=(
-                "채널 맥락 없이 AI에게 자유롭게 질문합니다.\n"
-                "```\n/chat message:파이썬 리스트 컴프리헨션 설명해줘\n```"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="/translate",
-            value=(
-                "텍스트를 지정 언어로 번역합니다.\n"
-                "```\n/translate text:Hello target_language:ko\n```"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="@ 멘션",
-            value=(
-                "봇을 멘션하면 채널 대화를 요약합니다.\n"
-                "멘션 뒤에 질문을 쓰면 `/ask` 처럼 동작합니다."
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="/settings  (관리자 전용)",
-            value="AI 제공자, 모델, 언어, 요약 범위 등 서버 설정을 변경합니다.",
-            inline=False,
-        )
-        embed.set_footer(text="버튼을 눌러 섹션별 상세 안내를 볼 수 있습니다.")
+        embed.set_footer(text=t("help.footer", lang))
         return embed
 
     @staticmethod
-    def ai_embed() -> discord.Embed:
+    def ai_embed(lang: str = "ko") -> discord.Embed:
         embed = discord.Embed(
-            title="AI 기능",
-            color=discord.Color.from_str("#5865F2"),
+            title=t("help.section.ai.title", lang),
+            color=HelpView._HELP_COLOR,
         )
         embed.add_field(
             name="/chat",
@@ -855,39 +875,46 @@ class HelpView(ui.View):
                 "```\n/chat message:파이썬 리스트 컴프리헨션 설명해줘\n"
                 "/chat message:영어 이메일 초안 작성해줘\n"
                 "/chat message:... public:True  (공개 응답)\n```"
+            ) if lang == "ko" else (
+                "Chat freely with the AI without channel context.\n"
+                "Remembers the last 5 conversation turns.\n"
+                "```\n/chat message:Explain Python list comprehensions\n"
+                "/chat message:Draft an email in English\n"
+                "/chat message:... public:True  (public reply)\n```"
             ),
             inline=False,
         )
-        embed.add_field(
-            name="/translate",
-            value=(
-                "텍스트를 지정 언어로 번역합니다.\n"
-                "```\n/translate text:Hello target_language:ko\n```"
-            ),
-            inline=False,
-        )
+        embed.add_field(name="/translate", value=t("help.field.translate.value", lang), inline=False)
         embed.add_field(
             name="@ 멘션",
             value=(
                 "봇을 멘션하면 채널 대화를 요약합니다.\n"
                 "멘션 뒤에 질문을 쓰면 `/ask` 처럼 동작합니다.\n"
                 "```\n@ai-assistant\n@ai-assistant 어제 무슨 얘기 했어?\n```"
+            ) if lang == "ko" else (
+                "Mention the bot to summarize the channel conversation.\n"
+                "Add a question after the mention to act like `/ask`.\n"
+                "```\n@ai-assistant\n@ai-assistant What did we talk about yesterday?\n```"
             ),
             inline=False,
         )
         return embed
 
     @staticmethod
-    def analysis_embed() -> discord.Embed:
+    def analysis_embed(lang: str = "ko") -> discord.Embed:
         embed = discord.Embed(
-            title="채널 분석",
-            color=discord.Color.from_str("#5865F2"),
+            title=t("help.section.analysis.title", lang),
+            color=HelpView._HELP_COLOR,
         )
         embed.add_field(
             name="/summarize",
             value=(
                 "채널의 최근 대화를 섹션별로 요약합니다.\n"
                 "핵심 요약 · 결정/합의 · 액션 아이템 · 놓치면 안 되는 맥락\n"
+                "```\n/summarize\n/summarize limit:100\n```"
+            ) if lang == "ko" else (
+                "Summarizes the channel's recent conversation by section.\n"
+                "Key points · decisions/agreements · action items · context\n"
                 "```\n/summarize\n/summarize limit:100\n```"
             ),
             inline=False,
@@ -899,52 +926,60 @@ class HelpView(ui.View):
                 "대화 내용에 없는 내용은 답하지 않습니다.\n"
                 "```\n/ask question:오늘 회의 결론이 뭐야?\n"
                 "/ask question:누가 담당자야? limit:100\n```"
+            ) if lang == "ko" else (
+                "Answers questions using evidence from the recent conversation.\n"
+                "Won't answer anything not present in the conversation.\n"
+                "```\n/ask question:What was today's meeting conclusion?\n"
+                "/ask question:Who is the owner? limit:100\n```"
             ),
             inline=False,
         )
         return embed
 
     @staticmethod
-    def settings_section_embed() -> discord.Embed:
+    def settings_section_embed(lang: str = "ko") -> discord.Embed:
         embed = discord.Embed(
-            title="설정",
-            color=discord.Color.from_str("#5865F2"),
+            title=t("help.section.settings.title", lang),
+            color=HelpView._HELP_COLOR,
         )
         embed.add_field(
-            name="/settings  (관리자 전용)",
+            name=t("help.field.settings.name", lang),
             value=(
                 "AI 제공자 변경 — Ollama(로컬) / OpenAI / Anthropic\n"
                 "모델 선택 및 관리\n"
                 "응답 언어 변경\n"
                 "요약 범위 설정"
+            ) if lang == "ko" else (
+                "Change AI provider — Ollama (local) / OpenAI / Anthropic\n"
+                "Select and manage models\n"
+                "Change response language\n"
+                "Set summary range"
             ),
             inline=False,
         )
         embed.add_field(
-            name="지원 언어 코드",
+            name="지원 언어 코드" if lang == "ko" else "Supported language codes",
             value="ko · en · ja · zh · fr · de · es",
             inline=False,
         )
         return embed
 
-    @ui.button(label="AI 기능", style=discord.ButtonStyle.primary, row=0)
-    async def show_ai(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        await interaction.response.edit_message(embed=self.ai_embed(), view=self)
+    async def show_ai(self, interaction: discord.Interaction) -> None:
+        await interaction.response.edit_message(embed=self.ai_embed(self.lang), view=self)
 
-    @ui.button(label="채널 분석", style=discord.ButtonStyle.primary, row=0)
-    async def show_analysis(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        await interaction.response.edit_message(embed=self.analysis_embed(), view=self)
+    async def show_analysis(self, interaction: discord.Interaction) -> None:
+        await interaction.response.edit_message(embed=self.analysis_embed(self.lang), view=self)
 
-    @ui.button(label="설정", style=discord.ButtonStyle.primary, row=0)
-    async def show_settings(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        await interaction.response.edit_message(embed=self.settings_section_embed(), view=self)
+    async def show_settings(self, interaction: discord.Interaction) -> None:
+        await interaction.response.edit_message(
+            embed=self.settings_section_embed(self.lang), view=self
+        )
 
-    @ui.button(label="닫기", style=discord.ButtonStyle.danger, row=0)
-    async def close_help(self, interaction: discord.Interaction, button: ui.Button) -> None:
+    async def close_help(self, interaction: discord.Interaction) -> None:
         await interaction.response.edit_message(
             embed=discord.Embed(
-                title="도움말 닫힘",
-                description="다시 보려면 `/help`를 입력하세요.",
+                title=t("help.closed.title", self.lang),
+                description=t("help.closed.description", self.lang),
                 color=COLORS["main"],
             ),
             view=None,
@@ -1065,7 +1100,7 @@ class LanguageSelectView(ui.View):
     async def _on_select(self, interaction: discord.Interaction) -> None:
         lang = interaction.data["values"][0]  # type: ignore[index,typeddict-item]
         config = await self.ctx.store.set_language(self.guild_id, lang)
-        embed = _general_settings_embed(config)
+        embed = _general_settings_embed(config, config.language)
         view = GeneralSettingsView(ctx=self.ctx, guild_id=self.guild_id)
         await interaction.response.edit_message(embed=embed, view=view)
 
@@ -1097,7 +1132,9 @@ class _BackOnlyView(ui.View):
 
 async def _go_to_main(interaction: discord.Interaction, *, ctx: ViewCtx, guild_id: int) -> None:
     config = await ctx.store.get_guild_config(guild_id)
-    embed = settings_embed(config, interaction.guild.name if interaction.guild else "서버")
+    embed = settings_embed(
+        config, interaction.guild.name if interaction.guild else "서버", config.language
+    )
     view = SettingsView(ctx=ctx, guild_id=guild_id, provider=config.provider)
     await interaction.response.edit_message(embed=embed, view=view)
 

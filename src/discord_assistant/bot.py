@@ -35,6 +35,7 @@ from .llm import (
     ToolSpec,
     supports_vision,
 )
+from .messages import t
 from .models import GuildConfig, LLMProvider, Reminder, UsageLog
 from .monitor import format_disconnect_message, format_error_message, notify_developer
 from .prompts import (
@@ -912,6 +913,17 @@ def _effective_limit(limit: int | None, default: int) -> int:
     return max(1, min(int(limit), 200))
 
 
+def _ui_language(config: GuildConfig) -> str:
+    """UI 표면(임베드/버튼)에 쓸 길드 언어 코드를 돌려준다 (#87).
+
+    UI 는 트랜스크립트가 없어 자동 감지를 할 수 없으므로 'auto' 는 'ko' 로 폴백한다.
+    그 외는 설정값을 그대로 쓰며, 카탈로그에 번역이 없으면 messages.t 가 ko 로
+    폴백한다(미지원 언어 안전).
+    """
+    lang = (config.language or "ko").strip().lower()
+    return "ko" if lang == "auto" else lang
+
+
 def _ids_from_interaction(
     interaction: discord.Interaction,
 ) -> tuple[int | None, int | None, int | None]:
@@ -1368,7 +1380,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 "⚠️ 이 명령을 사용하려면 Manage Server 또는 관리자 권한이 필요해요.", ephemeral=True
             )
             return
-        embed = settings_embed(config, interaction.guild.name)
+        embed = settings_embed(config, interaction.guild.name, _ui_language(config))
         view = SettingsView(ctx=view_ctx, guild_id=interaction.guild.id, provider=config.provider)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
@@ -1442,7 +1454,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     _last_summaries[user_id] = (cached, guild_id)
                     if len(_last_summaries) > _MAX_LAST_SUMMARIES:
                         del _last_summaries[next(iter(_last_summaries))]
-                header = f"**최근 {message_limit}개 메시지 요약** *(캐시)*\n"
+                header = t(
+                    "summary.header.cached", _ui_language(config), count=message_limit
+                )
                 # #5: thread=True 면 새 스레드에 게시하고, 권한이 없으면 폴백한다.
                 if thread and await _deliver_summary_to_thread(
                     interaction, f"요약: 최근 {message_limit}개 메시지", header + cached
@@ -1507,7 +1521,13 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     del _last_summaries[next(iter(_last_summaries))]
 
             since_label = f" (since: {since})" if since else ""
-            header = f"**최근 {message_limit}개 메시지 요약{since_label}**\n"
+            # 요약 본문 언어(effective_language, auto면 감지 결과)와 헤더 언어를 맞춘다.
+            header = t(
+                "summary.header",
+                effective_language,
+                count=message_limit,
+                since=since_label,
+            )
             # #5: thread=True 면 새 스레드에 게시하고, 권한이 없으면 폴백한다.
             if thread and await _deliver_summary_to_thread(
                 interaction, f"요약: 최근 {message_limit}개 메시지", header + answer
@@ -1862,78 +1882,19 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
     @bot.tree.command(name="help", description=_loc("봇 명령어 사용법을 안내합니다."))
     async def help_command(interaction: discord.Interaction) -> None:
-        embed = discord.Embed(
-            title="명령어 안내",
-            color=discord.Color.from_str("#5865F2"),
-        )
-        embed.add_field(
-            name="/summarize",
-            value=(
-                "채널의 최근 대화를 AI가 요약합니다.\n"
-                "```\n"
-                "/summarize\n"
-                "/summarize limit:100\n"
-                "```"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="/ask",
-            value=(
-                "채널의 최근 대화에서 근거를 찾아 질문에 답합니다.\n"
-                "대화 내용에 없는 내용은 답하지 않습니다.\n"
-                "```\n"
-                "/ask question:오늘 회의 결론이 뭐야?\n"
-                "/ask question:누가 담당자야? limit:100\n"
-                "```"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="/chat",
-            value=(
-                "채널 맥락 없이 AI에게 자유롭게 질문합니다.\n"
-                "```\n"
-                "/chat message:파이썬 리스트 컴프리헨션 설명해줘\n"
-                "/chat message:영어 이메일 초안 작성해줘\n"
-                "```"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="/translate",
-            value=(
-                "텍스트를 지정 언어로 번역합니다.\n"
-                "```\n"
-                "/translate text:Hello target_language:ko\n"
-                "```"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="@ 멘션",
-            value=(
-                "봇을 멘션하면 채널 대화를 요약합니다.\n"
-                "멘션 뒤에 질문을 쓰면 `/ask` 처럼 동작합니다.\n"
-                "```\n"
-                "@ai-assistant\n"
-                "@ai-assistant 어제 무슨 얘기 했어?\n"
-                "```"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="/settings  (관리자 전용)",
-            value="AI 제공자, 모델, 언어, 요약 범위 등 서버 설정을 변경합니다.",
-            inline=False,
-        )
-        embed.set_footer(text="버튼을 눌러 섹션별 상세 안내를 볼 수 있습니다.")
+        # #87: 길드 언어로 도움말 임베드/버튼을 현지화한다(서버 밖 DM 등은 ko 폴백).
+        if interaction.guild is not None:
+            config = await store.get_guild_config(interaction.guild.id)
+            lang = _ui_language(config)
+        else:
+            lang = "ko"
+        embed = HelpView.main_embed(lang)
         dashboard_url = os.getenv("DASHBOARD_URL", "").strip()
-        view = HelpView()
+        view = HelpView(lang)
         if dashboard_url:
             view.add_item(
                 discord.ui.Button(
-                    label="대시보드 열기",
+                    label=t("help.button.dashboard", lang),
                     url=dashboard_url,
                     style=discord.ButtonStyle.link,
                     emoji="🖥️",
@@ -3484,7 +3445,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     ephemeral=True,
                 )
                 return
-            embed = settings_embed(config, btn_interaction.guild.name)
+            embed = settings_embed(config, btn_interaction.guild.name, _ui_language(config))
             view = SettingsView(
                 ctx=view_ctx, guild_id=btn_interaction.guild.id, provider=config.provider
             )
@@ -3495,34 +3456,42 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     @bot.event
     async def on_guild_join(guild: discord.Guild) -> None:
         logger.info("Joined guild: %s (id=%s, members=%s)", guild.name, guild.id, guild.member_count)
-        help_embed = discord.Embed(
-            title="Discord AI Assistant에 오신 것을 환영합니다!",
-            description="저는 채널 대화를 요약하고 질문에 답하는 AI 어시스턴트입니다.",
-            color=discord.Color.from_str("#5865F2"),
-        )
-        help_embed.add_field(name="/summarize", value="채널 대화 요약", inline=True)
-        help_embed.add_field(name="/ask question:...", value="채널 대화 기반 Q&A", inline=True)
-        help_embed.add_field(name="/chat message:...", value="자유 대화", inline=True)
-        help_embed.add_field(name="/settings", value="서버 설정 (관리자 전용) — `/settings`로 AI 제공자와 모델을 설정하세요.", inline=False)
-        help_embed.set_footer(text="/help 명령어로 전체 안내를 볼 수 있어요.")
 
-        # #90: 제공자/모델 설정이 덜 된 경우 '지금 설정하기' 체크리스트/버튼을 함께 보낸다.
-        embeds = [help_embed]
-        onboarding_view: discord.ui.View | None = None
+        # #87: 환영 임베드를 길드 언어로 현지화한다. 설정 조회 실패 시 ko 로 폴백한다.
+        lang = "ko"
+        config: GuildConfig | None = None
+        ollama_has_model = True
         try:
             config = await store.get_guild_config(guild.id)
-            ollama_has_model = True
+            lang = _ui_language(config)
             if config.provider == LLMProvider.OLLAMA:
                 # Ollama 는 설치된 모델 유무를 확인(외부 제공자는 키 유무만 본다).
                 installed = await ollama_manager.list_models()
                 ollama_has_model = bool(installed)
-            if _needs_provider_setup(config, ollama_has_model=ollama_has_model):
-                embeds.append(
-                    _onboarding_embed(config, ollama_has_model=ollama_has_model)
-                )
-                onboarding_view = _OnboardingView()
         except Exception as exc:  # pragma: no cover — 온보딩 판정 실패는 환영 메시지를 막지 않는다
             logger.warning("온보딩 설정 점검 실패(guild=%s): %s", guild.id, exc)
+
+        help_embed = discord.Embed(
+            title=t("welcome.title", lang),
+            description=t("welcome.description", lang),
+            color=discord.Color.from_str("#5865F2"),
+        )
+        help_embed.add_field(name="/summarize", value=t("welcome.field.summarize", lang), inline=True)
+        help_embed.add_field(
+            name="/ask question:...", value=t("welcome.field.ask", lang), inline=True
+        )
+        help_embed.add_field(name="/chat message:...", value=t("welcome.field.chat", lang), inline=True)
+        help_embed.add_field(name="/settings", value=t("welcome.field.settings", lang), inline=False)
+        help_embed.set_footer(text=t("welcome.footer", lang))
+
+        # #90: 제공자/모델 설정이 덜 된 경우 '지금 설정하기' 체크리스트/버튼을 함께 보낸다.
+        embeds = [help_embed]
+        onboarding_view: discord.ui.View | None = None
+        if config is not None and _needs_provider_setup(
+            config, ollama_has_model=ollama_has_model
+        ):
+            embeds.append(_onboarding_embed(config, ollama_has_model=ollama_has_model))
+            onboarding_view = _OnboardingView()
 
         sent = False
         for channel in guild.text_channels:

@@ -19,12 +19,16 @@ from discord_assistant.prompts import _LANGUAGE_LABELS
 from discord_assistant.ui import (
     ExternalModelView,
     GeneralSettingsView,
+    HelpView,
     LanguageSelectView,
     ProviderView,
     RetryView,
     SettingsView,
     ViewCtx,
     _APIKeyModal,
+    _external_model_embed,
+    _general_settings_embed,
+    _provider_embed,
     _supported_language_options,
     error_hint,
     settings_embed,
@@ -633,6 +637,121 @@ class TestAPIKeyModalSubmit(unittest.TestCase):
             provider=LLMProvider.OLLAMA, model="llama3.1:8b", ctx=ctx, guild_id=9
         )
         self.assertTrue(modal._validate_key("anything"))
+
+
+# ---------------------------------------------------------------------------
+# #87: i18n — 길드 언어 주입 (ko 회귀 0 / en 번역 / 미지원 폴백)
+# ---------------------------------------------------------------------------
+
+
+class TestEmbedI18n(unittest.TestCase):
+    def test_settings_embed_default_ko_unchanged(self) -> None:
+        # 기본(ko) 호출은 기존 한국어 문자열을 그대로 유지한다(회귀 0).
+        config = _make_config()
+        embed = settings_embed(config, "S")
+        self.assertEqual(embed.title, "서버 AI 설정")
+        names = [f.name for f in embed.fields]
+        self.assertIn("제공자", names)
+        self.assertIn("언어", names)
+        self.assertEqual(embed.footer.text, "이 서버에만 적용 • 관리자 전용")
+
+    def test_settings_embed_korean_explicit(self) -> None:
+        config = _make_config()
+        embed = settings_embed(config, "S", "ko")
+        self.assertEqual(embed.title, "서버 AI 설정")
+
+    def test_settings_embed_english(self) -> None:
+        config = _make_config()
+        embed = settings_embed(config, "S", "en")
+        self.assertEqual(embed.title, "Server AI Settings")
+        names = [f.name for f in embed.fields]
+        self.assertIn("Provider", names)
+        self.assertIn("Language", names)
+
+    def test_settings_embed_unsupported_lang_falls_back_to_ko(self) -> None:
+        config = _make_config()
+        embed = settings_embed(config, "S", "fr")
+        self.assertEqual(embed.title, "서버 AI 설정")
+
+    def test_settings_embed_summary_limit_value_localized(self) -> None:
+        config = _make_config(summary_limit=42)
+        embed_ko = settings_embed(config, "S", "ko")
+        embed_en = settings_embed(config, "S", "en")
+        ko_val = next(f.value for f in embed_ko.fields if f.name == "요약 범위")
+        en_val = next(f.value for f in embed_en.fields if f.name == "Summary Range")
+        self.assertEqual(ko_val, "42개 메시지")
+        self.assertEqual(en_val, "42 messages")
+
+    def test_general_settings_embed_en(self) -> None:
+        config = _make_config()
+        embed = _general_settings_embed(config, "en")
+        self.assertEqual(embed.title, "⚙️  General Settings")
+
+    def test_provider_embed_en(self) -> None:
+        embed = _provider_embed(LLMProvider.OLLAMA, "en")
+        self.assertEqual(embed.title, "Change AI Provider")
+
+    def test_provider_embed_default_ko(self) -> None:
+        embed = _provider_embed(LLMProvider.OLLAMA)
+        self.assertEqual(embed.title, "AI 제공자 변경")
+
+    def test_external_model_embed_en(self) -> None:
+        embed = _external_model_embed(LLMProvider.OPENAI, "gpt-4o", True, "en")
+        self.assertIn("Settings", embed.title)
+        api_field = next(f for f in embed.fields if f.name == "API Key")
+        self.assertIn("Registered", api_field.value)
+
+    def test_external_model_embed_default_ko(self) -> None:
+        embed = _external_model_embed(LLMProvider.OPENAI, "gpt-4o", False)
+        self.assertIn("설정", embed.title)
+        api_field = next(f for f in embed.fields if f.name == "API 키")
+        self.assertIn("미등록", api_field.value)
+
+
+class TestHelpViewI18n(unittest.TestCase):
+    def test_main_embed_default_ko(self) -> None:
+        embed = HelpView.main_embed()
+        self.assertEqual(embed.title, "명령어 안내")
+        self.assertEqual(embed.footer.text, "버튼을 눌러 섹션별 상세 안내를 볼 수 있습니다.")
+
+    def test_main_embed_english(self) -> None:
+        embed = HelpView.main_embed("en")
+        self.assertEqual(embed.title, "Command Guide")
+
+    def test_section_embeds_english(self) -> None:
+        self.assertEqual(HelpView.ai_embed("en").title, "AI Features")
+        self.assertEqual(HelpView.analysis_embed("en").title, "Channel Analysis")
+        self.assertEqual(HelpView.settings_section_embed("en").title, "Settings")
+
+    def test_section_embeds_default_ko(self) -> None:
+        self.assertEqual(HelpView.ai_embed().title, "AI 기능")
+        self.assertEqual(HelpView.analysis_embed().title, "채널 분석")
+        self.assertEqual(HelpView.settings_section_embed().title, "설정")
+
+    def test_button_labels_ko_default(self) -> None:
+        view = HelpView()
+        labels = [getattr(c, "label", None) for c in view.children]
+        self.assertIn("AI 기능", labels)
+        self.assertIn("닫기", labels)
+
+    def test_button_labels_english(self) -> None:
+        view = HelpView("en")
+        labels = [getattr(c, "label", None) for c in view.children]
+        self.assertIn("AI Features", labels)
+        self.assertIn("Close", labels)
+
+    def test_show_ai_callback_renders_localized_embed(self) -> None:
+        view = HelpView("en")
+        interaction = _RichInteraction()
+        asyncio.run(view.show_ai(interaction))  # type: ignore[arg-type]
+        self.assertEqual(interaction.edit_message_kwargs["embed"].title, "AI Features")
+
+    def test_close_callback_localized(self) -> None:
+        view = HelpView("en")
+        interaction = _RichInteraction()
+        asyncio.run(view.close_help(interaction))  # type: ignore[arg-type]
+        self.assertEqual(interaction.edit_message_kwargs["embed"].title, "Help Closed")
+        self.assertIsNone(interaction.edit_message_kwargs["view"])
 
 
 if __name__ == "__main__":

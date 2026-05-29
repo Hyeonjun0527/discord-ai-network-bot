@@ -1,0 +1,102 @@
+name: Auto SemVer Release
+
+# After a successful deploy on main, bump SemVer from conventional commits
+# since the last tag and create an annotated tag + GitHub Release.
+#   feat: / feat!: / BREAKING CHANGE → minor / major
+#   fix:|perf:|refactor: ... → patch  (default: patch)
+on:
+  workflow_run:
+    workflows: ["Build, Push, and Deploy"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-semver-release
+  cancel-in-progress: false
+
+jobs:
+  auto_release:
+    # Only after a successful main deploy triggered by push/dispatch
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Compute next version
+        id: bump
+        run: |
+          set -eu
+          last_tag="$(git tag --list 'v*.*.*' --sort=-v:refname | head -n1)"
+          if [ -z "${last_tag}" ]; then
+            range=""           # no tags yet → consider all history
+            base="0.0.0"
+          else
+            range="${last_tag}..HEAD"
+            base="${last_tag#v}"
+          fi
+
+          # If nothing new since the last tag, skip.
+          if [ -n "${last_tag}" ] && [ -z "$(git log "${range}" --oneline 2>/dev/null)" ]; then
+            echo "마지막 태그 이후 새 커밋 없음 — 릴리스 스킵."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -n "${range}" ]; then
+            commits="$(git log "${range}" --format='%s%n%b' 2>/dev/null || true)"
+          else
+            commits="$(git log --format='%s%n%b' 2>/dev/null || true)"
+          fi
+          bump="patch"
+          if printf '%s' "${commits}" | grep -qiE '(^|[[:space:]])BREAKING CHANGE|^[a-z]+(\(.+\))?!:'; then
+            bump="major"
+          elif printf '%s' "${commits}" | grep -qiE '^feat(\(.+\))?:'; then
+            bump="minor"
+          fi
+
+          IFS='.' read -r major minor patch <<EOF
+          ${base}
+          EOF
+          case "${bump}" in
+            major) major=$((major+1)); minor=0; patch=0 ;;
+            minor) minor=$((minor+1)); patch=0 ;;
+            patch) patch=$((patch+1)) ;;
+          esac
+          next="v${major}.${minor}.${patch}"
+
+          # Guard against an accidentally-existing tag (advance patch).
+          while git rev-parse "${next}" >/dev/null 2>&1; do
+            patch=$((patch+1)); next="v${major}.${minor}.${patch}"
+          done
+
+          {
+            echo "bump=${bump}"
+            echo "next=${next}"
+            echo "skip=false"
+          } >> "$GITHUB_OUTPUT"
+          echo "다음 버전: ${next} (bump=${bump}, base=${base})"
+
+      - name: Tag and release
+        if: steps.bump.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          next="${{ steps.bump.outputs.next }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${next}" -m "${next}"
+          git push origin "${next}"
+          gh release create "${next}" \
+            --title "discord-assistant ${next}" \
+            --generate-notes \
+            --verify-tag

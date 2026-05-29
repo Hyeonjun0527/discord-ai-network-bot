@@ -295,6 +295,14 @@ docker compose --profile dashboard up -d
 
 A `Dockerfile` and `docker-compose.yml` are provided for containerized deployment. The Ollama service can optionally be run in a separate container with GPU passthrough. The `dashboard` service is gated behind the `dashboard` compose profile and reads its configuration from `dashboard/backend/.env`, so it only starts when you pass `--profile dashboard`.
 
+### Continuous Deployment (self-hosted runner)
+
+Pushing to `main` builds the bot image, pushes it to GHCR, and deploys it on a
+self-hosted runner via `docker compose pull && up -d --wait` — no SSH. A
+successful deploy auto-creates a SemVer tag/release from conventional commits.
+See **[deploy/SELF_HOSTED_RUNNER.md](deploy/SELF_HOSTED_RUNNER.md)** for the
+runner registration script and host `.env` setup (`deploy/.env.prod.example`).
+
 ### Bare Metal / VPS
 
 ```bash

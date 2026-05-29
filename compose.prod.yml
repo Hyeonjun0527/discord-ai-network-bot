@@ -1,0 +1,39 @@
+# Production compose — pulled & run by the self-hosted runner during deploy.
+#
+# The deploy workflow exports IMAGE_TAG (e.g. sha-abc1234) and runs:
+#   docker compose -f compose.prod.yml pull && up -d --wait
+#
+# Secrets/config come from a host-managed `.env` in the deploy directory
+# (see deploy/.env.prod.example). This file is synced from the repo on every
+# deploy, so edit it in git — not on the host.
+#
+# Cloud-API runtime (OpenAI/Anthropic): no Ollama service is started.
+# For an Ollama-backed deploy, set HEALTHCHECK_REQUIRE_OLLAMA=true and point
+# OLLAMA_BASE_URL at a reachable endpoint (or add an ollama service here).
+
+services:
+  bot:
+    image: ${BOT_IMAGE:-ghcr.io/hyeonjun0527/discord-assistant:${IMAGE_TAG:-latest}}
+    container_name: discord-assistant-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Persist SQLite under the bind-mounted data dir
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/discord_assistant.db}
+      # Cloud-API deploy: do not gate health on Ollama
+      HEALTHCHECK_REQUIRE_OLLAMA: ${HEALTHCHECK_REQUIRE_OLLAMA:-false}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "/app/scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

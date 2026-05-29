@@ -4,7 +4,9 @@ scripts/healthcheck.py — Bot uptime / health probe.
 
 Checks:
   1. SQLite DB is accessible and has the guild_config table.
-  2. Ollama HTTP endpoint responds within 5 seconds.
+  2. (Optional) Ollama HTTP endpoint responds within 5 seconds —
+     only when HEALTHCHECK_REQUIRE_OLLAMA is truthy. Cloud-API deployments
+     (OpenAI/Anthropic) have no Ollama service, so this is skipped by default.
 
 Exit codes:
   0 — healthy
@@ -68,11 +70,17 @@ def check_ollama() -> tuple[bool, str]:
         return False, f"Ollama connection error: {exc} ({url})"
 
 
+def _require_ollama() -> bool:
+    return os.getenv("HEALTHCHECK_REQUIRE_OLLAMA", "false").strip().lower() in {
+        "1", "true", "yes", "y", "on",
+    }
+
+
 def main() -> None:
-    results: list[tuple[bool, str]] = [
-        check_database(),
-        check_ollama(),
-    ]
+    results: list[tuple[bool, str]] = [check_database()]
+    # Only gate on Ollama when explicitly required (e.g. Ollama-backed deploys).
+    if _require_ollama():
+        results.append(check_ollama())
 
     all_ok = all(ok for ok, _ in results)
 

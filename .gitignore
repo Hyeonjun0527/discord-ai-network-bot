@@ -17,8 +17,17 @@ venv/
 .env
 .env.*
 !.env.example
+!deploy/.env.prod.example
 data/
 !data/.gitkeep
+
+# Logs (created at deploy time)
+logs/
+
+# Agent tooling / local work logs (not part of the project)
+.omc/
+.omx/
+personal_space/
 
 # OS / editor
 .DS_Store

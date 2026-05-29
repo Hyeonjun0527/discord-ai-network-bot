@@ -1,0 +1,145 @@
+name: Build, Push, and Deploy
+
+# CD pipeline (yeon-style, simplified for a single Python bot):
+#   main push / manual dispatch
+#     → build linux/arm64 image on the self-hosted Mac
+#     → push to GHCR (sha-<short> + latest)
+#     → deploy on the SAME self-hosted host via `docker compose pull && up -d --wait`
+# The self-hosted runner IS the deploy server (no SSH). Secrets live in a
+# host-managed `.env` at DEPLOY_DIR (see deploy/.env.prod.example).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "pyproject.toml"
+      - "Dockerfile"
+      - "compose.prod.yml"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {}
+
+# Don't cancel an in-flight deploy on main; serialize instead.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: discord-assistant
+
+jobs:
+  build-and-push:
+    runs-on: [self-hosted, macOS, ARM64]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image metadata
+        id: meta
+        run: |
+          set -eu
+          owner_lower="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          image="${REGISTRY}/${owner_lower}/${IMAGE_NAME}"
+          tag="sha-${GITHUB_SHA::7}"
+          {
+            echo "image=${image}"
+            echo "image_tag=${tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.image_tag }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=registry,ref=${{ steps.meta.outputs.image }}:buildcache
+          cache-to: type=registry,ref=${{ steps.meta.outputs.image }}:buildcache,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: [self-hosted, macOS, ARM64]
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '' }}
+      COMPOSE_FILE: compose.prod.yml
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check deploy prerequisites
+        run: |
+          set -eu
+          # Default the deploy dir to the runner user's home if not overridden
+          DEPLOY_DIR="${DEPLOY_DIR:-$HOME/discord-assistant}"
+          echo "DEPLOY_DIR=${DEPLOY_DIR}" >> "$GITHUB_ENV"
+          install -d "${DEPLOY_DIR}" "${DEPLOY_DIR}/data" "${DEPLOY_DIR}/logs"
+          command -v docker >/dev/null
+          docker compose version >/dev/null
+          if [ ! -f "${DEPLOY_DIR}/.env" ]; then
+            echo "::error::${DEPLOY_DIR}/.env 가 없습니다. deploy/.env.prod.example 를 참고해 호스트에 먼저 생성하세요."
+            exit 1
+          fi
+
+      - name: Sync compose file
+        run: |
+          set -eu
+          install -m 644 "${COMPOSE_FILE}" "${DEPLOY_DIR}/${COMPOSE_FILE}"
+
+      - name: Deploy (pull + up --wait)
+        run: |
+          set -eu
+          owner_lower="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          export BOT_IMAGE="${REGISTRY}/${owner_lower}/${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "Deploying ${BOT_IMAGE}"
+          cd "${DEPLOY_DIR}"
+          for i in 1 2 3; do
+            docker compose -f "${COMPOSE_FILE}" pull bot && break
+            [ "$i" -eq 3 ] && { echo "::error::이미지 pull 3회 실패"; exit 1; }
+            echo "pull 실패 (${i}/3), 30초 후 재시도..."; sleep 30
+          done
+          docker compose -f "${COMPOSE_FILE}" up -d --wait bot
+
+      - name: Verify deployed image
+        run: |
+          set -eu
+          owner_lower="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          expected="${REGISTRY}/${owner_lower}/${IMAGE_NAME}:${IMAGE_TAG}"
+          actual="$(docker inspect --format '{{.Config.Image}}' discord-assistant-bot)"
+          echo "expected=${expected}"
+          echo "actual=${actual}"
+          [ "${actual}" = "${expected}" ] || { echo "::error::배포된 이미지가 기대값과 다릅니다"; exit 1; }
+          echo "배포 성공: ${actual}"
+
+      - name: Prune dangling images
+        if: always()
+        run: docker image prune -f --filter "until=168h" || true

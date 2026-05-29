@@ -169,6 +169,113 @@ class ChatHistoryTest(_FileStoreCase):
         self.assertEqual(rows[-1]["content"], f"m{cap + 24}")
 
 
+class PurgeRetentionTest(_FileStoreCase):
+    """created_at 기준 보존 정리 (#27)."""
+
+    async def _backdate_usage(self, days_ago: int) -> None:
+        """usage_log 한 행을 추가하고 created_at 을 days_ago 일 전으로 조정."""
+        await self.store.log_usage(
+            UsageLog(guild_id=1, channel_id=2, user_id=3, command="ask", status="ok", latency_ms=10)
+        )
+        conn = self.store._connect()
+        try:
+            conn.execute(
+                "UPDATE usage_log SET created_at = datetime('now', ?) "
+                "WHERE id = (SELECT MAX(id) FROM usage_log)",
+                (f"-{days_ago} days",),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    async def _backdate_chat(self, days_ago: int) -> None:
+        await self.store.save_chat_message(7, "user", "hello", guild_id=1, channel_id=2)
+        conn = self.store._connect()
+        try:
+            conn.execute(
+                "UPDATE chat_history SET created_at = datetime('now', ?) "
+                "WHERE id = (SELECT MAX(id) FROM chat_history)",
+                (f"-{days_ago} days",),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _count(self, table: str) -> int:
+        conn = self.store._connect()
+        try:
+            return int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        finally:
+            conn.close()
+
+    async def test_purge_deletes_old_usage_rows(self) -> None:
+        await self._backdate_usage(40)  # 오래됨 → 삭제 대상
+        await self._backdate_usage(1)   # 최근 → 보존
+        result = await self.store.purge_old(usage_days=30, chat_days=30)
+        self.assertEqual(result["usage_log"], 1)
+        self.assertEqual(self._count("usage_log"), 1)
+
+    async def test_purge_deletes_old_chat_rows(self) -> None:
+        await self._backdate_chat(40)
+        await self._backdate_chat(1)
+        result = await self.store.purge_old(usage_days=30, chat_days=30)
+        self.assertEqual(result["chat_history"], 1)
+        self.assertEqual(self._count("chat_history"), 1)
+
+    async def test_purge_keeps_recent_rows(self) -> None:
+        await self._backdate_usage(5)
+        await self._backdate_chat(5)
+        result = await self.store.purge_old(usage_days=30, chat_days=30)
+        self.assertEqual(result, {"usage_log": 0, "chat_history": 0})
+        self.assertEqual(self._count("usage_log"), 1)
+        self.assertEqual(self._count("chat_history"), 1)
+
+    async def test_purge_zero_days_skips_table(self) -> None:
+        # 0 일은 보존 비활성화 — 해당 테이블은 건드리지 않는다.
+        await self._backdate_usage(100)
+        await self._backdate_chat(100)
+        result = await self.store.purge_old(usage_days=0, chat_days=0)
+        self.assertEqual(result, {"usage_log": 0, "chat_history": 0})
+        self.assertEqual(self._count("usage_log"), 1)
+        self.assertEqual(self._count("chat_history"), 1)
+
+    async def test_purge_returns_expected_keys(self) -> None:
+        result = await self.store.purge_old(usage_days=7, chat_days=7)
+        self.assertIn("usage_log", result)
+        self.assertIn("chat_history", result)
+
+    async def test_purge_negative_days_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            await self.store.purge_old(usage_days=-1, chat_days=7)
+        with self.assertRaises(ValueError):
+            await self.store.purge_old(usage_days=7, chat_days=-1)
+
+
+class VacuumTest(_FileStoreCase):
+    """DB 파일 유지보수 (#33)."""
+
+    async def test_vacuum_does_not_raise_on_file_db(self) -> None:
+        await self.store.log_usage(
+            UsageLog(guild_id=1, channel_id=2, user_id=3, command="ask", status="ok", latency_ms=10)
+        )
+        await self.store.vacuum()  # 예외 없이 완료되어야 한다.
+
+    async def test_vacuum_preserves_data(self) -> None:
+        await self.store.set_model(5, "qwen2.5:7b")
+        await self.store.vacuum()
+        cfg = await self.store.get_guild_config(5)
+        self.assertEqual(cfg.model, "qwen2.5:7b")
+
+
+class VacuumMemoryTest(unittest.IsolatedAsyncioTestCase):
+    """:memory: DB 에서 vacuum 은 안전하게 무시되어야 한다 (#33)."""
+
+    async def test_vacuum_memory_db_is_noop(self) -> None:
+        store = _make_store(":memory:")
+        await store.initialize()
+        await store.vacuum()  # 파일이 없으므로 조용히 건너뛴다.
+
+
 class FileBackedIntegrationTest(unittest.IsolatedAsyncioTestCase):
     """Exercises a real on-disk SQLite DB across reconnects (#95)."""
 

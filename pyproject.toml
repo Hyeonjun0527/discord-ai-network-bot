@@ -54,3 +54,17 @@ ignore = ["E501"]
 python_version = "3.11"
 warn_return_any = true
 ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["discord_assistant"]
+branch = false
+omit = [
+  "*/__main__.py",
+]
+
+[tool.coverage.report]
+# 회귀 방지용 커버리지 게이트(#66). 현재 실측 커버리지(약 37%)보다 약간 낮은
+# 보수적 임계로 설정해 기존 CI를 깨지 않으면서 하한선을 강제한다.
+# bot.py/대시보드 테스트가 보강되면 이 값을 점진적으로 올린다(목표 60~70).
+fail_under = 35
+show_missing = true

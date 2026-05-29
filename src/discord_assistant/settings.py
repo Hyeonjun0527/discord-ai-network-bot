@@ -28,6 +28,15 @@ def _get_int(name: str, default: int, *, minimum: int | None = None) -> int:
     return value
 
 
+def _is_production_env() -> bool:
+    """ENVIRONMENT 또는 APP_ENV 환경 변수가 production 계열이면 True를 반환한다."""
+    for name in ("ENVIRONMENT", "APP_ENV"):
+        raw = os.getenv(name)
+        if raw and raw.strip().lower() in {"production", "prod"}:
+            return True
+    return False
+
+
 def _get_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
@@ -71,6 +80,10 @@ class AppSettings:
     ollama_keep_alive: str = "10m"
     ollama_temperature: float = 0.2
     ollama_num_ctx: int = 8192
+    # OpenAI/Anthropic 클라이언트가 주입받을 수 있는 파라미터 (기본값은 기존 하드코딩 값 유지)
+    openai_temperature: float = 0.2
+    anthropic_max_tokens: int = 4096
+    llm_system_prompt: str = "You are a helpful Discord bot assistant."
 
     @classmethod
     def from_env(cls, *, load_env_file: bool = True) -> "AppSettings":
@@ -83,6 +96,12 @@ class AppSettings:
 
         secret_key = os.getenv("SECRET_KEY", "change-me-in-production").strip()
         if secret_key == "change-me-in-production":
+            # 운영 환경(production)에서는 기본 SECRET_KEY 사용을 금지하고 기동을 거부한다.
+            if _is_production_env():
+                raise RuntimeError(
+                    "운영 환경(production)에서는 기본 SECRET_KEY('change-me-in-production')를 "
+                    "사용할 수 없습니다. .env 파일에 SECRET_KEY를 안전한 임의 값으로 설정해 주세요."
+                )
             _settings_log.warning(
                 "SECRET_KEY is using the default insecure value. "
                 "Set SECRET_KEY in your .env file for production use."
@@ -107,4 +126,10 @@ class AppSettings:
             ollama_keep_alive=os.getenv("OLLAMA_KEEP_ALIVE", "10m").strip() or "10m",
             ollama_temperature=_get_float("OLLAMA_TEMPERATURE", 0.2, minimum=0.0, maximum=2.0),
             ollama_num_ctx=_get_int("OLLAMA_NUM_CTX", 8192, minimum=256),
+            openai_temperature=_get_float("OPENAI_TEMPERATURE", 0.2, minimum=0.0, maximum=2.0),
+            anthropic_max_tokens=_get_int("ANTHROPIC_MAX_TOKENS", 4096, minimum=1),
+            llm_system_prompt=(
+                os.getenv("LLM_SYSTEM_PROMPT", "").strip()
+                or "You are a helpful Discord bot assistant."
+            ),
         )

@@ -146,17 +146,39 @@ Configure the active provider and model for each server using the `/settings` co
 
 ## Commands
 
+> This table is kept in sync with every slash command actually registered in `src/discord_assistant/bot.py`.
+
+### General commands
+
 | Command | Description |
 |---------|-------------|
-| `/summarize [limit]` | Summarizes the most recent messages in the channel. Extracts key topics, decisions, and action items. `limit` defaults to the server setting (50). |
+| `/summarize [limit] [since]` | Summarizes the most recent messages in the channel. Extracts key topics, decisions, and action items. `limit` defaults to the server setting (50); `since` is a time filter (e.g. `1h`, `30m`, `2d`). |
 | `/ask question [limit]` | Answers a question using recent channel messages as context. Stays grounded in what was actually discussed. |
-| `/chat message` | Free-form conversation with the AI — no channel context. Great for general questions and tasks. |
+| `/chat message [public]` | Free-form conversation with the AI — no channel context. Set `public:true` to post the reply publicly. |
 | `/translate text [target_language]` | Translates text to the specified language. Defaults to `ko` (Korean). |
+| `/search query [limit]` | Searches channel messages by keyword and summarizes the matches. Default search range is 200 messages. |
+| `/remind minutes` | Sends your last `/summarize` result via DM after N minutes (1–60). |
+| `/pin-summary [limit]` | Runs a summary and pins the result in the channel. Requires Manage Messages permission. |
+| `/summarize-channels` | Select multiple channels and produce a combined summary. (Server only) |
+| `/export [limit]` | Exports channel messages as a Markdown file and sends it via DM. |
+| `/stats` | Shows server bot-usage statistics. (Server only) |
 | `/help` | Shows all commands and usage examples as an ephemeral message. |
 | `/settings` | Opens the interactive settings panel. Requires administrator permissions. |
-| `/config model <model>` | Sets the default Ollama model for the server. Requires Manage Server or Administrator permission. |
+
+### `/config` subcommands (admin only)
+
+Changing server settings requires Manage Server / Administrator permission, or a role designated via `/config admin_role`.
+
+| Command | Description |
+|---------|-------------|
+| `/config model <model>` | Sets the default model for the server. Examples: `llama3.1:8b`, `qwen2.5:7b`, `gemma2:9b`. |
 | `/config summary_limit <limit>` | Sets the default number of messages to summarize (1–200). |
-| `/config language <language>` | Sets the default response language. Examples: `ko`, `en`, `ja`. |
+| `/config language <language>` | Sets the default response language. Examples: `ko`, `en`, `ja`, `auto`. |
+| `/config admin_role <role>` | Designates a role that may change bot settings. |
+| `/config persona [description]` | Sets the `/chat` persona. Leave empty to reset. |
+| `/config auto_summary <interval>` | Sets the auto-summary interval in minutes (min 5). `0` disables it. |
+| `/config custom_prompt <prompt_type> <text>` | Sets a custom `summarize`/`ask` prompt. Empty `text` resets it. |
+| `/config allowed_role [role]` | Restricts command usage to a role. Leave empty to remove the restriction. |
 
 ### Command Examples
 

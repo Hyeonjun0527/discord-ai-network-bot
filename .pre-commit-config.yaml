@@ -1,0 +1,31 @@
+# pre-commit 훅 설정 (#67)
+# 설치:  pip install pre-commit && pre-commit install
+# 전체 실행:  pre-commit run --all-files
+#
+# ruff 린트/포맷과 mypy 타입 검사를 커밋 전에 자동 수행한다.
+# 기본적으로 스테이징된(변경된) 파일에만 적용된다.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.15
+    hooks:
+      # 린트 (자동 수정)
+      - id: ruff-check
+        args: [--fix]
+      # 포맷
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        files: ^src/
+        additional_dependencies: []
+        args: [--ignore-missing-imports]

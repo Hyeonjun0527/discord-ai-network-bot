@@ -11,4 +11,6 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python -m ruff check src/
       - run: python -m mypy src/
-      - run: python -m pytest tests/ -v --cov=discord_assistant --cov-report=term-missing
+      # 커버리지 게이트(#66): 현재 실측(~37%)보다 보수적인 하한선으로 회귀를 막는다.
+      # 임계는 pyproject [tool.coverage.report] 와 일치(35%). 보강되면 함께 올린다.
+      - run: python -m pytest tests/ -v --cov=discord_assistant --cov-report=term-missing --cov-fail-under=35

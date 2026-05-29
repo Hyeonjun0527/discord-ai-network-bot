@@ -169,6 +169,11 @@ class ConfigStore:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
+        # 'database is locked' 방어: 잠긴 DB를 만나면 즉시 실패하지 않고 최대
+        # 5초까지 재시도한다. WAL 모드에서 synchronous=NORMAL 은 내구성을 크게
+        # 해치지 않으면서 쓰기 부하를 줄여 잠금 경합을 완화한다 (#25).
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
     # ------------------------------------------------------------------
@@ -457,6 +462,64 @@ class ConfigStore:
                 ),
             )
             conn.commit()
+
+    # ------------------------------------------------------------------
+    # Retention / maintenance (#27, #33)
+    # ------------------------------------------------------------------
+
+    async def purge_old(self, *, usage_days: int, chat_days: int) -> dict[str, int]:
+        """created_at 기준으로 오래된 usage_log/chat_history 행을 삭제한다.
+
+        ``usage_days``/``chat_days`` 일보다 오래된 행을 각각 삭제하고 삭제된
+        건수를 ``{"usage_log": N, "chat_history": M}`` 형태로 반환한다.
+        0 이하의 일수는 해당 테이블 정리를 건너뛴다(보존 비활성화).
+
+        백그라운드 태스크 등록은 호출 측(bot.py) 책임이며, 여기서는 메서드만
+        제공한다 (#27).
+        """
+        if usage_days < 0 or chat_days < 0:
+            raise ValueError("retention days must be >= 0")
+        return await asyncio.to_thread(self._purge_old_sync, usage_days, chat_days)
+
+    def _purge_old_sync(self, usage_days: int, chat_days: int) -> dict[str, int]:
+        deleted = {"usage_log": 0, "chat_history": 0}
+        with self._connect() as conn:
+            # SQLite 의 datetime() 으로 컷오프 시각을 계산하면 ISO8601 문자열
+            # 비교만으로 N일 경과 행을 안전하게 골라낼 수 있다.
+            if usage_days > 0:
+                cur = conn.execute(
+                    "DELETE FROM usage_log "
+                    "WHERE created_at < datetime('now', ?)",
+                    (f"-{usage_days} days",),
+                )
+                deleted["usage_log"] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            if chat_days > 0:
+                cur = conn.execute(
+                    "DELETE FROM chat_history "
+                    "WHERE created_at < datetime('now', ?)",
+                    (f"-{chat_days} days",),
+                )
+                deleted["chat_history"] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            conn.commit()
+        return deleted
+
+    async def vacuum(self) -> None:
+        """DB 파일 비대화를 막기 위해 WAL 체크포인트(TRUNCATE) 후 VACUUM 한다.
+
+        ``:memory:`` DB 는 파일이 없어 VACUUM/체크포인트 의미가 없으므로 안전하게
+        건너뛴다 (#33).
+        """
+        if self.path == ":memory:":
+            return
+        await asyncio.to_thread(self._vacuum_sync)
+
+    def _vacuum_sync(self) -> None:
+        # WAL 파일을 본 DB 에 합치고(TRUNCATE) 잘라낸 뒤 VACUUM 으로 미사용
+        # 페이지를 회수한다. VACUUM 은 트랜잭션 안에서 실행할 수 없으므로
+        # 별도 커밋 없이 단독 실행한다.
+        with self._connect() as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.execute("VACUUM")
 
     # ------------------------------------------------------------------
     # Phase 3 setters

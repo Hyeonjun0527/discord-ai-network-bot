@@ -21,7 +21,7 @@ from typing import Any
 import aiosqlite
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -100,15 +100,45 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Discord Assistant Dashboard API", lifespan=lifespan)
 
-# CORS — allow the Next.js dev server and any configured production origin
+# CORS — allow the Next.js dev server and any configured production origin.
+# allow_origins 는 CORS_ORIGIN 환경변수 기반 명시 목록으로 유지하고,
+# 메서드/헤더는 와일드카드 대신 실제 사용하는 값으로 좁힌다 (#42).
 _cors_origin = os.getenv("CORS_ORIGIN", "http://localhost:3000")
+# 중복 제거하면서 순서를 보존한 명시적 origin 목록
+_allow_origins = list(dict.fromkeys([_cors_origin, "http://localhost:3000"]))
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[_cors_origin, "http://localhost:3000"],
+    allow_origins=_allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # 이 API 가 실제로 사용하는 메서드만 허용 (preflight 용 OPTIONS 포함)
+    allow_methods=["GET", "PUT", "POST", "DELETE", "OPTIONS"],
+    # 인증 토큰(Authorization)과 JSON 바디(Content-Type) 헤더만 허용
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+# 전 라우트에 레이트 리밋을 일괄 적용하는 미들웨어 (#43).
+# /health 류 메타 엔드포인트는 헬스체크 폭주를 막기 위해 제외한다.
+_RATE_LIMIT_EXEMPT_PATHS = frozenset({"/health"})
+
+
+@app.middleware("http")
+async def _rate_limit_middleware(request: Request, call_next):
+    """모든 요청에 IP 기반 레이트 리밋을 적용한다 (#43).
+
+    개별 라우트에서 수동으로 ``_check_rate_limit`` 을 호출하던 방식을
+    공통 미들웨어로 일괄화한다. preflight(OPTIONS) 및 /health 류는 제외한다.
+    """
+    if request.method != "OPTIONS" and request.url.path not in _RATE_LIMIT_EXEMPT_PATHS:
+        try:
+            _check_rate_limit(request)
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=exc.headers,
+            )
+    return await call_next(request)
+
 
 app.include_router(auth_router)
 
@@ -143,7 +173,7 @@ class GuildConfigUpdate(BaseModel):
 @app.get("/api/guilds/{guild_id}/config", tags=["guilds"])
 async def get_guild_config(guild_id: int, user: CurrentUser, request: Request) -> JSONResponse:
     """Return the stored config for a guild.  The caller must belong to the guild."""
-    _check_rate_limit(request)
+    # 레이트 리밋은 _rate_limit_middleware 가 일괄 적용한다 (#43).
     _assert_guild_access(user, guild_id)
     db = await _get_db()
     try:
@@ -179,18 +209,24 @@ async def update_guild_config(
     request: Request,
 ) -> JSONResponse:
     """Update one or more config fields for a guild."""
-    _check_rate_limit(request)
+    # 레이트 리밋은 _rate_limit_middleware 가 일괄 적용한다 (#43).
     _assert_guild_access(user, guild_id)
 
     db = await _get_db()
     try:
-        # Load current row (or defaults)
+        # 전체 컬럼을 읽어 기존 값을 보존한다 (#30: 스키마 drift 방지).
+        # 봇(storage.ConfigStore._upsert_sync)과 동일하게 모든 컬럼을 upsert 해야
+        # 일부 컬럼만 쓰면서 나머지가 NULL 로 덮이는 drift 를 막을 수 있다.
         async with db.execute(
-            "SELECT model, summary_limit, language, provider FROM guild_config WHERE guild_id = ?",
+            "SELECT model, summary_limit, language, admin_role_id, provider, "
+            "api_key_encrypted, auto_summary_interval, persona, "
+            "custom_summarize_prompt, custom_ask_prompt, allowed_role_id "
+            "FROM guild_config WHERE guild_id = ?",
             (guild_id,),
         ) as cursor:
             row = await cursor.fetchone()
 
+        # 기존 행이 없으면 봇과 동일한 기본값으로 채운다(누락 컬럼은 None 보존).
         current: dict[str, Any] = (
             dict(row)
             if row
@@ -198,11 +234,19 @@ async def update_guild_config(
                 "model": os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
                 "summary_limit": 50,
                 "language": "ko",
+                "admin_role_id": None,
                 "provider": "ollama",
+                "api_key_encrypted": None,
+                "auto_summary_interval": None,
+                "persona": None,
+                "custom_summarize_prompt": None,
+                "custom_ask_prompt": None,
+                "allowed_role_id": None,
             }
         )
 
-        # Apply partial updates
+        # 대시보드가 노출하는 필드만 부분 갱신한다. 나머지 컬럼은 위에서
+        # 읽어온 기존 값을 그대로 보존한다.
         if body.model is not None:
             current["model"] = body.model.strip()
         if body.summary_limit is not None:
@@ -218,21 +262,37 @@ async def update_guild_config(
         await db.execute(
             """
             INSERT INTO guild_config
-                (guild_id, model, summary_limit, language, provider, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (guild_id, model, summary_limit, language, admin_role_id,
+                 provider, api_key_encrypted, auto_summary_interval, persona,
+                 custom_summarize_prompt, custom_ask_prompt, allowed_role_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(guild_id) DO UPDATE SET
-                model          = excluded.model,
-                summary_limit  = excluded.summary_limit,
-                language       = excluded.language,
-                provider       = excluded.provider,
-                updated_at     = excluded.updated_at
+                model                   = excluded.model,
+                summary_limit           = excluded.summary_limit,
+                language                = excluded.language,
+                admin_role_id           = excluded.admin_role_id,
+                provider                = excluded.provider,
+                api_key_encrypted       = excluded.api_key_encrypted,
+                auto_summary_interval   = excluded.auto_summary_interval,
+                persona                 = excluded.persona,
+                custom_summarize_prompt = excluded.custom_summarize_prompt,
+                custom_ask_prompt       = excluded.custom_ask_prompt,
+                allowed_role_id         = excluded.allowed_role_id,
+                updated_at              = excluded.updated_at
             """,
             (
                 guild_id,
                 current["model"],
                 current["summary_limit"],
                 current["language"],
+                current["admin_role_id"],
                 current["provider"],
+                current["api_key_encrypted"],
+                current["auto_summary_interval"],
+                current["persona"],
+                current["custom_summarize_prompt"],
+                current["custom_ask_prompt"],
+                current["allowed_role_id"],
                 now,
             ),
         )
@@ -240,7 +300,17 @@ async def update_guild_config(
     finally:
         await db.close()
 
-    return JSONResponse({"guild_id": guild_id, **current, "updated_at": now})
+    # 응답에는 대시보드가 노출하는 필드만 반환하여 비밀값(api_key 등) 노출을 막는다.
+    return JSONResponse(
+        {
+            "guild_id": guild_id,
+            "model": current["model"],
+            "summary_limit": current["summary_limit"],
+            "language": current["language"],
+            "provider": current["provider"],
+            "updated_at": now,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -249,8 +319,21 @@ async def update_guild_config(
 
 
 @app.get("/api/guilds/{guild_id}/stats", tags=["guilds"])
-async def get_guild_stats(guild_id: int, user: CurrentUser) -> JSONResponse:
-    """Return usage statistics for a guild."""
+async def get_guild_stats(
+    guild_id: int,
+    user: CurrentUser,
+    days: int = Query(
+        30,
+        ge=1,
+        le=365,
+        description="daily 집계 기간(일). 기본 30, 1~365 범위 (#84).",
+    ),
+) -> JSONResponse:
+    """Return usage statistics for a guild.
+
+    ``days`` 쿼리 파라미터로 daily 집계 기간을 조절한다 (#84).
+    기본값 30일이며, 권장 프리셋(7/30/90) 외에도 1~365 범위 내 임의 값을 허용한다.
+    """
     _assert_guild_access(user, guild_id)
 
     db = await _get_db()
@@ -283,17 +366,19 @@ async def get_guild_stats(guild_id: int, user: CurrentUser) -> JSONResponse:
             err_row = await c.fetchone()
         error_count: int = err_row["cnt"] if err_row else 0
 
-        # Daily usage for the last 30 days
+        # 최근 N일 daily 집계 (#84: '-30 days' 하드코딩 제거).
+        # days 는 1~365 범위로 검증된 int 이므로 datetime() modifier 에
+        # 바인드 파라미터로 안전하게 전달한다.
         async with db.execute(
             """
             SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS cnt
             FROM usage_log
             WHERE guild_id = ?
-              AND created_at >= datetime('now', '-30 days')
+              AND created_at >= datetime('now', ?)
             GROUP BY day
             ORDER BY day
             """,
-            (guild_id,),
+            (guild_id, f"-{days} days"),
         ) as c:
             daily_rows = await c.fetchall()
     finally:
@@ -306,6 +391,7 @@ async def get_guild_stats(guild_id: int, user: CurrentUser) -> JSONResponse:
             "by_command": [{"command": r["command"], "count": r["cnt"]} for r in by_command],
             "avg_latency_ms": avg_latency,
             "error_rate": error_rate,
+            "days": days,  # 집계에 사용된 기간(일) (#84)
             "daily": [{"day": r["day"], "count": r["cnt"]} for r in daily_rows],
         }
     )

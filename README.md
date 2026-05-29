@@ -4,12 +4,16 @@
 
 ## 구현 범위
 
-- `/summarize`: 최근 채널 메시지 요약
+- `/summarize`, `/pin-summary`, `/summarize-channels`: 채널 요약 (단일/고정/멀티 채널)
 - `/ask`: 최근 채널 맥락 기반 질의응답
-- `/translate`: 선택 기능으로 짧은 텍스트 번역
-- `/config model`, `/config summary_limit`, `/config language`: 서버별 설정 저장
+- `/chat`: 채널 맥락 없는 자유 대화
+- `/translate`: 짧은 텍스트 번역
+- `/search`: 키워드 검색 + 요약
+- `/export`: 채널 메시지 마크다운 내보내기
+- `/remind`, `/stats`, `/help`: 알림 · 통계 · 도움말
+- `/settings`, `/config ...`: 대화형 패널 및 서버별 설정 저장
+- 멀티 프로바이더 LLM: Ollama(로컬), OpenAI, Anthropic
 - SQLite 저장소: 서버 설정과 명령 사용 로그
-- Ollama HTTP API(`/api/generate`) 연동
 - 멘션 기반 호출: 봇을 멘션하면 요약, 멘션 뒤 질문을 쓰면 Q&A
 
 ## 빠른 시작
@@ -61,17 +65,39 @@ Discord Developer Portal에서 Bot을 만들고 다음 권한/인텐트를 확�
 
 ## 명령어
 
+> 아래 표는 `src/discord_assistant/bot.py`에 실제 등록된 모든 슬래시 명령과 동기화되어 있습니다.
+
+### 일반 명령
+
 | 명령어 | 설명 |
 | --- | --- |
-| `/summarize [limit:선택]` | 최근 메시지를 핵심 주제, 결정사항, 액션 아이템 중심으로 요약합니다. |
+| `/summarize [limit:선택] [since:선택]` | 최근 메시지를 핵심 주제, 결정사항, 액션 아이템 중심으로 요약합니다. `since`는 시간 필터(예: `1h`, `30m`, `2d`). |
 | `/ask question [limit:선택]` | 최근 메시지 안에서 근거를 찾아 답합니다. |
-| `/chat message` | 채널 맥락 없이 AI에게 자유롭게 질문합니다. |
+| `/chat message [public:선택]` | 채널 맥락 없이 AI에게 자유롭게 질문합니다. `public:true`면 공개 메시지로 표시. |
 | `/translate text [target_language:선택]` | 텍스트를 지정 언어로 번역합니다. 기본 `ko`. |
+| `/search query [limit:선택]` | 채널에서 키워드로 메시지를 검색하고 요약합니다. 기본 검색 범위 200개. |
+| `/remind minutes` | 마지막 `/summarize` 결과를 N분(1~60) 후 DM으로 전송합니다. |
+| `/pin-summary [limit:선택]` | 요약을 실행하고 결과를 채널에 고정합니다. 메시지 관리 권한 필요. |
+| `/summarize-channels` | 여러 채널을 선택해 통합 요약합니다. (서버 전용) |
+| `/export [limit:선택]` | 채널 메시지를 마크다운 파일로 내보내 DM으로 전송합니다. |
+| `/stats` | 서버 봇 사용 통계를 표시합니다. (서버 전용) |
 | `/help` | 모든 명령어 사용법을 안내합니다. |
 | `/settings` | 대화형 설정 패널을 엽니다. 관리자 전용. |
-| `/config model model` | 서버 기본 Ollama 모델을 바꿉니다. `Manage Server` 또는 관리자 권한이 필요합니다. |
+
+### `/config` 하위 명령 (관리자 전용)
+
+서버 설정을 변경하려면 `Manage Server` 또는 관리자 권한, 혹은 `/config admin_role`로 지정한 역할이 필요합니다.
+
+| 명령어 | 설명 |
+| --- | --- |
+| `/config model model` | 서버 기본 모델명을 저장합니다. 예: `llama3.1:8b`, `qwen2.5:7b`, `gemma2:9b`. |
 | `/config summary_limit limit` | 기본 요약 범위를 1~200개 사이로 저장합니다. |
-| `/config language language` | 기본 응답 언어를 저장합니다. 예: `ko`, `en`, `ja`. |
+| `/config language language` | 기본 응답 언어를 저장합니다. 예: `ko`, `en`, `ja`, `auto`. |
+| `/config admin_role role` | 봇 설정 권한을 가진 역할을 지정합니다. |
+| `/config persona [description:선택]` | `/chat` 페르소나를 설정합니다. 비워두면 초기화. |
+| `/config auto_summary interval` | 자동 요약 간격(분, 최소 5)을 설정합니다. `0`이면 비활성화. |
+| `/config custom_prompt prompt_type text` | `summarize`/`ask` 커스텀 프롬프트를 설정합니다. `text`가 비면 초기화. |
+| `/config allowed_role [role:선택]` | 명령어를 사용할 수 있는 역할을 제한합니다. 비워두면 제한 해제. |
 
 ### /chat 예시
 

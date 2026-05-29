@@ -113,6 +113,29 @@ gh variable set DEPLOY_TARGETS --repo Hyeonjun0527/discord-assistant --body '[
   판정하며, `up -d --wait` 가 healthy 까지 대기한다. 클라우드 API 배포에서는
   `HEALTHCHECK_REQUIRE_OLLAMA=false`(기본) 라 Ollama 점검을 건너뛴다.
 - GHCR 인증은 워크플로 자동 `GITHUB_TOKEN`(packages: write). 별도 PAT/SSH 불필요.
-- Ollama 백엔드로 바꾸려면: `.env` 에 `OLLAMA_BASE_URL` 지정 + `HEALTHCHECK_REQUIRE_OLLAMA=true`,
-  필요 시 `compose.prod.yml` 에 ollama 서비스 추가.
+### 로컬 Ollama 백엔드 (현재 운영 구성 — 사용자 설정 0, 비용 0)
+봇 호스트(이 Mac)에서 **네이티브 Ollama**(Metal GPU 가속)를 돌리고, 컨테이너가 그것을
+바라본다. 디스코드 사용자는 아무 설치도 필요 없이 호스트의 로컬 모델을 공유한다.
+원격 사용자 PC 에는 아무것도 설치할 수 없다(봇은 사용자 머신에 접근 불가) — 모델 설치
+버튼은 *봇 호스트의* Ollama 에 모델을 받는다.
+
+1. **네이티브 Ollama 설치/구동**: `brew install ollama` → `brew services start ollama`
+   (launchd 로 부팅 시 자동 구동).
+2. **컨테이너에서 닿도록 0.0.0.0 바인딩** — Ollama 는 기본 `127.0.0.1` 이라 컨테이너에서
+   안 보인다. launchd plist(`~/Library/LaunchAgents/homebrew.mxcl.ollama.plist`)의
+   `EnvironmentVariables` 에 `OLLAMA_HOST=0.0.0.0:11434` 추가 후
+   `launchctl unload/load` 로 재적용한다. (PlistBuddy 권장. `brew services restart`
+   는 plist 를 재생성하므로 이후 재적용 필요할 수 있음.)
+   ⚠️ 0.0.0.0 은 LAN 노출 — 신뢰 못할 네트워크면 방화벽으로 11434 를 제한할 것.
+3. **compose 연결**: `compose.prod.yml` 의 bot `environment` 에
+   `OLLAMA_BASE_URL: "http://host.docker.internal:11434"` 를 **리터럴**로 둔다.
+   (`${..}` 보간은 프로젝트 `.env` 의 `localhost` 에 덮이므로 금지. `environment` 는
+   `env_file` 보다 우선이라 리터럴이 확실히 적용된다.) `extra_hosts: host-gateway` 도 둔다.
+4. **기본 모델**: `ENV_FILE` 시크릿의 `OLLAMA_MODEL`(예: `llama3.1:8b`). 호스트에 미리
+   `ollama pull <model>` 해두면 첫 호출이 빠르다. 길드별로는 `/settings → 모델 관리`
+   (큐레이션 목록/커스텀/설치 버튼)로 바꿀 수 있다.
+5. `HEALTHCHECK_REQUIRE_OLLAMA` 는 `false` 유지 권장(Ollama 가 잠깐 죽어도 봇 컨테이너가
+   재시작 플랩하지 않도록 — 개별 명령은 친절 안내로 폴백).
+
+(클라우드 API 로 가려면 길드별 `/settings` 에서 제공자/키를 등록하면 그게 우선한다.)
 - runner 중지/제거: `cd "$HOME/actions-runner" && ./svc.sh stop && ./svc.sh uninstall`.

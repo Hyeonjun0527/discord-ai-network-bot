@@ -4,14 +4,14 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 import discord
 from discord import ui
 
-from .crypto import CryptoError, decrypt_api_key, encrypt_api_key
+from .crypto import encrypt_api_key
 from .llm import OllamaError, OllamaManager
 from .models import GuildConfig, LLMProvider, OllamaModel
 from .storage import ConfigStore

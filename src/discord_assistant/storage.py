@@ -2,17 +2,16 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
-import sqlite3
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .llm import OllamaManager
 
 from .models import GuildConfig, LLMProvider, UsageLog
-
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS guild_config (

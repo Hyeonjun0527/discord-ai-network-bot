@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
-import re
 
 from .models import ChatMessage
 

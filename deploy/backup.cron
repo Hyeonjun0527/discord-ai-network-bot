@@ -1,0 +1,4 @@
+# discord-assistant — daily backup cron job
+# Install with: crontab -e  (as the discord-bot user or root)
+# Runs every day at 03:00 local time.
+0 3 * * * cd /opt/discord-assistant && bash scripts/backup.sh >> logs/backup.log 2>&1

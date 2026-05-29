@@ -41,6 +41,7 @@ from discord_assistant.bot import (
     UserFacingError,
     _cancel_background_tasks,
     _decode_remind_payload,
+    _download_image_attachments,
     _encode_remind_payload,
     _filter_choices,
     _has_config_permission,
@@ -57,6 +58,7 @@ from discord_assistant.bot import (
     _send_channel_answer_with_overflow,
     _send_error_embed,
     _since_autocomplete,
+    _sniff_image_mime,
     _split_discord_text,
     _track_task,
     _ui_language,
@@ -629,11 +631,12 @@ class OnMessageMentionTest(_BotCase):
 
     async def test_mention_image_attachment_analysis(self) -> None:
         self.bot.process_commands = AsyncMock()
+        # #31: 실제 PNG 매직넘버를 가진 바이트여야 멀티모달 입력으로 통과한다.
         att = SimpleNamespace(
             content_type="image/png",
             filename="a.png",
             size=100,
-            read=AsyncMock(return_value=b"imgbytes"),
+            read=AsyncMock(return_value=b"\x89PNG\r\n\x1a\n" + b"imgbytes"),
         )
         msg = _make_mention_message(
             424242, content="<@424242>", attachments=[att]
@@ -887,8 +890,9 @@ class ContextMenuTest(_BotCase):
         message = SimpleNamespace(content="   ")
         with self._patch_llm(_FakeLLM()) as get_llm:
             await cb(inter, message)
-        # 빈 메시지 가드 → 안내 후 LLM 미호출.
-        inter.response.send_message.assert_awaited()
+        # #33: ACK 를 먼저 확보(defer)한 뒤 빈 메시지 가드가 followup 으로 안내한다.
+        inter.response.defer.assert_awaited()
+        inter.followup.send.assert_awaited()
         get_llm.assert_not_called()
 
     async def test_ctx_menu_cooldown_guarded(self) -> None:
@@ -901,7 +905,9 @@ class ContextMenuTest(_BotCase):
         with self._patch_llm(_FakeLLM()) as get_llm:
             await cb(inter2, message)  # 즉시 두 번째 → 쿨다운.
         get_llm.assert_not_called()
-        inter2.response.send_message.assert_awaited()
+        # #33: 쿨다운 가드도 defer 후 followup 으로 안내한다.
+        inter2.response.defer.assert_awaited()
+        inter2.followup.send.assert_awaited()
 
 
 class DisconnectEventTest(_BotCase):
@@ -916,6 +922,20 @@ class DisconnectEventTest(_BotCase):
         await self.bot.on_disconnect()
         await self.bot.on_connect()
         await asyncio.sleep(0)
+
+    async def test_shutdown_suppresses_disconnect_alert(self) -> None:
+        # #134: 정상 종료(graceful shutdown) 중 close() 가 내는 on_disconnect 는
+        # 가짜 끊김 알림을 새로 예약하지 않는다.
+        self.bot._shutting_down = True
+        before = {t for t in bot_module._background_tasks if not t.done()}
+        await self.bot.on_disconnect()
+        await asyncio.sleep(0)
+        scheduled = [
+            t
+            for t in bot_module._background_tasks
+            if t not in before and "disconnect-alert" in (t.get_name() or "")
+        ]
+        self.assertEqual(scheduled, [])
 
     async def test_on_error_notifies_developer(self) -> None:
         # on_error 는 notify_developer 를 호출한다(예외 정보 없는 경로).
@@ -1263,6 +1283,43 @@ class MainTest(unittest.TestCase):
         init_sentry.assert_called_once()
         cb.assert_called_once()
         run.assert_called_once()
+
+
+class ImageMagicByteTest(unittest.IsolatedAsyncioTestCase):
+    """#31: 이미지 첨부는 content_type 헤더가 아니라 실제 매직넘버로 검증한다."""
+
+    def test_sniff_known_formats(self) -> None:
+        self.assertEqual(_sniff_image_mime(b"\x89PNG\r\n\x1a\n...."), "image/png")
+        self.assertEqual(_sniff_image_mime(b"\xff\xd8\xff\xe0...."), "image/jpeg")
+        self.assertEqual(_sniff_image_mime(b"GIF89a...."), "image/gif")
+        self.assertEqual(_sniff_image_mime(b"RIFF\x00\x00\x00\x00WEBP"), "image/webp")
+
+    def test_sniff_rejects_non_image(self) -> None:
+        self.assertIsNone(_sniff_image_mime(b"not-an-image"))
+        self.assertIsNone(_sniff_image_mime(b""))
+
+    async def test_download_skips_forged_content_type(self) -> None:
+        # content_type 은 image/png 라 주장하지만 실제 바이트는 이미지가 아니다.
+        forged = SimpleNamespace(
+            content_type="image/png",
+            filename="evil.png",
+            size=20,
+            read=AsyncMock(return_value=b"this is not a png"),
+        )
+        images = await _download_image_attachments([forged])
+        self.assertEqual(images, [])
+
+    async def test_download_corrects_mismatched_image_mime(self) -> None:
+        # content_type 은 image/jpeg 라 주장하지만 실제 바이트는 PNG → MIME 이 보정된다.
+        mislabeled = SimpleNamespace(
+            content_type="image/jpeg",
+            filename="x.jpg",
+            size=20,
+            read=AsyncMock(return_value=b"\x89PNG\r\n\x1a\n payload"),
+        )
+        images = await _download_image_attachments([mislabeled])
+        self.assertEqual(len(images), 1)
+        self.assertEqual(images[0][0], "image/png")
 
 
 if __name__ == "__main__":

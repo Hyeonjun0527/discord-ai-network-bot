@@ -736,3 +736,65 @@ class TestFromEnv:
         os.environ["DEFAULT_SUMMARY_LIMIT"] = "0"  # minimum=1 위반
         with pytest.raises(ValueError, match=">= 1"):
             settings.AppSettings.from_env(load_env_file=False)
+
+    def test_load_dotenv_called_with_override_false(self, clean_env):
+        # #88: .env 가 이미 export 된 os.environ 변수를 덮어쓰지 않도록 override=False 명시.
+        os.environ["DISCORD_BOT_TOKEN"] = "real-token"
+        os.environ["SECRET_KEY"] = "x"
+        with mock.patch.object(settings, "load_dotenv") as load:
+            settings.AppSettings.from_env(load_env_file=True)
+        load.assert_called_once_with(override=False)
+
+
+class TestGetSettingsSingleton:
+    """#88: get_settings() 프로세스 단일 인스턴스 캐시 + reset_settings_cache()."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_cache(self):
+        # 각 테스트 전후로 모듈 캐시를 비워 다른 테스트로 누수되지 않게 한다.
+        settings.reset_settings_cache()
+        yield
+        settings.reset_settings_cache()
+
+    def test_get_settings_returns_same_instance(self, clean_env):
+        os.environ["DISCORD_BOT_TOKEN"] = "real-token"
+        os.environ["SECRET_KEY"] = "a" * 40
+        first = settings.get_settings(load_env_file=False)
+        second = settings.get_settings(load_env_file=False)
+        # 같은 프로세스에서 두 번 호출하면 동일 인스턴스를 공유한다(싱글톤 보장).
+        assert first is second
+
+    def test_get_settings_ignores_env_change_until_reset(self, clean_env):
+        os.environ["DISCORD_BOT_TOKEN"] = "real-token"
+        os.environ["SECRET_KEY"] = "a" * 40
+        os.environ["DEFAULT_LANGUAGE"] = "ko"
+        first = settings.get_settings(load_env_file=False)
+        assert first.default_language == "ko"
+        # 캐시가 살아 있는 동안 환경을 바꿔도 같은(캐시된) 인스턴스가 유지된다.
+        os.environ["DEFAULT_LANGUAGE"] = "en"
+        assert settings.get_settings(load_env_file=False) is first
+        assert settings.get_settings(load_env_file=False).default_language == "ko"
+
+    def test_reset_settings_cache_rebuilds(self, clean_env):
+        os.environ["DISCORD_BOT_TOKEN"] = "real-token"
+        os.environ["SECRET_KEY"] = "a" * 40
+        os.environ["DEFAULT_LANGUAGE"] = "ko"
+        first = settings.get_settings(load_env_file=False)
+        os.environ["DEFAULT_LANGUAGE"] = "en"
+        settings.reset_settings_cache()
+        second = settings.get_settings(load_env_file=False)
+        # 캐시를 비우면 다음 호출이 새 환경을 반영한 새 인스턴스를 만든다.
+        assert second is not first
+        assert second.default_language == "en"
+
+    def test_from_env_still_per_call_snapshot(self, clean_env):
+        # from_env 는 캐시와 무관하게 매 호출 현재 환경을 스냅샷한다(기존 동작 보존).
+        os.environ["DISCORD_BOT_TOKEN"] = "real-token"
+        os.environ["SECRET_KEY"] = "a" * 40
+        os.environ["DEFAULT_LANGUAGE"] = "ko"
+        a = settings.AppSettings.from_env(load_env_file=False)
+        os.environ["DEFAULT_LANGUAGE"] = "en"
+        b = settings.AppSettings.from_env(load_env_file=False)
+        assert a is not b
+        assert a.default_language == "ko"
+        assert b.default_language == "en"

@@ -656,8 +656,15 @@ class OllamaClient(BaseLLMClient):
         Ollama 는 한 줄에 하나씩 JSON 객체(``{"response": "...", "done": false}``)를
         흘려보낸다. 서킷 브레이커/재시도 로직은 비스트리밍 ``generate`` 에 한정하고,
         스트림 경로는 단순 yield 만 한다(부분 출력 후 실패해도 호출부가 폴백 가능).
+
+        #58: 마지막 ``done`` 라인에는 prompt_eval_count/eval_count 가 담긴다.
+        스트림 경로도 ``last_usage`` 를 채워 비용/사용량이 (0,0) 으로 누락되지 않게
+        한다. last_usage 갱신은 워커 스레드 안의 _stream_sync 에서 단순 속성 대입으로
+        이뤄지며, generate 의 시그니처·반환(텍스트 청크)에는 영향이 없다.
         """
         resolved_model = model or self.default_model
+        # #58: 이전 호출의 usage 가 새 스트림에 누출되지 않도록 시작 시 초기화한다.
+        self.last_usage = TokenUsage()
         async for chunk in _iter_in_thread(
             lambda: self._stream_sync(prompt, resolved_model)
         ):
@@ -695,6 +702,9 @@ class OllamaClient(BaseLLMClient):
                     if isinstance(piece, str) and piece:
                         yield piece
                     if obj.get("done"):
+                        # #58: 마지막 done 객체에 토큰 usage 가 담긴다. 파싱해 last_usage
+                        # 에 반영한다(없으면 _parse_ollama_usage 가 (0,0) 으로 둔다).
+                        self.last_usage = _parse_ollama_usage(obj)
                         break
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
@@ -838,8 +848,15 @@ class OpenAIClient(BaseLLMClient):
 
         SSE 는 ``data: {json}`` 줄들의 나열이며 마지막은 ``data: [DONE]`` 이다.
         각 청크의 ``choices[0].delta.content`` 를 누적 없이 그대로 흘려보낸다.
+
+        #58: ``stream_options.include_usage`` 를 켜면 [DONE] 직전에 choices 가 빈
+        usage 전용 청크가 한 번 온다. 이를 파싱해 ``last_usage`` 를 채워 스트림
+        경로에서도 비용/사용량이 (0,0) 으로 누락되지 않게 한다. generate_stream 의
+        시그니처·yield(텍스트 델타)에는 영향이 없다.
         """
         resolved_model = model or self.default_model
+        # #58: 이전 호출의 usage 가 새 스트림에 누출되지 않도록 시작 시 초기화한다.
+        self.last_usage = TokenUsage()
         async for chunk in _iter_in_thread(
             lambda: self._stream_sync(prompt, resolved_model)
         ):
@@ -855,6 +872,10 @@ class OpenAIClient(BaseLLMClient):
                 ],
                 "temperature": self.temperature,
                 "stream": True,
+                # #58: 마지막에 usage 전용 청크를 받기 위한 옵션. 미지원 프록시면
+                # 무시되며(또는 usage 청크 미수신), 그 경우 last_usage 는 (0,0) 으로
+                # 남아 기존 동작과 동일하다(백워드 호환).
+                "stream_options": {"include_usage": True},
             }
         ).encode("utf-8")
         req = request.Request(
@@ -889,6 +910,11 @@ class OpenAIClient(BaseLLMClient):
                         raise OpenAIError(
                             f"OpenAI 스트림 오류: {msg}" if msg else "OpenAI 스트림 오류"
                         )
+                    # #58: include_usage 옵션이 켜지면 마지막에 usage 전용 청크가 온다
+                    # (보통 choices 가 비어 있다). 파싱해 last_usage 에 반영한다. 일반
+                    # 델타 청크에도 usage 가 null 로 올 수 있으므로 dict 일 때만 갱신한다.
+                    if isinstance(obj, dict) and isinstance(obj.get("usage"), dict):
+                        self.last_usage = _parse_openai_usage(obj)
                     try:
                         delta = obj["choices"][0]["delta"].get("content")
                     except (KeyError, IndexError, TypeError):
@@ -1503,6 +1529,35 @@ def _parse_gemini_payload(payload: dict[str, Any]) -> str:
 # 무응답 시 무한 hang/좀비 프로세스를 막기 위한 안전 상한이다.
 _PULL_TIMEOUT_SECONDS = 1800
 
+# #60: ollama pull 의 stderr 에서 오류 메시지용으로 보관할 최대 바이트(마지막 N).
+# communicate() 가 stderr 전체를 무제한 버퍼링하면, 비정상적으로 장황한 출력 시
+# 메모리가 과도하게 소비될 수 있다. stderr 를 직접 읽으며 마지막 N 바이트(꼬리)만
+# 보관해 상한을 둔다(오류 메시지에는 끝부분이 가장 유용하다).
+_PULL_STDERR_TAIL_BYTES = 8192
+
+
+async def _read_stderr_tail(
+    stream: "asyncio.StreamReader | None", limit: int = _PULL_STDERR_TAIL_BYTES
+) -> bytes:
+    """stderr 스트림을 끝까지 읽되 마지막 ``limit`` 바이트만 보관한다 (#60).
+
+    communicate() 가 stderr 전체를 메모리에 무제한 버퍼링하는 것을 피하기 위해,
+    청크 단위로 읽으며 누적 버퍼가 상한을 넘으면 앞부분을 버린다(꼬리 유지).
+    스트림이 None(파이프 미설정)이면 빈 바이트를 돌려준다.
+    """
+    if stream is None:
+        return b""
+    buf = bytearray()
+    while True:
+        chunk = await stream.read(4096)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > limit:
+            # 앞부분을 버려 상한을 유지한다(가장 최근 limit 바이트만 보관).
+            del buf[:-limit]
+    return bytes(buf)
+
 
 class OllamaManager:
     """List and pull local Ollama models."""
@@ -1572,12 +1627,20 @@ class OllamaManager:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
-        # #54: 네트워크 정체/원격 레지스트리 무응답으로 communicate() 가 영원히
-        # 반환되지 않으면 호출 코루틴이 무한 대기하고 서브프로세스도 좀비로 남는다.
-        # 상한을 두고, 초과 시 프로세스를 정리한 뒤 안내 오류로 변환한다.
+        # #54: 네트워크 정체/원격 레지스트리 무응답으로 프로세스가 영원히 끝나지
+        # 않으면 호출 코루틴이 무한 대기하고 서브프로세스도 좀비로 남는다. 상한을
+        # 두고, 초과 시 프로세스를 정리한 뒤 안내 오류로 변환한다.
+        # #60: communicate() 는 stderr 를 무제한 버퍼링한다. 대신 stderr 를 직접 읽되
+        # 마지막 N 바이트(꼬리)만 보관해 메모리 상한을 둔다(오류 메시지용엔 끝부분이
+        # 가장 유용하다). 읽기와 프로세스 종료 대기를 함께 타임아웃으로 감싼다.
+        async def _drain_and_wait() -> bytes:
+            tail = await _read_stderr_tail(proc.stderr)
+            await proc.wait()
+            return tail
+
         try:
-            _, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=_PULL_TIMEOUT_SECONDS
+            stderr = await asyncio.wait_for(
+                _drain_and_wait(), timeout=_PULL_TIMEOUT_SECONDS
             )
         except (TimeoutError, asyncio.TimeoutError) as exc:
             proc.kill()

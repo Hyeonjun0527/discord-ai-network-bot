@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import hashlib
 import io
 import json
 import logging
@@ -1253,6 +1254,26 @@ def _usage_tokens(llm: BaseLLMClient) -> tuple[int, int]:
     return int(prompt), int(completion)
 
 
+def _sniff_image_mime(data: bytes) -> str | None:
+    """다운로드한 바이트의 매직넘버로 실제 이미지 포맷을 판정한다 (#31).
+
+    클라이언트가 지정한 content_type 헤더는 위조 가능하므로, 실제 바이트로
+    포맷을 검증해 비이미지(또는 위장) 파일을 LLM 멀티모달 입력에서 배제한다.
+    인식 가능한 이미지면 정규화된 MIME 문자열을, 아니면 None 을 반환한다.
+    """
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[:2] in (b"BM",):  # BMP
+        return "image/bmp"
+    return None
+
+
 async def _download_image_attachments(
     attachments: list[discord.Attachment],
     *,
@@ -1295,8 +1316,27 @@ async def _download_image_attachments(
                 len(data),
             )
             continue
-        # MIME 을 함께 보관해 제공자별 멀티모달 규격에 정확한 타입을 싣는다.
-        images.append((content_type.split(";", 1)[0].strip(), data))
+        # #31: content_type 헤더는 업로더가 지정하는 메타데이터라 위조 가능하다.
+        # 실제 바이트의 매직넘버로 포맷을 검증해, 위장/비이미지 파일이 LLM 멀티모달
+        # 입력으로 전달되는 것을 막는다. 인식 불가하면 건너뛴다.
+        sniffed = _sniff_image_mime(data)
+        if sniffed is None:
+            logger.info(
+                "이미지 매직넘버 미일치로 건너뜀: %s (content_type=%s)",
+                att.filename,
+                content_type,
+            )
+            continue
+        declared = content_type.split(";", 1)[0].strip().lower()
+        if declared != sniffed:
+            logger.info(
+                "이미지 content_type 과 실제 포맷 불일치: %s (선언=%s 실제=%s) — 실제 포맷 사용",
+                att.filename,
+                declared,
+                sniffed,
+            )
+        # 실제 검증된 MIME 을 보관해 제공자별 멀티모달 규격에 정확한 타입을 싣는다.
+        images.append((sniffed, data))
     return images
 
 
@@ -1399,6 +1439,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         # #25: on_ready 의 길드별 명령 동기화도 재연결마다 반복되면 강한 길드 sync
         # 레이트리밋(일일 한도)을 소진하므로, 최초 1회만 동기화하도록 가드한다.
         _guild_synced: bool = False
+        # #134: graceful shutdown 중인지 표시한다. close() 가 내는 on_disconnect 가
+        # 종료 중에 가짜 '끊김' 알림을 새로 예약/발송하지 못하게 막는 가드.
+        _shutting_down: bool = False
 
         async def setup_hook(self) -> None:
             await store.initialize()
@@ -1416,6 +1459,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             await self.health_server.start()
 
         async def close(self) -> None:
+            # #134: 종료 시작을 표시해, close() 가 트리거하는 on_disconnect 가
+            # 가짜 끊김 알림을 새로 예약하지 못하게 한다(정상 종료 오탐 방지).
+            self._shutting_down = True
             # #48: graceful shutdown 시 헬스 서버를 먼저 정리한다(멱등).
             await self.health_server.stop()
             # #50: 영속 aiosqlite 연결을 닫는다. aiosqlite 의 워커 스레드는 비데몬
@@ -1493,6 +1539,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         """due_at 까지 대기한 뒤 reminder 를 전송한다 (#1).
 
         due_at 은 ISO8601(UTC 권장) 문자열이다. 이미 지났으면 즉시 전송한다.
+        #42: 파싱 불가한 due_at 은 '즉시 전송'으로 폴백하지 않고 발송 완료로 격리한다.
         #12: 자신의 asyncio.Task 를 _reminder_tasks 에 등록해, /reminders cancel 이
         sleep 중인 이 태스크를 취소할 수 있게 한다. 종료 시 항상 등록을 해제한다.
         """
@@ -1503,8 +1550,21 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             try:
                 due = datetime.fromisoformat(reminder.due_at)
             except ValueError:
-                logger.warning("리마인더 due_at 파싱 실패: id=%s %r", reminder.id, reminder.due_at)
-                due = datetime.now(timezone.utc)
+                # #42: due_at 파싱 실패를 '즉시 발송'으로 폴백하면, 손상/타임존 누락된
+                # 미래 리마인더가 의도 시점이 아니라 봇 시작 즉시 사용자에게 나간다.
+                # 즉시 발송 대신 발송 완료로 격리(mark_sent)해, 다음 reschedule 마다
+                # 같은 손상 행으로 무한 재시도되거나 오발송되지 않게 한다.
+                logger.warning(
+                    "리마인더 due_at 파싱 실패 — 발송하지 않고 격리합니다: id=%s %r",
+                    reminder.id,
+                    reminder.due_at,
+                )
+                if reminder.id is not None:
+                    try:
+                        await store.mark_sent(reminder.id)
+                    except Exception as exc:  # pragma: no cover — 격리 실패 방어
+                        logger.warning("손상 리마인더 격리 실패: id=%s %s", reminder.id, exc)
+                return
             if due.tzinfo is None:
                 due = due.replace(tzinfo=timezone.utc)
             delay = (due - datetime.now(timezone.utc)).total_seconds()
@@ -1625,13 +1685,29 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
             # Skip cache when since or limit is explicitly specified
             use_cache = (limit is None and since is None)
-            cache_key = f"{guild_id}:{channel_id}"
+            # #132: 캐시 본문은 언어/모델/커스텀 프롬프트에 따라 달라지므로 키에 변형
+            # 시그니처를 포함한다(언어/모델 변경 후 stale 응답 방지). `guild:channel:`
+            # 접두는 유지해 on_message 무효화(invalidate_prefix)가 모든 변형을 한 번에
+            # 지운다(cache.py 의 세그먼트 경계 매칭과 호환).
+            _cache_variant = hashlib.sha1(
+                f"{config.language}|{config.model}|{config.custom_summarize_prompt or ''}".encode()
+            ).hexdigest()[:12]
+            cache_key = f"{guild_id}:{channel_id}:{_cache_variant}"
             cached = summarize_cache.get(cache_key) if use_cache else None
             if cached is not None:
                 if user_id is not None:
                     _store_last_summary(user_id, cached, guild_id)
+                # #123: 캐시 헤더 언어를 본문(요약) 언어에 맞춘다. 라이브 경로는
+                # effective_language(auto 면 트랜스크립트 감지 결과)로 헤더를 만드는데,
+                # 캐시 경로가 _ui_language(auto→ko)만 쓰면 본문이 ja/zh 인데 헤더만
+                # ko 로 어긋난다. 트랜스크립트가 없는 캐시 히트에선 본문(cached)에서
+                # 직접 언어를 감지해 라이브 경로와 동일한 헤더 언어를 쓴다.
+                if config.language == "auto":
+                    header_language = detect_language_from_transcript(cached)
+                else:
+                    header_language = config.language
                 header = t(
-                    "summary.header.cached", _ui_language(config), count=message_limit
+                    "summary.header.cached", header_language, count=message_limit
                 )
                 # #5: thread=True 면 새 스레드에 게시하고, 권한이 없으면 폴백한다.
                 if thread and await _deliver_summary_to_thread(
@@ -2908,31 +2984,44 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # 그대로 넣어(인젝션 방어 내장) ephemeral 로 응답한다. create_bot 안에서
     # bot.tree.add_command 로 등록한다.
 
+    async def _ctx_menu_reply(interaction: discord.Interaction, text: str) -> None:
+        """컨텍스트 메뉴 가드 안내를 보낸다 (#33).
+
+        이 가드는 이제 핸들러가 defer() 로 ACK 를 먼저 확보한 뒤 호출되므로,
+        응답이 끝났으면 followup, 아니면 첫 응답으로 보낸다(양쪽 안전).
+        """
+        if interaction.response.is_done():
+            await interaction.followup.send(text, ephemeral=True)
+        else:
+            await interaction.response.send_message(text, ephemeral=True)
+
     async def _ctx_menu_guard(
         interaction: discord.Interaction, content: str
     ) -> tuple[GuildConfig, BaseLLMClient] | None:
         """컨텍스트 메뉴 공통 가드: 쿨다운·빈 메시지 확인 후 (config, llm) 반환.
 
         가드에 걸리면 사용자에게 ephemeral 안내를 보내고 None 을 반환한다.
+
+        #33: 이 가드는 get_guild_config + _enforce_token_budget 로 DB 왕복을 하므로,
+        ACK 시한(3초) 안전을 위해 호출부가 먼저 defer() 로 ACK 를 확보한 뒤 호출한다.
+        가드 실패 안내는 _ctx_menu_reply 로 defer 여부에 맞춰 보낸다.
         """
         guild_id, _channel_id, user_id = _ids_from_interaction(interaction)
         remaining = _check_cooldown(guild_id, user_id)
         if remaining is not None:
-            await interaction.response.send_message(
-                f"⏳ {remaining:.0f}초 후에 다시 시도해주세요.", ephemeral=True
+            await _ctx_menu_reply(
+                interaction, f"⏳ {remaining:.0f}초 후에 다시 시도해주세요."
             )
             return None
         if not content.strip():
-            await interaction.response.send_message(
-                "⚠️ 대상 메시지에 처리할 텍스트가 없어요.", ephemeral=True
-            )
+            await _ctx_menu_reply(interaction, "⚠️ 대상 메시지에 처리할 텍스트가 없어요.")
             return None
         config = await store.get_guild_config(guild_id or 0)
         # #90: 컨텍스트 메뉴 3종도 LLM 을 호출하므로 다른 진입점과 동일하게 역할
         # 제한을 적용한다. 권한이 없으면 ephemeral 안내 후 None 을 반환한다.
         if not _has_allowed_role(interaction, config.allowed_role_id):
-            await interaction.response.send_message(
-                "이 기능을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.", ephemeral=True
+            await _ctx_menu_reply(
+                interaction, "이 기능을 사용할 권한이 없어요. 서버 관리자에게 문의하세요."
             )
             return None
         # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
@@ -2946,11 +3035,13 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         started = perf_counter()
         guild_id, channel_id, user_id = _ids_from_interaction(interaction)
         try:
+            # #33: 가드의 DB 왕복(2회)이 ACK 시한을 밀지 않도록, 가장 먼저 defer 로
+            # ACK 를 확보한 뒤 쿨다운/빈 메시지/역할/토큰 상한 검사를 수행한다.
+            await interaction.response.defer(thinking=True, ephemeral=True)
             guard = await _ctx_menu_guard(interaction, message.content)
             if guard is None:
                 return
             config, llm = guard
-            await interaction.response.defer(thinking=True, ephemeral=True)
             # 컨텍스트 메뉴 번역은 서버 언어 설정으로 번역한다(auto 면 한국어로 폴백).
             target = config.language if config.language != "auto" else "ko"
             prompt = build_translate_prompt(message.content, target_language=target)
@@ -2975,11 +3066,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         started = perf_counter()
         guild_id, channel_id, user_id = _ids_from_interaction(interaction)
         try:
+            # #33: ACK 시한 안전을 위해 가드의 DB 왕복 전에 먼저 defer 한다.
+            await interaction.response.defer(thinking=True, ephemeral=True)
             guard = await _ctx_menu_guard(interaction, message.content)
             if guard is None:
                 return
             config, llm = guard
-            await interaction.response.defer(thinking=True, ephemeral=True)
             language = config.language
             if language == "auto":
                 language = detect_language_from_transcript(message.content)
@@ -3005,11 +3097,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         started = perf_counter()
         guild_id, channel_id, user_id = _ids_from_interaction(interaction)
         try:
+            # #33: ACK 시한 안전을 위해 가드의 DB 왕복 전에 먼저 defer 한다.
+            await interaction.response.defer(thinking=True, ephemeral=True)
             guard = await _ctx_menu_guard(interaction, message.content)
             if guard is None:
                 return
             config, llm = guard
-            await interaction.response.defer(thinking=True, ephemeral=True)
             language = config.language
             if language == "auto":
                 language = detect_language_from_transcript(message.content)
@@ -3569,6 +3662,13 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except asyncio.CancelledError:
             # 유예 시간 내 재연결 → 알림 취소(정상 동작).
             return
+        # #134: 정상 종료(graceful shutdown) 중이면 알리지 않는다. 종료 시 bot.close()
+        # 가 내는 끊김은 오탐이므로, is_closed()/is_ready() 가 종료 중에도 끊김으로
+        # 보이는 점을 shutting_down 플래그로 보정한다.
+        if getattr(bot, "_shutting_down", False):
+            if _disconnect_state.get("pending") is me:
+                _disconnect_state["pending"] = None
+            return
         # 여전히 연결되지 않은 경우에만 알린다.
         if bot.is_closed() or not bot.is_ready():
             logger.warning(
@@ -3589,6 +3689,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
     @bot.event
     async def on_disconnect() -> None:
+        # #134: graceful shutdown 중이면 close() 가 내는 끊김이므로 알림을 예약하지
+        # 않는다(정상 종료를 가짜 '끊김' DM 으로 알리는 오탐 방지).
+        if getattr(bot, "_shutting_down", False):
+            return
         logger.warning("Bot disconnected from Discord (grace period before alert).")
         # 이미 대기 중인 알림이 있으면 중복 예약하지 않는다.
         pending = _disconnect_state.get("pending")

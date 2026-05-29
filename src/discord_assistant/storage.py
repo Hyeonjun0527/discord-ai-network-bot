@@ -246,8 +246,22 @@ _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\bsk-ant-[A-Za-z0-9._\-]{8,}"),
     # Google API 키: AIza...
     re.compile(r"\bAIza[A-Za-z0-9._\-]{10,}"),
-    # Discord 봇 토큰: <base64 id>.<base64>.<base64> (마침표 2개로 구분)
-    re.compile(r"\b[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{5,}\.[A-Za-z0-9_\-]{20,}\b"),
+    # Discord 봇 토큰: <base64url id>.<base64url ts>.<base64url hmac> (마침표 2개).
+    # #79: 과거 패턴 ``{20,}\.{5,}\.{20,}`` 은 '점 두 개로 구분된 길이 조건 충족
+    # 식별자'를 모두 매칭해, 실제 토큰이 아닌 JWT(eyJ...)·긴 점-구분 모듈 경로
+    # 식별자까지 통째로 *** 로 치환했다(과잉 마스킹 = 디버그 컨텍스트 손실).
+    # 실제 Discord 토큰 구조에 맞춰 좁힌다:
+    #   * 두 번째(타임스탬프) 세그먼트는 5~7자 base64url(JWT payload 처럼 긴
+    #     세그먼트를 배제) — 이 길이 제한이 JWT 와 토큰을 가르는 핵심이다.
+    #   * 토큰 전체가 base64(이진 인코딩)라 대문자와 숫자를 동시에 포함한다.
+    #     소문자+밑줄로만 이뤄진 snake_case 모듈 경로(대문자·숫자 부재)는 제외.
+    #   * ``eyJ`` (JWT 헤더 base64) 로 시작하는 문자열은 명시적으로 제외.
+    re.compile(
+        r"\b(?!eyJ)"
+        r"(?=[A-Za-z0-9_\-.]*[A-Z])"
+        r"(?=[A-Za-z0-9_\-.]*[0-9])"
+        r"[A-Za-z0-9_\-]{24,}\.[A-Za-z0-9_\-]{5,7}\.[A-Za-z0-9_\-]{25,}\b"
+    ),
     # "api_key=...", "token: ...", "secret = ..." 등 key=value 형태의 자격증명.
     re.compile(
         r"(?i)\b(?:api[_-]?key|token|secret|password|passwd|pwd|access[_-]?token)\b"
@@ -435,10 +449,15 @@ LATEST_SCHEMA_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0
 
 
 def _get_schema_version(conn: sqlite3.Connection) -> int:
-    """현재 적용된 schema_version 을 반환한다. 테이블이 없으면 0 (#26)."""
+    """현재 적용된 schema_version 을 반환한다. 테이블이 없으면 0 (#26).
+
+    #75 방어: 단일 행 불변식이 어떤 경로로든 깨져 여러 행이 존재하더라도
+    ``MAX(version)`` 으로 가장 진전된 버전을 읽어 마이그레이션이 이미 적용된
+    변경을 되돌리지 않도록 한다(LIMIT 1 은 임의 한 행을 읽어 모호했다).
+    """
     conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
-    row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
-    if row is None:
+    row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
+    if row is None or row[0] is None:
         # 단일 행 규약: 최초 진입 시 0 으로 시드한다.
         conn.execute("INSERT INTO schema_version (version) VALUES (0)")
         return 0
@@ -446,8 +465,26 @@ def _get_schema_version(conn: sqlite3.Connection) -> int:
 
 
 def _set_schema_version(conn: sqlite3.Connection, version: int) -> None:
-    """schema_version 단일 행을 주어진 버전으로 갱신한다 (#26)."""
-    conn.execute("UPDATE schema_version SET version = ?", (version,))
+    """schema_version 을 주어진 버전으로 갱신하고 단일 행 불변식을 강제한다 (#26).
+
+    #75 방어: schema_version 테이블에는 PK/UNIQUE 가 없어(기존 배포 DB 호환을 위해
+    스키마 재정의를 피한다) 다중 행이 생기면 ``WHERE`` 없는 UPDATE 가 모든 행을
+    같은 값으로 만들 뿐 단일 행을 보장하지 못한다. 여기서 잉여 행을 코드 레벨에서
+    정리해 정확히 한 행만 남도록 보장한다: 모든 행을 ``version`` 으로 맞춘 뒤 최소
+    한 행을 남기고 나머지(rowid 가 더 큰 중복)를 삭제한다. 행이 하나도 없으면
+    한 행을 삽입한다(빈 테이블 방어). 정상 경로(단일 행)에서는 UPDATE 1건과
+    동일한 결과라 동작/성능 회귀가 없다.
+    """
+    cur = conn.execute("UPDATE schema_version SET version = ?", (version,))
+    if cur.rowcount == 0:
+        # 빈 테이블: 한 행을 시드한다(단일 행 규약).
+        conn.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
+        return
+    # 잉여 행 정리: rowid 가 최소인 한 행만 남기고 나머지를 제거한다.
+    conn.execute(
+        "DELETE FROM schema_version "
+        "WHERE rowid <> (SELECT MIN(rowid) FROM schema_version)"
+    )
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -619,9 +656,23 @@ class ConfigStore:
         aiosqlite 는 모든 연산을 전용 스레드에서 직렬 실행하므로, 동기
         마이그레이션·PRAGMA 헬퍼를 그 스레드에서 안전하게 재사용할 수 있다.
         스키마/마이그레이션의 단일 출처(동기 sqlite3 헬퍼)를 유지하는 핵심 경로다.
+
+        #77: aiosqlite 공개 API 에는 임의 동기 콜러블을 전용 스레드에서 실행하는
+        수단이 없어, 비공개 ``_execute``/``_conn`` 에 의존한다(pyproject 가
+        aiosqlite<1.0 으로 상한을 둬 메이저 파손은 막는다). 0.x 마이너에서 이
+        내부가 사라지면 ``getattr`` 가드가 불투명한 AttributeError 대신 원인과
+        조치를 담은 명확한 RuntimeError 를 던져 진단·핀 조정을 쉽게 한다.
         """
         conn = self._require_conn()  # _run_sync 는 initialize() 직후에만 호출됨
-        return await conn._execute(fn, conn._conn)
+        execute = getattr(conn, "_execute", None)
+        raw_conn = getattr(conn, "_conn", None)
+        if execute is None or raw_conn is None:
+            raise RuntimeError(
+                "설치된 aiosqlite 버전이 스키마 초기화에 필요한 내부 API"
+                "(_execute/_conn)를 제공하지 않습니다. aiosqlite 를 호환 버전"
+                "(>=0.20,<1.0)으로 고정해 주세요."
+            )
+        return await execute(fn, raw_conn)
 
     def _connect(self) -> sqlite3.Connection:
         """원시(raw) 동기 sqlite3 연결을 새로 연다.
@@ -950,20 +1001,36 @@ class ConfigStore:
     # Retention / maintenance (#27, #33)
     # ------------------------------------------------------------------
 
-    async def purge_old(self, *, usage_days: int, chat_days: int) -> dict[str, int]:
+    async def purge_old(
+        self,
+        *,
+        usage_days: int,
+        chat_days: int,
+        reminder_days: int | None = None,
+    ) -> dict[str, int]:
         """created_at 기준으로 오래된 usage_log/chat_history 행을 삭제한다.
 
         ``usage_days``/``chat_days`` 일보다 오래된 행을 각각 삭제하고 삭제된
         건수를 ``{"usage_log": N, "chat_history": M}`` 형태로 반환한다.
         0 이하의 일수는 해당 테이블 정리를 건너뛴다(보존 비활성화).
 
+        #18: ``reminder_days`` 가 주어지면(0 초과) ``created_at`` 기준 그만큼
+        오래된 **발송 완료(sent=1)** 리마인더도 정리해 sent 행이 무한 누적되는
+        것을 막는다. 미발송(sent=0) 리마인더는 미래 발송 대상이므로 절대 삭제하지
+        않는다. 백워드 호환: 기본값(None)이면 reminders 는 건드리지 않고 반환
+        dict 에 ``reminders`` 키도 추가하지 않는다(기존 호출부/단언 보존).
+
         백그라운드 태스크 등록은 호출 측(bot.py) 책임이며, 여기서는 메서드만
         제공한다 (#27).
         """
         if usage_days < 0 or chat_days < 0:
             raise ValueError("retention days must be >= 0")
+        if reminder_days is not None and reminder_days < 0:
+            raise ValueError("retention days must be >= 0")
         conn = await self._ensure_conn()
         deleted = {"usage_log": 0, "chat_history": 0}
+        if reminder_days is not None:
+            deleted["reminders"] = 0
         async with self._lock:
             # 컷오프 비교는 양변을 SQLite ``datetime()`` 으로 정규화한다 (#72).
             # created_at 은 ISO('T' 구분자 + '+00:00' 오프셋)이고
@@ -986,6 +1053,17 @@ class ConfigStore:
                     (f"-{chat_days} days",),
                 )
                 deleted["chat_history"] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            # #18: 발송 완료(sent=1) 리마인더만, created_at 기준으로 정리한다.
+            # 미발송(sent=0)은 미래 발송 대상이라 절대 삭제하지 않는다. 컷오프
+            # 비교는 usage_log/chat_history 와 동일하게 양변을 datetime() 으로
+            # 정규화한다(#72 와 동일한 안전성).
+            if reminder_days is not None and reminder_days > 0:
+                cur = await conn.execute(
+                    "DELETE FROM reminders "
+                    "WHERE sent = 1 AND datetime(created_at) < datetime('now', ?)",
+                    (f"-{reminder_days} days",),
+                )
+                deleted["reminders"] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
             await conn.commit()
         return deleted
 

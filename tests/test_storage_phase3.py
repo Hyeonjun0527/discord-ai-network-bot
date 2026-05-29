@@ -22,6 +22,7 @@ from discord_assistant.storage import (
     _mask_secrets,
     _migrate,
     _sanitize_error,
+    _set_schema_version,
     backend_from_database_url,
     sqlite_path_from_database_url,
 )
@@ -396,6 +397,60 @@ class PurgeRetentionTest(_FileStoreCase):
             await self.store.purge_old(usage_days=-1, chat_days=7)
         with self.assertRaises(ValueError):
             await self.store.purge_old(usage_days=7, chat_days=-1)
+        # #18: 리마인더 보존일도 음수면 거부한다.
+        with self.assertRaises(ValueError):
+            await self.store.purge_old(usage_days=7, chat_days=7, reminder_days=-1)
+
+    async def _backdate_reminder(self, days_ago: int, *, sent: bool) -> int:
+        """리마인더를 추가하고 created_at 을 days_ago 일 전으로 조정한다 (#18)."""
+        rid = await self.store.add_reminder(7, 1, 2, _FUTURE, "ping")
+        if sent:
+            await self.store.mark_sent(rid)
+        conn = self.store._connect()
+        try:
+            conn.execute(
+                "UPDATE reminders SET created_at = datetime('now', ?) WHERE id = ?",
+                (f"-{days_ago} days", rid),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        return rid
+
+    async def test_purge_omits_reminders_key_by_default(self) -> None:
+        # #18 백워드 호환: reminder_days 미지정 시 reminders 키도, 정리도 없다.
+        await self._backdate_reminder(40, sent=True)
+        result = await self.store.purge_old(usage_days=30, chat_days=30)
+        self.assertNotIn("reminders", result)
+        self.assertEqual(self._count("reminders"), 1)
+
+    async def test_purge_deletes_old_sent_reminders(self) -> None:
+        # #18: 오래된 sent=1 리마인더는 정리된다.
+        await self._backdate_reminder(40, sent=True)
+        result = await self.store.purge_old(usage_days=30, chat_days=30, reminder_days=30)
+        self.assertEqual(result["reminders"], 1)
+        self.assertEqual(self._count("reminders"), 0)
+
+    async def test_purge_keeps_unsent_reminders_even_if_old(self) -> None:
+        # #18: 미발송(sent=0) 리마인더는 미래 발송 대상이라 오래돼도 보존한다.
+        await self._backdate_reminder(40, sent=False)
+        result = await self.store.purge_old(usage_days=30, chat_days=30, reminder_days=30)
+        self.assertEqual(result["reminders"], 0)
+        self.assertEqual(self._count("reminders"), 1)
+
+    async def test_purge_keeps_recent_sent_reminders(self) -> None:
+        # #18: 보존 기간 안의 sent 리마인더는 남는다.
+        await self._backdate_reminder(5, sent=True)
+        result = await self.store.purge_old(usage_days=30, chat_days=30, reminder_days=30)
+        self.assertEqual(result["reminders"], 0)
+        self.assertEqual(self._count("reminders"), 1)
+
+    async def test_purge_reminder_zero_days_skips(self) -> None:
+        # #18: reminder_days=0 은 정리 비활성화(키는 존재, 삭제는 없음).
+        await self._backdate_reminder(100, sent=True)
+        result = await self.store.purge_old(usage_days=0, chat_days=0, reminder_days=0)
+        self.assertEqual(result["reminders"], 0)
+        self.assertEqual(self._count("reminders"), 1)
 
     async def _backdate_usage_iso_at_cutoff(self, retention_days: int) -> None:
         """usage_log 한 행의 created_at 을 _utc_now() 와 동일한 ISO 포맷
@@ -947,6 +1002,44 @@ class SchemaVersionHelperTest(unittest.IsolatedAsyncioTestCase):
         finally:
             conn.close()
 
+    async def test_get_schema_version_reads_max_when_multiple_rows(self) -> None:
+        # #75: 어떤 경로로든 다중 행이 생기면 MAX 로 가장 진전된 버전을 읽어
+        # 이미 적용된 마이그레이션을 되돌리지 않는다(과거 LIMIT 1 은 모호했다).
+        conn = sqlite3.connect(":memory:")
+        try:
+            conn.execute("CREATE TABLE schema_version (version INTEGER NOT NULL)")
+            conn.execute("INSERT INTO schema_version (version) VALUES (3)")
+            conn.execute("INSERT INTO schema_version (version) VALUES (7)")
+            self.assertEqual(_get_schema_version(conn), 7)
+        finally:
+            conn.close()
+
+    async def test_set_schema_version_collapses_multiple_rows_to_one(self) -> None:
+        # #75: _set_schema_version 는 잉여 행을 정리해 단일 행 불변식을 강제한다.
+        conn = sqlite3.connect(":memory:")
+        try:
+            conn.execute("CREATE TABLE schema_version (version INTEGER NOT NULL)")
+            conn.execute("INSERT INTO schema_version (version) VALUES (2)")
+            conn.execute("INSERT INTO schema_version (version) VALUES (2)")
+            _set_schema_version(conn, 7)
+            count = conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0]
+            self.assertEqual(int(count), 1)
+            self.assertEqual(_get_schema_version(conn), 7)
+        finally:
+            conn.close()
+
+    async def test_set_schema_version_seeds_empty_table(self) -> None:
+        # #75: 빈 테이블에 set 하면 한 행이 시드된다(WHERE 없는 UPDATE 0건 방어).
+        conn = sqlite3.connect(":memory:")
+        try:
+            conn.execute("CREATE TABLE schema_version (version INTEGER NOT NULL)")
+            _set_schema_version(conn, 4)
+            count = conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0]
+            self.assertEqual(int(count), 1)
+            self.assertEqual(_get_schema_version(conn), 4)
+        finally:
+            conn.close()
+
 
 class UsageLogTokenColumnsTest(_FileStoreCase):
     """#17: usage_log 토큰 컬럼 저장·기본값."""
@@ -1109,6 +1202,33 @@ class SecretMaskingTest(unittest.TestCase):
         masked = _mask_secrets(f"login failed token={token}")
         self.assertNotIn(token, masked)
         self.assertIn("***", masked)
+
+    def test_bare_discord_bot_token_masked(self) -> None:
+        # #79: 키 접두사 없이 단독으로 나타난 실제 Discord 토큰도 가려진다.
+        token = "MTk4NjIyNDgzNDcxOTI1MjQ4.Cl2FMQ.ABCdefGHIjklMNOpqrSTUvwxyz12"
+        masked = _mask_secrets(f"gateway rejected {token} during handshake")
+        self.assertNotIn(token, masked)
+        self.assertIn("***", masked)
+
+    def test_jwt_not_over_masked(self) -> None:
+        # #79: 정상 JWT(eyJ...)는 비밀이 아닌 디버그 컨텍스트이므로 통째로 가리지
+        # 않는다(과거 패턴은 JWT 를 *** 로 삼켜 원인 분석을 어렵게 했다).
+        jwt = (
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+            "eyJzdWIiOiIxMjM0NTY3ODkwIn0."
+            "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
+        masked = _mask_secrets(f"verify failed for {jwt}")
+        self.assertIn(jwt, masked)
+
+    def test_dotted_module_identifier_not_over_masked(self) -> None:
+        # #79: 긴 점-구분 식별자(모듈 경로 등)는 토큰이 아니므로 보존된다.
+        ident = (
+            "a_very_long_module_path_identifier_xxxx."
+            "subsegment.another_long_identifier_yyyyyyyy"
+        )
+        masked = _mask_secrets(f"AttributeError in {ident} at runtime")
+        self.assertIn(ident, masked)
 
     def test_benign_message_unchanged(self) -> None:
         msg = "timeout after 30 seconds while contacting upstream"

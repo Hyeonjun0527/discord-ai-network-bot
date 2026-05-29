@@ -29,6 +29,7 @@ from discord_assistant.ui import (
     LongResponseView,
     ModelInstallView,
     OllamaModelView,
+    ProviderView,
     RetryView,
     SettingsView,
     SummarizeResultView,
@@ -1085,6 +1086,90 @@ class TestRetryViewTimeout(unittest.TestCase):
             child.disabled = False  # type: ignore[attr-defined]
         asyncio.run(view.on_timeout())
         self.assertTrue(all(c.disabled for c in view.children))  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# finding #71: 설정 패널 View 콜백 예외 시 on_error 가 사용자에게 안내(무응답 방지)
+# ---------------------------------------------------------------------------
+
+
+class _FakeButton:
+    """on_error 에 넘기는 item 흉내(label 만 있으면 충분)."""
+
+    label = "테스트 버튼"
+
+
+class TestSettingsViewOnError(unittest.TestCase):
+    _CITED_VIEWS = (
+        SettingsView,
+        ProviderView,
+        ExternalModelView,
+        OllamaModelView,
+        ModelInstallView,
+        GeneralSettingsView,
+        LanguageSelectView,
+        ChannelSelectView,
+    )
+
+    def _make_settings_view(self) -> SettingsView:
+        ctx = _make_ctx(_RichStore())
+        return SettingsView(ctx=ctx, guild_id=1)
+
+    def test_all_settings_panel_views_override_on_error(self) -> None:
+        # 모든 설정 패널 View 가 기본 View.on_error(로깅만)가 아니라 안내를 보내는
+        # 공용 오버라이드를 쓰는지 확인한다(회귀 가드).
+        from discord_assistant.ui import _ErrorReportingView
+
+        for cls in self._CITED_VIEWS:
+            self.assertIs(
+                cls.on_error,
+                _ErrorReportingView.on_error,
+                f"{cls.__name__} 는 on_error 오버라이드를 상속해야 함",
+            )
+
+    def test_on_error_before_response_uses_send_message(self) -> None:
+        # 콜백이 응답을 소비하기 전(예: _change_provider 의 get_guild_config 실패)
+        # 예외가 나면 response.send_message 로 안내한다.
+        view = self._make_settings_view()
+        interaction = _RichInteraction()
+        asyncio.run(
+            view.on_error(interaction, RuntimeError("db locked"), _FakeButton())  # type: ignore[arg-type]
+        )
+        self.assertTrue(interaction.sent_messages)
+        content, kwargs = interaction.sent_messages[0]
+        self.assertIn("오류", content)
+        self.assertTrue(kwargs.get("ephemeral"))
+        self.assertEqual(interaction.followup_messages, [])
+
+    def test_on_error_after_defer_uses_followup(self) -> None:
+        # 콜백이 defer 한 뒤(예: _manage_models) 예외가 나면 응답이 이미 소비돼
+        # response.send_message 가 InteractionResponded 를 던지므로 followup 으로 보낸다.
+        view = self._make_settings_view()
+        interaction = _RichInteraction()
+        asyncio.run(interaction.response.defer())  # 응답 소비(is_done=True)
+        asyncio.run(
+            view.on_error(interaction, RuntimeError("boom"), _FakeButton())  # type: ignore[arg-type]
+        )
+        self.assertTrue(interaction.followup_messages)
+        content, kwargs = interaction.followup_messages[0]
+        self.assertIn("오류", content)
+        self.assertTrue(kwargs.get("ephemeral"))
+        self.assertEqual(interaction.sent_messages, [])
+
+    def test_on_error_swallows_secondary_http_exception(self) -> None:
+        # 안내조차 보낼 수 없는 경우(토큰 만료 등) 2차 예외를 삼켜 콜백 밖으로
+        # 전파되지 않게 한다('Task exception was never retrieved' 방지).
+        view = self._make_settings_view()
+        interaction = _RichInteraction()
+
+        async def _raise(*_a, **_k):
+            raise discord.HTTPException(mock.MagicMock(status=401), "expired")
+
+        interaction.response.send_message = _raise  # type: ignore[assignment]
+        # 예외가 전파되지 않으면 통과(반환값 없음).
+        asyncio.run(
+            view.on_error(interaction, RuntimeError("x"), _FakeButton())  # type: ignore[arg-type]
+        )
 
 
 if __name__ == "__main__":

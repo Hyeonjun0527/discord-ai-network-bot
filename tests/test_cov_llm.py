@@ -332,6 +332,28 @@ class OllamaStreamTest(unittest.TestCase):
                 asyncio.run(_collect(self.client.generate_stream("hi")))
         self.assertIn("시간", str(cm.exception))
 
+    def test_stream_sets_last_usage_from_done_line(self) -> None:
+        # #58: 스트림 경로도 done 라인의 prompt_eval_count/eval_count 를 파싱해
+        # last_usage 를 채운다(비스트리밍 경로처럼 (0,0) 누락이 없어야 한다).
+        lines = [
+            json.dumps({"response": "hi", "done": False}),
+            json.dumps(
+                {"response": "!", "done": True, "prompt_eval_count": 12, "eval_count": 7}
+            ),
+        ]
+        with mock.patch(_PATCH, return_value=_stream_response(lines)):
+            chunks = asyncio.run(_collect(self.client.generate_stream("hi", model="m")))
+        self.assertEqual(chunks, ["hi", "!"])
+        self.assertEqual(self.client.last_usage, TokenUsage(12, 7))
+
+    def test_stream_resets_usage_between_calls(self) -> None:
+        # #58: 새 스트림 시작 시 직전 usage 가 누출되지 않도록 초기화한다.
+        self.client.last_usage = TokenUsage(99, 99)
+        lines = [json.dumps({"response": "x", "done": True})]  # usage 없음
+        with mock.patch(_PATCH, return_value=_stream_response(lines)):
+            asyncio.run(_collect(self.client.generate_stream("hi")))
+        self.assertEqual(self.client.last_usage, TokenUsage(0, 0))
+
 
 # ---------------------------------------------------------------------------
 # 738-796: OpenAI generate_stream / _stream_sync (SSE 델타 / DONE / 에러)
@@ -379,6 +401,31 @@ class OpenAIStreamTest(unittest.TestCase):
             with self.assertRaises(OpenAIError) as cm:
                 asyncio.run(_collect(self.client.generate_stream("hi")))
         self.assertIn("시간", str(cm.exception))
+
+    def test_stream_sets_last_usage_from_usage_chunk(self) -> None:
+        # #58: include_usage 옵션으로 [DONE] 직전에 오는 usage 전용 청크(choices 빈)를
+        # 파싱해 last_usage 를 채운다. 일반 델타 청크는 usage 가 없어도 영향 없어야 한다.
+        lines = [
+            _sse({"choices": [{"delta": {"content": "Hel"}}]}),
+            _sse({"choices": [{"delta": {"content": "lo"}}]}),
+            _sse({"choices": [], "usage": {"prompt_tokens": 9, "completion_tokens": 4}}),
+            "data: [DONE]",
+        ]
+        with mock.patch(_PATCH, return_value=_stream_response(lines)):
+            chunks = asyncio.run(_collect(self.client.generate_stream("hi", model="m")))
+        self.assertEqual(chunks, ["Hel", "lo"])
+        self.assertEqual(self.client.last_usage, TokenUsage(9, 4))
+
+    def test_stream_resets_usage_between_calls(self) -> None:
+        # #58: 새 스트림 시작 시 직전 usage 가 누출되지 않도록 초기화한다.
+        self.client.last_usage = TokenUsage(50, 50)
+        lines = [
+            _sse({"choices": [{"delta": {"content": "x"}}]}),  # usage 없음
+            "data: [DONE]",
+        ]
+        with mock.patch(_PATCH, return_value=_stream_response(lines)):
+            asyncio.run(_collect(self.client.generate_stream("hi")))
+        self.assertEqual(self.client.last_usage, TokenUsage(0, 0))
 
 
 # ---------------------------------------------------------------------------
@@ -886,9 +933,13 @@ class OllamaManagerTest(unittest.TestCase):
         self.assertIn("ollama", str(cm.exception).lower())
 
     def test_pull_model_success(self) -> None:
+        # #60: communicate() 대신 stderr 를 직접 읽으며 마지막 N 바이트만 보관한다.
+        # read() 가 빈 바이트를 돌려줄 때까지 읽고 proc.wait() 로 종료를 기다린다.
         proc = mock.Mock()
         proc.returncode = 0
-        proc.communicate = mock.AsyncMock(return_value=(b"", b""))
+        proc.stderr = mock.Mock()
+        proc.stderr.read = mock.AsyncMock(side_effect=[b""])
+        proc.wait = mock.AsyncMock(return_value=0)
         with mock.patch("discord_assistant.llm.shutil.which", return_value="/usr/bin/ollama"), \
             mock.patch(
                 "discord_assistant.llm.asyncio.create_subprocess_exec",
@@ -896,12 +947,15 @@ class OllamaManagerTest(unittest.TestCase):
             ):
             # 예외 없이 완료되어야 한다.
             asyncio.run(self.mgr.pull_model("llama3.1:8b"))
-        proc.communicate.assert_awaited_once()
+        proc.wait.assert_awaited_once()
 
     def test_pull_model_nonzero_exit_raises(self) -> None:
+        # #60: stderr 청크를 순차로 돌려주고 마지막에 b"" 로 EOF 를 알린다.
         proc = mock.Mock()
         proc.returncode = 1
-        proc.communicate = mock.AsyncMock(return_value=(b"", b"pull failed: disk full"))
+        proc.stderr = mock.Mock()
+        proc.stderr.read = mock.AsyncMock(side_effect=[b"pull failed: disk full", b""])
+        proc.wait = mock.AsyncMock(return_value=1)
         with mock.patch("discord_assistant.llm.shutil.which", return_value="/usr/bin/ollama"), \
             mock.patch(
                 "discord_assistant.llm.asyncio.create_subprocess_exec",
@@ -910,6 +964,30 @@ class OllamaManagerTest(unittest.TestCase):
             with self.assertRaises(OllamaError) as cm:
                 asyncio.run(self.mgr.pull_model("llama3.1:8b"))
         self.assertIn("disk full", str(cm.exception))
+
+    def test_pull_model_stderr_tail_is_bounded(self) -> None:
+        # #60: stderr 가 비정상적으로 장황해도 마지막 _PULL_STDERR_TAIL_BYTES 바이트만
+        # 보관해 메모리/오류 메시지가 무제한 커지지 않는다(꼬리 유지).
+        from discord_assistant.llm import _PULL_STDERR_TAIL_BYTES
+
+        big_head = b"A" * (_PULL_STDERR_TAIL_BYTES * 3)
+        tail_marker = b"final error: out of disk"
+        proc = mock.Mock()
+        proc.returncode = 1
+        proc.stderr = mock.Mock()
+        proc.stderr.read = mock.AsyncMock(side_effect=[big_head, tail_marker, b""])
+        proc.wait = mock.AsyncMock(return_value=1)
+        with mock.patch("discord_assistant.llm.shutil.which", return_value="/usr/bin/ollama"), \
+            mock.patch(
+                "discord_assistant.llm.asyncio.create_subprocess_exec",
+                new=mock.AsyncMock(return_value=proc),
+            ):
+            with self.assertRaises(OllamaError) as cm:
+                asyncio.run(self.mgr.pull_model("llama3.1:8b"))
+        msg = str(cm.exception)
+        # 꼬리(끝부분)는 보존되지만 앞부분의 거대한 head 는 상한으로 잘려나간다.
+        self.assertIn("final error: out of disk", msg)
+        self.assertLessEqual(len(msg.encode("utf-8")), _PULL_STDERR_TAIL_BYTES + 200)
 
 
 # ---------------------------------------------------------------------------
@@ -996,8 +1074,12 @@ class OllamaPullTimeoutTest(unittest.TestCase):
         self.mgr = OllamaManager(base_url="http://x/")
 
     def test_pull_timeout_kills_proc_and_raises(self) -> None:
+        # #60: 타임아웃은 stderr 읽기/종료 대기를 감싼 wait_for 에서 발생한다.
+        # stderr.read 가 TimeoutError 를 던지면 _drain_and_wait 가 깨지고 except 로
+        # 들어가 kill + wait 로 프로세스를 정리한다.
         proc = mock.Mock()
-        proc.communicate = mock.AsyncMock(side_effect=TimeoutError())
+        proc.stderr = mock.Mock()
+        proc.stderr.read = mock.AsyncMock(side_effect=TimeoutError())
         proc.kill = mock.Mock()
         proc.wait = mock.AsyncMock(return_value=0)
         with mock.patch("discord_assistant.llm.shutil.which", return_value="/usr/bin/ollama"), \

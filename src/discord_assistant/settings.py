@@ -5,9 +5,16 @@ from __future__ import annotations
 import logging
 import math
 import os
+import threading
 from dataclasses import dataclass
 
 _settings_log = logging.getLogger(__name__)
+
+# 프로세스 단위 단일 인스턴스 캐시(opt-in). get_settings() 로만 채워지며, from_env() 의
+# 매 호출 스냅샷 동작은 그대로 유지된다(테스트/명시적 재로딩 호환). 멀티스레드 첫 호출
+# 경쟁을 막기 위해 락으로 보호한다.
+_settings_singleton: "AppSettings | None" = None
+_settings_lock = threading.Lock()
 
 # 운영(production) 환경에서 SECRET_KEY 로 허용할 최소 길이(문자 수). 너무 짧은 키는
 # 사실상 약한 암호화로 이어지므로 거부한다.
@@ -132,8 +139,22 @@ class AppSettings:
 
     @classmethod
     def from_env(cls, *, load_env_file: bool = True) -> "AppSettings":
+        """현재 os.environ 을 스냅샷해 새 AppSettings 를 만든다.
+
+        의도된 정책(멱등성/override):
+        - 매 호출은 호출 시점의 os.environ 을 읽어 *새* 인스턴스를 반환한다.
+          캐시하지 않으므로, 같은 프로세스에서 환경을 바꾸고 다시 호출하면 새 값이
+          반영된다(테스트의 monkeypatch·명시적 재로딩이 이 동작에 의존한다).
+        - load_env_file=True 면 load_dotenv() 를 호출한다. python-dotenv 기본값인
+          override=False 를 명시적으로 유지하므로, 이미 설정된 os.environ 변수가
+          .env 값보다 우선한다(이미 export 된 운영 환경 변수를 .env 가 덮어쓰지 않음).
+
+        프로세스 전체에서 단일 인스턴스를 공유하려면 from_env 대신 모듈 수준
+        get_settings() 를 사용한다.
+        """
         if load_env_file and load_dotenv is not None:
-            load_dotenv()
+            # override=False 를 명시: 이미 존재하는 os.environ 변수를 .env 가 덮어쓰지 않는다.
+            load_dotenv(override=False)
 
         token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
         if not token or token.startswith("replace-with"):
@@ -202,3 +223,37 @@ class AppSettings:
             metrics_port=_get_int("METRICS_PORT", 0, minimum=0),
             sentry_dsn=os.getenv("SENTRY_DSN", "").strip(),
         )
+
+
+def get_settings(*, load_env_file: bool = True) -> AppSettings:
+    """프로세스 단위 단일 AppSettings 인스턴스를 반환한다(opt-in 캐시).
+
+    첫 호출에서 from_env() 로 한 번만 생성하고, 이후 호출은 같은 인스턴스를 반환한다.
+    이렇게 하면 여러 컴포넌트가 from_env() 를 각자 호출할 때 발생할 수 있는
+    '호출 시점마다 다른 환경 스냅샷' 문제를 피하고 일관된 설정을 공유한다.
+
+    스레드 안전: 첫 생성은 락으로 보호되며, double-checked locking 으로 락 경합을
+    최소화한다. AppSettings 는 frozen dataclass 라 생성 후에는 불변이다.
+
+    테스트나 환경 재로딩이 필요하면 reset_settings_cache() 로 캐시를 비운 뒤
+    다시 호출한다. from_env() 의 매 호출 스냅샷 동작은 이 캐시의 영향을 받지 않는다.
+    """
+    global _settings_singleton
+    cached = _settings_singleton
+    if cached is not None:
+        return cached
+    with _settings_lock:
+        if _settings_singleton is None:
+            _settings_singleton = AppSettings.from_env(load_env_file=load_env_file)
+        return _settings_singleton
+
+
+def reset_settings_cache() -> None:
+    """get_settings() 의 프로세스 캐시를 비운다(주로 테스트/명시적 재로딩용).
+
+    from_env() 동작에는 영향을 주지 않는다. 다음 get_settings() 호출이 새 인스턴스를
+    만든다.
+    """
+    global _settings_singleton
+    with _settings_lock:
+        _settings_singleton = None

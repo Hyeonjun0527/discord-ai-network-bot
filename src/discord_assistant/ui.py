@@ -481,7 +481,43 @@ class _CustomModelModal(ui.Modal, title="📦  모델 직접 입력"):
 # ---------------------------------------------------------------------------
 
 
-class SettingsView(ui.View):
+class _ErrorReportingView(ui.View):
+    """on_error 를 오버라이드해 콜백 예외를 사용자에게 알리는 공용 뷰 기반 클래스(#71).
+
+    설정 패널 콜백이 외부 호출(store/ollama_manager) 도중 예외를 던지면, 기본
+    ``discord.ui.View.on_error`` 는 로깅만 하고 인터랙션 응답을 소비하지 않아
+    사용자는 'interaction failed' 만 보게 된다. 여기서는 응답 소비 여부(``is_done``)에
+    따라 followup/response 로 ephemeral 안내를 보내 무응답을 막는다.
+
+    happy-path 동작은 그대로 두고(콜백이 정상이면 호출되지 않음), 오류 시 피드백만
+    추가하는 순수 가산(additive) 변경이라 하위호환된다.
+    """
+
+    async def on_error(  # type: ignore[override]
+        self,
+        interaction: discord.Interaction,
+        error: Exception,
+        item: ui.Item[Any],
+    ) -> None:
+        logger.warning(
+            "View 콜백 오류(%s.%s): %r",
+            type(self).__name__,
+            getattr(item, "label", None) or type(item).__name__,
+            error,
+        )
+        message = "⚠️ 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(message, ephemeral=True)
+            else:
+                await interaction.response.send_message(message, ephemeral=True)
+        except discord.HTTPException:
+            # 인터랙션 토큰 만료/이미 응답됨 등으로 안내조차 보낼 수 없는 경우,
+            # 2차 예외가 콜백 밖으로 전파돼 'never retrieved' 로 끝나지 않도록 삼킨다.
+            logger.debug("on_error 안내 전송 실패(무시)")
+
+
+class SettingsView(_ErrorReportingView):
     """Main settings panel — shown by /settings command."""
 
     def __init__(self, *, ctx: ViewCtx, guild_id: int, provider: LLMProvider | None = None) -> None:
@@ -543,7 +579,7 @@ class SettingsView(ui.View):
             item.disabled = True  # type: ignore[attr-defined]
 
 
-class ProviderView(ui.View):
+class ProviderView(_ErrorReportingView):
     """Provider selection: Ollama / OpenAI / Anthropic."""
 
     def __init__(self, *, ctx: ViewCtx, guild_id: int) -> None:
@@ -626,7 +662,7 @@ class ProviderView(ui.View):
             await interaction.response.edit_message(embed=embed, view=view)
 
 
-class ExternalModelView(ui.View):
+class ExternalModelView(_ErrorReportingView):
     """Model selector + API key button for OpenAI or Anthropic."""
 
     def __init__(
@@ -683,7 +719,7 @@ class ExternalModelView(ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
 
-class OllamaModelView(ui.View):
+class OllamaModelView(_ErrorReportingView):
     """Shows installed Ollama models and install option."""
 
     def __init__(
@@ -743,7 +779,7 @@ class OllamaModelView(ui.View):
         await interaction.response.edit_message(embed=embed, view=view)
 
 
-class ModelInstallView(ui.View):
+class ModelInstallView(_ErrorReportingView):
     """Popular-model picker + custom model input + install runner."""
 
     def __init__(
@@ -1112,7 +1148,7 @@ class SummarizeResultView(ui.View):
         await self.llm_callback(interaction)
 
 
-class GeneralSettingsView(ui.View):
+class GeneralSettingsView(_ErrorReportingView):
     """Language and summary-limit settings."""
 
     def __init__(self, *, ctx: ViewCtx, guild_id: int) -> None:
@@ -1137,7 +1173,7 @@ class GeneralSettingsView(ui.View):
         await _go_to_main(interaction, ctx=self.ctx, guild_id=self.guild_id)
 
 
-class LanguageSelectView(ui.View):
+class LanguageSelectView(_ErrorReportingView):
     """지원 언어 Select 드롭다운(#89).
 
     자유 텍스트 입력을 대체해 미지원/오타 언어 코드 입력을 원천 차단한다.
@@ -1275,7 +1311,7 @@ class FollowUpView(ui.View):
 # ---------------------------------------------------------------------------
 
 
-class ChannelSelectView(ui.View):
+class ChannelSelectView(_ErrorReportingView):
     """Lets users pick multiple text channels to summarize."""
 
     def __init__(

@@ -47,6 +47,13 @@ def detect_language_from_transcript(transcript: str) -> str:
     # 선택한다. 한글이 소수만 섞인 짧은 혼합 입력이 한국어로 쏠리는 편향 제거(#120).
     if korean / total >= 0.15 and korean >= max(japanese, chinese, latin):
         return "ko"
+    # 가나(히라가나/가타카나)가 하나라도 있으면 그 CJK 블록은 일본어다(중국어엔
+    # 가나가 없음). 가나가 적고 한자가 많은 일본어 문장(예: '今日は会議')이 한자
+    # 비중 때문에 zh 로 오판되지 않도록, zh 분기 전에 가나+한자 합산 비율로 ja 를
+    # 우선 분류한다(#119). 가나가 전혀 없는 순수 한자 입력은 ja/zh 구분이 불가능해
+    # 기존대로 chinese 분기로 넘긴다.
+    if japanese > 0 and (japanese + chinese) / total >= 0.15:
+        return "ja"
     if japanese / total >= 0.15:
         return "ja"
     if chinese / total >= 0.15:
@@ -76,13 +83,25 @@ def detect_language_from_transcript(transcript: str) -> str:
 # 구분자로 감싸고 (2) 본문 안의 가짜 role/지시 토큰을 무력화한다.
 
 # role 토큰을 행 시작 부분, 그리고 문장 부호 뒤(라인 중간)에서도 탐지한다.
-# 콜론 뒤 공백 유무는 무관. 예: "User:", "system :", "[SYSTEM]:" 와
-# "... please respond. System: ..." 같은 라인 중간 위조 토큰을 잡는다(#124).
+# 종결은 콜론([:：])이며, 콜론 앞 공백/마크다운 접두사(> * - [ ] #)는 허용한다.
+# 예: "User:", "system :", "> System:", "[SYSTEM]:", 그리고 라인 중간의
+# "... please respond. System: ..." 같은 위조 토큰을 잡는다(#124).
+# 주의: 이 정규식은 콜론으로 종결되는 role 토큰만 탐지한다. 콜론 없는 변형
+# ("assistant-", 헤더형 "# System")은 일반 텍스트와 오탐 위험이 커서 의도적으로
+# 다루지 않는다. 대신 콜론 직전/내부에 zero-width 문자를 끼워 넣어 정규식을
+# 우회하면서도 모델은 진짜 role 로 읽게 만드는 사전 가공 공격을 막기 위해,
+# _neutralize_role_tokens 가 매칭 전에 입력의 기존 zero-width 문자를 제거한다(#96).
 _ROLE_TOKEN_RE = re.compile(
     r"(?im)"
     r"(?:^[\s>*\-\[\]#]*|(?<=[.!?。！？])\s+)"
     r"\b(?:user|system|assistant|human|ai|developer|tool)\b[\s>*\-\]]*[:：]",
 )
+
+# 사전 가공(pre-gaming) 우회를 막기 위해 무력화 전에 제거하는 zero-width/보이지
+# 않는 문자들: ZWSP, ZWNJ, ZWJ, WORD JOINER, BOM/ZWNBSP(#96). 모델은 이런 문자를
+# 무시하고 "Sys<zwsp>tem:" 를 진짜 role 로 읽을 수 있으나, 우리 정규식의 \b 경계는
+# 깨진다. 정상 텍스트에는 거의 등장하지 않으므로 제거는 사실상 무해하다.
+_ZERO_WIDTH_RE = re.compile("[​‌‍⁠﻿]")
 
 # "이전 지시를 무시하라" 류의 흔한 jailbreak/인젝션 지시문을 탐지한다.
 _INJECTION_PHRASE_RE = re.compile(
@@ -95,11 +114,23 @@ _INJECTION_PHRASE_RE = re.compile(
 _FENCE_RE = re.compile(r"(?m)(`{3,}|~{3,})")
 
 
-def _neutralize_role_tokens(text: str) -> str:
-    """본문 안의 가짜 role 토큰(콜론)을 무력화한다.
+def _strip_zero_width(text: str) -> str:
+    """입력의 기존 zero-width/보이지 않는 문자를 제거한다(#96).
 
-    예: "User:" -> "User​:" (zero-width space 삽입)로 모델이 진짜
-    대화 턴 구분자로 해석하지 못하게 한다. 사람이 읽기엔 거의 동일하다.
+    공격자가 콜론 직전이나 role 단어 내부("Sys<zwsp>tem:")에 zero-width 를 끼워
+    넣으면 우리 정규식의 단어 경계가 깨져 무력화를 우회하지만, 모델은 zero-width 를
+    무시하고 진짜 role 로 읽는다. 무력화 *전에* 이 문자들을 제거해 그런 사전 가공
+    (pre-gaming) 우회를 막는다. 주의: 우리가 보호용으로 *삽입한* zero-width 보다
+    먼저, 원본 입력에 대해서만 호출해야 한다(보호 마커를 지우지 않도록).
+    """
+    return _ZERO_WIDTH_RE.sub("", text)
+
+
+def _sub_role_tokens(text: str) -> str:
+    """role 토큰 정규식 치환만 수행한다(zero-width 제거 없음).
+
+    이미 zero-width 가 정규화된 텍스트, 또는 보호용 zero-width 마커가 삽입된
+    텍스트에 대해 안전하게 호출하기 위한 내부 헬퍼다.
     """
 
     def _replace(match: re.Match[str]) -> str:
@@ -108,6 +139,21 @@ def _neutralize_role_tokens(text: str) -> str:
         return token[:-1] + "​" + token[-1]
 
     return _ROLE_TOKEN_RE.sub(_replace, text)
+
+
+def _neutralize_role_tokens(text: str) -> str:
+    """본문 안의 가짜 role 토큰(콜론)을 무력화한다.
+
+    예: "User:" -> "User​:" (zero-width space 삽입)로 모델이 진짜
+    대화 턴 구분자로 해석하지 못하게 한다. 사람이 읽기엔 거의 동일하다.
+
+    매칭 전에 입력의 기존 zero-width 문자를 제거해, 콜론 직전/role 단어 내부에
+    zero-width 를 끼워 넣어 정규식을 우회하는 사전 가공 공격을 막는다(#96). 이 함수는
+    raw 입력(보호용 zero-width 가 아직 삽입되지 않은)에 대해 직접 호출된다
+    (persona/history 경로). _wrap_untrusted 는 태그/펜스 보호 마커를 지우지 않도록
+    입력 단계에서 _strip_zero_width 를 먼저 적용한 뒤 _sub_role_tokens 를 쓴다.
+    """
+    return _sub_role_tokens(_strip_zero_width(text))
 
 
 def _neutralize_injection_phrases(text: str) -> str:
@@ -138,6 +184,12 @@ def _wrap_untrusted(text: str, tag: str, *, neutralize: bool = True) -> str:
         "<transcript>\n...\n</transcript>" 형태의 안전하게 래핑된 문자열.
     """
     safe = text or ""
+    # 0) (무력화 시에만) 원본 입력의 기존 zero-width 문자를 먼저 제거해, 콜론/태그
+    #    직전에 zero-width 를 끼워 넣어 뒤따르는 정규식 무력화를 우회하는 사전 가공
+    #    공격을 막는다(#96). 반드시 우리가 보호용 zero-width 를 삽입하기 *전*에
+    #    수행한다. 번역(neutralize=False)은 원문 보존이 핵심이라 건드리지 않는다.
+    if neutralize:
+        safe = _strip_zero_width(safe)
     # 1) 닫는/여는 태그를 본문에서 위조해 컨테이너를 조기 종료시키지 못하게 한다.
     #    (항상 수행: 구분자 무결성은 번역 시에도 반드시 지켜야 한다.)
     safe = safe.replace(f"</{tag}>", f"<​/{tag}>")
@@ -145,8 +197,8 @@ def _wrap_untrusted(text: str, tag: str, *, neutralize: bool = True) -> str:
     if neutralize:
         # 2) 코드 펜스를 무력화(첫 글자 뒤 zero-width space)해 펜스 탈출 방지.
         safe = _FENCE_RE.sub(lambda m: m.group(0)[0] + "​" + m.group(0)[1:], safe)
-        # 3) 가짜 role 토큰 무력화.
-        safe = _neutralize_role_tokens(safe)
+        # 3) 가짜 role 토큰 무력화(zero-width 는 0단계에서 이미 제거됨).
+        safe = _sub_role_tokens(safe)
         # 4) 흔한 인젝션 지시문 무력화.
         safe = _neutralize_injection_phrases(safe)
     return f"<{tag}>\n{safe}\n</{tag}>"

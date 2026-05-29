@@ -14,6 +14,11 @@ from pathlib import Path
 from discord_assistant.models import UsageLog
 from discord_assistant.storage import ConfigStore
 
+# 일관된 UTC ISO8601 시각 헬퍼 — due_at 비교는 문자열 사전식이므로 포맷을 맞춘다.
+_PAST = "2020-01-01T00:00:00+00:00"
+_SOON = "2020-06-01T00:00:00+00:00"
+_FUTURE = "2999-12-31T23:59:59+00:00"
+
 
 def _make_store(database_url: str) -> ConfigStore:
     return ConfigStore(
@@ -313,6 +318,236 @@ class FileBackedIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 conn.close()
             self.assertEqual(str(journal).lower(), "wal")
             self.assertEqual(fk, 1)
+
+
+class RemindersTest(_FileStoreCase):
+    """예약 리마인더 데이터 계층 (#26)."""
+
+    async def test_add_returns_id_and_lists_by_user(self) -> None:
+        rid = await self.store.add_reminder(
+            user_id=7, guild_id=1, channel_id=2, due_at=_FUTURE, payload="회의 알림"
+        )
+        self.assertIsInstance(rid, int)
+        self.assertGreater(rid, 0)
+        reminders = await self.store.list_by_user(7)
+        self.assertEqual(len(reminders), 1)
+        r = reminders[0]
+        self.assertEqual(r.id, rid)
+        self.assertEqual(r.payload, "회의 알림")
+        self.assertEqual(r.due_at, _FUTURE)
+        self.assertFalse(r.sent)
+        self.assertIsNotNone(r.created_at)
+
+    async def test_add_rejects_empty_due_at_or_payload(self) -> None:
+        with self.assertRaises(ValueError):
+            await self.store.add_reminder(7, 1, 2, "   ", "내용")
+        with self.assertRaises(ValueError):
+            await self.store.add_reminder(7, 1, 2, _FUTURE, "   ")
+
+    async def test_list_due_returns_only_past_unsent_sorted(self) -> None:
+        await self.store.add_reminder(7, 1, 2, _PAST, "오래된 만기")
+        await self.store.add_reminder(7, 1, 2, _SOON, "다음 만기")
+        await self.store.add_reminder(7, 1, 2, _FUTURE, "미래(미만기)")
+        # now 를 _SOON 으로 두면 _PAST, _SOON 만 만기.
+        due = await self.store.list_due(now=_SOON)
+        self.assertEqual([r.payload for r in due], ["오래된 만기", "다음 만기"])
+
+    async def test_list_due_defaults_to_now(self) -> None:
+        # 명시적 now 없이 호출하면 현재 시각 기준 — 과거 만기는 잡히고 미래는 제외.
+        await self.store.add_reminder(7, 1, 2, _PAST, "과거")
+        await self.store.add_reminder(7, 1, 2, _FUTURE, "미래")
+        due = await self.store.list_due()
+        self.assertEqual([r.payload for r in due], ["과거"])
+
+    async def test_mark_sent_excludes_from_due_and_default_list(self) -> None:
+        rid = await self.store.add_reminder(7, 1, 2, _PAST, "처리할 것")
+        self.assertTrue(await self.store.mark_sent(rid))
+        self.assertEqual(await self.store.list_due(now=_SOON), [])
+        # 기본 list_by_user 는 미발송만.
+        self.assertEqual(await self.store.list_by_user(7), [])
+        # include_sent=True 면 다시 보인다.
+        all_r = await self.store.list_by_user(7, include_sent=True)
+        self.assertEqual(len(all_r), 1)
+        self.assertTrue(all_r[0].sent)
+
+    async def test_mark_sent_unknown_id_returns_false(self) -> None:
+        self.assertFalse(await self.store.mark_sent(99999))
+
+    async def test_delete_reminder(self) -> None:
+        rid = await self.store.add_reminder(7, 1, 2, _FUTURE, "삭제 대상")
+        self.assertTrue(await self.store.delete_reminder(rid))
+        self.assertEqual(await self.store.list_by_user(7, include_sent=True), [])
+        # 이미 삭제된 id 는 False.
+        self.assertFalse(await self.store.delete_reminder(rid))
+
+    async def test_list_by_user_isolated(self) -> None:
+        await self.store.add_reminder(7, 1, 2, _FUTURE, "유저7")
+        await self.store.add_reminder(8, 1, 2, _FUTURE, "유저8")
+        self.assertEqual(len(await self.store.list_by_user(7)), 1)
+        self.assertEqual(len(await self.store.list_by_user(8)), 1)
+
+
+class AuditLogTest(_FileStoreCase):
+    """감사 로그 데이터 계층 (#39)."""
+
+    async def test_record_and_list_newest_first(self) -> None:
+        id1 = await self.store.record_audit(
+            guild_id=1, user_id=10, action="set_model", target="model", before="a", after="b"
+        )
+        id2 = await self.store.record_audit(
+            guild_id=1, user_id=11, action="set_language", target="language", after="en"
+        )
+        self.assertGreater(id2, id1)
+        entries = await self.store.list_audit(1)
+        self.assertEqual(len(entries), 2)
+        # 최신 우선.
+        self.assertEqual(entries[0].action, "set_language")
+        self.assertEqual(entries[0].after, "en")
+        self.assertIsNone(entries[0].before)
+        self.assertEqual(entries[1].action, "set_model")
+        self.assertEqual(entries[1].before, "a")
+        self.assertIsNotNone(entries[0].created_at)
+
+    async def test_list_respects_limit(self) -> None:
+        for i in range(5):
+            await self.store.record_audit(guild_id=1, user_id=10, action=f"act{i}")
+        entries = await self.store.list_audit(1, limit=3)
+        self.assertEqual(len(entries), 3)
+
+    async def test_list_isolated_per_guild(self) -> None:
+        await self.store.record_audit(guild_id=1, user_id=10, action="a")
+        await self.store.record_audit(guild_id=2, user_id=10, action="b")
+        self.assertEqual(len(await self.store.list_audit(1)), 1)
+        self.assertEqual(len(await self.store.list_audit(2)), 1)
+        self.assertEqual(await self.store.list_audit(999), [])
+
+    async def test_record_rejects_empty_action(self) -> None:
+        with self.assertRaises(ValueError):
+            await self.store.record_audit(guild_id=1, user_id=10, action="  ")
+
+    async def test_list_rejects_bad_limit(self) -> None:
+        with self.assertRaises(ValueError):
+            await self.store.list_audit(1, limit=0)
+
+
+class DeleteDataTest(_FileStoreCase):
+    """사용자/길드 데이터 삭제 (#40)."""
+
+    async def test_delete_user_data_counts(self) -> None:
+        await self.store.save_chat_message(7, "user", "hi", guild_id=1, channel_id=2)
+        await self.store.save_chat_message(7, "assistant", "yo", guild_id=1, channel_id=2)
+        await self.store.save_feedback(guild_id=1, message_id=100, user_id=7, rating=1)
+        await self.store.log_usage(
+            UsageLog(guild_id=1, channel_id=2, user_id=7, command="ask", status="ok", latency_ms=5)
+        )
+        await self.store.add_reminder(7, 1, 2, _FUTURE, "리마인더")
+        # 다른 사용자 데이터는 남아야 한다.
+        await self.store.save_chat_message(8, "user", "other", guild_id=1, channel_id=2)
+
+        result = await self.store.delete_user_data(7)
+        self.assertEqual(result["chat_history"], 2)
+        self.assertEqual(result["feedback"], 1)
+        self.assertEqual(result["usage_log"], 1)
+        self.assertEqual(result["reminders"], 1)
+        # 유저 7 데이터는 모두 사라짐.
+        self.assertEqual(await self.store.get_chat_history(7, limit=100), [])
+        self.assertEqual(await self.store.list_by_user(7, include_sent=True), [])
+        # 유저 8 은 보존.
+        self.assertEqual(len(await self.store.get_chat_history(8, limit=100)), 1)
+
+    async def test_delete_user_data_returns_keys_even_when_empty(self) -> None:
+        result = await self.store.delete_user_data(12345)
+        self.assertEqual(
+            result, {"chat_history": 0, "feedback": 0, "usage_log": 0, "reminders": 0}
+        )
+
+    async def test_delete_guild_data_counts(self) -> None:
+        await self.store.set_model(1, "llama3.1:8b")  # guild_config 행
+        await self.store.log_usage(
+            UsageLog(guild_id=1, channel_id=2, user_id=3, command="ask", status="ok", latency_ms=5)
+        )
+        await self.store.save_feedback(guild_id=1, message_id=100, user_id=3, rating=1)
+        await self.store.save_chat_message(3, "user", "hi", guild_id=1, channel_id=2)
+        await self.store.add_reminder(3, 1, 2, _FUTURE, "리마인더")
+        # 다른 길드 데이터는 보존.
+        await self.store.set_model(2, "qwen2.5:7b")
+
+        result = await self.store.delete_guild_data(1)
+        self.assertEqual(result["guild_config"], 1)
+        self.assertEqual(result["usage_log"], 1)
+        self.assertEqual(result["feedback"], 1)
+        self.assertEqual(result["chat_history"], 1)
+        self.assertEqual(result["reminders"], 1)
+        # 길드 1 설정은 기본값으로 되돌아간다(행 없음) → usage 통계도 비어 있다.
+        self.assertEqual((await self.store.get_stats(1))["total"], 0)
+        # 길드 2 는 보존.
+        self.assertIn(2, await self.store.get_all_guild_ids())
+        self.assertNotIn(1, await self.store.get_all_guild_ids())
+
+    async def test_delete_guild_data_returns_keys_even_when_empty(self) -> None:
+        result = await self.store.delete_guild_data(999)
+        self.assertEqual(
+            result,
+            {
+                "guild_config": 0,
+                "usage_log": 0,
+                "feedback": 0,
+                "chat_history": 0,
+                "reminders": 0,
+            },
+        )
+
+
+class IndexPresenceTest(_FileStoreCase):
+    """#32: 주요 쿼리 경로 인덱스가 실제로 생성됐는지 확인."""
+
+    async def test_expected_indexes_exist(self) -> None:
+        conn = self.store._connect()
+        try:
+            names = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index'"
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+        for expected in (
+            "idx_usage_log_guild_created",
+            "idx_feedback_guild_id",
+            "idx_reminders_due",
+            "idx_audit_log_guild",
+        ):
+            self.assertIn(expected, names)
+
+
+class MigrationIdempotencyTest(unittest.IsolatedAsyncioTestCase):
+    """기존(레거시) DB 에 _migrate 가 안전하게 새 테이블/인덱스를 추가하는지 (#26/#39/#32)."""
+
+    async def test_migrate_adds_new_tables_to_legacy_db(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "legacy.db"
+            # 신규 테이블이 없는 최소 레거시 스키마를 손으로 만든다.
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                """CREATE TABLE guild_config (
+                    guild_id INTEGER PRIMARY KEY,
+                    model TEXT NOT NULL,
+                    summary_limit INTEGER NOT NULL,
+                    language TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )"""
+            )
+            conn.commit()
+            conn.close()
+
+            store = _make_store(f"sqlite:///{db_path}")
+            await store.initialize()  # SCHEMA + _migrate 모두 실행되어야 한다.
+            # 새 테이블에 대한 CRUD 가 동작해야 한다.
+            rid = await store.add_reminder(1, 1, 2, _FUTURE, "ok")
+            self.assertGreater(rid, 0)
+            aid = await store.record_audit(guild_id=1, user_id=1, action="test")
+            self.assertGreater(aid, 0)
 
 
 if __name__ == "__main__":

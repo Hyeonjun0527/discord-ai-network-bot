@@ -14,12 +14,14 @@
  * JSON.
  */
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { setToken } from "@/lib/auth";
 
-export default function CallbackPage() {
+// useSearchParams() 를 쓰는 컴포넌트는 정적 빌드 시 Suspense 경계로 감싸야 한다.
+// (#86: next build 가 prerender 단계에서 실패하던 문제 해결)
+function CallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
@@ -67,5 +69,24 @@ export default function CallbackPage() {
         <p>Completing login&hellip;</p>
       </div>
     </div>
+  );
+}
+
+function CallbackFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-discord-darkest">
+      <div className="flex flex-col items-center gap-4 text-gray-400">
+        <Loader2 className="w-8 h-8 animate-spin text-discord-blurple" />
+        <p>Completing login&hellip;</p>
+      </div>
+    </div>
+  );
+}
+
+export default function CallbackPage() {
+  return (
+    <Suspense fallback={<CallbackFallback />}>
+      <CallbackInner />
+    </Suspense>
   );
 }

@@ -6,6 +6,7 @@ Serves:
   GET  /api/guilds/{guild_id}/config
   PUT  /api/guilds/{guild_id}/config
   GET  /api/guilds/{guild_id}/stats
+  GET  /api/guilds/{guild_id}/feedback
   GET  /api/models
 """
 from __future__ import annotations
@@ -210,7 +211,8 @@ async def update_guild_config(
 ) -> JSONResponse:
     """Update one or more config fields for a guild."""
     # 레이트 리밋은 _rate_limit_middleware 가 일괄 적용한다 (#43).
-    _assert_guild_access(user, guild_id)
+    # 설정 변경은 관리자(Administrator/소유자)만 허용한다 (#79).
+    _assert_guild_admin(user, guild_id)
 
     db = await _get_db()
     try:
@@ -398,6 +400,120 @@ async def get_guild_stats(
 
 
 # ---------------------------------------------------------------------------
+# Feedback endpoint (#78)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/guilds/{guild_id}/feedback", tags=["guilds"])
+async def get_guild_feedback(
+    guild_id: int,
+    user: CurrentUser,
+    limit: int = Query(
+        50,
+        ge=1,
+        le=200,
+        description="최근 피드백 목록 개수(기본 50, 1~200) (#78).",
+    ),
+) -> JSONResponse:
+    """길드의 피드백을 집계해 반환한다 (#78).
+
+    반환 형태::
+
+        {
+          "total": 12,
+          "rating_distribution": [{"rating": 1, "count": 9}, {"rating": -1, "count": 3}],
+          "by_command": [{"command": "ask", "positive": 5, "negative": 1, "total": 6}, ...],
+          "recent": [{"message_id": ..., "user_id": ..., "rating": 1, "command": "ask", "created_at": ...}, ...]
+        }
+
+    피드백 ``rating`` 은 봇(storage.save_feedback)이 +1(좋아요)/-1(싫어요) 로 저장한다.
+    멤버 누구나 열람 가능하므로 ``_assert_guild_access`` 만 적용한다.
+    """
+    _assert_guild_access(user, guild_id)
+
+    db = await _get_db()
+    try:
+        # 전체 건수
+        async with db.execute(
+            "SELECT COUNT(*) AS cnt FROM feedback WHERE guild_id = ?",
+            (guild_id,),
+        ) as c:
+            total_row = await c.fetchone()
+        total: int = total_row["cnt"] if total_row else 0
+
+        # rating 분포 (예: +1 / -1 각각의 건수)
+        async with db.execute(
+            "SELECT rating, COUNT(*) AS cnt FROM feedback WHERE guild_id = ? "
+            "GROUP BY rating ORDER BY rating DESC",
+            (guild_id,),
+        ) as c:
+            rating_rows = await c.fetchall()
+
+        # command 별 긍정/부정 집계 (command 가 NULL 이면 'unknown' 으로 묶는다)
+        async with db.execute(
+            """
+            SELECT COALESCE(command, 'unknown') AS command,
+                   SUM(CASE WHEN rating > 0 THEN 1 ELSE 0 END) AS positive,
+                   SUM(CASE WHEN rating < 0 THEN 1 ELSE 0 END) AS negative,
+                   COUNT(*) AS total
+            FROM feedback
+            WHERE guild_id = ?
+            GROUP BY COALESCE(command, 'unknown')
+            ORDER BY total DESC
+            """,
+            (guild_id,),
+        ) as c:
+            command_rows = await c.fetchall()
+
+        # 최근 목록 (limit 개, 최신순)
+        async with db.execute(
+            "SELECT message_id, user_id, rating, command, created_at FROM feedback "
+            "WHERE guild_id = ? ORDER BY id DESC LIMIT ?",
+            (guild_id, limit),
+        ) as c:
+            recent_rows = await c.fetchall()
+    finally:
+        await db.close()
+
+    positive_total = sum(int(r["positive"]) for r in command_rows)
+    negative_total = sum(int(r["negative"]) for r in command_rows)
+    # 만족도(%) = 긍정 / (긍정+부정). 평가가 없으면 None 으로 둔다.
+    rated = positive_total + negative_total
+    satisfaction = round(positive_total / rated * 100, 1) if rated > 0 else None
+
+    return JSONResponse(
+        {
+            "total": total,
+            "positive": positive_total,
+            "negative": negative_total,
+            "satisfaction": satisfaction,
+            "rating_distribution": [
+                {"rating": int(r["rating"]), "count": int(r["cnt"])} for r in rating_rows
+            ],
+            "by_command": [
+                {
+                    "command": r["command"],
+                    "positive": int(r["positive"]),
+                    "negative": int(r["negative"]),
+                    "total": int(r["total"]),
+                }
+                for r in command_rows
+            ],
+            "recent": [
+                {
+                    "message_id": r["message_id"],
+                    "user_id": r["user_id"],
+                    "rating": int(r["rating"]),
+                    "command": r["command"],
+                    "created_at": r["created_at"],
+                }
+                for r in recent_rows
+            ],
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
 # API key management
 # ---------------------------------------------------------------------------
 
@@ -405,7 +521,8 @@ async def get_guild_stats(
 @app.get("/api/guilds/{guild_id}/api-key", tags=["guilds"])
 async def get_api_key_status(guild_id: int, user: CurrentUser) -> JSONResponse:
     """Return whether an API key is set (never returns the actual key)."""
-    _assert_guild_access(user, guild_id)
+    # API 키 상태/조작은 관리자만 접근할 수 있게 한다 (#79).
+    _assert_guild_admin(user, guild_id)
     db = await _get_db()
     try:
         async with db.execute(
@@ -423,7 +540,8 @@ async def get_api_key_status(guild_id: int, user: CurrentUser) -> JSONResponse:
 @app.delete("/api/guilds/{guild_id}/api-key", tags=["guilds"])
 async def clear_api_key(guild_id: int, user: CurrentUser) -> JSONResponse:
     """Clear the stored API key for a guild."""
-    _assert_guild_access(user, guild_id)
+    # 키 삭제는 관리자만 허용한다 (#79).
+    _assert_guild_admin(user, guild_id)
     db = await _get_db()
     try:
         await db.execute(
@@ -477,4 +595,22 @@ def _assert_guild_access(user: dict, guild_id: int) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not a member of this guild",
+        )
+
+
+def _assert_guild_admin(user: dict, guild_id: int) -> None:
+    """길드 멤버십에 더해 Administrator(권한 비트 0x8)/소유자 여부까지 검사한다 (#79).
+
+    설정 변경(PUT)·API 키 라우트처럼 쓰기 권한이 필요한 엔드포인트에 적용한다.
+    JWT 의 각 길드 항목에 저장된 ``admin`` 플래그(auth.create_jwt)를 신뢰한다.
+    멤버가 아니면 403, 멤버지만 관리자가 아니면 403(권한 부족)으로 거절한다.
+    ``admin`` 키가 없는 구(舊) 토큰은 보수적으로 비관리자로 취급한다(백워드 호환).
+    """
+    _assert_guild_access(user, guild_id)
+    guilds: list[dict] = user.get("guilds", [])
+    is_admin = any(int(g["id"]) == guild_id and g.get("admin") is True for g in guilds)
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You need Administrator permission on this server to perform this action",
         )

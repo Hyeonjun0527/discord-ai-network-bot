@@ -21,11 +21,11 @@
 
 - [ ] 12. 멀티모달 이미지 입력: `generate`에 이미지 블록 인자 + 3개 제공자 구현 (#54) · L
 - [ ] 13. Discord 첨부 이미지 다운로드·base64 인코딩·크기/타입 검증 헬퍼 · M
-- [ ] 14. 비전 게이트를 모델명 하드코딩(llava/bakllava)에서 제공자별 capability 판정으로 · M
+- [x] 14. 비전 게이트를 모델명 하드코딩(llava/bakllava)에서 제공자별 capability 판정으로 · M
 - [ ] 15. `LLMProvider`에 Gemini 추가 + `GeminiClient` 어댑터 · L
 - [ ] 16. 스트리밍 응답: `generate_stream` + Discord 메시지 점진 edit · L
 - [ ] 17. 토큰 사용량 집계: 제공자 응답 usage 파싱 → `UsageLog` 저장 · M
-- [ ] 18. 제공자·모델별 단가 테이블 기반 호출 비용 계산 + `/stats` 표시 · M
+- [x] 18. 제공자·모델별 단가 테이블 기반 호출 비용 계산 + `/stats` 표시 · M
 - [ ] 19. 서버별 일일 토큰/비용 상한 설정 + 초과 시 차단 · M
 - [ ] 20. 함수/툴 호출(OpenAI tools, Anthropic tool_use)로 메시지 검색 툴 노출 · L
 - [x] 21. `_with_retry`: 4xx 즉시 실패, 429/5xx만 재시도 · S
@@ -36,13 +36,13 @@
 
 - [ ] 24. `storage.py`를 aiosqlite 기반 단일 영속 연결로 전환 (#34) · L
 - [x] 25. `_connect()`에 busy_timeout/synchronous PRAGMA로 'database is locked' 방어 · S
-- [ ] 26. 버전 추적형 마이그레이션 프레임워크(schema_version + 순차 migration) · L
+- [x] 26. 버전 추적형 마이그레이션 프레임워크(schema_version + 순차 migration) · L
 - [x] 27. usage_log·chat_history 시간 기반 retention 정리 백그라운드 태스크 · M
 - [ ] 28. 백업 복원 스크립트(`scripts/restore.sh`) + 백업→복원 왕복 테스트 · M
 - [ ] 29. 대시보드 중복 DB 접근 로직을 공용 storage 레이어로 통합 · M
 - [x] 30. 대시보드 guild_config PUT의 컬럼 누락(스키마 drift) 수정 · M
 - [ ] 31. `DATABASE_URL` postgresql:// 지원을 위한 스토리지 백엔드 추상화 · L
-- [ ] 32. 쿼리 경로 인덱스 점검(EXPLAIN QUERY PLAN 기반 보강) · M
+- [x] 32. 쿼리 경로 인덱스 점검(EXPLAIN QUERY PLAN 기반 보강) · M
 - [x] 33. 주기적 VACUUM / WAL checkpoint 운영 작업으로 파일 비대화 방지 · S
 
 ## 🔐 보안 / 프라이버시 (34~44)
@@ -52,8 +52,8 @@
 - [x] 36. `SECRET_KEY` 기본값이면 프로덕션 기동 하드 실패 처리 · S
 - [ ] 37. 저장된 API 키 재암호화 마이그레이션(시크릿 회전 지원) · M
 - [ ] 38. 프롬프트 인젝션 방어: 트랜스크립트/질문 본문 구분자 래핑·role 토큰 무력화 · M
-- [ ] 39. 관리자 작업 감사 로그(audit_log) 테이블 + 변경 이력 기록 · M
-- [ ] 40. 사용자 데이터 삭제(`/forget-me`) 명령 + 백엔드 삭제 엔드포인트 · M
+- [x] 39. 관리자 작업 감사 로그(audit_log) 테이블 + 변경 이력 기록 · M
+- [x] 40. 사용자 데이터 삭제(`/forget-me`) 명령 + 백엔드 삭제 엔드포인트 · M
 - [ ] 41. usage_log.error의 PII/시크릿 마스킹 · S
 - [x] 42. CORS 와일드카드(allow_methods/headers='*') 제거 + 허용목록 명시 · S
 - [x] 43. 보호 대상 API 전체에 레이트리밋 일괄 적용(미들웨어) · S
@@ -103,15 +103,15 @@
 
 ## 🖥️ 대시보드 (78~86)
 
-- [ ] 78. 피드백 열람 API(GET /feedback) + 명령별 만족도 차트 페이지 · M
-- [ ] 79. 길드 설정 편집 권한을 멤버십이 아닌 Administrator 권한으로 강화 · M
+- [x] 78. 피드백 열람 API(GET /feedback) + 명령별 만족도 차트 페이지 · M
+- [x] 79. 길드 설정 편집 권한을 멤버십이 아닌 Administrator 권한으로 강화 · M
 - [ ] 80. 설정 UI에 auto_summary_interval 컨트롤 추가(백엔드 모델 확장) · M
-- [ ] 81. 모델명 입력을 /api/models 기반 드롭다운으로 교체 · S
+- [x] 81. 모델명 입력을 /api/models 기반 드롭다운으로 교체 · S
 - [ ] 82. usage_log 토큰/비용 컬럼 + stats 엔드포인트·차트 반영 · L
 - [ ] 83. 명령별 평균 응답시간(latency) 막대 차트 · M
 - [x] 84. 통계 기간 필터(7/30/90일) + 백엔드 daily 쿼리 파라미터화 · M
-- [ ] 85. JWT 만료 임박 시 자동 갱신/refresh 처리 · M
-- [ ] 86. CI에 프론트 lint·타입체크·build + 백엔드 pytest 잡 추가 · M
+- [x] 85. JWT 만료 임박 시 자동 갱신/refresh 처리 · M
+- [x] 86. CI에 프론트 lint·타입체크·build + 백엔드 pytest 잡 추가 · M
 
 ## 🌐 UX / 국제화 (87~94)
 

@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   ChevronDown,
+  MessageSquareHeart,
 } from "lucide-react";
 import { clearToken } from "@/lib/auth";
 
@@ -33,6 +34,8 @@ const NAV_ITEMS = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
   { href: "/dashboard/api-keys", label: "API Keys", icon: Key },
   { href: "/dashboard/stats", label: "Statistics", icon: BarChart3 },
+  // #78: 피드백 열람 페이지
+  { href: "/dashboard/feedback", label: "Feedback", icon: MessageSquareHeart },
   { href: "/dashboard/models", label: "Models", icon: Bot },
 ];
 

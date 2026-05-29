@@ -13,6 +13,15 @@ interface GuildConfig {
   updated_at: string | null;
 }
 
+// #81: /api/models 응답에서 설치된 모델명을 끌어오기 위한 타입
+interface ModelsResponse {
+  models: { name: string }[];
+  error?: string;
+}
+
+// 모델 select 에서 "직접 입력" 을 선택하면 텍스트 입력으로 전환하기 위한 센티넬 값
+const CUSTOM_MODEL = "__custom__";
+
 const LANGUAGES = [
   { value: "ko", label: "Korean (한국어)" },
   { value: "en", label: "English" },
@@ -41,6 +50,10 @@ export default function SettingsPage() {
   const [language, setLanguage] = useState("ko");
   const [provider, setProvider] = useState("ollama");
 
+  // #81: /api/models 로 받은 설치된 모델 목록 + "직접 입력" 토글 상태
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [customModel, setCustomModel] = useState(false);
+
   const guildId = () => localStorage.getItem("selectedGuildId") ?? "";
 
   useEffect(() => {
@@ -63,6 +76,28 @@ export default function SettingsPage() {
         setLoading(false);
       });
   }, []);
+
+  // #81: 설치된 모델 목록을 불러와 드롭다운에 채운다. Ollama 가 꺼져 있거나
+  // OpenAI/Anthropic 처럼 목록을 못 받는 경우엔 직접 입력으로 폴백한다.
+  useEffect(() => {
+    apiFetch<ModelsResponse>("/api/models")
+      .then((data) => {
+        const names = (data.models ?? []).map((m) => m.name).filter(Boolean);
+        setAvailableModels(names);
+      })
+      .catch(() => {
+        // 모델 목록 조회 실패는 치명적이지 않다 — 직접 입력으로 폴백.
+        setAvailableModels([]);
+      });
+  }, []);
+
+  // 현재 모델이 설치 목록에 없으면(예: 외부 provider) 직접 입력 모드로 시작한다.
+  useEffect(() => {
+    if (!model) return;
+    if (availableModels.length > 0 && !availableModels.includes(model)) {
+      setCustomModel(true);
+    }
+  }, [model, availableModels]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -148,18 +183,55 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        {/* Model name */}
+        {/* Model name — #81: /api/models 결과 기반 드롭다운 + 직접 입력 폴백 */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1">
             Model Name
           </label>
-          <input
-            type="text"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder="e.g. llama3.1:8b, gpt-4o-mini"
-            className="w-full bg-discord-dark border border-white/10 text-white rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-discord-blurple"
-          />
+          {availableModels.length > 0 && !customModel ? (
+            <select
+              value={availableModels.includes(model) ? model : CUSTOM_MODEL}
+              onChange={(e) => {
+                if (e.target.value === CUSTOM_MODEL) {
+                  setCustomModel(true);
+                } else {
+                  setModel(e.target.value);
+                }
+              }}
+              className="w-full bg-discord-dark border border-white/10 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-discord-blurple"
+            >
+              {availableModels.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+              <option value={CUSTOM_MODEL}>Custom (enter manually)…</option>
+            </select>
+          ) : (
+            <div className="space-y-1.5">
+              <input
+                type="text"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="e.g. llama3.1:8b, gpt-4o-mini"
+                className="w-full bg-discord-dark border border-white/10 text-white rounded-lg px-3 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-discord-blurple"
+              />
+              {availableModels.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCustomModel(false)}
+                  className="text-xs text-discord-blurple hover:underline"
+                >
+                  Choose from installed models
+                </button>
+              )}
+            </div>
+          )}
+          <p className="text-xs text-gray-500 mt-1">
+            {availableModels.length > 0
+              ? "Pick an installed Ollama model, or enter a custom model name (e.g. for OpenAI/Anthropic)."
+              : "Enter the model name (e.g. llama3.1:8b, gpt-4o-mini)."}
+          </p>
         </div>
 
         {/* Summary limit */}

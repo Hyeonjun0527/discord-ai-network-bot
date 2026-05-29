@@ -11,7 +11,14 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .llm import OllamaManager
 
-from .models import MIN_AUTO_SUMMARY_INTERVAL_MINUTES, GuildConfig, LLMProvider, UsageLog
+from .models import (
+    MIN_AUTO_SUMMARY_INTERVAL_MINUTES,
+    AuditEntry,
+    GuildConfig,
+    LLMProvider,
+    Reminder,
+    UsageLog,
+)
 
 
 def _normalize_interval(raw: int | None) -> int | None:
@@ -75,11 +82,43 @@ CREATE TABLE IF NOT EXISTS feedback (
     UNIQUE(message_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS reminders (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    guild_id   INTEGER,
+    channel_id INTEGER,
+    due_at     TEXT    NOT NULL,
+    payload    TEXT    NOT NULL,
+    sent       INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id   INTEGER,
+    user_id    INTEGER,
+    action     TEXT    NOT NULL,
+    target     TEXT,
+    before     TEXT,
+    after      TEXT,
+    created_at TEXT    NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_usage_log_created_at   ON usage_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_usage_log_guild_id      ON usage_log(guild_id);
+-- #32: /stats 등 길드별 기간 조회 경로를 위한 복합 인덱스.
+CREATE INDEX IF NOT EXISTS idx_usage_log_guild_created ON usage_log(guild_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_history_user       ON chat_history(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_history_composite  ON chat_history(guild_id, channel_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_message_id     ON feedback(message_id);
+-- #32: 길드 단위 피드백 집계/삭제 경로.
+CREATE INDEX IF NOT EXISTS idx_feedback_guild_id       ON feedback(guild_id);
+-- #26: 만기 리마인더 폴링은 (sent, due_at) 으로 미발송 행만 정렬·조회한다.
+CREATE INDEX IF NOT EXISTS idx_reminders_due           ON reminders(sent, due_at);
+CREATE INDEX IF NOT EXISTS idx_reminders_user          ON reminders(user_id);
+CREATE INDEX IF NOT EXISTS idx_reminders_guild         ON reminders(guild_id);
+-- #39: 길드별 최근 감사 로그 조회.
+CREATE INDEX IF NOT EXISTS idx_audit_log_guild         ON audit_log(guild_id, created_at);
 """
 
 
@@ -130,6 +169,42 @@ def _migrate(conn: sqlite3.Connection) -> None:
         )"""
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_message_id ON feedback(message_id)")
+
+    # reminders 테이블 — 기존 배포 DB 에도 안전하게 추가 (#26).
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS reminders (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            guild_id   INTEGER,
+            channel_id INTEGER,
+            due_at     TEXT    NOT NULL,
+            payload    TEXT    NOT NULL,
+            sent       INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT    NOT NULL
+        )"""
+    )
+
+    # audit_log 테이블 — 기존 배포 DB 에도 안전하게 추가 (#39).
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS audit_log (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id   INTEGER,
+            user_id    INTEGER,
+            action     TEXT    NOT NULL,
+            target     TEXT,
+            before     TEXT,
+            after      TEXT,
+            created_at TEXT    NOT NULL
+        )"""
+    )
+
+    # #32: 누락 가능성이 있는 주요 쿼리 경로 인덱스를 멱등하게 보강한다.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_log_guild_created ON usage_log(guild_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_guild_id ON feedback(guild_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(sent, due_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_guild ON reminders(guild_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_guild ON audit_log(guild_id, created_at)")
     conn.commit()
 
 
@@ -685,3 +760,255 @@ class ConfigStore:
             (int(row["guild_id"]), _normalize_interval(row["auto_summary_interval"]) or MIN_AUTO_SUMMARY_INTERVAL_MINUTES)
             for row in rows
         ]
+
+    # ------------------------------------------------------------------
+    # Reminders (#26)
+    # ------------------------------------------------------------------
+    #
+    # 데이터 계층만 제공한다. on_ready 재예약/디스코드 전송은 bot.py 소관이며
+    # 여기서는 스키마·CRUD·만기 조회만 책임진다.
+
+    @staticmethod
+    def _row_to_reminder(row: sqlite3.Row) -> Reminder:
+        return Reminder(
+            id=int(row["id"]),
+            user_id=int(row["user_id"]),
+            guild_id=(int(row["guild_id"]) if row["guild_id"] is not None else None),
+            channel_id=(int(row["channel_id"]) if row["channel_id"] is not None else None),
+            due_at=str(row["due_at"]),
+            payload=str(row["payload"]),
+            sent=bool(row["sent"]),
+            created_at=str(row["created_at"]),
+        )
+
+    async def add_reminder(
+        self,
+        user_id: int,
+        guild_id: int | None,
+        channel_id: int | None,
+        due_at: str,
+        payload: str,
+    ) -> int:
+        """리마인더를 추가하고 새 행의 id 를 반환한다.
+
+        ``due_at`` 은 ISO8601 문자열(예: ``2026-05-29T12:00:00+00:00``)이어야 한다.
+        만기 비교는 문자열 사전식 비교이므로 일관된 UTC ISO 포맷을 권장한다.
+        """
+        normalized_due = due_at.strip()
+        if not normalized_due:
+            raise ValueError("due_at cannot be empty")
+        if not payload.strip():
+            raise ValueError("payload cannot be empty")
+        return await asyncio.to_thread(
+            self._add_reminder_sync, user_id, guild_id, channel_id, normalized_due, payload
+        )
+
+    def _add_reminder_sync(
+        self,
+        user_id: int,
+        guild_id: int | None,
+        channel_id: int | None,
+        due_at: str,
+        payload: str,
+    ) -> int:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO reminders (user_id, guild_id, channel_id, due_at, payload, sent, created_at)
+                VALUES (?, ?, ?, ?, ?, 0, ?)
+                """,
+                (user_id, guild_id, channel_id, due_at, payload, _utc_now()),
+            )
+            conn.commit()
+            return int(cur.lastrowid or 0)
+
+    async def list_due(self, now: str | None = None) -> list[Reminder]:
+        """``now`` ISO 시각 이하의 미발송 리마인더를 due_at 오름차순으로 반환한다.
+
+        ``now`` 가 None 이면 현재 UTC 시각을 사용한다. 폴링 태스크가 만기 항목을
+        한 번에 조회하는 용도다 (#26).
+        """
+        return await asyncio.to_thread(self._list_due_sync, now or _utc_now())
+
+    def _list_due_sync(self, now: str) -> list[Reminder]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, user_id, guild_id, channel_id, due_at, payload, sent, created_at
+                FROM reminders
+                WHERE sent = 0 AND due_at <= ?
+                ORDER BY due_at ASC, id ASC
+                """,
+                (now,),
+            ).fetchall()
+        return [self._row_to_reminder(row) for row in rows]
+
+    async def list_by_user(self, user_id: int, *, include_sent: bool = False) -> list[Reminder]:
+        """특정 사용자의 리마인더를 due_at 오름차순으로 반환한다.
+
+        기본적으로 미발송 항목만 반환한다(백워드 호환 기본값). ``include_sent`` 가
+        True 이면 발송 완료 항목도 포함한다.
+        """
+        return await asyncio.to_thread(self._list_by_user_sync, user_id, include_sent)
+
+    def _list_by_user_sync(self, user_id: int, include_sent: bool) -> list[Reminder]:
+        with self._connect() as conn:
+            if include_sent:
+                rows = conn.execute(
+                    """
+                    SELECT id, user_id, guild_id, channel_id, due_at, payload, sent, created_at
+                    FROM reminders WHERE user_id = ?
+                    ORDER BY due_at ASC, id ASC
+                    """,
+                    (user_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, user_id, guild_id, channel_id, due_at, payload, sent, created_at
+                    FROM reminders WHERE user_id = ? AND sent = 0
+                    ORDER BY due_at ASC, id ASC
+                    """,
+                    (user_id,),
+                ).fetchall()
+        return [self._row_to_reminder(row) for row in rows]
+
+    async def delete_reminder(self, reminder_id: int) -> bool:
+        """리마인더를 삭제한다. 실제로 삭제됐으면 True 를 반환한다."""
+        return await asyncio.to_thread(self._delete_reminder_sync, reminder_id)
+
+    def _delete_reminder_sync(self, reminder_id: int) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+            conn.commit()
+            return bool(cur.rowcount and cur.rowcount > 0)
+
+    async def mark_sent(self, reminder_id: int) -> bool:
+        """리마인더를 발송 완료로 표시한다. 변경됐으면 True 를 반환한다."""
+        return await asyncio.to_thread(self._mark_sent_sync, reminder_id)
+
+    def _mark_sent_sync(self, reminder_id: int) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE reminders SET sent = 1 WHERE id = ?", (reminder_id,)
+            )
+            conn.commit()
+            return bool(cur.rowcount and cur.rowcount > 0)
+
+    # ------------------------------------------------------------------
+    # Audit log (#39)
+    # ------------------------------------------------------------------
+
+    async def record_audit(
+        self,
+        *,
+        guild_id: int | None,
+        user_id: int | None,
+        action: str,
+        target: str | None = None,
+        before: str | None = None,
+        after: str | None = None,
+    ) -> int:
+        """감사 로그 한 건을 기록하고 새 행의 id 를 반환한다 (#39)."""
+        normalized_action = action.strip()
+        if not normalized_action:
+            raise ValueError("action cannot be empty")
+        return await asyncio.to_thread(
+            self._record_audit_sync, guild_id, user_id, normalized_action, target, before, after
+        )
+
+    def _record_audit_sync(
+        self,
+        guild_id: int | None,
+        user_id: int | None,
+        action: str,
+        target: str | None,
+        before: str | None,
+        after: str | None,
+    ) -> int:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO audit_log (guild_id, user_id, action, target, before, after, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (guild_id, user_id, action, target, before, after, _utc_now()),
+            )
+            conn.commit()
+            return int(cur.lastrowid or 0)
+
+    async def list_audit(self, guild_id: int, *, limit: int = 50) -> list[AuditEntry]:
+        """길드의 최근 감사 로그를 created_at 내림차순(최신 우선)으로 반환한다 (#39)."""
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+        return await asyncio.to_thread(self._list_audit_sync, guild_id, limit)
+
+    def _list_audit_sync(self, guild_id: int, limit: int) -> list[AuditEntry]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, guild_id, user_id, action, target, before, after, created_at
+                FROM audit_log
+                WHERE guild_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (guild_id, limit),
+            ).fetchall()
+        return [
+            AuditEntry(
+                id=int(row["id"]),
+                guild_id=(int(row["guild_id"]) if row["guild_id"] is not None else None),
+                user_id=(int(row["user_id"]) if row["user_id"] is not None else None),
+                action=str(row["action"]),
+                target=row["target"],
+                before=row["before"],
+                after=row["after"],
+                created_at=str(row["created_at"]),
+            )
+            for row in rows
+        ]
+
+    # ------------------------------------------------------------------
+    # Data deletion / GDPR (#40)
+    # ------------------------------------------------------------------
+
+    async def delete_user_data(self, user_id: int) -> dict[str, int]:
+        """한 사용자의 데이터를 모든 관련 테이블에서 삭제한다 (#40).
+
+        반환값은 ``{"chat_history": N, "feedback": M, "usage_log": K,
+        "reminders": L}`` 형태의 삭제 건수 dict 이다.
+        """
+        return await asyncio.to_thread(self._delete_user_data_sync, user_id)
+
+    def _delete_user_data_sync(self, user_id: int) -> dict[str, int]:
+        deleted = {"chat_history": 0, "feedback": 0, "usage_log": 0, "reminders": 0}
+        with self._connect() as conn:
+            for table in ("chat_history", "feedback", "usage_log", "reminders"):
+                cur = conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+                deleted[table] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            conn.commit()
+        return deleted
+
+    async def delete_guild_data(self, guild_id: int) -> dict[str, int]:
+        """한 길드의 데이터를 모든 관련 테이블에서 삭제한다 (#40).
+
+        반환값은 ``{"guild_config": N, "usage_log": M, "feedback": K,
+        "chat_history": L, "reminders": P}`` 형태의 삭제 건수 dict 이다.
+        """
+        return await asyncio.to_thread(self._delete_guild_data_sync, guild_id)
+
+    def _delete_guild_data_sync(self, guild_id: int) -> dict[str, int]:
+        deleted = {
+            "guild_config": 0,
+            "usage_log": 0,
+            "feedback": 0,
+            "chat_history": 0,
+            "reminders": 0,
+        }
+        with self._connect() as conn:
+            for table in ("guild_config", "usage_log", "feedback", "chat_history", "reminders"):
+                cur = conn.execute(f"DELETE FROM {table} WHERE guild_id = ?", (guild_id,))
+                deleted[table] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+            conn.commit()
+        return deleted

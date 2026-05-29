@@ -4,6 +4,7 @@ import asyncio
 import unittest
 
 from discord_assistant.llm import (
+    PRICING,
     AnthropicClient,
     CircuitBreaker,
     CircuitBreakerOpenError,
@@ -14,8 +15,11 @@ from discord_assistant.llm import (
     _is_retryable,
     _with_circuit_breaker,
     _with_retry,
+    estimate_cost,
     parse_generate_response,
+    supports_vision,
 )
+from discord_assistant.models import LLMProvider
 
 
 class LlmTest(unittest.TestCase):
@@ -198,6 +202,133 @@ class ClientParamInjectionTest(unittest.TestCase):
         client = AnthropicClient(api_key="sk-x", max_tokens=1024, system_prompt="hi")
         self.assertEqual(client.max_tokens, 1024)
         self.assertEqual(client.system_prompt, "hi")
+
+
+# ---------------------------------------------------------------------------
+# #14: 비전(멀티모달) 지원 판정
+# ---------------------------------------------------------------------------
+
+
+class SupportsVisionTest(unittest.TestCase):
+    def test_openai_vision_models(self) -> None:
+        for model in (
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4-turbo",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "o1",
+            "o4-mini",
+        ):
+            self.assertTrue(
+                supports_vision(LLMProvider.OPENAI, model), f"{model} should support vision"
+            )
+
+    def test_openai_text_only_models(self) -> None:
+        for model in ("gpt-3.5-turbo", "o1-mini", "o3-mini"):
+            self.assertFalse(
+                supports_vision(LLMProvider.OPENAI, model), f"{model} should be text-only"
+            )
+
+    def test_openai_unknown_model_is_false(self) -> None:
+        self.assertFalse(supports_vision(LLMProvider.OPENAI, "babbage-002"))
+
+    def test_anthropic_vision_models(self) -> None:
+        for model in (
+            "claude-3-opus-20240229",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-latest",
+            "claude-opus-4-20250101",
+            "claude-sonnet-4-5",
+            "claude-haiku-4-5-20251001",
+        ):
+            self.assertTrue(
+                supports_vision(LLMProvider.ANTHROPIC, model), f"{model} should support vision"
+            )
+
+    def test_anthropic_legacy_text_only(self) -> None:
+        # claude-2 계열은 비전 미지원
+        self.assertFalse(supports_vision(LLMProvider.ANTHROPIC, "claude-2.1"))
+
+    def test_ollama_vision_models(self) -> None:
+        for model in (
+            "llava:13b",
+            "bakllava:latest",
+            "llama3.2-vision",
+            "minicpm-v",
+            "moondream",
+        ):
+            self.assertTrue(
+                supports_vision(LLMProvider.OLLAMA, model), f"{model} should support vision"
+            )
+
+    def test_ollama_text_only_models(self) -> None:
+        for model in ("llama3.1:8b", "qwen2.5:7b", "mistral:7b", "phi3:mini"):
+            self.assertFalse(
+                supports_vision(LLMProvider.OLLAMA, model), f"{model} should be text-only"
+            )
+
+    def test_empty_model_is_false(self) -> None:
+        self.assertFalse(supports_vision(LLMProvider.OPENAI, ""))
+        self.assertFalse(supports_vision(LLMProvider.ANTHROPIC, "   "))
+
+    def test_case_insensitive(self) -> None:
+        self.assertTrue(supports_vision(LLMProvider.OPENAI, "GPT-4O-MINI"))
+        self.assertTrue(supports_vision(LLMProvider.OLLAMA, "LLaVA:13B"))
+
+
+# ---------------------------------------------------------------------------
+# #18: 제공자·모델별 단가 + 비용 계산
+# ---------------------------------------------------------------------------
+
+
+class EstimateCostTest(unittest.TestCase):
+    def test_openai_known_model_exact(self) -> None:
+        # gpt-4o-mini: (0.00015, 0.0006) per 1K
+        cost = estimate_cost(LLMProvider.OPENAI, "gpt-4o-mini", 1000, 1000)
+        self.assertAlmostEqual(cost, 0.00015 + 0.0006)
+
+    def test_openai_partial_match_with_suffix(self) -> None:
+        # 정확히 등록되지 않은 변형도 부분 문자열 매칭으로 처리
+        cost = estimate_cost(LLMProvider.OPENAI, "gpt-4o-2024-08-06", 2000, 0)
+        self.assertAlmostEqual(cost, 2 * 0.0025)
+
+    def test_anthropic_known_model(self) -> None:
+        # claude-3-5-sonnet: (0.003, 0.015) per 1K
+        cost = estimate_cost(
+            LLMProvider.ANTHROPIC, "claude-3-5-sonnet-20241022", 1000, 2000
+        )
+        self.assertAlmostEqual(cost, 0.003 + 2 * 0.015)
+
+    def test_longest_key_wins(self) -> None:
+        # "claude-3-5-haiku"가 "claude-3"보다 더 구체적이므로 우선
+        cost = estimate_cost(LLMProvider.ANTHROPIC, "claude-3-5-haiku-latest", 1000, 0)
+        self.assertAlmostEqual(cost, 0.0008)
+
+    def test_ollama_is_free(self) -> None:
+        self.assertEqual(
+            estimate_cost(LLMProvider.OLLAMA, "llama3.1:8b", 999999, 999999), 0.0
+        )
+
+    def test_unknown_model_is_zero(self) -> None:
+        self.assertEqual(estimate_cost(LLMProvider.OPENAI, "totally-unknown", 1000, 1000), 0.0)
+
+    def test_negative_tokens_clamped(self) -> None:
+        cost = estimate_cost(LLMProvider.OPENAI, "gpt-4o-mini", -500, -500)
+        self.assertEqual(cost, 0.0)
+
+    def test_empty_model_is_zero(self) -> None:
+        self.assertEqual(estimate_cost(LLMProvider.OPENAI, "", 1000, 1000), 0.0)
+
+    def test_pricing_table_is_populated(self) -> None:
+        # 단가 테이블이 비어있지 않고 모든 값이 (float, float) 형태인지 확인
+        self.assertGreater(len(PRICING), 0)
+        for (provider, model), price in PRICING.items():
+            self.assertIsInstance(provider, LLMProvider)
+            self.assertIsInstance(model, str)
+            self.assertEqual(len(price), 2)
+            self.assertGreaterEqual(price[0], 0.0)
+            self.assertGreaterEqual(price[1], 0.0)
 
 
 if __name__ == "__main__":

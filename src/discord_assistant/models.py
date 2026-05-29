@@ -87,3 +87,40 @@ class UsageLog:
     status: str
     latency_ms: int = 0
     error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Reminder:
+    """예약된 리마인더 한 건 (#26).
+
+    ``due_at`` 은 ISO8601 문자열(UTC 권장)이며, 비교는 문자열 사전식 비교로
+    처리한다. ``payload`` 는 사용자에게 보낼 내용. ``id``/``sent``/``created_at``
+    은 저장 시점에 채워지므로 신규 작성 시 기본값을 둔다(백워드 호환).
+    """
+
+    user_id: int
+    guild_id: int | None
+    channel_id: int | None
+    due_at: str
+    payload: str
+    id: int | None = None
+    sent: bool = False
+    created_at: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AuditEntry:
+    """감사 로그 한 건 (#39).
+
+    ``before``/``after`` 는 변경 전후 값을 담는 선택적 문자열(예: JSON 직렬화).
+    ``id``/``created_at`` 은 저장 시점에 채워지므로 기본값을 둔다.
+    """
+
+    guild_id: int | None
+    user_id: int | None
+    action: str
+    target: str | None = None
+    before: str | None = None
+    after: str | None = None
+    id: int | None = None
+    created_at: str | None = None

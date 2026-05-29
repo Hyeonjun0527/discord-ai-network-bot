@@ -8,6 +8,7 @@ from discord_assistant import cache
 from discord_assistant.cache import (
     TRANSLATION_CACHE_MAX_SIZE,
     TRANSLATION_CACHE_TTL,
+    TTLCache,
     clear_translation_cache,
     get_translation,
     purge_expired_translations,
@@ -83,6 +84,37 @@ class TranslationCacheTest(unittest.TestCase):
         with patch.object(cache.time, "monotonic", return_value=float(TRANSLATION_CACHE_MAX_SIZE)):
             self.assertIsNone(get_translation("text-0", "ko"))
             self.assertEqual(get_translation("overflow", "ko"), "new")
+
+
+class TTLCacheInvalidatePrefixTest(unittest.TestCase):
+    def test_invalidate_prefix_exact_key_does_not_wipe_sibling_ids(self) -> None:
+        # Keys are "{guild}:{channel}"; invalidating channel 45 must not also
+        # drop channels whose id merely shares the leading digits (456, 450).
+        c = TTLCache(ttl=60.0)
+        c.set("1:45", "a")
+        c.set("1:456", "b")
+        c.set("1:450", "c")
+        c.invalidate_prefix("1:45")
+        self.assertIsNone(c.get("1:45"))
+        self.assertEqual(c.get("1:456"), "b")
+        self.assertEqual(c.get("1:450"), "c")
+
+    def test_invalidate_prefix_matches_subkeyed_extension(self) -> None:
+        # A composite key extending the prefix with the ":" separator is matched.
+        c = TTLCache(ttl=60.0)
+        c.set("1:45", "a")
+        c.set("1:45:ko", "b")
+        c.invalidate_prefix("1:45")
+        self.assertIsNone(c.get("1:45"))
+        self.assertIsNone(c.get("1:45:ko"))
+
+    def test_invalidate_prefix_does_not_match_other_guild(self) -> None:
+        c = TTLCache(ttl=60.0)
+        c.set("1:45", "a")
+        c.set("12:45", "b")
+        c.invalidate_prefix("1:45")
+        self.assertIsNone(c.get("1:45"))
+        self.assertEqual(c.get("12:45"), "b")
 
 
 if __name__ == "__main__":

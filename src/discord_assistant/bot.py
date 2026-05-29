@@ -720,7 +720,15 @@ def _split_discord_text(text: str, *, max_chars: int = MAX_DISCORD_MESSAGE_CHARS
                 in_code_block = False
                 code_lang = ""
 
-        if len(line) > max_chars:
+        # #118: inside a code block a single line must also fit alongside the
+        # open ("```lang\n") and close ("\n```") fences; reserve that space so a
+        # line that cannot fit fenced is routed to the fragment splitter below
+        # instead of being emitted as an over-limit fenced chunk.
+        line_over = len(line) > max_chars
+        if in_code_block and not line.startswith("```"):
+            fence_budget = max_chars - len(f"```{code_lang}\n") - len("\n```")
+            line_over = line_over or len(line) > fence_budget
+        if line_over:
             if in_code_block:
                 # Flush any buffered content first, closing the fence — but drop
                 # a buffer that is only the bare opening fence (no content yet)
@@ -752,7 +760,12 @@ def _split_discord_text(text: str, *, max_chars: int = MAX_DISCORD_MESSAGE_CHARS
             continue
 
         candidate = f"{current}\n{line}" if current else line
-        if len(candidate) > max_chars:
+        # #118: while inside a code block the buffer is later closed with a
+        # trailing "\n```" fence (line below + the end-of-text flush), so reserve
+        # those 4 chars in the boundary check; otherwise the flushed chunk would
+        # exceed max_chars by the fence length and break the function's contract.
+        fence_reserve = len("\n```") if in_code_block else 0
+        if len(candidate) + fence_reserve > max_chars:
             if in_code_block:
                 current += "\n```"
             chunks.append(current.rstrip())
@@ -1144,10 +1157,20 @@ async def _collect_transcript(
         raise UserFacingError("이 명령은 메시지 기록을 읽을 수 있는 채널에서만 사용할 수 있어요.")
     messages = []
     try:
-        kwargs: dict[str, Any] = {"limit": limit, "before": before}
-        if after is not None:
-            kwargs["after"] = after
-        async for message in channel.history(**kwargs):
+        # #4/#11: history(after=..., limit=N) 은 discord.py 에서 oldest-first 로
+        # 페이지네이션돼 윈도우의 *가장 오래된* N 개만 돌려준다. 그러면 활발한
+        # 채널에서 since:Xd 가 기간의 초반만 요약하고 최신 활동을 통째로 누락한다.
+        # before 만 넘겨 newest-first 로 받은 뒤 after 보다 오래된 메시지에서 멈춰,
+        # 윈도우의 *가장 최신* N 개(요약에 가장 관련 높은 메시지)를 유지한다.
+        async for message in channel.history(limit=limit, before=before):
+            if after is not None:
+                created = getattr(message, "created_at", None)
+                if created is not None:
+                    if created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    # history 는 시간 순서이므로 윈도우를 벗어나면 이후도 모두 밖이다.
+                    if created < after:
+                        break
             messages.append(from_discord_message(message))
     except discord.Forbidden as exc:
         raise UserFacingError("봇에 Read Message History 권한이 없어 최근 대화를 읽을 수 없어요.") from exc
@@ -1260,6 +1283,11 @@ async def _record_usage(
 _REMIND_KIND_SUMMARY = "summary"
 _REMIND_KIND_TEXT = "text"
 
+# #2 리마인더 남용/적체 방지: 저장 payload 길이 상한과 사용자별 미발송 개수 상한.
+# 길이 상한은 발송 본문(_deliver_reminder 의 text[:1800]/[:1900])과도 정합한다.
+_MAX_REMIND_TEXT_CHARS = 1800
+_MAX_PENDING_REMINDERS_PER_USER = 25
+
 
 def _encode_remind_payload(text: str, *, kind: str, repeat: str | None = None) -> str:
     """리마인더 payload 를 JSON 문자열로 직렬화한다 (#1/#2)."""
@@ -1306,6 +1334,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         health_server: HealthServer
         # #13: on_ready 는 재연결마다 발화하므로 reschedule 를 최초 1회만 하도록 가드.
         _reschedule_done: bool = False
+        # #25: on_ready 의 길드별 명령 동기화도 재연결마다 반복되면 강한 길드 sync
+        # 레이트리밋(일일 한도)을 소진하므로, 최초 1회만 동기화하도록 가드한다.
+        _guild_synced: bool = False
 
         async def setup_hook(self) -> None:
             await store.initialize()
@@ -1373,7 +1404,18 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     return
         try:
             user = bot.get_user(reminder.user_id) or await bot.fetch_user(reminder.user_id)
-            await user.send(body)
+            if user is None:
+                # #16: get_user/fetch_user 가 모두 None 이면 user.send 가
+                # AttributeError 를 던져 어떤 except 에도 걸리지 않고, mark_sent 가
+                # 누락돼 매 재기동 reschedule 마다 같은 행으로 실패하는 좀비가 된다.
+                # 사용자를 찾을 수 없는 것은 영구 실패이므로 발송 완료로 표시한다.
+                logger.info(
+                    "리마인더 대상 사용자를 찾을 수 없어 발송 생략: user=%s id=%s",
+                    reminder.user_id,
+                    reminder.id,
+                )
+            else:
+                await user.send(body)
         except discord.Forbidden:
             # DM 차단 등 영구 실패: 무한 재시도하지 않도록 발송 완료로 표시한다.
             logger.info("리마인더 DM 전송 실패(차단): user=%s id=%s", reminder.user_id, reminder.id)
@@ -2101,10 +2143,19 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         message: str = "",
         repeat: str = "",
     ) -> None:
-        user_id = interaction.user.id if interaction.user else None
+        guild_id, channel_id, user_id = _ids_from_interaction(interaction)
         if user_id is None:
             await interaction.response.send_message(
                 "⚠️ 사용자 정보를 확인할 수 없어요.", ephemeral=True
+            )
+            return
+        # #2: 다른 LLM/예약 진입점과 동일하게 쿨다운을 적용해 스팸성 대량 예약을
+        # 막는다. DM(guild_id None)은 센티넬 버킷으로 per-user 쿨다운을 건다.
+        cd_guild = guild_id if guild_id is not None else _DM_COOLDOWN_GUILD
+        remaining = _check_cooldown(cd_guild, user_id)
+        if remaining is not None:
+            await interaction.response.send_message(
+                f"⏳ {remaining:.0f}초 후에 다시 시도해주세요.", ephemeral=True
             )
             return
         try:
@@ -2128,7 +2179,21 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             text, _ = cached
             kind = _REMIND_KIND_SUMMARY
 
-        guild_id, channel_id, _ = _ids_from_interaction(interaction)
+        # #2: 저장 payload 길이를 제한해 DB 적체와 장기 평문 보존(요약=대화 PII)을
+        # 억제한다. 발송 본문도 어차피 1800~1900자로 잘리므로 정보 손실은 없다.
+        text = text[:_MAX_REMIND_TEXT_CHARS]
+
+        # #2: 미발송 리마인더가 사용자별 상한을 넘으면 새 예약을 거절해 무한 적체를
+        # 막는다(list_by_user 는 기본적으로 미발송 항목만 반환한다).
+        pending = await store.list_by_user(user_id)
+        if len(pending) >= _MAX_PENDING_REMINDERS_PER_USER:
+            await interaction.response.send_message(
+                f"⚠️ 예약 가능한 알림은 최대 {_MAX_PENDING_REMINDERS_PER_USER}개예요. "
+                "`/reminders`에서 기존 알림을 취소한 뒤 다시 시도해 주세요.",
+                ephemeral=True,
+            )
+            return
+
         due_at = (datetime.now(timezone.utc) + delay).isoformat()
         repeat_label = repeat.strip() or None
         payload = _encode_remind_payload(text, kind=kind, repeat=repeat_label)
@@ -2613,8 +2678,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             # 역할 제한 검사 (#49 와 동일 정책).
             if not _has_allowed_role(interaction, config.allowed_role_id):
                 raise UserFacingError("이 명령을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.")
-            # 기간 내 메시지를 모은다. summary_limit 를 상한으로 두되 200까지 허용한다.
-            digest_limit = _effective_limit(config.summary_limit, config.summary_limit)
+            # #4: digest 는 기간 전체(since:Xd)를 정리하는 명령이므로 summary_limit
+            # (기본 50)으로 묶으면 활발한 채널에서 기간의 일부만 다룬다. 기간형
+            # 명령은 허용 최대치(200)까지 메시지를 모으고, 최종 프롬프트 길이는
+            # max_context_chars 가 묶는다. (_collect_transcript 는 윈도우의 최신
+            # 메시지부터 채우므로 가장 관련 높은 최근 활동이 우선 포함된다.)
+            digest_limit = _effective_limit(200, config.summary_limit)
             transcript = await _collect_transcript(
                 interaction.channel,
                 before=interaction.created_at,
@@ -3003,10 +3072,14 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     async def on_ready() -> None:
         assert bot.user is not None
         logger.info("Logged in as %s (id=%s)", bot.user, bot.user.id)
-        for guild in bot.guilds:
-            bot.tree.copy_global_to(guild=guild)
-            synced = await bot.tree.sync(guild=guild)
-            logger.info("Guild-synced %d command(s) to %s", len(synced), guild.name)
+        # #25: on_ready 는 재연결(RESUME)마다 발화한다. 길드별 copy_global_to+sync 는
+        # 강한 레이트리밋 대상이므로 최초 1회만 동기화해 중복 PUT 을 막는다.
+        if not getattr(bot, "_guild_synced", False):
+            bot._guild_synced = True
+            for guild in bot.guilds:
+                bot.tree.copy_global_to(guild=guild)
+                synced = await bot.tree.sync(guild=guild)
+                logger.info("Guild-synced %d command(s) to %s", len(synced), guild.name)
         # fire-and-forget 태스크는 _track_task 로 추적해 조용한 소실/예외 삼킴 방지 (#51).
         _track_task(_memory_monitor(), name="memory-monitor")
         # 봇 재시작에도 미발송 reminder 가 살아남도록 다시 예약한다 (#1).
@@ -3065,10 +3138,18 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     pass
                 return
             started = perf_counter()
+            # #92: DM 대화 기억을 user 전역(guild_id=None)으로 저장/조회하면
+            # storage 가 `WHERE user_id=?` 전역 분기로 떨어져 같은 사용자의 다른
+            # 길드 대화가 DM 응답 맥락으로 섞여 들어온다(컨텍스트 누수). DM 전용
+            # 센티넬 guild_id + 실제 DM 채널 id 로 명시 스코프해 격리한다.
+            dm_scope_guild = _DM_COOLDOWN_GUILD
+            dm_channel_id = message.channel.id if hasattr(message.channel, "id") else None
             try:
                 config = await store.get_guild_config(0)  # use default config
-                # #10: DM 대화 기억 — 직전 대화를 history 로 이어 붙인다(guild_id=None).
-                history = await store.get_chat_history(user_id, guild_id=None, limit=10)
+                # #10/#92: 직전 DM 대화를 DM 전용 스코프로만 이어 붙인다.
+                history = await store.get_chat_history(
+                    user_id, guild_id=dm_scope_guild, channel_id=dm_channel_id, limit=10
+                )
                 if history:
                     prompt = build_chat_with_history_prompt(
                         message.content, history, language=config.language
@@ -3077,16 +3158,30 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     prompt = build_chat_prompt(
                         message.content, language=config.language, persona=config.persona
                     )
+                # #29: DM 은 guild_id=None 이라 그동안 서버 일일 토큰 상한을 전혀
+                # 받지 않아 0번 설정의 외부 키로 비용이 무제한 노출됐다. DM 사용량을
+                # 0번(센티넬) 버킷에 기록하고 동일 버킷의 상한을 검사해, 관리자가
+                # `/config daily_token_budget`(0번 설정)으로 DM 비용을 캡할 수 있게
+                # 한다. 상한 미설정(None)이면 기존 동작과 동일(무제한, 검사 no-op).
+                await _enforce_token_budget(store, config, dm_scope_guild)
                 llm = _get_llm(config, settings)
                 async with message.channel.typing():
                     answer = await llm.generate(prompt, model=config.model)
                 p_tokens, c_tokens = _usage_tokens(llm)  # #17
                 await _send_channel_chunks(message.channel, answer)
-                # 대화를 저장해 다음 DM 에서 맥락을 이어가게 한다 (#10).
-                await store.save_chat_message(user_id, "user", message.content, guild_id=None)
-                await store.save_chat_message(user_id, "assistant", answer, guild_id=None)
+                # 대화를 DM 전용 스코프로 저장해 다음 DM 에서만 맥락을 이어간다 (#10/#92).
+                await store.save_chat_message(
+                    user_id, "user", message.content,
+                    guild_id=dm_scope_guild, channel_id=dm_channel_id,
+                )
+                await store.save_chat_message(
+                    user_id, "assistant", answer,
+                    guild_id=dm_scope_guild, channel_id=dm_channel_id,
+                )
+                # #29: DM 토큰 사용량을 0번(센티넬) 버킷에 기록해 일일 상한 집계에
+                # 반영한다(get_today_token_usage 는 guild_id 별 집계).
                 await _record_usage(
-                    store, guild_id=None, channel_id=None, user_id=user_id,
+                    store, guild_id=dm_scope_guild, channel_id=dm_channel_id, user_id=user_id,
                     command="dm_chat", status="ok", started_at=started,
                     prompt_tokens=p_tokens, completion_tokens=c_tokens,
                 )
@@ -3103,7 +3198,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 except Exception:
                     pass
                 await _record_usage(
-                    store, guild_id=None, channel_id=None, user_id=user_id,
+                    store, guild_id=dm_scope_guild, channel_id=dm_channel_id, user_id=user_id,
                     command="dm_chat", status="error", started_at=started, error=str(exc),
                 )
             return
@@ -3309,6 +3404,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
     async def _delayed_disconnect_alert() -> None:
         """유예 시간 대기 후에도 재연결이 없으면 개발자에게 알린다 (#54)."""
+        # #36: notify_developer 의 await 경계 동안 재연결→새 끊김으로 다른 알림
+        # 태스크가 pending 에 등록될 수 있다. 끝에서 무조건 None 으로 덮어쓰면 그
+        # 새 태스크 참조를 잃어 _cancel_pending_disconnect_alert 가 취소하지 못한다.
+        # 자신이 아직 등록된 pending 일 때만 비운다.
+        me = asyncio.current_task()
         try:
             await asyncio.sleep(_DISCONNECT_GRACE_SECONDS)
         except asyncio.CancelledError:
@@ -3322,7 +3422,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             )
             msg = format_disconnect_message(shard_id=None)
             await notify_developer(msg, bot)
-        _disconnect_state["pending"] = None
+        if _disconnect_state.get("pending") is me:
+            _disconnect_state["pending"] = None
 
     def _cancel_pending_disconnect_alert() -> None:
         """대기 중인 끊김 알림을 취소한다(재연결 시 호출) (#54)."""
@@ -3387,33 +3488,48 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     elapsed_minutes = (now - last_run).total_seconds() / 60
                     if elapsed_minutes < interval:
                         continue
-                _auto_summary_last_run[gid] = now
 
                 config = await store.get_guild_config(gid)
                 guild = bot.get_guild(gid)
                 if guild is None:
                     continue
-                # Find the first text channel we can post to
+                # Find the first text channel we can post to.
                 for ch in guild.text_channels:
-                    if ch.permissions_for(guild.me).send_messages and ch.permissions_for(guild.me).read_message_history:
-                        try:
-                            transcript = await _collect_transcript(
-                                ch,
-                                before=now,
-                                limit=config.summary_limit,
-                                max_context_chars=settings.max_context_chars,
-                            )
-                            if not transcript:
-                                break
-                            prompt = build_summarize_prompt(transcript, language=config.language)
-                            # #19: 자동 요약도 토큰을 소비하므로 서버 일일 상한을 검사.
-                            # 초과 시 UserFacingError 가 except 로 흡수돼 이번 주기를 건너뛴다.
-                            await _enforce_token_budget(store, config, gid)
-                            llm = _get_llm(config, settings)
-                            answer = await llm.generate(prompt, model=config.model)
-                            await ch.send(f"**자동 요약** (매 {config.auto_summary_interval}분)\n{answer[:1800]}")
-                        except Exception as e:
-                            logger.warning("Auto summary failed for guild %d: %s", gid, e)
+                    if not (
+                        ch.permissions_for(guild.me).send_messages
+                        and ch.permissions_for(guild.me).read_message_history
+                    ):
+                        continue
+                    try:
+                        transcript = await _collect_transcript(
+                            ch,
+                            before=now,
+                            limit=config.summary_limit,
+                            max_context_chars=settings.max_context_chars,
+                        )
+                        # #27: 빈 채널이면 break 대신 continue 로 다음 채널을 시도해,
+                        # 권한상 첫 채널이 비어 있어도 활발한 다른 채널을 요약한다.
+                        if not transcript:
+                            continue
+                        prompt = build_summarize_prompt(transcript, language=config.language)
+                        # #19: 자동 요약도 토큰을 소비하므로 서버 일일 상한을 검사.
+                        await _enforce_token_budget(store, config, gid)
+                        llm = _get_llm(config, settings)
+                        answer = await llm.generate(prompt, model=config.model)
+                        await ch.send(f"**자동 요약** (매 {config.auto_summary_interval}분)\n{answer[:1800]}")
+                    except UserFacingError as e:
+                        # 예산 초과 등 의도된 skip — 이번 주기는 정상 소진한다.
+                        logger.info("Auto summary skipped for guild %d: %s", gid, e)
+                        _auto_summary_last_run[gid] = now
+                        break
+                    except Exception as e:
+                        # #37: 일시적 LLM/네트워크 오류는 last_run 을 갱신하지 않아
+                        # 다음 주기에 재시도되게 한다(실패로 한 주기를 소진하지 않음).
+                        logger.warning("Auto summary failed for guild %d: %s", gid, e)
+                        break
+                    else:
+                        # #37: 실제 전송에 성공한 뒤에만 last_run 을 갱신한다.
+                        _auto_summary_last_run[gid] = now
                         break
         except Exception as e:
             logger.exception("auto_summary_task error: %s", e)
@@ -3520,6 +3636,14 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 reactor = guild_obj.get_member(payload.user_id) if guild_obj else None
             if not _member_has_allowed_role(reactor, config.allowed_role_id):
                 return
+        # #28: 봇이 이 채널에 답장(send)할 수 없으면 비싼 LLM 호출 전에 조용히
+        # 종료한다(읽기만 가능한 채널에서 토큰만 소비하는 것을 막는다). 권한 객체를
+        # 알 수 없는 채널(DM 등)은 검사를 건너뛰고 기존 동작을 유지한다.
+        guild_for_perms = bot.get_guild(guild_id) if guild_id is not None else None
+        if guild_for_perms is not None and hasattr(channel, "permissions_for"):
+            me = guild_for_perms.me
+            if me is not None and not channel.permissions_for(me).send_messages:
+                return
         command_name = "reaction_summarize" if emoji_str == REACTION_SUMMARIZE else "reaction_translate"
         try:
             # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
@@ -3536,11 +3660,17 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 prompt = build_translate_prompt(target.content, target_language=target_lang)
                 heading = f"🌐 **번역 ({target_lang})**\n"
             answer = await llm.generate(prompt, model=config.model)
-            for i, chunk in enumerate(_split_discord_text(heading + answer)):
-                if i == 0:
-                    await target.reply(chunk, mention_author=False)
-                else:
-                    await _send_channel_chunks(channel, chunk)  # type: ignore[arg-type]
+            # #28: 성공 경로의 reply/send 가 던지는 discord.Forbidden(HTTPException
+            # 서브클래스)은 LLMError/UserFacingError 가 아니라 아래 except 에 걸리지
+            # 않아 on_error → 개발자 DM 으로 새어나간다. 여기서 흡수한다.
+            try:
+                for i, chunk in enumerate(_split_discord_text(heading + answer)):
+                    if i == 0:
+                        await target.reply(chunk, mention_author=False)
+                    else:
+                        await _send_channel_chunks(channel, chunk)  # type: ignore[arg-type]
+            except discord.HTTPException as exc:
+                logger.info("리액션 응답 전송 실패(권한/일시 오류): %s", exc)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=payload.channel_id, user_id=payload.user_id,
                 command=command_name, status="ok", started_at=started,

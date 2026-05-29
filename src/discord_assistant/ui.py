@@ -264,6 +264,13 @@ def _language_select_embed(config: GuildConfig, lang: str = "ko") -> discord.Emb
 # ---------------------------------------------------------------------------
 
 
+# 명시적 '무효 키' 신호로 간주하는 HTTP 상태 코드(클라이언트 오류).
+# 401/403(인증/권한)뿐 아니라 400(잘못된 요청 — Gemini 는 무효 키에 400
+# API_KEY_INVALID 를 돌려줌)·404 도 무효로 본다. 429/5xx/네트워크 오류는
+# 일시 장애일 수 있으므로 등록을 막지 않고 통과시킨다(기존 관대 정책 유지).
+_INVALID_KEY_HTTP_CODES = (400, 401, 403, 404)
+
+
 def _validate_openai_key(api_key: str) -> bool:
     """Return True if the OpenAI key passes a basic API check."""
     req = urllib_request.Request(
@@ -275,7 +282,7 @@ def _validate_openai_key(api_key: str) -> bool:
         with urllib_request.urlopen(req, timeout=10) as resp:  # noqa: S310
             return bool(resp.status == 200)
     except urllib_error.HTTPError as exc:
-        return exc.code not in (401, 403)
+        return exc.code not in _INVALID_KEY_HTTP_CODES
     except Exception:
         return False
 
@@ -303,7 +310,7 @@ def _validate_anthropic_key(api_key: str) -> bool:
         with urllib_request.urlopen(req, timeout=10) as resp:  # noqa: S310
             return resp.status in (200, 201)
     except urllib_error.HTTPError as exc:
-        return exc.code not in (401, 403)
+        return exc.code not in _INVALID_KEY_HTTP_CODES
     except Exception:
         return False
 
@@ -312,9 +319,10 @@ def _validate_gemini_key(api_key: str) -> bool:
     """Return True if the Gemini key passes a basic API check (#15).
 
     가벼운 ``GET /v1beta/models`` 호출로 키 유효성만 확인한다. 키는 보안상 URL
-    쿼리가 아니라 ``x-goog-api-key`` 헤더로 전달한다(노출 방지). 401/403 은
-    무효 키로 간주하고, 그 외 응답/오류는 (네트워크 문제 등) 통과시켜 등록 자체를
-    막지 않는다(OpenAI/Anthropic 검증과 동일한 관대 정책).
+    쿼리가 아니라 ``x-goog-api-key`` 헤더로 전달한다(노출 방지). 400/401/403/404
+    (``_INVALID_KEY_HTTP_CODES``)는 무효 키로 간주하고, 그 외 응답/오류(429/5xx/
+    네트워크 문제 등)는 통과시켜 등록 자체를 막지 않는다(OpenAI/Anthropic 검증과
+    동일한 관대 정책).
     """
     req = urllib_request.Request(
         "https://generativelanguage.googleapis.com/v1beta/models",
@@ -325,7 +333,7 @@ def _validate_gemini_key(api_key: str) -> bool:
         with urllib_request.urlopen(req, timeout=10) as resp:  # noqa: S310
             return bool(resp.status == 200)
     except urllib_error.HTTPError as exc:
-        return exc.code not in (401, 403)
+        return exc.code not in _INVALID_KEY_HTTP_CODES
     except Exception:
         return False
 
@@ -788,6 +796,20 @@ class ModelInstallView(ui.View):
                 pass
             i += 1
 
+        async def _final_edit(status: str) -> None:
+            # 대형 모델 다운로드는 Discord 인터랙션 토큰 수명(15분)을 넘길 수 있다.
+            # 그 경우 최종/실패 상태를 쓰는 edit_original_response 가 NotFound
+            # (Invalid Webhook Token) 등을 던진다. 이 예외를 삼키지 않으면 except
+            # 핸들러 안의 edit 가 다시 던지며 태스크 밖으로 전파돼 'Task exception was
+            # never retrieved' 로 끝난다. 최종 상태 갱신은 best-effort 로 처리한다.
+            try:
+                await interaction.edit_original_response(
+                    embed=_install_embed(model_name, status),
+                    view=_BackOnlyView(ctx=self.ctx, guild_id=self.guild_id),
+                )
+            except discord.HTTPException:
+                pass
+
         try:
             # Retrieve the pull result so a failed download (OllamaError 등)
             # propagates here instead of being swallowed as an unretrieved task
@@ -795,20 +817,11 @@ class ModelInstallView(ui.View):
             await pull_task
             config = await self.ctx.store.set_model(self.guild_id, model_name)
             _ = config  # provider info available if needed
-            await interaction.edit_original_response(
-                embed=_install_embed(model_name, "✅  설치 완료! 현재 모델로 설정됐습니다."),
-                view=_BackOnlyView(ctx=self.ctx, guild_id=self.guild_id),
-            )
+            await _final_edit("✅  설치 완료! 현재 모델로 설정됐습니다.")
         except OllamaError as exc:
-            await interaction.edit_original_response(
-                embed=_install_embed(model_name, f"❌  설치 실패\n```{exc}```"),
-                view=_BackOnlyView(ctx=self.ctx, guild_id=self.guild_id),
-            )
+            await _final_edit(f"❌  설치 실패\n```{exc}```")
         except Exception as exc:
-            await interaction.edit_original_response(
-                embed=_install_embed(model_name, f"❌  알 수 없는 오류\n```{exc}```"),
-                view=_BackOnlyView(ctx=self.ctx, guild_id=self.guild_id),
-            )
+            await _final_edit(f"❌  알 수 없는 오류\n```{exc}```")
 
 
 class HelpView(ui.View):
@@ -995,11 +1008,26 @@ class HelpView(ui.View):
 
 
 class LongResponseView(ui.View):
-    """Provides a 'View full response via DM' button for long responses."""
+    """Provides a 'View full response via DM' button for long responses.
 
-    def __init__(self, full_text: str) -> None:
+    공개(non-ephemeral) 채널에 붙는 뷰이므로, 원작성자(``author_id``)가 지정되면
+    그 사용자만 버튼을 누를 수 있게 ``interaction_check`` 로 제한한다(타 사용자가
+    DM 발송을 트리거하는 경미한 남용 방지). 하위 호환을 위해 ``author_id`` 가
+    None 이면 기존처럼 모두 허용한다.
+    """
+
+    def __init__(self, full_text: str, *, author_id: int | None = None) -> None:
         super().__init__(timeout=300)
         self.full_text = full_text
+        self.author_id = author_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if self.author_id is not None and interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "⚠️ 이 버튼은 요청한 사용자만 사용할 수 있어요.", ephemeral=True
+            )
+            return False
+        return True
 
     @ui.button(label="전체 응답 보기 (DM으로 받기)", style=discord.ButtonStyle.secondary, row=0)
     async def send_dm(self, interaction: discord.Interaction, button: ui.Button) -> None:
@@ -1175,11 +1203,26 @@ class _FollowUpModal(ui.Modal, title="후속 질문"):
 
 
 class FollowUpView(ui.View):
-    """Attached to /ask responses to allow follow-up questions."""
+    """Attached to /ask responses to allow follow-up questions.
 
-    def __init__(self, *, on_follow_up) -> None:
+    공개 채널에 붙을 수 있으므로 원작성자(``author_id``)가 지정되면 그 사용자만
+    후속 질문을 트리거하도록 ``interaction_check`` 로 제한한다(타 사용자가
+    원작성자 맥락으로 LLM 호출을 일으켜 토큰 예산을 소모하는 것을 차단). 하위
+    호환을 위해 ``author_id`` 가 None 이면 기존처럼 모두 허용한다.
+    """
+
+    def __init__(self, *, on_follow_up, author_id: int | None = None) -> None:
         super().__init__(timeout=300)
         self._on_follow_up = on_follow_up
+        self.author_id = author_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if self.author_id is not None and interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "⚠️ 이 버튼은 질문한 사용자만 사용할 수 있어요.", ephemeral=True
+            )
+            return False
+        return True
 
     @ui.button(label="후속 질문", style=discord.ButtonStyle.primary, emoji="💬")
     async def follow_up_btn(self, interaction: discord.Interaction, button: ui.Button) -> None:

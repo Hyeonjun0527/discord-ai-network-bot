@@ -675,7 +675,11 @@ class OnMessageDMTest(_BotCase):
         sent = msg.channel.send.await_args.args[0]
         self.assertIn("DM 답변입니다.", sent)
         # 대화가 저장됐는지 확인(user/assistant 두 턴).
-        history = await self.store.get_chat_history(111, guild_id=None, limit=10)
+        # #92: DM 은 전역(guild_id=None)이 아니라 DM 전용 스코프(센티넬 guild id 0 +
+        # DM 채널 id 333)로 저장돼 다른 길드 대화와 격리된다.
+        history = await self.store.get_chat_history(
+            111, guild_id=0, channel_id=333, limit=10
+        )
         roles = [h["role"] for h in history]
         self.assertIn("user", roles)
         self.assertIn("assistant", roles)
@@ -683,8 +687,13 @@ class OnMessageDMTest(_BotCase):
     async def test_dm_uses_history_when_present(self) -> None:
         self.bot.process_commands = AsyncMock()
         # 직전 DM 대화를 미리 저장해 history 분기를 탄다.
-        await self.store.save_chat_message(111, "user", "이전 질문", guild_id=None)
-        await self.store.save_chat_message(111, "assistant", "이전 답변", guild_id=None)
+        # #92: DM 전용 스코프(센티넬 guild id 0 + DM 채널 id 333)로 저장해야 조회된다.
+        await self.store.save_chat_message(
+            111, "user", "이전 질문", guild_id=0, channel_id=333
+        )
+        await self.store.save_chat_message(
+            111, "assistant", "이전 답변", guild_id=0, channel_id=333
+        )
         msg = _make_mention_message(424242, content="다음 질문", is_dm=True)
         msg.mentions = []
         with self._patch_llm(_FakeLLM("후속 답변")):
@@ -1083,6 +1092,32 @@ class ReminderDeliveryTest(_BotCase):
         # 일시 오류 → sent 미표시 → 여전히 미발송 목록에 남아 재시도 대상이다.
         remaining = await self.store.list_by_user(111)
         self.assertEqual(len(remaining), 1)
+
+    async def test_reminder_unknown_user_marked_sent_not_zombie(self) -> None:
+        # #16: get_user/fetch_user 가 모두 None 이면 user.send 가 AttributeError 를
+        # 던져 어떤 except 에도 걸리지 않고 mark_sent 가 누락돼, 매 재기동마다 같은
+        # 행을 재시도하는 좀비가 된다. None 사용자는 영구 실패로 처리해 mark_sent 한다.
+        self.bot.get_user = MagicMock(return_value=None)
+        self.bot.fetch_user = AsyncMock(return_value=None)
+
+        real_sleep = asyncio.sleep
+
+        async def _instant(delay, *a, **k):
+            await real_sleep(0)
+
+        inter = self._interaction()
+        before = set(bot_module._background_tasks)
+        with patch.object(bot_module.asyncio, "sleep", _instant):
+            await self._callback("remind")(
+                inter, when="1h", message="대상없는 알림", repeat=""
+            )
+            new_tasks = [t for t in bot_module._background_tasks if t not in before]
+            # AttributeError 가 태스크 밖으로 전파되지 않아야 한다(예외 없이 종료).
+            results = await asyncio.gather(*new_tasks, return_exceptions=True)
+        self.assertTrue(all(not isinstance(r, Exception) for r in results))
+        # 영구 실패로 mark_sent → 미발송 목록이 비어 좀비로 남지 않는다.
+        remaining = await self.store.list_by_user(111)
+        self.assertEqual(remaining, [])
 
     async def test_cancel_stops_live_reminder_task(self) -> None:
         # #12: /reminders cancel 은 DB 행 삭제뿐 아니라 sleep 중인 in-memory 전송

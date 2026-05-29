@@ -536,3 +536,175 @@ def test_stats_token_aggregation_empty_guild(client: TestClient) -> None:
     )
     resp = client.get("/api/guilds/777/stats", headers=_headers(token))
     assert resp.json()["tokens"] == {"prompt": 0, "completion": 0, "total": 0}
+
+
+# ---------------------------------------------------------------------------
+# #100 레이트리밋 저장소 누수 회수
+# ---------------------------------------------------------------------------
+
+
+def test_prune_rate_limit_store_drops_stale_buckets() -> None:
+    """윈도 밖 타임스탬프만 남은 IP 버킷은 prune 으로 제거된다 (#100)."""
+    from dashboard.backend import main as main_mod
+
+    main_mod._rate_limit_store.clear()
+    now = 1000.0
+    window = main_mod._RATE_LIMIT_WINDOW
+    # stale: 마지막 요청이 윈도보다 한참 전 → 제거 대상
+    main_mod._rate_limit_store["stale-ip"] = [now - window - 5]
+    # fresh: 윈도 안 타임스탬프 보유 → 보존
+    main_mod._rate_limit_store["fresh-ip"] = [now - 1]
+    # empty: 빈 버킷 → 제거 대상
+    main_mod._rate_limit_store["empty-ip"] = []
+
+    main_mod._prune_rate_limit_store(now)
+
+    assert "stale-ip" not in main_mod._rate_limit_store
+    assert "empty-ip" not in main_mod._rate_limit_store
+    assert "fresh-ip" in main_mod._rate_limit_store
+    main_mod._rate_limit_store.clear()
+
+
+def test_check_rate_limit_periodically_prunes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_check_rate_limit 이 주기적으로 오래된 IP 버킷을 일괄 회수한다 (#100)."""
+    from types import SimpleNamespace
+
+    from dashboard.backend import main as main_mod
+
+    main_mod._rate_limit_store.clear()
+    main_mod._rate_limit_last_prune = 0.0
+
+    # 다시 등장하지 않을 오래된 IP 의 버킷을 미리 심어둔다.
+    fake_now = 10_000.0
+    main_mod._rate_limit_store["ghost-ip"] = [fake_now - main_mod._RATE_LIMIT_WINDOW - 100]
+
+    monkeypatch.setattr(main_mod.time, "monotonic", lambda: fake_now)
+    req = SimpleNamespace(
+        client=SimpleNamespace(host="1.2.3.4"),
+        headers={},
+    )
+    # 다른 IP 의 요청 한 번으로 전역 prune 이 트리거되어 ghost-ip 가 사라진다.
+    main_mod._check_rate_limit(req)  # type: ignore[arg-type]
+
+    assert "ghost-ip" not in main_mod._rate_limit_store
+    assert "1.2.3.4" in main_mod._rate_limit_store
+    main_mod._rate_limit_store.clear()
+
+
+# ---------------------------------------------------------------------------
+# #101 신뢰 프록시 헤더 기반 클라이언트 IP 해석
+# ---------------------------------------------------------------------------
+
+
+def test_client_ip_ignores_forwarded_when_not_trusted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """opt-in 안 했으면 X-Forwarded-For 를 무시하고 peer IP 만 쓴다(스푸핑 차단) (#101)."""
+    from types import SimpleNamespace
+
+    from dashboard.backend import main as main_mod
+
+    monkeypatch.setattr(main_mod, "_TRUST_PROXY_HEADERS", False)
+    req = SimpleNamespace(
+        client=SimpleNamespace(host="10.0.0.1"),
+        headers={"x-forwarded-for": "9.9.9.9"},
+    )
+    assert main_mod._client_ip(req) == "10.0.0.1"  # type: ignore[arg-type]
+
+
+def test_client_ip_uses_first_forwarded_when_trusted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TRUST_PROXY_HEADERS opt-in 시 X-Forwarded-For 의 첫 클라이언트 IP 를 쓴다 (#101)."""
+    from types import SimpleNamespace
+
+    from dashboard.backend import main as main_mod
+
+    monkeypatch.setattr(main_mod, "_TRUST_PROXY_HEADERS", True)
+    req = SimpleNamespace(
+        client=SimpleNamespace(host="10.0.0.1"),  # 프록시 IP
+        headers={"x-forwarded-for": "203.0.113.7, 10.0.0.1"},
+    )
+    # 가장 바깥(원 클라이언트) 항목이 키가 되어 사용자별로 버킷이 분리된다.
+    assert main_mod._client_ip(req) == "203.0.113.7"  # type: ignore[arg-type]
+
+
+def test_client_ip_falls_back_to_peer_without_forwarded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """opt-in 했어도 X-Forwarded-For 가 없으면 peer IP 로 폴백한다 (#101)."""
+    from types import SimpleNamespace
+
+    from dashboard.backend import main as main_mod
+
+    monkeypatch.setattr(main_mod, "_TRUST_PROXY_HEADERS", True)
+    req = SimpleNamespace(client=SimpleNamespace(host="10.0.0.1"), headers={})
+    assert main_mod._client_ip(req) == "10.0.0.1"  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# #98 인라인 폴백 PUT 이 daily_token_budget 컬럼을 보존(스키마 drift 방지)
+# ---------------------------------------------------------------------------
+
+
+def test_inline_fallback_put_includes_daily_token_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """storage import 불가(폴백) 시 PUT 신규행이 daily_token_budget 컬럼을 포함한다 (#98).
+
+    봇의 ConfigStore._upsert(14컬럼)와 컬럼 집합을 일치시켜, 폴백 경로가
+    daily_token_budget 을 SELECT/INSERT 목록에서 누락하지 않음을 검증한다.
+    """
+    import importlib
+
+    # 봇 스키마(daily_token_budget 포함)로 DB 를 만든다.
+    db_file = tmp_path / "fallback.db"
+    conn = sqlite3.connect(db_file)
+    conn.executescript(
+        """
+        CREATE TABLE guild_config (
+            guild_id INTEGER PRIMARY KEY, model TEXT NOT NULL,
+            summary_limit INTEGER NOT NULL, language TEXT NOT NULL,
+            admin_role_id INTEGER, provider TEXT NOT NULL DEFAULT 'ollama',
+            api_key_encrypted TEXT, auto_summary_interval INTEGER, persona TEXT,
+            custom_summarize_prompt TEXT, custom_ask_prompt TEXT,
+            allowed_role_id INTEGER, daily_token_budget INTEGER, updated_at TEXT NOT NULL
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file}")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key")
+
+    from dashboard.backend import auth as auth_mod
+    from dashboard.backend import main as main_mod
+
+    importlib.reload(auth_mod)
+    importlib.reload(main_mod)
+    # storage import 실패(폴백) 상황을 강제한다.
+    monkeypatch.setattr(main_mod, "_STORAGE_AVAILABLE", False)
+    monkeypatch.setattr(main_mod, "_config_store", None)
+
+    with TestClient(main_mod.app) as c:
+        token = auth_mod.create_jwt(
+            "1", [{"id": "555", "name": "T", "icon": None, "permissions": str(0x8)}]
+        )
+        resp = c.put(
+            "/api/guilds/555/config",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"summary_limit": 20},
+        )
+        assert resp.status_code == 200, resp.text
+
+    # 신규행이 INSERT 되었고, daily_token_budget 컬럼이 NULL 로 정상 존재한다.
+    conn = sqlite3.connect(db_file)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT summary_limit, daily_token_budget FROM guild_config WHERE guild_id = 555"
+    ).fetchone()
+    conn.close()
+    assert row is not None
+    assert row["summary_limit"] == 20
+    assert row["daily_token_budget"] is None

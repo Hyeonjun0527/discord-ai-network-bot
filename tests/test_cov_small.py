@@ -598,13 +598,12 @@ class TestFromEnv:
         assert cfg.sentry_dsn == ""
         assert cfg.llm_system_prompt == "You are a helpful Discord bot assistant."
 
-    def test_default_secret_key_warns_in_non_prod(self, clean_env):
+    def test_default_secret_key_rejected_in_non_prod(self, clean_env):
         os.environ["DISCORD_BOT_TOKEN"] = "real-token"
-        # SECRET_KEY 미설정 -> 기본값. 비프로덕션이면 경고만 하고 통과.
-        with mock.patch.object(settings._settings_log, "warning") as warn:
-            cfg = settings.AppSettings.from_env(load_env_file=False)
-        assert cfg.secret_key == "change-me-in-production"
-        warn.assert_called()
+        # SECRET_KEY 미설정 -> 정확한 기본 placeholder. 이 값은 환경과 무관하게(개발 포함)
+        # 항상 거부된다(fail-open 방지).
+        with pytest.raises(RuntimeError, match="SECRET_KEY"):
+            settings.AppSettings.from_env(load_env_file=False)
 
     def test_default_secret_key_rejected_in_production(self, clean_env):
         os.environ["DISCORD_BOT_TOKEN"] = "real-token"

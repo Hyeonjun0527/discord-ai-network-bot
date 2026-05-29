@@ -12,6 +12,9 @@ _settings_log = logging.getLogger(__name__)
 # 운영(production) 환경에서 SECRET_KEY 로 허용할 최소 길이(문자 수). 너무 짧은 키는
 # 사실상 약한 암호화로 이어지므로 거부한다.
 _MIN_PROD_SECRET_KEY_LENGTH = 32
+# .env.example 에 들어 있는 정확한 기본 placeholder. 이 값은 어떤 환경에서도(개발 포함)
+# 절대 정당한 키가 아니므로, 운영 여부 판정(fail-open 가능)과 무관하게 항상 거부한다.
+_DEFAULT_SECRET_KEY = "change-me-in-production"
 # 정확 기본값 외에 운영 환경에서 거부할 잘 알려진 약한 SECRET_KEY 변형들(소문자 비교).
 _WEAK_SECRET_KEYS = frozenset(
     {
@@ -49,7 +52,7 @@ def _is_production_env() -> bool:
     """ENVIRONMENT 또는 APP_ENV 환경 변수가 production 계열이면 True를 반환한다."""
     for name in ("ENVIRONMENT", "APP_ENV"):
         raw = os.getenv(name)
-        if raw and raw.strip().lower() in {"production", "prod"}:
+        if raw and raw.strip().lower() in {"production", "prod", "live"}:
             return True
     return False
 
@@ -116,7 +119,16 @@ class AppSettings:
         if not token or token.startswith("replace-with"):
             raise RuntimeError("DISCORD_BOT_TOKEN is required. Copy .env.example to .env first.")
 
-        secret_key = os.getenv("SECRET_KEY", "change-me-in-production").strip()
+        secret_key = os.getenv("SECRET_KEY", _DEFAULT_SECRET_KEY).strip()
+        # 정확한 기본 placeholder 는 API 키 암복호화에 쓰이는 키를 공개 기본값으로 두는 것이라
+        # 운영 여부 판정(미설정 시 fail-open 가능)에 의존하지 않고 항상 기동을 거부한다.
+        # 이 한 줄로 env 변수 누락으로 인한 fail-open(기본 SECRET_KEY 허용)을 막는다.
+        if secret_key.lower() == _DEFAULT_SECRET_KEY:
+            raise RuntimeError(
+                "기본 SECRET_KEY('change-me-in-production')는 사용할 수 없습니다. "
+                f"최소 {_MIN_PROD_SECRET_KEY_LENGTH}자 이상의 안전한 임의 값을 "
+                ".env 파일의 SECRET_KEY에 설정해 주세요."
+            )
         # 약한 SECRET_KEY 판정: 비어 있거나, 알려진 약한 값이거나, 최소 길이 미만이면 약하다.
         # 정확 일치(기본값)뿐 아니라 빈 값·짧은 값·약한 변형을 모두 포함해 가드 우회를 막는다.
         secret_is_weak = (

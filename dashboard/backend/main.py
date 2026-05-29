@@ -58,11 +58,68 @@ _rate_limit_store: dict[str, list[float]] = defaultdict(list)
 _RATE_LIMIT_MAX = 60   # requests
 _RATE_LIMIT_WINDOW = 60  # seconds
 
+# #101: 신뢰 프록시 뒤(Render 등)에서는 request.client.host 가 프록시 IP 하나로
+# 동일해져 전 사용자가 같은 레이트리밋 버킷을 공유한다(자기-DoS). 운영자가
+# TRUST_PROXY_HEADERS=true 로 명시 opt-in 한 경우에만 X-Forwarded-For 의 가장
+# 바깥 클라이언트 IP 를 키로 쓴다. 기본값(false)에서는 기존처럼 peer IP 만 써서
+# 헤더 스푸핑으로 레이트리밋을 우회당하지 않는다(새 보안 결함 도입 방지).
+_TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+
+def _client_ip(request: Request) -> str:
+    """레이트리밋 키로 쓸 클라이언트 IP 를 해석한다 (#101).
+
+    기본은 직접 연결 peer(request.client.host)다. 운영자가 신뢰 프록시 환경임을
+    ``TRUST_PROXY_HEADERS`` 로 명시한 경우에만 ``X-Forwarded-For`` 의 첫 번째(가장
+    바깥, 원 클라이언트) 항목을 사용한다. opt-in 하지 않으면 헤더를 신뢰하지 않아
+    스푸핑으로 레이트리밋을 우회할 수 없다.
+    """
+    peer = request.client.host if request.client else "unknown"
+    if _TRUST_PROXY_HEADERS:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            first = forwarded.split(",", 1)[0].strip()
+            if first:
+                return first
+    return peer
+
+
+# #100: 마지막 전역 prune 시각(monotonic). 매 요청마다 전체 dict 를 훑지 않도록
+# 윈도 길이만큼 간격을 두고 한 번씩만 오래된 IP 버킷을 회수한다.
+_rate_limit_last_prune: float = 0.0
+
+
+def _prune_rate_limit_store(now: float) -> None:
+    """윈도 밖이 되어 더는 요청이 없는 IP 버킷을 회수한다 (#100).
+
+    다시 등장하지 않는 IP 의 키는 _check_rate_limit 에서 재방문될 일이 없어
+    영원히 남는다. 주기적으로 전체를 훑어 윈도 안 타임스탬프가 하나도 없는
+    버킷을 제거해, dict 가 IP 종류 수만큼 무한 증가하는 메모리 누수를 막는다.
+    """
+    window_start = now - _RATE_LIMIT_WINDOW
+    stale = [
+        ip
+        for ip, ts in _rate_limit_store.items()
+        if not any(t > window_start for t in ts)
+    ]
+    for ip in stale:
+        del _rate_limit_store[ip]
+
 
 def _check_rate_limit(request: Request) -> None:
-    ip = request.client.host if request.client else "unknown"
+    global _rate_limit_last_prune
+    ip = _client_ip(request)
     now = time.monotonic()
     window_start = now - _RATE_LIMIT_WINDOW
+    # #100: 주기적으로(최소 윈도 간격) 오래된 IP 버킷을 일괄 회수한다.
+    if now - _rate_limit_last_prune > _RATE_LIMIT_WINDOW:
+        _prune_rate_limit_store(now)
+        _rate_limit_last_prune = now
     timestamps = [t for t in _rate_limit_store[ip] if t > window_start]
     timestamps.append(now)
     _rate_limit_store[ip] = timestamps
@@ -372,7 +429,8 @@ async def update_guild_config(
         async with db.execute(
             "SELECT model, summary_limit, language, admin_role_id, provider, "
             "api_key_encrypted, auto_summary_interval, persona, "
-            "custom_summarize_prompt, custom_ask_prompt, allowed_role_id "
+            "custom_summarize_prompt, custom_ask_prompt, allowed_role_id, "
+            "daily_token_budget "
             "FROM guild_config WHERE guild_id = ?",
             (guild_id,),
         ) as cursor:
@@ -394,6 +452,9 @@ async def update_guild_config(
                 "custom_summarize_prompt": None,
                 "custom_ask_prompt": None,
                 "allowed_role_id": None,
+                # #98: 봇의 ConfigStore._upsert(14컬럼)와 컬럼 집합을 일치시킨다.
+                # 신규행 INSERT 시 daily_token_budget 누락으로 인한 스키마 drift 방지.
+                "daily_token_budget": None,
             }
         )
 
@@ -427,8 +488,9 @@ async def update_guild_config(
             INSERT INTO guild_config
                 (guild_id, model, summary_limit, language, admin_role_id,
                  provider, api_key_encrypted, auto_summary_interval, persona,
-                 custom_summarize_prompt, custom_ask_prompt, allowed_role_id, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 custom_summarize_prompt, custom_ask_prompt, allowed_role_id,
+                 daily_token_budget, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(guild_id) DO UPDATE SET
                 model                   = excluded.model,
                 summary_limit           = excluded.summary_limit,
@@ -441,6 +503,7 @@ async def update_guild_config(
                 custom_summarize_prompt = excluded.custom_summarize_prompt,
                 custom_ask_prompt       = excluded.custom_ask_prompt,
                 allowed_role_id         = excluded.allowed_role_id,
+                daily_token_budget      = excluded.daily_token_budget,
                 updated_at              = excluded.updated_at
             """,
             (
@@ -456,6 +519,7 @@ async def update_guild_config(
                 current["custom_summarize_prompt"],
                 current["custom_ask_prompt"],
                 current["allowed_role_id"],
+                current["daily_token_budget"],
                 now,
             ),
         )

@@ -286,6 +286,40 @@ class RemindTest(_Base):
         await self._callback("remind")(inter, when="0m", message="x")
         self.assertIn("0은 허용", inter.response.send_message.await_args.args[0])
 
+    async def test_cooldown_blocks_second_remind(self) -> None:
+        # #2: 다른 명령처럼 쿨다운을 적용해 스팸성 대량 예약을 막는다.
+        first = _make_interaction()
+        await self._callback("remind")(first, when="30m", message="첫번째")
+        self.assertIn("분 후에", first.response.send_message.await_args.args[0])
+        second = _make_interaction()
+        await self._callback("remind")(second, when="30m", message="두번째")
+        self.assertIn("초 후에 다시", second.response.send_message.await_args.args[0])
+        # 두 번째는 저장되지 않는다(쿨다운 차단).
+        self.assertEqual(len(await self.store.list_by_user(111)), 1)
+
+    async def test_stored_text_is_length_capped(self) -> None:
+        # #2: 저장 payload 길이를 제한해 DB 적체/장기 평문 보존(PII)을 억제한다.
+        inter = _make_interaction()
+        huge = "가" * 5000
+        await self._callback("remind")(inter, when="30m", message=huge)
+        rows = await self.store.list_by_user(111)
+        self.assertEqual(len(rows), 1)
+        decoded = _decode_remind_payload(rows[0].payload)
+        self.assertEqual(len(decoded["text"]), bot_module._MAX_REMIND_TEXT_CHARS)
+
+    async def test_pending_cap_rejects_new_reminder(self) -> None:
+        # #2: 미발송 리마인더가 사용자별 상한을 넘으면 새 예약을 거절한다.
+        cap = bot_module._MAX_PENDING_REMINDERS_PER_USER
+        due = datetime.now(timezone.utc).isoformat()
+        payload = _encode_remind_payload("기존", kind=_REMIND_KIND_TEXT)
+        for _ in range(cap):
+            await self.store.add_reminder(111, 222, 333, due, payload)
+        inter = _make_interaction()
+        await self._callback("remind")(inter, when="30m", message="하나 더")
+        self.assertIn("최대", inter.response.send_message.await_args.args[0])
+        # 상한 도달 상태에서 새 행이 추가되지 않는다.
+        self.assertEqual(len(await self.store.list_by_user(111)), cap)
+
 
 # ===========================================================================
 # /reminders

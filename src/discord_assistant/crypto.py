@@ -23,7 +23,11 @@ def encrypt_api_key(api_key: str, secret: str) -> str:
 
 
 def decrypt_api_key(token: str, secret: str) -> str:
+    if not isinstance(token, str):
+        raise CryptoError(
+            f"API 키 복호화 실패 — 토큰 형식이 올바르지 않습니다(type={type(token).__name__})."
+        )
     try:
         return Fernet(_fernet_key(secret)).decrypt(token.encode("utf-8")).decode("utf-8")
-    except (InvalidToken, Exception) as exc:
+    except InvalidToken as exc:
         raise CryptoError("API 키 복호화 실패 — SECRET_KEY가 변경됐을 수 있습니다.") from exc

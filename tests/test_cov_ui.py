@@ -294,11 +294,24 @@ class TestValidateOpenAIKey(unittest.TestCase):
             self.assertFalse(_validate_openai_key("sk-bad"))
 
     def test_http_500_is_treated_as_valid(self) -> None:
-        # 401/403 외 HTTP 오류는 통과시키는 관대 정책.
+        # 429/5xx 등 일시 장애는 통과시키는 관대 정책(등록을 막지 않음).
         with mock.patch(
             "discord_assistant.ui.urllib_request.urlopen", side_effect=_http_error(500)
         ):
             self.assertTrue(_validate_openai_key("sk-x"))
+
+    def test_http_400_is_invalid(self) -> None:
+        # finding #93: 400(잘못된 요청)도 명시적 무효 키 신호로 거부한다.
+        with mock.patch(
+            "discord_assistant.ui.urllib_request.urlopen", side_effect=_http_error(400)
+        ):
+            self.assertFalse(_validate_openai_key("sk-x"))
+
+    def test_http_404_is_invalid(self) -> None:
+        with mock.patch(
+            "discord_assistant.ui.urllib_request.urlopen", side_effect=_http_error(404)
+        ):
+            self.assertFalse(_validate_openai_key("sk-x"))
 
     def test_generic_exception_is_invalid(self) -> None:
         with mock.patch(
@@ -351,6 +364,14 @@ class TestValidateGeminiKey(unittest.TestCase):
             "discord_assistant.ui.urllib_request.urlopen", side_effect=_http_error(503)
         ):
             self.assertTrue(_validate_gemini_key("AIza-x"))
+
+    def test_http_400_is_invalid(self) -> None:
+        # finding #93: Gemini 는 무효 키에 400 API_KEY_INVALID 를 돌려주므로
+        # 400 은 무효로 거부해야 한다(잘못된 키가 저장되는 것을 방지).
+        with mock.patch(
+            "discord_assistant.ui.urllib_request.urlopen", side_effect=_http_error(400)
+        ):
+            self.assertFalse(_validate_gemini_key("AIza-bad"))
 
     def test_generic_exception_is_invalid(self) -> None:
         with mock.patch(
@@ -678,6 +699,25 @@ class TestModelInstallView(unittest.TestCase):
         self.assertIn("설치 실패", interaction.original_edits[-1]["embed"].fields[0].value)
         self.assertIsInstance(interaction.original_edits[-1]["view"], _BackOnlyView)
 
+    def test_run_install_swallows_expired_token_on_final_edit(self) -> None:
+        # finding #64: 대형 다운로드가 인터랙션 토큰(15분)을 넘기면 최종 상태를 쓰는
+        # edit_original_response 가 NotFound(만료된 웹훅 토큰)를 던진다. 이 예외가
+        # run_install 밖으로 전파되면 'Task exception was never retrieved' 로 끝난다.
+        # 최종 edit 은 best-effort 로 삼켜야 한다.
+        store = _RichStore(_make_config(provider=LLMProvider.OLLAMA))
+        ollama = _FakeOllamaManager()
+        view = ModelInstallView(
+            ctx=_make_ctx(store, ollama), guild_id=8, model_name="qwen2.5:7b"
+        )
+        interaction = _RichInteraction()
+        resp = mock.MagicMock(status=401)
+        interaction.edit_original_response = mock.AsyncMock(  # type: ignore[method-assign]
+            side_effect=discord.NotFound(resp, "Invalid Webhook Token")
+        )
+        # 예외를 던지지 않고 정상 반환해야 한다(설치 자체는 성공 처리).
+        asyncio.run(view.run_install(interaction))  # type: ignore[arg-type]
+        self.assertEqual(store.set_model_calls, [(8, "qwen2.5:7b")])
+
 
 # ---------------------------------------------------------------------------
 # HelpView show_analysis / show_settings (970-976)
@@ -742,6 +782,28 @@ class TestLongResponseView(unittest.TestCase):
         )
         asyncio.run(btn.callback(interaction))  # type: ignore[arg-type]
         self.assertIn("DM 전송 중 오류", interaction.sent_messages[0][0])
+
+    def test_interaction_check_allows_all_when_no_author(self) -> None:
+        # finding #65: author_id 미지정 시 하위 호환 — 모두 허용.
+        view = LongResponseView(full_text="hello")
+        interaction = _RichInteraction()
+        interaction.user.id = 999
+        self.assertTrue(asyncio.run(view.interaction_check(interaction)))  # type: ignore[arg-type]
+
+    def test_interaction_check_blocks_other_user(self) -> None:
+        # finding #65: author_id 지정 시 다른 사용자는 거부(ephemeral 안내 + False).
+        view = LongResponseView(full_text="hello", author_id=42)
+        interaction = _RichInteraction()
+        interaction.user.id = 999
+        self.assertFalse(asyncio.run(view.interaction_check(interaction)))  # type: ignore[arg-type]
+        self.assertTrue(interaction.sent_messages)
+        self.assertEqual(interaction.sent_messages[0][1].get("ephemeral"), True)
+
+    def test_interaction_check_allows_author(self) -> None:
+        view = LongResponseView(full_text="hello", author_id=42)
+        interaction = _RichInteraction()
+        interaction.user.id = 42
+        self.assertTrue(asyncio.run(view.interaction_check(interaction)))  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -868,6 +930,37 @@ class TestFollowUp(unittest.TestCase):
             child.disabled = False  # type: ignore[attr-defined]
         asyncio.run(view.on_timeout())
         self.assertTrue(all(c.disabled for c in view.children))  # type: ignore[attr-defined]
+
+    def test_interaction_check_allows_all_when_no_author(self) -> None:
+        # finding #65: author_id 미지정 시 하위 호환 — 모두 허용.
+        async def _cb(interaction, text):
+            return None
+
+        view = FollowUpView(on_follow_up=_cb)
+        interaction = _RichInteraction()
+        interaction.user.id = 7
+        self.assertTrue(asyncio.run(view.interaction_check(interaction)))  # type: ignore[arg-type]
+
+    def test_interaction_check_blocks_other_user(self) -> None:
+        # finding #65: 타 사용자가 원작성자 맥락으로 후속 LLM 호출을 일으키지 못하게 거부.
+        async def _cb(interaction, text):
+            return None
+
+        view = FollowUpView(on_follow_up=_cb, author_id=42)
+        interaction = _RichInteraction()
+        interaction.user.id = 7
+        self.assertFalse(asyncio.run(view.interaction_check(interaction)))  # type: ignore[arg-type]
+        self.assertTrue(interaction.sent_messages)
+        self.assertEqual(interaction.sent_messages[0][1].get("ephemeral"), True)
+
+    def test_interaction_check_allows_author(self) -> None:
+        async def _cb(interaction, text):
+            return None
+
+        view = FollowUpView(on_follow_up=_cb, author_id=42)
+        interaction = _RichInteraction()
+        interaction.user.id = 42
+        self.assertTrue(asyncio.run(view.interaction_check(interaction)))  # type: ignore[arg-type]
 
 
 def _make_channel(ch_id: int, name: str, topic: str | None = "topic") -> mock.MagicMock:

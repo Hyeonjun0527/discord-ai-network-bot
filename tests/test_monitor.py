@@ -15,6 +15,7 @@ from discord_assistant.monitor import (
     format_disconnect_message,
     format_error_message,
     notify_developer,
+    scrub_sensitive,
 )
 
 
@@ -308,6 +309,44 @@ class FormatMessageTest(unittest.TestCase):
         self.assertIn("on_message", msg)
         self.assertIn("ValueError", msg)
         self.assertIn("kaboom", msg)
+
+
+class ScrubSensitiveTest(unittest.TestCase):
+    def test_email_is_masked(self) -> None:
+        out = scrub_sensitive("contact user alice@example.com please")
+        self.assertNotIn("alice@example.com", out)
+        self.assertIn("[REDACTED-EMAIL]", out)
+
+    def test_api_key_is_masked(self) -> None:
+        out = scrub_sensitive("key sk-ant-api03-ABCDEFGHIJKLMNOPQR failed")
+        self.assertNotIn("sk-ant-api03-ABCDEFGHIJKLMNOPQR", out)
+        self.assertIn("[REDACTED-KEY]", out)
+
+    def test_discord_token_is_masked(self) -> None:
+        token = "MTk4NjIyNDgzNDcxOTI1MjQ4.Cl2FMQ.ABCDEFGHIJKLMNOPQRSTUVWXYZ12"
+        out = scrub_sensitive(f"using token {token} now")
+        self.assertNotIn(token, out)
+        self.assertIn("[REDACTED-TOKEN]", out)
+
+    def test_bearer_token_is_masked_preserving_prefix(self) -> None:
+        out = scrub_sensitive("Authorization: Bearer abcdef0123456789ABCDEF")
+        self.assertNotIn("abcdef0123456789ABCDEF", out)
+        self.assertIn("Bearer", out)
+        self.assertIn("[REDACTED]", out)
+
+    def test_plain_text_unchanged(self) -> None:
+        text = "ValueError: bad input at line 42"
+        self.assertEqual(scrub_sensitive(text), text)
+
+    def test_format_error_message_scrubs_secret_in_exception(self) -> None:
+        try:
+            raise RuntimeError("login failed for bob@example.com")
+        except RuntimeError as exc:
+            msg = format_error_message("on_login", exc)
+        self.assertIn("on_login", msg)
+        self.assertIn("RuntimeError", msg)
+        self.assertNotIn("bob@example.com", msg)
+        self.assertIn("[REDACTED-EMAIL]", msg)
 
 
 if __name__ == "__main__":  # pragma: no cover

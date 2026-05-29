@@ -32,6 +32,22 @@ _TEXT_DATEFMT = "%Y-%m-%dT%H:%M:%S"
 # 정확히 구분해 멱등성을 유지하는 데 쓰인다.
 _OUR_HANDLER_ATTR = "_discord_assistant_logging_handler"
 
+# JSON 직렬화 시 건너뛸 표준 LogRecord 속성 집합. 참조 LogRecord 의 __dict__
+# 키에서 동적으로 만들어 파이썬 버전(예: 3.12 의 taskName) 차이에 견고하다.
+# 포매팅 중 추가되는 message/asctime 도 함께 제외한다. 이 집합에 없는 키만
+# extra= 로 주입된 사용자 필드로 보고 payload 에 병합한다.
+_RESERVED_RECORD_ATTRS = frozenset(
+    logging.LogRecord(
+        name="", level=logging.INFO, pathname="", lineno=0,
+        msg="", args=(), exc_info=None,
+    ).__dict__
+) | {"message", "asctime"}
+
+
+def _is_json_safe(value: object) -> bool:
+    """``json.dumps`` 가 추가 인코더 없이 직렬화할 수 있는 값인지 확인한다."""
+    return isinstance(value, (str, int, float, bool, type(None)))
+
 # --- #46 correlation id ---
 # 명령마다 interaction.id 등을 바인딩해 로그에 cid 를 끼워 넣는다.
 _correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(
@@ -66,8 +82,10 @@ class JsonFormatter(logging.Formatter):
     """로그 레코드를 한 줄 JSON으로 직렬화하는 포맷터.
 
     각 줄은 ``time``, ``level``, ``logger``, ``message``, ``cid`` 키를 포함하며,
-    예외 정보가 있으면 ``exception`` 키에 traceback 문자열을 담는다.
-    한 줄 = 하나의 JSON 객체이므로 로그 수집기에서 파싱하기 쉽다.
+    예외 정보가 있으면 ``exception`` 키에, ``stack_info`` 가 있으면 ``stack`` 키에
+    담는다. 또한 ``logger.info(..., extra={...})`` 로 넘긴 추가 필드
+    (guild_id/user_id/command 등)도 함께 직렬화해 구조화 로깅의 키-값 컨텍스트를
+    보존한다 (#46 후속). 한 줄 = 하나의 JSON 객체이므로 로그 수집기에서 파싱하기 쉽다.
     """
 
     def format(self, record: logging.LogRecord) -> str:
@@ -82,9 +100,19 @@ class JsonFormatter(logging.Formatter):
             # 수도 있으므로 getattr 기본값('-')으로 KeyError 를 막는다.
             "cid": getattr(record, "cid", "-"),
         }
+        # extra= 로 주입된 사용자 정의 필드를 병합한다. 표준 LogRecord 속성과
+        # 이미 직렬화한 키(time/level/logger/message/cid)는 제외하므로 중복/충돌이
+        # 없다. 값이 JSON 직렬화 불가하면 repr 로 폴백해 항상 한 줄 JSON 을 보장한다.
+        for key, value in record.__dict__.items():
+            if key in _RESERVED_RECORD_ATTRS or key in payload:
+                continue
+            payload[key] = value if _is_json_safe(value) else repr(value)
         if record.exc_info:
             # 예외가 첨부된 경우 traceback 문자열을 함께 기록한다.
             payload["exception"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            # 명시적 stack_info(stack_info=True) 가 있으면 함께 기록한다.
+            payload["stack"] = self.formatStack(record.stack_info)
         return json.dumps(payload, ensure_ascii=False)
 
 

@@ -35,6 +35,7 @@ from .models import (
     Reminder,
     UsageLog,
 )
+from .prompts import _LANGUAGE_ALIASES, _LANGUAGE_LABELS
 
 
 def _normalize_interval(raw: int | None) -> int | None:
@@ -690,9 +691,19 @@ class ConfigStore:
         return updated
 
     async def set_language(self, guild_id: int, language: str) -> GuildConfig:
-        normalized = language.strip()
+        # #117: 언어 코드를 화이트리스트로 검증·정규화한다. 과거에는 빈 문자열만
+        # 거부하고 임의 문자열을 그대로 저장해, 그 값이 프롬프트의
+        # 'Answer in {target_language}.' 자리에 박히는 2차 인젝션 표면이 됐다.
+        # 정규화(소문자·레거시 별칭 흡수) 후 'auto'(자동 감지) 또는 지원 언어
+        # 코드(prompts._LANGUAGE_LABELS)만 허용한다. 검증/정규화는 prompts 의
+        # 단일 출처(SSOT)를 재사용한다.
+        normalized = language.strip().lower()
         if not normalized:
             raise ValueError("language cannot be empty")
+        normalized = _LANGUAGE_ALIASES.get(normalized, normalized)
+        if normalized != "auto" and normalized not in _LANGUAGE_LABELS:
+            allowed = ", ".join(("auto", *_LANGUAGE_LABELS))
+            raise ValueError(f"language must be one of: {allowed}")
         current = await self.get_guild_config(guild_id)
         updated = replace(current, language=normalized)
         await self._upsert(updated)
@@ -843,19 +854,36 @@ class ConfigStore:
                 """,
                 (guild_id, channel_id, user_id, role, content, _utc_now()),
             )
-            # Prune oldest rows for this user beyond the limit
+            # #73: prune 키를 조회 키(get_chat_history)와 일치시킨다. 조회는
+            # (user_id, guild_id, channel_id) 조합으로 필터하므로, prune 도 같은
+            # 조합 버킷 안에서만 오래된 행을 지워야 한다. 과거에는 user_id 전역으로
+            # 최신 200행만 남겨, 한 채널의 활동이 다른 길드/채널의 기록을 통째로
+            # 비결정적으로 삭제하던 버그가 있었다. guild_id/channel_id 는 NULL 일 수
+            # 있어(DM 경로) ``IS`` 로 NULL-safe 비교한다(``= NULL`` 은 항상 거짓).
             await conn.execute(
                 """
                 DELETE FROM chat_history
                 WHERE user_id = ?
+                  AND guild_id IS ?
+                  AND channel_id IS ?
                   AND id NOT IN (
                     SELECT id FROM chat_history
                     WHERE user_id = ?
+                      AND guild_id IS ?
+                      AND channel_id IS ?
                     ORDER BY id DESC
                     LIMIT ?
                   )
                 """,
-                (user_id, user_id, self._MAX_CHAT_HISTORY_PER_USER),
+                (
+                    user_id,
+                    guild_id,
+                    channel_id,
+                    user_id,
+                    guild_id,
+                    channel_id,
+                    self._MAX_CHAT_HISTORY_PER_USER,
+                ),
             )
             await conn.commit()
 

@@ -268,9 +268,41 @@ def format_disconnect_message(shard_id: int | None = None) -> str:
     return f"[discord-assistant] Bot disconnected from Discord{shard_info}."
 
 
+# 트레이스백/에러 메시지에서 마스킹할 시크릿·PII 패턴. 예외 메시지에는 사용자
+# 입력·이메일·토큰 단편이 섞여 들어올 수 있으므로, DM(서드파티 채널, 영구 저장)으로
+# 내보내기 전에 알려진 민감 패턴을 가린다.
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+# Discord 봇 토큰: 보통 base64 세 조각이 점으로 이어진 형태.
+_DISCORD_TOKEN_RE = re.compile(
+    r"\b[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]{20,}\b"
+)
+# OpenAI/Anthropic 스타일 API 키 (sk-..., sk-ant-...) 및 일반 Bearer 토큰.
+_API_KEY_RE = re.compile(r"\bsk-(?:ant-)?[A-Za-z0-9_\-]{16,}\b")
+_BEARER_RE = re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{16,}")
+
+
+def scrub_sensitive(text: str) -> str:
+    """알려진 시크릿/PII 패턴(이메일·토큰·API 키)을 마스킹한다.
+
+    개발자 DM 으로 트레이스백을 내보내기 전에 호출해, 예외 메시지에 우발적으로
+    섞여 들어온 민감정보가 평문으로 남지 않도록 한다.
+    """
+    # 토큰류 먼저 마스킹(이메일보다 구체적 패턴). Bearer 는 접두사를 보존한다.
+    text = _DISCORD_TOKEN_RE.sub("[REDACTED-TOKEN]", text)
+    text = _API_KEY_RE.sub("[REDACTED-KEY]", text)
+    text = _BEARER_RE.sub(r"\1[REDACTED]", text)
+    text = _EMAIL_RE.sub("[REDACTED-EMAIL]", text)
+    return text
+
+
 def format_error_message(event: str, exc: BaseException) -> str:
-    """Return a formatted message for an unhandled error event."""
+    """Return a formatted message for an unhandled error event.
+
+    트레이스백에 시크릿/PII 가 섞여 있을 수 있으므로, 개발자 DM 으로 보내기 전에
+    알려진 민감 패턴을 마스킹한다(#130).
+    """
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    tb = scrub_sensitive(tb)
     # Keep traceback concise for the DM
     if len(tb) > 1200:
         tb = tb[-1200:]

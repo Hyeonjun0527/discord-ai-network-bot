@@ -66,6 +66,46 @@ class JsonFormatterTest(unittest.TestCase):
         parsed = json.loads(formatter.format(rec))
         self.assertEqual(parsed["cid"], "abc-123")
 
+    def test_extra_fields_are_merged(self) -> None:
+        # extra= 로 넘긴 사용자 필드(guild_id/user_id/command)가 JSON 에 직렬화돼야 한다.
+        formatter = JsonFormatter()
+        rec = _record()
+        rec.guild_id = 123
+        rec.user_id = 456
+        rec.command = "ask"
+        parsed = json.loads(formatter.format(rec))
+        self.assertEqual(parsed["guild_id"], 123)
+        self.assertEqual(parsed["user_id"], 456)
+        self.assertEqual(parsed["command"], "ask")
+
+    def test_standard_record_attrs_are_not_leaked(self) -> None:
+        # 표준 LogRecord 속성(pathname/lineno/funcName 등)은 직렬화에서 제외돼야 한다.
+        formatter = JsonFormatter()
+        parsed = json.loads(formatter.format(_record()))
+        self.assertEqual(
+            set(parsed.keys()), {"time", "level", "logger", "message", "cid"}
+        )
+
+    def test_non_json_safe_extra_falls_back_to_repr(self) -> None:
+        # JSON 직렬화 불가한 extra 값은 repr 로 폴백해 항상 유효한 JSON 한 줄을 보장한다.
+        formatter = JsonFormatter()
+        rec = _record()
+        rec.payload = {"nested": object()}
+        parsed = json.loads(formatter.format(rec))
+        self.assertIsInstance(parsed["payload"], str)
+
+    def test_stack_info_is_included(self) -> None:
+        # stack_info 가 있으면 stack 키에 담겨야 한다.
+        formatter = JsonFormatter()
+        rec = logging.LogRecord(
+            name="test.logger", level=logging.INFO, pathname=__file__,
+            lineno=1, msg="m", args=(), exc_info=None,
+            sinfo="Stack (most recent call last):\n  fake",
+        )
+        parsed = json.loads(formatter.format(rec))
+        self.assertIn("stack", parsed)
+        self.assertIn("Stack", parsed["stack"])
+
     def test_exception_is_included(self) -> None:
         formatter = JsonFormatter()
         try:

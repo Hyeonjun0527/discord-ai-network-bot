@@ -232,6 +232,12 @@ jobs:
           owner_lower="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
           export BOT_IMAGE="${REGISTRY}/${owner_lower}/${IMAGE_NAME}:${IMAGE_TAG}"
           echo "Deploying ${BOT_IMAGE}"
+          # #110: 이 배포 직전 시각(UTC)을 캡처해 스모크테스트가 이 기동 이후
+          #       로그만 보도록 한다. 컨테이너가 recreate 되지 않는 재배포에서
+          #       과거 기동의 'Logged in as' 로 거짓 통과하는 것을 방지한다.
+          start_ts="$(date -u +%Y-%m-%dT%H:%M:%S)"
+          echo "start_ts=${start_ts}" >> "$GITHUB_OUTPUT"
+          echo "배포 시작 시각(UTC, 스모크테스트 로그 기준점): ${start_ts}"
           cd "${DEPLOY_DIR}"
           for i in 1 2 3; do
             docker compose -f "${COMPOSE_FILE}" pull bot && break
@@ -257,19 +263,23 @@ jobs:
           echo "이미지 일치 확인: ${actual}"
 
           # 스모크테스트: 90초 내에 봇이 'Logged in as' 를 로그에 남기는지 확인.
-          echo "봇 기동 스모크테스트 시작(최대 90초, 'Logged in as' 대기)..."
+          # #110: 이 배포 시작 시각(steps.deploy.outputs.start_ts) 이후 로그만 본다.
+          #       컨테이너가 recreate 되지 않은 재배포에서 과거 기동의 'Logged in as'
+          #       로 거짓 통과하는 것을 막기 위해 --since 로 로그 윈도를 한정한다.
+          since_ts="${{ steps.deploy.outputs.start_ts }}"
+          echo "봇 기동 스모크테스트 시작(최대 90초, 'Logged in as' 대기, --since ${since_ts})..."
           deadline=$(( $(date +%s) + 90 ))
           while [ "$(date +%s)" -lt "${deadline}" ]; do
-            if docker logs discord-assistant-bot 2>&1 | grep -q "Logged in as"; then
+            if docker logs --since "${since_ts}" discord-assistant-bot 2>&1 | grep -q "Logged in as"; then
               echo "스모크테스트 성공: 봇이 Discord 에 로그인했습니다."
-              docker logs --tail 20 discord-assistant-bot 2>&1 || true
+              docker logs --since "${since_ts}" --tail 20 discord-assistant-bot 2>&1 || true
               exit 0
             fi
             sleep 5
           done
           echo "::error::스모크테스트 타임아웃: 90초 내에 'Logged in as' 로그를 찾지 못했습니다."
           echo "----- 최근 봇 로그(tail 50) -----"
-          docker logs --tail 50 discord-assistant-bot 2>&1 || true
+          docker logs --since "${since_ts}" --tail 50 discord-assistant-bot 2>&1 || true
           exit 1
 
       # #68: 배포(pull + up --wait) 또는 검증 실패 시 자동 롤백.

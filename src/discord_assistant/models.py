@@ -8,6 +8,12 @@ from enum import Enum
 # Minimum auto-summary interval enforced consistently by the model and storage.
 MIN_AUTO_SUMMARY_INTERVAL_MINUTES = 5
 
+# #85: summary_limit 의 하한. 0·음수는 의미가 없으므로 모델 레벨에서 거부해
+# 손상된 DB 행/직접 생성 경로의 비정상 값을 단일 진실 원천으로 막는다.
+# (상한 200 은 호출부 _effective_limit / set_summary_limit 가 클램프하며,
+#  bot.py 의 ">200" 방어 분기를 살려두기 위해 모델에서는 상한을 강제하지 않는다.)
+MIN_SUMMARY_LIMIT = 1
+
 
 class LLMProvider(str, Enum):
     OLLAMA = "ollama"
@@ -65,6 +71,12 @@ class GuildConfig:
     def __post_init__(self) -> None:
         if not self.model:
             raise ValueError("GuildConfig.model must not be empty")
+        # #85: summary_limit 하한 검증. 0·음수가 들어오면 요약 메시지 수집이
+        # 무의미해지므로 모델 레벨에서 거부한다(상한은 호출부에서 클램프).
+        if self.summary_limit < MIN_SUMMARY_LIMIT:
+            raise ValueError(
+                f"summary_limit must be >= {MIN_SUMMARY_LIMIT}"
+            )
         if (
             self.auto_summary_interval is not None
             and self.auto_summary_interval < MIN_AUTO_SUMMARY_INTERVAL_MINUTES

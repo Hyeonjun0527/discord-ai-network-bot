@@ -127,6 +127,19 @@ class TokenUsage:
     completion_tokens: int = 0
 
 
+def _add_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
+    """두 TokenUsage 를 합산한다 (#45/#57).
+
+    툴(에이전트) 루프는 여러 왕복으로 _chat_sync/_messages_sync 를 호출하는데, 각
+    호출이 last_usage 를 덮어쓰면 마지막 왕복분만 남아 비용/사용량이 과소 집계된다.
+    루프에서 왕복별 usage 를 이 함수로 누적해 last_usage 에 반영한다.
+    """
+    return TokenUsage(
+        prompt_tokens=a.prompt_tokens + b.prompt_tokens,
+        completion_tokens=a.completion_tokens + b.completion_tokens,
+    )
+
+
 def _coerce_token_count(value: Any) -> int:
     """usage 메타데이터의 토큰 수 값을 안전하게 정수로 변환한다 (#17).
 
@@ -281,6 +294,10 @@ class CircuitBreaker:
     연속 실패가 ``failure_threshold`` 회에 도달하면 ``reset_timeout`` 초 동안
     빠르게 실패(open 상태)시킨다. reset_timeout 경과 후 한 번 시도를 허용(half-open)하고,
     성공하면 닫힌다(closed). 테스트 결정성을 위해 ``time_fn``을 주입할 수 있다.
+
+    #55: half-open 전환 직후 대기 중이던 여러 코루틴이 동시에 통과해 다운된 제공자로
+    몰리는 thundering herd 를 막기 위해, half-open 에서는 단일 프로브만 통과시킨다.
+    프로브의 성공/실패가 기록될 때까지 다른 호출은 open 으로 빠르게 실패시킨다.
     """
 
     def __init__(
@@ -295,6 +312,9 @@ class CircuitBreaker:
         self._time_fn = time_fn or time.monotonic
         self._failures = 0
         self._opened_at: float | None = None
+        # #55: half-open 프로브가 진행 중인지(결과 대기 중) 표시. True 인 동안 추가
+        # 호출은 open 으로 빠르게 실패시킨다.
+        self._half_open_probe_in_flight = False
 
     def _is_open(self) -> bool:
         if self._opened_at is None:
@@ -305,19 +325,34 @@ class CircuitBreaker:
         return True
 
     def before_call(self) -> None:
-        """요청 직전 호출. open 상태면 빠르게 실패시킨다."""
+        """요청 직전 호출. open 상태면 빠르게 실패시킨다.
+
+        #55: half-open 상태에서는 단일 프로브만 통과시키고 그 결과가 기록될 때까지
+        나머지 호출은 빠르게 실패시킨다(thundering herd 방지).
+        """
         if self._is_open():
             raise CircuitBreakerOpenError(
                 "일시적으로 요청을 처리할 수 없습니다 (서킷 브레이커 동작 중). "
                 "잠시 후 다시 시도해 주세요."
             )
+        # half-open: _opened_at 이 남아 있으면(아직 닫히지 않음) reset_timeout 경과로
+        # _is_open()==False 가 된 직후다. 프로브는 한 번만 허용한다.
+        if self._opened_at is not None:
+            if self._half_open_probe_in_flight:
+                raise CircuitBreakerOpenError(
+                    "일시적으로 요청을 처리할 수 없습니다 (서킷 브레이커 동작 중). "
+                    "잠시 후 다시 시도해 주세요."
+                )
+            self._half_open_probe_in_flight = True
 
     def record_success(self) -> None:
         self._failures = 0
         self._opened_at = None
+        self._half_open_probe_in_flight = False
 
     def record_failure(self) -> None:
         self._failures += 1
+        self._half_open_probe_in_flight = False
         if self._failures >= self.failure_threshold:
             self._opened_at = self._time_fn()
 
@@ -759,10 +794,15 @@ class OpenAIClient(BaseLLMClient):
         except json.JSONDecodeError as exc:
             raise OpenAIError("OpenAI returned invalid JSON") from exc
         try:
-            content: str = payload["choices"][0]["message"]["content"]
+            content = payload["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             logger.debug("Unexpected OpenAI response shape: %s", payload)
             raise OpenAIError("OpenAI 응답 형식을 해석할 수 없습니다.") from exc
+        # #47: content 가 명시적 null(refusal/content filter)이면 None.strip() 의 raw
+        # AttributeError 가 LLMError 를 우회해 전파된다. str 이 아니면 형식 오류로 변환한다.
+        if not isinstance(content, str):
+            logger.debug("OpenAI content is not a string: %r", content)
+            raise OpenAIError("OpenAI 응답 형식을 해석할 수 없습니다.")
         # #17: 응답 파싱 성공 후에만 usage 를 기록한다.
         self.last_usage = _parse_openai_usage(payload)
         return content.strip()
@@ -816,6 +856,15 @@ class OpenAIClient(BaseLLMClient):
                         obj = json.loads(data)
                     except json.JSONDecodeError:
                         continue
+                    # #48: SSE 스트림 중간/시작에 오는 {"error": {...}} 이벤트(레이트리밋/
+                    # content filter/부분 실패)를 표면화한다. 비스트리밍 경로와 동작을
+                    # 맞춰, 조용히 빈 응답으로 끝나지 않게 한다(Ollama 스트림과 동일).
+                    err = obj.get("error") if isinstance(obj, dict) else None
+                    if err:
+                        msg = err.get("message") if isinstance(err, dict) else None
+                        raise OpenAIError(
+                            f"OpenAI 스트림 오류: {msg}" if msg else "OpenAI 스트림 오류"
+                        )
                     try:
                         delta = obj["choices"][0]["delta"].get("content")
                     except (KeyError, IndexError, TypeError):
@@ -924,6 +973,9 @@ class OpenAIClient(BaseLLMClient):
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": prompt},
         ]
+        # #45/#57: 왕복마다 _chat_sync 가 self.last_usage 를 덮어쓰므로, 루프 동안의
+        # 토큰을 누적해 종료 시점에 last_usage 에 반영한다(비용/사용량 과소 집계 방지).
+        total_usage = TokenUsage()
         last_text = ""
         for _ in range(max(1, max_iterations)):
             payload = await _with_circuit_breaker(
@@ -932,6 +984,7 @@ class OpenAIClient(BaseLLMClient):
                     self._chat_sync, messages, resolved_model, openai_tools
                 ),
             )
+            total_usage = _add_usage(total_usage, self.last_usage)
             try:
                 message = payload["choices"][0]["message"]
             except (KeyError, IndexError, TypeError) as exc:
@@ -942,6 +995,7 @@ class OpenAIClient(BaseLLMClient):
                 last_text = content.strip()
             if not tool_calls:
                 # 더 호출할 툴이 없으면 최종 텍스트를 반환한다.
+                self.last_usage = total_usage
                 return last_text
             # assistant 의 tool_calls 메시지를 대화에 추가한 뒤 각 결과를 되돌려준다.
             messages.append(message)
@@ -975,12 +1029,14 @@ class OpenAIClient(BaseLLMClient):
                     self._chat_sync, messages, resolved_model, []
                 ),
             )
+            total_usage = _add_usage(total_usage, self.last_usage)
             try:
                 final = payload["choices"][0]["message"].get("content")
             except (KeyError, IndexError, TypeError):
                 final = None
             if isinstance(final, str) and final.strip():
                 last_text = final.strip()
+        self.last_usage = total_usage
         return last_text
 
 
@@ -1201,6 +1257,9 @@ class AnthropicClient(BaseLLMClient):
         resolved_model = model or self.default_model
         anthropic_tools = self._tools_to_anthropic(tools)
         messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+        # #45/#57: 왕복마다 _messages_sync 가 self.last_usage 를 덮어쓰므로, 루프
+        # 동안의 토큰을 누적해 종료 시점에 last_usage 에 반영한다(과소 집계 방지).
+        total_usage = TokenUsage()
         last_text = ""
         for _ in range(max(1, max_iterations)):
             payload = await _with_circuit_breaker(
@@ -1209,6 +1268,7 @@ class AnthropicClient(BaseLLMClient):
                     self._messages_sync, messages, resolved_model, anthropic_tools
                 ),
             )
+            total_usage = _add_usage(total_usage, self.last_usage)
             content = payload.get("content")
             if not isinstance(content, list):
                 raise AnthropicError("Anthropic 응답 형식을 해석할 수 없습니다.")
@@ -1221,6 +1281,7 @@ class AnthropicClient(BaseLLMClient):
                 if isinstance(block, dict) and block.get("type") == "tool_use"
             ]
             if payload.get("stop_reason") != "tool_use" or not tool_uses:
+                self.last_usage = total_usage
                 return last_text
             # assistant 의 tool_use 응답을 대화에 그대로 추가한 뒤 결과를 되돌려준다.
             messages.append({"role": "assistant", "content": content})
@@ -1253,11 +1314,13 @@ class AnthropicClient(BaseLLMClient):
                     self._messages_sync, messages, resolved_model, []
                 ),
             )
+            total_usage = _add_usage(total_usage, self.last_usage)
             content = payload.get("content")
             if isinstance(content, list):
                 final = self._extract_text_blocks(content)
                 if final:
                     last_text = final
+        self.last_usage = total_usage
         return last_text
 
 
@@ -1395,6 +1458,11 @@ def _parse_gemini_payload(payload: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
+# #54: ollama pull 의 상한(초). 대용량 모델 다운로드를 충분히 허용하되, 네트워크
+# 무응답 시 무한 hang/좀비 프로세스를 막기 위한 안전 상한이다.
+_PULL_TIMEOUT_SECONDS = 1800
+
+
 class OllamaManager:
     """List and pull local Ollama models."""
 
@@ -1432,7 +1500,17 @@ class OllamaManager:
             if raise_on_error:
                 raise
             return []
-        return [OllamaModel(name=m["name"], size_bytes=m.get("size", 0)) for m in payload.get("models", [])]
+        # #56: 항목이 dict 가 아니거나 'name' 이 str 이 아니면(버전 변경/비정상 응답)
+        # KeyError/TypeError 가 try 밖에서 raw 로 전파된다. 비정상 항목은 건너뛴다.
+        models: list[OllamaModel] = []
+        for m in payload.get("models", []):
+            if not isinstance(m, dict):
+                continue
+            name = m.get("name")
+            if not isinstance(name, str):
+                continue
+            models.append(OllamaModel(name=name, size_bytes=m.get("size", 0)))
+        return models
 
     async def pull_model(self, model_name: str) -> None:
         ollama_bin = shutil.which("ollama")
@@ -1448,7 +1526,23 @@ class OllamaManager:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
-        _, stderr = await proc.communicate()
+        # #54: 네트워크 정체/원격 레지스트리 무응답으로 communicate() 가 영원히
+        # 반환되지 않으면 호출 코루틴이 무한 대기하고 서브프로세스도 좀비로 남는다.
+        # 상한을 두고, 초과 시 프로세스를 정리한 뒤 안내 오류로 변환한다.
+        try:
+            _, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=_PULL_TIMEOUT_SECONDS
+            )
+        except (TimeoutError, asyncio.TimeoutError) as exc:
+            proc.kill()
+            try:
+                await proc.wait()
+            except ProcessLookupError:
+                pass
+            raise OllamaError(
+                f"ollama pull 시간이 초과됐습니다 ({_PULL_TIMEOUT_SECONDS}초). "
+                "네트워크 상태를 확인하거나 잠시 후 다시 시도해 주세요."
+            ) from exc
         if proc.returncode != 0:
             raise OllamaError(f"ollama pull 실패: {stderr.decode(errors='replace').strip()}")
 

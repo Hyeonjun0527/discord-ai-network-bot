@@ -327,8 +327,11 @@ class DmPathTest(_FileStoreCase):
         message.channel.send.assert_awaited()
         sent = message.channel.send.await_args.args[0]
         self.assertIn("DM 답변", sent)
-        # DM 대화 기억(#10): user/assistant 턴이 guild_id=None 으로 저장된다.
-        history = await self.store.get_chat_history(777, guild_id=None, limit=10)
+        # DM 대화 기억(#10/#92): user/assistant 턴이 DM 전용 스코프(센티넬 guild
+        # id + DM 채널 id)로 저장돼 다른 길드 대화와 격리된다.
+        history = await self.store.get_chat_history(
+            777, guild_id=0, channel_id=333, limit=10
+        )
         roles = [h["role"] for h in history]
         self.assertIn("user", roles)
         self.assertIn("assistant", roles)
@@ -338,8 +341,13 @@ class DmPathTest(_FileStoreCase):
 
     async def test_dm_uses_prior_history_for_context(self) -> None:
         # 직전 DM 대화가 있으면 build_chat_with_history_prompt 경로를 탄다(#10).
-        await self.store.save_chat_message(777, "user", "이전 질문", guild_id=None)
-        await self.store.save_chat_message(777, "assistant", "이전 답변", guild_id=None)
+        # #92: DM 전용 스코프(센티넬 guild id 0 + DM 채널 id 333)로 저장해야 조회된다.
+        await self.store.save_chat_message(
+            777, "user", "이전 질문", guild_id=0, channel_id=333
+        )
+        await self.store.save_chat_message(
+            777, "assistant", "이전 답변", guild_id=0, channel_id=333
+        )
         generate = self._patch_llm("이어진 답변")
         message = _make_message(content="이어서 물어볼게", guild_id=None, author_id=777)
 

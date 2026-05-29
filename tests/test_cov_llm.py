@@ -35,7 +35,10 @@ from discord_assistant.llm import (
     AnthropicClient,
     AnthropicError,
     BaseLLMClient,
+    CircuitBreaker,
+    CircuitBreakerOpenError,
     GeminiError,
+    LLMError,
     OllamaClient,
     OllamaError,
     OllamaManager,
@@ -43,8 +46,10 @@ from discord_assistant.llm import (
     OpenAIError,
     TokenUsage,
     ToolSpec,
+    _add_usage,
     _iter_in_thread,
     _parse_gemini_payload,
+    _with_circuit_breaker,
     parse_generate_response,
     supports_vision,
 )
@@ -919,6 +924,278 @@ class SupportsVisionGeminiTest(unittest.TestCase):
 
     def test_empty_model_still_false(self) -> None:
         self.assertFalse(supports_vision(LLMProvider.GEMINI, ""))
+
+
+# ---------------------------------------------------------------------------
+# #47: OpenAI _generate_sync — content 가 null/비-str 이면 형식 오류로 변환
+# ---------------------------------------------------------------------------
+
+
+class OpenAIGenerateContentNullTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = OpenAIClient(api_key="sk-x")
+
+    def test_content_null_raises_openai_error_not_attribute_error(self) -> None:
+        # 모델이 content:null 로 응답하면(refusal/content filter) None.strip() 의 raw
+        # AttributeError 가 아니라 친절한 OpenAIError(LLMError) 로 변환돼야 한다.
+        payload = {"choices": [{"message": {"role": "assistant", "content": None}}]}
+        with mock.patch(_PATCH, return_value=_json_response(payload)):
+            with self.assertRaises(OpenAIError) as cm:
+                asyncio.run(self.client.generate("hi"))
+        # LLMError 의 서브클래스여야 ask 핸들러의 except (UserFacingError, LLMError) 에 걸린다.
+        self.assertIsInstance(cm.exception, LLMError)
+        self.assertNotIsInstance(cm.exception, AttributeError)
+
+    def test_valid_string_content_still_works(self) -> None:
+        payload = {
+            "choices": [{"message": {"role": "assistant", "content": " 안녕 "}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2},
+        }
+        with mock.patch(_PATCH, return_value=_json_response(payload)):
+            result = asyncio.run(self.client.generate("hi"))
+        self.assertEqual(result, "안녕")
+        self.assertEqual(self.client.last_usage, TokenUsage(1, 2))
+
+
+# ---------------------------------------------------------------------------
+# #48: OpenAI _stream_sync — SSE error 이벤트를 표면화한다
+# ---------------------------------------------------------------------------
+
+
+class OpenAIStreamErrorEventTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = OpenAIClient(api_key="sk-x")
+
+    def test_stream_error_event_raises_openai_error(self) -> None:
+        # 스트림 중간에 {"error": {...}} 이벤트가 오면 조용히 빈 응답으로 끝내지 않고
+        # OpenAIError 로 표면화해야 한다(Ollama 스트림과 대칭).
+        lines = [
+            _sse({"choices": [{"delta": {"content": "Hel"}}]}),
+            _sse({"error": {"message": "rate limit exceeded", "type": "rate_limit"}}),
+        ]
+        with mock.patch(_PATCH, return_value=_stream_response(lines)):
+            with self.assertRaises(OpenAIError) as cm:
+                asyncio.run(_collect(self.client.generate_stream("hi", model="m")))
+        self.assertIn("rate limit exceeded", str(cm.exception))
+
+    def test_stream_error_event_without_message_still_raises(self) -> None:
+        lines = [_sse({"error": True})]
+        with mock.patch(_PATCH, return_value=_stream_response(lines)):
+            with self.assertRaises(OpenAIError):
+                asyncio.run(_collect(self.client.generate_stream("hi")))
+
+
+# ---------------------------------------------------------------------------
+# #54: OllamaManager.pull_model — communicate() 타임아웃 시 정리 + 안내 오류
+# ---------------------------------------------------------------------------
+
+
+class OllamaPullTimeoutTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.mgr = OllamaManager(base_url="http://x/")
+
+    def test_pull_timeout_kills_proc_and_raises(self) -> None:
+        proc = mock.Mock()
+        proc.communicate = mock.AsyncMock(side_effect=TimeoutError())
+        proc.kill = mock.Mock()
+        proc.wait = mock.AsyncMock(return_value=0)
+        with mock.patch("discord_assistant.llm.shutil.which", return_value="/usr/bin/ollama"), \
+            mock.patch(
+                "discord_assistant.llm.asyncio.create_subprocess_exec",
+                new=mock.AsyncMock(return_value=proc),
+            ):
+            with self.assertRaises(OllamaError) as cm:
+                asyncio.run(self.mgr.pull_model("llama3.1:8b"))
+        # 타임아웃 시 프로세스를 정리(kill + wait)해야 좀비/리소스 누수가 없다.
+        proc.kill.assert_called_once()
+        proc.wait.assert_awaited_once()
+        self.assertIn("초과", str(cm.exception))
+
+
+# ---------------------------------------------------------------------------
+# #56: OllamaManager._list_sync — 비정상 항목('name' 누락/비-dict)은 건너뛴다
+# ---------------------------------------------------------------------------
+
+
+class OllamaListMalformedTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.mgr = OllamaManager(base_url="http://x/")
+
+    def test_missing_name_and_non_dict_items_skipped(self) -> None:
+        # 'name' 누락 항목, dict 가 아닌 항목, name 이 str 이 아닌 항목은 건너뛰고
+        # 정상 항목만 반환한다(KeyError/TypeError 전파 없이).
+        payload = {
+            "models": [
+                {"name": "llama3.1:8b", "size": 100},
+                {"size": 200},           # name 누락 → skip
+                "not-a-dict",            # dict 아님 → skip
+                {"name": 12345},         # name 이 str 아님 → skip
+                {"name": "qwen2.5:7b"},  # size 없음 → 0
+            ]
+        }
+        with mock.patch(_PATCH, return_value=_json_response(payload)):
+            models = asyncio.run(self.mgr.list_models())
+        self.assertEqual(
+            models,
+            [
+                OllamaModel(name="llama3.1:8b", size_bytes=100),
+                OllamaModel(name="qwen2.5:7b", size_bytes=0),
+            ],
+        )
+
+
+# ---------------------------------------------------------------------------
+# #55: CircuitBreaker — half-open 단일 프로브 가드(thundering herd 방지)
+# ---------------------------------------------------------------------------
+
+
+class CircuitBreakerHalfOpenProbeTest(unittest.TestCase):
+    def test_half_open_allows_single_probe_others_fast_fail(self) -> None:
+        clock = {"t": 0.0}
+        breaker = CircuitBreaker(
+            failure_threshold=1, reset_timeout=10.0, time_fn=lambda: clock["t"]
+        )
+        # 한 번 실패시켜 open 으로 만든다.
+        breaker.record_failure()
+        self.assertTrue(breaker._is_open())
+        # reset_timeout 경과 → half-open.
+        clock["t"] = 20.0
+        self.assertFalse(breaker._is_open())
+        # 첫 프로브는 통과(예외 없음).
+        breaker.before_call()
+        # 같은 half-open 창에서 결과가 기록되기 전 두 번째 호출은 빠르게 실패해야 한다.
+        with self.assertRaises(CircuitBreakerOpenError):
+            breaker.before_call()
+        # 프로브 성공 기록 시 닫히고 이후 호출은 통과한다.
+        breaker.record_success()
+        breaker.before_call()  # 예외 없어야 함
+
+    def test_half_open_probe_failure_reopens_and_blocks(self) -> None:
+        clock = {"t": 0.0}
+        breaker = CircuitBreaker(
+            failure_threshold=1, reset_timeout=10.0, time_fn=lambda: clock["t"]
+        )
+        breaker.record_failure()
+        clock["t"] = 20.0
+        # half-open 프로브 통과 후 실패 → 다시 open.
+        breaker.before_call()
+        breaker.record_failure()
+        # _opened_at 이 now(20.0)로 재설정되어 reset_timeout 동안 open.
+        with self.assertRaises(CircuitBreakerOpenError):
+            breaker.before_call()
+
+    def test_concurrent_half_open_only_one_probe_passes(self) -> None:
+        # reset_timeout 직후 동시에 대기하던 여러 코루틴 중 단 하나의 프로브만
+        # 실제 coro_fn 을 호출하고 나머지는 CircuitBreakerOpenError 로 빠르게 실패한다.
+        clock = {"t": 0.0}
+        breaker = CircuitBreaker(
+            failure_threshold=1, reset_timeout=10.0, time_fn=lambda: clock["t"]
+        )
+        breaker.record_failure()
+        clock["t"] = 20.0
+        calls = {"n": 0}
+
+        async def slow_ok() -> str:
+            calls["n"] += 1
+            await asyncio.sleep(0)  # 다른 코루틴에 양보
+            return "ok"
+
+        async def run() -> list:
+            tasks = [
+                asyncio.create_task(
+                    _with_circuit_breaker(breaker, slow_ok, max_attempts=1, delay=0)
+                )
+                for _ in range(5)
+            ]
+            return await asyncio.gather(*tasks, return_exceptions=True)
+
+        results = asyncio.run(run())
+        # 정확히 한 프로브만 coro_fn 을 호출했어야 한다.
+        self.assertEqual(calls["n"], 1)
+        oks = [r for r in results if r == "ok"]
+        blocked = [r for r in results if isinstance(r, CircuitBreakerOpenError)]
+        self.assertEqual(len(oks), 1)
+        self.assertEqual(len(blocked), 4)
+
+
+# ---------------------------------------------------------------------------
+# #45/#57: generate_with_tools — 멀티 왕복 last_usage 누적(과소 집계 방지)
+# ---------------------------------------------------------------------------
+
+
+class ToolLoopUsageAccumulationTest(unittest.TestCase):
+    def test_add_usage_sums_both_fields(self) -> None:
+        self.assertEqual(
+            _add_usage(TokenUsage(3, 4), TokenUsage(10, 20)),
+            TokenUsage(13, 24),
+        )
+
+    def test_openai_tool_loop_accumulates_usage(self) -> None:
+        first = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {"name": "search_messages", "arguments": "{}"},
+                            }
+                        ],
+                    }
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        }
+        final = {
+            "choices": [{"message": {"role": "assistant", "content": "끝"}}],
+            "usage": {"prompt_tokens": 7, "completion_tokens": 3},
+        }
+        client = OpenAIClient(api_key="sk-x")
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]
+            return "관측값"
+
+        _, fake = _sequential_urlopen([first, final])
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                client.generate_with_tools(
+                    "q", tools=[_SEARCH_TOOL], tool_runner=runner
+                )
+            )
+        self.assertEqual(result, "끝")
+        # 마지막 왕복분(7,3)만이 아니라 두 왕복 합(17,8)이 기록돼야 한다.
+        self.assertEqual(client.last_usage, TokenUsage(17, 8))
+
+    def test_anthropic_tool_loop_accumulates_usage(self) -> None:
+        first = {
+            "content": [
+                {"type": "tool_use", "id": "t1", "name": "search_messages", "input": {}}
+            ],
+            "stop_reason": "tool_use",
+            "usage": {"input_tokens": 12, "output_tokens": 4},
+        }
+        final = {
+            "content": [{"type": "text", "text": "끝"}],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 6, "output_tokens": 2},
+        }
+        client = AnthropicClient(api_key="sk-ant-x")
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]
+            return "관측값"
+
+        _, fake = _sequential_urlopen([first, final])
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                client.generate_with_tools(
+                    "q", tools=[_SEARCH_TOOL], tool_runner=runner
+                )
+            )
+        self.assertEqual(result, "끝")
+        self.assertEqual(client.last_usage, TokenUsage(18, 6))
 
 
 if __name__ == "__main__":

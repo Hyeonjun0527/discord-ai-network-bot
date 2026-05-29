@@ -31,7 +31,14 @@ class TTLCache:
         self._store[key] = _Entry(value=value, expires_at=time.monotonic() + self.ttl)
 
     def invalidate_prefix(self, prefix: str) -> None:
-        keys = [k for k in self._store if k.startswith(prefix)]
+        # Match on a key-segment boundary so an exact key (e.g. "1:45") does not
+        # also wipe sibling keys whose id merely shares the leading digits
+        # (e.g. "1:456", "1:450"). A key matches when it equals the prefix or
+        # extends it with the ":" segment separator used to build composite keys.
+        sub_prefix = prefix + ":"
+        keys = [
+            k for k in self._store if k == prefix or k.startswith(sub_prefix)
+        ]
         for k in keys:
             del self._store[k]
 

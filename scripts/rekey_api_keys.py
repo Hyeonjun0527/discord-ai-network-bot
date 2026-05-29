@@ -15,6 +15,13 @@ guild_config.api_key_encrypted 에 들어 있는 모든 길드의 API 키를 **�
   4. crypto.encrypt_api_key(plaintext, NEW_SECRET) 로 재암호화한다.
   5. --dry-run 이 아니면 UPDATE 로 새 토큰을 기록한다.
 
+실행 전 주의:
+  * **반드시 봇(컨테이너)을 정지한 상태에서 실행한다.** 봇이 동작 중이면 같은
+    SQLite DB 에 동시 쓰기가 발생해 `database is locked` 또는 부분/불일치
+    재암호화가 생길 수 있다(restore.sh 와 동일한 운영 전제).
+  * 이 도구는 락 경합을 조기에 감지하도록 busy_timeout 와 BEGIN IMMEDIATE
+    단일 트랜잭션으로 동작하지만, 봇 정지 전제를 대체하지는 않는다.
+
 보안:
   * 평문 API 키·암호문·SECRET_KEY 를 **절대 출력하지 않는다**. guild_id 와
     성공/스킵 집계만 보고한다.
@@ -103,40 +110,58 @@ def rekey(
 
     rekeyed = 0
     skipped = 0
-    with sqlite3.connect(str(abs_path)) as conn:
+    # isolation_level=None(자동 커밋)으로 트랜잭션을 직접 제어한다. busy_timeout 와
+    # BEGIN IMMEDIATE 로 봇이 동시에 잡고 있는 쓰기 락 경합을 조기에 감지/대기한다
+    # (봇 정지 전제는 docstring 참고). timeout 은 sqlite3 레벨의 락 대기 한도다.
+    conn = sqlite3.connect(str(abs_path), timeout=30, isolation_level=None)
+    try:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT guild_id, api_key_encrypted FROM guild_config "
-            "WHERE api_key_encrypted IS NOT NULL AND api_key_encrypted != ''"
-        ).fetchall()
-
-        for row in rows:
-            guild_id = int(row["guild_id"])
-            token = str(row["api_key_encrypted"])
-            try:
-                plaintext = decrypt_api_key(token, old_secret)
-            except CryptoError:
-                # 구 키로 복호화 불가 → 이미 신 키로 암호화됐거나 손상된 행. 건너뛴다.
-                skipped += 1
-                print(f"[skip] guild {guild_id}: 구 SECRET_KEY 로 복호화 실패 — 건너뜁니다.")
-                continue
-
-            new_token = encrypt_api_key(plaintext, new_secret)
-            # 평문은 즉시 폐기(참조 해제). 출력하지 않는다.
-            del plaintext
-
-            if dry_run:
-                print(f"[dry-run] guild {guild_id}: 재암호화 가능")
-            else:
-                conn.execute(
-                    "UPDATE guild_config SET api_key_encrypted = ? WHERE guild_id = ?",
-                    (new_token, guild_id),
-                )
-                print(f"[ok] guild {guild_id}: 재암호화 완료")
-            rekeyed += 1
-
+        conn.execute("PRAGMA busy_timeout=30000")
+        # 쓰기 모드에서는 시작 시점에 쓰기 락(IMMEDIATE)을 잡아 경합을 조기에 감지한다.
+        # dry-run 은 읽기 전용이라 트랜잭션을 시작하지 않는다.
         if not dry_run:
-            conn.commit()
+            conn.execute("BEGIN IMMEDIATE")
+
+        try:
+            rows = conn.execute(
+                "SELECT guild_id, api_key_encrypted FROM guild_config "
+                "WHERE api_key_encrypted IS NOT NULL AND api_key_encrypted != ''"
+            ).fetchall()
+
+            for row in rows:
+                guild_id = int(row["guild_id"])
+                token = str(row["api_key_encrypted"])
+                try:
+                    plaintext = decrypt_api_key(token, old_secret)
+                except CryptoError:
+                    # 구 키로 복호화 불가 → 이미 신 키로 암호화됐거나 손상된 행. 건너뛴다.
+                    skipped += 1
+                    print(f"[skip] guild {guild_id}: 구 SECRET_KEY 로 복호화 실패 — 건너뜁니다.")
+                    continue
+
+                new_token = encrypt_api_key(plaintext, new_secret)
+                # 평문은 즉시 폐기(참조 해제). 출력하지 않는다.
+                del plaintext
+
+                if dry_run:
+                    print(f"[dry-run] guild {guild_id}: 재암호화 가능")
+                else:
+                    conn.execute(
+                        "UPDATE guild_config SET api_key_encrypted = ? WHERE guild_id = ?",
+                        (new_token, guild_id),
+                    )
+                    print(f"[ok] guild {guild_id}: 재암호화 완료")
+                rekeyed += 1
+
+            if not dry_run:
+                conn.commit()
+        except BaseException:
+            # 처리 중 오류(락 경합 포함) 시 부분 적용을 남기지 않도록 전체 롤백한다.
+            if not dry_run:
+                conn.rollback()
+            raise
+    finally:
+        conn.close()
 
     return (rekeyed, skipped)
 

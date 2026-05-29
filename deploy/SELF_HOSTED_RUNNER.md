@@ -26,19 +26,23 @@ main push ──▶ deploy.yml
 - **Docker Desktop** 설치 후 실행 중일 것 (`docker compose version` 동작 확인)
 - **gh CLI** 인증 (`gh auth status`)
 
-## 2. 배포 디렉터리 + 시크릿 (`.env`) 준비
-배포 워크플로는 `DEPLOY_DIR`(기본 `$HOME/discord-assistant`)에 `.env` 가 있어야 진행한다.
+## 2. 시크릿(`ENV_FILE`) 등록
+`.env` **전체 내용을 한 개의 Actions 시크릿 `ENV_FILE`** 로 저장한다. 배포 워크플로의
+"Render .env from ENV_FILE secret" 단계가 매 배포마다 이 값을 `DEPLOY_DIR/.env`(기본
+`$HOME/discord-assistant/.env`, 권한 600)로 렌더링한다. 호스트를 직접 편집할 필요 없음.
 
 ```bash
-mkdir -p "$HOME/discord-assistant"
-cp deploy/.env.prod.example "$HOME/discord-assistant/.env"
-chmod 600 "$HOME/discord-assistant/.env"
-# 편집: DISCORD_BOT_TOKEN, SECRET_KEY 등 실제 값 입력
-$EDITOR "$HOME/discord-assistant/.env"
+# deploy/.env.prod.example 를 채운 뒤 통째로 ENV_FILE 시크릿에 등록
+cp deploy/.env.prod.example /tmp/bot.env
+$EDITOR /tmp/bot.env            # DISCORD_BOT_TOKEN(실제), SECRET_KEY 등 입력
+gh secret set ENV_FILE --repo Hyeonjun0527/discord-assistant < /tmp/bot.env
+rm -f /tmp/bot.env             # 로컬 평문 제거
 ```
 > `SECRET_KEY` 생성: `python -c "import secrets; print(secrets.token_urlsafe(48))"`
 > OpenAI/Anthropic 키는 봇의 `/settings` 패널에서 입력(암호화 저장) — env에 둘 필요 없음.
-> 다른 위치를 쓰려면 레포 Variable `DEPLOY_DIR` 를 설정 (Settings → Actions → Variables).
+> 워크플로는 `DISCORD_BOT_TOKEN` 이 placeholder(`replace-with...`)면 배포를 거부한다.
+> `DEPLOY_DIR` 위치를 바꾸려면 레포 Variable `DEPLOY_DIR` 설정 (Settings → Actions → Variables).
+> ⚠️ `SECRET_KEY` 를 바꾸면 기존에 암호화 저장된 API 키를 복호화할 수 없게 되니 한 번 정하면 유지.
 
 ## 3. Self-hosted runner 등록
 ```bash

@@ -105,10 +105,29 @@ jobs:
           install -d "${DEPLOY_DIR}" "${DEPLOY_DIR}/data" "${DEPLOY_DIR}/logs"
           command -v docker >/dev/null
           docker compose version >/dev/null
-          if [ ! -f "${DEPLOY_DIR}/.env" ]; then
-            echo "::error::${DEPLOY_DIR}/.env 가 없습니다. deploy/.env.prod.example 를 참고해 호스트에 먼저 생성하세요."
+
+      - name: Render .env from ENV_FILE secret
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          set -eu
+          if [ -z "${ENV_FILE:-}" ]; then
+            echo "::error::ENV_FILE secret 이 비어 있습니다. Settings → Secrets and variables → Actions 에 .env 전체를 ENV_FILE 로 등록하세요."
             exit 1
           fi
+          umask 077
+          printf '%s\n' "${ENV_FILE}" > "${DEPLOY_DIR}/.env"
+          chmod 600 "${DEPLOY_DIR}/.env"
+          # Guard: refuse to deploy with the placeholder token still in place.
+          if grep -qE '^DISCORD_BOT_TOKEN=(replace-with|$)' "${DEPLOY_DIR}/.env"; then
+            echo "::error::ENV_FILE 의 DISCORD_BOT_TOKEN 이 실제 값이 아닙니다(placeholder). 시크릿을 실제 봇 토큰으로 갱신하세요."
+            exit 1
+          fi
+          if ! grep -qE '^SECRET_KEY=.+' "${DEPLOY_DIR}/.env"; then
+            echo "::error::ENV_FILE 에 SECRET_KEY 가 없습니다."
+            exit 1
+          fi
+          echo "rendered ${DEPLOY_DIR}/.env ($(grep -cE '^[A-Za-z_]+=' "${DEPLOY_DIR}/.env") keys)"
 
       - name: Sync compose file
         run: |

@@ -173,6 +173,8 @@ def test_build_app_routes_registered() -> None:
 def test_settings_observability_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     """기본값: metrics_port=0(비활성), sentry_dsn=''(비활성)."""
     monkeypatch.setenv("DISCORD_BOT_TOKEN", "test-token-123")
+    # from_env 는 기본/약한 SECRET_KEY 기동을 거부하므로 유효한 키(>=32자)를 준다.
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-ci-0123456789abcdef")
     monkeypatch.delenv("METRICS_PORT", raising=False)
     monkeypatch.delenv("SENTRY_DSN", raising=False)
     settings = AppSettings.from_env(load_env_file=False)
@@ -183,6 +185,8 @@ def test_settings_observability_defaults(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_settings_observability_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """METRICS_PORT / SENTRY_DSN 환경 변수가 반영된다."""
     monkeypatch.setenv("DISCORD_BOT_TOKEN", "test-token-123")
+    # from_env 는 기본/약한 SECRET_KEY 기동을 거부하므로 유효한 키(>=32자)를 준다.
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-ci-0123456789abcdef")
     monkeypatch.setenv("METRICS_PORT", "9090")
     monkeypatch.setenv("SENTRY_DSN", "https://example@o0.ingest.sentry.io/0")
     settings = AppSettings.from_env(load_env_file=False)
@@ -193,6 +197,8 @@ def test_settings_observability_from_env(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_settings_negative_metrics_port_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     """음수 METRICS_PORT 는 minimum=0 검증으로 거부된다."""
     monkeypatch.setenv("DISCORD_BOT_TOKEN", "test-token-123")
+    # from_env 는 기본/약한 SECRET_KEY 기동을 거부하므로 유효한 키(>=32자)를 준다.
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-ci-0123456789abcdef")
     monkeypatch.setenv("METRICS_PORT", "-1")
     with pytest.raises(ValueError):
         AppSettings.from_env(load_env_file=False)

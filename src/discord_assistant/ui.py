@@ -1261,7 +1261,13 @@ def error_hint(exc: BaseException) -> str:
     if isinstance(exc, CircuitBreakerOpenError):
         return "연속 실패로 잠시 요청을 차단했어요. 잠시 후 다시 시도해 주세요."
     if isinstance(exc, OllamaError):
-        return "Ollama에 연결할 수 없어요. Ollama가 실행 중인지, 모델이 설치돼 있는지 확인해 주세요."
+        # 일반 사용자는 봇 호스트의 Ollama 를 만질 수 없다. '터미널에서 실행' 같은
+        # 개발자용 안내 대신, 서버 안에서 버튼으로 해결 가능한 경로를 알려 준다.
+        return (
+            "AI 모델이 아직 준비되지 않았어요. 서버 **관리자**가 `/settings` → "
+            "**모델 관리**에서 모델을 선택하거나 **새 모델 설치** 버튼으로 설치하면 "
+            "바로 사용할 수 있어요. (관리자가 아니라면 서버 관리자에게 알려 주세요.)"
+        )
     if isinstance(exc, OpenAIError):
         return "OpenAI 요청에 실패했어요. API 키와 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
     if isinstance(exc, AnthropicError):

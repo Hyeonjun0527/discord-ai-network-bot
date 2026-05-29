@@ -259,7 +259,11 @@ class TestErrorHint(unittest.TestCase):
         self.assertIn("차단", error_hint(CircuitBreakerOpenError("open")))
 
     def test_ollama_error(self):
-        self.assertIn("Ollama", error_hint(OllamaError("down")))
+        # 사용자용 문구는 개발자 용어('Ollama'/'ollama serve') 대신 서버 내에서
+        # 버튼으로 해결 가능한 경로(모델 관리/관리자 안내)를 가리킨다.
+        hint = error_hint(OllamaError("down"))
+        self.assertIn("모델", hint)
+        self.assertNotIn("ollama serve", hint)
 
     def test_openai_error_no_status(self):
         self.assertIn("OpenAI", error_hint(OpenAIError("oops")))

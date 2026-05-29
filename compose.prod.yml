@@ -7,9 +7,10 @@
 # (see deploy/.env.prod.example). This file is synced from the repo on every
 # deploy, so edit it in git — not on the host.
 #
-# Cloud-API runtime (OpenAI/Anthropic): no Ollama service is started.
-# For an Ollama-backed deploy, set HEALTHCHECK_REQUIRE_OLLAMA=true and point
-# OLLAMA_BASE_URL at a reachable endpoint (or add an ollama service here).
+# 봇 호스트(배포 Mac)에서 네이티브 Ollama 를 돌리고 컨테이너가 그것을 바라본다.
+# 사용자는 아무 설치도 필요 없이 봇 호스트의 로컬 모델을 공유한다(클라우드 비용 0).
+# 호스트 Ollama 는 OLLAMA_HOST=0.0.0.0:11434 로 떠 있어야 컨테이너에서 닿는다.
+# (클라우드 API 로 가려면 길드별 /settings 에서 제공자/키를 등록하면 그게 우선한다.)
 
 services:
   bot:
@@ -21,8 +22,15 @@ services:
     environment:
       # Persist SQLite under the bind-mounted data dir
       DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/discord_assistant.db}
-      # Cloud-API deploy: do not gate health on Ollama
+      # 컨테이너 → 봇 호스트의 네이티브 Ollama. 호스트가 0.0.0.0:11434 로 떠 있어야 함.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # Ollama 가 일시적으로 죽어도 봇이 재시작 플랩하지 않도록 헬스는 DB 만 본다
+      # (개별 명령은 친절 안내로 폴백). 필요 시 .env 에서 true 로 전환.
       HEALTHCHECK_REQUIRE_OLLAMA: ${HEALTHCHECK_REQUIRE_OLLAMA:-false}
+    # Docker Desktop 은 host.docker.internal 을 자동 제공하지만, 리눅스 러너에서도
+    # 호스트 게이트웨이로 해석되도록 명시한다(있어도 무해).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs

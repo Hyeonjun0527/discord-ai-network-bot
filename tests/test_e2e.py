@@ -535,8 +535,10 @@ class Scenario5OllamaDownFriendlyError(_E2ECase):
         self.assertTrue(kwargs.get("ephemeral"))
         embed = kwargs.get("embed")
         self.assertIsNotNone(embed)
-        # error_hint(OllamaError) 의 친절 안내 문구가 임베드에 담긴다.
-        self.assertIn("Ollama", str(embed.description))
+        # error_hint(OllamaError) 의 친절 안내 문구가 임베드에 담긴다(개발자 용어
+        # 대신 '모델 관리' 안내로 — 일반 사용자는 호스트 Ollama 를 만질 수 없으므로).
+        self.assertIn("모델", str(embed.description))
+        self.assertNotIn("ollama serve", str(embed.description))
         # 재시도 가능한 오류이므로 RetryView 가 함께 붙는다.
         self.assertIn("view", kwargs)
 

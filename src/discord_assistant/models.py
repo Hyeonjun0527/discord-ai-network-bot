@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
+# Minimum auto-summary interval enforced consistently by the model and storage.
+MIN_AUTO_SUMMARY_INTERVAL_MINUTES = 5
+
 
 class LLMProvider(str, Enum):
     OLLAMA = "ollama"
@@ -43,12 +46,22 @@ class GuildConfig:
     admin_role_id: int | None = None
     provider: LLMProvider = LLMProvider.OLLAMA
     api_key_encrypted: str | None = None
-    # Phase 3 additions
     auto_summary_interval: int | None = None  # minutes, None = disabled
-    persona: str | None = None               # custom chat persona
+    persona: str | None = None
     custom_summarize_prompt: str | None = None
     custom_ask_prompt: str | None = None
     allowed_role_id: int | None = None
+
+    def __post_init__(self) -> None:
+        if not self.model:
+            raise ValueError("GuildConfig.model must not be empty")
+        if (
+            self.auto_summary_interval is not None
+            and self.auto_summary_interval < MIN_AUTO_SUMMARY_INTERVAL_MINUTES
+        ):
+            raise ValueError(
+                f"auto_summary_interval must be >= {MIN_AUTO_SUMMARY_INTERVAL_MINUTES} minutes"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,5 +85,5 @@ class UsageLog:
     user_id: int | None
     command: str
     status: str
-    latency_ms: int | None = None
+    latency_ms: int = 0
     error: str | None = None

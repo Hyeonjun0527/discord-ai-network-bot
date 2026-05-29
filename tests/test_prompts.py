@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from discord_assistant.prompts import build_ask_prompt, build_summarize_prompt, build_translate_prompt
+from discord_assistant.prompts import (
+    build_ask_prompt,
+    build_summarize_prompt,
+    build_translate_prompt,
+)
 
 
 class PromptTest(unittest.TestCase):

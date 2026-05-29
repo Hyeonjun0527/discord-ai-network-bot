@@ -14,6 +14,7 @@ from discord import ui
 from .crypto import encrypt_api_key
 from .llm import OllamaError, OllamaManager
 from .models import GuildConfig, LLMProvider, OllamaModel
+from .prompts import language_label as _language_label_from_prompts
 from .storage import ConfigStore
 
 if TYPE_CHECKING:
@@ -59,7 +60,7 @@ COLORS = {
 # ---------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(frozen=True)
 class ViewCtx:
     store: ConfigStore
     ollama_manager: OllamaManager
@@ -72,18 +73,7 @@ class ViewCtx:
 
 
 def _language_label(code: str) -> str:
-    labels = {
-        "ko": "한국어",
-        "kr": "한국어",
-        "en": "English",
-        "ja": "日本語",
-        "jp": "日本語",
-        "zh": "中文",
-        "fr": "Français",
-        "de": "Deutsch",
-        "es": "Español",
-    }
-    return labels.get(code.lower(), code.upper())
+    return _language_label_from_prompts(code)
 
 
 def _api_key_status(config: GuildConfig) -> str:
@@ -198,7 +188,7 @@ def _validate_openai_key(api_key: str) -> bool:
     )
     try:
         with urllib_request.urlopen(req, timeout=10) as resp:  # noqa: S310
-            return resp.status == 200
+            return bool(resp.status == 200)
     except urllib_error.HTTPError as exc:
         return exc.code not in (401, 403)
     except Exception:
@@ -253,8 +243,9 @@ class _APIKeyModal(ui.Modal, title="🔑  API 키 등록"):
         model: str,
         ctx: ViewCtx,
         guild_id: int,
+        timeout: float = 300,
     ) -> None:
-        super().__init__()
+        super().__init__(timeout=timeout)
         self.provider = provider
         self.model = model
         self.ctx = ctx
@@ -291,7 +282,7 @@ class _APIKeyModal(ui.Modal, title="🔑  API 키 등록"):
             return _validate_anthropic_key(raw_key)
         return True
 
-    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:  # type: ignore[override]
         await interaction.response.send_message(f"⚠️ 오류: {error}", ephemeral=True)
 
 
@@ -391,22 +382,22 @@ class SettingsView(ui.View):
         # Determine model button label dynamically based on provider
         model_btn_label = "모델 선택" if provider in (LLMProvider.OPENAI, LLMProvider.ANTHROPIC) else "모델 관리"
 
-        change_provider_btn = ui.Button(
+        change_provider_btn: ui.Button[Any] = ui.Button(
             label="제공자 변경", style=discord.ButtonStyle.primary, row=0
         )
-        change_provider_btn.callback = self._change_provider
+        change_provider_btn.callback = self._change_provider  # type: ignore[method-assign]
         self.add_item(change_provider_btn)
 
-        manage_models_btn = ui.Button(
+        manage_models_btn: ui.Button[Any] = ui.Button(
             label=model_btn_label, style=discord.ButtonStyle.secondary, row=0
         )
-        manage_models_btn.callback = self._manage_models
+        manage_models_btn.callback = self._manage_models  # type: ignore[method-assign]
         self.add_item(manage_models_btn)
 
-        general_settings_btn = ui.Button(
+        general_settings_btn: ui.Button[Any] = ui.Button(
             label="일반 설정", style=discord.ButtonStyle.secondary, row=0
         )
-        general_settings_btn.callback = self._general_settings
+        general_settings_btn.callback = self._general_settings  # type: ignore[method-assign]
         self.add_item(general_settings_btn)
 
     async def _change_provider(self, interaction: discord.Interaction) -> None:
@@ -421,7 +412,7 @@ class SettingsView(ui.View):
         if config.provider == LLMProvider.OLLAMA:
             installed = await self.ctx.ollama_manager.list_models()
             embed = _ollama_model_embed(installed, config.model)
-            view = OllamaModelView(ctx=self.ctx, guild_id=self.guild_id, installed=installed)
+            view: ui.View = OllamaModelView(ctx=self.ctx, guild_id=self.guild_id, installed=installed)
         else:
             models = OPENAI_MODELS if config.provider == LLMProvider.OPENAI else ANTHROPIC_MODELS
             embed = _external_model_embed(config.provider, config.model, bool(config.api_key_encrypted))
@@ -447,7 +438,7 @@ class ProviderView(ui.View):
         self.ctx = ctx
         self.guild_id = guild_id
 
-        select = ui.Select(
+        select: ui.Select[Any] = ui.Select(
             placeholder="AI 제공자를 선택하세요",
             options=[
                 discord.SelectOption(
@@ -468,12 +459,12 @@ class ProviderView(ui.View):
             ],
             row=0,
         )
-        select.callback = self._on_select
+        select.callback = self._on_select  # type: ignore[method-assign]
         self.add_item(select)
         self.add_item(_BackButton(ctx=ctx, guild_id=guild_id, row=1))
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
-        selected = LLMProvider(interaction.data["values"][0])  # type: ignore[index]
+        selected = LLMProvider(interaction.data["values"][0])  # type: ignore[index,typeddict-item]
 
         if selected == LLMProvider.OLLAMA:
             installed = await self.ctx.ollama_manager.list_models()
@@ -517,13 +508,13 @@ class ExternalModelView(ui.View):
             discord.SelectOption(label=name, value=model_id, description=desc)
             for model_id, name, desc in models[:25]
         ]
-        select = ui.Select(placeholder="모델을 선택하세요", options=options, row=0)
-        select.callback = self._on_model_select
+        select: ui.Select[Any] = ui.Select(placeholder="모델을 선택하세요", options=options, row=0)
+        select.callback = self._on_model_select  # type: ignore[method-assign]
         self.add_item(select)
         self.add_item(_BackButton(ctx=ctx, guild_id=guild_id, row=2))
 
     async def _on_model_select(self, interaction: discord.Interaction) -> None:
-        self._selected_model = interaction.data["values"][0]  # type: ignore[index]
+        self._selected_model = interaction.data["values"][0]  # type: ignore[index,typeddict-item]
         config = await self.ctx.store.get_guild_config(self.guild_id)
         updated = await self.ctx.store.set_provider_config(
             self.guild_id,
@@ -576,14 +567,14 @@ class OllamaModelView(ui.View):
                 )
                 for m in installed[:25]
             ]
-            select = ui.Select(placeholder="사용할 모델을 선택하세요", options=options, row=0)
-            select.callback = self._on_select
+            select: ui.Select[Any] = ui.Select(placeholder="사용할 모델을 선택하세요", options=options, row=0)
+            select.callback = self._on_select  # type: ignore[method-assign]
             self.add_item(select)
 
         self.add_item(_BackButton(ctx=ctx, guild_id=guild_id, row=2))
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
-        self._selected = interaction.data["values"][0]  # type: ignore[index]
+        self._selected = interaction.data["values"][0]  # type: ignore[index,typeddict-item]
         config = await self.ctx.store.get_guild_config(self.guild_id)
         embed = _ollama_model_embed(self.installed, config.model)
         await interaction.response.edit_message(embed=embed, view=self)
@@ -637,13 +628,13 @@ class ModelInstallView(ui.View):
                 )
             )
 
-        select = ui.Select(placeholder="설치할 모델을 선택하세요", options=options[:25], row=0)
-        select.callback = self._on_select
+        select: ui.Select[Any] = ui.Select(placeholder="설치할 모델을 선택하세요", options=options[:25], row=0)
+        select.callback = self._on_select  # type: ignore[method-assign]
         self.add_item(select)
         self.add_item(_BackButton(ctx=ctx, guild_id=guild_id, row=2))
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
-        self._selected = interaction.data["values"][0]  # type: ignore[index]
+        self._selected = interaction.data["values"][0]  # type: ignore[index,typeddict-item]
         embed = discord.Embed(
             title="⬇️  새 모델 설치",
             description=f"선택: `{self._selected}`\n\n아래 **설치 시작** 버튼을 누르면 다운로드가 시작됩니다.",
@@ -902,6 +893,10 @@ class LongResponseView(ui.View):
             await interaction.response.send_message(
                 "⚠️ DM을 보낼 수 없어요. 개인 메시지 설정을 확인해 주세요.", ephemeral=True
             )
+        except discord.HTTPException as exc:
+            await interaction.response.send_message(
+                f"⚠️ DM 전송 중 오류가 발생했어요. ({exc.status})", ephemeral=True
+            )
 
 
 class SummarizeResultView(ui.View):
@@ -1005,7 +1000,7 @@ class _FollowUpModal(ui.Modal, title="후속 질문"):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await self._callback(interaction, self.question_input.value.strip())
 
-    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
+    async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:  # type: ignore[override]
         await interaction.response.send_message(f"⚠️ 오류: {error}", ephemeral=True)
 
 
@@ -1053,18 +1048,18 @@ class ChannelSelectView(ui.View):
             for ch in channels[:25]
         ]
         if options:
-            select = ui.Select(
+            select: ui.Select[Any] = ui.Select(
                 placeholder="요약할 채널을 선택하세요 (복수 가능)",
                 options=options,
                 min_values=1,
                 max_values=min(len(options), 10),
                 row=0,
             )
-            select.callback = self._on_select
+            select.callback = self._on_select  # type: ignore[method-assign]
             self.add_item(select)
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
-        self._selected = interaction.data["values"]  # type: ignore[index]
+        self._selected = interaction.data["values"]  # type: ignore[index,typeddict-item]
         await interaction.response.defer()
 
     @ui.button(label="요약 시작", style=discord.ButtonStyle.success, row=1)

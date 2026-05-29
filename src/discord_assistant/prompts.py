@@ -4,26 +4,32 @@ from __future__ import annotations
 
 _LANGUAGE_LABELS = {
     "ko": "Korean (한국어)",
-    "kr": "Korean (한국어)",
     "en": "English",
     "ja": "Japanese (日本語)",
-    "jp": "Japanese (日본語)",
     "zh": "Chinese (中文)",
     "fr": "French (Français)",
     "de": "German (Deutsch)",
     "es": "Spanish (Español)",
 }
+# Legacy aliases (kept for backwards compat with stored configs)
+_LANGUAGE_ALIASES = {"kr": "ko", "jp": "ja"}
 
 
 def language_label(language: str) -> str:
     key = language.strip().lower()
+    key = _LANGUAGE_ALIASES.get(key, key)
     return _LANGUAGE_LABELS.get(key, language.strip() or "Korean (한국어)")
+
+
+_FRENCH_WORDS = frozenset(["le", "la", "les", "de", "du", "des", "un", "une", "est", "et", "je", "tu", "il", "nous", "vous"])
+_GERMAN_WORDS = frozenset(["der", "die", "das", "ein", "eine", "und", "ist", "ich", "du", "wir", "sie", "nicht"])
+_SPANISH_WORDS = frozenset(["el", "la", "los", "las", "un", "una", "es", "y", "de", "en", "que", "se", "no"])
 
 
 def detect_language_from_transcript(transcript: str) -> str:
     """Simple heuristic language detection from transcript text.
 
-    Returns a language code string: 'ko', 'ja', 'zh', or 'en'.
+    Returns a language code string: 'ko', 'ja', 'zh', 'fr', 'de', 'es', or 'en'.
     Used when the server language setting is 'auto'.
     """
     if not transcript:
@@ -42,6 +48,17 @@ def detect_language_from_transcript(transcript: str) -> str:
     if chinese / total >= 0.15:
         return "zh"
     if latin / total >= 0.30:
+        words = set(transcript.lower().split())
+        fr_hits = len(words & _FRENCH_WORDS)
+        de_hits = len(words & _GERMAN_WORDS)
+        es_hits = len(words & _SPANISH_WORDS)
+        best = max(fr_hits, de_hits, es_hits)
+        if best >= 2:
+            if fr_hits == best:
+                return "fr"
+            if de_hits == best:
+                return "de"
+            return "es"
         return "en"
     return "ko"
 
@@ -49,13 +66,13 @@ def detect_language_from_transcript(transcript: str) -> str:
 def build_summarize_prompt(transcript: str, *, language: str = "ko") -> str:
     target_language = language_label(language)
     return f"""You are a helpful Discord conversation summarizer.
-Answer in {target_language}.
+Answer in {target_language}. Translate ALL section headers and labels below into {target_language} as well.
 
 Summarize the transcript with this exact structure:
-1. 핵심 요약: 3-5 bullet points
-2. 결정/합의: bullet points, or "없음"
-3. 액션 아이템: assignee if obvious, otherwise "담당자 미정"
-4. 놓치면 안 되는 맥락: short notes for someone joining late
+1. Key Summary: 3-5 bullet points
+2. Decisions/Agreements: bullet points, or "None"
+3. Action Items: assignee if obvious, otherwise "TBD"
+4. Context for Latecomers: short notes for someone joining late
 
 Rules:
 - Do not invent facts that are not in the transcript.
@@ -111,7 +128,7 @@ def build_chat_with_history_prompt(
     if history:
         lines = []
         for turn in history:
-            role_label = "사용자" if turn["role"] == "user" else "AI"
+            role_label = "User" if turn["role"] == "user" else "Assistant"
             lines.append(f"{role_label}: {turn['content']}")
         history_text = "\n\nPrevious conversation:\n" + "\n".join(lines)
     return f"""You are a helpful AI assistant in a Discord server.
@@ -124,9 +141,10 @@ User message:
 """.strip()
 
 
-def build_translate_prompt(text: str, *, target_language: str = "ko") -> str:
+def build_translate_prompt(text: str, *, target_language: str = "ko", source_language: str | None = None) -> str:
     target = language_label(target_language)
-    return f"""Translate the following text into {target}.
+    source_hint = f" from {language_label(source_language)}" if source_language else ""
+    return f"""Translate the following text{source_hint} into {target}.
 Keep Discord mentions, URLs, code blocks, and proper nouns intact.
 Return only the translated text.
 

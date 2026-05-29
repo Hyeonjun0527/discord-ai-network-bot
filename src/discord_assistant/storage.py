@@ -11,7 +11,19 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .llm import OllamaManager
 
-from .models import GuildConfig, LLMProvider, UsageLog
+from .models import MIN_AUTO_SUMMARY_INTERVAL_MINUTES, GuildConfig, LLMProvider, UsageLog
+
+
+def _normalize_interval(raw: int | None) -> int | None:
+    """Clamp a stored auto-summary interval to the enforced minimum.
+
+    Legacy rows may hold values below the current minimum (written before the
+    floor was enforced). Reads must never raise, so we clamp up instead of
+    constructing an invalid GuildConfig (#regression-guard).
+    """
+    if raw is None:
+        return None
+    return max(int(raw), MIN_AUTO_SUMMARY_INTERVAL_MINUTES)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS guild_config (
@@ -59,13 +71,15 @@ CREATE TABLE IF NOT EXISTS feedback (
     user_id    INTEGER NOT NULL,
     rating     INTEGER NOT NULL,
     command    TEXT,
-    created_at TEXT    NOT NULL
+    created_at TEXT    NOT NULL,
+    UNIQUE(message_id, user_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_usage_log_created_at ON usage_log(created_at);
-CREATE INDEX IF NOT EXISTS idx_usage_log_guild_id   ON usage_log(guild_id);
-CREATE INDEX IF NOT EXISTS idx_chat_history_user    ON chat_history(user_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_feedback_message_id  ON feedback(message_id);
+CREATE INDEX IF NOT EXISTS idx_usage_log_created_at   ON usage_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_usage_log_guild_id      ON usage_log(guild_id);
+CREATE INDEX IF NOT EXISTS idx_chat_history_user       ON chat_history(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_history_composite  ON chat_history(guild_id, channel_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_message_id     ON feedback(message_id);
 """
 
 
@@ -102,21 +116,20 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "allowed_role_id" not in existing:
         conn.execute("ALTER TABLE guild_config ADD COLUMN allowed_role_id INTEGER")
 
-    # feedback table
-    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    if "feedback" not in tables:
-        conn.execute(
-            """CREATE TABLE feedback (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                guild_id   INTEGER,
-                message_id INTEGER NOT NULL,
-                user_id    INTEGER NOT NULL,
-                rating     INTEGER NOT NULL,
-                command    TEXT,
-                created_at TEXT    NOT NULL
-            )"""
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_message_id ON feedback(message_id)")
+    # feedback table — ensure it exists with correct schema
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS feedback (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id   INTEGER,
+            message_id INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL,
+            rating     INTEGER NOT NULL,
+            command    TEXT,
+            created_at TEXT    NOT NULL,
+            UNIQUE(message_id, user_id)
+        )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_message_id ON feedback(message_id)")
     conn.commit()
 
 
@@ -154,6 +167,8 @@ class ConfigStore:
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
     # ------------------------------------------------------------------
@@ -182,7 +197,7 @@ class ConfigStore:
             admin_role_id=(int(row["admin_role_id"]) if row["admin_role_id"] is not None else None),
             provider=LLMProvider(row["provider"]) if row["provider"] else LLMProvider.OLLAMA,
             api_key_encrypted=row["api_key_encrypted"],
-            auto_summary_interval=(int(row["auto_summary_interval"]) if row["auto_summary_interval"] is not None else None),
+            auto_summary_interval=_normalize_interval(row["auto_summary_interval"]),
             persona=row["persona"],
             custom_summarize_prompt=row["custom_summarize_prompt"],
             custom_ask_prompt=row["custom_ask_prompt"],
@@ -318,10 +333,19 @@ class ConfigStore:
         guild_id: int | None = None,
         channel_id: int | None = None,
         limit: int = 10,
+        offset: int = 0,
     ) -> list[dict[str, str]]:
-        """Return the last ``limit`` chat_history rows as {role, content} dicts."""
+        """Return ``limit`` chat_history rows as {role, content} dicts.
+
+        ``offset`` skips that many of the most recent rows, enabling
+        pagination over large histories (#50).
+        """
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+        if offset < 0:
+            raise ValueError("offset must be >= 0")
         return await asyncio.to_thread(
-            self._get_chat_history_sync, user_id, guild_id, channel_id, limit
+            self._get_chat_history_sync, user_id, guild_id, channel_id, limit, offset
         )
 
     def _get_chat_history_sync(
@@ -330,17 +354,29 @@ class ConfigStore:
         guild_id: int | None,
         channel_id: int | None,
         limit: int,
+        offset: int,
     ) -> list[dict[str, str]]:
         with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT role, content FROM chat_history
-                WHERE user_id = ?
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (user_id, limit),
-            ).fetchall()
+            if guild_id is not None and channel_id is not None:
+                rows = conn.execute(
+                    """
+                    SELECT role, content FROM chat_history
+                    WHERE user_id = ? AND guild_id = ? AND channel_id = ?
+                    ORDER BY id DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (user_id, guild_id, channel_id, limit, offset),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT role, content FROM chat_history
+                    WHERE user_id = ?
+                    ORDER BY id DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (user_id, limit, offset),
+                ).fetchall()
         rows.reverse()
         return [{"role": row["role"], "content": row["content"]} for row in rows]
 
@@ -357,6 +393,8 @@ class ConfigStore:
             self._save_chat_message_sync, user_id, role, content, guild_id, channel_id
         )
 
+    _MAX_CHAT_HISTORY_PER_USER = 200
+
     def _save_chat_message_sync(
         self,
         user_id: int,
@@ -372,6 +410,20 @@ class ConfigStore:
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (guild_id, channel_id, user_id, role, content, _utc_now()),
+            )
+            # Prune oldest rows for this user beyond the limit
+            conn.execute(
+                """
+                DELETE FROM chat_history
+                WHERE user_id = ?
+                  AND id NOT IN (
+                    SELECT id FROM chat_history
+                    WHERE user_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                  )
+                """,
+                (user_id, user_id, self._MAX_CHAT_HISTORY_PER_USER),
             )
             conn.commit()
 
@@ -418,8 +470,10 @@ class ConfigStore:
 
     async def set_auto_summary_interval(self, guild_id: int, interval: int | None) -> GuildConfig:
         """Set auto-summary interval in minutes. None disables."""
-        if interval is not None and interval < 1:
-            raise ValueError("interval must be >= 1 minutes")
+        if interval is not None and interval < MIN_AUTO_SUMMARY_INTERVAL_MINUTES:
+            raise ValueError(
+                f"자동 요약 간격은 최소 {MIN_AUTO_SUMMARY_INTERVAL_MINUTES}분이어야 합니다. (0으로 비활성화)"
+            )
         current = await self.get_guild_config(guild_id)
         updated = replace(current, auto_summary_interval=interval)
         await self._upsert(updated)
@@ -518,12 +572,23 @@ class ConfigStore:
             ).fetchone()
             error_count = error_row["cnt"] if error_row else 0
 
+            # Actual activity date range for this guild (#69)
+            range_row = conn.execute(
+                "SELECT MIN(created_at) AS first_at, MAX(created_at) AS last_at "
+                "FROM usage_log WHERE guild_id = ?",
+                (guild_id,),
+            ).fetchone()
+            first_at = range_row["first_at"] if range_row else None
+            last_at = range_row["last_at"] if range_row else None
+
         error_rate = round(error_count / total * 100, 1) if total > 0 else 0.0
         return {
             "total": total,
             "by_command": [{"command": r["command"], "count": r["cnt"]} for r in by_command],
             "avg_latency_ms": avg_latency,
             "error_rate": error_rate,
+            "first_at": first_at,
+            "last_at": last_at,
         }
 
     # ------------------------------------------------------------------
@@ -538,3 +603,22 @@ class ConfigStore:
         with self._connect() as conn:
             rows = conn.execute("SELECT guild_id FROM guild_config").fetchall()
         return [int(row["guild_id"]) for row in rows]
+
+    async def get_guilds_with_auto_summary(self) -> list[tuple[int, int]]:
+        """Return (guild_id, interval_minutes) for guilds with auto-summary enabled (#25).
+
+        Lets the polling task skip guilds that have not configured auto-summary
+        without loading every guild's full config row.
+        """
+        return await asyncio.to_thread(self._get_guilds_with_auto_summary_sync)
+
+    def _get_guilds_with_auto_summary_sync(self) -> list[tuple[int, int]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT guild_id, auto_summary_interval FROM guild_config "
+                "WHERE auto_summary_interval IS NOT NULL AND auto_summary_interval > 0"
+            ).fetchall()
+        return [
+            (int(row["guild_id"]), _normalize_interval(row["auto_summary_interval"]) or MIN_AUTO_SUMMARY_INTERVAL_MINUTES)
+            for row in rows
+        ]

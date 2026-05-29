@@ -1,6 +1,23 @@
 # Changelog
 
+All notable changes to this project are documented here. This project adheres
+to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and the
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
+
 ## [Unreleased]
+
+### Added
+- Configurable Ollama sampling via `OLLAMA_TEMPERATURE` / `OLLAMA_NUM_CTX`
+- `chat_history` pagination (`offset`) and `get_guilds_with_auto_summary` query
+- Backup integrity verification (`PRAGMA integrity_check`) in `scripts/backup.sh`
+
+### Fixed
+- LLM provider errors no longer leak raw API response bodies to users/logs
+- `/summarize-channels` builds the LLM client once instead of per channel
+- `ollama pull` now fails with a clear message when the binary is not on PATH
+- Persona input sanitized against prompt-injection delimiters
+
+## [0.1.0] - 2026-05-29
 
 ### Added
 - Multi-provider LLM support (Ollama, OpenAI, Anthropic)

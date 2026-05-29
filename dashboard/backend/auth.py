@@ -8,7 +8,9 @@ GET /auth/me       — return current user info from JWT
 """
 from __future__ import annotations
 
+import asyncio  # noqa: E402
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
@@ -16,6 +18,11 @@ import httpx
 import jwt
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
+
+# In-memory state store for CSRF protection (maps state → expiry timestamp)
+# For multi-process deployments, replace with Redis or DB-backed store.
+_oauth_states: dict[str, datetime] = {}
+_STATE_TTL_SECONDS = 600
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -88,19 +95,27 @@ def decode_jwt(token: str) -> dict | None:
 @router.get("/login")
 async def login() -> RedirectResponse:
     """Redirect the browser to Discord's OAuth2 consent screen."""
+    state = secrets.token_urlsafe(32)
+    _oauth_states[state] = datetime.now(timezone.utc) + timedelta(seconds=_STATE_TTL_SECONDS)
+    # Prune expired states
+    now = datetime.now(timezone.utc)
+    expired = [k for k, exp in _oauth_states.items() if exp < now]
+    for k in expired:
+        del _oauth_states[k]
     params = urlencode(
         {
             "client_id": _client_id(),
             "redirect_uri": _redirect_uri(),
             "response_type": "code",
             "scope": SCOPES,
+            "state": state,
         }
     )
     return RedirectResponse(url=f"{DISCORD_OAUTH_URL}?{params}")
 
 
 @router.get("/callback")
-async def callback(code: str | None = None, error: str | None = None) -> JSONResponse:
+async def callback(code: str | None = None, error: str | None = None, state: str | None = None) -> JSONResponse:
     """Exchange the authorization code for a token and issue a JWT.
 
     On success the response contains ``{"token": "<jwt>"}`` so that the
@@ -116,6 +131,19 @@ async def callback(code: str | None = None, error: str | None = None) -> JSONRes
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Missing authorization code",
         )
+    # CSRF state validation
+    if not state or state not in _oauth_states:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or missing OAuth2 state parameter",
+        )
+    if _oauth_states[state] < datetime.now(timezone.utc):
+        del _oauth_states[state]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth2 state has expired. Please try logging in again.",
+        )
+    del _oauth_states[state]
 
     # Exchange code for access token
     async with httpx.AsyncClient() as client:
@@ -180,5 +208,3 @@ async def me(request: Request) -> JSONResponse:
     return JSONResponse({"sub": payload["sub"], "guilds": payload.get("guilds", [])})
 
 
-# asyncio needed for gather — import at module level to avoid NameError
-import asyncio  # noqa: E402

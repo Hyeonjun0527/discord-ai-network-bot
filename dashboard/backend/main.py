@@ -11,19 +11,42 @@ Serves:
 from __future__ import annotations
 
 import os
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import aiosqlite
+import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .auth import router as auth_router
 from .deps import CurrentUser
+
+# Simple in-memory rate limiter: ip -> list of timestamps
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_MAX = 60   # requests
+_RATE_LIMIT_WINDOW = 60  # seconds
+
+
+def _check_rate_limit(request: Request) -> None:
+    ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    window_start = now - _RATE_LIMIT_WINDOW
+    timestamps = [t for t in _rate_limit_store[ip] if t > window_start]
+    timestamps.append(now)
+    _rate_limit_store[ip] = timestamps
+    if len(timestamps) > _RATE_LIMIT_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please slow down.",
+        )
 
 load_dotenv()
 
@@ -118,8 +141,9 @@ class GuildConfigUpdate(BaseModel):
 
 
 @app.get("/api/guilds/{guild_id}/config", tags=["guilds"])
-async def get_guild_config(guild_id: int, user: CurrentUser) -> JSONResponse:
+async def get_guild_config(guild_id: int, user: CurrentUser, request: Request) -> JSONResponse:
     """Return the stored config for a guild.  The caller must belong to the guild."""
+    _check_rate_limit(request)
     _assert_guild_access(user, guild_id)
     db = await _get_db()
     try:
@@ -152,8 +176,10 @@ async def update_guild_config(
     guild_id: int,
     body: GuildConfigUpdate,
     user: CurrentUser,
+    request: Request,
 ) -> JSONResponse:
     """Update one or more config fields for a guild."""
+    _check_rate_limit(request)
     _assert_guild_access(user, guild_id)
 
     db = await _get_db()
@@ -187,8 +213,6 @@ async def update_guild_config(
             current["language"] = body.language.strip()
         if body.provider is not None:
             current["provider"] = body.provider.strip()
-
-        from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         await db.execute(
@@ -334,11 +358,9 @@ async def clear_api_key(guild_id: int, user: CurrentUser) -> JSONResponse:
 @app.get("/api/models", tags=["models"])
 async def list_models(user: CurrentUser) -> JSONResponse:
     """Return the list of installed Ollama models."""
-    import httpx as _httpx
-
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
     try:
-        async with _httpx.AsyncClient(timeout=5) as client:
+        async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(f"{ollama_url}/api/tags")
         if resp.status_code != 200:
             return JSONResponse({"models": [], "error": f"Ollama returned {resp.status_code}"})

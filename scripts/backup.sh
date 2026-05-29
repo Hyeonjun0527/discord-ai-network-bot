@@ -32,8 +32,32 @@ mkdir -p "$BACKUP_DIR"
 
 # ── Copy the database file ────────────────────────────────────────────────────
 DEST="$BACKUP_DIR/bot_${TIMESTAMP}.db"
-cp "$DB_PATH" "$DEST"
+# Use sqlite3 .backup for a consistent snapshot when sqlite3 is available;
+# fall back to cp otherwise.
+if command -v sqlite3 &>/dev/null; then
+  sqlite3 "$DB_PATH" ".backup '$DEST'"
+else
+  # WAL mode keeps recent commits in the -wal sidecar; copy it (and -shm) too
+  # so the fallback snapshot is not missing the latest transactions.
+  echo "$LOG_PREFIX WARNING: sqlite3 not found — using cp fallback (copies -wal/-shm if present)." >&2
+  cp "$DB_PATH" "$DEST"
+  [[ -f "${DB_PATH}-wal" ]] && cp "${DB_PATH}-wal" "${DEST}-wal"
+  [[ -f "${DB_PATH}-shm" ]] && cp "${DB_PATH}-shm" "${DEST}-shm"
+fi
 echo "$LOG_PREFIX Backup written: $DEST ($(du -sh "$DEST" | cut -f1))"
+
+# ── Verify backup integrity ──────────────────────────────────────────────────
+if command -v sqlite3 &>/dev/null; then
+  INTEGRITY="$(sqlite3 "$DEST" "PRAGMA integrity_check;" 2>&1 || echo "check-failed")"
+  if [[ "$INTEGRITY" != "ok" ]]; then
+    echo "$LOG_PREFIX ERROR: Backup integrity check failed: $INTEGRITY. Removing corrupt backup." >&2
+    rm -f "$DEST"
+    exit 1
+  fi
+  echo "$LOG_PREFIX Integrity check passed (PRAGMA integrity_check = ok)."
+else
+  echo "$LOG_PREFIX WARNING: sqlite3 not found — skipping integrity check."
+fi
 
 # ── Prune backups older than 7 days ─────────────────────────────────────────
 KEEP=7

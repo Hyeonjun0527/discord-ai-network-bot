@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import unittest
+from datetime import datetime, timezone
 
 from discord_assistant.context import build_transcript, filter_chat_messages, from_discord_message
 from discord_assistant.models import ChatMessage

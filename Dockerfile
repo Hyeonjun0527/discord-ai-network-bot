@@ -11,15 +11,13 @@ WORKDIR /app
 # Copy project files needed for install
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
 # Install the package and its dependencies
 RUN pip install --no-cache-dir .
 
 # Create the data directory for SQLite DB and other persistent files
 RUN mkdir -p /app/data /app/logs
-
-# Expose health port (used by dashboard and healthcheck)
-EXPOSE 8000
 
 # Health check — uses the Python healthcheck script
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \

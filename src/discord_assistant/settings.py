@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+import math
 import os
 from dataclasses import dataclass
+
+_settings_log = logging.getLogger(__name__)
 
 try:  # python-dotenv is a runtime dependency, but keep local tests resilient.
     from dotenv import load_dotenv
@@ -31,6 +35,25 @@ def _get_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _get_float(
+    name: str, default: float, *, minimum: float | None = None, maximum: float | None = None
+) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number")
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{name} must be <= {maximum}")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class AppSettings:
     """Configuration shared by the bot, LLM adapter, and storage."""
@@ -46,6 +69,8 @@ class AppSettings:
     auto_sync_commands: bool = True
     secret_key: str = "change-me-in-production"
     ollama_keep_alive: str = "10m"
+    ollama_temperature: float = 0.2
+    ollama_num_ctx: int = 8192
 
     @classmethod
     def from_env(cls, *, load_env_file: bool = True) -> "AppSettings":
@@ -56,9 +81,21 @@ class AppSettings:
         if not token or token.startswith("replace-with"):
             raise RuntimeError("DISCORD_BOT_TOKEN is required. Copy .env.example to .env first.")
 
+        secret_key = os.getenv("SECRET_KEY", "change-me-in-production").strip()
+        if secret_key == "change-me-in-production":
+            _settings_log.warning(
+                "SECRET_KEY is using the default insecure value. "
+                "Set SECRET_KEY in your .env file for production use."
+            )
+
+        ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip().rstrip("/")
+        if not ollama_base_url:
+            _settings_log.warning("OLLAMA_BASE_URL is empty; defaulting to http://localhost:11434")
+            ollama_base_url = "http://localhost:11434"
+
         return cls(
             discord_bot_token=token,
-            ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip().rstrip("/"),
+            ollama_base_url=ollama_base_url,
             ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1:8b").strip(),
             database_url=os.getenv("DATABASE_URL", "sqlite:///./data/discord_assistant.db").strip(),
             default_summary_limit=_get_int("DEFAULT_SUMMARY_LIMIT", 50, minimum=1),
@@ -66,6 +103,8 @@ class AppSettings:
             default_language=os.getenv("DEFAULT_LANGUAGE", "ko").strip() or "ko",
             ollama_timeout_seconds=_get_int("OLLAMA_TIMEOUT_SECONDS", 60, minimum=1),
             auto_sync_commands=_get_bool("AUTO_SYNC_COMMANDS", True),
-            secret_key=os.getenv("SECRET_KEY", "change-me-in-production").strip(),
+            secret_key=secret_key,
             ollama_keep_alive=os.getenv("OLLAMA_KEEP_ALIVE", "10m").strip() or "10m",
+            ollama_temperature=_get_float("OLLAMA_TEMPERATURE", 0.2, minimum=0.0, maximum=2.0),
+            ollama_num_ctx=_get_int("OLLAMA_NUM_CTX", 8192, minimum=256),
         )

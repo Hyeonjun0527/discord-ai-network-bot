@@ -37,7 +37,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-addopts = "--cov=discord_assistant --cov-report=term-missing"
+# Coverage is opt-in to avoid per-run overhead on the default `pytest` invocation (#94).
+# Run with coverage explicitly: `pytest --cov=discord_assistant --cov-report=term-missing`
+# (CI uses the coverage flags; see .github/workflows).
 asyncio_mode = "auto"
 
 [tool.ruff]

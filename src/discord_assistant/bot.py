@@ -2,17 +2,20 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
+import os
 import re
+import sys
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Any
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
-from .cache import summarize_cache
+from .cache import get_translation, set_translation, summarize_cache
 from .context import build_transcript, from_discord_message, normalize_content
 from .crypto import CryptoError, decrypt_api_key
 from .llm import (
@@ -24,18 +27,23 @@ from .llm import (
     OpenAIClient,
 )
 from .models import GuildConfig, LLMProvider, UsageLog
+from .monitor import format_disconnect_message, format_error_message, notify_developer
 from .prompts import (
     build_ask_prompt,
     build_chat_prompt,
+    build_chat_with_history_prompt,
+    build_image_analysis_prompt,
+    build_search_result_prompt,
     build_summarize_prompt,
     build_translate_prompt,
     detect_language_from_transcript,
 )
-from .monitor import format_disconnect_message, format_error_message, notify_developer
 from .settings import AppSettings
 from .storage import ConfigStore
 from .ui import (
+    ChannelSelectView,
     FollowUpView,
+    HelpView,
     SettingsView,
     ViewCtx,
     settings_embed,
@@ -44,8 +52,16 @@ from .ui import (
 logger = logging.getLogger(__name__)
 
 _SLOW_RESPONSE_THRESHOLD_MS = 30_000
+
+
+def _truncate(text: str, limit: int = 1024) -> str:
+    """Truncate text to embed field limit with ellipsis."""
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
 MAX_DISCORD_MESSAGE_CHARS = 1900
 MAX_EXPORT_BYTES = 8 * 1024 * 1024  # 8 MB Discord file limit
+MAX_SEARCH_MATCHES = 20  # max matching messages shown in /search (#74)
 
 # Reaction emojis for feedback tracking
 THUMBS_UP = "\U0001f44d"   # 👍
@@ -54,10 +70,12 @@ THUMBS_DOWN = "\U0001f44e"  # 👎
 # Message IDs that correspond to bot command results (for reaction tracking)
 # guild_id -> {message_id -> command_name}
 _tracked_messages: dict[int, dict[int, str]] = {}
+_MAX_TRACKED_PER_GUILD = 500
 
 # Last summarize results per user (for /remind)
 # user_id -> (summary_text, guild_id)
 _last_summaries: dict[int, tuple[str, int | None]] = {}
+_MAX_LAST_SUMMARIES = 1000
 
 # Auto-summary tracking: guild_id -> last_run_time
 _auto_summary_last_run: dict[int, datetime] = {}
@@ -65,10 +83,33 @@ _auto_summary_last_run: dict[int, datetime] = {}
 # Cooldown tracking: (guild_id, user_id) -> last used timestamp (task 25)
 _cooldowns: dict[tuple[int, int], float] = {}
 COOLDOWN_SECONDS = 10
+# Sentinel "guild" bucket for DM cooldowns (real guilds never use id 0). Passing
+# None as guild_id short-circuits _check_cooldown, so DMs need a concrete key (#20).
+_DM_COOLDOWN_GUILD = 0
 
 
 class UserFacingError(RuntimeError):
     """Raised for errors that should be shown plainly to Discord users."""
+
+
+def _sanitize_persona(text: str) -> str:
+    """Mitigate prompt injection in admin-set persona text (#42).
+
+    Strips control characters and collapses newlines so the persona cannot
+    inject fake role delimiters (e.g. a forged "User:"/"System:" block) into
+    the prompt. Returns single-line, trimmed text.
+    """
+    # Map any whitespace (incl. newlines/tabs) to a space, drop other control
+    # chars, then collapse runs of whitespace into single spaces.
+    chars: list[str] = []
+    for ch in text:
+        if ch.isspace():
+            chars.append(" ")
+        elif ord(ch) < 32 or ord(ch) == 127:
+            continue
+        else:
+            chars.append(ch)
+    return re.sub(r"\s+", " ", "".join(chars)).strip()
 
 
 def _parse_since(since_str: str) -> datetime:
@@ -81,6 +122,8 @@ def _parse_since(since_str: str) -> datetime:
     if not match:
         raise UserFacingError("올바른 형식: 1h, 30m, 2d (숫자 + m/h/d)")
     value = int(match.group(1))
+    if value == 0:
+        raise UserFacingError("0은 허용되지 않습니다. 예: 1h, 30m, 1d")
     unit = match.group(2)
     if unit == "m":
         delta = timedelta(minutes=value)
@@ -99,13 +142,30 @@ def _has_allowed_role(interaction: discord.Interaction, allowed_role_id: int | N
     return any(getattr(role, "id", None) == allowed_role_id for role in roles)
 
 
+_COOLDOWN_CLEANUP_INTERVAL = 300  # clean up expired entries every 5 minutes
+_cooldown_last_cleanup: float = 0.0
+
+
+def reset_cooldowns() -> None:
+    """Clear all cooldown state. Intended for test isolation (#83)."""
+    global _cooldown_last_cleanup
+    _cooldowns.clear()
+    _cooldown_last_cleanup = 0.0
+
+
 def _check_cooldown(guild_id: int | None, user_id: int | None) -> float | None:
     """Return remaining cooldown seconds if on cooldown, else None. Updates last-used time."""
+    global _cooldown_last_cleanup
     if guild_id is None or user_id is None:
         return None
-    from time import perf_counter as _pc
     key = (guild_id, user_id)
-    now = _pc()
+    now = perf_counter()
+    # Periodically evict stale entries to prevent unbounded growth
+    if now - _cooldown_last_cleanup > _COOLDOWN_CLEANUP_INTERVAL:
+        expired = [k for k, t in _cooldowns.items() if now - t > COOLDOWN_SECONDS * 10]
+        for k in expired:
+            del _cooldowns[k]
+        _cooldown_last_cleanup = now
     last = _cooldowns.get(key)
     if last is not None:
         elapsed = now - last
@@ -115,10 +175,44 @@ def _check_cooldown(guild_id: int | None, user_id: int | None) -> float | None:
     return None
 
 
+async def _track_for_feedback(
+    guild_id: int | None,
+    msg: discord.Message | None,
+    command: str,
+    *,
+    add_reactions: bool = True,
+) -> None:
+    """Register a result message for 👍/👎 feedback and seed the reactions.
+
+    Shared by /summarize (cache + live paths) and /ask so feedback tracking is
+    consistent across commands (#71). ``msg`` is only non-None when the send used
+    ``wait=True``; otherwise tracking is skipped (no message id to key on).
+    """
+    if guild_id is None or msg is None:
+        return
+    guild_tracking = _tracked_messages.setdefault(guild_id, {})
+    guild_tracking[msg.id] = command
+    if len(guild_tracking) > _MAX_TRACKED_PER_GUILD:
+        oldest = sorted(guild_tracking)[: len(guild_tracking) - _MAX_TRACKED_PER_GUILD]
+        for k in oldest:
+            del guild_tracking[k]
+    if add_reactions:
+        try:
+            await msg.add_reaction(THUMBS_UP)
+            await msg.add_reaction(THUMBS_DOWN)
+        except discord.HTTPException:
+            pass
+
+
 def _make_error_embed(exc: Exception) -> discord.Embed:
+    if isinstance(exc, UserFacingError):
+        description = str(exc)
+    else:
+        description = "예기치 않은 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+        logger.debug("Suppressed error detail from user: %s", exc)
     return discord.Embed(
         title="오류",
-        description=str(exc),
+        description=description,
         color=discord.Color.red(),
     )
 
@@ -131,40 +225,69 @@ async def _send_error_embed(interaction: discord.Interaction, exc: Exception) ->
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-def _parse_summarize_sections(text: str) -> list[tuple[str, str]] | None:
-    """Parse LLM summarize response into (section_name, content) pairs."""
-    section_keys = ["핵심 요약", "결정/합의", "액션 아이템", "놓치면 안 되는 맥락"]
-    results: list[tuple[str, str]] = []
-    for key in section_keys:
-        pattern = rf"(?:^\d+\.\s*)?{re.escape(key)}[:：](.*?)(?=(?:^\d+\.\s*)?(?:{'|'.join(re.escape(k) for k in section_keys)})[:：]|\Z)"
-        match2 = re.search(pattern, text, re.DOTALL | re.MULTILINE)
-        if match2:
-            val = match2.group(1).strip()
-            if val:
-                results.append((key, val))
-    return results if len(results) >= 2 else None
-
-
 def _split_discord_text(text: str, *, max_chars: int = MAX_DISCORD_MESSAGE_CHARS) -> list[str]:
-    """Split a long bot response into Discord-safe chunks."""
+    """Split a long bot response into Discord-safe chunks.
+
+    Avoids breaking inside code blocks (``` fences) by closing/reopening them.
+    """
     text = text.strip() or "(empty response)"
     chunks: list[str] = []
     current = ""
-    for line in text.splitlines() or [text]:
+    in_code_block = False
+    code_lang = ""
+
+    for line in text.splitlines():
+        if line.startswith("```"):
+            if not in_code_block:
+                in_code_block = True
+                code_lang = line[3:].strip()
+            else:
+                in_code_block = False
+                code_lang = ""
+
         if len(line) > max_chars:
-            if current:
-                chunks.append(current.rstrip())
+            if in_code_block:
+                # Flush any buffered content first, closing the fence — but drop
+                # a buffer that is only the bare opening fence (no content yet)
+                # to avoid emitting an empty code block.
+                if current and current.rstrip() != f"```{code_lang}":
+                    chunks.append((current + "\n```").rstrip())
                 current = ""
-            for start in range(0, len(line), max_chars):
-                chunks.append(line[start : start + max_chars])
+                # Wrap each fragment in its own fence so the code block stays
+                # valid markdown across the split (#80). Reserve room for fences.
+                fence_open = f"```{code_lang}\n"
+                fence_close = "\n```"
+                budget = max(1, max_chars - len(fence_open) - len(fence_close))
+                starts = list(range(0, len(line), budget))
+                for idx, start in enumerate(starts):
+                    fragment = line[start : start + budget]
+                    if idx < len(starts) - 1:
+                        chunks.append(f"{fence_open}{fragment}{fence_close}")
+                    else:
+                        # Leave the final fragment's fence open so the source's
+                        # own closing ``` (or the end-of-text flush) closes it
+                        # exactly once — no stray lone fence.
+                        current = f"{fence_open}{fragment}"
+            else:
+                if current:
+                    chunks.append(current.rstrip())
+                    current = ""
+                for start in range(0, len(line), max_chars):
+                    chunks.append(line[start : start + max_chars])
             continue
+
         candidate = f"{current}\n{line}" if current else line
         if len(candidate) > max_chars:
+            if in_code_block:
+                current += "\n```"
             chunks.append(current.rstrip())
-            current = line
+            current = (f"```{code_lang}\n{line}" if in_code_block else line)
         else:
             current = candidate
+
     if current:
+        if in_code_block:
+            current += "\n```"
         chunks.append(current.rstrip())
     return chunks
 
@@ -186,8 +309,11 @@ async def _send_interaction_chunks(
 
 
 async def _send_channel_chunks(channel: discord.abc.Messageable, text: str) -> None:
-    for chunk in _split_discord_text(text):
+    chunks = _split_discord_text(text)
+    for i, chunk in enumerate(chunks):
         await channel.send(chunk)
+        if i < len(chunks) - 1:
+            await asyncio.sleep(0.5)  # avoid Discord rate limit on bulk sends
 
 
 def _effective_limit(limit: int | None, default: int) -> int:
@@ -252,6 +378,8 @@ def _get_llm(config: GuildConfig, settings: AppSettings) -> BaseLLMClient:
         default_model=config.model,
         timeout_seconds=settings.ollama_timeout_seconds,
         keep_alive=settings.ollama_keep_alive,
+        temperature=settings.ollama_temperature,
+        num_ctx=settings.ollama_num_ctx,
     )
 
 
@@ -363,6 +491,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     ) -> None:
         started = perf_counter()
         guild_id, channel_id, user_id = _ids_from_interaction(interaction)
+        remaining = _check_cooldown(guild_id, user_id)
+        if remaining is not None:
+            await interaction.response.send_message(
+                f"⏳ {remaining:.0f}초 후에 다시 시도해주세요.", ephemeral=True
+            )
+            return
         await interaction.response.defer(thinking=True)
         try:
             config = await store.get_guild_config(guild_id or 0)
@@ -386,10 +520,16 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             if cached is not None:
                 if user_id is not None:
                     _last_summaries[user_id] = (cached, guild_id)
-                await _send_interaction_chunks(
-                    interaction,
-                    f"**최근 {message_limit}개 메시지 요약** *(캐시)*\n{cached}",
+                    if len(_last_summaries) > _MAX_LAST_SUMMARIES:
+                        del _last_summaries[next(iter(_last_summaries))]
+                first, *rest = _split_discord_text(
+                    f"**최근 {message_limit}개 메시지 요약** *(캐시)*\n{cached}"
                 )
+                msg = await interaction.followup.send(first, wait=True)
+                for chunk in rest:
+                    await interaction.followup.send(chunk)
+                # Track cached results too, for parity with the live path (#71)
+                await _track_for_feedback(guild_id, msg, "summarize")
                 await _record_usage(
                     store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                     command="summarize", status="ok", started_at=started,
@@ -426,10 +566,17 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             # Store last summary for /remind (#32)
             if user_id is not None:
                 _last_summaries[user_id] = (answer, guild_id)
+                if len(_last_summaries) > _MAX_LAST_SUMMARIES:
+                    del _last_summaries[next(iter(_last_summaries))]
 
             since_label = f" (since: {since})" if since else ""
             header = f"**최근 {message_limit}개 메시지 요약{since_label}**\n"
-            await _send_interaction_chunks(interaction, header + answer)
+            first, *rest = _split_discord_text(header + answer)
+            msg = await interaction.followup.send(first, wait=True)
+            for chunk in rest:
+                await interaction.followup.send(chunk)
+            # Track this message for reaction feedback (consistent with /ask)
+            await _track_for_feedback(guild_id, msg, "summarize")
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="summarize", status="ok", started_at=started,
@@ -465,6 +612,13 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     ) -> None:
         started = perf_counter()
         guild_id, channel_id, user_id = _ids_from_interaction(interaction)
+        remaining = _check_cooldown(guild_id, user_id)
+        if remaining is not None:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    f"⏳ {remaining:.0f}초 후에 다시 시도해주세요.", ephemeral=True
+                )
+            return
         if not interaction.response.is_done():
             await interaction.response.defer(thinking=True)
         try:
@@ -514,17 +668,14 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
             chunks = _split_discord_text(f"**질문:** {question}\n\n{answer}")
             first, *rest = chunks
-            if interaction.response.is_done():
-                msg = await interaction.followup.send(first, view=follow_view)
-            else:
-                await interaction.response.send_message(first, view=follow_view)
-                msg = await interaction.original_response()
+            # run_ask always defers before reaching here (both call sites defer),
+            # so the response is done — send via followup (#23: removed dead else).
+            msg = await interaction.followup.send(first, view=follow_view, wait=True)
             for chunk in rest:
                 await interaction.followup.send(chunk)
 
-            # Track this message for reaction feedback (#42)
-            if guild_id is not None:
-                _tracked_messages.setdefault(guild_id, {})[msg.id] = "ask"
+            # Track this message for reaction feedback (#42, #71)
+            await _track_for_feedback(guild_id, msg, "ask")
 
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
@@ -574,12 +725,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             cached_translation = get_translation(text, target_language)
             if cached_translation is not None:
                 embed = discord.Embed(color=discord.Color.from_str("#5865F2"))
-                embed.add_field(name="원문", value=text[:1000], inline=False)
-                embed.add_field(name=f"번역 ({target_language}) *(캐시)*", value=cached_translation[:1000], inline=False)
-                if interaction.response.is_done():
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                else:
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                embed.add_field(name="원문", value=_truncate(text), inline=False)
+                embed.add_field(name=f"번역 ({target_language}) *(캐시)*", value=_truncate(cached_translation), inline=False)
+                await interaction.followup.send(embed=embed, ephemeral=True)
                 await _record_usage(
                     store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                     command="translate", status="ok", started_at=started,
@@ -592,12 +740,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             # Cache the result (#38)
             set_translation(text, target_language, answer)
             embed = discord.Embed(color=discord.Color.from_str("#5865F2"))
-            embed.add_field(name="원문", value=text[:1000], inline=False)
-            embed.add_field(name=f"번역 ({target_language})", value=answer[:1000], inline=False)
-            if interaction.response.is_done():
-                await interaction.followup.send(embed=embed, ephemeral=True)
-            else:
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+            embed.add_field(name="원문", value=_truncate(text), inline=False)
+            embed.add_field(name=f"번역 ({target_language})", value=_truncate(answer), inline=False)
+            await interaction.followup.send(embed=embed, ephemeral=True)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="translate", status="ok", started_at=started,
@@ -651,10 +796,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 from .ui import LongResponseView as _LRV
                 view = _LRV(full_text=answer)
                 preview = answer[:MAX_DISCORD_MESSAGE_CHARS]
-                if interaction.response.is_done():
-                    await interaction.followup.send(preview, view=view, ephemeral=ephemeral)
-                else:
-                    await interaction.followup.send(preview, view=view, ephemeral=ephemeral)
+                await interaction.followup.send(preview, view=view, ephemeral=ephemeral)
             else:
                 await _send_interaction_chunks(interaction, answer, ephemeral=ephemeral)
             if user_id is not None:
@@ -747,8 +889,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             inline=False,
         )
         embed.set_footer(text="버튼을 눌러 섹션별 상세 안내를 볼 수 있습니다.")
-        import os as _os
-        dashboard_url = _os.getenv("DASHBOARD_URL", "").strip()
+        dashboard_url = os.getenv("DASHBOARD_URL", "").strip()
         view = HelpView()
         if dashboard_url:
             view.add_item(
@@ -876,7 +1017,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
             sent_msg = await interaction.followup.send(
-                f"📌 **요약 (고정됨)**\n{answer}"
+                f"📌 **요약 (고정됨)**\n{answer}", wait=True
             )
             try:
                 await sent_msg.pin()
@@ -899,12 +1040,13 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # --- #35 /summarize-channels --- multi-channel summary
     @bot.tree.command(name="summarize-channels", description="여러 채널을 선택해 통합 요약합니다.")
     async def summarize_channels_command(interaction: discord.Interaction) -> None:
-        if interaction.guild is None:
+        guild = interaction.guild
+        if guild is None:
             await interaction.response.send_message("⚠️ 이 명령은 서버 안에서만 사용할 수 있어요.", ephemeral=True)
             return
         text_channels = [
-            ch for ch in interaction.guild.text_channels
-            if ch.permissions_for(interaction.guild.me).read_message_history
+            ch for ch in guild.text_channels
+            if ch.permissions_for(guild.me).read_message_history
         ]
         if not text_channels:
             await interaction.response.send_message("⚠️ 읽기 가능한 텍스트 채널이 없어요.", ephemeral=True)
@@ -912,14 +1054,19 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
         async def _on_confirm(confirm_interaction: discord.Interaction, channel_ids: list[str]) -> None:
             await confirm_interaction.response.defer(thinking=True)
+            if not channel_ids:
+                await confirm_interaction.followup.send("⚠️ 선택된 채널이 없습니다.", ephemeral=True)
+                return
             started = perf_counter()
             guild_id, channel_id, user_id = _ids_from_interaction(confirm_interaction)
             try:
                 config = await store.get_guild_config(guild_id or 0)
                 message_limit = config.summary_limit
+                # Build the LLM client once and reuse it across all channels (#35)
+                llm = _get_llm(config, settings)
 
                 async def _summarize_one(ch_id: str) -> tuple[str, str]:
-                    ch = interaction.guild.get_channel(int(ch_id))
+                    ch = guild.get_channel(int(ch_id))
                     if ch is None or not hasattr(ch, "history"):
                         return ch_id, "(채널을 찾을 수 없음)"
                     try:
@@ -932,7 +1079,6 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                         if not transcript:
                             return getattr(ch, "name", ch_id), "(메시지 없음)"
                         prompt = build_summarize_prompt(transcript, language=config.language)
-                        llm = _get_llm(config, settings)
                         answer = await llm.generate(prompt, model=config.model)
                         return getattr(ch, "name", ch_id), answer
                     except Exception as e:
@@ -947,7 +1093,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 for ch_name, summary in results:
                     embed.add_field(
                         name=f"#{ch_name}",
-                        value=summary[:1000],
+                        value=_truncate(summary),
                         inline=False,
                     )
                 await confirm_interaction.followup.send(embed=embed)
@@ -969,7 +1115,6 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     @bot.tree.command(name="export", description="채널 메시지를 마크다운 파일로 내보내기 (DM 전송)")
     @app_commands.describe(limit="내보낼 메시지 수 (기본값: 서버 설정)")
     async def export_command(interaction: discord.Interaction, limit: int | None = None) -> None:
-        import io
         started = perf_counter()
         guild_id, channel_id, user_id = _ids_from_interaction(interaction)
         await interaction.response.defer(thinking=True, ephemeral=True)
@@ -993,7 +1138,16 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             for msg in messages:
                 ts = msg.created_at.strftime("%Y-%m-%d %H:%M") if msg.created_at else ""
                 lines.append(f"**{msg.author.display_name}** [{ts}]")
-                lines.append(msg.content or "")
+                if msg.content:
+                    lines.append(msg.content)
+                # Include attachments and embeds, not just text (#27)
+                for att in msg.attachments:
+                    lines.append(f"- [첨부] {att.filename}: {att.url}")
+                for emb in msg.embeds:
+                    emb_title = emb.title or "(제목 없음)"
+                    lines.append(f"- [임베드] {emb_title}")
+                    if emb.description:
+                        lines.append(f"  > {emb.description}")
                 lines.append("")
 
             md_text = "\n".join(lines)
@@ -1032,8 +1186,28 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             return
         await interaction.response.defer(thinking=True)
         stats = await store.get_stats(interaction.guild.id)
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+        # Build a human-readable date range from the actual first/last activity (#69)
+        def _fmt_day(iso_ts: str | None) -> str | None:
+            if not iso_ts:
+                return None
+            try:
+                return datetime.fromisoformat(iso_ts).strftime("%Y-%m-%d")
+            except ValueError:
+                return iso_ts[:10]
+
+        first_day = _fmt_day(stats.get("first_at"))
+        last_day = _fmt_day(stats.get("last_at"))
+        if first_day and last_day:
+            period = first_day if first_day == last_day else f"{first_day} ~ {last_day}"
+            description = f"집계 기간: {period} · 조회 시각: {now_str}"
+        else:
+            description = f"집계된 사용 기록 없음 · 조회 시각: {now_str}"
+
         embed = discord.Embed(
             title="서버 사용 통계",
+            description=description,
             color=discord.Color.from_str("#5865F2"),
         )
         embed.add_field(name="총 사용 횟수", value=str(stats["total"]), inline=True)
@@ -1070,7 +1244,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     if query_lower in msg.content.lower():
                         ts = msg.created_at.strftime("%H:%M") if msg.created_at else ""
                         matching.append(f"[{ts}] {msg.author.display_name}: {msg.content[:200]}")
-                        if len(matching) >= 20:
+                        if len(matching) >= MAX_SEARCH_MATCHES:
                             break
             except discord.Forbidden as exc:
                 raise UserFacingError("봇에 Read Message History 권한이 없어요.") from exc
@@ -1090,9 +1264,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 title=f"검색 결과: {query}",
                 color=discord.Color.from_str("#5865F2"),
             )
-            embed.add_field(name="일치 메시지 수", value=f"{len(matching)}개", inline=True)
-            embed.add_field(name="검색 범위", value=f"{search_limit}개 메시지", inline=True)
-            embed.add_field(name="요약", value=answer[:1000], inline=False)
+            embed.add_field(name=f"일치 메시지 수 (최대 {MAX_SEARCH_MATCHES}개 표시)", value=f"{len(matching)}개", inline=True)
+            embed.add_field(name="검색 범위", value=f"최근 {search_limit}개 메시지", inline=True)
+            embed.add_field(name="요약", value=_truncate(answer), inline=False)
             await interaction.followup.send(embed=embed)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
@@ -1119,12 +1293,17 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except (UserFacingError, ValueError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
 
+    _MAX_PERSONA_CHARS = 500
+    _MAX_CUSTOM_PROMPT_CHARS = 2000
+
     @config_group.command(name="persona", description="/chat 페르소나를 설정합니다.")
     @app_commands.describe(description="봇의 페르소나 설명입니다. 비워두면 초기화합니다.")
     async def config_persona(interaction: discord.Interaction, description: str = "") -> None:
         try:
             guild_id = await require_guild_admin(interaction)
-            persona = description.strip() or None
+            persona = _sanitize_persona(description) or None
+            if persona and len(persona) > _MAX_PERSONA_CHARS:
+                raise UserFacingError(f"페르소나는 {_MAX_PERSONA_CHARS}자 이하여야 합니다.")
             await store.set_persona(guild_id, persona)
             if persona:
                 await _send_interaction_chunks(
@@ -1135,8 +1314,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except (UserFacingError, ValueError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
 
-    @config_group.command(name="auto_summary", description="자동 요약 간격을 설정합니다. N=0이면 비활성화.")
-    @app_commands.describe(interval="자동 요약 간격 (분). 0이면 비활성화.")
+    @config_group.command(name="auto_summary", description="자동 요약 간격을 설정합니다. (최소 5분, 0이면 비활성화)")
+    @app_commands.describe(interval="자동 요약 간격 (분, 최소 5). 0이면 비활성화.")
     async def config_auto_summary(interaction: discord.Interaction, interval: int) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
@@ -1162,6 +1341,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         try:
             guild_id = await require_guild_admin(interaction)
             effective_text = text.strip() or None
+            if effective_text and len(effective_text) > _MAX_CUSTOM_PROMPT_CHARS:
+                raise UserFacingError(f"커스텀 프롬프트는 {_MAX_CUSTOM_PROMPT_CHARS}자 이하여야 합니다.")
             await store.set_custom_prompt(guild_id, prompt_type, effective_text)
             if effective_text:
                 await _send_interaction_chunks(
@@ -1204,7 +1385,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             bot.tree.copy_global_to(guild=guild)
             synced = await bot.tree.sync(guild=guild)
             logger.info("Guild-synced %d command(s) to %s", len(synced), guild.name)
-        bot.loop.create_task(_memory_monitor())
+        asyncio.create_task(_memory_monitor())
         # Start auto-summary background task (#33)
         if not auto_summary_task.is_running():
             auto_summary_task.start()
@@ -1218,12 +1399,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     async def _memory_monitor() -> None:
         """Log process memory usage every hour."""
         try:
-            import os as _os
-
             import psutil  # type: ignore[import-untyped]
             while True:
                 await asyncio.sleep(3600)
-                proc = psutil.Process(_os.getpid())
+                proc = psutil.Process(os.getpid())
                 mem_mb = proc.memory_info().rss / 1024 / 1024
                 logger.info("메모리 사용량: %.1f MB", mem_mb)
         except ImportError:
@@ -1231,21 +1410,29 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
     @bot.event
     async def on_message(message: discord.Message) -> None:
-        # Invalidate summarize cache for this channel on every new non-bot message
-        if not message.author.bot:
-            guild_id_raw = message.guild.id if message.guild else 0
-            channel_id_raw = message.channel.id if hasattr(message.channel, "id") else 0
-            summarize_cache.invalidate_prefix(f"{guild_id_raw}:{channel_id_raw}")
-
-        await bot.process_commands(message)
         if message.author.bot or bot.user is None:
+            await bot.process_commands(message)
             return
 
+        # Invalidate summarize cache for this channel on every new non-bot message
+        guild_id_raw = message.guild.id if message.guild else 0
+        channel_id_raw = message.channel.id if hasattr(message.channel, "id") else 0
+        summarize_cache.invalidate_prefix(f"{guild_id_raw}:{channel_id_raw}")
+
+        await bot.process_commands(message)
+
         # --- DM support (#48) ---
-        if message.guild is None and not message.author.bot:
+        if message.guild is None:
             # DM mode: treat as /chat without channel context
-            started = perf_counter()
             user_id = message.author.id
+            dm_remaining = _check_cooldown(_DM_COOLDOWN_GUILD, user_id)
+            if dm_remaining is not None:
+                try:
+                    await message.channel.send(f"⏳ {dm_remaining:.0f}초 후에 다시 시도해주세요.")
+                except Exception:
+                    pass
+                return
+            started = perf_counter()
             try:
                 config = await store.get_guild_config(0)  # use default config
                 prompt = build_chat_prompt(message.content, language=config.language, persona=config.persona)
@@ -1258,10 +1445,21 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     command="dm_chat", status="ok", started_at=started,
                 )
             except Exception as exc:
+                # Mirror the guild path: surface only user-facing/LLM detail,
+                # keep internal exceptions generic (consistent with #64).
+                if isinstance(exc, (UserFacingError, LLMError)):
+                    user_msg = f"⚠️ {exc}"
+                else:
+                    logger.exception("DM chat handler error: %s", exc)
+                    user_msg = "⚠️ 예기치 않은 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
                 try:
-                    await message.channel.send(f"⚠️ {exc}")
+                    await message.channel.send(user_msg)
                 except Exception:
                     pass
+                await _record_usage(
+                    store, guild_id=None, channel_id=None, user_id=user_id,
+                    command="dm_chat", status="error", started_at=started, error=str(exc),
+                )
             return
 
         if bot.user not in message.mentions:
@@ -1289,13 +1487,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 if image_urls:
                     llm = _get_llm(config, settings)
                     results = []
-                    for img_url in image_urls[:3]:
-                        img_prompt = build_image_analysis_prompt(img_url, language=config.language)
-                        img_answer = await llm.generate(img_prompt, model=config.model)
-                        results.append(img_answer)
-                    combined = "\n\n".join(results)
                     async with message.channel.typing():
-                        pass
+                        for img_url in image_urls[:3]:
+                            img_prompt = build_image_analysis_prompt(img_url, language=config.language)
+                            img_answer = await llm.generate(img_prompt, model=config.model)
+                            results.append(img_answer)
+                    combined = "\n\n".join(results)
                     await _send_channel_chunks(message.channel, f"**이미지 분석**\n{combined}")
                     await _record_usage(
                         store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
@@ -1348,7 +1545,6 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
     @bot.event
     async def on_error(event: str, *args: object, **kwargs: object) -> None:  # type: ignore[override]
-        import sys
         exc_info = sys.exc_info()
         exc = exc_info[1]
         if exc is not None:
@@ -1368,19 +1564,20 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     async def auto_summary_task() -> None:
         """Check each guild for pending auto-summary and post if interval elapsed."""
         try:
-            guild_ids = await store.get_all_guild_ids()
+            # Only consider guilds that actually enabled auto-summary (#25)
+            configured = await store.get_guilds_with_auto_summary()
+            if not configured:
+                return
             now = datetime.now(timezone.utc)
-            for gid in guild_ids:
-                config = await store.get_guild_config(gid)
-                if not config.auto_summary_interval:
-                    continue
+            for gid, interval in configured:
                 last_run = _auto_summary_last_run.get(gid)
                 if last_run is not None:
                     elapsed_minutes = (now - last_run).total_seconds() / 60
-                    if elapsed_minutes < config.auto_summary_interval:
+                    if elapsed_minutes < interval:
                         continue
                 _auto_summary_last_run[gid] = now
 
+                config = await store.get_guild_config(gid)
                 guild = bot.get_guild(gid)
                 if guild is None:
                     continue
@@ -1445,6 +1642,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
     @bot.event
     async def on_guild_join(guild: discord.Guild) -> None:
+        logger.info("Joined guild: %s (id=%s, members=%s)", guild.name, guild.id, guild.member_count)
         help_embed = discord.Embed(
             title="Discord AI Assistant에 오신 것을 환영합니다!",
             description="저는 채널 대화를 요약하고 질문에 답하는 AI 어시스턴트입니다.",
@@ -1453,15 +1651,19 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         help_embed.add_field(name="/summarize", value="채널 대화 요약", inline=True)
         help_embed.add_field(name="/ask question:...", value="채널 대화 기반 Q&A", inline=True)
         help_embed.add_field(name="/chat message:...", value="자유 대화", inline=True)
-        help_embed.add_field(name="/settings", value="서버 설정 (관리자 전용)", inline=False)
+        help_embed.add_field(name="/settings", value="서버 설정 (관리자 전용) — `/settings`로 AI 제공자와 모델을 설정하세요.", inline=False)
         help_embed.set_footer(text="/help 명령어로 전체 안내를 볼 수 있어요.")
+        sent = False
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).send_messages:
                 try:
                     await channel.send(embed=help_embed)
+                    sent = True
                 except Exception:
                     pass
                 break
+        if not sent:
+            logger.warning("Could not send welcome message to guild %s — no accessible text channel", guild.id)
 
     return bot
 

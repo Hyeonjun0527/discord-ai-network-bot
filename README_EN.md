@@ -282,14 +282,18 @@ ruff format src/
 ### Docker (Recommended)
 
 ```bash
-# Build and start all services
+# Build and start the bot (+ ollama)
 docker compose up -d
 
-# View logs
-docker compose logs -f discord-bot
+# View logs (service is named "bot")
+docker compose logs -f bot
+
+# Optional: also start the web dashboard (separate profile)
+# Requires dashboard/backend/.env (see dashboard/README.md for variables)
+docker compose --profile dashboard up -d
 ```
 
-A `Dockerfile` and `docker-compose.yml` are provided for containerized deployment. The Ollama service can optionally be run in a separate container with GPU passthrough.
+A `Dockerfile` and `docker-compose.yml` are provided for containerized deployment. The Ollama service can optionally be run in a separate container with GPU passthrough. The `dashboard` service is gated behind the `dashboard` compose profile and reads its configuration from `dashboard/backend/.env`, so it only starts when you pass `--profile dashboard`.
 
 ### Bare Metal / VPS
 

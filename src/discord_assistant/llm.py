@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from typing import Any
@@ -45,7 +46,9 @@ async def _with_retry(
     max_attempts: int = 2,
     delay: float = 1.0,
 ) -> str:
-    """Run ``coro_fn`` up to ``max_attempts`` times, retrying on LLMError."""
+    """Run ``coro_fn`` up to ``max_attempts`` times, retrying on LLMError with exponential backoff."""
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
     last_exc: LLMError | None = None
     for attempt in range(max_attempts):
         try:
@@ -53,10 +56,12 @@ async def _with_retry(
         except LLMError as exc:
             last_exc = exc
             if attempt < max_attempts - 1:
+                backoff = delay * (2 ** attempt)
                 logger.warning(
-                    "LLM request failed (attempt %d/%d): %s", attempt + 1, max_attempts, exc
+                    "LLM request failed (attempt %d/%d): %s — retrying in %.1fs",
+                    attempt + 1, max_attempts, exc, backoff,
                 )
-                await asyncio.sleep(delay * (attempt + 1))
+                await asyncio.sleep(backoff)
     assert last_exc is not None
     raise last_exc
 
@@ -98,11 +103,15 @@ class OllamaClient(BaseLLMClient):
         default_model: str,
         timeout_seconds: int = 60,
         keep_alive: str = "10m",
+        temperature: float = 0.2,
+        num_ctx: int = 8192,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.default_model = default_model
         self.timeout_seconds = timeout_seconds
         self.keep_alive = keep_alive
+        self.temperature = temperature
+        self.num_ctx = num_ctx
 
     async def generate(self, prompt: str, *, model: str | None = None) -> str:
         resolved_model = model or self.default_model
@@ -117,7 +126,7 @@ class OllamaClient(BaseLLMClient):
                 "prompt": prompt,
                 "stream": False,
                 "keep_alive": self.keep_alive,
-                "options": {"temperature": 0.2, "num_ctx": 8192},
+                "options": {"temperature": self.temperature, "num_ctx": self.num_ctx},
             }
         ).encode("utf-8")
         req = request.Request(
@@ -131,7 +140,8 @@ class OllamaClient(BaseLLMClient):
                 payload = json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise OllamaError(f"Ollama HTTP {exc.code}: {detail}") from exc
+            logger.debug("Ollama HTTP %s error body: %s", exc.code, detail)
+            raise OllamaError(f"Ollama 요청 실패 (HTTP {exc.code})") from exc
         except error.URLError as exc:
             raise OllamaError(
                 "Ollama가 실행 중이지 않습니다. 터미널에서 `ollama serve`를 실행해 주세요."
@@ -170,7 +180,10 @@ class OpenAIClient(BaseLLMClient):
         body = json.dumps(
             {
                 "model": model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {"role": "system", "content": "You are a helpful Discord bot assistant."},
+                    {"role": "user", "content": prompt},
+                ],
                 "temperature": 0.2,
             }
         ).encode("utf-8")
@@ -188,7 +201,8 @@ class OpenAIClient(BaseLLMClient):
                 payload = json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise OpenAIError(f"OpenAI HTTP {exc.code}: {detail}") from exc
+            logger.debug("OpenAI HTTP %s error body: %s", exc.code, detail)
+            raise OpenAIError(f"OpenAI API 요청 실패 (HTTP {exc.code})") from exc
         except error.URLError as exc:
             raise OpenAIError(f"Cannot reach OpenAI: {exc.reason}") from exc
         except TimeoutError as exc:
@@ -198,9 +212,11 @@ class OpenAIClient(BaseLLMClient):
         except json.JSONDecodeError as exc:
             raise OpenAIError("OpenAI returned invalid JSON") from exc
         try:
-            return payload["choices"][0]["message"]["content"].strip()
+            content: str = payload["choices"][0]["message"]["content"]
+            return content.strip()
         except (KeyError, IndexError, TypeError) as exc:
-            raise OpenAIError(f"Unexpected OpenAI response shape: {payload}") from exc
+            logger.debug("Unexpected OpenAI response shape: %s", payload)
+            raise OpenAIError("OpenAI 응답 형식을 해석할 수 없습니다.") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +234,7 @@ class AnthropicClient(BaseLLMClient):
         self,
         *,
         api_key: str,
-        default_model: str = "claude-3-haiku-20240307",
+        default_model: str = "claude-haiku-4-5-20251001",
         timeout_seconds: int = 60,
     ) -> None:
         self.api_key = api_key
@@ -236,6 +252,7 @@ class AnthropicClient(BaseLLMClient):
             {
                 "model": model,
                 "max_tokens": 4096,
+                "system": "You are a helpful Discord bot assistant.",
                 "messages": [{"role": "user", "content": prompt}],
             }
         ).encode("utf-8")
@@ -254,7 +271,8 @@ class AnthropicClient(BaseLLMClient):
                 payload = json.loads(response.read().decode("utf-8"))
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise AnthropicError(f"Anthropic HTTP {exc.code}: {detail}") from exc
+            logger.debug("Anthropic HTTP %s error body: %s", exc.code, detail)
+            raise AnthropicError(f"Anthropic API 요청 실패 (HTTP {exc.code})") from exc
         except error.URLError as exc:
             raise AnthropicError(f"Cannot reach Anthropic: {exc.reason}") from exc
         except TimeoutError as exc:
@@ -264,9 +282,11 @@ class AnthropicClient(BaseLLMClient):
         except json.JSONDecodeError as exc:
             raise AnthropicError("Anthropic returned invalid JSON") from exc
         try:
-            return payload["content"][0]["text"].strip()
+            text: str = payload["content"][0]["text"]
+            return text.strip()
         except (KeyError, IndexError, TypeError) as exc:
-            raise AnthropicError(f"Unexpected Anthropic response shape: {payload}") from exc
+            logger.debug("Unexpected Anthropic response shape: %s", payload)
+            raise AnthropicError("Anthropic 응답 형식을 해석할 수 없습니다.") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -303,13 +323,20 @@ class OllamaManager:
         try:
             with request.urlopen(req, timeout=10) as response:  # noqa: S310
                 payload = json.loads(response.read().decode("utf-8"))
-        except Exception:
+        except Exception as exc:
+            logger.debug("Failed to list Ollama models: %s", exc)
             return []
         return [OllamaModel(name=m["name"], size_bytes=m.get("size", 0)) for m in payload.get("models", [])]
 
     async def pull_model(self, model_name: str) -> None:
+        ollama_bin = shutil.which("ollama")
+        if ollama_bin is None:
+            raise OllamaError(
+                "`ollama` 실행 파일을 PATH에서 찾을 수 없습니다. "
+                "Ollama가 설치되어 있는지, 컨테이너 환경이라면 호스트에서 설치했는지 확인해 주세요."
+            )
         proc = await asyncio.create_subprocess_exec(
-            "ollama",
+            ollama_bin,
             "pull",
             model_name,
             stdout=asyncio.subprocess.DEVNULL,

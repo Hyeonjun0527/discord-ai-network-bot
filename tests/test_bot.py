@@ -16,7 +16,6 @@ from discord_assistant.llm import AnthropicClient, OllamaClient, OpenAIClient
 from discord_assistant.models import GuildConfig, LLMProvider
 from discord_assistant.settings import AppSettings
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

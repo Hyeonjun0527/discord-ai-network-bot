@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # deploy/install.sh — Install and enable the discord-assistant systemd service.
 # Run as root (or with sudo).
+#
+# Environment variables (override defaults):
+#   INSTALL_DIR   — installation path (default: /opt/discord-assistant)
+#   BOT_USER      — system user to run the bot (default: discord-bot)
 set -euo pipefail
 
-INSTALL_DIR="/opt/discord-assistant"
+INSTALL_DIR="${INSTALL_DIR:-/opt/discord-assistant}"
 SERVICE_NAME="discord-assistant"
 SERVICE_FILE="discord-assistant.service"
-BOT_USER="discord-bot"
+BOT_USER="${BOT_USER:-discord-bot}"
 
 echo "[install] Checking for root privileges..."
 if [[ $EUID -ne 0 ]]; then
@@ -47,9 +51,15 @@ if [[ ! -f "$INSTALL_DIR/.env" ]]; then
 fi
 
 # ── Install systemd service ───────────────────────────────────────────────────
+# The bundled unit hardcodes /opt/discord-assistant and the discord-bot user;
+# substitute the actual INSTALL_DIR / BOT_USER so overrides take effect (#89).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-echo "[install] Installing systemd service from $SCRIPT_DIR/$SERVICE_FILE ..."
-cp "$SCRIPT_DIR/$SERVICE_FILE" "/etc/systemd/system/$SERVICE_FILE"
+echo "[install] Installing systemd service (path=$INSTALL_DIR, user=$BOT_USER) ..."
+sed \
+  -e "s|/opt/discord-assistant|${INSTALL_DIR}|g" \
+  -e "s|^User=.*|User=${BOT_USER}|" \
+  -e "s|^Group=.*|Group=${BOT_USER}|" \
+  "$SCRIPT_DIR/$SERVICE_FILE" > "/etc/systemd/system/$SERVICE_FILE"
 
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"

@@ -11,9 +11,10 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python -m ruff check src/
       - run: python -m mypy src/
-      # 커버리지 게이트(#66): 현재 실측(~37%)보다 보수적인 하한선으로 회귀를 막는다.
-      # 임계는 pyproject [tool.coverage.report] 와 일치(35%). 보강되면 함께 올린다.
-      - run: python -m pytest tests/ -v --cov=discord_assistant --cov-report=term-missing --cov-fail-under=35
+      # 커버리지 게이트(#66): bot 패키지 테스트 보강 후 실측 ~91.6% (#64).
+      # 크로스버전/소폭 변동 여유를 둔 85% 하한으로 회귀를 막는다.
+      # 임계는 pyproject [tool.coverage.report] 와 일치(85%). 보강되면 함께 올린다.
+      - run: python -m pytest tests/ -v --cov=discord_assistant --cov-report=term-missing --cov-fail-under=85
 
   # 대시보드 백엔드 잡(#86): FastAPI 라우트의 ruff + pytest 스모크.
   dashboard-backend:

@@ -1,0 +1,894 @@
+"""llm.py 미커버 경로 커버 테스트.
+
+대상(미커버 라인): 390, 432-453, 467, 535-611, 738-794, 846-859, 897-944,
+1114-1127, 1174, 1192, 1203-1221, 1337-1349, 1387-1415, 1504.
+
+즉:
+- BaseLLMClient.generate_stream 기본 폴백(390)
+- _iter_in_thread (블로킹 동기 제너레이터 → 비동기, 정상/예외 전파) (432-453)
+- parse_generate_response 의 비-str response → OllamaError (467)
+- Ollama _generate_sync 의 HTTP/URL/Timeout 에러 매핑 + generate_stream/_stream_sync
+  (정상 스트림/에러/JSON 무시/done) (535-611)
+- OpenAI generate_stream/_stream_sync (SSE 델타/DONE/에러) (738-794)
+- OpenAI _chat_sync 의 에러 매핑 (846-859)
+- OpenAI generate_with_tools: 비정상 응답 shape, 반복 상한 도달 후 최종 답변 재요청 (897-944)
+- Anthropic _messages_sync 에러 매핑 (1114-1127)
+- Anthropic generate_with_tools: content 비-list → 에러(1174), tool_use input 비-dict(1192),
+  반복 상한 도달 후 최종 답변(1203-1221)
+- _parse_gemini_payload: blockReason 차단/비정상 shape/빈 응답 (1337-1349)
+- OllamaManager._list_sync 예외→[], pull_model(bin 없음/성공/실패), is_available (1387-1415)
+- supports_vision 알 수 없는 제공자(Gemini) → False (1504)
+
+네트워크/SDK 호출은 전부 monkeypatch(mock) 으로 가짜 응답/스트림을 주입한다.
+실제 외부 호출 없음. tests/test_llm.py 패턴을 모방한다.
+"""
+from __future__ import annotations
+
+import asyncio
+import io
+import json
+import unittest
+from unittest import mock
+from urllib import error as urllib_error
+
+from discord_assistant.llm import (
+    AnthropicClient,
+    AnthropicError,
+    BaseLLMClient,
+    GeminiError,
+    OllamaClient,
+    OllamaError,
+    OllamaManager,
+    OpenAIClient,
+    OpenAIError,
+    TokenUsage,
+    ToolSpec,
+    _iter_in_thread,
+    _parse_gemini_payload,
+    parse_generate_response,
+    supports_vision,
+)
+from discord_assistant.models import LLMProvider, OllamaModel
+
+_PATCH = "discord_assistant.llm.request.urlopen"
+
+
+# ---------------------------------------------------------------------------
+# 공통 가짜 HTTP 응답 (비스트리밍 / 스트리밍 둘 다 지원)
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    """urlopen with-블록용 컨텍스트 매니저 가짜 응답.
+
+    - 비스트리밍: ``response.read()`` 가 body 를 돌려준다.
+    - 스트리밍: ``for raw_line in response`` 로 줄 단위(bytes) 이터레이션을 지원한다.
+      _stream_sync 가 response 를 직접 순회하므로 __iter__ 를 구현한다.
+    """
+
+    def __init__(self, body: bytes = b"", *, lines: list[bytes] | None = None) -> None:
+        self._body = body
+        self._lines = lines or []
+
+    def __enter__(self) -> "_FakeResponse":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        return iter(self._lines)
+
+
+def _json_response(payload: dict) -> _FakeResponse:
+    return _FakeResponse(json.dumps(payload).encode("utf-8"))
+
+
+def _stream_response(lines: list[str]) -> _FakeResponse:
+    """줄 문자열 리스트를 bytes 라인으로 갖는 스트리밍 가짜 응답을 만든다."""
+    return _FakeResponse(lines=[(ln + "\n").encode("utf-8") for ln in lines])
+
+
+def _http_error(code: int, body: str = "secret server detail") -> urllib_error.HTTPError:
+    return urllib_error.HTTPError(
+        url="https://example.test",
+        code=code,
+        msg="error",
+        hdrs=None,  # type: ignore[arg-type]
+        fp=io.BytesIO(body.encode("utf-8")),
+    )
+
+
+async def _collect(aiter) -> list:  # type: ignore[no-untyped-def]
+    """비동기 이터레이터의 모든 청크를 리스트로 모은다."""
+    out: list = []
+    async for chunk in aiter:
+        out.append(chunk)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# 390: BaseLLMClient.generate_stream 기본 폴백 (generate 결과 단일 청크 yield)
+# ---------------------------------------------------------------------------
+
+
+class _DummyClient(BaseLLMClient):
+    """generate 만 구현한 최소 클라이언트. generate_stream 은 기본 폴백을 쓴다."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+        self.seen_model: str | None = "unset"
+
+    async def generate(self, prompt, *, model=None, images=None):  # type: ignore[no-untyped-def]
+        self.seen_model = model
+        return f"{self._text}:{prompt}"
+
+
+class BaseGenerateStreamFallbackTest(unittest.TestCase):
+    def test_default_stream_yields_single_chunk_from_generate(self) -> None:
+        client = _DummyClient("R")
+
+        chunks = asyncio.run(_collect(client.generate_stream("hi", model="m1")))
+
+        # 폴백은 generate() 결과 전체를 단 한 번 yield 한다.
+        self.assertEqual(chunks, ["R:hi"])
+        # model 인자가 generate 로 그대로 전달된다.
+        self.assertEqual(client.seen_model, "m1")
+
+    def test_default_generate_with_tools_falls_back_to_generate(self) -> None:
+        # generate_with_tools 기본 구현도 generate 로 폴백한다(미지원 제공자 경로).
+        client = _DummyClient("T")
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]  # pragma: no cover
+            return ""
+
+        result = asyncio.run(
+            client.generate_with_tools(
+                "q", tools=[ToolSpec("x", "d")], tool_runner=runner, model="mZ"
+            )
+        )
+        self.assertEqual(result, "T:q")
+        self.assertEqual(client.seen_model, "mZ")
+
+
+# ---------------------------------------------------------------------------
+# 432-453: _iter_in_thread — 블로킹 동기 제너레이터를 비동기로 변환
+# ---------------------------------------------------------------------------
+
+
+class IterInThreadTest(unittest.TestCase):
+    def test_yields_all_chunks_in_order(self) -> None:
+        def make_iter():  # type: ignore[no-untyped-def]
+            yield "a"
+            yield "b"
+            yield "c"
+
+        chunks = asyncio.run(_collect(_iter_in_thread(make_iter)))
+        self.assertEqual(chunks, ["a", "b", "c"])
+
+    def test_empty_iterator_yields_nothing(self) -> None:
+        def make_iter():  # type: ignore[no-untyped-def]
+            return iter(())
+
+        chunks = asyncio.run(_collect(_iter_in_thread(make_iter)))
+        self.assertEqual(chunks, [])
+
+    def test_exception_in_worker_is_propagated_to_caller(self) -> None:
+        # 워커 스레드에서 발생한 예외는 큐를 통해 메인 루프로 전달되어 다시 던져진다.
+        def make_iter():  # type: ignore[no-untyped-def]
+            yield "first"
+            raise RuntimeError("boom in worker")
+
+        async def run() -> list:
+            collected: list = []
+            with self.assertRaises(RuntimeError) as cm:
+                async for chunk in _iter_in_thread(make_iter):
+                    collected.append(chunk)
+            self.assertIn("boom in worker", str(cm.exception))
+            return collected
+
+        collected = asyncio.run(run())
+        # 예외 직전에 yield 된 청크는 정상 수신된다.
+        self.assertEqual(collected, ["first"])
+
+
+# ---------------------------------------------------------------------------
+# 467: parse_generate_response — response 가 str 이 아니면 OllamaError
+# ---------------------------------------------------------------------------
+
+
+class ParseGenerateResponseTest(unittest.TestCase):
+    def test_non_string_response_raises(self) -> None:
+        with self.assertRaises(OllamaError):
+            parse_generate_response({"response": 123})
+
+    def test_missing_response_raises(self) -> None:
+        with self.assertRaises(OllamaError):
+            parse_generate_response({"done": True})
+
+
+# ---------------------------------------------------------------------------
+# 535-550: Ollama _generate_sync 에러 매핑 (HTTP/URL/Timeout/JSON)
+# ---------------------------------------------------------------------------
+
+
+class OllamaGenerateSyncErrorTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = OllamaClient(base_url="http://x", default_model="llama3.1:8b")
+
+    def test_http_error_maps_to_ollama_error_with_status(self) -> None:
+        with mock.patch(_PATCH, side_effect=_http_error(503, body="secret-detail")):
+            with self.assertRaises(OllamaError) as cm:
+                self.client._generate_sync("hi", "llama3.1:8b")
+        self.assertEqual(cm.exception.status_code, 503)
+        # 응답 원문은 사용자 메시지에 노출되지 않는다.
+        self.assertNotIn("secret-detail", str(cm.exception))
+
+    def test_url_error_maps_to_ollama_error_no_status(self) -> None:
+        with mock.patch(_PATCH, side_effect=urllib_error.URLError("conn refused")):
+            with self.assertRaises(OllamaError) as cm:
+                self.client._generate_sync("hi", "llama3.1:8b")
+        self.assertIsNone(cm.exception.status_code)
+        self.assertIn("ollama serve", str(cm.exception))
+
+    def test_timeout_maps_to_ollama_error(self) -> None:
+        with mock.patch(_PATCH, side_effect=TimeoutError("slow")):
+            with self.assertRaises(OllamaError) as cm:
+                self.client._generate_sync("hi", "llama3.1:8b")
+        self.assertIn("시간", str(cm.exception))
+
+    def test_invalid_json_maps_to_ollama_error(self) -> None:
+        with mock.patch(_PATCH, return_value=_FakeResponse(b"not-json{{")):
+            with self.assertRaises(OllamaError):
+                self.client._generate_sync("hi", "llama3.1:8b")
+
+    def test_success_records_usage(self) -> None:
+        payload = {"response": " ok ", "prompt_eval_count": 7, "eval_count": 3}
+        with mock.patch(_PATCH, return_value=_json_response(payload)):
+            result = self.client._generate_sync("hi", "llama3.1:8b")
+        self.assertEqual(result, "ok")
+        self.assertEqual(self.client.last_usage, TokenUsage(7, 3))
+
+
+# ---------------------------------------------------------------------------
+# 552-613: Ollama generate_stream / _stream_sync (정상 스트림 / 분기 / 에러)
+# ---------------------------------------------------------------------------
+
+
+class OllamaStreamTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = OllamaClient(base_url="http://x", default_model="llama3.1:8b")
+
+    def test_stream_yields_pieces_until_done(self) -> None:
+        lines = [
+            json.dumps({"response": "안", "done": False}),
+            "",  # 빈 줄은 건너뛴다
+            "not-json-line",  # JSON 파싱 실패 줄은 건너뛴다
+            json.dumps({"response": "녕", "done": False}),
+            json.dumps({"response": "", "done": False}),  # 빈 piece 는 yield 안 함
+            json.dumps({"response": "!", "done": True}),  # done → 이 piece yield 후 종료
+            json.dumps({"response": "무시", "done": False}),  # done 이후 줄은 처리 안 됨
+        ]
+        with mock.patch(_PATCH, return_value=_stream_response(lines)):
+            chunks = asyncio.run(_collect(self.client.generate_stream("hi", model="m")))
+        self.assertEqual(chunks, ["안", "녕", "!"])
+
+    def test_stream_error_field_raises_ollama_error(self) -> None:
+        lines = [json.dumps({"error": "model not found"})]
+        with mock.patch(_PATCH, return_value=_stream_response(lines)):
+            with self.assertRaises(OllamaError) as cm:
+                asyncio.run(_collect(self.client.generate_stream("hi")))
+        self.assertIn("model not found", str(cm.exception))
+
+    def test_stream_http_error_raises_with_status(self) -> None:
+        with mock.patch(_PATCH, side_effect=_http_error(500)):
+            with self.assertRaises(OllamaError) as cm:
+                asyncio.run(_collect(self.client.generate_stream("hi")))
+        self.assertEqual(cm.exception.status_code, 500)
+
+    def test_stream_url_error_raises(self) -> None:
+        with mock.patch(_PATCH, side_effect=urllib_error.URLError("down")):
+            with self.assertRaises(OllamaError) as cm:
+                asyncio.run(_collect(self.client.generate_stream("hi")))
+        self.assertIn("ollama serve", str(cm.exception))
+
+    def test_stream_timeout_raises(self) -> None:
+        with mock.patch(_PATCH, side_effect=TimeoutError()):
+            with self.assertRaises(OllamaError) as cm:
+                asyncio.run(_collect(self.client.generate_stream("hi")))
+        self.assertIn("시간", str(cm.exception))
+
+
+# ---------------------------------------------------------------------------
+# 738-796: OpenAI generate_stream / _stream_sync (SSE 델타 / DONE / 에러)
+# ---------------------------------------------------------------------------
+
+
+def _sse(obj: dict) -> str:
+    return "data: " + json.dumps(obj)
+
+
+class OpenAIStreamTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = OpenAIClient(api_key="sk-x")
+
+    def test_stream_yields_deltas_until_done(self) -> None:
+        lines = [
+            "",  # 빈 줄 무시
+            "event: ping",  # data: 로 시작하지 않는 줄 무시
+            _sse({"choices": [{"delta": {"content": "Hel"}}]}),
+            _sse({"choices": [{"delta": {"content": "lo"}}]}),
+            _sse({"choices": [{"delta": {}}]}),  # content 없는 델타 → 건너뜀
+            "data: {bad json",  # data: 인데 JSON 깨짐 → 건너뜀
+            _sse({"choices": []}),  # IndexError 경로 → 건너뜀
+            "data: [DONE]",  # 종료
+            _sse({"choices": [{"delta": {"content": "무시"}}]}),  # DONE 이후 줄 처리 안 됨
+        ]
+        with mock.patch(_PATCH, return_value=_stream_response(lines)):
+            chunks = asyncio.run(_collect(self.client.generate_stream("hi", model="m")))
+        self.assertEqual(chunks, ["Hel", "lo"])
+
+    def test_stream_http_error_raises_with_status(self) -> None:
+        with mock.patch(_PATCH, side_effect=_http_error(502)):
+            with self.assertRaises(OpenAIError) as cm:
+                asyncio.run(_collect(self.client.generate_stream("hi")))
+        self.assertEqual(cm.exception.status_code, 502)
+
+    def test_stream_url_error_raises(self) -> None:
+        with mock.patch(_PATCH, side_effect=urllib_error.URLError("dns")):
+            with self.assertRaises(OpenAIError) as cm:
+                asyncio.run(_collect(self.client.generate_stream("hi")))
+        self.assertIsNone(cm.exception.status_code)
+
+    def test_stream_timeout_raises(self) -> None:
+        with mock.patch(_PATCH, side_effect=TimeoutError()):
+            with self.assertRaises(OpenAIError) as cm:
+                asyncio.run(_collect(self.client.generate_stream("hi")))
+        self.assertIn("시간", str(cm.exception))
+
+
+# ---------------------------------------------------------------------------
+# 846-859: OpenAI _chat_sync 에러 매핑 (HTTP/URL/Timeout/JSON)
+# ---------------------------------------------------------------------------
+
+
+_SEARCH_TOOL = ToolSpec(
+    name="search_messages",
+    description="Search the channel.",
+    parameters={
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
+    },
+)
+
+
+class OpenAIChatSyncErrorTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = OpenAIClient(api_key="sk-x")
+        self.tools = self.client._tools_to_openai([_SEARCH_TOOL])
+        self.messages = [{"role": "user", "content": "hi"}]
+
+    def test_http_error_maps_with_status(self) -> None:
+        with mock.patch(_PATCH, side_effect=_http_error(400, body="hidden")):
+            with self.assertRaises(OpenAIError) as cm:
+                self.client._chat_sync(self.messages, "gpt-4o", self.tools)
+        self.assertEqual(cm.exception.status_code, 400)
+        self.assertNotIn("hidden", str(cm.exception))
+
+    def test_url_error_maps(self) -> None:
+        with mock.patch(_PATCH, side_effect=urllib_error.URLError("x")):
+            with self.assertRaises(OpenAIError) as cm:
+                self.client._chat_sync(self.messages, "gpt-4o", self.tools)
+        self.assertIsNone(cm.exception.status_code)
+
+    def test_timeout_maps(self) -> None:
+        with mock.patch(_PATCH, side_effect=TimeoutError()):
+            with self.assertRaises(OpenAIError):
+                self.client._chat_sync(self.messages, "gpt-4o", self.tools)
+
+    def test_invalid_json_maps(self) -> None:
+        with mock.patch(_PATCH, return_value=_FakeResponse(b"<garbage>")):
+            with self.assertRaises(OpenAIError):
+                self.client._chat_sync(self.messages, "gpt-4o", self.tools)
+
+    def test_success_records_usage_and_returns_payload(self) -> None:
+        payload = {
+            "choices": [{"message": {"content": "ok"}}],
+            "usage": {"prompt_tokens": 4, "completion_tokens": 5},
+        }
+        with mock.patch(_PATCH, return_value=_json_response(payload)):
+            got = self.client._chat_sync(self.messages, "gpt-4o", self.tools)
+        self.assertEqual(got, payload)
+        self.assertEqual(self.client.last_usage, TokenUsage(4, 5))
+
+
+# ---------------------------------------------------------------------------
+# urlopen 페이크 (툴 루프 다단계 응답)
+# ---------------------------------------------------------------------------
+
+
+def _sequential_urlopen(payloads: list[dict]):  # type: ignore[no-untyped-def]
+    sent_bodies: list = []
+    remaining = list(payloads)
+
+    def fake(req, timeout=None):  # type: ignore[no-untyped-def]
+        sent_bodies.append(json.loads(req.data.decode("utf-8")))
+        return _json_response(remaining.pop(0))
+
+    return sent_bodies, fake
+
+
+async def _noop_runner(name: str, args: dict) -> str:  # pragma: no cover
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# 897-944: OpenAI generate_with_tools — 비정상 shape / 반복 상한 도달 후 최종 답변
+# ---------------------------------------------------------------------------
+
+
+class OpenAIToolLoopExtraTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = OpenAIClient(api_key="sk-x")
+
+    def test_unexpected_response_shape_raises(self) -> None:
+        # choices 가 없으면 KeyError 경로 → OpenAIError.
+        with mock.patch(_PATCH, return_value=_json_response({"unexpected": True})):
+            with self.assertRaises(OpenAIError):
+                asyncio.run(
+                    self.client.generate_with_tools(
+                        "q", tools=[_SEARCH_TOOL], tool_runner=_noop_runner
+                    )
+                )
+
+    def test_args_non_string_dict_is_coerced(self) -> None:
+        # arguments 가 문자열이 아니라 dict 면 dict(raw_args) 경로를 탄다.
+        first = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {
+                                    "name": "search_messages",
+                                    "arguments": {"query": "회의"},  # dict (str 아님)
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+        final = {"choices": [{"message": {"role": "assistant", "content": "끝"}}]}
+        seen: dict = {}
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]
+            seen["args"] = args
+            return "결과"
+
+        _, fake = _sequential_urlopen([first, final])
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "q", tools=[_SEARCH_TOOL], tool_runner=runner
+                )
+            )
+        self.assertEqual(result, "끝")
+        self.assertEqual(seen["args"], {"query": "회의"})
+
+    def test_bad_arguments_json_falls_back_to_empty_dict(self) -> None:
+        # arguments 가 깨진 JSON 문자열이면 {} 로 보정한다.
+        first = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {
+                                    "name": "search_messages",
+                                    "arguments": "{not valid json",
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+        final = {"choices": [{"message": {"role": "assistant", "content": "복구"}}]}
+        seen: dict = {}
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]
+            seen["args"] = args
+            return "r"
+
+        _, fake = _sequential_urlopen([first, final])
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "q", tools=[_SEARCH_TOOL], tool_runner=runner
+                )
+            )
+        self.assertEqual(result, "복구")
+        self.assertEqual(seen["args"], {})
+
+    def test_iteration_cap_then_final_followup_request(self) -> None:
+        # 매 응답이 tool_call 만 내고 텍스트가 없으면 max_iterations 도달 후
+        # "최종 답변" 후속 요청을 한 번 더 보낸다(content 없는 루프 → 924-944).
+        tool_call_payload = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {"name": "search_messages", "arguments": "{}"},
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+        final = {"choices": [{"message": {"role": "assistant", "content": "최종 종합"}}]}
+        # max_iterations=2 → tool_call 2번 + 최종 후속 1번 = 3개의 응답 소비.
+        sent, fake = _sequential_urlopen([tool_call_payload, tool_call_payload, final])
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]
+            return "관측값"
+
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "q",
+                    tools=[_SEARCH_TOOL],
+                    tool_runner=runner,
+                    max_iterations=2,
+                )
+            )
+        self.assertEqual(result, "최종 종합")
+        # 마지막(3번째) 요청은 tools 없이 보내며, 최종 답변 유도 user 메시지가 들어간다.
+        self.assertEqual(len(sent), 3)
+        self.assertNotIn("tools", sent[2])
+        followup = sent[2]["messages"][-1]
+        self.assertEqual(followup["role"], "user")
+        self.assertIn("최종 답변", followup["content"])
+
+    def test_iteration_cap_final_followup_unparseable_returns_empty(self) -> None:
+        # 후속 요청 응답마저 형식이 깨지면 last_text 가 빈 문자열로 남는다(940-944).
+        tool_call_payload = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "type": "function",
+                                "function": {"name": "search_messages", "arguments": "{}"},
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+        broken_final = {"unexpected": True}
+        _, fake = _sequential_urlopen([tool_call_payload, broken_final])
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]
+            return "관측값"
+
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "q",
+                    tools=[_SEARCH_TOOL],
+                    tool_runner=runner,
+                    max_iterations=1,
+                )
+            )
+        self.assertEqual(result, "")
+
+
+# ---------------------------------------------------------------------------
+# 1114-1127: Anthropic _messages_sync 에러 매핑
+# ---------------------------------------------------------------------------
+
+
+class AnthropicMessagesSyncErrorTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = AnthropicClient(api_key="sk-ant-x")
+        self.tools = self.client._tools_to_anthropic([_SEARCH_TOOL])
+        self.messages = [{"role": "user", "content": "hi"}]
+
+    def test_http_error_maps_with_status(self) -> None:
+        with mock.patch(_PATCH, side_effect=_http_error(429, body="trace")):
+            with self.assertRaises(AnthropicError) as cm:
+                self.client._messages_sync(self.messages, "claude-haiku-4-5", self.tools)
+        self.assertEqual(cm.exception.status_code, 429)
+        self.assertNotIn("trace", str(cm.exception))
+
+    def test_url_error_maps(self) -> None:
+        with mock.patch(_PATCH, side_effect=urllib_error.URLError("x")):
+            with self.assertRaises(AnthropicError) as cm:
+                self.client._messages_sync(self.messages, "claude-haiku-4-5", self.tools)
+        self.assertIsNone(cm.exception.status_code)
+
+    def test_timeout_maps(self) -> None:
+        with mock.patch(_PATCH, side_effect=TimeoutError()):
+            with self.assertRaises(AnthropicError):
+                self.client._messages_sync(self.messages, "claude-haiku-4-5", self.tools)
+
+    def test_invalid_json_maps(self) -> None:
+        with mock.patch(_PATCH, return_value=_FakeResponse(b"##garbage##")):
+            with self.assertRaises(AnthropicError):
+                self.client._messages_sync(self.messages, "claude-haiku-4-5", self.tools)
+
+    def test_success_records_usage(self) -> None:
+        payload = {
+            "content": [{"type": "text", "text": "ok"}],
+            "usage": {"input_tokens": 2, "output_tokens": 6},
+        }
+        with mock.patch(_PATCH, return_value=_json_response(payload)):
+            got = self.client._messages_sync(self.messages, "claude-haiku-4-5", self.tools)
+        self.assertEqual(got, payload)
+        self.assertEqual(self.client.last_usage, TokenUsage(2, 6))
+
+
+# ---------------------------------------------------------------------------
+# 1174 / 1192 / 1203-1221: Anthropic generate_with_tools 분기
+# ---------------------------------------------------------------------------
+
+
+class AnthropicToolLoopExtraTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = AnthropicClient(api_key="sk-ant-x")
+
+    def test_content_not_list_raises(self) -> None:
+        # content 가 list 가 아니면 형식 오류로 처리한다(1174).
+        with mock.patch(_PATCH, return_value=_json_response({"content": "oops"})):
+            with self.assertRaises(AnthropicError):
+                asyncio.run(
+                    self.client.generate_with_tools(
+                        "q", tools=[_SEARCH_TOOL], tool_runner=_noop_runner
+                    )
+                )
+
+    def test_tool_use_input_non_dict_coerced_to_empty(self) -> None:
+        # tool_use 의 input 이 dict 가 아니면 {} 로 보정한 채 러너를 호출한다(1192).
+        first = {
+            "stop_reason": "tool_use",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "tu_1",
+                    "name": "search_messages",
+                    "input": "not-a-dict",
+                }
+            ],
+        }
+        final = {"stop_reason": "end_turn", "content": [{"type": "text", "text": "끝"}]}
+        seen: dict = {}
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]
+            seen["args"] = args
+            return "관측"
+
+        _, fake = _sequential_urlopen([first, final])
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "q", tools=[_SEARCH_TOOL], tool_runner=runner
+                )
+            )
+        self.assertEqual(result, "끝")
+        self.assertEqual(seen["args"], {})
+
+    def test_iteration_cap_then_final_followup(self) -> None:
+        # 매 응답이 텍스트 없이 tool_use 만 내면 반복 상한 도달 후 최종 답변을
+        # 한 번 더 요청한다(1203-1221).
+        tool_use_payload = {
+            "stop_reason": "tool_use",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "tu",
+                    "name": "search_messages",
+                    "input": {"query": "x"},
+                }
+            ],
+        }
+        final = {"content": [{"type": "text", "text": "최종 종합"}]}
+        sent, fake = _sequential_urlopen([tool_use_payload, tool_use_payload, final])
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]
+            return "관측값"
+
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "q",
+                    tools=[_SEARCH_TOOL],
+                    tool_runner=runner,
+                    max_iterations=2,
+                )
+            )
+        self.assertEqual(result, "최종 종합")
+        self.assertEqual(len(sent), 3)
+        # 마지막 요청은 tools 없이 보낸다.
+        self.assertNotIn("tools", sent[2])
+        followup = sent[2]["messages"][-1]
+        self.assertEqual(followup["role"], "user")
+        self.assertIn("최종 답변", followup["content"])
+
+    def test_iteration_cap_final_followup_no_text_returns_empty(self) -> None:
+        # 후속 요청 응답에도 텍스트 블록이 없으면 빈 문자열을 돌려준다(1216-1221).
+        tool_use_payload = {
+            "stop_reason": "tool_use",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "tu",
+                    "name": "search_messages",
+                    "input": {"query": "x"},
+                }
+            ],
+        }
+        # 후속 응답에 텍스트 없음(content 가 list 지만 text 블록 없음).
+        empty_final = {"content": [{"type": "tool_use", "id": "z", "name": "n", "input": {}}]}
+        _, fake = _sequential_urlopen([tool_use_payload, empty_final])
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]
+            return "관측값"
+
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                self.client.generate_with_tools(
+                    "q",
+                    tools=[_SEARCH_TOOL],
+                    tool_runner=runner,
+                    max_iterations=1,
+                )
+            )
+        self.assertEqual(result, "")
+
+
+# ---------------------------------------------------------------------------
+# 1337-1349: _parse_gemini_payload — 차단 / 비정상 shape / 빈 응답
+# ---------------------------------------------------------------------------
+
+
+class ParseGeminiPayloadTest(unittest.TestCase):
+    def test_block_reason_raises(self) -> None:
+        with self.assertRaises(GeminiError) as cm:
+            _parse_gemini_payload({"promptFeedback": {"blockReason": "SAFETY"}})
+        self.assertIn("SAFETY", str(cm.exception))
+
+    def test_block_reason_falsey_is_ignored(self) -> None:
+        # blockReason 이 없거나 falsy 면 차단 처리하지 않고 본문 파싱으로 진행한다.
+        payload = {
+            "promptFeedback": {"blockReason": ""},
+            "candidates": [{"content": {"parts": [{"text": " hi "}]}}],
+        }
+        self.assertEqual(_parse_gemini_payload(payload), "hi")
+
+    def test_unexpected_shape_raises(self) -> None:
+        with self.assertRaises(GeminiError):
+            _parse_gemini_payload({"candidates": []})
+
+    def test_empty_text_raises(self) -> None:
+        payload = {"candidates": [{"content": {"parts": [{"text": "   "}]}}]}
+        with self.assertRaises(GeminiError) as cm:
+            _parse_gemini_payload(payload)
+        self.assertIn("비어", str(cm.exception))
+
+    def test_joins_multiple_parts(self) -> None:
+        payload = {
+            "candidates": [
+                {"content": {"parts": [{"text": "안"}, {"notext": 1}, {"text": "녕"}]}}
+            ]
+        }
+        self.assertEqual(_parse_gemini_payload(payload), "안녕")
+
+
+# ---------------------------------------------------------------------------
+# 1387-1415: OllamaManager._list_sync / pull_model / is_available
+# ---------------------------------------------------------------------------
+
+
+class OllamaManagerTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.mgr = OllamaManager(base_url="http://x/")
+
+    def test_base_url_trailing_slash_stripped(self) -> None:
+        self.assertEqual(self.mgr.base_url, "http://x")
+
+    def test_list_sync_parses_models(self) -> None:
+        payload = {"models": [{"name": "llama3.1:8b", "size": 4700000000}, {"name": "x"}]}
+        with mock.patch(_PATCH, return_value=_json_response(payload)):
+            models = asyncio.run(self.mgr.list_models())
+        self.assertEqual(
+            models,
+            [OllamaModel(name="llama3.1:8b", size_bytes=4700000000), OllamaModel(name="x", size_bytes=0)],
+        )
+
+    def test_list_sync_on_error_returns_empty(self) -> None:
+        # 어떤 예외든 잡아서 빈 리스트를 돌려준다(1387-1389).
+        with mock.patch(_PATCH, side_effect=urllib_error.URLError("down")):
+            models = asyncio.run(self.mgr.list_models())
+        self.assertEqual(models, [])
+
+    def test_is_available_true_when_list_succeeds(self) -> None:
+        with mock.patch(_PATCH, return_value=_json_response({"models": []})):
+            self.assertTrue(asyncio.run(self.mgr.is_available()))
+
+    def test_is_available_true_even_on_list_error(self) -> None:
+        # _list_sync 가 예외를 삼켜 [] 를 돌려주므로 is_available 도 True 가 된다
+        # (네트워크 오류는 _list_sync 내부에서 흡수됨).
+        with mock.patch(_PATCH, side_effect=urllib_error.URLError("down")):
+            self.assertTrue(asyncio.run(self.mgr.is_available()))
+
+    def test_pull_model_missing_binary_raises(self) -> None:
+        with mock.patch("discord_assistant.llm.shutil.which", return_value=None):
+            with self.assertRaises(OllamaError) as cm:
+                asyncio.run(self.mgr.pull_model("llama3.1:8b"))
+        self.assertIn("ollama", str(cm.exception).lower())
+
+    def test_pull_model_success(self) -> None:
+        proc = mock.Mock()
+        proc.returncode = 0
+        proc.communicate = mock.AsyncMock(return_value=(b"", b""))
+        with mock.patch("discord_assistant.llm.shutil.which", return_value="/usr/bin/ollama"), \
+            mock.patch(
+                "discord_assistant.llm.asyncio.create_subprocess_exec",
+                new=mock.AsyncMock(return_value=proc),
+            ):
+            # 예외 없이 완료되어야 한다.
+            asyncio.run(self.mgr.pull_model("llama3.1:8b"))
+        proc.communicate.assert_awaited_once()
+
+    def test_pull_model_nonzero_exit_raises(self) -> None:
+        proc = mock.Mock()
+        proc.returncode = 1
+        proc.communicate = mock.AsyncMock(return_value=(b"", b"pull failed: disk full"))
+        with mock.patch("discord_assistant.llm.shutil.which", return_value="/usr/bin/ollama"), \
+            mock.patch(
+                "discord_assistant.llm.asyncio.create_subprocess_exec",
+                new=mock.AsyncMock(return_value=proc),
+            ):
+            with self.assertRaises(OllamaError) as cm:
+                asyncio.run(self.mgr.pull_model("llama3.1:8b"))
+        self.assertIn("disk full", str(cm.exception))
+
+
+# ---------------------------------------------------------------------------
+# 1504: supports_vision — 알 수 없는/미지원 제공자(Gemini)는 False
+# ---------------------------------------------------------------------------
+
+
+class SupportsVisionGeminiTest(unittest.TestCase):
+    def test_gemini_provider_returns_false(self) -> None:
+        # GEMINI 는 supports_vision 분기에 없으므로 최종 return False 로 떨어진다(1504).
+        self.assertFalse(supports_vision(LLMProvider.GEMINI, "gemini-1.5-flash"))
+        self.assertFalse(supports_vision(LLMProvider.GEMINI, "gemini-1.5-pro"))
+
+    def test_empty_model_still_false(self) -> None:
+        self.assertFalse(supports_vision(LLMProvider.GEMINI, ""))
+
+
+if __name__ == "__main__":
+    unittest.main()

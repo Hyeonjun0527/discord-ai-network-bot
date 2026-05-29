@@ -164,17 +164,27 @@ class _RichInteraction:
         outer = self
 
         class _Resp:
+            def __init__(self) -> None:
+                self._done = False
+
+            def is_done(self) -> bool:
+                return self._done
+
             async def edit_message(self, **kwargs) -> None:
+                self._done = True
                 outer.edit_message_kwargs = kwargs
 
             async def defer(self, **kwargs) -> None:
+                self._done = True
                 outer.deferred = True
                 outer.defer_kwargs = kwargs
 
             async def send_modal(self, modal) -> None:
+                self._done = True
                 outer.sent_modals.append(modal)
 
             async def send_message(self, content="", **kwargs) -> None:
+                self._done = True
                 outer.sent_messages.append((content, kwargs))
 
         class _Followup:
@@ -421,6 +431,24 @@ class TestAPIKeyModalBranches(unittest.TestCase):
         self.assertTrue(interaction.sent_messages)
         self.assertIn("오류", interaction.sent_messages[0][0])
         self.assertIn("boom", interaction.sent_messages[0][0])
+
+    def test_on_error_after_defer_uses_followup(self) -> None:
+        # finding #68: on_submit 은 키 검증 전에 defer 하므로 그 이후 예외가 나면
+        # 응답이 이미 소비된 상태다. on_error 가 response.send_message 를 다시
+        # 부르면 InteractionResponded 2차 예외가 난다. 응답 소비 후에는 followup
+        # 으로 안내가 전달돼야 한다.
+        ctx = _make_ctx(_RichStore())
+        modal = _APIKeyModal(
+            provider=LLMProvider.OPENAI, model="gpt-4o-mini", ctx=ctx, guild_id=9
+        )
+        interaction = _RichInteraction()
+        asyncio.run(interaction.response.defer())  # 응답 소비(=is_done)
+        asyncio.run(modal.on_error(interaction, ValueError("boom")))  # type: ignore[arg-type]
+        # response.send_message 가 아니라 followup 으로 안내됨.
+        self.assertFalse(interaction.sent_messages)
+        self.assertTrue(interaction.followup_messages)
+        self.assertIn("오류", interaction.followup_messages[0][0])
+        self.assertIn("boom", interaction.followup_messages[0][0])
 
 
 # ---------------------------------------------------------------------------

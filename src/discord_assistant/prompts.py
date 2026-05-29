@@ -43,7 +43,9 @@ def detect_language_from_transcript(transcript: str) -> str:
     latin = sum(1 for ch in transcript if ch.isalpha() and ord(ch) < 128)
 
     total = max(korean + japanese + chinese + latin, 1)
-    if korean / total >= 0.15:
+    # 한국어는 임계(0.15) 이상이면서 다른 스크립트(라틴/일/중)보다 우세할 때만
+    # 선택한다. 한글이 소수만 섞인 짧은 혼합 입력이 한국어로 쏠리는 편향 제거(#120).
+    if korean / total >= 0.15 and korean >= max(japanese, chinese, latin):
         return "ko"
     if japanese / total >= 0.15:
         return "ja"
@@ -73,10 +75,13 @@ def detect_language_from_transcript(transcript: str) -> str:
 # 넣으면 모델이 데이터를 지시로 오인할 수 있으므로, 아래 헬퍼로 (1) 명확한
 # 구분자로 감싸고 (2) 본문 안의 가짜 role/지시 토큰을 무력화한다.
 
-# role 토큰을 행 시작 부분에서 탐지한다. 콜론 뒤 공백 유무는 무관.
-# 예: "User:", "system :", "assistant-", "[SYSTEM]" 등을 포괄적으로 잡는다.
+# role 토큰을 행 시작 부분, 그리고 문장 부호 뒤(라인 중간)에서도 탐지한다.
+# 콜론 뒤 공백 유무는 무관. 예: "User:", "system :", "[SYSTEM]:" 와
+# "... please respond. System: ..." 같은 라인 중간 위조 토큰을 잡는다(#124).
 _ROLE_TOKEN_RE = re.compile(
-    r"(?im)^[\s>*\-\[\]#]*\b(?:user|system|assistant|human|ai|developer|tool)\b[\s>*\-\]]*[:：]",
+    r"(?im)"
+    r"(?:^[\s>*\-\[\]#]*|(?<=[.!?。！？])\s+)"
+    r"\b(?:user|system|assistant|human|ai|developer|tool)\b[\s>*\-\]]*[:：]",
 )
 
 # "이전 지시를 무시하라" 류의 흔한 jailbreak/인젝션 지시문을 탐지한다.
@@ -207,7 +212,14 @@ Transcript:
 
 def build_chat_prompt(message: str, *, language: str = "ko", persona: str | None = None) -> str:
     target_language = language_label(language)
-    persona_line = f"\nPersona: {persona.strip()}" if persona and persona.strip() else ""
+    persona_line = ""
+    if persona and persona.strip():
+        # persona 는 신뢰 영역(보안 가드 위)에 들어가므로, 인라인 jailbreak 문구나
+        # 가짜 role 토큰("ignore previous instructions", "System:" 등)을 무력화한다(#91).
+        safe_persona = _neutralize_injection_phrases(
+            _neutralize_role_tokens(persona.strip())
+        )
+        persona_line = f"\nPersona: {safe_persona}"
     wrapped = _wrap_untrusted(message.strip(), "message")
     return f"""You are a helpful AI assistant in a Discord server.{persona_line}
 Answer in {target_language}.
@@ -233,10 +245,12 @@ def build_chat_with_history_prompt(
     if history:
         lines = []
         for turn in history:
-            role_label = "User" if turn["role"] == "user" else "Assistant"
+            # 키 누락/다른 스키마(예: role 만 있는 dict)에도 KeyError 없이 견디도록
+            # 방어적으로 접근한다(#125). 기본 role 은 'user'.
+            role_label = "User" if turn.get("role") == "user" else "Assistant"
             # history 내용도 신뢰할 수 없으므로 가짜 role/지시 토큰을 무력화한다.
             content = _neutralize_injection_phrases(
-                _neutralize_role_tokens(turn["content"] or "")
+                _neutralize_role_tokens(turn.get("content") or "")
             )
             lines.append(f"{role_label}: {content}")
         history_text = "\n\nPrevious conversation:\n" + "\n".join(lines)

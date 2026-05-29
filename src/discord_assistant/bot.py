@@ -305,6 +305,18 @@ def _truncate(text: str, limit: int = 1024) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1] + "…"
+
+
+def _overflow_view(text: str, *, limit: int = 1024) -> "discord.ui.View | None":
+    """임베드 필드 한도(1024)를 넘는 답변에 'DM 으로 전체 받기' 버튼을 붙인다 (#8).
+
+    /translate·/search 의 임베드 필드는 _truncate 로 1024 자에서 잘리는데, /ask·/chat
+    과 달리 전체 내용을 받을 방법이 없어 초과분이 영구 손실된다. 한도를 넘으면
+    LongResponseView(DM 버튼)를 돌려줘 일관된 오버플로 폴백을 제공한다(한도 이내면 None).
+    """
+    if len(text) <= limit:
+        return None
+    return LongResponseView(full_text=text)
 MAX_DISCORD_MESSAGE_CHARS = 1900
 MAX_EXPORT_BYTES = 8 * 1024 * 1024  # 8 MB Discord file limit
 MAX_SEARCH_MATCHES = 20  # max matching messages shown in /search (#74)
@@ -334,6 +346,19 @@ _MAX_TRACKED_PER_GUILD = 500
 # user_id -> (summary_text, guild_id)
 _last_summaries: dict[int, tuple[str, int | None]] = {}
 _MAX_LAST_SUMMARIES = 1000
+
+
+def _store_last_summary(user_id: int, text: str, guild_id: int | None) -> None:
+    """마지막 요약 결과를 user 캐시에 저장한다(진짜 LRU) (#39).
+
+    dict 는 삽입 순서를 보존하므로, 재대입 전에 기존 키를 pop 한 뒤 다시 넣어
+    최근 사용한 사용자를 맨 뒤로 보낸다. 그러면 한도 초과 시 evict 대상이
+    '가장 오래전에 마지막으로 쓴' 사용자(맨 앞)가 되어 FIFO 가 아닌 LRU 가 된다.
+    """
+    _last_summaries.pop(user_id, None)
+    _last_summaries[user_id] = (text, guild_id)
+    if len(_last_summaries) > _MAX_LAST_SUMMARIES:
+        del _last_summaries[next(iter(_last_summaries))]
 
 # Auto-summary tracking: guild_id -> last_run_time
 _auto_summary_last_run: dict[int, datetime] = {}
@@ -463,11 +488,15 @@ _MAX_REMIND_DELAY = timedelta(days=30)
 def _parse_remind_delay(when: str) -> timedelta:
     """'10', '30m', '2h', '1d' 형태의 지연 시간을 timedelta 로 파싱한다 (#2).
 
-    단위가 없으면 분으로 해석한다(기존 N분 입력과의 호환). 1초 미만이거나 최대
-    허용치(30일)를 넘으면 UserFacingError 를 발생시킨다.
+    단위가 없으면 분으로 해석한다(기존 N분 입력과의 호환). 단위 최소 단위가 분이므로
+    실제 최소 지연은 1분이다. 0이거나 최대 허용치(30일)를 넘으면 UserFacingError 를
+    발생시킨다.
+
+    #19: ``\\d`` 는 아랍-인도 숫자 등 유니코드 숫자까지 매칭해 의도와 다른 지연이
+    설정될 수 있으므로 ASCII 숫자([0-9])만 허용한다.
     """
     text = when.strip().lower()
-    match = re.fullmatch(r"(\d+)\s*([mhd]?)", text)
+    match = re.fullmatch(r"([0-9]+)\s*([mhd]?)", text)
     if not match:
         raise UserFacingError("올바른 형식: 30m, 2h, 1d 또는 분 단위 숫자 (예: 10)")
     value = int(match.group(1))
@@ -522,8 +551,27 @@ def reset_cooldowns() -> None:
     _cooldown_last_cleanup = 0.0
 
 
+def _clear_cooldown(guild_id: int | None, user_id: int | None) -> None:
+    """방금 진입에서 기록한 쿨다운을 롤백한다 (#3).
+
+    _check_cooldown 은 진입 시 last-used 를 기록한다. 그 직후 시도가 실패해 재시도
+    버튼을 제공할 때, 같은 (guild,user) 키가 아직 쿨다운 안이라 재시도 버튼이
+    'N초 후에' 안내만 띄우고 실제로 실행되지 않는다. 실패 시 이 항목을 지워 재시도
+    버튼이 바로 동작하게 한다(키가 없으면 no-op).
+    """
+    if guild_id is None or user_id is None:
+        return
+    _cooldowns.pop((guild_id, user_id), None)
+
+
 def _check_cooldown(guild_id: int | None, user_id: int | None) -> float | None:
-    """Return remaining cooldown seconds if on cooldown, else None. Updates last-used time."""
+    """Return remaining cooldown seconds if on cooldown, else None. Updates last-used time.
+
+    #7: ``_cooldowns`` 는 단일 프로세스 인메모리 상태다. 함수 본문에 await 가 없어
+    asyncio 단일 스레드에서는 원자적이므로 락은 불필요하다. 다만 다중 프로세스/샤드로
+    수평 확장하면 프로세스마다 쿨다운이 분리돼 우회될 수 있으니, 그 경우 공유 저장소
+    (예: Redis)로 옮겨야 한다.
+    """
     global _cooldown_last_cleanup
     if guild_id is None or user_id is None:
         return None
@@ -566,11 +614,13 @@ async def _track_for_feedback(
         for k in oldest:
             del guild_tracking[k]
     if add_reactions:
-        try:
-            await msg.add_reaction(THUMBS_UP)
-            await msg.add_reaction(THUMBS_DOWN)
-        except discord.HTTPException:
-            pass
+        # #41: 두 시드 리액션을 각각 격리해, 한쪽 실패가 다른 한쪽(과 이어지는
+        # _record_usage 흐름)을 깨지 않게 한다. 레이트리밋/타임아웃도 흡수한다.
+        for emoji in (THUMBS_UP, THUMBS_DOWN):
+            try:
+                await msg.add_reaction(emoji)
+            except (discord.HTTPException, asyncio.TimeoutError):
+                pass
 
 
 def _make_error_embed(exc: Exception) -> discord.Embed:
@@ -1145,6 +1195,18 @@ def _make_search_messages_runner(
     return _runner
 
 
+def _require_history_channel(channel: Any) -> Any:
+    """history() 를 지원하는 채널인지 확인하고 그대로 돌려준다 (#6).
+
+    channel 이 None 이거나 history 를 지원하지 않으면 _collect_transcript 와 동일한
+    친절 메시지로 UserFacingError 를 던진다. /export·/search 처럼 history 를 직접
+    호출하는 경로가 None 채널에서 잡히지 않는 AttributeError 로 침묵 실패하지 않게 한다.
+    """
+    if channel is None or not hasattr(channel, "history"):
+        raise UserFacingError("이 명령은 메시지 기록을 읽을 수 있는 채널에서만 사용할 수 있어요.")
+    return channel
+
+
 async def _collect_transcript(
     channel: Any,
     *,
@@ -1461,7 +1523,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         """
         try:
             # 충분히 먼 미래 시각을 넘겨 '미발송' 전부를 가져온 뒤 각각 재예약한다.
-            far_future = (datetime.now(timezone.utc) + _MAX_REMIND_DELAY).isoformat()
+            # #15: list_due 의 due_at 비교가 문자열 사전식이므로, 비교 대상도 storage
+            # 가 쓰는 초 단위 포맷(timespec='seconds')으로 통일해 정밀도 불일치를 막는다.
+            far_future = (
+                datetime.now(timezone.utc) + _MAX_REMIND_DELAY
+            ).isoformat(timespec="seconds")
             pending = await store.list_due(now=far_future)
         except Exception as exc:  # pragma: no cover — 기동 경로 방어
             logger.exception("미발송 리마인더 조회 실패: %s", exc)
@@ -1563,9 +1629,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             cached = summarize_cache.get(cache_key) if use_cache else None
             if cached is not None:
                 if user_id is not None:
-                    _last_summaries[user_id] = (cached, guild_id)
-                    if len(_last_summaries) > _MAX_LAST_SUMMARIES:
-                        del _last_summaries[next(iter(_last_summaries))]
+                    _store_last_summary(user_id, cached, guild_id)
                 header = t(
                     "summary.header.cached", _ui_language(config), count=message_limit
                 )
@@ -1635,11 +1699,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             if use_cache:
                 summarize_cache.set(cache_key, answer)
 
-            # Store last summary for /remind (#32)
+            # Store last summary for /remind (#32). #39: 진짜 LRU 로 저장한다.
             if user_id is not None:
-                _last_summaries[user_id] = (answer, guild_id)
-                if len(_last_summaries) > _MAX_LAST_SUMMARIES:
-                    del _last_summaries[next(iter(_last_summaries))]
+                _store_last_summary(user_id, answer, guild_id)
 
             since_label = f" (since: {since})" if since else ""
             # 요약 본문 언어(effective_language, auto면 감지 결과)와 헤더 언어를 맞춘다.
@@ -1676,6 +1738,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
+            # #3: 재시도 가능한 오류면 진입 시 기록한 쿨다운을 롤백해, 아래 재시도
+            # 버튼이 쿨다운 안내만 띄우고 실제로 동작하지 않는 문제를 막는다.
+            if _is_retryable_error(exc):
+                _clear_cooldown(guild_id, user_id)
             # #92: 유형별 친절 안내 임베드 + 재시도 버튼(재시도 가능한 LLM 오류일 때).
             async def _retry(retry_interaction: discord.Interaction) -> None:
                 await run_summarize(retry_interaction, limit, since, thread)
@@ -1817,6 +1883,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
+            # #3: 진입 시 기록한 쿨다운을 롤백해, 바로 아래 재시도 버튼이 쿨다운 안내만
+            # 띄우고 실제로 동작하지 않는 문제를 막는다(재시도 가능한 LLM 오류 한정).
+            if _is_retryable_error(exc):
+                _clear_cooldown(guild_id, user_id)
             # #92: 유형별 친절 안내 임베드 + 재시도 버튼. 같은 질문/한도로 다시 시도한다.
             async def _retry(retry_interaction: discord.Interaction) -> None:
                 await run_ask(retry_interaction, question, limit, _transcript_override, search=search)
@@ -1873,7 +1943,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 embed = discord.Embed(color=discord.Color.from_str("#5865F2"))
                 embed.add_field(name="원문", value=_truncate(text), inline=False)
                 embed.add_field(name=f"번역 ({target_language}) *(캐시)*", value=_truncate(cached_translation), inline=False)
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                # #8: 1024 자 초과 시 'DM 으로 전체 받기' 버튼을 붙여 잘린 분량을 복구한다.
+                cached_view = _overflow_view(cached_translation)
+                if cached_view is not None:
+                    await interaction.followup.send(embed=embed, view=cached_view, ephemeral=True)
+                else:
+                    await interaction.followup.send(embed=embed, ephemeral=True)
                 await _record_usage(
                     store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                     command="translate", status="ok", started_at=started,
@@ -1890,7 +1965,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             embed = discord.Embed(color=discord.Color.from_str("#5865F2"))
             embed.add_field(name="원문", value=_truncate(text), inline=False)
             embed.add_field(name=f"번역 ({target_language})", value=_truncate(answer), inline=False)
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            # #8: 1024 자 초과 시 'DM 으로 전체 받기' 버튼을 붙여 잘린 분량을 복구한다.
+            answer_view = _overflow_view(answer)
+            if answer_view is not None:
+                await interaction.followup.send(embed=embed, view=answer_view, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="translate", status="ok", started_at=started,
@@ -1954,6 +2034,24 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 # 스트림 도중/시작 시 LLM 오류 — 이미 부분 출력했을 수 있으나,
                 # 아무것도 못 냈으면(answer 빈 값) 폴백 generate 를 시도한다.
                 if answer:
+                    # #9/#62: 부분 출력 후 실패한 경우, 사용자에겐 부분 응답이 화면에
+                    # 남는데 이 턴이 chat_history 에 저장되지 않으면 다음 /chat 의 맥락에서
+                    # 통째로 빠진다. re-raise 전에 user 메시지와 부분 답변을 저장해
+                    # 대화 메모리를 일관되게 유지한다(저장 실패는 흡수하고 원오류 전파).
+                    if user_id is not None:
+                        try:
+                            await store.save_chat_message(
+                                user_id, "user", message,
+                                guild_id=guild_id, channel_id=channel_id,
+                            )
+                            await store.save_chat_message(
+                                user_id, "assistant", answer,
+                                guild_id=guild_id, channel_id=channel_id,
+                            )
+                        except Exception as save_exc:  # pragma: no cover — 저장 방어
+                            logger.warning(
+                                "부분 스트림 응답 저장 실패(턴 누락 가능): %s", save_exc
+                            )
                     raise
 
             if not streamed:
@@ -1986,6 +2084,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
+            # #3: 재시도 가능한 오류면 진입 시 기록한 쿨다운을 롤백해, 아래 재시도
+            # 버튼이 쿨다운 안내만 띄우고 실제로 동작하지 않는 문제를 막는다.
+            if _is_retryable_error(exc):
+                _clear_cooldown(guild_id, user_id)
             # #92: 유형별 친절 안내 임베드 + 재시도 버튼. 같은 메시지로 다시 시도한다.
             async def _retry(retry_interaction: discord.Interaction) -> None:
                 await _run_chat(retry_interaction, message, public)
@@ -2170,7 +2272,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             kind = _REMIND_KIND_TEXT
         else:
             cached = _last_summaries.get(user_id)
-            if cached is None:
+            # #21: _last_summaries 는 user_id 단일 키 캐시라 다른 길드/DM 의 요약이
+            # 섞일 수 있다. 캐시에 함께 저장된 guild_id 가 현재 interaction 의
+            # guild_id 와 일치할 때만 재사용해, A 길드 요약이 B 길드/DM 에서 새어
+            # 나가지 않게 한다.
+            cached_guild_id = cached[1] if cached is not None else None
+            if cached is None or cached_guild_id != guild_id:
                 await interaction.response.send_message(
                     "⚠️ 보낼 내용이 없어요. 메시지를 입력하거나 먼저 /summarize를 실행해 주세요.",
                     ephemeral=True,
@@ -2194,7 +2301,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             )
             return
 
-        due_at = (datetime.now(timezone.utc) + delay).isoformat()
+        # #15: storage 는 due_at 을 초 단위(timespec='seconds') 로 가정한다. 마이크로초를
+        # 함께 저장하면 list_due 의 문자열 사전식 비교('+'<'.')가 같은 초 경계에서 만기
+        # 항목을 누락한다. storage 포맷과 동일하게 초 단위로 통일한다.
+        due_at = (datetime.now(timezone.utc) + delay).isoformat(timespec="seconds")
         repeat_label = repeat.strip() or None
         payload = _encode_remind_payload(text, kind=kind, repeat=repeat_label)
         reminder_id = await store.add_reminder(user_id, guild_id, channel_id, due_at, payload)
@@ -2218,7 +2328,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             when_label = f"{total_minutes // 60}시간"
         else:
             when_label = f"{max(total_minutes, 1)}분"
-        repeat_note = f" (반복: {repeat_label})" if repeat_label else ""
+        # #20: repeat 라벨은 표시용일 뿐 실제 반복 재예약은 하지 않는다(1회만 발송).
+        # 응답 문구에서도 이를 명확히 해 매일/매주 자동 발송으로 오해하지 않게 한다.
+        repeat_note = f" (반복 표시: {repeat_label} · 실제로는 1회만 발송)" if repeat_label else ""
         await interaction.response.send_message(
             f"⏰ {when_label} 후에 DM으로 알림을 보내드릴게요!{repeat_note}", ephemeral=True
         )
@@ -2448,7 +2560,13 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                         answer = await llm.generate(prompt, model=config.model)
                         return getattr(ch, "name", ch_id), answer
                     except Exception as e:
-                        return getattr(ch, "name", ch_id), f"(오류: {e})"
+                        # #1/#95: 원본 예외 문자열(제공자 4xx 본문/키 일부/내부 단서)을
+                        # 임베드에 그대로 노출하지 않는다. 사용자에겐 일반 안내만 보이고
+                        # 실제 detail 은 서버 로그로만 남긴다.
+                        logger.warning(
+                            "멀티 채널 요약 중 채널 처리 실패: ch_id=%s %s", ch_id, e
+                        )
+                        return getattr(ch, "name", ch_id), "(이 채널을 요약하는 중 오류가 발생했어요)"
 
                 results = await asyncio.gather(*[_summarize_one(cid) for cid in channel_ids])
 
@@ -2490,9 +2608,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             if not _has_allowed_role(interaction, config.allowed_role_id):
                 raise UserFacingError("이 명령을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.")
             message_limit = _effective_limit(limit, config.summary_limit)
+            # #6: interaction.channel 이 None 이면 .history 가 AttributeError 를 던져
+            # 바깥 except 에 걸리지 않는다. _collect_transcript 와 동일한 가드를 둔다.
+            export_channel = _require_history_channel(interaction.channel)
             messages = []
             try:
-                async for msg in interaction.channel.history(  # type: ignore[union-attr]
+                async for msg in export_channel.history(
                     limit=message_limit, before=interaction.created_at
                 ):
                     messages.append(msg)
@@ -2554,7 +2675,16 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             await interaction.response.send_message("⚠️ 이 명령은 서버 안에서만 사용할 수 있어요.", ephemeral=True)
             return
         await interaction.response.defer(thinking=True)
-        stats = await store.get_stats(interaction.guild.id)
+        # #5: get_stats 키를 일관되게 .get(...) 으로 읽고, 스키마 변경/조회 실패 시에도
+        # defer 후 침묵하지 않도록 친절 폴백을 둔다(KeyError → 개발자 DM 방지).
+        try:
+            stats = await store.get_stats(interaction.guild.id)
+        except Exception as exc:
+            logger.warning("서버 통계 조회 실패: %s", exc)
+            await interaction.followup.send(
+                "⚠️ 통계를 불러오지 못했어요. 잠시 후 다시 시도해주세요.", ephemeral=True
+            )
+            return
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
         # Build a human-readable date range from the actual first/last activity (#69)
@@ -2579,11 +2709,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             description=description,
             color=discord.Color.from_str("#5865F2"),
         )
-        embed.add_field(name="총 사용 횟수", value=str(stats["total"]), inline=True)
-        embed.add_field(name="평균 응답 시간", value=f"{stats['avg_latency_ms']}ms", inline=True)
-        embed.add_field(name="에러율", value=f"{stats['error_rate']}%", inline=True)
-        if stats["by_command"]:
-            cmd_lines = [f"`{r['command']}`: {r['count']}회" for r in stats["by_command"][:10]]
+        embed.add_field(name="총 사용 횟수", value=str(stats.get("total", 0)), inline=True)
+        embed.add_field(name="평균 응답 시간", value=f"{stats.get('avg_latency_ms', 0)}ms", inline=True)
+        embed.add_field(name="에러율", value=f"{stats.get('error_rate', 0)}%", inline=True)
+        by_command = stats.get("by_command") or []
+        if by_command:
+            cmd_lines = [f"`{r['command']}`: {r['count']}회" for r in by_command[:10]]
             embed.add_field(name="명령어별 사용 횟수", value="\n".join(cmd_lines), inline=False)
         await interaction.followup.send(embed=embed)
 
@@ -2608,9 +2739,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 raise UserFacingError("이 명령을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.")
             search_limit = _effective_limit(limit, 200)
             query_lower = query.lower()
+            # #6: None 채널에서 .history 가 AttributeError 로 침묵 실패하지 않게 가드한다.
+            search_channel = _require_history_channel(interaction.channel)
             matching: list[str] = []
             try:
-                async for msg in interaction.channel.history(  # type: ignore[union-attr]
+                async for msg in search_channel.history(
                     limit=search_limit, before=interaction.created_at
                 ):
                     if query_lower in msg.content.lower():
@@ -2642,7 +2775,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             embed.add_field(name=f"일치 메시지 수 (최대 {MAX_SEARCH_MATCHES}개 표시)", value=f"{len(matching)}개", inline=True)
             embed.add_field(name="검색 범위", value=f"최근 {search_limit}개 메시지", inline=True)
             embed.add_field(name="요약", value=_truncate(answer), inline=False)
-            await interaction.followup.send(embed=embed)
+            # #8: 요약이 1024 자를 넘으면 'DM 으로 전체 받기' 버튼으로 전체를 제공한다.
+            search_view = _overflow_view(answer)
+            if search_view is not None:
+                await interaction.followup.send(embed=embed, view=search_view)
+            else:
+                await interaction.followup.send(embed=embed)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="search", status="ok", started_at=started,
@@ -2746,10 +2884,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             color=discord.Color.from_str("#5865F2"),
         )
         if guild_id is not None:
+            # #5: get_stats 키를 일관되게 .get(...) 으로 읽어 스키마 변화에 견디게 한다.
             stats = await store.get_stats(guild_id)
-            embed.add_field(name="서버 총 사용 횟수", value=str(stats["total"]), inline=True)
-            embed.add_field(name="평균 응답 시간", value=f"{stats['avg_latency_ms']}ms", inline=True)
-            embed.add_field(name="에러율", value=f"{stats['error_rate']}%", inline=True)
+            embed.add_field(name="서버 총 사용 횟수", value=str(stats.get("total", 0)), inline=True)
+            embed.add_field(name="평균 응답 시간", value=f"{stats.get('avg_latency_ms', 0)}ms", inline=True)
+            embed.add_field(name="에러율", value=f"{stats.get('error_rate', 0)}%", inline=True)
         embed.add_field(name="남은 쿨다운", value=cooldown_note, inline=True)
         embed.add_field(
             name="쿨다운 간격", value=f"{COOLDOWN_SECONDS}초", inline=True
@@ -3129,13 +3268,20 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         # --- DM support (#48) ---
         if message.guild is None:
             # DM mode: treat as /chat without channel context
+            # #40: 빈/공백 메시지나 접두 명령(!...)은 LLM 폴백 대상이 아니다. 명령은
+            # 위 process_commands 가 이미 처리했고, 빈 입력은 엉뚱한 프롬프트가 되므로
+            # 불필요한 LLM 호출/토큰 소비 전에 건너뛴다.
+            if not message.content.strip() or message.content.startswith("!"):
+                return
             user_id = message.author.id
             dm_remaining = _check_cooldown(_DM_COOLDOWN_GUILD, user_id)
             if dm_remaining is not None:
                 try:
                     await message.channel.send(f"⏳ {dm_remaining:.0f}초 후에 다시 시도해주세요.")
-                except Exception:
-                    pass
+                except discord.DiscordException as exc:
+                    # #30: 광의의 except 로 제어 예외(CancelledError 등)까지 삼키지
+                    # 않는다. 전송 실패 사유는 debug 로 남겨 추적 가능하게 한다.
+                    logger.debug("DM 쿨다운 안내 전송 실패: %s", exc)
                 return
             started = perf_counter()
             # #92: DM 대화 기억을 user 전역(guild_id=None)으로 저장/조회하면
@@ -3195,8 +3341,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     user_msg = "⚠️ 예기치 않은 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
                 try:
                     await message.channel.send(user_msg)
-                except Exception:
-                    pass
+                except discord.DiscordException as send_exc:
+                    # #30: 안내 전송 실패 사유를 남기고, 제어 예외는 삼키지 않는다.
+                    logger.debug("DM 오류 안내 전송 실패: %s", send_exc)
                 await _record_usage(
                     store, guild_id=dm_scope_guild, channel_id=dm_channel_id, user_id=user_id,
                     command="dm_chat", status="error", started_at=started, error=str(exc),
@@ -3236,6 +3383,14 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             user_id = message.author.id
             reply_remaining = _check_cooldown(guild_id, user_id)
             if reply_remaining is not None:
+                # #32: DM/컨텍스트 메뉴 경로처럼 남은 쿨다운을 안내한다(완전 무반응으로
+                # 봇이 멈춘 것처럼 보이는 혼란 방지). 안내 전송 실패는 조용히 흡수한다.
+                try:
+                    await message.channel.send(
+                        f"⏳ {reply_remaining:.0f}초 후에 다시 시도해주세요."
+                    )
+                except discord.DiscordException as exc:
+                    logger.debug("답장 쿨다운 안내 전송 실패: %s", exc)
                 return
             # 멘션 토큰은 질문 본문에서 제거한다(답장은 자동 멘션을 포함할 수 있음).
             cleaned = message.content.replace(f"<@{bot.user.id}>", "").replace(
@@ -3479,6 +3634,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         try:
             # Only consider guilds that actually enabled auto-summary (#25)
             configured = await store.get_guilds_with_auto_summary()
+            # #35: 자동 요약이 꺼졌거나 봇이 나간 길드의 last_run 항목을 정리해
+            # _auto_summary_last_run 이 무한히 커지는 것을 막는다(on_guild_remove 부재 보완).
+            configured_gids = {gid for gid, _ in configured}
+            stale = [gid for gid in _auto_summary_last_run if gid not in configured_gids]
+            for gid in stale:
+                del _auto_summary_last_run[gid]
             if not configured:
                 return
             now = datetime.now(timezone.utc)
@@ -3809,9 +3970,13 @@ async def run_bot(settings: AppSettings, bot: commands.Bot | None = None) -> Non
         stop_event.set()
 
     # 일부 플랫폼(Windows 등)은 loop.add_signal_handler 를 지원하지 않으므로 방어한다.
+    # #38: 등록에 성공한 시그널만 모아 두고, 종료 시 finally 에서 해제해 같은 루프를
+    # 재사용하는 경우 이전 _request_stop 클로저가 잔존하지 않게 한다.
+    registered_signals: list[signal.Signals] = []
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
             loop.add_signal_handler(sig, _request_stop)
+            registered_signals.append(sig)
         except (NotImplementedError, RuntimeError):  # pragma: no cover — 플랫폼 의존
             pass
 
@@ -3827,6 +3992,12 @@ async def run_bot(settings: AppSettings, bot: commands.Bot | None = None) -> Non
             start_task.result()
     finally:
         stop_task.cancel()
+        # #38: 등록한 시그널 핸들러를 해제한다(루프 재사용 시 클로저 잔존 방지).
+        for sig in registered_signals:
+            try:
+                loop.remove_signal_handler(sig)
+            except (NotImplementedError, RuntimeError, ValueError):  # pragma: no cover
+                pass
         # 백그라운드 추적 태스크(리마인더/모니터 등) 취소 (#51).
         await _cancel_background_tasks()
         if not bot.is_closed():

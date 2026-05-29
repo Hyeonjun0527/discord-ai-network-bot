@@ -46,6 +46,11 @@ DEFAULT_DEDUP_WINDOW_SECONDS = 60.0
 DEFAULT_MAX_PER_MINUTE = 5
 DEFAULT_MAX_PER_HOUR = 30
 
+# 억제된 distinct 시그니처 추적 상한. 다양한 시그니처가 지속 폭주하면(통과 알림이
+# 없어 요약이 배출되지 않는 동안) _suppressed_signatures 가 무제한 증가할 수 있으므로,
+# 상위 건수 기준 최대 이 개수만 유지한다. 요약은 상위 3개만 보여주므로 정보 손실은 없다.
+_MAX_TRACKED_SUPPRESSED_SIGNATURES = 50
+
 
 def _developer_user_id() -> int | None:
     """Read DEVELOPER_USER_ID from the environment. Returns None if unset or invalid."""
@@ -180,6 +185,16 @@ class AlertRateLimiter:
         self._suppressed_signatures[signature] = (
             self._suppressed_signatures.get(signature, 0) + 1
         )
+        # 다양한 시그니처가 지속 폭주(통과 알림 없음)하면 요약이 배출되지 않아
+        # _suppressed_signatures 가 무제한 증가할 수 있다. 상위 건수 기준으로 trim 한다.
+        # 누적 총건수(_suppressed_count)는 그대로 보존되므로 요약의 '총 N건'은 정확하다.
+        if len(self._suppressed_signatures) > _MAX_TRACKED_SUPPRESSED_SIGNATURES:
+            top = sorted(
+                self._suppressed_signatures.items(),
+                key=lambda kv: kv[1],
+                reverse=True,
+            )[:_MAX_TRACKED_SUPPRESSED_SIGNATURES]
+            self._suppressed_signatures = dict(top)
         logger.info(
             "Developer notification suppressed (rate limit/dedup); signature=%r, "
             "total suppressed pending=%d.",

@@ -29,7 +29,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: main
+          # Pin to the exact commit that was deployed (the workflow_run head_sha),
+          # not the moving main HEAD, so the release tag matches the deployed image.
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Compute next version
         id: bump

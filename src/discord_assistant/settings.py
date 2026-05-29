@@ -57,11 +57,31 @@ def _is_production_env() -> bool:
     return False
 
 
+_TRUE_BOOL_VALUES = frozenset({"1", "true", "yes", "y", "on"})
+_FALSE_BOOL_VALUES = frozenset({"0", "false", "no", "n", "off"})
+
+
 def _get_bool(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None or raw.strip() == "":
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+    normalized = raw.strip().lower()
+    if normalized in _TRUE_BOOL_VALUES:
+        return True
+    if normalized in _FALSE_BOOL_VALUES:
+        return False
+    # 화이트리스트 밖 값(오타·비표준 표기)은 조용히 False 로 떨어뜨리지 않고 경고를 남긴다.
+    # _get_int/_get_float 가 잘못된 입력을 거부하는 것과 정책을 맞추기 위함이며,
+    # 하위 호환을 위해 반환값은 기존과 동일하게 False 로 둔다.
+    _settings_log.warning(
+        "%s=%r is not a recognized boolean value; treating it as False. "
+        "Use one of %s for true or %s for false.",
+        name,
+        raw,
+        sorted(_TRUE_BOOL_VALUES),
+        sorted(_FALSE_BOOL_VALUES),
+    )
+    return False
 
 
 def _get_float(
@@ -157,8 +177,11 @@ class AppSettings:
         return cls(
             discord_bot_token=token,
             ollama_base_url=ollama_base_url,
-            ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1:8b").strip(),
-            database_url=os.getenv("DATABASE_URL", "sqlite:///./data/discord_assistant.db").strip(),
+            ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1:8b").strip() or "llama3.1:8b",
+            database_url=(
+                os.getenv("DATABASE_URL", "sqlite:///./data/discord_assistant.db").strip()
+                or "sqlite:///./data/discord_assistant.db"
+            ),
             default_summary_limit=_get_int("DEFAULT_SUMMARY_LIMIT", 50, minimum=1),
             max_context_chars=_get_int("MAX_CONTEXT_CHARS", 12_000, minimum=1_000),
             default_language=os.getenv("DEFAULT_LANGUAGE", "ko").strip() or "ko",

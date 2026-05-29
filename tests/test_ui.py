@@ -321,6 +321,31 @@ class TestRetryView(unittest.TestCase):
         self.assertEqual(len(called), 1)
         self.assertTrue(button.disabled)
 
+    def test_double_click_invokes_callback_once(self) -> None:
+        # finding #66: 버튼 disabled 는 클라이언트에 즉시 반영되지 않아 더블클릭이
+        # 콜백을 두 번 실행할 수 있다. 1회성 가드로 두 번째 진입은 콜백을 다시
+        # 호출하지 않고 ephemeral 안내만 보낸다(토큰 이중 소모 방지).
+        called: list[object] = []
+
+        async def _cb(interaction):
+            called.append(interaction)
+
+        view = RetryView(on_retry=_cb)
+        button = next(
+            c for c in view.children if isinstance(c, discord.ui.Button)
+        )
+
+        async def _run() -> None:
+            i1 = _RichInteraction()
+            await button.callback(i1)  # type: ignore[arg-type]
+            i2 = _RichInteraction()
+            await button.callback(i2)  # type: ignore[arg-type]
+            # 첫 클릭만 콜백 실행, 두 번째는 안내 메시지만.
+            self.assertEqual(len(called), 1)
+            self.assertTrue(i2.sent_messages)
+
+        asyncio.run(_run())
+
 
 # ---------------------------------------------------------------------------
 # #62: View / Modal 콜백 상호작용 테스트
@@ -519,6 +544,29 @@ class TestProviderViewSelect(unittest.TestCase):
         asyncio.run(view._on_select(interaction))  # type: ignore[arg-type]
         self.assertIsInstance(interaction.edit_message_kwargs["view"], ExternalModelView)
         self.assertEqual(interaction.edit_message_kwargs["view"].provider, LLMProvider.ANTHROPIC)
+
+    def test_select_empty_values_is_guarded(self) -> None:
+        # finding #69: 변형/위조 페이로드(빈 values)에 IndexError 로 죽지 않고
+        # ephemeral 안내 후 종료해야 한다. 저장/화면 전환은 일어나지 않는다.
+        store = _RichStore(_make_config(provider=LLMProvider.OLLAMA))
+        ctx = _make_rich_ctx(store)
+        view = ProviderView(ctx=ctx, guild_id=42)
+        interaction = _RichInteraction()  # data = {} (values 없음)
+        asyncio.run(view._on_select(interaction))  # type: ignore[arg-type]
+        self.assertEqual(len(store.set_provider_calls), 0)
+        self.assertIsNone(interaction.edit_message_kwargs)
+        self.assertTrue(interaction.sent_messages)
+
+    def test_select_unknown_provider_is_guarded(self) -> None:
+        # finding #69: 미지원 provider 문자열에 ValueError 로 죽지 않고 안내 후 종료.
+        store = _RichStore(_make_config(provider=LLMProvider.OLLAMA))
+        ctx = _make_rich_ctx(store)
+        view = ProviderView(ctx=ctx, guild_id=42)
+        interaction = _RichInteraction("bogus-provider")
+        asyncio.run(view._on_select(interaction))  # type: ignore[arg-type]
+        self.assertEqual(len(store.set_provider_calls), 0)
+        self.assertIsNone(interaction.edit_message_kwargs)
+        self.assertTrue(interaction.sent_messages)
 
 
 class TestExternalModelViewSelect(unittest.TestCase):

@@ -204,6 +204,26 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _normalize_due_at(due_at: str) -> str:
+    """리마인더 ``due_at`` 을 UTC·초 단위 고정 ISO 포맷으로 정규화한다 (#17).
+
+    ``list_due`` 의 만기 비교는 SQLite 문자열 사전식 비교라, ``+09:00`` 같은
+    비-UTC 오프셋이나 마이크로초 정밀도가 섞이면 정렬이 실제 시간 순서와
+    어긋나 만기 항목을 누락할 수 있다. 파싱 가능한 입력은 UTC 로 변환하고
+    ``timespec='seconds'`` 로 통일해 불변식을 코드로 강제한다.
+
+    타임존 정보가 없는(naive) 입력은 UTC 로 간주한다. 파싱 불가한 입력은
+    기존 동작(입력 문자열 그대로 저장)을 보존해 회귀를 만들지 않는다.
+    """
+    try:
+        parsed = datetime.fromisoformat(due_at)
+    except ValueError:
+        return due_at
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+
 # ----------------------------------------------------------------------
 # usage_log.error PII/시크릿 마스킹 (#41)
 # ----------------------------------------------------------------------
@@ -718,11 +738,17 @@ class ConfigStore:
         api_key_encrypted: str | None,
     ) -> GuildConfig:
         """Atomically update provider, model, and API key together."""
+        # #76: 빈 모델 검증을 set_model 과 동일한 진입점·메시지로 일원화한다.
+        # (검증 자체는 GuildConfig.__post_init__ 가 하지만, 다른 계층/메시지로
+        # 실패해 일관성이 깨지므로 여기서 동일하게 막는다.)
+        normalized_model = model.strip()
+        if not normalized_model:
+            raise ValueError("model cannot be empty")
         current = await self.get_guild_config(guild_id)
         updated = replace(
             current,
             provider=provider,
-            model=model.strip(),
+            model=normalized_model,
             api_key_encrypted=api_key_encrypted,
         )
         await self._upsert(updated)
@@ -1081,10 +1107,19 @@ class ConfigStore:
     ) -> None:
         conn = await self._ensure_conn()
         async with self._lock:
+            # #74: (message_id, user_id) 가 UNIQUE 이므로 평범한 INSERT 는 동일
+            # 사용자의 평점 변경(👍→👎) 시 IntegrityError 를 던지고, 호출 측이
+            # 이를 삼켜 변경이 조용히 저장되지 않았다. ON CONFLICT upsert 로
+            # 재평가 시 rating/command/created_at 을 갱신해 평점 토글이 실제로
+            # 반영되게 한다.
             await conn.execute(
                 """
                 INSERT INTO feedback (guild_id, message_id, user_id, rating, command, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(message_id, user_id) DO UPDATE SET
+                    rating     = excluded.rating,
+                    command    = excluded.command,
+                    created_at = excluded.created_at
                 """,
                 (guild_id, message_id, user_id, rating, command, _utc_now()),
             )
@@ -1202,11 +1237,16 @@ class ConfigStore:
         """리마인더를 추가하고 새 행의 id 를 반환한다.
 
         ``due_at`` 은 ISO8601 문자열(예: ``2026-05-29T12:00:00+00:00``)이어야 한다.
-        만기 비교는 문자열 사전식 비교이므로 일관된 UTC ISO 포맷을 권장한다.
+        만기 비교(``list_due``)는 SQLite 문자열 사전식 비교이므로, 저장 전에
+        ``+09:00`` 같은 비-UTC 오프셋을 UTC 로 정규화하고 초 단위 고정 포맷
+        (``timespec='seconds'``)으로 통일해 사전식 정렬이 실제 시간 순서와
+        일치하도록 강제한다 (#17). 파싱 불가한 입력은 기존 동작(입력 그대로 저장)
+        을 보존해 회귀를 막는다.
         """
         normalized_due = due_at.strip()
         if not normalized_due:
             raise ValueError("due_at cannot be empty")
+        normalized_due = _normalize_due_at(normalized_due)
         if not payload.strip():
             raise ValueError("payload cannot be empty")
         conn = await self._ensure_conn()
@@ -1360,10 +1400,19 @@ class ConfigStore:
         conn = await self._ensure_conn()
         deleted = {"chat_history": 0, "feedback": 0, "usage_log": 0, "reminders": 0}
         async with self._lock:
-            for table in ("chat_history", "feedback", "usage_log", "reminders"):
-                cur = await conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
-                deleted[table] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
-            await conn.commit()
+            # #78: autocommit(isolation_level=None) 이라 각 DELETE 가 즉시 커밋되어,
+            # 루프 중간 실패 시 일부 테이블만 지워진 채 사용자 데이터가 잔존하는
+            # GDPR 부분 삭제가 가능했다. 명시적 BEGIN/COMMIT 으로 전체 삭제를
+            # 원자화하고, 실패 시 ROLLBACK 으로 일관성을 복구한다.
+            await conn.execute("BEGIN")
+            try:
+                for table in ("chat_history", "feedback", "usage_log", "reminders"):
+                    cur = await conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+                    deleted[table] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+                await conn.commit()
+            except Exception:
+                await conn.rollback()
+                raise
         return deleted
 
     async def delete_guild_data(self, guild_id: int) -> dict[str, int]:
@@ -1381,8 +1430,15 @@ class ConfigStore:
             "reminders": 0,
         }
         async with self._lock:
-            for table in ("guild_config", "usage_log", "feedback", "chat_history", "reminders"):
-                cur = await conn.execute(f"DELETE FROM {table} WHERE guild_id = ?", (guild_id,))
-                deleted[table] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
-            await conn.commit()
+            # #78: 사용자 삭제와 동일하게 다중 테이블 삭제를 명시적 트랜잭션으로
+            # 원자화한다(부분 삭제 = GDPR 불완전 삭제 방지).
+            await conn.execute("BEGIN")
+            try:
+                for table in ("guild_config", "usage_log", "feedback", "chat_history", "reminders"):
+                    cur = await conn.execute(f"DELETE FROM {table} WHERE guild_id = ?", (guild_id,))
+                    deleted[table] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+                await conn.commit()
+            except Exception:
+                await conn.rollback()
+                raise
         return deleted

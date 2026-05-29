@@ -205,6 +205,39 @@ class AlertRateLimiterTest(unittest.TestCase):
         _, out = limiter.check("recovered")
         self.assertIn("억제된 주요 시그니처", out)
 
+    def test_suppressed_signatures_dict_is_bounded(self) -> None:
+        # 다양한 시그니처가 지속 폭주(통과 알림 없음)해도 _suppressed_signatures 가
+        # 무제한 증가하지 않아야 한다(#133). 분당 상한을 매우 낮게 두어 첫 통과 이후
+        # 모든 distinct 시그니처가 억제되도록 한다.
+        from discord_assistant.monitor import (
+            _MAX_TRACKED_SUPPRESSED_SIGNATURES,
+        )
+
+        clock = FakeClock()
+        limiter = AlertRateLimiter(
+            dedup_window_seconds=0.0,
+            max_per_minute=1,
+            max_per_hour=1,
+            time_fn=clock,
+        )
+
+        # 첫 건은 통과, 이후 상한 초과로 전부 억제된다.
+        self.assertTrue(limiter.check("first error letter A")[0])
+
+        flood = 5 * _MAX_TRACKED_SUPPRESSED_SIGNATURES
+        for i in range(flood):
+            allowed, _ = limiter.check(f"distinct error type {chr(65 + i % 26)}{i}word")
+            self.assertFalse(allowed)
+            clock.advance(0.01)
+
+        # distinct 시그니처 추적은 상한으로 묶여야 한다.
+        self.assertLessEqual(
+            len(limiter._suppressed_signatures),
+            _MAX_TRACKED_SUPPRESSED_SIGNATURES,
+        )
+        # 누적 총 억제 건수는 정확히 보존된다.
+        self.assertEqual(limiter.pending_suppressed(), flood)
+
 
 # ---------------------------------------------------------------------------
 # notify_developer (async) — 환경변수/봇 mock

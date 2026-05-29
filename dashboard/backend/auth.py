@@ -9,6 +9,7 @@ GET /auth/me       — return current user info from JWT
 from __future__ import annotations
 
 import asyncio  # noqa: E402
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -18,6 +19,8 @@ import httpx
 import jwt
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, RedirectResponse
+
+logger = logging.getLogger(__name__)
 
 # In-memory state store for CSRF protection (maps state → expiry timestamp)
 # For multi-process deployments, replace with Redis or DB-backed store.
@@ -252,16 +255,25 @@ def decode_jwt(token: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
+def _prune_oauth_states(now: datetime | None = None) -> None:
+    """만료된 OAuth state 항목을 정리한다 (#104).
+
+    콜백이 끝까지 오지 않은(동의 취소 등) state 는 TTL 이 지나도 키가 남는다.
+    login/callback 양쪽 진입 시 호출해 login 빈도에만 의존하지 않고 누적을 막는다.
+    """
+    moment = now or datetime.now(timezone.utc)
+    expired = [k for k, exp in _oauth_states.items() if exp < moment]
+    for k in expired:
+        del _oauth_states[k]
+
+
 @router.get("/login")
 async def login() -> RedirectResponse:
     """Redirect the browser to Discord's OAuth2 consent screen."""
     state = secrets.token_urlsafe(32)
     _oauth_states[state] = datetime.now(timezone.utc) + timedelta(seconds=_STATE_TTL_SECONDS)
     # Prune expired states
-    now = datetime.now(timezone.utc)
-    expired = [k for k, exp in _oauth_states.items() if exp < now]
-    for k in expired:
-        del _oauth_states[k]
+    _prune_oauth_states()
     params = urlencode(
         {
             "client_id": _client_id(),
@@ -320,6 +332,9 @@ async def callback(code: str | None = None, error: str | None = None, state: str
             detail="OAuth2 state has expired. Please try logging in again.",
         )
     del _oauth_states[state]
+    # 콜백이 오지 않은 미사용 state 도 이 시점에 함께 정리해 login 빈도에만
+    # 의존하지 않도록 한다 (#104).
+    _prune_oauth_states()
 
     # Exchange code for access token
     async with httpx.AsyncClient() as client:
@@ -337,9 +352,16 @@ async def callback(code: str | None = None, error: str | None = None, state: str
         )
 
     if token_resp.status_code != 200:
+        # 원본 Discord 에러 본문(redirect_uri 불일치/invalid_client 등 OAuth 설정 단서)을
+        # 클라이언트에 그대로 노출하지 않는다 (#99). 디버깅용 상세는 서버 로그로만 남긴다.
+        logger.warning(
+            "Discord token exchange failed: status=%s body=%s",
+            token_resp.status_code,
+            token_resp.text,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Discord token exchange failed: {token_resp.text}",
+            detail="Discord token exchange failed",
         )
 
     token_data = token_resp.json()
@@ -416,8 +438,12 @@ async def logout(request: Request) -> JSONResponse:
     httpOnly 쿠키를 지운다(#34). 토큰이 없거나 이미 무효여도 멱등하게 성공한다.
     """
     token = _token_from_request(request)
-    if token:
-        revoke_jwt(token)
+    if token and not revoke_jwt(token):
+        # revoke 실패('이미 무효'이거나 jti 부재 등)는 멱등 성공을 유지하되,
+        # 무효화 가시성을 위해 서버 로그로만 남긴다(토큰 본문은 기록하지 않는다) (#105).
+        logger.info("logout: token could not be revoked (already invalid or missing jti)")
+    # 로그아웃이 드물어도 만료된 블랙리스트 항목이 쌓이지 않도록 정리한다 (#105).
+    _prune_revoked()
     resp = JSONResponse({"logged_out": True})
     # 쿠키 삭제: set 과 동일한 path 로 만료시킨다.
     resp.delete_cookie(key=JWT_COOKIE_NAME, path="/")

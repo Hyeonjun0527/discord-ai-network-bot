@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
@@ -54,9 +55,11 @@ summarize_cache = TTLCache(ttl=60.0)
 # ---------------------------------------------------------------------------
 # Translation cache (Phase 3 #38)
 # (text, target_language) -> (translated_result, monotonic_timestamp)
+# Backed by an OrderedDict so eviction is true LRU in O(1): the least-recently
+# used entry is at the front, the most-recently used at the back.
 # ---------------------------------------------------------------------------
 
-_translation_cache: dict[tuple[str, str], tuple[str, float]] = {}
+_translation_cache: OrderedDict[tuple[str, str], tuple[str, float]] = OrderedDict()
 
 
 def get_translation(text: str, target_language: str) -> str | None:
@@ -69,16 +72,29 @@ def get_translation(text: str, target_language: str) -> str | None:
     if time.monotonic() - ts > TRANSLATION_CACHE_TTL:
         del _translation_cache[key]
         return None
+    # Mark as most-recently used so popular entries survive eviction (LRU).
+    _translation_cache.move_to_end(key)
     return result
 
 
 def set_translation(text: str, target_language: str, result: str) -> None:
-    """Store a translation result; evicts the oldest entry when cache is full."""
-    if len(_translation_cache) >= TRANSLATION_CACHE_MAX_SIZE:
-        oldest_key = min(_translation_cache, key=lambda k: _translation_cache[k][1])
-        del _translation_cache[oldest_key]
+    """Store a translation result; evicts the least-recently-used entry when full.
+
+    Refreshing an existing key never evicts another entry. When the cache is at
+    capacity for a genuinely new key, expired entries are purged first and, only
+    if still full, the least-recently-used entry (front of the OrderedDict) is
+    dropped in O(1).
+    """
     key = (text, target_language.lower())
+    if key not in _translation_cache and len(_translation_cache) >= TRANSLATION_CACHE_MAX_SIZE:
+        # Reclaim stale entries before evicting a live one, so expired items do
+        # not push out valid entries.
+        purge_expired_translations()
+        if len(_translation_cache) >= TRANSLATION_CACHE_MAX_SIZE:
+            _translation_cache.popitem(last=False)
     _translation_cache[key] = (result, time.monotonic())
+    # Newly written / refreshed key becomes most-recently used.
+    _translation_cache.move_to_end(key)
 
 
 def translation_cache_size() -> int:

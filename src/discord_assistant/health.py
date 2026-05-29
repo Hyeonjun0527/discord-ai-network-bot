@@ -70,7 +70,11 @@ def build_app(bot: _ReadinessProvider) -> "Application":
 
     async def _metrics(_request: "Request") -> "Response":
         body, content_type = metrics.render_latest()
-        return web.Response(body=body, content_type=content_type.split(";", 1)[0].strip())
+        # Prometheus 의 Content-Type 은 'text/plain; version=0.0.4; charset=utf-8'
+        # 처럼 version/charset 메타를 포함한다. aiohttp 의 content_type= 인자는
+        # 파라미터(charset 등)를 허용하지 않아 ValueError 를 내므로, 원본 헤더를
+        # 그대로 보존하기 위해 headers 로 전체 Content-Type 을 명시한다(#135).
+        return web.Response(body=body, headers={"Content-Type": content_type})
 
     app = web.Application()
     app.router.add_get("/healthz", _healthz)

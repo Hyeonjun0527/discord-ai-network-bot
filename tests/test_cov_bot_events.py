@@ -180,6 +180,11 @@ class PureHelperTest(unittest.TestCase):
         with self.assertRaises(UserFacingError):
             _parse_remind_delay("60d")  # > 30일 상한
 
+    def test_parse_remind_delay_rejects_unicode_digits(self) -> None:
+        # #19: ASCII 숫자만 허용한다. 아랍-인도 숫자 등 유니코드 숫자는 거절한다.
+        with self.assertRaises(UserFacingError):
+            _parse_remind_delay("٢٠m")  # "٢٠m"
+
     def test_filter_choices_filters_and_caps(self) -> None:
         pairs = [(f"label{i}", f"v{i}") for i in range(40)]
         out = _filter_choices(pairs, "")

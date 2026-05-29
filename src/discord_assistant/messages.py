@@ -149,11 +149,6 @@ MESSAGES: dict[str, dict[str, str]] = {
         "ko": "'자동 감지'를 선택하면 대화 언어를 자동으로 따라갑니다",
         "en": "Choose 'Auto-detect' to follow the conversation's language",
     },
-    "language_select.value": {
-        # 라벨(코드) 조합. 예: "English (`en`)" 또는 "한국어 (`ko`)".
-        "ko": "{label} (`{code}`)",
-        "en": "{label} (`{code}`)",
-    },
     # --- HelpView / /help 명령 ---
     "help.title": {
         "ko": "명령어 안내",
@@ -336,13 +331,14 @@ def t(key: str, lang: str | None = "ko", **kwargs: object) -> str:
     if normalized not in _LANGUAGE_LABELS:
         normalized = "ko"
     text = entry.get(normalized)
-    if text is None:
-        # 해당 언어 번역 누락 → ko 폴백 → (혹시 ko 도 없으면) key.
-        text = entry.get("ko", key)
+    if not text:
+        # 해당 언어 번역 누락(None) 또는 빈 문자열 → ko 폴백 → (혹시 ko 도 없으면) key.
+        text = entry.get("ko") or key
     if kwargs:
         try:
             return text.format(**kwargs)
-        except (KeyError, IndexError):
-            # 포맷 인자 불일치는 원문 그대로 돌려줘 렌더 자체는 깨지지 않게 한다.
+        except (KeyError, IndexError, ValueError):
+            # 포맷 인자 불일치/잘못된 포맷 스펙은 원문 그대로 돌려줘
+            # 렌더 자체는 깨지지 않게 한다.
             return text
     return text

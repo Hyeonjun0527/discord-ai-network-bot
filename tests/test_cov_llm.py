@@ -47,6 +47,7 @@ from discord_assistant.llm import (
     TokenUsage,
     ToolSpec,
     _add_usage,
+    _coerce_token_count,
     _iter_in_thread,
     _parse_gemini_payload,
     _with_circuit_breaker,
@@ -1027,10 +1028,12 @@ class OllamaListMalformedTest(unittest.TestCase):
         payload = {
             "models": [
                 {"name": "llama3.1:8b", "size": 100},
-                {"size": 200},           # name 누락 → skip
-                "not-a-dict",            # dict 아님 → skip
-                {"name": 12345},         # name 이 str 아님 → skip
-                {"name": "qwen2.5:7b"},  # size 없음 → 0
+                {"size": 200},               # name 누락 → skip
+                "not-a-dict",                # dict 아님 → skip
+                {"name": 12345},             # name 이 str 아님 → skip
+                {"name": "qwen2.5:7b"},      # size 없음 → 0
+                {"name": "phi3:mini", "size": None},  # #49: size:null → 0
+                {"name": "gemma2:9b", "size": "big"},  # #49: size 비-int → 0
             ]
         }
         with mock.patch(_PATCH, return_value=_json_response(payload)):
@@ -1040,6 +1043,8 @@ class OllamaListMalformedTest(unittest.TestCase):
             [
                 OllamaModel(name="llama3.1:8b", size_bytes=100),
                 OllamaModel(name="qwen2.5:7b", size_bytes=0),
+                OllamaModel(name="phi3:mini", size_bytes=0),
+                OllamaModel(name="gemma2:9b", size_bytes=0),
             ],
         )
 
@@ -1196,6 +1201,175 @@ class ToolLoopUsageAccumulationTest(unittest.TestCase):
             )
         self.assertEqual(result, "끝")
         self.assertEqual(client.last_usage, TokenUsage(18, 6))
+
+
+# ---------------------------------------------------------------------------
+# #46: 서킷 브레이커는 재시도 불가 4xx 를 실패로 카운트하지 않는다
+# ---------------------------------------------------------------------------
+
+
+class CircuitBreakerNonRetryableTest(unittest.TestCase):
+    def test_non_retryable_4xx_does_not_open_breaker(self) -> None:
+        # 401/403/400 같은 재시도 불가 클라이언트 오류는 서킷 실패로 세지 않으므로
+        # 임계치만큼 반복해도 서킷이 열리지 않는다(매번 실제 호출이 도달한다).
+        clock = {"t": 0.0}
+        breaker = CircuitBreaker(
+            failure_threshold=2, reset_timeout=30.0, time_fn=lambda: clock["t"]
+        )
+        calls = {"n": 0}
+
+        async def client_error() -> str:
+            calls["n"] += 1
+            raise LLMError("unauthorized", status_code=401)
+
+        async def run() -> None:
+            for _ in range(3):
+                with self.assertRaises(LLMError):
+                    await _with_circuit_breaker(
+                        breaker, client_error, max_attempts=1, delay=0
+                    )
+
+        asyncio.run(run())
+        # 서킷이 열리지 않았으므로 3번 모두 실제 호출이 일어났다(빠른 실패 없음).
+        self.assertEqual(calls["n"], 3)
+
+    def test_retryable_5xx_still_opens_breaker(self) -> None:
+        # 5xx 는 여전히 실패로 카운트되어 임계치 도달 시 서킷이 열린다(회귀 방지).
+        clock = {"t": 0.0}
+        breaker = CircuitBreaker(
+            failure_threshold=2, reset_timeout=30.0, time_fn=lambda: clock["t"]
+        )
+        calls = {"n": 0}
+
+        async def server_error() -> str:
+            calls["n"] += 1
+            raise LLMError("server", status_code=500)
+
+        async def run() -> None:
+            for _ in range(2):
+                with self.assertRaises(LLMError):
+                    await _with_circuit_breaker(
+                        breaker, server_error, max_attempts=1, delay=0
+                    )
+            with self.assertRaises(CircuitBreakerOpenError):
+                await _with_circuit_breaker(
+                    breaker, server_error, max_attempts=1, delay=0
+                )
+
+        asyncio.run(run())
+        self.assertEqual(calls["n"], 2)
+
+    def test_non_retryable_releases_half_open_probe(self) -> None:
+        # half-open 상태에서 프로브가 재시도 불가 오류로 실패해도 probe-in-flight 가
+        # 풀려 다음 호출이 막히지 않는다(record_ignored 가 플래그를 해제).
+        clock = {"t": 0.0}
+        breaker = CircuitBreaker(
+            failure_threshold=1, reset_timeout=10.0, time_fn=lambda: clock["t"]
+        )
+
+        async def fail_500() -> str:
+            raise LLMError("server", status_code=500)
+
+        async def fail_401() -> str:
+            raise LLMError("unauthorized", status_code=401)
+
+        async def ok() -> str:
+            return "ok"
+
+        async def run() -> None:
+            # 5xx 로 서킷을 연다.
+            with self.assertRaises(LLMError):
+                await _with_circuit_breaker(breaker, fail_500, max_attempts=1, delay=0)
+            # reset_timeout 경과 → half-open. 프로브가 401(재시도 불가)로 실패.
+            clock["t"] = 20.0
+            with self.assertRaises(LLMError):
+                await _with_circuit_breaker(breaker, fail_401, max_attempts=1, delay=0)
+            # 프로브가 해제됐으므로 다음 호출이 통과해야 한다(probe stuck 아님).
+            result = await _with_circuit_breaker(breaker, ok, max_attempts=1, delay=0)
+            self.assertEqual(result, "ok")
+
+        asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# #50: Anthropic 툴 루프는 stop_reason 과 무관하게 tool_use 블록이 있으면 실행
+# ---------------------------------------------------------------------------
+
+
+class AnthropicToolUseDespiteStopReasonTest(unittest.TestCase):
+    def test_tool_use_executed_even_if_stop_reason_not_tool_use(self) -> None:
+        # 모델이 tool_use 블록을 냈지만 stop_reason 이 'max_tokens' 로 들어온 경우에도
+        # 도구를 실행해야 한다(과거 OR 조건은 도구를 건너뛰고 부분 텍스트만 반환했다).
+        first = {
+            "content": [
+                {"type": "tool_use", "id": "t1", "name": "search_messages", "input": {}}
+            ],
+            "stop_reason": "max_tokens",  # tool_use 가 아님
+            "usage": {"input_tokens": 5, "output_tokens": 1},
+        }
+        final = {
+            "content": [{"type": "text", "text": "도구결과반영"}],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 3, "output_tokens": 2},
+        }
+        client = AnthropicClient(api_key="sk-ant-x")
+        ran = {"called": False}
+
+        async def runner(name, args):  # type: ignore[no-untyped-def]
+            ran["called"] = True
+            return "관측값"
+
+        _, fake = _sequential_urlopen([first, final])
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                client.generate_with_tools(
+                    "q", tools=[_SEARCH_TOOL], tool_runner=runner
+                )
+            )
+        self.assertTrue(ran["called"])  # 도구가 실제로 실행됐다.
+        self.assertEqual(result, "도구결과반영")
+
+    def test_no_tool_use_returns_text_immediately(self) -> None:
+        # tool_use 블록이 없으면 stop_reason 무관하게 즉시 최종 텍스트를 반환한다.
+        only_text = {
+            "content": [{"type": "text", "text": "답"}],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 2, "output_tokens": 1},
+        }
+        client = AnthropicClient(api_key="sk-ant-x")
+        _, fake = _sequential_urlopen([only_text])
+        with mock.patch(_PATCH, side_effect=fake):
+            result = asyncio.run(
+                client.generate_with_tools(
+                    "q", tools=[_SEARCH_TOOL], tool_runner=_noop_runner
+                )
+            )
+        self.assertEqual(result, "답")
+
+
+# ---------------------------------------------------------------------------
+# #61: _coerce_token_count — 정상/내림/음수/비정상 입력 처리
+# ---------------------------------------------------------------------------
+
+
+class CoerceTokenCountTest(unittest.TestCase):
+    def test_positive_int_passthrough(self) -> None:
+        self.assertEqual(_coerce_token_count(42), 42)
+
+    def test_float_truncates_down(self) -> None:
+        # 의도된 보수적 내림(반올림 아님).
+        self.assertEqual(_coerce_token_count(1.9), 1)
+
+    def test_negative_becomes_zero(self) -> None:
+        self.assertEqual(_coerce_token_count(-5), 0)
+
+    def test_none_and_non_numeric_become_zero(self) -> None:
+        self.assertEqual(_coerce_token_count(None), 0)
+        self.assertEqual(_coerce_token_count("12"), 0)
+
+    def test_bool_becomes_zero(self) -> None:
+        # bool 은 int 의 서브클래스지만 토큰 수로 취급하지 않는다.
+        self.assertEqual(_coerce_token_count(True), 0)
 
 
 if __name__ == "__main__":

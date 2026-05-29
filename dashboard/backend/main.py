@@ -965,10 +965,30 @@ async def list_models(user: CurrentUser) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 
+def _user_guilds(user: dict) -> list[dict]:
+    """JWT 의 ``guilds`` 클레임을 안전한 dict 목록으로 정규화한다 (#102).
+
+    정상 발급 토큰(auth.create_jwt)은 항상 list[dict] 형태지만, 구(舊)/손상 토큰은
+    예상 밖 형태(예: guilds 가 list 가 아님, 항목이 dict 가 아님)일 수 있다. 그런
+    경우 처리되지 않은 500 대신 빈/일부만 사용 가능한 목록으로 보수적으로 취급해,
+    호출 측이 일관되게 403 으로 거절하도록 한다.
+    """
+    guilds = user.get("guilds", [])
+    if not isinstance(guilds, list):
+        return []
+    return [g for g in guilds if isinstance(g, dict)]
+
+
 def _assert_guild_access(user: dict, guild_id: int) -> None:
     """Raise 403 if the JWT does not include the requested guild."""
-    guilds: list[dict] = user.get("guilds", [])
-    ids = {int(g["id"]) for g in guilds}
+    # #102: guilds 클레임이 예상 밖 형태(비-list, 비-dict 항목, id 누락/비숫자)여도
+    # 500 으로 폭발하지 않고 일관되게 403 을 반환한다. 형변환 실패 항목은 건너뛴다.
+    ids: set[int] = set()
+    for g in _user_guilds(user):
+        try:
+            ids.add(int(g["id"]))
+        except (KeyError, TypeError, ValueError):
+            continue
     if guild_id not in ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -985,8 +1005,15 @@ def _assert_guild_admin(user: dict, guild_id: int) -> None:
     ``admin`` 키가 없는 구(舊) 토큰은 보수적으로 비관리자로 취급한다(백워드 호환).
     """
     _assert_guild_access(user, guild_id)
-    guilds: list[dict] = user.get("guilds", [])
-    is_admin = any(int(g["id"]) == guild_id and g.get("admin") is True for g in guilds)
+    # #102: id 누락/비숫자나 비-dict 항목이 섞여도 500 대신 비관리자로 보수적으로
+    # 취급한다(형변환 실패 항목은 건너뛴다).
+    def _matches_admin(g: dict) -> bool:
+        try:
+            return int(g["id"]) == guild_id and g.get("admin") is True
+        except (KeyError, TypeError, ValueError):
+            return False
+
+    is_admin = any(_matches_admin(g) for g in _user_guilds(user))
     if not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

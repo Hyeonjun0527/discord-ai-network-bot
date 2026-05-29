@@ -276,6 +276,17 @@ class RemindTest(_Base):
         self.assertEqual(decoded["text"], "어제 요약 결과")
         self.assertEqual(decoded["repeat"], "daily")
 
+    async def test_empty_message_ignores_other_guild_summary(self) -> None:
+        # #21: 다른 길드(999)에서 만든 요약 캐시는 현재 길드(222)의 빈 /remind 로
+        # 재사용되지 않아야 한다(비공개 채널 요약 누수 방지). 거절되고 저장도 안 된다.
+        _last_summaries[111] = ("다른 길드 요약", 999)
+        inter = _make_interaction()  # guild_id=222
+        await self._callback("remind")(inter, when="2h", message="")
+
+        inter.response.send_message.assert_awaited_once()
+        self.assertIn("보낼 내용이 없어요", inter.response.send_message.await_args.args[0])
+        self.assertEqual(await self.store.list_by_user(111), [])
+
     async def test_day_label_branch(self) -> None:
         inter = _make_interaction()
         await self._callback("remind")(inter, when="2d", message="장기 알림")

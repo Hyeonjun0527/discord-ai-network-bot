@@ -435,13 +435,17 @@ class CircuitBreakerChaosTest(unittest.TestCase):
     """폴트 누적 → 서킷 오픈 → 빠른 실패(네트워크 미호출) (d)."""
 
     def test_breaker_opens_after_consecutive_failures(self) -> None:
-        # failure_threshold=2, 4xx(재시도 불가) 폴트로 연속 실패를 누적시킨다.
-        # 4xx 를 쓰면 _with_retry 가 1회만 시도하므로 실패 카운트 계산이 단순하다.
+        # failure_threshold=2, 5xx(재시도 가능·서버 장애) 폴트로 연속 실패를 누적시킨다.
+        # #46: 4xx(재시도 불가·요청/인증 오류)는 record_ignored 로 서킷 카운트에서
+        # 제외된다(잘못된 키 하나가 서킷을 열어 정상 요청까지 막는 것 방지). 따라서
+        # '연속 실패로 서킷이 열리는' 동작은 서버 장애 계열(5xx/429)로 검증한다.
+        # _patch_sleep 으로 재시도 백오프는 즉시 통과하며, 서킷은 _with_retry 전체를
+        # 감싸므로 generate() 1회당 record_failure 는 1회만 누적된다.
         breaker = CircuitBreaker(failure_threshold=2, reset_timeout=30.0)
         client = OpenAIClient(api_key="sk-x", circuit_breaker=breaker)
 
         async def run() -> None:
-            with _patch_urlopen(side_effect=_http_error(400)) as urlopen_mock, _patch_sleep():
+            with _patch_urlopen(side_effect=_http_error(503)) as urlopen_mock, _patch_sleep():
                 # 1차 실패(record_failure → failures=1, 아직 닫힘).
                 with self.assertRaises(OpenAIError):
                     await client.generate("hi")

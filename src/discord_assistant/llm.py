@@ -144,11 +144,21 @@ def _coerce_token_count(value: Any) -> int:
     """usage 메타데이터의 토큰 수 값을 안전하게 정수로 변환한다 (#17).
 
     None/비숫자/음수는 0 으로 보정한다(과금/통계가 깨지지 않도록).
+
+    #61: float 토큰 수는 int() 로 내림 절단된다(반올림 아님). 토큰 단가가 작아
+    영향이 제한적이므로 의도된 보수적 동작이다. 비숫자/None/bool/음수 같은 비정상
+    입력은 0 으로 흡수하되, 제공자 응답 이상을 가시화하기 위해 debug 로그를 남긴다.
     """
     if not isinstance(value, (int, float)) or isinstance(value, bool):
+        if value is not None:
+            logger.debug("usage 토큰 수가 비정상(비숫자) — 0 으로 처리: %r", value)
         return 0
     count = int(value)
-    return count if count > 0 else 0
+    if count <= 0:
+        if count < 0:
+            logger.debug("usage 토큰 수가 음수 — 0 으로 처리: %r", value)
+        return 0
+    return count
 
 
 def _parse_openai_usage(payload: dict[str, Any]) -> TokenUsage:
@@ -356,6 +366,14 @@ class CircuitBreaker:
         if self._failures >= self.failure_threshold:
             self._opened_at = self._time_fn()
 
+    def record_ignored(self) -> None:
+        """#46: 서킷 건강 신호로 셀 수 없는 오류(재시도 불가 4xx 등)를 처리한다.
+
+        연속 실패 카운트는 건드리지 않되, half-open 프로브 in-flight 플래그만 해제해
+        프로브가 영구히 막히지 않게 한다(실패도 성공도 아닌 중립 처리).
+        """
+        self._half_open_probe_in_flight = False
+
 
 async def _with_circuit_breaker(
     breaker: CircuitBreaker | None,
@@ -373,8 +391,14 @@ async def _with_circuit_breaker(
     breaker.before_call()
     try:
         result = await _with_retry(coro_fn, max_attempts=max_attempts, delay=delay)
-    except LLMError:
-        breaker.record_failure()
+    except LLMError as exc:
+        # #46: 재시도 불가능한 4xx(401/403/400 등)는 일시적 서버 장애가 아니라 요청
+        # 내용/인증 문제이므로 서킷 실패로 카운트하지 않는다(잘못된 키 하나가 서킷을
+        # 열어 정상 요청까지 막는 것을 방지). 429/5xx/네트워크 오류만 실패로 센다.
+        if _is_retryable(exc):
+            breaker.record_failure()
+        else:
+            breaker.record_ignored()
         raise
     breaker.record_success()
     return result
@@ -1008,10 +1032,16 @@ class OpenAIClient(BaseLLMClient):
                 except (json.JSONDecodeError, TypeError, ValueError):
                     args = {}
                 result = await _run_tool_safely(tool_runner, name, args)
+                call_id = call.get("id", "")
+                # #59: tool 결과 메시지의 tool_call_id 는 직전 assistant tool_call 의
+                # id 와 정확히 일치해야 한다. 빈 id 를 조용히 넣으면 다음 왕복에서
+                # 매칭 실패로 400 이 날 수 있으므로, 비정상 응답을 가시화한다.
+                if not call_id:
+                    logger.warning("OpenAI tool_call 에 id 가 없습니다 (name=%s)", name)
                 messages.append(
                     {
                         "role": "tool",
-                        "tool_call_id": call.get("id", ""),
+                        "tool_call_id": call_id,
                         "content": result[:_MAX_TOOL_RESULT_CHARS],
                     }
                 )
@@ -1280,7 +1310,12 @@ class AnthropicClient(BaseLLMClient):
                 for block in content
                 if isinstance(block, dict) and block.get("type") == "tool_use"
             ]
-            if payload.get("stop_reason") != "tool_use" or not tool_uses:
+            # #50: tool_use 블록 존재를 1차 종료 기준으로 삼는다. 과거에는
+            # stop_reason != "tool_use" 도 OR 로 묶어, 모델이 실제로 도구를 호출했는데도
+            # (content 에 tool_use 블록 존재) stop_reason 이 max_tokens 등으로 들어오면
+            # 도구를 실행하지 않고 부분 텍스트만 반환했다. 블록이 있으면 실행하고,
+            # 없으면(stop_reason 무관) 최종 텍스트를 반환한다.
+            if not tool_uses:
                 self.last_usage = total_usage
                 return last_text
             # assistant 의 tool_use 응답을 대화에 그대로 추가한 뒤 결과를 되돌려준다.
@@ -1292,10 +1327,16 @@ class AnthropicClient(BaseLLMClient):
                 if not isinstance(args, dict):
                     args = {}
                 result = await _run_tool_safely(tool_runner, name, args)
+                use_id = use.get("id", "")
+                # #59: tool_result 의 tool_use_id 는 직전 tool_use 블록의 id 와 정확히
+                # 일치해야 한다. 빈 id 는 다음 왕복에서 400 을 유발할 수 있으므로 경고로
+                # 가시화한다(동작은 유지 — 정상 응답에는 항상 id 가 있다).
+                if not use_id:
+                    logger.warning("Anthropic tool_use 에 id 가 없습니다 (name=%s)", name)
                 tool_results.append(
                     {
                         "type": "tool_result",
-                        "tool_use_id": use.get("id", ""),
+                        "tool_use_id": use_id,
                         "content": result[:_MAX_TOOL_RESULT_CHARS],
                     }
                 )
@@ -1509,7 +1550,12 @@ class OllamaManager:
             name = m.get("name")
             if not isinstance(name, str):
                 continue
-            models.append(OllamaModel(name=name, size_bytes=m.get("size", 0)))
+            # #49: size 키가 존재하지만 값이 null 이면 m.get("size", 0) 은 0 이 아니라
+            # None 을 반환해 size_bytes=None 이 되고, 이후 size_display 의 나눗셈에서
+            # TypeError 가 난다. `or 0` 으로 None/누락/falsy 모두 0 으로 보정한다.
+            size = m.get("size")
+            size_bytes = size if isinstance(size, int) and not isinstance(size, bool) else 0
+            models.append(OllamaModel(name=name, size_bytes=size_bytes))
         return models
 
     async def pull_model(self, model_name: str) -> None:

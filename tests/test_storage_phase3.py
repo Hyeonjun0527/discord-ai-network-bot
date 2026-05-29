@@ -112,11 +112,24 @@ class FeedbackTest(_FileStoreCase):
     async def test_feedback_insert_does_not_raise(self) -> None:
         await self.store.save_feedback(guild_id=1, message_id=10, user_id=20, rating=1, command="ask")
 
-    async def test_duplicate_feedback_rejected_by_unique_constraint(self) -> None:
-        # (message_id, user_id) is UNIQUE (#46) — a second insert must raise.
+    async def test_revote_updates_rating_via_upsert(self) -> None:
+        # #74: (message_id, user_id) 는 UNIQUE 이지만, 같은 사용자가 평점을
+        # 바꾸면(👍→👎) ON CONFLICT upsert 로 기존 행의 rating 이 갱신되어야
+        # 한다. 예전에는 IntegrityError 를 던져 변경이 조용히 유실됐다.
         await self.store.save_feedback(guild_id=1, message_id=10, user_id=20, rating=1, command="ask")
-        with self.assertRaises(sqlite3.IntegrityError):
-            await self.store.save_feedback(guild_id=1, message_id=10, user_id=20, rating=-1, command="ask")
+        # 두 번째 평가는 예외 없이 통과하고 rating 을 -1 로 갱신한다.
+        await self.store.save_feedback(guild_id=1, message_id=10, user_id=20, rating=-1, command="summarize")
+        conn = self.store._connect()
+        try:
+            rows = conn.execute(
+                "SELECT rating, command FROM feedback WHERE message_id = 10 AND user_id = 20"
+            ).fetchall()
+        finally:
+            conn.close()
+        # 행은 여전히 하나, rating/command 가 갱신된다.
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0], -1)
+        self.assertEqual(rows[0][1], "summarize")
 
     async def test_different_user_same_message_allowed(self) -> None:
         await self.store.save_feedback(guild_id=1, message_id=10, user_id=20, rating=1, command="ask")

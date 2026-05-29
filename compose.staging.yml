@@ -25,8 +25,18 @@ services:
     environment:
       # Persist SQLite under the staging-only bind-mounted data dir
       DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/discord_assistant.db}
+      # 컨테이너 → 봇 호스트의 네이티브 Ollama. 호스트가 0.0.0.0:11434 로 떠 있어야 함.
+      # prod 와 동일하게 리터럴로 둔다(${..} 보간 금지): compose 는 프로젝트 .env 를
+      # 변수 보간에도 자동 사용하는데, .env(.env.staging)의 OLLAMA_BASE_URL=localhost 가
+      # 보간돼 들어오면 컨테이너가 자기 자신을 가리킨다. environment 는 env_file 보다
+      # 우선하므로 여기 리터럴 값이 .env 의 localhost 를 확실히 덮어쓴다.
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
       # Cloud-API deploy: do not gate health on Ollama
       HEALTHCHECK_REQUIRE_OLLAMA: ${HEALTHCHECK_REQUIRE_OLLAMA:-false}
+    # Docker Desktop 은 host.docker.internal 을 자동 제공하지만, 리눅스 러너에서도
+    # 호스트 게이트웨이로 해석되도록 명시한다(있어도 무해).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data-staging:/app/data
       - ./logs-staging:/app/logs

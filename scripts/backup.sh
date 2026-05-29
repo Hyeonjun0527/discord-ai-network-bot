@@ -8,7 +8,9 @@
 #   0 3 * * * cd /opt/discord-assistant && bash scripts/backup.sh >> logs/backup.log 2>&1
 set -euo pipefail
 
-TIMESTAMP="$(date +%Y-%m-%d)"
+# Include time (not just date) so a second run on the same day does not silently
+# overwrite the first day's backup. Prune still globs bot_*.db and sorts by mtime.
+TIMESTAMP="$(date +%Y-%m-%d_%H-%M-%S)"
 LOG_PREFIX="[$(date '+%Y-%m-%d %H:%M:%S')]"
 
 # ── Resolve source DB path from DATABASE_URL or default ──────────────────────
@@ -150,7 +152,9 @@ mapfile -t OLD_BACKUPS < <(
   ls -1t "$BACKUP_DIR"/bot_*.db 2>/dev/null | tail -n +"$((KEEP + 1))"
 )
 for old in "${OLD_BACKUPS[@]}"; do
-  rm -f "$old"
+  # Also remove the -wal/-shm sidecars the cp fallback may have created, so they
+  # do not accumulate forever (the bot_*.db glob above does not match them).
+  rm -f "$old" "${old}-wal" "${old}-shm"
   echo "$LOG_PREFIX Deleted old backup: $old"
   DELETED=$((DELETED + 1))
 done

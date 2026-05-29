@@ -556,9 +556,17 @@ class TestSettingsHelpers:
         for truthy in ("1", "true", "YES", "y", "On"):
             os.environ["XX_B"] = truthy
             assert settings._get_bool("XX_B", False) is True
-        for falsy in ("0", "false", "no", "nope"):
+        for falsy in ("0", "false", "no", "off", "N"):
             os.environ["XX_B"] = falsy
             assert settings._get_bool("XX_B", True) is False
+
+    def test_get_bool_unrecognized_warns_and_returns_false(self, clean_env):
+        # 화이트리스트 밖 값(오타·비표준 표기)은 조용히 False 가 되지 않고 경고를 남긴다.
+        for unknown in ("nope", "ture", "TRUE!", "enabled"):
+            os.environ["XX_B"] = unknown
+            with mock.patch.object(settings._settings_log, "warning") as warn:
+                assert settings._get_bool("XX_B", True) is False
+            warn.assert_called_once()
 
     def test_is_production_env_true_variants(self, clean_env):
         os.environ["ENVIRONMENT"] = "production"

@@ -79,6 +79,24 @@ class TestTranslateHelper(unittest.TestCase):
         out = t("external.title", "en", emoji="X", provider="OpenAI")
         self.assertEqual(out, "X  OpenAI Settings")
 
+    def test_invalid_format_spec_returns_raw_text(self) -> None:
+        # 잘못된 포맷 스펙(닫히지 않은 중괄호)은 ValueError 를 내지만
+        # 렌더가 깨지지 않고 원문 템플릿을 그대로 돌려준다.
+        MESSAGES["_test.invalid_spec"] = {"ko": "잔액 {count balance"}
+        try:
+            out = t("_test.invalid_spec", "ko", count=5)
+            self.assertEqual(out, "잔액 {count balance")
+        finally:
+            del MESSAGES["_test.invalid_spec"]
+
+    def test_empty_translation_falls_back_to_ko(self) -> None:
+        # 빈 문자열('') 번역은 None 폴백과 동일하게 ko 로 폴백한다.
+        MESSAGES["_test.empty"] = {"ko": "케이", "en": ""}
+        try:
+            self.assertEqual(t("_test.empty", "en"), "케이")
+        finally:
+            del MESSAGES["_test.empty"]
+
 
 class TestCatalogIntegrity(unittest.TestCase):
     def test_every_key_has_korean(self) -> None:

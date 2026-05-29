@@ -70,6 +70,54 @@ class TranslationCacheTest(unittest.TestCase):
         self.assertEqual(removed, 1)
         self.assertEqual(translation_cache_size(), 1)
 
+    def test_refresh_existing_key_does_not_evict_other_entry(self) -> None:
+        # Fill to capacity, then re-set an already-cached key. Updating an
+        # existing entry must not push out any other entry (#136).
+        for i in range(TRANSLATION_CACHE_MAX_SIZE):
+            with patch.object(cache.time, "monotonic", return_value=float(i)):
+                set_translation(f"text-{i}", "ko", f"result-{i}")
+        self.assertEqual(translation_cache_size(), TRANSLATION_CACHE_MAX_SIZE)
+        with patch.object(cache.time, "monotonic", return_value=float(TRANSLATION_CACHE_MAX_SIZE)):
+            set_translation("text-0", "ko", "result-0-updated")
+        # No eviction: size unchanged and every original key is still present.
+        self.assertEqual(translation_cache_size(), TRANSLATION_CACHE_MAX_SIZE)
+        with patch.object(cache.time, "monotonic", return_value=float(TRANSLATION_CACHE_MAX_SIZE)):
+            self.assertEqual(get_translation("text-0", "ko"), "result-0-updated")
+            self.assertEqual(get_translation("text-1", "ko"), "result-1")
+
+    def test_recently_used_entry_survives_eviction_lru(self) -> None:
+        # LRU: an entry read just before overflow is promoted and survives,
+        # while the next-least-recently-used entry is evicted instead (#136).
+        for i in range(TRANSLATION_CACHE_MAX_SIZE):
+            with patch.object(cache.time, "monotonic", return_value=float(i)):
+                set_translation(f"text-{i}", "ko", f"result-{i}")
+        # Touch the oldest entry so it becomes most-recently used.
+        with patch.object(cache.time, "monotonic", return_value=float(TRANSLATION_CACHE_MAX_SIZE)):
+            self.assertEqual(get_translation("text-0", "ko"), "result-0")
+            set_translation("overflow", "ko", "new")
+            # text-0 was promoted and survives; text-1 (now LRU) is evicted.
+            self.assertEqual(get_translation("text-0", "ko"), "result-0")
+            self.assertIsNone(get_translation("text-1", "ko"))
+            self.assertEqual(get_translation("overflow", "ko"), "new")
+
+    def test_expired_entries_purged_before_evicting_live_entry(self) -> None:
+        # When full, expired entries are reclaimed before a live entry is
+        # dropped, so stale items do not push out valid ones (#137).
+        # One stale entry plus (cap - 1) fresh entries == full cache.
+        with patch.object(cache.time, "monotonic", return_value=0.0):
+            set_translation("stale", "ko", "old")
+        for i in range(TRANSLATION_CACHE_MAX_SIZE - 1):
+            with patch.object(cache.time, "monotonic", return_value=float(TRANSLATION_CACHE_TTL + 1 + i)):
+                set_translation(f"fresh-{i}", "ko", f"v-{i}")
+        self.assertEqual(translation_cache_size(), TRANSLATION_CACHE_MAX_SIZE)
+        # New insert at a time past the stale entry's TTL: the stale entry is
+        # purged, so no live (fresh) entry is evicted.
+        with patch.object(cache.time, "monotonic", return_value=float(TRANSLATION_CACHE_TTL + 100)):
+            set_translation("newkey", "ko", "newval")
+            self.assertIsNone(get_translation("stale", "ko"))
+            self.assertEqual(get_translation("fresh-0", "ko"), "v-0")
+            self.assertEqual(get_translation("newkey", "ko"), "newval")
+
     def test_eviction_when_full(self) -> None:
         # Fill to capacity with monotonically increasing timestamps so the
         # oldest entry is well-defined, then overflow by one.

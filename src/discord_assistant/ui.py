@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from urllib import error as urllib_error
@@ -29,6 +30,9 @@ from .storage import ConfigStore
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -402,7 +406,15 @@ class _APIKeyModal(ui.Modal, title="🔑  API 키 등록"):
         return True
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:  # type: ignore[override]
-        await interaction.response.send_message(f"⚠️ 오류: {error}", ephemeral=True)
+        # on_submit 은 키 검증 전에 defer 하므로(376), 그 이후 예외가 나면 응답이
+        # 이미 소비된 상태다. 이때 response.send_message 를 다시 부르면
+        # InteractionResponded 2차 예외가 난다. 응답 소비 여부에 따라 followup/
+        # response 로 분기해 안내가 누락되지 않게 한다.
+        message = f"⚠️ 오류: {error}"
+        if interaction.response.is_done():
+            await interaction.followup.send(message, ephemeral=True)
+        else:
+            await interaction.response.send_message(message, ephemeral=True)
 
 
 class _SummaryLimitModal(ui.Modal, title="📊  요약 범위 변경"):
@@ -570,7 +582,24 @@ class ProviderView(ui.View):
         self.add_item(_BackButton(ctx=ctx, guild_id=guild_id, row=1))
 
     async def _on_select(self, interaction: discord.Interaction) -> None:
-        selected = LLMProvider(interaction.data["values"][0])  # type: ignore[index,typeddict-item]
+        # interaction.data['values'] 는 클라이언트가 제어 가능한 게이트웨이
+        # 페이로드다. 정상 클라이언트는 항상 정의된 옵션을 보내지만, 변형/위조
+        # 페이로드(빈 values, 미지원 provider 문자열)에 대해 IndexError/ValueError
+        # 로 콜백이 응답 없이 죽지 않도록 방어한다.
+        raw_values = interaction.data.get("values") if interaction.data else None
+        values: list[str] = raw_values if isinstance(raw_values, list) else []
+        if not values:
+            await interaction.response.send_message(
+                "⚠️ 선택값을 읽지 못했어요. 다시 시도해 주세요.", ephemeral=True
+            )
+            return
+        try:
+            selected = LLMProvider(values[0])
+        except ValueError:
+            await interaction.response.send_message(
+                "⚠️ 지원하지 않는 제공자예요.", ephemeral=True
+            )
+            return
 
         if selected == LLMProvider.OLLAMA:
             installed = await self.ctx.ollama_manager.list_models()
@@ -792,8 +821,15 @@ class ModelInstallView(ui.View):
                 await interaction.edit_original_response(
                     embed=_install_embed(model_name, f"{spinner[i % len(spinner)]}  다운로드 중..."),
                 )
-            except Exception:
-                pass
+            except discord.NotFound:
+                # 인터랙션 토큰(15분) 만료 — 더 이상 edit 가 불가하므로 스피너
+                # 갱신을 멈춘다. pull 자체는 백그라운드에서 계속 진행되고
+                # 최종 상태는 _final_edit 가 best-effort 로 처리한다.
+                logger.debug("스피너 갱신 중 인터랙션 토큰 만료(NotFound) — 갱신 중단")
+                break
+            except discord.HTTPException as exc:
+                # 일시적 edit 실패(레이트리밋/5xx 등)는 다음 주기에 재시도한다.
+                logger.debug("스피너 갱신 실패(무시): %s", exc)
             i += 1
 
         async def _final_edit(status: str) -> None:
@@ -1350,11 +1386,20 @@ class RetryView(ui.View):
     ) -> None:
         super().__init__(timeout=timeout)
         self._on_retry = on_retry
+        self._used = False
         self._retry_button.label = label
 
     @ui.button(label="다시 시도", style=discord.ButtonStyle.primary, emoji="🔄", row=0)
     async def _retry_button(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        # 중복 클릭 방지를 위해 버튼을 비활성화한 뒤 콜백에 위임한다.
+        # 더블클릭 레이스 방지: 버튼 disabled 는 클라이언트에 즉시 반영되지 않으므로
+        # 서버측 1회성 가드(self._used)로 콜백 중복 진입을 막는다. 이미 사용됐으면
+        # 콜백을 다시 호출하지 않고 ephemeral 안내만 보낸다(토큰 이중 소모 방지).
+        if self._used:
+            await interaction.response.send_message(
+                "⏳ 이미 다시 시도 중이에요.", ephemeral=True
+            )
+            return
+        self._used = True
         button.disabled = True
         await self._on_retry(interaction)
 

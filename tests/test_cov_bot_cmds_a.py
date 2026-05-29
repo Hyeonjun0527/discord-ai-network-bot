@@ -394,6 +394,21 @@ class AskTest(_HandlerCase):
         self.assertIn("권한이 없어요", embed.description)
         self.assertEqual(len(llm.generate_calls), 0)
 
+    async def test_retryable_llm_error_clears_cooldown(self) -> None:
+        """#3: 재시도 가능한 LLM 오류 후에는 진입 시 기록한 쿨다운을 롤백해야 한다.
+
+        그래야 오류 임베드에 붙는 '재시도' 버튼이 쿨다운 안내만 띄우지 않고 실제로
+        다시 실행된다. status_code 없는 LLMError 는 재시도 대상이다.
+        """
+        inter = _make_interaction()
+        inter.response.is_done = MagicMock(return_value=True)
+        llm = _RaisingLLM(LLMError("일시 오류"))
+        with self._patch_llm(llm), self._patch_transcript("a: hi"):
+            await self._callback("ask")(inter, question="q", limit=5)
+
+        # 진입 시 기록된 (guild=222, user=111) 쿨다운이 롤백돼 재시도가 막히지 않는다.
+        self.assertNotIn((222, 111), bot_module._cooldowns)
+
 
 # ---------------------------------------------------------------------------
 # /translate — 정상 · 캐시 · 쿨다운 · 에러
@@ -558,6 +573,32 @@ class SearchTest(_HandlerCase):
         inter.followup.send.assert_awaited()
         stats = await self.store.get_stats(222)
         self.assertEqual(stats["error_rate"], 100.0)
+
+    async def test_search_none_channel_friendly_error(self) -> None:
+        """#6: interaction.channel 이 None 이면 AttributeError 로 침묵 실패하지 않고
+        친절 안내 + error 기록한다."""
+        inter = _make_interaction()
+        inter.channel = None
+        llm = _FakeLLM("호출 안됨")
+        with self._patch_llm(llm):
+            await self._callback("search")(inter, query="배포")
+
+        self.assertEqual(len(llm.generate_calls), 0)
+        text = inter.followup.send.await_args.args[0]
+        self.assertIn("채널에서만 사용할 수 있어요", text)
+        stats = await self.store.get_stats(222)
+        self.assertEqual(stats["error_rate"], 100.0)
+
+    async def test_search_long_summary_attaches_overflow_view(self) -> None:
+        """#8: 요약이 1024 자를 넘으면 'DM 으로 전체 받기' 버튼(LongResponseView)을 붙인다."""
+        inter = _make_interaction()
+        inter.channel.history = _fake_history([_msg("배포 됨")])
+        llm = _FakeLLM("요" * 2000)  # 임베드 필드 한도(1024) 초과.
+        with self._patch_llm(llm):
+            await self._callback("search")(inter, query="배포")
+
+        view = inter.followup.send.await_args.kwargs.get("view")
+        self.assertIsInstance(view, bot_module.LongResponseView)
 
 
 # ---------------------------------------------------------------------------

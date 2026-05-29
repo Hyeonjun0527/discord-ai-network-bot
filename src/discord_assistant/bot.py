@@ -39,7 +39,9 @@ from .messages import t
 from .models import GuildConfig, LLMProvider, Reminder, UsageLog
 from .monitor import format_disconnect_message, format_error_message, notify_developer
 from .prompts import (
+    _INJECTION_GUARD,
     _LANGUAGE_LABELS,
+    _wrap_untrusted,
     build_ask_prompt,
     build_chat_prompt,
     build_chat_with_history_prompt,
@@ -336,6 +338,11 @@ _MAX_LAST_SUMMARIES = 1000
 # Auto-summary tracking: guild_id -> last_run_time
 _auto_summary_last_run: dict[int, datetime] = {}
 
+# Live reminder sleep tasks: reminder_id -> Task. Used to cancel a still-sleeping
+# delivery task when the user cancels the reminder (#12) and to avoid scheduling
+# the same reminder twice on reconnect-driven reschedule (#13).
+_reminder_tasks: dict[int, asyncio.Task[Any]] = {}
+
 # Cooldown tracking: (guild_id, user_id) -> last used timestamp (task 25)
 _cooldowns: dict[tuple[int, int], float] = {}
 COOLDOWN_SECONDS = 10
@@ -483,6 +490,24 @@ def _has_allowed_role(interaction: discord.Interaction, allowed_role_id: int | N
     if allowed_role_id is None:
         return True
     roles = getattr(interaction.user, "roles", [])
+    return any(getattr(role, "id", None) == allowed_role_id for role in roles)
+
+
+def _member_has_allowed_role(member: Any, allowed_role_id: int | None) -> bool:
+    """역할 제한 우회 방지: member(또는 user) 객체의 roles 로 권한을 검사한다 (#24/#90).
+
+    슬래시 명령 외의 LLM 진입점(@멘션·답장·리액션)은 interaction 이 없으므로
+    ``_has_allowed_role`` 대신 message.author / payload.member 를 직접 받는다.
+    제한이 없으면(allowed_role_id is None) 항상 True. member 가 None 이거나 roles
+    를 알 수 없으면(권한 미확인) 보수적으로 False 를 반환해 우회를 막는다.
+    """
+    if allowed_role_id is None:
+        return True
+    if member is None:
+        return False
+    roles = getattr(member, "roles", None)
+    if not roles:
+        return False
     return any(getattr(role, "id", None) == allowed_role_id for role in roles)
 
 
@@ -1279,6 +1304,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     class AssistantBot(commands.Bot):
         # #48: 헬스/메트릭 HTTP 서버. METRICS_PORT=0(기본)이면 start 가 건너뛴다.
         health_server: HealthServer
+        # #13: on_ready 는 재연결마다 발화하므로 reschedule 를 최초 1회만 하도록 가드.
+        _reschedule_done: bool = False
 
         async def setup_hook(self) -> None:
             await store.initialize()
@@ -1318,21 +1345,43 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # 미발송 항목을 다시 예약한다.
 
     async def _deliver_reminder(reminder: Reminder) -> None:
-        """단일 reminder 를 DM 으로 전송하고 발송 완료 표시한다 (#1)."""
+        """단일 reminder 를 DM 으로 전송하고 발송 완료 표시한다 (#1).
+
+        #12: 발송 직전에 DB 에 행이 아직 존재하고 미발송(sent=0)인지 재확인해,
+        취소(/reminders cancel)됐거나 다른 태스크가 이미 보낸 항목은 보내지 않는다.
+        #14: 일시 오류(429/5xx)는 mark_sent 하지 않고 남겨 다음 기동 시 재시도되게
+        한다. 성공/영구 실패(DM 차단)만 발송 완료로 표시한다.
+        """
         decoded = _decode_remind_payload(reminder.payload)
         text = decoded["text"]
         if decoded["kind"] == _REMIND_KIND_SUMMARY:
             body = f"⏰ 알림: 예약했던 요약 결과입니다.\n\n{text[:1800]}"
         else:
             body = f"⏰ 알림: {text[:1900]}"
+        # #12: 발송 직전 DB 상태 재확인 — 취소/중복 발송을 막는다. 미발송 목록에
+        # 더 이상 없으면(취소됐거나 이미 발송됨) 조용히 종료한다.
+        if reminder.id is not None:
+            try:
+                pending = await store.list_by_user(reminder.user_id)
+            except Exception as exc:  # pragma: no cover — 방어적 재확인 실패는 발송 막지 않음
+                logger.warning("리마인더 발송 전 재확인 실패: id=%s %s", reminder.id, exc)
+            else:
+                if not any(r.id == reminder.id for r in pending):
+                    logger.info(
+                        "리마인더가 취소/이미발송됨 — 전송 건너뜀: id=%s", reminder.id
+                    )
+                    return
         try:
             user = bot.get_user(reminder.user_id) or await bot.fetch_user(reminder.user_id)
             await user.send(body)
         except discord.Forbidden:
-            # DM 차단 등으로 실패해도 무한 재시도하지 않도록 발송 완료로 표시한다.
+            # DM 차단 등 영구 실패: 무한 재시도하지 않도록 발송 완료로 표시한다.
             logger.info("리마인더 DM 전송 실패(차단): user=%s id=%s", reminder.user_id, reminder.id)
         except discord.HTTPException as exc:
-            logger.warning("리마인더 DM 전송 실패: id=%s %s", reminder.id, exc)
+            # #14: 일시 오류(429/5xx)는 발송 완료로 표시하지 않고 남겨, 다음 기동의
+            # reschedule 에서 재시도되게 한다(조용한 영구 유실 방지).
+            logger.warning("리마인더 DM 전송 일시 실패(재시도 예정): id=%s %s", reminder.id, exc)
+            return
         if reminder.id is not None:
             await store.mark_sent(reminder.id)
 
@@ -1340,18 +1389,28 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         """due_at 까지 대기한 뒤 reminder 를 전송한다 (#1).
 
         due_at 은 ISO8601(UTC 권장) 문자열이다. 이미 지났으면 즉시 전송한다.
+        #12: 자신의 asyncio.Task 를 _reminder_tasks 에 등록해, /reminders cancel 이
+        sleep 중인 이 태스크를 취소할 수 있게 한다. 종료 시 항상 등록을 해제한다.
         """
+        current = asyncio.current_task()
+        if reminder.id is not None and current is not None:
+            _reminder_tasks[reminder.id] = current
         try:
-            due = datetime.fromisoformat(reminder.due_at)
-        except ValueError:
-            logger.warning("리마인더 due_at 파싱 실패: id=%s %r", reminder.id, reminder.due_at)
-            due = datetime.now(timezone.utc)
-        if due.tzinfo is None:
-            due = due.replace(tzinfo=timezone.utc)
-        delay = (due - datetime.now(timezone.utc)).total_seconds()
-        if delay > 0:
-            await asyncio.sleep(delay)
-        await _deliver_reminder(reminder)
+            try:
+                due = datetime.fromisoformat(reminder.due_at)
+            except ValueError:
+                logger.warning("리마인더 due_at 파싱 실패: id=%s %r", reminder.id, reminder.due_at)
+                due = datetime.now(timezone.utc)
+            if due.tzinfo is None:
+                due = due.replace(tzinfo=timezone.utc)
+            delay = (due - datetime.now(timezone.utc)).total_seconds()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            await _deliver_reminder(reminder)
+        finally:
+            # 취소/완료 어느 경로든 레지스트리에서 자신을 정리한다(중복 제거 안전).
+            if reminder.id is not None and _reminder_tasks.get(reminder.id) is current:
+                del _reminder_tasks[reminder.id]
 
     async def _reschedule_pending_reminders() -> None:
         """봇 시작 시 미발송 reminder 를 모두 다시 예약한다 (#1).
@@ -1365,10 +1424,16 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         except Exception as exc:  # pragma: no cover — 기동 경로 방어
             logger.exception("미발송 리마인더 조회 실패: %s", exc)
             return
+        scheduled = 0
         for reminder in pending:
+            # #13: 이미 살아 있는 sleep 태스크가 있는 reminder 는 재예약하지 않는다
+            # (on_ready 재발화/재연결 시 동일 알림 중복 발송 방지).
+            if reminder.id is not None and reminder.id in _reminder_tasks:
+                continue
             _track_task(_schedule_reminder(reminder), name=f"reminder-{reminder.id}")
-        if pending:
-            logger.info("미발송 리마인더 %d건을 재예약했습니다.", len(pending))
+            scheduled += 1
+        if scheduled:
+            logger.info("미발송 리마인더 %d건을 재예약했습니다.", scheduled)
 
     # ------------------------------------------------------------------
     # /settings — interactive admin panel
@@ -1504,7 +1569,16 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
             # Use custom prompt if set (#40)
             if config.custom_summarize_prompt:
-                prompt = config.custom_summarize_prompt.replace("{transcript}", transcript)
+                # #89/#116: 커스텀 프롬프트 경로도 신뢰 불가 transcript 를
+                # _wrap_untrusted 로 감싸고 _INJECTION_GUARD 를 prepend 해, 기본
+                # build_* 경로와 동일한 프롬프트 인젝션 방어선을 유지한다.
+                prompt = (
+                    _INJECTION_GUARD
+                    + "\n\n"
+                    + config.custom_summarize_prompt.replace(
+                        "{transcript}", _wrap_untrusted(transcript, "transcript")
+                    )
+                )
             else:
                 prompt = build_summarize_prompt(transcript, language=effective_language)
 
@@ -1633,10 +1707,15 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
             # Use custom prompt if set (#40)
             if config.custom_ask_prompt:
+                # #89/#116: 커스텀 프롬프트 경로도 신뢰 불가 transcript/question 을
+                # _wrap_untrusted 로 감싸고 _INJECTION_GUARD 를 prepend 해, 기본
+                # build_* 경로와 동일한 프롬프트 인젝션 방어선을 유지한다.
                 prompt = (
-                    config.custom_ask_prompt
-                    .replace("{transcript}", transcript)
-                    .replace("{question}", question)
+                    _INJECTION_GUARD
+                    + "\n\n"
+                    + config.custom_ask_prompt
+                    .replace("{transcript}", _wrap_untrusted(transcript, "transcript"))
+                    .replace("{question}", _wrap_untrusted(question.strip(), "question"))
                 )
             else:
                 prompt = build_ask_prompt(transcript, question, language=effective_language)
@@ -1742,6 +1821,10 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             return
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
+            config = await store.get_guild_config(guild_id or 0)
+            # #90: 역할 제한을 적용한다(캐시 적중 경로도 우회하지 못하도록 캐시 검사 전에).
+            if not _has_allowed_role(interaction, config.allowed_role_id):
+                raise UserFacingError("이 명령을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.")
             # Translation cache check (#38)
             cached_translation = get_translation(text, target_language)
             if cached_translation is not None:
@@ -1754,7 +1837,6 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     command="translate", status="ok", started_at=started,
                 )
                 return
-            config = await store.get_guild_config(guild_id or 0)
             prompt = build_translate_prompt(text, target_language=target_language)
             # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
             await _enforce_token_budget(store, config, guild_id)
@@ -1800,6 +1882,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         await interaction.response.defer(thinking=True, ephemeral=ephemeral)
         try:
             config = await store.get_guild_config(guild_id or 0)
+            # #90: 다른 LLM 진입점과 동일하게 역할 제한을 적용한다.
+            if not _has_allowed_role(interaction, config.allowed_role_id):
+                raise UserFacingError("이 명령을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.")
             history: list[dict[str, str]] = []
             if user_id is not None:
                 history = await store.get_chat_history(
@@ -2096,6 +2181,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 )
                 return
             await store.delete_reminder(cancel)
+            # #12: DB 행 삭제만으로는 sleep 중인 in-memory 전송 태스크가 남아 due
+            # 시각에 그대로 발송된다. 살아 있는 태스크를 취소해 실제로 멈춘다.
+            live = _reminder_tasks.pop(cancel, None)
+            if live is not None and not live.done():
+                live.cancel()
             await interaction.response.send_message(
                 f"✅ 예약 알림 #{cancel}을(를) 취소했어요.", ephemeral=True
             )
@@ -2267,6 +2357,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             guild_id, channel_id, user_id = _ids_from_interaction(confirm_interaction)
             try:
                 config = await store.get_guild_config(guild_id or 0)
+                # #90: 다른 LLM 진입점과 동일하게 역할 제한을 적용한다.
+                if not _has_allowed_role(confirm_interaction, config.allowed_role_id):
+                    raise UserFacingError("이 명령을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.")
                 message_limit = config.summary_limit
                 # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
                 await _enforce_token_budget(store, config, guild_id)
@@ -2328,6 +2421,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         await interaction.response.defer(thinking=True, ephemeral=True)
         try:
             config = await store.get_guild_config(guild_id or 0)
+            # #90: 다른 LLM 진입점과 동일하게 역할 제한을 적용한다.
+            if not _has_allowed_role(interaction, config.allowed_role_id):
+                raise UserFacingError("이 명령을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.")
             message_limit = _effective_limit(limit, config.summary_limit)
             messages = []
             try:
@@ -2442,6 +2538,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         await interaction.response.defer(thinking=True)
         try:
             config = await store.get_guild_config(guild_id or 0)
+            # #90: 다른 LLM 진입점과 동일하게 역할 제한을 적용한다.
+            if not _has_allowed_role(interaction, config.allowed_role_id):
+                raise UserFacingError("이 명령을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.")
             search_limit = _effective_limit(limit, 200)
             query_lower = query.lower()
             matching: list[str] = []
@@ -2621,6 +2720,13 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             )
             return None
         config = await store.get_guild_config(guild_id or 0)
+        # #90: 컨텍스트 메뉴 3종도 LLM 을 호출하므로 다른 진입점과 동일하게 역할
+        # 제한을 적용한다. 권한이 없으면 ephemeral 안내 후 None 을 반환한다.
+        if not _has_allowed_role(interaction, config.allowed_role_id):
+            await interaction.response.send_message(
+                "이 기능을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.", ephemeral=True
+            )
+            return None
         # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.
         await _enforce_token_budget(store, config, guild_id)
         llm = _get_llm(config, settings)
@@ -2904,7 +3010,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         # fire-and-forget 태스크는 _track_task 로 추적해 조용한 소실/예외 삼킴 방지 (#51).
         _track_task(_memory_monitor(), name="memory-monitor")
         # 봇 재시작에도 미발송 reminder 가 살아남도록 다시 예약한다 (#1).
-        _track_task(_reschedule_pending_reminders(), name="reschedule-reminders")
+        # #13: on_ready 는 재연결(RESUME)마다 발화하므로, reschedule 는 최초 1회만
+        # 실행해 동일 reminder 의 중복 sleep 태스크 생성을 막는다(중복 DM 방지).
+        if not getattr(bot, "_reschedule_done", False):
+            bot._reschedule_done = True
+            _track_task(_reschedule_pending_reminders(), name="reschedule-reminders")
         # Start auto-summary background task (#33)
         if not auto_summary_task.is_running():
             auto_summary_task.start()
@@ -3041,6 +3151,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 return
             try:
                 config = await store.get_guild_config(guild_id or 0)
+                # #24/#90: 답장 이어가기도 LLM 을 호출하므로 역할 제한을 적용한다.
+                # 권한이 없으면 조용히 종료(슬래시 명령처럼 안내 없이 무시)한다.
+                if not _member_has_allowed_role(
+                    message.author, config.allowed_role_id
+                ):
+                    return
                 # 봇 직전 응답을 assistant 턴으로 넣어 맥락을 잇는다 (#8).
                 history = [{"role": "assistant", "content": referenced_text}]
                 prompt = build_chat_with_history_prompt(
@@ -3075,12 +3191,22 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         user_id = message.author.id
         command_name = "mention_ask"
 
+        # #23: 멘션 응답은 가장 비싼 경로(트랜스크립트 수집 + 비전 분석)를 탈 수 있어
+        # 다른 모든 LLM 진입점과 동일하게 쿨다운을 적용한다(비용 폭증/스팸 방지).
+        cd_guild = guild_id if guild_id is not None else _DM_COOLDOWN_GUILD
+        if _check_cooldown(cd_guild, user_id) is not None:
+            return
+
         raw_query = message.content
         raw_query = raw_query.replace(f"<@{bot.user.id}>", "").replace(f"<@!{bot.user.id}>", "")
         question = normalize_content(raw_query)
 
         try:
             config = await store.get_guild_config(guild_id or 0)
+            # #24/#90: @멘션 응답(이미지 분석/질문/요약)도 슬래시 명령과 동일한 역할
+            # 제한을 적용한다. 권한이 없으면 조용히 종료한다.
+            if not _member_has_allowed_role(message.author, config.allowed_role_id):
+                return
             # #19: 멘션 응답(이미지 분석/질문/요약) 모두 LLM 을 호출하므로, 분기 전에
             # 한 번 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사한다.
             await _enforce_token_budget(store, config, guild_id)
@@ -3384,6 +3510,16 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
         started = perf_counter()
         config = await store.get_guild_config(guild_id or 0)
+        # #24/#90: 리액션 트리거(📝/🌐)도 LLM 을 호출하므로 역할 제한을 적용한다.
+        # 리액션을 단 사용자의 member(payload.member 또는 guild.get_member)로 검사하고,
+        # 권한이 없으면 조용히 종료한다.
+        if config.allowed_role_id is not None:
+            reactor = payload.member
+            if reactor is None:
+                guild_obj = bot.get_guild(guild_id) if guild_id is not None else None
+                reactor = guild_obj.get_member(payload.user_id) if guild_obj else None
+            if not _member_has_allowed_role(reactor, config.allowed_role_id):
+                return
         command_name = "reaction_summarize" if emoji_str == REACTION_SUMMARIZE else "reaction_translate"
         try:
             # #19: LLM 호출 전 당일 누적 토큰이 서버 일일 상한을 넘었는지 검사.

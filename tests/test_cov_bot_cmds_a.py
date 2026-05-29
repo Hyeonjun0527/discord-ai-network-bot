@@ -327,7 +327,12 @@ class AskTest(_HandlerCase):
         self.assertIn("검색 기반 답변", body)
 
     async def test_custom_ask_prompt_substituted(self) -> None:
-        """custom_ask_prompt 가 {transcript}/{question} 치환 후 LLM 에 전달된다."""
+        """custom_ask_prompt 가 {transcript}/{question} 치환 후 LLM 에 전달된다.
+
+        #89/#116: 커스텀 경로도 신뢰 불가 입력을 _wrap_untrusted 로 감싸고
+        _INJECTION_GUARD 를 prepend 한다(인젝션 방어선 유지). 따라서 본문이 그대로
+        들어가되 구분자 태그로 래핑되고, 보안 지침이 앞에 붙는다.
+        """
         await self.store.set_custom_prompt(222, "ask", "맥락:{transcript} 질문:{question}")
         inter = _make_interaction()
         llm = _FakeLLM("커스텀 답")
@@ -336,8 +341,15 @@ class AskTest(_HandlerCase):
 
         self.assertEqual(len(llm.generate_calls), 1)
         prompt = llm.generate_calls[0]
-        self.assertIn("맥락:대화내용", prompt)
-        self.assertIn("질문:무엇?", prompt)
+        # 커스텀 프롬프트 본문/치환 내용이 들어가되 신뢰 불가 입력은 래핑된다.
+        self.assertIn("맥락:", prompt)
+        self.assertIn("질문:", prompt)
+        self.assertIn("대화내용", prompt)
+        self.assertIn("무엇?", prompt)
+        # 인젝션 방어선이 적용됐다: 보안 지침 prepend + 구분자 래핑.
+        self.assertIn("untrusted DATA", prompt)
+        self.assertIn("<transcript>", prompt)
+        self.assertIn("<question>", prompt)
 
     async def test_long_answer_uses_preview_and_long_view(self) -> None:
         """답이 매우 길면 프리뷰 1개 + (DM 받기 버튼 병합) 후속질문 뷰로 보낸다."""

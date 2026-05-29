@@ -911,19 +911,24 @@ class ConfigStore:
         conn = await self._ensure_conn()
         deleted = {"usage_log": 0, "chat_history": 0}
         async with self._lock:
-            # SQLite 의 datetime() 으로 컷오프 시각을 계산하면 ISO8601 문자열
-            # 비교만으로 N일 경과 행을 안전하게 골라낼 수 있다.
+            # 컷오프 비교는 양변을 SQLite ``datetime()`` 으로 정규화한다 (#72).
+            # created_at 은 ISO('T' 구분자 + '+00:00' 오프셋)이고
+            # datetime('now', ?) 는 공백 구분자·무오프셋 형식이라, 정규화 없이
+            # 단순 문자열 비교하면 위치 10('T'=84 vs ' '=32)에서 갈려 컷오프 날짜와
+            # 같은 날짜의 행이 시각과 무관하게 삭제되지 않는다. 양변을 datetime()
+            # 으로 파싱하면 get_today_token_usage 의 date()=date() 패턴과 동일하게
+            # 안전하다.
             if usage_days > 0:
                 cur = await conn.execute(
                     "DELETE FROM usage_log "
-                    "WHERE created_at < datetime('now', ?)",
+                    "WHERE datetime(created_at) < datetime('now', ?)",
                     (f"-{usage_days} days",),
                 )
                 deleted["usage_log"] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
             if chat_days > 0:
                 cur = await conn.execute(
                     "DELETE FROM chat_history "
-                    "WHERE created_at < datetime('now', ?)",
+                    "WHERE datetime(created_at) < datetime('now', ?)",
                     (f"-{chat_days} days",),
                 )
                 deleted["chat_history"] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0

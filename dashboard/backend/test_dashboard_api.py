@@ -396,6 +396,56 @@ def test_jwt_secret_key_overrides_secret_key(
 
 
 # ---------------------------------------------------------------------------
+# #97 운영 환경에서 기본 JWT 서명 키 사용 거부 (보안 가드)
+# ---------------------------------------------------------------------------
+
+
+def test_secret_key_rejects_default_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """운영 환경(production)에서 SECRET_KEY/JWT_SECRET_KEY 누락 시 기본 키 사용을 거부한다 (#97)."""
+    monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    import importlib
+
+    from dashboard.backend import auth as auth_mod
+
+    importlib.reload(auth_mod)
+    try:
+        with pytest.raises(RuntimeError):
+            auth_mod._secret_key()
+        # JWT 발급도 같은 가드에 의해 거부되어야 한다(인증 우회 차단).
+        with pytest.raises(RuntimeError):
+            auth_mod.create_jwt("1", [])
+    finally:
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        importlib.reload(auth_mod)
+
+
+def test_secret_key_default_allowed_outside_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """비운영(local/dev) 환경에서는 기본 키 폴백이 경고만 하고 동작은 유지된다 (#97, 백워드 호환)."""
+    monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    monkeypatch.delenv("APP_ENV", raising=False)
+    import importlib
+
+    from dashboard.backend import auth as auth_mod
+
+    importlib.reload(auth_mod)
+    try:
+        # 운영이 아니므로 raise 없이 기본 키를 돌려주고 토큰 발급/검증이 가능하다.
+        assert auth_mod._secret_key() == "change-me-in-production"
+        token = auth_mod.create_jwt("1", [])
+        assert auth_mod.decode_jwt(token) is not None
+    finally:
+        importlib.reload(auth_mod)
+
+
+# ---------------------------------------------------------------------------
 # #80 auto_summary_interval 저장/검증
 # ---------------------------------------------------------------------------
 

@@ -48,6 +48,22 @@ SCOPES = "identify guilds"
 # Discord 권한 비트: Administrator (0x8). 길드 소유자(owner)도 사실상 관리자다 (#79).
 DISCORD_PERMISSION_ADMINISTRATOR = 0x8
 
+# JWT 서명 키의 안전하지 않은 기본값 (#97). 운영 환경에서 이 값이 쓰이면 누구나
+# 공개키로 임의 JWT 를 위조해 admin 클레임을 만들 수 있으므로 기동을 거부한다.
+_INSECURE_DEFAULT_SECRET = "change-me-in-production"
+
+
+def _is_production_env() -> bool:
+    """ENVIRONMENT 또는 APP_ENV 환경 변수가 production 계열이면 True 를 반환한다 (#97).
+
+    봇 ``settings.py`` 의 동일한 가드와 일관되게 동작한다.
+    """
+    for name in ("ENVIRONMENT", "APP_ENV"):
+        raw = os.getenv(name)
+        if raw and raw.strip().lower() in {"production", "prod"}:
+            return True
+    return False
+
 
 def _guild_is_admin(guild: dict) -> bool:
     """Discord 길드 객체가 관리자 권한(또는 소유자)을 가졌는지 판정한다 (#79).
@@ -102,7 +118,18 @@ def _secret_key() -> str:
     jwt_key = os.getenv("JWT_SECRET_KEY")
     if jwt_key:
         return jwt_key
-    return os.getenv("SECRET_KEY", "change-me-in-production")
+    key = os.getenv("SECRET_KEY", _INSECURE_DEFAULT_SECRET)
+    if key == _INSECURE_DEFAULT_SECRET:
+        # 운영 환경(production)에서는 공개된 기본 서명 키 사용을 금지하고 기동/요청을
+        # 거부한다(봇 settings.py 와 동일한 가드). 이 가드가 없으면 누구나 공개키로
+        # admin 클레임을 위조해 인증/인가를 완전히 우회할 수 있다 (#97).
+        if _is_production_env():
+            raise RuntimeError(
+                "운영 환경(production)에서는 기본 JWT 서명 키"
+                "('change-me-in-production')를 사용할 수 없습니다. "
+                "JWT_SECRET_KEY 또는 SECRET_KEY 를 안전한 임의 값으로 설정해 주세요."
+            )
+    return key
 
 
 def _jwt_algorithm() -> str:

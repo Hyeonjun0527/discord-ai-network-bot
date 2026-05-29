@@ -194,6 +194,31 @@ class IterInThreadTest(unittest.TestCase):
         # 예외 직전에 yield 된 청크는 정상 수신된다.
         self.assertEqual(collected, ["first"])
 
+    def test_early_break_does_not_hang_with_full_queue(self) -> None:
+        # 소비자가 일찍 break 하면 워커가 가득 찬 바운드 큐(maxsize=64)의 put 에서
+        # 막힐 수 있다. finally 가 큐를 drain 해 워커가 진행·종료되어야 하며,
+        # 코루틴이 hang 되지 않아야 한다(#53 회귀 방지).
+        produced = 200  # 큐 용량(64)을 넘겨 put 블로킹을 유발한다.
+
+        def make_iter():  # type: ignore[no-untyped-def]
+            for i in range(produced):
+                yield str(i)
+
+        async def run() -> list:
+            collected: list = []
+            async for chunk in _iter_in_thread(make_iter):
+                collected.append(chunk)
+                if len(collected) >= 3:
+                    break  # 소비를 조기 중단 → 워커는 가득 찬 큐에 put 시도.
+            return collected
+
+        # 무한 hang 방지를 위해 전체 실행에 타임아웃을 건다.
+        async def guarded() -> list:
+            return await asyncio.wait_for(run(), timeout=10.0)
+
+        collected = asyncio.run(guarded())
+        self.assertEqual(collected, ["0", "1", "2"])
+
 
 # ---------------------------------------------------------------------------
 # 467: parse_generate_response — response 가 str 이 아니면 OllamaError
@@ -836,11 +861,17 @@ class OllamaManagerTest(unittest.TestCase):
         with mock.patch(_PATCH, return_value=_json_response({"models": []})):
             self.assertTrue(asyncio.run(self.mgr.is_available()))
 
-    def test_is_available_true_even_on_list_error(self) -> None:
-        # _list_sync 가 예외를 삼켜 [] 를 돌려주므로 is_available 도 True 가 된다
-        # (네트워크 오류는 _list_sync 내부에서 흡수됨).
+    def test_is_available_false_on_connection_error(self) -> None:
+        # is_available 는 raise_on_error=True 경로로 _list_sync 를 호출하므로
+        # 연결 실패(서버 다운)는 예외가 전파되어 False 가 된다. '빈 목록'(성공)과
+        # '연결 실패'(미가용)를 구분한다.
         with mock.patch(_PATCH, side_effect=urllib_error.URLError("down")):
-            self.assertTrue(asyncio.run(self.mgr.is_available()))
+            self.assertFalse(asyncio.run(self.mgr.is_available()))
+
+    def test_list_models_still_swallows_error(self) -> None:
+        # 목록 조회용 list_models 는 기존대로 예외를 흡수해 [] 를 돌려준다(백워드 호환).
+        with mock.patch(_PATCH, side_effect=urllib_error.URLError("down")):
+            self.assertEqual(asyncio.run(self.mgr.list_models()), [])
 
     def test_pull_model_missing_binary_raises(self) -> None:
         with mock.patch("discord_assistant.llm.shutil.which", return_value=None):

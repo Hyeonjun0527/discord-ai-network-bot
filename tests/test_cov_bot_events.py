@@ -582,6 +582,36 @@ class OnMessageMentionTest(_BotCase):
         get_llm.assert_not_called()
         msg.channel.send.assert_not_called()
 
+    async def test_mention_disallowed_role_blocked(self) -> None:
+        # #24/#90: allowed_role 가 설정되면 역할 없는 사용자는 @멘션으로도 차단된다.
+        await self.store.set_allowed_role(222, role_id=999)
+        self.bot.process_commands = AsyncMock()
+        msg = _make_mention_message(424242, content="<@424242> 질문")
+        # 멘션 작성자는 필요한 역할(999)이 없다.
+        msg.author = SimpleNamespace(
+            bot=False, id=111, display_name="tester", roles=[]
+        )
+        with self._patch_llm(_FakeLLM()) as get_llm, self._patch_transcript("a: hi"):
+            await self.bot.on_message(msg)
+        get_llm.assert_not_called()
+        msg.channel.send.assert_not_called()
+
+    async def test_mention_allowed_role_passes(self) -> None:
+        # allowed_role 가 설정돼도 해당 역할을 가진 사용자는 정상 응답한다.
+        await self.store.set_allowed_role(222, role_id=999)
+        self.bot.process_commands = AsyncMock()
+        msg = _make_mention_message(424242, content="<@424242> 질문이야")
+        msg.author = SimpleNamespace(
+            bot=False, id=111, display_name="tester",
+            roles=[SimpleNamespace(id=999)],
+        )
+        llm = _FakeLLM("권한있는 응답")
+        with self._patch_llm(llm), self._patch_transcript("a: hi\nb: yo"):
+            await self.bot.on_message(msg)
+        msg.channel.send.assert_awaited()
+        sent = msg.channel.send.await_args.args[0]
+        self.assertIn("권한있는 응답", sent)
+
     async def test_bot_author_skipped(self) -> None:
         self.bot.process_commands = AsyncMock()
         msg = _make_mention_message(424242, content="<@424242> 질문")
@@ -1025,6 +1055,79 @@ class ReminderDeliveryTest(_BotCase):
         # Forbidden 이어도 sent 표시 → 미발송 목록 비어 있음.
         remaining = await self.store.list_by_user(111)
         self.assertEqual(remaining, [])
+
+    async def test_reminder_transient_http_error_not_marked_sent(self) -> None:
+        # #14: 일시적 HTTP 오류(429/5xx)에는 발송 완료로 표시하지 않고 남겨,
+        # 다음 기동 reschedule 에서 재시도되게 한다(조용한 영구 유실 방지).
+        flaky_user = MagicMock()
+        flaky_user.send = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(), "rate limited")
+        )
+        self.bot.get_user = MagicMock(return_value=flaky_user)
+
+        real_sleep = asyncio.sleep
+
+        async def _instant(delay, *a, **k):
+            await real_sleep(0)
+
+        inter = self._interaction()
+        before = set(bot_module._background_tasks)
+        with patch.object(bot_module.asyncio, "sleep", _instant):
+            await self._callback("remind")(
+                inter, when="1h", message="일시오류 알림", repeat=""
+            )
+            new_tasks = [t for t in bot_module._background_tasks if t not in before]
+            await asyncio.gather(*new_tasks, return_exceptions=True)
+
+        flaky_user.send.assert_awaited()
+        # 일시 오류 → sent 미표시 → 여전히 미발송 목록에 남아 재시도 대상이다.
+        remaining = await self.store.list_by_user(111)
+        self.assertEqual(len(remaining), 1)
+
+    async def test_cancel_stops_live_reminder_task(self) -> None:
+        # #12: /reminders cancel 은 DB 행 삭제뿐 아니라 sleep 중인 in-memory 전송
+        # 태스크를 취소해 실제 발송을 막아야 한다.
+        delivered_user = MagicMock()
+        delivered_user.send = AsyncMock()
+        self.bot.get_user = MagicMock(return_value=delivered_user)
+
+        # 실제 이벤트 루프 sleep 으로 due 전 'sleep 중' 상태에 머물게 한다. 취소가
+        # 동작하지 않더라도 테스트가 영원히 멈추지 않도록 짧은 상한(10s)을 둔다.
+        real_sleep = asyncio.sleep
+
+        async def _slow(delay, *a, **k):
+            await real_sleep(min(delay, 10) if delay else 0)
+
+        inter = self._interaction()
+        before = set(bot_module._background_tasks)
+        with patch.object(bot_module.asyncio, "sleep", _slow):
+            await self._callback("remind")(
+                inter, when="1h", message="취소될 알림", repeat=""
+            )
+            new_tasks = [t for t in bot_module._background_tasks if t not in before]
+            self.assertTrue(new_tasks)
+            # 태스크가 sleep 에 진입하도록 한 번 양보한다.
+            await real_sleep(0)
+
+            # 방금 만든 reminder id 를 찾아 취소한다.
+            mine = await self.store.list_by_user(111)
+            self.assertEqual(len(mine), 1)
+            rid = mine[0].id
+            self.assertIn(rid, bot_module._reminder_tasks)
+            live = bot_module._reminder_tasks[rid]
+
+            cancel_inter = self._interaction()
+            await self._callback("reminders")(cancel_inter, cancel=rid)
+
+            # 라이브 태스크가 취소되고 레지스트리에서 제거됐다.
+            self.assertTrue(live.cancelled() or live.cancelling())
+            self.assertNotIn(rid, bot_module._reminder_tasks)
+            await asyncio.gather(*new_tasks, return_exceptions=True)
+
+        # 취소됐으므로 DM 은 발송되지 않는다.
+        delivered_user.send.assert_not_awaited()
+        # DB 에서도 삭제됐다.
+        self.assertEqual(await self.store.list_by_user(111), [])
 
 
 # ---------------------------------------------------------------------------

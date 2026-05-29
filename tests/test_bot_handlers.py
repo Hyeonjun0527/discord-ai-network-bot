@@ -283,7 +283,12 @@ class SummarizeHandlerTest(_HandlerCase):
         self.assertEqual(len(llm.generate_calls), 0)
 
     async def test_custom_summarize_prompt_used(self) -> None:
-        """custom_summarize_prompt 가 설정되면 {transcript} 치환 후 LLM 에 전달된다."""
+        """custom_summarize_prompt 가 설정되면 {transcript} 치환 후 LLM 에 전달된다.
+
+        #89/#116: 커스텀 경로도 _wrap_untrusted + _INJECTION_GUARD 로 인젝션 방어선을
+        유지한다. 보안 지침이 앞에 붙고 transcript 가 구분자로 래핑되므로, 커스텀
+        본문은 보안 지침 다음에 위치하고 transcript 내용은 태그로 감싸진다.
+        """
         await self.store.set_custom_prompt(222, "summarize", "요약해줘: {transcript}")
         inter = _make_interaction()
         llm = _FakeLLM("커스텀 요약")
@@ -292,8 +297,12 @@ class SummarizeHandlerTest(_HandlerCase):
 
         self.assertEqual(len(llm.generate_calls), 1)
         prompt = llm.generate_calls[0]
-        self.assertTrue(prompt.startswith("요약해줘: "))
+        # 인젝션 방어선이 앞에 붙고, 그 뒤에 커스텀 프롬프트 본문이 온다.
+        self.assertTrue(prompt.startswith("Security:"))
+        self.assertIn("요약해줘: ", prompt)
+        # transcript 내용은 들어가되 구분자 태그로 래핑된다.
         self.assertIn("본문내용", prompt)
+        self.assertIn("<transcript>", prompt)
 
 
 # ---------------------------------------------------------------------------

@@ -30,16 +30,49 @@ fi
 # ── Create backup directory if it does not exist ─────────────────────────────
 mkdir -p "$BACKUP_DIR"
 
+# ── Pick a consistent-snapshot backend ───────────────────────────────────────
+# The DB runs in WAL mode and the bot holds a live write connection, so a raw
+# `cp` of the .db file can capture an inconsistent mid-transaction state. Prefer
+# the sqlite3 CLI `.backup` (online backup). The deploy container ships Python
+# but not the sqlite3 CLI, so fall back to Python's sqlite3 `.backup()` API,
+# which performs the same consistent online backup. Only if neither is available
+# do we fall back to a (best-effort, possibly inconsistent) cp.
+PY_BIN=""
+for c in python3 python; do
+  if command -v "$c" &>/dev/null; then PY_BIN="$c"; break; fi
+done
+
 # ── Copy the database file ────────────────────────────────────────────────────
 DEST="$BACKUP_DIR/bot_${TIMESTAMP}.db"
-# Use sqlite3 .backup for a consistent snapshot when sqlite3 is available;
-# fall back to cp otherwise.
 if command -v sqlite3 &>/dev/null; then
   sqlite3 "$DB_PATH" ".backup '$DEST'"
+elif [[ -n "$PY_BIN" ]]; then
+  # Consistent online backup via Python's sqlite3 module (no CLI needed).
+  echo "$LOG_PREFIX sqlite3 CLI not found — using Python sqlite3 .backup() for a consistent snapshot."
+  "$PY_BIN" - "$DB_PATH" "$DEST" <<'PYEOF'
+import sqlite3
+import sys
+
+src_path, dest_path = sys.argv[1], sys.argv[2]
+# uri=True + mode=ro avoids creating/modifying the source; the online backup
+# API copies a transactionally consistent snapshot even while the bot writes.
+src = sqlite3.connect(f"file:{src_path}?mode=ro", uri=True)
+try:
+    dest = sqlite3.connect(dest_path)
+    try:
+        with dest:
+            src.backup(dest)
+    finally:
+        dest.close()
+finally:
+    src.close()
+PYEOF
 else
-  # WAL mode keeps recent commits in the -wal sidecar; copy it (and -shm) too
-  # so the fallback snapshot is not missing the latest transactions.
-  echo "$LOG_PREFIX WARNING: sqlite3 not found — using cp fallback (copies -wal/-shm if present)." >&2
+  # Last-resort fallback: no consistent-snapshot tool available. WAL mode keeps
+  # recent commits in the -wal sidecar; copy it (and -shm) too so the snapshot
+  # is not missing the latest transactions. This is NOT atomic and may be
+  # inconsistent for a live DB.
+  echo "$LOG_PREFIX WARNING: neither sqlite3 CLI nor python found — using cp fallback (may be inconsistent; copies -wal/-shm if present)." >&2
   cp "$DB_PATH" "$DEST"
   [[ -f "${DB_PATH}-wal" ]] && cp "${DB_PATH}-wal" "${DEST}-wal"
   [[ -f "${DB_PATH}-shm" ]] && cp "${DB_PATH}-shm" "${DEST}-shm"
@@ -55,8 +88,28 @@ if command -v sqlite3 &>/dev/null; then
     exit 1
   fi
   echo "$LOG_PREFIX Integrity check passed (PRAGMA integrity_check = ok)."
+elif [[ -n "$PY_BIN" ]]; then
+  # Integrity check via Python's sqlite3 module when the CLI is absent.
+  INTEGRITY="$("$PY_BIN" - "$DEST" <<'PYEOF' 2>&1 || echo "check-failed"
+import sqlite3
+import sys
+
+conn = sqlite3.connect(sys.argv[1])
+try:
+    row = conn.execute("PRAGMA integrity_check;").fetchone()
+finally:
+    conn.close()
+print(row[0] if row else "no-result")
+PYEOF
+)"
+  if [[ "$INTEGRITY" != "ok" ]]; then
+    echo "$LOG_PREFIX ERROR: Backup integrity check failed: $INTEGRITY. Removing corrupt backup." >&2
+    rm -f "$DEST"
+    exit 1
+  fi
+  echo "$LOG_PREFIX Integrity check passed (PRAGMA integrity_check = ok, via python)."
 else
-  echo "$LOG_PREFIX WARNING: sqlite3 not found — skipping integrity check."
+  echo "$LOG_PREFIX WARNING: neither sqlite3 CLI nor python found — skipping integrity check."
 fi
 
 # ── 오프호스트 복제 (선택) ───────────────────────────────────────────────────

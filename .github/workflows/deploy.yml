@@ -193,6 +193,13 @@ jobs:
             echo "::error::ENV_FILE 에 SECRET_KEY 가 없습니다."
             exit 1
           fi
+          # Guard: refuse to deploy with the placeholder SECRET_KEY still in place
+          # (.env.prod.example 의 'replace-with-...' 값 또는 빈 값). 공개된 약한 키로
+          # 기동되면 crypto._fernet_key 가 동일하게 재현돼 저장된 API 키가 복호화될 수 있다.
+          if grep -qE '^SECRET_KEY=(replace-with|$)' "${DEPLOY_DIR}/.env"; then
+            echo "::error::ENV_FILE 의 SECRET_KEY 가 실제 값이 아닙니다(placeholder). 시크릿을 강력한 무작위 값으로 갱신하세요."
+            exit 1
+          fi
           echo "rendered ${DEPLOY_DIR}/.env ($(grep -cE '^[A-Za-z_]+=' "${DEPLOY_DIR}/.env") keys)"
 
       - name: Sync compose file

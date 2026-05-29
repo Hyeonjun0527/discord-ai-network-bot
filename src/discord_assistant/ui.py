@@ -452,7 +452,8 @@ class _CustomModelModal(ui.Modal, title="📦  모델 직접 입력"):
             embed=_install_embed(model_name, "⏳ 설치 준비 중..."),
             view=view,
         )
-        asyncio.create_task(view.run_install(interaction))
+        # Keep a strong reference on the view so the install task survives GC.
+        view._install_task = asyncio.create_task(view.run_install(interaction))
 
 
 # ---------------------------------------------------------------------------
@@ -720,6 +721,7 @@ class ModelInstallView(ui.View):
         self.ctx = ctx
         self.guild_id = guild_id
         self._selected: str | None = model_name
+        self._install_task: asyncio.Task[None] | None = None
         installed_names = installed_names or set()
 
         options = []
@@ -761,7 +763,9 @@ class ModelInstallView(ui.View):
             embed=_install_embed(self._selected, "⏳ 설치 시작 중..."),
             view=None,
         )
-        asyncio.create_task(self.run_install(interaction))
+        # Keep a strong reference so the install task is not garbage-collected
+        # mid-run (fire-and-forget tasks can be GC'd while still pending).
+        self._install_task = asyncio.create_task(self.run_install(interaction))
 
     async def run_install(self, interaction: discord.Interaction) -> None:
         """Background task: pull model, update Discord message with spinner."""
@@ -785,6 +789,10 @@ class ModelInstallView(ui.View):
             i += 1
 
         try:
+            # Retrieve the pull result so a failed download (OllamaError 등)
+            # propagates here instead of being swallowed as an unretrieved task
+            # exception while we wrongly report '설치 완료'.
+            await pull_task
             config = await self.ctx.store.set_model(self.guild_id, model_name)
             _ = config  # provider info available if needed
             await interaction.edit_original_response(

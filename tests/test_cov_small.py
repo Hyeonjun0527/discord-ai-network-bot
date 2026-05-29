@@ -319,6 +319,57 @@ class TestObservability:
             observability.capture_exception()  # exc=None
             fake_sdk.capture_exception.assert_called_once_with()
 
+    def test_init_sentry_sets_pii_scrub_options(self):
+        # #55: init 에 send_default_pii=False + before_send 스크럽 콜백이 전달돼야 한다.
+        fake_sdk = mock.MagicMock()
+        with mock.patch.object(observability, "_HAVE_SENTRY", True), mock.patch.object(
+            observability, "sentry_sdk", fake_sdk
+        ):
+            assert observability.init_sentry("https://x@sentry.io/1") is True
+            _, kwargs = fake_sdk.init.call_args
+            assert kwargs["send_default_pii"] is False
+            assert callable(kwargs["before_send"])
+
+    def test_before_send_scrubs_sensitive_keys(self):
+        # #55: 예외 프레임 로컬 변수/extra 등에 섞인 민감 키 값이 마스킹돼야 한다.
+        event = {
+            "exception": {
+                "values": [
+                    {
+                        "stacktrace": {
+                            "frames": [
+                                {
+                                    "vars": {
+                                        "message": "secret user content",
+                                        "content": "private",
+                                        "authorization": "Bearer abc",
+                                        "api_key": "sk-123",
+                                        "token": "tok-xyz",
+                                        "safe_var": "keep-me",
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "extra": {"prompt": "leak", "user_id": 42},
+        }
+        scrubbed = observability._before_send(event, None)
+        frame_vars = scrubbed["exception"]["values"][0]["stacktrace"]["frames"][0]["vars"]
+        assert frame_vars["message"] == "[scrubbed]"
+        assert frame_vars["content"] == "[scrubbed]"
+        assert frame_vars["authorization"] == "[scrubbed]"
+        assert frame_vars["api_key"] == "[scrubbed]"
+        assert frame_vars["token"] == "[scrubbed]"
+        assert frame_vars["safe_var"] == "keep-me"  # 비민감 값은 보존
+        assert scrubbed["extra"]["prompt"] == "[scrubbed]"
+        assert scrubbed["extra"]["user_id"] == 42
+
+    def test_before_send_handles_non_dict_event(self):
+        # dict 가 아닌 이벤트는 그대로 통과(방어적).
+        assert observability._before_send("not-a-dict", None) == "not-a-dict"
+
 
 # ===========================================================================
 # metrics.py
@@ -561,6 +612,43 @@ class TestFromEnv:
         # 기본 SECRET_KEY + production -> 기동 거부.
         with pytest.raises(RuntimeError, match="SECRET_KEY"):
             settings.AppSettings.from_env(load_env_file=False)
+
+    def test_empty_secret_key_rejected_in_production(self, clean_env):
+        os.environ["DISCORD_BOT_TOKEN"] = "real-token"
+        os.environ["ENVIRONMENT"] = "production"
+        os.environ["SECRET_KEY"] = "   "  # 비어 있는(공백) 값도 production 에서 거부.
+        with pytest.raises(RuntimeError, match="SECRET_KEY"):
+            settings.AppSettings.from_env(load_env_file=False)
+
+    def test_short_secret_key_rejected_in_production(self, clean_env):
+        os.environ["DISCORD_BOT_TOKEN"] = "real-token"
+        os.environ["ENVIRONMENT"] = "production"
+        os.environ["SECRET_KEY"] = "x"  # 최소 길이 미만 -> production 거부.
+        with pytest.raises(RuntimeError, match="SECRET_KEY"):
+            settings.AppSettings.from_env(load_env_file=False)
+
+    def test_weak_variant_secret_key_rejected_in_production(self, clean_env):
+        os.environ["DISCORD_BOT_TOKEN"] = "real-token"
+        os.environ["ENVIRONMENT"] = "production"
+        os.environ["SECRET_KEY"] = "ChangeMe"  # 알려진 약한 값(대소문자 무시) -> 거부.
+        with pytest.raises(RuntimeError, match="SECRET_KEY"):
+            settings.AppSettings.from_env(load_env_file=False)
+
+    def test_strong_secret_key_accepted_in_production(self, clean_env):
+        os.environ["DISCORD_BOT_TOKEN"] = "real-token"
+        os.environ["ENVIRONMENT"] = "production"
+        strong = "a" * settings._MIN_PROD_SECRET_KEY_LENGTH  # 최소 길이 충족.
+        os.environ["SECRET_KEY"] = strong
+        cfg = settings.AppSettings.from_env(load_env_file=False)
+        assert cfg.secret_key == strong
+
+    def test_empty_secret_key_warns_in_non_prod(self, clean_env):
+        os.environ["DISCORD_BOT_TOKEN"] = "real-token"
+        os.environ["SECRET_KEY"] = ""  # 빈 값: 비프로덕션이면 경고만 하고 통과.
+        with mock.patch.object(settings._settings_log, "warning") as warn:
+            cfg = settings.AppSettings.from_env(load_env_file=False)
+        assert cfg.secret_key == ""
+        warn.assert_called()
 
     def test_empty_ollama_base_url_falls_back(self, clean_env):
         os.environ["DISCORD_BOT_TOKEN"] = "real-token"

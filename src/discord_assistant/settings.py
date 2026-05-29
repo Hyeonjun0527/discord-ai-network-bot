@@ -9,6 +9,23 @@ from dataclasses import dataclass
 
 _settings_log = logging.getLogger(__name__)
 
+# 운영(production) 환경에서 SECRET_KEY 로 허용할 최소 길이(문자 수). 너무 짧은 키는
+# 사실상 약한 암호화로 이어지므로 거부한다.
+_MIN_PROD_SECRET_KEY_LENGTH = 32
+# 정확 기본값 외에 운영 환경에서 거부할 잘 알려진 약한 SECRET_KEY 변형들(소문자 비교).
+_WEAK_SECRET_KEYS = frozenset(
+    {
+        "change-me-in-production",
+        "changeme",
+        "change-me",
+        "secret",
+        "secret-key",
+        "secretkey",
+        "password",
+        "default",
+    }
+)
+
 try:  # python-dotenv is a runtime dependency, but keep local tests resilient.
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover - only relevant before dependencies are installed.
@@ -100,16 +117,24 @@ class AppSettings:
             raise RuntimeError("DISCORD_BOT_TOKEN is required. Copy .env.example to .env first.")
 
         secret_key = os.getenv("SECRET_KEY", "change-me-in-production").strip()
-        if secret_key == "change-me-in-production":
-            # 운영 환경(production)에서는 기본 SECRET_KEY 사용을 금지하고 기동을 거부한다.
+        # 약한 SECRET_KEY 판정: 비어 있거나, 알려진 약한 값이거나, 최소 길이 미만이면 약하다.
+        # 정확 일치(기본값)뿐 아니라 빈 값·짧은 값·약한 변형을 모두 포함해 가드 우회를 막는다.
+        secret_is_weak = (
+            not secret_key
+            or secret_key.lower() in _WEAK_SECRET_KEYS
+            or len(secret_key) < _MIN_PROD_SECRET_KEY_LENGTH
+        )
+        if secret_is_weak:
+            # 운영 환경(production)에서는 약한 SECRET_KEY 사용을 금지하고 기동을 거부한다.
             if _is_production_env():
                 raise RuntimeError(
-                    "운영 환경(production)에서는 기본 SECRET_KEY('change-me-in-production')를 "
-                    "사용할 수 없습니다. .env 파일에 SECRET_KEY를 안전한 임의 값으로 설정해 주세요."
+                    "운영 환경(production)에서는 약한 SECRET_KEY(빈 값·기본값·짧은 값)를 "
+                    f"사용할 수 없습니다. 최소 {_MIN_PROD_SECRET_KEY_LENGTH}자 이상의 안전한 "
+                    "임의 값을 .env 파일의 SECRET_KEY에 설정해 주세요."
                 )
             _settings_log.warning(
-                "SECRET_KEY is using the default insecure value. "
-                "Set SECRET_KEY in your .env file for production use."
+                "SECRET_KEY is empty or using a weak/insecure value. "
+                "Set a strong SECRET_KEY in your .env file for production use."
             )
 
         ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip().rstrip("/")

@@ -662,6 +662,22 @@ class TestModelInstallView(unittest.TestCase):
         asyncio.run(view.run_install(interaction))  # type: ignore[arg-type]
         self.assertIn("알 수 없는 오류", interaction.original_edits[-1]["embed"].fields[0].value)
 
+    def test_run_install_pull_failure_reports_failure_and_skips_set_model(self) -> None:
+        # finding #63: pull(다운로드) 실패가 회수되지 않아 '설치 완료' 로 잘못
+        # 표시되던 버그의 회귀 테스트. pull 이 OllamaError 면 '설치 실패' 로 표시되고
+        # set_model 은 호출되지 않아야 한다(없는 모델로 설정되는 정합성 위반 방지).
+        store = _RichStore(_make_config(provider=LLMProvider.OLLAMA))
+        ollama = _FakeOllamaManager(pull_error=OllamaError("pull failed"))
+        view = ModelInstallView(
+            ctx=_make_ctx(store, ollama), guild_id=8, model_name="bad-model"
+        )
+        interaction = _RichInteraction()
+        asyncio.run(view.run_install(interaction))  # type: ignore[arg-type]
+        self.assertEqual(ollama.pull_calls, ["bad-model"])
+        self.assertEqual(store.set_model_calls, [])
+        self.assertIn("설치 실패", interaction.original_edits[-1]["embed"].fields[0].value)
+        self.assertIsInstance(interaction.original_edits[-1]["view"], _BackOnlyView)
+
 
 # ---------------------------------------------------------------------------
 # HelpView show_analysis / show_settings (970-976)

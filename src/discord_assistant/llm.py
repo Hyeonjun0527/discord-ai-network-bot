@@ -7,6 +7,7 @@ import json
 import logging
 import queue
 import shutil
+import threading
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Iterator
@@ -419,6 +420,10 @@ class BaseLLMClient(ABC):
 # 스트림 종료를 알리는 센티넬. (큐에 흘려보내 워커 스레드 종료를 신호한다)
 _STREAM_DONE = object()
 
+# 워커가 바운드 큐의 put 에서 블록될 때, 종료 신호(stop 이벤트)를 확인하기 위해
+# 깨어나는 주기. 소비자가 중도 종료하면 이 주기마다 stop 을 보고 워커가 빠져나간다.
+_WORKER_PUT_POLL = 0.1
+
 
 async def _iter_in_thread(
     make_iter: Callable[[], Iterator[str]],
@@ -428,17 +433,39 @@ async def _iter_in_thread(
     urllib 기반 스트리밍은 ``response.readline()`` 등이 블로킹이므로 이벤트 루프를
     막지 않도록 워커 스레드에서 실행하고, ``queue.Queue`` 로 청크를 메인 루프에
     전달한다. 워커에서 발생한 예외는 큐를 통해 전달해 호출부에서 다시 던진다.
+
+    #53/#44: 소비자가 스트림을 끝까지 읽지 않고 중단하면(break/예외/취소) 워커가
+    가득 찬 바운드 큐의 ``put`` 에서 영구 블록될 수 있다(데드락/스레드 누수). 이를
+    막기 위해 (1) 워커는 ``put`` 을 타임아웃으로 수행하며 매 주기마다 ``stop``
+    이벤트를 확인하고, (2) 소비부의 finally 에서 ``stop`` 을 set + 큐를 drain 해
+    블록된 put 을 즉시 풀어준다. 따라서 소비자가 중단해도 워커는 다음 청크 생산
+    시점(또는 블로킹 read 반환 시점)에 stop 을 보고 곧바로 빠져나가 정리된다.
     """
     q: queue.Queue[Any] = queue.Queue(maxsize=64)
+    stop = threading.Event()
+
+    def _safe_put(item: Any) -> bool:
+        """stop 이 set 될 때까지 타임아웃 put 을 반복한다. 중단되면 False."""
+        while not stop.is_set():
+            try:
+                q.put(item, timeout=_WORKER_PUT_POLL)
+                return True
+            except queue.Full:
+                continue
+        return False
 
     def _worker() -> None:
         try:
             for chunk in make_iter():
-                q.put(chunk)
+                if not _safe_put(chunk):
+                    return  # 소비자가 종료함 — DONE 도 보낼 필요 없다.
         except BaseException as exc:  # noqa: BLE001 — 예외를 메인 루프로 전달
-            q.put(exc)
+            if not _safe_put(exc):
+                return
         finally:
-            q.put(_STREAM_DONE)
+            # 정상/예외 종료 시 소비 루프가 깨어나도록 종료 센티넬을 보낸다.
+            # 소비자가 이미 떠났으면(stop) 보내지 않고 그대로 끝낸다.
+            _safe_put(_STREAM_DONE)
 
     worker = asyncio.create_task(asyncio.to_thread(_worker))
     try:
@@ -450,7 +477,20 @@ async def _iter_in_thread(
                 raise item
             yield item
     finally:
-        await worker
+        # 소비자 중도 종료를 워커에 알리고(stop), 가득 찬 큐에 막힌 put 을 풀기 위해
+        # 큐를 비운다. 워커는 다음 put 폴링에서 stop 을 보고 즉시 빠져나간다.
+        stop.set()
+        try:
+            while True:
+                q.get_nowait()
+        except queue.Empty:
+            pass
+        if worker.done():
+            await worker  # 워커 task 의 예외(있다면)를 회수한다.
+        else:
+            # 정상 경로면 워커는 곧 끝난다. 무한 await 로 이벤트 루프를 막지 않도록
+            # 완료 콜백으로 예외만 회수하고 task 를 detach 한다(스레드는 곧 종료).
+            worker.add_done_callback(lambda t: t.cancelled() or t.exception())
 
 
 # ---------------------------------------------------------------------------
@@ -1375,7 +1415,10 @@ class OllamaManager:
     async def list_models(self) -> list[OllamaModel]:
         return await asyncio.to_thread(self._list_sync)
 
-    def _list_sync(self) -> list[OllamaModel]:
+    def _list_sync(self, *, raise_on_error: bool = False) -> list[OllamaModel]:
+        # raise_on_error=False(기본): 연결/파싱 실패를 흡수해 [] 를 돌려준다(목록 조회용).
+        # raise_on_error=True: 가용성 판정용으로 예외를 전파해, '연결 실패'와 '빈 목록'을
+        #   구분할 수 있게 한다(is_available 가 사용).
         req = request.Request(
             f"{self.base_url}/api/tags",
             headers={"Accept": "application/json"},
@@ -1386,6 +1429,8 @@ class OllamaManager:
                 payload = json.loads(response.read().decode("utf-8"))
         except Exception as exc:
             logger.debug("Failed to list Ollama models: %s", exc)
+            if raise_on_error:
+                raise
             return []
         return [OllamaModel(name=m["name"], size_bytes=m.get("size", 0)) for m in payload.get("models", [])]
 
@@ -1408,8 +1453,11 @@ class OllamaManager:
             raise OllamaError(f"ollama pull 실패: {stderr.decode(errors='replace').strip()}")
 
     async def is_available(self) -> bool:
+        # 가용성 판정은 예외를 전파하는 경로(raise_on_error=True)를 써야
+        # '연결 실패(서버 다운)'와 '빈 모델 목록'을 구분할 수 있다. _list_sync 가
+        # 기본값으로 예외를 흡수하면(False) 서버가 꺼져 있어도 True 가 되어버린다.
         try:
-            await asyncio.to_thread(self._list_sync)
+            await asyncio.to_thread(self._list_sync, raise_on_error=True)
             return True
         except Exception:
             return False

@@ -23,6 +23,63 @@ except ImportError:  # pragma: no cover - sentry_sdk 미설치
 # init_sentry 가 실제로 초기화에 성공했는지 추적한다(중복 init 방지 + capture 게이트).
 _initialized = False
 
+# before_send 에서 마스킹할 민감 키 토큰(소문자 부분일치). 사용자 콘텐츠/시크릿이
+# 예외 프레임 로컬 변수·extra·request 등을 통해 외부 Sentry 로 새어 나가는 것을 막는다.
+_SENSITIVE_KEY_TOKENS = (
+    "message",
+    "content",
+    "authorization",
+    "token",
+    "api_key",
+    "apikey",
+    "secret",
+    "password",
+    "prompt",
+)
+_SCRUBBED_PLACEHOLDER = "[scrubbed]"
+
+
+def _is_sensitive_key(key: object) -> bool:
+    """키 이름에 민감 토큰이 부분일치로 포함되면 True."""
+    if not isinstance(key, str):
+        return False
+    lowered = key.lower()
+    return any(token in lowered for token in _SENSITIVE_KEY_TOKENS)
+
+
+def _scrub_value(value: Any) -> Any:
+    """dict/list 를 재귀적으로 순회하며 민감 키의 값을 마스킹한다."""
+    if isinstance(value, dict):
+        scrubbed: dict[Any, Any] = {}
+        for k, v in value.items():
+            if _is_sensitive_key(k):
+                scrubbed[k] = _SCRUBBED_PLACEHOLDER
+            else:
+                scrubbed[k] = _scrub_value(v)
+        return scrubbed
+    if isinstance(value, list):
+        return [_scrub_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_scrub_value(item) for item in value)
+    return value
+
+
+def _before_send(event: Any, hint: Any = None) -> Any:  # noqa: ARG001 - hint 는 Sentry 시그니처 요구
+    """Sentry 전송 직전 이벤트의 민감 키를 마스킹하는 콜백 (#55 PII 스크럽).
+
+    예외 프레임 로컬 변수(``exception.values[].stacktrace.frames[].vars``),
+    request 데이터, extra/contexts 등에 섞여 들어올 수 있는 사용자 메시지·토큰·
+    API 키를 ``[scrubbed]`` 로 치환한다. 어떤 예외도 새지 않게 방어한다(스크럽
+    실패가 전송 자체를 막지 않도록 — 단, 실패 시에는 원본 대신 None 을 반환해
+    민감정보 유출보다 이벤트 드롭을 택한다).
+    """
+    try:
+        if isinstance(event, dict):
+            return _scrub_value(event)
+        return event
+    except Exception:  # pragma: no cover - 방어적: 스크럽 실패 시 유출 방지로 드롭
+        return None
+
 
 def init_sentry(dsn: str | None, *, environment: str | None = None) -> bool:
     """SENTRY_DSN 이 주어지고 sentry_sdk 가 설치된 경우에만 Sentry 를 초기화한다 (#55).
@@ -47,7 +104,13 @@ def init_sentry(dsn: str | None, *, environment: str | None = None) -> bool:
     if _initialized:
         return True
     try:
-        kwargs: dict[str, Any] = {"dsn": dsn}
+        kwargs: dict[str, Any] = {
+            "dsn": dsn,
+            # 사용자/요청 PII 자동 첨부 비활성화 (#55).
+            "send_default_pii": False,
+            # 전송 직전 민감 키(message/content/token/api_key 등) 마스킹.
+            "before_send": _before_send,
+        }
         if environment:
             kwargs["environment"] = environment
         sentry_sdk.init(**kwargs)

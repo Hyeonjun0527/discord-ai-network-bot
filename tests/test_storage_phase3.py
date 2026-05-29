@@ -355,6 +355,42 @@ class PurgeRetentionTest(_FileStoreCase):
         with self.assertRaises(ValueError):
             await self.store.purge_old(usage_days=7, chat_days=-1)
 
+    async def _backdate_usage_iso_at_cutoff(self, retention_days: int) -> None:
+        """usage_log 한 행의 created_at 을 _utc_now() 와 동일한 ISO 포맷
+        ('T' 구분자 + '+00:00' 오프셋)으로, 컷오프 '날짜' 와 같은 날짜이되
+        컷오프 '시각' 보다 1시간 더 과거로 조정한다 (#72).
+
+        이 경계(같은 날짜, 더 과거 시각) 행은 보존 기간을 넘겼으므로 삭제돼야
+        한다. 과거 버그(양변 정규화 없는 문자열 비교)에서는 'T'(84) > ' '(32)
+        때문에 컷오프 날짜의 행이 시각과 무관하게 컷오프보다 '크다'고 판정돼
+        삭제되지 않고 남았다. 프로덕션 경로(log_usage)의 실제 포맷을 재현한다.
+        """
+        await self.store.log_usage(
+            UsageLog(guild_id=1, channel_id=2, user_id=3, command="ask", status="ok", latency_ms=10)
+        )
+        conn = self.store._connect()
+        try:
+            # 컷오프('now','-Nd')와 같은 날짜이되 1시간 더 과거인 ISO 문자열.
+            conn.execute(
+                "UPDATE usage_log "
+                "SET created_at = "
+                "  strftime('%Y-%m-%dT%H:%M:%S', 'now', ?, '-1 hours') || '+00:00' "
+                "WHERE id = (SELECT MAX(id) FROM usage_log)",
+                (f"-{retention_days} days",),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    async def test_purge_deletes_iso_row_on_cutoff_date(self) -> None:
+        # #72 회귀: created_at 이 ISO('T'+오프셋) 포맷이고 컷오프 날짜와 같은
+        # 날짜이되 더 과거 시각인 행은 정상 삭제돼야 한다. 과거 버그에서는
+        # 단순 문자열 비교 탓에 삭제되지 않고 남았다(최대 약 하루치 잔존).
+        await self._backdate_usage_iso_at_cutoff(retention_days=7)
+        result = await self.store.purge_old(usage_days=7, chat_days=7)
+        self.assertEqual(result["usage_log"], 1)
+        self.assertEqual(self._count("usage_log"), 0)
+
 
 class VacuumTest(_FileStoreCase):
     """DB 파일 유지보수 (#33)."""

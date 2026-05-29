@@ -85,6 +85,10 @@ class AppSettings:
     anthropic_max_tokens: int = 4096
     gemini_temperature: float = 0.2
     llm_system_prompt: str = "You are a helpful Discord bot assistant."
+    # 관측성(선택적). metrics_port=0 이면 헬스/메트릭 서버 비활성, sentry_dsn 이
+    # 빈 문자열이면 Sentry 비활성. 둘 다 의존성 미설치 시에도 안전하게 무시된다.
+    metrics_port: int = 0
+    sentry_dsn: str = ""
 
     @classmethod
     def from_env(cls, *, load_env_file: bool = True) -> "AppSettings":
@@ -134,4 +138,7 @@ class AppSettings:
                 os.getenv("LLM_SYSTEM_PROMPT", "").strip()
                 or "You are a helpful Discord bot assistant."
             ),
+            # #48/#55 관측성. 0/빈값이면 비활성(기본). 음수 포트는 0(비활성)으로 취급.
+            metrics_port=_get_int("METRICS_PORT", 0, minimum=0),
+            sentry_dsn=os.getenv("SENTRY_DSN", "").strip(),
         )

@@ -27,6 +27,12 @@ dev = [
   "ruff>=0.4,<1.0",
   "mypy>=1.10,<2.0",
 ]
+# 관측성(선택적, 런타임 필수 아님). 미설치 시 메트릭/Sentry 기능만 비활성화되며
+# 봇은 정상 동작한다(import 가드). `pip install '.[observability]'` 로 활성화.
+observability = [
+  "prometheus-client>=0.20,<1.0",
+  "sentry-sdk>=2.0,<3.0",
+]
 
 [project.scripts]
 discord-assistant = "discord_assistant.bot:main"

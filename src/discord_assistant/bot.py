@@ -18,9 +18,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from . import metrics, observability
 from .cache import get_translation, set_translation, summarize_cache
 from .context import build_transcript, from_discord_message, normalize_content
 from .crypto import CryptoError, decrypt_api_key
+from .health import HealthServer
 from .llm import (
     AnthropicClient,
     BaseLLMClient,
@@ -941,6 +943,9 @@ async def _record_usage(
         logger.warning(
             "느린 응답 감지: %s %dms (cid=%s)", command, latency_ms, get_correlation_id()
         )
+    # #47: SQLite 기록과 병행해 Prometheus 메트릭에도 기록한다.
+    # prometheus_client 미설치 시 record_command 는 no-op 이므로 안전하다.
+    metrics.record_command(command, status, latency_ms)
     await store.log_usage(
         UsageLog(
             guild_id=guild_id,
@@ -1005,13 +1010,26 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     view_ctx = ViewCtx(store=store, ollama_manager=ollama_manager, secret_key=settings.secret_key)
 
     class AssistantBot(commands.Bot):
+        # #48: 헬스/메트릭 HTTP 서버. METRICS_PORT=0(기본)이면 start 가 건너뛴다.
+        health_server: HealthServer
+
         async def setup_hook(self) -> None:
             await store.initialize()
             if settings.auto_sync_commands:
                 synced = await self.tree.sync()
                 logger.info("Synced %d application command(s).", len(synced))
+            # #48: 헬스/메트릭 서버 기동(포트 0이면 no-op). 기동 실패는 봇 기동을
+            # 막지 않도록 HealthServer 내부에서 예외를 흡수한다.
+            await self.health_server.start()
+
+        async def close(self) -> None:
+            # #48: graceful shutdown 시 헬스 서버를 먼저 정리한다(멱등).
+            await self.health_server.stop()
+            await super().close()
 
     bot = AssistantBot(command_prefix="!", intents=intents)
+    # 봇 인스턴스를 readiness provider 로 넘긴다(bot.is_ready()).
+    bot.health_server = HealthServer(bot, port=settings.metrics_port)
 
     # ------------------------------------------------------------------
     # Reminders — 영속 예약 전송 (#1/#2/#3)
@@ -2913,6 +2931,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         if exc is not None:
             logger.exception("Unhandled error in event '%s'.", event, exc_info=exc_info)
             msg = format_error_message(event, exc)
+            # #55: Sentry 가 활성화돼 있으면 예외를 함께 수집한다(미설정/미설치면 no-op).
+            observability.capture_exception(exc)
         else:
             logger.error("Unhandled error in event '%s' (no exception info).", event)
             msg = f"[discord-assistant] Unhandled error in event `{event}` (no exception details)."
@@ -3236,6 +3256,12 @@ async def run_bot(settings: AppSettings, bot: commands.Bot | None = None) -> Non
 
 def main() -> None:
     settings = AppSettings.from_env()
+    # #55: SENTRY_DSN 이 설정돼 있으면 에러 트래킹을 초기화한다(미설정/미설치면 no-op).
+    # 환경(production/staging 등) 태그는 ENVIRONMENT/APP_ENV 환경 변수에서 읽는다.
+    observability.init_sentry(
+        settings.sentry_dsn,
+        environment=os.getenv("ENVIRONMENT") or os.getenv("APP_ENV"),
+    )
     bot = create_bot(settings)
     # 기존 ``bot.run`` 동작과 동등하되, SIGTERM/SIGINT 시 graceful shutdown 한다 (#49).
     try:

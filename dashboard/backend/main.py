@@ -30,6 +30,29 @@ from pydantic import BaseModel
 from .auth import router as auth_router
 from .deps import CurrentUser
 
+# #29: DB 경로 해석·연결 PRAGMA·스키마 인식을 봇과 동일한 공용 storage 레이어로
+# 통합한다. discord_assistant 는 프로젝트의 editable 설치(src 가 sys.path 에 등록)로
+# 어느 cwd 에서든 import 가능하지만, 만약을 대비해 import 가드를 둔다. import 가
+# 실패하면 대시보드는 기존 인라인 구현으로 자동 폴백하여 크래시하지 않는다.
+try:  # pragma: no cover - import 성공 경로가 정상
+    from discord_assistant.models import GuildConfig, LLMProvider
+    from discord_assistant.storage import (
+        ConfigStore,
+        sqlite_path_from_database_url,
+    )
+    from discord_assistant.storage import (
+        _apply_pragmas as _storage_apply_pragmas,
+    )
+
+    _STORAGE_AVAILABLE = True
+except Exception:  # pragma: no cover - 방어적 폴백(미설치/경로 문제)
+    ConfigStore = None  # type: ignore[assignment,misc]
+    GuildConfig = None  # type: ignore[assignment,misc]
+    LLMProvider = None  # type: ignore[assignment,misc]
+    _storage_apply_pragmas = None  # type: ignore[assignment]
+    sqlite_path_from_database_url = None  # type: ignore[assignment]
+    _STORAGE_AVAILABLE = False
+
 # Simple in-memory rate limiter: ip -> list of timestamps
 _rate_limit_store: dict[str, list[float]] = defaultdict(list)
 _RATE_LIMIT_MAX = 60   # requests
@@ -54,19 +77,48 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
+#
+# #29: DB 경로 해석과 연결 PRAGMA 를 봇과 단일 출처로 통합한다.
+#   * 경로 해석: DATABASE_URL → sqlite 경로 변환은 공용
+#     ``storage.sqlite_path_from_database_url`` 을 재사용한다(스킴 인식 단일 출처).
+#     대시보드 고유의 "상대 경로를 dashboard/backend/ 기준으로 해석" 동작은 그대로
+#     보존한다(기본 DATABASE_URL 이 ../../data/... 인 배포 호환).
+#   * 연결 PRAGMA: 봇과 동일하게 ``storage._apply_pragmas`` (WAL/foreign_keys/
+#     busy_timeout/synchronous) 를 적용해 잠금/내구성 설정을 일치시킨다.
+# storage import 실패 시(가드)에는 기존 인라인 동작으로 폴백한다.
 
 _DB_PATH: str = ""
 
+# #29: config GET/PUT·api-key 조작을 봇과 동일한 스키마 인식으로 처리하기 위한
+# 공용 ConfigStore. lifespan 에서 1회 초기화하고(_ensure_schema) 재사용한다.
+_config_store: "ConfigStore | None" = None
+
 
 def _resolve_db_path() -> str:
-    """Resolve the DATABASE_URL to a filesystem path for aiosqlite."""
+    """Resolve the DATABASE_URL to a filesystem path for aiosqlite.
+
+    #29: ``sqlite:///`` / ``:memory:`` / 평문 경로 → sqlite 경로 변환은 공용
+    ``storage.sqlite_path_from_database_url`` 을 재사용한다(스킴 인식 단일 출처).
+    대시보드 고유의 상대 경로 해석(dashboard/backend/ 기준)은 그대로 유지한다.
+    storage import 가 불가하면 기존 인라인 파싱으로 폴백한다.
+    """
     raw = os.getenv("DATABASE_URL", "sqlite:///../../data/discord_assistant.db")
-    if raw.startswith("sqlite:///"):
+    path: str
+    if _STORAGE_AVAILABLE:
+        # 공용 변환기로 스킴을 해석한다(postgres:// 등은 ValueError 를 던지므로
+        # 인라인 폴백으로 안전하게 받아 평문 경로로 취급한다 — 기존 동작 보존).
+        try:
+            path = sqlite_path_from_database_url(raw)
+        except ValueError:
+            path = raw
+    elif raw.startswith("sqlite:///"):
         path = raw.removeprefix("sqlite:///")
     elif raw == ":memory:":
         return raw
     else:
         path = raw
+    if path == ":memory:":
+        return path
     # Resolve relative paths relative to the project root (two levels up from this file)
     p = Path(path)
     if not p.is_absolute():
@@ -76,11 +128,31 @@ def _resolve_db_path() -> str:
 
 
 async def _get_db() -> aiosqlite.Connection:
-    """Open and return an aiosqlite connection. Caller must close it."""
+    """Open and return an aiosqlite connection. Caller must close it.
+
+    #29: 봇(storage)과 동일한 PRAGMA(WAL/foreign_keys/busy_timeout/synchronous)를
+    적용해 잠금/내구성 설정을 일치시킨다. ``_apply_pragmas`` 는 동기 sqlite3
+    헬퍼이므로 aiosqlite 의 전용 스레드(_execute)에서 실행한다. storage import
+    가 불가하면 PRAGMA 적용을 건너뛰고 기존처럼 연결만 돌려준다(폴백).
+    """
     db_path = _DB_PATH or _resolve_db_path()
     conn = await aiosqlite.connect(db_path)
     conn.row_factory = aiosqlite.Row
+    if _STORAGE_AVAILABLE and db_path != ":memory:":
+        # 봇과 동일한 PRAGMA 묶음을 적용한다(단일 출처). 동기 헬퍼를 aiosqlite
+        # 전용 스레드에서 실행해 연결 설정을 일치시킨다.
+        await conn._execute(_storage_apply_pragmas, conn._conn)
     return conn
+
+
+def _get_config_store() -> "ConfigStore | None":
+    """공용 ConfigStore 싱글턴을 반환한다 (#29).
+
+    config GET/PUT·api-key 라우트가 봇과 동일한 스키마 인식·연결 설정으로
+    동작하도록 ConfigStore 를 재사용한다. storage import 가 불가하면 None 을
+    돌려주어 호출 측이 기존 인라인 SQL 경로로 폴백하게 한다.
+    """
+    return _config_store
 
 
 # ---------------------------------------------------------------------------
@@ -90,9 +162,34 @@ async def _get_db() -> aiosqlite.Connection:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _DB_PATH
+    global _DB_PATH, _config_store
     _DB_PATH = _resolve_db_path()
-    yield
+    if _STORAGE_AVAILABLE:
+        # 봇과 동일한 ConfigStore 로 스키마/마이그레이션을 보장하고(스키마 인식
+        # 일치), config/api-key 라우트가 이를 재사용하게 한다. 초기화 실패 시
+        # 대시보드는 기존 인라인 SQL 경로로 폴백한다(크래시 방지).
+        #
+        # 상대 경로 해석은 대시보드 고유 로직(_resolve_db_path)을 신뢰하고,
+        # ConfigStore 에는 해석이 끝난 절대 경로를 sqlite:/// URL 로 넘긴다.
+        store_url = _DB_PATH if _DB_PATH == ":memory:" else f"sqlite:///{_DB_PATH}"
+        try:
+            store = ConfigStore(
+                store_url,
+                default_model=os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
+                default_summary_limit=50,
+                default_language="ko",
+            )
+            await store.initialize()
+            _config_store = store
+        except Exception:
+            _config_store = None
+    try:
+        yield
+    finally:
+        store = _config_store
+        _config_store = None
+        if store is not None:
+            await store.close()
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +275,27 @@ async def get_guild_config(guild_id: int, user: CurrentUser, request: Request) -
     """Return the stored config for a guild.  The caller must belong to the guild."""
     # 레이트 리밋은 _rate_limit_middleware 가 일괄 적용한다 (#43).
     _assert_guild_access(user, guild_id)
+
+    # #29: 공용 ConfigStore 로 봇과 동일한 스키마 인식으로 설정을 읽는다.
+    # ConfigStore.get_guild_config 는 행이 없으면 기본값을 채운 GuildConfig 를
+    # 돌려주므로(updated_at 미보관), 행 존재 여부는 updated_at 조회로 보완한다.
+    store = _get_config_store()
+    if store is not None:
+        cfg = await store.get_guild_config(guild_id)
+        updated_at = await _read_config_updated_at(guild_id)
+        return JSONResponse(
+            {
+                "guild_id": guild_id,
+                "model": cfg.model,
+                "summary_limit": cfg.summary_limit,
+                "language": cfg.language,
+                "provider": cfg.provider.value,
+                "auto_summary_interval": cfg.auto_summary_interval,
+                "updated_at": updated_at,
+            }
+        )
+
+    # 폴백(인라인 SQL): storage import 불가 시.
     db = await _get_db()
     try:
         async with db.execute(
@@ -207,6 +325,25 @@ async def get_guild_config(guild_id: int, user: CurrentUser, request: Request) -
     return JSONResponse(dict(row))
 
 
+async def _read_config_updated_at(guild_id: int) -> str | None:
+    """guild_config.updated_at 만 얇게 조회한다 (#29).
+
+    ConfigStore.get_guild_config 는 updated_at 을 GuildConfig 에 보관하지 않으므로,
+    GET 응답의 updated_at 필드를 채우기 위한 보조 thin 쿼리다. 경로 해석·연결
+    PRAGMA 는 공용화된 ``_get_db`` 를 그대로 사용한다.
+    """
+    db = await _get_db()
+    try:
+        async with db.execute(
+            "SELECT updated_at FROM guild_config WHERE guild_id = ?",
+            (guild_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    finally:
+        await db.close()
+    return row["updated_at"] if row else None
+
+
 @app.put("/api/guilds/{guild_id}/config", tags=["guilds"])
 async def update_guild_config(
     guild_id: int,
@@ -219,6 +356,14 @@ async def update_guild_config(
     # 설정 변경은 관리자(Administrator/소유자)만 허용한다 (#79).
     _assert_guild_admin(user, guild_id)
 
+    # #29: 공용 ConfigStore 가 있으면 봇과 동일한 전체 컬럼 upsert(스키마 drift
+    # 방지의 단일 출처)로 부분 갱신을 수행한다. 대시보드 고유의 입력 검증(400)은
+    # 그대로 라우트에서 처리한다.
+    store = _get_config_store()
+    if store is not None:
+        return await _update_guild_config_via_store(store, guild_id, body)
+
+    # 폴백(인라인 SQL): storage import 불가 시.
     db = await _get_db()
     try:
         # 전체 컬럼을 읽어 기존 값을 보존한다 (#30: 스키마 drift 방지).
@@ -329,6 +474,70 @@ async def update_guild_config(
             # #80: 자동 요약 주기(분) 도 노출한다.
             "auto_summary_interval": current["auto_summary_interval"],
             "updated_at": now,
+        }
+    )
+
+
+async def _update_guild_config_via_store(
+    store: "ConfigStore", guild_id: int, body: GuildConfigUpdate
+) -> JSONResponse:
+    """ConfigStore 를 통한 부분 config 갱신 (#29).
+
+    봇과 동일한 전체 컬럼 upsert(``ConfigStore._upsert``)를 단일 출처로 재사용해
+    스키마 drift(일부 컬럼만 쓰면서 나머지가 NULL 로 덮이는 문제)를 방지한다.
+    현재 행을 ``get_guild_config`` 로 읽어 모든 컬럼을 보존한 뒤, 대시보드가
+    노출하는 필드만 검증·치환해 ``replace`` 한다. 검증 실패는 인라인 경로와
+    동일한 400 응답으로 변환한다.
+    """
+    from dataclasses import replace
+
+    current = await store.get_guild_config(guild_id)
+
+    overrides: dict[str, Any] = {}
+    if body.model is not None:
+        overrides["model"] = body.model.strip()
+    if body.summary_limit is not None:
+        if not (1 <= body.summary_limit <= 200):
+            raise HTTPException(status_code=400, detail="summary_limit must be 1–200")
+        overrides["summary_limit"] = body.summary_limit
+    if body.language is not None:
+        overrides["language"] = body.language.strip()
+    if body.provider is not None:
+        # provider 문자열을 봇과 동일한 LLMProvider enum 으로 변환한다(스키마 인식
+        # 일치). 알 수 없는 값은 400 으로 거절한다.
+        raw_provider = body.provider.strip()
+        try:
+            overrides["provider"] = LLMProvider(raw_provider)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail=f"unknown provider: {raw_provider}"
+            ) from None
+    # 자동 요약 주기(분) (#80). None 이 '미전송'이 아니라 '자동요약 끄기'를 뜻할 수
+    # 있으므로, 필드가 실제로 전송됐는지(model_fields_set)로 판별한다.
+    if "auto_summary_interval" in body.model_fields_set:
+        interval = body.auto_summary_interval
+        if interval is not None and interval < 5:
+            raise HTTPException(
+                status_code=400,
+                detail="auto_summary_interval must be None (off) or >= 5 minutes",
+            )
+        overrides["auto_summary_interval"] = interval
+
+    updated = replace(current, **overrides)
+    # 봇과 동일한 전체 컬럼 upsert(updated_at 갱신 포함). 스키마 인식 단일 출처.
+    await store._upsert(updated)
+
+    # 방금 쓰인 updated_at 을 그대로 응답에 싣는다(기존 동작 보존).
+    updated_at = await _read_config_updated_at(guild_id)
+    return JSONResponse(
+        {
+            "guild_id": guild_id,
+            "model": updated.model,
+            "summary_limit": updated.summary_limit,
+            "language": updated.language,
+            "provider": updated.provider.value,
+            "auto_summary_interval": updated.auto_summary_interval,
+            "updated_at": updated_at,
         }
     )
 
@@ -589,6 +798,15 @@ async def get_api_key_status(guild_id: int, user: CurrentUser) -> JSONResponse:
     """Return whether an API key is set (never returns the actual key)."""
     # API 키 상태/조작은 관리자만 접근할 수 있게 한다 (#79).
     _assert_guild_admin(user, guild_id)
+
+    # #29: 공용 ConfigStore 로 봇과 동일한 스키마 인식으로 api_key 보유 여부만
+    # 판별한다(실제 키 값은 절대 노출하지 않음).
+    store = _get_config_store()
+    if store is not None:
+        cfg = await store.get_guild_config(guild_id)
+        return JSONResponse({"has_key": bool(cfg.api_key_encrypted)})
+
+    # 폴백(인라인 SQL): storage import 불가 시.
     db = await _get_db()
     try:
         async with db.execute(
@@ -608,6 +826,17 @@ async def clear_api_key(guild_id: int, user: CurrentUser) -> JSONResponse:
     """Clear the stored API key for a guild."""
     # 키 삭제는 관리자만 허용한다 (#79).
     _assert_guild_admin(user, guild_id)
+
+    # #29: 공용 ConfigStore 로 키를 지운다. 단, 기존 인라인 동작(존재하지 않는
+    # 행에 대한 UPDATE 는 no-op, 새 행을 만들지 않음)을 보존하기 위해, 행이 이미
+    # 있을 때만 store.clear_api_key 를 호출한다(없으면 멱등한 no-op).
+    store = _get_config_store()
+    if store is not None:
+        if await _config_row_exists(guild_id):
+            await store.clear_api_key(guild_id)
+        return JSONResponse({"cleared": True})
+
+    # 폴백(인라인 SQL): storage import 불가 시.
     db = await _get_db()
     try:
         await db.execute(
@@ -618,6 +847,25 @@ async def clear_api_key(guild_id: int, user: CurrentUser) -> JSONResponse:
     finally:
         await db.close()
     return JSONResponse({"cleared": True})
+
+
+async def _config_row_exists(guild_id: int) -> bool:
+    """guild_config 에 해당 길드 행이 존재하는지 thin 쿼리로 확인한다 (#29).
+
+    clear_api_key 가 기존 인라인 UPDATE 처럼 '없는 행은 건드리지 않는' 의미를
+    유지하도록(새 기본 행을 만들지 않도록) 보조한다. 경로 해석·연결 PRAGMA 는
+    공용화된 ``_get_db`` 를 사용한다.
+    """
+    db = await _get_db()
+    try:
+        async with db.execute(
+            "SELECT 1 FROM guild_config WHERE guild_id = ?",
+            (guild_id,),
+        ) as c:
+            row = await c.fetchone()
+    finally:
+        await db.close()
+    return row is not None
 
 
 # ---------------------------------------------------------------------------

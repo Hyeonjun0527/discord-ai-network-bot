@@ -4,7 +4,10 @@ scripts/healthcheck.py — Bot uptime / health probe.
 
 Checks:
   1. SQLite DB is accessible and has the guild_config table.
-  2. (Optional) Ollama HTTP endpoint responds within 5 seconds —
+  2. (Optional) /readyz endpoint responds 200 — only when the bot's health
+     server is enabled (METRICS_PORT > 0). When disabled the check is skipped,
+     so existing deployments keep relying on the DB check (backward compatible).
+  3. (Optional) Ollama HTTP endpoint responds within 5 seconds —
      only when HEALTHCHECK_REQUIRE_OLLAMA is truthy. Cloud-API deployments
      (OpenAI/Anthropic) have no Ollama service, so this is skipped by default.
 
@@ -70,6 +73,38 @@ def check_ollama() -> tuple[bool, str]:
         return False, f"Ollama connection error: {exc} ({url})"
 
 
+def _metrics_port() -> int:
+    """Resolve the bot health-server port from METRICS_PORT (0 = disabled)."""
+    raw = os.getenv("METRICS_PORT", "").strip()
+    if not raw:
+        return 0
+    try:
+        port = int(raw)
+    except ValueError:
+        return 0
+    return port if port > 0 else 0
+
+
+def check_readyz() -> tuple[bool, str]:
+    """Return (ok, message) for the bot /readyz endpoint health check."""
+    port = _metrics_port()
+    host = os.getenv("HEALTHCHECK_HOST", "localhost").strip() or "localhost"
+    url = f"http://{host}:{port}/readyz"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if resp.status == 200:
+                return True, f"Bot ready ({url})"
+            return False, f"/readyz returned HTTP {resp.status} ({url})"
+    except urllib.error.HTTPError as exc:
+        # 503 = bot not ready yet. Surface the status explicitly.
+        return False, f"/readyz returned HTTP {exc.code} ({url})"
+    except urllib.error.URLError as exc:
+        return False, f"/readyz unreachable: {exc} ({url})"
+    except OSError as exc:
+        return False, f"/readyz connection error: {exc} ({url})"
+
+
 def _require_ollama() -> bool:
     return os.getenv("HEALTHCHECK_REQUIRE_OLLAMA", "false").strip().lower() in {
         "1", "true", "yes", "y", "on",
@@ -78,6 +113,10 @@ def _require_ollama() -> bool:
 
 def main() -> None:
     results: list[tuple[bool, str]] = [check_database()]
+    # Probe /readyz only when the health server is enabled (METRICS_PORT > 0).
+    # When disabled, fall back to the DB check alone (backward compatible).
+    if _metrics_port() > 0:
+        results.append(check_readyz())
     # Only gate on Ollama when explicitly required (e.g. Ollama-backed deploys).
     if _require_ollama():
         results.append(check_ollama())

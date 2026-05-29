@@ -39,7 +39,7 @@
 - [x] 26. 버전 추적형 마이그레이션 프레임워크(schema_version + 순차 migration) · L
 - [x] 27. usage_log·chat_history 시간 기반 retention 정리 백그라운드 태스크 · M
 - [x] 28. 백업 복원 스크립트(`scripts/restore.sh`) + 백업→복원 왕복 테스트 · M
-- [ ] 29. 대시보드 중복 DB 접근 로직을 공용 storage 레이어로 통합 · M
+- [x] 29. 대시보드 중복 DB 접근 로직을 공용 storage 레이어로 통합 · M
 - [x] 30. 대시보드 guild_config PUT의 컬럼 누락(스키마 drift) 수정 · M
 - [x] 31. `DATABASE_URL` postgresql:// 지원을 위한 스토리지 백엔드 추상화 · L
 - [x] 32. 쿼리 경로 인덱스 점검(EXPLAIN QUERY PLAN 기반 보강) · M
@@ -63,15 +63,15 @@
 
 - [x] 45. 구조화 JSON 로깅 도입(basicConfig → 컨텍스트 바인딩) · M
 - [x] 46. correlation_id(interaction.id) 발급 + 전 로그/usage 전파 · M
-- [ ] 47. Prometheus 메트릭 익스포터(명령 카운터·지연·에러율) · M
-- [ ] 48. 봇 프로세스 헬스/메트릭 HTTP 서버(/healthz·/readyz·/metrics) · M
+- [x] 47. Prometheus 메트릭 익스포터(명령 카운터·지연·에러율) · M
+- [x] 48. 봇 프로세스 헬스/메트릭 HTTP 서버(/healthz·/readyz·/metrics) · M
 - [x] 49. graceful shutdown(SIGTERM/SIGINT) + async 진입점 전환 · M
 - [x] 50. `ConfigStore.close()` 정리 루틴 + 종료 시 호출 · S
 - [x] 51. fire-and-forget 태스크 추적 + 예외 핸들러 부착 · M
 - [x] 52. LLM provider별 서킷 브레이커 도입 · L
 - [x] 53. `notify_developer` 알림 레이트리밋·중복 억제(dedup) · M
 - [x] 54. on_disconnect 오탐 제거(on_resumed + 지속 단절 임계 알림) · M
-- [ ] 55. Sentry(선택적) 에러 트래킹 통합 · M
+- [x] 55. Sentry(선택적) 에러 트래킹 통합 · M
 
 ## 🧪 테스트 / 품질 (56~67)
 

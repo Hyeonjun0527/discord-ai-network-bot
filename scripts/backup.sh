@@ -59,6 +59,36 @@ else
   echo "$LOG_PREFIX WARNING: sqlite3 not found — skipping integrity check."
 fi
 
+# ── 오프호스트 복제 (선택) ───────────────────────────────────────────────────
+# BACKUP_REMOTE 가 설정되면 검증된 백업본을 원격으로 복제한다 (#75).
+#   - rclone remote(예: "myremote:bot-backups") → rclone 사용
+#   - 그 외(예: "user@host:/srv/backups" 또는 "/mnt/nas/backups") → rsync 사용
+# 미설정 시 조용히 스킵. 시크릿/자격증명은 rclone/ssh 설정 또는 환경에 위임하며
+# 이 스크립트는 어떤 비밀도 출력하지 않는다.
+BACKUP_REMOTE="${BACKUP_REMOTE:-}"
+if [[ -n "$BACKUP_REMOTE" ]]; then
+  if [[ "$BACKUP_REMOTE" == *:* && "$BACKUP_REMOTE" != /* && "$BACKUP_REMOTE" != *@*:* ]] \
+     && command -v rclone &>/dev/null; then
+    # "remote:path" 형태이고 rclone 이 있으면 rclone 으로 복제
+    echo "$LOG_PREFIX Replicating backup to rclone remote (target redacted)…"
+    if rclone copy "$DEST" "$BACKUP_REMOTE/" >/dev/null 2>&1; then
+      echo "$LOG_PREFIX Off-host replication via rclone succeeded."
+    else
+      echo "$LOG_PREFIX WARNING: rclone replication failed (backup kept locally)." >&2
+    fi
+  elif command -v rsync &>/dev/null; then
+    # rsync 대상(로컬 경로 또는 user@host:path)
+    echo "$LOG_PREFIX Replicating backup to rsync target (target redacted)…"
+    if rsync -a "$DEST" "$BACKUP_REMOTE" >/dev/null 2>&1; then
+      echo "$LOG_PREFIX Off-host replication via rsync succeeded."
+    else
+      echo "$LOG_PREFIX WARNING: rsync replication failed (backup kept locally)." >&2
+    fi
+  else
+    echo "$LOG_PREFIX WARNING: BACKUP_REMOTE set but neither rclone nor rsync available — skipping." >&2
+  fi
+fi
+
 # ── Prune backups older than 7 days ─────────────────────────────────────────
 KEEP=7
 DELETED=0

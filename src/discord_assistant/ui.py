@@ -12,13 +12,21 @@ import discord
 from discord import ui
 
 from .crypto import encrypt_api_key
-from .llm import OllamaError, OllamaManager
+from .llm import (
+    AnthropicError,
+    CircuitBreakerOpenError,
+    LLMError,
+    OllamaError,
+    OllamaManager,
+    OpenAIError,
+)
 from .models import GuildConfig, LLMProvider, OllamaModel
+from .prompts import _LANGUAGE_LABELS
 from .prompts import language_label as _language_label_from_prompts
 from .storage import ConfigStore
 
 if TYPE_CHECKING:
-    pass
+    from collections.abc import Awaitable, Callable
 
 
 # ---------------------------------------------------------------------------
@@ -72,8 +80,30 @@ class ViewCtx:
 # ---------------------------------------------------------------------------
 
 
+# 지원 언어 코드 → 사람이 읽는 라벨. prompts._LANGUAGE_LABELS + 'auto' 자동 감지.
+# 자유 텍스트 입력 대신 이 목록으로만 언어를 선택하게 해 오타/미지원 코드를 차단한다.
+_AUTO_LANGUAGE_LABEL = "자동 감지 (Auto-detect)"
+
+
 def _language_label(code: str) -> str:
+    normalized = code.strip().lower()
+    if normalized == "auto":
+        return _AUTO_LANGUAGE_LABEL
     return _language_label_from_prompts(code)
+
+
+def _supported_language_options() -> list[discord.SelectOption]:
+    """지원 언어 코드 7개 + 'auto'를 Select 옵션으로 반환한다.
+
+    prompts._LANGUAGE_LABELS 를 단일 출처(SSOT)로 사용해 prompts 쪽에 언어가
+    추가되면 자동으로 드롭다운에도 반영되게 한다.
+    """
+    options = [
+        discord.SelectOption(label="🌐  " + _AUTO_LANGUAGE_LABEL, value="auto"),
+    ]
+    for code, label in _LANGUAGE_LABELS.items():
+        options.append(discord.SelectOption(label=label, value=code))
+    return options[:25]
 
 
 def _api_key_status(config: GuildConfig) -> str:
@@ -170,7 +200,22 @@ def _general_settings_embed(config: GuildConfig) -> discord.Embed:
         inline=True,
     )
     embed.add_field(name="📊  요약 범위", value=f"{config.summary_limit}개 메시지", inline=True)
-    embed.set_footer(text="ko · en · ja · zh · fr · de · es 등 언어 코드를 사용하세요")
+    embed.set_footer(text="ko · en · ja · zh · fr · de · es 등 지원 언어 중에서 선택하세요")
+    return embed
+
+
+def _language_select_embed(config: GuildConfig) -> discord.Embed:
+    embed = discord.Embed(
+        title="🌐  응답 언어 선택",
+        description="아래 드롭다운에서 봇이 응답할 언어를 선택하세요.",
+        color=COLORS["main"],
+    )
+    embed.add_field(
+        name="현재 언어",
+        value=f"{_language_label(config.language)} (`{config.language}`)",
+        inline=False,
+    )
+    embed.set_footer(text="'자동 감지'를 선택하면 대화 언어를 자동으로 따라갑니다")
     return embed
 
 
@@ -284,28 +329,6 @@ class _APIKeyModal(ui.Modal, title="🔑  API 키 등록"):
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:  # type: ignore[override]
         await interaction.response.send_message(f"⚠️ 오류: {error}", ephemeral=True)
-
-
-class _LanguageModal(ui.Modal, title="🌐  응답 언어 변경"):
-    language_input: ui.TextInput = ui.TextInput(
-        label="언어 코드",
-        placeholder="ko  /  en  /  ja  /  zh  /  fr …",
-        style=discord.TextStyle.short,
-        required=True,
-        max_length=10,
-    )
-
-    def __init__(self, ctx: ViewCtx, guild_id: int) -> None:
-        super().__init__()
-        self.ctx = ctx
-        self.guild_id = guild_id
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        lang = self.language_input.value.strip().lower()
-        config = await self.ctx.store.set_language(self.guild_id, lang)
-        embed = _general_settings_embed(config)
-        view = GeneralSettingsView(ctx=self.ctx, guild_id=self.guild_id)
-        await interaction.response.edit_message(embed=embed, view=view)
 
 
 class _SummaryLimitModal(ui.Modal, title="📊  요약 범위 변경"):
@@ -938,7 +961,11 @@ class GeneralSettingsView(ui.View):
 
     @ui.button(label="언어 변경", style=discord.ButtonStyle.primary, row=0)
     async def change_language(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        await interaction.response.send_modal(_LanguageModal(ctx=self.ctx, guild_id=self.guild_id))
+        # 자유 텍스트 모달 대신 지원 언어 Select 드롭다운 뷰를 연다(오타/미지원 코드 차단).
+        config = await self.ctx.store.get_guild_config(self.guild_id)
+        embed = _language_select_embed(config)
+        view = LanguageSelectView(ctx=self.ctx, guild_id=self.guild_id, current=config.language)
+        await interaction.response.edit_message(embed=embed, view=view)
 
     @ui.button(label="요약 범위 변경", style=discord.ButtonStyle.primary, row=0)
     async def change_limit(self, interaction: discord.Interaction, button: ui.Button) -> None:
@@ -947,6 +974,50 @@ class GeneralSettingsView(ui.View):
     @ui.button(label="← 뒤로", style=discord.ButtonStyle.secondary, row=1)
     async def go_back(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await _go_to_main(interaction, ctx=self.ctx, guild_id=self.guild_id)
+
+
+class LanguageSelectView(ui.View):
+    """지원 언어 Select 드롭다운(#89).
+
+    자유 텍스트 입력을 대체해 미지원/오타 언어 코드 입력을 원천 차단한다.
+    옵션은 prompts._LANGUAGE_LABELS 7개 + 'auto' 자동 감지로 구성된다.
+    선택 즉시 store.set_language 를 호출하고 일반 설정 화면으로 돌아간다.
+    """
+
+    def __init__(self, *, ctx: ViewCtx, guild_id: int, current: str | None = None) -> None:
+        super().__init__(timeout=120)
+        self.ctx = ctx
+        self.guild_id = guild_id
+
+        options = _supported_language_options()
+        # 현재 설정된 언어를 기본 선택값으로 표시(지원 목록에 있을 때만).
+        current_code = (current or "").strip().lower()
+        for opt in options:
+            if opt.value == current_code:
+                opt.default = True
+                break
+
+        select: ui.Select[Any] = ui.Select(
+            placeholder="응답 언어를 선택하세요",
+            options=options,
+            min_values=1,
+            max_values=1,
+            row=0,
+        )
+        select.callback = self._on_select  # type: ignore[method-assign]
+        self.add_item(select)
+        self.add_item(_BackButton(ctx=ctx, guild_id=guild_id, row=1))
+
+    async def _on_select(self, interaction: discord.Interaction) -> None:
+        lang = interaction.data["values"][0]  # type: ignore[index,typeddict-item]
+        config = await self.ctx.store.set_language(self.guild_id, lang)
+        embed = _general_settings_embed(config)
+        view = GeneralSettingsView(ctx=self.ctx, guild_id=self.guild_id)
+        await interaction.response.edit_message(embed=embed, view=view)
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -1068,6 +1139,74 @@ class ChannelSelectView(ui.View):
             await interaction.response.send_message("⚠️ 채널을 먼저 선택하세요.", ephemeral=True)
             return
         await self._on_confirm(interaction, self._selected)
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# Error recovery building blocks (배선은 bot.py 소관, 여기선 재사용 블록만 제공)
+# ---------------------------------------------------------------------------
+
+
+def error_hint(exc: BaseException) -> str:
+    """오류 원인 → 사용자용 한국어 복구 힌트 문자열로 매핑한다.
+
+    bot.py 가 LLM 호출 실패를 사용자에게 알릴 때 RetryView 와 함께 사용한다.
+    구체 예외 타입과 (있다면) HTTP status_code 를 함께 보고 가장 행동 가능한
+    안내를 돌려준다. 알 수 없는 오류는 일반적인 재시도 안내로 폴백한다.
+    """
+    # HTTP 상태 코드 기반 안내(LLMError 계열은 status_code 속성을 가질 수 있다).
+    status_code = getattr(exc, "status_code", None)
+    if status_code in (401, 403):
+        return "API 키가 유효하지 않거나 권한이 없어요. `/settings`에서 API 키를 다시 등록해 주세요."
+    if status_code == 429:
+        return "요청이 너무 많아 잠시 제한됐어요. 잠깐 기다렸다가 다시 시도해 주세요."
+    if status_code is not None and 500 <= status_code < 600:
+        return "AI 제공자 서버에 일시적인 문제가 있어요. 잠시 후 다시 시도해 주세요."
+
+    # 예외 타입 기반 안내.
+    if isinstance(exc, CircuitBreakerOpenError):
+        return "연속 실패로 잠시 요청을 차단했어요. 잠시 후 다시 시도해 주세요."
+    if isinstance(exc, OllamaError):
+        return "Ollama에 연결할 수 없어요. Ollama가 실행 중인지, 모델이 설치돼 있는지 확인해 주세요."
+    if isinstance(exc, OpenAIError):
+        return "OpenAI 요청에 실패했어요. API 키와 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
+    if isinstance(exc, AnthropicError):
+        return "Anthropic 요청에 실패했어요. API 키와 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
+    if isinstance(exc, TimeoutError | asyncio.TimeoutError):
+        return "응답이 시간 초과됐어요. 잠시 후 다시 시도하거나 요약 범위를 줄여 주세요."
+    if isinstance(exc, LLMError):
+        return "AI 응답 생성에 실패했어요. 잠시 후 다시 시도해 주세요."
+
+    return "예기치 못한 오류가 발생했어요. 잠시 후 다시 시도해 주세요."
+
+
+class RetryView(ui.View):
+    """주입된 콜백으로 마지막 작업을 재시도하는 재사용 뷰.
+
+    bot.py 가 LLM 호출 실패 시 에러 메시지에 붙여 사용한다. 콜백 시그니처는
+    ``async (interaction) -> None`` 이며, 재시도 버튼 클릭 시 그대로 호출된다.
+    콜백 내부에서 응답(defer/edit/send)을 처리하도록 위임한다.
+    """
+
+    def __init__(
+        self,
+        *,
+        on_retry: "Callable[[discord.Interaction], Awaitable[None]]",
+        label: str = "다시 시도",
+        timeout: float = 300,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        self._on_retry = on_retry
+        self._retry_button.label = label
+
+    @ui.button(label="다시 시도", style=discord.ButtonStyle.primary, emoji="🔄", row=0)
+    async def _retry_button(self, interaction: discord.Interaction, button: ui.Button) -> None:
+        # 중복 클릭 방지를 위해 버튼을 비활성화한 뒤 콜백에 위임한다.
+        button.disabled = True
+        await self._on_retry(interaction)
 
     async def on_timeout(self) -> None:
         for item in self.children:

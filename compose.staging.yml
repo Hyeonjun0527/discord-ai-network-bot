@@ -1,0 +1,43 @@
+# Staging compose (#72) — compose.prod.yml 과 동일 패턴이되 한 호스트에서 prod 와
+# 병행 가능하도록 이름/마운트를 분리했다. 봇 1개만 띄운다(외부 포트 없음).
+#
+#   docker compose -f compose.staging.yml pull && \
+#   docker compose -f compose.staging.yml up -d --wait
+#
+# 이미지 태그는 prod 와 같은 변수(IMAGE_TAG / BOT_IMAGE)를 그대로 쓴다. 스테이징에서
+# 특정 커밋을 검증하려면 IMAGE_TAG=sha-XXXX 또는 BOT_IMAGE=... 를 지정한다.
+# 시크릿/설정은 호스트의 별도 .env(예: .env.staging)에서 읽는다 — 레포에 평문 금지.
+#
+# prod 와 동시 구동 시 충돌을 피하려고:
+#   - container_name 에 -staging 접미사
+#   - 바인드 마운트를 ./data-staging / ./logs-staging 로 분리
+
+services:
+  bot:
+    image: ${BOT_IMAGE:-ghcr.io/hyeonjun0527/discord-assistant:${IMAGE_TAG:-latest}}
+    container_name: discord-assistant-bot-staging
+    restart: unless-stopped
+    env_file:
+      # 스테이징 전용 .env (호스트에서 제공). 없어도 기동은 막지 않는다(required:false).
+      # prod 의 .env 와 분리 운영 권장.
+      - path: .env.staging
+        required: false
+    environment:
+      # Persist SQLite under the staging-only bind-mounted data dir
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/discord_assistant.db}
+      # Cloud-API deploy: do not gate health on Ollama
+      HEALTHCHECK_REQUIRE_OLLAMA: ${HEALTHCHECK_REQUIRE_OLLAMA:-false}
+    volumes:
+      - ./data-staging:/app/data
+      - ./logs-staging:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "/app/scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

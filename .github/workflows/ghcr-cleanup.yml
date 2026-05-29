@@ -1,0 +1,111 @@
+name: GHCR Cleanup
+
+# GHCR 정리 파이프라인:
+#   주 1회 스케줄 + 수동 dispatch 로 실행.
+#   롤백 여유분으로 최근 N개(기본 10)의 sha-* 태그 버전만 남기고
+#   그보다 오래된 sha-* 버전은 삭제한다.
+#   배포에 필요한 latest / buildcache 태그가 붙은 버전은 절대 삭제하지 않는다.
+#
+# 동작 방식:
+#   - GHCR(컨테이너) 패키지 버전 목록을 gh REST API 로 조회.
+#   - 보존 대상: latest 또는 buildcache 태그가 붙은 버전.
+#   - 그 외 (주로 sha-* 태그) 버전을 생성일 기준 최신순 정렬 후,
+#     상위 KEEP 개를 보존하고 나머지를 삭제.
+#
+# 권한: packages: write 가 필요. 패키지가 유저 소유이므로 GITHUB_TOKEN 으로
+# 동작한다(같은 actor 소유). org 소유로 옮겨가면 PAT 가 필요할 수 있다.
+
+on:
+  schedule:
+    # 매주 월요일 03:30 UTC (KST 12:30) — 배포가 적은 시간대.
+    - cron: "30 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "보존할 최신 sha-* 버전 개수"
+        required: false
+        default: "10"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: discord-assistant
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune old sha-* versions (keep latest N, preserve latest/buildcache)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 수동 실행 시 입력값, 스케줄 실행 시 기본 10.
+          KEEP: ${{ github.event.inputs.keep || '10' }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+
+          # 보존 개수 검증(숫자, 1 이상).
+          case "${KEEP}" in
+            ''|*[!0-9]*) echo "::error::KEEP 값이 숫자가 아닙니다: '${KEEP}'"; exit 1 ;;
+          esac
+          [ "${KEEP}" -ge 1 ] || { echo "::error::KEEP 은 1 이상이어야 합니다: ${KEEP}"; exit 1; }
+
+          # 유저 소유 패키지의 버전 목록 엔드포인트.
+          # (org 소유라면 /orgs/{owner}/packages/... 로 바꿔야 한다.)
+          base="user/packages/container/${IMAGE_NAME}/versions"
+          echo "패키지 버전 조회: ${OWNER}/${IMAGE_NAME} (KEEP=${KEEP})"
+
+          # 모든 버전을 페이지네이션으로 수집(생성일 desc 정렬).
+          # 각 줄: "<id>\t<created_at>\t<쉼표구분 태그>"
+          all="$(gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "${base}?per_page=100" \
+            --jq '.[] | [(.id|tostring), .created_at, ((.metadata.container.tags // []) | join(","))] | @tsv' \
+            | sort -t "$(printf '\t')" -k2,2r || true)"
+
+          if [ -z "${all}" ]; then
+            echo "조회된 버전이 없습니다. 정리할 대상 없음."
+            exit 0
+          fi
+
+          # 보존(latest/buildcache 태그) 후보와 정리(sha-* 등) 후보 분리.
+          protected_ids=""
+          candidate_ids=""
+          while IFS="$(printf '\t')" read -r id created tags; do
+            [ -n "${id}" ] || continue
+            # latest 또는 buildcache 태그가 포함되면 무조건 보존.
+            if printf '%s' ",${tags}," | grep -qE ',(latest|buildcache),'; then
+              protected_ids="${protected_ids} ${id}"
+              echo "보존(태그=${tags:-<none>}): id=${id} created=${created}"
+            else
+              candidate_ids="${candidate_ids} ${id}"
+            fi
+          done <<EOF
+          ${all}
+          EOF
+
+          # candidate 는 이미 생성일 desc 정렬 상태 → 상위 KEEP 개 보존, 나머지 삭제.
+          # 위 while 루프에서 IFS 를 탭으로 바꿨으므로, 공백 구분 목록을
+          # 올바르게 단어 분리하도록 IFS 를 기본값(공백/탭/개행)으로 복원한다.
+          IFS=$' \t\n'
+          n=0
+          deleted=0
+          for id in ${candidate_ids}; do
+            n=$((n + 1))
+            if [ "${n}" -le "${KEEP}" ]; then
+              echo "보존(최신 ${KEEP}개 중 #${n}): id=${id}"
+              continue
+            fi
+            echo "삭제: id=${id}"
+            if gh api --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              "${base}/${id}"; then
+              deleted=$((deleted + 1))
+            else
+              echo "::warning::버전 삭제 실패(권한/마지막 버전 보호 가능성): id=${id}"
+            fi
+          done
+
+          echo "정리 완료: 후보=${n}개, 보존=${KEEP}개(이하), 삭제=${deleted}개."

@@ -75,6 +75,30 @@ jobs:
           cache-from: type=registry,ref=${{ steps.meta.outputs.image }}:buildcache
           cache-to: type=registry,ref=${{ steps.meta.outputs.image }}:buildcache,mode=max
 
+      # #71: 빌드 실패 시에도 Discord 웹훅으로 알림(미설정 시 스킵).
+      - name: Notify build failure (Discord webhook)
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          set -eu
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "DISCORD_WEBHOOK_URL 미설정 — 실패 알림 스킵."
+            exit 0
+          fi
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          short_sha="${GITHUB_SHA::7}"
+          content="$(printf '%s\n%s\n%s\n%s' \
+            '🚨 **Discord Assistant 빌드 실패**' \
+            "- 커밋: \`${short_sha}\`" \
+            '- 단계: 이미지 빌드/푸시(GHCR)' \
+            "- 로그: ${run_url}")"
+          payload="$(printf '%s' "${content}" | python3 -c 'import json,sys; print(json.dumps({"content": sys.stdin.read()}))')"
+          curl -sf -X POST -H "Content-Type: application/json" \
+            -d "${payload}" "${DISCORD_WEBHOOK_URL}" >/dev/null \
+            && echo "Discord 빌드 실패 알림 전송 완료." \
+            || echo "::warning::Discord 빌드 실패 알림 전송에 실패했습니다."
+
   deploy:
     needs: build-and-push
     runs-on: [self-hosted, macOS, ARM64]
@@ -134,7 +158,26 @@ jobs:
           set -eu
           install -m 644 "${COMPOSE_FILE}" "${DEPLOY_DIR}/${COMPOSE_FILE}"
 
+      # #69: 배포 직전, 현재 실행 중인 컨테이너의 이미지 태그를 캡처(롤백 기준값).
+      #      컨테이너가 없으면(첫 배포) 빈 값으로 두고 이후 롤백을 스킵한다.
+      - name: Capture current image (rollback baseline)
+        id: prev
+        run: |
+          set -eu
+          # 현재 컨테이너의 이미지 태그를 docker inspect 로 읽는다.
+          # 컨테이너가 없으면 docker inspect 가 실패하므로 빈 값으로 처리.
+          if prev_image="$(docker inspect --format '{{.Config.Image}}' discord-assistant-bot 2>/dev/null)"; then
+            echo "이전 이미지(롤백 기준값): ${prev_image}"
+          else
+            prev_image=""
+            echo "실행 중인 컨테이너가 없습니다(첫 배포로 간주) — 롤백 기준값 없음"
+          fi
+          # 다음 스텝/롤백 스텝에서 사용할 수 있도록 출력과 환경에 저장.
+          echo "prev_image=${prev_image}" >> "$GITHUB_OUTPUT"
+          echo "PREV_IMAGE=${prev_image}" >> "$GITHUB_ENV"
+
       - name: Deploy (pull + up --wait)
+        id: deploy
         run: |
           set -eu
           owner_lower="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
@@ -148,7 +191,12 @@ jobs:
           done
           docker compose -f "${COMPOSE_FILE}" up -d --wait bot
 
-      - name: Verify deployed image
+      # #70: 봇 실제 기동 스모크테스트 + 기존 이미지 일치 검증.
+      #      up --wait 가 healthcheck 까지 기다리지만, 추가로 봇이 Discord
+      #      게이트웨이에 실제 로그인했는지("Logged in as") 로그로 확인한다.
+      #      타임아웃 시 실패 → 이후 if failure() 롤백 스텝이 트리거된다.
+      - name: Verify deployed image and bot login (smoke test)
+        id: verify
         run: |
           set -eu
           owner_lower="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
@@ -157,7 +205,80 @@ jobs:
           echo "expected=${expected}"
           echo "actual=${actual}"
           [ "${actual}" = "${expected}" ] || { echo "::error::배포된 이미지가 기대값과 다릅니다"; exit 1; }
-          echo "배포 성공: ${actual}"
+          echo "이미지 일치 확인: ${actual}"
+
+          # 스모크테스트: 90초 내에 봇이 'Logged in as' 를 로그에 남기는지 확인.
+          echo "봇 기동 스모크테스트 시작(최대 90초, 'Logged in as' 대기)..."
+          deadline=$(( $(date +%s) + 90 ))
+          while [ "$(date +%s)" -lt "${deadline}" ]; do
+            if docker logs discord-assistant-bot 2>&1 | grep -q "Logged in as"; then
+              echo "스모크테스트 성공: 봇이 Discord 에 로그인했습니다."
+              docker logs --tail 20 discord-assistant-bot 2>&1 || true
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::스모크테스트 타임아웃: 90초 내에 'Logged in as' 로그를 찾지 못했습니다."
+          echo "----- 최근 봇 로그(tail 50) -----"
+          docker logs --tail 50 discord-assistant-bot 2>&1 || true
+          exit 1
+
+      # #68: 배포(pull + up --wait) 또는 검증 실패 시 자동 롤백.
+      #      #69 에서 캡처한 직전 이미지로 BOT_IMAGE 를 지정해 재기동한다.
+      #      직전 태그가 없으면(첫 배포) 스킵하고 명확히 로깅한다.
+      - name: Rollback to previous image
+        id: rollback
+        if: failure()
+        run: |
+          set -eu
+          if [ -z "${PREV_IMAGE:-}" ]; then
+            echo "::warning::롤백할 직전 이미지가 없습니다(첫 배포로 추정). 롤백을 스킵합니다."
+            exit 0
+          fi
+          echo "::warning::배포/검증 실패 — 직전 이미지로 롤백합니다: ${PREV_IMAGE}"
+          cd "${DEPLOY_DIR}"
+          export BOT_IMAGE="${PREV_IMAGE}"
+          # 직전 이미지는 이미 로컬에 존재하므로 pull 없이 바로 재기동.
+          docker compose -f "${COMPOSE_FILE}" up -d --wait bot
+          actual="$(docker inspect --format '{{.Config.Image}}' discord-assistant-bot)"
+          if [ "${actual}" = "${PREV_IMAGE}" ]; then
+            echo "롤백 완료: ${actual}"
+          else
+            echo "::error::롤백 후 이미지가 기대값과 다릅니다(actual=${actual}, expected=${PREV_IMAGE})"
+            exit 1
+          fi
+
+      # #71: 빌드/배포/롤백 실패 시 Discord 웹훅으로 알림 전송.
+      #      DISCORD_WEBHOOK_URL 시크릿이 미설정이면 스킵한다.
+      - name: Notify failure (Discord webhook)
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          ROLLBACK_OUTCOME: ${{ steps.rollback.outcome }}
+        run: |
+          set -eu
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "DISCORD_WEBHOOK_URL 미설정 — 실패 알림 스킵."
+            exit 0
+          fi
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          # 롤백 결과를 알림 본문에 반영.
+          case "${ROLLBACK_OUTCOME:-}" in
+            success) rollback_line="롤백: 직전 이미지(${PREV_IMAGE:-?})로 복구 성공" ;;
+            failure) rollback_line="롤백: 시도했으나 실패 — 수동 조치 필요" ;;
+            *)       rollback_line="롤백: 미수행(직전 이미지 없음 또는 스킵)" ;;
+          esac
+          short_sha="${GITHUB_SHA::7}"
+          content="$(printf '%s\n%s\n%s\n%s' \
+            '🚨 **Discord Assistant 배포 실패**' \
+            "- 커밋: \`${short_sha}\` (태그 \`${IMAGE_TAG}\`)" \
+            "- ${rollback_line}" \
+            "- 로그: ${run_url}")"
+          payload="$(printf '%s' "${content}" | python3 -c 'import json,sys; print(json.dumps({"content": sys.stdin.read()}))')"
+          curl -sf -X POST -H "Content-Type: application/json" \
+            -d "${payload}" "${DISCORD_WEBHOOK_URL}" >/dev/null \
+            && echo "Discord 실패 알림 전송 완료." \
+            || echo "::warning::Discord 실패 알림 전송에 실패했습니다."
 
       - name: Prune dangling images
         if: always()

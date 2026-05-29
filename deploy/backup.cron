@@ -1,4 +1,33 @@
-# discord-assistant — daily backup cron job
-# Install with: crontab -e  (as the discord-bot user or root)
-# Runs every day at 03:00 local time.
-0 3 * * * cd /opt/discord-assistant && bash scripts/backup.sh >> logs/backup.log 2>&1
+# discord-assistant — daily backup cron job (#74)
+#
+# Docker Compose 배포 기준. DB/백업은 호스트의 DEPLOY_DIR/data(./data 바인드 마운트)
+# 아래에 있으므로, 컨테이너 안에서 백업 스크립트를 실행해 data/backups 에 쓰게 한다.
+# DEPLOY_DIR 기본값: $HOME/discord-assistant (레포 Variable DEPLOY_DIR 로 override).
+#
+# 설치(배포 서버 = self-hosted runner 호스트에서):
+#   crontab -e
+#   # 아래 줄을 추가하되 $HOME 을 실제 절대경로로 펼쳐 넣는다 (crontab 은 $HOME 미확장).
+#
+# 매일 03:00(로컬)에 컨테이너 내부에서 backup.sh 실행 → 호스트 ./data/backups 에 적재.
+0 3 * * * cd "$HOME/discord-assistant" && docker compose -f compose.prod.yml exec -T bot bash scripts/backup.sh >> "$HOME/discord-assistant/logs/backup.log" 2>&1
+
+# ── 대안: 호스트에 sqlite3 가 있다면 컨테이너 없이 직접 실행도 가능 ──────────
+# 0 3 * * * cd "$HOME/discord-assistant" && DATABASE_URL=sqlite:///./data/discord_assistant.db bash scripts/backup.sh >> logs/backup.log 2>&1
+#
+# ── 대안: cron 대신 compose 사이드카(ofelia)로 스케줄 ────────────────────────
+# 별도 host crontab 없이 compose 안에서 백업을 돌리고 싶다면 ofelia 잡 스케줄러를
+# 사이드카로 추가한다. compose.prod.yml(또는 override)에 대략 다음을 넣는다:
+#
+#   ofelia:
+#     image: mcuadros/ofelia:latest
+#     restart: unless-stopped
+#     depends_on: [bot]
+#     command: daemon --docker
+#     volumes:
+#       - /var/run/docker.sock:/var/run/docker.sock:ro
+#     labels:
+#       ofelia.job-exec.backup.schedule: "0 0 3 * * *"
+#       ofelia.job-exec.backup.container: "discord-assistant-bot"
+#       ofelia.job-exec.backup.command: "bash scripts/backup.sh"
+#
+# 오프호스트 복제가 필요하면 backup.sh 의 BACKUP_REMOTE 환경변수를 함께 설정한다(#75).

@@ -38,7 +38,7 @@
 - [x] 25. `_connect()`에 busy_timeout/synchronous PRAGMA로 'database is locked' 방어 · S
 - [x] 26. 버전 추적형 마이그레이션 프레임워크(schema_version + 순차 migration) · L
 - [x] 27. usage_log·chat_history 시간 기반 retention 정리 백그라운드 태스크 · M
-- [ ] 28. 백업 복원 스크립트(`scripts/restore.sh`) + 백업→복원 왕복 테스트 · M
+- [x] 28. 백업 복원 스크립트(`scripts/restore.sh`) + 백업→복원 왕복 테스트 · M
 - [ ] 29. 대시보드 중복 DB 접근 로직을 공용 storage 레이어로 통합 · M
 - [x] 30. 대시보드 guild_config PUT의 컬럼 누락(스키마 drift) 수정 · M
 - [ ] 31. `DATABASE_URL` postgresql:// 지원을 위한 스토리지 백엔드 추상화 · L
@@ -51,7 +51,7 @@
 - [ ] 35. JWT 서명키와 Fernet 암호화키 분리(독립 회전 가능) · M
 - [x] 36. `SECRET_KEY` 기본값이면 프로덕션 기동 하드 실패 처리 · S
 - [ ] 37. 저장된 API 키 재암호화 마이그레이션(시크릿 회전 지원) · M
-- [ ] 38. 프롬프트 인젝션 방어: 트랜스크립트/질문 본문 구분자 래핑·role 토큰 무력화 · M
+- [x] 38. 프롬프트 인젝션 방어: 트랜스크립트/질문 본문 구분자 래핑·role 토큰 무력화 · M
 - [x] 39. 관리자 작업 감사 로그(audit_log) 테이블 + 변경 이력 기록 · M
 - [x] 40. 사용자 데이터 삭제(`/forget-me`) 명령 + 백엔드 삭제 엔드포인트 · M
 - [ ] 41. usage_log.error의 PII/시크릿 마스킹 · S
@@ -61,7 +61,7 @@
 
 ## 📈 신뢰성 / 관측성 (45~55)
 
-- [ ] 45. 구조화 JSON 로깅 도입(basicConfig → 컨텍스트 바인딩) · M
+- [x] 45. 구조화 JSON 로깅 도입(basicConfig → 컨텍스트 바인딩) · M
 - [ ] 46. correlation_id(interaction.id) 발급 + 전 로그/usage 전파 · M
 - [ ] 47. Prometheus 메트릭 익스포터(명령 카운터·지연·에러율) · M
 - [ ] 48. 봇 프로세스 헬스/메트릭 HTTP 서버(/healthz·/readyz·/metrics) · M
@@ -69,7 +69,7 @@
 - [ ] 50. `ConfigStore.close()` 정리 루틴 + 종료 시 호출 · S
 - [ ] 51. fire-and-forget 태스크 추적 + 예외 핸들러 부착 · M
 - [x] 52. LLM provider별 서킷 브레이커 도입 · L
-- [ ] 53. `notify_developer` 알림 레이트리밋·중복 억제(dedup) · M
+- [x] 53. `notify_developer` 알림 레이트리밋·중복 억제(dedup) · M
 - [ ] 54. on_disconnect 오탐 제거(on_resumed + 지속 단절 임계 알림) · M
 - [ ] 55. Sentry(선택적) 에러 트래킹 통합 · M
 
@@ -90,16 +90,16 @@
 
 ## 🚀 배포 / 운영 (68~77)
 
-- [ ] 68. deploy `up --wait` 실패 시 직전 sha 이미지로 자동 롤백 · M
-- [ ] 69. 배포 직전 현재 실행 이미지 태그 캡처(롤백 기준값) · S
-- [ ] 70. Verify를 실제 봇 READY 스모크테스트로 강화 · M
-- [ ] 71. 배포 실패 시 DEVELOPER_USER_ID DM/Discord 웹훅 알림 · M
-- [ ] 72. 스테이징 환경 분리(compose.staging.yml + 컨테이너명/DEPLOY_DIR 분기) · L
+- [x] 68. deploy `up --wait` 실패 시 직전 sha 이미지로 자동 롤백 · M
+- [x] 69. 배포 직전 현재 실행 이미지 태그 캡처(롤백 기준값) · S
+- [x] 70. Verify를 실제 봇 READY 스모크테스트로 강화 · M
+- [x] 71. 배포 실패 시 DEVELOPER_USER_ID DM/Discord 웹훅 알림 · M
+- [x] 72. 스테이징 환경 분리(compose.staging.yml + 컨테이너명/DEPLOY_DIR 분기) · L
 - [ ] 73. 멀티 호스트 배포(러너 라벨/매트릭스 + DEPLOY_DIR 분기) · L
-- [ ] 74. 백업 cron 경로를 DEPLOY_DIR 기준으로 정정 + 사이드카 컨테이너화 · M
-- [ ] 75. 백업 산출물 오프호스트(원격/오브젝트 스토리지) 복제 · M
-- [ ] 76. logrotate를 Docker json-file 운영에 맞게 정리 + 파일/컨테이너 로그 정책 통일 · S
-- [ ] 77. GHCR 오래된 sha 태그 정리 워크플로(롤백용 N개 보존) · M
+- [x] 74. 백업 cron 경로를 DEPLOY_DIR 기준으로 정정 + 사이드카 컨테이너화 · M
+- [x] 75. 백업 산출물 오프호스트(원격/오브젝트 스토리지) 복제 · M
+- [x] 76. logrotate를 Docker json-file 운영에 맞게 정리 + 파일/컨테이너 로그 정책 통일 · S
+- [x] 77. GHCR 오래된 sha 태그 정리 워크플로(롤백용 N개 보존) · M
 
 ## 🖥️ 대시보드 (78~86)
 
@@ -117,7 +117,7 @@
 
 - [ ] 87. 번역 카탈로그 도입 + 모든 View/Embed에 길드 언어 주입 (#70 i18n) · L
 - [ ] 88. app_commands locale_str로 명령 설명/옵션 클라이언트 로케일 현지화 · L
-- [ ] 89. 언어 설정을 자유 텍스트 모달 → 지원 언어 Select 드롭다운으로 · M
+- [x] 89. 언어 설정을 자유 텍스트 모달 → 지원 언어 Select 드롭다운으로 · M
 - [ ] 90. 온보딩 강화: 제공자 미설정 감지 + '지금 설정하기' 버튼 흐름 · M
 - [ ] 91. API 키 미설정 에러의 잘못된 메뉴 경로 수정 + 버튼형 안내 · S
 - [ ] 92. `_make_error_embed`에 원인별 복구 힌트 + '다시 시도' 버튼 · M

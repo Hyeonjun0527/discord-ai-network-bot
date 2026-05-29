@@ -15,6 +15,7 @@ from .crypto import encrypt_api_key
 from .llm import (
     AnthropicError,
     CircuitBreakerOpenError,
+    GeminiError,
     LLMError,
     OllamaError,
     OllamaManager,
@@ -48,10 +49,17 @@ ANTHROPIC_MODELS: list[tuple[str, str, str]] = [
     ("claude-3-haiku-20240307",   "Claude 3 Haiku",     "경제적"),
 ]
 
+GEMINI_MODELS: list[tuple[str, str, str]] = [
+    ("gemini-1.5-pro",    "Gemini 1.5 Pro",    "고성능 · 긴 컨텍스트"),
+    ("gemini-1.5-flash",  "Gemini 1.5 Flash",  "빠름 · 경제적"),
+    ("gemini-2.0-flash",  "Gemini 2.0 Flash",  "최신 · 빠름"),
+]
+
 PROVIDER_DEFAULT_MODELS = {
     LLMProvider.OLLAMA:    "llama3.1:8b",
     LLMProvider.OPENAI:    "gpt-4o-mini",
     LLMProvider.ANTHROPIC: "claude-3-haiku-20240307",
+    LLMProvider.GEMINI:    "gemini-1.5-flash",
 }
 
 COLORS = {
@@ -61,6 +69,21 @@ COLORS = {
     "error":   discord.Color.red(),
     "install": discord.Color.from_str("#57F287"),
 }
+
+
+def _external_models_for(provider: LLMProvider) -> list[tuple[str, str, str]]:
+    """외부(API 키 기반) 제공자의 모델 목록을 반환한다 (#15).
+
+    OPENAI/ANTHROPIC/GEMINI 분기를 한곳에서 관리해 호출부 중복을 줄인다.
+    Ollama 등 목록이 없는 제공자는 빈 리스트를 돌려준다.
+    """
+    if provider == LLMProvider.OPENAI:
+        return OPENAI_MODELS
+    if provider == LLMProvider.ANTHROPIC:
+        return ANTHROPIC_MODELS
+    if provider == LLMProvider.GEMINI:
+        return GEMINI_MODELS
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -140,12 +163,13 @@ def _provider_embed(current: LLMProvider) -> discord.Embed:
         description=(
             "**Ollama (로컬)** — 인터넷 불필요, 내 PC에서 직접 실행\n"
             "**OpenAI (GPT)** — ChatGPT API 키 필요\n"
-            "**Anthropic (Claude)** — Claude API 키 필요"
+            "**Anthropic (Claude)** — Claude API 키 필요\n"
+            "**Google (Gemini)** — Gemini API 키 필요"
         ),
         color=COLORS["main"],
     )
     embed.add_field(name="현재", value=current.display_name(), inline=False)
-    embed.set_footer(text="OpenAI / Anthropic 선택 시 API 키 입력이 필요합니다")
+    embed.set_footer(text="OpenAI / Anthropic / Gemini 선택 시 API 키 입력이 필요합니다")
     return embed
 
 
@@ -268,6 +292,28 @@ def _validate_anthropic_key(api_key: str) -> bool:
         return False
 
 
+def _validate_gemini_key(api_key: str) -> bool:
+    """Return True if the Gemini key passes a basic API check (#15).
+
+    가벼운 ``GET /v1beta/models`` 호출로 키 유효성만 확인한다. 키는 보안상 URL
+    쿼리가 아니라 ``x-goog-api-key`` 헤더로 전달한다(노출 방지). 401/403 은
+    무효 키로 간주하고, 그 외 응답/오류는 (네트워크 문제 등) 통과시켜 등록 자체를
+    막지 않는다(OpenAI/Anthropic 검증과 동일한 관대 정책).
+    """
+    req = urllib_request.Request(
+        "https://generativelanguage.googleapis.com/v1beta/models",
+        headers={"x-goog-api-key": api_key},
+        method="GET",
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            return bool(resp.status == 200)
+    except urllib_error.HTTPError as exc:
+        return exc.code not in (401, 403)
+    except Exception:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Modals
 # ---------------------------------------------------------------------------
@@ -276,7 +322,7 @@ def _validate_anthropic_key(api_key: str) -> bool:
 class _APIKeyModal(ui.Modal, title="🔑  API 키 등록"):
     api_key_input: ui.TextInput = ui.TextInput(
         label="API 키",
-        placeholder="sk-...  또는  sk-ant-...",
+        placeholder="sk-...  /  sk-ant-...  /  AIza...",
         style=discord.TextStyle.short,
         required=True,
         max_length=300,
@@ -325,6 +371,8 @@ class _APIKeyModal(ui.Modal, title="🔑  API 키 등록"):
             return _validate_openai_key(raw_key)
         if self.provider == LLMProvider.ANTHROPIC:
             return _validate_anthropic_key(raw_key)
+        if self.provider == LLMProvider.GEMINI:
+            return _validate_gemini_key(raw_key)
         return True
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:  # type: ignore[override]
@@ -403,7 +451,8 @@ class SettingsView(ui.View):
         self.guild_id = guild_id
 
         # Determine model button label dynamically based on provider
-        model_btn_label = "모델 선택" if provider in (LLMProvider.OPENAI, LLMProvider.ANTHROPIC) else "모델 관리"
+        _external = (LLMProvider.OPENAI, LLMProvider.ANTHROPIC, LLMProvider.GEMINI)
+        model_btn_label = "모델 선택" if provider in _external else "모델 관리"
 
         change_provider_btn: ui.Button[Any] = ui.Button(
             label="제공자 변경", style=discord.ButtonStyle.primary, row=0
@@ -437,7 +486,7 @@ class SettingsView(ui.View):
             embed = _ollama_model_embed(installed, config.model)
             view: ui.View = OllamaModelView(ctx=self.ctx, guild_id=self.guild_id, installed=installed)
         else:
-            models = OPENAI_MODELS if config.provider == LLMProvider.OPENAI else ANTHROPIC_MODELS
+            models = _external_models_for(config.provider)
             embed = _external_model_embed(config.provider, config.model, bool(config.api_key_encrypted))
             view = ExternalModelView(ctx=self.ctx, guild_id=self.guild_id, provider=config.provider, models=models)
         await interaction.edit_original_response(embed=embed, view=view)
@@ -479,6 +528,11 @@ class ProviderView(ui.View):
                     value="anthropic",
                     description="Claude API 키 필요",
                 ),
+                discord.SelectOption(
+                    label="✨  Google (Gemini)",
+                    value="gemini",
+                    description="Gemini API 키 필요",
+                ),
             ],
             row=0,
         )
@@ -502,7 +556,7 @@ class ProviderView(ui.View):
             await interaction.response.edit_message(embed=embed, view=SettingsView(ctx=self.ctx, guild_id=self.guild_id, provider=selected))
 
         else:
-            models = OPENAI_MODELS if selected == LLMProvider.OPENAI else ANTHROPIC_MODELS
+            models = _external_models_for(selected)
             current = await self.ctx.store.get_guild_config(self.guild_id)
             default_model = PROVIDER_DEFAULT_MODELS[selected]
             embed = _external_model_embed(selected, default_model, bool(current.api_key_encrypted))
@@ -1175,6 +1229,8 @@ def error_hint(exc: BaseException) -> str:
         return "OpenAI 요청에 실패했어요. API 키와 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
     if isinstance(exc, AnthropicError):
         return "Anthropic 요청에 실패했어요. API 키와 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
+    if isinstance(exc, GeminiError):
+        return "Gemini 요청에 실패했어요. API 키와 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
     if isinstance(exc, TimeoutError | asyncio.TimeoutError):
         return "응답이 시간 초과됐어요. 잠시 후 다시 시도하거나 요약 범위를 줄여 주세요."
     if isinstance(exc, LLMError):

@@ -49,6 +49,9 @@ class _FileStoreCase(unittest.IsolatedAsyncioTestCase):
         await self.store.initialize()
 
     async def asyncTearDown(self) -> None:
+        # #50: 영속 aiosqlite 연결을 정리한다. close() 를 누락하면 워커 스레드가
+        # 닫힌 이벤트 루프와 상호작용하며 "Event loop is closed" 경고를 남긴다.
+        await self.store.close()
         self._tmp.cleanup()
 
 
@@ -284,6 +287,7 @@ class VacuumMemoryTest(unittest.IsolatedAsyncioTestCase):
         store = _make_store(":memory:")
         await store.initialize()
         await store.vacuum()  # 파일이 없으므로 조용히 건너뛴다.
+        await store.close()
 
 
 class FileBackedIntegrationTest(unittest.IsolatedAsyncioTestCase):
@@ -308,6 +312,8 @@ class FileBackedIntegrationTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(cfg.persona, "테스트 페르소나")
 
             self.assertTrue(db_path.exists())
+            await store1.close()
+            await store2.close()
 
     async def test_pragmas_enabled_on_file_db(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -321,6 +327,7 @@ class FileBackedIntegrationTest(unittest.IsolatedAsyncioTestCase):
                 fk = conn.execute("PRAGMA foreign_keys").fetchone()[0]
             finally:
                 conn.close()
+            await store.close()
             self.assertEqual(str(journal).lower(), "wal")
             self.assertEqual(fk, 1)
 
@@ -553,6 +560,7 @@ class MigrationIdempotencyTest(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(rid, 0)
             aid = await store.record_audit(guild_id=1, user_id=1, action="test")
             self.assertGreater(aid, 0)
+            await store.close()
 
 
 class SchemaVersionTest(_FileStoreCase):
@@ -682,6 +690,7 @@ class LegacyMigrationVersionTest(unittest.IsolatedAsyncioTestCase):
                     self.assertIn(expected_idx, indexes)
             finally:
                 verify.close()
+            await store.close()
 
     async def test_partially_migrated_db_only_applies_remainder(self) -> None:
         # schema_version=2 로 기록된 DB(=feedback 까지만 적용)에서 3~5 만 적용돼야 한다.
@@ -719,6 +728,7 @@ class LegacyMigrationVersionTest(unittest.IsolatedAsyncioTestCase):
                 )
             finally:
                 verify.close()
+            await store.close()
 
 
 class SchemaVersionHelperTest(unittest.IsolatedAsyncioTestCase):

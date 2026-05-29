@@ -1,4 +1,16 @@
-"""SQLite-backed server configuration and usage logging."""
+"""SQLite-backed server configuration and usage logging.
+
+#24: 매 작업마다 ``sqlite3.connect()`` + ``asyncio.to_thread`` 로 새 연결을 열던
+패턴을 aiosqlite 기반의 **단일 영속 연결**로 전환했다. 연결은 ``initialize()``
+에서 1회 열고(WAL/foreign_keys/busy_timeout/synchronous PRAGMA 동일 적용),
+``close()`` (#50) 로 정리한다. aiosqlite 는 내부적으로 단일 전용 스레드에서
+연산을 직렬화하지만, read-modify-write(setter)·write 경합을 막기 위해 추가로
+``asyncio.Lock`` 으로 보호한다(특히 upsert/purge/vacuum).
+
+스키마·마이그레이션(#26 schema_version/MIGRATIONS) 로직은 기존 동기 sqlite3
+헬퍼(``_migrate`` 등)를 그대로 재사용한다. 영속 연결의 내부 sqlite3 객체에 대해
+동기 함수를 실행함으로써(:memory: 포함) 단일 출처를 유지한다.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -8,6 +20,8 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import aiosqlite
 
 if TYPE_CHECKING:
     from .llm import OllamaManager
@@ -284,8 +298,33 @@ def _migrate(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _apply_pragmas(conn: sqlite3.Connection) -> None:
+    """단일 영속 연결에 적용할 PRAGMA 묶음 (#24, #25).
+
+    'database is locked' 방어: 잠긴 DB를 만나면 즉시 실패하지 않고 최대 5초까지
+    재시도한다. WAL 모드에서 synchronous=NORMAL 은 내구성을 크게 해치지 않으면서
+    쓰기 부하를 줄여 잠금 경합을 완화한다.
+    """
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA synchronous=NORMAL")
+
+
+def _initialize_schema(conn: sqlite3.Connection) -> None:
+    """SCHEMA executescript + 순차 마이그레이션을 동기 연결에 적용한다 (#26)."""
+    conn.executescript(SCHEMA)
+    _migrate(conn)
+
+
 class ConfigStore:
-    """Async façade for SQLite operations used by Discord handlers."""
+    """Async façade for SQLite operations used by Discord handlers.
+
+    #24: 내부적으로 단일 aiosqlite 연결(``self._conn``)을 유지하며, ``initialize()``
+    에서 열고 ``close()`` (#50) 에서 정리한다. read-modify-write/write 경합은
+    ``self._lock`` (asyncio.Lock) 으로 보호한다. 모든 공개 async 메서드의 시그니처·
+    반환·동작은 기존 sqlite3 + to_thread 구현과 100% 동일하게 유지된다.
+    """
 
     def __init__(
         self,
@@ -304,27 +343,90 @@ class ConfigStore:
             summary_limit=default_summary_limit,
             language=default_language,
         )
+        # 영속 aiosqlite 연결. initialize() 전에는 None.
+        self._conn: aiosqlite.Connection | None = None
+        # read-modify-write(setter)/write 경합 직렬화용 락 (#24).
+        self._lock = asyncio.Lock()
 
     async def initialize(self) -> None:
-        await asyncio.to_thread(self._initialize_sync)
+        """단일 영속 aiosqlite 연결을 열고 스키마/마이그레이션을 적용한다 (#24).
 
-    def _initialize_sync(self) -> None:
+        멱등하다: 이미 연결이 열려 있으면 스키마/마이그레이션만 다시 보장한다
+        (멱등 마이그레이션이므로 버전·데이터 불변).
+        """
         if self.path != ":memory:":
             Path(self.path).expanduser().parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
-            conn.executescript(SCHEMA)
-            _migrate(conn)
+        if self._conn is None:
+            # isolation_level=None → 자동 커밋(autocommit) 모드. 각 문장이 즉시
+            # 커밋되어 암시적 트랜잭션이 열린 채로 남지 않는다. 이는 VACUUM 이
+            # "SQL statements in progress" 로 실패/교착하지 않게 하는 핵심이며
+            # (#33), 기존 sqlite3 구현이 작업마다 새 연결을 with 블록으로 열고
+            # 닫던 동작과 동치다. 명시적 commit() 호출은 무해한 no-op 으로 남는다.
+            conn = await aiosqlite.connect(self.path, isolation_level=None)
+            conn.row_factory = aiosqlite.Row
+            self._conn = conn
+        # PRAGMA + 스키마/마이그레이션은 영속 연결의 내부 sqlite3 객체에서 동기로
+        # 실행한다(:memory: 포함 단일 출처). aiosqlite._execute 는 전용 스레드에서
+        # 콜러블을 직렬 실행한다.
+        await self._run_sync(_apply_pragmas)
+        await self._run_sync(_initialize_schema)
+
+    async def close(self) -> None:
+        """영속 aiosqlite 연결을 정리한다 (#50).
+
+        bot.py 의 graceful shutdown 에서 호출한다(호출은 다른 파일 소관, 여기서는
+        메서드만 제공). 이미 닫혔거나 열린 적 없으면 no-op.
+        """
+        conn = self._conn
+        if conn is None:
+            return
+        self._conn = None
+        await conn.close()
+
+    def _require_conn(self) -> aiosqlite.Connection:
+        """이미 초기화된 영속 연결을 반환한다. 내부(_run_sync) 전용.
+
+        ``initialize()`` 가 연결을 먼저 설정한 직후 스키마/PRAGMA 적용 경로에서만
+        쓰인다. 공개 메서드는 ``_ensure_conn()`` 으로 지연 초기화를 거친다.
+        """
+        if self._conn is None:
+            raise RuntimeError("ConfigStore.initialize() must be called before use")
+        return self._conn
+
+    async def _ensure_conn(self) -> aiosqlite.Connection:
+        """영속 연결을 반환하되, 미초기화면 지연 초기화한다 (#24 백워드 호환).
+
+        기존 sqlite3 구현은 작업마다 연결을 새로 열어 ``initialize()`` 없이도
+        (스키마가 이미 존재하면) 읽기/쓰기가 동작했다. 같은 관용을 유지하기 위해
+        첫 접근 시 자동으로 ``initialize()`` 한다. ``initialize()`` 자체가 멱등이라
+        명시 호출과 지연 초기화가 동일한 최종 상태에 도달한다.
+        """
+        if self._conn is None:
+            await self.initialize()
+        return self._require_conn()
+
+    async def _run_sync(self, fn: Callable[[sqlite3.Connection], object]) -> object:
+        """영속 연결의 내부 sqlite3 객체에 대해 동기 콜러블을 실행한다 (#24).
+
+        aiosqlite 는 모든 연산을 전용 스레드에서 직렬 실행하므로, 동기
+        마이그레이션·PRAGMA 헬퍼를 그 스레드에서 안전하게 재사용할 수 있다.
+        스키마/마이그레이션의 단일 출처(동기 sqlite3 헬퍼)를 유지하는 핵심 경로다.
+        """
+        conn = self._require_conn()  # _run_sync 는 initialize() 직후에만 호출됨
+        return await conn._execute(fn, conn._conn)
 
     def _connect(self) -> sqlite3.Connection:
+        """원시(raw) 동기 sqlite3 연결을 새로 연다.
+
+        테스트·진단용 직접 접근 경로다. 영속 aiosqlite 연결과는 별개의 연결이며,
+        파일 DB 에서는 같은 파일을 본다(WAL 공유). PRAGMA 도 동일하게 적용한다.
+
+        주의: ``:memory:`` 의 경우 영속 연결과 다른 빈 DB 를 연다(연결별 분리). 영속
+        연결의 데이터를 보려면 공개 async 메서드를 사용해야 한다.
+        """
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        # 'database is locked' 방어: 잠긴 DB를 만나면 즉시 실패하지 않고 최대
-        # 5초까지 재시도한다. WAL 모드에서 synchronous=NORMAL 은 내구성을 크게
-        # 해치지 않으면서 쓰기 부하를 줄여 잠금 경합을 완화한다 (#25).
-        conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        _apply_pragmas(conn)
         return conn
 
     # ------------------------------------------------------------------
@@ -332,17 +434,15 @@ class ConfigStore:
     # ------------------------------------------------------------------
 
     async def get_guild_config(self, guild_id: int) -> GuildConfig:
-        return await asyncio.to_thread(self._get_guild_config_sync, guild_id)
-
-    def _get_guild_config_sync(self, guild_id: int) -> GuildConfig:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT guild_id, model, summary_limit, language, admin_role_id, "
-                "provider, api_key_encrypted, auto_summary_interval, persona, "
-                "custom_summarize_prompt, custom_ask_prompt, allowed_role_id "
-                "FROM guild_config WHERE guild_id = ?",
-                (guild_id,),
-            ).fetchone()
+        conn = await self._ensure_conn()
+        cur = await conn.execute(
+            "SELECT guild_id, model, summary_limit, language, admin_role_id, "
+            "provider, api_key_encrypted, auto_summary_interval, persona, "
+            "custom_summarize_prompt, custom_ask_prompt, allowed_role_id "
+            "FROM guild_config WHERE guild_id = ?",
+            (guild_id,),
+        )
+        row = await cur.fetchone()
         if row is None:
             return replace(self.default_config, guild_id=guild_id)
         return GuildConfig(
@@ -435,11 +535,11 @@ class ConfigStore:
     # ------------------------------------------------------------------
 
     async def _upsert(self, config: GuildConfig) -> None:
-        await asyncio.to_thread(self._upsert_sync, config)
-
-    def _upsert_sync(self, config: GuildConfig) -> None:
-        with self._connect() as conn:
-            conn.execute(
+        # read-modify-write 경합 직렬화 (#24). 단일 쓰기지만 setter 들이
+        # get→replace→upsert 패턴이라 락으로 마지막 쓰기 누락을 방지한다.
+        conn = await self._ensure_conn()
+        async with self._lock:
+            await conn.execute(
                 """
                 INSERT INTO guild_config
                     (guild_id, model, summary_limit, language, admin_role_id,
@@ -476,7 +576,7 @@ class ConfigStore:
                     _utc_now(),
                 ),
             )
-            conn.commit()
+            await conn.commit()
 
     # ------------------------------------------------------------------
     # Chat history
@@ -500,41 +600,33 @@ class ConfigStore:
             raise ValueError("limit must be >= 1")
         if offset < 0:
             raise ValueError("offset must be >= 0")
-        return await asyncio.to_thread(
-            self._get_chat_history_sync, user_id, guild_id, channel_id, limit, offset
-        )
+        conn = await self._ensure_conn()
+        if guild_id is not None and channel_id is not None:
+            cur = await conn.execute(
+                """
+                SELECT role, content FROM chat_history
+                WHERE user_id = ? AND guild_id = ? AND channel_id = ?
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (user_id, guild_id, channel_id, limit, offset),
+            )
+        else:
+            cur = await conn.execute(
+                """
+                SELECT role, content FROM chat_history
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (user_id, limit, offset),
+            )
+        rows = await cur.fetchall()
+        ordered = list(rows)
+        ordered.reverse()
+        return [{"role": row["role"], "content": row["content"]} for row in ordered]
 
-    def _get_chat_history_sync(
-        self,
-        user_id: int,
-        guild_id: int | None,
-        channel_id: int | None,
-        limit: int,
-        offset: int,
-    ) -> list[dict[str, str]]:
-        with self._connect() as conn:
-            if guild_id is not None and channel_id is not None:
-                rows = conn.execute(
-                    """
-                    SELECT role, content FROM chat_history
-                    WHERE user_id = ? AND guild_id = ? AND channel_id = ?
-                    ORDER BY id DESC
-                    LIMIT ? OFFSET ?
-                    """,
-                    (user_id, guild_id, channel_id, limit, offset),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT role, content FROM chat_history
-                    WHERE user_id = ?
-                    ORDER BY id DESC
-                    LIMIT ? OFFSET ?
-                    """,
-                    (user_id, limit, offset),
-                ).fetchall()
-        rows.reverse()
-        return [{"role": row["role"], "content": row["content"]} for row in rows]
+    _MAX_CHAT_HISTORY_PER_USER = 200
 
     async def save_chat_message(
         self,
@@ -545,22 +637,10 @@ class ConfigStore:
         guild_id: int | None = None,
         channel_id: int | None = None,
     ) -> None:
-        await asyncio.to_thread(
-            self._save_chat_message_sync, user_id, role, content, guild_id, channel_id
-        )
-
-    _MAX_CHAT_HISTORY_PER_USER = 200
-
-    def _save_chat_message_sync(
-        self,
-        user_id: int,
-        role: str,
-        content: str,
-        guild_id: int | None,
-        channel_id: int | None,
-    ) -> None:
-        with self._connect() as conn:
-            conn.execute(
+        conn = await self._ensure_conn()
+        # insert + prune 가 한 쓰기 단위로 묶이도록 락으로 보호 (#24).
+        async with self._lock:
+            await conn.execute(
                 """
                 INSERT INTO chat_history (guild_id, channel_id, user_id, role, content, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -568,7 +648,7 @@ class ConfigStore:
                 (guild_id, channel_id, user_id, role, content, _utc_now()),
             )
             # Prune oldest rows for this user beyond the limit
-            conn.execute(
+            await conn.execute(
                 """
                 DELETE FROM chat_history
                 WHERE user_id = ?
@@ -581,21 +661,19 @@ class ConfigStore:
                 """,
                 (user_id, user_id, self._MAX_CHAT_HISTORY_PER_USER),
             )
-            conn.commit()
+            await conn.commit()
 
     # ------------------------------------------------------------------
     # Usage log
     # ------------------------------------------------------------------
 
     async def log_usage(self, log: UsageLog) -> None:
-        await asyncio.to_thread(self._log_usage_sync, log)
-
-    def _log_usage_sync(self, log: UsageLog) -> None:
         error = log.error
         if error is not None and len(error) > 500:
             error = error[:497] + "..."
-        with self._connect() as conn:
-            conn.execute(
+        conn = await self._ensure_conn()
+        async with self._lock:
+            await conn.execute(
                 """
                 INSERT INTO usage_log
                     (guild_id, channel_id, user_id, command, status, latency_ms, error, created_at)
@@ -612,7 +690,7 @@ class ConfigStore:
                     _utc_now(),
                 ),
             )
-            conn.commit()
+            await conn.commit()
 
     # ------------------------------------------------------------------
     # Retention / maintenance (#27, #33)
@@ -630,28 +708,26 @@ class ConfigStore:
         """
         if usage_days < 0 or chat_days < 0:
             raise ValueError("retention days must be >= 0")
-        return await asyncio.to_thread(self._purge_old_sync, usage_days, chat_days)
-
-    def _purge_old_sync(self, usage_days: int, chat_days: int) -> dict[str, int]:
+        conn = await self._ensure_conn()
         deleted = {"usage_log": 0, "chat_history": 0}
-        with self._connect() as conn:
+        async with self._lock:
             # SQLite 의 datetime() 으로 컷오프 시각을 계산하면 ISO8601 문자열
             # 비교만으로 N일 경과 행을 안전하게 골라낼 수 있다.
             if usage_days > 0:
-                cur = conn.execute(
+                cur = await conn.execute(
                     "DELETE FROM usage_log "
                     "WHERE created_at < datetime('now', ?)",
                     (f"-{usage_days} days",),
                 )
                 deleted["usage_log"] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
             if chat_days > 0:
-                cur = conn.execute(
+                cur = await conn.execute(
                     "DELETE FROM chat_history "
                     "WHERE created_at < datetime('now', ?)",
                     (f"-{chat_days} days",),
                 )
                 deleted["chat_history"] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
-            conn.commit()
+            await conn.commit()
         return deleted
 
     async def vacuum(self) -> None:
@@ -662,15 +738,19 @@ class ConfigStore:
         """
         if self.path == ":memory:":
             return
-        await asyncio.to_thread(self._vacuum_sync)
-
-    def _vacuum_sync(self) -> None:
+        conn = await self._ensure_conn()
         # WAL 파일을 본 DB 에 합치고(TRUNCATE) 잘라낸 뒤 VACUUM 으로 미사용
-        # 페이지를 회수한다. VACUUM 은 트랜잭션 안에서 실행할 수 없으므로
-        # 별도 커밋 없이 단독 실행한다.
-        with self._connect() as conn:
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            conn.execute("VACUUM")
+        # 페이지를 회수한다. VACUUM 은 트랜잭션 안에서 실행할 수 없으므로 진행
+        # 중인 쓰기와 겹치지 않도록 락으로 보호하고 별도 커밋 없이 단독 실행한다.
+        # 체크포인트 PRAGMA 가 돌려준 커서를 반드시 소진·종료해야 한다 — 열린
+        # 커서(prepared statement)가 남아 있으면 VACUUM 이 "SQL statements in
+        # progress" 로 실패한다(isolation_level=None 이라 트랜잭션은 없음). (#33)
+        async with self._lock:
+            checkpoint_cur = await conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            await checkpoint_cur.fetchall()
+            await checkpoint_cur.close()
+            vacuum_cur = await conn.execute("VACUUM")
+            await vacuum_cur.close()
 
     # ------------------------------------------------------------------
     # Phase 3 setters
@@ -732,68 +812,59 @@ class ConfigStore:
         rating: int,
         command: str | None = None,
     ) -> None:
-        await asyncio.to_thread(
-            self._save_feedback_sync, guild_id, message_id, user_id, rating, command
-        )
-
-    def _save_feedback_sync(
-        self,
-        guild_id: int | None,
-        message_id: int,
-        user_id: int,
-        rating: int,
-        command: str | None,
-    ) -> None:
-        with self._connect() as conn:
-            conn.execute(
+        conn = await self._ensure_conn()
+        async with self._lock:
+            await conn.execute(
                 """
                 INSERT INTO feedback (guild_id, message_id, user_id, rating, command, created_at)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (guild_id, message_id, user_id, rating, command, _utc_now()),
             )
-            conn.commit()
+            await conn.commit()
 
     # ------------------------------------------------------------------
     # Stats (Phase 3 #43)
     # ------------------------------------------------------------------
 
     async def get_stats(self, guild_id: int) -> dict:
-        return await asyncio.to_thread(self._get_stats_sync, guild_id)
+        conn = await self._ensure_conn()
+        total_cur = await conn.execute(
+            "SELECT COUNT(*) AS cnt FROM usage_log WHERE guild_id = ?", (guild_id,)
+        )
+        total_row = await total_cur.fetchone()
+        total = total_row["cnt"] if total_row else 0
 
-    def _get_stats_sync(self, guild_id: int) -> dict:
-        with self._connect() as conn:
-            total_row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM usage_log WHERE guild_id = ?", (guild_id,)
-            ).fetchone()
-            total = total_row["cnt"] if total_row else 0
+        by_command_cur = await conn.execute(
+            "SELECT command, COUNT(*) AS cnt FROM usage_log WHERE guild_id = ? "
+            "GROUP BY command ORDER BY cnt DESC",
+            (guild_id,),
+        )
+        by_command = await by_command_cur.fetchall()
 
-            by_command = conn.execute(
-                "SELECT command, COUNT(*) AS cnt FROM usage_log WHERE guild_id = ? "
-                "GROUP BY command ORDER BY cnt DESC",
-                (guild_id,),
-            ).fetchall()
+        avg_cur = await conn.execute(
+            "SELECT AVG(latency_ms) AS avg_ms FROM usage_log WHERE guild_id = ? AND status = 'ok'",
+            (guild_id,),
+        )
+        avg_row = await avg_cur.fetchone()
+        avg_latency = round(avg_row["avg_ms"]) if avg_row and avg_row["avg_ms"] is not None else 0
 
-            avg_row = conn.execute(
-                "SELECT AVG(latency_ms) AS avg_ms FROM usage_log WHERE guild_id = ? AND status = 'ok'",
-                (guild_id,),
-            ).fetchone()
-            avg_latency = round(avg_row["avg_ms"]) if avg_row and avg_row["avg_ms"] is not None else 0
+        error_cur = await conn.execute(
+            "SELECT COUNT(*) AS cnt FROM usage_log WHERE guild_id = ? AND status = 'error'",
+            (guild_id,),
+        )
+        error_row = await error_cur.fetchone()
+        error_count = error_row["cnt"] if error_row else 0
 
-            error_row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM usage_log WHERE guild_id = ? AND status = 'error'",
-                (guild_id,),
-            ).fetchone()
-            error_count = error_row["cnt"] if error_row else 0
-
-            # Actual activity date range for this guild (#69)
-            range_row = conn.execute(
-                "SELECT MIN(created_at) AS first_at, MAX(created_at) AS last_at "
-                "FROM usage_log WHERE guild_id = ?",
-                (guild_id,),
-            ).fetchone()
-            first_at = range_row["first_at"] if range_row else None
-            last_at = range_row["last_at"] if range_row else None
+        # Actual activity date range for this guild (#69)
+        range_cur = await conn.execute(
+            "SELECT MIN(created_at) AS first_at, MAX(created_at) AS last_at "
+            "FROM usage_log WHERE guild_id = ?",
+            (guild_id,),
+        )
+        range_row = await range_cur.fetchone()
+        first_at = range_row["first_at"] if range_row else None
+        last_at = range_row["last_at"] if range_row else None
 
         error_rate = round(error_count / total * 100, 1) if total > 0 else 0.0
         return {
@@ -811,11 +882,9 @@ class ConfigStore:
 
     async def get_all_guild_ids(self) -> list[int]:
         """Return all guild_ids that have a saved config row."""
-        return await asyncio.to_thread(self._get_all_guild_ids_sync)
-
-    def _get_all_guild_ids_sync(self) -> list[int]:
-        with self._connect() as conn:
-            rows = conn.execute("SELECT guild_id FROM guild_config").fetchall()
+        conn = await self._ensure_conn()
+        cur = await conn.execute("SELECT guild_id FROM guild_config")
+        rows = await cur.fetchall()
         return [int(row["guild_id"]) for row in rows]
 
     async def get_guilds_with_auto_summary(self) -> list[tuple[int, int]]:
@@ -824,14 +893,12 @@ class ConfigStore:
         Lets the polling task skip guilds that have not configured auto-summary
         without loading every guild's full config row.
         """
-        return await asyncio.to_thread(self._get_guilds_with_auto_summary_sync)
-
-    def _get_guilds_with_auto_summary_sync(self) -> list[tuple[int, int]]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT guild_id, auto_summary_interval FROM guild_config "
-                "WHERE auto_summary_interval IS NOT NULL AND auto_summary_interval > 0"
-            ).fetchall()
+        conn = await self._ensure_conn()
+        cur = await conn.execute(
+            "SELECT guild_id, auto_summary_interval FROM guild_config "
+            "WHERE auto_summary_interval IS NOT NULL AND auto_summary_interval > 0"
+        )
+        rows = await cur.fetchall()
         return [
             (int(row["guild_id"]), _normalize_interval(row["auto_summary_interval"]) or MIN_AUTO_SUMMARY_INTERVAL_MINUTES)
             for row in rows
@@ -845,7 +912,7 @@ class ConfigStore:
     # 여기서는 스키마·CRUD·만기 조회만 책임진다.
 
     @staticmethod
-    def _row_to_reminder(row: sqlite3.Row) -> Reminder:
+    def _row_to_reminder(row: aiosqlite.Row) -> Reminder:
         return Reminder(
             id=int(row["id"]),
             user_id=int(row["user_id"]),
@@ -875,27 +942,16 @@ class ConfigStore:
             raise ValueError("due_at cannot be empty")
         if not payload.strip():
             raise ValueError("payload cannot be empty")
-        return await asyncio.to_thread(
-            self._add_reminder_sync, user_id, guild_id, channel_id, normalized_due, payload
-        )
-
-    def _add_reminder_sync(
-        self,
-        user_id: int,
-        guild_id: int | None,
-        channel_id: int | None,
-        due_at: str,
-        payload: str,
-    ) -> int:
-        with self._connect() as conn:
-            cur = conn.execute(
+        conn = await self._ensure_conn()
+        async with self._lock:
+            cur = await conn.execute(
                 """
                 INSERT INTO reminders (user_id, guild_id, channel_id, due_at, payload, sent, created_at)
                 VALUES (?, ?, ?, ?, ?, 0, ?)
                 """,
-                (user_id, guild_id, channel_id, due_at, payload, _utc_now()),
+                (user_id, guild_id, channel_id, normalized_due, payload, _utc_now()),
             )
-            conn.commit()
+            await conn.commit()
             return int(cur.lastrowid or 0)
 
     async def list_due(self, now: str | None = None) -> list[Reminder]:
@@ -904,19 +960,18 @@ class ConfigStore:
         ``now`` 가 None 이면 현재 UTC 시각을 사용한다. 폴링 태스크가 만기 항목을
         한 번에 조회하는 용도다 (#26).
         """
-        return await asyncio.to_thread(self._list_due_sync, now or _utc_now())
-
-    def _list_due_sync(self, now: str) -> list[Reminder]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, user_id, guild_id, channel_id, due_at, payload, sent, created_at
-                FROM reminders
-                WHERE sent = 0 AND due_at <= ?
-                ORDER BY due_at ASC, id ASC
-                """,
-                (now,),
-            ).fetchall()
+        effective_now = now or _utc_now()
+        conn = await self._ensure_conn()
+        cur = await conn.execute(
+            """
+            SELECT id, user_id, guild_id, channel_id, due_at, payload, sent, created_at
+            FROM reminders
+            WHERE sent = 0 AND due_at <= ?
+            ORDER BY due_at ASC, id ASC
+            """,
+            (effective_now,),
+        )
+        rows = await cur.fetchall()
         return [self._row_to_reminder(row) for row in rows]
 
     async def list_by_user(self, user_id: int, *, include_sent: bool = False) -> list[Reminder]:
@@ -925,50 +980,44 @@ class ConfigStore:
         기본적으로 미발송 항목만 반환한다(백워드 호환 기본값). ``include_sent`` 가
         True 이면 발송 완료 항목도 포함한다.
         """
-        return await asyncio.to_thread(self._list_by_user_sync, user_id, include_sent)
-
-    def _list_by_user_sync(self, user_id: int, include_sent: bool) -> list[Reminder]:
-        with self._connect() as conn:
-            if include_sent:
-                rows = conn.execute(
-                    """
-                    SELECT id, user_id, guild_id, channel_id, due_at, payload, sent, created_at
-                    FROM reminders WHERE user_id = ?
-                    ORDER BY due_at ASC, id ASC
-                    """,
-                    (user_id,),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT id, user_id, guild_id, channel_id, due_at, payload, sent, created_at
-                    FROM reminders WHERE user_id = ? AND sent = 0
-                    ORDER BY due_at ASC, id ASC
-                    """,
-                    (user_id,),
-                ).fetchall()
+        conn = await self._ensure_conn()
+        if include_sent:
+            cur = await conn.execute(
+                """
+                SELECT id, user_id, guild_id, channel_id, due_at, payload, sent, created_at
+                FROM reminders WHERE user_id = ?
+                ORDER BY due_at ASC, id ASC
+                """,
+                (user_id,),
+            )
+        else:
+            cur = await conn.execute(
+                """
+                SELECT id, user_id, guild_id, channel_id, due_at, payload, sent, created_at
+                FROM reminders WHERE user_id = ? AND sent = 0
+                ORDER BY due_at ASC, id ASC
+                """,
+                (user_id,),
+            )
+        rows = await cur.fetchall()
         return [self._row_to_reminder(row) for row in rows]
 
     async def delete_reminder(self, reminder_id: int) -> bool:
         """리마인더를 삭제한다. 실제로 삭제됐으면 True 를 반환한다."""
-        return await asyncio.to_thread(self._delete_reminder_sync, reminder_id)
-
-    def _delete_reminder_sync(self, reminder_id: int) -> bool:
-        with self._connect() as conn:
-            cur = conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
-            conn.commit()
+        conn = await self._ensure_conn()
+        async with self._lock:
+            cur = await conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+            await conn.commit()
             return bool(cur.rowcount and cur.rowcount > 0)
 
     async def mark_sent(self, reminder_id: int) -> bool:
         """리마인더를 발송 완료로 표시한다. 변경됐으면 True 를 반환한다."""
-        return await asyncio.to_thread(self._mark_sent_sync, reminder_id)
-
-    def _mark_sent_sync(self, reminder_id: int) -> bool:
-        with self._connect() as conn:
-            cur = conn.execute(
+        conn = await self._ensure_conn()
+        async with self._lock:
+            cur = await conn.execute(
                 "UPDATE reminders SET sent = 1 WHERE id = ?", (reminder_id,)
             )
-            conn.commit()
+            await conn.commit()
             return bool(cur.rowcount and cur.rowcount > 0)
 
     # ------------------------------------------------------------------
@@ -989,48 +1038,34 @@ class ConfigStore:
         normalized_action = action.strip()
         if not normalized_action:
             raise ValueError("action cannot be empty")
-        return await asyncio.to_thread(
-            self._record_audit_sync, guild_id, user_id, normalized_action, target, before, after
-        )
-
-    def _record_audit_sync(
-        self,
-        guild_id: int | None,
-        user_id: int | None,
-        action: str,
-        target: str | None,
-        before: str | None,
-        after: str | None,
-    ) -> int:
-        with self._connect() as conn:
-            cur = conn.execute(
+        conn = await self._ensure_conn()
+        async with self._lock:
+            cur = await conn.execute(
                 """
                 INSERT INTO audit_log (guild_id, user_id, action, target, before, after, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (guild_id, user_id, action, target, before, after, _utc_now()),
+                (guild_id, user_id, normalized_action, target, before, after, _utc_now()),
             )
-            conn.commit()
+            await conn.commit()
             return int(cur.lastrowid or 0)
 
     async def list_audit(self, guild_id: int, *, limit: int = 50) -> list[AuditEntry]:
         """길드의 최근 감사 로그를 created_at 내림차순(최신 우선)으로 반환한다 (#39)."""
         if limit < 1:
             raise ValueError("limit must be >= 1")
-        return await asyncio.to_thread(self._list_audit_sync, guild_id, limit)
-
-    def _list_audit_sync(self, guild_id: int, limit: int) -> list[AuditEntry]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, guild_id, user_id, action, target, before, after, created_at
-                FROM audit_log
-                WHERE guild_id = ?
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (guild_id, limit),
-            ).fetchall()
+        conn = await self._ensure_conn()
+        cur = await conn.execute(
+            """
+            SELECT id, guild_id, user_id, action, target, before, after, created_at
+            FROM audit_log
+            WHERE guild_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (guild_id, limit),
+        )
+        rows = await cur.fetchall()
         return [
             AuditEntry(
                 id=int(row["id"]),
@@ -1055,15 +1090,13 @@ class ConfigStore:
         반환값은 ``{"chat_history": N, "feedback": M, "usage_log": K,
         "reminders": L}`` 형태의 삭제 건수 dict 이다.
         """
-        return await asyncio.to_thread(self._delete_user_data_sync, user_id)
-
-    def _delete_user_data_sync(self, user_id: int) -> dict[str, int]:
+        conn = await self._ensure_conn()
         deleted = {"chat_history": 0, "feedback": 0, "usage_log": 0, "reminders": 0}
-        with self._connect() as conn:
+        async with self._lock:
             for table in ("chat_history", "feedback", "usage_log", "reminders"):
-                cur = conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+                cur = await conn.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
                 deleted[table] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
-            conn.commit()
+            await conn.commit()
         return deleted
 
     async def delete_guild_data(self, guild_id: int) -> dict[str, int]:
@@ -1072,9 +1105,7 @@ class ConfigStore:
         반환값은 ``{"guild_config": N, "usage_log": M, "feedback": K,
         "chat_history": L, "reminders": P}`` 형태의 삭제 건수 dict 이다.
         """
-        return await asyncio.to_thread(self._delete_guild_data_sync, guild_id)
-
-    def _delete_guild_data_sync(self, guild_id: int) -> dict[str, int]:
+        conn = await self._ensure_conn()
         deleted = {
             "guild_config": 0,
             "usage_log": 0,
@@ -1082,9 +1113,9 @@ class ConfigStore:
             "chat_history": 0,
             "reminders": 0,
         }
-        with self._connect() as conn:
+        async with self._lock:
             for table in ("guild_config", "usage_log", "feedback", "chat_history", "reminders"):
-                cur = conn.execute(f"DELETE FROM {table} WHERE guild_id = ?", (guild_id,))
+                cur = await conn.execute(f"DELETE FROM {table} WHERE guild_id = ?", (guild_id,))
                 deleted[table] = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
-            conn.commit()
+            await conn.commit()
         return deleted

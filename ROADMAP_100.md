@@ -22,8 +22,8 @@
 - [ ] 12. 멀티모달 이미지 입력: `generate`에 이미지 블록 인자 + 3개 제공자 구현 (#54) · L
 - [ ] 13. Discord 첨부 이미지 다운로드·base64 인코딩·크기/타입 검증 헬퍼 · M
 - [x] 14. 비전 게이트를 모델명 하드코딩(llava/bakllava)에서 제공자별 capability 판정으로 · M
-- [ ] 15. `LLMProvider`에 Gemini 추가 + `GeminiClient` 어댑터 · L
-- [ ] 16. 스트리밍 응답: `generate_stream` + Discord 메시지 점진 edit · L
+- [x] 15. `LLMProvider`에 Gemini 추가 + `GeminiClient` 어댑터 · L
+- [x] 16. 스트리밍 응답: `generate_stream` + Discord 메시지 점진 edit · L
 - [ ] 17. 토큰 사용량 집계: 제공자 응답 usage 파싱 → `UsageLog` 저장 · M
 - [x] 18. 제공자·모델별 단가 테이블 기반 호출 비용 계산 + `/stats` 표시 · M
 - [ ] 19. 서버별 일일 토큰/비용 상한 설정 + 초과 시 차단 · M
@@ -34,7 +34,7 @@
 
 ## 🗄️ 데이터 / 스토리지 (24~33)
 
-- [ ] 24. `storage.py`를 aiosqlite 기반 단일 영속 연결로 전환 (#34) · L
+- [x] 24. `storage.py`를 aiosqlite 기반 단일 영속 연결로 전환 (#34) · L
 - [x] 25. `_connect()`에 busy_timeout/synchronous PRAGMA로 'database is locked' 방어 · S
 - [x] 26. 버전 추적형 마이그레이션 프레임워크(schema_version + 순차 migration) · L
 - [x] 27. usage_log·chat_history 시간 기반 retention 정리 백그라운드 태스크 · M
@@ -66,7 +66,7 @@
 - [ ] 47. Prometheus 메트릭 익스포터(명령 카운터·지연·에러율) · M
 - [ ] 48. 봇 프로세스 헬스/메트릭 HTTP 서버(/healthz·/readyz·/metrics) · M
 - [x] 49. graceful shutdown(SIGTERM/SIGINT) + async 진입점 전환 · M
-- [ ] 50. `ConfigStore.close()` 정리 루틴 + 종료 시 호출 · S
+- [x] 50. `ConfigStore.close()` 정리 루틴 + 종료 시 호출 · S
 - [x] 51. fire-and-forget 태스크 추적 + 예외 핸들러 부착 · M
 - [x] 52. LLM provider별 서킷 브레이커 도입 · L
 - [x] 53. `notify_developer` 알림 레이트리밋·중복 억제(dedup) · M

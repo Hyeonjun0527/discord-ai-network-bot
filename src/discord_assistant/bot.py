@@ -24,6 +24,7 @@ from .crypto import CryptoError, decrypt_api_key
 from .llm import (
     AnthropicClient,
     BaseLLMClient,
+    GeminiClient,
     LLMError,
     OllamaClient,
     OllamaManager,
@@ -479,6 +480,77 @@ async def _send_channel_chunks(channel: discord.abc.Messageable, text: str) -> N
             await asyncio.sleep(0.5)  # avoid Discord rate limit on bulk sends
 
 
+# --- #16 스트리밍 응답 throttle ---
+# message.edit 를 너무 자주 호출하면 Discord 레이트리밋에 걸리므로, 최소 간격과
+# 최소 누적 글자 수 둘 중 하나를 만족할 때만 편집한다.
+_STREAM_EDIT_MIN_INTERVAL = 1.2  # seconds between edits
+_STREAM_EDIT_MIN_CHARS = 60      # minimum new chars before an edit
+
+
+async def _stream_to_interaction(
+    interaction: discord.Interaction,
+    stream: Any,
+    *,
+    header: str = "",
+    ephemeral: bool = False,
+) -> str:
+    """LLM 스트림을 followup 메시지에 점진적으로 편집해 보여준다 (#16).
+
+    - 첫 청크를 받으면 followup 메시지를 만들고, 이후 throttle 규칙(_STREAM_EDIT_*)
+      을 만족할 때만 ``message.edit`` 한다.
+    - 누적 길이가 Discord 한 메시지 한도를 넘으면 더 이상 편집하지 않고 누적만 한다
+      (최종 확정은 호출부가 _split_discord_text 로 처리).
+    - 편집 실패/레이트리밋은 조용히 무시하고 다음 기회에 다시 시도한다.
+    - 스트림이 끝나면 누적된 전체 텍스트(헤더 제외)를 반환한다.
+
+    반환된 전체 텍스트가 한 메시지 한도를 넘으면 호출부가 추가 청크를 이어
+    보내야 한다(이 함수는 첫 메시지까지만 책임진다).
+    """
+    accumulated = ""
+    message: discord.Message | None = None
+    last_edit = perf_counter()
+    last_len = 0
+
+    def _display(body: str) -> str:
+        text = (header + body) if header else body
+        return text[:MAX_DISCORD_MESSAGE_CHARS] or "…"
+
+    async for piece in stream:
+        if not piece:
+            continue
+        accumulated += piece
+        if message is None:
+            # 첫 청크 도착 — followup 메시지 생성(응답은 이미 defer 된 상태).
+            message = await interaction.followup.send(
+                _display(accumulated), ephemeral=ephemeral, wait=True
+            )
+            last_edit = perf_counter()
+            last_len = len(accumulated)
+            continue
+        # 이미 한 메시지 한도를 넘었으면 편집을 멈추고 누적만 한다.
+        if len(header) + len(accumulated) > MAX_DISCORD_MESSAGE_CHARS:
+            continue
+        now = perf_counter()
+        if (now - last_edit) >= _STREAM_EDIT_MIN_INTERVAL and (
+            len(accumulated) - last_len
+        ) >= _STREAM_EDIT_MIN_CHARS:
+            try:
+                await message.edit(content=_display(accumulated))
+                last_edit = now
+                last_len = len(accumulated)
+            except discord.HTTPException:
+                # 레이트리밋/일시 오류 — 다음 기회에 다시 시도.
+                pass
+
+    # 스트림 종료 후 최종 1회 확정 편집(첫 메시지 한도 내일 때만).
+    if message is not None and len(header) + len(accumulated) <= MAX_DISCORD_MESSAGE_CHARS:
+        try:
+            await message.edit(content=_display(accumulated))
+        except discord.HTTPException:
+            pass
+    return accumulated
+
+
 def _effective_limit(limit: int | None, default: int) -> int:
     if limit is None:
         return default
@@ -538,6 +610,23 @@ def _get_llm(config: GuildConfig, settings: AppSettings) -> BaseLLMClient:
             api_key=api_key,
             default_model=config.model,
             timeout_seconds=settings.ollama_timeout_seconds,
+        )
+
+    if config.provider == LLMProvider.GEMINI:
+        # #15: Google Gemini — API 키 복호화 후 GeminiClient 를 구성한다.
+        if not config.api_key_encrypted:
+            raise UserFacingError(
+                "Gemini API 키가 설정되지 않았습니다. `/settings` → 📦 모델 관리 → 🔑 API 키 등록"
+            )
+        try:
+            api_key = decrypt_api_key(config.api_key_encrypted, settings.secret_key)
+        except CryptoError as exc:
+            raise UserFacingError(f"API 키 복호화 실패: {exc}") from exc
+        return GeminiClient(
+            api_key=api_key,
+            default_model=config.model,
+            timeout_seconds=settings.ollama_timeout_seconds,
+            temperature=settings.gemini_temperature,
         )
 
     return OllamaClient(
@@ -1112,14 +1201,37 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 # Apply persona if set (#37)
                 prompt = build_chat_prompt(message, language=config.language, persona=config.persona)
             llm = _get_llm(config, settings)
-            answer = await llm.generate(prompt, model=config.model)
-            if len(answer) > MAX_DISCORD_MESSAGE_CHARS:
-                from .ui import LongResponseView as _LRV
-                view = _LRV(full_text=answer)
-                preview = answer[:MAX_DISCORD_MESSAGE_CHARS]
-                await interaction.followup.send(preview, view=view, ephemeral=ephemeral)
-            else:
-                await _send_interaction_chunks(interaction, answer, ephemeral=ephemeral)
+            # #16: 스트리밍 우선 — 점진 출력 후 최종 확정. 스트림이 한 글자도
+            # 내지 못했거나 실패하면 기존 비스트리밍 경로로 폴백한다.
+            answer = ""
+            streamed = False
+            try:
+                stream = llm.generate_stream(prompt, model=config.model)
+                answer = await _stream_to_interaction(
+                    interaction, stream, ephemeral=ephemeral
+                )
+                streamed = bool(answer)
+            except LLMError:
+                # 스트림 도중/시작 시 LLM 오류 — 이미 부분 출력했을 수 있으나,
+                # 아무것도 못 냈으면(answer 빈 값) 폴백 generate 를 시도한다.
+                if answer:
+                    raise
+
+            if not streamed:
+                # 폴백: 비스트리밍 generate (기존 경로 그대로 유지).
+                answer = await llm.generate(prompt, model=config.model)
+                if len(answer) > MAX_DISCORD_MESSAGE_CHARS:
+                    from .ui import LongResponseView as _LRV
+                    view = _LRV(full_text=answer)
+                    preview = answer[:MAX_DISCORD_MESSAGE_CHARS]
+                    await interaction.followup.send(preview, view=view, ephemeral=ephemeral)
+                else:
+                    await _send_interaction_chunks(interaction, answer, ephemeral=ephemeral)
+            elif len(answer) > MAX_DISCORD_MESSAGE_CHARS:
+                # 스트리밍으로 첫 메시지(한도 내)는 이미 표시했으니, 나머지 분량을
+                # 이어서 추가 메시지로 보낸다(_stream_to_interaction 은 첫 메시지만 담당).
+                for chunk in _split_discord_text(answer)[1:]:
+                    await interaction.followup.send(chunk, ephemeral=ephemeral)
             if user_id is not None:
                 await store.save_chat_message(
                     user_id, "user", message, guild_id=guild_id, channel_id=channel_id

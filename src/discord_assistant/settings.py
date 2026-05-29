@@ -80,9 +80,10 @@ class AppSettings:
     ollama_keep_alive: str = "10m"
     ollama_temperature: float = 0.2
     ollama_num_ctx: int = 8192
-    # OpenAI/Anthropic 클라이언트가 주입받을 수 있는 파라미터 (기본값은 기존 하드코딩 값 유지)
+    # OpenAI/Anthropic/Gemini 클라이언트가 주입받을 수 있는 파라미터 (기본값은 기존 하드코딩 값 유지)
     openai_temperature: float = 0.2
     anthropic_max_tokens: int = 4096
+    gemini_temperature: float = 0.2
     llm_system_prompt: str = "You are a helpful Discord bot assistant."
 
     @classmethod
@@ -128,6 +129,7 @@ class AppSettings:
             ollama_num_ctx=_get_int("OLLAMA_NUM_CTX", 8192, minimum=256),
             openai_temperature=_get_float("OPENAI_TEMPERATURE", 0.2, minimum=0.0, maximum=2.0),
             anthropic_max_tokens=_get_int("ANTHROPIC_MAX_TOKENS", 4096, minimum=1),
+            gemini_temperature=_get_float("GEMINI_TEMPERATURE", 0.2, minimum=0.0, maximum=2.0),
             llm_system_prompt=(
                 os.getenv("LLM_SYSTEM_PROMPT", "").strip()
                 or "You are a helpful Discord bot assistant."

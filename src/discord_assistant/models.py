@@ -13,16 +13,23 @@ class LLMProvider(str, Enum):
     OLLAMA = "ollama"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    GEMINI = "gemini"
 
     def display_name(self) -> str:
         return {
             "ollama": "Ollama (로컬)",
             "openai": "OpenAI (GPT)",
             "anthropic": "Anthropic (Claude)",
+            "gemini": "Google (Gemini)",
         }[self.value]
 
     def emoji(self) -> str:
-        return {"ollama": "🖥️", "openai": "🤖", "anthropic": "🧠"}[self.value]
+        return {
+            "ollama": "🖥️",
+            "openai": "🤖",
+            "anthropic": "🧠",
+            "gemini": "✨",
+        }[self.value]
 
 
 @dataclass(frozen=True, slots=True)

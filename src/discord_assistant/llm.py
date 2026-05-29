@@ -4,12 +4,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import queue
 import shutil
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
 from typing import Any
-from urllib import error, request
+from urllib import error, parse, request
 
 from .models import LLMProvider, OllamaModel
 
@@ -43,6 +44,10 @@ class OpenAIError(LLMError):
 
 class AnthropicError(LLMError):
     """Raised when the Anthropic API returns an error."""
+
+
+class GeminiError(LLMError):
+    """Raised when the Google Gemini API returns an error."""
 
 
 class CircuitBreakerOpenError(LLMError):
@@ -186,6 +191,59 @@ class BaseLLMClient(ABC):
     @abstractmethod
     async def generate(self, prompt: str, *, model: str | None = None) -> str: ...
 
+    async def generate_stream(
+        self, prompt: str, *, model: str | None = None
+    ) -> AsyncIterator[str]:
+        """프롬프트에 대한 응답을 점진적(스트리밍)으로 yield 한다 (#16).
+
+        기본 구현은 ``generate()`` 결과 전체를 단일 청크로 한 번 yield 하는
+        폴백이다. 실제 스트리밍을 지원하는 어댑터(Ollama/OpenAI 등)는 이 메서드를
+        오버라이드해 토큰/델타 단위로 yield 한다. ``generate`` 의 시그니처·반환은
+        절대 바뀌지 않으므로(백워드 호환), 비스트리밍 호출부는 그대로 동작한다.
+        """
+        yield await self.generate(prompt, model=model)
+
+
+# ---------------------------------------------------------------------------
+# Streaming 보조: 블로킹 동기 제너레이터(urllib SSE 등)를 비동기 이터레이터로 변환
+# ---------------------------------------------------------------------------
+
+# 스트림 종료를 알리는 센티넬. (큐에 흘려보내 워커 스레드 종료를 신호한다)
+_STREAM_DONE = object()
+
+
+async def _iter_in_thread(
+    make_iter: Callable[[], Iterator[str]],
+) -> AsyncIterator[str]:
+    """블로킹 동기 제너레이터를 별도 스레드에서 돌려 비동기로 청크를 yield 한다.
+
+    urllib 기반 스트리밍은 ``response.readline()`` 등이 블로킹이므로 이벤트 루프를
+    막지 않도록 워커 스레드에서 실행하고, ``queue.Queue`` 로 청크를 메인 루프에
+    전달한다. 워커에서 발생한 예외는 큐를 통해 전달해 호출부에서 다시 던진다.
+    """
+    q: queue.Queue[Any] = queue.Queue(maxsize=64)
+
+    def _worker() -> None:
+        try:
+            for chunk in make_iter():
+                q.put(chunk)
+        except BaseException as exc:  # noqa: BLE001 — 예외를 메인 루프로 전달
+            q.put(exc)
+        finally:
+            q.put(_STREAM_DONE)
+
+    worker = asyncio.create_task(asyncio.to_thread(_worker))
+    try:
+        while True:
+            item = await asyncio.to_thread(q.get)
+            if item is _STREAM_DONE:
+                break
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        await worker
+
 
 # ---------------------------------------------------------------------------
 # Ollama
@@ -266,6 +324,69 @@ class OllamaClient(BaseLLMClient):
             raise OllamaError("Ollama returned invalid JSON") from exc
         return parse_generate_response(payload)
 
+    async def generate_stream(
+        self, prompt: str, *, model: str | None = None
+    ) -> AsyncIterator[str]:
+        """Ollama /api/generate 를 stream=true 로 호출해 토큰 단위로 yield 한다 (#16).
+
+        Ollama 는 한 줄에 하나씩 JSON 객체(``{"response": "...", "done": false}``)를
+        흘려보낸다. 서킷 브레이커/재시도 로직은 비스트리밍 ``generate`` 에 한정하고,
+        스트림 경로는 단순 yield 만 한다(부분 출력 후 실패해도 호출부가 폴백 가능).
+        """
+        resolved_model = model or self.default_model
+        async for chunk in _iter_in_thread(
+            lambda: self._stream_sync(prompt, resolved_model)
+        ):
+            yield chunk
+
+    def _stream_sync(self, prompt: str, model: str) -> Iterator[str]:
+        body = json.dumps(
+            {
+                "model": model,
+                "prompt": prompt,
+                "stream": True,
+                "keep_alive": self.keep_alive,
+                "options": {"temperature": self.temperature, "num_ctx": self.num_ctx},
+            }
+        ).encode("utf-8")
+        req = request.Request(
+            f"{self.base_url}/api/generate",
+            data=body,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:  # noqa: S310
+                for raw_line in response:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if obj.get("error"):
+                        raise OllamaError(str(obj["error"]))
+                    piece = obj.get("response")
+                    if isinstance(piece, str) and piece:
+                        yield piece
+                    if obj.get("done"):
+                        break
+        except error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            logger.debug("Ollama stream HTTP %s error body: %s", exc.code, detail)
+            raise OllamaError(
+                f"Ollama 요청 실패 (HTTP {exc.code})", status_code=exc.code
+            ) from exc
+        except error.URLError as exc:
+            raise OllamaError(
+                "Ollama가 실행 중이지 않습니다. 터미널에서 `ollama serve`를 실행해 주세요."
+            ) from exc
+        except TimeoutError as exc:
+            raise OllamaError(
+                "응답 시간이 초과됐습니다. 더 작은 모델을 사용하거나 `/settings`에서 제공자를 변경해보세요."
+            ) from exc
+
 
 # ---------------------------------------------------------------------------
 # OpenAI
@@ -345,6 +466,74 @@ class OpenAIClient(BaseLLMClient):
             logger.debug("Unexpected OpenAI response shape: %s", payload)
             raise OpenAIError("OpenAI 응답 형식을 해석할 수 없습니다.") from exc
 
+    async def generate_stream(
+        self, prompt: str, *, model: str | None = None
+    ) -> AsyncIterator[str]:
+        """OpenAI Chat Completions 를 stream=true(SSE)로 호출해 델타를 yield 한다 (#16).
+
+        SSE 는 ``data: {json}`` 줄들의 나열이며 마지막은 ``data: [DONE]`` 이다.
+        각 청크의 ``choices[0].delta.content`` 를 누적 없이 그대로 흘려보낸다.
+        """
+        resolved_model = model or self.default_model
+        async for chunk in _iter_in_thread(
+            lambda: self._stream_sync(prompt, resolved_model)
+        ):
+            yield chunk
+
+    def _stream_sync(self, prompt: str, model: str) -> Iterator[str]:
+        body = json.dumps(
+            {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": self.temperature,
+                "stream": True,
+            }
+        ).encode("utf-8")
+        req = request.Request(
+            f"{self._BASE}/chat/completions",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                "Accept": "text/event-stream",
+            },
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:  # noqa: S310
+                for raw_line in response:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[len("data:") :].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        obj = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    try:
+                        delta = obj["choices"][0]["delta"].get("content")
+                    except (KeyError, IndexError, TypeError):
+                        continue
+                    if isinstance(delta, str) and delta:
+                        yield delta
+        except error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            logger.debug("OpenAI stream HTTP %s error body: %s", exc.code, detail)
+            raise OpenAIError(
+                f"OpenAI API 요청 실패 (HTTP {exc.code})", status_code=exc.code
+            ) from exc
+        except error.URLError as exc:
+            raise OpenAIError(f"Cannot reach OpenAI: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise OpenAIError(
+                "응답 시간이 초과됐습니다. 더 작은 모델을 사용하거나 `/settings`에서 제공자를 변경해보세요."
+            ) from exc
+
 
 # ---------------------------------------------------------------------------
 # Anthropic
@@ -423,6 +612,112 @@ class AnthropicClient(BaseLLMClient):
         except (KeyError, IndexError, TypeError) as exc:
             logger.debug("Unexpected Anthropic response shape: %s", payload)
             raise AnthropicError("Anthropic 응답 형식을 해석할 수 없습니다.") from exc
+
+
+# ---------------------------------------------------------------------------
+# Google Gemini (#15)
+# ---------------------------------------------------------------------------
+
+
+class GeminiClient(BaseLLMClient):
+    """Async wrapper around Google Generative Language API (raw HTTP, no SDK).
+
+    ``generateContent`` 엔드포인트를 사용한다. API 키는 보안상 URL 쿼리스트링이
+    아니라 ``x-goog-api-key`` 헤더로 전달한다(키가 로그/URL 에 노출되지 않도록).
+    system_prompt 는 ``systemInstruction`` 필드로, temperature 는
+    ``generationConfig`` 로 전달해 OpenAI/Anthropic 어댑터와 일관성을 맞춘다.
+    """
+
+    _BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        default_model: str = "gemini-1.5-flash",
+        timeout_seconds: int = 60,
+        temperature: float = 0.2,
+        system_prompt: str = "You are a helpful Discord bot assistant.",
+        circuit_breaker: CircuitBreaker | None = None,
+    ) -> None:
+        self.api_key = api_key
+        self.default_model = default_model
+        self.timeout_seconds = timeout_seconds
+        self.temperature = temperature
+        self.system_prompt = system_prompt
+        self.circuit_breaker = circuit_breaker
+
+    async def generate(self, prompt: str, *, model: str | None = None) -> str:
+        resolved_model = model or self.default_model
+        return await _with_circuit_breaker(
+            self.circuit_breaker,
+            lambda: asyncio.to_thread(self._generate_sync, prompt, resolved_model),
+        )
+
+    def _build_body(self, prompt: str) -> bytes:
+        payload: dict[str, Any] = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": self.temperature},
+        }
+        if self.system_prompt:
+            payload["systemInstruction"] = {"parts": [{"text": self.system_prompt}]}
+        return json.dumps(payload).encode("utf-8")
+
+    def _generate_sync(self, prompt: str, model: str) -> str:
+        # 모델 이름에 슬래시/예약문자가 들어와도 URL 경로를 깨지 않도록 인코딩한다.
+        safe_model = parse.quote(model, safe="")
+        body = self._build_body(prompt)
+        req = request.Request(
+            f"{self._BASE}/models/{safe_model}:generateContent",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key,
+            },
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=self.timeout_seconds) as response:  # noqa: S310
+                payload = json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            logger.debug("Gemini HTTP %s error body: %s", exc.code, detail)
+            raise GeminiError(
+                f"Gemini API 요청 실패 (HTTP {exc.code})", status_code=exc.code
+            ) from exc
+        except error.URLError as exc:
+            raise GeminiError(f"Cannot reach Gemini: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise GeminiError(
+                "응답 시간이 초과됐습니다. 더 작은 모델을 사용하거나 `/settings`에서 제공자를 변경해보세요."
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise GeminiError("Gemini returned invalid JSON") from exc
+        return _parse_gemini_payload(payload)
+
+
+def _parse_gemini_payload(payload: dict[str, Any]) -> str:
+    """Gemini generateContent 응답에서 텍스트를 추출한다.
+
+    응답은 ``candidates[0].content.parts[*].text`` 형태이며, parts 가 여러 개일
+    수 있어 모두 이어붙인다. promptFeedback.blockReason 으로 차단된 경우엔 안내
+    오류를 던진다.
+    """
+    if isinstance(payload.get("promptFeedback"), dict):
+        block = payload["promptFeedback"].get("blockReason")
+        if block:
+            raise GeminiError(f"Gemini 안전 필터에 의해 차단됐습니다 ({block}).")
+    try:
+        parts = payload["candidates"][0]["content"]["parts"]
+        text = "".join(
+            part["text"] for part in parts if isinstance(part.get("text"), str)
+        )
+    except (KeyError, IndexError, TypeError) as exc:
+        logger.debug("Unexpected Gemini response shape: %s", payload)
+        raise GeminiError("Gemini 응답 형식을 해석할 수 없습니다.") from exc
+    if not text.strip():
+        raise GeminiError("Gemini 응답이 비어 있습니다.")
+    return text.strip()
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,120 @@
+# env SSOT 검증(#97): `.env.example` 의 키 집합과 봇 코드(`src/discord_assistant`)가
+# 실제로 읽는 환경 변수 키 집합을 대조해, 잉여/누락 드리프트를 빌드에서 실패시킨다.
+#
+# 규칙:
+#   - 잉여(surplus): `.env.example` 에 있으나 코드 어디에서도 참조되지 않는 키 → 실패.
+#     (예시 파일에 죽은 설정이 남는 것을 막는다.)
+#   - 누락(missing): `src/discord_assistant` 코드가 읽는 키인데 `.env.example` 에도
+#     없고 OPTIONAL_KEYS 허용 목록에도 없는 키 → 실패.
+#     (새 필수 설정을 문서화 없이 추가하는 것을 막는다.)
+#
+# OPTIONAL_KEYS: 코드에 기본값이 있어 굳이 `.env.example` 에 넣지 않는 고급/선택 튜닝
+# 키와, 설정이 아닌 런타임 환경 선택자(ENVIRONMENT/APP_ENV)를 명시적으로 허용한다.
+# 새 선택 키를 추가하면 이 목록도 함께 갱신해야 검증이 정직하게 유지된다.
+name: env SSOT check
+
+on:
+  push:
+    paths:
+      - ".env.example"
+      - "src/discord_assistant/**.py"
+      - ".github/workflows/ssot-check.yml"
+  pull_request:
+    paths:
+      - ".env.example"
+      - "src/discord_assistant/**.py"
+      - ".github/workflows/ssot-check.yml"
+  workflow_dispatch:
+
+jobs:
+  env-ssot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify .env.example matches code-referenced env keys
+        run: |
+          python - <<'PY'
+          import re
+          import sys
+          import pathlib
+
+          ROOT = pathlib.Path(".")
+          SRC = ROOT / "src" / "discord_assistant"
+          ENV_EXAMPLE = ROOT / ".env.example"
+
+          # 봇 코드에 기본값이 있어 .env.example 에 굳이 넣지 않는 선택 키 +
+          # 설정이 아닌 런타임 환경 선택자. 새 선택 키 추가 시 함께 갱신할 것.
+          OPTIONAL_KEYS = {
+              "ANTHROPIC_MAX_TOKENS",  # Anthropic 응답 토큰 한도(선택, 코드 기본값 4096)
+              "OPENAI_TEMPERATURE",    # OpenAI 샘플링 온도(선택, 코드 기본값 0.2)
+              "LLM_SYSTEM_PROMPT",     # 시스템 프롬프트 오버라이드(선택)
+              "OLLAMA_KEEP_ALIVE",     # Ollama keep-alive(선택, 코드 기본값 10m)
+              "DASHBOARD_URL",         # /help 의 대시보드 링크(선택)
+              "LOG_FORMAT",            # 로그 포맷 선택(선택)
+              "ENVIRONMENT",           # 런타임 환경 선택자(설정 아님)
+              "APP_ENV",               # 런타임 환경 선택자(설정 아님)
+          }
+
+          GETENV_RE = re.compile(r"os\.getenv\(\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]")
+          HELPER_RE = re.compile(r"_get_(?:int|bool|float)\(\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]")
+          ENVIRON_RE = re.compile(
+              r"os\.environ(?:\.get)?\(?\s*\[?\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]"
+          )
+          # settings.py 의 _is_production_env 는 튜플로 ENVIRONMENT/APP_ENV 를 순회한다.
+          PROD_RE = re.compile(r'for name in \("ENVIRONMENT", "APP_ENV"\)')
+
+
+          def code_keys() -> set[str]:
+              keys: set[str] = set()
+              for path in SRC.rglob("*.py"):
+                  text = path.read_text(encoding="utf-8", errors="ignore")
+                  keys |= set(GETENV_RE.findall(text))
+                  keys |= set(HELPER_RE.findall(text))
+                  keys |= set(ENVIRON_RE.findall(text))
+                  if PROD_RE.search(text):
+                      keys |= {"ENVIRONMENT", "APP_ENV"}
+              return keys
+
+
+          def example_keys() -> set[str]:
+              keys: set[str] = set()
+              for raw in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith("#"):
+                      continue
+                  match = re.match(r"([A-Za-z_][A-Za-z0-9_]*)=", line)
+                  if match:
+                      keys.add(match.group(1))
+              return keys
+
+
+          ck = code_keys()
+          ek = example_keys()
+
+          # 잉여: .env.example 에만 있고 코드에서 전혀 참조되지 않는 키.
+          surplus = sorted(ek - ck)
+          # 누락: 코드가 읽는데 예시에도, 허용 목록에도 없는 키.
+          missing = sorted(ck - ek - OPTIONAL_KEYS)
+
+          print(f"code keys ({len(ck)}): {sorted(ck)}")
+          print(f".env.example keys ({len(ek)}): {sorted(ek)}")
+          print(f"optional (allowlisted): {sorted(OPTIONAL_KEYS)}")
+
+          failed = False
+          if surplus:
+              print("::error::.env.example 에 코드가 쓰지 않는 잉여 키가 있습니다: "
+                    + ", ".join(surplus))
+              failed = True
+          if missing:
+              print("::error::코드가 읽지만 .env.example/OPTIONAL_KEYS 어디에도 없는 키: "
+                    + ", ".join(missing)
+                    + " (.env.example 에 추가하거나, 선택 키라면 OPTIONAL_KEYS 에 등록하세요.)")
+              failed = True
+
+          if failed:
+              sys.exit(1)
+          print("OK: .env.example 이 코드 환경 변수와 동기화되어 있습니다.")
+          PY

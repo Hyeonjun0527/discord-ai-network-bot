@@ -5,9 +5,9 @@
 
 ## 🤖 핵심 봇 기능 (1~11)
 
-- [ ] 1. 예약 알림 영속화: `reminders` 테이블 + 부팅 시 재예약 루프 (#26) · L
-- [ ] 2. `/remind` 확장: 임의 텍스트·절대 시각·반복(매일/매주), 60분 제한 해제 · M
-- [ ] 3. `/reminders` 관리 명령: 대기 중 알림 조회·취소 · S
+- [x] 1. 예약 알림 영속화: `reminders` 테이블 + 부팅 시 재예약 루프 (#26) · L
+- [x] 2. `/remind` 확장: 임의 텍스트·절대 시각·반복(매일/매주), 60분 제한 해제 · M
+- [x] 3. `/reminders` 관리 명령: 대기 중 알림 조회·취소 · S
 - [ ] 4. 메시지 우클릭 컨텍스트 메뉴: '번역'·'요약'·'이 메시지로 질문' · M
 - [ ] 5. `/summarize` 결과를 새 스레드로 분리 게시하는 옵션 · M
 - [ ] 6. 스레드 내 봇 멘션 시 해당 스레드 맥락만으로 응답 · M
@@ -36,7 +36,7 @@
 
 - [ ] 24. `storage.py`를 aiosqlite 기반 단일 영속 연결로 전환 (#34) · L
 - [x] 25. `_connect()`에 busy_timeout/synchronous PRAGMA로 'database is locked' 방어 · S
-- [x] 26. 버전 추적형 마이그레이션 프레임워크(schema_version + 순차 migration) · L
+- [ ] 26. 버전 추적형 마이그레이션 프레임워크(schema_version + 순차 migration) · L
 - [x] 27. usage_log·chat_history 시간 기반 retention 정리 백그라운드 태스크 · M
 - [x] 28. 백업 복원 스크립트(`scripts/restore.sh`) + 백업→복원 왕복 테스트 · M
 - [ ] 29. 대시보드 중복 DB 접근 로직을 공용 storage 레이어로 통합 · M
@@ -62,15 +62,15 @@
 ## 📈 신뢰성 / 관측성 (45~55)
 
 - [x] 45. 구조화 JSON 로깅 도입(basicConfig → 컨텍스트 바인딩) · M
-- [ ] 46. correlation_id(interaction.id) 발급 + 전 로그/usage 전파 · M
+- [x] 46. correlation_id(interaction.id) 발급 + 전 로그/usage 전파 · M
 - [ ] 47. Prometheus 메트릭 익스포터(명령 카운터·지연·에러율) · M
 - [ ] 48. 봇 프로세스 헬스/메트릭 HTTP 서버(/healthz·/readyz·/metrics) · M
-- [ ] 49. graceful shutdown(SIGTERM/SIGINT) + async 진입점 전환 · M
+- [x] 49. graceful shutdown(SIGTERM/SIGINT) + async 진입점 전환 · M
 - [ ] 50. `ConfigStore.close()` 정리 루틴 + 종료 시 호출 · S
-- [ ] 51. fire-and-forget 태스크 추적 + 예외 핸들러 부착 · M
+- [x] 51. fire-and-forget 태스크 추적 + 예외 핸들러 부착 · M
 - [x] 52. LLM provider별 서킷 브레이커 도입 · L
 - [x] 53. `notify_developer` 알림 레이트리밋·중복 억제(dedup) · M
-- [ ] 54. on_disconnect 오탐 제거(on_resumed + 지속 단절 임계 알림) · M
+- [x] 54. on_disconnect 오탐 제거(on_resumed + 지속 단절 임계 알림) · M
 - [ ] 55. Sentry(선택적) 에러 트래킹 통합 · M
 
 ## 🧪 테스트 / 품질 (56~67)
@@ -108,7 +108,7 @@
 - [ ] 80. 설정 UI에 auto_summary_interval 컨트롤 추가(백엔드 모델 확장) · M
 - [x] 81. 모델명 입력을 /api/models 기반 드롭다운으로 교체 · S
 - [ ] 82. usage_log 토큰/비용 컬럼 + stats 엔드포인트·차트 반영 · L
-- [ ] 83. 명령별 평균 응답시간(latency) 막대 차트 · M
+- [x] 83. 명령별 평균 응답시간(latency) 막대 차트 · M
 - [x] 84. 통계 기간 필터(7/30/90일) + 백엔드 daily 쿼리 파라미터화 · M
 - [x] 85. JWT 만료 임박 시 자동 갱신/refresh 처리 · M
 - [x] 86. CI에 프론트 lint·타입체크·build + 백엔드 pytest 잡 추가 · M
@@ -128,7 +128,7 @@
 
 - [x] 95. README 명령어 표 전면 동기화(누락된 /remind·/stats·/search·/config 하위명령 등) · M
 - [x] 96. LICENSE(MIT 전문) + SECURITY.md + CONTRIBUTING.md(Conventional Commits) 작성 · M
-- [ ] 97. 환경변수 SSOT 검증 CI: .env.example ↔ 코드 os.getenv 키 집합 대조 · M
-- [ ] 98. 루트 AGENTS.md(SSOT) 신설 + CLAUDE.md 포인터화 · S
+- [x] 97. 환경변수 SSOT 검증 CI: .env.example ↔ 코드 os.getenv 키 집합 대조 · M
+- [x] 98. 루트 AGENTS.md(SSOT) 신설 + CLAUDE.md 포인터화 · S
 - [x] 99. 이슈/PR 템플릿 + ADR 디렉터리(핵심 설계 결정 기록) · S
-- [ ] 100. 문서↔코드 drift 검증 CI(README 커맨드 ↔ bot.py 등록 대조) + ARCHITECTURE/CHANGELOG 정합 · M
+- [x] 100. 문서↔코드 drift 검증 CI(README 커맨드 ↔ bot.py 등록 대조) + ARCHITECTURE/CHANGELOG 정합 · M

@@ -79,6 +79,24 @@ def _seed_db(db_file: Path) -> None:
         "VALUES (?, ?, ?, ?, ?, ?)",
         rows,
     )
+
+    # 사용 로그 샘플 (#83: 명령별 평균 응답시간 집계 검증용).
+    #   ask:       ok 100 / ok 300  → avg 200
+    #   summarize: ok 1000          → avg 1000
+    #   error 행과 latency NULL 행은 평균에서 제외돼야 한다.
+    usage_rows = [
+        (123, 1, 11, "ask", "ok", 100, None, "2026-05-01T00:00:00+00:00"),
+        (123, 1, 11, "ask", "ok", 300, None, "2026-05-02T00:00:00+00:00"),
+        (123, 1, 11, "summarize", "ok", 1000, None, "2026-05-03T00:00:00+00:00"),
+        (123, 1, 11, "ask", "error", None, "boom", "2026-05-04T00:00:00+00:00"),
+        (123, 1, 11, "ask", "ok", None, None, "2026-05-05T00:00:00+00:00"),
+    ]
+    conn.executemany(
+        "INSERT INTO usage_log "
+        "(guild_id, channel_id, user_id, command, status, latency_ms, error, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        usage_rows,
+    )
     conn.commit()
     conn.close()
 
@@ -142,6 +160,43 @@ def test_feedback_forbidden_for_non_member(client: TestClient) -> None:
     )
     resp = client.get("/api/guilds/123/feedback", headers=_headers(token))
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# #83 stats: 명령별 평균 응답시간
+# ---------------------------------------------------------------------------
+
+
+def test_stats_latency_by_command(client: TestClient) -> None:
+    """명령별 평균 응답시간(latency_by_command)이 정상 행만으로 집계된다 (#83)."""
+    token = _admin_token(client)
+    resp = client.get("/api/guilds/123/stats", headers=_headers(token))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    # 기존 응답 필드는 그대로 보존되어야 한다(추가만, 백워드 호환).
+    assert "by_command" in body
+    assert "avg_latency_ms" in body
+    assert "error_rate" in body
+    assert "daily" in body
+
+    # 새 필드: 명령별 평균. ask=200(=(100+300)/2), summarize=1000.
+    # error 행과 latency NULL 행은 평균에서 제외된다.
+    assert "latency_by_command" in body
+    by_cmd = {r["command"]: r["avg_latency_ms"] for r in body["latency_by_command"]}
+    assert by_cmd == {"ask": 200, "summarize": 1000}
+    # 느린 명령부터 내림차순 정렬
+    assert body["latency_by_command"][0]["command"] == "summarize"
+
+
+def test_stats_latency_empty_guild(client: TestClient) -> None:
+    """사용 로그가 없는 길드는 latency_by_command 가 빈 리스트다 (#83)."""
+    token = client._auth_mod.create_jwt(  # type: ignore[attr-defined]
+        "999", [{"id": "777", "name": "Empty", "icon": None, "owner": True}]
+    )
+    resp = client.get("/api/guilds/777/stats", headers=_headers(token))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["latency_by_command"] == []
 
 
 # ---------------------------------------------------------------------------

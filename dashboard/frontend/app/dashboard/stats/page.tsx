@@ -21,6 +21,8 @@ interface Stats {
   total: number;
   by_command: { command: string; count: number }[];
   avg_latency_ms: number;
+  // 명령별 평균 응답시간(ms) (#83). 백워드 호환을 위해 optional 로 둔다.
+  latency_by_command?: { command: string; avg_latency_ms: number }[];
   error_rate: number;
   daily: { day: string; count: number }[];
 }
@@ -90,6 +92,12 @@ export default function StatsPage() {
     value: c.count,
   }));
 
+  // 명령별 평균 응답시간 막대 차트 데이터 (#83). 느린 명령부터 위에 보이도록 정렬 유지.
+  const latencyData = (stats.latency_by_command ?? []).map((c) => ({
+    name: `/${c.command}`,
+    avg: c.avg_latency_ms,
+  }));
+
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-white">Usage Statistics</h1>
@@ -133,6 +141,58 @@ export default function StatsPage() {
                   cursor={{ fill: "rgba(88, 101, 242, 0.1)" }}
                 />
                 <Bar dataKey="count" fill="#5865F2" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* Per-command average latency bar chart (#83) */}
+      <div className="bg-discord-darker rounded-xl p-4 sm:p-6 border border-white/5">
+        <h2 className="text-white font-semibold mb-4 text-sm">
+          Avg Response Time by Command (ms)
+        </h2>
+        {latencyData.length === 0 ? (
+          <p className="text-gray-500 text-sm">No latency data yet.</p>
+        ) : (
+          <div
+            className="w-full"
+            style={{ height: `${Math.max(latencyData.length * 40, 120)}px` }}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                layout="vertical"
+                data={latencyData}
+                margin={{ top: 4, right: 16, left: 8, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#2c2f33" horizontal={false} />
+                <XAxis
+                  type="number"
+                  tick={{ fill: "#9ca3af", fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={90}
+                  tick={{ fill: "#9ca3af", fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#23272a",
+                    border: "1px solid #2c2f33",
+                    borderRadius: "8px",
+                    color: "#dcddde",
+                    fontSize: 12,
+                  }}
+                  cursor={{ fill: "rgba(88, 101, 242, 0.1)" }}
+                  formatter={(value: number) => [`${value} ms`, "Avg latency"]}
+                />
+                <Bar dataKey="avg" fill="#57F287" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

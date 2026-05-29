@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import io
+import json
 import logging
 import os
 import re
+import signal
 import sys
 from datetime import datetime, timedelta, timezone
 from time import perf_counter
@@ -26,7 +29,7 @@ from .llm import (
     OllamaManager,
     OpenAIClient,
 )
-from .models import GuildConfig, LLMProvider, UsageLog
+from .models import GuildConfig, LLMProvider, Reminder, UsageLog
 from .monitor import format_disconnect_message, format_error_message, notify_developer
 from .prompts import (
     build_ask_prompt,
@@ -52,6 +55,71 @@ from .ui import (
 logger = logging.getLogger(__name__)
 
 _SLOW_RESPONSE_THRESHOLD_MS = 30_000
+
+# --- #46 correlation id ---
+# 명령마다 interaction.id 를 바인딩해 로그에 cid 를 끼워 넣는다. contextvars 는
+# asyncio 태스크 경계를 넘어도 값을 안전하게 전파하므로 명령 핸들러 단위로 격리된다.
+_correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "correlation_id", default="-"
+)
+
+
+def get_correlation_id() -> str:
+    """현재 컨텍스트에 바인딩된 correlation id 를 반환한다(없으면 '-')."""
+    return _correlation_id.get()
+
+
+def set_correlation_id(cid: str | int | None) -> None:
+    """현재 컨텍스트에 correlation id 를 바인딩한다(_record_usage 등 핵심 경로용)."""
+    _correlation_id.set(str(cid) if cid is not None else "-")
+
+
+class CorrelationIdFilter(logging.Filter):
+    """로그 레코드에 ``cid`` 속성을 주입하는 필터 (#46).
+
+    포매터가 ``%(cid)s`` 를 참조할 수 있도록 모든 레코드에 현재 컨텍스트의
+    correlation id 를 채운다. 이미 설정된 레코드는 덮어쓰지 않는다.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not hasattr(record, "cid"):
+            record.cid = get_correlation_id()
+        return True
+
+
+# --- #51 fire-and-forget 태스크 추적 ---
+# create_task 로 띄운 태스크를 강한 참조로 보관해 GC 로 인한 조용한 소실을 막고,
+# 완료 시 예외를 로깅한다(삼킴 방지).
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _on_task_done(task: asyncio.Task[Any]) -> None:
+    """추적 집합에서 태스크를 제거하고, 취소가 아닌 예외는 로깅한다 (#51)."""
+    _background_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.exception(
+            "백그라운드 태스크에서 예외 발생: %s", task.get_name(), exc_info=exc
+        )
+
+
+def _track_task(coro: Any, *, name: str | None = None) -> asyncio.Task[Any]:
+    """코루틴을 태스크로 띄우고 추적 집합에 등록한다 (#51).
+
+    asyncio.create_task 직접 호출을 대체해, 강한 참조 유지 + 예외 로깅을 한다.
+    """
+    task = asyncio.create_task(coro, name=name)
+    _background_tasks.add(task)
+    task.add_done_callback(_on_task_done)
+    return task
+
+
+# --- #27 retention 보존일 기본값 ---
+# settings 에 별도 항목이 없으므로 상수로 둔다. usage_log 90일 / chat_history 30일.
+RETENTION_USAGE_DAYS = 90
+RETENTION_CHAT_DAYS = 30
 
 
 def _truncate(text: str, limit: int = 1024) -> str:
@@ -132,6 +200,34 @@ def _parse_since(since_str: str) -> datetime:
     else:
         delta = timedelta(days=value)
     return datetime.now(timezone.utc) - delta
+
+
+_MAX_REMIND_DELAY = timedelta(days=30)
+
+
+def _parse_remind_delay(when: str) -> timedelta:
+    """'10', '30m', '2h', '1d' 형태의 지연 시간을 timedelta 로 파싱한다 (#2).
+
+    단위가 없으면 분으로 해석한다(기존 N분 입력과의 호환). 1초 미만이거나 최대
+    허용치(30일)를 넘으면 UserFacingError 를 발생시킨다.
+    """
+    text = when.strip().lower()
+    match = re.fullmatch(r"(\d+)\s*([mhd]?)", text)
+    if not match:
+        raise UserFacingError("올바른 형식: 30m, 2h, 1d 또는 분 단위 숫자 (예: 10)")
+    value = int(match.group(1))
+    if value == 0:
+        raise UserFacingError("0은 허용되지 않습니다. 예: 30m, 2h, 1d")
+    unit = match.group(2) or "m"
+    if unit == "m":
+        delta = timedelta(minutes=value)
+    elif unit == "h":
+        delta = timedelta(hours=value)
+    else:
+        delta = timedelta(days=value)
+    if delta > _MAX_REMIND_DELAY:
+        raise UserFacingError("알림은 최대 30일 후까지만 예약할 수 있어요.")
+    return delta
 
 
 def _has_allowed_role(interaction: discord.Interaction, allowed_role_id: int | None) -> bool:
@@ -325,6 +421,10 @@ def _effective_limit(limit: int | None, default: int) -> int:
 def _ids_from_interaction(
     interaction: discord.Interaction,
 ) -> tuple[int | None, int | None, int | None]:
+    # #46: 명령 실행 컨텍스트에 interaction.id 를 correlation id 로 바인딩한다.
+    # 거의 모든 슬래시 명령이 진입부에서 이 헬퍼를 호출하므로 자연스러운 바인딩
+    # 지점이 된다. 이후 같은 컨텍스트의 로그에는 cid 가 따라붙는다.
+    set_correlation_id(getattr(interaction, "id", None))
     guild_id = interaction.guild.id if interaction.guild else None
     channel_id = interaction.channel.id if interaction.channel else None  # type: ignore[union-attr]
     user_id = interaction.user.id if interaction.user else None
@@ -421,7 +521,11 @@ async def _record_usage(
 ) -> None:
     latency_ms = int((perf_counter() - started_at) * 1000)
     if latency_ms > _SLOW_RESPONSE_THRESHOLD_MS:
-        logger.warning("느린 응답 감지: %s %dms", command, latency_ms)
+        # cid 는 CorrelationIdFilter 가 레코드에 주입하지만, 메시지에도 직접 실어
+        # 필터 미구성 환경(테스트 등)에서도 추적 가능하게 한다 (#46).
+        logger.warning(
+            "느린 응답 감지: %s %dms (cid=%s)", command, latency_ms, get_correlation_id()
+        )
     await store.log_usage(
         UsageLog(
             guild_id=guild_id,
@@ -433,6 +537,36 @@ async def _record_usage(
             error=error,
         )
     )
+
+
+# --- #1/#2 리마인더 payload 직렬화 ---
+# DB 에는 payload 를 JSON 문자열로 저장해, 표시 텍스트/종류/반복여부를 함께 담는다.
+# 과거(비-JSON) payload 도 안전하게 평문 메시지로 취급한다(백워드 호환).
+_REMIND_KIND_SUMMARY = "summary"
+_REMIND_KIND_TEXT = "text"
+
+
+def _encode_remind_payload(text: str, *, kind: str, repeat: str | None = None) -> str:
+    """리마인더 payload 를 JSON 문자열로 직렬화한다 (#1/#2)."""
+    data: dict[str, Any] = {"v": 1, "kind": kind, "text": text}
+    if repeat:
+        data["repeat"] = repeat
+    return json.dumps(data, ensure_ascii=False)
+
+
+def _decode_remind_payload(payload: str) -> dict[str, Any]:
+    """payload 를 디코딩한다. 비-JSON(레거시)은 평문 텍스트로 취급한다 (#1)."""
+    try:
+        data = json.loads(payload)
+        if isinstance(data, dict) and "text" in data:
+            return {
+                "kind": str(data.get("kind", _REMIND_KIND_TEXT)),
+                "text": str(data["text"]),
+                "repeat": data.get("repeat"),
+            }
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return {"kind": _REMIND_KIND_TEXT, "text": payload, "repeat": None}
 
 
 def create_bot(settings: AppSettings) -> commands.Bot:
@@ -460,6 +594,67 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 logger.info("Synced %d application command(s).", len(synced))
 
     bot = AssistantBot(command_prefix="!", intents=intents)
+
+    # ------------------------------------------------------------------
+    # Reminders — 영속 예약 전송 (#1/#2/#3)
+    # ------------------------------------------------------------------
+    #
+    # storage 계층(add_reminder/list_due/list_by_user/delete_reminder/mark_sent)을
+    # 그대로 재사용한다. 봇 재시작에도 미발송 reminder 가 살아남도록 on_ready 에서
+    # 미발송 항목을 다시 예약한다.
+
+    async def _deliver_reminder(reminder: Reminder) -> None:
+        """단일 reminder 를 DM 으로 전송하고 발송 완료 표시한다 (#1)."""
+        decoded = _decode_remind_payload(reminder.payload)
+        text = decoded["text"]
+        if decoded["kind"] == _REMIND_KIND_SUMMARY:
+            body = f"⏰ 알림: 예약했던 요약 결과입니다.\n\n{text[:1800]}"
+        else:
+            body = f"⏰ 알림: {text[:1900]}"
+        try:
+            user = bot.get_user(reminder.user_id) or await bot.fetch_user(reminder.user_id)
+            await user.send(body)
+        except discord.Forbidden:
+            # DM 차단 등으로 실패해도 무한 재시도하지 않도록 발송 완료로 표시한다.
+            logger.info("리마인더 DM 전송 실패(차단): user=%s id=%s", reminder.user_id, reminder.id)
+        except discord.HTTPException as exc:
+            logger.warning("리마인더 DM 전송 실패: id=%s %s", reminder.id, exc)
+        if reminder.id is not None:
+            await store.mark_sent(reminder.id)
+
+    async def _schedule_reminder(reminder: Reminder) -> None:
+        """due_at 까지 대기한 뒤 reminder 를 전송한다 (#1).
+
+        due_at 은 ISO8601(UTC 권장) 문자열이다. 이미 지났으면 즉시 전송한다.
+        """
+        try:
+            due = datetime.fromisoformat(reminder.due_at)
+        except ValueError:
+            logger.warning("리마인더 due_at 파싱 실패: id=%s %r", reminder.id, reminder.due_at)
+            due = datetime.now(timezone.utc)
+        if due.tzinfo is None:
+            due = due.replace(tzinfo=timezone.utc)
+        delay = (due - datetime.now(timezone.utc)).total_seconds()
+        if delay > 0:
+            await asyncio.sleep(delay)
+        await _deliver_reminder(reminder)
+
+    async def _reschedule_pending_reminders() -> None:
+        """봇 시작 시 미발송 reminder 를 모두 다시 예약한다 (#1).
+
+        이미 만기인 항목은 즉시 전송되며, 미래 항목은 due_at 까지 대기한다.
+        """
+        try:
+            # 충분히 먼 미래 시각을 넘겨 '미발송' 전부를 가져온 뒤 각각 재예약한다.
+            far_future = (datetime.now(timezone.utc) + _MAX_REMIND_DELAY).isoformat()
+            pending = await store.list_due(now=far_future)
+        except Exception as exc:  # pragma: no cover — 기동 경로 방어
+            logger.exception("미발송 리마인더 조회 실패: %s", exc)
+            return
+        for reminder in pending:
+            _track_task(_schedule_reminder(reminder), name=f"reminder-{reminder.id}")
+        if pending:
+            logger.info("미발송 리마인더 %d건을 재예약했습니다.", len(pending))
 
     # ------------------------------------------------------------------
     # /settings — interactive admin panel
@@ -917,12 +1112,38 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             raise UserFacingError("이 설정을 바꾸려면 Manage Server 또는 관리자 권한이 필요해요.")
         return interaction.guild.id
 
+    async def _audit_config_change(
+        interaction: discord.Interaction,
+        guild_id: int,
+        action: str,
+        before: Any,
+        after: Any,
+    ) -> None:
+        """설정 변경을 감사 로그에 기록한다 (#39).
+
+        before/after 는 문자열로 정규화해 저장한다. 감사 로깅 실패가 명령 자체를
+        막아서는 안 되므로 예외는 삼키고 경고만 남긴다.
+        """
+        user_id = interaction.user.id if interaction.user else None
+        try:
+            await store.record_audit(
+                guild_id=guild_id,
+                user_id=user_id,
+                action=action,
+                before=None if before is None else str(before),
+                after=None if after is None else str(after),
+            )
+        except Exception as exc:  # pragma: no cover — 감사 로깅 방어
+            logger.warning("감사 로그 기록 실패(action=%s): %s", action, exc)
+
     @config_group.command(name="model", description="서버 기본 Ollama 모델명을 저장합니다.")
     @app_commands.describe(model="예: llama3.1:8b, qwen2.5:7b, gemma2:9b")
     async def config_model(interaction: discord.Interaction, model: str) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
+            before = (await store.get_guild_config(guild_id)).model
             config = await store.set_model(guild_id, model)
+            await _audit_config_change(interaction, guild_id, "set_model", before, config.model)
             await _send_interaction_chunks(
                 interaction, f"✅ 기본 모델을 `{config.model}`로 저장했어요.", ephemeral=True,
             )
@@ -934,7 +1155,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     async def config_summary_limit(interaction: discord.Interaction, limit: int) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
+            before = (await store.get_guild_config(guild_id)).summary_limit
             config = await store.set_summary_limit(guild_id, limit)
+            await _audit_config_change(
+                interaction, guild_id, "set_summary_limit", before, config.summary_limit
+            )
             await _send_interaction_chunks(
                 interaction,
                 f"✅ 기본 요약 범위를 최근 {config.summary_limit}개 메시지로 저장했어요.",
@@ -948,7 +1173,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     async def config_language(interaction: discord.Interaction, language: str) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
+            before = (await store.get_guild_config(guild_id)).language
             config = await store.set_language(guild_id, language)
+            await _audit_config_change(
+                interaction, guild_id, "set_language", before, config.language
+            )
             await _send_interaction_chunks(
                 interaction, f"✅ 기본 응답 언어를 `{config.language}`로 저장했어요.", ephemeral=True,
             )
@@ -960,31 +1189,193 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # Phase 3 new commands
     # ------------------------------------------------------------------
 
-    # --- #32 /remind --- reminder for last summarize result
-    @bot.tree.command(name="remind", description="마지막 /summarize 결과를 N분 후 DM으로 전송합니다.")
-    @app_commands.describe(minutes="몇 분 후에 DM으로 받을지 지정합니다. 최대 60분.")
-    async def remind_command(interaction: discord.Interaction, minutes: int) -> None:
-        if minutes < 1 or minutes > 60:
-            await interaction.response.send_message("⚠️ 분은 1~60 사이여야 해요.", ephemeral=True)
-            return
+    # --- #1/#2 /remind --- 영속화된 리마인더 (요약 결과 또는 임의 텍스트)
+    @bot.tree.command(
+        name="remind",
+        description="지정한 시간 뒤 DM으로 알림을 보냅니다. (메시지 미지정 시 마지막 요약)",
+    )
+    @app_commands.describe(
+        when="언제 보낼지. 예: 30m, 2h, 1d (단위 없으면 분). 최대 30일.",
+        message="알림으로 받을 임의 텍스트. 비우면 마지막 /summarize 결과를 사용합니다.",
+        repeat="(선택) 반복 표시용 라벨. 예: daily, weekly (실제 반복 없이 표시만)",
+    )
+    async def remind_command(
+        interaction: discord.Interaction,
+        when: str,
+        message: str = "",
+        repeat: str = "",
+    ) -> None:
         user_id = interaction.user.id if interaction.user else None
-        if user_id is None or user_id not in _last_summaries:
+        if user_id is None:
             await interaction.response.send_message(
-                "⚠️ 최근 /summarize 결과가 없어요. 먼저 /summarize를 실행해 주세요.", ephemeral=True
+                "⚠️ 사용자 정보를 확인할 수 없어요.", ephemeral=True
             )
             return
-        summary_text, _ = _last_summaries[user_id]
+        try:
+            delay = _parse_remind_delay(when)
+        except UserFacingError as exc:
+            await interaction.response.send_message(f"⚠️ {exc}", ephemeral=True)
+            return
+
+        # 메시지가 비어 있으면 마지막 요약 결과(_last_summaries)를 사용한다(#2 호환 경로).
+        text = message.strip()
+        if text:
+            kind = _REMIND_KIND_TEXT
+        else:
+            cached = _last_summaries.get(user_id)
+            if cached is None:
+                await interaction.response.send_message(
+                    "⚠️ 보낼 내용이 없어요. 메시지를 입력하거나 먼저 /summarize를 실행해 주세요.",
+                    ephemeral=True,
+                )
+                return
+            text, _ = cached
+            kind = _REMIND_KIND_SUMMARY
+
+        guild_id, channel_id, _ = _ids_from_interaction(interaction)
+        due_at = (datetime.now(timezone.utc) + delay).isoformat()
+        repeat_label = repeat.strip() or None
+        payload = _encode_remind_payload(text, kind=kind, repeat=repeat_label)
+        reminder_id = await store.add_reminder(user_id, guild_id, channel_id, due_at, payload)
+
+        # 방금 저장한 행을 기준으로 예약한다(봇 재시작 시에도 on_ready 가 재예약).
+        scheduled = Reminder(
+            user_id=user_id,
+            guild_id=guild_id,
+            channel_id=channel_id,
+            due_at=due_at,
+            payload=payload,
+            id=reminder_id,
+        )
+        _track_task(_schedule_reminder(scheduled), name=f"reminder-{reminder_id}")
+
+        # 사람이 읽기 좋은 지연 표기.
+        total_minutes = int(delay.total_seconds() // 60)
+        if total_minutes >= 1440:
+            when_label = f"{total_minutes // 1440}일"
+        elif total_minutes >= 60:
+            when_label = f"{total_minutes // 60}시간"
+        else:
+            when_label = f"{max(total_minutes, 1)}분"
+        repeat_note = f" (반복: {repeat_label})" if repeat_label else ""
         await interaction.response.send_message(
-            f"⏰ {minutes}분 후에 DM으로 요약 결과를 보내드릴게요!", ephemeral=True
+            f"⏰ {when_label} 후에 DM으로 알림을 보내드릴게요!{repeat_note}", ephemeral=True
         )
 
-        async def _send_reminder() -> None:
-            await asyncio.sleep(minutes * 60)
-            try:
-                await interaction.user.send(f"⏰ 알림: {minutes}분 전 요약 결과입니다.\n\n{summary_text[:1800]}")
-            except discord.Forbidden:
-                pass
-        asyncio.create_task(_send_reminder())
+    # --- #3 /reminders --- 본인 예약 목록 표시 + 취소
+    @bot.tree.command(name="reminders", description="내 예약 알림 목록을 보고 취소합니다.")
+    @app_commands.describe(cancel="취소할 알림의 ID. 비우면 목록만 표시합니다.")
+    async def reminders_command(
+        interaction: discord.Interaction, cancel: int | None = None
+    ) -> None:
+        user_id = interaction.user.id if interaction.user else None
+        if user_id is None:
+            await interaction.response.send_message(
+                "⚠️ 사용자 정보를 확인할 수 없어요.", ephemeral=True
+            )
+            return
+
+        # 취소 요청: 본인 소유 + 미발송 항목만 삭제 가능.
+        if cancel is not None:
+            mine = await store.list_by_user(user_id)
+            owned = next((r for r in mine if r.id == cancel), None)
+            if owned is None:
+                await interaction.response.send_message(
+                    "⚠️ 해당 ID의 예약 알림이 없거나 본인 것이 아니에요.", ephemeral=True
+                )
+                return
+            await store.delete_reminder(cancel)
+            await interaction.response.send_message(
+                f"✅ 예약 알림 #{cancel}을(를) 취소했어요.", ephemeral=True
+            )
+            return
+
+        reminders = await store.list_by_user(user_id)
+        if not reminders:
+            await interaction.response.send_message(
+                "예약된 알림이 없어요. `/remind`로 새 알림을 만들 수 있어요.", ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title="내 예약 알림",
+            description="취소하려면 `/reminders cancel:<ID>` 를 사용하세요.",
+            color=discord.Color.from_str("#5865F2"),
+        )
+        for r in reminders[:20]:
+            decoded = _decode_remind_payload(r.payload)
+            preview = decoded["text"].replace("\n", " ")[:80]
+            kind_label = "요약" if decoded["kind"] == _REMIND_KIND_SUMMARY else "메시지"
+            repeat_note = f" · 반복: {decoded['repeat']}" if decoded.get("repeat") else ""
+            embed.add_field(
+                name=f"#{r.id} · {kind_label}{repeat_note}",
+                value=f"예정: {r.due_at}\n{preview or '(내용 없음)'}",
+                inline=False,
+            )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # --- #40 /forget-me --- 본인 데이터 전체 삭제 (GDPR)
+    @bot.tree.command(name="forget-me", description="내 데이터를 모두 삭제합니다. (되돌릴 수 없음)")
+    async def forget_me_command(interaction: discord.Interaction) -> None:
+        maybe_user_id = interaction.user.id if interaction.user else None
+        if maybe_user_id is None:
+            await interaction.response.send_message(
+                "⚠️ 사용자 정보를 확인할 수 없어요.", ephemeral=True
+            )
+            return
+        user_id: int = maybe_user_id  # None 검사 후의 non-None 로컬(클로저 캡처용)
+
+        # 확인 단계: 버튼으로 한 번 더 동의를 받은 뒤에만 삭제한다(#40).
+        class _ForgetConfirmView(discord.ui.View):
+            def __init__(self) -> None:
+                super().__init__(timeout=60)
+                self._owner_id = user_id
+
+            async def interaction_check(self, inner: discord.Interaction) -> bool:
+                # 명령을 실행한 본인만 버튼을 누를 수 있게 한다.
+                if inner.user and inner.user.id == self._owner_id:
+                    return True
+                await inner.response.send_message(
+                    "⚠️ 본인만 이 작업을 확인할 수 있어요.", ephemeral=True
+                )
+                return False
+
+            @discord.ui.button(label="삭제 확인", style=discord.ButtonStyle.danger)
+            async def confirm(
+                self, btn_interaction: discord.Interaction, _button: discord.ui.Button
+            ) -> None:
+                deleted = await store.delete_user_data(user_id)
+                total = sum(deleted.values())
+                detail = ", ".join(f"{k}: {v}건" for k, v in deleted.items())
+                # 인메모리 캐시(_last_summaries)에서도 흔적을 제거한다.
+                _last_summaries.pop(user_id, None)
+                for child in self.children:
+                    if isinstance(child, discord.ui.Button):
+                        child.disabled = True
+                self.stop()
+                await btn_interaction.response.edit_message(
+                    content=f"✅ 데이터를 삭제했어요. (총 {total}건 — {detail})",
+                    view=self,
+                )
+
+            @discord.ui.button(label="취소", style=discord.ButtonStyle.secondary)
+            async def cancel(
+                self, btn_interaction: discord.Interaction, _button: discord.ui.Button
+            ) -> None:
+                for child in self.children:
+                    if isinstance(child, discord.ui.Button):
+                        child.disabled = True
+                self.stop()
+                await btn_interaction.response.edit_message(
+                    content="취소했어요. 데이터는 그대로 유지됩니다.", view=self
+                )
+
+        await interaction.response.send_message(
+            "⚠️ 이 작업은 되돌릴 수 없어요. 당신의 채팅 기록, 피드백, 사용 기록, 예약 알림이 "
+            "모두 삭제됩니다. 정말 삭제하시겠어요?",
+            view=_ForgetConfirmView(),
+            ephemeral=True,
+        )
 
     # --- #34 /pin-summary --- pin the summarize result
     @bot.tree.command(name="pin-summary", description="요약을 실행하고 결과를 채널에 고정합니다.")
@@ -1286,7 +1677,9 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     async def config_admin_role(interaction: discord.Interaction, role: discord.Role) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
+            before = (await store.get_guild_config(guild_id)).admin_role_id
             await store.set_admin_role(guild_id, role.id)
+            await _audit_config_change(interaction, guild_id, "set_admin_role", before, role.id)
             await _send_interaction_chunks(
                 interaction, f"✅ 관리 역할을 `{role.name}`으로 설정했어요.", ephemeral=True,
             )
@@ -1304,7 +1697,16 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             persona = _sanitize_persona(description) or None
             if persona and len(persona) > _MAX_PERSONA_CHARS:
                 raise UserFacingError(f"페르소나는 {_MAX_PERSONA_CHARS}자 이하여야 합니다.")
+            before = (await store.get_guild_config(guild_id)).persona
             await store.set_persona(guild_id, persona)
+            # 감사 로그에는 긴 본문 대신 길이가 제한된 요약만 남긴다(#39).
+            await _audit_config_change(
+                interaction,
+                guild_id,
+                "set_persona",
+                None if before is None else before[:100],
+                None if persona is None else persona[:100],
+            )
             if persona:
                 await _send_interaction_chunks(
                     interaction, f"✅ 페르소나를 설정했어요: `{persona[:100]}`", ephemeral=True,
@@ -1320,7 +1722,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         try:
             guild_id = await require_guild_admin(interaction)
             effective_interval = None if interval <= 0 else interval
+            before = (await store.get_guild_config(guild_id)).auto_summary_interval
             await store.set_auto_summary_interval(guild_id, effective_interval)
+            await _audit_config_change(
+                interaction, guild_id, "set_auto_summary", before, effective_interval
+            )
             if effective_interval:
                 await _send_interaction_chunks(
                     interaction, f"✅ 자동 요약 간격을 {effective_interval}분으로 설정했어요.", ephemeral=True,
@@ -1343,7 +1749,21 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             effective_text = text.strip() or None
             if effective_text and len(effective_text) > _MAX_CUSTOM_PROMPT_CHARS:
                 raise UserFacingError(f"커스텀 프롬프트는 {_MAX_CUSTOM_PROMPT_CHARS}자 이하여야 합니다.")
+            prev_config = await store.get_guild_config(guild_id)
+            before = (
+                prev_config.custom_summarize_prompt
+                if prompt_type == "summarize"
+                else prev_config.custom_ask_prompt
+            )
             await store.set_custom_prompt(guild_id, prompt_type, effective_text)
+            # 긴 프롬프트 본문 대신 길이 제한 요약만 감사 로그에 남긴다(#39).
+            await _audit_config_change(
+                interaction,
+                guild_id,
+                f"set_custom_prompt_{prompt_type}",
+                None if before is None else before[:100],
+                None if effective_text is None else effective_text[:100],
+            )
             if effective_text:
                 await _send_interaction_chunks(
                     interaction, f"✅ `{prompt_type}` 커스텀 프롬프트를 저장했어요.", ephemeral=True,
@@ -1361,7 +1781,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         try:
             guild_id = await require_guild_admin(interaction)
             role_id = role.id if role else None
+            before = (await store.get_guild_config(guild_id)).allowed_role_id
             await store.set_allowed_role(guild_id, role_id)
+            await _audit_config_change(
+                interaction, guild_id, "set_allowed_role", before, role_id
+            )
             if role:
                 await _send_interaction_chunks(
                     interaction, f"✅ `{role.name}` 역할만 명령어를 사용할 수 있어요.", ephemeral=True,
@@ -1385,10 +1809,16 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             bot.tree.copy_global_to(guild=guild)
             synced = await bot.tree.sync(guild=guild)
             logger.info("Guild-synced %d command(s) to %s", len(synced), guild.name)
-        asyncio.create_task(_memory_monitor())
+        # fire-and-forget 태스크는 _track_task 로 추적해 조용한 소실/예외 삼킴 방지 (#51).
+        _track_task(_memory_monitor(), name="memory-monitor")
+        # 봇 재시작에도 미발송 reminder 가 살아남도록 다시 예약한다 (#1).
+        _track_task(_reschedule_pending_reminders(), name="reschedule-reminders")
         # Start auto-summary background task (#33)
         if not auto_summary_task.is_running():
             auto_summary_task.start()
+        # Start retention 정리 백그라운드 태스크 (#27)
+        if not retention_task.is_running():
+            retention_task.start()
         await bot.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
@@ -1537,11 +1967,58 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # Developer notifications — on_disconnect and on_error
     # ------------------------------------------------------------------
 
+    # #54: on_disconnect 오탐 제거.
+    # discord.py 는 일상적인 재연결(게이트웨이 리밸런싱 등)에도 on_disconnect 를
+    # 자주 발생시킨다. 즉시 DM 을 보내면 도배가 되므로, 끊김을 감지하면 유예 시간
+    # 동안 기다렸다가 그동안 재연결(on_resumed/on_connect)되지 않은 경우에만 알린다.
+    _DISCONNECT_GRACE_SECONDS = 30.0
+    _disconnect_state: dict[str, asyncio.Task[Any] | None] = {"pending": None}
+
+    async def _delayed_disconnect_alert() -> None:
+        """유예 시간 대기 후에도 재연결이 없으면 개발자에게 알린다 (#54)."""
+        try:
+            await asyncio.sleep(_DISCONNECT_GRACE_SECONDS)
+        except asyncio.CancelledError:
+            # 유예 시간 내 재연결 → 알림 취소(정상 동작).
+            return
+        # 여전히 연결되지 않은 경우에만 알린다.
+        if bot.is_closed() or not bot.is_ready():
+            logger.warning(
+                "Bot still disconnected after %.0fs grace; notifying developer.",
+                _DISCONNECT_GRACE_SECONDS,
+            )
+            msg = format_disconnect_message(shard_id=None)
+            await notify_developer(msg, bot)
+        _disconnect_state["pending"] = None
+
+    def _cancel_pending_disconnect_alert() -> None:
+        """대기 중인 끊김 알림을 취소한다(재연결 시 호출) (#54)."""
+        pending = _disconnect_state.get("pending")
+        if pending is not None and not pending.done():
+            pending.cancel()
+        _disconnect_state["pending"] = None
+
     @bot.event
     async def on_disconnect() -> None:
-        logger.warning("Bot disconnected from Discord.")
-        msg = format_disconnect_message(shard_id=None)
-        await notify_developer(msg, bot)
+        logger.warning("Bot disconnected from Discord (grace period before alert).")
+        # 이미 대기 중인 알림이 있으면 중복 예약하지 않는다.
+        pending = _disconnect_state.get("pending")
+        if pending is not None and not pending.done():
+            return
+        _disconnect_state["pending"] = _track_task(
+            _delayed_disconnect_alert(), name="disconnect-alert"
+        )
+
+    @bot.event
+    async def on_resumed() -> None:
+        # 세션 재개 → 진행 중인 끊김 알림이 있으면 취소해 DM 도배를 막는다 (#54).
+        logger.info("Bot session resumed.")
+        _cancel_pending_disconnect_alert()
+
+    @bot.event
+    async def on_connect() -> None:
+        # 재연결(신규 세션) 시에도 대기 중인 끊김 알림을 취소한다 (#54).
+        _cancel_pending_disconnect_alert()
 
     @bot.event
     async def on_error(event: str, *args: object, **kwargs: object) -> None:  # type: ignore[override]
@@ -1602,6 +2079,31 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                         break
         except Exception as e:
             logger.exception("auto_summary_task error: %s", e)
+
+    # ------------------------------------------------------------------
+    # #27 — Retention 정리 백그라운드 태스크 (하루 1회)
+    # ------------------------------------------------------------------
+
+    @tasks.loop(hours=24)
+    async def retention_task() -> None:
+        """오래된 usage_log/chat_history 를 주기적으로 정리한다 (#27).
+
+        보존일은 상수(RETENTION_USAGE_DAYS / RETENTION_CHAT_DAYS)를 사용한다.
+        purge 후 VACUUM 으로 디스크 사용을 회수한다(인메모리 DB 는 자동 skip).
+        """
+        try:
+            deleted = await store.purge_old(
+                usage_days=RETENTION_USAGE_DAYS, chat_days=RETENTION_CHAT_DAYS
+            )
+            if deleted.get("usage_log") or deleted.get("chat_history"):
+                logger.info(
+                    "Retention 정리 완료: usage_log %d건, chat_history %d건 삭제.",
+                    deleted.get("usage_log", 0),
+                    deleted.get("chat_history", 0),
+                )
+                await store.vacuum()
+        except Exception as exc:
+            logger.exception("retention_task error: %s", exc)
 
     # ------------------------------------------------------------------
     # Phase 3 — Reaction feedback tracker (#42)
@@ -1668,7 +2170,65 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     return bot
 
 
+async def _cancel_background_tasks() -> None:
+    """추적 중인 fire-and-forget 태스크를 모두 취소하고 정리를 기다린다 (#49/#51)."""
+    pending = [t for t in list(_background_tasks) if not t.done()]
+    for task in pending:
+        task.cancel()
+    if pending:
+        # 취소 예외를 모두 흡수하며 정리가 끝날 때까지 대기한다.
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
+async def run_bot(settings: AppSettings, bot: commands.Bot | None = None) -> None:
+    """SIGTERM/SIGINT 에 반응하는 graceful shutdown 기반 봇 실행 루틴 (#49).
+
+    기존 ``bot.run`` 과 동등하게 봇을 기동하되, 종료 시그널을 받으면 추적 중인
+    백그라운드 태스크를 취소하고 ``bot.close()`` 로 깔끔하게 정리한다.
+    """
+    if bot is None:
+        bot = create_bot(settings)
+
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+
+    def _request_stop() -> None:
+        logger.info("종료 시그널 수신 — graceful shutdown 시작.")
+        stop_event.set()
+
+    # 일부 플랫폼(Windows 등)은 loop.add_signal_handler 를 지원하지 않으므로 방어한다.
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, _request_stop)
+        except (NotImplementedError, RuntimeError):  # pragma: no cover — 플랫폼 의존
+            pass
+
+    # 봇 시작과 종료 시그널 대기를 동시에 돌린다. 둘 중 하나가 끝나면 정리한다.
+    start_task = asyncio.ensure_future(bot.start(settings.discord_bot_token))
+    stop_task = asyncio.ensure_future(stop_event.wait())
+    try:
+        done, _ = await asyncio.wait(
+            {start_task, stop_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+        # start_task 가 예외로 끝났다면 그대로 표면화한다.
+        if start_task in done:
+            start_task.result()
+    finally:
+        stop_task.cancel()
+        # 백그라운드 추적 태스크(리마인더/모니터 등) 취소 (#51).
+        await _cancel_background_tasks()
+        if not bot.is_closed():
+            await bot.close()
+        if not start_task.done():
+            start_task.cancel()
+        await asyncio.gather(start_task, return_exceptions=True)
+
+
 def main() -> None:
     settings = AppSettings.from_env()
     bot = create_bot(settings)
-    bot.run(settings.discord_bot_token)
+    # 기존 ``bot.run`` 동작과 동등하되, SIGTERM/SIGINT 시 graceful shutdown 한다 (#49).
+    try:
+        asyncio.run(run_bot(settings, bot))
+    except KeyboardInterrupt:  # pragma: no cover — Ctrl-C 보조 처리
+        logger.info("KeyboardInterrupt — 종료합니다.")

@@ -354,6 +354,18 @@ async def get_guild_stats(
         ) as c:
             by_command = await c.fetchall()
 
+        # 명령별 평균 응답시간(latency_ms) 집계 (#83).
+        # 전역 avg_latency_ms 와 동일하게 정상 처리(status='ok')만 대상으로 하고,
+        # latency_ms 가 기록된 행만 평균을 낸다(NULL 은 AVG 가 자동 제외).
+        # 평균이 큰(느린) 명령부터 보이도록 내림차순 정렬한다.
+        async with db.execute(
+            "SELECT command, AVG(latency_ms) AS avg_ms FROM usage_log "
+            "WHERE guild_id = ? AND status = 'ok' AND latency_ms IS NOT NULL "
+            "GROUP BY command ORDER BY avg_ms DESC",
+            (guild_id,),
+        ) as c:
+            latency_by_command = await c.fetchall()
+
         async with db.execute(
             "SELECT AVG(latency_ms) AS avg_ms FROM usage_log WHERE guild_id = ? AND status = 'ok'",
             (guild_id,),
@@ -392,6 +404,11 @@ async def get_guild_stats(
             "total": total,
             "by_command": [{"command": r["command"], "count": r["cnt"]} for r in by_command],
             "avg_latency_ms": avg_latency,
+            # 명령별 평균 응답시간(ms). 기존 응답 필드는 그대로 두고 추가만 한다 (#83).
+            "latency_by_command": [
+                {"command": r["command"], "avg_latency_ms": round(r["avg_ms"])}
+                for r in latency_by_command
+            ],
             "error_rate": error_rate,
             "days": days,  # 집계에 사용된 기간(일) (#84)
             "daily": [{"day": r["day"], "count": r["cnt"]} for r in daily_rows],

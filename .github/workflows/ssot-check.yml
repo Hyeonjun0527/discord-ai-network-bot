@@ -56,6 +56,9 @@ jobs:
               "LOG_FORMAT",            # 로그 포맷 선택(선택)
               "ENVIRONMENT",           # 런타임 환경 선택자(설정 아님)
               "APP_ENV",               # 런타임 환경 선택자(설정 아님)
+              "GEMINI_TEMPERATURE",    # Gemini 샘플링 온도(선택, 코드 기본값)
+              "METRICS_PORT",          # 헬스/메트릭 서버 포트(선택, 0이면 비활성)
+              "SENTRY_DSN",            # Sentry 에러 트래킹 DSN(선택, 미설정 시 no-op)
           }
 
           GETENV_RE = re.compile(r"os\.getenv\(\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]")

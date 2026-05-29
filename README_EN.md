@@ -157,11 +157,13 @@ Configure the active provider and model for each server using the `/settings` co
 | `/chat message [public]` | Free-form conversation with the AI — no channel context. Set `public:true` to post the reply publicly. |
 | `/translate text [target_language]` | Translates text to the specified language. Defaults to `ko` (Korean). |
 | `/search query [limit]` | Searches channel messages by keyword and summarizes the matches. Default search range is 200 messages. |
+| `/digest [since]` | Digests a time window (`30m`·`1h`·`6h`·`1d`, default `1d`) into key points, decisions, and action items. |
 | `/remind minutes` | Sends your last `/summarize` result via DM after N minutes (1–60). |
 | `/pin-summary [limit]` | Runs a summary and pins the result in the channel. Requires Manage Messages permission. |
 | `/summarize-channels` | Select multiple channels and produce a combined summary. (Server only) |
 | `/export [limit]` | Exports channel messages as a Markdown file and sends it via DM. |
 | `/stats` | Shows server bot-usage statistics. (Server only) |
+| `/usage` | Shows your usage, cooldown, and the server's daily token limit. |
 | `/help` | Shows all commands and usage examples as an ephemeral message. |
 | `/settings` | Opens the interactive settings panel. Requires administrator permissions. |
 
@@ -179,6 +181,7 @@ Changing server settings requires Manage Server / Administrator permission, or a
 | `/config auto_summary <interval>` | Sets the auto-summary interval in minutes (min 5). `0` disables it. |
 | `/config custom_prompt <prompt_type> <text>` | Sets a custom `summarize`/`ask` prompt. Empty `text` resets it. |
 | `/config allowed_role [role]` | Restricts command usage to a role. Leave empty to remove the restriction. |
+| `/config daily_token_budget budget` | Sets the server's daily token-usage cap. `0` means unlimited. |
 
 ### Command Examples
 

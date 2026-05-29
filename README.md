@@ -76,11 +76,13 @@ Discord Developer Portal에서 Bot을 만들고 다음 권한/인텐트를 확�
 | `/chat message [public:선택]` | 채널 맥락 없이 AI에게 자유롭게 질문합니다. `public:true`면 공개 메시지로 표시. |
 | `/translate text [target_language:선택]` | 텍스트를 지정 언어로 번역합니다. 기본 `ko`. |
 | `/search query [limit:선택]` | 채널에서 키워드로 메시지를 검색하고 요약합니다. 기본 검색 범위 200개. |
+| `/digest [since:선택]` | 지정한 기간(`30m`·`1h`·`6h`·`1d`, 기본 `1d`)의 대화를 핵심·결정·액션으로 정리합니다. |
 | `/remind minutes` | 마지막 `/summarize` 결과를 N분(1~60) 후 DM으로 전송합니다. |
 | `/pin-summary [limit:선택]` | 요약을 실행하고 결과를 채널에 고정합니다. 메시지 관리 권한 필요. |
 | `/summarize-channels` | 여러 채널을 선택해 통합 요약합니다. (서버 전용) |
 | `/export [limit:선택]` | 채널 메시지를 마크다운 파일로 내보내 DM으로 전송합니다. |
 | `/stats` | 서버 봇 사용 통계를 표시합니다. (서버 전용) |
+| `/usage` | 내 사용량과 쿨다운, 서버 일일 토큰 한도를 확인합니다. |
 | `/help` | 모든 명령어 사용법을 안내합니다. |
 | `/settings` | 대화형 설정 패널을 엽니다. 관리자 전용. |
 
@@ -98,6 +100,7 @@ Discord Developer Portal에서 Bot을 만들고 다음 권한/인텐트를 확�
 | `/config auto_summary interval` | 자동 요약 간격(분, 최소 5)을 설정합니다. `0`이면 비활성화. |
 | `/config custom_prompt prompt_type text` | `summarize`/`ask` 커스텀 프롬프트를 설정합니다. `text`가 비면 초기화. |
 | `/config allowed_role [role:선택]` | 명령어를 사용할 수 있는 역할을 제한합니다. 비워두면 제한 해제. |
+| `/config daily_token_budget budget` | 서버의 일일 토큰 사용 상한을 설정합니다. `0`이면 무제한. |
 
 ### /chat 예시
 

@@ -85,7 +85,12 @@ class OllamaModel:
 
 @dataclass(frozen=True, slots=True)
 class UsageLog:
-    """Command usage log entry."""
+    """Command usage log entry.
+
+    #17: ``prompt_tokens``/``completion_tokens`` 는 LLM 응답의 usage 메타데이터에서
+    파싱한 토큰 수다. 기본값 0 으로 두어 기존 호출부(토큰을 넘기지 않는 경로)와
+    100% 백워드 호환된다. 토큰 정보가 없는 제공자/응답이면 0 으로 기록된다.
+    """
 
     guild_id: int | None
     channel_id: int | None
@@ -94,6 +99,8 @@ class UsageLog:
     status: str
     latency_ms: int = 0
     error: str | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
 @dataclass(frozen=True, slots=True)

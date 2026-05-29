@@ -70,15 +70,18 @@ CREATE TABLE IF NOT EXISTS guild_config (
 );
 
 CREATE TABLE IF NOT EXISTS usage_log (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id     INTEGER,
-    channel_id   INTEGER,
-    user_id      INTEGER,
-    command      TEXT    NOT NULL,
-    status       TEXT    NOT NULL,
-    latency_ms   INTEGER,
-    error        TEXT,
-    created_at   TEXT    NOT NULL
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id          INTEGER,
+    channel_id        INTEGER,
+    user_id           INTEGER,
+    command           TEXT    NOT NULL,
+    status            TEXT    NOT NULL,
+    latency_ms        INTEGER,
+    error             TEXT,
+    -- #17: 토큰 사용량 집계. 토큰 정보가 없는 응답/제공자는 0 으로 기록.
+    prompt_tokens     INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    created_at        TEXT    NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS chat_history (
@@ -241,6 +244,20 @@ def _create_audit_log_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_usage_log_token_columns(conn: sqlite3.Connection) -> None:
+    """usage_log 에 prompt_tokens/completion_tokens 컬럼을 멱등하게 보강한다 (#17).
+
+    기존 배포 DB(토큰 컬럼이 없는 usage_log)에도 안전하게 적용된다. 컬럼 존재
+    검사를 거쳐 없을 때만 ALTER 하므로 두 번 호출해도 안전하다.
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(usage_log)")}
+    for name in ("prompt_tokens", "completion_tokens"):
+        if name not in existing:
+            conn.execute(
+                f"ALTER TABLE usage_log ADD COLUMN {name} INTEGER NOT NULL DEFAULT 0"
+            )
+
+
 def _create_query_indexes(conn: sqlite3.Connection) -> None:
     """주요 쿼리 경로 인덱스를 멱등하게 보강한다 (#32/#39)."""
     conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_log_guild_created ON usage_log(guild_id, created_at)")
@@ -259,6 +276,7 @@ MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (3, _create_reminders_table),
     (4, _create_audit_log_table),
     (5, _create_query_indexes),
+    (6, _add_usage_log_token_columns),
 ]
 
 # 코드가 도달 가능한 최신 스키마 버전. MIGRATIONS 가 비어 있으면 0.
@@ -676,8 +694,9 @@ class ConfigStore:
             await conn.execute(
                 """
                 INSERT INTO usage_log
-                    (guild_id, channel_id, user_id, command, status, latency_ms, error, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (guild_id, channel_id, user_id, command, status, latency_ms,
+                     error, prompt_tokens, completion_tokens, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     log.guild_id,
@@ -687,6 +706,9 @@ class ConfigStore:
                     log.status,
                     log.latency_ms,
                     error,
+                    # #17: 음수 토큰 수는 0 으로 보정해 통계/과금 집계를 보호한다.
+                    max(log.prompt_tokens, 0),
+                    max(log.completion_tokens, 0),
                     _utc_now(),
                 ),
             )

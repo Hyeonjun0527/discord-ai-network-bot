@@ -19,12 +19,12 @@
 
 ## 🧠 LLM / 프롬프트 (12~23)
 
-- [ ] 12. 멀티모달 이미지 입력: `generate`에 이미지 블록 인자 + 3개 제공자 구현 (#54) · L
-- [ ] 13. Discord 첨부 이미지 다운로드·base64 인코딩·크기/타입 검증 헬퍼 · M
+- [x] 12. 멀티모달 이미지 입력: `generate`에 이미지 블록 인자 + 3개 제공자 구현 (#54) · L
+- [x] 13. Discord 첨부 이미지 다운로드·base64 인코딩·크기/타입 검증 헬퍼 · M
 - [x] 14. 비전 게이트를 모델명 하드코딩(llava/bakllava)에서 제공자별 capability 판정으로 · M
 - [x] 15. `LLMProvider`에 Gemini 추가 + `GeminiClient` 어댑터 · L
 - [x] 16. 스트리밍 응답: `generate_stream` + Discord 메시지 점진 edit · L
-- [ ] 17. 토큰 사용량 집계: 제공자 응답 usage 파싱 → `UsageLog` 저장 · M
+- [x] 17. 토큰 사용량 집계: 제공자 응답 usage 파싱 → `UsageLog` 저장 · M
 - [x] 18. 제공자·모델별 단가 테이블 기반 호출 비용 계산 + `/stats` 표시 · M
 - [ ] 19. 서버별 일일 토큰/비용 상한 설정 + 초과 시 차단 · M
 - [ ] 20. 함수/툴 호출(OpenAI tools, Anthropic tool_use)로 메시지 검색 툴 노출 · L
@@ -95,7 +95,7 @@
 - [x] 70. Verify를 실제 봇 READY 스모크테스트로 강화 · M
 - [x] 71. 배포 실패 시 DEVELOPER_USER_ID DM/Discord 웹훅 알림 · M
 - [x] 72. 스테이징 환경 분리(compose.staging.yml + 컨테이너명/DEPLOY_DIR 분기) · L
-- [ ] 73. 멀티 호스트 배포(러너 라벨/매트릭스 + DEPLOY_DIR 분기) · L
+- [x] 73. 멀티 호스트 배포(러너 라벨/매트릭스 + DEPLOY_DIR 분기) · L
 - [x] 74. 백업 cron 경로를 DEPLOY_DIR 기준으로 정정 + 사이드카 컨테이너화 · M
 - [x] 75. 백업 산출물 오프호스트(원격/오브젝트 스토리지) 복제 · M
 - [x] 76. logrotate를 Docker json-file 운영에 맞게 정리 + 파일/컨테이너 로그 정책 통일 · S

@@ -25,10 +25,12 @@ from .llm import (
     AnthropicClient,
     BaseLLMClient,
     GeminiClient,
+    ImageInput,
     LLMError,
     OllamaClient,
     OllamaManager,
     OpenAIClient,
+    supports_vision,
 )
 from .models import GuildConfig, LLMProvider, Reminder, UsageLog
 from .monitor import format_disconnect_message, format_error_message, notify_developer
@@ -132,6 +134,12 @@ def _truncate(text: str, limit: int = 1024) -> str:
 MAX_DISCORD_MESSAGE_CHARS = 1900
 MAX_EXPORT_BYTES = 8 * 1024 * 1024  # 8 MB Discord file limit
 MAX_SEARCH_MATCHES = 20  # max matching messages shown in /search (#74)
+
+# --- #13 이미지 첨부 다운로드 상한 ---
+# 비전 모델로 보낼 첨부 이미지를 다운로드할 때의 안전 상한. 과도한 메모리/대역폭
+# 사용과 비용 폭증을 막기 위해 장수·용량을 제한한다.
+MAX_IMAGE_ATTACHMENTS = 3          # 한 번에 분석할 최대 이미지 수
+MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 개별 이미지 최대 8MB
 
 # Reaction emojis for feedback tracking
 THUMBS_UP = "\U0001f44d"   # 👍
@@ -664,6 +672,64 @@ async def _collect_transcript(
     return build_transcript(messages, max_chars=max_context_chars)
 
 
+def _usage_tokens(llm: BaseLLMClient) -> tuple[int, int]:
+    """클라이언트의 last_usage 에서 (prompt_tokens, completion_tokens) 를 읽는다 (#17).
+
+    last_usage 가 없거나(구현 누락) 비정상이면 (0, 0) 으로 안전하게 폴백한다.
+    """
+    usage = getattr(llm, "last_usage", None)
+    prompt = getattr(usage, "prompt_tokens", 0) or 0
+    completion = getattr(usage, "completion_tokens", 0) or 0
+    return int(prompt), int(completion)
+
+
+async def _download_image_attachments(
+    attachments: list[discord.Attachment],
+    *,
+    max_count: int = MAX_IMAGE_ATTACHMENTS,
+    max_bytes: int = MAX_IMAGE_BYTES,
+) -> list[ImageInput]:
+    """첨부 중 이미지를 bytes 로 다운로드해 (mime, bytes) 리스트로 반환한다 (#13).
+
+    - content_type 이 ``image/*`` 인 첨부만 대상으로 한다(MIME 검증).
+    - 개별 첨부 용량이 ``max_bytes`` 를 넘으면 건너뛴다(용량 상한).
+    - 최대 ``max_count`` 장까지만 다운로드한다.
+    - 개별 다운로드 실패(네트워크/권한 등)는 조용히 건너뛰어 한 장 실패가 전체를
+      막지 않게 한다.
+
+    반환 리스트는 llm.generate(prompt, images=...) 에 그대로 넘길 수 있다.
+    """
+    images: list[ImageInput] = []
+    for att in attachments:
+        if len(images) >= max_count:
+            break
+        content_type = att.content_type
+        if not content_type or not content_type.startswith("image/"):
+            continue
+        # discord.Attachment.size 는 바이트 단위. 다운로드 전 상한으로 거른다.
+        if att.size and att.size > max_bytes:
+            logger.info(
+                "이미지 첨부 용량 초과로 건너뜀: %s (%d bytes)", att.filename, att.size
+            )
+            continue
+        try:
+            data = await att.read()
+        except (discord.HTTPException, discord.NotFound, discord.Forbidden) as exc:
+            logger.warning("이미지 첨부 다운로드 실패: %s %s", att.filename, exc)
+            continue
+        # 실제 바이트 길이로 한 번 더 검증(헤더상 size 와 어긋날 수 있음).
+        if len(data) > max_bytes:
+            logger.info(
+                "이미지 첨부 실제 용량 초과로 건너뜀: %s (%d bytes)",
+                att.filename,
+                len(data),
+            )
+            continue
+        # MIME 을 함께 보관해 제공자별 멀티모달 규격에 정확한 타입을 싣는다.
+        images.append((content_type.split(";", 1)[0].strip(), data))
+    return images
+
+
 async def _record_usage(
     store: ConfigStore,
     *,
@@ -674,6 +740,8 @@ async def _record_usage(
     status: str,
     started_at: float,
     error: str | None = None,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
 ) -> None:
     latency_ms = int((perf_counter() - started_at) * 1000)
     if latency_ms > _SLOW_RESPONSE_THRESHOLD_MS:
@@ -691,6 +759,9 @@ async def _record_usage(
             status=status,
             latency_ms=latency_ms,
             error=error,
+            # #17: 토큰 정보가 없으면 0 으로 기록(누락 안전).
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
         )
     )
 
@@ -950,6 +1021,8 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
+            # #17: 응답 직후 토큰 사용량을 읽어 둔다(이후 record 경로에서 사용).
+            p_tokens, c_tokens = _usage_tokens(llm)
 
             # Cache the result for default queries
             if use_cache:
@@ -971,6 +1044,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 await _record_usage(
                     store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                     command="summarize", status="ok", started_at=started,
+                    prompt_tokens=p_tokens, completion_tokens=c_tokens,
                 )
                 return
             if thread:
@@ -986,6 +1060,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="summarize", status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
@@ -1065,6 +1140,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
+            p_tokens, c_tokens = _usage_tokens(llm)  # #17
 
             # Follow-up view (#36) — capture transcript for follow-up
             transcript_snapshot = transcript
@@ -1089,6 +1165,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="ask", status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
@@ -1147,6 +1224,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             prompt = build_translate_prompt(text, target_language=target_language)
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
+            p_tokens, c_tokens = _usage_tokens(llm)  # #17
             # Cache the result (#38)
             set_translation(text, target_language, answer)
             embed = discord.Embed(color=discord.Color.from_str("#5865F2"))
@@ -1156,6 +1234,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="translate", status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
@@ -1239,9 +1318,13 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 await store.save_chat_message(
                     user_id, "assistant", answer, guild_id=guild_id, channel_id=channel_id
                 )
+            # #17: 스트리밍 경로는 usage 메타데이터가 없어 (0,0) 이 되며, 폴백
+            # generate 경로는 last_usage 가 채워진다(누락 시 0).
+            p_tokens, c_tokens = _usage_tokens(llm)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="chat", status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
@@ -1646,6 +1729,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             prompt = build_summarize_prompt(transcript, language=config.language)
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
+            p_tokens, c_tokens = _usage_tokens(llm)  # #17
             sent_msg = await interaction.followup.send(
                 f"📌 **요약 (고정됨)**\n{answer}", wait=True
             )
@@ -1659,6 +1743,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="pin_summary", status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
@@ -1889,6 +1974,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             prompt = build_search_result_prompt(transcript, query, language=config.language)
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
+            p_tokens, c_tokens = _usage_tokens(llm)  # #17
 
             embed = discord.Embed(
                 title=f"검색 결과: {query}",
@@ -1901,6 +1987,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="search", status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
@@ -1951,6 +2038,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             prompt = build_summarize_prompt(transcript, language=effective_language)
             llm = _get_llm(config, settings)
             answer = await llm.generate(prompt, model=config.model)
+            p_tokens, c_tokens = _usage_tokens(llm)  # #17
 
             header = f"📋 **오늘의 정리** (최근 {since})\n"
             first, *rest = _split_discord_text(header + answer)
@@ -1961,6 +2049,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="digest", status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
@@ -2053,10 +2142,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             target = config.language if config.language != "auto" else "ko"
             prompt = build_translate_prompt(message.content, target_language=target)
             answer = await llm.generate(prompt, model=config.model)
+            p_tokens, c_tokens = _usage_tokens(llm)  # #17
             await _send_interaction_chunks(interaction, f"🌐 **번역 ({target})**\n{answer}", ephemeral=True)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="ctx_translate", status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
@@ -2081,10 +2172,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 language = detect_language_from_transcript(message.content)
             prompt = build_summarize_prompt(message.content, language=language)
             answer = await llm.generate(prompt, model=config.model)
+            p_tokens, c_tokens = _usage_tokens(llm)  # #17
             await _send_interaction_chunks(interaction, f"📝 **메시지 요약**\n{answer}", ephemeral=True)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="ctx_summarize", status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
@@ -2111,10 +2204,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             question = "이 메시지의 핵심 내용을 설명하고, 궁금한 점에 답해줘."
             prompt = build_ask_prompt(message.content, question, language=language)
             answer = await llm.generate(prompt, model=config.model)
+            p_tokens, c_tokens = _usage_tokens(llm)  # #17
             await _send_interaction_chunks(interaction, f"💬 **이 메시지로 질문**\n{answer}", ephemeral=True)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command="ctx_ask", status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
@@ -2342,6 +2437,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 llm = _get_llm(config, settings)
                 async with message.channel.typing():
                     answer = await llm.generate(prompt, model=config.model)
+                p_tokens, c_tokens = _usage_tokens(llm)  # #17
                 await _send_channel_chunks(message.channel, answer)
                 # 대화를 저장해 다음 DM 에서 맥락을 이어가게 한다 (#10).
                 await store.save_chat_message(user_id, "user", message.content, guild_id=None)
@@ -2349,6 +2445,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 await _record_usage(
                     store, guild_id=None, channel_id=None, user_id=user_id,
                     command="dm_chat", status="ok", started_at=started,
+                    prompt_tokens=p_tokens, completion_tokens=c_tokens,
                 )
             except Exception as exc:
                 # Mirror the guild path: surface only user-facing/LLM detail,
@@ -2419,10 +2516,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 llm = _get_llm(config, settings)
                 async with message.channel.typing():
                     answer = await llm.generate(prompt, model=config.model)
+                p_tokens, c_tokens = _usage_tokens(llm)  # #17
                 await _send_channel_chunks(message.channel, answer)
                 await _record_usage(
                     store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                     command="reply_chat", status="ok", started_at=started,
+                    prompt_tokens=p_tokens, completion_tokens=c_tokens,
                 )
             except (UserFacingError, LLMError) as exc:
                 await _send_channel_chunks(message.channel, f"⚠️ {exc}")
@@ -2448,27 +2547,48 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         try:
             config = await store.get_guild_config(guild_id or 0)
 
-            # Image analysis (#46) — if attachments contain an image and model looks multimodal
-            if message.attachments and config.model.lower().startswith(("llava", "bakllava")):
-                image_urls = [
-                    att.url for att in message.attachments
-                    if att.content_type and att.content_type.startswith("image/")
-                ]
-                if image_urls:
-                    llm = _get_llm(config, settings)
-                    results = []
-                    async with message.channel.typing():
-                        for img_url in image_urls[:3]:
-                            img_prompt = build_image_analysis_prompt(img_url, language=config.language)
-                            img_answer = await llm.generate(img_prompt, model=config.model)
-                            results.append(img_answer)
-                    combined = "\n\n".join(results)
-                    await _send_channel_chunks(message.channel, f"**이미지 분석**\n{combined}")
-                    await _record_usage(
-                        store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
-                        command="image_analysis", status="ok", started_at=started,
+            # 이미지 분석 (#12/#13) — 첨부에 이미지가 있고, 현재 제공자·모델이
+            # 비전을 지원하면 첨부 bytes 를 실제 멀티모달 입력으로 전달한다.
+            # 모델명 하드코딩(llava/bakllava) 대신 supports_vision 으로 판정한다.
+            has_image_attachment = any(
+                att.content_type and att.content_type.startswith("image/")
+                for att in message.attachments
+            )
+            if has_image_attachment:
+                if supports_vision(config.provider, config.model):
+                    images = await _download_image_attachments(message.attachments)
+                    if images:
+                        llm = _get_llm(config, settings)
+                        # 사용자가 함께 적은 질문이 있으면 그 지시를, 없으면 기본
+                        # 이미지 설명 지시문을 사용한다(텍스트 지시문만, URL 미포함).
+                        img_prompt = (
+                            build_ask_prompt(
+                                "(image attached)", question, language=config.language
+                            )
+                            if question
+                            else build_image_analysis_prompt(language=config.language)
+                        )
+                        async with message.channel.typing():
+                            img_answer = await llm.generate(
+                                img_prompt, model=config.model, images=images
+                            )
+                        p_tokens, c_tokens = _usage_tokens(llm)
+                        await _send_channel_chunks(
+                            message.channel, f"**이미지 분석**\n{img_answer}"
+                        )
+                        await _record_usage(
+                            store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                            command="image_analysis", status="ok", started_at=started,
+                            prompt_tokens=p_tokens, completion_tokens=c_tokens,
+                        )
+                        return
+                else:
+                    # 비지원 모델: 이미지는 분석하지 않고 안내 후 텍스트 경로로 진행한다.
+                    await _send_channel_chunks(
+                        message.channel,
+                        "ℹ️ 현재 모델은 이미지 분석을 지원하지 않아요. "
+                        "텍스트 기준으로 답변할게요. (비전 지원 모델로 변경하려면 `/settings`)",
                     )
-                    return
 
             # #6 스레드 맥락: 멘션이 스레드 안에서 발생하면 그 스레드의 메시지만
             # transcript 로 모은다. message.channel 은 스레드일 때 스레드 자신을
@@ -2496,10 +2616,12 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
             async with message.channel.typing():
                 answer = await llm.generate(prompt, model=config.model)
+            p_tokens, c_tokens = _usage_tokens(llm)  # #17
             await _send_channel_chunks(message.channel, heading + answer)
             await _record_usage(
                 store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
                 command=command_name, status="ok", started_at=started,
+                prompt_tokens=p_tokens, completion_tokens=c_tokens,
             )
         except (UserFacingError, LLMError) as exc:
             await _send_channel_chunks(message.channel, f"⚠️ {exc}")

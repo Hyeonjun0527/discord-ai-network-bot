@@ -99,14 +99,56 @@ jobs:
             && echo "Discord 빌드 실패 알림 전송 완료." \
             || echo "::warning::Discord 빌드 실패 알림 전송에 실패했습니다."
 
-  deploy:
+  # #73 멀티 호스트 배포: 배포 타겟 목록을 동적으로 산출하는 준비 job.
+  #   - repo Variable `DEPLOY_TARGETS`(JSON 배열)가 설정돼 있으면 그대로 사용한다.
+  #     예) [{"labels":["self-hosted","macOS","ARM64"],"deploy_dir":"/Users/a/app"},
+  #         {"labels":["self-hosted","Linux","X64"],"deploy_dir":"/srv/app"}]
+  #   - 미설정 시: 단일 타겟(기존 동작과 동일)로 폴백한다.
+  #       labels=[self-hosted, macOS, ARM64], deploy_dir=""(=runner $HOME/discord-assistant).
+  #     이렇게 하면 단일 호스트 환경은 매트릭스 1개로 기존과 완전히 동일하게 동작.
+  prepare-targets:
     needs: build-and-push
     runs-on: [self-hosted, macOS, ARM64]
+    outputs:
+      targets: ${{ steps.compute.outputs.targets }}
+    steps:
+      - name: Compute deploy targets
+        id: compute
+        env:
+          # vars.DEPLOY_TARGETS 가 비어 있으면 기존 단일 호스트 기본값을 사용.
+          DEPLOY_TARGETS_JSON: ${{ vars.DEPLOY_TARGETS }}
+        run: |
+          set -eu
+          if [ -n "${DEPLOY_TARGETS_JSON:-}" ]; then
+            # 사용자가 명시한 매트릭스를 그대로 사용(JSON 유효성은 fromJSON 단계에서 검증됨).
+            targets="${DEPLOY_TARGETS_JSON}"
+            echo "DEPLOY_TARGETS 사용(멀티 호스트 매트릭스):"
+          else
+            # 기본값: 기존과 동일한 단일 타겟.
+            # deploy_dir 을 빈 문자열로 두면 배포 job 에서 vars.DEPLOY_DIR → $HOME/discord-assistant 로 폴백.
+            targets='[{"labels":["self-hosted","macOS","ARM64"],"deploy_dir":""}]'
+            echo "DEPLOY_TARGETS 미설정 — 기존 단일 호스트 기본 타겟으로 폴백:"
+          fi
+          # 한 줄 JSON 으로 출력(매트릭스 주입용).
+          targets="$(printf '%s' "${targets}" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)))')"
+          echo "${targets}"
+          echo "targets=${targets}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: [build-and-push, prepare-targets]
+    # 매트릭스의 타겟별 라벨로 러너를 선택. 단일 기본 타겟이면 [self-hosted, macOS, ARM64].
+    runs-on: ${{ matrix.target.labels }}
+    strategy:
+      # 한 호스트가 실패해도 다른 호스트 배포는 계속 시도(단일 호스트면 영향 없음).
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare-targets.outputs.targets) }}
     permissions:
       contents: read
       packages: read
     env:
-      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '' }}
+      # 타겟별 deploy_dir 우선 → 비어 있으면 repo Variable DEPLOY_DIR → (이후 스텝에서) $HOME/discord-assistant.
+      DEPLOY_DIR: ${{ matrix.target.deploy_dir || vars.DEPLOY_DIR || '' }}
       COMPOSE_FILE: compose.prod.yml
       IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
     steps:

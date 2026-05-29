@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import queue
@@ -9,12 +10,117 @@ import shutil
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
+from dataclasses import dataclass
 from typing import Any
 from urllib import error, parse, request
 
 from .models import LLMProvider, OllamaModel
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# #12: 멀티모달 이미지 입력 타입
+# ---------------------------------------------------------------------------
+
+# generate()/_generate_sync 에 넘길 이미지 입력 타입.
+# - bytes: 원시 이미지 바이트(이 경우 MIME 은 image/png 기본값으로 가정).
+# - (mime, bytes): MIME 타입과 바이트를 함께 지정.
+# 리스트로 여러 장을 넘길 수 있다(제공자별 상한은 호출부에서 관리).
+ImageInput = bytes | tuple[str, bytes]
+# 기본 이미지 MIME. (mime, bytes) 형태가 아니라 raw bytes 만 넘어온 경우 사용한다.
+_DEFAULT_IMAGE_MIME = "image/png"
+
+
+def _normalize_image(image: ImageInput) -> tuple[str, bytes]:
+    """이미지 입력을 (mime, bytes) 튜플로 정규화한다 (#12).
+
+    raw bytes 만 넘어오면 MIME 을 기본값(image/png)으로 가정한다. 빈 MIME 이
+    들어오면 기본값으로 대체한다(제공자가 빈 MIME 을 거부하지 않도록).
+    """
+    if isinstance(image, tuple):
+        mime, data = image
+        return (mime or _DEFAULT_IMAGE_MIME, data)
+    return (_DEFAULT_IMAGE_MIME, image)
+
+
+def _encode_image_b64(image: ImageInput) -> tuple[str, str]:
+    """이미지 입력을 (mime, base64-문자열) 로 인코딩한다 (#12)."""
+    mime, data = _normalize_image(image)
+    return mime, base64.b64encode(data).decode("ascii")
+
+
+# ---------------------------------------------------------------------------
+# #17: 토큰 사용량 집계용 경량 컨테이너
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class TokenUsage:
+    """단일 LLM 응답의 토큰 사용량 (#17).
+
+    각 제공자의 usage 메타데이터를 통일된 형태로 보관한다. 파싱 실패/미제공 시
+    (0, 0) 으로 둔다. ``generate()`` 의 반환(텍스트)에는 영향을 주지 않으며,
+    클라이언트 인스턴스의 ``last_usage`` 속성으로만 노출된다(부수효과).
+    """
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+def _coerce_token_count(value: Any) -> int:
+    """usage 메타데이터의 토큰 수 값을 안전하게 정수로 변환한다 (#17).
+
+    None/비숫자/음수는 0 으로 보정한다(과금/통계가 깨지지 않도록).
+    """
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return 0
+    count = int(value)
+    return count if count > 0 else 0
+
+
+def _parse_openai_usage(payload: dict[str, Any]) -> TokenUsage:
+    """OpenAI Chat Completions 응답의 usage(prompt/completion_tokens) 파싱 (#17)."""
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return TokenUsage()
+    return TokenUsage(
+        prompt_tokens=_coerce_token_count(usage.get("prompt_tokens")),
+        completion_tokens=_coerce_token_count(usage.get("completion_tokens")),
+    )
+
+
+def _parse_anthropic_usage(payload: dict[str, Any]) -> TokenUsage:
+    """Anthropic Messages 응답의 usage(input/output_tokens) 파싱 (#17)."""
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return TokenUsage()
+    return TokenUsage(
+        prompt_tokens=_coerce_token_count(usage.get("input_tokens")),
+        completion_tokens=_coerce_token_count(usage.get("output_tokens")),
+    )
+
+
+def _parse_gemini_usage(payload: dict[str, Any]) -> TokenUsage:
+    """Gemini generateContent 응답의 usageMetadata 파싱 (#17).
+
+    ``promptTokenCount`` 이 입력, ``candidatesTokenCount`` 가 출력이다.
+    """
+    meta = payload.get("usageMetadata")
+    if not isinstance(meta, dict):
+        return TokenUsage()
+    return TokenUsage(
+        prompt_tokens=_coerce_token_count(meta.get("promptTokenCount")),
+        completion_tokens=_coerce_token_count(meta.get("candidatesTokenCount")),
+    )
+
+
+def _parse_ollama_usage(payload: dict[str, Any]) -> TokenUsage:
+    """Ollama /api/generate 응답의 prompt_eval_count/eval_count 파싱 (#17)."""
+    return TokenUsage(
+        prompt_tokens=_coerce_token_count(payload.get("prompt_eval_count")),
+        completion_tokens=_coerce_token_count(payload.get("eval_count")),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -186,10 +292,32 @@ async def _with_circuit_breaker(
 
 
 class BaseLLMClient(ABC):
-    """Minimal interface every LLM provider adapter must implement."""
+    """Minimal interface every LLM provider adapter must implement.
+
+    #17: 마지막 ``generate()`` 호출의 토큰 사용량을 ``last_usage`` 로 노출한다.
+    응답에 usage 메타데이터가 없으면 (0, 0) 으로 남는다. ``generate()`` 의
+    텍스트 반환은 절대 바뀌지 않으므로 비스트리밍 호출부는 그대로 동작한다.
+    """
+
+    # 마지막 generate() 호출의 토큰 사용량(부수효과로 갱신). 기본은 (0, 0).
+    last_usage: TokenUsage = TokenUsage()
 
     @abstractmethod
-    async def generate(self, prompt: str, *, model: str | None = None) -> str: ...
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> str:
+        """프롬프트(+선택적 이미지)에 대한 텍스트 응답을 반환한다.
+
+        #12: ``images`` 는 keyword-only 이며 기본값은 None 이다. None 이면 기존
+        텍스트 전용 경로 그대로다(백워드 호환). bytes 또는 (mime, bytes) 의
+        리스트를 넘기면 비전 지원 제공자/모델에 멀티모달 입력으로 전달된다.
+        반환 타입(텍스트)은 이미지 유무와 무관하게 항상 str 이다.
+        """
+        ...
 
     async def generate_stream(
         self, prompt: str, *, model: str | None = None
@@ -281,24 +409,39 @@ class OllamaClient(BaseLLMClient):
         self.temperature = temperature
         self.num_ctx = num_ctx
         self.circuit_breaker = circuit_breaker
+        # #17: 마지막 generate() 호출의 토큰 사용량(부수효과로 갱신).
+        self.last_usage = TokenUsage()
 
-    async def generate(self, prompt: str, *, model: str | None = None) -> str:
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> str:
         resolved_model = model or self.default_model
         return await _with_circuit_breaker(
             self.circuit_breaker,
-            lambda: asyncio.to_thread(self._generate_sync, prompt, resolved_model),
+            lambda: asyncio.to_thread(
+                self._generate_sync, prompt, resolved_model, images
+            ),
         )
 
-    def _generate_sync(self, prompt: str, model: str) -> str:
-        body = json.dumps(
-            {
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-                "keep_alive": self.keep_alive,
-                "options": {"temperature": self.temperature, "num_ctx": self.num_ctx},
-            }
-        ).encode("utf-8")
+    def _generate_sync(
+        self, prompt: str, model: str, images: list[ImageInput] | None = None
+    ) -> str:
+        payload_body: dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "keep_alive": self.keep_alive,
+            "options": {"temperature": self.temperature, "num_ctx": self.num_ctx},
+        }
+        # #12: Ollama 는 /api/generate 에서 images=[base64, ...] 로 멀티모달 입력을
+        # 받는다. 이미지가 없으면 필드를 추가하지 않아 기존 텍스트 경로 그대로다.
+        if images:
+            payload_body["images"] = [_encode_image_b64(img)[1] for img in images]
+        body = json.dumps(payload_body).encode("utf-8")
         req = request.Request(
             f"{self.base_url}/api/generate",
             data=body,
@@ -322,6 +465,8 @@ class OllamaClient(BaseLLMClient):
             ) from exc
         except json.JSONDecodeError as exc:
             raise OllamaError("Ollama returned invalid JSON") from exc
+        # #17: Ollama 는 prompt_eval_count(입력)/eval_count(출력) 를 응답에 담는다.
+        self.last_usage = _parse_ollama_usage(payload)
         return parse_generate_response(payload)
 
     async def generate_stream(
@@ -414,21 +559,55 @@ class OpenAIClient(BaseLLMClient):
         self.temperature = temperature
         self.system_prompt = system_prompt
         self.circuit_breaker = circuit_breaker
+        # #17: 마지막 generate() 호출의 토큰 사용량(부수효과로 갱신).
+        self.last_usage = TokenUsage()
 
-    async def generate(self, prompt: str, *, model: str | None = None) -> str:
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> str:
         resolved_model = model or self.default_model
         return await _with_circuit_breaker(
             self.circuit_breaker,
-            lambda: asyncio.to_thread(self._generate_sync, prompt, resolved_model),
+            lambda: asyncio.to_thread(
+                self._generate_sync, prompt, resolved_model, images
+            ),
         )
 
-    def _generate_sync(self, prompt: str, model: str) -> str:
+    def _build_user_content(
+        self, prompt: str, images: list[ImageInput] | None
+    ) -> Any:
+        """user 메시지 content 를 구성한다 (#12).
+
+        이미지가 없으면 기존처럼 평문 문자열을 반환한다(백워드 호환). 이미지가
+        있으면 OpenAI 멀티모달 규격의 content 배열(텍스트 + image_url data URI)을
+        반환한다.
+        """
+        if not images:
+            return prompt
+        parts: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        for img in images:
+            mime, b64 = _encode_image_b64(img)
+            parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{b64}"},
+                }
+            )
+        return parts
+
+    def _generate_sync(
+        self, prompt: str, model: str, images: list[ImageInput] | None = None
+    ) -> str:
         body = json.dumps(
             {
                 "model": model,
                 "messages": [
                     {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": self._build_user_content(prompt, images)},
                 ],
                 "temperature": self.temperature,
             }
@@ -461,10 +640,12 @@ class OpenAIClient(BaseLLMClient):
             raise OpenAIError("OpenAI returned invalid JSON") from exc
         try:
             content: str = payload["choices"][0]["message"]["content"]
-            return content.strip()
         except (KeyError, IndexError, TypeError) as exc:
             logger.debug("Unexpected OpenAI response shape: %s", payload)
             raise OpenAIError("OpenAI 응답 형식을 해석할 수 없습니다.") from exc
+        # #17: 응답 파싱 성공 후에만 usage 를 기록한다.
+        self.last_usage = _parse_openai_usage(payload)
+        return content.strip()
 
     async def generate_stream(
         self, prompt: str, *, model: str | None = None
@@ -562,21 +743,62 @@ class AnthropicClient(BaseLLMClient):
         self.max_tokens = max_tokens
         self.system_prompt = system_prompt
         self.circuit_breaker = circuit_breaker
+        # #17: 마지막 generate() 호출의 토큰 사용량(부수효과로 갱신).
+        self.last_usage = TokenUsage()
 
-    async def generate(self, prompt: str, *, model: str | None = None) -> str:
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> str:
         resolved_model = model or self.default_model
         return await _with_circuit_breaker(
             self.circuit_breaker,
-            lambda: asyncio.to_thread(self._generate_sync, prompt, resolved_model),
+            lambda: asyncio.to_thread(
+                self._generate_sync, prompt, resolved_model, images
+            ),
         )
 
-    def _generate_sync(self, prompt: str, model: str) -> str:
+    def _build_user_content(
+        self, prompt: str, images: list[ImageInput] | None
+    ) -> Any:
+        """user 메시지 content 를 구성한다 (#12).
+
+        이미지가 없으면 기존처럼 평문 문자열을 반환한다(백워드 호환). 이미지가
+        있으면 Anthropic 멀티모달 규격의 content 배열(image source base64 +
+        텍스트)을 반환한다. 이미지를 먼저 배치하는 것이 Anthropic 권장 순서다.
+        """
+        if not images:
+            return prompt
+        parts: list[dict[str, Any]] = []
+        for img in images:
+            mime, b64 = _encode_image_b64(img)
+            parts.append(
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": mime,
+                        "data": b64,
+                    },
+                }
+            )
+        parts.append({"type": "text", "text": prompt})
+        return parts
+
+    def _generate_sync(
+        self, prompt: str, model: str, images: list[ImageInput] | None = None
+    ) -> str:
         body = json.dumps(
             {
                 "model": model,
                 "max_tokens": self.max_tokens,
                 "system": self.system_prompt,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [
+                    {"role": "user", "content": self._build_user_content(prompt, images)}
+                ],
             }
         ).encode("utf-8")
         req = request.Request(
@@ -608,10 +830,12 @@ class AnthropicClient(BaseLLMClient):
             raise AnthropicError("Anthropic returned invalid JSON") from exc
         try:
             text: str = payload["content"][0]["text"]
-            return text.strip()
         except (KeyError, IndexError, TypeError) as exc:
             logger.debug("Unexpected Anthropic response shape: %s", payload)
             raise AnthropicError("Anthropic 응답 형식을 해석할 수 없습니다.") from exc
+        # #17: 응답 파싱 성공 후에만 usage 를 기록한다.
+        self.last_usage = _parse_anthropic_usage(payload)
+        return text.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -646,27 +870,47 @@ class GeminiClient(BaseLLMClient):
         self.temperature = temperature
         self.system_prompt = system_prompt
         self.circuit_breaker = circuit_breaker
+        # #17: 마지막 generate() 호출의 토큰 사용량(부수효과로 갱신).
+        self.last_usage = TokenUsage()
 
-    async def generate(self, prompt: str, *, model: str | None = None) -> str:
+    async def generate(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        images: list[ImageInput] | None = None,
+    ) -> str:
         resolved_model = model or self.default_model
         return await _with_circuit_breaker(
             self.circuit_breaker,
-            lambda: asyncio.to_thread(self._generate_sync, prompt, resolved_model),
+            lambda: asyncio.to_thread(
+                self._generate_sync, prompt, resolved_model, images
+            ),
         )
 
-    def _build_body(self, prompt: str) -> bytes:
+    def _build_body(
+        self, prompt: str, images: list[ImageInput] | None = None
+    ) -> bytes:
+        # #12: Gemini 는 parts 배열에 inlineData(mimeType, base64 data)로 이미지를
+        # 함께 보낸다. 이미지가 없으면 텍스트 part 만 담아 기존 경로 그대로다.
+        parts: list[dict[str, Any]] = [{"text": prompt}]
+        for img in images or []:
+            mime, b64 = _encode_image_b64(img)
+            parts.append({"inlineData": {"mimeType": mime, "data": b64}})
         payload: dict[str, Any] = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "contents": [{"role": "user", "parts": parts}],
             "generationConfig": {"temperature": self.temperature},
         }
         if self.system_prompt:
             payload["systemInstruction"] = {"parts": [{"text": self.system_prompt}]}
         return json.dumps(payload).encode("utf-8")
 
-    def _generate_sync(self, prompt: str, model: str) -> str:
+    def _generate_sync(
+        self, prompt: str, model: str, images: list[ImageInput] | None = None
+    ) -> str:
         # 모델 이름에 슬래시/예약문자가 들어와도 URL 경로를 깨지 않도록 인코딩한다.
         safe_model = parse.quote(model, safe="")
-        body = self._build_body(prompt)
+        body = self._build_body(prompt, images)
         req = request.Request(
             f"{self._BASE}/models/{safe_model}:generateContent",
             data=body,
@@ -693,7 +937,10 @@ class GeminiClient(BaseLLMClient):
             ) from exc
         except json.JSONDecodeError as exc:
             raise GeminiError("Gemini returned invalid JSON") from exc
-        return _parse_gemini_payload(payload)
+        text = _parse_gemini_payload(payload)
+        # #17: 텍스트 파싱 성공(차단/빈 응답 아님) 후에만 usage 를 기록한다.
+        self.last_usage = _parse_gemini_usage(payload)
+        return text
 
 
 def _parse_gemini_payload(payload: dict[str, Any]) -> str:

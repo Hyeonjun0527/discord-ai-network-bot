@@ -270,9 +270,28 @@ Text:
 """.strip()
 
 
-def build_image_analysis_prompt(image_url: str, *, language: str = "ko") -> str:
+def build_image_analysis_prompt(
+    image_url: str | None = None, *, language: str = "ko"
+) -> str:
+    """이미지 분석용 텍스트 지시문을 만든다 (#13).
+
+    실제 비전 입력은 ``llm.generate(prompt, images=...)`` 의 ``images`` 로 별도
+    전달하므로, 이 프롬프트는 텍스트 지시문만 담는다(URL 나열 제거).
+
+    백워드 호환: ``image_url`` 이 주어지면(레거시 호출) 기존처럼 URL 을 구분자로
+    감싸 본문에 포함한다. 새 비전 경로는 인자 없이 호출해 텍스트 지시만 만든다.
+    """
     target_language = language_label(language)
-    # URL 자체도 신뢰할 수 없으므로 구분자로 감싸 데이터임을 명확히 한다.
+    # 이미지가 첨부 bytes 로 함께 전달되는 새 경로(URL 미포함).
+    if image_url is None:
+        return f"""You are a helpful AI assistant. Analyze the attached image(s) and describe the content.
+Answer in {target_language}.
+
+{_INJECTION_GUARD}
+
+Be concise and accurate. Mention key visual elements, text if any, and overall context.
+""".strip()
+    # 레거시 경로: URL 자체도 신뢰할 수 없으므로 구분자로 감싸 데이터임을 명확히 한다.
     wrapped = _wrap_untrusted(image_url.strip(), "image_url")
     return f"""You are a helpful AI assistant. Analyze the image at the following URL and describe its content.
 Answer in {target_language}.

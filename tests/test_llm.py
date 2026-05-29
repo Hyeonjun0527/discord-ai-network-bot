@@ -13,12 +13,18 @@ from discord_assistant.llm import (
     AnthropicError,
     CircuitBreaker,
     CircuitBreakerOpenError,
+    GeminiClient,
     LLMError,
     OllamaClient,
     OllamaError,
     OpenAIClient,
     OpenAIError,
+    TokenUsage,
     _is_retryable,
+    _parse_anthropic_usage,
+    _parse_gemini_usage,
+    _parse_ollama_usage,
+    _parse_openai_usage,
     _with_circuit_breaker,
     _with_retry,
     estimate_cost,
@@ -626,6 +632,200 @@ class GenerateRetryIntegrationTest(unittest.TestCase):
             "discord_assistant.llm.request.urlopen", side_effect=fake_urlopen
         ), mock.patch("discord_assistant.llm.asyncio.sleep", new=mock.AsyncMock()):
             result = asyncio.run(client.generate("hi"))
+        self.assertEqual(result, "안녕하세요")
+
+
+# ---------------------------------------------------------------------------
+# #17: 토큰 사용량 파싱 (제공자별 usage 메타데이터)
+# ---------------------------------------------------------------------------
+
+
+class TokenUsageParsingTest(unittest.TestCase):
+    def test_openai_usage(self) -> None:
+        usage = _parse_openai_usage(
+            {"usage": {"prompt_tokens": 12, "completion_tokens": 34}}
+        )
+        self.assertEqual((usage.prompt_tokens, usage.completion_tokens), (12, 34))
+
+    def test_anthropic_usage(self) -> None:
+        usage = _parse_anthropic_usage(
+            {"usage": {"input_tokens": 7, "output_tokens": 9}}
+        )
+        self.assertEqual((usage.prompt_tokens, usage.completion_tokens), (7, 9))
+
+    def test_gemini_usage(self) -> None:
+        usage = _parse_gemini_usage(
+            {"usageMetadata": {"promptTokenCount": 100, "candidatesTokenCount": 50}}
+        )
+        self.assertEqual((usage.prompt_tokens, usage.completion_tokens), (100, 50))
+
+    def test_ollama_usage(self) -> None:
+        usage = _parse_ollama_usage({"prompt_eval_count": 5, "eval_count": 6})
+        self.assertEqual((usage.prompt_tokens, usage.completion_tokens), (5, 6))
+
+    def test_missing_usage_is_zero(self) -> None:
+        for parser in (
+            _parse_openai_usage,
+            _parse_anthropic_usage,
+            _parse_gemini_usage,
+            _parse_ollama_usage,
+        ):
+            usage = parser({})
+            self.assertEqual((usage.prompt_tokens, usage.completion_tokens), (0, 0))
+
+    def test_negative_and_nonnumeric_clamped_to_zero(self) -> None:
+        usage = _parse_openai_usage(
+            {"usage": {"prompt_tokens": -3, "completion_tokens": "x"}}
+        )
+        self.assertEqual((usage.prompt_tokens, usage.completion_tokens), (0, 0))
+
+
+class LastUsageRecordedTest(unittest.TestCase):
+    """_generate_sync 성공 시 last_usage 가 갱신되는지 확인한다 (#17)."""
+
+    def test_openai_sets_last_usage(self) -> None:
+        client = OpenAIClient(api_key="sk-x")
+        payload = {
+            "choices": [{"message": {"content": "hi"}}],
+            "usage": {"prompt_tokens": 11, "completion_tokens": 22},
+        }
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response(payload),
+        ):
+            client._generate_sync("hi", "gpt-4o-mini")
+        self.assertEqual(client.last_usage, TokenUsage(11, 22))
+
+    def test_anthropic_sets_last_usage(self) -> None:
+        client = AnthropicClient(api_key="sk-x")
+        payload = {
+            "content": [{"text": "hi"}],
+            "usage": {"input_tokens": 3, "output_tokens": 4},
+        }
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response(payload),
+        ):
+            client._generate_sync("hi", "claude-haiku-4-5")
+        self.assertEqual(client.last_usage, TokenUsage(3, 4))
+
+    def test_default_last_usage_is_zero(self) -> None:
+        # generate 호출 전 기본값은 (0, 0).
+        self.assertEqual(OpenAIClient(api_key="x").last_usage, TokenUsage(0, 0))
+
+
+# ---------------------------------------------------------------------------
+# #12: 멀티모달 이미지 입력 — 제공자별 요청 본문에 이미지 블록이 들어가는지 검증
+# ---------------------------------------------------------------------------
+
+
+def _capture_body(payload: dict) -> tuple[dict, dict]:
+    """urlopen 을 가로채 전송 body(JSON)를 캡처하는 헬퍼.
+
+    반환: (captured dict, 가로챈 body dict). captured["body"] 에 디코딩된 dict 가 담긴다.
+    """
+    captured: dict = {}
+
+    def fake_urlopen(req, timeout=None):  # type: ignore[no-untyped-def]
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _json_response(payload)
+
+    return captured, fake_urlopen  # type: ignore[return-value]
+
+
+class ImageInputTest(unittest.TestCase):
+    _IMG = (b"\x89PNG\r\n\x1a\n fake png bytes")
+
+    def test_openai_no_images_keeps_plain_string_content(self) -> None:
+        client = OpenAIClient(api_key="sk-x")
+        captured, fake = _capture_body(_OPENAI_OK_PAYLOAD)
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            client._generate_sync("hello", "gpt-4o-mini")
+        # 이미지가 없으면 user content 는 기존처럼 평문 문자열이다(백워드 호환).
+        user_msg = captured["body"]["messages"][1]
+        self.assertEqual(user_msg["content"], "hello")
+
+    def test_openai_with_image_builds_content_array(self) -> None:
+        client = OpenAIClient(api_key="sk-x")
+        captured, fake = _capture_body(_OPENAI_OK_PAYLOAD)
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            client._generate_sync(
+                "describe", "gpt-4o", [("image/png", self._IMG)]
+            )
+        content = captured["body"]["messages"][1]["content"]
+        self.assertIsInstance(content, list)
+        self.assertEqual(content[0], {"type": "text", "text": "describe"})
+        self.assertEqual(content[1]["type"], "image_url")
+        self.assertTrue(
+            content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+        )
+
+    def test_anthropic_with_image_builds_source_block(self) -> None:
+        client = AnthropicClient(api_key="sk-x")
+        captured, fake = _capture_body(_ANTHROPIC_OK_PAYLOAD)
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            client._generate_sync("describe", "claude-3-5-sonnet", [self._IMG])
+        content = captured["body"]["messages"][0]["content"]
+        self.assertIsInstance(content, list)
+        # 이미지 블록이 먼저, 텍스트 블록이 뒤에 온다.
+        self.assertEqual(content[0]["type"], "image")
+        self.assertEqual(content[0]["source"]["type"], "base64")
+        # raw bytes 만 넘기면 기본 MIME(image/png) 으로 가정한다.
+        self.assertEqual(content[0]["source"]["media_type"], "image/png")
+        self.assertEqual(content[-1], {"type": "text", "text": "describe"})
+
+    def test_anthropic_no_images_keeps_plain_string(self) -> None:
+        client = AnthropicClient(api_key="sk-x")
+        captured, fake = _capture_body(_ANTHROPIC_OK_PAYLOAD)
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            client._generate_sync("hi", "claude-3-5-sonnet")
+        self.assertEqual(captured["body"]["messages"][0]["content"], "hi")
+
+    def test_gemini_with_image_adds_inline_data(self) -> None:
+        client = GeminiClient(api_key="sk-x")
+        payload = {
+            "candidates": [{"content": {"parts": [{"text": "ok"}]}}],
+            "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 2},
+        }
+        captured, fake = _capture_body(payload)
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            client._generate_sync(
+                "describe", "gemini-1.5-flash", [("image/jpeg", self._IMG)]
+            )
+        parts = captured["body"]["contents"][0]["parts"]
+        self.assertEqual(parts[0], {"text": "describe"})
+        self.assertEqual(parts[1]["inlineData"]["mimeType"], "image/jpeg")
+        # 이미지가 있는 응답도 usage 가 기록된다.
+        self.assertEqual(client.last_usage, TokenUsage(1, 2))
+
+    def test_ollama_with_image_adds_images_field(self) -> None:
+        client = OllamaClient(base_url="http://x", default_model="llava")
+        payload = {"response": "ok", "prompt_eval_count": 8, "eval_count": 4}
+        captured, fake = _capture_body(payload)
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            client._generate_sync("describe", "llava", [self._IMG])
+        self.assertIn("images", captured["body"])
+        self.assertEqual(len(captured["body"]["images"]), 1)
+        self.assertEqual(client.last_usage, TokenUsage(8, 4))
+
+    def test_ollama_no_images_omits_images_field(self) -> None:
+        client = OllamaClient(base_url="http://x", default_model="llama3.1:8b")
+        captured, fake = _capture_body({"response": "ok"})
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake):
+            client._generate_sync("hi", "llama3.1:8b")
+        # 이미지가 없으면 images 필드를 보내지 않아 기존 텍스트 경로 그대로다.
+        self.assertNotIn("images", captured["body"])
+
+    def test_generate_returns_text_with_images(self) -> None:
+        # generate() 의 반환은 이미지 유무와 무관하게 항상 텍스트(str)다.
+        client = OpenAIClient(api_key="sk-x")
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response(_OPENAI_OK_PAYLOAD),
+        ):
+            result = asyncio.run(
+                client.generate("describe", images=[("image/png", self._IMG)])
+            )
         self.assertEqual(result, "안녕하세요")
 
 

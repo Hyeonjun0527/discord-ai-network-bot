@@ -747,5 +747,126 @@ class SchemaVersionHelperTest(unittest.IsolatedAsyncioTestCase):
             conn.close()
 
 
+class UsageLogTokenColumnsTest(_FileStoreCase):
+    """#17: usage_log 토큰 컬럼 저장·기본값."""
+
+    async def test_log_usage_persists_token_counts(self) -> None:
+        await self.store.log_usage(
+            UsageLog(
+                guild_id=1,
+                channel_id=2,
+                user_id=3,
+                command="ask",
+                status="ok",
+                latency_ms=10,
+                prompt_tokens=42,
+                completion_tokens=17,
+            )
+        )
+        conn = self.store._connect()
+        try:
+            row = conn.execute(
+                "SELECT prompt_tokens, completion_tokens FROM usage_log "
+                "WHERE command = 'ask'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual((int(row[0]), int(row[1])), (42, 17))
+
+    async def test_log_usage_defaults_tokens_to_zero(self) -> None:
+        # 토큰을 넘기지 않으면(기존 호출부) 0 으로 기록된다(백워드 호환).
+        await self.store.log_usage(
+            UsageLog(guild_id=1, channel_id=2, user_id=3, command="chat", status="ok")
+        )
+        conn = self.store._connect()
+        try:
+            row = conn.execute(
+                "SELECT prompt_tokens, completion_tokens FROM usage_log "
+                "WHERE command = 'chat'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual((int(row[0]), int(row[1])), (0, 0))
+
+    async def test_negative_tokens_clamped_to_zero(self) -> None:
+        await self.store.log_usage(
+            UsageLog(
+                guild_id=1,
+                channel_id=2,
+                user_id=3,
+                command="search",
+                status="ok",
+                prompt_tokens=-5,
+                completion_tokens=-9,
+            )
+        )
+        conn = self.store._connect()
+        try:
+            row = conn.execute(
+                "SELECT prompt_tokens, completion_tokens FROM usage_log "
+                "WHERE command = 'search'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual((int(row[0]), int(row[1])), (0, 0))
+
+
+class LegacyUsageLogTokenMigrationTest(unittest.IsolatedAsyncioTestCase):
+    """#17: 토큰 컬럼이 없는 레거시 usage_log 에도 컬럼이 멱등하게 추가된다."""
+
+    async def test_legacy_usage_log_gets_token_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "legacy_tokens.db"
+            conn = sqlite3.connect(db_path)
+            # 토큰 컬럼이 없는 초기 usage_log 스키마.
+            conn.execute(
+                """CREATE TABLE usage_log (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id   INTEGER,
+                    channel_id INTEGER,
+                    user_id    INTEGER,
+                    command    TEXT    NOT NULL,
+                    status     TEXT    NOT NULL,
+                    latency_ms INTEGER,
+                    error      TEXT,
+                    created_at TEXT    NOT NULL
+                )"""
+            )
+            conn.commit()
+            conn.close()
+
+            store = _make_store(f"sqlite:///{db_path}")
+            await store.initialize()
+            try:
+                # 마이그레이션 후 토큰 컬럼이 추가되고, 새 insert 가 동작해야 한다.
+                await store.log_usage(
+                    UsageLog(
+                        guild_id=1,
+                        channel_id=2,
+                        user_id=3,
+                        command="ask",
+                        status="ok",
+                        prompt_tokens=4,
+                        completion_tokens=5,
+                    )
+                )
+                verify = sqlite3.connect(db_path)
+                try:
+                    cols = {r[1] for r in verify.execute("PRAGMA table_info(usage_log)")}
+                    self.assertIn("prompt_tokens", cols)
+                    self.assertIn("completion_tokens", cols)
+                    row = verify.execute(
+                        "SELECT prompt_tokens, completion_tokens FROM usage_log"
+                    ).fetchone()
+                    self.assertEqual((int(row[0]), int(row[1])), (4, 5))
+                    # 버전이 최신으로 기록된다.
+                    ver = verify.execute("SELECT version FROM schema_version").fetchone()
+                    self.assertEqual(int(ver[0]), LATEST_SCHEMA_VERSION)
+                finally:
+                    verify.close()
+            finally:
+                await store.close()
+
+
 if __name__ == "__main__":
     unittest.main()

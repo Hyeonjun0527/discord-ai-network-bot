@@ -5,11 +5,14 @@ yeon과 동일한 모델: **self-hosted runner 가 곧 배포 서버**. SSH 없�
 
 ```
 main push ──▶ deploy.yml
-  ├─ build-and-push (self-hosted, macOS/ARM64): linux/arm64 빌드 → GHCR push (sha-XXXX, latest)
-  └─ deploy        (self-hosted, macOS/ARM64): compose pull → up -d --wait → 이미지 검증
+  ├─ build-and-push  (self-hosted, macOS/ARM64): linux/arm64 빌드 → GHCR push (sha-XXXX, latest)
+  ├─ prepare-targets (self-hosted, macOS/ARM64): 배포 타겟 매트릭스 산출(vars.DEPLOY_TARGETS 또는 단일 기본)
+  └─ deploy          (matrix: 타겟별 라벨/deploy_dir): compose pull → up -d --wait → 이미지 검증
                                                    │
                           deploy 성공 ──▶ auto-release.yml: conventional-commit SemVer 태그+릴리스
 ```
+> 기본(단일 호스트)은 매트릭스가 타겟 1개(`[self-hosted, macOS, ARM64]`)라 기존과 100% 동일하게 동작.
+> 여러 호스트로 확장하려면 아래 [6. 멀티 호스트 배포](#6-멀티-호스트-배포-73) 참고.
 
 ## 구성 요소
 | 파일 | 역할 |
@@ -71,6 +74,39 @@ cd "$HOME/discord-assistant"
 BOT_IMAGE=ghcr.io/hyeonjun0527/discord-assistant:sha-<이전7자리> \
   docker compose -f compose.prod.yml up -d --wait bot
 ```
+
+## 6. 멀티 호스트 배포 (#73)
+
+기본값은 **단일 호스트**(`[self-hosted, macOS, ARM64]` 러너 1개)다. 여러 대의 호스트에
+동시에 같은 봇 이미지를 배포하려면 repo Variable **`DEPLOY_TARGETS`** 를 JSON 배열로 등록한다.
+배포 워크플로의 `prepare-targets` job 이 이 값을 매트릭스로 펼쳐, 타겟마다 별도의
+`deploy` job(자체 러너 라벨 + `deploy_dir`)을 **병렬**로 실행한다.
+
+각 타겟 객체:
+| 키 | 의미 |
+|---|---|
+| `labels` | 그 호스트를 가리키는 러너 라벨 배열(`runs-on` 으로 주입). 각 라벨을 가진 러너가 등록돼 있어야 한다. |
+| `deploy_dir` | 그 호스트에서 배포할 디렉터리. 빈 문자열이면 repo Variable `DEPLOY_DIR` → 그것도 없으면 `$HOME/discord-assistant` 로 폴백(기존 동작과 동일). |
+
+```bash
+# 예: macOS arm64 호스트 + Linux x64 호스트 두 대로 배포
+gh variable set DEPLOY_TARGETS --repo Hyeonjun0527/discord-assistant --body '[
+  {"labels":["self-hosted","macOS","ARM64"],"deploy_dir":""},
+  {"labels":["self-hosted","Linux","X64"],"deploy_dir":"/srv/discord-assistant"}
+]'
+```
+
+동작/주의:
+- **백워드 호환**: `DEPLOY_TARGETS` 를 설정하지 않으면 단일 타겟(`labels=[self-hosted, macOS, ARM64]`,
+  `deploy_dir=""`)으로 폴백 → 기존과 완전히 동일(러너 선택·DEPLOY_DIR 폴백 모두 그대로).
+- 호스트마다 라벨이 **유일**하게 매칭되도록 라벨을 지정한다(예: 호스트별 커스텀 라벨 `prod-a`/`prod-b`
+  를 추가). 같은 라벨 집합을 여러 러너가 공유하면 어느 러너에 배정될지 보장되지 않는다.
+- 두 번째 호스트의 러너 등록은 [3. Self-hosted runner 등록](#3-self-hosted-runner-등록)과 동일하되,
+  그 호스트의 OS/아키텍처에 맞는 라벨로 등록한다. Docker Desktop/Engine 이 동작 중이어야 한다.
+- `ENV_FILE` 시크릿은 **모든** 타겟에 동일하게 렌더링된다. 호스트별로 다른 `.env` 가 필요하면
+  현재 구조로는 지원하지 않으며, 호스트별 시크릿 분리는 추가 작업이 필요하다.
+- `fail-fast: false` 라 한 호스트 배포가 실패해도 나머지 호스트 배포는 계속 진행된다.
+  실패한 호스트는 자체 롤백/Discord 알림 스텝이 동작한다.
 
 ## 운영 노트
 - 봇은 HTTP 포트를 열지 않는 워커. 헬스는 컨테이너 내부 `scripts/healthcheck.py`(DB 점검)로

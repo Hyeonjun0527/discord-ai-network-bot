@@ -76,15 +76,15 @@
 ## 🧪 테스트 / 품질 (56~67)
 
 - [x] 56. `discord.Interaction` mock 픽스처를 conftest에 추가 · M
-- [ ] 57. `/summarize`·`/ask`·`/chat` 핸들러 통합테스트(쿨다운·권한·에러 분기) · L
-- [ ] 58. on_message 멘션 플로우 테스트(ask vs summarize 분기, DM 쿨다운) · L
-- [ ] 59. on_reaction_add 피드백·on_guild_join 핸들러 테스트 · M
+- [x] 57. `/summarize`·`/ask`·`/chat` 핸들러 통합테스트(쿨다운·권한·에러 분기) · L
+- [x] 58. on_message 멘션 플로우 테스트(ask vs summarize 분기, DM 쿨다운) · L
+- [x] 59. on_reaction_add 피드백·on_guild_join 핸들러 테스트 · M
 - [x] 60. OpenAI/Anthropic `_generate_sync` 응답 파싱·에러 테스트 · M
 - [x] 61. `_with_retry` 재시도/백오프 단위테스트 · S
 - [x] 62. UI View/Modal 콜백 상호작용 테스트 · L
-- [ ] 63. e2e_scenarios.md 5개 시나리오를 자동 e2e 테스트로 전환 · L
+- [x] 63. e2e_scenarios.md 5개 시나리오를 자동 e2e 테스트로 전환 · L
 - [x] 64. load_test를 Ollama mock 기반 CI 실행 가능하게 재작성 · M
-- [ ] 65. 카오스/폴트 인젝션 테스트(타임아웃·연결거부·부분응답) · M
+- [x] 65. 카오스/폴트 인젝션 테스트(타임아웃·연결거부·부분응답) · M
 - [x] 66. CI 커버리지 게이트(--cov-fail-under 임계) · S
 - [x] 67. mypy strict 단계적 도입 + pre-commit 훅 · M
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +34,11 @@ def _normalize_interval(raw: int | None) -> int | None:
     return max(int(raw), MIN_AUTO_SUMMARY_INTERVAL_MINUTES)
 
 SCHEMA = """
+-- #26: 버전 추적형 마이그레이션 프레임워크의 단일 행 버전 레지스트리.
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS guild_config (
     guild_id                INTEGER PRIMARY KEY,
     model                   TEXT    NOT NULL,
@@ -137,25 +143,43 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _migrate(conn: sqlite3.Connection) -> None:
-    """Idempotently add columns introduced after initial schema."""
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(guild_config)")}
-    if "provider" not in existing:
-        conn.execute("ALTER TABLE guild_config ADD COLUMN provider TEXT NOT NULL DEFAULT 'ollama'")
-    if "api_key_encrypted" not in existing:
-        conn.execute("ALTER TABLE guild_config ADD COLUMN api_key_encrypted TEXT")
-    if "auto_summary_interval" not in existing:
-        conn.execute("ALTER TABLE guild_config ADD COLUMN auto_summary_interval INTEGER")
-    if "persona" not in existing:
-        conn.execute("ALTER TABLE guild_config ADD COLUMN persona TEXT")
-    if "custom_summarize_prompt" not in existing:
-        conn.execute("ALTER TABLE guild_config ADD COLUMN custom_summarize_prompt TEXT")
-    if "custom_ask_prompt" not in existing:
-        conn.execute("ALTER TABLE guild_config ADD COLUMN custom_ask_prompt TEXT")
-    if "allowed_role_id" not in existing:
-        conn.execute("ALTER TABLE guild_config ADD COLUMN allowed_role_id INTEGER")
+# ----------------------------------------------------------------------
+# 버전 추적형 마이그레이션 프레임워크 (#26)
+# ----------------------------------------------------------------------
+#
+# 기존의 ad-hoc _migrate(컬럼별 PRAGMA + ALTER 나열)를 순차 마이그레이션 목록으로
+# 재구성한다. schema_version 테이블(version INTEGER)에 현재 적용된 스키마 버전을
+# 한 행으로 보관하고, 적용 시 미적용 마이그레이션만 순서대로 실행한 뒤 버전을
+# 기록한다.
+#
+# 설계 원칙:
+#   * 각 마이그레이션은 멱등(IF NOT EXISTS / 컬럼 존재 검사)이어야 한다. 같은
+#     버전을 다시 실행해도 안전하다(두 번 호출 방어).
+#   * 신규 빈 DB(SCHEMA executescript 직후, 모든 테이블/컬럼/인덱스 존재)와
+#     레거시 DB(구 스키마만 존재) 모두 안전하게 최신 버전까지 끌어올린다.
+#   * MIGRATIONS 목록의 순서·내용이 곧 스키마 진화의 단일 출처다. 새 변경은
+#     목록 끝에 (version, fn) 항목을 추가하기만 하면 된다.
 
-    # feedback table — ensure it exists with correct schema
+
+def _add_guild_config_columns(conn: sqlite3.Connection) -> None:
+    """초기 스키마 이후 추가된 guild_config 컬럼을 멱등하게 보강한다 (#26)."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(guild_config)")}
+    column_defs = (
+        ("provider", "TEXT NOT NULL DEFAULT 'ollama'"),
+        ("api_key_encrypted", "TEXT"),
+        ("auto_summary_interval", "INTEGER"),
+        ("persona", "TEXT"),
+        ("custom_summarize_prompt", "TEXT"),
+        ("custom_ask_prompt", "TEXT"),
+        ("allowed_role_id", "INTEGER"),
+    )
+    for name, ddl in column_defs:
+        if name not in existing:
+            conn.execute(f"ALTER TABLE guild_config ADD COLUMN {name} {ddl}")
+
+
+def _create_feedback_table(conn: sqlite3.Connection) -> None:
+    """feedback 테이블과 message_id 인덱스를 멱등하게 보장한다 (#46)."""
     conn.execute(
         """CREATE TABLE IF NOT EXISTS feedback (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -170,7 +194,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_message_id ON feedback(message_id)")
 
-    # reminders 테이블 — 기존 배포 DB 에도 안전하게 추가 (#26).
+
+def _create_reminders_table(conn: sqlite3.Connection) -> None:
+    """reminders 테이블을 기존 배포 DB 에도 멱등하게 추가한다 (#26)."""
     conn.execute(
         """CREATE TABLE IF NOT EXISTS reminders (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,7 +210,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
         )"""
     )
 
-    # audit_log 테이블 — 기존 배포 DB 에도 안전하게 추가 (#39).
+
+def _create_audit_log_table(conn: sqlite3.Connection) -> None:
+    """audit_log 테이블을 기존 배포 DB 에도 멱등하게 추가한다 (#39)."""
     conn.execute(
         """CREATE TABLE IF NOT EXISTS audit_log (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -198,13 +226,61 @@ def _migrate(conn: sqlite3.Connection) -> None:
         )"""
     )
 
-    # #32: 누락 가능성이 있는 주요 쿼리 경로 인덱스를 멱등하게 보강한다.
+
+def _create_query_indexes(conn: sqlite3.Connection) -> None:
+    """주요 쿼리 경로 인덱스를 멱등하게 보강한다 (#32/#39)."""
     conn.execute("CREATE INDEX IF NOT EXISTS idx_usage_log_guild_created ON usage_log(guild_id, created_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_guild_id ON feedback(guild_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(sent, due_at)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_guild ON reminders(guild_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_log_guild ON audit_log(guild_id, created_at)")
+
+
+# 순차 마이그레이션 목록: (target_version, migration_fn).
+# version 오름차순이며, 현재 schema_version 보다 큰 항목만 순서대로 실행된다.
+MIGRATIONS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
+    (1, _add_guild_config_columns),
+    (2, _create_feedback_table),
+    (3, _create_reminders_table),
+    (4, _create_audit_log_table),
+    (5, _create_query_indexes),
+]
+
+# 코드가 도달 가능한 최신 스키마 버전. MIGRATIONS 가 비어 있으면 0.
+LATEST_SCHEMA_VERSION = MIGRATIONS[-1][0] if MIGRATIONS else 0
+
+
+def _get_schema_version(conn: sqlite3.Connection) -> int:
+    """현재 적용된 schema_version 을 반환한다. 테이블이 없으면 0 (#26)."""
+    conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
+    row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
+    if row is None:
+        # 단일 행 규약: 최초 진입 시 0 으로 시드한다.
+        conn.execute("INSERT INTO schema_version (version) VALUES (0)")
+        return 0
+    return int(row[0])
+
+
+def _set_schema_version(conn: sqlite3.Connection, version: int) -> None:
+    """schema_version 단일 행을 주어진 버전으로 갱신한다 (#26)."""
+    conn.execute("UPDATE schema_version SET version = ?", (version,))
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """미적용 마이그레이션만 순서대로 실행하고 schema_version 을 기록한다 (#26).
+
+    신규 빈 DB(SCHEMA 적용 후)와 레거시 DB(구 스키마만 존재) 모두 안전하다. 각
+    마이그레이션 함수는 멱등하므로 SCHEMA 가 이미 최종 객체를 만들어 두었더라도
+    충돌 없이 통과하며, 두 번 호출해도 안전하다(두 번째 호출에서는 적용할
+    마이그레이션이 없어 no-op).
+    """
+    current = _get_schema_version(conn)
+    for version, migrate_fn in MIGRATIONS:
+        if version > current:
+            migrate_fn(conn)
+            _set_schema_version(conn, version)
+            current = version
     conn.commit()
 
 

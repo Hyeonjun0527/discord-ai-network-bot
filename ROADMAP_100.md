@@ -8,14 +8,14 @@
 - [x] 1. 예약 알림 영속화: `reminders` 테이블 + 부팅 시 재예약 루프 (#26) · L
 - [x] 2. `/remind` 확장: 임의 텍스트·절대 시각·반복(매일/매주), 60분 제한 해제 · M
 - [x] 3. `/reminders` 관리 명령: 대기 중 알림 조회·취소 · S
-- [ ] 4. 메시지 우클릭 컨텍스트 메뉴: '번역'·'요약'·'이 메시지로 질문' · M
-- [ ] 5. `/summarize` 결과를 새 스레드로 분리 게시하는 옵션 · M
-- [ ] 6. 스레드 내 봇 멘션 시 해당 스레드 맥락만으로 응답 · M
-- [ ] 7. 슬래시 파라미터 자동완성(language·target_language·prompt_type·since) · S
-- [ ] 8. 답장(reply) 맥락 인식: 봇 메시지에 답장하면 대화 이어가기 · M
-- [ ] 9. 리액션 트리거 액션: 📝/🌐 이모지로 요약·번역 (on_raw_reaction_add) · M
-- [ ] 10. DM 모드 대화 기억: DM 경로에도 chat_history 저장/활용 · M
-- [ ] 11. `/digest` 명령: 지정 기간 활동을 액션아이템·결정사항 중심 회고로 · M
+- [x] 4. 메시지 우클릭 컨텍스트 메뉴: '번역'·'요약'·'이 메시지로 질문' · M
+- [x] 5. `/summarize` 결과를 새 스레드로 분리 게시하는 옵션 · M
+- [x] 6. 스레드 내 봇 멘션 시 해당 스레드 맥락만으로 응답 · M
+- [x] 7. 슬래시 파라미터 자동완성(language·target_language·prompt_type·since) · S
+- [x] 8. 답장(reply) 맥락 인식: 봇 메시지에 답장하면 대화 이어가기 · M
+- [x] 9. 리액션 트리거 액션: 📝/🌐 이모지로 요약·번역 (on_raw_reaction_add) · M
+- [x] 10. DM 모드 대화 기억: DM 경로에도 chat_history 저장/활용 · M
+- [x] 11. `/digest` 명령: 지정 기간 활동을 액션아이템·결정사항 중심 회고로 · M
 
 ## 🧠 LLM / 프롬프트 (12~23)
 
@@ -36,7 +36,7 @@
 
 - [ ] 24. `storage.py`를 aiosqlite 기반 단일 영속 연결로 전환 (#34) · L
 - [x] 25. `_connect()`에 busy_timeout/synchronous PRAGMA로 'database is locked' 방어 · S
-- [ ] 26. 버전 추적형 마이그레이션 프레임워크(schema_version + 순차 migration) · L
+- [x] 26. 버전 추적형 마이그레이션 프레임워크(schema_version + 순차 migration) · L
 - [x] 27. usage_log·chat_history 시간 기반 retention 정리 백그라운드 태스크 · M
 - [x] 28. 백업 복원 스크립트(`scripts/restore.sh`) + 백업→복원 왕복 테스트 · M
 - [ ] 29. 대시보드 중복 DB 접근 로직을 공용 storage 레이어로 통합 · M
@@ -79,9 +79,9 @@
 - [ ] 57. `/summarize`·`/ask`·`/chat` 핸들러 통합테스트(쿨다운·권한·에러 분기) · L
 - [ ] 58. on_message 멘션 플로우 테스트(ask vs summarize 분기, DM 쿨다운) · L
 - [ ] 59. on_reaction_add 피드백·on_guild_join 핸들러 테스트 · M
-- [ ] 60. OpenAI/Anthropic `_generate_sync` 응답 파싱·에러 테스트 · M
+- [x] 60. OpenAI/Anthropic `_generate_sync` 응답 파싱·에러 테스트 · M
 - [ ] 61. `_with_retry` 재시도/백오프 단위테스트 · S
-- [ ] 62. UI View/Modal 콜백 상호작용 테스트 · L
+- [x] 62. UI View/Modal 콜백 상호작용 테스트 · L
 - [ ] 63. e2e_scenarios.md 5개 시나리오를 자동 e2e 테스트로 전환 · L
 - [ ] 64. load_test를 Ollama mock 기반 CI 실행 가능하게 재작성 · M
 - [ ] 65. 카오스/폴트 인젝션 테스트(타임아웃·연결거부·부분응답) · M
@@ -122,7 +122,7 @@
 - [ ] 91. API 키 미설정 에러의 잘못된 메뉴 경로 수정 + 버튼형 안내 · S
 - [ ] 92. `_make_error_embed`에 원인별 복구 힌트 + '다시 시도' 버튼 · M
 - [ ] 93. 긴 응답 UX 통일(/ask·/summarize·멘션도 프리뷰+DM 버튼) · M
-- [ ] 94. `/usage` 명령(사용량·쿨다운·한도 안내) + summary_limit 클램프 고지 · M
+- [x] 94. `/usage` 명령(사용량·쿨다운·한도 안내) + summary_limit 클램프 고지 · M
 
 ## 📚 문서 / 거버넌스 (95~100)
 

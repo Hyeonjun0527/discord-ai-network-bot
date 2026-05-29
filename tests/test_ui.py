@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import unittest
+from unittest import mock
 
 import discord
 
@@ -13,11 +14,17 @@ from discord_assistant.llm import (
     OllamaError,
     OpenAIError,
 )
-from discord_assistant.models import GuildConfig, LLMProvider
+from discord_assistant.models import GuildConfig, LLMProvider, OllamaModel
 from discord_assistant.prompts import _LANGUAGE_LABELS
 from discord_assistant.ui import (
+    ExternalModelView,
+    GeneralSettingsView,
     LanguageSelectView,
+    ProviderView,
     RetryView,
+    SettingsView,
+    ViewCtx,
+    _APIKeyModal,
     _supported_language_options,
     error_hint,
     settings_embed,
@@ -305,6 +312,327 @@ class TestRetryView(unittest.TestCase):
         asyncio.run(button.callback(interaction))  # type: ignore[arg-type]
         self.assertEqual(len(called), 1)
         self.assertTrue(button.disabled)
+
+
+# ---------------------------------------------------------------------------
+# #62: View / Modal 콜백 상호작용 테스트
+#
+# MagicMock 대신 동작을 기록하는 경량 스텁으로 interaction 을 흉내내고,
+# 콜백 분기(_change_provider / _manage_models / _general_settings,
+# ProviderView._on_select, _APIKeyModal.on_submit + 키 검증)와 RetryView 동작을
+# 검증한다. urllib 호출(키 검증)은 mock 으로 막아 실제 네트워크를 타지 않게 한다.
+# ---------------------------------------------------------------------------
+
+
+class _RichStore:
+    """get_guild_config / set_provider_config 등을 기록하는 스텁 ConfigStore."""
+
+    def __init__(self, config: GuildConfig | None = None) -> None:
+        self.config = config or _make_config()
+        self.set_provider_calls: list[dict] = []
+
+    async def get_guild_config(self, guild_id: int) -> GuildConfig:
+        return self.config
+
+    async def set_provider_config(
+        self,
+        guild_id: int,
+        *,
+        provider: LLMProvider,
+        model: str,
+        api_key_encrypted: str | None,
+    ) -> GuildConfig:
+        from dataclasses import replace
+
+        self.set_provider_calls.append(
+            {"guild_id": guild_id, "provider": provider, "model": model, "key": api_key_encrypted}
+        )
+        self.config = replace(
+            self.config,
+            provider=provider,
+            model=model,
+            api_key_encrypted=api_key_encrypted,
+        )
+        return self.config
+
+
+class _FakeOllamaManager:
+    """list_models 만 흉내내는 스텁(네트워크 없음)."""
+
+    def __init__(self, models: list[OllamaModel] | None = None) -> None:
+        self._models = models or []
+        self.list_called = 0
+
+    async def list_models(self) -> list[OllamaModel]:
+        self.list_called += 1
+        return self._models
+
+
+class _RichInteraction:
+    """edit_message / defer / followup / send_modal / edit_original_response 기록 스텁."""
+
+    def __init__(self, value: str | None = None) -> None:
+        self.data = {"values": [value]} if value is not None else {}
+        self.guild = None
+        self.edit_message_kwargs: dict | None = None
+        self.deferred = False
+        self.followup_messages: list[tuple[str, dict]] = []
+        self.original_edits: list[dict] = []
+        self.sent_modals: list[object] = []
+        self.sent_messages: list[tuple[str, dict]] = []
+
+        outer = self
+
+        class _Resp:
+            async def edit_message(self, **kwargs) -> None:
+                outer.edit_message_kwargs = kwargs
+
+            async def defer(self, **kwargs) -> None:
+                outer.deferred = True
+
+            async def send_modal(self, modal) -> None:
+                outer.sent_modals.append(modal)
+
+            async def send_message(self, content="", **kwargs) -> None:
+                outer.sent_messages.append((content, kwargs))
+
+        class _Followup:
+            async def send(self, content="", **kwargs) -> None:
+                outer.followup_messages.append((content, kwargs))
+
+        self.response = _Resp()
+        self.followup = _Followup()
+
+    async def edit_original_response(self, **kwargs) -> None:
+        self.original_edits.append(kwargs)
+
+
+def _make_rich_ctx(store, ollama_manager=None) -> ViewCtx:
+    return ViewCtx(
+        store=store,
+        ollama_manager=ollama_manager or _FakeOllamaManager(),  # type: ignore[arg-type]
+        secret_key="test-secret-key",
+    )
+
+
+class TestSettingsViewCallbacks(unittest.TestCase):
+    def test_change_provider_opens_provider_view(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OLLAMA))
+        ctx = _make_rich_ctx(store)
+        view = SettingsView(ctx=ctx, guild_id=1, provider=LLMProvider.OLLAMA)
+        interaction = _RichInteraction()
+        asyncio.run(view._change_provider(interaction))  # type: ignore[arg-type]
+        self.assertIsNotNone(interaction.edit_message_kwargs)
+        self.assertIsInstance(interaction.edit_message_kwargs["view"], ProviderView)
+
+    def test_manage_models_ollama_branch_lists_models(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OLLAMA, model="llama3.1:8b"))
+        ollama = _FakeOllamaManager([OllamaModel(name="llama3.1:8b", size_bytes=10**9)])
+        ctx = _make_rich_ctx(store, ollama)
+        view = SettingsView(ctx=ctx, guild_id=1, provider=LLMProvider.OLLAMA)
+        interaction = _RichInteraction()
+        asyncio.run(view._manage_models(interaction))  # type: ignore[arg-type]
+        self.assertTrue(interaction.deferred)
+        self.assertEqual(ollama.list_called, 1)
+        self.assertTrue(interaction.original_edits)
+
+    def test_manage_models_external_branch_no_ollama_call(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OPENAI, model="gpt-4o-mini"))
+        ollama = _FakeOllamaManager()
+        ctx = _make_rich_ctx(store, ollama)
+        view = SettingsView(ctx=ctx, guild_id=1, provider=LLMProvider.OPENAI)
+        interaction = _RichInteraction()
+        asyncio.run(view._manage_models(interaction))  # type: ignore[arg-type]
+        # 외부 제공자에서는 ollama 모델 목록을 조회하지 않는다.
+        self.assertEqual(ollama.list_called, 0)
+        self.assertTrue(interaction.original_edits)
+        self.assertIsInstance(interaction.original_edits[-1]["view"], ExternalModelView)
+
+    def test_general_settings_opens_general_view(self) -> None:
+        store = _RichStore(_make_config())
+        ctx = _make_rich_ctx(store)
+        view = SettingsView(ctx=ctx, guild_id=1)
+        interaction = _RichInteraction()
+        asyncio.run(view._general_settings(interaction))  # type: ignore[arg-type]
+        self.assertIsInstance(interaction.edit_message_kwargs["view"], GeneralSettingsView)
+
+    def test_model_button_label_for_external_provider(self) -> None:
+        ctx = _make_rich_ctx(_RichStore())
+        view = SettingsView(ctx=ctx, guild_id=1, provider=LLMProvider.OPENAI)
+        labels = [getattr(c, "label", None) for c in view.children]
+        self.assertIn("모델 선택", labels)
+
+    def test_model_button_label_for_ollama(self) -> None:
+        ctx = _make_rich_ctx(_RichStore())
+        view = SettingsView(ctx=ctx, guild_id=1, provider=LLMProvider.OLLAMA)
+        labels = [getattr(c, "label", None) for c in view.children]
+        self.assertIn("모델 관리", labels)
+
+
+class TestProviderViewSelect(unittest.TestCase):
+    def test_select_ollama_persists_and_returns_to_settings(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OPENAI))
+        ollama = _FakeOllamaManager([OllamaModel(name="qwen2.5:7b", size_bytes=10**9)])
+        ctx = _make_rich_ctx(store, ollama)
+        view = ProviderView(ctx=ctx, guild_id=42)
+        interaction = _RichInteraction("ollama")
+        asyncio.run(view._on_select(interaction))  # type: ignore[arg-type]
+        # ollama 선택 시 set_provider_config 가 호출되고 SettingsView 로 복귀.
+        self.assertEqual(len(store.set_provider_calls), 1)
+        self.assertEqual(store.set_provider_calls[0]["provider"], LLMProvider.OLLAMA)
+        # 설치된 모델이 있으면 첫 모델을 기본 모델로 사용.
+        self.assertEqual(store.set_provider_calls[0]["model"], "qwen2.5:7b")
+        self.assertIsInstance(interaction.edit_message_kwargs["view"], SettingsView)
+
+    def test_select_ollama_uses_default_when_no_models(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OPENAI))
+        ctx = _make_rich_ctx(store, _FakeOllamaManager([]))
+        view = ProviderView(ctx=ctx, guild_id=42)
+        interaction = _RichInteraction("ollama")
+        asyncio.run(view._on_select(interaction))  # type: ignore[arg-type]
+        self.assertEqual(store.set_provider_calls[0]["model"], "llama3.1:8b")
+
+    def test_select_openai_opens_external_model_view_without_persisting(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OLLAMA))
+        ctx = _make_rich_ctx(store)
+        view = ProviderView(ctx=ctx, guild_id=42)
+        interaction = _RichInteraction("openai")
+        asyncio.run(view._on_select(interaction))  # type: ignore[arg-type]
+        # OpenAI 선택은 모델/키 입력 화면만 열고 아직 저장하지 않는다.
+        self.assertEqual(len(store.set_provider_calls), 0)
+        self.assertIsInstance(interaction.edit_message_kwargs["view"], ExternalModelView)
+        self.assertEqual(interaction.edit_message_kwargs["view"].provider, LLMProvider.OPENAI)
+
+    def test_select_anthropic_opens_external_model_view(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OLLAMA))
+        ctx = _make_rich_ctx(store)
+        view = ProviderView(ctx=ctx, guild_id=42)
+        interaction = _RichInteraction("anthropic")
+        asyncio.run(view._on_select(interaction))  # type: ignore[arg-type]
+        self.assertIsInstance(interaction.edit_message_kwargs["view"], ExternalModelView)
+        self.assertEqual(interaction.edit_message_kwargs["view"].provider, LLMProvider.ANTHROPIC)
+
+
+class TestExternalModelViewSelect(unittest.TestCase):
+    def test_model_select_persists_chosen_model(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OPENAI, model="gpt-4o-mini"))
+        ctx = _make_rich_ctx(store)
+        models = [("gpt-4o", "GPT-4o", "최신"), ("gpt-4o-mini", "GPT-4o mini", "저렴")]
+        view = ExternalModelView(ctx=ctx, guild_id=7, provider=LLMProvider.OPENAI, models=models)
+        interaction = _RichInteraction("gpt-4o")
+        asyncio.run(view._on_model_select(interaction))  # type: ignore[arg-type]
+        self.assertEqual(view._selected_model, "gpt-4o")
+        self.assertEqual(store.set_provider_calls[-1]["model"], "gpt-4o")
+        self.assertIsNotNone(interaction.edit_message_kwargs)
+
+
+def _button_by_label(view: discord.ui.View, label: str) -> discord.ui.Button:
+    """주어진 라벨을 가진 버튼 아이템을 찾는다(@ui.button 데코레이터 콜백 호출용)."""
+    for child in view.children:
+        if isinstance(child, discord.ui.Button) and child.label == label:
+            return child
+    raise AssertionError(f"button with label {label!r} not found")
+
+
+class TestGeneralSettingsViewCallbacks(unittest.TestCase):
+    def test_change_language_opens_language_select(self) -> None:
+        store = _RichStore(_make_config(language="ko"))
+        ctx = _make_rich_ctx(store)
+        view = GeneralSettingsView(ctx=ctx, guild_id=1)
+        interaction = _RichInteraction()
+        # @ui.button 데코레이터는 view.children 의 Button 아이템에 콜백을 바인딩한다.
+        button = _button_by_label(view, "언어 변경")
+        asyncio.run(button.callback(interaction))  # type: ignore[arg-type]
+        self.assertIsInstance(interaction.edit_message_kwargs["view"], LanguageSelectView)
+
+    def test_change_limit_sends_modal(self) -> None:
+        store = _RichStore(_make_config())
+        ctx = _make_rich_ctx(store)
+        view = GeneralSettingsView(ctx=ctx, guild_id=1)
+        interaction = _RichInteraction()
+        button = _button_by_label(view, "요약 범위 변경")
+        asyncio.run(button.callback(interaction))  # type: ignore[arg-type]
+        self.assertEqual(len(interaction.sent_modals), 1)
+
+
+class _ModalInteraction(_RichInteraction):
+    """on_submit 테스트용: api 키 입력값을 흉내내는 interaction."""
+
+
+class TestAPIKeyModalSubmit(unittest.TestCase):
+    def _make_modal(self, provider: LLMProvider, store: _RichStore) -> _APIKeyModal:
+        ctx = _make_rich_ctx(store)
+        modal = _APIKeyModal(provider=provider, model="gpt-4o-mini", ctx=ctx, guild_id=9)
+        return modal
+
+    def test_empty_key_warns_and_does_not_save(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OPENAI))
+        modal = self._make_modal(LLMProvider.OPENAI, store)
+        modal.api_key_input._value = "   "  # type: ignore[attr-defined]
+        interaction = _RichInteraction()
+        asyncio.run(modal.on_submit(interaction))  # type: ignore[arg-type]
+        self.assertEqual(len(store.set_provider_calls), 0)
+        self.assertTrue(interaction.sent_messages)
+        self.assertIn("API 키", interaction.sent_messages[0][0])
+
+    def test_invalid_openai_key_not_saved(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OPENAI))
+        modal = self._make_modal(LLMProvider.OPENAI, store)
+        modal.api_key_input._value = "sk-bad"  # type: ignore[attr-defined]
+        interaction = _RichInteraction()
+        # 키 검증을 실패로 강제(urllib 미호출 — 네트워크 없음).
+        with mock.patch("discord_assistant.ui._validate_openai_key", return_value=False):
+            asyncio.run(modal.on_submit(interaction))  # type: ignore[arg-type]
+        self.assertTrue(interaction.deferred)
+        self.assertEqual(len(store.set_provider_calls), 0)
+        self.assertTrue(interaction.followup_messages)
+        self.assertIn("유효하지 않은", interaction.followup_messages[0][0])
+
+    def test_valid_openai_key_encrypts_and_saves(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.OPENAI))
+        modal = self._make_modal(LLMProvider.OPENAI, store)
+        modal.api_key_input._value = "sk-good-key"  # type: ignore[attr-defined]
+        interaction = _RichInteraction()
+        with mock.patch("discord_assistant.ui._validate_openai_key", return_value=True), \
+             mock.patch(
+                 "discord_assistant.ui.encrypt_api_key", return_value="ENC"
+             ) as enc_mock:
+            asyncio.run(modal.on_submit(interaction))  # type: ignore[arg-type]
+        enc_mock.assert_called_once()
+        self.assertEqual(len(store.set_provider_calls), 1)
+        self.assertEqual(store.set_provider_calls[0]["key"], "ENC")
+        self.assertTrue(interaction.original_edits)
+        self.assertIsInstance(interaction.original_edits[-1]["view"], SettingsView)
+
+    def test_anthropic_key_uses_anthropic_validator(self) -> None:
+        store = _RichStore(_make_config(provider=LLMProvider.ANTHROPIC))
+        ctx = _make_rich_ctx(store)
+        modal = _APIKeyModal(
+            provider=LLMProvider.ANTHROPIC, model="claude-3-haiku-20240307", ctx=ctx, guild_id=9
+        )
+        modal.api_key_input._value = "sk-ant-good"  # type: ignore[attr-defined]
+        interaction = _RichInteraction()
+        with mock.patch(
+            "discord_assistant.ui._validate_anthropic_key", return_value=True
+        ) as anthropic_validator, mock.patch(
+            "discord_assistant.ui._validate_openai_key", return_value=False
+        ) as openai_validator, mock.patch(
+            "discord_assistant.ui.encrypt_api_key", return_value="ENC2"
+        ):
+            asyncio.run(modal.on_submit(interaction))  # type: ignore[arg-type]
+        # Anthropic 제공자는 anthropic 검증기만 사용해야 한다.
+        anthropic_validator.assert_called_once()
+        openai_validator.assert_not_called()
+        self.assertEqual(store.set_provider_calls[0]["key"], "ENC2")
+
+    def test_validate_key_returns_true_for_non_external_provider(self) -> None:
+        # _validate_key 분기: OLLAMA 등은 검증 없이 True.
+        store = _RichStore(_make_config(provider=LLMProvider.OLLAMA))
+        ctx = _make_rich_ctx(store)
+        modal = _APIKeyModal(
+            provider=LLMProvider.OLLAMA, model="llama3.1:8b", ctx=ctx, guild_id=9
+        )
+        self.assertTrue(modal._validate_key("anything"))
 
 
 if __name__ == "__main__":

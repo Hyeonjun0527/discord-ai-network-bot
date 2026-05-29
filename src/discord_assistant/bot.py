@@ -32,6 +32,7 @@ from .llm import (
 from .models import GuildConfig, LLMProvider, Reminder, UsageLog
 from .monitor import format_disconnect_message, format_error_message, notify_developer
 from .prompts import (
+    _LANGUAGE_LABELS,
     build_ask_prompt,
     build_chat_prompt,
     build_chat_with_history_prompt,
@@ -135,6 +136,12 @@ MAX_SEARCH_MATCHES = 20  # max matching messages shown in /search (#74)
 THUMBS_UP = "\U0001f44d"   # 👍
 THUMBS_DOWN = "\U0001f44e"  # 👎
 
+# --- #9 리액션 트리거 이모지 ---
+# 메시지에 아래 이모지를 달면 해당 메시지를 요약/번역해 답장한다. 👍/👎 피드백
+# 경로(on_reaction_add)와는 별개로 on_raw_reaction_add 에서 처리한다.
+REACTION_SUMMARIZE = "\U0001f4dd"  # 📝 요약
+REACTION_TRANSLATE = "\U0001f310"  # 🌐 번역
+
 # Message IDs that correspond to bot command results (for reaction tracking)
 # guild_id -> {message_id -> command_name}
 _tracked_messages: dict[int, dict[int, str]] = {}
@@ -200,6 +207,66 @@ def _parse_since(since_str: str) -> datetime:
     else:
         delta = timedelta(days=value)
     return datetime.now(timezone.utc) - delta
+
+
+# --- #7 자동완성 후보 ---
+# 자유 텍스트 인자(언어/기간/프롬프트 유형)에 슬래시 명령 자동완성을 붙여
+# 오타·미지원 값을 줄인다. discord.py 의 app_commands.autocomplete 가 호출하는
+# 콜백은 최대 25개의 Choice 만 반환할 수 있으므로 항상 슬라이스한다.
+
+# 자동완성에 노출할 기간(since) 후보. _parse_since 가 받아들이는 형식과 일치한다.
+_SINCE_CHOICES: list[tuple[str, str]] = [
+    ("최근 30분", "30m"),
+    ("최근 1시간", "1h"),
+    ("최근 6시간", "6h"),
+    ("최근 12시간", "12h"),
+    ("최근 1일", "1d"),
+    ("최근 3일", "3d"),
+    ("최근 7일", "7d"),
+]
+
+# 커스텀 프롬프트 유형 후보 (set_custom_prompt 가 받는 값과 일치).
+_PROMPT_TYPE_CHOICES: list[tuple[str, str]] = [
+    ("summarize (요약)", "summarize"),
+    ("ask (질문)", "ask"),
+]
+
+
+def _filter_choices(
+    pairs: list[tuple[str, str]], current: str
+) -> list[app_commands.Choice[str]]:
+    """(라벨, 값) 목록을 현재 입력으로 필터링해 Choice 리스트(최대 25개)로 변환한다 (#7)."""
+    needle = (current or "").strip().lower()
+    out: list[app_commands.Choice[str]] = []
+    for label, value in pairs:
+        if not needle or needle in label.lower() or needle in value.lower():
+            out.append(app_commands.Choice(name=label, value=value))
+        if len(out) >= 25:
+            break
+    return out
+
+
+async def _language_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """언어 코드 자동완성: _LANGUAGE_LABELS + 'auto' 자동 감지 (#7)."""
+    pairs: list[tuple[str, str]] = [("자동 감지 (auto)", "auto")]
+    pairs.extend((f"{label} ({code})", code) for code, label in _LANGUAGE_LABELS.items())
+    return _filter_choices(pairs, current)
+
+
+async def _since_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """기간(since) 자동완성: 30m/1h/6h/1d 등 (#7)."""
+    return _filter_choices(_SINCE_CHOICES, current)
+
+
+async def _prompt_type_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    """프롬프트 유형 자동완성: summarize/ask (#7)."""
+    return _filter_choices(_PROMPT_TYPE_CHOICES, current)
 
 
 _MAX_REMIND_DELAY = timedelta(days=30)
@@ -679,10 +746,38 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     # /summarize
     # ------------------------------------------------------------------
 
+    async def _deliver_summary_to_thread(
+        interaction: discord.Interaction, title: str, body: str
+    ) -> bool:
+        """요약 결과를 채널에 새 스레드를 만들어 게시한다 (#5).
+
+        create_thread 권한이 없거나 스레드를 만들 수 없는 채널이면 False 를
+        반환해 호출 측이 일반(채널) 전송으로 폴백하게 한다.
+        """
+        channel = interaction.channel
+        # 일반 텍스트 채널에서만 새 스레드를 만든다. 스레드/포럼/DM 등은 폴백한다.
+        if not isinstance(channel, discord.TextChannel):
+            return False
+        # 스레드 이름은 100자 제한 + 개행 불가. 안전하게 잘라 정리한다.
+        thread_name = title.replace("\n", " ").strip()[:90] or "요약"
+        try:
+            thread = await channel.create_thread(
+                name=thread_name,
+                type=discord.ChannelType.public_thread,
+            )
+        except discord.Forbidden:
+            return False
+        except (discord.HTTPException, TypeError):
+            # 권한이 있어도 일시적 실패가 있을 수 있어 폴백한다.
+            return False
+        await _send_channel_chunks(thread, body)
+        return True
+
     async def run_summarize(
         interaction: discord.Interaction,
         limit: int | None,
         since: str | None = None,
+        thread: bool = False,
     ) -> None:
         started = perf_counter()
         guild_id, channel_id, user_id = _ids_from_interaction(interaction)
@@ -717,9 +812,22 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     _last_summaries[user_id] = (cached, guild_id)
                     if len(_last_summaries) > _MAX_LAST_SUMMARIES:
                         del _last_summaries[next(iter(_last_summaries))]
-                first, *rest = _split_discord_text(
-                    f"**최근 {message_limit}개 메시지 요약** *(캐시)*\n{cached}"
-                )
+                header = f"**최근 {message_limit}개 메시지 요약** *(캐시)*\n"
+                # #5: thread=True 면 새 스레드에 게시하고, 권한이 없으면 폴백한다.
+                if thread and await _deliver_summary_to_thread(
+                    interaction, f"요약: 최근 {message_limit}개 메시지", header + cached
+                ):
+                    await interaction.followup.send("🧵 새 스레드에 요약을 게시했어요.", ephemeral=True)
+                    await _record_usage(
+                        store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                        command="summarize", status="ok", started_at=started,
+                    )
+                    return
+                if thread:
+                    await interaction.followup.send(
+                        "⚠️ 스레드를 만들 권한이 없어 여기에 표시할게요.", ephemeral=True
+                    )
+                first, *rest = _split_discord_text(header + cached)
                 msg = await interaction.followup.send(first, wait=True)
                 for chunk in rest:
                     await interaction.followup.send(chunk)
@@ -766,6 +874,20 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
             since_label = f" (since: {since})" if since else ""
             header = f"**최근 {message_limit}개 메시지 요약{since_label}**\n"
+            # #5: thread=True 면 새 스레드에 게시하고, 권한이 없으면 폴백한다.
+            if thread and await _deliver_summary_to_thread(
+                interaction, f"요약: 최근 {message_limit}개 메시지", header + answer
+            ):
+                await interaction.followup.send("🧵 새 스레드에 요약을 게시했어요.", ephemeral=True)
+                await _record_usage(
+                    store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                    command="summarize", status="ok", started_at=started,
+                )
+                return
+            if thread:
+                await interaction.followup.send(
+                    "⚠️ 스레드를 만들 권한이 없어 여기에 표시할게요.", ephemeral=True
+                )
             first, *rest = _split_discord_text(header + answer)
             msg = await interaction.followup.send(first, wait=True)
             for chunk in rest:
@@ -787,13 +909,16 @@ def create_bot(settings: AppSettings) -> commands.Bot:
     @app_commands.describe(
         limit="최근 몇 개 메시지를 읽을지 지정합니다. 기본값은 서버 설정입니다.",
         since="시간 기반 필터. 예: 1h, 30m, 2d",
+        thread="True면 요약 결과를 채널에 새 스레드를 만들어 게시합니다.",
     )
+    @app_commands.autocomplete(since=_since_autocomplete)
     async def summarize_command(
         interaction: discord.Interaction,
         limit: int | None = None,
         since: str | None = None,
+        thread: bool = False,
     ) -> None:
-        await run_summarize(interaction, limit, since)
+        await run_summarize(interaction, limit, since, thread)
 
     # ------------------------------------------------------------------
     # /ask
@@ -901,6 +1026,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
     @bot.tree.command(name="translate", description="선택 기능: 짧은 텍스트를 지정 언어로 번역합니다.")
     @app_commands.describe(text="번역할 텍스트", target_language="목표 언어입니다. 예: ko, en, ja")
+    @app_commands.autocomplete(target_language=_language_autocomplete)
     async def translate_command(
         interaction: discord.Interaction,
         text: str,
@@ -1170,6 +1296,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
 
     @config_group.command(name="language", description="기본 응답 언어를 저장합니다.")
     @app_commands.describe(language="예: ko, en, ja")
+    @app_commands.autocomplete(language=_language_autocomplete)
     async def config_language(interaction: discord.Interaction, language: str) -> None:
         try:
             guild_id = await require_guild_admin(interaction)
@@ -1670,6 +1797,230 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 command="search", status="error", started_at=started, error=str(exc),
             )
 
+    # --- #11 /digest --- 기간 기반 '오늘의 정리'
+    @bot.tree.command(name="digest", description="지정한 기간의 대화를 핵심·결정·액션으로 정리합니다.")
+    @app_commands.describe(since="정리할 기간. 예: 30m, 1h, 6h, 1d (기본: 1d)")
+    @app_commands.autocomplete(since=_since_autocomplete)
+    async def digest_command(
+        interaction: discord.Interaction,
+        since: str = "1d",
+    ) -> None:
+        started = perf_counter()
+        guild_id, channel_id, user_id = _ids_from_interaction(interaction)
+        remaining = _check_cooldown(guild_id, user_id)
+        if remaining is not None:
+            await interaction.response.send_message(
+                f"⏳ {remaining:.0f}초 후에 다시 시도해주세요.", ephemeral=True
+            )
+            return
+        await interaction.response.defer(thinking=True)
+        try:
+            since_dt = _parse_since(since)
+            config = await store.get_guild_config(guild_id or 0)
+            # 역할 제한 검사 (#49 와 동일 정책).
+            if not _has_allowed_role(interaction, config.allowed_role_id):
+                raise UserFacingError("이 명령을 사용할 권한이 없어요. 서버 관리자에게 문의하세요.")
+            # 기간 내 메시지를 모은다. summary_limit 를 상한으로 두되 200까지 허용한다.
+            digest_limit = _effective_limit(config.summary_limit, config.summary_limit)
+            transcript = await _collect_transcript(
+                interaction.channel,
+                before=interaction.created_at,
+                limit=digest_limit,
+                max_context_chars=settings.max_context_chars,
+                after=since_dt,
+            )
+            if not transcript:
+                raise UserFacingError("정리할 메시지가 없어요. 해당 기간에 대화가 있어야 합니다.")
+
+            effective_language = config.language
+            if effective_language == "auto":
+                effective_language = detect_language_from_transcript(transcript)
+            # build_summarize_prompt 를 재사용해 '핵심·결정·액션' 구조 요약을 만든다 (#11).
+            prompt = build_summarize_prompt(transcript, language=effective_language)
+            llm = _get_llm(config, settings)
+            answer = await llm.generate(prompt, model=config.model)
+
+            header = f"📋 **오늘의 정리** (최근 {since})\n"
+            first, *rest = _split_discord_text(header + answer)
+            msg = await interaction.followup.send(first, wait=True)
+            for chunk in rest:
+                await interaction.followup.send(chunk)
+            await _track_for_feedback(guild_id, msg, "digest")
+            await _record_usage(
+                store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                command="digest", status="ok", started_at=started,
+            )
+        except (UserFacingError, LLMError) as exc:
+            await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
+            await _record_usage(
+                store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                command="digest", status="error", started_at=started, error=str(exc),
+            )
+
+    # --- #94 /usage --- 본인 사용량 + 쿨다운 + 서버 한도 안내
+    @bot.tree.command(name="usage", description="내 사용량과 쿨다운, 서버 한도를 확인합니다.")
+    async def usage_command(interaction: discord.Interaction) -> None:
+        guild_id, _channel_id, user_id = _ids_from_interaction(interaction)
+        config = await store.get_guild_config(guild_id or 0)
+
+        # 남은 쿨다운은 상태를 갱신하지 않고 조회만 한다(_check_cooldown 은 갱신하므로
+        # 사용하지 않는다). _cooldowns 의 마지막 사용 시각으로 직접 계산한다.
+        cooldown_note = "없음 (바로 사용 가능)"
+        if guild_id is not None and user_id is not None:
+            last = _cooldowns.get((guild_id, user_id))
+            if last is not None:
+                elapsed = perf_counter() - last
+                if elapsed < COOLDOWN_SECONDS:
+                    cooldown_note = f"{COOLDOWN_SECONDS - elapsed:.0f}초 남음"
+
+        # 서버 전체 사용 통계에서 본인 명령 수를 별도 집계할 헬퍼가 없으므로,
+        # get_stats(서버 단위)로 전체 사용 현황을 보여주고 서버 한도를 함께 안내한다 (#94).
+        embed = discord.Embed(
+            title="내 사용량 / 서버 한도",
+            color=discord.Color.from_str("#5865F2"),
+        )
+        if guild_id is not None:
+            stats = await store.get_stats(guild_id)
+            embed.add_field(name="서버 총 사용 횟수", value=str(stats["total"]), inline=True)
+            embed.add_field(name="평균 응답 시간", value=f"{stats['avg_latency_ms']}ms", inline=True)
+            embed.add_field(name="에러율", value=f"{stats['error_rate']}%", inline=True)
+        embed.add_field(name="남은 쿨다운", value=cooldown_note, inline=True)
+        embed.add_field(
+            name="쿨다운 간격", value=f"{COOLDOWN_SECONDS}초", inline=True
+        )
+        # _effective_limit 가 200 초과를 조용히 깎으므로, 서버 요약 한도와 함께
+        # 실제 적용 상한을 명시해 사용자가 혼동하지 않게 안내한다 (#94).
+        applied_limit = _effective_limit(config.summary_limit, config.summary_limit)
+        limit_note = f"{config.summary_limit}개"
+        if config.summary_limit > 200:
+            limit_note = f"{config.summary_limit}개 → 실제 {applied_limit}개로 제한 적용"
+        embed.add_field(name="서버 요약 범위(summary_limit)", value=limit_note, inline=True)
+        embed.set_footer(text="요약·질문 명령은 위 쿨다운 간격으로 제한됩니다.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # --- #4 컨텍스트 메뉴 --- 우클릭 → 메시지 번역/요약/질문
+    # 메시지 대상 컨텍스트 메뉴 3개. 우클릭한 메시지 내용을 기존 build_* 프롬프트에
+    # 그대로 넣어(인젝션 방어 내장) ephemeral 로 응답한다. create_bot 안에서
+    # bot.tree.add_command 로 등록한다.
+
+    async def _ctx_menu_guard(
+        interaction: discord.Interaction, content: str
+    ) -> tuple[GuildConfig, BaseLLMClient] | None:
+        """컨텍스트 메뉴 공통 가드: 쿨다운·빈 메시지 확인 후 (config, llm) 반환.
+
+        가드에 걸리면 사용자에게 ephemeral 안내를 보내고 None 을 반환한다.
+        """
+        guild_id, _channel_id, user_id = _ids_from_interaction(interaction)
+        remaining = _check_cooldown(guild_id, user_id)
+        if remaining is not None:
+            await interaction.response.send_message(
+                f"⏳ {remaining:.0f}초 후에 다시 시도해주세요.", ephemeral=True
+            )
+            return None
+        if not content.strip():
+            await interaction.response.send_message(
+                "⚠️ 대상 메시지에 처리할 텍스트가 없어요.", ephemeral=True
+            )
+            return None
+        config = await store.get_guild_config(guild_id or 0)
+        llm = _get_llm(config, settings)
+        return config, llm
+
+    async def _translate_message_ctx(
+        interaction: discord.Interaction, message: discord.Message
+    ) -> None:
+        started = perf_counter()
+        guild_id, channel_id, user_id = _ids_from_interaction(interaction)
+        try:
+            guard = await _ctx_menu_guard(interaction, message.content)
+            if guard is None:
+                return
+            config, llm = guard
+            await interaction.response.defer(thinking=True, ephemeral=True)
+            # 컨텍스트 메뉴 번역은 서버 언어 설정으로 번역한다(auto 면 한국어로 폴백).
+            target = config.language if config.language != "auto" else "ko"
+            prompt = build_translate_prompt(message.content, target_language=target)
+            answer = await llm.generate(prompt, model=config.model)
+            await _send_interaction_chunks(interaction, f"🌐 **번역 ({target})**\n{answer}", ephemeral=True)
+            await _record_usage(
+                store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                command="ctx_translate", status="ok", started_at=started,
+            )
+        except (UserFacingError, LLMError) as exc:
+            await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
+            await _record_usage(
+                store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                command="ctx_translate", status="error", started_at=started, error=str(exc),
+            )
+
+    async def _summarize_message_ctx(
+        interaction: discord.Interaction, message: discord.Message
+    ) -> None:
+        started = perf_counter()
+        guild_id, channel_id, user_id = _ids_from_interaction(interaction)
+        try:
+            guard = await _ctx_menu_guard(interaction, message.content)
+            if guard is None:
+                return
+            config, llm = guard
+            await interaction.response.defer(thinking=True, ephemeral=True)
+            language = config.language
+            if language == "auto":
+                language = detect_language_from_transcript(message.content)
+            prompt = build_summarize_prompt(message.content, language=language)
+            answer = await llm.generate(prompt, model=config.model)
+            await _send_interaction_chunks(interaction, f"📝 **메시지 요약**\n{answer}", ephemeral=True)
+            await _record_usage(
+                store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                command="ctx_summarize", status="ok", started_at=started,
+            )
+        except (UserFacingError, LLMError) as exc:
+            await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
+            await _record_usage(
+                store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                command="ctx_summarize", status="error", started_at=started, error=str(exc),
+            )
+
+    async def _ask_message_ctx(
+        interaction: discord.Interaction, message: discord.Message
+    ) -> None:
+        started = perf_counter()
+        guild_id, channel_id, user_id = _ids_from_interaction(interaction)
+        try:
+            guard = await _ctx_menu_guard(interaction, message.content)
+            if guard is None:
+                return
+            config, llm = guard
+            await interaction.response.defer(thinking=True, ephemeral=True)
+            language = config.language
+            if language == "auto":
+                language = detect_language_from_transcript(message.content)
+            # 우클릭한 메시지를 트랜스크립트로, 고정 질문으로 build_ask_prompt 를 호출한다.
+            question = "이 메시지의 핵심 내용을 설명하고, 궁금한 점에 답해줘."
+            prompt = build_ask_prompt(message.content, question, language=language)
+            answer = await llm.generate(prompt, model=config.model)
+            await _send_interaction_chunks(interaction, f"💬 **이 메시지로 질문**\n{answer}", ephemeral=True)
+            await _record_usage(
+                store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                command="ctx_ask", status="ok", started_at=started,
+            )
+        except (UserFacingError, LLMError) as exc:
+            await _send_interaction_chunks(interaction, f"⚠️ {exc}", ephemeral=True)
+            await _record_usage(
+                store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                command="ctx_ask", status="error", started_at=started, error=str(exc),
+            )
+
+    bot.tree.add_command(
+        app_commands.ContextMenu(name="메시지 번역", callback=_translate_message_ctx)
+    )
+    bot.tree.add_command(
+        app_commands.ContextMenu(name="메시지 요약", callback=_summarize_message_ctx)
+    )
+    bot.tree.add_command(
+        app_commands.ContextMenu(name="이 메시지로 질문", callback=_ask_message_ctx)
+    )
+
     # --- Phase 3 /config subcommands ---
 
     @config_group.command(name="admin_role", description="봇 설정 권한을 가진 역할을 지정합니다.")
@@ -1741,6 +2092,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         prompt_type="프롬프트 유형: summarize 또는 ask",
         text="커스텀 프롬프트 내용. 비워두면 초기화.",
     )
+    @app_commands.autocomplete(prompt_type=_prompt_type_autocomplete)
     async def config_custom_prompt(
         interaction: discord.Interaction, prompt_type: str, text: str = ""
     ) -> None:
@@ -1865,11 +2217,23 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             started = perf_counter()
             try:
                 config = await store.get_guild_config(0)  # use default config
-                prompt = build_chat_prompt(message.content, language=config.language, persona=config.persona)
+                # #10: DM 대화 기억 — 직전 대화를 history 로 이어 붙인다(guild_id=None).
+                history = await store.get_chat_history(user_id, guild_id=None, limit=10)
+                if history:
+                    prompt = build_chat_with_history_prompt(
+                        message.content, history, language=config.language
+                    )
+                else:
+                    prompt = build_chat_prompt(
+                        message.content, language=config.language, persona=config.persona
+                    )
                 llm = _get_llm(config, settings)
                 async with message.channel.typing():
                     answer = await llm.generate(prompt, model=config.model)
                 await _send_channel_chunks(message.channel, answer)
+                # 대화를 저장해 다음 DM 에서 맥락을 이어가게 한다 (#10).
+                await store.save_chat_message(user_id, "user", message.content, guild_id=None)
+                await store.save_chat_message(user_id, "assistant", answer, guild_id=None)
                 await _record_usage(
                     store, guild_id=None, channel_id=None, user_id=user_id,
                     command="dm_chat", status="ok", started_at=started,
@@ -1889,6 +2253,70 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                 await _record_usage(
                     store, guild_id=None, channel_id=None, user_id=user_id,
                     command="dm_chat", status="error", started_at=started, error=str(exc),
+                )
+            return
+
+        # --- #8 답장 맥락 --- 봇의 이전 메시지에 답장하면 대화를 이어간다.
+        # message.reference 가 봇이 보낸 메시지를 가리키면, 그 내용을 직전
+        # assistant 턴으로 삼아 build_chat_with_history_prompt 로 이어 대화한다.
+        # (message.author.bot 가드는 상단에서 이미 처리되어 자기 답장 루프는 없다.)
+        ref = message.reference
+        replied_to_bot = False
+        referenced_text = ""
+        if ref is not None:
+            resolved = ref.resolved
+            if isinstance(resolved, discord.Message):
+                referenced = resolved
+            elif ref.message_id is not None and hasattr(message.channel, "fetch_message"):
+                try:
+                    referenced = await message.channel.fetch_message(ref.message_id)
+                except (discord.HTTPException, discord.NotFound, discord.Forbidden):
+                    referenced = None
+            else:
+                referenced = None
+            if (
+                referenced is not None
+                and bot.user is not None
+                and referenced.author.id == bot.user.id
+            ):
+                replied_to_bot = True
+                referenced_text = referenced.content
+
+        if replied_to_bot:
+            started = perf_counter()
+            guild_id = message.guild.id if message.guild else None
+            channel_id = message.channel.id if hasattr(message.channel, "id") else None
+            user_id = message.author.id
+            reply_remaining = _check_cooldown(guild_id, user_id)
+            if reply_remaining is not None:
+                return
+            # 멘션 토큰은 질문 본문에서 제거한다(답장은 자동 멘션을 포함할 수 있음).
+            cleaned = message.content.replace(f"<@{bot.user.id}>", "").replace(
+                f"<@!{bot.user.id}>", ""
+            )
+            follow_question = normalize_content(cleaned)
+            if not follow_question:
+                return
+            try:
+                config = await store.get_guild_config(guild_id or 0)
+                # 봇 직전 응답을 assistant 턴으로 넣어 맥락을 잇는다 (#8).
+                history = [{"role": "assistant", "content": referenced_text}]
+                prompt = build_chat_with_history_prompt(
+                    follow_question, history, language=config.language
+                )
+                llm = _get_llm(config, settings)
+                async with message.channel.typing():
+                    answer = await llm.generate(prompt, model=config.model)
+                await _send_channel_chunks(message.channel, answer)
+                await _record_usage(
+                    store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                    command="reply_chat", status="ok", started_at=started,
+                )
+            except (UserFacingError, LLMError) as exc:
+                await _send_channel_chunks(message.channel, f"⚠️ {exc}")
+                await _record_usage(
+                    store, guild_id=guild_id, channel_id=channel_id, user_id=user_id,
+                    command="reply_chat", status="error", started_at=started, error=str(exc),
                 )
             return
 
@@ -1930,8 +2358,13 @@ def create_bot(settings: AppSettings) -> commands.Bot:
                     )
                     return
 
+            # #6 스레드 맥락: 멘션이 스레드 안에서 발생하면 그 스레드의 메시지만
+            # transcript 로 모은다. message.channel 은 스레드일 때 스레드 자신을
+            # 가리키므로 thread.history 만 읽혀 부모 채널이 섞이지 않는다.
+            context_channel = message.channel
+            in_thread = isinstance(context_channel, discord.Thread)
             transcript = await _collect_transcript(
-                message.channel,
+                context_channel,
                 before=message.created_at,
                 limit=config.summary_limit,
                 max_context_chars=settings.max_context_chars,
@@ -1947,7 +2380,7 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             else:
                 command_name = "mention_summarize"
                 prompt = build_summarize_prompt(transcript, language=config.language)
-                heading = "**최근 대화 요약**\n"
+                heading = "🧵 **스레드 대화 요약**\n" if in_thread else "**최근 대화 요약**\n"
 
             async with message.channel.typing():
                 answer = await llm.generate(prompt, model=config.model)
@@ -2137,6 +2570,73 @@ def create_bot(settings: AppSettings) -> commands.Bot:
             )
         except Exception as e:
             logger.warning("Failed to save feedback: %s", e)
+
+    # ------------------------------------------------------------------
+    # #9 — Reaction-triggered summarize/translate (📝 / 🌐)
+    # ------------------------------------------------------------------
+
+    @bot.event
+    async def on_raw_reaction_add(payload: discord.RawReactionActionEvent) -> None:
+        """📝/🌐 리액션을 메시지에 달면 그 메시지를 요약/번역해 답장한다 (#9).
+
+        on_raw 를 쓰는 이유: 캐시되지 않은(오래된) 메시지에도 동작해야 하기
+        때문이다. 봇 자신/쿨다운 가드를 두고, 👍/👎 피드백 경로와 공존한다.
+        """
+        emoji_str = str(payload.emoji)
+        if emoji_str not in (REACTION_SUMMARIZE, REACTION_TRANSLATE):
+            return
+        if bot.user is not None and payload.user_id == bot.user.id:
+            return  # 봇 자신의 리액션은 무시
+        guild_id = payload.guild_id
+        # 쿨다운: 리액션을 단 사용자 기준. DM(guild_id None)은 센티넬 버킷 사용.
+        cd_guild = guild_id if guild_id is not None else _DM_COOLDOWN_GUILD
+        if _check_cooldown(cd_guild, payload.user_id) is not None:
+            return
+
+        channel = bot.get_channel(payload.channel_id)
+        if channel is None or not hasattr(channel, "fetch_message"):
+            return
+        try:
+            target = await channel.fetch_message(payload.message_id)  # type: ignore[union-attr]
+        except (discord.HTTPException, discord.NotFound, discord.Forbidden):
+            return
+        if not target.content.strip():
+            return  # 처리할 텍스트가 없는 메시지(첨부만 등)는 건너뛴다.
+
+        started = perf_counter()
+        config = await store.get_guild_config(guild_id or 0)
+        command_name = "reaction_summarize" if emoji_str == REACTION_SUMMARIZE else "reaction_translate"
+        try:
+            llm = _get_llm(config, settings)
+            if emoji_str == REACTION_SUMMARIZE:
+                language = config.language
+                if language == "auto":
+                    language = detect_language_from_transcript(target.content)
+                prompt = build_summarize_prompt(target.content, language=language)
+                heading = "📝 **메시지 요약**\n"
+            else:
+                target_lang = config.language if config.language != "auto" else "ko"
+                prompt = build_translate_prompt(target.content, target_language=target_lang)
+                heading = f"🌐 **번역 ({target_lang})**\n"
+            answer = await llm.generate(prompt, model=config.model)
+            for i, chunk in enumerate(_split_discord_text(heading + answer)):
+                if i == 0:
+                    await target.reply(chunk, mention_author=False)
+                else:
+                    await _send_channel_chunks(channel, chunk)  # type: ignore[arg-type]
+            await _record_usage(
+                store, guild_id=guild_id, channel_id=payload.channel_id, user_id=payload.user_id,
+                command=command_name, status="ok", started_at=started,
+            )
+        except (UserFacingError, LLMError) as exc:
+            try:
+                await target.reply(f"⚠️ {exc}", mention_author=False)
+            except discord.HTTPException:
+                pass
+            await _record_usage(
+                store, guild_id=guild_id, channel_id=payload.channel_id, user_id=payload.user_id,
+                command=command_name, status="error", started_at=started, error=str(exc),
+            )
 
     # ------------------------------------------------------------------
     # Phase 3 — Guild join welcome message (#50)

@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import json
 import unittest
+from unittest import mock
+from urllib import error as urllib_error
 
 from discord_assistant.llm import (
     PRICING,
     AnthropicClient,
+    AnthropicError,
     CircuitBreaker,
     CircuitBreakerOpenError,
     LLMError,
     OllamaClient,
     OllamaError,
     OpenAIClient,
+    OpenAIError,
     _is_retryable,
     _with_circuit_breaker,
     _with_retry,
@@ -329,6 +335,298 @@ class EstimateCostTest(unittest.TestCase):
             self.assertEqual(len(price), 2)
             self.assertGreaterEqual(price[0], 0.0)
             self.assertGreaterEqual(price[1], 0.0)
+
+
+# ---------------------------------------------------------------------------
+# #60: OpenAIClient / AnthropicClient _generate_sync HTTP 응답 파싱·에러 테스트
+#
+# urllib.request.urlopen 을 mock 으로 대체해 실제 네트워크를 타지 않게 한다.
+# - 정상 응답 파싱
+# - 4xx 즉시 실패(재시도 안 함)
+# - 429 / 5xx 재시도(_with_retry, asyncio.sleep mock 으로 결정적)
+# - URLError / TimeoutError / 잘못된 JSON 처리
+# - 응답 원문(payload) 비노출(사용자 메시지에 원문 미포함)
+# ---------------------------------------------------------------------------
+
+
+class _FakeHTTPResponse:
+    """urllib.request.urlopen 의 with-블록용 컨텍스트 매니저 가짜 응답.
+
+    ``response.read().decode("utf-8")`` 흐름을 흉내내려고 bytes 본문을 들고 있다.
+    """
+
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+
+    def __enter__(self) -> "_FakeHTTPResponse":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def _json_response(payload: dict) -> _FakeHTTPResponse:
+    """주어진 dict 를 JSON bytes 로 직렬화한 가짜 HTTP 응답을 만든다."""
+    return _FakeHTTPResponse(json.dumps(payload).encode("utf-8"))
+
+
+def _http_error(code: int, body: str = "secret error detail") -> urllib_error.HTTPError:
+    """주어진 상태 코드의 HTTPError 를 만든다.
+
+    ``exc.read()`` 가 본문을 돌려주도록 io.BytesIO 를 fp 로 넣는다(코드에서
+    detail = exc.read().decode(...) 를 호출하므로).
+    """
+    return urllib_error.HTTPError(
+        url="https://example.test",
+        code=code,
+        msg="error",
+        hdrs=None,  # type: ignore[arg-type]
+        fp=io.BytesIO(body.encode("utf-8")),
+    )
+
+
+# OpenAI / Anthropic 정상 응답 payload 형태(코드 파싱 경로에 맞춤).
+_OPENAI_OK_PAYLOAD = {"choices": [{"message": {"content": "  안녕하세요  "}}]}
+_ANTHROPIC_OK_PAYLOAD = {"content": [{"text": "  반갑습니다  "}]}
+
+
+class OpenAIGenerateSyncTest(unittest.TestCase):
+    """OpenAIClient._generate_sync 의 HTTP 응답 파싱·에러 처리."""
+
+    def setUp(self) -> None:
+        self.client = OpenAIClient(api_key="sk-secret-key")
+
+    def test_parses_successful_response(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response(_OPENAI_OK_PAYLOAD),
+        ):
+            result = self.client._generate_sync("hi", "gpt-4o-mini")
+        # content 앞뒤 공백이 strip 되어 반환된다.
+        self.assertEqual(result, "안녕하세요")
+
+    def test_does_not_send_api_key_in_url_or_unexpectedly(self) -> None:
+        # urlopen 에 넘어가는 Request 객체에 Authorization 헤더가 들어가는지 확인.
+        captured: dict = {}
+
+        def fake_urlopen(req, timeout=None):  # type: ignore[no-untyped-def]
+            captured["headers"] = dict(req.headers)
+            captured["url"] = req.full_url
+            return _json_response(_OPENAI_OK_PAYLOAD)
+
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake_urlopen):
+            self.client._generate_sync("hi", "gpt-4o-mini")
+        # Bearer 토큰은 헤더로만 전달되고 URL 에는 노출되지 않는다.
+        self.assertNotIn("sk-secret-key", captured["url"])
+        self.assertEqual(captured["headers"].get("Authorization"), "Bearer sk-secret-key")
+
+    def test_4xx_raises_openai_error_with_status_code(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=_http_error(400, body="invalid payload xyz"),
+        ):
+            with self.assertRaises(OpenAIError) as cm:
+                self.client._generate_sync("hi", "gpt-4o-mini")
+        self.assertEqual(cm.exception.status_code, 400)
+
+    def test_4xx_error_message_hides_response_body(self) -> None:
+        # 사용자에게 노출되는 예외 메시지에 HTTP 응답 원문이 섞이지 않아야 한다.
+        secret_body = "super-secret-server-detail-12345"
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=_http_error(401, body=secret_body),
+        ):
+            with self.assertRaises(OpenAIError) as cm:
+                self.client._generate_sync("hi", "gpt-4o-mini")
+        self.assertNotIn(secret_body, str(cm.exception))
+        self.assertEqual(cm.exception.status_code, 401)
+
+    def test_url_error_raises_openai_error_without_status(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=urllib_error.URLError("connection refused"),
+        ):
+            with self.assertRaises(OpenAIError) as cm:
+                self.client._generate_sync("hi", "gpt-4o-mini")
+        # 네트워크 오류는 status_code 가 없다(재시도 가능 분류).
+        self.assertIsNone(cm.exception.status_code)
+
+    def test_timeout_raises_openai_error(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=TimeoutError("timed out"),
+        ):
+            with self.assertRaises(OpenAIError) as cm:
+                self.client._generate_sync("hi", "gpt-4o-mini")
+        self.assertIn("시간", str(cm.exception))
+
+    def test_invalid_json_raises_openai_error(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_FakeHTTPResponse(b"not-json{{{"),
+        ):
+            with self.assertRaises(OpenAIError):
+                self.client._generate_sync("hi", "gpt-4o-mini")
+
+    def test_unexpected_shape_raises_openai_error(self) -> None:
+        # choices 가 없는 응답 → KeyError 경로 → OpenAIError 로 변환.
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response({"unexpected": True}),
+        ):
+            with self.assertRaises(OpenAIError):
+                self.client._generate_sync("hi", "gpt-4o-mini")
+
+
+class AnthropicGenerateSyncTest(unittest.TestCase):
+    """AnthropicClient._generate_sync 의 HTTP 응답 파싱·에러 처리."""
+
+    def setUp(self) -> None:
+        self.client = AnthropicClient(api_key="sk-ant-secret")
+
+    def test_parses_successful_response(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response(_ANTHROPIC_OK_PAYLOAD),
+        ):
+            result = self.client._generate_sync("hi", "claude-haiku-4-5")
+        self.assertEqual(result, "반갑습니다")
+
+    def test_api_key_passed_as_header_not_url(self) -> None:
+        captured: dict = {}
+
+        def fake_urlopen(req, timeout=None):  # type: ignore[no-untyped-def]
+            captured["headers"] = dict(req.headers)
+            captured["url"] = req.full_url
+            return _json_response(_ANTHROPIC_OK_PAYLOAD)
+
+        with mock.patch("discord_assistant.llm.request.urlopen", side_effect=fake_urlopen):
+            self.client._generate_sync("hi", "claude-haiku-4-5")
+        self.assertNotIn("sk-ant-secret", captured["url"])
+        # urllib 은 헤더 키를 title-case 로 정규화한다(x-api-key → X-api-key).
+        self.assertEqual(captured["headers"].get("X-api-key"), "sk-ant-secret")
+
+    def test_4xx_raises_anthropic_error_with_status_code(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=_http_error(403, body="forbidden detail"),
+        ):
+            with self.assertRaises(AnthropicError) as cm:
+                self.client._generate_sync("hi", "claude-haiku-4-5")
+        self.assertEqual(cm.exception.status_code, 403)
+
+    def test_error_message_hides_response_body(self) -> None:
+        secret_body = "anthropic-internal-trace-99"
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=_http_error(429, body=secret_body),
+        ):
+            with self.assertRaises(AnthropicError) as cm:
+                self.client._generate_sync("hi", "claude-haiku-4-5")
+        self.assertNotIn(secret_body, str(cm.exception))
+        self.assertEqual(cm.exception.status_code, 429)
+
+    def test_url_error_raises_anthropic_error(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=urllib_error.URLError("dns failure"),
+        ):
+            with self.assertRaises(AnthropicError) as cm:
+                self.client._generate_sync("hi", "claude-haiku-4-5")
+        self.assertIsNone(cm.exception.status_code)
+
+    def test_timeout_raises_anthropic_error(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=TimeoutError(),
+        ):
+            with self.assertRaises(AnthropicError):
+                self.client._generate_sync("hi", "claude-haiku-4-5")
+
+    def test_invalid_json_raises_anthropic_error(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_FakeHTTPResponse(b"<<<garbage>>>"),
+        ):
+            with self.assertRaises(AnthropicError):
+                self.client._generate_sync("hi", "claude-haiku-4-5")
+
+    def test_unexpected_shape_raises_anthropic_error(self) -> None:
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            return_value=_json_response({"content": []}),  # IndexError 경로
+        ):
+            with self.assertRaises(AnthropicError):
+                self.client._generate_sync("hi", "claude-haiku-4-5")
+
+
+class GenerateRetryIntegrationTest(unittest.TestCase):
+    """generate() 의 재시도·즉시실패 동작을 urlopen mock + sleep mock 으로 결정적으로 검증."""
+
+    def test_4xx_fails_immediately_no_retry(self) -> None:
+        client = OpenAIClient(api_key="sk-x")
+
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=_http_error(400),
+        ) as urlopen_mock, mock.patch(
+            "discord_assistant.llm.asyncio.sleep", new=mock.AsyncMock()
+        ) as sleep_mock:
+            with self.assertRaises(OpenAIError):
+                asyncio.run(client.generate("hi"))
+
+        # 4xx 는 재시도 불가 → urlopen 단 1회, sleep 미호출.
+        self.assertEqual(urlopen_mock.call_count, 1)
+        sleep_mock.assert_not_called()
+
+    def test_5xx_is_retried_up_to_max_attempts(self) -> None:
+        client = AnthropicClient(api_key="sk-ant-x")
+
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=_http_error(500),
+        ) as urlopen_mock, mock.patch(
+            "discord_assistant.llm.asyncio.sleep", new=mock.AsyncMock()
+        ) as sleep_mock:
+            with self.assertRaises(AnthropicError):
+                asyncio.run(client.generate("hi"))
+
+        # 기본 max_attempts=2 → 2회 호출, 그 사이 sleep 1회(백오프).
+        self.assertEqual(urlopen_mock.call_count, 2)
+        self.assertEqual(sleep_mock.await_count, 1)
+
+    def test_429_is_retried(self) -> None:
+        client = OpenAIClient(api_key="sk-x")
+
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen",
+            side_effect=_http_error(429),
+        ) as urlopen_mock, mock.patch(
+            "discord_assistant.llm.asyncio.sleep", new=mock.AsyncMock()
+        ):
+            with self.assertRaises(OpenAIError):
+                asyncio.run(client.generate("hi"))
+        self.assertEqual(urlopen_mock.call_count, 2)
+
+    def test_succeeds_after_transient_5xx(self) -> None:
+        client = OpenAIClient(api_key="sk-x")
+        # 첫 호출은 500, 두 번째 호출은 정상 응답.
+        responses = [_http_error(503), _json_response(_OPENAI_OK_PAYLOAD)]
+
+        def fake_urlopen(req, timeout=None):  # type: ignore[no-untyped-def]
+            item = responses.pop(0)
+            if isinstance(item, urllib_error.HTTPError):
+                raise item
+            return item
+
+        with mock.patch(
+            "discord_assistant.llm.request.urlopen", side_effect=fake_urlopen
+        ), mock.patch("discord_assistant.llm.asyncio.sleep", new=mock.AsyncMock()):
+            result = asyncio.run(client.generate("hi"))
+        self.assertEqual(result, "안녕하세요")
 
 
 if __name__ == "__main__":

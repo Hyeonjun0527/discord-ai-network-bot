@@ -12,7 +12,12 @@ import unittest
 from pathlib import Path
 
 from discord_assistant.models import UsageLog
-from discord_assistant.storage import ConfigStore
+from discord_assistant.storage import (
+    LATEST_SCHEMA_VERSION,
+    ConfigStore,
+    _get_schema_version,
+    _migrate,
+)
 
 # 일관된 UTC ISO8601 시각 헬퍼 — due_at 비교는 문자열 사전식이므로 포맷을 맞춘다.
 _PAST = "2020-01-01T00:00:00+00:00"
@@ -548,6 +553,188 @@ class MigrationIdempotencyTest(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(rid, 0)
             aid = await store.record_audit(guild_id=1, user_id=1, action="test")
             self.assertGreater(aid, 0)
+
+
+class SchemaVersionTest(_FileStoreCase):
+    """버전 추적형 마이그레이션 프레임워크 (#26)."""
+
+    def _version(self) -> int:
+        """현재 DB 의 schema_version 을 raw 연결로 읽는다."""
+        conn = self.store._connect()
+        try:
+            row = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
+            return int(row[0]) if row is not None else -1
+        finally:
+            conn.close()
+
+    def _single_version_row(self) -> int:
+        """schema_version 테이블의 행 개수 — 단일 행 규약 검증용."""
+        conn = self.store._connect()
+        try:
+            return int(conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0])
+        finally:
+            conn.close()
+
+    async def test_new_db_reaches_latest_version(self) -> None:
+        # initialize() 가 SCHEMA + _migrate 를 모두 돌려 최신 버전에 도달해야 한다.
+        self.assertEqual(self._version(), LATEST_SCHEMA_VERSION)
+        # 단일 행 규약 — 버전 행이 정확히 하나여야 한다.
+        self.assertEqual(self._single_version_row(), 1)
+        self.assertGreater(LATEST_SCHEMA_VERSION, 0)
+
+    async def test_idempotent_repeated_initialize(self) -> None:
+        # 두 번 호출해도 안전 — 버전·행 개수 불변, 데이터 보존.
+        await self.store.set_model(5, "qwen2.5:7b")
+        await self.store.initialize()
+        await self.store.initialize()
+        self.assertEqual(self._version(), LATEST_SCHEMA_VERSION)
+        self.assertEqual(self._single_version_row(), 1)
+        cfg = await self.store.get_guild_config(5)
+        self.assertEqual(cfg.model, "qwen2.5:7b")
+
+    async def test_idempotent_repeated_migrate_no_duplicate_rows(self) -> None:
+        # _migrate 를 raw 연결로 여러 번 호출해도 버전 행이 늘지 않아야 한다.
+        conn = self.store._connect()
+        try:
+            _migrate(conn)
+            _migrate(conn)
+        finally:
+            conn.close()
+        self.assertEqual(self._single_version_row(), 1)
+        self.assertEqual(self._version(), LATEST_SCHEMA_VERSION)
+
+
+class LegacyMigrationVersionTest(unittest.IsolatedAsyncioTestCase):
+    """레거시 DB(구 스키마만 존재, schema_version 없음) → 누락분만 적용 (#26)."""
+
+    async def test_legacy_db_applies_missing_and_records_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "legacy.db"
+            # schema_version 도, 신규 컬럼/테이블도 없는 최소 레거시 스키마.
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                """CREATE TABLE guild_config (
+                    guild_id INTEGER PRIMARY KEY,
+                    model TEXT NOT NULL,
+                    summary_limit INTEGER NOT NULL,
+                    language TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )"""
+            )
+            # usage_log 는 원래(초기) 스키마 형태로 존재 — guild_id/created_at 포함.
+            conn.execute(
+                """CREATE TABLE usage_log (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id   INTEGER,
+                    channel_id INTEGER,
+                    user_id    INTEGER,
+                    command    TEXT    NOT NULL,
+                    status     TEXT    NOT NULL,
+                    latency_ms INTEGER,
+                    error      TEXT,
+                    created_at TEXT    NOT NULL
+                )"""
+            )
+            conn.commit()
+            conn.close()
+
+            store = _make_store(f"sqlite:///{db_path}")
+            await store.initialize()
+
+            verify = sqlite3.connect(db_path)
+            try:
+                # 버전이 최신으로 기록되고 단일 행을 유지한다.
+                rows = verify.execute("SELECT version FROM schema_version").fetchall()
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(int(rows[0][0]), LATEST_SCHEMA_VERSION)
+                # 누락됐던 컬럼/테이블/인덱스가 실제로 추가됐는지 확인.
+                cols = {r[1] for r in verify.execute("PRAGMA table_info(guild_config)")}
+                for expected_col in (
+                    "provider",
+                    "api_key_encrypted",
+                    "auto_summary_interval",
+                    "persona",
+                    "custom_summarize_prompt",
+                    "custom_ask_prompt",
+                    "allowed_role_id",
+                ):
+                    self.assertIn(expected_col, cols)
+                tables = {
+                    r[0]
+                    for r in verify.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+                for expected_tbl in ("feedback", "reminders", "audit_log"):
+                    self.assertIn(expected_tbl, tables)
+                indexes = {
+                    r[0]
+                    for r in verify.execute(
+                        "SELECT name FROM sqlite_master WHERE type='index'"
+                    )
+                }
+                for expected_idx in (
+                    "idx_usage_log_guild_created",
+                    "idx_feedback_guild_id",
+                    "idx_reminders_due",
+                    "idx_audit_log_guild",
+                ):
+                    self.assertIn(expected_idx, indexes)
+            finally:
+                verify.close()
+
+    async def test_partially_migrated_db_only_applies_remainder(self) -> None:
+        # schema_version=2 로 기록된 DB(=feedback 까지만 적용)에서 3~5 만 적용돼야 한다.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "partial.db"
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                """CREATE TABLE guild_config (
+                    guild_id INTEGER PRIMARY KEY,
+                    model TEXT NOT NULL,
+                    summary_limit INTEGER NOT NULL,
+                    language TEXT NOT NULL,
+                    provider TEXT NOT NULL DEFAULT 'ollama',
+                    updated_at TEXT NOT NULL
+                )"""
+            )
+            conn.execute("CREATE TABLE schema_version (version INTEGER NOT NULL)")
+            conn.execute("INSERT INTO schema_version (version) VALUES (2)")
+            conn.commit()
+            conn.close()
+
+            store = _make_store(f"sqlite:///{db_path}")
+            await store.initialize()
+            # 3~5 가 적용되어 reminders/audit_log/인덱스가 생기고 버전이 최신이 된다.
+            self.assertGreater(await store.add_reminder(1, 1, 2, _FUTURE, "ok"), 0)
+            self.assertGreater(
+                await store.record_audit(guild_id=1, user_id=1, action="test"), 0
+            )
+
+            verify = sqlite3.connect(db_path)
+            try:
+                self.assertEqual(
+                    int(verify.execute("SELECT version FROM schema_version").fetchone()[0]),
+                    LATEST_SCHEMA_VERSION,
+                )
+            finally:
+                verify.close()
+
+
+class SchemaVersionHelperTest(unittest.IsolatedAsyncioTestCase):
+    """_get_schema_version 시드 동작 (#26)."""
+
+    async def test_get_schema_version_seeds_zero_on_first_call(self) -> None:
+        conn = sqlite3.connect(":memory:")
+        try:
+            # schema_version 테이블이 없는 상태에서 호출 → 0 으로 시드.
+            self.assertEqual(_get_schema_version(conn), 0)
+            # 두 번째 호출도 0, 행은 하나만.
+            self.assertEqual(_get_schema_version(conn), 0)
+            count = conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0]
+            self.assertEqual(int(count), 1)
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

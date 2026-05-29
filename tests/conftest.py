@@ -1,6 +1,7 @@
 """Shared pytest fixtures for the discord_assistant test suite."""
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,8 +11,13 @@ from discord_assistant.storage import ConfigStore
 
 
 @pytest.fixture
-async def store() -> ConfigStore:
-    """In-memory ConfigStore ready for use in async tests."""
+async def store() -> AsyncIterator[ConfigStore]:
+    """In-memory ConfigStore ready for use in async tests.
+
+    반드시 teardown 에서 ``close()`` 한다. aiosqlite 의 연결 워커 스레드는
+    비데몬이므로, 닫지 않으면 누수된 스레드가 인터프리터 종료 시 join 대기에
+    걸려 전체 테스트 프로세스가 영원히 멈춘다(#50).
+    """
     s = ConfigStore(
         ":memory:",
         default_model="test-model",
@@ -19,7 +25,10 @@ async def store() -> ConfigStore:
         default_language="ko",
     )
     await s.initialize()
-    return s
+    try:
+        yield s
+    finally:
+        await s.close()
 
 
 # ---------------------------------------------------------------------------

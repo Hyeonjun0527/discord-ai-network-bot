@@ -20,6 +20,8 @@ class StorageTest(unittest.IsolatedAsyncioTestCase):
                 default_language="ko",
             )
             await store.initialize()
+            # #50: 비데몬 aiosqlite 워커 스레드 누수 → 인터프리터 종료 hang 방지.
+            self.addAsyncCleanup(store.close)
 
             default_config = await store.get_guild_config(123)
             self.assertEqual(default_config.model, "llama3.1:8b")
@@ -44,6 +46,8 @@ class StorageTest(unittest.IsolatedAsyncioTestCase):
                 default_language="ko",
             )
             await store.initialize()
+            # #50: 비데몬 aiosqlite 워커 스레드 누수 → 인터프리터 종료 hang 방지.
+            self.addAsyncCleanup(store.close)
 
             await store.log_usage(
                 UsageLog(

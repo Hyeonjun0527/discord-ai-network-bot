@@ -1298,6 +1298,11 @@ def create_bot(settings: AppSettings) -> commands.Bot:
         async def close(self) -> None:
             # #48: graceful shutdown 시 헬스 서버를 먼저 정리한다(멱등).
             await self.health_server.stop()
+            # #50: 영속 aiosqlite 연결을 닫는다. aiosqlite 의 워커 스레드는 비데몬
+            # 이라, close() 를 누락하면 인터프리터 종료 시 _thread._shutdown() 이
+            # 해당 스레드 join 에서 영원히 멈춘다(프로세스가 깔끔히 종료되지 못함).
+            # close() 는 멱등이며 미초기화 상태에서도 안전한 no-op 이다.
+            await store.close()
             await super().close()
 
     bot = AssistantBot(command_prefix="!", intents=intents)

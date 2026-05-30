@@ -2,7 +2,7 @@
 
 > 커뮤니티 로컬 AI Provider Pool — 5분서 체계 #2 (요구사항 → **도메인 모델** → 화면 → 네비게이션 → API)
 > 정식 출처: `specs/product-v2/README.md`(백본·규약·어휘), `domains/community-provider-pool/SOURCE_BRIEF.md`(원본 기획),
-> `docs/adr/0002-remote-agent-byollm.md`, `docs/ROADMAP_REMOTE_AGENT.md`(차수 14~24).
+> `docs/adr/0002-remote-agent-byollm.md`, `docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md`(차수 14~24).
 
 ---
 
@@ -16,7 +16,7 @@
 조건**을 확정한다. 화면 정의서(`SCR-###`)·네비게이션 명세서(`FLOW-###`)·API 명세서
 (`API-###`)는 이 문서가 정의한 엔티티·상태·이벤트를 글자 그대로 참조한다.
 
-이 문서는 구현 로드맵(`docs/ROADMAP_REMOTE_AGENT.md`)의 **차수 14(데이터 모델 & 스토리지
+이 문서는 구현 로드맵(`docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md`)의 **차수 14(데이터 모델 & 스토리지
 스키마, 항목 317~340)** 를 직접 뒷받침한다. 차수 14의 각 테이블/dataclass/enum 항목은 이
 문서의 §4 엔티티·§5 값 객체·§6 상태 모델에 1:1로 대응한다.
 
@@ -44,7 +44,7 @@
 | 원본 기획 | `domains/community-provider-pool/SOURCE_BRIEF.md` | 본 모델의 권위 있는 입력(충돌 시 브리프+README 우선) |
 | 설계 결정 | `docs/adr/0002-remote-agent-byollm.md` | 리버스 터널 에이전트(BYO-LLM) 아키텍처·프로토콜·라우팅 모드 |
 | 설계 결정 | ADR 0003 `community-provider-pool` (작성 예정, 로드맵 항목 301) | Phase A 단일 호스트 → 다중 프로바이더 풀 일반화 |
-| 구현 로드맵 | `docs/ROADMAP_REMOTE_AGENT.md` 차수 13~32 | 본 문서는 특히 차수 14(데이터 모델)를 뒷받침 |
+| 구현 로드맵 | `docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md` 차수 13~32 | 본 문서는 특히 차수 14(데이터 모델)를 뒷받침 |
 | 상위 분서 | `requirements.md` (`REQ-###`) | 본 문서가 구체화하는 요구사항의 출처 |
 | 하위 분서 | `screens.md` / `navigation.md` / `api.md` | 본 문서의 `DM-###` ID 를 소비 |
 

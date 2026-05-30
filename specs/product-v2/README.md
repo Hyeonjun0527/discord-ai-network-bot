@@ -1,7 +1,7 @@
 # Product v2 명세 — 커뮤니티 로컬 AI Provider Pool
 
 이 디렉토리는 **Discord 커뮤니티 로컬 AI Provider Pool** 기능의 기획 명세 모음이다.
-구현 로드맵([`docs/ROADMAP_REMOTE_AGENT.md`](../../docs/ROADMAP_REMOTE_AGENT.md))의 Phase B
+구현 로드맵([`docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md`](../../docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md))의 Phase B
 (항목 301~674)를 "무엇을·왜·어떻게" 수준에서 정의하며, 설계 결정은 ADR
 ([`docs/adr/0002-remote-agent-byollm.md`](../../docs/adr/0002-remote-agent-byollm.md),
 ADR 0003 Provider Pool 예정)을 따른다.

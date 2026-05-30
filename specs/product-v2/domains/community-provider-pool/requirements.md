@@ -5,7 +5,7 @@
 > [`SOURCE_BRIEF.md`](./SOURCE_BRIEF.md), 규약·정식 어휘는
 > [`../../README.md`](../../README.md), 설계 근거는
 > [`docs/adr/0002-remote-agent-byollm.md`](../../../../docs/adr/0002-remote-agent-byollm.md),
-> 구현 로드맵은 [`docs/ROADMAP_REMOTE_AGENT.md`](../../../../docs/ROADMAP_REMOTE_AGENT.md)
+> 구현 로드맵은 [`docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md`](../../../../docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md)
 > Phase B(차수 13~32, 항목 301~674)다.
 
 ---
@@ -47,7 +47,7 @@ Discord 서버(`guild`) 단위로 운영되는 **커뮤니티형 로컬 AI 협�
 | 원본 기획 브리프 | `./SOURCE_BRIEF.md` | 정식 출처(충돌 시 브리프+README 우선) |
 | 설계 결정 | `docs/adr/0002-remote-agent-byollm.md` | 리버스 터널 에이전트·라우팅·프라이버시 결정 |
 | 설계 결정(예정) | ADR 0003 community-provider-pool | Provider Pool 일반화(로드맵 301) |
-| 구현 로드맵 | `docs/ROADMAP_REMOTE_AGENT.md` | Phase B 차수 13~32(항목 301~674) |
+| 구현 로드맵 | `docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md` | Phase B 차수 13~32(항목 301~674) |
 | 도메인 모델 | `./domain-model.md` | 본 문서의 `REQ-` 를 `DM-` 로 구체화 |
 | 화면 정의서 | `./screens.md` | `SCR-` 화면/메시지 |
 | 네비게이션 | `./navigation.md` | `FLOW-` 흐름 |

@@ -4,7 +4,7 @@
 > `screens.md`(SCR-###), 출력은 `api.md`(API-###) 로 물린다. 정식 출처는
 > [`SOURCE_BRIEF.md`](./SOURCE_BRIEF.md) 와 [`../../README.md`](../../README.md) 규약,
 > [`docs/adr/0002-remote-agent-byollm.md`](../../../../docs/adr/0002-remote-agent-byollm.md),
-> [`docs/ROADMAP_REMOTE_AGENT.md`](../../../../docs/ROADMAP_REMOTE_AGENT.md)(차수 16~24)다.
+> [`docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md`](../../../../docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md)(차수 16~24)다.
 
 ---
 

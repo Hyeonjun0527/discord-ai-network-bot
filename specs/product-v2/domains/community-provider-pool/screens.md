@@ -3,7 +3,7 @@
 > 5분서 체계 3번 문서. 이 문서는 **유저가 보는 모든 화면/명령/메시지**를 정의한다.
 > 출처: [`SOURCE_BRIEF.md`](./SOURCE_BRIEF.md) · [`README.md`](../../README.md) · ADR
 > [`0002-remote-agent-byollm.md`](../../../../docs/adr/0002-remote-agent-byollm.md) ·
-> [`ROADMAP_REMOTE_AGENT.md`](../../../../docs/ROADMAP_REMOTE_AGENT.md) 차수 25~28.
+> [`ROADMAP_REMOTE_AGENT_DEPRECATED.md`](../../../../docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md) 차수 25~28.
 > 추적성: 위로는 `REQ-###`/`DM-###`, 아래로는 `FLOW-###`/`API-###` 와 물린다.
 
 ---
@@ -56,7 +56,7 @@ API·상태 변화·예외 메시지·관련 요구사항을 명세하여 naviga
 | 네비게이션 명세서 | `./navigation.md` | `FLOW-###`(선참조) |
 | API 명세서 | `./api.md` | `API-###`·`ERR-###`(선참조) |
 | ADR 0002 | `../../../../docs/adr/0002-remote-agent-byollm.md` | Agent·릴레이·토큰·프라이버시 |
-| 구현 로드맵 | `../../../../docs/ROADMAP_REMOTE_AGENT.md` | 차수 25~28 명령/프라이버시 |
+| 구현 로드맵 | `../../../../docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md` | 차수 25~28 명령/프라이버시 |
 
 ### 1.5 공통 UI 원칙
 1. **정식 어휘 그대로**: "커뮤니티 로컬 AI Provider Pool", "모델 부담 수준", "기여",

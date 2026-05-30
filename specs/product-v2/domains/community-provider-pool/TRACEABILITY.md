@@ -1,6 +1,6 @@
 # 추적성 매트릭스 (TRACEABILITY)
 
-> 5분서(requirements/domain-model/screens/navigation/api)가 `docs/ROADMAP_REMOTE_AGENT.md`
+> 5분서(requirements/domain-model/screens/navigation/api)가 `docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md`
 > Phase B(차수 13~32, 항목 301~674)를 구현하기에 충분/정합한지 감사한 결과의 **추적표**다.
 > 본 문서는 감사 산출물이며 5분서를 수정하지 않는다(읽기 전용 대조). 결함 목록은 감사 보고
 > 메시지를 참조. 작성 기준일 2026-05-30.

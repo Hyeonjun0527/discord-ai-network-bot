@@ -4,7 +4,7 @@
 > 계약(contract) 수준으로 정의한다. 정식 출처: [`README.md`](../../README.md)(ID 규약·정식
 > 어휘·API 4종·에러), [`SOURCE_BRIEF.md`](./SOURCE_BRIEF.md)(특히 §12 명령어·§8 선택 규칙),
 > [`docs/adr/0002-remote-agent-byollm.md`](../../../../docs/adr/0002-remote-agent-byollm.md)
-> (메시지 프로토콜), [`docs/ROADMAP_REMOTE_AGENT.md`](../../../../docs/ROADMAP_REMOTE_AGENT.md)
+> (메시지 프로토콜), [`docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md`](../../../../docs/ROADMAP_REMOTE_AGENT_DEPRECATED.md)
 > (차수 17 프로토콜·차수 25~27 명령어). 충돌 시 README 규약 + SOURCE_BRIEF 우선.
 
 ---
@@ -58,7 +58,7 @@ README 추적성 규약(`API-`)을 다음 4종 하위 접두사로 구체화한�
 | **api.md(이 문서)** | `FLOW-###` | `API-###` 생성·게시 |
 | ADR 0002 | — | WS 프레임 베이스(`auth/infer/result/error/ping/pong/chunk/cancel`) |
 | ADR 0003(예정) | — | Provider Pool 결정 |
-| ROADMAP_REMOTE_AGENT.md | — | 차수 17·25~27 |
+| ROADMAP_REMOTE_AGENT_DEPRECATED.md | — | 차수 17·25~27 |
 
 ### 1.5 공통 응답 형식
 REST(§6·§7·§10·§11·§12) 와 내부 API 의 공통 봉투(envelope)는 다음 표 형식을 따른다. 성공·실패

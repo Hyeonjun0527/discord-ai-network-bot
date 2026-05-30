@@ -297,7 +297,7 @@
 - [x] 233. 릴레이 backpressure(per-session 세마포어 + maxQueue BUSY)
 - [ ] 234. 다수 동시 연결 부하 테스트 — 후속
 - [ ] 235. 라우팅 성능 벤치마크 — 후속
-- [ ] 236. 수평 확장(WS 세션 공유/sticky) 검토 — 후속(설계 메모)
+- [x] 236. 수평 확장(WS 세션 공유/sticky) 검토 — central-server/docs/SCALING.md(sticky-by-guild→레지스트리 외부화→브로커)
 - [x] 237. DB 커넥션 풀(HikariCP 기본; 운영 튜닝은 env)
 - [x] 238. graceful shutdown(afterConnectionClosed 해제 + Spring lifecycle)
 - [ ] 239. 재시작 시 세션/요청 복구 — 후속(에이전트 재연결로 자연 복구)
@@ -306,7 +306,7 @@
 - [ ] 242. 다중 인스턴스 분산 rate limit — 후속
 - [ ] 243. 멱등성/중복 요청 방지 — 후속
 - [ ] 244. 카오스 테스트 — 후속(끊김/재연결은 test_connection 일부)
-- [ ] 245. 용량 계획 문서 — 후속
+- [x] 245. 용량 계획 문서 — SCALING.md §3(자원 가정·병목=프로바이더 PC·스케일 신호)
 - [x] 246. 메시지 크기(MAX_FRAME_BYTES)·속도(RateLimiter) 제한
 - [x] 247. 큐 임계(maxQueue)·요청 타임아웃 임계(settings)
 - [ ] 248. 장애 주입 자동 테스트
@@ -316,8 +316,8 @@
 ## 차수 17 — 테스트/품질/DevEx (251~268)
 
 - [x] 251. 크로스언어 컨트랙트 테스트(공유 wire-fixtures.json, Python+Kotlin 양측 통과)
-- [ ] 252. 실소켓 e2e 자동화(에이전트+서버+mock Ollama)
-- [ ] 253. 부하 테스트 스크립트(k6/gatling)
+- [x] 252. 실소켓 e2e 자동화(에이전트+서버+mock Ollama) — scripts/e2e_local.py + Makefile e2e(차수5에서 구축, PASS)
+- [x] 253. 부하 테스트 스크립트(k6/gatling) — scripts/load/ask_load.k6.js(ramping VUs, 실패율/p95 임계)
 - [ ] 254. 커버리지 게이트(central/agent)
 - [ ] 255. 정적 분석(ktlint/detekt + ruff/mypy) CI 통합
 - [x] 256. 로컬 개발 셋업(Makefile: build·test·lint·contract·e2e·compose)
@@ -330,7 +330,7 @@
 - [ ] 263. 플래키 테스트 점검
 - [x] 264. PR 템플릿(.github/pull_request_template.md — 기존)
 - [ ] 265. 코드 리뷰 게이트(/code-review)
-- [ ] 266. 문서 빌드/링크 검증
+- [x] 266. 문서 빌드/링크 검증 — scripts/check_links.py(상대링크 55문서 검사, 깨진 7건 수정)
 - [ ] 267. 버전/릴리스 자동화(SemVer)
 - [ ] 268. 차수 17 검증
 

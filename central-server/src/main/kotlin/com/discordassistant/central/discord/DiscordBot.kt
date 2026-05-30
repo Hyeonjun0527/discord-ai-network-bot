@@ -6,11 +6,14 @@ import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
+import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
 import net.dv8tion.jda.api.events.interaction.command.MessageContextInteractionEvent
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.DiscordLocale
@@ -18,6 +21,7 @@ import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands
+import net.dv8tion.jda.api.interactions.components.ActionRow
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.text.TextInput
 import net.dv8tion.jda.api.interactions.components.text.TextInputStyle
@@ -175,6 +179,7 @@ class DiscordBot(
                     .addOption(OptionType.USER, "user", "대상 유저", true)
                     .setDefaultPermissions(adminPerm),
                 // 인터랙티브(차수 13): 설정 패널(버튼/Select #147/180), 모달 입력(#189)
+                Commands.slash("menu", "시작 패널을 엽니다(질문·기여·설정·도움말 한 곳에서)"),
                 Commands.slash("llm-settings", "설정 패널을 엽니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands.slash("ask-long", "긴 질문을 모달 창으로 입력합니다"),
                 // 컨텍스트 메뉴(#181): 메시지 우클릭 → 그 내용으로 질문
@@ -195,18 +200,24 @@ class DiscordBot(
                     return
                 }
             val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
-            // 인터랙티브 명령은 컴포넌트/모달로 응답(#147/180/189).
+            // 인터랙티브 명령은 컴포넌트/모달로 응답(온보딩/설정 판).
             when (event.name) {
+                "menu" -> {
+                    event
+                        .reply("🧭 **시작 패널** — 버튼으로 시작하세요!")
+                        .addComponents(ActionRow.of(MenuFactory.mainButtons(ctx.isAdmin)))
+                        .setEphemeral(true)
+                        .queue()
+                    return
+                }
                 "llm-settings" -> {
                     if (!ctx.isAdmin) {
                         event.reply("⛔ 관리자만 사용할 수 있습니다.").setEphemeral(true).queue()
                     } else {
                         event
-                            .reply("⚙️ **설정 패널**")
-                            .addActionRow(
-                                Button.primary("settings:autoapprove", "자동승인 토글"),
-                                Button.secondary("settings:help", "도움말"),
-                            ).setEphemeral(true)
+                            .reply("⚙️ **설정 패널** — 드롭다운/버튼으로 설정하세요.")
+                            .addComponents(settingsRows(ctx))
+                            .setEphemeral(true)
                             .queue()
                     }
                     return
@@ -264,18 +275,100 @@ class DiscordBot(
             event.replyChoices(choices).queue()
         }
 
-        /** 설정 패널 버튼(#147/180). */
+        /** 패널 버튼: 온보딩(질문/기여/상태/도움말) + 설정. */
         override fun onButtonInteraction(event: ButtonInteractionEvent) {
             val guild = event.guild ?: return
             val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
+            when (event.componentId) {
+                MenuFactory.ASK -> {
+                    // 질문하기 → 모달로 질문 입력
+                    event.replyModal(askModal()).queue()
+                    return
+                }
+                MenuFactory.SETTINGS -> {
+                    if (!ctx.isAdmin) {
+                        event.reply("⛔ 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
+                    } else {
+                        event
+                            .reply("⚙️ **설정** — 드롭다운/버튼으로 바로 적용됩니다.")
+                            .addComponents(settingsRows(ctx))
+                            .setEphemeral(true)
+                            .queue()
+                    }
+                    return
+                }
+            }
             val reply =
                 when (event.componentId) {
-                    "settings:autoapprove" -> commands.toggleAutoApprove(ctx)
-                    "settings:help" -> commands.help(ctx)
+                    MenuFactory.PROVIDER -> commands.providerJoin(ctx)
+                    MenuFactory.STATUS -> commands.providerStatus(ctx)
+                    MenuFactory.HELP, "settings:help" -> Reply(MenuFactory.slimHelp(ctx.isAdmin))
+                    MenuFactory.AUTO_APPROVE, "settings:autoapprove" -> commands.toggleAutoApprove(ctx)
                     else -> Reply("알 수 없는 동작입니다.")
                 }
             event.reply(reply.content).setEphemeral(true).queue()
         }
+
+        /** 설정 드롭다운(언어/모델). */
+        override fun onStringSelectInteraction(event: StringSelectInteractionEvent) {
+            val guild = event.guild ?: return
+            val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
+            val value = event.values.firstOrNull().orEmpty()
+            val reply =
+                when (event.componentId) {
+                    MenuFactory.LANG -> commands.setGuildDefaults(ctx, defaultModel = null, language = value)
+                    MenuFactory.MODEL ->
+                        if (value == "__auto__") {
+                            Reply("✅ 기본 모델: 자동 선택")
+                        } else {
+                            commands.setGuildDefaults(ctx, defaultModel = value, language = null)
+                        }
+                    else -> Reply("알 수 없는 선택입니다.")
+                }
+            event.reply(reply.content).setEphemeral(true).queue()
+        }
+
+        /** 설정 채널 허용(엔티티 선택). */
+        override fun onEntitySelectInteraction(event: EntitySelectInteractionEvent) {
+            if (event.componentId != MenuFactory.CHANNEL) return
+            val guild = event.guild ?: return
+            val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
+            val channelId = event.values.firstOrNull()?.idLong
+            val reply =
+                if (channelId != null) commands.allowChannel(ctx, channelId) else Reply("채널을 선택하세요.")
+            event.reply(reply.content).setEphemeral(true).queue()
+        }
+
+        /** 봇이 서버에 들어오면 자동 온보딩 패널 게시. */
+        override fun onGuildJoin(event: GuildJoinEvent) {
+            val channel = event.guild.systemChannel ?: return // 시스템 채널 없으면 스킵
+            channel
+                .sendMessage(
+                    "👋 **커뮤니티 로컬 AI Provider Pool** 에 오신 걸 환영합니다!\n" +
+                        "버튼으로 바로 시작하세요. 언제든 `/menu` 로 이 패널을 다시 엽니다.",
+                ).setComponents(ActionRow.of(MenuFactory.mainButtons(isAdmin = true)))
+                .queue({}, {})
+        }
+
+        private fun askModal() =
+            Modal
+                .create("ask-long-modal", "질문 입력")
+                .addActionRow(
+                    TextInput
+                        .create("prompt", "질문", TextInputStyle.PARAGRAPH)
+                        .setRequired(true)
+                        .setMaxLength(4000)
+                        .build(),
+                ).build()
+
+        /** 설정 패널 액션 로우(언어·모델·채널 드롭다운 + 자동승인 버튼). */
+        private fun settingsRows(ctx: CommandContext): List<ActionRow> =
+            listOf(
+                ActionRow.of(MenuFactory.languageSelect(current = "")),
+                ActionRow.of(MenuFactory.modelSelect(commands.autocompleteModels(ctx))),
+                ActionRow.of(MenuFactory.channelSelect()),
+                ActionRow.of(Button.secondary(MenuFactory.AUTO_APPROVE, "프로바이더 자동승인 토글")),
+            )
 
         /** 긴 질문 모달 제출(#189). */
         override fun onModalInteraction(event: ModalInteractionEvent) {

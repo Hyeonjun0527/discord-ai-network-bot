@@ -58,13 +58,16 @@ DISCORD_ENABLED=true DISCORD_BOT_TOKEN='토큰' DISCORD_GUILD_ID='서버ID' CENT
    → 풀에 등록되면 `/providers`(관리자)·`/catalog` 에 나타난다.
 
 ## 4. 라이브 검증 체크리스트
-- `/ask 안녕` → 풀의 프로바이더 PC 로 라우팅 → 응답(끝에 프라이버시 고지). ✅ 핵심
-- `/help` → 권한별 도움말, `/models` `/catalog` `/community-stats`.
-- `/llm-settings`(관리자) → **버튼**(자동승인 토글/도움말). #147/180
-- `/ask-long` → **모달** 긴 질문 입력. #189
-- 메시지 우클릭 → **앱 → AI에게 질문**(컨텍스트 메뉴). #181
-- `/provider-approve @유저` → 대상에게 **토큰 DM**. #162
-- `/fairness` `/providers`(관리자), `/provider-schedule`(가용 시간대).
+**첫 사용자는 `/menu` 하나만 기억하면 됩니다** (버튼/드롭다운으로 전부 처리):
+- **`/menu`** → 시작 패널: `💬질문하기`(모달)·`🖥️내 PC 기여`·`📊내 상태`·`❓도움말`·(관리자)`⚙️설정`
+- 봇이 서버에 처음 들어오면 시스템 채널에 **자동 온보딩 패널** 게시(클릭만으로 시작).
+- `⚙️설정`(관리자) → **드롭다운**으로 언어·기본모델·허용채널 + **버튼** 자동승인 토글 → 즉시 적용.
+
+명령으로도 가능(슬래시 입력창에 `/` 치면 설명 자동 표시):
+- `/ask 안녕` → 풀 라우팅 → 응답(끝에 프라이버시 고지). ✅ 핵심
+- `/help` `/models` `/catalog` `/community-stats`, `/provider-join`.
+- `/ask-long` → 모달, 메시지 우클릭 → 앱 → `AI에게 질문`(컨텍스트 메뉴).
+- `/provider-approve @유저` → 대상에게 토큰 DM, `/fairness` `/provider-schedule`(관리자).
 
 ## 5. 알아둘 점
 - **리액션 만족도(#171)**: `GUILD_MESSAGE_REACTIONS` 인텐트를 코드에서 활성화해 👍/👎 수집이

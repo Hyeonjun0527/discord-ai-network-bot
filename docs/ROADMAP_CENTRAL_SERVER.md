@@ -161,12 +161,12 @@
 
 ## K-차수 14 — 프라이버시 모드 & 사용량/기여 기록
 
-- [ ] 14-1. PrivacyMode A/B/C 출력·관리자 식별 로그
-- [ ] 14-2. 공유 모드 고지(민감정보 금지)
-- [ ] 14-3. usage/contribution 집계·/my-usage·/providers 연동
-- [ ] 14-4. 공정성 리포트
-- [ ] 14-5. 단위 테스트
-- [ ] 14-6. `gradlew build` + 커밋
+- [x] 14-1. PrivacyMode A/B/C 출력·관리자만 provider 식별
+- [x] 14-2. 공유 모드 고지(민감정보 금지, /privacy + ask 안내)
+- [x] 14-3. usage/contribution 집계·/my-usage·/providers 연동
+- [x] 14-4. 공정성 리포트(/providers provider별 기여량)
+- [x] 14-5. 단위 테스트(PrivacyService A/B/C)
+- [x] 14-6. `gradlew build` + 커밋
 
 ## K-차수 15 — 보안 하드닝
 

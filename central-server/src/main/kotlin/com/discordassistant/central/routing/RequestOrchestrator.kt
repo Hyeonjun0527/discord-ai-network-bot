@@ -46,6 +46,7 @@ data class OrchestrationResult(
     val text: String? = null,
     val providerId: Long? = null,
     val failReason: String? = null,
+    val effectiveBurden: ModelBurden? = null,
 )
 
 /**
@@ -120,7 +121,7 @@ class RequestOrchestrator(
                 // 반환 future 는 세션 orTimeout 으로 항상 시한 내 완료/실패한다 → get() 안전.
                 val result = session.sendInfer(prompt = input.prompt).get()
                 recorder.recordSuccess(input.guildId, input.userId, sel.providerId, requestId = result.requestId)
-                return OrchestrationResult(RequestState.COMPLETED, result.text, sel.providerId)
+                return OrchestrationResult(RequestState.COMPLETED, result.text, sel.providerId, effectiveBurden = ctx.requiredBurden)
             } catch (e: Exception) {
                 lastReason = e.cause?.message ?: e.message ?: "처리 실패"
                 excluded.add(sel.providerId) // 실패 provider 일시 제외

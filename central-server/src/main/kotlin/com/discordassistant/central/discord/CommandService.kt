@@ -35,6 +35,7 @@ class CommandService(
     private val policy: PolicyService,
     private val usage: UsageService,
     private val registry: ConnectionRegistry,
+    private val privacy: PrivacyService,
 ) {
     companion object {
         const val PRIVACY_NOTICE =
@@ -53,7 +54,7 @@ class CommandService(
         )
         return when (result.state) {
             RequestState.COMPLETED -> Reply(
-                "${result.text}\n\n_커뮤니티 로컬 AI 풀에서 처리됨_",
+                "${result.text}\n\n_${privacy.processedNotice(ctx.guildId, result.effectiveBurden, result.providerId, ctx.isAdmin)}_",
                 ephemeral = false,
             )
             RequestState.REJECTED -> Reply("⛔ ${result.failReason}")
@@ -145,7 +146,8 @@ class CommandService(
     fun providers(ctx: CommandContext): Reply {
         adminOnly(ctx)?.let { return it }
         val pending = registration.pending(ctx.guildId)
-        val online = registry.byGuild(ctx.guildId).map { it.providerId }
-        return Reply("승인 대기: ${pending.size} · 온라인: ${online.size}\n대기 목록: $pending")
+        val pool = registry.byGuild(ctx.guildId)
+        val fairness = pool.joinToString("\n") { "· provider #${it.providerId}: 기여 ${usage.providerContributionCount(it.providerId)}회 · ${it.state}" }
+        return Reply("승인 대기: ${pending.size} · 온라인: ${pool.size}\n$fairness\n대기 목록: $pending")
     }
 }

@@ -8,6 +8,7 @@ import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
+import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands
 import org.slf4j.LoggerFactory
@@ -45,6 +46,8 @@ class DiscordBot(
     }
 
     private fun registerCommands(jda: JDA) {
+        // 관리자 명령은 비관리자 UI 에서 숨김(#186). 서버 관리 권한 보유자만 노출.
+        val adminPerm = DefaultMemberPermissions.enabledFor(Permission.MANAGE_SERVER)
         jda.updateCommands().addCommands(
             Commands.slash("ask", "커뮤니티 로컬 AI 에게 질문합니다")
                 .addOption(OptionType.STRING, "prompt", "질문 내용", true),
@@ -52,8 +55,9 @@ class DiscordBot(
             Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
             Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),
             Commands.slash("contributions", "커뮤니티 기여 리더보드를 봅니다"),
-            Commands.slash("fairness", "공정성 리포트를 봅니다(관리자)"),
+            Commands.slash("fairness", "공정성 리포트를 봅니다(관리자)").setDefaultPermissions(adminPerm),
             Commands.slash("privacy", "이 서버의 AI 처리/프라이버시 안내"),
+            Commands.slash("help", "명령 종합 도움말을 봅니다"),
             Commands.slash("provider-join", "프로바이더로 참여합니다"),
             Commands.slash("provider-pause", "요청 수신을 일시정지합니다"),
             Commands.slash("provider-resume", "요청 수신을 재개합니다"),
@@ -70,22 +74,29 @@ class DiscordBot(
                 .addOption(OptionType.STRING, "model", "대상 모델", true)
                 .addOption(OptionType.STRING, "role", "all / trusted / admin", true),
             Commands.slash("llm-allow-channel", "LLM 사용 채널을 허용합니다(관리자)")
-                .addOption(OptionType.CHANNEL, "channel", "허용 채널", true),
+                .addOption(OptionType.CHANNEL, "channel", "허용 채널", true)
+                .setDefaultPermissions(adminPerm),
             Commands.slash("llm-deny-channel", "LLM 사용 채널을 금지합니다(관리자)")
-                .addOption(OptionType.CHANNEL, "channel", "금지 채널", true),
+                .addOption(OptionType.CHANNEL, "channel", "금지 채널", true)
+                .setDefaultPermissions(adminPerm),
             Commands.slash("llm-role-policy", "역할별 허용 수준을 설정합니다(관리자)")
                 .addOption(OptionType.ROLE, "role", "대상 역할", true)
                 .addOption(OptionType.STRING, "level", "LIGHT/STANDARD/HEAVY", true)
-                .addOption(OptionType.INTEGER, "limit", "하루 한도", true),
-            Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)"),
+                .addOption(OptionType.INTEGER, "limit", "하루 한도", true)
+                .setDefaultPermissions(adminPerm),
+            Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)").setDefaultPermissions(adminPerm),
             Commands.slash("provider-approve", "프로바이더 등록을 승인합니다(관리자)")
-                .addOption(OptionType.USER, "user", "대상 유저", true),
+                .addOption(OptionType.USER, "user", "대상 유저", true)
+                .setDefaultPermissions(adminPerm),
             Commands.slash("provider-remove", "프로바이더를 제거합니다(관리자)")
-                .addOption(OptionType.USER, "user", "대상 유저", true),
+                .addOption(OptionType.USER, "user", "대상 유저", true)
+                .setDefaultPermissions(adminPerm),
             Commands.slash("llm-block", "사용자를 차단합니다(관리자)")
-                .addOption(OptionType.USER, "user", "대상 유저", true),
+                .addOption(OptionType.USER, "user", "대상 유저", true)
+                .setDefaultPermissions(adminPerm),
             Commands.slash("llm-unblock", "사용자 차단을 해제합니다(관리자)")
-                .addOption(OptionType.USER, "user", "대상 유저", true),
+                .addOption(OptionType.USER, "user", "대상 유저", true)
+                .setDefaultPermissions(adminPerm),
         ).queue()
     }
 
@@ -118,6 +129,7 @@ class DiscordBot(
             "contributions" -> commands.contributions(ctx)
             "fairness" -> commands.fairness(ctx)
             "privacy" -> commands.privacy()
+            "help" -> commands.help(ctx)
             "provider-join" -> commands.providerJoin(ctx)
             "provider-pause" -> commands.providerPause(ctx)
             "provider-resume" -> commands.providerResume(ctx)

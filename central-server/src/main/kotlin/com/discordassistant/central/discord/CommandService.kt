@@ -119,6 +119,31 @@ class CommandService(
 
     fun privacy(): Reply = Reply(PRIVACY_NOTICE)
 
+    /** 종합 도움말(차수 13 #183). 권한별 섹션 노출(#186). */
+    fun help(ctx: CommandContext): Reply {
+        val sb = StringBuilder()
+        sb.append("**커뮤니티 로컬 AI Provider Pool — 도움말**\n")
+        sb.append("커뮤니티 멤버들의 PC LLM 을 모아 공정하게 분배합니다(금전 거래 아님).\n\n")
+        sb.append("__유저__\n")
+        sb.append("· `/ask <질문>` — 풀의 누군가의 PC LLM 으로 답변\n")
+        sb.append("· `/models` `/catalog` — 사용 가능한 모델 수준·목록\n")
+        sb.append("· `/my-usage` `/privacy` — 내 사용량 / 프라이버시 고지\n")
+        sb.append("· `/contributions` — 기여 리더보드(비금전 인정)\n\n")
+        sb.append("__프로바이더(내 PC 를 풀에 기여)__\n")
+        sb.append("· `/provider-join` — 참여 신청(승인 후 토큰→에이전트 실행)\n")
+        sb.append("· `/provider-pause` `/provider-resume` `/provider-leave` — 가용성 제어\n")
+        sb.append("· `/provider-status` `/provider-models` `/provider-limit` `/provider-scope` — 내 기여 설정\n")
+        if (ctx.isAdmin) {
+            sb.append("\n__관리자__\n")
+            sb.append("· `/fairness` `/providers` — 공정성 리포트·프로바이더 목록\n")
+            sb.append("· `/approve-provider` `/remove-provider` — 승인/제거\n")
+            sb.append("· `/allow-channel` `/deny-channel` `/set-role-policy` — 채널·역할 정책\n")
+            sb.append("· `/llm-block` `/llm-unblock` — 사용자 차단/해제\n")
+        }
+        sb.append("\n_민감정보(비밀번호·API 키 등)는 입력하지 마세요._")
+        return Reply(sb.toString())
+    }
+
     // ── 프로바이더 ──────────────────────────────────────────────────────
     fun providerJoin(ctx: CommandContext): Reply {
         val auto = policy.isAutoApprove(ctx.guildId)

@@ -37,6 +37,16 @@ class CommandServiceTest @Autowired constructor(
     }
 
     @Test
+    fun `help — 유저 섹션은 항상, 관리자 섹션은 관리자만`() {
+        val user = commands.help(ctx(admin = false)).content
+        assertTrue(user.contains("/ask"))
+        assertTrue(!user.contains("__관리자__"))
+        val admin = commands.help(ctx(admin = true)).content
+        assertTrue(admin.contains("__관리자__"))
+        assertTrue(admin.contains("/approve-provider"))
+    }
+
+    @Test
     fun `ask — 프로바이더 없으면 안내`() {
         val r = commands.ask(ctx(), "안녕")
         assertTrue(r.content.contains("⚠️"))

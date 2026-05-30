@@ -23,6 +23,7 @@ class GuildEntity(
     @Column(name = "auto_approve") var autoApprove: Boolean = false,
     @Column(name = "default_model") var defaultModel: String? = null,
     @Column(name = "language") var language: String = "ko",
+    @Column(name = "welcome_message") var welcomeMessage: String? = null,
 )
 
 @Entity

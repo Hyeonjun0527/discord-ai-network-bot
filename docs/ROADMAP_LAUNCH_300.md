@@ -223,7 +223,7 @@
 - [ ] 171. 처리 결과 만족도(리액션) 수집(선택)
 - [x] 172. 커뮤니티 프라이버시/이용 고지(PRIVACY_NOTICE)
 - [ ] 173. 프로바이더 휴식 권장(과다 처리 시 안내) — 후속
-- [ ] 174. 길드별 환영/안내 메시지 — 후속
+- [x] 174. 길드별 환영/안내 메시지 — V4 마이그레이션 + PolicyService.setWelcomeMessage + /welcome·/llm-welcome-set, 테스트 통과
 - [x] 175. 관리자 공정성 리포트(`/fairness` — 기여 비율·실패)
 - [x] 176. 프로바이더 재참여(requestJoin: REMOVED 후 재등록 허용)
 - [x] 177. 커뮤니티 기여 통계 공개(익명 집계) — /community-stats(CommandService.communityStats, 식별정보 없음), 테스트 통과

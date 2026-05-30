@@ -69,6 +69,10 @@ class DiscordBot(
                 .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "AI processing & privacy notice"),
             Commands.slash("help", "명령 종합 도움말을 봅니다")
                 .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "Show the full command help"),
+            Commands.slash("welcome", "서버 환영/안내 메시지를 봅니다"),
+            Commands.slash("llm-welcome-set", "서버 환영/안내 메시지를 설정합니다(관리자)")
+                .addOption(OptionType.STRING, "message", "환영 메시지", true)
+                .setDefaultPermissions(adminPerm),
             Commands.slash("provider-join", "프로바이더로 참여합니다"),
             Commands.slash("provider-pause", "요청 수신을 일시정지합니다"),
             Commands.slash("provider-resume", "요청 수신을 재개합니다"),
@@ -178,6 +182,8 @@ class DiscordBot(
             "fairness" -> commands.fairness(ctx)
             "privacy" -> commands.privacy(ctx)
             "help" -> commands.help(ctx)
+            "welcome" -> commands.welcome(ctx)
+            "llm-welcome-set" -> commands.setWelcome(ctx, event.getOption("message")!!.asString)
             "provider-join" -> commands.providerJoin(ctx)
             "provider-pause" -> commands.providerPause(ctx)
             "provider-resume" -> commands.providerResume(ctx)

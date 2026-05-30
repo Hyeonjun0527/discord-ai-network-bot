@@ -233,6 +233,20 @@ class CommandService(
         return Reply("✅ 길드 기본값 — 모델: `$m` · 언어: `${policy.guildLanguage(ctx.guildId)}`")
     }
 
+    /** 길드 환영/안내 메시지 설정(차수 12 #174, 관리자). */
+    fun setWelcome(ctx: CommandContext, message: String): Reply {
+        adminOnly(ctx)?.let { return it }
+        policy.setWelcomeMessage(ctx.guildId, message, ctx.userId)
+        return Replies.ok("환영 메시지를 설정했습니다.")
+    }
+
+    /** 환영/안내 메시지 보기(누구나). */
+    fun welcome(ctx: CommandContext): Reply {
+        val msg = policy.guildWelcomeMessage(ctx.guildId)
+            ?: return Replies.info("이 서버는 아직 환영 메시지를 설정하지 않았습니다. `/help` 로 사용법을 확인하세요.")
+        return Reply("👋 $msg", ephemeral = false)
+    }
+
     fun allowChannel(ctx: CommandContext, channelId: Long): Reply {
         adminOnly(ctx)?.let { return it }
         policy.allowChannel(ctx.guildId, channelId, ctx.userId)

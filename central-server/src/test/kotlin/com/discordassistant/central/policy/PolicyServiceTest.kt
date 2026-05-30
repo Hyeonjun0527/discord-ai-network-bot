@@ -52,6 +52,13 @@ class PolicyServiceTest @Autowired constructor(val policy: PolicyService) {
     }
 
     @Test
+    fun `길드 환영 메시지 설정·조회(#174)`() {
+        assertEquals(null, policy.guildWelcomeMessage(305))
+        policy.setWelcomeMessage(305, "환영합니다!", adminId = 1)
+        assertEquals("환영합니다!", policy.guildWelcomeMessage(305))
+    }
+
+    @Test
     fun `길드 기본 모델·언어 설정(빈 값은 보존)`() {
         assertEquals(null, policy.guildDefaultModel(300))
         assertEquals("ko", policy.guildLanguage(300)) // 기본

@@ -107,4 +107,16 @@ class PolicyService(
     /** 길드 언어(기본 ko). */
     fun guildLanguage(guildId: Long): String =
         guilds.findById(guildId).map { it.language }.orElse("ko")
+
+    /** 길드 환영/안내 메시지 설정(차수 12 #174). */
+    fun setWelcomeMessage(guildId: Long, message: String, adminId: Long) {
+        val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
+        g.welcomeMessage = message.take(1000)
+        guilds.save(g)
+        audit.record("set_welcome", "admin:$adminId", "guild:$guildId", "len=${g.welcomeMessage?.length}")
+    }
+
+    /** 길드 환영 메시지(미설정 시 null). */
+    fun guildWelcomeMessage(guildId: Long): String? =
+        guilds.findById(guildId).map { it.welcomeMessage }.orElse(null)
 }

@@ -36,6 +36,7 @@ class CommandService(
     private val usage: UsageService,
     private val registry: ConnectionRegistry,
     private val privacy: PrivacyService,
+    private val rateLimiter: RateLimiter,
 ) {
     companion object {
         const val PRIVACY_NOTICE =
@@ -49,6 +50,9 @@ class CommandService(
 
     // ── 일반 유저 ───────────────────────────────────────────────────────
     fun ask(ctx: CommandContext, prompt: String): Reply {
+        if (!rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
+            return Reply("⏳ 요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.")
+        }
         val result = orchestrator.handle(
             AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, prompt, ctx.roleIds),
         )

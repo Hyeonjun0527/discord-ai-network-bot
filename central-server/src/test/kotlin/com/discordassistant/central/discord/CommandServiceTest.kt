@@ -67,4 +67,11 @@ class CommandServiceTest @Autowired constructor(
             registry.unregister(s)
         }
     }
+
+    @Test
+    fun `rate limit — 분당 초과 차단`() {
+        val c = CommandContext(guildId = 100, channelId = 200, userId = 8888, roleIds = setOf(1), isAdmin = false)
+        repeat(10) { commands.ask(c, "q") }
+        assertTrue(commands.ask(c, "q").content.contains("너무 잦"))
+    }
 }

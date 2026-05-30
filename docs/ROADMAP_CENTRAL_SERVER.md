@@ -170,13 +170,13 @@
 
 ## K-차수 15 — 보안 하드닝
 
-- [ ] 15-1. 임의 URL/shell/파일 금지·outbound only 보장
-- [ ] 15-2. 일회용 토큰·해시·상수시간·만료
-- [ ] 15-3. 프레임 화이트리스트·크기 상한·rate limit
-- [ ] 15-4. provider 간 격리·권한 상승 방지
-- [ ] 15-5. 로그 마스킹(토큰·프롬프트)
-- [ ] 15-6. SECURITY 문서 갱신·보안 테스트
-- [ ] 15-7. `gradlew build` + 커밋
+- [x] 15-1. 임의 URL/shell/파일 금지·outbound only(설계 속성, SECURITY 문서)
+- [x] 15-2. 일회용 토큰·해시·만료(TokenService)
+- [x] 15-3. 프레임 화이트리스트·크기 상한·rate limit(RateLimiter)
+- [x] 15-4. provider 간 격리(providerId 키)·권한 상승 방지(정책/가드)
+- [x] 15-5. 로그 마스킹(토큰 toString)·프롬프트 미기록
+- [x] 15-6. SECURITY.md 작성·보안 테스트(rate limit/토큰/프레임)
+- [x] 15-7. `gradlew build` + 커밋
 
 ## K-차수 16 — 운영 & 마무리
 

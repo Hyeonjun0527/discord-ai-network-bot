@@ -202,7 +202,7 @@
 - [x] 153. 차단 목록(BlocklistService + /llm-block·/llm-unblock + orchestrator 차단)
 - [x] 154. 프로바이더 평판 데이터(ProviderHealth 실패 누적; 등급 산정 후속)
 - [x] 155. 멀티 길드 격리/스케일 검증 — GuildIsolationTest(길드 풀 무교집합·해제 비간섭). 스케일 부하는 후속
-- [ ] 156. 명령 응답 JDA Embed 고도화(상태 badge·색상)
+- [x] 156. 명령 응답 JDA Embed 고도화(상태 badge·색상) — EmbedFactory(상태 색상/필드, 순수 빌더), 테스트 통과
 - [x] 157. i18n(한/영) 메시지 리소스 — Messages 번들(ko/en, ko 폴백) + 길드 언어 연동(privacy/cooldown/admin-denied), 테스트 통과
 - [ ] 158. 차수 11 검증
 
@@ -290,7 +290,7 @@
 - [x] 229. SLO/SLA 정의(선택) — central-server/docs/SLO.md(비영리 SLO만, 에러버짓·비목표 명시)
 - [x] 230. 운영 점검 자동화(스크립트/스케줄) — central-server/scripts/ops_healthcheck.sh(health+pool, 비0 종료)
 - [x] 231. 알림 채널(Discord/슬랙) 연동 — DiscordWebhookNotifier(@ConditionalOnProperty webhook, @Primary 폴백), 미설정 시 LoggingNotifier
-- [ ] 232. 차수 15 검증
+- [x] 232. 차수 15 검증 — 215~231 완료(메트릭/Prometheus/Grafana/헬스/request-id/로그회전/알림/백업/런북/메트릭API/트렌드/부하회계/SLO/점검스크립트). 219(OTel)·223(Sentry)는 외부 SaaS·선택으로 보류
 
 ## 차수 16 — 신뢰성/스케일 (233~250)
 
@@ -332,7 +332,7 @@
 - [x] 265. 코드 리뷰 게이트(/code-review) — .github/CODEOWNERS(경로별 소유자, 브랜치보호 연계)
 - [x] 266. 문서 빌드/링크 검증 — scripts/check_links.py(상대링크 55문서 검사, 깨진 7건 수정)
 - [x] 267. 버전/릴리스 자동화(SemVer) — central-release.yml(central-v* 태그→CHANGELOG[Unreleased] 노트→GitHub Release)
-- [ ] 268. 차수 17 검증
+- [x] 268. 차수 17 검증 — 251~267 완료(컨트랙트/e2e/부하/커버리지게이트/정적분석/시드/격리표준/태깅/플래키/PR템플릿/CODEOWNERS/링크검증/릴리스자동화/Testcontainers)
 
 ## 차수 18 — Python 봇 이관/정리 (269~282)
 

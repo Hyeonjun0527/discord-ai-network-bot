@@ -18,6 +18,7 @@ class PoolAlertMonitor(
 ) {
     private var wasEmpty = false
     private var wasLow = false
+    private var lastSeenProviders: Set<Long> = emptySet()
 
     /** 활성 수를 평가하고 전환 시에만 알림. 반환: 발송한 알림 수(테스트용). */
     fun evaluate(active: Int = registry.activeCount()): Int {
@@ -47,8 +48,36 @@ class PoolAlertMonitor(
         return fired
     }
 
+    /**
+     * 프로바이더 집합 변화로 오프라인 전환을 감지(차수 12 #163). 직전에 있었으나 지금 없는
+     * provider 마다 WARN. 반환: 발송 수(테스트용).
+     */
+    fun evaluateProviders(currentIds: Set<Long>): Int {
+        val goneOffline = lastSeenProviders - currentIds
+        goneOffline.forEach {
+            notifier.notify(Severity.WARN, "프로바이더 오프라인", "프로바이더 $it 가 풀에서 사라졌습니다.")
+        }
+        lastSeenProviders = currentIds
+        return goneOffline.size
+    }
+
+    /** 풀 헬스 요약 텍스트(차수 12 #164, 관리자 정기 알림용). */
+    fun poolSummary(): String {
+        val sessions = registry.snapshotSessions()
+        val inFlight = sessions.sumOf { it.activeRequests }
+        val models = sessions.flatMap { it.capability.models }.distinct().size
+        return "활성 프로바이더 ${sessions.size}명 · 제공 모델 ${models}종 · 처리중 ${inFlight}건"
+    }
+
     @Scheduled(fixedDelayString = "\${central.alert.check-millis:30000}")
     fun scheduledCheck() {
         evaluate()
+        evaluateProviders(registry.snapshotSessions().map { it.providerId }.toSet())
+    }
+
+    /** 풀 헬스 요약 정기 알림(기본 1시간). */
+    @Scheduled(fixedDelayString = "\${central.alert.summary-millis:3600000}")
+    fun scheduledSummary() {
+        notifier.notify(Severity.INFO, "Provider Pool 요약", poolSummary())
     }
 }

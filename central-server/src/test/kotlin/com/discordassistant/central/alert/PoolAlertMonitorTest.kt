@@ -2,6 +2,7 @@ package com.discordassistant.central.alert
 
 import com.discordassistant.central.relay.ConnectionRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 private class RecordingNotifier : Notifier {
@@ -33,6 +34,18 @@ class PoolAlertMonitorTest {
         n.events.clear()
         assertEquals(1, m.evaluate(2))
         assertEquals(Severity.INFO, n.events.single().first)
+    }
+
+    @Test
+    fun `프로바이더 오프라인 전환 감지(#163)`() {
+        val n = RecordingNotifier()
+        val m = monitor(n)
+        assertEquals(0, m.evaluateProviders(setOf(1L, 2L, 3L))) // 첫 관측: 알림 없음
+        assertEquals(0, m.evaluateProviders(setOf(1L, 2L, 3L))) // 변화 없음
+        assertEquals(1, m.evaluateProviders(setOf(1L, 3L)))      // 2 오프라인 → WARN 1
+        assertEquals(Severity.WARN, n.events.single().first)
+        assertTrue(n.events.single().third.contains("2"))
+        assertEquals(0, m.evaluateProviders(setOf(1L, 3L, 4L)))  // 신규 추가는 알림 없음
     }
 
     @Test

@@ -212,8 +212,8 @@
 - [ ] 160. 스케줄 기반 자동 online/offline
 - [x] 161. 기여 리더보드(`/contributions`, 비금전 인정)
 - [ ] 162. 프로바이더 승인 시 DM 알림(토큰 전달)
-- [ ] 163. 프로바이더 오프라인 시 관리자 알림
-- [ ] 164. 풀 헬스 요약 정기 알림(관리자)
+- [x] 163. 프로바이더 오프라인 시 관리자 알림 — PoolAlertMonitor.evaluateProviders(오프라인 전환 edge-trigger), 테스트 통과
+- [x] 164. 풀 헬스 요약 정기 알림(관리자) — poolSummary + @Scheduled(기본 1시간) INFO 요약
 - [x] 165. 프로바이더 자기 통계(`/provider-status`: 상태·처리중·잔여·실패)
 - [ ] 166. 요청 처리 내역(프로바이더용, 프라이버시 준수) — 후속
 - [x] 167. 온보딩 안내(providerJoin 응답: 토큰→에이전트 실행 단계)

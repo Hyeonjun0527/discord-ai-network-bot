@@ -22,6 +22,7 @@ services:
 
   central-server:
     image: ${CENTRAL_IMAGE:?CENTRAL_IMAGE 필요(ghcr.io/owner/central-server:tag)}
+    container_name: central-server # cloudflared 가 컨테이너명으로 라우팅(http://central-server:8080)
     restart: unless-stopped
     depends_on:
       db:
@@ -34,11 +35,19 @@ services:
       DISCORD_ENABLED: ${DISCORD_ENABLED:-true}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      RELAY_PUBLIC_URL: ${RELAY_PUBLIC_URL:-}
       CENTRAL_DEV_ENABLED: "false"
-    # 공개 노출은 Cloudflare Tunnel(cloudflared) 로. 기본은 로컬 바인딩(헬스/터널 접근).
-    # 원격 프로바이더가 WS(/agent)로 붙으려면 tunnel ingress 를 이 서비스로 라우팅(후속).
+    networks:
+      - default # db 접근
+      - dailyting-edge # cloudflared 가 이 컨테이너에 닿도록(공개 노출/프로바이더 WS)
+    # 호스트 로컬 바인딩(헬스/디버그용). 공개는 Cloudflare Tunnel → http://central-server:8080.
     ports:
       - "127.0.0.1:8080:8080"
+
+networks:
+  # dailyting 스택이 만든 외부 네트워크. cloudflared 와 공유해 컨테이너명으로 라우팅.
+  dailyting-edge:
+    external: true
 
 volumes:
   central-db:

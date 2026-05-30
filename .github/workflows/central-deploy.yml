@@ -69,6 +69,7 @@ jobs:
           CENTRAL_DB_PASSWORD: ${{ secrets.CENTRAL_DB_PASSWORD }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+          RELAY_PUBLIC_URL: ${{ secrets.RELAY_PUBLIC_URL }}
         run: |
           set -e
           DEST="$HOME/deploy/central-server"
@@ -82,6 +83,7 @@ jobs:
           DISCORD_ENABLED=true
           DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
           DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+          RELAY_PUBLIC_URL=${RELAY_PUBLIC_URL}
           ENV
           docker compose --env-file .env -f compose.yml pull
           docker compose --env-file .env -f compose.yml up -d

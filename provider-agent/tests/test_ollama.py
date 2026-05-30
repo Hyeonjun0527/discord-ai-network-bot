@@ -122,3 +122,25 @@ async def test_generate_stream():
         assert usage.completion_tokens == 7
     finally:
         await server.close()
+
+
+@pytest.mark.asyncio
+async def test_generate_with_images_multimodal():
+    """멀티모달(#143): images 가 Ollama payload 에 포함되는지."""
+    app = web.Application()
+    captured = {}
+
+    async def gen(request: web.Request) -> web.Response:
+        captured.update(await request.json())
+        return web.json_response({"response": "고양이입니다", "prompt_eval_count": 1, "eval_count": 2})
+
+    app.router.add_post("/api/generate", gen)
+    server = TestServer(app)
+    await server.start_server()
+    url = f"http://{server.host}:{server.port}"
+    try:
+        text, _ = await OllamaClient(url).generate("이미지 설명", "llava", images=["BASE64DATA"])
+        assert text == "고양이입니다"
+        assert captured.get("images") == ["BASE64DATA"]
+    finally:
+        await server.close()

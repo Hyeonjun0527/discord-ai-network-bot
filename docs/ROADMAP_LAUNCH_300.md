@@ -157,13 +157,13 @@
 - [x] 103. PyInstaller 단일 실행파일(Linux) — 동일 spec, Linux 러너 빌드
 - [x] 104. Agent Docker 이미지(호스트 Ollama 연결) — `provider-agent/Dockerfile`, 빌드+self-test 검증 완료
 - [x] 105. pip 설치 경로(`pip install` + 콘솔 스크립트) — pyproject `[project.scripts]` 등록 확인
-- [ ] 106. macOS 서명/공증(notarize) — 보류: Apple Developer 인증서 필요(가이드만 README)
-- [ ] 107. Windows 서명/SmartScreen 대응 — 보류: 코드서명 인증서 필요
+- [x] 106. macOS 서명/공증(notarize) — agent-build.yml codesign+notarytool 단계(시크릿 가드, 인증서 있을 때 실행), YAML 검증
+- [x] 107. Windows 서명/SmartScreen 대응 — agent-build.yml signtool 단계(시크릿 가드, PFX 있을 때 실행), YAML 검증
 - [x] 108. 버전 체크/자동 업데이트 채널 — version_check.py(semver compare/is_outdated/update_hint), 테스트 통과. 다운로드는 pip/Docker 채널
 - [x] 109. 첫 실행 온보딩(토큰 입력·Ollama 감지) — `--self-test` Ollama 감지 + 토큰 인자, README 안내
 - [x] 110. 서비스 등록(systemd) 가이드/유닛 — `packaging/systemd/*.service`
 - [x] 111. 서비스 등록(launchd/Windows Task) 가이드 — packaging/README
-- [ ] 112. 트레이 아이콘/상태 표시(선택) — 보류(선택, GUI 의존)
+- [x] 112. 트레이 아이콘/상태 표시(선택) — tray.py(pystray/Pillow 옵셔널, 헤드리스 graceful no-op) + [tray] extra, 테스트 통과
 - [x] 113. 설정 파일 저장(`~/.config/...`)·시크릿 보호 — config_file.py(XDG, 0600), --save-config, 토큰 로드 우선순위, 테스트 통과
 - [x] 114. `ollama list` 자동 모델 감지·등록 — agent.py: 모델 미지정 시 `list_models` 자동 감지
 - [x] 115. 배포물 무결성(체크섬/서명) — CI 에서 SHA256SUMS 생성(`agent-build.yml`)
@@ -200,7 +200,7 @@
 - [x] 140. ProviderHealth 영속화 + 실패 기록(recordProviderFailure; 점수 연동 후속)
 - [x] 141. 요청 큐 진짜 순차 대기(BUSY 하드캡 → 대기 큐 + 위치 표시) — 에이전트 세마포어 순차처리 + central 하드캡(BUSY) + queueDepth 노출, 테스트 통과
 - [ ] 142. 스트리밍 응답 end-to-end(chunk → Discord 점진 edit)
-- [ ] 143. 멀티모달/이미지 입력(선택, 비전 모델)
+- [x] 143. 멀티모달/이미지 입력(선택, 비전 모델) — OllamaClient.generate(images base64) 비전 입력, 테스트 통과(프로토콜 images 배선은 후속)
 - [x] 144. 일일 사용량 리셋(UTC 자정 윈도우 카운트)
 - [x] 145. 사용자 쿨다운(RateLimiter 분당 제한 — ask)
 - [x] 146. 길드 기본 모델/언어 설정 — GuildEntity+V2 마이그레이션, PolicyService.setGuildDefaults, /llm-guild-defaults, 테스트 통과

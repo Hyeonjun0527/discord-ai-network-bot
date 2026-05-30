@@ -51,3 +51,12 @@ def test_telemetry_emit_noop_when_off():
     assert telemetry.emit(cfg_off, "start", agent_version="x") is False
     cfg_on, _ = config_from_args(["--token", "T", "--telemetry"])
     assert telemetry.emit(cfg_on, "start", agent_version="x") is True
+
+
+def test_tray_graceful_without_deps():
+    """트레이(#112): pystray 미설치 환경에서 graceful no-op."""
+    from provider_agent import tray
+    # tray_available 은 bool 을 반환(설치 여부와 무관하게 예외 없이).
+    assert isinstance(tray.tray_available(), bool)
+    if not tray.tray_available():
+        assert tray.run_tray(lambda: "ok", lambda: None) is False

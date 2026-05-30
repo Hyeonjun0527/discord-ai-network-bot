@@ -19,10 +19,20 @@ class OllamaClient:
         self._base = base_url.rstrip("/")
         self._timeout = aiohttp.ClientTimeout(total=timeout)
 
-    async def generate(self, prompt: str, model: str | None) -> tuple[str, Usage]:
-        """프롬프트를 추론해 (text, usage) 를 반환한다. 오류 시 OllamaError."""
+    async def generate(
+        self,
+        prompt: str,
+        model: str | None,
+        images: list[str] | None = None,
+    ) -> tuple[str, Usage]:
+        """프롬프트를 추론해 (text, usage) 를 반환한다. 오류 시 OllamaError.
+
+        images: 비전 모델(llava 등)용 base64 이미지 목록(차수 11 #143, 선택). 빈/None 이면 텍스트 전용.
+        """
         url = f"{self._base}/api/generate"
-        payload = {"model": model or "", "prompt": prompt, "stream": False}
+        payload: dict[str, object] = {"model": model or "", "prompt": prompt, "stream": False}
+        if images:
+            payload["images"] = images  # Ollama 비전 입력
         try:
             async with aiohttp.ClientSession(timeout=self._timeout) as s:
                 async with s.post(url, json=payload) as r:

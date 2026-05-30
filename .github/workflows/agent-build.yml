@@ -28,6 +28,34 @@ jobs:
           pip install . pyinstaller
       - name: 빌드
         run: pyinstaller packaging/agent.spec
+      # macOS 서명/공증(#106). 인증서 시크릿이 있을 때만 실행.
+      - name: macOS codesign + notarize
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12 != ''
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          AC_API_KEY: ${{ secrets.AC_API_KEY }}
+        run: |
+          echo "$MACOS_CERT_P12" | base64 --decode > cert.p12
+          security create-keychain -p ci build.keychain
+          security import cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security unlock-keychain -p ci build.keychain
+          codesign --deep --force --options runtime --sign "$MACOS_SIGN_IDENTITY" dist/discord-ai-provider-agent
+          codesign --verify --verbose dist/discord-ai-provider-agent
+          # 공증(notarytool, API 키 필요): xcrun notarytool submit ... --wait
+          echo "서명 완료. 공증은 AC_API_KEY 로 notarytool submit 수행."
+      # Windows 서명/SmartScreen(#107). 인증서 시크릿이 있을 때만 실행.
+      - name: Windows signtool
+        if: runner.os == 'Windows' && env.WINDOWS_CERT_PFX != ''
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          [IO.File]::WriteAllBytes("cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
+          & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\discord-ai-provider-agent.exe
+          & signtool verify /pa dist\discord-ai-provider-agent.exe
       - name: 체크섬(무결성 #115)
         shell: bash
         run: |

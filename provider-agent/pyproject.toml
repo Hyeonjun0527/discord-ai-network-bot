@@ -26,6 +26,11 @@ dev = [
 monitor = [
   "psutil>=5.9,<7.0",
 ]
+# 시스템 트레이 아이콘(선택, 데스크톱 전용 #112).
+tray = [
+  "pystray>=0.19",
+  "Pillow>=10",
+]
 
 [project.scripts]
 discord-ai-provider-agent = "provider_agent.__main__:main"

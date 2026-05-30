@@ -8,6 +8,7 @@ import com.discordassistant.central.relay.protocol.InferError
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
 import com.discordassistant.central.relay.protocol.ProviderHelloFrame
+import com.discordassistant.central.relay.protocol.ProviderStatusFrame
 import com.discordassistant.central.relay.protocol.filterOptions
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -25,6 +26,14 @@ data class ProviderCapability(
     val models: List<String> = emptyList(),
     val maxConcurrency: Int = 1,
     val remainingDailyRequests: Int = 0,
+)
+
+/** 프로바이더 실시간 상태(provider_status 로 보고). */
+data class LiveStatus(
+    val load: String = "idle",
+    val battery: String = "",
+    val online: Boolean = true,
+    val busy: Boolean = false,
 )
 
 /**
@@ -47,6 +56,10 @@ class ProviderSession(
     private val stateRef = AtomicReference(ProviderState.ONLINE_IDLE)
     private val lastSeenNanos = AtomicLong(System.nanoTime())
     private val inFlight = AtomicInteger(0)
+    private val remainingDaily = AtomicInteger(Int.MAX_VALUE)
+    @Volatile
+    var liveStatus: LiveStatus = LiveStatus()
+        private set
     private val pending = ConcurrentHashMap<String, CompletableFuture<InferResult>>()
     private val streams = ConcurrentHashMap<String, java.util.concurrent.BlockingQueue<ChunkFrame>>()
 
@@ -58,11 +71,20 @@ class ProviderSession(
     fun isStale(timeoutSeconds: Long, nowNanos: Long = System.nanoTime()): Boolean =
         nowNanos - lastSeenNanos.get() > TimeUnit.SECONDS.toNanos(timeoutSeconds)
 
-    /** 상태 전이(불가 전이는 거부하지 않고 로깅만 — 가드는 도메인 서비스가 K-차수 5 에서). */
-    fun transitionTo(next: ProviderState) {
-        val prev = stateRef.getAndSet(next)
-        if (prev != next) log.debug("provider {} 상태 {} → {}", providerId, prev, next)
+    /** 상태 전이. 불가 전이(상태머신 가드 위반)는 거부하고 로깅한다. 성공 시 true. */
+    fun transitionTo(next: ProviderState): Boolean {
+        val prev = stateRef.get()
+        if (prev == next) return true
+        if (!prev.canTransitionTo(next)) {
+            log.warn("provider {} 불가 전이 거부: {} → {}", providerId, prev, next)
+            return false
+        }
+        stateRef.set(next)
+        log.debug("provider {} 상태 {} → {}", providerId, prev, next)
+        return true
     }
+
+    val remainingDailyRequests: Int get() = remainingDaily.get()
 
     fun applyHello(hello: ProviderHelloFrame) {
         capability = ProviderCapability(
@@ -70,6 +92,14 @@ class ProviderSession(
             maxConcurrency = hello.maxConcurrency,
             remainingDailyRequests = hello.remainingDailyRequests,
         )
+        remainingDaily.set(hello.remainingDailyRequests)
+        markSeen()
+    }
+
+    fun applyStatus(status: ProviderStatusFrame) {
+        liveStatus = LiveStatus(status.load, status.battery, status.online, status.busy)
+        if (status.busy) transitionTo(ProviderState.ONLINE_BUSY)
+        else if (state == ProviderState.ONLINE_BUSY && inFlight.get() == 0) transitionTo(ProviderState.ONLINE_IDLE)
         markSeen()
     }
 
@@ -87,6 +117,7 @@ class ProviderSession(
         val fut = CompletableFuture<InferResult>()
         pending[requestId] = fut
         inFlight.incrementAndGet()
+        if (remainingDaily.get() != Int.MAX_VALUE) remainingDaily.decrementAndGet()
         transitionTo(ProviderState.ONLINE_BUSY)
         try {
             connection.sendFrame(InferRequest(requestId, model, prompt, filterOptions(options)))
@@ -135,7 +166,8 @@ class ProviderSession(
                 ?.completeExceptionally(RemoteInferException(frame.code, frame.message))
             is ChunkFrame -> streams[frame.requestId]?.offer(frame)
             is ProviderHelloFrame -> applyHello(frame)
-            else -> { /* pong/status: markSeen 으로 충분 */ }
+            is ProviderStatusFrame -> applyStatus(frame)
+            else -> { /* pong: markSeen 으로 충분 */ }
         }
     }
 

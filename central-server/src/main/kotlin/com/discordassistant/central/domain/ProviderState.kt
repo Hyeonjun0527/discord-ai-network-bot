@@ -42,4 +42,22 @@ enum class ProviderState {
 
     /** 라우팅 후보가 될 수 있는 상태인가(온라인 + idle). */
     val isRoutable: Boolean get() = this == ONLINE_IDLE
+
+    /** 이 상태에서 [next] 로 전이가 허용되는가(specs 상태머신 가드). */
+    fun canTransitionTo(next: ProviderState): Boolean = next in ALLOWED[this].orEmpty()
+
+    companion object {
+        private val ALLOWED: Map<ProviderState, Set<ProviderState>> = mapOf(
+            UNREGISTERED to setOf(PENDING, APPROVED),
+            PENDING to setOf(APPROVED, REMOVED),
+            APPROVED to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
+            ONLINE_IDLE to setOf(ONLINE_BUSY, PAUSED, LIMITED, OFFLINE, UNHEALTHY, REMOVED),
+            ONLINE_BUSY to setOf(ONLINE_IDLE, PAUSED, LIMITED, OFFLINE, UNHEALTHY, REMOVED),
+            PAUSED to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
+            LIMITED to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
+            OFFLINE to setOf(ONLINE_IDLE, APPROVED, REMOVED),
+            UNHEALTHY to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
+            REMOVED to emptySet(),
+        )
+    }
 }

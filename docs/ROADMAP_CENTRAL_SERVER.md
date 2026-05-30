@@ -67,13 +67,13 @@
 
 ## K-차수 5 — capability·상태머신·heartbeat
 
-- [ ] 5-1. provider_hello 수신→capability 저장
-- [ ] 5-2. provider_status 수신→load/battery/online·busy 반영
-- [ ] 5-3. 상태 전이 가드(불가 전이 거부)
-- [ ] 5-4. 일일 잔여/동시 슬롯 카운터
-- [ ] 5-5. 좀비 세션 청소 스케줄러
-- [ ] 5-6. 단위 테스트(상태 전이표)
-- [ ] 5-7. `gradlew build` + 커밋
+- [x] 5-1. provider_hello 수신→capability 저장
+- [x] 5-2. provider_status 수신→load/battery/online·busy 반영
+- [x] 5-3. 상태 전이 가드(불가 전이 거부)
+- [x] 5-4. 일일 잔여/동시 슬롯 카운터
+- [x] 5-5. 좀비 세션 청소 스케줄러(handler maintenance + registry.reapStale)
+- [x] 5-6. 단위 테스트(상태 전이표)
+- [x] 5-7. `gradlew build` + 커밋
 
 ## K-차수 6 — 도메인 엔티티 & 영속화 (JPA)
 

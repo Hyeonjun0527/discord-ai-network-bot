@@ -1,9 +1,0 @@
-# Next.js / Node 빌드 산출물 (#86: CI build 단계가 생성)
-/node_modules
-/.next
-/out
-next-env.d.ts
-*.tsbuildinfo
-
-# 로컬 환경파일
-.env*.local

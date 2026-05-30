@@ -160,6 +160,7 @@ class InferRequest:
     model: str | None = None
     prompt: str = ""
     options: dict[str, Any] = field(default_factory=dict)
+    stream: bool = False  # true 면 ChunkFrame 으로 점진 응답(#142)
 
     def __post_init__(self) -> None:
         if len(self.prompt) > MAX_PROMPT_CHARS:
@@ -179,6 +180,7 @@ class InferRequest:
             "model": self.model,
             "prompt": self.prompt,
             "options": filter_options(self.options),
+            "stream": self.stream,
         }
 
     @classmethod
@@ -188,6 +190,7 @@ class InferRequest:
             model=(str(d["model"]) if d.get("model") is not None else None),
             prompt=str(d.get("prompt", "")),
             options=filter_options(d.get("options")),
+            stream=bool(d.get("stream", False)),
         )
 
 

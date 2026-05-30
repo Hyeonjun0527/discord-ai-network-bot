@@ -25,6 +25,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-websocket") // 에이전트 WS 릴레이
     implementation("org.springframework.boot:spring-boot-starter-actuator")  // 운영 헬스/메트릭
+    implementation("io.micrometer:micrometer-registry-prometheus")           // /actuator/prometheus
     implementation("org.springframework.boot:spring-boot-starter-validation")
     // 영속화 (JPA + Flyway). H2(dev/test), Postgres(prod)
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")

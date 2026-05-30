@@ -273,13 +273,13 @@
 
 ## 차수 15 — 관측성/운영 (215~232)
 
-- [ ] 215. Micrometer 메트릭(요청 수·지연·provider별 처리/실패)
-- [ ] 216. Prometheus 엔드포인트 노출
+- [x] 215. Micrometer 메트릭(PoolMetrics 활성 연결 게이지; 요청 수/지연 후속)
+- [x] 216. Prometheus 엔드포인트(/actuator/prometheus)
 - [ ] 217. Grafana 대시보드(or 메트릭 시각화)
 - [ ] 218. 구조적 로깅(JSON)·correlation/request id
 - [ ] 219. 분산 추적(선택, OpenTelemetry)
 - [ ] 220. 알림(provider 대량 오프라인·실패율 급증·DB 장애)
-- [ ] 221. 헬스 상세(DB·WS 릴레이·pool) 표면화
+- [x] 221. 헬스 상세(PoolHealthIndicator activeProviderConnections + DB/JPA 헬스)
 - [ ] 222. 로그 보존/회전 정책
 - [ ] 223. 에러 트래킹(Sentry) 연동
 - [ ] 224. Postgres 백업/복구 정책

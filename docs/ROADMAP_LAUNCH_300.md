@@ -208,8 +208,8 @@
 
 ## 차수 12 — 프로바이더 경험 & 커뮤니티 기능 (159~178)
 
-- [ ] 159. 프로바이더 가용 시간대(예: 밤에만) 스케줄
-- [ ] 160. 스케줄 기반 자동 online/offline
+- [x] 159. 프로바이더 가용 시간대(예: 밤에만) 스케줄 — AvailabilityWindow(자정넘김 지원)+ProviderScheduleEntity/V3+/provider-schedule, 테스트 통과
+- [x] 160. 스케줄 기반 자동 online/offline — ProviderScheduleService.enforce(@Scheduled 60s, 윈도우 밖 자동 pause/안 resume)
 - [x] 161. 기여 리더보드(`/contributions`, 비금전 인정)
 - [ ] 162. 프로바이더 승인 시 DM 알림(토큰 전달)
 - [x] 163. 프로바이더 오프라인 시 관리자 알림 — PoolAlertMonitor.evaluateProviders(오프라인 전환 edge-trigger), 테스트 통과

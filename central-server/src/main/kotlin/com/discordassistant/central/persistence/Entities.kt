@@ -54,6 +54,16 @@ class ProviderEntity(
 )
 
 @Entity
+@Table(name = "provider_schedule")
+class ProviderScheduleEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var providerId: Long = 0, // = Discord providerUserId(세션 providerId 와 동일)
+    var guildId: Long = 0,
+    @Column(name = "from_hour") var fromHour: Int = 0, // UTC 시 0..23
+    @Column(name = "to_hour") var toHour: Int = 0,
+)
+
+@Entity
 @Table(name = "provider_contribution_policy")
 class ProviderContributionPolicyEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,

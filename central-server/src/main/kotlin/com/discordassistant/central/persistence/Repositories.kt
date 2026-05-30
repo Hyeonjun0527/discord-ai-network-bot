@@ -45,3 +45,7 @@ interface ContributionLogRepository : JpaRepository<ContributionLogEntity, Long>
 interface ProviderHealthRepository : JpaRepository<ProviderHealthEntity, Long> {
     fun findByProviderId(providerId: Long): ProviderHealthEntity?
 }
+
+interface ProviderScheduleRepository : JpaRepository<ProviderScheduleEntity, Long> {
+    fun findByProviderIdAndGuildId(providerId: Long, guildId: Long): ProviderScheduleEntity?
+}

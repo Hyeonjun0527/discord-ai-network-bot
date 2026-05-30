@@ -90,6 +90,9 @@ class DiscordBot(
                         .setAutoComplete(true),
                 )
                 .addOption(OptionType.STRING, "role", "all / trusted / admin", true),
+            Commands.slash("provider-schedule", "가용 시간대를 설정합니다(UTC 시, 시간 밖 자동정지)")
+                .addOption(OptionType.INTEGER, "from", "시작 시(0~23, UTC)", true)
+                .addOption(OptionType.INTEGER, "to", "종료 시(0~23, UTC; from==to 면 24시간)", true),
             Commands.slash("llm-allow-channel", "LLM 사용 채널을 허용합니다(관리자)")
                 .addOption(OptionType.CHANNEL, "channel", "허용 채널", true)
                 .setDefaultPermissions(adminPerm),
@@ -195,6 +198,11 @@ class DiscordBot(
                 ctx,
                 event.getOption("model")!!.asString,
                 event.getOption("role")!!.asString,
+            )
+            "provider-schedule" -> commands.providerSchedule(
+                ctx,
+                event.getOption("from")!!.asInt,
+                event.getOption("to")!!.asInt,
             )
             "llm-guild-defaults" -> commands.setGuildDefaults(
                 ctx,

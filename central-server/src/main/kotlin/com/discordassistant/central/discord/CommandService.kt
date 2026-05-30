@@ -40,6 +40,7 @@ class CommandService(
     private val rateLimiter: RateLimiter,
     private val contributionPolicy: ContributionPolicyService,
     private val blocklist: com.discordassistant.central.provider.BlocklistService,
+    private val schedule: com.discordassistant.central.provider.ProviderScheduleService,
 ) {
     companion object {
         const val PRIVACY_NOTICE =
@@ -213,6 +214,14 @@ class CommandService(
     fun providerScope(ctx: CommandContext, model: String, role: String): Reply {
         contributionPolicy.setScope(ctx.userId, model, role)
         return Reply("✅ `$model` 허용 범위: $role")
+    }
+
+    /** 가용 시간대 스케줄 설정(차수 12 #159). UTC 시 0~23, from==to 면 24시간. */
+    fun providerSchedule(ctx: CommandContext, fromHour: Int, toHour: Int): Reply {
+        if (fromHour !in 0..23 || toHour !in 0..23) return Replies.warn("시(hour)는 0~23 사이여야 합니다.")
+        schedule.setSchedule(ctx.userId, ctx.guildId, fromHour, toHour)
+        val span = if (fromHour == toHour) "24시간 가용" else "${fromHour}시~${toHour}시(UTC)"
+        return Replies.ok("가용 시간대 설정: $span. 시간 밖에는 자동으로 일시정지됩니다.")
     }
 
     // ── 관리자 ──────────────────────────────────────────────────────────

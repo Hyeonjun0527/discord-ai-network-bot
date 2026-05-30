@@ -31,8 +31,16 @@ docker compose up -d --build
 # 헬스 확인
 curl -s localhost:8080/actuator/health   # {"status":"UP"}
 ```
-로그에 `Discord(JDA) 기동 완료` 가 보이면 봇 온라인. 슬래시 명령은 **글로벌 등록**이라 전파에
-최대 ~1시간 걸릴 수 있다(빠른 테스트는 OPERATIONS.md "길드 등록" 참고).
+로그에 `Discord(JDA) 기동 완료` 가 보이면 봇 온라인.
+
+**슬래시 명령 즉시 반영(권장, 단일/테스트 서버):** `DISCORD_GUILD_ID` 를 주면 해당 서버에 명령을
+**즉시 등록**한다(글로벌은 전파에 최대 ~1h). 서버 ID 는 Discord 개발자 모드 켠 뒤 서버명 우클릭
+→ "서버 ID 복사".
+```bash
+DISCORD_ENABLED=true DISCORD_BOT_TOKEN='토큰' DISCORD_GUILD_ID='서버ID' CENTRAL_DEV_ENABLED=false \
+  docker compose up -d --build
+```
+> 길드 ID 미설정 시 글로벌 등록(여러 서버 배포용, 전파 지연 있음).
 
 ## 3. 프로바이더 온보딩 (내 PC LLM 을 풀에 연결)
 유저(프로바이더)가 자기 PC 에서:

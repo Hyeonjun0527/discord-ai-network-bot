@@ -37,6 +37,8 @@ class DiscordBot(
     private val metrics: CommandMetrics,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
+    // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
+    @param:Value("\${central.discord.guild-id:}") private val guildId: String,
 ) {
     private val log = LoggerFactory.getLogger(DiscordBot::class.java)
     private var jda: JDA? = null
@@ -53,8 +55,21 @@ class DiscordBot(
                 .createLight(token, GatewayIntent.GUILD_MESSAGE_REACTIONS)
                 .addEventListeners(Listener(commands, metrics))
                 .build()
-        registerCommands(instance)
         jda = instance
+        if (guildId.isNotBlank()) {
+            // 길드 즉시 등록: READY 대기 후 해당 길드에 등록(전파 즉시 — 테스트/단일 서버 권장).
+            instance.awaitReady()
+            val guild = instance.getGuildById(guildId)
+            if (guild != null) {
+                registerCommands(guild.updateCommands())
+                log.info("Discord 길드 {} 슬래시 명령 즉시 등록", guildId)
+            } else {
+                log.warn("길드 {} 를 못 찾음(봇이 그 서버에 없음?) — 글로벌 등록으로 폴백", guildId)
+                registerCommands(instance.updateCommands())
+            }
+        } else {
+            registerCommands(instance.updateCommands()) // 글로벌(전파 최대 ~1h)
+        }
         log.info("Discord(JDA) 기동 완료")
     }
 
@@ -63,11 +78,10 @@ class DiscordBot(
         jda?.shutdown()
     }
 
-    private fun registerCommands(jda: JDA) {
+    private fun registerCommands(action: net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction) {
         // 관리자 명령은 비관리자 UI 에서 숨김(#186). 서버 관리 권한 보유자만 노출.
         val adminPerm = DefaultMemberPermissions.enabledFor(Permission.MANAGE_SERVER)
-        jda
-            .updateCommands()
+        action
             .addCommands(
                 Commands
                     .slash("ask", "커뮤니티 로컬 AI 에게 질문합니다")

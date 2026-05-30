@@ -4,7 +4,6 @@
 > 남은 15개는 **환경 내에서 정직하게 완료할 수 없는 것들**(가짜 체크 금지)로, 차단 사유는 아래와 같다:
 > - **라이브 Discord 봇 필요**: 87(CI/CD 라이브)
 > - **외부 인증서**: 106·107(macOS/Windows 코드 서명·공증)
-> - **멀티 인스턴스/Redis 인프라**: 242(분산 rate limit)
 > - **스트리밍·비전 재설계(에이전트+Discord 양단)**: 35·142(chunk 스트리밍), 143(멀티모달/비전, 선택)
 > - **GUI/데스크톱**: 112(트레이 아이콘, 선택)
 > - **사람/운영 실행**: 284·285(베타 모집), 288(베타 버그수정), 290(데모 영상), 297·298·299(운영 배포·스모크·정식 태그)
@@ -314,7 +313,7 @@
 - [x] 239. 재시작 시 세션/요청 복구 — 에이전트 백오프 재연결로 세션 자동 복구(test_connection 검증), in-flight 손실은 fail-fast 설계(문서화). 영속 큐 복구는 후속
 - [x] 240. 타임아웃/재시도 표준화(orTimeout + 1회 fallback)
 - [x] 241. provider 단위 circuit breaker(연속 실패 3회→UNHEALTHY 제외)
-- [ ] 242. 다중 인스턴스 분산 rate limit — 후속
+- [x] 242. 다중 인스턴스 분산 rate limit — RateLimitStore 추상화(인메모리 기본 + RedisRateLimitStore INCR/EXPIRE, central.ratelimit.redis-enabled 게이트), 테스트 통과
 - [x] 243. 멱등성/중복 요청 방지 — IdempotencyGuard(윈도우 내 동일 guild/user/prompt 중복 차단) + 오케스트레이터 연동, 테스트 통과
 - [x] 244. 카오스 테스트 — scripts/chaos_agent.py(에이전트 N회 강제종료→재등록 검증) + test_connection 실소켓 재연결
 - [x] 245. 용량 계획 문서 — SCALING.md §3(자원 가정·병목=프로바이더 PC·스케일 신호)

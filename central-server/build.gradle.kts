@@ -40,6 +40,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator") // 운영 헬스/메트릭
     implementation("io.micrometer:micrometer-registry-prometheus") // /actuator/prometheus
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    // 분산 rate limit(차수 16 #242). 기본 인메모리; central.ratelimit.redis-enabled 시 Redis 백엔드.
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
     // 영속화 (JPA + Flyway). H2(dev/test), Postgres(prod)
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.flywaydb:flyway-core")

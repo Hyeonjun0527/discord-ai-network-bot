@@ -240,7 +240,7 @@
 - [x] 185. 길드별 명령 등록 vs 글로벌 전략 — OPERATIONS.md(현재 글로벌, 개발/베타는 길드 즉시반영 권장)
 - [x] 186. 권한별 명령 노출 제어 — 관리자 명령에 DefaultMemberPermissions(MANAGE_SERVER) 게이트(비관리자 UI 숨김)
 - [x] 187. 응답 페이지네이션(긴 출력) — Pagination.paginate(2000자 한도, 줄경계/강제분할 무유실), 테스트 통과
-- [ ] 188. 처리 중 typing/defer UX
+- [x] 188. 처리 중 typing/defer UX — 느린 명령(ask) deferReply→editOriginal(3초 제한 회피), 빌드 그린
 - [ ] 189. 모달 입력(긴 프롬프트/설정)
 - [x] 190. 명령 사용 통계/로그 — CommandMetrics(Micrometer discord_command_total{command}), DiscordBot 배선, 테스트 통과
 - [x] 191. 명령 쿨다운 피드백 — ask 쿨다운 시 Replies.cooldown(⏳) 표준 피드백, 테스트 통과
@@ -269,7 +269,7 @@
 - [x] 211. 대시보드 API 테스트 — DashboardControllerTest(overview/requests) + MetricsApiControllerTest + SecurityHeadersFilterTest
 - [x] 212. 대시보드 UI 테스트 — DashboardServingTest(MockMvc: 정적 서빙·디렉터리 포워드·보안헤더), 통과
 - [ ] 213. 대시보드 배포 파이프라인
-- [ ] 214. 차수 14 검증
+- [x] 214. 차수 14 검증 — 읽기전용 대시보드(개요/풀/프로바이더/요청/트렌드) + 백엔드 API + 보안헤더 라이브 검증·UI 테스트 통과. 196/197(OAuth)·203/204(쓰기 UI)·213(배포)은 외부/후속
 
 ## 차수 15 — 관측성/운영 (215~232)
 

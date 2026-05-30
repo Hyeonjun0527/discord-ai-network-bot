@@ -149,8 +149,20 @@ class DiscordBot(
                     it.hasPermission(Permission.MANAGE_SERVER) || it.hasPermission(Permission.ADMINISTRATOR)
                 } ?: false,
             )
-            val reply = dispatch(event, ctx)
-            event.reply(reply.content).setEphemeral(reply.ephemeral).queue()
+            // 느린 명령(추론 왕복)은 defer 로 "생각 중…" 표시 후 결과 편집(#188, 3초 제한 회피).
+            if (event.name in SLOW_COMMANDS) {
+                event.deferReply(false).queue()
+                val reply = dispatch(event, ctx)
+                event.hook.editOriginal(reply.content).queue()
+            } else {
+                val reply = dispatch(event, ctx)
+                event.reply(reply.content).setEphemeral(reply.ephemeral).queue()
+            }
+        }
+
+        companion object {
+            /** 추론 왕복으로 3초를 넘길 수 있어 defer 가 필요한 명령. */
+            private val SLOW_COMMANDS = setOf("ask")
         }
 
         /** 슬래시 옵션 자동완성(#179): model 옵션에 풀 제공 모델 제안. */

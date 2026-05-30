@@ -28,18 +28,18 @@
 
 ## 차수 2 — WS 연결 & 인증 (13~24)
 
-- [ ] 13. aiohttp WS 클라이언트로 중앙 릴레이에 outbound 연결
-- [ ] 14. 연결 직후 `auth` 프레임 송신
-- [ ] 15. `auth_ok`/`auth_err` 처리
-- [ ] 16. `provider_hello` 송신(models·max_concurrency·remaining_daily)
-- [ ] 17. 수신 루프(프레임 파싱 → dispatch)
-- [ ] 18. `ping` 수신 → `pong` / 자체 heartbeat 감시
-- [ ] 19. 연결 끊김 감지
-- [ ] 20. 지수 백오프 재연결
-- [ ] 21. 인증 실패 시 명확한 종료/안내
-- [ ] 22. 세션 만료/서버 종료 프레임 처리
-- [ ] 23. SIGINT graceful 종료(진행 요청 정리)
-- [ ] 24. 차수 2 검증
+- [x] 13. aiohttp WS 클라이언트로 중앙 릴레이에 outbound 연결
+- [x] 14. 연결 직후 `auth` 프레임 송신
+- [x] 15. `auth_ok`/`auth_err` 처리
+- [x] 16. `provider_hello` 송신(models·max_concurrency·remaining_daily)
+- [x] 17. 수신 루프(프레임 파싱 → dispatch)
+- [x] 18. `ping` 수신 → `pong` / 자체 heartbeat 감시
+- [x] 19. 연결 끊김 감지
+- [x] 20. 지수 백오프 재연결
+- [x] 21. 인증 실패 시 종료(무한 재시도 안 함)
+- [x] 22. 세션 만료/서버 종료 프레임 처리(CLOSE→재연결)
+- [x] 23. graceful 종료 stop() 구현(SIGINT 배선은 차수 3 agent.run)
+- [x] 24. 차수 2 검증(실소켓 테스트 5개)
 
 ## 차수 3 — 추론 처리(localhost Ollama) (25~38)
 

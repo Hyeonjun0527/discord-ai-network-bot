@@ -21,6 +21,8 @@ class GuildEntity(
     @Id var id: Long = 0, // Discord guild_id
     @Column(name = "privacy_mode") var privacyMode: String = "C_ADMIN_ONLY",
     @Column(name = "auto_approve") var autoApprove: Boolean = false,
+    @Column(name = "default_model") var defaultModel: String? = null,
+    @Column(name = "language") var language: String = "ko",
 )
 
 @Entity

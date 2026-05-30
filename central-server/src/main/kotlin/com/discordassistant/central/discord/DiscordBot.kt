@@ -85,6 +85,10 @@ class DiscordBot(
                 .addOption(OptionType.STRING, "level", "LIGHT/STANDARD/HEAVY", true)
                 .addOption(OptionType.INTEGER, "limit", "하루 한도", true)
                 .setDefaultPermissions(adminPerm),
+            Commands.slash("llm-guild-defaults", "길드 기본 모델/언어를 설정합니다(관리자)")
+                .addOption(OptionType.STRING, "model", "기본 모델(비우면 자동 선택)", false)
+                .addOption(OptionType.STRING, "language", "언어 코드(예: ko, en)", false)
+                .setDefaultPermissions(adminPerm),
             Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)").setDefaultPermissions(adminPerm),
             Commands.slash("provider-approve", "프로바이더 등록을 승인합니다(관리자)")
                 .addOption(OptionType.USER, "user", "대상 유저", true)
@@ -152,6 +156,11 @@ class DiscordBot(
                 ctx,
                 event.getOption("model")!!.asString,
                 event.getOption("role")!!.asString,
+            )
+            "llm-guild-defaults" -> commands.setGuildDefaults(
+                ctx,
+                event.getOption("model")?.asString,
+                event.getOption("language")?.asString,
             )
             "llm-allow-channel" -> commands.allowChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
             "llm-deny-channel" -> commands.denyChannel(ctx, event.getOption("channel")!!.asChannel.idLong)

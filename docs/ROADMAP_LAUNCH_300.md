@@ -192,7 +192,7 @@
 - [ ] 143. 멀티모달/이미지 입력(선택, 비전 모델)
 - [x] 144. 일일 사용량 리셋(UTC 자정 윈도우 카운트)
 - [x] 145. 사용자 쿨다운(RateLimiter 분당 제한 — ask)
-- [ ] 146. 길드 기본 모델/언어 설정
+- [x] 146. 길드 기본 모델/언어 설정 — GuildEntity+V2 마이그레이션, PolicyService.setGuildDefaults, /llm-guild-defaults, 테스트 통과
 - [ ] 147. `/llm-settings` 통합 인터랙티브 패널(분산 명령 묶기)
 - [x] 148. AiRequest 영속화(종단 상태 기록, UsageService.recordRequest)
 - [x] 149. 모델 카탈로그(/catalog — 풀 제공 모델·제공자 수 집계)

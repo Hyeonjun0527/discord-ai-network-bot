@@ -72,8 +72,9 @@ class CommandService(
     fun models(ctx: CommandContext): Reply {
         val max = policy.maxAllowedBurden(ctx.guildId, ctx.roleIds)
         val pool = registry.byGuild(ctx.guildId).size
+        val default = policy.guildDefaultModel(ctx.guildId)?.let { "\n서버 기본 모델: `$it`" } ?: ""
         return Reply(
-            "사용 가능한 최대 모델 수준: **$max**\n현재 풀 프로바이더: ${pool}명\n" +
+            "사용 가능한 최대 모델 수준: **$max**\n현재 풀 프로바이더: ${pool}명$default\n" +
                 "수준: ${ModelBurden.entries.filter { it != ModelBurden.RESTRICTED }.joinToString(" < ")}",
         )
     }
@@ -204,6 +205,14 @@ class CommandService(
     }
 
     // ── 관리자 ──────────────────────────────────────────────────────────
+    /** 길드 기본 모델/언어 설정(차수 11 #146). 빈 값은 변경하지 않음. */
+    fun setGuildDefaults(ctx: CommandContext, defaultModel: String?, language: String?): Reply {
+        adminOnly(ctx)?.let { return it }
+        policy.setGuildDefaults(ctx.guildId, defaultModel, language, ctx.userId)
+        val m = policy.guildDefaultModel(ctx.guildId) ?: "(자동 선택)"
+        return Reply("✅ 길드 기본값 — 모델: `$m` · 언어: `${policy.guildLanguage(ctx.guildId)}`")
+    }
+
     fun allowChannel(ctx: CommandContext, channelId: Long): Reply {
         adminOnly(ctx)?.let { return it }
         policy.allowChannel(ctx.guildId, channelId, ctx.userId)

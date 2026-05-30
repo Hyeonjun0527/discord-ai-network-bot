@@ -90,4 +90,21 @@ class PolicyService(
 
     fun isAutoApprove(guildId: Long): Boolean =
         guilds.findById(guildId).map { it.autoApprove }.orElse(false)
+
+    /** 길드 기본 모델/언어 설정(차수 11 #146). null/blank 인 항목은 변경하지 않는다. */
+    fun setGuildDefaults(guildId: Long, defaultModel: String?, language: String?, adminId: Long) {
+        val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
+        defaultModel?.takeIf { it.isNotBlank() }?.let { g.defaultModel = it }
+        language?.takeIf { it.isNotBlank() }?.let { g.language = it }
+        guilds.save(g)
+        audit.record("set_guild_defaults", "admin:$adminId", "guild:$guildId", "model=${g.defaultModel},lang=${g.language}")
+    }
+
+    /** 길드 기본 모델(미설정 시 null → 라우터가 풀에서 자동 선택). */
+    fun guildDefaultModel(guildId: Long): String? =
+        guilds.findById(guildId).map { it.defaultModel }.orElse(null)
+
+    /** 길드 언어(기본 ko). */
+    fun guildLanguage(guildId: Long): String =
+        guilds.findById(guildId).map { it.language }.orElse("ko")
 }

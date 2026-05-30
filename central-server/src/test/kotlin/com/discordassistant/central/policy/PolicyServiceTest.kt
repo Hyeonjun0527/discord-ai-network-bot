@@ -50,4 +50,17 @@ class PolicyServiceTest @Autowired constructor(val policy: PolicyService) {
         policy.setAutoApprove(100, true, adminId = 1)
         assertTrue(policy.isAutoApprove(100))
     }
+
+    @Test
+    fun `길드 기본 모델·언어 설정(빈 값은 보존)`() {
+        assertEquals(null, policy.guildDefaultModel(300))
+        assertEquals("ko", policy.guildLanguage(300)) // 기본
+        policy.setGuildDefaults(300, defaultModel = "llama3", language = "en", adminId = 1)
+        assertEquals("llama3", policy.guildDefaultModel(300))
+        assertEquals("en", policy.guildLanguage(300))
+        // 빈 값으로 호출하면 기존 값 보존
+        policy.setGuildDefaults(300, defaultModel = "", language = null, adminId = 1)
+        assertEquals("llama3", policy.guildDefaultModel(300))
+        assertEquals("en", policy.guildLanguage(300))
+    }
 }

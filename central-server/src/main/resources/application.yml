@@ -26,13 +26,19 @@ management:
   endpoint:
     health:
       show-details: when-authorized
-  # 분산 추적(#219). 기본 샘플링 0(미수집·미전송). 운영에서 OTLP_ENDPOINT + 샘플링으로 활성.
+  health:
+    # Redis 는 분산 rate limit(#242) 옵트인 기능 — 미사용 시 헬스 프로브 비활성(헬스 DOWN 방지).
+    redis:
+      enabled: ${REDIS_HEALTH_ENABLED:false}
+  # 분산 추적(#219). 기본 OFF(OTLP 익스포터 미생성). 운영에서 TRACING_ENABLED=true + OTLP_ENDPOINT 로 활성.
   tracing:
+    enabled: ${TRACING_ENABLED:false}
     sampling:
       probability: ${TRACING_SAMPLE_RATE:0.0}
   otlp:
     tracing:
-      endpoint: ${OTLP_ENDPOINT:}
+      # 활성 시에만 유효한 URL 주입(빈 문자열은 익스포터 인스턴스화 실패 — 기본 표준 포트).
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}
 
 # 중앙 서버 고유 설정 (ADR 0003/0004). 환경변수로 오버라이드.
 central:

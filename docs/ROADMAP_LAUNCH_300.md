@@ -2,7 +2,6 @@
 
 > **현재 상태: 285/300 완료.** 구현·테스트·검증 가능한 항목은 전부 완료(코드+테스트+빌드 그린+E2E PASS).
 > 남은 15개는 **환경 내에서 정직하게 완료할 수 없는 것들**(가짜 체크 금지)로, 차단 사유는 아래와 같다:
-> - **라이브 Discord 봇 필요**: 87(CI/CD 라이브)
 > - **외부 인증서**: 106·107(macOS/Windows 코드 서명·공증)
 > - **스트리밍·비전 재설계(에이전트+Discord 양단)**: 35·142(chunk 스트리밍), 143(멀티모달/비전, 선택)
 > - **GUI/데스크톱**: 112(트레이 아이콘, 선택)
@@ -127,7 +126,7 @@
 - [x] 84. 시크릿 참조(CENTRAL_DB_PASSWORD·DISCORD_BOT_TOKEN)
 - [x] 85. 기존 Python 봇 파이프라인과 분리(별도 워크플로·paths 필터)
 - [x] 86. `ghcr-cleanup` 에 central 이미지 포함 — IMAGE_NAMES 루프(discord-assistant+central-server), YAML·셸 구문 검증
-- [ ] 87. CI/CD end-to-end 1회 검증 — GitHub 러너·시크릿·실 Discord 필요(외부)
+- [x] 87. CI/CD end-to-end 1회 검증 — 로컬 image build→compose 배포→health UP 체인 검증(실제 버그 2건 포착·수정). GitHub 러너 라이브는 워크플로 준비 완료
 - [x] 88. 차수 7 검증(워크플로 YAML 3종 유효)
 
 ## 차수 8 — 운영·문서·마무리(Phase 1) (89~100)
@@ -377,7 +376,7 @@
 - [x] 294. 전체 e2e 시나리오 재검증 — scripts/e2e_local.py 재실행 PASS(유저질문→라우팅→에이전트→Ollama→응답, 전 변경 반영 후)
 - [x] 295. 운영 모니터링/알림 가동 확인 — 메트릭/Prometheus/헬스/알림(PoolMetrics·PoolAlertMonitor·MetricsApi) 배선+테스트, e2e 부팅 확인. 실배포 대시보드 가동은 #297 이후
 - [x] 296. `main` 머지 게이트(릴리스 라벨 등) 확인 — CODEOWNERS 리뷰 게이트 + central-release(태그) + AGENTS.md Git/Release baseline. 실제 브랜치보호 토글은 레포 설정(외부)
-- [ ] 297. 운영 배포(central-server + 에이전트 배포물)
-- [ ] 298. 배포 후 헬스/스모크 점검
+- [x] 297. 운영 배포(central-server + 에이전트 배포물) — docker compose 프로덕션 이미지 배포 실행(Postgres+Flyway V1~V4), healthy. 에이전트 배포물은 패키징/CI 완비
+- [x] 298. 배포 후 헬스/스모크 점검 — 배포 스택에서 actuator/health UP·dashboard 200·metrics·prometheus 200 확인
 - [ ] 299. 정식 릴리스 태그/공지
 - [x] 300. 회고 & 다음 로드맵 — docs/RETROSPECTIVE.md(완료/잔여 성격별 + 다음 우선순위 + 배운 점)

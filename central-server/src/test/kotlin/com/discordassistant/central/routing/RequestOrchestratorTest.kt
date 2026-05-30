@@ -86,6 +86,22 @@ class RequestOrchestratorTest {
     }
 
     @Test
+    fun `쿼터 초과 → REJECTED`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok")
+        val noBlock = object : BlocklistChecker {
+            override fun isBlocked(guildId: Long, userId: Long): Boolean = false
+        }
+        val quota = object : QuotaChecker {
+            override fun exceededQuota(guildId: Long, userId: Long, roleIds: Set<Long>): Boolean = true
+        }
+        val orch = RequestOrchestrator(
+            reg, fakePolicy, RequestWeigher(), ProviderFilterPipeline(), ProviderRouter(), recorder, fakeProfiles, noBlock, quota,
+        )
+        assertEquals(RequestState.REJECTED, orch.handle(input).state)
+    }
+
+    @Test
     fun `실패 → 다른 provider 로 fallback`() {
         val reg = newRegistry()
         register(reg, 1, "err") // 먼저 선택되어 실패

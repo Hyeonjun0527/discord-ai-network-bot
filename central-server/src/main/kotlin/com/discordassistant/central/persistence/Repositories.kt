@@ -1,6 +1,7 @@
 package com.discordassistant.central.persistence
 
 import org.springframework.data.jpa.repository.JpaRepository
+import java.time.Instant
 
 interface GuildRepository : JpaRepository<GuildEntity, Long>
 
@@ -30,6 +31,7 @@ interface AiRequestRepository : JpaRepository<AiRequestEntity, Long> {
 
 interface UsageLogRepository : JpaRepository<UsageLogEntity, Long> {
     fun countByGuildIdAndUserId(guildId: Long, userId: Long): Long
+    fun countByGuildIdAndUserIdAndCreatedAtAfter(guildId: Long, userId: Long, createdAt: Instant): Long
 }
 
 interface ContributionLogRepository : JpaRepository<ContributionLogEntity, Long> {

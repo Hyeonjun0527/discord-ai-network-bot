@@ -34,6 +34,15 @@ internal val ALLOW_ALL_BLOCKLIST = object : BlocklistChecker {
     override fun isBlocked(guildId: Long, userId: Long): Boolean = false
 }
 
+/** 공정 사용 쿼터(차수 11). 오늘 사용량이 일일 상한을 넘었는지. 기본 무제한. */
+interface QuotaChecker {
+    fun exceededQuota(guildId: Long, userId: Long, roleIds: Set<Long>): Boolean
+}
+
+internal val UNLIMITED_QUOTA = object : QuotaChecker {
+    override fun exceededQuota(guildId: Long, userId: Long, roleIds: Set<Long>): Boolean = false
+}
+
 /** 사용량/기여 기록 트리거. JPA 구현(UsageService) 또는 테스트 fake. */
 interface UsageRecorder {
     fun recordSuccess(guildId: Long, userId: Long, providerId: Long, requestId: String)
@@ -84,6 +93,7 @@ class RequestOrchestrator(
     private val recorder: UsageRecorder,
     private val profiles: ProviderProfileProvider,
     private val blocklist: BlocklistChecker = ALLOW_ALL_BLOCKLIST,
+    private val quota: QuotaChecker = UNLIMITED_QUOTA,
 ) {
     private val log = LoggerFactory.getLogger(RequestOrchestrator::class.java)
 
@@ -94,9 +104,12 @@ class RequestOrchestrator(
     }
 
     private fun route(input: AiRequestInput): OrchestrationResult {
-        // 0) 차단 사용자
+        // 0) 차단 사용자 / 일일 쿼터
         if (blocklist.isBlocked(input.guildId, input.userId)) {
             return OrchestrationResult(RequestState.REJECTED, failReason = "차단된 사용자입니다.")
+        }
+        if (quota.exceededQuota(input.guildId, input.userId, input.roleIds)) {
+            return OrchestrationResult(RequestState.REJECTED, failReason = "오늘 사용 한도를 초과했습니다. 내일 다시 시도해 주세요.")
         }
         // 1) 정책 확인(채널)
         if (!policy.isChannelAllowed(input.guildId, input.channelId)) {

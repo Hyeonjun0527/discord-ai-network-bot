@@ -19,6 +19,7 @@ class DashboardController(
     private val registry: ConnectionRegistry,
     private val policy: PolicyService,
     private val requests: AiRequestRepository,
+    private val analytics: AnalyticsService,
 ) {
     /** 서버 개요: 풀 크기·정책 요약·총 요청 수. */
     @GetMapping("/{guildId}/overview")
@@ -30,6 +31,13 @@ class DashboardController(
         "autoApprove" to policy.isAutoApprove(guildId),
         "totalRequests" to requests.countByGuildId(guildId),
     )
+
+    /** 사용량 트렌드(#227): 최근 days 일의 일자별 요청 수. */
+    @GetMapping("/{guildId}/usage-trend")
+    fun usageTrend(
+        @PathVariable guildId: Long,
+        @org.springframework.web.bind.annotation.RequestParam(defaultValue = "7") days: Int,
+    ): List<AnalyticsService.DailyCount> = analytics.usageTrend(guildId, days)
 
     /** 최근 요청 로그(최대 20건). 프롬프트 본문 제외, 상태/제공자/시각만. */
     @GetMapping("/{guildId}/requests")

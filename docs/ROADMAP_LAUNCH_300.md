@@ -285,8 +285,8 @@
 - [x] 224. Postgres 백업/복구 정책(RUNBOOK: pg_dump/psql)
 - [x] 225. 장애 대응 런북(central-server/docs/RUNBOOK.md)
 - [x] 226. 대시보드용 메트릭 API — MetricsApiController(/api/metrics/pool, /pool/{guildId}), 테스트 통과
-- [ ] 227. 사용량 트렌드 분석
-- [ ] 228. 처리 부하(compute) 회계(비금전, 기여 측정)
+- [x] 227. 사용량 트렌드 분석 — AnalyticsService.usageTrend(일자별, UTC자정) + /api/dashboard/{guild}/usage-trend, 테스트 통과
+- [x] 228. 처리 부하(compute) 회계(비금전, 기여 측정) — providerComputeScore(부담 가중 LIGHT1/STD2/HEAVY3/RESTR4), 테스트 통과
 - [ ] 229. SLO/SLA 정의(선택)
 - [x] 230. 운영 점검 자동화(스크립트/스케줄) — central-server/scripts/ops_healthcheck.sh(health+pool, 비0 종료)
 - [x] 231. 알림 채널(Discord/슬랙) 연동 — DiscordWebhookNotifier(@ConditionalOnProperty webhook, @Primary 폴백), 미설정 시 LoggingNotifier

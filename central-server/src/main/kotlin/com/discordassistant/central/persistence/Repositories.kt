@@ -29,11 +29,13 @@ interface AiRequestRepository : JpaRepository<AiRequestEntity, Long> {
     fun findByRequestId(requestId: String): AiRequestEntity?
     fun countByGuildId(guildId: Long): Long
     fun findTop20ByGuildIdOrderByIdDesc(guildId: Long): List<AiRequestEntity>
+    fun findByProviderIdAndState(providerId: Long, state: String): List<AiRequestEntity>
 }
 
 interface UsageLogRepository : JpaRepository<UsageLogEntity, Long> {
     fun countByGuildIdAndUserId(guildId: Long, userId: Long): Long
     fun countByGuildIdAndUserIdAndCreatedAtAfter(guildId: Long, userId: Long, createdAt: Instant): Long
+    fun countByGuildIdAndCreatedAtBetween(guildId: Long, start: Instant, end: Instant): Long
 }
 
 interface ContributionLogRepository : JpaRepository<ContributionLogEntity, Long> {

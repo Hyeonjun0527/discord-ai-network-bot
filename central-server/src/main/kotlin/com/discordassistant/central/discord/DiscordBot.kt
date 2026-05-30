@@ -55,6 +55,7 @@ class DiscordBot(
             Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
             Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),
             Commands.slash("contributions", "커뮤니티 기여 리더보드를 봅니다"),
+            Commands.slash("community-stats", "익명 커뮤니티 기여 통계를 봅니다"),
             Commands.slash("fairness", "공정성 리포트를 봅니다(관리자)").setDefaultPermissions(adminPerm),
             Commands.slash("privacy", "이 서버의 AI 처리/프라이버시 안내"),
             Commands.slash("help", "명령 종합 도움말을 봅니다"),
@@ -127,6 +128,7 @@ class DiscordBot(
             "catalog" -> commands.catalog(ctx)
             "my-usage" -> commands.myUsage(ctx)
             "contributions" -> commands.contributions(ctx)
+            "community-stats" -> commands.communityStats(ctx)
             "fairness" -> commands.fairness(ctx)
             "privacy" -> commands.privacy()
             "help" -> commands.help(ctx)

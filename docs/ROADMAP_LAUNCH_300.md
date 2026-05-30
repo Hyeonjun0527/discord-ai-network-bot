@@ -201,7 +201,7 @@
 - [x] 152. 어뷰즈/스팸 방지 기본(차단 + RateLimiter; 악성 프롬프트 필터 후속)
 - [x] 153. 차단 목록(BlocklistService + /llm-block·/llm-unblock + orchestrator 차단)
 - [x] 154. 프로바이더 평판 데이터(ProviderHealth 실패 누적; 등급 산정 후속)
-- [ ] 155. 멀티 길드 격리/스케일 검증
+- [x] 155. 멀티 길드 격리/스케일 검증 — GuildIsolationTest(길드 풀 무교집합·해제 비간섭). 스케일 부하는 후속
 - [ ] 156. 명령 응답 JDA Embed 고도화(상태 badge·색상)
 - [ ] 157. i18n(한/영) 메시지 리소스
 - [ ] 158. 차수 11 검증
@@ -226,7 +226,7 @@
 - [ ] 174. 길드별 환영/안내 메시지 — 후속
 - [x] 175. 관리자 공정성 리포트(`/fairness` — 기여 비율·실패)
 - [x] 176. 프로바이더 재참여(requestJoin: REMOVED 후 재등록 허용)
-- [ ] 177. 커뮤니티 기여 통계 공개(익명 집계)
+- [x] 177. 커뮤니티 기여 통계 공개(익명 집계) — /community-stats(CommandService.communityStats, 식별정보 없음), 테스트 통과
 - [ ] 178. 차수 12 검증
 
 ## 차수 13 — Discord UX 고도화 (179~194)

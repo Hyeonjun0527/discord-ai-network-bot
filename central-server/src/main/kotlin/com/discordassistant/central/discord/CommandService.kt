@@ -98,6 +98,22 @@ class CommandService(
         return Reply("🏆 커뮤니티 기여 리더보드\n$lines\n\n_기여는 비금전 인정입니다. 고마워요!_", ephemeral = false)
     }
 
+    /** 익명 커뮤니티 기여 통계(차수 12 #177). 개별 식별정보 없이 집계만 공개. */
+    fun communityStats(ctx: CommandContext): Reply {
+        val pool = registry.byGuild(ctx.guildId)
+        val providerCount = pool.size
+        val totalContrib = pool.sumOf { usage.providerContributionCount(it.providerId) }
+        val models = pool.flatMap { it.capability.models }.distinct().size
+        return Reply(
+            "📊 커뮤니티 기여(익명 집계)\n" +
+                "· 활성 프로바이더: ${providerCount}명\n" +
+                "· 제공 모델 종류: ${models}종\n" +
+                "· 누적 처리: ${totalContrib}건\n" +
+                "_개별 식별정보 없이 집계됩니다._",
+            ephemeral = false,
+        )
+    }
+
     fun fairness(ctx: CommandContext): Reply {
         adminOnly(ctx)?.let { return it }
         val pool = registry.byGuild(ctx.guildId)

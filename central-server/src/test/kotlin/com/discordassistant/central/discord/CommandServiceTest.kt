@@ -53,6 +53,14 @@ class CommandServiceTest @Autowired constructor(
     }
 
     @Test
+    fun `community-stats — 익명 집계, 개별 식별정보 없음`() {
+        val r = commands.communityStats(ctx())
+        assertTrue(r.content.contains("익명 집계"))
+        assertTrue(r.content.contains("활성 프로바이더"))
+        assertTrue(!r.ephemeral) // 공개 통계
+    }
+
+    @Test
     fun `provider-join — 수동 승인이면 대기`() {
         val r = commands.providerJoin(ctx())
         assertTrue(r.content.contains("승인을 기다려"))

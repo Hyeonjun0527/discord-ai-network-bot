@@ -107,7 +107,7 @@
 
 - [x] 75. central-server CI(빌드/테스트) 워크플로 작성(러너 실행은 PR 시)
 - [ ] 76. (선택) ktlint/detekt 정적 분석 — 후속
-- [ ] 77. 테스트 리포트/커버리지 수집(선택) — 후속
+- [x] 77. 테스트 리포트/커버리지 수집 — central-server-ci 에 test+jacoco 리포트 업로드(upload-artifact)
 - [x] 78. 이미지 빌드·GHCR push 워크플로(central-server-image.yml)
 - [x] 79. 버전/태그 전략(`central-v*` + sha)
 - [x] 80. CD 배포 워크플로(self-hosted, central-server-deploy.yml)
@@ -116,7 +116,7 @@
 - [x] 83. 롤백 노트(deploy workflow + 이미지 태그 되돌리기)
 - [x] 84. 시크릿 참조(CENTRAL_DB_PASSWORD·DISCORD_BOT_TOKEN)
 - [x] 85. 기존 Python 봇 파이프라인과 분리(별도 워크플로·paths 필터)
-- [ ] 86. `ghcr-cleanup` 에 central 이미지 포함 — 후속(러너 권한 필요)
+- [x] 86. `ghcr-cleanup` 에 central 이미지 포함 — IMAGE_NAMES 루프(discord-assistant+central-server), YAML·셸 구문 검증
 - [ ] 87. CI/CD end-to-end 1회 검증 — GitHub 러너·시크릿·실 Discord 필요(외부)
 - [x] 88. 차수 7 검증(워크플로 YAML 3종 유효)
 
@@ -222,7 +222,7 @@
 - [ ] 170. 요청 대기 시 "대기 중 N번째" 표시
 - [ ] 171. 처리 결과 만족도(리액션) 수집(선택)
 - [x] 172. 커뮤니티 프라이버시/이용 고지(PRIVACY_NOTICE)
-- [ ] 173. 프로바이더 휴식 권장(과다 처리 시 안내) — 후속
+- [x] 173. 프로바이더 휴식 권장(과다 처리 시 안내) — RestHint(LIMITED/한도임박), providerStatus 연동, 테스트 통과
 - [x] 174. 길드별 환영/안내 메시지 — V4 마이그레이션 + PolicyService.setWelcomeMessage + /welcome·/llm-welcome-set, 테스트 통과
 - [x] 175. 관리자 공정성 리포트(`/fairness` — 기여 비율·실패)
 - [x] 176. 프로바이더 재참여(requestJoin: REMOVED 후 재등록 허용)

@@ -26,3 +26,12 @@ jobs:
           java-version: "21"
       - name: Build & test
         run: ./gradlew build --no-daemon --console=plain
+      - name: 테스트·커버리지 리포트 업로드(#77)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-test-reports
+          path: |
+            central-server/build/reports/tests/test
+            central-server/build/reports/jacoco/test
+          if-no-files-found: ignore

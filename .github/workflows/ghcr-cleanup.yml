@@ -31,7 +31,8 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: discord-assistant
+  # Python 봇 + central-server 두 이미지를 함께 정리(#86).
+  IMAGE_NAMES: "discord-assistant central-server"
 
 jobs:
   cleanup:
@@ -52,6 +53,9 @@ jobs:
           esac
           [ "${KEEP}" -ge 1 ] || { echo "::error::KEEP 은 1 이상이어야 합니다: ${KEEP}"; exit 1; }
 
+          # 여러 이미지 패키지를 순회하며 동일 규칙으로 정리(#86).
+          for IMAGE_NAME in ${IMAGE_NAMES}; do
+          echo "===== 이미지: ${IMAGE_NAME} ====="
           # 유저 소유 패키지의 버전 목록 엔드포인트.
           # (org 소유라면 /orgs/{owner}/packages/... 로 바꿔야 한다.)
           base="user/packages/container/${IMAGE_NAME}/versions"
@@ -66,8 +70,8 @@ jobs:
             | sort -t "$(printf '\t')" -k2,2r || true)"
 
           if [ -z "${all}" ]; then
-            echo "조회된 버전이 없습니다. 정리할 대상 없음."
-            exit 0
+            echo "조회된 버전이 없습니다(${IMAGE_NAME}). 다음 이미지로."
+            continue
           fi
 
           # 보존(latest/buildcache 태그) 후보와 정리(sha-* 등) 후보 분리.
@@ -108,4 +112,5 @@ jobs:
             fi
           done
 
-          echo "정리 완료: 후보=${n}개, 보존=${KEEP}개(이하), 삭제=${deleted}개."
+          echo "정리 완료(${IMAGE_NAME}): 후보=${n}개, 보존=${KEEP}개(이하), 삭제=${deleted}개."
+          done

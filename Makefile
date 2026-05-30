@@ -1,0 +1,34 @@
+# 로컬 개발 편의 (LAUNCH 차수 17). `make help` 로 목록 확인.
+JAVA_HOME ?= /Library/Java/JavaVirtualMachines/amazon-corretto-21.jdk/Contents/Home
+PY := .venv/bin
+CENTRAL := central-server/gradlew -p central-server
+
+.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract
+
+help:  ## 사용 가능한 타깃
+	@grep -E '^[a-zA-Z-]+:.*##' Makefile | sed 's/:.*## /\t/'
+
+central-build:  ## central-server 빌드+테스트(JDK 21)
+	JAVA_HOME=$(JAVA_HOME) $(CENTRAL) build --no-daemon --console=plain
+
+central-jar:  ## central-server bootJar(app.jar)
+	JAVA_HOME=$(JAVA_HOME) $(CENTRAL) bootJar --no-daemon --console=plain
+
+agent-test:  ## provider-agent 테스트
+	cd provider-agent && PYTHONPATH=src ../$(PY)/python -m pytest tests/ -q
+
+agent-lint:  ## provider-agent ruff+mypy
+	cd provider-agent && ../$(PY)/ruff check src tests && ../$(PY)/mypy src/provider_agent
+
+contract:  ## 크로스언어 컨트랙트 테스트(양측)
+	cd provider-agent && PYTHONPATH=src ../$(PY)/python -m pytest tests/test_contract.py -q
+	JAVA_HOME=$(JAVA_HOME) $(CENTRAL) test --no-daemon --tests '*WireContractTest*'
+
+e2e:  ## 로컬 E2E 실연동(mock Ollama+서버+에이전트)
+	$(PY)/python scripts/e2e_local.py
+
+compose-up:  ## Docker compose 기동(Postgres+central)
+	cd central-server && docker compose up -d --build
+
+compose-down:  ## Docker compose 정리
+	cd central-server && docker compose down -v

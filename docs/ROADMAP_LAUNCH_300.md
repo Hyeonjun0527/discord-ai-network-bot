@@ -320,15 +320,15 @@
 - [ ] 253. 부하 테스트 스크립트(k6/gatling)
 - [ ] 254. 커버리지 게이트(central/agent)
 - [ ] 255. 정적 분석(ktlint/detekt + ruff/mypy) CI 통합
-- [ ] 256. 로컬 개발 셋업(make/Taskfile: 서버+에이전트+ollama)
+- [x] 256. 로컬 개발 셋업(Makefile: build·test·lint·contract·e2e·compose)
 - [ ] 257. 시드 데이터/픽스처(데모용)
-- [ ] 258. CONTRIBUTING/개발 가이드
+- [x] 258. CONTRIBUTING(central-server/CONTRIBUTING.md — 개발/검증/프로토콜 동기화)
 - [x] 259. 계약 동기화 가드(공유 픽스처 — 한쪽 변경 시 양측 테스트 실패)
 - [ ] 260. 테스트 데이터 정리/격리(공유 DB 오염 방지 표준)
 - [ ] 261. 통합 테스트 환경(Testcontainers Postgres)
 - [ ] 262. 회귀 스위트 정리/태깅
 - [ ] 263. 플래키 테스트 점검
-- [ ] 264. PR 템플릿/체크리스트
+- [x] 264. PR 템플릿(.github/pull_request_template.md — 기존)
 - [ ] 265. 코드 리뷰 게이트(/code-review)
 - [ ] 266. 문서 빌드/링크 검증
 - [ ] 267. 버전/릴리스 자동화(SemVer)

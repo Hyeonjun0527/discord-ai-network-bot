@@ -287,7 +287,7 @@
 - [x] 226. 대시보드용 메트릭 API — MetricsApiController(/api/metrics/pool, /pool/{guildId}), 테스트 통과
 - [x] 227. 사용량 트렌드 분석 — AnalyticsService.usageTrend(일자별, UTC자정) + /api/dashboard/{guild}/usage-trend, 테스트 통과
 - [x] 228. 처리 부하(compute) 회계(비금전, 기여 측정) — providerComputeScore(부담 가중 LIGHT1/STD2/HEAVY3/RESTR4), 테스트 통과
-- [ ] 229. SLO/SLA 정의(선택)
+- [x] 229. SLO/SLA 정의(선택) — central-server/docs/SLO.md(비영리 SLO만, 에러버짓·비목표 명시)
 - [x] 230. 운영 점검 자동화(스크립트/스케줄) — central-server/scripts/ops_healthcheck.sh(health+pool, 비0 종료)
 - [x] 231. 알림 채널(Discord/슬랙) 연동 — DiscordWebhookNotifier(@ConditionalOnProperty webhook, @Primary 폴백), 미설정 시 LoggingNotifier
 - [ ] 232. 차수 15 검증
@@ -329,7 +329,7 @@
 - [x] 262. 회귀 스위트 정리/태깅 — TESTING.md(통합 어노테이션 식별 + @Tag 도입 경로)
 - [x] 263. 플래키 테스트 점검 — TESTING.md(비결정성 배제 규약: 시간/랜덤/동시성/aiosqlite close/공유픽스처)
 - [x] 264. PR 템플릿(.github/pull_request_template.md — 기존)
-- [ ] 265. 코드 리뷰 게이트(/code-review)
+- [x] 265. 코드 리뷰 게이트(/code-review) — .github/CODEOWNERS(경로별 소유자, 브랜치보호 연계)
 - [x] 266. 문서 빌드/링크 검증 — scripts/check_links.py(상대링크 55문서 검사, 깨진 7건 수정)
 - [x] 267. 버전/릴리스 자동화(SemVer) — central-release.yml(central-v* 태그→CHANGELOG[Unreleased] 노트→GitHub Release)
 - [ ] 268. 차수 17 검증

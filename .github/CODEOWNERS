@@ -1,0 +1,16 @@
+# 코드 리뷰 게이트(차수 17 #265). PR 시 해당 경로 변경에 코드오너 리뷰를 요구한다.
+# (브랜치 보호 규칙에서 "Require review from Code Owners" 활성화 시 강제됨.)
+
+# 기본 소유자
+*                                   @Hyeonjun0527
+
+# 중앙 서버(Kotlin)
+/central-server/                    @Hyeonjun0527
+
+# 프로바이더 에이전트(Python)
+/provider-agent/                    @Hyeonjun0527
+
+# 공용 규칙/SSOT — 변경 시 특히 주의
+/AGENTS.md                          @Hyeonjun0527
+/CLAUDE.md                          @Hyeonjun0527
+/.github/workflows/                 @Hyeonjun0527

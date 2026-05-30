@@ -28,6 +28,18 @@ interface ProviderProfileProvider {
 /** 사용량/기여 기록 트리거. JPA 구현(UsageService) 또는 테스트 fake. */
 interface UsageRecorder {
     fun recordSuccess(guildId: Long, userId: Long, providerId: Long, requestId: String)
+
+    /** AiRequest 종단 상태 영속화(차수 11). 기본 no-op(테스트 fake 영향 없음). */
+    fun recordRequest(
+        input: AiRequestInput,
+        state: RequestState,
+        providerId: Long?,
+        failReason: String?,
+    ) {
+    }
+
+    /** 프로바이더 실패 기록(차수 11, ProviderHealth). 기본 no-op. */
+    fun recordProviderFailure(providerId: Long) {}
 }
 
 /** 요청 입력. */
@@ -66,6 +78,12 @@ class RequestOrchestrator(
     private val log = LoggerFactory.getLogger(RequestOrchestrator::class.java)
 
     fun handle(input: AiRequestInput): OrchestrationResult {
+        val result = route(input)
+        recorder.recordRequest(input, result.state, result.providerId, result.failReason)
+        return result
+    }
+
+    private fun route(input: AiRequestInput): OrchestrationResult {
         // 1) 정책 확인(채널)
         if (!policy.isChannelAllowed(input.guildId, input.channelId)) {
             return OrchestrationResult(RequestState.REJECTED, failReason = "이 채널에서는 LLM 을 사용할 수 없습니다.")
@@ -125,6 +143,7 @@ class RequestOrchestrator(
             } catch (e: Exception) {
                 lastReason = e.cause?.message ?: e.message ?: "처리 실패"
                 excluded.add(sel.providerId) // 실패 provider 일시 제외
+                recorder.recordProviderFailure(sel.providerId)
                 log.debug("provider {} 실패: {}", sel.providerId, lastReason)
             }
         }

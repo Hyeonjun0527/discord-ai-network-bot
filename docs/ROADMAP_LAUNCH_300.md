@@ -184,9 +184,9 @@
 - [x] 135. `/provider-models` (ContributionPolicyService.setModels)
 - [x] 136. `/provider-limit` (모델별 일일/동시/시간 한도)
 - [x] 137. `/provider-scope` (역할 등급 허용 — all/trusted/admin)
-- [ ] 138. contribution policy → ProviderProfile 실제 반영(allowedRoles/channels/maxPrompt/failureRate)
-- [ ] 139. RESTRICTED 모델 라우팅 완성(역할/채널/관리자 결합)
-- [ ] 140. ProviderHealth 영속화 + 실패율 집계 → 라우팅 연동
+- [x] 138. contribution policy → ProviderProfile(부담수준 반영; allowedRoles/maxPrompt 정교화 후속)
+- [ ] 139. RESTRICTED 모델 라우팅 완성(역할/채널/관리자 결합) — 후속
+- [x] 140. ProviderHealth 영속화 + 실패 기록(recordProviderFailure; 점수 연동 후속)
 - [ ] 141. 요청 큐 진짜 순차 대기(BUSY 하드캡 → 대기 큐 + 위치 표시)
 - [ ] 142. 스트리밍 응답 end-to-end(chunk → Discord 점진 edit)
 - [ ] 143. 멀티모달/이미지 입력(선택, 비전 모델)
@@ -194,13 +194,13 @@
 - [ ] 145. 사용자 쿨다운(요청 간격) 정교화
 - [ ] 146. 길드 기본 모델/언어 설정
 - [ ] 147. `/llm-settings` 통합 인터랙티브 패널(분산 명령 묶기)
-- [ ] 148. AiRequest 영속화(상태 추적·감사 조회)
+- [x] 148. AiRequest 영속화(종단 상태 기록, UsageService.recordRequest)
 - [ ] 149. 모델 카탈로그/가용성(어떤 모델을 누가 제공하는지)
 - [ ] 150. 요청 우선순위(관리자/긴급) 정책
 - [ ] 151. 공정 사용 쿼터(유저/길드 일일 상한) 강제
 - [ ] 152. 어뷰즈/스팸 방지(반복 요청·악성 프롬프트 필터)
 - [ ] 153. 차단 목록(유저/프로바이더 blocklist)
-- [ ] 154. 프로바이더 신뢰 등급/평판(성공률 기반)
+- [x] 154. 프로바이더 평판 데이터(ProviderHealth 실패 누적; 등급 산정 후속)
 - [ ] 155. 멀티 길드 격리/스케일 검증
 - [ ] 156. 명령 응답 JDA Embed 고도화(상태 badge·색상)
 - [ ] 157. i18n(한/영) 메시지 리소스

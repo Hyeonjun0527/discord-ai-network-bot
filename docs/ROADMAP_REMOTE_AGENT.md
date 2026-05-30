@@ -112,41 +112,41 @@
 
 ## 차수 4 — WS 릴레이 서버 (86~120)
 
-- [ ] 86. `remote/relay.py` 생성(aiohttp web)
-- [ ] 87. aiohttp 미설치 가드(health.py 패턴 재사용)
-- [ ] 88. `RelayServer` 클래스 골격(start/stop)
-- [ ] 89. WebSocket 라우트 핸들러 등록(`relay_path`)
-- [ ] 90. 업그레이드/핸드셰이크 처리
-- [ ] 91. 연결 직후 첫 프레임=auth 강제(타임아웃)
-- [ ] 92. auth 토큰 검증 → owner 결정
-- [ ] 93. 인증 성공 시 레지스트리 등록 + `AuthOkFrame` 송신
-- [ ] 94. 인증 실패 시 `AuthErrFrame` 후 종료
-- [ ] 95. `RelayConnection`(AgentConnection 구현, ws 래핑)
-- [ ] 96. 수신 루프(프레임 파싱 → dispatch)
-- [ ] 97. `result`/`error` 프레임 → 대기 future resolve
-- [ ] 98. `chunk` 프레임 → 스트림 큐 push
-- [ ] 99. request_id ↔ future 레지스트리(per-connection)
-- [ ] 100. 송신 메서드(`send_infer`) + 동시성 슬롯 획득
-- [ ] 101. 요청 타임아웃 → future 취소 + `cancel` 프레임 송신
-- [ ] 102. heartbeat 송신 태스크(주기 ping)
-- [ ] 103. pong 수신 시 last_seen 갱신
-- [ ] 104. heartbeat 만료 → 연결 종료
-- [ ] 105. 연결 종료 시 레지스트리 해제 + 대기 future 실패 처리
-- [ ] 106. 동시 처리 제한(세마포어, per-host)
-- [ ] 107. 초과 요청 큐잉 + `BUSY`/대기 처리
-- [ ] 108. 큐 길이 상한 + 초과 시 거절
-- [ ] 109. 최대 프레임 크기 적용(수신)
-- [ ] 110. 잘못된 프레임 수신 시 방어(연결 유지/종료 정책)
-- [ ] 111. graceful shutdown(모든 연결 close)
-- [ ] 112. 봇 부팅 시 RelayServer 기동 통합(`relay_enabled`)
-- [ ] 113. 봇 종료 시 RelayServer 정리
-- [ ] 114. relay 로깅(연결/해제/오류, 토큰 미노출)
-- [ ] 115. relay 메트릭(활성 연결, 처리/대기 수)
-- [ ] 116. TLS/`wss` 종단 위치 문서화(리버스 프록시 전제)
-- [ ] 117. CORS/origin 검증 필요성 검토
-- [ ] 118. 동일 owner 중복 연결 처리(이전 연결 축출)
-- [ ] 119. relay 모듈 ruff/mypy 통과
-- [ ] 120. 차수 4 자체 점검
+- [x] 86. `remote/relay.py` 생성(aiohttp web)
+- [x] 87. aiohttp 미설치 가드(health.py 패턴 재사용)
+- [x] 88. `RelayServer` 클래스 골격(start/stop)
+- [x] 89. WebSocket 라우트 핸들러 등록(`relay_path`)
+- [x] 90. 업그레이드/핸드셰이크 처리
+- [x] 91. 연결 직후 첫 프레임=auth 강제(타임아웃)
+- [x] 92. auth 토큰 검증 → owner 결정
+- [x] 93. 인증 성공 시 레지스트리 등록 + `AuthOkFrame` 송신
+- [x] 94. 인증 실패 시 `AuthErrFrame` 후 종료
+- [x] 95. `RelayConnection`(AgentConnection 구현, ws 래핑)
+- [x] 96. 수신 루프(프레임 파싱 → dispatch)
+- [x] 97. `result`/`error` 프레임 → 대기 future resolve
+- [x] 98. `chunk` 프레임 → 스트림 큐 push
+- [x] 99. request_id ↔ future 레지스트리(per-connection)
+- [x] 100. 송신 메서드(`send_infer`) + 동시성 슬롯 획득
+- [x] 101. 요청 타임아웃 → future 취소 + `cancel` 프레임 송신
+- [x] 102. heartbeat 송신 태스크(주기 ping)
+- [x] 103. pong 수신 시 last_seen 갱신
+- [x] 104. heartbeat 만료 → 연결 종료
+- [x] 105. 연결 종료 시 레지스트리 해제 + 대기 future 실패 처리
+- [x] 106. 동시 처리 제한(세마포어, per-host)
+- [x] 107. 초과 요청 큐잉 + `BUSY`/대기 처리
+- [x] 108. 큐 길이 상한 + 초과 시 거절
+- [x] 109. 최대 프레임 크기 적용(수신)
+- [x] 110. 잘못된 프레임 수신 시 방어(연결 유지/종료 정책)
+- [x] 111. graceful shutdown(모든 연결 close)
+- [x] 112. 봇 부팅 시 RelayServer 기동 통합(`relay_enabled`) — `maybe_start_relay` 게이트 구현, bot.main() 호출은 차수 8(항목 222)에서 배선
+- [x] 113. 봇 종료 시 RelayServer 정리 — `RelayServer.stop()` 구현, bot 종료 훅 배선은 차수 8
+- [x] 114. relay 로깅(연결/해제/오류, 토큰 미노출)
+- [x] 115. relay 메트릭(활성 연결, 처리/대기 수)
+- [x] 116. TLS/`wss` 종단 위치 문서화(리버스 프록시 전제)
+- [x] 117. CORS/origin 검증 필요성 검토
+- [x] 118. 동일 owner 중복 연결 처리(이전 연결 축출)
+- [x] 119. relay 모듈 ruff/mypy 통과
+- [x] 120. 차수 4 자체 점검
 
 ## 차수 5 — RemoteAgentClient (121~150)
 

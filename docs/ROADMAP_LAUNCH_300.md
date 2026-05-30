@@ -13,18 +13,18 @@
 
 ## 차수 1 — Provider Agent 스캐폴딩 & 프로토콜 (1~12)
 
-- [ ] 1. 에이전트 코드 위치 결정(`provider-agent/` 신규 vs `src/discord_assistant/agent/`)
-- [ ] 2. 패키지/의존성 설정(aiohttp 또는 websockets, ollama 호출용 httpx/urllib)
-- [ ] 3. `discord-assistant-agent` 콘솔 스크립트 등록(pyproject)
-- [ ] 4. WS 프로토콜(api.md §8) Python 구현 — 프레임 dataclass 12종
-- [ ] 5. 프레임 직렬화/역직렬화(JSON, 한국어 보존, ensure_ascii=False)
-- [ ] 6. 알 수 없는 타입/필수 누락 → ProtocolError
-- [ ] 7. 옵션 화이트리스트·프롬프트 길이·프레임 크기 상한(중앙과 동일 계약)
-- [ ] 8. 에이전트 설정 모델(relay_url·token·ollama_url·model·max_concurrency·daily_limit)
-- [ ] 9. CLI argparse(`--token --relay-url --ollama-url --model ...`) + env fallback
-- [ ] 10. 로깅(토큰 마스킹·프롬프트 내용 미기록)
-- [ ] 11. 에이전트 버전/플랫폼 보고값
-- [ ] 12. 차수 1 검증(import·ruff·mypy)
+- [x] 1. 에이전트 코드 위치 결정(`provider-agent/` 신규 — 경량 독립 패키지)
+- [x] 2. 패키지/의존성 설정(aiohttp, 봇 의존성 없음)
+- [x] 3. `discord-ai-provider-agent` 콘솔 스크립트 등록(pyproject)
+- [x] 4. WS 프로토콜(api.md §8) Python 구현 — 프레임 dataclass 12종(camelCase 와이어)
+- [x] 5. 프레임 직렬화/역직렬화(JSON, 한국어 보존, ensure_ascii=False)
+- [x] 6. 알 수 없는 타입/필수 누락 → ProtocolError
+- [x] 7. 옵션 화이트리스트·프롬프트 길이·프레임 크기 상한(중앙과 동일 계약)
+- [x] 8. 에이전트 설정 모델(relay_url·token·ollama_url·model·max_concurrency·daily_limit)
+- [x] 9. CLI argparse(`--token --relay-url --ollama-url --model ...`) + env fallback
+- [x] 10. 로깅(토큰 마스킹·프롬프트 내용 미기록)
+- [x] 11. 에이전트 버전/플랫폼 보고값
+- [x] 12. 차수 1 검증(import·ruff·mypy·pytest 13개)
 
 ## 차수 2 — WS 연결 & 인증 (13~24)
 

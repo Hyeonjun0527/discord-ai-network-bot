@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "discord-ai-provider-agent"
+version = "0.1.0"
+description = "커뮤니티 Provider Agent — 내 PC의 로컬 Ollama 를 중앙 서버에 연결한다."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+# 경량 배포: aiohttp 만 필수(discord.py 등 봇 의존성 없음).
+dependencies = [
+  "aiohttp>=3.9,<4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.23,<1.0",
+  "ruff>=0.4",
+  "mypy>=1.10",
+]
+# 자원 모니터(배터리/CPU) — 선택. 없으면 자동 보호만 비활성.
+monitor = [
+  "psutil>=5.9,<7.0",
+]
+
+[project.scripts]
+discord-ai-provider-agent = "provider_agent.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"

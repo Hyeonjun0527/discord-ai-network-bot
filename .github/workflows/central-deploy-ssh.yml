@@ -28,7 +28,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/central-server
+  # GHCR 저장소명은 소문자만 허용(owner=Hyeonjun0527 → 소문자 고정).
+  IMAGE: ghcr.io/hyeonjun0527/central-server
   REMOTE_DIR: deploy/central-server
 
 jobs:

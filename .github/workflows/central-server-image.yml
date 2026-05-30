@@ -35,5 +35,5 @@ jobs:
           context: central-server
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/central-server:latest
-            ghcr.io/${{ github.repository_owner }}/central-server:${{ github.sha }}
+            ghcr.io/hyeonjun0527/central-server:latest
+            ghcr.io/hyeonjun0527/central-server:${{ github.sha }}

@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component
 @Component
 class DiscordBot(
     private val commands: CommandService,
+    private val metrics: CommandMetrics,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
 ) {
@@ -34,7 +35,7 @@ class DiscordBot(
             log.info("Discord 비활성(enabled={}, token={}) — JDA 미기동", enabled, token.isNotBlank())
             return
         }
-        val instance = JDABuilder.createLight(token).addEventListeners(Listener(commands)).build()
+        val instance = JDABuilder.createLight(token).addEventListeners(Listener(commands, metrics)).build()
         registerCommands(instance)
         jda = instance
         log.info("Discord(JDA) 기동 완료")
@@ -106,8 +107,12 @@ class DiscordBot(
     }
 
     /** JDA 이벤트 → CommandContext → CommandService → 응답. */
-    class Listener(private val commands: CommandService) : ListenerAdapter() {
+    class Listener(
+        private val commands: CommandService,
+        private val metrics: CommandMetrics,
+    ) : ListenerAdapter() {
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
+            metrics.record(event.name) // 명령 사용 통계(#190)
             val guild = event.guild ?: run {
                 event.reply("서버에서만 사용할 수 있습니다.").setEphemeral(true).queue()
                 return

@@ -49,7 +49,7 @@ class CommandService(
     }
 
     private fun adminOnly(ctx: CommandContext): Reply? =
-        if (!ctx.isAdmin) Reply("⛔ 이 명령은 관리자만 사용할 수 있습니다.") else null
+        if (!ctx.isAdmin) Replies.adminDenied() else null
 
     // ── 일반 유저 ───────────────────────────────────────────────────────
     fun ask(ctx: CommandContext, prompt: String): Reply {

@@ -3,6 +3,7 @@ package com.discordassistant.central.discord
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.policy.PolicyService
+import com.discordassistant.central.provider.ContributionPolicyService
 import com.discordassistant.central.provider.ProviderProtectionService
 import com.discordassistant.central.provider.ProviderRegistrationService
 import com.discordassistant.central.relay.ConnectionRegistry
@@ -37,6 +38,7 @@ class CommandService(
     private val registry: ConnectionRegistry,
     private val privacy: PrivacyService,
     private val rateLimiter: RateLimiter,
+    private val contributionPolicy: ContributionPolicyService,
 ) {
     companion object {
         const val PRIVACY_NOTICE =
@@ -109,6 +111,21 @@ class CommandService(
     fun providerStatus(ctx: CommandContext): Reply {
         val s = registry.byProvider(ctx.userId) ?: return Reply("연결 상태: 오프라인")
         return Reply("상태: ${s.state} · 처리중 ${s.activeRequests} · 일일잔여 ${s.remainingDailyRequests} · 실패 ${s.failures}")
+    }
+
+    fun providerModels(ctx: CommandContext, models: List<String>): Reply {
+        contributionPolicy.setModels(ctx.userId, models, ModelBurden.STANDARD)
+        return Reply("✅ 제공 모델 설정: ${models.joinToString(", ")}")
+    }
+
+    fun providerLimit(ctx: CommandContext, model: String, daily: Int, concurrency: Int, seconds: Int): Reply {
+        contributionPolicy.setLimit(ctx.userId, model, daily, concurrency, seconds)
+        return Reply("✅ `$model` 한도: 하루 $daily · 동시 $concurrency · 최대 ${seconds}초")
+    }
+
+    fun providerScope(ctx: CommandContext, model: String, role: String): Reply {
+        contributionPolicy.setScope(ctx.userId, model, role)
+        return Reply("✅ `$model` 허용 범위: $role")
     }
 
     // ── 관리자 ──────────────────────────────────────────────────────────

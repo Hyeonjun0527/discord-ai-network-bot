@@ -56,6 +56,16 @@ class DiscordBot(
             Commands.slash("provider-resume", "요청 수신을 재개합니다"),
             Commands.slash("provider-leave", "풀에서 나갑니다"),
             Commands.slash("provider-status", "내 프로바이더 상태를 확인합니다"),
+            Commands.slash("provider-models", "내가 제공하는 모델을 설정합니다")
+                .addOption(OptionType.STRING, "models", "모델명(쉼표로 구분)", true),
+            Commands.slash("provider-limit", "모델별 한도를 설정합니다")
+                .addOption(OptionType.STRING, "model", "대상 모델", true)
+                .addOption(OptionType.INTEGER, "daily", "하루 한도(0=무제한)", true)
+                .addOption(OptionType.INTEGER, "concurrency", "동시 처리 수", true)
+                .addOption(OptionType.INTEGER, "seconds", "요청당 최대 초", true),
+            Commands.slash("provider-scope", "모델 허용 범위를 설정합니다")
+                .addOption(OptionType.STRING, "model", "대상 모델", true)
+                .addOption(OptionType.STRING, "role", "all / trusted / admin", true),
             Commands.slash("llm-allow-channel", "LLM 사용 채널을 허용합니다(관리자)")
                 .addOption(OptionType.CHANNEL, "channel", "허용 채널", true),
             Commands.slash("llm-deny-channel", "LLM 사용 채널을 금지합니다(관리자)")
@@ -103,6 +113,22 @@ class DiscordBot(
             "provider-resume" -> commands.providerResume(ctx)
             "provider-leave" -> commands.providerLeave(ctx)
             "provider-status" -> commands.providerStatus(ctx)
+            "provider-models" -> commands.providerModels(
+                ctx,
+                event.getOption("models")!!.asString.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+            )
+            "provider-limit" -> commands.providerLimit(
+                ctx,
+                event.getOption("model")!!.asString,
+                event.getOption("daily")!!.asInt,
+                event.getOption("concurrency")!!.asInt,
+                event.getOption("seconds")!!.asInt,
+            )
+            "provider-scope" -> commands.providerScope(
+                ctx,
+                event.getOption("model")!!.asString,
+                event.getOption("role")!!.asString,
+            )
             "llm-allow-channel" -> commands.allowChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
             "llm-deny-channel" -> commands.denyChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
             "llm-role-policy" -> commands.setRolePolicy(

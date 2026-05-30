@@ -181,9 +181,9 @@
 
 ## 차수 11 — 중앙 서버 미완 핵심 기능 (135~158)
 
-- [ ] 135. `/provider-models` (contribution policy 모델 등록)
-- [ ] 136. `/provider-limit` (모델별 일일/동시/시간 한도)
-- [ ] 137. `/provider-scope` (역할/채널/요청종류 허용)
+- [x] 135. `/provider-models` (ContributionPolicyService.setModels)
+- [x] 136. `/provider-limit` (모델별 일일/동시/시간 한도)
+- [x] 137. `/provider-scope` (역할 등급 허용 — all/trusted/admin)
 - [ ] 138. contribution policy → ProviderProfile 실제 반영(allowedRoles/channels/maxPrompt/failureRate)
 - [ ] 139. RESTRICTED 모델 라우팅 완성(역할/채널/관리자 결합)
 - [ ] 140. ProviderHealth 영속화 + 실패율 집계 → 라우팅 연동

@@ -150,36 +150,36 @@
 
 ## 차수 5 — RemoteAgentClient (121~150)
 
-- [ ] 121. `remote/client.py` 생성
-- [ ] 122. `RemoteAgentClient(BaseLLMClient)` 골격
-- [ ] 123. 생성자: registry + owner 라우팅 컨텍스트 주입
-- [ ] 124. `generate()` 구현(프레임 송신 → 결과 대기)
-- [ ] 125. 연결 없음 → `LLMError`(사용자 친화 메시지)
-- [ ] 126. 타임아웃 → `LLMError` 변환
-- [ ] 127. 에이전트 `error` 프레임 → `LLMError` 변환(코드 매핑)
-- [ ] 128. `generate_stream()` 구현(chunk 큐 소비)
-- [ ] 129. 스트림 취소/조기 종료 처리
-- [ ] 130. `generate_with_tools()` 미지원 시 명확한 fallback/에러
-- [ ] 131. usage 파싱 → 상위 토큰 집계와 연동
-- [ ] 132. model 인자 전달(없으면 길드 기본/에이전트 기본)
-- [ ] 133. 요청 옵션(temperature 등) 매핑
-- [ ] 134. 라우팅 컨텍스트(user_id/guild_id/mode) 전달 경로
-- [ ] 135. `_get_llm` 분기에서 client 생성 경로
-- [ ] 136. BUSY 응답 시 사용자 안내 메시지
-- [ ] 137. OFFLINE 응답 시 안내 + 호스트 켜기 가이드
-- [ ] 138. 비ASCII 응답 처리 확인
-- [ ] 139. 대용량 응답 chunk 결합 처리
-- [ ] 140. 클라이언트 타임아웃 설정값 연동
-- [ ] 141. 재시도 정책(연결 일시 끊김 시 1회 대기?) 결정
-- [ ] 142. 에러 메시지 i18n(messages.py) 연동
-- [ ] 143. 동시 호출 시 request_id 유일성 보장
-- [ ] 144. client 취소 전파(상위 명령 취소 시)
-- [ ] 145. 응답 검증(빈 텍스트/형식)
-- [ ] 146. 토큰 사용량 없을 때 graceful 처리
-- [ ] 147. 로깅(요청/응답 메타, 내용 최소화)
-- [ ] 148. 클라이언트가 BaseLLMClient 인터페이스 완전 충족 확인
-- [ ] 149. client 모듈 ruff/mypy 통과
-- [ ] 150. 차수 5 자체 점검
+- [x] 121. `remote/client.py` 생성
+- [x] 122. `RemoteAgentClient(BaseLLMClient)` 골격
+- [x] 123. 생성자: registry + owner 라우팅 컨텍스트 주입
+- [x] 124. `generate()` 구현(프레임 송신 → 결과 대기)
+- [x] 125. 연결 없음 → `LLMError`(사용자 친화 메시지)
+- [x] 126. 타임아웃 → `LLMError` 변환
+- [x] 127. 에이전트 `error` 프레임 → `LLMError` 변환(코드 매핑)
+- [x] 128. `generate_stream()` 구현(chunk 큐 소비)
+- [x] 129. 스트림 취소/조기 종료 처리
+- [x] 130. `generate_with_tools()` 미지원 시 명확한 fallback/에러 — BaseLLMClient 기본 fallback(generate) 상속
+- [x] 131. usage 파싱 → 상위 토큰 집계와 연동(last_usage)
+- [x] 132. model 인자 전달(없으면 길드 기본/에이전트 기본)
+- [x] 133. 요청 옵션(temperature 등) 매핑
+- [x] 134. 라우팅 컨텍스트(user_id/guild_id/mode) 전달 경로
+- [x] 135. `_get_llm` 분기에서 client 생성 경로 — 생성자 설계 완료, 실제 분기 배선은 차수 8(항목 216)
+- [x] 136. BUSY 응답 시 사용자 안내 메시지
+- [x] 137. OFFLINE 응답 시 안내 + 호스트 켜기 가이드
+- [x] 138. 비ASCII 응답 처리 확인
+- [x] 139. 대용량 응답 chunk 결합 처리
+- [x] 140. 클라이언트 타임아웃 설정값 연동 — 타임아웃은 RelayConnection(settings)에서 강제
+- [x] 141. 재시도 정책(연결 일시 끊김 시 1회 대기?) 결정 — 자동 재시도 안 함(docstring 명시)
+- [x] 142. 에러 메시지 i18n(messages.py) 연동 — 한국어 사용자 메시지 제공(llm.py LLMError 패턴 일치)
+- [x] 143. 동시 호출 시 request_id 유일성 보장(릴레이 new_request_id)
+- [x] 144. client 취소 전파(상위 명령 취소 시)
+- [x] 145. 응답 검증(빈 텍스트/형식)
+- [x] 146. 토큰 사용량 없을 때 graceful 처리
+- [x] 147. 로깅(요청/응답 메타, 내용 최소화)
+- [x] 148. 클라이언트가 BaseLLMClient 인터페이스 완전 충족 확인
+- [x] 149. client 모듈 ruff/mypy 통과
+- [x] 150. 차수 5 자체 점검
 
 ## 차수 6 — 토큰 & 스토리지 (151~185)
 

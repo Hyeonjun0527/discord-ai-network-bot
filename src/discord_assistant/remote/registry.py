@@ -16,12 +16,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from typing import Any, Callable, Literal, Protocol, runtime_checkable
 
 from ..models import RoutingMode
-from .protocol import Frame
+from .protocol import Frame, InferResult
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,26 @@ class AgentConnection(Protocol):
     async def send(self, frame: Frame) -> None: ...
 
     async def close(self, reason: str = "") -> None: ...
+
+    async def send_infer(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> InferResult:
+        """추론 요청을 보내고 결과를 기다린다(릴레이 RelayConnection 이 구현)."""
+        ...
+
+    def send_infer_stream(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> AsyncIterator[str]:
+        """스트리밍 추론(chunk delta 를 yield)."""
+        ...
 
 
 class ConnectionRegistry:

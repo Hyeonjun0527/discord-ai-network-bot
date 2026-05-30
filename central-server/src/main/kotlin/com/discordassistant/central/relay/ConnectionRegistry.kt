@@ -60,6 +60,9 @@ class ConnectionRegistry {
 
     fun activeCount(): Int = byProvider.size
 
+    /** 전체 활성 세션 스냅샷(메트릭 API 용). */
+    fun snapshotSessions(): List<ProviderSession> = byProvider.values.toList()
+
     fun snapshot(): Map<String, Any> = mapOf(
         "providers" to byProvider.keys.sorted(),
         "guildPools" to byGuild.mapValues { it.value.map { s -> s.providerId }.sorted() },

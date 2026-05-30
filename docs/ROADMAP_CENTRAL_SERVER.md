@@ -99,12 +99,12 @@
 
 ## K-차수 8 — 요청 무게 판단 & 필요 수준
 
-- [ ] 8-1. 요청 메타 추출(길이·첨부·명령)
-- [ ] 8-2. 무게 휴리스틱→RequestWeight
-- [ ] 8-3. RequestWeight→필요 ModelBurden 매핑
-- [ ] 8-4. 권한 상한 충돌 시 다운그레이드/거절
-- [ ] 8-5. 순수 함수 단위 테스트
-- [ ] 8-6. `gradlew build` + 커밋
+- [x] 8-1. 요청 메타 추출(RequestMeta: 길이·첨부·명령)
+- [x] 8-2. 무게 휴리스틱→RequestWeight
+- [x] 8-3. RequestWeight→필요 ModelBurden 매핑
+- [x] 8-4. 권한 상한 충돌 시 다운그레이드(1단계)/거절(2단계+)
+- [x] 8-5. 순수 함수 단위 테스트
+- [x] 8-6. `gradlew build` + 커밋
 
 ## K-차수 9 — Provider Pool 필터 파이프라인 (10단계)
 

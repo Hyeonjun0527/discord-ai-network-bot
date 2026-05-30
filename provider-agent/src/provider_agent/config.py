@@ -25,6 +25,7 @@ class AgentConfig:
     reconnect_max_seconds: float = 30.0
     log_file: str = ""  # 비면 콘솔만
     self_test: bool = False  # 연결 없이 Ollama 자가 점검
+    telemetry: bool = False  # 익명 텔레메트리 opt-in(기본 꺼짐, 차수 10 #130)
     agent_version: str = AGENT_VERSION
     platform: str = field(default_factory=lambda: _platform.platform())
 
@@ -56,34 +57,45 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--heartbeat", type=float, dest="heartbeat_seconds", help="heartbeat 주기 초 (기본 30)")
     p.add_argument("--log-file", help="로그를 파일에도 기록(회전)")
     p.add_argument("--self-test", action="store_true", help="연결 없이 Ollama 자가 점검 후 종료")
+    p.add_argument("--save-config", action="store_true", help="현재 설정을 ~/.config 에 저장(시크릿 0600)")
+    p.add_argument("--telemetry", action="store_true", help="익명 텔레메트리 opt-in(기본 꺼짐)")
     p.add_argument("-v", "--verbose", action="store_true", help="디버그 로그")
     p.add_argument("--version", action="version", version=f"%(prog)s {AGENT_VERSION}")
     return p
 
 
 def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
-    """CLI/env 로부터 (config, verbose) 를 만든다. 토큰이 없으면 SystemExit."""
-    args = build_parser().parse_args(argv)
+    """CLI/env/저장파일 로부터 (config, verbose) 를 만든다. 토큰이 없으면 SystemExit.
 
-    token = (args.token or _env("AGENT_TOKEN")).strip()
+    우선순위: CLI 인자 > 환경변수 > 저장 설정파일(#113) > 기본값.
+    """
+    from .config_file import load_config, save_config
+
+    args = build_parser().parse_args(argv)
+    saved = load_config()  # 저장된 설정(없으면 빈 dict)
+
+    token = (args.token or _env("AGENT_TOKEN") or saved.get("token", "")).strip()
     # self-test 는 토큰 없이 가능(Ollama 점검만).
     if not token and not args.self_test:
         build_parser().error("토큰이 필요합니다: --token 또는 AGENT_TOKEN 환경변수")
 
-    relay_url = (args.relay_url or _env("RELAY_URL") or "ws://localhost:8080/agent").rstrip("/")
-    ollama_url = (args.ollama_url or _env("OLLAMA_BASE_URL") or "http://localhost:11434").rstrip("/")
-    models = tuple(args.models) if args.models else ()
+    relay_url = (args.relay_url or _env("RELAY_URL") or saved.get("relay_url") or "ws://localhost:8080/agent").rstrip("/")
+    ollama_url = (args.ollama_url or _env("OLLAMA_BASE_URL") or saved.get("ollama_url") or "http://localhost:11434").rstrip("/")
+    models = tuple(args.models) if args.models else tuple(saved.get("models") or ())
 
     cfg = AgentConfig(
         token=token,
         relay_url=relay_url,
         ollama_url=ollama_url,
         models=models,
-        max_concurrency=max(1, args.max_concurrency if args.max_concurrency is not None else 1),
-        daily_limit=max(0, args.daily_limit if args.daily_limit is not None else 0),
+        max_concurrency=max(1, args.max_concurrency if args.max_concurrency is not None else int(saved.get("max_concurrency") or 1)),
+        daily_limit=max(0, args.daily_limit if args.daily_limit is not None else int(saved.get("daily_limit") or 0)),
         request_timeout=args.request_timeout if args.request_timeout is not None else 120.0,
         heartbeat_seconds=args.heartbeat_seconds if args.heartbeat_seconds is not None else 30.0,
         log_file=(args.log_file or "").strip(),
         self_test=bool(args.self_test),
+        telemetry=bool(args.telemetry),
     )
+    if args.save_config:
+        save_config(cfg)
     return cfg, bool(args.verbose)

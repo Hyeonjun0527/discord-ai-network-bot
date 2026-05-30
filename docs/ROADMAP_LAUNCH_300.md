@@ -153,7 +153,7 @@
 - [x] 110. 서비스 등록(systemd) 가이드/유닛 — `packaging/systemd/*.service`
 - [x] 111. 서비스 등록(launchd/Windows Task) 가이드 — packaging/README
 - [ ] 112. 트레이 아이콘/상태 표시(선택) — 보류(선택, GUI 의존)
-- [ ] 113. 설정 파일 저장(`~/.config/...`)·시크릿 보호 — 보류(현재 env/인자 주입, 추후)
+- [x] 113. 설정 파일 저장(`~/.config/...`)·시크릿 보호 — config_file.py(XDG, 0600), --save-config, 토큰 로드 우선순위, 테스트 통과
 - [x] 114. `ollama list` 자동 모델 감지·등록 — agent.py: 모델 미지정 시 `list_models` 자동 감지
 - [x] 115. 배포물 무결성(체크섬/서명) — CI 에서 SHA256SUMS 생성(`agent-build.yml`)
 - [x] 116. 멀티 플랫폼 빌드 CI — `.github/workflows/agent-build.yml`(3-OS 매트릭스)
@@ -173,7 +173,7 @@
 - [x] 127. self-test(--self-test: 연결·모델·추론 1회)
 - [x] 128. 예외 가드 루프·재연결 복구
 - [ ] 129. 설정 hot-reload — 후속
-- [ ] 130. 텔레메트리 opt-in — 후속
+- [x] 130. 텔레메트리 opt-in — --telemetry(기본 꺼짐) + telemetry.emit(off 시 no-op, 익명 필드만), 테스트 통과 — 후속
 - [x] 131. 로그 회전(--log-file, RotatingFileHandler)
 - [x] 132. 다중 에이전트 가이드(README)
 - [x] 133. 사용량/기여 로컬 요약(processed)

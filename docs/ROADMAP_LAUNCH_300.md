@@ -196,7 +196,7 @@
 - [ ] 147. `/llm-settings` 통합 인터랙티브 패널(분산 명령 묶기)
 - [x] 148. AiRequest 영속화(종단 상태 기록, UsageService.recordRequest)
 - [x] 149. 모델 카탈로그(/catalog — 풀 제공 모델·제공자 수 집계)
-- [ ] 150. 요청 우선순위(관리자/긴급) 정책
+- [x] 150. 요청 우선순위(관리자/긴급) 정책 — 관리자 ask 쿨다운 우회, 테스트 통과
 - [x] 151. 공정 사용 쿼터(QuotaService — 역할 일일 한도 강제)
 - [x] 152. 어뷰즈/스팸 방지 기본(차단 + RateLimiter; 악성 프롬프트 필터 후속)
 - [x] 153. 차단 목록(BlocklistService + /llm-block·/llm-unblock + orchestrator 차단)
@@ -231,7 +231,7 @@
 
 ## 차수 13 — Discord UX 고도화 (179~194)
 
-- [ ] 179. 슬래시 옵션 자동완성(모델·역할·레벨)
+- [x] 179. 슬래시 옵션 자동완성(모델·역할·레벨) — CommandService.autocompleteModels + JDA onCommandAutoComplete(model 옵션), 테스트 통과
 - [ ] 180. 버튼/Select 인터랙션(설정 패널)
 - [ ] 181. 컨텍스트 메뉴(메시지 우클릭 → 질문)
 - [ ] 182. ephemeral 흐름 일관화(민감 응답)
@@ -243,7 +243,7 @@
 - [ ] 188. 처리 중 typing/defer UX
 - [ ] 189. 모달 입력(긴 프롬프트/설정)
 - [x] 190. 명령 사용 통계/로그 — CommandMetrics(Micrometer discord_command_total{command}), DiscordBot 배선, 테스트 통과
-- [ ] 191. 명령 쿨다운 피드백
+- [x] 191. 명령 쿨다운 피드백 — ask 쿨다운 시 Replies.cooldown(⏳) 표준 피드백, 테스트 통과
 - [ ] 192. 다국어 명령 설명(localization)
 - [ ] 193. 명령 ↔ 문서(docs) 동기화 가드
 - [ ] 194. 차수 13 검증

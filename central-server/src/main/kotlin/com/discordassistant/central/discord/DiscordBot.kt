@@ -6,8 +6,10 @@ import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
+import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands
@@ -68,12 +70,18 @@ class DiscordBot(
             Commands.slash("provider-models", "내가 제공하는 모델을 설정합니다")
                 .addOption(OptionType.STRING, "models", "모델명(쉼표로 구분)", true),
             Commands.slash("provider-limit", "모델별 한도를 설정합니다")
-                .addOption(OptionType.STRING, "model", "대상 모델", true)
+                .addOptions(
+                    net.dv8tion.jda.api.interactions.commands.build.OptionData(OptionType.STRING, "model", "대상 모델", true)
+                        .setAutoComplete(true),
+                )
                 .addOption(OptionType.INTEGER, "daily", "하루 한도(0=무제한)", true)
                 .addOption(OptionType.INTEGER, "concurrency", "동시 처리 수", true)
                 .addOption(OptionType.INTEGER, "seconds", "요청당 최대 초", true),
             Commands.slash("provider-scope", "모델 허용 범위를 설정합니다")
-                .addOption(OptionType.STRING, "model", "대상 모델", true)
+                .addOptions(
+                    net.dv8tion.jda.api.interactions.commands.build.OptionData(OptionType.STRING, "model", "대상 모델", true)
+                        .setAutoComplete(true),
+                )
                 .addOption(OptionType.STRING, "role", "all / trusted / admin", true),
             Commands.slash("llm-allow-channel", "LLM 사용 채널을 허용합니다(관리자)")
                 .addOption(OptionType.CHANNEL, "channel", "허용 채널", true)
@@ -129,6 +137,25 @@ class DiscordBot(
             )
             val reply = dispatch(event, ctx)
             event.reply(reply.content).setEphemeral(reply.ephemeral).queue()
+        }
+
+        /** 슬래시 옵션 자동완성(#179): model 옵션에 풀 제공 모델 제안. */
+        override fun onCommandAutoCompleteInteraction(event: CommandAutoCompleteInteractionEvent) {
+            if (event.focusedOption.name != "model") return
+            val guild = event.guild ?: return
+            val ctx = CommandContext(
+                guildId = guild.idLong,
+                channelId = event.channelIdLong,
+                userId = event.user.idLong,
+                roleIds = emptySet(),
+                isAdmin = false,
+            )
+            val typed = event.focusedOption.value
+            val choices = commands.autocompleteModels(ctx)
+                .filter { it.startsWith(typed, ignoreCase = true) }
+                .take(25)
+                .map { Command.Choice(it, it) }
+            event.replyChoices(choices).queue()
         }
 
         private fun dispatch(event: SlashCommandInteractionEvent, ctx: CommandContext): Reply = when (event.name) {

@@ -53,8 +53,9 @@ class CommandService(
 
     // ── 일반 유저 ───────────────────────────────────────────────────────
     fun ask(ctx: CommandContext, prompt: String): Reply {
-        if (!rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
-            return Reply("⏳ 요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.")
+        // 요청 우선순위(#150): 관리자/긴급 요청은 분당 쿨다운을 우회한다.
+        if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
+            return Replies.cooldown("요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.") // 쿨다운 피드백(#191)
         }
         val result = orchestrator.handle(
             AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, prompt, ctx.roleIds),
@@ -64,10 +65,18 @@ class CommandService(
                 "${result.text}\n\n_${privacy.processedNotice(ctx.guildId, result.effectiveBurden, result.providerId, ctx.isAdmin)}_",
                 ephemeral = false,
             )
-            RequestState.REJECTED -> Reply("⛔ ${result.failReason}")
-            else -> Reply("⚠️ ${result.failReason}")
+            RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
+            else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
         }
     }
+
+    /** 슬래시 옵션 자동완성용 모델 목록(#179). 현재 길드 풀이 제공하는 모델명(중복 제거·정렬). */
+    fun autocompleteModels(ctx: CommandContext): List<String> =
+        registry.byGuild(ctx.guildId)
+            .flatMap { it.capability.models }
+            .distinct()
+            .sorted()
+            .take(25) // Discord 자동완성 최대 25개
 
     fun models(ctx: CommandContext): Reply {
         val max = policy.maxAllowedBurden(ctx.guildId, ctx.roleIds)

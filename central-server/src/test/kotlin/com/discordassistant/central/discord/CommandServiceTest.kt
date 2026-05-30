@@ -7,6 +7,7 @@ import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -50,6 +51,35 @@ class CommandServiceTest @Autowired constructor(
     fun `ask — 프로바이더 없으면 안내`() {
         val r = commands.ask(ctx(), "안녕")
         assertTrue(r.content.contains("⚠️"))
+    }
+
+    @Test
+    fun `ask — 관리자는 쿨다운 우회(#150), 비관리자는 쿨다운 피드백(#191)`() {
+        // 전용 키(다른 user)로 공유 RateLimiter 의 다른 테스트 키를 오염시키지 않음.
+        val user = CommandContext(guildId = 100, channelId = 200, userId = 9991, roleIds = setOf(1L), isAdmin = false)
+        val admin = user.copy(isAdmin = true)
+        repeat(10) { commands.ask(user, "q") } // 분당 한도(기본 10) 소진
+        val limited = commands.ask(user, "q")
+        assertTrue(limited.content.startsWith("⏳"), "11번째는 쿨다운이어야 함")
+        // 관리자: 쿨다운 우회(프로바이더 없으니 ⚠️, 단 ⏳ 아님)
+        val adminReply = commands.ask(admin, "q")
+        assertTrue(!adminReply.content.startsWith("⏳"), "관리자는 쿨다운 우회")
+    }
+
+    @Test
+    fun `autocompleteModels — 풀 제공 모델 정렬·중복제거(#179)`() {
+        val conn = EchoConn()
+        val s = com.discordassistant.central.relay.ProviderSession(conn, providerId = 42, guildId = 9100).apply {
+            conn.session = this
+            capability = com.discordassistant.central.relay.ProviderCapability(models = listOf("mistral", "llama3", "mistral"))
+        }
+        registry.register(s)
+        try {
+            val gctx = CommandContext(guildId = 9100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = false)
+            assertEquals(listOf("llama3", "mistral"), commands.autocompleteModels(gctx))
+        } finally {
+            registry.unregister(s)
+        }
     }
 
     @Test

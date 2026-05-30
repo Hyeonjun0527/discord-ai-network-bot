@@ -13,6 +13,10 @@ class ProviderOnboardingTest {
         assertTrue(m.contains("discord-ai-provider-agent")) // 2) 실행
         assertTrue(m.contains("TOK123")) // 토큰
         assertTrue(m.contains("wss://central.dailyting.cloud/agent")) // 실제 relay
+        // OS별 다운로드 링크(버전관리되는 단일 실행파일)
+        assertTrue(m.contains("releases/latest/download/discord-ai-provider-agent-windows.exe"))
+        assertTrue(m.contains("discord-ai-provider-agent-macos"))
+        assertTrue(m.contains("discord-ai-provider-agent-linux"))
         assertTrue(m.contains("민감정보")) // 안전 고지
         assertTrue(m.length <= 2000) // Discord 한도
     }

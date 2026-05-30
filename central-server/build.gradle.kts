@@ -42,6 +42,9 @@ dependencies {
     // 테스트
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    // Testcontainers(차수 17 #261) — Docker 필요. 기본 빌드에서는 태그로 제외.
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:postgresql")
 }
 
 kotlin {
@@ -52,7 +55,14 @@ kotlin {
 }
 
 tasks.withType<Test> {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        // Docker 의존 통합 테스트(#261)는 기본 제외. 실행: -PdockerTests
+        if (!project.hasProperty("dockerTests")) {
+            excludeTags("integration-docker")
+        }
+    }
+    // Testcontainers 가 Docker 소켓을 찾도록 호스트 환경의 DOCKER_HOST 를 테스트 JVM 에 전달(있을 때만).
+    System.getenv("DOCKER_HOST")?.let { environment("DOCKER_HOST", it) }
     finalizedBy(tasks.named("jacocoTestReport"))
 }
 

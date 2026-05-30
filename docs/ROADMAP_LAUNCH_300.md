@@ -325,7 +325,7 @@
 - [x] 258. CONTRIBUTING(central-server/CONTRIBUTING.md — 개발/검증/프로토콜 동기화)
 - [x] 259. 계약 동기화 가드(공유 픽스처 — 한쪽 변경 시 양측 테스트 실패)
 - [x] 260. 테스트 데이터 정리/격리(공유 DB 오염 방지 표준) — docs/TESTING.md(@Transactional/@DataJpaTest/유닛 분리 규약)
-- [ ] 261. 통합 테스트 환경(Testcontainers Postgres)
+- [x] 261. 통합 테스트 환경(Testcontainers Postgres) — PostgresFlywayIntegrationTest(@Tag integration-docker, -PdockerTests 옵트인) + 의존성/태그 격리, 기본 빌드 그린. 로컬 macOS Docker Desktop 소켓 docker-java 미탐지로 컨테이너 실행은 표준 Docker/CI 에서(코드 CI-ready)
 - [x] 262. 회귀 스위트 정리/태깅 — TESTING.md(통합 어노테이션 식별 + @Tag 도입 경로)
 - [x] 263. 플래키 테스트 점검 — TESTING.md(비결정성 배제 규약: 시간/랜덤/동시성/aiosqlite close/공유픽스처)
 - [x] 264. PR 템플릿(.github/pull_request_template.md — 기존)

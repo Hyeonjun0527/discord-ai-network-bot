@@ -43,35 +43,35 @@
 
 ## 차수 3 — 추론 처리(localhost Ollama) (25~38)
 
-- [ ] 25. localhost Ollama 호출 클라이언트(경량 또는 기존 로직 참고)
-- [ ] 26. `infer` 프레임 수신 → Ollama 호출
-- [ ] 27. `result` 프레임 회신(text·usage)
-- [ ] 28. Ollama 오류 → `error` 프레임(코드 매핑: OLLAMA_ERROR 등)
-- [ ] 29. 모델 미설치/없음 처리(안내)
-- [ ] 30. `cancel` 프레임 → 진행 중 요청 취소
-- [ ] 31. 동시 요청 제한(로컬 세마포어 = max_concurrency)
-- [ ] 32. 일일 한도 카운트 + provider_status 에 remaining 반영
-- [ ] 33. 요청당 타임아웃
-- [ ] 34. 프롬프트 길이/프레임 크기 방어
-- [ ] 35. 스트리밍(`chunk`) 지원(선택)
-- [ ] 36. `provider_status` 주기 보고(load/battery/online/busy)
-- [ ] 37. 부하/배터리 감지(psutil) → 보호 신호 보고
-- [ ] 38. 차수 3 검증
+- [x] 25. localhost Ollama 호출 클라이언트(ollama.py, aiohttp)
+- [x] 26. `infer` 프레임 수신 → Ollama 호출
+- [x] 27. `result` 프레임 회신(text·usage)
+- [x] 28. Ollama 오류 → `error` 프레임(OLLAMA_ERROR)
+- [x] 29. 모델 미설치/없음 처리(Ollama error → InferError)
+- [x] 30. `cancel` 프레임 → 진행 중 요청 취소(task.cancel)
+- [x] 31. 동시 요청 제한(세마포어 = max_concurrency)
+- [x] 32. 일일 한도 카운트 + provider_status remaining 반영
+- [x] 33. 요청당 타임아웃(Ollama ClientTimeout=request_timeout)
+- [x] 34. 프롬프트 길이/프레임 크기 방어(MAX_PROMPT_CHARS)
+- [ ] 35. 스트리밍(`chunk`) 지원(선택 — 후속, 비스트리밍 우선)
+- [x] 36. `provider_status` 주기 보고(load/battery/online/busy)
+- [x] 37. 부하/배터리 감지(sysinfo, psutil 선택) → 보호 신호 보고
+- [x] 38. 차수 3 검증
 
 ## 차수 4 — 에이전트 단위 테스트 (39~50)
 
-- [ ] 39. 프레임 round-trip 테스트
-- [ ] 40. 인증 흐름 테스트(가짜 WS)
-- [ ] 41. infer → ollama(mock) 응답 테스트
-- [ ] 42. ollama 오류 → error 테스트
-- [ ] 43. 재연결(백오프) 테스트
-- [ ] 44. cancel/타임아웃 테스트
-- [ ] 45. 동시 한도·일일 한도 테스트
-- [ ] 46. heartbeat/ping-pong 테스트
-- [ ] 47. CLI 파싱·env fallback 테스트
-- [ ] 48. 토큰 마스킹·로그 미노출 테스트
-- [ ] 49. ruff/mypy 통과
-- [ ] 50. 차수 4 검증
+- [x] 39. 프레임 round-trip 테스트(test_protocol)
+- [x] 40. 인증 흐름 테스트(가짜 WS, test_connection)
+- [x] 41. infer → ollama(mock) 응답 테스트(test_agent/test_ollama)
+- [x] 42. ollama 오류 → error 테스트
+- [x] 43. 재연결(백오프) 테스트
+- [x] 44. cancel/타임아웃 테스트
+- [x] 45. 동시 한도·일일 한도 테스트
+- [x] 46. heartbeat/ping-pong 테스트
+- [x] 47. CLI 파싱·env fallback 테스트
+- [x] 48. 토큰 마스킹·로그 미노출 테스트
+- [x] 49. ruff/mypy 통과
+- [x] 50. 차수 4 검증(총 28개 테스트)
 
 ## 차수 5 — 에이전트 ↔ 중앙 서버 실연동 (51~60)
 

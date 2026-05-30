@@ -1,0 +1,63 @@
+"""Ollama 클라이언트 테스트 — 가짜 aiohttp Ollama 서버."""
+from __future__ import annotations
+
+import pytest
+from aiohttp import web
+from aiohttp.test_utils import TestServer
+
+from provider_agent.ollama import OllamaClient, OllamaError
+
+
+async def _make(generate_resp=None, error=None, models=None) -> tuple[TestServer, str]:
+    app = web.Application()
+
+    async def gen(request: web.Request) -> web.Response:
+        if error:
+            return web.json_response({"error": error})
+        return web.json_response(generate_resp or {"response": "hi ", "prompt_eval_count": 3, "eval_count": 5})
+
+    async def tags(request: web.Request) -> web.Response:
+        return web.json_response({"models": [{"name": m} for m in (models or ["m1", "m2"])]})
+
+    app.router.add_post("/api/generate", gen)
+    app.router.add_get("/api/tags", tags)
+    server = TestServer(app)
+    await server.start_server()
+    return server, f"http://{server.host}:{server.port}"
+
+
+@pytest.mark.asyncio
+async def test_generate():
+    server, url = await _make()
+    try:
+        text, usage = await OllamaClient(url).generate("안녕", "m")
+        assert text == "hi"  # strip 됨
+        assert usage.prompt_tokens == 3 and usage.completion_tokens == 5
+    finally:
+        await server.close()
+
+
+@pytest.mark.asyncio
+async def test_generate_error():
+    server, url = await _make(error="model 'x' not found")
+    try:
+        with pytest.raises(OllamaError):
+            await OllamaClient(url).generate("안녕", "x")
+    finally:
+        await server.close()
+
+
+@pytest.mark.asyncio
+async def test_list_models():
+    server, url = await _make(models=["llama3.1:8b", "qwen2.5:7b"])
+    try:
+        assert await OllamaClient(url).list_models() == ["llama3.1:8b", "qwen2.5:7b"]
+    finally:
+        await server.close()
+
+
+@pytest.mark.asyncio
+async def test_connect_failure():
+    # 닫힌 포트 → OllamaError
+    with pytest.raises(OllamaError):
+        await OllamaClient("http://127.0.0.1:1").generate("x", "m")

@@ -1,0 +1,111 @@
+"""에이전트 처리 테스트 — 가짜 ollama·연결 주입(빠르고 결정적)."""
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from provider_agent.agent import ProviderAgent
+from provider_agent.config import AgentConfig
+from provider_agent.constants import ErrorCode
+from provider_agent.ollama import OllamaError
+from provider_agent.protocol import (
+    CancelFrame,
+    Frame,
+    InferError,
+    InferRequest,
+    InferResult,
+    Usage,
+)
+
+
+class FakeConn:
+    def __init__(self) -> None:
+        self.sent: list[Frame] = []
+        self.authed = True
+
+    async def send(self, frame: Frame) -> None:
+        self.sent.append(frame)
+
+
+class FakeOllama:
+    def __init__(self, text: str = "결과", usage: Usage | None = None, error: str | None = None, delay: float = 0.0):
+        self.text = text
+        self.usage = usage or Usage(1, 2)
+        self.error = error
+        self.delay = delay
+
+    async def generate(self, prompt: str, model: str | None) -> tuple[str, Usage]:
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        if self.error:
+            raise OllamaError(self.error)
+        return self.text, self.usage
+
+    async def list_models(self) -> list[str]:
+        return ["m1"]
+
+
+@pytest.mark.asyncio
+async def test_handle_infer_success():
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(text="답", usage=Usage(3, 4)))  # type: ignore[arg-type]
+    conn = FakeConn()
+    await agent.handle_infer(conn, InferRequest(request_id="r1", prompt="안녕"))  # type: ignore[arg-type]
+    res = conn.sent[0]
+    assert isinstance(res, InferResult) and res.text == "답" and res.usage.prompt_tokens == 3
+
+
+@pytest.mark.asyncio
+async def test_handle_infer_ollama_error():
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(error="boom"))  # type: ignore[arg-type]
+    conn = FakeConn()
+    await agent.handle_infer(conn, InferRequest(request_id="r1", prompt="x"))  # type: ignore[arg-type]
+    err = conn.sent[0]
+    assert isinstance(err, InferError) and err.code == ErrorCode.OLLAMA_ERROR
+
+
+@pytest.mark.asyncio
+async def test_daily_limit():
+    agent = ProviderAgent(AgentConfig(token="T", daily_limit=1), ollama=FakeOllama())  # type: ignore[arg-type]
+    conn = FakeConn()
+    await agent.handle_infer(conn, InferRequest(request_id="r1", prompt="a"))  # type: ignore[arg-type]
+    await agent.handle_infer(conn, InferRequest(request_id="r2", prompt="b"))  # type: ignore[arg-type]
+    assert isinstance(conn.sent[0], InferResult)
+    assert isinstance(conn.sent[1], InferError) and conn.sent[1].code == ErrorCode.BUSY
+
+
+@pytest.mark.asyncio
+async def test_cancel_no_result():
+    agent = ProviderAgent(AgentConfig(token="T", max_concurrency=1), ollama=FakeOllama(delay=2.0))  # type: ignore[arg-type]
+    conn = FakeConn()
+    await agent._on_server_frame(conn, InferRequest(request_id="r1", prompt="x"))  # type: ignore[arg-type]
+    await asyncio.sleep(0.05)
+    await agent._on_server_frame(conn, CancelFrame(request_id="r1"))  # type: ignore[arg-type]
+    await asyncio.sleep(0.1)
+    assert not any(isinstance(f, InferResult) for f in conn.sent)
+
+
+@pytest.mark.asyncio
+async def test_concurrency_limit():
+    seen: list[int] = []
+    agent = ProviderAgent(AgentConfig(token="T", max_concurrency=1))  # ollama 교체
+    conn = FakeConn()
+
+    class Probe(FakeOllama):
+        async def generate(self, prompt: str, model: str | None) -> tuple[str, Usage]:
+            seen.append(agent._inflight)
+            await asyncio.sleep(0.05)
+            return "x", Usage()
+
+    agent._ollama = Probe()  # type: ignore[assignment]
+    await asyncio.gather(
+        agent.handle_infer(conn, InferRequest(request_id="a", prompt="1")),  # type: ignore[arg-type]
+        agent.handle_infer(conn, InferRequest(request_id="b", prompt="2")),  # type: ignore[arg-type]
+    )
+    assert max(seen) == 1  # 동시 1개만 처리
+
+
+def test_build_hello():
+    agent = ProviderAgent(AgentConfig(token="T", models=("m1", "m2"), max_concurrency=3))
+    hello = agent._build_hello()
+    assert hello.models == ["m1", "m2"] and hello.max_concurrency == 3

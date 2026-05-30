@@ -1,11 +1,9 @@
-# central-server 배포 (LAUNCH 차수 7). self-hosted 러너에서 compose 로 배포 + 헬스 판정.
-# 필요 시크릿: CENTRAL_DB_PASSWORD, DISCORD_BOT_TOKEN. (이미지 워크플로 성공 후 트리거)
-name: central-server deploy
+# [DEPRECATED — 수동 전용] self-hosted(Mac) 배포. 운영 자동배포는 central-deploy-ssh.yml
+# (원격 linuxssh.dailyting.cloud)로 이관됨. 이 워크플로는 비상 수동 폴백으로만 남긴다.
+# 필요 시크릿: CENTRAL_DB_PASSWORD, DISCORD_BOT_TOKEN.
+name: central-server deploy (self-hosted, deprecated)
 
 on:
-  workflow_run:
-    workflows: ["central-server image"]
-    types: [completed]
   workflow_dispatch:
 
 jobs:

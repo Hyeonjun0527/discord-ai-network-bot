@@ -1,0 +1,44 @@
+# 원격(linuxssh.dailyting.cloud) 배포용 compose. GHCR 이미지를 pull 해서 실행한다(빌드는 CI 에서).
+# CI 가 같은 디렉터리에 .env 를 렌더링(CENTRAL_IMAGE/DB_PASSWORD/DISCORD_* )한 뒤
+#   docker compose --env-file .env -f compose.yml up -d 로 띄운다.
+# 프로젝트명 central-server 로 격리 — 같은 호스트의 dailyting 서비스들과 충돌하지 않는다.
+name: central-server
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: central
+      POSTGRES_USER: central
+      POSTGRES_PASSWORD: ${CENTRAL_DB_PASSWORD:?CENTRAL_DB_PASSWORD 필요}
+    volumes:
+      - central-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U central -d central"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  central-server:
+    image: ${CENTRAL_IMAGE:?CENTRAL_IMAGE 필요(ghcr.io/owner/central-server:tag)}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/central
+      DB_USER: central
+      DB_PASSWORD: ${CENTRAL_DB_PASSWORD:?}
+      # 토큰 없으면 Discord 만 비활성(서버는 기동) — 인프라 검증/단계적 활성에 유리.
+      DISCORD_ENABLED: ${DISCORD_ENABLED:-true}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      CENTRAL_DEV_ENABLED: "false"
+    # 공개 노출은 Cloudflare Tunnel(cloudflared) 로. 기본은 로컬 바인딩(헬스/터널 접근).
+    # 원격 프로바이더가 WS(/agent)로 붙으려면 tunnel ingress 를 이 서비스로 라우팅(후속).
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  central-db:

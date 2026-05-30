@@ -61,7 +61,7 @@ class CommandService(
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
         val result = orchestrator.handle(
-            AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, prompt, ctx.roleIds),
+            AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, prompt, ctx.roleIds, isAdmin = ctx.isAdmin),
         )
         return when (result.state) {
             RequestState.COMPLETED -> Reply(

@@ -26,6 +26,7 @@ data class RequestContext(
     val requesterRoleIds: Set<Long>,
     val channelId: Long,
     val promptChars: Int,
+    val requesterIsAdmin: Boolean = false,
 )
 
 enum class FilterSignal { OK, NONE_AVAILABLE, PERMISSION_DENIED }
@@ -47,6 +48,8 @@ class ProviderFilterPipeline(private val maxFailureRate: Double = 0.5) {
 
     private val steps = listOf(
         Step("burden") { c, ctx -> ctx.requiredBurden in c.supportedBurdens },
+        // RESTRICTED 모델 라우팅 완성(#139): RESTRICTED 요청은 관리자만(역할/채널 게이트와 결합).
+        Step("restricted") { _, ctx -> ctx.requiredBurden != ModelBurden.RESTRICTED || ctx.requesterIsAdmin },
         Step("offline") { c, _ -> c.state.isOnline },
         Step("busy") { c, _ -> c.state == ProviderState.ONLINE_IDLE },
         Step("role") { c, ctx -> c.allowedRoleIds == null || c.allowedRoleIds.any { it in ctx.requesterRoleIds } },
@@ -59,7 +62,7 @@ class ProviderFilterPipeline(private val maxFailureRate: Double = 0.5) {
     )
 
     // 권한성 사유(이게 마지막 탈락 이유면 PERMISSION_DENIED 신호).
-    private val permissionReasons = setOf("burden", "role", "channel")
+    private val permissionReasons = setOf("burden", "restricted", "role", "channel")
 
     fun filter(candidates: List<Candidate>, ctx: RequestContext): FilterOutcome {
         val dropped = LinkedHashMap<Long, String>()

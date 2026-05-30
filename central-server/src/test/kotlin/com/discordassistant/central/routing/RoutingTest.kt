@@ -50,6 +50,15 @@ class ProviderFilterPipelineTest {
         assertEquals(FilterSignal.NONE_AVAILABLE, pipe.filter(listOf(candidate(1, maxConcurrency = 1, active = 1)), ctxLight).signal)
         assertEquals(FilterSignal.NONE_AVAILABLE, pipe.filter(emptyList(), ctxLight).signal)
     }
+
+    @Test fun `RESTRICTED 요청 — 관리자만 통과(#139)`() {
+        val restrictedCand = candidate(1, burdens = setOf(ModelBurden.RESTRICTED))
+        val nonAdmin = RequestContext(ModelBurden.RESTRICTED, setOf(1L), 200L, 50, requesterIsAdmin = false)
+        val admin = RequestContext(ModelBurden.RESTRICTED, setOf(1L), 200L, 50, requesterIsAdmin = true)
+        assertEquals("restricted", pipe.filter(listOf(restrictedCand), nonAdmin).dropped[1])
+        assertEquals(FilterSignal.PERMISSION_DENIED, pipe.filter(listOf(restrictedCand), nonAdmin).signal)
+        assertEquals(1, pipe.filter(listOf(restrictedCand), admin).eligible.size)
+    }
 }
 
 class ProviderRouterTest {

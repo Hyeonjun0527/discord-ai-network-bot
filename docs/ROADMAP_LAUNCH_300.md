@@ -185,7 +185,7 @@
 - [x] 136. `/provider-limit` (모델별 일일/동시/시간 한도)
 - [x] 137. `/provider-scope` (역할 등급 허용 — all/trusted/admin)
 - [x] 138. contribution policy → ProviderProfile(부담수준 반영; allowedRoles/maxPrompt 정교화 후속)
-- [ ] 139. RESTRICTED 모델 라우팅 완성(역할/채널/관리자 결합) — 후속
+- [x] 139. RESTRICTED 모델 라우팅 완성(역할/채널/관리자 결합) — 필터 restricted 단계(RESTRICTED 요청은 관리자만) + 기존 role/channel 결합, isAdmin 배선, 테스트 통과
 - [x] 140. ProviderHealth 영속화 + 실패 기록(recordProviderFailure; 점수 연동 후속)
 - [x] 141. 요청 큐 진짜 순차 대기(BUSY 하드캡 → 대기 큐 + 위치 표시) — 에이전트 세마포어 순차처리 + central 하드캡(BUSY) + queueDepth 노출, 테스트 통과
 - [ ] 142. 스트리밍 응답 end-to-end(chunk → Discord 점진 edit)

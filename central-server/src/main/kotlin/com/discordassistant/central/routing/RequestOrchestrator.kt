@@ -68,6 +68,7 @@ data class AiRequestInput(
     val prompt: String,
     val roleIds: Set<Long>,
     val command: String = "ask",
+    val isAdmin: Boolean = false,
 )
 
 /** 오케스트레이션 결과. */
@@ -131,7 +132,7 @@ class RequestOrchestrator(
                 failReason = "이 요청은 ${weigh.requiredBurden} 수준이 필요하지만 현재 권한으로는 사용할 수 없습니다.",
             )
         }
-        val ctx = RequestContext(weigh.effectiveBurden!!, input.roleIds, input.channelId, input.prompt.length)
+        val ctx = RequestContext(weigh.effectiveBurden!!, input.roleIds, input.channelId, input.prompt.length, input.isAdmin)
 
         // 3) 후보 구성 + 필터 + 선택 + 전송(최대 2회: 원 + fallback 1회)
         val excluded = mutableSetOf<Long>()

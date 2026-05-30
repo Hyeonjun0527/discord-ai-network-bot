@@ -6,6 +6,7 @@ plugins {
     kotlin("plugin.jpa") version "2.1.0" // @Entity all-open + no-arg 생성자
     id("org.springframework.boot") version "3.4.1"
     id("io.spring.dependency-management") version "1.1.7"
+    jacoco // 커버리지 게이트(차수 17 #254)
 }
 
 group = "com.discordassistant"
@@ -52,6 +53,44 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    finalizedBy(tasks.named("jacocoTestReport"))
+}
+
+tasks.named<JacocoReport>("jacocoTestReport") {
+    dependsOn(tasks.named("test"))
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    // 부트스트랩/설정 등 검증가치 낮은 클래스는 커버리지 집계에서 제외.
+    classDirectories.setFrom(
+        files(classDirectories.files.map {
+            fileTree(it) {
+                exclude(
+                    "**/CentralServerApplication*",
+                    "**/config/**",
+                    "**/*Config*",
+                )
+            }
+        }),
+    )
+}
+
+// 커버리지 하한(#254). 회귀 방지용 보수적 임계 — 보강되면 함께 올린다.
+tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    dependsOn(tasks.named("jacocoTestReport"))
+    violationRules {
+        rule {
+            limit {
+                counter = "INSTRUCTION"
+                minimum = "0.60".toBigDecimal() // 실측 ~0.71, 회귀 여유 0.60 하한
+            }
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named("jacocoTestCoverageVerification"))
 }
 
 // bootJar 만 산출(plain jar 비활성) + 고정 파일명(app.jar) — Dockerfile COPY 모호성 제거.

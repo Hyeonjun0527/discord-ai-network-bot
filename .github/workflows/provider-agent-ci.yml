@@ -34,8 +34,8 @@ jobs:
         run: python -m ruff check src tests
       - name: mypy (타입 검사)
         run: python -m mypy src
-      - name: pytest
-        run: python -m pytest -q
+      - name: pytest + 커버리지 게이트(#254)
+        run: python -m pytest -q --cov=provider_agent --cov-fail-under=70
 
   docs-links:
     runs-on: ubuntu-latest

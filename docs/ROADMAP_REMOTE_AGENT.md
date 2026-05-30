@@ -1,7 +1,14 @@
 # 리버스 터널 에이전트 & 커뮤니티 Provider Pool — 구현 체크리스트
 
+> ## ⚠️ 스택 전환 (ADR 0004, 2026-05-30)
+> **중앙 서버는 Kotlin + Spring Boot 로 전환**되었다([ADR 0004](./adr/0004-kotlin-spring-central-server.md)).
+> 아래 Phase A 의 **Python 중앙측 차수(1~5: protocol/registry/relay/client)는 폐기**되었고(코드 제거됨),
+> 그 역할은 `central-server/`(Kotlin)에서 재구현한다. **설계(ADR 0002/0003)·명세(`specs/`)·WS
+> 프로토콜 계약은 그대로 유효**하다. Provider Agent 는 Python 유지. Kotlin 기준 신규 차수 로드맵은
+> 별도 작성 예정(요청 시). 아래 Python 차수의 `[x]` 표시는 *폐기된 PoC 기록*이다.
+>
 > 근거 설계: [`docs/adr/0002-remote-agent-byollm.md`](./adr/0002-remote-agent-byollm.md) (Phase A)
-> · ADR 0003 Provider Pool(Phase B, 작성 예정 — 항목 301)
+> · [ADR 0003 Provider Pool](./adr/0003-community-provider-pool.md) (Phase B)
 > 상태: `[ ]` 미착수 · `[x]` 완료. 브랜치 `feat/remote-agent-byollm`.
 >
 > ## 두 단계 구조

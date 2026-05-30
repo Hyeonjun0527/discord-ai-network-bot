@@ -20,10 +20,6 @@ class LLMProvider(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
-    # ADR 0002/0003: 유저·방장·커뮤니티 프로바이더 PC 의 로컬 LLM 을 리버스 터널
-    # 에이전트로 사용하는 제공자. 추론은 중앙 봇이 아니라 원격 에이전트(상대 PC 의
-    # Ollama)에서 일어난다. 라우팅은 RoutingMode 가 결정한다.
-    REMOTE_AGENT = "remote_agent"
 
     def display_name(self) -> str:
         return {
@@ -31,7 +27,6 @@ class LLMProvider(str, Enum):
             "openai": "OpenAI (GPT)",
             "anthropic": "Anthropic (Claude)",
             "gemini": "Google (Gemini)",
-            "remote_agent": "원격 에이전트 (내 PC LLM)",
         }[self.value]
 
     def emoji(self) -> str:
@@ -40,30 +35,6 @@ class LLMProvider(str, Enum):
             "openai": "🤖",
             "anthropic": "🧠",
             "gemini": "✨",
-            "remote_agent": "🔗",
-        }[self.value]
-
-
-class RoutingMode(str, Enum):
-    """원격 에이전트 라우팅 모드 (ADR 0002).
-
-    추론 요청을 어느 에이전트 연결로 보낼지 결정하는 키를 고른다.
-
-    - ``PERSONAL``: 라우팅 키 = ``user_id``. 질문한 사람의 PC 에이전트로 보낸다
-      (각자 자기 노트북). ``/link`` 로 개인 연결.
-    - ``SHARED``: 라우팅 키 = ``guild_id``. 그 서버에 등록된 대표(호스트) 에이전트,
-      즉 방장 PC 로 보낸다(동아리방 공용 PC). ``/host-llm`` 으로 호스트 등록.
-
-    ADR 0003 의 커뮤니티 Provider Pool 은 SHARED 를 다중 프로바이더로 일반화한다.
-    """
-
-    PERSONAL = "personal"
-    SHARED = "shared"
-
-    def display_name(self) -> str:
-        return {
-            "personal": "개인 모드 (각자 자기 PC)",
-            "shared": "서버 공유 모드 (방장 PC 공유)",
         }[self.value]
 
 

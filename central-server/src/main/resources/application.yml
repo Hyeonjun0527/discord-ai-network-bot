@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: central-server
+
+server:
+  port: 8080
+
+# 운영 관측(Actuator). 헬스/정보만 노출.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+# 중앙 서버 고유 설정 (ADR 0003/0004). 환경변수로 오버라이드.
+central:
+  discord:
+    # Discord 봇 토큰. 절대 커밋 금지 — 환경변수 DISCORD_BOT_TOKEN 로 주입.
+    bot-token: ${DISCORD_BOT_TOKEN:}
+    enabled: ${DISCORD_ENABLED:false}
+  relay:
+    # 에이전트 WebSocket 경로. 유저/프로바이더 PC 에이전트가 outbound 접속.
+    path: ${RELAY_PATH:/agent}
+    max-concurrency-per-provider: ${RELAY_MAX_CONCURRENCY:1}
+    heartbeat-seconds: ${RELAY_HEARTBEAT_SECONDS:30}
+    request-timeout-seconds: ${RELAY_REQUEST_TIMEOUT_SECONDS:120}
+  token:
+    ttl-seconds: ${AGENT_TOKEN_TTL_SECONDS:600}
+
+logging:
+  level:
+    com.discordassistant.central: INFO

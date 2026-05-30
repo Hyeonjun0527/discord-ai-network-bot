@@ -57,13 +57,13 @@
 
 ## K-차수 4 — Provider 등록/승인 & 토큰
 
-- [ ] 4-1. 일회용 토큰 발급(만료·해시 저장·상수시간 비교)
-- [ ] 4-2. 토큰 검증자(verifier) → OwnerBinding
-- [ ] 4-3. 등록 요청(pending)·승인(approved)·거절·제거 라이프사이클
-- [ ] 4-4. 승인 방식 정책(자동/관리자)
-- [ ] 4-5. audit 로그
-- [ ] 4-6. 단위/통합 테스트
-- [ ] 4-7. `gradlew build` + 커밋
+- [x] 4-1. 일회용 토큰 발급(만료·SHA-256 해시 저장·해시 조회로 타이밍 안전)
+- [x] 4-2. 토큰 검증자(verifier) → OwnerBinding (TokenService 가 TokenVerifier 구현, 스텁 대체)
+- [x] 4-3. 등록 요청(pending)·승인(approved)·거절·제거 라이프사이클
+- [x] 4-4. 승인 방식 정책(자동/관리자) — autoApprove 파라미터; 길드 정책 연동은 K-차수 7
+- [x] 4-5. audit 로그(AuditLog)
+- [x] 4-6. 단위/통합 테스트
+- [x] 4-7. `gradlew build` + 커밋
 
 ## K-차수 5 — capability·상태머신·heartbeat
 

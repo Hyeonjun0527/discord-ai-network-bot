@@ -77,15 +77,15 @@
 
 ## K-차수 6 — 도메인 엔티티 & 영속화 (JPA)
 
-- [ ] 6-1. spring-boot-starter-data-jpa + H2(dev)/Postgres(prod) 의존성
-- [ ] 6-2. 엔티티: Guild·GuildPolicy·AllowedChannel·RolePolicy
-- [ ] 6-3. 엔티티: Provider·ProviderApproval·ProviderCapability·ProviderContributionPolicy
-- [ ] 6-4. 엔티티: AiRequest·UsageLog·ContributionLog·ProviderHealth
-- [ ] 6-5. Repository(Spring Data)
-- [ ] 6-6. Flyway 마이그레이션(스키마 버전)
-- [ ] 6-7. billing/price/seller/payout 부재 가드(설계 원칙)
-- [ ] 6-8. Repository 테스트(@DataJpaTest)
-- [ ] 6-9. `gradlew build` + 커밋
+- [x] 6-1. spring-boot-starter-data-jpa + H2(dev/test)/Postgres(prod) + Flyway + kotlin jpa 플러그인
+- [x] 6-2. 엔티티: Guild·AllowedChannel·RolePolicy (GuildPolicy 는 guild 컬럼에 통합)
+- [x] 6-3. 엔티티: Provider(상태=ApprovalState 통합)·ProviderContributionPolicy (Capability 는 세션 런타임)
+- [x] 6-4. 엔티티: AiRequest·UsageLog·ContributionLog·ProviderHealth
+- [x] 6-5. Repository(Spring Data)
+- [x] 6-6. Flyway 마이그레이션 V1__init.sql(스키마 버전)
+- [x] 6-7. billing/price/seller/payout 부재 가드(설계 원칙 — 엔티티/SQL 주석)
+- [x] 6-8. Repository 테스트(@DataJpaTest + Flyway H2)
+- [x] 6-9. `gradlew build` + 커밋
 
 ## K-차수 7 — 서버 정책 (채널/역할/모델 수준)
 

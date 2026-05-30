@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     kotlin("jvm") version "2.1.0"
     kotlin("plugin.spring") version "2.1.0"
+    kotlin("plugin.jpa") version "2.1.0" // @Entity all-open + no-arg 생성자
     id("org.springframework.boot") version "3.4.1"
     id("io.spring.dependency-management") version "1.1.7"
 }
@@ -25,6 +26,12 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-websocket") // 에이전트 WS 릴레이
     implementation("org.springframework.boot:spring-boot-starter-actuator")  // 운영 헬스/메트릭
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    // 영속화 (JPA + Flyway). H2(dev/test), Postgres(prod)
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.flywaydb:flyway-core")
+    runtimeOnly("com.h2database:h2")
+    runtimeOnly("org.postgresql:postgresql")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql")
     // Kotlin
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")

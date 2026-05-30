@@ -1,6 +1,18 @@
 spring:
   application:
     name: central-server
+  datasource:
+    # dev/test 기본 H2(in-memory, PostgreSQL 호환 모드). prod 는 DB_URL 로 Postgres 주입.
+    url: ${DB_URL:jdbc:h2:mem:central;DB_CLOSE_DELAY=-1;MODE=PostgreSQL}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: none # 스키마는 Flyway 가 소유
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
 
 server:
   port: 8080

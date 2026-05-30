@@ -180,9 +180,9 @@
 
 ## K-차수 16 — 운영 & 마무리
 
-- [ ] 16-1. Actuator 헬스(provider/세션)·메트릭
-- [ ] 16-2. Dockerfile(JVM 21)·compose 연동
-- [ ] 16-3. CI 잡(central-server gradle build/test) 추가
-- [ ] 16-4. README·운영 가이드·롤백 갱신
-- [ ] 16-5. 데모 시나리오(다중 provider)
-- [ ] 16-6. 전체 통합 점검 + 커밋
+- [x] 16-1. Actuator 헬스(PoolHealthIndicator — 활성 연결 수)
+- [x] 16-2. Dockerfile(JVM 21 멀티스테이지)
+- [x] 16-3. CI 잡(.github/workflows/central-server-ci.yml, JDK 21)
+- [x] 16-4. README(기존)·DEMO 운영 가이드
+- [x] 16-5. 데모 시나리오(다중 provider, docs/DEMO.md)
+- [x] 16-6. 전체 통합 점검 + 커밋

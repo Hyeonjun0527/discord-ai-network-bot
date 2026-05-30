@@ -1,0 +1,28 @@
+# central-server(Kotlin/Spring Boot) 빌드·테스트 CI (K-차수 16).
+name: central-server CI
+
+on:
+  push:
+    paths:
+      - "central-server/**"
+      - ".github/workflows/central-server-ci.yml"
+  pull_request:
+    paths:
+      - "central-server/**"
+      - ".github/workflows/central-server-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: central-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Build & test
+        run: ./gradlew build --no-daemon --console=plain

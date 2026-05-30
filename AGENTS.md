@@ -33,9 +33,13 @@ cd central-server && docker compose up -d --build    # Postgres+서버(8080)
 ```
 - 스키마는 Flyway(`db/migration`) 가 소유(ddl-auto=none). WS 프로토콜은 `provider-agent` 와
   **camelCase 와이어로 동일 계약**(api.md §8) — 한쪽 변경 시 양쪽 동기화(`make contract`).
-- 정적분석: **ktlint**(`check` 게이트). 커버리지: JaCoCo INSTRUCTION ≥ 60%.
-- CI: `central-server-ci`(build/test) · `central-server-image`(GHCR) · `central-server-deploy`(self-hosted)
-  · `central-release`(`central-v*` 태그 → GitHub Release).
+- 정적분석: **ktlint**(`check` 게이트). 커버리지: **Kover** 라인 ≥ 68%(`koverVerify`, 목표 90% 점진 상향).
+  아키텍처: **ArchUnit**(레이어 의존 방향/컨트롤러 위치). API 계약: **springdoc-openapi**(`/v3/api-docs`).
+- **BDD/추적성(차수 18)**: 핵심 흐름은 **Cucumber + SpringBootTest + Testcontainers(실 Postgres)** 로 검증.
+  요구사항 원장 `src/test/resources/requirements.yaml` ↔ feature `@REQ-*` 태그를 `RequirementsTraceabilityTest` 가 강제
+  (P0 요구사항은 추적 시나리오 필수). Docker 필요 → `-PdockerTests`(기본 빌드 제외). Cucumber 리포트: `build/reports/cucumber/`.
+- CI: `central-server-ci`(build = 단위/ArchUnit/추적성/Kover 게이트, integration = `-PdockerTests` BDD+Testcontainers)
+  · `central-server-image`(GHCR) · `central-server-deploy`(self-hosted) · `central-release`(`central-v*` 태그 → GitHub Release).
 - 라이브 봇 기동: `docs/GO_LIVE.md`(Discord 토큰 + `DISCORD_ENABLED=true`).
 
 ### provider-agent (Python) 빌드/검증

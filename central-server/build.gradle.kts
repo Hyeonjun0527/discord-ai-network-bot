@@ -7,7 +7,7 @@ plugins {
     id("org.springframework.boot") version "3.4.1"
     id("io.spring.dependency-management") version "1.1.7"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1" // 정적 분석/포맷(차수 7 #76)
-    jacoco // 커버리지 게이트(차수 17 #254)
+    id("org.jetbrains.kotlinx.kover") version "0.9.1" // Kotlin 커버리지(차수 18, JaCoCo 대체)
 }
 
 ktlint {
@@ -40,6 +40,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator") // 운영 헬스/메트릭
     implementation("io.micrometer:micrometer-registry-prometheus") // /actuator/prometheus
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    // API 계약 원장(차수 18): OpenAPI 3 자동 생성 + Swagger UI. springdoc 2.7 = Spring Boot 3.4 호환.
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0")
     // 분산 rate limit(차수 16 #242). 기본 인메모리; central.ratelimit.redis-enabled 시 Redis 백엔드.
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
     // 영속화 (JPA + Flyway). H2(dev/test), Postgres(prod)
@@ -61,9 +63,17 @@ dependencies {
     // 테스트
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-    // Testcontainers(차수 17 #261) — Docker 필요. 기본 빌드에서는 태그로 제외.
+    // Testcontainers(차수 17 #261, 차수 18 BDD) — Docker 필요. integration-docker 태그로 게이트.
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
+    // BDD(차수 18): Cucumber + Spring + JUnit Platform 엔진. 핵심 흐름 시나리오를 실제 컨텍스트로 실행.
+    testImplementation(platform("io.cucumber:cucumber-bom:7.20.1"))
+    testImplementation("io.cucumber:cucumber-java")
+    testImplementation("io.cucumber:cucumber-spring")
+    testImplementation("io.cucumber:cucumber-junit-platform-engine")
+    testImplementation("org.junit.platform:junit-platform-suite")
+    // 아키텍처 규칙 보호(차수 18): 레이어 의존 방향/순환 의존 검증.
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
 }
 
 kotlin {
@@ -75,53 +85,49 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform {
-        // Docker 의존 통합 테스트(#261)는 기본 제외. 실행: -PdockerTests
+        // Docker 의존 통합 테스트(#261, @Tag)는 기본 제외. 실행: -PdockerTests
         if (!project.hasProperty("dockerTests")) {
             excludeTags("integration-docker")
         }
     }
+    if (!project.hasProperty("dockerTests")) {
+        // Cucumber BDD 스위트는 Testcontainers Postgres(실 DB) 필요 → 기본 빌드에서 클래스 단위 제외(실행: -PdockerTests).
+        // (스위트는 태그 게이트가 자식 시나리오에 전파되지 않아 클래스 제외로 게이트한다.)
+        exclude("**/RunCucumberBddTest.class")
+    }
     // Testcontainers 가 Docker 소켓을 찾도록 호스트 환경의 DOCKER_HOST 를 테스트 JVM 에 전달(있을 때만).
     System.getenv("DOCKER_HOST")?.let { environment("DOCKER_HOST", it) }
-    finalizedBy(tasks.named("jacocoTestReport"))
 }
 
-tasks.named<JacocoReport>("jacocoTestReport") {
-    dependsOn(tasks.named("test"))
+// 커버리지(차수 18, JaCoCo→Kover). 라인 커버리지 기준. 부트스트랩/설정 클래스는 집계 제외.
+// 게이트는 회귀 방지용 보수적 하한 — 핵심 흐름 테스트가 보강되면 90% 까지 함께 올린다(가짜 90% 금지).
+kover {
     reports {
-        xml.required.set(true)
-        html.required.set(true)
-    }
-    // 부트스트랩/설정 등 검증가치 낮은 클래스는 커버리지 집계에서 제외.
-    classDirectories.setFrom(
-        files(
-            classDirectories.files.map {
-                fileTree(it) {
-                    exclude(
-                        "**/CentralServerApplication*",
-                        "**/config/**",
-                        "**/*Config*",
-                    )
-                }
-            },
-        ),
-    )
-}
-
-// 커버리지 하한(#254). 회귀 방지용 보수적 임계 — 보강되면 함께 올린다.
-tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
-    dependsOn(tasks.named("jacocoTestReport"))
-    violationRules {
-        rule {
-            limit {
-                counter = "INSTRUCTION"
-                minimum = "0.60".toBigDecimal() // 실측 ~0.71, 회귀 여유 0.60 하한
+        filters {
+            excludes {
+                classes(
+                    "com.discordassistant.central.CentralServerApplication",
+                    "com.discordassistant.central.CentralServerApplicationKt",
+                    "*Config",
+                    "*Configuration",
+                )
+            }
+        }
+        total {
+            html { onCheck = false }
+            xml { onCheck = true }
+        }
+        verify {
+            rule {
+                // 실측 라인 ~71%(config 제외) 기준 회귀 하한. 목표는 핵심 도메인/흐름 90%(테스트 보강하며 점진 상향).
+                minBound(68)
             }
         }
     }
 }
 
 tasks.named("check") {
-    dependsOn(tasks.named("jacocoTestCoverageVerification"))
+    dependsOn(tasks.named("koverVerify"))
 }
 
 // bootJar 만 산출(plain jar 비활성) + 고정 파일명(app.jar) — Dockerfile COPY 모호성 제거.

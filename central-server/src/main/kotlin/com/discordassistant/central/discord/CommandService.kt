@@ -89,6 +89,28 @@ class CommandService(
         return Reply("이 서버에서 제공 중인 모델:\n$lines")
     }
 
+    fun contributions(ctx: CommandContext): Reply {
+        val pool = registry.byGuild(ctx.guildId)
+        if (pool.isEmpty()) return Reply("아직 연결된 프로바이더가 없습니다.")
+        val ranked = pool.map { it.providerId to usage.providerContributionCount(it.providerId) }
+            .sortedByDescending { it.second }
+        val lines = ranked.mapIndexed { i, (pid, c) -> "${i + 1}. <@$pid> — ${c}건" }.joinToString("\n")
+        return Reply("🏆 커뮤니티 기여 리더보드\n$lines\n\n_기여는 비금전 인정입니다. 고마워요!_", ephemeral = false)
+    }
+
+    fun fairness(ctx: CommandContext): Reply {
+        adminOnly(ctx)?.let { return it }
+        val pool = registry.byGuild(ctx.guildId)
+        if (pool.isEmpty()) return Reply("연결된 프로바이더가 없습니다.")
+        val counts = pool.map { it.providerId to usage.providerContributionCount(it.providerId) }
+        val total = counts.sumOf { it.second }
+        val lines = counts.sortedByDescending { it.second }.joinToString("\n") { (pid, c) ->
+            val pct = if (total > 0) (c * 100 / total) else 0
+            "· <@$pid>: ${c}건 (${pct}%) · 실패 ${usage.providerFailures(pid)}"
+        }
+        return Reply("⚖️ 공정성 리포트 (총 ${total}건)\n$lines")
+    }
+
     fun myUsage(ctx: CommandContext): Reply {
         val used = usage.userDailyCount(ctx.guildId, ctx.userId)
         val limit = policy.dailyLimit(ctx.guildId, ctx.roleIds)

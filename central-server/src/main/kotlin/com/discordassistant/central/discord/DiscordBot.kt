@@ -51,6 +51,8 @@ class DiscordBot(
             Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
             Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
             Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),
+            Commands.slash("contributions", "커뮤니티 기여 리더보드를 봅니다"),
+            Commands.slash("fairness", "공정성 리포트를 봅니다(관리자)"),
             Commands.slash("privacy", "이 서버의 AI 처리/프라이버시 안내"),
             Commands.slash("provider-join", "프로바이더로 참여합니다"),
             Commands.slash("provider-pause", "요청 수신을 일시정지합니다"),
@@ -113,6 +115,8 @@ class DiscordBot(
             "models" -> commands.models(ctx)
             "catalog" -> commands.catalog(ctx)
             "my-usage" -> commands.myUsage(ctx)
+            "contributions" -> commands.contributions(ctx)
+            "fairness" -> commands.fairness(ctx)
             "privacy" -> commands.privacy()
             "provider-join" -> commands.providerJoin(ctx)
             "provider-pause" -> commands.providerPause(ctx)

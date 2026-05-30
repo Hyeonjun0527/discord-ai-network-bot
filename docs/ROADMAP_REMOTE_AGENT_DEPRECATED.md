@@ -1,15 +1,45 @@
-# 리버스 터널 에이전트 & 커뮤니티 Provider Pool — 구현 체크리스트
+# [폐기됨/DEPRECATED] 리버스 터널 에이전트 & 커뮤니티 Provider Pool (Python 계획)
 
-> ## ⚠️ 스택 전환 (ADR 0004, 2026-05-30)
-> **중앙 서버는 Kotlin + Spring Boot 로 전환**되었다([ADR 0004](./adr/0004-kotlin-spring-central-server.md)).
-> 아래 Phase A 의 **Python 중앙측 차수(1~5: protocol/registry/relay/client)는 폐기**되었고(코드 제거됨),
-> 그 역할은 `central-server/`(Kotlin)에서 재구현한다. **설계(ADR 0002/0003)·명세(`specs/`)·WS
-> 프로토콜 계약은 그대로 유효**하다. Provider Agent 는 Python 유지. Kotlin 기준 신규 차수 로드맵은
-> 별도 작성 예정(요청 시). 아래 Python 차수의 `[x]` 표시는 *폐기된 PoC 기록*이다.
+> # 🛑 이 로드맵은 폐기되었습니다 (ADR 0004, 2026-05-30)
+> 이 674항목 계획은 **중앙 서버를 Python 으로 만드는 원안**이었으나, 중앙 서버를
+> **Kotlin + Spring Boot 로 전환**([ADR 0004](./adr/0004-kotlin-spring-central-server.md))하면서
+> **폐기**되었다. 아래 `[x]` 150개(Python 차수 1~5)는 **전환 때 코드가 제거된 PoC 기록**이며
+> 실 산출물이 아니다. 실제 구현은 **[`ROADMAP_CENTRAL_SERVER.md`](./ROADMAP_CENTRAL_SERVER.md)
+> (Kotlin, 131/131 완료)** 를 보라. 설계(ADR 0002/0003)·명세(`specs/`)·WS 프로토콜 계약은 유효하다.
 >
-> 근거 설계: [`docs/adr/0002-remote-agent-byollm.md`](./adr/0002-remote-agent-byollm.md) (Phase A)
-> · [ADR 0003 Provider Pool](./adr/0003-community-provider-pool.md) (Phase B)
-> 상태: `[ ]` 미착수 · `[x]` 완료. 브랜치 `feat/remote-agent-byollm`.
+> ## 674 ↔ Kotlin 131 커버리지 매핑
+> Kotlin 131 은 이 674의 **중앙 서버 부분**을 재구현한 것이다. 각 Kotlin 차수 ↔ 본 674 차수:
+>
+> | Kotlin K-차수 | 본 674 차수(항목) |
+> |---|---|
+> | K1 WS 프로토콜 | 차수2(26~55) + Phase B 차수17(373~394) |
+> | K2 레지스트리/세션 | 차수3(56~85) + Phase B 차수17 |
+> | K3 WS 릴레이 | 차수4(86~120) |
+> | K4 등록/토큰 | 차수6(151~185 일부) + Phase B 차수16(353~372) |
+> | K5 capability/상태 | Phase B 차수17(373~394) |
+> | K6 JPA 영속화 | 차수6(151~185) + Phase B 차수14(317~340) |
+> | K7 서버 정책 | Phase B 차수18(395~414) |
+> | K8 요청 무게 | Phase B 차수20(437~450) |
+> | K9 필터 파이프라인 | Phase B 차수21(451~472) |
+> | K10 공정성 라우터 | Phase B 차수22(473~490) |
+> | K11 오케스트레이터 | Phase B 차수23(491~514) |
+> | K12 프로바이더 보호 | Phase B 차수24(515~538) |
+> | K13 Discord 명령 | 차수7(186~215) + Phase B 차수25~27(539~586) |
+> | K14 프라이버시/사용량 | Phase B 차수28~29(587~614) |
+> | K15 보안 | Phase B 차수30(615~632) |
+> | K16 운영 | 차수12(296~300) + Phase B 차수32(657~674) |
+>
+> → **결론: 674 ⊇ 131.** 131의 모든 개념은 674 안에 들어 있다(674가 더 큰 상위집합).
+> 단, K6/K13/K16 일부는 Kotlin 스택 고유(JPA/JDA/Gradle/Docker/Actuator)라 674 항목과
+> 1:1 줄 대응이 아니라 *범주 대응*이다.
+>
+> ## 674에서 131이 **커버하지 못한** 부분 (진짜 잔여)
+> - **차수 9 유저 Python 에이전트(241~265)** — 미구현. 이게 없으면 end-to-end 미동작. **최우선 잔여.**
+> - 차수 5 RemoteAgentClient(121~150)·차수 8 봇 통합(216~240) — Python 봇 전제라 Kotlin 전환으로 **N/A**(서버=봇).
+> - 차수 16/20/23 스트리밍·멀티모달·툴콜 등 일부 고급 기능, Phase B 차수31 일부 테스트, 기존 Python 봇 이관.
+>
+> 근거: [ADR 0002](./adr/0002-remote-agent-byollm.md)·[ADR 0003](./adr/0003-community-provider-pool.md).
+> 아래 본문은 **역사적 기록**으로 보존한다.
 >
 > ## 두 단계 구조
 >

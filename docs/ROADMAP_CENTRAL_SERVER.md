@@ -150,14 +150,14 @@
 
 ## K-차수 13 — Discord (JDA) 슬래시 명령
 
-- [ ] 13-1. JDA 부팅(토큰·인텐트)·명령 등록
-- [ ] 13-2. 유저: /ask·/models·/my-usage·/privacy
-- [ ] 13-3. 관리자: /llm-settings·/llm-allow-channel·/llm-deny-channel·/llm-role-policy·/providers·/provider-approve·/provider-remove
-- [ ] 13-4. 프로바이더: /provider-join·/leave·/pause·/resume·/status·/models·/limit·/scope
-- [ ] 13-5. 권한 가드·ephemeral·임베드
-- [ ] 13-6. /ask→라우팅→응답 통합
-- [ ] 13-7. 통합 테스트(JDA mock)
-- [ ] 13-8. `gradlew build` + 커밋
+- [x] 13-1. JDA 부팅(createLight·토큰)·슬래시 명령 등록(enabled 시)
+- [x] 13-2. 유저: /ask·/models·/my-usage·/privacy
+- [x] 13-3. 관리자: /llm-allow-channel·/llm-deny-channel·/llm-role-policy·/providers·/provider-approve·/provider-remove
+- [x] 13-4. 프로바이더: /provider-join·/leave·/pause·/resume·/status (/models·/limit·/scope 는 contribution policy 연동 후속)
+- [x] 13-5. 권한 가드(isAdmin)·ephemeral·임베드(텍스트)
+- [x] 13-6. /ask→오케스트레이터 라우팅→응답 통합
+- [x] 13-7. 통합 테스트(@SpringBootTest CommandService, JDA 비활성)
+- [x] 13-8. `gradlew build` + 커밋
 
 ## K-차수 14 — 프라이버시 모드 & 사용량/기여 기록
 

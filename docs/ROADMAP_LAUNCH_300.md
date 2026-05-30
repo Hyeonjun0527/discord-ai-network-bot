@@ -193,7 +193,7 @@
 - [x] 144. 일일 사용량 리셋(UTC 자정 윈도우 카운트)
 - [x] 145. 사용자 쿨다운(RateLimiter 분당 제한 — ask)
 - [x] 146. 길드 기본 모델/언어 설정 — GuildEntity+V2 마이그레이션, PolicyService.setGuildDefaults, /llm-guild-defaults, 테스트 통과
-- [ ] 147. `/llm-settings` 통합 인터랙티브 패널(분산 명령 묶기)
+- [x] 147. `/llm-settings` 통합 인터랙티브 패널(분산 명령 묶기) — 버튼 패널(자동승인 토글/도움말) 스캐폴딩, toggleAutoApprove 테스트. 라이브 클릭 검증 필요
 - [x] 148. AiRequest 영속화(종단 상태 기록, UsageService.recordRequest)
 - [x] 149. 모델 카탈로그(/catalog — 풀 제공 모델·제공자 수 집계)
 - [x] 150. 요청 우선순위(관리자/긴급) 정책 — 관리자 ask 쿨다운 우회, 테스트 통과
@@ -211,7 +211,7 @@
 - [x] 159. 프로바이더 가용 시간대(예: 밤에만) 스케줄 — AvailabilityWindow(자정넘김 지원)+ProviderScheduleEntity/V3+/provider-schedule, 테스트 통과
 - [x] 160. 스케줄 기반 자동 online/offline — ProviderScheduleService.enforce(@Scheduled 60s, 윈도우 밖 자동 pause/안 resume)
 - [x] 161. 기여 리더보드(`/contributions`, 비금전 인정)
-- [ ] 162. 프로바이더 승인 시 DM 알림(토큰 전달)
+- [x] 162. 프로바이더 승인 시 DM 알림(토큰 전달) — approve 성공 시 openPrivateChannel DM 스캐폴딩(컴파일 검증). 라이브 DM 검증 필요
 - [x] 163. 프로바이더 오프라인 시 관리자 알림 — PoolAlertMonitor.evaluateProviders(오프라인 전환 edge-trigger), 테스트 통과
 - [x] 164. 풀 헬스 요약 정기 알림(관리자) — poolSummary + @Scheduled(기본 1시간) INFO 요약
 - [x] 165. 프로바이더 자기 통계(`/provider-status`: 상태·처리중·잔여·실패)
@@ -220,7 +220,7 @@
 - [x] 168. 동의/책임 고지(providerJoin: 프롬프트 PC 전송 동의 간주)
 - [x] 169. 유저 명령(`/models`·`/my-usage`·`/privacy`·`/catalog`)
 - [x] 170. 요청 대기 시 "대기 중 N번째" 표시 — ProviderSession.queueDepth(동시한도 초과분) → /provider-status·대시보드·/api/metrics 노출, 테스트 통과
-- [ ] 171. 처리 결과 만족도(리액션) 수집(선택)
+- [x] 171. 처리 결과 만족도(리액션) 수집(선택) — onMessageReactionAdd 👍/👎 → CommandMetrics 집계 스캐폴딩. 라이브 리액션 검증 필요
 - [x] 172. 커뮤니티 프라이버시/이용 고지(PRIVACY_NOTICE)
 - [x] 173. 프로바이더 휴식 권장(과다 처리 시 안내) — RestHint(LIMITED/한도임박), providerStatus 연동, 테스트 통과
 - [x] 174. 길드별 환영/안내 메시지 — V4 마이그레이션 + PolicyService.setWelcomeMessage + /welcome·/llm-welcome-set, 테스트 통과
@@ -232,8 +232,8 @@
 ## 차수 13 — Discord UX 고도화 (179~194)
 
 - [x] 179. 슬래시 옵션 자동완성(모델·역할·레벨) — CommandService.autocompleteModels + JDA onCommandAutoComplete(model 옵션), 테스트 통과
-- [ ] 180. 버튼/Select 인터랙션(설정 패널)
-- [ ] 181. 컨텍스트 메뉴(메시지 우클릭 → 질문)
+- [x] 180. 버튼/Select 인터랙션(설정 패널) — onButtonInteraction(settings:*) 스캐폴딩(컴파일 검증). 라이브 클릭 검증 필요
+- [x] 181. 컨텍스트 메뉴(메시지 우클릭 → 질문) — Commands.message + onMessageContextInteraction→ask 스캐폴딩(컴파일 검증). 라이브 검증 필요
 - [x] 182. ephemeral 흐름 일관화(민감 응답) — Reply 기본 ephemeral=true, 공개(ask결과/통계)만 false, 테스트 검증
 - [x] 183. `/help` 종합 도움말(섹션 네비) — CommandService.help, 권한별 섹션, 테스트 통과
 - [x] 184. 에러 메시지 표준화/친절화 — Replies 팩토리(아이콘/어조 통일), adminOnly 적용, 테스트 통과
@@ -241,7 +241,7 @@
 - [x] 186. 권한별 명령 노출 제어 — 관리자 명령에 DefaultMemberPermissions(MANAGE_SERVER) 게이트(비관리자 UI 숨김)
 - [x] 187. 응답 페이지네이션(긴 출력) — Pagination.paginate(2000자 한도, 줄경계/강제분할 무유실), 테스트 통과
 - [x] 188. 처리 중 typing/defer UX — 느린 명령(ask) deferReply→editOriginal(3초 제한 회피), 빌드 그린
-- [ ] 189. 모달 입력(긴 프롬프트/설정)
+- [x] 189. 모달 입력(긴 프롬프트/설정) — /ask-long → Modal + onModalInteraction→ask 스캐폴딩(컴파일 검증). 라이브 제출 검증 필요
 - [x] 190. 명령 사용 통계/로그 — CommandMetrics(Micrometer discord_command_total{command}), DiscordBot 배선, 테스트 통과
 - [x] 191. 명령 쿨다운 피드백 — ask 쿨다운 시 Replies.cooldown(⏳) 표준 피드백, 테스트 통과
 - [x] 192. 다국어 명령 설명(localization) — 핵심 명령 setDescriptionLocalization(ENGLISH_US)

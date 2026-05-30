@@ -7,9 +7,17 @@ import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
+import net.dv8tion.jda.api.events.interaction.command.MessageContextInteractionEvent
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
+import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent
+import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.commands.Command
+import net.dv8tion.jda.api.interactions.components.buttons.Button
+import net.dv8tion.jda.api.interactions.components.text.TextInput
+import net.dv8tion.jda.api.interactions.components.text.TextInputStyle
+import net.dv8tion.jda.api.interactions.modals.Modal
 import net.dv8tion.jda.api.interactions.DiscordLocale
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.OptionType
@@ -125,6 +133,11 @@ class DiscordBot(
             Commands.slash("llm-unblock", "사용자 차단을 해제합니다(관리자)")
                 .addOption(OptionType.USER, "user", "대상 유저", true)
                 .setDefaultPermissions(adminPerm),
+            // 인터랙티브(차수 13): 설정 패널(버튼/Select #147/180), 모달 입력(#189)
+            Commands.slash("llm-settings", "설정 패널을 엽니다(관리자)").setDefaultPermissions(adminPerm),
+            Commands.slash("ask-long", "긴 질문을 모달 창으로 입력합니다"),
+            // 컨텍스트 메뉴(#181): 메시지 우클릭 → 그 내용으로 질문
+            Commands.message("AI에게 질문"),
         ).queue()
     }
 
@@ -139,16 +152,33 @@ class DiscordBot(
                 event.reply("서버에서만 사용할 수 있습니다.").setEphemeral(true).queue()
                 return
             }
-            val member = event.member
-            val ctx = CommandContext(
-                guildId = guild.idLong,
-                channelId = event.channelIdLong,
-                userId = event.user.idLong,
-                roleIds = member?.roles?.map { it.idLong }?.toSet() ?: emptySet(),
-                isAdmin = member?.let {
-                    it.hasPermission(Permission.MANAGE_SERVER) || it.hasPermission(Permission.ADMINISTRATOR)
-                } ?: false,
-            )
+            val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
+            // 인터랙티브 명령은 컴포넌트/모달로 응답(#147/180/189).
+            when (event.name) {
+                "llm-settings" -> {
+                    if (!ctx.isAdmin) {
+                        event.reply("⛔ 관리자만 사용할 수 있습니다.").setEphemeral(true).queue()
+                    } else {
+                        event.reply("⚙️ **설정 패널**")
+                            .addActionRow(
+                                Button.primary("settings:autoapprove", "자동승인 토글"),
+                                Button.secondary("settings:help", "도움말"),
+                            )
+                            .setEphemeral(true).queue()
+                    }
+                    return
+                }
+                "ask-long" -> {
+                    val modal = Modal.create("ask-long-modal", "긴 질문 입력")
+                        .addActionRow(
+                            TextInput.create("prompt", "질문", TextInputStyle.PARAGRAPH)
+                                .setRequired(true).setMaxLength(4000).build(),
+                        )
+                        .build()
+                    event.replyModal(modal).queue()
+                    return
+                }
+            }
             // 느린 명령(추론 왕복)은 defer 로 "생각 중…" 표시 후 결과 편집(#188, 3초 제한 회피).
             if (event.name in SLOW_COMMANDS) {
                 event.deferReply(false).queue()
@@ -183,6 +213,59 @@ class DiscordBot(
                 .map { Command.Choice(it, it) }
             event.replyChoices(choices).queue()
         }
+
+        /** 설정 패널 버튼(#147/180). */
+        override fun onButtonInteraction(event: ButtonInteractionEvent) {
+            val guild = event.guild ?: return
+            val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
+            val reply = when (event.componentId) {
+                "settings:autoapprove" -> commands.toggleAutoApprove(ctx)
+                "settings:help" -> commands.help(ctx)
+                else -> Reply("알 수 없는 동작입니다.")
+            }
+            event.reply(reply.content).setEphemeral(true).queue()
+        }
+
+        /** 긴 질문 모달 제출(#189). */
+        override fun onModalInteraction(event: ModalInteractionEvent) {
+            if (event.modalId != "ask-long-modal") return
+            val guild = event.guild ?: return
+            val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
+            val prompt = event.getValue("prompt")?.asString.orEmpty()
+            event.deferReply(false).queue()
+            val reply = commands.ask(ctx, prompt)
+            event.hook.editOriginal(reply.content).queue()
+        }
+
+        /** 메시지 컨텍스트 메뉴(#181): 그 메시지 내용으로 질문. */
+        override fun onMessageContextInteraction(event: MessageContextInteractionEvent) {
+            if (event.name != "AI에게 질문") return
+            val guild = event.guild ?: return
+            val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
+            event.deferReply(false).queue()
+            val reply = commands.ask(ctx, event.target.contentRaw)
+            event.hook.editOriginal(reply.content).queue()
+        }
+
+        /** 만족도 리액션 수집(#171): 👍/👎 를 메트릭으로 집계. */
+        override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
+            if (event.user?.isBot == true) return
+            when (event.emoji.formatted) {
+                "👍" -> metrics.record("reaction:up")
+                "👎" -> metrics.record("reaction:down")
+            }
+        }
+
+        private fun buildCtx(guildId: Long, member: net.dv8tion.jda.api.entities.Member?, channelId: Long, userId: Long): CommandContext =
+            CommandContext(
+                guildId = guildId,
+                channelId = channelId,
+                userId = userId,
+                roleIds = member?.roles?.map { it.idLong }?.toSet() ?: emptySet(),
+                isAdmin = member?.let {
+                    it.hasPermission(Permission.MANAGE_SERVER) || it.hasPermission(Permission.ADMINISTRATOR)
+                } ?: false,
+            )
 
         private fun dispatch(event: SlashCommandInteractionEvent, ctx: CommandContext): Reply = when (event.name) {
             "ask" -> commands.ask(ctx, event.getOption("prompt")?.asString.orEmpty())
@@ -236,7 +319,18 @@ class DiscordBot(
                 event.getOption("limit")!!.asInt,
             )
             "providers" -> commands.providers(ctx)
-            "provider-approve" -> commands.approveProvider(ctx, event.getOption("user")!!.asUser.idLong)
+            "provider-approve" -> {
+                val target = event.getOption("user")!!.asUser
+                val reply = commands.approveProvider(ctx, target.idLong)
+                // 승인 성공 시 대상에게 토큰/안내 DM(#162). 실패해도 관리자 응답은 유지.
+                if (reply.content.startsWith("✅")) {
+                    target.openPrivateChannel().queue(
+                        { ch -> ch.sendMessage("✅ 프로바이더로 승인되었습니다.\n${reply.content}").queue({}, {}) },
+                        {},
+                    )
+                }
+                reply
+            }
             "provider-remove" -> commands.removeProvider(ctx, event.getOption("user")!!.asUser.idLong)
             "llm-block" -> commands.blockUser(ctx, event.getOption("user")!!.asUser.idLong)
             "llm-unblock" -> commands.unblockUser(ctx, event.getOption("user")!!.asUser.idLong)

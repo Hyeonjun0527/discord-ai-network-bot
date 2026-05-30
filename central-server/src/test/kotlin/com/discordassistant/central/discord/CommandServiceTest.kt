@@ -102,6 +102,16 @@ class CommandServiceTest @Autowired constructor(
     }
 
     @Test
+    fun `toggleAutoApprove — 관리자만, 토글 동작(#147)`() {
+        assertTrue(commands.toggleAutoApprove(ctx(admin = false)).content.contains("관리자만"))
+        val g = CommandContext(guildId = 555, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = true)
+        val first = commands.toggleAutoApprove(g).content
+        val second = commands.toggleAutoApprove(g).content
+        assertTrue(first.contains("켜짐") || first.contains("꺼짐"))
+        assertTrue(first != second) // 토글
+    }
+
+    @Test
     fun `provider-join — 수동 승인이면 대기`() {
         val r = commands.providerJoin(ctx())
         assertTrue(r.content.contains("승인을 기다려"))

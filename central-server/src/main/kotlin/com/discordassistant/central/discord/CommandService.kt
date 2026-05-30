@@ -236,6 +236,14 @@ class CommandService(
         return Reply("✅ 길드 기본값 — 모델: `$m` · 언어: `${policy.guildLanguage(ctx.guildId)}`")
     }
 
+    /** 자동 승인 토글(차수 13 #147/#180, 설정 패널 버튼). */
+    fun toggleAutoApprove(ctx: CommandContext): Reply {
+        adminOnly(ctx)?.let { return it }
+        val now = !policy.isAutoApprove(ctx.guildId)
+        policy.setAutoApprove(ctx.guildId, now, ctx.userId)
+        return Replies.ok("프로바이더 자동 승인: ${if (now) "켜짐" else "꺼짐"}")
+    }
+
     /** 길드 환영/안내 메시지 설정(차수 12 #174, 관리자). */
     fun setWelcome(ctx: CommandContext, message: String): Reply {
         adminOnly(ctx)?.let { return it }

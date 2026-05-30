@@ -22,6 +22,7 @@ import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.text.TextInput
 import net.dv8tion.jda.api.interactions.components.text.TextInputStyle
 import net.dv8tion.jda.api.interactions.modals.Modal
+import net.dv8tion.jda.api.requests.GatewayIntent
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
@@ -46,7 +47,12 @@ class DiscordBot(
             log.info("Discord 비활성(enabled={}, token={}) — JDA 미기동", enabled, token.isNotBlank())
             return
         }
-        val instance = JDABuilder.createLight(token).addEventListeners(Listener(commands, metrics)).build()
+        // createLight + 리액션 인텐트(#171 만족도 수집은 GUILD_MESSAGE_REACTIONS 필요).
+        val instance =
+            JDABuilder
+                .createLight(token, GatewayIntent.GUILD_MESSAGE_REACTIONS)
+                .addEventListeners(Listener(commands, metrics))
+                .build()
         registerCommands(instance)
         jda = instance
         log.info("Discord(JDA) 기동 완료")

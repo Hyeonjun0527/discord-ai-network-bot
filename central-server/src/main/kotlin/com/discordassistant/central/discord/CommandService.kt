@@ -78,6 +78,17 @@ class CommandService(
         )
     }
 
+    fun catalog(ctx: CommandContext): Reply {
+        val pool = registry.byGuild(ctx.guildId)
+        if (pool.isEmpty()) return Reply("현재 풀에 온라인 프로바이더가 없습니다.")
+        val byModel = pool
+            .flatMap { s -> s.capability.models.map { it to s.providerId } }
+            .groupBy({ it.first }, { it.second })
+        if (byModel.isEmpty()) return Reply("프로바이더가 제공 모델을 아직 보고하지 않았습니다.")
+        val lines = byModel.entries.sortedBy { it.key }.joinToString("\n") { "· `${it.key}` — ${it.value.distinct().size}명" }
+        return Reply("이 서버에서 제공 중인 모델:\n$lines")
+    }
+
     fun myUsage(ctx: CommandContext): Reply {
         val used = usage.userDailyCount(ctx.guildId, ctx.userId)
         val limit = policy.dailyLimit(ctx.guildId, ctx.roleIds)

@@ -49,6 +49,7 @@ class DiscordBot(
             Commands.slash("ask", "커뮤니티 로컬 AI 에게 질문합니다")
                 .addOption(OptionType.STRING, "prompt", "질문 내용", true),
             Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
+            Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
             Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),
             Commands.slash("privacy", "이 서버의 AI 처리/프라이버시 안내"),
             Commands.slash("provider-join", "프로바이더로 참여합니다"),
@@ -110,6 +111,7 @@ class DiscordBot(
         private fun dispatch(event: SlashCommandInteractionEvent, ctx: CommandContext): Reply = when (event.name) {
             "ask" -> commands.ask(ctx, event.getOption("prompt")?.asString.orEmpty())
             "models" -> commands.models(ctx)
+            "catalog" -> commands.catalog(ctx)
             "my-usage" -> commands.myUsage(ctx)
             "privacy" -> commands.privacy()
             "provider-join" -> commands.providerJoin(ctx)

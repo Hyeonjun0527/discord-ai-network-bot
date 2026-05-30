@@ -48,6 +48,12 @@ class CommandService(
     private val relayPublicUrl: String = "",
 ) {
     companion object {
+        /**
+         * DM/유저설치(길드 없음)용 글로벌 풀 스코프 sentinel(차수 19). 실제 길드 ID 는 큰 snowflake 라 0 과 충돌하지 않는다.
+         * DM 에서 /provider-join 한 사람들이 이 스코프(byGuild(0))로 하나의 공용 풀을 이루고, DM /ask 는 이 풀로 라우팅된다.
+         */
+        const val DM_SCOPE = 0L
+
         const val PRIVACY_NOTICE =
             "이 서버는 커뮤니티 로컬 AI Provider Pool 을 사용합니다. 질문 내용은 요청을 처리하는 " +
                 "커뮤니티 프로바이더의 PC 로 전송될 수 있습니다. 비밀번호·API 키·개인정보·비공개 문서 등 " +
@@ -190,7 +196,8 @@ class CommandService(
 
     // ── 프로바이더 ──────────────────────────────────────────────────────
     fun providerJoin(ctx: CommandContext): Reply {
-        val auto = policy.isAutoApprove(ctx.guildId)
+        // DM 글로벌 풀은 승인할 관리자가 없으므로 자동 승인(본인 PC 를 자발적으로 기여). 길드는 기존 정책대로.
+        val auto = ctx.guildId == DM_SCOPE || policy.isAutoApprove(ctx.guildId)
         val r = registration.requestJoin(ctx.userId, ctx.guildId, autoApprove = auto)
         return if (r.token != null) {
             Reply(ProviderOnboarding.message(r.token, relayPublicUrl), ephemeral = true)

@@ -116,6 +116,7 @@ kover {
                     // 단위 테스트 + BDD(Cucumber)로 커버한다. 어댑터 자체는 JDA 런타임 의존이라 커버리지 집계 제외.
                     "*.DiscordBot",
                     "*.DiscordBot\$*",
+                    "*.DiscordBotKt", // DiscordBot.kt 파일 파사드(DM_COMMANDS 등 어댑터 상수)
                     // dev 전용 엔드포인트(운영 CENTRAL_DEV_ENABLED=false 로 차단). 핵심 흐름 아님.
                     "*.DevController",
                     "*.DevController\$*",

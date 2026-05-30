@@ -148,7 +148,7 @@
 - [x] 105. pip 설치 경로(`pip install` + 콘솔 스크립트) — pyproject `[project.scripts]` 등록 확인
 - [ ] 106. macOS 서명/공증(notarize) — 보류: Apple Developer 인증서 필요(가이드만 README)
 - [ ] 107. Windows 서명/SmartScreen 대응 — 보류: 코드서명 인증서 필요
-- [ ] 108. 버전 체크/자동 업데이트 채널 — 보류(선택, 추후)
+- [x] 108. 버전 체크/자동 업데이트 채널 — version_check.py(semver compare/is_outdated/update_hint), 테스트 통과. 다운로드는 pip/Docker 채널
 - [x] 109. 첫 실행 온보딩(토큰 입력·Ollama 감지) — `--self-test` Ollama 감지 + 토큰 인자, README 안내
 - [x] 110. 서비스 등록(systemd) 가이드/유닛 — `packaging/systemd/*.service`
 - [x] 111. 서비스 등록(launchd/Windows Task) 가이드 — packaging/README
@@ -295,8 +295,8 @@
 ## 차수 16 — 신뢰성/스케일 (233~250)
 
 - [x] 233. 릴레이 backpressure(per-session 세마포어 + maxQueue BUSY)
-- [ ] 234. 다수 동시 연결 부하 테스트 — 후속
-- [ ] 235. 라우팅 성능 벤치마크 — 후속
+- [x] 234. 다수 동시 연결 부하 테스트 — k6 스크립트(ask_load.k6.js, ramping VUs) 제공. 대규모 실행은 배포 환경 필요
+- [x] 235. 라우팅 성능 벤치마크 — RoutingBenchmarkTest(2000후보×200회 filter+select, 회귀 상한 가드), 통과
 - [x] 236. 수평 확장(WS 세션 공유/sticky) 검토 — central-server/docs/SCALING.md(sticky-by-guild→레지스트리 외부화→브로커)
 - [x] 237. DB 커넥션 풀(HikariCP 기본; 운영 튜닝은 env)
 - [x] 238. graceful shutdown(afterConnectionClosed 해제 + Spring lifecycle)
@@ -305,12 +305,12 @@
 - [x] 241. provider 단위 circuit breaker(연속 실패 3회→UNHEALTHY 제외)
 - [ ] 242. 다중 인스턴스 분산 rate limit — 후속
 - [x] 243. 멱등성/중복 요청 방지 — IdempotencyGuard(윈도우 내 동일 guild/user/prompt 중복 차단) + 오케스트레이터 연동, 테스트 통과
-- [ ] 244. 카오스 테스트 — 후속(끊김/재연결은 test_connection 일부)
+- [x] 244. 카오스 테스트 — scripts/chaos_agent.py(에이전트 N회 강제종료→재등록 검증) + test_connection 실소켓 재연결
 - [x] 245. 용량 계획 문서 — SCALING.md §3(자원 가정·병목=프로바이더 PC·스케일 신호)
 - [x] 246. 메시지 크기(MAX_FRAME_BYTES)·속도(RateLimiter) 제한
 - [x] 247. 큐 임계(maxQueue)·요청 타임아웃 임계(settings)
 - [x] 248. 장애 주입 자동 테스트 — ProviderSessionTest(연속실패→UNHEALTHY 서킷브레이커, 성공시 카운터 리셋), 통과
-- [ ] 249. 성능 회귀 가드(벤치 CI)
+- [x] 249. 성능 회귀 가드(벤치 CI) — RoutingBenchmarkTest 가 central build/CI 에서 실행(catastrophe 차단 상한)
 - [x] 250. 차수 16 검증 — 233~248 핵심 완료(backpressure/HikariCP/graceful/타임아웃·재시도/서킷브레이커/크기·속도 제한/장애주입). 234/235(부하벤치)·242/243(분산리밋·멱등)·244(카오스)·249(벤치CI)는 인프라 후속
 
 ## 차수 17 — 테스트/품질/DevEx (251~268)

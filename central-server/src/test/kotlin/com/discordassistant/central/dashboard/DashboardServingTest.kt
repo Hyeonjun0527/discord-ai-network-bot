@@ -1,0 +1,38 @@
+package com.discordassistant.central.dashboard
+
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+
+/**
+ * 대시보드 정적 서빙 + 보안 헤더 UI 스모크(차수 14 #212/#209). 빌드/번들 없이 동일 jar 서빙(#208).
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+class DashboardServingTest @Autowired constructor(val mvc: MockMvc) {
+    @Test
+    fun `정적 대시보드 자원이 서빙된다`() {
+        mvc.perform(get("/dashboard/index.html")).andExpect(status().isOk)
+        mvc.perform(get("/dashboard/app.js")).andExpect(status().isOk)
+        mvc.perform(get("/dashboard/style.css")).andExpect(status().isOk)
+    }
+
+    @Test
+    fun `디렉터리 URL 도 index 로 포워드된다`() {
+        mvc.perform(get("/dashboard/")).andExpect(status().isOk)
+        mvc.perform(get("/dashboard")).andExpect(status().isOk)
+    }
+
+    @Test
+    fun `API 응답에 보안 헤더가 붙는다`() {
+        val res = mvc.perform(get("/api/metrics/pool")).andExpect(status().isOk).andReturn()
+        assertTrue(res.response.getHeader("X-Content-Type-Options") == "nosniff")
+        assertTrue(res.response.getHeader("X-Frame-Options") == "DENY")
+        assertTrue(res.response.getHeader("X-Request-Id") != null)
+    }
+}

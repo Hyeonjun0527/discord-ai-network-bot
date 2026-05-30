@@ -3,6 +3,7 @@ package com.discordassistant.central.web
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Configuration
 import org.springframework.web.servlet.config.annotation.CorsRegistry
+import org.springframework.web.servlet.config.annotation.ViewControllerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 
 /**
@@ -21,5 +22,11 @@ class CorsConfig(
             .allowedMethods("GET", "POST", "OPTIONS")
             .allowCredentials(true)
             .maxAge(3600)
+    }
+
+    /** 대시보드 디렉터리 URL(/dashboard, /dashboard/) → index.html 포워드(차수 14). */
+    override fun addViewControllers(registry: ViewControllerRegistry) {
+        registry.addViewController("/dashboard").setViewName("forward:/dashboard/index.html")
+        registry.addViewController("/dashboard/").setViewName("forward:/dashboard/index.html")
     }
 }

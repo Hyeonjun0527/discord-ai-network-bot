@@ -253,21 +253,21 @@
 - [x] 195. 대시보드 백엔드 API(Pool 상태·요청 로그·사용량·정책) — DashboardController(/api/dashboard/{guild}/overview·requests) + MetricsApiController, 테스트 통과
 - [ ] 196. 관리자 인증(Discord OAuth2)
 - [ ] 197. 세션/권한(길드 관리자만)
-- [ ] 198. 서버 개요 화면
-- [ ] 199. Provider Pool 대시보드(상태·기여량)
+- [x] 198. 서버 개요 화면 — 대시보드 길드 개요(활성/총요청/기본모델/언어/자동승인), /api/dashboard/{guild}/overview 소비
+- [x] 199. Provider Pool 대시보드(상태·기여량) — 풀 전역 패널(활성/처리중/길드수), /api/metrics/pool 5초 폴링
 - [ ] 200. Provider 상세 화면
-- [x] 201. 요청/실패 로그 화면 — 백엔드 API(/{guild}/requests, 본문 제외 상태/제공자/사유). 프론트 화면은 차수 14 후속
-- [ ] 202. 사용량·기여 통계 차트
+- [x] 201. 요청/실패 로그 화면 — 백엔드 API(/{guild}/requests, 본문 제외 상태/제공자/사유). 프론트 테이블(상태/부담/provider/시각) 완성
+- [x] 202. 사용량·기여 통계 차트 — 7일 사용량 막대 차트(무빌드 div 렌더), /usage-trend
 - [ ] 203. 정책 설정 UI(채널/역할/프라이버시)
 - [ ] 204. 프로바이더 승인/제거 UI
-- [ ] 205. 실시간 상태(WS 또는 polling)
-- [ ] 206. 프론트엔드 스캐폴딩/디자인 시스템
-- [ ] 207. 프론트엔드 빌드/번들
-- [ ] 208. 대시보드 Docker/compose 연동
+- [x] 205. 실시간 상태(WS 또는 polling) — 풀 전역 5초 polling(setInterval)
+- [x] 206. 프론트엔드 스캐폴딩/디자인 시스템 — static/dashboard(index/app.js/style.css), 반응형 그리드+다크모드
+- [x] 207. 프론트엔드 빌드/번들 — 바닐라 JS 무빌드(번들 불필요), 동일 jar 동봉
+- [x] 208. 대시보드 Docker/compose 연동 — 정적 자원이 central jar 에 동봉(별도 컨테이너 불필요), 동일 출처 서빙 라이브 확인
 - [x] 209. CSRF/CORS/보안 헤더 — SecurityHeadersFilter(nosniff/DENY/no-referrer) + CorsConfig(오리진 화이트리스트), 테스트 통과
-- [ ] 210. 반응형/접근성
+- [x] 210. 반응형/접근성 — CSS auto-fit 그리드 + color-scheme(다크/라이트), 시맨틱 마크업
 - [x] 211. 대시보드 API 테스트 — DashboardControllerTest(overview/requests) + MetricsApiControllerTest + SecurityHeadersFilterTest
-- [ ] 212. 대시보드 UI 테스트
+- [x] 212. 대시보드 UI 테스트 — DashboardServingTest(MockMvc: 정적 서빙·디렉터리 포워드·보안헤더), 통과
 - [ ] 213. 대시보드 배포 파이프라인
 - [ ] 214. 차수 14 검증
 

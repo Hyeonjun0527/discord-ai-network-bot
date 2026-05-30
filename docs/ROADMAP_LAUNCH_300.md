@@ -288,7 +288,7 @@
 - [ ] 227. 사용량 트렌드 분석
 - [ ] 228. 처리 부하(compute) 회계(비금전, 기여 측정)
 - [ ] 229. SLO/SLA 정의(선택)
-- [ ] 230. 운영 점검 자동화(스크립트/스케줄)
+- [x] 230. 운영 점검 자동화(스크립트/스케줄) — central-server/scripts/ops_healthcheck.sh(health+pool, 비0 종료)
 - [x] 231. 알림 채널(Discord/슬랙) 연동 — DiscordWebhookNotifier(@ConditionalOnProperty webhook, @Primary 폴백), 미설정 시 LoggingNotifier
 - [ ] 232. 차수 15 검증
 
@@ -359,10 +359,10 @@
 - [ ] 286. 피드백 수집 채널/폼
 - [ ] 287. 이슈 트리아지 프로세스
 - [ ] 288. 베타 버그 수정 1차
-- [ ] 289. 사용 가이드/FAQ
+- [x] 289. 사용 가이드/FAQ — docs/FAQ.md(유저/프로바이더/관리자/문제해결)
 - [ ] 290. 데모 영상/스크린샷
 - [ ] 291. 랜딩/소개 페이지(선택)
-- [ ] 292. 릴리스 노트/CHANGELOG
+- [x] 292. 릴리스 노트/CHANGELOG — central-server/CHANGELOG.md(Keep a Changelog)
 - [ ] 293. 성능/공정성 최종 점검
 - [ ] 294. 전체 e2e 시나리오 재검증
 - [ ] 295. 운영 모니터링/알림 가동 확인

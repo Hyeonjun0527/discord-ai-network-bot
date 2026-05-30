@@ -119,6 +119,19 @@ class CommandServiceTest
         }
 
         @Test
+        fun `setAutoApprove 명시 on off + 모든 채널 허용(패널)`() {
+            val g = CommandContext(guildId = 777, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            assertTrue(commands.setAutoApprove(g, enabled = true).content.contains("자동 승인"))
+            assertTrue(commands.isAutoApprove(g))
+            assertTrue(commands.setAutoApprove(g, enabled = false).content.contains("수동 승인"))
+            assertFalse(commands.isAutoApprove(g))
+            commands.allowChannel(g, 1111)
+            assertTrue(commands.allowedChannelIds(g).contains(1111L))
+            commands.allowAllChannels(g)
+            assertTrue(commands.allowedChannelIds(g).isEmpty()) // 제한 해제 = 모두 허용
+        }
+
+        @Test
         fun `provider-join — 수동 승인이면 대기`() {
             val r = commands.providerJoin(ctx())
             assertTrue(r.content.contains("승인을 기다려"))

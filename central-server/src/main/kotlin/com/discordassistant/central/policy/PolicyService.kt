@@ -46,6 +46,19 @@ class PolicyService(
         audit.record("llm_deny_channel", "admin:$adminId", "guild:$guildId", "channel:$channelId")
     }
 
+    /** 채널 제한 전체 해제 = 모든 채널에서 사용 허용(허용 목록 비움). */
+    @Transactional
+    fun allowAllChannels(
+        guildId: Long,
+        adminId: Long,
+    ) {
+        channels.findByGuildId(guildId).forEach { channels.deleteByGuildIdAndChannelId(guildId, it.channelId) }
+        audit.record("llm_allow_all_channels", "admin:$adminId", "guild:$guildId", "all")
+    }
+
+    /** 허용 채널 ID 목록(비면 전체 허용). */
+    fun allowedChannelIds(guildId: Long): List<Long> = channels.findByGuildId(guildId).map { it.channelId }
+
     /** 채널이 LLM 사용 허용인가. 허용 채널이 하나도 설정 안 됐으면 제한 없음(true). */
     override fun isChannelAllowed(
         guildId: Long,

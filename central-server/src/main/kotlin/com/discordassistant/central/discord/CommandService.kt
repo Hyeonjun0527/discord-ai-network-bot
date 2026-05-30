@@ -275,6 +275,36 @@ class CommandService(
         return Replies.ok("프로바이더 자동 승인: ${if (now) "켜짐" else "꺼짐"}")
     }
 
+    /** 자동 승인 켜기/끄기(명시적). 패널 버튼용. */
+    fun setAutoApprove(
+        ctx: CommandContext,
+        enabled: Boolean,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        policy.setAutoApprove(ctx.guildId, enabled, ctx.userId)
+        return if (enabled) {
+            Replies.ok("프로바이더 **자동 승인** — 이제 `/provider-join` 한 사람은 관리자 승인 없이 바로 참여합니다.")
+        } else {
+            Replies.ok("프로바이더 **수동 승인** — `/provider-join` 신청 후 관리자가 `/approve-provider` 해야 참여합니다.")
+        }
+    }
+
+    /** 현재 자동 승인 상태(패널 표시용). */
+    fun isAutoApprove(ctx: CommandContext): Boolean = policy.isAutoApprove(ctx.guildId)
+
+    /** 모든 채널에서 LLM 사용 허용(채널 제한 해제). */
+    fun allowAllChannels(ctx: CommandContext): Reply {
+        adminOnly(ctx)?.let { return it }
+        policy.allowAllChannels(ctx.guildId, ctx.userId)
+        return Replies.ok("이제 **모든 채널**에서 `/ask` 를 쓸 수 있습니다(채널 제한 해제).")
+    }
+
+    /** 현재 허용 채널 목록(패널 표시용). 비면 전체 허용. */
+    fun allowedChannelIds(ctx: CommandContext): List<Long> = policy.allowedChannelIds(ctx.guildId)
+
+    /** 풀이 현재 제공하는 모델 목록(패널 표시용). */
+    fun poolModels(ctx: CommandContext): List<String> = autocompleteModels(ctx)
+
     /** 길드 환영/안내 메시지 설정(차수 12 #174, 관리자). */
     fun setWelcome(
         ctx: CommandContext,

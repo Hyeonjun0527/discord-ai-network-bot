@@ -215,7 +215,7 @@ class DiscordBot(
                         event.reply("⛔ 관리자만 사용할 수 있습니다.").setEphemeral(true).queue()
                     } else {
                         event
-                            .reply("⚙️ **설정 패널** — 드롭다운/버튼으로 설정하세요.")
+                            .reply(settingsContent(ctx))
                             .addComponents(settingsRows(ctx))
                             .setEphemeral(true)
                             .queue()
@@ -294,7 +294,7 @@ class DiscordBot(
                         event.reply("⛔ 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
                     } else {
                         event
-                            .reply("⚙️ **설정** — 드롭다운/버튼으로 바로 적용됩니다.")
+                            .reply(settingsContent(ctx))
                             .addComponents(settingsRows(ctx))
                             .setEphemeral(true)
                             .queue()
@@ -307,6 +307,9 @@ class DiscordBot(
                     MenuFactory.PROVIDER -> commands.providerJoin(ctx)
                     MenuFactory.STATUS -> commands.providerStatus(ctx)
                     MenuFactory.HELP, "settings:help" -> Reply(MenuFactory.slimHelp(ctx.isAdmin))
+                    MenuFactory.AUTO_APPROVE_ON -> commands.setAutoApprove(ctx, enabled = true)
+                    MenuFactory.AUTO_APPROVE_OFF -> commands.setAutoApprove(ctx, enabled = false)
+                    MenuFactory.CHANNEL_ALL -> commands.allowAllChannels(ctx)
                     MenuFactory.AUTO_APPROVE, "settings:autoapprove" -> commands.toggleAutoApprove(ctx)
                     else -> Reply("알 수 없는 동작입니다.")
                 }
@@ -365,13 +368,25 @@ class DiscordBot(
                         .build(),
                 ).build()
 
-        /** 설정 패널 액션 로우(언어·모델·채널 드롭다운 + 자동승인 버튼). */
+        /** 설정 패널 상단 안내(현재 상태 포함). */
+        private fun settingsContent(ctx: CommandContext): String =
+            MenuFactory.settingsText(
+                autoApprove = commands.isAutoApprove(ctx),
+                poolModels = commands.poolModels(ctx),
+                allowedChannelCount = commands.allowedChannelIds(ctx).size,
+            )
+
+        /** 설정 패널 액션 로우(언어·모델·채널 드롭다운 + 명시 버튼). */
         private fun settingsRows(ctx: CommandContext): List<ActionRow> =
             listOf(
                 ActionRow.of(MenuFactory.languageSelect(current = "")),
-                ActionRow.of(MenuFactory.modelSelect(commands.autocompleteModels(ctx))),
+                ActionRow.of(MenuFactory.modelSelect(commands.poolModels(ctx))),
                 ActionRow.of(MenuFactory.channelSelect()),
-                ActionRow.of(Button.secondary(MenuFactory.AUTO_APPROVE, "프로바이더 자동승인 토글")),
+                ActionRow.of(
+                    Button.success(MenuFactory.CHANNEL_ALL, "모든 채널 허용"),
+                    Button.primary(MenuFactory.AUTO_APPROVE_ON, "자동 승인 켜기"),
+                    Button.secondary(MenuFactory.AUTO_APPROVE_OFF, "자동 승인 끄기"),
+                ),
             )
 
         /** 긴 질문 모달 제출(#189). */

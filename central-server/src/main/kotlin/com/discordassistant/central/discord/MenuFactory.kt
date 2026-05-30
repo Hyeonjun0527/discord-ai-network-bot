@@ -18,10 +18,36 @@ object MenuFactory {
     const val HELP = "menu:help"
     const val SETTINGS = "menu:settings"
     const val STATUS = "menu:status"
-    const val AUTO_APPROVE = "set:autoapprove"
+    const val AUTO_APPROVE = "set:autoapprove" // (구) 토글 — 하위호환
+    const val AUTO_APPROVE_ON = "set:aa-on"
+    const val AUTO_APPROVE_OFF = "set:aa-off"
     const val LANG = "set:lang"
     const val MODEL = "set:model"
     const val CHANNEL = "set:channel"
+    const val CHANNEL_ALL = "set:channel-all"
+
+    /** 설정 패널 상단 안내 텍스트(현재 상태 포함). */
+    fun settingsText(
+        autoApprove: Boolean,
+        poolModels: List<String>,
+        allowedChannelCount: Int,
+    ): String {
+        val sb = StringBuilder()
+        sb.append("⚙️ **서버 설정** — 아래 메뉴/버튼으로 바로 적용됩니다.\n\n")
+        sb.append("• **언어**: 봇 응답 언어(한/영)\n")
+        if (poolModels.isEmpty()) {
+            sb.append("• **기본 모델**: 아직 연결된 프로바이더가 없어 *자동 선택*만 있어요. 프로바이더가 PC를 연결하면 그 PC의 모델들이 여기 채워집니다.\n")
+        } else {
+            sb.append("• **기본 모델**: 현재 풀 제공 모델 ${poolModels.size}종 — 그중 기본값 선택(또는 자동)\n")
+        }
+        if (allowedChannelCount == 0) {
+            sb.append("• **사용 채널**: 현재 *모든 채널 허용*. 특정 채널만 허용하려면 아래에서 채널 선택\n")
+        } else {
+            sb.append("• **사용 채널**: 현재 $allowedChannelCount 개 채널만 허용 — '모든 채널 허용'으로 제한 해제 가능\n")
+        }
+        sb.append("• **자동 승인**: 현재 **${if (autoApprove) "켜짐(바로 참여)" else "꺼짐(관리자 승인 필요)"}**\n")
+        return sb.toString()
+    }
 
     /** 메인 패널 버튼(역할별). 일반 사용자는 질문/기여/상태/도움말, 관리자는 설정 추가. */
     fun mainButtons(isAdmin: Boolean): List<Button> {

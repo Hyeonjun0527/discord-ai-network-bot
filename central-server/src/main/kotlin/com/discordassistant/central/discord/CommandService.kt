@@ -198,7 +198,8 @@ class CommandService(
 
     fun providerStatus(ctx: CommandContext): Reply {
         val s = registry.byProvider(ctx.userId) ?: return Reply("연결 상태: 오프라인")
-        val base = "상태: ${s.state} · 처리중 ${s.activeRequests} · 일일잔여 ${s.remainingDailyRequests} · 실패 ${s.failures}"
+        val queued = s.queueDepth().let { if (it > 0) " · 대기 $it" else "" }
+        val base = "상태: ${s.state} · 처리중 ${s.activeRequests}$queued · 일일잔여 ${s.remainingDailyRequests} · 실패 ${s.failures}"
         val hint = RestHint.forStatus(s.state, s.activeRequests, s.remainingDailyRequests)
         return Reply(if (hint != null) "$base\n$hint" else base)
     }

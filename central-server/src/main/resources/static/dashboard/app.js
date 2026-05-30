@@ -67,7 +67,7 @@ async function loadGuild() {
     // 프로바이더 상세(#200)
     const ptbody = document.querySelector("#providers tbody");
     ptbody.innerHTML = (providers.providers || []).map((p) =>
-      `<tr><td>${p.providerId}</td><td>${p.state}</td><td>${p.inFlight}</td><td>${p.failures}</td><td>${p.models}</td></tr>`,
+      `<tr><td>${p.providerId}</td><td>${p.state}</td><td>${p.inFlight}</td><td>${p.queued ?? 0}</td><td>${p.failures}</td><td>${p.models}</td></tr>`,
     ).join("") || `<tr><td colspan="5">연결된 프로바이더 없음</td></tr>`;
 
     renderTrend(trend);

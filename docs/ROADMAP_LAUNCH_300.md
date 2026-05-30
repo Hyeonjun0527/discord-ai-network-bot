@@ -187,7 +187,7 @@
 - [x] 138. contribution policy → ProviderProfile(부담수준 반영; allowedRoles/maxPrompt 정교화 후속)
 - [ ] 139. RESTRICTED 모델 라우팅 완성(역할/채널/관리자 결합) — 후속
 - [x] 140. ProviderHealth 영속화 + 실패 기록(recordProviderFailure; 점수 연동 후속)
-- [ ] 141. 요청 큐 진짜 순차 대기(BUSY 하드캡 → 대기 큐 + 위치 표시)
+- [x] 141. 요청 큐 진짜 순차 대기(BUSY 하드캡 → 대기 큐 + 위치 표시) — 에이전트 세마포어 순차처리 + central 하드캡(BUSY) + queueDepth 노출, 테스트 통과
 - [ ] 142. 스트리밍 응답 end-to-end(chunk → Discord 점진 edit)
 - [ ] 143. 멀티모달/이미지 입력(선택, 비전 모델)
 - [x] 144. 일일 사용량 리셋(UTC 자정 윈도우 카운트)
@@ -219,7 +219,7 @@
 - [x] 167. 온보딩 안내(providerJoin 응답: 토큰→에이전트 실행 단계)
 - [x] 168. 동의/책임 고지(providerJoin: 프롬프트 PC 전송 동의 간주)
 - [x] 169. 유저 명령(`/models`·`/my-usage`·`/privacy`·`/catalog`)
-- [ ] 170. 요청 대기 시 "대기 중 N번째" 표시
+- [x] 170. 요청 대기 시 "대기 중 N번째" 표시 — ProviderSession.queueDepth(동시한도 초과분) → /provider-status·대시보드·/api/metrics 노출, 테스트 통과
 - [ ] 171. 처리 결과 만족도(리액션) 수집(선택)
 - [x] 172. 커뮤니티 프라이버시/이용 고지(PRIVACY_NOTICE)
 - [x] 173. 프로바이더 휴식 권장(과다 처리 시 안내) — RestHint(LIMITED/한도임박), providerStatus 연동, 테스트 통과

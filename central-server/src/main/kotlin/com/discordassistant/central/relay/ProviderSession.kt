@@ -69,6 +69,12 @@ class ProviderSession(
     val state: ProviderState get() = stateRef.get()
     val activeRequests: Int get() = inFlight.get()
 
+    /**
+     * 에이전트 측 대기열 깊이(차수 11 #170). 동시 처리 한도를 넘어 보낸 요청 수 = 에이전트 세마포어에서
+     * 순차 대기 중인 수. 0 이면 즉시 처리. 새 요청의 예상 대기 위치 추정에 사용.
+     */
+    fun queueDepth(): Int = maxOf(0, inFlight.get() - capability.maxConcurrency)
+
     fun markSeen() = lastSeenNanos.set(System.nanoTime())
 
     fun isStale(timeoutSeconds: Long, nowNanos: Long = System.nanoTime()): Boolean =

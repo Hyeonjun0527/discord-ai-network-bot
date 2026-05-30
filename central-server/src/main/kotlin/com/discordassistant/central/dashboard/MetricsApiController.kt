@@ -36,6 +36,7 @@ class MetricsApiController(private val registry: ConnectionRegistry) {
                     "providerId" to it.providerId,
                     "state" to it.state.name,
                     "inFlight" to it.activeRequests,
+                    "queued" to it.queueDepth(),
                     "failures" to it.failures,
                     "models" to it.capability.models.size,
                 )

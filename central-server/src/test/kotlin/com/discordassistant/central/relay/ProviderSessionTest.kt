@@ -90,6 +90,19 @@ class ProviderSessionTest {
     }
 
     @Test
+    fun `큐 깊이 — 동시한도 초과분이 대기 수(#170)`() {
+        val conn = FakeConnection()
+        // maxConcurrency=1(기본 capability) + maxQueue=3 → cap 4
+        val s = ProviderSession(conn, providerId = 1, guildId = 100, maxQueue = 3)
+        assertEquals(0, s.queueDepth())
+        s.sendInfer(prompt = "a") // inFlight 1 == maxConcurrency → 대기 0
+        assertEquals(0, s.queueDepth())
+        s.sendInfer(prompt = "b") // inFlight 2 → 대기 1
+        s.sendInfer(prompt = "c") // inFlight 3 → 대기 2
+        assertEquals(2, s.queueDepth())
+    }
+
+    @Test
     fun `큐 초과 → BUSY`() {
         val conn = FakeConnection()
         val s = session(conn, maxQueue = 0) // cap = capability.maxConcurrency(1) + 0 = 1

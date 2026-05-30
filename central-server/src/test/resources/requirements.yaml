@@ -23,3 +23,9 @@ requirements:
     tests:
       - type: cucumber
         path: src/test/resources/features/ask_routing.feature
+  - id: REQ-ASK-004
+    title: 차단된 사용자의 질문은 거부된다
+    priority: P0
+    tests:
+      - type: cucumber
+        path: src/test/resources/features/ask_routing.feature

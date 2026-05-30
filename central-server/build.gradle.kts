@@ -110,6 +110,15 @@ kover {
                     "com.discordassistant.central.CentralServerApplicationKt",
                     "*Config",
                     "*Configuration",
+                    // JDA 이벤트 어댑터: 슬래시 이벤트→CommandService 디스패치 글루. 로직은 CommandService 가 보유하며
+                    // 단위 테스트 + BDD(Cucumber)로 커버한다. 어댑터 자체는 JDA 런타임 의존이라 커버리지 집계 제외.
+                    "*.DiscordBot",
+                    "*.DiscordBot\$*",
+                    // dev 전용 엔드포인트(운영 CENTRAL_DEV_ENABLED=false 로 차단). 핵심 흐름 아님.
+                    "*.DevController",
+                    "*.DevController\$*",
+                    // Redis 백엔드(분산 rate limit 옵트인 인프라) — 미사용 시 비활성, 인프라 의존.
+                    "*RedisRateLimitStore",
                 )
             }
         }
@@ -119,8 +128,8 @@ kover {
         }
         verify {
             rule {
-                // 실측 라인 ~71%(config 제외) 기준 회귀 하한. 목표는 핵심 도메인/흐름 90%(테스트 보강하며 점진 상향).
-                minBound(68)
+                // 핵심 로직 라인 커버리지 ≥ 90%(실측 90.7%). JDA 어댑터/dev/Redis 인프라 글루는 위 filters 로 제외.
+                minBound(90)
             }
         }
     }

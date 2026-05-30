@@ -55,6 +55,41 @@ class ProviderSessionTest {
     }
 
     @Test
+    fun `장애 주입 — 연속 실패 임계 도달 시 UNHEALTHY(서킷브레이커, #248)`() {
+        val conn = FakeConnection()
+        val s = session(conn)
+        // 3회(FAILURE_THRESHOLD) 연속 에러 주입 → UNHEALTHY 전환
+        repeat(3) {
+            val fut = s.sendInfer(prompt = "x")
+            val req = conn.sent.filterIsInstance<InferRequest>().last()
+            s.handleFrame(InferError(requestId = req.requestId, code = ErrorCode.OLLAMA_ERROR, message = "boom"))
+            org.junit.jupiter.api.assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
+        }
+        assertEquals(ProviderState.UNHEALTHY, s.state)
+        assertTrue(s.failures >= 3)
+    }
+
+    @Test
+    fun `장애 주입 — 성공이 실패 카운터를 리셋`() {
+        val conn = FakeConnection()
+        val s = session(conn)
+        // 2회 실패(임계 미만)
+        repeat(2) {
+            val fut = s.sendInfer(prompt = "x")
+            val req = conn.sent.filterIsInstance<InferRequest>().last()
+            s.handleFrame(InferError(requestId = req.requestId, code = ErrorCode.OLLAMA_ERROR, message = "boom"))
+            org.junit.jupiter.api.assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
+        }
+        // 성공 1회 → 카운터 리셋
+        val ok = s.sendInfer(prompt = "y")
+        val okReq = conn.sent.filterIsInstance<InferRequest>().last()
+        s.handleFrame(InferResult(requestId = okReq.requestId, text = "good"))
+        ok.get(2, TimeUnit.SECONDS)
+        assertEquals(0, s.failures)
+        assertTrue(s.state != ProviderState.UNHEALTHY)
+    }
+
+    @Test
     fun `큐 초과 → BUSY`() {
         val conn = FakeConnection()
         val s = session(conn, maxQueue = 0) // cap = capability.maxConcurrency(1) + 0 = 1

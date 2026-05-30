@@ -309,7 +309,7 @@
 - [x] 245. 용량 계획 문서 — SCALING.md §3(자원 가정·병목=프로바이더 PC·스케일 신호)
 - [x] 246. 메시지 크기(MAX_FRAME_BYTES)·속도(RateLimiter) 제한
 - [x] 247. 큐 임계(maxQueue)·요청 타임아웃 임계(settings)
-- [ ] 248. 장애 주입 자동 테스트
+- [x] 248. 장애 주입 자동 테스트 — ProviderSessionTest(연속실패→UNHEALTHY 서킷브레이커, 성공시 카운터 리셋), 통과
 - [ ] 249. 성능 회귀 가드(벤치 CI)
 - [ ] 250. 차수 16 검증
 
@@ -331,7 +331,7 @@
 - [x] 264. PR 템플릿(.github/pull_request_template.md — 기존)
 - [ ] 265. 코드 리뷰 게이트(/code-review)
 - [x] 266. 문서 빌드/링크 검증 — scripts/check_links.py(상대링크 55문서 검사, 깨진 7건 수정)
-- [ ] 267. 버전/릴리스 자동화(SemVer)
+- [x] 267. 버전/릴리스 자동화(SemVer) — central-release.yml(central-v* 태그→CHANGELOG[Unreleased] 노트→GitHub Release)
 - [ ] 268. 차수 17 검증
 
 ## 차수 18 — Python 봇 이관/정리 (269~282)

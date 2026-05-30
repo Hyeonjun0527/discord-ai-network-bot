@@ -1,0 +1,39 @@
+# central-server SemVer 릴리스 자동화(차수 17 #267). `central-v*` 태그 push 시
+# GitHub Release 를 생성하고 CHANGELOG 의 [Unreleased] 섹션을 릴리스 노트로 사용.
+name: central-server release
+
+on:
+  push:
+    tags: ["central-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "릴리스 태그(예: central-v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 릴리스 노트 추출(CHANGELOG [Unreleased])
+        id: notes
+        run: |
+          python3 - <<'PY' > release_notes.md
+          import pathlib, re
+          cl = pathlib.Path("central-server/CHANGELOG.md").read_text(encoding="utf-8")
+          # [Unreleased] 부터 다음 '## ' 헤더 직전까지
+          m = re.search(r"## \[Unreleased\](.*?)(?=\n## |\Z)", cl, re.S)
+          print(m.group(1).strip() if m else "릴리스 노트 없음.")
+          PY
+          echo "추출된 노트:"; cat release_notes.md
+      - name: GitHub Release 생성
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          TAG="${TAG:-${{ inputs.tag }}}"
+          gh release create "$TAG" --title "central-server $TAG" --notes-file release_notes.md

@@ -81,6 +81,25 @@ async function loadGuild() {
   }
 }
 
+// 정책 쓰기(#203/#204) — OAuth 활성 시에만 성공. 같은 출처라 쿠키 세션 자동 첨부.
+async function postWrite(path, params) {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    alert("길드 ID(숫자)를 먼저 입력하세요.");
+    return;
+  }
+  const qs = new URLSearchParams(params).toString();
+  try {
+    const res = await fetch(`/api/dashboard/${gid}/${path}?${qs}`, { method: "POST" });
+    $("writeResult").textContent = res.ok ? `✅ 적용됨 (${path})` : `⛔ 실패 ${res.status}(인증 필요?)`;
+  } catch (e) {
+    $("writeResult").textContent = `오류: ${e.message}`;
+  }
+}
+
 $("loadGuild").addEventListener("click", loadGuild);
+$("saveWelcome").addEventListener("click", () => postWrite("welcome", { message: $("welcomeMsg").value }));
+$("autoApproveOn").addEventListener("click", () => postWrite("auto-approve", { enabled: "true" }));
+$("autoApproveOff").addEventListener("click", () => postWrite("auto-approve", { enabled: "false" }));
 refreshPool();
 setInterval(refreshPool, 5000);

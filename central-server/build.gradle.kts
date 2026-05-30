@@ -34,6 +34,9 @@ dependencies {
     // Spring Boot 코어
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-websocket") // 에이전트 WS 릴레이
+    // 대시보드 관리자 인증(차수 14 #196/#197). 기본 비활성(permitAll); central.oauth.enabled 로 OAuth2 활성.
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
     implementation("org.springframework.boot:spring-boot-starter-actuator") // 운영 헬스/메트릭
     implementation("io.micrometer:micrometer-registry-prometheus") // /actuator/prometheus
     implementation("org.springframework.boot:spring-boot-starter-validation")

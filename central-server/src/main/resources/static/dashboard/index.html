@@ -41,7 +41,21 @@
     <table id="requests"><thead><tr><th>requestId</th><th>상태</th><th>부담</th><th>provider</th><th>시각</th></tr></thead><tbody></tbody></table>
   </section>
 
-  <footer>읽기전용 · 5초 폴링 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
+  <section class="panel">
+    <h2>정책 설정 (관리자, OAuth 필요)</h2>
+    <p class="muted">OAuth 활성 + 로그인 시에만 동작합니다(비활성 환경에선 401/404).</p>
+    <div class="row">
+      <input id="welcomeMsg" type="text" placeholder="환영 메시지" />
+      <button id="saveWelcome">환영 저장</button>
+    </div>
+    <div class="row">
+      <button id="autoApproveOn">자동승인 ON</button>
+      <button id="autoApproveOff">자동승인 OFF</button>
+    </div>
+    <div id="writeResult" class="muted"></div>
+  </section>
+
+  <footer>읽기 5초 폴링 · 쓰기는 OAuth 인증 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
   <script src="app.js"></script>
 </body>
 </html>

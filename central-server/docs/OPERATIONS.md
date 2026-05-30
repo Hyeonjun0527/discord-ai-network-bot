@@ -45,6 +45,28 @@ curl -s localhost:8080/actuator/health   # {"status":"UP"} 확인
 - 토큰: 일회용·해시 저장·TTL. WS: outbound only, 프레임 화이트리스트·크기 상한.
 - `CENTRAL_DEV_ENABLED` 는 운영에서 **반드시 false**(/dev/* 엔드포인트 차단). 자세히는 `SECURITY.md`.
 
+## 대시보드 관리자 인증 — Discord OAuth2 (차수 14 #196/#197)
+기본은 **비활성**(permitAll, 오픈 읽기전용 대시보드). 운영에서 관리자 인증을 켜려면:
+
+1. Discord 개발자 포털에서 OAuth2 앱 생성 → Redirect URI `https://<호스트>/login/oauth2/code/discord`.
+2. 환경변수 주입:
+```bash
+CENTRAL_OAUTH_ENABLED=true
+SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_DISCORD_CLIENT_ID=<client-id>
+SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_DISCORD_CLIENT_SECRET=<secret>   # 커밋 금지
+SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_DISCORD_SCOPE=identify
+SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_DISCORD_AUTHORIZATION_GRANT_TYPE=authorization_code
+SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_DISCORD_REDIRECT_URI={baseUrl}/login/oauth2/code/discord
+SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_DISCORD_AUTHORIZATION_URI=https://discord.com/oauth2/authorize
+SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_DISCORD_TOKEN_URI=https://discord.com/api/oauth2/token
+SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_DISCORD_USER_INFO_URI=https://discord.com/api/users/@me
+SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_DISCORD_USER_NAME_ATTRIBUTE=id
+```
+3. 활성 시: 정적 대시보드·헬스·메트릭·에이전트 WS·로그인은 공개, **대시보드 데이터/쓰기 API 는 인증 필요**(세션 #197).
+4. 쓰기 API(#203/#204)는 `central.oauth.enabled=true` 일 때만 노출(`DashboardWriteController`).
+
+> 구현: `web/SecurityConfig.kt`(기본 permitAll / 활성 시 oauth2Login). 길드 관리자 권한 매핑은 후속(현재 인증=접근).
+
 ## 슬래시 명령 등록 전략 (차수 13 #185)
 - **현재: 글로벌 등록**(`jda.updateCommands()`). 한 번 등록하면 봇이 있는 모든 서버에 노출.
   - 장점: 운영 단순(서버별 등록 불필요). 단점: 변경 전파에 최대 ~1시간 캐시 지연 가능.

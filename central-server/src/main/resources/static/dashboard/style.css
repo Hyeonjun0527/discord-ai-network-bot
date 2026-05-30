@@ -23,3 +23,4 @@ table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 th, td { text-align: left; padding: .4rem; border-bottom: 1px solid #8883; }
 footer { font-size: .8rem; opacity: .6; margin-top: 1rem; }
 code { background: #8882; padding: .05rem .3rem; border-radius: 5px; }
+.muted { font-size: .8rem; opacity: .7; margin: .3rem 0; }

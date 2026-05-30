@@ -234,10 +234,10 @@
 - [x] 179. 슬래시 옵션 자동완성(모델·역할·레벨) — CommandService.autocompleteModels + JDA onCommandAutoComplete(model 옵션), 테스트 통과
 - [ ] 180. 버튼/Select 인터랙션(설정 패널)
 - [ ] 181. 컨텍스트 메뉴(메시지 우클릭 → 질문)
-- [ ] 182. ephemeral 흐름 일관화(민감 응답)
+- [x] 182. ephemeral 흐름 일관화(민감 응답) — Reply 기본 ephemeral=true, 공개(ask결과/통계)만 false, 테스트 검증
 - [x] 183. `/help` 종합 도움말(섹션 네비) — CommandService.help, 권한별 섹션, 테스트 통과
 - [x] 184. 에러 메시지 표준화/친절화 — Replies 팩토리(아이콘/어조 통일), adminOnly 적용, 테스트 통과
-- [ ] 185. 길드별 명령 등록 vs 글로벌 전략
+- [x] 185. 길드별 명령 등록 vs 글로벌 전략 — OPERATIONS.md(현재 글로벌, 개발/베타는 길드 즉시반영 권장)
 - [x] 186. 권한별 명령 노출 제어 — 관리자 명령에 DefaultMemberPermissions(MANAGE_SERVER) 게이트(비관리자 UI 숨김)
 - [x] 187. 응답 페이지네이션(긴 출력) — Pagination.paginate(2000자 한도, 줄경계/강제분할 무유실), 테스트 통과
 - [ ] 188. 처리 중 typing/defer UX
@@ -245,7 +245,7 @@
 - [x] 190. 명령 사용 통계/로그 — CommandMetrics(Micrometer discord_command_total{command}), DiscordBot 배선, 테스트 통과
 - [x] 191. 명령 쿨다운 피드백 — ask 쿨다운 시 Replies.cooldown(⏳) 표준 피드백, 테스트 통과
 - [ ] 192. 다국어 명령 설명(localization)
-- [ ] 193. 명령 ↔ 문서(docs) 동기화 가드
+- [x] 193. 명령 ↔ 문서(docs) 동기화 가드 — CommandRegistrationDriftTest(등록↔디스패치 일치 강제), 통과
 - [ ] 194. 차수 13 검증
 
 ## 차수 14 — 웹 대시보드 (195~214)

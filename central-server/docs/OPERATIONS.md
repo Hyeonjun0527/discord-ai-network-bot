@@ -44,3 +44,11 @@ curl -s localhost:8080/actuator/health   # {"status":"UP"} 확인
 ## 보안 점검(기본)
 - 토큰: 일회용·해시 저장·TTL. WS: outbound only, 프레임 화이트리스트·크기 상한.
 - `CENTRAL_DEV_ENABLED` 는 운영에서 **반드시 false**(/dev/* 엔드포인트 차단). 자세히는 `SECURITY.md`.
+
+## 슬래시 명령 등록 전략 (차수 13 #185)
+- **현재: 글로벌 등록**(`jda.updateCommands()`). 한 번 등록하면 봇이 있는 모든 서버에 노출.
+  - 장점: 운영 단순(서버별 등록 불필요). 단점: 변경 전파에 최대 ~1시간 캐시 지연 가능.
+- **개발/베타 권장: 길드 등록**(`guild.updateCommands()`)으로 전환하면 **즉시 반영**되어 반복이 빠름.
+  - 베타는 특정 길드에만 초대하므로 길드 등록이 유리. 운영 확장 시 글로벌로 승격.
+- **권한 노출**: 관리자 명령은 `DefaultMemberPermissions(MANAGE_SERVER)` 로 비관리자 UI 에서 숨김(#186).
+- **드리프트 가드**: 등록↔디스패치 일치를 `CommandRegistrationDriftTest` 가 강제(#193).

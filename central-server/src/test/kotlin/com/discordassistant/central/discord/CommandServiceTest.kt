@@ -83,6 +83,17 @@ class CommandServiceTest @Autowired constructor(
     }
 
     @Test
+    fun `ephemeral 일관화(#182) — 민감 응답은 비공개, 공개 통계만 공개`() {
+        // 민감/개인: ephemeral=true
+        assertTrue(commands.privacy().ephemeral)
+        assertTrue(commands.myUsage(ctx()).ephemeral)
+        assertTrue(commands.help(ctx()).ephemeral)
+        assertTrue(commands.models(ctx()).ephemeral)
+        // 공개 통계: ephemeral=false
+        assertFalse(commands.communityStats(ctx()).ephemeral)
+    }
+
+    @Test
     fun `community-stats — 익명 집계, 개별 식별정보 없음`() {
         val r = commands.communityStats(ctx())
         assertTrue(r.content.contains("익명 집계"))

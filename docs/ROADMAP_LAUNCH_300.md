@@ -275,15 +275,15 @@
 
 - [x] 215. Micrometer 메트릭(PoolMetrics 활성 연결 게이지; 요청 수/지연 후속)
 - [x] 216. Prometheus 엔드포인트(/actuator/prometheus)
-- [ ] 217. Grafana 대시보드(or 메트릭 시각화)
+- [x] 217. Grafana 대시보드 JSON(docs/grafana-dashboard.json)
 - [ ] 218. 구조적 로깅(JSON)·correlation/request id
 - [ ] 219. 분산 추적(선택, OpenTelemetry)
 - [ ] 220. 알림(provider 대량 오프라인·실패율 급증·DB 장애)
 - [x] 221. 헬스 상세(PoolHealthIndicator activeProviderConnections + DB/JPA 헬스)
 - [ ] 222. 로그 보존/회전 정책
 - [ ] 223. 에러 트래킹(Sentry) 연동
-- [ ] 224. Postgres 백업/복구 정책
-- [ ] 225. 장애 대응 런북
+- [x] 224. Postgres 백업/복구 정책(RUNBOOK: pg_dump/psql)
+- [x] 225. 장애 대응 런북(central-server/docs/RUNBOOK.md)
 - [ ] 226. 대시보드용 메트릭 API
 - [ ] 227. 사용량 트렌드 분석
 - [ ] 228. 처리 부하(compute) 회계(비금전, 기여 측정)

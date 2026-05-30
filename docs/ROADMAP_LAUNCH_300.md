@@ -278,7 +278,7 @@
 - [x] 217. Grafana 대시보드 JSON(docs/grafana-dashboard.json)
 - [x] 218. 구조적 로깅·correlation/request id — RequestIdFilter(MDC %X{requestId}) + logback 패턴
 - [ ] 219. 분산 추적(선택, OpenTelemetry)
-- [ ] 220. 알림(provider 대량 오프라인·실패율 급증·DB 장애)
+- [x] 220. 알림(provider 대량 오프라인·실패율 급증·DB 장애) — Notifier + PoolAlertMonitor(풀 0명/저용량 edge-trigger, 테스트 통과). 실패율/DB 트리거는 후속
 - [x] 221. 헬스 상세(PoolHealthIndicator activeProviderConnections + DB/JPA 헬스)
 - [x] 222. 로그 보존/회전 정책 — logback-spring.xml(prod 프로파일 SizeAndTime 회전, 50MB/14일/1GB cap)
 - [ ] 223. 에러 트래킹(Sentry) 연동
@@ -289,7 +289,7 @@
 - [ ] 228. 처리 부하(compute) 회계(비금전, 기여 측정)
 - [ ] 229. SLO/SLA 정의(선택)
 - [ ] 230. 운영 점검 자동화(스크립트/스케줄)
-- [ ] 231. 알림 채널(Discord/슬랙) 연동
+- [x] 231. 알림 채널(Discord/슬랙) 연동 — DiscordWebhookNotifier(@ConditionalOnProperty webhook, @Primary 폴백), 미설정 시 LoggingNotifier
 - [ ] 232. 차수 15 검증
 
 ## 차수 16 — 신뢰성/스케일 (233~250)

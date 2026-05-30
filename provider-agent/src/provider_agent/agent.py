@@ -133,6 +133,13 @@ class ProviderAgent:
                 loop.add_signal_handler(sig, self._stop.set)
             except (NotImplementedError, AttributeError, ValueError):  # pragma: no cover - Windows 등
                 pass
+        # 설정 hot-reload(#129): SIGHUP → 저장 설정에서 models 재적용.
+        sighup = getattr(signal, "SIGHUP", None)
+        if sighup is not None:
+            try:
+                loop.add_signal_handler(sighup, self.reload_models)
+            except (NotImplementedError, AttributeError, ValueError):  # pragma: no cover
+                pass
 
         conn_task = asyncio.create_task(self._conn.run())
         status_task = asyncio.create_task(self._status_loop(self._conn))
@@ -146,6 +153,17 @@ class ProviderAgent:
             await asyncio.gather(status_task, conn_task, stop_task, return_exceptions=True)
         logger.info("에이전트 종료")
         return 0
+
+    def reload_models(self) -> list[str]:
+        """SIGHUP: 저장된 설정 파일에서 models 를 다시 읽어 적용(#129 hot-reload)."""
+        from .config_file import load_config
+
+        saved = load_config()
+        models = saved.get("models")
+        if models:
+            self._models = list(models)
+            logger.info("설정 hot-reload: models=%s", self._models)
+        return self._models
 
     @property
     def processed(self) -> int:

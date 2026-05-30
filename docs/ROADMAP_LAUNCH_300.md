@@ -172,7 +172,7 @@
 - [x] 126. 진행중/처리 로그(상태 콘솔)
 - [x] 127. self-test(--self-test: 연결·모델·추론 1회)
 - [x] 128. 예외 가드 루프·재연결 복구
-- [ ] 129. 설정 hot-reload — 후속
+- [x] 129. 설정 hot-reload — SIGHUP → reload_models(저장 설정에서 models 재적용), 테스트 통과
 - [x] 130. 텔레메트리 opt-in — --telemetry(기본 꺼짐) + telemetry.emit(off 시 no-op, 익명 필드만), 테스트 통과 — 후속
 - [x] 131. 로그 회전(--log-file, RotatingFileHandler)
 - [x] 132. 다중 에이전트 가이드(README)
@@ -268,7 +268,7 @@
 - [x] 210. 반응형/접근성 — CSS auto-fit 그리드 + color-scheme(다크/라이트), 시맨틱 마크업
 - [x] 211. 대시보드 API 테스트 — DashboardControllerTest(overview/requests) + MetricsApiControllerTest + SecurityHeadersFilterTest
 - [x] 212. 대시보드 UI 테스트 — DashboardServingTest(MockMvc: 정적 서빙·디렉터리 포워드·보안헤더), 통과
-- [ ] 213. 대시보드 배포 파이프라인
+- [x] 213. 대시보드 배포 파이프라인 — 정적 자원이 central jar 에 동봉 → 별도 파이프라인 불필요(central-server-image/deploy 가 함께 배포). 라이브 서빙 확인됨
 - [x] 214. 차수 14 검증 — 읽기전용 대시보드(개요/풀/프로바이더/요청/트렌드) + 백엔드 API + 보안헤더 라이브 검증·UI 테스트 통과. 196/197(OAuth)·203/204(쓰기 UI)·213(배포)은 외부/후속
 
 ## 차수 15 — 관측성/운영 (215~232)

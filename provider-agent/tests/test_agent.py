@@ -124,3 +124,15 @@ async def test_model_default_to_own():
     agent = ProviderAgent(AgentConfig(token="T", models=("mymodel",)), ollama=RecOllama())  # type: ignore[arg-type]
     await agent.handle_infer(FakeConn(), InferRequest(request_id="r", prompt="x"))  # type: ignore[arg-type]
     assert RecOllama.last_model == "mymodel"
+
+
+def test_reload_models_hot_reload(monkeypatch, tmp_path):
+    """SIGHUP hot-reload(#129): 저장 설정에서 models 재적용."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from provider_agent.config_file import save_config
+    agent = ProviderAgent(AgentConfig(token="T", models=("old",)))  # type: ignore[arg-type]
+    assert agent._models == ["old"]
+    # 새 모델로 설정 저장 후 reload
+    save_config(AgentConfig(token="T", models=("a", "b")))
+    assert agent.reload_models() == ["a", "b"]
+    assert agent._models == ["a", "b"]

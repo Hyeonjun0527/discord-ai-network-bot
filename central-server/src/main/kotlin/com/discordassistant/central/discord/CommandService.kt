@@ -44,6 +44,8 @@ class CommandService(
     private val contributionPolicy: ContributionPolicyService,
     private val blocklist: com.discordassistant.central.provider.BlocklistService,
     private val schedule: com.discordassistant.central.provider.ProviderScheduleService,
+    @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
+    private val relayPublicUrl: String = "",
 ) {
     companion object {
         const val PRIVACY_NOTICE =
@@ -191,10 +193,7 @@ class CommandService(
         val auto = policy.isAutoApprove(ctx.guildId)
         val r = registration.requestJoin(ctx.userId, ctx.guildId, autoApprove = auto)
         return if (r.token != null) {
-            Reply(
-                "✅ 승인되었습니다. 아래 토큰으로 에이전트를 실행하세요(10분 내 1회용):\n" +
-                    "```\n${r.token}\n```\n프롬프트가 당신 PC 로 전송됨에 동의한 것으로 간주됩니다.",
-            )
+            Reply(ProviderOnboarding.message(r.token, relayPublicUrl), ephemeral = true)
         } else {
             Reply("📋 등록 요청이 접수되었습니다(${r.state}). 관리자 승인을 기다려 주세요.")
         }
@@ -331,7 +330,8 @@ class CommandService(
         val token =
             registration.approve(providerUserId, ctx.userId)
                 ?: return Reply("승인할 대기 중 프로바이더가 없습니다.")
-        return Reply("✅ <@$providerUserId> 승인. 토큰을 해당 유저에게 전달하세요:\n```\n$token\n```")
+        // 승인 안내(온보딩 가이드) — DiscordBot 이 이 내용을 대상 유저에게 DM 으로도 보낸다(#162).
+        return Reply(ProviderOnboarding.message(token, relayPublicUrl), ephemeral = true)
     }
 
     fun removeProvider(

@@ -491,10 +491,10 @@ class DiscordBot(
                 "provider-approve" -> {
                     val target = event.getOption("user")!!.asUser
                     val reply = commands.approveProvider(ctx, target.idLong)
-                    // 승인 성공 시 대상에게 토큰/안내 DM(#162). 실패해도 관리자 응답은 유지.
-                    if (reply.content.startsWith("✅")) {
+                    // 승인 성공(온보딩 안내) 시 대상에게 그대로 DM(#162). 실패 메시지는 DM 안 함.
+                    if (reply.content.contains("프로바이더로 승인되었습니다")) {
                         target.openPrivateChannel().queue(
-                            { ch -> ch.sendMessage("✅ 프로바이더로 승인되었습니다.\n${reply.content}").queue({}, {}) },
+                            { ch -> ch.sendMessage(reply.content).queue({}, {}) },
                             {},
                         )
                     }

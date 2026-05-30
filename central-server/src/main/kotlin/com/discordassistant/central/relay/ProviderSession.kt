@@ -169,6 +169,59 @@ class ProviderSession(
         }
     }
 
+    /**
+     * 스트리밍 추론(#142): InferRequest(stream=true) 송신 후 에이전트의 ChunkFrame 을 드레인·조립해
+     * 최종 InferResult 로 완성한다. onChunk 콜백으로 부분 텍스트를 받아 Discord 점진 edit 등에 쓸 수 있다.
+     * (드레인은 풀 스레드를 블로킹하므로 동시 스트림 수는 제한적 — 비스트리밍이 기본.)
+     */
+    fun sendInferStream(
+        prompt: String,
+        model: String? = null,
+        options: Map<String, Any?> = emptyMap(),
+        onChunk: (String) -> Unit = {},
+    ): CompletableFuture<InferResult> {
+        val cap = capability.maxConcurrency + maxQueue
+        if (inFlight.get() >= cap) {
+            return CompletableFuture.failedFuture(AgentBusyException("대기 큐가 가득 찼습니다."))
+        }
+        val requestId = UUID.randomUUID().toString().replace("-", "")
+        val queue: java.util.concurrent.BlockingQueue<ChunkFrame> = java.util.concurrent.LinkedBlockingQueue()
+        streams[requestId] = queue // 청크 도착 전에 큐를 먼저 등록(유실 방지)
+        inFlight.incrementAndGet()
+        if (remainingDaily.get() != Int.MAX_VALUE) remainingDaily.decrementAndGet()
+        transitionTo(ProviderState.ONLINE_BUSY)
+        try {
+            connection.sendFrame(InferRequest(requestId, model, prompt, filterOptions(options), stream = true))
+        } catch (e: Exception) {
+            streams.remove(requestId)
+            cleanup(requestId)
+            return CompletableFuture.failedFuture(ConnectionClosedException("전송 실패: ${e.message}"))
+        }
+        return CompletableFuture.supplyAsync {
+            val sb = StringBuilder()
+            val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(requestTimeoutSeconds)
+            try {
+                while (true) {
+                    val remaining = deadlineNanos - System.nanoTime()
+                    if (remaining <= 0) {
+                        safeSend(CancelFrame(requestId))
+                        if (consecutiveFailures.incrementAndGet() >= FAILURE_THRESHOLD) transitionTo(ProviderState.UNHEALTHY)
+                        throw RemoteTimeoutException("원격 에이전트 응답 시간 초과(${requestTimeoutSeconds}초)")
+                    }
+                    val chunk = queue.poll(remaining, TimeUnit.NANOSECONDS) ?: continue
+                    if (chunk.done) break
+                    sb.append(chunk.delta)
+                    onChunk(chunk.delta)
+                }
+                consecutiveFailures.set(0)
+                InferResult(requestId, sb.toString())
+            } finally {
+                streams.remove(requestId)
+                cleanup(requestId)
+            }
+        }
+    }
+
     private fun cleanup(requestId: String) {
         pending.remove(requestId)
         if (inFlight.decrementAndGet() <= 0) transitionTo(ProviderState.ONLINE_IDLE)

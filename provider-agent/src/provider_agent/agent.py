@@ -16,6 +16,7 @@ from .constants import ErrorCode
 from .ollama import OllamaClient, OllamaError
 from .protocol import (
     CancelFrame,
+    ChunkFrame,
     Frame,
     InferError,
     InferRequest,
@@ -79,9 +80,17 @@ class ProviderAgent:
             # 서버가 모델을 지정하지 않으면 내가 제공하는 첫 모델로 처리한다.
             model = req.model or (self._models[0] if self._models else None)
             try:
-                text, usage = await self._ollama.generate(req.prompt, model)
-                self._processed += 1
-                await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
+                if req.stream:
+                    # 스트리밍(#142): 부분 텍스트를 ChunkFrame 으로 점진 전송 후 done 표시.
+                    async for kind, val in self._ollama.generate_stream(req.prompt, model):
+                        if kind == "chunk":
+                            await self._safe_send(conn, ChunkFrame(req.request_id, delta=val, done=False))
+                    await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
+                    self._processed += 1
+                else:
+                    text, usage = await self._ollama.generate(req.prompt, model)
+                    self._processed += 1
+                    await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
             except OllamaError as exc:
                 await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
             except asyncio.CancelledError:

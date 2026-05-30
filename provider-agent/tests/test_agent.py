@@ -45,6 +45,26 @@ class FakeOllama:
     async def list_models(self) -> list[str]:
         return ["m1"]
 
+    async def generate_stream(self, prompt: str, model: str | None):
+        for piece in ("안", "녕", "!"):
+            yield ("chunk", piece)
+        yield ("done", self.usage)
+
+
+@pytest.mark.asyncio
+async def test_handle_infer_streaming_emits_chunks():
+    """스트리밍(#142): req.stream 시 ChunkFrame 점진 전송 + done 종료."""
+    from provider_agent.protocol import ChunkFrame
+
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
+    conn = FakeConn()
+    await agent.handle_infer(conn, InferRequest(request_id="s1", prompt="안녕", stream=True))  # type: ignore[arg-type]
+    chunks = [f for f in conn.sent if isinstance(f, ChunkFrame)]
+    deltas = [c.delta for c in chunks if not c.done]
+    assert "".join(deltas) == "안녕!"
+    assert chunks[-1].done is True
+    assert agent.processed == 1
+
 
 @pytest.mark.asyncio
 async def test_handle_infer_success():

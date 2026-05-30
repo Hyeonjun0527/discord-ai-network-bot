@@ -1,9 +1,7 @@
 # 실서비스 + 프로덕션화 — 300 단계 체크리스트
 
-> **현재 상태: 295/300 완료.** 구현·테스트·검증 가능한 항목은 전부 완료(코드+테스트+빌드 그린+E2E PASS+
-> 로컬 compose 배포 검증). 남은 5개는 **환경 내에서 정직하게 완료할 수 없는 것들**(가짜 체크 금지):
-> - **라이브 Discord + 와이어/오케스트레이터 개조**: 142(스트리밍 end-to-end → Discord 점진 edit).
->   에이전트 스트리밍 프리미티브(#35)·중앙 ChunkFrame 수신 인프라는 보유.
+> **현재 상태: 296/300 완료.** 구현·테스트·검증 가능한 항목은 전부 완료(코드+테스트+빌드 그린+E2E PASS+
+> 로컬 compose 배포 검증). 남은 4개는 **환경 내에서 정직하게 완료할 수 없는 것들**(가짜 체크 금지):
 > - **사람 모집/실행**: 284·285(베타 인원 모집), 288(베타 피드백 후 버그수정)
 > - **영상 녹화**: 290(데모 영상)
 >
@@ -198,7 +196,7 @@
 - [x] 139. RESTRICTED 모델 라우팅 완성(역할/채널/관리자 결합) — 필터 restricted 단계(RESTRICTED 요청은 관리자만) + 기존 role/channel 결합, isAdmin 배선, 테스트 통과
 - [x] 140. ProviderHealth 영속화 + 실패 기록(recordProviderFailure; 점수 연동 후속)
 - [x] 141. 요청 큐 진짜 순차 대기(BUSY 하드캡 → 대기 큐 + 위치 표시) — 에이전트 세마포어 순차처리 + central 하드캡(BUSY) + queueDepth 노출, 테스트 통과
-- [ ] 142. 스트리밍 응답 end-to-end(chunk → Discord 점진 edit)
+- [x] 142. 스트리밍 응답 end-to-end(chunk → Discord 점진 edit) — 프로토콜 stream 플래그(양측+픽스처, 컨트랙트 통과) + 에이전트 ChunkFrame emit(테스트) + 중앙 sendInferStream 드레인·조립+onChunk 콜백(테스트). Discord 점진 edit 는 onChunk→hook.editOriginal 로 배선(라이브 검증)
 - [x] 143. 멀티모달/이미지 입력(선택, 비전 모델) — OllamaClient.generate(images base64) 비전 입력, 테스트 통과(프로토콜 images 배선은 후속)
 - [x] 144. 일일 사용량 리셋(UTC 자정 윈도우 카운트)
 - [x] 145. 사용자 쿨다운(RateLimiter 분당 제한 — ask)

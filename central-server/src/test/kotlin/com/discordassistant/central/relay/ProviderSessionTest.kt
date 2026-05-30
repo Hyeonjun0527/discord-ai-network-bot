@@ -104,6 +104,32 @@ class ProviderSessionTest {
     }
 
     @Test
+    fun `스트리밍 — ChunkFrame 드레인·조립(#142)`() {
+        val conn = FakeConnection()
+        val s = session(conn)
+        val collected = StringBuilder()
+        val fut = s.sendInferStream(prompt = "안녕", model = "m1", onChunk = { collected.append(it) })
+        val req = conn.sent.filterIsInstance<InferRequest>().single()
+        assertTrue(req.stream, "stream=true 로 요청해야 함")
+        // 에이전트가 보낸 청크들이 도착하는 상황 시뮬레이션
+        s.handleFrame(
+            com.discordassistant.central.relay.protocol
+                .ChunkFrame(req.requestId, delta = "안", done = false),
+        )
+        s.handleFrame(
+            com.discordassistant.central.relay.protocol
+                .ChunkFrame(req.requestId, delta = "녕!", done = false),
+        )
+        s.handleFrame(
+            com.discordassistant.central.relay.protocol
+                .ChunkFrame(req.requestId, delta = "", done = true),
+        )
+        val res = fut.get(3, TimeUnit.SECONDS)
+        assertEquals("안녕!", res.text)
+        assertEquals("안녕!", collected.toString()) // onChunk 콜백으로 점진 수신
+    }
+
+    @Test
     fun `큐 깊이 — 동시한도 초과분이 대기 수(#170)`() {
         val conn = FakeConnection()
         // maxConcurrency=1(기본 capability) + maxQueue=3 → cap 4

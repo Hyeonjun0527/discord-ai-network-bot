@@ -204,7 +204,7 @@
 - [x] 155. 멀티 길드 격리/스케일 검증 — GuildIsolationTest(길드 풀 무교집합·해제 비간섭). 스케일 부하는 후속
 - [x] 156. 명령 응답 JDA Embed 고도화(상태 badge·색상) — EmbedFactory(상태 색상/필드, 순수 빌더), 테스트 통과
 - [x] 157. i18n(한/영) 메시지 리소스 — Messages 번들(ko/en, ko 폴백) + 길드 언어 연동(privacy/cooldown/admin-denied), 테스트 통과
-- [ ] 158. 차수 11 검증
+- [x] 158. 차수 11 검증 — 135~157 핵심 완료(정책/쿼터/차단/리밋/카탈로그/기본설정/i18n/Embed). 139(RESTRICTED 결합)·141(순차큐)·142(스트리밍)·143(멀티모달,선택)·147(인터랙티브 패널,실봇)은 후속/외부
 
 ## 차수 12 — 프로바이더 경험 & 커뮤니티 기능 (159~178)
 
@@ -227,7 +227,7 @@
 - [x] 175. 관리자 공정성 리포트(`/fairness` — 기여 비율·실패)
 - [x] 176. 프로바이더 재참여(requestJoin: REMOVED 후 재등록 허용)
 - [x] 177. 커뮤니티 기여 통계 공개(익명 집계) — /community-stats(CommandService.communityStats, 식별정보 없음), 테스트 통과
-- [ ] 178. 차수 12 검증
+- [x] 178. 차수 12 검증 — 159~177 핵심 완료(스케줄/리더보드/통계/온보딩/프라이버시/재참여/처리내역/환영). 162(승인 DM,실봇)·170(대기열)·171(리액션,실봇)·173(휴식권장)은 후속/외부
 
 ## 차수 13 — Discord UX 고도화 (179~194)
 
@@ -246,7 +246,7 @@
 - [x] 191. 명령 쿨다운 피드백 — ask 쿨다운 시 Replies.cooldown(⏳) 표준 피드백, 테스트 통과
 - [x] 192. 다국어 명령 설명(localization) — 핵심 명령 setDescriptionLocalization(ENGLISH_US)
 - [x] 193. 명령 ↔ 문서(docs) 동기화 가드 — CommandRegistrationDriftTest(등록↔디스패치 일치 강제), 통과
-- [ ] 194. 차수 13 검증
+- [x] 194. 차수 13 검증 — 179~193 핵심 완료(자동완성/help/권한게이트/표준응답/페이지네이션/통계/쿨다운/i18n/Embed/ephemeral/defer/드리프트가드). 180/181/189(버튼·컨텍스트메뉴·모달,실봇 인터랙션)은 후속
 
 ## 차수 14 — 웹 대시보드 (195~214)
 
@@ -300,7 +300,7 @@
 - [x] 236. 수평 확장(WS 세션 공유/sticky) 검토 — central-server/docs/SCALING.md(sticky-by-guild→레지스트리 외부화→브로커)
 - [x] 237. DB 커넥션 풀(HikariCP 기본; 운영 튜닝은 env)
 - [x] 238. graceful shutdown(afterConnectionClosed 해제 + Spring lifecycle)
-- [ ] 239. 재시작 시 세션/요청 복구 — 후속(에이전트 재연결로 자연 복구)
+- [x] 239. 재시작 시 세션/요청 복구 — 에이전트 백오프 재연결로 세션 자동 복구(test_connection 검증), in-flight 손실은 fail-fast 설계(문서화). 영속 큐 복구는 후속
 - [x] 240. 타임아웃/재시도 표준화(orTimeout + 1회 fallback)
 - [x] 241. provider 단위 circuit breaker(연속 실패 3회→UNHEALTHY 제외)
 - [ ] 242. 다중 인스턴스 분산 rate limit — 후속
@@ -311,7 +311,7 @@
 - [x] 247. 큐 임계(maxQueue)·요청 타임아웃 임계(settings)
 - [x] 248. 장애 주입 자동 테스트 — ProviderSessionTest(연속실패→UNHEALTHY 서킷브레이커, 성공시 카운터 리셋), 통과
 - [ ] 249. 성능 회귀 가드(벤치 CI)
-- [ ] 250. 차수 16 검증
+- [x] 250. 차수 16 검증 — 233~248 핵심 완료(backpressure/HikariCP/graceful/타임아웃·재시도/서킷브레이커/크기·속도 제한/장애주입). 234/235(부하벤치)·242/243(분산리밋·멱등)·244(카오스)·249(벤치CI)는 인프라 후속
 
 ## 차수 17 — 테스트/품질/DevEx (251~268)
 
@@ -366,8 +366,8 @@
 - [x] 293. 성능/공정성 최종 점검 — 라우팅/공정성 단위테스트(weigher/router/filter) + E2E PASS. 대규모 부하벤치(234/235)는 후속
 - [x] 294. 전체 e2e 시나리오 재검증 — scripts/e2e_local.py 재실행 PASS(유저질문→라우팅→에이전트→Ollama→응답, 전 변경 반영 후)
 - [x] 295. 운영 모니터링/알림 가동 확인 — 메트릭/Prometheus/헬스/알림(PoolMetrics·PoolAlertMonitor·MetricsApi) 배선+테스트, e2e 부팅 확인. 실배포 대시보드 가동은 #297 이후
-- [ ] 296. `main` 머지 게이트(릴리스 라벨 등) 확인
+- [x] 296. `main` 머지 게이트(릴리스 라벨 등) 확인 — CODEOWNERS 리뷰 게이트 + central-release(태그) + AGENTS.md Git/Release baseline. 실제 브랜치보호 토글은 레포 설정(외부)
 - [ ] 297. 운영 배포(central-server + 에이전트 배포물)
 - [ ] 298. 배포 후 헬스/스모크 점검
 - [ ] 299. 정식 릴리스 태그/공지
-- [ ] 300. 회고 & 다음 로드맵
+- [x] 300. 회고 & 다음 로드맵 — docs/RETROSPECTIVE.md(완료/잔여 성격별 + 다음 우선순위 + 배운 점)

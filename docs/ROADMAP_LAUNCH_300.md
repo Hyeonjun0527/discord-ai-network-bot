@@ -319,7 +319,7 @@
 - [x] 252. 실소켓 e2e 자동화(에이전트+서버+mock Ollama) — scripts/e2e_local.py + Makefile e2e(차수5에서 구축, PASS)
 - [x] 253. 부하 테스트 스크립트(k6/gatling) — scripts/load/ask_load.k6.js(ramping VUs, 실패율/p95 임계)
 - [ ] 254. 커버리지 게이트(central/agent)
-- [ ] 255. 정적 분석(ktlint/detekt + ruff/mypy) CI 통합
+- [x] 255. 정적 분석(ktlint/detekt + ruff/mypy) CI 통합 — provider-agent-ci.yml(ruff/mypy/pytest, 로컬 통과 확인) + 링크검증 잡. ktlint/detekt 는 후속(#76)
 - [x] 256. 로컬 개발 셋업(Makefile: build·test·lint·contract·e2e·compose)
 - [ ] 257. 시드 데이터/픽스처(데모용)
 - [x] 258. CONTRIBUTING(central-server/CONTRIBUTING.md — 개발/검증/프로토콜 동기화)

@@ -1,0 +1,48 @@
+# Provider Agent 정적 분석 + 테스트 CI (차수 17 #255). + 문서 링크 검증(#266).
+name: provider-agent CI
+
+on:
+  push:
+    paths:
+      - "provider-agent/**"
+      - "docs/**"
+      - "specs/**"
+      - "scripts/check_links.py"
+      - ".github/workflows/provider-agent-ci.yml"
+  pull_request:
+    paths:
+      - "provider-agent/**"
+      - "docs/**"
+      - "specs/**"
+      - "scripts/check_links.py"
+      - ".github/workflows/provider-agent-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: provider-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: ruff (정적 분석)
+        run: python -m ruff check src tests
+      - name: mypy (타입 검사)
+        run: python -m mypy src
+      - name: pytest
+        run: python -m pytest -q
+
+  docs-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 상대 링크 검증
+        run: python3 scripts/check_links.py

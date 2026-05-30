@@ -110,6 +110,22 @@ def _get_float(
     return value
 
 
+def _normalize_relay_path(raw: str | None) -> str:
+    """릴레이 WebSocket 경로를 정규화한다(항목 17).
+
+    빈 값은 기본 ``/agent`` 로, 선행 슬래시가 없으면 붙이고, 끝 슬래시는 제거한다.
+    aiohttp 라우트 등록이 선행 슬래시를 요구하므로 형식을 단일하게 강제한다.
+    """
+    path = (raw or "").strip()
+    if not path:
+        return "/agent"
+    if not path.startswith("/"):
+        path = "/" + path
+    if len(path) > 1:
+        path = path.rstrip("/") or "/"
+    return path
+
+
 @dataclass(frozen=True, slots=True)
 class AppSettings:
     """Configuration shared by the bot, LLM adapter, and storage."""
@@ -136,6 +152,22 @@ class AppSettings:
     # 빈 문자열이면 Sentry 비활성. 둘 다 의존성 미설치 시에도 안전하게 무시된다.
     metrics_port: int = 0
     sentry_dsn: str = ""
+    # ADR 0002/0003: 원격 에이전트(BYO-LLM) 릴레이. relay_enabled=False 면 릴레이
+    # WebSocket 서버를 띄우지 않는다(기본 — 기존 동작과 100% 호환). 활성화 시 유저/
+    # 프로바이더 에이전트가 relay_host:relay_port 의 relay_path 로 outbound 접속한다.
+    relay_enabled: bool = False
+    relay_host: str = "0.0.0.0"
+    relay_port: int = 8765
+    relay_path: str = "/agent"
+    # 단일 추론 요청의 응답 대기 상한(초). 대형 모델/긴 응답을 충분히 허용.
+    relay_request_timeout_seconds: float = 120.0
+    # 한 호스트(에이전트)당 동시 처리 요청 수. Provider Pool 에서 방장/프로바이더
+    # PC 과부하를 막는 핵심 보호값(기본 1 = 순차 처리).
+    relay_max_concurrency_per_host: int = 1
+    # 에이전트 연결 heartbeat(ping) 주기(초). 만료 시 연결을 죽은 것으로 간주.
+    relay_heartbeat_seconds: float = 30.0
+    # 페어링/호스트 토큰 수명(초). 발급 후 이 시간 안에 에이전트가 연결해야 한다.
+    agent_token_ttl_seconds: int = 600
 
     @classmethod
     def from_env(cls, *, load_env_file: bool = True) -> "AppSettings":
@@ -222,6 +254,20 @@ class AppSettings:
             # #48/#55 관측성. 0/빈값이면 비활성(기본). 음수 포트는 0(비활성)으로 취급.
             metrics_port=_get_int("METRICS_PORT", 0, minimum=0),
             sentry_dsn=os.getenv("SENTRY_DSN", "").strip(),
+            # ADR 0002/0003 원격 에이전트 릴레이(선택, 기본 비활성). 범위 검증을
+            # _get_* 헬퍼가 수행한다(잘못된 값은 거부).
+            relay_enabled=_get_bool("RELAY_ENABLED", False),
+            relay_host=os.getenv("RELAY_HOST", "0.0.0.0").strip() or "0.0.0.0",
+            relay_port=_get_int("RELAY_PORT", 8765, minimum=1),
+            relay_path=_normalize_relay_path(os.getenv("RELAY_PATH", "/agent")),
+            relay_request_timeout_seconds=_get_float(
+                "RELAY_REQUEST_TIMEOUT_SECONDS", 120.0, minimum=1.0
+            ),
+            relay_max_concurrency_per_host=_get_int(
+                "RELAY_MAX_CONCURRENCY_PER_HOST", 1, minimum=1
+            ),
+            relay_heartbeat_seconds=_get_float("RELAY_HEARTBEAT_SECONDS", 30.0, minimum=1.0),
+            agent_token_ttl_seconds=_get_int("AGENT_TOKEN_TTL_SECONDS", 600, minimum=30),
         )
 
 

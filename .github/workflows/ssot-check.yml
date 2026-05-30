@@ -59,6 +59,15 @@ jobs:
               "GEMINI_TEMPERATURE",    # Gemini 샘플링 온도(선택, 코드 기본값)
               "METRICS_PORT",          # 헬스/메트릭 서버 포트(선택, 0이면 비활성)
               "SENTRY_DSN",            # Sentry 에러 트래킹 DSN(선택, 미설정 시 no-op)
+              # ADR 0002/0003 원격 에이전트 릴레이(선택, 코드 기본값 있음, 기본 비활성)
+              "RELAY_ENABLED",         # 릴레이 WebSocket 서버 활성화(선택, 기본 false)
+              "RELAY_HOST",            # 릴레이 바인드 호스트(선택, 기본 0.0.0.0)
+              "RELAY_PORT",            # 릴레이 포트(선택, 기본 8765)
+              "RELAY_PATH",            # 릴레이 WS 경로(선택, 기본 /agent)
+              "RELAY_REQUEST_TIMEOUT_SECONDS",   # 추론 요청 타임아웃(선택, 기본 120)
+              "RELAY_MAX_CONCURRENCY_PER_HOST",  # 호스트당 동시 처리(선택, 기본 1)
+              "RELAY_HEARTBEAT_SECONDS",         # heartbeat 주기(선택, 기본 30)
+              "AGENT_TOKEN_TTL_SECONDS",         # 페어링 토큰 수명(선택, 기본 600)
           }
 
           GETENV_RE = re.compile(r"os\.getenv\(\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]")

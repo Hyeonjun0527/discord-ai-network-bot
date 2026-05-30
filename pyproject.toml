@@ -33,9 +33,18 @@ observability = [
   "prometheus-client>=0.20,<1.0",
   "sentry-sdk>=2.0,<3.0",
 ]
+# ADR 0002/0003 유저/프로바이더 PC 에서 실행하는 원격 에이전트(BYO-LLM)용 의존성.
+# 에이전트는 중앙 릴레이로 outbound WebSocket 연결을 열고 localhost Ollama 를 호출한다.
+# 봇 본체와 분리해 최소 의존성으로 설치할 수 있도록 별도 extra 로 둔다.
+# `pip install '.[agent]'` 로 활성화.
+agent = [
+  "aiohttp>=3.9,<4.0",
+]
 
 [project.scripts]
 discord-assistant = "discord_assistant.bot:main"
+# 원격 에이전트 CLI(차수 9 에서 구현). 엔트리포인트는 지연 해석되므로 설치는 안전하다.
+discord-assistant-agent = "discord_assistant.agent.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

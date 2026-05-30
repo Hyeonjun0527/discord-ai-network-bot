@@ -16,7 +16,6 @@ import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionE
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
-import net.dv8tion.jda.api.interactions.DiscordLocale
 import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.OptionType
@@ -85,30 +84,19 @@ class DiscordBot(
     private fun registerCommands(action: net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction) {
         // 관리자 명령은 비관리자 UI 에서 숨김(#186). 서버 관리 권한 보유자만 노출.
         val adminPerm = DefaultMemberPermissions.enabledFor(Permission.MANAGE_SERVER)
-        action
-            .addCommands(
+        val cmds =
+            listOf<net.dv8tion.jda.api.interactions.commands.build.CommandData>(
                 Commands
                     .slash("ask", "커뮤니티 로컬 AI 에게 질문합니다")
-                    .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "Ask the community local AI")
                     .addOption(OptionType.STRING, "prompt", "질문 내용", true),
-                Commands
-                    .slash("models", "사용 가능한 모델 수준을 확인합니다")
-                    .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "Check available model levels"),
-                Commands
-                    .slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다")
-                    .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "List models offered in this server"),
-                Commands
-                    .slash("my-usage", "내 오늘 사용량을 확인합니다")
-                    .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "Check your usage today"),
+                Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
+                Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
+                Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),
                 Commands.slash("contributions", "커뮤니티 기여 리더보드를 봅니다"),
                 Commands.slash("community-stats", "익명 커뮤니티 기여 통계를 봅니다"),
                 Commands.slash("fairness", "공정성 리포트를 봅니다(관리자)").setDefaultPermissions(adminPerm),
-                Commands
-                    .slash("privacy", "이 서버의 AI 처리/프라이버시 안내")
-                    .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "AI processing & privacy notice"),
-                Commands
-                    .slash("help", "명령 종합 도움말을 봅니다")
-                    .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "Show the full command help"),
+                Commands.slash("privacy", "이 서버의 AI 처리/프라이버시 안내"),
+                Commands.slash("help", "명령 종합 도움말을 봅니다"),
                 Commands.slash("welcome", "서버 환영/안내 메시지를 봅니다"),
                 Commands
                     .slash("llm-welcome-set", "서버 환영/안내 메시지를 설정합니다(관리자)")
@@ -200,7 +188,12 @@ class DiscordBot(
                 Commands.slash("ask-long", "긴 질문을 모달 창으로 입력합니다"),
                 // 컨텍스트 메뉴(#181): 메시지 우클릭 → 그 내용으로 질문
                 Commands.message("AI에게 질문"),
-            ).queue()
+            )
+        // 슬래시 명령을 클라이언트 언어(ko 기본/en/ru)로 로컬라이즈.
+        cmds
+            .filterIsInstance<net.dv8tion.jda.api.interactions.commands.build.SlashCommandData>()
+            .forEach { CommandLoc.localize(it) }
+        action.addCommands(cmds).queue()
     }
 
     /** JDA 이벤트 → CommandContext → CommandService → 응답. */

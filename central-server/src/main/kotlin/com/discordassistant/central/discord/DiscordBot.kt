@@ -120,8 +120,8 @@ class DiscordBot(
                 Commands.slash("provider-leave", "풀에서 나갑니다"),
                 Commands.slash("provider-status", "내 프로바이더 상태를 확인합니다"),
                 Commands
-                    .slash("provider-models", "내가 제공하는 모델을 설정합니다")
-                    .addOption(OptionType.STRING, "models", "모델명(쉼표로 구분)", true),
+                    .slash("provider-models", "제공 모델 수동 지정(보통 불필요 — 에이전트가 자동 감지)")
+                    .addOption(OptionType.STRING, "models", "내 PC 의 Ollama 모델명(쉼표 구분). 비워두면 자동 감지", true),
                 Commands
                     .slash("provider-limit", "모델별 한도를 설정합니다")
                     .addOptions(
@@ -137,7 +137,12 @@ class DiscordBot(
                         net.dv8tion.jda.api.interactions.commands.build
                             .OptionData(OptionType.STRING, "model", "대상 모델", true)
                             .setAutoComplete(true),
-                    ).addOption(OptionType.STRING, "role", "all / trusted / admin", true),
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "role", "허용 범위", true)
+                            .addChoice("모두", "all")
+                            .addChoice("신뢰 역할", "trusted")
+                            .addChoice("관리자만", "admin"),
+                    ),
                 Commands
                     .slash("provider-schedule", "가용 시간대를 설정합니다(UTC 시, 시간 밖 자동정지)")
                     .addOption(OptionType.INTEGER, "from", "시작 시(0~23, UTC)", true)
@@ -153,14 +158,25 @@ class DiscordBot(
                 Commands
                     .slash("llm-role-policy", "역할별 허용 수준을 설정합니다(관리자)")
                     .addOption(OptionType.ROLE, "role", "대상 역할", true)
-                    .addOption(OptionType.STRING, "level", "LIGHT/STANDARD/HEAVY", true)
-                    .addOption(OptionType.INTEGER, "limit", "하루 한도", true)
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "level", "허용 모델 수준", true)
+                            .addChoice("LIGHT (가벼움)", "LIGHT")
+                            .addChoice("STANDARD (표준)", "STANDARD")
+                            .addChoice("HEAVY (무거움)", "HEAVY"),
+                    ).addOption(OptionType.INTEGER, "limit", "하루 한도", true)
                     .setDefaultPermissions(adminPerm),
                 Commands
                     .slash("llm-guild-defaults", "길드 기본 모델/언어를 설정합니다(관리자)")
-                    .addOption(OptionType.STRING, "model", "기본 모델(비우면 자동 선택)", false)
-                    .addOption(OptionType.STRING, "language", "언어 코드(예: ko, en)", false)
-                    .setDefaultPermissions(adminPerm),
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "model", "기본 모델(비우면 자동 선택)", false)
+                            .setAutoComplete(true),
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "language", "언어", false)
+                            .addChoice("한국어", "ko")
+                            .addChoice("English", "en"),
+                    ).setDefaultPermissions(adminPerm),
                 Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands
                     .slash("provider-approve", "프로바이더 등록을 승인합니다(관리자)")

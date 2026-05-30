@@ -1,0 +1,22 @@
+# systemd 유닛 — Linux 에서 Provider Agent 를 백그라운드 서비스로 실행.
+# 설치:
+#   cp discord-ai-provider-agent.service ~/.config/systemd/user/
+#   systemctl --user edit discord-ai-provider-agent  # 환경변수 설정
+#   systemctl --user enable --now discord-ai-provider-agent
+[Unit]
+Description=Discord AI Provider Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 토큰/주소는 EnvironmentFile 또는 systemctl edit 로 주입(여기에 평문 금지)
+Environment=RELAY_URL=ws://CHANGE-ME:8080/agent
+Environment=OLLAMA_BASE_URL=http://localhost:11434
+# Environment=AGENT_TOKEN=...   ← systemctl --user edit 로 별도 설정 권장
+ExecStart=%h/.local/bin/discord-ai-provider-agent
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

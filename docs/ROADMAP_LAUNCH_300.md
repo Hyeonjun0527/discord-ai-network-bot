@@ -141,24 +141,24 @@
 
 ## 차수 9 — Agent 배포/패키징 (101~118)
 
-- [ ] 101. PyInstaller 단일 실행파일(Windows)
-- [ ] 102. PyInstaller 단일 실행파일(macOS)
-- [ ] 103. PyInstaller 단일 실행파일(Linux)
-- [ ] 104. Agent Docker 이미지(호스트 Ollama 연결)
-- [ ] 105. pip 설치 경로(`pip install` + 콘솔 스크립트)
-- [ ] 106. macOS 서명/공증(notarize)
-- [ ] 107. Windows 서명/SmartScreen 대응
-- [ ] 108. 버전 체크/자동 업데이트 채널
-- [ ] 109. 첫 실행 온보딩(토큰 입력·Ollama 감지)
-- [ ] 110. 서비스 등록(systemd) 가이드/유닛
-- [ ] 111. 서비스 등록(launchd/Windows Task) 가이드
-- [ ] 112. 트레이 아이콘/상태 표시(선택)
-- [ ] 113. 설정 파일 저장(`~/.config/...`)·시크릿 보호
-- [ ] 114. `ollama list` 자동 모델 감지·등록
-- [ ] 115. 배포물 무결성(체크섬/서명)
-- [ ] 116. 멀티 플랫폼 빌드 CI
-- [ ] 117. 방화벽/오프라인 환경 안내
-- [ ] 118. 차수 9 검증
+- [x] 101. PyInstaller 단일 실행파일(Windows) — `packaging/agent.spec`(공통 spec). 바이너리는 Windows 러너에서 빌드(`agent-build.yml`)
+- [x] 102. PyInstaller 단일 실행파일(macOS) — 동일 spec, macOS 러너 빌드
+- [x] 103. PyInstaller 단일 실행파일(Linux) — 동일 spec, Linux 러너 빌드
+- [x] 104. Agent Docker 이미지(호스트 Ollama 연결) — `provider-agent/Dockerfile`, 빌드+self-test 검증 완료
+- [x] 105. pip 설치 경로(`pip install` + 콘솔 스크립트) — pyproject `[project.scripts]` 등록 확인
+- [ ] 106. macOS 서명/공증(notarize) — 보류: Apple Developer 인증서 필요(가이드만 README)
+- [ ] 107. Windows 서명/SmartScreen 대응 — 보류: 코드서명 인증서 필요
+- [ ] 108. 버전 체크/자동 업데이트 채널 — 보류(선택, 추후)
+- [x] 109. 첫 실행 온보딩(토큰 입력·Ollama 감지) — `--self-test` Ollama 감지 + 토큰 인자, README 안내
+- [x] 110. 서비스 등록(systemd) 가이드/유닛 — `packaging/systemd/*.service`
+- [x] 111. 서비스 등록(launchd/Windows Task) 가이드 — packaging/README
+- [ ] 112. 트레이 아이콘/상태 표시(선택) — 보류(선택, GUI 의존)
+- [ ] 113. 설정 파일 저장(`~/.config/...`)·시크릿 보호 — 보류(현재 env/인자 주입, 추후)
+- [x] 114. `ollama list` 자동 모델 감지·등록 — agent.py: 모델 미지정 시 `list_models` 자동 감지
+- [x] 115. 배포물 무결성(체크섬/서명) — CI 에서 SHA256SUMS 생성(`agent-build.yml`)
+- [x] 116. 멀티 플랫폼 빌드 CI — `.github/workflows/agent-build.yml`(3-OS 매트릭스)
+- [x] 117. 방화벽/오프라인 환경 안내 — packaging/README(아웃바운드 only, inbound 불필요)
+- [x] 118. 차수 9 검증 — Docker 빌드+self-test, CI YAML 검증, entry point/모델감지 확인
 
 ## 차수 10 — Agent UX/안정성 심화 (119~134)
 

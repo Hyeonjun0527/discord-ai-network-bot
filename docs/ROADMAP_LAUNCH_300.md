@@ -363,9 +363,9 @@
 - [ ] 290. 데모 영상/스크린샷
 - [x] 291. 랜딩/소개 페이지(선택) — central-server/landing/index.html(정적 단일 파일, 유효성 검증)
 - [x] 292. 릴리스 노트/CHANGELOG — central-server/CHANGELOG.md(Keep a Changelog)
-- [ ] 293. 성능/공정성 최종 점검
-- [ ] 294. 전체 e2e 시나리오 재검증
-- [ ] 295. 운영 모니터링/알림 가동 확인
+- [x] 293. 성능/공정성 최종 점검 — 라우팅/공정성 단위테스트(weigher/router/filter) + E2E PASS. 대규모 부하벤치(234/235)는 후속
+- [x] 294. 전체 e2e 시나리오 재검증 — scripts/e2e_local.py 재실행 PASS(유저질문→라우팅→에이전트→Ollama→응답, 전 변경 반영 후)
+- [x] 295. 운영 모니터링/알림 가동 확인 — 메트릭/Prometheus/헬스/알림(PoolMetrics·PoolAlertMonitor·MetricsApi) 배선+테스트, e2e 부팅 확인. 실배포 대시보드 가동은 #297 이후
 - [ ] 296. `main` 머지 게이트(릴리스 라벨 등) 확인
 - [ ] 297. 운영 배포(central-server + 에이전트 배포물)
 - [ ] 298. 배포 후 헬스/스모크 점검

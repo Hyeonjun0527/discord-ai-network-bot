@@ -89,3 +89,36 @@ async def test_self_test_ok():
         assert await _self_test(cfg) == 0
     finally:
         await server.close()
+
+
+@pytest.mark.asyncio
+async def test_generate_stream():
+    """스트리밍(#35): NDJSON chunk → ('chunk', piece)*, 마지막 ('done', Usage)."""
+    app = web.Application()
+
+    async def gen_stream(request: web.Request) -> web.StreamResponse:
+        resp = web.StreamResponse()
+        resp.content_type = "application/x-ndjson"
+        await resp.prepare(request)
+        for piece in ("안녕", "하세", "요"):
+            await resp.write((f'{{"response": "{piece}", "done": false}}\n').encode())
+        await resp.write(b'{"response": "", "done": true, "prompt_eval_count": 2, "eval_count": 7}\n')
+        await resp.write_eof()
+        return resp
+
+    app.router.add_post("/api/generate", gen_stream)
+    server = TestServer(app)
+    await server.start_server()
+    url = f"http://{server.host}:{server.port}"
+    try:
+        chunks = []
+        usage = None
+        async for kind, val in OllamaClient(url).generate_stream("안녕", "m"):
+            if kind == "chunk":
+                chunks.append(val)
+            else:
+                usage = val
+        assert "".join(chunks) == "안녕하세요"
+        assert usage.completion_tokens == 7
+    finally:
+        await server.close()

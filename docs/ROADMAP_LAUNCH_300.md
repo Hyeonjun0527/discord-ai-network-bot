@@ -64,7 +64,7 @@
 - [x] 32. 일일 한도 카운트 + provider_status remaining 반영
 - [x] 33. 요청당 타임아웃(Ollama ClientTimeout=request_timeout)
 - [x] 34. 프롬프트 길이/프레임 크기 방어(MAX_PROMPT_CHARS)
-- [ ] 35. 스트리밍(`chunk`) 지원(선택 — 후속, 비스트리밍 우선)
+- [x] 35. 스트리밍(`chunk`) 지원 — OllamaClient.generate_stream(NDJSON chunk yield + done Usage), 테스트 통과. 중앙은 ChunkFrame 수신 인프라 보유
 - [x] 36. `provider_status` 주기 보고(load/battery/online/busy)
 - [x] 37. 부하/배터리 감지(sysinfo, psutil 선택) → 보호 신호 보고
 - [x] 38. 차수 3 검증

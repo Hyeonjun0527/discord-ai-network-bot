@@ -40,6 +40,37 @@ class OllamaClient:
         )
         return text.strip(), usage
 
+    async def generate_stream(self, prompt: str, model: str | None):
+        """스트리밍 추론(차수 3 #35). 부분 텍스트(chunk)를 yield 하고 마지막에 ('', Usage) 를 yield.
+
+        Ollama ``stream=True`` 의 NDJSON 라인을 순차 파싱한다. 각 라인: {"response": "...", "done": bool, ...}.
+        """
+        import json
+
+        url = f"{self._base}/api/generate"
+        payload = {"model": model or "", "prompt": prompt, "stream": True}
+        try:
+            async with aiohttp.ClientSession(timeout=self._timeout) as s:
+                async with s.post(url, json=payload) as r:
+                    prompt_tokens = 0
+                    completion_tokens = 0
+                    async for raw in r.content:
+                        line = raw.decode("utf-8").strip()
+                        if not line:
+                            continue
+                        obj = json.loads(line)
+                        if obj.get("error"):
+                            raise OllamaError(str(obj["error"]))
+                        piece = obj.get("response")
+                        if isinstance(piece, str) and piece:
+                            yield ("chunk", piece)
+                        if obj.get("done"):
+                            prompt_tokens = int(obj.get("prompt_eval_count", 0) or 0)
+                            completion_tokens = int(obj.get("eval_count", 0) or 0)
+                    yield ("done", Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens))
+        except aiohttp.ClientError as exc:
+            raise OllamaError(f"Ollama 연결 실패: {exc}") from exc
+
     async def list_models(self) -> list[str]:
         """설치된 모델명 목록. 오류 시 OllamaError."""
         url = f"{self._base}/api/tags"

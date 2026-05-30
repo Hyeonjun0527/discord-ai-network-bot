@@ -44,16 +44,16 @@
 
 ## K-차수 3 — WebSocket 릴레이 (Spring WebSocket)
 
-- [ ] 3-1. `WebSocketConfigurer` + 핸들러 등록(relay path)
-- [ ] 3-2. `RelayWebSocketHandler`(연결/메시지/종료)
-- [ ] 3-3. 첫 프레임=auth 강제(타임아웃)·토큰 검증→세션 등록
-- [ ] 3-4. 수신 디스패치(result/error/chunk/pong)
-- [ ] 3-5. heartbeat ping 태스크·만료 종료
-- [ ] 3-6. 잘못된 프레임 방어·프레임 크기 제한
-- [ ] 3-7. graceful shutdown
-- [ ] 3-8. TLS/wss·origin 정책 문서화
-- [ ] 3-9. 인메모리 통합 테스트(WS 클라이언트로 인증→추론 왕복)
-- [ ] 3-10. `gradlew build` + 커밋
+- [x] 3-1. `WebSocketConfigurer` + 핸들러 등록(relay path)
+- [x] 3-2. `RelayWebSocketHandler`(연결/메시지/종료)
+- [x] 3-3. 첫 프레임=auth 강제(타임아웃)·토큰 검증→세션 등록
+- [x] 3-4. 수신 디스패치(result/error/chunk/pong)
+- [x] 3-5. heartbeat ping 태스크·만료 종료(@Scheduled maintenance)
+- [x] 3-6. 잘못된 프레임 방어·프레임 크기 제한
+- [x] 3-7. graceful shutdown(afterConnectionClosed 해제)
+- [x] 3-8. TLS/wss·origin 정책 문서화(config/핸들러 주석)
+- [x] 3-9. 통합 테스트(FakeWebSocketSession 핸들러 end-to-end: 인증→추론 왕복) — 실소켓 테스트는 추후
+- [x] 3-10. `gradlew build` + 커밋
 
 ## K-차수 4 — Provider 등록/승인 & 토큰
 

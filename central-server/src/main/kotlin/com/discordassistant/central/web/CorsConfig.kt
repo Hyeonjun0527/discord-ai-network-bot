@@ -3,6 +3,7 @@ package com.discordassistant.central.web
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Configuration
 import org.springframework.web.servlet.config.annotation.CorsRegistry
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.ViewControllerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 
@@ -13,7 +14,15 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 @Configuration
 class CorsConfig(
     @param:Value("\${central.dashboard.cors-origins:}") private val origins: String,
+    @param:Value("\${central.download.dir:/app/downloads}") private val downloadDir: String,
 ) : WebMvcConfigurer {
+    /** 프로바이더 에이전트 단일 실행파일 서빙(우리 도메인에서 직접 — 레포 비공개 유지). */
+    override fun addResourceHandlers(registry: ResourceHandlerRegistry) {
+        registry
+            .addResourceHandler("/download/**")
+            .addResourceLocations("file:${downloadDir.removeSuffix("/")}/")
+    }
+
     override fun addCorsMappings(registry: CorsRegistry) {
         val allowed = origins.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         if (allowed.isEmpty()) return // 미설정 시 교차 출처 비허용(안전 기본값)

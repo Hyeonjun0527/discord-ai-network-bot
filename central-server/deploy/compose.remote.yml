@@ -40,6 +40,9 @@ services:
     networks:
       - default # db 접근
       - dailyting-edge # cloudflared 가 이 컨테이너에 닿도록(공개 노출/프로바이더 WS)
+    volumes:
+      # 에이전트 단일 실행파일 서빙(/download/**). agent-build 가 이 폴더에 바이너리 배치.
+      - ./downloads:/app/downloads:ro
     # 호스트 로컬 바인딩(헬스/디버그용). 공개는 Cloudflare Tunnel → http://central-server:8080.
     ports:
       - "127.0.0.1:8080:8080"

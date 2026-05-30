@@ -26,8 +26,9 @@ class SecurityConfig(
             csrf { disable() }
             if (oauthEnabled) {
                 authorizeHttpRequests {
-                    // 공개: 정적 대시보드, 읽기 메트릭/헬스, 에이전트 WS, 로그인.
+                    // 공개: 정적 대시보드, 다운로드, 읽기 메트릭/헬스, 에이전트 WS, 로그인.
                     authorize("/dashboard/**", permitAll)
+                    authorize("/download/**", permitAll) // 에이전트 바이너리 공개 다운로드
                     authorize("/actuator/health", permitAll)
                     authorize("/api/metrics/**", permitAll)
                     authorize("/agent/**", permitAll)

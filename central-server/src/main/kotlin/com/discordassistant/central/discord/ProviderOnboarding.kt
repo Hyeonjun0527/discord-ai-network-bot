@@ -6,8 +6,8 @@ package com.discordassistant.central.discord
  * Discord 2000자 제한 안에서 핵심만.
  */
 object ProviderOnboarding {
-    // 버전관리되는 단일 실행파일 다운로드(GitHub Releases latest). agent-build 워크플로가 OS별 자산 첨부.
-    private const val DL = "https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download"
+    // 단일 실행파일 다운로드 — 우리 도메인에서 직접 서빙(레포 비공개 유지). agent-build 가 원격에 배치.
+    private const val DL = "https://central.dailyting.cloud/download"
 
     fun message(
         token: String,

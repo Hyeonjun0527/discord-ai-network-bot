@@ -85,3 +85,23 @@ jobs:
           files: |
             provider-agent/dist/discord-ai-provider-agent-*
             provider-agent/dist/SHA256SUMS-*.txt
+
+  # 빌드된 바이너리를 원격 central 의 다운로드 폴더로 배치 → central 이 /download/** 로 서빙.
+  # (레포 비공개 유지: 같은 run 의 아티팩트를 받아 self-hosted 러너에서 복사 — 토큰/공개 불필요)
+  publish-central:
+    needs: build
+    runs-on: [self-hosted, dailyting-remote]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: provider-agent-*
+          merge-multiple: true
+          path: agent-bins
+      - name: central 다운로드 폴더에 배치
+        run: |
+          set -e
+          DEST="$HOME/deploy/central-server/downloads"
+          mkdir -p "$DEST"
+          cp -f agent-bins/discord-ai-provider-agent-* "$DEST/"
+          chmod +x "$DEST"/discord-ai-provider-agent-* 2>/dev/null || true
+          ls -la "$DEST"

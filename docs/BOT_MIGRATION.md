@@ -1,6 +1,21 @@
-# 기존 Python 봇 ↔ central-server 이관 분석 (LAUNCH 차수 18)
+# 기존 Python 봇 → central-server 단일화 (LAUNCH 차수 18)
 
-기존 `src/discord_assistant/`(discord.py, v0.3.2 배포 중)와 신규 `central-server`(Kotlin,
+> **결정 변경(2026-05-30): "공존" → "폐기·단일화".** 기존 단일 Python 봇(`src/discord_assistant/`)을
+> **저장소에서 제거**하고 central-server(Provider Pool)로 단일화했다. 아래 §1~§5 의 공존 분석은
+> 그 과정의 히스토리(historical record)로 남긴다. 현재 유효한 결정은 이 박스다.
+>
+> **제거 범위**: `src/discord_assistant/`·루트 `tests/`·`dashboard/`·봇 전용 루트 설정
+> (pyproject/Dockerfile/compose*/CHANGELOG/SECURITY/CONTRIBUTING/ROADMAP*/README_EN 등)·봇 CI 워크플로
+> (ci/deploy/auto-release/release/docs-drift/ssot-check)·봇 스크립트·봇 docs(ARCHITECTURE/ROLLBACK 등).
+> **유지**: `central-server/`·`provider-agent/`·`specs/`·Provider Pool 문서·공유 인프라(self-hosted 러너,
+> ghcr-cleanup→central 단일).
+>
+> 운영 중이던 인스턴스는 코드 제거와 무관하게 계속 떠 있으므로, 실제 종료는 호스트에서
+> 별도로 수행한다(deploy.yml 제거로 재배포는 더 이상 일어나지 않음).
+
+---
+
+(이하 히스토리) 기존 `src/discord_assistant/`(discord.py, v0.3.2 배포 중)와 신규 `central-server`(Kotlin,
 Provider Pool)의 관계·이관 전략.
 
 ## 1. 기존 Python 봇 기능 인벤토리 (269)

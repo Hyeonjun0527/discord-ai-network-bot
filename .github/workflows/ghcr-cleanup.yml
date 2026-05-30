@@ -31,8 +31,8 @@ permissions:
   packages: write
 
 env:
-  # Python 봇 + central-server 두 이미지를 함께 정리(#86).
-  IMAGE_NAMES: "discord-assistant central-server"
+  # central-server 이미지 정리(레거시 봇 제거 후 단일 이미지).
+  IMAGE_NAMES: "central-server"
 
 jobs:
   cleanup:

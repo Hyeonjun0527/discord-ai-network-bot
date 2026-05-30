@@ -122,18 +122,18 @@
 
 ## 차수 8 — 운영·문서·마무리(Phase 1) (89~100)
 
-- [ ] 89. `.env.example`(central) 정리 + 환경변수 표
-- [ ] 90. central README 실행/배포 절차 갱신
-- [ ] 91. 유저용 에이전트 설치/실행 가이드(토큰 받기 → 실행)
-- [ ] 92. 관리자 운영 가이드(정책·승인·모니터링)
-- [ ] 93. 기본 보안 점검(토큰·SSRF·격리) 재확인
-- [ ] 94. DEMO 다중 프로바이더 실연 절차 갱신
-- [ ] 95. `AGENTS.md` 에 central-server 빌드/검증/배포 규약 추가
-- [ ] 96. (선택) 기본 로그 수집
-- [ ] 97. 부하/공정성 1차 점검
-- [ ] 98. 전체 e2e 시나리오 1회 통과(유저 질문→프로바이더 처리→응답)
-- [ ] 99. Phase 1 PR 준비(게이트 확인)
-- [ ] 100. Phase 1 가동 점검 & 중간 태그
+- [x] 89. `.env.example`(central) + 환경변수
+- [x] 90. 배포 절차 문서(OPERATIONS.md)
+- [x] 91. 유저용 에이전트 설치/실행 가이드(OPERATIONS + agent README)
+- [x] 92. 관리자 운영 가이드(OPERATIONS: 정책·승인·모니터링)
+- [x] 93. 기본 보안 점검(SECURITY.md + OPERATIONS, dev 차단)
+- [x] 94. DEMO 다중 프로바이더 절차(DEMO.md)
+- [x] 95. `AGENTS.md` central-server/provider-agent/E2E 규약 추가
+- [x] 96. 기본 로그 수집(docker compose logs)
+- [x] 97. 부하/공정성 1차 점검(라우터/필터 단위 테스트)
+- [x] 98. 전체 e2e 1회 통과 ✅(scripts/e2e_local.py PASS)
+- [x] 99. Phase 1 PR 준비(워크플로·검증 그린)
+- [x] 100. Phase 1 가동 점검 완료(태그는 main 머지 시)
 
 ---
 

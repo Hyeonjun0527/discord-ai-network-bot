@@ -1,0 +1,46 @@
+# 운영 가이드 — central-server (커뮤니티 Provider Pool)
+
+## 배포
+```bash
+# 호스트(서버)에서:
+cd central-server
+cp .env.example .env        # DISCORD_BOT_TOKEN, DB_PASSWORD 채우기, DISCORD_ENABLED=true
+docker compose up -d --build
+curl -s localhost:8080/actuator/health   # {"status":"UP"} 확인
+```
+- 스키마는 Flyway 가 자동 적용. DB 는 compose 의 Postgres(볼륨 `pgdata`).
+- 롤백: 이전 이미지 태그로 `docker compose up -d` (또는 `docs/ROLLBACK`).
+
+## 관리자(서버 운영자) — Discord 슬래시 명령
+| 명령 | 용도 |
+|---|---|
+| `/llm-allow-channel #ai-help` | LLM 사용 채널 허용 |
+| `/llm-deny-channel #채널` | 채널 금지 |
+| `/llm-role-policy @역할 level limit` | 역할별 허용 모델 수준·일일 한도 |
+| `/providers` | 풀 상태·승인 대기·기여량 |
+| `/provider-approve @유저` | 프로바이더 등록 승인(토큰 발급) |
+| `/provider-remove @유저` | 풀에서 제거 |
+
+## 프로바이더(기여 유저) 온보딩
+1. Discord 에서 `/provider-join` → (수동 승인 서버면) 관리자가 `/provider-approve` → **토큰 발급**.
+2. 자기 PC 에서 에이전트 실행:
+   ```bash
+   pip install -e provider-agent        # 또는 배포 실행파일
+   discord-ai-provider-agent --token <발급토큰> \
+       --relay-url ws://<서버>:8080/agent --model llama3.1:8b
+   ```
+3. 에이전트가 풀에 등록되면 그 서버의 `/ask` 일부가 이 PC 에서 처리된다.
+4. `/provider-pause`·`/provider-resume`·`/provider-leave` 로 언제든 조절.
+
+## 일반 유저
+- `/ask <질문>` — 풀이 처리. `/models`·`/my-usage`·`/privacy`.
+- **프라이버시**: 질문이 프로바이더 PC 로 전송될 수 있음(민감정보 금지 고지).
+
+## 모니터링
+- 헬스: `GET /actuator/health` (`providerPool.activeProviderConnections` 포함).
+- 메트릭: `GET /actuator/metrics`.
+- 로그: `docker compose logs -f central-server`.
+
+## 보안 점검(기본)
+- 토큰: 일회용·해시 저장·TTL. WS: outbound only, 프레임 화이트리스트·크기 상한.
+- `CENTRAL_DEV_ENABLED` 는 운영에서 **반드시 false**(/dev/* 엔드포인트 차단). 자세히는 `SECURITY.md`.

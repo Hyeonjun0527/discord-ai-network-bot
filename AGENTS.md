@@ -14,9 +14,34 @@
 
 - `src/discord_assistant/` — 봇 패키지(슬래시 명령, LLM 어댑터, 저장소, 설정 등)
 - `dashboard/backend/` — FastAPI 백엔드, `dashboard/frontend/` — 프론트엔드
-- `scripts/` — 헬스체크 등 운영 스크립트
-- `docs/` — 아키텍처/ADR/품질 문서
+- `scripts/` — 헬스체크/E2E 등 운영 스크립트
+- `docs/` — 아키텍처/ADR/품질 문서, `specs/product-v2/` — Provider Pool 명세
 - `tests/` — 단위 테스트
+- **`central-server/`** — 커뮤니티 Provider Pool 중앙 서버(Kotlin/Spring Boot, ADR 0004)
+- **`provider-agent/`** — 유저 PC용 Provider Agent(Python, 경량 aiohttp)
+
+### central-server (Kotlin) 빌드/검증/배포
+JDK 21 필요(Gradle 8.12 wrapper 는 JDK 26 미지원 — `JAVA_HOME` 을 21 로).
+```bash
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/amazon-corretto-21.jdk/Contents/Home
+central-server/gradlew -p central-server build      # 컴파일+테스트
+central-server/gradlew -p central-server bootJar     # app.jar
+cd central-server && docker compose up -d --build    # Postgres+서버(8080)
+```
+- 스키마는 Flyway(`db/migration`) 가 소유(ddl-auto=none). WS 프로토콜은 `provider-agent` 와
+  **camelCase 와이어로 동일 계약**(api.md §8) — 한쪽 변경 시 양쪽 동기화.
+- CI: `central-server-ci`(build/test) · `central-server-image`(GHCR) · `central-server-deploy`(self-hosted).
+
+### provider-agent (Python) 빌드/검증
+```bash
+cd provider-agent && PYTHONPATH=src ../.venv/bin/python -m pytest tests/ -q
+../.venv/bin/ruff check src tests && ../.venv/bin/mypy src/provider_agent
+```
+
+### 로컬 E2E (실연동 검증)
+```bash
+.venv/bin/python scripts/e2e_local.py   # mock Ollama + bootRun + agent → /dev/ask 실왕복
+```
 
 ## 빌드 / 설치
 

@@ -10,6 +10,7 @@ import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInterac
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.commands.Command
+import net.dv8tion.jda.api.interactions.DiscordLocale
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.Commands
@@ -53,15 +54,21 @@ class DiscordBot(
         val adminPerm = DefaultMemberPermissions.enabledFor(Permission.MANAGE_SERVER)
         jda.updateCommands().addCommands(
             Commands.slash("ask", "커뮤니티 로컬 AI 에게 질문합니다")
+                .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "Ask the community local AI")
                 .addOption(OptionType.STRING, "prompt", "질문 내용", true),
-            Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
-            Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
-            Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),
+            Commands.slash("models", "사용 가능한 모델 수준을 확인합니다")
+                .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "Check available model levels"),
+            Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다")
+                .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "List models offered in this server"),
+            Commands.slash("my-usage", "내 오늘 사용량을 확인합니다")
+                .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "Check your usage today"),
             Commands.slash("contributions", "커뮤니티 기여 리더보드를 봅니다"),
             Commands.slash("community-stats", "익명 커뮤니티 기여 통계를 봅니다"),
             Commands.slash("fairness", "공정성 리포트를 봅니다(관리자)").setDefaultPermissions(adminPerm),
-            Commands.slash("privacy", "이 서버의 AI 처리/프라이버시 안내"),
-            Commands.slash("help", "명령 종합 도움말을 봅니다"),
+            Commands.slash("privacy", "이 서버의 AI 처리/프라이버시 안내")
+                .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "AI processing & privacy notice"),
+            Commands.slash("help", "명령 종합 도움말을 봅니다")
+                .setDescriptionLocalization(DiscordLocale.ENGLISH_US, "Show the full command help"),
             Commands.slash("provider-join", "프로바이더로 참여합니다"),
             Commands.slash("provider-pause", "요청 수신을 일시정지합니다"),
             Commands.slash("provider-resume", "요청 수신을 재개합니다"),
@@ -166,7 +173,7 @@ class DiscordBot(
             "contributions" -> commands.contributions(ctx)
             "community-stats" -> commands.communityStats(ctx)
             "fairness" -> commands.fairness(ctx)
-            "privacy" -> commands.privacy()
+            "privacy" -> commands.privacy(ctx)
             "help" -> commands.help(ctx)
             "provider-join" -> commands.providerJoin(ctx)
             "provider-pause" -> commands.providerPause(ctx)

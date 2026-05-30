@@ -203,7 +203,7 @@
 - [x] 154. 프로바이더 평판 데이터(ProviderHealth 실패 누적; 등급 산정 후속)
 - [x] 155. 멀티 길드 격리/스케일 검증 — GuildIsolationTest(길드 풀 무교집합·해제 비간섭). 스케일 부하는 후속
 - [ ] 156. 명령 응답 JDA Embed 고도화(상태 badge·색상)
-- [ ] 157. i18n(한/영) 메시지 리소스
+- [x] 157. i18n(한/영) 메시지 리소스 — Messages 번들(ko/en, ko 폴백) + 길드 언어 연동(privacy/cooldown/admin-denied), 테스트 통과
 - [ ] 158. 차수 11 검증
 
 ## 차수 12 — 프로바이더 경험 & 커뮤니티 기능 (159~178)
@@ -244,7 +244,7 @@
 - [ ] 189. 모달 입력(긴 프롬프트/설정)
 - [x] 190. 명령 사용 통계/로그 — CommandMetrics(Micrometer discord_command_total{command}), DiscordBot 배선, 테스트 통과
 - [x] 191. 명령 쿨다운 피드백 — ask 쿨다운 시 Replies.cooldown(⏳) 표준 피드백, 테스트 통과
-- [ ] 192. 다국어 명령 설명(localization)
+- [x] 192. 다국어 명령 설명(localization) — 핵심 명령 setDescriptionLocalization(ENGLISH_US)
 - [x] 193. 명령 ↔ 문서(docs) 동기화 가드 — CommandRegistrationDriftTest(등록↔디스패치 일치 강제), 통과
 - [ ] 194. 차수 13 검증
 

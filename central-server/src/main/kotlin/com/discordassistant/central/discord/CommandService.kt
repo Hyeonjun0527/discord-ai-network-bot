@@ -48,14 +48,16 @@ class CommandService(
                 "민감한 정보는 입력하지 마세요."
     }
 
+    private fun lang(ctx: CommandContext): String = policy.guildLanguage(ctx.guildId)
+
     private fun adminOnly(ctx: CommandContext): Reply? =
-        if (!ctx.isAdmin) Replies.adminDenied() else null
+        if (!ctx.isAdmin) Replies.reject(Messages.get(Messages.Key.ADMIN_DENIED, lang(ctx))) else null
 
     // ── 일반 유저 ───────────────────────────────────────────────────────
     fun ask(ctx: CommandContext, prompt: String): Reply {
         // 요청 우선순위(#150): 관리자/긴급 요청은 분당 쿨다운을 우회한다.
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
-            return Replies.cooldown("요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.") // 쿨다운 피드백(#191)
+            return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
         val result = orchestrator.handle(
             AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, prompt, ctx.roleIds),
@@ -143,7 +145,7 @@ class CommandService(
         return Reply("오늘 사용량: $used / $limit")
     }
 
-    fun privacy(): Reply = Reply(PRIVACY_NOTICE)
+    fun privacy(ctx: CommandContext): Reply = Reply(Messages.get(Messages.Key.PRIVACY_NOTICE, lang(ctx)))
 
     /** 종합 도움말(차수 13 #183). 권한별 섹션 노출(#186). */
     fun help(ctx: CommandContext): Reply {

@@ -34,7 +34,7 @@ class CommandServiceTest @Autowired constructor(
 
     @Test
     fun `privacy 안내`() {
-        assertTrue(commands.privacy().content.contains("민감한 정보"))
+        assertTrue(commands.privacy(ctx()).content.contains("민감한 정보"))
     }
 
     @Test
@@ -85,7 +85,7 @@ class CommandServiceTest @Autowired constructor(
     @Test
     fun `ephemeral 일관화(#182) — 민감 응답은 비공개, 공개 통계만 공개`() {
         // 민감/개인: ephemeral=true
-        assertTrue(commands.privacy().ephemeral)
+        assertTrue(commands.privacy(ctx()).ephemeral)
         assertTrue(commands.myUsage(ctx()).ephemeral)
         assertTrue(commands.help(ctx()).ephemeral)
         assertTrue(commands.models(ctx()).ephemeral)

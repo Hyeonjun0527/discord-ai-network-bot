@@ -305,6 +305,12 @@ class CommandService(
     /** 풀이 현재 제공하는 모델 목록(패널 표시용). */
     fun poolModels(ctx: CommandContext): List<String> = autocompleteModels(ctx)
 
+    /** 길드 언어(패널 표시용). */
+    fun guildLanguage(ctx: CommandContext): String = policy.guildLanguage(ctx.guildId)
+
+    /** 길드 기본 모델(패널 표시용, 미설정 시 null). */
+    fun guildDefaultModel(ctx: CommandContext): String? = policy.guildDefaultModel(ctx.guildId)
+
     /** 길드 환영/안내 메시지 설정(차수 12 #174, 관리자). */
     fun setWelcome(
         ctx: CommandContext,

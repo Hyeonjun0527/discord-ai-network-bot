@@ -210,12 +210,16 @@ class DiscordBot(
                         .queue()
                     return
                 }
+                "help" -> {
+                    event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin)).setEphemeral(true).queue()
+                    return
+                }
                 "llm-settings" -> {
                     if (!ctx.isAdmin) {
                         event.reply("⛔ 관리자만 사용할 수 있습니다.").setEphemeral(true).queue()
                     } else {
                         event
-                            .reply(settingsContent(ctx))
+                            .replyEmbeds(settingsEmbed(ctx))
                             .addComponents(settingsRows(ctx))
                             .setEphemeral(true)
                             .queue()
@@ -294,11 +298,15 @@ class DiscordBot(
                         event.reply("⛔ 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
                     } else {
                         event
-                            .reply(settingsContent(ctx))
+                            .replyEmbeds(settingsEmbed(ctx))
                             .addComponents(settingsRows(ctx))
                             .setEphemeral(true)
                             .queue()
                     }
+                    return
+                }
+                MenuFactory.HELP, "settings:help" -> {
+                    event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin)).setEphemeral(true).queue()
                     return
                 }
             }
@@ -306,7 +314,6 @@ class DiscordBot(
                 when (event.componentId) {
                     MenuFactory.PROVIDER -> commands.providerJoin(ctx)
                     MenuFactory.STATUS -> commands.providerStatus(ctx)
-                    MenuFactory.HELP, "settings:help" -> Reply(MenuFactory.slimHelp(ctx.isAdmin))
                     MenuFactory.AUTO_APPROVE_ON -> commands.setAutoApprove(ctx, enabled = true)
                     MenuFactory.AUTO_APPROVE_OFF -> commands.setAutoApprove(ctx, enabled = false)
                     MenuFactory.CHANNEL_ALL -> commands.allowAllChannels(ctx)
@@ -368,12 +375,14 @@ class DiscordBot(
                         .build(),
                 ).build()
 
-        /** 설정 패널 상단 안내(현재 상태 포함). */
-        private fun settingsContent(ctx: CommandContext): String =
-            MenuFactory.settingsText(
-                autoApprove = commands.isAutoApprove(ctx),
-                poolModels = commands.poolModels(ctx),
+        /** 설정 패널 Embed(현재 상태). */
+        private fun settingsEmbed(ctx: CommandContext) =
+            EmbedFactory.settingsEmbed(
+                language = commands.guildLanguage(ctx),
+                defaultModel = commands.guildDefaultModel(ctx),
+                poolModelCount = commands.poolModels(ctx).size,
                 allowedChannelCount = commands.allowedChannelIds(ctx).size,
+                autoApprove = commands.isAutoApprove(ctx),
             )
 
         /** 설정 패널 액션 로우(언어·모델·채널 드롭다운 + 명시 버튼). */

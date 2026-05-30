@@ -1,0 +1,241 @@
+# 추적성 연결층(traceability) — 연결(ID)만 기재. 긴 설명 금지(title 은 짧은 보조 라벨만).
+# 출처: requirements.md §10(추적성표) + TRACEABILITY.md 매핑.
+# 모든 값은 각 소유 MD 에 "실제 존재하는" ID 다(검증 스크립트가 강제).
+# §10 표가 인용했으나 실제 정의처에 없던 ID 는 가장 정확한 실제 ID 로 교정했다.
+# 모든 REQ-* 가 최소 1개 항목을 갖는다(미연결 0).
+
+links:
+  # ── 기능 요구사항(§5) ──────────────────────────────────────────────
+  - requirement: REQ-501
+    title: 봇 설치
+    domain_models: [DM-E-Guild, DM-E-GuildPolicy]
+    screens: [SCR-501]
+    flows: [FLOW-01]
+    apis: [API-REST-GUILD-GET, API-REST-GUILD-UPDATE]
+    errors: []
+
+  - requirement: REQ-502
+    title: 서버 설정
+    domain_models: [DM-E-GuildPolicy, DM-E-RolePolicy]
+    screens: [SCR-501]
+    flows: [FLOW-02]
+    apis: [API-CMD-LLM-SETTINGS, API-REST-GUILD-GET, API-REST-GUILD-UPDATE]
+    errors: [ERR-PERMISSION-DENIED, ERR-POLICY-INVALID]
+
+  - requirement: REQ-503
+    title: 채널 제한
+    domain_models: [DM-E-AllowedChannel]
+    screens: [SCR-502]
+    flows: [FLOW-02.1]
+    apis: [API-CMD-LLM-ALLOW-CHANNEL, API-CMD-LLM-DENY-CHANNEL, API-REST-GUILD-CHANNEL-ADD, API-REST-GUILD-CHANNEL-REMOVE]
+    errors: [ERR-CHANNEL-NOT-ALLOWED]
+
+  - requirement: REQ-504
+    title: 역할별 권한
+    domain_models: [DM-E-RolePolicy, DM-V-RoleId, DM-V-RoleTier, DM-V-ModelBurdenLevel]
+    screens: [SCR-503]
+    flows: [FLOW-02.2]
+    apis: [API-CMD-LLM-ROLE-POLICY, API-REST-GUILD-ROLE-GET, API-REST-GUILD-ROLE-UPDATE]
+    errors: [ERR-PERMISSION-DENIED]
+
+  - requirement: REQ-505
+    title: 프로바이더 등록
+    domain_models: [DM-E-Provider, DM-E-ProviderApproval, DM-S-ProviderState, DM-EV-ProviderRegistered]
+    screens: [SCR-601]
+    flows: [FLOW-03]
+    apis: [API-CMD-PROVIDER-JOIN, API-REST-PROVIDER-REGISTER]
+    errors: [ERR-PROVIDER-ALREADY-REGISTERED]
+
+  - requirement: REQ-506
+    title: 승인
+    domain_models: [DM-E-ProviderApproval, DM-S-ApprovalState, DM-EV-ProviderApproved]
+    screens: [SCR-602, SCR-504]
+    flows: [FLOW-03.3]
+    apis: [API-CMD-PROVIDER-APPROVE, API-REST-PROVIDER-APPROVE]
+    errors: [ERR-PERMISSION-DENIED]
+
+  - requirement: REQ-507
+    title: 기여 한도
+    domain_models: [DM-E-ProviderContributionPolicy, DM-E-ProviderCapability, DM-V-LimitPolicy, DM-V-TimeoutPolicy]
+    screens: [SCR-605, SCR-606, SCR-607]
+    flows: [FLOW-03.4]
+    apis: [API-CMD-PROVIDER-MODELS, API-CMD-PROVIDER-SCOPE, API-CMD-PROVIDER-LIMIT, API-REST-PROVIDER-MODELS-UPDATE, API-REST-PROVIDER-POLICY-UPDATE, API-REST-PROVIDER-LIMIT-UPDATE]
+    errors: []
+
+  - requirement: REQ-508
+    title: Agent 연결
+    domain_models: [DM-E-ProviderSession, DM-S-AgentConnState, DM-S-ProviderSessionState, DM-EV-ProviderAgentConnected]
+    screens: [SCR-603, SCR-604]
+    flows: [FLOW-04]
+    apis: [API-WS-CONNECT, API-WS-PROVIDER-HELLO, API-WS-AUTH-OK, API-WS-AUTH-ERR]
+    errors: [ERR-AGENT-AUTH-FAILED, ERR-WS-CONNECT-FAILED]
+
+  - requirement: REQ-509
+    title: 모델 부담 수준 분류
+    domain_models: [DM-V-ModelBurdenLevel, DM-E-ModelProfile, DM-R-05]
+    screens: [SCR-407]
+    flows: [FLOW-05]
+    apis: [API-CMD-MODELS]
+    errors: [ERR-MODEL-UNSUPPORTED]
+
+  - requirement: REQ-510
+    title: 요청 라우팅
+    domain_models: [DM-E-RoutingCandidate, DM-E-RoutingDecision, DM-R-07, DM-EV-ProviderSelected]
+    screens: [SCR-403]
+    flows: [FLOW-08]
+    apis: [API-CMD-ASK, API-INT-SELECT, API-INT-DISPATCH, API-INT-CREATE-REQUEST]
+    errors: [ERR-NO-PROVIDER, ERR-PERMISSION-DENIED]
+
+  - requirement: REQ-511
+    title: 요청 큐
+    domain_models: [DM-E-AiRequest, DM-S-RequestState]
+    screens: [SCR-403, SCR-902]
+    flows: [FLOW-08.1]
+    apis: [API-WS-INFER, API-INT-DISPATCH]
+    errors: [ERR-PROVIDER-BUSY, ERR-LIMIT-EXCEEDED]
+
+  - requirement: REQ-512
+    title: fallback
+    domain_models: [DM-E-RequestExecution, DM-EV-FallbackStarted, DM-R-07b]
+    screens: [SCR-910]
+    flows: [FLOW-12]
+    apis: [API-INT-FALLBACK, API-WS-CANCEL]
+    errors: [ERR-FALLBACK-FAILED, ERR-TIMEOUT]
+
+  - requirement: REQ-513
+    title: 사용량 기록
+    domain_models: [DM-E-UsageLog, DM-E-ContributionLog, DM-EV-RequestCompleted]
+    screens: [SCR-408, SCR-508]
+    flows: [FLOW-09]
+    apis: [API-CMD-MY-USAGE, API-REST-USAGE-USER, API-REST-USAGE-PROVIDER]
+    errors: []
+
+  - requirement: REQ-514
+    title: 프라이버시 안내
+    domain_models: [DM-V-PrivacyMode, DM-EV-ProviderResponseReceived, DM-R-09]
+    screens: [SCR-409, SCR-405, SCR-404]
+    flows: [FLOW-09]
+    apis: [API-CMD-PRIVACY, API-REST-GUILD-PRIVACY-SET]
+    errors: []
+
+  - requirement: REQ-515
+    title: 관리자 모니터링
+    domain_models: [DM-E-Provider, DM-S-ProviderState, DM-E-ContributionLog]
+    screens: [SCR-504, SCR-505, SCR-507]
+    flows: [FLOW-02.5]
+    apis: [API-CMD-PROVIDERS, API-CMD-PROVIDER-REMOVE, API-REST-PROVIDER-LIST, API-REST-PROVIDER-GET, API-REST-PROVIDER-REMOVE]
+    errors: [ERR-PROVIDER-NOT-FOUND]
+
+  # ── 정책 요구사항(§6) ──────────────────────────────────────────────
+  - requirement: REQ-601
+    title: 프로바이더는 판매자가 아님
+    domain_models: [DM-E-Provider, DM-E-ProviderContributionPolicy]
+    screens: [SCR-605]
+    flows: [FLOW-03.4]
+    apis: [API-CMD-PROVIDER-LIMIT]
+    errors: []
+
+  - requirement: REQ-602
+    title: 기여 기반 운영
+    domain_models: [DM-E-ContributionLog, DM-E-RoutingDecision, DM-R-07]
+    screens: [SCR-508]
+    flows: [FLOW-08]
+    apis: [API-INT-SELECT]
+    errors: []
+
+  - requirement: REQ-603
+    title: 프로바이더 보호
+    domain_models: [DM-E-ProviderHealth, DM-S-ProviderHealthState, DM-EV-ProviderPaused, DM-EV-ProviderMarkedUnhealthy, DM-R-06]
+    screens: [SCR-608, SCR-609, SCR-610, SCR-611]
+    flows: [FLOW-10, FLOW-10.1, FLOW-10.2, FLOW-10.3]
+    apis: [API-CMD-PROVIDER-PAUSE, API-CMD-PROVIDER-RESUME, API-CMD-PROVIDER-LEAVE, API-CMD-PROVIDER-STATUS, API-WS-PAUSE, API-WS-RESUME, API-WS-PROVIDER-STATUS]
+    errors: [ERR-PROVIDER-OFFLINE, ERR-HEALTH-DEGRADED]
+
+  - requirement: REQ-604
+    title: 공정 분배
+    domain_models: [DM-E-RoutingCandidate, DM-R-07, DM-E-ContributionLog]
+    screens: [SCR-509]
+    flows: [FLOW-08]
+    apis: [API-INT-CANDIDATES, API-INT-SELECT]
+    errors: []
+
+  - requirement: REQ-605
+    title: 민감정보 입력 제한
+    domain_models: [DM-V-PrivacyMode, DM-R-08]
+    screens: [SCR-409, SCR-404]
+    flows: [FLOW-05]
+    apis: [API-CMD-PRIVACY]
+    errors: []
+
+  - requirement: REQ-606
+    title: 로컬 PC 직접 접근 금지
+    domain_models: [DM-E-ProviderSession, DM-S-AgentConnState]
+    screens: [SCR-701]
+    flows: [FLOW-04]
+    apis: [API-WS-CONNECT, API-WS-INFER]
+    errors: [ERR-WS-CONNECT-FAILED]
+
+  # ── 비기능 요구사항(§7) ────────────────────────────────────────────
+  - requirement: REQ-701
+    title: 보안(토큰·SSRF·rate limit)
+    domain_models: [DM-E-ProviderApproval, DM-R-10]
+    screens: [SCR-411]
+    flows: [FLOW-04]
+    apis: [API-WS-AUTH-OK, API-WS-AUTH-ERR]
+    errors: [ERR-RATE-LIMITED, ERR-AGENT-AUTH-FAILED]
+
+  - requirement: REQ-702
+    title: 프라이버시
+    domain_models: [DM-V-PrivacyMode, DM-EV-ProviderResponseReceived, DM-R-09]
+    screens: [SCR-409, SCR-510, SCR-911]
+    flows: [FLOW-09]
+    apis: [API-CMD-PRIVACY, API-REST-GUILD-PRIVACY-SET]
+    errors: []
+
+  - requirement: REQ-703
+    title: 안정성
+    domain_models: [DM-E-AiRequest, DM-S-RequestState, DM-EV-ProviderAgentDisconnected]
+    screens: [SCR-901, SCR-902]
+    flows: [FLOW-11]
+    apis: [API-INT-DISPATCH, API-WS-CLOSE]
+    errors: [ERR-NO-PROVIDER, ERR-PROVIDER-OFFLINE]
+
+  - requirement: REQ-704
+    title: 장애 대응
+    domain_models: [DM-E-RequestExecution, DM-EV-FallbackStarted, DM-EV-RequestFailed]
+    screens: [SCR-907, SCR-908, SCR-909, SCR-910]
+    flows: [FLOW-12]
+    apis: [API-INT-FALLBACK, API-WS-CANCEL]
+    errors: [ERR-TIMEOUT, ERR-OLLAMA-FAILED, ERR-FALLBACK-FAILED]
+
+  - requirement: REQ-705
+    title: 성능
+    domain_models: [DM-E-RoutingCandidate, DM-E-RoutingDecision]
+    screens: [SCR-509]
+    flows: [FLOW-08]
+    apis: [API-INT-FILTER, API-INT-WEIGH]
+    errors: []
+
+  - requirement: REQ-706
+    title: 확장성
+    domain_models: [DM-E-ProviderSession, DM-S-ProviderSessionState]
+    screens: [SCR-507]
+    flows: [FLOW-04]
+    apis: [API-INT-HEALTH-SESSION, API-WS-PROVIDER-HELLO]
+    errors: []
+
+  - requirement: REQ-707
+    title: 관측성
+    domain_models: [DM-E-RoutingDecision, DM-E-ContributionLog]
+    screens: [SCR-805, SCR-806]
+    flows: [FLOW-08]
+    apis: [API-REST-LOG-REQUESTS, API-REST-LOG-FAILURES, API-INT-REQUEST-STATUS]
+    errors: []
+
+  - requirement: REQ-708
+    title: 운영 편의성
+    domain_models: [DM-E-Guild]
+    screens: [SCR-801]
+    flows: [FLOW-01]
+    apis: [API-REST-HEALTH-CENTRAL, API-REST-HEALTH-RELAY]
+    errors: []

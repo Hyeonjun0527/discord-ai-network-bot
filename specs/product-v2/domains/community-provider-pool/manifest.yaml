@@ -1,0 +1,55 @@
+# 커뮤니티 로컬 AI Provider Pool — 기획 명세 연결층(manifest)
+# 원칙: MD=기획 원문(SSOT, 수정 금지), 이 YAML=ID 연결/검증 메타만(설명 복사 금지).
+# 검증 스크립트(scripts/validate_specs.py)가 이 파일을 읽어 ID 정합을 자동 검사한다.
+
+# 도메인 메타데이터
+domain:
+  id: community-provider-pool
+  name: 커뮤니티 로컬 AI Provider Pool
+  version: 0.1.0
+  status: draft
+
+# 5분서 문서 목록 + 각 문서가 "정의(소유)"하는 ID 접두사.
+# id_prefix 는 해당 문서가 SSOT 인 네임스페이스. 검증 시 선언 집합 추출 대상.
+documents:
+  - path: requirements.md
+    id_prefix: [REQ, SCN]        # 요구사항·핵심 시나리오 정의처
+  - path: domain-model.md
+    id_prefix: [DM-E, DM-V, DM-S, DM-R, DM-EV]  # 엔티티·값객체·상태·규칙·이벤트
+  - path: screens.md
+    id_prefix: [SCR]             # 화면/메시지 정의처
+  - path: navigation.md
+    id_prefix: [FLOW]            # 네비게이션 흐름 정의처
+  - path: api.md
+    id_prefix: [API-CMD, API-REST, API-WS, API-INT, ERR]  # API 메시지·엔드포인트·에러코드
+
+# 생성 산출물 경로 선언(폴더는 아직 미생성, 경로만 예약).
+generated:
+  html_dir: html
+  diagrams_dir: diagrams
+
+# 검증 정책 토글(검증 스크립트가 읽음). 전부 활성.
+validation:
+  require_all_ids_declared: true        # traceability 참조 ID 는 모두 소유 문서에 선언돼 있어야 함
+  require_traceability_links_valid: true # traceability 의 모든 링크가 유효 ID 여야 함
+  forbid_unknown_ids: true              # 알 수 없는(미선언) ID 참조 금지
+  forbid_duplicate_ids: true            # 같은 ID 의 중복 정의 금지
+  require_every_requirement_linked: true # 모든 REQ 가 traceability 에 최소 1회 연결돼야 함
+
+# 네임스페이스 ↔ 소유 문서(SSOT) 매핑. 검증 스크립트가 "어떤 prefix 가 어느 MD 에서
+# 정의되는가"를 이 표로 판정한다(README §ID 정합 규칙과 동일).
+id_namespaces:
+  REQ:      requirements.md
+  SCN:      requirements.md
+  DM-E:     domain-model.md
+  DM-V:     domain-model.md
+  DM-S:     domain-model.md
+  DM-R:     domain-model.md
+  DM-EV:    domain-model.md
+  SCR:      screens.md
+  FLOW:     navigation.md
+  API-CMD:  api.md
+  API-REST: api.md
+  API-WS:   api.md
+  API-INT:  api.md
+  ERR:      api.md

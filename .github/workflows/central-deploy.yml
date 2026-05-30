@@ -1,0 +1,98 @@
+# central-server 자동 CI/CD → 원격 self-hosted 러너(linuxssh.dailyting.cloud) 배포.
+# Cloudflare Tunnel 뒤라 raw SSH 불가 → 원격에 설치한 self-hosted 러너에서 직접 배포.
+# build(ubuntu-latest): bootJar → GHCR push.  deploy(self-hosted: dailyting-remote): pull → compose up → 헬스.
+#
+# 필요한 GitHub Secrets:
+#   CENTRAL_DB_PASSWORD  (✅ 설정됨) — Postgres 비밀번호
+#   DISCORD_BOT_TOKEN    (사용자) — 봇 토큰. 없으면 서버는 뜨되 Discord 만 비활성.
+#   DISCORD_GUILD_ID     (선택) — 즉시 명령 등록용 서버 ID(없으면 글로벌 ~1h).
+# GHCR pull 은 self-hosted 러너의 GITHUB_TOKEN 으로 처리(추가 PAT 불필요).
+name: central-server CI/CD (원격 배포)
+
+on:
+  push:
+    branches: [main, feat/remote-agent-byollm]
+    paths:
+      - "central-server/**"
+      - ".github/workflows/central-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: central-deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/hyeonjun0527/central-server
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: bootJar 빌드
+        working-directory: central-server
+        run: ./gradlew bootJar --no-daemon --console=plain
+      - name: GHCR 로그인
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 이미지 빌드 & push
+        uses: docker/build-push-action@v6
+        with:
+          context: central-server
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+  deploy:
+    needs: build
+    runs-on: [self-hosted, dailyting-remote]
+    steps:
+      - uses: actions/checkout@v4
+      - name: GHCR 로그인(원격)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: 배포(compose pull + up + 헬스)
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          GIT_SHA: ${{ github.sha }}
+          CENTRAL_DB_PASSWORD: ${{ secrets.CENTRAL_DB_PASSWORD }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+          RELAY_PUBLIC_URL: ${{ secrets.RELAY_PUBLIC_URL }}
+        run: |
+          set -e
+          DEST="$HOME/deploy/central-server"
+          mkdir -p "$DEST"
+          cp central-server/deploy/compose.remote.yml "$DEST/compose.yml"
+          cd "$DEST"
+          umask 077
+          cat > .env <<ENV
+          CENTRAL_IMAGE=${IMAGE}:${GIT_SHA}
+          CENTRAL_DB_PASSWORD=${CENTRAL_DB_PASSWORD}
+          DISCORD_ENABLED=true
+          DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+          DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+          RELAY_PUBLIC_URL=${RELAY_PUBLIC_URL}
+          ENV
+          docker compose --env-file .env -f compose.yml pull
+          docker compose --env-file .env -f compose.yml up -d
+          ok=0
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:8080/actuator/health | grep -q '"status":"UP"'; then ok=1; break; fi
+            sleep 3
+          done
+          if [ "$ok" != "1" ]; then
+            echo "❌ 헬스 실패 — 로그:"; docker compose -f compose.yml logs --tail=80 central-server; exit 1
+          fi
+          echo "✅ 배포 완료 + 헬스 UP (image ${IMAGE}:${GIT_SHA})"

@@ -1,0 +1,107 @@
+# Provider Agent 멀티 플랫폼 단일 실행파일 빌드 + 릴리스 (차수 9 #116, 배포물 버전관리).
+# agent-v* 태그 push 시 Windows/macOS/Linux 단일 실행파일을 PyInstaller 로 빌드해
+# GitHub Release 에 OS별 자산으로 첨부한다(다운로드 링크: releases/latest/download/<asset>).
+name: agent-build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["agent-v*"]
+
+permissions:
+  contents: write # 릴리스 생성/자산 업로드
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: provider-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 의존성 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install . pyinstaller
+      - name: 빌드
+        run: pyinstaller packaging/agent.spec
+      # macOS 서명/공증(#106). 인증서 시크릿이 있을 때만 실행.
+      - name: macOS codesign + notarize
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12 != ''
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          echo "$MACOS_CERT_P12" | base64 --decode > cert.p12
+          security create-keychain -p ci build.keychain
+          security import cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security unlock-keychain -p ci build.keychain
+          codesign --deep --force --options runtime --sign "$MACOS_SIGN_IDENTITY" dist/discord-ai-provider-agent
+          codesign --verify --verbose dist/discord-ai-provider-agent
+      # Windows 서명/SmartScreen(#107). 인증서 시크릿이 있을 때만 실행.
+      - name: Windows signtool
+        if: runner.os == 'Windows' && env.WINDOWS_CERT_PFX != ''
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          [IO.File]::WriteAllBytes("cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
+          & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\discord-ai-provider-agent.exe
+          & signtool verify /pa dist\discord-ai-provider-agent.exe
+      - name: OS별 자산 이름 + 체크섬
+        shell: bash
+        run: |
+          cd dist
+          case "$RUNNER_OS" in
+            Linux)   mv discord-ai-provider-agent discord-ai-provider-agent-linux ;;
+            macOS)   mv discord-ai-provider-agent discord-ai-provider-agent-macos ;;
+            Windows) mv discord-ai-provider-agent.exe discord-ai-provider-agent-windows.exe ;;
+          esac
+          if command -v shasum >/dev/null; then shasum -a 256 discord-ai-provider-agent-* > SHA256SUMS-$RUNNER_OS.txt; else sha256sum discord-ai-provider-agent-* > SHA256SUMS-$RUNNER_OS.txt; fi
+          cat SHA256SUMS-*.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: provider-agent-${{ matrix.os }}
+          path: provider-agent/dist/discord-ai-provider-agent-*
+      # 태그 push 시에만 GitHub Release 에 OS 자산 첨부(각 OS 잡이 같은 릴리스에 append).
+      - name: GitHub Release 업로드
+        if: startsWith(github.ref, 'refs/tags/agent-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: provider-agent ${{ github.ref_name }}
+          body: |
+            커뮤니티 Provider Agent — 내 PC 의 Ollama 를 풀에 연결하는 단일 실행파일.
+            자기 OS 파일을 받아 `--token <토큰> --relay-url wss://central.dailyting.cloud/agent` 로 실행하세요.
+          files: |
+            provider-agent/dist/discord-ai-provider-agent-*
+            provider-agent/dist/SHA256SUMS-*.txt
+
+  # 빌드된 바이너리를 원격 central 의 다운로드 폴더로 배치 → central 이 /download/** 로 서빙.
+  # (레포 비공개 유지: 같은 run 의 아티팩트를 받아 self-hosted 러너에서 복사 — 토큰/공개 불필요)
+  publish-central:
+    needs: build
+    runs-on: [self-hosted, dailyting-remote]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: provider-agent-*
+          merge-multiple: true
+          path: agent-bins
+      - name: central 다운로드 폴더에 배치
+        run: |
+          set -e
+          DEST="$HOME/deploy/central-server/downloads"
+          mkdir -p "$DEST"
+          cp -f agent-bins/discord-ai-provider-agent-* "$DEST/"
+          chmod +x "$DEST"/discord-ai-provider-agent-* 2>/dev/null || true
+          ls -la "$DEST"

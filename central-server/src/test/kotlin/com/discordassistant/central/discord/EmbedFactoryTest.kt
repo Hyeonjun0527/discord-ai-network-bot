@@ -1,0 +1,62 @@
+package com.discordassistant.central.discord
+
+import com.discordassistant.central.domain.ProviderState
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import java.awt.Color
+
+/** Embed 고도화(차수 13 #156) — 상태 색상/필드. */
+class EmbedFactoryTest {
+    @Test
+    fun `상태별 색상 badge`() {
+        assertEquals(Color(0x57F287), EmbedFactory.stateColor(ProviderState.ONLINE_IDLE))
+        assertEquals(Color(0xFEE75C), EmbedFactory.stateColor(ProviderState.PAUSED))
+        assertEquals(Color(0xED4245), EmbedFactory.stateColor(ProviderState.UNHEALTHY))
+        assertEquals(Color(0x5865F2), EmbedFactory.stateColor(ProviderState.APPROVED))
+    }
+
+    @Test
+    fun `프로바이더 상태 embed 필드`() {
+        val e = EmbedFactory.providerStatus(providerId = 7, state = ProviderState.ONLINE_IDLE, inFlight = 2, failures = 1)
+        assertEquals("프로바이더 상태", e.title)
+        assertEquals(Color(0x57F287), e.color)
+        assertEquals("2", e.fields.first { it.name == "처리중" }.value)
+        assertNotNull(e.footer)
+    }
+
+    @Test
+    fun `풀 요약 embed — 0명이면 적색`() {
+        assertEquals(Color(0xED4245), EmbedFactory.poolSummary(active = 0, models = 0, inFlight = 0).color)
+        assertEquals(Color(0x57F287), EmbedFactory.poolSummary(active = 3, models = 2, inFlight = 1).color)
+    }
+
+    @Test
+    fun `도움말 패널 embed — 관리자만 관리자 섹션`() {
+        val user = EmbedFactory.helpEmbed(isAdmin = false)
+        assertEquals("🤖 커뮤니티 로컬 AI Provider Pool", user.title)
+        assertTrue(user.fields.any { it.name?.contains("유저") == true })
+        assertFalse(user.fields.any { it.name?.contains("관리자") == true })
+        assertTrue(EmbedFactory.helpEmbed(isAdmin = true).fields.any { it.name?.contains("관리자") == true })
+        assertNotNull(user.footer)
+    }
+
+    @Test
+    fun `설정 패널 embed — 현재 상태 필드`() {
+        val e = EmbedFactory.settingsEmbed("ko", null, 0, 0, false)
+        assertEquals("⚙️ 서버 설정", e.title)
+        assertEquals("한국어", e.fields.first { it.name?.contains("언어") == true }.value)
+        assertEquals("모든 채널 허용", e.fields.first { it.name?.contains("채널") == true }.value)
+        assertTrue(
+            e.fields
+                .first { it.name?.contains("자동 승인") == true }
+                .value!!
+                .contains("꺼짐"),
+        )
+        val en = EmbedFactory.settingsEmbed("en", "llama3", 2, 1, true)
+        assertEquals("English", en.fields.first { it.name?.contains("언어") == true }.value)
+        assertEquals("llama3", en.fields.first { it.name?.contains("모델") == true }.value)
+    }
+}

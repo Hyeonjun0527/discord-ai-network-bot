@@ -1,0 +1,75 @@
+{
+  "auth": {
+    "type": "auth",
+    "token": "T",
+    "protocolVersion": "1.0",
+    "agentVersion": "0.1",
+    "platform": "mac"
+  },
+  "auth_ok": {
+    "type": "auth_ok",
+    "protocolVersion": "1.0",
+    "sessionId": "s1"
+  },
+  "auth_err": {
+    "type": "auth_err",
+    "code": "AUTH_FAILED",
+    "message": "bad"
+  },
+  "infer": {
+    "type": "infer",
+    "requestId": "r1",
+    "model": "m",
+    "prompt": "안녕",
+    "options": {
+      "temperature": 0.3
+    },
+    "stream": false
+  },
+  "result": {
+    "type": "result",
+    "requestId": "r1",
+    "text": "답",
+    "usage": {
+      "promptTokens": 3,
+      "completionTokens": 4
+    }
+  },
+  "error": {
+    "type": "error",
+    "requestId": "r1",
+    "code": "OLLAMA_ERROR",
+    "message": "boom"
+  },
+  "chunk": {
+    "type": "chunk",
+    "requestId": "r1",
+    "delta": "부분",
+    "done": false
+  },
+  "ping": {
+    "type": "ping"
+  },
+  "pong": {
+    "type": "pong"
+  },
+  "cancel": {
+    "type": "cancel",
+    "requestId": "r1"
+  },
+  "provider_hello": {
+    "type": "provider_hello",
+    "models": [
+      "m"
+    ],
+    "maxConcurrency": 2,
+    "remainingDailyRequests": 42
+  },
+  "provider_status": {
+    "type": "provider_status",
+    "load": "idle",
+    "battery": "charging",
+    "online": true,
+    "busy": false
+  }
+}

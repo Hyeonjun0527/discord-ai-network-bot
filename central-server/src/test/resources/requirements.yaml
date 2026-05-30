@@ -1,0 +1,31 @@
+# 요구사항 원장(SSOT, 차수 18). feature 의 @REQ-* 태그 ↔ 이 원장 ↔ 테스트 코드 ↔ CI 결과로 추적성을 만든다.
+# RequirementsTraceabilityTest 가 다음을 강제한다:
+#   - feature 의 @REQ-* 태그가 이 원장에 존재하는가
+#   - P0 요구사항에 추적 시나리오가 있는가
+#   - tests[].path 가 실제로 존재하는가
+# priority: P0(필수 핵심 흐름) / P1 / P2.
+requirements:
+  - id: REQ-ASK-001
+    title: 가용 프로바이더가 있으면 질문이 처리된다
+    priority: P0
+    tests:
+      - type: cucumber
+        path: src/test/resources/features/ask_routing.feature
+  - id: REQ-ASK-002
+    title: 허용 채널이 지정되면 다른 채널 요청은 거부된다
+    priority: P0
+    tests:
+      - type: cucumber
+        path: src/test/resources/features/ask_routing.feature
+  - id: REQ-ASK-003
+    title: 풀에 프로바이더가 없으면 처리 불가를 안내한다
+    priority: P0
+    tests:
+      - type: cucumber
+        path: src/test/resources/features/ask_routing.feature
+  - id: REQ-ASK-004
+    title: 차단된 사용자의 질문은 거부된다
+    priority: P0
+    tests:
+      - type: cucumber
+        path: src/test/resources/features/ask_routing.feature

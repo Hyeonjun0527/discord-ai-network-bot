@@ -1,0 +1,64 @@
+# central-server(Kotlin/Spring Boot) 빌드·테스트 CI (K-차수 16, 차수 18 BDD/품질 게이트).
+name: central-server CI
+
+on:
+  push:
+    paths:
+      - "central-server/**"
+      - ".github/workflows/central-server-ci.yml"
+  pull_request:
+    paths:
+      - "central-server/**"
+      - ".github/workflows/central-server-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  # 단위/ArchUnit/요구사항 추적성/springdoc 스모크 + Kover 커버리지 게이트(빠름, Docker 불필요).
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: central-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Build & test (단위/ArchUnit/추적성/Kover 게이트)
+        run: ./gradlew build --no-daemon --console=plain
+      - name: 테스트·커버리지·BDD 리포트 업로드(#77, 차수 18)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-test-reports
+          path: |
+            central-server/build/reports/tests/test
+            central-server/build/reports/kover
+            central-server/build/reports/cucumber
+          if-no-files-found: ignore
+
+  # BDD(Cucumber) + Testcontainers 실 Postgres 로 핵심 흐름 검증(차수 18). GitHub 러너에 Docker 내장.
+  # Docker 의존이라 build 잡과 분리(플레이키함 격리). 두 잡 모두 그린이어야 머지.
+  integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: central-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: BDD + Testcontainers (실 Postgres 핵심 흐름 시나리오)
+        run: ./gradlew test -PdockerTests --no-daemon --console=plain
+      - name: Cucumber 리포트 업로드(요구사항 시나리오 통과/실패 가시화)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-bdd-reports
+          path: |
+            central-server/build/reports/cucumber
+            central-server/build/reports/tests/test
+          if-no-files-found: ignore

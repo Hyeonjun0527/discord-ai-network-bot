@@ -9,79 +9,79 @@
 
 ## 프로젝트 개요
 
-로컬 LLM(Ollama) 및 OpenAI/Anthropic 으로 디스코드 채널 대화를 요약하고 맥락 기반 Q&A 를
-제공하는 봇이다. 구조:
+**커뮤니티 로컬 AI Provider Pool.** 커뮤니티 멤버들이 각자 PC 의 로컬 LLM(Ollama)을 풀에
+기여하고, 디스코드에서 `/ask` 로 다른 유저가 그 LLM 들을 공정하게 나눠 쓰는 시스템이다.
+판매·결제가 아니라 기여·동의·공정성이 핵심(ADR 0003/0004).
 
-- `src/discord_assistant/` — 봇 패키지(슬래시 명령, LLM 어댑터, 저장소, 설정 등)
-- `dashboard/backend/` — FastAPI 백엔드, `dashboard/frontend/` — 프론트엔드
-- `scripts/` — 헬스체크 등 운영 스크립트
-- `docs/` — 아키텍처/ADR/품질 문서
-- `tests/` — 단위 테스트
+> 레거시: 기존 단일 Python 요약/Q&A 봇(`src/discord_assistant/`)은 **2026-05-30 제거**되고
+> central-server 로 단일화되었다. 관련 이력은 `docs/BOT_MIGRATION.md` 참조.
 
-## 빌드 / 설치
+구조:
 
+- **`central-server/`** — Provider Pool 중앙 서버 + Discord 봇(Kotlin/Spring Boot, JDA, ADR 0004).
+  메인 시스템. `/ask` 라우팅·정책·관측성·웹 대시보드.
+- **`provider-agent/`** — 유저 PC용 Provider Agent(Python, 경량 aiohttp). 로컬 Ollama 를 풀에 연결.
+- `specs/product-v2/` — Provider Pool 명세, `docs/` — ADR/로드맵/운영 문서, `scripts/` — E2E·운영 스크립트.
+
+### central-server (Kotlin) 빌드/검증/배포
+JDK 21 필요(Gradle 8.12 wrapper 는 JDK 26 미지원 — `JAVA_HOME` 을 21 로).
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"          # 봇 패키지 + 개발 도구(ruff/mypy/pytest)
-pip install -r dashboard/backend/requirements.txt   # 대시보드 백엔드 작업 시
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/amazon-corretto-21.jdk/Contents/Home
+central-server/gradlew -p central-server build      # 컴파일+테스트+ktlint+커버리지 게이트
+central-server/gradlew -p central-server bootJar     # app.jar
+cd central-server && docker compose up -d --build    # Postgres+서버(8080)
 ```
+- 스키마는 Flyway(`db/migration`) 가 소유(ddl-auto=none). WS 프로토콜은 `provider-agent` 와
+  **camelCase 와이어로 동일 계약**(api.md §8) — 한쪽 변경 시 양쪽 동기화(`make contract`).
+- 정적분석: **ktlint**(`check` 게이트). 커버리지: **Kover** 라인 ≥ 68%(`koverVerify`, 목표 90% 점진 상향).
+  아키텍처: **ArchUnit**(레이어 의존 방향/컨트롤러 위치). API 계약: **springdoc-openapi**(`/v3/api-docs`).
+- **BDD/추적성(차수 18)**: 핵심 흐름은 **Cucumber + SpringBootTest + Testcontainers(실 Postgres)** 로 검증.
+  요구사항 원장 `src/test/resources/requirements.yaml` ↔ feature `@REQ-*` 태그를 `RequirementsTraceabilityTest` 가 강제
+  (P0 요구사항은 추적 시나리오 필수). Docker 필요 → `-PdockerTests`(기본 빌드 제외). Cucumber 리포트: `build/reports/cucumber/`.
+- CI: `central-server-ci`(build = 단위/ArchUnit/추적성/Kover 게이트, integration = `-PdockerTests` BDD+Testcontainers)
+  · `central-server-image`(GHCR) · `central-server-deploy`(self-hosted) · `central-release`(`central-v*` 태그 → GitHub Release).
+- 라이브 봇 기동: `docs/GO_LIVE.md`(Discord 토큰 + `DISCORD_ENABLED=true`).
 
-- Python: **3.11** (CI 기준, `pyproject.toml` `requires-python = ">=3.11"`).
-- 실행: `discord-assistant` 또는 `python -m discord_assistant`.
+### provider-agent (Python) 빌드/검증
+```bash
+cd provider-agent && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov-fail-under=70
+../.venv/bin/ruff check src tests && ../.venv/bin/mypy src
+```
+- Python **3.12**. 패키징: `provider-agent/packaging/`(Docker/PyInstaller/systemd).
+- CI: `provider-agent-ci`(ruff/mypy/pytest+커버리지) · `agent-build`(멀티플랫폼 바이너리+서명).
+
+### 로컬 E2E (실연동 검증)
+```bash
+.venv/bin/python scripts/e2e_local.py   # mock Ollama + bootRun + agent → /dev/ask 실왕복
+```
 
 ## 검증 (커밋 전 / 머지 전 필수)
 
-소유 영역에 맞춰 아래를 실제로 실행하고 통과를 확인한다. 가상환경 파이썬을 사용한다.
+소유 영역에 맞춰 실제로 실행하고 통과를 확인한다.
 
-```bash
-.venv/bin/python -m ruff check src/        # 또는 변경한 영역(dashboard/backend 등)
-.venv/bin/python -m mypy src/
-.venv/bin/python -m pytest tests/ --no-cov -q   # 전체 권장
-```
-
-CI(`.github/workflows/ci.yml`)는 동일하게 ruff → mypy → pytest 를 돌리며, 커버리지
-하한선은 **35%**(`--cov-fail-under=35`, `pyproject` 와 일치)이다. 보강되면 함께 올린다.
-대시보드 백엔드/프론트엔드는 별도 잡에서 ruff/pytest, lint/tsc/build 로 검증된다.
-
-### SSOT 검증 가드 (자동)
-
-문서·설정이 코드와 어긋나면 빌드에서 실패한다. 명령을 추가하거나 환경 변수를 바꾸면
-아래 가드를 함께 통과시켜야 한다.
-
-- **env SSOT** (`.github/workflows/ssot-check.yml`, #97):
-  `.env.example` 키 ↔ `src/discord_assistant` 가 읽는 env 키를 대조.
-  - `.env.example` 에 죽은(코드 미사용) 키가 있으면 실패.
-  - 코드가 읽는 필수 키가 `.env.example` 에도, 워크플로의 `OPTIONAL_KEYS` 허용 목록에도
-    없으면 실패. 새 선택 키를 추가하면 `OPTIONAL_KEYS` 도 갱신할 것.
-- **docs drift** (`.github/workflows/docs-drift.yml`, #100):
-  `README.md`/`README_EN.md` 의 명령 표 ↔ `bot.py` 의 `@bot.tree.command(name=...)` /
-  `@config_group.command(name=...)` 집합을 대조. 봇 명령이 문서에 없으면 실패.
+- **central-server 변경**: `gradlew build`(test+ktlint+커버리지) 통과.
+- **provider-agent 변경**: `ruff` + `mypy` + `pytest`(커버리지 ≥ 70%) 통과.
+- **프로토콜(와이어) 변경**: 양측 컨트랙트 테스트(`make contract` 또는 WireContractTest + test_contract).
+- **문서 변경**: `scripts/check_links.py`(상대 링크) 통과.
 
 ## 커밋 / 브랜치 / PR
 
 - **브랜치**: 기본/배포 브랜치는 `main`. 직접 `main` 에 작업하지 말고 항상 브랜치를 판다.
-- **커밋 메시지**: Conventional Commits 사용(`feat:`, `fix:`, `perf:`, `refactor:`, `docs:`,
-  `chore:` 등). 자동 릴리스가 이 접두사로 SemVer 를 올린다.
-  - `feat:` / `feat!:` / `BREAKING CHANGE` → minor / major
-  - `fix:` / `perf:` / `refactor:` 등 → patch (기본 patch)
-- **PR**: 가능하면 CI 가 초록인 상태로 올린다. 변경 영역에 맞는 검증 로그를 남긴다.
+  현재 작업 브랜치는 `feat/remote-agent-byollm`.
+- **커밋 메시지**: Conventional Commits(`feat:`/`fix:`/`docs:`/`refactor:`/`test:`/`chore:` 등).
+  변경 이유(why)와 검증 증거를 남긴다.
+- **PR**: CI 초록 상태로. 변경 영역 검증 로그 첨부.
 
-## 배포 / 릴리스
+## 배포 / 릴리스 (central-server)
 
-- `main` 에 머지되면 `Build, Push, and Deploy`(`deploy.yml`)가 이미지 빌드·푸시·배포를 수행.
-- 성공한 `main` 배포 후 `auto-release.yml` 이 커밋 기준으로 SemVer 태그(`vX.Y.Z`)와 GitHub
-  Release 를 생성. 수동 릴리스는 `release.yml`(태그 푸시 또는 `workflow_dispatch`).
+- `central-server/**` push → `central-server-image`(GHCR 이미지) → `central-server-deploy`(self-hosted) 체인.
+- 정식 릴리스는 `central-v*` 태그 push → `central-release` 워크플로가 GitHub Release 발행
+  (`central-server/CHANGELOG.md` `[버전]` 섹션을 노트로 사용).
 - 오래된 GHCR 이미지는 `ghcr-cleanup.yml` 이 정리.
-- 롤백 절차는 `docs/ROLLBACK.md` 참고.
+- 운영 절차·롤백: `central-server/docs/OPERATIONS.md`, `RUNBOOK.md`, `GO_LIVE.md`.
 
 ## 비밀 / 보안
 
-- 토큰·API 키·`SECRET_KEY` 는 절대 커밋하지 않는다. `.env.example` 만 갱신하고 `.env` 는 로컬.
-- 운영(`ENVIRONMENT`/`APP_ENV` 가 production)에서는 기본 `SECRET_KEY` 사용이 거부된다.
-
-## 환경 변수 문서화 규칙
-
-- 봇이 사용하는 **필수** 환경 변수는 `.env.example` 와 `README.md` 환경변수 표에 둘 다 반영.
-- 코드 기본값이 있는 **선택** 키는 `.env.example` 생략 가능하나, env SSOT 가드의
-  `OPTIONAL_KEYS` 에 등록해 검증을 정직하게 유지한다.
+- 토큰·API 키는 절대 커밋하지 않는다. `central-server/.env.example` 만 갱신하고 `.env` 는 로컬.
+- 운영에서 `CENTRAL_DEV_ENABLED` 는 **반드시 false**(/dev/* 차단). 토큰은 일회용·해시 저장.
+- 에이전트 토큰/설정 파일은 0600(시크릿 보호).

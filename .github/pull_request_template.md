@@ -26,10 +26,10 @@ Closes #
 
 PR을 올리기 전 로컬에서 다음을 통과했는지 확인해주세요.
 
-- [ ] `ruff check src/`
-- [ ] `ruff format src/` (변경 파일 포맷)
-- [ ] `mypy src/`
-- [ ] `pytest tests/ --cov=discord_assistant`
+- [ ] central-server 변경 시: `gradlew -p central-server build` (test + ktlint + 커버리지) 통과
+- [ ] provider-agent 변경 시: `ruff check src tests` · `mypy src` · `pytest`(커버리지 ≥ 70%) 통과
+- [ ] 프로토콜(와이어) 변경 시: 양측 컨트랙트 테스트(`make contract`) 통과
+- [ ] 문서 변경 시: `scripts/check_links.py` 통과
 - [ ] (해당 시) 새/변경 동작에 대한 테스트 추가
 
 ## 추가 정보

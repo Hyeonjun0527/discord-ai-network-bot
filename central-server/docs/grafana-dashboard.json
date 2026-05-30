@@ -1,0 +1,47 @@
+{
+  "title": "Provider Pool — central-server",
+  "schemaVersion": 39,
+  "tags": ["provider-pool", "central-server"],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "활성 프로바이더 연결",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "providerpool_active_connections", "legendFormat": "providers" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "HTTP 요청률 (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 6, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count[5m]))", "legendFormat": "req/s" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "JVM 힙 사용량",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "jvm_memory_used_bytes{area=\"heap\"}", "legendFormat": "{{id}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "HikariCP 활성 커넥션",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "hikaricp_connections_active", "legendFormat": "active" }
+      ]
+    }
+  ]
+}

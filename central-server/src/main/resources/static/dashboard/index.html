@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Provider Pool 대시보드</title>
+  <!--
+    웹 대시보드 프론트엔드(차수 14). 빌드/번들 불필요한 정적 SPA(바닐라 JS).
+    central-server 가 동일 출처로 서빙(/dashboard/) → CORS 불필요. 읽기전용 모니터링.
+    인증(Discord OAuth2, #196/#197)은 후속 — 현재는 내부/베타 모니터링 용도.
+  -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Provider Pool 대시보드</h1>
+    <span id="status" class="badge">연결 확인 중…</span>
+  </header>
+
+  <section class="panel">
+    <h2>풀 전역</h2>
+    <div class="stats" id="poolStats">
+      <div class="stat"><div class="num" id="activeProviders">–</div><div class="lbl">활성 프로바이더</div></div>
+      <div class="stat"><div class="num" id="inFlightTotal">–</div><div class="lbl">처리중</div></div>
+      <div class="stat"><div class="num" id="guildCount">–</div><div class="lbl">길드 수</div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>길드 상세</h2>
+    <div class="row">
+      <input id="guildId" type="text" inputmode="numeric" placeholder="길드 ID 입력" />
+      <button id="loadGuild">불러오기</button>
+    </div>
+    <div id="guildOverview" class="stats"></div>
+    <h3>프로바이더 상세</h3>
+    <table id="providers"><thead><tr><th>provider</th><th>상태</th><th>처리중</th><th>대기</th><th>실패</th><th>모델수</th></tr></thead><tbody></tbody></table>
+    <h3>사용량 트렌드(최근 7일)</h3>
+    <div id="trend" class="trend"></div>
+    <h3>최근 요청 로그</h3>
+    <table id="requests"><thead><tr><th>requestId</th><th>상태</th><th>부담</th><th>provider</th><th>시각</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section class="panel">
+    <h2>정책 설정 (관리자, OAuth 필요)</h2>
+    <p class="muted">OAuth 활성 + 로그인 시에만 동작합니다(비활성 환경에선 401/404).</p>
+    <div class="row">
+      <input id="welcomeMsg" type="text" placeholder="환영 메시지" />
+      <button id="saveWelcome">환영 저장</button>
+    </div>
+    <div class="row">
+      <button id="autoApproveOn">자동승인 ON</button>
+      <button id="autoApproveOff">자동승인 OFF</button>
+    </div>
+    <div id="writeResult" class="muted"></div>
+  </section>
+
+  <footer>읽기 5초 폴링 · 쓰기는 OAuth 인증 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
+  <script src="app.js"></script>
+</body>
+</html>

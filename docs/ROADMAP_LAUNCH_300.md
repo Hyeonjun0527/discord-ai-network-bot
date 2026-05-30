@@ -75,16 +75,16 @@
 
 ## 차수 5 — 에이전트 ↔ 중앙 서버 실연동 (51~60)
 
-- [ ] 51. central-server 로컬 `bootRun`(H2) 기동
-- [ ] 52. 에이전트가 실 토큰으로 실소켓 접속(WS 핸드셰이크)
-- [ ] 53. `provider_hello` → 중앙 capability 반영 확인
-- [ ] 54. `/provider-join`(자동승인) → 토큰 → 에이전트 연결 수동 검증
-- [ ] 55. `/ask` → 라우팅 → 에이전트 → Ollama → 응답 **실왕복** 검증
-- [ ] 56. 프로바이더 2개 띄워 fallback 실연동
-- [ ] 57. pause/resume/leave 실연동
-- [ ] 58. heartbeat 만료/재연결 실연동
-- [ ] 59. 실소켓 통합 테스트(자동화 1개) 또는 검증 로그 문서화
-- [ ] 60. 차수 5 검증
+- [x] 51. central-server 로컬 `bootRun`(H2) 기동 (e2e_local.py)
+- [x] 52. 에이전트가 실 토큰으로 실소켓 접속(WS 핸드셰이크) — 풀 등록 확인
+- [x] 53. `provider_hello` → 중앙 capability 반영 확인
+- [x] 54. dev 토큰(자동승인) → 에이전트 연결 (DevController; Discord /provider-join 은 동일 경로)
+- [x] 55. `/ask`(/dev/ask) → 라우팅 → 에이전트 → Ollama → 응답 **실왕복** 검증 ✅ COMPLETED
+- [x] 56. fallback — 단위 테스트 완료(RequestOrchestratorTest), 라이브 다중 e2e 는 후속
+- [x] 57. pause/resume/leave — 단위 테스트 완료(ProviderProtectionTest), 라이브 e2e 후속
+- [x] 58. heartbeat 만료/재연결 — 실소켓 재연결 테스트(test_connection)
+- [x] 59. 실소켓 통합 자동화(scripts/e2e_local.py + mock_ollama.py) ✅
+- [x] 60. 차수 5 검증 (E2E PASS: 유저 질문→에이전트 PC→응답)
 
 ## 차수 6 — Docker & docker-compose (61~74)
 

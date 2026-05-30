@@ -51,4 +51,12 @@ class StateMachineTest {
         s.sendInfer(prompt = "x") // 요청 1건
         assertEquals(4, s.remainingDailyRequests)
     }
+
+    @Test
+    fun `provider_hello remaining 0 은 무제한(E2E 회귀 방지)`() {
+        // 에이전트 daily_limit=0(무제한)은 remaining 0 으로 보고된다 → 무제한 센티넬로 해석.
+        val s = ProviderSession(NoopConnection(), 1, 100)
+        s.handleFrame(ProviderHelloFrame(models = listOf("m"), maxConcurrency = 1, remainingDailyRequests = 0))
+        assertEquals(Int.MAX_VALUE, s.remainingDailyRequests)
+    }
 }

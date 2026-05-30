@@ -33,3 +33,4 @@ personal_space/
 .DS_Store
 .vscode/
 .idea/
+scripts/.e2e-logs/

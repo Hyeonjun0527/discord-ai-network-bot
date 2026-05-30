@@ -109,3 +109,18 @@ def test_build_hello():
     agent = ProviderAgent(AgentConfig(token="T", models=("m1", "m2"), max_concurrency=3))
     hello = agent._build_hello()
     assert hello.models == ["m1", "m2"] and hello.max_concurrency == 3
+
+
+@pytest.mark.asyncio
+async def test_model_default_to_own():
+    # 서버가 모델을 안 주면(model=None) 에이전트가 자기 첫 모델로 처리한다(E2E 회귀 방지).
+    class RecOllama(FakeOllama):
+        last_model: str | None = None
+
+        async def generate(self, prompt: str, model: str | None) -> tuple[str, Usage]:
+            RecOllama.last_model = model
+            return "ok", Usage()
+
+    agent = ProviderAgent(AgentConfig(token="T", models=("mymodel",)), ollama=RecOllama())  # type: ignore[arg-type]
+    await agent.handle_infer(FakeConn(), InferRequest(request_id="r", prompt="x"))  # type: ignore[arg-type]
+    assert RecOllama.last_model == "mymodel"

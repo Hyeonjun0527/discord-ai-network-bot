@@ -75,8 +75,10 @@ class ProviderAgent:
             self._inflight += 1
             if self._cfg.daily_limit > 0:
                 self._remaining -= 1
+            # 서버가 모델을 지정하지 않으면 내가 제공하는 첫 모델로 처리한다.
+            model = req.model or (self._models[0] if self._models else None)
             try:
-                text, usage = await self._ollama.generate(req.prompt, req.model)
+                text, usage = await self._ollama.generate(req.prompt, model)
                 await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
             except OllamaError as exc:
                 await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))

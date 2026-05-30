@@ -95,7 +95,9 @@ class ProviderSession(
             maxConcurrency = hello.maxConcurrency,
             remainingDailyRequests = hello.remainingDailyRequests,
         )
-        remainingDaily.set(hello.remainingDailyRequests)
+        // hello 의 remaining <= 0 은 "일일 한도 없음(무제한)"을 의미한다(에이전트 daily_limit=0).
+        // 내부 무제한 센티넬(Int.MAX_VALUE)로 둔다. 실제 한도가 있으면 양수를 보낸다.
+        remainingDaily.set(if (hello.remainingDailyRequests > 0) hello.remainingDailyRequests else Int.MAX_VALUE)
         markSeen()
     }
 

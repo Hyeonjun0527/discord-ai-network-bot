@@ -304,7 +304,7 @@
 - [x] 240. 타임아웃/재시도 표준화(orTimeout + 1회 fallback)
 - [x] 241. provider 단위 circuit breaker(연속 실패 3회→UNHEALTHY 제외)
 - [ ] 242. 다중 인스턴스 분산 rate limit — 후속
-- [ ] 243. 멱등성/중복 요청 방지 — 후속
+- [x] 243. 멱등성/중복 요청 방지 — IdempotencyGuard(윈도우 내 동일 guild/user/prompt 중복 차단) + 오케스트레이터 연동, 테스트 통과
 - [ ] 244. 카오스 테스트 — 후속(끊김/재연결은 test_connection 일부)
 - [x] 245. 용량 계획 문서 — SCALING.md §3(자원 가정·병목=프로바이더 PC·스케일 신호)
 - [x] 246. 메시지 크기(MAX_FRAME_BYTES)·속도(RateLimiter) 제한

@@ -35,6 +35,7 @@ class ProviderAgent:
         self._remaining = cfg.daily_limit  # 0 = 무제한
         self._models: list[str] = list(cfg.models)
         self._inflight = 0
+        self._processed = 0  # 누적 처리 건수(로컬 요약)
         self._cancelled: set[str] = set()
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._stop = asyncio.Event()
@@ -79,6 +80,7 @@ class ProviderAgent:
             model = req.model or (self._models[0] if self._models else None)
             try:
                 text, usage = await self._ollama.generate(req.prompt, model)
+                self._processed += 1
                 await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
             except OllamaError as exc:
                 await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
@@ -110,6 +112,9 @@ class ProviderAgent:
                         busy=self._inflight > 0,
                     ),
                 )
+                # 로컬 상태 콘솔(차수 10): 처리/대기/잔여 요약
+                remaining = "무제한" if self._cfg.daily_limit == 0 else str(self._remaining)
+                logger.info("상태: 처리 %d · 진행중 %d · 일일잔여 %s", self._processed, self._inflight, remaining)
         except asyncio.CancelledError:
             return
 
@@ -142,6 +147,33 @@ class ProviderAgent:
         logger.info("에이전트 종료")
         return 0
 
+    @property
+    def processed(self) -> int:
+        return self._processed
+
 
 def run_agent(cfg: AgentConfig) -> int:
     return asyncio.run(ProviderAgent(cfg).run())
+
+
+async def _self_test(cfg: AgentConfig) -> int:
+    """연결 전 자가 점검(차수 10): Ollama 도달·모델·추론 1회."""
+    ollama = OllamaClient(cfg.ollama_url, cfg.request_timeout)
+    if not await ollama.health():
+        logger.error("❌ Ollama 연결 실패: %s", cfg.ollama_url)
+        return 1
+    models = await ollama.list_models()
+    logger.info("✅ Ollama OK (%s) · 모델 %d개: %s", cfg.ollama_url, len(models), models)
+    target = cfg.models[0] if cfg.models else (models[0] if models else None)
+    if target:
+        try:
+            text, _ = await ollama.generate("ping", target)
+            logger.info("✅ 추론 테스트 OK (model=%s): %r", target, text[:40])
+        except OllamaError as exc:
+            logger.error("⚠️ 추론 테스트 실패: %s", exc)
+            return 1
+    return 0
+
+
+def self_test(cfg: AgentConfig) -> int:
+    return asyncio.run(_self_test(cfg))

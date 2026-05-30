@@ -51,3 +51,23 @@ class OllamaClient:
             raise OllamaError(f"Ollama 연결 실패: {exc}") from exc
         models = data.get("models", []) if isinstance(data, dict) else []
         return [str(m["name"]) for m in models if isinstance(m, dict) and "name" in m]
+
+    async def health(self) -> bool:
+        """Ollama 가 응답하는지(차수 10 복구 감지)."""
+        try:
+            await self.list_models()
+            return True
+        except OllamaError:
+            return False
+
+    async def pull(self, model: str) -> None:
+        """모델을 내려받는다(차수 10, 선택). 실패 시 OllamaError."""
+        url = f"{self._base}/api/pull"
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=1800)) as s:
+                async with s.post(url, json={"model": model, "stream": False}) as r:
+                    data = await r.json()
+        except aiohttp.ClientError as exc:
+            raise OllamaError(f"Ollama pull 실패: {exc}") from exc
+        if isinstance(data, dict) and data.get("error"):
+            raise OllamaError(str(data["error"]))

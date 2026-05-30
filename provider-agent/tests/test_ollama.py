@@ -19,8 +19,12 @@ async def _make(generate_resp=None, error=None, models=None) -> tuple[TestServer
     async def tags(request: web.Request) -> web.Response:
         return web.json_response({"models": [{"name": m} for m in (models or ["m1", "m2"])]})
 
+    async def pull(request: web.Request) -> web.Response:
+        return web.json_response({"status": "success"})
+
     app.router.add_post("/api/generate", gen)
     app.router.add_get("/api/tags", tags)
+    app.router.add_post("/api/pull", pull)
     server = TestServer(app)
     await server.start_server()
     return server, f"http://{server.host}:{server.port}"
@@ -61,3 +65,27 @@ async def test_connect_failure():
     # 닫힌 포트 → OllamaError
     with pytest.raises(OllamaError):
         await OllamaClient("http://127.0.0.1:1").generate("x", "m")
+
+
+@pytest.mark.asyncio
+async def test_health_and_pull():
+    server, url = await _make()
+    try:
+        assert await OllamaClient(url).health() is True
+        await OllamaClient(url).pull("test-model")  # 예외 없으면 성공
+    finally:
+        await server.close()
+    assert await OllamaClient("http://127.0.0.1:1").health() is False
+
+
+@pytest.mark.asyncio
+async def test_self_test_ok():
+    from provider_agent.agent import _self_test
+    from provider_agent.config import AgentConfig
+
+    server, url = await _make()
+    try:
+        cfg = AgentConfig(token="", ollama_url=url, models=("test-model",), self_test=True)
+        assert await _self_test(cfg) == 0
+    finally:
+        await server.close()

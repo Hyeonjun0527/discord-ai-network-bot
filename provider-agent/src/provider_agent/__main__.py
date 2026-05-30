@@ -12,15 +12,14 @@ from .logging_setup import setup_logging
 
 def main(argv: list[str] | None = None) -> int:
     cfg, verbose = config_from_args(argv)
-    setup_logging(verbose)
+    setup_logging(verbose, cfg.log_file)
     log = logging.getLogger("provider_agent")
     log.info("Provider Agent %s", cfg.agent_version)
+    if cfg.self_test:
+        from .agent import self_test
+        return self_test(cfg)
     log.info("설정: %s", cfg.masked())
-    try:
-        from .agent import run_agent  # 차수 2~3 에서 구현
-    except ImportError:
-        log.warning("agent 실행 모듈이 아직 없습니다(차수 2~3). 설정 검증만 수행했습니다.")
-        return 0
+    from .agent import run_agent
     exit_code: int = run_agent(cfg)
     return exit_code
 

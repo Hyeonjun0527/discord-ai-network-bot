@@ -25,6 +25,15 @@ interface ProviderProfileProvider {
     fun profile(providerId: Long): ProviderProfile
 }
 
+/** 차단 사용자 확인(차수 11). BlocklistService 가 구현. 기본은 차단 없음. */
+interface BlocklistChecker {
+    fun isBlocked(guildId: Long, userId: Long): Boolean
+}
+
+internal val ALLOW_ALL_BLOCKLIST = object : BlocklistChecker {
+    override fun isBlocked(guildId: Long, userId: Long): Boolean = false
+}
+
 /** 사용량/기여 기록 트리거. JPA 구현(UsageService) 또는 테스트 fake. */
 interface UsageRecorder {
     fun recordSuccess(guildId: Long, userId: Long, providerId: Long, requestId: String)
@@ -74,6 +83,7 @@ class RequestOrchestrator(
     private val router: ProviderRouter,
     private val recorder: UsageRecorder,
     private val profiles: ProviderProfileProvider,
+    private val blocklist: BlocklistChecker = ALLOW_ALL_BLOCKLIST,
 ) {
     private val log = LoggerFactory.getLogger(RequestOrchestrator::class.java)
 
@@ -84,6 +94,10 @@ class RequestOrchestrator(
     }
 
     private fun route(input: AiRequestInput): OrchestrationResult {
+        // 0) 차단 사용자
+        if (blocklist.isBlocked(input.guildId, input.userId)) {
+            return OrchestrationResult(RequestState.REJECTED, failReason = "차단된 사용자입니다.")
+        }
         // 1) 정책 확인(채널)
         if (!policy.isChannelAllowed(input.guildId, input.channelId)) {
             return OrchestrationResult(RequestState.REJECTED, failReason = "이 채널에서는 LLM 을 사용할 수 없습니다.")

@@ -73,6 +73,19 @@ class RequestOrchestratorTest {
     }
 
     @Test
+    fun `차단 사용자 → REJECTED`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok")
+        val blocking = object : BlocklistChecker {
+            override fun isBlocked(guildId: Long, userId: Long): Boolean = userId == 5L
+        }
+        val orch = RequestOrchestrator(
+            reg, fakePolicy, RequestWeigher(), ProviderFilterPipeline(), ProviderRouter(), recorder, fakeProfiles, blocking,
+        )
+        assertEquals(RequestState.REJECTED, orch.handle(input).state) // input.userId = 5
+    }
+
+    @Test
     fun `실패 → 다른 provider 로 fallback`() {
         val reg = newRegistry()
         register(reg, 1, "err") // 먼저 선택되어 실패

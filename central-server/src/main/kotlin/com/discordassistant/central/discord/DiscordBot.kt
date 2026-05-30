@@ -79,6 +79,10 @@ class DiscordBot(
                 .addOption(OptionType.USER, "user", "대상 유저", true),
             Commands.slash("provider-remove", "프로바이더를 제거합니다(관리자)")
                 .addOption(OptionType.USER, "user", "대상 유저", true),
+            Commands.slash("llm-block", "사용자를 차단합니다(관리자)")
+                .addOption(OptionType.USER, "user", "대상 유저", true),
+            Commands.slash("llm-unblock", "사용자 차단을 해제합니다(관리자)")
+                .addOption(OptionType.USER, "user", "대상 유저", true),
         ).queue()
     }
 
@@ -140,6 +144,8 @@ class DiscordBot(
             "providers" -> commands.providers(ctx)
             "provider-approve" -> commands.approveProvider(ctx, event.getOption("user")!!.asUser.idLong)
             "provider-remove" -> commands.removeProvider(ctx, event.getOption("user")!!.asUser.idLong)
+            "llm-block" -> commands.blockUser(ctx, event.getOption("user")!!.asUser.idLong)
+            "llm-unblock" -> commands.unblockUser(ctx, event.getOption("user")!!.asUser.idLong)
             else -> Reply("알 수 없는 명령입니다.")
         }
     }

@@ -39,6 +39,7 @@ class CommandService(
     private val privacy: PrivacyService,
     private val rateLimiter: RateLimiter,
     private val contributionPolicy: ContributionPolicyService,
+    private val blocklist: com.discordassistant.central.provider.BlocklistService,
 ) {
     companion object {
         const val PRIVACY_NOTICE =
@@ -162,6 +163,18 @@ class CommandService(
         } else {
             Reply("해당 프로바이더를 찾을 수 없습니다.")
         }
+    }
+
+    fun blockUser(ctx: CommandContext, targetUserId: Long): Reply {
+        adminOnly(ctx)?.let { return it }
+        blocklist.block(ctx.guildId, targetUserId, ctx.userId)
+        return Reply("🚫 <@$targetUserId> 를 차단했습니다.")
+    }
+
+    fun unblockUser(ctx: CommandContext, targetUserId: Long): Reply {
+        adminOnly(ctx)?.let { return it }
+        blocklist.unblock(ctx.guildId, targetUserId, ctx.userId)
+        return Reply("✅ <@$targetUserId> 차단을 해제했습니다.")
     }
 
     fun providers(ctx: CommandContext): Reply {

@@ -74,6 +74,8 @@ dependencies {
     testImplementation("org.junit.platform:junit-platform-suite")
     // 아키텍처 규칙 보호(차수 18): 레이어 의존 방향/순환 의존 검증.
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")
+    // API 계약 예시 문서(차수 18): 테스트 통과 시 REST 스니펫 생성(MockMvc 기반).
+    testImplementation("org.springframework.restdocs:spring-restdocs-mockmvc")
 }
 
 kotlin {

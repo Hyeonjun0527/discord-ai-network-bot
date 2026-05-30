@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-30
+
+첫 정식 릴리스. ROADMAP_LAUNCH_300 의 294/300(검증 가능 항목 전부) 완료.
+
 ### Added
 - Provider Pool 코어: 리버스 터널 WS 릴레이, 세션 상태머신, 공정성 라우팅(weigh→filter→score→fallback)
 - Discord(JDA) 슬래시 명령: 유저(`/ask` `/models` `/catalog` `/my-usage` `/privacy` `/help`),

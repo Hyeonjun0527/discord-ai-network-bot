@@ -19,7 +19,7 @@ ktlint {
 }
 
 group = "com.discordassistant"
-version = "0.1.0-SNAPSHOT"
+version = "0.1.0"
 description = "커뮤니티 로컬 AI Provider Pool 중앙 서버 (ADR 0003/0004)"
 
 java {

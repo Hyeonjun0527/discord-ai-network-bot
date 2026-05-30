@@ -30,17 +30,17 @@
 
 ## K-차수 2 — 연결 레지스트리 & Provider Session
 
-- [ ] 2-1. `relay/AgentConnection` 인터페이스(send/close/메타)
-- [ ] 2-2. `ProviderSession`(연결·capability·상태·heartbeat·동시 슬롯)
-- [ ] 2-3. `ConnectionRegistry`(providerId→session, guildId→sessions[])
-- [ ] 2-4. 등록/해제/중복 축출(graceful close)
-- [ ] 2-5. 조회(byProvider/byGuild)·활성 수·스냅샷
-- [ ] 2-6. 좀비 청소(heartbeat 만료)
-- [ ] 2-7. request_id↔응답 future(CompletableDeferred/CompletableFuture)
-- [ ] 2-8. per-session 동시 슬롯(Semaphore)·대기 큐 상한(BUSY)
-- [ ] 2-9. 요청 타임아웃→cancel
-- [ ] 2-10. 단위 테스트(등록·라우팅키·축출·타임아웃)
-- [ ] 2-11. `gradlew build` + 커밋
+- [x] 2-1. `relay/AgentConnection` 인터페이스(send/close/메타)
+- [x] 2-2. `ProviderSession`(연결·capability·상태·heartbeat·동시 슬롯)
+- [x] 2-3. `ConnectionRegistry`(providerId→session, guildId→sessions[])
+- [x] 2-4. 등록/해제/중복 축출(graceful close)
+- [x] 2-5. 조회(byProvider/byGuild)·활성 수·스냅샷
+- [x] 2-6. 좀비 청소(heartbeat 만료)
+- [x] 2-7. request_id↔응답 future(CompletableDeferred/CompletableFuture)
+- [x] 2-8. per-session 동시 슬롯·대기 큐 상한(BUSY) — (cap=동시+큐) 하드캡 BUSY; 진정한 순차 대기는 K-차수 11
+- [x] 2-9. 요청 타임아웃→cancel
+- [x] 2-10. 단위 테스트(등록·라우팅키·축출·타임아웃)
+- [x] 2-11. `gradlew build` + 커밋
 
 ## K-차수 3 — WebSocket 릴레이 (Spring WebSocket)
 

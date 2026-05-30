@@ -130,14 +130,14 @@
 
 ## K-차수 11 — 요청 상태머신·큐·타임아웃·fallback
 
-- [ ] 11-1. RequestState 전이(received→…→completed/failed/rejected)
-- [ ] 11-2. 큐 적재·전송·running
-- [ ] 11-3. 타임아웃→실패+상태 반영
-- [ ] 11-4. 동일 조건 다른 provider 1회 fallback
-- [ ] 11-5. fallback 실패 안내·실패 provider 일시 제외
-- [ ] 11-6. 사용량/기여 기록 트리거
-- [ ] 11-7. 단위/통합 테스트
-- [ ] 11-8. `gradlew build` + 커밋
+- [x] 11-1. RequestState 결과(completed/failed/rejected) — OrchestrationResult
+- [x] 11-2. 후보→선택→전송(session.sendInfer)
+- [x] 11-3. 타임아웃→실패(세션 orTimeout)+결과 반영
+- [x] 11-4. 동일 조건 다른 provider 1회 fallback
+- [x] 11-5. fallback 실패 안내·실패 provider 일시 제외(excluded)
+- [x] 11-6. 사용량/기여 기록 트리거(UsageRecorder/UsageService)
+- [x] 11-7. 단위/통합 테스트(EchoConnection 오케스트레이션)
+- [x] 11-8. `gradlew build` + 커밋
 
 ## K-차수 12 — 프로바이더 보호 (수동/자동)
 

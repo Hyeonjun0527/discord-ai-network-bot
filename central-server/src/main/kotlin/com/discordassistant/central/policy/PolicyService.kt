@@ -8,11 +8,13 @@ import com.discordassistant.central.persistence.GuildRepository
 import com.discordassistant.central.persistence.RolePolicyEntity
 import com.discordassistant.central.persistence.RolePolicyRepository
 import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.routing.RoutingPolicy
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 /**
  * 서버(길드) 정책 (K-차수 7, specs §6/§18). 허용 채널·역할별 허용 모델 수준·승인 방식.
+ * 라우팅이 쓰는 부분은 [RoutingPolicy] 로 노출한다.
  */
 @Service
 class PolicyService(
@@ -20,7 +22,7 @@ class PolicyService(
     private val roles: RolePolicyRepository,
     private val guilds: GuildRepository,
     private val audit: AuditLog,
-) {
+) : RoutingPolicy {
 
     // ── 채널 정책 ───────────────────────────────────────────────────────
     @Transactional
@@ -38,7 +40,7 @@ class PolicyService(
     }
 
     /** 채널이 LLM 사용 허용인가. 허용 채널이 하나도 설정 안 됐으면 제한 없음(true). */
-    fun isChannelAllowed(guildId: Long, channelId: Long): Boolean {
+    override fun isChannelAllowed(guildId: Long, channelId: Long): Boolean {
         val allowed = channels.findByGuildId(guildId)
         return allowed.isEmpty() || allowed.any { it.channelId == channelId }
     }
@@ -58,7 +60,7 @@ class PolicyService(
     }
 
     /** 멤버의 역할들로부터 허용되는 최대 모델 부담 수준(다중 역할 합집합 = 가장 높은 등급). */
-    fun maxAllowedBurden(guildId: Long, memberRoleIds: Collection<Long>): ModelBurden {
+    override fun maxAllowedBurden(guildId: Long, memberRoleIds: Collection<Long>): ModelBurden {
         val policies = roles.findByGuildId(guildId).filter { it.roleId in memberRoleIds }
         if (policies.isEmpty()) return ModelBurden.LIGHT // 기본(일반 멤버)
         return policies

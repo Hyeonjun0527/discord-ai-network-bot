@@ -20,8 +20,11 @@ import java.util.concurrent.TimeUnit
 class TokenService(
     @param:Value("\${central.token.ttl-seconds:600}") private val ttlSeconds: Long,
 ) : TokenVerifier {
-
-    private data class Record(val providerId: Long, val guildId: Long?, val expiresAtNanos: Long)
+    private data class Record(
+        val providerId: Long,
+        val guildId: Long?,
+        val expiresAtNanos: Long,
+    )
 
     private val store = ConcurrentHashMap<String, Record>()
     private val random = SecureRandom()
@@ -30,15 +33,22 @@ class TokenService(
     private val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
     /** 평문 토큰을 발급한다(DM 으로 한 번만 보여줌). 해시만 저장. */
-    fun issue(providerId: Long, guildId: Long?): String {
-        val token = (0 until 15)
-            .map { alphabet[random.nextInt(alphabet.length)] }
-            .joinToString("")
-            .chunked(5)
-            .joinToString("-")
-        store[hash(token)] = Record(
-            providerId, guildId, System.nanoTime() + TimeUnit.SECONDS.toNanos(ttlSeconds),
-        )
+    fun issue(
+        providerId: Long,
+        guildId: Long?,
+    ): String {
+        val token =
+            (0 until 15)
+                .map { alphabet[random.nextInt(alphabet.length)] }
+                .joinToString("")
+                .chunked(5)
+                .joinToString("-")
+        store[hash(token)] =
+            Record(
+                providerId,
+                guildId,
+                System.nanoTime() + TimeUnit.SECONDS.toNanos(ttlSeconds),
+            )
         return token
     }
 
@@ -61,7 +71,8 @@ class TokenService(
     fun activeTokenCount(): Int = store.size
 
     private fun hash(token: String): String =
-        MessageDigest.getInstance("SHA-256")
+        MessageDigest
+            .getInstance("SHA-256")
             .digest(token.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 }

@@ -58,6 +58,7 @@ class ProviderSession(
     private val inFlight = AtomicInteger(0)
     private val remainingDaily = AtomicInteger(Int.MAX_VALUE)
     private val consecutiveFailures = AtomicInteger(0)
+
     @Volatile
     var liveStatus: LiveStatus = LiveStatus()
         private set
@@ -77,8 +78,10 @@ class ProviderSession(
 
     fun markSeen() = lastSeenNanos.set(System.nanoTime())
 
-    fun isStale(timeoutSeconds: Long, nowNanos: Long = System.nanoTime()): Boolean =
-        nowNanos - lastSeenNanos.get() > TimeUnit.SECONDS.toNanos(timeoutSeconds)
+    fun isStale(
+        timeoutSeconds: Long,
+        nowNanos: Long = System.nanoTime(),
+    ): Boolean = nowNanos - lastSeenNanos.get() > TimeUnit.SECONDS.toNanos(timeoutSeconds)
 
     /** 상태 전이. 불가 전이(상태머신 가드 위반)는 거부하고 로깅한다. 성공 시 true. */
     fun transitionTo(next: ProviderState): Boolean {
@@ -96,11 +99,12 @@ class ProviderSession(
     val remainingDailyRequests: Int get() = remainingDaily.get()
 
     fun applyHello(hello: ProviderHelloFrame) {
-        capability = ProviderCapability(
-            models = hello.models,
-            maxConcurrency = hello.maxConcurrency,
-            remainingDailyRequests = hello.remainingDailyRequests,
-        )
+        capability =
+            ProviderCapability(
+                models = hello.models,
+                maxConcurrency = hello.maxConcurrency,
+                remainingDailyRequests = hello.remainingDailyRequests,
+            )
         // hello 의 remaining <= 0 은 "일일 한도 없음(무제한)"을 의미한다(에이전트 daily_limit=0).
         // 내부 무제한 센티넬(Int.MAX_VALUE)로 둔다. 실제 한도가 있으면 양수를 보낸다.
         remainingDaily.set(if (hello.remainingDailyRequests > 0) hello.remainingDailyRequests else Int.MAX_VALUE)
@@ -173,8 +177,7 @@ class ProviderSession(
     private fun isTimeout(err: Throwable): Boolean =
         err is TimeoutException || (err is CompletionException && err.cause is TimeoutException)
 
-    private fun unwrap(err: Throwable): Throwable =
-        if (err is CompletionException && err.cause != null) err.cause!! else err
+    private fun unwrap(err: Throwable): Throwable = if (err is CompletionException && err.cause != null) err.cause!! else err
 
     private fun safeSend(frame: Frame) {
         try {
@@ -189,8 +192,9 @@ class ProviderSession(
         markSeen()
         when (frame) {
             is InferResult -> pending[frame.requestId]?.complete(frame)
-            is InferError -> pending[frame.requestId]
-                ?.completeExceptionally(RemoteInferException(frame.code, frame.message))
+            is InferError ->
+                pending[frame.requestId]
+                    ?.completeExceptionally(RemoteInferException(frame.code, frame.message))
             is ChunkFrame -> streams[frame.requestId]?.offer(frame)
             is ProviderHelloFrame -> applyHello(frame)
             is ProviderStatusFrame -> applyStatus(frame)

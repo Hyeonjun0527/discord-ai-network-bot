@@ -22,39 +22,67 @@ import java.security.Principal
 import java.util.concurrent.TimeUnit
 
 /** 테스트용 최소 WebSocketSession. sendMessage 페이로드를 캡처한다. */
-private class FakeWebSocketSession(private val sessionId: String = "s1") : WebSocketSession {
+private class FakeWebSocketSession(
+    private val sessionId: String = "s1",
+) : WebSocketSession {
     val sent = mutableListOf<String>()
     private var open = true
+
     override fun getId(): String = sessionId
-    override fun sendMessage(message: WebSocketMessage<*>) { sent.add((message as TextMessage).payload) }
+
+    override fun sendMessage(message: WebSocketMessage<*>) {
+        sent.add((message as TextMessage).payload)
+    }
+
     override fun isOpen(): Boolean = open
-    override fun close() { open = false }
-    override fun close(status: CloseStatus) { open = false }
+
+    override fun close() {
+        open = false
+    }
+
+    override fun close(status: CloseStatus) {
+        open = false
+    }
+
     override fun getUri(): URI? = null
+
     override fun getHandshakeHeaders(): HttpHeaders = HttpHeaders.EMPTY
+
     override fun getAttributes(): MutableMap<String, Any> = mutableMapOf()
+
     override fun getPrincipal(): Principal? = null
+
     override fun getLocalAddress(): InetSocketAddress? = null
+
     override fun getRemoteAddress(): InetSocketAddress? = null
+
     override fun getAcceptedProtocol(): String? = null
+
     private var txLimit = 0
     private var binLimit = 0
-    override fun setTextMessageSizeLimit(messageSizeLimit: Int) { txLimit = messageSizeLimit }
+
+    override fun setTextMessageSizeLimit(messageSizeLimit: Int) {
+        txLimit = messageSizeLimit
+    }
+
     override fun getTextMessageSizeLimit(): Int = txLimit
-    override fun setBinaryMessageSizeLimit(messageSizeLimit: Int) { binLimit = messageSizeLimit }
+
+    override fun setBinaryMessageSizeLimit(messageSizeLimit: Int) {
+        binLimit = messageSizeLimit
+    }
+
     override fun getBinaryMessageSizeLimit(): Int = binLimit
+
     override fun getExtensions(): MutableList<WebSocketExtension> = mutableListOf()
 }
 
 class RelayWebSocketHandlerTest {
+    private val verifier =
+        object : TokenVerifier {
+            override fun verify(token: String): OwnerBinding? = if (token == "good") OwnerBinding(providerId = 1, guildId = 100) else null
+        }
 
-    private val verifier = object : TokenVerifier {
-        override fun verify(token: String): OwnerBinding? =
-            if (token == "good") OwnerBinding(providerId = 1, guildId = 100) else null
-    }
-
-    private fun handler(reg: ConnectionRegistry) =
-        RelayWebSocketHandler(reg, verifier, requestTimeout = 2, heartbeatSeconds = 30)
+    private fun handler(reg: ConnectionRegistry) = RelayWebSocketHandler(reg, verifier, requestTimeout = 2, heartbeatSeconds = 30)
 
     @Test
     fun `인증 실패 → AuthErr 후 종료`() {
@@ -82,7 +110,11 @@ class RelayWebSocketHandlerTest {
 
         // 서버(라우터)가 추론 요청 → InferRequest 가 에이전트(WS)로 송신됨
         val fut = ps.sendInfer(prompt = "안녕", model = "m1")
-        val req = s.sent.map { FrameCodec.decode(it) }.filterIsInstance<InferRequest>().single()
+        val req =
+            s.sent
+                .map { FrameCodec.decode(it) }
+                .filterIsInstance<InferRequest>()
+                .single()
         assertEquals("안녕", req.prompt)
 
         // 에이전트가 결과 프레임을 보냄 → 핸들러가 세션으로 디스패치 → future 완료

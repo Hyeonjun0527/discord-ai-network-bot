@@ -39,13 +39,19 @@ object ErrorCode {
 }
 
 /** 추론 옵션 화이트리스트. relay 가 outbound InferRequest 를 만들 때 적용한다. */
-val ALLOWED_OPTION_KEYS: Set<String> = setOf(
-    "temperature", "num_predict", "num_ctx", "top_p", "top_k", "stop", "seed",
-)
+val ALLOWED_OPTION_KEYS: Set<String> =
+    setOf(
+        "temperature",
+        "num_predict",
+        "num_ctx",
+        "top_p",
+        "top_k",
+        "stop",
+        "seed",
+    )
 
 /** 화이트리스트에 있는 옵션 키만 남긴다. */
-fun filterOptions(options: Map<String, Any?>?): Map<String, Any?> =
-    options?.filterKeys { it in ALLOWED_OPTION_KEYS } ?: emptyMap()
+fun filterOptions(options: Map<String, Any?>?): Map<String, Any?> = options?.filterKeys { it in ALLOWED_OPTION_KEYS } ?: emptyMap()
 
 /** LLM 응답 토큰 사용량(없으면 0). */
 data class Usage(
@@ -146,9 +152,13 @@ data class ChunkFrame(
     override val type: String = FrameType.CHUNK,
 ) : Frame()
 
-data class PingFrame(override val type: String = FrameType.PING) : Frame()
+data class PingFrame(
+    override val type: String = FrameType.PING,
+) : Frame()
 
-data class PongFrame(override val type: String = FrameType.PONG) : Frame()
+data class PongFrame(
+    override val type: String = FrameType.PONG,
+) : Frame()
 
 /** 릴레이 → 에이전트: 진행 중 요청 취소. */
 data class CancelFrame(

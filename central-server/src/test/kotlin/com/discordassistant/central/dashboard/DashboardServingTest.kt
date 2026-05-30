@@ -14,25 +14,29 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-class DashboardServingTest @Autowired constructor(val mvc: MockMvc) {
-    @Test
-    fun `정적 대시보드 자원이 서빙된다`() {
-        mvc.perform(get("/dashboard/index.html")).andExpect(status().isOk)
-        mvc.perform(get("/dashboard/app.js")).andExpect(status().isOk)
-        mvc.perform(get("/dashboard/style.css")).andExpect(status().isOk)
-    }
+class DashboardServingTest
+    @Autowired
+    constructor(
+        val mvc: MockMvc,
+    ) {
+        @Test
+        fun `정적 대시보드 자원이 서빙된다`() {
+            mvc.perform(get("/dashboard/index.html")).andExpect(status().isOk)
+            mvc.perform(get("/dashboard/app.js")).andExpect(status().isOk)
+            mvc.perform(get("/dashboard/style.css")).andExpect(status().isOk)
+        }
 
-    @Test
-    fun `디렉터리 URL 도 index 로 포워드된다`() {
-        mvc.perform(get("/dashboard/")).andExpect(status().isOk)
-        mvc.perform(get("/dashboard")).andExpect(status().isOk)
-    }
+        @Test
+        fun `디렉터리 URL 도 index 로 포워드된다`() {
+            mvc.perform(get("/dashboard/")).andExpect(status().isOk)
+            mvc.perform(get("/dashboard")).andExpect(status().isOk)
+        }
 
-    @Test
-    fun `API 응답에 보안 헤더가 붙는다`() {
-        val res = mvc.perform(get("/api/metrics/pool")).andExpect(status().isOk).andReturn()
-        assertTrue(res.response.getHeader("X-Content-Type-Options") == "nosniff")
-        assertTrue(res.response.getHeader("X-Frame-Options") == "DENY")
-        assertTrue(res.response.getHeader("X-Request-Id") != null)
+        @Test
+        fun `API 응답에 보안 헤더가 붙는다`() {
+            val res = mvc.perform(get("/api/metrics/pool")).andExpect(status().isOk).andReturn()
+            assertTrue(res.response.getHeader("X-Content-Type-Options") == "nosniff")
+            assertTrue(res.response.getHeader("X-Frame-Options") == "DENY")
+            assertTrue(res.response.getHeader("X-Request-Id") != null)
+        }
     }
-}

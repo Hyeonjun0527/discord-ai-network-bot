@@ -7,7 +7,9 @@ import org.springframework.web.socket.TextMessage
 import org.springframework.web.socket.WebSocketSession
 
 /** Spring WebSocketSession 을 AgentConnection 으로 감싼다. */
-class WsAgentConnection(private val session: WebSocketSession) : AgentConnection {
+class WsAgentConnection(
+    private val session: WebSocketSession,
+) : AgentConnection {
     override val remoteId: String = session.id
 
     override fun sendFrame(frame: Frame) {

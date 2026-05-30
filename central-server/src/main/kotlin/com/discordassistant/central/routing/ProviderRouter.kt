@@ -4,7 +4,11 @@ import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.ProviderState
 import org.springframework.stereotype.Component
 
-data class Selection(val providerId: Long, val score: Double, val reason: String)
+data class Selection(
+    val providerId: Long,
+    val score: Double,
+    val reason: String,
+)
 
 /**
  * 공정성 점수 & 최종 Provider 선택 (K-차수 10, specs §8/§15).
@@ -14,8 +18,10 @@ data class Selection(val providerId: Long, val score: Double, val reason: String
  */
 @Component
 class ProviderRouter {
-
-    fun score(c: Candidate, ctx: RequestContext): Double {
+    fun score(
+        c: Candidate,
+        ctx: RequestContext,
+    ): Double {
         var s = 10.0 // 적합도(이미 burden 통과)
         if (c.state == ProviderState.ONLINE_IDLE) s += 5.0
         s += (minOf(c.remainingDaily, 100) / 100.0) * 5.0 // 남은 한도
@@ -31,16 +37,19 @@ class ProviderRouter {
     }
 
     /** 후보 중 최종 1인 선택. 비면 null. 동점은 (점수↓, 최근처리량↑ 적은 순, providerId↑)로 결정. */
-    fun select(candidates: List<Candidate>, ctx: RequestContext): Selection? {
+    fun select(
+        candidates: List<Candidate>,
+        ctx: RequestContext,
+    ): Selection? {
         if (candidates.isEmpty()) return null
-        val best = candidates
-            .map { it to score(it, ctx) }
-            .sortedWith(
-                compareByDescending<Pair<Candidate, Double>> { it.second }
-                    .thenBy { it.first.recentHandled }
-                    .thenBy { it.first.providerId },
-            )
-            .first()
+        val best =
+            candidates
+                .map { it to score(it, ctx) }
+                .sortedWith(
+                    compareByDescending<Pair<Candidate, Double>> { it.second }
+                        .thenBy { it.first.recentHandled }
+                        .thenBy { it.first.providerId },
+                ).first()
         return Selection(best.first.providerId, best.second, "점수 ${"%.1f".format(best.second)}")
     }
 }

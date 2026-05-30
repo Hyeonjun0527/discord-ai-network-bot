@@ -13,7 +13,10 @@ import com.discordassistant.central.usage.UsageService
 import org.springframework.stereotype.Service
 
 /** 슬래시 명령 응답(내용 + ephemeral 여부). */
-data class Reply(val content: String, val ephemeral: Boolean = true)
+data class Reply(
+    val content: String,
+    val ephemeral: Boolean = true,
+)
 
 /** 명령 호출 컨텍스트(JDA 이벤트에서 추출). */
 data class CommandContext(
@@ -55,19 +58,24 @@ class CommandService(
         if (!ctx.isAdmin) Replies.reject(Messages.get(Messages.Key.ADMIN_DENIED, lang(ctx))) else null
 
     // ── 일반 유저 ───────────────────────────────────────────────────────
-    fun ask(ctx: CommandContext, prompt: String): Reply {
+    fun ask(
+        ctx: CommandContext,
+        prompt: String,
+    ): Reply {
         // 요청 우선순위(#150): 관리자/긴급 요청은 분당 쿨다운을 우회한다.
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
-        val result = orchestrator.handle(
-            AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, prompt, ctx.roleIds, isAdmin = ctx.isAdmin),
-        )
-        return when (result.state) {
-            RequestState.COMPLETED -> Reply(
-                "${result.text}\n\n_${privacy.processedNotice(ctx.guildId, result.effectiveBurden, result.providerId, ctx.isAdmin)}_",
-                ephemeral = false,
+        val result =
+            orchestrator.handle(
+                AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, prompt, ctx.roleIds, isAdmin = ctx.isAdmin),
             )
+        return when (result.state) {
+            RequestState.COMPLETED ->
+                Reply(
+                    "${result.text}\n\n_${privacy.processedNotice(ctx.guildId, result.effectiveBurden, result.providerId, ctx.isAdmin)}_",
+                    ephemeral = false,
+                )
             RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
             else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
         }
@@ -75,7 +83,8 @@ class CommandService(
 
     /** 슬래시 옵션 자동완성용 모델 목록(#179). 현재 길드 풀이 제공하는 모델명(중복 제거·정렬). */
     fun autocompleteModels(ctx: CommandContext): List<String> =
-        registry.byGuild(ctx.guildId)
+        registry
+            .byGuild(ctx.guildId)
             .flatMap { it.capability.models }
             .distinct()
             .sorted()
@@ -94,9 +103,10 @@ class CommandService(
     fun catalog(ctx: CommandContext): Reply {
         val pool = registry.byGuild(ctx.guildId)
         if (pool.isEmpty()) return Reply("현재 풀에 온라인 프로바이더가 없습니다.")
-        val byModel = pool
-            .flatMap { s -> s.capability.models.map { it to s.providerId } }
-            .groupBy({ it.first }, { it.second })
+        val byModel =
+            pool
+                .flatMap { s -> s.capability.models.map { it to s.providerId } }
+                .groupBy({ it.first }, { it.second })
         if (byModel.isEmpty()) return Reply("프로바이더가 제공 모델을 아직 보고하지 않았습니다.")
         val lines = byModel.entries.sortedBy { it.key }.joinToString("\n") { "· `${it.key}` — ${it.value.distinct().size}명" }
         return Reply("이 서버에서 제공 중인 모델:\n$lines")
@@ -105,8 +115,10 @@ class CommandService(
     fun contributions(ctx: CommandContext): Reply {
         val pool = registry.byGuild(ctx.guildId)
         if (pool.isEmpty()) return Reply("아직 연결된 프로바이더가 없습니다.")
-        val ranked = pool.map { it.providerId to usage.providerContributionCount(it.providerId) }
-            .sortedByDescending { it.second }
+        val ranked =
+            pool
+                .map { it.providerId to usage.providerContributionCount(it.providerId) }
+                .sortedByDescending { it.second }
         val lines = ranked.mapIndexed { i, (pid, c) -> "${i + 1}. <@$pid> — ${c}건" }.joinToString("\n")
         return Reply("🏆 커뮤니티 기여 리더보드\n$lines\n\n_기여는 비금전 인정입니다. 고마워요!_", ephemeral = false)
     }
@@ -133,10 +145,11 @@ class CommandService(
         if (pool.isEmpty()) return Reply("연결된 프로바이더가 없습니다.")
         val counts = pool.map { it.providerId to usage.providerContributionCount(it.providerId) }
         val total = counts.sumOf { it.second }
-        val lines = counts.sortedByDescending { it.second }.joinToString("\n") { (pid, c) ->
-            val pct = if (total > 0) (c * 100 / total) else 0
-            "· <@$pid>: ${c}건 (${pct}%) · 실패 ${usage.providerFailures(pid)}"
-        }
+        val lines =
+            counts.sortedByDescending { it.second }.joinToString("\n") { (pid, c) ->
+                val pct = if (total > 0) (c * 100 / total) else 0
+                "· <@$pid>: ${c}건 ($pct%) · 실패 ${usage.providerFailures(pid)}"
+            }
         return Reply("⚖️ 공정성 리포트 (총 ${total}건)\n$lines")
     }
 
@@ -187,14 +200,11 @@ class CommandService(
         }
     }
 
-    fun providerPause(ctx: CommandContext): Reply =
-        if (protection.pause(ctx.userId)) Reply("⏸️ 일시정지했습니다.") else Reply("연결된 에이전트가 없습니다.")
+    fun providerPause(ctx: CommandContext): Reply = if (protection.pause(ctx.userId)) Reply("⏸️ 일시정지했습니다.") else Reply("연결된 에이전트가 없습니다.")
 
-    fun providerResume(ctx: CommandContext): Reply =
-        if (protection.resume(ctx.userId)) Reply("▶️ 재개했습니다.") else Reply("연결된 에이전트가 없습니다.")
+    fun providerResume(ctx: CommandContext): Reply = if (protection.resume(ctx.userId)) Reply("▶️ 재개했습니다.") else Reply("연결된 에이전트가 없습니다.")
 
-    fun providerLeave(ctx: CommandContext): Reply =
-        if (protection.leave(ctx.userId)) Reply("👋 풀에서 나갔습니다.") else Reply("연결된 에이전트가 없습니다.")
+    fun providerLeave(ctx: CommandContext): Reply = if (protection.leave(ctx.userId)) Reply("👋 풀에서 나갔습니다.") else Reply("연결된 에이전트가 없습니다.")
 
     fun providerStatus(ctx: CommandContext): Reply {
         val s = registry.byProvider(ctx.userId) ?: return Reply("연결 상태: 오프라인")
@@ -204,23 +214,40 @@ class CommandService(
         return Reply(if (hint != null) "$base\n$hint" else base)
     }
 
-    fun providerModels(ctx: CommandContext, models: List<String>): Reply {
+    fun providerModels(
+        ctx: CommandContext,
+        models: List<String>,
+    ): Reply {
         contributionPolicy.setModels(ctx.userId, models, ModelBurden.STANDARD)
         return Reply("✅ 제공 모델 설정: ${models.joinToString(", ")}")
     }
 
-    fun providerLimit(ctx: CommandContext, model: String, daily: Int, concurrency: Int, seconds: Int): Reply {
+    fun providerLimit(
+        ctx: CommandContext,
+        model: String,
+        daily: Int,
+        concurrency: Int,
+        seconds: Int,
+    ): Reply {
         contributionPolicy.setLimit(ctx.userId, model, daily, concurrency, seconds)
         return Reply("✅ `$model` 한도: 하루 $daily · 동시 $concurrency · 최대 ${seconds}초")
     }
 
-    fun providerScope(ctx: CommandContext, model: String, role: String): Reply {
+    fun providerScope(
+        ctx: CommandContext,
+        model: String,
+        role: String,
+    ): Reply {
         contributionPolicy.setScope(ctx.userId, model, role)
         return Reply("✅ `$model` 허용 범위: $role")
     }
 
     /** 가용 시간대 스케줄 설정(차수 12 #159). UTC 시 0~23, from==to 면 24시간. */
-    fun providerSchedule(ctx: CommandContext, fromHour: Int, toHour: Int): Reply {
+    fun providerSchedule(
+        ctx: CommandContext,
+        fromHour: Int,
+        toHour: Int,
+    ): Reply {
         if (fromHour !in 0..23 || toHour !in 0..23) return Replies.warn("시(hour)는 0~23 사이여야 합니다.")
         schedule.setSchedule(ctx.userId, ctx.guildId, fromHour, toHour)
         val span = if (fromHour == toHour) "24시간 가용" else "${fromHour}시~${toHour}시(UTC)"
@@ -228,8 +255,13 @@ class CommandService(
     }
 
     // ── 관리자 ──────────────────────────────────────────────────────────
+
     /** 길드 기본 모델/언어 설정(차수 11 #146). 빈 값은 변경하지 않음. */
-    fun setGuildDefaults(ctx: CommandContext, defaultModel: String?, language: String?): Reply {
+    fun setGuildDefaults(
+        ctx: CommandContext,
+        defaultModel: String?,
+        language: String?,
+    ): Reply {
         adminOnly(ctx)?.let { return it }
         policy.setGuildDefaults(ctx.guildId, defaultModel, language, ctx.userId)
         val m = policy.guildDefaultModel(ctx.guildId) ?: "(자동 선택)"
@@ -245,7 +277,10 @@ class CommandService(
     }
 
     /** 길드 환영/안내 메시지 설정(차수 12 #174, 관리자). */
-    fun setWelcome(ctx: CommandContext, message: String): Reply {
+    fun setWelcome(
+        ctx: CommandContext,
+        message: String,
+    ): Reply {
         adminOnly(ctx)?.let { return it }
         policy.setWelcomeMessage(ctx.guildId, message, ctx.userId)
         return Replies.ok("환영 메시지를 설정했습니다.")
@@ -253,37 +288,56 @@ class CommandService(
 
     /** 환영/안내 메시지 보기(누구나). */
     fun welcome(ctx: CommandContext): Reply {
-        val msg = policy.guildWelcomeMessage(ctx.guildId)
-            ?: return Replies.info("이 서버는 아직 환영 메시지를 설정하지 않았습니다. `/help` 로 사용법을 확인하세요.")
+        val msg =
+            policy.guildWelcomeMessage(ctx.guildId)
+                ?: return Replies.info("이 서버는 아직 환영 메시지를 설정하지 않았습니다. `/help` 로 사용법을 확인하세요.")
         return Reply("👋 $msg", ephemeral = false)
     }
 
-    fun allowChannel(ctx: CommandContext, channelId: Long): Reply {
+    fun allowChannel(
+        ctx: CommandContext,
+        channelId: Long,
+    ): Reply {
         adminOnly(ctx)?.let { return it }
         policy.allowChannel(ctx.guildId, channelId, ctx.userId)
         return Reply("✅ 채널 <#$channelId> 에서 LLM 사용을 허용했습니다.")
     }
 
-    fun denyChannel(ctx: CommandContext, channelId: Long): Reply {
+    fun denyChannel(
+        ctx: CommandContext,
+        channelId: Long,
+    ): Reply {
         adminOnly(ctx)?.let { return it }
         policy.denyChannel(ctx.guildId, channelId, ctx.userId)
         return Reply("🚫 채널 <#$channelId> 에서 LLM 사용을 금지했습니다.")
     }
 
-    fun setRolePolicy(ctx: CommandContext, roleId: Long, maxBurden: ModelBurden, dailyLimit: Int): Reply {
+    fun setRolePolicy(
+        ctx: CommandContext,
+        roleId: Long,
+        maxBurden: ModelBurden,
+        dailyLimit: Int,
+    ): Reply {
         adminOnly(ctx)?.let { return it }
         policy.setRolePolicy(ctx.guildId, roleId, maxBurden, dailyLimit, ctx.userId)
         return Reply("✅ 역할 <@&$roleId> 정책: 최대 $maxBurden, 하루 $dailyLimit 회")
     }
 
-    fun approveProvider(ctx: CommandContext, providerUserId: Long): Reply {
+    fun approveProvider(
+        ctx: CommandContext,
+        providerUserId: Long,
+    ): Reply {
         adminOnly(ctx)?.let { return it }
-        val token = registration.approve(providerUserId, ctx.userId)
-            ?: return Reply("승인할 대기 중 프로바이더가 없습니다.")
+        val token =
+            registration.approve(providerUserId, ctx.userId)
+                ?: return Reply("승인할 대기 중 프로바이더가 없습니다.")
         return Reply("✅ <@$providerUserId> 승인. 토큰을 해당 유저에게 전달하세요:\n```\n$token\n```")
     }
 
-    fun removeProvider(ctx: CommandContext, providerUserId: Long): Reply {
+    fun removeProvider(
+        ctx: CommandContext,
+        providerUserId: Long,
+    ): Reply {
         adminOnly(ctx)?.let { return it }
         return if (registration.remove(providerUserId, ctx.userId)) {
             protection.leave(providerUserId)
@@ -293,13 +347,19 @@ class CommandService(
         }
     }
 
-    fun blockUser(ctx: CommandContext, targetUserId: Long): Reply {
+    fun blockUser(
+        ctx: CommandContext,
+        targetUserId: Long,
+    ): Reply {
         adminOnly(ctx)?.let { return it }
         blocklist.block(ctx.guildId, targetUserId, ctx.userId)
         return Reply("🚫 <@$targetUserId> 를 차단했습니다.")
     }
 
-    fun unblockUser(ctx: CommandContext, targetUserId: Long): Reply {
+    fun unblockUser(
+        ctx: CommandContext,
+        targetUserId: Long,
+    ): Reply {
         adminOnly(ctx)?.let { return it }
         blocklist.unblock(ctx.guildId, targetUserId, ctx.userId)
         return Reply("✅ <@$targetUserId> 차단을 해제했습니다.")
@@ -309,7 +369,10 @@ class CommandService(
         adminOnly(ctx)?.let { return it }
         val pending = registration.pending(ctx.guildId)
         val pool = registry.byGuild(ctx.guildId)
-        val fairness = pool.joinToString("\n") { "· provider #${it.providerId}: 기여 ${usage.providerContributionCount(it.providerId)}회 · ${it.state}" }
+        val fairness =
+            pool.joinToString("\n") {
+                "· provider #${it.providerId}: 기여 ${usage.providerContributionCount(it.providerId)}회 · ${it.state}"
+            }
         return Reply("승인 대기: ${pending.size} · 온라인: ${pool.size}\n$fairness\n대기 목록: $pending")
     }
 }

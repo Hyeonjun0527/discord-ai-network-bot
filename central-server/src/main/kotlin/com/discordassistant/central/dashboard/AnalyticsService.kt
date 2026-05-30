@@ -19,7 +19,11 @@ class AnalyticsService(
     private val requests: AiRequestRepository,
 ) {
     /** 최근 [days]일의 일자별 요청 수(과거→오늘 순). UTC 자정 경계. */
-    fun usageTrend(guildId: Long, days: Int = 7, clock: Clock = Clock.systemUTC()): List<DailyCount> {
+    fun usageTrend(
+        guildId: Long,
+        days: Int = 7,
+        clock: Clock = Clock.systemUTC(),
+    ): List<DailyCount> {
         require(days in 1..90) { "days 는 1..90" }
         val today = Instant.now(clock).truncatedTo(ChronoUnit.DAYS)
         return (days - 1 downTo 0).map { back ->
@@ -31,7 +35,8 @@ class AnalyticsService(
 
     /** 프로바이더의 부하 가중 기여 점수(완료 요청의 부담 수준 합). */
     fun providerComputeScore(providerId: Long): Long =
-        requests.findByProviderIdAndState(providerId, "COMPLETED")
+        requests
+            .findByProviderIdAndState(providerId, "COMPLETED")
             .sumOf { burdenWeight(it.requiredBurden).toLong() }
 
     /**
@@ -39,7 +44,8 @@ class AnalyticsService(
      * 처리한 요청의 식별자/부담/시각만 노출(최신순).
      */
     fun providerHistory(providerId: Long): List<Map<String, Any?>> =
-        requests.findByProviderIdAndState(providerId, "COMPLETED")
+        requests
+            .findByProviderIdAndState(providerId, "COMPLETED")
             .sortedByDescending { it.id }
             .take(20)
             .map { mapOf("requestId" to it.requestId, "burden" to it.requiredBurden, "createdAt" to it.createdAt.toString()) }
@@ -53,5 +59,8 @@ class AnalyticsService(
             null -> 1
         }
 
-    data class DailyCount(val date: String, val count: Long)
+    data class DailyCount(
+        val date: String,
+        val count: Long,
+    )
 }

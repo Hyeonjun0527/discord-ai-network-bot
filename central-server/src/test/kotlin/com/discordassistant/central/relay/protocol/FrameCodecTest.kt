@@ -7,21 +7,21 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
 class FrameCodecTest {
-
-    private val frames: List<Frame> = listOf(
-        AuthFrame(token = "secret-abc", agentVersion = "0.1", platform = "darwin"),
-        AuthOkFrame(sessionId = "s1"),
-        AuthErrFrame(code = ErrorCode.AUTH_FAILED, message = "bad"),
-        InferRequest(requestId = "r1", model = "llama3.1:8b", prompt = "안녕 코드 설명해줘"),
-        InferResult(requestId = "r1", text = "결과입니다", usage = Usage(10, 20)),
-        InferError(requestId = "r1", code = ErrorCode.TIMEOUT, message = "시간초과"),
-        ChunkFrame(requestId = "r1", delta = "부분", done = false),
-        PingFrame(),
-        PongFrame(),
-        CancelFrame(requestId = "r1"),
-        ProviderHelloFrame(models = listOf("llama3.1:8b"), maxConcurrency = 1, remainingDailyRequests = 42),
-        ProviderStatusFrame(load = "idle", battery = "charging", online = true, busy = false),
-    )
+    private val frames: List<Frame> =
+        listOf(
+            AuthFrame(token = "secret-abc", agentVersion = "0.1", platform = "darwin"),
+            AuthOkFrame(sessionId = "s1"),
+            AuthErrFrame(code = ErrorCode.AUTH_FAILED, message = "bad"),
+            InferRequest(requestId = "r1", model = "llama3.1:8b", prompt = "안녕 코드 설명해줘"),
+            InferResult(requestId = "r1", text = "결과입니다", usage = Usage(10, 20)),
+            InferError(requestId = "r1", code = ErrorCode.TIMEOUT, message = "시간초과"),
+            ChunkFrame(requestId = "r1", delta = "부분", done = false),
+            PingFrame(),
+            PongFrame(),
+            CancelFrame(requestId = "r1"),
+            ProviderHelloFrame(models = listOf("llama3.1:8b"), maxConcurrency = 1, remainingDailyRequests = 42),
+            ProviderStatusFrame(load = "idle", battery = "charging", online = true, busy = false),
+        )
 
     @Test
     fun `모든 프레임 round-trip 동치`() {

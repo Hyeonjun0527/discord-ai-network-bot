@@ -9,10 +9,13 @@ import org.springframework.stereotype.Component
  * Provider Pool 헬스 인디케이터 (K-차수 16). Actuator `/actuator/health` 에 활성 연결 수를 노출한다.
  */
 @Component("providerPool")
-class PoolHealthIndicator(private val registry: ConnectionRegistry) : HealthIndicator {
+class PoolHealthIndicator(
+    private val registry: ConnectionRegistry,
+) : HealthIndicator {
     override fun health(): Health {
         val active = registry.activeCount()
-        return Health.up()
+        return Health
+            .up()
             .withDetail("activeProviderConnections", active)
             .build()
     }

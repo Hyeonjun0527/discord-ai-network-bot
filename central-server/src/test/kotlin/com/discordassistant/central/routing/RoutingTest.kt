@@ -19,7 +19,20 @@ private fun candidate(
     failureRate: Double = 0.0,
     cooldown: Boolean = false,
     recent: Int = 0,
-) = Candidate(id, state, burdens, maxConcurrency, active, remainingDaily, allowedRoles, allowedChannels, maxPrompt, failureRate, cooldown, recent)
+) = Candidate(
+    id,
+    state,
+    burdens,
+    maxConcurrency,
+    active,
+    remainingDaily,
+    allowedRoles,
+    allowedChannels,
+    maxPrompt,
+    failureRate,
+    cooldown,
+    recent,
+)
 
 private val ctxLight = RequestContext(ModelBurden.LIGHT, setOf(1L), 200L, 50)
 
@@ -33,7 +46,14 @@ class ProviderFilterPipelineTest {
     }
 
     @Test fun `단계별 탈락 사유`() {
-        assertEquals("burden", pipe.filter(listOf(candidate(1, burdens = setOf(ModelBurden.STANDARD))), RequestContext(ModelBurden.HEAVY, setOf(1), 200, 50)).dropped[1])
+        assertEquals(
+            "burden",
+            pipe
+                .filter(
+                    listOf(candidate(1, burdens = setOf(ModelBurden.STANDARD))),
+                    RequestContext(ModelBurden.HEAVY, setOf(1), 200, 50),
+                ).dropped[1],
+        )
         assertEquals("busy", pipe.filter(listOf(candidate(1, state = ProviderState.ONLINE_BUSY)), ctxLight).dropped[1])
         assertEquals("offline", pipe.filter(listOf(candidate(1, state = ProviderState.OFFLINE)), ctxLight).dropped[1])
         assertEquals("role", pipe.filter(listOf(candidate(1, allowedRoles = setOf(999))), ctxLight).dropped[1])

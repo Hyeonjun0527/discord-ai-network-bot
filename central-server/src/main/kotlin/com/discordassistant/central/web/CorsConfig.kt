@@ -17,7 +17,8 @@ class CorsConfig(
     override fun addCorsMappings(registry: CorsRegistry) {
         val allowed = origins.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         if (allowed.isEmpty()) return // 미설정 시 교차 출처 비허용(안전 기본값)
-        registry.addMapping("/api/**")
+        registry
+            .addMapping("/api/**")
             .allowedOrigins(*allowed.toTypedArray())
             .allowedMethods("GET", "POST", "OPTIONS")
             .allowCredentials(true)

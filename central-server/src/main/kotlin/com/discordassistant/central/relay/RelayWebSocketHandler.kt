@@ -34,7 +34,6 @@ class RelayWebSocketHandler(
     @param:Value("\${central.relay.request-timeout-seconds:120}") private val requestTimeout: Long,
     @param:Value("\${central.relay.heartbeat-seconds:30}") private val heartbeatSeconds: Long,
 ) : TextWebSocketHandler() {
-
     private val log = LoggerFactory.getLogger(RelayWebSocketHandler::class.java)
 
     private val pendingAuth = ConcurrentHashMap<String, Pair<WebSocketSession, Long>>()
@@ -47,13 +46,17 @@ class RelayWebSocketHandler(
         pendingAuth[session.id] = session to System.nanoTime()
     }
 
-    public override fun handleTextMessage(session: WebSocketSession, message: TextMessage) {
-        val frame = try {
-            FrameCodec.decode(message.payload)
-        } catch (e: ProtocolException) {
-            log.debug("잘못된 프레임 수신(무시): {}", e.message)
-            return
-        }
+    public override fun handleTextMessage(
+        session: WebSocketSession,
+        message: TextMessage,
+    ) {
+        val frame =
+            try {
+                FrameCodec.decode(message.payload)
+            } catch (e: ProtocolException) {
+                log.debug("잘못된 프레임 수신(무시): {}", e.message)
+                return
+            }
         val ps = authed[session.id]
         if (ps == null) {
             authenticate(session, frame)
@@ -68,7 +71,10 @@ class RelayWebSocketHandler(
         }
     }
 
-    private fun authenticate(session: WebSocketSession, frame: Any) {
+    private fun authenticate(
+        session: WebSocketSession,
+        frame: Any,
+    ) {
         if (frame !is AuthFrame) {
             reject(session, "첫 프레임은 auth 여야 합니다")
             return
@@ -79,12 +85,13 @@ class RelayWebSocketHandler(
             return
         }
         val conn = WsAgentConnection(session)
-        val ps = ProviderSession(
-            conn,
-            providerId = binding.providerId,
-            guildId = binding.guildId,
-            requestTimeoutSeconds = requestTimeout,
-        )
+        val ps =
+            ProviderSession(
+                conn,
+                providerId = binding.providerId,
+                guildId = binding.guildId,
+                requestTimeoutSeconds = requestTimeout,
+            )
         registry.register(ps)
         authed[session.id] = ps
         pendingAuth.remove(session.id)
@@ -92,7 +99,10 @@ class RelayWebSocketHandler(
         log.info("에이전트 인증 성공: provider={} guild={}", binding.providerId, binding.guildId)
     }
 
-    private fun reject(session: WebSocketSession, reason: String) {
+    private fun reject(
+        session: WebSocketSession,
+        reason: String,
+    ) {
         try {
             WsAgentConnection(session).sendFrame(AuthErrFrame(code = ErrorCode.AUTH_FAILED, message = reason))
             session.close(CloseStatus.NOT_ACCEPTABLE.withReason(reason.take(120)))
@@ -103,7 +113,10 @@ class RelayWebSocketHandler(
         log.info("에이전트 인증 거부: {}", reason)
     }
 
-    override fun afterConnectionClosed(session: WebSocketSession, status: CloseStatus) {
+    override fun afterConnectionClosed(
+        session: WebSocketSession,
+        status: CloseStatus,
+    ) {
         pendingAuth.remove(session.id)
         authed.remove(session.id)?.let {
             it.closeAndFailPending("연결 종료: $status")
@@ -121,7 +134,8 @@ class RelayWebSocketHandler(
             if (now - t > authTimeoutNanos) {
                 try {
                     sess.close(CloseStatus.POLICY_VIOLATION.withReason("인증 타임아웃"))
-                } catch (_: Exception) { }
+                } catch (_: Exception) {
+                }
                 true
             } else {
                 false

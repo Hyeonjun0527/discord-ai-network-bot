@@ -29,7 +29,6 @@ data class WeighResult(
  */
 @Component
 class RequestWeigher {
-
     /** 메타데이터 → 요청 무게(휴리스틱). 첨부/긴 프롬프트/무거운 명령일수록 무겁다. */
     fun weigh(meta: RequestMeta): RequestWeight {
         if (meta.attachments > 0 || meta.promptChars >= 2000) return RequestWeight.HEAVY
@@ -43,7 +42,10 @@ class RequestWeigher {
      * - 1단계 부족 → DOWNGRADE(member 상한으로 처리)
      * - 2단계 이상 부족 → REJECT
      */
-    fun resolve(meta: RequestMeta, memberMaxBurden: ModelBurden): WeighResult {
+    fun resolve(
+        meta: RequestMeta,
+        memberMaxBurden: ModelBurden,
+    ): WeighResult {
         val weight = weigh(meta)
         val required = weight.requiredBurden()
         val gap = required.ordinal - memberMaxBurden.ordinal

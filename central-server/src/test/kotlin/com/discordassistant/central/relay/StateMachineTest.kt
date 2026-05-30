@@ -11,12 +11,13 @@ import org.junit.jupiter.api.Test
 
 private class NoopConnection : AgentConnection {
     override val remoteId = "noop"
+
     override fun sendFrame(frame: Frame) {}
+
     override fun close(reason: String) {}
 }
 
 class StateMachineTest {
-
     @Test
     fun `상태 전이표 가드`() {
         assertTrue(ProviderState.ONLINE_IDLE.canTransitionTo(ProviderState.ONLINE_BUSY))

@@ -1,7 +1,7 @@
 package com.discordassistant.central.dev
 
-import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.provider.ProviderRegistrationService
+import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.routing.AiRequestInput
 import com.discordassistant.central.routing.OrchestrationResult
 import com.discordassistant.central.routing.RequestOrchestrator
@@ -25,7 +25,11 @@ class DevController(
     private val orchestrator: RequestOrchestrator,
     private val registry: ConnectionRegistry,
 ) {
-    data class TokenReq(val providerId: Long, val guildId: Long)
+    data class TokenReq(
+        val providerId: Long,
+        val guildId: Long,
+    )
+
     data class AskReq(
         val guildId: Long,
         val channelId: Long = 0,
@@ -36,7 +40,9 @@ class DevController(
 
     /** 프로바이더를 자동 승인 등록하고 일회용 토큰을 발급한다. */
     @PostMapping("/provider-token")
-    fun token(@RequestBody req: TokenReq): Map<String, String> {
+    fun token(
+        @RequestBody req: TokenReq,
+    ): Map<String, String> {
         val join = registration.requestJoin(req.providerId, req.guildId, autoApprove = true)
         val token = join.token ?: registration.approve(req.providerId, adminId = 0)
         return mapOf("token" to (token ?: ""))
@@ -44,7 +50,9 @@ class DevController(
 
     /** Discord 없이 /ask 를 트리거한다(오케스트레이터 직접 호출). */
     @PostMapping("/ask")
-    fun ask(@RequestBody req: AskReq): OrchestrationResult =
+    fun ask(
+        @RequestBody req: AskReq,
+    ): OrchestrationResult =
         orchestrator.handle(
             AiRequestInput(req.guildId, req.channelId, req.userId, req.prompt, req.roleIds),
         )

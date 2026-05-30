@@ -6,7 +6,16 @@ plugins {
     kotlin("plugin.jpa") version "2.1.0" // @Entity all-open + no-arg 생성자
     id("org.springframework.boot") version "3.4.1"
     id("io.spring.dependency-management") version "1.1.7"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.1" // 정적 분석/포맷(차수 7 #76)
     jacoco // 커버리지 게이트(차수 17 #254)
+}
+
+ktlint {
+    version.set("1.4.1") // Kotlin 2.1 호환 ktlint
+    ignoreFailures.set(false)
+    filter {
+        exclude { it.file.path.contains("build/") }
+    }
 }
 
 group = "com.discordassistant"
@@ -25,8 +34,8 @@ dependencies {
     // Spring Boot 코어
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-websocket") // 에이전트 WS 릴레이
-    implementation("org.springframework.boot:spring-boot-starter-actuator")  // 운영 헬스/메트릭
-    implementation("io.micrometer:micrometer-registry-prometheus")           // /actuator/prometheus
+    implementation("org.springframework.boot:spring-boot-starter-actuator") // 운영 헬스/메트릭
+    implementation("io.micrometer:micrometer-registry-prometheus") // /actuator/prometheus
     implementation("org.springframework.boot:spring-boot-starter-validation")
     // 영속화 (JPA + Flyway). H2(dev/test), Postgres(prod)
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
@@ -79,15 +88,17 @@ tasks.named<JacocoReport>("jacocoTestReport") {
     }
     // 부트스트랩/설정 등 검증가치 낮은 클래스는 커버리지 집계에서 제외.
     classDirectories.setFrom(
-        files(classDirectories.files.map {
-            fileTree(it) {
-                exclude(
-                    "**/CentralServerApplication*",
-                    "**/config/**",
-                    "**/*Config*",
-                )
-            }
-        }),
+        files(
+            classDirectories.files.map {
+                fileTree(it) {
+                    exclude(
+                        "**/CentralServerApplication*",
+                        "**/config/**",
+                        "**/*Config*",
+                    )
+                }
+            },
+        ),
     )
 }
 

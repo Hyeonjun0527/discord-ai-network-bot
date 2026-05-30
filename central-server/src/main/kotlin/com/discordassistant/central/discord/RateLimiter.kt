@@ -12,7 +12,10 @@ import java.util.concurrent.TimeUnit
 class RateLimiter(
     @param:Value("\${central.ratelimit.ask-per-minute:10}") private val perMinute: Int,
 ) {
-    private data class Window(var count: Int, var startNanos: Long)
+    private data class Window(
+        var count: Int,
+        var startNanos: Long,
+    )
 
     private val windows = ConcurrentHashMap<String, Window>()
     private val windowNanos = TimeUnit.MINUTES.toNanos(1)

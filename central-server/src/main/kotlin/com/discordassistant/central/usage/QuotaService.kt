@@ -16,8 +16,11 @@ class QuotaService(
     private val usage: UsageLogRepository,
     private val policy: PolicyService,
 ) : QuotaChecker {
-
-    override fun exceededQuota(guildId: Long, userId: Long, roleIds: Set<Long>): Boolean {
+    override fun exceededQuota(
+        guildId: Long,
+        userId: Long,
+        roleIds: Set<Long>,
+    ): Boolean {
         val limit = policy.dailyLimit(guildId, roleIds)
         if (limit <= 0) return false // 무제한
         val since = Instant.now().truncatedTo(ChronoUnit.DAYS) // UTC 자정 = 일일 리셋

@@ -15,11 +15,18 @@ class IdempotencyGuard(
 ) {
     private val seen = ConcurrentHashMap<String, Long>()
 
-    private fun key(guildId: Long, userId: Long, prompt: String): String =
-        "$guildId:$userId:${prompt.hashCode()}"
+    private fun key(
+        guildId: Long,
+        userId: Long,
+        prompt: String,
+    ): String = "$guildId:$userId:${prompt.hashCode()}"
 
     /** 처리 시작 가능하면 true(키 기록). 윈도우 내 중복이면 false. */
-    fun tryBegin(guildId: Long, userId: Long, prompt: String): Boolean {
+    fun tryBegin(
+        guildId: Long,
+        userId: Long,
+        prompt: String,
+    ): Boolean {
         val now = nowNanos()
         val windowNanos = windowMillis * 1_000_000
         val k = key(guildId, userId, prompt)

@@ -10,10 +10,10 @@ class IdempotencyGuardTest {
     fun `윈도우 내 중복은 차단, 만료 후 허용`() {
         var now = 0L
         val g = IdempotencyGuard(windowMillis = 1000, nowNanos = { now })
-        assertTrue(g.tryBegin(1, 2, "hi"))   // 최초 허용
-        assertFalse(g.tryBegin(1, 2, "hi"))  // 즉시 중복 → 차단
-        now += 2_000L * 1_000_000            // 2초 경과(윈도우 1초 초과)
-        assertTrue(g.tryBegin(1, 2, "hi"))   // 만료 → 다시 허용
+        assertTrue(g.tryBegin(1, 2, "hi")) // 최초 허용
+        assertFalse(g.tryBegin(1, 2, "hi")) // 즉시 중복 → 차단
+        now += 2_000L * 1_000_000 // 2초 경과(윈도우 1초 초과)
+        assertTrue(g.tryBegin(1, 2, "hi")) // 만료 → 다시 허용
     }
 
     @Test

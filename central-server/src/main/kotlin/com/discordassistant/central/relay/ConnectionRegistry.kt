@@ -29,7 +29,10 @@ class ConnectionRegistry {
         log.info("provider {} 세션 등록(guild={})", session.providerId, session.guildId)
     }
 
-    private fun evict(session: ProviderSession, reason: String) {
+    private fun evict(
+        session: ProviderSession,
+        reason: String,
+    ) {
         session.closeAndFailPending(reason)
         try {
             session.connection.close(reason)
@@ -55,19 +58,19 @@ class ConnectionRegistry {
     fun byProvider(providerId: Long): ProviderSession? = byProvider[providerId]
 
     /** 길드의 프로바이더 풀(스냅샷 복사). */
-    fun byGuild(guildId: Long): List<ProviderSession> =
-        byGuild[guildId]?.toList() ?: emptyList()
+    fun byGuild(guildId: Long): List<ProviderSession> = byGuild[guildId]?.toList() ?: emptyList()
 
     fun activeCount(): Int = byProvider.size
 
     /** 전체 활성 세션 스냅샷(메트릭 API 용). */
     fun snapshotSessions(): List<ProviderSession> = byProvider.values.toList()
 
-    fun snapshot(): Map<String, Any> = mapOf(
-        "providers" to byProvider.keys.sorted(),
-        "guildPools" to byGuild.mapValues { it.value.map { s -> s.providerId }.sorted() },
-        "active" to activeCount(),
-    )
+    fun snapshot(): Map<String, Any> =
+        mapOf(
+            "providers" to byProvider.keys.sorted(),
+            "guildPools" to byGuild.mapValues { it.value.map { s -> s.providerId }.sorted() },
+            "active" to activeCount(),
+        )
 
     /** heartbeat 만료 세션을 닫고 제거한다. 제거 수 반환. */
     fun reapStale(timeoutSeconds: Long): Int {

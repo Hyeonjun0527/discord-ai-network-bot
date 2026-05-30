@@ -14,9 +14,12 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 
 /** sendFrame(InferRequest) 를 받으면 즉시 결과/에러를 세션에 되먹여 future 를 완료시킨다. */
-private class EchoConnection(val behavior: String) : AgentConnection {
+private class EchoConnection(
+    val behavior: String,
+) : AgentConnection {
     lateinit var session: ProviderSession
     override val remoteId = "echo"
+
     override fun sendFrame(frame: Frame) {
         if (frame is InferRequest) {
             if (behavior == "ok") {
@@ -26,29 +29,53 @@ private class EchoConnection(val behavior: String) : AgentConnection {
             }
         }
     }
+
     override fun close(reason: String) {}
 }
 
 class RequestOrchestratorTest {
+    private val fakePolicy =
+        object : RoutingPolicy {
+            var channelAllowed = true
+            var max = ModelBurden.HEAVY
 
-    private val fakePolicy = object : RoutingPolicy {
-        var channelAllowed = true
-        var max = ModelBurden.HEAVY
-        override fun isChannelAllowed(guildId: Long, channelId: Long) = channelAllowed
-        override fun maxAllowedBurden(guildId: Long, memberRoleIds: Collection<Long>) = max
-    }
-    private val fakeProfiles = object : ProviderProfileProvider {
-        var supported = setOf(ModelBurden.LIGHT, ModelBurden.STANDARD, ModelBurden.HEAVY)
-        override fun profile(providerId: Long) = ProviderProfile(supportedBurdens = supported)
-    }
-    private val recorder = object : UsageRecorder {
-        var count = 0
-        override fun recordSuccess(guildId: Long, userId: Long, providerId: Long, requestId: String) { count++ }
-    }
+            override fun isChannelAllowed(
+                guildId: Long,
+                channelId: Long,
+            ) = channelAllowed
+
+            override fun maxAllowedBurden(
+                guildId: Long,
+                memberRoleIds: Collection<Long>,
+            ) = max
+        }
+    private val fakeProfiles =
+        object : ProviderProfileProvider {
+            var supported = setOf(ModelBurden.LIGHT, ModelBurden.STANDARD, ModelBurden.HEAVY)
+
+            override fun profile(providerId: Long) = ProviderProfile(supportedBurdens = supported)
+        }
+    private val recorder =
+        object : UsageRecorder {
+            var count = 0
+
+            override fun recordSuccess(
+                guildId: Long,
+                userId: Long,
+                providerId: Long,
+                requestId: String,
+            ) {
+                count++
+            }
+        }
 
     private fun newRegistry() = ConnectionRegistry()
 
-    private fun register(reg: ConnectionRegistry, providerId: Long, behavior: String): ProviderSession {
+    private fun register(
+        reg: ConnectionRegistry,
+        providerId: Long,
+        behavior: String,
+    ): ProviderSession {
         val conn = EchoConnection(behavior)
         val s = ProviderSession(conn, providerId, guildId = 100)
         conn.session = s
@@ -76,12 +103,24 @@ class RequestOrchestratorTest {
     fun `차단 사용자 → REJECTED`() {
         val reg = newRegistry()
         register(reg, 1, "ok")
-        val blocking = object : BlocklistChecker {
-            override fun isBlocked(guildId: Long, userId: Long): Boolean = userId == 5L
-        }
-        val orch = RequestOrchestrator(
-            reg, fakePolicy, RequestWeigher(), ProviderFilterPipeline(), ProviderRouter(), recorder, fakeProfiles, blocking,
-        )
+        val blocking =
+            object : BlocklistChecker {
+                override fun isBlocked(
+                    guildId: Long,
+                    userId: Long,
+                ): Boolean = userId == 5L
+            }
+        val orch =
+            RequestOrchestrator(
+                reg,
+                fakePolicy,
+                RequestWeigher(),
+                ProviderFilterPipeline(),
+                ProviderRouter(),
+                recorder,
+                fakeProfiles,
+                blocking,
+            )
         assertEquals(RequestState.REJECTED, orch.handle(input).state) // input.userId = 5
     }
 
@@ -89,15 +128,33 @@ class RequestOrchestratorTest {
     fun `쿼터 초과 → REJECTED`() {
         val reg = newRegistry()
         register(reg, 1, "ok")
-        val noBlock = object : BlocklistChecker {
-            override fun isBlocked(guildId: Long, userId: Long): Boolean = false
-        }
-        val quota = object : QuotaChecker {
-            override fun exceededQuota(guildId: Long, userId: Long, roleIds: Set<Long>): Boolean = true
-        }
-        val orch = RequestOrchestrator(
-            reg, fakePolicy, RequestWeigher(), ProviderFilterPipeline(), ProviderRouter(), recorder, fakeProfiles, noBlock, quota,
-        )
+        val noBlock =
+            object : BlocklistChecker {
+                override fun isBlocked(
+                    guildId: Long,
+                    userId: Long,
+                ): Boolean = false
+            }
+        val quota =
+            object : QuotaChecker {
+                override fun exceededQuota(
+                    guildId: Long,
+                    userId: Long,
+                    roleIds: Set<Long>,
+                ): Boolean = true
+            }
+        val orch =
+            RequestOrchestrator(
+                reg,
+                fakePolicy,
+                RequestWeigher(),
+                ProviderFilterPipeline(),
+                ProviderRouter(),
+                recorder,
+                fakeProfiles,
+                noBlock,
+                quota,
+            )
         assertEquals(RequestState.REJECTED, orch.handle(input).state)
     }
 

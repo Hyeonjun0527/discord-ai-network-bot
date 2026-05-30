@@ -15,17 +15,27 @@ import org.junit.jupiter.api.Test
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 
-private class FakeConnection(override val remoteId: String = "fake") : AgentConnection {
+private class FakeConnection(
+    override val remoteId: String = "fake",
+) : AgentConnection {
     val sent = mutableListOf<Frame>()
     var closed: String? = null
-    override fun sendFrame(frame: Frame) { sent.add(frame) }
-    override fun close(reason: String) { closed = reason }
+
+    override fun sendFrame(frame: Frame) {
+        sent.add(frame)
+    }
+
+    override fun close(reason: String) {
+        closed = reason
+    }
 }
 
 class ProviderSessionTest {
-
-    private fun session(conn: FakeConnection, maxQueue: Int = 16, timeout: Long = 120) =
-        ProviderSession(conn, providerId = 1, guildId = 100, requestTimeoutSeconds = timeout, maxQueue = maxQueue)
+    private fun session(
+        conn: FakeConnection,
+        maxQueue: Int = 16,
+        timeout: Long = 120,
+    ) = ProviderSession(conn, providerId = 1, guildId = 100, requestTimeoutSeconds = timeout, maxQueue = maxQueue)
 
     @Test
     fun `sendInfer 성공 — handleFrame 으로 future 완료`() {
@@ -49,7 +59,9 @@ class ProviderSessionTest {
         val fut = s.sendInfer(prompt = "x")
         val req = conn.sent.filterIsInstance<InferRequest>().single()
         s.handleFrame(InferError(requestId = req.requestId, code = ErrorCode.OLLAMA_ERROR, message = "model missing"))
-        val ex = org.junit.jupiter.api.assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
+        val ex =
+            org.junit.jupiter.api
+                .assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
         assertTrue(ex.cause is RemoteInferException)
         assertEquals(ErrorCode.OLLAMA_ERROR, (ex.cause as RemoteInferException).code)
     }
@@ -63,7 +75,8 @@ class ProviderSessionTest {
             val fut = s.sendInfer(prompt = "x")
             val req = conn.sent.filterIsInstance<InferRequest>().last()
             s.handleFrame(InferError(requestId = req.requestId, code = ErrorCode.OLLAMA_ERROR, message = "boom"))
-            org.junit.jupiter.api.assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
+            org.junit.jupiter.api
+                .assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
         }
         assertEquals(ProviderState.UNHEALTHY, s.state)
         assertTrue(s.failures >= 3)
@@ -78,7 +91,8 @@ class ProviderSessionTest {
             val fut = s.sendInfer(prompt = "x")
             val req = conn.sent.filterIsInstance<InferRequest>().last()
             s.handleFrame(InferError(requestId = req.requestId, code = ErrorCode.OLLAMA_ERROR, message = "boom"))
-            org.junit.jupiter.api.assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
+            org.junit.jupiter.api
+                .assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
         }
         // 성공 1회 → 카운터 리셋
         val ok = s.sendInfer(prompt = "y")
@@ -108,7 +122,9 @@ class ProviderSessionTest {
         val s = session(conn, maxQueue = 0) // cap = capability.maxConcurrency(1) + 0 = 1
         s.sendInfer(prompt = "first") // in-flight 1
         val busy = s.sendInfer(prompt = "second")
-        val ex = org.junit.jupiter.api.assertThrows<ExecutionException> { busy.get(2, TimeUnit.SECONDS) }
+        val ex =
+            org.junit.jupiter.api
+                .assertThrows<ExecutionException> { busy.get(2, TimeUnit.SECONDS) }
         assertTrue(ex.cause is AgentBusyException)
     }
 
@@ -117,7 +133,9 @@ class ProviderSessionTest {
         val conn = FakeConnection()
         val s = session(conn, timeout = 1)
         val fut = s.sendInfer(prompt = "y")
-        val ex = org.junit.jupiter.api.assertThrows<ExecutionException> { fut.get(3, TimeUnit.SECONDS) }
+        val ex =
+            org.junit.jupiter.api
+                .assertThrows<ExecutionException> { fut.get(3, TimeUnit.SECONDS) }
         assertTrue(ex.cause is RemoteTimeoutException)
         assertTrue(conn.sent.any { it.type == "cancel" }) // 취소 프레임 송신
     }
@@ -132,16 +150,19 @@ class ProviderSessionTest {
 }
 
 class ConnectionRegistryTest {
-
-    private fun newSession(conn: FakeConnection, providerId: Long, guildId: Long?) =
-        ProviderSession(conn, providerId, guildId)
+    private fun newSession(
+        conn: FakeConnection,
+        providerId: Long,
+        guildId: Long?,
+    ) = ProviderSession(conn, providerId, guildId)
 
     @Test
     fun `등록·조회·길드 풀`() {
         val reg = ConnectionRegistry()
         val a = newSession(FakeConnection("a"), 1, 100)
         val b = newSession(FakeConnection("b"), 2, 100)
-        reg.register(a); reg.register(b)
+        reg.register(a)
+        reg.register(b)
         assertSame(a, reg.byProvider(1))
         assertEquals(2, reg.byGuild(100).size) // 같은 길드 풀에 2개
         assertEquals(2, reg.activeCount())

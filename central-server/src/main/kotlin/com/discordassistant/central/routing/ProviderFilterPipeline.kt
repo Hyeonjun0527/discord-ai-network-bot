@@ -42,45 +42,55 @@ data class FilterOutcome(
  * 각 후보가 떨어진 첫 사유를 기록한다.
  */
 @Component
-class ProviderFilterPipeline(private val maxFailureRate: Double = 0.5) {
-
-    private data class Step(val reason: String, val keep: (Candidate, RequestContext) -> Boolean)
-
-    private val steps = listOf(
-        Step("burden") { c, ctx -> ctx.requiredBurden in c.supportedBurdens },
-        // RESTRICTED 모델 라우팅 완성(#139): RESTRICTED 요청은 관리자만(역할/채널 게이트와 결합).
-        Step("restricted") { _, ctx -> ctx.requiredBurden != ModelBurden.RESTRICTED || ctx.requesterIsAdmin },
-        Step("offline") { c, _ -> c.state.isOnline },
-        Step("busy") { c, _ -> c.state == ProviderState.ONLINE_IDLE },
-        Step("role") { c, ctx -> c.allowedRoleIds == null || c.allowedRoleIds.any { it in ctx.requesterRoleIds } },
-        Step("channel") { c, ctx -> c.allowedChannelIds == null || ctx.channelId in c.allowedChannelIds },
-        Step("daily_limit") { c, _ -> c.remainingDaily > 0 },
-        Step("concurrency") { c, _ -> c.activeRequests < c.maxConcurrency },
-        Step("cooldown") { c, _ -> !c.inCooldown },
-        Step("prompt_size") { c, ctx -> ctx.promptChars <= c.maxPromptChars },
-        Step("failure_rate") { c, _ -> c.failureRate <= maxFailureRate },
+class ProviderFilterPipeline(
+    private val maxFailureRate: Double = 0.5,
+) {
+    private data class Step(
+        val reason: String,
+        val keep: (Candidate, RequestContext) -> Boolean,
     )
+
+    private val steps =
+        listOf(
+            Step("burden") { c, ctx -> ctx.requiredBurden in c.supportedBurdens },
+            // RESTRICTED 모델 라우팅 완성(#139): RESTRICTED 요청은 관리자만(역할/채널 게이트와 결합).
+            Step("restricted") { _, ctx -> ctx.requiredBurden != ModelBurden.RESTRICTED || ctx.requesterIsAdmin },
+            Step("offline") { c, _ -> c.state.isOnline },
+            Step("busy") { c, _ -> c.state == ProviderState.ONLINE_IDLE },
+            Step("role") { c, ctx -> c.allowedRoleIds == null || c.allowedRoleIds.any { it in ctx.requesterRoleIds } },
+            Step("channel") { c, ctx -> c.allowedChannelIds == null || ctx.channelId in c.allowedChannelIds },
+            Step("daily_limit") { c, _ -> c.remainingDaily > 0 },
+            Step("concurrency") { c, _ -> c.activeRequests < c.maxConcurrency },
+            Step("cooldown") { c, _ -> !c.inCooldown },
+            Step("prompt_size") { c, ctx -> ctx.promptChars <= c.maxPromptChars },
+            Step("failure_rate") { c, _ -> c.failureRate <= maxFailureRate },
+        )
 
     // 권한성 사유(이게 마지막 탈락 이유면 PERMISSION_DENIED 신호).
     private val permissionReasons = setOf("burden", "restricted", "role", "channel")
 
-    fun filter(candidates: List<Candidate>, ctx: RequestContext): FilterOutcome {
+    fun filter(
+        candidates: List<Candidate>,
+        ctx: RequestContext,
+    ): FilterOutcome {
         val dropped = LinkedHashMap<Long, String>()
-        val eligible = candidates.filter { c ->
-            val failing = steps.firstOrNull { !it.keep(c, ctx) }
-            if (failing != null) {
-                dropped[c.providerId] = failing.reason
-                false
-            } else {
-                true
+        val eligible =
+            candidates.filter { c ->
+                val failing = steps.firstOrNull { !it.keep(c, ctx) }
+                if (failing != null) {
+                    dropped[c.providerId] = failing.reason
+                    false
+                } else {
+                    true
+                }
             }
-        }
-        val signal = when {
-            eligible.isNotEmpty() -> FilterSignal.OK
-            candidates.isNotEmpty() && dropped.values.all { it in permissionReasons } ->
-                FilterSignal.PERMISSION_DENIED
-            else -> FilterSignal.NONE_AVAILABLE
-        }
+        val signal =
+            when {
+                eligible.isNotEmpty() -> FilterSignal.OK
+                candidates.isNotEmpty() && dropped.values.all { it in permissionReasons } ->
+                    FilterSignal.PERMISSION_DENIED
+                else -> FilterSignal.NONE_AVAILABLE
+            }
         return FilterOutcome(eligible, dropped, signal)
     }
 }

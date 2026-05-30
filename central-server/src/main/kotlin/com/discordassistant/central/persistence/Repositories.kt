@@ -7,18 +7,37 @@ interface GuildRepository : JpaRepository<GuildEntity, Long>
 
 interface AllowedChannelRepository : JpaRepository<AllowedChannelEntity, Long> {
     fun findByGuildId(guildId: Long): List<AllowedChannelEntity>
-    fun existsByGuildIdAndChannelId(guildId: Long, channelId: Long): Boolean
-    fun deleteByGuildIdAndChannelId(guildId: Long, channelId: Long)
+
+    fun existsByGuildIdAndChannelId(
+        guildId: Long,
+        channelId: Long,
+    ): Boolean
+
+    fun deleteByGuildIdAndChannelId(
+        guildId: Long,
+        channelId: Long,
+    )
 }
 
 interface RolePolicyRepository : JpaRepository<RolePolicyEntity, Long> {
     fun findByGuildId(guildId: Long): List<RolePolicyEntity>
-    fun findByGuildIdAndRoleId(guildId: Long, roleId: Long): RolePolicyEntity?
+
+    fun findByGuildIdAndRoleId(
+        guildId: Long,
+        roleId: Long,
+    ): RolePolicyEntity?
 }
 
 interface ProviderRepository : JpaRepository<ProviderEntity, Long> {
-    fun findByProviderUserIdAndGuildId(providerUserId: Long, guildId: Long): ProviderEntity?
-    fun findByGuildIdAndState(guildId: Long, state: String): List<ProviderEntity>
+    fun findByProviderUserIdAndGuildId(
+        providerUserId: Long,
+        guildId: Long,
+    ): ProviderEntity?
+
+    fun findByGuildIdAndState(
+        guildId: Long,
+        state: String,
+    ): List<ProviderEntity>
 }
 
 interface ProviderContributionPolicyRepository : JpaRepository<ProviderContributionPolicyEntity, Long> {
@@ -27,15 +46,34 @@ interface ProviderContributionPolicyRepository : JpaRepository<ProviderContribut
 
 interface AiRequestRepository : JpaRepository<AiRequestEntity, Long> {
     fun findByRequestId(requestId: String): AiRequestEntity?
+
     fun countByGuildId(guildId: Long): Long
+
     fun findTop20ByGuildIdOrderByIdDesc(guildId: Long): List<AiRequestEntity>
-    fun findByProviderIdAndState(providerId: Long, state: String): List<AiRequestEntity>
+
+    fun findByProviderIdAndState(
+        providerId: Long,
+        state: String,
+    ): List<AiRequestEntity>
 }
 
 interface UsageLogRepository : JpaRepository<UsageLogEntity, Long> {
-    fun countByGuildIdAndUserId(guildId: Long, userId: Long): Long
-    fun countByGuildIdAndUserIdAndCreatedAtAfter(guildId: Long, userId: Long, createdAt: Instant): Long
-    fun countByGuildIdAndCreatedAtBetween(guildId: Long, start: Instant, end: Instant): Long
+    fun countByGuildIdAndUserId(
+        guildId: Long,
+        userId: Long,
+    ): Long
+
+    fun countByGuildIdAndUserIdAndCreatedAtAfter(
+        guildId: Long,
+        userId: Long,
+        createdAt: Instant,
+    ): Long
+
+    fun countByGuildIdAndCreatedAtBetween(
+        guildId: Long,
+        start: Instant,
+        end: Instant,
+    ): Long
 }
 
 interface ContributionLogRepository : JpaRepository<ContributionLogEntity, Long> {
@@ -47,5 +85,8 @@ interface ProviderHealthRepository : JpaRepository<ProviderHealthEntity, Long> {
 }
 
 interface ProviderScheduleRepository : JpaRepository<ProviderScheduleEntity, Long> {
-    fun findByProviderIdAndGuildId(providerId: Long, guildId: Long): ProviderScheduleEntity?
+    fun findByProviderIdAndGuildId(
+        providerId: Long,
+        guildId: Long,
+    ): ProviderScheduleEntity?
 }

@@ -17,7 +17,11 @@ class ContributionPolicyService(
 ) {
     /** 제공 모델 목록 설정(기존 정책을 모델 단위로 재구성). burden 은 모델별 기본 부담수준. */
     @Transactional
-    fun setModels(providerId: Long, models: List<String>, burden: ModelBurden) {
+    fun setModels(
+        providerId: Long,
+        models: List<String>,
+        burden: ModelBurden,
+    ) {
         val existing = repo.findByProviderId(providerId).associateBy { it.model }
         val keep = models.toSet()
         // 제거된 모델 정책 삭제
@@ -31,7 +35,13 @@ class ContributionPolicyService(
 
     /** 모델별 한도(일일/동시/최대시간) 설정. */
     @Transactional
-    fun setLimit(providerId: Long, model: String, dailyLimit: Int, maxConcurrency: Int, maxSeconds: Int) {
+    fun setLimit(
+        providerId: Long,
+        model: String,
+        dailyLimit: Int,
+        maxConcurrency: Int,
+        maxSeconds: Int,
+    ) {
         val p = policyFor(providerId, model)
         p.dailyLimit = dailyLimit
         p.maxConcurrency = maxConcurrency
@@ -42,7 +52,11 @@ class ContributionPolicyService(
 
     /** 모델별 허용 범위(역할 등급) 설정. all | trusted | admin. */
     @Transactional
-    fun setScope(providerId: Long, model: String, allowedRole: String) {
+    fun setScope(
+        providerId: Long,
+        model: String,
+        allowedRole: String,
+    ) {
         val p = policyFor(providerId, model)
         p.allowedRole = allowedRole
         repo.save(p)
@@ -51,7 +65,10 @@ class ContributionPolicyService(
 
     fun policies(providerId: Long): List<ProviderContributionPolicyEntity> = repo.findByProviderId(providerId)
 
-    private fun policyFor(providerId: Long, model: String): ProviderContributionPolicyEntity =
+    private fun policyFor(
+        providerId: Long,
+        model: String,
+    ): ProviderContributionPolicyEntity =
         repo.findByProviderId(providerId).firstOrNull { it.model == model }
             ?: ProviderContributionPolicyEntity(providerId = providerId, model = model)
 }

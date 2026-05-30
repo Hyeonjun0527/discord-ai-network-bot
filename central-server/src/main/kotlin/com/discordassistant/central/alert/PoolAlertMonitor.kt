@@ -39,7 +39,7 @@ class PoolAlertMonitor(
             wasEmpty = false
         }
         if (active < lowThreshold && !wasLow) {
-            notifier.notify(Severity.WARN, "Provider Pool 용량 부족", "활성 프로바이더 ${active}명(임계 ${lowThreshold}).")
+            notifier.notify(Severity.WARN, "Provider Pool 용량 부족", "활성 프로바이더 ${active}명(임계 $lowThreshold).")
             fired++
             wasLow = true
         } else if (active >= lowThreshold && wasLow) {

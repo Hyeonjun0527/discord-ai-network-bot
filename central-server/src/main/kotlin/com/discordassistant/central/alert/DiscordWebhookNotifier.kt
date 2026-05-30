@@ -26,19 +26,26 @@ class DiscordWebhookNotifier(
     private val mapper = ObjectMapper()
     private val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
 
-    override fun notify(severity: Severity, title: String, message: String) {
-        val emoji = when (severity) {
-            Severity.CRITICAL -> "🔴"
-            Severity.WARN -> "🟡"
-            Severity.INFO -> "🔵"
-        }
+    override fun notify(
+        severity: Severity,
+        title: String,
+        message: String,
+    ) {
+        val emoji =
+            when (severity) {
+                Severity.CRITICAL -> "🔴"
+                Severity.WARN -> "🟡"
+                Severity.INFO -> "🔵"
+            }
         val body = mapper.writeValueAsString(mapOf("content" to "$emoji **[$severity] $title**\n$message"))
         try {
-            val req = HttpRequest.newBuilder(URI.create(webhookUrl))
-                .timeout(Duration.ofSeconds(5))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build()
+            val req =
+                HttpRequest
+                    .newBuilder(URI.create(webhookUrl))
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build()
             val res = client.send(req, HttpResponse.BodyHandlers.discarding())
             if (res.statusCode() !in 200..299) {
                 log.warn("Discord 웹훅 응답 비정상: {}", res.statusCode())

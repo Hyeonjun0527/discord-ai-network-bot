@@ -6,8 +6,11 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-private class NoopConn(override val remoteId: String = "n") : AgentConnection {
+private class NoopConn(
+    override val remoteId: String = "n",
+) : AgentConnection {
     override fun sendFrame(frame: Frame) {}
+
     override fun close(reason: String) {}
 }
 
@@ -15,7 +18,10 @@ private class NoopConn(override val remoteId: String = "n") : AgentConnection {
  * 멀티 길드 격리 검증(차수 11 #155). 한 길드의 프로바이더는 다른 길드 풀에 절대 노출되지 않는다.
  */
 class GuildIsolationTest {
-    private fun session(pid: Long, gid: Long) = ProviderSession(NoopConn(), providerId = pid, guildId = gid)
+    private fun session(
+        pid: Long,
+        gid: Long,
+    ) = ProviderSession(NoopConn(), providerId = pid, guildId = gid)
 
     @Test
     fun `길드별 풀은 서로 격리된다`() {

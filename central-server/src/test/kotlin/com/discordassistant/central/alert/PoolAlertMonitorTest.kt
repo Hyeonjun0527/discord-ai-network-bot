@@ -7,15 +7,22 @@ import org.junit.jupiter.api.Test
 
 private class RecordingNotifier : Notifier {
     val events = mutableListOf<Triple<Severity, String, String>>()
-    override fun notify(severity: Severity, title: String, message: String) {
+
+    override fun notify(
+        severity: Severity,
+        title: String,
+        message: String,
+    ) {
         events.add(Triple(severity, title, message))
     }
 }
 
 /** 풀 알림 모니터(차수 15 #220) — edge-trigger 동작 검증. */
 class PoolAlertMonitorTest {
-    private fun monitor(notifier: Notifier, low: Int = 1) =
-        PoolAlertMonitor(ConnectionRegistry(), notifier, lowThreshold = low)
+    private fun monitor(
+        notifier: Notifier,
+        low: Int = 1,
+    ) = PoolAlertMonitor(ConnectionRegistry(), notifier, lowThreshold = low)
 
     @Test
     fun `0명 진입은 한 번만 CRITICAL`() {
@@ -42,10 +49,15 @@ class PoolAlertMonitorTest {
         val m = monitor(n)
         assertEquals(0, m.evaluateProviders(setOf(1L, 2L, 3L))) // 첫 관측: 알림 없음
         assertEquals(0, m.evaluateProviders(setOf(1L, 2L, 3L))) // 변화 없음
-        assertEquals(1, m.evaluateProviders(setOf(1L, 3L)))      // 2 오프라인 → WARN 1
+        assertEquals(1, m.evaluateProviders(setOf(1L, 3L))) // 2 오프라인 → WARN 1
         assertEquals(Severity.WARN, n.events.single().first)
-        assertTrue(n.events.single().third.contains("2"))
-        assertEquals(0, m.evaluateProviders(setOf(1L, 3L, 4L)))  // 신규 추가는 알림 없음
+        assertTrue(
+            n.events
+                .single()
+                .third
+                .contains("2"),
+        )
+        assertEquals(0, m.evaluateProviders(setOf(1L, 3L, 4L))) // 신규 추가는 알림 없음
     }
 
     @Test

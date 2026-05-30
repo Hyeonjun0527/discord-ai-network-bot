@@ -23,22 +23,28 @@ class DashboardController(
 ) {
     /** 서버 개요: 풀 크기·정책 요약·총 요청 수. */
     @GetMapping("/{guildId}/overview")
-    fun overview(@PathVariable guildId: Long): Map<String, Any?> = mapOf(
-        "guildId" to guildId,
-        "activeProviders" to registry.byGuild(guildId).size,
-        "defaultModel" to policy.guildDefaultModel(guildId),
-        "language" to policy.guildLanguage(guildId),
-        "autoApprove" to policy.isAutoApprove(guildId),
-        "totalRequests" to requests.countByGuildId(guildId),
-    )
+    fun overview(
+        @PathVariable guildId: Long,
+    ): Map<String, Any?> =
+        mapOf(
+            "guildId" to guildId,
+            "activeProviders" to registry.byGuild(guildId).size,
+            "defaultModel" to policy.guildDefaultModel(guildId),
+            "language" to policy.guildLanguage(guildId),
+            "autoApprove" to policy.isAutoApprove(guildId),
+            "totalRequests" to requests.countByGuildId(guildId),
+        )
 
     /** 프로바이더 본인 처리 내역(#166): 부하 점수 + 최근 처리(프롬프트/유저 미포함). */
     @GetMapping("/provider/{providerId}/history")
-    fun providerHistory(@PathVariable providerId: Long): Map<String, Any?> = mapOf(
-        "providerId" to providerId,
-        "computeScore" to analytics.providerComputeScore(providerId),
-        "recent" to analytics.providerHistory(providerId),
-    )
+    fun providerHistory(
+        @PathVariable providerId: Long,
+    ): Map<String, Any?> =
+        mapOf(
+            "providerId" to providerId,
+            "computeScore" to analytics.providerComputeScore(providerId),
+            "recent" to analytics.providerHistory(providerId),
+        )
 
     /** 사용량 트렌드(#227): 최근 days 일의 일자별 요청 수. */
     @GetMapping("/{guildId}/usage-trend")
@@ -49,7 +55,9 @@ class DashboardController(
 
     /** 최근 요청 로그(최대 20건). 프롬프트 본문 제외, 상태/제공자/시각만. */
     @GetMapping("/{guildId}/requests")
-    fun requests(@PathVariable guildId: Long): List<Map<String, Any?>> =
+    fun requests(
+        @PathVariable guildId: Long,
+    ): List<Map<String, Any?>> =
         requests.findTop20ByGuildIdOrderByIdDesc(guildId).map {
             mapOf(
                 "requestId" to it.requestId,

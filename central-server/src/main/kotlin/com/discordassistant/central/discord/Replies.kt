@@ -5,10 +5,21 @@ package com.discordassistant.central.discord
  * 일관되게 만든다.
  */
 object Replies {
-    fun ok(message: String, ephemeral: Boolean = true): Reply = Reply("✅ $message", ephemeral)
-    fun info(message: String, ephemeral: Boolean = true): Reply = Reply("ℹ️ $message", ephemeral)
+    fun ok(
+        message: String,
+        ephemeral: Boolean = true,
+    ): Reply = Reply("✅ $message", ephemeral)
+
+    fun info(
+        message: String,
+        ephemeral: Boolean = true,
+    ): Reply = Reply("ℹ️ $message", ephemeral)
+
     fun warn(message: String): Reply = Reply("⚠️ $message")
+
     fun reject(message: String): Reply = Reply("⛔ $message")
+
     fun cooldown(message: String): Reply = Reply("⏳ $message")
+
     fun adminDenied(): Reply = reject("이 명령은 관리자만 사용할 수 있습니다.")
 }

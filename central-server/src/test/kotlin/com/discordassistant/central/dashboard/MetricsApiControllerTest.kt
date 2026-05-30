@@ -8,14 +8,21 @@ import com.discordassistant.central.relay.protocol.Frame
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
-private class FakeConn(override val remoteId: String = "fake") : AgentConnection {
+private class FakeConn(
+    override val remoteId: String = "fake",
+) : AgentConnection {
     override fun sendFrame(frame: Frame) {}
+
     override fun close(reason: String) {}
 }
 
 /** 메트릭 API(차수 15 #226) 집계 로직 검증 — Spring 컨텍스트 없이 레지스트리 직접 구성. */
 class MetricsApiControllerTest {
-    private fun session(pid: Long, gid: Long?, models: List<String>): ProviderSession =
+    private fun session(
+        pid: Long,
+        gid: Long?,
+        models: List<String>,
+    ): ProviderSession =
         ProviderSession(FakeConn(), providerId = pid, guildId = gid).apply {
             capability = ProviderCapability(models = models)
         }

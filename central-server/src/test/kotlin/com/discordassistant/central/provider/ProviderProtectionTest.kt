@@ -14,22 +14,28 @@ import org.junit.jupiter.api.Test
 
 private class NoopConn : AgentConnection {
     override val remoteId = "noop"
+
     override fun sendFrame(frame: Frame) {}
+
     override fun close(reason: String) {}
 }
 
 private class FailingConn : AgentConnection {
     lateinit var session: ProviderSession
     override val remoteId = "fail"
+
     override fun sendFrame(frame: Frame) {
         if (frame is InferRequest) session.handleFrame(InferError(frame.requestId, "OLLAMA_ERROR", "boom"))
     }
+
     override fun close(reason: String) {}
 }
 
 class ProviderProtectionTest {
-
-    private fun registerNoop(reg: ConnectionRegistry, id: Long): ProviderSession {
+    private fun registerNoop(
+        reg: ConnectionRegistry,
+        id: Long,
+    ): ProviderSession {
         val s = ProviderSession(NoopConn(), id, guildId = 100)
         reg.register(s)
         return s

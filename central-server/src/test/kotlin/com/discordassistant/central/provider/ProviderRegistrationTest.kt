@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class TokenServiceTest {
-
     @Test
     fun `발급→검증→단발성`() {
         val svc = TokenService(ttlSeconds = 600)
@@ -49,7 +48,6 @@ class TokenServiceTest {
 }
 
 class ProviderRegistrationServiceTest {
-
     private fun service(): Triple<ProviderRegistrationService, TokenService, AuditLog> {
         val tokens = TokenService(ttlSeconds = 600)
         val audit = AuditLog()

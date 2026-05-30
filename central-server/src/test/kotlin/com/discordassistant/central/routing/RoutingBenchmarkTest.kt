@@ -14,18 +14,19 @@ class RoutingBenchmarkTest {
     private val pipe = ProviderFilterPipeline()
     private val router = ProviderRouter()
 
-    private fun candidates(n: Int): List<Candidate> = (1..n).map { id ->
-        Candidate(
-            providerId = id.toLong(),
-            state = ProviderState.ONLINE_IDLE,
-            supportedBurdens = setOf(ModelBurden.LIGHT, ModelBurden.STANDARD),
-            maxConcurrency = 4,
-            activeRequests = id % 3,
-            remainingDaily = 100,
-            failureRate = (id % 10) / 100.0,
-            recentHandled = id % 7,
-        )
-    }
+    private fun candidates(n: Int): List<Candidate> =
+        (1..n).map { id ->
+            Candidate(
+                providerId = id.toLong(),
+                state = ProviderState.ONLINE_IDLE,
+                supportedBurdens = setOf(ModelBurden.LIGHT, ModelBurden.STANDARD),
+                maxConcurrency = 4,
+                activeRequests = id % 3,
+                remainingDaily = 100,
+                failureRate = (id % 10) / 100.0,
+                recentHandled = id % 7,
+            )
+        }
 
     @Test
     fun `대량 후보 filter+select 성능 가드`() {

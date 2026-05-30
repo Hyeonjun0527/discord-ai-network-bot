@@ -3,7 +3,6 @@ package com.discordassistant.central.discord
 import com.discordassistant.central.domain.ProviderState
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /** 휴식 권장(차수 12 #173). */

@@ -22,17 +22,27 @@ class ProviderScheduleService(
     private val log = LoggerFactory.getLogger(ProviderScheduleService::class.java)
 
     /** 스케줄 설정/갱신(upsert). from==to 면 24시간 가용. */
-    fun setSchedule(providerId: Long, guildId: Long, fromHour: Int, toHour: Int) {
+    fun setSchedule(
+        providerId: Long,
+        guildId: Long,
+        fromHour: Int,
+        toHour: Int,
+    ) {
         require(fromHour in 0..23 && toHour in 0..23) { "시(hour)는 0..23" }
-        val e = schedules.findByProviderIdAndGuildId(providerId, guildId)
-            ?: ProviderScheduleEntity(providerId = providerId, guildId = guildId)
+        val e =
+            schedules.findByProviderIdAndGuildId(providerId, guildId)
+                ?: ProviderScheduleEntity(providerId = providerId, guildId = guildId)
         e.fromHour = fromHour
         e.toHour = toHour
         schedules.save(e)
     }
 
     /** 현재 가용 여부. 스케줄 없으면 항상 가용(true). */
-    fun isAvailableNow(providerId: Long, guildId: Long, clock: Clock = Clock.systemUTC()): Boolean {
+    fun isAvailableNow(
+        providerId: Long,
+        guildId: Long,
+        clock: Clock = Clock.systemUTC(),
+    ): Boolean {
         val s = schedules.findByProviderIdAndGuildId(providerId, guildId) ?: return true
         val hour = clock.instant().atZone(ZoneOffset.UTC).hour
         return AvailabilityWindow.isWithin(s.fromHour, s.toHour, hour)

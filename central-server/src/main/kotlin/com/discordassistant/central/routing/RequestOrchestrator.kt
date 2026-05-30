@@ -8,8 +8,15 @@ import org.springframework.stereotype.Service
 
 /** 라우팅이 필요로 하는 정책 일부(테스트 디커플용). PolicyService 가 구현. */
 interface RoutingPolicy {
-    fun isChannelAllowed(guildId: Long, channelId: Long): Boolean
-    fun maxAllowedBurden(guildId: Long, memberRoleIds: Collection<Long>): ModelBurden
+    fun isChannelAllowed(
+        guildId: Long,
+        channelId: Long,
+    ): Boolean
+
+    fun maxAllowedBurden(
+        guildId: Long,
+        memberRoleIds: Collection<Long>,
+    ): ModelBurden
 }
 
 /** 프로바이더 정책 프로필(부담수준·허용·제한). DB(contribution policy) 또는 테스트 스텁이 제공. */
@@ -27,25 +34,46 @@ interface ProviderProfileProvider {
 
 /** 차단 사용자 확인(차수 11). BlocklistService 가 구현. 기본은 차단 없음. */
 interface BlocklistChecker {
-    fun isBlocked(guildId: Long, userId: Long): Boolean
+    fun isBlocked(
+        guildId: Long,
+        userId: Long,
+    ): Boolean
 }
 
-internal val ALLOW_ALL_BLOCKLIST = object : BlocklistChecker {
-    override fun isBlocked(guildId: Long, userId: Long): Boolean = false
-}
+internal val ALLOW_ALL_BLOCKLIST =
+    object : BlocklistChecker {
+        override fun isBlocked(
+            guildId: Long,
+            userId: Long,
+        ): Boolean = false
+    }
 
 /** 공정 사용 쿼터(차수 11). 오늘 사용량이 일일 상한을 넘었는지. 기본 무제한. */
 interface QuotaChecker {
-    fun exceededQuota(guildId: Long, userId: Long, roleIds: Set<Long>): Boolean
+    fun exceededQuota(
+        guildId: Long,
+        userId: Long,
+        roleIds: Set<Long>,
+    ): Boolean
 }
 
-internal val UNLIMITED_QUOTA = object : QuotaChecker {
-    override fun exceededQuota(guildId: Long, userId: Long, roleIds: Set<Long>): Boolean = false
-}
+internal val UNLIMITED_QUOTA =
+    object : QuotaChecker {
+        override fun exceededQuota(
+            guildId: Long,
+            userId: Long,
+            roleIds: Set<Long>,
+        ): Boolean = false
+    }
 
 /** 사용량/기여 기록 트리거. JPA 구현(UsageService) 또는 테스트 fake. */
 interface UsageRecorder {
-    fun recordSuccess(guildId: Long, userId: Long, providerId: Long, requestId: String)
+    fun recordSuccess(
+        guildId: Long,
+        userId: Long,
+        providerId: Long,
+        requestId: String,
+    )
 
     /** AiRequest 종단 상태 영속화(차수 11). 기본 no-op(테스트 fake 영향 없음). */
     fun recordRequest(
@@ -138,23 +166,25 @@ class RequestOrchestrator(
         val excluded = mutableSetOf<Long>()
         var lastReason = "처리 가능한 커뮤니티 로컬 AI 가 없습니다."
         repeat(2) { attempt ->
-            val candidates = registry.byGuild(input.guildId)
-                .filter { it.providerId !in excluded }
-                .map { session ->
-                    val p = profiles.profile(session.providerId)
-                    Candidate(
-                        providerId = session.providerId,
-                        state = session.state,
-                        supportedBurdens = p.supportedBurdens,
-                        maxConcurrency = session.capability.maxConcurrency,
-                        activeRequests = session.activeRequests,
-                        remainingDaily = session.remainingDailyRequests,
-                        allowedRoleIds = p.allowedRoleIds,
-                        allowedChannelIds = p.allowedChannelIds,
-                        maxPromptChars = p.maxPromptChars,
-                        failureRate = p.failureRate,
-                    )
-                }
+            val candidates =
+                registry
+                    .byGuild(input.guildId)
+                    .filter { it.providerId !in excluded }
+                    .map { session ->
+                        val p = profiles.profile(session.providerId)
+                        Candidate(
+                            providerId = session.providerId,
+                            state = session.state,
+                            supportedBurdens = p.supportedBurdens,
+                            maxConcurrency = session.capability.maxConcurrency,
+                            activeRequests = session.activeRequests,
+                            remainingDaily = session.remainingDailyRequests,
+                            allowedRoleIds = p.allowedRoleIds,
+                            allowedChannelIds = p.allowedChannelIds,
+                            maxPromptChars = p.maxPromptChars,
+                            failureRate = p.failureRate,
+                        )
+                    }
             val outcome = pipeline.filter(candidates, ctx)
             if (outcome.eligible.isEmpty()) {
                 return if (outcome.signal == FilterSignal.PERMISSION_DENIED) {

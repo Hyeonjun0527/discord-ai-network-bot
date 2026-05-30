@@ -20,7 +20,6 @@ class RelayWebSocketConfig(
     private val handler: RelayWebSocketHandler,
     @param:Value("\${central.relay.path:/agent}") private val relayPath: String,
 ) : WebSocketConfigurer {
-
     override fun registerWebSocketHandlers(registry: WebSocketHandlerRegistry) {
         registry.addHandler(handler, relayPath).setAllowedOrigins("*")
     }

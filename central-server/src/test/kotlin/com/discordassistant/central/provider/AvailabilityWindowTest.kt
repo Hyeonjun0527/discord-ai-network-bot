@@ -16,7 +16,7 @@ class AvailabilityWindowTest {
     @Test
     fun `같은 날 구간 9~18`() {
         assertFalse(AvailabilityWindow.isWithin(9, 18, 8))
-        assertTrue(AvailabilityWindow.isWithin(9, 18, 9))  // 시작 포함
+        assertTrue(AvailabilityWindow.isWithin(9, 18, 9)) // 시작 포함
         assertTrue(AvailabilityWindow.isWithin(9, 18, 17))
         assertFalse(AvailabilityWindow.isWithin(9, 18, 18)) // 종료 미포함
     }

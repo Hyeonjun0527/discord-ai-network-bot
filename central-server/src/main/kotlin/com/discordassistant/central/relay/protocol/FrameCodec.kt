@@ -6,7 +6,10 @@ import com.fasterxml.jackson.databind.exc.InvalidTypeIdException
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 
 /** 프로토콜 위반(알 수 없는 타입·필수 필드 누락·크기 초과·JSON 오류). */
-class ProtocolException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+class ProtocolException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
 /**
  * WS 프레임 JSON 직렬화/역직렬화 (api.md §8).
@@ -15,9 +18,10 @@ class ProtocolException(message: String, cause: Throwable? = null) : RuntimeExce
  * 무시한다(앞으로의 호환). 알 수 없는 `type` 은 ProtocolException.
  */
 object FrameCodec {
-    private val mapper: ObjectMapper = jacksonObjectMapper().apply {
-        configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-    }
+    private val mapper: ObjectMapper =
+        jacksonObjectMapper().apply {
+            configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+        }
 
     fun encode(frame: Frame): String {
         val json = mapper.writeValueAsString(frame)

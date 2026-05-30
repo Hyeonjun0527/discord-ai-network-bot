@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Test
  * 전체 Spring 컨텍스트 로드 테스트는 Discord/DB 빈이 들어온 뒤 별도로 추가한다.
  */
 class CentralServerApplicationTests {
-
     @Test
     fun `요청 무게가 필요 부담 수준으로 매핑된다`() {
         assertEquals(ModelBurden.LIGHT, RequestWeight.LIGHT.requiredBurden())

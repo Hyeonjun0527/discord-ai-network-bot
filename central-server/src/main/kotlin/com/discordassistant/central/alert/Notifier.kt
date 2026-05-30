@@ -8,7 +8,11 @@ enum class Severity { INFO, WARN, CRITICAL }
 
 /** 운영 알림 전송 추상화(차수 15 #220/#231). 구현은 로그/Discord 웹훅 등. */
 interface Notifier {
-    fun notify(severity: Severity, title: String, message: String)
+    fun notify(
+        severity: Severity,
+        title: String,
+        message: String,
+    )
 }
 
 /**
@@ -18,7 +22,12 @@ interface Notifier {
 @Component
 class LoggingNotifier : Notifier {
     private val log = LoggerFactory.getLogger(LoggingNotifier::class.java)
-    override fun notify(severity: Severity, title: String, message: String) {
+
+    override fun notify(
+        severity: Severity,
+        title: String,
+        message: String,
+    ) {
         when (severity) {
             Severity.CRITICAL -> log.error("[ALERT/{}] {} — {}", severity, title, message)
             Severity.WARN -> log.warn("[ALERT/{}] {} — {}", severity, title, message)

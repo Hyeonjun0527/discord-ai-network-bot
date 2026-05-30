@@ -12,7 +12,10 @@ data class ProviderRecord(
 )
 
 /** 등록/승인 결과. 승인된 경우 일회용 토큰(평문)을 한 번만 돌려준다. */
-data class JoinResult(val state: ProviderState, val token: String?)
+data class JoinResult(
+    val state: ProviderState,
+    val token: String?,
+)
 
 /**
  * 프로바이더 등록/승인 라이프사이클 (K-차수 4, specs §16 프로바이더 등록).
@@ -32,7 +35,11 @@ class ProviderRegistrationService(
         rec != null && rec.state != ProviderState.REMOVED && rec.state != ProviderState.UNREGISTERED
 
     /** 프로바이더 참여 요청. autoApprove 면 즉시 승인+토큰, 아니면 PENDING. */
-    fun requestJoin(providerId: Long, guildId: Long, autoApprove: Boolean): JoinResult {
+    fun requestJoin(
+        providerId: Long,
+        guildId: Long,
+        autoApprove: Boolean,
+    ): JoinResult {
         val existing = providers[providerId]
         if (isActive(existing)) {
             return JoinResult(existing!!.state, null) // 이미 등록/대기 중
@@ -50,7 +57,10 @@ class ProviderRegistrationService(
     }
 
     /** 관리자 승인(PENDING → APPROVED). 승인 토큰(평문) 반환, 실패 시 null. */
-    fun approve(providerId: Long, adminId: Long): String? {
+    fun approve(
+        providerId: Long,
+        adminId: Long,
+    ): String? {
         val rec = providers[providerId] ?: return null
         if (rec.state != ProviderState.PENDING) return null
         rec.state = ProviderState.APPROVED
@@ -60,7 +70,10 @@ class ProviderRegistrationService(
     }
 
     /** 등록 요청 거절(PENDING 제거). */
-    fun reject(providerId: Long, adminId: Long): Boolean {
+    fun reject(
+        providerId: Long,
+        adminId: Long,
+    ): Boolean {
         val rec = providers[providerId] ?: return false
         if (rec.state != ProviderState.PENDING) return false
         providers.remove(providerId)
@@ -69,7 +82,10 @@ class ProviderRegistrationService(
     }
 
     /** 풀에서 제거(→ REMOVED). */
-    fun remove(providerId: Long, adminId: Long): Boolean {
+    fun remove(
+        providerId: Long,
+        adminId: Long,
+    ): Boolean {
         val rec = providers[providerId] ?: return false
         rec.state = ProviderState.REMOVED
         audit.record("provider_remove", "admin:$adminId", "provider:$providerId")
@@ -80,6 +96,7 @@ class ProviderRegistrationService(
 
     /** 길드의 승인 대기(PENDING) 목록. */
     fun pending(guildId: Long): List<Long> =
-        providers.values.filter { it.guildId == guildId && it.state == ProviderState.PENDING }
+        providers.values
+            .filter { it.guildId == guildId && it.state == ProviderState.PENDING }
             .map { it.providerId }
 }

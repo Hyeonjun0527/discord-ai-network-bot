@@ -47,17 +47,18 @@ enum class ProviderState {
     fun canTransitionTo(next: ProviderState): Boolean = next in ALLOWED[this].orEmpty()
 
     companion object {
-        private val ALLOWED: Map<ProviderState, Set<ProviderState>> = mapOf(
-            UNREGISTERED to setOf(PENDING, APPROVED),
-            PENDING to setOf(APPROVED, REMOVED),
-            APPROVED to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
-            ONLINE_IDLE to setOf(ONLINE_BUSY, PAUSED, LIMITED, OFFLINE, UNHEALTHY, REMOVED),
-            ONLINE_BUSY to setOf(ONLINE_IDLE, PAUSED, LIMITED, OFFLINE, UNHEALTHY, REMOVED),
-            PAUSED to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
-            LIMITED to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
-            OFFLINE to setOf(ONLINE_IDLE, APPROVED, REMOVED),
-            UNHEALTHY to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
-            REMOVED to emptySet(),
-        )
+        private val ALLOWED: Map<ProviderState, Set<ProviderState>> =
+            mapOf(
+                UNREGISTERED to setOf(PENDING, APPROVED),
+                PENDING to setOf(APPROVED, REMOVED),
+                APPROVED to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
+                ONLINE_IDLE to setOf(ONLINE_BUSY, PAUSED, LIMITED, OFFLINE, UNHEALTHY, REMOVED),
+                ONLINE_BUSY to setOf(ONLINE_IDLE, PAUSED, LIMITED, OFFLINE, UNHEALTHY, REMOVED),
+                PAUSED to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
+                LIMITED to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
+                OFFLINE to setOf(ONLINE_IDLE, APPROVED, REMOVED),
+                UNHEALTHY to setOf(ONLINE_IDLE, OFFLINE, REMOVED),
+                REMOVED to emptySet(),
+            )
     }
 }

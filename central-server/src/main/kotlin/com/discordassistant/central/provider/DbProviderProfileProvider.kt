@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service
 class DbProviderProfileProvider(
     private val policies: ProviderContributionPolicyRepository,
 ) : ProviderProfileProvider {
-
     override fun profile(providerId: Long): ProviderProfile {
         val rows = policies.findByProviderId(providerId)
         if (rows.isEmpty()) {
@@ -22,9 +21,10 @@ class DbProviderProfileProvider(
         }
         val declared = rows.map { ModelBurden.valueOf(it.burden) }.toSet()
         val top = declared.filter { it != ModelBurden.RESTRICTED }.maxByOrNull { it.ordinal } ?: ModelBurden.LIGHT
-        val supported = ModelBurden.entries
-            .filter { it != ModelBurden.RESTRICTED && it.ordinal <= top.ordinal }
-            .toMutableSet()
+        val supported =
+            ModelBurden.entries
+                .filter { it != ModelBurden.RESTRICTED && it.ordinal <= top.ordinal }
+                .toMutableSet()
         if (ModelBurden.RESTRICTED in declared) supported.add(ModelBurden.RESTRICTED)
         return ProviderProfile(supportedBurdens = supported)
     }

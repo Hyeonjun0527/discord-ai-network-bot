@@ -10,7 +10,9 @@ import java.util.concurrent.atomic.AtomicLong
  * `discord_command_total{command=...}` 로 노출하고, 로컬 카운트도 보관(테스트/요약용).
  */
 @Component
-class CommandMetrics(private val meter: MeterRegistry) {
+class CommandMetrics(
+    private val meter: MeterRegistry,
+) {
     private val counts = ConcurrentHashMap<String, AtomicLong>()
 
     fun record(command: String) {

@@ -27,9 +27,13 @@ class UsageService(
     private val requests: AiRequestRepository,
     private val health: ProviderHealthRepository,
 ) : UsageRecorder {
-
     @Transactional
-    override fun recordSuccess(guildId: Long, userId: Long, providerId: Long, requestId: String) {
+    override fun recordSuccess(
+        guildId: Long,
+        userId: Long,
+        providerId: Long,
+        requestId: String,
+    ) {
         val now = Instant.now()
         usage.save(UsageLogEntity(guildId = guildId, userId = userId, requestId = requestId, createdAt = now))
         contribution.save(ContributionLogEntity(providerId = providerId, requestId = requestId, createdAt = now))
@@ -64,7 +68,10 @@ class UsageService(
         health.save(h)
     }
 
-    fun userDailyCount(guildId: Long, userId: Long): Long = usage.countByGuildIdAndUserId(guildId, userId)
+    fun userDailyCount(
+        guildId: Long,
+        userId: Long,
+    ): Long = usage.countByGuildIdAndUserId(guildId, userId)
 
     fun providerContributionCount(providerId: Long): Long = contribution.countByProviderId(providerId)
 

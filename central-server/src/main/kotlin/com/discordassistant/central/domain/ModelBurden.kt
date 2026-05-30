@@ -29,9 +29,10 @@ enum class RequestWeight {
     ;
 
     /** 요청 무게 → 필요한 최소 모델 부담 수준. */
-    fun requiredBurden(): ModelBurden = when (this) {
-        LIGHT -> ModelBurden.LIGHT
-        MEDIUM -> ModelBurden.STANDARD
-        HEAVY -> ModelBurden.HEAVY
-    }
+    fun requiredBurden(): ModelBurden =
+        when (this) {
+            LIGHT -> ModelBurden.LIGHT
+            MEDIUM -> ModelBurden.STANDARD
+            HEAVY -> ModelBurden.HEAVY
+        }
 }

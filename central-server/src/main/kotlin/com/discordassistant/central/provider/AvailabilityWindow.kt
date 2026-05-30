@@ -6,7 +6,11 @@ package com.discordassistant.central.provider
  */
 object AvailabilityWindow {
     /** 현재 시각(hour, 0..23)이 [from, to) 윈도우 안인가. from==to 는 항상 가용으로 간주. */
-    fun isWithin(from: Int?, to: Int?, hour: Int): Boolean {
+    fun isWithin(
+        from: Int?,
+        to: Int?,
+        hour: Int,
+    ): Boolean {
         if (from == null || to == null) return true
         require(from in 0..23 && to in 0..23) { "시(hour)는 0..23" }
         require(hour in 0..23) { "hour 는 0..23" }

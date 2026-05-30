@@ -88,20 +88,20 @@
 
 ## 차수 6 — Docker & docker-compose (61~74)
 
-- [ ] 61. central-server `docker build` 실제 성공 검증
-- [ ] 62. 이미지 기동(`docker run`) + actuator/health 확인
-- [ ] 63. compose: Postgres 서비스 정의(볼륨·헬스체크)
-- [ ] 64. compose: central-server 서비스(env·포트 8080·depends_on db)
-- [ ] 65. Flyway 가 Postgres 에 마이그레이션 적용되는지 확인
-- [ ] 66. `docker compose up` 으로 서버 정상 기동 검증
-- [ ] 67. 에이전트는 컨테이너 밖(유저 PC) 전제 — 연결 주소 가이드
-- [ ] 68. healthcheck 기반 depends_on 조건
-- [ ] 69. `.env` 템플릿(DISCORD_BOT_TOKEN·DB_URL/USER/PASSWORD)
-- [ ] 70. compose down/volume 정리 가이드
-- [ ] 71. (선택) Ollama 호스트/컨테이너 연동 가이드
-- [ ] 72. 리소스 제한·restart 정책
-- [ ] 73. compose 통합 기동 검증
-- [ ] 74. 차수 6 검증
+- [x] 61. central-server `docker build` 실제 성공 검증(app.jar 단일 복사)
+- [x] 62. 이미지 기동 + actuator/health UP 확인
+- [x] 63. compose: Postgres 서비스(볼륨·pg_isready 헬스체크)
+- [x] 64. compose: central-server 서비스(env·8080·depends_on db)
+- [x] 65. Flyway 가 Postgres 에 마이그레이션 적용(기동 UP 으로 확인)
+- [x] 66. `docker compose up` 정상 기동 검증(4초 UP)
+- [x] 67. 에이전트는 컨테이너 밖(유저 PC) 전제 — compose 주석/README
+- [x] 68. db 헬스체크 기반 depends_on(service_healthy); central 헬스는 호스트 :8080
+- [x] 69. `.env.example`(DISCORD_BOT_TOKEN·DB_*·CENTRAL_DEV_ENABLED)
+- [x] 70. compose down -v 정리 검증
+- [x] 71. Ollama 연동 가이드(유저 PC localhost — agent README)
+- [x] 72. restart: unless-stopped (리소스 제한은 운영 시 추가)
+- [x] 73. compose 통합 기동 검증
+- [x] 74. 차수 6 검증
 
 ## 차수 7 — CI/CD (75~88)
 

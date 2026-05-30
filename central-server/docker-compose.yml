@@ -1,0 +1,37 @@
+# central-server + Postgres (LAUNCH 차수 6).
+# 사전 빌드: `./gradlew bootJar` → `docker compose up --build`.
+# Provider Agent 는 컨테이너 밖(각 유저 PC)에서 실행되어 ws://<이 호스트>:8080/agent 로 붙는다.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: central
+      POSTGRES_USER: central
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U central -d central"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  central-server:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/central
+      DB_USER: central
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      DISCORD_ENABLED: ${DISCORD_ENABLED:-false}
+      CENTRAL_DEV_ENABLED: ${CENTRAL_DEV_ENABLED:-false}
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

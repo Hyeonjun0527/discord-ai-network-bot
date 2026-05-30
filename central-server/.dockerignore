@@ -1,0 +1,7 @@
+.gradle/
+build/
+!build/libs/
+*.log
+.idea/
+*.iml
+src/test/

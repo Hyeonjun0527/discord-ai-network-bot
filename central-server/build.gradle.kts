@@ -52,3 +52,11 @@ kotlin {
 tasks.withType<Test> {
     useJUnitPlatform()
 }
+
+// bootJar 만 산출(plain jar 비활성) + 고정 파일명(app.jar) — Dockerfile COPY 모호성 제거.
+tasks.named<Jar>("jar") {
+    enabled = false
+}
+tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
+    archiveFileName.set("app.jar")
+}

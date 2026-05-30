@@ -237,20 +237,24 @@ class DiscordBot(
                     return
                 }
             }
-            // 느린 명령(추론 왕복)은 defer 로 "생각 중…" 표시 후 결과 편집(#188, 3초 제한 회피).
-            if (event.name in SLOW_COMMANDS) {
-                event.deferReply(false).queue()
+            // 모든 명령을 defer 로 먼저 ack(3초 제한 회피) 후 결과 편집. 공유/원격 서버의 지연에도 안전.
+            // 공개 명령만 비-ephemeral, 나머지는 ephemeral. defer 시점에 결정.
+            val isPublic = event.name in PUBLIC_COMMANDS
+            event.deferReply(!isPublic).queue()
+            try {
                 val reply = dispatch(event, ctx)
                 event.hook.editOriginal(reply.content).queue()
-            } else {
-                val reply = dispatch(event, ctx)
-                event.reply(reply.content).setEphemeral(reply.ephemeral).queue()
+            } catch (e: Exception) {
+                log.warn("명령 처리 실패: {} — {}", event.name, e.message)
+                event.hook.editOriginal("⚠️ 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.").queue({}, {})
             }
         }
 
         companion object {
-            /** 추론 왕복으로 3초를 넘길 수 있어 defer 가 필요한 명령. */
-            private val SLOW_COMMANDS = setOf("ask")
+            private val log = LoggerFactory.getLogger(Listener::class.java)
+
+            /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
+            private val PUBLIC_COMMANDS = setOf("ask", "contributions", "community-stats", "welcome")
         }
 
         /** 슬래시 옵션 자동완성(#179): model 옵션에 풀 제공 모델 제안. */

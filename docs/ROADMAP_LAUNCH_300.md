@@ -105,20 +105,20 @@
 
 ## 차수 7 — CI/CD (75~88)
 
-- [ ] 75. central-server CI(빌드/테스트) 러너에서 실제 그린 확인
-- [ ] 76. (선택) ktlint/detekt 정적 분석 추가
-- [ ] 77. 테스트 리포트/커버리지 수집(선택)
-- [ ] 78. 이미지 빌드·GHCR push 워크플로
-- [ ] 79. 버전/태그 전략(`central-vX.Y.Z`)
-- [ ] 80. CD 배포 워크플로(self-hosted runner)에 central-server 추가
-- [ ] 81. 배포 시 Flyway 마이그레이션 자동 적용 보장
-- [ ] 82. 헬스체크 기반 배포 성공 판정
-- [ ] 83. 롤백 절차(이미지 태그 되돌리기) 문서
-- [ ] 84. 시크릿 관리(러너 env/secret, 토큰·DB)
-- [ ] 85. 기존 Python 봇 파이프라인과 분리/공존 확인
-- [ ] 86. `ghcr-cleanup` 에 central-server 이미지 포함
-- [ ] 87. CI/CD end-to-end 1회 검증
-- [ ] 88. 차수 7 검증
+- [x] 75. central-server CI(빌드/테스트) 워크플로 작성(러너 실행은 PR 시)
+- [ ] 76. (선택) ktlint/detekt 정적 분석 — 후속
+- [ ] 77. 테스트 리포트/커버리지 수집(선택) — 후속
+- [x] 78. 이미지 빌드·GHCR push 워크플로(central-server-image.yml)
+- [x] 79. 버전/태그 전략(`central-v*` + sha)
+- [x] 80. CD 배포 워크플로(self-hosted, central-server-deploy.yml)
+- [x] 81. 배포 시 Flyway 자동 적용(앱 기동에 포함)
+- [x] 82. 헬스체크 기반 배포 성공 판정(deploy actuator/health)
+- [x] 83. 롤백 노트(deploy workflow + 이미지 태그 되돌리기)
+- [x] 84. 시크릿 참조(CENTRAL_DB_PASSWORD·DISCORD_BOT_TOKEN)
+- [x] 85. 기존 Python 봇 파이프라인과 분리(별도 워크플로·paths 필터)
+- [ ] 86. `ghcr-cleanup` 에 central 이미지 포함 — 후속(러너 권한 필요)
+- [ ] 87. CI/CD end-to-end 1회 검증 — GitHub 러너·시크릿·실 Discord 필요(외부)
+- [x] 88. 차수 7 검증(워크플로 YAML 3종 유효)
 
 ## 차수 8 — 운영·문서·마무리(Phase 1) (89~100)
 

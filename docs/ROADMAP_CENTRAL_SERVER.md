@@ -141,12 +141,12 @@
 
 ## K-차수 12 — 프로바이더 보호 (수동/자동)
 
-- [ ] 12-1. pause/resume/leave/limit
-- [ ] 12-2. 부하(CPU/GPU)/메모리/배터리/절전/네트워크 자동 보호
-- [ ] 12-3. 동시·시간·길이 제한 강제
-- [ ] 12-4. 반복 실패→unhealthy 자동 비활성화
-- [ ] 12-5. 단위 테스트
-- [ ] 12-6. `gradlew build` + 커밋
+- [x] 12-1. pause/resume/leave(ProviderProtectionService); limit 은 contribution policy(K-6)
+- [x] 12-2. 배터리→PAUSED·고부하→LIMITED 자동 보호(provider_status)
+- [x] 12-3. 동시·시간·길이 제한 강제(세션 세마포어/orTimeout/MAX_PROMPT)
+- [x] 12-4. 반복 실패(3연속)→UNHEALTHY 자동 비활성화
+- [x] 12-5. 단위 테스트
+- [x] 12-6. `gradlew build` + 커밋
 
 ## K-차수 13 — Discord (JDA) 슬래시 명령
 

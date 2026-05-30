@@ -35,11 +35,12 @@ class StateMachineTest {
 
     @Test
     fun `provider_status busy 반영`() {
+        // 배터리/고부하가 아니면 busy → ONLINE_BUSY (자동 보호는 K-차수 12 가 우선 처리).
         val s = ProviderSession(NoopConnection(), 1, 100)
-        s.handleFrame(ProviderStatusFrame(load = "high", battery = "discharging", online = true, busy = true))
+        s.handleFrame(ProviderStatusFrame(load = "medium", battery = "charging", online = true, busy = true))
         assertEquals(ProviderState.ONLINE_BUSY, s.state)
-        assertEquals("high", s.liveStatus.load)
-        assertEquals("discharging", s.liveStatus.battery)
+        assertEquals("medium", s.liveStatus.load)
+        assertEquals("charging", s.liveStatus.battery)
     }
 
     @Test

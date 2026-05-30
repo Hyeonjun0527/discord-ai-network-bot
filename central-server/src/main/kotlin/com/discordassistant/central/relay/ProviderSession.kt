@@ -57,9 +57,12 @@ class ProviderSession(
     private val lastSeenNanos = AtomicLong(System.nanoTime())
     private val inFlight = AtomicInteger(0)
     private val remainingDaily = AtomicInteger(Int.MAX_VALUE)
+    private val consecutiveFailures = AtomicInteger(0)
     @Volatile
     var liveStatus: LiveStatus = LiveStatus()
         private set
+
+    val failures: Int get() = consecutiveFailures.get()
     private val pending = ConcurrentHashMap<String, CompletableFuture<InferResult>>()
     private val streams = ConcurrentHashMap<String, java.util.concurrent.BlockingQueue<ChunkFrame>>()
 
@@ -98,10 +101,20 @@ class ProviderSession(
 
     fun applyStatus(status: ProviderStatusFrame) {
         liveStatus = LiveStatus(status.load, status.battery, status.online, status.busy)
-        if (status.busy) transitionTo(ProviderState.ONLINE_BUSY)
-        else if (state == ProviderState.ONLINE_BUSY && inFlight.get() == 0) transitionTo(ProviderState.ONLINE_IDLE)
+        // 자동 보호(K-차수 12): 배터리/절전 → PAUSED, 고부하 → LIMITED, 그 외 busy 반영.
+        when {
+            status.battery == "discharging" || status.battery == "low" -> transitionTo(ProviderState.PAUSED)
+            status.load == "high" -> transitionTo(ProviderState.LIMITED)
+            status.busy -> transitionTo(ProviderState.ONLINE_BUSY)
+            state == ProviderState.ONLINE_BUSY && inFlight.get() == 0 -> transitionTo(ProviderState.ONLINE_IDLE)
+        }
         markSeen()
     }
+
+    /** 수동 보호: 일시정지 / 재개. */
+    fun pause(): Boolean = transitionTo(ProviderState.PAUSED)
+
+    fun resume(): Boolean = transitionTo(ProviderState.ONLINE_IDLE)
 
     /** 추론 요청을 보내고 결과 future 를 돌려준다. 큐 초과는 BUSY, 무응답은 TIMEOUT. */
     fun sendInfer(
@@ -127,13 +140,19 @@ class ProviderSession(
         }
         return fut.orTimeout(requestTimeoutSeconds, TimeUnit.SECONDS).handle { res, err ->
             cleanup(requestId)
-            when {
-                err == null -> res
-                isTimeout(err) -> {
+            if (err == null) {
+                consecutiveFailures.set(0)
+                res
+            } else {
+                // 반복 실패 시 자동 비활성화(UNHEALTHY) — 보호(K-차수 12).
+                if (consecutiveFailures.incrementAndGet() >= FAILURE_THRESHOLD) {
+                    transitionTo(ProviderState.UNHEALTHY)
+                }
+                if (isTimeout(err)) {
                     safeSend(CancelFrame(requestId))
                     throw RemoteTimeoutException("원격 에이전트 응답 시간 초과(${requestTimeoutSeconds}초)")
                 }
-                else -> throw (unwrap(err))
+                throw unwrap(err)
             }
         }
     }
@@ -177,5 +196,10 @@ class ProviderSession(
         pending.values.forEach { it.completeExceptionally(ConnectionClosedException(reason)) }
         pending.clear()
         streams.clear()
+    }
+
+    companion object {
+        /** 연속 실패가 이 횟수에 도달하면 자동 비활성화(UNHEALTHY). */
+        private const val FAILURE_THRESHOLD = 3
     }
 }

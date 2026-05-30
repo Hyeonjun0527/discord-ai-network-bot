@@ -3,6 +3,7 @@ package com.discordassistant.central.discord
 import com.discordassistant.central.domain.ProviderState
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.entities.MessageEmbed
+import net.dv8tion.jda.api.interactions.DiscordLocale
 import java.awt.Color
 
 /**
@@ -50,32 +51,42 @@ object EmbedFactory {
 
     private val BLURPLE = Color(0x5865F2)
 
-    /** 도움말 패널 Embed(역할별 섹션). 관리자에게만 관리자 필드 노출. */
-    fun helpEmbed(isAdmin: Boolean): MessageEmbed {
+    /**
+     * 도움말 패널 Embed(역할별 섹션). 관리자에게만 관리자 필드 노출.
+     * 명령 이름은 보는 사람의 클라이언트 로케일(locale)로 표시 — 슬래시 메뉴에 보이는 이름과 일치(차수 19 UX).
+     * 예) 한국어 클라이언트: `/질문` `/메뉴` `/서버기본값`, 영어: `/ask` `/menu`.
+     */
+    fun helpEmbed(
+        isAdmin: Boolean,
+        locale: DiscordLocale = DiscordLocale.KOREAN,
+    ): MessageEmbed {
+        fun c(base: String) = "`/${CommandLoc.localName(base, locale)}`"
         val b =
             EmbedBuilder()
                 .setColor(BLURPLE)
                 .setTitle("🤖 커뮤니티 로컬 AI Provider Pool")
-                .setDescription("커뮤니티 멤버들의 PC 로컬 LLM 을 모아 **공정하게 나눠 쓰는** 봇입니다(금전 거래 아님).\n`/menu` 로 언제든 시작 패널을 열 수 있어요.")
-                .addField(
+                .setDescription(
+                    "커뮤니티 멤버들의 PC 로컬 LLM 을 모아 **공정하게 나눠 쓰는** 봇입니다(금전 거래 아님).\n" +
+                        "${c("menu")} 로 언제든 시작 패널을 열 수 있어요.",
+                ).addField(
                     "💬 유저",
-                    "`/ask <질문>` — 풀의 누군가의 PC AI 로 답변\n" +
-                        "`/models` `/catalog` — 사용 가능한 모델 수준·목록\n" +
-                        "`/my-usage` `/contributions` — 내 사용량 · 기여 리더보드",
+                    "${c("ask")} `<질문>` — 풀의 누군가의 PC AI 로 답변\n" +
+                        "${c("models")} ${c("catalog")} — 사용 가능한 모델 수준·목록\n" +
+                        "${c("my-usage")} ${c("contributions")} — 내 사용량 · 기여 리더보드",
                     false,
                 ).addField(
                     "🖥️ 프로바이더 (내 PC 를 풀에 기여)",
-                    "`/provider-join` — 참여 신청(승인 후 토큰→에이전트 실행)\n" +
-                        "`/provider-status` `/provider-pause` `/provider-resume` — 상태·가용성\n" +
-                        "`/provider-schedule` — 가용 시간대 설정",
+                    "${c("provider-join")} — 참여 신청(승인 후 토큰→에이전트 실행)\n" +
+                        "${c("provider-status")} ${c("provider-pause")} ${c("provider-resume")} — 상태·가용성\n" +
+                        "${c("provider-schedule")} — 가용 시간대 설정",
                     false,
                 )
         if (isAdmin) {
             b.addField(
                 "⚙️ 관리자",
-                "`/llm-settings` — 설정 패널(언어·모델·채널·자동승인)\n" +
-                    "`/approve-provider` `/providers` `/fairness` — 승인·현황·공정성\n" +
-                    "`/llm-allow-channel` `/llm-block` — 채널·차단 정책",
+                "${c("llm-settings")} — 설정 패널(언어·모델·채널·자동승인)\n" +
+                    "${c("provider-approve")} ${c("providers")} ${c("fairness")} — 승인·현황·공정성\n" +
+                    "${c("llm-allow-channel")} ${c("llm-block")} — 채널·차단 정책",
                 false,
             )
         }

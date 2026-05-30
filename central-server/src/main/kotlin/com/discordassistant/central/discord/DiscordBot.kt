@@ -241,7 +241,8 @@ class DiscordBot(
                     return
                 }
                 "help" -> {
-                    event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin)).setEphemeral(true).queue()
+                    // 명령 이름을 보는 사람 클라이언트 언어로 표시(슬래시 메뉴와 일치).
+                    event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin, event.userLocale)).setEphemeral(true).queue()
                     return
                 }
                 "llm-settings" -> {
@@ -335,7 +336,7 @@ class DiscordBot(
                     return
                 }
                 MenuFactory.HELP, "settings:help" -> {
-                    event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin)).setEphemeral(true).queue()
+                    event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin, event.userLocale)).setEphemeral(true).queue()
                     return
                 }
             }

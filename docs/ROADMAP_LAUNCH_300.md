@@ -215,7 +215,7 @@
 - [x] 163. 프로바이더 오프라인 시 관리자 알림 — PoolAlertMonitor.evaluateProviders(오프라인 전환 edge-trigger), 테스트 통과
 - [x] 164. 풀 헬스 요약 정기 알림(관리자) — poolSummary + @Scheduled(기본 1시간) INFO 요약
 - [x] 165. 프로바이더 자기 통계(`/provider-status`: 상태·처리중·잔여·실패)
-- [ ] 166. 요청 처리 내역(프로바이더용, 프라이버시 준수) — 후속
+- [x] 166. 요청 처리 내역(프로바이더용, 프라이버시 준수) — AnalyticsService.providerHistory(프롬프트/유저 미포함) + /api/dashboard/provider/{id}/history, 테스트 통과
 - [x] 167. 온보딩 안내(providerJoin 응답: 토큰→에이전트 실행 단계)
 - [x] 168. 동의/책임 고지(providerJoin: 프롬프트 PC 전송 동의 간주)
 - [x] 169. 유저 명령(`/models`·`/my-usage`·`/privacy`·`/catalog`)
@@ -255,7 +255,7 @@
 - [ ] 197. 세션/권한(길드 관리자만)
 - [x] 198. 서버 개요 화면 — 대시보드 길드 개요(활성/총요청/기본모델/언어/자동승인), /api/dashboard/{guild}/overview 소비
 - [x] 199. Provider Pool 대시보드(상태·기여량) — 풀 전역 패널(활성/처리중/길드수), /api/metrics/pool 5초 폴링
-- [ ] 200. Provider 상세 화면
+- [x] 200. Provider 상세 화면 — 대시보드 프로바이더 테이블(상태/처리중/실패/모델수), /api/metrics/pool/{guild} 소비
 - [x] 201. 요청/실패 로그 화면 — 백엔드 API(/{guild}/requests, 본문 제외 상태/제공자/사유). 프론트 테이블(상태/부담/provider/시각) 완성
 - [x] 202. 사용량·기여 통계 차트 — 7일 사용량 막대 차트(무빌드 div 렌더), /usage-trend
 - [ ] 203. 정책 설정 UI(채널/역할/프라이버시)

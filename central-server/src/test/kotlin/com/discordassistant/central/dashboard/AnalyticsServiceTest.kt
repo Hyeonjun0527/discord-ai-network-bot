@@ -49,4 +49,15 @@ class AnalyticsServiceTest @Autowired constructor(
         // LIGHT(1) + HEAVY(3) = 4
         assertEquals(4L, analytics.providerComputeScore(50))
     }
+
+    @Test
+    fun `프로바이더 처리 내역 — 프롬프트·유저 미포함(#166)`() {
+        requests.save(AiRequestEntity(requestId = "h1", providerId = 60, userId = 999, state = "COMPLETED", requiredBurden = "LIGHT"))
+        requests.save(AiRequestEntity(requestId = "h2", providerId = 60, userId = 888, state = "REJECTED", requiredBurden = "HEAVY"))
+        val hist = analytics.providerHistory(60)
+        assertEquals(1, hist.size) // 완료만
+        assertEquals("h1", hist[0]["requestId"])
+        assertEquals(false, hist[0].containsKey("userId"))
+        assertEquals(false, hist[0].containsKey("prompt"))
+    }
 }

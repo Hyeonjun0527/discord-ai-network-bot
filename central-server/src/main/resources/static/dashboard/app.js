@@ -49,10 +49,11 @@ async function loadGuild() {
     return;
   }
   try {
-    const [overview, trend, requests] = await Promise.all([
+    const [overview, trend, requests, providers] = await Promise.all([
       getJson(`/api/dashboard/${gid}/overview`),
       getJson(`/api/dashboard/${gid}/usage-trend?days=7`),
       getJson(`/api/dashboard/${gid}/requests`),
+      getJson(`/api/metrics/pool/${gid}`),
     ]);
 
     $("guildOverview").innerHTML = [
@@ -62,6 +63,12 @@ async function loadGuild() {
       ["언어", overview.language],
       ["자동승인", overview.autoApprove ? "예" : "아니오"],
     ].map(([l, v]) => `<div class="stat"><div class="num">${v}</div><div class="lbl">${l}</div></div>`).join("");
+
+    // 프로바이더 상세(#200)
+    const ptbody = document.querySelector("#providers tbody");
+    ptbody.innerHTML = (providers.providers || []).map((p) =>
+      `<tr><td>${p.providerId}</td><td>${p.state}</td><td>${p.inFlight}</td><td>${p.failures}</td><td>${p.models}</td></tr>`,
+    ).join("") || `<tr><td colspan="5">연결된 프로바이더 없음</td></tr>`;
 
     renderTrend(trend);
 

@@ -34,6 +34,16 @@ class AnalyticsService(
         requests.findByProviderIdAndState(providerId, "COMPLETED")
             .sumOf { burdenWeight(it.requiredBurden).toLong() }
 
+    /**
+     * 프로바이더 본인 처리 내역(차수 12 #166). 프라이버시: **프롬프트 본문·요청 유저 id 미포함**.
+     * 처리한 요청의 식별자/부담/시각만 노출(최신순).
+     */
+    fun providerHistory(providerId: Long): List<Map<String, Any?>> =
+        requests.findByProviderIdAndState(providerId, "COMPLETED")
+            .sortedByDescending { it.id }
+            .take(20)
+            .map { mapOf("requestId" to it.requestId, "burden" to it.requiredBurden, "createdAt" to it.createdAt.toString()) }
+
     private fun burdenWeight(name: String): Int =
         when (runCatching { ModelBurden.valueOf(name) }.getOrNull()) {
             ModelBurden.LIGHT -> 1

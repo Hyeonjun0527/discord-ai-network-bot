@@ -32,6 +32,14 @@ class DashboardController(
         "totalRequests" to requests.countByGuildId(guildId),
     )
 
+    /** 프로바이더 본인 처리 내역(#166): 부하 점수 + 최근 처리(프롬프트/유저 미포함). */
+    @GetMapping("/provider/{providerId}/history")
+    fun providerHistory(@PathVariable providerId: Long): Map<String, Any?> = mapOf(
+        "providerId" to providerId,
+        "computeScore" to analytics.providerComputeScore(providerId),
+        "recent" to analytics.providerHistory(providerId),
+    )
+
     /** 사용량 트렌드(#227): 최근 days 일의 일자별 요청 수. */
     @GetMapping("/{guildId}/usage-trend")
     fun usageTrend(

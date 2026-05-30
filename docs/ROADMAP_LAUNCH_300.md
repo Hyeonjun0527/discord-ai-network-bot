@@ -277,11 +277,11 @@
 - [x] 216. Prometheus 엔드포인트(/actuator/prometheus)
 - [x] 217. Grafana 대시보드 JSON(docs/grafana-dashboard.json)
 - [x] 218. 구조적 로깅·correlation/request id — RequestIdFilter(MDC %X{requestId}) + logback 패턴
-- [ ] 219. 분산 추적(선택, OpenTelemetry)
+- [x] 219. 분산 추적(선택, OpenTelemetry) — micrometer-tracing-bridge-otel + OTLP exporter, 기본 샘플링0(no-op), OTLP_ENDPOINT 로 활성, 빌드/컨텍스트 검증
 - [x] 220. 알림(provider 대량 오프라인·실패율 급증·DB 장애) — Notifier + PoolAlertMonitor(풀 0명/저용량 edge-trigger, 테스트 통과). 실패율/DB 트리거는 후속
 - [x] 221. 헬스 상세(PoolHealthIndicator activeProviderConnections + DB/JPA 헬스)
 - [x] 222. 로그 보존/회전 정책 — logback-spring.xml(prod 프로파일 SizeAndTime 회전, 50MB/14일/1GB cap)
-- [ ] 223. 에러 트래킹(Sentry) 연동
+- [x] 223. 에러 트래킹(Sentry) 연동 — sentry-spring-boot-starter, DSN 미설정 시 no-op, send-default-pii=false(프롬프트 미전송), 빌드/컨텍스트 검증
 - [x] 224. Postgres 백업/복구 정책(RUNBOOK: pg_dump/psql)
 - [x] 225. 장애 대응 런북(central-server/docs/RUNBOOK.md)
 - [x] 226. 대시보드용 메트릭 API — MetricsApiController(/api/metrics/pool, /pool/{guildId}), 테스트 통과

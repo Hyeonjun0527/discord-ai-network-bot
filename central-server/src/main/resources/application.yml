@@ -26,6 +26,13 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+  # 분산 추적(#219). 기본 샘플링 0(미수집·미전송). 운영에서 OTLP_ENDPOINT + 샘플링으로 활성.
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLE_RATE:0.0}
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:}
 
 # 중앙 서버 고유 설정 (ADR 0003/0004). 환경변수로 오버라이드.
 central:
@@ -41,6 +48,14 @@ central:
     request-timeout-seconds: ${RELAY_REQUEST_TIMEOUT_SECONDS:120}
   token:
     ttl-seconds: ${AGENT_TOKEN_TTL_SECONDS:600}
+
+# 에러 트래킹(#223). DSN 미설정(기본)이면 완전 no-op. 운영에서 SENTRY_DSN 주입 시 활성.
+sentry:
+  dsn: ${SENTRY_DSN:}
+  environment: ${SENTRY_ENV:dev}
+  traces-sample-rate: ${SENTRY_TRACES_RATE:0.0}
+  # 프롬프트 등 민감 데이터 전송 방지(기본 끔).
+  send-default-pii: false
 
 logging:
   level:

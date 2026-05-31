@@ -1,6 +1,6 @@
-# [DEPRECATED — 수동 전용] self-hosted(Mac) 배포. 운영 자동배포는 central-deploy-ssh.yml
+# [DEPRECATED — 수동 전용] self-hosted(Mac) 배포. 운영 자동배포는 central-deploy.yml
 # (원격 linuxssh.dailyting.cloud)로 이관됨. 이 워크플로는 비상 수동 폴백으로만 남긴다.
-# 필요 시크릿: CENTRAL_DB_PASSWORD, DISCORD_BOT_TOKEN.
+# 필요 시크릿: ENV_FILE.
 name: central-server deploy (self-hosted, deprecated)
 
 on:
@@ -20,10 +20,15 @@ jobs:
       - name: Deploy (compose up)
         working-directory: central-server
         env:
-          DB_PASSWORD: ${{ secrets.CENTRAL_DB_PASSWORD }}
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          DISCORD_ENABLED: "true"
-        run: docker compose up -d --build
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          if [ -z "${ENV_FILE:-}" ]; then
+            echo "❌ ENV_FILE GitHub secret 이 비어 있습니다."
+            exit 1
+          fi
+          printf '%s\n' "$ENV_FILE" > .env
+          tr -d '\r' < .env > .env.tmp && mv .env.tmp .env
+          docker compose --env-file .env up -d --build
       - name: Health check (Flyway 마이그레이션 포함)
         run: |
           for i in $(seq 1 40); do

@@ -1,5 +1,5 @@
 # 원격(linuxssh.dailyting.cloud) 배포용 compose. GHCR 이미지를 pull 해서 실행한다(빌드는 CI 에서).
-# CI 가 같은 디렉터리에 .env 를 렌더링(CENTRAL_IMAGE/DB_PASSWORD/DISCORD_* )한 뒤
+# CI 가 같은 디렉터리에 ENV_FILE 기반 .env 를 렌더링(CENTRAL_IMAGE/CENTRAL_DB_PASSWORD/DISCORD_* )한 뒤
 #   docker compose --env-file .env -f compose.yml up -d 로 띄운다.
 # 프로젝트명 central-server 로 격리 — 같은 호스트의 dailyting 서비스들과 충돌하지 않는다.
 name: central-server

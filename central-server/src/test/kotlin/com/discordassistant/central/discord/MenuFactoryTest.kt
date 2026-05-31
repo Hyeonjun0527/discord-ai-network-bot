@@ -19,12 +19,23 @@ class MenuFactoryTest {
         // 핵심 버튼 ID 존재
         assertTrue(user.any { it.id == MenuFactory.ASK })
         assertTrue(user.any { it.id == MenuFactory.PROVIDER })
-        assertTrue(user.any { it.label == "❃ 함께 도와주기" })
-        assertTrue(user.any { it.label == "✡︎ 내 상태" })
+        assertTrue(user.any { it.label == "${MenuSymbols.PROVIDER} 함께 도와주기" })
+        assertTrue(user.any { it.label == "${MenuSymbols.STATUS} 내 상태" })
         assertFalse(user.any { it.label == "AI 일꾼 되기" })
-        assertTrue(admin.any { it.label == "❂ 설정" })
+        assertTrue(admin.any { it.label == "${MenuSymbols.SETTINGS} 설정" })
         assertEquals(ButtonStyle.PRIMARY, user.first { it.id == MenuFactory.ASK }.style)
         assertEquals(ButtonStyle.SECONDARY, admin.first { it.id == MenuFactory.SETTINGS }.style)
+    }
+
+    @Test
+    fun `OS 선택 버튼은 플랫폼 아이콘을 유지한다`() {
+        val buttons = MenuFactory.osButtons()
+        assertEquals("macOS", buttons[0].label)
+        assertEquals("🍎", buttons[0].emoji?.name)
+        assertEquals("Windows", buttons[1].label)
+        assertEquals("🪟", buttons[1].emoji?.name)
+        assertEquals("Linux", buttons[2].label)
+        assertEquals("🐧", buttons[2].emoji?.name)
     }
 
     @Test
@@ -72,7 +83,7 @@ class MenuFactoryTest {
         assertTrue(user.contains("함께 도와주기"))
         assertTrue(user.contains("내 상태"))
         assertTrue(user.contains("/menu"))
-        assertFalse(user.contains("⚙️"))
-        assertTrue(MenuFactory.slimHelp(isAdmin = true).contains("⚙️"))
+        assertFalse(user.contains(MenuSymbols.SETTINGS))
+        assertTrue(MenuFactory.slimHelp(isAdmin = true).contains(MenuSymbols.SETTINGS))
     }
 }

@@ -53,18 +53,25 @@ object EmbedFactory {
     private val DEEP_INDIGO = Color(0x2F3BFF)
     const val MENU_HERO_IMAGE_URL = "https://discord-ai.yeon.world/assets/nyassistant-menu-hero.png"
 
-    /** 시작 메뉴 Embed. 버튼 색보다 브랜드 이미지/정보 구조로 현대적인 톤을 잡는다. */
-    fun mainMenuEmbed(): MessageEmbed =
-        EmbedBuilder()
-            .setColor(DEEP_INDIGO)
-            .setTitle("냥시스턴트가 준비됐어요")
-            .setDescription(
-                "이 채널에서 AI에게 바로 질문하거나,\n" +
-                    "내 컴퓨터의 AI로 커뮤니티 답변을 함께 도울 수 있어요.\n\n" +
-                    "아래에서 원하는 작업을 선택해주세요.",
-            ).setImage(MENU_HERO_IMAGE_URL)
-            .setFooter("언제든 /menu 로 이 메뉴를 다시 열 수 있어요.")
-            .build()
+    /** 시작 메뉴 Embed. 실제 Discord 버튼은 Embed 아래에 붙지만, 패널 안에도 같은 메뉴 구조를 보여준다. */
+    fun mainMenuEmbed(isAdmin: Boolean): MessageEmbed {
+        val b =
+            EmbedBuilder()
+                .setColor(DEEP_INDIGO)
+                .setTitle("냥시스턴트 메뉴")
+                .setDescription(
+                    "AI에게 바로 질문하거나, 내 컴퓨터의 AI로 커뮤니티 답변을 함께 도울 수 있어요.\n" +
+                        "아래 메뉴를 보고 원하는 버튼을 선택해주세요.",
+                ).setImage(MENU_HERO_IMAGE_URL)
+                .addField("${MenuSymbols.ASK} 질문하기", "AI에게 바로 물어보기", true)
+                .addField("${MenuSymbols.PROVIDER} 함께 도와주기", "내 컴퓨터의 AI로 답변 참여", true)
+                .addField("${MenuSymbols.STATUS} 내 상태", "연결 상태와 기여 확인", true)
+                .addField("${MenuSymbols.HELP} 도움말", "사용 방법과 자주 묻는 상황", true)
+        if (isAdmin) {
+            b.addField("${MenuSymbols.SETTINGS} 설정", "서버 언어·채널·승인 관리", true)
+        }
+        return b.setFooter("언제든 /menu 로 다시 열 수 있어요.").build()
+    }
 
     /**
      * 도움말 패널 Embed(역할별 섹션). 관리자에게만 관리자 필드 노출.
@@ -79,18 +86,18 @@ object EmbedFactory {
         val b =
             EmbedBuilder()
                 .setColor(BLURPLE)
-                .setTitle("🤖 커뮤니티 로컬 AI Provider Pool")
+                .setTitle("${MenuSymbols.ASK} 커뮤니티 로컬 AI Provider Pool")
                 .setDescription(
                     "커뮤니티 멤버들의 PC 로컬 LLM 을 모아 **공정하게 나눠 쓰는** 봇입니다(금전 거래 아님).\n" +
                         "${c("menu")} 로 언제든 시작 패널을 열 수 있어요.",
                 ).addField(
-                    "💬 유저",
+                    "${MenuSymbols.ASK} 유저",
                     "${c("ask")} `<질문>` — 풀의 누군가의 PC AI 로 답변\n" +
                         "${c("models")} ${c("catalog")} — 사용 가능한 모델 수준·목록\n" +
                         "${c("my-usage")} ${c("contributions")} — 내 사용량 · 기여 리더보드",
                     false,
                 ).addField(
-                    "🖥️ 프로바이더 (내 컴퓨터의 AI로 함께 도와주기)",
+                    "${MenuSymbols.PROVIDER} 프로바이더 (내 컴퓨터의 AI로 함께 도와주기)",
                     "${c("provider-join")} — 참여 신청(승인 후 토큰→에이전트 실행)\n" +
                         "${c("provider-status")} ${c("provider-pause")} ${c("provider-resume")} — 상태·가용성\n" +
                         "${c("provider-schedule")} — 가용 시간대 설정",
@@ -98,7 +105,7 @@ object EmbedFactory {
                 )
         if (isAdmin) {
             b.addField(
-                "⚙️ 관리자",
+                "${MenuSymbols.SETTINGS} 관리자",
                 "${c("llm-settings")} — 설정 패널(언어·모델·채널·자동승인)\n" +
                     "${c("provider-approve")} ${c("providers")} ${c("fairness")} — 승인·현황·공정성\n" +
                     "${c("llm-allow-channel")} ${c("llm-block")} — 채널·차단 정책",

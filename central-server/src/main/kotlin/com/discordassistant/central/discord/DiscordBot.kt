@@ -252,7 +252,7 @@ class DiscordBot(
             when (event.name) {
                 "menu" -> {
                     event
-                        .replyEmbeds(EmbedFactory.mainMenuEmbed())
+                        .replyEmbeds(EmbedFactory.mainMenuEmbed(ctx.isAdmin))
                         .addComponents(ActionRow.of(MenuFactory.mainButtons(ctx.isAdmin)))
                         .setEphemeral(true)
                         .queue()
@@ -442,7 +442,7 @@ class DiscordBot(
         override fun onGuildJoin(event: GuildJoinEvent) {
             val channel = event.guild.systemChannel ?: return // 시스템 채널 없으면 스킵
             channel
-                .sendMessageEmbeds(EmbedFactory.mainMenuEmbed())
+                .sendMessageEmbeds(EmbedFactory.mainMenuEmbed(isAdmin = true))
                 .setComponents(ActionRow.of(MenuFactory.mainButtons(isAdmin = true)))
                 .queue({}, {})
         }

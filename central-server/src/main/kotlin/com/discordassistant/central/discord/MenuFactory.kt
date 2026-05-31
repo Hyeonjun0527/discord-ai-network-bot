@@ -5,6 +5,16 @@ import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu
 import net.dv8tion.jda.api.interactions.components.selections.StringSelectMenu
 
+// Discord 버튼/Embed 에서 공통으로 쓰는 서비스 내부 심볼.
+// Discord 가 이 기호들을 버튼 emoji 필드에서는 거부하므로, 라벨/텍스트로만 사용한다.
+object MenuSymbols {
+    const val ASK = "✦"
+    const val PROVIDER = "❃"
+    const val STATUS = "✡︎"
+    const val HELP = "❆"
+    const val SETTINGS = "❂"
+}
+
 /**
  * 인터랙티브 온보딩/설정 패널 컴포넌트 빌더(차수 13 UX 개편).
  *
@@ -35,9 +45,9 @@ object MenuFactory {
     /** 프로바이더 참여: 설치할 컴퓨터(OS) 선택 버튼. 클릭 → 그 OS 의 복붙 명령. */
     fun osButtons(): List<Button> =
         listOf(
-            Button.primary(OS_MAC, "macOS"),
-            Button.primary(OS_WINDOWS, "Windows"),
-            Button.secondary(OS_LINUX, "Linux"),
+            Button.primary(OS_MAC, "macOS").withEmoji(Emoji.fromUnicode("🍎")),
+            Button.primary(OS_WINDOWS, "Windows").withEmoji(Emoji.fromUnicode("🪟")),
+            Button.secondary(OS_LINUX, "Linux").withEmoji(Emoji.fromUnicode("🐧")),
         )
 
     /** 설정 패널 상단 안내 텍스트(현재 상태 포함). */
@@ -67,12 +77,12 @@ object MenuFactory {
     fun mainButtons(isAdmin: Boolean): List<Button> {
         val base =
             listOf(
-                Button.primary(ASK, "✦ 질문하기"),
-                Button.secondary(PROVIDER, "❃ 함께 도와주기"),
-                Button.secondary(STATUS, "✡︎ 내 상태"),
-                Button.secondary(HELP, "❆ 도움말"),
+                Button.primary(ASK, "${MenuSymbols.ASK} 질문하기"),
+                Button.secondary(PROVIDER, "${MenuSymbols.PROVIDER} 함께 도와주기"),
+                Button.secondary(STATUS, "${MenuSymbols.STATUS} 내 상태"),
+                Button.secondary(HELP, "${MenuSymbols.HELP} 도움말"),
             )
-        return if (isAdmin) base + Button.secondary(SETTINGS, "❂ 설정") else base
+        return if (isAdmin) base + Button.secondary(SETTINGS, "${MenuSymbols.SETTINGS} 설정") else base
     }
 
     /** 언어 선택 드롭다운(ko/en). */
@@ -110,12 +120,12 @@ object MenuFactory {
     fun slimHelp(isAdmin: Boolean): String {
         val sb = StringBuilder()
         sb.append("**핵심만 빠르게** — 자세한 건 버튼으로!\n\n")
-        sb.append("💬 **`/ask <질문>`** — 풀의 AI 에게 질문 (또는 위 `질문하기` 버튼)\n")
-        sb.append("🖥️ **`함께 도와주기`** 버튼 — 내 컴퓨터의 AI 로 커뮤니티 답변 돕기\n")
-        sb.append("📊 **`내 상태`** 버튼 — 내 사용량/기여 확인\n")
-        sb.append("🧭 **`/menu`** — 언제든 이 판을 다시 열기\n")
+        sb.append("${MenuSymbols.ASK} **`/ask <질문>`** — 풀의 AI 에게 질문 (또는 위 `질문하기` 버튼)\n")
+        sb.append("${MenuSymbols.PROVIDER} **`함께 도와주기`** 버튼 — 내 컴퓨터의 AI 로 커뮤니티 답변 돕기\n")
+        sb.append("${MenuSymbols.STATUS} **`내 상태`** 버튼 — 내 사용량/기여 확인\n")
+        sb.append("${MenuSymbols.HELP} **`/menu`** — 언제든 이 판을 다시 열기\n")
         if (isAdmin) {
-            sb.append("⚙️ **`설정`** 버튼(관리자) — 언어·기본모델·자동승인·허용채널을 드롭다운으로\n")
+            sb.append("${MenuSymbols.SETTINGS} **`설정`** 버튼(관리자) — 언어·기본모델·자동승인·허용채널을 드롭다운으로\n")
         }
         return sb.toString()
     }

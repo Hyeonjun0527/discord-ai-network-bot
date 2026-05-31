@@ -79,11 +79,7 @@ class CommandService(
                 AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, prompt, ctx.roleIds, isAdmin = ctx.isAdmin),
             )
         return when (result.state) {
-            RequestState.COMPLETED ->
-                Reply(
-                    "${result.text}\n\n_${privacy.processedNotice(ctx.guildId, result.effectiveBurden, result.providerId, ctx.isAdmin)}_",
-                    ephemeral = false,
-                )
+            RequestState.COMPLETED -> Reply(result.text.orEmpty(), ephemeral = false)
             RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
             else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
         }

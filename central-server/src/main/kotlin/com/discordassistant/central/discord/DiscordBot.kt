@@ -234,8 +234,11 @@ class DiscordBot(
             when (event.name) {
                 "menu" -> {
                     event
-                        .reply("🧭 **시작 패널** — 버튼으로 시작하세요!")
-                        .addComponents(ActionRow.of(MenuFactory.mainButtons(ctx.isAdmin)))
+                        .reply(
+                            "🤖 **AI에게 묻고, 함께 도와주기**\n\n" +
+                                "궁금한 건 AI에게 바로 물어보세요.\n" +
+                                "내 컴퓨터의 AI로 커뮤니티 질문 답변을 도울 수도 있어요.",
+                        ).addComponents(ActionRow.of(MenuFactory.mainButtons(ctx.isAdmin)))
                         .setEphemeral(true)
                         .queue()
                     return
@@ -244,8 +247,10 @@ class DiscordBot(
                     // 먼저 설치할 컴퓨터(OS)를 버튼으로 묻는다(차수 19). 클릭 → 그 OS 복붙 설치 명령.
                     event
                         .reply(
-                            "🖥️ **현재 채널에 돌릴 AI 일꾼이 되어봅니다** — 내 PC 의 로컬 AI 를 연결해요.\n" +
-                                "**설치할 컴퓨터**를 고르세요 (버튼 클릭 → 복붙용 명령).",
+                            "🖥️ **내 컴퓨터의 AI로 함께 도와주기**\n\n" +
+                                "내 컴퓨터에 있는 AI가 커뮤니티 질문에 답하는 일을 함께 도와줘요.\n" +
+                                "복잡한 설정은 안내를 따라 하면 되고, 원할 때 언제든 멈출 수 있어요.\n\n" +
+                                "**설치할 컴퓨터**를 고르세요. 버튼을 누르면 복사해서 붙여넣을 명령을 보여드릴게요.",
                         ).addComponents(ActionRow.of(MenuFactory.osButtons()))
                         .setEphemeral(true)
                         .queue()
@@ -354,8 +359,10 @@ class DiscordBot(
                     // '내 PC 기여' → 먼저 설치할 OS 를 버튼으로 묻는다(차수 19).
                     event
                         .reply(
-                            "🖥️ **현재 채널에 돌릴 AI 일꾼이 되어봅니다** — 내 PC 의 로컬 AI 를 연결해요.\n" +
-                                "**설치할 컴퓨터**를 고르세요 (버튼 클릭 → 복붙용 명령).",
+                            "🖥️ **내 컴퓨터의 AI로 함께 도와주기**\n\n" +
+                                "내 컴퓨터에 있는 AI가 커뮤니티 질문에 답하는 일을 함께 도와줘요.\n" +
+                                "복잡한 설정은 안내를 따라 하면 되고, 원할 때 언제든 멈출 수 있어요.\n\n" +
+                                "**설치할 컴퓨터**를 고르세요. 버튼을 누르면 복사해서 붙여넣을 명령을 보여드릴게요.",
                         ).addComponents(ActionRow.of(MenuFactory.osButtons()))
                         .setEphemeral(true)
                         .queue()

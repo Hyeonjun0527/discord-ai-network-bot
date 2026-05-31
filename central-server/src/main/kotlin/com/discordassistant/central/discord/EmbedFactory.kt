@@ -50,6 +50,21 @@ object EmbedFactory {
             .build()
 
     private val BLURPLE = Color(0x5865F2)
+    private val DEEP_INDIGO = Color(0x2F3BFF)
+    const val MENU_HERO_IMAGE_URL = "https://discord-ai.yeon.world/assets/nyassistant-menu-hero.png"
+
+    /** 시작 메뉴 Embed. 버튼 색보다 브랜드 이미지/정보 구조로 현대적인 톤을 잡는다. */
+    fun mainMenuEmbed(): MessageEmbed =
+        EmbedBuilder()
+            .setColor(DEEP_INDIGO)
+            .setTitle("냥시스턴트가 준비됐어요")
+            .setDescription(
+                "이 채널에서 AI에게 바로 질문하거나,\n" +
+                    "내 컴퓨터의 AI로 커뮤니티 답변을 함께 도울 수 있어요.\n\n" +
+                    "아래에서 원하는 작업을 선택해주세요.",
+            ).setImage(MENU_HERO_IMAGE_URL)
+            .setFooter("언제든 /menu 로 이 메뉴를 다시 열 수 있어요.")
+            .build()
 
     /**
      * 도움말 패널 Embed(역할별 섹션). 관리자에게만 관리자 필드 노출.
@@ -75,7 +90,7 @@ object EmbedFactory {
                         "${c("my-usage")} ${c("contributions")} — 내 사용량 · 기여 리더보드",
                     false,
                 ).addField(
-                    "🖥️ 프로바이더 (내 PC로 AI 일꾼 되기)",
+                    "🖥️ 프로바이더 (내 컴퓨터의 AI로 함께 도와주기)",
                     "${c("provider-join")} — 참여 신청(승인 후 토큰→에이전트 실행)\n" +
                         "${c("provider-status")} ${c("provider-pause")} ${c("provider-resume")} — 상태·가용성\n" +
                         "${c("provider-schedule")} — 가용 시간대 설정",

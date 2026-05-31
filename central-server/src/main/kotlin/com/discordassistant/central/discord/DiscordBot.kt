@@ -252,11 +252,8 @@ class DiscordBot(
             when (event.name) {
                 "menu" -> {
                     event
-                        .reply(
-                            "🤖 **AI에게 묻고, 함께 도와주기**\n\n" +
-                                "궁금한 건 AI에게 바로 물어보세요.\n" +
-                                "내 컴퓨터의 AI로 커뮤니티 질문 답변을 도울 수도 있어요.",
-                        ).addComponents(ActionRow.of(MenuFactory.mainButtons(ctx.isAdmin)))
+                        .replyEmbeds(EmbedFactory.mainMenuEmbed())
+                        .addComponents(ActionRow.of(MenuFactory.mainButtons(ctx.isAdmin)))
                         .setEphemeral(true)
                         .queue()
                     return
@@ -445,10 +442,8 @@ class DiscordBot(
         override fun onGuildJoin(event: GuildJoinEvent) {
             val channel = event.guild.systemChannel ?: return // 시스템 채널 없으면 스킵
             channel
-                .sendMessage(
-                    "👋 **커뮤니티 로컬 AI Provider Pool** 에 오신 걸 환영합니다!\n" +
-                        "버튼으로 바로 시작하세요. 언제든 `/menu` 로 이 패널을 다시 엽니다.",
-                ).setComponents(ActionRow.of(MenuFactory.mainButtons(isAdmin = true)))
+                .sendMessageEmbeds(EmbedFactory.mainMenuEmbed())
+                .setComponents(ActionRow.of(MenuFactory.mainButtons(isAdmin = true)))
                 .queue({}, {})
         }
 

@@ -176,7 +176,7 @@ class CommandService(
         sb.append("· `/models` `/catalog` — 사용 가능한 모델 수준·목록\n")
         sb.append("· `/my-usage` `/privacy` — 내 사용량 / 프라이버시 고지\n")
         sb.append("· `/contributions` — 기여 리더보드(비금전 인정)\n\n")
-        sb.append("__프로바이더(내 PC로 AI 일꾼 되기)__\n")
+        sb.append("__프로바이더(내 컴퓨터의 AI로 함께 도와주기)__\n")
         sb.append("· `/provider-join` — 참여 신청(승인 후 토큰→에이전트 실행)\n")
         sb.append("· `/provider-pause` `/provider-resume` `/provider-leave` — 가용성 제어\n")
         sb.append("· `/provider-status` `/provider-models` `/provider-limit` `/provider-scope` — 내 기여 설정\n")

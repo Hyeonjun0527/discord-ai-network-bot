@@ -16,6 +16,7 @@ import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionE
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
+import net.dv8tion.jda.api.interactions.Interaction
 import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.OptionType
@@ -29,6 +30,31 @@ import net.dv8tion.jda.api.requests.GatewayIntent
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+
+/**
+ * DM(봇과의 1:1 DM)에서도 쓸 수 있는 명령(차수 19): 질문/조회 + 프로바이더 셀프서비스. 관리자/정책 명령은 길드 전용.
+ * 이 명령들은 글로벌 + setGuildOnly(false)(봇 DM 허용)로 등록되고, DM 은 글로벌 풀(DM_SCOPE)로 라우팅된다.
+ * (JDA 5.2.1 은 신 user-install/InteractionContextType 미지원 — 친구끼리 DM/임의 서버 사용은 JDA 업그레이드 필요.)
+ */
+private val DM_COMMANDS =
+    setOf(
+        "ask",
+        "models",
+        "catalog",
+        "my-usage",
+        "contributions",
+        "community-stats",
+        "privacy",
+        "help",
+        "welcome",
+        "menu",
+        "ask-long",
+        "provider-join",
+        "provider-pause",
+        "provider-resume",
+        "provider-leave",
+        "provider-status",
+    )
 
 /**
  * Discord(JDA) 부트스트랩 + 슬래시 명령 등록/디스패치 (K-차수 13).
@@ -59,21 +85,14 @@ class DiscordBot(
                 .addEventListeners(Listener(commands, metrics))
                 .build()
         jda = instance
+        // 봇 DM 지원을 위해 항상 글로벌 등록(봇 DM 허용은 글로벌 명령 + dm_permission 으로 동작). 전파 최대 ~1h.
+        registerCommands(instance.updateCommands())
         if (guildId.isNotBlank()) {
-            // 길드 즉시 등록: READY 대기 후 해당 길드에 등록(전파 즉시 — 테스트/단일 서버 권장).
+            // 과거 길드-스코프로 등록한 명령이 남아 있으면 글로벌과 중복 표시되므로 비운다.
             instance.awaitReady()
-            val guild = instance.getGuildById(guildId)
-            if (guild != null) {
-                registerCommands(guild.updateCommands())
-                log.info("Discord 길드 {} 슬래시 명령 즉시 등록", guildId)
-            } else {
-                log.warn("길드 {} 를 못 찾음(봇이 그 서버에 없음?) — 글로벌 등록으로 폴백", guildId)
-                registerCommands(instance.updateCommands())
-            }
-        } else {
-            registerCommands(instance.updateCommands()) // 글로벌(전파 최대 ~1h)
+            instance.getGuildById(guildId)?.updateCommands()?.queue({}, {})
         }
-        log.info("Discord(JDA) 기동 완료")
+        log.info("Discord(JDA) 기동 완료 — 슬래시 명령 글로벌 등록(봇 DM 포함)")
     }
 
     @PreDestroy
@@ -190,6 +209,8 @@ class DiscordBot(
                 Commands.message("AI에게 질문"),
             )
         // 슬래시 명령을 클라이언트 언어(ko 기본/en/ru)로 로컬라이즈.
+        // 설치/컨텍스트(차수 19): DM 대상 명령은 봇 DM 허용(setGuildOnly=false), 그 외(관리자/정책)는 길드 전용.
+        cmds.forEach { cmd -> cmd.setGuildOnly(cmd.name !in DM_COMMANDS) }
         cmds
             .filterIsInstance<net.dv8tion.jda.api.interactions.commands.build.SlashCommandData>()
             .forEach { CommandLoc.localize(it) }
@@ -203,12 +224,12 @@ class DiscordBot(
     ) : ListenerAdapter() {
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
-            val guild =
-                event.guild ?: run {
-                    event.reply("서버에서만 사용할 수 있습니다.").setEphemeral(true).queue()
-                    return
-                }
-            val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
+            // DM(유저설치, 길드 없음)이면 글로벌 풀 스코프. 길드 전용 명령이 DM 으로 오면 막는다(방어적 — 컨텍스트로도 차단됨).
+            if (event.guild == null && event.name !in DM_COMMANDS) {
+                event.reply("이 명령은 서버에서만 사용할 수 있어요.").setEphemeral(true).queue()
+                return
+            }
+            val ctx = ctxOf(event)
             // 인터랙티브 명령은 컴포넌트/모달로 응답(온보딩/설정 판).
             when (event.name) {
                 "menu" -> {
@@ -219,8 +240,20 @@ class DiscordBot(
                         .queue()
                     return
                 }
+                "provider-join" -> {
+                    // 먼저 설치할 컴퓨터(OS)를 버튼으로 묻는다(차수 19). 클릭 → 그 OS 복붙 설치 명령.
+                    event
+                        .reply(
+                            "🖥️ **현재 채널에 돌릴 AI 일꾼이 되어봅니다** — 내 PC 의 로컬 AI 를 연결해요.\n" +
+                                "**설치할 컴퓨터**를 고르세요 (버튼 클릭 → 복붙용 명령).",
+                        ).addComponents(ActionRow.of(MenuFactory.osButtons()))
+                        .setEphemeral(true)
+                        .queue()
+                    return
+                }
                 "help" -> {
-                    event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin)).setEphemeral(true).queue()
+                    // 명령 이름을 보는 사람 클라이언트 언어로 표시(슬래시 메뉴와 일치).
+                    event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin, event.userLocale)).setEphemeral(true).queue()
                     return
                 }
                 "llm-settings" -> {
@@ -294,8 +327,7 @@ class DiscordBot(
 
         /** 패널 버튼: 온보딩(질문/기여/상태/도움말) + 설정. */
         override fun onButtonInteraction(event: ButtonInteractionEvent) {
-            val guild = event.guild ?: return
-            val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
+            val ctx = ctxOf(event) // DM(유저설치)에서도 패널 버튼 동작(관리자 버튼은 isAdmin=false 로 거부됨)
             when (event.componentId) {
                 MenuFactory.ASK -> {
                     // 질문하기 → 모달로 질문 입력
@@ -315,13 +347,29 @@ class DiscordBot(
                     return
                 }
                 MenuFactory.HELP, "settings:help" -> {
-                    event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin)).setEphemeral(true).queue()
+                    event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin, event.userLocale)).setEphemeral(true).queue()
+                    return
+                }
+                MenuFactory.PROVIDER -> {
+                    // '내 PC 기여' → 먼저 설치할 OS 를 버튼으로 묻는다(차수 19).
+                    event
+                        .reply(
+                            "🖥️ **현재 채널에 돌릴 AI 일꾼이 되어봅니다** — 내 PC 의 로컬 AI 를 연결해요.\n" +
+                                "**설치할 컴퓨터**를 고르세요 (버튼 클릭 → 복붙용 명령).",
+                        ).addComponents(ActionRow.of(MenuFactory.osButtons()))
+                        .setEphemeral(true)
+                        .queue()
                     return
                 }
             }
+            // OS 선택 → 그 OS 복붙 설치 명령(토큰 포함, ephemeral).
+            if (event.componentId.startsWith(MenuFactory.OS_PREFIX)) {
+                val os = event.componentId.removePrefix(MenuFactory.OS_PREFIX)
+                event.reply(commands.providerInstallGuide(ctx, os).content).setEphemeral(true).queue()
+                return
+            }
             val reply =
                 when (event.componentId) {
-                    MenuFactory.PROVIDER -> commands.providerJoin(ctx)
                     MenuFactory.STATUS -> commands.providerStatus(ctx)
                     MenuFactory.AUTO_APPROVE_ON -> commands.setAutoApprove(ctx, enabled = true)
                     MenuFactory.AUTO_APPROVE_OFF -> commands.setAutoApprove(ctx, enabled = false)
@@ -410,8 +458,7 @@ class DiscordBot(
         /** 긴 질문 모달 제출(#189). */
         override fun onModalInteraction(event: ModalInteractionEvent) {
             if (event.modalId != "ask-long-modal") return
-            val guild = event.guild ?: return
-            val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
+            val ctx = ctxOf(event) // DM(유저설치)에서도 긴 질문 모달 동작
             val prompt = event.getValue("prompt")?.asString.orEmpty()
             event.deferReply(false).queue()
             val reply = commands.ask(ctx, prompt)
@@ -434,6 +481,22 @@ class DiscordBot(
             when (event.emoji.formatted) {
                 "👍" -> metrics.record("reaction:up")
                 "👎" -> metrics.record("reaction:down")
+            }
+        }
+
+        /** 길드면 길드 컨텍스트, DM(유저설치)이면 글로벌 풀(DM_SCOPE) 컨텍스트 — 관리자/역할 없음. */
+        private fun ctxOf(interaction: Interaction): CommandContext {
+            val guild = interaction.guild
+            return if (guild != null) {
+                buildCtx(guild.idLong, interaction.member, interaction.channelIdLong, interaction.user.idLong)
+            } else {
+                CommandContext(
+                    guildId = CommandService.DM_SCOPE,
+                    channelId = interaction.channelIdLong,
+                    userId = interaction.user.idLong,
+                    roleIds = emptySet(),
+                    isAdmin = false,
+                )
             }
         }
 

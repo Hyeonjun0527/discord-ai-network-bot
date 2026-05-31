@@ -1,6 +1,8 @@
 package com.discordassistant.central.discord
 
 import com.discordassistant.central.domain.ProviderState
+import net.dv8tion.jda.api.entities.MessageEmbed
+import net.dv8tion.jda.api.interactions.DiscordLocale
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -41,6 +43,23 @@ class EmbedFactoryTest {
         assertFalse(user.fields.any { it.name?.contains("관리자") == true })
         assertTrue(EmbedFactory.helpEmbed(isAdmin = true).fields.any { it.name?.contains("관리자") == true })
         assertNotNull(user.footer)
+    }
+
+    private fun helpText(e: MessageEmbed) = e.description.orEmpty() + "\n" + e.fields.joinToString("\n") { it.value.orEmpty() }
+
+    @Test
+    fun `도움말 명령 이름은 보는 사람 로케일로 표시(ko=한국어 이름, en=ascii)`() {
+        val ko = helpText(EmbedFactory.helpEmbed(isAdmin = true, locale = DiscordLocale.KOREAN))
+        assertTrue(ko.contains("/질문"), ko) // ask
+        assertTrue(ko.contains("/메뉴")) // menu
+        assertTrue(ko.contains("/설정")) // llm-settings
+        assertTrue(ko.contains("/프로바이더승인")) // provider-approve(기존 /approve-provider 오타 교정 포함)
+        assertFalse(ko.contains("/ask"))
+
+        val en = helpText(EmbedFactory.helpEmbed(isAdmin = true, locale = DiscordLocale.ENGLISH_US))
+        assertTrue(en.contains("/ask"))
+        assertTrue(en.contains("/menu"))
+        assertFalse(en.contains("/질문"))
     }
 
     @Test

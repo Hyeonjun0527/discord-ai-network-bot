@@ -26,6 +26,20 @@ object MenuFactory {
     const val CHANNEL = "set:channel"
     const val CHANNEL_ALL = "set:channel-all"
 
+    // 프로바이더 참여 OS 선택(차수 19): 클릭하면 해당 OS 복붙 설치 명령을 보여준다. customId prefix "pjoin:".
+    const val OS_PREFIX = "pjoin:"
+    const val OS_MAC = "pjoin:mac"
+    const val OS_WINDOWS = "pjoin:windows"
+    const val OS_LINUX = "pjoin:linux"
+
+    /** 프로바이더 참여: 설치할 컴퓨터(OS) 선택 버튼. 클릭 → 그 OS 의 복붙 명령. */
+    fun osButtons(): List<Button> =
+        listOf(
+            Button.primary(OS_MAC, "macOS").withEmoji(Emoji.fromUnicode("🍎")),
+            Button.primary(OS_WINDOWS, "Windows").withEmoji(Emoji.fromUnicode("🪟")),
+            Button.secondary(OS_LINUX, "Linux").withEmoji(Emoji.fromUnicode("🐧")),
+        )
+
     /** 설정 패널 상단 안내 텍스트(현재 상태 포함). */
     fun settingsText(
         autoApprove: Boolean,
@@ -54,7 +68,7 @@ object MenuFactory {
         val base =
             listOf(
                 Button.primary(ASK, "질문하기").withEmoji(Emoji.fromUnicode("💬")),
-                Button.success(PROVIDER, "내 PC 기여").withEmoji(Emoji.fromUnicode("🖥️")),
+                Button.success(PROVIDER, "AI 일꾼 되기").withEmoji(Emoji.fromUnicode("🖥️")),
                 Button.secondary(STATUS, "내 상태").withEmoji(Emoji.fromUnicode("📊")),
                 Button.secondary(HELP, "도움말").withEmoji(Emoji.fromUnicode("❓")),
             )
@@ -97,7 +111,7 @@ object MenuFactory {
         val sb = StringBuilder()
         sb.append("**핵심만 빠르게** — 자세한 건 버튼으로!\n\n")
         sb.append("💬 **`/ask <질문>`** — 풀의 AI 에게 질문 (또는 위 `질문하기` 버튼)\n")
-        sb.append("🖥️ **`내 PC 기여`** 버튼 — 내 Ollama 를 풀에 연결(프로바이더)\n")
+        sb.append("🖥️ **`AI 일꾼 되기`** 버튼 — 내 PC 로컬 AI 를 이 서버의 일꾼으로(프로바이더)\n")
         sb.append("📊 **`내 상태`** 버튼 — 내 사용량/기여 확인\n")
         sb.append("🧭 **`/menu`** — 언제든 이 판을 다시 열기\n")
         if (isAdmin) {

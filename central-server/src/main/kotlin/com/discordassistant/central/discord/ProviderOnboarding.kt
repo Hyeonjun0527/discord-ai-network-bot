@@ -9,6 +9,47 @@ object ProviderOnboarding {
     // 단일 실행파일 다운로드 — 우리 도메인에서 직접 서빙(레포 비공개 유지). agent-build 가 원격에 배치.
     private const val DL = "https://central.dailyting.cloud/download"
 
+    /**
+     * OS 선택(버튼) 후 보여줄 **복붙용 설치 명령**(차수 19 UX). Ollama 설치 → 모델 받기 → 에이전트 실행까지 한 블록.
+     * macOS/Linux 는 터미널, Windows 는 PowerShell(관리자) 기준. 토큰은 ⏳ 10분·1회용.
+     */
+    fun installCommand(
+        os: String,
+        token: String,
+        relayUrl: String,
+    ): String {
+        val relay = relayUrl.ifBlank { "wss://<관리자에게 문의>/agent" }
+        val note = "\n토큰은 ⏳ **10분·1회용**. 연결되면 `/내상태`(provider-status)로 확인하세요. **민감정보 입력 금지.**"
+        return when (os.lowercase()) {
+            "mac", "macos" ->
+                "🍎 **macOS** — 터미널에 그대로 붙여넣기:\n" +
+                    "```bash\n" +
+                    "brew install ollama\n" +
+                    "brew services start ollama\n" +
+                    "ollama pull llama3.1:8b\n" +
+                    "curl -L -o provider-agent $DL/discord-ai-provider-agent-macos && chmod +x provider-agent\n" +
+                    "./provider-agent --token $token --relay-url $relay\n" +
+                    "```" + note
+            "windows", "win" ->
+                "🪟 **Windows** — PowerShell(관리자)에 붙여넣기:\n" +
+                    "```powershell\n" +
+                    "winget install --id Ollama.Ollama -e --accept-source-agreements\n" +
+                    "ollama pull llama3.1:8b\n" +
+                    "Invoke-WebRequest $DL/discord-ai-provider-agent-windows.exe -OutFile provider-agent.exe\n" +
+                    ".\\provider-agent.exe --token $token --relay-url $relay\n" +
+                    "```" + note
+            "linux" ->
+                "🐧 **Linux** — 터미널에 붙여넣기:\n" +
+                    "```bash\n" +
+                    "curl -fsSL https://ollama.com/install.sh | sh\n" +
+                    "ollama pull llama3.1:8b\n" +
+                    "curl -L -o provider-agent $DL/discord-ai-provider-agent-linux && chmod +x provider-agent\n" +
+                    "./provider-agent --token $token --relay-url $relay\n" +
+                    "```" + note
+            else -> message(token, relayUrl) // 알 수 없는 OS → 전체 안내로 폴백
+        }
+    }
+
     fun message(
         token: String,
         relayUrl: String,

@@ -48,6 +48,12 @@ class CommandService(
     private val relayPublicUrl: String = "",
 ) {
     companion object {
+        /**
+         * DM/유저설치(길드 없음)용 글로벌 풀 스코프 sentinel(차수 19). 실제 길드 ID 는 큰 snowflake 라 0 과 충돌하지 않는다.
+         * DM 에서 /provider-join 한 사람들이 이 스코프(byGuild(0))로 하나의 공용 풀을 이루고, DM /ask 는 이 풀로 라우팅된다.
+         */
+        const val DM_SCOPE = 0L
+
         const val PRIVACY_NOTICE =
             "이 서버는 커뮤니티 로컬 AI Provider Pool 을 사용합니다. 질문 내용은 요청을 처리하는 " +
                 "커뮤니티 프로바이더의 PC 로 전송될 수 있습니다. 비밀번호·API 키·개인정보·비공개 문서 등 " +
@@ -173,7 +179,7 @@ class CommandService(
         sb.append("· `/models` `/catalog` — 사용 가능한 모델 수준·목록\n")
         sb.append("· `/my-usage` `/privacy` — 내 사용량 / 프라이버시 고지\n")
         sb.append("· `/contributions` — 기여 리더보드(비금전 인정)\n\n")
-        sb.append("__프로바이더(내 PC 를 풀에 기여)__\n")
+        sb.append("__프로바이더(내 PC로 AI 일꾼 되기)__\n")
         sb.append("· `/provider-join` — 참여 신청(승인 후 토큰→에이전트 실행)\n")
         sb.append("· `/provider-pause` `/provider-resume` `/provider-leave` — 가용성 제어\n")
         sb.append("· `/provider-status` `/provider-models` `/provider-limit` `/provider-scope` — 내 기여 설정\n")
@@ -190,12 +196,31 @@ class CommandService(
 
     // ── 프로바이더 ──────────────────────────────────────────────────────
     fun providerJoin(ctx: CommandContext): Reply {
-        val auto = policy.isAutoApprove(ctx.guildId)
+        // DM 글로벌 풀은 승인할 관리자가 없으므로 자동 승인(본인 PC 를 자발적으로 기여). 길드는 기존 정책대로.
+        val auto = ctx.guildId == DM_SCOPE || policy.isAutoApprove(ctx.guildId)
         val r = registration.requestJoin(ctx.userId, ctx.guildId, autoApprove = auto)
         return if (r.token != null) {
             Reply(ProviderOnboarding.message(r.token, relayPublicUrl), ephemeral = true)
         } else {
             Reply("📋 등록 요청이 접수되었습니다(${r.state}). 관리자 승인을 기다려 주세요.")
+        }
+    }
+
+    /**
+     * OS 선택(버튼) 후 설치 가이드(차수 19). 등록(멱등) 후 토큰을 발급해 그 OS 의 복붙 명령을 반환한다.
+     * 수동 승인 길드에서 아직 미승인이면 승인 대기를 안내(승인 후 DM 으로 안내).
+     */
+    fun providerInstallGuide(
+        ctx: CommandContext,
+        os: String,
+    ): Reply {
+        val auto = ctx.guildId == DM_SCOPE || policy.isAutoApprove(ctx.guildId)
+        val join = registration.requestJoin(ctx.userId, ctx.guildId, autoApprove = auto)
+        val token = join.token ?: registration.reissueToken(ctx.userId, ctx.guildId)
+        return if (token != null) {
+            Reply(ProviderOnboarding.installCommand(os, token, relayPublicUrl), ephemeral = true)
+        } else {
+            Reply("📋 등록 요청이 접수되었습니다(${join.state}). 관리자 승인 후 DM 으로 설치 안내를 보냅니다.", ephemeral = true)
         }
     }
 

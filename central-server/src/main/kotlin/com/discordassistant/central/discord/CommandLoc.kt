@@ -58,6 +58,23 @@ object CommandLoc {
             "ask-long" to L("긴질문", null, "Enter a long question via modal", "Длинный вопрос (модальное окно)"),
         )
 
+    /**
+     * 명령 표시 이름을 보는 사람의 클라이언트 로케일에 맞춰 반환(슬래시 메뉴에 보이는 이름과 일치시키기 위함).
+     * 도움말/안내 문구에서 `/명령` 을 적을 때 사용 — ko 면 한국어 이름, ru 면 러시아어 이름, 그 외는 기본 ascii.
+     * 표에 없는 명령은 기본 이름을 그대로 돌려준다.
+     */
+    fun localName(
+        base: String,
+        locale: DiscordLocale,
+    ): String {
+        val l = TABLE[base] ?: return base
+        return when (locale) {
+            DiscordLocale.KOREAN -> l.nameKo
+            DiscordLocale.RUSSIAN -> l.nameRu ?: base
+            else -> base
+        }
+    }
+
     /** 슬래시 명령에 이름/설명 로컬라이제이션 적용(있는 항목만). 기본 설명은 한국어로 이미 설정됨. */
     fun localize(cmd: SlashCommandData) {
         val l = TABLE[cmd.name] ?: return

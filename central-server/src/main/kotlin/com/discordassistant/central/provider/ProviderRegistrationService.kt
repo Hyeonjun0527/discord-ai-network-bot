@@ -56,6 +56,18 @@ class ProviderRegistrationService(
         }
     }
 
+    /**
+     * 이미 승인된 프로바이더에게 새 일회용 토큰을 발급한다(차수 19, OS 선택 재클릭/설치 명령 재요청 시).
+     * 승인 상태가 아니면 null.
+     */
+    fun reissueToken(
+        providerId: Long,
+        guildId: Long,
+    ): String? {
+        val rec = providers[providerId] ?: return null
+        return if (rec.state == ProviderState.APPROVED) tokens.issue(providerId, rec.guildId) else null
+    }
+
     /** 관리자 승인(PENDING → APPROVED). 승인 토큰(평문) 반환, 실패 시 null. */
     fun approve(
         providerId: Long,

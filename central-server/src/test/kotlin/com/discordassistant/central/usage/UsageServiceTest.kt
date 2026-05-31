@@ -37,4 +37,15 @@ class UsageServiceTest
             assertEquals(2, svc.providerFailures(9))
             assertNotNull(svc.providerFailures(9))
         }
+
+        @Test
+        fun `기여 집계는 길드별 모든 기여자를 영구 집계한다`() {
+            svc.recordSuccess(guildId = 100, userId = 5, providerId = 10, requestId = "r1")
+            svc.recordSuccess(guildId = 100, userId = 6, providerId = 10, requestId = "r2")
+            svc.recordSuccess(guildId = 100, userId = 7, providerId = 20, requestId = "r3")
+            svc.recordSuccess(guildId = 200, userId = 8, providerId = 10, requestId = "r4")
+
+            assertEquals(listOf(10L to 2L, 20L to 1L), svc.providerContributions(100))
+            assertEquals(3, svc.totalContributions(100))
+        }
     }

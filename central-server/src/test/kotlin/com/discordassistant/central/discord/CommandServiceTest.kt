@@ -6,6 +6,7 @@ import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
+import com.discordassistant.central.usage.UsageService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -32,6 +33,7 @@ class CommandServiceTest
     constructor(
         val commands: CommandService,
         val registry: ConnectionRegistry,
+        val usage: UsageService,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -106,6 +108,20 @@ class CommandServiceTest
             assertTrue(r.content.contains("익명 집계"))
             assertTrue(r.content.contains("활성 프로바이더"))
             assertTrue(!r.ephemeral) // 공개 통계
+        }
+
+        @Test
+        fun `contributions — 오프라인이어도 한 번 기여한 사람은 영구 표시`() {
+            val c = CommandContext(guildId = 9900, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = false)
+            usage.recordSuccess(guildId = c.guildId, userId = 1, providerId = 101, requestId = "pc1")
+            usage.recordSuccess(guildId = c.guildId, userId = 2, providerId = 101, requestId = "pc2")
+            usage.recordSuccess(guildId = c.guildId, userId = 3, providerId = 202, requestId = "pc3")
+
+            val reply = commands.contributions(c)
+            assertTrue(reply.content.contains("<@101> — 2건"))
+            assertTrue(reply.content.contains("<@202> — 1건"))
+            assertTrue(reply.content.contains("오프라인이어도 계속 기록"))
+            assertFalse(reply.ephemeral)
         }
 
         @Test

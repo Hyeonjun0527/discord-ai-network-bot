@@ -78,6 +78,22 @@ interface UsageLogRepository : JpaRepository<UsageLogEntity, Long> {
 
 interface ContributionLogRepository : JpaRepository<ContributionLogEntity, Long> {
     fun countByProviderId(providerId: Long): Long
+
+    @org.springframework.data.jpa.repository.Query(
+        """
+        select c.providerId as providerId, count(c) as contributionCount
+        from ContributionLogEntity c
+        where c.guildId = :guildId
+        group by c.providerId
+        order by count(c) desc, c.providerId asc
+        """,
+    )
+    fun countByGuildIdGrouped(guildId: Long): List<ProviderContributionSummary>
+}
+
+interface ProviderContributionSummary {
+    val providerId: Long
+    val contributionCount: Long
 }
 
 interface ProviderHealthRepository : JpaRepository<ProviderHealthEntity, Long> {

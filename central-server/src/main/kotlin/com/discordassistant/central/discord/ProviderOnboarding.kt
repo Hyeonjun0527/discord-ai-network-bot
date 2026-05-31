@@ -7,10 +7,10 @@ package com.discordassistant.central.discord
  */
 object ProviderOnboarding {
     // 단일 실행파일 다운로드 — 우리 도메인에서 직접 서빙(레포 비공개 유지). agent-build 가 원격에 배치.
-    private const val DL = "https://central.dailyting.cloud/download"
+    private const val DL = "https://discord-ai.yeon.world/download"
 
     // 설치 랜딩 페이지(차수 19) — OS별 복붙 명령 + 소스 코드 버튼. 링크만 던지지 않고 정제된 가이드로 안내.
-    const val INSTALL_PAGE = "https://central.dailyting.cloud/install"
+    const val INSTALL_PAGE = "https://discord-ai.yeon.world/install"
 
     /**
      * OS 선택(버튼) 후 보여줄 **복붙용 설치 명령**(차수 19 UX). Ollama 설치 → 모델 받기 → 에이전트 실행까지 한 블록.

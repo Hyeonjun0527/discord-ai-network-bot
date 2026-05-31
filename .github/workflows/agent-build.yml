@@ -81,7 +81,7 @@ jobs:
           name: provider-agent ${{ github.ref_name }}
           body: |
             커뮤니티 Provider Agent — 내 PC 의 Ollama 를 풀에 연결하는 단일 실행파일.
-            자기 OS 파일을 받아 `--token <토큰> --relay-url wss://central.dailyting.cloud/agent` 로 실행하세요.
+            자기 OS 파일을 받아 `--token <토큰> --relay-url wss://discord-ai.yeon.world/agent` 로 실행하세요.
           files: |
             provider-agent/dist/discord-ai-provider-agent-*
             provider-agent/dist/SHA256SUMS-*.txt

@@ -17,7 +17,7 @@ push(central-server/**) ─▶ build (ubuntu-latest)
                               └─ docker compose pull + up -d + 헬스(/actuator/health==UP)
 ```
 - 프로젝트명 `central-server` 로 격리 → 호스트의 dailyting 서비스와 충돌 없음.
-- 포트 `127.0.0.1:8080`. 토큰 없으면 Discord 만 비활성, 서버는 기동.
+- 포트 `127.0.0.1:8085`. 토큰 없으면 Discord 만 비활성, 서버는 기동.
 
 ## GitHub Secrets
 | 시크릿 | 상태 | 설명 |
@@ -50,8 +50,9 @@ ssh linuxssh.dailyting.cloud 'sudo systemctl status actions.runner.*dailyting-re
 
 ## 원격 프로바이더 노출(후속)
 원격 PC 의 provider-agent 가 WS(`/agent`)로 붙으려면 central 을 공개해야 한다. 이 서버는
-Cloudflare Tunnel 로 노출하므로, 터널 ingress 에 호스트네임 → `http://localhost:8080` 라우팅을
+Cloudflare Tunnel 로 노출하므로, 터널 ingress 에 호스트네임 → `http://localhost:8085` 라우팅을
 추가하고, 에이전트는 `--relay-url wss://<호스트네임>/agent` 로 접속한다.
+현재 정식 호스트는 `discord-ai.yeon.world` (`discordai.yeon.world`는 별칭/리다이렉트만 허용 가능).
 
 ## 운영
 ```bash

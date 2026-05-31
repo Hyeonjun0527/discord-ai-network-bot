@@ -118,21 +118,21 @@ class CommandService(
     }
 
     fun contributions(ctx: CommandContext): Reply {
-        val pool = registry.byGuild(ctx.guildId)
-        if (pool.isEmpty()) return Reply("아직 연결된 프로바이더가 없습니다.")
-        val ranked =
-            pool
-                .map { it.providerId to usage.providerContributionCount(it.providerId) }
-                .sortedByDescending { it.second }
+        val ranked = usage.providerContributions(ctx.guildId)
+        if (ranked.isEmpty()) return Reply("아직 누적 기여가 없습니다.")
         val lines = ranked.mapIndexed { i, (pid, c) -> "${i + 1}. <@$pid> — ${c}건" }.joinToString("\n")
-        return Reply("🏆 커뮤니티 기여 리더보드\n$lines\n\n_기여는 비금전 인정입니다. 고마워요!_", ephemeral = false)
+        return Reply(
+            "🏆 커뮤니티 기여 리더보드\n$lines\n\n" +
+                "_한 번이라도 기여한 사람은 오프라인이어도 계속 기록됩니다. 기여는 비금전 인정입니다. 고마워요!_",
+            ephemeral = false,
+        )
     }
 
     /** 익명 커뮤니티 기여 통계(차수 12 #177). 개별 식별정보 없이 집계만 공개. */
     fun communityStats(ctx: CommandContext): Reply {
         val pool = registry.byGuild(ctx.guildId)
         val providerCount = pool.size
-        val totalContrib = pool.sumOf { usage.providerContributionCount(it.providerId) }
+        val totalContrib = usage.totalContributions(ctx.guildId)
         val models = pool.flatMap { it.capability.models }.distinct().size
         return Reply(
             "📊 커뮤니티 기여(익명 집계)\n" +

@@ -36,7 +36,7 @@ class UsageService(
     ) {
         val now = Instant.now()
         usage.save(UsageLogEntity(guildId = guildId, userId = userId, requestId = requestId, createdAt = now))
-        contribution.save(ContributionLogEntity(providerId = providerId, requestId = requestId, createdAt = now))
+        contribution.save(ContributionLogEntity(guildId = guildId, providerId = providerId, requestId = requestId, createdAt = now))
     }
 
     @Transactional
@@ -74,6 +74,11 @@ class UsageService(
     ): Long = usage.countByGuildIdAndUserId(guildId, userId)
 
     fun providerContributionCount(providerId: Long): Long = contribution.countByProviderId(providerId)
+
+    fun providerContributions(guildId: Long): List<Pair<Long, Long>> =
+        contribution.countByGuildIdGrouped(guildId).map { it.providerId to it.contributionCount }
+
+    fun totalContributions(guildId: Long): Long = providerContributions(guildId).sumOf { it.second }
 
     fun providerFailures(providerId: Long): Int = health.findByProviderId(providerId)?.failures ?: 0
 }

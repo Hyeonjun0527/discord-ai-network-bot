@@ -35,8 +35,8 @@ class CommandServiceCoverageTest
         }
 
         @Test
-        fun `contributions — 빈 풀 안내`() {
-            assertTrue(commands.contributions(user()).content.contains("아직 연결된 프로바이더가 없습니다"))
+        fun `contributions — 누적 기여가 없으면 안내`() {
+            assertTrue(commands.contributions(user()).content.contains("아직 누적 기여가 없습니다"))
         }
 
         @Test

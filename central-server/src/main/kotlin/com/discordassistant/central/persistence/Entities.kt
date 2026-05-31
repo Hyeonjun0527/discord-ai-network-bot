@@ -107,6 +107,7 @@ class UsageLogEntity(
 @Table(name = "contribution_log")
 class ContributionLogEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
     var providerId: Long = 0,
     var requestId: String = "",
     var createdAt: Instant = Instant.EPOCH,

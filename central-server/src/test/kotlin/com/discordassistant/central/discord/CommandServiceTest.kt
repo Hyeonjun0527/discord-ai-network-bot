@@ -151,7 +151,9 @@ class CommandServiceTest
             registry.register(s)
             try {
                 val r = commands.ask(ctx(), "코드 설명")
-                assertTrue(r.content.contains("echo:코드 설명"), r.content)
+                assertEquals("echo:코드 설명", r.content)
+                assertFalse(r.content.contains("커뮤니티 풀 처리"), r.content)
+                assertFalse(r.content.contains("provider #"), r.content)
             } finally {
                 registry.unregister(s)
             }

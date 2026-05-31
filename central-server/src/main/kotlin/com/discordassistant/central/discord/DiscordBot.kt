@@ -90,9 +90,12 @@ class DiscordBot(
         // 봇 DM 지원을 위해 항상 글로벌 등록(봇 DM 허용은 글로벌 명령 + dm_permission 으로 동작). 전파 최대 ~1h.
         registerCommands(instance.updateCommands())
         if (guildId.isNotBlank()) {
-            // 과거 길드-스코프로 등록한 명령이 남아 있으면 글로벌과 중복 표시되므로 비운다.
+            // 운영 길드에는 같은 명령을 길드 스코프로도 등록해 신규/변경 명령이 즉시 보이게 한다.
+            // 같은 이름의 길드 명령은 해당 길드에서 글로벌 명령보다 우선 노출된다.
             instance.awaitReady()
-            instance.getGuildById(guildId)?.updateCommands()?.queue({}, {})
+            instance.getGuildById(guildId)?.let { guild ->
+                registerCommands(guild.updateCommands())
+            }
         }
         log.info("Discord(JDA) 기동 완료 — 슬래시 명령 글로벌 등록(봇 DM 포함)")
     }

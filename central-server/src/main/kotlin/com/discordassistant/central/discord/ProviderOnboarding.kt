@@ -6,8 +6,8 @@ package com.discordassistant.central.discord
  * Discord 2000자 제한 안에서 핵심만.
  */
 object ProviderOnboarding {
-    // 단일 실행파일 다운로드 — 우리 도메인에서 직접 서빙(레포 비공개 유지). agent-build 가 원격에 배치.
-    private const val DL = "https://discord-ai.yeon.world/download"
+    // 단일 실행파일 다운로드 — 사용자가 신뢰할 수 있게 GitHub Releases 자산으로 안내한다.
+    private const val DL = "https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download"
 
     // 설치 랜딩 페이지(차수 19) — OS별 복붙 명령 + 소스 코드 버튼. 링크만 던지지 않고 정제된 가이드로 안내.
     const val INSTALL_PAGE = "https://discord-ai.yeon.world/install"
@@ -24,7 +24,7 @@ object ProviderOnboarding {
         val relay = relayUrl.ifBlank { "wss://<관리자에게 문의>/agent" }
         val note =
             "\n토큰은 ⏳ **10분·1회용**. 연결되면 `/내상태`(provider-status)로 확인하세요. " +
-                "📄 웹 가이드·소스: $INSTALL_PAGE · **민감정보 입력 금지.**"
+                "📄 웹 가이드·GitHub Release: $INSTALL_PAGE · **민감정보 입력 금지.**"
         return when (os.lowercase()) {
             "mac", "macos" ->
                 "🍎 **macOS** — 먼저 터미널을 여세요: `⌘ Space` → `Terminal` 입력 → Enter / 또는 Finder → 응용 프로그램 → 유틸리티 → 터미널.\n" +
@@ -68,7 +68,7 @@ object ProviderOnboarding {
         val sb = StringBuilder()
         sb.append("🖥️ **프로바이더로 승인되었습니다!** 내 PC 로컬 AI 를 풀에 연결하기:\n\n")
         sb.append("**1) 설치 가이드 열기** → $INSTALL_PAGE\n")
-        sb.append("   내 OS 탭(macOS/Windows/Linux)에서 **복붙 명령**을 그대로 복사하세요(소스 코드도 거기서 볼 수 있어요).\n\n")
+        sb.append("   내 OS 탭(macOS/Windows/Linux)에서 **GitHub Release 다운로드 명령**을 그대로 복사하세요.\n\n")
         sb.append("**2) 명령의 토큰 자리에 아래 값을 넣어 실행** (⏳ **10분·1회용**):\n")
         sb.append("```\n--token $token --relay-url $relay\n```\n")
         sb.append("연결되면 `/provider-status` 로 확인. ")

@@ -10,6 +10,8 @@ class ProviderOnboardingInstallTest {
     fun `macOS — brew + 바이너리 + 토큰·relay`() {
         val s = ProviderOnboarding.installCommand("mac", "TOK-123", "wss://relay.example/agent")
         assertTrue(s.contains("brew install ollama"), s)
+        assertTrue(s.contains("releases/latest/download/discord-ai-provider-agent-macos"), s)
+        assertFalse(s.contains("discord-ai.yeon.world/download"), s)
         assertTrue(s.contains("curl -L -o discord-ai-provider-agent-macos"), s)
         assertTrue(s.contains("chmod +x discord-ai-provider-agent-macos"), s)
         assertTrue(s.contains("./discord-ai-provider-agent-macos"), s)
@@ -23,6 +25,8 @@ class ProviderOnboardingInstallTest {
     fun `Windows — winget + PowerShell(관리자) + exe`() {
         val s = ProviderOnboarding.installCommand("windows", "TOK", "wss://r/agent")
         assertTrue(s.contains("winget install"), s)
+        assertTrue(s.contains("releases/latest/download/discord-ai-provider-agent-windows.exe"), s)
+        assertFalse(s.contains("discord-ai.yeon.world/download"), s)
         assertTrue(s.contains("discord-ai-provider-agent-windows.exe"), s)
         assertTrue(s.contains(".\\discord-ai-provider-agent-windows.exe"), s)
         assertFalse(s.contains("discord-ai-provider-agent-macos"), s)
@@ -37,6 +41,8 @@ class ProviderOnboardingInstallTest {
     fun `Linux — install_sh + linux 바이너리`() {
         val s = ProviderOnboarding.installCommand("linux", "TOK", "")
         assertTrue(s.contains("ollama.com/install.sh"), s)
+        assertTrue(s.contains("releases/latest/download/discord-ai-provider-agent-linux"), s)
+        assertFalse(s.contains("discord-ai.yeon.world/download"), s)
         assertTrue(s.contains("curl -L -o discord-ai-provider-agent-linux"), s)
         assertTrue(s.contains("chmod +x discord-ai-provider-agent-linux"), s)
         assertTrue(s.contains("./discord-ai-provider-agent-linux"), s)

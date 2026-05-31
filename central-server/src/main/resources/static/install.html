@@ -214,11 +214,11 @@
 <span class="k">brew</span> install ollama
 <span class="k">brew</span> services start ollama
 <span class="k">ollama</span> pull llama3.1:8b
-<span class="c"># 2) 에이전트 받기(터미널 curl → Gatekeeper 경고 없음) + 실행</span>
-<span class="k">curl</span> -L -o discord-ai-provider-agent-macos https://discord-ai.yeon.world/download/discord-ai-provider-agent-macos && <span class="k">chmod</span> +x discord-ai-provider-agent-macos
+<span class="c"># 2) 에이전트 받기(GitHub Release) + 실행</span>
+<span class="k">curl</span> -L -o discord-ai-provider-agent-macos https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/discord-ai-provider-agent-macos && <span class="k">chmod</span> +x discord-ai-provider-agent-macos
 <span class="k">./discord-ai-provider-agent-macos</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
         </div>
-        <div class="note"><span class="ic">!</span><p><b>Gatekeeper 경고가 떴다면?</b> 브라우저로 직접 받아 더블클릭한 경우입니다. 위 <b>터미널 <code>curl</code> 명령</b>으로 받으면 경고가 뜨지 않습니다. 이미 받았다면 <code>xattr -dr com.apple.quarantine ./discord-ai-provider-agent-macos</code> 로 해제하세요. (이건 GUI 앱이 아니라 <b>터미널에서 실행</b>하는 도구라 더블클릭하면 안 됩니다.)</p></div>
+        <div class="note"><span class="ic">!</span><p><b>Gatekeeper 경고가 떴다면?</b> 브라우저로 직접 받아 더블클릭한 경우입니다. 위 <b>GitHub Release <code>curl</code> 명령</b>으로 받으면 출처를 확인할 수 있습니다. 이미 받았다면 <code>xattr -dr com.apple.quarantine ./discord-ai-provider-agent-macos</code> 로 해제하세요. (이건 GUI 앱이 아니라 <b>터미널에서 실행</b>하는 도구라 더블클릭하면 안 됩니다.)</p></div>
       </div>
 
       <div class="panel" data-os="win">
@@ -229,8 +229,8 @@
           <pre><code class="sh" id="cmd-win"><span class="c"># 1) Ollama 설치 + 모델</span>
 <span class="k">winget</span> install --id Ollama.Ollama -e --accept-source-agreements
 <span class="k">ollama</span> pull llama3.1:8b
-<span class="c"># 2) 에이전트 받기 + 실행</span>
-<span class="k">Invoke-WebRequest</span> https://discord-ai.yeon.world/download/discord-ai-provider-agent-windows.exe -OutFile discord-ai-provider-agent-windows.exe
+<span class="c"># 2) 에이전트 받기(GitHub Release) + 실행</span>
+<span class="k">Invoke-WebRequest</span> https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/discord-ai-provider-agent-windows.exe -OutFile discord-ai-provider-agent-windows.exe
 <span class="k">.\discord-ai-provider-agent-windows.exe</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
         </div>
         <div class="note"><span class="ic">!</span><p><b>PowerShell을 관리자 권한</b>으로 실행한 뒤 붙여넣으세요. SmartScreen 경고가 뜨면 <b>추가 정보 → 실행</b>을 누르면 됩니다.</p></div>
@@ -244,8 +244,8 @@
           <pre><code class="sh" id="cmd-linux"><span class="c"># 1) Ollama 설치 + 모델</span>
 <span class="k">curl</span> -fsSL https://ollama.com/install.sh | sh
 <span class="k">ollama</span> pull llama3.1:8b
-<span class="c"># 2) 에이전트 받기 + 실행</span>
-<span class="k">curl</span> -L -o discord-ai-provider-agent-linux https://discord-ai.yeon.world/download/discord-ai-provider-agent-linux && <span class="k">chmod</span> +x discord-ai-provider-agent-linux
+<span class="c"># 2) 에이전트 받기(GitHub Release) + 실행</span>
+<span class="k">curl</span> -L -o discord-ai-provider-agent-linux https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/discord-ai-provider-agent-linux && <span class="k">chmod</span> +x discord-ai-provider-agent-linux
 <span class="k">./discord-ai-provider-agent-linux</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
         </div>
         <div class="note"><span class="ic">!</span><p>대부분의 배포판에서 그대로 동작합니다. <code>systemd</code> 서비스로 상시 구동하려면 소스 코드의 <code>packaging/</code> 가이드를 참고하세요.</p></div>

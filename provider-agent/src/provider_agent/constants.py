@@ -11,7 +11,7 @@ PROTOCOL_VERSION: Final[str] = "1.0"
 MAX_FRAME_BYTES: Final[int] = 1_000_000
 MAX_PROMPT_CHARS: Final[int] = 100_000
 
-AGENT_VERSION: Final[str] = "0.1.0"
+AGENT_VERSION: Final[str] = "0.1.1"
 
 
 class FrameType:

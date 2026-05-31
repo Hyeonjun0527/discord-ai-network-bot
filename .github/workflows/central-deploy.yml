@@ -3,9 +3,8 @@
 # build(ubuntu-latest): bootJar → arm64 이미지 GHCR push(QEMU).  deploy(self-hosted: yeon-arm): pull → compose up → 헬스.
 #
 # 필요한 GitHub Secrets:
-#   CENTRAL_DB_PASSWORD  (✅ 설정됨) — Postgres 비밀번호
-#   DISCORD_BOT_TOKEN    (사용자) — 봇 토큰. 없으면 서버는 뜨되 Discord 만 비활성.
-#   DISCORD_GUILD_ID     (선택) — 즉시 명령 등록용 서버 ID(없으면 글로벌 ~1h).
+#   ENV_FILE — 운영 .env 전체(CENTRAL_DB_PASSWORD, DISCORD_BOT_TOKEN, DISCORD_GUILD_ID,
+#              RELAY_PUBLIC_URL 등 앱 런타임 환경변수). 앱 시크릿은 이 하나로만 관리한다.
 # GHCR pull 은 self-hosted 러너의 GITHUB_TOKEN 으로 처리(추가 PAT 불필요).
 name: central-server CI/CD (원격 배포)
 
@@ -70,10 +69,7 @@ jobs:
         env:
           IMAGE: ${{ env.IMAGE }}
           GIT_SHA: ${{ github.sha }}
-          CENTRAL_DB_PASSWORD: ${{ secrets.CENTRAL_DB_PASSWORD }}
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
-          RELAY_PUBLIC_URL: ${{ secrets.RELAY_PUBLIC_URL }}
+          ENV_FILE: ${{ secrets.ENV_FILE }}
           APP_PORT: ${{ env.APP_PORT }}
           SERVER_PORT: "8085"
         run: |
@@ -83,16 +79,19 @@ jobs:
           cp central-server/deploy/compose.remote.yml "$DEST/compose.yml"
           cd "$DEST"
           umask 077
-          cat > .env <<ENV
-          CENTRAL_IMAGE=${IMAGE}:${GIT_SHA}
-          CENTRAL_DB_PASSWORD=${CENTRAL_DB_PASSWORD}
-          DISCORD_ENABLED=true
-          DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
-          DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
-          RELAY_PUBLIC_URL=${RELAY_PUBLIC_URL:-wss://discord-ai.yeon.world/agent}
-          SERVER_PORT=${SERVER_PORT}
-          APP_PORT=${APP_PORT}
-          ENV
+          if [ -z "${ENV_FILE:-}" ]; then
+            echo "❌ ENV_FILE GitHub secret 이 비어 있습니다."
+            exit 1
+          fi
+          printf '%s\n' "$ENV_FILE" > .env
+          tr -d '\r' < .env > .env.tmp && mv .env.tmp .env
+          awk '!/^(CENTRAL_IMAGE|SERVER_PORT|APP_PORT)=/' .env > .env.tmp
+          mv .env.tmp .env
+          {
+            echo "CENTRAL_IMAGE=${IMAGE}:${GIT_SHA}"
+            echo "SERVER_PORT=${SERVER_PORT}"
+            echo "APP_PORT=${APP_PORT}"
+          } >> .env
           retry() {
             name="$1"
             shift

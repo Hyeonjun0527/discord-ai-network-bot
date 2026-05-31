@@ -90,7 +90,7 @@ jobs:
   # (레포 비공개 유지: 같은 run 의 아티팩트를 받아 self-hosted 러너에서 복사 — 토큰/공개 불필요)
   publish-central:
     needs: build
-    runs-on: [self-hosted, dailyting-remote]
+    runs-on: [self-hosted, yeon-arm]
     steps:
       - uses: actions/download-artifact@v4
         with:

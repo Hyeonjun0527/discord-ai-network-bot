@@ -90,3 +90,15 @@ interface ProviderScheduleRepository : JpaRepository<ProviderScheduleEntity, Lon
         guildId: Long,
     ): ProviderScheduleEntity?
 }
+
+interface ChannelAiProfileRepository : JpaRepository<ChannelAiProfileEntity, Long> {
+    fun findByGuildIdAndChannelId(
+        guildId: Long,
+        channelId: Long,
+    ): ChannelAiProfileEntity?
+
+    fun deleteByGuildIdAndChannelId(
+        guildId: Long,
+        channelId: Long,
+    )
+}

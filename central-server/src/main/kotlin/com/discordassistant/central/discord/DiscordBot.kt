@@ -6,6 +6,7 @@ import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
+import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
@@ -64,6 +65,7 @@ private val DM_COMMANDS =
 class DiscordBot(
     private val commands: CommandService,
     private val metrics: CommandMetrics,
+    private val channelProfiles: ChannelAiProfileService,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
@@ -82,7 +84,7 @@ class DiscordBot(
         val instance =
             JDABuilder
                 .createLight(token, GatewayIntent.GUILD_MESSAGE_REACTIONS)
-                .addEventListeners(Listener(commands, metrics))
+                .addEventListeners(Listener(commands, metrics, channelProfiles))
                 .build()
         jda = instance
         // 봇 DM 지원을 위해 항상 글로벌 등록(봇 DM 허용은 글로벌 명령 + dm_permission 으로 동작). 전파 최대 ~1h.
@@ -184,6 +186,12 @@ class DiscordBot(
                             .addChoice("한국어", "ko")
                             .addChoice("English", "en"),
                     ).setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("llm-channel-profile", "이 채널의 AI 응답 프로필명을 설정합니다(관리자)")
+                    .addOption(OptionType.STRING, "name", "이 채널에서 보일 AI 응답 이름(예: 냥시스턴트)", false)
+                    .addOption(OptionType.STRING, "avatar-url", "선택: 응답 프로필 아이콘 이미지 URL", false)
+                    .addOption(OptionType.BOOLEAN, "reset", "설정을 지우고 기본 봇 표시로 되돌립니다", false)
+                    .setDefaultPermissions(adminPerm),
                 Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands
                     .slash("provider-approve", "프로바이더 등록을 승인합니다(관리자)")
@@ -221,6 +229,7 @@ class DiscordBot(
     class Listener(
         private val commands: CommandService,
         private val metrics: CommandMetrics,
+        private val channelProfiles: ChannelAiProfileService,
     ) : ListenerAdapter() {
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
@@ -290,11 +299,16 @@ class DiscordBot(
             }
             // 모든 명령을 defer 로 먼저 ack(3초 제한 회피) 후 결과 편집. 공유/원격 서버의 지연에도 안전.
             // 공개 명령만 비-ephemeral, 나머지는 ephemeral. defer 시점에 결정.
+            val useWebhookProfile = event.name == "ask" && channelProfiles.get(ctx.guildId, ctx.channelId) != null
             val isPublic = event.name in PUBLIC_COMMANDS
-            event.deferReply(!isPublic).queue()
+            event.deferReply(if (useWebhookProfile) true else !isPublic).queue()
             try {
                 val reply = dispatch(event, ctx)
-                event.hook.editOriginal(reply.content).queue()
+                if (useWebhookProfile && sendAnswerWebhook(event.channel, ctx, reply)) {
+                    event.hook.editOriginal("✅ 답변을 채널 AI 프로필로 보냈어요.").queue()
+                } else {
+                    event.hook.editOriginal(reply.content).queue()
+                }
             } catch (e: Exception) {
                 log.warn("명령 처리 실패: {} — {}", event.name, e.message)
                 event.hook.editOriginal("⚠️ 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.").queue({}, {})
@@ -306,6 +320,7 @@ class DiscordBot(
 
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
             private val PUBLIC_COMMANDS = setOf("ask", "contributions", "community-stats", "welcome")
+            private const val WEBHOOK_NAME = "discord-ai-channel-profile"
         }
 
         /** 슬래시 옵션 자동완성(#179): model 옵션에 풀 제공 모델 제안. */
@@ -467,9 +482,14 @@ class DiscordBot(
             if (event.modalId != "ask-long-modal") return
             val ctx = ctxOf(event) // DM(유저설치)에서도 긴 질문 모달 동작
             val prompt = event.getValue("prompt")?.asString.orEmpty()
-            event.deferReply(false).queue()
+            val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
+            event.deferReply(useWebhookProfile).queue()
             val reply = commands.ask(ctx, prompt)
-            event.hook.editOriginal(reply.content).queue()
+            if (useWebhookProfile && sendAnswerWebhook(event.channel, ctx, reply)) {
+                event.hook.editOriginal("✅ 답변을 채널 AI 프로필로 보냈어요.").queue()
+            } else {
+                event.hook.editOriginal(reply.content).queue()
+            }
         }
 
         /** 메시지 컨텍스트 메뉴(#181): 그 메시지 내용으로 질문. */
@@ -477,9 +497,14 @@ class DiscordBot(
             if (event.name != "AI에게 질문") return
             val guild = event.guild ?: return
             val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
-            event.deferReply(false).queue()
+            val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
+            event.deferReply(useWebhookProfile).queue()
             val reply = commands.ask(ctx, event.target.contentRaw)
-            event.hook.editOriginal(reply.content).queue()
+            if (useWebhookProfile && sendAnswerWebhook(event.channel, ctx, reply)) {
+                event.hook.editOriginal("✅ 답변을 채널 AI 프로필로 보냈어요.").queue()
+            } else {
+                event.hook.editOriginal(reply.content).queue()
+            }
         }
 
         /** 만족도 리액션 수집(#171): 👍/👎 를 메트릭으로 집계. */
@@ -489,6 +514,37 @@ class DiscordBot(
                 "👍" -> metrics.record("reaction:up")
                 "👎" -> metrics.record("reaction:down")
             }
+        }
+
+        /**
+         * 채널별 AI 프로필이 설정된 경우, 답변을 Discord Webhook 으로 보내 표시 이름/아이콘을 채널 단위로 바꾼다.
+         * 실패하면 false 를 반환해 일반 인터랙션 응답으로 안전하게 폴백한다.
+         */
+        private fun sendAnswerWebhook(
+            channelUnion: MessageChannelUnion?,
+            ctx: CommandContext,
+            reply: Reply,
+        ): Boolean {
+            if (reply.ephemeral) return false
+            channelUnion ?: return false
+            val profile = channelProfiles.get(ctx.guildId, ctx.channelId) ?: return false
+            val channel = runCatching { channelUnion.asTextChannel() }.getOrNull() ?: return false
+            return runCatching {
+                val webhook =
+                    channel
+                        .retrieveWebhooks()
+                        .complete()
+                        .firstOrNull { it.name == WEBHOOK_NAME }
+                        ?: channel.createWebhook(WEBHOOK_NAME).complete()
+                val action = webhook.sendMessage(reply.content).setUsername(profile.displayName)
+                if (!profile.avatarUrl.isNullOrBlank()) {
+                    action.setAvatarUrl(profile.avatarUrl)
+                }
+                action.complete()
+                true
+            }.onFailure { e ->
+                log.warn("채널 AI 프로필 웹훅 전송 실패(channel={}): {}", ctx.channelId, e.message)
+            }.getOrDefault(false)
         }
 
         /** 길드면 길드 컨텍스트, DM(유저설치)이면 글로벌 풀(DM_SCOPE) 컨텍스트 — 관리자/역할 없음. */
@@ -593,6 +649,13 @@ class DiscordBot(
                             )
                         }.getOrDefault(ModelBurden.LIGHT),
                         event.getOption("limit")!!.asInt,
+                    )
+                "llm-channel-profile" ->
+                    commands.setChannelAiProfile(
+                        ctx,
+                        event.getOption("name")?.asString,
+                        event.getOption("avatar-url")?.asString,
+                        event.getOption("reset")?.asBoolean ?: false,
                     )
                 "providers" -> commands.providers(ctx)
                 "provider-approve" -> {

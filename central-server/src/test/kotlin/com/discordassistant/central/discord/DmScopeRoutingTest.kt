@@ -53,6 +53,19 @@ class DmScopeRoutingTest
         }
 
         @Test
+        fun `DM provider 설치 가이드 — OS 선택 시 복붙 명령(토큰 포함) + 재클릭 재발급`() {
+            val ctx = dm(610_010L)
+            val mac = commands.providerInstallGuide(ctx, "mac")
+            assertTrue(mac.content.contains("brew install ollama"), mac.content)
+            assertTrue(mac.content.contains("--token "), mac.content)
+            assertTrue(mac.ephemeral)
+            // 다른 OS 재클릭도 새 토큰으로 동작(reissueToken 경로).
+            val win = commands.providerInstallGuide(ctx, "windows")
+            assertTrue(win.content.contains("winget install"), win.content)
+            assertTrue(win.content.contains("--token "), win.content)
+        }
+
+        @Test
         fun `DM ask 는 글로벌 풀(DM_SCOPE) 프로바이더로 라우팅된다`() {
             val conn = DmEcho()
             val session = ProviderSession(conn, providerId = 610_002L, guildId = CommandService.DM_SCOPE)

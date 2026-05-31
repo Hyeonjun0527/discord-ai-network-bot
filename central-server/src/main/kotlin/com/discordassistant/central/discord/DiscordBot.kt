@@ -240,6 +240,17 @@ class DiscordBot(
                         .queue()
                     return
                 }
+                "provider-join" -> {
+                    // 먼저 설치할 컴퓨터(OS)를 버튼으로 묻는다(차수 19). 클릭 → 그 OS 복붙 설치 명령.
+                    event
+                        .reply(
+                            "🖥️ **현재 채널에 돌릴 AI 일꾼이 되어봅니다** — 내 PC 의 로컬 AI 를 연결해요.\n" +
+                                "**설치할 컴퓨터**를 고르세요 (버튼 클릭 → 복붙용 명령).",
+                        ).addComponents(ActionRow.of(MenuFactory.osButtons()))
+                        .setEphemeral(true)
+                        .queue()
+                    return
+                }
                 "help" -> {
                     // 명령 이름을 보는 사람 클라이언트 언어로 표시(슬래시 메뉴와 일치).
                     event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin, event.userLocale)).setEphemeral(true).queue()
@@ -339,10 +350,26 @@ class DiscordBot(
                     event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin, event.userLocale)).setEphemeral(true).queue()
                     return
                 }
+                MenuFactory.PROVIDER -> {
+                    // '내 PC 기여' → 먼저 설치할 OS 를 버튼으로 묻는다(차수 19).
+                    event
+                        .reply(
+                            "🖥️ **현재 채널에 돌릴 AI 일꾼이 되어봅니다** — 내 PC 의 로컬 AI 를 연결해요.\n" +
+                                "**설치할 컴퓨터**를 고르세요 (버튼 클릭 → 복붙용 명령).",
+                        ).addComponents(ActionRow.of(MenuFactory.osButtons()))
+                        .setEphemeral(true)
+                        .queue()
+                    return
+                }
+            }
+            // OS 선택 → 그 OS 복붙 설치 명령(토큰 포함, ephemeral).
+            if (event.componentId.startsWith(MenuFactory.OS_PREFIX)) {
+                val os = event.componentId.removePrefix(MenuFactory.OS_PREFIX)
+                event.reply(commands.providerInstallGuide(ctx, os).content).setEphemeral(true).queue()
+                return
             }
             val reply =
                 when (event.componentId) {
-                    MenuFactory.PROVIDER -> commands.providerJoin(ctx)
                     MenuFactory.STATUS -> commands.providerStatus(ctx)
                     MenuFactory.AUTO_APPROVE_ON -> commands.setAutoApprove(ctx, enabled = true)
                     MenuFactory.AUTO_APPROVE_OFF -> commands.setAutoApprove(ctx, enabled = false)

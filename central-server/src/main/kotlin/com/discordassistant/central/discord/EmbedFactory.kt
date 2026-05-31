@@ -75,7 +75,7 @@ object EmbedFactory {
                         "${c("my-usage")} ${c("contributions")} — 내 사용량 · 기여 리더보드",
                     false,
                 ).addField(
-                    "🖥️ 프로바이더 (내 PC 를 풀에 기여)",
+                    "🖥️ 프로바이더 (내 PC로 AI 일꾼 되기)",
                     "${c("provider-join")} — 참여 신청(승인 후 토큰→에이전트 실행)\n" +
                         "${c("provider-status")} ${c("provider-pause")} ${c("provider-resume")} — 상태·가용성\n" +
                         "${c("provider-schedule")} — 가용 시간대 설정",

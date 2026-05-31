@@ -29,3 +29,33 @@ requirements:
     tests:
       - type: cucumber
         path: src/test/resources/features/ask_routing.feature
+  - id: REQ-PPOOL-001
+    title: 프로바이더 풀은 길드별로 격리되어 다른 서버 프로바이더로 라우팅하지 않는다
+    priority: P0
+    tests:
+      - type: cucumber
+        path: src/test/resources/features/provider_pool_lifecycle.feature
+  - id: REQ-PPOOL-002
+    title: 봇이 서버에서 제거되면 해당 서버의 프로바이더 세션·등록·미사용 토큰을 정리한다
+    priority: P0
+    tests:
+      - type: cucumber
+        path: src/test/resources/features/provider_pool_lifecycle.feature
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/GuildRemovalCleanupServiceTest.kt
+  - id: REQ-PPOOL-003
+    title: 한 번이라도 기여한 프로바이더는 오프라인이어도 기여순위에 영구 표시된다
+    priority: P0
+    tests:
+      - type: cucumber
+        path: src/test/resources/features/provider_pool_lifecycle.feature
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/CommandServiceTest.kt
+  - id: REQ-PPOOL-004
+    title: 프로바이더 토큰은 길드에 묶인 일회용 토큰이다
+    priority: P0
+    tests:
+      - type: cucumber
+        path: src/test/resources/features/provider_pool_lifecycle.feature
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/provider/ProviderRegistrationTest.kt

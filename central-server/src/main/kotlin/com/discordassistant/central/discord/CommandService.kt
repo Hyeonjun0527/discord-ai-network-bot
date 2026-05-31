@@ -215,8 +215,10 @@ class CommandService(
             }
         }
         val profile = channelProfiles.set(ctx.guildId, ctx.channelId, displayName, avatarUrl)
+        val avatarLine = if (profile.avatarUrl.isNullOrBlank()) "" else "아이콘 이미지도 함께 설정했습니다.\n"
         return Reply(
             "✅ 이 채널의 AI 응답 프로필을 **${profile.displayName}**(으)로 설정했습니다.\n" +
+                avatarLine +
                 "이후 `/ask` 답변은 이 채널에서 그 이름으로 보입니다. 봇에 `웹후크 관리` 권한이 필요해요.",
         )
     }

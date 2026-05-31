@@ -13,8 +13,9 @@
 2. 좌측 **Bot** → **Reset Token** → 토큰 복사(절대 커밋 금지).
 3. **Installation**(또는 OAuth2 → URL Generator):
    - Scopes: `bot`, `applications.commands`
-   - Bot Permissions: `Send Messages`, `Use Slash Commands`(Embed Links 권장)
-4. 생성된 초대 URL 로 **봇을 서버에 초대**.
+   - Bot Permissions: `Send Messages`, `Use Slash Commands`, `Read Message History`(Embed Links 권장)
+4. `@냥시스턴트 질문` 멘션 호출을 쓰려면 좌측 **Bot → Privileged Gateway Intents → Message Content Intent** 를 켠다.
+5. 생성된 초대 URL 로 **봇을 서버에 초대**.
 
 > 기존 Python 봇과 **다른 애플리케이션/토큰**을 쓰면 두 봇이 한 서버에 공존 가능.
 > central 만 쓸 거면 기존 봇은 서버에서 제거하면 된다.
@@ -59,20 +60,22 @@ discord-ai-provider-agent --token <토큰> --relay-url wss://discord-ai.yeon.wor
 
 ## 4. 라이브 검증 체크리스트
 **첫 사용자는 `/menu` 하나만 기억하면 됩니다** (버튼/드롭다운으로 전부 처리):
-- **`/menu`** → 시작 패널: `💬질문하기`(모달)·`🖥️내 PC 기여`·`📊내 상태`·`❓도움말`·(관리자)`⚙️설정`
+- **`/menu`** → 시작 패널: `✦ 질문하기`(모달)·`❃ 함께 도와주기`·`✡︎ 내 상태`·`❆ 도움말`·(관리자)`❂ 설정`
 - 봇이 서버에 처음 들어오면 시스템 채널에 **자동 온보딩 패널** 게시(클릭만으로 시작).
 - `⚙️설정`(관리자) → **드롭다운**으로 언어·기본모델·허용채널 + **버튼** 자동승인 토글 → 즉시 적용.
 
 명령으로도 가능(슬래시 입력창에 `/` 치면 설명 자동 표시):
-- `/ask 안녕` → 풀 라우팅 → 응답(끝에 프라이버시 고지). ✅ 핵심
+- `/ask 안녕` 또는 `@냥시스턴트 안녕` → 풀 라우팅 → 응답(끝에 프라이버시 고지). ✅ 핵심
 - `/help` `/models` `/catalog` `/community-stats`, `/provider-join`.
 - `/ask-long` → 모달, 메시지 우클릭 → 앱 → `AI에게 질문`(컨텍스트 메뉴).
 - `/provider-approve @유저` → 대상에게 토큰 DM, `/fairness` `/provider-schedule`(관리자).
 
 ## 5. 알아둘 점
 - **리액션 만족도(#171)**: `GUILD_MESSAGE_REACTIONS` 인텐트를 코드에서 활성화해 👍/👎 수집이
-  바로 동작한다. Developer Portal 의 Privileged Intents 토글은 불필요(이 인텐트는 비특권).
-  나머지 인터랙션(슬래시/버튼/모달/컨텍스트 메뉴/DM)도 추가 설정 없이 동작.
+  바로 동작한다. 이 인텐트는 비특권이라 Developer Portal 의 Privileged Intents 토글이 불필요하다.
+- **멘션 호출**: `@냥시스턴트 질문`은 메시지 본문을 읽어야 하므로 코드에서 `GUILD_MESSAGES` +
+  `MESSAGE_CONTENT` 인텐트를 활성화한다. 운영 Discord 애플리케이션에서도 **Message Content Intent** 를 켜야 한다.
+- 나머지 인터랙션(슬래시/버튼/모달/컨텍스트 메뉴/DM)은 추가 설정 없이 동작.
 - **운영 보안**: `CENTRAL_DEV_ENABLED=false`(/dev/* 차단), 토큰은 env 로만 주입.
 - **관리자 인증 대시보드**(선택): `CENTRAL_OAUTH_ENABLED=true` + Discord OAuth2(OPERATIONS.md).
 - **로그**: `docker compose logs -f central-server`.

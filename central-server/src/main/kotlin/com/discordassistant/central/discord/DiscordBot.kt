@@ -7,6 +7,7 @@ import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion
+import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.channel.ChannelDeleteEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
@@ -18,6 +19,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
+import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.Interaction
@@ -86,11 +88,14 @@ class DiscordBot(
             return
         }
         // createLight + 리액션 인텐트(#171 만족도 수집은 GUILD_MESSAGE_REACTIONS 필요).
-        val instance =
-            JDABuilder
-                .createLight(token, GatewayIntent.GUILD_MESSAGE_REACTIONS)
-                .addEventListeners(Listener(commands, metrics, channelProfiles, guildCleanup, reconciliation))
-                .build()
+        val builder =
+            JDABuilder.createLight(
+                token,
+                GatewayIntent.GUILD_MESSAGES,
+                GatewayIntent.GUILD_MESSAGE_REACTIONS,
+                GatewayIntent.MESSAGE_CONTENT,
+            )
+        val instance = builder.addEventListeners(Listener(commands, metrics, channelProfiles, guildCleanup, reconciliation)).build()
         jda = instance
         // 봇 DM 지원을 위해 항상 글로벌 등록(봇 DM 허용은 글로벌 명령 + dm_permission 으로 동작). 전파 최대 ~1h.
         registerCommands(instance.updateCommands())
@@ -528,6 +533,59 @@ class DiscordBot(
             }
         }
 
+        /** 봇 멘션 질문: `@냥시스턴트 질문` 을 기존 /ask 와 같은 Provider Pool 흐름으로 처리한다. */
+        override fun onMessageReceived(event: MessageReceivedEvent) {
+            if (!event.isFromGuild || event.author.isBot) return
+            val selfId = event.jda.selfUser.idLong
+            val mentionedUsers = event.message.mentions.users
+            val mentioned = mentionedUsers.any { it.idLong == selfId }
+            if (!mentioned) return
+
+            val prompt = mentionPrompt(event.message.contentRaw, selfId)
+            if (prompt.isBlank()) {
+                event.message
+                    .reply("질문 내용을 같이 적어주세요. 예: `@냥시스턴트 오늘 회의 요약해줘`")
+                    .mentionRepliedUser(false)
+                    .queue()
+                return
+            }
+
+            metrics.record("mention-ask")
+            val ctx =
+                buildCtx(
+                    event.guild.idLong,
+                    event.member,
+                    event.channel.idLong,
+                    event.author.idLong,
+                )
+            val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
+            event.channel.sendTyping().queue({}, {})
+            try {
+                val reply = commands.ask(ctx, prompt)
+                if (useWebhookProfile && sendAnswerWebhook(event.channel, ctx, reply)) {
+                    event.message
+                        .addReaction(Emoji.fromUnicode("✅"))
+                        .queue({}, {})
+                } else {
+                    event.message
+                        .reply(reply.content)
+                        .mentionRepliedUser(false)
+                        .queue({}, {})
+                }
+            } catch (e: Exception) {
+                log.warn(
+                    "멘션 질문 처리 실패(channel={}, user={}): {}",
+                    event.channel.idLong,
+                    event.author.idLong,
+                    e.message,
+                )
+                event.message
+                    .reply("⚠️ 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.")
+                    .mentionRepliedUser(false)
+                    .queue({}, {})
+            }
+        }
+
         /** 만족도 리액션 수집(#171): 👍/👎 를 메트릭으로 집계. */
         override fun onMessageReactionAdd(event: MessageReactionAddEvent) {
             if (event.user?.isBot == true) return
@@ -567,6 +625,15 @@ class DiscordBot(
                 log.warn("채널 AI 프로필 웹훅 전송 실패(channel={}): {}", ctx.channelId, e.message)
             }.getOrDefault(false)
         }
+
+        private fun mentionPrompt(
+            raw: String,
+            selfId: Long,
+        ): String =
+            raw
+                .replace(Regex("<@!?$selfId>"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
 
         /** 길드면 길드 컨텍스트, DM(유저설치)이면 글로벌 풀(DM_SCOPE) 컨텍스트 — 관리자/역할 없음. */
         private fun ctxOf(interaction: Interaction): CommandContext {

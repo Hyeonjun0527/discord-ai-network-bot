@@ -166,4 +166,15 @@ class PolicyService(
 
     /** 길드 환영 메시지(미설정 시 null). */
     fun guildWelcomeMessage(guildId: Long): String? = guilds.findById(guildId).map { it.welcomeMessage }.orElse(null)
+
+    /** 봇이 길드에서 제거될 때 서버별 정책/환영 설정을 정리한다. */
+    @Transactional
+    fun cleanupGuild(guildId: Long) {
+        channels.deleteByGuildId(guildId)
+        roles.deleteByGuildId(guildId)
+        if (guilds.existsById(guildId)) {
+            guilds.deleteById(guildId)
+        }
+        audit.record("guild_policy_cleanup", "system", "guild:$guildId", "removed")
+    }
 }

@@ -6,6 +6,7 @@ import com.discordassistant.central.relay.ConnectionRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.ZoneOffset
 
@@ -71,5 +72,10 @@ class ProviderScheduleService(
     @Scheduled(fixedDelayString = "\${central.schedule.enforce-millis:60000}")
     fun scheduledEnforce() {
         enforce()
+    }
+
+    @Transactional
+    fun deleteGuild(guildId: Long) {
+        schedules.deleteByGuildId(guildId)
     }
 }

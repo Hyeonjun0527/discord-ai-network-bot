@@ -218,4 +218,22 @@ class ConnectionRegistryTest {
         assertEquals(1, n)
         assertEquals(0, reg.activeCount())
     }
+
+    @Test
+    fun `길드 제거 시 해당 길드 세션만 종료`() {
+        val reg = ConnectionRegistry()
+        val connA = FakeConnection("a")
+        val a = newSession(connA, 1, 100)
+        val connB = FakeConnection("b")
+        val b = newSession(connB, 2, 200)
+        reg.register(a)
+        reg.register(b)
+
+        assertEquals(1, reg.closeGuild(100, "guild removed"))
+
+        assertEquals(0, reg.byGuild(100).size)
+        assertEquals(1, reg.byGuild(200).size)
+        assertTrue(connA.closed!!.contains("guild removed"))
+        assertEquals(null, connB.closed)
+    }
 }

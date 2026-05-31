@@ -37,4 +37,9 @@ class BlocklistService(
     }
 
     fun blockedUsers(guildId: Long): Set<Long> = blocked[guildId]?.toSet() ?: emptySet()
+
+    fun clearGuild(guildId: Long) {
+        blocked.remove(guildId)
+        audit.record("user_blocklist_cleanup", "system", "guild:$guildId", "removed")
+    }
 }

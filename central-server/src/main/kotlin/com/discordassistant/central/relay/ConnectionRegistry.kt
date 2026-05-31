@@ -60,6 +60,19 @@ class ConnectionRegistry {
     /** 길드의 프로바이더 풀(스냅샷 복사). */
     fun byGuild(guildId: Long): List<ProviderSession> = byGuild[guildId]?.toList() ?: emptyList()
 
+    /** 봇이 길드에서 제거된 경우 해당 길드에 묶인 프로바이더 세션을 모두 종료하고 풀에서 제거한다. */
+    fun closeGuild(
+        guildId: Long,
+        reason: String,
+    ): Int {
+        val sessions = byGuild(guildId)
+        sessions.forEach {
+            evict(it, reason)
+            unregister(it)
+        }
+        return sessions.size
+    }
+
     fun activeCount(): Int = byProvider.size
 
     /** 전체 활성 세션 스냅샷(메트릭 API 용). */

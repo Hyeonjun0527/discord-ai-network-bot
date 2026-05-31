@@ -192,7 +192,8 @@ class DiscordBot(
                 Commands
                     .slash("llm-channel-profile", "이 채널의 AI 응답 프로필명을 설정합니다(관리자)")
                     .addOption(OptionType.STRING, "name", "이 채널에서 보일 AI 응답 이름(예: 냥시스턴트)", false)
-                    .addOption(OptionType.STRING, "avatar-url", "선택: 응답 프로필 아이콘 이미지 URL", false)
+                    .addOption(OptionType.ATTACHMENT, "avatar", "선택: 응답 프로필 아이콘 이미지 파일", false)
+                    .addOption(OptionType.STRING, "avatar-url", "선택: 이미지 URL(파일 업로드가 어려울 때)", false)
                     .addOption(OptionType.BOOLEAN, "reset", "설정을 지우고 기본 봇 표시로 되돌립니다", false)
                     .setDefaultPermissions(adminPerm),
                 Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)").setDefaultPermissions(adminPerm),
@@ -653,13 +654,19 @@ class DiscordBot(
                         }.getOrDefault(ModelBurden.LIGHT),
                         event.getOption("limit")!!.asInt,
                     )
-                "llm-channel-profile" ->
-                    commands.setChannelAiProfile(
-                        ctx,
-                        event.getOption("name")?.asString,
-                        event.getOption("avatar-url")?.asString,
-                        event.getOption("reset")?.asBoolean ?: false,
-                    )
+                "llm-channel-profile" -> {
+                    val avatar = event.getOption("avatar")?.asAttachment
+                    if (avatar != null && !avatar.isImage) {
+                        Reply("⚠️ 아이콘에는 PNG/JPG/GIF/WEBP 같은 이미지 파일만 올려주세요.")
+                    } else {
+                        commands.setChannelAiProfile(
+                            ctx,
+                            event.getOption("name")?.asString,
+                            avatar?.url ?: event.getOption("avatar-url")?.asString,
+                            event.getOption("reset")?.asBoolean ?: false,
+                        )
+                    }
+                }
                 "providers" -> commands.providers(ctx)
                 "provider-approve" -> {
                     val target = event.getOption("user")!!.asUser

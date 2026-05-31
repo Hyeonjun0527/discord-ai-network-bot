@@ -10,6 +10,8 @@ class ProviderOnboardingInstallTest {
         val s = ProviderOnboarding.installCommand("mac", "TOK-123", "wss://relay.example/agent")
         assertTrue(s.contains("brew install ollama"), s)
         assertTrue(s.contains("discord-ai-provider-agent-macos"))
+        assertTrue(s.contains("⌘ Space"), s)
+        assertTrue(s.contains("Finder"), s)
         assertTrue(s.contains("--token TOK-123"))
         assertTrue(s.contains("wss://relay.example/agent"))
     }
@@ -20,6 +22,8 @@ class ProviderOnboardingInstallTest {
         assertTrue(s.contains("winget install"), s)
         assertTrue(s.contains("provider-agent.exe"))
         assertTrue(s.contains("PowerShell"))
+        assertTrue(s.contains("Win + X"), s)
+        assertTrue(s.contains("시작 메뉴"), s)
         assertTrue(s.contains("--token TOK"))
     }
 
@@ -28,6 +32,8 @@ class ProviderOnboardingInstallTest {
         val s = ProviderOnboarding.installCommand("linux", "TOK", "")
         assertTrue(s.contains("ollama.com/install.sh"), s)
         assertTrue(s.contains("discord-ai-provider-agent-linux"))
+        assertTrue(s.contains("Ctrl + Alt + T"), s)
+        assertTrue(s.contains("앱 메뉴"), s)
         assertTrue(s.contains("관리자에게 문의")) // relay 미설정 시 플레이스홀더
     }
 

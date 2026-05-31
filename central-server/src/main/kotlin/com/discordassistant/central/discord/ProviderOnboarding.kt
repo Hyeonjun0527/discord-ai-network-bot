@@ -9,6 +9,9 @@ object ProviderOnboarding {
     // 단일 실행파일 다운로드 — 우리 도메인에서 직접 서빙(레포 비공개 유지). agent-build 가 원격에 배치.
     private const val DL = "https://central.dailyting.cloud/download"
 
+    // 설치 랜딩 페이지(차수 19) — OS별 복붙 명령 + 소스 코드 버튼. 링크만 던지지 않고 정제된 가이드로 안내.
+    const val INSTALL_PAGE = "https://central.dailyting.cloud/install"
+
     /**
      * OS 선택(버튼) 후 보여줄 **복붙용 설치 명령**(차수 19 UX). Ollama 설치 → 모델 받기 → 에이전트 실행까지 한 블록.
      * macOS/Linux 는 터미널, Windows 는 PowerShell(관리자) 기준. 토큰은 ⏳ 10분·1회용.
@@ -19,7 +22,9 @@ object ProviderOnboarding {
         relayUrl: String,
     ): String {
         val relay = relayUrl.ifBlank { "wss://<관리자에게 문의>/agent" }
-        val note = "\n토큰은 ⏳ **10분·1회용**. 연결되면 `/내상태`(provider-status)로 확인하세요. **민감정보 입력 금지.**"
+        val note =
+            "\n토큰은 ⏳ **10분·1회용**. 연결되면 `/내상태`(provider-status)로 확인하세요. " +
+                "📄 웹 가이드·소스: $INSTALL_PAGE · **민감정보 입력 금지.**"
         return when (os.lowercase()) {
             "mac", "macos" ->
                 "🍎 **macOS** — 터미널에 그대로 붙여넣기:\n" +
@@ -56,15 +61,11 @@ object ProviderOnboarding {
     ): String {
         val relay = relayUrl.ifBlank { "wss://<관리자에게 문의>/agent" }
         val sb = StringBuilder()
-        sb.append("🖥️ **프로바이더로 승인되었습니다!** 내 PC 로컬 AI 를 풀에 연결하는 3단계:\n\n")
-        sb.append("**1) Ollama 설치** — https://ollama.com → 설치 후 `ollama pull llama3.1:8b`\n\n")
-        sb.append("**2) 에이전트 다운로드** (내 OS 파일 1개):\n")
-        sb.append("• Windows: $DL/discord-ai-provider-agent-windows.exe\n")
-        sb.append("• macOS: $DL/discord-ai-provider-agent-macos\n")
-        sb.append("• Linux: $DL/discord-ai-provider-agent-linux\n\n")
-        sb.append("**3) 받은 파일을 토큰과 함께 실행** (터미널 · 토큰 ⏳ **10분·1회용**):\n")
-        sb.append("```\n# Windows\ndiscord-ai-provider-agent-windows.exe --token $token --relay-url $relay\n")
-        sb.append("# macOS/Linux (먼저 chmod +x)\n./discord-ai-provider-agent-macos --token $token --relay-url $relay\n```\n")
+        sb.append("🖥️ **프로바이더로 승인되었습니다!** 내 PC 로컬 AI 를 풀에 연결하기:\n\n")
+        sb.append("**1) 설치 가이드 열기** → $INSTALL_PAGE\n")
+        sb.append("   내 OS 탭(macOS/Windows/Linux)에서 **복붙 명령**을 그대로 복사하세요(소스 코드도 거기서 볼 수 있어요).\n\n")
+        sb.append("**2) 명령의 토큰 자리에 아래 값을 넣어 실행** (⏳ **10분·1회용**):\n")
+        sb.append("```\n--token $token --relay-url $relay\n```\n")
         sb.append("연결되면 `/provider-status` 로 확인. ")
         if (relayUrl.isBlank()) {
             sb.append("⚠️ 연결 주소 미설정 시 관리자에게 `relay-url` 문의. ")

@@ -34,9 +34,12 @@ class CorsConfig(
             .maxAge(3600)
     }
 
-    /** 대시보드 디렉터리 URL(/dashboard, /dashboard/) → index.html 포워드(차수 14). */
+    /** 대시보드 디렉터리 URL(/dashboard, /dashboard/) → index.html 포워드(차수 14). + 설치 랜딩(차수 19). */
     override fun addViewControllers(registry: ViewControllerRegistry) {
         registry.addViewController("/dashboard").setViewName("forward:/dashboard/index.html")
         registry.addViewController("/dashboard/").setViewName("forward:/dashboard/index.html")
+        // 프로바이더 설치 랜딩 페이지: 루트(/)와 /install 둘 다 노출(차수 19 UX).
+        registry.addViewController("/").setViewName("forward:/install.html")
+        registry.addViewController("/install").setViewName("forward:/install.html")
     }
 }

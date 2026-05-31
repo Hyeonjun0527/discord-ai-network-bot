@@ -75,6 +75,19 @@ class TokenService(
         return keys.size
     }
 
+    /** 특정 provider/guild 조합의 미사용 토큰을 폐기한다. */
+    fun revokeProviderGuild(
+        providerId: Long,
+        guildId: Long,
+    ): Int {
+        val keys =
+            store.entries
+                .filter { it.value.providerId == providerId && it.value.guildId == guildId }
+                .map { it.key }
+        keys.forEach { store.remove(it) }
+        return keys.size
+    }
+
     fun activeTokenCount(): Int = store.size
 
     private fun hash(token: String): String =

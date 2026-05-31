@@ -60,9 +60,9 @@ class ProviderScheduleService(
             val sched = schedules.findByProviderIdAndGuildId(session.providerId, gid) ?: continue
             val hour = clock.instant().atZone(ZoneOffset.UTC).hour
             if (AvailabilityWindow.isWithin(sched.fromHour, sched.toHour, hour)) {
-                if (protection.resume(session.providerId)) resumed++
+                if (protection.resume(session.providerId, gid)) resumed++
             } else {
-                if (protection.pause(session.providerId)) paused++
+                if (protection.pause(session.providerId, gid)) paused++
             }
         }
         if (paused + resumed > 0) log.info("스케줄 적용: pause={}, resume={}", paused, resumed)
@@ -77,5 +77,13 @@ class ProviderScheduleService(
     @Transactional
     fun deleteGuild(guildId: Long) {
         schedules.deleteByGuildId(guildId)
+    }
+
+    @Transactional
+    fun deleteProviderGuild(
+        providerId: Long,
+        guildId: Long,
+    ) {
+        schedules.deleteByProviderIdAndGuildId(providerId, guildId)
     }
 }

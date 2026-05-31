@@ -194,7 +194,7 @@ class RequestOrchestrator(
                 }
             }
             val sel = router.select(outcome.eligible, ctx)!!
-            val session = registry.byProvider(sel.providerId)
+            val session = registry.byProvider(input.guildId, sel.providerId)
             if (session == null) {
                 excluded.add(sel.providerId)
                 return@repeat

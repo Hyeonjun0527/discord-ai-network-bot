@@ -253,14 +253,17 @@ class CommandService(
         }
     }
 
-    fun providerPause(ctx: CommandContext): Reply = if (protection.pause(ctx.userId)) Reply("⏸️ 일시정지했습니다.") else Reply("연결된 에이전트가 없습니다.")
+    fun providerPause(ctx: CommandContext): Reply =
+        if (protection.pause(ctx.userId, ctx.guildId)) Reply("⏸️ 일시정지했습니다.") else Reply("연결된 에이전트가 없습니다.")
 
-    fun providerResume(ctx: CommandContext): Reply = if (protection.resume(ctx.userId)) Reply("▶️ 재개했습니다.") else Reply("연결된 에이전트가 없습니다.")
+    fun providerResume(ctx: CommandContext): Reply =
+        if (protection.resume(ctx.userId, ctx.guildId)) Reply("▶️ 재개했습니다.") else Reply("연결된 에이전트가 없습니다.")
 
-    fun providerLeave(ctx: CommandContext): Reply = if (protection.leave(ctx.userId)) Reply("👋 풀에서 나갔습니다.") else Reply("연결된 에이전트가 없습니다.")
+    fun providerLeave(ctx: CommandContext): Reply =
+        if (protection.leave(ctx.userId, ctx.guildId)) Reply("👋 풀에서 나갔습니다.") else Reply("연결된 에이전트가 없습니다.")
 
     fun providerStatus(ctx: CommandContext): Reply {
-        val s = registry.byProvider(ctx.userId) ?: return Reply("연결 상태: 오프라인")
+        val s = registry.byProvider(ctx.guildId, ctx.userId) ?: return Reply("연결 상태: 오프라인")
         val queued = s.queueDepth().let { if (it > 0) " · 대기 $it" else "" }
         val base = "상태: ${s.state} · 처리중 ${s.activeRequests}$queued · 일일잔여 ${s.remainingDailyRequests} · 실패 ${s.failures}"
         val hint = RestHint.forStatus(s.state, s.activeRequests, s.remainingDailyRequests)
@@ -418,7 +421,7 @@ class CommandService(
     ): Reply {
         adminOnly(ctx)?.let { return it }
         val token =
-            registration.approve(providerUserId, ctx.userId)
+            registration.approve(providerUserId, ctx.guildId, ctx.userId)
                 ?: return Reply("승인할 대기 중 프로바이더가 없습니다.")
         // 승인 안내(온보딩 가이드) — DiscordBot 이 이 내용을 대상 유저에게 DM 으로도 보낸다(#162).
         return Reply(ProviderOnboarding.message(token, relayPublicUrl), ephemeral = true)
@@ -429,8 +432,8 @@ class CommandService(
         providerUserId: Long,
     ): Reply {
         adminOnly(ctx)?.let { return it }
-        return if (registration.remove(providerUserId, ctx.userId)) {
-            protection.leave(providerUserId)
+        return if (registration.remove(providerUserId, ctx.guildId, ctx.userId)) {
+            protection.leave(providerUserId, ctx.guildId)
             Reply("🗑️ <@$providerUserId> 를 풀에서 제거했습니다.")
         } else {
             Reply("해당 프로바이더를 찾을 수 없습니다.")

@@ -101,6 +101,38 @@ class ProviderRegistrationServiceTest {
     }
 
     @Test
+    fun `같은 사용자는 여러 서버에 독립적으로 등록 승인 제거된다`() {
+        val (svc, tokens, _) = service()
+        val token100 = svc.requestJoin(77, 100, autoApprove = true).token!!
+        val token200 = svc.requestJoin(77, 200, autoApprove = true).token!!
+
+        assertEquals(ProviderState.APPROVED, svc.stateOf(77, 100))
+        assertEquals(ProviderState.APPROVED, svc.stateOf(77, 200))
+        assertNull(svc.stateOf(77)) // 멀티 서버면 단일 providerId 조회는 모호하므로 null
+
+        assertTrue(svc.remove(77, 100, adminId = 999))
+
+        assertEquals(ProviderState.REMOVED, svc.stateOf(77, 100))
+        assertEquals(ProviderState.APPROVED, svc.stateOf(77, 200))
+        assertNull(tokens.verify(token100))
+        assertEquals(200L, tokens.verify(token200)!!.guildId)
+    }
+
+    @Test
+    fun `멤버 이탈 정리는 해당 서버 등록과 토큰만 제거한다`() {
+        val (svc, tokens, _) = service()
+        val token100 = svc.requestJoin(88, 100, autoApprove = true).token!!
+        val token200 = svc.requestJoin(88, 200, autoApprove = true).token!!
+
+        assertTrue(svc.removeMemberFromGuild(88, 100))
+
+        assertNull(svc.stateOf(88, 100))
+        assertEquals(ProviderState.APPROVED, svc.stateOf(88, 200))
+        assertNull(tokens.verify(token100))
+        assertEquals(200L, tokens.verify(token200)!!.guildId)
+    }
+
+    @Test
     fun `길드 제거 시 해당 길드 등록과 미사용 토큰 폐기`() {
         val (svc, tokens, _) = service()
         val token100 = svc.requestJoin(10, 100, autoApprove = true).token!!

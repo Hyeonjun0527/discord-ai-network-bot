@@ -44,7 +44,7 @@ class DevController(
         @RequestBody req: TokenReq,
     ): Map<String, String> {
         val join = registration.requestJoin(req.providerId, req.guildId, autoApprove = true)
-        val token = join.token ?: registration.approve(req.providerId, adminId = 0)
+        val token = join.token ?: registration.approve(req.providerId, req.guildId, adminId = 0)
         return mapOf("token" to (token ?: ""))
     }
 

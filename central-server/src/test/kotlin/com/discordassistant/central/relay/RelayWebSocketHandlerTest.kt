@@ -97,6 +97,27 @@ class RelayWebSocketHandlerTest {
     }
 
     @Test
+    fun `서버에 묶이지 않은 토큰은 인증 거부`() {
+        val reg = ConnectionRegistry()
+        val h =
+            RelayWebSocketHandler(
+                reg,
+                object : TokenVerifier {
+                    override fun verify(token: String): OwnerBinding? = OwnerBinding(providerId = 9, guildId = null)
+                },
+                requestTimeout = 2,
+                heartbeatSeconds = 30,
+            )
+        val s = FakeWebSocketSession("no-guild")
+        h.afterConnectionEstablished(s)
+        h.handleTextMessage(s, TextMessage(FrameCodec.encode(AuthFrame(token = "legacy"))))
+
+        val err = FrameCodec.decode(s.sent.single()) as AuthErrFrame
+        assertTrue(err.message.contains("서버에 묶이지 않은 토큰"))
+        assertEquals(0, reg.activeCount())
+    }
+
+    @Test
     fun `인증 성공 → AuthOk + 등록 + 추론 왕복`() {
         val reg = ConnectionRegistry()
         val h = handler(reg)

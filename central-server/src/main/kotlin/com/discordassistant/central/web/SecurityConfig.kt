@@ -29,6 +29,9 @@ class SecurityConfig(
                     // 공개: 정적 대시보드, 다운로드, 읽기 메트릭/헬스, 에이전트 WS, 로그인.
                     authorize("/dashboard/**", permitAll)
                     authorize("/download/**", permitAll) // 에이전트 바이너리 공개 다운로드
+                    authorize("/", permitAll) // 설치 랜딩(차수 19)
+                    authorize("/install", permitAll)
+                    authorize("/install.html", permitAll)
                     authorize("/actuator/health", permitAll)
                     authorize("/api/metrics/**", permitAll)
                     authorize("/agent/**", permitAll)

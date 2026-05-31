@@ -34,6 +34,7 @@ class ProviderOnboardingInstallTest {
     @Test
     fun `알 수 없는 OS 는 전체 안내로 폴백`() {
         val s = ProviderOnboarding.installCommand("solaris", "TOK", "wss://r/agent")
-        assertTrue(s.contains("3단계") || s.contains("Ollama 설치"), s)
+        assertTrue(s.contains("설치 가이드") || s.contains("승인되었습니다"), s)
+        assertTrue(s.contains("--token TOK"))
     }
 }

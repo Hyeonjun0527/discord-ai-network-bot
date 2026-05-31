@@ -117,6 +117,12 @@
   .panel.on { display: block; animation: fade .35s both; }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
+  .open-terminal {
+    margin: 0 0 14px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px;
+    background: rgba(184,255,57,.06); color: var(--mut); font-size: 13.5px;
+  }
+  .open-terminal b { color: var(--ink); }
+  .open-terminal code { font-family: var(--mono); color: var(--acc); background: var(--panel-2); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
   .term { background: var(--bg); border-radius: 12px; padding: 0; }
   .term-bar { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid var(--line-soft); }
   .term-dots { display: flex; gap: 7px; }
@@ -177,7 +183,7 @@
     <span class="eyebrow">Community Local AI · Provider</span>
     <h1>내 PC를 이 커뮤니티의<br /><span class="glow">AI 일꾼</span>으로.</h1>
     <p class="sub">남는 컴퓨팅으로 동료들의 <code style="font-family:var(--mono);color:var(--ink)">/ask</code> 질문에 답하세요.
-       디스코드에서 받은 토큰 하나면, 터미널에 한 번 붙여넣어 끝납니다. 금전 거래 없음 — 기여와 공정성.</p>
+       디스코드에서 받은 토큰 하나면 됩니다. 터미널 여는 법부터 복붙 명령까지 아래에서 OS별로 안내합니다. 금전 거래 없음 — 기여와 공정성.</p>
     <div class="hero-cta">
       <a class="cta-primary" href="#install">설치 명령 보기 ↓</a>
       <span class="cta-note">// 먼저 디스코드에서 <b style="color:var(--amber)">/provider-join</b> → 토큰 받기</span>
@@ -186,7 +192,7 @@
 
   <section class="steps">
     <div class="step"><div class="num">STEP 01</div><h3>토큰 받기</h3><p>디스코드에서 <code>/provider-join</code> → 내 OS 선택 → 10분·1회용 토큰 발급.</p></div>
-    <div class="step"><div class="num">STEP 02</div><h3>붙여넣기</h3><p>아래에서 내 OS 탭을 골라 명령을 통째로 복사 → 터미널에 붙여넣기.</p></div>
+    <div class="step"><div class="num">STEP 02</div><h3>터미널 열기</h3><p>아래 OS 탭에서 단축키/GUI 방법대로 터미널 또는 PowerShell을 먼저 여세요.</p></div>
     <div class="step"><div class="num">STEP 03</div><h3>연결 확인</h3><p>실행되면 디스코드 <code>/provider-status</code> 로 온라인 상태 확인.</p></div>
   </section>
 
@@ -200,6 +206,7 @@
       </div>
 
       <div class="panel on" data-os="mac">
+        <div class="open-terminal"><b>터미널 여는 법</b><br />단축키: <code>⌘ Space</code> → <code>Terminal</code> 입력 → Enter<br />GUI: Finder → 응용 프로그램 → 유틸리티 → 터미널</div>
         <div class="term">
           <div class="term-bar"><div class="term-dots"><i></i><i></i><i></i></div><span class="term-title">terminal — zsh</span>
             <button class="copy" data-target="cmd-mac">복사</button></div>
@@ -215,6 +222,7 @@
       </div>
 
       <div class="panel" data-os="win">
+        <div class="open-terminal"><b>PowerShell 여는 법</b><br />단축키: <code>Win + X</code> → 터미널(관리자) 또는 PowerShell(관리자)<br />GUI: 시작 버튼 → PowerShell 검색 → 우클릭 → 관리자 권한으로 실행</div>
         <div class="term">
           <div class="term-bar"><div class="term-dots"><i></i><i></i><i></i></div><span class="term-title">PowerShell — 관리자</span>
             <button class="copy" data-target="cmd-win">복사</button></div>
@@ -229,6 +237,7 @@
       </div>
 
       <div class="panel" data-os="linux">
+        <div class="open-terminal"><b>터미널 여는 법</b><br />단축키: <code>Ctrl + Alt + T</code><br />GUI: 앱 메뉴/프로그램 목록에서 Terminal 또는 터미널 검색</div>
         <div class="term">
           <div class="term-bar"><div class="term-dots"><i></i><i></i><i></i></div><span class="term-title">terminal — bash</span>
             <button class="copy" data-target="cmd-linux">복사</button></div>

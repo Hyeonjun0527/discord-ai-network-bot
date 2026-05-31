@@ -27,7 +27,8 @@ object ProviderOnboarding {
                 "📄 웹 가이드·소스: $INSTALL_PAGE · **민감정보 입력 금지.**"
         return when (os.lowercase()) {
             "mac", "macos" ->
-                "🍎 **macOS** — 터미널에 그대로 붙여넣기:\n" +
+                "🍎 **macOS** — 먼저 터미널을 여세요: `⌘ Space` → `Terminal` 입력 → Enter / 또는 Finder → 응용 프로그램 → 유틸리티 → 터미널.\n" +
+                    "그다음 아래를 그대로 붙여넣기:\n" +
                     "```bash\n" +
                     "brew install ollama\n" +
                     "brew services start ollama\n" +
@@ -36,7 +37,8 @@ object ProviderOnboarding {
                     "./provider-agent --token $token --relay-url $relay\n" +
                     "```" + note
             "windows", "win" ->
-                "🪟 **Windows** — PowerShell(관리자)에 붙여넣기:\n" +
+                "🪟 **Windows** — 먼저 PowerShell(관리자)을 여세요: `Win + X` → 터미널(관리자) / 또는 시작 메뉴에서 PowerShell 검색 → 우클릭 → 관리자 권한 실행.\n" +
+                    "그다음 아래를 그대로 붙여넣기:\n" +
                     "```powershell\n" +
                     "winget install --id Ollama.Ollama -e --accept-source-agreements\n" +
                     "ollama pull llama3.1:8b\n" +
@@ -44,7 +46,8 @@ object ProviderOnboarding {
                     ".\\provider-agent.exe --token $token --relay-url $relay\n" +
                     "```" + note
             "linux" ->
-                "🐧 **Linux** — 터미널에 붙여넣기:\n" +
+                "🐧 **Linux** — 먼저 터미널을 여세요: `Ctrl + Alt + T` / 또는 앱 메뉴에서 Terminal(터미널) 검색.\n" +
+                    "그다음 아래를 그대로 붙여넣기:\n" +
                     "```bash\n" +
                     "curl -fsSL https://ollama.com/install.sh | sh\n" +
                     "ollama pull llama3.1:8b\n" +

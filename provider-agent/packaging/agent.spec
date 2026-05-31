@@ -4,14 +4,16 @@
 # block_cipher 미사용.
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files
+
 project_root = Path(SPECPATH).parent
 
 a = Analysis(
     [str(project_root / "packaging" / "pyinstaller_entry.py")],
     pathex=[str(project_root / "src")],
     binaries=[],
-    datas=[],
-    hiddenimports=["provider_agent", "aiohttp"],
+    datas=collect_data_files("certifi"),
+    hiddenimports=["provider_agent", "aiohttp", "certifi"],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],

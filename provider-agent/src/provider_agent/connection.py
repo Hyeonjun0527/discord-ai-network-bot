@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
 import time
 from collections.abc import Awaitable
 from typing import Callable
 
 import aiohttp
+import certifi
 
 from .config import AgentConfig
 from .constants import MAX_FRAME_BYTES
@@ -71,7 +73,9 @@ class AgentConnection:
         backoff = 1.0
         while not self._stopped:
             try:
-                async with aiohttp.ClientSession() as session:
+                ssl_context = ssl.create_default_context(cafile=certifi.where())
+                connector = aiohttp.TCPConnector(ssl=ssl_context)
+                async with aiohttp.ClientSession(connector=connector) as session:
                     async with session.ws_connect(
                         self._cfg.relay_url, max_msg_size=MAX_FRAME_BYTES, heartbeat=None
                     ) as ws:

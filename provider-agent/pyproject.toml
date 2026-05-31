@@ -9,9 +9,10 @@ description = "커뮤니티 Provider Agent — 내 PC의 로컬 Ollama 를 중�
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-# 경량 배포: aiohttp 만 필수(discord.py 등 봇 의존성 없음).
+# 경량 배포: aiohttp + 인증서 번들만 필수(discord.py 등 봇 의존성 없음).
 dependencies = [
   "aiohttp>=3.9,<4.0",
+  "certifi>=2024.8.30",
 ]
 
 [project.optional-dependencies]

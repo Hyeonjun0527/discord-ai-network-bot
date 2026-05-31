@@ -44,6 +44,7 @@ class CommandService(
     private val contributionPolicy: ContributionPolicyService,
     private val blocklist: com.discordassistant.central.provider.BlocklistService,
     private val schedule: com.discordassistant.central.provider.ProviderScheduleService,
+    private val channelProfiles: ChannelAiProfileService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
 ) {
@@ -184,6 +185,7 @@ class CommandService(
             sb.append("· `/fairness` `/providers` — 공정성 리포트·프로바이더 목록\n")
             sb.append("· `/approve-provider` `/remove-provider` — 승인/제거\n")
             sb.append("· `/allow-channel` `/deny-channel` `/set-role-policy` — 채널·역할 정책\n")
+            sb.append("· `/llm-channel-profile` — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
             sb.append("· `/llm-block` `/llm-unblock` — 사용자 차단/해제\n")
         }
         sb.append("\n_민감정보(비밀번호·API 키 등)는 입력하지 마세요._")
@@ -191,6 +193,34 @@ class CommandService(
     }
 
     // ── 프로바이더 ──────────────────────────────────────────────────────
+
+    fun setChannelAiProfile(
+        ctx: CommandContext,
+        name: String?,
+        avatarUrl: String?,
+        reset: Boolean,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        if (reset) {
+            channelProfiles.clear(ctx.guildId, ctx.channelId)
+            return Reply("✅ 이 채널의 AI 응답 프로필을 기본 봇 표시로 되돌렸습니다.")
+        }
+        val displayName = name?.trim().orEmpty()
+        if (displayName.isBlank()) {
+            val current = channelProfiles.get(ctx.guildId, ctx.channelId)
+            return if (current == null) {
+                Reply("현재 이 채널의 AI 응답 프로필은 설정되지 않았습니다. `name` 옵션으로 설정하세요.")
+            } else {
+                Reply("현재 이 채널의 AI 응답 프로필: **${current.displayName}**")
+            }
+        }
+        val profile = channelProfiles.set(ctx.guildId, ctx.channelId, displayName, avatarUrl)
+        return Reply(
+            "✅ 이 채널의 AI 응답 프로필을 **${profile.displayName}**(으)로 설정했습니다.\n" +
+                "이후 `/ask` 답변은 이 채널에서 그 이름으로 보입니다. 봇에 `웹후크 관리` 권한이 필요해요.",
+        )
+    }
+
     fun providerJoin(ctx: CommandContext): Reply {
         // DM 글로벌 풀은 승인할 관리자가 없으므로 자동 승인(본인 PC 를 자발적으로 기여). 길드는 기존 정책대로.
         val auto = ctx.guildId == DM_SCOPE || policy.isAutoApprove(ctx.guildId)

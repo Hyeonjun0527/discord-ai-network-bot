@@ -48,6 +48,7 @@ object CommandLoc {
             "llm-deny-channel" to L("채널금지", null, "Disallow a channel for LLM (admin)", "Запретить канал (админ)"),
             "llm-role-policy" to L("역할정책", null, "Set per-role allowed level (admin)", "Политика по ролям (админ)"),
             "llm-guild-defaults" to L("서버기본값", null, "Set default model/language (admin)", "Модель/язык по умолчанию (админ)"),
+            "llm-channel-profile" to L("채널프로필", null, "Set this channel's AI answer profile (admin)", "Профиль ИИ канала (админ)"),
             "providers" to L("프로바이더목록", null, "View the provider pool (admin)", "Список пула провайдеров (админ)"),
             "provider-approve" to L("프로바이더승인", null, "Approve a provider (admin)", "Одобрить провайдера (админ)"),
             "provider-remove" to L("프로바이더제거", null, "Remove a provider (admin)", "Удалить провайдера (админ)"),

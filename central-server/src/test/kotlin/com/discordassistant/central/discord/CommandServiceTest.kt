@@ -144,6 +144,20 @@ class CommandServiceTest
         }
 
         @Test
+        fun `llm-channel-profile — 관리자가 채널별 AI 응답 프로필을 설정 조회 초기화한다`() {
+            val admin = ctx(admin = true)
+            assertTrue(commands.setChannelAiProfile(ctx(admin = false), "냥시스턴트", null, false).content.contains("⛔"))
+
+            val set = commands.setChannelAiProfile(admin, "냥시스턴트", null, false).content
+            assertTrue(set.contains("냥시스턴트"))
+            assertTrue(set.contains("웹후크 관리"))
+
+            assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("냥시스턴트"))
+            assertTrue(commands.setChannelAiProfile(admin, null, null, true).content.contains("기본 봇"))
+            assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("설정되지 않았습니다"))
+        }
+
+        @Test
         fun `ask — echo 프로바이더 연결 시 완료`() {
             val conn = EchoConn()
             val s = ProviderSession(conn, providerId = 77, guildId = 100)

@@ -29,7 +29,7 @@ CENTRAL_DEV_ENABLED=false \
 docker compose up -d --build
 
 # 헬스 확인
-curl -s localhost:8080/actuator/health   # {"status":"UP"}
+curl -s localhost:8085/actuator/health   # {"status":"UP"}
 ```
 로그에 `Discord(JDA) 기동 완료` 가 보이면 봇 온라인.
 
@@ -53,7 +53,7 @@ DISCORD_ENABLED=true DISCORD_BOT_TOKEN='토큰' DISCORD_GUILD_ID='서버ID' CENT
 3. 에이전트 실행:
    ```bash
    pip install -e provider-agent            # 또는 배포물/Docker(packaging/README.md)
-   discord-ai-provider-agent --token <토큰> --relay-url ws://<central-host>:8080/agent
+discord-ai-provider-agent --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
    ```
    → 풀에 등록되면 `/providers`(관리자)·`/catalog` 에 나타난다.
 

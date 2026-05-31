@@ -22,7 +22,7 @@ services:
 
   central-server:
     image: ${CENTRAL_IMAGE:?CENTRAL_IMAGE 필요(ghcr.io/owner/central-server:tag)}
-    container_name: central-server # cloudflared 가 컨테이너명으로 라우팅(http://central-server:8080)
+    container_name: central-server # cloudflared 가 컨테이너명으로 라우팅(http://central-server:8085)
     restart: unless-stopped
     depends_on:
       db:
@@ -35,21 +35,24 @@ services:
       DISCORD_ENABLED: ${DISCORD_ENABLED:-true}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
-      RELAY_PUBLIC_URL: ${RELAY_PUBLIC_URL:-}
+      RELAY_PUBLIC_URL: ${RELAY_PUBLIC_URL:-wss://discord-ai.yeon.world/agent}
+      SERVER_PORT: ${SERVER_PORT:-8085}
       CENTRAL_DEV_ENABLED: "false"
     networks:
-      - default # db 접근
-      - dailyting-edge # cloudflared 가 이 컨테이너에 닿도록(공개 노출/프로바이더 WS)
+      default: {}
+      yeon-edge:
+        aliases:
+          - discord-yeon-world
     volumes:
       # 에이전트 단일 실행파일 서빙(/download/**). agent-build 가 이 폴더에 바이너리 배치.
       - ./downloads:/app/downloads:ro
-    # 호스트 로컬 바인딩(헬스/디버그용). 공개는 Cloudflare Tunnel → http://central-server:8080.
+    # 호스트 로컬 바인딩(헬스/디버그용). 공개는 Cloudflare Tunnel → http://central-server:8085.
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8085:8085"
 
 networks:
-  # dailyting 스택이 만든 외부 네트워크. cloudflared 와 공유해 컨테이너명으로 라우팅.
-  dailyting-edge:
+  # yeon 스택의 외부 네트워크(yeon-cloudflared-1 과 공유). 컨테이너명/alias 로 터널 라우팅.
+  yeon-edge:
     external: true
 
 volumes:

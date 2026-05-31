@@ -51,7 +51,7 @@ central:
   relay:
     # 에이전트 WebSocket 경로. 유저/프로바이더 PC 에이전트가 outbound 접속.
     path: ${RELAY_PATH:/agent}
-    # 프로바이더 온보딩 안내에 넣을 공개 relay 주소(예: wss://central.dailyting.cloud/agent).
+    # 프로바이더 온보딩 안내에 넣을 공개 relay 주소(예: wss://discord-ai.yeon.world/agent).
     # 비우면 안내문에 "관리자에게 문의" 플레이스홀더 표시.
     public-url: ${RELAY_PUBLIC_URL:}
     max-concurrency-per-provider: ${RELAY_MAX_CONCURRENCY:1}

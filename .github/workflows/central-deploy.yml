@@ -1,6 +1,6 @@
-# central-server 자동 CI/CD → 원격 self-hosted 러너(linuxssh.dailyting.cloud) 배포.
+# central-server 자동 CI/CD → 원격 self-hosted 러너(ssh.yeon.world, ARM64) 배포.
 # Cloudflare Tunnel 뒤라 raw SSH 불가 → 원격에 설치한 self-hosted 러너에서 직접 배포.
-# build(ubuntu-latest): bootJar → GHCR push.  deploy(self-hosted: dailyting-remote): pull → compose up → 헬스.
+# build(ubuntu-latest): bootJar → arm64 이미지 GHCR push(QEMU).  deploy(self-hosted: yeon-arm): pull → compose up → 헬스.
 #
 # 필요한 GitHub Secrets:
 #   CENTRAL_DB_PASSWORD  (✅ 설정됨) — Postgres 비밀번호
@@ -27,6 +27,7 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/hyeonjun0527/central-server
+  APP_PORT: "8085"
 
 jobs:
   build:
@@ -40,6 +41,8 @@ jobs:
       - name: bootJar 빌드
         working-directory: central-server
         run: ./gradlew bootJar --no-daemon --console=plain
+      - uses: docker/setup-qemu-action@v3 # 새 서버(ssh.yeon.world) ARM64 → arm64 이미지 빌드 에뮬레이션
+      - uses: docker/setup-buildx-action@v3
       - name: GHCR 로그인
         uses: docker/login-action@v3
         with:
@@ -50,6 +53,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: central-server
+          platforms: linux/arm64 # 새 서버 ARM64
           push: true
           tags: |
             ${{ env.IMAGE }}:latest
@@ -57,7 +61,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: [self-hosted, dailyting-remote]
+    runs-on: [self-hosted, yeon-arm]
     steps:
       - uses: actions/checkout@v4
       - name: GHCR 로그인(원격)
@@ -70,6 +74,8 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
           RELAY_PUBLIC_URL: ${{ secrets.RELAY_PUBLIC_URL }}
+          APP_PORT: ${{ env.APP_PORT }}
+          SERVER_PORT: "8085"
         run: |
           set -e
           DEST="$HOME/deploy/central-server"
@@ -83,13 +89,15 @@ jobs:
           DISCORD_ENABLED=true
           DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
           DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
-          RELAY_PUBLIC_URL=${RELAY_PUBLIC_URL}
+          RELAY_PUBLIC_URL=${RELAY_PUBLIC_URL:-wss://discord-ai.yeon.world/agent}
+          SERVER_PORT=${SERVER_PORT}
+          APP_PORT=${APP_PORT}
           ENV
           docker compose --env-file .env -f compose.yml pull
           docker compose --env-file .env -f compose.yml up -d
           ok=0
           for i in $(seq 1 40); do
-            if curl -sf http://localhost:8080/actuator/health | grep -q '"status":"UP"'; then ok=1; break; fi
+            if curl -sf http://localhost:${APP_PORT}/actuator/health | grep -q '"status":"UP"'; then ok=1; break; fi
             sleep 3
           done
           if [ "$ok" != "1" ]; then

@@ -36,6 +36,15 @@ class EmbedFactoryTest {
     }
 
     @Test
+    fun `시작 메뉴 embed는 브랜드 이미지와 현대화 문구를 포함한다`() {
+        val e = EmbedFactory.mainMenuEmbed()
+        assertEquals("냥시스턴트가 준비됐어요", e.title)
+        assertTrue(e.description!!.contains("내 컴퓨터의 AI"))
+        assertEquals(EmbedFactory.MENU_HERO_IMAGE_URL, e.image!!.url)
+        assertNotNull(e.footer)
+    }
+
+    @Test
     fun `도움말 패널 embed — 관리자만 관리자 섹션`() {
         val user = EmbedFactory.helpEmbed(isAdmin = false)
         assertEquals("🤖 커뮤니티 로컬 AI Provider Pool", user.title)

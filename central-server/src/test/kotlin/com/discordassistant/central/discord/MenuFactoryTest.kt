@@ -1,5 +1,6 @@
 package com.discordassistant.central.discord
 
+import net.dv8tion.jda.api.interactions.components.buttons.ButtonStyle
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -19,8 +20,10 @@ class MenuFactoryTest {
         assertTrue(user.any { it.id == MenuFactory.ASK })
         assertTrue(user.any { it.id == MenuFactory.PROVIDER })
         assertTrue(user.any { it.label == "함께 도와주기" })
-        assertTrue(user.any { it.label == "내 AI 상태" })
+        assertTrue(user.any { it.label == "내 상태" })
         assertFalse(user.any { it.label == "AI 일꾼 되기" })
+        assertEquals(ButtonStyle.PRIMARY, user.first { it.id == MenuFactory.ASK }.style)
+        assertEquals(ButtonStyle.SECONDARY, admin.first { it.id == MenuFactory.SETTINGS }.style)
     }
 
     @Test
@@ -66,7 +69,7 @@ class MenuFactoryTest {
         val user = MenuFactory.slimHelp(isAdmin = false)
         assertTrue(user.contains("/ask"))
         assertTrue(user.contains("함께 도와주기"))
-        assertTrue(user.contains("내 AI 상태"))
+        assertTrue(user.contains("내 상태"))
         assertTrue(user.contains("/menu"))
         assertFalse(user.contains("⚙️"))
         assertTrue(MenuFactory.slimHelp(isAdmin = true).contains("⚙️"))

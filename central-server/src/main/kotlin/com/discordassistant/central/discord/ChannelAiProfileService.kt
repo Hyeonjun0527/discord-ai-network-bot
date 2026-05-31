@@ -47,6 +47,11 @@ class ChannelAiProfileService(
         profiles.deleteByGuildIdAndChannelId(guildId, channelId)
     }
 
+    @Transactional
+    fun clearGuild(guildId: Long) {
+        profiles.deleteByGuildId(guildId)
+    }
+
     private fun ChannelAiProfileEntity.toProfile() =
         ChannelAiProfile(
             guildId = guildId,

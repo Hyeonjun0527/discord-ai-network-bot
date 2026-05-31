@@ -65,6 +65,13 @@ class ContributionPolicyService(
 
     fun policies(providerId: Long): List<ProviderContributionPolicyEntity> = repo.findByProviderId(providerId)
 
+    @Transactional
+    fun deleteProviders(providerIds: Collection<Long>) {
+        if (providerIds.isNotEmpty()) {
+            repo.deleteByProviderIdIn(providerIds)
+        }
+    }
+
     private fun policyFor(
         providerId: Long,
         model: String,

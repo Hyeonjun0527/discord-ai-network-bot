@@ -68,6 +68,13 @@ class TokenService(
         store.remove(hash(token))
     }
 
+    /** 길드가 제거될 때 아직 사용되지 않은 해당 길드 토큰을 모두 폐기한다. */
+    fun revokeGuild(guildId: Long): Int {
+        val keys = store.entries.filter { it.value.guildId == guildId }.map { it.key }
+        keys.forEach { store.remove(it) }
+        return keys.size
+    }
+
     fun activeTokenCount(): Int = store.size
 
     private fun hash(token: String): String =

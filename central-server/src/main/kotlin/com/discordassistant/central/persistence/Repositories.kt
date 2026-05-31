@@ -8,6 +8,8 @@ interface GuildRepository : JpaRepository<GuildEntity, Long>
 interface AllowedChannelRepository : JpaRepository<AllowedChannelEntity, Long> {
     fun findByGuildId(guildId: Long): List<AllowedChannelEntity>
 
+    fun deleteByGuildId(guildId: Long)
+
     fun existsByGuildIdAndChannelId(
         guildId: Long,
         channelId: Long,
@@ -21,6 +23,8 @@ interface AllowedChannelRepository : JpaRepository<AllowedChannelEntity, Long> {
 
 interface RolePolicyRepository : JpaRepository<RolePolicyEntity, Long> {
     fun findByGuildId(guildId: Long): List<RolePolicyEntity>
+
+    fun deleteByGuildId(guildId: Long)
 
     fun findByGuildIdAndRoleId(
         guildId: Long,
@@ -42,6 +46,8 @@ interface ProviderRepository : JpaRepository<ProviderEntity, Long> {
 
 interface ProviderContributionPolicyRepository : JpaRepository<ProviderContributionPolicyEntity, Long> {
     fun findByProviderId(providerId: Long): List<ProviderContributionPolicyEntity>
+
+    fun deleteByProviderIdIn(providerIds: Collection<Long>)
 }
 
 interface AiRequestRepository : JpaRepository<AiRequestEntity, Long> {
@@ -105,6 +111,8 @@ interface ProviderScheduleRepository : JpaRepository<ProviderScheduleEntity, Lon
         providerId: Long,
         guildId: Long,
     ): ProviderScheduleEntity?
+
+    fun deleteByGuildId(guildId: Long)
 }
 
 interface ChannelAiProfileRepository : JpaRepository<ChannelAiProfileEntity, Long> {
@@ -117,4 +125,6 @@ interface ChannelAiProfileRepository : JpaRepository<ChannelAiProfileEntity, Lon
         guildId: Long,
         channelId: Long,
     )
+
+    fun deleteByGuildId(guildId: Long)
 }

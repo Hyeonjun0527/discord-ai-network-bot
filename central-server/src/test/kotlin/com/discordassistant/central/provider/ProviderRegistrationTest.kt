@@ -99,4 +99,21 @@ class ProviderRegistrationServiceTest {
         assertNull(svc.approve(5, adminId = 999)) // 이미 APPROVED → 승인 불가
         assertFalse(svc.reject(5, adminId = 999)) // PENDING 아님 → 거절 불가
     }
+
+    @Test
+    fun `길드 제거 시 해당 길드 등록과 미사용 토큰 폐기`() {
+        val (svc, tokens, _) = service()
+        val token100 = svc.requestJoin(10, 100, autoApprove = true).token!!
+        svc.requestJoin(11, 100, autoApprove = false)
+        val token200 = svc.requestJoin(20, 200, autoApprove = true).token!!
+
+        val removed = svc.removeGuild(100)
+
+        assertEquals(setOf(10L, 11L), removed.toSet())
+        assertNull(svc.stateOf(10))
+        assertNull(svc.stateOf(11))
+        assertEquals(ProviderState.APPROVED, svc.stateOf(20))
+        assertNull(tokens.verify(token100))
+        assertEquals(20L, tokens.verify(token200)!!.providerId)
+    }
 }

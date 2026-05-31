@@ -104,6 +104,18 @@ class ProviderRegistrationService(
         return true
     }
 
+    /** 봇이 길드에서 제거되면 해당 길드에 묶인 등록/승인 상태를 모두 제거하고 토큰을 폐기한다. */
+    fun removeGuild(guildId: Long): List<Long> {
+        val removed =
+            providers.values
+                .filter { it.guildId == guildId }
+                .map { it.providerId }
+        removed.forEach { providers.remove(it) }
+        val revoked = tokens.revokeGuild(guildId)
+        audit.record("guild_provider_cleanup", "system", "guild:$guildId", "providers=${removed.size},tokens=$revoked")
+        return removed
+    }
+
     fun stateOf(providerId: Long): ProviderState? = providers[providerId]?.state
 
     /** 길드의 승인 대기(PENDING) 목록. */

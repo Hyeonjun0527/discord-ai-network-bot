@@ -186,3 +186,71 @@
 - [x] 16-4. README(기존)·DEMO 운영 가이드
 - [x] 16-5. 데모 시나리오(다중 provider, docs/DEMO.md)
 - [x] 16-6. 전체 통합 점검 + 커밋
+
+## 후속 개선 — 수정형 점진 답변 UX(Discord pseudo-streaming)
+
+> 목표: 긴 답변도 사용자가 기다리는 느낌을 줄이기 위해, Discord의 네이티브 스트리밍이 아니라
+> **하나의 답변 메시지를 주기적으로 수정(edit)하는 방식**으로 진행 상황을 보여준다.
+> Discord API 한계와 rate limit 때문에 토큰마다 수정하지 않고, 2~3초 단위의 안전한 배치 업데이트를 기본값으로 한다.
+>
+> 체크리스트 규모: **100개는 과하다.** 구현 안정성·운영 안전성·테스트 범위를 합쳐 **36개 내외**면 충분하다.
+> 더 잘게 쪼개야 할 때는 이 섹션을 유지하고 구현 PR에서 하위 태스크로 분리한다.
+
+### 사용자 경험·제품 정책
+
+- [ ] PS-01. 점진 표시 적용 조건 정의: 긴 답변 예상, provider 가 chunk 지원, Discord 채널 응답 가능 상태일 때만 사용
+- [ ] PS-02. 사용자에게 처음 보낼 placeholder 문구 정의: “답변을 만들고 있어요…”처럼 불안하지 않은 톤
+- [ ] PS-03. 상태 문구 정의: 대기 중, provider 연결 중, 답변 작성 중, 마무리 중, 실패/재시도
+- [ ] PS-04. 짧은 답변은 기존처럼 최종 답변 1회만 전송하는 기준 정의
+- [ ] PS-05. `/질문`, mention 질문, 모달 질문, 컨텍스트 메뉴 질문에서 같은 UX 원칙 적용
+- [ ] PS-06. AI 채널 프로필(webhook) 응답과 일반 봇 reply 응답의 차이를 문서화
+- [ ] PS-07. 사용자가 중간 메시지를 보더라도 “미완성 답변”임을 자연스럽게 알 수 있는 꼬리표 정의
+- [ ] PS-08. 최종 답변에서는 중간 진행 꼬리표와 불필요한 provider 메타 문구를 제거
+
+### Discord 메시지 수정 전략
+
+- [ ] PS-09. Discord edit 주기 기본값을 2~3초로 제한하고 설정값으로 분리
+- [ ] PS-10. 누적 텍스트가 너무 짧을 때는 edit 하지 않는 최소 증가량 기준 정의
+- [ ] PS-11. Discord 2,000자 제한 직전에는 다음 메시지로 분리하는 규칙 구현
+- [ ] PS-12. Markdown 코드블록이 중간에 깨지지 않도록 임시 닫힘 처리 또는 plain fallback 구현
+- [ ] PS-13. 한글/이모지/서로게이트 페어가 잘리지 않도록 UTF-8/Unicode 안전 slice 적용
+- [ ] PS-14. rate limit 발생 시 edit 간격을 자동으로 늘리고 최종 답변은 보장
+- [ ] PS-15. 메시지 삭제/권한 상실/채널 삭제 시 조용히 중단하고 요청 상태를 실패로 기록
+- [ ] PS-16. webhook 메시지 수정이 불가능한 경로가 있으면 bot reply fallback 으로 전환
+
+### Provider Agent ↔ Central Server 프로토콜
+
+- [ ] PS-17. provider-agent Ollama streaming 호출을 운영 경로에 연결하고, 기존 non-streaming 경로는 유지
+- [ ] PS-18. 중앙 서버가 `chunk` 프레임을 requestId 별 accumulator 로 모으도록 구현
+- [ ] PS-19. `chunk` 순서 보장/중복 방어 기준을 정하고 테스트
+- [ ] PS-20. provider 가 chunk 를 보내다가 최종 `result` 를 보내는 정상 종료 계약 확정
+- [ ] PS-21. provider 가 chunk 지원을 capability 로 보고하고, 미지원이면 기존 최종 응답 방식으로 fallback
+- [ ] PS-22. provider 연결이 중간에 끊기면 마지막 중간 답변을 실패 안내로 수정
+- [ ] PS-23. 요청 취소 시 중앙 서버가 provider 에 cancel 을 보내고 Discord 진행 메시지를 취소 상태로 수정
+- [ ] PS-24. chunk 프레임 크기·누적 크기 상한을 기존 프레임 제한과 일관되게 적용
+
+### 안정성·관측성·운영
+
+- [ ] PS-25. 요청당 최초 표시 시간(TTFT), 총 응답 시간, chunk 수, edit 수 메트릭 추가
+- [ ] PS-26. requestId/traceId 기준으로 chunk 수신·Discord edit·최종 완료 로그를 연결
+- [ ] PS-27. provider 별 streaming 실패율을 기록해 반복 실패 provider 를 보호/제외 정책에 반영
+- [ ] PS-28. 과도한 edit 로 Discord API 제한에 걸리지 않도록 guild/channel 단위 throttle 적용
+- [ ] PS-29. 운영 설정 플래그 추가: streaming enabled, edit interval, max edits, min delta chars
+- [ ] PS-30. 장애 시 즉시 기존 “placeholder + 최종 1회 응답” 방식으로 되돌릴 수 있는 kill switch 제공
+
+### 테스트·검증·출시
+
+- [ ] PS-31. accumulator 단위 테스트: chunk 누적, 중복, 순서, 오류, cancel
+- [ ] PS-32. Discord 응답 서비스 단위 테스트: edit throttle, 2,000자 분할, markdown 안전 처리
+- [ ] PS-33. provider-agent ↔ central-server contract 테스트: chunk/result/error/cancel 호환성
+- [ ] PS-34. Cucumber BDD 시나리오 추가: 긴 답변이 중간 업데이트 후 최종 답변으로 마무리된다
+- [ ] PS-35. k6 또는 로컬 부하 테스트로 동시 긴 답변에서 edit rate limit 이 안전한지 검증
+- [ ] PS-36. 실제 Discord 운영 채널에서 smoke test: slash 질문, mention 질문, provider 끊김, 긴 답변 2,000자 초과
+
+### 완료 기준(Definition of Done)
+
+- [ ] 긴 답변에서 첫 사용자 피드백이 3초 내 표시된다.
+- [ ] 최종 답변은 기존 답변 품질·권한·공정성·사용량 기록을 깨뜨리지 않는다.
+- [ ] streaming 미지원 agent 와 기존 배포 agent 가 계속 정상 동작한다.
+- [ ] Discord rate limit 이 발생해도 사용자는 최종 답변 또는 명확한 실패 안내를 받는다.
+- [ ] 운영에서 설정값 하나로 기능을 끄고 기존 응답 방식으로 복귀할 수 있다.

@@ -18,6 +18,9 @@ class MenuFactoryTest {
         // 핵심 버튼 ID 존재
         assertTrue(user.any { it.id == MenuFactory.ASK })
         assertTrue(user.any { it.id == MenuFactory.PROVIDER })
+        assertTrue(user.any { it.label == "함께 도와주기" })
+        assertTrue(user.any { it.label == "내 AI 상태" })
+        assertFalse(user.any { it.label == "AI 일꾼 되기" })
     }
 
     @Test
@@ -62,6 +65,8 @@ class MenuFactoryTest {
     fun `슬림 도움말 — 핵심만, 관리자만 설정 언급`() {
         val user = MenuFactory.slimHelp(isAdmin = false)
         assertTrue(user.contains("/ask"))
+        assertTrue(user.contains("함께 도와주기"))
+        assertTrue(user.contains("내 AI 상태"))
         assertTrue(user.contains("/menu"))
         assertFalse(user.contains("⚙️"))
         assertTrue(MenuFactory.slimHelp(isAdmin = true).contains("⚙️"))

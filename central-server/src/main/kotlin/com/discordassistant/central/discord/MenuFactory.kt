@@ -68,8 +68,8 @@ object MenuFactory {
         val base =
             listOf(
                 Button.primary(ASK, "질문하기").withEmoji(Emoji.fromUnicode("💬")),
-                Button.success(PROVIDER, "AI 일꾼 되기").withEmoji(Emoji.fromUnicode("🖥️")),
-                Button.secondary(STATUS, "내 상태").withEmoji(Emoji.fromUnicode("📊")),
+                Button.success(PROVIDER, "함께 도와주기").withEmoji(Emoji.fromUnicode("🖥️")),
+                Button.secondary(STATUS, "내 AI 상태").withEmoji(Emoji.fromUnicode("📊")),
                 Button.secondary(HELP, "도움말").withEmoji(Emoji.fromUnicode("❓")),
             )
         return if (isAdmin) base + Button.danger(SETTINGS, "설정").withEmoji(Emoji.fromUnicode("⚙️")) else base
@@ -111,8 +111,8 @@ object MenuFactory {
         val sb = StringBuilder()
         sb.append("**핵심만 빠르게** — 자세한 건 버튼으로!\n\n")
         sb.append("💬 **`/ask <질문>`** — 풀의 AI 에게 질문 (또는 위 `질문하기` 버튼)\n")
-        sb.append("🖥️ **`AI 일꾼 되기`** 버튼 — 내 PC 로컬 AI 를 이 서버의 일꾼으로(프로바이더)\n")
-        sb.append("📊 **`내 상태`** 버튼 — 내 사용량/기여 확인\n")
+        sb.append("🖥️ **`함께 도와주기`** 버튼 — 내 컴퓨터의 AI 로 커뮤니티 답변 돕기\n")
+        sb.append("📊 **`내 AI 상태`** 버튼 — 내 사용량/기여 확인\n")
         sb.append("🧭 **`/menu`** — 언제든 이 판을 다시 열기\n")
         if (isAdmin) {
             sb.append("⚙️ **`설정`** 버튼(관리자) — 언어·기본모델·자동승인·허용채널을 드롭다운으로\n")

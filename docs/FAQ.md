@@ -2,6 +2,8 @@
 
 커뮤니티 로컬 AI Provider Pool — 사용 가이드 (차수 19 #289).
 
+민감한 우려 사항은 [Provider Pool 민감 질문 30개](./SENSITIVE_QUESTIONS.md)를 함께 참고합니다.
+
 ## 일반
 
 **Q. 이 서비스는 뭔가요?**

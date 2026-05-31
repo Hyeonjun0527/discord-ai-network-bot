@@ -14,6 +14,7 @@ class ProviderOnboardingInstallTest {
         assertFalse(s.contains("discord-ai.yeon.world/download"), s)
         assertTrue(s.contains("curl -L -o discord-ai-provider-agent-macos"), s)
         assertTrue(s.contains("chmod +x discord-ai-provider-agent-macos"), s)
+        assertTrue(s.contains("codesign --force --deep --sign - discord-ai-provider-agent-macos"), s)
         assertTrue(s.contains("./discord-ai-provider-agent-macos"), s)
         assertTrue(s.contains("⌘ Space"), s)
         assertTrue(s.contains("Finder"), s)

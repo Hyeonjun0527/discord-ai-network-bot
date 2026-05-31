@@ -216,9 +216,10 @@
 <span class="k">ollama</span> pull llama3.1:8b
 <span class="c"># 2) 에이전트 받기(GitHub Release) + 실행</span>
 <span class="k">curl</span> -L -o discord-ai-provider-agent-macos https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/discord-ai-provider-agent-macos && <span class="k">chmod</span> +x discord-ai-provider-agent-macos
+<span class="k">codesign</span> --force --deep --sign - discord-ai-provider-agent-macos
 <span class="k">./discord-ai-provider-agent-macos</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
         </div>
-        <div class="note"><span class="ic">!</span><p><b>Gatekeeper 경고가 떴다면?</b> 브라우저로 직접 받아 더블클릭한 경우입니다. 위 <b>GitHub Release <code>curl</code> 명령</b>으로 받으면 출처를 확인할 수 있습니다. 이미 받았다면 <code>xattr -dr com.apple.quarantine ./discord-ai-provider-agent-macos</code> 로 해제하세요. (이건 GUI 앱이 아니라 <b>터미널에서 실행</b>하는 도구라 더블클릭하면 안 됩니다.)</p></div>
+        <div class="note"><span class="ic">!</span><p><b>Gatekeeper 경고가 떴다면?</b> 브라우저로 직접 받아 더블클릭한 경우입니다. 위 <b>GitHub Release <code>curl</code> 명령</b>으로 받으면 출처를 확인할 수 있습니다. 이미 받았다면 <code>codesign --force --deep --sign - discord-ai-provider-agent-macos</code> 후 다시 실행하세요. (이건 GUI 앱이 아니라 <b>터미널에서 실행</b>하는 도구라 더블클릭하면 안 됩니다.)</p></div>
       </div>
 
       <div class="panel" data-os="win">

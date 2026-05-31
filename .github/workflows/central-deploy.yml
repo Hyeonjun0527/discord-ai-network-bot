@@ -93,8 +93,27 @@ jobs:
           SERVER_PORT=${SERVER_PORT}
           APP_PORT=${APP_PORT}
           ENV
-          docker compose --env-file .env -f compose.yml pull
-          docker compose --env-file .env -f compose.yml up -d
+          retry() {
+            name="$1"
+            shift
+            max=5
+            delay=10
+            for i in $(seq 1 "$max"); do
+              echo "▶ ${name} 시도 ${i}/${max}"
+              if "$@"; then
+                echo "✅ ${name} 성공"
+                return 0
+              fi
+              if [ "$i" = "$max" ]; then
+                echo "❌ ${name} 최종 실패"
+                return 1
+              fi
+              sleep "$delay"
+              delay=$((delay * 2))
+            done
+          }
+          retry "GHCR 이미지 다운로드" docker compose --env-file .env -f compose.yml pull
+          retry "컨테이너 기동" docker compose --env-file .env -f compose.yml up -d
           ok=0
           for i in $(seq 1 40); do
             if curl -sf http://localhost:${APP_PORT}/actuator/health | grep -q '"status":"UP"'; then ok=1; break; fi

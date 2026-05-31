@@ -84,6 +84,10 @@ class RelayWebSocketHandler(
             reject(session, "토큰 검증 실패")
             return
         }
+        if (binding.guildId == null) {
+            reject(session, "서버에 묶이지 않은 토큰입니다. 다시 등록해 주세요.")
+            return
+        }
         val conn = WsAgentConnection(session)
         val ps =
             ProviderSession(

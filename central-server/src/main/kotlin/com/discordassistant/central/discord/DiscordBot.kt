@@ -7,8 +7,10 @@ import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion
+import net.dv8tion.jda.api.events.channel.ChannelDeleteEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
 import net.dv8tion.jda.api.events.guild.GuildLeaveEvent
+import net.dv8tion.jda.api.events.guild.member.GuildMemberRemoveEvent
 import net.dv8tion.jda.api.events.interaction.ModalInteractionEvent
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent
 import net.dv8tion.jda.api.events.interaction.command.MessageContextInteractionEvent
@@ -68,6 +70,7 @@ class DiscordBot(
     private val metrics: CommandMetrics,
     private val channelProfiles: ChannelAiProfileService,
     private val guildCleanup: GuildRemovalCleanupService,
+    private val reconciliation: ProviderPoolReconciliationService,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
@@ -86,7 +89,7 @@ class DiscordBot(
         val instance =
             JDABuilder
                 .createLight(token, GatewayIntent.GUILD_MESSAGE_REACTIONS)
-                .addEventListeners(Listener(commands, metrics, channelProfiles, guildCleanup))
+                .addEventListeners(Listener(commands, metrics, channelProfiles, guildCleanup, reconciliation))
                 .build()
         jda = instance
         // 봇 DM 지원을 위해 항상 글로벌 등록(봇 DM 허용은 글로벌 명령 + dm_permission 으로 동작). 전파 최대 ~1h.
@@ -235,6 +238,7 @@ class DiscordBot(
         private val metrics: CommandMetrics,
         private val channelProfiles: ChannelAiProfileService,
         private val guildCleanup: GuildRemovalCleanupService,
+        private val reconciliation: ProviderPoolReconciliationService,
     ) : ListenerAdapter() {
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
@@ -451,6 +455,18 @@ class DiscordBot(
         /** 봇이 서버에서 제거되면 그 서버의 프로바이더 연결/등록/설정을 정리한다. */
         override fun onGuildLeave(event: GuildLeaveEvent) {
             guildCleanup.cleanup(event.guild.idLong)
+        }
+
+        /** 프로바이더 유저가 서버를 떠나면 해당 서버의 provider 상태만 정리한다. 기여 로그는 유지한다. */
+        override fun onGuildMemberRemove(event: GuildMemberRemoveEvent) {
+            reconciliation.cleanupMember(event.guild.idLong, event.user.idLong)
+        }
+
+        /** 채널 삭제 이벤트가 오면 허용 채널 정책과 채널 AI 프로필을 같이 정리한다. */
+        override fun onChannelDelete(event: ChannelDeleteEvent) {
+            if (event.isFromGuild) {
+                reconciliation.cleanupChannel(event.guild.idLong, event.channel.idLong)
+            }
         }
 
         private fun askModal() =

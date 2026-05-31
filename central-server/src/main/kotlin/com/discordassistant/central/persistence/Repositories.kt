@@ -113,6 +113,11 @@ interface ProviderScheduleRepository : JpaRepository<ProviderScheduleEntity, Lon
     ): ProviderScheduleEntity?
 
     fun deleteByGuildId(guildId: Long)
+
+    fun deleteByProviderIdAndGuildId(
+        providerId: Long,
+        guildId: Long,
+    )
 }
 
 interface ChannelAiProfileRepository : JpaRepository<ChannelAiProfileEntity, Long> {

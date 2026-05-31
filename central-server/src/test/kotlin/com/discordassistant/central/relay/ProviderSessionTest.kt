@@ -208,6 +208,41 @@ class ConnectionRegistryTest {
     }
 
     @Test
+    fun `같은 provider라도 다른 길드 세션은 서로 교체하지 않는다`() {
+        val reg = ConnectionRegistry()
+        val connA = FakeConnection("a")
+        val a = newSession(connA, 1, 100)
+        val connB = FakeConnection("b")
+        val b = newSession(connB, 1, 200)
+
+        reg.register(a)
+        reg.register(b)
+
+        assertSame(a, reg.byProvider(100, 1))
+        assertSame(b, reg.byProvider(200, 1))
+        assertEquals(null, connA.closed)
+        assertEquals(2, reg.activeCount())
+    }
+
+    @Test
+    fun `멤버 이탈 시 해당 길드 provider 세션만 닫는다`() {
+        val reg = ConnectionRegistry()
+        val connA = FakeConnection("a")
+        val a = newSession(connA, 1, 100)
+        val connB = FakeConnection("b")
+        val b = newSession(connB, 1, 200)
+        reg.register(a)
+        reg.register(b)
+
+        assertTrue(reg.closeProviderInGuild(100, 1, "member removed"))
+
+        assertEquals(null, reg.byProvider(100, 1))
+        assertSame(b, reg.byProvider(200, 1))
+        assertTrue(connA.closed!!.contains("member removed"))
+        assertEquals(null, connB.closed)
+    }
+
+    @Test
     fun `좀비 청소(heartbeat 만료)`() {
         val reg = ConnectionRegistry()
         val a = newSession(FakeConnection("a"), 1, 100)
@@ -217,6 +252,23 @@ class ConnectionRegistryTest {
         val n = reg.reapStale(timeoutSeconds = 0)
         assertEquals(1, n)
         assertEquals(0, reg.activeCount())
+    }
+
+    @Test
+    fun `길드 제거는 진행 중 요청을 실패 처리한다`() {
+        val reg = ConnectionRegistry()
+        val conn = FakeConnection("a")
+        val a = newSession(conn, 1, 100)
+        reg.register(a)
+        val fut = a.sendInfer(prompt = "in-flight")
+
+        assertEquals(1, reg.closeGuild(100, "guild removed"))
+
+        val ex =
+            org.junit.jupiter.api
+                .assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
+        assertTrue(ex.cause is ConnectionClosedException)
+        assertTrue(ex.cause!!.message!!.contains("guild removed"))
     }
 
     @Test

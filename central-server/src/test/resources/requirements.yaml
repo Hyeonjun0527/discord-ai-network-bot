@@ -59,3 +59,35 @@ requirements:
         path: src/test/resources/features/provider_pool_lifecycle.feature
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/provider/ProviderRegistrationTest.kt
+  - id: REQ-PPOOL-005
+    title: 같은 프로바이더 유저의 여러 서버 등록과 세션은 서로 격리된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/provider/ProviderRegistrationTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/relay/ProviderSessionTest.kt
+  - id: REQ-PPOOL-006
+    title: 서버를 떠난 프로바이더는 해당 서버 풀에서만 정리되고 기여 기록은 유지된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/ProviderPoolReconciliationServiceTest.kt
+  - id: REQ-PPOOL-007
+    title: 삭제된 채널의 허용 정책과 채널 AI 프로필은 함께 정리된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/ProviderPoolReconciliationServiceTest.kt
+  - id: REQ-PPOOL-008
+    title: 서버에 묶이지 않은 레거시 토큰은 릴레이 인증 단계에서 거부된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/relay/RelayWebSocketHandlerTest.kt
+  - id: REQ-PPOOL-009
+    title: 길드 제거는 진행 중 요청을 실패 처리하고 해당 세션을 닫는다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/relay/ProviderSessionTest.kt

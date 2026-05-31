@@ -19,9 +19,10 @@ class MenuFactoryTest {
         // 핵심 버튼 ID 존재
         assertTrue(user.any { it.id == MenuFactory.ASK })
         assertTrue(user.any { it.id == MenuFactory.PROVIDER })
-        assertTrue(user.any { it.label == "함께 도와주기" })
-        assertTrue(user.any { it.label == "내 상태" })
+        assertTrue(user.any { it.label == "❃ 함께 도와주기" })
+        assertTrue(user.any { it.label == "✡︎ 내 상태" })
         assertFalse(user.any { it.label == "AI 일꾼 되기" })
+        assertTrue(admin.any { it.label == "❂ 설정" })
         assertEquals(ButtonStyle.PRIMARY, user.first { it.id == MenuFactory.ASK }.style)
         assertEquals(ButtonStyle.SECONDARY, admin.first { it.id == MenuFactory.SETTINGS }.style)
     }

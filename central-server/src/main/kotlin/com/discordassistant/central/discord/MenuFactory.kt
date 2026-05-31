@@ -67,12 +67,12 @@ object MenuFactory {
     fun mainButtons(isAdmin: Boolean): List<Button> {
         val base =
             listOf(
-                Button.primary(ASK, "질문하기").withEmoji(Emoji.fromUnicode("✦")),
-                Button.secondary(PROVIDER, "함께 도와주기").withEmoji(Emoji.fromUnicode("❃")),
-                Button.secondary(STATUS, "내 상태").withEmoji(Emoji.fromUnicode("✡︎")),
-                Button.secondary(HELP, "도움말").withEmoji(Emoji.fromUnicode("❆")),
+                Button.primary(ASK, "✦ 질문하기"),
+                Button.secondary(PROVIDER, "❃ 함께 도와주기"),
+                Button.secondary(STATUS, "✡︎ 내 상태"),
+                Button.secondary(HELP, "❆ 도움말"),
             )
-        return if (isAdmin) base + Button.secondary(SETTINGS, "설정").withEmoji(Emoji.fromUnicode("❂")) else base
+        return if (isAdmin) base + Button.secondary(SETTINGS, "❂ 설정") else base
     }
 
     /** 언어 선택 드롭다운(ko/en). */

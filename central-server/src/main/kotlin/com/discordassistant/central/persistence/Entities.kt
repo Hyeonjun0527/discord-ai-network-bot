@@ -264,6 +264,76 @@ class KnowledgeSourceEntity(
 )
 
 @Entity
+@Table(name = "knowledge_document")
+class KnowledgeDocumentEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var knowledgeSpaceId: Long = 0,
+    var knowledgeSourceId: Long = 0,
+    var guildId: Long = 0,
+    var channelId: Long? = null,
+    var title: String = "",
+    var documentType: String = "markdown",
+    var contentHash: String = "",
+    var tokenEstimate: Int = 0,
+    var status: String = "parsed",
+    var parsedAt: Instant = Instant.EPOCH,
+)
+
+@Entity
+@Table(name = "knowledge_chunk")
+class KnowledgeChunkEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var knowledgeSpaceId: Long = 0,
+    var knowledgeDocumentId: Long = 0,
+    var knowledgeSourceId: Long = 0,
+    var guildId: Long = 0,
+    var channelId: Long? = null,
+    var chunkIndex: Int = 0,
+    var title: String = "",
+    var contentPreview: String = "",
+    var embeddingTextHash: String = "",
+    var tokenEstimate: Int = 0,
+    var qdrantPointId: String? = null,
+    var status: String = "ready",
+    var createdAt: Instant = Instant.EPOCH,
+)
+
+@Entity
+@Table(name = "embedding_index_job")
+class EmbeddingIndexJobEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var knowledgeSpaceId: Long = 0,
+    var triggeredBy: Long? = null,
+    var jobType: String = "rebuild",
+    var status: String = "queued",
+    var collectionName: String = "discord_ai_network",
+    var embeddingModel: String = "text-embedding-3-large",
+    var sourceCount: Int = 0,
+    var chunkCount: Int = 0,
+    var failureReason: String? = null,
+    var queuedAt: Instant = Instant.EPOCH,
+    var startedAt: Instant? = null,
+    var finishedAt: Instant? = null,
+)
+
+@Entity
+@Table(name = "retrieval_policy")
+class RetrievalPolicyEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var channelId: Long? = null,
+    var knowledgeSpaceId: Long? = null,
+    @Column(name = "top_k") var topK: Int = 6,
+    var tokenBudget: Int = 1800,
+    var rerankEnabled: Boolean = true,
+    var sourcePriority: String? = null,
+    var status: String = "active",
+    var createdAt: Instant = Instant.EPOCH,
+    var updatedAt: Instant = Instant.EPOCH,
+)
+
+@Entity
 @Table(name = "network_overview_projection")
 class NetworkOverviewProjectionEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,

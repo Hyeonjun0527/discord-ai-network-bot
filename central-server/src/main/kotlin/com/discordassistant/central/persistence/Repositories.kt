@@ -231,6 +231,43 @@ interface KnowledgeSourceRepository : JpaRepository<KnowledgeSourceEntity, Long>
     ): KnowledgeSourceEntity?
 }
 
+interface KnowledgeDocumentRepository : JpaRepository<KnowledgeDocumentEntity, Long> {
+    fun findByKnowledgeSpaceId(knowledgeSpaceId: Long): List<KnowledgeDocumentEntity>
+
+    fun findByKnowledgeSourceId(knowledgeSourceId: Long): List<KnowledgeDocumentEntity>
+}
+
+interface KnowledgeChunkRepository : JpaRepository<KnowledgeChunkEntity, Long> {
+    fun findByKnowledgeSpaceIdAndStatus(
+        knowledgeSpaceId: Long,
+        status: String,
+    ): List<KnowledgeChunkEntity>
+
+    fun findByKnowledgeDocumentIdOrderByChunkIndex(knowledgeDocumentId: Long): List<KnowledgeChunkEntity>
+}
+
+interface EmbeddingIndexJobRepository : JpaRepository<EmbeddingIndexJobEntity, Long> {
+    fun findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(
+        guildId: Long,
+        knowledgeSpaceId: Long,
+    ): List<EmbeddingIndexJobEntity>
+}
+
+interface RetrievalPolicyRepository : JpaRepository<RetrievalPolicyEntity, Long> {
+    fun findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(
+        guildId: Long,
+        channelId: Long?,
+        knowledgeSpaceId: Long?,
+        status: String,
+    ): RetrievalPolicyEntity?
+
+    fun findByGuildIdAndChannelIdAndStatus(
+        guildId: Long,
+        channelId: Long?,
+        status: String,
+    ): List<RetrievalPolicyEntity>
+}
+
 interface NetworkOverviewProjectionRepository : JpaRepository<NetworkOverviewProjectionEntity, Long> {
     fun findByGuildId(guildId: Long): NetworkOverviewProjectionEntity?
 }

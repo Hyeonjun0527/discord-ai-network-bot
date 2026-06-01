@@ -65,6 +65,17 @@ class MenuFactoryTest {
     }
 
     @Test
+    fun `자동 승인 드롭다운 — 현재 상태를 기본 선택으로 보여준다`() {
+        val enabled = MenuFactory.autoApproveSelect(true)
+        assertEquals(MenuFactory.AUTO_APPROVE_SELECT, enabled.id)
+        assertTrue(enabled.options.first { it.value == "true" }.isDefault)
+        assertFalse(enabled.options.first { it.value == "false" }.isDefault)
+
+        val disabled = MenuFactory.autoApproveSelect(false)
+        assertTrue(disabled.options.first { it.value == "false" }.isDefault)
+    }
+
+    @Test
     fun `채널 드롭다운 — 기존 허용 채널을 기본 선택으로 보여준다`() {
         val sel = MenuFactory.channelSelect(listOf(1111L, 2222L))
         assertEquals(MenuFactory.CHANNEL, sel.id)
@@ -87,14 +98,27 @@ class MenuFactoryTest {
     @Test
     fun `설정 액션 버튼 — 모든 설정은 저장 버튼 한 번으로 적용한다`() {
         val buttons = MenuFactory.settingsActionButtons()
-        assertEquals(5, buttons.size)
+        assertEquals(4, buttons.size)
         assertEquals(MenuFactory.SAVE_SETTINGS, buttons.first().id)
         assertTrue(buttons.any { it.id == MenuFactory.CHANNEL_ALL && it.label?.contains("대기") == true })
+        assertTrue(buttons.any { it.id == MenuFactory.CHANNEL_BULK && it.label?.contains("붙여넣기") == true })
         assertTrue(buttons.any { it.id == MenuFactory.SAVE_SETTINGS && it.label?.contains("한 번에 저장") == true })
         assertTrue(buttons.any { it.id == MenuFactory.CANCEL_SETTINGS && it.label?.contains("취소") == true })
-        assertTrue(buttons.any { it.id == MenuFactory.AUTO_APPROVE_ON && it.label?.contains("대기") == true })
-        assertTrue(buttons.any { it.id == MenuFactory.AUTO_APPROVE_OFF && it.label?.contains("대기") == true })
         assertEquals(ButtonStyle.SUCCESS, buttons.first { it.id == MenuFactory.SAVE_SETTINGS }.style)
+    }
+
+    @Test
+    fun `채널 일괄 입력 — 멘션과 ID를 중복 제거하고 전체 허용을 지원한다`() {
+        assertEquals(
+            listOf(123456789012345678L, 222222222222222222L),
+            MenuFactory.parseChannelIdsBulk("<#123456789012345678> 222222222222222222 <#123456789012345678>"),
+        )
+        assertEquals(emptyList<Long>(), MenuFactory.parseChannelIdsBulk("전체"))
+        assertEquals(emptyList<Long>(), MenuFactory.parseChannelIdsBulk("all"))
+        assertEquals(
+            (1L..30L).map { 100000000000000000L + it }.take(25),
+            MenuFactory.parseChannelIdsBulk((1L..30L).joinToString(" ") { "${100000000000000000L + it}" }),
+        )
     }
 
     @Test

@@ -400,6 +400,7 @@ class DiscordBot(
             private const val CHANNEL_PROFILE_ROLLBACK = "channel-profile:rollback"
             private const val CHANNEL_PROFILE_SAVE_MODAL = "channel-profile:save-modal"
             private const val CHANNEL_PROFILE_AVATAR_MODAL = "channel-profile:avatar-modal"
+            private const val SETTINGS_CHANNEL_BULK_MODAL = "settings:channel-bulk-modal"
             private val pendingSettings = ConcurrentHashMap<String, PendingGuildSettings>()
         }
 
@@ -539,6 +540,14 @@ class DiscordBot(
                         pendingSettings(settingsKey(ctx)).allowedChannelIds = emptyList()
                         return updateSettingsPanel(event, ctx)
                     }
+                    MenuFactory.CHANNEL_BULK -> {
+                        if (!ctx.isAdmin) {
+                            event.reply("⛔ 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
+                        } else {
+                            event.replyModal(channelBulkModal(ctx)).queue()
+                        }
+                        return
+                    }
                     MenuFactory.CANCEL_SETTINGS -> {
                         pendingSettings.remove(settingsKey(ctx))
                         return updateSettingsPanel(event, ctx)
@@ -563,6 +572,10 @@ class DiscordBot(
                     }
                     MenuFactory.MODEL -> {
                         pendingSettings(settingsKey(ctx)).defaultModel = value
+                        return updateSettingsPanel(event, ctx)
+                    }
+                    MenuFactory.AUTO_APPROVE_SELECT -> {
+                        pendingSettings(settingsKey(ctx)).autoApprove = value.toBooleanStrictOrNull() ?: false
                         return updateSettingsPanel(event, ctx)
                     }
                     else -> Reply("알 수 없는 선택입니다.")
@@ -741,6 +754,11 @@ class DiscordBot(
                     ),
                 ),
                 ActionRow.of(MenuFactory.channelSelect(effectiveAllowedChannelIds(ctx))),
+                ActionRow.of(
+                    MenuFactory.autoApproveSelect(
+                        current = pendingSettings[settingsKey(ctx)]?.autoApprove ?: commands.isAutoApprove(ctx),
+                    ),
+                ),
                 ActionRow.of(MenuFactory.settingsActionButtons()),
             )
 
@@ -835,6 +853,22 @@ class DiscordBot(
                 .build()
         }
 
+        private fun channelBulkModal(ctx: CommandContext): Modal {
+            val current = effectiveAllowedChannelIds(ctx)
+            val currentText = if (current.isEmpty()) "" else current.joinToString(" ") { "<#$it>" }
+            return Modal
+                .create(SETTINGS_CHANNEL_BULK_MODAL, "LLM 사용 허용 채널 일괄 설정")
+                .addActionRow(
+                    TextInput
+                        .create("channels", "채널 멘션/ID 목록", TextInputStyle.PARAGRAPH)
+                        .setRequired(false)
+                        .setMaxLength(2000)
+                        .setPlaceholder("예: #질문 #개발 123456789012345678 / 비우거나 '전체' 입력 = 모든 채널 허용")
+                        .setValue(currentText.takeIf { it.isNotBlank() })
+                        .build(),
+                ).build()
+        }
+
         /** 긴 질문 모달 제출(#189). */
         override fun onModalInteraction(event: ModalInteractionEvent) {
             val ctx = ctxOf(event) // DM(유저설치)에서도 긴 질문 모달 동작
@@ -851,6 +885,16 @@ class DiscordBot(
                         constitution = event.getValue("constitution")?.asString,
                     )
                 event.reply(reply.content).setEphemeral(true).queue()
+                return
+            }
+            if (event.modalId == SETTINGS_CHANNEL_BULK_MODAL) {
+                val ids = MenuFactory.parseChannelIdsBulk(event.getValue("channels")?.asString.orEmpty())
+                pendingSettings(settingsKey(ctx)).allowedChannelIds = ids
+                event
+                    .replyEmbeds(settingsEmbed(ctx))
+                    .addComponents(settingsRows(ctx))
+                    .setEphemeral(true)
+                    .queue()
                 return
             }
             if (event.modalId == CHANNEL_PROFILE_AVATAR_MODAL) {

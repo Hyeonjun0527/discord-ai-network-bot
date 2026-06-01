@@ -26,6 +26,7 @@ class MultiResponseService(
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
     private val safety: ProviderSafetyService? = null,
+    private val knowledgeSearch: KnowledgeSearchService? = null,
 ) {
     @Transactional
     fun savePolicy(
@@ -65,6 +66,7 @@ class MultiResponseService(
         channelId: Long,
         requestId: String = newRequestId(),
         promptPreview: String? = null,
+        responseMode: String = "balanced",
     ): MultiResponseRunEntity {
         featureGate.requireMultiResponseEnabled()
         val policy =
@@ -92,6 +94,7 @@ class MultiResponseService(
                     startedAt = Instant.now(clock),
                 ),
             )
+        applyRagContextSnapshot(run, promptPreview, responseMode)
         if (promptPreview.isSensitivePrompt()) {
             run.status = "blocked_sensitive"
             run.failureReason = "multi-response fan-out disabled for sensitive-looking prompt"
@@ -306,6 +309,43 @@ class MultiResponseService(
             if (selected.size >= effectiveMaxCandidates) break
         }
         return selected
+    }
+
+    private fun applyRagContextSnapshot(
+        run: MultiResponseRunEntity,
+        promptPreview: String?,
+        responseMode: String,
+    ) {
+        val search = knowledgeSearch
+        if (search == null) {
+            run.ragContextStatus = "skipped_no_rag_service"
+            return
+        }
+        val query = promptPreview?.trim()
+        if (query.isNullOrBlank()) {
+            run.ragContextStatus = "skipped_no_prompt"
+            return
+        }
+        val plan =
+            runCatching {
+                search.contextPlan(
+                    guildId = run.guildId,
+                    query = query,
+                    responseMode = responseMode,
+                    channelId = run.channelId,
+                )
+            }.getOrElse { error ->
+                run.ragContextStatus = "fallback:${error.javaClass.simpleName}"
+                return
+            }
+        run.ragContextStatus =
+            when {
+                plan.enabled -> "ready"
+                plan.fallbackReason != null -> "fallback:${plan.fallbackReason}"
+                else -> "fallback:no_context"
+            }
+        run.ragContextSourceIds = plan.entries.joinToString(",") { it.sourceId.toString() }.ifBlank { null }
+        run.ragContextChars = plan.usedChars
     }
 
     private fun CandidateAnswerEntity.hasBlockingSafetyFlag(): Boolean =

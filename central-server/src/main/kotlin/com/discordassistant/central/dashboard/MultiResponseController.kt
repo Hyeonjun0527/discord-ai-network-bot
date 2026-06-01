@@ -38,8 +38,15 @@ class MultiResponseController(
         @PathVariable guildId: Long,
         @RequestBody request: StartMultiResponseRunRequest,
     ): Map<String, Any?> {
-        val run = service.startRun(guildId, request.channelId, request.requestId, request.promptPreview)
-        return mapOf("id" to run.id, "requestId" to run.requestId, "status" to run.status, "candidateCount" to run.candidateCount)
+        val run = service.startRun(guildId, request.channelId, request.requestId, request.promptPreview, request.responseMode)
+        return mapOf(
+            "id" to run.id,
+            "requestId" to run.requestId,
+            "status" to run.status,
+            "candidateCount" to run.candidateCount,
+            "ragContextStatus" to run.ragContextStatus,
+            "ragContextChars" to run.ragContextChars,
+        )
     }
 
     @PostMapping("/runs/{runId}/candidates/{candidateId}")
@@ -137,6 +144,9 @@ class MultiResponseController(
             "channelId" to detail.run.channelId,
             "status" to detail.run.status,
             "candidateCount" to detail.run.candidateCount,
+            "ragContextStatus" to detail.run.ragContextStatus,
+            "ragContextSourceIds" to detail.run.ragContextSourceIds,
+            "ragContextChars" to detail.run.ragContextChars,
             "policy" to
                 detail.policy?.let {
                     mapOf(
@@ -206,6 +216,7 @@ data class StartMultiResponseRunRequest(
     val channelId: Long,
     val requestId: String,
     val promptPreview: String? = null,
+    val responseMode: String = "balanced",
 )
 
 data class RecordCandidateRequest(

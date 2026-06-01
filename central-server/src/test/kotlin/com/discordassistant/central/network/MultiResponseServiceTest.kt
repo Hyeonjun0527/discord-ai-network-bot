@@ -11,6 +11,7 @@ import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
 import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.MultiResponsePolicyRepository
 import com.discordassistant.central.persistence.MultiResponseRunRepository
@@ -41,6 +42,7 @@ class MultiResponseServiceTest
         private val providerCapabilities: ProviderCapabilityProfileRepository,
         private val networkProfiles: AiNetworkProfileRepository,
         private val knowledgeSpaces: KnowledgeSpaceRepository,
+        private val knowledgeSources: KnowledgeSourceRepository,
         private val overviewProjections: NetworkOverviewProjectionRepository,
         private val channelAis: ChannelAiRepository,
         private val feedbacks: AiFeedbackRepository,
@@ -57,6 +59,40 @@ class MultiResponseServiceTest
                 clock = fixedClock,
             )
         private val controller = MultiResponseController(service)
+
+        private fun ragAwareController(): MultiResponseController {
+            val ingestion =
+                KnowledgeIngestionService(
+                    spaces = knowledgeSpaces,
+                    sources = knowledgeSources,
+                    clock = fixedClock,
+                )
+            val search = KnowledgeSearchService(knowledgeSources, knowledgeSpaces)
+            return MultiResponseController(
+                MultiResponseService(
+                    policies = policies,
+                    runs = runs,
+                    candidates = candidates,
+                    syntheses = syntheses,
+                    providerCapabilities = providerCapabilities,
+                    clock = fixedClock,
+                    knowledgeSearch = search,
+                ),
+            ).also {
+                val space = ingestion.createSpace(100, 207, null, "다중응답 지식", 77, null, null)
+                val source =
+                    ingestion.addSource(
+                        guildId = 100,
+                        spaceId = space.id,
+                        sourceType = "link",
+                        title = "Kotlin Spring 운영 가이드",
+                        sourceUri = "https://example.com/kotlin-spring.md",
+                        contentPreview = "운영",
+                        addedBy = 77,
+                    )
+                ingestion.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+            }
+        }
 
         private fun safetyAwareService(): MultiResponseService {
             val foundation =
@@ -426,6 +462,44 @@ class MultiResponseServiceTest
 
             assertEquals("no_provider", started["status"])
             assertEquals(0, started["candidateCount"])
+        }
+
+        @Test
+        fun `multi response snapshots one scoped RAG context before provider fanout`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 40,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            val ragController = ragAwareController()
+            ragController.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 207, mode = "compare", maxCandidates = 2))
+
+            val started =
+                ragController.startRun(
+                    100,
+                    StartMultiResponseRunRequest(
+                        channelId = 207,
+                        requestId = "req-rag",
+                        promptPreview = "Kotlin Spring 설정",
+                        responseMode = "deep",
+                    ),
+                )
+
+            assertEquals("running", started["status"])
+            assertEquals("ready", started["ragContextStatus"])
+            assertEquals(1, started["candidateCount"])
+            val run = runs.findById(started["id"] as Long).get()
+            assertEquals("ready", run.ragContextStatus)
+            assertNotNull(run.ragContextSourceIds)
+            assertEquals(1, run.ragContextSourceIds!!.split(",").size)
+            assertEquals(1, candidates.findByRunId(run.id).size)
         }
 
         @Test

@@ -169,11 +169,52 @@ async function refreshDiscovery() {
   }
 }
 
+function renderImportHistory(imports) {
+  const items = (imports || []).slice(0, 10);
+  if (!items.length) {
+    $("importHistory").innerHTML = "<li>아직 가져오기 기록이 없습니다.</li>";
+    return;
+  }
+  $("importHistory").innerHTML = items.map((item) => `
+    <li>
+      <strong>published #${esc(item.publishedPresetId)} → preset #${esc(item.importedPresetId || "-")}</strong><br />
+      채널 ${esc(item.targetChannelId || "서버 기본")} · source revision ${esc(item.sourceRevisionId || "-")} · ${esc(item.status || "imported")}
+    </li>
+  `).join("");
+}
+
 function targetIds() {
   const guildId = $("guildId").value.trim();
   const channelId = $("channelId").value.trim();
   if (!/^\d+$/.test(guildId) || !/^\d+$/.test(channelId)) return null;
   return { guildId, channelId };
+}
+
+function importHistoryTarget() {
+  const guildId = $("guildId").value.trim();
+  const channelId = $("channelId").value.trim();
+  if (!/^\d+$/.test(guildId)) return null;
+  return { guildId, channelId: /^\d+$/.test(channelId) ? channelId : null };
+}
+
+async function refreshImportHistory() {
+  const target = importHistoryTarget();
+  if (!target) {
+    $("importHistory").innerHTML = "<li>서버 ID를 입력하면 가져오기 기록을 볼 수 있습니다.</li>";
+    return;
+  }
+  if (!currentAdminToken()) {
+    $("importHistory").innerHTML = "<li>가져오기 기록을 보려면 관리자 토큰을 저장하세요.</li>";
+    return;
+  }
+  const params = new URLSearchParams();
+  if (target.channelId) params.set("channelId", target.channelId);
+  try {
+    const result = await json(`/api/ai-network/presets/guilds/${target.guildId}/imports?${params.toString()}`, { admin: true });
+    renderImportHistory(result.imports || []);
+  } catch (e) {
+    $("importHistory").innerHTML = `<li>가져오기 기록 로딩 실패: ${esc(e.message)}</li>`;
+  }
 }
 
 function normalizePresetDetail(detail) {
@@ -355,6 +396,7 @@ async function confirmImport() {
     $("confirmImport").disabled = true;
     pendingImport = null;
     await refreshCatalog();
+    await refreshImportHistory();
   } catch (e) {
     $("result").textContent = `가져오기 실패: ${e.message}`;
   }
@@ -364,6 +406,7 @@ $("search").addEventListener("click", () => {
   refreshCatalog();
   refreshDiscovery();
 });
+$("loadImportHistory").addEventListener("click", refreshImportHistory);
 $("saveAdminToken").addEventListener("click", saveAdminToken);
 $("adminToken").addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveAdminToken();

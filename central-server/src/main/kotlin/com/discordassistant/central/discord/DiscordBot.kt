@@ -6,6 +6,7 @@ import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
+import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion
 import net.dv8tion.jda.api.entities.emoji.Emoji
@@ -40,6 +41,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -493,7 +495,7 @@ class DiscordBot(
                 if (useWebhookProfile) {
                     completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
                 } else {
-                    event.hook.editOriginal(reply.content).queue()
+                    editOriginalWithPseudoStream(event.hook, reply)
                 }
             } catch (e: Exception) {
                 log.warn("명령 처리 실패: {} — {}", event.name, e.message)
@@ -503,6 +505,7 @@ class DiscordBot(
 
         companion object {
             private val log = LoggerFactory.getLogger(Listener::class.java)
+            private const val DEFAULT_PSEUDO_STREAM_INTERVAL_MS = 1200L
 
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
             private val PUBLIC_COMMANDS = setOf("ask", "contributions", "community-stats", "welcome")
@@ -1038,7 +1041,7 @@ class DiscordBot(
             if (useWebhookProfile) {
                 completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
             } else {
-                event.hook.editOriginal(reply.content).queue()
+                editOriginalWithPseudoStream(event.hook, reply)
             }
         }
 
@@ -1053,7 +1056,7 @@ class DiscordBot(
             if (useWebhookProfile) {
                 completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
             } else {
-                event.hook.editOriginal(reply.content).queue()
+                editOriginalWithPseudoStream(event.hook, reply)
             }
         }
 
@@ -1091,10 +1094,7 @@ class DiscordBot(
                         .addReaction(Emoji.fromUnicode("✅"))
                         .queue({}, {})
                 } else {
-                    event.message
-                        .reply(reply.content)
-                        .mentionRepliedUser(false)
-                        .queue({}, {})
+                    replyToMessageWithPseudoStream(event.message, reply)
                 }
             } catch (e: Exception) {
                 log.warn(
@@ -1137,7 +1137,7 @@ class DiscordBot(
                     ).queue()
                 return
             }
-            hook.editOriginal(reply.content).queue()
+            editOriginalWithPseudoStream(hook, reply)
         }
 
         private fun sendBotChannelAnswer(
@@ -1147,12 +1147,96 @@ class DiscordBot(
             if (reply.ephemeral) return false
             channelUnion ?: return false
             return runCatching {
-                channelUnion.asTextChannel().sendMessage(reply.content).complete()
+                val snapshots = reply.publicPseudoStreamSnapshots()
+                val sent = channelUnion.asTextChannel().sendMessage(snapshots?.first() ?: reply.content).complete()
+                if (snapshots != null) scheduleMessageEdits(sent, reply, snapshots, 1)
                 true
             }.onFailure { e ->
                 log.warn("일반 봇 메시지 폴백 전송 실패: {}", e.message)
             }.getOrDefault(false)
         }
+
+        private fun editOriginalWithPseudoStream(
+            hook: InteractionHook,
+            reply: Reply,
+        ) {
+            val snapshots = reply.publicPseudoStreamSnapshots()
+            if (snapshots == null) {
+                hook.editOriginal(reply.content).queue()
+                return
+            }
+            hook.editOriginal(snapshots.first()).queue(
+                { scheduleOriginalEdits(hook, reply, snapshots, 1) },
+                { e ->
+                    log.warn("의사 스트리밍 초기 응답 편집 실패: {}", e.message)
+                    hook.editOriginal(reply.content).queue({}, {})
+                },
+            )
+        }
+
+        private fun scheduleOriginalEdits(
+            hook: InteractionHook,
+            reply: Reply,
+            snapshots: List<String>,
+            index: Int,
+        ) {
+            if (index >= snapshots.size) return
+            hook
+                .editOriginal(snapshots[index])
+                .queueAfter(
+                    reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
+                    TimeUnit.MILLISECONDS,
+                    { scheduleOriginalEdits(hook, reply, snapshots, index + 1) },
+                    { e ->
+                        log.warn("의사 스트리밍 응답 편집 실패(index={}): {}", index, e.message)
+                        hook.editOriginal(reply.content).queue({}, {})
+                    },
+                )
+        }
+
+        private fun replyToMessageWithPseudoStream(
+            source: Message,
+            reply: Reply,
+        ) {
+            val snapshots = reply.publicPseudoStreamSnapshots()
+            if (snapshots == null) {
+                source.reply(reply.content).mentionRepliedUser(false).queue({}, {})
+                return
+            }
+            source
+                .reply(snapshots.first())
+                .mentionRepliedUser(false)
+                .queue(
+                    { sent -> scheduleMessageEdits(sent, reply, snapshots, 1) },
+                    { e ->
+                        log.warn("멘션 의사 스트리밍 초기 답변 실패: {}", e.message)
+                        source.reply(reply.content).mentionRepliedUser(false).queue({}, {})
+                    },
+                )
+        }
+
+        private fun scheduleMessageEdits(
+            message: Message,
+            reply: Reply,
+            snapshots: List<String>,
+            index: Int,
+        ) {
+            if (index >= snapshots.size) return
+            message
+                .editMessage(snapshots[index])
+                .queueAfter(
+                    reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
+                    TimeUnit.MILLISECONDS,
+                    { scheduleMessageEdits(message, reply, snapshots, index + 1) },
+                    { e -> log.warn("의사 스트리밍 메시지 수정 실패(index={}): {}", index, e.message) },
+                )
+        }
+
+        private fun Reply.publicPseudoStreamSnapshots(): List<String>? =
+            pseudoStream
+                ?.snapshots
+                ?.filter { it.isNotBlank() }
+                ?.takeIf { !ephemeral && it.size > 1 }
 
         /**
          * 채널별 AI 프로필이 설정된 경우, 답변을 Discord Webhook 으로 보내 표시 이름/아이콘을 채널 단위로 바꾼다.

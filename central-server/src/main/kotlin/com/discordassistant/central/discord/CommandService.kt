@@ -31,6 +31,14 @@ import org.springframework.stereotype.Service
 data class Reply(
     val content: String,
     val ephemeral: Boolean = true,
+    val pseudoStream: ReplyPseudoStream? = null,
+)
+
+/** Discord 긴 답변을 여러 번 수정해 보여주기 위한 의사 스트리밍 계획. */
+data class ReplyPseudoStream(
+    val editIntervalMs: Long,
+    val snapshots: List<String>,
+    val warning: String? = null,
 )
 
 /** 명령 호출 컨텍스트(JDA 이벤트에서 추출). */
@@ -83,6 +91,10 @@ class CommandService(
             "이 서버는 커뮤니티 로컬 AI Provider Pool 을 사용합니다. 질문 내용은 요청을 처리하는 " +
                 "커뮤니티 프로바이더의 PC 로 전송될 수 있습니다. 비밀번호·API 키·개인정보·비공개 문서 등 " +
                 "민감한 정보는 입력하지 마세요."
+
+        private const val DISCORD_REPLY_SAFE_LIMIT = 1850
+        private const val PSEUDO_STREAM_MIN_CHARS = 600
+        private val PSEUDO_STREAM_STEPS = listOf(33, 66, 100)
     }
 
     private fun lang(ctx: CommandContext): String = policy.guildLanguage(ctx.guildId)
@@ -147,10 +159,38 @@ class CommandService(
             )
         }
         return when (result.state) {
-            RequestState.COMPLETED -> Reply(result.text.orEmpty().withModelFallbackNotice(modelChoice), ephemeral = false)
+            RequestState.COMPLETED -> completedAskReply(result.text.orEmpty(), modelChoice)
             RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
             else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
         }
+    }
+
+    private fun completedAskReply(
+        answer: String,
+        modelChoice: ModelChoiceDecision,
+    ): Reply {
+        val fullContent = answer.withModelFallbackNotice(modelChoice)
+        val plan =
+            runCatching {
+                if (fullContent.length >= PSEUDO_STREAM_MIN_CHARS) {
+                    multiResponse.pseudoStreamPlan(
+                        answer = fullContent,
+                        requestedSteps = PSEUDO_STREAM_STEPS,
+                        maxDiscordChars = DISCORD_REPLY_SAFE_LIMIT,
+                    )
+                } else {
+                    null
+                }
+            }.getOrNull()
+        val rawSnapshots = plan?.snapshots?.map { it.content }.orEmpty()
+        val finalContent =
+            rawSnapshots.lastOrNull()?.withDiscordLengthNotice(plan?.warning)
+                ?: fullContent.toDiscordSafeContent()
+        val stream =
+            rawSnapshots
+                .takeIf { it.size > 1 }
+                ?.let { ReplyPseudoStream(plan!!.editIntervalMs.toLong(), it.dropLast(1) + finalContent, plan.warning) }
+        return Reply(content = finalContent, ephemeral = false, pseudoStream = stream)
     }
 
     private fun startRuntimeMultiResponseObservation(
@@ -214,6 +254,20 @@ class CommandService(
         if (modelChoice.requestedModel == null && modelChoice.preferredModel == null) return this
         val selected = modelChoice.selectedModel ?: "자동 선택"
         return "$this\n\n↪️ 모델 대체: ${modelChoice.explanation} `사용 모델: $selected`"
+    }
+
+    private fun String.toDiscordSafeContent(): String =
+        if (length <= DISCORD_REPLY_SAFE_LIMIT) {
+            this
+        } else {
+            take(DISCORD_REPLY_SAFE_LIMIT).withDiscordLengthNotice("discord_message_truncated_to_$DISCORD_REPLY_SAFE_LIMIT")
+        }
+
+    private fun String.withDiscordLengthNotice(warning: String?): String {
+        if (warning == null) return this
+        val notice = "\n\n_답변이 Discord 길이 제한으로 일부 줄어들었어요._"
+        val safeText = take((DISCORD_REPLY_SAFE_LIMIT - notice.length).coerceAtLeast(100))
+        return safeText + notice
     }
 
     private fun normalizeAskResponseMode(value: String?): String? =

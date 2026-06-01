@@ -551,6 +551,29 @@ class CommandServiceTest
         }
 
         @Test
+        fun `ask — 긴 공개 답변은 Discord 수정용 의사 스트리밍 스냅샷을 포함한다`() {
+            val g = CommandContext(guildId = 77997, channelId = 88997, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 703, guildId = g.guildId)
+            conn.session = s
+            registry.register(s)
+            try {
+                val longPrompt = "긴 답변이 필요한 질문입니다. ".repeat(40)
+                val reply = commands.ask(g, longPrompt, requestedResponseMode = "deep")
+
+                assertFalse(reply.ephemeral)
+                assertTrue(reply.content.startsWith("echo:"), reply.content)
+                val stream = reply.pseudoStream
+                assertTrue(stream != null, "긴 공개 답변에는 의사 스트리밍 계획이 있어야 함")
+                assertEquals(3, stream!!.snapshots.size)
+                assertTrue(stream.snapshots.first().length < reply.content.length)
+                assertEquals(reply.content, stream.snapshots.last())
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
         fun `ask — 원하는 모델과 응답 모드를 요청에 반영한다`() {
             val conn = EchoConn()
             val s = ProviderSession(conn, providerId = 79, guildId = 100)

@@ -29,7 +29,7 @@ function updateDashboardAdminTokenStatus() {
   const token = currentDashboardAdminToken();
   $("dashboardAdminTokenStatus").textContent = token
     ? "관리자 토큰이 설정되어 admin view/쓰기 API 요청에 헤더를 붙입니다."
-    : "토큰 미설정: 공개 읽기만 가능합니다.";
+    : "토큰 미설정: 공개 프리셋 목록만 볼 수 있고, 서버 대시보드 읽기/쓰기는 관리자 토큰이 필요합니다.";
 }
 
 function loadDashboardAdminToken() {

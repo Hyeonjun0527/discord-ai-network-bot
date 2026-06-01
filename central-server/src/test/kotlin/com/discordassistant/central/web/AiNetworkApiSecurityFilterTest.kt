@@ -50,6 +50,30 @@ class AiNetworkApiSecurityFilterTest
         }
 
         @Test
+        fun `guild dashboard reads are rejected without dashboard token`() {
+            mvc
+                .perform(get("/api/ai-network/100/dashboard"))
+                .andExpect(status().isForbidden)
+
+            mvc
+                .perform(get("/api/ai-network/100/presets"))
+                .andExpect(status().isForbidden)
+
+            mvc
+                .perform(get("/api/ai-network/growth/100/timeline"))
+                .andExpect(status().isForbidden)
+        }
+
+        @Test
+        fun `guild dashboard reads are allowed with dashboard token`() {
+            mvc
+                .perform(
+                    get("/api/ai-network/100/dashboard")
+                        .header(AiNetworkApiSecurityFilter.ADMIN_TOKEN_HEADER, "test-token"),
+                ).andExpect(status().isOk)
+        }
+
+        @Test
         fun `ai network writes are rejected without dashboard token`() {
             mvc
                 .perform(

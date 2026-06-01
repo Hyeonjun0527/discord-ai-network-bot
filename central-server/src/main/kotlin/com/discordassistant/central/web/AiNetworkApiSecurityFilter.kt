@@ -63,6 +63,7 @@ class AiNetworkApiSecurityFilter(
 
     private fun isSensitiveAiNetworkRead(path: String): Boolean =
         SENSITIVE_AI_NETWORK_READ_PREFIXES.any { path.startsWith(it) } ||
+            GUILD_DASHBOARD_READ.matches(path) ||
             LAUNCH_CHECKLIST.matches(path)
 
     private fun hasAdminAccess(request: HttpServletRequest): Boolean {
@@ -84,14 +85,20 @@ class AiNetworkApiSecurityFilter(
         private val UNSAFE_METHODS = setOf("POST", "PUT", "PATCH", "DELETE")
         private val PUBLIC_PRESET_LIKE = Regex("^/api/ai-network/presets/published/\\d+/like$")
         private val PUBLIC_PRESET_REPORT = Regex("^/api/ai-network/presets/published/\\d+/report$")
+        private val GUILD_DASHBOARD_READ =
+            Regex(
+                "^/api/ai-network/\\d+/(dashboard|overview|readiness|channels|channels/summary|change-approval|providers|model-map|knowledge-spaces|presets)$",
+            )
         private val LAUNCH_CHECKLIST = Regex("^/api/ai-network/\\d+/launch-checklist$")
         private val SENSITIVE_AI_NETWORK_READ_PREFIXES =
             listOf(
                 "/api/ai-network/channel-ai",
                 "/api/ai-network/channel-ai-routing",
+                "/api/ai-network/growth",
                 "/api/ai-network/knowledge",
                 "/api/ai-network/multi-response",
                 "/api/ai-network/quality",
+                "/api/ai-network/safety",
                 "/api/ai-network/presets/guilds",
                 "/api/ai-network/presets/local",
                 "/api/ai-network/presets/moderation",

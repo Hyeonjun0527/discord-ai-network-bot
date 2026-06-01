@@ -299,7 +299,7 @@
 
 ## 후속 개선 — 함께 만드는 AI 네트워크 제품 방향
 
-> 설계 선행 문서: [AI Network 도메인 모델 설계 초안](./plans/ai-network/00_DOMAIN_MODEL_DESIGN.md)
+> 설계 선행 문서: [AI Network 90%급 단계형 마스터 플랜](./plans/ai-network/05_PHASED_MASTER_PLAN.md), [AI Network 도메인 모델 설계 초안](./plans/ai-network/00_DOMAIN_MODEL_DESIGN.md)
 >
 > 제품 슬로건: **냥시스턴트는 함께 만드는 AI 네트워크입니다.**
 >

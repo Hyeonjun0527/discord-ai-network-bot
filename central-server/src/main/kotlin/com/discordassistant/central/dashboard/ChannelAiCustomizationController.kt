@@ -13,6 +13,27 @@ import org.springframework.web.bind.annotation.RestController
 class ChannelAiCustomizationController(
     private val customization: ChannelAiCustomizationService,
 ) {
+    @PostMapping("/wizard/draft")
+    fun draft(
+        @RequestBody request: ChannelAiWizardDraftRequest,
+    ): Map<String, Any?> {
+        val draft =
+            customization.draftFromAnswers(
+                job = request.job,
+                tone = request.tone,
+                answerLength = request.answerLength,
+                customName = request.name,
+            )
+        return mapOf(
+            "name" to draft.name,
+            "job" to draft.job,
+            "tone" to draft.tone,
+            "answerLength" to draft.answerLength,
+            "constitution" to draft.constitution,
+            "preview" to draft.preview,
+        )
+    }
+
     @PostMapping("/{guildId}/{channelId}/wizard")
     fun createFromWizard(
         @PathVariable guildId: Long,
@@ -108,6 +129,13 @@ class ChannelAiCustomizationController(
         )
     }
 }
+
+data class ChannelAiWizardDraftRequest(
+    val job: String,
+    val tone: String = "friendly",
+    val answerLength: String = "balanced",
+    val name: String? = null,
+)
 
 data class ChannelAiWizardRequest(
     val actorUserId: Long? = null,

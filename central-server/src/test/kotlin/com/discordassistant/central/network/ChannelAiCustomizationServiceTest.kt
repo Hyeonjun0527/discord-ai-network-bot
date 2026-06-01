@@ -1,6 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.dashboard.ChannelAiCustomizationController
+import com.discordassistant.central.dashboard.ChannelAiWizardDraftRequest
 import com.discordassistant.central.dashboard.ChannelAiWizardRequest
 import com.discordassistant.central.dashboard.ReviewChannelAiProposalRequest
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
@@ -37,6 +38,23 @@ class ChannelAiCustomizationServiceTest
                 clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
             )
         private val controller = ChannelAiCustomizationController(service)
+
+        @Test
+        fun `wizard draft turns simple answers into channel ai constitution`() {
+            val draft =
+                controller.draft(
+                    ChannelAiWizardDraftRequest(
+                        job = "개발 질문",
+                        tone = "짧고 명확하게",
+                    ),
+                )
+
+            assertEquals("코드냥", draft["name"])
+            assertTrue(draft["job"].toString().contains("개발 질문"))
+            assertTrue(draft["constitution"].toString().contains("민감정보"))
+            assertTrue(draft["constitution"].toString().contains("코드는 실행 가능한 예시"))
+            assertTrue(draft["preview"].toString().contains("코드냥"))
+        }
 
         @Test
         fun `wizard can create pending proposal and approve as active behavior`() {

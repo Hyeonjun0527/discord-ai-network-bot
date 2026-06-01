@@ -472,9 +472,73 @@ class PresetRegistryServiceTest
             val channelAi = channelAis.findByGuildIdAndChannelId(201, 301)
             assertNotNull(channelAi)
             assertEquals(null, channelAi?.activeBehaviorVersionId)
+            assertEquals(null, routingPolicies.findByGuildIdAndChannelId(201, 301))
             val proposal = proposals.findByGuildIdAndStatus(201, "pending").single()
             assertNotNull(proposal.payloadHash)
             assertEquals(imported.createdBehaviorVersionId, proposal.proposedBehaviorId)
             assertEquals(1, audits.findTop10ByGuildIdAndChannelIdOrderByCreatedAtDesc(201, 301).size)
+        }
+
+        @Test
+        fun `high risk preset import does not overwrite existing routing before approval`() {
+            val preset =
+                service.createPreset(
+                    guildId = 210,
+                    ownerUserId = 77,
+                    name = "위험 라우팅 프리셋",
+                    summary = null,
+                    category = "ops",
+                    visibility = "guild_private",
+                    behavior =
+                        PresetBehaviorInput(
+                            purpose = "운영",
+                            tone = "direct",
+                            safetyLevel = "high",
+                            responseMode = "deep",
+                            preferredModel = "qwen-coder",
+                            maxCandidates = 3,
+                        ),
+                )
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
+            val existing =
+                channelAis.saveAndFlush(
+                    ChannelAiEntity(
+                        guildId = 211,
+                        channelId = 311,
+                        displayName = "기존",
+                        source = "manual",
+                        activeBehaviorVersionId = 999,
+                        createdAt = Instant.parse("2026-05-30T00:00:00Z"),
+                    ),
+                )
+            routingPolicies.saveAndFlush(
+                ChannelAiRoutingPolicyEntity(
+                    guildId = 211,
+                    channelId = 311,
+                    channelAiId = existing.id,
+                    responseMode = "fast",
+                    preferredModel = "old-model",
+                    maxCandidates = 1,
+                    createdAt = Instant.parse("2026-05-30T00:00:00Z"),
+                    updatedAt = Instant.parse("2026-05-30T00:00:00Z"),
+                ),
+            )
+
+            val imported =
+                service.importPreset(
+                    published.id,
+                    targetGuildId = 211,
+                    targetChannelId = 311,
+                    importedBy = 88,
+                    confirmConflicts = true,
+                )
+
+            assertEquals("needs_review", imported.status)
+            assertEquals(999, channelAis.findByGuildIdAndChannelId(211, 311)?.activeBehaviorVersionId)
+            val routing = routingPolicies.findByGuildIdAndChannelId(211, 311)
+            assertEquals("fast", routing?.responseMode)
+            assertEquals("old-model", routing?.preferredModel)
+            assertEquals(1, routing?.maxCandidates)
+            assertEquals(1, proposals.findByGuildIdAndStatus(211, "pending").size)
         }
     }

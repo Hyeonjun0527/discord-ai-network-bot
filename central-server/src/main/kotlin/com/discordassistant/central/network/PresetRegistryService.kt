@@ -586,6 +586,7 @@ class PresetRegistryService(
             savedChannel.activeBehaviorVersionId = behavior.id
             savedChannel.updatedAt = now
             channelAis.save(savedChannel)
+            applyRoutingPolicySnapshot(sourceRevision, targetGuildId, targetChannelId, savedChannel.id, now)
         }
         audits.save(
             CustomizationAuditLogEntity(
@@ -599,7 +600,6 @@ class PresetRegistryService(
                 createdAt = now,
             ),
         )
-        applyRoutingPolicySnapshot(sourceRevision, targetGuildId, targetChannelId, savedChannel.id, now)
         return AppliedPresetChannelAi(savedChannel.id, behavior.id, status)
     }
 

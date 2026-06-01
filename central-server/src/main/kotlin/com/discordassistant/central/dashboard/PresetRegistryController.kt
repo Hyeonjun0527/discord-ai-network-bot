@@ -102,6 +102,25 @@ class PresetRegistryController(
         return mapOf("id" to preset.id, "currentRevisionId" to preset.currentRevisionId, "status" to preset.status)
     }
 
+    @PostMapping("/guilds/{guildId}/channels/{channelId}/save-from-channel")
+    fun saveFromChannel(
+        @PathVariable guildId: Long,
+        @PathVariable channelId: Long,
+        @RequestBody request: SaveChannelPresetRequest,
+    ): Map<String, Any?> {
+        val preset =
+            registry.saveChannelAsPreset(
+                guildId = guildId,
+                channelId = channelId,
+                ownerUserId = request.actorUserId,
+                name = request.name,
+                summary = request.summary,
+                category = request.category ?: "channel_ai",
+                visibility = request.visibility ?: "guild_private",
+            )
+        return mapOf("id" to preset.id, "currentRevisionId" to preset.currentRevisionId, "status" to preset.status)
+    }
+
     @PutMapping("/{presetId}")
     fun update(
         @PathVariable presetId: Long,
@@ -253,6 +272,14 @@ data class CreatePresetRequest(
     val category: String? = null,
     val visibility: String? = null,
     val behavior: PresetBehaviorInput? = null,
+)
+
+data class SaveChannelPresetRequest(
+    val actorUserId: Long? = null,
+    val name: String? = null,
+    val summary: String? = null,
+    val category: String? = null,
+    val visibility: String? = null,
 )
 
 data class UpdatePresetRequest(

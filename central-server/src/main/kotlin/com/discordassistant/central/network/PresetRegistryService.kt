@@ -76,6 +76,50 @@ class PresetRegistryService(
         return presets.save(preset)
     }
 
+    @Transactional
+    fun saveChannelAsPreset(
+        guildId: Long,
+        channelId: Long,
+        ownerUserId: Long?,
+        name: String?,
+        summary: String?,
+        category: String = "channel_ai",
+        visibility: String = "guild_private",
+    ): AiPresetEntity {
+        featureGate.requirePresetEnabled()
+        val channelAi =
+            channelAis.findByGuildIdAndChannelId(guildId, channelId)
+                ?: throw IllegalArgumentException("channel ai not found: guild=$guildId channel=$channelId")
+        val behavior =
+            channelAi.activeBehaviorVersionId?.let { behaviorVersions.findByChannelAiIdAndId(channelAi.id, it) }
+                ?: behaviorVersions.findTopByChannelAiIdOrderByVersionDesc(channelAi.id)
+                ?: throw IllegalArgumentException("channel ai has no behavior version: ${channelAi.id}")
+        val routing = routingPolicies.findByGuildIdAndChannelId(guildId, channelId)
+        return createPreset(
+            guildId = guildId,
+            ownerUserId = ownerUserId,
+            name = name?.trim()?.takeIf { it.isNotBlank() } ?: channelAi.displayName,
+            summary = summary?.trim()?.ifBlank { null } ?: behavior.purpose,
+            category = category.trim().ifBlank { "channel_ai" },
+            visibility = visibility.trim().ifBlank { "guild_private" },
+            behavior =
+                PresetBehaviorInput(
+                    purpose = behavior.purpose,
+                    tone = behavior.tone,
+                    answerLength = behavior.answerLength,
+                    constitution = behavior.constitution,
+                    safetyLevel = behavior.safetyLevel,
+                    responseMode = routing?.responseMode ?: "balanced",
+                    preferredModel = routing?.preferredModel,
+                    minQualityTier = routing?.minQualityTier ?: "standard",
+                    maxCandidates = routing?.maxCandidates ?: 1,
+                    providerTagFilter = splitCsv(routing?.providerTagFilter),
+                    costGuard = routing?.costGuard ?: "provider_safe",
+                    changeSummary = "saved from channel AI #${channelAi.id} channel #$channelId",
+                ),
+        )
+    }
+
     @Transactional(readOnly = true)
     fun listGuildPresets(guildId: Long): List<PresetSummary> {
         featureGate.requirePresetEnabled()

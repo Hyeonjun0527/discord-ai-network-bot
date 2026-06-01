@@ -7,8 +7,10 @@ import com.discordassistant.central.dashboard.PresetRegistryController
 import com.discordassistant.central.dashboard.PublishPresetRequest
 import com.discordassistant.central.dashboard.ReportPresetRequest
 import com.discordassistant.central.dashboard.ReviewPresetReportRequest
+import com.discordassistant.central.dashboard.SaveChannelPresetRequest
 import com.discordassistant.central.dashboard.UpdatePresetRequest
 import com.discordassistant.central.dashboard.UpdatePublishedPresetRequest
+import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetRepository
@@ -69,6 +71,68 @@ class PresetRegistryServiceTest
             )
 
         private val controller = PresetRegistryController(service)
+
+        @Test
+        fun `active channel ai can be saved as reusable preset snapshot`() {
+            val channelAi =
+                channelAis.saveAndFlush(
+                    ChannelAiEntity(
+                        guildId = 360,
+                        channelId = 460,
+                        displayName = "코드냥",
+                        source = "wizard",
+                    ),
+                )
+            val behavior =
+                behaviorVersions.saveAndFlush(
+                    AiBehaviorVersionEntity(
+                        channelAiId = channelAi.id,
+                        version = 1,
+                        purpose = "Kotlin Spring Boot 개발 질문",
+                        tone = "짧고 실용적으로",
+                        answerLength = "balanced",
+                        constitution = "코드는 실행 가능한 예시와 테스트 방법을 함께 제안합니다.",
+                        safetyLevel = "standard",
+                    ),
+                )
+            channelAi.activeBehaviorVersionId = behavior.id
+            channelAis.saveAndFlush(channelAi)
+            routingPolicies.save(
+                ChannelAiRoutingPolicyEntity(
+                    guildId = 360,
+                    channelId = 460,
+                    channelAiId = channelAi.id,
+                    responseMode = "deep",
+                    preferredModel = "qwen-coder",
+                    minQualityTier = "high",
+                    maxCandidates = 2,
+                    providerTagFilter = "coding,night",
+                    costGuard = "provider_safe",
+                ),
+            )
+
+            val saved =
+                controller.saveFromChannel(
+                    360,
+                    460,
+                    SaveChannelPresetRequest(actorUserId = 77, name = "코딩 튜터 프리셋", category = "dev"),
+                )
+
+            val presetId = saved["id"] as Long
+            assertEquals("draft", saved["status"])
+            val detail = controller.presetDetail(presetId)["preset"] as PresetDetail
+            assertEquals("코딩 튜터 프리셋", detail.preset.name)
+            assertEquals("dev", detail.preset.category)
+            val revision = detail.revisions.single()
+            assertEquals("Kotlin Spring Boot 개발 질문", revision.purpose)
+            assertEquals("짧고 실용적으로", revision.tone)
+            assertEquals("deep", revision.responseMode)
+            assertEquals("qwen-coder", revision.preferredModel)
+            assertEquals("high", revision.minQualityTier)
+            assertEquals(2, revision.maxCandidates)
+            assertEquals(listOf("coding", "night"), revision.providerTagFilter)
+            assertTrue(revision.changeSummary!!.contains("saved from channel AI"))
+        }
 
         @Test
         fun `preset lifecycle create update publish import like report delete`() {

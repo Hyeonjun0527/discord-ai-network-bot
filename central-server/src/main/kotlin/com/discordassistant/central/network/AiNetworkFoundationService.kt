@@ -132,7 +132,15 @@ class AiNetworkFoundationService(
                 .filter { it.isNotBlank() }
                 .distinct()
                 .size
-        val level = inferNetworkLevel(onlineProviders, channelAiCount, knowledgeSpaceCount, modelCount)
+        val level =
+            inferNetworkLevel(
+                onlineProviders = onlineProviders,
+                channelAiCount = channelAiCount,
+                knowledgeSpaceCount = knowledgeSpaceCount,
+                modelCount = modelCount,
+                feedbackCount = feedbackCount,
+                overloadAlerts = overloadAlerts,
+            )
         val entity =
             overviewProjections.findByGuildId(guildId)
                 ?: NetworkOverviewProjectionEntity(guildId = guildId)
@@ -173,8 +181,11 @@ class AiNetworkFoundationService(
         channelAiCount: Int,
         knowledgeSpaceCount: Int,
         modelCount: Int,
+        feedbackCount: Int,
+        overloadAlerts: Int,
     ): Int =
         when {
+            feedbackCount >= 5 && overloadAlerts == 0 && knowledgeSpaceCount > 0 && channelAiCount >= 2 && modelCount >= 2 -> 5
             knowledgeSpaceCount > 0 && channelAiCount >= 2 && modelCount >= 2 -> 4
             channelAiCount > 0 && onlineProviders >= 2 -> 3
             onlineProviders >= 1 -> 2

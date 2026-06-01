@@ -84,4 +84,25 @@ class AiNetworkGrowthServiceTest
             assertTrue(levelEvents.any { it.metadata == "level=3" })
             assertEquals(3, overviewProjections.findByGuildId(100)!!.networkLevel)
         }
+
+        @Test
+        fun `level status exposes current level next milestone and gaps`() {
+            val empty = controller.levels(700)
+            assertEquals(1, empty["currentLevel"])
+            val emptyNext = empty["nextMilestone"] as AiNetworkLevelMilestone
+            assertEquals(2, emptyNext.level)
+            assertEquals(listOf("온라인 Provider 1명 이상 연결"), emptyNext.gaps)
+
+            channelAis.save(ChannelAiEntity(guildId = 700, channelId = 701, displayName = "코드냥"))
+            growth.recordProviderJoined(700, 77, listOf("llama3.1:8b"), listOf("coding"), "STANDARD", 1, 0)
+
+            val afterProvider = controller.levels(700)
+            assertEquals(2, afterProvider["currentLevel"])
+            val next = afterProvider["nextMilestone"] as AiNetworkLevelMilestone
+            assertEquals(3, next.level)
+            assertEquals(listOf("온라인 Provider 2명 이상"), next.gaps)
+            val milestones = afterProvider["milestones"] as List<*>
+            assertEquals(5, milestones.size)
+            assertTrue(milestones.toString().contains("품질 피드백 5개 이상"))
+        }
     }

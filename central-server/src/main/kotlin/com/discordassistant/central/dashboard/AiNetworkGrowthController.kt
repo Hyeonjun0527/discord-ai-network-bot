@@ -35,6 +35,21 @@ class AiNetworkGrowthController(
         )
     }
 
+    @GetMapping("/{guildId}/levels")
+    fun levels(
+        @PathVariable guildId: Long,
+    ): Map<String, Any?> {
+        val status = growth.levelStatus(guildId)
+        return mapOf(
+            "guildId" to status.guildId,
+            "currentLevel" to status.currentLevel,
+            "currentTitle" to status.currentTitle,
+            "currentDescription" to status.currentDescription,
+            "nextMilestone" to status.nextMilestone,
+            "milestones" to status.milestones,
+        )
+    }
+
     @GetMapping("/{guildId}/timeline")
     fun timeline(
         @PathVariable guildId: Long,

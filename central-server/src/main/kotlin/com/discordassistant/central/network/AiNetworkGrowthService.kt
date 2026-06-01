@@ -100,6 +100,20 @@ class AiNetworkGrowthService(
         )
     }
 
+    @Transactional
+    fun levelStatus(guildId: Long): AiNetworkLevelStatus {
+        val overview = foundation.refreshOverview(guildId)
+        val milestones = levelMilestones(overview)
+        return AiNetworkLevelStatus(
+            guildId = guildId,
+            currentLevel = overview.networkLevel,
+            currentTitle = levelTitle(overview.networkLevel),
+            currentDescription = levelDescription(overview.networkLevel),
+            nextMilestone = milestones.firstOrNull { !it.achieved },
+            milestones = milestones,
+        )
+    }
+
     fun timeline(guildId: Long): List<AiNetworkEventEntity> = events.findTop20ByGuildIdOrderByCreatedAtDesc(guildId)
 
     fun timelineCards(guildId: Long): List<NetworkGrowthEventCard> =
@@ -117,6 +131,93 @@ class AiNetworkGrowthService(
                 levelAfter = metadata["levelAfter"]?.toIntOrNull(),
                 createdAt = event.createdAt.toString(),
             )
+        }
+
+    private fun levelMilestones(overview: NetworkOverviewProjectionEntity): List<AiNetworkLevelMilestone> =
+        listOf(
+            milestone(
+                level = 1,
+                title = levelTitle(1),
+                description = levelDescription(1),
+                achieved = true,
+                gaps = emptyList(),
+            ),
+            milestone(
+                level = 2,
+                title = levelTitle(2),
+                description = levelDescription(2),
+                achieved = overview.onlineProviderCount >= 1,
+                gaps = gap(overview.onlineProviderCount >= 1, "온라인 Provider 1명 이상 연결"),
+            ),
+            milestone(
+                level = 3,
+                title = levelTitle(3),
+                description = levelDescription(3),
+                achieved = overview.onlineProviderCount >= 2 && overview.channelAiCount >= 1,
+                gaps =
+                    gap(overview.onlineProviderCount >= 2, "온라인 Provider 2명 이상") +
+                        gap(overview.channelAiCount >= 1, "채널 AI 프로필 1개 이상"),
+            ),
+            milestone(
+                level = 4,
+                title = levelTitle(4),
+                description = levelDescription(4),
+                achieved =
+                    overview.knowledgeSpaceCount >= 1 &&
+                        overview.channelAiCount >= 2 &&
+                        overview.modelCount >= 2,
+                gaps =
+                    gap(overview.knowledgeSpaceCount >= 1, "지식공간 1개 이상") +
+                        gap(overview.channelAiCount >= 2, "채널 AI 프로필 2개 이상") +
+                        gap(overview.modelCount >= 2, "서로 다른 모델 2개 이상"),
+            ),
+            milestone(
+                level = 5,
+                title = levelTitle(5),
+                description = levelDescription(5),
+                achieved =
+                    overview.feedbackCount >= 5 &&
+                        overview.overloadAlertCount == 0 &&
+                        overview.knowledgeSpaceCount >= 1 &&
+                        overview.channelAiCount >= 2 &&
+                        overview.modelCount >= 2,
+                gaps =
+                    gap(overview.feedbackCount >= 5, "품질 피드백 5개 이상") +
+                        gap(overview.overloadAlertCount == 0, "Provider 과부하 알림 0개") +
+                        gap(overview.knowledgeSpaceCount >= 1, "지식공간 1개 이상") +
+                        gap(overview.channelAiCount >= 2, "채널 AI 프로필 2개 이상") +
+                        gap(overview.modelCount >= 2, "서로 다른 모델 2개 이상"),
+            ),
+        )
+
+    private fun milestone(
+        level: Int,
+        title: String,
+        description: String,
+        achieved: Boolean,
+        gaps: List<String>,
+    ): AiNetworkLevelMilestone =
+        AiNetworkLevelMilestone(
+            level = level,
+            title = title,
+            description = description,
+            achieved = achieved,
+            gaps = gaps,
+        )
+
+    private fun gap(
+        satisfied: Boolean,
+        label: String,
+    ): List<String> = if (satisfied) emptyList() else listOf(label)
+
+    private fun levelTitle(level: Int): String =
+        when (level) {
+            1 -> "기본 AI 네트워크"
+            2 -> "Provider 연결"
+            3 -> "채널 AI 시작"
+            4 -> "지식 기반 네트워크"
+            5 -> "품질 라우팅 네트워크"
+            else -> "확장 AI 네트워크"
         }
 
     private fun providerImpact(
@@ -152,7 +253,8 @@ class AiNetworkGrowthService(
             1 -> "기본 질문이 가능한 네트워크가 준비됐어요."
             2 -> "온라인 Provider가 연결되어 즉시 질문을 처리할 수 있어요."
             3 -> "여러 Provider와 채널별 AI 프로필을 함께 사용할 수 있어요."
-            4 -> "지식 베이스와 고품질 라우팅을 활용할 수 있어요."
+            4 -> "지식 베이스와 채널별 AI를 함께 활용할 수 있어요."
+            5 -> "피드백과 보호 신호를 바탕으로 고품질 라우팅을 실험할 수 있어요."
             else -> "더 강한 AI 네트워크 기능을 사용할 수 있어요."
         }
 }
@@ -174,4 +276,21 @@ data class NetworkGrowthEventCard(
     val levelBefore: Int?,
     val levelAfter: Int?,
     val createdAt: String,
+)
+
+data class AiNetworkLevelStatus(
+    val guildId: Long,
+    val currentLevel: Int,
+    val currentTitle: String,
+    val currentDescription: String,
+    val nextMilestone: AiNetworkLevelMilestone?,
+    val milestones: List<AiNetworkLevelMilestone>,
+)
+
+data class AiNetworkLevelMilestone(
+    val level: Int,
+    val title: String,
+    val description: String,
+    val achieved: Boolean,
+    val gaps: List<String>,
 )

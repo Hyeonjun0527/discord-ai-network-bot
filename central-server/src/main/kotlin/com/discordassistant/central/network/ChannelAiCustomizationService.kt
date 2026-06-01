@@ -26,9 +26,11 @@ class ChannelAiCustomizationService(
     private val proposals: AiChangeProposalRepository,
     private val audits: CustomizationAuditLogRepository,
     private val clock: Clock = Clock.systemUTC(),
+    private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
-    fun wizardOptions(): ChannelAiWizardOptions =
-        ChannelAiWizardOptions(
+    fun wizardOptions(): ChannelAiWizardOptions {
+        featureGate.requireChannelAiEnabled()
+        return ChannelAiWizardOptions(
             jobs =
                 listOf(
                     ChannelAiWizardOption(
@@ -82,6 +84,7 @@ class ChannelAiCustomizationService(
                     "긴 답변/위험 지시/큰 헌법 변경은 승인 대기열로 보낼 수 있습니다.",
                 ),
         )
+    }
 
     fun draftFromAnswers(
         job: String,
@@ -89,6 +92,7 @@ class ChannelAiCustomizationService(
         answerLength: String = "balanced",
         customName: String? = null,
     ): ChannelAiWizardDraft {
+        featureGate.requireChannelAiEnabled()
         val jobPreset = jobPreset(job)
         val tonePreset = tonePreset(tone)
         val normalizedAnswerLength = normalizeAnswerLength(answerLength)
@@ -116,6 +120,7 @@ class ChannelAiCustomizationService(
         constitution: String?,
         requireApproval: Boolean,
     ): ChannelAiWizardResult {
+        featureGate.requireChannelAiEnabled()
         val now = Instant.now(clock)
         val channelAi =
             channelAis.findByGuildIdAndChannelId(guildId, channelId)
@@ -186,6 +191,7 @@ class ChannelAiCustomizationService(
         requireApproval: Boolean,
         reason: String?,
     ): ChannelAiWizardResult {
+        featureGate.requireChannelAiEnabled()
         val now = Instant.now(clock)
         val channelAi =
             channelAis.findByGuildIdAndChannelId(guildId, channelId)
@@ -258,6 +264,7 @@ class ChannelAiCustomizationService(
         proposalId: Long,
         reviewerUserId: Long?,
     ): AiChangeProposalEntity {
+        featureGate.requireChannelAiEnabled()
         val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
         require(proposal.status == "pending") { "pending proposal only can be approved" }
         val channelAiId = proposal.channelAiId ?: throw IllegalArgumentException("proposal has no channel ai")
@@ -308,6 +315,7 @@ class ChannelAiCustomizationService(
         reviewerUserId: Long?,
         reason: String?,
     ): AiChangeProposalEntity {
+        featureGate.requireChannelAiEnabled()
         val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
         require(proposal.status == "pending") { "pending proposal only can be rejected" }
         proposal.status = "rejected"
@@ -331,6 +339,7 @@ class ChannelAiCustomizationService(
         guildId: Long,
         limit: Int = 20,
     ): ChannelAiProposalReviewSummary {
+        featureGate.requireChannelAiEnabled()
         val all = proposals.findByGuildIdOrderByCreatedAtDesc(guildId)
         val pending = all.filter { it.status == "pending" }
         val statusCounts = all.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
@@ -376,12 +385,16 @@ class ChannelAiCustomizationService(
         )
     }
 
-    fun pendingProposals(guildId: Long): List<AiChangeProposalEntity> = proposals.findByGuildIdAndStatus(guildId, "pending")
+    fun pendingProposals(guildId: Long): List<AiChangeProposalEntity> {
+        featureGate.requireChannelAiEnabled()
+        return proposals.findByGuildIdAndStatus(guildId, "pending")
+    }
 
     fun channelHistory(
         guildId: Long,
         channelId: Long,
     ): ChannelAiHistory {
+        featureGate.requireChannelAiEnabled()
         val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
         val behaviorVersions = channelAi?.let { versions.findByChannelAiIdOrderByVersionDesc(it.id) } ?: emptyList()
         val proposalHistory = proposals.findByGuildIdAndChannelIdOrderByCreatedAtDesc(guildId, channelId)
@@ -395,6 +408,7 @@ class ChannelAiCustomizationService(
         userQuestion: String,
         ragContextText: String? = null,
     ): ChannelAiPromptPreview {
+        featureGate.requireChannelAiEnabled()
         val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
         val behavior =
             channelAi?.activeBehaviorVersionId?.let { versions.findByChannelAiIdAndId(channelAi.id, it) }
@@ -459,6 +473,7 @@ class ChannelAiCustomizationService(
         guildId: Long,
         channelId: Long,
     ): ChannelAiOnboarding {
+        featureGate.requireChannelAiEnabled()
         val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
         val behavior =
             channelAi?.activeBehaviorVersionId?.let { versions.findByChannelAiIdAndId(channelAi.id, it) }

@@ -259,15 +259,20 @@ class CommandService(
         ctx: CommandContext,
         contextText: String?,
     ): String? {
-        val history = channelAiCustomization.channelHistory(ctx.guildId, ctx.channelId)
+        val history =
+            runCatching {
+                channelAiCustomization.channelHistory(ctx.guildId, ctx.channelId)
+            }.getOrNull() ?: return null
         val activeBehaviorId = history.channelAi?.activeBehaviorVersionId ?: return null
         val preview =
-            channelAiCustomization.promptPreview(
-                guildId = ctx.guildId,
-                channelId = ctx.channelId,
-                userQuestion = this,
-                ragContextText = contextText,
-            )
+            runCatching {
+                channelAiCustomization.promptPreview(
+                    guildId = ctx.guildId,
+                    channelId = ctx.channelId,
+                    userQuestion = this,
+                    ragContextText = contextText,
+                )
+            }.getOrNull() ?: return null
         if (preview.behaviorVersionId != activeBehaviorId) return null
         return buildString {
             appendLine(preview.systemPrompt)

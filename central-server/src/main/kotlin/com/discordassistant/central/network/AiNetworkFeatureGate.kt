@@ -10,6 +10,7 @@ class AiNetworkFeatureGate(
     @param:Value("\${central.ai-network.presets-enabled:true}") private val presetsEnabled: Boolean = true,
     @param:Value("\${central.ai-network.rag-enabled:true}") private val ragEnabled: Boolean = true,
     @param:Value("\${central.ai-network.multi-response-enabled:true}") private val multiResponseEnabled: Boolean = true,
+    @param:Value("\${central.ai-network.channel-ai-enabled:true}") private val channelAiEnabled: Boolean = true,
     @param:Value("\${central.ai-network.kill-switch:false}") private val killSwitch: Boolean = false,
 ) {
     fun snapshot(): AiNetworkFeatureSnapshot =
@@ -19,6 +20,7 @@ class AiNetworkFeatureGate(
             presets = available(presetsEnabled),
             rag = available(ragEnabled),
             multiResponse = available(multiResponseEnabled),
+            channelAi = available(channelAiEnabled),
             killSwitch = killSwitch,
         )
 
@@ -29,6 +31,8 @@ class AiNetworkFeatureGate(
     fun requireRagEnabled() = requireFeature("AI Network RAG", ragEnabled)
 
     fun requireMultiResponseEnabled() = requireFeature("multi-response", multiResponseEnabled)
+
+    fun requireChannelAiEnabled() = requireFeature("channel AI customization", channelAiEnabled)
 
     private fun requireFeature(
         name: String,
@@ -48,5 +52,6 @@ data class AiNetworkFeatureSnapshot(
     val presets: Boolean,
     val rag: Boolean,
     val multiResponse: Boolean,
+    val channelAi: Boolean,
     val killSwitch: Boolean,
 )

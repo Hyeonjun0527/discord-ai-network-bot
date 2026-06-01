@@ -17,7 +17,9 @@ class AiNetworkFeatureGateTest {
         assertFalse(snapshot.presets)
         assertFalse(snapshot.rag)
         assertFalse(snapshot.multiResponse)
+        assertFalse(snapshot.channelAi)
         assertTrue(snapshot.killSwitch)
         assertThrows(IllegalStateException::class.java) { gate.requireRagEnabled() }
+        assertThrows(IllegalStateException::class.java) { gate.requireChannelAiEnabled() }
     }
 }

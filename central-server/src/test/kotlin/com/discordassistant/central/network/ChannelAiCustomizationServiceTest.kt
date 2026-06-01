@@ -43,6 +43,16 @@ class ChannelAiCustomizationServiceTest
             )
         private val controller = ChannelAiCustomizationController(service)
 
+        private fun disabledService() =
+            ChannelAiCustomizationService(
+                channelAis = channelAis,
+                versions = versions,
+                proposals = proposals,
+                audits = audits,
+                clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
+                featureGate = AiNetworkFeatureGate(channelAiEnabled = false),
+            )
+
         @Test
         fun `wizard options expose jobs tones lengths and safety rules for panel UI`() {
             val options = controller.wizardOptions()
@@ -53,6 +63,27 @@ class ChannelAiCustomizationServiceTest
             assertTrue(options.answerLengths.any { it.key == "long" && it.description.contains("Provider") })
             assertTrue(options.safetyRules.any { it.contains("민감정보") })
             assertTrue(options.safetyRules.any { it.contains("승인 대기열") })
+        }
+
+        @Test
+        fun `channel ai feature gate blocks customization reads and writes`() {
+            val disabled = ChannelAiCustomizationController(disabledService())
+
+            assertThrows(IllegalStateException::class.java) { disabled.wizardOptions() }
+            assertThrows(IllegalStateException::class.java) {
+                disabled.createFromWizard(
+                    100,
+                    220,
+                    ChannelAiWizardRequest(
+                        actorUserId = 77,
+                        name = "차단냥",
+                        job = "개발 질문",
+                        tone = "친근하게",
+                    ),
+                )
+            }
+            assertThrows(IllegalStateException::class.java) { disabled.history(100, 220) }
+            assertEquals(null, channelAis.findByGuildIdAndChannelId(100, 220))
         }
 
         @Test

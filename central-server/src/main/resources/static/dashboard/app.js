@@ -161,6 +161,10 @@ function numericValue(id) {
   return /^\d+$/.test(value) ? Number(value) : null;
 }
 
+function csvInput(id) {
+  return $(id).value.split(",").map((v) => v.trim()).filter(Boolean);
+}
+
 function presetCatalogUrl() {
   const params = new URLSearchParams();
   const query = $("presetCatalogQuery").value.trim();
@@ -204,6 +208,130 @@ async function createChannelAi() {
     await loadGuild();
   } catch (e) {
     $("wizardPreview").textContent = `저장 실패: ${e.message}`;
+  }
+}
+
+function routingIds() {
+  const gid = $("guildId").value.trim();
+  const channelId = $("routingChannelId").value.trim() || $("wizardChannelId").value.trim() || $("multiChannelId").value.trim();
+  if (!/^\d+$/.test(gid) || !/^\d+$/.test(channelId)) return null;
+  $("routingChannelId").value = channelId;
+  return { gid, channelId };
+}
+
+function routingPolicyPayload() {
+  const maxCandidates = Number($("routingMaxCandidates").value || "1");
+  return {
+    responseMode: $("routingResponseMode").value,
+    preferredModel: $("routingPreferredModel").value.trim() || null,
+    allowedModels: csvInput("routingAllowedModels"),
+    minQualityTier: $("routingMinQualityTier").value,
+    maxCandidates: Number.isFinite(maxCandidates) ? Math.max(1, Math.min(5, maxCandidates)) : 1,
+    providerTagFilter: csvInput("routingProviderTags"),
+    costGuard: $("routingCostGuard").value,
+  };
+}
+
+function renderRoutingCandidates(catalog) {
+  renderList("routingModelCandidates", catalog.modelSummaries?.slice(0, 12), "사용 가능한 모델 후보가 없습니다", (m) =>
+    `<li><strong>${esc(m.modelName)}${m.recommended ? " · 추천" : ""}${m.preferred ? " · 선호" : ""}</strong><span>${esc(m.available ? "사용 가능" : "불가")} · eligible ${esc(m.eligibleProviderCount)}/${esc(m.totalProviderCount)} · 보호 ${esc(m.protectedProviderCount)} · 품질 ${esc(m.bestQualityTier)} · ${(m.tags || []).map(esc).join(", ") || "태그 없음"} · ${(m.blockingReasons || []).map(esc).join(", ") || "차단 없음"}</span></li>`,
+  );
+}
+
+function renderRoutingChoice(choice) {
+  const rows = [
+    ["요청 모델", choice.requestedModel || "(직접 선택 없음)"],
+    ["선호 모델", choice.preferredModel || "(정책 선호 없음)"],
+    ["선택 모델", choice.selectedModel || "(선택 실패)"],
+    ["응답 모드", choice.responseMode || "balanced"],
+    ["fallback", choice.fallbackReason || "없음"],
+    ["설명", choice.explanation || ""],
+    ["유저 안내", choice.userMessage || "추가 안내 없음"],
+    ["다음 행동", choice.nextAction || "바로 질문 가능"],
+  ];
+  renderList("routingModelChoice", rows, "선택 결과 없음", ([label, value]) =>
+    `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
+  );
+}
+
+async function loadEffectiveRoutingPolicy() {
+  const ids = routingIds();
+  if (!ids) {
+    $("routingResult").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const policy = await getJson(`/api/ai-network/channel-ai-routing/${ids.gid}/${ids.channelId}`);
+    $("routingResponseMode").value = policy.responseMode || "balanced";
+    $("routingPreferredModel").value = policy.preferredModel || "";
+    $("routingAllowedModels").value = (policy.allowedModels || []).join(", ");
+    $("routingMinQualityTier").value = policy.minQualityTier || "standard";
+    $("routingMaxCandidates").value = policy.maxCandidates || 1;
+    $("routingProviderTags").value = (policy.providerTagFilter || []).join(", ");
+    $("routingCostGuard").value = policy.costGuard || "provider_safe";
+    $("routingResult").textContent = `현재 정책을 불러왔습니다: mode=${policy.responseMode} · preferred=${policy.preferredModel || "-"} · allowed=${(policy.allowedModels || []).join(", ") || "전체"}`;
+  } catch (e) {
+    $("routingResult").textContent = `현재 정책 로딩 실패: ${e.message}`;
+  }
+}
+
+async function saveRoutingPolicy() {
+  const ids = routingIds();
+  if (!ids) {
+    $("routingResult").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const saved = await postJson(`/api/ai-network/channel-ai-routing/${ids.gid}/${ids.channelId}`, routingPolicyPayload());
+    $("routingResult").textContent =
+      `라우팅 정책 저장 완료: policy=${saved.id} · mode=${saved.responseMode} · preferred=${saved.preferredModel || "-"} · allowed=${(saved.allowedModels || []).join(", ") || "전체"}`;
+    await loadModelCandidates();
+  } catch (e) {
+    $("routingResult").textContent = `라우팅 정책 저장 실패: ${e.message}`;
+  }
+}
+
+async function loadModelCandidates() {
+  const ids = routingIds();
+  if (!ids) {
+    $("routingResult").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const catalog = await getJson(`/api/ai-network/channel-ai-routing/${ids.gid}/${ids.channelId}/model-candidates`);
+    renderRoutingCandidates(catalog);
+    $("routingResult").textContent = [
+      `모델 후보: ${catalog.safetySummary || "unknown"}`,
+      `추천 모델: ${catalog.recommendedModel || "-"}`,
+      `사용 가능: ${(catalog.availableModels || []).join(", ") || "없음"}`,
+      `허용됐지만 현재 불가: ${(catalog.unavailableAllowedModels || []).join(", ") || "없음"}`,
+    ].join("\n");
+  } catch (e) {
+    $("routingResult").textContent = `모델 후보 로딩 실패: ${e.message}`;
+  }
+}
+
+async function checkModelChoice() {
+  const ids = routingIds();
+  if (!ids) {
+    $("routingResult").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const params = new URLSearchParams();
+    const requestedModel = $("routingRequestedModel").value.trim();
+    if (requestedModel) params.set("requestedModel", requestedModel);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const choice = await getJson(`/api/ai-network/channel-ai-routing/${ids.gid}/${ids.channelId}/model-choice${suffix}`);
+    renderRoutingChoice(choice);
+    $("routingResult").textContent = [
+      `선택 모델: ${choice.selectedModel || "없음"}`,
+      `fallback: ${choice.fallbackReason || "없음"}`,
+      choice.userMessage ? `유저 안내: ${choice.userMessage}` : "유저 안내: 바로 질문 가능",
+      choice.routingBlocked ? "상태: 라우팅 차단됨" : "상태: 라우팅 가능",
+    ].join("\n");
+  } catch (e) {
+    $("routingResult").textContent = `모델 선택 확인 실패: ${e.message}`;
   }
 }
 
@@ -955,6 +1083,10 @@ $("autoApproveOn").addEventListener("click", () => postWrite("auto-approve", { e
 $("autoApproveOff").addEventListener("click", () => postWrite("auto-approve", { enabled: "false" }));
 $("wizardDraft").addEventListener("click", draftChannelAi);
 $("wizardCreate").addEventListener("click", createChannelAi);
+$("routingLoadEffective").addEventListener("click", loadEffectiveRoutingPolicy);
+$("routingSavePolicy").addEventListener("click", saveRoutingPolicy);
+$("routingLoadCandidates").addEventListener("click", loadModelCandidates);
+$("routingCheckChoice").addEventListener("click", checkModelChoice);
 $("knowledgeCreateSpace").addEventListener("click", createKnowledgeSpace);
 $("knowledgeAddSource").addEventListener("click", addKnowledgeSource);
 $("knowledgeQueueJob").addEventListener("click", queueKnowledgeIndexJob);

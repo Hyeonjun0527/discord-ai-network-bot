@@ -134,6 +134,58 @@
   </section>
 
   <section class="panel">
+    <h2>채널 모델/라우팅 정책</h2>
+    <p class="muted">채널마다 답변 속도, 허용 모델, 선호 모델, Provider 태그, 보호 정책을 확인하고 저장합니다. 질문 전에 실제로 선택될 모델과 fallback 이유도 볼 수 있습니다.</p>
+    <div class="form-grid">
+      <label>채널 ID<input id="routingChannelId" type="text" inputmode="numeric" placeholder="채널 ID" /></label>
+      <label>요청 모델<input id="routingRequestedModel" type="text" placeholder="예: llama3.1:8b" /></label>
+      <label>선호 모델<input id="routingPreferredModel" type="text" placeholder="정책 기본 모델" /></label>
+      <label>허용 모델 목록<input id="routingAllowedModels" type="text" placeholder="쉼표로 구분: llama3.1:8b, qwen2.5:14b" /></label>
+      <label>Provider 태그 필터<input id="routingProviderTags" type="text" placeholder="쉼표로 구분: coding, long-context" /></label>
+      <label>응답 모드
+        <select id="routingResponseMode">
+          <option value="fast">빠른 답변</option>
+          <option value="balanced" selected>균형</option>
+          <option value="deep">깊은 답변</option>
+          <option value="saving">절약</option>
+        </select>
+      </label>
+      <label>최소 품질
+        <select id="routingMinQualityTier">
+          <option value="standard" selected>standard</option>
+          <option value="high">high</option>
+          <option value="specialized">specialized</option>
+        </select>
+      </label>
+      <label>후보 수<input id="routingMaxCandidates" type="number" min="1" max="5" value="1" /></label>
+      <label>보호 정책
+        <select id="routingCostGuard">
+          <option value="provider_safe" selected>Provider 보호 우선</option>
+          <option value="balanced">균형</option>
+          <option value="quality_first">품질 우선</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <button id="routingLoadEffective">현재 정책 불러오기</button>
+      <button id="routingSavePolicy">라우팅 정책 저장</button>
+      <button id="routingLoadCandidates">모델 후보 보기</button>
+      <button id="routingCheckChoice">선택 결과 확인</button>
+    </div>
+    <div class="network-grid">
+      <article class="card">
+        <h3>모델 후보</h3>
+        <ul id="routingModelCandidates" class="list"></ul>
+      </article>
+      <article class="card">
+        <h3>선택 결과</h3>
+        <ul id="routingModelChoice" class="list"></ul>
+      </article>
+    </div>
+    <pre id="routingResult" class="preview">길드 ID와 채널 ID를 입력한 뒤 모델 후보를 확인하세요.</pre>
+  </section>
+
+  <section class="panel">
     <h2>채널 지식/RAG 설정</h2>
     <p class="muted">채널별 지식공간을 만들고 링크/텍스트/FAQ를 추가합니다. 민감정보·내부망 URL은 자동으로 검토/차단 상태가 됩니다.</p>
     <div class="form-grid">

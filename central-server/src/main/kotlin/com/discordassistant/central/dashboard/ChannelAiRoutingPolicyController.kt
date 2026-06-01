@@ -43,6 +43,12 @@ class ChannelAiRoutingPolicyController(
         )
     }
 
+    @GetMapping("/{guildId}/{channelId}/model-candidates")
+    fun modelCandidates(
+        @PathVariable guildId: Long,
+        @PathVariable channelId: Long,
+    ) = routingPolicies.modelCandidates(guildId, channelId, guildPolicy.guildDefaultModel(guildId))
+
     @GetMapping("/{guildId}/{channelId}/model-choice")
     fun modelChoice(
         @PathVariable guildId: Long,

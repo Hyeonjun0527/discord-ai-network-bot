@@ -129,6 +129,85 @@ class ChannelAiRoutingPolicyServiceTest
         }
 
         @Test
+        fun `model candidates explain provider tag quality overload and allowlist eligibility`() {
+            service.save(
+                guildId = 100,
+                channelId = 202,
+                responseMode = "deep",
+                preferredModel = "qwen-coder",
+                allowedModels = listOf("qwen-coder", "llama3.1:8b"),
+                minQualityTier = "high",
+                maxCandidates = 2,
+                providerTagFilter = listOf("coding"),
+                costGuard = "provider_safe",
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 10,
+                    providerState = "ONLINE",
+                    modelNames = "qwen-coder,llama3.1:8b",
+                    capabilityTags = "coding,night",
+                    qualityTier = "specialized",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 11,
+                    providerState = "ONLINE",
+                    modelNames = "llama3.1:8b",
+                    capabilityTags = "summary",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 12,
+                    providerState = "ONLINE",
+                    modelNames = "tiny",
+                    capabilityTags = "coding",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 13,
+                    providerState = "ONLINE",
+                    modelNames = "qwen-coder",
+                    capabilityTags = "coding",
+                    qualityTier = "specialized",
+                    overloadRisk = "critical",
+                ),
+            )
+
+            val catalog = service.modelCandidates(100, 202, guildDefaultModel = null)
+            val decision = service.resolveModelChoice(100, 202, requestedModel = "qwen-coder", guildDefaultModel = null)
+
+            assertEquals(listOf("llama3.1:8b", "qwen-coder"), catalog.availableModels)
+            assertEquals("qwen-coder", decision.selectedModel)
+            assertEquals(null, decision.fallbackReason)
+            assertEquals(2, catalog.candidates.count { it.eligible })
+            assertEquals(
+                listOf("provider_tag_mismatch"),
+                catalog.candidates.single { it.providerUserId == 11L }.ineligibleReasons,
+            )
+            assertEquals(
+                listOf("quality_below_minimum", "model_not_allowed"),
+                catalog.candidates.single { it.providerUserId == 12L }.ineligibleReasons,
+            )
+            assertEquals(
+                listOf("provider_critical_overload"),
+                catalog.candidates.single { it.providerUserId == 13L }.ineligibleReasons,
+            )
+        }
+
+        @Test
         fun `channel routing policy falls back to guild default model`() {
             val effective = service.effective(100, 200, guildDefaultModel = "llama3.1:8b")
 

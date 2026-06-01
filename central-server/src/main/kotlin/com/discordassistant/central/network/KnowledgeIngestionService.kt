@@ -566,26 +566,39 @@ class KnowledgeIngestionService(
     private fun validateUri(sourceUri: String): SourceValidation? {
         val uri = runCatching { URI(sourceUri) }.getOrNull() ?: return SourceValidation("review", "blocked_bad_uri")
         if (uri.scheme != "https") return SourceValidation("review", "blocked_non_https")
-        val host = uri.host?.lowercase()?.removeSurrounding("[", "]") ?: return SourceValidation("review", "blocked_bad_uri")
+        if (uri.rawUserInfo != null) return SourceValidation("sensitive", "blocked_sensitive")
+        val host = normalizedUriHost(uri) ?: return SourceValidation("review", "blocked_bad_uri")
         return when {
             host == "localhost" || host.endsWith(".localhost") -> SourceValidation("ssrf", "blocked_ssrf")
             host.endsWith(".local") || host.endsWith(".internal") -> SourceValidation("ssrf", "blocked_ssrf")
-            isPrivateAddressLiteral(host) -> SourceValidation("ssrf", "blocked_ssrf")
+            isBlockedAddressLiteral(host) -> SourceValidation("ssrf", "blocked_ssrf")
             else -> null
         }
     }
 
-    private fun isPrivateAddressLiteral(host: String): Boolean {
+    private fun normalizedUriHost(uri: URI): String? {
+        val host =
+            uri.host
+                ?: uri.rawAuthority
+                    ?.substringAfterLast("@")
+                    ?.let { authority ->
+                        if (authority.startsWith("[")) {
+                            authority.substringBefore("]").removePrefix("[")
+                        } else {
+                            authority.substringBefore(":")
+                        }
+                    }
+        return host
+            ?.lowercase()
+            ?.removeSurrounding("[", "]")
+            ?.trimEnd('.')
+            ?.ifBlank { null }
+    }
+
+    private fun isBlockedAddressLiteral(host: String): Boolean {
+        parseNonCanonicalIpv4Octets(host)?.let { return true }
         parseIpv4Octets(host)?.let { octets ->
-            val first = octets[0]
-            val second = octets[1]
-            return first == 0 ||
-                first == 10 ||
-                first == 127 ||
-                (first == 100 && second in 64..127) ||
-                (first == 169 && second == 254) ||
-                (first == 172 && second in 16..31) ||
-                (first == 192 && second == 168)
+            return isBlockedIpv4Octets(octets)
         }
         if (":" !in host) return false
         val address = runCatching { InetAddress.getByName(host) }.getOrNull() ?: return true
@@ -603,8 +616,63 @@ class KnowledgeIngestionService(
         return address.isAnyLocalAddress || address.isLoopbackAddress || address.isLinkLocalAddress || address.isSiteLocalAddress
     }
 
+    private fun isBlockedIpv4Octets(octets: List<Int>): Boolean {
+        val first = octets[0]
+        val second = octets[1]
+        return first == 0 ||
+            first == 10 ||
+            first == 127 ||
+            first >= 224 ||
+            (first == 100 && second in 64..127) ||
+            (first == 169 && second == 254) ||
+            (first == 172 && second in 16..31) ||
+            (first == 192 && second == 0) ||
+            (first == 192 && second == 168) ||
+            (first == 198 && second in 18..19)
+    }
+
+    private fun parseNonCanonicalIpv4Octets(host: String): List<Int>? {
+        val parts = host.split(".")
+        if (parts.size !in 1..4) return null
+        if (!parts.all { IPV4_NUMBER_PART.matches(it) }) return null
+        if (parts.size == 4 && parts.none { it.hasNonCanonicalIpv4Part() }) return null
+        val numbers = parts.map { parseIpv4NumberPart(it) ?: return null }
+        val value =
+            when (numbers.size) {
+                1 -> numbers[0].takeIf { it <= 0xffff_ffffL }
+                2 ->
+                    numbers[0].takeIf { it <= 0xff }?.let { first ->
+                        numbers[1].takeIf { it <= 0xff_ffff }?.let { rest -> (first shl 24) or rest }
+                    }
+                3 ->
+                    numbers[0].takeIf { it <= 0xff }?.let { first ->
+                        numbers[1].takeIf { it <= 0xff }?.let { second ->
+                            numbers[2].takeIf { it <= 0xffff }?.let { rest -> (first shl 24) or (second shl 16) or rest }
+                        }
+                    }
+                4 -> numbers.takeIf { values -> values.all { it <= 0xff } }?.fold(0L) { acc, part -> (acc shl 8) or part }
+                else -> null
+            } ?: return null
+        return listOf(
+            ((value ushr 24) and 0xff).toInt(),
+            ((value ushr 16) and 0xff).toInt(),
+            ((value ushr 8) and 0xff).toInt(),
+            (value and 0xff).toInt(),
+        )
+    }
+
+    private fun String.hasNonCanonicalIpv4Part(): Boolean = startsWith("0x", ignoreCase = true) || (length > 1 && startsWith("0"))
+
+    private fun parseIpv4NumberPart(part: String): Long? =
+        when {
+            part.startsWith("0x", ignoreCase = true) -> part.drop(2).toLongOrNull(16)
+            part.length > 1 && part.startsWith("0") -> part.drop(1).ifEmpty { "0" }.toLongOrNull(8)
+            else -> part.toLongOrNull(10)
+        }
+
     private fun parseIpv4Octets(host: String): List<Int>? {
         if (!IPV4_LITERAL.matches(host)) return null
+        if (host.split(".").any { it.hasNonCanonicalIpv4Part() }) return null
         val octets = host.split(".").map { it.toIntOrNull() ?: return null }
         return octets.takeIf { values -> values.size == 4 && values.all { it in 0..255 } }
     }
@@ -626,6 +694,7 @@ class KnowledgeIngestionService(
         val BLOCKING_RISK_LEVELS = setOf("sensitive", "ssrf")
         val INDEXABLE_RISK_LEVELS = setOf("normal", "review")
         val IPV4_LITERAL = Regex("""\d{1,3}(?:\.\d{1,3}){3}""")
+        val IPV4_NUMBER_PART = Regex("""(?i)(?:0x[0-9a-f]+|\d+)""")
     }
 }
 

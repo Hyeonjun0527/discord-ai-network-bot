@@ -834,4 +834,48 @@ class KnowledgeIngestionServiceTest
             assertTrue(created.all { it.riskLevel == "ssrf" })
             assertTrue(created.all { it.status == "blocked_ssrf" })
         }
+
+        @Test
+        fun `link source blocks numeric loopback bypass forms`() {
+            val space = service.createSpace(100, 200, null, "우회 주소 보안 지식", 77, null, null)
+            val blockedUris =
+                listOf(
+                    "https://localhost./internal",
+                    "https://127.1/internal",
+                    "https://2130706433/internal",
+                    "https://0x7f000001/internal",
+                    "https://0177.0.0.1/internal",
+                )
+
+            val created =
+                blockedUris.mapIndexed { index, uri ->
+                    service.addSource(
+                        guildId = 100,
+                        spaceId = space.id,
+                        sourceType = "link",
+                        title = "bypass-$index",
+                        sourceUri = uri,
+                        contentPreview = "internal",
+                        addedBy = 77,
+                    )
+                }
+            val safe =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "link",
+                    title = "public docs",
+                    sourceUri = "https://example.com/docs",
+                    contentPreview = "public",
+                    addedBy = 77,
+                )
+
+            assertTrue(created.all { it.riskLevel == "ssrf" })
+            assertTrue(created.all { it.status == "blocked_ssrf" })
+            assertEquals("normal", safe.riskLevel)
+            assertEquals("pending", safe.status)
+            assertThrows(IllegalArgumentException::class.java) {
+                service.approveSourceForIndexing(100, space.id, created.first().id, "trusted")
+            }
+        }
     }

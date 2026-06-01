@@ -23,6 +23,11 @@ class KnowledgeIngestionController(
         @PathVariable guildId: Long,
     ) = ingestion.guildReadiness(guildId)
 
+    @GetMapping("/{guildId}/quality-summary")
+    fun qualitySummary(
+        @PathVariable guildId: Long,
+    ) = ingestion.qualitySummary(guildId)
+
     @PostMapping("/{guildId}/spaces")
     fun createSpace(
         @PathVariable guildId: Long,

@@ -172,6 +172,59 @@ class KnowledgeIngestionService(
         )
     }
 
+    fun qualitySummary(guildId: Long): KnowledgeQualitySummary {
+        featureGate.requireRagEnabled()
+        val readiness = guildReadiness(guildId)
+        val indexedRatio =
+            if (readiness.sourceCount == 0) {
+                0.0
+            } else {
+                readiness.indexedSourceCount.toDouble() / readiness.sourceCount.toDouble()
+            }
+        val riskPenalty = readiness.blockedSourceCount * 25 + readiness.pendingSourceCount * 10
+        val coverageScore =
+            when {
+                readiness.spaceCount == 0 -> 0
+                else -> ((indexedRatio * 100).toInt() - riskPenalty).coerceIn(0, 100)
+            }
+        val qualityBand =
+            when {
+                readiness.blockedSourceCount > 0 -> "blocked"
+                coverageScore >= 85 -> "healthy"
+                coverageScore >= 50 -> "partial"
+                readiness.pendingSourceCount > 0 -> "indexing_needed"
+                else -> "empty"
+            }
+        val risks =
+            buildList {
+                if (readiness.spaceCount == 0) add("no_knowledge_space")
+                if (readiness.indexedSourceCount == 0) add("no_indexed_sources")
+                if (readiness.pendingSourceCount > 0) add("pending_indexing")
+                if (readiness.blockedSourceCount > 0) add("blocked_or_sensitive_sources")
+                if (readiness.spaces.any { it.chunkCount == 0 && it.indexedSourceCount > 0 }) add("indexed_without_chunks")
+            }
+        val recommendations =
+            buildList {
+                addAll(readiness.nextActions)
+                if (qualityBand == "healthy") add("golden eval을 정기적으로 실행하고 실패 케이스를 지식 소스로 보강하세요.")
+                if (risks.contains("indexed_without_chunks")) add("색인 완료 소스의 chunkCount가 0입니다. RAG worker 결과를 확인하세요.")
+            }.distinct()
+        return KnowledgeQualitySummary(
+            guildId = guildId,
+            status = readiness.status,
+            qualityBand = qualityBand,
+            coverageScore = coverageScore,
+            indexedRatio = indexedRatio,
+            spaceCount = readiness.spaceCount,
+            sourceCount = readiness.sourceCount,
+            indexedSourceCount = readiness.indexedSourceCount,
+            pendingSourceCount = readiness.pendingSourceCount,
+            blockedSourceCount = readiness.blockedSourceCount,
+            riskCodes = risks,
+            recommendations = recommendations,
+        )
+    }
+
     fun indexingPlan(
         guildId: Long,
         spaceId: Long,
@@ -580,6 +633,21 @@ data class KnowledgeSpaceStatusSummary(
     val chunkCount: Int,
     val riskLevels: Map<String, Int>,
     val sourceStatuses: Map<String, Int>,
+)
+
+data class KnowledgeQualitySummary(
+    val guildId: Long,
+    val status: String,
+    val qualityBand: String,
+    val coverageScore: Int,
+    val indexedRatio: Double,
+    val spaceCount: Int,
+    val sourceCount: Int,
+    val indexedSourceCount: Int,
+    val pendingSourceCount: Int,
+    val blockedSourceCount: Int,
+    val riskCodes: List<String>,
+    val recommendations: List<String>,
 )
 
 data class KnowledgeIndexingPlan(

@@ -227,6 +227,50 @@ class KnowledgeIngestionServiceTest
         }
 
         @Test
+        fun `knowledge quality summary scores coverage and operational risks`() {
+            val empty = controller.qualitySummary(910)
+            assertEquals("empty", empty.qualityBand)
+            assertEquals(0, empty.coverageScore)
+            assertTrue(empty.riskCodes.contains("no_knowledge_space"))
+
+            val readySpace = service.createSpace(910, 911, null, "개발 지식", 77, null, null)
+            val indexed =
+                service.addSource(
+                    guildId = 910,
+                    spaceId = readySpace.id,
+                    sourceType = "link",
+                    title = "Kotlin 운영 가이드",
+                    sourceUri = "https://example.com/kotlin.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            service.markSourceIndexed(910, readySpace.id, indexed.id, chunkCount = 2)
+
+            val healthy = controller.qualitySummary(910)
+            assertEquals("healthy", healthy.qualityBand)
+            assertEquals(100, healthy.coverageScore)
+            assertEquals(1.0, healthy.indexedRatio)
+            assertTrue(healthy.recommendations.any { it.contains("golden eval") })
+
+            val blockedSpace = service.createSpace(910, 912, null, "보안 지식", 77, null, null)
+            service.addSource(
+                guildId = 910,
+                spaceId = blockedSpace.id,
+                sourceType = "text",
+                title = "env",
+                sourceUri = null,
+                contentPreview = "token=secret",
+                addedBy = 77,
+            )
+
+            val blocked = controller.qualitySummary(910)
+            assertEquals("blocked", blocked.qualityBand)
+            assertEquals(25, blocked.coverageScore)
+            assertTrue(blocked.riskCodes.contains("blocked_or_sensitive_sources"))
+            assertTrue(blocked.recommendations.any { it.contains("blocked_sensitive") })
+        }
+
+        @Test
         fun `guild readiness summarizes rag launch gates and next actions`() {
             val empty = controller.guildReadiness(900)
             assertEquals("empty", empty.status)

@@ -8,7 +8,11 @@ import com.discordassistant.central.dashboard.PublishPresetRequest
 import com.discordassistant.central.dashboard.ReportPresetRequest
 import com.discordassistant.central.dashboard.ReviewPresetReportRequest
 import com.discordassistant.central.dashboard.UpdatePresetRequest
+import com.discordassistant.central.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetRepository
+import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.PresetImportRepository
 import com.discordassistant.central.persistence.PresetReactionRepository
 import com.discordassistant.central.persistence.PresetReportRepository
@@ -36,6 +40,10 @@ class PresetRegistryServiceTest
         private val imports: PresetImportRepository,
         private val reactions: PresetReactionRepository,
         private val reports: PresetReportRepository,
+        private val channelAis: ChannelAiRepository,
+        private val behaviorVersions: AiBehaviorVersionRepository,
+        private val proposals: AiChangeProposalRepository,
+        private val audits: CustomizationAuditLogRepository,
     ) {
         private val service =
             PresetRegistryService(
@@ -45,6 +53,10 @@ class PresetRegistryServiceTest
                 imports = imports,
                 reactions = reactions,
                 reports = reports,
+                channelAis = channelAis,
+                behaviorVersions = behaviorVersions,
+                proposals = proposals,
+                audits = audits,
                 clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
             )
 
@@ -97,7 +109,17 @@ class PresetRegistryServiceTest
                     ImportPresetRequest(targetGuildId = 101, targetChannelId = 202, actorUserId = 89),
                 )
             assertNotNull(imported["importedPresetId"])
+            assertEquals("applied", imported["status"])
+            assertNotNull(imported["createdChannelAiId"])
+            assertNotNull(imported["createdBehaviorVersionId"])
             assertEquals(1, imports.findByTargetGuildId(101).size)
+            val channelAi = channelAis.findByGuildIdAndChannelId(101, 202)
+            assertNotNull(channelAi)
+            assertEquals(imported["createdChannelAiId"], channelAi?.id)
+            assertEquals(imported["createdBehaviorVersionId"], channelAi?.activeBehaviorVersionId)
+            val importedBehavior = behaviorVersions.findByChannelAiIdAndId(channelAi!!.id, channelAi.activeBehaviorVersionId!!)
+            assertEquals("코드 리뷰", importedBehavior?.purpose)
+            assertEquals("concise", importedBehavior?.tone)
             assertEquals(1, publishedPresets.findById(publishedId).get().importCount)
 
             val report = controller.report(publishedId, ReportPresetRequest(reporterUserId = 90, reason = "검토 필요"))
@@ -151,5 +173,31 @@ class PresetRegistryServiceTest
                     behavior = null,
                 )
             }
+        }
+
+        @Test
+        fun `high risk preset import creates pending channel proposal instead of publishing immediately`() {
+            val preset =
+                service.createPreset(
+                    guildId = 200,
+                    ownerUserId = 77,
+                    name = "위험 프리셋",
+                    summary = null,
+                    category = "ops",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "운영", tone = "direct", safetyLevel = "high"),
+                )
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
+
+            val imported = service.importPreset(published.id, targetGuildId = 201, targetChannelId = 301, importedBy = 88)
+
+            assertEquals("needs_review", imported.status)
+            assertNotNull(imported.createdChannelAiId)
+            assertNotNull(imported.createdBehaviorVersionId)
+            val channelAi = channelAis.findByGuildIdAndChannelId(201, 301)
+            assertNotNull(channelAi)
+            assertEquals(null, channelAi?.activeBehaviorVersionId)
+            assertEquals(1, proposals.findByGuildIdAndStatus(201, "pending").size)
+            assertEquals(1, audits.findTop10ByGuildIdAndChannelIdOrderByCreatedAtDesc(201, 301).size)
         }
     }

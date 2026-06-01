@@ -1,7 +1,15 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.persistence.AiBehaviorVersionEntity
+import com.discordassistant.central.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.persistence.AiChangeProposalEntity
+import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetEntity
 import com.discordassistant.central.persistence.AiPresetRepository
+import com.discordassistant.central.persistence.ChannelAiEntity
+import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.CustomizationAuditLogEntity
+import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.PresetImportEntity
 import com.discordassistant.central.persistence.PresetImportRepository
 import com.discordassistant.central.persistence.PresetReactionEntity
@@ -25,6 +33,10 @@ class PresetRegistryService(
     private val imports: PresetImportRepository,
     private val reactions: PresetReactionRepository,
     private val reports: PresetReportRepository,
+    private val channelAis: ChannelAiRepository,
+    private val behaviorVersions: AiBehaviorVersionRepository,
+    private val proposals: AiChangeProposalRepository,
+    private val audits: CustomizationAuditLogRepository,
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
@@ -153,6 +165,18 @@ class PresetRegistryService(
                         changeSummary = "imported from published preset #${published.id}",
                     ),
             )
+        val now = Instant.now(clock)
+        val applied =
+            targetChannelId?.let {
+                applyRevisionToChannel(
+                    published = published,
+                    sourceRevision = sourceRevision,
+                    targetGuildId = targetGuildId,
+                    targetChannelId = it,
+                    importedBy = importedBy,
+                    now = now,
+                )
+            }
         published.importCount += 1
         publishedPresets.save(published)
         return imports.save(
@@ -162,7 +186,10 @@ class PresetRegistryService(
                 targetChannelId = targetChannelId,
                 importedBy = importedBy,
                 importedPresetId = importedPreset.id,
-                importedAt = Instant.now(clock),
+                createdChannelAiId = applied?.channelAiId,
+                createdBehaviorVersionId = applied?.behaviorVersionId,
+                status = applied?.status ?: "imported",
+                importedAt = now,
             ),
         )
     }
@@ -263,6 +290,80 @@ class PresetRegistryService(
         return reports.save(report)
     }
 
+    private fun applyRevisionToChannel(
+        published: PublishedPresetEntity,
+        sourceRevision: PresetRevisionEntity,
+        targetGuildId: Long,
+        targetChannelId: Long,
+        importedBy: Long?,
+        now: Instant,
+    ): AppliedPresetChannelAi {
+        val channelAi =
+            channelAis.findByGuildIdAndChannelId(targetGuildId, targetChannelId)
+                ?: ChannelAiEntity(
+                    guildId = targetGuildId,
+                    channelId = targetChannelId,
+                    source = "preset_import",
+                    createdAt = now,
+                )
+        channelAi.displayName =
+            published.title
+                .trim()
+                .take(80)
+                .ifBlank { sourceRevision.name.take(80).ifBlank { "냥시스턴트" } }
+        channelAi.updatedAt = now
+        val savedChannel = channelAis.saveAndFlush(channelAi)
+        val nextVersion = (behaviorVersions.findTopByChannelAiIdOrderByVersionDesc(savedChannel.id)?.version ?: 0) + 1
+        val behavior =
+            behaviorVersions.saveAndFlush(
+                AiBehaviorVersionEntity(
+                    channelAiId = savedChannel.id,
+                    version = nextVersion,
+                    purpose = sourceRevision.purpose,
+                    tone = sourceRevision.tone,
+                    answerLength = sourceRevision.answerLength,
+                    constitution = sourceRevision.constitution,
+                    safetyLevel = sourceRevision.safetyLevel,
+                    createdBy = importedBy,
+                    createdAt = now,
+                    changeSummary = "imported from published preset #${published.id} revision #${sourceRevision.revision}",
+                ),
+            )
+        val highRisk = sourceRevision.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS
+        val status = if (highRisk) "needs_review" else "applied"
+        if (highRisk) {
+            proposals.save(
+                AiChangeProposalEntity(
+                    guildId = targetGuildId,
+                    channelId = targetChannelId,
+                    channelAiId = savedChannel.id,
+                    proposedBehaviorId = behavior.id,
+                    status = "pending",
+                    requestedBy = importedBy,
+                    reason = "preset import requires review: ${sourceRevision.safetyLevel}",
+                    createdAt = now,
+                ),
+            )
+        } else {
+            savedChannel.activeBehaviorVersionId = behavior.id
+            savedChannel.updatedAt = now
+            channelAis.save(savedChannel)
+        }
+        audits.save(
+            CustomizationAuditLogEntity(
+                guildId = targetGuildId,
+                channelId = targetChannelId,
+                actorId = importedBy,
+                action = if (highRisk) "preset_import_proposed" else "preset_import_applied",
+                targetType = "ai_behavior_version",
+                targetId = behavior.id,
+                summary = "publishedPreset=${published.id} revision=${sourceRevision.revision} status=$status",
+                createdAt = now,
+            ),
+        )
+        return AppliedPresetChannelAi(savedChannel.id, behavior.id, status)
+    }
+
     private fun requireActivePreset(preset: AiPresetEntity) {
         require(preset.status != "removed") { "removed preset cannot be changed" }
     }
@@ -296,8 +397,15 @@ class PresetRegistryService(
 
     private companion object {
         const val REPORT_REVIEW_THRESHOLD = 1
+        val HIGH_RISK_SAFETY_LEVELS = setOf("high", "restricted", "dangerous")
     }
 }
+
+private data class AppliedPresetChannelAi(
+    val channelAiId: Long,
+    val behaviorVersionId: Long,
+    val status: String,
+)
 
 data class PresetBehaviorInput(
     val purpose: String = "general_assistant",

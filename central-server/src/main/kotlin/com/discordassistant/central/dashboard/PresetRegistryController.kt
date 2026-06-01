@@ -79,7 +79,13 @@ class PresetRegistryController(
                 targetChannelId = request.targetChannelId,
                 importedBy = request.actorUserId,
             )
-        return mapOf("id" to imported.id, "importedPresetId" to imported.importedPresetId, "status" to imported.status)
+        return mapOf(
+            "id" to imported.id,
+            "importedPresetId" to imported.importedPresetId,
+            "createdChannelAiId" to imported.createdChannelAiId,
+            "createdBehaviorVersionId" to imported.createdBehaviorVersionId,
+            "status" to imported.status,
+        )
     }
 
     @PostMapping("/published/{publishedPresetId}/like")

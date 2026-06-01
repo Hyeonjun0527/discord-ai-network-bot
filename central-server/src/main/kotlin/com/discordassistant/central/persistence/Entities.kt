@@ -414,6 +414,8 @@ class PresetImportEntity(
     var targetChannelId: Long? = null,
     var importedBy: Long? = null,
     var importedPresetId: Long? = null,
+    var createdChannelAiId: Long? = null,
+    var createdBehaviorVersionId: Long? = null,
     var status: String = "imported",
     var importedAt: Instant = Instant.EPOCH,
 )

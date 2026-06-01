@@ -864,14 +864,41 @@ function renderDashboardFreshness(metadata) {
   const stale = metadata?.stale === true;
   const rows = [
     ["상태", stale ? "갱신 지연" : metadata?.freshnessStatus || "fresh"],
-    ["최근 갱신", metadata?.generatedAt || "방금 계산됨"],
+    ["마지막 성공 갱신", metadata?.generatedAt || "방금 계산됨"],
     ["데이터 소스", metadata?.source || "network_overview_projection"],
+    ["재생성 명령", "GET /api/ai-network/{guildId}/overview?refresh=true"],
     ["운영 안내", stale ? "최근 상태 갱신이 지연되고 있어요. 질문 기능과는 별개입니다." : "상태판이 최신입니다."],
     ["다음 행동", metadata?.degradedReason || "필요 없음"],
   ];
   renderList("dashboardFreshness", rows, "상태 신뢰도 정보 없음", ([label, value]) =>
     `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
   );
+}
+
+function metadataFromOverview(overview) {
+  return {
+    generatedAt: overview.refreshedAt,
+    freshnessStatus: overview.freshnessStatus,
+    stale: overview.stale,
+    degradedReason: overview.degradedReason,
+    source: "network_overview_projection",
+  };
+}
+
+async function refreshDashboardProjection() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("dashboardProjectionResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const overview = await getJson(`/api/ai-network/${gid}/overview?refresh=true`);
+    renderDashboardFreshness(metadataFromOverview(overview));
+    $("dashboardProjectionResult").textContent =
+      `projection 재생성 완료 · 마지막 성공 갱신 ${overview.refreshedAt} · freshness=${overview.freshnessStatus}`;
+  } catch (e) {
+    $("dashboardProjectionResult").textContent = `projection 재생성 실패: ${e.message}`;
+  }
 }
 
 function renderAiNetwork(data) {
@@ -1124,6 +1151,7 @@ $("presetConfirmImport").addEventListener("click", importPreset);
 $("multiSavePolicy").addEventListener("click", saveMultiPolicy);
 $("multiRefreshOps").addEventListener("click", refreshMultiOps);
 $("pseudoStreamPlan").addEventListener("click", planPseudoStream);
+$("dashboardProjectionRefresh").addEventListener("click", refreshDashboardProjection);
 $("launchChecklistRefresh").addEventListener("click", refreshLaunchChecklist);
 document.addEventListener("click", (event) => {
   const selectButton = event.target.closest(".select-published-preset");

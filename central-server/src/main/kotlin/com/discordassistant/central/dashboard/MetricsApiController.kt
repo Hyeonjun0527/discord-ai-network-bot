@@ -4,7 +4,9 @@ import com.discordassistant.central.relay.ConnectionRegistry
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import kotlin.math.abs
 
 /**
  * 대시보드/관측성용 읽기전용 메트릭 API (차수 15 #226, 차수 14 #195 백엔드 일부).
@@ -34,21 +36,39 @@ class MetricsApiController(
     @GetMapping("/pool/{guildId}")
     fun guild(
         @PathVariable guildId: Long,
+        @RequestParam(defaultValue = "public") audience: String = "public",
     ): Map<String, Any> {
         val pool = registry.byGuild(guildId)
+        val visibility = DashboardAudience.from(audience)
         return mapOf(
             "guildId" to guildId,
             "providers" to
-                pool.map {
-                    mapOf(
-                        "providerId" to it.providerId,
-                        "state" to it.state.name,
-                        "inFlight" to it.activeRequests,
-                        "queued" to it.queueDepth(),
-                        "failures" to it.failures,
-                        "models" to it.capability.models.size,
-                    )
+                pool.mapIndexed { index, session ->
+                    buildMap {
+                        put("providerLabel", providerLabel(guildId, session.providerId, index))
+                        put("state", visibility.state(session.state.name))
+                        put("modelCount", session.capability.models.size)
+                        if (visibility.canSeeProviderIdentity) {
+                            put("providerId", session.providerId)
+                        }
+                        if (visibility.canSeeProviderCapacity) {
+                            put("inFlight", session.activeRequests)
+                            put("queued", session.queueDepth())
+                            put("failures", session.failures)
+                        }
+                    }
                 },
         )
     }
+
+    private fun providerLabel(
+        guildId: Long,
+        providerId: Long,
+        fallbackIndex: Int,
+    ): String =
+        "Provider " +
+            abs("$guildId:$providerId:$fallbackIndex".hashCode())
+                .toString(36)
+                .padStart(4, '0')
+                .take(6)
 }

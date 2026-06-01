@@ -3,6 +3,8 @@ package com.discordassistant.central.discord
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu
+import net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.DefaultValue
+import net.dv8tion.jda.api.interactions.components.selections.SelectOption
 import net.dv8tion.jda.api.interactions.components.selections.StringSelectMenu
 
 // Discord 버튼/Embed 에서 공통으로 쓰는 서비스 내부 심볼.
@@ -91,33 +93,52 @@ object MenuFactory {
         StringSelectMenu
             .create(LANG)
             .setPlaceholder("서버 언어 선택 (현재: $current)")
-            .addOption("한국어", "ko", Emoji.fromUnicode("🇰🇷"))
-            .addOption("English", "en", Emoji.fromUnicode("🇺🇸"))
-            .build()
+            .addOptions(
+                SelectOption.of("한국어", "ko").withEmoji(Emoji.fromUnicode("🇰🇷")).withDefault(current == "ko"),
+                SelectOption.of("English", "en").withEmoji(Emoji.fromUnicode("🇺🇸")).withDefault(current == "en"),
+            ).build()
 
     /** 기본 모델 선택 드롭다운(풀 제공 모델 + 자동). 모델 없으면 자동만. */
-    fun modelSelect(models: List<String>): StringSelectMenu {
+    fun modelSelect(
+        models: List<String>,
+        current: String?,
+    ): StringSelectMenu {
+        val currentValue = current ?: "__auto__"
         val b =
             StringSelectMenu
                 .create(MODEL)
-                .setPlaceholder("기본 모델 선택")
-                .addOption("자동 선택", "__auto__", Emoji.fromUnicode("🤖"))
+                .setPlaceholder("기본 모델 선택 (현재: ${current ?: "자동 선택"})")
+                .addOptions(
+                    SelectOption
+                        .of("자동 선택", "__auto__")
+                        .withEmoji(Emoji.fromUnicode("🤖"))
+                        .withDefault(currentValue == "__auto__"),
+                )
         models
             .distinct()
             .sorted()
             .take(24)
-            .forEach { b.addOption(it, it) } // 25개 한도(자동 1 + 24)
+            .forEach { b.addOptions(SelectOption.of(it, it).withDefault(it == currentValue)) } // 25개 한도(자동 1 + 24)
         return b.build()
     }
 
     /** 채널 허용 선택(서버 채널 엔티티 선택). */
-    fun channelSelect(): EntitySelectMenu =
-        EntitySelectMenu
+    fun channelSelect(currentChannelIds: Collection<Long>): EntitySelectMenu {
+        val defaults = currentChannelIds.distinct().take(25).map { DefaultValue.channel(it) }
+        val placeholder =
+            if (currentChannelIds.isEmpty()) {
+                "LLM 사용 허용 채널 선택 (현재: 모든 채널)"
+            } else {
+                "LLM 사용 허용 채널 선택 (현재: ${currentChannelIds.size}개)"
+            }
+        return EntitySelectMenu
             .create(CHANNEL, EntitySelectMenu.SelectTarget.CHANNEL)
-            .setPlaceholder("LLM 사용 허용 채널 여러 개 선택")
+            .setPlaceholder(placeholder)
             .setMinValues(0)
             .setMaxValues(25)
+            .setDefaultValues(defaults)
             .build()
+    }
 
     /** 슬림 도움말 — 핵심 3~5개만(판에서 보여줄 텍스트). */
     fun slimHelp(isAdmin: Boolean): String {

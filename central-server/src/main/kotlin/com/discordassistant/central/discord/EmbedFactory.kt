@@ -125,12 +125,15 @@ object EmbedFactory {
         allowedChannelCount: Int,
         autoApprove: Boolean,
         allowedChannelText: String? = null,
+        pendingSummary: String? = null,
     ): MessageEmbed =
         EmbedBuilder()
             .setColor(BLURPLE)
             .setTitle("⚙️ 서버 설정")
-            .setDescription("아래 **드롭다운/버튼**으로 바로 적용됩니다. 현재 설정:")
-            .addField("🌐 언어", if (language.equals("en", true)) "English" else "한국어", true)
+            .setDescription(
+                "아래에서 언어·기본 모델·사용 채널·자동 승인을 고른 뒤 **저장**을 누르면 한 번에 적용됩니다." +
+                    (pendingSummary?.let { "\n\n**저장 대기 변경사항**\n$it" } ?: ""),
+            ).addField("🌐 언어", if (language.equals("en", true)) "English" else "한국어", true)
             .addField(
                 "🧠 기본 모델",
                 defaultModel ?: if (poolModelCount == 0) "자동 (프로바이더 연결 시 선택지 생김)" else "자동 선택",
@@ -143,6 +146,6 @@ object EmbedFactory {
                 "✅ 프로바이더 자동 승인",
                 if (autoApprove) "켜짐 — 신청 즉시 참여" else "꺼짐 — 관리자 승인 필요",
                 true,
-            ).setFooter("선택/클릭하면 즉시 저장됩니다.")
+            ).setFooter("현재 사용 채널과 저장 대기 변경사항을 이 패널에서 바로 확인할 수 있습니다.")
             .build()
 }

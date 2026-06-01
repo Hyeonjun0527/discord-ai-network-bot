@@ -43,13 +43,15 @@ class MenuFactoryTest {
         val sel = MenuFactory.languageSelect("ko")
         assertEquals(MenuFactory.LANG, sel.id)
         assertEquals(setOf("ko", "en"), sel.options.map { it.value }.toSet())
+        assertTrue(sel.options.first { it.value == "ko" }.isDefault)
     }
 
     @Test
     fun `모델 드롭다운 — 자동 + 풀 모델, 25개 한도`() {
-        val sel = MenuFactory.modelSelect(listOf("llama3", "mistral", "llama3"))
+        val sel = MenuFactory.modelSelect(listOf("llama3", "mistral", "llama3"), current = "llama3")
         assertEquals("__auto__", sel.options.first().value) // 자동이 맨 앞
         assertTrue(sel.options.any { it.value == "llama3" })
+        assertTrue(sel.options.first { it.value == "llama3" }.isDefault)
         assertTrue(sel.options.size <= 25)
         // 중복 제거
         assertEquals(
@@ -59,6 +61,15 @@ class MenuFactoryTest {
                 .toSet()
                 .size,
         )
+    }
+
+    @Test
+    fun `채널 드롭다운 — 기존 허용 채널을 기본 선택으로 보여준다`() {
+        val sel = MenuFactory.channelSelect(listOf(1111L, 2222L))
+        assertEquals(MenuFactory.CHANNEL, sel.id)
+        assertEquals(2, sel.defaultValues.size)
+        assertEquals(setOf(1111L, 2222L), sel.defaultValues.map { it.idLong }.toSet())
+        assertTrue(sel.placeholder?.contains("2개") == true)
     }
 
     @Test

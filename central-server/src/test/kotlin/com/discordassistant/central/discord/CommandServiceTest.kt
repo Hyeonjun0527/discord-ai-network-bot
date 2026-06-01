@@ -151,16 +151,25 @@ class CommandServiceTest
         @Test
         fun `saveGuildSettings — 설정 패널 선택값을 저장 버튼 한 번으로 반영`() {
             val g = CommandContext(guildId = 778, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = true)
-            val saved = commands.saveGuildSettings(g, language = "en", defaultModel = "llama3", allowedChannelIds = listOf(1111L, 2222L))
+            val saved =
+                commands.saveGuildSettings(
+                    g,
+                    language = "en",
+                    defaultModel = "llama3",
+                    allowedChannelIds = listOf(1111L, 2222L),
+                    autoApprove = true,
+                )
             assertTrue(saved.content.contains("저장했습니다"))
             assertEquals("en", commands.guildLanguage(g))
             assertEquals("llama3", commands.guildDefaultModel(g))
             assertEquals(setOf(1111L, 2222L), commands.allowedChannelIds(g).toSet())
+            assertTrue(commands.isAutoApprove(g))
 
-            commands.saveGuildSettings(g, language = "ko", defaultModel = "__auto__", allowedChannelIds = emptyList())
+            commands.saveGuildSettings(g, language = "ko", defaultModel = "__auto__", allowedChannelIds = emptyList(), autoApprove = false)
             assertEquals("ko", commands.guildLanguage(g))
             assertEquals(null, commands.guildDefaultModel(g))
             assertTrue(commands.allowedChannelIds(g).isEmpty())
+            assertFalse(commands.isAutoApprove(g))
         }
 
         @Test

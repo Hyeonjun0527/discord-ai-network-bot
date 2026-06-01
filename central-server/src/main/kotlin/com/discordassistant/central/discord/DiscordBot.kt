@@ -395,6 +395,7 @@ class DiscordBot(
             var language: String? = null,
             var defaultModel: String? = null,
             var allowedChannelIds: List<Long>? = null,
+            var autoApprove: Boolean? = null,
         )
 
         override fun onReady(event: ReadyEvent) {
@@ -514,13 +515,19 @@ class DiscordBot(
             val reply =
                 when (event.componentId) {
                     MenuFactory.STATUS -> commands.providerStatus(ctx)
-                    MenuFactory.AUTO_APPROVE_ON -> commands.setAutoApprove(ctx, enabled = true)
-                    MenuFactory.AUTO_APPROVE_OFF -> commands.setAutoApprove(ctx, enabled = false)
+                    MenuFactory.AUTO_APPROVE_ON -> {
+                        pendingSettings(settingsKey(ctx)).autoApprove = true
+                        return updateSettingsPanel(event, ctx)
+                    }
+                    MenuFactory.AUTO_APPROVE_OFF -> {
+                        pendingSettings(settingsKey(ctx)).autoApprove = false
+                        return updateSettingsPanel(event, ctx)
+                    }
                     MenuFactory.CHANNEL_ALL -> {
                         pendingSettings(settingsKey(ctx)).allowedChannelIds = emptyList()
-                        Reply("✅ 저장 대기: LLM 사용 채널을 **모든 채널**로 선택했습니다. 아래 `저장`을 눌러 적용하세요.")
+                        return updateSettingsPanel(event, ctx)
                     }
-                    MenuFactory.SAVE_SETTINGS -> savePendingSettings(ctx)
+                    MenuFactory.SAVE_SETTINGS -> return savePendingSettings(event, ctx)
                     MenuFactory.AUTO_APPROVE, "settings:autoapprove" -> commands.toggleAutoApprove(ctx)
                     else -> Reply("알 수 없는 동작입니다.")
                 }
@@ -536,12 +543,11 @@ class DiscordBot(
                 when (event.componentId) {
                     MenuFactory.LANG -> {
                         pendingSettings(settingsKey(ctx)).language = value
-                        Reply("✅ 저장 대기: 서버 언어를 `$value`로 선택했습니다. 아래 `저장`을 눌러 적용하세요.")
+                        return updateSettingsPanel(event, ctx)
                     }
                     MenuFactory.MODEL -> {
                         pendingSettings(settingsKey(ctx)).defaultModel = value
-                        val label = if (value == "__auto__") "자동 선택" else value
-                        Reply("✅ 저장 대기: 기본 모델을 `$label`로 선택했습니다. 아래 `저장`을 눌러 적용하세요.")
+                        return updateSettingsPanel(event, ctx)
                     }
                     else -> Reply("알 수 없는 선택입니다.")
                 }
@@ -555,16 +561,7 @@ class DiscordBot(
             val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
             val channelIds = event.values.map { it.idLong }
             pendingSettings(settingsKey(ctx)).allowedChannelIds = channelIds
-            val selected =
-                if (channelIds.isEmpty()) {
-                    "모든 채널"
-                } else {
-                    channelIds.joinToString(" ") { "<#$it>" }
-                }
-            event
-                .reply("✅ 저장 대기: LLM 사용 채널을 $selected 로 선택했습니다. 아래 `저장`을 눌러 적용하세요.")
-                .setEphemeral(true)
-                .queue()
+            updateSettingsPanel(event, ctx)
         }
 
         /** 봇이 서버에 들어오면 자동 온보딩 패널 게시. */
@@ -604,7 +601,7 @@ class DiscordBot(
                         .build(),
                 ).build()
 
-        /** 설정 패널 Embed(현재 상태). */
+        /** 설정 패널 Embed(현재 상태 + 저장 대기 변경사항). */
         private fun settingsEmbed(ctx: CommandContext) =
             EmbedFactory.settingsEmbed(
                 language = commands.guildLanguage(ctx),
@@ -613,6 +610,7 @@ class DiscordBot(
                 allowedChannelCount = commands.allowedChannelIds(ctx).size,
                 allowedChannelText = allowedChannelText(ctx),
                 autoApprove = commands.isAutoApprove(ctx),
+                pendingSummary = pendingSummary(ctx),
             )
 
         private fun settingsKey(ctx: CommandContext) = "${ctx.guildId}:${ctx.channelId}:${ctx.userId}"
@@ -626,22 +624,86 @@ class DiscordBot(
             }
         }
 
+        private fun effectiveAllowedChannelIds(ctx: CommandContext): List<Long> =
+            pendingSettings[settingsKey(ctx)]?.allowedChannelIds ?: commands.allowedChannelIds(ctx)
+
+        private fun pendingSummary(ctx: CommandContext): String? {
+            val pending = pendingSettings[settingsKey(ctx)] ?: return null
+            val lines = mutableListOf<String>()
+            pending.language?.let { lines += "• 언어 → `$it`" }
+            pending.defaultModel?.let { lines += "• 기본 모델 → `${if (it == "__auto__") "자동 선택" else it}`" }
+            pending.allowedChannelIds?.let { ids ->
+                lines += "• LLM 사용 채널 → ${if (ids.isEmpty()) "모든 채널" else ids.joinToString(" ") { "<#$it>" }}"
+            }
+            pending.autoApprove?.let { lines += "• 자동 승인 → `${if (it) "켜짐" else "꺼짐"}`" }
+            return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
+        }
+
         private fun pendingSettings(key: String): PendingGuildSettings = pendingSettings.computeIfAbsent(key) { PendingGuildSettings() }
 
-        private fun savePendingSettings(ctx: CommandContext): Reply {
+        private fun savePendingSettings(
+            event: ButtonInteractionEvent,
+            ctx: CommandContext,
+        ) {
             val key = settingsKey(ctx)
-            val pending =
-                pendingSettings.remove(key)
-                    ?: return Reply("아직 저장할 변경사항이 없습니다. 언어/모델/채널을 먼저 선택해주세요.")
-            return commands.saveGuildSettings(ctx, pending.language, pending.defaultModel, pending.allowedChannelIds)
+            val pending = pendingSettings.remove(key)
+            if (pending == null || pending == PendingGuildSettings()) {
+                event.reply("아직 저장할 변경사항이 없습니다. 언어/모델/채널/자동 승인을 먼저 선택해주세요.").setEphemeral(true).queue()
+                return
+            }
+            val reply =
+                commands.saveGuildSettings(
+                    ctx,
+                    pending.language,
+                    pending.defaultModel,
+                    pending.allowedChannelIds,
+                    pending.autoApprove,
+                )
+            event
+                .editMessageEmbeds(settingsEmbed(ctx))
+                .setComponents(settingsRows(ctx))
+                .queue({
+                    event.hook
+                        .sendMessage(reply.content)
+                        .setEphemeral(true)
+                        .queue({}, {})
+                }, {})
+        }
+
+        private fun updateSettingsPanel(
+            event: ButtonInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            event.editMessageEmbeds(settingsEmbed(ctx)).setComponents(settingsRows(ctx)).queue()
+        }
+
+        private fun updateSettingsPanel(
+            event: StringSelectInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            event.editMessageEmbeds(settingsEmbed(ctx)).setComponents(settingsRows(ctx)).queue()
+        }
+
+        private fun updateSettingsPanel(
+            event: EntitySelectInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            event.editMessageEmbeds(settingsEmbed(ctx)).setComponents(settingsRows(ctx)).queue()
         }
 
         /** 설정 패널 액션 로우(언어·모델·채널 드롭다운 + 명시 버튼). */
         private fun settingsRows(ctx: CommandContext): List<ActionRow> =
             listOf(
-                ActionRow.of(MenuFactory.languageSelect(current = "")),
-                ActionRow.of(MenuFactory.modelSelect(commands.poolModels(ctx))),
-                ActionRow.of(MenuFactory.channelSelect()),
+                ActionRow.of(
+                    MenuFactory.languageSelect(current = pendingSettings[settingsKey(ctx)]?.language ?: commands.guildLanguage(ctx)),
+                ),
+                ActionRow.of(
+                    MenuFactory.modelSelect(
+                        models = commands.poolModels(ctx),
+                        current = pendingSettings[settingsKey(ctx)]?.defaultModel ?: commands.guildDefaultModel(ctx),
+                    ),
+                ),
+                ActionRow.of(MenuFactory.channelSelect(effectiveAllowedChannelIds(ctx))),
                 ActionRow.of(
                     Button.success(MenuFactory.CHANNEL_ALL, "모든 채널 허용"),
                     Button.primary(MenuFactory.SAVE_SETTINGS, "저장"),

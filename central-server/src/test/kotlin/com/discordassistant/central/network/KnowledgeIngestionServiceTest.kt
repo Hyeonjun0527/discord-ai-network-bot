@@ -1,6 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.dashboard.AddKnowledgeSourceRequest
+import com.discordassistant.central.dashboard.ApproveKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.CreateKnowledgeSpaceRequest
 import com.discordassistant.central.dashboard.DeleteKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.KnowledgeEvalRequest
@@ -337,6 +338,54 @@ class KnowledgeIngestionServiceTest
                     ),
                 )
             }
+        }
+
+        @Test
+        fun `review-risk source can be listed approved indexed or rejected with redacted reason`() {
+            val space = service.createSpace(100, 200, null, "검토 지식", 77, null, null)
+            val nonHttps =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "link",
+                    title = "Legacy docs",
+                    sourceUri = "http://example.com/legacy.md",
+                    contentPreview = "legacy guide",
+                    addedBy = 77,
+                )
+            val badType =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "binary",
+                    title = "Binary dump",
+                    sourceUri = null,
+                    contentPreview = "manual review",
+                    addedBy = 77,
+                )
+
+            val listed = controller.listSources(100, space.id)
+            assertEquals(setOf(nonHttps.id, badType.id), listed.map { it.id }.toSet())
+            assertEquals("review", listed.first { it.id == nonHttps.id }.riskLevel)
+            assertEquals("blocked_non_https", listed.first { it.id == nonHttps.id }.status)
+
+            val approved =
+                controller.approveSource(
+                    100,
+                    space.id,
+                    nonHttps.id,
+                    ApproveKnowledgeSourceRequest("trusted internal migration note"),
+                )
+            assertEquals("pending", approved["status"])
+            controller.markIndexed(100, space.id, nonHttps.id, MarkKnowledgeSourceIndexedRequest(chunkCount = 2))
+            assertEquals("indexed", sources.findByKnowledgeSpaceIdAndId(space.id, nonHttps.id)?.status)
+
+            val rejected = controller.reject(100, space.id, badType.id, RejectKnowledgeSourceRequest("token=secret should hide"))
+            assertEquals("rejected:[redacted] should hide", rejected["status"])
+
+            val afterReview = controller.spaceStatus(100, space.id)
+            assertEquals(1, afterReview.indexedSourceCount)
+            assertEquals(1, afterReview.rejectedSourceCount)
         }
 
         @Test

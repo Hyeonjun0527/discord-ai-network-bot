@@ -46,6 +46,20 @@ class KnowledgeIngestionService(
         )
     }
 
+    fun listSources(
+        guildId: Long,
+        spaceId: Long,
+    ): List<KnowledgeSourceSummary> {
+        val space =
+            spaces.findByGuildIdAndId(guildId, spaceId)
+                ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
+        return sources
+            .findByKnowledgeSpaceId(space.id)
+            .filter { !it.status.startsWith("deleted") }
+            .sortedWith(compareByDescending<KnowledgeSourceEntity> { it.addedAt }.thenBy { it.id })
+            .map { it.toSummary() }
+    }
+
     fun spaceStatus(
         guildId: Long,
         spaceId: Long,
@@ -127,6 +141,33 @@ class KnowledgeIngestionService(
     }
 
     @Transactional
+    fun approveSourceForIndexing(
+        guildId: Long,
+        spaceId: Long,
+        sourceId: Long,
+        reason: String,
+    ): KnowledgeSourceEntity {
+        featureGate.requireRagEnabled()
+        val space =
+            spaces.findByGuildIdAndId(guildId, spaceId)
+                ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
+        val source =
+            sources.findByKnowledgeSpaceIdAndId(space.id, sourceId)
+                ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
+        require(source.guildId == guildId) { "knowledge source belongs to another guild" }
+        require(source.riskLevel == "review") { "only review-risk source can be manually approved: ${source.riskLevel}" }
+        require(source.status.startsWith("blocked") || source.status == "review") {
+            "only blocked/review source can be manually approved: ${source.status}"
+        }
+        source.status = "pending"
+        val saved = sources.save(source)
+        space.status = "pending_index"
+        space.updatedAt = Instant.now(clock)
+        spaces.save(space)
+        return saved
+    }
+
+    @Transactional
     fun markSourceIndexed(
         guildId: Long,
         spaceId: Long,
@@ -169,7 +210,7 @@ class KnowledgeIngestionService(
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "knowledge source belongs to another guild" }
-        source.status = "rejected:${reason.trim().take(80)}"
+        source.status = "rejected:${sanitizeReason(reason)}"
         return sources.save(source)
     }
 
@@ -188,13 +229,36 @@ class KnowledgeIngestionService(
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "knowledge source belongs to another guild" }
-        source.status = "deleted:${reason.trim().take(80)}"
+        source.status = "deleted:${sanitizeReason(reason)}"
         val saved = sources.save(source)
         space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { it.status.startsWith("deleted").not() }
         space.updatedAt = Instant.now(clock)
         spaces.save(space)
         return saved
     }
+
+    private fun KnowledgeSourceEntity.toSummary(): KnowledgeSourceSummary =
+        KnowledgeSourceSummary(
+            id = id,
+            knowledgeSpaceId = knowledgeSpaceId,
+            guildId = guildId,
+            sourceType = sourceType,
+            title = title,
+            sourceUri = sourceUri,
+            status = status,
+            contentHash = contentHash,
+            riskLevel = riskLevel,
+            addedBy = addedBy,
+            addedAt = addedAt.toString(),
+            indexedAt = indexedAt?.toString(),
+        )
+
+    private fun sanitizeReason(reason: String): String =
+        reason
+            .trim()
+            .replace(REASON_SECRET_PATTERN, "[redacted]")
+            .take(80)
+            .ifBlank { "manual" }
 
     private fun validateSource(
         sourceType: String,
@@ -247,6 +311,7 @@ class KnowledgeIngestionService(
         val PRIVATE_HOSTS = setOf("127.0.0.1", "0.0.0.0", "169.254.169.254", "::1")
         val BLOCKING_RISK_LEVELS = setOf("sensitive", "ssrf")
         val PRIVATE_IPV4_PREFIXES = listOf("10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "172.30.", "172.31.")
+        val REASON_SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val SENSITIVE_PATTERNS =
             listOf(
                 Regex("(?i)\\b(password|passwd|pwd)\\s*[:=]\\s*\\S+"),
@@ -257,6 +322,21 @@ class KnowledgeIngestionService(
             )
     }
 }
+
+data class KnowledgeSourceSummary(
+    val id: Long,
+    val knowledgeSpaceId: Long,
+    val guildId: Long,
+    val sourceType: String,
+    val title: String,
+    val sourceUri: String?,
+    val status: String,
+    val contentHash: String?,
+    val riskLevel: String,
+    val addedBy: Long?,
+    val addedAt: String,
+    val indexedAt: String?,
+)
 
 data class KnowledgeSpaceStatusSummary(
     val guildId: Long,

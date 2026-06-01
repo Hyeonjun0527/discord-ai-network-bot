@@ -36,6 +36,12 @@ class KnowledgeIngestionController(
         return mapOf("id" to space.id, "status" to space.status, "displayName" to space.displayName)
     }
 
+    @GetMapping("/{guildId}/spaces/{spaceId}/sources")
+    fun listSources(
+        @PathVariable guildId: Long,
+        @PathVariable spaceId: Long,
+    ) = ingestion.listSources(guildId, spaceId)
+
     @GetMapping("/{guildId}/spaces/{spaceId}/status")
     fun spaceStatus(
         @PathVariable guildId: Long,
@@ -58,6 +64,17 @@ class KnowledgeIngestionController(
                 contentPreview = request.contentPreview,
                 addedBy = request.actorUserId,
             )
+        return mapOf("id" to source.id, "status" to source.status, "riskLevel" to source.riskLevel)
+    }
+
+    @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/approve")
+    fun approveSource(
+        @PathVariable guildId: Long,
+        @PathVariable spaceId: Long,
+        @PathVariable sourceId: Long,
+        @RequestBody request: ApproveKnowledgeSourceRequest,
+    ): Map<String, Any?> {
+        val source = ingestion.approveSourceForIndexing(guildId, spaceId, sourceId, request.reason)
         return mapOf("id" to source.id, "status" to source.status, "riskLevel" to source.riskLevel)
     }
 
@@ -134,6 +151,10 @@ data class AddKnowledgeSourceRequest(
     val sourceUri: String? = null,
     val contentPreview: String? = null,
     val actorUserId: Long? = null,
+)
+
+data class ApproveKnowledgeSourceRequest(
+    val reason: String = "manual review approved",
 )
 
 data class MarkKnowledgeSourceIndexedRequest(

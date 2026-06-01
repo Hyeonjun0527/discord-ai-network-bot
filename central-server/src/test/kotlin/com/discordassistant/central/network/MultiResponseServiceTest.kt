@@ -867,6 +867,69 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `operations summary combines decision quality provider load and next actions`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 420,
+                    providerUserId = 181,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 420,
+                    providerUserId = 182,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "qwen",
+                    capabilityTags = "multi-response",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(
+                420,
+                SaveMultiResponsePolicyRequest(channelId = 520, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
+            )
+            val runId = controller.startRun(420, StartMultiResponseRunRequest(channelId = 520, requestId = "ops-1"))["id"] as Long
+            val planned = candidates.findByRunId(runId)
+            val selected = planned.first { it.providerUserId == 181L }
+            val timedOut = planned.first { it.providerUserId == 182L }
+            controller.recordCandidate(
+                runId,
+                selected.id,
+                RecordCandidateRequest(answerRef = "answer:ops-1:selected", latencyMs = 700, qualityScore = 94),
+            )
+            controller.recordCandidate(
+                runId,
+                timedOut.id,
+                RecordCandidateRequest(status = "timeout", latencyMs = 12_000),
+            )
+            controller.synthesize(runId, SynthesizeRunRequest("answer:ops-1:final", listOf(selected.id)))
+
+            val response = controller.operationsSummary(420, channelId = 520)
+            val summary = response["summary"] as MultiResponseOperationsSummary
+
+            assertEquals("blocked", summary.status)
+            assertEquals(false, summary.safeToEnableAdvanced)
+            assertEquals(1, summary.recentRunCount)
+            assertEquals(1, summary.completedRunCount)
+            assertEquals(1, summary.acceptedCandidateCount)
+            assertEquals(1, summary.timeoutCandidateCount)
+            assertEquals(1, summary.criticalLoadProviderCount)
+            assertTrue(summary.riskCodes.contains("high_timeout_rate"))
+            assertTrue(summary.riskCodes.contains("provider_fanout_load_critical"))
+            assertTrue(summary.nextActions.any { it.contains("과부하 Provider") })
+            assertEquals(2, summary.providerLoads.size)
+            assertEquals(2, summary.decisionSummary.totalCandidateCount)
+        }
+
+        @Test
         fun `multi response kill switch blocks advanced fanout workflow`() {
             val disabledService =
                 MultiResponseService(

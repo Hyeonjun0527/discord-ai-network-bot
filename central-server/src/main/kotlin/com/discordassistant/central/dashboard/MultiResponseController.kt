@@ -281,6 +281,12 @@ class MultiResponseController(
         )
     }
 
+    @GetMapping("/{guildId}/operations-summary")
+    fun operationsSummary(
+        @PathVariable guildId: Long,
+        @RequestParam(required = false) channelId: Long? = null,
+    ): Map<String, Any?> = mapOf("summary" to service.operationsSummary(guildId, channelId))
+
     private fun providerLabel(
         providerUserId: Long?,
         index: Int,

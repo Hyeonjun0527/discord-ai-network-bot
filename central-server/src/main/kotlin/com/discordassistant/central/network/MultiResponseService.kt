@@ -472,6 +472,92 @@ class MultiResponseService(
         )
     }
 
+    fun operationsSummary(
+        guildId: Long,
+        channelId: Long? = null,
+    ): MultiResponseOperationsSummary {
+        featureGate.requireMultiResponseEnabled()
+        val stats = dailyStats(guildId)
+        val decisions = decisionSummary(guildId, channelId, limit = 20)
+        val providerLoads = providerFanoutLoad(guildId)
+        val recentRuns =
+            runs
+                .findTop20ByGuildIdOrderByStartedAtDesc(guildId)
+                .filter { channelId == null || it.channelId == channelId }
+        val criticalLoadCount = providerLoads.count { it.loadRisk.equals("critical", ignoreCase = true) }
+        val highLoadCount =
+            providerLoads.count {
+                it.loadRisk.equals("high", ignoreCase = true) || it.loadRisk.equals("critical", ignoreCase = true)
+            }
+        val ragFallbackCount = recentRuns.count { it.ragContextStatus?.startsWith("fallback") == true }
+        val blockedSensitiveCount = recentRuns.count { it.status.equals("blocked_sensitive", ignoreCase = true) }
+        val noProviderCount = recentRuns.count { it.status.equals("no_provider", ignoreCase = true) }
+        val riskCodes =
+            (
+                decisions.riskCodes +
+                    listOfNotNull(
+                        "provider_fanout_load_critical".takeIf { criticalLoadCount > 0 },
+                        "provider_fanout_load_high".takeIf { highLoadCount > criticalLoadCount },
+                        "rag_context_fallback".takeIf { ragFallbackCount > 0 },
+                        "blocked_sensitive_prompts".takeIf { blockedSensitiveCount > 0 },
+                        "no_provider_capacity".takeIf { noProviderCount > 0 },
+                    )
+            ).distinct()
+        val nextActions =
+            (
+                decisions.nextActions +
+                    listOfNotNull(
+                        "과부하 Provider의 다중 응답 fan-out을 줄이고 안전 한도를 점검하세요.".takeIf {
+                            criticalLoadCount > 0 || highLoadCount > 0
+                        },
+                        "채널 지식 베이스 색인 상태와 검색 범위를 점검하세요.".takeIf { ragFallbackCount > 0 },
+                        "민감정보처럼 보이는 질문은 단일 안전 경로로 안내하고 Provider fan-out을 차단하세요.".takeIf {
+                            blockedSensitiveCount > 0
+                        },
+                        "온라인 Provider, fan-out 참여 태그, 모델 정책을 확인하세요.".takeIf { noProviderCount > 0 },
+                    )
+            ).distinct()
+        val status =
+            when {
+                criticalLoadCount > 0 || noProviderCount > 0 -> "blocked"
+                riskCodes.isNotEmpty() || highLoadCount > 0 -> "warning"
+                stats.recentRunCount == 0 -> "empty"
+                else -> "ready"
+            }
+        val unsafeAdvancedRisks =
+            setOf(
+                "high_timeout_rate",
+                "low_quality",
+                "no_candidates",
+                "rag_context_fallback",
+                "provider_fanout_load_critical",
+                "provider_fanout_load_high",
+                "no_provider_capacity",
+            )
+        return MultiResponseOperationsSummary(
+            guildId = guildId,
+            channelId = channelId,
+            status = status,
+            safeToEnableAdvanced = status == "ready" && riskCodes.none { it in unsafeAdvancedRisks },
+            recentRunCount = stats.recentRunCount,
+            completedRunCount = stats.completedRunCount,
+            fallbackRunCount = stats.fallbackRunCount,
+            averageActualFanout = stats.averageActualFanout,
+            acceptedCandidateCount = decisions.acceptedCandidateCount,
+            timeoutCandidateCount = stats.timeoutCandidateCount,
+            rejectedCandidateCount = decisions.rejectedCandidateCount,
+            highLoadProviderCount = highLoadCount,
+            criticalLoadProviderCount = criticalLoadCount,
+            ragFallbackRunCount = ragFallbackCount,
+            blockedSensitiveRunCount = blockedSensitiveCount,
+            noProviderRunCount = noProviderCount,
+            riskCodes = riskCodes,
+            nextActions = nextActions,
+            providerLoads = providerLoads,
+            decisionSummary = decisions,
+        )
+    }
+
     fun pseudoStreamPlan(
         answer: String,
         requestedSteps: List<Int> = emptyList(),
@@ -813,6 +899,29 @@ data class MultiResponseDecisionItem(
     val selected: Boolean,
     val reason: String,
     val strategy: String?,
+)
+
+data class MultiResponseOperationsSummary(
+    val guildId: Long,
+    val channelId: Long?,
+    val status: String,
+    val safeToEnableAdvanced: Boolean,
+    val recentRunCount: Int,
+    val completedRunCount: Int,
+    val fallbackRunCount: Int,
+    val averageActualFanout: Double,
+    val acceptedCandidateCount: Int,
+    val timeoutCandidateCount: Int,
+    val rejectedCandidateCount: Int,
+    val highLoadProviderCount: Int,
+    val criticalLoadProviderCount: Int,
+    val ragFallbackRunCount: Int,
+    val blockedSensitiveRunCount: Int,
+    val noProviderRunCount: Int,
+    val riskCodes: List<String>,
+    val nextActions: List<String>,
+    val providerLoads: List<ProviderFanoutLoadSummary>,
+    val decisionSummary: MultiResponseDecisionSummary,
 )
 
 data class ProviderFanoutLoadSummary(

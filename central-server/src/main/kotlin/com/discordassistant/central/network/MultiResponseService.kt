@@ -137,6 +137,142 @@ class MultiResponseService(
     }
 
     @Transactional
+    fun startRuntimeObservation(
+        guildId: Long,
+        channelId: Long,
+        requestId: String = newRequestId(),
+        promptPreview: String? = null,
+        responseMode: String = "balanced",
+        maxCandidates: Int = 1,
+    ): MultiResponseRunEntity {
+        featureGate.requireMultiResponseEnabled()
+        val savedPolicy =
+            policies.findByGuildIdAndChannelId(guildId, channelId)
+                ?: policies.findByGuildIdAndChannelIdIsNull(guildId)
+        val runtimePolicy =
+            savedPolicy
+                ?: MultiResponsePolicyEntity(
+                    guildId = guildId,
+                    channelId = channelId,
+                    mode = runtimeObservationMode(responseMode, maxCandidates),
+                    maxCandidates = maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES),
+                    requireDistinctModels = false,
+                    providerDailyLimit = 0,
+                    timeoutSeconds = 120,
+                    synthesisEnabled = maxCandidates > 1,
+                    createdAt = Instant.now(clock),
+                    updatedAt = Instant.now(clock),
+                )
+        val run =
+            runs.save(
+                MultiResponseRunEntity(
+                    guildId = guildId,
+                    channelId = channelId,
+                    requestId = requestId,
+                    policyId = savedPolicy?.id,
+                    status = "planned",
+                    startedAt = Instant.now(clock),
+                ),
+            )
+        if (promptPreview.isSensitivePrompt()) {
+            run.status = "blocked_sensitive"
+            run.failureReason = "multi-response fan-out disabled for sensitive-looking prompt"
+            run.ragContextStatus = "skipped_sensitive_prompt"
+            run.finishedAt = Instant.now(clock)
+            return runs.save(run)
+        }
+        applyRagContextSnapshot(run, promptPreview, responseMode)
+        val executionPlan = safety?.executionPlan(guildId, runtimePolicy.mode, runtimePolicy.maxCandidates)
+        if (executionPlan != null && executionPlan.maxSafeCandidates == 0) {
+            run.status = "no_provider"
+            run.failureReason = executionPlan.reasons.joinToString(" ")
+            run.finishedAt = Instant.now(clock)
+            return runs.save(run)
+        }
+        val selectedProviders =
+            selectProviders(
+                guildId = guildId,
+                policy = runtimePolicy,
+                maxCandidates = executionPlan?.maxSafeCandidates ?: runtimePolicy.maxCandidates,
+                fanoutAllowed = executionPlan?.fanoutAllowed ?: true,
+            )
+        selectedProviders.forEach { provider ->
+            candidates.save(
+                CandidateAnswerEntity(
+                    runId = run.id,
+                    providerUserId = provider.providerUserId,
+                    modelName = provider.firstModel(),
+                    status = "planned",
+                    createdAt = Instant.now(clock),
+                ),
+            )
+        }
+        run.candidateCount = selectedProviders.size
+        run.status = if (selectedProviders.isEmpty()) "no_provider" else "running"
+        return runs.save(run)
+    }
+
+    @Transactional
+    fun recordRuntimeSingleRouteResult(
+        runId: Long,
+        providerUserId: Long?,
+        modelName: String?,
+        answerRef: String?,
+        completed: Boolean,
+        latencyMs: Int?,
+        failureReason: String?,
+    ): MultiResponseCompletion {
+        featureGate.requireMultiResponseEnabled()
+        val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
+        if (run.status.equals("blocked_sensitive", ignoreCase = true)) {
+            return MultiResponseCompletion(run = run, synthesis = syntheses.findByRunId(runId), fallbackReason = run.failureReason)
+        }
+        val now = Instant.now(clock)
+        val runCandidates = candidates.findByRunId(runId)
+        val candidate =
+            matchingRuntimeCandidate(runCandidates, providerUserId)
+                ?: candidates.save(
+                    CandidateAnswerEntity(
+                        runId = runId,
+                        providerUserId = providerUserId,
+                        modelName = modelName,
+                        status = "planned",
+                        createdAt = now,
+                    ),
+                )
+        candidate.modelName = modelName ?: candidate.modelName
+        candidate.latencyMs = latencyMs
+        candidate.answerRef = answerRef?.trim()?.ifBlank { null }
+        candidate.status = if (completed && !candidate.answerRef.isNullOrBlank()) "completed" else "failed"
+        candidate.safetyFlags = if (completed) "single_route" else null
+        candidate.qualityScore = if (completed) 80 else null
+        val savedCandidate = candidates.save(candidate)
+        run.candidateCount = maxOf(run.candidateCount, candidates.findByRunId(runId).size)
+        if (completed && !savedCandidate.answerRef.isNullOrBlank()) {
+            val synthesis =
+                synthesize(
+                    runId = runId,
+                    answerRef = savedCandidate.answerRef!!,
+                    selectedCandidateIds = listOf(savedCandidate.id),
+                    strategy = "single_route_runtime",
+                    qualitySummary = "single route completed; fan-out observability attached",
+                    safetySummary = "single_route",
+                )
+            val savedRun = runs.findById(runId).orElse(run)
+            return MultiResponseCompletion(run = savedRun, synthesis = synthesis, fallbackReason = null)
+        }
+        run.status =
+            when {
+                run.status.equals("no_provider", ignoreCase = true) -> "no_provider"
+                else -> "failed"
+            }
+        run.failureReason = failureReason?.trim()?.take(500) ?: run.failureReason ?: "single route failed"
+        run.finishedAt = now
+        val savedRun = runs.save(run)
+        return MultiResponseCompletion(run = savedRun, synthesis = null, fallbackReason = savedRun.failureReason)
+    }
+
+    @Transactional
     fun recordCandidate(
         runId: Long,
         candidateId: Long,
@@ -730,6 +866,26 @@ class MultiResponseService(
         }
         return selected
     }
+
+    private fun matchingRuntimeCandidate(
+        runCandidates: List<CandidateAnswerEntity>,
+        providerUserId: Long?,
+    ): CandidateAnswerEntity? =
+        providerUserId
+            ?.let { provider -> runCandidates.firstOrNull { it.providerUserId == provider } }
+            ?: runCandidates.firstOrNull()
+
+    private fun runtimeObservationMode(
+        responseMode: String,
+        maxCandidates: Int,
+    ): String =
+        when {
+            maxCandidates > 1 -> "compare"
+            responseMode.equals("deep", ignoreCase = true) -> "deep"
+            responseMode.equals("saving", ignoreCase = true) -> "saving"
+            responseMode.equals("fast", ignoreCase = true) -> "fast"
+            else -> "single"
+        }
 
     private fun applyRagContextSnapshot(
         run: MultiResponseRunEntity,

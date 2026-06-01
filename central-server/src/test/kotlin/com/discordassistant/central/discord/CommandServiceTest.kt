@@ -4,8 +4,11 @@ import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.PresetBehaviorInput
 import com.discordassistant.central.network.PresetRegistryService
+import com.discordassistant.central.persistence.CandidateAnswerRepository
+import com.discordassistant.central.persistence.MultiResponseRunRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
+import com.discordassistant.central.persistence.SynthesisResultRepository
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
@@ -48,6 +51,9 @@ class CommandServiceTest
         val channelRoutingPolicies: ChannelAiRoutingPolicyService,
         val providerCapabilities: ProviderCapabilityProfileRepository,
         val presetRegistry: PresetRegistryService,
+        val multiResponseRuns: MultiResponseRunRepository,
+        val candidateAnswers: CandidateAnswerRepository,
+        val synthesisResults: SynthesisResultRepository,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -293,6 +299,57 @@ class CommandServiceTest
             val blocked = commands.multiResponseDryRun(g, prompt = "내 DISCORD_BOT_TOKEN=abc 를 여러 Provider로 비교해줘")
             assertTrue(blocked.content.contains("blocked_sensitive"), blocked.content)
             assertTrue(blocked.content.contains("fan-out을 차단"), blocked.content)
+        }
+
+        @Test
+        fun `ask — 실제 질문 경로도 다중응답 관측 런과 선택 후보를 남긴다`() {
+            val g = CommandContext(guildId = 77996, channelId = 88996, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            val conn = EchoConn()
+            val session = ProviderSession(conn, providerId = 702, guildId = g.guildId)
+            conn.session = session
+            session.capability = session.capability.copy(models = listOf("llama3.1:8b"))
+            registry.register(session)
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = g.guildId,
+                    providerUserId = 702,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3.1:8b",
+                    capabilityTags = "coding,multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            channelRoutingPolicies.save(
+                guildId = g.guildId,
+                channelId = g.channelId,
+                responseMode = "deep",
+                preferredModel = "llama3.1:8b",
+                allowedModels = listOf("llama3.1:8b"),
+                minQualityTier = "standard",
+                maxCandidates = 2,
+                providerTagFilter = listOf("coding"),
+                costGuard = "provider_safe",
+            )
+
+            try {
+                val reply = commands.ask(g, "Kotlin 설정 비교해줘", requestedResponseMode = "deep")
+
+                assertTrue(reply.content.startsWith("echo:"), reply.content)
+                val run = multiResponseRuns.findTop20ByGuildIdOrderByStartedAtDesc(g.guildId).single()
+                assertEquals("completed", run.status)
+                assertEquals(1, run.candidateCount)
+                val candidate = candidateAnswers.findByRunId(run.id).single()
+                assertEquals(702, candidate.providerUserId)
+                assertEquals("completed", candidate.status)
+                assertEquals("single_route", candidate.safetyFlags)
+                val synthesis = synthesisResults.findByRunId(run.id)!!
+                assertEquals("completed", synthesis.status)
+                assertEquals("single_route_runtime", synthesis.strategy)
+            } finally {
+                registry.unregister(session)
+            }
         }
 
         @Test

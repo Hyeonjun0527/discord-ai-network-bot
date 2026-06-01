@@ -115,7 +115,10 @@ class CommandService(
                 ?: requestedModel?.trim()?.ifBlank { null }
                 ?: routingPolicy.preferredModel
         val responseMode = normalizeAskResponseMode(requestedResponseMode) ?: routingPolicy.responseMode
+        val runtimeMultiResponseRun =
+            startRuntimeMultiResponseObservation(ctx, prompt, responseMode, routingPolicy.maxCandidates)
         val effectivePrompt = prompt.composeExecutionPrompt(ctx, responseMode)
+        val startedAtNanos = System.nanoTime()
         val result =
             orchestrator.handle(
                 AiRequestInput(
@@ -129,12 +132,77 @@ class CommandService(
                     responseMode = responseMode,
                 ),
             )
+        runtimeMultiResponseRun?.let { run ->
+            recordRuntimeMultiResponseResult(
+                runId = run.id,
+                providerId = result.providerId,
+                modelName = selectedModel,
+                result = result,
+                latencyMs = elapsedMillis(startedAtNanos),
+            )
+        }
         return when (result.state) {
             RequestState.COMPLETED -> Reply(result.text.orEmpty().withModelFallbackNotice(modelChoice), ephemeral = false)
             RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
             else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
         }
     }
+
+    private fun startRuntimeMultiResponseObservation(
+        ctx: CommandContext,
+        prompt: String,
+        responseMode: String,
+        maxCandidates: Int,
+    ) = if (shouldObserveMultiResponse(responseMode, maxCandidates)) {
+        runCatching {
+            multiResponse.startRuntimeObservation(
+                guildId = ctx.guildId,
+                channelId = ctx.channelId,
+                promptPreview = prompt,
+                responseMode = responseMode,
+                maxCandidates = maxCandidates,
+            )
+        }.getOrNull()
+    } else {
+        null
+    }
+
+    private fun recordRuntimeMultiResponseResult(
+        runId: Long,
+        providerId: Long?,
+        modelName: String?,
+        result: com.discordassistant.central.routing.OrchestrationResult,
+        latencyMs: Int,
+    ) {
+        runCatching {
+            multiResponse.recordRuntimeSingleRouteResult(
+                runId = runId,
+                providerUserId = providerId,
+                modelName = modelName,
+                answerRef = result.toRuntimeAnswerRef(),
+                completed = result.state == RequestState.COMPLETED,
+                latencyMs = latencyMs,
+                failureReason = result.failReason,
+            )
+        }
+    }
+
+    private fun shouldObserveMultiResponse(
+        responseMode: String,
+        maxCandidates: Int,
+    ): Boolean = maxCandidates > 1 || responseMode.equals("deep", ignoreCase = true)
+
+    private fun com.discordassistant.central.routing.OrchestrationResult.toRuntimeAnswerRef(): String? =
+        if (state == RequestState.COMPLETED) {
+            "discord-ask-runtime:${java.util.UUID.randomUUID()}"
+        } else {
+            null
+        }
+
+    private fun elapsedMillis(startedAtNanos: Long): Int =
+        ((System.nanoTime() - startedAtNanos) / 1_000_000)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
 
     private fun String.withModelFallbackNotice(modelChoice: ModelChoiceDecision): String {
         if (modelChoice.fallbackReason == null) return this

@@ -1,7 +1,9 @@
 package com.discordassistant.central.discord
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import net.dv8tion.jda.api.requests.GatewayIntent
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -37,6 +39,17 @@ class DiscordUxTest {
         val pages = Pagination.paginate(long, limit = 100)
         assertEquals(3, pages.size)
         assertEquals(long, pages.joinToString(""))
+    }
+
+    @Test
+    fun `GatewayIntentPolicy — Message Content Intent 설정값으로 제어`() {
+        val withMention = GatewayIntentPolicy.intents(messageContentIntentEnabled = true)
+        assertTrue(withMention.contains(GatewayIntent.MESSAGE_CONTENT))
+        assertTrue(withMention.contains(GatewayIntent.GUILD_MESSAGES))
+
+        val slashOnly = GatewayIntentPolicy.intents(messageContentIntentEnabled = false)
+        assertFalse(slashOnly.contains(GatewayIntent.MESSAGE_CONTENT))
+        assertTrue(slashOnly.contains(GatewayIntent.GUILD_MESSAGES))
     }
 
     @Test

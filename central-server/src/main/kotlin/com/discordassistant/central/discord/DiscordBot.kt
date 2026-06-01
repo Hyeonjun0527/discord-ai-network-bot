@@ -21,8 +21,11 @@ import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionE
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.events.message.react.MessageReactionAddEvent
+import net.dv8tion.jda.api.events.session.ReadyEvent
+import net.dv8tion.jda.api.events.session.ShutdownEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.Interaction
+import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.OptionType
@@ -32,10 +35,10 @@ import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.text.TextInput
 import net.dv8tion.jda.api.interactions.components.text.TextInputStyle
 import net.dv8tion.jda.api.interactions.modals.Modal
-import net.dv8tion.jda.api.requests.GatewayIntent
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * DM(봇과의 1:1 DM)에서도 쓸 수 있는 명령(차수 19): 질문/조회 + 프로바이더 셀프서비스. 관리자/정책 명령은 길드 전용.
@@ -73,13 +76,18 @@ class DiscordBot(
     private val channelProfiles: ChannelAiProfileService,
     private val guildCleanup: GuildRemovalCleanupService,
     private val reconciliation: ProviderPoolReconciliationService,
+    private val gatewayStatus: DiscordGatewayStatus,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
     @param:Value("\${central.discord.guild-id:}") private val guildId: String,
+    @param:Value("\${central.discord.message-content-intent-enabled:true}") private val messageContentIntentEnabled: Boolean,
+    @param:Value("\${central.discord.fallback-without-message-content-on-4014:true}") private val fallbackWithoutMessageContentOn4014:
+        Boolean,
 ) {
     private val log = LoggerFactory.getLogger(DiscordBot::class.java)
     private var jda: JDA? = null
+    private val fallbackAttempted = AtomicBoolean(false)
 
     @PostConstruct
     fun start() {
@@ -87,25 +95,54 @@ class DiscordBot(
             log.info("Discord 비활성(enabled={}, token={}) — JDA 미기동", enabled, token.isNotBlank())
             return
         }
-        // createLight + 리액션 인텐트(#171 만족도 수집은 GUILD_MESSAGE_REACTIONS 필요).
-        val builder =
-            JDABuilder.createLight(
-                token,
-                GatewayIntent.GUILD_MESSAGES,
-                GatewayIntent.GUILD_MESSAGE_REACTIONS,
-                GatewayIntent.MESSAGE_CONTENT,
+        launchJda(messageContentIntentEnabled)
+    }
+
+    private fun launchJda(messageContentIntent: Boolean) {
+        gatewayStatus.markStarting(messageContentIntent)
+        val intents = GatewayIntentPolicy.intents(messageContentIntent)
+        val builder = JDABuilder.createLight(token, intents)
+        val listener =
+            Listener(
+                commands,
+                metrics,
+                channelProfiles,
+                guildCleanup,
+                reconciliation,
+                gatewayStatus,
+                mentionAskEnabled = messageContentIntent,
+                onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
             )
-        val instance = builder.addEventListeners(Listener(commands, metrics, channelProfiles, guildCleanup, reconciliation)).build()
+        val instance = builder.addEventListeners(listener).build()
         jda = instance
-        // 봇 DM 지원을 위해 항상 글로벌 등록(봇 DM 허용은 글로벌 명령 + dm_permission 으로 동작). 전파 최대 ~1h.
         registerCommands(instance.updateCommands())
         if (guildId.isNotBlank()) {
-            // 글로벌+길드 명령을 동시에 두면 Discord 클라이언트에 영어/한국어 명령이 중복 노출될 수 있다.
-            // 운영 길드에 남아 있는 길드 스코프 명령은 비우고, 로컬라이즈된 글로벌 명령만 사용한다.
             instance.awaitReady()
             instance.getGuildById(guildId)?.updateCommands()?.queue({}, {})
         }
-        log.info("Discord(JDA) 기동 완료 — 슬래시 명령 글로벌 등록(봇 DM 포함)")
+        log.info(
+            "Discord(JDA) 기동 완료 — 슬래시 명령 글로벌 등록(봇 DM 포함), messageContentIntent={}",
+            messageContentIntent,
+        )
+    }
+
+    private fun handleDisallowedIntents(messageContentIntent: Boolean) {
+        val guide =
+            "Discord gateway 4014 DISALLOWED_INTENTS — @멘션 질문에는 Developer Portal Bot 설정의 " +
+                "Message Content Intent가 필요합니다. 설정하지 않을 경우 " +
+                "central.discord.message-content-intent-enabled=false 로 슬래시 명령만 안전 부팅하세요."
+        log.error(guide)
+        gatewayStatus.markShutdown(4014, guide)
+        if (!messageContentIntent || !fallbackWithoutMessageContentOn4014 || !fallbackAttempted.compareAndSet(false, true)) return
+        gatewayStatus.markSafeFallback("Message Content Intent 거부로 @멘션 질문을 끄고 슬래시 명령만 재기동합니다.")
+        Thread({
+            runCatching { jda?.shutdownNow() }
+            runCatching { launchJda(messageContentIntent = false) }
+                .onFailure { e ->
+                    log.error("Message Content Intent 없는 안전 재기동 실패: {}", e.message, e)
+                    gatewayStatus.markShutdown(4014, "Message Content Intent 없는 안전 재기동 실패: ${e.message}")
+                }
+        }, "discord-safe-intent-restart").start()
     }
 
     @PreDestroy
@@ -229,6 +266,7 @@ class DiscordBot(
                 // 인터랙티브(차수 13): 설정 패널(버튼/Select #147/180), 모달 입력(#189)
                 Commands.slash("menu", "시작 패널을 엽니다(질문·기여·설정·도움말 한 곳에서)"),
                 Commands.slash("llm-settings", "설정 패널을 엽니다(관리자)").setDefaultPermissions(adminPerm),
+                Commands.slash("bot-permissions", "봇 권한과 @멘션 호출 설정을 점검합니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands.slash("ask-long", "긴 질문을 모달 창으로 입력합니다"),
                 // 컨텍스트 메뉴(#181): 메시지 우클릭 → 그 내용으로 질문
                 Commands.message("AI에게 질문"),
@@ -249,6 +287,9 @@ class DiscordBot(
         private val channelProfiles: ChannelAiProfileService,
         private val guildCleanup: GuildRemovalCleanupService,
         private val reconciliation: ProviderPoolReconciliationService,
+        private val gatewayStatus: DiscordGatewayStatus,
+        private val mentionAskEnabled: Boolean,
+        private val onDisallowedIntents: () -> Unit,
     ) : ListenerAdapter() {
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
@@ -320,8 +361,8 @@ class DiscordBot(
             event.deferReply(if (useWebhookProfile) true else !isPublic).queue()
             try {
                 val reply = dispatch(event, ctx)
-                if (useWebhookProfile && sendAnswerWebhook(event.channel, ctx, reply)) {
-                    event.hook.editOriginal("✅ 답변을 채널 AI 프로필로 보냈어요.").queue()
+                if (useWebhookProfile) {
+                    completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
                 } else {
                     event.hook.editOriginal(reply.content).queue()
                 }
@@ -337,6 +378,27 @@ class DiscordBot(
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
             private val PUBLIC_COMMANDS = setOf("ask", "contributions", "community-stats", "welcome")
             private const val WEBHOOK_NAME = "discord-ai-channel-profile"
+        }
+
+        override fun onReady(event: ReadyEvent) {
+            gatewayStatus.markReady(mentionAskEnabled)
+            log.info(
+                "Discord gateway ready — guilds available={} unavailable={} mentionAskEnabled={}",
+                event.guildAvailableCount,
+                event.guildUnavailableCount,
+                mentionAskEnabled,
+            )
+        }
+
+        override fun onShutdown(event: ShutdownEvent) {
+            val problem =
+                if (event.code == 4014) {
+                    "DISALLOWED_INTENTS: Message Content Intent 권한/설정 불일치 가능"
+                } else {
+                    event.closeCode?.meaning ?: "Discord gateway shutdown"
+                }
+            gatewayStatus.markShutdown(event.code, problem)
+            if (event.code == 4014) onDisallowedIntents()
         }
 
         /** 슬래시 옵션 자동완성(#179): model 옵션에 풀 제공 모델 제안. */
@@ -516,8 +578,8 @@ class DiscordBot(
             val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
             event.deferReply(useWebhookProfile).queue()
             val reply = commands.ask(ctx, prompt)
-            if (useWebhookProfile && sendAnswerWebhook(event.channel, ctx, reply)) {
-                event.hook.editOriginal("✅ 답변을 채널 AI 프로필로 보냈어요.").queue()
+            if (useWebhookProfile) {
+                completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
             } else {
                 event.hook.editOriginal(reply.content).queue()
             }
@@ -531,8 +593,8 @@ class DiscordBot(
             val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
             event.deferReply(useWebhookProfile).queue()
             val reply = commands.ask(ctx, event.target.contentRaw)
-            if (useWebhookProfile && sendAnswerWebhook(event.channel, ctx, reply)) {
-                event.hook.editOriginal("✅ 답변을 채널 AI 프로필로 보냈어요.").queue()
+            if (useWebhookProfile) {
+                completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
             } else {
                 event.hook.editOriginal(reply.content).queue()
             }
@@ -540,7 +602,7 @@ class DiscordBot(
 
         /** 봇 멘션 질문: `@냥시스턴트 질문` 을 기존 /ask 와 같은 Provider Pool 흐름으로 처리한다. */
         override fun onMessageReceived(event: MessageReceivedEvent) {
-            if (!event.isFromGuild || event.author.isBot) return
+            if (!mentionAskEnabled || !event.isFromGuild || event.author.isBot) return
             val selfId = event.jda.selfUser.idLong
             val mentionedUsers = event.message.mentions.users
             val mentioned = mentionedUsers.any { it.idLong == selfId }
@@ -598,6 +660,41 @@ class DiscordBot(
                 "👍" -> metrics.record("reaction:up")
                 "👎" -> metrics.record("reaction:down")
             }
+        }
+
+        private fun completePublicAnswerWithProfileFallback(
+            hook: InteractionHook,
+            channelUnion: MessageChannelUnion?,
+            ctx: CommandContext,
+            reply: Reply,
+        ) {
+            if (sendAnswerWebhook(channelUnion, ctx, reply)) {
+                hook.editOriginal("✅ 답변을 채널 AI 프로필로 보냈어요.").queue()
+                return
+            }
+            if (sendBotChannelAnswer(channelUnion, reply)) {
+                hook
+                    .editOriginal(
+                        "⚠️ 채널 AI 이름/아이콘으로 보내려면 봇에 `웹후크 관리` 권한이 필요해요. " +
+                            "이번 답변은 기본 봇 이름으로 보냈습니다.",
+                    ).queue()
+                return
+            }
+            hook.editOriginal(reply.content).queue()
+        }
+
+        private fun sendBotChannelAnswer(
+            channelUnion: MessageChannelUnion?,
+            reply: Reply,
+        ): Boolean {
+            if (reply.ephemeral) return false
+            channelUnion ?: return false
+            return runCatching {
+                channelUnion.asTextChannel().sendMessage(reply.content).complete()
+                true
+            }.onFailure { e ->
+                log.warn("일반 봇 메시지 폴백 전송 실패: {}", e.message)
+            }.getOrDefault(false)
         }
 
         /**
@@ -687,6 +784,7 @@ class DiscordBot(
                 "fairness" -> commands.fairness(ctx)
                 "privacy" -> commands.privacy(ctx)
                 "help" -> commands.help(ctx)
+                "bot-permissions" -> commands.botPermissions(ctx)
                 "welcome" -> commands.welcome(ctx)
                 "llm-welcome-set" -> commands.setWelcome(ctx, event.getOption("message")!!.asString)
                 "provider-join" -> commands.providerJoin(ctx)

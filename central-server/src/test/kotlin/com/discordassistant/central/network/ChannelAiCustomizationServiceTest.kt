@@ -10,7 +10,9 @@ import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -86,6 +88,40 @@ class ChannelAiCustomizationServiceTest
             assertEquals(behaviorId, channelAis.findByGuildIdAndChannelId(100, 200)!!.activeBehaviorVersionId)
             val history = controller.history(100, 200)
             assertTrue(history["audits"].toString().contains("approve"))
+        }
+
+        @Test
+        fun `pending proposal cannot be approved if behavior payload changed`() {
+            val created =
+                controller.createFromWizard(
+                    100,
+                    207,
+                    ChannelAiWizardRequest(
+                        actorUserId = 77,
+                        name = "감사용냥",
+                        job = "개발 질문",
+                        tone = "친근하게",
+                        requireApproval = true,
+                    ),
+                )
+            val proposalId = created["proposalId"] as Long
+            val behaviorId = created["behaviorVersionId"] as Long
+            assertNotNull(proposals.findById(proposalId).orElseThrow().payloadHash)
+
+            val channelAi = channelAis.findByGuildIdAndChannelId(100, 207)!!
+            val behavior = versions.findByChannelAiIdAndId(channelAi.id, behaviorId)!!
+            behavior.purpose = "승인 요청 뒤 몰래 바뀐 목적"
+            versions.saveAndFlush(behavior)
+
+            assertThrows(IllegalStateException::class.java) {
+                controller.approve(proposalId, ReviewChannelAiProposalRequest(reviewerUserId = 88))
+            }
+
+            val stale = proposals.findById(proposalId).orElseThrow()
+            assertEquals("stale", stale.status)
+            assertEquals("proposal payload changed after review request", stale.reason)
+            assertNull(channelAis.findByGuildIdAndChannelId(100, 207)!!.activeBehaviorVersionId)
+            assertTrue(controller.history(100, 207)["audits"].toString().contains("stale_payload"))
         }
 
         @Test

@@ -174,6 +174,7 @@ class AiChangeProposalEntity(
     var requestedBy: Long? = null,
     var reviewedBy: Long? = null,
     var reason: String? = null,
+    @Column(name = "payload_hash") var payloadHash: String? = null,
     var createdAt: Instant = Instant.EPOCH,
     var reviewedAt: Instant? = null,
 )

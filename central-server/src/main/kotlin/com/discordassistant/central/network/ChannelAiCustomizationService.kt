@@ -15,6 +15,7 @@ import com.discordassistant.central.persistence.CustomizationAuditLogEntity
 import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
 
@@ -102,6 +103,7 @@ class ChannelAiCustomizationService(
                     status = status,
                     requestedBy = actorUserId,
                     reason = approvalDecision.reason ?: "channel AI wizard",
+                    payloadHash = behavior.payloadHash(),
                     createdAt = now,
                     reviewedAt = if (approvalDecision.required) null else now,
                     reviewedBy = if (approvalDecision.required) null else actorUserId,
@@ -171,6 +173,7 @@ class ChannelAiCustomizationService(
                     requestedBy = actorUserId,
                     reviewedBy = if (approvalDecision.required) null else actorUserId,
                     reason = approvalDecision.reason ?: reason?.trim()?.take(500) ?: "rollback to v${target.version}",
+                    payloadHash = rollbackBehavior.payloadHash(),
                     createdAt = now,
                     reviewedAt = if (approvalDecision.required) null else now,
                 ),
@@ -204,6 +207,26 @@ class ChannelAiCustomizationService(
         val channelAiId = proposal.channelAiId ?: throw IllegalArgumentException("proposal has no channel ai")
         val behaviorId = proposal.proposedBehaviorId ?: throw IllegalArgumentException("proposal has no behavior")
         val channelAi = channelAis.findById(channelAiId).orElseThrow { IllegalArgumentException("channel ai not found: $channelAiId") }
+        val behavior =
+            versions.findByChannelAiIdAndId(channelAiId, behaviorId)
+                ?: throw IllegalArgumentException("behavior not found: $behaviorId")
+        if (proposal.payloadHash != null && proposal.payloadHash != behavior.payloadHash()) {
+            proposal.status = "stale"
+            proposal.reviewedBy = reviewerUserId
+            proposal.reviewedAt = Instant.now(clock)
+            proposal.reason = "proposal payload changed after review request"
+            proposals.save(proposal)
+            audit(
+                guildId = proposal.guildId,
+                channelId = proposal.channelId,
+                actorUserId = reviewerUserId,
+                action = "stale_payload",
+                targetType = "ai_change_proposal",
+                targetId = proposal.id,
+                summary = "blocked approval because proposed behavior payload changed",
+            )
+            throw IllegalStateException("proposal payload changed after review request; create a new proposal")
+        }
         channelAi.activeBehaviorVersionId = behaviorId
         channelAi.updatedAt = Instant.now(clock)
         channelAis.save(channelAi)
@@ -211,7 +234,6 @@ class ChannelAiCustomizationService(
         proposal.reviewedBy = reviewerUserId
         proposal.reviewedAt = Instant.now(clock)
         val saved = proposals.save(proposal)
-        val behavior = versions.findByChannelAiIdAndId(channelAiId, behaviorId)
         audit(
             guildId = proposal.guildId,
             channelId = proposal.channelId,
@@ -219,7 +241,7 @@ class ChannelAiCustomizationService(
             action = "approve",
             targetType = "ai_behavior_version",
             targetId = behaviorId,
-            summary = "approved v${behavior?.version ?: "-"}",
+            summary = "approved v${behavior.version}",
         )
         return saved
     }
@@ -400,6 +422,26 @@ class ChannelAiCustomizationService(
             }
         return ApprovalDecision(required = reason != null, reason = reason)
     }
+
+    private fun AiBehaviorVersionEntity.payloadHash(): String =
+        sha256(
+            listOf(
+                channelAiId.toString(),
+                version.toString(),
+                purpose,
+                tone,
+                answerLength,
+                constitution.orEmpty(),
+                safetyLevel,
+                changeSummary.orEmpty(),
+            ).joinToString("\u001F"),
+        )
+
+    private fun sha256(value: String): String =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     private fun audit(
         guildId: Long,

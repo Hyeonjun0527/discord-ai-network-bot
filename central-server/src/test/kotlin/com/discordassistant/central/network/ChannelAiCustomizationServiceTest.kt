@@ -1,0 +1,116 @@
+package com.discordassistant.central.network
+
+import com.discordassistant.central.dashboard.ChannelAiCustomizationController
+import com.discordassistant.central.dashboard.ChannelAiWizardRequest
+import com.discordassistant.central.dashboard.ReviewChannelAiProposalRequest
+import com.discordassistant.central.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.persistence.AiChangeProposalRepository
+import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.CustomizationAuditLogRepository
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+class ChannelAiCustomizationServiceTest
+    @Autowired
+    constructor(
+        private val channelAis: ChannelAiRepository,
+        private val versions: AiBehaviorVersionRepository,
+        private val proposals: AiChangeProposalRepository,
+        private val audits: CustomizationAuditLogRepository,
+    ) {
+        private val service =
+            ChannelAiCustomizationService(
+                channelAis = channelAis,
+                versions = versions,
+                proposals = proposals,
+                audits = audits,
+                clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
+            )
+        private val controller = ChannelAiCustomizationController(service)
+
+        @Test
+        fun `wizard can create pending proposal and approve as active behavior`() {
+            val created =
+                controller.createFromWizard(
+                    100,
+                    200,
+                    ChannelAiWizardRequest(
+                        actorUserId = 77,
+                        name = "코드냥",
+                        job = "Kotlin Spring Boot 개발 질문",
+                        tone = "짧고 실용적으로",
+                        answerLength = "balanced",
+                        constitution = "추측하지 말고 근거를 먼저 말하기",
+                        requireApproval = true,
+                    ),
+                )
+            val proposalId = created["proposalId"] as Long
+            val behaviorId = created["behaviorVersionId"] as Long
+
+            assertEquals("pending", created["status"])
+            assertNull(channelAis.findByGuildIdAndChannelId(100, 200)!!.activeBehaviorVersionId)
+            assertEquals(1, controller.pending(100).size)
+
+            val approved = controller.approve(proposalId, ReviewChannelAiProposalRequest(reviewerUserId = 88))
+
+            assertEquals("approved", approved["status"])
+            assertEquals(behaviorId, channelAis.findByGuildIdAndChannelId(100, 200)!!.activeBehaviorVersionId)
+            val history = controller.history(100, 200)
+            assertTrue(history["audits"].toString().contains("approve"))
+        }
+
+        @Test
+        fun `wizard direct publish creates version history and proposal history`() {
+            val created =
+                controller.createFromWizard(
+                    100,
+                    201,
+                    ChannelAiWizardRequest(
+                        actorUserId = 77,
+                        name = "번역냥",
+                        job = "번역",
+                        tone = "친근하게",
+                        requireApproval = false,
+                    ),
+                )
+
+            assertEquals("approved", created["status"])
+            val channelAi = channelAis.findByGuildIdAndChannelId(100, 201)!!
+            assertEquals(created["behaviorVersionId"], channelAi.activeBehaviorVersionId)
+            assertEquals(1, versions.findByChannelAiIdOrderByVersionDesc(channelAi.id).size)
+            assertEquals(1, proposals.findByGuildIdAndChannelIdOrderByCreatedAtDesc(100, 201).size)
+        }
+
+        @Test
+        fun `pending proposal can be rejected without becoming active`() {
+            val created =
+                service.createFromWizard(
+                    guildId = 100,
+                    channelId = 202,
+                    actorUserId = 77,
+                    name = "공지냥",
+                    avatarUrl = null,
+                    job = "공지 작성",
+                    tone = "전문적으로",
+                    answerLength = "short",
+                    constitution = null,
+                    requireApproval = true,
+                )
+
+            val rejected = controller.reject(created.proposalId, ReviewChannelAiProposalRequest(reviewerUserId = 88, reason = "톤 재검토"))
+
+            assertEquals("rejected", rejected["status"])
+            assertNull(channelAis.findByGuildIdAndChannelId(100, 202)!!.activeBehaviorVersionId)
+            assertTrue(controller.history(100, 202).toString().contains("rejected"))
+        }
+    }

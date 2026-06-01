@@ -164,6 +164,16 @@ interface AiBehaviorVersionRepository : JpaRepository<AiBehaviorVersionEntity, L
 }
 
 interface AiChangeProposalRepository : JpaRepository<AiChangeProposalEntity, Long> {
+    fun findByGuildIdAndStatus(
+        guildId: Long,
+        status: String,
+    ): List<AiChangeProposalEntity>
+
+    fun findByGuildIdAndChannelIdOrderByCreatedAtDesc(
+        guildId: Long,
+        channelId: Long,
+    ): List<AiChangeProposalEntity>
+
     fun deleteByGuildId(guildId: Long)
 
     fun deleteByChannelAiId(channelAiId: Long)

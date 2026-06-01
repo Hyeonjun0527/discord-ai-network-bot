@@ -11,6 +11,7 @@ import com.discordassistant.central.persistence.PublishedPresetRepository
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 /** AI Network 대시보드 read API. 프롬프트/응답 본문 없이 네트워크 메타데이터만 노출한다. */
@@ -52,22 +53,26 @@ class AiNetworkDashboardController(
     @GetMapping("/{guildId}/providers")
     fun providers(
         @PathVariable guildId: Long,
-    ): List<ProviderCapabilityResponse> =
-        providerCapabilities.findByGuildId(guildId).map {
+        @RequestParam(defaultValue = "public") audience: String = "public",
+    ): List<ProviderCapabilityResponse> {
+        val visibility = DashboardAudience.from(audience)
+        return providerCapabilities.findByGuildId(guildId).mapIndexed { index, provider ->
             ProviderCapabilityResponse(
-                providerUserId = it.providerUserId,
-                state = it.providerState,
-                modelCount = it.modelCount,
-                models = splitCsv(it.modelNames),
-                tags = splitCsv(it.capabilityTags),
-                qualityTier = it.qualityTier,
-                maxBurden = it.maxBurden,
-                maxConcurrency = it.maxConcurrency,
-                dailyLimit = it.dailyLimit,
-                overloadRisk = it.overloadRisk,
-                lastSeenAt = it.lastSeenAt?.toString(),
+                providerUserId = if (visibility.canSeeProviderIdentity) provider.providerUserId else null,
+                providerLabel = if (visibility.canSeeProviderIdentity) "provider:${provider.providerUserId}" else "Provider ${index + 1}",
+                state = visibility.state(provider.providerState),
+                modelCount = provider.modelCount,
+                models = splitCsv(provider.modelNames),
+                tags = splitCsv(provider.capabilityTags),
+                qualityTier = provider.qualityTier,
+                maxBurden = provider.maxBurden,
+                maxConcurrency = if (visibility.canSeeProviderCapacity) provider.maxConcurrency else null,
+                dailyLimit = if (visibility.canSeeProviderCapacity) provider.dailyLimit else null,
+                overloadRisk = visibility.risk(provider.overloadRisk),
+                lastSeenAt = if (visibility.canSeeProviderCapacity) provider.lastSeenAt?.toString() else null,
             )
         }
+    }
 
     @GetMapping("/{guildId}/knowledge-spaces")
     fun knowledgeSpaces(
@@ -193,18 +198,51 @@ data class ChannelAiCardResponse(
 )
 
 data class ProviderCapabilityResponse(
-    val providerUserId: Long,
+    val providerUserId: Long?,
+    val providerLabel: String,
     val state: String,
     val modelCount: Int,
     val models: List<String>,
     val tags: List<String>,
     val qualityTier: String,
     val maxBurden: String,
-    val maxConcurrency: Int,
-    val dailyLimit: Int,
+    val maxConcurrency: Int?,
+    val dailyLimit: Int?,
     val overloadRisk: String,
     val lastSeenAt: String?,
 )
+
+private enum class DashboardAudience(
+    val canSeeProviderIdentity: Boolean,
+    val canSeeProviderCapacity: Boolean,
+) {
+    PUBLIC(false, false),
+    PROVIDER(false, true),
+    ADMIN(true, true),
+    ;
+
+    fun state(value: String): String =
+        if (canSeeProviderCapacity) {
+            value
+        } else if (value.equals("ONLINE", ignoreCase = true)) {
+            "available"
+        } else {
+            "unavailable"
+        }
+
+    fun risk(value: String): String =
+        if (canSeeProviderCapacity) {
+            value
+        } else if (value.equals("high", ignoreCase = true) || value.equals("critical", ignoreCase = true)) {
+            "protected"
+        } else {
+            "normal"
+        }
+
+    companion object {
+        fun from(value: String): DashboardAudience = entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: PUBLIC
+    }
+}
 
 data class KnowledgeSpaceResponse(
     val id: Long,

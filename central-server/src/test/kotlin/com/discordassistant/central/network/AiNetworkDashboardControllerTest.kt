@@ -17,6 +17,7 @@ import com.discordassistant.central.persistence.ProviderCapabilityProfileReposit
 import com.discordassistant.central.persistence.PublishedPresetEntity
 import com.discordassistant.central.persistence.PublishedPresetRepository
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -127,7 +128,7 @@ class AiNetworkDashboardControllerTest
             presetImports.save(PresetImportEntity(publishedPresetId = published.id, targetGuildId = 100, targetChannelId = 200))
 
             val channels = controller.channels(100)
-            val providers = controller.providers(100)
+            val providers = controller.providers(100, audience = "admin")
             val knowledge = controller.knowledgeSpaces(100)
             val guildPresets = controller.guildPresets(100)
 
@@ -138,5 +139,34 @@ class AiNetworkDashboardControllerTest
             val localPresets = guildPresets["local"] as List<*>
             assertTrue(localPresets.single().toString().contains(preset.name))
             assertTrue(guildPresets.toString().contains("publishedPresetId"))
+        }
+
+        @Test
+        fun `public dashboard masks provider identity and sensitive capacity`() {
+            foundation.upsertProviderCapability(
+                guildId = 100,
+                providerUserId = 300,
+                providerState = "OVERLOADED",
+                modelNames = listOf("llama3.1:8b"),
+                capabilityTags = listOf("coding"),
+                maxBurden = "DEEP",
+                maxConcurrency = 4,
+                dailyLimit = 99,
+                overloadRisk = "critical",
+            )
+
+            val publicProvider = controller.providers(100).single()
+            val adminProvider = controller.providers(100, audience = "admin").single()
+
+            assertNull(publicProvider.providerUserId)
+            assertEquals("Provider 1", publicProvider.providerLabel)
+            assertEquals("unavailable", publicProvider.state)
+            assertEquals("protected", publicProvider.overloadRisk)
+            assertNull(publicProvider.maxConcurrency)
+            assertNull(publicProvider.dailyLimit)
+            assertNull(publicProvider.lastSeenAt)
+            assertEquals(300, adminProvider.providerUserId)
+            assertEquals("critical", adminProvider.overloadRisk)
+            assertEquals(4, adminProvider.maxConcurrency)
         }
     }

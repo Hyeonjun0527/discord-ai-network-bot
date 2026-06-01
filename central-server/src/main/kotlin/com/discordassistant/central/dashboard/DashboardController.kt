@@ -6,12 +6,14 @@ import com.discordassistant.central.relay.ConnectionRegistry
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import kotlin.math.abs
 
 /**
  * 대시보드 백엔드 API(차수 14 #195): 길드 개요·요청 로그·정책 스냅샷(읽기전용 JSON).
- * 인증/권한(Discord OAuth2, 길드 관리자만)은 #196/#197 에서 추가. 현재는 집계/요약만 노출하며
- * 프롬프트 본문 등 민감 정보는 포함하지 않는다(프라이버시).
+ * 인증/권한(Discord OAuth2, 길드 관리자만)은 #196/#197 에서 추가. 공개 기본값은 집계/요약만 노출하며
+ * 프롬프트 본문·Provider snowflake 등 민감 식별자는 포함하지 않는다(프라이버시).
  */
 @RestController
 @RequestMapping("/api/dashboard")
@@ -57,15 +59,32 @@ class DashboardController(
     @GetMapping("/{guildId}/requests")
     fun requests(
         @PathVariable guildId: Long,
+        @RequestParam(defaultValue = "public") audience: String = "public",
     ): List<Map<String, Any?>> =
-        requests.findTop20ByGuildIdOrderByIdDesc(guildId).map {
-            mapOf(
-                "requestId" to it.requestId,
-                "state" to it.state,
-                "burden" to it.requiredBurden,
-                "providerId" to it.providerId,
-                "failReason" to it.failReason,
-                "createdAt" to it.createdAt.toString(),
-            )
+        requests.findTop20ByGuildIdOrderByIdDesc(guildId).mapIndexed { index, request ->
+            val visibility = DashboardAudience.from(audience)
+            buildMap {
+                val providerId = request.providerId
+                put("requestId", request.requestId)
+                put("state", request.state)
+                put("burden", request.requiredBurden)
+                put("providerLabel", providerLabel(guildId, providerId, index))
+                if (visibility.canSeeProviderIdentity) {
+                    put("providerId", providerId)
+                }
+                put("failReason", request.failReason)
+                put("createdAt", request.createdAt.toString())
+            }
+        }
+
+    private fun providerLabel(
+        guildId: Long,
+        providerId: Long?,
+        fallbackIndex: Int,
+    ): String =
+        if (providerId == null) {
+            "Provider ${fallbackIndex + 1}"
+        } else {
+            "Provider " + abs("$guildId:$providerId".hashCode()).toString(36).padStart(4, '0').take(6)
         }
 }

@@ -36,12 +36,24 @@ class DashboardControllerTest
         }
 
         @Test
-        fun `requests — 최근 로그, 프롬프트 본문 미포함`() {
+        fun `requests — 공개 기본값은 프롬프트와 provider snowflake 를 노출하지 않는다`() {
             requests.save(AiRequestEntity(requestId = "r3", guildId = 701, state = "COMPLETED", providerId = 9, createdAt = Instant.EPOCH))
             val log = dashboard.requests(701)
             assertEquals(1, log.size)
             assertEquals("r3", log[0]["requestId"])
-            assertEquals(9L, log[0]["providerId"])
+            assertTrue(log[0]["providerLabel"].toString().startsWith("Provider "))
+            assertTrue(!log[0].containsKey("providerId"), "공개 대시보드는 provider snowflake 를 직접 노출하지 않는다")
             assertTrue(!log[0].containsKey("prompt"), "프롬프트 본문은 노출하지 않는다")
+        }
+
+        @Test
+        fun `requests — 관리자 audience 에서만 providerId 를 볼 수 있다`() {
+            requests.save(AiRequestEntity(requestId = "r4", guildId = 702, state = "COMPLETED", providerId = 99, createdAt = Instant.EPOCH))
+            val log = dashboard.requests(702, audience = "admin")
+            assertEquals(1, log.size)
+            assertEquals("r4", log[0]["requestId"])
+            assertEquals(99L, log[0]["providerId"])
+            assertTrue(log[0]["providerLabel"].toString().startsWith("Provider "))
+            assertTrue(!log[0].containsKey("prompt"), "관리자 대시보드에도 프롬프트 본문은 노출하지 않는다")
         }
     }

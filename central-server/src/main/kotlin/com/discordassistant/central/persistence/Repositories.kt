@@ -203,10 +203,20 @@ interface KnowledgeSpaceRepository : JpaRepository<KnowledgeSpaceEntity, Long> {
         guildId: Long,
         channelId: Long,
     ): List<KnowledgeSpaceEntity>
+
+    fun findByGuildIdAndId(
+        guildId: Long,
+        id: Long,
+    ): KnowledgeSpaceEntity?
 }
 
 interface KnowledgeSourceRepository : JpaRepository<KnowledgeSourceEntity, Long> {
     fun findByKnowledgeSpaceId(knowledgeSpaceId: Long): List<KnowledgeSourceEntity>
+
+    fun findByKnowledgeSpaceIdAndId(
+        knowledgeSpaceId: Long,
+        id: Long,
+    ): KnowledgeSourceEntity?
 }
 
 interface NetworkOverviewProjectionRepository : JpaRepository<NetworkOverviewProjectionEntity, Long> {

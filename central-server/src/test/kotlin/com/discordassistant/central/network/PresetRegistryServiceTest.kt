@@ -778,6 +778,58 @@ class PresetRegistryServiceTest
         }
 
         @Test
+        fun `removed published preset is hidden and blocked while preserving import history`() {
+            val preset =
+                service.createPreset(
+                    guildId = 120,
+                    ownerUserId = 77,
+                    name = "공유 번역 프리셋",
+                    summary = "번역 채널용",
+                    category = "translation",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "번역", tone = "polite", responseMode = "fast"),
+                )
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
+            service.likePreset(published.id, userId = 88)
+            val imported =
+                service.importPreset(
+                    publishedPresetId = published.id,
+                    targetGuildId = 121,
+                    targetChannelId = 221,
+                    importedBy = 89,
+                )
+
+            val removed = controller.deletePublished(published.id)
+
+            assertEquals("removed", removed["status"])
+            assertEquals(0, service.searchPublishedPresets().size)
+            assertEquals(0, service.recommendedPublishedPresets().size)
+            assertEquals(0, service.catalogFacets().totalPublished)
+            assertThrows(IllegalArgumentException::class.java) {
+                service.publishedPresetDetail(published.id)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.previewImport(published.id, targetGuildId = 122, targetChannelId = 222)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.importPreset(published.id, targetGuildId = 122, targetChannelId = 222, importedBy = 90)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.likePreset(published.id, userId = 91)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.unlikePreset(published.id, userId = 88)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.reportPreset(published.id, reporterUserId = 92, reason = "삭제 후 신고 차단")
+            }
+            val history = service.importHistory(targetGuildId = 121).single()
+            assertEquals(published.id, history.publishedPresetId)
+            assertEquals(imported.importedPresetId, history.importedPresetId)
+            assertEquals(imported.createdBehaviorVersionId, history.createdBehaviorVersionId)
+        }
+
+        @Test
         fun `high risk preset import creates pending channel proposal instead of publishing immediately`() {
             val preset =
                 service.createPreset(

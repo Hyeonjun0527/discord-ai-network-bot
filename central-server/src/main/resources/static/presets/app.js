@@ -124,13 +124,39 @@ function targetIds() {
   return { guildId, channelId };
 }
 
+function normalizePresetDetail(detail) {
+  const root = detail.preset || detail;
+  const published = root.published || root;
+  const behavior = root.behavior || {};
+  return { published, behavior };
+}
+
+function optionalLine(label, value) {
+  return value ? `${label}: ${value}` : null;
+}
+
+function listLine(label, values) {
+  const list = Array.isArray(values) ? values.filter(Boolean) : [];
+  return list.length ? `${label}: ${list.join(", ")}` : null;
+}
+
 function renderPreview(detail, preview) {
-  const preset = detail.preset || detail;
+  const { published, behavior } = normalizePresetDetail(detail);
   const lines = [
-    `프리셋: ${preset.title || preset.name || "이름 없음"} (#${selectedPresetId})`,
-    preset.description ? `설명: ${preset.description}` : null,
-    preset.category ? `카테고리: ${preset.category}` : null,
-    preset.responseMode ? `응답 모드: ${preset.responseMode}` : null,
+    `프리셋: ${published.title || published.name || "이름 없음"} (#${selectedPresetId})`,
+    optionalLine("설명", published.description),
+    optionalLine("카테고리", published.category),
+    optionalLine("목적", published.purpose || behavior.purpose),
+    optionalLine("말투", published.tone || behavior.tone),
+    optionalLine("답변 길이", behavior.answerLength),
+    optionalLine("안전 등급", published.safetyLevel || behavior.safetyLevel),
+    optionalLine("응답 모드", published.responseMode || behavior.responseMode),
+    optionalLine("선호 모델", published.preferredModel || behavior.preferredModel),
+    optionalLine("최소 품질", published.minQualityTier || behavior.minQualityTier),
+    behavior.maxCandidates ? `Provider 후보: ${behavior.maxCandidates}` : null,
+    listLine("Provider 태그", behavior.providerTagFilter),
+    listLine("필요 지식 슬롯", behavior.knowledgeSlotNames),
+    optionalLine("지식 등록 안내", behavior.knowledgeGuide),
   ].filter(Boolean);
   if (preview) {
     const conflicts = preview.conflicts || [];

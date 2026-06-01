@@ -186,6 +186,10 @@ class DashboardServingTest
             assertTrue(js.contains("X-Dashboard-Admin-Token"))
             assertTrue(js.contains("sessionStorage"))
             assertTrue(js.contains("admin: true"))
+            assertTrue(js.contains("normalizePresetDetail"))
+            assertTrue(js.contains("root.published"))
+            assertTrue(js.contains("behavior.knowledgeSlotNames"))
+            assertTrue(js.contains("behavior.knowledgeGuide"))
         }
 
         @Test

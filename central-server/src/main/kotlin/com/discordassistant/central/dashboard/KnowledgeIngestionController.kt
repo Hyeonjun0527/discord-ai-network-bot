@@ -35,6 +35,12 @@ class KnowledgeIngestionController(
         return mapOf("id" to space.id, "status" to space.status, "displayName" to space.displayName)
     }
 
+    @GetMapping("/{guildId}/spaces/{spaceId}/status")
+    fun spaceStatus(
+        @PathVariable guildId: Long,
+        @PathVariable spaceId: Long,
+    ) = ingestion.spaceStatus(guildId, spaceId)
+
     @PostMapping("/{guildId}/spaces/{spaceId}/sources")
     fun addSource(
         @PathVariable guildId: Long,

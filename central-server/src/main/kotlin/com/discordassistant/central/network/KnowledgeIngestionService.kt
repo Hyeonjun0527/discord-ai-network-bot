@@ -46,6 +46,46 @@ class KnowledgeIngestionService(
         )
     }
 
+    fun spaceStatus(
+        guildId: Long,
+        spaceId: Long,
+    ): KnowledgeSpaceStatusSummary {
+        val space =
+            spaces.findByGuildIdAndId(guildId, spaceId)
+                ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
+        val sourceList = sources.findByKnowledgeSpaceId(space.id).filter { !it.status.startsWith("deleted") }
+        val indexed = sourceList.count { it.status == "indexed" }
+        val blocked = sourceList.count { it.status.startsWith("blocked") || it.riskLevel in BLOCKING_RISK_LEVELS }
+        val pending = sourceList.count { it.status == "pending" }
+        val rejected = sourceList.count { it.status.startsWith("rejected") }
+        val readiness =
+            when {
+                indexed > 0 && blocked == 0 && pending == 0 -> "ready"
+                indexed > 0 -> "partial"
+                pending > 0 -> "indexing_needed"
+                blocked > 0 -> "needs_review"
+                rejected > 0 -> "rejected"
+                else -> "empty"
+            }
+        return KnowledgeSpaceStatusSummary(
+            guildId = guildId,
+            knowledgeSpaceId = space.id,
+            channelId = space.channelId,
+            channelAiId = space.channelAiId,
+            displayName = space.displayName,
+            status = space.status,
+            readiness = readiness,
+            sourceCount = sourceList.size,
+            indexedSourceCount = indexed,
+            pendingSourceCount = pending,
+            blockedSourceCount = blocked,
+            rejectedSourceCount = rejected,
+            chunkCount = space.chunkCount,
+            riskLevels = sourceList.groupingBy { it.riskLevel }.eachCount(),
+            sourceStatuses = sourceList.groupingBy { it.status }.eachCount(),
+        )
+    }
+
     @Transactional
     fun addSource(
         guildId: Long,
@@ -205,6 +245,7 @@ class KnowledgeIngestionService(
         const val MAX_CONTENT_PREVIEW_CHARS = 8_000
         val ALLOWED_SOURCE_TYPES = setOf("file", "link", "text", "faq", "constitution", "preset")
         val PRIVATE_HOSTS = setOf("127.0.0.1", "0.0.0.0", "169.254.169.254", "::1")
+        val BLOCKING_RISK_LEVELS = setOf("sensitive", "ssrf")
         val PRIVATE_IPV4_PREFIXES = listOf("10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "172.30.", "172.31.")
         val SENSITIVE_PATTERNS =
             listOf(
@@ -216,3 +257,21 @@ class KnowledgeIngestionService(
             )
     }
 }
+
+data class KnowledgeSpaceStatusSummary(
+    val guildId: Long,
+    val knowledgeSpaceId: Long,
+    val channelId: Long?,
+    val channelAiId: Long?,
+    val displayName: String,
+    val status: String,
+    val readiness: String,
+    val sourceCount: Int,
+    val indexedSourceCount: Int,
+    val pendingSourceCount: Int,
+    val blockedSourceCount: Int,
+    val rejectedSourceCount: Int,
+    val chunkCount: Int,
+    val riskLevels: Map<String, Int>,
+    val sourceStatuses: Map<String, Int>,
+)

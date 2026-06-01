@@ -81,6 +81,41 @@ class KnowledgeIngestionServiceTest
         }
 
         @Test
+        fun `knowledge space status summarizes readiness and source risks`() {
+            val space = service.createSpace(100, 200, null, "운영 지식", 77, null, null)
+            val safe =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "link",
+                    title = "README",
+                    sourceUri = "https://example.com/readme.md",
+                    contentPreview = "운영 규칙",
+                    addedBy = 77,
+                )
+            service.addSource(
+                guildId = 100,
+                spaceId = space.id,
+                sourceType = "text",
+                title = "env",
+                sourceUri = null,
+                contentPreview = "token=secret",
+                addedBy = 77,
+            )
+            service.markSourceIndexed(100, space.id, safe.id, chunkCount = 4)
+
+            val status = controller.spaceStatus(100, space.id)
+
+            assertEquals("partial", status.readiness)
+            assertEquals(2, status.sourceCount)
+            assertEquals(1, status.indexedSourceCount)
+            assertEquals(1, status.blockedSourceCount)
+            assertEquals(4, status.chunkCount)
+            assertEquals(200, status.channelId)
+            assertEquals(1, status.riskLevels["sensitive"])
+        }
+
+        @Test
         fun `sensitive-looking source is marked for review or rejection`() {
             val space = service.createSpace(100, 200, null, "운영 지식", 77, null, null)
             val source =

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -39,6 +40,31 @@ class ChannelAiRoutingPolicyController(
             "preferredModel" to saved.preferredModel,
             "allowedModels" to saved.allowedModels,
             "costGuard" to saved.costGuard,
+        )
+    }
+
+    @GetMapping("/{guildId}/{channelId}/model-choice")
+    fun modelChoice(
+        @PathVariable guildId: Long,
+        @PathVariable channelId: Long,
+        @RequestParam(required = false) requestedModel: String?,
+    ): Map<String, Any?> {
+        val decision =
+            routingPolicies.resolveModelChoice(
+                guildId = guildId,
+                channelId = channelId,
+                requestedModel = requestedModel,
+                guildDefaultModel = guildPolicy.guildDefaultModel(guildId),
+            )
+        return mapOf(
+            "requestedModel" to decision.requestedModel,
+            "preferredModel" to decision.preferredModel,
+            "selectedModel" to decision.selectedModel,
+            "availableModels" to decision.availableModels,
+            "fallbackReason" to decision.fallbackReason,
+            "explanation" to decision.explanation,
+            "responseMode" to decision.responseMode,
+            "costGuard" to decision.costGuard,
         )
     }
 

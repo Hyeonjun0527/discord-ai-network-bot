@@ -561,6 +561,11 @@ class PresetRegistryService(
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
         require(published.status != "removed") { "removed preset cannot be reported" }
+        reporterUserId?.let { reporter ->
+            reports.findByPublishedPresetIdAndReporterUserIdAndStatus(publishedPresetId, reporter, "open")?.let {
+                return it
+            }
+        }
         published.reportCount += 1
         if (published.reportCount >= REPORT_REVIEW_THRESHOLD && published.status == "published") {
             published.status = "under_review"

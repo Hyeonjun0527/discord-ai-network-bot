@@ -367,6 +367,12 @@ interface PresetReactionRepository : JpaRepository<PresetReactionEntity, Long> {
 
 interface PresetReportRepository : JpaRepository<PresetReportEntity, Long> {
     fun findByStatus(status: String): List<PresetReportEntity>
+
+    fun findByPublishedPresetIdAndReporterUserIdAndStatus(
+        publishedPresetId: Long,
+        reporterUserId: Long,
+        status: String,
+    ): PresetReportEntity?
 }
 
 interface AiNetworkEventRepository : JpaRepository<AiNetworkEventEntity, Long> {

@@ -250,6 +250,12 @@ class PresetRegistryServiceTest
                 )
             val reportId = report["id"] as Long
             assertEquals("open", report["status"])
+            val duplicateReport =
+                controller.report(
+                    publishedId,
+                    ReportPresetRequest(reporterUserId = 90, reason = "중복 신고"),
+                )
+            assertEquals(reportId, duplicateReport["id"])
             assertEquals(1, reports.findByStatus("open").size)
             val openReports = controller.reports()["reports"] as List<*>
             assertEquals(1, openReports.size)

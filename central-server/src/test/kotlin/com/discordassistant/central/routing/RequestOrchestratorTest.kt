@@ -19,10 +19,12 @@ private class EchoConnection(
     val behavior: String,
 ) : AgentConnection {
     lateinit var session: ProviderSession
+    var lastInfer: InferRequest? = null
     override val remoteId = "echo"
 
     override fun sendFrame(frame: Frame) {
         if (frame is InferRequest) {
+            lastInfer = frame
             if (behavior == "ok") {
                 session.handleFrame(InferResult(frame.requestId, "답변-${frame.requestId.take(4)}"))
             } else {
@@ -76,10 +78,12 @@ class RequestOrchestratorTest {
         reg: ConnectionRegistry,
         providerId: Long,
         behavior: String,
+        models: List<String> = listOf("llama3.1:8b"),
     ): ProviderSession {
         val conn = EchoConnection(behavior)
         val s = ProviderSession(conn, providerId, guildId = 100)
         conn.session = s
+        s.capability = s.capability.copy(models = models)
         reg.register(s)
         return s
     }
@@ -196,5 +200,20 @@ class RequestOrchestratorTest {
         val r = orchestrator(reg).handle(input)
         assertEquals(RequestState.REJECTED, r.state)
         fakeProfiles.supported = setOf(ModelBurden.LIGHT, ModelBurden.STANDARD, ModelBurden.HEAVY)
+    }
+
+    @Test
+    fun `선호 모델이 있으면 해당 모델 제공 provider 로 라우팅하고 요청에 모델을 전달`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok", models = listOf("llama3.1:8b"))
+        val selected = register(reg, 2, "ok", models = listOf("qwen-coder"))
+
+        val r = orchestrator(reg).handle(input.copy(preferredModel = "qwen-coder", responseMode = "fast"))
+
+        assertEquals(RequestState.COMPLETED, r.state)
+        assertEquals(2L, r.providerId)
+        val sent = (selected.connection as EchoConnection).lastInfer!!
+        assertEquals("qwen-coder", sent.model)
+        assertEquals(512, sent.options["num_predict"])
     }
 }

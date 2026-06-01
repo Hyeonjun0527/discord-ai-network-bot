@@ -2,6 +2,7 @@ package com.discordassistant.central.discord
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.provider.ContributionPolicyService
 import com.discordassistant.central.provider.ProviderProtectionService
@@ -45,6 +46,7 @@ class CommandService(
     private val blocklist: com.discordassistant.central.provider.BlocklistService,
     private val schedule: com.discordassistant.central.provider.ProviderScheduleService,
     private val channelProfiles: ChannelAiProfileService,
+    private val channelRoutingPolicies: ChannelAiRoutingPolicyService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
 ) {
@@ -76,9 +78,19 @@ class CommandService(
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
         val effectivePrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { prompt.withChannelAiBehavior(it) } ?: prompt
+        val routingPolicy = channelRoutingPolicies.effective(ctx.guildId, ctx.channelId, policy.guildDefaultModel(ctx.guildId))
         val result =
             orchestrator.handle(
-                AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, effectivePrompt, ctx.roleIds, isAdmin = ctx.isAdmin),
+                AiRequestInput(
+                    ctx.guildId,
+                    ctx.channelId,
+                    ctx.userId,
+                    effectivePrompt,
+                    ctx.roleIds,
+                    isAdmin = ctx.isAdmin,
+                    preferredModel = routingPolicy.preferredModel,
+                    responseMode = routingPolicy.responseMode,
+                ),
             )
         return when (result.state) {
             RequestState.COMPLETED -> Reply(result.text.orEmpty(), ephemeral = false)

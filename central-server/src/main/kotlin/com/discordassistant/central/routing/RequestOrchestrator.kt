@@ -97,6 +97,8 @@ data class AiRequestInput(
     val roleIds: Set<Long>,
     val command: String = "ask",
     val isAdmin: Boolean = false,
+    val preferredModel: String? = null,
+    val responseMode: String = "balanced",
 )
 
 /** 오케스트레이션 결과. */
@@ -160,7 +162,15 @@ class RequestOrchestrator(
                 failReason = "이 요청은 ${weigh.requiredBurden} 수준이 필요하지만 현재 권한으로는 사용할 수 없습니다.",
             )
         }
-        val ctx = RequestContext(weigh.effectiveBurden!!, input.roleIds, input.channelId, input.prompt.length, input.isAdmin)
+        val ctx =
+            RequestContext(
+                weigh.effectiveBurden!!,
+                input.roleIds,
+                input.channelId,
+                input.prompt.length,
+                input.isAdmin,
+                input.preferredModel,
+            )
 
         // 3) 후보 구성 + 필터 + 선택 + 전송(최대 2회: 원 + fallback 1회)
         val excluded = mutableSetOf<Long>()
@@ -183,6 +193,7 @@ class RequestOrchestrator(
                             allowedChannelIds = p.allowedChannelIds,
                             maxPromptChars = p.maxPromptChars,
                             failureRate = p.failureRate,
+                            modelNames = session.capability.models.toSet(),
                         )
                     }
             val outcome = pipeline.filter(candidates, ctx)
@@ -202,7 +213,13 @@ class RequestOrchestrator(
             if (attempt > 0) log.info("fallback 시도 → provider {}", sel.providerId)
             try {
                 // 반환 future 는 세션 orTimeout 으로 항상 시한 내 완료/실패한다 → get() 안전.
-                val result = session.sendInfer(prompt = input.prompt).get()
+                val result =
+                    session
+                        .sendInfer(
+                            prompt = input.prompt,
+                            model = input.preferredModel,
+                            options = responseModeOptions(input.responseMode),
+                        ).get()
                 recorder.recordSuccess(input.guildId, input.userId, sel.providerId, requestId = result.requestId)
                 return OrchestrationResult(RequestState.COMPLETED, result.text, sel.providerId, effectiveBurden = ctx.requiredBurden)
             } catch (e: Exception) {
@@ -229,6 +246,14 @@ class RequestOrchestrator(
                 NO_PROVIDER_ACTIONABLE_REASON
             } else {
                 "$NO_PROVIDER_ACTIONABLE_REASON\n\n세부 원인: $lastReason"
+            }
+
+        fun responseModeOptions(responseMode: String): Map<String, Any?> =
+            when (responseMode.lowercase()) {
+                "fast" -> mapOf("num_predict" to 512, "temperature" to 0.3)
+                "deep" -> mapOf("num_predict" to 2048, "temperature" to 0.5)
+                "saving" -> mapOf("num_predict" to 384, "temperature" to 0.2)
+                else -> emptyMap()
             }
     }
 }

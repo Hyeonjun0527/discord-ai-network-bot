@@ -308,3 +308,12 @@ interface AiNetworkEventRepository : JpaRepository<AiNetworkEventEntity, Long> {
         eventType: String,
     ): List<AiNetworkEventEntity>
 }
+
+interface ChannelAiRoutingPolicyRepository : JpaRepository<ChannelAiRoutingPolicyEntity, Long> {
+    fun findByGuildIdAndChannelId(
+        guildId: Long,
+        channelId: Long,
+    ): ChannelAiRoutingPolicyEntity?
+
+    fun findByGuildId(guildId: Long): List<ChannelAiRoutingPolicyEntity>
+}

@@ -454,3 +454,21 @@ class AiNetworkEventEntity(
     var metadata: String? = null,
     var createdAt: Instant = Instant.EPOCH,
 )
+
+@Entity
+@Table(name = "channel_ai_routing_policy")
+class ChannelAiRoutingPolicyEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var channelId: Long = 0,
+    var channelAiId: Long? = null,
+    var responseMode: String = "balanced",
+    var preferredModel: String? = null,
+    var allowedModels: String? = null,
+    var minQualityTier: String = "standard",
+    var maxCandidates: Int = 1,
+    var providerTagFilter: String? = null,
+    var costGuard: String = "provider_safe",
+    var createdAt: Instant = Instant.EPOCH,
+    var updatedAt: Instant = Instant.EPOCH,
+)

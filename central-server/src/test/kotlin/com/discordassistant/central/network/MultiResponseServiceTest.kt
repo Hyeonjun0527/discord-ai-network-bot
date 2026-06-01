@@ -793,6 +793,80 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `decision summary explains selected and timed out candidates`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 81,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 82,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "qwen",
+                    capabilityTags = "multi-response",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(
+                100,
+                SaveMultiResponsePolicyRequest(channelId = 208, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
+            )
+            val runId = controller.startRun(100, StartMultiResponseRunRequest(channelId = 208, requestId = "decision-1"))["id"] as Long
+            val planned = candidates.findByRunId(runId)
+            val selected = planned.first { it.providerUserId == 81L }
+            val timedOut = planned.first { it.providerUserId == 82L }
+            controller.recordCandidate(
+                runId,
+                selected.id,
+                RecordCandidateRequest(answerRef = "answer:decision-1:selected", latencyMs = 800, qualityScore = 92),
+            )
+            controller.recordCandidate(
+                runId,
+                timedOut.id,
+                RecordCandidateRequest(status = "timeout", latencyMs = 9000),
+            )
+            controller.synthesize(runId, SynthesizeRunRequest("answer:decision-1:final", listOf(selected.id)))
+
+            val response = controller.decisionSummary(100, channelId = 208, limit = 10)
+
+            assertEquals(1, response["recentRunCount"])
+            assertEquals(1, response["completedRunCount"])
+            assertEquals(2, response["totalCandidateCount"])
+            assertEquals(1, response["acceptedCandidateCount"])
+            assertEquals(1, response["timeoutCandidateCount"])
+            assertEquals(92.0, response["averageQualityScore"])
+            assertEquals(1.0, response["adoptionRate"])
+            assertTrue((response["riskCodes"] as List<*>).contains("high_timeout_rate"))
+            val statusCounts = response["statusCounts"] as Map<*, *>
+            assertEquals(1, statusCounts["completed"])
+            assertEquals(1, statusCounts["timeout"])
+            val decisions = response["recentDecisions"] as List<*>
+            val selectedDecision =
+                decisions.first {
+                    (it as MultiResponseDecisionItem).candidateId == selected.id
+                } as MultiResponseDecisionItem
+            val timeoutDecision =
+                decisions.first {
+                    (it as MultiResponseDecisionItem).candidateId == timedOut.id
+                } as MultiResponseDecisionItem
+            assertEquals(true, selectedDecision.selected)
+            assertEquals("selected_by_best_by_heuristic", selectedDecision.reason)
+            assertEquals(false, timeoutDecision.selected)
+            assertEquals("candidate_timeout", timeoutDecision.reason)
+        }
+
+        @Test
         fun `multi response kill switch blocks advanced fanout workflow`() {
             val disabledService =
                 MultiResponseService(

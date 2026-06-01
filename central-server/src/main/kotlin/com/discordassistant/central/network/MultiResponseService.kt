@@ -355,6 +355,123 @@ class MultiResponseService(
             )
     }
 
+    fun decisionSummary(
+        guildId: Long,
+        channelId: Long? = null,
+        limit: Int = 20,
+    ): MultiResponseDecisionSummary {
+        val recent =
+            runs
+                .findTop20ByGuildIdOrderByStartedAtDesc(guildId)
+                .filter { channelId == null || it.channelId == channelId }
+        val runCandidates = recent.flatMap { run -> candidates.findByRunId(run.id).map { run to it } }
+        val synthesesByRunId = recent.mapNotNull { run -> syntheses.findByRunId(run.id)?.let { run.id to it } }.toMap()
+        val completedRuns = recent.count { it.status.equals("completed", ignoreCase = true) }
+        val fallbackRuns = recent.count { it.status in FALLBACK_RUN_STATUSES }
+        val acceptedCandidates =
+            runCandidates.count { (run, candidate) ->
+                run.selectedCandidateId == candidate.id ||
+                    synthesesByRunId[run.id]
+                        ?.selectedCandidateIds
+                        ?.toIdSet()
+                        .orEmpty()
+                        .contains(candidate.id)
+            }
+        val timeoutCandidates = runCandidates.count { it.second.status.equals("timeout", ignoreCase = true) }
+        val rejectedCandidates =
+            runCandidates.count { (_, candidate) ->
+                candidate.status.equals("failed", ignoreCase = true) ||
+                    candidate.status.equals("rejected", ignoreCase = true) ||
+                    candidate.hasBlockingSafetyFlag()
+            }
+        val qualityScores = runCandidates.mapNotNull { it.second.qualityScore }
+        val statusCounts = runCandidates.groupingBy { it.second.status.ifBlank { "unknown" } }.eachCount()
+        val completedCandidates = runCandidates.count { it.second.status.equals("completed", ignoreCase = true) }
+        val adoptionRate = if (completedCandidates == 0) 0.0 else acceptedCandidates.toDouble() / completedCandidates
+        val timeoutRate = if (runCandidates.isEmpty()) 0.0 else timeoutCandidates.toDouble() / runCandidates.size
+        val averageQualityScore = qualityScores.takeIf { it.isNotEmpty() }?.average() ?: 0.0
+        val riskCodes = mutableListOf<String>()
+        val nextActions = mutableListOf<String>()
+        if (recent.isEmpty()) {
+            riskCodes += "no_recent_runs"
+            nextActions += "다중 응답 실행 이력이 쌓이면 후보 선택 품질을 분석할 수 있어요."
+        }
+        if (runCandidates.isEmpty() && recent.isNotEmpty()) {
+            riskCodes += "no_candidates"
+            nextActions += "온라인 Provider와 fan-out 참여 태그를 확인하세요."
+        }
+        if (timeoutRate >= 0.25) {
+            riskCodes += "high_timeout_rate"
+            nextActions += "응답 속도/품질 모드를 낮추거나 과부하 Provider를 보호하세요."
+        }
+        if (qualityScores.isNotEmpty() && averageQualityScore < 60.0) {
+            riskCodes += "low_quality"
+            nextActions += "채널 AI 프롬프트, 지식 베이스, 모델 정책을 점검하세요."
+        }
+        if (completedRuns > 0 && acceptedCandidates == 0) {
+            riskCodes += "no_selected_candidate"
+            nextActions += "완료된 실행에 선택 후보나 합성 결과가 기록되는지 확인하세요."
+        }
+        if (recent.any { it.ragContextStatus?.startsWith("fallback") == true }) {
+            riskCodes += "rag_context_fallback"
+            nextActions += "채널 지식 베이스 색인 상태와 검색 범위를 점검하세요."
+        }
+        val decisions =
+            recent
+                .flatMap { run ->
+                    val selectedIds = synthesesByRunId[run.id]?.selectedCandidateIds.toIdSet()
+                    val runSynthesis = synthesesByRunId[run.id]
+                    val runCandidatesForRun = runCandidates.filter { it.first.id == run.id }.map { it.second }
+                    if (runCandidatesForRun.isEmpty()) {
+                        listOf(
+                            MultiResponseDecisionItem(
+                                runId = run.id,
+                                requestId = run.requestId,
+                                channelId = run.channelId,
+                                candidateId = null,
+                                status = run.status,
+                                qualityScore = null,
+                                selected = false,
+                                reason = run.failureReason ?: run.ragContextStatus ?: "no candidate recorded",
+                                strategy = runSynthesis?.strategy,
+                            ),
+                        )
+                    } else {
+                        runCandidatesForRun.map { candidate ->
+                            val selected = run.selectedCandidateId == candidate.id || selectedIds.contains(candidate.id)
+                            MultiResponseDecisionItem(
+                                runId = run.id,
+                                requestId = run.requestId,
+                                channelId = run.channelId,
+                                candidateId = candidate.id,
+                                status = candidate.status,
+                                qualityScore = candidate.qualityScore,
+                                selected = selected,
+                                reason = decisionReason(run, candidate, selected),
+                                strategy = runSynthesis?.strategy,
+                            )
+                        }
+                    }
+                }.take(limit.coerceIn(1, 50))
+        return MultiResponseDecisionSummary(
+            guildId = guildId,
+            channelId = channelId,
+            recentRunCount = recent.size,
+            completedRunCount = completedRuns,
+            fallbackRunCount = fallbackRuns,
+            totalCandidateCount = runCandidates.size,
+            acceptedCandidateCount = acceptedCandidates,
+            rejectedCandidateCount = rejectedCandidates,
+            timeoutCandidateCount = timeoutCandidates,
+            averageQualityScore = averageQualityScore,
+            adoptionRate = adoptionRate,
+            statusCounts = statusCounts,
+            riskCodes = riskCodes.distinct(),
+            nextActions = nextActions.distinct(),
+            recentDecisions = decisions,
+        )
+    }
+
     fun pseudoStreamPlan(
         answer: String,
         requestedSteps: List<Int> = emptyList(),
@@ -472,6 +589,28 @@ class MultiResponseService(
             "watch" -> 2
             else -> 1
         }
+
+    private fun decisionReason(
+        run: MultiResponseRunEntity,
+        candidate: CandidateAnswerEntity,
+        selected: Boolean,
+    ): String =
+        when {
+            selected -> "selected_by_${syntheses.findByRunId(run.id)?.strategy ?: "run"}"
+            candidate.hasBlockingSafetyFlag() -> "blocked_by_safety_flags"
+            candidate.status.equals("timeout", ignoreCase = true) -> "candidate_timeout"
+            candidate.status.equals("failed", ignoreCase = true) -> "candidate_failed"
+            candidate.status.equals("rejected", ignoreCase = true) -> "candidate_rejected"
+            candidate.status.equals("completed", ignoreCase = true) -> "completed_not_selected"
+            else -> run.failureReason ?: "candidate_${candidate.status.ifBlank { "unknown" }}"
+        }
+
+    private fun String?.toIdSet(): Set<Long> =
+        this
+            .orEmpty()
+            .split(",")
+            .mapNotNull { it.trim().toLongOrNull() }
+            .toSet()
 
     private fun selectProviders(
         guildId: Long,
@@ -613,6 +752,7 @@ class MultiResponseService(
 
     private companion object {
         val FANOUT_OPT_IN_TAGS = setOf("multi-response", "multi_response", "fanout", "fanout-opt-in")
+        val FALLBACK_RUN_STATUSES = setOf("no_provider", "blocked_sensitive", "failed")
         val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
         const val DISCORD_MESSAGE_SAFE_LIMIT = 1_900
         const val PSEUDO_STREAM_EDIT_INTERVAL_MS = 1_200
@@ -643,6 +783,36 @@ data class MultiResponseDailyStats(
     val fallbackRunCount: Int,
     val timeoutCandidateCount: Int,
     val averageActualFanout: Double,
+)
+
+data class MultiResponseDecisionSummary(
+    val guildId: Long,
+    val channelId: Long?,
+    val recentRunCount: Int,
+    val completedRunCount: Int,
+    val fallbackRunCount: Int,
+    val totalCandidateCount: Int,
+    val acceptedCandidateCount: Int,
+    val rejectedCandidateCount: Int,
+    val timeoutCandidateCount: Int,
+    val averageQualityScore: Double,
+    val adoptionRate: Double,
+    val statusCounts: Map<String, Int>,
+    val riskCodes: List<String>,
+    val nextActions: List<String>,
+    val recentDecisions: List<MultiResponseDecisionItem>,
+)
+
+data class MultiResponseDecisionItem(
+    val runId: Long,
+    val requestId: String,
+    val channelId: Long,
+    val candidateId: Long?,
+    val status: String,
+    val qualityScore: Int?,
+    val selected: Boolean,
+    val reason: String,
+    val strategy: String?,
 )
 
 data class ProviderFanoutLoadSummary(

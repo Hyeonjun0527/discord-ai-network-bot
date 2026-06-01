@@ -240,6 +240,32 @@ class MultiResponseController(
             )
         }
 
+    @GetMapping("/{guildId}/decision-summary")
+    fun decisionSummary(
+        @PathVariable guildId: Long,
+        @RequestParam(required = false) channelId: Long? = null,
+        @RequestParam(defaultValue = "20") limit: Int = 20,
+    ): Map<String, Any?> {
+        val summary = service.decisionSummary(guildId, channelId, limit)
+        return mapOf(
+            "guildId" to summary.guildId,
+            "channelId" to summary.channelId,
+            "recentRunCount" to summary.recentRunCount,
+            "completedRunCount" to summary.completedRunCount,
+            "fallbackRunCount" to summary.fallbackRunCount,
+            "totalCandidateCount" to summary.totalCandidateCount,
+            "acceptedCandidateCount" to summary.acceptedCandidateCount,
+            "rejectedCandidateCount" to summary.rejectedCandidateCount,
+            "timeoutCandidateCount" to summary.timeoutCandidateCount,
+            "averageQualityScore" to summary.averageQualityScore,
+            "adoptionRate" to summary.adoptionRate,
+            "statusCounts" to summary.statusCounts,
+            "riskCodes" to summary.riskCodes,
+            "nextActions" to summary.nextActions,
+            "recentDecisions" to summary.recentDecisions,
+        )
+    }
+
     @GetMapping("/{guildId}/stats")
     fun stats(
         @PathVariable guildId: Long,

@@ -65,11 +65,13 @@ class EmbedFactoryTest {
         assertTrue(ko.contains("/메뉴")) // menu
         assertTrue(ko.contains("/설정")) // llm-settings
         assertTrue(ko.contains("/프로바이더승인")) // provider-approve(기존 /approve-provider 오타 교정 포함)
+        assertTrue(ko.contains("/채널프로필"))
         assertFalse(ko.contains("/ask"))
 
         val en = helpText(EmbedFactory.helpEmbed(isAdmin = true, locale = DiscordLocale.ENGLISH_US))
         assertTrue(en.contains("/ask"))
         assertTrue(en.contains("/menu"))
+        assertTrue(en.contains("/llm-channel-profile"))
         assertFalse(en.contains("/질문"))
     }
 

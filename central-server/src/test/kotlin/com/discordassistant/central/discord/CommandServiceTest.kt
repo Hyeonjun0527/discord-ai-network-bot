@@ -50,7 +50,8 @@ class CommandServiceTest
             assertTrue(!user.contains("__관리자__"))
             val admin = commands.help(ctx(admin = true)).content
             assertTrue(admin.contains("__관리자__"))
-            assertTrue(admin.contains("/approve-provider"))
+            assertTrue(admin.contains("/채널프로필"))
+            assertTrue(admin.contains("/llm-channel-profile"))
         }
 
         @Test

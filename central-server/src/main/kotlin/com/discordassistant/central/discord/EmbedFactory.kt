@@ -108,6 +108,7 @@ object EmbedFactory {
                 "${MenuSymbols.SETTINGS} 관리자",
                 "${c("llm-settings")} — 설정 패널(언어·모델·채널·자동승인)\n" +
                     "${c("provider-approve")} ${c("providers")} ${c("fairness")} — 승인·현황·공정성\n" +
+                    "${c("llm-channel-profile")} — 이 채널 AI 이름·아이콘·말투 설정\n" +
                     "${c("llm-allow-channel")} ${c("llm-block")} — 채널·차단 정책",
                 false,
             )

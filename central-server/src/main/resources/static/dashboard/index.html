@@ -7,7 +7,7 @@
   <!--
     웹 대시보드 프론트엔드(차수 14). 빌드/번들 불필요한 정적 SPA(바닐라 JS).
     central-server 가 동일 출처로 서빙(/dashboard/) → CORS 불필요. 읽기전용 모니터링.
-    인증(Discord OAuth2, #196/#197)은 후속 — 현재는 내부/베타 모니터링 용도.
+    관리자 API 는 Discord OAuth2 또는 X-Dashboard-Admin-Token 헤더로 보호한다.
   -->
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -16,6 +16,17 @@
     <h1>냥시스턴트 AI 네트워크 대시보드</h1>
     <span id="status" class="badge">연결 확인 중…</span>
   </header>
+
+  <section class="panel">
+    <h2>관리자 접근</h2>
+    <p class="muted">운영에서 OAuth를 아직 켜지 않았다면 ENV_FILE의 CENTRAL_DASHBOARD_ADMIN_TOKEN 값을 입력하세요. 이 값은 현재 브라우저 세션에만 저장됩니다.</p>
+    <div class="row">
+      <input id="dashboardAdminToken" type="password" autocomplete="off" placeholder="관리자 API 토큰" />
+      <button id="saveDashboardAdminToken">토큰 저장</button>
+      <button id="clearDashboardAdminToken" class="secondary">지우기</button>
+    </div>
+    <div id="dashboardAdminTokenStatus" class="muted">토큰 미설정: 공개 읽기만 가능합니다.</div>
+  </section>
 
   <section class="panel">
     <h2>풀 전역</h2>
@@ -293,7 +304,7 @@
     <pre id="multiResult" class="preview">길드 ID를 입력한 뒤 운영 상태를 새로고침하세요.</pre>
   </section>
 
-  <footer>읽기 5초 폴링 · 쓰기는 OAuth 인증 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
+  <footer>읽기 5초 폴링 · 관리자 작업은 OAuth 또는 X-Dashboard-Admin-Token 필요 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
   <script src="app.js"></script>
 </body>
 </html>

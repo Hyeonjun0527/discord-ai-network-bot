@@ -91,6 +91,8 @@ class DashboardServingTest
             assertTrue(html.contains("""id="multiProviderLoad""""))
             assertTrue(html.contains("""id="launchChecklist""""))
             assertTrue(html.contains("""id="launchChecklistRefresh""""))
+            assertTrue(js.contains("X-Dashboard-Admin-Token"))
+            assertTrue(js.contains("sessionStorage"))
             assertTrue(js.contains("/api/ai-network/${'$'}{gid}/dashboard?audience=admin"))
             assertTrue(js.contains("/api/ai-network/${'$'}{gid}/launch-checklist?audience=admin"))
             assertTrue(js.contains("/api/ai-network/channel-ai/wizard/options"))

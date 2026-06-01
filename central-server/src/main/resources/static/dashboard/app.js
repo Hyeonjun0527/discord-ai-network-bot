@@ -2,6 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+const ADMIN_TOKEN_STORAGE_KEY = "nyassistant.dashboardAdminToken";
 let pendingPresetImport = null;
 
 function esc(value) {
@@ -13,8 +14,45 @@ function esc(value) {
     .replaceAll("'", "&#39;");
 }
 
+function currentDashboardAdminToken() {
+  return ($("dashboardAdminToken")?.value || "").trim();
+}
+
+function apiHeaders(extra = {}) {
+  const token = currentDashboardAdminToken();
+  const headers = { Accept: "application/json", ...extra };
+  if (token) headers["X-Dashboard-Admin-Token"] = token;
+  return headers;
+}
+
+function updateDashboardAdminTokenStatus() {
+  const token = currentDashboardAdminToken();
+  $("dashboardAdminTokenStatus").textContent = token
+    ? "관리자 토큰이 설정되어 admin view/쓰기 API 요청에 헤더를 붙입니다."
+    : "토큰 미설정: 공개 읽기만 가능합니다.";
+}
+
+function loadDashboardAdminToken() {
+  const saved = sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+  $("dashboardAdminToken").value = saved;
+  updateDashboardAdminTokenStatus();
+}
+
+function saveDashboardAdminToken() {
+  const token = currentDashboardAdminToken();
+  if (token) sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+  else sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+  updateDashboardAdminTokenStatus();
+}
+
+function clearDashboardAdminToken() {
+  sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+  $("dashboardAdminToken").value = "";
+  updateDashboardAdminTokenStatus();
+}
+
 async function getJson(url) {
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const res = await fetch(url, { headers: apiHeaders() });
   if (!res.ok) throw new Error(`${res.status} ${url}`);
   return res.json();
 }
@@ -22,7 +60,7 @@ async function getJson(url) {
 async function postJson(url, body) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    headers: apiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`${res.status} ${url}`);
@@ -32,7 +70,7 @@ async function postJson(url, body) {
 async function putJson(url, body) {
   const res = await fetch(url, {
     method: "PUT",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    headers: apiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`${res.status} ${url}`);
@@ -40,7 +78,7 @@ async function putJson(url, body) {
 }
 
 async function deleteJson(url) {
-  const res = await fetch(url, { method: "DELETE", headers: { Accept: "application/json" } });
+  const res = await fetch(url, { method: "DELETE", headers: apiHeaders() });
   if (!res.ok) throw new Error(`${res.status} ${url}`);
   return res.json();
 }
@@ -404,7 +442,7 @@ async function updatePreset() {
   try {
     const result = await fetch(`/api/ai-network/presets/${presetId}`, {
       method: "PUT",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(presetPayload(true)),
     });
     if (!result.ok) throw new Error(`${result.status} /api/ai-network/presets/${presetId}`);
@@ -846,7 +884,7 @@ async function loadGuild() {
   }
 }
 
-// 정책 쓰기(#203/#204) — OAuth 활성 시에만 성공. 같은 출처라 쿠키 세션 자동 첨부.
+// 정책 쓰기(#203/#204) — OAuth 세션 또는 관리자 토큰이 있을 때 성공.
 async function postWrite(path, params) {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
@@ -855,13 +893,17 @@ async function postWrite(path, params) {
   }
   const qs = new URLSearchParams(params).toString();
   try {
-    const res = await fetch(`/api/dashboard/${gid}/${path}?${qs}`, { method: "POST" });
+    const res = await fetch(`/api/dashboard/${gid}/${path}?${qs}`, { method: "POST", headers: apiHeaders() });
     $("writeResult").textContent = res.ok ? `✅ 적용됨 (${path})` : `⛔ 실패 ${res.status}(인증 필요?)`;
   } catch (e) {
     $("writeResult").textContent = `오류: ${e.message}`;
   }
 }
 
+loadDashboardAdminToken();
+$("dashboardAdminToken").addEventListener("input", updateDashboardAdminTokenStatus);
+$("saveDashboardAdminToken").addEventListener("click", saveDashboardAdminToken);
+$("clearDashboardAdminToken").addEventListener("click", clearDashboardAdminToken);
 $("loadGuild").addEventListener("click", loadGuild);
 $("saveWelcome").addEventListener("click", () => postWrite("welcome", { message: $("welcomeMsg").value }));
 $("autoApproveOn").addEventListener("click", () => postWrite("auto-approve", { enabled: "true" }));

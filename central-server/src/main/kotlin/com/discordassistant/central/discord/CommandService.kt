@@ -4,6 +4,7 @@ import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeSearchService
+import com.discordassistant.central.network.ModelChoiceDecision
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.provider.ContributionPolicyService
 import com.discordassistant.central.provider.ProviderProtectionService
@@ -109,10 +110,17 @@ class CommandService(
                 ),
             )
         return when (result.state) {
-            RequestState.COMPLETED -> Reply(result.text.orEmpty(), ephemeral = false)
+            RequestState.COMPLETED -> Reply(result.text.orEmpty().withModelFallbackNotice(modelChoice), ephemeral = false)
             RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
             else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
         }
+    }
+
+    private fun String.withModelFallbackNotice(modelChoice: ModelChoiceDecision): String {
+        if (modelChoice.fallbackReason == null) return this
+        if (modelChoice.requestedModel == null && modelChoice.preferredModel == null) return this
+        val selected = modelChoice.selectedModel ?: "자동 선택"
+        return "$this\n\n↪️ 모델 대체: ${modelChoice.explanation} `사용 모델: $selected`"
     }
 
     private fun normalizeAskResponseMode(value: String?): String? =

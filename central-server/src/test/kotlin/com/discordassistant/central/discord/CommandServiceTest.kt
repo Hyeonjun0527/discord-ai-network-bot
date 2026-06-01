@@ -1,6 +1,9 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIngestionService
+import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
+import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
@@ -40,6 +43,8 @@ class CommandServiceTest
         val registry: ConnectionRegistry,
         val usage: UsageService,
         val knowledge: KnowledgeIngestionService,
+        val channelRoutingPolicies: ChannelAiRoutingPolicyService,
+        val providerCapabilities: ProviderCapabilityProfileRepository,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -244,6 +249,52 @@ class CommandServiceTest
                 assertEquals("qwen-coder", sent.model)
                 assertEquals(2048, sent.options["num_predict"])
                 assertEquals(0.5, sent.options["temperature"])
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 요청 모델을 못 쓰면 대체 모델과 이유를 유저에게 알려준다`() {
+            val guildId = 9300L
+            val channelId = 2300L
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 80, guildId = guildId)
+            conn.session = s
+            s.capability = s.capability.copy(models = listOf("llama3.1:8b"))
+            registry.register(s)
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = guildId,
+                    providerUserId = 80,
+                    providerState = "ONLINE",
+                    modelNames = "llama3.1:8b",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            channelRoutingPolicies.save(
+                guildId = guildId,
+                channelId = channelId,
+                responseMode = "balanced",
+                preferredModel = "llama3.1:8b",
+                allowedModels = listOf("llama3.1:8b", "qwen-coder"),
+                minQualityTier = "standard",
+                maxCandidates = 1,
+                providerTagFilter = emptyList(),
+                costGuard = "provider_safe",
+            )
+            try {
+                val r =
+                    commands.ask(
+                        CommandContext(guildId = guildId, channelId = channelId, userId = 5, roleIds = setOf(1L), isAdmin = true),
+                        "깊게 봐줘",
+                        requestedModel = "qwen-coder",
+                    )
+
+                assertTrue(r.content.contains("↪️ 모델 대체"))
+                assertTrue(r.content.contains("요청한 모델을 처리할 온라인 Provider가 없어"))
+                assertEquals("llama3.1:8b", conn.lastInfer!!.model)
             } finally {
                 registry.unregister(s)
             }

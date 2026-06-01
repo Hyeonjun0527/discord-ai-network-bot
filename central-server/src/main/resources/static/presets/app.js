@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+const ADMIN_TOKEN_STORAGE_KEY = "nyassistantPresetDashboardAdminToken";
 let pendingImport = null;
 let selectedPresetId = null;
 
@@ -6,12 +7,52 @@ function esc(value) {
   return String(value ?? "").replace(/[&<>'"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[ch]);
 }
 
+function currentAdminToken() {
+  return ($("adminToken")?.value || sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "").trim();
+}
+
+function adminHeaders() {
+  const token = currentAdminToken();
+  return token ? { "X-Dashboard-Admin-Token": token } : {};
+}
+
+function updateAdminTokenStatus() {
+  const hasToken = Boolean(currentAdminToken());
+  $("adminTokenStatus").textContent = hasToken
+    ? "현재 브라우저 세션에 관리자 토큰이 저장되어 있습니다. 목록은 공개, 가져오기만 토큰을 사용합니다."
+    : "목록 확인은 공개이고, 가져오기/미리보기만 관리자 토큰이 필요합니다.";
+}
+
+function saveAdminToken() {
+  const token = ($("adminToken").value || "").trim();
+  if (token) {
+    sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+  } else {
+    sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+  }
+  updateAdminTokenStatus();
+}
+
+function requireAdminTokenMessage() {
+  return "가져오기 미리보기에는 관리자 토큰이 필요합니다. 토큰을 입력하고 [토큰 저장]을 누른 뒤 다시 미리보기하세요.";
+}
+
 async function json(url, options = {}) {
+  const { admin = false, headers = {}, ...fetchOptions } = options;
   const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
+    headers: { "Content-Type": "application/json", ...(admin ? adminHeaders() : {}), ...headers },
+    ...fetchOptions,
   });
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  if (!res.ok) {
+    let message = `${res.status} ${url}`;
+    try {
+      const body = await res.json();
+      message = body.message || body.error || message;
+    } catch (_) {
+      message = `${res.status} ${url}`;
+    }
+    throw new Error(message);
+  }
   return res.json();
 }
 
@@ -80,7 +121,7 @@ function targetIds() {
   const guildId = $("guildId").value.trim();
   const channelId = $("channelId").value.trim();
   if (!/^\d+$/.test(guildId) || !/^\d+$/.test(channelId)) return null;
-  return { guildId: Number(guildId), channelId: Number(channelId) };
+  return { guildId, channelId };
 }
 
 function renderPreview(detail, preview) {
@@ -123,7 +164,13 @@ async function previewPreset(id) {
       renderPreview(detail, null);
       return;
     }
+    if (!currentAdminToken()) {
+      renderPreview(detail, null);
+      $("result").textContent = requireAdminTokenMessage();
+      return;
+    }
     const preview = await json(`/api/ai-network/presets/published/${selectedPresetId}/import-preview`, {
+      admin: true,
       method: "POST",
       body: JSON.stringify({ targetGuildId: target.guildId, targetChannelId: target.channelId }),
     });
@@ -187,6 +234,7 @@ async function confirmImport() {
   }
   try {
     const data = await json(`/api/ai-network/presets/published/${pendingImport.publishedPresetId}/import`, {
+      admin: true,
       method: "POST",
       body: JSON.stringify({
         targetGuildId: pendingImport.guildId,
@@ -204,6 +252,10 @@ async function confirmImport() {
 }
 
 $("search").addEventListener("click", refreshCatalog);
+$("saveAdminToken").addEventListener("click", saveAdminToken);
+$("adminToken").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") saveAdminToken();
+});
 $("confirmImport").addEventListener("click", confirmImport);
 $("likePreset").addEventListener("click", () => likePreset());
 $("reportPreset").addEventListener("click", () => reportPreset());
@@ -217,4 +269,6 @@ $("catalog").addEventListener("click", (event) => {
 ["query", "category"].forEach((id) => $(id).addEventListener("keydown", (event) => {
   if (event.key === "Enter") refreshCatalog();
 }));
+$("adminToken").value = sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+updateAdminTokenStatus();
 refreshCatalog();

@@ -173,12 +173,19 @@ class DashboardServingTest
             assertTrue(html.contains("""id="confirmImport""""))
             assertTrue(html.contains("""id="likePreset""""))
             assertTrue(html.contains("""id="reportPreset""""))
+            assertTrue(html.contains("""id="adminToken""""))
+            assertTrue(html.contains("""id="saveAdminToken""""))
+            assertTrue(html.contains("""id="adminTokenStatus""""))
             assertTrue(js.contains("/api/ai-network/presets/catalog?"))
             assertTrue(js.contains("/api/ai-network/presets/catalog/${'$'}{selectedPresetId}"))
             assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{selectedPresetId}/import-preview"))
             assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{pendingImport.publishedPresetId}/import"))
             assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{id}/like"))
             assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{id}/report"))
+            assertTrue(js.contains("nyassistantPresetDashboardAdminToken"))
+            assertTrue(js.contains("X-Dashboard-Admin-Token"))
+            assertTrue(js.contains("sessionStorage"))
+            assertTrue(js.contains("admin: true"))
         }
 
         @Test

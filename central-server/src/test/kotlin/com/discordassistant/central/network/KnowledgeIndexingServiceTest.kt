@@ -1,5 +1,8 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.dashboard.AddKnowledgeSourceRequest
+import com.discordassistant.central.dashboard.CreateKnowledgeSpaceRequest
+import com.discordassistant.central.dashboard.KnowledgeIngestionController
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.persistence.KnowledgeChunkRepository
 import com.discordassistant.central.persistence.KnowledgeDocumentRepository
@@ -119,6 +122,49 @@ class KnowledgeIndexingServiceTest
             assertEquals("ready", spaces.findByGuildIdAndId(101, space.id)!!.status)
             assertEquals(1, jobs.findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(101, space.id).size)
             assertEquals(2, service.readyChunks(101, space.id).size)
+        }
+
+        @Test
+        fun `knowledge dashboard add source immediately indexes inline text for website RAG`() {
+            val ingestion =
+                KnowledgeIngestionService(
+                    spaces = spaces,
+                    sources = sources,
+                    clock = fixedClock,
+                )
+            val search =
+                KnowledgeSearchService(
+                    sources = sources,
+                    spaces = spaces,
+                    chunks = chunks,
+                    retrievalPolicies = retrievalPolicies,
+                )
+            val controller = KnowledgeIngestionController(ingestion, search, service)
+            val spaceId =
+                controller.createSpace(
+                    103,
+                    CreateKnowledgeSpaceRequest(channelId = 203, displayName = "웹 지식", actorUserId = 7),
+                )["id"] as Long
+
+            val result =
+                controller.addSource(
+                    103,
+                    spaceId,
+                    AddKnowledgeSourceRequest(
+                        sourceType = "text",
+                        title = "웹 RAG 운영 규칙",
+                        contentPreview = "웹에서 등록한 지식도 즉시 검색 가능해야 합니다.\n\n운영자는 queued job으로 embedding 재빌드를 실행합니다.",
+                        actorUserId = 7,
+                    ),
+                )
+
+            assertEquals("indexed", result["status"])
+            assertEquals(true, result["inlineIndexed"])
+            assertEquals(2, result["chunkCount"])
+            assertTrue((result["indexJobId"] as Long) > 0)
+            val found = search.search(103, "즉시 검색", limit = 5, channelId = 203)
+            assertEquals(1, found.results.size)
+            assertEquals("웹 RAG 운영 규칙", found.results.single().title)
         }
 
         @Test

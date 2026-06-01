@@ -305,7 +305,11 @@ async function addKnowledgeSource() {
   }
   try {
     const result = await postJson(`/api/ai-network/knowledge/${gid}/spaces/${spaceId}/sources`, knowledgeSourcePayload());
-    $("knowledgeResult").textContent = `지식 소스 추가 완료: source=${result.id} · ${result.status} · risk=${result.riskLevel}`;
+    const indexing = result.inlineIndexed
+      ? ` · 즉시 검색 가능 · chunks=${result.chunkCount} · job=${result.indexJobId || "-"}`
+      : (result.indexSkippedReason ? ` · 색인 대기(${result.indexSkippedReason})` : "");
+    $("knowledgeResult").textContent =
+      `지식 소스 추가 완료: source=${result.id} · ${result.status} · risk=${result.riskLevel}${indexing}`;
     await refreshKnowledge();
   } catch (e) {
     $("knowledgeResult").textContent = `지식 소스 추가 실패: ${e.message}`;

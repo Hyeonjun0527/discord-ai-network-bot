@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
-/** 채널별 RAG 지식공간 관리 API. 실제 chunk/embed 작업자는 후속 worker가 이 metadata를 소비한다. */
+/** 채널별 RAG 지식공간 관리 API. 텍스트/FAQ/헌법/프리셋 본문은 즉시 chunk 색인하고 embedding 재빌드 작업을 큐잉한다. */
 @RestController
 @RequestMapping("/api/ai-network/knowledge")
 class KnowledgeIngestionController(
@@ -113,7 +113,25 @@ class KnowledgeIngestionController(
                 contentPreview = request.contentPreview,
                 addedBy = request.actorUserId,
             )
-        return mapOf("id" to source.id, "status" to source.status, "riskLevel" to source.riskLevel)
+        val inlineIndexing =
+            indexing?.indexInlineSourceIfPossible(
+                guildId = guildId,
+                spaceId = spaceId,
+                sourceId = source.id,
+                documentText = request.contentPreview,
+                triggeredBy = request.actorUserId,
+            )
+        val effectiveStatus = if (inlineIndexing?.indexed == true) "indexed" else source.status
+        return mapOf(
+            "id" to source.id,
+            "status" to effectiveStatus,
+            "riskLevel" to source.riskLevel,
+            "inlineIndexed" to (inlineIndexing?.indexed ?: false),
+            "indexSkippedReason" to inlineIndexing?.skippedReason,
+            "documentId" to inlineIndexing?.documentId,
+            "indexJobId" to inlineIndexing?.jobId,
+            "chunkCount" to (inlineIndexing?.chunkCount ?: 0),
+        )
     }
 
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/approve")

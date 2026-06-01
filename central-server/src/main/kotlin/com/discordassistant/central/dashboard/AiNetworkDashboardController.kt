@@ -2,10 +2,13 @@ package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.network.AiNetworkFeatureGate
 import com.discordassistant.central.network.AiNetworkFoundationService
+import com.discordassistant.central.network.AiNetworkGrowthPlan
+import com.discordassistant.central.network.AiNetworkGrowthService
 import com.discordassistant.central.network.AiQualityFeedbackService
 import com.discordassistant.central.network.ModelQualitySummary
 import com.discordassistant.central.network.MultiResponseOperationsSummary
 import com.discordassistant.central.network.MultiResponseService
+import com.discordassistant.central.network.NetworkGrowthEventCard
 import com.discordassistant.central.network.ProviderSafetyDashboard
 import com.discordassistant.central.network.ProviderSafetyExecutionPlan
 import com.discordassistant.central.network.ProviderSafetyService
@@ -35,6 +38,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/ai-network")
 class AiNetworkDashboardController(
     private val foundation: AiNetworkFoundationService,
+    private val growth: AiNetworkGrowthService,
     private val qualityFeedback: AiQualityFeedbackService,
     private val providerSafety: ProviderSafetyService,
     private val channelAis: ChannelAiRepository,
@@ -74,6 +78,8 @@ class AiNetworkDashboardController(
         val overload = ProviderSafetyDashboardResponse.from(rawOverload, DashboardAudience.from(audience))
         val executionPlan = providerSafety.executionPlan(guildId, responseMode, requestedCandidates)
         val multiResponseOperations = multiResponse.operationsSummary(guildId)
+        val growthPlan = growth.growthPlan(guildId)
+        val growthTimeline = growth.timelineCards(guildId).take(5)
         val readiness = readiness(overview, channels, providers, modelMap, knowledgeSpaces, quality, rawOverload)
         return AiNetworkDashboardResponse(
             metadata = DashboardMetadataResponse.from(overview),
@@ -91,8 +97,10 @@ class AiNetworkDashboardController(
             overload = overload,
             executionPlan = executionPlan,
             multiResponseOperations = multiResponseOperations,
+            growthPlan = growthPlan,
+            growthTimeline = growthTimeline,
             readiness = readiness,
-            nextActions = nextActions(overview, channels, modelMap, knowledgeSpaces, quality, rawOverload, changeApproval),
+            nextActions = nextActions(overview, channels, modelMap, knowledgeSpaces, quality, rawOverload, changeApproval, growthPlan),
         )
     }
 
@@ -656,6 +664,7 @@ class AiNetworkDashboardController(
         quality: QualitySummary,
         overload: ProviderSafetyDashboard,
         changeApproval: ChannelAiChangeApprovalDashboardResponse,
+        growthPlan: AiNetworkGrowthPlan,
     ): List<AiNetworkNextActionResponse> =
         buildList {
             if (overview.onlineProviderCount == 0) {
@@ -780,6 +789,24 @@ class AiNetworkDashboardController(
                     ),
                 )
             }
+            val existingActionTypes = map { it.actionType }.toSet()
+            growthPlan.actions
+                .filterNot { growthActionCoveredByPrimaryAction(it.key, existingActionTypes) }
+                .take(3)
+                .forEach { action ->
+                    add(
+                        AiNetworkNextActionResponse(
+                            priority = action.priority + 60,
+                            severity = action.severity,
+                            actionType = "growth_${action.key}",
+                            title = action.title,
+                            description = action.description,
+                            ctaLabel = "성장 계획 보기",
+                            discordCommand = action.command,
+                            dashboardPath = action.dashboardPath,
+                        ),
+                    )
+                }
             if (isEmpty()) {
                 add(
                     AiNetworkNextActionResponse(
@@ -795,6 +822,20 @@ class AiNetworkDashboardController(
                 )
             }
         }.sortedBy { it.priority }
+
+    private fun growthActionCoveredByPrimaryAction(
+        growthKey: String,
+        existingActionTypes: Set<String>,
+    ): Boolean =
+        when (growthKey) {
+            "connect_first_provider" -> "connect_provider" in existingActionTypes
+            "create_first_channel_ai" -> "create_channel_ai" in existingActionTypes
+            "increase_model_diversity" -> "add_model_diversity" in existingActionTypes
+            "add_first_knowledge_space" -> "add_knowledge" in existingActionTypes
+            "collect_quality_feedback" -> "collect_feedback" in existingActionTypes
+            "resolve_provider_overload" -> "protect_providers" in existingActionTypes
+            else -> false
+        }
 
     private fun ChannelAiCardResponse.withReadiness(): ChannelAiCardResponse {
         val missing =
@@ -891,6 +932,8 @@ data class AiNetworkDashboardResponse(
     val overload: ProviderSafetyDashboardResponse,
     val executionPlan: ProviderSafetyExecutionPlan,
     val multiResponseOperations: MultiResponseOperationsSummary,
+    val growthPlan: AiNetworkGrowthPlan,
+    val growthTimeline: List<NetworkGrowthEventCard>,
     val readiness: AiNetworkReadinessResponse,
     val nextActions: List<AiNetworkNextActionResponse>,
 )

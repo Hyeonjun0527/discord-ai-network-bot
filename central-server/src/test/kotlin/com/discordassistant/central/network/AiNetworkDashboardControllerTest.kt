@@ -91,6 +91,7 @@ class AiNetworkDashboardControllerTest
             )
 
         private val providerSafety = ProviderSafetyService(providerCapabilities, events, foundation, fixedClock)
+        private val growth = AiNetworkGrowthService(foundation, events, fixedClock)
         private val multiResponse =
             MultiResponseService(
                 policies = multiResponsePolicies,
@@ -105,6 +106,7 @@ class AiNetworkDashboardControllerTest
         private val controller =
             AiNetworkDashboardController(
                 foundation = foundation,
+                growth = growth,
                 qualityFeedback = qualityFeedback,
                 providerSafety = providerSafety,
                 channelAis = channelAis,
@@ -126,6 +128,7 @@ class AiNetworkDashboardControllerTest
             val disabledController =
                 AiNetworkDashboardController(
                     foundation = foundation,
+                    growth = growth,
                     qualityFeedback = qualityFeedback,
                     providerSafety = providerSafety,
                     channelAis = channelAis,
@@ -527,6 +530,27 @@ class AiNetworkDashboardControllerTest
                 behavior.id,
                 pendingApproval.proposedBehaviorId,
             )
+        }
+
+        @Test
+        fun `dashboard includes network growth plan and recent provider impact`() {
+            growth.recordProviderJoined(
+                guildId = 504,
+                providerUserId = 704,
+                modelNames = listOf("llama3.1:8b"),
+                capabilityTags = listOf("coding"),
+                maxBurden = "STANDARD",
+                maxConcurrency = 2,
+                dailyLimit = 30,
+            )
+
+            val dashboard = controller.dashboard(504)
+
+            assertEquals(2, dashboard.growthPlan.currentLevel)
+            assertTrue(dashboard.growthPlan.actions.any { it.key == "add_second_provider" })
+            val providerJoined = dashboard.growthTimeline.first { it.eventType == "provider_joined" }
+            assertTrue(providerJoined.impactBullets.any { it.contains("llama3.1:8b") })
+            assertTrue(dashboard.nextActions.any { it.actionType == "growth_add_second_provider" })
         }
 
         @Test

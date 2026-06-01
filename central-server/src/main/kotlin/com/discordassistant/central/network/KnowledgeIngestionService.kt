@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.persistence.CustomizationAuditLogEntity
+import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.KnowledgeSourceEntity
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceEntity
@@ -18,6 +20,7 @@ class KnowledgeIngestionService(
     private val sources: KnowledgeSourceRepository,
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
+    private val audits: CustomizationAuditLogRepository? = null,
 ) {
     @Transactional
     fun createSpace(
@@ -31,20 +34,23 @@ class KnowledgeIngestionService(
     ): KnowledgeSpaceEntity {
         featureGate.requireRagEnabled()
         val now = Instant.now(clock)
-        return spaces.save(
-            KnowledgeSpaceEntity(
-                guildId = guildId,
-                channelId = channelId,
-                channelAiId = channelAiId,
-                displayName = displayName.trim().ifBlank { "채널 지식공간" },
-                status = "draft",
-                embeddingModel = embeddingModel?.trim()?.ifBlank { null },
-                indexName = indexName?.trim()?.ifBlank { null },
-                createdBy = createdBy,
-                createdAt = now,
-                updatedAt = now,
-            ),
-        )
+        val saved =
+            spaces.save(
+                KnowledgeSpaceEntity(
+                    guildId = guildId,
+                    channelId = channelId,
+                    channelAiId = channelAiId,
+                    displayName = displayName.trim().ifBlank { "채널 지식공간" },
+                    status = "draft",
+                    embeddingModel = embeddingModel?.trim()?.ifBlank { null },
+                    indexName = indexName?.trim()?.ifBlank { null },
+                    createdBy = createdBy,
+                    createdAt = now,
+                    updatedAt = now,
+                ),
+            )
+        audit(saved.guildId, saved.channelId, createdBy, "knowledge_space_create", "knowledge_space", saved.id, saved.displayName)
+        return saved
     }
 
     fun listSources(
@@ -186,6 +192,15 @@ class KnowledgeIngestionService(
         space.status = if (validation.initialStatus == "pending") "pending_index" else "needs_review"
         space.updatedAt = now
         spaces.save(space)
+        audit(
+            guildId = guildId,
+            channelId = space.channelId,
+            actorUserId = addedBy,
+            action = "knowledge_source_add",
+            targetType = "knowledge_source",
+            targetId = source.id,
+            summary = "${source.sourceType}:${source.riskLevel}",
+        )
         return source
     }
 
@@ -213,6 +228,7 @@ class KnowledgeIngestionService(
         space.status = "pending_index"
         space.updatedAt = Instant.now(clock)
         spaces.save(space)
+        audit(guildId, space.channelId, null, "knowledge_source_approve", "knowledge_source", saved.id, reason)
         return saved
     }
 
@@ -242,6 +258,7 @@ class KnowledgeIngestionService(
         space.status = "ready"
         space.updatedAt = now
         spaces.save(space)
+        audit(guildId, space.channelId, null, "knowledge_source_indexed", "knowledge_source", saved.id, "chunks=${space.chunkCount}")
         return saved
     }
 
@@ -253,14 +270,17 @@ class KnowledgeIngestionService(
         reason: String,
     ): KnowledgeSourceEntity {
         featureGate.requireRagEnabled()
-        spaces.findByGuildIdAndId(guildId, spaceId)
-            ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
+        val space =
+            spaces.findByGuildIdAndId(guildId, spaceId)
+                ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
         val source =
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "knowledge source belongs to another guild" }
         source.status = "rejected:${sanitizeReason(reason)}"
-        return sources.save(source)
+        val saved = sources.save(source)
+        audit(guildId, space.channelId, null, "knowledge_source_reject", "knowledge_source", saved.id, reason)
+        return saved
     }
 
     @Transactional
@@ -283,7 +303,31 @@ class KnowledgeIngestionService(
         space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { it.status.startsWith("deleted").not() }
         space.updatedAt = Instant.now(clock)
         spaces.save(space)
+        audit(guildId, space.channelId, null, "knowledge_source_delete", "knowledge_source", saved.id, reason)
         return saved
+    }
+
+    private fun audit(
+        guildId: Long,
+        channelId: Long?,
+        actorUserId: Long?,
+        action: String,
+        targetType: String,
+        targetId: Long?,
+        summary: String,
+    ) {
+        audits?.save(
+            CustomizationAuditLogEntity(
+                guildId = guildId,
+                channelId = channelId ?: 0,
+                actorId = actorUserId,
+                action = action,
+                targetType = targetType,
+                targetId = targetId,
+                summary = sanitizeReason(summary).take(1000),
+                createdAt = Instant.now(clock),
+            ),
+        )
     }
 
     private fun KnowledgeSourceEntity.toIndexingSource(): KnowledgeIndexingSource =

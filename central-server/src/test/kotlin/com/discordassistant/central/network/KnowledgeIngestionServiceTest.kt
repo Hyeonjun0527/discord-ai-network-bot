@@ -8,6 +8,7 @@ import com.discordassistant.central.dashboard.KnowledgeEvalRequest
 import com.discordassistant.central.dashboard.KnowledgeIngestionController
 import com.discordassistant.central.dashboard.MarkKnowledgeSourceIndexedRequest
 import com.discordassistant.central.dashboard.RejectKnowledgeSourceRequest
+import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -29,12 +30,14 @@ class KnowledgeIngestionServiceTest
     constructor(
         private val spaces: KnowledgeSpaceRepository,
         private val sources: KnowledgeSourceRepository,
+        private val audits: CustomizationAuditLogRepository,
     ) {
         private val service =
             KnowledgeIngestionService(
                 spaces = spaces,
                 sources = sources,
                 clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
+                audits = audits,
             )
         private val searchService = KnowledgeSearchService(sources, spaces)
         private val controller = KnowledgeIngestionController(service, searchService)
@@ -152,6 +155,40 @@ class KnowledgeIngestionServiceTest
             assertEquals("indexed", indexed["status"])
             assertEquals(12, spaces.findByGuildIdAndId(100, spaceId)!!.chunkCount)
             assertEquals("ready", spaces.findByGuildIdAndId(100, spaceId)!!.status)
+        }
+
+        @Test
+        fun `knowledge changes write sanitized customization audit events`() {
+            val space =
+                service.createSpace(
+                    guildId = 100,
+                    channelId = 205,
+                    channelAiId = null,
+                    displayName = "감사 지식",
+                    createdBy = 77,
+                    embeddingModel = null,
+                    indexName = null,
+                )
+            val source =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "link",
+                    title = "운영 가이드",
+                    sourceUri = "https://example.com/ops.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            service.markSourceIndexed(100, space.id, source.id, chunkCount = 3)
+            service.removeSource(100, space.id, source.id, "DISCORD_BOT_TOKEN=secret")
+
+            val entries = audits.findTop10ByGuildIdAndChannelIdOrderByCreatedAtDesc(100, 205)
+            assertTrue(entries.any { it.action == "knowledge_space_create" })
+            assertTrue(entries.any { it.action == "knowledge_source_add" })
+            assertTrue(entries.any { it.action == "knowledge_source_indexed" })
+            assertTrue(entries.any { it.action == "knowledge_source_delete" })
+            assertTrue(entries.none { it.summary?.contains("secret") == true })
+            assertTrue(entries.none { it.summary?.contains("DISCORD_BOT_TOKEN") == true })
         }
 
         @Test

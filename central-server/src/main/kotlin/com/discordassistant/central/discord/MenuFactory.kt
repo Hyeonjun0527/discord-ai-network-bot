@@ -69,9 +69,13 @@ object MenuFactory {
             sb.append("• **기본 모델**: 현재 풀 제공 모델 ${poolModels.size}종 — 그중 기본값 선택(또는 자동)\n")
         }
         if (allowedChannelCount == 0) {
-            sb.append("• **LLM 사용 허용 채널**: 현재 *모든 채널 허용*. 특정 채널만 허용하려면 아래에서 여러 채널을 한 번에 선택\n")
+            sb.append(
+                "• **LLM 사용 허용 채널**: 현재 *모든 채널 허용*. 특정 채널만 허용하려면 채널 드롭다운에서 여러 채널을 체크한 뒤 저장\n",
+            )
         } else {
-            sb.append("• **LLM 사용 허용 채널**: 현재 $allowedChannelCount 개 채널만 허용 — 아래 채널 목록을 확인하고 한 번에 변경 가능\n")
+            sb.append(
+                "• **LLM 사용 허용 채널**: 현재 $allowedChannelCount 개 채널만 허용 — 현재 목록을 확인하고 드롭다운에서 한 번에 교체 가능\n",
+            )
         }
         sb.append("• **자동 승인**: 현재 **${if (autoApprove) "켜짐(바로 참여)" else "꺼짐(관리자 승인 필요)"}**\n")
         return sb.toString()
@@ -130,7 +134,7 @@ object MenuFactory {
             if (currentChannelIds.isEmpty()) {
                 "사용 채널: 전체 허용 중 · 특정 채널만 쓰려면 여러 채널을 한 번에 선택"
             } else {
-                "현재 ${currentChannelIds.size}개 사용 채널 표시 중 · 여기서 여러 채널을 한 번에 변경"
+                "현재 ${currentChannelIds.size}개 사용 채널 선택됨 · 여러 채널을 체크해 한 번에 교체"
             }
         return EntitySelectMenu
             .create(CHANNEL, EntitySelectMenu.SelectTarget.CHANNEL)
@@ -145,10 +149,10 @@ object MenuFactory {
     /** 설정 패널 저장/상태 버튼. 언어·모델·채널·자동승인을 고른 뒤 저장 하나로 반영한다. */
     fun settingsActionButtons(): List<Button> =
         listOf(
-            Button.secondary(CHANNEL_ALL, "모든 채널 허용 선택"),
-            Button.success(SAVE_SETTINGS, "서버 설정 한 번에 저장"),
-            Button.secondary(AUTO_APPROVE_ON, "자동 승인 켜짐 선택"),
-            Button.secondary(AUTO_APPROVE_OFF, "자동 승인 꺼짐 선택"),
+            Button.secondary(CHANNEL_ALL, "모든 채널 허용으로 대기"),
+            Button.success(SAVE_SETTINGS, "선택한 설정 한 번에 저장"),
+            Button.secondary(AUTO_APPROVE_ON, "자동 승인 켜짐으로 대기"),
+            Button.secondary(AUTO_APPROVE_OFF, "자동 승인 꺼짐으로 대기"),
         )
 
     /** 슬림 도움말 — 핵심 3~5개만(판에서 보여줄 텍스트). */

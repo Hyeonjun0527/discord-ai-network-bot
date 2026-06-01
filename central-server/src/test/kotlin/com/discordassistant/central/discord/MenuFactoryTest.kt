@@ -78,16 +78,20 @@ class MenuFactoryTest {
         )
         assertTrue(sel.placeholder?.contains("2개") == true)
         assertTrue(sel.placeholder?.contains("한 번에") == true)
+
+        val many = MenuFactory.channelSelect((1L..30L).toList())
+        assertEquals(25, many.defaultValues.size)
+        assertTrue(many.placeholder?.contains("30개") == true)
     }
 
     @Test
     fun `설정 액션 버튼 — 모든 설정은 저장 버튼 한 번으로 적용한다`() {
         val buttons = MenuFactory.settingsActionButtons()
         assertEquals(4, buttons.size)
-        assertTrue(buttons.any { it.id == MenuFactory.CHANNEL_ALL && it.label == "모든 채널 허용 선택" })
+        assertTrue(buttons.any { it.id == MenuFactory.CHANNEL_ALL && it.label?.contains("대기") == true })
         assertTrue(buttons.any { it.id == MenuFactory.SAVE_SETTINGS && it.label?.contains("한 번에 저장") == true })
-        assertTrue(buttons.any { it.id == MenuFactory.AUTO_APPROVE_ON })
-        assertTrue(buttons.any { it.id == MenuFactory.AUTO_APPROVE_OFF })
+        assertTrue(buttons.any { it.id == MenuFactory.AUTO_APPROVE_ON && it.label?.contains("대기") == true })
+        assertTrue(buttons.any { it.id == MenuFactory.AUTO_APPROVE_OFF && it.label?.contains("대기") == true })
         assertEquals(ButtonStyle.SUCCESS, buttons.first { it.id == MenuFactory.SAVE_SETTINGS }.style)
     }
 
@@ -99,14 +103,14 @@ class MenuFactoryTest {
         assertTrue(empty.contains("프로바이더가 없어") || empty.contains("연결된 프로바이더가 없"))
         assertTrue(empty.contains("모든 채널 허용"))
         assertTrue(empty.contains("LLM 사용 허용 채널"))
-        assertTrue(empty.contains("한 번에 선택"))
+        assertTrue(empty.contains("여러 채널을 체크"))
         assertTrue(empty.contains("저장") || empty.contains("한 번"))
         assertTrue(empty.contains("꺼짐"))
         // 모델 있고 채널 제한 + 자동승인 켜짐
         val full = MenuFactory.settingsText(autoApprove = true, poolModels = listOf("llama3"), allowedChannelCount = 2)
         assertTrue(full.contains("1종") || full.contains("모델"))
         assertTrue(full.contains("2 개") || full.contains("2개"))
-        assertTrue(full.contains("아래 채널 목록"))
+        assertTrue(full.contains("한 번에 교체"))
         assertTrue(full.contains("켜짐"))
     }
 

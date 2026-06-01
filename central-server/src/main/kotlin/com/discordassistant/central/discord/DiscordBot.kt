@@ -159,7 +159,18 @@ class DiscordBot(
             listOf<net.dv8tion.jda.api.interactions.commands.build.CommandData>(
                 Commands
                     .slash("ask", "커뮤니티 로컬 AI 에게 질문합니다")
-                    .addOption(OptionType.STRING, "prompt", "질문 내용", true),
+                    .addOption(OptionType.STRING, "prompt", "질문 내용", true)
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "model", "원하는 모델(비우면 채널/서버 기본값)", false)
+                            .setAutoComplete(true),
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "mode", "응답 속도/품질 모드", false)
+                            .addChoice("빠른 답변", "fast")
+                            .addChoice("균형 모드", "balanced")
+                            .addChoice("깊은 답변", "deep")
+                            .addChoice("절약 모드", "saving"),
+                    ),
                 Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
                 Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
                 Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),
@@ -1052,7 +1063,13 @@ class DiscordBot(
             ctx: CommandContext,
         ): Reply =
             when (event.name) {
-                "ask" -> commands.ask(ctx, event.getOption("prompt")?.asString.orEmpty())
+                "ask" ->
+                    commands.ask(
+                        ctx,
+                        event.getOption("prompt")?.asString.orEmpty(),
+                        requestedModel = event.getOption("model")?.asString,
+                        requestedResponseMode = event.getOption("mode")?.asString,
+                    )
                 "models" -> commands.models(ctx)
                 "catalog" -> commands.catalog(ctx)
                 "my-usage" -> commands.myUsage(ctx)

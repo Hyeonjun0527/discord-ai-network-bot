@@ -72,6 +72,8 @@ class CommandService(
     fun ask(
         ctx: CommandContext,
         prompt: String,
+        requestedModel: String? = null,
+        requestedResponseMode: String? = null,
     ): Reply {
         // 요청 우선순위(#150): 관리자/긴급 요청은 분당 쿨다운을 우회한다.
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
@@ -79,6 +81,18 @@ class CommandService(
         }
         val effectivePrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { prompt.withChannelAiBehavior(it) } ?: prompt
         val routingPolicy = channelRoutingPolicies.effective(ctx.guildId, ctx.channelId, policy.guildDefaultModel(ctx.guildId))
+        val modelChoice =
+            channelRoutingPolicies.resolveModelChoice(
+                guildId = ctx.guildId,
+                channelId = ctx.channelId,
+                requestedModel = requestedModel,
+                guildDefaultModel = policy.guildDefaultModel(ctx.guildId),
+            )
+        val selectedModel =
+            modelChoice.selectedModel
+                ?: requestedModel?.trim()?.ifBlank { null }
+                ?: routingPolicy.preferredModel
+        val responseMode = normalizeAskResponseMode(requestedResponseMode) ?: routingPolicy.responseMode
         val result =
             orchestrator.handle(
                 AiRequestInput(
@@ -88,8 +102,8 @@ class CommandService(
                     effectivePrompt,
                     ctx.roleIds,
                     isAdmin = ctx.isAdmin,
-                    preferredModel = routingPolicy.preferredModel,
-                    responseMode = routingPolicy.responseMode,
+                    preferredModel = selectedModel,
+                    responseMode = responseMode,
                 ),
             )
         return when (result.state) {
@@ -98,6 +112,16 @@ class CommandService(
             else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
         }
     }
+
+    private fun normalizeAskResponseMode(value: String?): String? =
+        when (value?.trim()?.lowercase()) {
+            null, "" -> null
+            "fast", "빠른", "빠른 답변" -> "fast"
+            "deep", "깊은", "깊은 답변" -> "deep"
+            "saving", "절약", "절약 모드" -> "saving"
+            "balanced", "균형", "균형 모드" -> "balanced"
+            else -> null
+        }
 
     /** 슬래시 옵션 자동완성용 모델 목록(#179). 현재 길드 풀이 제공하는 모델명(중복 제거·정렬). */
     fun autocompleteModels(ctx: CommandContext): List<String> =

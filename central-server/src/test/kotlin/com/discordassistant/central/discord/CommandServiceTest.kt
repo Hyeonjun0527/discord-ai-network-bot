@@ -17,10 +17,14 @@ import org.springframework.transaction.annotation.Transactional
 
 private class EchoConn : AgentConnection {
     lateinit var session: ProviderSession
+    var lastInfer: InferRequest? = null
     override val remoteId = "echo"
 
     override fun sendFrame(frame: Frame) {
-        if (frame is InferRequest) session.handleFrame(InferResult(frame.requestId, "echo:${frame.prompt}"))
+        if (frame is InferRequest) {
+            lastInfer = frame
+            session.handleFrame(InferResult(frame.requestId, "echo:${frame.prompt}"))
+        }
     }
 
     override fun close(reason: String) {}
@@ -218,6 +222,26 @@ class CommandServiceTest
                 assertEquals("echo:코드 설명", r.content)
                 assertFalse(r.content.contains("커뮤니티 풀 처리"), r.content)
                 assertFalse(r.content.contains("provider #"), r.content)
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 원하는 모델과 응답 모드를 요청에 반영한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 79, guildId = 100)
+            conn.session = s
+            s.capability = s.capability.copy(models = listOf("llama3.1:8b", "qwen-coder"))
+            registry.register(s)
+            try {
+                val r = commands.ask(ctx(admin = true), "깊게 봐줘", requestedModel = "qwen-coder", requestedResponseMode = "deep")
+
+                assertTrue(r.content.startsWith("echo:"))
+                val sent = conn.lastInfer!!
+                assertEquals("qwen-coder", sent.model)
+                assertEquals(2048, sent.options["num_predict"])
+                assertEquals(0.5, sent.options["temperature"])
             } finally {
                 registry.unregister(s)
             }

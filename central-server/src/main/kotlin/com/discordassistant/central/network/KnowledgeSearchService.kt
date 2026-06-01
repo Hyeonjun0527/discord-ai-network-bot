@@ -154,10 +154,19 @@ class KnowledgeSearchService(
         val search = search(guildId, query, limit = policy?.topK ?: 10, channelId = channelId, knowledgeSpaceId = knowledgeSpaceId)
         val budget = minOf(maxChars.coerceIn(200, 8_000), policy?.tokenBudget ?: 8_000)
         val entries = mutableListOf<KnowledgePromptEntry>()
+        val sourceRefs = mutableListOf<KnowledgeSourceRef>()
+        val lines = mutableListOf<String>()
         var used = 0
         for (result in search.results) {
-            val text = result.toPromptSnippet()
-            if (used + text.length > budget) break
+            val ref = "S${entries.size + 1}"
+            val prefix = "- [$ref] "
+            val separatorChars = if (lines.isEmpty()) 0 else 1
+            val snippetBudget = budget - used - separatorChars - prefix.length
+            if (snippetBudget < MIN_CONTEXT_SNIPPET_CHARS) break
+            val text = result.toPromptSnippet().take(snippetBudget)
+            val line = "$prefix$text"
+            val nextUsed = used + separatorChars + line.length
+            if (nextUsed > budget) break
             entries +=
                 KnowledgePromptEntry(
                     sourceId = result.sourceId,
@@ -167,21 +176,18 @@ class KnowledgeSearchService(
                     sourceUri = result.sourceUri,
                     snippet = text,
                 )
-            used += text.length
+            sourceRefs += result.toSourceRef(ref)
+            lines += line
+            used = nextUsed
         }
-        val sourceRefs = entries.toSourceRefs()
-        val refBySourceId = sourceRefs.associateBy { it.sourceId }
-        val contextText =
-            entries.joinToString("\n") {
-                "- [${refBySourceId[it.sourceId]?.ref ?: "source:${it.sourceId}"}] ${it.snippet}"
-            }
+        val contextText = lines.joinToString("\n")
         return KnowledgePromptContext(
             guildId = guildId,
             channelId = channelId,
             knowledgeSpaceId = knowledgeSpaceId,
             query = query,
             maxChars = budget,
-            usedChars = contextText.length,
+            usedChars = used,
             entries = entries,
             contextText = contextText,
             sourceRefs = sourceRefs,
@@ -361,19 +367,16 @@ class KnowledgeSearchService(
         )
     }
 
-    private fun List<KnowledgePromptEntry>.toSourceRefs(): List<KnowledgeSourceRef> =
-        distinctBy { it.sourceId }
-            .mapIndexed { index, entry ->
-                KnowledgeSourceRef(
-                    ref = "S${index + 1}",
-                    sourceId = entry.sourceId,
-                    knowledgeSpaceId = entry.knowledgeSpaceId,
-                    title = entry.title,
-                    sourceType = entry.sourceType,
-                    sourceUri = entry.sourceUri,
-                    visibility = "channel_scoped",
-                )
-            }
+    private fun KnowledgeSearchResult.toSourceRef(ref: String): KnowledgeSourceRef =
+        KnowledgeSourceRef(
+            ref = ref,
+            sourceId = sourceId,
+            knowledgeSpaceId = knowledgeSpaceId,
+            title = title,
+            sourceType = sourceType,
+            sourceUri = sourceUri,
+            visibility = "channel_scoped",
+        )
 
     private fun activePolicy(
         guildId: Long,
@@ -403,6 +406,7 @@ class KnowledgeSearchService(
         const val MIN_HIT_AT_K = 0.8
         const val MIN_MRR = 0.7
         const val MIN_RECALL_AT_K = 0.7
+        const val MIN_CONTEXT_SNIPPET_CHARS = 40
         val SEARCHABLE_RISK_LEVELS = setOf("normal", "review")
 
         fun normalizeResponseMode(value: String): String =

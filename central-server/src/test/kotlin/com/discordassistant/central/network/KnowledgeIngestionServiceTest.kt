@@ -538,6 +538,42 @@ class KnowledgeIngestionServiceTest
         }
 
         @Test
+        fun `prompt context caps final formatted text within provider budget`() {
+            val space = service.createSpace(100, 201, null, "긴 지식", 77, null, null)
+            val source =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "link",
+                    title = "Kotlin " + "긴".repeat(100),
+                    sourceUri = "https://example.com/" + "very-long-path/".repeat(12),
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            service.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+
+            val context =
+                controller.promptContext(
+                    guildId = 100,
+                    query = "Kotlin",
+                    maxChars = 200,
+                    channelId = 201,
+                    knowledgeSpaceId = null,
+                )
+
+            assertEquals(null, context.fallbackReason)
+            assertEquals(listOf(source.id), context.entries.map { it.sourceId })
+            assertTrue(context.contextText.length <= 200)
+            assertEquals(context.contextText.length, context.usedChars)
+            assertTrue(context.contextText.startsWith("- [S1] Kotlin"))
+            assertTrue(
+                context.entries
+                    .single()
+                    .snippet.length < 200,
+            )
+        }
+
+        @Test
         fun `sensitive-looking query disables RAG search and prompt context`() {
             val space = service.createSpace(100, 201, null, "보안 지식", 77, null, null)
             val source =

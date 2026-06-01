@@ -2,6 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+let pendingPresetImport = null;
 
 function esc(value) {
   return String(value ?? "")
@@ -110,6 +111,19 @@ function wizardPayload() {
 function numericValue(id) {
   const value = $(id).value.trim();
   return /^\d+$/.test(value) ? Number(value) : null;
+}
+
+function presetCatalogUrl() {
+  const params = new URLSearchParams();
+  const query = $("presetCatalogQuery").value.trim();
+  const category = $("presetCatalogCategory").value.trim();
+  const sort = $("presetCatalogSort").value || "popular";
+  const limit = Number($("presetCatalogLimit").value || "20");
+  if (query) params.set("query", query);
+  if (category) params.set("category", category);
+  params.set("sort", sort);
+  params.set("limit", String(Math.min(100, Math.max(1, limit || 20))));
+  return `/api/ai-network/presets/catalog?${params.toString()}`;
 }
 
 async function draftChannelAi() {
@@ -273,7 +287,7 @@ function renderPresetLists(local, published) {
     `<li><strong>${esc(p.id)} · ${esc(p.name)}</strong><span>${esc(p.category)} · ${esc(p.status)} · ${esc(p.visibility)}</span></li>`,
   );
   renderList("publishedPresetList", published?.presets?.slice(0, 8), "게시 프리셋 없음", (p) =>
-    `<li><strong>${esc(p.id)} · ${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · ${esc(p.category || "general")}</span><button class="mini import-preset" data-preset-id="${esc(p.id)}">이 채널에 가져오기</button></li>`,
+    `<li><strong>${esc(p.id)} · ${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · ${esc(p.category || "general")}</span><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button></li>`,
   );
 }
 
@@ -284,9 +298,13 @@ async function refreshPresets() {
     return;
   }
   try {
+    pendingPresetImport = null;
+    $("presetConfirmImport").disabled = true;
+    $("presetImportPreview").textContent =
+      "가져올 프리셋의 [미리보기]를 먼저 누르면, 덮어쓰기/승인 필요 여부를 확인한 뒤 가져올 수 있습니다.";
     const [local, published] = await Promise.all([
       getJson(`/api/ai-network/presets/guilds/${gid}`),
-      getJson("/api/ai-network/presets/catalog?sort=popular&limit=20"),
+      getJson(presetCatalogUrl()),
     ]);
     renderPresetLists(local, published);
     $("presetManageResult").textContent =
@@ -499,7 +517,7 @@ function renderAiNetwork(data) {
     `<li><strong>${esc(e.title)}</strong><span>${esc((e.impactBullets || []).join(" · ") || e.summary || "")}</span></li>`,
   );
   renderList("presetCatalog", data.publishedPresets?.slice(0, 5), "게시된 프리셋 없음", (p) =>
-    `<li><strong>${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · ${esc(p.publisherLabel)}</span><button class="mini import-preset" data-preset-id="${esc(p.id)}">이 채널에 가져오기</button></li>`,
+    `<li><strong>${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · ${esc(p.publisherLabel)}</span><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button></li>`,
   );
   renderList("changeApproval", data.changeApproval?.pendingItems?.slice(0, 5), data.changeApproval?.nextActions?.[0] || "승인 대기 없음", (p) =>
     `<li><strong>#${esc(p.channelId)} 변경 대기</strong><span>${esc(p.reason || "사유 없음")} · 제안 ${esc(p.proposedBehaviorId || "-")}</span></li>`,
@@ -546,7 +564,35 @@ async function refreshLaunchChecklist() {
   }
 }
 
-async function importPreset(publishedPresetId) {
+function renderPresetImportPreview(preview) {
+  const conflicts = preview.conflicts || [];
+  const conflictLines =
+    conflicts.length === 0
+      ? ["- 충돌 없음: 바로 가져올 수 있습니다."]
+      : conflicts.map((c) => `- [${c.severity}] ${c.code}: ${c.message}`);
+  const actions = [
+    preview.willApplyToChannel ? "- 현재 채널 AI에 적용됨" : "- 서버 프리셋 복사본만 생성됨",
+    preview.willOverwriteChannelAi ? "- 기존 채널 AI 설정을 덮어쓸 수 있음" : "- 기존 채널 AI 덮어쓰기 없음",
+    preview.willCreateApprovalProposal ? "- 고위험 변경이라 승인 제안으로 생성됨" : "- 즉시 적용 가능",
+  ];
+  $("presetImportPreview").textContent = [
+    `프리셋 미리보기: ${preview.title} (#${preview.publishedPresetId})`,
+    preview.description ? `설명: ${preview.description}` : null,
+    `목적: ${preview.purpose}`,
+    `말투: ${preview.tone} · 길이: ${preview.answerLength} · 안전: ${preview.safetyLevel}`,
+    `모드: ${preview.responseMode} · 최소 품질: ${preview.minQualityTier} · 후보 수: ${preview.maxCandidates}`,
+    "",
+    "가져오면 일어나는 일",
+    ...actions,
+    "",
+    "확인할 점",
+    ...conflictLines,
+    "",
+    "문제가 없으면 [미리보기한 프리셋 가져오기]를 누르세요.",
+  ].filter(Boolean).join("\n");
+}
+
+async function previewPresetImport(publishedPresetId) {
   const gid = $("guildId").value.trim();
   const channelId = $("wizardChannelId").value.trim();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(channelId)) {
@@ -554,18 +600,44 @@ async function importPreset(publishedPresetId) {
     return;
   }
   try {
-    const preview = await postJson(`/api/ai-network/presets/published/${publishedPresetId}/import-preview`, {
+    pendingPresetImport = null;
+    $("presetConfirmImport").disabled = true;
+    const result = await postJson(`/api/ai-network/presets/published/${publishedPresetId}/import-preview`, {
       targetGuildId: Number(gid),
       targetChannelId: Number(channelId),
     });
-    const imported = await postJson(`/api/ai-network/presets/published/${publishedPresetId}/import`, {
-      targetGuildId: Number(gid),
-      targetChannelId: Number(channelId),
+    const preview = result.preview;
+    pendingPresetImport = {
+      publishedPresetId,
+      guildId: Number(gid),
+      channelId: Number(channelId),
+      conflictCount: preview.conflicts?.length || 0,
+    };
+    renderPresetImportPreview(preview);
+    $("presetConfirmImport").disabled = false;
+    $("presetImportResult").textContent =
+      `미리보기 완료: 충돌 ${pendingPresetImport.conflictCount}건 · 가져오려면 확인 버튼을 누르세요.`;
+  } catch (e) {
+    $("presetImportResult").textContent = `프리셋 미리보기 실패: ${e.message}`;
+  }
+}
+
+async function importPreset() {
+  if (!pendingPresetImport) {
+    $("presetImportResult").textContent = "먼저 가져올 프리셋의 [미리보기]를 누르세요.";
+    return;
+  }
+  try {
+    const imported = await postJson(`/api/ai-network/presets/published/${pendingPresetImport.publishedPresetId}/import`, {
+      targetGuildId: pendingPresetImport.guildId,
+      targetChannelId: pendingPresetImport.channelId,
       confirmConflicts: true,
     });
     $("presetImportResult").textContent =
       `가져오기 완료: ${imported.status} · channelAi=${imported.createdChannelAiId || "-"} · ` +
-      `충돌 ${preview.preview?.conflicts?.length || 0}건 확인`;
+      `충돌 ${pendingPresetImport.conflictCount}건 확인`;
+    pendingPresetImport = null;
+    $("presetConfirmImport").disabled = true;
     await loadGuild();
   } catch (e) {
     $("presetImportResult").textContent = `프리셋 가져오기 실패: ${e.message}`;
@@ -647,13 +719,14 @@ $("presetUpdate").addEventListener("click", updatePreset);
 $("presetPublish").addEventListener("click", publishPreset);
 $("presetDelete").addEventListener("click", deletePreset);
 $("presetLike").addEventListener("click", likePreset);
+$("presetConfirmImport").addEventListener("click", importPreset);
 $("multiSavePolicy").addEventListener("click", saveMultiPolicy);
 $("multiRefreshOps").addEventListener("click", refreshMultiOps);
 $("pseudoStreamPlan").addEventListener("click", planPseudoStream);
 $("launchChecklistRefresh").addEventListener("click", refreshLaunchChecklist);
 document.addEventListener("click", (event) => {
-  const button = event.target.closest(".import-preset");
-  if (button) importPreset(button.dataset.presetId);
+  const button = event.target.closest(".preview-preset, .import-preset");
+  if (button) previewPresetImport(button.dataset.presetId);
 });
 loadWizardOptions();
 refreshPool();

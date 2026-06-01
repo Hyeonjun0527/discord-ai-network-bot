@@ -47,6 +47,15 @@ class AiNetworkDashboardControllerTest
         }
 
         @Test
+        fun `dashboard includes multi response operations summary`() {
+            val response = dashboard.dashboard(803, audience = "admin")
+
+            assertEquals(803, response.multiResponseOperations.guildId)
+            assertTrue(response.multiResponseOperations.riskCodes.contains("no_recent_runs"))
+            assertTrue(response.multiResponseOperations.nextActions.isNotEmpty())
+        }
+
+        @Test
         fun `readiness becomes ready when provider channel ai knowledge feedback and safety are prepared`() {
             foundation.upsertProviderCapability(
                 guildId = 802,

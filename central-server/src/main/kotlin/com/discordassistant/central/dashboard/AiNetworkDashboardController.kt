@@ -4,6 +4,8 @@ import com.discordassistant.central.network.AiNetworkFeatureGate
 import com.discordassistant.central.network.AiNetworkFoundationService
 import com.discordassistant.central.network.AiQualityFeedbackService
 import com.discordassistant.central.network.ModelQualitySummary
+import com.discordassistant.central.network.MultiResponseOperationsSummary
+import com.discordassistant.central.network.MultiResponseService
 import com.discordassistant.central.network.ProviderSafetyDashboard
 import com.discordassistant.central.network.ProviderSafetyExecutionPlan
 import com.discordassistant.central.network.ProviderSafetyService
@@ -42,6 +44,7 @@ class AiNetworkDashboardController(
     private val presets: AiPresetRepository,
     private val publishedPresets: PublishedPresetRepository,
     private val presetImports: PresetImportRepository,
+    private val multiResponse: MultiResponseService,
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
     @GetMapping("/{guildId}/dashboard")
@@ -64,6 +67,7 @@ class AiNetworkDashboardController(
         val rawOverload = providerSafety.overloadAlerts(guildId)
         val overload = ProviderSafetyDashboardResponse.from(rawOverload, DashboardAudience.from(audience))
         val executionPlan = providerSafety.executionPlan(guildId, responseMode, requestedCandidates)
+        val multiResponseOperations = multiResponse.operationsSummary(guildId)
         val readiness = readiness(overview, channels, providers, modelMap, knowledgeSpaces, quality, rawOverload)
         return AiNetworkDashboardResponse(
             metadata = DashboardMetadataResponse.from(overview),
@@ -78,6 +82,7 @@ class AiNetworkDashboardController(
             modelQuality = modelQuality,
             overload = overload,
             executionPlan = executionPlan,
+            multiResponseOperations = multiResponseOperations,
             readiness = readiness,
             nextActions = nextActions(overview, channels, modelMap, knowledgeSpaces, quality, rawOverload),
         )
@@ -774,6 +779,7 @@ data class AiNetworkDashboardResponse(
     val modelQuality: List<ModelQualitySummary>,
     val overload: ProviderSafetyDashboardResponse,
     val executionPlan: ProviderSafetyExecutionPlan,
+    val multiResponseOperations: MultiResponseOperationsSummary,
     val readiness: AiNetworkReadinessResponse,
     val nextActions: List<AiNetworkNextActionResponse>,
 )

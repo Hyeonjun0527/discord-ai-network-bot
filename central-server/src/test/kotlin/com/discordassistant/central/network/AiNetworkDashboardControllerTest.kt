@@ -18,6 +18,7 @@ import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.MultiResponsePolicyEntity
 import com.discordassistant.central.persistence.MultiResponsePolicyRepository
+import com.discordassistant.central.persistence.MultiResponseRunRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
 import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
 import com.discordassistant.central.persistence.PresetImportEntity
@@ -27,6 +28,7 @@ import com.discordassistant.central.persistence.PresetRevisionRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.persistence.PublishedPresetEntity
 import com.discordassistant.central.persistence.PublishedPresetRepository
+import com.discordassistant.central.persistence.SynthesisResultRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -53,6 +55,8 @@ class AiNetworkDashboardControllerTest
         private val behaviorVersions: AiBehaviorVersionRepository,
         private val routingPolicies: ChannelAiRoutingPolicyRepository,
         private val multiResponsePolicies: MultiResponsePolicyRepository,
+        private val multiResponseRuns: MultiResponseRunRepository,
+        private val syntheses: SynthesisResultRepository,
         private val feedbacks: AiFeedbackRepository,
         private val candidateAnswers: CandidateAnswerRepository,
         private val events: AiNetworkEventRepository,
@@ -84,6 +88,16 @@ class AiNetworkDashboardControllerTest
             )
 
         private val providerSafety = ProviderSafetyService(providerCapabilities, events, foundation, fixedClock)
+        private val multiResponse =
+            MultiResponseService(
+                policies = multiResponsePolicies,
+                runs = multiResponseRuns,
+                candidates = candidateAnswers,
+                syntheses = syntheses,
+                providerCapabilities = providerCapabilities,
+                feedbacks = feedbacks,
+                clock = fixedClock,
+            )
 
         private val controller =
             AiNetworkDashboardController(
@@ -100,6 +114,7 @@ class AiNetworkDashboardControllerTest
                 presets = presets,
                 publishedPresets = publishedPresets,
                 presetImports = presetImports,
+                multiResponse = multiResponse,
             )
 
         @Test
@@ -119,6 +134,7 @@ class AiNetworkDashboardControllerTest
                     presets = presets,
                     publishedPresets = publishedPresets,
                     presetImports = presetImports,
+                    multiResponse = multiResponse,
                     featureGate = AiNetworkFeatureGate(dashboardEnabled = false),
                 )
 

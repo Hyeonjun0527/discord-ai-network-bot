@@ -67,6 +67,9 @@ class CommandServiceTest
             assertTrue(admin.contains("/채널프로필"))
             assertTrue(admin.contains("/llm-channel-profile"))
             assertTrue(admin.contains("/ai-network-map"))
+            assertTrue(admin.contains("/ai-knowledge-list"))
+            assertTrue(admin.contains("/ai-knowledge-add"))
+            assertTrue(admin.contains("/ai-knowledge-search"))
             assertTrue(admin.contains("/ai-preset-catalog"))
             assertTrue(admin.contains("/ai-preset-import"))
             assertTrue(admin.contains("/ai-network-check"))
@@ -237,6 +240,34 @@ class CommandServiceTest
             assertTrue(imported.content.contains("프리셋을 현재 채널에 가져왔습니다"))
             assertTrue(imported.content.contains("상태: `applied`"))
             assertTrue(imported.content.contains("채널 AI:"))
+        }
+
+        @Test
+        fun `knowledge commands — Discord에서 채널 RAG 지식을 추가 목록 검색한다`() {
+            val g = CommandContext(guildId = 77993, channelId = 88993, userId = 5, roleIds = setOf(1L), isAdmin = true)
+
+            val added =
+                commands.addKnowledge(
+                    g,
+                    title = "운영 규칙 README",
+                    sourceType = "link",
+                    sourceUri = "https://example.com/rules",
+                    contentPreview = null,
+                )
+            assertTrue(added.content.contains("지식 소스를 추가했습니다"))
+            assertTrue(added.content.contains("status: `pending`"))
+
+            val readiness = knowledge.guildReadiness(g.guildId)
+            val spaceId = readiness.spaces.single().knowledgeSpaceId
+            val source = knowledge.listSources(g.guildId, spaceId).single()
+            val list = commands.knowledgeList(g, spaceId)
+            assertTrue(list.content.contains("채널 지식공간 상세"))
+            assertTrue(list.content.contains("운영 규칙 README"))
+
+            knowledge.markSourceIndexed(g.guildId, spaceId, source.id, chunkCount = 1)
+            val search = commands.searchKnowledge(g, query = "운영 규칙", limit = 3)
+            assertTrue(search.content.contains("채널 지식 검색"))
+            assertTrue(search.content.contains("운영 규칙 README"))
         }
 
         @Test

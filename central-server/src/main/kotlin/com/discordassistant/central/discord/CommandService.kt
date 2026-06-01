@@ -6,6 +6,7 @@ import com.discordassistant.central.network.AiNetworkLaunchChecklistService
 import com.discordassistant.central.network.AiNetworkMap
 import com.discordassistant.central.network.AiNetworkMapService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
+import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
 import com.discordassistant.central.network.NetworkLaunchChecklist
@@ -56,6 +57,7 @@ class CommandService(
     private val schedule: com.discordassistant.central.provider.ProviderScheduleService,
     private val channelProfiles: ChannelAiProfileService,
     private val channelRoutingPolicies: ChannelAiRoutingPolicyService,
+    private val knowledgeIngestion: KnowledgeIngestionService,
     private val knowledgeSearch: KnowledgeSearchService,
     private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
     private val aiNetworkMap: AiNetworkMapService,
@@ -308,12 +310,172 @@ class CommandService(
             sb.append("· `/채널허용`(`/llm-allow-channel`) `/채널금지`(`/llm-deny-channel`) `/역할정책`(`/llm-role-policy`) — 채널·역할 정책\n")
             sb.append("· `/채널프로필`(`/llm-channel-profile`) — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
             sb.append("· `/ai-network-map` — Provider·모델·채널AI·RAG 구성을 한눈에 보기\n")
+            sb.append("· `/ai-knowledge-list` `/ai-knowledge-add` `/ai-knowledge-search` — 채널 지식공간/RAG 소스 관리\n")
             sb.append("· `/ai-preset-catalog` `/ai-preset-import` — 프리셋 공유 목록 보기·현재 채널에 가져오기\n")
             sb.append("· `/ai-network-check` — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
             sb.append("· `/사용자차단`(`/llm-block`) `/차단해제`(`/llm-unblock`) — 사용자 차단/해제\n")
         }
         sb.append("\n_민감정보(비밀번호·API 키 등)는 입력하지 마세요._")
         return Reply(sb.toString())
+    }
+
+    fun knowledgeList(
+        ctx: CommandContext,
+        spaceId: Long? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            if (spaceId != null) {
+                val status = knowledgeIngestion.spaceStatus(ctx.guildId, spaceId)
+                val sources = knowledgeIngestion.listSources(ctx.guildId, spaceId)
+                val sourceRows =
+                    sources.take(12).map {
+                        "• `${it.id}` ${it.title} — ${it.sourceType} · ${it.status} · risk=${it.riskLevel}"
+                    }
+                val sourceLines = sourceRows.joinToString("\n").ifBlank { "• 아직 지식 소스가 없습니다." }
+                Reply(
+                    "📚 **채널 지식공간 상세**\n\n" +
+                        "space `${status.knowledgeSpaceId}` · <#${status.channelId ?: ctx.channelId}> · ${status.displayName}\n" +
+                        "준비상태: `${status.readiness}` · 소스 ${status.sourceCount}개 · indexed ${status.indexedSourceCount}개 · " +
+                        "blocked ${status.blockedSourceCount}개\n\n" +
+                        "__지식 소스__\n$sourceLines",
+                )
+            } else {
+                val readiness = knowledgeIngestion.guildReadiness(ctx.guildId)
+                val spaceRows =
+                    readiness.spaces.take(12).map {
+                        "• `${it.knowledgeSpaceId}` <#${it.channelId ?: ctx.channelId}> — ${it.displayName} · " +
+                            "${it.readiness} · sources ${it.sourceCount}/indexed ${it.indexedSourceCount}"
+                    }
+                val spaceLines =
+                    spaceRows
+                        .joinToString("\n")
+                        .ifBlank {
+                            "• 아직 지식공간이 없습니다. `/ai-knowledge-add title:<제목> url:<https://...>` 로 현재 채널 지식공간을 만들 수 있어요."
+                        }
+                val next =
+                    readiness.nextActions
+                        .take(4)
+                        .joinToString("\n") { "• $it" }
+                        .ifBlank { "• 추가 조치 없음" }
+                Reply(
+                    "📚 **RAG 지식공간 목록**\n\n" +
+                        "상태: `${readiness.status}` · 지식공간 ${readiness.spaceCount}개 · 소스 ${readiness.sourceCount}개 · " +
+                        "indexed ${readiness.indexedSourceCount}개 · blocked ${readiness.blockedSourceCount}개\n\n" +
+                        "__공간__\n$spaceLines\n\n" +
+                        "__다음 행동__\n$next",
+                )
+            }
+        }.getOrElse {
+            Replies.warn("지식공간을 조회하지 못했어요. ${it.message ?: "길드/space-id를 확인해 주세요."}")
+        }
+    }
+
+    fun addKnowledge(
+        ctx: CommandContext,
+        title: String,
+        sourceType: String?,
+        sourceUri: String?,
+        contentPreview: String?,
+        spaceId: Long? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val normalizedUri = sourceUri?.trim()?.ifBlank { null }
+        val normalizedPreview = contentPreview?.trim()?.ifBlank { null }
+        if (normalizedUri == null && normalizedPreview == null) {
+            return Replies.warn("추가할 URL 또는 텍스트를 입력해 주세요. 민감정보·비밀번호·API 키는 넣지 마세요.")
+        }
+        return runCatching {
+            val targetSpaceId =
+                spaceId
+                    ?: knowledgeIngestion
+                        .guildReadiness(ctx.guildId)
+                        .spaces
+                        .firstOrNull { it.channelId == ctx.channelId }
+                        ?.knowledgeSpaceId
+                    ?: run {
+                        val created =
+                            knowledgeIngestion.createSpace(
+                                guildId = ctx.guildId,
+                                channelId = ctx.channelId,
+                                channelAiId = null,
+                                displayName = "채널 ${ctx.channelId} 지식공간",
+                                createdBy = ctx.userId,
+                                embeddingModel = null,
+                                indexName = null,
+                            )
+                        created.id
+                    }
+            val type = sourceType?.trim()?.ifBlank { null } ?: if (normalizedUri != null) "link" else "text"
+            val source =
+                knowledgeIngestion.addSource(
+                    guildId = ctx.guildId,
+                    spaceId = targetSpaceId,
+                    sourceType = type,
+                    title = title,
+                    sourceUri = normalizedUri,
+                    contentPreview = normalizedPreview,
+                    addedBy = ctx.userId,
+                )
+            val plan = knowledgeIngestion.indexingPlan(ctx.guildId, targetSpaceId)
+            val indexingHint =
+                when (source.status) {
+                    "pending" -> "색인 대기 상태입니다. 운영자는 `${plan.command}` 를 실행해 검색 가능하게 만드세요."
+                    else -> "상태가 `${source.status}` 입니다. 위험도 `${source.riskLevel}` 를 검토한 뒤 승인/삭제하세요."
+                }
+            Replies.ok(
+                "지식 소스를 추가했습니다.\n" +
+                    "space: `$targetSpaceId` · source: `${source.id}` · status: `${source.status}` · risk: `${source.riskLevel}`\n" +
+                    "$indexingHint\n\n" +
+                    "`/ai-knowledge-list space-id:$targetSpaceId` 로 현재 목록을 확인할 수 있어요.",
+            )
+        }.getOrElse {
+            Replies.warn("지식 소스 추가에 실패했어요. ${it.message ?: "입력값을 확인해 주세요."}")
+        }
+    }
+
+    fun searchKnowledge(
+        ctx: CommandContext,
+        query: String,
+        spaceId: Long? = null,
+        limit: Int = 5,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val result =
+                knowledgeSearch.search(
+                    guildId = ctx.guildId,
+                    query = query,
+                    limit = limit,
+                    channelId = if (spaceId == null) ctx.channelId else null,
+                    knowledgeSpaceId = spaceId,
+                )
+            val resultRows =
+                result.results.take(10).map {
+                    val ref = it.sourceUri?.let { uri -> " · ${uri.take(80)}" } ?: ""
+                    "• `${it.sourceId}` ${it.title} — score ${it.score} · ${it.sourceType}$ref"
+                }
+            val lines =
+                resultRows
+                    .joinToString("\n")
+                    .ifBlank {
+                        when (result.fallbackReason) {
+                            "blocked_sensitive_query" -> "• 민감정보처럼 보이는 검색어라 RAG 검색을 막았습니다."
+                            "rag_scope_required" -> "• 검색 범위가 없습니다. 현재 채널 또는 space-id를 지정해 주세요."
+                            "no_knowledge_space" -> "• 이 채널에 지식공간이 없습니다. 먼저 `/ai-knowledge-add` 로 지식을 추가하세요."
+                            "no_indexed_knowledge_match" -> "• 검색 가능한 indexed 지식에서 결과를 찾지 못했습니다. 색인 상태를 확인하세요."
+                            else -> "• 결과 없음"
+                        }
+                    }
+            Reply(
+                "🔎 **채널 지식 검색**\n" +
+                    "query: `$query` · scope: `${spaceId?.let { "space:$it" } ?: "current-channel"}`" +
+                    (result.fallbackReason?.let { " · fallback: `$it`" } ?: "") +
+                    "\n\n$lines",
+            )
+        }.getOrElse {
+            Replies.warn("지식 검색에 실패했어요. ${it.message ?: "검색어/space-id를 확인해 주세요."}")
+        }
     }
 
     fun presetCatalog(

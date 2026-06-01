@@ -273,6 +273,24 @@ class DiscordBot(
                 Commands.slash("ai-network-map", "AI 네트워크 지도와 채널 AI 구성을 봅니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands.slash("ai-network-check", "AI 네트워크 출시/운영 체크리스트를 봅니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands
+                    .slash("ai-knowledge-list", "채널 RAG 지식공간과 소스 상태를 봅니다(관리자)")
+                    .addOption(OptionType.STRING, "space-id", "상세 조회할 지식공간 ID", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-add", "현재 채널 RAG 지식공간에 링크/텍스트 소스를 추가합니다(관리자)")
+                    .addOption(OptionType.STRING, "title", "지식 제목", true)
+                    .addOption(OptionType.STRING, "url", "https 링크", false)
+                    .addOption(OptionType.STRING, "text", "짧은 텍스트/FAQ 미리보기", false)
+                    .addOption(OptionType.STRING, "source-type", "link/text/faq/file/constitution/preset", false)
+                    .addOption(OptionType.STRING, "space-id", "기존 지식공간 ID", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-search", "현재 채널 또는 특정 지식공간에서 RAG 지식을 검색합니다(관리자)")
+                    .addOption(OptionType.STRING, "query", "검색어", true)
+                    .addOption(OptionType.STRING, "space-id", "검색할 지식공간 ID", false)
+                    .addOption(OptionType.INTEGER, "limit", "결과 수(1~20)", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
                     .slash("ai-preset-catalog", "공개 AI 프리셋 공유 목록을 봅니다(관리자)")
                     .addOption(OptionType.STRING, "query", "검색어", false)
                     .addOption(OptionType.STRING, "category", "카테고리", false)
@@ -1152,6 +1170,27 @@ class DiscordBot(
                 "bot-permissions" -> commands.botPermissions(ctx)
                 "ai-network-map" -> commands.aiNetworkMap(ctx)
                 "ai-network-check" -> commands.aiNetworkCheck(ctx)
+                "ai-knowledge-list" ->
+                    commands.knowledgeList(
+                        ctx,
+                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
+                    )
+                "ai-knowledge-add" ->
+                    commands.addKnowledge(
+                        ctx,
+                        title = event.getOption("title")!!.asString,
+                        sourceType = event.getOption("source-type")?.asString,
+                        sourceUri = event.getOption("url")?.asString,
+                        contentPreview = event.getOption("text")?.asString,
+                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
+                    )
+                "ai-knowledge-search" ->
+                    commands.searchKnowledge(
+                        ctx,
+                        query = event.getOption("query")!!.asString,
+                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
+                        limit = event.getOption("limit")?.asInt ?: 5,
+                    )
                 "ai-preset-catalog" ->
                     commands.presetCatalog(
                         ctx,

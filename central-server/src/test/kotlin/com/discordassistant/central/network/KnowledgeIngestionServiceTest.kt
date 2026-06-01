@@ -482,6 +482,10 @@ class KnowledgeIngestionServiceTest
             assertEquals(800, fast.maxChars)
             assertTrue(fast.warnings.contains("requested_budget_capped_by_response_mode"))
             assertEquals(listOf(sourceOne.id), fast.entries.map { it.sourceId })
+            assertEquals(listOf(sourceOne.id), fast.sourceRefs.map { it.sourceId })
+            assertEquals("S1", fast.sourceRefs.single().ref)
+            assertEquals("channel_scoped", fast.sourceRefs.single().visibility)
+            assertEquals("https://example.com/kotlin-spring-guide.md", fast.sourceRefs.single().sourceUri)
 
             val deep =
                 controller.contextPlan(

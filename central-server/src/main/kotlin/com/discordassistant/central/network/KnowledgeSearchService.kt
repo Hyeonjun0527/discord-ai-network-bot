@@ -146,6 +146,7 @@ class KnowledgeSearchService(
                 entries = emptyList(),
                 contextText = "",
                 fallbackReason = "blocked_sensitive_query",
+                sourceRefs = emptyList(),
             )
         }
         val allowedSpaceIds = allowedSpaceIds(guildId, channelId, knowledgeSpaceId)
@@ -181,6 +182,7 @@ class KnowledgeSearchService(
             usedChars = contextText.length,
             entries = entries,
             contextText = contextText,
+            sourceRefs = entries.toSourceRefs(),
             fallbackReason =
                 when {
                     search.fallbackReason != null -> search.fallbackReason
@@ -260,6 +262,7 @@ class KnowledgeSearchService(
             contextText = context.contextText,
             fallbackReason = context.fallbackReason,
             warnings = warnings,
+            sourceRefs = context.sourceRefs,
         )
     }
 
@@ -356,6 +359,20 @@ class KnowledgeSearchService(
         )
     }
 
+    private fun List<KnowledgePromptEntry>.toSourceRefs(): List<KnowledgeSourceRef> =
+        distinctBy { it.sourceId }
+            .mapIndexed { index, entry ->
+                KnowledgeSourceRef(
+                    ref = "S${index + 1}",
+                    sourceId = entry.sourceId,
+                    knowledgeSpaceId = entry.knowledgeSpaceId,
+                    title = entry.title,
+                    sourceType = entry.sourceType,
+                    sourceUri = entry.sourceUri,
+                    visibility = "channel_scoped",
+                )
+            }
+
     private fun activePolicy(
         guildId: Long,
         channelId: Long?,
@@ -450,6 +467,7 @@ data class KnowledgePromptContext(
     val entries: List<KnowledgePromptEntry>,
     val contextText: String,
     val fallbackReason: String?,
+    val sourceRefs: List<KnowledgeSourceRef> = emptyList(),
 )
 
 data class KnowledgePromptEntry(
@@ -459,6 +477,16 @@ data class KnowledgePromptEntry(
     val sourceType: String,
     val sourceUri: String?,
     val snippet: String,
+)
+
+data class KnowledgeSourceRef(
+    val ref: String,
+    val sourceId: Long,
+    val knowledgeSpaceId: Long,
+    val title: String,
+    val sourceType: String,
+    val sourceUri: String?,
+    val visibility: String,
 )
 
 data class KnowledgeContextPlan(
@@ -474,6 +502,7 @@ data class KnowledgeContextPlan(
     val contextText: String,
     val fallbackReason: String?,
     val warnings: List<String>,
+    val sourceRefs: List<KnowledgeSourceRef> = emptyList(),
 ) {
     companion object {
         fun disabled(
@@ -496,6 +525,7 @@ data class KnowledgeContextPlan(
             contextText = "",
             fallbackReason = fallbackReason,
             warnings = listOf(fallbackReason),
+            sourceRefs = emptyList(),
         )
     }
 }

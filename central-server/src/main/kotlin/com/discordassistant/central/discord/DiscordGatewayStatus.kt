@@ -70,8 +70,8 @@ class DiscordGatewayHealthIndicator(
             .withDetail("ready", status.ready)
             .withDetail("messageContentIntentEnabled", status.messageContentIntentEnabled)
             .withDetail("mentionAskEnabled", status.mentionAskEnabled)
-            .withDetail("lastShutdownCode", status.lastShutdownCode)
-            .withDetail("lastProblem", status.lastProblem)
+            .withDetail("lastShutdownCode", status.lastShutdownCode ?: "")
+            .withDetail("lastProblem", status.lastProblem ?: "")
             .withDetail("updatedAt", status.updatedAt.toString())
             .build()
     }

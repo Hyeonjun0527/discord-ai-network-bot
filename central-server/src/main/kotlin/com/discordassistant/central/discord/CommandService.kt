@@ -214,11 +214,11 @@ class CommandService(
         sb.append("· 봇이 서버에서 제거되면 그 서버의 프로바이더 연결/등록/토큰은 자동 정리됩니다.\n")
         if (ctx.isAdmin) {
             sb.append("\n__관리자__\n")
-            sb.append("· `/fairness` `/providers` — 공정성 리포트·프로바이더 목록\n")
-            sb.append("· `/approve-provider` `/remove-provider` — 승인/제거\n")
-            sb.append("· `/allow-channel` `/deny-channel` `/set-role-policy` — 채널·역할 정책\n")
-            sb.append("· `/llm-channel-profile` — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
-            sb.append("· `/llm-block` `/llm-unblock` — 사용자 차단/해제\n")
+            sb.append("· `/공정성`(`/fairness`) `/프로바이더목록`(`/providers`) — 공정성 리포트·프로바이더 목록\n")
+            sb.append("· `/프로바이더승인`(`/provider-approve`) `/프로바이더제거`(`/provider-remove`) — 승인/제거\n")
+            sb.append("· `/채널허용`(`/llm-allow-channel`) `/채널금지`(`/llm-deny-channel`) `/역할정책`(`/llm-role-policy`) — 채널·역할 정책\n")
+            sb.append("· `/채널프로필`(`/llm-channel-profile`) — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
+            sb.append("· `/사용자차단`(`/llm-block`) `/차단해제`(`/llm-unblock`) — 사용자 차단/해제\n")
         }
         sb.append("\n_민감정보(비밀번호·API 키 등)는 입력하지 마세요._")
         return Reply(sb.toString())

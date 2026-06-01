@@ -8,6 +8,7 @@ import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
+import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
 import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
 import com.discordassistant.central.persistence.PresetImportEntity
 import com.discordassistant.central.persistence.PresetImportRepository
@@ -88,6 +89,34 @@ class AiNetworkDashboardControllerTest
             assertEquals(1, response.onlineProviderCount)
             assertEquals(1, response.channelAiCount)
             assertEquals("ready", response.healthStatus)
+        }
+
+        @Test
+        fun `overview can serve stale projection with explicit degraded marker`() {
+            overviewProjections.save(
+                NetworkOverviewProjectionEntity(
+                    guildId = 101,
+                    onlineProviderCount = 5,
+                    approvedProviderCount = 6,
+                    modelCount = 4,
+                    channelAiCount = 3,
+                    knowledgeSpaceCount = 2,
+                    feedbackCount = 9,
+                    overloadAlertCount = 1,
+                    networkLevel = 4,
+                    healthStatus = "warning",
+                    staleAfter = Instant.parse("2026-05-31T23:59:00Z"),
+                    refreshedAt = Instant.parse("2026-05-31T23:50:00Z"),
+                ),
+            )
+
+            val response = controller.overview(101, refresh = false)
+
+            assertEquals(5, response.onlineProviderCount)
+            assertEquals("stale", response.freshnessStatus)
+            assertTrue(response.stale)
+            assertEquals("projection_stale", response.degradedReason)
+            assertEquals("2026-05-31T23:50:00Z", response.refreshedAt)
         }
 
         @Test

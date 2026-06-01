@@ -103,6 +103,15 @@ class AiNetworkFoundationService(
         )
     }
 
+    @Transactional(readOnly = true)
+    fun currentOverview(guildId: Long): NetworkOverviewProjectionEntity? = overviewProjections.findByGuildId(guildId)
+
+    fun isOverviewStale(overview: NetworkOverviewProjectionEntity): Boolean = overview.staleAfter?.isAfter(Instant.now(clock)) != true
+
+    fun overviewFreshnessStatus(overview: NetworkOverviewProjectionEntity): String = if (isOverviewStale(overview)) "stale" else "fresh"
+
+    fun overviewDegradedReason(o: NetworkOverviewProjectionEntity): String? = if (isOverviewStale(o)) "projection_stale" else null
+
     @Transactional
     fun refreshOverview(guildId: Long): NetworkOverviewProjectionEntity {
         val now = Instant.now(clock)

@@ -29,10 +29,23 @@ class AiNetworkDashboardController(
     @GetMapping("/{guildId}/overview")
     fun overview(
         @PathVariable guildId: Long,
+        @RequestParam(defaultValue = "true") refresh: Boolean = true,
     ): AiNetworkOverviewResponse {
         val profile = foundation.ensureNetworkProfile(guildId)
-        val overview = foundation.refreshOverview(guildId)
-        return AiNetworkOverviewResponse.from(profile.guildId, profile.displayName, profile.tagline, overview)
+        val overview =
+            if (refresh) {
+                foundation.refreshOverview(guildId)
+            } else {
+                foundation.currentOverview(guildId) ?: foundation.refreshOverview(guildId)
+            }
+        return AiNetworkOverviewResponse.from(
+            guildId = profile.guildId,
+            displayName = profile.displayName,
+            tagline = profile.tagline,
+            overview = overview,
+            freshnessStatus = foundation.overviewFreshnessStatus(overview),
+            degradedReason = foundation.overviewDegradedReason(overview),
+        )
     }
 
     @GetMapping("/{guildId}/channels")
@@ -161,6 +174,9 @@ data class AiNetworkOverviewResponse(
     val healthStatus: String,
     val refreshedAt: String,
     val staleAfter: String?,
+    val freshnessStatus: String,
+    val stale: Boolean,
+    val degradedReason: String?,
 ) {
     companion object {
         fun from(
@@ -168,6 +184,8 @@ data class AiNetworkOverviewResponse(
             displayName: String,
             tagline: String,
             overview: NetworkOverviewProjectionEntity,
+            freshnessStatus: String,
+            degradedReason: String?,
         ): AiNetworkOverviewResponse =
             AiNetworkOverviewResponse(
                 guildId = guildId,
@@ -184,6 +202,9 @@ data class AiNetworkOverviewResponse(
                 healthStatus = overview.healthStatus,
                 refreshedAt = overview.refreshedAt.toString(),
                 staleAfter = overview.staleAfter?.toString(),
+                freshnessStatus = freshnessStatus,
+                stale = freshnessStatus == "stale",
+                degradedReason = degradedReason,
             )
     }
 }

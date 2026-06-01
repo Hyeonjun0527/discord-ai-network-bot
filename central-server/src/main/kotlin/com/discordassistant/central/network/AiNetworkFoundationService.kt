@@ -108,7 +108,11 @@ class AiNetworkFoundationService(
         val now = Instant.now(clock)
         val capabilities = providerCapabilities.findByGuildId(guildId)
         val onlineProviders = capabilities.count { it.providerState.equals("ONLINE", ignoreCase = true) }
-        val overloadAlerts = capabilities.count { it.overloadRisk.equals("high", ignoreCase = true) }
+        val overloadAlerts =
+            capabilities.count {
+                it.overloadRisk.equals("high", ignoreCase = true) ||
+                    it.overloadRisk.equals("critical", ignoreCase = true)
+            }
         val channelAiCount = channelAis.findByGuildId(guildId).size
         val knowledgeSpaceCount = knowledgeSpaces.findByGuildId(guildId).size
         val feedbackCount = feedbacks.countByGuildId(guildId).toInt()

@@ -254,6 +254,54 @@ class PresetRegistryServiceTest
         }
 
         @Test
+        fun `preset shares rag knowledge slots as placeholders without copying source text`() {
+            val preset =
+                service.createPreset(
+                    guildId = 330,
+                    ownerUserId = 77,
+                    name = "운영 RAG 프리셋",
+                    summary = "지식 슬롯만 공유",
+                    category = "ops",
+                    visibility = "guild_private",
+                    behavior =
+                        PresetBehaviorInput(
+                            purpose = "운영 지식 기반 답변",
+                            tone = "practical",
+                            knowledgeSlotNames = listOf("운영 규칙", "장애 대응", "운영 규칙"),
+                            knowledgeGuide = "README/런북/FAQ를 대상 서버 지식으로 등록하세요. token=secret-value",
+                        ),
+                )
+            val revision = revisions.findByPresetIdOrderByRevisionDesc(preset.id).single()
+            assertEquals("운영 규칙,장애 대응", revision.knowledgeSlotNames)
+            assertEquals("README/런북/FAQ를 대상 서버 지식으로 등록하세요. [redacted]", revision.knowledgeGuide)
+
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
+            val detail = service.publishedPresetDetail(published.id)
+
+            assertEquals(listOf("운영 규칙", "장애 대응"), detail.behavior.knowledgeSlotNames)
+            assertEquals("README/런북/FAQ를 대상 서버 지식으로 등록하세요. [redacted]", detail.behavior.knowledgeGuide)
+
+            val preview = service.previewImport(published.id, targetGuildId = 331, targetChannelId = 431)
+            assertEquals(listOf("운영 규칙", "장애 대응"), preview.knowledgeSlotNames)
+
+            val imported =
+                service.importPreset(
+                    publishedPresetId = published.id,
+                    targetGuildId = 331,
+                    targetChannelId = 431,
+                    importedBy = 88,
+                )
+            val importedPresetId = imported.importedPresetId!!
+            val importedRevision = revisions.findByPresetIdOrderByRevisionDesc(importedPresetId).single()
+            assertEquals("운영 규칙,장애 대응", importedRevision.knowledgeSlotNames)
+            assertEquals(
+                "imported from published preset #${published.id}",
+                importedRevision.changeSummary,
+                "프리셋 import 는 지식 원문이나 source id 를 복사하지 않고 슬롯 안내만 유지한다",
+            )
+        }
+
+        @Test
         fun `import preview detects overwrites and does not mutate target channel`() {
             val preset =
                 service.createPreset(

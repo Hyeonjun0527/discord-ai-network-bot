@@ -466,6 +466,8 @@ class PresetRevisionEntity(
     var maxCandidates: Int = 1,
     var providerTagFilter: String? = null,
     var costGuard: String = "provider_safe",
+    var knowledgeSlotNames: String? = null,
+    var knowledgeGuide: String? = null,
     var changeSummary: String? = null,
     var createdBy: Long? = null,
     var createdAt: Instant = Instant.EPOCH,

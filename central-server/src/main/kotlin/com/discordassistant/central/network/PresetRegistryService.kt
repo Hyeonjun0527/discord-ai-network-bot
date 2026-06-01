@@ -291,6 +291,8 @@ class PresetRegistryService(
                         answerLength = sourceRevision.answerLength,
                         constitution = sourceRevision.constitution,
                         safetyLevel = sourceRevision.safetyLevel,
+                        knowledgeSlotNames = splitCsv(sourceRevision.knowledgeSlotNames),
+                        knowledgeGuide = sourceRevision.knowledgeGuide,
                         changeSummary = "imported from published preset #${published.id}",
                     ),
             )
@@ -524,6 +526,8 @@ class PresetRegistryService(
             maxCandidates = sourceRevision.maxCandidates,
             providerTagFilter = splitCsv(sourceRevision.providerTagFilter),
             costGuard = sourceRevision.costGuard,
+            knowledgeSlotNames = splitCsv(sourceRevision.knowledgeSlotNames),
+            knowledgeGuide = sourceRevision.knowledgeGuide,
         )
     }
 
@@ -645,6 +649,8 @@ class PresetRegistryService(
                 revision.preferredModel.orEmpty(),
                 revision.providerTagFilter.orEmpty(),
                 revision.costGuard,
+                revision.knowledgeSlotNames.orEmpty(),
+                revision.knowledgeGuide.orEmpty(),
                 revision.changeSummary.orEmpty(),
             ).joinToString("\n")
         require(!SECRET_PATTERN.containsMatchIn(text)) {
@@ -690,6 +696,8 @@ class PresetRegistryService(
                 maxCandidates = behavior.maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES),
                 providerTagFilter = behavior.providerTagFilter.normalizedCsv(),
                 costGuard = costGuard,
+                knowledgeSlotNames = behavior.knowledgeSlotNames.normalizedKnowledgeSlots(),
+                knowledgeGuide = behavior.knowledgeGuide.sanitizedKnowledgeGuide(),
                 changeSummary = behavior.changeSummary?.trim()?.ifBlank { null },
                 createdBy = createdBy,
                 createdAt = now,
@@ -726,6 +734,8 @@ class PresetRegistryService(
             maxCandidates = maxCandidates,
             providerTagFilter = splitCsv(providerTagFilter),
             costGuard = costGuard,
+            knowledgeSlotNames = splitCsv(knowledgeSlotNames),
+            knowledgeGuide = knowledgeGuide,
             changeSummary = changeSummary,
             createdAt = createdAt.toString(),
         )
@@ -763,6 +773,8 @@ class PresetRegistryService(
             maxCandidates = maxCandidates,
             providerTagFilter = splitCsv(providerTagFilter),
             costGuard = costGuard,
+            knowledgeSlotNames = splitCsv(knowledgeSlotNames),
+            knowledgeGuide = knowledgeGuide,
         )
 
     private fun PresetReportEntity.toSummary(): PresetReportSummary =
@@ -841,6 +853,22 @@ class PresetRegistryService(
             .joinToString(",")
             .ifBlank { null }
 
+    private fun List<String>.normalizedKnowledgeSlots(): String? =
+        map { it.trim() }
+            .filter { it.isNotBlank() }
+            .map { it.replace(Regex("\\s+"), " ").take(80) }
+            .distinct()
+            .take(10)
+            .joinToString(",")
+            .ifBlank { null }
+
+    private fun String?.sanitizedKnowledgeGuide(): String? =
+        this
+            ?.trim()
+            ?.replace(SECRET_PATTERN, "[redacted]")
+            ?.take(1000)
+            ?.ifBlank { null }
+
     private fun splitCsv(value: String?): List<String> =
         value
             .orEmpty()
@@ -874,6 +902,8 @@ data class PresetBehaviorInput(
     val maxCandidates: Int = 1,
     val providerTagFilter: List<String> = emptyList(),
     val costGuard: String = "provider_safe",
+    val knowledgeSlotNames: List<String> = emptyList(),
+    val knowledgeGuide: String? = null,
     val changeSummary: String? = null,
 )
 
@@ -904,6 +934,8 @@ data class PresetRevisionSummary(
     val maxCandidates: Int,
     val providerTagFilter: List<String>,
     val costGuard: String,
+    val knowledgeSlotNames: List<String>,
+    val knowledgeGuide: String?,
     val changeSummary: String?,
     val createdAt: String,
 )
@@ -948,6 +980,8 @@ data class PresetBehaviorSnapshot(
     val maxCandidates: Int,
     val providerTagFilter: List<String>,
     val costGuard: String,
+    val knowledgeSlotNames: List<String>,
+    val knowledgeGuide: String?,
 )
 
 data class PresetReportSummary(
@@ -995,4 +1029,6 @@ data class PresetImportPreview(
     val maxCandidates: Int,
     val providerTagFilter: List<String>,
     val costGuard: String,
+    val knowledgeSlotNames: List<String>,
+    val knowledgeGuide: String?,
 )

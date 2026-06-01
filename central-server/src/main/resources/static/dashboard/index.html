@@ -214,7 +214,25 @@
       <button id="presetPublish">웹에 게시</button>
       <button id="presetDelete">삭제</button>
       <button id="presetLike">따봉</button>
+      <button id="publishedPresetUpdate">게시 수정</button>
+      <button id="publishedPresetDelete">게시 숨김</button>
+      <button id="publishedPresetReport">신고</button>
       <button id="presetConfirmImport" class="secondary" disabled>미리보기한 프리셋 가져오기</button>
+    </div>
+    <div class="form-grid">
+      <label>신고 ID<input id="presetReportId" type="text" inputmode="numeric" placeholder="검수 처리할 신고 ID" /></label>
+      <label>신고 사유<input id="presetReportReason" type="text" placeholder="예: 위험한 프롬프트, 민감정보 포함" /></label>
+      <label>검수 결정
+        <select id="presetReportDecision">
+          <option value="dismiss">기각</option>
+          <option value="suspend">일시 중단</option>
+          <option value="remove">제거</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <button id="presetModerationRefresh">신고 큐 새로고침</button>
+      <button id="presetReportReview">신고 처리</button>
     </div>
     <div class="network-grid">
       <article class="card">
@@ -224,6 +242,10 @@
       <article class="card">
         <h3>웹 카탈로그</h3>
         <ul id="publishedPresetList" class="list"></ul>
+      </article>
+      <article class="card">
+        <h3>신고/검수 큐</h3>
+        <ul id="presetModerationList" class="list"></ul>
       </article>
     </div>
     <pre id="presetImportPreview" class="preview">가져올 프리셋의 [미리보기]를 먼저 누르면, 덮어쓰기/승인 필요 여부를 확인한 뒤 가져올 수 있습니다.</pre>

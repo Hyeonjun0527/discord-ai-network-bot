@@ -29,6 +29,16 @@ async function postJson(url, body) {
   return res.json();
 }
 
+async function putJson(url, body) {
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  return res.json();
+}
+
 async function deleteJson(url) {
   const res = await fetch(url, { method: "DELETE", headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`${res.status} ${url}`);
@@ -323,12 +333,26 @@ function presetPayload(includeBehavior = true) {
   };
 }
 
+function publishedPresetPayload() {
+  const hasBehaviorInput =
+    $("presetPurpose").value.trim() ||
+    $("presetTone").value.trim() ||
+    $("presetConstitution").value.trim() ||
+    $("presetResponseMode").value.trim() ||
+    $("presetPreferredModel").value.trim();
+  return {
+    title: $("presetName").value.trim() || null,
+    description: $("presetSummary").value.trim() || null,
+    behavior: hasBehaviorInput ? presetBehaviorPayload() : null,
+  };
+}
+
 function renderPresetLists(local, published) {
   renderList("localPresetList", local?.presets?.slice(0, 8), "서버 프리셋 없음", (p) =>
     `<li><strong>${esc(p.id)} · ${esc(p.name)}</strong><span>${esc(p.category)} · ${esc(p.status)} · ${esc(p.visibility)}</span></li>`,
   );
   renderList("publishedPresetList", published?.presets?.slice(0, 8), "게시 프리셋 없음", (p) =>
-    `<li><strong>${esc(p.id)} · ${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · ${esc(p.category || "general")}</span><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button></li>`,
+    `<li><strong>${esc(p.id)} · ${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · 신고 ${esc(p.reportCount)} · ${esc(p.category || "general")}</span><button class="mini select-published-preset" data-preset-id="${esc(p.id)}">선택</button><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button><button class="mini report-preset" data-preset-id="${esc(p.id)}">신고</button><button class="mini remove-published-preset" data-preset-id="${esc(p.id)}">숨김</button></li>`,
   );
 }
 
@@ -392,6 +416,22 @@ async function updatePreset() {
   }
 }
 
+async function updatePublishedPreset() {
+  const publishedPresetId = $("publishedPresetId").value.trim();
+  if (!/^\d+$/.test(publishedPresetId)) {
+    $("presetManageResult").textContent = "게시 프리셋 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await putJson(`/api/ai-network/presets/published/${publishedPresetId}`, publishedPresetPayload());
+    $("presetManageResult").textContent =
+      `게시 프리셋 수정 완료: published=${result.id} · revision=${result.revisionId} · ${result.status}`;
+    await refreshPresets();
+  } catch (e) {
+    $("presetManageResult").textContent = `게시 프리셋 수정 실패: ${e.message}`;
+  }
+}
+
 async function publishPreset() {
   const presetId = $("presetId").value.trim();
   if (!/^\d+$/.test(presetId)) {
@@ -426,6 +466,22 @@ async function deletePreset() {
   }
 }
 
+async function deletePublishedPreset(id = null) {
+  const publishedPresetId = String(id || $("publishedPresetId").value.trim());
+  if (!/^\d+$/.test(publishedPresetId)) {
+    $("presetManageResult").textContent = "게시 프리셋 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await deleteJson(`/api/ai-network/presets/published/${publishedPresetId}`);
+    $("presetManageResult").textContent = `게시 프리셋 숨김 완료: ${result.status}`;
+    await refreshPresets();
+    await refreshPresetModeration();
+  } catch (e) {
+    $("presetManageResult").textContent = `게시 프리셋 숨김 실패: ${e.message}`;
+  }
+}
+
 async function likePreset() {
   const publishedPresetId = $("publishedPresetId").value.trim();
   if (!/^\d+$/.test(publishedPresetId)) {
@@ -438,6 +494,67 @@ async function likePreset() {
     await refreshPresets();
   } catch (e) {
     $("presetManageResult").textContent = `따봉 실패: ${e.message}`;
+  }
+}
+
+async function reportPublishedPreset(id = null) {
+  const publishedPresetId = String(id || $("publishedPresetId").value.trim());
+  if (!/^\d+$/.test(publishedPresetId)) {
+    $("presetManageResult").textContent = "게시 프리셋 ID를 숫자로 입력하세요.";
+    return;
+  }
+  const reason = $("presetReportReason").value.trim() || "대시보드에서 신고됨";
+  try {
+    const result = await postJson(`/api/ai-network/presets/published/${publishedPresetId}/report`, {
+      reporterUserId: 0,
+      reason,
+    });
+    $("presetReportId").value = result.id || "";
+    $("presetManageResult").textContent = `신고 접수 완료: report=${result.id} · ${result.status}`;
+    await refreshPresets();
+    await refreshPresetModeration();
+  } catch (e) {
+    $("presetManageResult").textContent = `신고 실패: ${e.message}`;
+  }
+}
+
+function renderPresetModeration(summary) {
+  renderList("presetModerationList", summary?.queue?.slice(0, 12), "검토할 신고 없음", (item) =>
+    `<li><strong>${esc(item.publishedPresetId)} · ${esc(item.title)}</strong><span>${esc(item.status)} · 신고 ${esc(item.reportCount)} · ${esc((item.riskCodes || []).join(", ") || "none")}</span><button class="mini select-published-preset" data-preset-id="${esc(item.publishedPresetId)}">프리셋 선택</button></li>`,
+  );
+}
+
+async function refreshPresetModeration() {
+  try {
+    const [summary, reports] = await Promise.all([
+      getJson("/api/ai-network/presets/moderation/summary"),
+      getJson("/api/ai-network/presets/reports/open"),
+    ]);
+    renderPresetModeration(summary.summary);
+    const firstReport = reports.reports?.[0];
+    if (firstReport && !$("presetReportId").value.trim()) $("presetReportId").value = firstReport.id;
+    $("presetManageResult").textContent =
+      `신고 큐: 열린 신고 ${summary.summary?.openReportCount || 0}건 · 검토중 ${summary.summary?.underReviewCount || 0}개`;
+  } catch (e) {
+    $("presetManageResult").textContent = `신고 큐 로딩 실패: ${e.message}`;
+  }
+}
+
+async function reviewPresetReport() {
+  const reportId = $("presetReportId").value.trim();
+  if (!/^\d+$/.test(reportId)) {
+    $("presetManageResult").textContent = "신고 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/presets/reports/${reportId}/review`, {
+      decision: $("presetReportDecision").value,
+    });
+    $("presetManageResult").textContent = `신고 처리 완료: report=${result.id} · ${result.status}`;
+    await refreshPresets();
+    await refreshPresetModeration();
+  } catch (e) {
+    $("presetManageResult").textContent = `신고 처리 실패: ${e.message}`;
   }
 }
 
@@ -762,14 +879,25 @@ $("presetUpdate").addEventListener("click", updatePreset);
 $("presetPublish").addEventListener("click", publishPreset);
 $("presetDelete").addEventListener("click", deletePreset);
 $("presetLike").addEventListener("click", likePreset);
+$("publishedPresetUpdate").addEventListener("click", updatePublishedPreset);
+$("publishedPresetDelete").addEventListener("click", () => deletePublishedPreset());
+$("publishedPresetReport").addEventListener("click", () => reportPublishedPreset());
+$("presetModerationRefresh").addEventListener("click", refreshPresetModeration);
+$("presetReportReview").addEventListener("click", reviewPresetReport);
 $("presetConfirmImport").addEventListener("click", importPreset);
 $("multiSavePolicy").addEventListener("click", saveMultiPolicy);
 $("multiRefreshOps").addEventListener("click", refreshMultiOps);
 $("pseudoStreamPlan").addEventListener("click", planPseudoStream);
 $("launchChecklistRefresh").addEventListener("click", refreshLaunchChecklist);
 document.addEventListener("click", (event) => {
-  const button = event.target.closest(".preview-preset, .import-preset");
-  if (button) previewPresetImport(button.dataset.presetId);
+  const selectButton = event.target.closest(".select-published-preset");
+  if (selectButton) $("publishedPresetId").value = selectButton.dataset.presetId || "";
+  const previewButton = event.target.closest(".preview-preset, .import-preset");
+  if (previewButton) previewPresetImport(previewButton.dataset.presetId);
+  const reportButton = event.target.closest(".report-preset");
+  if (reportButton) reportPublishedPreset(reportButton.dataset.presetId);
+  const removeButton = event.target.closest(".remove-published-preset");
+  if (removeButton) deletePublishedPreset(removeButton.dataset.presetId);
 });
 loadWizardOptions();
 refreshPool();

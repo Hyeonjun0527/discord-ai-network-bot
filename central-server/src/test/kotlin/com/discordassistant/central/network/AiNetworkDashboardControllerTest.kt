@@ -29,6 +29,7 @@ import com.discordassistant.central.persistence.PublishedPresetEntity
 import com.discordassistant.central.persistence.PublishedPresetRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -100,6 +101,31 @@ class AiNetworkDashboardControllerTest
                 publishedPresets = publishedPresets,
                 presetImports = presetImports,
             )
+
+        @Test
+        fun `dashboard kill switch blocks read APIs before projection work`() {
+            val disabledController =
+                AiNetworkDashboardController(
+                    foundation = foundation,
+                    qualityFeedback = qualityFeedback,
+                    providerSafety = providerSafety,
+                    channelAis = channelAis,
+                    behaviorVersions = behaviorVersions,
+                    routingPolicies = routingPolicies,
+                    multiResponsePolicies = multiResponsePolicies,
+                    providerCapabilities = providerCapabilities,
+                    knowledgeSpaces = knowledgeSpaces,
+                    knowledgeSources = knowledgeSources,
+                    presets = presets,
+                    publishedPresets = publishedPresets,
+                    presetImports = presetImports,
+                    featureGate = AiNetworkFeatureGate(dashboardEnabled = false),
+                )
+
+            assertThrows(IllegalStateException::class.java) { disabledController.overview(100) }
+            assertThrows(IllegalStateException::class.java) { disabledController.dashboard(100) }
+            assertThrows(IllegalStateException::class.java) { disabledController.channels(100) }
+        }
 
         @Test
         fun `overview returns refreshed AI network snapshot`() {

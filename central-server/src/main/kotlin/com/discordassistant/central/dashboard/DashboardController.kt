@@ -1,5 +1,6 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.network.AiNetworkFeatureGate
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.relay.ConnectionRegistry
@@ -22,13 +23,15 @@ class DashboardController(
     private val policy: PolicyService,
     private val requests: AiRequestRepository,
     private val analytics: AnalyticsService,
+    private val featureGate: AiNetworkFeatureGate,
 ) {
     /** 서버 개요: 풀 크기·정책 요약·총 요청 수. */
     @GetMapping("/{guildId}/overview")
     fun overview(
         @PathVariable guildId: Long,
-    ): Map<String, Any?> =
-        mapOf(
+    ): Map<String, Any?> {
+        featureGate.requireDashboardEnabled()
+        return mapOf(
             "guildId" to guildId,
             "activeProviders" to registry.byGuild(guildId).size,
             "defaultModel" to policy.guildDefaultModel(guildId),
@@ -36,32 +39,39 @@ class DashboardController(
             "autoApprove" to policy.isAutoApprove(guildId),
             "totalRequests" to requests.countByGuildId(guildId),
         )
+    }
 
     /** 프로바이더 본인 처리 내역(#166): 부하 점수 + 최근 처리(프롬프트/유저 미포함). */
     @GetMapping("/provider/{providerId}/history")
     fun providerHistory(
         @PathVariable providerId: Long,
-    ): Map<String, Any?> =
-        mapOf(
+    ): Map<String, Any?> {
+        featureGate.requireDashboardEnabled()
+        return mapOf(
             "providerId" to providerId,
             "computeScore" to analytics.providerComputeScore(providerId),
             "recent" to analytics.providerHistory(providerId),
         )
+    }
 
     /** 사용량 트렌드(#227): 최근 days 일의 일자별 요청 수. */
     @GetMapping("/{guildId}/usage-trend")
     fun usageTrend(
         @PathVariable guildId: Long,
         @org.springframework.web.bind.annotation.RequestParam(defaultValue = "7") days: Int,
-    ): List<AnalyticsService.DailyCount> = analytics.usageTrend(guildId, days)
+    ): List<AnalyticsService.DailyCount> {
+        featureGate.requireDashboardEnabled()
+        return analytics.usageTrend(guildId, days)
+    }
 
     /** 최근 요청 로그(최대 20건). 프롬프트 본문 제외, 상태/제공자/시각만. */
     @GetMapping("/{guildId}/requests")
     fun requests(
         @PathVariable guildId: Long,
         @RequestParam(defaultValue = "public") audience: String = "public",
-    ): List<Map<String, Any?>> =
-        requests.findTop20ByGuildIdOrderByIdDesc(guildId).mapIndexed { index, request ->
+    ): List<Map<String, Any?>> {
+        featureGate.requireDashboardEnabled()
+        return requests.findTop20ByGuildIdOrderByIdDesc(guildId).mapIndexed { index, request ->
             val visibility = DashboardAudience.from(audience)
             buildMap {
                 val providerId = request.providerId
@@ -76,6 +86,7 @@ class DashboardController(
                 put("createdAt", request.createdAt.toString())
             }
         }
+    }
 
     private fun providerLabel(
         guildId: Long,

@@ -1,5 +1,6 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.network.AiNetworkFeatureGate
 import com.discordassistant.central.network.AiNetworkFoundationService
 import com.discordassistant.central.network.AiQualityFeedbackService
 import com.discordassistant.central.network.ModelQualitySummary
@@ -41,6 +42,7 @@ class AiNetworkDashboardController(
     private val presets: AiPresetRepository,
     private val publishedPresets: PublishedPresetRepository,
     private val presetImports: PresetImportRepository,
+    private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
     @GetMapping("/{guildId}/dashboard")
     fun dashboard(
@@ -49,6 +51,7 @@ class AiNetworkDashboardController(
         @RequestParam(defaultValue = "balanced") responseMode: String = "balanced",
         @RequestParam(defaultValue = "1") requestedCandidates: Int = 1,
     ): AiNetworkDashboardResponse {
+        featureGate.requireDashboardEnabled()
         val overview = overview(guildId)
         val channels = channels(guildId)
         val providers = providers(guildId, audience)
@@ -83,6 +86,7 @@ class AiNetworkDashboardController(
         @PathVariable guildId: Long,
         @RequestParam(defaultValue = "true") refresh: Boolean = true,
     ): AiNetworkOverviewResponse {
+        featureGate.requireDashboardEnabled()
         val profile = foundation.ensureNetworkProfile(guildId)
         val overview =
             if (refresh) {
@@ -103,8 +107,9 @@ class AiNetworkDashboardController(
     @GetMapping("/{guildId}/channels")
     fun channels(
         @PathVariable guildId: Long,
-    ): List<ChannelAiCardResponse> =
-        channelAis.findByGuildId(guildId).map { channelAi ->
+    ): List<ChannelAiCardResponse> {
+        featureGate.requireDashboardEnabled()
+        return channelAis.findByGuildId(guildId).map { channelAi ->
             val behavior = channelAi.activeBehaviorVersionId?.let { behaviorVersions.findByChannelAiIdAndId(channelAi.id, it) }
             val route = routingPolicies.findByGuildIdAndChannelId(guildId, channelAi.channelId)
             val spaces = knowledgeSpaces.findByGuildIdAndChannelId(guildId, channelAi.channelId)
@@ -158,12 +163,14 @@ class AiNetworkDashboardController(
                 updatedAt = channelAi.updatedAt.toString(),
             )
         }
+    }
 
     @GetMapping("/{guildId}/providers")
     fun providers(
         @PathVariable guildId: Long,
         @RequestParam(defaultValue = "public") audience: String = "public",
     ): List<ProviderCapabilityResponse> {
+        featureGate.requireDashboardEnabled()
         val visibility = DashboardAudience.from(audience)
         return providerCapabilities.findByGuildId(guildId).mapIndexed { index, provider ->
             ProviderCapabilityResponse(
@@ -187,6 +194,7 @@ class AiNetworkDashboardController(
     fun modelMap(
         @PathVariable guildId: Long,
     ): List<ModelMapResponse> {
+        featureGate.requireDashboardEnabled()
         val modelToChannels = modelChannelUsage(guildId)
         return providerCapabilities
             .findByGuildId(guildId)
@@ -224,8 +232,9 @@ class AiNetworkDashboardController(
     @GetMapping("/{guildId}/knowledge-spaces")
     fun knowledgeSpaces(
         @PathVariable guildId: Long,
-    ): List<KnowledgeSpaceResponse> =
-        knowledgeSpaces.findByGuildId(guildId).map {
+    ): List<KnowledgeSpaceResponse> {
+        featureGate.requireDashboardEnabled()
+        return knowledgeSpaces.findByGuildId(guildId).map {
             KnowledgeSpaceResponse(
                 id = it.id,
                 channelId = it.channelId,
@@ -239,12 +248,14 @@ class AiNetworkDashboardController(
                 updatedAt = it.updatedAt.toString(),
             )
         }
+    }
 
     @GetMapping("/{guildId}/presets")
     fun guildPresets(
         @PathVariable guildId: Long,
-    ): Map<String, Any> =
-        mapOf(
+    ): Map<String, Any> {
+        featureGate.requireDashboardEnabled()
+        return mapOf(
             "guildId" to guildId,
             "local" to
                 presets.findByGuildId(guildId).map {
@@ -269,10 +280,12 @@ class AiNetworkDashboardController(
                     )
                 },
         )
+    }
 
     @GetMapping("/presets/published")
-    fun publishedPresets(): List<PublishedPresetResponse> =
-        publishedPresets.findByStatusOrderByLikeCountDescPublishedAtDesc("published").map {
+    fun publishedPresets(): List<PublishedPresetResponse> {
+        featureGate.requireDashboardEnabled()
+        return publishedPresets.findByStatusOrderByLikeCountDescPublishedAtDesc("published").map {
             PublishedPresetResponse(
                 id = it.id,
                 slug = it.slug,
@@ -286,6 +299,7 @@ class AiNetworkDashboardController(
                 publishedAt = it.publishedAt.toString(),
             )
         }
+    }
 
     private fun nextActions(
         overview: AiNetworkOverviewResponse,

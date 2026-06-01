@@ -24,6 +24,9 @@ class DashboardServingTest
             mvc.perform(get("/dashboard/index.html")).andExpect(status().isOk)
             mvc.perform(get("/dashboard/app.js")).andExpect(status().isOk)
             mvc.perform(get("/dashboard/style.css")).andExpect(status().isOk)
+            mvc.perform(get("/presets/index.html")).andExpect(status().isOk)
+            mvc.perform(get("/presets/app.js")).andExpect(status().isOk)
+            mvc.perform(get("/presets/style.css")).andExpect(status().isOk)
         }
 
         @Test
@@ -115,6 +118,36 @@ class DashboardServingTest
         fun `디렉터리 URL 도 index 로 포워드된다`() {
             mvc.perform(get("/dashboard/")).andExpect(status().isOk)
             mvc.perform(get("/dashboard")).andExpect(status().isOk)
+            mvc.perform(get("/presets/")).andExpect(status().isOk)
+            mvc.perform(get("/presets")).andExpect(status().isOk)
+        }
+
+        @Test
+        fun `공개 프리셋 웹 카탈로그가 목록 미리보기 가져오기를 제공한다`() {
+            val html =
+                mvc
+                    .perform(get("/presets/index.html"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+            val js =
+                mvc
+                    .perform(get("/presets/app.js"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+
+            assertTrue(html.contains("nyassistant") || html.contains("confirmImport"))
+            assertTrue(html.contains("""id="catalog""""))
+            assertTrue(html.contains("""id="confirmImport""""))
+            assertTrue(html.contains("""id="likePreset""""))
+            assertTrue(js.contains("/api/ai-network/presets/catalog?"))
+            assertTrue(js.contains("/api/ai-network/presets/catalog/${'$'}{selectedPresetId}"))
+            assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{selectedPresetId}/import-preview"))
+            assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{pendingImport.publishedPresetId}/import"))
+            assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{id}/like"))
         }
 
         @Test

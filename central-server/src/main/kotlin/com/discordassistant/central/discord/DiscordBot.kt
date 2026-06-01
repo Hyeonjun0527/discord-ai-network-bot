@@ -320,6 +320,36 @@ class DiscordBot(
                 Commands
                     .slash("ai-preset-like", "공개 AI 프리셋에 좋아요를 누릅니다")
                     .addOption(OptionType.STRING, "published-id", "좋아요할 공개 프리셋 ID", true),
+                Commands
+                    .slash("ai-multi-response-status", "다중응답 정책/부하/위험 상태를 봅니다(관리자)")
+                    .addOption(OptionType.CHANNEL, "channel", "확인할 채널(비우면 현재 채널)", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-multi-response-set", "현재 또는 선택 채널의 다중응답 정책을 저장합니다(관리자)")
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "mode", "single/compare/debate", true)
+                            .addChoice("단일 답변", "single")
+                            .addChoice("후보 비교", "compare")
+                            .addChoice("관점 비교", "debate"),
+                    ).addOption(OptionType.INTEGER, "candidates", "후보 수(1~3)", true)
+                    .addOption(OptionType.BOOLEAN, "synthesis", "후보 답변 합성 사용", false)
+                    .addOption(OptionType.BOOLEAN, "distinct-models", "서로 다른 모델 우선", false)
+                    .addOption(OptionType.INTEGER, "timeout", "타임아웃 초(10~300)", false)
+                    .addOption(OptionType.CHANNEL, "channel", "설정할 채널(비우면 현재 채널)", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-multi-response-dry-run", "다중응답 fan-out 후보와 RAG 컨텍스트를 안전하게 드라이런합니다(관리자)")
+                    .addOption(OptionType.STRING, "prompt", "테스트 질문/프롬프트", true)
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "mode", "응답 속도/품질 모드", false)
+                            .addChoice("빠른 답변", "fast")
+                            .addChoice("균형 모드", "balanced")
+                            .addChoice("깊은 답변", "deep")
+                            .addChoice("절약 모드", "saving"),
+                    ).addOption(OptionType.CHANNEL, "channel", "드라이런할 채널(비우면 현재 채널)", false)
+                    .setDefaultPermissions(adminPerm),
                 Commands.slash("bot-permissions", "봇 권한과 @멘션 호출 설정을 점검합니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands.slash("ask-long", "긴 질문을 모달 창으로 입력합니다"),
                 // 컨텍스트 메뉴(#181): 메시지 우클릭 → 그 내용으로 질문
@@ -1241,6 +1271,28 @@ class DiscordBot(
                         confirmConflicts = event.getOption("confirm-conflicts")?.asBoolean ?: false,
                     )
                 "ai-preset-like" -> commands.likePreset(ctx, event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L)
+                "ai-multi-response-status" ->
+                    commands.multiResponseStatus(
+                        ctx,
+                        channelId = event.getOption("channel")?.asChannel?.idLong,
+                    )
+                "ai-multi-response-set" ->
+                    commands.setMultiResponsePolicy(
+                        ctx,
+                        channelId = event.getOption("channel")?.asChannel?.idLong,
+                        mode = event.getOption("mode")!!.asString,
+                        maxCandidates = event.getOption("candidates")!!.asInt,
+                        synthesisEnabled = event.getOption("synthesis")?.asBoolean ?: false,
+                        requireDistinctModels = event.getOption("distinct-models")?.asBoolean ?: false,
+                        timeoutSeconds = event.getOption("timeout")?.asInt ?: 120,
+                    )
+                "ai-multi-response-dry-run" ->
+                    commands.multiResponseDryRun(
+                        ctx,
+                        prompt = event.getOption("prompt")!!.asString,
+                        channelId = event.getOption("channel")?.asChannel?.idLong,
+                        responseMode = event.getOption("mode")?.asString,
+                    )
                 "welcome" -> commands.welcome(ctx)
                 "llm-welcome-set" -> commands.setWelcome(ctx, event.getOption("message")!!.asString)
                 "provider-join" -> commands.providerJoin(ctx)

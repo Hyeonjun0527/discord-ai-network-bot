@@ -9,6 +9,7 @@ import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
+import com.discordassistant.central.network.MultiResponseService
 import com.discordassistant.central.network.NetworkLaunchChecklist
 import com.discordassistant.central.network.PresetRegistryService
 import com.discordassistant.central.network.PublishedPresetSummary
@@ -62,6 +63,7 @@ class CommandService(
     private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
     private val aiNetworkMap: AiNetworkMapService,
     private val presetRegistry: PresetRegistryService,
+    private val multiResponse: MultiResponseService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
 ) {
@@ -313,6 +315,7 @@ class CommandService(
             sb.append("· `/ai-knowledge-list` `/ai-knowledge-add` `/ai-knowledge-search` — 채널 지식공간/RAG 소스 관리\n")
             sb.append("· `/ai-knowledge-index-plan` `/ai-knowledge-approve` `/ai-knowledge-delete` — 색인계획·검토·삭제\n")
             sb.append("· `/ai-preset-catalog` `/ai-preset-import` — 프리셋 공유 목록 보기·현재 채널에 가져오기\n")
+            sb.append("· `/ai-multi-response-status` `/ai-multi-response-set` `/ai-multi-response-dry-run` — 다중응답 정책·상태·안전 드라이런\n")
             sb.append("· `/ai-network-check` — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
             sb.append("· `/사용자차단`(`/llm-block`) `/차단해제`(`/llm-unblock`) — 사용자 차단/해제\n")
         }
@@ -644,6 +647,135 @@ class CommandService(
             "상태: `${imported.status}` · 보관함 프리셋: `${imported.importedPresetId ?: "-"}`\n" +
             "채널 AI: `${imported.createdChannelAiId ?: "-"}` · 행동 버전: `${imported.createdBehaviorVersionId ?: "-"}`\n" +
             "이제 이 채널에서 질문하면 가져온 프리셋의 역할·말투·응답 정책이 적용됩니다."
+
+    fun multiResponseStatus(
+        ctx: CommandContext,
+        channelId: Long? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val targetChannelId = channelId ?: ctx.channelId
+        return runCatching {
+            val summary = multiResponse.operationsSummary(ctx.guildId, targetChannelId)
+            val riskText = summary.riskCodes.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "none"
+            val nextActions =
+                summary.nextActions
+                    .take(4)
+                    .joinToString("\n") { "• $it" }
+                    .ifBlank { "• 지금은 추가 조치가 없습니다." }
+            val topLoad =
+                summary.providerLoads
+                    .take(3)
+                    .joinToString("\n") { load ->
+                        "• Provider ${kotlin.math.abs(load.providerUserId.hashCode()).toString(36).take(6)} — " +
+                            "후보 ${load.candidateCount} · 완료 ${load.completedCount} · timeout ${load.timeoutCount} · risk `${load.loadRisk}`"
+                    }.ifBlank { "• 최근 fan-out 부하 기록 없음" }
+            val averageFanout = "%.1f".format(summary.averageActualFanout)
+            Reply(
+                "🧪 **다중응답 운영 상태** <#$targetChannelId>\n\n" +
+                    "상태: `${summary.status}` · 고급 모드 안전: `${summary.safeToEnableAdvanced}`\n" +
+                    "최근 실행: ${summary.recentRunCount} · 완료 ${summary.completedRunCount} · fallback ${summary.fallbackRunCount}\n" +
+                    "평균 fan-out: $averageFanout · 선택 후보 ${summary.acceptedCandidateCount} · " +
+                    "timeout ${summary.timeoutCandidateCount}\n" +
+                    "Provider 부하: high ${summary.highLoadProviderCount} · critical ${summary.criticalLoadProviderCount}\n" +
+                    "RAG fallback ${summary.ragFallbackRunCount} · 민감질문 차단 ${summary.blockedSensitiveRunCount} · " +
+                    "Provider 없음 ${summary.noProviderRunCount}\n" +
+                    "위험 코드: `$riskText`\n\n" +
+                    "__Provider 부하__\n$topLoad\n\n" +
+                    "__다음 행동__\n$nextActions",
+            )
+        }.getOrElse { error ->
+            Replies.warn("다중응답 상태를 불러오지 못했어요. ${error.message ?: "설정/기능 플래그를 확인해 주세요."}")
+        }
+    }
+
+    fun setMultiResponsePolicy(
+        ctx: CommandContext,
+        channelId: Long? = null,
+        mode: String = "single",
+        maxCandidates: Int = 1,
+        synthesisEnabled: Boolean = false,
+        requireDistinctModels: Boolean = false,
+        timeoutSeconds: Int = 120,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val normalizedMode =
+            when (mode.trim().lowercase()) {
+                "single", "단일" -> "single"
+                "compare", "비교" -> "compare"
+                "debate", "토론" -> "debate"
+                "deep", "깊은" -> "compare"
+                else -> "single"
+            }
+        val targetChannelId = channelId ?: ctx.channelId
+        return runCatching {
+            val policy =
+                multiResponse.savePolicy(
+                    guildId = ctx.guildId,
+                    channelId = targetChannelId,
+                    channelAiId = null,
+                    mode = normalizedMode,
+                    maxCandidates = maxCandidates,
+                    requireDistinctModels = requireDistinctModels,
+                    providerDailyLimit = 0,
+                    timeoutSeconds = timeoutSeconds,
+                    synthesisEnabled = synthesisEnabled,
+                )
+            val safetyNote =
+                if (policy.maxCandidates > 1 || policy.synthesisEnabled) {
+                    "\n⚠️ 고급 fan-out은 `multi-response` 태그로 opt-in 한 Provider만 쓰고, 과부하/민감질문이면 자동 차단됩니다."
+                } else {
+                    ""
+                }
+            Replies.ok(
+                "다중응답 정책을 저장했습니다. <#$targetChannelId>\n" +
+                    "mode: `${policy.mode}` · 후보: `${policy.maxCandidates}` · 서로 다른 모델 우선: `${policy.requireDistinctModels}`\n" +
+                    "합성: `${policy.synthesisEnabled}` · 타임아웃: `${policy.timeoutSeconds}s`$safetyNote",
+            )
+        }.getOrElse { error ->
+            Replies.warn("다중응답 정책을 저장하지 못했어요. ${error.message ?: "입력값을 확인해 주세요."}")
+        }
+    }
+
+    fun multiResponseDryRun(
+        ctx: CommandContext,
+        prompt: String,
+        channelId: Long? = null,
+        responseMode: String? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val targetChannelId = channelId ?: ctx.channelId
+        val mode =
+            normalizeAskResponseMode(responseMode)
+                ?: channelRoutingPolicies
+                    .effective(ctx.guildId, targetChannelId, null)
+                    .responseMode
+        return runCatching {
+            val run =
+                multiResponse.startRun(
+                    guildId = ctx.guildId,
+                    channelId = targetChannelId,
+                    requestId = "discord-dry-${System.currentTimeMillis()}",
+                    promptPreview = prompt,
+                    responseMode = mode,
+                )
+            val next =
+                when (run.status) {
+                    "running" -> "후보 Provider가 계획되었습니다. 실제 답변 fan-out은 옵트인 단계에서만 연결하세요."
+                    "blocked_sensitive" -> "민감정보처럼 보여 fan-out을 차단했습니다. 단일 안전 경로로 안내하세요."
+                    "no_provider" -> "온라인 Provider, `multi-response` opt-in 태그, 과부하 상태를 확인하세요."
+                    else -> run.failureReason ?: "상태를 확인하세요."
+                }
+            Reply(
+                "🧪 **다중응답 드라이런** <#$targetChannelId>\n" +
+                    "run: `${run.id}` · status: `${run.status}` · 후보: `${run.candidateCount}`\n" +
+                    "RAG: `${run.ragContextStatus ?: "unknown"}` · context chars: `${run.ragContextChars}`\n" +
+                    "모드: `$mode`\n\n" +
+                    "다음 행동: $next",
+            )
+        }.getOrElse { error ->
+            Replies.warn("다중응답 드라이런을 만들지 못했어요. ${error.message ?: "정책/Provider 상태를 확인해 주세요."}")
+        }
+    }
 
     fun aiNetworkMap(ctx: CommandContext): Reply {
         adminOnly(ctx)?.let { return it }

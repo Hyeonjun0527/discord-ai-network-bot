@@ -75,6 +75,9 @@ class CommandServiceTest
             assertTrue(admin.contains("/ai-knowledge-delete"))
             assertTrue(admin.contains("/ai-preset-catalog"))
             assertTrue(admin.contains("/ai-preset-import"))
+            assertTrue(admin.contains("/ai-multi-response-status"))
+            assertTrue(admin.contains("/ai-multi-response-set"))
+            assertTrue(admin.contains("/ai-multi-response-dry-run"))
             assertTrue(admin.contains("/ai-network-check"))
         }
 
@@ -243,6 +246,53 @@ class CommandServiceTest
             assertTrue(imported.content.contains("프리셋을 현재 채널에 가져왔습니다"))
             assertTrue(imported.content.contains("상태: `applied`"))
             assertTrue(imported.content.contains("채널 AI:"))
+        }
+
+        @Test
+        fun `multi response commands — Discord에서 정책 상태 드라이런을 관리한다`() {
+            val g = CommandContext(guildId = 77995, channelId = 88995, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = g.guildId,
+                    providerUserId = 701,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3.1:8b",
+                    capabilityTags = "coding,multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+
+            assertTrue(commands.multiResponseStatus(g.copy(isAdmin = false)).content.contains("관리자만"))
+
+            val saved =
+                commands.setMultiResponsePolicy(
+                    g,
+                    mode = "compare",
+                    maxCandidates = 2,
+                    synthesisEnabled = true,
+                    requireDistinctModels = true,
+                    timeoutSeconds = 90,
+                )
+            assertTrue(saved.content.contains("다중응답 정책을 저장했습니다"))
+            assertTrue(saved.content.contains("mode: `compare`"))
+            assertTrue(saved.content.contains("후보: `2`"))
+            assertTrue(saved.content.contains("opt-in"))
+
+            val dryRun = commands.multiResponseDryRun(g, prompt = "Kotlin Spring 설정을 비교해줘", responseMode = "deep")
+            assertTrue(dryRun.content.contains("다중응답 드라이런"))
+            assertTrue(dryRun.content.contains("status: `running`"), dryRun.content)
+            assertTrue(dryRun.content.contains("후보: `1`"), dryRun.content)
+
+            val status = commands.multiResponseStatus(g).content
+            assertTrue(status.contains("다중응답 운영 상태"))
+            assertTrue(status.contains("최근 실행: 1"), status)
+            assertTrue(status.contains("Provider 부하"))
+
+            val blocked = commands.multiResponseDryRun(g, prompt = "내 DISCORD_BOT_TOKEN=abc 를 여러 Provider로 비교해줘")
+            assertTrue(blocked.content.contains("blocked_sensitive"), blocked.content)
+            assertTrue(blocked.content.contains("fan-out을 차단"), blocked.content)
         }
 
         @Test

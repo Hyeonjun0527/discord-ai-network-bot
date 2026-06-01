@@ -67,6 +67,27 @@ object CommandLoc {
             "ai-preset-catalog" to L("프리셋목록", null, "Browse shared AI presets", "Список пресетов ИИ"),
             "ai-preset-import" to L("프리셋가져오기", null, "Import a shared preset into this channel", "Импорт пресета"),
             "ai-preset-like" to L("프리셋좋아요", null, "Like a shared AI preset", "Лайк пресета"),
+            "ai-multi-response-status" to
+                L(
+                    "다중응답상태",
+                    null,
+                    "Show multi-response operations status (admin)",
+                    "Статус мульти-ответа (админ)",
+                ),
+            "ai-multi-response-set" to
+                L(
+                    "다중응답설정",
+                    null,
+                    "Save multi-response policy (admin)",
+                    "Настройка мульти-ответа (админ)",
+                ),
+            "ai-multi-response-dry-run" to
+                L(
+                    "다중응답실험",
+                    null,
+                    "Safely dry-run multi-response fan-out (admin)",
+                    "Пробный мульти-ответ (админ)",
+                ),
             "bot-permissions" to L("봇권한", null, "Check bot permissions and mention setup (admin)", "Права бота (админ)"),
             "ask-long" to L("긴질문", null, "Enter a long question via modal", "Длинный вопрос (модальное окно)"),
         )

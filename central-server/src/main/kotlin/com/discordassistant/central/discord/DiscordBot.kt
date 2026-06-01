@@ -198,10 +198,15 @@ class DiscordBot(
                             .addChoice("English", "en"),
                     ).setDefaultPermissions(adminPerm),
                 Commands
-                    .slash("llm-channel-profile", "이 채널의 AI 응답 프로필명을 설정합니다(관리자)")
+                    .slash("llm-channel-profile", "이 채널의 AI 이름·역할·말투를 설정합니다(관리자)")
                     .addOption(OptionType.STRING, "name", "이 채널에서 보일 AI 응답 이름(예: 냥시스턴트)", false)
                     .addOption(OptionType.ATTACHMENT, "avatar", "선택: 응답 프로필 아이콘 이미지 파일", false)
                     .addOption(OptionType.STRING, "avatar-url", "선택: 이미지 URL(파일 업로드가 어려울 때)", false)
+                    .addOption(OptionType.STRING, "purpose", "선택: 이 채널 AI의 역할(예: Kotlin 개발 도우미)", false)
+                    .addOption(OptionType.STRING, "tone", "선택: 말투(예: 친근하게, 전문적으로, 짧고 명확하게)", false)
+                    .addOption(OptionType.STRING, "answer-length", "선택: 답변 길이(예: 짧게, 균형, 자세히)", false)
+                    .addOption(OptionType.STRING, "constitution", "선택: 이 채널에서 지킬 AI 헌법/규칙", false)
+                    .addOption(OptionType.BOOLEAN, "rollback", "직전 행동 버전으로 롤백합니다", false)
                     .addOption(OptionType.BOOLEAN, "reset", "설정을 지우고 기본 봇 표시로 되돌립니다", false)
                     .setDefaultPermissions(adminPerm),
                 Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)").setDefaultPermissions(adminPerm),
@@ -748,6 +753,11 @@ class DiscordBot(
                             event.getOption("name")?.asString,
                             avatar?.url ?: event.getOption("avatar-url")?.asString,
                             event.getOption("reset")?.asBoolean ?: false,
+                            rollback = event.getOption("rollback")?.asBoolean ?: false,
+                            purpose = event.getOption("purpose")?.asString,
+                            tone = event.getOption("tone")?.asString,
+                            answerLength = event.getOption("answer-length")?.asString,
+                            constitution = event.getOption("constitution")?.asString,
                         )
                     }
                 }

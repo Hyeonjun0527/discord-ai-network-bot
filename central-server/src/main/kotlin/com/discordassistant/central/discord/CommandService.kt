@@ -75,9 +75,10 @@ class CommandService(
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
+        val effectivePrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { prompt.withChannelAiBehavior(it) } ?: prompt
         val result =
             orchestrator.handle(
-                AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, prompt, ctx.roleIds, isAdmin = ctx.isAdmin),
+                AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, effectivePrompt, ctx.roleIds, isAdmin = ctx.isAdmin),
             )
         return when (result.state) {
             RequestState.COMPLETED -> Reply(result.text.orEmpty(), ephemeral = false)
@@ -166,6 +167,22 @@ class CommandService(
 
     fun privacy(ctx: CommandContext): Reply = Reply(Messages.get(Messages.Key.PRIVACY_NOTICE, lang(ctx)))
 
+    private fun String.withChannelAiBehavior(profile: ChannelAiProfile): String =
+        buildString {
+            appendLine("[채널 AI 행동 설정]")
+            appendLine("이름: ${profile.displayName}")
+            appendLine("역할: ${profile.purpose}")
+            appendLine("말투: ${profile.tone}")
+            appendLine("답변 길이: ${profile.answerLength}")
+            appendLine("안전 규칙: ${profile.constitution ?: DEFAULT_CHANNEL_AI_CONSTITUTION}")
+            appendLine()
+            appendLine("위 설정을 이 채널의 AI 정체성으로 지키되, 사용자의 질문에만 답하세요.")
+            appendLine("민감정보나 비밀키 입력을 유도하지 말고, 모르면 모른다고 말하세요.")
+            appendLine()
+            appendLine("[사용자 질문]")
+            append(this@withChannelAiBehavior)
+        }
+
     /** 종합 도움말(차수 13 #183). 권한별 섹션 노출(#186). */
     fun help(ctx: CommandContext): Reply {
         val sb = StringBuilder()
@@ -200,11 +217,22 @@ class CommandService(
         name: String?,
         avatarUrl: String?,
         reset: Boolean,
+        rollback: Boolean = false,
+        purpose: String? = null,
+        tone: String? = null,
+        answerLength: String? = null,
+        constitution: String? = null,
     ): Reply {
         adminOnly(ctx)?.let { return it }
         if (reset) {
             channelProfiles.clear(ctx.guildId, ctx.channelId)
             return Reply("✅ 이 채널의 AI 응답 프로필을 기본 봇 표시로 되돌렸습니다.")
+        }
+        if (rollback) {
+            val profile =
+                channelProfiles.rollback(ctx.guildId, ctx.channelId, actorId = ctx.userId)
+                    ?: return Reply("현재 이 채널의 AI 응답 프로필은 설정되지 않았습니다.")
+            return Reply("↩️ 이 채널 AI 행동 설정을 v${profile.version}(으)로 롤백했습니다. 현재 이름: **${profile.displayName}**")
         }
         val displayName = name?.trim().orEmpty()
         if (displayName.isBlank()) {
@@ -212,14 +240,33 @@ class CommandService(
             return if (current == null) {
                 Reply("현재 이 채널의 AI 응답 프로필은 설정되지 않았습니다. `name` 옵션으로 설정하세요.")
             } else {
-                Reply("현재 이 채널의 AI 응답 프로필: **${current.displayName}**")
+                val constitutionText = current.constitution ?: "기본 안전 규칙"
+                Reply(
+                    "현재 이 채널 AI: **${current.displayName}**\n" +
+                        "행동 버전: v${current.version}\n" +
+                        "역할: `${current.purpose}` · 말투: `${current.tone}` · 길이: `${current.answerLength}`\n" +
+                        "헌법: $constitutionText",
+                )
             }
         }
-        val profile = channelProfiles.set(ctx.guildId, ctx.channelId, displayName, avatarUrl)
+        val profile =
+            channelProfiles.set(
+                ctx.guildId,
+                ctx.channelId,
+                displayName,
+                avatarUrl,
+                actorId = ctx.userId,
+                purpose = purpose,
+                tone = tone,
+                answerLength = answerLength,
+                constitution = constitution,
+            )
         val avatarLine = if (profile.avatarUrl.isNullOrBlank()) "" else "아이콘 이미지도 함께 설정했습니다.\n"
         return Reply(
-            "✅ 이 채널의 AI 응답 프로필을 **${profile.displayName}**(으)로 설정했습니다.\n" +
+            "✅ 이 채널 AI를 **${profile.displayName}**(으)로 설정했습니다.\n" +
                 avatarLine +
+                "행동 버전: v${profile.version}\n" +
+                "역할: `${profile.purpose}` · 말투: `${profile.tone}` · 길이: `${profile.answerLength}`\n" +
                 "이후 `/ask` 답변은 이 채널에서 그 이름으로 보입니다. 봇에 `웹후크 관리` 권한이 필요해요.",
         )
     }

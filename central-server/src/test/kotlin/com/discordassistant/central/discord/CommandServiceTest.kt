@@ -190,6 +190,36 @@ class CommandServiceTest
         }
 
         @Test
+        fun `ask — 채널 AI 설정이 있으면 행동 설정을 프롬프트에 반영한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 78, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                commands.setChannelAiProfile(
+                    ctx(admin = true),
+                    name = "코드냥",
+                    avatarUrl = null,
+                    reset = false,
+                    purpose = "Kotlin 개발 도우미",
+                    tone = "짧고 명확하게",
+                    answerLength = "짧게",
+                    constitution = "코드는 실행 가능한 예시 위주로 답합니다.",
+                )
+
+                val r = commands.ask(ctx(), "코드 설명")
+
+                assertTrue(r.content.contains("[채널 AI 행동 설정]"))
+                assertTrue(r.content.contains("이름: 코드냥"))
+                assertTrue(r.content.contains("역할: Kotlin 개발 도우미"))
+                assertTrue(r.content.contains("[사용자 질문]"))
+                assertTrue(r.content.endsWith("코드 설명"))
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
         fun `rate limit — 분당 초과 차단`() {
             val c = CommandContext(guildId = 100, channelId = 200, userId = 8888, roleIds = setOf(1), isAdmin = false)
             repeat(10) { commands.ask(c, "q") }

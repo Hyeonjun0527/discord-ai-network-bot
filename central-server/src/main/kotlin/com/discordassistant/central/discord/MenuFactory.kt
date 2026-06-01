@@ -128,9 +128,9 @@ object MenuFactory {
         val defaults = currentChannelIds.distinct().take(25).map { DefaultValue.channel(it) }
         val placeholder =
             if (currentChannelIds.isEmpty()) {
-                "사용 채널: 전체 허용 중 · 특정 채널만 쓰려면 여러 개 체크"
+                "사용 채널: 전체 허용 중 · 특정 채널만 쓰려면 한 번에 여러 개 체크"
             } else {
-                "사용 채널: 현재 ${currentChannelIds.size}개 선택됨 · 한 번에 여러 개 수정"
+                "현재 사용 채널 ${currentChannelIds.size}개 선택됨 · 한 번에 체크를 바꾸고 저장"
             }
         return EntitySelectMenu
             .create(CHANNEL, EntitySelectMenu.SelectTarget.CHANNEL)

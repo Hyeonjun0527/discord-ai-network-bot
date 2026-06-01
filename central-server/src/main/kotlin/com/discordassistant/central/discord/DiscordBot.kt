@@ -738,10 +738,10 @@ class DiscordBot(
                 ),
                 ActionRow.of(MenuFactory.channelSelect(effectiveAllowedChannelIds(ctx))),
                 ActionRow.of(
-                    Button.success(MenuFactory.CHANNEL_ALL, "모든 채널 허용"),
-                    Button.primary(MenuFactory.SAVE_SETTINGS, "저장"),
-                    Button.primary(MenuFactory.AUTO_APPROVE_ON, "자동 승인 켜기"),
-                    Button.secondary(MenuFactory.AUTO_APPROVE_OFF, "자동 승인 끄기"),
+                    Button.secondary(MenuFactory.CHANNEL_ALL, "사용 채널: 전체 허용으로 선택"),
+                    Button.success(MenuFactory.SAVE_SETTINGS, "선택한 설정 저장"),
+                    Button.secondary(MenuFactory.AUTO_APPROVE_ON, "자동 승인 켜짐으로 선택"),
+                    Button.secondary(MenuFactory.AUTO_APPROVE_OFF, "자동 승인 꺼짐으로 선택"),
                 ),
             )
 

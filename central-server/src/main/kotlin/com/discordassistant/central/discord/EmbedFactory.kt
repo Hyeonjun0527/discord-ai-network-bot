@@ -137,7 +137,7 @@ object EmbedFactory {
                 currentBlock +
                     "아래 값은 **저장 후 적용될 설정 미리보기**입니다. " +
                     "언어·기본 모델·사용 채널·자동 승인을 모두 고른 뒤 **저장**을 누르면 한 번에 적용됩니다.\n" +
-                    "채널 드롭다운은 한 번 열어서 여러 채널을 체크할 수 있어요." +
+                    "현재 사용 채널은 아래에 먼저 보여주고, 채널 드롭다운은 한 번 열어서 여러 채널을 체크할 수 있어요." +
                     pendingBlock,
             ).addField("🌐 언어", if (language.equals("en", true)) "English" else "한국어", true)
             .addField(
@@ -152,7 +152,7 @@ object EmbedFactory {
                 "✅ 프로바이더 자동 승인",
                 if (autoApprove) "켜짐 — 신청 즉시 참여" else "꺼짐 — 관리자 승인 필요",
                 true,
-            ).setFooter("드롭다운에서 여러 채널을 한 번에 선택하고 저장하세요. 빨간 버튼은 위험 작업에만 씁니다.")
+            ).setFooter("드롭다운에서 여러 채널을 한 번에 선택하고 마지막에 저장하세요. 빨간 버튼은 위험 작업에만 씁니다.")
             .build()
     }
 }

@@ -1,10 +1,13 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.network.KnowledgeIngestionService
+import com.discordassistant.central.network.KnowledgeSearchService
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 /** 채널별 RAG 지식공간 관리 API. 실제 chunk/embed 작업자는 후속 worker가 이 metadata를 소비한다. */
@@ -12,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/ai-network/knowledge")
 class KnowledgeIngestionController(
     private val ingestion: KnowledgeIngestionService,
+    private val search: KnowledgeSearchService,
 ) {
     @PostMapping("/{guildId}/spaces")
     fun createSpace(
@@ -61,6 +65,24 @@ class KnowledgeIngestionController(
         return mapOf("id" to source.id, "status" to source.status, "indexedAt" to source.indexedAt?.toString())
     }
 
+    @GetMapping("/{guildId}/search")
+    fun search(
+        @PathVariable guildId: Long,
+        @RequestParam query: String,
+        @RequestParam(defaultValue = "5") limit: Int,
+    ) = search.search(guildId, query, limit)
+
+    @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/delete")
+    fun removeSource(
+        @PathVariable guildId: Long,
+        @PathVariable spaceId: Long,
+        @PathVariable sourceId: Long,
+        @RequestBody request: DeleteKnowledgeSourceRequest,
+    ): Map<String, Any?> {
+        val source = ingestion.removeSource(guildId, spaceId, sourceId, request.reason)
+        return mapOf("id" to source.id, "status" to source.status)
+    }
+
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/reject")
     fun reject(
         @PathVariable guildId: Long,
@@ -96,4 +118,8 @@ data class MarkKnowledgeSourceIndexedRequest(
 
 data class RejectKnowledgeSourceRequest(
     val reason: String,
+)
+
+data class DeleteKnowledgeSourceRequest(
+    val reason: String = "deleted",
 )

@@ -125,6 +125,28 @@ class KnowledgeIngestionService(
         return sources.save(source)
     }
 
+    @Transactional
+    fun removeSource(
+        guildId: Long,
+        spaceId: Long,
+        sourceId: Long,
+        reason: String,
+    ): KnowledgeSourceEntity {
+        featureGate.requireRagEnabled()
+        val space =
+            spaces.findByGuildIdAndId(guildId, spaceId)
+                ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
+        val source =
+            sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
+                ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
+        source.status = "deleted:${reason.trim().take(80)}"
+        val saved = sources.save(source)
+        space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { it.status.startsWith("deleted").not() }
+        space.updatedAt = Instant.now(clock)
+        spaces.save(space)
+        return saved
+    }
+
     private fun inferRiskLevel(
         sourceType: String,
         sourceUri: String?,

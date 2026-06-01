@@ -2,6 +2,7 @@ package com.discordassistant.central.network
 
 import com.discordassistant.central.dashboard.AddKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.CreateKnowledgeSpaceRequest
+import com.discordassistant.central.dashboard.DeleteKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.KnowledgeIngestionController
 import com.discordassistant.central.dashboard.MarkKnowledgeSourceIndexedRequest
 import com.discordassistant.central.dashboard.RejectKnowledgeSourceRequest
@@ -32,7 +33,8 @@ class KnowledgeIngestionServiceTest
                 sources = sources,
                 clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
             )
-        private val controller = KnowledgeIngestionController(service)
+        private val searchService = KnowledgeSearchService(sources)
+        private val controller = KnowledgeIngestionController(service, searchService)
 
         @Test
         fun `knowledge source lifecycle stores only metadata and indexing state`() {
@@ -100,5 +102,44 @@ class KnowledgeIngestionServiceTest
                     RejectKnowledgeSourceRequest("secret detected"),
                 )
             assertTrue(rejected["status"].toString().startsWith("rejected"))
+        }
+
+        @Test
+        fun `knowledge search is guild scoped and excludes deleted or unsafe sources`() {
+            val guildOneSpace = service.createSpace(100, 200, null, "개발 지식", 77, null, null)
+            val guildTwoSpace = service.createSpace(999, 200, null, "다른 서버 지식", 88, null, null)
+            val guildOneSource =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = guildOneSpace.id,
+                    sourceType = "link",
+                    title = "Kotlin Spring 운영 가이드",
+                    sourceUri = "https://example.com/kotlin-spring.md",
+                    contentPreview = "운영 가이드",
+                    addedBy = 77,
+                )
+            val guildTwoSource =
+                service.addSource(
+                    guildId = 999,
+                    spaceId = guildTwoSpace.id,
+                    sourceType = "link",
+                    title = "Kotlin Spring 비밀 문서",
+                    sourceUri = "https://example.com/other.md",
+                    contentPreview = "다른 서버",
+                    addedBy = 88,
+                )
+            service.markSourceIndexed(100, guildOneSpace.id, guildOneSource.id, chunkCount = 3)
+            service.markSourceIndexed(999, guildTwoSpace.id, guildTwoSource.id, chunkCount = 3)
+
+            val found = controller.search(100, query = "Kotlin Spring", limit = 10)
+
+            assertEquals(1, found.results.size)
+            assertEquals(guildOneSource.id, found.results.single().sourceId)
+
+            controller.removeSource(100, guildOneSpace.id, guildOneSource.id, DeleteKnowledgeSourceRequest("outdated"))
+            val afterDelete = controller.search(100, query = "Kotlin Spring", limit = 10)
+
+            assertTrue(afterDelete.results.isEmpty())
+            assertEquals("no_indexed_knowledge_match", afterDelete.fallbackReason)
         }
     }

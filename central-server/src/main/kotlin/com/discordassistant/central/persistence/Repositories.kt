@@ -221,6 +221,8 @@ interface KnowledgeSpaceRepository : JpaRepository<KnowledgeSpaceEntity, Long> {
 }
 
 interface KnowledgeSourceRepository : JpaRepository<KnowledgeSourceEntity, Long> {
+    fun findByGuildId(guildId: Long): List<KnowledgeSourceEntity>
+
     fun findByKnowledgeSpaceId(knowledgeSpaceId: Long): List<KnowledgeSourceEntity>
 
     fun findByKnowledgeSpaceIdAndId(

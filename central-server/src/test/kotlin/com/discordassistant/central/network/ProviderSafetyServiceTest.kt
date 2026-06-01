@@ -70,17 +70,24 @@ class ProviderSafetyServiceTest
             )
 
             val dashboard = controller.overloadAlerts(100)
+            val adminDashboard = controller.overloadAlerts(100, audience = "admin")
             val guard = controller.guardFanout(100, requestedCandidates = 3)
 
             assertEquals(1, dashboard.alertCount)
             assertEquals(1, dashboard.safeOnlineProviderCount)
             assertEquals(1, guard.maxSafeCandidates)
-            assertTrue(
-                dashboard.alerts
-                    .single()
-                    .recommendedAction
-                    .contains("요청량"),
-            )
+            val publicAlert = dashboard.alerts.single()
+            assertEquals(null, publicAlert.providerUserId)
+            assertEquals("Provider 1", publicAlert.providerLabel)
+            assertEquals("unavailable", publicAlert.providerState)
+            assertEquals("protected", publicAlert.risk)
+            assertFalse(publicAlert.message.contains("#2"))
+            assertTrue(publicAlert.recommendedAction.contains("요청량"))
+            val adminAlert = adminDashboard.alerts.single()
+            assertEquals(2L, adminAlert.providerUserId)
+            assertEquals("provider:2", adminAlert.providerLabel)
+            assertEquals("OVERLOADED", adminAlert.providerState)
+            assertEquals("high", adminAlert.risk)
         }
 
         @Test
@@ -96,7 +103,24 @@ class ProviderSafetyServiceTest
 
             assertEquals(1, result["overloadAlertCount"])
             assertEquals("warning", result["healthStatus"])
-            assertEquals("critical", dashboard.alerts.single().risk)
+            assertEquals("Provider", result["providerLabel"])
+            assertFalse(result.containsKey("providerCapabilityId"))
+            val publicAlert = dashboard.alerts.single()
+            assertEquals("protected", publicAlert.risk)
+            assertFalse(publicAlert.message.contains("#9"))
+            val adminDashboard = controller.overloadAlerts(100, audience = "admin")
+            val adminAlert = adminDashboard.alerts.single()
+            assertEquals("critical", adminAlert.risk)
+            assertEquals(9L, adminAlert.providerUserId)
+            val adminResult =
+                controller.markOverload(
+                    guildId = 101,
+                    providerUserId = 10,
+                    request = MarkProviderOverloadRequest(overloadRisk = "high"),
+                    audience = "admin",
+                )
+            assertEquals("provider:10", adminResult["providerLabel"])
+            assertTrue(adminResult.containsKey("providerCapabilityId"))
             assertFalse(guard.allowed)
             assertEquals("provider_overload", events.findTop20ByGuildIdOrderByCreatedAtDesc(100).single().eventType)
         }

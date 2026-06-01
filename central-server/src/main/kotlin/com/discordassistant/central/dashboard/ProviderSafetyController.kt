@@ -17,7 +17,9 @@ class ProviderSafetyController(
     @GetMapping("/{guildId}/overload-alerts")
     fun overloadAlerts(
         @PathVariable guildId: Long,
-    ) = safety.overloadAlerts(guildId)
+        @RequestParam(defaultValue = "public") audience: String = "public",
+    ): ProviderSafetyDashboardResponse =
+        ProviderSafetyDashboardResponse.from(safety.overloadAlerts(guildId), DashboardAudience.from(audience))
 
     @GetMapping("/{guildId}/guard")
     fun guardFanout(
@@ -37,6 +39,7 @@ class ProviderSafetyController(
         @PathVariable guildId: Long,
         @PathVariable providerUserId: Long,
         @RequestBody request: MarkProviderOverloadRequest,
+        @RequestParam(defaultValue = "public") audience: String = "public",
     ): Map<String, Any?> {
         val result =
             safety.markOverload(
@@ -45,13 +48,20 @@ class ProviderSafetyController(
                 overloadRisk = request.overloadRisk,
                 reason = request.reason,
             )
-        return mapOf(
-            "providerCapabilityId" to result.providerCapabilityId,
-            "eventId" to result.eventId,
-            "overloadAlertCount" to result.overview.overloadAlertCount,
-            "healthStatus" to result.overview.healthStatus,
-        )
+        val visibility = DashboardAudience.from(audience)
+        return buildMap {
+            put("providerLabel", providerMutationLabel(providerUserId, visibility))
+            if (visibility.canSeeProviderIdentity) put("providerCapabilityId", result.providerCapabilityId)
+            put("eventId", result.eventId)
+            put("overloadAlertCount", result.overview.overloadAlertCount)
+            put("healthStatus", result.overview.healthStatus)
+        }
     }
+
+    private fun providerMutationLabel(
+        providerUserId: Long,
+        audience: DashboardAudience,
+    ): String = if (audience.canSeeProviderIdentity) "provider:$providerUserId" else "Provider"
 }
 
 data class MarkProviderOverloadRequest(

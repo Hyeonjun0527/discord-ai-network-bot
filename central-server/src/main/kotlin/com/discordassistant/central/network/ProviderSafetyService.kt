@@ -176,9 +176,9 @@ class ProviderSafetyService(
 
     private fun ProviderCapabilityProfileEntity.overloadSummary(): String =
         if (overloadRisk.isOverloadRisk()) {
-            "Provider #$providerUserId 보호를 위해 고급/다중 응답 요청에서 제외합니다."
+            "해당 Provider 보호를 위해 고급/다중 응답 요청에서 제외합니다."
         } else {
-            "Provider #$providerUserId 를 다시 일반 라우팅 후보로 사용할 수 있습니다."
+            "해당 Provider 를 다시 일반 라우팅 후보로 사용할 수 있습니다."
         }
 
     private fun recommendedAction(risk: String): String =

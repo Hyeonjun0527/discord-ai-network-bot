@@ -88,6 +88,7 @@ class MenuFactoryTest {
     fun `설정 액션 버튼 — 모든 설정은 저장 버튼 한 번으로 적용한다`() {
         val buttons = MenuFactory.settingsActionButtons()
         assertEquals(5, buttons.size)
+        assertEquals(MenuFactory.SAVE_SETTINGS, buttons.first().id)
         assertTrue(buttons.any { it.id == MenuFactory.CHANNEL_ALL && it.label?.contains("대기") == true })
         assertTrue(buttons.any { it.id == MenuFactory.SAVE_SETTINGS && it.label?.contains("한 번에 저장") == true })
         assertTrue(buttons.any { it.id == MenuFactory.CANCEL_SETTINGS && it.label?.contains("취소") == true })

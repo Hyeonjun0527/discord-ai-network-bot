@@ -150,8 +150,8 @@ object MenuFactory {
     /** 설정 패널 저장/상태 버튼. 언어·모델·채널·자동승인을 고른 뒤 저장 하나로 반영한다. */
     fun settingsActionButtons(): List<Button> =
         listOf(
+            Button.success(SAVE_SETTINGS, "설정 한 번에 저장"),
             Button.secondary(CHANNEL_ALL, "모든 채널 허용으로 대기"),
-            Button.success(SAVE_SETTINGS, "선택한 설정 한 번에 저장"),
             Button.secondary(CANCEL_SETTINGS, "변경 취소"),
             Button.secondary(AUTO_APPROVE_ON, "자동 승인 켜짐으로 대기"),
             Button.secondary(AUTO_APPROVE_OFF, "자동 승인 꺼짐으로 대기"),

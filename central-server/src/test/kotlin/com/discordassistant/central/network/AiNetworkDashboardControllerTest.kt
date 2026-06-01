@@ -1,13 +1,21 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.dashboard.AiNetworkDashboardController
+import com.discordassistant.central.persistence.AiBehaviorVersionEntity
+import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
 import com.discordassistant.central.persistence.AiPresetEntity
 import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
 import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
+import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
+import com.discordassistant.central.persistence.KnowledgeSourceEntity
+import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
+import com.discordassistant.central.persistence.MultiResponsePolicyEntity
+import com.discordassistant.central.persistence.MultiResponsePolicyRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
 import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
 import com.discordassistant.central.persistence.PresetImportEntity
@@ -36,8 +44,12 @@ class AiNetworkDashboardControllerTest
         private val networkProfiles: AiNetworkProfileRepository,
         private val providerCapabilities: ProviderCapabilityProfileRepository,
         private val knowledgeSpaces: KnowledgeSpaceRepository,
+        private val knowledgeSources: KnowledgeSourceRepository,
         private val overviewProjections: NetworkOverviewProjectionRepository,
         private val channelAis: ChannelAiRepository,
+        private val behaviorVersions: AiBehaviorVersionRepository,
+        private val routingPolicies: ChannelAiRoutingPolicyRepository,
+        private val multiResponsePolicies: MultiResponsePolicyRepository,
         private val feedbacks: AiFeedbackRepository,
         private val presets: AiPresetRepository,
         private val presetRevisions: PresetRevisionRepository,
@@ -61,8 +73,12 @@ class AiNetworkDashboardControllerTest
             AiNetworkDashboardController(
                 foundation = foundation,
                 channelAis = channelAis,
+                behaviorVersions = behaviorVersions,
+                routingPolicies = routingPolicies,
+                multiResponsePolicies = multiResponsePolicies,
                 providerCapabilities = providerCapabilities,
                 knowledgeSpaces = knowledgeSpaces,
+                knowledgeSources = knowledgeSources,
                 presets = presets,
                 publishedPresets = publishedPresets,
                 presetImports = presetImports,
@@ -122,6 +138,40 @@ class AiNetworkDashboardControllerTest
         @Test
         fun `dashboard lists channels providers knowledge and presets without prompt bodies`() {
             val channelAi = channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드냥"))
+            val behavior =
+                behaviorVersions.save(
+                    AiBehaviorVersionEntity(
+                        channelAiId = channelAi.id,
+                        version = 1,
+                        purpose = "개발 질문",
+                        tone = "practical",
+                        answerLength = "balanced",
+                        safetyLevel = "strict",
+                    ),
+                )
+            channelAi.activeBehaviorVersionId = behavior.id
+            channelAis.save(channelAi)
+            routingPolicies.save(
+                ChannelAiRoutingPolicyEntity(
+                    guildId = 100,
+                    channelId = 200,
+                    channelAiId = channelAi.id,
+                    responseMode = "deep",
+                    preferredModel = "qwen-coder",
+                    allowedModels = "qwen-coder,llama3.1:8b",
+                    minQualityTier = "high",
+                ),
+            )
+            multiResponsePolicies.save(
+                MultiResponsePolicyEntity(
+                    guildId = 100,
+                    channelId = 200,
+                    channelAiId = channelAi.id,
+                    mode = "compare",
+                    maxCandidates = 2,
+                    synthesisEnabled = true,
+                ),
+            )
             foundation.upsertProviderCapability(
                 guildId = 100,
                 providerUserId = 300,
@@ -133,7 +183,17 @@ class AiNetworkDashboardControllerTest
                 dailyLimit = 20,
                 overloadRisk = "normal",
             )
-            foundation.createKnowledgeSpace(100, 200, channelAi.id, "코드 지식", 77)
+            val knowledgeSpace = foundation.createKnowledgeSpace(100, 200, channelAi.id, "코드 지식", 77)
+            knowledgeSources.save(
+                KnowledgeSourceEntity(
+                    knowledgeSpaceId = knowledgeSpace.id,
+                    guildId = 100,
+                    sourceType = "link",
+                    title = "Kotlin Spring 운영 가이드",
+                    status = "indexed",
+                    riskLevel = "normal",
+                ),
+            )
             val preset = presets.save(AiPresetEntity(guildId = 100, ownerUserId = 77, name = "코딩 튜터"))
             val revision =
                 presetRevisions.save(
@@ -162,6 +222,15 @@ class AiNetworkDashboardControllerTest
             val guildPresets = controller.guildPresets(100)
 
             assertEquals("코드냥", channels.single().name)
+            assertEquals("개발 질문", channels.single().purpose)
+            assertEquals("deep", channels.single().responseMode)
+            assertEquals("qwen-coder", channels.single().preferredModel)
+            assertEquals(listOf("qwen-coder", "llama3.1:8b"), channels.single().allowedModels)
+            assertEquals("ready", channels.single().knowledgeReadiness)
+            assertEquals(1, channels.single().indexedKnowledgeSourceCount)
+            assertEquals("compare", channels.single().multiResponseMode)
+            assertEquals(2, channels.single().multiResponseMaxCandidates)
+            assertTrue(channels.single().multiResponseSynthesisEnabled)
             assertEquals(listOf("llama3.1:8b", "qwen-coder"), providers.single().models)
             assertEquals(listOf("coding", "night"), providers.single().tags)
             assertEquals("코드 지식", knowledge.single().name)

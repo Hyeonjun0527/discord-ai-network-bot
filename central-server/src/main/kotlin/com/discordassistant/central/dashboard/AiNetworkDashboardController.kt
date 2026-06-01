@@ -1,9 +1,13 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.network.AiNetworkFoundationService
+import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
+import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
+import com.discordassistant.central.persistence.MultiResponsePolicyRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
 import com.discordassistant.central.persistence.PresetImportRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
@@ -20,8 +24,12 @@ import org.springframework.web.bind.annotation.RestController
 class AiNetworkDashboardController(
     private val foundation: AiNetworkFoundationService,
     private val channelAis: ChannelAiRepository,
+    private val behaviorVersions: AiBehaviorVersionRepository,
+    private val routingPolicies: ChannelAiRoutingPolicyRepository,
+    private val multiResponsePolicies: MultiResponsePolicyRepository,
     private val providerCapabilities: ProviderCapabilityProfileRepository,
     private val knowledgeSpaces: KnowledgeSpaceRepository,
+    private val knowledgeSources: KnowledgeSourceRepository,
     private val presets: AiPresetRepository,
     private val publishedPresets: PublishedPresetRepository,
     private val presetImports: PresetImportRepository,
@@ -52,14 +60,58 @@ class AiNetworkDashboardController(
     fun channels(
         @PathVariable guildId: Long,
     ): List<ChannelAiCardResponse> =
-        channelAis.findByGuildId(guildId).map {
+        channelAis.findByGuildId(guildId).map { channelAi ->
+            val behavior = channelAi.activeBehaviorVersionId?.let { behaviorVersions.findByChannelAiIdAndId(channelAi.id, it) }
+            val route = routingPolicies.findByGuildIdAndChannelId(guildId, channelAi.channelId)
+            val spaces = knowledgeSpaces.findByGuildIdAndChannelId(guildId, channelAi.channelId)
+            val indexedSources =
+                spaces.sumOf { space ->
+                    knowledgeSources
+                        .findByKnowledgeSpaceId(space.id)
+                        .count { it.status == "indexed" }
+                }
+            val blockedSources =
+                spaces.sumOf { space ->
+                    knowledgeSources
+                        .findByKnowledgeSpaceId(space.id)
+                        .count {
+                            it.status.startsWith("blocked") ||
+                                it.riskLevel in BLOCKING_KNOWLEDGE_RISKS
+                        }
+                }
+            val knowledgeReadiness =
+                when {
+                    indexedSources > 0 && blockedSources == 0 -> "ready"
+                    indexedSources > 0 -> "partial"
+                    blockedSources > 0 -> "needs_review"
+                    spaces.any { it.status == "pending_index" } -> "indexing_needed"
+                    else -> "empty"
+                }
+            val multi =
+                multiResponsePolicies.findByGuildIdAndChannelId(guildId, channelAi.channelId)
+                    ?: multiResponsePolicies.findByGuildIdAndChannelIdIsNull(guildId)
             ChannelAiCardResponse(
-                channelId = it.channelId,
-                name = it.displayName,
-                avatarUrl = it.avatarUrl,
-                activeBehaviorVersionId = it.activeBehaviorVersionId,
-                source = it.source,
-                updatedAt = it.updatedAt.toString(),
+                channelId = channelAi.channelId,
+                name = channelAi.displayName,
+                avatarUrl = channelAi.avatarUrl,
+                activeBehaviorVersionId = channelAi.activeBehaviorVersionId,
+                source = channelAi.source,
+                purpose = behavior?.purpose,
+                tone = behavior?.tone,
+                answerLength = behavior?.answerLength,
+                safetyLevel = behavior?.safetyLevel,
+                responseMode = route?.responseMode ?: "balanced",
+                preferredModel = route?.preferredModel,
+                allowedModels = splitCsv(route?.allowedModels),
+                minQualityTier = route?.minQualityTier ?: "standard",
+                knowledgeReadiness = knowledgeReadiness,
+                knowledgeSpaceCount = spaces.size,
+                indexedKnowledgeSourceCount = indexedSources,
+                blockedKnowledgeSourceCount = blockedSources,
+                multiResponseMode = multi?.mode ?: "single",
+                multiResponseMaxCandidates = multi?.maxCandidates ?: 1,
+                multiResponseSynthesisEnabled = multi?.synthesisEnabled ?: false,
+                updatedAt = channelAi.updatedAt.toString(),
             )
         }
 
@@ -151,6 +203,10 @@ class AiNetworkDashboardController(
             )
         }
 
+    private companion object {
+        val BLOCKING_KNOWLEDGE_RISKS = setOf("sensitive", "ssrf")
+    }
+
     private fun splitCsv(value: String?): List<String> =
         value
             .orEmpty()
@@ -215,6 +271,21 @@ data class ChannelAiCardResponse(
     val avatarUrl: String?,
     val activeBehaviorVersionId: Long?,
     val source: String,
+    val purpose: String?,
+    val tone: String?,
+    val answerLength: String?,
+    val safetyLevel: String?,
+    val responseMode: String,
+    val preferredModel: String?,
+    val allowedModels: List<String>,
+    val minQualityTier: String,
+    val knowledgeReadiness: String,
+    val knowledgeSpaceCount: Int,
+    val indexedKnowledgeSourceCount: Int,
+    val blockedKnowledgeSourceCount: Int,
+    val multiResponseMode: String,
+    val multiResponseMaxCandidates: Int,
+    val multiResponseSynthesisEnabled: Boolean,
     val updatedAt: String,
 )
 

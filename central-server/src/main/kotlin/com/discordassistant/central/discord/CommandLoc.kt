@@ -75,6 +75,9 @@ object CommandLoc {
             "ai-preset-catalog" to L("프리셋목록", null, "Browse shared AI presets", "Список пресетов ИИ"),
             "ai-preset-import" to L("프리셋가져오기", null, "Import a shared preset into this channel", "Импорт пресета"),
             "ai-preset-like" to L("프리셋좋아요", null, "Like a shared AI preset", "Лайк пресета"),
+            "ai-preset-report" to L("프리셋신고", null, "Report an unsafe or inappropriate preset", "Пожаловаться на пресет"),
+            "ai-preset-moderation" to L("프리셋검수", null, "Review preset reports (admin)", "Модерация пресетов (админ)"),
+            "ai-preset-report-review" to L("프리셋신고처리", null, "Resolve a preset report (admin)", "Решить жалобу на пресет (админ)"),
             "ai-multi-response-status" to
                 L(
                     "다중응답상태",

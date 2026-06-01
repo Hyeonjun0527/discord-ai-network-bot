@@ -85,6 +85,8 @@ class CommandServiceTest
             assertTrue(admin.contains("/ai-knowledge-job-complete"))
             assertTrue(admin.contains("/ai-preset-catalog"))
             assertTrue(admin.contains("/ai-preset-import"))
+            assertTrue(admin.contains("/ai-preset-moderation"))
+            assertTrue(admin.contains("/ai-preset-report-review"))
             assertTrue(admin.contains("/ai-multi-response-status"))
             assertTrue(admin.contains("/ai-multi-response-set"))
             assertTrue(admin.contains("/ai-multi-response-dry-run"))
@@ -256,6 +258,16 @@ class CommandServiceTest
             assertTrue(imported.content.contains("프리셋을 현재 채널에 가져왔습니다"))
             assertTrue(imported.content.contains("상태: `applied`"))
             assertTrue(imported.content.contains("채널 AI:"))
+
+            val reported = commands.reportPreset(g.copy(isAdmin = false), published.id, "프롬프트가 위험해 보여요 token=hidden")
+            assertTrue(reported.content.contains("신고를 접수"))
+            val moderation = commands.presetModeration(g).content
+            assertTrue(moderation.contains("프리셋 신고/검수 큐"))
+            assertTrue(moderation.contains("코딩 튜터"))
+            assertTrue(moderation.contains("열린 신고 1"))
+            val report = presetRegistry.listReports().single()
+            val reviewed = commands.reviewPresetReport(g, report.id, "dismiss")
+            assertTrue(reviewed.content.contains("신고를 처리"))
         }
 
         @Test

@@ -151,11 +151,13 @@ class DashboardServingTest
             assertTrue(html.contains("""id="catalog""""))
             assertTrue(html.contains("""id="confirmImport""""))
             assertTrue(html.contains("""id="likePreset""""))
+            assertTrue(html.contains("""id="reportPreset""""))
             assertTrue(js.contains("/api/ai-network/presets/catalog?"))
             assertTrue(js.contains("/api/ai-network/presets/catalog/${'$'}{selectedPresetId}"))
             assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{selectedPresetId}/import-preview"))
             assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{pendingImport.publishedPresetId}/import"))
             assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{id}/like"))
+            assertTrue(js.contains("/api/ai-network/presets/published/${'$'}{id}/report"))
         }
 
         @Test

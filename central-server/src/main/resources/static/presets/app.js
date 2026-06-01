@@ -59,6 +59,7 @@ function renderCatalog(presets) {
       <div class="card-actions">
         <button data-action="preview" data-id="${esc(preset.id)}">미리보기</button>
         <button class="secondary" data-action="like" data-id="${esc(preset.id)}">따봉</button>
+        <button class="secondary" data-action="report" data-id="${esc(preset.id)}">신고</button>
       </div>
     </article>
   `).join("");
@@ -113,6 +114,7 @@ async function previewPreset(id) {
   pendingImport = null;
   $("confirmImport").disabled = true;
   $("likePreset").disabled = false;
+  $("reportPreset").disabled = false;
   $("result").textContent = "";
   try {
     const detail = await json(`/api/ai-network/presets/catalog/${selectedPresetId}`);
@@ -130,6 +132,34 @@ async function previewPreset(id) {
     $("confirmImport").disabled = false;
   } catch (e) {
     $("preview").textContent = `미리보기 실패: ${e.message}`;
+  }
+}
+
+async function reportPreset(id = selectedPresetId) {
+  if (!id) {
+    $("result").textContent = "먼저 프리셋을 선택하세요.";
+    return;
+  }
+  const reason = window.prompt("신고 사유를 간단히 적어주세요. 민감정보는 입력하지 마세요.");
+  if (!reason || !reason.trim()) {
+    $("result").textContent = "신고가 취소되었습니다.";
+    return;
+  }
+  try {
+    const data = await json(`/api/ai-network/presets/published/${id}/report`, {
+      method: "POST",
+      body: JSON.stringify({ reporterUserId: anonUserId(), reason: reason.trim() }),
+    });
+    $("result").textContent = `신고 접수 완료 · report ${data.id} · ${data.status}`;
+    if (Number(id) === selectedPresetId) {
+      $("confirmImport").disabled = true;
+      $("likePreset").disabled = true;
+      $("reportPreset").disabled = true;
+      pendingImport = null;
+    }
+    await refreshCatalog();
+  } catch (e) {
+    $("result").textContent = `신고 실패: ${e.message}`;
   }
 }
 
@@ -176,11 +206,13 @@ async function confirmImport() {
 $("search").addEventListener("click", refreshCatalog);
 $("confirmImport").addEventListener("click", confirmImport);
 $("likePreset").addEventListener("click", () => likePreset());
+$("reportPreset").addEventListener("click", () => reportPreset());
 $("catalog").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
   if (button.dataset.action === "preview") previewPreset(button.dataset.id);
   if (button.dataset.action === "like") likePreset(Number(button.dataset.id));
+  if (button.dataset.action === "report") reportPreset(Number(button.dataset.id));
 });
 ["query", "category"].forEach((id) => $(id).addEventListener("keydown", (event) => {
   if (event.key === "Enter") refreshCatalog();

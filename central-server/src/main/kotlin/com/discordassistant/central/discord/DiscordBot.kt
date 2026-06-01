@@ -337,6 +337,23 @@ class DiscordBot(
                     .slash("ai-preset-like", "공개 AI 프리셋에 좋아요를 누릅니다")
                     .addOption(OptionType.STRING, "published-id", "좋아요할 공개 프리셋 ID", true),
                 Commands
+                    .slash("ai-preset-report", "부적절한 공개 AI 프리셋을 신고합니다")
+                    .addOption(OptionType.STRING, "published-id", "신고할 공개 프리셋 ID", true)
+                    .addOption(OptionType.STRING, "reason", "신고 사유", true),
+                Commands
+                    .slash("ai-preset-moderation", "프리셋 신고/검수 큐를 봅니다(관리자)")
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-preset-report-review", "프리셋 신고를 검수 처리합니다(관리자)")
+                    .addOption(OptionType.STRING, "report-id", "처리할 신고 ID", true)
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "decision", "dismiss/suspend/remove", true)
+                            .addChoice("신고 기각", "dismiss")
+                            .addChoice("일시 중단", "suspend")
+                            .addChoice("제거", "remove"),
+                    ).setDefaultPermissions(adminPerm),
+                Commands
                     .slash("ai-multi-response-status", "다중응답 정책/부하/위험 상태를 봅니다(관리자)")
                     .addOption(OptionType.CHANNEL, "channel", "확인할 채널(비우면 현재 채널)", false)
                     .setDefaultPermissions(adminPerm),
@@ -1300,6 +1317,19 @@ class DiscordBot(
                         confirmConflicts = event.getOption("confirm-conflicts")?.asBoolean ?: false,
                     )
                 "ai-preset-like" -> commands.likePreset(ctx, event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L)
+                "ai-preset-report" ->
+                    commands.reportPreset(
+                        ctx,
+                        publishedPresetId = event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L,
+                        reason = event.getOption("reason")!!.asString,
+                    )
+                "ai-preset-moderation" -> commands.presetModeration(ctx)
+                "ai-preset-report-review" ->
+                    commands.reviewPresetReport(
+                        ctx,
+                        reportId = event.getOption("report-id")!!.asString.toLongOrNull() ?: -1L,
+                        decision = event.getOption("decision")!!.asString,
+                    )
                 "ai-multi-response-status" ->
                     commands.multiResponseStatus(
                         ctx,

@@ -12,6 +12,7 @@ import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
 import com.discordassistant.central.network.MultiResponseService
 import com.discordassistant.central.network.NetworkLaunchChecklist
+import com.discordassistant.central.network.PresetModerationSummary
 import com.discordassistant.central.network.PresetRegistryService
 import com.discordassistant.central.network.PublishedPresetSummary
 import com.discordassistant.central.persistence.PresetImportEntity
@@ -386,6 +387,7 @@ class CommandService(
             sb.append("· `/ai-knowledge-index-plan` `/ai-knowledge-approve` `/ai-knowledge-delete` — 색인계획·검토·삭제\n")
             sb.append("· `/ai-knowledge-jobs` `/ai-knowledge-job-complete` — RAG 색인 작업 큐 조회·완료 처리\n")
             sb.append("· `/ai-preset-catalog` `/ai-preset-import` — 프리셋 공유 목록 보기·현재 채널에 가져오기\n")
+            sb.append("· `/ai-preset-moderation` `/ai-preset-report-review` — 프리셋 신고 큐 확인·검수 처리\n")
             sb.append("· `/ai-multi-response-status` `/ai-multi-response-set` `/ai-multi-response-dry-run` — 다중응답 정책·상태·안전 드라이런\n")
             sb.append("· `/ai-network-check` — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
             sb.append("· `/사용자차단`(`/llm-block`) `/차단해제`(`/llm-unblock`) — 사용자 차단/해제\n")
@@ -754,6 +756,41 @@ class CommandService(
         return Replies.ok("프리셋 **${published.title}** 좋아요를 반영했습니다. 현재 ${published.likeCount}개")
     }
 
+    fun reportPreset(
+        ctx: CommandContext,
+        publishedPresetId: Long,
+        reason: String,
+    ): Reply {
+        val report =
+            runCatching { presetRegistry.reportPreset(publishedPresetId, ctx.userId, reason) }
+                .getOrElse { return Replies.warn("프리셋 신고에 실패했어요. ${it.message ?: "프리셋 ID와 신고 사유를 확인해 주세요."}") }
+        return Replies.ok(
+            "프리셋 신고를 접수했습니다. report `${report.id}` · 상태 `${report.status}`\n" +
+                "신고된 프리셋은 카탈로그 노출/가져오기 전에 관리자 검토 대상으로 전환됩니다.",
+        )
+    }
+
+    fun presetModeration(ctx: CommandContext): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching { Reply(formatPresetModeration(presetRegistry.moderationSummary())) }
+            .getOrElse { Replies.warn("프리셋 신고 큐를 불러오지 못했어요. ${it.message ?: "잠시 후 다시 시도해 주세요."}") }
+    }
+
+    fun reviewPresetReport(
+        ctx: CommandContext,
+        reportId: Long,
+        decision: String,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val report =
+            runCatching { presetRegistry.reviewReport(reportId, decision) }
+                .getOrElse { return Replies.warn("프리셋 신고 검수 처리에 실패했어요. ${it.message ?: "report-id/decision을 확인해 주세요."}") }
+        return Replies.ok(
+            "프리셋 신고를 처리했습니다. report `${report.id}` · 결정 `${report.status}`\n" +
+                "카탈로그 노출 상태는 결정에 맞춰 자동 갱신됩니다.",
+        )
+    }
+
     private fun formatPresetCatalog(
         presets: List<PublishedPresetSummary>,
         query: String?,
@@ -773,7 +810,31 @@ class CommandService(
         val lines = presetLines.joinToString("\n").ifBlank { "• 아직 공개된 프리셋이 없습니다." }
         return "📚 **AI 프리셋 공유 목록** ($filter)\n\n" +
             "$lines\n\n" +
-            "현재 채널에 적용하려면 `/ai-preset-import published-id:<ID>` 를 실행하세요."
+            "현재 채널에 적용하려면 `/ai-preset-import published-id:<ID>` 를 실행하세요.\n" +
+            "부적절하면 `/ai-preset-report published-id:<ID> reason:<사유>` 로 신고할 수 있습니다."
+    }
+
+    private fun formatPresetModeration(summary: PresetModerationSummary): String {
+        val queue =
+            summary.queue
+                .take(10)
+                .joinToString("\n") { item ->
+                    "• `${item.publishedPresetId}` **${item.title}** — `${item.status}` · 신고 ${item.reportCount} · " +
+                        "좋아요 ${item.likeCount} · risk `${item.riskCodes.joinToString(",").ifBlank { "none" }}`\n" +
+                        "  ↳ ${item.recommendedAction}"
+                }.ifBlank { "• 검토할 프리셋 신고가 없습니다." }
+        val nextActions =
+            summary.nextActions
+                .take(5)
+                .joinToString("\n") { "• $it" }
+                .ifBlank { "• 지금은 추가 조치가 없습니다." }
+        return "🛡️ **프리셋 신고/검수 큐**\n\n" +
+            "게시 ${summary.activePublishedCount} · 검토중 ${summary.underReviewCount} · " +
+            "중단 ${summary.suspendedCount} · 제거 ${summary.removedCount}\n" +
+            "열린 신고 ${summary.openReportCount} · 처리됨 ${summary.reviewedReportCount}\n\n" +
+            "__우선 검토 대상__\n$queue\n\n" +
+            "__다음 행동__\n$nextActions\n\n" +
+            "처리: `/ai-preset-report-review report-id:<ID> decision:dismiss|suspend|remove`"
     }
 
     private fun formatPresetImport(imported: PresetImportEntity): String =

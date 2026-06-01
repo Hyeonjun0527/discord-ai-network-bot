@@ -290,6 +290,8 @@ interface AiFeedbackRepository : JpaRepository<AiFeedbackEntity, Long> {
 
     fun findTop50ByGuildIdOrderByCreatedAtDesc(guildId: Long): List<AiFeedbackEntity>
 
+    fun findTop200ByGuildIdOrderByCreatedAtDesc(guildId: Long): List<AiFeedbackEntity>
+
     fun findByGuildIdAndRequestIdAndUserId(
         guildId: Long,
         requestId: String,

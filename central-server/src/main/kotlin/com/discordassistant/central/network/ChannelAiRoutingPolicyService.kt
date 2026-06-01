@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.persistence.AiFeedbackRepository
+import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
@@ -14,6 +16,8 @@ class ChannelAiRoutingPolicyService(
     private val policies: ChannelAiRoutingPolicyRepository,
     private val channelAis: ChannelAiRepository,
     private val providerCapabilities: ProviderCapabilityProfileRepository,
+    private val feedbacks: AiFeedbackRepository,
+    private val requests: AiRequestRepository,
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
@@ -112,9 +116,11 @@ class ChannelAiRoutingPolicyService(
         val allowedModels = effective.allowedModels.toSet()
         val tagFilter = effective.providerTagFilter.toSet()
         val providers = providerCapabilities.findByGuildId(guildId)
+        val feedbackSignals = providerFeedbackSignals(guildId)
         val candidates =
             providers
                 .flatMap { provider ->
+                    val feedback = feedbackSignals[provider.providerUserId] ?: ProviderFeedbackSignal.EMPTY
                     splitCsv(provider.modelNames).map { modelName ->
                         val providerTags = splitCsv(provider.capabilityTags).toSet()
                         val reasons =
@@ -133,12 +139,17 @@ class ChannelAiRoutingPolicyService(
                             maxBurden = provider.maxBurden,
                             overloadRisk = provider.overloadRisk,
                             tags = providerTags.sorted(),
+                            shadowQualityScore = feedback.shadowScore,
+                            feedbackPositive = feedback.positive,
+                            feedbackNegative = feedback.negative,
+                            feedbackReports = feedback.reports,
                             eligible = reasons.isEmpty(),
                             ineligibleReasons = reasons,
                         )
                     }
                 }.sortedWith(
                     compareByDescending<ModelCandidate> { it.eligible }
+                        .thenByDescending { it.shadowQualityScore }
                         .thenBy { it.modelName }
                         .thenBy { it.providerUserId },
                 )
@@ -190,12 +201,17 @@ class ChannelAiRoutingPolicyService(
                 val reasons = modelCandidates.flatMap { it.ineligibleReasons }.distinct().sorted()
                 val bestQuality = modelCandidates.maxOfOrNull { qualityRank(it.qualityTier) } ?: 0
                 val protectedCount = modelCandidates.count { it.overloadRisk.equals("critical", ignoreCase = true) }
+                val shadowScore = modelCandidates.filter { it.eligible }.sumOf { it.shadowQualityScore }
                 ModelCandidateSummary(
                     modelName = modelName,
                     eligibleProviderCount = eligible.size,
                     totalProviderCount = modelCandidates.size,
                     protectedProviderCount = protectedCount,
                     bestQualityTier = qualityTierName(bestQuality),
+                    shadowQualityScore = shadowScore,
+                    feedbackPositive = modelCandidates.sumOf { it.feedbackPositive },
+                    feedbackNegative = modelCandidates.sumOf { it.feedbackNegative },
+                    feedbackReports = modelCandidates.sumOf { it.feedbackReports },
                     available = modelName in availableModels,
                     preferred = modelName == preferred,
                     recommended = false,
@@ -207,8 +223,20 @@ class ChannelAiRoutingPolicyService(
                     .thenByDescending { it.available }
                     .thenByDescending { it.eligibleProviderCount }
                     .thenByDescending { qualityRank(it.bestQualityTier) }
+                    .thenByDescending { it.shadowQualityScore }
                     .thenBy { it.modelName },
             ).markRecommended()
+    }
+
+    private fun providerFeedbackSignals(guildId: Long): Map<Long, ProviderFeedbackSignal> {
+        val signals = mutableMapOf<Long, ProviderFeedbackSignal>()
+        feedbacks.findTop200ByGuildIdOrderByCreatedAtDesc(guildId).forEach { feedback ->
+            val requestId = feedback.requestId?.takeIf { it.isNotBlank() } ?: return@forEach
+            val providerId = requests.findByRequestId(requestId)?.providerId ?: return@forEach
+            val current = signals[providerId] ?: ProviderFeedbackSignal.EMPTY
+            signals[providerId] = current.plus(feedback.rating ?: 0, feedback.feedbackType)
+        }
+        return signals
     }
 
     private fun List<ModelCandidateSummary>.markRecommended(): List<ModelCandidateSummary> =
@@ -358,6 +386,30 @@ class ChannelAiRoutingPolicyService(
             .filter { it.isNotBlank() }
 }
 
+private data class ProviderFeedbackSignal(
+    val positive: Int = 0,
+    val negative: Int = 0,
+    val reports: Int = 0,
+) {
+    val shadowScore: Int get() = positive * 10 - negative * 12 - reports * 25
+
+    fun plus(
+        rating: Int,
+        feedbackType: String,
+    ): ProviderFeedbackSignal {
+        val isReport = feedbackType.contains("report", ignoreCase = true)
+        return copy(
+            positive = positive + if (rating > 0 && !isReport) 1 else 0,
+            negative = negative + if (rating < 0 && !isReport) 1 else 0,
+            reports = reports + if (isReport) 1 else 0,
+        )
+    }
+
+    companion object {
+        val EMPTY = ProviderFeedbackSignal()
+    }
+}
+
 data class EffectiveRoutingPolicy(
     val responseMode: String,
     val preferredModel: String?,
@@ -390,6 +442,10 @@ data class ModelCandidateSummary(
     val totalProviderCount: Int,
     val protectedProviderCount: Int,
     val bestQualityTier: String,
+    val shadowQualityScore: Int,
+    val feedbackPositive: Int,
+    val feedbackNegative: Int,
+    val feedbackReports: Int,
     val available: Boolean,
     val preferred: Boolean,
     val recommended: Boolean,
@@ -405,6 +461,10 @@ data class ModelCandidate(
     val maxBurden: String,
     val overloadRisk: String,
     val tags: List<String>,
+    val shadowQualityScore: Int,
+    val feedbackPositive: Int,
+    val feedbackNegative: Int,
+    val feedbackReports: Int,
     val eligible: Boolean,
     val ineligibleReasons: List<String>,
 )

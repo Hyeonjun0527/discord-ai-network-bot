@@ -97,6 +97,7 @@ interface UsageRecorder {
         state: RequestState,
         providerId: Long?,
         failReason: String?,
+        requestId: String? = null,
     ) {
     }
 
@@ -151,11 +152,11 @@ class RequestOrchestrator(
         // 멱등성: 짧은 윈도우 내 동일 요청 중복은 라우팅 없이 막는다(#243).
         if (!idempotency.tryBegin(input.guildId, input.userId, input.prompt)) {
             val dup = OrchestrationResult(RequestState.REJECTED, failReason = "동일한 요청이 방금 접수되었습니다. 잠시 후 다시 시도해 주세요.")
-            recorder.recordRequest(input, dup.state, dup.providerId, dup.failReason)
+            recorder.recordRequest(input, dup.state, dup.providerId, dup.failReason, dup.requestId)
             return dup
         }
         val result = route(input)
-        recorder.recordRequest(input, result.state, result.providerId, result.failReason)
+        recorder.recordRequest(input, result.state, result.providerId, result.failReason, result.requestId)
         return result
     }
 

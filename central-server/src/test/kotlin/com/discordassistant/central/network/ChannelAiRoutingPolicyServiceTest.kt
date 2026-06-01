@@ -1,5 +1,9 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.persistence.AiFeedbackEntity
+import com.discordassistant.central.persistence.AiFeedbackRepository
+import com.discordassistant.central.persistence.AiRequestEntity
+import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
@@ -24,12 +28,16 @@ class ChannelAiRoutingPolicyServiceTest
         private val policies: ChannelAiRoutingPolicyRepository,
         private val channelAis: ChannelAiRepository,
         private val providerCapabilities: ProviderCapabilityProfileRepository,
+        private val feedbacks: AiFeedbackRepository,
+        private val requests: AiRequestRepository,
     ) {
         private val service =
             ChannelAiRoutingPolicyService(
                 policies = policies,
                 channelAis = channelAis,
                 providerCapabilities = providerCapabilities,
+                feedbacks = feedbacks,
+                requests = requests,
                 clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
             )
 
@@ -38,6 +46,8 @@ class ChannelAiRoutingPolicyServiceTest
                 policies = policies,
                 channelAis = channelAis,
                 providerCapabilities = providerCapabilities,
+                feedbacks = feedbacks,
+                requests = requests,
                 clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
                 featureGate = AiNetworkFeatureGate(channelAiEnabled = false),
             )
@@ -296,6 +306,93 @@ class ChannelAiRoutingPolicyServiceTest
                 listOf("provider_critical_overload"),
                 catalog.candidates.single { it.providerUserId == 13L }.ineligibleReasons,
             )
+        }
+
+        @Test
+        fun `model candidates expose feedback based shadow quality without changing live model choice`() {
+            service.save(
+                guildId = 101,
+                channelId = 202,
+                responseMode = "balanced",
+                preferredModel = null,
+                allowedModels = emptyList(),
+                minQualityTier = "standard",
+                maxCandidates = 1,
+                providerTagFilter = emptyList(),
+                costGuard = "provider_safe",
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 101,
+                    providerUserId = 21,
+                    providerState = "ONLINE",
+                    modelNames = "z-good",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 101,
+                    providerUserId = 22,
+                    providerState = "ONLINE",
+                    modelNames = "a-bad",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            requests.save(
+                AiRequestEntity(requestId = "good-1", guildId = 101, channelId = 202, userId = 1, providerId = 21),
+            )
+            requests.save(
+                AiRequestEntity(requestId = "bad-1", guildId = 101, channelId = 202, userId = 2, providerId = 22),
+            )
+            requests.save(
+                AiRequestEntity(requestId = "bad-2", guildId = 101, channelId = 202, userId = 3, providerId = 22),
+            )
+            feedbacks.save(
+                AiFeedbackEntity(
+                    guildId = 101,
+                    channelId = 202,
+                    requestId = "good-1",
+                    userId = 1,
+                    rating = 1,
+                    feedbackType = "positive",
+                ),
+            )
+            feedbacks.save(
+                AiFeedbackEntity(
+                    guildId = 101,
+                    channelId = 202,
+                    requestId = "bad-1",
+                    userId = 2,
+                    rating = -1,
+                    feedbackType = "negative",
+                ),
+            )
+            feedbacks.save(
+                AiFeedbackEntity(
+                    guildId = 101,
+                    channelId = 202,
+                    requestId = "bad-2",
+                    userId = 3,
+                    rating = -1,
+                    feedbackType = "report",
+                ),
+            )
+
+            val catalog = service.modelCandidates(101, 202, guildDefaultModel = null)
+            val decision = service.resolveModelChoice(101, 202, requestedModel = null, guildDefaultModel = null)
+
+            val good = catalog.modelSummaries.single { it.modelName == "z-good" }
+            val bad = catalog.modelSummaries.single { it.modelName == "a-bad" }
+            assertEquals("z-good", catalog.recommendedModel)
+            assertEquals(10, good.shadowQualityScore)
+            assertEquals(1, good.feedbackPositive)
+            assertEquals(-37, bad.shadowQualityScore)
+            assertEquals(1, bad.feedbackReports)
+            assertEquals("a-bad", decision.selectedModel)
+            assertEquals(null, decision.fallbackReason)
         }
 
         @Test

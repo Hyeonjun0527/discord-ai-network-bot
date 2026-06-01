@@ -234,7 +234,7 @@ function routingPolicyPayload() {
 
 function renderRoutingCandidates(catalog) {
   renderList("routingModelCandidates", catalog.modelSummaries?.slice(0, 12), "사용 가능한 모델 후보가 없습니다", (m) =>
-    `<li><strong>${esc(m.modelName)}${m.recommended ? " · 추천" : ""}${m.preferred ? " · 선호" : ""}</strong><span>${esc(m.available ? "사용 가능" : "불가")} · eligible ${esc(m.eligibleProviderCount)}/${esc(m.totalProviderCount)} · 보호 ${esc(m.protectedProviderCount)} · 품질 ${esc(m.bestQualityTier)} · ${(m.tags || []).map(esc).join(", ") || "태그 없음"} · ${(m.blockingReasons || []).map(esc).join(", ") || "차단 없음"}</span></li>`,
+    `<li><strong>${esc(m.modelName)}${m.recommended ? " · 추천" : ""}${m.preferred ? " · 선호" : ""}</strong><span>${esc(m.available ? "사용 가능" : "불가")} · eligible ${esc(m.eligibleProviderCount)}/${esc(m.totalProviderCount)} · 보호 ${esc(m.protectedProviderCount)} · 품질 ${esc(m.bestQualityTier)} · shadow ${esc(m.shadowQualityScore ?? 0)} · 👍 ${esc(m.feedbackPositive ?? 0)} 👎 ${esc(m.feedbackNegative ?? 0)} 🚩 ${esc(m.feedbackReports ?? 0)} · ${(m.tags || []).map(esc).join(", ") || "태그 없음"} · ${(m.blockingReasons || []).map(esc).join(", ") || "차단 없음"}</span></li>`,
   );
 }
 

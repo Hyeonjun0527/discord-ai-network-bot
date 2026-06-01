@@ -39,16 +39,24 @@ class UsageService(
         contribution.save(ContributionLogEntity(guildId = guildId, providerId = providerId, requestId = requestId, createdAt = now))
     }
 
+    fun recordRequest(
+        input: AiRequestInput,
+        state: RequestState,
+        providerId: Long?,
+        failReason: String?,
+    ) = recordRequest(input, state, providerId, failReason, requestId = null)
+
     @Transactional
     override fun recordRequest(
         input: AiRequestInput,
         state: RequestState,
         providerId: Long?,
         failReason: String?,
+        requestId: String?,
     ) {
         requests.save(
             AiRequestEntity(
-                requestId = UUID.randomUUID().toString().replace("-", ""),
+                requestId = requestId?.trim()?.ifBlank { null } ?: UUID.randomUUID().toString().replace("-", ""),
                 guildId = input.guildId,
                 channelId = input.channelId,
                 userId = input.userId,

@@ -126,9 +126,11 @@ class ChannelAiCustomizationServiceTest
             assertNull(channelAis.findByGuildIdAndChannelId(100, 200)!!.activeBehaviorVersionId)
             assertEquals(1, controller.pending(100).size)
 
-            val approved = controller.approve(proposalId, ReviewChannelAiProposalRequest(reviewerUserId = 88))
+            val approved = controller.approve(proposalId, ReviewChannelAiProposalRequest(reviewerUserId = 88, reason = "운영진 검토 완료"))
 
             assertEquals("approved", approved["status"])
+            assertEquals("운영진 검토 완료", approved["reason"])
+            assertEquals("운영진 검토 완료", proposals.findById(proposalId).orElseThrow().reason)
             assertEquals(behaviorId, channelAis.findByGuildIdAndChannelId(100, 200)!!.activeBehaviorVersionId)
             val history = controller.history(100, 200)
             assertTrue(history["audits"].toString().contains("approve"))

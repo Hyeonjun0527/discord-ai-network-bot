@@ -266,6 +266,7 @@ class ChannelAiCustomizationService(
     fun approveProposal(
         proposalId: Long,
         reviewerUserId: Long?,
+        reason: String? = null,
     ): AiChangeProposalEntity {
         featureGate.requireChannelAiEnabled()
         val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
@@ -300,6 +301,7 @@ class ChannelAiCustomizationService(
         applyRoutingSnapshot(proposal, channelAi.id, now)
         proposal.status = "approved"
         proposal.reviewedBy = reviewerUserId
+        proposal.reason = reason?.trim()?.take(500) ?: proposal.reason
         proposal.reviewedAt = now
         val saved = proposals.save(proposal)
         audit(
@@ -309,7 +311,7 @@ class ChannelAiCustomizationService(
             action = "approve",
             targetType = "ai_behavior_version",
             targetId = behaviorId,
-            summary = "approved v${behavior.version}",
+            summary = proposal.reason ?: "approved v${behavior.version}",
         )
         return saved
     }

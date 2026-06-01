@@ -96,8 +96,13 @@ class ChannelAiCustomizationController(
         @PathVariable proposalId: Long,
         @RequestBody request: ReviewChannelAiProposalRequest,
     ): Map<String, Any?> {
-        val proposal = customization.approveProposal(proposalId, request.reviewerUserId)
-        return mapOf("id" to proposal.id, "status" to proposal.status, "reviewedBy" to proposal.reviewedBy)
+        val proposal = customization.approveProposal(proposalId, request.reviewerUserId, request.reason)
+        return mapOf(
+            "id" to proposal.id,
+            "status" to proposal.status,
+            "reviewedBy" to proposal.reviewedBy,
+            "reason" to proposal.reason,
+        )
     }
 
     @PostMapping("/proposals/{proposalId}/reject")

@@ -110,6 +110,30 @@ class CommandService(
     private fun adminOnly(ctx: CommandContext): Reply? =
         if (!ctx.isAdmin) Replies.reject(Messages.get(Messages.Key.ADMIN_DENIED, lang(ctx))) else null
 
+    private fun publicWebBaseUrl(): String? {
+        val raw = relayPublicUrl.trim().trimEnd('/').ifBlank { return null }
+        val normalized =
+            when {
+                raw.startsWith("wss://") -> "https://" + raw.removePrefix("wss://")
+                raw.startsWith("ws://") -> "http://" + raw.removePrefix("ws://")
+                else -> raw
+            }
+        return runCatching {
+            val uri = java.net.URI.create(normalized)
+            val scheme = uri.scheme ?: return@runCatching normalized.substringBefore("/agent").trimEnd('/')
+            val authority = uri.rawAuthority ?: return@runCatching normalized.substringBefore("/agent").trimEnd('/')
+            "$scheme://$authority"
+        }.getOrElse {
+            normalized.substringBefore("/agent").trimEnd('/')
+        }.ifBlank { null }
+    }
+
+    private fun presetCatalogUrl(locator: String? = null): String? {
+        val base = publicWebBaseUrl() ?: return null
+        val preset = locator?.trim()?.takeIf { it.isNotBlank() } ?: return "$base/presets"
+        return "$base/presets?preset=${java.net.URLEncoder.encode(preset, Charsets.UTF_8)}"
+    }
+
     // ── 일반 유저 ───────────────────────────────────────────────────────
     fun ask(
         ctx: CommandContext,
@@ -943,11 +967,17 @@ class CommandService(
             presets.take(10).map { preset ->
                 val categoryText = preset.category ?: "general"
                 val mode = preset.responseMode ?: "balanced"
-                "• `${preset.id}` **${preset.title}** — $categoryText · $mode · 👍 ${preset.likeCount} · 가져오기 ${preset.importCount}"
+                val webLink = presetCatalogUrl(preset.slug.ifBlank { preset.id.toString() })?.let { " · <$it>" } ?: ""
+                "• `${preset.id}` **${preset.title}** — $categoryText · $mode · 👍 ${preset.likeCount} · " +
+                    "가져오기 ${preset.importCount}$webLink"
             }
         val lines = presetLines.joinToString("\n").ifBlank { "• 아직 공개된 프리셋이 없습니다." }
+        val webCatalog =
+            presetCatalogUrl()?.let { "웹에서 검색·미리보기·가져오기: <$it>\n" }
+                ?: "웹 카탈로그가 배포되면 `/presets` 에서 검색·미리보기·가져오기를 할 수 있습니다.\n"
         return "📚 **AI 프리셋 공유 목록** ($filter)\n\n" +
             "$lines\n\n" +
+            webCatalog +
             "현재 채널에 적용하려면 `/ai-preset-import published-id:<ID>` 를 실행하세요.\n" +
             "부적절하면 `/ai-preset-report published-id:<ID> reason:<사유>` 로 신고할 수 있습니다."
     }

@@ -42,7 +42,7 @@ private class EchoConn : AgentConnection {
     override fun close(reason: String) {}
 }
 
-@SpringBootTest
+@SpringBootTest(properties = ["central.relay.public-url=wss://discord-ai.yeon.world/agent"])
 @Transactional // 공유 in-memory DB 오염 방지(테스트 후 롤백)
 class CommandServiceTest
     @Autowired
@@ -254,6 +254,10 @@ class CommandServiceTest
             assertTrue(catalog.content.contains("AI 프리셋 공유 목록"))
             assertTrue(catalog.content.contains("코딩 튜터"))
             assertTrue(catalog.content.contains("`${published.id}`"))
+            assertTrue(catalog.content.contains("https://discord-ai.yeon.world/presets"))
+            val encodedSlug = java.net.URLEncoder.encode(published.slug, Charsets.UTF_8)
+            assertTrue(catalog.content.contains("preset=$encodedSlug"))
+            assertTrue(catalog.content.contains("웹에서 검색·미리보기·가져오기"))
 
             val liked = commands.likePreset(g.copy(isAdmin = false), published.id)
             assertTrue(liked.content.contains("좋아요"))

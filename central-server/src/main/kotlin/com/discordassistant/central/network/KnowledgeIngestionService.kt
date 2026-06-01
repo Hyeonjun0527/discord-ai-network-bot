@@ -6,6 +6,7 @@ import com.discordassistant.central.persistence.KnowledgeSpaceEntity
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.net.InetAddress
 import java.net.URI
 import java.security.MessageDigest
 import java.time.Clock
@@ -367,14 +368,47 @@ class KnowledgeIngestionService(
     private fun validateUri(sourceUri: String): SourceValidation? {
         val uri = runCatching { URI(sourceUri) }.getOrNull() ?: return SourceValidation("review", "blocked_bad_uri")
         if (uri.scheme != "https") return SourceValidation("review", "blocked_non_https")
-        val host = uri.host?.lowercase() ?: return SourceValidation("review", "blocked_bad_uri")
+        val host = uri.host?.lowercase()?.removeSurrounding("[", "]") ?: return SourceValidation("review", "blocked_bad_uri")
         return when {
             host == "localhost" || host.endsWith(".localhost") -> SourceValidation("ssrf", "blocked_ssrf")
-            host in PRIVATE_HOSTS -> SourceValidation("ssrf", "blocked_ssrf")
-            PRIVATE_IPV4_PREFIXES.any { host.startsWith(it) } -> SourceValidation("ssrf", "blocked_ssrf")
             host.endsWith(".local") || host.endsWith(".internal") -> SourceValidation("ssrf", "blocked_ssrf")
+            isPrivateAddressLiteral(host) -> SourceValidation("ssrf", "blocked_ssrf")
             else -> null
         }
+    }
+
+    private fun isPrivateAddressLiteral(host: String): Boolean {
+        parseIpv4Octets(host)?.let { octets ->
+            val first = octets[0]
+            val second = octets[1]
+            return first == 0 ||
+                first == 10 ||
+                first == 127 ||
+                (first == 100 && second in 64..127) ||
+                (first == 169 && second == 254) ||
+                (first == 172 && second in 16..31) ||
+                (first == 192 && second == 168)
+        }
+        if (":" !in host) return false
+        val address = runCatching { InetAddress.getByName(host) }.getOrNull() ?: return true
+        val bytes = address.address
+        if (bytes.size == 16) {
+            val first = bytes[0].toInt() and 0xff
+            val second = bytes[1].toInt() and 0xff
+            return address.isAnyLocalAddress ||
+                address.isLoopbackAddress ||
+                address.isLinkLocalAddress ||
+                first == 0xfc ||
+                first == 0xfd ||
+                (first == 0xfe && (second and 0xc0) == 0x80)
+        }
+        return address.isAnyLocalAddress || address.isLoopbackAddress || address.isLinkLocalAddress || address.isSiteLocalAddress
+    }
+
+    private fun parseIpv4Octets(host: String): List<Int>? {
+        if (!IPV4_LITERAL.matches(host)) return null
+        val octets = host.split(".").map { it.toIntOrNull() ?: return null }
+        return octets.takeIf { values -> values.size == 4 && values.all { it in 0..255 } }
     }
 
     private fun stableHash(value: String): String {
@@ -391,10 +425,9 @@ class KnowledgeIngestionService(
         const val MAX_CONTENT_PREVIEW_CHARS = 8_000
         const val DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
         val ALLOWED_SOURCE_TYPES = setOf("file", "link", "text", "faq", "constitution", "preset")
-        val PRIVATE_HOSTS = setOf("127.0.0.1", "0.0.0.0", "169.254.169.254", "::1")
         val BLOCKING_RISK_LEVELS = setOf("sensitive", "ssrf")
         val INDEXABLE_RISK_LEVELS = setOf("normal", "review")
-        val PRIVATE_IPV4_PREFIXES = listOf("10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "172.30.", "172.31.")
+        val IPV4_LITERAL = Regex("""\d{1,3}(?:\.\d{1,3}){3}""")
         val REASON_SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val SENSITIVE_PATTERNS =
             listOf(

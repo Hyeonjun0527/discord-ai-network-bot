@@ -598,4 +598,36 @@ class KnowledgeIngestionServiceTest
                 service.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
             }
         }
+
+        @Test
+        fun `link source blocks private ipv4 and ipv6 address literals`() {
+            val space = service.createSpace(100, 200, null, "주소 보안 지식", 77, null, null)
+            val blockedUris =
+                listOf(
+                    "https://10.0.0.2/internal",
+                    "https://172.16.0.1/internal",
+                    "https://172.31.255.254/internal",
+                    "https://192.168.0.10/internal",
+                    "https://[::1]/internal",
+                    "https://[fd00::1]/internal",
+                    "https://[fe80::1]/internal",
+                )
+
+            val created =
+                blockedUris.mapIndexed { index, uri ->
+                    service.addSource(
+                        guildId = 100,
+                        spaceId = space.id,
+                        sourceType = "link",
+                        title = "private-$index",
+                        sourceUri = uri,
+                        contentPreview = "internal",
+                        addedBy = 77,
+                    )
+                }
+
+            assertEquals(blockedUris.size, created.size)
+            assertTrue(created.all { it.riskLevel == "ssrf" })
+            assertTrue(created.all { it.status == "blocked_ssrf" })
+        }
     }

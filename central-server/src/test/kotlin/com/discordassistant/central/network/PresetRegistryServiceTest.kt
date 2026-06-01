@@ -208,6 +208,49 @@ class PresetRegistryServiceTest
         }
 
         @Test
+        fun `published preset rejects secret bearing revisions`() {
+            val preset =
+                service.createPreset(
+                    guildId = 320,
+                    ownerUserId = 77,
+                    name = "비밀 포함 프리셋",
+                    summary = "공개되면 안 됨",
+                    category = "security",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "개발", constitution = "api_key=secret-value"),
+                )
+
+            assertThrows(IllegalArgumentException::class.java) {
+                service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
+            }
+            assertEquals("draft", presets.findById(preset.id).orElseThrow().status)
+            assertEquals(0, publishedPresets.findByStatusOrderByLikeCountDescPublishedAtDesc("published").size)
+
+            service.updatePreset(
+                presetId = preset.id,
+                actorUserId = 77,
+                name = null,
+                summary = null,
+                category = null,
+                visibility = null,
+                behavior = PresetBehaviorInput(purpose = "개발", constitution = "민감정보를 요구하지 않음"),
+            )
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
+
+            assertThrows(IllegalArgumentException::class.java) {
+                controller.updatePublished(
+                    published.id,
+                    UpdatePublishedPresetRequest(
+                        actorUserId = 77,
+                        behavior = PresetBehaviorInput(purpose = "운영", changeSummary = "token=hidden"),
+                    ),
+                )
+            }
+            val publishedAfterFailedUpdate = publishedPresets.findById(published.id).orElseThrow()
+            assertEquals(published.revisionId, publishedAfterFailedUpdate.revisionId)
+        }
+
+        @Test
         fun `import preview detects overwrites and does not mutate target channel`() {
             val preset =
                 service.createPreset(
@@ -426,7 +469,9 @@ class PresetRegistryServiceTest
             val channelAi = channelAis.findByGuildIdAndChannelId(201, 301)
             assertNotNull(channelAi)
             assertEquals(null, channelAi?.activeBehaviorVersionId)
-            assertEquals(1, proposals.findByGuildIdAndStatus(201, "pending").size)
+            val proposal = proposals.findByGuildIdAndStatus(201, "pending").single()
+            assertNotNull(proposal.payloadHash)
+            assertEquals(imported.createdBehaviorVersionId, proposal.proposedBehaviorId)
             assertEquals(1, audits.findTop10ByGuildIdAndChannelIdOrderByCreatedAtDesc(201, 301).size)
         }
     }

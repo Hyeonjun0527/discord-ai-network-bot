@@ -24,6 +24,7 @@ import com.discordassistant.central.persistence.PublishedPresetEntity
 import com.discordassistant.central.persistence.PublishedPresetRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
 
@@ -175,6 +176,11 @@ class PresetRegistryService(
             preset.currentRevisionId
                 ?: revisions.findByPresetIdOrderByRevisionDesc(preset.id).firstOrNull()?.id
                 ?: throw IllegalArgumentException("preset has no revision: $presetId")
+        val revision =
+            revisions.findById(revisionId).orElseThrow {
+                IllegalArgumentException("preset revision not found: $revisionId")
+            }
+        requirePublishableRevision(revision)
         preset.status = "published"
         preset.visibility = "published"
         presets.save(preset)
@@ -239,6 +245,7 @@ class PresetRegistryService(
             preset.currentRevisionId = revision.id
             preset.updatedAt = now
             presets.save(preset)
+            requirePublishableRevision(revision)
             published.revisionId = revision.id
         }
         return publishedPresets.save(published)
@@ -569,6 +576,7 @@ class PresetRegistryService(
                     status = "pending",
                     requestedBy = importedBy,
                     reason = "preset import requires review: ${sourceRevision.safetyLevel}",
+                    payloadHash = behavior.payloadHash(),
                     createdAt = now,
                 ),
             )
@@ -620,6 +628,26 @@ class PresetRegistryService(
 
     private fun requirePublishedPreset(published: PublishedPresetEntity) {
         require(published.status == "published") { "published preset is not importable or likable: ${published.status}" }
+    }
+
+    private fun requirePublishableRevision(revision: PresetRevisionEntity) {
+        val text =
+            listOf(
+                revision.name,
+                revision.purpose,
+                revision.tone,
+                revision.answerLength,
+                revision.constitution.orEmpty(),
+                revision.safetyLevel,
+                revision.responseMode,
+                revision.preferredModel.orEmpty(),
+                revision.providerTagFilter.orEmpty(),
+                revision.costGuard,
+                revision.changeSummary.orEmpty(),
+            ).joinToString("\n")
+        require(!SECRET_PATTERN.containsMatchIn(text)) {
+            "published preset cannot include secrets or sensitive credentials"
+        }
     }
 
     private fun createRevision(
@@ -699,6 +727,26 @@ class PresetRegistryService(
             changeSummary = changeSummary,
             createdAt = createdAt.toString(),
         )
+
+    private fun AiBehaviorVersionEntity.payloadHash(): String =
+        sha256(
+            listOf(
+                channelAiId.toString(),
+                version.toString(),
+                purpose,
+                tone,
+                answerLength,
+                constitution.orEmpty(),
+                safetyLevel,
+                changeSummary.orEmpty(),
+            ).joinToString("\u001F"),
+        )
+
+    private fun sha256(value: String): String =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     private fun PresetRevisionEntity.toBehaviorSnapshot(): PresetBehaviorSnapshot =
         PresetBehaviorSnapshot(

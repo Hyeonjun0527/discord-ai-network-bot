@@ -232,6 +232,40 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `multi response blocks fanout when any provider has critical overload`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 30,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 31,
+                    providerState = "OVERLOADED",
+                    modelCount = 1,
+                    modelNames = "qwen",
+                    capabilityTags = "multi-response",
+                    qualityTier = "specialized",
+                    overloadRisk = "critical",
+                ),
+            )
+            controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 203, mode = "compare", maxCandidates = 2))
+
+            val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 203, requestId = "req-critical"))
+
+            assertEquals("no_provider", started["status"])
+            assertEquals(0, started["candidateCount"])
+        }
+
+        @Test
         fun `multi response kill switch blocks advanced fanout workflow`() {
             val disabledService =
                 MultiResponseService(

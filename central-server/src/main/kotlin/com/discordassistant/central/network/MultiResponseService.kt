@@ -179,10 +179,11 @@ class MultiResponseService(
         guildId: Long,
         policy: MultiResponsePolicyEntity,
     ): List<ProviderCapabilityProfileEntity> {
+        val providers = providerCapabilities.findByGuildId(guildId)
+        if (providers.any { it.overloadRisk.equals("critical", ignoreCase = true) }) return emptyList()
         val advancedFanout = policy.maxCandidates > 1 || !policy.mode.equals("single", ignoreCase = true) || policy.synthesisEnabled
         val ranked =
-            providerCapabilities
-                .findByGuildId(guildId)
+            providers
                 .filter { it.providerState.equals("ONLINE", ignoreCase = true) }
                 .filter { !it.overloadRisk.equals("high", ignoreCase = true) && !it.overloadRisk.equals("critical", ignoreCase = true) }
                 .filter { policy.providerDailyLimit <= 0 || it.dailyLimit <= 0 || it.dailyLimit >= policy.providerDailyLimit }

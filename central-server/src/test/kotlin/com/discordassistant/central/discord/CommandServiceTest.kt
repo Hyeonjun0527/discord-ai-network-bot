@@ -301,6 +301,52 @@ class CommandServiceTest
         }
 
         @Test
+        fun `ask — 채널 모델 정책을 만족하는 안전 provider가 없으면 요청 모델로 우회 전송하지 않는다`() {
+            val guildId = 9301L
+            val channelId = 2301L
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 81, guildId = guildId)
+            conn.session = s
+            s.capability = s.capability.copy(models = listOf("qwen-coder"))
+            registry.register(s)
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = guildId,
+                    providerUserId = 81,
+                    providerState = "ONLINE",
+                    modelNames = "qwen-coder",
+                    qualityTier = "specialized",
+                    overloadRisk = "critical",
+                ),
+            )
+            channelRoutingPolicies.save(
+                guildId = guildId,
+                channelId = channelId,
+                responseMode = "balanced",
+                preferredModel = null,
+                allowedModels = listOf("qwen-coder"),
+                minQualityTier = "standard",
+                maxCandidates = 1,
+                providerTagFilter = emptyList(),
+                costGuard = "provider_safe",
+            )
+            try {
+                val r =
+                    commands.ask(
+                        CommandContext(guildId = guildId, channelId = channelId, userId = 5, roleIds = setOf(1L), isAdmin = true),
+                        "깊게 봐줘",
+                        requestedModel = "qwen-coder",
+                    )
+
+                assertTrue(r.content.contains("요청을 보내지 않았습니다"))
+                assertTrue(r.content.contains("Provider 보호"))
+                assertEquals(null, conn.lastInfer)
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
         fun `ask — 채널 AI 설정이 있으면 행동 설정을 프롬프트에 반영한다`() {
             val conn = EchoConn()
             val s = ProviderSession(conn, providerId = 78, guildId = 100)

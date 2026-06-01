@@ -99,6 +99,37 @@ class ChannelAiRoutingPolicyServiceTest
         }
 
         @Test
+        fun `model choice marks constrained policy when allowlist has no safe provider`() {
+            service.save(
+                guildId = 100,
+                channelId = 203,
+                responseMode = "balanced",
+                preferredModel = null,
+                allowedModels = listOf("qwen-coder"),
+                minQualityTier = "standard",
+                maxCandidates = 1,
+                providerTagFilter = emptyList(),
+                costGuard = "provider_safe",
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 4,
+                    providerState = "ONLINE",
+                    modelNames = "qwen-coder",
+                    qualityTier = "specialized",
+                    overloadRisk = "critical",
+                ),
+            )
+
+            val decision = service.resolveModelChoice(100, 203, requestedModel = "qwen-coder", guildDefaultModel = null)
+
+            assertEquals(null, decision.selectedModel)
+            assertEquals("no_available_model", decision.fallbackReason)
+            assertEquals(true, decision.requiresAvailableModel)
+        }
+
+        @Test
         fun `model choice blocks model outside channel allowlist`() {
             service.save(
                 guildId = 100,

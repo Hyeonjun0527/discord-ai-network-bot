@@ -86,6 +86,11 @@ class ChannelAiRoutingPolicyService(
             explanation = explanation(desired, selected, fallbackReason),
             responseMode = effective.responseMode,
             costGuard = effective.costGuard,
+            requiresAvailableModel =
+                effective.preferredModel != null ||
+                    allowedModels.isNotEmpty() ||
+                    !effective.minQualityTier.equals("standard", ignoreCase = true) ||
+                    effective.providerTagFilter.isNotEmpty(),
         )
     }
 
@@ -277,4 +282,5 @@ data class ModelChoiceDecision(
     val explanation: String,
     val responseMode: String,
     val costGuard: String,
+    val requiresAvailableModel: Boolean = false,
 )

@@ -1,5 +1,6 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
@@ -38,6 +39,7 @@ class CommandServiceTest
         val commands: CommandService,
         val registry: ConnectionRegistry,
         val usage: UsageService,
+        val knowledge: KnowledgeIngestionService,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -272,6 +274,37 @@ class CommandServiceTest
                 assertTrue(r.content.contains("역할: Kotlin 개발 도우미"))
                 assertTrue(r.content.contains("[사용자 질문]"))
                 assertTrue(r.content.endsWith("코드 설명"))
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 채널 지식 컨텍스트가 있으면 안전하게 프롬프트에 합성한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 80, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                val space = knowledge.createSpace(100, 200, null, "개발 지식", 77, null, null)
+                val source =
+                    knowledge.addSource(
+                        guildId = 100,
+                        spaceId = space.id,
+                        sourceType = "link",
+                        title = "Kotlin Spring 운영 가이드",
+                        sourceUri = "https://example.com/kotlin-spring-guide.md",
+                        contentPreview = "운영",
+                        addedBy = 77,
+                    )
+                knowledge.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+
+                val r = commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘")
+
+                assertTrue(r.content.contains("[채널 지식 컨텍스트]"))
+                assertTrue(r.content.contains("Kotlin Spring 운영 가이드"))
+                assertTrue(r.content.contains("[질문 실행 입력]"))
+                assertTrue(r.content.endsWith("Kotlin Spring 설정 알려줘"))
             } finally {
                 registry.unregister(s)
             }

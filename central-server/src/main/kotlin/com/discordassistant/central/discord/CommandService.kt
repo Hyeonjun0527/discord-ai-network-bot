@@ -3,6 +3,7 @@ package com.discordassistant.central.discord
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
+import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.provider.ContributionPolicyService
 import com.discordassistant.central.provider.ProviderProtectionService
@@ -47,6 +48,7 @@ class CommandService(
     private val schedule: com.discordassistant.central.provider.ProviderScheduleService,
     private val channelProfiles: ChannelAiProfileService,
     private val channelRoutingPolicies: ChannelAiRoutingPolicyService,
+    private val knowledgeSearch: KnowledgeSearchService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
 ) {
@@ -79,7 +81,7 @@ class CommandService(
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
-        val effectivePrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { prompt.withChannelAiBehavior(it) } ?: prompt
+        val effectivePrompt = prompt.composeExecutionPrompt(ctx)
         val routingPolicy = channelRoutingPolicies.effective(ctx.guildId, ctx.channelId, policy.guildDefaultModel(ctx.guildId))
         val modelChoice =
             channelRoutingPolicies.resolveModelChoice(
@@ -122,6 +124,30 @@ class CommandService(
             "balanced", "균형", "균형 모드" -> "balanced"
             else -> null
         }
+
+    private fun String.composeExecutionPrompt(ctx: CommandContext): String {
+        val behaviorPrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it) } ?: this
+        val knowledgeContext =
+            runCatching {
+                knowledgeSearch.promptContext(
+                    guildId = ctx.guildId,
+                    query = this,
+                    maxChars = 1200,
+                    channelId = ctx.channelId,
+                )
+            }.getOrNull()
+        val contextText = knowledgeContext?.contextText?.takeIf { it.isNotBlank() } ?: return behaviorPrompt
+        return buildString {
+            appendLine("[채널 지식 컨텍스트]")
+            appendLine(contextText)
+            appendLine()
+            appendLine("위 지식은 이 채널에 등록된 참고자료입니다.")
+            appendLine("지식과 질문이 충돌하면 확실하지 않다고 말하고, 민감정보는 요구하지 마세요.")
+            appendLine()
+            appendLine("[질문 실행 입력]")
+            append(behaviorPrompt)
+        }
+    }
 
     /** 슬래시 옵션 자동완성용 모델 목록(#179). 현재 길드 풀이 제공하는 모델명(중복 제거·정렬). */
     fun autocompleteModels(ctx: CommandContext): List<String> =

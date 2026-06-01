@@ -374,7 +374,10 @@ class KnowledgeIngestionServiceTest
 
             assertEquals(null, context.fallbackReason)
             assertEquals(listOf(sourceOne.id), context.entries.map { it.sourceId })
-            assertTrue(context.contextText.contains("source:${sourceOne.id}"))
+            assertEquals(listOf(sourceOne.id), context.sourceRefs.map { it.sourceId })
+            assertEquals("S1", context.sourceRefs.single().ref)
+            assertTrue(context.contextText.contains("[S1]"))
+            assertTrue(!context.contextText.contains("[source:"))
             assertTrue(context.contextText.contains("Kotlin Spring"))
             assertTrue(context.contextText.contains("번역").not())
             assertTrue(context.usedChars <= context.maxChars)
@@ -486,6 +489,8 @@ class KnowledgeIngestionServiceTest
             assertEquals("S1", fast.sourceRefs.single().ref)
             assertEquals("channel_scoped", fast.sourceRefs.single().visibility)
             assertEquals("https://example.com/kotlin-spring-guide.md", fast.sourceRefs.single().sourceUri)
+            assertTrue(fast.contextText.contains("[S1]"))
+            assertTrue(!fast.contextText.contains("[source:"))
 
             val deep =
                 controller.contextPlan(

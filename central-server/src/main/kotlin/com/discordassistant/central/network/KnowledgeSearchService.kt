@@ -169,9 +169,11 @@ class KnowledgeSearchService(
                 )
             used += text.length
         }
+        val sourceRefs = entries.toSourceRefs()
+        val refBySourceId = sourceRefs.associateBy { it.sourceId }
         val contextText =
             entries.joinToString("\n") {
-                "- [source:${it.sourceId}] ${it.snippet}"
+                "- [${refBySourceId[it.sourceId]?.ref ?: "source:${it.sourceId}"}] ${it.snippet}"
             }
         return KnowledgePromptContext(
             guildId = guildId,
@@ -182,7 +184,7 @@ class KnowledgeSearchService(
             usedChars = contextText.length,
             entries = entries,
             contextText = contextText,
-            sourceRefs = entries.toSourceRefs(),
+            sourceRefs = sourceRefs,
             fallbackReason =
                 when {
                     search.fallbackReason != null -> search.fallbackReason

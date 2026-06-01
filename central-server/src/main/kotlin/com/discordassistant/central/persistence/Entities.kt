@@ -439,3 +439,18 @@ class PresetReportEntity(
     var createdAt: Instant = Instant.EPOCH,
     var reviewedAt: Instant? = null,
 )
+
+@Entity
+@Table(name = "ai_network_event")
+class AiNetworkEventEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var eventType: String = "",
+    var actorUserId: Long? = null,
+    var providerUserId: Long? = null,
+    var channelId: Long? = null,
+    var title: String = "",
+    var summary: String? = null,
+    var metadata: String? = null,
+    var createdAt: Instant = Instant.EPOCH,
+)

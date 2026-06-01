@@ -299,3 +299,12 @@ interface PresetReactionRepository : JpaRepository<PresetReactionEntity, Long> {
 interface PresetReportRepository : JpaRepository<PresetReportEntity, Long> {
     fun findByStatus(status: String): List<PresetReportEntity>
 }
+
+interface AiNetworkEventRepository : JpaRepository<AiNetworkEventEntity, Long> {
+    fun findTop20ByGuildIdOrderByCreatedAtDesc(guildId: Long): List<AiNetworkEventEntity>
+
+    fun findByGuildIdAndEventType(
+        guildId: Long,
+        eventType: String,
+    ): List<AiNetworkEventEntity>
+}

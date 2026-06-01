@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.dashboard.AdoptCandidateRequest
 import com.discordassistant.central.dashboard.CompleteBestMultiResponseRunRequest
 import com.discordassistant.central.dashboard.MultiResponseController
 import com.discordassistant.central.dashboard.RecordCandidateRequest
@@ -56,6 +57,7 @@ class MultiResponseServiceTest
                 candidates = candidates,
                 syntheses = syntheses,
                 providerCapabilities = providerCapabilities,
+                feedbacks = feedbacks,
                 clock = fixedClock,
             )
         private val controller = MultiResponseController(service)
@@ -202,6 +204,58 @@ class MultiResponseServiceTest
             assertEquals(1, stats["completedRunCount"])
             assertEquals(2.0, stats["averageActualFanout"])
             assertEquals(1, controller.recentRuns(100).size)
+        }
+
+        @Test
+        fun `user can adopt candidate and leave quality feedback without storing answer body`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 41,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(
+                100,
+                SaveMultiResponsePolicyRequest(
+                    channelId = 201,
+                    mode = "compare",
+                    maxCandidates = 1,
+                    synthesisEnabled = true,
+                ),
+            )
+            val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 201, requestId = "adopt-1"))
+            val runId = started["id"] as Long
+            val candidate = candidates.findByRunId(runId).single()
+            controller.recordCandidate(
+                runId,
+                candidate.id,
+                RecordCandidateRequest(answerRef = "answer:adopt-1:a", status = "completed", qualityScore = 70),
+            )
+
+            val adopted =
+                controller.adoptCandidate(
+                    runId,
+                    candidate.id,
+                    AdoptCandidateRequest(userId = 99, rating = 1, reason = "token=abc123 이 답이 제일 정확"),
+                )
+
+            assertEquals("completed", adopted["status"])
+            assertEquals(candidate.id, adopted["selectedCandidateId"])
+            assertEquals(100, adopted["candidateQualityScore"])
+            assertNotNull(adopted["synthesisId"])
+            assertNotNull(adopted["feedbackId"])
+            assertEquals(candidate.id, runs.findById(runId).get().selectedCandidateId)
+            assertEquals("user_selected_candidate", syntheses.findByRunId(runId)?.strategy)
+            val feedback = feedbacks.findTop20ByGuildIdAndChannelIdOrderByCreatedAtDesc(100, 201).single()
+            assertEquals("candidate_adoption", feedback.feedbackType)
+            assertEquals("[redacted] 이 답이 제일 정확", feedback.reason)
+            assertEquals("adopt-1", feedback.requestId)
         }
 
         @Test

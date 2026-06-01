@@ -92,6 +92,23 @@ class MultiResponseController(
         )
     }
 
+    @PostMapping("/runs/{runId}/candidates/{candidateId}/adopt")
+    fun adoptCandidate(
+        @PathVariable runId: Long,
+        @PathVariable candidateId: Long,
+        @RequestBody request: AdoptCandidateRequest,
+    ): Map<String, Any?> {
+        val adoption = service.adoptCandidate(runId, candidateId, request.userId, request.rating, request.reason)
+        return mapOf(
+            "runId" to adoption.run.id,
+            "status" to adoption.run.status,
+            "selectedCandidateId" to adoption.run.selectedCandidateId,
+            "candidateQualityScore" to adoption.candidate.qualityScore,
+            "synthesisId" to adoption.synthesis.id,
+            "feedbackId" to adoption.feedbackId,
+        )
+    }
+
     @PostMapping("/runs/{runId}/complete-best")
     fun completeBest(
         @PathVariable runId: Long,
@@ -233,6 +250,12 @@ data class SynthesizeRunRequest(
     val strategy: String = "best_by_heuristic",
     val qualitySummary: String? = null,
     val safetySummary: String? = null,
+)
+
+data class AdoptCandidateRequest(
+    val userId: Long? = null,
+    val rating: Int? = null,
+    val reason: String? = null,
 )
 
 data class CompleteBestMultiResponseRunRequest(

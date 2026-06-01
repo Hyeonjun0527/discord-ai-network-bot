@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.persistence.AiFeedbackEntity
+import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity
 import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.MultiResponsePolicyEntity
@@ -23,6 +25,7 @@ class MultiResponseService(
     private val candidates: CandidateAnswerRepository,
     private val syntheses: SynthesisResultRepository,
     private val providerCapabilities: ProviderCapabilityProfileRepository,
+    private val feedbacks: AiFeedbackRepository? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
     private val safety: ProviderSafetyService? = null,
@@ -227,6 +230,68 @@ class MultiResponseService(
     }
 
     @Transactional
+    fun adoptCandidate(
+        runId: Long,
+        candidateId: Long,
+        userId: Long?,
+        rating: Int?,
+        reason: String?,
+    ): CandidateAdoptionResult {
+        featureGate.requireMultiResponseEnabled()
+        val now = Instant.now(clock)
+        val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
+        val candidate =
+            candidates.findByRunIdAndId(runId, candidateId)
+                ?: throw IllegalArgumentException("candidate not found: run=$runId candidate=$candidateId")
+        require(candidate.status.equals("completed", ignoreCase = true)) { "only completed candidates can be adopted" }
+        require(!candidate.answerRef.isNullOrBlank()) { "candidate answerRef is required for adoption" }
+        val normalizedRating = rating?.coerceIn(-1, 1)
+        if (normalizedRating != null) {
+            candidate.qualityScore =
+                when {
+                    normalizedRating > 0 -> maxOf(candidate.qualityScore ?: 0, 100)
+                    normalizedRating < 0 -> minOf(candidate.qualityScore ?: 0, 0)
+                    else -> candidate.qualityScore ?: 50
+                }
+            candidates.save(candidate)
+        }
+        val synthesis =
+            syntheses.findByRunId(runId)
+                ?: SynthesisResultEntity(runId = runId, createdAt = now)
+        synthesis.answerRef = candidate.answerRef
+        synthesis.status = "completed"
+        synthesis.selectedCandidateIds = candidate.id.toString()
+        synthesis.strategy = "user_selected_candidate"
+        synthesis.qualitySummary = "user selected candidate #${candidate.id}"
+        synthesis.safetySummary = summarizeSafety(listOf(candidate))
+        val savedSynthesis = syntheses.save(synthesis)
+        run.selectedCandidateId = candidate.id
+        run.status = "completed"
+        run.finishedAt = run.finishedAt ?: now
+        val savedRun = runs.save(run)
+        val feedback =
+            feedbacks?.save(
+                AiFeedbackEntity(
+                    guildId = run.guildId,
+                    channelId = run.channelId,
+                    requestId = run.requestId,
+                    userId = userId,
+                    rating = normalizedRating,
+                    feedbackType = "candidate_adoption",
+                    reason = sanitizeText(reason, maxLength = 500),
+                    status = "open",
+                    createdAt = now,
+                ),
+            )
+        return CandidateAdoptionResult(
+            run = savedRun,
+            candidate = candidate,
+            synthesis = savedSynthesis,
+            feedbackId = feedback?.id,
+        )
+    }
+
+    @Transactional
     fun failRun(
         runId: Long,
         reason: String,
@@ -398,6 +463,16 @@ class MultiResponseService(
         return "avg=${"%.1f".format(average)}, best=$best, scored=${scores.size}"
     }
 
+    private fun sanitizeText(
+        value: String?,
+        maxLength: Int,
+    ): String? =
+        value
+            ?.trim()
+            ?.replace(SECRET_PATTERN, "[redacted]")
+            ?.take(maxLength)
+            ?.ifBlank { null }
+
     private fun String?.isSensitivePrompt(): Boolean {
         val text = this?.trim().orEmpty()
         if (text.isBlank()) return false
@@ -409,6 +484,7 @@ class MultiResponseService(
     private companion object {
         val FANOUT_OPT_IN_TAGS = setOf("multi-response", "multi_response", "fanout", "fanout-opt-in")
         val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
+        val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val SENSITIVE_PROMPT_PATTERNS =
             listOf(
                 Regex("(?i)\b(password|passwd|pwd|secret)\b"),
@@ -441,4 +517,11 @@ data class MultiResponseCompletion(
     val run: MultiResponseRunEntity,
     val synthesis: SynthesisResultEntity?,
     val fallbackReason: String?,
+)
+
+data class CandidateAdoptionResult(
+    val run: MultiResponseRunEntity,
+    val candidate: CandidateAnswerEntity,
+    val synthesis: SynthesisResultEntity,
+    val feedbackId: Long?,
 )

@@ -5,9 +5,15 @@ import com.discordassistant.central.dashboard.RecordCandidateRequest
 import com.discordassistant.central.dashboard.SaveMultiResponsePolicyRequest
 import com.discordassistant.central.dashboard.StartMultiResponseRunRequest
 import com.discordassistant.central.dashboard.SynthesizeRunRequest
+import com.discordassistant.central.persistence.AiFeedbackRepository
+import com.discordassistant.central.persistence.AiNetworkEventRepository
+import com.discordassistant.central.persistence.AiNetworkProfileRepository
 import com.discordassistant.central.persistence.CandidateAnswerRepository
+import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.MultiResponsePolicyRepository
 import com.discordassistant.central.persistence.MultiResponseRunRepository
+import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.persistence.SynthesisResultRepository
@@ -32,7 +38,14 @@ class MultiResponseServiceTest
         private val candidates: CandidateAnswerRepository,
         private val syntheses: SynthesisResultRepository,
         private val providerCapabilities: ProviderCapabilityProfileRepository,
+        private val networkProfiles: AiNetworkProfileRepository,
+        private val knowledgeSpaces: KnowledgeSpaceRepository,
+        private val overviewProjections: NetworkOverviewProjectionRepository,
+        private val channelAis: ChannelAiRepository,
+        private val feedbacks: AiFeedbackRepository,
+        private val events: AiNetworkEventRepository,
     ) {
+        private val fixedClock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC)
         private val service =
             MultiResponseService(
                 policies = policies,
@@ -40,9 +53,32 @@ class MultiResponseServiceTest
                 candidates = candidates,
                 syntheses = syntheses,
                 providerCapabilities = providerCapabilities,
-                clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
+                clock = fixedClock,
             )
         private val controller = MultiResponseController(service)
+
+        private fun safetyAwareService(): MultiResponseService {
+            val foundation =
+                AiNetworkFoundationService(
+                    networkProfiles = networkProfiles,
+                    providerCapabilities = providerCapabilities,
+                    knowledgeSpaces = knowledgeSpaces,
+                    overviewProjections = overviewProjections,
+                    channelAis = channelAis,
+                    feedbacks = feedbacks,
+                    clock = fixedClock,
+                )
+            val safety = ProviderSafetyService(providerCapabilities, events, foundation, fixedClock)
+            return MultiResponseService(
+                policies = policies,
+                runs = runs,
+                candidates = candidates,
+                syntheses = syntheses,
+                providerCapabilities = providerCapabilities,
+                clock = fixedClock,
+                safety = safety,
+            )
+        }
 
         @Test
         fun `multi response run plans safe candidates and completes synthesis`() {
@@ -301,6 +337,70 @@ class MultiResponseServiceTest
 
             assertEquals("no_provider", started["status"])
             assertEquals(0, started["candidateCount"])
+        }
+
+        @Test
+        fun `multi response uses provider safety plan to degrade fanout before selecting candidates`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 300,
+                    providerUserId = 101,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 300,
+                    providerUserId = 102,
+                    providerState = "OVERLOADED",
+                    modelCount = 1,
+                    modelNames = "qwen",
+                    capabilityTags = "multi-response",
+                    qualityTier = "specialized",
+                    overloadRisk = "high",
+                ),
+            )
+            val safetyController = MultiResponseController(safetyAwareService())
+            safetyController.savePolicy(
+                300,
+                SaveMultiResponsePolicyRequest(channelId = 230, mode = "compare", maxCandidates = 3, synthesisEnabled = true),
+            )
+
+            val started = safetyController.startRun(300, StartMultiResponseRunRequest(channelId = 230, requestId = "req-safe-plan"))
+
+            assertEquals("running", started["status"])
+            assertEquals(1, started["candidateCount"])
+            assertEquals(listOf(101L), candidates.findByRunId(started["id"] as Long).map { it.providerUserId })
+        }
+
+        @Test
+        fun `multi response uses provider safety plan to block when no safe capacity remains`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 301,
+                    providerUserId = 201,
+                    providerState = "OVERLOADED",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "critical",
+                ),
+            )
+            val safetyController = MultiResponseController(safetyAwareService())
+            safetyController.savePolicy(301, SaveMultiResponsePolicyRequest(channelId = 231, mode = "compare", maxCandidates = 2))
+
+            val started = safetyController.startRun(301, StartMultiResponseRunRequest(channelId = 231, requestId = "req-safe-block"))
+
+            assertEquals("no_provider", started["status"])
+            assertEquals(0, started["candidateCount"])
+            assertEquals(0, candidates.findByRunId(started["id"] as Long).size)
+            assertNotNull(runs.findById(started["id"] as Long).get().failureReason)
         }
 
         @Test

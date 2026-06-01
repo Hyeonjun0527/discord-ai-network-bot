@@ -25,6 +25,7 @@ class MultiResponseService(
     private val providerCapabilities: ProviderCapabilityProfileRepository,
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
+    private val safety: ProviderSafetyService? = null,
 ) {
     @Transactional
     fun savePolicy(
@@ -97,7 +98,20 @@ class MultiResponseService(
             run.finishedAt = Instant.now(clock)
             return runs.save(run)
         }
-        val selectedProviders = selectProviders(guildId, policy)
+        val executionPlan = safety?.executionPlan(guildId, policy.mode, policy.maxCandidates)
+        if (executionPlan != null && executionPlan.maxSafeCandidates == 0) {
+            run.status = "no_provider"
+            run.failureReason = executionPlan.reasons.joinToString(" ")
+            run.finishedAt = Instant.now(clock)
+            return runs.save(run)
+        }
+        val selectedProviders =
+            selectProviders(
+                guildId = guildId,
+                policy = policy,
+                maxCandidates = executionPlan?.maxSafeCandidates ?: policy.maxCandidates,
+                fanoutAllowed = executionPlan?.fanoutAllowed ?: true,
+            )
         selectedProviders.forEach { provider ->
             val firstModel = provider.firstModel()
             candidates.save(
@@ -225,10 +239,13 @@ class MultiResponseService(
     private fun selectProviders(
         guildId: Long,
         policy: MultiResponsePolicyEntity,
+        maxCandidates: Int = policy.maxCandidates,
+        fanoutAllowed: Boolean = true,
     ): List<ProviderCapabilityProfileEntity> {
         val providers = providerCapabilities.findByGuildId(guildId)
         if (providers.any { it.overloadRisk.equals("critical", ignoreCase = true) }) return emptyList()
         val advancedFanout = policy.maxCandidates > 1 || !policy.mode.equals("single", ignoreCase = true) || policy.synthesisEnabled
+        val effectiveMaxCandidates = if (fanoutAllowed) maxCandidates else 1
         val ranked =
             providers
                 .filter { it.providerState.equals("ONLINE", ignoreCase = true) }
@@ -247,7 +264,7 @@ class MultiResponseService(
             val model = provider.firstModel()?.lowercase().orEmpty()
             if (policy.requireDistinctModels && model.isNotBlank() && !usedModels.add(model)) continue
             selected += provider
-            if (selected.size >= policy.maxCandidates) break
+            if (selected.size >= effectiveMaxCandidates) break
         }
         return selected
     }

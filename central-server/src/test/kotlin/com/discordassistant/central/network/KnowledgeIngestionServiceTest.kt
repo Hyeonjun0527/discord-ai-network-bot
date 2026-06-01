@@ -340,6 +340,53 @@ class KnowledgeIngestionServiceTest
         }
 
         @Test
+        fun `sensitive-looking query disables RAG search and prompt context`() {
+            val space = service.createSpace(100, 201, null, "보안 지식", 77, null, null)
+            val source =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "link",
+                    title = "Kotlin API 운영 가이드",
+                    sourceUri = "https://example.com/kotlin-api-guide.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            service.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+
+            val query = "Kotlin api_key=sk-test-secret-1234567890 처리 방법"
+            val search = controller.search(100, query = query, limit = 5, channelId = 201, knowledgeSpaceId = null)
+            assertEquals("blocked_sensitive_query", search.fallbackReason)
+            assertTrue(search.results.isEmpty())
+
+            val context =
+                controller.promptContext(
+                    guildId = 100,
+                    query = query,
+                    maxChars = 500,
+                    channelId = 201,
+                    knowledgeSpaceId = null,
+                )
+            assertEquals("blocked_sensitive_query", context.fallbackReason)
+            assertTrue(context.entries.isEmpty())
+            assertEquals("", context.contextText)
+
+            val plan =
+                controller.contextPlan(
+                    guildId = 100,
+                    query = query,
+                    responseMode = "deep",
+                    maxChars = null,
+                    channelId = 201,
+                    knowledgeSpaceId = null,
+                )
+            assertEquals(false, plan.enabled)
+            assertEquals("blocked_sensitive_query", plan.fallbackReason)
+            assertTrue(plan.warnings.contains("blocked_sensitive_query"))
+            assertEquals(0, plan.maxChars)
+        }
+
+        @Test
         fun `context plan applies response mode budgets and graceful fallback`() {
             val channelOne = service.createSpace(100, 201, null, "개발 지식", 77, null, null)
             val sourceOne =

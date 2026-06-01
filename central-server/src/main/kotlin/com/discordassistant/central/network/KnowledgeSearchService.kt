@@ -23,6 +23,14 @@ class KnowledgeSearchService(
         if (normalizedQuery.isBlank()) {
             return KnowledgeSearchResponse(guildId = guildId, query = query, results = emptyList(), fallbackReason = "empty_query")
         }
+        if (query.looksSensitive()) {
+            return KnowledgeSearchResponse(
+                guildId = guildId,
+                query = query,
+                results = emptyList(),
+                fallbackReason = "blocked_sensitive_query",
+            )
+        }
         val allowedSpaceIds = allowedSpaceIds(guildId, channelId, knowledgeSpaceId)
         if (allowedSpaceIds.isEmpty()) {
             return KnowledgeSearchResponse(guildId = guildId, query = query, results = emptyList(), fallbackReason = "no_knowledge_space")
@@ -110,6 +118,20 @@ class KnowledgeSearchService(
         require(channelId != null || knowledgeSpaceId != null) {
             "RAG prompt context requires channelId or knowledgeSpaceId scope"
         }
+        if (query.looksSensitive()) {
+            val budget = maxChars.coerceIn(200, 8_000)
+            return KnowledgePromptContext(
+                guildId = guildId,
+                channelId = channelId,
+                knowledgeSpaceId = knowledgeSpaceId,
+                query = query,
+                maxChars = budget,
+                usedChars = 0,
+                entries = emptyList(),
+                contextText = "",
+                fallbackReason = "blocked_sensitive_query",
+            )
+        }
         val search = search(guildId, query, limit = 10, channelId = channelId, knowledgeSpaceId = knowledgeSpaceId)
         val budget = maxChars.coerceIn(200, 8_000)
         val entries = mutableListOf<KnowledgePromptEntry>()
@@ -179,6 +201,16 @@ class KnowledgeSearchService(
                 query = query,
                 responseMode = normalizedMode,
                 fallbackReason = "rag_scope_required",
+            )
+        }
+        if (query.looksSensitive()) {
+            return KnowledgeContextPlan.disabled(
+                guildId = guildId,
+                channelId = channelId,
+                knowledgeSpaceId = knowledgeSpaceId,
+                query = query,
+                responseMode = normalizedMode,
+                fallbackReason = "blocked_sensitive_query",
             )
         }
         val requestedBudget = requestedMaxChars?.coerceIn(200, 8_000) ?: modeBudget
@@ -253,11 +285,25 @@ class KnowledgeSearchService(
             "type=$sourceType",
         ).joinToString(" · ")
 
+    private fun String.looksSensitive(): Boolean {
+        val value = trim()
+        if (value.isBlank()) return false
+        return SENSITIVE_QUERY_PATTERNS.any { it.containsMatchIn(value) }
+    }
+
     private companion object {
         const val MIN_HIT_AT_K = 0.8
         const val MIN_MRR = 0.7
         const val MIN_RECALL_AT_K = 0.7
         val SEARCHABLE_RISK_LEVELS = setOf("normal", "review")
+        val SENSITIVE_QUERY_PATTERNS =
+            listOf(
+                Regex("""(?i)\b(password|passwd|pwd|secret|authorization|bearer)\b"""),
+                Regex("""(?i)\b(api[_-]?key|token|bot[_-]?token|private[_-]?key)\s*[:=]\s*\S+"""),
+                Regex("""-----BEGIN [A-Z ]*PRIVATE KEY-----"""),
+                Regex("""[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{6,}\.[A-Za-z0-9_\-]{20,}"""),
+                Regex("""sk-[A-Za-z0-9_-]{20,}"""),
+            )
 
         fun normalizeResponseMode(value: String): String =
             when (value.trim().lowercase()) {

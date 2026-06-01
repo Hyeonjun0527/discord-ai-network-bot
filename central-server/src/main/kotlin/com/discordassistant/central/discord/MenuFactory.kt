@@ -35,6 +35,7 @@ object MenuFactory {
     const val MODEL = "set:model"
     const val CHANNEL = "set:channel"
     const val CHANNEL_ALL = "set:channel-all"
+    const val SAVE_SETTINGS = "set:save"
 
     // 프로바이더 참여 OS 선택(차수 19): 클릭하면 해당 OS 복붙 설치 명령을 보여준다. customId prefix "pjoin:".
     const val OS_PREFIX = "pjoin:"
@@ -113,7 +114,9 @@ object MenuFactory {
     fun channelSelect(): EntitySelectMenu =
         EntitySelectMenu
             .create(CHANNEL, EntitySelectMenu.SelectTarget.CHANNEL)
-            .setPlaceholder("LLM 사용 허용 채널 선택")
+            .setPlaceholder("LLM 사용 허용 채널 여러 개 선택")
+            .setMinValues(0)
+            .setMaxValues(25)
             .build()
 
     /** 슬림 도움말 — 핵심 3~5개만(판에서 보여줄 텍스트). */

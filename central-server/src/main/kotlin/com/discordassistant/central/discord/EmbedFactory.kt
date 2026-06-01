@@ -124,6 +124,7 @@ object EmbedFactory {
         poolModelCount: Int,
         allowedChannelCount: Int,
         autoApprove: Boolean,
+        allowedChannelText: String? = null,
     ): MessageEmbed =
         EmbedBuilder()
             .setColor(BLURPLE)
@@ -136,7 +137,7 @@ object EmbedFactory {
                 true,
             ).addField(
                 "#️⃣ 사용 채널",
-                if (allowedChannelCount == 0) "모든 채널 허용" else "${allowedChannelCount}개 채널만",
+                allowedChannelText ?: if (allowedChannelCount == 0) "모든 채널 허용" else "${allowedChannelCount}개 채널만",
                 true,
             ).addField(
                 "✅ 프로바이더 자동 승인",

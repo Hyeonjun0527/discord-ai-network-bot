@@ -52,8 +52,22 @@ class PolicyService(
         guildId: Long,
         adminId: Long,
     ) {
-        channels.findByGuildId(guildId).forEach { channels.deleteByGuildIdAndChannelId(guildId, it.channelId) }
+        channels.deleteByGuildId(guildId)
         audit.record("llm_allow_all_channels", "admin:$adminId", "guild:$guildId", "all")
+    }
+
+    /** 허용 채널 목록을 한 번에 교체한다. 빈 목록은 전체 채널 허용이다. */
+    @Transactional
+    fun replaceAllowedChannels(
+        guildId: Long,
+        channelIds: Collection<Long>,
+        adminId: Long,
+    ) {
+        channels.deleteByGuildId(guildId)
+        channelIds.distinct().forEach { channelId ->
+            channels.save(AllowedChannelEntity(guildId = guildId, channelId = channelId))
+        }
+        audit.record("llm_replace_allowed_channels", "admin:$adminId", "guild:$guildId", channelIds.joinToString(",").ifBlank { "all" })
     }
 
     /** 허용 채널 ID 목록(비면 전체 허용). */
@@ -144,6 +158,16 @@ class PolicyService(
         language?.takeIf { it.isNotBlank() }?.let { g.language = it }
         guilds.save(g)
         audit.record("set_guild_defaults", "admin:$adminId", "guild:$guildId", "model=${g.defaultModel},lang=${g.language}")
+    }
+
+    fun clearGuildDefaultModel(
+        guildId: Long,
+        adminId: Long,
+    ) {
+        val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
+        g.defaultModel = null
+        guilds.save(g)
+        audit.record("clear_guild_default_model", "admin:$adminId", "guild:$guildId", "model=auto")
     }
 
     /** 길드 기본 모델(미설정 시 null → 라우터가 풀에서 자동 선택). */

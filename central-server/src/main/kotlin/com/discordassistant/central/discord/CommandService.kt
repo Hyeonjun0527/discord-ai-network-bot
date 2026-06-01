@@ -420,6 +420,31 @@ class CommandService(
     /** 현재 허용 채널 목록(패널 표시용). 비면 전체 허용. */
     fun allowedChannelIds(ctx: CommandContext): List<Long> = policy.allowedChannelIds(ctx.guildId)
 
+    /** 설정 패널에서 임시 선택한 서버 언어/기본 모델/허용 채널을 저장 버튼 한 번으로 적용한다. */
+    fun saveGuildSettings(
+        ctx: CommandContext,
+        language: String?,
+        defaultModel: String?,
+        allowedChannelIds: Collection<Long>?,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        if (defaultModel == "__auto__") {
+            policy.clearGuildDefaultModel(ctx.guildId, ctx.userId)
+        } else {
+            policy.setGuildDefaults(ctx.guildId, defaultModel, language, ctx.userId)
+        }
+        if (defaultModel == "__auto__" && !language.isNullOrBlank()) {
+            policy.setGuildDefaults(ctx.guildId, null, language, ctx.userId)
+        }
+        allowedChannelIds?.let { policy.replaceAllowedChannels(ctx.guildId, it, ctx.userId) }
+
+        val model = policy.guildDefaultModel(ctx.guildId) ?: "자동 선택"
+        val lang = policy.guildLanguage(ctx.guildId)
+        val channels = policy.allowedChannelIds(ctx.guildId)
+        val channelText = if (channels.isEmpty()) "모든 채널" else channels.joinToString(" ") { "<#$it>" }
+        return Replies.ok("서버 설정을 저장했습니다.\n언어: `$lang`\n기본 모델: `$model`\nLLM 사용 채널: $channelText")
+    }
+
     /** 풀이 현재 제공하는 모델 목록(패널 표시용). */
     fun poolModels(ctx: CommandContext): List<String> = autocompleteModels(ctx)
 

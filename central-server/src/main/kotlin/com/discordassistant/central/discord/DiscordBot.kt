@@ -38,6 +38,7 @@ import net.dv8tion.jda.api.interactions.modals.Modal
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -387,7 +388,14 @@ class DiscordBot(
             private const val CHANNEL_PROFILE_ROLLBACK = "channel-profile:rollback"
             private const val CHANNEL_PROFILE_SAVE_MODAL = "channel-profile:save-modal"
             private const val CHANNEL_PROFILE_AVATAR_MODAL = "channel-profile:avatar-modal"
+            private val pendingSettings = ConcurrentHashMap<String, PendingGuildSettings>()
         }
+
+        private data class PendingGuildSettings(
+            var language: String? = null,
+            var defaultModel: String? = null,
+            var allowedChannelIds: List<Long>? = null,
+        )
 
         override fun onReady(event: ReadyEvent) {
             gatewayStatus.markReady(mentionAskEnabled)
@@ -508,7 +516,11 @@ class DiscordBot(
                     MenuFactory.STATUS -> commands.providerStatus(ctx)
                     MenuFactory.AUTO_APPROVE_ON -> commands.setAutoApprove(ctx, enabled = true)
                     MenuFactory.AUTO_APPROVE_OFF -> commands.setAutoApprove(ctx, enabled = false)
-                    MenuFactory.CHANNEL_ALL -> commands.allowAllChannels(ctx)
+                    MenuFactory.CHANNEL_ALL -> {
+                        pendingSettings(settingsKey(ctx)).allowedChannelIds = emptyList()
+                        Reply("✅ 저장 대기: LLM 사용 채널을 **모든 채널**로 선택했습니다. 아래 `저장`을 눌러 적용하세요.")
+                    }
+                    MenuFactory.SAVE_SETTINGS -> savePendingSettings(ctx)
                     MenuFactory.AUTO_APPROVE, "settings:autoapprove" -> commands.toggleAutoApprove(ctx)
                     else -> Reply("알 수 없는 동작입니다.")
                 }
@@ -522,13 +534,15 @@ class DiscordBot(
             val value = event.values.firstOrNull().orEmpty()
             val reply =
                 when (event.componentId) {
-                    MenuFactory.LANG -> commands.setGuildDefaults(ctx, defaultModel = null, language = value)
-                    MenuFactory.MODEL ->
-                        if (value == "__auto__") {
-                            Reply("✅ 기본 모델: 자동 선택")
-                        } else {
-                            commands.setGuildDefaults(ctx, defaultModel = value, language = null)
-                        }
+                    MenuFactory.LANG -> {
+                        pendingSettings(settingsKey(ctx)).language = value
+                        Reply("✅ 저장 대기: 서버 언어를 `$value`로 선택했습니다. 아래 `저장`을 눌러 적용하세요.")
+                    }
+                    MenuFactory.MODEL -> {
+                        pendingSettings(settingsKey(ctx)).defaultModel = value
+                        val label = if (value == "__auto__") "자동 선택" else value
+                        Reply("✅ 저장 대기: 기본 모델을 `$label`로 선택했습니다. 아래 `저장`을 눌러 적용하세요.")
+                    }
                     else -> Reply("알 수 없는 선택입니다.")
                 }
             event.reply(reply.content).setEphemeral(true).queue()
@@ -539,10 +553,18 @@ class DiscordBot(
             if (event.componentId != MenuFactory.CHANNEL) return
             val guild = event.guild ?: return
             val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
-            val channelId = event.values.firstOrNull()?.idLong
-            val reply =
-                if (channelId != null) commands.allowChannel(ctx, channelId) else Reply("채널을 선택하세요.")
-            event.reply(reply.content).setEphemeral(true).queue()
+            val channelIds = event.values.map { it.idLong }
+            pendingSettings(settingsKey(ctx)).allowedChannelIds = channelIds
+            val selected =
+                if (channelIds.isEmpty()) {
+                    "모든 채널"
+                } else {
+                    channelIds.joinToString(" ") { "<#$it>" }
+                }
+            event
+                .reply("✅ 저장 대기: LLM 사용 채널을 $selected 로 선택했습니다. 아래 `저장`을 눌러 적용하세요.")
+                .setEphemeral(true)
+                .queue()
         }
 
         /** 봇이 서버에 들어오면 자동 온보딩 패널 게시. */
@@ -589,8 +611,30 @@ class DiscordBot(
                 defaultModel = commands.guildDefaultModel(ctx),
                 poolModelCount = commands.poolModels(ctx).size,
                 allowedChannelCount = commands.allowedChannelIds(ctx).size,
+                allowedChannelText = allowedChannelText(ctx),
                 autoApprove = commands.isAutoApprove(ctx),
             )
+
+        private fun settingsKey(ctx: CommandContext) = "${ctx.guildId}:${ctx.channelId}:${ctx.userId}"
+
+        private fun allowedChannelText(ctx: CommandContext): String {
+            val channelIds = commands.allowedChannelIds(ctx)
+            return if (channelIds.isEmpty()) {
+                "모든 채널 허용"
+            } else {
+                channelIds.joinToString(" ") { "<#$it>" }
+            }
+        }
+
+        private fun pendingSettings(key: String): PendingGuildSettings = pendingSettings.computeIfAbsent(key) { PendingGuildSettings() }
+
+        private fun savePendingSettings(ctx: CommandContext): Reply {
+            val key = settingsKey(ctx)
+            val pending =
+                pendingSettings.remove(key)
+                    ?: return Reply("아직 저장할 변경사항이 없습니다. 언어/모델/채널을 먼저 선택해주세요.")
+            return commands.saveGuildSettings(ctx, pending.language, pending.defaultModel, pending.allowedChannelIds)
+        }
 
         /** 설정 패널 액션 로우(언어·모델·채널 드롭다운 + 명시 버튼). */
         private fun settingsRows(ctx: CommandContext): List<ActionRow> =
@@ -600,6 +644,7 @@ class DiscordBot(
                 ActionRow.of(MenuFactory.channelSelect()),
                 ActionRow.of(
                     Button.success(MenuFactory.CHANNEL_ALL, "모든 채널 허용"),
+                    Button.primary(MenuFactory.SAVE_SETTINGS, "저장"),
                     Button.primary(MenuFactory.AUTO_APPROVE_ON, "자동 승인 켜기"),
                     Button.secondary(MenuFactory.AUTO_APPROVE_OFF, "자동 승인 끄기"),
                 ),

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Provider Pool 대시보드</title>
+  <title>냥시스턴트 AI 네트워크 대시보드</title>
   <!--
     웹 대시보드 프론트엔드(차수 14). 빌드/번들 불필요한 정적 SPA(바닐라 JS).
     central-server 가 동일 출처로 서빙(/dashboard/) → CORS 불필요. 읽기전용 모니터링.
@@ -13,7 +13,7 @@
 </head>
 <body>
   <header>
-    <h1>Provider Pool 대시보드</h1>
+    <h1>냥시스턴트 AI 네트워크 대시보드</h1>
     <span id="status" class="badge">연결 확인 중…</span>
   </header>
 
@@ -33,6 +33,37 @@
       <button id="loadGuild">불러오기</button>
     </div>
     <div id="guildOverview" class="stats"></div>
+
+    <div id="aiNetwork" class="network-grid" hidden>
+      <article class="card hero">
+        <div class="eyebrow">함께 만드는 AI 네트워크</div>
+        <h3 id="networkTitle">AI 네트워크</h3>
+        <p id="networkSummary" class="muted"></p>
+        <div id="readinessBadge" class="pill">readiness</div>
+      </article>
+      <article class="card">
+        <h3>성장 레벨</h3>
+        <div id="growthLevel" class="big-number">–</div>
+        <p id="growthSummary" class="muted"></p>
+      </article>
+      <article class="card">
+        <h3>다음 액션</h3>
+        <ul id="networkActions" class="list"></ul>
+      </article>
+      <article class="card">
+        <h3>채널 AI</h3>
+        <ul id="channelAiCards" class="list"></ul>
+      </article>
+      <article class="card">
+        <h3>모델 지도</h3>
+        <ul id="modelMap" class="list"></ul>
+      </article>
+      <article class="card">
+        <h3>Provider 참여 영향</h3>
+        <ul id="growthTimeline" class="list"></ul>
+      </article>
+    </div>
+
     <h3>프로바이더 상세</h3>
     <table id="providers"><thead><tr><th>provider</th><th>상태</th><th>처리중</th><th>대기</th><th>실패</th><th>모델수</th></tr></thead><tbody></tbody></table>
     <h3>사용량 트렌드(최근 7일)</h3>

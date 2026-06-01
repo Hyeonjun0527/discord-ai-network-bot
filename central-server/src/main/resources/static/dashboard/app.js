@@ -3,6 +3,15 @@
 
 const $ = (id) => document.getElementById(id);
 
+function esc(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 async function getJson(url) {
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`${res.status} ${url}`);
@@ -41,6 +50,40 @@ function renderTrend(series) {
   }
 }
 
+function renderList(id, items, emptyText, renderer) {
+  const box = $(id);
+  box.innerHTML = "";
+  if (!items || items.length === 0) {
+    box.innerHTML = `<li class="empty">${esc(emptyText)}</li>`;
+    return;
+  }
+  box.innerHTML = items.map(renderer).join("");
+}
+
+function renderAiNetwork(data) {
+  $("aiNetwork").hidden = false;
+  $("networkTitle").textContent = data.overview?.displayName || "AI 네트워크";
+  $("networkSummary").textContent = data.overview?.tagline || "여러 사용자의 로컬 AI를 안전하게 연결합니다.";
+  const readiness = data.readiness?.status || data.overview?.healthStatus || "unknown";
+  $("readinessBadge").textContent = readiness;
+  $("readinessBadge").className = `pill ${readiness === "ready" ? "ok" : readiness === "blocked" ? "bad" : "warn"}`;
+  $("growthLevel").textContent = `Lv.${data.growthPlan?.currentLevel ?? data.overview?.networkLevel ?? "–"}`;
+  $("growthSummary").textContent = data.growthPlan?.summary || "성장 계획을 계산 중입니다.";
+
+  renderList("networkActions", data.nextActions?.slice(0, 5), "권장 액션 없음", (a) =>
+    `<li><strong>${esc(a.title)}</strong><span>${esc(a.description)}</span></li>`,
+  );
+  renderList("channelAiCards", data.channels?.slice(0, 6), "채널 AI 없음", (c) =>
+    `<li><strong>#${esc(c.channelId)} · ${esc(c.name)}</strong><span>${esc(c.readinessStatus)} · ${esc(c.purpose || "역할 미설정")}</span></li>`,
+  );
+  renderList("modelMap", data.modelMap?.slice(0, 6), "사용 가능한 모델 없음", (m) =>
+    `<li><strong>${esc(m.modelName)}</strong><span>${esc(m.onlineProviderCount)}/${esc(m.totalProviderCount)} online · ${esc((m.qualityTiers || []).join(",") || "unknown")}</span></li>`,
+  );
+  renderList("growthTimeline", data.growthTimeline?.slice(0, 5), "최근 성장 이벤트 없음", (e) =>
+    `<li><strong>${esc(e.title)}</strong><span>${esc((e.impactBullets || []).join(" · ") || e.summary || "")}</span></li>`,
+  );
+}
+
 // 길드 상세(#198 개요 / #201 로그 / #202 차트)
 async function loadGuild() {
   const gid = $("guildId").value.trim();
@@ -49,11 +92,12 @@ async function loadGuild() {
     return;
   }
   try {
-    const [overview, trend, requests, providers] = await Promise.all([
+    const [overview, trend, requests, providers, aiNetwork] = await Promise.all([
       getJson(`/api/dashboard/${gid}/overview`),
       getJson(`/api/dashboard/${gid}/usage-trend?days=7`),
       getJson(`/api/dashboard/${gid}/requests`),
       getJson(`/api/metrics/pool/${gid}`),
+      getJson(`/api/ai-network/${gid}/dashboard?audience=admin`),
     ]);
 
     $("guildOverview").innerHTML = [
@@ -63,6 +107,8 @@ async function loadGuild() {
       ["언어", overview.language],
       ["자동승인", overview.autoApprove ? "예" : "아니오"],
     ].map(([l, v]) => `<div class="stat"><div class="num">${v}</div><div class="lbl">${l}</div></div>`).join("");
+
+    renderAiNetwork(aiNetwork);
 
     // 프로바이더 상세(#200)
     const ptbody = document.querySelector("#providers tbody");

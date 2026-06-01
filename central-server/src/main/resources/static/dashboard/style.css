@@ -1,5 +1,12 @@
 /* 대시보드 스타일(차수 14 #206/#210). 반응형 그리드, 다크/라이트 자동. */
-:root { color-scheme: light dark; --accent: #5865F2; --ok: #57F287; --bad: #ED4245; }
+:root {
+  color-scheme: light dark;
+  --accent: #5865F2;
+  --ok: #57F287;
+  --bad: #ED4245;
+  --warn: #FEE75C;
+  --panel: #8881;
+}
 * { box-sizing: border-box; }
 body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; padding: 1.2rem;
        max-width: 980px; margin: 0 auto; line-height: 1.5; }
@@ -24,3 +31,19 @@ th, td { text-align: left; padding: .4rem; border-bottom: 1px solid #8883; }
 footer { font-size: .8rem; opacity: .6; margin-top: 1rem; }
 code { background: #8882; padding: .05rem .3rem; border-radius: 5px; }
 .muted { font-size: .8rem; opacity: .7; margin: .3rem 0; }
+.network-grid { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin: 1rem 0; }
+.card { border: 1px solid #8883; background: var(--panel); border-radius: 14px; padding: 1rem; }
+.card.hero { grid-column: 1 / -1; background: linear-gradient(135deg, #5865f233, #57f2871a); }
+.card h3 { margin: .1rem 0 .5rem; }
+.eyebrow { font-size: .75rem; opacity: .7; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.big-number { font-size: 2.2rem; font-weight: 800; line-height: 1; margin: .4rem 0; color: var(--accent); }
+.pill { display: inline-block; border: 1px solid #8885; border-radius: 999px; padding: .2rem .7rem; font-size: .78rem; font-weight: 700; }
+.pill.ok { background: color-mix(in srgb, var(--ok) 28%, transparent); color: light-dark(#13612e, #b4ffd0); }
+.pill.warn { background: color-mix(in srgb, var(--warn) 25%, transparent); color: light-dark(#5f4b00, #fff3a0); }
+.pill.bad { background: color-mix(in srgb, var(--bad) 25%, transparent); color: light-dark(#8b1619, #ffc2c4); }
+.list { list-style: none; padding: 0; margin: 0; display: grid; gap: .55rem; }
+.list li { border-top: 1px solid #8882; padding-top: .55rem; }
+.list li:first-child { border-top: 0; padding-top: 0; }
+.list strong { display: block; font-size: .9rem; }
+.list span { display: block; font-size: .78rem; opacity: .72; margin-top: .1rem; }
+.list .empty { opacity: .65; font-size: .85rem; }

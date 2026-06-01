@@ -27,6 +27,30 @@ class DashboardServingTest
         }
 
         @Test
+        fun `정적 대시보드가 AI 네트워크 섹션을 포함한다`() {
+            val html =
+                mvc
+                    .perform(get("/dashboard/index.html"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+            val js =
+                mvc
+                    .perform(get("/dashboard/app.js"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+
+            assertTrue(html.contains("""id="aiNetwork""""))
+            assertTrue(html.contains("""id="growthLevel""""))
+            assertTrue(html.contains("""id="growthTimeline""""))
+            assertTrue(js.contains("/api/ai-network/${'$'}{gid}/dashboard?audience=admin"))
+            assertTrue(js.contains("renderAiNetwork"))
+        }
+
+        @Test
         fun `디렉터리 URL 도 index 로 포워드된다`() {
             mvc.perform(get("/dashboard/")).andExpect(status().isOk)
             mvc.perform(get("/dashboard")).andExpect(status().isOk)

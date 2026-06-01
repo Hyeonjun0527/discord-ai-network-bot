@@ -3,6 +3,7 @@ package com.discordassistant.central.network
 import com.discordassistant.central.dashboard.AddKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.CreateKnowledgeSpaceRequest
 import com.discordassistant.central.dashboard.DeleteKnowledgeSourceRequest
+import com.discordassistant.central.dashboard.KnowledgeEvalRequest
 import com.discordassistant.central.dashboard.KnowledgeIngestionController
 import com.discordassistant.central.dashboard.MarkKnowledgeSourceIndexedRequest
 import com.discordassistant.central.dashboard.RejectKnowledgeSourceRequest
@@ -263,6 +264,79 @@ class KnowledgeIngestionServiceTest
             assertTrue(context.contextText.contains("Kotlin Spring"))
             assertTrue(context.contextText.contains("번역").not())
             assertTrue(context.usedChars <= context.maxChars)
+        }
+
+        @Test
+        fun `retrieval evaluation reports hit mrr and recall for golden set`() {
+            val channelOne = service.createSpace(100, 201, null, "개발 지식", 77, null, null)
+            val channelTwo = service.createSpace(100, 202, null, "번역 지식", 77, null, null)
+            val sourceOne =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = channelOne.id,
+                    sourceType = "link",
+                    title = "Kotlin Spring 운영 가이드",
+                    sourceUri = "https://example.com/kotlin-spring-guide.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            val sourceTwo =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = channelTwo.id,
+                    sourceType = "link",
+                    title = "영어 번역 스타일 가이드",
+                    sourceUri = "https://example.com/translation-style.md",
+                    contentPreview = "번역",
+                    addedBy = 77,
+                )
+            service.markSourceIndexed(100, channelOne.id, sourceOne.id, chunkCount = 1)
+            service.markSourceIndexed(100, channelTwo.id, sourceTwo.id, chunkCount = 1)
+
+            val evaluation =
+                controller.evaluateRetrieval(
+                    100,
+                    KnowledgeEvalRequest(
+                        k = 5,
+                        cases =
+                            listOf(
+                                KnowledgeGoldenCase("kotlin", "Kotlin Spring", listOf(sourceOne.id), channelId = 201),
+                                KnowledgeGoldenCase("translation", "영어 번역", listOf(sourceTwo.id), channelId = 202),
+                            ),
+                    ),
+                )
+
+            assertEquals(true, evaluation.passed)
+            assertEquals(2, evaluation.caseCount)
+            assertEquals(1.0, evaluation.hitAtK)
+            assertEquals(1.0, evaluation.mrr)
+            assertEquals(1.0, evaluation.recallAtK)
+            assertTrue(evaluation.cases.all { it.firstHitRank == 1 })
+        }
+
+        @Test
+        fun `retrieval evaluation requires scoped golden cases`() {
+            val space = service.createSpace(100, 201, null, "개발 지식", 77, null, null)
+            val source =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "link",
+                    title = "Kotlin Spring 운영 가이드",
+                    sourceUri = "https://example.com/kotlin.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            service.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+
+            assertThrows(IllegalArgumentException::class.java) {
+                controller.evaluateRetrieval(
+                    100,
+                    KnowledgeEvalRequest(
+                        cases = listOf(KnowledgeGoldenCase("unscoped", "Kotlin", listOf(source.id))),
+                    ),
+                )
+            }
         }
 
         @Test

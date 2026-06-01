@@ -1,5 +1,6 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.network.KnowledgeGoldenCase
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.KnowledgeSearchService
 import org.springframework.web.bind.annotation.GetMapping
@@ -89,6 +90,12 @@ class KnowledgeIngestionController(
         @RequestParam(required = false) knowledgeSpaceId: Long? = null,
     ) = search.promptContext(guildId, query, maxChars, channelId, knowledgeSpaceId)
 
+    @PostMapping("/{guildId}/eval")
+    fun evaluateRetrieval(
+        @PathVariable guildId: Long,
+        @RequestBody request: KnowledgeEvalRequest,
+    ) = search.evaluate(guildId, request.cases, request.k)
+
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/delete")
     fun removeSource(
         @PathVariable guildId: Long,
@@ -139,4 +146,9 @@ data class RejectKnowledgeSourceRequest(
 
 data class DeleteKnowledgeSourceRequest(
     val reason: String = "deleted",
+)
+
+data class KnowledgeEvalRequest(
+    val k: Int = 10,
+    val cases: List<KnowledgeGoldenCase>,
 )

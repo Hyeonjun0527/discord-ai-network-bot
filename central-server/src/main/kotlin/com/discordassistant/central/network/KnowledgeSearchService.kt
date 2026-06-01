@@ -46,6 +46,59 @@ class KnowledgeSearchService(
         )
     }
 
+    fun evaluate(
+        guildId: Long,
+        cases: List<KnowledgeGoldenCase>,
+        k: Int = 10,
+    ): KnowledgeRetrievalEvaluation {
+        featureGate.requireRagEnabled()
+        require(cases.isNotEmpty()) { "RAG evaluation requires at least one golden case" }
+        val topK = k.coerceIn(1, 20)
+        val results =
+            cases.map { golden ->
+                require(golden.channelId != null || golden.knowledgeSpaceId != null) {
+                    "golden case requires channelId or knowledgeSpaceId scope: ${golden.name}"
+                }
+                val expected = golden.expectedSourceIds.toSet()
+                require(expected.isNotEmpty()) { "golden case requires expectedSourceIds: ${golden.name}" }
+                val search =
+                    search(
+                        guildId = guildId,
+                        query = golden.query,
+                        limit = topK,
+                        channelId = golden.channelId,
+                        knowledgeSpaceId = golden.knowledgeSpaceId,
+                    )
+                val returned = search.results.map { it.sourceId }
+                val firstHitRank = returned.indexOfFirst { it in expected }.takeIf { it >= 0 }?.plus(1)
+                val hitCount = returned.count { it in expected }
+                KnowledgeGoldenCaseResult(
+                    name = golden.name,
+                    query = golden.query,
+                    expectedSourceIds = expected.sorted(),
+                    returnedSourceIds = returned,
+                    hit = firstHitRank != null,
+                    firstHitRank = firstHitRank,
+                    reciprocalRank = firstHitRank?.let { 1.0 / it } ?: 0.0,
+                    recall = hitCount.toDouble() / expected.size.toDouble(),
+                    fallbackReason = search.fallbackReason,
+                )
+            }
+        val hitAtK = results.count { it.hit }.toDouble() / results.size.toDouble()
+        val mrr = results.sumOf { it.reciprocalRank } / results.size.toDouble()
+        val recallAtK = results.sumOf { it.recall } / results.size.toDouble()
+        return KnowledgeRetrievalEvaluation(
+            guildId = guildId,
+            k = topK,
+            caseCount = results.size,
+            hitAtK = hitAtK,
+            mrr = mrr,
+            recallAtK = recallAtK,
+            passed = hitAtK >= MIN_HIT_AT_K && mrr >= MIN_MRR && recallAtK >= MIN_RECALL_AT_K,
+            cases = results,
+        )
+    }
+
     fun promptContext(
         guildId: Long,
         query: String,
@@ -138,6 +191,9 @@ class KnowledgeSearchService(
         ).joinToString(" · ")
 
     private companion object {
+        const val MIN_HIT_AT_K = 0.8
+        const val MIN_MRR = 0.7
+        const val MIN_RECALL_AT_K = 0.7
         val SEARCHABLE_RISK_LEVELS = setOf("normal", "review")
     }
 }
@@ -178,4 +234,35 @@ data class KnowledgePromptEntry(
     val sourceType: String,
     val sourceUri: String?,
     val snippet: String,
+)
+
+data class KnowledgeGoldenCase(
+    val name: String,
+    val query: String,
+    val expectedSourceIds: List<Long>,
+    val channelId: Long? = null,
+    val knowledgeSpaceId: Long? = null,
+)
+
+data class KnowledgeGoldenCaseResult(
+    val name: String,
+    val query: String,
+    val expectedSourceIds: List<Long>,
+    val returnedSourceIds: List<Long>,
+    val hit: Boolean,
+    val firstHitRank: Int?,
+    val reciprocalRank: Double,
+    val recall: Double,
+    val fallbackReason: String?,
+)
+
+data class KnowledgeRetrievalEvaluation(
+    val guildId: Long,
+    val k: Int,
+    val caseCount: Int,
+    val hitAtK: Double,
+    val mrr: Double,
+    val recallAtK: Double,
+    val passed: Boolean,
+    val cases: List<KnowledgeGoldenCaseResult>,
 )

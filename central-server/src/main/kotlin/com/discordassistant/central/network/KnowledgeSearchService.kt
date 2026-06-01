@@ -46,6 +46,57 @@ class KnowledgeSearchService(
         )
     }
 
+    fun promptContext(
+        guildId: Long,
+        query: String,
+        maxChars: Int = 1200,
+        channelId: Long? = null,
+        knowledgeSpaceId: Long? = null,
+    ): KnowledgePromptContext {
+        featureGate.requireRagEnabled()
+        require(channelId != null || knowledgeSpaceId != null) {
+            "RAG prompt context requires channelId or knowledgeSpaceId scope"
+        }
+        val search = search(guildId, query, limit = 10, channelId = channelId, knowledgeSpaceId = knowledgeSpaceId)
+        val budget = maxChars.coerceIn(200, 8_000)
+        val entries = mutableListOf<KnowledgePromptEntry>()
+        var used = 0
+        for (result in search.results) {
+            val text = result.toPromptSnippet()
+            if (used + text.length > budget) break
+            entries +=
+                KnowledgePromptEntry(
+                    sourceId = result.sourceId,
+                    knowledgeSpaceId = result.knowledgeSpaceId,
+                    title = result.title,
+                    sourceType = result.sourceType,
+                    sourceUri = result.sourceUri,
+                    snippet = text,
+                )
+            used += text.length
+        }
+        val contextText =
+            entries.joinToString("\n") {
+                "- [source:${it.sourceId}] ${it.snippet}"
+            }
+        return KnowledgePromptContext(
+            guildId = guildId,
+            channelId = channelId,
+            knowledgeSpaceId = knowledgeSpaceId,
+            query = query,
+            maxChars = budget,
+            usedChars = contextText.length,
+            entries = entries,
+            contextText = contextText,
+            fallbackReason =
+                when {
+                    search.fallbackReason != null -> search.fallbackReason
+                    entries.isEmpty() -> "context_budget_too_small"
+                    else -> null
+                },
+        )
+    }
+
     private fun allowedSpaceIds(
         guildId: Long,
         channelId: Long?,
@@ -79,6 +130,13 @@ class KnowledgeSearchService(
         )
     }
 
+    private fun KnowledgeSearchResult.toPromptSnippet(): String =
+        listOfNotNull(
+            title.take(180),
+            sourceUri?.take(240),
+            "type=$sourceType",
+        ).joinToString(" · ")
+
     private companion object {
         val SEARCHABLE_RISK_LEVELS = setOf("normal", "review")
     }
@@ -99,4 +157,25 @@ data class KnowledgeSearchResult(
     val sourceUri: String?,
     val riskLevel: String,
     val score: Int,
+)
+
+data class KnowledgePromptContext(
+    val guildId: Long,
+    val channelId: Long?,
+    val knowledgeSpaceId: Long?,
+    val query: String,
+    val maxChars: Int,
+    val usedChars: Int,
+    val entries: List<KnowledgePromptEntry>,
+    val contextText: String,
+    val fallbackReason: String?,
+)
+
+data class KnowledgePromptEntry(
+    val sourceId: Long,
+    val knowledgeSpaceId: Long,
+    val title: String,
+    val sourceType: String,
+    val sourceUri: String?,
+    val snippet: String,
 )

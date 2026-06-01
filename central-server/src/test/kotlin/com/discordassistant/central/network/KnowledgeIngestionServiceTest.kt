@@ -218,6 +218,54 @@ class KnowledgeIngestionServiceTest
         }
 
         @Test
+        fun `prompt context requires explicit scope and trims searchable snippets`() {
+            val channelOne = service.createSpace(100, 201, null, "개발 지식", 77, null, null)
+            val channelTwo = service.createSpace(100, 202, null, "번역 지식", 77, null, null)
+            val sourceOne =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = channelOne.id,
+                    sourceType = "link",
+                    title = "Kotlin Spring 운영 가이드",
+                    sourceUri = "https://example.com/kotlin-spring-guide.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            val sourceTwo =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = channelTwo.id,
+                    sourceType = "link",
+                    title = "Kotlin 번역 가이드",
+                    sourceUri = "https://example.com/translation.md",
+                    contentPreview = "번역",
+                    addedBy = 77,
+                )
+            service.markSourceIndexed(100, channelOne.id, sourceOne.id, chunkCount = 1)
+            service.markSourceIndexed(100, channelTwo.id, sourceTwo.id, chunkCount = 1)
+
+            assertThrows(IllegalArgumentException::class.java) {
+                controller.promptContext(100, query = "Kotlin", maxChars = 500, channelId = null, knowledgeSpaceId = null)
+            }
+
+            val context =
+                controller.promptContext(
+                    guildId = 100,
+                    query = "Kotlin",
+                    maxChars = 500,
+                    channelId = 201,
+                    knowledgeSpaceId = null,
+                )
+
+            assertEquals(null, context.fallbackReason)
+            assertEquals(listOf(sourceOne.id), context.entries.map { it.sourceId })
+            assertTrue(context.contextText.contains("source:${sourceOne.id}"))
+            assertTrue(context.contextText.contains("Kotlin Spring"))
+            assertTrue(context.contextText.contains("번역").not())
+            assertTrue(context.usedChars <= context.maxChars)
+        }
+
+        @Test
         fun `link source blocks ssrf and non https before indexing`() {
             val space = service.createSpace(100, 200, null, "보안 지식", 77, null, null)
             val source =

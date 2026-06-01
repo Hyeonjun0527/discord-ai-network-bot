@@ -80,6 +80,15 @@ class KnowledgeIngestionController(
         @RequestParam(required = false) knowledgeSpaceId: Long? = null,
     ) = search.search(guildId, query, limit, channelId, knowledgeSpaceId)
 
+    @GetMapping("/{guildId}/context")
+    fun promptContext(
+        @PathVariable guildId: Long,
+        @RequestParam query: String,
+        @RequestParam(defaultValue = "1200") maxChars: Int,
+        @RequestParam(required = false) channelId: Long? = null,
+        @RequestParam(required = false) knowledgeSpaceId: Long? = null,
+    ) = search.promptContext(guildId, query, maxChars, channelId, knowledgeSpaceId)
+
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/delete")
     fun removeSource(
         @PathVariable guildId: Long,

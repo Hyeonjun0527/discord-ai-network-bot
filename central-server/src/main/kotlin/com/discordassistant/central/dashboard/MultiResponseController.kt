@@ -85,6 +85,22 @@ class MultiResponseController(
         )
     }
 
+    @PostMapping("/runs/{runId}/complete-best")
+    fun completeBest(
+        @PathVariable runId: Long,
+        @RequestBody request: CompleteBestMultiResponseRunRequest = CompleteBestMultiResponseRunRequest(),
+    ): Map<String, Any?> {
+        val completion = service.completeBestEffort(runId, request.strategy)
+        return mapOf(
+            "id" to completion.run.id,
+            "status" to completion.run.status,
+            "selectedCandidateId" to completion.run.selectedCandidateId,
+            "synthesisId" to completion.synthesis?.id,
+            "answerRef" to completion.synthesis?.answerRef,
+            "fallbackReason" to completion.fallbackReason,
+        )
+    }
+
     @PostMapping("/runs/{runId}/fail")
     fun fail(
         @PathVariable runId: Long,
@@ -206,6 +222,10 @@ data class SynthesizeRunRequest(
     val strategy: String = "best_by_heuristic",
     val qualitySummary: String? = null,
     val safetySummary: String? = null,
+)
+
+data class CompleteBestMultiResponseRunRequest(
+    val strategy: String = "best_successful_candidate",
 )
 
 data class FailMultiResponseRunRequest(

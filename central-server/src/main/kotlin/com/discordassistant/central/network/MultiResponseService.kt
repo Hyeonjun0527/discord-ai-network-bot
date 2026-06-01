@@ -185,6 +185,45 @@ class MultiResponseService(
     }
 
     @Transactional
+    fun completeBestEffort(
+        runId: Long,
+        strategy: String = "best_successful_candidate",
+    ): MultiResponseCompletion {
+        featureGate.requireMultiResponseEnabled()
+        val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
+        val runCandidates = candidates.findByRunId(runId)
+        val successful =
+            runCandidates
+                .filter { it.status.equals("completed", ignoreCase = true) }
+                .filter { !it.answerRef.isNullOrBlank() }
+                .filter { !it.hasBlockingSafetyFlag() }
+                .sortedWith(
+                    compareByDescending<CandidateAnswerEntity> { it.qualityScore ?: Int.MIN_VALUE }
+                        .thenBy { it.latencyMs ?: Int.MAX_VALUE }
+                        .thenBy { it.id },
+                )
+        val best = successful.firstOrNull()
+        if (best == null) {
+            run.status = "failed"
+            run.failureReason = failureSummary(runCandidates)
+            run.finishedAt = Instant.now(clock)
+            runs.save(run)
+            return MultiResponseCompletion(run = run, synthesis = null, fallbackReason = run.failureReason)
+        }
+        val synthesis =
+            synthesize(
+                runId = runId,
+                answerRef = best.answerRef!!,
+                selectedCandidateIds = listOf(best.id),
+                strategy = strategy,
+                qualitySummary = null,
+                safetySummary = null,
+            )
+        val savedRun = runs.findById(runId).orElse(run)
+        return MultiResponseCompletion(run = savedRun, synthesis = synthesis, fallbackReason = null)
+    }
+
+    @Transactional
     fun failRun(
         runId: Long,
         reason: String,
@@ -269,6 +308,20 @@ class MultiResponseService(
         return selected
     }
 
+    private fun CandidateAnswerEntity.hasBlockingSafetyFlag(): Boolean =
+        safetyFlags
+            .orEmpty()
+            .split(",")
+            .map { it.trim().lowercase() }
+            .filter { it.isNotBlank() }
+            .any { it in BLOCKING_SAFETY_FLAGS }
+
+    private fun failureSummary(runCandidates: List<CandidateAnswerEntity>): String {
+        if (runCandidates.isEmpty()) return "multi-response failed: no candidates were planned"
+        val statuses = runCandidates.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
+        return "multi-response failed: no successful candidate; statuses=$statuses".take(500)
+    }
+
     private fun ProviderCapabilityProfileEntity.hasFanoutOptIn(): Boolean {
         val tags =
             capabilityTags
@@ -315,6 +368,7 @@ class MultiResponseService(
 
     private companion object {
         val FANOUT_OPT_IN_TAGS = setOf("multi-response", "multi_response", "fanout", "fanout-opt-in")
+        val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
         val SENSITIVE_PROMPT_PATTERNS =
             listOf(
                 Regex("(?i)\b(password|passwd|pwd|secret)\b"),
@@ -341,4 +395,10 @@ data class MultiResponseDailyStats(
     val fallbackRunCount: Int,
     val timeoutCandidateCount: Int,
     val averageActualFanout: Double,
+)
+
+data class MultiResponseCompletion(
+    val run: MultiResponseRunEntity,
+    val synthesis: SynthesisResultEntity?,
+    val fallbackReason: String?,
 )

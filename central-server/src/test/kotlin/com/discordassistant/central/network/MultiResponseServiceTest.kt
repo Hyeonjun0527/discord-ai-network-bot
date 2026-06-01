@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.dashboard.CompleteBestMultiResponseRunRequest
 import com.discordassistant.central.dashboard.MultiResponseController
 import com.discordassistant.central.dashboard.RecordCandidateRequest
 import com.discordassistant.central.dashboard.SaveMultiResponsePolicyRequest
@@ -165,6 +166,94 @@ class MultiResponseServiceTest
             assertEquals(1, stats["completedRunCount"])
             assertEquals(2.0, stats["averageActualFanout"])
             assertEquals(1, controller.recentRuns(100).size)
+        }
+
+        @Test
+        fun `complete best effort uses successful candidate when another candidate times out`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 51,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 52,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "qwen",
+                    capabilityTags = "multi-response",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(
+                100,
+                SaveMultiResponsePolicyRequest(channelId = 205, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
+            )
+            val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 205, requestId = "req-best-effort"))
+            val runId = started["id"] as Long
+            val planned = candidates.findByRunId(runId)
+            val good = planned.first { it.providerUserId == 51L }
+            val timedOut = planned.first { it.providerUserId == 52L }
+            controller.recordCandidate(
+                runId,
+                good.id,
+                RecordCandidateRequest(answerRef = "answer:req-best-effort:good", qualityScore = 88, latencyMs = 900),
+            )
+            controller.recordCandidate(
+                runId,
+                timedOut.id,
+                RecordCandidateRequest(status = "timeout", latencyMs = 5000),
+            )
+
+            val completed = controller.completeBest(runId, CompleteBestMultiResponseRunRequest())
+
+            assertEquals("completed", completed["status"])
+            assertEquals(good.id, completed["selectedCandidateId"])
+            assertEquals("answer:req-best-effort:good", completed["answerRef"])
+            assertEquals("completed", runs.findById(runId).get().status)
+            assertEquals(good.id, runs.findById(runId).get().selectedCandidateId)
+            assertEquals("best_successful_candidate", syntheses.findByRunId(runId)?.strategy)
+        }
+
+        @Test
+        fun `complete best effort fails run when all candidates fail or are unsafe`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 61,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 206, mode = "compare", maxCandidates = 1))
+            val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 206, requestId = "req-all-fail"))
+            val runId = started["id"] as Long
+            val planned = candidates.findByRunId(runId).single()
+            controller.recordCandidate(
+                runId,
+                planned.id,
+                RecordCandidateRequest(answerRef = "answer:req-all-fail:unsafe", safetyFlags = listOf("unsafe"), qualityScore = 99),
+            )
+
+            val completed = controller.completeBest(runId, CompleteBestMultiResponseRunRequest())
+
+            assertEquals("failed", completed["status"])
+            assertNotNull(completed["fallbackReason"])
+            assertEquals("failed", runs.findById(runId).get().status)
+            assertEquals(null, syntheses.findByRunId(runId))
         }
 
         @Test

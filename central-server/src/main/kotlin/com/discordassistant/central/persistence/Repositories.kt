@@ -237,14 +237,23 @@ interface MultiResponsePolicyRepository : JpaRepository<MultiResponsePolicyEntit
         guildId: Long,
         channelId: Long?,
     ): MultiResponsePolicyEntity?
+
+    fun findByGuildIdAndChannelIdIsNull(guildId: Long): MultiResponsePolicyEntity?
 }
 
 interface MultiResponseRunRepository : JpaRepository<MultiResponseRunEntity, Long> {
     fun findByRequestId(requestId: String): MultiResponseRunEntity?
+
+    fun findTop20ByGuildIdOrderByStartedAtDesc(guildId: Long): List<MultiResponseRunEntity>
 }
 
 interface CandidateAnswerRepository : JpaRepository<CandidateAnswerEntity, Long> {
     fun findByRunId(runId: Long): List<CandidateAnswerEntity>
+
+    fun findByRunIdAndId(
+        runId: Long,
+        id: Long,
+    ): CandidateAnswerEntity?
 }
 
 interface SynthesisResultRepository : JpaRepository<SynthesisResultEntity, Long> {

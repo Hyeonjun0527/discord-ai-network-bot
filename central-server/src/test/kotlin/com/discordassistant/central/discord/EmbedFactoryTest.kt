@@ -91,6 +91,8 @@ class EmbedFactoryTest {
         assertEquals("English", en.fields.first { it.name?.contains("언어") == true }.value)
         assertEquals("llama3", en.fields.first { it.name?.contains("모델") == true }.value)
         assertTrue(en.description?.contains("저장 후 적용될 설정 미리보기") == true)
+        assertTrue(en.description?.contains("여러 채널") == true)
+        assertFalse(en.fields.first { it.name?.contains("채널") == true }.isInline)
         val pending =
             EmbedFactory.settingsEmbed(
                 "ko",

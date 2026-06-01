@@ -1,5 +1,6 @@
 package com.discordassistant.central.discord
 
+import net.dv8tion.jda.api.entities.channel.ChannelType
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu
@@ -122,17 +123,18 @@ object MenuFactory {
         return b.build()
     }
 
-    /** 채널 허용 선택(서버 채널 엔티티 선택). */
+    /** 채널 허용 선택(서버 채널 엔티티 선택). 한 번 열어 여러 채널을 체크하고 저장 버튼으로 일괄 적용한다. */
     fun channelSelect(currentChannelIds: Collection<Long>): EntitySelectMenu {
         val defaults = currentChannelIds.distinct().take(25).map { DefaultValue.channel(it) }
         val placeholder =
             if (currentChannelIds.isEmpty()) {
-                "사용 채널 선택 — 여러 채널을 한 번에 고른 뒤 저장"
+                "사용 채널: 전체 허용 중 · 특정 채널만 쓰려면 여러 개 체크"
             } else {
-                "사용 채널 선택 — 현재 ${currentChannelIds.size}개, 여러 채널을 한 번에 수정"
+                "사용 채널: 현재 ${currentChannelIds.size}개 선택됨 · 한 번에 여러 개 수정"
             }
         return EntitySelectMenu
             .create(CHANNEL, EntitySelectMenu.SelectTarget.CHANNEL)
+            .setChannelTypes(ChannelType.TEXT, ChannelType.NEWS, ChannelType.FORUM, ChannelType.MEDIA)
             .setPlaceholder(placeholder)
             .setMinValues(0)
             .setMaxValues(25)

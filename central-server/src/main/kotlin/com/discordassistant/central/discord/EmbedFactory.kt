@@ -131,7 +131,9 @@ object EmbedFactory {
             .setColor(BLURPLE)
             .setTitle("⚙️ 서버 설정")
             .setDescription(
-                "아래 값은 **저장 후 적용될 설정 미리보기**입니다. 언어·기본 모델·사용 채널·자동 승인을 고른 뒤 **저장**을 누르면 한 번에 적용됩니다." +
+                "아래 값은 **저장 후 적용될 설정 미리보기**입니다. " +
+                    "언어·기본 모델·사용 채널·자동 승인을 모두 고른 뒤 **저장**을 누르면 한 번에 적용됩니다.\n" +
+                    "채널 드롭다운은 한 번 열어서 여러 채널을 체크할 수 있어요." +
                     (pendingSummary?.let { "\n\n**저장 대기 변경사항**\n$it" } ?: ""),
             ).addField("🌐 언어", if (language.equals("en", true)) "English" else "한국어", true)
             .addField(
@@ -141,7 +143,7 @@ object EmbedFactory {
             ).addField(
                 "#️⃣ 사용 채널",
                 allowedChannelText ?: if (allowedChannelCount == 0) "모든 채널 허용" else "${allowedChannelCount}개 채널만",
-                true,
+                false,
             ).addField(
                 "✅ 프로바이더 자동 승인",
                 if (autoApprove) "켜짐 — 신청 즉시 참여" else "꺼짐 — 관리자 승인 필요",

@@ -24,6 +24,7 @@ import com.discordassistant.central.persistence.PresetRevisionRepository
 import com.discordassistant.central.persistence.PublishedPresetRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -133,6 +134,9 @@ class PresetRegistryServiceTest
             assertEquals("standard", publishedSummary.safetyLevel)
             assertEquals("deep", publishedSummary.responseMode)
             assertEquals("qwen-coder", publishedSummary.preferredModel)
+            assertNull(publishedSummary.publisherGuildId)
+            assertNull(publishedSummary.publisherUserId)
+            assertEquals("공개 프리셋 작성자", publishedSummary.publisherLabel)
             val publishedDetail = controller.publishedPresetDetail(publishedId)["preset"] as PublishedPresetDetail
             assertEquals("concise", publishedDetail.behavior.tone)
             assertEquals(listOf("coding", "night"), publishedDetail.behavior.providerTagFilter)

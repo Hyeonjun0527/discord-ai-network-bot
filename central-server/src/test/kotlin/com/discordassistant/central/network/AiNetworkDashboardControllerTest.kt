@@ -254,6 +254,10 @@ class AiNetworkDashboardControllerTest
             val localPresets = guildPresets["local"] as List<*>
             assertTrue(localPresets.single().toString().contains(preset.name))
             assertTrue(guildPresets.toString().contains("publishedPresetId"))
+            val publicPreset = controller.publishedPresets().single()
+            assertNull(publicPreset.publisherGuildId)
+            assertEquals("공개 프리셋 작성자", publicPreset.publisherLabel)
+            assertTrue(publicPreset.toString().contains("publisherGuildId=null"))
         }
 
         @Test

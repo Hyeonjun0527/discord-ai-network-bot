@@ -294,6 +294,8 @@ class DashboardServingTest
             assertTrue(js.contains("LIKED_PRESETS_STORAGE_KEY"))
             assertTrue(js.contains("unlikePreset"))
             assertTrue(js.contains("""method: "DELETE""""))
+            assertTrue(js.contains("reasonCode"))
+            assertTrue(js.contains("sensitive_data"))
             assertTrue(js.contains("data-action=\"share\""))
             assertTrue(js.contains("sharePreset"))
             assertTrue(js.contains("copyDiscordImportCommand"))

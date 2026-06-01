@@ -578,6 +578,8 @@ class PresetRegistryService(
         publishedPresetId: Long,
         reporterUserId: Long?,
         reason: String,
+        reasonCode: String? = null,
+        details: String? = null,
     ): PresetReportEntity {
         featureGate.requirePresetEnabled()
         val published =
@@ -595,11 +597,19 @@ class PresetRegistryService(
             published.status = "under_review"
         }
         publishedPresets.save(published)
+        val sanitizedReason = sanitizeText(reason, maxLength = 500)
+        val sanitizedDetails =
+            details
+                ?.let { sanitizeText(it, maxLength = 500) }
+                ?.takeIf { it != "no reason provided" }
+        val normalizedReasonCode = normalizeReportReasonCode(reasonCode ?: reason)
         return reports.save(
             PresetReportEntity(
                 publishedPresetId = publishedPresetId,
                 reporterUserId = reporterUserId,
-                reason = sanitizeText(reason, maxLength = 500),
+                reason = sanitizedReason,
+                reasonCode = normalizedReasonCode,
+                details = sanitizedDetails,
                 createdAt = Instant.now(clock),
             ),
         )
@@ -1059,6 +1069,8 @@ class PresetRegistryService(
             publishedPresetId = publishedPresetId,
             reporterUserId = reporterUserId,
             reason = reason,
+            reasonCode = reasonCode,
+            details = details,
             status = status,
             createdAt = createdAt.toString(),
             reviewedBy = reviewedBy,
@@ -1238,6 +1250,26 @@ class PresetRegistryService(
             .replace(SECRET_PATTERN, "[redacted]")
             .take(maxLength)
             .ifBlank { "no reason provided" }
+
+    private fun normalizeReportReasonCode(value: String): String {
+        val normalized =
+            value
+                .trim()
+                .lowercase()
+                .replace(Regex("[^a-z0-9_\\-가-힣]+"), "_")
+                .trim('_', '-')
+        return when (normalized) {
+            "unsafe", "unsafe_prompt", "위험", "위험한_프롬프트" -> "unsafe_prompt"
+            "sensitive", "secret", "secrets", "sensitive_data", "민감정보" -> "sensitive_data"
+            "spam", "abuse", "스팸" -> "spam"
+            "low_quality", "quality", "품질" -> "low_quality"
+            "copyright", "저작권" -> "copyright"
+            "harmful", "harm", "유해" -> "harmful"
+            "policy", "policy_violation", "정책" -> "policy_violation"
+            "other", "기타", "" -> "other"
+            else -> normalized.take(60).ifBlank { "other" }
+        }
+    }
 
     private fun normalizeResponseMode(value: String): String =
         when (value.trim().lowercase()) {
@@ -1519,6 +1551,8 @@ data class PresetReportSummary(
     val publishedPresetId: Long,
     val reporterUserId: Long?,
     val reason: String,
+    val reasonCode: String,
+    val details: String?,
     val status: String,
     val createdAt: String,
     val reviewedBy: Long?,

@@ -530,6 +530,8 @@ class PresetReportEntity(
     var publishedPresetId: Long = 0,
     var reporterUserId: Long? = null,
     var reason: String = "",
+    var reasonCode: String = "other",
+    var details: String? = null,
     var status: String = "open",
     var createdAt: Instant = Instant.EPOCH,
     var reviewedBy: Long? = null,

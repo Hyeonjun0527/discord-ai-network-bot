@@ -364,17 +364,25 @@ async function reportPreset(id = selectedPresetId) {
     $("result").textContent = "먼저 프리셋을 선택하세요.";
     return;
   }
-  const reason = window.prompt("신고 사유를 간단히 적어주세요. 민감정보는 입력하지 마세요.");
-  if (!reason || !reason.trim()) {
+  const reasonCode = window.prompt(
+    "신고 유형을 입력하세요: unsafe_prompt / sensitive_data / spam / low_quality / copyright / harmful / policy_violation / other",
+    "unsafe_prompt",
+  );
+  if (!reasonCode || !reasonCode.trim()) {
+    $("result").textContent = "신고가 취소되었습니다.";
+    return;
+  }
+  const details = window.prompt("상세 사유를 간단히 적어주세요. 민감정보는 입력하지 마세요.");
+  if (!details || !details.trim()) {
     $("result").textContent = "신고가 취소되었습니다.";
     return;
   }
   try {
     const data = await json(`/api/ai-network/presets/published/${id}/report`, {
       method: "POST",
-      body: JSON.stringify({ reporterUserId: anonUserId(), reason: reason.trim() }),
+      body: JSON.stringify({ reporterUserId: anonUserId(), reasonCode: reasonCode.trim(), details: details.trim() }),
     });
-    $("result").textContent = `신고 접수 완료 · report ${data.id} · ${data.status}`;
+    $("result").textContent = `신고 접수 완료 · report ${data.id} · ${data.status} · ${data.reasonCode || "other"}`;
     if (Number(id) === selectedPresetId) {
       $("confirmImport").disabled = true;
       $("copyDiscordImport").disabled = true;

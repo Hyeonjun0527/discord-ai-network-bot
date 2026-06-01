@@ -241,8 +241,15 @@ class PresetRegistryController(
         @PathVariable publishedPresetId: Long,
         @RequestBody request: ReportPresetRequest,
     ): Map<String, Any?> {
-        val report = registry.reportPreset(publishedPresetId, request.reporterUserId, request.reason)
-        return mapOf("id" to report.id, "status" to report.status)
+        val report =
+            registry.reportPreset(
+                publishedPresetId = publishedPresetId,
+                reporterUserId = request.reporterUserId,
+                reason = request.reason ?: request.details ?: request.reasonCode ?: "other",
+                reasonCode = request.reasonCode,
+                details = request.details,
+            )
+        return mapOf("id" to report.id, "status" to report.status, "reasonCode" to report.reasonCode)
     }
 
     @PostMapping("/reports/{reportId}/review")
@@ -344,7 +351,9 @@ data class LikePresetRequest(
 
 data class ReportPresetRequest(
     val reporterUserId: Long? = null,
-    val reason: String,
+    val reason: String? = null,
+    val reasonCode: String? = null,
+    val details: String? = null,
 )
 
 data class ReviewPresetReportRequest(

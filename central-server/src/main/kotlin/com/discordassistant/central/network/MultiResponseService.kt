@@ -97,13 +97,14 @@ class MultiResponseService(
                     startedAt = Instant.now(clock),
                 ),
             )
-        applyRagContextSnapshot(run, promptPreview, responseMode)
         if (promptPreview.isSensitivePrompt()) {
             run.status = "blocked_sensitive"
             run.failureReason = "multi-response fan-out disabled for sensitive-looking prompt"
+            run.ragContextStatus = "skipped_sensitive_prompt"
             run.finishedAt = Instant.now(clock)
             return runs.save(run)
         }
+        applyRagContextSnapshot(run, promptPreview, responseMode)
         val executionPlan = safety?.executionPlan(guildId, policy.mode, policy.maxCandidates)
         if (executionPlan != null && executionPlan.maxSafeCandidates == 0) {
             run.status = "no_provider"

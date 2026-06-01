@@ -545,10 +545,13 @@ class MultiResponseServiceTest
                 )
 
             assertEquals("blocked_sensitive", started["status"])
+            assertEquals("skipped_sensitive_prompt", started["ragContextStatus"])
             assertEquals(0, candidates.findByRunId(started["id"] as Long).size)
+            val sensitiveRun = runs.findById(started["id"] as Long).get()
+            assertEquals("skipped_sensitive_prompt", sensitiveRun.ragContextStatus)
             assertEquals(
                 "multi-response fan-out disabled for sensitive-looking prompt",
-                runs.findById(started["id"] as Long).get().failureReason,
+                sensitiveRun.failureReason,
             )
 
             val passwordOnly =
@@ -561,6 +564,7 @@ class MultiResponseServiceTest
                     ),
                 )
             assertEquals("blocked_sensitive", passwordOnly["status"])
+            assertEquals("skipped_sensitive_prompt", passwordOnly["ragContextStatus"])
             assertEquals(0, candidates.findByRunId(passwordOnly["id"] as Long).size)
         }
 

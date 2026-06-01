@@ -325,7 +325,7 @@ Channel AI 설정이 깨져도 기본 질문은 가능해야 한다.
 아래 기능은 foundation MVP 전에 runtime 구현하면 위험하다. 그러나 도메인/DB/보안/CI-CD 기획은 반드시 먼저 끝내야 한다.
 
 - RAG 업로드 전체 — Dailyting RAG 스택 이식 설계, Qdrant/CI/CD/보안 게이트까지 선기획
-- 다중 응답/fan-out — Provider 보호와 비용 상한까지 선기획
+- 다중 응답/fan-out — Provider 보호와 비용 상한까지 선기획 (`04_MULTI_RESPONSE_DESIGN.md`)
 - 공개/웹 프리셋 공유 — 게시/가져오기/수정/삭제/추천/신고까지 선기획
 - 복잡한 성장 레벨 gamification — 기여 강요 방지 정책까지 선기획
 - 실시간 대시보드 전체 — projection/freshness/권한 설계까지 선기획

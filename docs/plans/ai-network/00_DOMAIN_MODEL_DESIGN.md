@@ -454,6 +454,7 @@ Invariant:
 | 설정 변경 승인 | AiChangeProposal | CustomizationAuditLog |
 | 채널 AI 만들기 마법사 | ChannelAi | AiPreset, AiChangeProposal |
 | AI 네트워크 대시보드 | Dashboard Projection | 모든 주요 Aggregate |
+| 다중 응답/비교/합성 | MultiResponsePolicy, MultiResponseRun, CandidateAnswer, SynthesisResult | Provider, RoutingPolicy, KnowledgeSpace, Dashboard Projection |
 | 원하는 모델 선택 질문 | ModelSelectionPolicy | RoutingPolicy, ProviderCapabilityProfile |
 
 ## 6. DB 테이블 초안

@@ -230,6 +230,37 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `multi response run never stores sensitive request id`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 4,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 206, mode = "compare", maxCandidates = 1))
+
+            val started =
+                controller.startRun(
+                    100,
+                    StartMultiResponseRunRequest(
+                        channelId = 206,
+                        requestId = "DISCORD_BOT_TOKEN=super-secret-value",
+                    ),
+                )
+
+            val run = runs.findById(started["id"] as Long).get()
+            assertTrue(run.requestId.startsWith("redacted-"))
+            assertTrue(!run.requestId.contains("super-secret-value"))
+            assertEquals(run.requestId, controller.recentRuns(100).first()["requestId"])
+        }
+
+        @Test
         fun `user can adopt candidate and leave quality feedback without storing answer body`() {
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(

@@ -14,6 +14,7 @@ import com.discordassistant.central.persistence.SynthesisResultEntity
 import com.discordassistant.central.persistence.SynthesisResultRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -91,7 +92,7 @@ class MultiResponseService(
                 MultiResponseRunEntity(
                     guildId = guildId,
                     channelId = channelId,
-                    requestId = requestId,
+                    requestId = sanitizeRequestId(requestId),
                     policyId = policy.id,
                     status = "planned",
                     startedAt = Instant.now(clock),
@@ -168,7 +169,7 @@ class MultiResponseService(
                 MultiResponseRunEntity(
                     guildId = guildId,
                     channelId = channelId,
-                    requestId = requestId,
+                    requestId = sanitizeRequestId(requestId),
                     policyId = savedPolicy?.id,
                     status = "planned",
                     startedAt = Instant.now(clock),
@@ -989,6 +990,21 @@ class MultiResponseService(
         if (text.isBlank()) return false
         return SENSITIVE_PROMPT_PATTERNS.any { it.containsMatchIn(text) }
     }
+
+    private fun sanitizeRequestId(requestId: String): String {
+        val trimmed = requestId.trim().ifBlank { newRequestId() }
+        if (trimmed.hasSensitiveMaterial()) return "redacted-${sha256(trimmed).take(12)}"
+        return trimmed.take(160)
+    }
+
+    private fun String.hasSensitiveMaterial(): Boolean =
+        KnowledgeSafety.containsSensitiveMaterial(this) || SECRET_PATTERN.containsMatchIn(this)
+
+    private fun sha256(value: String): String =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     private fun newRequestId(): String = UUID.randomUUID().toString().replace("-", "")
 

@@ -500,6 +500,7 @@ class PublishedPresetEntity(
 class PresetImportEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
     var publishedPresetId: Long = 0,
+    var sourceRevisionId: Long? = null,
     var targetGuildId: Long = 0,
     var targetChannelId: Long? = null,
     var importedBy: Long? = null,

@@ -223,6 +223,7 @@ class PresetRegistryServiceTest
                     ImportPresetRequest(targetGuildId = 101, targetChannelId = 202, actorUserId = 89, confirmConflicts = true),
                 )
             assertNotNull(imported["importedPresetId"])
+            assertEquals(publishedDetail.published.revisionId, imported["sourceRevisionId"])
             assertEquals("applied", imported["status"])
             assertNotNull(imported["createdChannelAiId"])
             assertNotNull(imported["createdBehaviorVersionId"])
@@ -676,6 +677,7 @@ class PresetRegistryServiceTest
                     published.id,
                     ImportPresetRequest(targetGuildId = 311, targetChannelId = 411, actorUserId = 88),
                 )
+            assertEquals(originalRevisionId, importedV1["sourceRevisionId"])
             val v1BehaviorId = importedV1["createdBehaviorVersionId"] as Long
             val importedChannel = channelAis.findByGuildIdAndChannelId(311, 411)!!
             assertEquals("고객지원 v1", behaviorVersions.findByChannelAiIdAndId(importedChannel.id, v1BehaviorId)?.purpose)
@@ -705,6 +707,7 @@ class PresetRegistryServiceTest
                     published.id,
                     ImportPresetRequest(targetGuildId = 312, targetChannelId = 412, actorUserId = 89),
                 )
+            assertEquals(newRevisionId, importedV2["sourceRevisionId"])
             val v2Channel = channelAis.findByGuildIdAndChannelId(312, 412)!!
             val v2Behavior = behaviorVersions.findByChannelAiIdAndId(v2Channel.id, importedV2["createdBehaviorVersionId"] as Long)
             assertEquals("고객지원 v2", v2Behavior?.purpose)
@@ -716,6 +719,7 @@ class PresetRegistryServiceTest
             assertEquals(311, importedSummary.targetGuildId)
             assertEquals(411, importedSummary.targetChannelId)
             assertEquals(88, importedSummary.importedBy)
+            assertEquals(originalRevisionId, importedSummary.sourceRevisionId)
             assertEquals(true, importedSummary.detachedCopy)
             assertEquals(v1BehaviorId, importedSummary.createdBehaviorVersionId)
 
@@ -825,6 +829,7 @@ class PresetRegistryServiceTest
             }
             val history = service.importHistory(targetGuildId = 121).single()
             assertEquals(published.id, history.publishedPresetId)
+            assertEquals(published.revisionId, history.sourceRevisionId)
             assertEquals(imported.importedPresetId, history.importedPresetId)
             assertEquals(imported.createdBehaviorVersionId, history.createdBehaviorVersionId)
         }
@@ -873,7 +878,8 @@ class PresetRegistryServiceTest
             assertEquals("published", republished["status"])
             assertEquals(1, service.searchPublishedPresets().size)
             assertEquals("공유 공지 프리셋", service.publishedPresetDetail(published.id).published.title)
-            service.importPreset(published.id, targetGuildId = 131, targetChannelId = 231, importedBy = 89)
+            val imported = service.importPreset(published.id, targetGuildId = 131, targetChannelId = 231, importedBy = 89)
+            assertEquals(published.revisionId, imported.sourceRevisionId)
             assertEquals(1, service.importHistory(targetGuildId = 131).size)
         }
 

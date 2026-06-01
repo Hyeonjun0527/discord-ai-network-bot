@@ -268,7 +268,8 @@ async function confirmImport() {
         confirmConflicts: true,
       }),
     });
-    $("result").textContent = `가져오기 완료 · ${data.status} · channelAi=${data.createdChannelAiId || "-"}`;
+    $("result").textContent =
+      `가져오기 완료 · ${data.status} · sourceRevision=${data.sourceRevisionId || "-"} · channelAi=${data.createdChannelAiId || "-"}`;
     $("confirmImport").disabled = true;
     pendingImport = null;
     await refreshCatalog();

@@ -934,6 +934,7 @@ class CommandService(
     private fun formatPresetImport(imported: PresetImportEntity): String =
         "✅ 프리셋을 현재 채널에 가져왔습니다.\n" +
             "상태: `${imported.status}` · 보관함 프리셋: `${imported.importedPresetId ?: "-"}`\n" +
+            "원본 revision: `${imported.sourceRevisionId ?: "-"}`\n" +
             "채널 AI: `${imported.createdChannelAiId ?: "-"}` · 행동 버전: `${imported.createdBehaviorVersionId ?: "-"}`\n" +
             "이제 이 채널에서 질문하면 가져온 프리셋의 역할·말투·응답 정책이 적용됩니다."
 

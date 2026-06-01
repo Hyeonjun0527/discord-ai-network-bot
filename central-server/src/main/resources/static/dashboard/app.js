@@ -866,7 +866,8 @@ async function importPreset() {
       confirmConflicts: true,
     });
     $("presetImportResult").textContent =
-      `가져오기 완료: ${imported.status} · channelAi=${imported.createdChannelAiId || "-"} · ` +
+      `가져오기 완료: ${imported.status} · sourceRevision=${imported.sourceRevisionId || "-"} · ` +
+      `channelAi=${imported.createdChannelAiId || "-"} · ` +
       `충돌 ${pendingPresetImport.conflictCount}건 확인`;
     pendingPresetImport = null;
     $("presetConfirmImport").disabled = true;

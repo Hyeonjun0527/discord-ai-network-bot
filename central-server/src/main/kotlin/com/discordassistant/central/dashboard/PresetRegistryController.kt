@@ -206,6 +206,7 @@ class PresetRegistryController(
         return mapOf(
             "id" to imported.id,
             "importedPresetId" to imported.importedPresetId,
+            "sourceRevisionId" to imported.sourceRevisionId,
             "createdChannelAiId" to imported.createdChannelAiId,
             "createdBehaviorVersionId" to imported.createdBehaviorVersionId,
             "status" to imported.status,

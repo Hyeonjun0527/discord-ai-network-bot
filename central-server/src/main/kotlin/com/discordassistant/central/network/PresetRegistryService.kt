@@ -494,6 +494,7 @@ class PresetRegistryService(
         return imports.save(
             PresetImportEntity(
                 publishedPresetId = publishedPresetId,
+                sourceRevisionId = sourceRevision.id,
                 targetGuildId = targetGuildId,
                 targetChannelId = targetChannelId,
                 importedBy = importedBy,
@@ -1005,6 +1006,7 @@ class PresetRegistryService(
         PresetImportSummary(
             id = id,
             publishedPresetId = publishedPresetId,
+            sourceRevisionId = sourceRevisionId,
             targetGuildId = targetGuildId,
             targetChannelId = targetChannelId,
             importedBy = importedBy,
@@ -1415,6 +1417,7 @@ data class PresetBehaviorSnapshot(
 data class PresetImportSummary(
     val id: Long,
     val publishedPresetId: Long,
+    val sourceRevisionId: Long?,
     val targetGuildId: Long,
     val targetChannelId: Long?,
     val importedBy: Long?,

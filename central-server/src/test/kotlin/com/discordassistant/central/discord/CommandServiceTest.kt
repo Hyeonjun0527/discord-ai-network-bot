@@ -63,6 +63,7 @@ class CommandServiceTest
             assertTrue(admin.contains("__관리자__"))
             assertTrue(admin.contains("/채널프로필"))
             assertTrue(admin.contains("/llm-channel-profile"))
+            assertTrue(admin.contains("/ai-network-map"))
             assertTrue(admin.contains("/ai-network-check"))
         }
 
@@ -194,6 +195,43 @@ class CommandServiceTest
         fun `관리자 가드 — 비관리자 채널 허용 거부`() {
             assertTrue(commands.allowChannel(ctx(admin = false), 200).content.contains("⛔"))
             assertFalse(commands.allowChannel(ctx(admin = true), 200).content.contains("⛔"))
+        }
+
+        @Test
+        fun `aiNetworkMap — 관리자에게 Provider 모델 채널AI 지도를 보여준다`() {
+            val g = CommandContext(guildId = 77991, channelId = 88991, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = g.guildId,
+                    providerUserId = 1234,
+                    providerState = "ONLINE",
+                    modelCount = 2,
+                    modelNames = "llama3.1:8b,codellama:latest",
+                    capabilityTags = "coding,long-context",
+                    qualityTier = "specialized",
+                    maxBurden = "STANDARD",
+                    overloadRisk = "normal",
+                ),
+            )
+            commands.setChannelAiProfile(
+                g,
+                name = "코드냥",
+                avatarUrl = null,
+                reset = false,
+                purpose = "Kotlin 코드 리뷰",
+                tone = "실용적으로",
+                answerLength = "balanced",
+                constitution = "확실하지 않으면 추측하지 않기",
+            )
+
+            val reply = commands.aiNetworkMap(g)
+
+            assertTrue(reply.content.contains("AI 네트워크 지도"))
+            assertTrue(reply.content.contains("llama3.1:8b"))
+            assertTrue(reply.content.contains("codellama:latest"))
+            assertTrue(reply.content.contains("코드냥"))
+            assertTrue(reply.content.contains("Provider: 온라인 1"))
+            assertTrue(reply.content.contains("능력 태그"))
         }
 
         @Test

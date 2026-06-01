@@ -3,6 +3,8 @@ package com.discordassistant.central.discord
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.network.AiNetworkLaunchChecklistService
+import com.discordassistant.central.network.AiNetworkMap
+import com.discordassistant.central.network.AiNetworkMapService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
@@ -53,6 +55,7 @@ class CommandService(
     private val channelRoutingPolicies: ChannelAiRoutingPolicyService,
     private val knowledgeSearch: KnowledgeSearchService,
     private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
+    private val aiNetworkMap: AiNetworkMapService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
 ) {
@@ -300,11 +303,47 @@ class CommandService(
             sb.append("· `/프로바이더승인`(`/provider-approve`) `/프로바이더제거`(`/provider-remove`) — 승인/제거\n")
             sb.append("· `/채널허용`(`/llm-allow-channel`) `/채널금지`(`/llm-deny-channel`) `/역할정책`(`/llm-role-policy`) — 채널·역할 정책\n")
             sb.append("· `/채널프로필`(`/llm-channel-profile`) — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
+            sb.append("· `/ai-network-map` — Provider·모델·채널AI·RAG 구성을 한눈에 보기\n")
             sb.append("· `/ai-network-check` — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
             sb.append("· `/사용자차단`(`/llm-block`) `/차단해제`(`/llm-unblock`) — 사용자 차단/해제\n")
         }
         sb.append("\n_민감정보(비밀번호·API 키 등)는 입력하지 마세요._")
         return Reply(sb.toString())
+    }
+
+    fun aiNetworkMap(ctx: CommandContext): Reply {
+        adminOnly(ctx)?.let { return it }
+        return Reply(formatAiNetworkMap(aiNetworkMap.map(ctx.guildId)))
+    }
+
+    private fun formatAiNetworkMap(map: AiNetworkMap): String {
+        val modelLines =
+            map.models.take(8).map { model ->
+                val topTags = model.tags.take(3)
+                val tags = if (topTags.isEmpty()) "태그 없음" else topTags.joinToString(", ")
+                val tiers = model.qualityTiers.joinToString(",")
+                "• `${model.modelName}` — 온라인 ${model.onlineProviderCount}/${model.providerCount} · $tiers · $tags"
+            }
+        val models = modelLines.joinToString("\n").ifBlank { "• 아직 보고된 모델이 없습니다." }
+        val channelLines =
+            map.channels.take(8).map { channel ->
+                val behavior = if (channel.hasBehavior) "행동설정 ON" else "행동설정 필요"
+                "• <#${channel.channelId}> → **${channel.name}** · $behavior · 지식공간 ${channel.knowledgeSpaceCount}"
+            }
+        val channels = channelLines.joinToString("\n").ifBlank { "• 아직 채널 AI가 없습니다." }
+        val next = map.nextActions.take(5).joinToString("\n") { "• $it" }
+        val topCapabilityTags = map.capabilityTags.take(8)
+        val tags = if (topCapabilityTags.isEmpty()) "아직 태그 없음" else topCapabilityTags.joinToString(", ")
+        val providerSummary =
+            "Provider: 온라인 ${map.onlineProviderCount} / 승인 ${map.approvedProviderCount} · " +
+                "모델 ${map.modelCount}종 · 채널 AI ${map.channelAiCount}개 · 지식공간 ${map.knowledgeSpaceCount}개"
+        return "🗺️ **AI 네트워크 지도**\n\n" +
+            "레벨: `${map.networkLevel}` · 상태: `${map.healthStatus}` · 과부하 경고: `${map.overloadAlertCount}`\n" +
+            "$providerSummary\n" +
+            "능력 태그: $tags\n\n" +
+            "__모델 지도__\n$models\n\n" +
+            "__채널 AI__\n$channels\n\n" +
+            "__다음 액션__\n$next"
     }
 
     fun aiNetworkCheck(ctx: CommandContext): Reply {

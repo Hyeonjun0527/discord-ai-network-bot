@@ -353,6 +353,8 @@ class PresetRegistryServiceTest
             assertEquals(listOf("kotlin", "code-review"), codingDetail.published.tags)
             assertEquals(listOf("kotlin", "code-review"), codingDetail.behavior.tags)
             assertEquals(listOf("이 Kotlin 에러 왜 나나요?", "이 코드 리뷰해줘"), codingDetail.behavior.exampleQuestions)
+            val slugDetail = controller.publishedPresetDetailBySlug(publishedCoding.slug)["preset"] as PublishedPresetDetail
+            assertEquals(publishedCoding.id, slugDetail.published.id)
 
             val categoryResult = controller.publishedPresets(category = "translation", sort = "popular", limit = 10)["presets"] as List<*>
             val categoryPreset = categoryResult.single() as PublishedPresetSummary

@@ -79,6 +79,11 @@ class PresetRegistryController(
         @PathVariable status: String,
     ): Map<String, Any?> = mapOf("reports" to registry.listReports(status))
 
+    @GetMapping("/catalog/slug/{slug}")
+    fun publishedPresetDetailBySlug(
+        @PathVariable slug: String,
+    ): Map<String, Any?> = mapOf("preset" to registry.publishedPresetDetailBySlug(slug))
+
     @GetMapping("/catalog/{publishedPresetId}")
     fun publishedPresetDetail(
         @PathVariable publishedPresetId: Long,

@@ -179,15 +179,22 @@ function renderPreview(detail, preview) {
   $("preview").textContent = lines.join("\n");
 }
 
-async function previewPreset(id) {
-  selectedPresetId = Number(id);
+async function previewPreset(locator) {
+  const presetLocator = String(locator || "").trim();
+  selectedPresetId = null;
   pendingImport = null;
   $("confirmImport").disabled = true;
   $("likePreset").disabled = false;
   $("reportPreset").disabled = false;
   $("result").textContent = "";
   try {
-    const detail = await json(`/api/ai-network/presets/catalog/${selectedPresetId}`);
+    const detailUrl = /^\d+$/.test(presetLocator)
+      ? `/api/ai-network/presets/catalog/${presetLocator}`
+      : `/api/ai-network/presets/catalog/slug/${encodeURIComponent(presetLocator)}`;
+    const detail = await json(detailUrl);
+    const { published } = normalizePresetDetail(detail);
+    selectedPresetId = Number(published.id || presetLocator);
+    if (!Number.isFinite(selectedPresetId)) throw new Error("프리셋 ID를 확인할 수 없습니다.");
     const target = targetIds();
     if (!target) {
       renderPreview(detail, null);
@@ -301,4 +308,7 @@ $("catalog").addEventListener("click", (event) => {
 }));
 $("adminToken").value = sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
 updateAdminTokenStatus();
-refreshCatalog();
+const initialPresetLocator = new URLSearchParams(window.location.search).get("preset");
+refreshCatalog().then(() => {
+  if (initialPresetLocator) previewPreset(initialPresetLocator);
+});

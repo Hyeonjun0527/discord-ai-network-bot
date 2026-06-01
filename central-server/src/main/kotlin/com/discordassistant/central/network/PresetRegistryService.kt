@@ -308,6 +308,26 @@ class PresetRegistryService(
         )
     }
 
+    @Transactional(readOnly = true)
+    fun publishedPresetDetailBySlug(slug: String): PublishedPresetDetail {
+        featureGate.requirePresetEnabled()
+        val normalizedSlug = slug.trim().lowercase().take(160)
+        require(normalizedSlug.isNotBlank()) { "published preset slug is required" }
+        val published =
+            publishedPresets.findBySlug(normalizedSlug)
+                ?: throw IllegalArgumentException("published preset not found: $normalizedSlug")
+        requirePublishedPreset(published)
+        val revision =
+            revisions.findById(published.revisionId).orElseThrow {
+                IllegalArgumentException("published revision not found: ${published.revisionId}")
+            }
+        val preset = presets.findById(published.presetId).orElse(null)
+        return PublishedPresetDetail(
+            published = published.toSummary(revision, preset),
+            behavior = revision.toBehaviorSnapshot(),
+        )
+    }
+
     @Transactional
     fun updatePreset(
         presetId: Long,

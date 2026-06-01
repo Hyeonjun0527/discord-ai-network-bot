@@ -46,8 +46,14 @@ class DashboardServingTest
             assertTrue(html.contains("""id="aiNetwork""""))
             assertTrue(html.contains("""id="growthLevel""""))
             assertTrue(html.contains("""id="growthTimeline""""))
+            assertTrue(html.contains("""id="presetCatalog""""))
+            assertTrue(html.contains("""id="changeApproval""""))
+            assertTrue(html.contains("""id="qualityReview""""))
             assertTrue(js.contains("/api/ai-network/${'$'}{gid}/dashboard?audience=admin"))
             assertTrue(js.contains("renderAiNetwork"))
+            assertTrue(js.contains("publishedPresets"))
+            assertTrue(js.contains("changeApproval"))
+            assertTrue(js.contains("qualityReview"))
         }
 
         @Test

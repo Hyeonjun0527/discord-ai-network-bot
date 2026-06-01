@@ -82,6 +82,21 @@ function renderAiNetwork(data) {
   renderList("growthTimeline", data.growthTimeline?.slice(0, 5), "최근 성장 이벤트 없음", (e) =>
     `<li><strong>${esc(e.title)}</strong><span>${esc((e.impactBullets || []).join(" · ") || e.summary || "")}</span></li>`,
   );
+  renderList("presetCatalog", data.publishedPresets?.slice(0, 5), "게시된 프리셋 없음", (p) =>
+    `<li><strong>${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · ${esc(p.publisherLabel)}</span></li>`,
+  );
+  renderList("changeApproval", data.changeApproval?.pendingItems?.slice(0, 5), data.changeApproval?.nextActions?.[0] || "승인 대기 없음", (p) =>
+    `<li><strong>#${esc(p.channelId)} 변경 대기</strong><span>${esc(p.reason || "사유 없음")} · 제안 ${esc(p.proposedBehaviorId || "-")}</span></li>`,
+  );
+  const qualityItems = [
+    ["총 피드백", data.quality?.feedbackCount ?? 0],
+    ["열린 신고", data.quality?.openReports ?? 0],
+    ["검토 대기", data.qualityReview?.queue?.length ?? data.qualityReview?.openReportCount ?? 0],
+    ["모델 품질", data.modelQuality?.length ?? 0],
+  ];
+  renderList("qualityReview", qualityItems, "품질 데이터 없음", ([label, value]) =>
+    `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
+  );
 }
 
 // 길드 상세(#198 개요 / #201 로그 / #202 차트)

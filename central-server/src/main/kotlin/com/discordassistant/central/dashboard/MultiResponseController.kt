@@ -38,7 +38,7 @@ class MultiResponseController(
         @PathVariable guildId: Long,
         @RequestBody request: StartMultiResponseRunRequest,
     ): Map<String, Any?> {
-        val run = service.startRun(guildId, request.channelId, request.requestId)
+        val run = service.startRun(guildId, request.channelId, request.requestId, request.promptPreview)
         return mapOf("id" to run.id, "requestId" to run.requestId, "status" to run.status, "candidateCount" to run.candidateCount)
     }
 
@@ -110,6 +110,7 @@ data class SaveMultiResponsePolicyRequest(
 data class StartMultiResponseRunRequest(
     val channelId: Long,
     val requestId: String,
+    val promptPreview: String? = null,
 )
 
 data class RecordCandidateRequest(

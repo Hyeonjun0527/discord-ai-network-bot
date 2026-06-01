@@ -63,6 +63,7 @@ class MultiResponseService(
         guildId: Long,
         channelId: Long,
         requestId: String = newRequestId(),
+        promptPreview: String? = null,
     ): MultiResponseRunEntity {
         featureGate.requireMultiResponseEnabled()
         val policy =
@@ -90,15 +91,15 @@ class MultiResponseService(
                     startedAt = Instant.now(clock),
                 ),
             )
+        if (promptPreview.isSensitivePrompt()) {
+            run.status = "blocked_sensitive"
+            run.failureReason = "multi-response fan-out disabled for sensitive-looking prompt"
+            run.finishedAt = Instant.now(clock)
+            return runs.save(run)
+        }
         val selectedProviders = selectProviders(guildId, policy)
         selectedProviders.forEach { provider ->
-            val firstModel =
-                provider
-                    .modelNames
-                    .orEmpty()
-                    .split(",")
-                    .firstOrNull { it.isNotBlank() }
-                    ?.trim()
+            val firstModel = provider.firstModel()
             candidates.save(
                 CandidateAnswerEntity(
                     runId = run.id,
@@ -177,17 +178,66 @@ class MultiResponseService(
     private fun selectProviders(
         guildId: Long,
         policy: MultiResponsePolicyEntity,
-    ) = providerCapabilities
-        .findByGuildId(guildId)
-        .filter { it.providerState.equals("ONLINE", ignoreCase = true) }
-        .filter { !it.overloadRisk.equals("high", ignoreCase = true) && !it.overloadRisk.equals("critical", ignoreCase = true) }
-        .filter { policy.providerDailyLimit <= 0 || it.dailyLimit <= 0 || it.dailyLimit >= policy.providerDailyLimit }
-        .sortedWith(
-            compareByDescending<ProviderCapabilityProfileEntity> { it.qualityTier == "specialized" }
-                .thenByDescending { it.qualityTier == "high" }
-                .thenByDescending { it.modelCount }
-                .thenBy { it.providerUserId },
-        ).take(policy.maxCandidates)
+    ): List<ProviderCapabilityProfileEntity> {
+        val advancedFanout = policy.maxCandidates > 1 || !policy.mode.equals("single", ignoreCase = true) || policy.synthesisEnabled
+        val ranked =
+            providerCapabilities
+                .findByGuildId(guildId)
+                .filter { it.providerState.equals("ONLINE", ignoreCase = true) }
+                .filter { !it.overloadRisk.equals("high", ignoreCase = true) && !it.overloadRisk.equals("critical", ignoreCase = true) }
+                .filter { policy.providerDailyLimit <= 0 || it.dailyLimit <= 0 || it.dailyLimit >= policy.providerDailyLimit }
+                .filter { !advancedFanout || it.hasFanoutOptIn() }
+                .sortedWith(
+                    compareByDescending<ProviderCapabilityProfileEntity> { it.qualityTier == "specialized" }
+                        .thenByDescending { it.qualityTier == "high" }
+                        .thenByDescending { it.modelCount }
+                        .thenBy { it.providerUserId },
+                )
+        val selected = mutableListOf<ProviderCapabilityProfileEntity>()
+        val usedModels = mutableSetOf<String>()
+        for (provider in ranked) {
+            val model = provider.firstModel()?.lowercase().orEmpty()
+            if (policy.requireDistinctModels && model.isNotBlank() && !usedModels.add(model)) continue
+            selected += provider
+            if (selected.size >= policy.maxCandidates) break
+        }
+        return selected
+    }
+
+    private fun ProviderCapabilityProfileEntity.hasFanoutOptIn(): Boolean {
+        val tags =
+            capabilityTags
+                .orEmpty()
+                .split(",", " ")
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+                .toSet()
+        return tags.any { it in FANOUT_OPT_IN_TAGS }
+    }
+
+    private fun ProviderCapabilityProfileEntity.firstModel(): String? =
+        modelNames
+            .orEmpty()
+            .split(",")
+            .firstOrNull { it.isNotBlank() }
+            ?.trim()
+
+    private fun String?.isSensitivePrompt(): Boolean {
+        val text = this?.trim().orEmpty()
+        if (text.isBlank()) return false
+        return SENSITIVE_PROMPT_PATTERNS.any { it.containsMatchIn(text) }
+    }
 
     private fun newRequestId(): String = UUID.randomUUID().toString().replace("-", "")
+
+    private companion object {
+        val FANOUT_OPT_IN_TAGS = setOf("multi-response", "multi_response", "fanout", "fanout-opt-in")
+        val SENSITIVE_PROMPT_PATTERNS =
+            listOf(
+                Regex("(?i)\b(password|passwd|pwd|secret)\b"),
+                Regex("(?i)(api[_-]?key|bot[_-]?token|discord[_-]?bot[_-]?token|private[_-]?key|access[_-]?token)"),
+                Regex("(?i)-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"),
+                Regex("(?i)sk-[A-Za-z0-9_-]{20,}"),
+            )
+    }
 }

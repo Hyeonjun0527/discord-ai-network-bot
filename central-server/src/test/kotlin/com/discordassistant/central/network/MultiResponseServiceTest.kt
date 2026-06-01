@@ -53,7 +53,7 @@ class MultiResponseServiceTest
                     providerState = "ONLINE",
                     modelCount = 2,
                     modelNames = "llama3.1:8b,qwen-coder",
-                    capabilityTags = "coding",
+                    capabilityTags = "coding,multi-response",
                     qualityTier = "specialized",
                     overloadRisk = "normal",
                 ),
@@ -66,6 +66,7 @@ class MultiResponseServiceTest
                     modelCount = 1,
                     modelNames = "mistral",
                     qualityTier = "standard",
+                    capabilityTags = "multi-response",
                     overloadRisk = "normal",
                 ),
             )
@@ -138,6 +139,96 @@ class MultiResponseServiceTest
 
             assertEquals("no_provider", started["status"])
             assertEquals(0, started["candidateCount"])
+        }
+
+        @Test
+        fun `multi response requires provider fanout opt-in and can enforce distinct models`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 10,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 11,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 12,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "qwen",
+                    capabilityTags = "coding",
+                    qualityTier = "specialized",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(
+                100,
+                SaveMultiResponsePolicyRequest(
+                    channelId = 201,
+                    mode = "compare",
+                    maxCandidates = 3,
+                    requireDistinctModels = true,
+                ),
+            )
+
+            val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 201, requestId = "req-distinct"))
+
+            assertEquals("running", started["status"])
+            assertEquals(1, started["candidateCount"])
+            val planned = candidates.findByRunId(started["id"] as Long)
+            assertEquals(listOf(10L), planned.map { it.providerUserId })
+        }
+
+        @Test
+        fun `multi response blocks sensitive prompts before provider fanout`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 20,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 202, mode = "compare", maxCandidates = 2))
+
+            val started =
+                controller.startRun(
+                    100,
+                    StartMultiResponseRunRequest(
+                        channelId = 202,
+                        requestId = "req-sensitive",
+                        promptPreview = "내 DISCORD_BOT_TOKEN=abc 를 분석해줘",
+                    ),
+                )
+
+            assertEquals("blocked_sensitive", started["status"])
+            assertEquals(0, candidates.findByRunId(started["id"] as Long).size)
+            assertEquals(
+                "multi-response fan-out disabled for sensitive-looking prompt",
+                runs.findById(started["id"] as Long).get().failureReason,
+            )
         }
 
         @Test

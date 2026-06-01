@@ -382,6 +382,100 @@ async function likePreset() {
   }
 }
 
+function multiNumber(id, fallback, min, max) {
+  const value = Number($(id).value || fallback);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, value));
+}
+
+function multiPolicyPayload() {
+  return {
+    channelId: numericValue("multiChannelId"),
+    mode: $("multiMode").value,
+    maxCandidates: multiNumber("multiMaxCandidates", 1, 1, 5),
+    requireDistinctModels: $("multiDistinctModels").checked,
+    providerDailyLimit: multiNumber("multiProviderDailyLimit", 0, 0, 100000),
+    timeoutSeconds: multiNumber("multiTimeoutSeconds", 120, 10, 300),
+    synthesisEnabled: $("multiSynthesis").checked,
+  };
+}
+
+function renderMultiOps(summary) {
+  renderList("multiOps", [
+    ["상태", summary.status || "unknown"],
+    ["고급 모드 안전", summary.safeToEnableAdvanced ? "가능" : "주의 필요"],
+    ["최근 실행", `${summary.recentRunCount ?? 0}건`],
+    ["평균 후보 수", summary.averageActualFanout ?? 0],
+    ["fallback", `${summary.fallbackRunCount ?? 0}건`],
+    ["위험 코드", (summary.riskCodes || []).join(", ") || "없음"],
+  ], "다중응답 운영 데이터 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
+  renderList("multiProviderLoad", summary.providerLoads?.slice(0, 8), "Provider 부하 데이터 없음", (p) =>
+    `<li><strong>${esc(p.providerLabel || p.providerUserId || "provider")}</strong><span>${esc(p.loadRisk)} · 후보 ${esc(p.candidateCount)} · timeout ${esc(p.timeoutCount)} · 품질 ${esc(p.averageQualityScore)}</span></li>`,
+  );
+}
+
+async function refreshMultiOps() {
+  const gid = $("guildId").value.trim();
+  const channelId = $("multiChannelId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("multiResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  const qs = /^\d+$/.test(channelId) ? `?channelId=${channelId}` : "";
+  try {
+    const data = await getJson(`/api/ai-network/multi-response/${gid}/operations-summary${qs}`);
+    const summary = data.summary || {};
+    renderMultiOps(summary);
+    $("multiResult").textContent = [
+      `다중응답 상태: ${summary.status || "unknown"}`,
+      `고급 모드 안전: ${summary.safeToEnableAdvanced ? "yes" : "no"}`,
+      "",
+      "[다음 액션]",
+      ...((summary.nextActions || []).length ? summary.nextActions.map((a) => `- ${a}`) : ["- 없음"]),
+    ].join("\n");
+  } catch (e) {
+    $("multiResult").textContent = `다중응답 운영 상태 로딩 실패: ${e.message}`;
+  }
+}
+
+async function saveMultiPolicy() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("multiResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/multi-response/${gid}/policy`, multiPolicyPayload());
+    $("multiResult").textContent = `다중응답 정책 저장 완료: policy=${result.id} · ${result.mode} · candidates=${result.maxCandidates}`;
+    await refreshMultiOps();
+  } catch (e) {
+    $("multiResult").textContent = `다중응답 정책 저장 실패: ${e.message}`;
+  }
+}
+
+async function planPseudoStream() {
+  const answer = $("pseudoStreamAnswer").value.trim();
+  if (!answer) {
+    $("multiResult").textContent = "미리보기할 긴 답변을 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson("/api/ai-network/multi-response/pseudo-stream-plan", {
+      answer,
+      steps: [33, 66, 100],
+      maxDiscordChars: 1900,
+    });
+    $("multiResult").textContent = [
+      `최종 길이: ${result.finalLength} · truncated=${result.truncated}`,
+      result.warning ? `경고: ${result.warning}` : "",
+      "",
+      ...(result.snapshots || []).map((s, i) => `[${i + 1}] ${s.percent}% · ${s.charCount}자\n${s.content}`),
+    ].filter(Boolean).join("\n\n");
+  } catch (e) {
+    $("multiResult").textContent = `수정 스냅샷 계산 실패: ${e.message}`;
+  }
+}
+
 function renderAiNetwork(data) {
   $("aiNetwork").hidden = false;
   $("networkTitle").textContent = data.overview?.displayName || "AI 네트워크";
@@ -521,6 +615,9 @@ $("presetUpdate").addEventListener("click", updatePreset);
 $("presetPublish").addEventListener("click", publishPreset);
 $("presetDelete").addEventListener("click", deletePreset);
 $("presetLike").addEventListener("click", likePreset);
+$("multiSavePolicy").addEventListener("click", saveMultiPolicy);
+$("multiRefreshOps").addEventListener("click", refreshMultiOps);
+$("pseudoStreamPlan").addEventListener("click", planPseudoStream);
 document.addEventListener("click", (event) => {
   const button = event.target.closest(".import-preset");
   if (button) importPreset(button.dataset.presetId);

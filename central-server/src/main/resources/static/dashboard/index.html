@@ -198,6 +198,47 @@
     <pre id="presetManageResult" class="preview">길드 ID를 입력한 뒤 프리셋을 새로고침하세요.</pre>
   </section>
 
+  <section class="panel">
+    <h2>다중응답/진행형 응답 설정</h2>
+    <p class="muted">여러 Provider 후보 답변을 비교·합성하되, 과부하 위험과 민감 질문에서는 자동으로 보수적으로 동작하게 관리합니다.</p>
+    <div class="form-grid">
+      <label>채널 ID<input id="multiChannelId" type="text" inputmode="numeric" placeholder="채널 ID" /></label>
+      <label>모드
+        <select id="multiMode">
+          <option value="single">single · 단일 답변</option>
+          <option value="compare">compare · 후보 비교</option>
+          <option value="debate">debate · 관점 비교</option>
+        </select>
+      </label>
+      <label>후보 수<input id="multiMaxCandidates" type="number" min="1" max="5" value="1" /></label>
+      <label>타임아웃(초)<input id="multiTimeoutSeconds" type="number" min="10" max="300" value="120" /></label>
+      <label>Provider 일일 한도<input id="multiProviderDailyLimit" type="number" min="0" value="0" /></label>
+      <label class="check"><input id="multiDistinctModels" type="checkbox" /> 서로 다른 모델 우선</label>
+      <label class="check"><input id="multiSynthesis" type="checkbox" /> 후보 답변 합성</label>
+    </div>
+    <div class="row">
+      <button id="multiSavePolicy">다중응답 정책 저장</button>
+      <button id="multiRefreshOps">운영 상태 새로고침</button>
+    </div>
+    <label>긴 답변 의사 스트리밍 미리보기
+      <textarea id="pseudoStreamAnswer" rows="5" placeholder="긴 답변을 붙여넣으면 30%→66%→100%처럼 메시지 수정 스냅샷을 계산합니다."></textarea>
+    </label>
+    <div class="row">
+      <button id="pseudoStreamPlan">수정 스냅샷 계산</button>
+    </div>
+    <div class="network-grid">
+      <article class="card">
+        <h3>다중응답 운영 상태</h3>
+        <ul id="multiOps" class="list"></ul>
+      </article>
+      <article class="card">
+        <h3>Provider 부하</h3>
+        <ul id="multiProviderLoad" class="list"></ul>
+      </article>
+    </div>
+    <pre id="multiResult" class="preview">길드 ID를 입력한 뒤 운영 상태를 새로고침하세요.</pre>
+  </section>
+
   <footer>읽기 5초 폴링 · 쓰기는 OAuth 인증 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
   <script src="app.js"></script>
 </body>

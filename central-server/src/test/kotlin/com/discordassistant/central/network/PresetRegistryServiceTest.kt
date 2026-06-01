@@ -94,10 +94,21 @@ class PresetRegistryServiceTest
                 )
             assertEquals("draft", updated["status"])
             assertEquals(2, revisions.findByPresetIdOrderByRevisionDesc(presetId).first().revision)
+            val guildList = controller.listGuildPresets(100)["presets"] as List<*>
+            assertEquals(1, guildList.size)
+            val localDetail = controller.presetDetail(presetId)["preset"] as PresetDetail
+            assertEquals(2, localDetail.revisions.size)
+            assertEquals("코드 리뷰", localDetail.revisions.first().purpose)
 
             val published = controller.publish(presetId, PublishPresetRequest(actorUserId = 77))
             val publishedId = published["id"] as Long
             assertEquals("published", published["status"])
+            val publishedList = controller.publishedPresets()["presets"] as List<*>
+            assertEquals(1, publishedList.size)
+            val publishedSummary = publishedList.first() as PublishedPresetSummary
+            assertEquals("코드 리뷰", publishedSummary.purpose)
+            val publishedDetail = controller.publishedPresetDetail(publishedId)["preset"] as PublishedPresetDetail
+            assertEquals("concise", publishedDetail.behavior.tone)
 
             controller.like(publishedId, LikePresetRequest(userId = 88))
             controller.like(publishedId, LikePresetRequest(userId = 88))
@@ -128,6 +139,7 @@ class PresetRegistryServiceTest
             assertEquals(1, reports.findByStatus("open").size)
             assertEquals(1, publishedPresets.findById(publishedId).get().reportCount)
             assertEquals("under_review", publishedPresets.findById(publishedId).get().status)
+            assertEquals(0, (controller.publishedPresets()["presets"] as List<*>).size)
             assertThrows(IllegalArgumentException::class.java) {
                 controller.importPreset(
                     publishedId,
@@ -138,6 +150,7 @@ class PresetRegistryServiceTest
             val reviewed = controller.reviewReport(reportId, ReviewPresetReportRequest(decision = "dismiss"))
             assertEquals("dismiss", reviewed["status"])
             assertEquals("published", publishedPresets.findById(publishedId).get().status)
+            assertEquals(1, (controller.publishedPresets()["presets"] as List<*>).size)
 
             val removed = controller.deletePublished(publishedId)
             assertEquals("removed", removed["status"])

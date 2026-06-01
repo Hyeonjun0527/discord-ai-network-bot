@@ -3,6 +3,7 @@ package com.discordassistant.central.dashboard
 import com.discordassistant.central.network.PresetBehaviorInput
 import com.discordassistant.central.network.PresetRegistryService
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -16,6 +17,24 @@ import org.springframework.web.bind.annotation.RestController
 class PresetRegistryController(
     private val registry: PresetRegistryService,
 ) {
+    @GetMapping("/guilds/{guildId}")
+    fun listGuildPresets(
+        @PathVariable guildId: Long,
+    ): Map<String, Any?> = mapOf("presets" to registry.listGuildPresets(guildId))
+
+    @GetMapping("/local/{presetId}")
+    fun presetDetail(
+        @PathVariable presetId: Long,
+    ): Map<String, Any?> = mapOf("preset" to registry.presetDetail(presetId))
+
+    @GetMapping("/catalog")
+    fun publishedPresets(): Map<String, Any?> = mapOf("presets" to registry.listPublishedPresets())
+
+    @GetMapping("/catalog/{publishedPresetId}")
+    fun publishedPresetDetail(
+        @PathVariable publishedPresetId: Long,
+    ): Map<String, Any?> = mapOf("preset" to registry.publishedPresetDetail(publishedPresetId))
+
     @PostMapping("/{guildId}")
     fun create(
         @PathVariable guildId: Long,

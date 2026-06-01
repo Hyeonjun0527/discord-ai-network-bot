@@ -72,6 +72,56 @@ class PresetRegistryService(
         return presets.save(preset)
     }
 
+    @Transactional(readOnly = true)
+    fun listGuildPresets(guildId: Long): List<PresetSummary> {
+        featureGate.requirePresetEnabled()
+        return presets
+            .findByGuildId(guildId)
+            .filter { it.status != "removed" }
+            .sortedWith(compareByDescending<AiPresetEntity> { it.updatedAt }.thenBy { it.id })
+            .map { it.toSummary() }
+    }
+
+    @Transactional(readOnly = true)
+    fun listPublishedPresets(): List<PublishedPresetSummary> {
+        featureGate.requirePresetEnabled()
+        return publishedPresets
+            .findByStatusOrderByLikeCountDescPublishedAtDesc("published")
+            .map { published ->
+                val revision = revisions.findById(published.revisionId).orElse(null)
+                published.toSummary(revision)
+            }
+    }
+
+    @Transactional(readOnly = true)
+    fun presetDetail(presetId: Long): PresetDetail {
+        featureGate.requirePresetEnabled()
+        val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
+        requireActivePreset(preset)
+        return PresetDetail(
+            preset = preset.toSummary(),
+            revisions = revisions.findByPresetIdOrderByRevisionDesc(preset.id).map { it.toSummary() },
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun publishedPresetDetail(publishedPresetId: Long): PublishedPresetDetail {
+        featureGate.requirePresetEnabled()
+        val published =
+            publishedPresets.findById(publishedPresetId).orElseThrow {
+                IllegalArgumentException("published preset not found: $publishedPresetId")
+            }
+        requirePublishedPreset(published)
+        val revision =
+            revisions.findById(published.revisionId).orElseThrow {
+                IllegalArgumentException("published revision not found: ${published.revisionId}")
+            }
+        return PublishedPresetDetail(
+            published = published.toSummary(revision),
+            behavior = revision.toBehaviorSnapshot(),
+        )
+    }
+
     @Transactional
     fun updatePreset(
         presetId: Long,
@@ -395,6 +445,61 @@ class PresetRegistryService(
             ),
         )
 
+    private fun AiPresetEntity.toSummary(): PresetSummary =
+        PresetSummary(
+            id = id,
+            guildId = guildId,
+            ownerUserId = ownerUserId,
+            name = name,
+            summary = summary,
+            category = category,
+            visibility = visibility,
+            status = status,
+            currentRevisionId = currentRevisionId,
+            updatedAt = updatedAt.toString(),
+        )
+
+    private fun PresetRevisionEntity.toSummary(): PresetRevisionSummary =
+        PresetRevisionSummary(
+            id = id,
+            revision = revision,
+            name = name,
+            purpose = purpose,
+            tone = tone,
+            answerLength = answerLength,
+            safetyLevel = safetyLevel,
+            changeSummary = changeSummary,
+            createdAt = createdAt.toString(),
+        )
+
+    private fun PresetRevisionEntity.toBehaviorSnapshot(): PresetBehaviorSnapshot =
+        PresetBehaviorSnapshot(
+            purpose = purpose,
+            tone = tone,
+            answerLength = answerLength,
+            constitution = constitution,
+            safetyLevel = safetyLevel,
+        )
+
+    private fun PublishedPresetEntity.toSummary(revision: PresetRevisionEntity?): PublishedPresetSummary =
+        PublishedPresetSummary(
+            id = id,
+            presetId = presetId,
+            revisionId = revisionId,
+            publisherGuildId = publisherGuildId,
+            publisherUserId = publisherUserId,
+            title = title,
+            description = description,
+            status = status,
+            category = revision?.name,
+            purpose = revision?.purpose,
+            tone = revision?.tone,
+            likeCount = likeCount,
+            importCount = importCount,
+            reportCount = reportCount,
+            publishedAt = publishedAt.toString(),
+        )
+
     private companion object {
         const val REPORT_REVIEW_THRESHOLD = 1
         val HIGH_RISK_SAFETY_LEVELS = setOf("high", "restricted", "dangerous")
@@ -414,4 +519,65 @@ data class PresetBehaviorInput(
     val constitution: String? = null,
     val safetyLevel: String = "standard",
     val changeSummary: String? = null,
+)
+
+data class PresetSummary(
+    val id: Long,
+    val guildId: Long,
+    val ownerUserId: Long?,
+    val name: String,
+    val summary: String?,
+    val category: String,
+    val visibility: String,
+    val status: String,
+    val currentRevisionId: Long?,
+    val updatedAt: String,
+)
+
+data class PresetRevisionSummary(
+    val id: Long,
+    val revision: Int,
+    val name: String,
+    val purpose: String,
+    val tone: String,
+    val answerLength: String,
+    val safetyLevel: String,
+    val changeSummary: String?,
+    val createdAt: String,
+)
+
+data class PresetDetail(
+    val preset: PresetSummary,
+    val revisions: List<PresetRevisionSummary>,
+)
+
+data class PublishedPresetSummary(
+    val id: Long,
+    val presetId: Long,
+    val revisionId: Long,
+    val publisherGuildId: Long,
+    val publisherUserId: Long?,
+    val title: String,
+    val description: String?,
+    val status: String,
+    val category: String?,
+    val purpose: String?,
+    val tone: String?,
+    val likeCount: Int,
+    val importCount: Int,
+    val reportCount: Int,
+    val publishedAt: String,
+)
+
+data class PresetBehaviorSnapshot(
+    val purpose: String,
+    val tone: String,
+    val answerLength: String,
+    val constitution: String?,
+    val safetyLevel: String,
+)
+
+data class PublishedPresetDetail(
+    val published: PublishedPresetSummary,
+    val behavior: PresetBehaviorSnapshot,
 )

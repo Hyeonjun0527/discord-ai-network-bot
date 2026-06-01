@@ -235,16 +235,7 @@ class DiscordBot(
                             .addChoice("English", "en"),
                     ).setDefaultPermissions(adminPerm),
                 Commands
-                    .slash("llm-channel-profile", "이 채널의 AI 이름·역할·말투를 설정합니다(관리자)")
-                    .addOption(OptionType.STRING, "name", "이 채널에서 보일 AI 응답 이름(예: 냥시스턴트)", false)
-                    .addOption(OptionType.ATTACHMENT, "avatar", "선택: 응답 프로필 아이콘 이미지 파일", false)
-                    .addOption(OptionType.STRING, "avatar-url", "선택: 이미지 URL(파일 업로드가 어려울 때)", false)
-                    .addOption(OptionType.STRING, "purpose", "선택: 이 채널 AI의 역할(예: Kotlin 개발 도우미)", false)
-                    .addOption(OptionType.STRING, "tone", "선택: 말투(예: 친근하게, 전문적으로, 짧고 명확하게)", false)
-                    .addOption(OptionType.STRING, "answer-length", "선택: 답변 길이(예: 짧게, 균형, 자세히)", false)
-                    .addOption(OptionType.STRING, "constitution", "선택: 이 채널에서 지킬 AI 헌법/규칙", false)
-                    .addOption(OptionType.BOOLEAN, "rollback", "직전 행동 버전으로 롤백합니다", false)
-                    .addOption(OptionType.BOOLEAN, "reset", "설정을 지우고 기본 봇 표시로 되돌립니다", false)
+                    .slash("llm-channel-profile", "이 채널의 AI 프로필 설정 패널을 엽니다(관리자)")
                     .setDefaultPermissions(adminPerm),
                 Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands
@@ -339,6 +330,18 @@ class DiscordBot(
                     }
                     return
                 }
+                "llm-channel-profile" -> {
+                    if (!ctx.isAdmin) {
+                        event.reply("⛔ 채널 AI 프로필 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
+                    } else {
+                        event
+                            .reply(channelProfilePanelText(ctx))
+                            .addComponents(channelProfileRows())
+                            .setEphemeral(true)
+                            .queue()
+                    }
+                    return
+                }
                 "ask-long" -> {
                     val modal =
                         Modal
@@ -378,6 +381,12 @@ class DiscordBot(
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
             private val PUBLIC_COMMANDS = setOf("ask", "contributions", "community-stats", "welcome")
             private const val WEBHOOK_NAME = "discord-ai-channel-profile"
+            private const val CHANNEL_PROFILE_EDIT = "channel-profile:edit"
+            private const val CHANNEL_PROFILE_AVATAR = "channel-profile:avatar"
+            private const val CHANNEL_PROFILE_RESET = "channel-profile:reset"
+            private const val CHANNEL_PROFILE_ROLLBACK = "channel-profile:rollback"
+            private const val CHANNEL_PROFILE_SAVE_MODAL = "channel-profile:save-modal"
+            private const val CHANNEL_PROFILE_AVATAR_MODAL = "channel-profile:avatar-modal"
         }
 
         override fun onReady(event: ReadyEvent) {
@@ -446,6 +455,32 @@ class DiscordBot(
                 }
                 MenuFactory.HELP, "settings:help" -> {
                     event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin, event.userLocale)).setEphemeral(true).queue()
+                    return
+                }
+                CHANNEL_PROFILE_EDIT -> {
+                    if (!ctx.isAdmin) {
+                        event.reply("⛔ 채널 AI 프로필 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
+                    } else {
+                        event.replyModal(channelProfileModal(ctx)).queue()
+                    }
+                    return
+                }
+                CHANNEL_PROFILE_AVATAR -> {
+                    if (!ctx.isAdmin) {
+                        event.reply("⛔ 채널 AI 프로필 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
+                    } else {
+                        event.replyModal(channelProfileAvatarModal(ctx)).queue()
+                    }
+                    return
+                }
+                CHANNEL_PROFILE_RESET -> {
+                    val reply = commands.setChannelAiProfile(ctx, null, null, reset = true)
+                    event.reply(reply.content).setEphemeral(true).queue()
+                    return
+                }
+                CHANNEL_PROFILE_ROLLBACK -> {
+                    val reply = commands.setChannelAiProfile(ctx, null, null, reset = false, rollback = true)
+                    event.reply(reply.content).setEphemeral(true).queue()
                     return
                 }
                 MenuFactory.PROVIDER -> {
@@ -570,10 +605,136 @@ class DiscordBot(
                 ),
             )
 
+        /** 채널 AI 프로필 설정 패널. 긴 옵션 입력 대신 버튼→모달→저장 흐름으로 관리한다. */
+        private fun channelProfilePanelText(ctx: CommandContext): String {
+            val current = channelProfiles.get(ctx.guildId, ctx.channelId)
+            val summary =
+                if (current == null) {
+                    "아직 이 채널 전용 AI 프로필이 없습니다."
+                } else {
+                    "현재 이름: **${current.displayName}**\n" +
+                        "역할: `${current.purpose}` · 말투: `${current.tone}` · 길이: `${current.answerLength}`\n" +
+                        "아이콘: ${if (current.avatarUrl.isNullOrBlank()) "기본 봇 아이콘" else "설정됨"}\n" +
+                        "행동 버전: v${current.version}"
+                }
+            return "❂ **채널 AI 프로필 설정**\n\n" +
+                "$summary\n\n" +
+                "아래 버튼으로 설정하세요. 긴 명령어 옵션을 직접 외울 필요가 없습니다."
+        }
+
+        private fun channelProfileRows(): List<ActionRow> =
+            listOf(
+                ActionRow.of(
+                    Button.primary(CHANNEL_PROFILE_EDIT, "프로필 편집"),
+                    Button.secondary(CHANNEL_PROFILE_AVATAR, "아이콘 URL"),
+                ),
+                ActionRow.of(
+                    Button.secondary(CHANNEL_PROFILE_ROLLBACK, "이전 버전으로 롤백"),
+                    Button.danger(CHANNEL_PROFILE_RESET, "기본값으로 초기화"),
+                ),
+            )
+
+        private fun channelProfileModal(ctx: CommandContext): Modal {
+            val current = channelProfiles.get(ctx.guildId, ctx.channelId)
+            return Modal
+                .create(CHANNEL_PROFILE_SAVE_MODAL, "채널 AI 프로필 저장")
+                .addActionRow(
+                    TextInput
+                        .create("name", "이름", TextInputStyle.SHORT)
+                        .setRequired(true)
+                        .setMaxLength(80)
+                        .setValue(current?.displayName ?: "냥시스턴트")
+                        .build(),
+                ).addActionRow(
+                    TextInput
+                        .create("purpose", "역할", TextInputStyle.SHORT)
+                        .setRequired(false)
+                        .setMaxLength(200)
+                        .setValue(current?.purpose ?: "general_assistant")
+                        .build(),
+                ).addActionRow(
+                    TextInput
+                        .create("tone", "말투", TextInputStyle.SHORT)
+                        .setRequired(false)
+                        .setMaxLength(80)
+                        .setValue(current?.tone ?: "friendly")
+                        .build(),
+                ).addActionRow(
+                    TextInput
+                        .create("answer-length", "답변 길이", TextInputStyle.SHORT)
+                        .setRequired(false)
+                        .setMaxLength(40)
+                        .setValue(current?.answerLength ?: "balanced")
+                        .build(),
+                ).addActionRow(
+                    TextInput
+                        .create("constitution", "AI 헌법/규칙", TextInputStyle.PARAGRAPH)
+                        .setRequired(false)
+                        .setMaxLength(2000)
+                        .setValue(current?.constitution ?: DEFAULT_CHANNEL_AI_CONSTITUTION)
+                        .build(),
+                ).build()
+        }
+
+        private fun channelProfileAvatarModal(ctx: CommandContext): Modal {
+            val current = channelProfiles.get(ctx.guildId, ctx.channelId)
+            val avatarInput =
+                TextInput
+                    .create("avatar-url", "이미지 URL", TextInputStyle.SHORT)
+                    .setRequired(false)
+                    .setMaxLength(1000)
+                    .setPlaceholder("비우고 저장하면 아이콘 URL을 제거합니다.")
+                    .apply {
+                        current
+                            ?.avatarUrl
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { setValue(it) }
+                    }.build()
+            return Modal
+                .create(CHANNEL_PROFILE_AVATAR_MODAL, "채널 AI 아이콘 URL 저장")
+                .addActionRow(avatarInput)
+                .build()
+        }
+
         /** 긴 질문 모달 제출(#189). */
         override fun onModalInteraction(event: ModalInteractionEvent) {
-            if (event.modalId != "ask-long-modal") return
             val ctx = ctxOf(event) // DM(유저설치)에서도 긴 질문 모달 동작
+            if (event.modalId == CHANNEL_PROFILE_SAVE_MODAL) {
+                val reply =
+                    commands.setChannelAiProfile(
+                        ctx,
+                        event.getValue("name")?.asString,
+                        channelProfiles.get(ctx.guildId, ctx.channelId)?.avatarUrl,
+                        reset = false,
+                        purpose = event.getValue("purpose")?.asString,
+                        tone = event.getValue("tone")?.asString,
+                        answerLength = event.getValue("answer-length")?.asString,
+                        constitution = event.getValue("constitution")?.asString,
+                    )
+                event.reply(reply.content).setEphemeral(true).queue()
+                return
+            }
+            if (event.modalId == CHANNEL_PROFILE_AVATAR_MODAL) {
+                val current = channelProfiles.get(ctx.guildId, ctx.channelId)
+                if (current == null) {
+                    event.reply("먼저 `프로필 편집`에서 이름을 저장한 뒤 아이콘을 설정하세요.").setEphemeral(true).queue()
+                    return
+                }
+                val reply =
+                    commands.setChannelAiProfile(
+                        ctx,
+                        current.displayName,
+                        event.getValue("avatar-url")?.asString,
+                        reset = false,
+                        purpose = current.purpose,
+                        tone = current.tone,
+                        answerLength = current.answerLength,
+                        constitution = current.constitution,
+                    )
+                event.reply(reply.content).setEphemeral(true).queue()
+                return
+            }
+            if (event.modalId != "ask-long-modal") return
             val prompt = event.getValue("prompt")?.asString.orEmpty()
             val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
             event.deferReply(useWebhookProfile).queue()

@@ -73,6 +73,7 @@ class PresetRegistryService(
         featureGate.requirePresetEnabled()
         val now = Instant.now(clock)
         val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
+        requireActivePreset(preset)
         name?.trim()?.takeIf { it.isNotBlank() }?.let { preset.name = it }
         summary?.trim()?.let { preset.summary = it.ifBlank { null } }
         category?.trim()?.takeIf { it.isNotBlank() }?.let { preset.category = it }
@@ -95,6 +96,7 @@ class PresetRegistryService(
     ): PublishedPresetEntity {
         featureGate.requirePresetEnabled()
         val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
+        requireActivePreset(preset)
         val revisionId =
             preset.currentRevisionId
                 ?: revisions.findByPresetIdOrderByRevisionDesc(preset.id).firstOrNull()?.id
@@ -128,6 +130,7 @@ class PresetRegistryService(
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
+        requirePublishedPreset(published)
         val sourceRevision =
             revisions.findById(published.revisionId).orElseThrow {
                 IllegalArgumentException("published revision not found: ${published.revisionId}")
@@ -174,6 +177,7 @@ class PresetRegistryService(
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
+        requirePublishedPreset(published)
         if (reactions.findByPublishedPresetIdAndUserIdAndReaction(publishedPresetId, userId, "like") == null) {
             reactions.save(
                 PresetReactionEntity(
@@ -199,7 +203,11 @@ class PresetRegistryService(
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
+        require(published.status != "removed") { "removed preset cannot be reported" }
         published.reportCount += 1
+        if (published.reportCount >= REPORT_REVIEW_THRESHOLD && published.status == "published") {
+            published.status = "under_review"
+        }
         publishedPresets.save(published)
         return reports.save(
             PresetReportEntity(
@@ -212,20 +220,55 @@ class PresetRegistryService(
     }
 
     @Transactional
-    fun deletePreset(presetId: Long) {
+    fun deletePreset(presetId: Long): AiPresetEntity {
         featureGate.requirePresetEnabled()
-        presets.findById(presetId).ifPresent {
-            it.currentRevisionId = null
-            presets.save(it)
-        }
-        revisions.deleteByPresetId(presetId)
-        presets.deleteById(presetId)
+        val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
+        preset.status = "removed"
+        preset.visibility = "removed"
+        preset.updatedAt = Instant.now(clock)
+        return presets.save(preset)
     }
 
     @Transactional
-    fun deletePublishedPreset(publishedPresetId: Long) {
+    fun deletePublishedPreset(publishedPresetId: Long): PublishedPresetEntity {
         featureGate.requirePresetEnabled()
-        publishedPresets.deleteById(publishedPresetId)
+        val published =
+            publishedPresets.findById(publishedPresetId).orElseThrow {
+                IllegalArgumentException("published preset not found: $publishedPresetId")
+            }
+        published.status = "removed"
+        return publishedPresets.save(published)
+    }
+
+    @Transactional
+    fun reviewReport(
+        reportId: Long,
+        decision: String,
+    ): PresetReportEntity {
+        featureGate.requirePresetEnabled()
+        val report = reports.findById(reportId).orElseThrow { IllegalArgumentException("preset report not found: $reportId") }
+        val published =
+            publishedPresets.findById(report.publishedPresetId).orElseThrow {
+                IllegalArgumentException("published preset not found: ${report.publishedPresetId}")
+            }
+        val normalized = decision.trim().lowercase().ifBlank { "reviewed" }
+        report.status = normalized
+        report.reviewedAt = Instant.now(clock)
+        when (normalized) {
+            "suspend", "suspended" -> published.status = "suspended"
+            "remove", "removed" -> published.status = "removed"
+            "dismiss", "dismissed" -> if (published.status == "under_review") published.status = "published"
+        }
+        publishedPresets.save(published)
+        return reports.save(report)
+    }
+
+    private fun requireActivePreset(preset: AiPresetEntity) {
+        require(preset.status != "removed") { "removed preset cannot be changed" }
+    }
+
+    private fun requirePublishedPreset(published: PublishedPresetEntity) {
+        require(published.status == "published") { "published preset is not importable or likable: ${published.status}" }
     }
 
     private fun createRevision(
@@ -250,6 +293,10 @@ class PresetRegistryService(
                 createdAt = now,
             ),
         )
+
+    private companion object {
+        const val REPORT_REVIEW_THRESHOLD = 1
+    }
 }
 
 data class PresetBehaviorInput(

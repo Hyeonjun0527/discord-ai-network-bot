@@ -100,20 +100,29 @@ class PresetRegistryController(
         return mapOf("id" to report.id, "status" to report.status)
     }
 
+    @PostMapping("/reports/{reportId}/review")
+    fun reviewReport(
+        @PathVariable reportId: Long,
+        @RequestBody request: ReviewPresetReportRequest,
+    ): Map<String, Any?> {
+        val report = registry.reviewReport(reportId, request.decision)
+        return mapOf("id" to report.id, "status" to report.status, "reviewedAt" to report.reviewedAt?.toString())
+    }
+
     @DeleteMapping("/{presetId}")
     fun delete(
         @PathVariable presetId: Long,
     ): Map<String, Any> {
-        registry.deletePreset(presetId)
-        return mapOf("deleted" to true)
+        val preset = registry.deletePreset(presetId)
+        return mapOf("deleted" to true, "status" to preset.status)
     }
 
     @DeleteMapping("/published/{publishedPresetId}")
     fun deletePublished(
         @PathVariable publishedPresetId: Long,
     ): Map<String, Any> {
-        registry.deletePublishedPreset(publishedPresetId)
-        return mapOf("deleted" to true)
+        val published = registry.deletePublishedPreset(publishedPresetId)
+        return mapOf("deleted" to true, "status" to published.status)
     }
 }
 
@@ -154,4 +163,8 @@ data class LikePresetRequest(
 data class ReportPresetRequest(
     val reporterUserId: Long? = null,
     val reason: String,
+)
+
+data class ReviewPresetReportRequest(
+    val decision: String,
 )

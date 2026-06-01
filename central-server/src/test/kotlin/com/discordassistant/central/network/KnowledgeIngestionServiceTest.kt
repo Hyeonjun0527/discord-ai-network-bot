@@ -40,6 +40,78 @@ class KnowledgeIngestionServiceTest
         private val controller = KnowledgeIngestionController(service, searchService)
 
         @Test
+        fun `indexing plan emits Dailyting style rag rebuild command and excludes unsafe sources`() {
+            val space =
+                service.createSpace(
+                    guildId = 100,
+                    channelId = 200,
+                    channelAiId = null,
+                    displayName = "개발 지식",
+                    createdBy = 77,
+                    embeddingModel = null,
+                    indexName = null,
+                )
+            val safe =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "link",
+                    title = "Kotlin Spring 운영 가이드",
+                    sourceUri = "https://example.com/kotlin.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            service.addSource(
+                guildId = 100,
+                spaceId = space.id,
+                sourceType = "text",
+                title = "secret env",
+                sourceUri = null,
+                contentPreview = "token=secret",
+                addedBy = 77,
+            )
+
+            val plan = controller.indexingPlan(100, space.id)
+
+            assertEquals("discord_ai__guild_100__channel_200__space_${space.id}", plan.collectionName)
+            assertEquals("text-embedding-3-large", plan.embeddingModel)
+            assertTrue(plan.runtime.contains("qdrant"))
+            assertTrue(plan.command.contains("scripts/rag.sh rebuild"))
+            assertTrue(plan.command.contains("--guild 100"))
+            assertEquals(listOf(safe.id), plan.indexableSources.map { it.id })
+            assertEquals(1, plan.blockedSources.size)
+            assertEquals(false, plan.ready)
+            assertTrue(plan.warnings.contains("sensitive_source_blocked"))
+
+            val forced = controller.indexingPlan(100, space.id, force = true)
+            assertEquals(true, forced.force)
+            assertTrue(forced.command.endsWith("--force"))
+        }
+
+        @Test
+        fun `indexing plan uses explicit collection and custom embedding model`() {
+            val space = service.createSpace(100, 201, null, "검색 지식", 77, "custom-embedding", "custom_collection")
+            val safe =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "faq",
+                    title = "FAQ",
+                    sourceUri = null,
+                    contentPreview = "자주 묻는 질문",
+                    addedBy = 77,
+                )
+
+            val plan = controller.indexingPlan(100, space.id)
+
+            assertEquals("custom_collection", plan.collectionName)
+            assertEquals("custom-embedding", plan.embeddingModel)
+            assertEquals(true, plan.ready)
+            assertEquals(listOf(safe.id), plan.indexableSources.map { it.id })
+            assertTrue(plan.warnings.isEmpty())
+        }
+
+        @Test
         fun `knowledge source lifecycle stores only metadata and indexing state`() {
             val spaceResponse =
                 controller.createSpace(

@@ -100,6 +100,54 @@ class KnowledgeIngestionService(
         )
     }
 
+    fun indexingPlan(
+        guildId: Long,
+        spaceId: Long,
+        force: Boolean = false,
+    ): KnowledgeIndexingPlan {
+        featureGate.requireRagEnabled()
+        val space =
+            spaces.findByGuildIdAndId(guildId, spaceId)
+                ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
+        val sourceList = sources.findByKnowledgeSpaceId(space.id).filter { !it.status.startsWith("deleted") }
+        val indexable =
+            sourceList
+                .filter { it.riskLevel in INDEXABLE_RISK_LEVELS }
+                .filter { force || it.status == "pending" || it.status == "indexed" }
+                .sortedWith(compareBy<KnowledgeSourceEntity> { it.status }.thenBy { it.id })
+        val blocked = sourceList.filter { it.riskLevel !in INDEXABLE_RISK_LEVELS || it.status.startsWith("blocked") }
+        val collection = space.indexName?.trim()?.ifBlank { null } ?: defaultCollectionName(guildId, space.channelId, space.id)
+        val embeddingModel = space.embeddingModel?.trim()?.ifBlank { null } ?: DEFAULT_EMBEDDING_MODEL
+        val command =
+            listOf(
+                "scripts/rag.sh",
+                "rebuild",
+                "--guild",
+                guildId.toString(),
+                "--space",
+                space.id.toString(),
+                "--collection",
+                collection,
+                "--embedding-model",
+                embeddingModel,
+            ) + if (force) listOf("--force") else emptyList()
+        return KnowledgeIndexingPlan(
+            guildId = guildId,
+            knowledgeSpaceId = space.id,
+            channelId = space.channelId,
+            collectionName = collection,
+            embeddingModel = embeddingModel,
+            runtime = "python3.12-qdrant-llamaindex-bm25-rrf-reranker",
+            qdrantRequired = true,
+            force = force,
+            command = command.joinToString(" "),
+            indexableSources = indexable.map { it.toIndexingSource() },
+            blockedSources = blocked.map { it.toIndexingSource() },
+            ready = indexable.isNotEmpty() && blocked.none { it.riskLevel in BLOCKING_RISK_LEVELS },
+            warnings = indexingWarnings(indexable, blocked),
+        )
+    }
+
     @Transactional
     fun addSource(
         guildId: Long,
@@ -237,6 +285,40 @@ class KnowledgeIngestionService(
         return saved
     }
 
+    private fun KnowledgeSourceEntity.toIndexingSource(): KnowledgeIndexingSource =
+        KnowledgeIndexingSource(
+            id = id,
+            sourceType = sourceType,
+            title = title,
+            sourceUri = sourceUri,
+            status = status,
+            riskLevel = riskLevel,
+            contentHash = contentHash,
+        )
+
+    private fun indexingWarnings(
+        indexable: List<KnowledgeSourceEntity>,
+        blocked: List<KnowledgeSourceEntity>,
+    ): List<String> =
+        buildList {
+            if (indexable.isEmpty()) add("indexable_source_empty")
+            if (blocked.any { it.riskLevel == "sensitive" }) add("sensitive_source_blocked")
+            if (blocked.any { it.riskLevel == "ssrf" }) add("ssrf_source_blocked")
+            if (blocked.any { it.riskLevel == "review" }) add("manual_review_required")
+        }
+
+    private fun defaultCollectionName(
+        guildId: Long,
+        channelId: Long?,
+        spaceId: Long,
+    ): String =
+        listOfNotNull(
+            "discord_ai",
+            "guild_$guildId",
+            channelId?.let { "channel_$it" },
+            "space_$spaceId",
+        ).joinToString("__")
+
     private fun KnowledgeSourceEntity.toSummary(): KnowledgeSourceSummary =
         KnowledgeSourceSummary(
             id = id,
@@ -307,9 +389,11 @@ class KnowledgeIngestionService(
 
     private companion object {
         const val MAX_CONTENT_PREVIEW_CHARS = 8_000
+        const val DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
         val ALLOWED_SOURCE_TYPES = setOf("file", "link", "text", "faq", "constitution", "preset")
         val PRIVATE_HOSTS = setOf("127.0.0.1", "0.0.0.0", "169.254.169.254", "::1")
         val BLOCKING_RISK_LEVELS = setOf("sensitive", "ssrf")
+        val INDEXABLE_RISK_LEVELS = setOf("normal", "review")
         val PRIVATE_IPV4_PREFIXES = listOf("10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "172.30.", "172.31.")
         val REASON_SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val SENSITIVE_PATTERNS =
@@ -354,4 +438,30 @@ data class KnowledgeSpaceStatusSummary(
     val chunkCount: Int,
     val riskLevels: Map<String, Int>,
     val sourceStatuses: Map<String, Int>,
+)
+
+data class KnowledgeIndexingPlan(
+    val guildId: Long,
+    val knowledgeSpaceId: Long,
+    val channelId: Long?,
+    val collectionName: String,
+    val embeddingModel: String,
+    val runtime: String,
+    val qdrantRequired: Boolean,
+    val force: Boolean,
+    val command: String,
+    val indexableSources: List<KnowledgeIndexingSource>,
+    val blockedSources: List<KnowledgeIndexingSource>,
+    val ready: Boolean,
+    val warnings: List<String>,
+)
+
+data class KnowledgeIndexingSource(
+    val id: Long,
+    val sourceType: String,
+    val title: String,
+    val sourceUri: String?,
+    val status: String,
+    val riskLevel: String,
+    val contentHash: String?,
 )

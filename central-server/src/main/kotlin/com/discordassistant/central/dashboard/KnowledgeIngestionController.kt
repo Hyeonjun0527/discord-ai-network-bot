@@ -48,6 +48,13 @@ class KnowledgeIngestionController(
         @PathVariable spaceId: Long,
     ) = ingestion.spaceStatus(guildId, spaceId)
 
+    @GetMapping("/{guildId}/spaces/{spaceId}/indexing-plan")
+    fun indexingPlan(
+        @PathVariable guildId: Long,
+        @PathVariable spaceId: Long,
+        @RequestParam(defaultValue = "false") force: Boolean = false,
+    ) = ingestion.indexingPlan(guildId, spaceId, force)
+
     @PostMapping("/{guildId}/spaces/{spaceId}/sources")
     fun addSource(
         @PathVariable guildId: Long,

@@ -10,6 +10,7 @@ import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
 import com.discordassistant.central.persistence.AiPresetEntity
 import com.discordassistant.central.persistence.AiPresetRepository
+import com.discordassistant.central.persistence.CandidateAnswerEntity
 import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
 import com.discordassistant.central.persistence.ChannelAiRepository
@@ -20,6 +21,7 @@ import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.MultiResponsePolicyEntity
 import com.discordassistant.central.persistence.MultiResponsePolicyRepository
+import com.discordassistant.central.persistence.MultiResponseRunEntity
 import com.discordassistant.central.persistence.MultiResponseRunRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
 import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
@@ -386,6 +388,29 @@ class AiNetworkDashboardControllerTest
                 dailyLimit = 99,
                 overloadRisk = "critical",
             )
+            val run =
+                multiResponseRuns.save(
+                    MultiResponseRunEntity(
+                        guildId = 100,
+                        channelId = 200,
+                        requestId = "masked-dashboard-run",
+                        status = "completed",
+                        candidateCount = 1,
+                        startedAt = Instant.parse("2026-06-01T00:00:00Z"),
+                    ),
+                )
+            candidateAnswers.save(
+                CandidateAnswerEntity(
+                    runId = run.id,
+                    providerUserId = 300,
+                    modelName = "llama3.1:8b",
+                    answerRef = "answer:masked-dashboard-run",
+                    status = "completed",
+                    latencyMs = 800,
+                    qualityScore = 91,
+                    createdAt = Instant.parse("2026-06-01T00:00:00Z"),
+                ),
+            )
 
             val publicProvider = controller.providers(100).single()
             val adminProvider = controller.providers(100, audience = "admin").single()
@@ -409,6 +434,9 @@ class AiNetworkDashboardControllerTest
             assertNull(publicAlert.maxConcurrency)
             assertNull(publicAlert.dailyLimit)
             assertTrue(publicAlert.message.contains("#300").not())
+            val publicProviderLoad = publicDashboard.multiResponseOperations.providerLoads.single()
+            assertNull(publicProviderLoad.providerUserId)
+            assertTrue(publicProviderLoad.providerLabel.startsWith("Provider "))
 
             val adminDashboard = controller.dashboard(100, audience = "admin")
             val adminAlert = adminDashboard.overload.alerts.single()
@@ -416,6 +444,9 @@ class AiNetworkDashboardControllerTest
             assertEquals("provider:300", adminAlert.providerLabel)
             assertEquals("critical", adminAlert.risk)
             assertEquals(4, adminAlert.maxConcurrency)
+            val adminProviderLoad = adminDashboard.multiResponseOperations.providerLoads.single()
+            assertEquals(300, adminProviderLoad.providerUserId)
+            assertEquals("provider:300", adminProviderLoad.providerLabel)
         }
 
         @Test

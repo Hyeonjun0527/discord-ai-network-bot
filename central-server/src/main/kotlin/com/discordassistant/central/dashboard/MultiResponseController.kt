@@ -222,22 +222,9 @@ class MultiResponseController(
     fun providerLoad(
         @PathVariable guildId: Long,
         @RequestParam(defaultValue = "public") audience: String = "public",
-    ): List<Map<String, Any?>> =
+    ): List<ProviderFanoutLoadDashboardResponse> =
         service.providerFanoutLoad(guildId).mapIndexed { index, load ->
-            val canSeeProviderIdentity = audience.equals("admin", ignoreCase = true)
-            mapOf(
-                "guildId" to load.guildId,
-                "providerUserId" to if (canSeeProviderIdentity) load.providerUserId else null,
-                "providerLabel" to providerLabel(load.providerUserId, index),
-                "candidateCount" to load.candidateCount,
-                "completedCount" to load.completedCount,
-                "timeoutCount" to load.timeoutCount,
-                "failedCount" to load.failedCount,
-                "averageLatencyMs" to load.averageLatencyMs,
-                "averageQualityScore" to load.averageQualityScore,
-                "loadRisk" to load.loadRisk,
-                "runIds" to load.runIds,
-            )
+            ProviderFanoutLoadDashboardResponse.from(load, index, DashboardAudience.from(audience))
         }
 
     @GetMapping("/{guildId}/decision-summary")
@@ -285,7 +272,15 @@ class MultiResponseController(
     fun operationsSummary(
         @PathVariable guildId: Long,
         @RequestParam(required = false) channelId: Long? = null,
-    ): Map<String, Any?> = mapOf("summary" to service.operationsSummary(guildId, channelId))
+        @RequestParam(defaultValue = "public") audience: String = "public",
+    ): Map<String, Any?> =
+        mapOf(
+            "summary" to
+                MultiResponseOperationsDashboardResponse.from(
+                    service.operationsSummary(guildId, channelId),
+                    DashboardAudience.from(audience),
+                ),
+        )
 
     private fun providerLabel(
         providerUserId: Long?,
@@ -346,3 +341,104 @@ data class PseudoStreamPlanRequest(
     val steps: List<Int> = emptyList(),
     val maxDiscordChars: Int = 1_900,
 )
+
+data class MultiResponseOperationsDashboardResponse(
+    val guildId: Long,
+    val channelId: Long?,
+    val status: String,
+    val safeToEnableAdvanced: Boolean,
+    val recentRunCount: Int,
+    val completedRunCount: Int,
+    val fallbackRunCount: Int,
+    val averageActualFanout: Double,
+    val acceptedCandidateCount: Int,
+    val timeoutCandidateCount: Int,
+    val rejectedCandidateCount: Int,
+    val highLoadProviderCount: Int,
+    val criticalLoadProviderCount: Int,
+    val ragFallbackRunCount: Int,
+    val blockedSensitiveRunCount: Int,
+    val noProviderRunCount: Int,
+    val riskCodes: List<String>,
+    val nextActions: List<String>,
+    val providerLoads: List<ProviderFanoutLoadDashboardResponse>,
+    val decisionSummary: com.discordassistant.central.network.MultiResponseDecisionSummary,
+) {
+    companion object {
+        fun from(
+            summary: com.discordassistant.central.network.MultiResponseOperationsSummary,
+            audience: DashboardAudience,
+        ): MultiResponseOperationsDashboardResponse =
+            MultiResponseOperationsDashboardResponse(
+                guildId = summary.guildId,
+                channelId = summary.channelId,
+                status = summary.status,
+                safeToEnableAdvanced = summary.safeToEnableAdvanced,
+                recentRunCount = summary.recentRunCount,
+                completedRunCount = summary.completedRunCount,
+                fallbackRunCount = summary.fallbackRunCount,
+                averageActualFanout = summary.averageActualFanout,
+                acceptedCandidateCount = summary.acceptedCandidateCount,
+                timeoutCandidateCount = summary.timeoutCandidateCount,
+                rejectedCandidateCount = summary.rejectedCandidateCount,
+                highLoadProviderCount = summary.highLoadProviderCount,
+                criticalLoadProviderCount = summary.criticalLoadProviderCount,
+                ragFallbackRunCount = summary.ragFallbackRunCount,
+                blockedSensitiveRunCount = summary.blockedSensitiveRunCount,
+                noProviderRunCount = summary.noProviderRunCount,
+                riskCodes = summary.riskCodes,
+                nextActions = summary.nextActions,
+                providerLoads =
+                    summary.providerLoads.mapIndexed { index, load ->
+                        ProviderFanoutLoadDashboardResponse.from(load, index, audience)
+                    },
+                decisionSummary = summary.decisionSummary,
+            )
+    }
+}
+
+data class ProviderFanoutLoadDashboardResponse(
+    val guildId: Long,
+    val providerUserId: Long?,
+    val providerLabel: String,
+    val candidateCount: Int,
+    val completedCount: Int,
+    val timeoutCount: Int,
+    val failedCount: Int,
+    val averageLatencyMs: Double,
+    val averageQualityScore: Double,
+    val loadRisk: String,
+    val runIds: List<Long>,
+) {
+    companion object {
+        fun from(
+            load: com.discordassistant.central.network.ProviderFanoutLoadSummary,
+            index: Int,
+            audience: DashboardAudience,
+        ): ProviderFanoutLoadDashboardResponse =
+            ProviderFanoutLoadDashboardResponse(
+                guildId = load.guildId,
+                providerUserId = if (audience.canSeeProviderIdentity) load.providerUserId else null,
+                providerLabel =
+                    if (audience.canSeeProviderIdentity) {
+                        "provider:${load.providerUserId}"
+                    } else {
+                        val label =
+                            kotlin.math
+                                .abs(load.providerUserId.hashCode())
+                                .toString(36)
+                                .take(6)
+                                .ifBlank { (index + 1).toString() }
+                        "Provider $label"
+                    },
+                candidateCount = load.candidateCount,
+                completedCount = load.completedCount,
+                timeoutCount = load.timeoutCount,
+                failedCount = load.failedCount,
+                averageLatencyMs = load.averageLatencyMs,
+                averageQualityScore = load.averageQualityScore,
+                loadRisk = if (audience.canSeeProviderCapacity) load.loadRisk else DashboardAudience.PUBLIC.risk(load.loadRisk),
+                runIds = load.runIds,
+            )
+    }
+}

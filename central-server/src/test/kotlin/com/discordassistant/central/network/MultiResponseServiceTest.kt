@@ -337,20 +337,20 @@ class MultiResponseServiceTest
             )
 
             val publicLoad = controller.providerLoad(100)
-            assertEquals(null, publicLoad.first()["providerUserId"])
-            assertTrue(publicLoad.first()["providerLabel"].toString().startsWith("Provider "))
+            assertEquals(null, publicLoad.first().providerUserId)
+            assertTrue(publicLoad.first().providerLabel.startsWith("Provider "))
 
             val load = controller.providerLoad(100, audience = "admin")
             val risky = load.first()
-            val stable = load.first { it["providerUserId"] == 71L }
+            val stable = load.first { it.providerUserId == 71L }
 
-            assertEquals(72L, risky["providerUserId"])
-            assertEquals("critical", risky["loadRisk"])
-            assertEquals(1, risky["timeoutCount"])
-            assertEquals(1, risky["failedCount"])
-            assertEquals("normal", stable["loadRisk"])
-            assertEquals(2, stable["completedCount"])
-            assertEquals(85.0, stable["averageQualityScore"])
+            assertEquals(72L, risky.providerUserId)
+            assertEquals("critical", risky.loadRisk)
+            assertEquals(1, risky.timeoutCount)
+            assertEquals(1, risky.failedCount)
+            assertEquals("normal", stable.loadRisk)
+            assertEquals(2, stable.completedCount)
+            assertEquals(85.0, stable.averageQualityScore)
         }
 
         @Test
@@ -913,7 +913,7 @@ class MultiResponseServiceTest
             controller.synthesize(runId, SynthesizeRunRequest("answer:ops-1:final", listOf(selected.id)))
 
             val response = controller.operationsSummary(420, channelId = 520)
-            val summary = response["summary"] as MultiResponseOperationsSummary
+            val summary = response["summary"] as com.discordassistant.central.dashboard.MultiResponseOperationsDashboardResponse
 
             assertEquals("blocked", summary.status)
             assertEquals(false, summary.safeToEnableAdvanced)
@@ -926,7 +926,15 @@ class MultiResponseServiceTest
             assertTrue(summary.riskCodes.contains("provider_fanout_load_critical"))
             assertTrue(summary.nextActions.any { it.contains("과부하 Provider") })
             assertEquals(2, summary.providerLoads.size)
+            val publicProviderLoad = summary.providerLoads.first()
+            assertEquals(null, publicProviderLoad.providerUserId)
+            assertTrue(publicProviderLoad.providerLabel.startsWith("Provider "))
             assertEquals(2, summary.decisionSummary.totalCandidateCount)
+
+            val adminResponse = controller.operationsSummary(420, channelId = 520, audience = "admin")
+            val adminSummary =
+                adminResponse["summary"] as com.discordassistant.central.dashboard.MultiResponseOperationsDashboardResponse
+            assertTrue(adminSummary.providerLoads.any { it.providerUserId == 182L })
         }
 
         @Test

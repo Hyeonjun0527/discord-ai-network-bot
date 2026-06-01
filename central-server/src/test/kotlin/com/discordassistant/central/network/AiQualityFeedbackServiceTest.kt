@@ -110,6 +110,42 @@ class AiQualityFeedbackServiceTest
         }
 
         @Test
+        fun `feedback metadata never stores sensitive request identifiers or types`() {
+            val first =
+                controller.submit(
+                    100,
+                    203,
+                    SubmitAiFeedbackRequest(
+                        requestId = "password=super-secret",
+                        userId = 9,
+                        rating = -1,
+                        feedbackType = "report token=hidden",
+                        reason = "sk-123456789012345678901234567890",
+                    ),
+                )
+            val second =
+                controller.submit(
+                    100,
+                    203,
+                    SubmitAiFeedbackRequest(
+                        requestId = "password=super-secret",
+                        userId = 9,
+                        rating = 1,
+                        feedbackType = "general",
+                        reason = "중복",
+                    ),
+                )
+
+            val saved = feedbacks.findTop20ByGuildIdAndChannelIdOrderByCreatedAtDesc(100, 203).single()
+
+            assertEquals(first["id"], second["id"])
+            assertTrue(saved.requestId!!.startsWith("redacted-"))
+            assertEquals("report", saved.feedbackType)
+            assertEquals("[redacted]", saved.reason)
+            assertEquals("needs_review", saved.status)
+        }
+
+        @Test
         fun `quality review summary exposes open reports and resolves without raw answer body`() {
             val report =
                 controller.submit(

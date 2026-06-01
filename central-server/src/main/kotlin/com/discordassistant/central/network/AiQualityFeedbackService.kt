@@ -7,6 +7,7 @@ import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
 
@@ -28,11 +29,11 @@ class AiQualityFeedbackService(
         feedbackType: String,
         reason: String?,
     ): AiFeedbackEntity {
-        val normalizedRequestId = requestId?.trim()?.ifBlank { null }
+        val normalizedRequestId = sanitizeRequestId(requestId)
         if (normalizedRequestId != null && userId != null) {
             feedbacks.findByGuildIdAndRequestIdAndUserId(guildId, normalizedRequestId, userId)?.let { return it }
         }
-        val normalizedFeedbackType = feedbackType.trim().lowercase().ifBlank { "general" }
+        val normalizedFeedbackType = sanitizeFeedbackType(feedbackType)
         val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
         return feedbacks.save(
             AiFeedbackEntity(
@@ -172,7 +173,36 @@ class AiQualityFeedbackService(
             ?.trim()
             ?.replace(SECRET_PATTERN, "[redacted]")
             ?.take(500)
+            ?.let { if (it.hasSensitiveMaterial()) "[redacted]" else it }
             ?.ifBlank { null }
+
+    private fun sanitizeRequestId(requestId: String?): String? {
+        val trimmed = requestId?.trim()?.ifBlank { null } ?: return null
+        if (trimmed.hasSensitiveMaterial()) return "redacted-${sha256(trimmed).take(12)}"
+        return trimmed.take(160)
+    }
+
+    private fun sanitizeFeedbackType(feedbackType: String): String {
+        val trimmed = feedbackType.trim()
+        if (trimmed.hasSensitiveMaterial()) {
+            return if (trimmed.contains("report", ignoreCase = true)) "report" else "general"
+        }
+        return trimmed
+            .lowercase()
+            .replace(Regex("[^a-z0-9_-]+"), "_")
+            .trim('_')
+            .take(40)
+            .ifBlank { "general" }
+    }
+
+    private fun String.hasSensitiveMaterial(): Boolean =
+        KnowledgeSafety.containsSensitiveMaterial(this) || SECRET_PATTERN.containsMatchIn(this)
+
+    private fun sha256(value: String): String =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
 
     private fun normalizeReviewStatus(status: String): String =
         when (status.trim().lowercase()) {

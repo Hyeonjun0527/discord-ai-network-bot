@@ -39,7 +39,7 @@ class AiNetworkGrowthController(
     fun timeline(
         @PathVariable guildId: Long,
     ): List<Map<String, Any?>> =
-        growth.timeline(guildId).map {
+        growth.timelineCards(guildId).map {
             mapOf(
                 "id" to it.id,
                 "eventType" to it.eventType,
@@ -47,8 +47,10 @@ class AiNetworkGrowthController(
                 "channelId" to it.channelId,
                 "title" to it.title,
                 "summary" to it.summary,
-                "metadata" to it.metadata,
-                "createdAt" to it.createdAt.toString(),
+                "impactBullets" to it.impactBullets,
+                "levelBefore" to it.levelBefore,
+                "levelAfter" to it.levelAfter,
+                "createdAt" to it.createdAt,
             )
         }
 }

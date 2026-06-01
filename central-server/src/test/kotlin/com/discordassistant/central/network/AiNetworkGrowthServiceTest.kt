@@ -51,7 +51,7 @@ class AiNetworkGrowthServiceTest
         fun `provider joined event shows how network improved`() {
             val response =
                 controller.providerJoined(
-                    100,
+                    987654321,
                     ProviderJoinedRequest(
                         providerUserId = 77,
                         modelNames = listOf("llama3.1:8b"),
@@ -63,9 +63,14 @@ class AiNetworkGrowthServiceTest
                 )
 
             assertEquals(2, response["networkLevel"])
-            val timeline = controller.timeline(100)
+            val timeline = controller.timeline(987654321)
             assertTrue(timeline.toString().contains("Provider가 AI 네트워크에 참여했어요"))
-            assertTrue(timeline.toString().contains("level=2"))
+            assertTrue(timeline.toString().contains("사용 가능한 모델 llama3.1:8b 추가"))
+            assertTrue(timeline.toString().contains("특화 능력 coding, night 추가"))
+            assertTrue(timeline.toString().contains("동시 처리 용량 2개 확보"))
+            assertTrue(timeline.toString().contains("하루 최대 30 회 Provider 보호 한도 적용"))
+            assertTrue(timeline.first { it["eventType"] == "provider_joined" }["levelBefore"] is Int)
+            assertTrue(timeline.first { it["eventType"] == "provider_joined" }["levelAfter"] is Int)
         }
 
         @Test

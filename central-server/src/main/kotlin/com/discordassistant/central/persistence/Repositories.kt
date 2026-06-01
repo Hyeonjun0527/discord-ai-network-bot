@@ -255,6 +255,8 @@ interface KnowledgeChunkRepository : JpaRepository<KnowledgeChunkEntity, Long> {
 }
 
 interface EmbeddingIndexJobRepository : JpaRepository<EmbeddingIndexJobEntity, Long> {
+    fun findTop20ByGuildIdOrderByQueuedAtDesc(guildId: Long): List<EmbeddingIndexJobEntity>
+
     fun findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(
         guildId: Long,
         knowledgeSpaceId: Long,

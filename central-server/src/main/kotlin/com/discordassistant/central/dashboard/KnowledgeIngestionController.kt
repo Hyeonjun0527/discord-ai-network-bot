@@ -1,6 +1,7 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.network.KnowledgeGoldenCase
+import com.discordassistant.central.network.KnowledgeIndexingService
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.KnowledgeSearchService
 import org.springframework.web.bind.annotation.GetMapping
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController
 class KnowledgeIngestionController(
     private val ingestion: KnowledgeIngestionService,
     private val search: KnowledgeSearchService,
+    private val indexing: KnowledgeIndexingService? = null,
 ) {
     @GetMapping("/{guildId}/readiness")
     fun guildReadiness(
@@ -33,6 +35,30 @@ class KnowledgeIngestionController(
         @PathVariable guildId: Long,
         @RequestParam(defaultValue = "false") force: Boolean = false,
     ) = ingestion.indexingOperations(guildId, force)
+
+    @GetMapping("/{guildId}/index-jobs")
+    fun indexJobs(
+        @PathVariable guildId: Long,
+        @RequestParam(required = false) spaceId: Long? = null,
+        @RequestParam(defaultValue = "10") limit: Int = 10,
+    ) = indexingService().listIndexJobs(guildId, spaceId, limit)
+
+    @PostMapping("/{guildId}/spaces/{spaceId}/index-jobs")
+    fun queueIndexJob(
+        @PathVariable guildId: Long,
+        @PathVariable spaceId: Long,
+        @RequestBody request: QueueKnowledgeIndexJobRequest,
+    ) = indexingService().queueRebuildJob(guildId, spaceId, request.actorUserId)
+
+    @PostMapping("/{guildId}/index-jobs/{jobId}/complete")
+    fun completeIndexJob(
+        @PathVariable guildId: Long,
+        @PathVariable jobId: Long,
+        @RequestBody request: CompleteKnowledgeIndexJobRequest,
+    ) = indexingService().completeIndexJobSafely(guildId, jobId, request.status, request.reason)
+
+    private fun indexingService(): KnowledgeIndexingService =
+        indexing ?: throw IllegalStateException("knowledge indexing service is not configured")
 
     @PostMapping("/{guildId}/spaces")
     fun createSpace(
@@ -192,6 +218,15 @@ data class ApproveKnowledgeSourceRequest(
 
 data class MarkKnowledgeSourceIndexedRequest(
     val chunkCount: Int,
+)
+
+data class QueueKnowledgeIndexJobRequest(
+    val actorUserId: Long? = null,
+)
+
+data class CompleteKnowledgeIndexJobRequest(
+    val status: String = "completed",
+    val reason: String? = null,
 )
 
 data class RejectKnowledgeSourceRequest(

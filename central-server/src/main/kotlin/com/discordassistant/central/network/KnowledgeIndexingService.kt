@@ -179,6 +179,24 @@ class KnowledgeIndexingService(
         return chunks.findByKnowledgeSpaceIdAndStatus(spaceId, "ready").filter { it.guildId == guildId }
     }
 
+    fun listIndexJobs(
+        guildId: Long,
+        spaceId: Long? = null,
+        limit: Int = 10,
+    ): List<KnowledgeIndexJobSummary> {
+        featureGate.requireRagEnabled()
+        val rows =
+            if (spaceId == null) {
+                jobs.findTop20ByGuildIdOrderByQueuedAtDesc(guildId)
+            } else {
+                spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
+                jobs.findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(guildId, spaceId)
+            }
+        return rows
+            .take(limit.coerceIn(1, 20))
+            .map { it.toSummary() }
+    }
+
     @Transactional
     fun indexInlineSourceIfPossible(
         guildId: Long,
@@ -233,6 +251,47 @@ class KnowledgeIndexingService(
         )
     }
 
+    @Transactional
+    fun queueRebuildJob(
+        guildId: Long,
+        spaceId: Long,
+        triggeredBy: Long?,
+    ): KnowledgeIndexJobSummary {
+        featureGate.requireRagEnabled()
+        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
+        val collection = space.indexName?.trim()?.ifBlank { null } ?: "discord_ai__guild_${guildId}__space_${space.id}"
+        val embeddingModel = space.embeddingModel?.trim()?.ifBlank { null } ?: "text-embedding-3-large"
+        return queueIndexJob(
+            guildId = guildId,
+            spaceId = space.id,
+            triggeredBy = triggeredBy,
+            collectionName = collection,
+            embeddingModel = embeddingModel,
+        ).toSummary()
+    }
+
+    @Transactional
+    fun completeIndexJobSafely(
+        guildId: Long,
+        jobId: Long,
+        status: String,
+        failureReason: String? = null,
+    ): KnowledgeIndexJobSummary {
+        val normalizedStatus =
+            when (status.trim().lowercase()) {
+                "", "done", "success", "completed", "complete" -> "completed"
+                "failed", "failure", "error" -> "failed"
+                "cancelled", "canceled", "cancel" -> "cancelled"
+                else -> "failed"
+            }
+        return completeIndexJob(
+            guildId = guildId,
+            jobId = jobId,
+            status = normalizedStatus,
+            failureReason = failureReason,
+        ).toSummary()
+    }
+
     private fun supersedeExistingSourceIndex(sourceId: Long) {
         val existingDocs = documents.findByKnowledgeSourceId(sourceId)
         if (existingDocs.isEmpty()) return
@@ -265,6 +324,24 @@ class KnowledgeIndexingService(
             .digest(text.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
+    private fun EmbeddingIndexJobEntity.toSummary(): KnowledgeIndexJobSummary =
+        KnowledgeIndexJobSummary(
+            id = id,
+            guildId = guildId,
+            knowledgeSpaceId = knowledgeSpaceId,
+            triggeredBy = triggeredBy,
+            jobType = jobType,
+            status = status,
+            collectionName = collectionName,
+            embeddingModel = embeddingModel,
+            sourceCount = sourceCount,
+            chunkCount = chunkCount,
+            failureReason = failureReason,
+            queuedAt = queuedAt.toString(),
+            startedAt = startedAt?.toString(),
+            finishedAt = finishedAt?.toString(),
+        )
+
     private companion object {
         val INLINE_INDEXABLE_SOURCE_TYPES = setOf("text", "faq", "constitution", "preset")
     }
@@ -277,4 +354,21 @@ data class InlineKnowledgeIndexingResult(
     val documentId: Long? = null,
     val jobId: Long? = null,
     val chunkCount: Int = 0,
+)
+
+data class KnowledgeIndexJobSummary(
+    val id: Long,
+    val guildId: Long,
+    val knowledgeSpaceId: Long,
+    val triggeredBy: Long?,
+    val jobType: String,
+    val status: String,
+    val collectionName: String,
+    val embeddingModel: String,
+    val sourceCount: Int,
+    val chunkCount: Int,
+    val failureReason: String?,
+    val queuedAt: String,
+    val startedAt: String?,
+    val finishedAt: String?,
 )

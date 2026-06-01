@@ -140,13 +140,26 @@
       </label>
       <label>소스 제목<input id="knowledgeSourceTitle" type="text" placeholder="예: 운영 규칙 README" /></label>
       <label>링크/파일 URL<input id="knowledgeSourceUri" type="url" placeholder="https://..." /></label>
+      <label>색인 작업 ID<input id="knowledgeJobId" type="text" inputmode="numeric" placeholder="완료 처리할 job ID" /></label>
+      <label>색인 작업 상태
+        <select id="knowledgeJobStatus">
+          <option value="completed">완료</option>
+          <option value="failed">실패</option>
+          <option value="cancelled">취소</option>
+        </select>
+      </label>
     </div>
     <label>텍스트 미리보기/본문
       <textarea id="knowledgeContentPreview" rows="5" placeholder="텍스트/FAQ/규칙을 붙여넣으세요. 비밀번호·API 키 등 민감정보는 넣지 마세요."></textarea>
     </label>
+    <label>색인 작업 사유
+      <input id="knowledgeJobReason" type="text" placeholder="실패/취소 사유 또는 완료 메모" />
+    </label>
     <div class="row">
       <button id="knowledgeCreateSpace">지식공간 만들기</button>
       <button id="knowledgeAddSource">지식 소스 추가</button>
+      <button id="knowledgeQueueJob">색인 작업 큐잉</button>
+      <button id="knowledgeCompleteJob">색인 작업 완료 처리</button>
       <button id="knowledgeRefresh">RAG 상태 새로고침</button>
     </div>
     <div class="network-grid">

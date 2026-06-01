@@ -296,6 +296,22 @@ class DiscordBot(
                     .addOption(OptionType.BOOLEAN, "force", "이미 색인된 소스도 재색인 계획에 포함", false)
                     .setDefaultPermissions(adminPerm),
                 Commands
+                    .slash("ai-knowledge-jobs", "RAG 색인 작업 큐와 최근 결과를 봅니다(관리자)")
+                    .addOption(OptionType.STRING, "space-id", "지식공간 ID", false)
+                    .addOption(OptionType.INTEGER, "limit", "결과 수(1~20)", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-job-complete", "RAG 색인 작업 완료/실패 상태를 기록합니다(관리자)")
+                    .addOption(OptionType.STRING, "job-id", "색인 작업 ID", true)
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "status", "completed/failed/cancelled", false)
+                            .addChoice("완료", "completed")
+                            .addChoice("실패", "failed")
+                            .addChoice("취소", "cancelled"),
+                    ).addOption(OptionType.STRING, "reason", "실패/취소 사유", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
                     .slash("ai-knowledge-approve", "검토 필요한 RAG 지식 소스를 색인 대기로 승인합니다(관리자)")
                     .addOption(OptionType.STRING, "space-id", "지식공간 ID", true)
                     .addOption(OptionType.STRING, "source-id", "지식 소스 ID", true)
@@ -1243,6 +1259,19 @@ class DiscordBot(
                         ctx,
                         spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
                         force = event.getOption("force")?.asBoolean ?: false,
+                    )
+                "ai-knowledge-jobs" ->
+                    commands.knowledgeIndexJobs(
+                        ctx,
+                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
+                        limit = event.getOption("limit")?.asInt ?: 10,
+                    )
+                "ai-knowledge-job-complete" ->
+                    commands.completeKnowledgeIndexJob(
+                        ctx,
+                        jobId = event.getOption("job-id")!!.asString.toLongOrNull() ?: -1L,
+                        status = event.getOption("status")?.asString ?: "completed",
+                        reason = event.getOption("reason")?.asString,
                     )
                 "ai-knowledge-approve" ->
                     commands.approveKnowledge(

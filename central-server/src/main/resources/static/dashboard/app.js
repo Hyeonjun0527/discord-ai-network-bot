@@ -198,12 +198,14 @@ function renderKnowledgeReadiness(readiness, quality) {
   ].join("\n");
 }
 
-function renderKnowledgeIndexing(ops) {
+function renderKnowledgeIndexing(ops, jobs = []) {
   const commands = ops.commands || [];
+  const latest = jobs[0];
   renderList("knowledgeIndexing", [
     ["상태", ops.status || "unknown"],
     ["색인 가능 소스", `${ops.indexableSourceCount ?? 0}개`],
     ["차단 소스", `${ops.blockedSourceCount ?? 0}개`],
+    ["최근 작업", latest ? `#${latest.id} · ${latest.status} · chunks ${latest.chunkCount}` : "없음"],
     ["실행 명령", commands[0] || ops.nextActions?.[0] || "색인할 작업 없음"],
   ], "색인 작업 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
 }
@@ -215,13 +217,16 @@ async function refreshKnowledge() {
     return;
   }
   try {
-    const [readiness, quality, ops] = await Promise.all([
+    const spaceId = $("knowledgeSpaceId").value.trim();
+    const jobQuery = /^\d+$/.test(spaceId) ? `?spaceId=${spaceId}&limit=10` : "?limit=10";
+    const [readiness, quality, ops, jobs] = await Promise.all([
       getJson(`/api/ai-network/knowledge/${gid}/readiness`),
       getJson(`/api/ai-network/knowledge/${gid}/quality-summary`),
       getJson(`/api/ai-network/knowledge/${gid}/indexing-operations`),
+      getJson(`/api/ai-network/knowledge/${gid}/index-jobs${jobQuery}`),
     ]);
     renderKnowledgeReadiness(readiness, quality);
-    renderKnowledgeIndexing(ops);
+    renderKnowledgeIndexing(ops, jobs);
   } catch (e) {
     $("knowledgeResult").textContent = `RAG 상태 로딩 실패: ${e.message}`;
   }
@@ -256,6 +261,42 @@ async function addKnowledgeSource() {
     await refreshKnowledge();
   } catch (e) {
     $("knowledgeResult").textContent = `지식 소스 추가 실패: ${e.message}`;
+  }
+}
+
+async function queueKnowledgeIndexJob() {
+  const gid = $("guildId").value.trim();
+  const spaceId = $("knowledgeSpaceId").value.trim();
+  if (!/^\d+$/.test(gid) || !/^\d+$/.test(spaceId)) {
+    $("knowledgeResult").textContent = "길드 ID와 지식공간 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/knowledge/${gid}/spaces/${spaceId}/index-jobs`, {});
+    $("knowledgeJobId").value = result.id || "";
+    $("knowledgeResult").textContent = `색인 작업 큐잉 완료: job=${result.id} · status=${result.status} · chunks=${result.chunkCount}`;
+    await refreshKnowledge();
+  } catch (e) {
+    $("knowledgeResult").textContent = `색인 작업 큐잉 실패: ${e.message}`;
+  }
+}
+
+async function completeKnowledgeIndexJob() {
+  const gid = $("guildId").value.trim();
+  const jobId = $("knowledgeJobId").value.trim();
+  if (!/^\d+$/.test(gid) || !/^\d+$/.test(jobId)) {
+    $("knowledgeResult").textContent = "길드 ID와 색인 작업 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/knowledge/${gid}/index-jobs/${jobId}/complete`, {
+      status: $("knowledgeJobStatus").value,
+      reason: $("knowledgeJobReason").value.trim() || null,
+    });
+    $("knowledgeResult").textContent = `색인 작업 상태 기록 완료: job=${result.id} · status=${result.status}`;
+    await refreshKnowledge();
+  } catch (e) {
+    $("knowledgeResult").textContent = `색인 작업 상태 기록 실패: ${e.message}`;
   }
 }
 
@@ -712,6 +753,8 @@ $("wizardDraft").addEventListener("click", draftChannelAi);
 $("wizardCreate").addEventListener("click", createChannelAi);
 $("knowledgeCreateSpace").addEventListener("click", createKnowledgeSpace);
 $("knowledgeAddSource").addEventListener("click", addKnowledgeSource);
+$("knowledgeQueueJob").addEventListener("click", queueKnowledgeIndexJob);
+$("knowledgeCompleteJob").addEventListener("click", completeKnowledgeIndexJob);
 $("knowledgeRefresh").addEventListener("click", refreshKnowledge);
 $("presetRefresh").addEventListener("click", refreshPresets);
 $("presetCreate").addEventListener("click", createPreset);

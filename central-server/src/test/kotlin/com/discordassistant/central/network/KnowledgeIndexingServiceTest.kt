@@ -76,6 +76,21 @@ class KnowledgeIndexingServiceTest
         }
 
         @Test
+        fun `index jobs can be listed queued and completed through safe facade`() {
+            val space = spaces.save(KnowledgeSpaceEntity(guildId = 102, channelId = 202, displayName = "작업 지식"))
+            val queued = service.queueRebuildJob(102, space.id, triggeredBy = 7)
+
+            val listed = service.listIndexJobs(102, space.id)
+            assertEquals(listOf(queued.id), listed.map { it.id })
+            assertEquals("queued", listed.single().status)
+
+            val completed = service.completeIndexJobSafely(102, queued.id, "success", "rebuilt")
+            assertEquals("completed", completed.status)
+            assertEquals("rebuilt", completed.failureReason)
+            assertEquals("completed", service.listIndexJobs(102).single().status)
+        }
+
+        @Test
         fun `inline text source is parsed indexed and queued for embedding rebuild`() {
             val space = spaces.save(KnowledgeSpaceEntity(guildId = 101, channelId = 201, displayName = "즉시 지식"))
             val source =

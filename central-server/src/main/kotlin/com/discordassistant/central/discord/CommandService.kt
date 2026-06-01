@@ -384,6 +384,7 @@ class CommandService(
             sb.append("· `/ai-network-map` — Provider·모델·채널AI·RAG 구성을 한눈에 보기\n")
             sb.append("· `/ai-knowledge-list` `/ai-knowledge-add` `/ai-knowledge-search` — 채널 지식공간/RAG 소스 관리\n")
             sb.append("· `/ai-knowledge-index-plan` `/ai-knowledge-approve` `/ai-knowledge-delete` — 색인계획·검토·삭제\n")
+            sb.append("· `/ai-knowledge-jobs` `/ai-knowledge-job-complete` — RAG 색인 작업 큐 조회·완료 처리\n")
             sb.append("· `/ai-preset-catalog` `/ai-preset-import` — 프리셋 공유 목록 보기·현재 채널에 가져오기\n")
             sb.append("· `/ai-multi-response-status` `/ai-multi-response-set` `/ai-multi-response-dry-run` — 다중응답 정책·상태·안전 드라이런\n")
             sb.append("· `/ai-network-check` — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
@@ -607,6 +608,56 @@ class CommandService(
             }
         }.getOrElse {
             Replies.warn("색인 계획을 만들지 못했어요. ${it.message ?: "space-id를 확인해 주세요."}")
+        }
+    }
+
+    fun knowledgeIndexJobs(
+        ctx: CommandContext,
+        spaceId: Long? = null,
+        limit: Int = 10,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val jobs = knowledgeIndexing.listIndexJobs(ctx.guildId, spaceId, limit)
+            val rows =
+                jobs.map {
+                    "• `${it.id}` space `${it.knowledgeSpaceId}` · ${it.status} · chunks ${it.chunkCount} · " +
+                        "${it.queuedAt}${it.failureReason?.let { reason -> " · $reason" } ?: ""}"
+                }
+            val lines = rows.joinToString("\n").ifBlank { "• 최근 RAG 색인 작업이 없습니다." }
+            Reply(
+                "🧱 **RAG 색인 작업 큐**\n" +
+                    "scope: `${spaceId?.let { "space:$it" } ?: "guild"}` · limit `$limit`\n\n" +
+                    "$lines\n\n" +
+                    "완료/실패 처리는 `/ai-knowledge-job-complete job-id:<id> status:<completed|failed|cancelled>` 로 기록하세요.",
+            )
+        }.getOrElse {
+            Replies.warn("색인 작업을 조회하지 못했어요. ${it.message ?: "space-id를 확인해 주세요."}")
+        }
+    }
+
+    fun completeKnowledgeIndexJob(
+        ctx: CommandContext,
+        jobId: Long,
+        status: String = "completed",
+        reason: String? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val job =
+                knowledgeIndexing.completeIndexJobSafely(
+                    guildId = ctx.guildId,
+                    jobId = jobId,
+                    status = status,
+                    failureReason = reason,
+                )
+            Replies.ok(
+                "RAG 색인 작업 상태를 기록했습니다.\n" +
+                    "job: `${job.id}` · space: `${job.knowledgeSpaceId}` · status: `${job.status}` · chunks: `${job.chunkCount}`" +
+                    (job.failureReason?.let { "\nreason: `$it`" } ?: ""),
+            )
+        }.getOrElse {
+            Replies.warn("색인 작업 상태를 기록하지 못했어요. ${it.message ?: "job-id/status를 확인해 주세요."}")
         }
     }
 

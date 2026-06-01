@@ -5,6 +5,7 @@ import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.PresetBehaviorInput
 import com.discordassistant.central.network.PresetRegistryService
 import com.discordassistant.central.persistence.CandidateAnswerRepository
+import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.persistence.MultiResponseRunRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
@@ -54,6 +55,7 @@ class CommandServiceTest
         val multiResponseRuns: MultiResponseRunRepository,
         val candidateAnswers: CandidateAnswerRepository,
         val synthesisResults: SynthesisResultRepository,
+        val embeddingJobs: EmbeddingIndexJobRepository,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -79,6 +81,8 @@ class CommandServiceTest
             assertTrue(admin.contains("/ai-knowledge-index-plan"))
             assertTrue(admin.contains("/ai-knowledge-approve"))
             assertTrue(admin.contains("/ai-knowledge-delete"))
+            assertTrue(admin.contains("/ai-knowledge-jobs"))
+            assertTrue(admin.contains("/ai-knowledge-job-complete"))
             assertTrue(admin.contains("/ai-preset-catalog"))
             assertTrue(admin.contains("/ai-preset-import"))
             assertTrue(admin.contains("/ai-multi-response-status"))
@@ -405,6 +409,29 @@ class CommandServiceTest
             val search = commands.searchKnowledge(g, query = "actuator", limit = 3)
             assertTrue(search.content.contains("Kotlin Spring 운영 규칙"), search.content)
             assertTrue(search.content.contains("actuator health"), search.content)
+        }
+
+        @Test
+        fun `knowledge jobs — Discord에서 색인 작업을 조회하고 완료 처리한다`() {
+            val g = CommandContext(guildId = 77998, channelId = 88998, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            commands.addKnowledge(
+                g,
+                title = "FAQ",
+                sourceType = "text",
+                sourceUri = null,
+                contentPreview = "자주 묻는 질문과 답변입니다.",
+            )
+            val job = embeddingJobs.findTop20ByGuildIdOrderByQueuedAtDesc(g.guildId).single()
+
+            val listed = commands.knowledgeIndexJobs(g, limit = 5)
+            assertTrue(listed.content.contains("RAG 색인 작업 큐"))
+            assertTrue(listed.content.contains("`${job.id}`"))
+            assertTrue(listed.content.contains("queued"))
+
+            val completed = commands.completeKnowledgeIndexJob(g, job.id, status = "completed", reason = "qdrant rebuild ok")
+            assertTrue(completed.content.contains("status: `completed`"), completed.content)
+            val relisted = commands.knowledgeIndexJobs(g, spaceId = job.knowledgeSpaceId, limit = 5)
+            assertTrue(relisted.content.contains("completed"), relisted.content)
         }
 
         @Test

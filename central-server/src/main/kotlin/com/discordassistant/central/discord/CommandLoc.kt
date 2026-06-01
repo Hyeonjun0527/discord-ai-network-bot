@@ -64,6 +64,14 @@ object CommandLoc {
             "ai-knowledge-index-plan" to L("지식색인계획", null, "Show the RAG indexing plan (admin)", "План индексации RAG (админ)"),
             "ai-knowledge-approve" to L("지식승인", null, "Approve a review-risk RAG source (admin)", "Одобрить источник RAG (админ)"),
             "ai-knowledge-delete" to L("지식삭제", null, "Delete a RAG knowledge source (admin)", "Удалить источник RAG (админ)"),
+            "ai-knowledge-jobs" to L("지식색인작업", null, "List RAG indexing jobs (admin)", "Задачи индексации RAG (админ)"),
+            "ai-knowledge-job-complete" to
+                L(
+                    "지식색인완료",
+                    null,
+                    "Record a RAG indexing job result (admin)",
+                    "Записать результат индексации RAG (админ)",
+                ),
             "ai-preset-catalog" to L("프리셋목록", null, "Browse shared AI presets", "Список пресетов ИИ"),
             "ai-preset-import" to L("프리셋가져오기", null, "Import a shared preset into this channel", "Импорт пресета"),
             "ai-preset-like" to L("프리셋좋아요", null, "Like a shared AI preset", "Лайк пресета"),

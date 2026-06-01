@@ -480,6 +480,113 @@ async function completeKnowledgeIndexJob() {
   }
 }
 
+function qualityFeedbackPayload() {
+  return {
+    requestId: $("qualityRequestId").value.trim() || null,
+    userId: numericValue("qualityUserId"),
+    rating: Number($("qualityRating").value || "0"),
+    feedbackType: $("qualityType").value,
+    reason: $("qualityReason").value.trim() || null,
+  };
+}
+
+function renderQualitySummary(summary, channelSummary = null) {
+  const items = [
+    ["서버 피드백", `${summary.feedbackCount ?? 0}건 · 👍 ${summary.positive ?? 0} · 👎 ${summary.negative ?? 0}`],
+    ["서버 신고", `${summary.reports ?? 0}건 · 열린 신고 ${summary.openReports ?? 0}`],
+  ];
+  if (channelSummary) {
+    items.push(
+      ["채널 피드백", `${channelSummary.feedbackCount ?? 0}건 · 👍 ${channelSummary.positive ?? 0} · 👎 ${channelSummary.negative ?? 0}`],
+      ["채널 신고", `${channelSummary.reports ?? 0}건 · 열린 신고 ${channelSummary.openReports ?? 0}`],
+    );
+  }
+  const reasons = (channelSummary?.recentReasons || summary.recentReasons || []).join(" / ");
+  items.push(["최근 사유", reasons || "아직 없음"]);
+  renderList("qualitySummary", items, "품질 요약 없음", ([label, value]) =>
+    `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
+  );
+}
+
+function renderQualityReviewQueue(review) {
+  renderList("qualityReviewQueue", review.queue?.slice(0, 12), "검토할 신고 없음", (item) =>
+    `<li><strong>#${esc(item.id)} · ${esc(item.feedbackType)} · rating ${esc(item.rating ?? "-")}</strong><span>channel ${esc(item.channelId)} · ${esc(item.reason || "사유 없음")}</span><button class="mini select-quality-feedback" data-feedback-id="${esc(item.id)}">선택</button></li>`,
+  );
+}
+
+function renderQualityModels(models) {
+  renderList("qualityModelSignals", models?.slice(0, 12), "모델 품질 신호 없음", (model) =>
+    `<li><strong>${esc(model.modelName)}</strong><span>providers ${esc(model.providerCount)} · quality ${esc(model.qualityTier)} · overload ${esc(model.overloadRiskCount)}</span></li>`,
+  );
+}
+
+async function refreshQualityDashboard() {
+  const gid = $("guildId").value.trim();
+  const channelId = $("qualityChannelId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("qualityResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const [summary, review, models, channelSummary] = await Promise.all([
+      getJson(`/api/ai-network/quality/${gid}/summary`),
+      getJson(`/api/ai-network/quality/${gid}/review-summary`),
+      getJson(`/api/ai-network/quality/${gid}/models`),
+      /^\d+$/.test(channelId)
+        ? getJson(`/api/ai-network/quality/${gid}/${channelId}/summary`)
+        : Promise.resolve(null),
+    ]);
+    renderQualitySummary(summary, channelSummary);
+    renderQualityReviewQueue(review);
+    renderQualityModels(models);
+    const first = review.queue?.[0];
+    if (first && !$("qualityFeedbackId").value.trim()) $("qualityFeedbackId").value = first.id;
+    $("qualityResult").textContent =
+      `품질 현황: 피드백 ${summary.feedbackCount ?? 0}건 · 열린 신고 ${review.openReportCount ?? 0}건 · 모델 ${models.length ?? 0}개`;
+  } catch (e) {
+    $("qualityResult").textContent = `품질 현황 로딩 실패: ${e.message}`;
+  }
+}
+
+async function submitQualityFeedback() {
+  const gid = $("guildId").value.trim();
+  const channelId = $("qualityChannelId").value.trim();
+  if (!/^\d+$/.test(gid) || !/^\d+$/.test(channelId)) {
+    $("qualityResult").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/quality/${gid}/${channelId}/feedback`, qualityFeedbackPayload());
+    $("qualityFeedbackId").value = result.id || "";
+    $("qualityResult").textContent =
+      `피드백 저장 완료: feedback=${result.id} · status=${result.status} · rating=${result.rating}`;
+    await refreshQualityDashboard();
+  } catch (e) {
+    $("qualityResult").textContent = `피드백 저장 실패: ${e.message}`;
+  }
+}
+
+async function resolveQualityFeedback() {
+  const gid = $("guildId").value.trim();
+  const feedbackId = $("qualityFeedbackId").value.trim();
+  if (!/^\d+$/.test(gid) || !/^\d+$/.test(feedbackId)) {
+    $("qualityResult").textContent = "길드 ID와 피드백 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/quality/${gid}/feedback/${feedbackId}/review`, {
+      status: $("qualityReviewStatus").value,
+      reviewerUserId: numericValue("qualityReviewerUserId"),
+      resolutionReason: $("qualityResolutionReason").value.trim() || null,
+    });
+    $("qualityResult").textContent =
+      `신고 검토 완료: feedback=${result.id} · status=${result.status} · reviewer=${result.reviewedBy || "-"}`;
+    await refreshQualityDashboard();
+  } catch (e) {
+    $("qualityResult").textContent = `신고 검토 실패: ${e.message}`;
+  }
+}
+
 function presetBehaviorPayload() {
   const maxCandidates = Number($("presetMaxCandidates").value || "1");
   const tags = $("presetTags").value.split(",").map((v) => v.trim()).filter(Boolean);
@@ -1134,6 +1241,9 @@ $("knowledgeAddSource").addEventListener("click", addKnowledgeSource);
 $("knowledgeQueueJob").addEventListener("click", queueKnowledgeIndexJob);
 $("knowledgeCompleteJob").addEventListener("click", completeKnowledgeIndexJob);
 $("knowledgeRefresh").addEventListener("click", refreshKnowledge);
+$("qualitySubmitFeedback").addEventListener("click", submitQualityFeedback);
+$("qualityRefresh").addEventListener("click", refreshQualityDashboard);
+$("qualityReviewResolve").addEventListener("click", resolveQualityFeedback);
 $("presetRefresh").addEventListener("click", refreshPresets);
 $("presetCreate").addEventListener("click", createPreset);
 $("presetUpdate").addEventListener("click", updatePreset);
@@ -1156,6 +1266,8 @@ $("launchChecklistRefresh").addEventListener("click", refreshLaunchChecklist);
 document.addEventListener("click", (event) => {
   const selectButton = event.target.closest(".select-published-preset");
   if (selectButton) $("publishedPresetId").value = selectButton.dataset.presetId || "";
+  const qualityButton = event.target.closest(".select-quality-feedback");
+  if (qualityButton) $("qualityFeedbackId").value = qualityButton.dataset.feedbackId || "";
   const previewButton = event.target.closest(".preview-preset, .import-preset");
   if (previewButton) previewPresetImport(previewButton.dataset.presetId);
   const reportButton = event.target.closest(".report-preset");

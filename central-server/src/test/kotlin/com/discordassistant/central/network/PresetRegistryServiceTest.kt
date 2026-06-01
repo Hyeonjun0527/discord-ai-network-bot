@@ -211,6 +211,61 @@ class PresetRegistryServiceTest
         }
 
         @Test
+        fun `published preset catalog searches filters sorts and limits for web registry`() {
+            val coding =
+                service.createPreset(
+                    guildId = 340,
+                    ownerUserId = 77,
+                    name = "코딩 튜터",
+                    summary = "Kotlin Spring 개발 질문",
+                    category = "dev",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "코드 리뷰와 에러 분석", tone = "practical", responseMode = "deep"),
+                )
+            val translation =
+                service.createPreset(
+                    guildId = 340,
+                    ownerUserId = 78,
+                    name = "번역냥",
+                    summary = "한국어 영어 번역",
+                    category = "translation",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "번역과 문장 다듬기", tone = "polite", responseMode = "fast"),
+                )
+            val ops =
+                service.createPreset(
+                    guildId = 340,
+                    ownerUserId = 79,
+                    name = "운영냥",
+                    summary = "런북 기반 운영 안내",
+                    category = "ops",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "운영 질문 대응", tone = "formal", responseMode = "balanced"),
+                )
+            val publishedCoding = service.publishPreset(coding.id, publisherUserId = 77, title = null, description = null)
+            val publishedTranslation = service.publishPreset(translation.id, publisherUserId = 78, title = null, description = null)
+            service.publishPreset(ops.id, publisherUserId = 79, title = null, description = null)
+            service.likePreset(publishedCoding.id, userId = 900)
+            service.likePreset(publishedTranslation.id, userId = 901)
+            service.likePreset(publishedTranslation.id, userId = 902)
+
+            val queryResult = controller.publishedPresets(query = "코드", sort = "popular", limit = 10)["presets"] as List<*>
+            val queryPreset = queryResult.single() as PublishedPresetSummary
+            assertEquals("코딩 튜터", queryPreset.title)
+            assertEquals("dev", queryPreset.category)
+
+            val categoryResult = controller.publishedPresets(category = "translation", sort = "popular", limit = 10)["presets"] as List<*>
+            val categoryPreset = categoryResult.single() as PublishedPresetSummary
+            assertEquals("번역냥", categoryPreset.title)
+
+            val popular = controller.publishedPresets(sort = "likes", limit = 2)["presets"] as List<*>
+            val topPreset = popular.first() as PublishedPresetSummary
+            assertEquals(2, popular.size)
+            assertEquals("번역냥", topPreset.title)
+            assertEquals(2, topPreset.likeCount)
+        }
+
+        @Test
         fun `published preset rejects secret bearing revisions`() {
             val preset =
                 service.createPreset(

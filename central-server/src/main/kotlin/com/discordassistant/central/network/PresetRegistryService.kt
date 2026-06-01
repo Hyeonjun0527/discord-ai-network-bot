@@ -87,14 +87,49 @@ class PresetRegistryService(
     }
 
     @Transactional(readOnly = true)
-    fun listPublishedPresets(): List<PublishedPresetSummary> {
+    fun listPublishedPresets(): List<PublishedPresetSummary> = searchPublishedPresets()
+
+    @Transactional(readOnly = true)
+    fun searchPublishedPresets(
+        query: String? = null,
+        category: String? = null,
+        sort: String = "popular",
+        limit: Int = 20,
+    ): List<PublishedPresetSummary> {
         featureGate.requirePresetEnabled()
-        return publishedPresets
-            .findByStatusOrderByLikeCountDescPublishedAtDesc("published")
-            .map { published ->
-                val revision = revisions.findById(published.revisionId).orElse(null)
-                published.toSummary(revision)
-            }
+        val normalizedQuery = query.normalizedSearchToken()
+        val normalizedCategory = category.normalizedSearchToken()
+        val cappedLimit = limit.coerceIn(1, 100)
+        val summaries =
+            publishedPresets
+                .findByStatusOrderByLikeCountDescPublishedAtDesc("published")
+                .map { publishedSummary(it) }
+                .filter { summary ->
+                    normalizedQuery == null || summary.searchHaystack().contains(normalizedQuery)
+                }.filter { summary ->
+                    normalizedCategory == null || summary.category.orEmpty().lowercase() == normalizedCategory
+                }
+        return when (sort.trim().lowercase()) {
+            "new", "latest", "recent" -> summaries.sortedByDescending { Instant.parse(it.publishedAt) }
+            "imports", "import" ->
+                summaries.sortedWith(
+                    compareByDescending<PublishedPresetSummary> { it.importCount }
+                        .thenByDescending { it.likeCount }
+                        .thenByDescending { Instant.parse(it.publishedAt) },
+                )
+            "reports", "reported" ->
+                summaries.sortedWith(
+                    compareByDescending<PublishedPresetSummary> { it.reportCount }
+                        .thenByDescending { it.likeCount }
+                        .thenByDescending { Instant.parse(it.publishedAt) },
+                )
+            else ->
+                summaries.sortedWith(
+                    compareByDescending<PublishedPresetSummary> { it.likeCount }
+                        .thenByDescending { it.importCount }
+                        .thenByDescending { Instant.parse(it.publishedAt) },
+                )
+        }.take(cappedLimit)
     }
 
     @Transactional(readOnly = true)
@@ -129,8 +164,9 @@ class PresetRegistryService(
             revisions.findById(published.revisionId).orElseThrow {
                 IllegalArgumentException("published revision not found: ${published.revisionId}")
             }
+        val preset = presets.findById(published.presetId).orElse(null)
         return PublishedPresetDetail(
-            published = published.toSummary(revision),
+            published = published.toSummary(revision, preset),
             behavior = revision.toBehaviorSnapshot(),
         )
     }
@@ -788,7 +824,16 @@ class PresetRegistryService(
             reviewedAt = reviewedAt?.toString(),
         )
 
-    private fun PublishedPresetEntity.toSummary(revision: PresetRevisionEntity?): PublishedPresetSummary =
+    private fun publishedSummary(published: PublishedPresetEntity): PublishedPresetSummary {
+        val revision = revisions.findById(published.revisionId).orElse(null)
+        val preset = presets.findById(published.presetId).orElse(null)
+        return published.toSummary(revision, preset)
+    }
+
+    private fun PublishedPresetEntity.toSummary(
+        revision: PresetRevisionEntity?,
+        preset: AiPresetEntity?,
+    ): PublishedPresetSummary =
         PublishedPresetSummary(
             id = id,
             presetId = presetId,
@@ -800,7 +845,7 @@ class PresetRegistryService(
             title = title,
             description = description,
             status = status,
-            category = revision?.name,
+            category = preset?.category,
             purpose = revision?.purpose,
             tone = revision?.tone,
             safetyLevel = revision?.safetyLevel,
@@ -811,6 +856,25 @@ class PresetRegistryService(
             reportCount = reportCount,
             publishedAt = publishedAt.toString(),
         )
+
+    private fun PublishedPresetSummary.searchHaystack(): String =
+        listOf(
+            slug,
+            title,
+            description.orEmpty(),
+            category.orEmpty(),
+            purpose.orEmpty(),
+            tone.orEmpty(),
+            safetyLevel.orEmpty(),
+            responseMode.orEmpty(),
+            preferredModel.orEmpty(),
+        ).joinToString("\n") { it.lowercase() }
+
+    private fun String?.normalizedSearchToken(): String? =
+        this
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
 
     private fun uniqueSlug(
         title: String,

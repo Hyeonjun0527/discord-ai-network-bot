@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 /** 프리셋 공유/가져오기/추천 API. 인증/권한 게이트는 웹 대시보드 권한 레이어에서 확장한다. */
@@ -28,7 +29,19 @@ class PresetRegistryController(
     ): Map<String, Any?> = mapOf("preset" to registry.presetDetail(presetId))
 
     @GetMapping("/catalog")
-    fun publishedPresets(): Map<String, Any?> = mapOf("presets" to registry.listPublishedPresets())
+    fun publishedPresets(
+        @RequestParam(required = false) query: String? = null,
+        @RequestParam(required = false) category: String? = null,
+        @RequestParam(defaultValue = "popular") sort: String = "popular",
+        @RequestParam(defaultValue = "20") limit: Int = 20,
+    ): Map<String, Any?> =
+        mapOf(
+            "presets" to registry.searchPublishedPresets(query = query, category = category, sort = sort, limit = limit),
+            "query" to query,
+            "category" to category,
+            "sort" to sort,
+            "limit" to limit.coerceIn(1, 100),
+        )
 
     @GetMapping("/reports")
     fun reports(): Map<String, Any?> = mapOf("reports" to registry.listReports())

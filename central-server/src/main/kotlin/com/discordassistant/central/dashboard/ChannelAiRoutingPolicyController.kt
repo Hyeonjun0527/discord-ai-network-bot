@@ -71,6 +71,8 @@ class ChannelAiRoutingPolicyController(
             "explanation" to decision.explanation,
             "responseMode" to decision.responseMode,
             "costGuard" to decision.costGuard,
+            "requiresAvailableModel" to decision.requiresAvailableModel,
+            "routingBlocked" to (decision.selectedModel == null && decision.requiresAvailableModel),
         )
     }
 

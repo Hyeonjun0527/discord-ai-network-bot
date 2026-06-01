@@ -127,6 +127,7 @@ class PresetRegistryServiceTest
             val published = controller.publish(presetId, PublishPresetRequest(actorUserId = 77))
             val publishedId = published["id"] as Long
             assertEquals("published", published["status"])
+            assertEquals("코딩-튜터-v2-$presetId", published["slug"])
             val publishedList = controller.publishedPresets()["presets"] as List<*>
             assertEquals(1, publishedList.size)
             val publishedSummary = publishedList.first() as PublishedPresetSummary
@@ -137,6 +138,8 @@ class PresetRegistryServiceTest
             assertNull(publishedSummary.publisherGuildId)
             assertNull(publishedSummary.publisherUserId)
             assertEquals("공개 프리셋 작성자", publishedSummary.publisherLabel)
+            assertEquals("코딩-튜터-v2-$presetId", publishedSummary.slug)
+            assertNotNull(publishedPresets.findBySlug(publishedSummary.slug))
             val publishedDetail = controller.publishedPresetDetail(publishedId)["preset"] as PublishedPresetDetail
             assertEquals("concise", publishedDetail.behavior.tone)
             assertEquals(listOf("coding", "night"), publishedDetail.behavior.providerTagFilter)

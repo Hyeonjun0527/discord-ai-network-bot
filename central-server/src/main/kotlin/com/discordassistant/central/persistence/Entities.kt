@@ -409,6 +409,7 @@ class PublishedPresetEntity(
     var revisionId: Long = 0,
     var publisherGuildId: Long = 0,
     var publisherUserId: Long? = null,
+    var slug: String = "",
     var title: String = "",
     var description: String? = null,
     var status: String = "published",

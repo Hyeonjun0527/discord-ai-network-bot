@@ -91,7 +91,7 @@ class PresetRegistryController(
                 title = request.title,
                 description = request.description,
             )
-        return mapOf("id" to published.id, "status" to published.status, "title" to published.title)
+        return mapOf("id" to published.id, "status" to published.status, "slug" to published.slug, "title" to published.title)
     }
 
     @PutMapping("/published/{publishedPresetId}")
@@ -107,7 +107,13 @@ class PresetRegistryController(
                 description = request.description,
                 behavior = request.behavior,
             )
-        return mapOf("id" to published.id, "revisionId" to published.revisionId, "status" to published.status, "title" to published.title)
+        return mapOf(
+            "id" to published.id,
+            "revisionId" to published.revisionId,
+            "status" to published.status,
+            "slug" to published.slug,
+            "title" to published.title,
+        )
     }
 
     @PostMapping("/published/{publishedPresetId}/import-preview")

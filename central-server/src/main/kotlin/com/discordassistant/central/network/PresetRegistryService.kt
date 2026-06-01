@@ -181,6 +181,7 @@ class PresetRegistryService(
                 IllegalArgumentException("preset revision not found: $revisionId")
             }
         requirePublishableRevision(revision)
+        val publishTitle = title?.trim()?.ifBlank { null } ?: preset.name
         preset.status = "published"
         preset.visibility = "published"
         presets.save(preset)
@@ -190,7 +191,8 @@ class PresetRegistryService(
                 revisionId = revisionId,
                 publisherGuildId = preset.guildId,
                 publisherUserId = publisherUserId,
-                title = title?.trim()?.ifBlank { null } ?: preset.name,
+                slug = uniqueSlug(publishTitle, preset.id),
+                title = publishTitle,
                 description = description?.trim()?.ifBlank { null } ?: preset.summary,
                 status = "published",
                 publishedAt = Instant.now(clock),
@@ -782,6 +784,7 @@ class PresetRegistryService(
             publisherGuildId = null,
             publisherUserId = null,
             publisherLabel = "공개 프리셋 작성자",
+            slug = slug,
             title = title,
             description = description,
             status = status,
@@ -796,6 +799,22 @@ class PresetRegistryService(
             reportCount = reportCount,
             publishedAt = publishedAt.toString(),
         )
+
+    private fun uniqueSlug(
+        title: String,
+        presetId: Long,
+    ): String {
+        val base =
+            title
+                .lowercase()
+                .replace(Regex("[^a-z0-9가-힣]+"), "-")
+                .trim('-')
+                .take(80)
+                .ifBlank { "preset" }
+        val preferred = "$base-$presetId"
+        if (publishedPresets.findBySlug(preferred) == null) return preferred
+        return "$base-$presetId-${Instant.now(clock).toEpochMilli()}"
+    }
 
     private fun sanitizeText(
         value: String,
@@ -901,6 +920,7 @@ data class PublishedPresetSummary(
     val publisherGuildId: Long?,
     val publisherUserId: Long?,
     val publisherLabel: String,
+    val slug: String,
     val title: String,
     val description: String?,
     val status: String,

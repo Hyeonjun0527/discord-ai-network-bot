@@ -292,6 +292,8 @@ interface PresetRevisionRepository : JpaRepository<PresetRevisionEntity, Long> {
 
 interface PublishedPresetRepository : JpaRepository<PublishedPresetEntity, Long> {
     fun findByStatusOrderByLikeCountDescPublishedAtDesc(status: String): List<PublishedPresetEntity>
+
+    fun findBySlug(slug: String): PublishedPresetEntity?
 }
 
 interface PresetImportRepository : JpaRepository<PresetImportEntity, Long> {

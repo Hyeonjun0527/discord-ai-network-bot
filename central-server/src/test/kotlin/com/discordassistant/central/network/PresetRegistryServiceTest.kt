@@ -293,7 +293,14 @@ class PresetRegistryServiceTest
                     summary = "Kotlin Spring 개발 질문",
                     category = "dev",
                     visibility = "guild_private",
-                    behavior = PresetBehaviorInput(purpose = "코드 리뷰와 에러 분석", tone = "practical", responseMode = "deep"),
+                    behavior =
+                        PresetBehaviorInput(
+                            purpose = "코드 리뷰와 에러 분석",
+                            tone = "practical",
+                            responseMode = "deep",
+                            tags = listOf("Kotlin", "code review", "token=secret"),
+                            exampleQuestions = listOf("이 Kotlin 에러 왜 나나요?", "이 코드 리뷰해줘", "api_key=secret"),
+                        ),
                 )
             val translation =
                 service.createPreset(
@@ -338,6 +345,14 @@ class PresetRegistryServiceTest
             val queryPreset = queryResult.single() as PublishedPresetSummary
             assertEquals("코딩 튜터", queryPreset.title)
             assertEquals("dev", queryPreset.category)
+            assertEquals(listOf("kotlin", "code-review"), queryPreset.tags)
+
+            val tagQueryResult = controller.publishedPresets(query = "code-review", sort = "popular", limit = 10)["presets"] as List<*>
+            assertEquals("코딩 튜터", (tagQueryResult.single() as PublishedPresetSummary).title)
+            val codingDetail = controller.publishedPresetDetail(publishedCoding.id)["preset"] as PublishedPresetDetail
+            assertEquals(listOf("kotlin", "code-review"), codingDetail.published.tags)
+            assertEquals(listOf("kotlin", "code-review"), codingDetail.behavior.tags)
+            assertEquals(listOf("이 Kotlin 에러 왜 나나요?", "이 코드 리뷰해줘"), codingDetail.behavior.exampleQuestions)
 
             val categoryResult = controller.publishedPresets(category = "translation", sort = "popular", limit = 10)["presets"] as List<*>
             val categoryPreset = categoryResult.single() as PublishedPresetSummary
@@ -369,6 +384,8 @@ class PresetRegistryServiceTest
             assertEquals(4, facets.totalPublished)
             assertEquals(13, facets.totalLikes)
             assertTrue(facets.categories.any { it.value == "dev" && it.count == 2 })
+            assertTrue(facets.tags.any { it.value == "kotlin" && it.count == 1 })
+            assertTrue(facets.tags.any { it.value == "code-review" && it.count == 1 })
             assertTrue(facets.categories.any { it.value == "translation" && it.count == 1 })
             assertTrue(facets.responseModes.any { it.value == "deep" && it.count == 1 })
             assertTrue(facets.qualityTiers.any { it.value == "standard" && it.count == 4 })
@@ -544,22 +561,30 @@ class PresetRegistryServiceTest
                         PresetBehaviorInput(
                             purpose = "운영 지식 기반 답변",
                             tone = "practical",
+                            tags = listOf("ops", "runbook"),
                             knowledgeSlotNames = listOf("운영 규칙", "장애 대응", "운영 규칙"),
                             knowledgeGuide = "README/런북/FAQ를 대상 서버 지식으로 등록하세요. token=secret-value",
+                            exampleQuestions = listOf("장애 대응 절차 알려줘", "운영 규칙 요약해줘"),
                         ),
                 )
             val revision = revisions.findByPresetIdOrderByRevisionDesc(preset.id).single()
+            assertEquals("ops,runbook", revision.tags)
             assertEquals("운영 규칙,장애 대응", revision.knowledgeSlotNames)
+            assertEquals("장애 대응 절차 알려줘\n운영 규칙 요약해줘", revision.exampleQuestions)
             assertEquals("README/런북/FAQ를 대상 서버 지식으로 등록하세요. [redacted]", revision.knowledgeGuide)
 
             val published = service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
             val detail = service.publishedPresetDetail(published.id)
 
+            assertEquals(listOf("ops", "runbook"), detail.behavior.tags)
             assertEquals(listOf("운영 규칙", "장애 대응"), detail.behavior.knowledgeSlotNames)
+            assertEquals(listOf("장애 대응 절차 알려줘", "운영 규칙 요약해줘"), detail.behavior.exampleQuestions)
             assertEquals("README/런북/FAQ를 대상 서버 지식으로 등록하세요. [redacted]", detail.behavior.knowledgeGuide)
 
             val preview = service.previewImport(published.id, targetGuildId = 331, targetChannelId = 431)
+            assertEquals(listOf("ops", "runbook"), preview.tags)
             assertEquals(listOf("운영 규칙", "장애 대응"), preview.knowledgeSlotNames)
+            assertEquals(listOf("장애 대응 절차 알려줘", "운영 규칙 요약해줘"), preview.exampleQuestions)
 
             val imported =
                 service.importPreset(
@@ -570,7 +595,9 @@ class PresetRegistryServiceTest
                 )
             val importedPresetId = imported.importedPresetId!!
             val importedRevision = revisions.findByPresetIdOrderByRevisionDesc(importedPresetId).single()
+            assertEquals("ops,runbook", importedRevision.tags)
             assertEquals("운영 규칙,장애 대응", importedRevision.knowledgeSlotNames)
+            assertEquals("장애 대응 절차 알려줘\n운영 규칙 요약해줘", importedRevision.exampleQuestions)
             assertEquals(
                 "imported from published preset #${published.id}",
                 importedRevision.changeSummary,

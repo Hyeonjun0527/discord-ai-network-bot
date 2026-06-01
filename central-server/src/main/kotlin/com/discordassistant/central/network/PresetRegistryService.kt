@@ -209,6 +209,7 @@ class PresetRegistryService(
             totalLikes = summaries.sumOf { it.likeCount },
             totalImports = summaries.sumOf { it.importCount },
             categories = summaries.facetBy { it.category ?: "uncategorized" },
+            tags = summaries.facetValues { it.tags },
             safetyLevels = summaries.facetBy { it.safetyLevel ?: "unknown" },
             responseModes = summaries.facetBy { it.responseMode ?: "balanced" },
             qualityTiers = summaries.facetBy { it.minQualityTier ?: "standard" },
@@ -472,8 +473,10 @@ class PresetRegistryService(
                         answerLength = sourceRevision.answerLength,
                         constitution = sourceRevision.constitution,
                         safetyLevel = sourceRevision.safetyLevel,
+                        tags = splitCsv(sourceRevision.tags),
                         knowledgeSlotNames = splitCsv(sourceRevision.knowledgeSlotNames),
                         knowledgeGuide = sourceRevision.knowledgeGuide,
+                        exampleQuestions = splitLines(sourceRevision.exampleQuestions),
                         changeSummary = "imported from published preset #${published.id}",
                     ),
             )
@@ -744,9 +747,11 @@ class PresetRegistryService(
             minQualityTier = sourceRevision.minQualityTier,
             maxCandidates = sourceRevision.maxCandidates,
             providerTagFilter = splitCsv(sourceRevision.providerTagFilter),
+            tags = splitCsv(sourceRevision.tags),
             costGuard = sourceRevision.costGuard,
             knowledgeSlotNames = splitCsv(sourceRevision.knowledgeSlotNames),
             knowledgeGuide = sourceRevision.knowledgeGuide,
+            exampleQuestions = splitLines(sourceRevision.exampleQuestions),
         )
     }
 
@@ -875,9 +880,11 @@ class PresetRegistryService(
                 revision.responseMode,
                 revision.preferredModel.orEmpty(),
                 revision.providerTagFilter.orEmpty(),
+                revision.tags.orEmpty(),
                 revision.costGuard,
                 revision.knowledgeSlotNames.orEmpty(),
                 revision.knowledgeGuide.orEmpty(),
+                revision.exampleQuestions.orEmpty(),
                 revision.changeSummary.orEmpty(),
             ).joinToString("\n")
         require(!text.hasSensitiveMaterial()) {
@@ -922,9 +929,11 @@ class PresetRegistryService(
                 minQualityTier = minQualityTier,
                 maxCandidates = behavior.maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES),
                 providerTagFilter = behavior.providerTagFilter.normalizedCsv(),
+                tags = behavior.tags.normalizedPresetTags(),
                 costGuard = costGuard,
                 knowledgeSlotNames = behavior.knowledgeSlotNames.normalizedKnowledgeSlots(),
                 knowledgeGuide = behavior.knowledgeGuide.sanitizedKnowledgeGuide(),
+                exampleQuestions = behavior.exampleQuestions.normalizedExampleQuestions(),
                 changeSummary = behavior.changeSummary?.trim()?.ifBlank { null },
                 createdBy = createdBy,
                 createdAt = now,
@@ -960,9 +969,11 @@ class PresetRegistryService(
             minQualityTier = minQualityTier,
             maxCandidates = maxCandidates,
             providerTagFilter = splitCsv(providerTagFilter),
+            tags = splitCsv(tags),
             costGuard = costGuard,
             knowledgeSlotNames = splitCsv(knowledgeSlotNames),
             knowledgeGuide = knowledgeGuide,
+            exampleQuestions = splitLines(exampleQuestions),
             changeSummary = changeSummary,
             createdAt = createdAt.toString(),
         )
@@ -999,9 +1010,11 @@ class PresetRegistryService(
             minQualityTier = minQualityTier.publicRequired(maxLength = 80, fallback = "standard"),
             maxCandidates = maxCandidates,
             providerTagFilter = splitCsv(providerTagFilter).filterNot { it.hasSensitiveMaterial() },
+            tags = splitCsv(tags).filterNot { it.hasSensitiveMaterial() },
             costGuard = costGuard.publicRequired(maxLength = 80, fallback = "provider_safe"),
             knowledgeSlotNames = splitCsv(knowledgeSlotNames).filterNot { it.hasSensitiveMaterial() },
             knowledgeGuide = knowledgeGuide.publicOptional(maxLength = 1000),
+            exampleQuestions = splitLines(exampleQuestions).filterNot { it.hasSensitiveMaterial() },
         )
 
     private fun PresetImportEntity.toSummary(): PresetImportSummary =
@@ -1119,6 +1132,7 @@ class PresetRegistryService(
             responseMode = (revision?.responseMode).publicOptional(maxLength = 80),
             preferredModel = (revision?.preferredModel).publicOptional(maxLength = 160),
             minQualityTier = (revision?.minQualityTier).publicOptional(maxLength = 80),
+            tags = splitCsv(revision?.tags).filterNot { it.hasSensitiveMaterial() },
             likeCount = likeCount,
             importCount = importCount,
             reportCount = reportCount,
@@ -1133,6 +1147,7 @@ class PresetRegistryService(
             category.orEmpty(),
             purpose.orEmpty(),
             tone.orEmpty(),
+            tags.joinToString(" "),
             safetyLevel.orEmpty(),
             responseMode.orEmpty(),
             preferredModel.orEmpty(),
@@ -1146,6 +1161,15 @@ class PresetRegistryService(
 
     private fun List<PublishedPresetSummary>.facetBy(selector: (PublishedPresetSummary) -> String): List<PresetCatalogFacet> =
         groupingBy { selector(it).trim().lowercase().ifBlank { "unknown" } }
+            .eachCount()
+            .map { (value, count) -> PresetCatalogFacet(value = value, count = count) }
+            .sortedWith(compareByDescending<PresetCatalogFacet> { it.count }.thenBy { it.value })
+
+    private fun List<PublishedPresetSummary>.facetValues(selector: (PublishedPresetSummary) -> List<String>): List<PresetCatalogFacet> =
+        flatMap(selector)
+            .map { it.trim().lowercase() }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
             .eachCount()
             .map { (value, count) -> PresetCatalogFacet(value = value, count = count) }
             .sortedWith(compareByDescending<PresetCatalogFacet> { it.count }.thenBy { it.value })
@@ -1210,6 +1234,20 @@ class PresetRegistryService(
             .joinToString(",")
             .ifBlank { null }
 
+    private fun List<String>.normalizedPresetTags(): String? =
+        map { it.normalizedPresetTag() }
+            .filter { it.isNotBlank() && !it.hasSensitiveMaterial() }
+            .distinct()
+            .take(12)
+            .joinToString(",")
+            .ifBlank { null }
+
+    private fun String.normalizedPresetTag(): String =
+        trim()
+            .lowercase()
+            .replace(Regex("\\s+"), "-")
+            .take(40)
+
     private fun List<String>.normalizedKnowledgeSlots(): String? =
         map { it.trim() }
             .filter { it.isNotBlank() }
@@ -1225,6 +1263,14 @@ class PresetRegistryService(
             ?.replace(SECRET_PATTERN, "[redacted]")
             ?.take(1000)
             ?.ifBlank { null }
+
+    private fun List<String>.normalizedExampleQuestions(): String? =
+        map { it.trim().replace(Regex("\\s+"), " ").take(160) }
+            .filter { it.isNotBlank() && !it.hasSensitiveMaterial() }
+            .distinct()
+            .take(5)
+            .joinToString("\n")
+            .ifBlank { null }
 
     private fun String?.publicOptional(maxLength: Int): String? {
         val trimmed = this?.trim()?.ifBlank { null } ?: return null
@@ -1257,6 +1303,14 @@ class PresetRegistryService(
             .map { it.trim() }
             .filter { it.isNotBlank() }
 
+    private fun splitLines(value: String?): List<String> =
+        value
+            .orEmpty()
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toList()
+
     private companion object {
         const val REPORT_REVIEW_THRESHOLD = 1
         const val REDACTED_PUBLIC_TITLE = "비공개 프리셋"
@@ -1285,9 +1339,11 @@ data class PresetBehaviorInput(
     val minQualityTier: String = "standard",
     val maxCandidates: Int = 1,
     val providerTagFilter: List<String> = emptyList(),
+    val tags: List<String> = emptyList(),
     val costGuard: String = "provider_safe",
     val knowledgeSlotNames: List<String> = emptyList(),
     val knowledgeGuide: String? = null,
+    val exampleQuestions: List<String> = emptyList(),
     val changeSummary: String? = null,
 )
 
@@ -1317,9 +1373,11 @@ data class PresetRevisionSummary(
     val minQualityTier: String,
     val maxCandidates: Int,
     val providerTagFilter: List<String>,
+    val tags: List<String>,
     val costGuard: String,
     val knowledgeSlotNames: List<String>,
     val knowledgeGuide: String?,
+    val exampleQuestions: List<String>,
     val changeSummary: String?,
     val createdAt: String,
 )
@@ -1347,6 +1405,7 @@ data class PublishedPresetSummary(
     val responseMode: String?,
     val preferredModel: String?,
     val minQualityTier: String?,
+    val tags: List<String>,
     val likeCount: Int,
     val importCount: Int,
     val reportCount: Int,
@@ -1369,6 +1428,7 @@ data class PresetCatalogFacets(
     val totalLikes: Int,
     val totalImports: Int,
     val categories: List<PresetCatalogFacet>,
+    val tags: List<PresetCatalogFacet>,
     val safetyLevels: List<PresetCatalogFacet>,
     val responseModes: List<PresetCatalogFacet>,
     val qualityTiers: List<PresetCatalogFacet>,
@@ -1412,9 +1472,11 @@ data class PresetBehaviorSnapshot(
     val minQualityTier: String,
     val maxCandidates: Int,
     val providerTagFilter: List<String>,
+    val tags: List<String>,
     val costGuard: String,
     val knowledgeSlotNames: List<String>,
     val knowledgeGuide: String?,
+    val exampleQuestions: List<String>,
 )
 
 data class PresetImportSummary(
@@ -1477,7 +1539,9 @@ data class PresetImportPreview(
     val minQualityTier: String,
     val maxCandidates: Int,
     val providerTagFilter: List<String>,
+    val tags: List<String>,
     val costGuard: String,
     val knowledgeSlotNames: List<String>,
     val knowledgeGuide: String?,
+    val exampleQuestions: List<String>,
 )

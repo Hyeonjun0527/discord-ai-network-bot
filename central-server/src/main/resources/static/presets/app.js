@@ -89,6 +89,7 @@ function renderCatalog(presets) {
         <span class="badge">#${esc(preset.id)}</span>
         <span class="badge">${esc(preset.category || "general")}</span>
         <span class="badge">${esc(preset.responseMode || "balanced")}</span>
+        ${(preset.tags || []).slice(0, 3).map((tag) => `<span class="badge">${esc(tag)}</span>`).join("")}
       </div>
       <h3>${esc(preset.title)}</h3>
       <p>${esc(preset.description || "설명 없음")}</p>
@@ -154,9 +155,11 @@ function renderPreview(detail, preview) {
     optionalLine("선호 모델", published.preferredModel || behavior.preferredModel),
     optionalLine("최소 품질", published.minQualityTier || behavior.minQualityTier),
     behavior.maxCandidates ? `Provider 후보: ${behavior.maxCandidates}` : null,
+    listLine("태그", published.tags || behavior.tags),
     listLine("Provider 태그", behavior.providerTagFilter),
     listLine("필요 지식 슬롯", behavior.knowledgeSlotNames),
     optionalLine("지식 등록 안내", behavior.knowledgeGuide),
+    listLine("질문 예시", behavior.exampleQuestions),
   ].filter(Boolean);
   if (preview) {
     const conflicts = preview.conflicts || [];

@@ -354,6 +354,8 @@ async function completeKnowledgeIndexJob() {
 
 function presetBehaviorPayload() {
   const maxCandidates = Number($("presetMaxCandidates").value || "1");
+  const tags = $("presetTags").value.split(",").map((v) => v.trim()).filter(Boolean);
+  const exampleQuestions = $("presetExampleQuestions").value.split(/\n+/).map((v) => v.trim()).filter(Boolean);
   return {
     purpose: $("presetPurpose").value.trim() || "general_assistant",
     tone: $("presetTone").value.trim() || "friendly",
@@ -362,6 +364,8 @@ function presetBehaviorPayload() {
     responseMode: $("presetResponseMode").value.trim() || "balanced",
     preferredModel: $("presetPreferredModel").value.trim() || null,
     maxCandidates: Number.isFinite(maxCandidates) ? Math.max(1, Math.min(5, maxCandidates)) : 1,
+    tags,
+    exampleQuestions,
   };
 }
 
@@ -394,7 +398,7 @@ function renderPresetLists(local, published) {
     `<li><strong>${esc(p.id)} · ${esc(p.name)}</strong><span>${esc(p.category)} · ${esc(p.status)} · ${esc(p.visibility)}</span></li>`,
   );
   renderList("publishedPresetList", published?.presets?.slice(0, 8), "게시 프리셋 없음", (p) =>
-    `<li><strong>${esc(p.id)} · ${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · 신고 ${esc(p.reportCount)} · ${esc(p.category || "general")}</span><button class="mini select-published-preset" data-preset-id="${esc(p.id)}">선택</button><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button><button class="mini report-preset" data-preset-id="${esc(p.id)}">신고</button><button class="mini unlist-published-preset" data-preset-id="${esc(p.id)}">비공개</button><button class="mini remove-published-preset" data-preset-id="${esc(p.id)}">숨김</button></li>`,
+    `<li><strong>${esc(p.id)} · ${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · 신고 ${esc(p.reportCount)} · ${esc(p.category || "general")} · ${(p.tags || []).map(esc).join(", ") || "태그 없음"}</span><button class="mini select-published-preset" data-preset-id="${esc(p.id)}">선택</button><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button><button class="mini report-preset" data-preset-id="${esc(p.id)}">신고</button><button class="mini unlist-published-preset" data-preset-id="${esc(p.id)}">비공개</button><button class="mini remove-published-preset" data-preset-id="${esc(p.id)}">숨김</button></li>`,
   );
 }
 
@@ -815,6 +819,8 @@ function renderPresetImportPreview(preview) {
     `목적: ${preview.purpose}`,
     `말투: ${preview.tone} · 길이: ${preview.answerLength} · 안전: ${preview.safetyLevel}`,
     `모드: ${preview.responseMode} · 최소 품질: ${preview.minQualityTier} · 후보 수: ${preview.maxCandidates}`,
+    `태그: ${(preview.tags || []).join(", ") || "없음"}`,
+    `질문 예시: ${(preview.exampleQuestions || []).join(" / ") || "없음"}`,
     "",
     "가져오면 일어나는 일",
     ...actions,

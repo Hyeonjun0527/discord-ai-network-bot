@@ -860,6 +860,20 @@ async function planPseudoStream() {
   }
 }
 
+function renderDashboardFreshness(metadata) {
+  const stale = metadata?.stale === true;
+  const rows = [
+    ["상태", stale ? "갱신 지연" : metadata?.freshnessStatus || "fresh"],
+    ["최근 갱신", metadata?.generatedAt || "방금 계산됨"],
+    ["데이터 소스", metadata?.source || "network_overview_projection"],
+    ["운영 안내", stale ? "최근 상태 갱신이 지연되고 있어요. 질문 기능과는 별개입니다." : "상태판이 최신입니다."],
+    ["다음 행동", metadata?.degradedReason || "필요 없음"],
+  ];
+  renderList("dashboardFreshness", rows, "상태 신뢰도 정보 없음", ([label, value]) =>
+    `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
+  );
+}
+
 function renderAiNetwork(data) {
   $("aiNetwork").hidden = false;
   $("networkTitle").textContent = data.overview?.displayName || "AI 네트워크";
@@ -867,6 +881,7 @@ function renderAiNetwork(data) {
   const readiness = data.readiness?.status || data.overview?.healthStatus || "unknown";
   $("readinessBadge").textContent = readiness;
   $("readinessBadge").className = `pill ${readiness === "ready" ? "ok" : readiness === "blocked" ? "bad" : "warn"}`;
+  renderDashboardFreshness(data.metadata);
   $("growthLevel").textContent = `Lv.${data.growthPlan?.currentLevel ?? data.overview?.networkLevel ?? "–"}`;
   $("growthSummary").textContent = data.growthPlan?.summary || "성장 계획을 계산 중입니다.";
 

@@ -72,15 +72,38 @@ def to_result(row, score: int) -> dict:
     }
 
 
-def search(query: str, limit: int, guild: int | None = None, space: int | None = None, channel: int | None = None) -> list[dict]:
+def _rrf_merge(result_sets: list[list[dict]], limit: int) -> list[dict]:
+    merged: dict[int, dict] = {}
+    scores: dict[int, float] = {}
+    for results in result_sets:
+        for rank, item in enumerate(results, 1):
+            chunk_id = item["id"]
+            merged.setdefault(chunk_id, item)
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (60 + rank)
+    for chunk_id, score in scores.items():
+        merged[chunk_id]["score"] = round(score, 6)
+    return sorted(merged.values(), key=lambda item: item["score"], reverse=True)[:limit]
+
+
+def search(
+    query: str,
+    limit: int,
+    guild: int | None = None,
+    space: int | None = None,
+    channel: int | None = None,
+    require_guild: bool = False,
+) -> list[dict]:
+    if require_guild and guild is None:
+        raise SystemExit("guild scope is required for runtime RAG search")
     if not META_DB.exists() or not CORPUS_JSONL.exists():
         raise SystemExit("RAG index missing. Run: python rag/build_index.py")
-    merged: dict[int, dict] = {}
-    for item in exact_matches(query, limit * 2, guild, space, channel) + keyword_matches(query, limit * 2, guild, space, channel):
-        existing = merged.get(item["id"])
-        if not existing or item["score"] > existing["score"]:
-            merged[item["id"]] = item
-    return sorted(merged.values(), key=lambda item: item["score"], reverse=True)[:limit]
+    return _rrf_merge(
+        [
+            exact_matches(query, limit * 2, guild, space, channel),
+            keyword_matches(query, limit * 2, guild, space, channel),
+        ],
+        limit,
+    )
 
 
 def main() -> None:
@@ -90,8 +113,9 @@ def main() -> None:
     parser.add_argument("--guild", type=int, help="optional guild scope filter")
     parser.add_argument("--space", type=int, help="optional knowledge space scope filter")
     parser.add_argument("--channel", type=int, help="optional channel scope filter")
+    parser.add_argument("--require-guild", action="store_true", help="fail unless --guild is supplied; use for runtime scoped search")
     args = parser.parse_args()
-    for idx, item in enumerate(search(args.query, args.limit, args.guild, args.space, args.channel), 1):
+    for idx, item in enumerate(search(args.query, args.limit, args.guild, args.space, args.channel, args.require_guild), 1):
         print("─" * 64)
         print(f"[{idx}] {item['title']} ({item['chunk_type']}, score={item['score']})")
         scope = item.get("metadata", {})

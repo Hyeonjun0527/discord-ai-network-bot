@@ -31,8 +31,12 @@ case "${1:-build-local}" in
     cd "$ROOT"
     python3 rag/search.py "${@:2}"
     ;;
+  eval)
+    cd "$ROOT"
+    python3 rag/eval/evaluate.py "${@:2}"
+    ;;
   *)
-    echo "Usage: scripts/rag.sh {rebuild|build-local|build-vector|docker-build|docker-rebuild|search} [--guild ID --space ID --collection NAME --embedding-model MODEL --input PATH]" >&2
+    echo "Usage: scripts/rag.sh {rebuild|build-local|build-vector|docker-build|docker-rebuild|search|eval} [--guild ID --space ID --collection NAME --embedding-model MODEL --input PATH]" >&2
     exit 2
     ;;
 esac

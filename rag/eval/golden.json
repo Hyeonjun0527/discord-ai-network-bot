@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "id": "provider-safety-policy",
+      "question": "Provider 과부하 보호 정책은 어디에 있어?",
+      "expected_sources": ["docs/PROVIDER_SAFETY_POLICY.md"],
+      "note": "Provider overload/fan-out protection must be retrievable."
+    },
+    {
+      "id": "rag-stack-plan",
+      "question": "Qdrant와 OpenAI embedding을 쓰는 RAG 이식 계획",
+      "expected_sources": ["docs/plans/ai-network/02_RAG_STACK_MIGRATION.md"],
+      "note": "RAG stack migration plan must be discoverable."
+    },
+    {
+      "id": "bot-permissions",
+      "question": "멘션 호출에 필요한 Discord 권한과 Intent",
+      "expected_sources": ["docs/BOT_PERMISSIONS.md"],
+      "note": "Permission UX docs must be searchable."
+    }
+  ]
+}

@@ -142,7 +142,7 @@ def build_vectors(
     from llama_index.core.schema import TextNode
     from llama_index.embeddings.openai import OpenAIEmbedding
     from llama_index.vector_stores.qdrant import QdrantVectorStore
-    from qdrant_client import QdrantClient
+    from qdrant_helper import make_qdrant_client
 
     embed_model = OpenAIEmbedding(model=embedding_model, api_key=api_key)
     nodes = []
@@ -162,7 +162,7 @@ def build_vectors(
     for node, vector in zip(nodes, vectors):
         node.embedding = vector
 
-    client = QdrantClient(url=qdrant_url)
+    client = make_qdrant_client(qdrant_url)
     if client.collection_exists(collection):
         if not force:
             raise SystemExit(f"collection already exists: {collection}. Use --force to rebuild it.")

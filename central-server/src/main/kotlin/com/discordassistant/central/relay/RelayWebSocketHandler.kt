@@ -1,5 +1,6 @@
 package com.discordassistant.central.relay
 
+import com.discordassistant.central.network.AiNetworkGrowthService
 import com.discordassistant.central.relay.protocol.AuthErrFrame
 import com.discordassistant.central.relay.protocol.AuthFrame
 import com.discordassistant.central.relay.protocol.AuthOkFrame
@@ -31,6 +32,7 @@ import java.util.concurrent.TimeUnit
 class RelayWebSocketHandler(
     private val registry: ConnectionRegistry,
     private val verifier: TokenVerifier,
+    private val growth: AiNetworkGrowthService? = null,
     @param:Value("\${central.relay.request-timeout-seconds:120}") private val requestTimeout: Long,
     @param:Value("\${central.relay.heartbeat-seconds:30}") private val heartbeatSeconds: Long,
 ) : TextWebSocketHandler() {
@@ -95,6 +97,7 @@ class RelayWebSocketHandler(
                 providerId = binding.providerId,
                 guildId = binding.guildId,
                 requestTimeoutSeconds = requestTimeout,
+                onHello = ::syncProviderHello,
             )
         registry.register(ps)
         authed[session.id] = ps
@@ -124,7 +127,35 @@ class RelayWebSocketHandler(
         pendingAuth.remove(session.id)
         authed.remove(session.id)?.let {
             it.closeAndFailPending("연결 종료: $status")
+            markProviderOffline(it)
             registry.unregister(it)
+        }
+    }
+
+    private fun syncProviderHello(
+        session: ProviderSession,
+        hello: com.discordassistant.central.relay.protocol.ProviderHelloFrame,
+    ) {
+        val guildId = session.guildId ?: return
+        try {
+            growth?.syncProviderCapabilitiesFromHello(
+                guildId = guildId,
+                providerUserId = session.providerId,
+                modelNames = hello.models,
+                maxConcurrency = hello.maxConcurrency,
+                remainingDailyRequests = hello.remainingDailyRequests,
+            )
+        } catch (e: Exception) {
+            log.warn("provider {} 능력 동기화 실패(guild={}): {}", session.providerId, guildId, e.message)
+        }
+    }
+
+    private fun markProviderOffline(session: ProviderSession) {
+        val guildId = session.guildId ?: return
+        try {
+            growth?.markProviderOffline(guildId, session.providerId)
+        } catch (e: Exception) {
+            log.warn("provider {} 오프라인 동기화 실패(guild={}): {}", session.providerId, guildId, e.message)
         }
     }
 

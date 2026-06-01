@@ -91,7 +91,7 @@ class AiNetworkDashboardControllerTest
             )
 
         private val providerSafety = ProviderSafetyService(providerCapabilities, events, foundation, fixedClock)
-        private val growth = AiNetworkGrowthService(foundation, events, fixedClock)
+        private val growth = AiNetworkGrowthService(foundation, events, providerCapabilities, fixedClock)
         private val multiResponse =
             MultiResponseService(
                 policies = multiResponsePolicies,

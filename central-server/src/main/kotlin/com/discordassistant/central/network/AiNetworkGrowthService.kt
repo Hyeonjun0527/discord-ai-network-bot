@@ -3,6 +3,7 @@ package com.discordassistant.central.network
 import com.discordassistant.central.persistence.AiNetworkEventEntity
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
+import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -12,8 +13,87 @@ import java.time.Instant
 class AiNetworkGrowthService(
     private val foundation: AiNetworkFoundationService,
     private val events: AiNetworkEventRepository,
+    private val providerCapabilities: ProviderCapabilityProfileRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
+    @Transactional
+    fun syncProviderCapabilitiesFromHello(
+        guildId: Long,
+        providerUserId: Long,
+        modelNames: List<String>,
+        maxConcurrency: Int,
+        remainingDailyRequests: Int,
+    ): ProviderCapabilitySyncResult {
+        val normalizedModels = normalizeList(modelNames)
+        val capabilityTags = inferCapabilityTags(normalizedModels)
+        val maxBurden = inferMaxBurden(normalizedModels)
+        val dailyLimit = remainingDailyRequests.coerceAtLeast(0)
+        val existing = providerCapabilities.findByGuildIdAndProviderUserId(guildId, providerUserId)
+        val shouldRecordGrowth =
+            existing == null ||
+                !existing.providerState.equals("ONLINE", ignoreCase = true) ||
+                normalizeCsv(existing.modelNames) != normalizedModels ||
+                existing.maxConcurrency != maxConcurrency.coerceAtLeast(1) ||
+                existing.dailyLimit != dailyLimit
+        val before = foundation.refreshOverview(guildId)
+        val capability =
+            foundation.upsertProviderCapability(
+                guildId = guildId,
+                providerUserId = providerUserId,
+                providerState = "ONLINE",
+                modelNames = normalizedModels,
+                capabilityTags = capabilityTags,
+                maxBurden = maxBurden,
+                maxConcurrency = maxConcurrency,
+                dailyLimit = dailyLimit,
+                overloadRisk = existing?.overloadRisk ?: "normal",
+            )
+        val overview = foundation.refreshOverview(guildId)
+        val event =
+            if (shouldRecordGrowth) {
+                recordProviderGrowthEvent(
+                    guildId = guildId,
+                    providerUserId = providerUserId,
+                    levelBefore = before.networkLevel,
+                    levelAfter = overview.networkLevel,
+                    modelNames = normalizedModels,
+                    capabilityTags = capabilityTags,
+                    maxBurden = maxBurden,
+                    maxConcurrency = maxConcurrency,
+                    dailyLimit = dailyLimit,
+                )
+            } else {
+                null
+            }
+        maybeRecordLevelUp(guildId, overview)
+        return ProviderCapabilitySyncResult(
+            providerCapabilityId = capability.id,
+            eventId = event?.id,
+            networkLevel = overview.networkLevel,
+            changed = shouldRecordGrowth,
+        )
+    }
+
+    @Transactional
+    fun markProviderOffline(
+        guildId: Long,
+        providerUserId: Long,
+    ) {
+        val existing = providerCapabilities.findByGuildIdAndProviderUserId(guildId, providerUserId) ?: return
+        foundation.upsertProviderCapability(
+            guildId = guildId,
+            providerUserId = providerUserId,
+            providerState = "OFFLINE",
+            modelNames = normalizeCsv(existing.modelNames),
+            capabilityTags = normalizeCsv(existing.capabilityTags),
+            maxBurden = existing.maxBurden,
+            maxConcurrency = existing.maxConcurrency,
+            dailyLimit = existing.dailyLimit,
+            overloadRisk = existing.overloadRisk,
+        )
+        foundation.refreshOverview(guildId)
+    }
+
     @Transactional
     fun recordProviderJoined(
         guildId: Long,
@@ -38,40 +118,17 @@ class AiNetworkGrowthService(
                 overloadRisk = "normal",
             )
         val overview = foundation.refreshOverview(guildId)
-        val title = "Provider가 AI 네트워크에 참여했어요"
-        val summary =
-            "이 서버는 ${modelNames.joinToString(",").ifBlank { "로컬 AI" }} 모델과 " +
-                "${capabilityTags.joinToString(",").ifBlank { "일반" }} 능력을 사용할 수 있게 됐어요."
-        val impact =
-            providerImpact(
+        val event =
+            recordProviderGrowthEvent(
+                guildId = guildId,
+                providerUserId = providerUserId,
                 levelBefore = before.networkLevel,
                 levelAfter = overview.networkLevel,
                 modelNames = modelNames,
                 capabilityTags = capabilityTags,
+                maxBurden = maxBurden,
                 maxConcurrency = maxConcurrency,
                 dailyLimit = dailyLimit,
-            )
-        val event =
-            events.save(
-                AiNetworkEventEntity(
-                    guildId = guildId,
-                    eventType = "provider_joined",
-                    providerUserId = providerUserId,
-                    title = title,
-                    summary = summary,
-                    metadata =
-                        listOf(
-                            "models=${modelNames.joinToString(",")}",
-                            "tags=${capabilityTags.joinToString(",")}",
-                            "maxBurden=$maxBurden",
-                            "maxConcurrency=$maxConcurrency",
-                            "dailyLimit=$dailyLimit",
-                            "levelBefore=${before.networkLevel}",
-                            "levelAfter=${overview.networkLevel}",
-                            "impact=${impact.joinToString("|")}",
-                        ).joinToString(";"),
-                    createdAt = Instant.now(clock),
-                ),
             )
         maybeRecordLevelUp(guildId, overview)
         return ProviderGrowthResult(capability.id, event.id, overview.networkLevel)
@@ -421,6 +478,80 @@ class AiNetworkGrowthService(
             if (levelAfter > levelBefore) add("AI 네트워크 레벨 $levelBefore → $levelAfter 성장")
         }
 
+    private fun recordProviderGrowthEvent(
+        guildId: Long,
+        providerUserId: Long,
+        levelBefore: Int,
+        levelAfter: Int,
+        modelNames: List<String>,
+        capabilityTags: List<String>,
+        maxBurden: String,
+        maxConcurrency: Int,
+        dailyLimit: Int,
+    ): AiNetworkEventEntity {
+        val title = "Provider가 AI 네트워크에 참여했어요"
+        val summary =
+            "이 서버는 ${modelNames.joinToString(",").ifBlank { "로컬 AI" }} 모델과 " +
+                "${capabilityTags.joinToString(",").ifBlank { "일반" }} 능력을 사용할 수 있게 됐어요."
+        val impact =
+            providerImpact(
+                levelBefore = levelBefore,
+                levelAfter = levelAfter,
+                modelNames = modelNames,
+                capabilityTags = capabilityTags,
+                maxConcurrency = maxConcurrency,
+                dailyLimit = dailyLimit,
+            )
+        return events.save(
+            AiNetworkEventEntity(
+                guildId = guildId,
+                eventType = "provider_joined",
+                providerUserId = providerUserId,
+                title = title,
+                summary = summary,
+                metadata =
+                    listOf(
+                        "models=${modelNames.joinToString(",")}",
+                        "tags=${capabilityTags.joinToString(",")}",
+                        "maxBurden=$maxBurden",
+                        "maxConcurrency=$maxConcurrency",
+                        "dailyLimit=$dailyLimit",
+                        "levelBefore=$levelBefore",
+                        "levelAfter=$levelAfter",
+                        "impact=${impact.joinToString("|")}",
+                    ).joinToString(";"),
+                createdAt = Instant.now(clock),
+            ),
+        )
+    }
+
+    private fun inferCapabilityTags(modelNames: List<String>): List<String> {
+        val joined = modelNames.joinToString(" ").lowercase()
+        return buildSet {
+            if (listOf("code", "coder", "deepseek", "qwen").any { it in joined }) add("coding")
+            if (listOf("translate", "nllb", "aya").any { it in joined }) add("translation")
+            if (listOf("32b", "70b", "long", "large").any { it in joined }) add("long-context")
+            if (modelNames.isNotEmpty()) add("local-llm")
+        }.toList()
+    }
+
+    private fun inferMaxBurden(modelNames: List<String>): String {
+        val joined = modelNames.joinToString(" ").lowercase()
+        return when {
+            listOf("70b", "large", "mixtral").any { it in joined } -> "HEAVY"
+            listOf("13b", "14b", "32b", "coder", "deepseek", "qwen").any { it in joined } -> "STANDARD"
+            else -> "LIGHT"
+        }
+    }
+
+    private fun normalizeCsv(value: String?): List<String> = normalizeList(value.orEmpty().split(","))
+
+    private fun normalizeList(values: List<String>): List<String> =
+        values
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+
     private fun parseMetadata(metadata: String?): Map<String, String> =
         metadata
             .orEmpty()
@@ -446,6 +577,13 @@ data class ProviderGrowthResult(
     val providerCapabilityId: Long,
     val eventId: Long,
     val networkLevel: Int,
+)
+
+data class ProviderCapabilitySyncResult(
+    val providerCapabilityId: Long,
+    val eventId: Long?,
+    val networkLevel: Int,
+    val changed: Boolean,
 )
 
 data class NetworkGrowthEventCard(

@@ -11,6 +11,7 @@ import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -44,7 +45,7 @@ class AiNetworkGrowthServiceTest
                 feedbacks = feedbacks,
                 clock = clock,
             )
-        private val growth = AiNetworkGrowthService(foundation, events, clock)
+        private val growth = AiNetworkGrowthService(foundation, events, providerCapabilities, clock)
         private val controller = AiNetworkGrowthController(growth)
 
         @Test
@@ -88,6 +89,48 @@ class AiNetworkGrowthServiceTest
             val adminJoined = controller.timeline(987654321, audience = "admin").first { it["eventType"] == "provider_joined" }
             assertEquals(77L, adminJoined["providerUserId"])
             assertEquals("provider:77", adminJoined["providerLabel"])
+        }
+
+        @Test
+        fun `provider hello sync persists real relay capabilities without duplicate growth events`() {
+            val first =
+                growth.syncProviderCapabilitiesFromHello(
+                    guildId = 333,
+                    providerUserId = 77,
+                    modelNames = listOf("qwen2.5-coder:7b", "llama3.1:8b"),
+                    maxConcurrency = 2,
+                    remainingDailyRequests = 25,
+                )
+
+            assertTrue(first.changed)
+            assertTrue(first.eventId != null)
+            val profile = providerCapabilities.findByGuildIdAndProviderUserId(333, 77)!!
+            assertEquals("ONLINE", profile.providerState)
+            assertEquals("qwen2.5-coder:7b,llama3.1:8b", profile.modelNames)
+            assertEquals("STANDARD", profile.maxBurden)
+            assertEquals(2, profile.maxConcurrency)
+            assertEquals(25, profile.dailyLimit)
+            assertTrue(profile.capabilityTags!!.contains("coding"))
+            assertTrue(profile.capabilityTags!!.contains("local-llm"))
+
+            val repeat =
+                growth.syncProviderCapabilitiesFromHello(
+                    guildId = 333,
+                    providerUserId = 77,
+                    modelNames = listOf("qwen2.5-coder:7b", "llama3.1:8b"),
+                    maxConcurrency = 2,
+                    remainingDailyRequests = 25,
+                )
+
+            assertFalse(repeat.changed)
+            assertEquals(null, repeat.eventId)
+            assertEquals(1, events.findByGuildIdAndEventType(333, "provider_joined").size)
+
+            growth.markProviderOffline(333, 77)
+
+            val offline = providerCapabilities.findByGuildIdAndProviderUserId(333, 77)!!
+            assertEquals("OFFLINE", offline.providerState)
+            assertEquals(0, overviewProjections.findByGuildId(333)!!.onlineProviderCount)
         }
 
         @Test

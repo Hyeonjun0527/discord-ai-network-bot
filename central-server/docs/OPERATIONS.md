@@ -46,7 +46,7 @@ curl -s localhost:8080/actuator/health   # {"status":"UP"} 확인
 - `CENTRAL_DEV_ENABLED` 는 운영에서 **반드시 false**(/dev/* 엔드포인트 차단). 자세히는 `SECURITY.md`.
 
 ## 대시보드 관리자 인증 — Discord OAuth2 (차수 14 #196/#197)
-기본은 **비활성**(permitAll, 오픈 읽기전용 대시보드). 운영에서 관리자 인증을 켜려면:
+기본은 공개 읽기 경로를 보존하지만, `audience=admin` 조회와 AI Network 쓰기/민감 읽기 API 는 **관리자 접근**이 필요하다. OAuth 전환 전에는 `CENTRAL_DASHBOARD_ADMIN_TOKEN` 을 운영 `ENV_FILE` 에 넣고 요청에 `X-Dashboard-Admin-Token` 헤더를 붙인다. 운영에서 정식 관리자 인증을 켜려면:
 
 1. Discord 개발자 포털에서 OAuth2 앱 생성 → Redirect URI `https://<호스트>/login/oauth2/code/discord`.
 2. 환경변수 주입:
@@ -63,7 +63,8 @@ SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_DISCORD_USER_INFO_URI=https://discord.com
 SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_DISCORD_USER_NAME_ATTRIBUTE=id
 ```
 3. 활성 시: 정적 대시보드·헬스·메트릭·에이전트 WS·로그인은 공개, **대시보드 데이터/쓰기 API 는 인증 필요**(세션 #197).
-4. 쓰기 API(#203/#204)는 `central.oauth.enabled=true` 일 때만 노출(`DashboardWriteController`).
+4. 공개 프리셋 카탈로그(`/api/ai-network/presets/catalog*`)와 최소 공개 액션(좋아요/신고)은 계속 공개된다.
+5. 쓰기 API(#203/#204)는 `central.oauth.enabled=true` 일 때만 노출(`DashboardWriteController`).
 
 > 구현: `web/SecurityConfig.kt`(기본 permitAll / 활성 시 oauth2Login). 길드 관리자 권한 매핑은 후속(현재 인증=접근).
 

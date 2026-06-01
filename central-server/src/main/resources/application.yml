@@ -64,6 +64,10 @@ central:
     request-timeout-seconds: ${RELAY_REQUEST_TIMEOUT_SECONDS:120}
   token:
     ttl-seconds: ${AGENT_TOKEN_TTL_SECONDS:600}
+  dashboard:
+    # Discord OAuth 를 켜기 전에도 운영 AI Network 관리자 API 를 막기 위한 임시 운영 토큰.
+    # 설정하면 X-Dashboard-Admin-Token 헤더가 일치할 때만 admin audience/쓰기 API 를 허용한다.
+    admin-token: ${CENTRAL_DASHBOARD_ADMIN_TOKEN:}
   ai-network:
     enabled: ${AI_NETWORK_ENABLED:true}
     dashboard-enabled: ${AI_NETWORK_DASHBOARD_ENABLED:true}

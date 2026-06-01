@@ -10,7 +10,8 @@ import org.springframework.security.web.SecurityFilterChain
 /**
  * 대시보드 관리자 인증(차수 14 #196 / #197, Discord OAuth2).
  *
- * 기본(central.oauth.enabled=false): permitAll — 기존 오픈 API·대시보드 동작과 테스트를 보존한다.
+ * 기본(central.oauth.enabled=false): 공개 읽기 경로는 보존하되 관리자 audience/쓰기 API 는
+ * X-Dashboard-Admin-Token 또는 인증 세션이 있어야 한다.
  * 활성(true + Discord OAuth2 등록): 대시보드 데이터·쓰기 경로를 인증 사용자로 제한하고 OAuth2 로그인을 켠다.
  *
  * Discord OAuth2 등록은 spring.security.oauth2.client.registration.discord(client-id·secret, 런타임 시크릿).
@@ -30,6 +31,11 @@ class SecurityConfig(
                     authorize("/dashboard/**", permitAll)
                     authorize("/presets", permitAll)
                     authorize("/presets/**", permitAll)
+                    authorize("/api/ai-network/features", permitAll)
+                    authorize("/api/ai-network/presets/catalog", permitAll)
+                    authorize("/api/ai-network/presets/catalog/**", permitAll)
+                    authorize("/api/ai-network/presets/published/*/like", permitAll)
+                    authorize("/api/ai-network/presets/published/*/report", permitAll)
                     authorize("/download/**", permitAll) // 에이전트 바이너리 공개 다운로드
                     authorize("/", permitAll) // 설치 랜딩(차수 19)
                     authorize("/install", permitAll)
@@ -44,7 +50,7 @@ class SecurityConfig(
                 }
                 oauth2Login { }
             } else {
-                // 기본: 전부 허용(현 오픈 설계 보존). 운영 인증은 oauth 활성으로 전환.
+                // 기본: Spring Security 는 공개 허용하되 AiNetworkApiSecurityFilter 가 관리자 audience/쓰기 API 를 보호한다.
                 authorizeHttpRequests {
                     authorize(anyRequest, permitAll)
                 }

@@ -81,7 +81,6 @@ class CommandService(
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
-        val effectivePrompt = prompt.composeExecutionPrompt(ctx)
         val routingPolicy = channelRoutingPolicies.effective(ctx.guildId, ctx.channelId, policy.guildDefaultModel(ctx.guildId))
         val modelChoice =
             channelRoutingPolicies.resolveModelChoice(
@@ -95,6 +94,7 @@ class CommandService(
                 ?: requestedModel?.trim()?.ifBlank { null }
                 ?: routingPolicy.preferredModel
         val responseMode = normalizeAskResponseMode(requestedResponseMode) ?: routingPolicy.responseMode
+        val effectivePrompt = prompt.composeExecutionPrompt(ctx, responseMode)
         val result =
             orchestrator.handle(
                 AiRequestInput(
@@ -125,14 +125,17 @@ class CommandService(
             else -> null
         }
 
-    private fun String.composeExecutionPrompt(ctx: CommandContext): String {
+    private fun String.composeExecutionPrompt(
+        ctx: CommandContext,
+        responseMode: String,
+    ): String {
         val behaviorPrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it) } ?: this
         val knowledgeContext =
             runCatching {
-                knowledgeSearch.promptContext(
+                knowledgeSearch.contextPlan(
                     guildId = ctx.guildId,
                     query = this,
-                    maxChars = 1200,
+                    responseMode = responseMode,
                     channelId = ctx.channelId,
                 )
             }.getOrNull()

@@ -311,6 +311,41 @@ class CommandServiceTest
         }
 
         @Test
+        fun `ask — 응답 모드별 RAG 예산으로 지식 컨텍스트를 제한한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 81, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                val space = knowledge.createSpace(100, 200, null, "긴 개발 지식", 77, null, null)
+                listOf("A", "B", "C").forEach { prefix ->
+                    val source =
+                        knowledge.addSource(
+                            guildId = 100,
+                            spaceId = space.id,
+                            sourceType = "link",
+                            title = "$prefix Kotlin ${"설정".repeat(50)}",
+                            sourceUri = "https://example.com/$prefix/${"very-long-path".repeat(12)}",
+                            contentPreview = "운영",
+                            addedBy = 77,
+                        )
+                    knowledge.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+                }
+
+                val saving = commands.ask(ctx(admin = true), "Kotlin 설정", requestedResponseMode = "saving").content
+                assertTrue(saving.contains("A Kotlin"))
+                assertFalse(saving.contains("C Kotlin"), saving)
+
+                val deep = commands.ask(ctx(admin = true).copy(userId = 6), "Kotlin 설정", requestedResponseMode = "deep").content
+                assertTrue(deep.contains("A Kotlin"))
+                assertTrue(deep.contains("B Kotlin"))
+                assertTrue(deep.contains("C Kotlin"))
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
         fun `rate limit — 분당 초과 차단`() {
             val c = CommandContext(guildId = 100, channelId = 200, userId = 8888, roleIds = setOf(1), isAdmin = false)
             repeat(10) { commands.ask(c, "q") }

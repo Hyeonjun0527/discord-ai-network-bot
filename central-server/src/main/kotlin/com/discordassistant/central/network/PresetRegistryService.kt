@@ -352,6 +352,8 @@ class PresetRegistryService(
             }
         requirePublishableRevision(revision)
         val publishTitle = title?.trim()?.ifBlank { null } ?: preset.name
+        val publishDescription = description?.trim()?.ifBlank { null } ?: preset.summary
+        requirePublishablePublicMetadata(publishTitle, publishDescription, preset.category)
         preset.status = "published"
         preset.visibility = "published"
         presets.save(preset)
@@ -361,9 +363,9 @@ class PresetRegistryService(
                 revisionId = revisionId,
                 publisherGuildId = preset.guildId,
                 publisherUserId = publisherUserId,
-                slug = uniqueSlug(publishTitle, preset.id),
-                title = publishTitle,
-                description = description?.trim()?.ifBlank { null } ?: preset.summary,
+                slug = uniqueSlug(publishTitle.take(120), preset.id),
+                title = publishTitle.take(120),
+                description = publishDescription?.take(500),
                 status = "published",
                 publishedAt = Instant.now(clock),
             ),
@@ -386,6 +388,8 @@ class PresetRegistryService(
             revisions.findById(published.revisionId).orElseThrow {
                 IllegalArgumentException("published revision not found: ${published.revisionId}")
             }
+        requirePublishablePublicMetadata(published.title, published.description)
+        requirePublishableRevision(sourceRevision)
         return buildImportPreview(published, sourceRevision, targetGuildId, targetChannelId)
     }
 
@@ -409,6 +413,9 @@ class PresetRegistryService(
                 IllegalArgumentException("preset not found: ${published.presetId}")
             }
         requireActivePreset(preset)
+        val nextTitle = title?.trim()?.takeIf { it.isNotBlank() } ?: published.title
+        val nextDescription = description?.trim()?.let { it.ifBlank { null } } ?: published.description
+        requirePublishablePublicMetadata(nextTitle, nextDescription, preset.category)
         title?.trim()?.takeIf { it.isNotBlank() }?.let { published.title = it.take(120) }
         description?.trim()?.let { published.description = it.ifBlank { null }?.take(500) }
         if (behavior != null) {
@@ -441,6 +448,8 @@ class PresetRegistryService(
             revisions.findById(published.revisionId).orElseThrow {
                 IllegalArgumentException("published revision not found: ${published.revisionId}")
             }
+        requirePublishablePublicMetadata(published.title, published.description)
+        requirePublishableRevision(sourceRevision)
         val preview = buildImportPreview(published, sourceRevision, targetGuildId, targetChannelId)
         val confirmationRequired = preview.conflicts.any { it.severity in CONFIRM_REQUIRED_CONFLICT_SEVERITIES }
         require(confirmConflicts || !confirmationRequired) {
@@ -684,8 +693,8 @@ class PresetRegistryService(
             willOverwriteChannelAi = existingChannelAi != null,
             willOverwriteRoutingPolicy = existingRouting != null,
             willCreateApprovalProposal = highRisk && targetChannelId != null,
-            title = published.title,
-            description = published.description,
+            title = published.title.publicRequired(maxLength = 120, fallback = REDACTED_PUBLIC_TITLE),
+            description = published.description.publicOptional(maxLength = 500),
             purpose = sourceRevision.purpose,
             tone = sourceRevision.tone,
             answerLength = sourceRevision.answerLength,
@@ -806,6 +815,13 @@ class PresetRegistryService(
         require(published.status == "published") { "published preset is not importable or likable: ${published.status}" }
     }
 
+    private fun requirePublishablePublicMetadata(vararg values: String?) {
+        val text = values.joinToString("\n") { it.orEmpty() }
+        require(!text.hasSensitiveMaterial()) {
+            "published preset cannot include secrets or sensitive credentials"
+        }
+    }
+
     private fun requirePublishableRevision(revision: PresetRevisionEntity) {
         val text =
             listOf(
@@ -823,7 +839,7 @@ class PresetRegistryService(
                 revision.knowledgeGuide.orEmpty(),
                 revision.changeSummary.orEmpty(),
             ).joinToString("\n")
-        require(!SECRET_PATTERN.containsMatchIn(text)) {
+        require(!text.hasSensitiveMaterial()) {
             "published preset cannot include secrets or sensitive credentials"
         }
     }
@@ -932,19 +948,19 @@ class PresetRegistryService(
 
     private fun PresetRevisionEntity.toBehaviorSnapshot(): PresetBehaviorSnapshot =
         PresetBehaviorSnapshot(
-            purpose = purpose,
-            tone = tone,
-            answerLength = answerLength,
-            constitution = constitution,
-            safetyLevel = safetyLevel,
-            responseMode = responseMode,
-            preferredModel = preferredModel,
-            minQualityTier = minQualityTier,
+            purpose = purpose.publicRequired(maxLength = 1000, fallback = REDACTED_PUBLIC_TEXT),
+            tone = tone.publicRequired(maxLength = 160, fallback = "friendly"),
+            answerLength = answerLength.publicRequired(maxLength = 80, fallback = "balanced"),
+            constitution = constitution.publicOptional(maxLength = 3000),
+            safetyLevel = safetyLevel.publicRequired(maxLength = 80, fallback = "standard"),
+            responseMode = responseMode.publicRequired(maxLength = 80, fallback = "balanced"),
+            preferredModel = preferredModel.publicOptional(maxLength = 160),
+            minQualityTier = minQualityTier.publicRequired(maxLength = 80, fallback = "standard"),
             maxCandidates = maxCandidates,
-            providerTagFilter = splitCsv(providerTagFilter),
-            costGuard = costGuard,
-            knowledgeSlotNames = splitCsv(knowledgeSlotNames),
-            knowledgeGuide = knowledgeGuide,
+            providerTagFilter = splitCsv(providerTagFilter).filterNot { it.hasSensitiveMaterial() },
+            costGuard = costGuard.publicRequired(maxLength = 80, fallback = "provider_safe"),
+            knowledgeSlotNames = splitCsv(knowledgeSlotNames).filterNot { it.hasSensitiveMaterial() },
+            knowledgeGuide = knowledgeGuide.publicOptional(maxLength = 1000),
         )
 
     private fun PresetImportEntity.toSummary(): PresetImportSummary =
@@ -1049,17 +1065,17 @@ class PresetRegistryService(
             publisherGuildId = null,
             publisherUserId = null,
             publisherLabel = "공개 프리셋 작성자",
-            slug = slug,
-            title = title,
-            description = description,
+            slug = slug.publicSlug(id),
+            title = title.publicRequired(maxLength = 120, fallback = REDACTED_PUBLIC_TITLE),
+            description = description.publicOptional(maxLength = 500),
             status = status,
-            category = preset?.category,
-            purpose = revision?.purpose,
-            tone = revision?.tone,
-            safetyLevel = revision?.safetyLevel,
-            responseMode = revision?.responseMode,
-            preferredModel = revision?.preferredModel,
-            minQualityTier = revision?.minQualityTier,
+            category = (preset?.category).publicOptional(maxLength = 80),
+            purpose = (revision?.purpose).publicOptional(maxLength = 1000),
+            tone = (revision?.tone).publicOptional(maxLength = 160),
+            safetyLevel = (revision?.safetyLevel).publicOptional(maxLength = 80),
+            responseMode = (revision?.responseMode).publicOptional(maxLength = 80),
+            preferredModel = (revision?.preferredModel).publicOptional(maxLength = 160),
+            minQualityTier = (revision?.minQualityTier).publicOptional(maxLength = 80),
             likeCount = likeCount,
             importCount = importCount,
             reportCount = reportCount,
@@ -1167,6 +1183,30 @@ class PresetRegistryService(
             ?.take(1000)
             ?.ifBlank { null }
 
+    private fun String?.publicOptional(maxLength: Int): String? {
+        val trimmed = this?.trim()?.ifBlank { null } ?: return null
+        if (trimmed.hasSensitiveMaterial()) return REDACTED_PUBLIC_TEXT
+        return trimmed.take(maxLength)
+    }
+
+    private fun String.publicRequired(
+        maxLength: Int,
+        fallback: String,
+    ): String {
+        val trimmed = trim().ifBlank { return fallback }
+        if (trimmed.hasSensitiveMaterial()) return fallback
+        return trimmed.take(maxLength)
+    }
+
+    private fun String.publicSlug(id: Long): String {
+        val trimmed = trim()
+        if (trimmed.hasSensitiveMaterial() || SENSITIVE_SLUG_PATTERN.containsMatchIn(trimmed)) return "preset-$id"
+        return trimmed.take(120).ifBlank { "preset-$id" }
+    }
+
+    private fun String.hasSensitiveMaterial(): Boolean =
+        KnowledgeSafety.containsSensitiveMaterial(this) || SECRET_PATTERN.containsMatchIn(this)
+
     private fun splitCsv(value: String?): List<String> =
         value
             .orEmpty()
@@ -1176,7 +1216,10 @@ class PresetRegistryService(
 
     private companion object {
         const val REPORT_REVIEW_THRESHOLD = 1
+        const val REDACTED_PUBLIC_TITLE = "비공개 프리셋"
+        const val REDACTED_PUBLIC_TEXT = "[비공개 처리됨]"
         val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
+        val SENSITIVE_SLUG_PATTERN = Regex("""(?i)(password|passwd|token|api[-_]?key|secret|authorization|bearer)""")
         val HIGH_RISK_SAFETY_LEVELS = setOf("high", "restricted", "dangerous")
         val CONFIRM_REQUIRED_CONFLICT_SEVERITIES = setOf("warning", "blocker")
     }

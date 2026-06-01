@@ -410,6 +410,102 @@ class PresetRegistryServiceTest
         }
 
         @Test
+        fun `published preset rejects secret bearing public metadata`() {
+            val preset =
+                service.createPreset(
+                    guildId = 321,
+                    ownerUserId = 77,
+                    name = "안전 프리셋",
+                    summary = "공개 설명",
+                    category = "dev",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "개발 질문", tone = "practical"),
+                )
+
+            assertThrows(IllegalArgumentException::class.java) {
+                service.publishPreset(preset.id, publisherUserId = 77, title = "코딩 token=super-secret", description = null)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.publishPreset(preset.id, publisherUserId = 77, title = null, description = "api_key=secret-value")
+            }
+            assertEquals("draft", presets.findById(preset.id).orElseThrow().status)
+
+            val categorySecret =
+                service.createPreset(
+                    guildId = 321,
+                    ownerUserId = 77,
+                    name = "카테고리 비밀",
+                    summary = "안전",
+                    category = "token=category-secret",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "개발 질문"),
+                )
+            assertThrows(IllegalArgumentException::class.java) {
+                service.publishPreset(categorySecret.id, publisherUserId = 77, title = null, description = null)
+            }
+
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = "안전 제목", description = "안전 설명")
+            assertThrows(IllegalArgumentException::class.java) {
+                service.updatePublishedPreset(
+                    publishedPresetId = published.id,
+                    actorUserId = 77,
+                    title = "업데이트 token=hidden",
+                    description = null,
+                    behavior = null,
+                )
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.updatePublishedPreset(
+                    publishedPresetId = published.id,
+                    actorUserId = 77,
+                    title = null,
+                    description = "DISCORD_BOT_TOKEN=hidden",
+                    behavior = null,
+                )
+            }
+
+            val afterFailedUpdate = publishedPresets.findById(published.id).orElseThrow()
+            assertEquals("안전 제목", afterFailedUpdate.title)
+            assertEquals("안전 설명", afterFailedUpdate.description)
+        }
+
+        @Test
+        fun `legacy secret bearing published preset is masked and cannot be imported`() {
+            val preset =
+                service.createPreset(
+                    guildId = 322,
+                    ownerUserId = 77,
+                    name = "레거시 프리셋",
+                    summary = "공개 설명",
+                    category = "dev",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "개발 질문", tone = "practical"),
+                )
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = "레거시", description = "안전")
+            published.title = "token=legacy-secret"
+            published.description = "api_key=legacy-secret"
+            published.slug = "token-legacy-secret"
+            publishedPresets.saveAndFlush(published)
+            val revision = revisions.findById(published.revisionId).orElseThrow()
+            revision.purpose = "api_key=legacy-purpose"
+            revisions.saveAndFlush(revision)
+
+            val summary = service.searchPublishedPresets().single()
+            assertEquals("비공개 프리셋", summary.title)
+            assertEquals("[비공개 처리됨]", summary.description)
+            assertEquals("preset-${published.id}", summary.slug)
+            assertEquals("[비공개 처리됨]", summary.purpose)
+            val detail = service.publishedPresetDetail(published.id)
+            assertEquals("[비공개 처리됨]", detail.behavior.purpose)
+            assertThrows(IllegalArgumentException::class.java) {
+                service.previewImport(published.id, targetGuildId = 323, targetChannelId = 423)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.importPreset(published.id, targetGuildId = 323, targetChannelId = 423, importedBy = 88)
+            }
+        }
+
+        @Test
         fun `preset shares rag knowledge slots as placeholders without copying source text`() {
             val preset =
                 service.createPreset(

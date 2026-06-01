@@ -133,6 +133,12 @@ class ChannelAiRoutingPolicyService(
                         .thenBy { it.modelName }
                         .thenBy { it.providerUserId },
                 )
+        val availableModels =
+            candidates
+                .filter { it.eligible }
+                .map { it.modelName }
+                .distinct()
+                .sorted()
         return ModelCandidateCatalog(
             guildId = guildId,
             channelId = channelId,
@@ -141,14 +147,36 @@ class ChannelAiRoutingPolicyService(
             allowedModels = effective.allowedModels,
             minQualityTier = effective.minQualityTier,
             providerTagFilter = effective.providerTagFilter,
-            availableModels =
-                candidates
-                    .filter { it.eligible }
-                    .map { it.modelName }
-                    .distinct()
-                    .sorted(),
+            availableModels = availableModels,
+            unavailableAllowedModels = effective.allowedModels.filter { it !in availableModels }.sorted(),
+            safetySummary = modelCandidateSafetySummary(candidates, effective.allowedModels, availableModels),
             candidates = candidates,
         )
+    }
+
+    private fun modelCandidateSafetySummary(
+        candidates: List<ModelCandidate>,
+        allowedModels: List<String>,
+        availableModels: List<String>,
+    ): String {
+        if (availableModels.isNotEmpty()) return "available"
+        if (candidates.isEmpty()) return "no_provider_models_reported"
+        val scopedCandidates =
+            if (allowedModels.isEmpty()) {
+                candidates
+            } else {
+                candidates.filter { it.modelName in allowedModels }
+            }
+        if (scopedCandidates.isEmpty()) return "allowed_models_not_reported"
+        val reasons = scopedCandidates.flatMap { it.ineligibleReasons }.toSet()
+        return when {
+            reasons.any { it == "provider_critical_overload" } -> "provider_protection_blocks_all_allowed_models"
+            reasons.any { it == "provider_offline" } -> "providers_offline_for_allowed_models"
+            reasons.any { it == "provider_tag_mismatch" } -> "provider_tag_filter_blocks_allowed_models"
+            reasons.any { it == "quality_below_minimum" } -> "quality_policy_blocks_allowed_models"
+            reasons.any { it == "model_not_allowed" } -> "model_policy_blocks_all_models"
+            else -> "no_eligible_model_candidate"
+        }
     }
 
     private fun availableModelNames(
@@ -258,6 +286,8 @@ data class ModelCandidateCatalog(
     val minQualityTier: String,
     val providerTagFilter: List<String>,
     val availableModels: List<String>,
+    val unavailableAllowedModels: List<String> = emptyList(),
+    val safetySummary: String = "available",
     val candidates: List<ModelCandidate>,
 )
 

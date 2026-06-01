@@ -124,9 +124,14 @@ class ChannelAiRoutingPolicyServiceTest
 
             val decision = service.resolveModelChoice(100, 203, requestedModel = "qwen-coder", guildDefaultModel = null)
 
+            val catalog = service.modelCandidates(100, 203, guildDefaultModel = null)
+
             assertEquals(null, decision.selectedModel)
             assertEquals("no_available_model", decision.fallbackReason)
             assertEquals(true, decision.requiresAvailableModel)
+            assertEquals(emptyList<String>(), catalog.availableModels)
+            assertEquals(listOf("qwen-coder"), catalog.unavailableAllowedModels)
+            assertEquals("provider_protection_blocks_all_allowed_models", catalog.safetySummary)
         }
 
         @Test
@@ -221,6 +226,8 @@ class ChannelAiRoutingPolicyServiceTest
             val decision = service.resolveModelChoice(100, 202, requestedModel = "qwen-coder", guildDefaultModel = null)
 
             assertEquals(listOf("llama3.1:8b", "qwen-coder"), catalog.availableModels)
+            assertEquals(emptyList<String>(), catalog.unavailableAllowedModels)
+            assertEquals("available", catalog.safetySummary)
             assertEquals("qwen-coder", decision.selectedModel)
             assertEquals(null, decision.fallbackReason)
             assertEquals(2, catalog.candidates.count { it.eligible })

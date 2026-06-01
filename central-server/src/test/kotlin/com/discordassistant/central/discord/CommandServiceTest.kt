@@ -273,6 +273,7 @@ class CommandServiceTest
             assertTrue(moderation.contains("프리셋 신고/검수 큐"))
             assertTrue(moderation.contains("코딩 튜터"))
             assertTrue(moderation.contains("열린 신고 1"))
+            assertTrue(moderation.contains("유형"))
             val report = presetRegistry.listReports().single()
             val reviewed = commands.reviewPresetReport(g, report.id, "dismiss")
             assertTrue(reviewed.content.contains("신고를 처리"))

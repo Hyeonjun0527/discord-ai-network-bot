@@ -987,8 +987,13 @@ class CommandService(
             summary.queue
                 .take(10)
                 .joinToString("\n") { item ->
+                    val reasonCodes =
+                        item.reportReasonCodes.entries
+                            .joinToString(",") { "${it.key}:${it.value}" }
+                            .ifBlank { "none" }
                     "• `${item.publishedPresetId}` **${item.title}** — `${item.status}` · 신고 ${item.reportCount} · " +
-                        "좋아요 ${item.likeCount} · risk `${item.riskCodes.joinToString(",").ifBlank { "none" }}`\n" +
+                        "좋아요 ${item.likeCount} · risk `${item.riskCodes.joinToString(",").ifBlank { "none" }}` · " +
+                        "유형 `$reasonCodes`\n" +
                         "  ↳ ${item.recommendedAction}"
                 }.ifBlank { "• 검토할 프리셋 신고가 없습니다." }
         val nextActions =

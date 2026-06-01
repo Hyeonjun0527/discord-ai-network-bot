@@ -886,10 +886,11 @@ async function reportPublishedPreset(id = null) {
   try {
     const result = await postJson(`/api/ai-network/presets/published/${publishedPresetId}/report`, {
       reporterUserId: 0,
-      reason,
+      reasonCode: "other",
+      details: reason,
     });
     $("presetReportId").value = result.id || "";
-    $("presetManageResult").textContent = `신고 접수 완료: report=${result.id} · ${result.status}`;
+    $("presetManageResult").textContent = `신고 접수 완료: report=${result.id} · ${result.status} · ${result.reasonCode || "other"}`;
     await refreshPresets();
     await refreshPresetModeration();
   } catch (e) {
@@ -897,9 +898,14 @@ async function reportPublishedPreset(id = null) {
   }
 }
 
+function formatReportReasonCodes(item) {
+  const entries = Object.entries(item?.reportReasonCodes || {});
+  return entries.length ? entries.map(([code, count]) => `${code}:${count}`).join(", ") : "none";
+}
+
 function renderPresetModeration(summary) {
   renderList("presetModerationList", summary?.queue?.slice(0, 12), "검토할 신고 없음", (item) =>
-    `<li><strong>${esc(item.publishedPresetId)} · ${esc(item.title)}</strong><span>${esc(item.status)} · 신고 ${esc(item.reportCount)} · ${esc((item.riskCodes || []).join(", ") || "none")}</span><button class="mini select-published-preset" data-preset-id="${esc(item.publishedPresetId)}">프리셋 선택</button></li>`,
+    `<li><strong>${esc(item.publishedPresetId)} · ${esc(item.title)}</strong><span>${esc(item.status)} · 신고 ${esc(item.reportCount)} · 유형 ${esc(formatReportReasonCodes(item))} · ${esc((item.riskCodes || []).join(", ") || "none")}</span><button class="mini select-published-preset" data-preset-id="${esc(item.publishedPresetId)}">프리셋 선택</button></li>`,
   );
 }
 

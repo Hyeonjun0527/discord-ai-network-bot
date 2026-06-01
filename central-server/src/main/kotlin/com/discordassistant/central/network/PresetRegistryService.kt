@@ -263,9 +263,10 @@ class PresetRegistryService(
         val published = publishedPresets.findAll()
         val reportRows = reports.findAll()
         val reportStatusCounts = reportRows.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
+        val openReportsByPreset = reportRows.filter { it.status == "open" }.groupBy { it.publishedPresetId }
         val queue =
             published
-                .map { preset -> moderationItem(preset) }
+                .map { preset -> moderationItem(preset, openReportsByPreset[preset.id].orEmpty()) }
                 .filter { it.riskCodes.isNotEmpty() }
                 .sortedWith(
                     compareBy<PresetModerationQueueItem> { moderationSeverityRank(it) }
@@ -1077,8 +1078,16 @@ class PresetRegistryService(
             reviewedAt = reviewedAt?.toString(),
         )
 
-    private fun moderationItem(published: PublishedPresetEntity): PresetModerationQueueItem {
+    private fun moderationItem(
+        published: PublishedPresetEntity,
+        openReports: List<PresetReportEntity>,
+    ): PresetModerationQueueItem {
         val summary = publishedSummary(published)
+        val reportReasonCodes =
+            openReports
+                .groupingBy { it.reasonCode.ifBlank { "other" } }
+                .eachCount()
+                .toSortedMap()
         val riskCodes =
             buildList {
                 if (summary.status == "under_review") add("under_review")
@@ -1097,6 +1106,7 @@ class PresetRegistryService(
             importCount = summary.importCount,
             safetyLevel = summary.safetyLevel,
             riskCodes = riskCodes,
+            reportReasonCodes = reportReasonCodes,
             recommendedAction = presetModerationAction(summary.status, riskCodes),
         )
     }
@@ -1510,6 +1520,7 @@ data class PresetModerationQueueItem(
     val importCount: Int,
     val safetyLevel: String?,
     val riskCodes: List<String>,
+    val reportReasonCodes: Map<String, Int>,
     val recommendedAction: String,
 )
 

@@ -1066,7 +1066,12 @@ class PresetRegistryServiceTest
             val popular = service.publishPreset(popularPreset.id, publisherUserId = 77, title = null, description = null)
             val highRisk = service.publishPreset(highRiskPreset.id, publisherUserId = 78, title = null, description = null)
             (1L..5L).forEach { service.likePreset(popular.id, userId = 1000 + it) }
-            service.reportPreset(popular.id, reporterUserId = 88, reason = "자동화가 위험해 보여요 token=hidden")
+            service.reportPreset(
+                popular.id,
+                reporterUserId = 88,
+                reason = "자동화가 위험해 보여요 token=hidden",
+                reasonCode = "sensitive_data",
+            )
 
             val summary = controller.moderationSummary()["summary"] as PresetModerationSummary
 
@@ -1080,6 +1085,7 @@ class PresetRegistryServiceTest
             assertEquals("under_review", popularQueueItem.status)
             assertTrue(popularQueueItem.riskCodes.contains("popular_reported"))
             assertTrue(popularQueueItem.riskCodes.contains("reported"))
+            assertEquals(1, popularQueueItem.reportReasonCodes["sensitive_data"])
             assertTrue(popularQueueItem.recommendedAction.contains("인기 프리셋"))
             val highRiskQueueItem = summary.queue.first { it.publishedPresetId == highRisk.id }
             assertTrue(highRiskQueueItem.riskCodes.contains("high_safety_level"))

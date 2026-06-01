@@ -224,6 +224,8 @@ class DashboardServingTest
             assertTrue(js.contains("republishPublishedPreset"))
             assertTrue(js.contains("deletePublishedPreset"))
             assertTrue(js.contains("reportPublishedPreset"))
+            assertTrue(js.contains("formatReportReasonCodes"))
+            assertTrue(js.contains("reportReasonCodes"))
             assertTrue(js.contains("refreshPresetModeration"))
             assertTrue(js.contains("reviewPresetReport"))
             assertTrue(js.contains("refreshMultiOps"))

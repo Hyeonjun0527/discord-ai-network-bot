@@ -342,6 +342,50 @@ class AiNetworkDashboardControllerTest
         }
 
         @Test
+        fun `dashboard next actions guide missing foundation steps`() {
+            val dashboard = controller.dashboard(501)
+            val actionTypes = dashboard.nextActions.map { it.actionType }
+
+            assertEquals("connect_provider", dashboard.nextActions.first().actionType)
+            assertTrue(actionTypes.contains("create_channel_ai"))
+            assertTrue(actionTypes.contains("add_knowledge"))
+            assertTrue(actionTypes.contains("collect_feedback"))
+            assertTrue(
+                dashboard.nextActions
+                    .first { it.actionType == "connect_provider" }
+                    .description
+                    .contains("온라인 Provider가 없어"),
+            )
+        }
+
+        @Test
+        fun `dashboard next actions prioritize provider protection over optimization`() {
+            channelAis.save(ChannelAiEntity(guildId = 502, channelId = 602, displayName = "보호냥"))
+            foundation.upsertProviderCapability(
+                guildId = 502,
+                providerUserId = 777,
+                providerState = "OVERLOADED",
+                modelNames = listOf("llama3.1:8b"),
+                capabilityTags = listOf("coding"),
+                maxBurden = "DEEP",
+                maxConcurrency = 1,
+                dailyLimit = 5,
+                overloadRisk = "critical",
+            )
+
+            val dashboard = controller.dashboard(502, responseMode = "deep", requestedCandidates = 2)
+
+            assertEquals("protect_providers", dashboard.nextActions.first().actionType)
+            assertEquals("critical", dashboard.nextActions.first().severity)
+            assertTrue(
+                dashboard.nextActions
+                    .first()
+                    .description
+                    .contains("보호 정책"),
+            )
+        }
+
+        @Test
         fun `dashboard combines network status quality overload model map and customization slices`() {
             val channelAi = channelAis.save(ChannelAiEntity(guildId = 130, channelId = 230, displayName = "요약냥"))
             behaviorVersions
@@ -409,5 +453,7 @@ class AiNetworkDashboardControllerTest
             assertEquals(1, dashboard.overload.highRiskCount)
             assertEquals("saving", dashboard.executionPlan.effectiveResponseMode)
             assertNull(dashboard.providers.first().providerUserId)
+            assertEquals("protect_providers", dashboard.nextActions.first().actionType)
+            assertTrue(dashboard.nextActions.any { it.actionType == "add_knowledge" })
         }
     }

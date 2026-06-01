@@ -48,20 +48,33 @@ class AiNetworkDashboardController(
         @RequestParam(defaultValue = "public") audience: String = "public",
         @RequestParam(defaultValue = "balanced") responseMode: String = "balanced",
         @RequestParam(defaultValue = "1") requestedCandidates: Int = 1,
-    ): AiNetworkDashboardResponse =
-        AiNetworkDashboardResponse(
-            overview = overview(guildId),
-            channels = channels(guildId),
-            providers = providers(guildId, audience),
-            modelMap = modelMap(guildId),
-            knowledgeSpaces = knowledgeSpaces(guildId),
-            presets = guildPresets(guildId),
-            publishedPresets = publishedPresets().take(10),
-            quality = qualityFeedback.guildSummary(guildId),
-            modelQuality = qualityFeedback.modelQuality(guildId),
-            overload = providerSafety.overloadAlerts(guildId),
-            executionPlan = providerSafety.executionPlan(guildId, responseMode, requestedCandidates),
+    ): AiNetworkDashboardResponse {
+        val overview = overview(guildId)
+        val channels = channels(guildId)
+        val providers = providers(guildId, audience)
+        val modelMap = modelMap(guildId)
+        val knowledgeSpaces = knowledgeSpaces(guildId)
+        val guildPresets = guildPresets(guildId)
+        val publishedPresets = publishedPresets().take(10)
+        val quality = qualityFeedback.guildSummary(guildId)
+        val modelQuality = qualityFeedback.modelQuality(guildId)
+        val overload = providerSafety.overloadAlerts(guildId)
+        val executionPlan = providerSafety.executionPlan(guildId, responseMode, requestedCandidates)
+        return AiNetworkDashboardResponse(
+            overview = overview,
+            channels = channels,
+            providers = providers,
+            modelMap = modelMap,
+            knowledgeSpaces = knowledgeSpaces,
+            presets = guildPresets,
+            publishedPresets = publishedPresets,
+            quality = quality,
+            modelQuality = modelQuality,
+            overload = overload,
+            executionPlan = executionPlan,
+            nextActions = nextActions(overview, channels, modelMap, knowledgeSpaces, quality, overload),
         )
+    }
 
     @GetMapping("/{guildId}/overview")
     fun overview(
@@ -270,6 +283,122 @@ class AiNetworkDashboardController(
             )
         }
 
+    private fun nextActions(
+        overview: AiNetworkOverviewResponse,
+        channels: List<ChannelAiCardResponse>,
+        modelMap: List<ModelMapResponse>,
+        knowledgeSpaces: List<KnowledgeSpaceResponse>,
+        quality: QualitySummary,
+        overload: ProviderSafetyDashboard,
+    ): List<AiNetworkNextActionResponse> =
+        buildList {
+            if (overview.onlineProviderCount == 0) {
+                add(
+                    AiNetworkNextActionResponse(
+                        priority = 10,
+                        severity = "critical",
+                        actionType = "connect_provider",
+                        title = "Provider를 먼저 연결하세요",
+                        description = "온라인 Provider가 없어 질문을 처리할 로컬 AI가 없습니다. /프로바이더참여 안내로 첫 PC를 연결하세요.",
+                        ctaLabel = "Provider 참여 안내 열기",
+                        discordCommand = "/프로바이더참여",
+                        dashboardPath = "/dashboard/providers",
+                    ),
+                )
+            }
+            if (channels.isEmpty()) {
+                add(
+                    AiNetworkNextActionResponse(
+                        priority = 20,
+                        severity = "recommended",
+                        actionType = "create_channel_ai",
+                        title = "채널 AI를 만드세요",
+                        description = "채널별 이름·역할·말투가 아직 없습니다. 설정 패널에서 이 채널 AI 프로필을 만들면 네트워크 정체성이 생깁니다.",
+                        ctaLabel = "채널 AI 설정",
+                        discordCommand = "/채널프로필",
+                        dashboardPath = "/dashboard/channels",
+                    ),
+                )
+            }
+            if (modelMap.size < 2 && overview.onlineProviderCount > 0) {
+                add(
+                    AiNetworkNextActionResponse(
+                        priority = 30,
+                        severity = "recommended",
+                        actionType = "add_model_diversity",
+                        title = "모델 다양성을 늘리세요",
+                        description = "현재 선택 가능한 모델이 적습니다. 다른 모델을 가진 Provider가 참여하면 질문 유형별 라우팅 품질이 좋아집니다.",
+                        ctaLabel = "모델 지도 확인",
+                        discordCommand = null,
+                        dashboardPath = "/dashboard/model-map",
+                    ),
+                )
+            }
+            val hasKnowledge =
+                knowledgeSpaces.any { space ->
+                    space.status == "ready" || space.sourceCount > 0
+                } ||
+                    channels.any { channel ->
+                        channel.knowledgeSpaceCount > 0 || channel.indexedKnowledgeSourceCount > 0
+                    }
+            if (!hasKnowledge) {
+                add(
+                    AiNetworkNextActionResponse(
+                        priority = 40,
+                        severity = "optional",
+                        actionType = "add_knowledge",
+                        title = "채널 지식을 추가하세요",
+                        description = "README·운영규칙·FAQ를 지식공간에 등록하면 채널 AI가 서버 맥락을 더 잘 반영할 수 있습니다.",
+                        ctaLabel = "지식 추가",
+                        discordCommand = "/지식추가",
+                        dashboardPath = "/dashboard/knowledge",
+                    ),
+                )
+            }
+            if (quality.feedbackCount == 0) {
+                add(
+                    AiNetworkNextActionResponse(
+                        priority = 50,
+                        severity = "optional",
+                        actionType = "collect_feedback",
+                        title = "답변 품질 피드백을 모으세요",
+                        description = "아직 품질 피드백이 없습니다. 따봉/신고/사유를 모으면 모델 선택과 채널 AI 개선 근거가 생깁니다.",
+                        ctaLabel = "품질 대시보드 보기",
+                        discordCommand = null,
+                        dashboardPath = "/dashboard/quality",
+                    ),
+                )
+            }
+            if (overload.highRiskCount > 0) {
+                add(
+                    AiNetworkNextActionResponse(
+                        priority = 5,
+                        severity = "critical",
+                        actionType = "protect_providers",
+                        title = "Provider 과부하를 먼저 낮추세요",
+                        description = "과부하 Provider가 있어 깊은 답변·다중 응답보다 보호 정책이 우선됩니다. 수신정지/절약 모드/후보 수 제한을 확인하세요.",
+                        ctaLabel = "과부하 알림 확인",
+                        discordCommand = "/내상태",
+                        dashboardPath = "/dashboard/providers/overload",
+                    ),
+                )
+            }
+            if (isEmpty()) {
+                add(
+                    AiNetworkNextActionResponse(
+                        priority = 100,
+                        severity = "info",
+                        actionType = "optimize_network",
+                        title = "AI 네트워크가 안정적으로 준비됐어요",
+                        description = "Provider·채널 AI·지식·피드백 기반이 갖춰졌습니다. 이제 프리셋 공유나 다중 응답 실험을 단계적으로 켜도 됩니다.",
+                        ctaLabel = "고급 기능 검토",
+                        discordCommand = null,
+                        dashboardPath = "/dashboard/experiments",
+                    ),
+                )
+            }
+        }.sortedBy { it.priority }
+
     private companion object {
         val BLOCKING_KNOWLEDGE_RISKS = setOf("sensitive", "ssrf")
         val PROTECTED_OVERLOAD_RISKS = setOf("high", "critical")
@@ -324,6 +453,18 @@ data class AiNetworkDashboardResponse(
     val modelQuality: List<ModelQualitySummary>,
     val overload: ProviderSafetyDashboard,
     val executionPlan: ProviderSafetyExecutionPlan,
+    val nextActions: List<AiNetworkNextActionResponse>,
+)
+
+data class AiNetworkNextActionResponse(
+    val priority: Int,
+    val severity: String,
+    val actionType: String,
+    val title: String,
+    val description: String,
+    val ctaLabel: String,
+    val discordCommand: String?,
+    val dashboardPath: String,
 )
 
 data class AiNetworkOverviewResponse(

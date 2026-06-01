@@ -364,6 +364,22 @@ class PresetRegistryServiceTest
             assertTrue(facets.responseModes.any { it.value == "deep" && it.count == 1 })
             assertTrue(facets.qualityTiers.any { it.value == "standard" && it.count == 4 })
             assertEquals("위험하지만 인기 프리셋", facets.topPresets.first().title)
+
+            val report = service.reportPreset(publishedRisky.id, reporterUserId = 990, reason = "추천 제외 검토")
+            service.reviewReport(report.id, decision = "dismiss")
+
+            val catalogAfterDismiss = controller.publishedPresets(sort = "likes", limit = 2)["presets"] as List<*>
+            assertEquals("위험하지만 인기 프리셋", (catalogAfterDismiss.first() as PublishedPresetSummary).title)
+            val recommendationsAfterDismiss = controller.recommendedPresets(limit = 4)["recommendations"] as List<*>
+            assertTrue(
+                recommendationsAfterDismiss.none {
+                    val recommendation = it as PresetRecommendation
+                    recommendation.preset.title == "위험하지만 인기 프리셋"
+                },
+            )
+            val facetsAfterDismiss = controller.catalogFacets()["facets"] as PresetCatalogFacets
+            assertEquals(4, facetsAfterDismiss.totalPublished)
+            assertEquals("번역냥", facetsAfterDismiss.topPresets.first().title)
         }
 
         @Test

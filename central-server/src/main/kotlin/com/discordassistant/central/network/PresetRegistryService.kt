@@ -186,6 +186,7 @@ class PresetRegistryService(
         return publishedPresets
             .findByStatusOrderByLikeCountDescPublishedAtDesc("published")
             .map { publishedSummary(it) }
+            .filter { it.reportCount == 0 }
             .filter { normalizedCategory == null || it.category.orEmpty().lowercase() == normalizedCategory }
             .map { it.toRecommendation() }
             .sortedWith(
@@ -213,6 +214,7 @@ class PresetRegistryService(
             qualityTiers = summaries.facetBy { it.minQualityTier ?: "standard" },
             topPresets =
                 summaries
+                    .filter { it.reportCount == 0 }
                     .sortedWith(
                         compareByDescending<PublishedPresetSummary> { it.likeCount }
                             .thenByDescending { it.importCount }

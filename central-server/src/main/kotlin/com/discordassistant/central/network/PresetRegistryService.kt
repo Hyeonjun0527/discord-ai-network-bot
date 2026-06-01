@@ -133,6 +133,31 @@ class PresetRegistryService(
     }
 
     @Transactional(readOnly = true)
+    fun catalogFacets(): PresetCatalogFacets {
+        featureGate.requirePresetEnabled()
+        val summaries =
+            publishedPresets
+                .findByStatusOrderByLikeCountDescPublishedAtDesc("published")
+                .map { publishedSummary(it) }
+        return PresetCatalogFacets(
+            totalPublished = summaries.size,
+            totalLikes = summaries.sumOf { it.likeCount },
+            totalImports = summaries.sumOf { it.importCount },
+            categories = summaries.facetBy { it.category ?: "uncategorized" },
+            safetyLevels = summaries.facetBy { it.safetyLevel ?: "unknown" },
+            responseModes = summaries.facetBy { it.responseMode ?: "balanced" },
+            qualityTiers = summaries.facetBy { it.minQualityTier ?: "standard" },
+            topPresets =
+                summaries
+                    .sortedWith(
+                        compareByDescending<PublishedPresetSummary> { it.likeCount }
+                            .thenByDescending { it.importCount }
+                            .thenByDescending { Instant.parse(it.publishedAt) },
+                    ).take(5),
+        )
+    }
+
+    @Transactional(readOnly = true)
     fun presetDetail(presetId: Long): PresetDetail {
         featureGate.requirePresetEnabled()
         val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
@@ -851,6 +876,7 @@ class PresetRegistryService(
             safetyLevel = revision?.safetyLevel,
             responseMode = revision?.responseMode,
             preferredModel = revision?.preferredModel,
+            minQualityTier = revision?.minQualityTier,
             likeCount = likeCount,
             importCount = importCount,
             reportCount = reportCount,
@@ -875,6 +901,12 @@ class PresetRegistryService(
             ?.trim()
             ?.lowercase()
             ?.takeIf { it.isNotBlank() }
+
+    private fun List<PublishedPresetSummary>.facetBy(selector: (PublishedPresetSummary) -> String): List<PresetCatalogFacet> =
+        groupingBy { selector(it).trim().lowercase().ifBlank { "unknown" } }
+            .eachCount()
+            .map { (value, count) -> PresetCatalogFacet(value = value, count = count) }
+            .sortedWith(compareByDescending<PresetCatalogFacet> { it.count }.thenBy { it.value })
 
     private fun uniqueSlug(
         title: String,
@@ -1026,10 +1058,27 @@ data class PublishedPresetSummary(
     val safetyLevel: String?,
     val responseMode: String?,
     val preferredModel: String?,
+    val minQualityTier: String?,
     val likeCount: Int,
     val importCount: Int,
     val reportCount: Int,
     val publishedAt: String,
+)
+
+data class PresetCatalogFacet(
+    val value: String,
+    val count: Int,
+)
+
+data class PresetCatalogFacets(
+    val totalPublished: Int,
+    val totalLikes: Int,
+    val totalImports: Int,
+    val categories: List<PresetCatalogFacet>,
+    val safetyLevels: List<PresetCatalogFacet>,
+    val responseModes: List<PresetCatalogFacet>,
+    val qualityTiers: List<PresetCatalogFacet>,
+    val topPresets: List<PublishedPresetSummary>,
 )
 
 data class PresetBehaviorSnapshot(

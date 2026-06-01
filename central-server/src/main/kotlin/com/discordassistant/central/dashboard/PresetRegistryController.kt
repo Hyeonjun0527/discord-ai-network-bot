@@ -43,6 +43,9 @@ class PresetRegistryController(
             "limit" to limit.coerceIn(1, 100),
         )
 
+    @GetMapping("/catalog/facets")
+    fun catalogFacets(): Map<String, Any?> = mapOf("facets" to registry.catalogFacets())
+
     @GetMapping("/reports")
     fun reports(): Map<String, Any?> = mapOf("reports" to registry.listReports())
 

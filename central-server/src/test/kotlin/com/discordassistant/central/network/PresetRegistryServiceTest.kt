@@ -263,6 +263,16 @@ class PresetRegistryServiceTest
             assertEquals(2, popular.size)
             assertEquals("번역냥", topPreset.title)
             assertEquals(2, topPreset.likeCount)
+            assertEquals("standard", topPreset.minQualityTier)
+
+            val facets = controller.catalogFacets()["facets"] as PresetCatalogFacets
+            assertEquals(3, facets.totalPublished)
+            assertEquals(3, facets.totalLikes)
+            assertTrue(facets.categories.any { it.value == "dev" && it.count == 1 })
+            assertTrue(facets.categories.any { it.value == "translation" && it.count == 1 })
+            assertTrue(facets.responseModes.any { it.value == "deep" && it.count == 1 })
+            assertTrue(facets.qualityTiers.any { it.value == "standard" && it.count == 3 })
+            assertEquals("번역냥", facets.topPresets.first().title)
         }
 
         @Test

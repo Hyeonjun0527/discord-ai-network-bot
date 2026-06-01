@@ -103,6 +103,8 @@ class EmbedFactoryTest {
         assertTrue(en.description?.contains("저장 후 적용될 설정 미리보기") == true)
         assertTrue(en.description?.contains("LLM 사용 허용 채널") == true)
         assertTrue(en.description?.contains("여러 채널") == true)
+        assertTrue(en.description?.contains("저장 대기 변경사항") == true)
+        assertTrue(en.footer?.text?.contains("언어·모델·채널·자동승인") == true)
         val channelField = en.fields.first { it.name?.contains("채널") == true }
         assertTrue(channelField.name?.contains("LLM 사용 허용 채널") == true)
         assertFalse(channelField.isInline)

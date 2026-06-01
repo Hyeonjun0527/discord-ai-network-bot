@@ -241,6 +241,14 @@ interface AiFeedbackRepository : JpaRepository<AiFeedbackEntity, Long> {
         channelId: Long,
     ): List<AiFeedbackEntity>
 
+    fun findTop50ByGuildIdOrderByCreatedAtDesc(guildId: Long): List<AiFeedbackEntity>
+
+    fun findByGuildIdAndRequestIdAndUserId(
+        guildId: Long,
+        requestId: String,
+        userId: Long,
+    ): AiFeedbackEntity?
+
     fun countByGuildId(guildId: Long): Long
 }
 

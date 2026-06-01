@@ -28,18 +28,23 @@ class AiQualityFeedbackService(
         feedbackType: String,
         reason: String?,
     ): AiFeedbackEntity {
+        val normalizedRequestId = requestId?.trim()?.ifBlank { null }
+        if (normalizedRequestId != null && userId != null) {
+            feedbacks.findByGuildIdAndRequestIdAndUserId(guildId, normalizedRequestId, userId)?.let { return it }
+        }
+        val normalizedFeedbackType = feedbackType.trim().lowercase().ifBlank { "general" }
         val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
         return feedbacks.save(
             AiFeedbackEntity(
                 guildId = guildId,
                 channelId = channelId,
-                requestId = requestId?.trim()?.ifBlank { null },
+                requestId = normalizedRequestId,
                 userId = userId,
                 channelAiId = channelAi?.id,
                 rating = rating?.coerceIn(-1, 1),
-                feedbackType = feedbackType.trim().ifBlank { "general" },
-                reason = reason?.trim()?.take(500)?.ifBlank { null },
-                status = "open",
+                feedbackType = normalizedFeedbackType,
+                reason = sanitizeReason(reason),
+                status = if (normalizedFeedbackType.contains("report")) "needs_review" else "open",
                 createdAt = Instant.now(clock),
             ),
         )
@@ -50,15 +55,12 @@ class AiQualityFeedbackService(
         channelId: Long,
     ): QualitySummary {
         val recent = feedbacks.findTop20ByGuildIdAndChannelIdOrderByCreatedAtDesc(guildId, channelId)
-        return QualitySummary(
-            guildId = guildId,
-            channelId = channelId,
-            feedbackCount = recent.size,
-            positive = recent.count { (it.rating ?: 0) > 0 },
-            negative = recent.count { (it.rating ?: 0) < 0 },
-            reports = recent.count { it.feedbackType.contains("report", ignoreCase = true) },
-            recentReasons = recent.mapNotNull { it.reason }.take(5),
-        )
+        return summarize(guildId, channelId, recent)
+    }
+
+    fun guildSummary(guildId: Long): QualitySummary {
+        val recent = feedbacks.findTop50ByGuildIdOrderByCreatedAtDesc(guildId)
+        return summarize(guildId, null, recent)
     }
 
     fun modelQuality(guildId: Long): List<ModelQualitySummary> {
@@ -113,15 +115,46 @@ class AiQualityFeedbackService(
                 latencyMs = it.latencyMs,
             )
         }
+
+    private fun summarize(
+        guildId: Long,
+        channelId: Long?,
+        recent: List<AiFeedbackEntity>,
+    ): QualitySummary =
+        QualitySummary(
+            guildId = guildId,
+            channelId = channelId,
+            feedbackCount = recent.size,
+            positive = recent.count { (it.rating ?: 0) > 0 },
+            negative = recent.count { (it.rating ?: 0) < 0 },
+            reports = recent.count { it.feedbackType.contains("report", ignoreCase = true) },
+            openReports = recent.count { it.status == "needs_review" },
+            recentReasons = recent.mapNotNull { it.reason }.take(5),
+        )
+
+    private fun sanitizeReason(reason: String?): String? =
+        reason
+            ?.trim()
+            ?.replace(SECRET_PATTERN, "[redacted]")
+            ?.take(500)
+            ?.ifBlank { null }
+
+    private companion object {
+        val SECRET_PATTERN =
+            Regex(
+                pattern = """(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""",
+            )
+    }
 }
 
 data class QualitySummary(
     val guildId: Long,
-    val channelId: Long,
+    val channelId: Long?,
     val feedbackCount: Int,
     val positive: Int,
     val negative: Int,
     val reports: Int,
+    val openReports: Int,
     val recentReasons: List<String>,
 )
 

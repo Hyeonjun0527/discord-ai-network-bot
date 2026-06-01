@@ -72,6 +72,43 @@ class AiQualityFeedbackServiceTest
         }
 
         @Test
+        fun `feedback submit deduplicates request user and redacts sensitive reason`() {
+            val first =
+                controller.submit(
+                    100,
+                    200,
+                    SubmitAiFeedbackRequest(
+                        requestId = "req-1",
+                        userId = 9,
+                        rating = -1,
+                        feedbackType = "report",
+                        reason = "token=abc123 응답이 이상함",
+                    ),
+                )
+            val second =
+                controller.submit(
+                    100,
+                    200,
+                    SubmitAiFeedbackRequest(
+                        requestId = "req-1",
+                        userId = 9,
+                        rating = 1,
+                        reason = "다시 제출",
+                    ),
+                )
+
+            val saved = feedbacks.findTop20ByGuildIdAndChannelIdOrderByCreatedAtDesc(100, 200).single()
+            val guildSummary = controller.guildSummary(100)
+
+            assertEquals(first["id"], second["id"])
+            assertEquals("needs_review", first["status"])
+            assertEquals("[redacted] 응답이 이상함", saved.reason)
+            assertEquals(1, guildSummary.feedbackCount)
+            assertEquals(1, guildSummary.openReports)
+            assertEquals(listOf("[redacted] 응답이 이상함"), guildSummary.recentReasons)
+        }
+
+        @Test
         fun `model and candidate quality summaries are exposed`() {
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(

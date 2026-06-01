@@ -32,6 +32,11 @@ class AiQualityFeedbackController(
         return mapOf("id" to saved.id, "status" to saved.status, "rating" to saved.rating)
     }
 
+    @GetMapping("/{guildId}/summary")
+    fun guildSummary(
+        @PathVariable guildId: Long,
+    ) = feedback.guildSummary(guildId)
+
     @GetMapping("/{guildId}/{channelId}/summary")
     fun channelSummary(
         @PathVariable guildId: Long,

@@ -247,6 +247,8 @@ interface AiPresetRepository : JpaRepository<AiPresetEntity, Long> {
 
 interface PresetRevisionRepository : JpaRepository<PresetRevisionEntity, Long> {
     fun findByPresetIdOrderByRevisionDesc(presetId: Long): List<PresetRevisionEntity>
+
+    fun deleteByPresetId(presetId: Long)
 }
 
 interface PublishedPresetRepository : JpaRepository<PublishedPresetEntity, Long> {

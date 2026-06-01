@@ -100,4 +100,67 @@ class ProviderSafetyServiceTest
             assertFalse(guard.allowed)
             assertEquals("provider_overload", events.findTop20ByGuildIdOrderByCreatedAtDesc(100).single().eventType)
         }
+
+        @Test
+        fun `execution plan downgrades advanced modes when provider protection is risky`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 200,
+                    providerUserId = 1,
+                    providerState = "ONLINE",
+                    modelNames = "llama3.1:8b",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 200,
+                    providerUserId = 2,
+                    providerState = "OVERLOADED",
+                    modelNames = "qwen-coder",
+                    overloadRisk = "high",
+                ),
+            )
+
+            val plan = controller.executionPlan(200, responseMode = "deep", requestedCandidates = 3)
+
+            assertEquals("deep", plan.requestedResponseMode)
+            assertEquals("balanced", plan.effectiveResponseMode)
+            assertFalse(plan.advancedFeaturesAllowed)
+            assertFalse(plan.fanoutAllowed)
+            assertEquals(1, plan.maxSafeCandidates)
+            assertTrue(plan.disabledFeatures.contains("multi_response"))
+            assertTrue(plan.disabledFeatures.contains("deep_response"))
+            assertTrue(plan.reasons.any { it.contains("Provider 보호") })
+        }
+
+        @Test
+        fun `execution plan allows limited fanout when enough safe providers exist`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 201,
+                    providerUserId = 1,
+                    providerState = "ONLINE",
+                    modelNames = "llama3.1:8b",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 201,
+                    providerUserId = 2,
+                    providerState = "ONLINE",
+                    modelNames = "qwen-coder",
+                    overloadRisk = "normal",
+                ),
+            )
+
+            val plan = controller.executionPlan(201, responseMode = "deep", requestedCandidates = 2)
+
+            assertEquals("deep", plan.effectiveResponseMode)
+            assertTrue(plan.advancedFeaturesAllowed)
+            assertTrue(plan.fanoutAllowed)
+            assertEquals(2, plan.maxSafeCandidates)
+            assertTrue(plan.disabledFeatures.isEmpty())
+        }
     }

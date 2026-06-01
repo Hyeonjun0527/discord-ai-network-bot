@@ -64,6 +64,54 @@ class ProviderSafetyService(
         )
     }
 
+    fun executionPlan(
+        guildId: Long,
+        requestedResponseMode: String,
+        requestedCandidates: Int,
+    ): ProviderSafetyExecutionPlan {
+        val dashboard = overloadAlerts(guildId)
+        val guard = guardFanout(guildId, requestedCandidates)
+        val requestedMode = requestedResponseMode.normalizedResponseMode()
+        val degradedMode =
+            when {
+                !guard.allowed -> "saving"
+                dashboard.highRiskCount > 0 && requestedMode == "deep" -> "balanced"
+                dashboard.safeOnlineProviderCount <= 1 && requestedMode == "deep" -> "balanced"
+                else -> requestedMode
+            }
+        val fanoutAllowed = guard.allowed && guard.maxSafeCandidates > 1 && dashboard.highRiskCount == 0
+        val disabledFeatures =
+            buildList {
+                if (!fanoutAllowed) add("multi_response")
+                if (degradedMode != requestedMode) add("deep_response")
+                if (dashboard.highRiskCount > 0) add("provider_pressure_boost")
+            }
+        val reasons =
+            buildList {
+                add(guard.reason)
+                if (dashboard.highRiskCount > 0) {
+                    add("과부하 Provider ${dashboard.highRiskCount}명이 있어 품질 기능보다 Provider 보호를 우선합니다.")
+                }
+                if (degradedMode != requestedMode) {
+                    add("요청 모드 `$requestedMode` 를 `$degradedMode` 로 낮춥니다.")
+                }
+                if (fanoutAllowed) {
+                    add("다중 응답을 최대 ${guard.maxSafeCandidates}개 후보까지 허용할 수 있습니다.")
+                }
+            }
+        return ProviderSafetyExecutionPlan(
+            guildId = guildId,
+            requestedResponseMode = requestedMode,
+            effectiveResponseMode = degradedMode,
+            requestedCandidates = requestedCandidates.coerceAtLeast(1),
+            maxSafeCandidates = guard.maxSafeCandidates,
+            advancedFeaturesAllowed = disabledFeatures.isEmpty(),
+            fanoutAllowed = fanoutAllowed,
+            disabledFeatures = disabledFeatures,
+            reasons = reasons,
+        )
+    }
+
     @Transactional
     fun markOverload(
         guildId: Long,
@@ -149,6 +197,18 @@ class ProviderSafetyService(
             "low" -> 1
             else -> 0
         }
+
+    private fun String.normalizedResponseMode(): String =
+        trim().lowercase().ifBlank { "balanced" }.let {
+            when (it) {
+                "fast", "balanced", "deep", "saving" -> it
+                "빠른", "빠른 답변" -> "fast"
+                "균형", "균형 모드" -> "balanced"
+                "깊은", "깊은 답변" -> "deep"
+                "절약", "절약 모드" -> "saving"
+                else -> "balanced"
+            }
+        }
 }
 
 data class ProviderSafetyDashboard(
@@ -179,6 +239,18 @@ data class ProviderSafetyGuard(
     val allowed: Boolean,
     val maxSafeCandidates: Int,
     val reason: String,
+)
+
+data class ProviderSafetyExecutionPlan(
+    val guildId: Long,
+    val requestedResponseMode: String,
+    val effectiveResponseMode: String,
+    val requestedCandidates: Int,
+    val maxSafeCandidates: Int,
+    val advancedFeaturesAllowed: Boolean,
+    val fanoutAllowed: Boolean,
+    val disabledFeatures: List<String>,
+    val reasons: List<String>,
 )
 
 data class ProviderSafetyMutationResult(

@@ -25,6 +25,13 @@ class ProviderSafetyController(
         @RequestParam(defaultValue = "1") requestedCandidates: Int,
     ) = safety.guardFanout(guildId, requestedCandidates)
 
+    @GetMapping("/{guildId}/execution-plan")
+    fun executionPlan(
+        @PathVariable guildId: Long,
+        @RequestParam(defaultValue = "balanced") responseMode: String,
+        @RequestParam(defaultValue = "1") requestedCandidates: Int,
+    ) = safety.executionPlan(guildId, responseMode, requestedCandidates)
+
     @PostMapping("/{guildId}/providers/{providerUserId}/overload")
     fun markOverload(
         @PathVariable guildId: Long,

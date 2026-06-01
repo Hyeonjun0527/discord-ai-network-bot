@@ -15,6 +15,7 @@ class ChannelAiRoutingPolicyService(
     private val channelAis: ChannelAiRepository,
     private val providerCapabilities: ProviderCapabilityProfileRepository,
     private val clock: Clock = Clock.systemUTC(),
+    private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
     @Transactional
     fun save(
@@ -28,6 +29,7 @@ class ChannelAiRoutingPolicyService(
         providerTagFilter: List<String>,
         costGuard: String,
     ): ChannelAiRoutingPolicyEntity {
+        featureGate.requireChannelAiEnabled()
         val now = Instant.now(clock)
         val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
         val policy =
@@ -50,6 +52,7 @@ class ChannelAiRoutingPolicyService(
         channelId: Long,
         guildDefaultModel: String?,
     ): EffectiveRoutingPolicy {
+        if (!featureGate.snapshot().channelAi) return defaultPolicy(guildDefaultModel)
         val policy = policies.findByGuildIdAndChannelId(guildId, channelId)
         return EffectiveRoutingPolicy(
             responseMode = policy?.responseMode ?: "balanced",
@@ -62,7 +65,10 @@ class ChannelAiRoutingPolicyService(
         )
     }
 
-    fun list(guildId: Long): List<ChannelAiRoutingPolicyEntity> = policies.findByGuildId(guildId)
+    fun list(guildId: Long): List<ChannelAiRoutingPolicyEntity> {
+        featureGate.requireChannelAiEnabled()
+        return policies.findByGuildId(guildId)
+    }
 
     fun resolveModelChoice(
         guildId: Long,
@@ -101,6 +107,7 @@ class ChannelAiRoutingPolicyService(
         channelId: Long,
         guildDefaultModel: String?,
     ): ModelCandidateCatalog {
+        featureGate.requireChannelAiEnabled()
         val effective = effective(guildId, channelId, guildDefaultModel)
         val allowedModels = effective.allowedModels.toSet()
         val tagFilter = effective.providerTagFilter.toSet()
@@ -158,6 +165,17 @@ class ChannelAiRoutingPolicyService(
             candidates = candidates,
         )
     }
+
+    private fun defaultPolicy(guildDefaultModel: String?): EffectiveRoutingPolicy =
+        EffectiveRoutingPolicy(
+            responseMode = "balanced",
+            preferredModel = guildDefaultModel,
+            allowedModels = emptyList(),
+            minQualityTier = "standard",
+            maxCandidates = 1,
+            providerTagFilter = emptyList(),
+            costGuard = "provider_safe",
+        )
 
     private fun summarizeModelCandidates(
         candidates: List<ModelCandidate>,

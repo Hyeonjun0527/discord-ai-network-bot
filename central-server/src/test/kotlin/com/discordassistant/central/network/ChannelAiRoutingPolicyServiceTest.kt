@@ -7,6 +7,7 @@ import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
@@ -31,6 +32,41 @@ class ChannelAiRoutingPolicyServiceTest
                 providerCapabilities = providerCapabilities,
                 clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
             )
+
+        private fun disabledService() =
+            ChannelAiRoutingPolicyService(
+                policies = policies,
+                channelAis = channelAis,
+                providerCapabilities = providerCapabilities,
+                clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
+                featureGate = AiNetworkFeatureGate(channelAiEnabled = false),
+            )
+
+        @Test
+        fun `channel ai routing feature gate blocks writes and falls back to default routing`() {
+            val disabled = disabledService()
+
+            assertThrows(IllegalStateException::class.java) {
+                disabled.save(
+                    guildId = 100,
+                    channelId = 200,
+                    responseMode = "deep",
+                    preferredModel = "qwen-coder",
+                    allowedModels = listOf("qwen-coder"),
+                    minQualityTier = "specialized",
+                    maxCandidates = 3,
+                    providerTagFilter = listOf("coding"),
+                    costGuard = "provider_safe",
+                )
+            }
+            val effective = disabled.effective(100, 200, guildDefaultModel = "llama3.1:8b")
+            assertEquals("balanced", effective.responseMode)
+            assertEquals("llama3.1:8b", effective.preferredModel)
+            assertEquals(emptyList<String>(), effective.allowedModels)
+            assertEquals(1, effective.maxCandidates)
+            assertThrows(IllegalStateException::class.java) { disabled.list(100) }
+            assertThrows(IllegalStateException::class.java) { disabled.modelCandidates(100, 200, guildDefaultModel = null) }
+        }
 
         @Test
         fun `channel routing policy stores response mode and model choice`() {

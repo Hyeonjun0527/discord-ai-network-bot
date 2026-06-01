@@ -1,6 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.dashboard.AiQualityFeedbackController
+import com.discordassistant.central.dashboard.ResolveAiFeedbackRequest
 import com.discordassistant.central.dashboard.SubmitAiFeedbackRequest
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity
@@ -106,6 +107,56 @@ class AiQualityFeedbackServiceTest
             assertEquals(1, guildSummary.feedbackCount)
             assertEquals(1, guildSummary.openReports)
             assertEquals(listOf("[redacted] 응답이 이상함"), guildSummary.recentReasons)
+        }
+
+        @Test
+        fun `quality review summary exposes open reports and resolves without raw answer body`() {
+            val report =
+                controller.submit(
+                    100,
+                    201,
+                    SubmitAiFeedbackRequest(
+                        requestId = "report-1",
+                        userId = 10,
+                        rating = -1,
+                        feedbackType = "report",
+                        reason = "api_key=abc 응답이 위험함",
+                    ),
+                )
+            controller.submit(
+                100,
+                202,
+                SubmitAiFeedbackRequest(
+                    requestId = "report-2",
+                    userId = 11,
+                    rating = -1,
+                    feedbackType = "report",
+                    reason = "부정확",
+                ),
+            )
+
+            val summary = controller.reviewSummary(100)
+            assertEquals(2, summary.openReportCount)
+            assertEquals(2, summary.affectedChannelCount)
+            assertEquals("[redacted] 응답이 위험함", summary.queue.first { it.requestId == "report-1" }.reason)
+            assertTrue(summary.topChannels.any { it.channelId == 201L && it.openReports == 1 })
+
+            val resolved =
+                controller.resolveFeedback(
+                    100,
+                    report["id"] as Long,
+                    ResolveAiFeedbackRequest(
+                        status = "resolved",
+                        reviewerUserId = 77,
+                        resolutionReason = "token=abc 조치 완료",
+                    ),
+                )
+            val saved = feedbacks.findByGuildIdAndId(100, report["id"] as Long)!!
+
+            assertEquals("resolved", resolved["status"])
+            assertEquals(77L, resolved["reviewedBy"])
+            assertEquals("[redacted] 조치 완료", saved.resolutionReason)
+            assertEquals(1, controller.reviewSummary(100).openReportCount)
         }
 
         @Test

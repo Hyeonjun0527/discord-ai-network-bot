@@ -295,6 +295,16 @@ interface AiFeedbackRepository : JpaRepository<AiFeedbackEntity, Long> {
     ): AiFeedbackEntity?
 
     fun countByGuildId(guildId: Long): Long
+
+    fun findByGuildIdAndId(
+        guildId: Long,
+        id: Long,
+    ): AiFeedbackEntity?
+
+    fun findTop50ByGuildIdAndStatusOrderByCreatedAtDesc(
+        guildId: Long,
+        status: String,
+    ): List<AiFeedbackEntity>
 }
 
 interface MultiResponsePolicyRepository : JpaRepository<MultiResponsePolicyEntity, Long> {

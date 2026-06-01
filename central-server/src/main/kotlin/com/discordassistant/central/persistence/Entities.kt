@@ -364,6 +364,9 @@ class AiFeedbackEntity(
     var feedbackType: String = "general",
     var reason: String? = null,
     var status: String = "open",
+    var reviewedBy: Long? = null,
+    var reviewedAt: Instant? = null,
+    var resolutionReason: String? = null,
     var createdAt: Instant = Instant.EPOCH,
 )
 

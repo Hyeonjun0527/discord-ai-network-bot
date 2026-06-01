@@ -9,6 +9,7 @@ import com.discordassistant.central.network.MultiResponseService
 import com.discordassistant.central.network.ProviderSafetyDashboard
 import com.discordassistant.central.network.ProviderSafetyExecutionPlan
 import com.discordassistant.central.network.ProviderSafetyService
+import com.discordassistant.central.network.QualityReviewSummary
 import com.discordassistant.central.network.QualitySummary
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiPresetRepository
@@ -63,6 +64,7 @@ class AiNetworkDashboardController(
         val guildPresets = guildPresets(guildId)
         val publishedPresets = publishedPresets().take(10)
         val quality = qualityFeedback.guildSummary(guildId)
+        val qualityReview = qualityFeedback.reviewSummary(guildId)
         val modelQuality = qualityFeedback.modelQuality(guildId)
         val rawOverload = providerSafety.overloadAlerts(guildId)
         val overload = ProviderSafetyDashboardResponse.from(rawOverload, DashboardAudience.from(audience))
@@ -79,6 +81,7 @@ class AiNetworkDashboardController(
             presets = guildPresets,
             publishedPresets = publishedPresets,
             quality = quality,
+            qualityReview = qualityReview,
             modelQuality = modelQuality,
             overload = overload,
             executionPlan = executionPlan,
@@ -483,14 +486,24 @@ class AiNetworkDashboardController(
                 readinessArea(
                     key = "quality_feedback",
                     title = "품질 피드백",
-                    status = if (quality.feedbackCount == 0) "warning" else "ready",
-                    score = if (quality.feedbackCount == 0) 50 else 100,
+                    status =
+                        when {
+                            quality.feedbackCount == 0 -> "warning"
+                            quality.openReports > 0 -> "warning"
+                            else -> "ready"
+                        },
+                    score =
+                        when {
+                            quality.feedbackCount == 0 -> 50
+                            quality.openReports > 0 -> 65
+                            else -> 100
+                        },
                     evidence = listOf("feedback=${quality.feedbackCount}", "openReports=${quality.openReports}"),
                     nextAction =
-                        if (quality.feedbackCount == 0) {
-                            "답변 따봉/신고 피드백을 모아 모델 선택 근거를 만드세요."
-                        } else {
-                            "품질 피드백 기반 개선 루프가 동작합니다."
+                        when {
+                            quality.feedbackCount == 0 -> "답변 따봉/신고 피드백을 모아 모델 선택 근거를 만드세요."
+                            quality.openReports > 0 -> "열린 신고를 검토하고 resolved/dismissed 로 정리하세요."
+                            else -> "품질 피드백 기반 개선 루프가 동작합니다."
                         },
                 ),
                 readinessArea(
@@ -643,6 +656,20 @@ class AiNetworkDashboardController(
                     ),
                 )
             }
+            if (quality.openReports > 0) {
+                add(
+                    AiNetworkNextActionResponse(
+                        priority = 45,
+                        severity = "recommended",
+                        actionType = "review_quality_reports",
+                        title = "열린 품질 신고를 검토하세요",
+                        description = "미처리 신고가 ${quality.openReports}건 있습니다. 신고를 resolved/dismissed 로 정리해야 대시보드 품질 상태를 신뢰할 수 있습니다.",
+                        ctaLabel = "품질 신고 검토",
+                        discordCommand = null,
+                        dashboardPath = "/dashboard/quality/review",
+                    ),
+                )
+            }
             if (quality.feedbackCount == 0) {
                 add(
                     AiNetworkNextActionResponse(
@@ -776,6 +803,7 @@ data class AiNetworkDashboardResponse(
     val presets: Map<String, Any>,
     val publishedPresets: List<PublishedPresetResponse>,
     val quality: QualitySummary,
+    val qualityReview: QualityReviewSummary,
     val modelQuality: List<ModelQualitySummary>,
     val overload: ProviderSafetyDashboardResponse,
     val executionPlan: ProviderSafetyExecutionPlan,

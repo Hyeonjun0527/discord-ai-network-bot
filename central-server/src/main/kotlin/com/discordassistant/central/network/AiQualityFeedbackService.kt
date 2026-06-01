@@ -63,6 +63,41 @@ class AiQualityFeedbackService(
         return summarize(guildId, null, recent)
     }
 
+    fun reviewSummary(guildId: Long): QualityReviewSummary {
+        val queue = feedbacks.findTop50ByGuildIdAndStatusOrderByCreatedAtDesc(guildId, "needs_review")
+        val channelCounts = queue.groupingBy { it.channelId }.eachCount()
+        val topChannels =
+            channelCounts
+                .entries
+                .sortedWith(compareByDescending<Map.Entry<Long, Int>> { it.value }.thenBy { it.key })
+                .take(10)
+                .map { QualityReviewChannelSummary(channelId = it.key, openReports = it.value) }
+        return QualityReviewSummary(
+            guildId = guildId,
+            openReportCount = queue.size,
+            affectedChannelCount = channelCounts.size,
+            topChannels = topChannels,
+            queue = queue.take(20).map { QualityReviewItem.from(it) },
+            nextActions = reviewNextActions(queue.size),
+        )
+    }
+
+    @Transactional
+    fun resolveFeedback(
+        guildId: Long,
+        feedbackId: Long,
+        status: String,
+        reviewerUserId: Long?,
+        resolutionReason: String?,
+    ): AiFeedbackEntity {
+        val feedback = feedbacks.findByGuildIdAndId(guildId, feedbackId) ?: error("feedback_not_found")
+        feedback.status = normalizeReviewStatus(status)
+        feedback.reviewedBy = reviewerUserId
+        feedback.reviewedAt = Instant.now(clock)
+        feedback.resolutionReason = sanitizeReason(resolutionReason)
+        return feedbacks.save(feedback)
+    }
+
     fun modelQuality(guildId: Long): List<ModelQualitySummary> {
         val providers = providerCapabilities.findByGuildId(guildId)
         val modelNames =
@@ -139,6 +174,24 @@ class AiQualityFeedbackService(
             ?.take(500)
             ?.ifBlank { null }
 
+    private fun normalizeReviewStatus(status: String): String =
+        when (status.trim().lowercase()) {
+            "resolve", "resolved", "done" -> "resolved"
+            "dismiss", "dismissed", "ignore", "ignored" -> "dismissed"
+            "needs_review", "reopen", "open" -> "needs_review"
+            else -> error("invalid_feedback_review_status")
+        }
+
+    private fun reviewNextActions(openReportCount: Int): List<String> =
+        if (openReportCount == 0) {
+            listOf("열린 신고가 없습니다. 품질 피드백을 계속 수집하세요.")
+        } else {
+            listOf(
+                "신고 내용을 검토해 resolved/dismissed 로 정리하세요.",
+                "반복 신고가 있는 채널은 채널 AI 헌법·지식·모델 정책을 점검하세요.",
+            )
+        }
+
     private companion object {
         val SECRET_PATTERN =
             Regex(
@@ -174,3 +227,40 @@ data class CandidateQualitySummary(
     val safetyFlags: List<String>,
     val latencyMs: Int?,
 )
+
+data class QualityReviewSummary(
+    val guildId: Long,
+    val openReportCount: Int,
+    val affectedChannelCount: Int,
+    val topChannels: List<QualityReviewChannelSummary>,
+    val queue: List<QualityReviewItem>,
+    val nextActions: List<String>,
+)
+
+data class QualityReviewChannelSummary(
+    val channelId: Long,
+    val openReports: Int,
+)
+
+data class QualityReviewItem(
+    val id: Long,
+    val channelId: Long,
+    val requestId: String?,
+    val rating: Int?,
+    val feedbackType: String,
+    val reason: String?,
+    val createdAt: String,
+) {
+    companion object {
+        fun from(entity: AiFeedbackEntity): QualityReviewItem =
+            QualityReviewItem(
+                id = entity.id,
+                channelId = entity.channelId,
+                requestId = entity.requestId,
+                rating = entity.rating,
+                feedbackType = entity.feedbackType,
+                reason = entity.reason,
+                createdAt = entity.createdAt.toString(),
+            )
+    }
+}

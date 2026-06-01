@@ -37,6 +37,33 @@ class AiQualityFeedbackController(
         @PathVariable guildId: Long,
     ) = feedback.guildSummary(guildId)
 
+    @GetMapping("/{guildId}/review-summary")
+    fun reviewSummary(
+        @PathVariable guildId: Long,
+    ) = feedback.reviewSummary(guildId)
+
+    @PostMapping("/{guildId}/feedback/{feedbackId}/review")
+    fun resolveFeedback(
+        @PathVariable guildId: Long,
+        @PathVariable feedbackId: Long,
+        @RequestBody request: ResolveAiFeedbackRequest,
+    ): Map<String, Any?> {
+        val saved =
+            feedback.resolveFeedback(
+                guildId = guildId,
+                feedbackId = feedbackId,
+                status = request.status,
+                reviewerUserId = request.reviewerUserId,
+                resolutionReason = request.resolutionReason,
+            )
+        return mapOf(
+            "id" to saved.id,
+            "status" to saved.status,
+            "reviewedBy" to saved.reviewedBy,
+            "reviewedAt" to saved.reviewedAt?.toString(),
+        )
+    }
+
     @GetMapping("/{guildId}/{channelId}/summary")
     fun channelSummary(
         @PathVariable guildId: Long,
@@ -60,4 +87,10 @@ data class SubmitAiFeedbackRequest(
     val rating: Int? = null,
     val feedbackType: String = "general",
     val reason: String? = null,
+)
+
+data class ResolveAiFeedbackRequest(
+    val status: String = "resolved",
+    val reviewerUserId: Long? = null,
+    val resolutionReason: String? = null,
 )

@@ -693,4 +693,49 @@ class PresetRegistryServiceTest
             assertEquals(1, routing?.maxCandidates)
             assertEquals(1, proposals.findByGuildIdAndStatus(211, "pending").size)
         }
+
+        @Test
+        fun `moderation summary prioritizes reported popular and high safety presets`() {
+            val popularPreset =
+                service.createPreset(
+                    guildId = 360,
+                    ownerUserId = 77,
+                    name = "인기 운영 프리셋",
+                    summary = "신고 테스트",
+                    category = "ops",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "운영", tone = "friendly"),
+                )
+            val highRiskPreset =
+                service.createPreset(
+                    guildId = 360,
+                    ownerUserId = 78,
+                    name = "고위험 검토 프리셋",
+                    summary = "수동 검토 필요",
+                    category = "ops",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "운영", tone = "direct", safetyLevel = "high"),
+                )
+            val popular = service.publishPreset(popularPreset.id, publisherUserId = 77, title = null, description = null)
+            val highRisk = service.publishPreset(highRiskPreset.id, publisherUserId = 78, title = null, description = null)
+            (1L..5L).forEach { service.likePreset(popular.id, userId = 1000 + it) }
+            service.reportPreset(popular.id, reporterUserId = 88, reason = "자동화가 위험해 보여요 token=hidden")
+
+            val summary = controller.moderationSummary()["summary"] as PresetModerationSummary
+
+            assertEquals(2, summary.totalPublishedRows)
+            assertEquals(1, summary.activePublishedCount)
+            assertEquals(1, summary.underReviewCount)
+            assertEquals(1, summary.openReportCount)
+            assertTrue(summary.nextActions.any { it.contains("open 신고") })
+            assertTrue(summary.nextActions.any { it.contains("high/restricted") })
+            val popularQueueItem = summary.queue.first { it.publishedPresetId == popular.id }
+            assertEquals("under_review", popularQueueItem.status)
+            assertTrue(popularQueueItem.riskCodes.contains("popular_reported"))
+            assertTrue(popularQueueItem.riskCodes.contains("reported"))
+            assertTrue(popularQueueItem.recommendedAction.contains("인기 프리셋"))
+            val highRiskQueueItem = summary.queue.first { it.publishedPresetId == highRisk.id }
+            assertTrue(highRiskQueueItem.riskCodes.contains("high_safety_level"))
+            assertEquals("high", highRiskQueueItem.safetyLevel)
+        }
     }

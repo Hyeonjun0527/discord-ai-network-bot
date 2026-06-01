@@ -211,6 +211,38 @@ class PresetRegistryService(
     }
 
     @Transactional(readOnly = true)
+    fun moderationSummary(): PresetModerationSummary {
+        featureGate.requirePresetEnabled()
+        val published = publishedPresets.findAll()
+        val reportRows = reports.findAll()
+        val reportStatusCounts = reportRows.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
+        val queue =
+            published
+                .map { preset -> moderationItem(preset) }
+                .filter { it.riskCodes.isNotEmpty() }
+                .sortedWith(
+                    compareBy<PresetModerationQueueItem> { moderationSeverityRank(it) }
+                        .thenByDescending { it.reportCount }
+                        .thenByDescending { it.likeCount }
+                        .thenBy { it.publishedPresetId },
+                )
+        val statusCounts = published.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
+        return PresetModerationSummary(
+            totalPublishedRows = published.size,
+            activePublishedCount = statusCounts["published"] ?: 0,
+            underReviewCount = statusCounts["under_review"] ?: 0,
+            suspendedCount = statusCounts["suspended"] ?: 0,
+            removedCount = statusCounts["removed"] ?: 0,
+            openReportCount = reportStatusCounts["open"] ?: 0,
+            reviewedReportCount = reportRows.count { it.status != "open" },
+            statusCounts = statusCounts,
+            reportStatusCounts = reportStatusCounts,
+            queue = queue.take(50),
+            nextActions = presetModerationNextActions(queue, reportStatusCounts),
+        )
+    }
+
+    @Transactional(readOnly = true)
     fun publishedPresetDetail(publishedPresetId: Long): PublishedPresetDetail {
         featureGate.requirePresetEnabled()
         val published =
@@ -897,6 +929,65 @@ class PresetRegistryService(
             reviewedAt = reviewedAt?.toString(),
         )
 
+    private fun moderationItem(published: PublishedPresetEntity): PresetModerationQueueItem {
+        val summary = publishedSummary(published)
+        val riskCodes =
+            buildList {
+                if (summary.status == "under_review") add("under_review")
+                if (summary.status == "suspended") add("suspended")
+                if (summary.status == "removed") add("removed")
+                if (summary.reportCount > 0) add("reported")
+                if (summary.reportCount > 0 && summary.likeCount + summary.importCount >= 5) add("popular_reported")
+                if (summary.safetyLevel.orEmpty().lowercase() in HIGH_RISK_SAFETY_LEVELS) add("high_safety_level")
+            }.distinct()
+        return PresetModerationQueueItem(
+            publishedPresetId = summary.id,
+            title = summary.title,
+            status = summary.status,
+            reportCount = summary.reportCount,
+            likeCount = summary.likeCount,
+            importCount = summary.importCount,
+            safetyLevel = summary.safetyLevel,
+            riskCodes = riskCodes,
+            recommendedAction = presetModerationAction(summary.status, riskCodes),
+        )
+    }
+
+    private fun presetModerationAction(
+        status: String,
+        riskCodes: List<String>,
+    ): String =
+        when {
+            status == "removed" -> "removed 상태를 유지하고 카탈로그에는 노출하지 마세요."
+            status == "suspended" -> "검수자가 수정 요청 또는 제거 결정을 내려야 합니다."
+            "popular_reported" in riskCodes -> "인기 프리셋이 신고됐으므로 우선 검토하고 필요하면 일시 중단하세요."
+            "reported" in riskCodes -> "신고 사유를 확인하고 dismiss/suspend/remove 중 하나로 처리하세요."
+            "high_safety_level" in riskCodes -> "높은 안전 등급 프리셋은 게시 설명과 행동 스냅샷을 수동 검토하세요."
+            else -> "추가 조치가 필요 없습니다."
+        }
+
+    private fun presetModerationNextActions(
+        queue: List<PresetModerationQueueItem>,
+        reportStatusCounts: Map<String, Int>,
+    ): List<String> =
+        buildList {
+            if ((reportStatusCounts["open"] ?: 0) > 0) add("open 신고를 검토해 dismiss/suspend/remove 처리하세요.")
+            if (queue.any { "popular_reported" in it.riskCodes }) add("추천/인기 프리셋 중 신고된 항목을 먼저 검토하세요.")
+            if (queue.any { "high_safety_level" in it.riskCodes }) add("high/restricted safety 프리셋은 승인 없이 자동 추천하지 마세요.")
+            if (queue.any { it.status == "suspended" }) add("suspended 프리셋은 수정 요청 또는 제거로 상태를 확정하세요.")
+            if (isEmpty()) add("프리셋 검수 큐가 비어 있습니다.")
+        }.distinct()
+
+    private fun moderationSeverityRank(item: PresetModerationQueueItem): Int =
+        when {
+            item.status == "under_review" -> 0
+            "popular_reported" in item.riskCodes -> 1
+            item.status == "suspended" -> 2
+            "reported" in item.riskCodes -> 3
+            "high_safety_level" in item.riskCodes -> 4
+            else -> 5
+        }
+
     private fun publishedSummary(published: PublishedPresetEntity): PublishedPresetSummary {
         val revision = revisions.findById(published.revisionId).orElse(null)
         val preset = presets.findById(published.presetId).orElse(null)
@@ -1152,6 +1243,32 @@ data class PresetCatalogFacets(
     val responseModes: List<PresetCatalogFacet>,
     val qualityTiers: List<PresetCatalogFacet>,
     val topPresets: List<PublishedPresetSummary>,
+)
+
+data class PresetModerationSummary(
+    val totalPublishedRows: Int,
+    val activePublishedCount: Int,
+    val underReviewCount: Int,
+    val suspendedCount: Int,
+    val removedCount: Int,
+    val openReportCount: Int,
+    val reviewedReportCount: Int,
+    val statusCounts: Map<String, Int>,
+    val reportStatusCounts: Map<String, Int>,
+    val queue: List<PresetModerationQueueItem>,
+    val nextActions: List<String>,
+)
+
+data class PresetModerationQueueItem(
+    val publishedPresetId: Long,
+    val title: String,
+    val status: String,
+    val reportCount: Int,
+    val likeCount: Int,
+    val importCount: Int,
+    val safetyLevel: String?,
+    val riskCodes: List<String>,
+    val recommendedAction: String,
 )
 
 data class PresetBehaviorSnapshot(

@@ -57,6 +57,9 @@ class PresetRegistryController(
     @GetMapping("/catalog/facets")
     fun catalogFacets(): Map<String, Any?> = mapOf("facets" to registry.catalogFacets())
 
+    @GetMapping("/moderation/summary")
+    fun moderationSummary(): Map<String, Any?> = mapOf("summary" to registry.moderationSummary())
+
     @GetMapping("/guilds/{guildId}/imports")
     fun importHistory(
         @PathVariable guildId: Long,

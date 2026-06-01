@@ -13,7 +13,7 @@
 2. 좌측 **Bot** → **Reset Token** → 토큰 복사(절대 커밋 금지).
 3. **Installation**(또는 OAuth2 → URL Generator):
    - Scopes: `bot`, `applications.commands`
-   - Bot Permissions: `Send Messages`, `Use Slash Commands`, `Read Message History`(Embed Links 권장)
+   - Bot Permissions: 최소/권장 권한은 [봇 권한 명세](../../docs/BOT_PERMISSIONS.md)를 따른다.
 4. `@냥시스턴트 질문` 멘션 호출을 쓰려면 좌측 **Bot → Privileged Gateway Intents → Message Content Intent** 를 켠다.
 5. 생성된 초대 URL 로 **봇을 서버에 초대**.
 
@@ -75,6 +75,7 @@ discord-ai-provider-agent --token <토큰> --relay-url wss://discord-ai.yeon.wor
   바로 동작한다. 이 인텐트는 비특권이라 Developer Portal 의 Privileged Intents 토글이 불필요하다.
 - **멘션 호출**: `@냥시스턴트 질문`은 메시지 본문을 읽어야 하므로 코드에서 `GUILD_MESSAGES` +
   `MESSAGE_CONTENT` 인텐트를 활성화한다. 운영 Discord 애플리케이션에서도 **Message Content Intent** 를 켜야 한다.
+  자세한 권한/Intent/장애 UX 기준은 [봇 권한 명세](../../docs/BOT_PERMISSIONS.md)를 따른다.
 - 나머지 인터랙션(슬래시/버튼/모달/컨텍스트 메뉴/DM)은 추가 설정 없이 동작.
 - **운영 보안**: `CENTRAL_DEV_ENABLED=false`(/dev/* 차단), 토큰은 env 로만 주입.
 - **관리자 인증 대시보드**(선택): `CENTRAL_OAUTH_ENABLED=true` + Discord OAuth2(OPERATIONS.md).

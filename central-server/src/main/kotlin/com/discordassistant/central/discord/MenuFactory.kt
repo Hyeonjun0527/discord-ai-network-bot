@@ -38,6 +38,7 @@ object MenuFactory {
     const val MODEL = "set:model"
     const val CHANNEL = "set:channel"
     const val CHANNEL_ALL = "set:channel-all"
+    const val CANCEL_SETTINGS = "set:cancel"
     const val SAVE_SETTINGS = "set:save"
 
     // 프로바이더 참여 OS 선택(차수 19): 클릭하면 해당 OS 복붙 설치 명령을 보여준다. customId prefix "pjoin:".
@@ -151,6 +152,7 @@ object MenuFactory {
         listOf(
             Button.secondary(CHANNEL_ALL, "모든 채널 허용으로 대기"),
             Button.success(SAVE_SETTINGS, "선택한 설정 한 번에 저장"),
+            Button.secondary(CANCEL_SETTINGS, "변경 취소"),
             Button.secondary(AUTO_APPROVE_ON, "자동 승인 켜짐으로 대기"),
             Button.secondary(AUTO_APPROVE_OFF, "자동 승인 꺼짐으로 대기"),
         )

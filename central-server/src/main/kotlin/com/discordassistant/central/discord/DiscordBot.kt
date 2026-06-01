@@ -539,6 +539,10 @@ class DiscordBot(
                         pendingSettings(settingsKey(ctx)).allowedChannelIds = emptyList()
                         return updateSettingsPanel(event, ctx)
                     }
+                    MenuFactory.CANCEL_SETTINGS -> {
+                        pendingSettings.remove(settingsKey(ctx))
+                        return updateSettingsPanel(event, ctx)
+                    }
                     MenuFactory.SAVE_SETTINGS -> return savePendingSettings(event, ctx)
                     MenuFactory.AUTO_APPROVE, "settings:autoapprove" -> commands.toggleAutoApprove(ctx)
                     else -> Reply("알 수 없는 동작입니다.")

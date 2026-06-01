@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const ADMIN_TOKEN_STORAGE_KEY = "nyassistantPresetDashboardAdminToken";
+const LIKED_PRESETS_STORAGE_KEY = "nyassistantPresetLikedPresets";
 let pendingImport = null;
 let selectedPresetId = null;
 
@@ -65,6 +66,26 @@ function anonUserId() {
   return id;
 }
 
+function likedPresetIds() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(LIKED_PRESETS_STORAGE_KEY) || "[]").map(String));
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function rememberLikedPreset(id) {
+  const ids = likedPresetIds();
+  ids.add(String(id));
+  localStorage.setItem(LIKED_PRESETS_STORAGE_KEY, JSON.stringify([...ids]));
+}
+
+function forgetLikedPreset(id) {
+  const ids = likedPresetIds();
+  ids.delete(String(id));
+  localStorage.setItem(LIKED_PRESETS_STORAGE_KEY, JSON.stringify([...ids]));
+}
+
 function catalogUrl() {
   const params = new URLSearchParams();
   const query = $("query").value.trim();
@@ -91,6 +112,7 @@ function renderCatalog(presets) {
     $("catalog").innerHTML = `<article class="card"><h3>아직 공개된 프리셋이 없습니다.</h3><p>대시보드에서 서버 프리셋을 게시하면 여기에 나타납니다.</p></article>`;
     return;
   }
+  const liked = likedPresetIds();
   $("catalog").innerHTML = presets.map((preset) => `
     <article class="card">
       <div class="meta">
@@ -109,7 +131,9 @@ function renderCatalog(presets) {
       <div class="card-actions">
         <button data-action="preview" data-id="${esc(preset.id)}">미리보기</button>
         <button class="secondary" data-action="share" data-id="${esc(preset.id)}" data-slug="${esc(preset.slug || preset.id)}">공유</button>
-        <button class="secondary" data-action="like" data-id="${esc(preset.id)}">따봉</button>
+        ${liked.has(String(preset.id))
+          ? `<button class="secondary" data-action="unlike" data-id="${esc(preset.id)}">추천 취소</button>`
+          : `<button class="secondary" data-action="like" data-id="${esc(preset.id)}">따봉</button>`}
         <button class="secondary" data-action="report" data-id="${esc(preset.id)}">신고</button>
       </div>
     </article>
@@ -278,6 +302,7 @@ async function previewPreset(locator) {
   $("confirmImport").disabled = true;
   $("copyDiscordImport").disabled = true;
   $("likePreset").disabled = false;
+  $("unlikePreset").disabled = false;
   $("reportPreset").disabled = false;
   $("result").textContent = "";
   try {
@@ -309,6 +334,7 @@ async function previewPreset(locator) {
     $("confirmImport").disabled = false;
   } catch (e) {
     $("copyDiscordImport").disabled = true;
+    $("unlikePreset").disabled = true;
     $("preview").textContent = `미리보기 실패: ${e.message}`;
   }
 }
@@ -353,6 +379,7 @@ async function reportPreset(id = selectedPresetId) {
       $("confirmImport").disabled = true;
       $("copyDiscordImport").disabled = true;
       $("likePreset").disabled = true;
+      $("unlikePreset").disabled = true;
       $("reportPreset").disabled = true;
       pendingImport = null;
     }
@@ -372,10 +399,29 @@ async function likePreset(id = selectedPresetId) {
       method: "POST",
       body: JSON.stringify({ userId: anonUserId() }),
     });
+    rememberLikedPreset(id);
     $("result").textContent = `따봉 반영 완료 · 좋아요 ${data.likeCount}`;
     await refreshCatalog();
   } catch (e) {
     $("result").textContent = `따봉 실패: ${e.message}`;
+  }
+}
+
+async function unlikePreset(id = selectedPresetId) {
+  if (!id) {
+    $("result").textContent = "먼저 프리셋을 선택하세요.";
+    return;
+  }
+  try {
+    const data = await json(`/api/ai-network/presets/published/${id}/like`, {
+      method: "DELETE",
+      body: JSON.stringify({ userId: anonUserId() }),
+    });
+    forgetLikedPreset(id);
+    $("result").textContent = `추천 취소 완료 · 좋아요 ${data.likeCount}`;
+    await refreshCatalog();
+  } catch (e) {
+    $("result").textContent = `추천 취소 실패: ${e.message}`;
   }
 }
 
@@ -438,6 +484,7 @@ $("adminToken").addEventListener("keydown", (event) => {
 $("confirmImport").addEventListener("click", confirmImport);
 $("copyDiscordImport").addEventListener("click", copyDiscordImportCommand);
 $("likePreset").addEventListener("click", () => likePreset());
+$("unlikePreset").addEventListener("click", () => unlikePreset());
 $("reportPreset").addEventListener("click", () => reportPreset());
 $("catalog").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-action]");
@@ -445,6 +492,7 @@ $("catalog").addEventListener("click", (event) => {
   if (button.dataset.action === "preview") previewPreset(button.dataset.id);
   if (button.dataset.action === "share") sharePreset(button.dataset.slug || button.dataset.id);
   if (button.dataset.action === "like") likePreset(Number(button.dataset.id));
+  if (button.dataset.action === "unlike") unlikePreset(Number(button.dataset.id));
   if (button.dataset.action === "report") reportPreset(Number(button.dataset.id));
 });
 $("recommendations").addEventListener("click", (event) => {

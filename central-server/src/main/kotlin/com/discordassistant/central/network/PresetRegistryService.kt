@@ -617,7 +617,7 @@ class PresetRegistryService(
         policy.responseMode = normalizeResponseMode(sourceRevision.responseMode)
         policy.preferredModel = sourceRevision.preferredModel?.trim()?.ifBlank { null }
         policy.minQualityTier = sourceRevision.minQualityTier.trim().ifBlank { "standard" }
-        policy.maxCandidates = sourceRevision.maxCandidates.coerceIn(1, 5)
+        policy.maxCandidates = sourceRevision.maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES)
         policy.providerTagFilter = sourceRevision.providerTagFilter?.trim()?.ifBlank { null }
         policy.costGuard = sourceRevision.costGuard.trim().ifBlank { "provider_safe" }
         policy.updatedAt = now
@@ -687,7 +687,7 @@ class PresetRegistryService(
                 responseMode = normalizeResponseMode(behavior.responseMode),
                 preferredModel = preferredModel,
                 minQualityTier = minQualityTier,
-                maxCandidates = behavior.maxCandidates.coerceIn(1, 5),
+                maxCandidates = behavior.maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES),
                 providerTagFilter = behavior.providerTagFilter.normalizedCsv(),
                 costGuard = costGuard,
                 changeSummary = behavior.changeSummary?.trim()?.ifBlank { null },

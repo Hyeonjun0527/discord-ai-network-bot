@@ -54,7 +54,7 @@ class MultiResponseService(
         val entity = existing ?: MultiResponsePolicyEntity(guildId = guildId, channelId = channelId, createdAt = now)
         entity.channelAiId = channelAiId
         entity.mode = mode.trim().ifBlank { "single" }
-        entity.maxCandidates = maxCandidates.coerceIn(1, 5)
+        entity.maxCandidates = maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES)
         entity.requireDistinctModels = requireDistinctModels
         entity.providerDailyLimit = providerDailyLimit.coerceAtLeast(0)
         entity.timeoutSeconds = timeoutSeconds.coerceIn(10, 300)

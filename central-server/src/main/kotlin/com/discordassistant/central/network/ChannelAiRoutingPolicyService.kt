@@ -38,7 +38,7 @@ class ChannelAiRoutingPolicyService(
         policy.preferredModel = preferredModel?.trim()?.ifBlank { null }
         policy.allowedModels = allowedModels.normalizedCsv()
         policy.minQualityTier = minQualityTier.trim().ifBlank { "standard" }
-        policy.maxCandidates = maxCandidates.coerceIn(1, 5)
+        policy.maxCandidates = maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES)
         policy.providerTagFilter = providerTagFilter.normalizedCsv()
         policy.costGuard = costGuard.trim().ifBlank { "provider_safe" }
         policy.updatedAt = now

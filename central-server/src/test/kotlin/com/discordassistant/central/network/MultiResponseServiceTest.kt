@@ -120,6 +120,18 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `multi response policy enforces global fanout cap of three`() {
+            val saved =
+                controller.savePolicy(
+                    100,
+                    SaveMultiResponsePolicyRequest(channelId = 199, mode = "compare", maxCandidates = 10, synthesisEnabled = true),
+                )
+
+            assertEquals(3, saved["maxCandidates"])
+            assertEquals(3, policies.findByGuildIdAndChannelId(100, 199)!!.maxCandidates)
+        }
+
+        @Test
         fun `multi response run plans safe candidates and completes synthesis`() {
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(

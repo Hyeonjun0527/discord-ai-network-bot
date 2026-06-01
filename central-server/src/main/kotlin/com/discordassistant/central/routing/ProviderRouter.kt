@@ -15,6 +15,7 @@ data class Selection(
  *
  * provider_score = 적합도 + idle + 남은 한도 − 실패율 − 현재 부하 − heavy 낭비 패널티 − 최근 과다처리.
  * light 요청에 heavy provider 를 기본 낭비하지 않는다(패널티). 동점은 최근 처리량 적은 쪽으로 분산.
+ * 품질 티어는 보호/가용성/쿼터/공정성 필터 이후의 작은 보조 신호로만 반영한다.
  */
 @Component
 class ProviderRouter {
@@ -33,8 +34,17 @@ class ProviderRouter {
         if (ctx.requiredBurden == ModelBurden.LIGHT && top == ModelBurden.HEAVY) s -= 8.0
         // 수준 일치 보너스(light→light, standard→standard 우선)
         if (top == ctx.requiredBurden) s += 2.0
+        s += qualityBonus(c.qualityTier)
         return s
     }
+
+    private fun qualityBonus(tier: String): Double =
+        when (tier.lowercase()) {
+            "specialized" -> 1.5
+            "high" -> 1.0
+            "standard" -> 0.3
+            else -> 0.0
+        }
 
     /** 후보 중 최종 1인 선택. 비면 null. 동점은 (점수↓, 최근처리량↑ 적은 순, providerId↑)로 결정. */
     fun select(

@@ -54,7 +54,7 @@ class ChannelAiRoutingPolicyServiceTest
             assertEquals("deep", effective.responseMode)
             assertEquals("qwen-coder", effective.preferredModel)
             assertEquals(listOf("qwen-coder", "llama3.1:8b"), effective.allowedModels)
-            assertEquals(5, effective.maxCandidates)
+            assertEquals(3, effective.maxCandidates)
         }
 
         @Test

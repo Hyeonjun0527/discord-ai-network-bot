@@ -19,6 +19,7 @@ data class Candidate(
     val inCooldown: Boolean = false,
     val recentHandled: Int = 0,
     val modelNames: Set<String> = emptySet(),
+    val qualityTier: String = "standard",
 )
 
 /** 요청 라우팅 컨텍스트. */

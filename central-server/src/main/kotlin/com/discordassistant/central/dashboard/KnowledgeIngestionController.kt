@@ -198,7 +198,21 @@ class KnowledgeIngestionController(
         @RequestBody request: DeleteKnowledgeSourceRequest,
     ): Map<String, Any?> {
         val source = ingestion.removeSource(guildId, spaceId, sourceId, request.reason)
-        return mapOf("id" to source.id, "status" to source.status)
+        val deletionIndex =
+            indexing?.tombstoneDeletedSourceIndex(
+                guildId = guildId,
+                spaceId = spaceId,
+                sourceId = source.id,
+                triggeredBy = request.actorUserId,
+            )
+        return mapOf(
+            "id" to source.id,
+            "status" to source.status,
+            "deletionIndexJobId" to deletionIndex?.jobId,
+            "tombstonedDocumentCount" to (deletionIndex?.tombstonedDocumentCount ?: 0),
+            "tombstonedChunkCount" to (deletionIndex?.tombstonedChunkCount ?: 0),
+            "remainingReadyChunkCount" to deletionIndex?.remainingReadyChunkCount,
+        )
     }
 
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/reject")
@@ -253,6 +267,7 @@ data class RejectKnowledgeSourceRequest(
 
 data class DeleteKnowledgeSourceRequest(
     val reason: String = "deleted",
+    val actorUserId: Long? = null,
 )
 
 data class KnowledgeEvalRequest(

@@ -2,6 +2,7 @@ package com.discordassistant.central.network
 
 import com.discordassistant.central.dashboard.AddKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.CreateKnowledgeSpaceRequest
+import com.discordassistant.central.dashboard.DeleteKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.KnowledgeIngestionController
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.persistence.KnowledgeChunkRepository
@@ -196,6 +197,62 @@ class KnowledgeIndexingServiceTest
             val found = search.search(103, "즉시 검색", limit = 5, channelId = 203)
             assertEquals(1, found.results.size)
             assertEquals("웹 RAG 운영 규칙", found.results.single().title)
+        }
+
+        @Test
+        fun `knowledge dashboard delete source tombstones chunks and queues delete index job`() {
+            val ingestion =
+                KnowledgeIngestionService(
+                    spaces = spaces,
+                    sources = sources,
+                    clock = fixedClock,
+                )
+            val search =
+                KnowledgeSearchService(
+                    sources = sources,
+                    spaces = spaces,
+                    chunks = chunks,
+                    retrievalPolicies = retrievalPolicies,
+                )
+            val controller = KnowledgeIngestionController(ingestion, search, service)
+            val spaceId =
+                controller.createSpace(
+                    105,
+                    CreateKnowledgeSpaceRequest(channelId = 205, displayName = "삭제 전파 지식", actorUserId = 7),
+                )["id"] as Long
+            val added =
+                controller.addSource(
+                    105,
+                    spaceId,
+                    AddKnowledgeSourceRequest(
+                        sourceType = "text",
+                        title = "삭제 테스트 지식",
+                        contentPreview = "삭제 전 검색 가능한 문서입니다.\n\n삭제 후에는 검색되면 안 됩니다.",
+                        actorUserId = 7,
+                    ),
+                )
+            val sourceId = added["id"] as Long
+            assertEquals(2, service.readyChunks(105, spaceId).size)
+
+            val deleted =
+                controller.removeSource(
+                    105,
+                    spaceId,
+                    sourceId,
+                    DeleteKnowledgeSourceRequest(reason = "obsolete", actorUserId = 7),
+                )
+
+            val deletionJobId = deleted["deletionIndexJobId"] as Long
+            assertTrue(deletionJobId > 0)
+            assertEquals(1, deleted["tombstonedDocumentCount"])
+            assertEquals(2, deleted["tombstonedChunkCount"])
+            assertEquals(0, deleted["remainingReadyChunkCount"])
+            assertTrue(service.readyChunks(105, spaceId).isEmpty())
+            assertTrue(documents.findByKnowledgeSourceId(sourceId).all { it.status == "deleted" })
+            assertTrue(chunks.findByKnowledgeSpaceIdAndStatus(spaceId, "deleted").size >= 2)
+            assertEquals("delete_source", jobs.findById(deletionJobId).get().jobType)
+            val afterDelete = search.search(105, "삭제", limit = 5, channelId = 205)
+            assertTrue(afterDelete.results.isEmpty())
         }
 
         @Test

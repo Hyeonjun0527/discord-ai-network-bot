@@ -775,7 +775,17 @@ class CommandService(
         adminOnly(ctx)?.let { return it }
         return runCatching {
             val source = knowledgeIngestion.removeSource(ctx.guildId, spaceId, sourceId, reason)
-            Replies.ok("지식 소스를 삭제했습니다. space `$spaceId` · source `${source.id}` · status `${source.status}`")
+            val deletionIndex =
+                knowledgeIndexing.tombstoneDeletedSourceIndex(
+                    guildId = ctx.guildId,
+                    spaceId = spaceId,
+                    sourceId = source.id,
+                    triggeredBy = ctx.userId,
+                )
+            Replies.ok(
+                "지식 소스를 삭제했습니다. space `$spaceId` · source `${source.id}` · status `${source.status}`\n" +
+                    "재색인 작업: `${deletionIndex.jobId}` · 제거된 chunk `${deletionIndex.tombstonedChunkCount}`",
+            )
         }.getOrElse {
             Replies.warn("지식 소스를 삭제하지 못했어요. ${it.message ?: "space-id/source-id를 확인해 주세요."}")
         }

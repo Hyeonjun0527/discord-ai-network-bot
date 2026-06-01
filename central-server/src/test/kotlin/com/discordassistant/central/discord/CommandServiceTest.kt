@@ -403,6 +403,12 @@ class CommandServiceTest
 
             val deleted = commands.deleteKnowledge(g, spaceId, source.id, reason = "테스트 삭제")
             assertTrue(deleted.content.contains("지식 소스를 삭제했습니다"))
+            assertTrue(deleted.content.contains("재색인 작업"))
+            val latestJob =
+                embeddingJobs
+                    .findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(g.guildId, spaceId)
+                    .first()
+            assertEquals("delete_source", latestJob.jobType)
         }
 
         @Test

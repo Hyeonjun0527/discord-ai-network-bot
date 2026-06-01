@@ -6,6 +6,7 @@ import com.discordassistant.central.persistence.KnowledgeChunkEntity
 import com.discordassistant.central.persistence.KnowledgeChunkRepository
 import com.discordassistant.central.persistence.KnowledgeDocumentEntity
 import com.discordassistant.central.persistence.KnowledgeDocumentRepository
+import com.discordassistant.central.persistence.KnowledgeSourceEntity
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.RetrievalPolicyEntity
@@ -101,6 +102,7 @@ class KnowledgeIndexingService(
         triggeredBy: Long?,
         collectionName: String = "discord_ai_network",
         embeddingModel: String = "text-embedding-3-large",
+        jobType: String = "rebuild",
     ): EmbeddingIndexJobEntity {
         featureGate.requireRagEnabled()
         val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
@@ -111,7 +113,7 @@ class KnowledgeIndexingService(
                 guildId = guildId,
                 knowledgeSpaceId = space.id,
                 triggeredBy = triggeredBy,
-                jobType = "rebuild",
+                jobType = jobType.trim().ifBlank { "rebuild" },
                 status = "queued",
                 collectionName = collectionName,
                 embeddingModel = embeddingModel,
@@ -278,6 +280,53 @@ class KnowledgeIndexingService(
     }
 
     @Transactional
+    fun tombstoneDeletedSourceIndex(
+        guildId: Long,
+        spaceId: Long,
+        sourceId: Long,
+        triggeredBy: Long?,
+    ): KnowledgeSourceDeletionIndexResult {
+        featureGate.requireRagEnabled()
+        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
+        val source = sources.findByKnowledgeSpaceIdAndId(space.id, sourceId) ?: error("knowledge source not found")
+        require(source.guildId == guildId) { "cross-guild knowledge source is not allowed" }
+        require(source.status.startsWith("deleted")) { "source must be deleted before index tombstone: ${source.status}" }
+        val docs = documents.findByKnowledgeSourceId(source.id)
+        val sourceChunks =
+            docs.flatMap { doc ->
+                chunks.findByKnowledgeDocumentIdOrderByChunkIndex(doc.id)
+            }
+        val tombstonedDocs = docs.count { it.status != "deleted" }
+        val tombstonedChunks = sourceChunks.count { it.status != "deleted" }
+        docs.filter { it.status != "deleted" }.forEach { it.status = "deleted" }
+        sourceChunks.filter { it.status != "deleted" }.forEach { it.status = "deleted" }
+        if (sourceChunks.isNotEmpty()) chunks.saveAll(sourceChunks)
+        if (docs.isNotEmpty()) documents.saveAll(docs)
+        val activeSources = sources.findByKnowledgeSpaceId(space.id).filter { !it.status.startsWith("deleted") }
+        space.sourceCount = activeSources.size
+        space.chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, "ready").size
+        space.status = statusAfterDeletion(activeSources)
+        space.updatedAt = Instant.now(clock)
+        spaces.save(space)
+        val job =
+            queueIndexJob(
+                guildId = guildId,
+                spaceId = space.id,
+                triggeredBy = triggeredBy,
+                collectionName = space.indexName?.trim()?.ifBlank { null } ?: "discord_ai__guild_${guildId}__space_${space.id}",
+                embeddingModel = space.embeddingModel?.trim()?.ifBlank { null } ?: "text-embedding-3-large",
+                jobType = "delete_source",
+            )
+        return KnowledgeSourceDeletionIndexResult(
+            sourceId = source.id,
+            jobId = job.id,
+            tombstonedDocumentCount = tombstonedDocs,
+            tombstonedChunkCount = tombstonedChunks,
+            remainingReadyChunkCount = space.chunkCount,
+        )
+    }
+
+    @Transactional
     fun completeIndexJobSafely(
         guildId: Long,
         jobId: Long,
@@ -316,6 +365,15 @@ class KnowledgeIndexingService(
         documents.saveAll(existingDocs)
     }
 
+    private fun statusAfterDeletion(activeSources: List<KnowledgeSourceEntity>): String =
+        when {
+            activeSources.isEmpty() -> "draft"
+            activeSources.any { it.status.startsWith("blocked") || it.riskLevel in BLOCKING_RISK_LEVELS } -> "needs_review"
+            activeSources.any { it.status == "pending" } -> "pending_index"
+            activeSources.any { it.status == "indexed" } -> "ready"
+            else -> "needs_review"
+        }
+
     private fun splitChunks(text: String): List<String> =
         text
             .split(Regex("\\n\\s*\\n"))
@@ -351,6 +409,7 @@ class KnowledgeIndexingService(
 
     private companion object {
         val INLINE_INDEXABLE_SOURCE_TYPES = setOf("text", "faq", "constitution", "preset")
+        val BLOCKING_RISK_LEVELS = setOf("sensitive", "ssrf")
     }
 }
 
@@ -378,4 +437,12 @@ data class KnowledgeIndexJobSummary(
     val queuedAt: String,
     val startedAt: String?,
     val finishedAt: String?,
+)
+
+data class KnowledgeSourceDeletionIndexResult(
+    val sourceId: Long,
+    val jobId: Long,
+    val tombstonedDocumentCount: Int,
+    val tombstonedChunkCount: Int,
+    val remainingReadyChunkCount: Int,
 )

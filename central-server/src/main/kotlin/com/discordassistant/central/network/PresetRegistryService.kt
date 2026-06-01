@@ -133,6 +133,26 @@ class PresetRegistryService(
     }
 
     @Transactional(readOnly = true)
+    fun recommendedPublishedPresets(
+        category: String? = null,
+        limit: Int = 10,
+    ): List<PresetRecommendation> {
+        featureGate.requirePresetEnabled()
+        val normalizedCategory = category.normalizedSearchToken()
+        return publishedPresets
+            .findByStatusOrderByLikeCountDescPublishedAtDesc("published")
+            .map { publishedSummary(it) }
+            .filter { normalizedCategory == null || it.category.orEmpty().lowercase() == normalizedCategory }
+            .map { it.toRecommendation() }
+            .sortedWith(
+                compareByDescending<PresetRecommendation> { it.score }
+                    .thenByDescending { it.preset.likeCount }
+                    .thenByDescending { it.preset.importCount }
+                    .thenByDescending { Instant.parse(it.preset.publishedAt) },
+            ).take(limit.coerceIn(1, 50))
+    }
+
+    @Transactional(readOnly = true)
     fun catalogFacets(): PresetCatalogFacets {
         featureGate.requirePresetEnabled()
         val summaries =
@@ -908,6 +928,25 @@ class PresetRegistryService(
             .map { (value, count) -> PresetCatalogFacet(value = value, count = count) }
             .sortedWith(compareByDescending<PresetCatalogFacet> { it.count }.thenBy { it.value })
 
+    private fun PublishedPresetSummary.toRecommendation(): PresetRecommendation {
+        val safetyPenalty =
+            when (safetyLevel.orEmpty().lowercase()) {
+                "high", "restricted", "dangerous" -> 50
+                "elevated", "medium" -> 12
+                else -> 0
+            }
+        val reportPenalty = reportCount * 15
+        val score = (likeCount * 3) + (importCount * 2) - safetyPenalty - reportPenalty
+        val reasons =
+            buildList {
+                add("likes=$likeCount")
+                add("imports=$importCount")
+                if (safetyPenalty > 0) add("safetyPenalty=$safetyPenalty")
+                if (reportPenalty > 0) add("reportPenalty=$reportPenalty")
+            }
+        return PresetRecommendation(preset = this, score = score, reasons = reasons)
+    }
+
     private fun uniqueSlug(
         title: String,
         presetId: Long,
@@ -1063,6 +1102,12 @@ data class PublishedPresetSummary(
     val importCount: Int,
     val reportCount: Int,
     val publishedAt: String,
+)
+
+data class PresetRecommendation(
+    val preset: PublishedPresetSummary,
+    val score: Int,
+    val reasons: List<String>,
 )
 
 data class PresetCatalogFacet(

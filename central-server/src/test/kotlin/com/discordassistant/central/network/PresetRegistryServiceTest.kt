@@ -242,12 +242,24 @@ class PresetRegistryServiceTest
                     visibility = "guild_private",
                     behavior = PresetBehaviorInput(purpose = "운영 질문 대응", tone = "formal", responseMode = "balanced"),
                 )
+            val risky =
+                service.createPreset(
+                    guildId = 340,
+                    ownerUserId = 80,
+                    name = "위험하지만 인기 프리셋",
+                    summary = "안전 검토가 필요한 자동화",
+                    category = "dev",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "위험 자동화", tone = "direct", safetyLevel = "high"),
+                )
             val publishedCoding = service.publishPreset(coding.id, publisherUserId = 77, title = null, description = null)
             val publishedTranslation = service.publishPreset(translation.id, publisherUserId = 78, title = null, description = null)
             service.publishPreset(ops.id, publisherUserId = 79, title = null, description = null)
+            val publishedRisky = service.publishPreset(risky.id, publisherUserId = 80, title = null, description = null)
             service.likePreset(publishedCoding.id, userId = 900)
             service.likePreset(publishedTranslation.id, userId = 901)
             service.likePreset(publishedTranslation.id, userId = 902)
+            (910L..919L).forEach { service.likePreset(publishedRisky.id, userId = it) }
 
             val queryResult = controller.publishedPresets(query = "코드", sort = "popular", limit = 10)["presets"] as List<*>
             val queryPreset = queryResult.single() as PublishedPresetSummary
@@ -261,18 +273,33 @@ class PresetRegistryServiceTest
             val popular = controller.publishedPresets(sort = "likes", limit = 2)["presets"] as List<*>
             val topPreset = popular.first() as PublishedPresetSummary
             assertEquals(2, popular.size)
-            assertEquals("번역냥", topPreset.title)
-            assertEquals(2, topPreset.likeCount)
+            assertEquals("위험하지만 인기 프리셋", topPreset.title)
+            assertEquals(10, topPreset.likeCount)
             assertEquals("standard", topPreset.minQualityTier)
 
+            val recommendations = controller.recommendedPresets(limit = 4)["recommendations"] as List<*>
+            val topRecommendation = recommendations.first() as PresetRecommendation
+            assertEquals("번역냥", topRecommendation.preset.title)
+            assertTrue(
+                recommendations.any {
+                    val recommendation = it as PresetRecommendation
+                    recommendation.preset.title == "위험하지만 인기 프리셋" &&
+                        recommendation.reasons.any { reason ->
+                            reason.startsWith("safetyPenalty=")
+                        }
+                },
+            )
+            val devRecommendations = controller.recommendedPresets(category = "dev", limit = 1)["recommendations"] as List<*>
+            assertEquals("코딩 튜터", (devRecommendations.single() as PresetRecommendation).preset.title)
+
             val facets = controller.catalogFacets()["facets"] as PresetCatalogFacets
-            assertEquals(3, facets.totalPublished)
-            assertEquals(3, facets.totalLikes)
-            assertTrue(facets.categories.any { it.value == "dev" && it.count == 1 })
+            assertEquals(4, facets.totalPublished)
+            assertEquals(13, facets.totalLikes)
+            assertTrue(facets.categories.any { it.value == "dev" && it.count == 2 })
             assertTrue(facets.categories.any { it.value == "translation" && it.count == 1 })
             assertTrue(facets.responseModes.any { it.value == "deep" && it.count == 1 })
-            assertTrue(facets.qualityTiers.any { it.value == "standard" && it.count == 3 })
-            assertEquals("번역냥", facets.topPresets.first().title)
+            assertTrue(facets.qualityTiers.any { it.value == "standard" && it.count == 4 })
+            assertEquals("위험하지만 인기 프리셋", facets.topPresets.first().title)
         }
 
         @Test

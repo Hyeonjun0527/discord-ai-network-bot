@@ -43,6 +43,17 @@ class PresetRegistryController(
             "limit" to limit.coerceIn(1, 100),
         )
 
+    @GetMapping("/catalog/recommended")
+    fun recommendedPresets(
+        @RequestParam(required = false) category: String? = null,
+        @RequestParam(defaultValue = "10") limit: Int = 10,
+    ): Map<String, Any?> =
+        mapOf(
+            "recommendations" to registry.recommendedPublishedPresets(category = category, limit = limit),
+            "category" to category,
+            "limit" to limit.coerceIn(1, 50),
+        )
+
     @GetMapping("/catalog/facets")
     fun catalogFacets(): Map<String, Any?> = mapOf("facets" to registry.catalogFacets())
 

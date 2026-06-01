@@ -58,6 +58,9 @@ object CommandLoc {
             "llm-settings" to L("설정", "настройки", "Open the settings panel (admin)", "Открыть панель настроек (админ)"),
             "ai-network-map" to L("네트워크지도", null, "Show the AI network map (admin)", "Карта ИИ-сети (админ)"),
             "ai-network-check" to L("네트워크점검", null, "Show the AI network launch checklist (admin)", "Проверка ИИ-сети (админ)"),
+            "ai-preset-catalog" to L("프리셋목록", null, "Browse shared AI presets", "Список пресетов ИИ"),
+            "ai-preset-import" to L("프리셋가져오기", null, "Import a shared preset into this channel", "Импорт пресета"),
+            "ai-preset-like" to L("프리셋좋아요", null, "Like a shared AI preset", "Лайк пресета"),
             "bot-permissions" to L("봇권한", null, "Check bot permissions and mention setup (admin)", "Права бота (админ)"),
             "ask-long" to L("긴질문", null, "Enter a long question via modal", "Длинный вопрос (модальное окно)"),
         )

@@ -2,6 +2,8 @@ package com.discordassistant.central.discord
 
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIngestionService
+import com.discordassistant.central.network.PresetBehaviorInput
+import com.discordassistant.central.network.PresetRegistryService
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.relay.AgentConnection
@@ -45,6 +47,7 @@ class CommandServiceTest
         val knowledge: KnowledgeIngestionService,
         val channelRoutingPolicies: ChannelAiRoutingPolicyService,
         val providerCapabilities: ProviderCapabilityProfileRepository,
+        val presetRegistry: PresetRegistryService,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -64,6 +67,8 @@ class CommandServiceTest
             assertTrue(admin.contains("/채널프로필"))
             assertTrue(admin.contains("/llm-channel-profile"))
             assertTrue(admin.contains("/ai-network-map"))
+            assertTrue(admin.contains("/ai-preset-catalog"))
+            assertTrue(admin.contains("/ai-preset-import"))
             assertTrue(admin.contains("/ai-network-check"))
         }
 
@@ -195,6 +200,43 @@ class CommandServiceTest
         fun `관리자 가드 — 비관리자 채널 허용 거부`() {
             assertTrue(commands.allowChannel(ctx(admin = false), 200).content.contains("⛔"))
             assertFalse(commands.allowChannel(ctx(admin = true), 200).content.contains("⛔"))
+        }
+
+        @Test
+        fun `preset catalog import like — Discord에서 공유 프리셋을 현재 채널에 적용한다`() {
+            val g = CommandContext(guildId = 77992, channelId = 88992, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            val preset =
+                presetRegistry.createPreset(
+                    guildId = g.guildId,
+                    ownerUserId = g.userId,
+                    name = "코딩 튜터",
+                    summary = "개발 질문과 코드 리뷰를 도와주는 프리셋",
+                    category = "coding",
+                    visibility = "guild_private",
+                    behavior =
+                        PresetBehaviorInput(
+                            purpose = "Kotlin/Spring Boot 개발 질문을 돕습니다.",
+                            tone = "정확하고 실용적으로",
+                            answerLength = "balanced",
+                            constitution = "모르면 모른다고 말하고 실행 가능한 예시를 먼저 제시하기",
+                            responseMode = "balanced",
+                            maxCandidates = 1,
+                        ),
+                )
+            val published = presetRegistry.publishPreset(preset.id, g.userId, title = null, description = null)
+
+            val catalog = commands.presetCatalog(g, query = "코딩", category = "coding")
+            assertTrue(catalog.content.contains("AI 프리셋 공유 목록"))
+            assertTrue(catalog.content.contains("코딩 튜터"))
+            assertTrue(catalog.content.contains("`${published.id}`"))
+
+            val liked = commands.likePreset(g.copy(isAdmin = false), published.id)
+            assertTrue(liked.content.contains("좋아요"))
+
+            val imported = commands.importPresetToCurrentChannel(g, published.id)
+            assertTrue(imported.content.contains("프리셋을 현재 채널에 가져왔습니다"))
+            assertTrue(imported.content.contains("상태: `applied`"))
+            assertTrue(imported.content.contains("채널 AI:"))
         }
 
         @Test

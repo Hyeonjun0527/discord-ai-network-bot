@@ -9,6 +9,9 @@ import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
 import com.discordassistant.central.network.NetworkLaunchChecklist
+import com.discordassistant.central.network.PresetRegistryService
+import com.discordassistant.central.network.PublishedPresetSummary
+import com.discordassistant.central.persistence.PresetImportEntity
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.provider.ContributionPolicyService
 import com.discordassistant.central.provider.ProviderProtectionService
@@ -56,6 +59,7 @@ class CommandService(
     private val knowledgeSearch: KnowledgeSearchService,
     private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
     private val aiNetworkMap: AiNetworkMapService,
+    private val presetRegistry: PresetRegistryService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
 ) {
@@ -304,12 +308,100 @@ class CommandService(
             sb.append("· `/채널허용`(`/llm-allow-channel`) `/채널금지`(`/llm-deny-channel`) `/역할정책`(`/llm-role-policy`) — 채널·역할 정책\n")
             sb.append("· `/채널프로필`(`/llm-channel-profile`) — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
             sb.append("· `/ai-network-map` — Provider·모델·채널AI·RAG 구성을 한눈에 보기\n")
+            sb.append("· `/ai-preset-catalog` `/ai-preset-import` — 프리셋 공유 목록 보기·현재 채널에 가져오기\n")
             sb.append("· `/ai-network-check` — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
             sb.append("· `/사용자차단`(`/llm-block`) `/차단해제`(`/llm-unblock`) — 사용자 차단/해제\n")
         }
         sb.append("\n_민감정보(비밀번호·API 키 등)는 입력하지 마세요._")
         return Reply(sb.toString())
     }
+
+    fun presetCatalog(
+        ctx: CommandContext,
+        query: String? = null,
+        category: String? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val presets =
+            presetRegistry.searchPublishedPresets(query = query, category = category, sort = "popular", limit = 10)
+        return Reply(formatPresetCatalog(presets, query, category))
+    }
+
+    fun importPresetToCurrentChannel(
+        ctx: CommandContext,
+        publishedPresetId: Long,
+        confirmConflicts: Boolean = false,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val imported =
+                presetRegistry.importPreset(
+                    publishedPresetId = publishedPresetId,
+                    targetGuildId = ctx.guildId,
+                    targetChannelId = ctx.channelId,
+                    importedBy = ctx.userId,
+                    confirmConflicts = confirmConflicts,
+                )
+            Reply(formatPresetImport(imported))
+        }.getOrElse { error ->
+            val preview =
+                runCatching {
+                    presetRegistry.previewImport(
+                        publishedPresetId = publishedPresetId,
+                        targetGuildId = ctx.guildId,
+                        targetChannelId = ctx.channelId,
+                    )
+                }.getOrNull()
+            val conflicts =
+                preview
+                    ?.conflicts
+                    ?.joinToString("\n") { "• `${it.severity}` ${it.message}" }
+                    ?.ifBlank { null }
+            Replies.warn(
+                "프리셋을 바로 가져오지 못했어요. ${error.message ?: "원인을 확인해 주세요."}\n" +
+                    (conflicts?.let { "\n충돌/확인 필요:\n$it\n" } ?: "") +
+                    "적용해도 괜찮다면 `/ai-preset-import` 에서 `confirm-conflicts: true` 로 다시 실행하세요.",
+            )
+        }
+    }
+
+    fun likePreset(
+        ctx: CommandContext,
+        publishedPresetId: Long,
+    ): Reply {
+        val published =
+            runCatching { presetRegistry.likePreset(publishedPresetId, ctx.userId) }
+                .getOrElse { return Replies.warn("프리셋 좋아요에 실패했어요. ${it.message ?: "프리셋 ID를 확인해 주세요."}") }
+        return Replies.ok("프리셋 **${published.title}** 좋아요를 반영했습니다. 현재 ${published.likeCount}개")
+    }
+
+    private fun formatPresetCatalog(
+        presets: List<PublishedPresetSummary>,
+        query: String?,
+        category: String?,
+    ): String {
+        val filter =
+            listOfNotNull(
+                query?.takeIf { it.isNotBlank() }?.let { "검색 `$it`" },
+                category?.takeIf { it.isNotBlank() }?.let { "카테고리 `$it`" },
+            ).joinToString(" · ").ifBlank { "인기순" }
+        val presetLines =
+            presets.take(10).map { preset ->
+                val categoryText = preset.category ?: "general"
+                val mode = preset.responseMode ?: "balanced"
+                "• `${preset.id}` **${preset.title}** — $categoryText · $mode · 👍 ${preset.likeCount} · 가져오기 ${preset.importCount}"
+            }
+        val lines = presetLines.joinToString("\n").ifBlank { "• 아직 공개된 프리셋이 없습니다." }
+        return "📚 **AI 프리셋 공유 목록** ($filter)\n\n" +
+            "$lines\n\n" +
+            "현재 채널에 적용하려면 `/ai-preset-import published-id:<ID>` 를 실행하세요."
+    }
+
+    private fun formatPresetImport(imported: PresetImportEntity): String =
+        "✅ 프리셋을 현재 채널에 가져왔습니다.\n" +
+            "상태: `${imported.status}` · 보관함 프리셋: `${imported.importedPresetId ?: "-"}`\n" +
+            "채널 AI: `${imported.createdChannelAiId ?: "-"}` · 행동 버전: `${imported.createdBehaviorVersionId ?: "-"}`\n" +
+            "이제 이 채널에서 질문하면 가져온 프리셋의 역할·말투·응답 정책이 적용됩니다."
 
     fun aiNetworkMap(ctx: CommandContext): Reply {
         adminOnly(ctx)?.let { return it }

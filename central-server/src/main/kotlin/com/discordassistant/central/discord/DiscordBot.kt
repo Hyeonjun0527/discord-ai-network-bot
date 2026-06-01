@@ -272,6 +272,19 @@ class DiscordBot(
                 Commands.slash("llm-settings", "설정 패널을 엽니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands.slash("ai-network-map", "AI 네트워크 지도와 채널 AI 구성을 봅니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands.slash("ai-network-check", "AI 네트워크 출시/운영 체크리스트를 봅니다(관리자)").setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-preset-catalog", "공개 AI 프리셋 공유 목록을 봅니다(관리자)")
+                    .addOption(OptionType.STRING, "query", "검색어", false)
+                    .addOption(OptionType.STRING, "category", "카테고리", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-preset-import", "공개 프리셋을 현재 채널 AI에 가져옵니다(관리자)")
+                    .addOption(OptionType.STRING, "published-id", "가져올 공개 프리셋 ID", true)
+                    .addOption(OptionType.BOOLEAN, "confirm-conflicts", "기존 채널 AI/정책 덮어쓰기 확인", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-preset-like", "공개 AI 프리셋에 좋아요를 누릅니다")
+                    .addOption(OptionType.STRING, "published-id", "좋아요할 공개 프리셋 ID", true),
                 Commands.slash("bot-permissions", "봇 권한과 @멘션 호출 설정을 점검합니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands.slash("ask-long", "긴 질문을 모달 창으로 입력합니다"),
                 // 컨텍스트 메뉴(#181): 메시지 우클릭 → 그 내용으로 질문
@@ -1139,6 +1152,19 @@ class DiscordBot(
                 "bot-permissions" -> commands.botPermissions(ctx)
                 "ai-network-map" -> commands.aiNetworkMap(ctx)
                 "ai-network-check" -> commands.aiNetworkCheck(ctx)
+                "ai-preset-catalog" ->
+                    commands.presetCatalog(
+                        ctx,
+                        query = event.getOption("query")?.asString,
+                        category = event.getOption("category")?.asString,
+                    )
+                "ai-preset-import" ->
+                    commands.importPresetToCurrentChannel(
+                        ctx,
+                        publishedPresetId = event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L,
+                        confirmConflicts = event.getOption("confirm-conflicts")?.asBoolean ?: false,
+                    )
+                "ai-preset-like" -> commands.likePreset(ctx, event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L)
                 "welcome" -> commands.welcome(ctx)
                 "llm-welcome-set" -> commands.setWelcome(ctx, event.getOption("message")!!.asString)
                 "provider-join" -> commands.providerJoin(ctx)

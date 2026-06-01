@@ -134,6 +134,9 @@ class ChannelAiRoutingPolicyServiceTest
             assertEquals(emptyList<String>(), catalog.availableModels)
             assertEquals(listOf("qwen-coder"), catalog.unavailableAllowedModels)
             assertEquals("provider_protection_blocks_all_allowed_models", catalog.safetySummary)
+            assertEquals(null, catalog.recommendedModel)
+            assertEquals(false, catalog.modelSummaries.single().available)
+            assertEquals(listOf("provider_critical_overload"), catalog.modelSummaries.single().blockingReasons)
         }
 
         @Test
@@ -230,6 +233,18 @@ class ChannelAiRoutingPolicyServiceTest
             assertEquals(listOf("llama3.1:8b", "qwen-coder"), catalog.availableModels)
             assertEquals(emptyList<String>(), catalog.unavailableAllowedModels)
             assertEquals("available", catalog.safetySummary)
+            assertEquals("qwen-coder", catalog.recommendedModel)
+            val qwenSummary = catalog.modelSummaries.first { it.modelName == "qwen-coder" }
+            val llamaSummary = catalog.modelSummaries.first { it.modelName == "llama3.1:8b" }
+            val tinySummary = catalog.modelSummaries.first { it.modelName == "tiny" }
+            assertEquals(true, qwenSummary.recommended)
+            assertEquals(true, qwenSummary.preferred)
+            assertEquals(1, qwenSummary.eligibleProviderCount)
+            assertEquals(2, qwenSummary.totalProviderCount)
+            assertEquals(1, qwenSummary.protectedProviderCount)
+            assertEquals("specialized", qwenSummary.bestQualityTier)
+            assertEquals(true, llamaSummary.available)
+            assertEquals(listOf("model_not_allowed", "quality_below_minimum"), tinySummary.blockingReasons)
             assertEquals("qwen-coder", decision.selectedModel)
             assertEquals(null, decision.fallbackReason)
             assertEquals(2, catalog.candidates.count { it.eligible })

@@ -141,6 +141,7 @@ class ChannelAiRoutingPolicyService(
                 .map { it.modelName }
                 .distinct()
                 .sorted()
+        val modelSummaries = summarizeModelCandidates(candidates, effective, availableModels)
         return ModelCandidateCatalog(
             guildId = guildId,
             channelId = channelId,
@@ -152,9 +153,56 @@ class ChannelAiRoutingPolicyService(
             availableModels = availableModels,
             unavailableAllowedModels = effective.allowedModels.filter { it !in availableModels }.sorted(),
             safetySummary = modelCandidateSafetySummary(candidates, effective.allowedModels, availableModels),
+            modelSummaries = modelSummaries,
+            recommendedModel = modelSummaries.firstOrNull { it.recommended }?.modelName,
             candidates = candidates,
         )
     }
+
+    private fun summarizeModelCandidates(
+        candidates: List<ModelCandidate>,
+        effective: EffectiveRoutingPolicy,
+        availableModels: List<String>,
+    ): List<ModelCandidateSummary> {
+        val preferred = effective.preferredModel?.trim()?.ifBlank { null }
+        return candidates
+            .groupBy { it.modelName }
+            .map { (modelName, modelCandidates) ->
+                val eligible = modelCandidates.filter { it.eligible }
+                val reasons = modelCandidates.flatMap { it.ineligibleReasons }.distinct().sorted()
+                val bestQuality = modelCandidates.maxOfOrNull { qualityRank(it.qualityTier) } ?: 0
+                val protectedCount = modelCandidates.count { it.overloadRisk.equals("critical", ignoreCase = true) }
+                ModelCandidateSummary(
+                    modelName = modelName,
+                    eligibleProviderCount = eligible.size,
+                    totalProviderCount = modelCandidates.size,
+                    protectedProviderCount = protectedCount,
+                    bestQualityTier = qualityTierName(bestQuality),
+                    available = modelName in availableModels,
+                    preferred = modelName == preferred,
+                    recommended = false,
+                    blockingReasons = if (eligible.isEmpty()) reasons else emptyList(),
+                    tags = modelCandidates.flatMap { it.tags }.distinct().sorted(),
+                )
+            }.sortedWith(
+                compareByDescending<ModelCandidateSummary> { it.preferred && it.available }
+                    .thenByDescending { it.available }
+                    .thenByDescending { it.eligibleProviderCount }
+                    .thenByDescending { qualityRank(it.bestQualityTier) }
+                    .thenBy { it.modelName },
+            ).markRecommended()
+    }
+
+    private fun List<ModelCandidateSummary>.markRecommended(): List<ModelCandidateSummary> =
+        mapIndexed { index, summary -> summary.copy(recommended = index == 0 && summary.available) }
+
+    private fun qualityTierName(rank: Int): String =
+        when (rank) {
+            3 -> "specialized"
+            2 -> "high"
+            1 -> "standard"
+            else -> "unknown"
+        }
 
     private fun modelCandidateSafetySummary(
         candidates: List<ModelCandidate>,
@@ -313,7 +361,22 @@ data class ModelCandidateCatalog(
     val availableModels: List<String>,
     val unavailableAllowedModels: List<String> = emptyList(),
     val safetySummary: String = "available",
+    val modelSummaries: List<ModelCandidateSummary> = emptyList(),
+    val recommendedModel: String? = null,
     val candidates: List<ModelCandidate>,
+)
+
+data class ModelCandidateSummary(
+    val modelName: String,
+    val eligibleProviderCount: Int,
+    val totalProviderCount: Int,
+    val protectedProviderCount: Int,
+    val bestQualityTier: String,
+    val available: Boolean,
+    val preferred: Boolean,
+    val recommended: Boolean,
+    val blockingReasons: List<String>,
+    val tags: List<String>,
 )
 
 data class ModelCandidate(

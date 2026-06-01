@@ -212,6 +212,39 @@ class PresetRegistryService(
     }
 
     @Transactional
+    fun updatePublishedPreset(
+        publishedPresetId: Long,
+        actorUserId: Long?,
+        title: String?,
+        description: String?,
+        behavior: PresetBehaviorInput?,
+    ): PublishedPresetEntity {
+        featureGate.requirePresetEnabled()
+        val now = Instant.now(clock)
+        val published =
+            publishedPresets.findById(publishedPresetId).orElseThrow {
+                IllegalArgumentException("published preset not found: $publishedPresetId")
+            }
+        requirePublishedPreset(published)
+        val preset =
+            presets.findById(published.presetId).orElseThrow {
+                IllegalArgumentException("preset not found: ${published.presetId}")
+            }
+        requireActivePreset(preset)
+        title?.trim()?.takeIf { it.isNotBlank() }?.let { published.title = it.take(120) }
+        description?.trim()?.let { published.description = it.ifBlank { null }?.take(500) }
+        if (behavior != null) {
+            val nextRevision = (revisions.findByPresetIdOrderByRevisionDesc(preset.id).firstOrNull()?.revision ?: 0) + 1
+            val revision = createRevision(preset, nextRevision, behavior, actorUserId, now)
+            preset.currentRevisionId = revision.id
+            preset.updatedAt = now
+            presets.save(preset)
+            published.revisionId = revision.id
+        }
+        return publishedPresets.save(published)
+    }
+
+    @Transactional
     fun importPreset(
         publishedPresetId: Long,
         targetGuildId: Long,

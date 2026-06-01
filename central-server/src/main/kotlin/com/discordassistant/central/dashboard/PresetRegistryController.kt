@@ -94,6 +94,22 @@ class PresetRegistryController(
         return mapOf("id" to published.id, "status" to published.status, "title" to published.title)
     }
 
+    @PutMapping("/published/{publishedPresetId}")
+    fun updatePublished(
+        @PathVariable publishedPresetId: Long,
+        @RequestBody request: UpdatePublishedPresetRequest,
+    ): Map<String, Any?> {
+        val published =
+            registry.updatePublishedPreset(
+                publishedPresetId = publishedPresetId,
+                actorUserId = request.actorUserId,
+                title = request.title,
+                description = request.description,
+                behavior = request.behavior,
+            )
+        return mapOf("id" to published.id, "revisionId" to published.revisionId, "status" to published.status, "title" to published.title)
+    }
+
     @PostMapping("/published/{publishedPresetId}/import-preview")
     fun importPreview(
         @PathVariable publishedPresetId: Long,
@@ -205,6 +221,13 @@ data class PublishPresetRequest(
     val actorUserId: Long? = null,
     val title: String? = null,
     val description: String? = null,
+)
+
+data class UpdatePublishedPresetRequest(
+    val actorUserId: Long? = null,
+    val title: String? = null,
+    val description: String? = null,
+    val behavior: PresetBehaviorInput? = null,
 )
 
 data class ImportPresetRequest(

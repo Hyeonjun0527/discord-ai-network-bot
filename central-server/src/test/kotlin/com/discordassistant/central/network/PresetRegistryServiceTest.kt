@@ -8,6 +8,7 @@ import com.discordassistant.central.dashboard.PublishPresetRequest
 import com.discordassistant.central.dashboard.ReportPresetRequest
 import com.discordassistant.central.dashboard.ReviewPresetReportRequest
 import com.discordassistant.central.dashboard.UpdatePresetRequest
+import com.discordassistant.central.dashboard.UpdatePublishedPresetRequest
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetRepository
@@ -282,6 +283,60 @@ class PresetRegistryServiceTest
                 )
             assertEquals("applied", imported["status"])
             assertEquals(1, imports.findByTargetGuildId(301).size)
+        }
+
+        @Test
+        fun `published preset update creates new revision and never mutates existing import`() {
+            val preset =
+                service.createPreset(
+                    guildId = 310,
+                    ownerUserId = 77,
+                    name = "지원냥",
+                    summary = "고객지원",
+                    category = "support",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "고객지원 v1", tone = "friendly", responseMode = "fast"),
+                )
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = "지원냥", description = "v1")
+            val originalRevisionId = published.revisionId
+            val importedV1 =
+                controller.importPreset(
+                    published.id,
+                    ImportPresetRequest(targetGuildId = 311, targetChannelId = 411, actorUserId = 88),
+                )
+            val v1BehaviorId = importedV1["createdBehaviorVersionId"] as Long
+            val importedChannel = channelAis.findByGuildIdAndChannelId(311, 411)!!
+            assertEquals("고객지원 v1", behaviorVersions.findByChannelAiIdAndId(importedChannel.id, v1BehaviorId)?.purpose)
+
+            val updated =
+                controller.updatePublished(
+                    published.id,
+                    UpdatePublishedPresetRequest(
+                        actorUserId = 77,
+                        title = "지원냥 v2",
+                        description = "v2",
+                        behavior = PresetBehaviorInput(purpose = "고객지원 v2", tone = "professional", responseMode = "deep"),
+                    ),
+                )
+            val newRevisionId = updated["revisionId"] as Long
+
+            assertTrue(newRevisionId != originalRevisionId)
+            assertEquals(2, revisions.findByPresetIdOrderByRevisionDesc(preset.id).first().revision)
+            assertEquals(v1BehaviorId, channelAis.findByGuildIdAndChannelId(311, 411)?.activeBehaviorVersionId)
+            assertEquals("고객지원 v1", behaviorVersions.findByChannelAiIdAndId(importedChannel.id, v1BehaviorId)?.purpose)
+            val detail = controller.publishedPresetDetail(published.id)["preset"] as PublishedPresetDetail
+            assertEquals("고객지원 v2", detail.behavior.purpose)
+            assertEquals("deep", detail.behavior.responseMode)
+
+            val importedV2 =
+                controller.importPreset(
+                    published.id,
+                    ImportPresetRequest(targetGuildId = 312, targetChannelId = 412, actorUserId = 89),
+                )
+            val v2Channel = channelAis.findByGuildIdAndChannelId(312, 412)!!
+            val v2Behavior = behaviorVersions.findByChannelAiIdAndId(v2Channel.id, importedV2["createdBehaviorVersionId"] as Long)
+            assertEquals("고객지원 v2", v2Behavior?.purpose)
+            assertEquals("professional", v2Behavior?.tone)
         }
 
         @Test

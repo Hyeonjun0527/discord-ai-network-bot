@@ -10,6 +10,7 @@ import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -33,7 +34,7 @@ class KnowledgeIngestionServiceTest
                 sources = sources,
                 clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
             )
-        private val searchService = KnowledgeSearchService(sources)
+        private val searchService = KnowledgeSearchService(sources, spaces)
         private val controller = KnowledgeIngestionController(service, searchService)
 
         @Test
@@ -94,6 +95,10 @@ class KnowledgeIngestionServiceTest
                 )
 
             assertEquals("sensitive", source.riskLevel)
+            assertEquals("blocked_sensitive", source.status)
+            assertThrows(IllegalArgumentException::class.java) {
+                service.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+            }
             val rejected =
                 controller.reject(
                     100,
@@ -141,5 +146,60 @@ class KnowledgeIngestionServiceTest
 
             assertTrue(afterDelete.results.isEmpty())
             assertEquals("no_indexed_knowledge_match", afterDelete.fallbackReason)
+        }
+
+        @Test
+        fun `knowledge search can be narrowed to channel or knowledge space`() {
+            val channelOne = service.createSpace(100, 201, null, "개발 지식", 77, null, null)
+            val channelTwo = service.createSpace(100, 202, null, "번역 지식", 77, null, null)
+            val sourceOne =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = channelOne.id,
+                    sourceType = "link",
+                    title = "Kotlin Spring 운영 가이드",
+                    sourceUri = "https://example.com/kotlin.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            val sourceTwo =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = channelTwo.id,
+                    sourceType = "link",
+                    title = "Kotlin 번역 가이드",
+                    sourceUri = "https://example.com/translation.md",
+                    contentPreview = "번역",
+                    addedBy = 77,
+                )
+            service.markSourceIndexed(100, channelOne.id, sourceOne.id, chunkCount = 1)
+            service.markSourceIndexed(100, channelTwo.id, sourceTwo.id, chunkCount = 1)
+
+            val channelOneResults = controller.search(100, query = "Kotlin", limit = 10, channelId = 201, knowledgeSpaceId = null)
+            assertEquals(listOf(sourceOne.id), channelOneResults.results.map { it.sourceId })
+
+            val spaceTwoResults = controller.search(100, query = "Kotlin", limit = 10, channelId = null, knowledgeSpaceId = channelTwo.id)
+            assertEquals(listOf(sourceTwo.id), spaceTwoResults.results.map { it.sourceId })
+        }
+
+        @Test
+        fun `link source blocks ssrf and non https before indexing`() {
+            val space = service.createSpace(100, 200, null, "보안 지식", 77, null, null)
+            val source =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "link",
+                    title = "metadata",
+                    sourceUri = "https://169.254.169.254/latest/meta-data",
+                    contentPreview = "metadata",
+                    addedBy = 77,
+                )
+
+            assertEquals("ssrf", source.riskLevel)
+            assertEquals("blocked_ssrf", source.status)
+            assertThrows(IllegalArgumentException::class.java) {
+                service.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+            }
         }
     }

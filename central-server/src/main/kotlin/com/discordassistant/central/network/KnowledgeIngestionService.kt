@@ -6,6 +6,7 @@ import com.discordassistant.central.persistence.KnowledgeSpaceEntity
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.net.URI
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
@@ -60,23 +61,26 @@ class KnowledgeIngestionService(
             spaces.findByGuildIdAndId(guildId, spaceId)
                 ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
         val now = Instant.now(clock)
+        val normalizedType = sourceType.trim().lowercase().ifBlank { "text" }
+        val normalizedUri = sourceUri?.trim()?.ifBlank { null }
+        val validation = validateSource(normalizedType, normalizedUri, contentPreview)
         val source =
             sources.save(
                 KnowledgeSourceEntity(
                     knowledgeSpaceId = space.id,
                     guildId = guildId,
-                    sourceType = sourceType.trim().ifBlank { "text" },
-                    sourceUri = sourceUri?.trim()?.ifBlank { null },
+                    sourceType = normalizedType,
+                    sourceUri = normalizedUri,
                     title = title.trim().ifBlank { "untitled" },
-                    status = "pending",
-                    contentHash = stableHash(sourceUri.orEmpty() + "\n" + contentPreview.orEmpty()),
-                    riskLevel = inferRiskLevel(sourceType, sourceUri, contentPreview),
+                    status = validation.initialStatus,
+                    contentHash = stableHash(normalizedUri.orEmpty() + "\n" + contentPreview.orEmpty()),
+                    riskLevel = validation.riskLevel,
                     addedBy = addedBy,
                     addedAt = now,
                 ),
             )
         space.sourceCount = sources.findByKnowledgeSpaceId(space.id).size
-        space.status = "pending_index"
+        space.status = if (validation.initialStatus == "pending") "pending_index" else "needs_review"
         space.updatedAt = now
         spaces.save(space)
         return source
@@ -96,6 +100,9 @@ class KnowledgeIngestionService(
         val source =
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
+        require(source.guildId == guildId) { "knowledge source belongs to another guild" }
+        require(source.status == "pending") { "only pending source can be indexed: ${source.status}" }
+        require(source.riskLevel == "normal" || source.riskLevel == "review") { "unsafe source cannot be indexed: ${source.riskLevel}" }
         val now = Instant.now(clock)
         source.status = "indexed"
         source.indexedAt = now
@@ -121,6 +128,7 @@ class KnowledgeIngestionService(
         val source =
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
+        require(source.guildId == guildId) { "knowledge source belongs to another guild" }
         source.status = "rejected:${reason.trim().take(80)}"
         return sources.save(source)
     }
@@ -139,6 +147,7 @@ class KnowledgeIngestionService(
         val source =
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
+        require(source.guildId == guildId) { "knowledge source belongs to another guild" }
         source.status = "deleted:${reason.trim().take(80)}"
         val saved = sources.save(source)
         space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { it.status.startsWith("deleted").not() }
@@ -147,21 +156,63 @@ class KnowledgeIngestionService(
         return saved
     }
 
-    private fun inferRiskLevel(
+    private fun validateSource(
         sourceType: String,
         sourceUri: String?,
         contentPreview: String?,
-    ): String {
-        val text = listOf(sourceType, sourceUri.orEmpty(), contentPreview.orEmpty()).joinToString(" ").lowercase()
+    ): SourceValidation {
+        if (sourceType !in ALLOWED_SOURCE_TYPES) {
+            return SourceValidation("review", "blocked_type")
+        }
+        val text = listOf(sourceType, sourceUri.orEmpty(), contentPreview.orEmpty()).joinToString(" ")
+        if (contentPreview.orEmpty().length > MAX_CONTENT_PREVIEW_CHARS) {
+            return SourceValidation("review", "blocked_too_large")
+        }
+        if (SENSITIVE_PATTERNS.any { it.containsMatchIn(text) }) {
+            return SourceValidation("sensitive", "blocked_sensitive")
+        }
+        if (sourceUri != null) {
+            val uriRisk = validateUri(sourceUri)
+            if (uriRisk != null) return uriRisk
+        }
+        return SourceValidation("normal", "pending")
+    }
+
+    private fun validateUri(sourceUri: String): SourceValidation? {
+        val uri = runCatching { URI(sourceUri) }.getOrNull() ?: return SourceValidation("review", "blocked_bad_uri")
+        if (uri.scheme != "https") return SourceValidation("review", "blocked_non_https")
+        val host = uri.host?.lowercase() ?: return SourceValidation("review", "blocked_bad_uri")
         return when {
-            "password" in text || "api_key" in text || "secret" in text || "token" in text -> "sensitive"
-            sourceUri != null && !sourceUri.startsWith("https://") -> "review"
-            else -> "normal"
+            host == "localhost" || host.endsWith(".localhost") -> SourceValidation("ssrf", "blocked_ssrf")
+            host in PRIVATE_HOSTS -> SourceValidation("ssrf", "blocked_ssrf")
+            PRIVATE_IPV4_PREFIXES.any { host.startsWith(it) } -> SourceValidation("ssrf", "blocked_ssrf")
+            host.endsWith(".local") || host.endsWith(".internal") -> SourceValidation("ssrf", "blocked_ssrf")
+            else -> null
         }
     }
 
     private fun stableHash(value: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
         return "sha256:" + digest.joinToString("") { "%02x".format(it) }
+    }
+
+    private data class SourceValidation(
+        val riskLevel: String,
+        val initialStatus: String,
+    )
+
+    private companion object {
+        const val MAX_CONTENT_PREVIEW_CHARS = 8_000
+        val ALLOWED_SOURCE_TYPES = setOf("file", "link", "text", "faq", "constitution", "preset")
+        val PRIVATE_HOSTS = setOf("127.0.0.1", "0.0.0.0", "169.254.169.254", "::1")
+        val PRIVATE_IPV4_PREFIXES = listOf("10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.", "172.2", "172.30.", "172.31.")
+        val SENSITIVE_PATTERNS =
+            listOf(
+                Regex("(?i)\\b(password|passwd|pwd)\\s*[:=]\\s*\\S+"),
+                Regex("(?i)\\b(api[_-]?key|secret|token|bot[_-]?token|private[_-]?key)\\s*[:=]\\s*\\S+"),
+                Regex("(?i)-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"),
+                Regex("(?i)discord[_-]?bot[_-]?token"),
+                Regex("(?i)sk-[A-Za-z0-9_-]{20,}"),
+            )
     }
 }

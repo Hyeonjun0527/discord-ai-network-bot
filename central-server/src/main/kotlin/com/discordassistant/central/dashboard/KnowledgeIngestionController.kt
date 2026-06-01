@@ -70,7 +70,9 @@ class KnowledgeIngestionController(
         @PathVariable guildId: Long,
         @RequestParam query: String,
         @RequestParam(defaultValue = "5") limit: Int,
-    ) = search.search(guildId, query, limit)
+        @RequestParam(required = false) channelId: Long? = null,
+        @RequestParam(required = false) knowledgeSpaceId: Long? = null,
+    ) = search.search(guildId, query, limit, channelId, knowledgeSpaceId)
 
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/delete")
     fun removeSource(

@@ -169,6 +169,8 @@ interface AiChangeProposalRepository : JpaRepository<AiChangeProposalEntity, Lon
         status: String,
     ): List<AiChangeProposalEntity>
 
+    fun findByGuildIdOrderByCreatedAtDesc(guildId: Long): List<AiChangeProposalEntity>
+
     fun findByGuildIdAndChannelIdOrderByCreatedAtDesc(
         guildId: Long,
         channelId: Long,

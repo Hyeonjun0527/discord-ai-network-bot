@@ -271,6 +271,55 @@ class ChannelAiCustomizationService(
         return saved
     }
 
+    fun proposalReviewSummary(
+        guildId: Long,
+        limit: Int = 20,
+    ): ChannelAiProposalReviewSummary {
+        val all = proposals.findByGuildIdOrderByCreatedAtDesc(guildId)
+        val pending = all.filter { it.status == "pending" }
+        val statusCounts = all.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
+        val reasonCounts =
+            all
+                .mapNotNull { it.reason?.trim()?.takeIf { reason -> reason.isNotBlank() } }
+                .groupingBy { it }
+                .eachCount()
+                .toList()
+                .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
+                .associate { it.first to it.second }
+        val staleCount = statusCounts["stale"] ?: 0
+        val rejectedCount = statusCounts["rejected"] ?: 0
+        val riskCodes =
+            buildList {
+                if (pending.isNotEmpty()) add("pending_review_required")
+                if (staleCount > 0) add("stale_payload_detected")
+                if (rejectedCount > 0) add("recent_rejections")
+                if (pending.any { it.reason?.contains("risk", ignoreCase = true) == true || it.reason?.contains("위험") == true }) {
+                    add("risky_instruction_pending")
+                }
+            }.distinct()
+        val nextActions =
+            buildList {
+                if (pending.isNotEmpty()) add("AI 관리자 역할이 pending 변경을 승인하거나 거절해야 합니다.")
+                if (staleCount > 0) add("stale 제안은 다시 생성해 검토해야 합니다.")
+                if (rejectedCount > 0) add("거절 사유를 반영해 새 버전을 제안하세요.")
+                if (isEmpty()) add("현재 검토가 필요한 AI 설정 변경은 없습니다.")
+            }.distinct()
+        return ChannelAiProposalReviewSummary(
+            guildId = guildId,
+            totalProposalCount = all.size,
+            pendingProposalCount = pending.size,
+            approvedProposalCount = statusCounts["approved"] ?: 0,
+            rejectedProposalCount = rejectedCount,
+            staleProposalCount = staleCount,
+            statusCounts = statusCounts,
+            reasonCounts = reasonCounts,
+            riskCodes = riskCodes,
+            nextActions = nextActions,
+            pendingItems = pending.take(limit.coerceIn(1, 50)).map { it.toReviewItem() },
+            recentItems = all.take(limit.coerceIn(1, 50)).map { it.toReviewItem() },
+        )
+    }
+
     fun pendingProposals(guildId: Long): List<AiChangeProposalEntity> = proposals.findByGuildIdAndStatus(guildId, "pending")
 
     fun channelHistory(
@@ -376,6 +425,28 @@ class ChannelAiCustomizationService(
             examples = examples,
             message = onboardingMessage(name, description, safetyNotice, examples),
             empty = channelAi == null,
+        )
+    }
+
+    private fun AiChangeProposalEntity.toReviewItem(): ChannelAiProposalReviewItem {
+        val behavior = proposedBehaviorId?.let { behaviorId -> channelAiId?.let { versions.findByChannelAiIdAndId(it, behaviorId) } }
+        return ChannelAiProposalReviewItem(
+            id = id,
+            channelId = channelId,
+            channelAiId = channelAiId,
+            proposedBehaviorId = proposedBehaviorId,
+            status = status,
+            requestedBy = requestedBy,
+            reviewedBy = reviewedBy,
+            reason = reason,
+            behaviorVersion = behavior?.version,
+            purpose = behavior?.purpose,
+            tone = behavior?.tone,
+            answerLength = behavior?.answerLength,
+            safetyLevel = behavior?.safetyLevel,
+            changeSummary = behavior?.changeSummary,
+            createdAt = createdAt.toString(),
+            reviewedAt = reviewedAt?.toString(),
         )
     }
 
@@ -580,6 +651,40 @@ class ChannelAiCustomizationService(
             )
     }
 }
+
+data class ChannelAiProposalReviewSummary(
+    val guildId: Long,
+    val totalProposalCount: Int,
+    val pendingProposalCount: Int,
+    val approvedProposalCount: Int,
+    val rejectedProposalCount: Int,
+    val staleProposalCount: Int,
+    val statusCounts: Map<String, Int>,
+    val reasonCounts: Map<String, Int>,
+    val riskCodes: List<String>,
+    val nextActions: List<String>,
+    val pendingItems: List<ChannelAiProposalReviewItem>,
+    val recentItems: List<ChannelAiProposalReviewItem>,
+)
+
+data class ChannelAiProposalReviewItem(
+    val id: Long,
+    val channelId: Long,
+    val channelAiId: Long?,
+    val proposedBehaviorId: Long?,
+    val status: String,
+    val requestedBy: Long?,
+    val reviewedBy: Long?,
+    val reason: String?,
+    val behaviorVersion: Int?,
+    val purpose: String?,
+    val tone: String?,
+    val answerLength: String?,
+    val safetyLevel: String?,
+    val changeSummary: String?,
+    val createdAt: String,
+    val reviewedAt: String?,
+)
 
 data class ChannelAiOnboarding(
     val guildId: Long,

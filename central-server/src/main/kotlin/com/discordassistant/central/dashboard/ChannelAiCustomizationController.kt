@@ -106,6 +106,11 @@ class ChannelAiCustomizationController(
         return mapOf("id" to proposal.id, "status" to proposal.status, "reason" to proposal.reason)
     }
 
+    @GetMapping("/{guildId}/proposals/summary")
+    fun proposalSummary(
+        @PathVariable guildId: Long,
+    ) = customization.proposalReviewSummary(guildId)
+
     @GetMapping("/{guildId}/proposals/pending")
     fun pending(
         @PathVariable guildId: Long,

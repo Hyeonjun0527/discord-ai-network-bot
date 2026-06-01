@@ -227,6 +227,49 @@ class KnowledgeIngestionServiceTest
         }
 
         @Test
+        fun `guild readiness summarizes rag launch gates and next actions`() {
+            val empty = controller.guildReadiness(900)
+            assertEquals("empty", empty.status)
+            assertEquals(false, empty.gates.first { it.code == "has_knowledge_space" }.passed)
+            assertTrue(empty.nextActions.any { it.contains("지식공간") })
+
+            val readySpace = service.createSpace(900, 901, null, "개발 지식", 77, null, null)
+            val indexed =
+                service.addSource(
+                    guildId = 900,
+                    spaceId = readySpace.id,
+                    sourceType = "link",
+                    title = "Kotlin Spring 운영 가이드",
+                    sourceUri = "https://example.com/kotlin.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            service.markSourceIndexed(900, readySpace.id, indexed.id, chunkCount = 2)
+            val blockedSpace = service.createSpace(900, 902, null, "보안 지식", 77, null, null)
+            service.addSource(
+                guildId = 900,
+                spaceId = blockedSpace.id,
+                sourceType = "text",
+                title = "env",
+                sourceUri = null,
+                contentPreview = "token=secret",
+                addedBy = 77,
+            )
+
+            val readiness = controller.guildReadiness(900)
+
+            assertEquals("needs_review", readiness.status)
+            assertEquals(2, readiness.spaceCount)
+            assertEquals(1, readiness.readySpaceCount)
+            assertEquals(2, readiness.sourceCount)
+            assertEquals(1, readiness.indexedSourceCount)
+            assertEquals(1, readiness.blockedSourceCount)
+            assertEquals(false, readiness.gates.first { it.code == "no_blocked_sources" }.passed)
+            assertTrue(readiness.nextActions.any { it.contains("blocked_sensitive") })
+            assertEquals(setOf(901L, 902L), readiness.spaces.mapNotNull { it.channelId }.toSet())
+        }
+
+        @Test
         fun `sensitive-looking source is marked for review or rejection`() {
             val space = service.createSpace(100, 200, null, "운영 지식", 77, null, null)
             val source =

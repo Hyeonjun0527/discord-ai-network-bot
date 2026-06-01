@@ -107,6 +107,71 @@ class KnowledgeIngestionService(
         )
     }
 
+    fun guildReadiness(guildId: Long): KnowledgeGuildReadiness {
+        featureGate.requireRagEnabled()
+        val summaries = spaces.findByGuildId(guildId).map { spaceStatus(guildId, it.id) }
+        val readySpaces = summaries.count { it.readiness == "ready" }
+        val partialSpaces = summaries.count { it.readiness == "partial" }
+        val blockedSources = summaries.sumOf { it.blockedSourceCount }
+        val pendingSources = summaries.sumOf { it.pendingSourceCount }
+        val indexedSources = summaries.sumOf { it.indexedSourceCount }
+        val totalSources = summaries.sumOf { it.sourceCount }
+        val status =
+            when {
+                summaries.isEmpty() -> "empty"
+                blockedSources > 0 -> "needs_review"
+                readySpaces > 0 && pendingSources == 0 -> "ready"
+                readySpaces > 0 || partialSpaces > 0 -> "partial"
+                pendingSources > 0 -> "indexing_needed"
+                else -> "empty"
+            }
+        val gates =
+            listOf(
+                KnowledgeReadinessGate(
+                    code = "has_knowledge_space",
+                    passed = summaries.isNotEmpty(),
+                    message = if (summaries.isNotEmpty()) "지식공간이 있습니다." else "먼저 채널 지식공간을 만드세요.",
+                ),
+                KnowledgeReadinessGate(
+                    code = "has_indexed_source",
+                    passed = indexedSources > 0,
+                    message = if (indexedSources > 0) "색인된 지식 소스가 있습니다." else "최소 1개 이상의 지식 소스를 색인하세요.",
+                ),
+                KnowledgeReadinessGate(
+                    code = "no_blocked_sources",
+                    passed = blockedSources == 0,
+                    message = if (blockedSources == 0) "차단된 지식 소스가 없습니다." else "민감정보/SSRF 위험 지식 소스를 검토하세요.",
+                ),
+                KnowledgeReadinessGate(
+                    code = "no_pending_sources",
+                    passed = pendingSources == 0,
+                    message = if (pendingSources == 0) "대기 중인 색인 작업이 없습니다." else "대기 중인 지식 소스를 색인하세요.",
+                ),
+            )
+        val nextActions =
+            buildList {
+                if (summaries.isEmpty()) add("/지식추가 또는 대시보드에서 지식공간을 먼저 만드세요.")
+                if (indexedSources == 0 && totalSources > 0) add("indexing-plan을 확인하고 scripts/rag.sh rebuild를 실행하세요.")
+                if (pendingSources > 0) add("pending 소스를 색인 완료 처리하거나 실패 원인을 확인하세요.")
+                if (blockedSources > 0) add("blocked_sensitive/blocked_ssrf 소스를 삭제하거나 review 소스만 승인하세요.")
+                if (status == "ready") add("RAG context-plan과 golden eval을 실행해 검색 품질을 확인하세요.")
+            }
+        return KnowledgeGuildReadiness(
+            guildId = guildId,
+            status = status,
+            spaceCount = summaries.size,
+            readySpaceCount = readySpaces,
+            partialSpaceCount = partialSpaces,
+            sourceCount = totalSources,
+            indexedSourceCount = indexedSources,
+            pendingSourceCount = pendingSources,
+            blockedSourceCount = blockedSources,
+            gates = gates,
+            nextActions = nextActions,
+            spaces = summaries,
+        )
+    }
+
     fun indexingPlan(
         guildId: Long,
         spaceId: Long,
@@ -541,4 +606,25 @@ data class KnowledgeIndexingSource(
     val status: String,
     val riskLevel: String,
     val contentHash: String?,
+)
+
+data class KnowledgeGuildReadiness(
+    val guildId: Long,
+    val status: String,
+    val spaceCount: Int,
+    val readySpaceCount: Int,
+    val partialSpaceCount: Int,
+    val sourceCount: Int,
+    val indexedSourceCount: Int,
+    val pendingSourceCount: Int,
+    val blockedSourceCount: Int,
+    val gates: List<KnowledgeReadinessGate>,
+    val nextActions: List<String>,
+    val spaces: List<KnowledgeSpaceStatusSummary>,
+)
+
+data class KnowledgeReadinessGate(
+    val code: String,
+    val passed: Boolean,
+    val message: String,
 )

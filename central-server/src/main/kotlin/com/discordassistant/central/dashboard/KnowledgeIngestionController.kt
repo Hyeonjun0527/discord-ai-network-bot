@@ -18,6 +18,11 @@ class KnowledgeIngestionController(
     private val ingestion: KnowledgeIngestionService,
     private val search: KnowledgeSearchService,
 ) {
+    @GetMapping("/{guildId}/readiness")
+    fun guildReadiness(
+        @PathVariable guildId: Long,
+    ) = ingestion.guildReadiness(guildId)
+
     @PostMapping("/{guildId}/spaces")
     fun createSpace(
         @PathVariable guildId: Long,

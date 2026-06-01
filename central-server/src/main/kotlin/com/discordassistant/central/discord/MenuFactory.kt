@@ -62,7 +62,9 @@ object MenuFactory {
         allowedChannelCount: Int,
     ): String {
         val sb = StringBuilder()
-        sb.append("⚙️ **서버 설정** — 언어·모델·채널·자동 승인을 고른 뒤 **저장**을 누르면 한 번에 적용됩니다.\n\n")
+        sb.append(
+            "⚙️ **서버 설정** — 언어·모델·채널·자동 승인을 고른 뒤 **설정 한 번에 저장**을 누르면 한 번에 적용됩니다.\n\n",
+        )
         sb.append("• **언어**: 봇 응답 언어(한/영)\n")
         if (poolModels.isEmpty()) {
             sb.append("• **기본 모델**: 아직 연결된 프로바이더가 없어 *자동 선택*만 있어요. 프로바이더가 PC를 연결하면 그 PC의 모델들이 여기 채워집니다.\n")

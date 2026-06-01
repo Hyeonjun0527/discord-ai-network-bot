@@ -107,6 +107,7 @@ class MenuFactoryTest {
         assertTrue(empty.contains("LLM 사용 허용 채널"))
         assertTrue(empty.contains("여러 채널을 체크"))
         assertTrue(empty.contains("저장") || empty.contains("한 번"))
+        assertTrue(empty.contains("설정 한 번에 저장"))
         assertTrue(empty.contains("꺼짐"))
         // 모델 있고 채널 제한 + 자동승인 켜짐
         val full = MenuFactory.settingsText(autoApprove = true, poolModels = listOf("llama3"), allowedChannelCount = 2)

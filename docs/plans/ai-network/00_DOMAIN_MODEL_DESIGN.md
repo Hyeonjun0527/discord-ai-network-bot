@@ -3,9 +3,11 @@
 > 상태: Draft  
 > 작성일: 2026-06-01  
 > 목적: “함께 만드는 AI 네트워크” 기능군을 구현하기 전에, DB·도메인 모델·Aggregate 경계를 먼저 확정하고 설계 감사를 수행하기 위한 기준 문서.
+> 단계형 마스터 플랜: [AI Network 90%급 단계형 마스터 플랜](./05_PHASED_MASTER_PLAN.md)
 > 비관적 감사: [AI Network 도메인 설계 비관적 감사](./01_DESIGN_RISK_AUDIT.md)  
 > RAG 이식 계획: [AI Network RAG 기술스택 이식 계획](./02_RAG_STACK_MIGRATION.md)  
 > 프리셋 공유 설계: [AI Preset Registry 설계](./03_PRESET_REGISTRY_DESIGN.md)  
+> 다중 응답 설계: [AI Network 다중 응답/비교/합성 설계](./04_MULTI_RESPONSE_DESIGN.md)
 
 ## 0. 왜 먼저 설계해야 하나
 

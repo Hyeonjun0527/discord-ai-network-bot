@@ -161,8 +161,46 @@ class AiNetworkDashboardController(
                 multiResponseMaxCandidates = multi?.maxCandidates ?: 1,
                 multiResponseSynthesisEnabled = multi?.synthesisEnabled ?: false,
                 updatedAt = channelAi.updatedAt.toString(),
-            )
+            ).withReadiness()
         }
+    }
+
+    @GetMapping("/{guildId}/channels/summary")
+    fun channelsSummary(
+        @PathVariable guildId: Long,
+    ): ChannelAiFleetSummaryResponse {
+        featureGate.requireDashboardEnabled()
+        val channels = channels(guildId)
+        val readinessCounts = channels.groupingBy { it.readinessStatus }.eachCount()
+        val responseModeCounts = channels.groupingBy { it.responseMode }.eachCount()
+        val knowledgeReadinessCounts = channels.groupingBy { it.knowledgeReadiness }.eachCount()
+        val safetyLevelCounts = channels.groupingBy { it.safetyLevel ?: "unset" }.eachCount()
+        val channelsNeedingAttention = channels.filter { it.readinessStatus != "ready" }
+        return ChannelAiFleetSummaryResponse(
+            guildId = guildId,
+            totalChannelAiCount = channels.size,
+            readyChannelAiCount = readinessCounts["ready"] ?: 0,
+            channelsNeedingAttentionCount = channelsNeedingAttention.size,
+            readinessCounts = readinessCounts,
+            responseModeCounts = responseModeCounts,
+            knowledgeReadinessCounts = knowledgeReadinessCounts,
+            safetyLevelCounts = safetyLevelCounts,
+            topAttentionItems =
+                channelsNeedingAttention
+                    .sortedWith(
+                        compareBy<ChannelAiCardResponse> { readinessRank(it.readinessStatus) }
+                            .thenBy { it.channelId },
+                    ).take(10)
+                    .map {
+                        ChannelAiAttentionItemResponse(
+                            channelId = it.channelId,
+                            name = it.name,
+                            readinessStatus = it.readinessStatus,
+                            missingParts = it.missingParts,
+                            nextActions = it.nextActions,
+                        )
+                    },
+        )
     }
 
     @GetMapping("/{guildId}/providers")
@@ -417,6 +455,43 @@ class AiNetworkDashboardController(
             }
         }.sortedBy { it.priority }
 
+    private fun ChannelAiCardResponse.withReadiness(): ChannelAiCardResponse {
+        val missing =
+            buildList {
+                if (activeBehaviorVersionId == null) add("behavior_version")
+                if (purpose.isNullOrBlank()) add("purpose")
+                if (tone.isNullOrBlank()) add("tone")
+                if (knowledgeReadiness in setOf("empty", "indexing_needed", "needs_review")) add("knowledge")
+                if (preferredModel.isNullOrBlank() && allowedModels.isEmpty()) add("model_policy")
+            }
+        val readiness =
+            when {
+                missing.any { it == "behavior_version" || it == "purpose" } -> "needs_profile"
+                missing.any { it == "knowledge" } -> "needs_knowledge"
+                missing.any { it == "model_policy" } -> "needs_model_policy"
+                else -> "ready"
+            }
+        val actions =
+            missing
+                .map { part ->
+                    when (part) {
+                        "behavior_version", "purpose", "tone" -> "채널프로필 패널에서 역할·말투를 저장하세요."
+                        "knowledge" -> "채널 지식공간에 README·규칙·FAQ를 추가하고 색인하세요."
+                        "model_policy" -> "응답 속도/품질 모드와 선호 모델 정책을 설정하세요."
+                        else -> "채널 AI 설정을 점검하세요."
+                    }
+                }.distinct()
+        return copy(readinessStatus = readiness, missingParts = missing, nextActions = actions)
+    }
+
+    private fun readinessRank(value: String): Int =
+        when (value) {
+            "needs_profile" -> 0
+            "needs_knowledge" -> 1
+            "needs_model_policy" -> 2
+            else -> 3
+        }
+
     private companion object {
         val BLOCKING_KNOWLEDGE_RISKS = setOf("sensitive", "ssrf")
         val PROTECTED_OVERLOAD_RISKS = setOf("high", "critical")
@@ -639,6 +714,29 @@ data class ChannelAiCardResponse(
     val multiResponseMaxCandidates: Int,
     val multiResponseSynthesisEnabled: Boolean,
     val updatedAt: String,
+    val readinessStatus: String = "unknown",
+    val missingParts: List<String> = emptyList(),
+    val nextActions: List<String> = emptyList(),
+)
+
+data class ChannelAiFleetSummaryResponse(
+    val guildId: Long,
+    val totalChannelAiCount: Int,
+    val readyChannelAiCount: Int,
+    val channelsNeedingAttentionCount: Int,
+    val readinessCounts: Map<String, Int>,
+    val responseModeCounts: Map<String, Int>,
+    val knowledgeReadinessCounts: Map<String, Int>,
+    val safetyLevelCounts: Map<String, Int>,
+    val topAttentionItems: List<ChannelAiAttentionItemResponse>,
+)
+
+data class ChannelAiAttentionItemResponse(
+    val channelId: Long,
+    val name: String,
+    val readinessStatus: String,
+    val missingParts: List<String>,
+    val nextActions: List<String>,
 )
 
 data class ProviderCapabilityResponse(

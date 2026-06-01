@@ -271,6 +271,8 @@ class AiNetworkDashboardControllerTest
             assertEquals("qwen-coder", channels.single().preferredModel)
             assertEquals(listOf("qwen-coder", "llama3.1:8b"), channels.single().allowedModels)
             assertEquals("ready", channels.single().knowledgeReadiness)
+            assertEquals("ready", channels.single().readinessStatus)
+            assertEquals(emptyList<String>(), channels.single().missingParts)
             assertEquals(1, channels.single().indexedKnowledgeSourceCount)
             assertEquals("compare", channels.single().multiResponseMode)
             assertEquals(2, channels.single().multiResponseMaxCandidates)
@@ -286,6 +288,65 @@ class AiNetworkDashboardControllerTest
             assertEquals("공개 프리셋 작성자", publicPreset.publisherLabel)
             assertEquals("coding-tutor-${preset.id}", publicPreset.slug)
             assertTrue(publicPreset.toString().contains("publisherGuildId=null"))
+        }
+
+        @Test
+        fun `channel summary highlights incomplete channel AI setup`() {
+            val incomplete = channelAis.save(ChannelAiEntity(guildId = 140, channelId = 240, displayName = "초안냥"))
+            val ready = channelAis.save(ChannelAiEntity(guildId = 140, channelId = 241, displayName = "완성냥"))
+            val behavior =
+                behaviorVersions.save(
+                    AiBehaviorVersionEntity(
+                        channelAiId = ready.id,
+                        version = 1,
+                        purpose = "번역",
+                        tone = "concise",
+                        answerLength = "short",
+                        safetyLevel = "strict",
+                    ),
+                )
+            ready.activeBehaviorVersionId = behavior.id
+            channelAis.save(ready)
+            routingPolicies.save(
+                ChannelAiRoutingPolicyEntity(
+                    guildId = 140,
+                    channelId = 241,
+                    channelAiId = ready.id,
+                    responseMode = "fast",
+                    preferredModel = "llama3.1:8b",
+                ),
+            )
+            val space = foundation.createKnowledgeSpace(140, 241, ready.id, "번역 지식", 77)
+            knowledgeSources.save(
+                KnowledgeSourceEntity(
+                    knowledgeSpaceId = space.id,
+                    guildId = 140,
+                    sourceType = "text",
+                    title = "용어집",
+                    status = "indexed",
+                    riskLevel = "normal",
+                ),
+            )
+
+            val cards = controller.channels(140)
+            val summary = controller.channelsSummary(140)
+
+            assertEquals("needs_profile", cards.first { it.channelId == incomplete.channelId }.readinessStatus)
+            assertTrue(cards.first { it.channelId == incomplete.channelId }.missingParts.contains("behavior_version"))
+            assertEquals(2, summary.totalChannelAiCount)
+            assertEquals(1, summary.readyChannelAiCount)
+            assertEquals(1, summary.channelsNeedingAttentionCount)
+            assertEquals(1, summary.readinessCounts["ready"])
+            assertEquals(1, summary.readinessCounts["needs_profile"])
+            assertEquals(incomplete.channelId, summary.topAttentionItems.single().channelId)
+            assertTrue(
+                summary.topAttentionItems
+                    .single()
+                    .nextActions
+                    .any { it.contains("채널프로필") },
+            )
+            assertEquals(1, summary.responseModeCounts["fast"])
+            assertEquals(1, summary.knowledgeReadinessCounts["ready"])
         }
 
         @Test

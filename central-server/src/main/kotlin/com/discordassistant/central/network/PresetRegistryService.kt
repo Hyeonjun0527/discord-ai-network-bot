@@ -541,7 +541,7 @@ class PresetRegistryService(
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
-        require(published.status != "removed") { "removed preset cannot be unliked" }
+        require(published.status !in setOf("removed", "unlisted")) { "${published.status} preset cannot be unliked" }
         reactions.findByPublishedPresetIdAndUserIdAndReaction(publishedPresetId, userId, "like")?.let { reaction ->
             reactions.delete(reaction)
             published.likeCount = (published.likeCount - 1).coerceAtLeast(0)
@@ -560,7 +560,7 @@ class PresetRegistryService(
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
-        require(published.status != "removed") { "removed preset cannot be reported" }
+        require(published.status !in setOf("removed", "unlisted")) { "${published.status} preset cannot be reported" }
         reporterUserId?.let { reporter ->
             reports.findByPublishedPresetIdAndReporterUserIdAndStatus(publishedPresetId, reporter, "open")?.let {
                 return it
@@ -599,6 +599,36 @@ class PresetRegistryService(
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
         published.status = "removed"
+        return publishedPresets.save(published)
+    }
+
+    @Transactional
+    fun unlistPublishedPreset(publishedPresetId: Long): PublishedPresetEntity {
+        featureGate.requirePresetEnabled()
+        val published =
+            publishedPresets.findById(publishedPresetId).orElseThrow {
+                IllegalArgumentException("published preset not found: $publishedPresetId")
+            }
+        require(published.status != "removed") { "removed preset cannot be unlisted" }
+        published.status = "unlisted"
+        return publishedPresets.save(published)
+    }
+
+    @Transactional
+    fun republishPreset(publishedPresetId: Long): PublishedPresetEntity {
+        featureGate.requirePresetEnabled()
+        val published =
+            publishedPresets.findById(publishedPresetId).orElseThrow {
+                IllegalArgumentException("published preset not found: $publishedPresetId")
+            }
+        require(published.status == "unlisted") { "only unlisted preset can be republished: ${published.status}" }
+        val revision =
+            revisions.findById(published.revisionId).orElseThrow {
+                IllegalArgumentException("published revision not found: ${published.revisionId}")
+            }
+        requirePublishablePublicMetadata(published.title, published.description)
+        requirePublishableRevision(revision)
+        published.status = "published"
         return publishedPresets.save(published)
     }
 

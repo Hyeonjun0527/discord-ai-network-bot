@@ -263,6 +263,22 @@ class PresetRegistryController(
         val published = registry.deletePublishedPreset(publishedPresetId)
         return mapOf("deleted" to true, "status" to published.status)
     }
+
+    @PostMapping("/published/{publishedPresetId}/unlist")
+    fun unlistPublished(
+        @PathVariable publishedPresetId: Long,
+    ): Map<String, Any> {
+        val published = registry.unlistPublishedPreset(publishedPresetId)
+        return mapOf("unlisted" to true, "status" to published.status)
+    }
+
+    @PostMapping("/published/{publishedPresetId}/republish")
+    fun republishPublished(
+        @PathVariable publishedPresetId: Long,
+    ): Map<String, Any> {
+        val published = registry.republishPreset(publishedPresetId)
+        return mapOf("republished" to true, "status" to published.status)
+    }
 }
 
 data class CreatePresetRequest(

@@ -830,6 +830,54 @@ class PresetRegistryServiceTest
         }
 
         @Test
+        fun `unlisted published preset is hidden blocked and can be republished`() {
+            val preset =
+                service.createPreset(
+                    guildId = 130,
+                    ownerUserId = 77,
+                    name = "공유 공지 프리셋",
+                    summary = "공지 작성용",
+                    category = "notice",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "공지 작성", tone = "clear", responseMode = "balanced"),
+                )
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
+            service.likePreset(published.id, userId = 88)
+
+            val unlisted = controller.unlistPublished(published.id)
+
+            assertEquals("unlisted", unlisted["status"])
+            assertEquals(0, service.searchPublishedPresets().size)
+            assertEquals(0, service.recommendedPublishedPresets().size)
+            assertThrows(IllegalArgumentException::class.java) {
+                service.publishedPresetDetail(published.id)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.previewImport(published.id, targetGuildId = 131, targetChannelId = 231)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.importPreset(published.id, targetGuildId = 131, targetChannelId = 231, importedBy = 89)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.likePreset(published.id, userId = 89)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.unlikePreset(published.id, userId = 88)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                service.reportPreset(published.id, reporterUserId = 90, reason = "비공개 후 신고 차단")
+            }
+
+            val republished = controller.republishPublished(published.id)
+
+            assertEquals("published", republished["status"])
+            assertEquals(1, service.searchPublishedPresets().size)
+            assertEquals("공유 공지 프리셋", service.publishedPresetDetail(published.id).published.title)
+            service.importPreset(published.id, targetGuildId = 131, targetChannelId = 231, importedBy = 89)
+            assertEquals(1, service.importHistory(targetGuildId = 131).size)
+        }
+
+        @Test
         fun `high risk preset import creates pending channel proposal instead of publishing immediately`() {
             val preset =
                 service.createPreset(

@@ -102,6 +102,17 @@ class AiNetworkApiSecurityFilterTest
         }
 
         @Test
+        fun `preset publishing visibility changes are rejected without dashboard token`() {
+            mvc
+                .perform(post("/api/ai-network/presets/published/1/unlist"))
+                .andExpect(status().isForbidden)
+
+            mvc
+                .perform(post("/api/ai-network/presets/published/1/republish"))
+                .andExpect(status().isForbidden)
+        }
+
+        @Test
         fun `launch checklist is admin only because it defaults to admin view`() {
             mvc
                 .perform(get("/api/ai-network/100/launch-checklist"))

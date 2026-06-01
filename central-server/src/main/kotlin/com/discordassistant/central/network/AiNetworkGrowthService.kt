@@ -114,6 +114,23 @@ class AiNetworkGrowthService(
         )
     }
 
+    @Transactional
+    fun growthPlan(guildId: Long): AiNetworkGrowthPlan {
+        val overview = foundation.refreshOverview(guildId)
+        val milestones = levelMilestones(overview)
+        val next = milestones.firstOrNull { !it.achieved }
+        val actions = growthActions(overview, milestones).sortedWith(compareBy<AiNetworkGrowthAction> { it.priority }.thenBy { it.key })
+        return AiNetworkGrowthPlan(
+            guildId = guildId,
+            currentLevel = overview.networkLevel,
+            targetLevel = next?.level,
+            targetTitle = next?.title,
+            healthStatus = overview.healthStatus,
+            summary = growthPlanSummary(overview, next, actions),
+            actions = actions,
+        )
+    }
+
     fun timeline(guildId: Long): List<AiNetworkEventEntity> = events.findTop20ByGuildIdOrderByCreatedAtDesc(guildId)
 
     fun timelineCards(guildId: Long): List<NetworkGrowthEventCard> =
@@ -189,6 +206,172 @@ class AiNetworkGrowthService(
                         gap(overview.modelCount >= 2, "서로 다른 모델 2개 이상"),
             ),
         )
+
+    private fun growthActions(
+        overview: NetworkOverviewProjectionEntity,
+        milestones: List<AiNetworkLevelMilestone>,
+    ): List<AiNetworkGrowthAction> =
+        buildList {
+            if (overview.onlineProviderCount < 1) {
+                add(
+                    growthAction(
+                        key = "connect_first_provider",
+                        priority = 10,
+                        severity = "critical",
+                        title = "첫 Provider를 연결하세요",
+                        description = "온라인 Provider가 없으면 질문을 처리할 로컬 AI가 없습니다.",
+                        command = "/프로바이더참여",
+                        dashboardPath = "/dashboard/providers",
+                        unlocksLevel = 2,
+                    ),
+                )
+            }
+            if (overview.onlineProviderCount in 1..1) {
+                add(
+                    growthAction(
+                        key = "add_second_provider",
+                        priority = 20,
+                        severity = "recommended",
+                        title = "두 번째 Provider를 초대하세요",
+                        description = "Provider가 2명 이상이면 채널 AI와 함께 레벨 3로 성장할 수 있습니다.",
+                        command = "/프로바이더참여",
+                        dashboardPath = "/dashboard/providers",
+                        unlocksLevel = 3,
+                    ),
+                )
+            }
+            if (overview.channelAiCount < 1) {
+                add(
+                    growthAction(
+                        key = "create_first_channel_ai",
+                        priority = 30,
+                        severity = "recommended",
+                        title = "첫 채널 AI를 만드세요",
+                        description = "채널별 역할·말투·답변 길이를 설정해야 함께 만드는 AI 네트워크 정체성이 생깁니다.",
+                        command = "/채널프로필",
+                        dashboardPath = "/dashboard/channels",
+                        unlocksLevel = 3,
+                    ),
+                )
+            }
+            if (overview.channelAiCount in 1..1) {
+                add(
+                    growthAction(
+                        key = "create_second_channel_ai",
+                        priority = 40,
+                        severity = "optional",
+                        title = "두 번째 채널 AI를 만드세요",
+                        description = "채널 AI가 2개 이상이면 지식/RAG와 모델 지도를 채널별로 나눠 운영할 수 있습니다.",
+                        command = "/채널프로필",
+                        dashboardPath = "/dashboard/channels",
+                        unlocksLevel = 4,
+                    ),
+                )
+            }
+            if (overview.modelCount < 2 && overview.onlineProviderCount > 0) {
+                add(
+                    growthAction(
+                        key = "increase_model_diversity",
+                        priority = 50,
+                        severity = "optional",
+                        title = "서로 다른 모델을 2개 이상 확보하세요",
+                        description = "모델 다양성이 있어야 원하는 모델 선택, 특화 라우팅, 고품질 응답 실험을 할 수 있습니다.",
+                        command = null,
+                        dashboardPath = "/dashboard/model-map",
+                        unlocksLevel = 4,
+                    ),
+                )
+            }
+            if (overview.knowledgeSpaceCount < 1) {
+                add(
+                    growthAction(
+                        key = "add_first_knowledge_space",
+                        priority = 60,
+                        severity = "optional",
+                        title = "첫 지식공간을 추가하세요",
+                        description = "README·FAQ·운영규칙을 지식공간에 등록하면 채널 AI가 서버 맥락을 참고할 수 있습니다.",
+                        command = "/지식추가",
+                        dashboardPath = "/dashboard/knowledge",
+                        unlocksLevel = 4,
+                    ),
+                )
+            }
+            if (overview.feedbackCount < 5) {
+                add(
+                    growthAction(
+                        key = "collect_quality_feedback",
+                        priority = 70,
+                        severity = "optional",
+                        title = "품질 피드백 5개를 모으세요",
+                        description = "따봉·신고·사유가 쌓이면 모델 선택과 채널 AI 개선을 근거 있게 할 수 있습니다.",
+                        command = null,
+                        dashboardPath = "/dashboard/quality",
+                        unlocksLevel = 5,
+                    ),
+                )
+            }
+            if (overview.overloadAlertCount > 0) {
+                add(
+                    growthAction(
+                        key = "resolve_provider_overload",
+                        priority = 5,
+                        severity = "critical",
+                        title = "Provider 과부하를 먼저 해소하세요",
+                        description = "과부하 알림이 있으면 레벨 5와 다중 응답/깊은 답변 실험보다 보호 정책이 우선입니다.",
+                        command = "/내상태",
+                        dashboardPath = "/dashboard/providers/overload",
+                        unlocksLevel = 5,
+                    ),
+                )
+            }
+            if (isEmpty() && milestones.all { it.achieved }) {
+                add(
+                    growthAction(
+                        key = "experiment_advanced_features",
+                        priority = 100,
+                        severity = "info",
+                        title = "고급 기능을 실험하세요",
+                        description = "프리셋 공유, 다중 응답, RAG 품질 평가를 단계적으로 켜도 되는 상태입니다.",
+                        command = null,
+                        dashboardPath = "/dashboard/experiments",
+                        unlocksLevel = null,
+                    ),
+                )
+            }
+        }
+
+    private fun growthAction(
+        key: String,
+        priority: Int,
+        severity: String,
+        title: String,
+        description: String,
+        command: String?,
+        dashboardPath: String,
+        unlocksLevel: Int?,
+    ): AiNetworkGrowthAction =
+        AiNetworkGrowthAction(
+            key = key,
+            priority = priority,
+            severity = severity,
+            title = title,
+            description = description,
+            command = command,
+            dashboardPath = dashboardPath,
+            unlocksLevel = unlocksLevel,
+        )
+
+    private fun growthPlanSummary(
+        overview: NetworkOverviewProjectionEntity,
+        next: AiNetworkLevelMilestone?,
+        actions: List<AiNetworkGrowthAction>,
+    ): String =
+        when {
+            overview.overloadAlertCount > 0 -> "Provider 보호가 우선입니다. 과부하를 낮춘 뒤 성장 기능을 켜세요."
+            next == null -> "모든 성장 레벨을 달성했습니다. 고급 기능을 안전하게 실험할 수 있습니다."
+            actions.isEmpty() -> "다음 레벨 ${next.level} 준비 상태를 확인하세요."
+            else -> "다음 목표는 레벨 ${next.level} ${next.title}입니다. 우선 액션: ${actions.first().title}"
+        }
 
     private fun milestone(
         level: Int,
@@ -285,6 +468,27 @@ data class AiNetworkLevelStatus(
     val currentDescription: String,
     val nextMilestone: AiNetworkLevelMilestone?,
     val milestones: List<AiNetworkLevelMilestone>,
+)
+
+data class AiNetworkGrowthPlan(
+    val guildId: Long,
+    val currentLevel: Int,
+    val targetLevel: Int?,
+    val targetTitle: String?,
+    val healthStatus: String,
+    val summary: String,
+    val actions: List<AiNetworkGrowthAction>,
+)
+
+data class AiNetworkGrowthAction(
+    val key: String,
+    val priority: Int,
+    val severity: String,
+    val title: String,
+    val description: String,
+    val command: String?,
+    val dashboardPath: String,
+    val unlocksLevel: Int?,
 )
 
 data class AiNetworkLevelMilestone(

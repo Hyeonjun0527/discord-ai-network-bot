@@ -50,6 +50,11 @@ class AiNetworkGrowthController(
         )
     }
 
+    @GetMapping("/{guildId}/plan")
+    fun plan(
+        @PathVariable guildId: Long,
+    ) = growth.growthPlan(guildId)
+
     @GetMapping("/{guildId}/timeline")
     fun timeline(
         @PathVariable guildId: Long,

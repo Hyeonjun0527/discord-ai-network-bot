@@ -105,4 +105,32 @@ class AiNetworkGrowthServiceTest
             assertEquals(5, milestones.size)
             assertTrue(milestones.toString().contains("품질 피드백 5개 이상"))
         }
+
+        @Test
+        fun `growth plan recommends concrete next actions and prioritizes provider protection`() {
+            val emptyPlan = controller.plan(811)
+            assertEquals(1, emptyPlan.currentLevel)
+            assertEquals(2, emptyPlan.targetLevel)
+            assertEquals("connect_first_provider", emptyPlan.actions.first().key)
+            assertEquals("/프로바이더참여", emptyPlan.actions.first().command)
+
+            channelAis.save(ChannelAiEntity(guildId = 812, channelId = 912, displayName = "코드냥"))
+            growth.recordProviderJoined(812, 77, listOf("llama3.1:8b"), listOf("coding"), "STANDARD", 1, 0)
+            foundation.upsertProviderCapability(
+                guildId = 812,
+                providerUserId = 77,
+                providerState = "OVERLOADED",
+                modelNames = listOf("llama3.1:8b"),
+                capabilityTags = listOf("coding"),
+                maxBurden = "STANDARD",
+                maxConcurrency = 1,
+                dailyLimit = 0,
+                overloadRisk = "high",
+            )
+
+            val riskyPlan = controller.plan(812)
+            assertEquals("resolve_provider_overload", riskyPlan.actions.first().key)
+            assertEquals("critical", riskyPlan.actions.first().severity)
+            assertTrue(riskyPlan.summary.contains("Provider 보호"))
+        }
     }

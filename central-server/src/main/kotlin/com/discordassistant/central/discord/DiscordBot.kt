@@ -517,6 +517,7 @@ class DiscordBot(
             private const val CHANNEL_PROFILE_SAVE_MODAL = "channel-profile:save-modal"
             private const val CHANNEL_PROFILE_AVATAR_MODAL = "channel-profile:avatar-modal"
             private const val SETTINGS_CHANNEL_BULK_MODAL = "settings:channel-bulk-modal"
+            private const val ASK_FEEDBACK_PREFIX = "ask-feedback:"
             private val pendingSettings = ConcurrentHashMap<String, PendingGuildSettings>()
         }
 
@@ -573,6 +574,10 @@ class DiscordBot(
         /** 패널 버튼: 온보딩(질문/기여/상태/도움말) + 설정. */
         override fun onButtonInteraction(event: ButtonInteractionEvent) {
             val ctx = ctxOf(event) // DM(유저설치)에서도 패널 버튼 동작(관리자 버튼은 isAdmin=false 로 거부됨)
+            if (event.componentId.startsWith(ASK_FEEDBACK_PREFIX)) {
+                handleAskFeedbackButton(event, ctx)
+                return
+            }
             when (event.componentId) {
                 MenuFactory.ASK -> {
                     // 질문하기 → 모달로 질문 입력
@@ -1126,7 +1131,11 @@ class DiscordBot(
             reply: Reply,
         ) {
             if (sendAnswerWebhook(channelUnion, ctx, reply)) {
-                hook.editOriginal("✅ 답변을 채널 AI 프로필로 보냈어요.").queue()
+                editOriginalWithFeedback(
+                    hook,
+                    "✅ 답변을 채널 AI 프로필로 보냈어요.\n답변이 어땠는지 아래 버튼으로 알려주세요.",
+                    reply,
+                )
                 return
             }
             if (sendBotChannelAnswer(channelUnion, reply)) {
@@ -1148,7 +1157,9 @@ class DiscordBot(
             channelUnion ?: return false
             return runCatching {
                 val snapshots = reply.publicPseudoStreamSnapshots()
-                val sent = channelUnion.asTextChannel().sendMessage(snapshots?.first() ?: reply.content).complete()
+                val action = channelUnion.asTextChannel().sendMessage(snapshots?.first() ?: reply.content)
+                feedbackRows(reply).takeIf { it.isNotEmpty() && snapshots == null }?.let { action.setComponents(it) }
+                val sent = action.complete()
                 if (snapshots != null) scheduleMessageEdits(sent, reply, snapshots, 1)
                 true
             }.onFailure { e ->
@@ -1162,7 +1173,7 @@ class DiscordBot(
         ) {
             val snapshots = reply.publicPseudoStreamSnapshots()
             if (snapshots == null) {
-                hook.editOriginal(reply.content).queue()
+                editOriginalWithFeedback(hook, reply.content, reply)
                 return
             }
             hook.editOriginal(snapshots.first()).queue(
@@ -1181,17 +1192,19 @@ class DiscordBot(
             index: Int,
         ) {
             if (index >= snapshots.size) return
-            hook
-                .editOriginal(snapshots[index])
-                .queueAfter(
-                    reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
-                    TimeUnit.MILLISECONDS,
-                    { scheduleOriginalEdits(hook, reply, snapshots, index + 1) },
-                    { e ->
-                        log.warn("의사 스트리밍 응답 편집 실패(index={}): {}", index, e.message)
-                        hook.editOriginal(reply.content).queue({}, {})
-                    },
-                )
+            val action = hook.editOriginal(snapshots[index])
+            if (index == snapshots.lastIndex) {
+                feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
+            }
+            action.queueAfter(
+                reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
+                TimeUnit.MILLISECONDS,
+                { scheduleOriginalEdits(hook, reply, snapshots, index + 1) },
+                { e ->
+                    log.warn("의사 스트리밍 응답 편집 실패(index={}): {}", index, e.message)
+                    hook.editOriginal(reply.content).queue({}, {})
+                },
+            )
         }
 
         private fun replyToMessageWithPseudoStream(
@@ -1200,12 +1213,16 @@ class DiscordBot(
         ) {
             val snapshots = reply.publicPseudoStreamSnapshots()
             if (snapshots == null) {
-                source.reply(reply.content).mentionRepliedUser(false).queue({}, {})
+                val action = source.reply(reply.content).mentionRepliedUser(false)
+                feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
+                action.queue({}, {})
                 return
             }
-            source
-                .reply(snapshots.first())
-                .mentionRepliedUser(false)
+            val action =
+                source
+                    .reply(snapshots.first())
+                    .mentionRepliedUser(false)
+            action
                 .queue(
                     { sent -> scheduleMessageEdits(sent, reply, snapshots, 1) },
                     { e ->
@@ -1222,14 +1239,16 @@ class DiscordBot(
             index: Int,
         ) {
             if (index >= snapshots.size) return
-            message
-                .editMessage(snapshots[index])
-                .queueAfter(
-                    reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
-                    TimeUnit.MILLISECONDS,
-                    { scheduleMessageEdits(message, reply, snapshots, index + 1) },
-                    { e -> log.warn("의사 스트리밍 메시지 수정 실패(index={}): {}", index, e.message) },
-                )
+            val action = message.editMessage(snapshots[index])
+            if (index == snapshots.lastIndex) {
+                feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
+            }
+            action.queueAfter(
+                reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
+                TimeUnit.MILLISECONDS,
+                { scheduleMessageEdits(message, reply, snapshots, index + 1) },
+                { e -> log.warn("의사 스트리밍 메시지 수정 실패(index={}): {}", index, e.message) },
+            )
         }
 
         private fun Reply.publicPseudoStreamSnapshots(): List<String>? =
@@ -1267,6 +1286,54 @@ class DiscordBot(
             }.onFailure { e ->
                 log.warn("채널 AI 프로필 웹훅 전송 실패(channel={}): {}", ctx.channelId, e.message)
             }.getOrDefault(false)
+        }
+
+        private fun editOriginalWithFeedback(
+            hook: InteractionHook,
+            content: String,
+            reply: Reply,
+        ) {
+            val action = hook.editOriginal(content)
+            feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
+            action.queue()
+        }
+
+        private fun feedbackRows(reply: Reply): List<ActionRow> {
+            val requestId = reply.feedback?.requestId?.takeIf { it.isNotBlank() } ?: return emptyList()
+            if ("$ASK_FEEDBACK_PREFIX${FeedbackAction.REPORT.id}:$requestId".length > 100) return emptyList()
+            return listOf(
+                ActionRow.of(
+                    Button.success("$ASK_FEEDBACK_PREFIX${FeedbackAction.UP.id}:$requestId", "좋았어요"),
+                    Button.secondary("$ASK_FEEDBACK_PREFIX${FeedbackAction.DOWN.id}:$requestId", "아쉬워요"),
+                    Button.danger("$ASK_FEEDBACK_PREFIX${FeedbackAction.REPORT.id}:$requestId", "문제 신고"),
+                ),
+            )
+        }
+
+        private enum class FeedbackAction(
+            val id: String,
+            val rating: Int,
+            val feedbackType: String,
+        ) {
+            UP("up", 1, "positive"),
+            DOWN("down", -1, "negative"),
+            REPORT("report", -1, "report"),
+        }
+
+        private fun handleAskFeedbackButton(
+            event: ButtonInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            val payload = event.componentId.removePrefix(ASK_FEEDBACK_PREFIX)
+            val actionId = payload.substringBefore(':', missingDelimiterValue = "")
+            val requestId = payload.substringAfter(':', missingDelimiterValue = "").trim()
+            val action = FeedbackAction.entries.firstOrNull { it.id == actionId }
+            if (action == null || requestId.isBlank()) {
+                event.reply("피드백 버튼 정보를 읽지 못했어요. 다시 질문한 뒤 답변 아래 버튼을 눌러주세요.").setEphemeral(true).queue()
+                return
+            }
+            val reply = commands.submitAskFeedback(ctx, requestId, action.rating, action.feedbackType)
+            event.reply(reply.content).setEphemeral(true).queue()
         }
 
         private fun mentionPrompt(

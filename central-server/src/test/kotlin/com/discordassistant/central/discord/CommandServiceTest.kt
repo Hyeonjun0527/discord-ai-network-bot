@@ -5,6 +5,7 @@ import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.PresetBehaviorInput
 import com.discordassistant.central.network.PresetRegistryService
+import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.persistence.MultiResponseRunRepository
@@ -58,6 +59,7 @@ class CommandServiceTest
         val candidateAnswers: CandidateAnswerRepository,
         val synthesisResults: SynthesisResultRepository,
         val embeddingJobs: EmbeddingIndexJobRepository,
+        val aiFeedbacks: AiFeedbackRepository,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -551,6 +553,32 @@ class CommandServiceTest
                 assertEquals("echo:코드 설명", r.content)
                 assertFalse(r.content.contains("커뮤니티 풀 처리"), r.content)
                 assertFalse(r.content.contains("provider #"), r.content)
+                assertTrue(r.feedback?.requestId?.isNotBlank() == true)
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask feedback — 답변 request id로 품질 피드백을 저장하고 중복을 막는다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 771, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                val reply = commands.ask(ctx(), "품질 확인")
+                val requestId = reply.feedback?.requestId
+
+                assertTrue(requestId?.isNotBlank() == true)
+                val first = commands.submitAskFeedback(ctx(), requestId!!, rating = 1, feedbackType = "positive")
+                val duplicate = commands.submitAskFeedback(ctx(), requestId, rating = -1, feedbackType = "negative")
+
+                val saved = aiFeedbacks.findTop20ByGuildIdAndChannelIdOrderByCreatedAtDesc(100, 200).single()
+                assertTrue(first.content.contains("고마워요"))
+                assertTrue(duplicate.content.contains("고마워요"))
+                assertEquals(requestId, saved.requestId)
+                assertEquals(1, saved.rating)
+                assertEquals("positive", saved.feedbackType)
             } finally {
                 registry.unregister(s)
             }

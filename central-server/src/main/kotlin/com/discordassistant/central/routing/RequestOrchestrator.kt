@@ -124,6 +124,7 @@ data class OrchestrationResult(
     val providerId: Long? = null,
     val failReason: String? = null,
     val effectiveBurden: ModelBurden? = null,
+    val requestId: String? = null,
 )
 
 /**
@@ -241,7 +242,13 @@ class RequestOrchestrator(
                             options = responseModeOptions(input.responseMode),
                         ).get()
                 recorder.recordSuccess(input.guildId, input.userId, sel.providerId, requestId = result.requestId)
-                return OrchestrationResult(RequestState.COMPLETED, result.text, sel.providerId, effectiveBurden = ctx.requiredBurden)
+                return OrchestrationResult(
+                    RequestState.COMPLETED,
+                    result.text,
+                    sel.providerId,
+                    effectiveBurden = ctx.requiredBurden,
+                    requestId = result.requestId,
+                )
             } catch (e: Exception) {
                 lastReason = e.cause?.message ?: e.message ?: "처리 실패"
                 excluded.add(sel.providerId) // 실패 provider 일시 제외

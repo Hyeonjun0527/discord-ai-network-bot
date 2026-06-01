@@ -5,6 +5,7 @@ import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.network.AiNetworkLaunchChecklistService
 import com.discordassistant.central.network.AiNetworkMap
 import com.discordassistant.central.network.AiNetworkMapService
+import com.discordassistant.central.network.AiQualityFeedbackService
 import com.discordassistant.central.network.ChannelAiCustomizationService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIndexingService
@@ -32,6 +33,7 @@ data class Reply(
     val content: String,
     val ephemeral: Boolean = true,
     val pseudoStream: ReplyPseudoStream? = null,
+    val feedback: ReplyFeedback? = null,
 )
 
 /** Discord 긴 답변을 여러 번 수정해 보여주기 위한 의사 스트리밍 계획. */
@@ -39,6 +41,11 @@ data class ReplyPseudoStream(
     val editIntervalMs: Long,
     val snapshots: List<String>,
     val warning: String? = null,
+)
+
+/** 공개 AI 답변 아래에 붙는 품질 피드백 메타데이터. */
+data class ReplyFeedback(
+    val requestId: String,
 )
 
 /** 명령 호출 컨텍스트(JDA 이벤트에서 추출). */
@@ -77,6 +84,7 @@ class CommandService(
     private val aiNetworkMap: AiNetworkMapService,
     private val presetRegistry: PresetRegistryService,
     private val multiResponse: MultiResponseService,
+    private val qualityFeedback: AiQualityFeedbackService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
 ) {
@@ -159,7 +167,7 @@ class CommandService(
             )
         }
         return when (result.state) {
-            RequestState.COMPLETED -> completedAskReply(result.text.orEmpty(), modelChoice)
+            RequestState.COMPLETED -> completedAskReply(result.text.orEmpty(), modelChoice, result.requestId)
             RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
             else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
         }
@@ -168,6 +176,7 @@ class CommandService(
     private fun completedAskReply(
         answer: String,
         modelChoice: ModelChoiceDecision,
+        requestId: String?,
     ): Reply {
         val fullContent = answer.withModelFallbackNotice(modelChoice)
         val plan =
@@ -190,7 +199,42 @@ class CommandService(
             rawSnapshots
                 .takeIf { it.size > 1 }
                 ?.let { ReplyPseudoStream(plan!!.editIntervalMs.toLong(), it.dropLast(1) + finalContent, plan.warning) }
-        return Reply(content = finalContent, ephemeral = false, pseudoStream = stream)
+        return Reply(
+            content = finalContent,
+            ephemeral = false,
+            pseudoStream = stream,
+            feedback = requestId?.trim()?.takeIf { it.isNotBlank() }?.let { ReplyFeedback(it) },
+        )
+    }
+
+    fun submitAskFeedback(
+        ctx: CommandContext,
+        requestId: String,
+        rating: Int,
+        feedbackType: String,
+        reason: String? = null,
+    ): Reply {
+        val normalizedRequestId = requestId.trim()
+        if (normalizedRequestId.isBlank()) {
+            return Replies.warn("피드백 대상을 찾지 못했어요. 다시 질문한 뒤 답변 아래 버튼을 눌러주세요.")
+        }
+        val saved =
+            qualityFeedback.submit(
+                guildId = ctx.guildId,
+                channelId = ctx.channelId,
+                requestId = normalizedRequestId,
+                userId = ctx.userId,
+                rating = rating,
+                feedbackType = feedbackType,
+                reason = reason,
+            )
+        val message =
+            if (saved.status == "needs_review") {
+                "🚩 신고로 접수했어요. 관리자가 품질 피드백 대시보드에서 확인할 수 있습니다."
+            } else {
+                "고마워요. 이 피드백은 채널 AI 품질 개선 신호로만 사용됩니다."
+            }
+        return Reply(message, ephemeral = true)
     }
 
     private fun startRuntimeMultiResponseObservation(

@@ -4,9 +4,11 @@ import com.discordassistant.central.dashboard.AiNetworkDashboardController
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiFeedbackRepository
+import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
 import com.discordassistant.central.persistence.AiPresetEntity
 import com.discordassistant.central.persistence.AiPresetRepository
+import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
@@ -51,6 +53,8 @@ class AiNetworkDashboardControllerTest
         private val routingPolicies: ChannelAiRoutingPolicyRepository,
         private val multiResponsePolicies: MultiResponsePolicyRepository,
         private val feedbacks: AiFeedbackRepository,
+        private val candidateAnswers: CandidateAnswerRepository,
+        private val events: AiNetworkEventRepository,
         private val presets: AiPresetRepository,
         private val presetRevisions: PresetRevisionRepository,
         private val publishedPresets: PublishedPresetRepository,
@@ -69,9 +73,22 @@ class AiNetworkDashboardControllerTest
                 clock = fixedClock,
             )
 
+        private val qualityFeedback =
+            AiQualityFeedbackService(
+                feedbacks = feedbacks,
+                channelAis = channelAis,
+                candidateAnswers = candidateAnswers,
+                providerCapabilities = providerCapabilities,
+                clock = fixedClock,
+            )
+
+        private val providerSafety = ProviderSafetyService(providerCapabilities, events, foundation, fixedClock)
+
         private val controller =
             AiNetworkDashboardController(
                 foundation = foundation,
+                qualityFeedback = qualityFeedback,
+                providerSafety = providerSafety,
                 channelAis = channelAis,
                 behaviorVersions = behaviorVersions,
                 routingPolicies = routingPolicies,
@@ -322,5 +339,75 @@ class AiNetworkDashboardControllerTest
             assertEquals(1, llama.totalProviderCount)
             assertEquals(2, llama.channelCount)
             assertEquals(listOf(220L, 221L), llama.channels)
+        }
+
+        @Test
+        fun `dashboard combines network status quality overload model map and customization slices`() {
+            val channelAi = channelAis.save(ChannelAiEntity(guildId = 130, channelId = 230, displayName = "요약냥"))
+            behaviorVersions
+                .save(
+                    AiBehaviorVersionEntity(
+                        channelAiId = channelAi.id,
+                        version = 1,
+                        purpose = "회의록 요약",
+                        tone = "concise",
+                        answerLength = "short",
+                        safetyLevel = "strict",
+                    ),
+                ).also {
+                    channelAi.activeBehaviorVersionId = it.id
+                    channelAis.save(channelAi)
+                }
+            routingPolicies.save(
+                ChannelAiRoutingPolicyEntity(
+                    guildId = 130,
+                    channelId = 230,
+                    responseMode = "balanced",
+                    preferredModel = "llama3.1:8b",
+                ),
+            )
+            foundation.upsertProviderCapability(
+                guildId = 130,
+                providerUserId = 330,
+                providerState = "ONLINE",
+                modelNames = listOf("llama3.1:8b"),
+                capabilityTags = listOf("summary"),
+                maxBurden = "STANDARD",
+                maxConcurrency = 2,
+                dailyLimit = 30,
+                overloadRisk = "normal",
+            )
+            foundation.upsertProviderCapability(
+                guildId = 130,
+                providerUserId = 331,
+                providerState = "OVERLOADED",
+                modelNames = listOf("qwen-coder"),
+                capabilityTags = listOf("coding"),
+                maxBurden = "DEEP",
+                maxConcurrency = 1,
+                dailyLimit = 5,
+                overloadRisk = "critical",
+            )
+            qualityFeedback.submit(
+                guildId = 130,
+                channelId = 230,
+                requestId = "req-dashboard",
+                userId = 44,
+                rating = 1,
+                feedbackType = "general",
+                reason = "좋은 요약",
+            )
+
+            val dashboard = controller.dashboard(130, audience = "public", responseMode = "deep", requestedCandidates = 2)
+
+            assertEquals("warning", dashboard.overview.healthStatus)
+            assertEquals(1, dashboard.channels.size)
+            assertEquals("요약냥", dashboard.channels.single().name)
+            assertTrue(dashboard.modelMap.any { it.modelName == "llama3.1:8b" })
+            assertEquals(1, dashboard.quality.feedbackCount)
+            assertEquals(1, dashboard.quality.positive)
+            assertEquals(1, dashboard.overload.highRiskCount)
+            assertEquals("saving", dashboard.executionPlan.effectiveResponseMode)
+            assertNull(dashboard.providers.first().providerUserId)
         }
     }

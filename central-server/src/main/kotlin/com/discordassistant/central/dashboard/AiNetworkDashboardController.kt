@@ -1,6 +1,12 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.network.AiNetworkFoundationService
+import com.discordassistant.central.network.AiQualityFeedbackService
+import com.discordassistant.central.network.ModelQualitySummary
+import com.discordassistant.central.network.ProviderSafetyDashboard
+import com.discordassistant.central.network.ProviderSafetyExecutionPlan
+import com.discordassistant.central.network.ProviderSafetyService
+import com.discordassistant.central.network.QualitySummary
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
@@ -23,6 +29,8 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/ai-network")
 class AiNetworkDashboardController(
     private val foundation: AiNetworkFoundationService,
+    private val qualityFeedback: AiQualityFeedbackService,
+    private val providerSafety: ProviderSafetyService,
     private val channelAis: ChannelAiRepository,
     private val behaviorVersions: AiBehaviorVersionRepository,
     private val routingPolicies: ChannelAiRoutingPolicyRepository,
@@ -34,6 +42,27 @@ class AiNetworkDashboardController(
     private val publishedPresets: PublishedPresetRepository,
     private val presetImports: PresetImportRepository,
 ) {
+    @GetMapping("/{guildId}/dashboard")
+    fun dashboard(
+        @PathVariable guildId: Long,
+        @RequestParam(defaultValue = "public") audience: String = "public",
+        @RequestParam(defaultValue = "balanced") responseMode: String = "balanced",
+        @RequestParam(defaultValue = "1") requestedCandidates: Int = 1,
+    ): AiNetworkDashboardResponse =
+        AiNetworkDashboardResponse(
+            overview = overview(guildId),
+            channels = channels(guildId),
+            providers = providers(guildId, audience),
+            modelMap = modelMap(guildId),
+            knowledgeSpaces = knowledgeSpaces(guildId),
+            presets = guildPresets(guildId),
+            publishedPresets = publishedPresets().take(10),
+            quality = qualityFeedback.guildSummary(guildId),
+            modelQuality = qualityFeedback.modelQuality(guildId),
+            overload = providerSafety.overloadAlerts(guildId),
+            executionPlan = providerSafety.executionPlan(guildId, responseMode, requestedCandidates),
+        )
+
     @GetMapping("/{guildId}/overview")
     fun overview(
         @PathVariable guildId: Long,
@@ -282,6 +311,20 @@ class AiNetworkDashboardController(
             .map { it.trim() }
             .filter { it.isNotBlank() }
 }
+
+data class AiNetworkDashboardResponse(
+    val overview: AiNetworkOverviewResponse,
+    val channels: List<ChannelAiCardResponse>,
+    val providers: List<ProviderCapabilityResponse>,
+    val modelMap: List<ModelMapResponse>,
+    val knowledgeSpaces: List<KnowledgeSpaceResponse>,
+    val presets: Map<String, Any>,
+    val publishedPresets: List<PublishedPresetResponse>,
+    val quality: QualitySummary,
+    val modelQuality: List<ModelQualitySummary>,
+    val overload: ProviderSafetyDashboard,
+    val executionPlan: ProviderSafetyExecutionPlan,
+)
 
 data class AiNetworkOverviewResponse(
     val guildId: Long,

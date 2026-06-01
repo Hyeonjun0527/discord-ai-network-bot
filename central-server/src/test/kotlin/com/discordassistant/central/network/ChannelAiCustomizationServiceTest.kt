@@ -1,6 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.dashboard.ChannelAiCustomizationController
+import com.discordassistant.central.dashboard.ChannelAiPromptPreviewRequest
 import com.discordassistant.central.dashboard.ChannelAiWizardDraftRequest
 import com.discordassistant.central.dashboard.ChannelAiWizardRequest
 import com.discordassistant.central.dashboard.ReviewChannelAiProposalRequest
@@ -169,6 +170,75 @@ class ChannelAiCustomizationServiceTest
             assertEquals(1, controller.pending(100).count { it["channelId"] == 204L })
             val history = controller.history(100, 204)
             assertTrue(history["audits"].toString().contains("propose"))
+        }
+
+        @Test
+        fun `prompt preview renders safety profile constitution rag and user question in priority order`() {
+            controller.createFromWizard(
+                100,
+                208,
+                ChannelAiWizardRequest(
+                    actorUserId = 77,
+                    name = "코드냥",
+                    job = "Kotlin Spring Boot 개발 질문",
+                    tone = "짧고 명확하게",
+                    answerLength = "short",
+                    constitution = "코드는 검증 방법을 먼저 제안합니다.",
+                    requireApproval = false,
+                ),
+            )
+
+            val preview =
+                controller.promptPreview(
+                    100,
+                    208,
+                    ChannelAiPromptPreviewRequest(
+                        userQuestion = "이 에러 왜 나?",
+                        ragContextText = "[S1] Kotlin 설정 가이드",
+                    ),
+                )
+
+            assertEquals("코드냥", preview.name)
+            assertEquals(listOf("safety", "identity", "behavior", "rag_context", "user_question"), preview.sections)
+            assertEquals(true, preview.ragIncluded)
+            assertNull(preview.safetyWarning)
+            assertTrue(preview.systemPrompt.indexOf("[우선순위 1: 안전]") < preview.systemPrompt.indexOf("[우선순위 2: 채널 AI 정체성]"))
+            assertTrue(preview.systemPrompt.indexOf("[우선순위 2: 채널 AI 정체성]") < preview.systemPrompt.indexOf("[우선순위 3: AI 헌법]"))
+            assertTrue(preview.systemPrompt.contains("Kotlin Spring Boot 개발 질문"))
+            assertTrue(preview.systemPrompt.contains("코드는 검증 방법을 먼저 제안합니다."))
+            assertTrue(preview.systemPrompt.contains("[S1] Kotlin 설정 가이드"))
+            assertTrue(preview.userPrompt.contains("이 에러 왜 나?"))
+        }
+
+        @Test
+        fun `prompt preview suppresses rag when user question looks sensitive`() {
+            controller.createFromWizard(
+                100,
+                209,
+                ChannelAiWizardRequest(
+                    actorUserId = 77,
+                    name = "보안냥",
+                    job = "개발 질문",
+                    tone = "전문적으로",
+                    requireApproval = false,
+                ),
+            )
+
+            val preview =
+                controller.promptPreview(
+                    100,
+                    209,
+                    ChannelAiPromptPreviewRequest(
+                        userQuestion = "내 api_key=abc123 이 왜 안돼?",
+                        ragContextText = "[S1] 내부 운영 문서",
+                    ),
+                )
+
+            assertEquals("sensitive_question_detected", preview.safetyWarning)
+            assertEquals(false, preview.ragIncluded)
+            assertEquals(listOf("safety", "identity", "behavior", "user_question"), preview.sections)
+            assertTrue(preview.systemPrompt.contains("RAG/도구 사용보다 경고"))
+            assertTrue(!preview.systemPrompt.contains("[S1] 내부 운영 문서"))
         }
 
         @Test

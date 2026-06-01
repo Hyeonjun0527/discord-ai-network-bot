@@ -121,6 +121,13 @@ class ChannelAiCustomizationController(
             )
         }
 
+    @PostMapping("/{guildId}/{channelId}/prompt-preview")
+    fun promptPreview(
+        @PathVariable guildId: Long,
+        @PathVariable channelId: Long,
+        @RequestBody request: ChannelAiPromptPreviewRequest,
+    ) = customization.promptPreview(guildId, channelId, request.userQuestion, request.ragContextText)
+
     @GetMapping("/{guildId}/{channelId}/onboarding")
     fun onboarding(
         @PathVariable guildId: Long,
@@ -190,4 +197,9 @@ data class RollbackChannelAiVersionRequest(
 data class ReviewChannelAiProposalRequest(
     val reviewerUserId: Long? = null,
     val reason: String? = null,
+)
+
+data class ChannelAiPromptPreviewRequest(
+    val userQuestion: String,
+    val ragContextText: String? = null,
 )

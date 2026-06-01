@@ -84,6 +84,24 @@ class AiNetworkApiSecurityFilterTest
         }
 
         @Test
+        fun `preset import preview and import are rejected without dashboard token`() {
+            val body = """{"targetGuildId":100,"targetChannelId":200,"actorUserId":1}"""
+            mvc
+                .perform(
+                    post("/api/ai-network/presets/published/1/import-preview")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body),
+                ).andExpect(status().isForbidden)
+
+            mvc
+                .perform(
+                    post("/api/ai-network/presets/published/1/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body),
+                ).andExpect(status().isForbidden)
+        }
+
+        @Test
         fun `launch checklist is admin only because it defaults to admin view`() {
             mvc
                 .perform(get("/api/ai-network/100/launch-checklist"))

@@ -228,6 +228,7 @@ class AiNetworkDashboardControllerTest
                         presetId = preset.id,
                         revisionId = revision.id,
                         publisherGuildId = 100,
+                        slug = "coding-tutor-${preset.id}",
                         title = "코딩 튜터",
                     ),
                 )
@@ -257,6 +258,7 @@ class AiNetworkDashboardControllerTest
             val publicPreset = controller.publishedPresets().single()
             assertNull(publicPreset.publisherGuildId)
             assertEquals("공개 프리셋 작성자", publicPreset.publisherLabel)
+            assertEquals("coding-tutor-${preset.id}", publicPreset.slug)
             assertTrue(publicPreset.toString().contains("publisherGuildId=null"))
         }
 
@@ -464,6 +466,9 @@ class AiNetworkDashboardControllerTest
 
             val dashboard = controller.dashboard(130, audience = "public", responseMode = "deep", requestedCandidates = 2)
 
+            assertEquals("network_overview_projection", dashboard.metadata.source)
+            assertEquals(dashboard.overview.refreshedAt, dashboard.metadata.generatedAt)
+            assertEquals("fresh", dashboard.metadata.freshnessStatus)
             assertEquals("warning", dashboard.overview.healthStatus)
             assertEquals(1, dashboard.channels.size)
             assertEquals("요약냥", dashboard.channels.single().name)

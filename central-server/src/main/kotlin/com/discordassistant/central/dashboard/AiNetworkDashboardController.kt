@@ -62,6 +62,7 @@ class AiNetworkDashboardController(
         val overload = ProviderSafetyDashboardResponse.from(rawOverload, DashboardAudience.from(audience))
         val executionPlan = providerSafety.executionPlan(guildId, responseMode, requestedCandidates)
         return AiNetworkDashboardResponse(
+            metadata = DashboardMetadataResponse.from(overview),
             overview = overview,
             channels = channels,
             providers = providers,
@@ -274,6 +275,7 @@ class AiNetworkDashboardController(
         publishedPresets.findByStatusOrderByLikeCountDescPublishedAtDesc("published").map {
             PublishedPresetResponse(
                 id = it.id,
+                slug = it.slug,
                 title = it.title,
                 description = it.description,
                 publisherGuildId = null,
@@ -444,6 +446,7 @@ class AiNetworkDashboardController(
 }
 
 data class AiNetworkDashboardResponse(
+    val metadata: DashboardMetadataResponse,
     val overview: AiNetworkOverviewResponse,
     val channels: List<ChannelAiCardResponse>,
     val providers: List<ProviderCapabilityResponse>,
@@ -457,6 +460,24 @@ data class AiNetworkDashboardResponse(
     val executionPlan: ProviderSafetyExecutionPlan,
     val nextActions: List<AiNetworkNextActionResponse>,
 )
+
+data class DashboardMetadataResponse(
+    val generatedAt: String,
+    val freshnessStatus: String,
+    val stale: Boolean,
+    val degradedReason: String?,
+    val source: String = "network_overview_projection",
+) {
+    companion object {
+        fun from(overview: AiNetworkOverviewResponse): DashboardMetadataResponse =
+            DashboardMetadataResponse(
+                generatedAt = overview.refreshedAt,
+                freshnessStatus = overview.freshnessStatus,
+                stale = overview.stale,
+                degradedReason = overview.degradedReason,
+            )
+    }
+}
 
 data class ProviderSafetyDashboardResponse(
     val guildId: Long,
@@ -689,6 +710,7 @@ data class KnowledgeSpaceResponse(
 
 data class PublishedPresetResponse(
     val id: Long,
+    val slug: String,
     val title: String,
     val description: String?,
     val publisherGuildId: Long?,

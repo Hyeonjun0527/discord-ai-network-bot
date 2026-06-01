@@ -273,6 +273,45 @@ class KnowledgeIngestionService(
         )
     }
 
+    fun indexingOperations(
+        guildId: Long,
+        force: Boolean = false,
+    ): KnowledgeIndexingOperationsSummary {
+        featureGate.requireRagEnabled()
+        val plans = spaces.findByGuildId(guildId).map { indexingPlan(guildId, it.id, force) }
+        val indexableCount = plans.sumOf { it.indexableSources.size }
+        val blockedCount = plans.sumOf { it.blockedSources.size }
+        val readyPlans = plans.count { it.ready }
+        val warnings = plans.flatMap { it.warnings }.distinct().sorted()
+        val status =
+            when {
+                plans.isEmpty() -> "empty"
+                blockedCount > 0 -> "blocked"
+                indexableCount > 0 -> "ready"
+                else -> "nothing_to_index"
+            }
+        val nextActions =
+            buildList {
+                if (plans.isEmpty()) add("먼저 지식공간과 지식 소스를 추가하세요.")
+                if (blockedCount > 0) add("blocked/review 소스를 승인·거절·삭제한 뒤 색인을 다시 실행하세요.")
+                if (indexableCount > 0) add("ready=true인 indexingPlans의 command를 실행하세요.")
+                if (status == "nothing_to_index") add("색인할 pending 소스가 없습니다. force=true로 재색인 계획을 확인할 수 있습니다.")
+            }.distinct()
+        return KnowledgeIndexingOperationsSummary(
+            guildId = guildId,
+            status = status,
+            force = force,
+            spaceCount = plans.size,
+            readyPlanCount = readyPlans,
+            indexableSourceCount = indexableCount,
+            blockedSourceCount = blockedCount,
+            warnings = warnings,
+            nextActions = nextActions,
+            commands = plans.filter { it.indexableSources.isNotEmpty() }.map { it.command },
+            plans = plans,
+        )
+    }
+
     @Transactional
     fun addSource(
         guildId: Long,
@@ -648,6 +687,20 @@ data class KnowledgeQualitySummary(
     val blockedSourceCount: Int,
     val riskCodes: List<String>,
     val recommendations: List<String>,
+)
+
+data class KnowledgeIndexingOperationsSummary(
+    val guildId: Long,
+    val status: String,
+    val force: Boolean,
+    val spaceCount: Int,
+    val readyPlanCount: Int,
+    val indexableSourceCount: Int,
+    val blockedSourceCount: Int,
+    val warnings: List<String>,
+    val nextActions: List<String>,
+    val commands: List<String>,
+    val plans: List<KnowledgeIndexingPlan>,
 )
 
 data class KnowledgeIndexingPlan(

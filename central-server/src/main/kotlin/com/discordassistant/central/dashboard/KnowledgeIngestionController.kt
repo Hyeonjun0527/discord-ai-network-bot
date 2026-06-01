@@ -28,6 +28,12 @@ class KnowledgeIngestionController(
         @PathVariable guildId: Long,
     ) = ingestion.qualitySummary(guildId)
 
+    @GetMapping("/{guildId}/indexing-operations")
+    fun indexingOperations(
+        @PathVariable guildId: Long,
+        @RequestParam(defaultValue = "false") force: Boolean = false,
+    ) = ingestion.indexingOperations(guildId, force)
+
     @PostMapping("/{guildId}/spaces")
     fun createSpace(
         @PathVariable guildId: Long,

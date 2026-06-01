@@ -115,6 +115,54 @@ class KnowledgeIngestionServiceTest
         }
 
         @Test
+        fun `indexing operations summarize all space commands blockers and next actions`() {
+            val readySpace = service.createSpace(920, 921, null, "운영 지식", 77, null, null)
+            val safe =
+                service.addSource(
+                    guildId = 920,
+                    spaceId = readySpace.id,
+                    sourceType = "link",
+                    title = "운영 가이드",
+                    sourceUri = "https://example.com/ops.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            val blockedSpace = service.createSpace(920, 922, null, "보안 지식", 77, null, null)
+            service.addSource(
+                guildId = 920,
+                spaceId = blockedSpace.id,
+                sourceType = "text",
+                title = "env",
+                sourceUri = null,
+                contentPreview = "token=secret",
+                addedBy = 77,
+            )
+
+            val operations = controller.indexingOperations(920)
+
+            assertEquals("blocked", operations.status)
+            assertEquals(false, operations.force)
+            assertEquals(2, operations.spaceCount)
+            assertEquals(1, operations.readyPlanCount)
+            assertEquals(1, operations.indexableSourceCount)
+            assertEquals(1, operations.blockedSourceCount)
+            assertEquals(
+                listOf(safe.id),
+                operations.plans
+                    .first { it.ready }
+                    .indexableSources
+                    .map { it.id },
+            )
+            assertTrue(operations.commands.single().contains("scripts/rag.sh rebuild"))
+            assertTrue(operations.warnings.contains("sensitive_source_blocked"))
+            assertTrue(operations.nextActions.any { it.contains("blocked") })
+
+            val forced = controller.indexingOperations(920, force = true)
+            assertEquals(true, forced.force)
+            assertTrue(forced.commands.single().endsWith("--force"))
+        }
+
+        @Test
         fun `knowledge source lifecycle stores only metadata and indexing state`() {
             val spaceResponse =
                 controller.createSpace(

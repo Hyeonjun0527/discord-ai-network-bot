@@ -85,8 +85,9 @@ class ChannelAiCustomizationService(
                     changeSummary = "created from channel AI wizard",
                 ),
             )
-        val status = if (requireApproval) "pending" else "approved"
-        if (!requireApproval) {
+        val approvalDecision = approvalDecision(requireApproval, behavior, channelAi.displayName)
+        val status = if (approvalDecision.required) "pending" else "approved"
+        if (!approvalDecision.required) {
             savedChannel.activeBehaviorVersionId = behavior.id
             savedChannel.updatedAt = now
             channelAis.save(savedChannel)
@@ -100,22 +101,22 @@ class ChannelAiCustomizationService(
                     proposedBehaviorId = behavior.id,
                     status = status,
                     requestedBy = actorUserId,
-                    reason = "channel AI wizard",
+                    reason = approvalDecision.reason ?: "channel AI wizard",
                     createdAt = now,
-                    reviewedAt = if (requireApproval) null else now,
-                    reviewedBy = if (requireApproval) null else actorUserId,
+                    reviewedAt = if (approvalDecision.required) null else now,
+                    reviewedBy = if (approvalDecision.required) null else actorUserId,
                 ),
             )
         audit(
             guildId = guildId,
             channelId = channelId,
             actorUserId = actorUserId,
-            action = if (requireApproval) "propose" else "publish",
+            action = if (approvalDecision.required) "propose" else "publish",
             targetType = "ai_behavior_version",
             targetId = behavior.id,
-            summary = "wizard created v${behavior.version} status=$status",
+            summary = "wizard created v${behavior.version} status=$status reason=${approvalDecision.reason ?: "none"}",
         )
-        return ChannelAiWizardResult(savedChannel.id, behavior.id, behavior.version, proposal.id, status)
+        return ChannelAiWizardResult(savedChannel.id, behavior.id, behavior.version, proposal.id, status, approvalDecision.reason)
     }
 
     @Transactional
@@ -299,6 +300,32 @@ class ChannelAiCustomizationService(
             appendLine("⚠️ $safetyNotice")
         }.trim()
 
+    private fun approvalDecision(
+        requestedApproval: Boolean,
+        behavior: AiBehaviorVersionEntity,
+        displayName: String,
+    ): ApprovalDecision {
+        if (requestedApproval) return ApprovalDecision(required = true, reason = "manual approval requested")
+        val text =
+            listOf(
+                displayName,
+                behavior.purpose,
+                behavior.tone,
+                behavior.answerLength,
+                behavior.constitution.orEmpty(),
+                behavior.safetyLevel,
+            ).joinToString("\n").lowercase()
+        val reason =
+            when {
+                behavior.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS -> "high risk safety level"
+                behavior.answerLength.equals("long", ignoreCase = true) -> "long answer mode can increase provider load"
+                RISKY_WIZARD_TERMS.any { it in text } -> "risky channel AI instruction requires review"
+                behavior.constitution.orEmpty().length > SAFE_CONSTITUTION_CHARS -> "large constitution requires review"
+                else -> null
+            }
+        return ApprovalDecision(required = reason != null, reason = reason)
+    }
+
     private fun audit(
         guildId: Long,
         channelId: Long,
@@ -334,6 +361,26 @@ class ChannelAiCustomizationService(
         previous: String?,
         max: Int,
     ): String? = value?.trim()?.takeIf { it.isNotBlank() }?.take(max) ?: previous
+
+    private companion object {
+        const val SAFE_CONSTITUTION_CHARS = 1200
+        val HIGH_RISK_SAFETY_LEVELS = setOf("high", "restricted", "dangerous")
+        val RISKY_WIZARD_TERMS =
+            setOf(
+                "ignore previous",
+                "ignore safety",
+                "bypass",
+                "jailbreak",
+                "토큰을 알려",
+                "토큰 수집",
+                "비밀번호를 알려",
+                "비밀번호 수집",
+                "개인키를 알려",
+                "개인정보 수집",
+                "관리자 권한",
+                "안전 규칙 무시",
+            )
+    }
 }
 
 data class ChannelAiOnboarding(
@@ -355,6 +402,7 @@ data class ChannelAiWizardResult(
     val version: Int,
     val proposalId: Long,
     val status: String,
+    val approvalReason: String? = null,
 )
 
 data class ChannelAiHistory(
@@ -371,6 +419,11 @@ data class ChannelAiWizardDraft(
     val answerLength: String,
     val constitution: String,
     val preview: String,
+)
+
+private data class ApprovalDecision(
+    val required: Boolean,
+    val reason: String?,
 )
 
 private data class ChannelAiJobPreset(

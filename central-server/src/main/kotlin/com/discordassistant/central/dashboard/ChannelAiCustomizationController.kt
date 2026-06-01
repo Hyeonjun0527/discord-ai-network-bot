@@ -59,6 +59,7 @@ class ChannelAiCustomizationController(
             "version" to result.version,
             "proposalId" to result.proposalId,
             "status" to result.status,
+            "approvalReason" to result.approvalReason,
         )
     }
 

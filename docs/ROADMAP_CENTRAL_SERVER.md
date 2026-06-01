@@ -187,6 +187,21 @@
 - [x] 16-5. 데모 시나리오(다중 provider, docs/DEMO.md)
 - [x] 16-6. 전체 통합 점검 + 커밋
 
+## 후속 개선 — Discord 권한/Intent/예상치 못한 에러 UX 90%
+
+> 목표: `@냥시스턴트 질문`처럼 Message Content Intent 가 필요한 기능과, Manage Webhooks 같은 서버 권한이 필요한 기능에서
+> 사용자가 `애플리케이션이 응답하지 않았어요`만 보는 상황을 없앤다. 권한/Intent/Discord API/Provider 장애를
+> 성공·폴백·명확한 안내·운영 알림 중 하나로 처리하는 비율을 90%까지 끌어올린다.
+>
+> SSOT TODO: [Discord UX 에러 처리율 90% 목표 TODO](UX_ERROR_HANDLING_90.md)
+> 권한 명세: [냥시스턴트 Discord 봇 권한 명세](BOT_PERMISSIONS.md)
+
+- [ ] UX90-01. `MESSAGE_CONTENT` intent 미허용 시 JDA gateway `4014 DISALLOWED_INTENTS` 를 운영자가 즉시 이해할 수 있게 로그/문서/설정 UX를 연결한다.
+- [ ] UX90-02. `@냥시스턴트 질문` 기능을 쓰려면 Developer Portal 의 **Message Content Intent** 가 필요하다는 안내를 관리자 UX에 노출한다.
+- [ ] UX90-03. `Manage Webhooks` 권한이 없을 때 채널 AI 프로필 답변이 사라지지 않고 일반 봇 응답으로 폴백하게 한다.
+- [ ] UX90-04. 배포 성공 판정에 Discord gateway ready/smoke test 를 포함한다.
+- [ ] UX90-05. `/메뉴`, `/도움말`, `/내상태`, `/질문`, `@멘션 질문` 각각의 실패 UX를 회귀 테스트한다.
+
 ## 후속 개선 — 수정형 점진 답변 UX(Discord pseudo-streaming)
 
 > 목표: 긴 답변도 사용자가 기다리는 느낌을 줄이기 위해, Discord의 네이티브 스트리밍이 아니라

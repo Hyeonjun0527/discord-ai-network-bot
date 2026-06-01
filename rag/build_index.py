@@ -26,16 +26,17 @@ RAG_DIR = Path(__file__).resolve().parent
 META_DB = RAG_DIR / "meta.db"
 BM25_DIR = RAG_DIR / "bm25"
 CORPUS_JSONL = BM25_DIR / "corpus.jsonl"
-COLLECTION = os.environ.get("AI_NETWORK_RAG_COLLECTION", "discord_ai_network")
-EMBED_MODEL = os.environ.get("AI_NETWORK_RAG_EMBED_MODEL", "text-embedding-3-large")
+DEFAULT_COLLECTION = os.environ.get("AI_NETWORK_RAG_COLLECTION", "discord_ai_network")
+DEFAULT_EMBED_MODEL = os.environ.get("AI_NETWORK_RAG_EMBED_MODEL", "text-embedding-3-large")
 
 DEFAULT_INPUTS = (
     PROJECT_ROOT / "docs",
 )
 
 
-def collect_chunks(paths: list[Path]) -> list[chunkers.Chunk]:
+def collect_chunks(paths: list[Path], scope_metadata: dict[str, str] | None = None) -> list[chunkers.Chunk]:
     chunks: list[chunkers.Chunk] = []
+    scope_metadata = {k: v for k, v in (scope_metadata or {}).items() if v not in (None, "")}
     for base in paths:
         if not base.exists():
             continue
@@ -43,7 +44,17 @@ def collect_chunks(paths: list[Path]) -> list[chunkers.Chunk]:
         for path in files:
             if ".git" in path.parts:
                 continue
-            parsed = chunkers.parse_markdown(path, PROJECT_ROOT)
+            parsed = [
+                chunkers.Chunk(
+                    source_file=chunk.source_file,
+                    chunk_type=chunk.chunk_type,
+                    title=chunk.title,
+                    content=chunk.content,
+                    embedding_text=chunk.embedding_text,
+                    metadata={**chunk.metadata, **scope_metadata},
+                )
+                for chunk in chunkers.parse_markdown(path, PROJECT_ROOT)
+            ]
             chunks.extend(parsed)
             print(f"  {path.relative_to(PROJECT_ROOT)}: {len(parsed)} chunks")
     return chunks
@@ -108,6 +119,7 @@ def build_keyword_corpus(chunks: list[chunkers.Chunk]) -> None:
                         "chunk_type": chunk.chunk_type,
                         "title": chunk.title,
                         "content": chunk.content,
+                        "metadata": chunk.metadata,
                     },
                     ensure_ascii=False,
                 )
@@ -115,7 +127,12 @@ def build_keyword_corpus(chunks: list[chunkers.Chunk]) -> None:
             )
 
 
-def build_vectors(chunks: list[chunkers.Chunk]) -> None:
+def build_vectors(
+    chunks: list[chunkers.Chunk],
+    collection: str,
+    embedding_model: str,
+    force: bool,
+) -> None:
     api_key = os.environ.get("OPENAI_API_KEY")
     qdrant_url = os.environ.get("QDRANT_URL", "http://localhost:6333")
     if not api_key:
@@ -127,7 +144,7 @@ def build_vectors(chunks: list[chunkers.Chunk]) -> None:
     from llama_index.vector_stores.qdrant import QdrantVectorStore
     from qdrant_client import QdrantClient
 
-    embed_model = OpenAIEmbedding(model=EMBED_MODEL, api_key=api_key)
+    embed_model = OpenAIEmbedding(model=embedding_model, api_key=api_key)
     nodes = []
     for idx, chunk in enumerate(chunks, 1):
         node = TextNode(
@@ -146,9 +163,11 @@ def build_vectors(chunks: list[chunkers.Chunk]) -> None:
         node.embedding = vector
 
     client = QdrantClient(url=qdrant_url)
-    if client.collection_exists(COLLECTION):
-        client.delete_collection(COLLECTION)
-    vector_store = QdrantVectorStore(client=client, collection_name=COLLECTION)
+    if client.collection_exists(collection):
+        if not force:
+            raise SystemExit(f"collection already exists: {collection}. Use --force to rebuild it.")
+        client.delete_collection(collection)
+    vector_store = QdrantVectorStore(client=client, collection_name=collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     VectorStoreIndex(nodes=nodes, storage_context=storage_context, embed_model=embed_model)
 
@@ -157,14 +176,27 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--with-vector", action="store_true", help="also rebuild Qdrant vector index")
     parser.add_argument("--input", action="append", default=[], help="file or directory to index")
+    parser.add_argument("--guild", type=int, help="guild scope for payload filter metadata")
+    parser.add_argument("--space", type=int, help="knowledge space scope for payload filter metadata")
+    parser.add_argument("--channel", type=int, help="channel scope for payload filter metadata")
+    parser.add_argument("--collection", default=DEFAULT_COLLECTION, help="Qdrant collection name")
+    parser.add_argument("--embedding-model", default=DEFAULT_EMBED_MODEL, help="embedding model name")
+    parser.add_argument("--force", action="store_true", help="delete and rebuild an existing Qdrant collection")
     args = parser.parse_args()
 
     load_dotenv(PROJECT_ROOT / ".env")
     load_dotenv(PROJECT_ROOT / ".env.local", override=True)
 
     inputs = [Path(p).resolve() for p in args.input] if args.input else list(DEFAULT_INPUTS)
+    scope_metadata = {
+        "guildId": str(args.guild) if args.guild is not None else "",
+        "knowledgeSpaceId": str(args.space) if args.space is not None else "",
+        "channelId": str(args.channel) if args.channel is not None else "",
+        "collection": args.collection,
+        "embeddingModel": args.embedding_model,
+    }
     print("1) collect chunks")
-    chunks = collect_chunks(inputs)
+    chunks = collect_chunks(inputs, scope_metadata)
     print(f"   total={len(chunks)}")
     if not chunks:
         raise SystemExit("no chunks collected")
@@ -179,7 +211,7 @@ def main() -> None:
 
     if args.with_vector:
         print("4) build Qdrant vectors")
-        build_vectors(chunks)
+        build_vectors(chunks, args.collection, args.embedding_model, args.force)
     else:
         print("4) skip Qdrant vectors (--with-vector not set)")
 

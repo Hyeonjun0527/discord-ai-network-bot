@@ -7,18 +7,18 @@ IMAGE="${DISCORD_AI_RAG_IMAGE:-discord-ai-rag:local}"
 QDRANT_URL="${QDRANT_URL:-http://discord-ai-qdrant:6333}"
 
 case "${1:-build-local}" in
-  build-local)
+  build-local|build|rebuild)
     cd "$ROOT"
     python3 rag/build_index.py "${@:2}"
     ;;
-  build-vector)
+  build-vector|rebuild-vector)
     cd "$ROOT"
     python3 rag/build_index.py --with-vector "${@:2}"
     ;;
   docker-build)
     docker build -f "$ROOT/docker/rag/Dockerfile" -t "$IMAGE" "$ROOT"
     ;;
-  docker-index)
+  docker-index|docker-rebuild)
     docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NETWORK"
     docker build -f "$ROOT/docker/rag/Dockerfile" -t "$IMAGE" "$ROOT"
     docker run --rm --network "$NETWORK" \
@@ -32,7 +32,7 @@ case "${1:-build-local}" in
     python3 rag/search.py "${@:2}"
     ;;
   *)
-    echo "Usage: scripts/rag.sh {build-local|build-vector|docker-build|docker-index|search}" >&2
+    echo "Usage: scripts/rag.sh {rebuild|build-local|build-vector|docker-build|docker-rebuild|search} [--guild ID --space ID --collection NAME --embedding-model MODEL --input PATH]" >&2
     exit 2
     ;;
 esac

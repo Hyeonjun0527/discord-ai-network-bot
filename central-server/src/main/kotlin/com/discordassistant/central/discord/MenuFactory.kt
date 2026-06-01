@@ -60,7 +60,7 @@ object MenuFactory {
         allowedChannelCount: Int,
     ): String {
         val sb = StringBuilder()
-        sb.append("⚙️ **서버 설정** — 아래 메뉴/버튼으로 바로 적용됩니다.\n\n")
+        sb.append("⚙️ **서버 설정** — 언어·모델·채널·자동 승인을 고른 뒤 **저장**을 누르면 한 번에 적용됩니다.\n\n")
         sb.append("• **언어**: 봇 응답 언어(한/영)\n")
         if (poolModels.isEmpty()) {
             sb.append("• **기본 모델**: 아직 연결된 프로바이더가 없어 *자동 선택*만 있어요. 프로바이더가 PC를 연결하면 그 PC의 모델들이 여기 채워집니다.\n")
@@ -127,9 +127,9 @@ object MenuFactory {
         val defaults = currentChannelIds.distinct().take(25).map { DefaultValue.channel(it) }
         val placeholder =
             if (currentChannelIds.isEmpty()) {
-                "LLM 사용 허용 채널 선택 (현재: 모든 채널)"
+                "사용 채널 선택 — 여러 채널을 한 번에 고른 뒤 저장"
             } else {
-                "LLM 사용 허용 채널 선택 (현재: ${currentChannelIds.size}개)"
+                "사용 채널 선택 — 현재 ${currentChannelIds.size}개, 여러 채널을 한 번에 수정"
             }
         return EntitySelectMenu
             .create(CHANNEL, EntitySelectMenu.SelectTarget.CHANNEL)

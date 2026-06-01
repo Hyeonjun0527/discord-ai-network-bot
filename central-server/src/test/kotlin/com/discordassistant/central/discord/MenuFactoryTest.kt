@@ -67,9 +67,12 @@ class MenuFactoryTest {
     fun `채널 드롭다운 — 기존 허용 채널을 기본 선택으로 보여준다`() {
         val sel = MenuFactory.channelSelect(listOf(1111L, 2222L))
         assertEquals(MenuFactory.CHANNEL, sel.id)
+        assertEquals(0, sel.minValues)
+        assertEquals(25, sel.maxValues)
         assertEquals(2, sel.defaultValues.size)
         assertEquals(setOf(1111L, 2222L), sel.defaultValues.map { it.idLong }.toSet())
         assertTrue(sel.placeholder?.contains("2개") == true)
+        assertTrue(sel.placeholder?.contains("여러 채널") == true)
     }
 
     @Test

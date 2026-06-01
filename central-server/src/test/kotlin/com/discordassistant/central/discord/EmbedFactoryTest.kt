@@ -90,5 +90,18 @@ class EmbedFactoryTest {
         val en = EmbedFactory.settingsEmbed("en", "llama3", 2, 1, true)
         assertEquals("English", en.fields.first { it.name?.contains("언어") == true }.value)
         assertEquals("llama3", en.fields.first { it.name?.contains("모델") == true }.value)
+        assertTrue(en.description?.contains("저장 후 적용될 설정 미리보기") == true)
+        val pending =
+            EmbedFactory.settingsEmbed(
+                "ko",
+                null,
+                0,
+                2,
+                false,
+                allowedChannelText = "<#1111> <#2222>",
+                pendingSummary = "• LLM 사용 채널 → <#1111> <#2222>",
+            )
+        assertEquals("<#1111> <#2222>", pending.fields.first { it.name?.contains("채널") == true }.value)
+        assertTrue(pending.description?.contains("저장 대기 변경사항") == true)
     }
 }

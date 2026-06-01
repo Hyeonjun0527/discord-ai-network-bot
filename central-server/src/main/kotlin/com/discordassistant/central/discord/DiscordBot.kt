@@ -6,6 +6,7 @@ import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
+import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.channel.ChannelDeleteEvent
@@ -602,21 +603,29 @@ class DiscordBot(
                 ).build()
 
         /** 설정 패널 Embed(현재 상태 + 저장 대기 변경사항). */
-        private fun settingsEmbed(ctx: CommandContext) =
-            EmbedFactory.settingsEmbed(
-                language = commands.guildLanguage(ctx),
-                defaultModel = commands.guildDefaultModel(ctx),
+        private fun settingsEmbed(ctx: CommandContext): MessageEmbed {
+            val pending = pendingSettings[settingsKey(ctx)]
+            val effectiveDefaultModel =
+                when (pending?.defaultModel) {
+                    "__auto__" -> null
+                    null -> commands.guildDefaultModel(ctx)
+                    else -> pending.defaultModel
+                }
+            return EmbedFactory.settingsEmbed(
+                language = pending?.language ?: commands.guildLanguage(ctx),
+                defaultModel = effectiveDefaultModel,
                 poolModelCount = commands.poolModels(ctx).size,
-                allowedChannelCount = commands.allowedChannelIds(ctx).size,
+                allowedChannelCount = effectiveAllowedChannelIds(ctx).size,
                 allowedChannelText = allowedChannelText(ctx),
-                autoApprove = commands.isAutoApprove(ctx),
+                autoApprove = pending?.autoApprove ?: commands.isAutoApprove(ctx),
                 pendingSummary = pendingSummary(ctx),
             )
+        }
 
         private fun settingsKey(ctx: CommandContext) = "${ctx.guildId}:${ctx.channelId}:${ctx.userId}"
 
         private fun allowedChannelText(ctx: CommandContext): String {
-            val channelIds = commands.allowedChannelIds(ctx)
+            val channelIds = effectiveAllowedChannelIds(ctx)
             return if (channelIds.isEmpty()) {
                 "모든 채널 허용"
             } else {

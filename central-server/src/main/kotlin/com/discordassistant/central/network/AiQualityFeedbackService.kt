@@ -221,6 +221,7 @@ data class ModelQualitySummary(
 data class CandidateQualitySummary(
     val candidateId: Long,
     val providerUserId: Long?,
+    val providerLabel: String? = null,
     val modelName: String?,
     val status: String,
     val qualityScore: Int?,

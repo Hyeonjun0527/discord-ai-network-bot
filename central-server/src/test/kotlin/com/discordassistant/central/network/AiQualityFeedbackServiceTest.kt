@@ -196,10 +196,15 @@ class AiQualityFeedbackServiceTest
             )
 
             val models = controller.modelQuality(100)
-            val candidateQuality = controller.candidateQuality(run.id)
+            val publicCandidateQuality = controller.candidateQuality(run.id)
+            val adminCandidateQuality = controller.candidateQuality(run.id, audience = "admin")
 
             assertEquals("llama3.1:8b", models.first().modelName)
             assertTrue(models.any { it.modelName == "llama3.1:8b" && it.overloadRiskCount == 1 })
-            assertEquals(90, candidateQuality.single().qualityScore)
+            assertEquals(90, publicCandidateQuality.single().qualityScore)
+            assertEquals(null, publicCandidateQuality.single().providerUserId)
+            assertEquals("Provider 1", publicCandidateQuality.single().providerLabel)
+            assertEquals(1L, adminCandidateQuality.single().providerUserId)
+            assertEquals("provider:1", adminCandidateQuality.single().providerLabel)
         }
     }

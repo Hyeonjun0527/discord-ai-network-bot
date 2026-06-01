@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -78,7 +79,21 @@ class AiQualityFeedbackController(
     @GetMapping("/runs/{runId}/candidates")
     fun candidateQuality(
         @PathVariable runId: Long,
-    ) = feedback.candidateQuality(runId)
+        @RequestParam(defaultValue = "public") audience: String = "public",
+    ): List<com.discordassistant.central.network.CandidateQualitySummary> {
+        val visibility = DashboardAudience.from(audience)
+        return feedback.candidateQuality(runId).mapIndexed { index, candidate ->
+            candidate.copy(
+                providerUserId = if (visibility.canSeeProviderIdentity) candidate.providerUserId else null,
+                providerLabel =
+                    if (visibility.canSeeProviderIdentity) {
+                        candidate.providerUserId?.let { "provider:$it" } ?: "provider:unknown"
+                    } else {
+                        "Provider ${index + 1}"
+                    },
+            )
+        }
+    }
 }
 
 data class SubmitAiFeedbackRequest(

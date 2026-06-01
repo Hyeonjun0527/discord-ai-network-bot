@@ -148,7 +148,7 @@ class PresetRegistryServiceTest
             val imported =
                 controller.importPreset(
                     publishedId,
-                    ImportPresetRequest(targetGuildId = 101, targetChannelId = 202, actorUserId = 89),
+                    ImportPresetRequest(targetGuildId = 101, targetChannelId = 202, actorUserId = 89, confirmConflicts = true),
                 )
             assertNotNull(imported["importedPresetId"])
             assertEquals("applied", imported["status"])
@@ -267,7 +267,21 @@ class PresetRegistryServiceTest
             assertEquals(0, imports.findByTargetGuildId(301).size)
             assertEquals("기존 채널 AI", channelAis.findByGuildIdAndChannelId(301, 401)?.displayName)
             assertEquals("fast", routingPolicies.findByGuildIdAndChannelId(301, 401)?.responseMode)
-            assertEquals(0, publishedPresets.findById(published.id).get().importCount)
+            assertThrows(IllegalArgumentException::class.java) {
+                controller.importPreset(
+                    published.id,
+                    ImportPresetRequest(targetGuildId = 301, targetChannelId = 401, actorUserId = 88),
+                )
+            }
+            assertEquals(0, imports.findByTargetGuildId(301).size)
+
+            val imported =
+                controller.importPreset(
+                    published.id,
+                    ImportPresetRequest(targetGuildId = 301, targetChannelId = 401, actorUserId = 88, confirmConflicts = true),
+                )
+            assertEquals("applied", imported["status"])
+            assertEquals(1, imports.findByTargetGuildId(301).size)
         }
 
         @Test
@@ -338,7 +352,14 @@ class PresetRegistryServiceTest
                 )
             val published = service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
 
-            val imported = service.importPreset(published.id, targetGuildId = 201, targetChannelId = 301, importedBy = 88)
+            val imported =
+                service.importPreset(
+                    published.id,
+                    targetGuildId = 201,
+                    targetChannelId = 301,
+                    importedBy = 88,
+                    confirmConflicts = true,
+                )
 
             assertEquals("needs_review", imported.status)
             assertNotNull(imported.createdChannelAiId)

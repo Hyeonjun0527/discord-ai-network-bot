@@ -119,6 +119,7 @@ class PresetRegistryController(
                 targetGuildId = request.targetGuildId,
                 targetChannelId = request.targetChannelId,
                 importedBy = request.actorUserId,
+                confirmConflicts = request.confirmConflicts,
             )
         return mapOf(
             "id" to imported.id,
@@ -210,6 +211,7 @@ data class ImportPresetRequest(
     val targetGuildId: Long,
     val targetChannelId: Long? = null,
     val actorUserId: Long? = null,
+    val confirmConflicts: Boolean = false,
 )
 
 data class LikePresetRequest(

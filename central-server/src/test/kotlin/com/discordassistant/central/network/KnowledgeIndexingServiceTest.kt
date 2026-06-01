@@ -102,6 +102,65 @@ class KnowledgeIndexingServiceTest
         }
 
         @Test
+        fun `search uses ready chunks with retrieval policy caps and deleted sources excluded`() {
+            val space = spaces.save(KnowledgeSpaceEntity(guildId = 100, channelId = 203, displayName = "검색 지식"))
+            val source =
+                sources.save(
+                    KnowledgeSourceEntity(
+                        knowledgeSpaceId = space.id,
+                        guildId = 100,
+                        sourceType = "text",
+                        title = "Kotlin 운영 가이드",
+                        status = "indexed",
+                    ),
+                )
+            service.parseSourceToDocument(
+                guildId = 100,
+                spaceId = space.id,
+                sourceId = source.id,
+                documentText = "Kotlin 장애 대응은 actuator health 부터 확인합니다.\n\nKotlin rollback 은 이전 app.jar 로 되돌립니다.",
+            )
+            service.saveRetrievalPolicy(
+                guildId = 100,
+                channelId = 203,
+                knowledgeSpaceId = space.id,
+                topK = 1,
+                tokenBudget = 256,
+                rerankEnabled = true,
+                sourcePriority = emptyList(),
+            )
+            val search =
+                KnowledgeSearchService(
+                    sources = sources,
+                    spaces = spaces,
+                    chunks = chunks,
+                    retrievalPolicies = retrievalPolicies,
+                )
+
+            val found = search.search(100, "Kotlin", limit = 10, channelId = 203)
+            assertEquals(1, found.results.size)
+            assertEquals(source.id, found.results.single().sourceId)
+            assertTrue(
+                found
+                    .results
+                    .single()
+                    .contentPreview!!
+                    .contains("Kotlin"),
+            )
+
+            val context = search.promptContext(100, "actuator", maxChars = 8_000, channelId = 203)
+            assertEquals(256, context.maxChars)
+            assertTrue(context.contextText.contains("actuator health"))
+
+            val deleted = sources.findByKnowledgeSpaceIdAndId(space.id, source.id)!!
+            deleted.status = "deleted_outdated"
+            sources.save(deleted)
+            val afterDelete = search.search(100, "Kotlin", limit = 10, channelId = 203)
+            assertTrue(afterDelete.results.isEmpty())
+            assertEquals("no_indexed_knowledge_match", afterDelete.fallbackReason)
+        }
+
+        @Test
         fun `cross guild source and job updates are rejected`() {
             val space = spaces.save(KnowledgeSpaceEntity(guildId = 100, channelId = 202, displayName = "A"))
             val source =

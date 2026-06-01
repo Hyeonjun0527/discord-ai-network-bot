@@ -1,14 +1,20 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.persistence.KnowledgeChunkEntity
+import com.discordassistant.central.persistence.KnowledgeChunkRepository
 import com.discordassistant.central.persistence.KnowledgeSourceEntity
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
+import com.discordassistant.central.persistence.RetrievalPolicyEntity
+import com.discordassistant.central.persistence.RetrievalPolicyRepository
 import org.springframework.stereotype.Service
 
 @Service
 class KnowledgeSearchService(
     private val sources: KnowledgeSourceRepository,
     private val spaces: KnowledgeSpaceRepository,
+    private val chunks: KnowledgeChunkRepository? = null,
+    private val retrievalPolicies: RetrievalPolicyRepository? = null,
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
     fun search(
@@ -35,21 +41,23 @@ class KnowledgeSearchService(
         if (allowedSpaceIds.isEmpty()) {
             return KnowledgeSearchResponse(guildId = guildId, query = query, results = emptyList(), fallbackReason = "no_knowledge_space")
         }
+        val policy = activePolicy(guildId, channelId, knowledgeSpaceId, allowedSpaceIds)
+        val topK = minOf(limit.coerceIn(1, 20), policy?.topK ?: 20)
         val candidates =
-            sources
-                .findByGuildId(guildId)
-                .filter { it.knowledgeSpaceId in allowedSpaceIds }
-                .filter { it.status == "indexed" }
-                .filter { it.riskLevel in SEARCHABLE_RISK_LEVELS }
-                .mapNotNull { it.toResult(normalizedQuery) }
-                .sortedWith(
-                    compareByDescending<KnowledgeSearchResult> { it.score }
-                        .thenBy { it.title },
-                ).take(limit.coerceIn(1, 20))
+            chunkCandidates(guildId, allowedSpaceIds, normalizedQuery)
+                .ifEmpty {
+                    sourceCandidates(guildId, allowedSpaceIds, normalizedQuery)
+                }
         return KnowledgeSearchResponse(
             guildId = guildId,
             query = query,
-            results = candidates,
+            results =
+                candidates
+                    .sortedWith(
+                        compareByDescending<KnowledgeSearchResult> { it.score }
+                            .thenBy { it.title }
+                            .thenBy { it.chunkIndex ?: 0 },
+                    ).take(topK),
             fallbackReason = if (candidates.isEmpty()) "no_indexed_knowledge_match" else null,
         )
     }
@@ -132,8 +140,10 @@ class KnowledgeSearchService(
                 fallbackReason = "blocked_sensitive_query",
             )
         }
-        val search = search(guildId, query, limit = 10, channelId = channelId, knowledgeSpaceId = knowledgeSpaceId)
-        val budget = maxChars.coerceIn(200, 8_000)
+        val allowedSpaceIds = allowedSpaceIds(guildId, channelId, knowledgeSpaceId)
+        val policy = activePolicy(guildId, channelId, knowledgeSpaceId, allowedSpaceIds)
+        val search = search(guildId, query, limit = policy?.topK ?: 10, channelId = channelId, knowledgeSpaceId = knowledgeSpaceId)
+        val budget = minOf(maxChars.coerceIn(200, 8_000), policy?.tokenBudget ?: 8_000)
         val entries = mutableListOf<KnowledgePromptEntry>()
         var used = 0
         for (result in search.results) {
@@ -278,9 +288,86 @@ class KnowledgeSearchService(
         )
     }
 
+    private fun sourceCandidates(
+        guildId: Long,
+        allowedSpaceIds: Set<Long>,
+        query: String,
+    ): List<KnowledgeSearchResult> =
+        sources
+            .findByGuildId(guildId)
+            .filter { it.knowledgeSpaceId in allowedSpaceIds }
+            .filter { it.status == "indexed" }
+            .filter { it.riskLevel in SEARCHABLE_RISK_LEVELS }
+            .mapNotNull { it.toResult(query) }
+
+    private fun chunkCandidates(
+        guildId: Long,
+        allowedSpaceIds: Set<Long>,
+        query: String,
+    ): List<KnowledgeSearchResult> {
+        val chunkRepo = chunks ?: return emptyList()
+        if (allowedSpaceIds.isEmpty()) return emptyList()
+        val sourceById =
+            sources
+                .findByGuildId(guildId)
+                .filter { it.knowledgeSpaceId in allowedSpaceIds }
+                .filter { it.status == "indexed" }
+                .filter { it.riskLevel in SEARCHABLE_RISK_LEVELS }
+                .associateBy { it.id }
+        if (sourceById.isEmpty()) return emptyList()
+        return chunkRepo
+            .findByGuildIdAndKnowledgeSpaceIdInAndStatus(guildId, allowedSpaceIds, "ready")
+            .mapNotNull { chunk ->
+                val source = sourceById[chunk.knowledgeSourceId] ?: return@mapNotNull null
+                chunk.toResult(source, query)
+            }
+    }
+
+    private fun KnowledgeChunkEntity.toResult(
+        source: KnowledgeSourceEntity,
+        query: String,
+    ): KnowledgeSearchResult? {
+        val terms = query.split(Regex("\\s+")).filter { it.length >= 2 }
+        val haystack = listOf(title, source.sourceUri.orEmpty(), source.sourceType, contentPreview).joinToString(" ").lowercase()
+        val score =
+            terms.sumOf { term ->
+                haystack.windowed(term.length).count { it == term }
+            } + terms.count { title.lowercase().contains(it) } * 2
+        if (score <= 0) return null
+        return KnowledgeSearchResult(
+            sourceId = source.id,
+            knowledgeSpaceId = knowledgeSpaceId,
+            title = title,
+            sourceType = source.sourceType,
+            sourceUri = source.sourceUri,
+            riskLevel = source.riskLevel,
+            score = score,
+            chunkId = id,
+            chunkIndex = chunkIndex,
+            contentPreview = contentPreview,
+        )
+    }
+
+    private fun activePolicy(
+        guildId: Long,
+        channelId: Long?,
+        knowledgeSpaceId: Long?,
+        allowedSpaceIds: Set<Long>,
+    ): RetrievalPolicyEntity? {
+        val repo = retrievalPolicies ?: return null
+        knowledgeSpaceId?.let { spaceId ->
+            return repo.findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(guildId, channelId, spaceId, "active")
+                ?: repo.findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(guildId, null, spaceId, "active")
+        }
+        val channelPolicies = channelId?.let { repo.findByGuildIdAndChannelIdAndStatus(guildId, it, "active") }.orEmpty()
+        return channelPolicies.firstOrNull { it.knowledgeSpaceId in allowedSpaceIds }
+            ?: channelPolicies.firstOrNull { it.knowledgeSpaceId == null }
+    }
+
     private fun KnowledgeSearchResult.toPromptSnippet(): String =
         listOfNotNull(
             title.take(180),
+            contentPreview?.take(500),
             sourceUri?.take(240),
             "type=$sourceType",
         ).joinToString(" · ")
@@ -340,6 +427,9 @@ data class KnowledgeSearchResult(
     val sourceUri: String?,
     val riskLevel: String,
     val score: Int,
+    val chunkId: Long? = null,
+    val chunkIndex: Int? = null,
+    val contentPreview: String? = null,
 )
 
 data class KnowledgePromptContext(

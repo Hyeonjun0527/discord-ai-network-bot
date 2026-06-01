@@ -243,6 +243,12 @@ interface KnowledgeChunkRepository : JpaRepository<KnowledgeChunkEntity, Long> {
         status: String,
     ): List<KnowledgeChunkEntity>
 
+    fun findByGuildIdAndKnowledgeSpaceIdInAndStatus(
+        guildId: Long,
+        knowledgeSpaceIds: Collection<Long>,
+        status: String,
+    ): List<KnowledgeChunkEntity>
+
     fun findByKnowledgeDocumentIdOrderByChunkIndex(knowledgeDocumentId: Long): List<KnowledgeChunkEntity>
 }
 

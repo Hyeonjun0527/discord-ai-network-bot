@@ -49,11 +49,17 @@ class DashboardServingTest
             assertTrue(html.contains("""id="presetCatalog""""))
             assertTrue(html.contains("""id="changeApproval""""))
             assertTrue(html.contains("""id="qualityReview""""))
+            assertTrue(html.contains("""id="wizardJob""""))
+            assertTrue(html.contains("""id="wizardCreate""""))
             assertTrue(js.contains("/api/ai-network/${'$'}{gid}/dashboard?audience=admin"))
+            assertTrue(js.contains("/api/ai-network/channel-ai/wizard/options"))
+            assertTrue(js.contains("/api/ai-network/channel-ai/wizard/draft"))
+            assertTrue(js.contains("/api/ai-network/channel-ai/${'$'}{gid}/${'$'}{channelId}/wizard"))
             assertTrue(js.contains("renderAiNetwork"))
             assertTrue(js.contains("publishedPresets"))
             assertTrue(js.contains("changeApproval"))
             assertTrue(js.contains("qualityReview"))
+            assertTrue(js.contains("createChannelAi"))
         }
 
         @Test

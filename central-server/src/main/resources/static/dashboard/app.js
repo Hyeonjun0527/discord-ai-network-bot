@@ -18,6 +18,16 @@ async function getJson(url) {
   return res.json();
 }
 
+async function postJson(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  return res.json();
+}
+
 // 풀 전역(#199) — 5초 폴링(#205)
 async function refreshPool() {
   const badge = $("status");
@@ -58,6 +68,70 @@ function renderList(id, items, emptyText, renderer) {
     return;
   }
   box.innerHTML = items.map(renderer).join("");
+}
+
+function fillSelect(id, options) {
+  const select = $(id);
+  select.innerHTML = (options || []).map((o) =>
+    `<option value="${esc(o.key)}" title="${esc(o.description)}">${esc(o.label)}</option>`,
+  ).join("");
+}
+
+async function loadWizardOptions() {
+  try {
+    const options = await getJson("/api/ai-network/channel-ai/wizard/options");
+    fillSelect("wizardJob", options.jobs);
+    fillSelect("wizardTone", options.tones);
+    fillSelect("wizardLength", options.answerLengths);
+    const firstJob = options.jobs?.[0];
+    if (firstJob?.recommendedName && !$("wizardName").value) $("wizardName").value = firstJob.recommendedName;
+    $("wizardPreview").textContent = (options.safetyRules || []).map((rule) => `- ${rule}`).join("\n");
+  } catch (e) {
+    $("wizardPreview").textContent = `마법사 옵션 로딩 실패: ${e.message}`;
+  }
+}
+
+function wizardPayload() {
+  return {
+    name: $("wizardName").value.trim(),
+    job: $("wizardJob").value,
+    tone: $("wizardTone").value,
+    answerLength: $("wizardLength").value,
+    requireApproval: $("wizardApproval").checked,
+  };
+}
+
+async function draftChannelAi() {
+  try {
+    const draft = await postJson("/api/ai-network/channel-ai/wizard/draft", wizardPayload());
+    $("wizardName").value = $("wizardName").value.trim() || draft.name || "";
+    $("wizardPreview").textContent = [
+      draft.preview,
+      "",
+      "[AI 헌법]",
+      draft.constitution,
+    ].join("\n");
+  } catch (e) {
+    $("wizardPreview").textContent = `미리보기 실패: ${e.message}`;
+  }
+}
+
+async function createChannelAi() {
+  const gid = $("guildId").value.trim();
+  const channelId = $("wizardChannelId").value.trim();
+  if (!/^\d+$/.test(gid) || !/^\d+$/.test(channelId)) {
+    $("wizardPreview").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/channel-ai/${gid}/${channelId}/wizard`, wizardPayload());
+    $("wizardPreview").textContent =
+      `저장 완료: ${result.status} · channelAi=${result.channelAiId} · version=${result.version}` +
+      (result.approvalReason ? `\n승인 사유: ${result.approvalReason}` : "");
+    await loadGuild();
+  } catch (e) {
+    $("wizardPreview").textContent = `저장 실패: ${e.message}`;
+  }
 }
 
 function renderAiNetwork(data) {
@@ -162,5 +236,8 @@ $("loadGuild").addEventListener("click", loadGuild);
 $("saveWelcome").addEventListener("click", () => postWrite("welcome", { message: $("welcomeMsg").value }));
 $("autoApproveOn").addEventListener("click", () => postWrite("auto-approve", { enabled: "true" }));
 $("autoApproveOff").addEventListener("click", () => postWrite("auto-approve", { enabled: "false" }));
+$("wizardDraft").addEventListener("click", draftChannelAi);
+$("wizardCreate").addEventListener("click", createChannelAi);
+loadWizardOptions();
 refreshPool();
 setInterval(refreshPool, 5000);

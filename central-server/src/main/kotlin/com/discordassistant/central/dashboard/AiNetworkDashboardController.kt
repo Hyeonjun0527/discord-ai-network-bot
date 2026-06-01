@@ -104,6 +104,101 @@ class AiNetworkDashboardController(
         )
     }
 
+    @GetMapping("/{guildId}/launch-checklist")
+    fun launchChecklist(
+        @PathVariable guildId: Long,
+        @RequestParam(defaultValue = "admin") audience: String = "admin",
+    ): AiNetworkLaunchChecklistResponse {
+        featureGate.requireDashboardEnabled()
+        val dashboard = dashboard(guildId, audience = audience)
+        val readinessItems =
+            dashboard.readiness.areas.map {
+                AiNetworkLaunchChecklistItemResponse(
+                    key = it.key,
+                    title = it.title,
+                    status = it.status,
+                    evidence = it.evidence,
+                    nextAction = it.nextAction,
+                    blocking = it.status == "blocked",
+                )
+            }
+        val safetyItems =
+            listOf(
+                checklistItem(
+                    key = "provider_overload",
+                    title = "Provider 과부하 보호",
+                    passed = dashboard.overload.highRiskCount == 0,
+                    warning = dashboard.overload.highRiskCount > 0 && dashboard.overload.safeOnlineProviderCount > 0,
+                    evidence =
+                        listOf(
+                            "highRisk=${dashboard.overload.highRiskCount}",
+                            "safeOnline=${dashboard.overload.safeOnlineProviderCount}",
+                        ),
+                    nextAction = "후보 수/깊은 답변/다중응답을 낮추고 과부하 Provider를 쉬게 하세요.",
+                ),
+                checklistItem(
+                    key = "dashboard_projection",
+                    title = "대시보드 Projection 최신성",
+                    passed = !dashboard.metadata.stale,
+                    warning = dashboard.metadata.stale,
+                    evidence = listOf("freshness=${dashboard.metadata.freshnessStatus}", "source=${dashboard.metadata.source}"),
+                    nextAction = dashboard.metadata.degradedReason ?: "projection freshness를 확인하세요.",
+                ),
+                checklistItem(
+                    key = "unsafe_quality_reports",
+                    title = "품질 신고 검토",
+                    passed = dashboard.quality.openReports == 0,
+                    warning = dashboard.quality.openReports > 0,
+                    evidence = listOf("openReports=${dashboard.quality.openReports}", "feedback=${dashboard.quality.feedbackCount}"),
+                    nextAction = "열린 품질 신고를 resolved/dismissed 로 정리하세요.",
+                ),
+                checklistItem(
+                    key = "change_approval_queue",
+                    title = "AI 설정 변경 승인 대기열",
+                    passed = dashboard.changeApproval.pendingCount == 0 && dashboard.changeApproval.staleCount == 0,
+                    warning = dashboard.changeApproval.pendingCount > 0,
+                    evidence = listOf("pending=${dashboard.changeApproval.pendingCount}", "stale=${dashboard.changeApproval.staleCount}"),
+                    nextAction = "승인/거절되지 않은 AI 설정 변경을 처리하세요.",
+                ),
+                checklistItem(
+                    key = "multi_response_safety",
+                    title = "다중응답 안전 게이트",
+                    passed = dashboard.multiResponseOperations.safeToEnableAdvanced,
+                    warning = !dashboard.multiResponseOperations.safeToEnableAdvanced,
+                    evidence =
+                        listOf(
+                            "status=${dashboard.multiResponseOperations.status}",
+                            "riskCodes=${dashboard.multiResponseOperations.riskCodes.joinToString(",")}",
+                        ),
+                    nextAction = dashboard.multiResponseOperations.nextActions.firstOrNull() ?: "다중응답 운영 상태를 점검하세요.",
+                ),
+            )
+        val items = readinessItems + safetyItems
+        val blocked = items.count { it.status == "blocked" }
+        val warnings = items.count { it.status == "warning" }
+        val status =
+            when {
+                blocked > 0 -> "blocked"
+                warnings > 0 -> "warning"
+                else -> "ready"
+            }
+        return AiNetworkLaunchChecklistResponse(
+            guildId = guildId,
+            status = status,
+            score = ((items.count { it.status == "ready" }.toDouble() / items.size.coerceAtLeast(1)) * 100).toInt(),
+            readyCount = items.count { it.status == "ready" },
+            warningCount = warnings,
+            blockedCount = blocked,
+            items = items,
+            releaseGate = if (blocked == 0) "pass" else "fail",
+            nextActions =
+                items
+                    .filter { it.status != "ready" }
+                    .take(8)
+                    .map { it.nextAction },
+        )
+    }
+
     @GetMapping("/{guildId}/overview")
     fun overview(
         @PathVariable guildId: Long,
@@ -656,6 +751,28 @@ class AiNetworkDashboardController(
             nextAction = nextAction,
         )
 
+    private fun checklistItem(
+        key: String,
+        title: String,
+        passed: Boolean,
+        warning: Boolean,
+        evidence: List<String>,
+        nextAction: String,
+    ): AiNetworkLaunchChecklistItemResponse =
+        AiNetworkLaunchChecklistItemResponse(
+            key = key,
+            title = title,
+            status =
+                when {
+                    passed -> "ready"
+                    warning -> "warning"
+                    else -> "blocked"
+                },
+            evidence = evidence,
+            nextAction = if (passed) "준비됐습니다." else nextAction,
+            blocking = !passed && !warning,
+        )
+
     private fun nextActions(
         overview: AiNetworkOverviewResponse,
         channels: List<ChannelAiCardResponse>,
@@ -936,6 +1053,27 @@ data class AiNetworkDashboardResponse(
     val growthTimeline: List<NetworkGrowthEventCard>,
     val readiness: AiNetworkReadinessResponse,
     val nextActions: List<AiNetworkNextActionResponse>,
+)
+
+data class AiNetworkLaunchChecklistResponse(
+    val guildId: Long,
+    val status: String,
+    val score: Int,
+    val readyCount: Int,
+    val warningCount: Int,
+    val blockedCount: Int,
+    val releaseGate: String,
+    val items: List<AiNetworkLaunchChecklistItemResponse>,
+    val nextActions: List<String>,
+)
+
+data class AiNetworkLaunchChecklistItemResponse(
+    val key: String,
+    val title: String,
+    val status: String,
+    val evidence: List<String>,
+    val nextAction: String,
+    val blocking: Boolean,
 )
 
 data class ChannelAiChangeApprovalDashboardResponse(

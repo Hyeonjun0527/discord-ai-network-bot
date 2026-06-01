@@ -513,6 +513,37 @@ function renderAiNetwork(data) {
   renderList("qualityReview", qualityItems, "품질 데이터 없음", ([label, value]) =>
     `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
   );
+  renderLaunchChecklist(data.launchChecklist || null);
+}
+
+function renderLaunchChecklist(checklist) {
+  if (!checklist) {
+    renderList("launchChecklist", [], "체크리스트를 새로고침하세요", (i) => i);
+    return;
+  }
+  const headline = [
+    { title: `Gate ${checklist.releaseGate}`, status: checklist.status, nextAction: `score ${checklist.score}` },
+    ...(checklist.items || []).slice(0, 8),
+  ];
+  renderList("launchChecklist", headline, "체크리스트 없음", (item) =>
+    `<li><strong>${esc(item.title || item.key)} · ${esc(item.status)}</strong><span>${esc((item.evidence || []).join(" · ") || item.nextAction || "")}</span></li>`,
+  );
+}
+
+async function refreshLaunchChecklist() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    alert("길드 ID(숫자)를 입력하세요.");
+    return;
+  }
+  try {
+    const checklist = await getJson(`/api/ai-network/${gid}/launch-checklist?audience=admin`);
+    renderLaunchChecklist(checklist);
+  } catch (e) {
+    renderList("launchChecklist", [{ title: "체크리스트 로딩 실패", status: "error", evidence: [e.message] }], "체크리스트 없음", (item) =>
+      `<li><strong>${esc(item.title)}</strong><span>${esc((item.evidence || []).join(" · "))}</span></li>`,
+    );
+  }
 }
 
 async function importPreset(publishedPresetId) {
@@ -549,12 +580,13 @@ async function loadGuild() {
     return;
   }
   try {
-    const [overview, trend, requests, providers, aiNetwork] = await Promise.all([
+    const [overview, trend, requests, providers, aiNetwork, launchChecklist] = await Promise.all([
       getJson(`/api/dashboard/${gid}/overview`),
       getJson(`/api/dashboard/${gid}/usage-trend?days=7`),
       getJson(`/api/dashboard/${gid}/requests`),
       getJson(`/api/metrics/pool/${gid}`),
       getJson(`/api/ai-network/${gid}/dashboard?audience=admin`),
+      getJson(`/api/ai-network/${gid}/launch-checklist?audience=admin`),
     ]);
 
     $("guildOverview").innerHTML = [
@@ -565,7 +597,7 @@ async function loadGuild() {
       ["자동승인", overview.autoApprove ? "예" : "아니오"],
     ].map(([l, v]) => `<div class="stat"><div class="num">${v}</div><div class="lbl">${l}</div></div>`).join("");
 
-    renderAiNetwork(aiNetwork);
+    renderAiNetwork({ ...aiNetwork, launchChecklist });
 
     // 프로바이더 상세(#200)
     const ptbody = document.querySelector("#providers tbody");
@@ -618,6 +650,7 @@ $("presetLike").addEventListener("click", likePreset);
 $("multiSavePolicy").addEventListener("click", saveMultiPolicy);
 $("multiRefreshOps").addEventListener("click", refreshMultiOps);
 $("pseudoStreamPlan").addEventListener("click", planPseudoStream);
+$("launchChecklistRefresh").addEventListener("click", refreshLaunchChecklist);
 document.addEventListener("click", (event) => {
   const button = event.target.closest(".import-preset");
   if (button) importPreset(button.dataset.presetId);

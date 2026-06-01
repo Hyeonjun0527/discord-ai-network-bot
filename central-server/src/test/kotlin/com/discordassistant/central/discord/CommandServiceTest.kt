@@ -70,6 +70,9 @@ class CommandServiceTest
             assertTrue(admin.contains("/ai-knowledge-list"))
             assertTrue(admin.contains("/ai-knowledge-add"))
             assertTrue(admin.contains("/ai-knowledge-search"))
+            assertTrue(admin.contains("/ai-knowledge-index-plan"))
+            assertTrue(admin.contains("/ai-knowledge-approve"))
+            assertTrue(admin.contains("/ai-knowledge-delete"))
             assertTrue(admin.contains("/ai-preset-catalog"))
             assertTrue(admin.contains("/ai-preset-import"))
             assertTrue(admin.contains("/ai-network-check"))
@@ -268,6 +271,39 @@ class CommandServiceTest
             val search = commands.searchKnowledge(g, query = "운영 규칙", limit = 3)
             assertTrue(search.content.contains("채널 지식 검색"))
             assertTrue(search.content.contains("운영 규칙 README"))
+
+            val plan = commands.knowledgeIndexPlan(g, spaceId, force = true)
+            assertTrue(plan.content.contains("RAG 색인 계획"))
+            assertTrue(plan.content.contains("scripts/rag.sh"))
+
+            val deleted = commands.deleteKnowledge(g, spaceId, source.id, reason = "테스트 삭제")
+            assertTrue(deleted.content.contains("지식 소스를 삭제했습니다"))
+        }
+
+        @Test
+        fun `knowledge approve — 검토 소스를 승인해 색인 대기로 전환한다`() {
+            val g = CommandContext(guildId = 77994, channelId = 88994, userId = 5, roleIds = setOf(1L), isAdmin = true)
+
+            val added =
+                commands.addKnowledge(
+                    g,
+                    title = "검토 필요한 HTTP 문서",
+                    sourceType = "link",
+                    sourceUri = "http://example.com/manual",
+                    contentPreview = null,
+                )
+            assertTrue(added.content.contains("risk: `review`"))
+
+            val spaceId =
+                knowledge
+                    .guildReadiness(g.guildId)
+                    .spaces
+                    .single()
+                    .knowledgeSpaceId
+            val source = knowledge.listSources(g.guildId, spaceId).single()
+            val approved = commands.approveKnowledge(g, spaceId, source.id, reason = "공개 문서 확인")
+            assertTrue(approved.content.contains("색인 대기 상태로 승인"))
+            assertTrue(approved.content.contains("status: `pending`"))
         }
 
         @Test

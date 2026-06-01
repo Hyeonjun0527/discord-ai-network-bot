@@ -291,6 +291,23 @@ class DiscordBot(
                     .addOption(OptionType.INTEGER, "limit", "결과 수(1~20)", false)
                     .setDefaultPermissions(adminPerm),
                 Commands
+                    .slash("ai-knowledge-index-plan", "RAG 색인 계획과 실행 명령을 봅니다(관리자)")
+                    .addOption(OptionType.STRING, "space-id", "지식공간 ID", false)
+                    .addOption(OptionType.BOOLEAN, "force", "이미 색인된 소스도 재색인 계획에 포함", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-approve", "검토 필요한 RAG 지식 소스를 색인 대기로 승인합니다(관리자)")
+                    .addOption(OptionType.STRING, "space-id", "지식공간 ID", true)
+                    .addOption(OptionType.STRING, "source-id", "지식 소스 ID", true)
+                    .addOption(OptionType.STRING, "reason", "승인 사유", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-delete", "RAG 지식 소스를 삭제합니다(관리자)")
+                    .addOption(OptionType.STRING, "space-id", "지식공간 ID", true)
+                    .addOption(OptionType.STRING, "source-id", "지식 소스 ID", true)
+                    .addOption(OptionType.STRING, "reason", "삭제 사유", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
                     .slash("ai-preset-catalog", "공개 AI 프리셋 공유 목록을 봅니다(관리자)")
                     .addOption(OptionType.STRING, "query", "검색어", false)
                     .addOption(OptionType.STRING, "category", "카테고리", false)
@@ -1190,6 +1207,26 @@ class DiscordBot(
                         query = event.getOption("query")!!.asString,
                         spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
                         limit = event.getOption("limit")?.asInt ?: 5,
+                    )
+                "ai-knowledge-index-plan" ->
+                    commands.knowledgeIndexPlan(
+                        ctx,
+                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
+                        force = event.getOption("force")?.asBoolean ?: false,
+                    )
+                "ai-knowledge-approve" ->
+                    commands.approveKnowledge(
+                        ctx,
+                        spaceId = event.getOption("space-id")!!.asString.toLongOrNull() ?: -1L,
+                        sourceId = event.getOption("source-id")!!.asString.toLongOrNull() ?: -1L,
+                        reason = event.getOption("reason")?.asString ?: "approved from Discord",
+                    )
+                "ai-knowledge-delete" ->
+                    commands.deleteKnowledge(
+                        ctx,
+                        spaceId = event.getOption("space-id")!!.asString.toLongOrNull() ?: -1L,
+                        sourceId = event.getOption("source-id")!!.asString.toLongOrNull() ?: -1L,
+                        reason = event.getOption("reason")?.asString ?: "deleted from Discord",
                     )
                 "ai-preset-catalog" ->
                     commands.presetCatalog(

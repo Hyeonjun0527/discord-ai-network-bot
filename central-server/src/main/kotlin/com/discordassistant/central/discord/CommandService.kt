@@ -311,6 +311,7 @@ class CommandService(
             sb.append("· `/채널프로필`(`/llm-channel-profile`) — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
             sb.append("· `/ai-network-map` — Provider·모델·채널AI·RAG 구성을 한눈에 보기\n")
             sb.append("· `/ai-knowledge-list` `/ai-knowledge-add` `/ai-knowledge-search` — 채널 지식공간/RAG 소스 관리\n")
+            sb.append("· `/ai-knowledge-index-plan` `/ai-knowledge-approve` `/ai-knowledge-delete` — 색인계획·검토·삭제\n")
             sb.append("· `/ai-preset-catalog` `/ai-preset-import` — 프리셋 공유 목록 보기·현재 채널에 가져오기\n")
             sb.append("· `/ai-network-check` — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
             sb.append("· `/사용자차단`(`/llm-block`) `/차단해제`(`/llm-unblock`) — 사용자 차단/해제\n")
@@ -475,6 +476,85 @@ class CommandService(
             )
         }.getOrElse {
             Replies.warn("지식 검색에 실패했어요. ${it.message ?: "검색어/space-id를 확인해 주세요."}")
+        }
+    }
+
+    fun knowledgeIndexPlan(
+        ctx: CommandContext,
+        spaceId: Long? = null,
+        force: Boolean = false,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            if (spaceId != null) {
+                val plan = knowledgeIngestion.indexingPlan(ctx.guildId, spaceId, force)
+                val indexableRows =
+                    plan.indexableSources.take(8).map {
+                        "• `${it.id}` ${it.title} — ${it.status} · risk=${it.riskLevel}"
+                    }
+                val indexable = indexableRows.joinToString("\n").ifBlank { "• 색인할 소스 없음" }
+                val blockedRows =
+                    plan.blockedSources.take(8).map {
+                        "• `${it.id}` ${it.title} — ${it.status} · risk=${it.riskLevel}"
+                    }
+                val blocked = blockedRows.joinToString("\n").ifBlank { "• 차단/검토 소스 없음" }
+                Reply(
+                    "🧭 **RAG 색인 계획**\n\n" +
+                        "space `$spaceId` · ready `${plan.ready}` · runtime `${plan.runtime}`\n" +
+                        "명령:\n`${plan.command}`\n\n" +
+                        "__색인 대상__\n$indexable\n\n" +
+                        "__검토/차단__\n$blocked",
+                )
+            } else {
+                val ops = knowledgeIngestion.indexingOperations(ctx.guildId, force)
+                val commandRows = ops.commands.take(5).map { "• `$it`" }
+                val commands = commandRows.joinToString("\n").ifBlank { "• 실행할 색인 명령 없음" }
+                val nextRows = ops.nextActions.take(5).map { "• $it" }
+                val next = nextRows.joinToString("\n").ifBlank { "• 추가 조치 없음" }
+                Reply(
+                    "🧭 **RAG 색인 운영 계획**\n\n" +
+                        "상태 `${ops.status}` · spaces ${ops.spaceCount} · readyPlans ${ops.readyPlanCount} · " +
+                        "indexable ${ops.indexableSourceCount} · blocked ${ops.blockedSourceCount}\n\n" +
+                        "__명령__\n$commands\n\n" +
+                        "__다음 행동__\n$next",
+                )
+            }
+        }.getOrElse {
+            Replies.warn("색인 계획을 만들지 못했어요. ${it.message ?: "space-id를 확인해 주세요."}")
+        }
+    }
+
+    fun approveKnowledge(
+        ctx: CommandContext,
+        spaceId: Long,
+        sourceId: Long,
+        reason: String = "approved from Discord",
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val source = knowledgeIngestion.approveSourceForIndexing(ctx.guildId, spaceId, sourceId, reason)
+            Replies.ok(
+                "지식 소스를 색인 대기 상태로 승인했습니다.\n" +
+                    "space: `$spaceId` · source: `${source.id}` · status: `${source.status}` · risk: `${source.riskLevel}`\n" +
+                    "`/ai-knowledge-index-plan space-id:$spaceId` 로 색인 명령을 확인하세요.",
+            )
+        }.getOrElse {
+            Replies.warn("지식 소스를 승인하지 못했어요. ${it.message ?: "review 위험도 소스인지 확인해 주세요."}")
+        }
+    }
+
+    fun deleteKnowledge(
+        ctx: CommandContext,
+        spaceId: Long,
+        sourceId: Long,
+        reason: String = "deleted from Discord",
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val source = knowledgeIngestion.removeSource(ctx.guildId, spaceId, sourceId, reason)
+            Replies.ok("지식 소스를 삭제했습니다. space `$spaceId` · source `${source.id}` · status `${source.status}`")
+        }.getOrElse {
+            Replies.warn("지식 소스를 삭제하지 못했어요. ${it.message ?: "space-id/source-id를 확인해 주세요."}")
         }
     }
 

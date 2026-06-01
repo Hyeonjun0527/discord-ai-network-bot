@@ -11,7 +11,9 @@ import com.discordassistant.central.dashboard.UpdatePresetRequest
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetRepository
+import com.discordassistant.central.persistence.ChannelAiEntity
 import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.PresetImportRepository
@@ -22,6 +24,7 @@ import com.discordassistant.central.persistence.PublishedPresetRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
@@ -197,6 +200,97 @@ class PresetRegistryServiceTest
             val removed = controller.deletePublished(publishedId)
             assertEquals("removed", removed["status"])
             assertEquals("removed", publishedPresets.findById(publishedId).get().status)
+        }
+
+        @Test
+        fun `import preview detects overwrites and does not mutate target channel`() {
+            val preset =
+                service.createPreset(
+                    guildId = 300,
+                    ownerUserId = 77,
+                    name = "운영 도우미",
+                    summary = "운영 채널용",
+                    category = "ops",
+                    visibility = "guild_private",
+                    behavior =
+                        PresetBehaviorInput(
+                            purpose = "운영 문의 응답",
+                            tone = "formal",
+                            answerLength = "short",
+                            responseMode = "deep",
+                            preferredModel = "llama3.1:8b",
+                            maxCandidates = 3,
+                            providerTagFilter = listOf("ops"),
+                        ),
+                )
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
+            val existingChannel =
+                channelAis.saveAndFlush(
+                    ChannelAiEntity(
+                        guildId = 301,
+                        channelId = 401,
+                        displayName = "기존 채널 AI",
+                        source = "manual",
+                        activeBehaviorVersionId = 999,
+                        createdAt = Instant.parse("2026-05-30T00:00:00Z"),
+                    ),
+                )
+            routingPolicies.saveAndFlush(
+                ChannelAiRoutingPolicyEntity(
+                    guildId = 301,
+                    channelId = 401,
+                    channelAiId = existingChannel.id,
+                    responseMode = "fast",
+                    preferredModel = "old-model",
+                    createdAt = Instant.parse("2026-05-30T00:00:00Z"),
+                    updatedAt = Instant.parse("2026-05-30T00:00:00Z"),
+                ),
+            )
+
+            val response =
+                controller.importPreview(
+                    published.id,
+                    ImportPresetRequest(targetGuildId = 301, targetChannelId = 401, actorUserId = 88),
+                )
+            val preview = response["preview"] as PresetImportPreview
+
+            assertEquals("overwrite_channel_ai", preview.action)
+            assertEquals(true, preview.willOverwriteChannelAi)
+            assertEquals(true, preview.willOverwriteRoutingPolicy)
+            assertEquals(false, preview.willCreateApprovalProposal)
+            assertEquals("deep", preview.responseMode)
+            assertEquals("llama3.1:8b", preview.preferredModel)
+            assertEquals(listOf("ops"), preview.providerTagFilter)
+            assertTrue(preview.conflicts.any { it.code == "existing_channel_ai_behavior" })
+            assertTrue(preview.conflicts.any { it.code == "existing_routing_policy" })
+            assertTrue(preview.conflicts.any { it.code == "multi_candidate_fanout" })
+            assertEquals(0, imports.findByTargetGuildId(301).size)
+            assertEquals("기존 채널 AI", channelAis.findByGuildIdAndChannelId(301, 401)?.displayName)
+            assertEquals("fast", routingPolicies.findByGuildIdAndChannelId(301, 401)?.responseMode)
+            assertEquals(0, publishedPresets.findById(published.id).get().importCount)
+        }
+
+        @Test
+        fun `high risk import preview clearly shows approval proposal action`() {
+            val preset =
+                service.createPreset(
+                    guildId = 302,
+                    ownerUserId = 77,
+                    name = "위험 프리셋 미리보기",
+                    summary = null,
+                    category = "ops",
+                    visibility = "guild_private",
+                    behavior = PresetBehaviorInput(purpose = "운영", tone = "direct", safetyLevel = "high"),
+                )
+            val published = service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
+
+            val preview = service.previewImport(published.id, targetGuildId = 303, targetChannelId = 402)
+
+            assertEquals("propose_review", preview.action)
+            assertEquals(true, preview.willApplyToChannel)
+            assertEquals(true, preview.willCreateApprovalProposal)
+            assertTrue(preview.conflicts.any { it.code == "high_risk_requires_review" && it.severity == "blocker" })
+            assertEquals(0, proposals.findByGuildIdAndStatus(303, "pending").size)
         }
 
         @Test

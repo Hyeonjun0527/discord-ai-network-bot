@@ -192,6 +192,100 @@ class PresetRegistryService(
         )
     }
 
+    @Transactional(readOnly = true)
+    fun previewImport(
+        publishedPresetId: Long,
+        targetGuildId: Long,
+        targetChannelId: Long?,
+    ): PresetImportPreview {
+        featureGate.requirePresetEnabled()
+        val published =
+            publishedPresets.findById(publishedPresetId).orElseThrow {
+                IllegalArgumentException("published preset not found: $publishedPresetId")
+            }
+        requirePublishedPreset(published)
+        val sourceRevision =
+            revisions.findById(published.revisionId).orElseThrow {
+                IllegalArgumentException("published revision not found: ${published.revisionId}")
+            }
+        val existingChannelAi = targetChannelId?.let { channelAis.findByGuildIdAndChannelId(targetGuildId, it) }
+        val existingRouting = targetChannelId?.let { routingPolicies.findByGuildIdAndChannelId(targetGuildId, it) }
+        val highRisk = sourceRevision.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS
+        val conflicts = mutableListOf<PresetImportConflict>()
+        if (targetChannelId == null) {
+            conflicts +=
+                PresetImportConflict(
+                    code = "no_target_channel_import_only",
+                    severity = "info",
+                    message = "대상 채널이 없어 프리셋 보관함에만 가져오고 채널 AI에는 적용하지 않습니다.",
+                )
+        }
+        if (existingChannelAi != null) {
+            conflicts +=
+                PresetImportConflict(
+                    code = "existing_channel_ai_behavior",
+                    severity = "warning",
+                    message = "대상 채널에 이미 AI 프로필/행동 버전이 있어 적용 시 새 버전으로 덮어씁니다.",
+                )
+        }
+        if (existingRouting != null) {
+            conflicts +=
+                PresetImportConflict(
+                    code = "existing_routing_policy",
+                    severity = "warning",
+                    message = "대상 채널에 이미 응답 모드/모델 라우팅 정책이 있어 프리셋 정책으로 교체됩니다.",
+                )
+        }
+        if (sourceRevision.maxCandidates > 1) {
+            conflicts +=
+                PresetImportConflict(
+                    code = "multi_candidate_fanout",
+                    severity = if (sourceRevision.maxCandidates >= 4) "warning" else "info",
+                    message = "이 프리셋은 여러 Provider 후보를 사용할 수 있어 Provider 부담이 증가할 수 있습니다.",
+                )
+        }
+        if (highRisk) {
+            conflicts +=
+                PresetImportConflict(
+                    code = "high_risk_requires_review",
+                    severity = "blocker",
+                    message = "안전 등급이 높은 프리셋이라 바로 활성화하지 않고 승인 요청으로 전환합니다.",
+                )
+        }
+        val action =
+            when {
+                targetChannelId == null -> "import_only"
+                highRisk -> "propose_review"
+                existingChannelAi != null -> "overwrite_channel_ai"
+                else -> "create_channel_ai"
+            }
+        return PresetImportPreview(
+            publishedPresetId = published.id,
+            revisionId = sourceRevision.id,
+            targetGuildId = targetGuildId,
+            targetChannelId = targetChannelId,
+            action = action,
+            conflicts = conflicts,
+            willImportPresetCopy = true,
+            willApplyToChannel = targetChannelId != null,
+            willOverwriteChannelAi = existingChannelAi != null,
+            willOverwriteRoutingPolicy = existingRouting != null,
+            willCreateApprovalProposal = highRisk && targetChannelId != null,
+            title = published.title,
+            description = published.description,
+            purpose = sourceRevision.purpose,
+            tone = sourceRevision.tone,
+            answerLength = sourceRevision.answerLength,
+            safetyLevel = sourceRevision.safetyLevel,
+            responseMode = sourceRevision.responseMode,
+            preferredModel = sourceRevision.preferredModel,
+            minQualityTier = sourceRevision.minQualityTier,
+            maxCandidates = sourceRevision.maxCandidates,
+            providerTagFilter = splitCsv(sourceRevision.providerTagFilter),
+            costGuard = sourceRevision.costGuard,
+        )
+    }
+
     @Transactional
     fun importPreset(
         publishedPresetId: Long,
@@ -750,4 +844,36 @@ data class PresetReportSummary(
 data class PublishedPresetDetail(
     val published: PublishedPresetSummary,
     val behavior: PresetBehaviorSnapshot,
+)
+
+data class PresetImportConflict(
+    val code: String,
+    val severity: String,
+    val message: String,
+)
+
+data class PresetImportPreview(
+    val publishedPresetId: Long,
+    val revisionId: Long,
+    val targetGuildId: Long,
+    val targetChannelId: Long?,
+    val action: String,
+    val conflicts: List<PresetImportConflict>,
+    val willImportPresetCopy: Boolean,
+    val willApplyToChannel: Boolean,
+    val willOverwriteChannelAi: Boolean,
+    val willOverwriteRoutingPolicy: Boolean,
+    val willCreateApprovalProposal: Boolean,
+    val title: String,
+    val description: String?,
+    val purpose: String,
+    val tone: String,
+    val answerLength: String,
+    val safetyLevel: String,
+    val responseMode: String,
+    val preferredModel: String?,
+    val minQualityTier: String,
+    val maxCandidates: Int,
+    val providerTagFilter: List<String>,
+    val costGuard: String,
 )

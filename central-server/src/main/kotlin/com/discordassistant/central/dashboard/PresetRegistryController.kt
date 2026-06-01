@@ -94,6 +94,20 @@ class PresetRegistryController(
         return mapOf("id" to published.id, "status" to published.status, "title" to published.title)
     }
 
+    @PostMapping("/published/{publishedPresetId}/import-preview")
+    fun importPreview(
+        @PathVariable publishedPresetId: Long,
+        @RequestBody request: ImportPresetRequest,
+    ): Map<String, Any?> =
+        mapOf(
+            "preview" to
+                registry.previewImport(
+                    publishedPresetId = publishedPresetId,
+                    targetGuildId = request.targetGuildId,
+                    targetChannelId = request.targetChannelId,
+                ),
+        )
+
     @PostMapping("/published/{publishedPresetId}/import")
     fun importPreset(
         @PathVariable publishedPresetId: Long,

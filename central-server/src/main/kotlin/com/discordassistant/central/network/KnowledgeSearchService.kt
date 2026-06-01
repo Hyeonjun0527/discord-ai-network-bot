@@ -150,6 +150,69 @@ class KnowledgeSearchService(
         )
     }
 
+    fun contextPlan(
+        guildId: Long,
+        query: String,
+        responseMode: String = "balanced",
+        requestedMaxChars: Int? = null,
+        channelId: Long? = null,
+        knowledgeSpaceId: Long? = null,
+    ): KnowledgeContextPlan {
+        featureGate.requireRagEnabled()
+        val normalizedMode = normalizeResponseMode(responseMode)
+        val modeBudget = ragBudgetFor(normalizedMode)
+        if (modeBudget == 0) {
+            return KnowledgeContextPlan.disabled(
+                guildId = guildId,
+                channelId = channelId,
+                knowledgeSpaceId = knowledgeSpaceId,
+                query = query,
+                responseMode = normalizedMode,
+                fallbackReason = "rag_disabled_by_response_mode",
+            )
+        }
+        if (channelId == null && knowledgeSpaceId == null) {
+            return KnowledgeContextPlan.disabled(
+                guildId = guildId,
+                channelId = channelId,
+                knowledgeSpaceId = knowledgeSpaceId,
+                query = query,
+                responseMode = normalizedMode,
+                fallbackReason = "rag_scope_required",
+            )
+        }
+        val requestedBudget = requestedMaxChars?.coerceIn(200, 8_000) ?: modeBudget
+        val budget = minOf(requestedBudget, modeBudget)
+        val context =
+            promptContext(
+                guildId = guildId,
+                query = query,
+                maxChars = budget,
+                channelId = channelId,
+                knowledgeSpaceId = knowledgeSpaceId,
+            )
+        val warnings =
+            buildList {
+                if (requestedMaxChars != null && requestedMaxChars > modeBudget) add("requested_budget_capped_by_response_mode")
+                context.fallbackReason?.let { add(it) }
+                if (context.usedChars >= budget) add("context_budget_exhausted")
+            }.distinct()
+        return KnowledgeContextPlan(
+            guildId = guildId,
+            channelId = channelId,
+            knowledgeSpaceId = knowledgeSpaceId,
+            query = query,
+            responseMode = normalizedMode,
+            enabled = context.entries.isNotEmpty(),
+            maxChars = budget,
+            usedChars = context.usedChars,
+            entries = context.entries,
+            contextText = context.contextText,
+            fallbackReason = context.fallbackReason,
+            warnings = warnings,
+        )
+    }
+
     private fun allowedSpaceIds(
         guildId: Long,
         channelId: Long?,
@@ -195,6 +258,24 @@ class KnowledgeSearchService(
         const val MIN_MRR = 0.7
         const val MIN_RECALL_AT_K = 0.7
         val SEARCHABLE_RISK_LEVELS = setOf("normal", "review")
+
+        fun normalizeResponseMode(value: String): String =
+            when (value.trim().lowercase()) {
+                "off", "none", "disabled", "끄기", "비활성" -> "off"
+                "fast", "빠른", "빠른 답변" -> "fast"
+                "deep", "깊은", "깊은 답변" -> "deep"
+                "saving", "economy", "절약", "절약 모드" -> "saving"
+                else -> "balanced"
+            }
+
+        fun ragBudgetFor(responseMode: String): Int =
+            when (responseMode) {
+                "off" -> 0
+                "saving" -> 500
+                "fast" -> 800
+                "deep" -> 2_400
+                else -> 1_200
+            }
     }
 }
 
@@ -235,6 +316,45 @@ data class KnowledgePromptEntry(
     val sourceUri: String?,
     val snippet: String,
 )
+
+data class KnowledgeContextPlan(
+    val guildId: Long,
+    val channelId: Long?,
+    val knowledgeSpaceId: Long?,
+    val query: String,
+    val responseMode: String,
+    val enabled: Boolean,
+    val maxChars: Int,
+    val usedChars: Int,
+    val entries: List<KnowledgePromptEntry>,
+    val contextText: String,
+    val fallbackReason: String?,
+    val warnings: List<String>,
+) {
+    companion object {
+        fun disabled(
+            guildId: Long,
+            channelId: Long?,
+            knowledgeSpaceId: Long?,
+            query: String,
+            responseMode: String,
+            fallbackReason: String,
+        ) = KnowledgeContextPlan(
+            guildId = guildId,
+            channelId = channelId,
+            knowledgeSpaceId = knowledgeSpaceId,
+            query = query,
+            responseMode = responseMode,
+            enabled = false,
+            maxChars = 0,
+            usedChars = 0,
+            entries = emptyList(),
+            contextText = "",
+            fallbackReason = fallbackReason,
+            warnings = listOf(fallbackReason),
+        )
+    }
+}
 
 data class KnowledgeGoldenCase(
     val name: String,

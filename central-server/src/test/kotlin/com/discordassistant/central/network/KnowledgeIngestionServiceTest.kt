@@ -340,6 +340,77 @@ class KnowledgeIngestionServiceTest
         }
 
         @Test
+        fun `context plan applies response mode budgets and graceful fallback`() {
+            val channelOne = service.createSpace(100, 201, null, "개발 지식", 77, null, null)
+            val sourceOne =
+                service.addSource(
+                    guildId = 100,
+                    spaceId = channelOne.id,
+                    sourceType = "link",
+                    title = "Kotlin Spring 운영 가이드",
+                    sourceUri = "https://example.com/kotlin-spring-guide.md",
+                    contentPreview = "운영",
+                    addedBy = 77,
+                )
+            service.markSourceIndexed(100, channelOne.id, sourceOne.id, chunkCount = 1)
+
+            val missingScope =
+                controller.contextPlan(
+                    guildId = 100,
+                    query = "Kotlin Spring",
+                    responseMode = "deep",
+                    maxChars = null,
+                    channelId = null,
+                    knowledgeSpaceId = null,
+                )
+            assertEquals(false, missingScope.enabled)
+            assertEquals("rag_scope_required", missingScope.fallbackReason)
+            assertTrue(missingScope.entries.isEmpty())
+
+            val off =
+                controller.contextPlan(
+                    guildId = 100,
+                    query = "Kotlin Spring",
+                    responseMode = "off",
+                    maxChars = null,
+                    channelId = 201,
+                    knowledgeSpaceId = null,
+                )
+            assertEquals(false, off.enabled)
+            assertEquals("rag_disabled_by_response_mode", off.fallbackReason)
+            assertEquals(0, off.maxChars)
+
+            val fast =
+                controller.contextPlan(
+                    guildId = 100,
+                    query = "Kotlin Spring",
+                    responseMode = "fast",
+                    maxChars = 8_000,
+                    channelId = 201,
+                    knowledgeSpaceId = null,
+                )
+            assertEquals(true, fast.enabled)
+            assertEquals("fast", fast.responseMode)
+            assertEquals(800, fast.maxChars)
+            assertTrue(fast.warnings.contains("requested_budget_capped_by_response_mode"))
+            assertEquals(listOf(sourceOne.id), fast.entries.map { it.sourceId })
+
+            val deep =
+                controller.contextPlan(
+                    guildId = 100,
+                    query = "Kotlin Spring",
+                    responseMode = "deep",
+                    maxChars = null,
+                    channelId = 201,
+                    knowledgeSpaceId = null,
+                )
+            assertEquals(true, deep.enabled)
+            assertEquals("deep", deep.responseMode)
+            assertEquals(2_400, deep.maxChars)
+            assertTrue(deep.maxChars > fast.maxChars)
+        }
+
+        @Test
         fun `retrieval evaluation reports hit mrr and recall for golden set`() {
             val channelOne = service.createSpace(100, 201, null, "개발 지식", 77, null, null)
             val channelTwo = service.createSpace(100, 202, null, "번역 지식", 77, null, null)

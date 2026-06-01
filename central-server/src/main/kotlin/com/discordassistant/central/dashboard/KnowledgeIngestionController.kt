@@ -114,6 +114,16 @@ class KnowledgeIngestionController(
         @RequestParam(required = false) knowledgeSpaceId: Long? = null,
     ) = search.promptContext(guildId, query, maxChars, channelId, knowledgeSpaceId)
 
+    @GetMapping("/{guildId}/context-plan")
+    fun contextPlan(
+        @PathVariable guildId: Long,
+        @RequestParam query: String,
+        @RequestParam(defaultValue = "balanced") responseMode: String,
+        @RequestParam(required = false) maxChars: Int? = null,
+        @RequestParam(required = false) channelId: Long? = null,
+        @RequestParam(required = false) knowledgeSpaceId: Long? = null,
+    ) = search.contextPlan(guildId, query, responseMode, maxChars, channelId, knowledgeSpaceId)
+
     @PostMapping("/{guildId}/eval")
     fun evaluateRetrieval(
         @PathVariable guildId: Long,

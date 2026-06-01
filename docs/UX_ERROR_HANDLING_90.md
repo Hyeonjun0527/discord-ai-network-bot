@@ -23,27 +23,27 @@
 
 ## 2. P0 — 바로 잡아야 하는 UX 실패
 
-- [ ] UX-001. `MESSAGE_CONTENT` intent 미허용 상태에서 봇 전체 gateway 가 죽지 않도록 부팅 전/부팅 실패 감지 UX를 설계한다.
+- [x] UX-001. `MESSAGE_CONTENT` intent 미허용 상태에서 봇 전체 gateway 가 죽지 않도록 설정값/4014 fallback 을 구현한다.
 - [ ] UX-002. `@냥시스턴트 질문` 사용 시 Message Content Intent 필요성을 관리자에게 안내하는 도움말/설정 패널을 추가한다.
-- [ ] UX-003. 운영 로그에 `DISALLOWED_INTENTS 4014` 발생 시 원인과 조치 링크를 한 줄로 남긴다.
+- [x] UX-003. 운영 로그에 `DISALLOWED_INTENTS 4014` 발생 시 원인과 조치를 한 줄로 남긴다.
 - [ ] UX-004. 배포 smoke test 에 “JDA WebSocket 정상 연결 유지”를 추가한다.
 - [ ] UX-005. `/메뉴`, `/질문`, `/도움말`, `/내상태`가 gateway 연결 실패 상태에서 어떤 사용자 경험을 보이는지 재현 테스트한다.
 - [ ] UX-006. 모든 slash command 경로가 3초 안에 ACK/defer 하는지 테스트한다.
 - [ ] UX-007. Button interaction 도 3초 안에 ACK/defer 하는지 테스트한다.
 - [ ] UX-008. Modal submit 도 3초 안에 ACK/defer 하는지 테스트한다.
 - [ ] UX-009. Message context command 도 3초 안에 ACK/defer 하는지 테스트한다.
-- [ ] UX-010. `Manage Webhooks` 권한이 없으면 채널 AI webhook 실패를 일반 봇 응답으로 폴백하고 관리자 안내를 남긴다.
+- [x] UX-010. `Manage Webhooks` 권한이 없으면 채널 AI webhook 실패를 일반 봇 응답으로 폴백하고 관리자 안내를 남긴다.
 
 ## 3. P1 — 권한/설정 문제 안내
 
-- [ ] UX-011. 봇 초대 권한 점검 명령 또는 설정 패널 섹션을 만든다.
+- [x] UX-011. 봇 초대 권한 점검 명령(`/bot-permissions`) 또는 설정 패널 섹션을 만든다.
 - [ ] UX-012. View Channel 없음/채널 접근 불가를 감지하고 관리자에게 알려준다.
 - [ ] UX-013. Send Messages 없음 시 가능한 interaction 응답으로 권한 문제를 안내한다.
 - [ ] UX-014. Embed Links 없음 시 plain text 도움말로 폴백한다.
 - [ ] UX-015. Read Message History 없음 시 컨텍스트/멘션 관련 제한을 안내한다.
 - [ ] UX-016. Add Reactions 없음 시 성공 리액션 없이 메시지 답변으로 폴백한다.
 - [ ] UX-017. Use Application Commands 제한 시 서버 관리자에게 앱 명령 권한 설정을 안내한다.
-- [ ] UX-018. 권한 문제 메시지에는 “어디서 켜는지”와 “왜 필요한지”를 같이 쓴다.
+- [x] UX-018. 권한 문제 메시지에는 “어디서 켜는지”와 “왜 필요한지”를 같이 쓴다.
 - [ ] UX-019. 권한 안내 문구는 `docs/BOT_PERMISSIONS.md`와 같은 용어를 사용한다.
 - [ ] UX-020. 관리자 전용 설정 문제는 일반 유저에게 내부 권한 세부값을 과하게 노출하지 않는다.
 

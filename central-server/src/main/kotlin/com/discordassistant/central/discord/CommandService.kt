@@ -167,6 +167,20 @@ class CommandService(
 
     fun privacy(ctx: CommandContext): Reply = Reply(Messages.get(Messages.Key.PRIVACY_NOTICE, lang(ctx)))
 
+    fun botPermissions(ctx: CommandContext): Reply {
+        adminOnly(ctx)?.let { return it }
+        return Reply(
+            "**냥시스턴트 봇 권한 점검**\n" +
+                "@냥시스턴트 질문을 쓰려면 Discord Developer Portal → Bot → " +
+                "Privileged Gateway Intents → **Message Content Intent** 를 켜야 합니다.\n" +
+                "채널 AI 이름/아이콘으로 답변하려면 서버 초대 권한에 **웹후크 관리(Manage Webhooks)** 가 필요합니다.\n" +
+                "기본 슬래시 명령에는 채널 보기, 메시지 보내기, 링크 임베드, 메시지 기록 보기, " +
+                "슬래시 명령어 사용 권한을 권장합니다.\n" +
+                "권장 Permissions Integer: `2684734528`\n" +
+                "문서: `docs/BOT_PERMISSIONS.md`",
+        )
+    }
+
     private fun String.withChannelAiBehavior(profile: ChannelAiProfile): String =
         buildString {
             appendLine("[채널 AI 행동 설정]")

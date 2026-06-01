@@ -160,6 +160,15 @@ class CommandServiceTest
         }
 
         @Test
+        fun `bot-permissions — 관리자가 봇 권한과 Message Content Intent 안내를 본다`() {
+            assertTrue(commands.botPermissions(ctx(admin = false)).content.contains("관리자만"))
+            val reply = commands.botPermissions(ctx(admin = true)).content
+            assertTrue(reply.contains("Message Content Intent"))
+            assertTrue(reply.contains("웹후크 관리"))
+            assertTrue(reply.contains("2684734528"))
+        }
+
+        @Test
         fun `llm-channel-profile — 관리자가 채널별 AI 응답 프로필을 설정 조회 초기화한다`() {
             val admin = ctx(admin = true)
             assertTrue(commands.setChannelAiProfile(ctx(admin = false), "냥시스턴트", null, false).content.contains("⛔"))

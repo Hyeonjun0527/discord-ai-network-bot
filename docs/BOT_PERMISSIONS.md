@@ -105,7 +105,8 @@ Discord Developer Portal → Application → Bot → Privileged Gateway Intents 
 
 - `/질문`, `/도움말`, `/메뉴`, 버튼, 모달, 컨텍스트 메뉴는 Message Content Intent 없이도 설계상 동작 가능해야 한다.
 - 하지만 `@냥시스턴트 질문`을 제품 기능으로 제공하려면 Message Content Intent 를 켜야 한다.
-- 운영에서 Message Content Intent 를 켜지 않았는데 코드가 해당 intent 를 요청하면, 봇은 온라인처럼 보이지 않고 모든 인터랙션이 “애플리케이션이 응답하지 않았어요”로 실패할 수 있다.
+- `DISCORD_MESSAGE_CONTENT_INTENT_ENABLED=false` 로 배포하면 봇은 MESSAGE_CONTENT 를 요청하지 않고 슬래시 명령만 안전하게 부팅한다.
+- `DISCORD_FALLBACK_WITHOUT_MESSAGE_CONTENT_ON_4014=true` 이면 Developer Portal 설정이 꺼져 `4014 DISALLOWED_INTENTS` 가 발생해도 @멘션 질문을 끄고 슬래시 명령만 자동 재기동한다.
 
 ## 4. Developer Portal 설정 순서
 

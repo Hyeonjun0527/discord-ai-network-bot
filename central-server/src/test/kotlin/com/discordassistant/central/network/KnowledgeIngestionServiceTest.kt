@@ -282,13 +282,17 @@ class KnowledgeIngestionServiceTest
             service.markSourceIndexed(100, guildOneSpace.id, guildOneSource.id, chunkCount = 3)
             service.markSourceIndexed(999, guildTwoSpace.id, guildTwoSource.id, chunkCount = 3)
 
-            val found = controller.search(100, query = "Kotlin Spring", limit = 10)
+            val missingScope = controller.search(100, query = "Kotlin Spring", limit = 10)
+            assertTrue(missingScope.results.isEmpty())
+            assertEquals("rag_scope_required", missingScope.fallbackReason)
+
+            val found = controller.search(100, query = "Kotlin Spring", limit = 10, channelId = 200)
 
             assertEquals(1, found.results.size)
             assertEquals(guildOneSource.id, found.results.single().sourceId)
 
             controller.removeSource(100, guildOneSpace.id, guildOneSource.id, DeleteKnowledgeSourceRequest("outdated"))
-            val afterDelete = controller.search(100, query = "Kotlin Spring", limit = 10)
+            val afterDelete = controller.search(100, query = "Kotlin Spring", limit = 10, channelId = 200)
 
             assertTrue(afterDelete.results.isEmpty())
             assertEquals("no_indexed_knowledge_match", afterDelete.fallbackReason)

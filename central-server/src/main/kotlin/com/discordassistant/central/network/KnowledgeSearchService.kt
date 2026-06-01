@@ -37,6 +37,14 @@ class KnowledgeSearchService(
                 fallbackReason = "blocked_sensitive_query",
             )
         }
+        if (channelId == null && knowledgeSpaceId == null) {
+            return KnowledgeSearchResponse(
+                guildId = guildId,
+                query = query,
+                results = emptyList(),
+                fallbackReason = "rag_scope_required",
+            )
+        }
         val allowedSpaceIds = allowedSpaceIds(guildId, channelId, knowledgeSpaceId)
         if (allowedSpaceIds.isEmpty()) {
             return KnowledgeSearchResponse(guildId = guildId, query = query, results = emptyList(), fallbackReason = "no_knowledge_space")

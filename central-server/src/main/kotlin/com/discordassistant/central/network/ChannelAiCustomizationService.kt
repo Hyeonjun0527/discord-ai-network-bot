@@ -120,6 +120,81 @@ class ChannelAiCustomizationService(
     }
 
     @Transactional
+    fun rollbackToVersion(
+        guildId: Long,
+        channelId: Long,
+        targetVersion: Int,
+        actorUserId: Long?,
+        requireApproval: Boolean,
+        reason: String?,
+    ): ChannelAiWizardResult {
+        val now = Instant.now(clock)
+        val channelAi =
+            channelAis.findByGuildIdAndChannelId(guildId, channelId)
+                ?: throw IllegalArgumentException("channel ai not found: guild=$guildId channel=$channelId")
+        val target =
+            versions
+                .findByChannelAiIdOrderByVersionDesc(channelAi.id)
+                .firstOrNull { it.version == targetVersion }
+                ?: throw IllegalArgumentException("behavior version not found: channelAi=${channelAi.id} version=$targetVersion")
+        val nextVersion = (versions.findTopByChannelAiIdOrderByVersionDesc(channelAi.id)?.version ?: 0) + 1
+        val rollbackBehavior =
+            versions.saveAndFlush(
+                AiBehaviorVersionEntity(
+                    channelAiId = channelAi.id,
+                    version = nextVersion,
+                    purpose = target.purpose,
+                    tone = target.tone,
+                    answerLength = target.answerLength,
+                    constitution = target.constitution,
+                    safetyLevel = target.safetyLevel,
+                    createdBy = actorUserId,
+                    createdAt = now,
+                    changeSummary = "rollback to v${target.version}: ${reason?.trim()?.take(200) ?: "no reason"}",
+                ),
+            )
+        val approvalDecision = approvalDecision(requireApproval, rollbackBehavior, channelAi.displayName)
+        val status = if (approvalDecision.required) "pending" else "approved"
+        if (!approvalDecision.required) {
+            channelAi.activeBehaviorVersionId = rollbackBehavior.id
+            channelAi.updatedAt = now
+            channelAis.save(channelAi)
+        }
+        val proposal =
+            proposals.save(
+                AiChangeProposalEntity(
+                    guildId = guildId,
+                    channelId = channelId,
+                    channelAiId = channelAi.id,
+                    proposedBehaviorId = rollbackBehavior.id,
+                    status = status,
+                    requestedBy = actorUserId,
+                    reviewedBy = if (approvalDecision.required) null else actorUserId,
+                    reason = approvalDecision.reason ?: reason?.trim()?.take(500) ?: "rollback to v${target.version}",
+                    createdAt = now,
+                    reviewedAt = if (approvalDecision.required) null else now,
+                ),
+            )
+        audit(
+            guildId = guildId,
+            channelId = channelId,
+            actorUserId = actorUserId,
+            action = if (approvalDecision.required) "rollback_propose" else "rollback_publish",
+            targetType = "ai_behavior_version",
+            targetId = rollbackBehavior.id,
+            summary = "rollback copied v${target.version} into v${rollbackBehavior.version} status=$status",
+        )
+        return ChannelAiWizardResult(
+            channelAiId = channelAi.id,
+            behaviorVersionId = rollbackBehavior.id,
+            version = rollbackBehavior.version,
+            proposalId = proposal.id,
+            status = status,
+            approvalReason = approvalDecision.reason,
+        )
+    }
+
+    @Transactional
     fun approveProposal(
         proposalId: Long,
         reviewerUserId: Long?,

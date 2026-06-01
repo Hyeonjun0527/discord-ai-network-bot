@@ -63,6 +63,31 @@ class ChannelAiCustomizationController(
         )
     }
 
+    @PostMapping("/{guildId}/{channelId}/rollback")
+    fun rollback(
+        @PathVariable guildId: Long,
+        @PathVariable channelId: Long,
+        @RequestBody request: RollbackChannelAiVersionRequest,
+    ): Map<String, Any?> {
+        val result =
+            customization.rollbackToVersion(
+                guildId = guildId,
+                channelId = channelId,
+                targetVersion = request.targetVersion,
+                actorUserId = request.actorUserId,
+                requireApproval = request.requireApproval,
+                reason = request.reason,
+            )
+        return mapOf(
+            "channelAiId" to result.channelAiId,
+            "behaviorVersionId" to result.behaviorVersionId,
+            "version" to result.version,
+            "proposalId" to result.proposalId,
+            "status" to result.status,
+            "approvalReason" to result.approvalReason,
+        )
+    }
+
     @PostMapping("/proposals/{proposalId}/approve")
     fun approve(
         @PathVariable proposalId: Long,
@@ -153,6 +178,13 @@ data class ChannelAiWizardRequest(
     val answerLength: String = "balanced",
     val constitution: String? = null,
     val requireApproval: Boolean = false,
+)
+
+data class RollbackChannelAiVersionRequest(
+    val targetVersion: Int,
+    val actorUserId: Long? = null,
+    val requireApproval: Boolean = false,
+    val reason: String? = null,
 )
 
 data class ReviewChannelAiProposalRequest(

@@ -4,6 +4,7 @@ import com.discordassistant.central.dashboard.ChannelAiCustomizationController
 import com.discordassistant.central.dashboard.ChannelAiWizardDraftRequest
 import com.discordassistant.central.dashboard.ChannelAiWizardRequest
 import com.discordassistant.central.dashboard.ReviewChannelAiProposalRequest
+import com.discordassistant.central.dashboard.RollbackChannelAiVersionRequest
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
@@ -170,6 +171,95 @@ class ChannelAiCustomizationServiceTest
             assertTrue(onboarding.description.contains("general_assistant"))
             assertTrue(onboarding.examples.isNotEmpty())
             assertTrue(onboarding.message.contains("민감정보"))
+        }
+
+        @Test
+        fun `rollback copies previous behavior into new active version with audit`() {
+            controller.createFromWizard(
+                100,
+                205,
+                ChannelAiWizardRequest(
+                    actorUserId = 77,
+                    name = "코드냥",
+                    job = "개발 질문",
+                    tone = "짧고 명확하게",
+                    answerLength = "short",
+                    requireApproval = false,
+                ),
+            )
+            controller.createFromWizard(
+                100,
+                205,
+                ChannelAiWizardRequest(
+                    actorUserId = 77,
+                    name = "코드냥",
+                    job = "공지 작성",
+                    tone = "전문적으로",
+                    answerLength = "balanced",
+                    requireApproval = false,
+                ),
+            )
+
+            val rollback =
+                controller.rollback(
+                    100,
+                    205,
+                    RollbackChannelAiVersionRequest(
+                        targetVersion = 1,
+                        actorUserId = 88,
+                        reason = "공지용 변경이 채널 목적과 맞지 않음",
+                    ),
+                )
+
+            assertEquals("approved", rollback["status"])
+            assertEquals(3, rollback["version"])
+            val channelAi = channelAis.findByGuildIdAndChannelId(100, 205)!!
+            assertEquals(rollback["behaviorVersionId"], channelAi.activeBehaviorVersionId)
+            val active = versions.findByChannelAiIdAndId(channelAi.id, channelAi.activeBehaviorVersionId!!)!!
+            assertTrue(active.purpose.contains("개발 질문"))
+            assertEquals("짧고 명확하게", active.tone)
+            assertTrue(active.changeSummary!!.contains("rollback to v1"))
+            assertTrue(controller.history(100, 205)["audits"].toString().contains("rollback_publish"))
+        }
+
+        @Test
+        fun `rollback can require approval before becoming active`() {
+            controller.createFromWizard(
+                100,
+                206,
+                ChannelAiWizardRequest(
+                    actorUserId = 77,
+                    name = "요약냥",
+                    job = "회의록",
+                    tone = "친근하게",
+                    requireApproval = false,
+                ),
+            )
+            controller.createFromWizard(
+                100,
+                206,
+                ChannelAiWizardRequest(
+                    actorUserId = 77,
+                    name = "요약냥",
+                    job = "공지 작성",
+                    tone = "전문적으로",
+                    requireApproval = false,
+                ),
+            )
+            val beforeActive = channelAis.findByGuildIdAndChannelId(100, 206)!!.activeBehaviorVersionId
+
+            val rollback =
+                controller.rollback(
+                    100,
+                    206,
+                    RollbackChannelAiVersionRequest(targetVersion = 1, actorUserId = 88, requireApproval = true),
+                )
+
+            assertEquals("pending", rollback["status"])
+            assertEquals(beforeActive, channelAis.findByGuildIdAndChannelId(100, 206)!!.activeBehaviorVersionId)
+            controller.approve(rollback["proposalId"] as Long, ReviewChannelAiProposalRequest(reviewerUserId = 99))
+            assertEquals(rollback["behaviorVersionId"], channelAis.findByGuildIdAndChannelId(100, 206)!!.activeBehaviorVersionId)
+            assertTrue(controller.history(100, 206)["audits"].toString().contains("rollback_propose"))
         }
 
         @Test

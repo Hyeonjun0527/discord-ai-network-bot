@@ -135,6 +135,20 @@ class MultiResponseController(
         return mapOf("id" to run.id, "status" to run.status, "failureReason" to run.failureReason)
     }
 
+    @PostMapping("/pseudo-stream-plan")
+    fun pseudoStreamPlan(
+        @RequestBody request: PseudoStreamPlanRequest,
+    ): Map<String, Any?> {
+        val plan = service.pseudoStreamPlan(request.answer, request.steps, request.maxDiscordChars)
+        return mapOf(
+            "finalLength" to plan.finalLength,
+            "truncated" to plan.truncated,
+            "editIntervalMs" to plan.editIntervalMs,
+            "snapshots" to plan.snapshots,
+            "warning" to plan.warning,
+        )
+    }
+
     @GetMapping("/{guildId}/runs")
     fun recentRuns(
         @PathVariable guildId: Long,
@@ -293,4 +307,10 @@ data class CompleteBestMultiResponseRunRequest(
 
 data class FailMultiResponseRunRequest(
     val reason: String,
+)
+
+data class PseudoStreamPlanRequest(
+    val answer: String,
+    val steps: List<Int> = emptyList(),
+    val maxDiscordChars: Int = 1_900,
 )

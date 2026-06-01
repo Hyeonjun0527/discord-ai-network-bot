@@ -355,6 +355,52 @@ class MultiResponseService(
             )
     }
 
+    fun pseudoStreamPlan(
+        answer: String,
+        requestedSteps: List<Int> = emptyList(),
+        maxDiscordChars: Int = DISCORD_MESSAGE_SAFE_LIMIT,
+    ): PseudoStreamPlan {
+        featureGate.requireMultiResponseEnabled()
+        val normalized = answer.trim()
+        if (normalized.isBlank()) {
+            return PseudoStreamPlan(
+                finalLength = 0,
+                truncated = false,
+                editIntervalMs = PSEUDO_STREAM_EDIT_INTERVAL_MS,
+                snapshots = emptyList(),
+                warning = "empty_answer",
+            )
+        }
+        val limit = maxDiscordChars.coerceIn(100, DISCORD_MESSAGE_SAFE_LIMIT)
+        val visibleAnswer = normalized.take(limit)
+        val truncated = normalized.length > visibleAnswer.length
+        val steps = normalizePseudoStreamSteps(requestedSteps)
+        val snapshots =
+            steps
+                .mapIndexed { index, percent ->
+                    val length =
+                        if (index == steps.lastIndex) {
+                            visibleAnswer.length
+                        } else {
+                            ((visibleAnswer.length * percent) / 100).coerceIn(1, visibleAnswer.length)
+                        }
+                    PseudoStreamSnapshot(
+                        sequence = index + 1,
+                        percent = percent,
+                        content = visibleAnswer.take(length),
+                        charCount = length,
+                        final = index == steps.lastIndex,
+                    )
+                }.dedupeSnapshots()
+        return PseudoStreamPlan(
+            finalLength = visibleAnswer.length,
+            truncated = truncated,
+            editIntervalMs = PSEUDO_STREAM_EDIT_INTERVAL_MS,
+            snapshots = snapshots,
+            warning = if (truncated) "discord_message_truncated_to_$limit" else null,
+        )
+    }
+
     fun dailyStats(guildId: Long): MultiResponseDailyStats {
         val recent = runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
         val completed = recent.count { it.status == "completed" }
@@ -377,6 +423,29 @@ class MultiResponseService(
             timeoutCandidateCount = timeoutCandidates,
             averageActualFanout = actualFanout,
         )
+    }
+
+    private fun normalizePseudoStreamSteps(requestedSteps: List<Int>): List<Int> {
+        val normalized =
+            requestedSteps
+                .ifEmpty { listOf(33, 66, 100) }
+                .map { it.coerceIn(1, 100) }
+                .distinct()
+                .sorted()
+                .filter { it > 0 }
+                .toMutableList()
+        if (normalized.isEmpty() || normalized.last() != 100) normalized += 100
+        return normalized
+    }
+
+    private fun List<PseudoStreamSnapshot>.dedupeSnapshots(): List<PseudoStreamSnapshot> {
+        val deduped = mutableListOf<PseudoStreamSnapshot>()
+        forEach { snapshot ->
+            if (deduped.lastOrNull()?.content == snapshot.content && !snapshot.final) return@forEach
+            deduped += snapshot.copy(sequence = deduped.size + 1)
+        }
+        val last = deduped.lastOrNull() ?: return emptyList()
+        return if (last.final) deduped else deduped.dropLast(1) + last.copy(final = true, percent = 100)
     }
 
     private fun fanoutLoadRisk(
@@ -545,6 +614,8 @@ class MultiResponseService(
     private companion object {
         val FANOUT_OPT_IN_TAGS = setOf("multi-response", "multi_response", "fanout", "fanout-opt-in")
         val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
+        const val DISCORD_MESSAGE_SAFE_LIMIT = 1_900
+        const val PSEUDO_STREAM_EDIT_INTERVAL_MS = 1_200
         val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val SENSITIVE_PROMPT_PATTERNS =
             listOf(
@@ -598,4 +669,20 @@ data class CandidateAdoptionResult(
     val candidate: CandidateAnswerEntity,
     val synthesis: SynthesisResultEntity,
     val feedbackId: Long?,
+)
+
+data class PseudoStreamPlan(
+    val finalLength: Int,
+    val truncated: Boolean,
+    val editIntervalMs: Int,
+    val snapshots: List<PseudoStreamSnapshot>,
+    val warning: String?,
+)
+
+data class PseudoStreamSnapshot(
+    val sequence: Int,
+    val percent: Int,
+    val content: String,
+    val charCount: Int,
+    val final: Boolean,
 )

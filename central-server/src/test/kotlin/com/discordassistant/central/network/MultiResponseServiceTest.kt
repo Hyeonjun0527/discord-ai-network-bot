@@ -3,6 +3,7 @@ package com.discordassistant.central.network
 import com.discordassistant.central.dashboard.AdoptCandidateRequest
 import com.discordassistant.central.dashboard.CompleteBestMultiResponseRunRequest
 import com.discordassistant.central.dashboard.MultiResponseController
+import com.discordassistant.central.dashboard.PseudoStreamPlanRequest
 import com.discordassistant.central.dashboard.RecordCandidateRequest
 import com.discordassistant.central.dashboard.SaveMultiResponsePolicyRequest
 import com.discordassistant.central.dashboard.StartMultiResponseRunRequest
@@ -733,6 +734,37 @@ class MultiResponseServiceTest
             assertEquals("running", started["status"])
             assertEquals(1, started["candidateCount"])
             assertEquals(listOf(101L), candidates.findByRunId(started["id"] as Long).map { it.providerUserId })
+        }
+
+        @Test
+        fun `pseudo stream plan creates throttled edit snapshots without exceeding discord limits`() {
+            val answer = "가".repeat(300)
+
+            val response =
+                controller.pseudoStreamPlan(
+                    PseudoStreamPlanRequest(
+                        answer = answer,
+                        steps = listOf(33, 66, 100),
+                        maxDiscordChars = 200,
+                    ),
+                )
+
+            assertEquals(200, response["finalLength"])
+            assertEquals(true, response["truncated"])
+            assertEquals(1200, response["editIntervalMs"])
+            assertEquals("discord_message_truncated_to_200", response["warning"])
+            val snapshots = response["snapshots"] as List<*>
+            assertEquals(3, snapshots.size)
+            val first = snapshots[0] as PseudoStreamSnapshot
+            val second = snapshots[1] as PseudoStreamSnapshot
+            val final = snapshots[2] as PseudoStreamSnapshot
+            assertEquals(33, first.percent)
+            assertEquals(66, first.charCount)
+            assertEquals(66, second.percent)
+            assertEquals(132, second.charCount)
+            assertEquals(100, final.percent)
+            assertEquals(200, final.charCount)
+            assertEquals(true, final.final)
         }
 
         @Test

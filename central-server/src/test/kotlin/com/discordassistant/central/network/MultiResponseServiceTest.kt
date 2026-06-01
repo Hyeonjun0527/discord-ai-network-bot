@@ -550,6 +550,48 @@ class MultiResponseServiceTest
                 "multi-response fan-out disabled for sensitive-looking prompt",
                 runs.findById(started["id"] as Long).get().failureReason,
             )
+
+            val passwordOnly =
+                controller.startRun(
+                    100,
+                    StartMultiResponseRunRequest(
+                        channelId = 202,
+                        requestId = "req-sensitive-password",
+                        promptPreview = "이 password 값이 안전한지 여러 모델로 비교해줘",
+                    ),
+                )
+            assertEquals("blocked_sensitive", passwordOnly["status"])
+            assertEquals(0, candidates.findByRunId(passwordOnly["id"] as Long).size)
+        }
+
+        @Test
+        fun `provider fanout opt-out is reflected on the next run`() {
+            val provider =
+                providerCapabilities.save(
+                    ProviderCapabilityProfileEntity(
+                        guildId = 100,
+                        providerUserId = 21,
+                        providerState = "ONLINE",
+                        modelCount = 1,
+                        modelNames = "llama3",
+                        capabilityTags = "multi-response",
+                        qualityTier = "high",
+                        overloadRisk = "normal",
+                    ),
+                )
+            controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 204, mode = "compare", maxCandidates = 2))
+
+            val beforeOptOut = controller.startRun(100, StartMultiResponseRunRequest(channelId = 204, requestId = "req-opt-in"))
+            assertEquals("running", beforeOptOut["status"])
+            assertEquals(listOf(21L), candidates.findByRunId(beforeOptOut["id"] as Long).map { it.providerUserId })
+
+            provider.capabilityTags = "coding"
+            providerCapabilities.saveAndFlush(provider)
+
+            val afterOptOut = controller.startRun(100, StartMultiResponseRunRequest(channelId = 204, requestId = "req-opt-out"))
+            assertEquals("no_provider", afterOptOut["status"])
+            assertEquals(0, afterOptOut["candidateCount"])
+            assertEquals(0, candidates.findByRunId(afterOptOut["id"] as Long).size)
         }
 
         @Test

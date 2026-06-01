@@ -547,7 +547,7 @@ class MultiResponseService(
         val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val SENSITIVE_PROMPT_PATTERNS =
             listOf(
-                Regex("(?i)\b(password|passwd|pwd|secret)\b"),
+                Regex("""(?i)\b(password|passwd|pwd|secret)\b"""),
                 Regex("(?i)(api[_-]?key|bot[_-]?token|discord[_-]?bot[_-]?token|private[_-]?key|access[_-]?token)"),
                 Regex("(?i)-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"),
                 Regex("(?i)sk-[A-Za-z0-9_-]{20,}"),

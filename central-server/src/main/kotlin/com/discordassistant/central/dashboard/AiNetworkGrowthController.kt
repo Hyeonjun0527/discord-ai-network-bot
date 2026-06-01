@@ -18,6 +18,7 @@ class AiNetworkGrowthController(
     fun providerJoined(
         @PathVariable guildId: Long,
         @RequestBody request: ProviderJoinedRequest,
+        @RequestParam(defaultValue = "public") audience: String = "public",
     ): Map<String, Any?> {
         val result =
             growth.recordProviderJoined(
@@ -29,11 +30,13 @@ class AiNetworkGrowthController(
                 maxConcurrency = request.maxConcurrency,
                 dailyLimit = request.dailyLimit,
             )
-        return mapOf(
-            "providerCapabilityId" to result.providerCapabilityId,
-            "eventId" to result.eventId,
-            "networkLevel" to result.networkLevel,
-        )
+        val visibility = DashboardAudience.from(audience)
+        return buildMap {
+            put("providerLabel", providerLabel(request.providerUserId, 0, visibility))
+            if (visibility.canSeeProviderIdentity) put("providerCapabilityId", result.providerCapabilityId)
+            put("eventId", result.eventId)
+            put("networkLevel", result.networkLevel)
+        }
     }
 
     @GetMapping("/{guildId}/levels")

@@ -63,6 +63,16 @@ class AiNetworkGrowthServiceTest
                 )
 
             assertEquals(2, response["networkLevel"])
+            assertEquals("Provider 1", response["providerLabel"])
+            assertTrue(!response.containsKey("providerCapabilityId"))
+            val adminResponse =
+                controller.providerJoined(
+                    987654322,
+                    ProviderJoinedRequest(providerUserId = 78, modelNames = listOf("qwen-coder")),
+                    audience = "admin",
+                )
+            assertEquals("provider:78", adminResponse["providerLabel"])
+            assertTrue(adminResponse.containsKey("providerCapabilityId"))
             val timeline = controller.timeline(987654321)
             assertTrue(timeline.toString().contains("Provider가 AI 네트워크에 참여했어요"))
             assertTrue(timeline.toString().contains("사용 가능한 모델 llama3.1:8b 추가"))

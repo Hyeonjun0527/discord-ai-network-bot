@@ -45,13 +45,16 @@ class DashboardController(
     @GetMapping("/provider/{providerId}/history")
     fun providerHistory(
         @PathVariable providerId: Long,
+        @RequestParam(defaultValue = "public") audience: String = "public",
     ): Map<String, Any?> {
         featureGate.requireDashboardEnabled()
-        return mapOf(
-            "providerId" to providerId,
-            "computeScore" to analytics.providerComputeScore(providerId),
-            "recent" to analytics.providerHistory(providerId),
-        )
+        val visibility = DashboardAudience.from(audience)
+        return buildMap {
+            put("providerLabel", providerHistoryLabel(providerId, visibility))
+            if (visibility.canSeeProviderIdentity) put("providerId", providerId)
+            put("computeScore", analytics.providerComputeScore(providerId))
+            put("recent", analytics.providerHistory(providerId))
+        }
     }
 
     /** 사용량 트렌드(#227): 최근 days 일의 일자별 요청 수. */
@@ -87,6 +90,11 @@ class DashboardController(
             }
         }
     }
+
+    private fun providerHistoryLabel(
+        providerId: Long,
+        audience: DashboardAudience,
+    ): String = if (audience.canSeeProviderIdentity) "provider:$providerId" else "Provider"
 
     private fun providerLabel(
         guildId: Long,

@@ -56,4 +56,26 @@ class DashboardControllerTest
             assertTrue(log[0]["providerLabel"].toString().startsWith("Provider "))
             assertTrue(!log[0].containsKey("prompt"), "관리자 대시보드에도 프롬프트 본문은 노출하지 않는다")
         }
+
+        @Test
+        fun `provider history — 공개 기본값은 provider id 를 노출하지 않는다`() {
+            requests.save(
+                AiRequestEntity(
+                    requestId = "p1",
+                    guildId = 703,
+                    state = "COMPLETED",
+                    providerId = 123,
+                    createdAt = Instant.EPOCH,
+                ),
+            )
+
+            val publicHistory = dashboard.providerHistory(123)
+            val adminHistory = dashboard.providerHistory(123, audience = "admin")
+
+            assertEquals("Provider", publicHistory["providerLabel"])
+            assertTrue(!publicHistory.containsKey("providerId"), "공개 provider history 는 provider snowflake 를 노출하지 않는다")
+            assertEquals("provider:123", adminHistory["providerLabel"])
+            assertEquals(123L, adminHistory["providerId"])
+            assertTrue(!publicHistory.toString().contains("prompt"), "처리 내역은 프롬프트 본문을 노출하지 않는다")
+        }
     }

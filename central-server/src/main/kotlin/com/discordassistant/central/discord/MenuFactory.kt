@@ -128,9 +128,9 @@ object MenuFactory {
         val defaults = currentChannelIds.distinct().take(25).map { DefaultValue.channel(it) }
         val placeholder =
             if (currentChannelIds.isEmpty()) {
-                "사용 채널: 전체 허용 중 · 특정 채널만 쓰려면 한 번에 여러 개 체크"
+                "사용 채널: 전체 허용 중 · 특정 채널만 쓰려면 여러 채널을 한 번에 선택"
             } else {
-                "현재 사용 채널 ${currentChannelIds.size}개 선택됨 · 한 번에 체크를 바꾸고 저장"
+                "현재 ${currentChannelIds.size}개 사용 채널 표시 중 · 여기서 여러 채널을 한 번에 변경"
             }
         return EntitySelectMenu
             .create(CHANNEL, EntitySelectMenu.SelectTarget.CHANNEL)
@@ -141,6 +141,15 @@ object MenuFactory {
             .setDefaultValues(defaults)
             .build()
     }
+
+    /** 설정 패널 저장/상태 버튼. 언어·모델·채널·자동승인을 고른 뒤 저장 하나로 반영한다. */
+    fun settingsActionButtons(): List<Button> =
+        listOf(
+            Button.secondary(CHANNEL_ALL, "모든 채널 허용으로 선택"),
+            Button.success(SAVE_SETTINGS, "서버 설정 한 번에 저장"),
+            Button.secondary(AUTO_APPROVE_ON, "자동 승인 켜짐 선택"),
+            Button.secondary(AUTO_APPROVE_OFF, "자동 승인 꺼짐 선택"),
+        )
 
     /** 슬림 도움말 — 핵심 3~5개만(판에서 보여줄 텍스트). */
     fun slimHelp(isAdmin: Boolean): String {

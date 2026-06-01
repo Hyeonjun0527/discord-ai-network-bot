@@ -737,12 +737,7 @@ class DiscordBot(
                     ),
                 ),
                 ActionRow.of(MenuFactory.channelSelect(effectiveAllowedChannelIds(ctx))),
-                ActionRow.of(
-                    Button.secondary(MenuFactory.CHANNEL_ALL, "사용 채널: 전체 허용으로 선택"),
-                    Button.success(MenuFactory.SAVE_SETTINGS, "선택한 설정 저장"),
-                    Button.secondary(MenuFactory.AUTO_APPROVE_ON, "자동 승인 켜짐으로 선택"),
-                    Button.secondary(MenuFactory.AUTO_APPROVE_OFF, "자동 승인 꺼짐으로 선택"),
-                ),
+                ActionRow.of(MenuFactory.settingsActionButtons()),
             )
 
         /** 채널 AI 프로필 설정 패널. 긴 옵션 입력 대신 버튼→모달→저장 흐름으로 관리한다. */

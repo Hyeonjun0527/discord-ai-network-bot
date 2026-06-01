@@ -28,6 +28,12 @@ async function postJson(url, body) {
   return res.json();
 }
 
+async function deleteJson(url) {
+  const res = await fetch(url, { method: "DELETE", headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  return res.json();
+}
+
 // 풀 전역(#199) — 5초 폴링(#205)
 async function refreshPool() {
   const badge = $("status");
@@ -239,6 +245,143 @@ async function addKnowledgeSource() {
   }
 }
 
+function presetBehaviorPayload() {
+  const maxCandidates = Number($("presetMaxCandidates").value || "1");
+  return {
+    purpose: $("presetPurpose").value.trim() || "general_assistant",
+    tone: $("presetTone").value.trim() || "friendly",
+    answerLength: "balanced",
+    constitution: $("presetConstitution").value.trim() || null,
+    responseMode: $("presetResponseMode").value.trim() || "balanced",
+    preferredModel: $("presetPreferredModel").value.trim() || null,
+    maxCandidates: Number.isFinite(maxCandidates) ? Math.max(1, Math.min(5, maxCandidates)) : 1,
+  };
+}
+
+function presetPayload(includeBehavior = true) {
+  return {
+    name: $("presetName").value.trim() || "새 AI 프리셋",
+    summary: $("presetSummary").value.trim() || null,
+    category: $("presetCategory").value.trim() || "general",
+    visibility: "guild_private",
+    behavior: includeBehavior ? presetBehaviorPayload() : null,
+  };
+}
+
+function renderPresetLists(local, published) {
+  renderList("localPresetList", local?.presets?.slice(0, 8), "서버 프리셋 없음", (p) =>
+    `<li><strong>${esc(p.id)} · ${esc(p.name)}</strong><span>${esc(p.category)} · ${esc(p.status)} · ${esc(p.visibility)}</span></li>`,
+  );
+  renderList("publishedPresetList", published?.presets?.slice(0, 8), "게시 프리셋 없음", (p) =>
+    `<li><strong>${esc(p.id)} · ${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · ${esc(p.category || "general")}</span><button class="mini import-preset" data-preset-id="${esc(p.id)}">이 채널에 가져오기</button></li>`,
+  );
+}
+
+async function refreshPresets() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("presetManageResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const [local, published] = await Promise.all([
+      getJson(`/api/ai-network/presets/guilds/${gid}`),
+      getJson("/api/ai-network/presets/catalog?sort=popular&limit=20"),
+    ]);
+    renderPresetLists(local, published);
+    $("presetManageResult").textContent =
+      `서버 프리셋 ${local.presets?.length || 0}개 · 웹 카탈로그 ${published.presets?.length || 0}개`;
+  } catch (e) {
+    $("presetManageResult").textContent = `프리셋 로딩 실패: ${e.message}`;
+  }
+}
+
+async function createPreset() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("presetManageResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/presets/${gid}`, presetPayload(true));
+    $("presetId").value = result.id || "";
+    $("presetManageResult").textContent = `프리셋 생성 완료: preset=${result.id} · ${result.status}`;
+    await refreshPresets();
+  } catch (e) {
+    $("presetManageResult").textContent = `프리셋 생성 실패: ${e.message}`;
+  }
+}
+
+async function updatePreset() {
+  const presetId = $("presetId").value.trim();
+  if (!/^\d+$/.test(presetId)) {
+    $("presetManageResult").textContent = "프리셋 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await fetch(`/api/ai-network/presets/${presetId}`, {
+      method: "PUT",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(presetPayload(true)),
+    });
+    if (!result.ok) throw new Error(`${result.status} /api/ai-network/presets/${presetId}`);
+    const json = await result.json();
+    $("presetManageResult").textContent = `프리셋 수정 완료: preset=${json.id} · revision=${json.currentRevisionId}`;
+    await refreshPresets();
+  } catch (e) {
+    $("presetManageResult").textContent = `프리셋 수정 실패: ${e.message}`;
+  }
+}
+
+async function publishPreset() {
+  const presetId = $("presetId").value.trim();
+  if (!/^\d+$/.test(presetId)) {
+    $("presetManageResult").textContent = "프리셋 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/presets/${presetId}/publish`, {
+      title: $("presetName").value.trim() || null,
+      description: $("presetSummary").value.trim() || null,
+    });
+    $("publishedPresetId").value = result.id || "";
+    $("presetManageResult").textContent = `게시 완료: published=${result.id} · ${result.status} · ${result.slug}`;
+    await refreshPresets();
+  } catch (e) {
+    $("presetManageResult").textContent = `게시 실패: ${e.message}`;
+  }
+}
+
+async function deletePreset() {
+  const presetId = $("presetId").value.trim();
+  if (!/^\d+$/.test(presetId)) {
+    $("presetManageResult").textContent = "프리셋 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await deleteJson(`/api/ai-network/presets/${presetId}`);
+    $("presetManageResult").textContent = `삭제 완료: ${result.status}`;
+    await refreshPresets();
+  } catch (e) {
+    $("presetManageResult").textContent = `삭제 실패: ${e.message}`;
+  }
+}
+
+async function likePreset() {
+  const publishedPresetId = $("publishedPresetId").value.trim();
+  if (!/^\d+$/.test(publishedPresetId)) {
+    $("presetManageResult").textContent = "게시 프리셋 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/presets/published/${publishedPresetId}/like`, { userId: 0 });
+    $("presetManageResult").textContent = `따봉 완료: published=${result.id} · like=${result.likeCount}`;
+    await refreshPresets();
+  } catch (e) {
+    $("presetManageResult").textContent = `따봉 실패: ${e.message}`;
+  }
+}
+
 function renderAiNetwork(data) {
   $("aiNetwork").hidden = false;
   $("networkTitle").textContent = data.overview?.displayName || "AI 네트워크";
@@ -372,6 +515,12 @@ $("wizardCreate").addEventListener("click", createChannelAi);
 $("knowledgeCreateSpace").addEventListener("click", createKnowledgeSpace);
 $("knowledgeAddSource").addEventListener("click", addKnowledgeSource);
 $("knowledgeRefresh").addEventListener("click", refreshKnowledge);
+$("presetRefresh").addEventListener("click", refreshPresets);
+$("presetCreate").addEventListener("click", createPreset);
+$("presetUpdate").addEventListener("click", updatePreset);
+$("presetPublish").addEventListener("click", publishPreset);
+$("presetDelete").addEventListener("click", deletePreset);
+$("presetLike").addEventListener("click", likePreset);
 document.addEventListener("click", (event) => {
   const button = event.target.closest(".import-preset");
   if (button) importPreset(button.dataset.presetId);

@@ -157,6 +157,47 @@
     <pre id="knowledgeResult" class="preview">길드 ID를 입력한 뒤 RAG 상태를 새로고침하세요.</pre>
   </section>
 
+  <section class="panel">
+    <h2>AI 프리셋 관리</h2>
+    <p class="muted">서버 안 프리셋을 만들고, 웹 카탈로그에 게시하고, 다른 서버가 그대로 가져갈 수 있게 관리합니다.</p>
+    <div class="form-grid">
+      <label>프리셋 ID<input id="presetId" type="text" inputmode="numeric" placeholder="수정/게시/삭제할 ID" /></label>
+      <label>게시 프리셋 ID<input id="publishedPresetId" type="text" inputmode="numeric" placeholder="좋아요/가져오기 ID" /></label>
+      <label>프리셋 이름<input id="presetName" type="text" placeholder="예: 코딩 튜터" /></label>
+      <label>카테고리<input id="presetCategory" type="text" placeholder="예: coding, translation" /></label>
+      <label>말투<input id="presetTone" type="text" placeholder="friendly / professional / concise" /></label>
+      <label>응답 모드<input id="presetResponseMode" type="text" placeholder="fast / balanced / deep" /></label>
+      <label>선호 모델<input id="presetPreferredModel" type="text" placeholder="선택 사항" /></label>
+      <label>후보 수<input id="presetMaxCandidates" type="number" min="1" max="5" value="1" /></label>
+    </div>
+    <label>요약<input id="presetSummary" type="text" placeholder="프리셋 설명" /></label>
+    <label>역할/목적
+      <textarea id="presetPurpose" rows="3" placeholder="이 프리셋 AI가 무엇을 도와야 하는지 적으세요."></textarea>
+    </label>
+    <label>AI 헌법/규칙
+      <textarea id="presetConstitution" rows="4" placeholder="금지 주제, 답변 원칙, 말투 규칙 등을 적으세요."></textarea>
+    </label>
+    <div class="row">
+      <button id="presetRefresh">프리셋 새로고침</button>
+      <button id="presetCreate">프리셋 만들기</button>
+      <button id="presetUpdate">프리셋 수정</button>
+      <button id="presetPublish">웹에 게시</button>
+      <button id="presetDelete">삭제</button>
+      <button id="presetLike">따봉</button>
+    </div>
+    <div class="network-grid">
+      <article class="card">
+        <h3>서버 프리셋</h3>
+        <ul id="localPresetList" class="list"></ul>
+      </article>
+      <article class="card">
+        <h3>웹 카탈로그</h3>
+        <ul id="publishedPresetList" class="list"></ul>
+      </article>
+    </div>
+    <pre id="presetManageResult" class="preview">길드 ID를 입력한 뒤 프리셋을 새로고침하세요.</pre>
+  </section>
+
   <footer>읽기 5초 폴링 · 쓰기는 OAuth 인증 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
   <script src="app.js"></script>
 </body>

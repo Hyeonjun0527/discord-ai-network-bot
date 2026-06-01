@@ -110,6 +110,44 @@ class ChannelAiCustomizationServiceTest
         }
 
         @Test
+        fun `channel onboarding is derived from active channel ai settings`() {
+            controller.createFromWizard(
+                100,
+                203,
+                ChannelAiWizardRequest(
+                    actorUserId = 77,
+                    name = "코드냥",
+                    job = "Kotlin Spring Boot 개발 질문",
+                    tone = "짧고 명확하게",
+                    answerLength = "short",
+                    requireApproval = false,
+                ),
+            )
+
+            val onboarding = controller.onboarding(100, 203)
+
+            assertEquals("코드냥", onboarding.name)
+            assertEquals(false, onboarding.empty)
+            assertTrue(onboarding.description.contains("Kotlin Spring Boot 개발 질문"))
+            assertTrue(onboarding.description.contains("짧고 명확하게"))
+            assertTrue(onboarding.examples.any { it.contains("코드 리뷰") || it.contains("테스트") })
+            assertTrue(onboarding.safetyNotice.contains("민감정보"))
+            assertTrue(onboarding.message.contains("질문 예시"))
+        }
+
+        @Test
+        fun `channel onboarding falls back to default when profile is missing`() {
+            val onboarding = controller.onboarding(100, 404)
+
+            assertEquals("냥시스턴트", onboarding.name)
+            assertEquals(true, onboarding.empty)
+            assertEquals(null, onboarding.channelAiId)
+            assertTrue(onboarding.description.contains("general_assistant"))
+            assertTrue(onboarding.examples.isNotEmpty())
+            assertTrue(onboarding.message.contains("민감정보"))
+        }
+
+        @Test
         fun `pending proposal can be rejected without becoming active`() {
             val created =
                 service.createFromWizard(

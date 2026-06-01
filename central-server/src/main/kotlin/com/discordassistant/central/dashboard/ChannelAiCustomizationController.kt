@@ -95,6 +95,12 @@ class ChannelAiCustomizationController(
             )
         }
 
+    @GetMapping("/{guildId}/{channelId}/onboarding")
+    fun onboarding(
+        @PathVariable guildId: Long,
+        @PathVariable channelId: Long,
+    ) = customization.channelOnboarding(guildId, channelId)
+
     @GetMapping("/{guildId}/{channelId}/history")
     fun history(
         @PathVariable guildId: Long,

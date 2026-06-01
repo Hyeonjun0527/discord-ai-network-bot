@@ -527,6 +527,18 @@ class PresetRegistryServiceTest
             val v2Behavior = behaviorVersions.findByChannelAiIdAndId(v2Channel.id, importedV2["createdBehaviorVersionId"] as Long)
             assertEquals("고객지원 v2", v2Behavior?.purpose)
             assertEquals("professional", v2Behavior?.tone)
+
+            val history = controller.importHistory(311)["imports"] as List<*>
+            val importedSummary = history.single() as PresetImportSummary
+            assertEquals(published.id, importedSummary.publishedPresetId)
+            assertEquals(311, importedSummary.targetGuildId)
+            assertEquals(411, importedSummary.targetChannelId)
+            assertEquals(88, importedSummary.importedBy)
+            assertEquals(true, importedSummary.detachedCopy)
+            assertEquals(v1BehaviorId, importedSummary.createdBehaviorVersionId)
+
+            val channelHistory = controller.importHistory(311, channelId = 999)["imports"] as List<*>
+            assertTrue(channelHistory.isEmpty())
         }
 
         @Test

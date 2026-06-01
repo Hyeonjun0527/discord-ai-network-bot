@@ -189,6 +189,19 @@ class PresetRegistryService(
     }
 
     @Transactional(readOnly = true)
+    fun importHistory(
+        targetGuildId: Long,
+        targetChannelId: Long? = null,
+    ): List<PresetImportSummary> {
+        featureGate.requirePresetEnabled()
+        return imports
+            .findByTargetGuildId(targetGuildId)
+            .filter { targetChannelId == null || it.targetChannelId == targetChannelId }
+            .sortedWith(compareByDescending<PresetImportEntity> { it.importedAt }.thenByDescending { it.id })
+            .map { it.toSummary() }
+    }
+
+    @Transactional(readOnly = true)
     fun listReports(status: String = "open"): List<PresetReportSummary> {
         featureGate.requirePresetEnabled()
         return reports
@@ -858,6 +871,21 @@ class PresetRegistryService(
             knowledgeGuide = knowledgeGuide,
         )
 
+    private fun PresetImportEntity.toSummary(): PresetImportSummary =
+        PresetImportSummary(
+            id = id,
+            publishedPresetId = publishedPresetId,
+            targetGuildId = targetGuildId,
+            targetChannelId = targetChannelId,
+            importedBy = importedBy,
+            importedPresetId = importedPresetId,
+            createdChannelAiId = createdChannelAiId,
+            createdBehaviorVersionId = createdBehaviorVersionId,
+            status = status,
+            importedAt = importedAt.toString(),
+            detachedCopy = importedPresetId != null,
+        )
+
     private fun PresetReportEntity.toSummary(): PresetReportSummary =
         PresetReportSummary(
             id = id,
@@ -1140,6 +1168,20 @@ data class PresetBehaviorSnapshot(
     val costGuard: String,
     val knowledgeSlotNames: List<String>,
     val knowledgeGuide: String?,
+)
+
+data class PresetImportSummary(
+    val id: Long,
+    val publishedPresetId: Long,
+    val targetGuildId: Long,
+    val targetChannelId: Long?,
+    val importedBy: Long?,
+    val importedPresetId: Long?,
+    val createdChannelAiId: Long?,
+    val createdBehaviorVersionId: Long?,
+    val status: String,
+    val importedAt: String,
+    val detachedCopy: Boolean,
 )
 
 data class PresetReportSummary(

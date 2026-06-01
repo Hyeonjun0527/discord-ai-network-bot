@@ -57,6 +57,17 @@ class PresetRegistryController(
     @GetMapping("/catalog/facets")
     fun catalogFacets(): Map<String, Any?> = mapOf("facets" to registry.catalogFacets())
 
+    @GetMapping("/guilds/{guildId}/imports")
+    fun importHistory(
+        @PathVariable guildId: Long,
+        @RequestParam(required = false) channelId: Long? = null,
+    ): Map<String, Any?> =
+        mapOf(
+            "guildId" to guildId,
+            "channelId" to channelId,
+            "imports" to registry.importHistory(targetGuildId = guildId, targetChannelId = channelId),
+        )
+
     @GetMapping("/reports")
     fun reports(): Map<String, Any?> = mapOf("reports" to registry.listReports())
 

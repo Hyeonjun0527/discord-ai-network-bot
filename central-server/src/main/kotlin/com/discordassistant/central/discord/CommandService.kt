@@ -5,6 +5,7 @@ import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.network.AiNetworkLaunchChecklistService
 import com.discordassistant.central.network.AiNetworkMap
 import com.discordassistant.central.network.AiNetworkMapService
+import com.discordassistant.central.network.ChannelAiCustomizationService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIndexingService
 import com.discordassistant.central.network.KnowledgeIngestionService
@@ -59,6 +60,7 @@ class CommandService(
     private val blocklist: com.discordassistant.central.provider.BlocklistService,
     private val schedule: com.discordassistant.central.provider.ProviderScheduleService,
     private val channelProfiles: ChannelAiProfileService,
+    private val channelAiCustomization: ChannelAiCustomizationService,
     private val channelRoutingPolicies: ChannelAiRoutingPolicyService,
     private val knowledgeIngestion: KnowledgeIngestionService,
     private val knowledgeIndexing: KnowledgeIndexingService,
@@ -228,7 +230,6 @@ class CommandService(
         ctx: CommandContext,
         responseMode: String,
     ): String {
-        val behaviorPrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it) } ?: this
         val knowledgeContext =
             runCatching {
                 knowledgeSearch.contextPlan(
@@ -238,7 +239,10 @@ class CommandService(
                     channelId = ctx.channelId,
                 )
             }.getOrNull()
-        val contextText = knowledgeContext?.contextText?.takeIf { it.isNotBlank() } ?: return behaviorPrompt
+        val contextText = knowledgeContext?.contextText?.takeIf { it.isNotBlank() }
+        activeChannelAiExecutionPrompt(ctx, contextText)?.let { return it }
+        val behaviorPrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it) } ?: this
+        if (contextText == null) return behaviorPrompt
         return buildString {
             appendLine("[채널 지식 컨텍스트]")
             appendLine(contextText)
@@ -248,6 +252,27 @@ class CommandService(
             appendLine()
             appendLine("[질문 실행 입력]")
             append(behaviorPrompt)
+        }
+    }
+
+    private fun String.activeChannelAiExecutionPrompt(
+        ctx: CommandContext,
+        contextText: String?,
+    ): String? {
+        val history = channelAiCustomization.channelHistory(ctx.guildId, ctx.channelId)
+        val activeBehaviorId = history.channelAi?.activeBehaviorVersionId ?: return null
+        val preview =
+            channelAiCustomization.promptPreview(
+                guildId = ctx.guildId,
+                channelId = ctx.channelId,
+                userQuestion = this,
+                ragContextText = contextText,
+            )
+        if (preview.behaviorVersionId != activeBehaviorId) return null
+        return buildString {
+            appendLine(preview.systemPrompt)
+            appendLine()
+            append(preview.userPrompt)
         }
     }
 

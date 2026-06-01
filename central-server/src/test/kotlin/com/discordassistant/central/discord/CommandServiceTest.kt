@@ -1,5 +1,6 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.network.ChannelAiCustomizationService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.PresetBehaviorInput
@@ -49,6 +50,7 @@ class CommandServiceTest
         val registry: ConnectionRegistry,
         val usage: UsageService,
         val knowledge: KnowledgeIngestionService,
+        val channelAiCustomization: ChannelAiCustomizationService,
         val channelRoutingPolicies: ChannelAiRoutingPolicyService,
         val providerCapabilities: ProviderCapabilityProfileRepository,
         val presetRegistry: PresetRegistryService,
@@ -680,11 +682,13 @@ class CommandServiceTest
 
                 val r = commands.ask(ctx(), "코드 설명")
 
-                assertTrue(r.content.contains("[채널 AI 행동 설정]"))
-                assertTrue(r.content.contains("이름: 코드냥"))
-                assertTrue(r.content.contains("역할: Kotlin 개발 도우미"))
-                assertTrue(r.content.contains("[사용자 질문]"))
-                assertTrue(r.content.endsWith("코드 설명"))
+                assertTrue(r.content.contains("[우선순위 2: 채널 AI 정체성]"), r.content)
+                assertTrue(r.content.contains("이름: 코드냥"), r.content)
+                assertTrue(r.content.contains("역할: Kotlin 개발 도우미"), r.content)
+                assertTrue(r.content.contains("[우선순위 3: AI 헌법]"), r.content)
+                assertTrue(r.content.contains("코드는 실행 가능한 예시 위주로 답합니다."), r.content)
+                assertTrue(r.content.contains("[사용자 질문]"), r.content)
+                assertTrue(r.content.endsWith("코드 설명"), r.content)
             } finally {
                 registry.unregister(s)
             }
@@ -716,6 +720,52 @@ class CommandServiceTest
                 assertTrue(r.content.contains("Kotlin Spring 운영 가이드"))
                 assertTrue(r.content.contains("[질문 실행 입력]"))
                 assertTrue(r.content.endsWith("Kotlin Spring 설정 알려줘"))
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 새 채널 AI 행동 버전과 RAG 컨텍스트를 런타임 프롬프트에 반영한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 82, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                channelAiCustomization.createFromWizard(
+                    guildId = 100,
+                    channelId = 200,
+                    actorUserId = 77,
+                    name = "코드냥",
+                    avatarUrl = null,
+                    job = "개발 질문",
+                    tone = "짧고 명확하게",
+                    answerLength = "short",
+                    constitution = "코드는 검증 방법을 먼저 제안합니다.",
+                    requireApproval = false,
+                )
+                val space = knowledge.createSpace(100, 200, null, "개발 지식", 77, null, null)
+                val source =
+                    knowledge.addSource(
+                        guildId = 100,
+                        spaceId = space.id,
+                        sourceType = "text",
+                        title = "Kotlin Spring 운영 가이드",
+                        sourceUri = null,
+                        contentPreview = "Kotlin Spring 운영에서는 profile 별 설정을 분리합니다.",
+                        addedBy = 77,
+                    )
+                knowledge.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+
+                val r = commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘", requestedResponseMode = "deep")
+
+                assertTrue(r.content.contains("[우선순위 2: 채널 AI 정체성]"), r.content)
+                assertTrue(r.content.contains("이름: 코드냥"), r.content)
+                assertTrue(r.content.contains("코드는 검증 방법을 먼저 제안합니다."), r.content)
+                assertTrue(r.content.contains("[우선순위 4: 채널 지식/RAG]"), r.content)
+                assertTrue(r.content.contains("Kotlin Spring 운영 가이드"), r.content)
+                assertTrue(r.content.contains("[사용자 질문]"), r.content)
+                assertTrue(r.content.endsWith("Kotlin Spring 설정 알려줘"), r.content)
             } finally {
                 registry.unregister(s)
             }

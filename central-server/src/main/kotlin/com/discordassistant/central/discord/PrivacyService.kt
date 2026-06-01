@@ -44,9 +44,9 @@ class PrivacyService(
             PrivacyMode.B_PARTIAL -> "커뮤니티 프로바이더가 처리$level · 처리 위치: community local provider"
             PrivacyMode.C_ADMIN_ONLY ->
                 if (isAdmin && providerId != null) {
-                    "커뮤니티 풀 처리$level · provider #$providerId"
+                    "함께 만드는 AI 네트워크에서 처리됨$level · Provider 상세는 관리자 대시보드에서 확인"
                 } else {
-                    "커뮤니티 로컬 AI 풀에서 처리됨"
+                    "함께 만드는 AI 네트워크에서 처리됨"
                 }
         }
     }

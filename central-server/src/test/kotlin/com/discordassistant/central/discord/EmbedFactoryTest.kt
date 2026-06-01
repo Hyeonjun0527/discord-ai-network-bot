@@ -27,6 +27,7 @@ class EmbedFactoryTest {
         assertEquals(Color(0x57F287), e.color)
         assertEquals("2", e.fields.first { it.name == "처리중" }.value)
         assertNotNull(e.footer)
+        assertFalse(e.footer!!.text!!.contains("provider:7"))
     }
 
     @Test

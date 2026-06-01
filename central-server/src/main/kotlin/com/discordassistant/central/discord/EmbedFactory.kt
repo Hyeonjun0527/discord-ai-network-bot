@@ -32,7 +32,7 @@ object EmbedFactory {
             .addField("상태", state.name, true)
             .addField("처리중", inFlight.toString(), true)
             .addField("실패", failures.toString(), true)
-            .setFooter("provider:$providerId")
+            .setFooter("Provider 상태")
             .build()
 
     /** 풀 요약 Embed. */

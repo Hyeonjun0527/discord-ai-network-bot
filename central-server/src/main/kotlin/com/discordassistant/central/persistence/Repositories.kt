@@ -182,3 +182,89 @@ interface CustomizationAuditLogRepository : JpaRepository<CustomizationAuditLogE
         channelId: Long,
     )
 }
+
+interface AiNetworkProfileRepository : JpaRepository<AiNetworkProfileEntity, Long> {
+    fun findByGuildId(guildId: Long): AiNetworkProfileEntity?
+}
+
+interface ProviderCapabilityProfileRepository : JpaRepository<ProviderCapabilityProfileEntity, Long> {
+    fun findByGuildId(guildId: Long): List<ProviderCapabilityProfileEntity>
+
+    fun findByGuildIdAndProviderUserId(
+        guildId: Long,
+        providerUserId: Long,
+    ): ProviderCapabilityProfileEntity?
+}
+
+interface KnowledgeSpaceRepository : JpaRepository<KnowledgeSpaceEntity, Long> {
+    fun findByGuildId(guildId: Long): List<KnowledgeSpaceEntity>
+
+    fun findByGuildIdAndChannelId(
+        guildId: Long,
+        channelId: Long,
+    ): List<KnowledgeSpaceEntity>
+}
+
+interface KnowledgeSourceRepository : JpaRepository<KnowledgeSourceEntity, Long> {
+    fun findByKnowledgeSpaceId(knowledgeSpaceId: Long): List<KnowledgeSourceEntity>
+}
+
+interface NetworkOverviewProjectionRepository : JpaRepository<NetworkOverviewProjectionEntity, Long> {
+    fun findByGuildId(guildId: Long): NetworkOverviewProjectionEntity?
+}
+
+interface AiFeedbackRepository : JpaRepository<AiFeedbackEntity, Long> {
+    fun findTop20ByGuildIdAndChannelIdOrderByCreatedAtDesc(
+        guildId: Long,
+        channelId: Long,
+    ): List<AiFeedbackEntity>
+
+    fun countByGuildId(guildId: Long): Long
+}
+
+interface MultiResponsePolicyRepository : JpaRepository<MultiResponsePolicyEntity, Long> {
+    fun findByGuildIdAndChannelId(
+        guildId: Long,
+        channelId: Long?,
+    ): MultiResponsePolicyEntity?
+}
+
+interface MultiResponseRunRepository : JpaRepository<MultiResponseRunEntity, Long> {
+    fun findByRequestId(requestId: String): MultiResponseRunEntity?
+}
+
+interface CandidateAnswerRepository : JpaRepository<CandidateAnswerEntity, Long> {
+    fun findByRunId(runId: Long): List<CandidateAnswerEntity>
+}
+
+interface SynthesisResultRepository : JpaRepository<SynthesisResultEntity, Long> {
+    fun findByRunId(runId: Long): SynthesisResultEntity?
+}
+
+interface AiPresetRepository : JpaRepository<AiPresetEntity, Long> {
+    fun findByGuildId(guildId: Long): List<AiPresetEntity>
+}
+
+interface PresetRevisionRepository : JpaRepository<PresetRevisionEntity, Long> {
+    fun findByPresetIdOrderByRevisionDesc(presetId: Long): List<PresetRevisionEntity>
+}
+
+interface PublishedPresetRepository : JpaRepository<PublishedPresetEntity, Long> {
+    fun findByStatusOrderByLikeCountDescPublishedAtDesc(status: String): List<PublishedPresetEntity>
+}
+
+interface PresetImportRepository : JpaRepository<PresetImportEntity, Long> {
+    fun findByTargetGuildId(targetGuildId: Long): List<PresetImportEntity>
+}
+
+interface PresetReactionRepository : JpaRepository<PresetReactionEntity, Long> {
+    fun findByPublishedPresetIdAndUserIdAndReaction(
+        publishedPresetId: Long,
+        userId: Long,
+        reaction: String,
+    ): PresetReactionEntity?
+}
+
+interface PresetReportRepository : JpaRepository<PresetReportEntity, Long> {
+    fun findByStatus(status: String): List<PresetReportEntity>
+}

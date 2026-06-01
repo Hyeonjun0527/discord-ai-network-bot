@@ -77,7 +77,15 @@ class EmbedFactoryTest {
 
     @Test
     fun `설정 패널 embed — 현재 상태 필드`() {
-        val e = EmbedFactory.settingsEmbed("ko", null, 0, 0, false)
+        val e =
+            EmbedFactory.settingsEmbed(
+                "ko",
+                null,
+                0,
+                0,
+                false,
+                currentSummary = "• LLM 사용 채널: 모든 채널 허용",
+            )
         assertEquals("⚙️ 서버 설정", e.title)
         assertEquals("한국어", e.fields.first { it.name?.contains("언어") == true }.value)
         assertEquals("모든 채널 허용", e.fields.first { it.name?.contains("채널") == true }.value)
@@ -90,6 +98,8 @@ class EmbedFactoryTest {
         val en = EmbedFactory.settingsEmbed("en", "llama3", 2, 1, true)
         assertEquals("English", en.fields.first { it.name?.contains("언어") == true }.value)
         assertEquals("llama3", en.fields.first { it.name?.contains("모델") == true }.value)
+        assertTrue(e.description?.contains("현재 적용 중") == true)
+        assertTrue(e.description?.contains("모든 채널 허용") == true)
         assertTrue(en.description?.contains("저장 후 적용될 설정 미리보기") == true)
         assertTrue(en.description?.contains("여러 채널") == true)
         assertFalse(en.fields.first { it.name?.contains("채널") == true }.isInline)

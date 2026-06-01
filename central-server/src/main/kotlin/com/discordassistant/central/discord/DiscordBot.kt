@@ -630,22 +630,35 @@ class DiscordBot(
                 allowedChannelText = allowedChannelText(ctx),
                 autoApprove = pending?.autoApprove ?: commands.isAutoApprove(ctx),
                 pendingSummary = pendingSummary(ctx),
+                currentSummary = currentSettingsSummary(ctx),
             )
         }
 
         private fun settingsKey(ctx: CommandContext) = "${ctx.guildId}:${ctx.channelId}:${ctx.userId}"
 
-        private fun allowedChannelText(ctx: CommandContext): String {
-            val channelIds = effectiveAllowedChannelIds(ctx)
-            return if (channelIds.isEmpty()) {
-                "모든 채널 허용"
-            } else {
-                channelIds.joinToString(" ") { "<#$it>" }
-            }
+        private fun allowedChannelText(ctx: CommandContext): String = formatChannelPolicy(effectiveAllowedChannelIds(ctx))
+
+        private fun currentSettingsSummary(ctx: CommandContext): String {
+            val model = commands.guildDefaultModel(ctx) ?: "자동 선택"
+            val autoApprove = if (commands.isAutoApprove(ctx)) "켜짐" else "꺼짐"
+            return listOf(
+                "• 언어: `${commands.guildLanguage(ctx)}`",
+                "• 기본 모델: `$model`",
+                "• LLM 사용 채널: ${formatChannelPolicy(commands.allowedChannelIds(ctx))}",
+                "• 자동 승인: `$autoApprove`",
+            ).joinToString("\n")
         }
 
         private fun effectiveAllowedChannelIds(ctx: CommandContext): List<Long> =
             pendingSettings[settingsKey(ctx)]?.allowedChannelIds ?: commands.allowedChannelIds(ctx)
+
+        private fun formatChannelPolicy(channelIds: Collection<Long>): String {
+            if (channelIds.isEmpty()) return "모든 채널 허용"
+            val distinct = channelIds.distinct()
+            val visible = distinct.take(12).joinToString(" ") { "<#$it>" }
+            val suffix = if (distinct.size > 12) " 외 ${distinct.size - 12}개" else ""
+            return "${distinct.size}개 채널: $visible$suffix"
+        }
 
         private fun pendingSummary(ctx: CommandContext): String? {
             val pending = pendingSettings[settingsKey(ctx)] ?: return null
@@ -653,7 +666,7 @@ class DiscordBot(
             pending.language?.let { lines += "• 언어 → `$it`" }
             pending.defaultModel?.let { lines += "• 기본 모델 → `${if (it == "__auto__") "자동 선택" else it}`" }
             pending.allowedChannelIds?.let { ids ->
-                lines += "• LLM 사용 채널 → ${if (ids.isEmpty()) "모든 채널" else ids.joinToString(" ") { "<#$it>" }}"
+                lines += "• LLM 사용 채널 → ${formatChannelPolicy(ids)}"
             }
             pending.autoApprove?.let { lines += "• 자동 승인 → `${if (it) "켜짐" else "꺼짐"}`" }
             return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")

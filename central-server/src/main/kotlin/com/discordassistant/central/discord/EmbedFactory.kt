@@ -126,15 +126,19 @@ object EmbedFactory {
         autoApprove: Boolean,
         allowedChannelText: String? = null,
         pendingSummary: String? = null,
-    ): MessageEmbed =
-        EmbedBuilder()
+        currentSummary: String? = null,
+    ): MessageEmbed {
+        val currentBlock = currentSummary?.let { "**현재 적용 중**\n$it\n\n" }.orEmpty()
+        val pendingBlock = pendingSummary?.let { "\n\n**저장 대기 변경사항**\n$it" }.orEmpty()
+        return EmbedBuilder()
             .setColor(BLURPLE)
             .setTitle("⚙️ 서버 설정")
             .setDescription(
-                "아래 값은 **저장 후 적용될 설정 미리보기**입니다. " +
+                currentBlock +
+                    "아래 값은 **저장 후 적용될 설정 미리보기**입니다. " +
                     "언어·기본 모델·사용 채널·자동 승인을 모두 고른 뒤 **저장**을 누르면 한 번에 적용됩니다.\n" +
                     "채널 드롭다운은 한 번 열어서 여러 채널을 체크할 수 있어요." +
-                    (pendingSummary?.let { "\n\n**저장 대기 변경사항**\n$it" } ?: ""),
+                    pendingBlock,
             ).addField("🌐 언어", if (language.equals("en", true)) "English" else "한국어", true)
             .addField(
                 "🧠 기본 모델",
@@ -150,4 +154,5 @@ object EmbedFactory {
                 true,
             ).setFooter("드롭다운에서 여러 채널을 한 번에 선택하고 저장하세요. 빨간 버튼은 위험 작업에만 씁니다.")
             .build()
+    }
 }

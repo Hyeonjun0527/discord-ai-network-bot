@@ -139,6 +139,44 @@ class AiNetworkDashboardController(
         }
     }
 
+    @GetMapping("/{guildId}/model-map")
+    fun modelMap(
+        @PathVariable guildId: Long,
+    ): List<ModelMapResponse> {
+        val modelToChannels = modelChannelUsage(guildId)
+        return providerCapabilities
+            .findByGuildId(guildId)
+            .flatMap { provider ->
+                splitCsv(provider.modelNames).map { modelName ->
+                    ModelProviderSnapshot(
+                        modelName = modelName,
+                        providerState = provider.providerState,
+                        qualityTier = provider.qualityTier,
+                        maxBurden = provider.maxBurden,
+                        overloadRisk = provider.overloadRisk,
+                        tags = splitCsv(provider.capabilityTags),
+                    )
+                }
+            }.groupBy { it.modelName }
+            .map { (modelName, providers) ->
+                ModelMapResponse(
+                    modelName = modelName,
+                    totalProviderCount = providers.size,
+                    onlineProviderCount = providers.count { it.providerState.equals("ONLINE", ignoreCase = true) },
+                    protectedProviderCount = providers.count { it.overloadRisk.lowercase() in PROTECTED_OVERLOAD_RISKS },
+                    qualityTiers = providers.map { it.qualityTier }.distinct().sortedByDescending { qualityRank(it) },
+                    maxBurdens = providers.map { it.maxBurden }.distinct().sortedByDescending { burdenRank(it) },
+                    tags = providers.flatMap { it.tags }.distinct().sorted(),
+                    channelCount = modelToChannels[modelName].orEmpty().size,
+                    channels = modelToChannels[modelName].orEmpty().sorted(),
+                )
+            }.sortedWith(
+                compareByDescending<ModelMapResponse> { it.onlineProviderCount }
+                    .thenByDescending { it.totalProviderCount }
+                    .thenBy { it.modelName },
+            )
+    }
+
     @GetMapping("/{guildId}/knowledge-spaces")
     fun knowledgeSpaces(
         @PathVariable guildId: Long,
@@ -205,7 +243,37 @@ class AiNetworkDashboardController(
 
     private companion object {
         val BLOCKING_KNOWLEDGE_RISKS = setOf("sensitive", "ssrf")
+        val PROTECTED_OVERLOAD_RISKS = setOf("high", "critical")
     }
+
+    private fun modelChannelUsage(guildId: Long): Map<String, Set<Long>> {
+        val usage = linkedMapOf<String, MutableSet<Long>>()
+        routingPolicies.findByGuildId(guildId).forEach { policy ->
+            val models = listOfNotNull(policy.preferredModel) + splitCsv(policy.allowedModels)
+            models
+                .filter { it.isNotBlank() }
+                .distinct()
+                .forEach { model -> usage.getOrPut(model) { linkedSetOf() }.add(policy.channelId) }
+        }
+        return usage
+    }
+
+    private fun qualityRank(value: String): Int =
+        when (value.trim().lowercase()) {
+            "specialized" -> 3
+            "high" -> 2
+            "standard" -> 1
+            else -> 0
+        }
+
+    private fun burdenRank(value: String): Int =
+        when (value.trim().uppercase()) {
+            "RESTRICTED" -> 4
+            "HEAVY", "DEEP" -> 3
+            "STANDARD" -> 2
+            "LIGHT" -> 1
+            else -> 0
+        }
 
     private fun splitCsv(value: String?): List<String> =
         value
@@ -302,6 +370,27 @@ data class ProviderCapabilityResponse(
     val dailyLimit: Int?,
     val overloadRisk: String,
     val lastSeenAt: String?,
+)
+
+data class ModelMapResponse(
+    val modelName: String,
+    val totalProviderCount: Int,
+    val onlineProviderCount: Int,
+    val protectedProviderCount: Int,
+    val qualityTiers: List<String>,
+    val maxBurdens: List<String>,
+    val tags: List<String>,
+    val channelCount: Int,
+    val channels: List<Long>,
+)
+
+private data class ModelProviderSnapshot(
+    val modelName: String,
+    val providerState: String,
+    val qualityTier: String,
+    val maxBurden: String,
+    val overloadRisk: String,
+    val tags: List<String>,
 )
 
 private enum class DashboardAudience(

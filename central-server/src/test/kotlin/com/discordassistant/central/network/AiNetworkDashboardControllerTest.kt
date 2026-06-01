@@ -267,4 +267,60 @@ class AiNetworkDashboardControllerTest
             assertEquals("critical", adminProvider.overloadRisk)
             assertEquals(4, adminProvider.maxConcurrency)
         }
+
+        @Test
+        fun `model map aggregates provider models and channel routing usage`() {
+            foundation.upsertProviderCapability(
+                guildId = 120,
+                providerUserId = 301,
+                providerState = "ONLINE",
+                modelNames = listOf("llama3.1:8b", "qwen-coder"),
+                capabilityTags = listOf("coding", "night"),
+                maxBurden = "HEAVY",
+                maxConcurrency = 2,
+                dailyLimit = 20,
+                overloadRisk = "normal",
+            )
+            foundation.upsertProviderCapability(
+                guildId = 120,
+                providerUserId = 302,
+                providerState = "OVERLOADED",
+                modelNames = listOf("qwen-coder"),
+                capabilityTags = listOf("coding"),
+                maxBurden = "STANDARD",
+                maxConcurrency = 1,
+                dailyLimit = 10,
+                overloadRisk = "critical",
+            )
+            routingPolicies.save(
+                ChannelAiRoutingPolicyEntity(
+                    guildId = 120,
+                    channelId = 220,
+                    responseMode = "deep",
+                    preferredModel = "qwen-coder",
+                    allowedModels = "qwen-coder,llama3.1:8b",
+                ),
+            )
+            routingPolicies.save(
+                ChannelAiRoutingPolicyEntity(
+                    guildId = 120,
+                    channelId = 221,
+                    responseMode = "fast",
+                    preferredModel = "llama3.1:8b",
+                ),
+            )
+
+            val modelMap = controller.modelMap(120)
+            val qwen = modelMap.first { it.modelName == "qwen-coder" }
+            val llama = modelMap.first { it.modelName == "llama3.1:8b" }
+
+            assertEquals(2, qwen.totalProviderCount)
+            assertEquals(1, qwen.onlineProviderCount)
+            assertEquals(1, qwen.protectedProviderCount)
+            assertEquals(listOf(220L), qwen.channels)
+            assertEquals(listOf("coding", "night"), qwen.tags)
+            assertEquals(1, llama.totalProviderCount)
+            assertEquals(2, llama.channelCount)
+            assertEquals(listOf(220L, 221L), llama.channels)
+        }
     }

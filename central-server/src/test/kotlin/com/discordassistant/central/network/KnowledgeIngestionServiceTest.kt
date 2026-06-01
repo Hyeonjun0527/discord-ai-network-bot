@@ -43,6 +43,25 @@ class KnowledgeIngestionServiceTest
         private val controller = KnowledgeIngestionController(service, searchService)
 
         @Test
+        fun `rag ingestion metadata reads obey feature kill switch`() {
+            val disabled =
+                KnowledgeIngestionService(
+                    spaces = spaces,
+                    sources = sources,
+                    clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
+                    featureGate = AiNetworkFeatureGate(ragEnabled = false),
+                    audits = audits,
+                )
+
+            assertThrows(IllegalStateException::class.java) {
+                disabled.listSources(100, 1)
+            }
+            assertThrows(IllegalStateException::class.java) {
+                disabled.spaceStatus(100, 1)
+            }
+        }
+
+        @Test
         fun `indexing plan emits Dailyting style rag rebuild command and excludes unsafe sources`() {
             val space =
                 service.createSpace(

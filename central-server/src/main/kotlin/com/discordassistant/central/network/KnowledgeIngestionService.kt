@@ -57,6 +57,7 @@ class KnowledgeIngestionService(
         guildId: Long,
         spaceId: Long,
     ): List<KnowledgeSourceSummary> {
+        featureGate.requireRagEnabled()
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
                 ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
@@ -71,6 +72,7 @@ class KnowledgeIngestionService(
         guildId: Long,
         spaceId: Long,
     ): KnowledgeSpaceStatusSummary {
+        featureGate.requireRagEnabled()
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
                 ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")

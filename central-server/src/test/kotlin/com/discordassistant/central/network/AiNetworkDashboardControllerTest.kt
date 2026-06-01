@@ -287,6 +287,22 @@ class AiNetworkDashboardControllerTest
             assertEquals(300, adminProvider.providerUserId)
             assertEquals("critical", adminProvider.overloadRisk)
             assertEquals(4, adminProvider.maxConcurrency)
+
+            val publicDashboard = controller.dashboard(100, audience = "public")
+            val publicAlert = publicDashboard.overload.alerts.single()
+            assertNull(publicAlert.providerUserId)
+            assertEquals("Provider 1", publicAlert.providerLabel)
+            assertEquals("protected", publicAlert.risk)
+            assertNull(publicAlert.maxConcurrency)
+            assertNull(publicAlert.dailyLimit)
+            assertTrue(publicAlert.message.contains("#300").not())
+
+            val adminDashboard = controller.dashboard(100, audience = "admin")
+            val adminAlert = adminDashboard.overload.alerts.single()
+            assertEquals(300, adminAlert.providerUserId)
+            assertEquals("provider:300", adminAlert.providerLabel)
+            assertEquals("critical", adminAlert.risk)
+            assertEquals(4, adminAlert.maxConcurrency)
         }
 
         @Test
@@ -457,6 +473,13 @@ class AiNetworkDashboardControllerTest
             assertEquals(1, dashboard.overload.highRiskCount)
             assertEquals("saving", dashboard.executionPlan.effectiveResponseMode)
             assertNull(dashboard.providers.first().providerUserId)
+            val alert = dashboard.overload.alerts.single()
+            assertNull(alert.providerUserId)
+            assertEquals("Provider 1", alert.providerLabel)
+            assertEquals("protected", alert.risk)
+            assertNull(alert.maxConcurrency)
+            assertNull(alert.dailyLimit)
+            assertTrue(alert.message.contains("#331").not())
             assertEquals("protect_providers", dashboard.nextActions.first().actionType)
             assertTrue(dashboard.nextActions.any { it.actionType == "add_knowledge" })
         }

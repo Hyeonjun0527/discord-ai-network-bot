@@ -58,7 +58,8 @@ class AiNetworkDashboardController(
         val publishedPresets = publishedPresets().take(10)
         val quality = qualityFeedback.guildSummary(guildId)
         val modelQuality = qualityFeedback.modelQuality(guildId)
-        val overload = providerSafety.overloadAlerts(guildId)
+        val rawOverload = providerSafety.overloadAlerts(guildId)
+        val overload = ProviderSafetyDashboardResponse.from(rawOverload, DashboardAudience.from(audience))
         val executionPlan = providerSafety.executionPlan(guildId, responseMode, requestedCandidates)
         return AiNetworkDashboardResponse(
             overview = overview,
@@ -72,7 +73,7 @@ class AiNetworkDashboardController(
             modelQuality = modelQuality,
             overload = overload,
             executionPlan = executionPlan,
-            nextActions = nextActions(overview, channels, modelMap, knowledgeSpaces, quality, overload),
+            nextActions = nextActions(overview, channels, modelMap, knowledgeSpaces, quality, rawOverload),
         )
     }
 
@@ -452,9 +453,72 @@ data class AiNetworkDashboardResponse(
     val publishedPresets: List<PublishedPresetResponse>,
     val quality: QualitySummary,
     val modelQuality: List<ModelQualitySummary>,
-    val overload: ProviderSafetyDashboard,
+    val overload: ProviderSafetyDashboardResponse,
     val executionPlan: ProviderSafetyExecutionPlan,
     val nextActions: List<AiNetworkNextActionResponse>,
+)
+
+data class ProviderSafetyDashboardResponse(
+    val guildId: Long,
+    val alertCount: Int,
+    val highRiskCount: Int,
+    val safeOnlineProviderCount: Int,
+    val fanoutSafe: Boolean,
+    val alerts: List<ProviderOverloadAlertResponse>,
+) {
+    companion object {
+        fun from(
+            dashboard: ProviderSafetyDashboard,
+            audience: DashboardAudience,
+        ): ProviderSafetyDashboardResponse =
+            ProviderSafetyDashboardResponse(
+                guildId = dashboard.guildId,
+                alertCount = dashboard.alertCount,
+                highRiskCount = dashboard.highRiskCount,
+                safeOnlineProviderCount = dashboard.safeOnlineProviderCount,
+                fanoutSafe = dashboard.fanoutSafe,
+                alerts =
+                    dashboard.alerts.mapIndexed { index, alert ->
+                        ProviderOverloadAlertResponse(
+                            providerUserId = if (audience.canSeeProviderIdentity) alert.providerUserId else null,
+                            providerLabel =
+                                if (audience.canSeeProviderIdentity) {
+                                    "provider:${alert.providerUserId}"
+                                } else {
+                                    "Provider ${index + 1}"
+                                },
+                            providerState = audience.state(alert.providerState),
+                            risk = audience.risk(alert.risk),
+                            maxBurden = alert.maxBurden,
+                            maxConcurrency = if (audience.canSeeProviderCapacity) alert.maxConcurrency else null,
+                            dailyLimit = if (audience.canSeeProviderCapacity) alert.dailyLimit else null,
+                            lastSeenAt = if (audience.canSeeProviderCapacity) alert.lastSeenAt?.toString() else null,
+                            severityRank = alert.severityRank,
+                            message =
+                                if (audience.canSeeProviderIdentity) {
+                                    alert.message
+                                } else {
+                                    alert.message.replace(Regex("Provider #\\d+"), "Provider")
+                                },
+                            recommendedAction = alert.recommendedAction,
+                        )
+                    },
+            )
+    }
+}
+
+data class ProviderOverloadAlertResponse(
+    val providerUserId: Long?,
+    val providerLabel: String,
+    val providerState: String,
+    val risk: String,
+    val maxBurden: String,
+    val maxConcurrency: Int?,
+    val dailyLimit: Int?,
+    val lastSeenAt: String?,
+    val severityRank: Int,
+    val message: String,
+    val recommendedAction: String,
 )
 
 data class AiNetworkNextActionResponse(
@@ -578,7 +642,7 @@ private data class ModelProviderSnapshot(
     val tags: List<String>,
 )
 
-private enum class DashboardAudience(
+enum class DashboardAudience(
     val canSeeProviderIdentity: Boolean,
     val canSeeProviderCapacity: Boolean,
 ) {

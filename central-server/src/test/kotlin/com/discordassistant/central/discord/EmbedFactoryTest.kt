@@ -101,8 +101,11 @@ class EmbedFactoryTest {
         assertTrue(e.description?.contains("현재 적용 중") == true)
         assertTrue(e.description?.contains("모든 채널 허용") == true)
         assertTrue(en.description?.contains("저장 후 적용될 설정 미리보기") == true)
+        assertTrue(en.description?.contains("LLM 사용 허용 채널") == true)
         assertTrue(en.description?.contains("여러 채널") == true)
-        assertFalse(en.fields.first { it.name?.contains("채널") == true }.isInline)
+        val channelField = en.fields.first { it.name?.contains("채널") == true }
+        assertTrue(channelField.name?.contains("LLM 사용 허용 채널") == true)
+        assertFalse(channelField.isInline)
         val pending =
             EmbedFactory.settingsEmbed(
                 "ko",

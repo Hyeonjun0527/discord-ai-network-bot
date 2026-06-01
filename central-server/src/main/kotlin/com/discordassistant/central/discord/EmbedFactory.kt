@@ -136,8 +136,8 @@ object EmbedFactory {
             .setDescription(
                 currentBlock +
                     "아래 값은 **저장 후 적용될 설정 미리보기**입니다. " +
-                    "언어·기본 모델·사용 채널·자동 승인을 모두 고른 뒤 **저장**을 누르면 한 번에 적용됩니다.\n" +
-                    "현재 사용 채널은 아래에 먼저 보여주고, 채널 드롭다운은 검색창에서 여러 채널을 연속 선택한 뒤 한 번만 확인하면 돼요." +
+                    "언어·기본 모델·LLM 사용 허용 채널·자동 승인을 모두 고른 뒤 **저장**을 누르면 한 번에 적용됩니다.\n" +
+                    "현재 허용 채널은 아래 필드에 먼저 보여주고, 채널 드롭다운은 검색창에서 여러 채널을 연속 선택한 뒤 한 번만 확인하면 돼요." +
                     pendingBlock,
             ).addField("🌐 언어", if (language.equals("en", true)) "English" else "한국어", true)
             .addField(
@@ -145,14 +145,14 @@ object EmbedFactory {
                 defaultModel ?: if (poolModelCount == 0) "자동 (프로바이더 연결 시 선택지 생김)" else "자동 선택",
                 true,
             ).addField(
-                "#️⃣ 사용 채널",
+                "#️⃣ LLM 사용 허용 채널",
                 allowedChannelText ?: if (allowedChannelCount == 0) "모든 채널 허용" else "${allowedChannelCount}개 채널만",
                 false,
             ).addField(
                 "✅ 프로바이더 자동 승인",
                 if (autoApprove) "켜짐 — 신청 즉시 참여" else "꺼짐 — 관리자 승인 필요",
                 true,
-            ).setFooter("변경사항은 저장 버튼을 누르기 전까지 적용되지 않습니다. 여러 채널을 한 번에 선택하고 마지막에 저장하세요.")
+            ).setFooter("현재 허용 채널을 확인한 뒤 여러 채널을 한 번에 선택하고 마지막에 저장하세요.")
             .build()
     }
 }

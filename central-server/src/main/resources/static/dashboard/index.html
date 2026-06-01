@@ -305,6 +305,52 @@
   </section>
 
   <section class="panel">
+    <h2>Provider 과부하 알림</h2>
+    <p class="muted">고품질·다중응답보다 참여 PC 보호가 우선입니다. 위험 Provider는 고급 요청에서 제외하고, 회복되면 normal로 되돌립니다.</p>
+    <div class="form-grid">
+      <label>Provider 사용자 ID<input id="safetyProviderId" type="text" inputmode="numeric" placeholder="관리자 view에서 확인한 provider user id" /></label>
+      <label>위험도
+        <select id="safetyRisk">
+          <option value="normal">normal · 보호 해제</option>
+          <option value="high">high · 고급 요청 제외</option>
+          <option value="critical">critical · 즉시 보호</option>
+        </select>
+      </label>
+      <label>응답 모드
+        <select id="safetyResponseMode">
+          <option value="fast">빠른 답변</option>
+          <option value="balanced" selected>균형</option>
+          <option value="deep">깊은 답변</option>
+          <option value="saving">절약</option>
+        </select>
+      </label>
+      <label>요청 후보 수<input id="safetyRequestedCandidates" type="number" min="1" max="5" value="2" /></label>
+    </div>
+    <label>보호 사유
+      <input id="safetyReason" type="text" placeholder="예: CPU 과열, 실패율 급증, Provider 요청" />
+    </label>
+    <div class="row">
+      <button id="safetyRefresh">과부하 현황 새로고침</button>
+      <button id="safetyMarkOverload">Provider 보호 상태 저장</button>
+    </div>
+    <div class="network-grid">
+      <article class="card">
+        <h3>보호 요약</h3>
+        <ul id="safetyOverloadSummary" class="list"></ul>
+      </article>
+      <article class="card">
+        <h3>알림 목록</h3>
+        <ul id="safetyOverloadAlerts" class="list"></ul>
+      </article>
+      <article class="card">
+        <h3>실행 계획</h3>
+        <ul id="safetyExecutionPlan" class="list"></ul>
+      </article>
+    </div>
+    <pre id="safetyResult" class="preview">길드 ID를 입력한 뒤 과부하 현황을 새로고침하세요.</pre>
+  </section>
+
+  <section class="panel">
     <h2>AI 프리셋 관리</h2>
     <p class="muted">서버 안 프리셋을 만들고, 웹 카탈로그에 게시하고, 다른 서버가 그대로 가져갈 수 있게 관리합니다.</p>
     <div class="form-grid">

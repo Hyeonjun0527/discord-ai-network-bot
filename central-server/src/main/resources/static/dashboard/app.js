@@ -587,6 +587,72 @@ async function resolveQualityFeedback() {
   }
 }
 
+function renderProviderSafety(dashboard, plan) {
+  const summary = [
+    ["과부하 알림", `${dashboard.alertCount ?? 0}건 · high/critical ${dashboard.highRiskCount ?? 0}`],
+    ["안전 온라인 Provider", `${dashboard.safeOnlineProviderCount ?? 0}명`],
+    ["다중응답 안전", dashboard.fanoutSafe ? "가능" : "제한 필요"],
+  ];
+  renderList("safetyOverloadSummary", summary, "과부하 요약 없음", ([label, value]) =>
+    `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
+  );
+  renderList("safetyOverloadAlerts", dashboard.alerts?.slice(0, 12), "활성 과부하 알림 없음", (alert) =>
+    `<li><strong>${esc(alert.providerLabel)} · ${esc(alert.risk)} · ${esc(alert.providerState)}</strong><span>${esc(alert.message)} · ${esc(alert.recommendedAction)}</span></li>`,
+  );
+  const planItems = [
+    ["요청 모드", `${plan.requestedResponseMode} → ${plan.effectiveResponseMode}`],
+    ["후보 수", `${plan.requestedCandidates} 요청 · 최대 안전 ${plan.maxSafeCandidates}`],
+    ["고급 기능", plan.advancedFeaturesAllowed ? "허용" : "비활성"],
+    ["fan-out", plan.fanoutAllowed ? "허용" : "차단"],
+    ["비활성 기능", (plan.disabledFeatures || []).join(", ") || "없음"],
+    ["이유", (plan.reasons || []).join(" / ") || "위험 없음"],
+  ];
+  renderList("safetyExecutionPlan", planItems, "실행 계획 없음", ([label, value]) =>
+    `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
+  );
+}
+
+async function refreshProviderSafety() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("safetyResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  const responseMode = $("safetyResponseMode").value;
+  const requestedCandidates = Math.max(1, Math.min(5, Number($("safetyRequestedCandidates").value || "1")));
+  try {
+    const [dashboard, plan] = await Promise.all([
+      getJson(`/api/ai-network/safety/${gid}/overload-alerts?audience=admin`),
+      getJson(`/api/ai-network/safety/${gid}/execution-plan?responseMode=${encodeURIComponent(responseMode)}&requestedCandidates=${requestedCandidates}`),
+    ]);
+    renderProviderSafety(dashboard, plan);
+    $("safetyResult").textContent =
+      `Provider 보호 현황: 알림 ${dashboard.alertCount ?? 0}건 · safeOnline ${dashboard.safeOnlineProviderCount ?? 0} · fanout ${dashboard.fanoutSafe ? "가능" : "제한"}`;
+  } catch (e) {
+    $("safetyResult").textContent = `과부하 현황 로딩 실패: ${e.message}`;
+  }
+}
+
+async function markProviderOverload() {
+  const gid = $("guildId").value.trim();
+  const providerId = $("safetyProviderId").value.trim();
+  if (!/^\d+$/.test(gid) || !/^\d+$/.test(providerId)) {
+    $("safetyResult").textContent = "길드 ID와 Provider 사용자 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/safety/${gid}/providers/${providerId}/overload?audience=admin`, {
+      overloadRisk: $("safetyRisk").value,
+      reason: $("safetyReason").value.trim() || null,
+    });
+    $("safetyResult").textContent =
+      `Provider 보호 상태 저장 완료: ${result.providerLabel} · event=${result.eventId} · alerts=${result.overloadAlertCount} · health=${result.healthStatus}`;
+    await refreshProviderSafety();
+  } catch (e) {
+    $("safetyResult").textContent = `Provider 보호 상태 저장 실패: ${e.message}`;
+  }
+}
+
 function presetBehaviorPayload() {
   const maxCandidates = Number($("presetMaxCandidates").value || "1");
   const tags = $("presetTags").value.split(",").map((v) => v.trim()).filter(Boolean);
@@ -1244,6 +1310,8 @@ $("knowledgeRefresh").addEventListener("click", refreshKnowledge);
 $("qualitySubmitFeedback").addEventListener("click", submitQualityFeedback);
 $("qualityRefresh").addEventListener("click", refreshQualityDashboard);
 $("qualityReviewResolve").addEventListener("click", resolveQualityFeedback);
+$("safetyRefresh").addEventListener("click", refreshProviderSafety);
+$("safetyMarkOverload").addEventListener("click", markProviderOverload);
 $("presetRefresh").addEventListener("click", refreshPresets);
 $("presetCreate").addEventListener("click", createPreset);
 $("presetUpdate").addEventListener("click", updatePreset);

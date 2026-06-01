@@ -105,6 +105,15 @@ class PresetRegistryService(
     }
 
     @Transactional(readOnly = true)
+    fun listReports(status: String = "open"): List<PresetReportSummary> {
+        featureGate.requirePresetEnabled()
+        return reports
+            .findByStatus(status.trim().lowercase().ifBlank { "open" })
+            .sortedWith(compareByDescending<PresetReportEntity> { it.createdAt }.thenBy { it.id })
+            .map { it.toSummary() }
+    }
+
+    @Transactional(readOnly = true)
     fun publishedPresetDetail(publishedPresetId: Long): PublishedPresetDetail {
         featureGate.requirePresetEnabled()
         val published =
@@ -270,6 +279,24 @@ class PresetRegistryService(
     }
 
     @Transactional
+    fun unlikePreset(
+        publishedPresetId: Long,
+        userId: Long,
+    ): PublishedPresetEntity {
+        featureGate.requirePresetEnabled()
+        val published =
+            publishedPresets.findById(publishedPresetId).orElseThrow {
+                IllegalArgumentException("published preset not found: $publishedPresetId")
+            }
+        require(published.status != "removed") { "removed preset cannot be unliked" }
+        reactions.findByPublishedPresetIdAndUserIdAndReaction(publishedPresetId, userId, "like")?.let { reaction ->
+            reactions.delete(reaction)
+            published.likeCount = (published.likeCount - 1).coerceAtLeast(0)
+        }
+        return publishedPresets.save(published)
+    }
+
+    @Transactional
     fun reportPreset(
         publishedPresetId: Long,
         reporterUserId: Long?,
@@ -290,7 +317,7 @@ class PresetRegistryService(
             PresetReportEntity(
                 publishedPresetId = publishedPresetId,
                 reporterUserId = reporterUserId,
-                reason = reason.trim().take(500),
+                reason = sanitizeText(reason, maxLength = 500),
                 createdAt = Instant.now(clock),
             ),
         )
@@ -329,9 +356,15 @@ class PresetRegistryService(
                 IllegalArgumentException("published preset not found: ${report.publishedPresetId}")
             }
         val normalized = decision.trim().lowercase().ifBlank { "reviewed" }
-        report.status = normalized
+        report.status =
+            when (normalized) {
+                "dismissed" -> "dismiss"
+                "removed" -> "remove"
+                "suspended" -> "suspend"
+                else -> normalized
+            }
         report.reviewedAt = Instant.now(clock)
-        when (normalized) {
+        when (report.status) {
             "suspend", "suspended" -> published.status = "suspended"
             "remove", "removed" -> published.status = "removed"
             "dismiss", "dismissed" -> if (published.status == "under_review") published.status = "published"
@@ -481,6 +514,17 @@ class PresetRegistryService(
             safetyLevel = safetyLevel,
         )
 
+    private fun PresetReportEntity.toSummary(): PresetReportSummary =
+        PresetReportSummary(
+            id = id,
+            publishedPresetId = publishedPresetId,
+            reporterUserId = reporterUserId,
+            reason = reason,
+            status = status,
+            createdAt = createdAt.toString(),
+            reviewedAt = reviewedAt?.toString(),
+        )
+
     private fun PublishedPresetEntity.toSummary(revision: PresetRevisionEntity?): PublishedPresetSummary =
         PublishedPresetSummary(
             id = id,
@@ -494,14 +538,26 @@ class PresetRegistryService(
             category = revision?.name,
             purpose = revision?.purpose,
             tone = revision?.tone,
+            safetyLevel = revision?.safetyLevel,
             likeCount = likeCount,
             importCount = importCount,
             reportCount = reportCount,
             publishedAt = publishedAt.toString(),
         )
 
+    private fun sanitizeText(
+        value: String,
+        maxLength: Int,
+    ): String =
+        value
+            .trim()
+            .replace(SECRET_PATTERN, "[redacted]")
+            .take(maxLength)
+            .ifBlank { "no reason provided" }
+
     private companion object {
         const val REPORT_REVIEW_THRESHOLD = 1
+        val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val HIGH_RISK_SAFETY_LEVELS = setOf("high", "restricted", "dangerous")
     }
 }
@@ -563,6 +619,7 @@ data class PublishedPresetSummary(
     val category: String?,
     val purpose: String?,
     val tone: String?,
+    val safetyLevel: String?,
     val likeCount: Int,
     val importCount: Int,
     val reportCount: Int,
@@ -575,6 +632,16 @@ data class PresetBehaviorSnapshot(
     val answerLength: String,
     val constitution: String?,
     val safetyLevel: String,
+)
+
+data class PresetReportSummary(
+    val id: Long,
+    val publishedPresetId: Long,
+    val reporterUserId: Long?,
+    val reason: String,
+    val status: String,
+    val createdAt: String,
+    val reviewedAt: String?,
 )
 
 data class PublishedPresetDetail(

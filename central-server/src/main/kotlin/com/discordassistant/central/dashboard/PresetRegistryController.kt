@@ -30,6 +30,14 @@ class PresetRegistryController(
     @GetMapping("/catalog")
     fun publishedPresets(): Map<String, Any?> = mapOf("presets" to registry.listPublishedPresets())
 
+    @GetMapping("/reports")
+    fun reports(): Map<String, Any?> = mapOf("reports" to registry.listReports())
+
+    @GetMapping("/reports/{status}")
+    fun reportsByStatus(
+        @PathVariable status: String,
+    ): Map<String, Any?> = mapOf("reports" to registry.listReports(status))
+
     @GetMapping("/catalog/{publishedPresetId}")
     fun publishedPresetDetail(
         @PathVariable publishedPresetId: Long,
@@ -113,6 +121,15 @@ class PresetRegistryController(
         @RequestBody request: LikePresetRequest,
     ): Map<String, Any?> {
         val published = registry.likePreset(publishedPresetId, request.userId)
+        return mapOf("id" to published.id, "likeCount" to published.likeCount)
+    }
+
+    @DeleteMapping("/published/{publishedPresetId}/like")
+    fun unlike(
+        @PathVariable publishedPresetId: Long,
+        @RequestBody request: LikePresetRequest,
+    ): Map<String, Any?> {
+        val published = registry.unlikePreset(publishedPresetId, request.userId)
         return mapOf("id" to published.id, "likeCount" to published.likeCount)
     }
 

@@ -107,10 +107,16 @@ class PresetRegistryServiceTest
             assertEquals(1, publishedList.size)
             val publishedSummary = publishedList.first() as PublishedPresetSummary
             assertEquals("코드 리뷰", publishedSummary.purpose)
+            assertEquals("standard", publishedSummary.safetyLevel)
             val publishedDetail = controller.publishedPresetDetail(publishedId)["preset"] as PublishedPresetDetail
             assertEquals("concise", publishedDetail.behavior.tone)
 
             controller.like(publishedId, LikePresetRequest(userId = 88))
+            controller.like(publishedId, LikePresetRequest(userId = 88))
+            assertEquals(1, publishedPresets.findById(publishedId).get().likeCount)
+            controller.unlike(publishedId, LikePresetRequest(userId = 88))
+            controller.unlike(publishedId, LikePresetRequest(userId = 88))
+            assertEquals(0, publishedPresets.findById(publishedId).get().likeCount)
             controller.like(publishedId, LikePresetRequest(userId = 88))
             assertEquals(1, publishedPresets.findById(publishedId).get().likeCount)
 
@@ -133,10 +139,17 @@ class PresetRegistryServiceTest
             assertEquals("concise", importedBehavior?.tone)
             assertEquals(1, publishedPresets.findById(publishedId).get().importCount)
 
-            val report = controller.report(publishedId, ReportPresetRequest(reporterUserId = 90, reason = "검토 필요"))
+            val report =
+                controller.report(
+                    publishedId,
+                    ReportPresetRequest(reporterUserId = 90, reason = "검토 필요 token=super-secret"),
+                )
             val reportId = report["id"] as Long
             assertEquals("open", report["status"])
             assertEquals(1, reports.findByStatus("open").size)
+            val openReports = controller.reports()["reports"] as List<*>
+            assertEquals(1, openReports.size)
+            assertEquals("검토 필요 [redacted]", (openReports.single() as PresetReportSummary).reason)
             assertEquals(1, publishedPresets.findById(publishedId).get().reportCount)
             assertEquals("under_review", publishedPresets.findById(publishedId).get().status)
             assertEquals(0, (controller.publishedPresets()["presets"] as List<*>).size)

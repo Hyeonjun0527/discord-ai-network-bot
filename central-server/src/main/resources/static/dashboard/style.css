@@ -21,7 +21,8 @@ h1 { font-size: 1.4rem; margin: .2rem 0; }
 .stat .num { font-size: 1.8rem; font-weight: 700; }
 .stat .lbl { font-size: .8rem; opacity: .7; }
 .row { display: flex; gap: .5rem; margin-bottom: 1rem; }
-input { flex: 1; padding: .5rem; border-radius: 8px; border: 1px solid #8886; background: transparent; color: inherit; }
+input, textarea { flex: 1; padding: .5rem; border-radius: 8px; border: 1px solid #8886; background: transparent; color: inherit; }
+textarea { width: 100%; resize: vertical; font: inherit; }
 button { padding: .5rem 1rem; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
 button.mini { margin-top: .45rem; padding: .28rem .55rem; font-size: .75rem; border-radius: 999px; background: #8885; }
 .trend { display: flex; align-items: flex-end; gap: 4px; height: 120px; margin: .5rem 0; }

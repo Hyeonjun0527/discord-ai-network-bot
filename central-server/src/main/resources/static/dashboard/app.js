@@ -101,6 +101,11 @@ function wizardPayload() {
   };
 }
 
+function numericValue(id) {
+  const value = $(id).value.trim();
+  return /^\d+$/.test(value) ? Number(value) : null;
+}
+
 async function draftChannelAi() {
   try {
     const draft = await postJson("/api/ai-network/channel-ai/wizard/draft", wizardPayload());
@@ -131,6 +136,106 @@ async function createChannelAi() {
     await loadGuild();
   } catch (e) {
     $("wizardPreview").textContent = `저장 실패: ${e.message}`;
+  }
+}
+
+function knowledgeSpacePayload() {
+  return {
+    channelId: numericValue("knowledgeChannelId"),
+    displayName: $("knowledgeSpaceName").value.trim() || "채널 지식공간",
+  };
+}
+
+function knowledgeSourcePayload() {
+  return {
+    sourceType: $("knowledgeSourceType").value,
+    title: $("knowledgeSourceTitle").value.trim() || "untitled",
+    sourceUri: $("knowledgeSourceUri").value.trim() || null,
+    contentPreview: $("knowledgeContentPreview").value.trim() || null,
+  };
+}
+
+function renderKnowledgeReadiness(readiness, quality) {
+  renderList("knowledgeReadiness", [
+    ["상태", readiness.status || "unknown"],
+    ["지식공간", `${readiness.spaceCount ?? 0}개`],
+    ["색인된 소스", `${readiness.indexedSourceCount ?? 0}/${readiness.sourceCount ?? 0}`],
+    ["차단/검토 필요", `${readiness.blockedSourceCount ?? 0}개`],
+    ["품질 점수", `${quality?.coverageScore ?? 0}점 · ${quality?.qualityBand || "unknown"}`],
+  ], "RAG 상태 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
+  const actions = readiness.nextActions || quality?.recommendations || [];
+  const spaces = readiness.spaces || [];
+  $("knowledgeResult").textContent = [
+    `RAG 상태: ${readiness.status || "unknown"}`,
+    "",
+    "[지식공간]",
+    ...(spaces.length ? spaces.map((s) =>
+      `- #${s.channelId || "-"} · space=${s.knowledgeSpaceId} · ${s.displayName} · ${s.readiness} · sources=${s.sourceCount}`,
+    ) : ["- 아직 지식공간이 없습니다."]),
+    "",
+    "[다음 액션]",
+    ...(actions.length ? actions.map((a) => `- ${a}`) : ["- 없음"]),
+  ].join("\n");
+}
+
+function renderKnowledgeIndexing(ops) {
+  const commands = ops.commands || [];
+  renderList("knowledgeIndexing", [
+    ["상태", ops.status || "unknown"],
+    ["색인 가능 소스", `${ops.indexableSourceCount ?? 0}개`],
+    ["차단 소스", `${ops.blockedSourceCount ?? 0}개`],
+    ["실행 명령", commands[0] || ops.nextActions?.[0] || "색인할 작업 없음"],
+  ], "색인 작업 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
+}
+
+async function refreshKnowledge() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("knowledgeResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const [readiness, quality, ops] = await Promise.all([
+      getJson(`/api/ai-network/knowledge/${gid}/readiness`),
+      getJson(`/api/ai-network/knowledge/${gid}/quality-summary`),
+      getJson(`/api/ai-network/knowledge/${gid}/indexing-operations`),
+    ]);
+    renderKnowledgeReadiness(readiness, quality);
+    renderKnowledgeIndexing(ops);
+  } catch (e) {
+    $("knowledgeResult").textContent = `RAG 상태 로딩 실패: ${e.message}`;
+  }
+}
+
+async function createKnowledgeSpace() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("knowledgeResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/knowledge/${gid}/spaces`, knowledgeSpacePayload());
+    $("knowledgeSpaceId").value = result.id || "";
+    $("knowledgeResult").textContent = `지식공간 생성 완료: space=${result.id} · ${result.status} · ${result.displayName}`;
+    await refreshKnowledge();
+  } catch (e) {
+    $("knowledgeResult").textContent = `지식공간 생성 실패: ${e.message}`;
+  }
+}
+
+async function addKnowledgeSource() {
+  const gid = $("guildId").value.trim();
+  const spaceId = $("knowledgeSpaceId").value.trim();
+  if (!/^\d+$/.test(gid) || !/^\d+$/.test(spaceId)) {
+    $("knowledgeResult").textContent = "길드 ID와 지식공간 ID를 숫자로 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/knowledge/${gid}/spaces/${spaceId}/sources`, knowledgeSourcePayload());
+    $("knowledgeResult").textContent = `지식 소스 추가 완료: source=${result.id} · ${result.status} · risk=${result.riskLevel}`;
+    await refreshKnowledge();
+  } catch (e) {
+    $("knowledgeResult").textContent = `지식 소스 추가 실패: ${e.message}`;
   }
 }
 
@@ -264,6 +369,9 @@ $("autoApproveOn").addEventListener("click", () => postWrite("auto-approve", { e
 $("autoApproveOff").addEventListener("click", () => postWrite("auto-approve", { enabled: "false" }));
 $("wizardDraft").addEventListener("click", draftChannelAi);
 $("wizardCreate").addEventListener("click", createChannelAi);
+$("knowledgeCreateSpace").addEventListener("click", createKnowledgeSpace);
+$("knowledgeAddSource").addEventListener("click", addKnowledgeSource);
+$("knowledgeRefresh").addEventListener("click", refreshKnowledge);
 document.addEventListener("click", (event) => {
   const button = event.target.closest(".import-preset");
   if (button) importPreset(button.dataset.presetId);

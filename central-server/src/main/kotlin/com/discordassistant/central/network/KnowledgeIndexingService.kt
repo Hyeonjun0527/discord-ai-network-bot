@@ -25,6 +25,7 @@ class KnowledgeIndexingService(
     private val jobs: EmbeddingIndexJobRepository,
     private val retrievalPolicies: RetrievalPolicyRepository,
     private val clock: Clock = Clock.systemUTC(),
+    private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
     @Transactional
     fun parseSourceToDocument(
@@ -35,6 +36,7 @@ class KnowledgeIndexingService(
         title: String? = null,
         channelId: Long? = null,
     ): KnowledgeDocumentEntity {
+        featureGate.requireRagEnabled()
         val now = Instant.now(clock)
         val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
         val source = sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId) ?: error("knowledge source not found")
@@ -42,6 +44,7 @@ class KnowledgeIndexingService(
         require(!source.status.startsWith("deleted")) { "deleted knowledge source cannot be parsed" }
         val clean = documentText.trim()
         require(clean.isNotBlank()) { "document text is required" }
+        supersedeExistingSourceIndex(source.id)
         val doc =
             documents.save(
                 KnowledgeDocumentEntity(
@@ -92,6 +95,7 @@ class KnowledgeIndexingService(
         collectionName: String = "discord_ai_network",
         embeddingModel: String = "text-embedding-3-large",
     ): EmbeddingIndexJobEntity {
+        featureGate.requireRagEnabled()
         val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
         val sourceCount = sources.findByKnowledgeSpaceId(space.id).count { !it.status.startsWith("deleted") }
         val chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, "ready").size
@@ -118,6 +122,7 @@ class KnowledgeIndexingService(
         status: String,
         failureReason: String? = null,
     ): EmbeddingIndexJobEntity {
+        featureGate.requireRagEnabled()
         val job = jobs.findById(jobId).orElseThrow { IllegalArgumentException("index job not found") }
         require(job.guildId == guildId) { "cross-guild index job update is not allowed" }
         val now = Instant.now(clock)
@@ -138,6 +143,7 @@ class KnowledgeIndexingService(
         rerankEnabled: Boolean,
         sourcePriority: List<String>,
     ): RetrievalPolicyEntity {
+        featureGate.requireRagEnabled()
         knowledgeSpaceId?.let { spaces.findByGuildIdAndId(guildId, it) ?: error("knowledge space not found") }
         val now = Instant.now(clock)
         val existing =
@@ -168,8 +174,26 @@ class KnowledgeIndexingService(
         guildId: Long,
         spaceId: Long,
     ): List<KnowledgeChunkEntity> {
+        featureGate.requireRagEnabled()
         spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
         return chunks.findByKnowledgeSpaceIdAndStatus(spaceId, "ready").filter { it.guildId == guildId }
+    }
+
+    private fun supersedeExistingSourceIndex(sourceId: Long) {
+        val existingDocs = documents.findByKnowledgeSourceId(sourceId)
+        if (existingDocs.isEmpty()) return
+        val existingChunks =
+            existingDocs.flatMap { doc ->
+                chunks.findByKnowledgeDocumentIdOrderByChunkIndex(doc.id)
+            }
+        existingChunks
+            .filter { it.status == "ready" }
+            .forEach { it.status = "superseded" }
+        existingDocs
+            .filter { it.status == "parsed" }
+            .forEach { it.status = "superseded" }
+        chunks.saveAll(existingChunks)
+        documents.saveAll(existingDocs)
     }
 
     private fun splitChunks(text: String): List<String> =

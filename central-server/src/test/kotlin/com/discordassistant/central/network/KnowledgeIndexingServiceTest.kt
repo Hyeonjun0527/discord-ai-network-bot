@@ -161,6 +161,61 @@ class KnowledgeIndexingServiceTest
         }
 
         @Test
+        fun `reparsing a source supersedes old documents and chunks`() {
+            val space = spaces.save(KnowledgeSpaceEntity(guildId = 100, channelId = 204, displayName = "재색인 지식"))
+            val source =
+                sources.save(
+                    KnowledgeSourceEntity(
+                        knowledgeSpaceId = space.id,
+                        guildId = 100,
+                        sourceType = "text",
+                        title = "운영 가이드",
+                        status = "indexed",
+                    ),
+                )
+
+            val first =
+                service.parseSourceToDocument(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceId = source.id,
+                    documentText = "old deploy\n\nold rollback",
+                )
+            val second =
+                service.parseSourceToDocument(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceId = source.id,
+                    documentText = "new deploy",
+                )
+
+            assertEquals("superseded", documents.findById(first.id).get().status)
+            assertEquals("parsed", documents.findById(second.id).get().status)
+            assertTrue(chunks.findByKnowledgeDocumentIdOrderByChunkIndex(first.id).all { it.status == "superseded" })
+            assertEquals(listOf(second.id), service.readyChunks(100, space.id).map { it.knowledgeDocumentId }.distinct())
+            assertEquals(1, spaces.findByGuildIdAndId(100, space.id)!!.chunkCount)
+        }
+
+        @Test
+        fun `rag indexing service obeys feature kill switch`() {
+            val disabled =
+                KnowledgeIndexingService(
+                    spaces = spaces,
+                    sources = sources,
+                    documents = documents,
+                    chunks = chunks,
+                    jobs = jobs,
+                    retrievalPolicies = retrievalPolicies,
+                    clock = fixedClock,
+                    featureGate = AiNetworkFeatureGate(ragEnabled = false),
+                )
+
+            assertThrows(IllegalStateException::class.java) {
+                disabled.readyChunks(100, 1)
+            }
+        }
+
+        @Test
         fun `cross guild source and job updates are rejected`() {
             val space = spaces.save(KnowledgeSpaceEntity(guildId = 100, channelId = 202, displayName = "A"))
             val source =

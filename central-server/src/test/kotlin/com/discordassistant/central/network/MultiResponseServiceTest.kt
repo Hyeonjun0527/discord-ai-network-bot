@@ -13,6 +13,7 @@ import com.discordassistant.central.persistence.ProviderCapabilityProfileReposit
 import com.discordassistant.central.persistence.SynthesisResultRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
@@ -137,5 +138,33 @@ class MultiResponseServiceTest
 
             assertEquals("no_provider", started["status"])
             assertEquals(0, started["candidateCount"])
+        }
+
+        @Test
+        fun `multi response kill switch blocks advanced fanout workflow`() {
+            val disabledService =
+                MultiResponseService(
+                    policies = policies,
+                    runs = runs,
+                    candidates = candidates,
+                    syntheses = syntheses,
+                    providerCapabilities = providerCapabilities,
+                    clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
+                    featureGate = AiNetworkFeatureGate(multiResponseEnabled = false),
+                )
+
+            assertThrows(IllegalStateException::class.java) {
+                disabledService.savePolicy(
+                    guildId = 100,
+                    channelId = 200,
+                    channelAiId = null,
+                    mode = "compare",
+                    maxCandidates = 2,
+                    requireDistinctModels = false,
+                    providerDailyLimit = 0,
+                    timeoutSeconds = 120,
+                    synthesisEnabled = true,
+                )
+            }
         }
     }

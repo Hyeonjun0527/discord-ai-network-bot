@@ -24,6 +24,7 @@ class MultiResponseService(
     private val syntheses: SynthesisResultRepository,
     private val providerCapabilities: ProviderCapabilityProfileRepository,
     private val clock: Clock = Clock.systemUTC(),
+    private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
     @Transactional
     fun savePolicy(
@@ -37,6 +38,7 @@ class MultiResponseService(
         timeoutSeconds: Int,
         synthesisEnabled: Boolean,
     ): MultiResponsePolicyEntity {
+        featureGate.requireMultiResponseEnabled()
         val now = Instant.now(clock)
         val existing =
             if (channelId == null) {
@@ -62,6 +64,7 @@ class MultiResponseService(
         channelId: Long,
         requestId: String = newRequestId(),
     ): MultiResponseRunEntity {
+        featureGate.requireMultiResponseEnabled()
         val policy =
             policies.findByGuildIdAndChannelId(guildId, channelId)
                 ?: policies.findByGuildIdAndChannelIdIsNull(guildId)
@@ -121,6 +124,7 @@ class MultiResponseService(
         safetyFlags: List<String>,
         qualityScore: Int?,
     ): CandidateAnswerEntity {
+        featureGate.requireMultiResponseEnabled()
         val candidate =
             candidates.findByRunIdAndId(runId, candidateId)
                 ?: throw IllegalArgumentException("candidate not found: run=$runId candidate=$candidateId")
@@ -138,6 +142,7 @@ class MultiResponseService(
         answerRef: String,
         selectedCandidateIds: List<Long>,
     ): SynthesisResultEntity {
+        featureGate.requireMultiResponseEnabled()
         val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
         val now = Instant.now(clock)
         val synthesis =
@@ -159,6 +164,7 @@ class MultiResponseService(
         runId: Long,
         reason: String,
     ): MultiResponseRunEntity {
+        featureGate.requireMultiResponseEnabled()
         val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
         run.status = "failed"
         run.failureReason = reason.trim().take(500)
@@ -174,7 +180,7 @@ class MultiResponseService(
     ) = providerCapabilities
         .findByGuildId(guildId)
         .filter { it.providerState.equals("ONLINE", ignoreCase = true) }
-        .filter { !it.overloadRisk.equals("high", ignoreCase = true) }
+        .filter { !it.overloadRisk.equals("high", ignoreCase = true) && !it.overloadRisk.equals("critical", ignoreCase = true) }
         .filter { policy.providerDailyLimit <= 0 || it.dailyLimit <= 0 || it.dailyLimit >= policy.providerDailyLimit }
         .sortedWith(
             compareByDescending<ProviderCapabilityProfileEntity> { it.qualityTier == "specialized" }

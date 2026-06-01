@@ -15,6 +15,7 @@ class KnowledgeIngestionService(
     private val spaces: KnowledgeSpaceRepository,
     private val sources: KnowledgeSourceRepository,
     private val clock: Clock = Clock.systemUTC(),
+    private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
     @Transactional
     fun createSpace(
@@ -26,6 +27,7 @@ class KnowledgeIngestionService(
         embeddingModel: String?,
         indexName: String?,
     ): KnowledgeSpaceEntity {
+        featureGate.requireRagEnabled()
         val now = Instant.now(clock)
         return spaces.save(
             KnowledgeSpaceEntity(
@@ -53,6 +55,7 @@ class KnowledgeIngestionService(
         contentPreview: String?,
         addedBy: Long?,
     ): KnowledgeSourceEntity {
+        featureGate.requireRagEnabled()
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
                 ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
@@ -86,6 +89,7 @@ class KnowledgeIngestionService(
         sourceId: Long,
         chunkCount: Int,
     ): KnowledgeSourceEntity {
+        featureGate.requireRagEnabled()
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
                 ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
@@ -111,6 +115,7 @@ class KnowledgeIngestionService(
         sourceId: Long,
         reason: String,
     ): KnowledgeSourceEntity {
+        featureGate.requireRagEnabled()
         spaces.findByGuildIdAndId(guildId, spaceId)
             ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
         val source =

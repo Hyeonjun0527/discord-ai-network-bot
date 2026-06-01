@@ -26,6 +26,7 @@ class PresetRegistryService(
     private val reactions: PresetReactionRepository,
     private val reports: PresetReportRepository,
     private val clock: Clock = Clock.systemUTC(),
+    private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
     @Transactional
     fun createPreset(
@@ -37,6 +38,7 @@ class PresetRegistryService(
         visibility: String,
         behavior: PresetBehaviorInput,
     ): AiPresetEntity {
+        featureGate.requirePresetEnabled()
         val now = Instant.now(clock)
         val preset =
             presets.save(
@@ -68,6 +70,7 @@ class PresetRegistryService(
         visibility: String?,
         behavior: PresetBehaviorInput?,
     ): AiPresetEntity {
+        featureGate.requirePresetEnabled()
         val now = Instant.now(clock)
         val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
         name?.trim()?.takeIf { it.isNotBlank() }?.let { preset.name = it }
@@ -90,6 +93,7 @@ class PresetRegistryService(
         title: String?,
         description: String?,
     ): PublishedPresetEntity {
+        featureGate.requirePresetEnabled()
         val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
         val revisionId =
             preset.currentRevisionId
@@ -119,6 +123,7 @@ class PresetRegistryService(
         targetChannelId: Long?,
         importedBy: Long?,
     ): PresetImportEntity {
+        featureGate.requirePresetEnabled()
         val published =
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
@@ -164,6 +169,7 @@ class PresetRegistryService(
         publishedPresetId: Long,
         userId: Long,
     ): PublishedPresetEntity {
+        featureGate.requirePresetEnabled()
         val published =
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
@@ -188,6 +194,7 @@ class PresetRegistryService(
         reporterUserId: Long?,
         reason: String,
     ): PresetReportEntity {
+        featureGate.requirePresetEnabled()
         val published =
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
@@ -206,6 +213,7 @@ class PresetRegistryService(
 
     @Transactional
     fun deletePreset(presetId: Long) {
+        featureGate.requirePresetEnabled()
         presets.findById(presetId).ifPresent {
             it.currentRevisionId = null
             presets.save(it)
@@ -216,6 +224,7 @@ class PresetRegistryService(
 
     @Transactional
     fun deletePublishedPreset(publishedPresetId: Long) {
+        featureGate.requirePresetEnabled()
         publishedPresets.deleteById(publishedPresetId)
     }
 

@@ -64,6 +64,14 @@ central:
     request-timeout-seconds: ${RELAY_REQUEST_TIMEOUT_SECONDS:120}
   token:
     ttl-seconds: ${AGENT_TOKEN_TTL_SECONDS:600}
+  ai-network:
+    enabled: ${AI_NETWORK_ENABLED:true}
+    dashboard-enabled: ${AI_NETWORK_DASHBOARD_ENABLED:true}
+    presets-enabled: ${AI_NETWORK_PRESETS_ENABLED:true}
+    rag-enabled: ${AI_NETWORK_RAG_ENABLED:true}
+    multi-response-enabled: ${AI_NETWORK_MULTI_RESPONSE_ENABLED:true}
+    # 운영 긴급 차단. true 면 AI Network 신규 기능 API/고급 워크플로가 즉시 멈춘다.
+    kill-switch: ${AI_NETWORK_KILL_SWITCH:false}
 
 # 에러 트래킹(#223). DSN 미설정(기본)이면 완전 no-op. 운영에서 SENTRY_DSN 주입 시 활성.
 sentry:

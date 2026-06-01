@@ -125,6 +125,37 @@ class KnowledgeIndexingServiceTest
         }
 
         @Test
+        fun `secret material is blocked before document chunks are created`() {
+            val space = spaces.save(KnowledgeSpaceEntity(guildId = 104, channelId = 204, displayName = "보안 지식"))
+            val source =
+                sources.save(
+                    KnowledgeSourceEntity(
+                        knowledgeSpaceId = space.id,
+                        guildId = 104,
+                        sourceType = "text",
+                        title = "운영 env",
+                        status = "pending",
+                        riskLevel = "normal",
+                    ),
+                )
+
+            assertThrows(IllegalArgumentException::class.java) {
+                service.parseSourceToDocument(
+                    guildId = 104,
+                    spaceId = space.id,
+                    sourceId = source.id,
+                    documentText = "DISCORD_BOT_TOKEN=secret-value",
+                )
+            }
+
+            val blocked = sources.findByKnowledgeSpaceIdAndId(space.id, source.id)!!
+            assertEquals("blocked_sensitive", blocked.status)
+            assertEquals("sensitive", blocked.riskLevel)
+            assertTrue(documents.findByKnowledgeSourceId(source.id).isEmpty())
+            assertTrue(chunks.findByKnowledgeSpaceIdAndStatus(space.id, "ready").isEmpty())
+        }
+
+        @Test
         fun `knowledge dashboard add source immediately indexes inline text for website RAG`() {
             val ingestion =
                 KnowledgeIngestionService(

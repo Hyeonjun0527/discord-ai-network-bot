@@ -539,12 +539,7 @@ class KnowledgeIngestionService(
             indexedAt = indexedAt?.toString(),
         )
 
-    private fun sanitizeReason(reason: String): String =
-        reason
-            .trim()
-            .replace(REASON_SECRET_PATTERN, "[redacted]")
-            .take(80)
-            .ifBlank { "manual" }
+    private fun sanitizeReason(reason: String): String = KnowledgeSafety.redactReason(reason)
 
     private fun validateSource(
         sourceType: String,
@@ -558,7 +553,7 @@ class KnowledgeIngestionService(
         if (contentPreview.orEmpty().length > MAX_CONTENT_PREVIEW_CHARS) {
             return SourceValidation("review", "blocked_too_large")
         }
-        if (SENSITIVE_PATTERNS.any { it.containsMatchIn(text) }) {
+        if (KnowledgeSafety.containsSensitiveMaterial(text)) {
             return SourceValidation("sensitive", "blocked_sensitive")
         }
         if (sourceUri != null) {
@@ -631,15 +626,6 @@ class KnowledgeIngestionService(
         val BLOCKING_RISK_LEVELS = setOf("sensitive", "ssrf")
         val INDEXABLE_RISK_LEVELS = setOf("normal", "review")
         val IPV4_LITERAL = Regex("""\d{1,3}(?:\.\d{1,3}){3}""")
-        val REASON_SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
-        val SENSITIVE_PATTERNS =
-            listOf(
-                Regex("(?i)\\b(password|passwd|pwd)\\s*[:=]\\s*\\S+"),
-                Regex("(?i)\\b(api[_-]?key|secret|token|bot[_-]?token|private[_-]?key)\\s*[:=]\\s*\\S+"),
-                Regex("(?i)-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"),
-                Regex("(?i)discord[_-]?bot[_-]?token"),
-                Regex("(?i)sk-[A-Za-z0-9_-]{20,}"),
-            )
     }
 }
 

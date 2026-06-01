@@ -44,6 +44,13 @@ class KnowledgeIndexingService(
         require(!source.status.startsWith("deleted")) { "deleted knowledge source cannot be parsed" }
         val clean = documentText.trim()
         require(clean.isNotBlank()) { "document text is required" }
+        if (KnowledgeSafety.containsSensitiveMaterial(clean)) {
+            source.status = "blocked_sensitive"
+            source.riskLevel = "sensitive"
+            source.contentHash = sha256(clean)
+            sources.save(source)
+            throw IllegalArgumentException("sensitive knowledge document cannot be indexed")
+        }
         supersedeExistingSourceIndex(source.id)
         val doc =
             documents.save(

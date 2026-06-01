@@ -259,6 +259,74 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `provider fanout load summarizes timeout latency quality and risk`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 71,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 72,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "qwen",
+                    capabilityTags = "multi-response",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(
+                100,
+                SaveMultiResponsePolicyRequest(channelId = 202, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
+            )
+            val firstRunId = controller.startRun(100, StartMultiResponseRunRequest(channelId = 202, requestId = "load-1"))["id"] as Long
+            val firstCandidates = candidates.findByRunId(firstRunId)
+            controller.recordCandidate(
+                firstRunId,
+                firstCandidates.first { it.providerUserId == 71L }.id,
+                RecordCandidateRequest(answerRef = "answer:load-1:ok", status = "completed", latencyMs = 1200, qualityScore = 90),
+            )
+            controller.recordCandidate(
+                firstRunId,
+                firstCandidates.first { it.providerUserId == 72L }.id,
+                RecordCandidateRequest(status = "timeout", latencyMs = 15_000),
+            )
+            val secondRunId = controller.startRun(100, StartMultiResponseRunRequest(channelId = 202, requestId = "load-2"))["id"] as Long
+            val secondCandidates = candidates.findByRunId(secondRunId)
+            controller.recordCandidate(
+                secondRunId,
+                secondCandidates.first { it.providerUserId == 71L }.id,
+                RecordCandidateRequest(answerRef = "answer:load-2:ok", status = "completed", latencyMs = 1400, qualityScore = 80),
+            )
+            controller.recordCandidate(
+                secondRunId,
+                secondCandidates.first { it.providerUserId == 72L }.id,
+                RecordCandidateRequest(status = "failed", latencyMs = 12_000),
+            )
+
+            val load = controller.providerLoad(100)
+            val risky = load.first()
+            val stable = load.first { it["providerUserId"] == 71L }
+
+            assertEquals(72L, risky["providerUserId"])
+            assertEquals("critical", risky["loadRisk"])
+            assertEquals(1, risky["timeoutCount"])
+            assertEquals(1, risky["failedCount"])
+            assertEquals("normal", stable["loadRisk"])
+            assertEquals(2, stable["completedCount"])
+            assertEquals(85.0, stable["averageQualityScore"])
+        }
+
+        @Test
         fun `complete best effort uses successful candidate when another candidate times out`() {
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(

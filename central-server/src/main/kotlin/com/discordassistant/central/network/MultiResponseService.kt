@@ -319,6 +319,41 @@ class MultiResponseService(
         )
     }
 
+    fun providerFanoutLoad(guildId: Long): List<ProviderFanoutLoadSummary> {
+        val recentRuns = runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
+        val runIds = recentRuns.map { it.id }.toSet()
+        if (runIds.isEmpty()) return emptyList()
+        val runCandidates = recentRuns.flatMap { candidates.findByRunId(it.id) }
+        return runCandidates
+            .filter { it.providerUserId != null }
+            .groupBy { it.providerUserId!! }
+            .map { (providerUserId, providerCandidates) ->
+                val latencyValues = providerCandidates.mapNotNull { it.latencyMs }
+                val timeoutCount = providerCandidates.count { it.status.equals("timeout", ignoreCase = true) }
+                val failedCount =
+                    providerCandidates.count {
+                        it.status.equals("failed", ignoreCase = true) || it.status.equals("rejected", ignoreCase = true)
+                    }
+                val completedCount = providerCandidates.count { it.status.equals("completed", ignoreCase = true) }
+                ProviderFanoutLoadSummary(
+                    guildId = guildId,
+                    providerUserId = providerUserId,
+                    candidateCount = providerCandidates.size,
+                    completedCount = completedCount,
+                    timeoutCount = timeoutCount,
+                    failedCount = failedCount,
+                    averageLatencyMs = latencyValues.takeIf { it.isNotEmpty() }?.average() ?: 0.0,
+                    averageQualityScore = providerCandidates.mapNotNull { it.qualityScore }.takeIf { it.isNotEmpty() }?.average() ?: 0.0,
+                    loadRisk = fanoutLoadRisk(providerCandidates.size, timeoutCount, failedCount, latencyValues),
+                    runIds = providerCandidates.map { it.runId }.filter { it in runIds }.distinct(),
+                )
+            }.sortedWith(
+                compareByDescending<ProviderFanoutLoadSummary> { riskRank(it.loadRisk) }
+                    .thenByDescending { it.candidateCount }
+                    .thenBy { it.providerUserId },
+            )
+    }
+
     fun dailyStats(guildId: Long): MultiResponseDailyStats {
         val recent = runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
         val completed = recent.count { it.status == "completed" }
@@ -342,6 +377,31 @@ class MultiResponseService(
             averageActualFanout = actualFanout,
         )
     }
+
+    private fun fanoutLoadRisk(
+        candidateCount: Int,
+        timeoutCount: Int,
+        failedCount: Int,
+        latencyValues: List<Int>,
+    ): String {
+        val timeoutRate = if (candidateCount == 0) 0.0 else timeoutCount.toDouble() / candidateCount
+        val failureRate = if (candidateCount == 0) 0.0 else (timeoutCount + failedCount).toDouble() / candidateCount
+        val averageLatency = latencyValues.takeIf { it.isNotEmpty() }?.average() ?: 0.0
+        return when {
+            timeoutRate >= 0.5 || failureRate >= 0.75 -> "critical"
+            timeoutRate >= 0.25 || failureRate >= 0.4 || averageLatency >= 10_000 -> "high"
+            candidateCount >= 5 || averageLatency >= 5_000 -> "watch"
+            else -> "normal"
+        }
+    }
+
+    private fun riskRank(value: String): Int =
+        when (value.lowercase()) {
+            "critical" -> 4
+            "high" -> 3
+            "watch" -> 2
+            else -> 1
+        }
 
     private fun selectProviders(
         guildId: Long,
@@ -511,6 +571,19 @@ data class MultiResponseDailyStats(
     val fallbackRunCount: Int,
     val timeoutCandidateCount: Int,
     val averageActualFanout: Double,
+)
+
+data class ProviderFanoutLoadSummary(
+    val guildId: Long,
+    val providerUserId: Long,
+    val candidateCount: Int,
+    val completedCount: Int,
+    val timeoutCount: Int,
+    val failedCount: Int,
+    val averageLatencyMs: Double,
+    val averageQualityScore: Double,
+    val loadRisk: String,
+    val runIds: List<Long>,
 )
 
 data class MultiResponseCompletion(

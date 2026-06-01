@@ -202,6 +202,25 @@ class MultiResponseController(
         )
     }
 
+    @GetMapping("/{guildId}/provider-load")
+    fun providerLoad(
+        @PathVariable guildId: Long,
+    ): List<Map<String, Any?>> =
+        service.providerFanoutLoad(guildId).map {
+            mapOf(
+                "guildId" to it.guildId,
+                "providerUserId" to it.providerUserId,
+                "candidateCount" to it.candidateCount,
+                "completedCount" to it.completedCount,
+                "timeoutCount" to it.timeoutCount,
+                "failedCount" to it.failedCount,
+                "averageLatencyMs" to it.averageLatencyMs,
+                "averageQualityScore" to it.averageQualityScore,
+                "loadRisk" to it.loadRisk,
+                "runIds" to it.runIds,
+            )
+        }
+
     @GetMapping("/{guildId}/stats")
     fun stats(
         @PathVariable guildId: Long,

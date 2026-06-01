@@ -270,6 +270,7 @@ class DiscordBot(
                 // 인터랙티브(차수 13): 설정 패널(버튼/Select #147/180), 모달 입력(#189)
                 Commands.slash("menu", "시작 패널을 엽니다(질문·기여·설정·도움말 한 곳에서)"),
                 Commands.slash("llm-settings", "설정 패널을 엽니다(관리자)").setDefaultPermissions(adminPerm),
+                Commands.slash("ai-network-check", "AI 네트워크 출시/운영 체크리스트를 봅니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands.slash("bot-permissions", "봇 권한과 @멘션 호출 설정을 점검합니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands.slash("ask-long", "긴 질문을 모달 창으로 입력합니다"),
                 // 컨텍스트 메뉴(#181): 메시지 우클릭 → 그 내용으로 질문
@@ -1135,6 +1136,7 @@ class DiscordBot(
                 "privacy" -> commands.privacy(ctx)
                 "help" -> commands.help(ctx)
                 "bot-permissions" -> commands.botPermissions(ctx)
+                "ai-network-check" -> commands.aiNetworkCheck(ctx)
                 "welcome" -> commands.welcome(ctx)
                 "llm-welcome-set" -> commands.setWelcome(ctx, event.getOption("message")!!.asString)
                 "provider-join" -> commands.providerJoin(ctx)

@@ -63,6 +63,7 @@ class CommandServiceTest
             assertTrue(admin.contains("__관리자__"))
             assertTrue(admin.contains("/채널프로필"))
             assertTrue(admin.contains("/llm-channel-profile"))
+            assertTrue(admin.contains("/ai-network-check"))
         }
 
         @Test

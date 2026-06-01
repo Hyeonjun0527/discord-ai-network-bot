@@ -2,9 +2,11 @@ package com.discordassistant.central.discord
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.network.AiNetworkLaunchChecklistService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
+import com.discordassistant.central.network.NetworkLaunchChecklist
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.provider.ContributionPolicyService
 import com.discordassistant.central.provider.ProviderProtectionService
@@ -50,6 +52,7 @@ class CommandService(
     private val channelProfiles: ChannelAiProfileService,
     private val channelRoutingPolicies: ChannelAiRoutingPolicyService,
     private val knowledgeSearch: KnowledgeSearchService,
+    private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
 ) {
@@ -297,10 +300,43 @@ class CommandService(
             sb.append("· `/프로바이더승인`(`/provider-approve`) `/프로바이더제거`(`/provider-remove`) — 승인/제거\n")
             sb.append("· `/채널허용`(`/llm-allow-channel`) `/채널금지`(`/llm-deny-channel`) `/역할정책`(`/llm-role-policy`) — 채널·역할 정책\n")
             sb.append("· `/채널프로필`(`/llm-channel-profile`) — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
+            sb.append("· `/ai-network-check` — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
             sb.append("· `/사용자차단`(`/llm-block`) `/차단해제`(`/llm-unblock`) — 사용자 차단/해제\n")
         }
         sb.append("\n_민감정보(비밀번호·API 키 등)는 입력하지 마세요._")
         return Reply(sb.toString())
+    }
+
+    fun aiNetworkCheck(ctx: CommandContext): Reply {
+        adminOnly(ctx)?.let { return it }
+        return Reply(formatAiNetworkChecklist(aiNetworkLaunchChecklist.checklist(ctx.guildId)))
+    }
+
+    private fun formatAiNetworkChecklist(checklist: NetworkLaunchChecklist): String {
+        val topItems =
+            checklist.items
+                .filter { it.status != "ready" }
+                .ifEmpty { checklist.items.take(5) }
+                .take(8)
+                .joinToString("\n") { item ->
+                    val icon =
+                        when (item.status) {
+                            "ready" -> "✅"
+                            "warning" -> "⚠️"
+                            else -> "⛔"
+                        }
+                    "$icon **${item.title}** — ${item.nextAction}"
+                }
+        val next =
+            checklist.nextActions
+                .take(5)
+                .joinToString("\n") { "• $it" }
+                .ifBlank { "• 지금 막을 항목은 없습니다." }
+        return "🧭 **AI 네트워크 출시/운영 체크리스트**\n\n" +
+            "상태: `${checklist.status}` · Gate: `${checklist.releaseGate}` · 점수: `${checklist.score}`\n" +
+            "준비 ${checklist.readyCount} · 주의 ${checklist.warningCount} · 차단 ${checklist.blockedCount}\n\n" +
+            "__핵심 항목__\n$topItems\n\n" +
+            "__다음 액션__\n$next"
     }
 
     // ── 프로바이더 ──────────────────────────────────────────────────────

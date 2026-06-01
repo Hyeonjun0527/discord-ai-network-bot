@@ -78,6 +78,14 @@ function catalogUrl() {
   return `/api/ai-network/presets/catalog?${params.toString()}`;
 }
 
+function recommendedUrl() {
+  const params = new URLSearchParams();
+  const category = $("category").value.trim();
+  if (category) params.set("category", category);
+  params.set("limit", "8");
+  return `/api/ai-network/presets/catalog/recommended?${params.toString()}`;
+}
+
 function renderCatalog(presets) {
   if (!presets.length) {
     $("catalog").innerHTML = `<article class="card"><h3>아직 공개된 프리셋이 없습니다.</h3><p>대시보드에서 서버 프리셋을 게시하면 여기에 나타납니다.</p></article>`;
@@ -115,6 +123,48 @@ async function refreshCatalog() {
     $("status").textContent = `웹 카탈로그 ${data.presets?.length || 0}개 · ${data.sort || "popular"}`;
   } catch (e) {
     $("status").textContent = `프리셋 로딩 실패: ${e.message}`;
+  }
+}
+
+function renderRecommendations(recommendations) {
+  const items = (recommendations || []).slice(0, 8);
+  if (!items.length) {
+    $("recommendations").innerHTML = `<span class="badge">추천할 공개 프리셋이 아직 없습니다.</span>`;
+    return;
+  }
+  $("recommendations").innerHTML = items.map((item) => {
+    const preset = item.preset || item;
+    return `<button type="button" data-action="preview" data-id="${esc(preset.id)}">
+      ${esc(preset.title || "프리셋")} · 점수 ${esc(item.score ?? "-")}
+    </button>`;
+  }).join("");
+}
+
+function renderFacets(facets) {
+  const categories = (facets?.categories || []).slice(0, 8);
+  const tags = (facets?.tags || []).slice(0, 12);
+  const buttons = [
+    ...categories.map((facet) =>
+      `<button type="button" data-facet-type="category" data-facet-value="${esc(facet.value)}">#${esc(facet.value)} ${esc(facet.count)}</button>`,
+    ),
+    ...tags.map((facet) =>
+      `<button type="button" data-facet-type="tag" data-facet-value="${esc(facet.value)}">✦ ${esc(facet.value)} ${esc(facet.count)}</button>`,
+    ),
+  ];
+  $("facets").innerHTML = buttons.length ? buttons.join("") : `<span class="badge">아직 집계된 카테고리/태그가 없습니다.</span>`;
+}
+
+async function refreshDiscovery() {
+  try {
+    const [recommended, facets] = await Promise.all([
+      json(recommendedUrl()),
+      json("/api/ai-network/presets/catalog/facets"),
+    ]);
+    renderRecommendations(recommended.recommendations || []);
+    renderFacets(facets.facets || {});
+  } catch (e) {
+    $("recommendations").innerHTML = `<span class="badge">추천 로딩 실패: ${esc(e.message)}</span>`;
+    $("facets").innerHTML = `<span class="badge">탐색 필터 로딩 실패</span>`;
   }
 }
 
@@ -288,7 +338,10 @@ async function confirmImport() {
   }
 }
 
-$("search").addEventListener("click", refreshCatalog);
+$("search").addEventListener("click", () => {
+  refreshCatalog();
+  refreshDiscovery();
+});
 $("saveAdminToken").addEventListener("click", saveAdminToken);
 $("adminToken").addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveAdminToken();
@@ -303,12 +356,30 @@ $("catalog").addEventListener("click", (event) => {
   if (button.dataset.action === "like") likePreset(Number(button.dataset.id));
   if (button.dataset.action === "report") reportPreset(Number(button.dataset.id));
 });
+$("recommendations").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-action='preview']");
+  if (button) previewPreset(button.dataset.id);
+});
+$("facets").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-facet-type]");
+  if (!button) return;
+  if (button.dataset.facetType === "category") {
+    $("category").value = button.dataset.facetValue || "";
+  } else {
+    $("query").value = button.dataset.facetValue || "";
+  }
+  refreshCatalog();
+  refreshDiscovery();
+});
 ["query", "category"].forEach((id) => $(id).addEventListener("keydown", (event) => {
-  if (event.key === "Enter") refreshCatalog();
+  if (event.key === "Enter") {
+    refreshCatalog();
+    refreshDiscovery();
+  }
 }));
 $("adminToken").value = sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
 updateAdminTokenStatus();
 const initialPresetLocator = new URLSearchParams(window.location.search).get("preset");
-refreshCatalog().then(() => {
+Promise.all([refreshCatalog(), refreshDiscovery()]).then(() => {
   if (initialPresetLocator) previewPreset(initialPresetLocator);
 });

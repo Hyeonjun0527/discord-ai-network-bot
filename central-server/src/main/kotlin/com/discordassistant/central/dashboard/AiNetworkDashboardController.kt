@@ -12,6 +12,8 @@ import com.discordassistant.central.network.ProviderSafetyService
 import com.discordassistant.central.network.QualityReviewSummary
 import com.discordassistant.central.network.QualitySummary
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.persistence.AiChangeProposalEntity
+import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
@@ -37,6 +39,7 @@ class AiNetworkDashboardController(
     private val providerSafety: ProviderSafetyService,
     private val channelAis: ChannelAiRepository,
     private val behaviorVersions: AiBehaviorVersionRepository,
+    private val proposals: AiChangeProposalRepository,
     private val routingPolicies: ChannelAiRoutingPolicyRepository,
     private val multiResponsePolicies: MultiResponsePolicyRepository,
     private val providerCapabilities: ProviderCapabilityProfileRepository,
@@ -66,6 +69,7 @@ class AiNetworkDashboardController(
         val quality = qualityFeedback.guildSummary(guildId)
         val qualityReview = qualityFeedback.reviewSummary(guildId)
         val modelQuality = qualityFeedback.modelQuality(guildId)
+        val changeApproval = changeApproval(guildId)
         val rawOverload = providerSafety.overloadAlerts(guildId)
         val overload = ProviderSafetyDashboardResponse.from(rawOverload, DashboardAudience.from(audience))
         val executionPlan = providerSafety.executionPlan(guildId, responseMode, requestedCandidates)
@@ -83,11 +87,12 @@ class AiNetworkDashboardController(
             quality = quality,
             qualityReview = qualityReview,
             modelQuality = modelQuality,
+            changeApproval = changeApproval,
             overload = overload,
             executionPlan = executionPlan,
             multiResponseOperations = multiResponseOperations,
             readiness = readiness,
-            nextActions = nextActions(overview, channels, modelMap, knowledgeSpaces, quality, rawOverload),
+            nextActions = nextActions(overview, channels, modelMap, knowledgeSpaces, quality, rawOverload, changeApproval),
         )
     }
 
@@ -228,6 +233,40 @@ class AiNetworkDashboardController(
                             nextActions = it.nextActions,
                         )
                     },
+        )
+    }
+
+    @GetMapping("/{guildId}/change-approval")
+    fun changeApproval(
+        @PathVariable guildId: Long,
+    ): ChannelAiChangeApprovalDashboardResponse {
+        featureGate.requireDashboardEnabled()
+        val all = proposals.findByGuildIdOrderByCreatedAtDesc(guildId)
+        val pending = all.filter { it.status == "pending" }
+        val stale = all.filter { it.status == "stale" }
+        val rejected = all.filter { it.status == "rejected" }
+        val status =
+            when {
+                stale.isNotEmpty() -> "blocked"
+                pending.isNotEmpty() -> "needs_review"
+                rejected.isNotEmpty() -> "warning"
+                else -> "ready"
+            }
+        return ChannelAiChangeApprovalDashboardResponse(
+            guildId = guildId,
+            status = status,
+            pendingCount = pending.size,
+            staleCount = stale.size,
+            rejectedCount = rejected.size,
+            recentCount = all.size,
+            pendingItems = pending.take(10).map { ChannelAiChangeApprovalItemResponse.from(it) },
+            nextActions =
+                buildList {
+                    if (pending.isNotEmpty()) add("pending AI 설정 변경을 승인하거나 거절하세요.")
+                    if (stale.isNotEmpty()) add("stale 변경 제안은 새 제안으로 다시 생성하세요.")
+                    if (rejected.isNotEmpty()) add("거절 사유를 반영한 새 행동 버전을 제안하세요.")
+                    if (isEmpty()) add("검토 대기 중인 AI 설정 변경은 없습니다.")
+                },
         )
     }
 
@@ -375,6 +414,7 @@ class AiNetworkDashboardController(
         knowledgeSpaces: List<KnowledgeSpaceResponse>,
         quality: QualitySummary,
         overload: ProviderSafetyDashboard,
+        changeApproval: ChannelAiChangeApprovalDashboardResponse = changeApproval(overview.guildId),
     ): AiNetworkReadinessResponse {
         val hasKnowledge =
             knowledgeSpaces.any { it.status == "ready" || it.sourceCount > 0 } ||
@@ -507,6 +547,30 @@ class AiNetworkDashboardController(
                         },
                 ),
                 readinessArea(
+                    key = "change_approval",
+                    title = "AI 설정 변경 승인",
+                    status =
+                        when (changeApproval.status) {
+                            "blocked" -> "blocked"
+                            "needs_review", "warning" -> "warning"
+                            else -> "ready"
+                        },
+                    score =
+                        when (changeApproval.status) {
+                            "blocked" -> 0
+                            "needs_review" -> 55
+                            "warning" -> 75
+                            else -> 100
+                        },
+                    evidence =
+                        listOf(
+                            "pending=${changeApproval.pendingCount}",
+                            "stale=${changeApproval.staleCount}",
+                            "rejected=${changeApproval.rejectedCount}",
+                        ),
+                    nextAction = changeApproval.nextActions.firstOrNull() ?: "검토 대기 중인 AI 설정 변경은 없습니다.",
+                ),
+                readinessArea(
                     key = "provider_safety",
                     title = "Provider 보호",
                     status =
@@ -591,6 +655,7 @@ class AiNetworkDashboardController(
         knowledgeSpaces: List<KnowledgeSpaceResponse>,
         quality: QualitySummary,
         overload: ProviderSafetyDashboard,
+        changeApproval: ChannelAiChangeApprovalDashboardResponse,
     ): List<AiNetworkNextActionResponse> =
         buildList {
             if (overview.onlineProviderCount == 0) {
@@ -653,6 +718,23 @@ class AiNetworkDashboardController(
                         ctaLabel = "지식 추가",
                         discordCommand = "/지식추가",
                         dashboardPath = "/dashboard/knowledge",
+                    ),
+                )
+            }
+            if (changeApproval.pendingCount > 0 || changeApproval.staleCount > 0) {
+                add(
+                    AiNetworkNextActionResponse(
+                        priority = 35,
+                        severity = if (changeApproval.staleCount > 0) "critical" else "recommended",
+                        actionType = "review_ai_changes",
+                        title = "AI 설정 변경을 검토하세요",
+                        description =
+                            "대기 중인 AI 설정 변경 ${changeApproval.pendingCount}건, " +
+                                "stale 제안 ${changeApproval.staleCount}건이 있습니다. " +
+                                "승인/거절 후에만 채널 AI가 안전하게 바뀝니다.",
+                        ctaLabel = "AI 변경 승인 대기열",
+                        discordCommand = null,
+                        dashboardPath = "/dashboard/channels/approvals",
                     ),
                 )
             }
@@ -805,12 +887,47 @@ data class AiNetworkDashboardResponse(
     val quality: QualitySummary,
     val qualityReview: QualityReviewSummary,
     val modelQuality: List<ModelQualitySummary>,
+    val changeApproval: ChannelAiChangeApprovalDashboardResponse,
     val overload: ProviderSafetyDashboardResponse,
     val executionPlan: ProviderSafetyExecutionPlan,
     val multiResponseOperations: MultiResponseOperationsSummary,
     val readiness: AiNetworkReadinessResponse,
     val nextActions: List<AiNetworkNextActionResponse>,
 )
+
+data class ChannelAiChangeApprovalDashboardResponse(
+    val guildId: Long,
+    val status: String,
+    val pendingCount: Int,
+    val staleCount: Int,
+    val rejectedCount: Int,
+    val recentCount: Int,
+    val pendingItems: List<ChannelAiChangeApprovalItemResponse>,
+    val nextActions: List<String>,
+)
+
+data class ChannelAiChangeApprovalItemResponse(
+    val id: Long,
+    val channelId: Long,
+    val channelAiId: Long?,
+    val proposedBehaviorId: Long?,
+    val requestedBy: Long?,
+    val reason: String?,
+    val createdAt: String,
+) {
+    companion object {
+        fun from(entity: AiChangeProposalEntity): ChannelAiChangeApprovalItemResponse =
+            ChannelAiChangeApprovalItemResponse(
+                id = entity.id,
+                channelId = entity.channelId,
+                channelAiId = entity.channelAiId,
+                proposedBehaviorId = entity.proposedBehaviorId,
+                requestedBy = entity.requestedBy,
+                reason = entity.reason,
+                createdAt = entity.createdAt.toString(),
+            )
+    }
+}
 
 data class AiNetworkReadinessResponse(
     val guildId: Long,

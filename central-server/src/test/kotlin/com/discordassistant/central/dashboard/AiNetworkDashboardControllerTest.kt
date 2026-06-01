@@ -128,7 +128,7 @@ class AiNetworkDashboardControllerTest
             assertEquals(100, readiness.score)
             assertEquals(0, readiness.blockedAreaCount)
             assertEquals(0, readiness.warningAreaCount)
-            assertEquals(7, readiness.readyAreaCount)
+            assertEquals(8, readiness.readyAreaCount)
             assertTrue(readiness.topNextActions.isEmpty())
         }
     }

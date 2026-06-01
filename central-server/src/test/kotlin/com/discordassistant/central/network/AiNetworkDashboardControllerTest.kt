@@ -3,6 +3,8 @@ package com.discordassistant.central.network
 import com.discordassistant.central.dashboard.AiNetworkDashboardController
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.persistence.AiChangeProposalEntity
+import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -53,6 +55,7 @@ class AiNetworkDashboardControllerTest
         private val overviewProjections: NetworkOverviewProjectionRepository,
         private val channelAis: ChannelAiRepository,
         private val behaviorVersions: AiBehaviorVersionRepository,
+        private val proposals: AiChangeProposalRepository,
         private val routingPolicies: ChannelAiRoutingPolicyRepository,
         private val multiResponsePolicies: MultiResponsePolicyRepository,
         private val multiResponseRuns: MultiResponseRunRepository,
@@ -106,6 +109,7 @@ class AiNetworkDashboardControllerTest
                 providerSafety = providerSafety,
                 channelAis = channelAis,
                 behaviorVersions = behaviorVersions,
+                proposals = proposals,
                 routingPolicies = routingPolicies,
                 multiResponsePolicies = multiResponsePolicies,
                 providerCapabilities = providerCapabilities,
@@ -126,6 +130,7 @@ class AiNetworkDashboardControllerTest
                     providerSafety = providerSafety,
                     channelAis = channelAis,
                     behaviorVersions = behaviorVersions,
+                    proposals = proposals,
                     routingPolicies = routingPolicies,
                     multiResponsePolicies = multiResponsePolicies,
                     providerCapabilities = providerCapabilities,
@@ -480,6 +485,47 @@ class AiNetworkDashboardControllerTest
                     .first { it.actionType == "connect_provider" }
                     .description
                     .contains("온라인 Provider가 없어"),
+            )
+        }
+
+        @Test
+        fun `dashboard surfaces pending AI setting approvals as readiness and next action`() {
+            val channelAi = channelAis.save(ChannelAiEntity(guildId = 503, channelId = 603, displayName = "승인냥"))
+            val behavior =
+                behaviorVersions.save(
+                    AiBehaviorVersionEntity(
+                        channelAiId = channelAi.id,
+                        version = 1,
+                        purpose = "위험 변경",
+                        tone = "friendly",
+                        answerLength = "long",
+                        safetyLevel = "high",
+                    ),
+                )
+            proposals.save(
+                AiChangeProposalEntity(
+                    guildId = 503,
+                    channelId = 603,
+                    channelAiId = channelAi.id,
+                    proposedBehaviorId = behavior.id,
+                    status = "pending",
+                    requestedBy = 77,
+                    reason = "high risk safety level",
+                    createdAt = Instant.parse("2026-06-01T00:00:00Z"),
+                ),
+            )
+
+            val dashboard = controller.dashboard(503)
+            val changeApproval = controller.changeApproval(503)
+
+            assertEquals("needs_review", changeApproval.status)
+            assertEquals(1, dashboard.changeApproval.pendingCount)
+            assertTrue(dashboard.readiness.areas.any { it.key == "change_approval" && it.status == "warning" })
+            assertTrue(dashboard.nextActions.any { it.actionType == "review_ai_changes" })
+            val pendingApproval = dashboard.changeApproval.pendingItems.single()
+            assertEquals(
+                behavior.id,
+                pendingApproval.proposedBehaviorId,
             )
         }
 

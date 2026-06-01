@@ -69,8 +69,15 @@ class AiNetworkGrowthServiceTest
             assertTrue(timeline.toString().contains("특화 능력 coding, night 추가"))
             assertTrue(timeline.toString().contains("동시 처리 용량 2개 확보"))
             assertTrue(timeline.toString().contains("하루 최대 30 회 Provider 보호 한도 적용"))
-            assertTrue(timeline.first { it["eventType"] == "provider_joined" }["levelBefore"] is Int)
-            assertTrue(timeline.first { it["eventType"] == "provider_joined" }["levelAfter"] is Int)
+            val joined = timeline.first { it["eventType"] == "provider_joined" }
+            assertTrue(joined["levelBefore"] is Int)
+            assertTrue(joined["levelAfter"] is Int)
+            assertEquals("Provider 1", joined["providerLabel"])
+            assertTrue(!joined.containsKey("providerUserId"))
+
+            val adminJoined = controller.timeline(987654321, audience = "admin").first { it["eventType"] == "provider_joined" }
+            assertEquals(77L, adminJoined["providerUserId"])
+            assertEquals("provider:77", adminJoined["providerLabel"])
         }
 
         @Test

@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -58,20 +59,37 @@ class AiNetworkGrowthController(
     @GetMapping("/{guildId}/timeline")
     fun timeline(
         @PathVariable guildId: Long,
-    ): List<Map<String, Any?>> =
-        growth.timelineCards(guildId).map {
-            mapOf(
-                "id" to it.id,
-                "eventType" to it.eventType,
-                "providerUserId" to it.providerUserId,
-                "channelId" to it.channelId,
-                "title" to it.title,
-                "summary" to it.summary,
-                "impactBullets" to it.impactBullets,
-                "levelBefore" to it.levelBefore,
-                "levelAfter" to it.levelAfter,
-                "createdAt" to it.createdAt,
-            )
+        @RequestParam(defaultValue = "public") audience: String = "public",
+    ): List<Map<String, Any?>> {
+        val visibility = DashboardAudience.from(audience)
+        return growth.timelineCards(guildId).mapIndexed { index, event ->
+            buildMap {
+                put("id", event.id)
+                put("eventType", event.eventType)
+                put("providerLabel", providerLabel(event.providerUserId, index, visibility))
+                if (visibility.canSeeProviderIdentity) {
+                    put("providerUserId", event.providerUserId)
+                }
+                put("channelId", event.channelId)
+                put("title", event.title)
+                put("summary", event.summary)
+                put("impactBullets", event.impactBullets)
+                put("levelBefore", event.levelBefore)
+                put("levelAfter", event.levelAfter)
+                put("createdAt", event.createdAt)
+            }
+        }
+    }
+
+    private fun providerLabel(
+        providerUserId: Long?,
+        index: Int,
+        visibility: DashboardAudience,
+    ): String =
+        if (visibility.canSeeProviderIdentity) {
+            providerUserId?.let { "provider:$it" } ?: "network"
+        } else {
+            "Provider ${index + 1}"
         }
 }
 

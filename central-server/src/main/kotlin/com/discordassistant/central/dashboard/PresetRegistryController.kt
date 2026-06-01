@@ -245,8 +245,13 @@ class PresetRegistryController(
         @PathVariable reportId: Long,
         @RequestBody request: ReviewPresetReportRequest,
     ): Map<String, Any?> {
-        val report = registry.reviewReport(reportId, request.decision)
-        return mapOf("id" to report.id, "status" to report.status, "reviewedAt" to report.reviewedAt?.toString())
+        val report = registry.reviewReport(reportId, request.decision, request.reviewerUserId)
+        return mapOf(
+            "id" to report.id,
+            "status" to report.status,
+            "reviewedBy" to report.reviewedBy,
+            "reviewedAt" to report.reviewedAt?.toString(),
+        )
     }
 
     @DeleteMapping("/{presetId}")
@@ -339,4 +344,5 @@ data class ReportPresetRequest(
 
 data class ReviewPresetReportRequest(
     val decision: String,
+    val reviewerUserId: Long? = null,
 )

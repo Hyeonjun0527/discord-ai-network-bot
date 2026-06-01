@@ -623,8 +623,10 @@ async function reviewPresetReport() {
   try {
     const result = await postJson(`/api/ai-network/presets/reports/${reportId}/review`, {
       decision: $("presetReportDecision").value,
+      reviewerUserId: 0,
     });
-    $("presetManageResult").textContent = `신고 처리 완료: report=${result.id} · ${result.status}`;
+    $("presetManageResult").textContent =
+      `신고 처리 완료: report=${result.id} · ${result.status} · reviewer=${result.reviewedBy ?? "-"}`;
     await refreshPresets();
     await refreshPresetModeration();
   } catch (e) {

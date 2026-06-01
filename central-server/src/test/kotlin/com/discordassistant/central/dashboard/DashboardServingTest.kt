@@ -120,6 +120,8 @@ class DashboardServingTest
             assertTrue(js.contains("/api/ai-network/presets/moderation/summary"))
             assertTrue(js.contains("/api/ai-network/presets/reports/open"))
             assertTrue(js.contains("/api/ai-network/presets/reports/${'$'}{reportId}/review"))
+            assertTrue(js.contains("reviewerUserId"))
+            assertTrue(js.contains("reviewedBy"))
             assertTrue(js.contains("/api/ai-network/multi-response/${'$'}{gid}/policy"))
             assertTrue(js.contains("/api/ai-network/multi-response/${'$'}{gid}/operations-summary"))
             assertTrue(js.contains("/api/ai-network/multi-response/pseudo-stream-plan"))

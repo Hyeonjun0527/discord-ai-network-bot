@@ -877,7 +877,7 @@ class CommandService(
     ): Reply {
         adminOnly(ctx)?.let { return it }
         val report =
-            runCatching { presetRegistry.reviewReport(reportId, decision) }
+            runCatching { presetRegistry.reviewReport(reportId, decision, reviewerUserId = ctx.userId) }
                 .getOrElse { return Replies.warn("프리셋 신고 검수 처리에 실패했어요. ${it.message ?: "report-id/decision을 확인해 주세요."}") }
         return Replies.ok(
             "프리셋 신고를 처리했습니다. report `${report.id}` · 결정 `${report.status}`\n" +

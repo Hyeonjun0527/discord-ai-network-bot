@@ -637,6 +637,7 @@ class PresetRegistryService(
     fun reviewReport(
         reportId: Long,
         decision: String,
+        reviewerUserId: Long? = null,
     ): PresetReportEntity {
         featureGate.requirePresetEnabled()
         val report = reports.findById(reportId).orElseThrow { IllegalArgumentException("preset report not found: $reportId") }
@@ -652,6 +653,7 @@ class PresetRegistryService(
                 "suspended" -> "suspend"
                 else -> normalized
             }
+        report.reviewedBy = reviewerUserId
         report.reviewedAt = Instant.now(clock)
         when (report.status) {
             "suspend", "suspended" -> published.status = "suspended"
@@ -1026,6 +1028,7 @@ class PresetRegistryService(
             reason = reason,
             status = status,
             createdAt = createdAt.toString(),
+            reviewedBy = reviewedBy,
             reviewedAt = reviewedAt?.toString(),
         )
 
@@ -1436,6 +1439,7 @@ data class PresetReportSummary(
     val reason: String,
     val status: String,
     val createdAt: String,
+    val reviewedBy: Long?,
     val reviewedAt: String?,
 )
 

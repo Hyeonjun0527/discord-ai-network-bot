@@ -271,8 +271,10 @@ class PresetRegistryServiceTest
                 )
             }
 
-            val reviewed = controller.reviewReport(reportId, ReviewPresetReportRequest(decision = "dismiss"))
+            val reviewed = controller.reviewReport(reportId, ReviewPresetReportRequest(decision = "dismiss", reviewerUserId = 91))
             assertEquals("dismiss", reviewed["status"])
+            assertEquals(91L, reviewed["reviewedBy"])
+            assertEquals(91L, reports.findById(reportId).orElseThrow().reviewedBy)
             assertEquals("published", publishedPresets.findById(publishedId).get().status)
             assertEquals(1, (controller.publishedPresets()["presets"] as List<*>).size)
 

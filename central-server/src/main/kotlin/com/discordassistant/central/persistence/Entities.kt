@@ -530,6 +530,7 @@ class PresetReportEntity(
     var reason: String = "",
     var status: String = "open",
     var createdAt: Instant = Instant.EPOCH,
+    var reviewedBy: Long? = null,
     var reviewedAt: Instant? = null,
 )
 

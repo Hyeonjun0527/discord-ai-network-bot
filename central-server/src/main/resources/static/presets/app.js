@@ -276,6 +276,7 @@ async function previewPreset(locator) {
   selectedPresetId = null;
   pendingImport = null;
   $("confirmImport").disabled = true;
+  $("copyDiscordImport").disabled = true;
   $("likePreset").disabled = false;
   $("reportPreset").disabled = false;
   $("result").textContent = "";
@@ -287,6 +288,7 @@ async function previewPreset(locator) {
     const { published } = normalizePresetDetail(detail);
     selectedPresetId = Number(published.id || presetLocator);
     if (!Number.isFinite(selectedPresetId)) throw new Error("프리셋 ID를 확인할 수 없습니다.");
+    $("copyDiscordImport").disabled = false;
     const target = targetIds();
     if (!target) {
       renderPreview(detail, null);
@@ -306,7 +308,28 @@ async function previewPreset(locator) {
     renderPreview(detail, preview.preview);
     $("confirmImport").disabled = false;
   } catch (e) {
+    $("copyDiscordImport").disabled = true;
     $("preview").textContent = `미리보기 실패: ${e.message}`;
+  }
+}
+
+async function copyDiscordImportCommand() {
+  if (!selectedPresetId) {
+    $("result").textContent = "먼저 프리셋을 선택하세요.";
+    return;
+  }
+  const command = `/ai-preset-import published-id:${selectedPresetId} confirm-conflicts:false`;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(command);
+      $("result").textContent = `Discord에서 붙여넣을 가져오기 명령을 복사했습니다: ${command}`;
+    } else {
+      window.prompt("Discord에서 실행할 명령을 복사하세요.", command);
+      $("result").textContent = "Discord 가져오기 명령을 열었습니다.";
+    }
+  } catch (e) {
+    window.prompt("Discord에서 실행할 명령을 복사하세요.", command);
+    $("result").textContent = `자동 복사 실패: ${e.message}`;
   }
 }
 
@@ -328,6 +351,7 @@ async function reportPreset(id = selectedPresetId) {
     $("result").textContent = `신고 접수 완료 · report ${data.id} · ${data.status}`;
     if (Number(id) === selectedPresetId) {
       $("confirmImport").disabled = true;
+      $("copyDiscordImport").disabled = true;
       $("likePreset").disabled = true;
       $("reportPreset").disabled = true;
       pendingImport = null;
@@ -412,6 +436,7 @@ $("adminToken").addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveAdminToken();
 });
 $("confirmImport").addEventListener("click", confirmImport);
+$("copyDiscordImport").addEventListener("click", copyDiscordImportCommand);
 $("likePreset").addEventListener("click", () => likePreset());
 $("reportPreset").addEventListener("click", () => reportPreset());
 $("catalog").addEventListener("click", (event) => {

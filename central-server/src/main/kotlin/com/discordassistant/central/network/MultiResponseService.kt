@@ -142,9 +142,16 @@ class MultiResponseService(
         runId: Long,
         answerRef: String,
         selectedCandidateIds: List<Long>,
+        strategy: String = "best_by_heuristic",
+        qualitySummary: String? = null,
+        safetySummary: String? = null,
     ): SynthesisResultEntity {
         featureGate.requireMultiResponseEnabled()
         val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
+        val runCandidates = candidates.findByRunId(runId)
+        require(selectedCandidateIds.all { selectedId -> runCandidates.any { it.id == selectedId } }) {
+            "selected candidates must belong to run: $runId"
+        }
         val now = Instant.now(clock)
         val synthesis =
             syntheses.findByRunId(runId)
@@ -152,6 +159,9 @@ class MultiResponseService(
         synthesis.answerRef = answerRef.trim()
         synthesis.status = "completed"
         synthesis.selectedCandidateIds = selectedCandidateIds.joinToString(",")
+        synthesis.strategy = strategy.trim().ifBlank { "best_by_heuristic" }.take(80)
+        synthesis.qualitySummary = qualitySummary?.trim()?.take(1000)?.ifBlank { null } ?: summarizeQuality(runCandidates)
+        synthesis.safetySummary = safetySummary?.trim()?.take(1000)?.ifBlank { null } ?: summarizeSafety(runCandidates)
         val saved = syntheses.save(synthesis)
         run.status = "completed"
         run.selectedCandidateId = selectedCandidateIds.firstOrNull()
@@ -174,6 +184,43 @@ class MultiResponseService(
     }
 
     fun listRecent(guildId: Long): List<MultiResponseRunEntity> = runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
+
+    fun runDetail(runId: Long): MultiResponseRunDetail {
+        val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
+        val runCandidates = candidates.findByRunId(runId)
+        return MultiResponseRunDetail(
+            run = run,
+            candidates = runCandidates,
+            synthesis = syntheses.findByRunId(runId),
+            policy = run.policyId?.let { policies.findById(it).orElse(null) },
+            safetySummary = summarizeSafety(runCandidates),
+            qualitySummary = summarizeQuality(runCandidates),
+        )
+    }
+
+    fun dailyStats(guildId: Long): MultiResponseDailyStats {
+        val recent = runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
+        val completed = recent.count { it.status == "completed" }
+        val fallback = recent.count { it.status in setOf("no_provider", "blocked_sensitive", "failed") }
+        val timeoutCandidates =
+            recent
+                .flatMap { candidates.findByRunId(it.id) }
+                .count { it.status.equals("timeout", ignoreCase = true) }
+        val actualFanout =
+            recent
+                .map { it.candidateCount }
+                .takeIf { it.isNotEmpty() }
+                ?.average()
+                ?: 0.0
+        return MultiResponseDailyStats(
+            guildId = guildId,
+            recentRunCount = recent.size,
+            completedRunCount = completed,
+            fallbackRunCount = fallback,
+            timeoutCandidateCount = timeoutCandidates,
+            averageActualFanout = actualFanout,
+        )
+    }
 
     private fun selectProviders(
         guildId: Long,
@@ -223,6 +270,24 @@ class MultiResponseService(
             .firstOrNull { it.isNotBlank() }
             ?.trim()
 
+    private fun summarizeSafety(runCandidates: List<CandidateAnswerEntity>): String {
+        val flags =
+            runCandidates
+                .flatMap { it.safetyFlags.orEmpty().split(",") }
+                .map { it.trim() }
+                .filter { it.isNotBlank() && !it.equals("ok", ignoreCase = true) }
+                .distinct()
+        return if (flags.isEmpty()) "no candidate safety flags" else flags.joinToString(",")
+    }
+
+    private fun summarizeQuality(runCandidates: List<CandidateAnswerEntity>): String {
+        val scores = runCandidates.mapNotNull { it.qualityScore }
+        if (scores.isEmpty()) return "quality score unavailable"
+        val average = scores.average()
+        val best = scores.max()
+        return "avg=${"%.1f".format(average)}, best=$best, scored=${scores.size}"
+    }
+
     private fun String?.isSensitivePrompt(): Boolean {
         val text = this?.trim().orEmpty()
         if (text.isBlank()) return false
@@ -242,3 +307,21 @@ class MultiResponseService(
             )
     }
 }
+
+data class MultiResponseRunDetail(
+    val run: MultiResponseRunEntity,
+    val candidates: List<CandidateAnswerEntity>,
+    val synthesis: SynthesisResultEntity?,
+    val policy: MultiResponsePolicyEntity?,
+    val safetySummary: String,
+    val qualitySummary: String,
+)
+
+data class MultiResponseDailyStats(
+    val guildId: Long,
+    val recentRunCount: Int,
+    val completedRunCount: Int,
+    val fallbackRunCount: Int,
+    val timeoutCandidateCount: Int,
+    val averageActualFanout: Double,
+)

@@ -66,8 +66,23 @@ class MultiResponseController(
         @PathVariable runId: Long,
         @RequestBody request: SynthesizeRunRequest,
     ): Map<String, Any?> {
-        val synthesis = service.synthesize(runId, request.answerRef, request.selectedCandidateIds)
-        return mapOf("id" to synthesis.id, "status" to synthesis.status, "answerRef" to synthesis.answerRef)
+        val synthesis =
+            service.synthesize(
+                runId = runId,
+                answerRef = request.answerRef,
+                selectedCandidateIds = request.selectedCandidateIds,
+                strategy = request.strategy,
+                qualitySummary = request.qualitySummary,
+                safetySummary = request.safetySummary,
+            )
+        return mapOf(
+            "id" to synthesis.id,
+            "status" to synthesis.status,
+            "answerRef" to synthesis.answerRef,
+            "strategy" to synthesis.strategy,
+            "qualitySummary" to synthesis.qualitySummary,
+            "safetySummary" to synthesis.safetySummary,
+        )
     }
 
     @PostMapping("/runs/{runId}/fail")
@@ -94,6 +109,70 @@ class MultiResponseController(
                 "finishedAt" to it.finishedAt?.toString(),
             )
         }
+
+    @GetMapping("/runs/{runId}")
+    fun runDetail(
+        @PathVariable runId: Long,
+    ): Map<String, Any?> {
+        val detail = service.runDetail(runId)
+        return mapOf(
+            "id" to detail.run.id,
+            "requestId" to detail.run.requestId,
+            "channelId" to detail.run.channelId,
+            "status" to detail.run.status,
+            "candidateCount" to detail.run.candidateCount,
+            "policy" to
+                detail.policy?.let {
+                    mapOf(
+                        "mode" to it.mode,
+                        "maxCandidates" to it.maxCandidates,
+                        "synthesisEnabled" to it.synthesisEnabled,
+                    )
+                },
+            "candidates" to
+                detail.candidates.map {
+                    mapOf(
+                        "id" to it.id,
+                        "providerUserId" to it.providerUserId,
+                        "modelName" to it.modelName,
+                        "status" to it.status,
+                        "latencyMs" to it.latencyMs,
+                        "qualityScore" to it.qualityScore,
+                        "safetyFlags" to it.safetyFlags,
+                        "answerRef" to it.answerRef,
+                    )
+                },
+            "synthesis" to
+                detail.synthesis?.let {
+                    mapOf(
+                        "id" to it.id,
+                        "status" to it.status,
+                        "strategy" to it.strategy,
+                        "answerRef" to it.answerRef,
+                        "selectedCandidateIds" to it.selectedCandidateIds,
+                        "qualitySummary" to it.qualitySummary,
+                        "safetySummary" to it.safetySummary,
+                    )
+                },
+            "qualitySummary" to detail.qualitySummary,
+            "safetySummary" to detail.safetySummary,
+        )
+    }
+
+    @GetMapping("/{guildId}/stats")
+    fun stats(
+        @PathVariable guildId: Long,
+    ): Map<String, Any?> {
+        val stats = service.dailyStats(guildId)
+        return mapOf(
+            "guildId" to stats.guildId,
+            "recentRunCount" to stats.recentRunCount,
+            "completedRunCount" to stats.completedRunCount,
+            "fallbackRunCount" to stats.fallbackRunCount,
+            "timeoutCandidateCount" to stats.timeoutCandidateCount,
+            "averageActualFanout" to stats.averageActualFanout,
+        )
+    }
 }
 
 data class SaveMultiResponsePolicyRequest(
@@ -124,6 +203,9 @@ data class RecordCandidateRequest(
 data class SynthesizeRunRequest(
     val answerRef: String,
     val selectedCandidateIds: List<Long> = emptyList(),
+    val strategy: String = "best_by_heuristic",
+    val qualitySummary: String? = null,
+    val safetySummary: String? = null,
 )
 
 data class FailMultiResponseRunRequest(

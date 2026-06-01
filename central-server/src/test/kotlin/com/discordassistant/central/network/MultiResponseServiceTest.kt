@@ -114,10 +114,48 @@ class MultiResponseServiceTest
                 )
 
             assertEquals("completed", synthesis["status"])
+            assertEquals("best_by_heuristic", synthesis["strategy"])
+            assertEquals("no candidate safety flags", synthesis["safetySummary"])
             assertEquals("completed", runs.findById(runId).get().status)
             assertEquals(first.id, runs.findById(runId).get().selectedCandidateId)
             assertNotNull(syntheses.findByRunId(runId))
+            assertEquals("no candidate safety flags", syntheses.findByRunId(runId)?.safetySummary)
+            val detail = controller.runDetail(runId)
+            assertEquals("completed", detail["status"])
+            assertEquals("avg=90.0, best=90, scored=1", detail["qualitySummary"])
+            assertEquals(2, (detail["candidates"] as List<*>).size)
+            val stats = controller.stats(100)
+            assertEquals(1, stats["recentRunCount"])
+            assertEquals(1, stats["completedRunCount"])
+            assertEquals(2.0, stats["averageActualFanout"])
             assertEquals(1, controller.recentRuns(100).size)
+        }
+
+        @Test
+        fun `synthesis rejects candidate ids from another run`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 41,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 204, mode = "compare", maxCandidates = 1))
+            val firstRun = controller.startRun(100, StartMultiResponseRunRequest(channelId = 204, requestId = "req-a"))
+            val secondRun = controller.startRun(100, StartMultiResponseRunRequest(channelId = 204, requestId = "req-b"))
+            val foreignCandidate = candidates.findByRunId(firstRun["id"] as Long).first()
+
+            assertThrows(IllegalArgumentException::class.java) {
+                controller.synthesize(
+                    secondRun["id"] as Long,
+                    SynthesizeRunRequest(answerRef = "answer:req-b:final", selectedCandidateIds = listOf(foreignCandidate.id)),
+                )
+            }
         }
 
         @Test

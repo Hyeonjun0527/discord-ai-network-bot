@@ -352,6 +352,9 @@ class SynthesisResultEntity(
     var answerRef: String? = null,
     var status: String = "pending",
     var selectedCandidateIds: String? = null,
+    var strategy: String = "best_by_heuristic",
+    var qualitySummary: String? = null,
+    var safetySummary: String? = null,
     var createdAt: Instant = Instant.EPOCH,
 )
 

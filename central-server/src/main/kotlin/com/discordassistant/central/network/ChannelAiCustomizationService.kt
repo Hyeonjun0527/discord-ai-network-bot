@@ -27,6 +27,62 @@ class ChannelAiCustomizationService(
     private val audits: CustomizationAuditLogRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
+    fun wizardOptions(): ChannelAiWizardOptions =
+        ChannelAiWizardOptions(
+            jobs =
+                listOf(
+                    ChannelAiWizardOption(
+                        key = "development",
+                        label = "개발 질문",
+                        description = "에러 분석, 코드 리뷰, 테스트 작성을 돕는 채널 AI",
+                        recommendedName = "코드냥",
+                    ),
+                    ChannelAiWizardOption(
+                        key = "translation",
+                        label = "번역",
+                        description = "한국어/영어 번역과 문장 다듬기를 돕는 채널 AI",
+                        recommendedName = "번역냥",
+                    ),
+                    ChannelAiWizardOption(
+                        key = "meeting",
+                        label = "회의록",
+                        description = "회의 요약, 결정사항, 액션아이템을 정리하는 채널 AI",
+                        recommendedName = "요약냥",
+                    ),
+                    ChannelAiWizardOption(
+                        key = "announcement",
+                        label = "공지 작성",
+                        description = "운영진 안내문과 릴리즈 노트 초안을 돕는 채널 AI",
+                        recommendedName = "공지냥",
+                    ),
+                    ChannelAiWizardOption(
+                        key = "custom",
+                        label = "자유 설정",
+                        description = "채널 목적에 맞게 직접 역할을 입력하는 채널 AI",
+                        recommendedName = "채널냥",
+                    ),
+                ),
+            tones =
+                listOf(
+                    ChannelAiWizardOption("friendly", "친근하게", "부담 없이 설명하고 필요한 맥락을 덧붙입니다."),
+                    ChannelAiWizardOption("professional", "전문적으로", "정확하고 차분한 운영/업무 말투로 답합니다."),
+                    ChannelAiWizardOption("concise", "짧고 명확하게", "핵심과 다음 행동을 먼저 말합니다."),
+                ),
+            answerLengths =
+                listOf(
+                    ChannelAiWizardOption("short", "짧게", "빠르게 훑고 바로 실행할 수 있게 답합니다."),
+                    ChannelAiWizardOption("balanced", "균형", "설명과 예시를 적당히 섞어 답합니다."),
+                    ChannelAiWizardOption("long", "깊게", "복잡한 질문에 자세히 답하되 Provider 부하 검토가 필요할 수 있습니다."),
+                ),
+            safetyRules =
+                listOf(
+                    "민감정보(비밀번호, API 키, 토큰, 개인키, 개인정보)는 요구·저장·반복하지 않습니다.",
+                    "확실하지 않으면 추측하지 않고 확인이 필요하다고 말합니다.",
+                    "채널 목적에서 벗어난 질문은 범위를 확인한 뒤 답합니다.",
+                    "긴 답변/위험 지시/큰 헌법 변경은 승인 대기열로 보낼 수 있습니다.",
+                ),
+        )
+
     fun draftFromAnswers(
         job: String,
         tone: String,
@@ -722,6 +778,20 @@ data class ChannelAiWizardDraft(
     val answerLength: String,
     val constitution: String,
     val preview: String,
+)
+
+data class ChannelAiWizardOptions(
+    val jobs: List<ChannelAiWizardOption>,
+    val tones: List<ChannelAiWizardOption>,
+    val answerLengths: List<ChannelAiWizardOption>,
+    val safetyRules: List<String>,
+)
+
+data class ChannelAiWizardOption(
+    val key: String,
+    val label: String,
+    val description: String,
+    val recommendedName: String? = null,
 )
 
 private data class ApprovalDecision(

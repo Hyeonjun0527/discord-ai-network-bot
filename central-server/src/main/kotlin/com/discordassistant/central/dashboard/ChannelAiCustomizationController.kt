@@ -13,6 +13,9 @@ import org.springframework.web.bind.annotation.RestController
 class ChannelAiCustomizationController(
     private val customization: ChannelAiCustomizationService,
 ) {
+    @GetMapping("/wizard/options")
+    fun wizardOptions() = customization.wizardOptions()
+
     @PostMapping("/wizard/draft")
     fun draft(
         @RequestBody request: ChannelAiWizardDraftRequest,

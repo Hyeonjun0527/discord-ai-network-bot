@@ -44,6 +44,18 @@ class ChannelAiCustomizationServiceTest
         private val controller = ChannelAiCustomizationController(service)
 
         @Test
+        fun `wizard options expose jobs tones lengths and safety rules for panel UI`() {
+            val options = controller.wizardOptions()
+
+            assertTrue(options.jobs.any { it.key == "development" && it.recommendedName == "코드냥" })
+            assertTrue(options.jobs.any { it.key == "custom" })
+            assertTrue(options.tones.any { it.key == "friendly" && it.label == "친근하게" })
+            assertTrue(options.answerLengths.any { it.key == "long" && it.description.contains("Provider") })
+            assertTrue(options.safetyRules.any { it.contains("민감정보") })
+            assertTrue(options.safetyRules.any { it.contains("승인 대기열") })
+        }
+
+        @Test
         fun `wizard draft turns simple answers into channel ai constitution`() {
             val draft =
                 controller.draft(

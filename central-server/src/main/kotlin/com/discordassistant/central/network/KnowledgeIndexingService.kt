@@ -179,6 +179,60 @@ class KnowledgeIndexingService(
         return chunks.findByKnowledgeSpaceIdAndStatus(spaceId, "ready").filter { it.guildId == guildId }
     }
 
+    @Transactional
+    fun indexInlineSourceIfPossible(
+        guildId: Long,
+        spaceId: Long,
+        sourceId: Long,
+        documentText: String?,
+        triggeredBy: Long?,
+    ): InlineKnowledgeIndexingResult {
+        featureGate.requireRagEnabled()
+        val text = documentText?.trim()
+        if (text.isNullOrBlank()) {
+            return InlineKnowledgeIndexingResult(sourceId = sourceId, indexed = false, skippedReason = "content_preview_required")
+        }
+        val source =
+            sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
+                ?: throw IllegalArgumentException("knowledge source not found")
+        require(source.guildId == guildId) { "cross-guild knowledge source is not allowed" }
+        if (source.sourceType !in INLINE_INDEXABLE_SOURCE_TYPES) {
+            return InlineKnowledgeIndexingResult(sourceId = source.id, indexed = false, skippedReason = "source_type_not_inline")
+        }
+        if (source.status != "pending") {
+            return InlineKnowledgeIndexingResult(sourceId = source.id, indexed = false, skippedReason = "source_not_pending")
+        }
+        val document =
+            parseSourceToDocument(
+                guildId = guildId,
+                spaceId = spaceId,
+                sourceId = source.id,
+                documentText = text,
+                title = source.title,
+            )
+        val now = Instant.now(clock)
+        val indexedSource = sources.findByKnowledgeSpaceIdAndId(spaceId, source.id) ?: source
+        indexedSource.status = "indexed"
+        indexedSource.indexedAt = now
+        sources.save(indexedSource)
+        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
+        val chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, "ready").size
+        space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { !it.status.startsWith("deleted") }
+        space.chunkCount = chunkCount
+        space.status = "ready"
+        space.updatedAt = now
+        spaces.save(space)
+        val job = queueIndexJob(guildId, space.id, triggeredBy = triggeredBy)
+        return InlineKnowledgeIndexingResult(
+            sourceId = indexedSource.id,
+            indexed = true,
+            skippedReason = null,
+            documentId = document.id,
+            jobId = job.id,
+            chunkCount = chunkCount,
+        )
+    }
+
     private fun supersedeExistingSourceIndex(sourceId: Long) {
         val existingDocs = documents.findByKnowledgeSourceId(sourceId)
         if (existingDocs.isEmpty()) return
@@ -210,4 +264,17 @@ class KnowledgeIndexingService(
             .getInstance("SHA-256")
             .digest(text.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
+
+    private companion object {
+        val INLINE_INDEXABLE_SOURCE_TYPES = setOf("text", "faq", "constitution", "preset")
+    }
 }
+
+data class InlineKnowledgeIndexingResult(
+    val sourceId: Long,
+    val indexed: Boolean,
+    val skippedReason: String?,
+    val documentId: Long? = null,
+    val jobId: Long? = null,
+    val chunkCount: Int = 0,
+)

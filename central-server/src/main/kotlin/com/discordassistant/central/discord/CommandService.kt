@@ -6,6 +6,7 @@ import com.discordassistant.central.network.AiNetworkLaunchChecklistService
 import com.discordassistant.central.network.AiNetworkMap
 import com.discordassistant.central.network.AiNetworkMapService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
+import com.discordassistant.central.network.KnowledgeIndexingService
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
@@ -59,6 +60,7 @@ class CommandService(
     private val channelProfiles: ChannelAiProfileService,
     private val channelRoutingPolicies: ChannelAiRoutingPolicyService,
     private val knowledgeIngestion: KnowledgeIngestionService,
+    private val knowledgeIndexing: KnowledgeIndexingService,
     private val knowledgeSearch: KnowledgeSearchService,
     private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
     private val aiNetworkMap: AiNetworkMapService,
@@ -489,15 +491,27 @@ class CommandService(
                     contentPreview = normalizedPreview,
                     addedBy = ctx.userId,
                 )
+            val inlineIndexing =
+                knowledgeIndexing.indexInlineSourceIfPossible(
+                    guildId = ctx.guildId,
+                    spaceId = targetSpaceId,
+                    sourceId = source.id,
+                    documentText = normalizedPreview,
+                    triggeredBy = ctx.userId,
+                )
             val plan = knowledgeIngestion.indexingPlan(ctx.guildId, targetSpaceId)
+            val effectiveStatus = if (inlineIndexing.indexed) "indexed" else source.status
             val indexingHint =
-                when (source.status) {
-                    "pending" -> "색인 대기 상태입니다. 운영자는 `${plan.command}` 를 실행해 검색 가능하게 만드세요."
+                when {
+                    inlineIndexing.indexed ->
+                        "텍스트를 즉시 검색 가능하게 색인했습니다. embedding 재빌드 작업 `${inlineIndexing.jobId}` 도 큐에 넣었어요."
+                    source.status == "pending" ->
+                        "색인 대기 상태입니다. 운영자는 `${plan.command}` 를 실행해 검색 가능하게 만드세요."
                     else -> "상태가 `${source.status}` 입니다. 위험도 `${source.riskLevel}` 를 검토한 뒤 승인/삭제하세요."
                 }
             Replies.ok(
                 "지식 소스를 추가했습니다.\n" +
-                    "space: `$targetSpaceId` · source: `${source.id}` · status: `${source.status}` · risk: `${source.riskLevel}`\n" +
+                    "space: `$targetSpaceId` · source: `${source.id}` · status: `$effectiveStatus` · risk: `${source.riskLevel}`\n" +
                     "$indexingHint\n\n" +
                     "`/ai-knowledge-list space-id:$targetSpaceId` 로 현재 목록을 확인할 수 있어요.",
             )
@@ -525,7 +539,8 @@ class CommandService(
             val resultRows =
                 result.results.take(10).map {
                     val ref = it.sourceUri?.let { uri -> " · ${uri.take(80)}" } ?: ""
-                    "• `${it.sourceId}` ${it.title} — score ${it.score} · ${it.sourceType}$ref"
+                    val preview = it.contentPreview?.let { text -> " · ${text.take(100)}" } ?: ""
+                    "• `${it.sourceId}` ${it.title} — score ${it.score} · ${it.sourceType}$ref$preview"
                 }
             val lines =
                 resultRows

@@ -76,6 +76,37 @@ class KnowledgeIndexingServiceTest
         }
 
         @Test
+        fun `inline text source is parsed indexed and queued for embedding rebuild`() {
+            val space = spaces.save(KnowledgeSpaceEntity(guildId = 101, channelId = 201, displayName = "즉시 지식"))
+            val source =
+                sources.save(
+                    KnowledgeSourceEntity(
+                        knowledgeSpaceId = space.id,
+                        guildId = 101,
+                        sourceType = "text",
+                        title = "운영 규칙",
+                        status = "pending",
+                    ),
+                )
+
+            val result =
+                service.indexInlineSourceIfPossible(
+                    guildId = 101,
+                    spaceId = space.id,
+                    sourceId = source.id,
+                    documentText = "actuator health 확인\n\nrollback plan 확인",
+                    triggeredBy = 7,
+                )
+
+            assertEquals(true, result.indexed)
+            assertEquals(2, result.chunkCount)
+            assertEquals("indexed", sources.findByKnowledgeSpaceIdAndId(space.id, source.id)!!.status)
+            assertEquals("ready", spaces.findByGuildIdAndId(101, space.id)!!.status)
+            assertEquals(1, jobs.findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(101, space.id).size)
+            assertEquals(2, service.readyChunks(101, space.id).size)
+        }
+
+        @Test
         fun `retrieval policy clamps topK and token budget and remains scoped`() {
             val space = spaces.save(KnowledgeSpaceEntity(guildId = 100, channelId = 201, displayName = "FAQ"))
 

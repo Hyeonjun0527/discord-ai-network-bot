@@ -388,6 +388,26 @@ class CommandServiceTest
         }
 
         @Test
+        fun `knowledge add — 텍스트 지식은 즉시 색인되어 검색 가능하다`() {
+            val g = CommandContext(guildId = 77997, channelId = 88997, userId = 5, roleIds = setOf(1L), isAdmin = true)
+
+            val added =
+                commands.addKnowledge(
+                    g,
+                    title = "Kotlin Spring 운영 규칙",
+                    sourceType = "text",
+                    sourceUri = null,
+                    contentPreview = "Kotlin Spring 운영은 actuator health 확인 후 rollback plan을 점검합니다.",
+                )
+
+            assertTrue(added.content.contains("status: `indexed`"), added.content)
+            assertTrue(added.content.contains("즉시 검색 가능"), added.content)
+            val search = commands.searchKnowledge(g, query = "actuator", limit = 3)
+            assertTrue(search.content.contains("Kotlin Spring 운영 규칙"), search.content)
+            assertTrue(search.content.contains("actuator health"), search.content)
+        }
+
+        @Test
         fun `knowledge approve — 검토 소스를 승인해 색인 대기로 전환한다`() {
             val g = CommandContext(guildId = 77994, channelId = 88994, userId = 5, roleIds = setOf(1L), isAdmin = true)
 

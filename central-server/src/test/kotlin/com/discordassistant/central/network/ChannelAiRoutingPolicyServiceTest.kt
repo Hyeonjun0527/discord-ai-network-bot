@@ -128,6 +128,8 @@ class ChannelAiRoutingPolicyServiceTest
 
             assertEquals(null, decision.selectedModel)
             assertEquals("no_available_model", decision.fallbackReason)
+            assertEquals("retry_later_or_adjust_channel_model_policy", decision.nextAction)
+            assertEquals(true, decision.userMessage?.contains("요청을 보내지 않았습니다"))
             assertEquals(true, decision.requiresAvailableModel)
             assertEquals(emptyList<String>(), catalog.availableModels)
             assertEquals(listOf("qwen-coder"), catalog.unavailableAllowedModels)

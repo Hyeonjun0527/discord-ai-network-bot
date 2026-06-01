@@ -93,8 +93,7 @@ class CommandService(
         if (modelChoice.selectedModel == null && modelChoice.requiresAvailableModel) {
             return Replies.warn(
                 "⚠️ ${modelChoice.explanation}\n\n" +
-                    "Provider 보호 상태·채널 모델 정책·품질 조건을 만족하는 모델이 없어 요청을 보내지 않았습니다.\n" +
-                    "다른 모델을 선택하거나, 잠시 후 다시 시도하거나, 관리자에게 채널 모델 정책을 확인해 달라고 해주세요.",
+                    (modelChoice.userMessage ?: "다른 모델을 선택하거나, 잠시 후 다시 시도하거나, 관리자에게 채널 모델 정책을 확인해 달라고 해주세요."),
             )
         }
         val selectedModel =

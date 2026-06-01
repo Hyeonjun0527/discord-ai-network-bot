@@ -69,6 +69,8 @@ class ChannelAiRoutingPolicyController(
             "availableModels" to decision.availableModels,
             "fallbackReason" to decision.fallbackReason,
             "explanation" to decision.explanation,
+            "userMessage" to decision.userMessage,
+            "nextAction" to decision.nextAction,
             "responseMode" to decision.responseMode,
             "costGuard" to decision.costGuard,
             "requiresAvailableModel" to decision.requiresAvailableModel,

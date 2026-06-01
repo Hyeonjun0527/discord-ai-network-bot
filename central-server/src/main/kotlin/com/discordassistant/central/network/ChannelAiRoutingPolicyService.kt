@@ -84,6 +84,8 @@ class ChannelAiRoutingPolicyService(
             availableModels = availableModels,
             fallbackReason = fallbackReason,
             explanation = explanation(desired, selected, fallbackReason),
+            userMessage = userMessage(fallbackReason),
+            nextAction = nextAction(fallbackReason),
             responseMode = effective.responseMode,
             costGuard = effective.costGuard,
             requiresAvailableModel =
@@ -236,6 +238,29 @@ class ChannelAiRoutingPolicyService(
             else -> "${desired ?: "선호 모델"} 대신 ${selected ?: "대체 모델"}을 사용합니다."
         }
 
+    private fun userMessage(fallbackReason: String?): String? =
+        when (fallbackReason) {
+            "no_available_model" ->
+                "현재 채널 모델 정책과 Provider 보호 상태를 만족하는 모델이 없어 요청을 보내지 않았습니다. " +
+                    "잠시 후 다시 시도하거나 관리자에게 모델 정책을 확인해 달라고 해주세요."
+            "requested_model_not_allowed" ->
+                "선택한 모델은 이 채널에서 허용되지 않아 사용 가능한 모델로 대체됩니다."
+            "requested_model_unavailable" ->
+                "선택한 모델을 처리할 온라인 Provider가 없어 사용 가능한 모델로 대체됩니다."
+            "fallback_selected" ->
+                "선택한 모델 대신 현재 안전하게 사용할 수 있는 모델로 대체됩니다."
+            else -> null
+        }
+
+    private fun nextAction(fallbackReason: String?): String? =
+        when (fallbackReason) {
+            "no_available_model" -> "retry_later_or_adjust_channel_model_policy"
+            "requested_model_not_allowed" -> "choose_allowed_model_or_update_policy"
+            "requested_model_unavailable" -> "choose_available_model_or_wait_for_provider"
+            "fallback_selected" -> "review_selected_fallback_model"
+            else -> null
+        }
+
     private fun qualityRank(value: String): Int =
         when (value.trim().lowercase()) {
             "specialized" -> 3
@@ -310,6 +335,8 @@ data class ModelChoiceDecision(
     val availableModels: List<String>,
     val fallbackReason: String?,
     val explanation: String,
+    val userMessage: String? = null,
+    val nextAction: String? = null,
     val responseMode: String,
     val costGuard: String,
     val requiresAvailableModel: Boolean = false,

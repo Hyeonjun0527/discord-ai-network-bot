@@ -49,5 +49,7 @@ class ChannelAiRoutingPolicyControllerTest
             assertEquals("no_available_model", choice["fallbackReason"])
             assertEquals(true, choice["requiresAvailableModel"])
             assertEquals(true, choice["routingBlocked"])
+            assertEquals("retry_later_or_adjust_channel_model_policy", choice["nextAction"])
+            assertEquals(true, choice["userMessage"].toString().contains("요청을 보내지 않았습니다"))
         }
     }

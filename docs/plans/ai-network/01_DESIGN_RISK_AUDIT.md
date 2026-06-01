@@ -320,13 +320,15 @@ Channel AI 설정이 깨져도 기본 질문은 가능해야 한다.
 
 ## 10. MVP 재조정 제안
 
-### 절대 먼저 만들지 말아야 할 것
+### 구현은 먼저 만들지 말아야 하지만, 기획은 먼저 끝내야 할 것
 
-- RAG 업로드 전체
-- 다중 응답/fan-out
-- 공개 프리셋 공유
-- 복잡한 성장 레벨 gamification
-- 실시간 대시보드 전체
+아래 기능은 foundation MVP 전에 runtime 구현하면 위험하다. 그러나 도메인/DB/보안/CI-CD 기획은 반드시 먼저 끝내야 한다.
+
+- RAG 업로드 전체 — Dailyting RAG 스택 이식 설계, Qdrant/CI/CD/보안 게이트까지 선기획
+- 다중 응답/fan-out — Provider 보호와 비용 상한까지 선기획 (`04_MULTI_RESPONSE_DESIGN.md`)
+- 공개/웹 프리셋 공유 — 게시/가져오기/수정/삭제/추천/신고까지 선기획
+- 복잡한 성장 레벨 gamification — 기여 강요 방지 정책까지 선기획
+- 실시간 대시보드 전체 — projection/freshness/권한 설계까지 선기획
 
 ### 먼저 만들어야 할 Foundation MVP
 
@@ -359,7 +361,7 @@ Channel AI 설정이 깨져도 기본 질문은 가능해야 한다.
 ### 가능하면 수정
 
 - [ ] `AiNetworkLevel` 은 초기에 계산형 projection 으로만 둔다.
-- [ ] `AiPreset` 은 1차에서 behavior snapshot 만 지원하고 RAG 복사는 금지한다.
+- [ ] `AiPreset` 1차 구현은 behavior snapshot 만 지원하되, 장기 설계는 웹 게시/가져오기/수정/삭제/추천/신고까지 포함한다.
 - [ ] 대시보드 1차는 Discord 패널 + 읽기 API 만 만든다.
 - [ ] 웹 대시보드는 인증/권한 설계 이후 시작한다.
 
@@ -370,8 +372,8 @@ Channel AI 설정이 깨져도 기본 질문은 가능해야 한다.
 판정:
 
 - **도메인 방향**: 통과
-- **RAG 포함 전체 구현**: 보류
-- **대시보드 전체 구현**: 보류
+- **RAG 포함 전체 구현**: 보류, 단 Dailyting 기반 기술스택/인프라/CI-CD 기획은 선행
+- **대시보드 전체 구현**: 보류, 단 projection/권한/정보구조 기획은 선행
 - **Foundation MVP**: 진행 권장
 - **필수 선행 조건**: 버전/승인/권한/Provider 보호 invariant 를 코드 레벨로 강제
 

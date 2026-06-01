@@ -4,6 +4,8 @@
 > 작성일: 2026-06-01  
 > 목적: “함께 만드는 AI 네트워크” 기능군을 구현하기 전에, DB·도메인 모델·Aggregate 경계를 먼저 확정하고 설계 감사를 수행하기 위한 기준 문서.
 > 비관적 감사: [AI Network 도메인 설계 비관적 감사](./01_DESIGN_RISK_AUDIT.md)  
+> RAG 이식 계획: [AI Network RAG 기술스택 이식 계획](./02_RAG_STACK_MIGRATION.md)  
+> 프리셋 공유 설계: [AI Preset Registry 설계](./03_PRESET_REGISTRY_DESIGN.md)  
 
 ## 0. 왜 먼저 설계해야 하나
 
@@ -452,6 +454,7 @@ Invariant:
 | 설정 변경 승인 | AiChangeProposal | CustomizationAuditLog |
 | 채널 AI 만들기 마법사 | ChannelAi | AiPreset, AiChangeProposal |
 | AI 네트워크 대시보드 | Dashboard Projection | 모든 주요 Aggregate |
+| 다중 응답/비교/합성 | MultiResponsePolicy, MultiResponseRun, CandidateAnswer, SynthesisResult | Provider, RoutingPolicy, KnowledgeSpace, Dashboard Projection |
 | 원하는 모델 선택 질문 | ModelSelectionPolicy | RoutingPolicy, ProviderCapabilityProfile |
 
 ## 6. DB 테이블 초안
@@ -580,7 +583,7 @@ Invariant:
 
 - [ ] Channel AI 표시 이름/아이콘은 version 대상인가, 현재 프로필 속성인가?
 - [ ] system prompt 를 DB 에 평문 저장할지, 암호화/마스킹 저장할지?
-- [ ] RAG 임베딩 저장소를 Postgres 확장(pgvector)로 갈지, 외부 벡터 DB 로 갈지?
-- [ ] 프리셋을 guild 내부 공유만 할지, 나중에 공개 공유까지 고려할지?
+- [x] RAG 임베딩 저장소는 Dailyting 기준 Qdrant 를 우선 이식한다. Postgres/pgvector 는 후순위 대안으로만 둔다.
+- [x] 프리셋은 guild 내부 공유를 넘어서 웹 게시/가져오기/수정/삭제/추천/신고가 가능한 Preset Registry 로 장기 설계한다.
 - [ ] 승인 정책을 모든 서버에 강제할지, 서버별 on/off 로 둘지?
 - [ ] 웹 대시보드 인증을 Discord OAuth 로 할지, 관리자 토큰/세션으로 할지?

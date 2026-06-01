@@ -133,3 +133,52 @@ interface ChannelAiProfileRepository : JpaRepository<ChannelAiProfileEntity, Lon
 
     fun deleteByGuildId(guildId: Long)
 }
+
+interface ChannelAiRepository : JpaRepository<ChannelAiEntity, Long> {
+    fun findByGuildId(guildId: Long): List<ChannelAiEntity>
+
+    fun findByGuildIdAndChannelId(
+        guildId: Long,
+        channelId: Long,
+    ): ChannelAiEntity?
+
+    fun deleteByGuildIdAndChannelId(
+        guildId: Long,
+        channelId: Long,
+    )
+
+    fun deleteByGuildId(guildId: Long)
+}
+
+interface AiBehaviorVersionRepository : JpaRepository<AiBehaviorVersionEntity, Long> {
+    fun findTopByChannelAiIdOrderByVersionDesc(channelAiId: Long): AiBehaviorVersionEntity?
+
+    fun findByChannelAiIdAndId(
+        channelAiId: Long,
+        id: Long,
+    ): AiBehaviorVersionEntity?
+
+    fun findByChannelAiIdOrderByVersionDesc(channelAiId: Long): List<AiBehaviorVersionEntity>
+
+    fun deleteByChannelAiId(channelAiId: Long)
+}
+
+interface AiChangeProposalRepository : JpaRepository<AiChangeProposalEntity, Long> {
+    fun deleteByGuildId(guildId: Long)
+
+    fun deleteByChannelAiId(channelAiId: Long)
+}
+
+interface CustomizationAuditLogRepository : JpaRepository<CustomizationAuditLogEntity, Long> {
+    fun findTop10ByGuildIdAndChannelIdOrderByCreatedAtDesc(
+        guildId: Long,
+        channelId: Long,
+    ): List<CustomizationAuditLogEntity>
+
+    fun deleteByGuildId(guildId: Long)
+
+    fun deleteByGuildIdAndChannelId(
+        guildId: Long,
+        channelId: Long,
+    )
+}

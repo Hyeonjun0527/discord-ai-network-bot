@@ -131,3 +131,63 @@ class ChannelAiProfileEntity(
     @Column(name = "display_name") var displayName: String = "냥시스턴트",
     @Column(name = "avatar_url") var avatarUrl: String? = null,
 )
+
+@Entity
+@Table(name = "channel_ai")
+class ChannelAiEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var channelId: Long = 0,
+    @Column(name = "display_name") var displayName: String = "냥시스턴트",
+    @Column(name = "avatar_url") var avatarUrl: String? = null,
+    @Column(name = "active_behavior_version_id") var activeBehaviorVersionId: Long? = null,
+    var source: String = "manual",
+    var createdAt: Instant = Instant.EPOCH,
+    var updatedAt: Instant = Instant.EPOCH,
+)
+
+@Entity
+@Table(name = "ai_behavior_version")
+class AiBehaviorVersionEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var channelAiId: Long = 0,
+    var version: Int = 1,
+    var purpose: String = "general_assistant",
+    var tone: String = "friendly",
+    var answerLength: String = "balanced",
+    var constitution: String? = null,
+    var safetyLevel: String = "standard",
+    var createdBy: Long? = null,
+    var createdAt: Instant = Instant.EPOCH,
+    var changeSummary: String? = null,
+)
+
+@Entity
+@Table(name = "ai_change_proposal")
+class AiChangeProposalEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var channelId: Long = 0,
+    var channelAiId: Long? = null,
+    var proposedBehaviorId: Long? = null,
+    var status: String = "approved",
+    var requestedBy: Long? = null,
+    var reviewedBy: Long? = null,
+    var reason: String? = null,
+    var createdAt: Instant = Instant.EPOCH,
+    var reviewedAt: Instant? = null,
+)
+
+@Entity
+@Table(name = "customization_audit_log")
+class CustomizationAuditLogEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var channelId: Long = 0,
+    var actorId: Long? = null,
+    var action: String = "",
+    var targetType: String = "",
+    var targetId: Long? = null,
+    var summary: String? = null,
+    var createdAt: Instant = Instant.EPOCH,
+)

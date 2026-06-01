@@ -89,8 +89,8 @@ h1 { margin: 0; font-size: clamp(2.35rem, 6vw, 5.2rem); line-height: 0.98; lette
 .card p { margin: 0; color: var(--muted); line-height: 1.55; }
 .meta { display: flex; flex-wrap: wrap; gap: 8px; }
 .badge { border: 1px solid var(--line); border-radius: 999px; padding: 0.35rem 0.55rem; color: var(--muted); font-size: 0.82rem; }
-.card-actions { display: flex; gap: 10px; margin-top: auto; }
-.card-actions button { flex: 1; }
+.card-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: auto; }
+.card-actions button { flex: 1 1 92px; }
 .preview-panel pre {
   min-height: 180px;
   white-space: pre-wrap;

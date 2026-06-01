@@ -108,6 +108,7 @@ function renderCatalog(presets) {
       </div>
       <div class="card-actions">
         <button data-action="preview" data-id="${esc(preset.id)}">미리보기</button>
+        <button class="secondary" data-action="share" data-id="${esc(preset.id)}" data-slug="${esc(preset.slug || preset.id)}">공유</button>
         <button class="secondary" data-action="like" data-id="${esc(preset.id)}">따봉</button>
         <button class="secondary" data-action="report" data-id="${esc(preset.id)}">신고</button>
       </div>
@@ -313,6 +314,27 @@ async function likePreset(id = selectedPresetId) {
   }
 }
 
+async function sharePreset(slugOrId) {
+  const locator = String(slugOrId || "").trim();
+  if (!locator) {
+    $("result").textContent = "공유할 프리셋을 찾지 못했습니다.";
+    return;
+  }
+  const shareUrl = `${window.location.origin}/presets?preset=${encodeURIComponent(locator)}`;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(shareUrl);
+      $("result").textContent = `공유 링크를 복사했습니다: ${shareUrl}`;
+    } else {
+      window.prompt("공유 링크를 복사하세요.", shareUrl);
+      $("result").textContent = "공유 링크를 열었습니다.";
+    }
+  } catch (e) {
+    window.prompt("공유 링크를 복사하세요.", shareUrl);
+    $("result").textContent = `자동 복사 실패: ${e.message}`;
+  }
+}
+
 async function confirmImport() {
   if (!pendingImport) {
     $("result").textContent = "서버 ID와 채널 ID를 입력한 뒤 미리보기를 먼저 실행하세요.";
@@ -353,6 +375,7 @@ $("catalog").addEventListener("click", (event) => {
   const button = event.target.closest("button[data-action]");
   if (!button) return;
   if (button.dataset.action === "preview") previewPreset(button.dataset.id);
+  if (button.dataset.action === "share") sharePreset(button.dataset.slug || button.dataset.id);
   if (button.dataset.action === "like") likePreset(Number(button.dataset.id));
   if (button.dataset.action === "report") reportPreset(Number(button.dataset.id));
 });

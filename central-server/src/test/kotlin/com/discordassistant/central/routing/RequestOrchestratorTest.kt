@@ -11,6 +11,7 @@ import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /** sendFrame(InferRequest) 를 받으면 즉시 결과/에러를 세션에 되먹여 future 를 완료시킨다. */
@@ -179,9 +180,12 @@ class RequestOrchestratorTest {
     }
 
     @Test
-    fun `프로바이더 없음 → FAILED`() {
+    fun `프로바이더 없음 → 다음 행동 안내와 함께 FAILED`() {
         val r = orchestrator(newRegistry()).handle(input)
         assertEquals(RequestState.FAILED, r.state)
+        assertTrue(r.failReason!!.contains("/프로바이더참여"))
+        assertTrue(r.failReason!!.contains("/내상태"))
+        assertTrue(r.failReason!!.contains("Provider가 연결되면 다시 질문해주세요"))
     }
 
     @Test

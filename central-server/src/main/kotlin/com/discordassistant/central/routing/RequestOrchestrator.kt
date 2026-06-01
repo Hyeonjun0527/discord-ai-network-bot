@@ -164,7 +164,7 @@ class RequestOrchestrator(
 
         // 3) 후보 구성 + 필터 + 선택 + 전송(최대 2회: 원 + fallback 1회)
         val excluded = mutableSetOf<Long>()
-        var lastReason = "처리 가능한 커뮤니티 로컬 AI 가 없습니다."
+        var lastReason = NO_PROVIDER_ACTIONABLE_REASON
         repeat(2) { attempt ->
             val candidates =
                 registry
@@ -212,6 +212,23 @@ class RequestOrchestrator(
                 log.debug("provider {} 실패: {}", sel.providerId, lastReason)
             }
         }
-        return OrchestrationResult(RequestState.FAILED, failReason = "현재 이 요청을 처리할 수 있는 커뮤니티 로컬 AI 가 없습니다. ($lastReason)")
+        return OrchestrationResult(RequestState.FAILED, failReason = noProviderActionableReason(lastReason))
+    }
+
+    companion object {
+        const val NO_PROVIDER_ACTIONABLE_REASON =
+            "지금은 답변을 처리할 온라인 AI Provider가 없습니다.\n\n" +
+                "다음 중 하나를 해주세요.\n" +
+                "• 내 컴퓨터의 AI로 함께 도와주기: `/메뉴` → `함께 도와주기` 또는 `/프로바이더참여`\n" +
+                "• 이미 참여했다면 에이전트 터미널이 켜져 있는지 확인하고 `/내상태`를 눌러보세요.\n" +
+                "• 관리자는 `/프로바이더목록`으로 온라인 Provider가 있는지 확인할 수 있어요.\n\n" +
+                "Provider가 연결되면 다시 질문해주세요."
+
+        fun noProviderActionableReason(lastReason: String): String =
+            if (lastReason == NO_PROVIDER_ACTIONABLE_REASON) {
+                NO_PROVIDER_ACTIONABLE_REASON
+            } else {
+                "$NO_PROVIDER_ACTIONABLE_REASON\n\n세부 원인: $lastReason"
+            }
     }
 }

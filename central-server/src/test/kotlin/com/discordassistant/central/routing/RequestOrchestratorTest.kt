@@ -88,8 +88,19 @@ class RequestOrchestratorTest {
         return s
     }
 
-    private fun orchestrator(reg: ConnectionRegistry) =
-        RequestOrchestrator(reg, fakePolicy, RequestWeigher(), ProviderFilterPipeline(), ProviderRouter(), recorder, fakeProfiles)
+    private fun orchestrator(
+        reg: ConnectionRegistry,
+        providerSafety: ProviderSafetyChecker = ALLOW_ALL_PROVIDER_SAFETY,
+    ) = RequestOrchestrator(
+        reg,
+        fakePolicy,
+        RequestWeigher(),
+        ProviderFilterPipeline(),
+        ProviderRouter(),
+        recorder,
+        fakeProfiles,
+        providerSafety = providerSafety,
+    )
 
     private val input = AiRequestInput(guildId = 100, channelId = 200, userId = 5, prompt = "안녕", roleIds = setOf(1))
 
@@ -200,6 +211,47 @@ class RequestOrchestratorTest {
         val r = orchestrator(reg).handle(input)
         assertEquals(RequestState.REJECTED, r.state)
         fakeProfiles.supported = setOf(ModelBurden.LIGHT, ModelBurden.STANDARD, ModelBurden.HEAVY)
+    }
+
+    @Test
+    fun `Provider 보호 상태면 단일 질문 라우팅에서도 제외하고 안전한 provider 로 보낸다`() {
+        val reg = newRegistry()
+        val protected = register(reg, 1, "ok")
+        val safe = register(reg, 2, "ok")
+        val safety =
+            object : ProviderSafetyChecker {
+                override fun isRoutingProtected(
+                    guildId: Long,
+                    providerUserId: Long,
+                ): Boolean = providerUserId == 1L
+            }
+
+        val r = orchestrator(reg, safety).handle(input)
+
+        assertEquals(RequestState.COMPLETED, r.state)
+        assertEquals(2L, r.providerId)
+        assertEquals(null, (protected.connection as EchoConnection).lastInfer)
+        assertNotNull((safe.connection as EchoConnection).lastInfer)
+    }
+
+    @Test
+    fun `모든 Provider가 보호 상태면 다음 행동 안내와 함께 실패한다`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok")
+        register(reg, 2, "ok")
+        val safety =
+            object : ProviderSafetyChecker {
+                override fun isRoutingProtected(
+                    guildId: Long,
+                    providerUserId: Long,
+                ): Boolean = true
+            }
+
+        val r = orchestrator(reg, safety).handle(input)
+
+        assertEquals(RequestState.FAILED, r.state)
+        assertTrue(r.failReason!!.contains("참여 PC를 보호"))
+        assertTrue(r.failReason!!.contains("/내상태"))
     }
 
     @Test

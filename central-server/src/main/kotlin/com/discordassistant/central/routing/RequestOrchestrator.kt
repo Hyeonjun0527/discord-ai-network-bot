@@ -66,6 +66,22 @@ internal val UNLIMITED_QUOTA =
         ): Boolean = false
     }
 
+/** Provider 보호 상태 확인. 과부하/수신정지 Provider는 품질 라우팅보다 먼저 제외한다. */
+interface ProviderSafetyChecker {
+    fun isRoutingProtected(
+        guildId: Long,
+        providerUserId: Long,
+    ): Boolean
+}
+
+internal val ALLOW_ALL_PROVIDER_SAFETY =
+    object : ProviderSafetyChecker {
+        override fun isRoutingProtected(
+            guildId: Long,
+            providerUserId: Long,
+        ): Boolean = false
+    }
+
 /** 사용량/기여 기록 트리거. JPA 구현(UsageService) 또는 테스트 fake. */
 interface UsageRecorder {
     fun recordSuccess(
@@ -126,6 +142,7 @@ class RequestOrchestrator(
     private val blocklist: BlocklistChecker = ALLOW_ALL_BLOCKLIST,
     private val quota: QuotaChecker = UNLIMITED_QUOTA,
     private val idempotency: IdempotencyGuard = IdempotencyGuard(),
+    private val providerSafety: ProviderSafetyChecker = ALLOW_ALL_PROVIDER_SAFETY,
 ) {
     private val log = LoggerFactory.getLogger(RequestOrchestrator::class.java)
 
@@ -193,15 +210,18 @@ class RequestOrchestrator(
                             allowedChannelIds = p.allowedChannelIds,
                             maxPromptChars = p.maxPromptChars,
                             failureRate = p.failureRate,
+                            inCooldown = providerSafety.isRoutingProtected(input.guildId, session.providerId),
                             modelNames = session.capability.models.toSet(),
                         )
                     }
             val outcome = pipeline.filter(candidates, ctx)
             if (outcome.eligible.isEmpty()) {
-                return if (outcome.signal == FilterSignal.PERMISSION_DENIED) {
-                    OrchestrationResult(RequestState.REJECTED, failReason = "권한 또는 정책상 처리할 수 없습니다.")
-                } else {
-                    OrchestrationResult(RequestState.FAILED, failReason = lastReason)
+                return when {
+                    outcome.signal == FilterSignal.PERMISSION_DENIED ->
+                        OrchestrationResult(RequestState.REJECTED, failReason = "권한 또는 정책상 처리할 수 없습니다.")
+                    outcome.dropped.isNotEmpty() && outcome.dropped.values.all { it == "cooldown" } ->
+                        OrchestrationResult(RequestState.FAILED, failReason = PROVIDER_PROTECTION_ACTIONABLE_REASON)
+                    else -> OrchestrationResult(RequestState.FAILED, failReason = lastReason)
                 }
             }
             val sel = router.select(outcome.eligible, ctx)!!
@@ -233,6 +253,13 @@ class RequestOrchestrator(
     }
 
     companion object {
+        const val PROVIDER_PROTECTION_ACTIONABLE_REASON =
+            "지금은 참여 PC를 보호하기 위해 답변 요청을 줄이고 있어요.\n\n" +
+                "과부하 또는 보호 상태인 Provider는 자동으로 제외됩니다.\n" +
+                "• 잠시 후 다시 질문하거나 `절약`/`빠른` 모드로 시도해 주세요.\n" +
+                "• Provider라면 `/내상태`에서 수신 상태와 PC 부하를 확인해 주세요.\n" +
+                "• 관리자는 AI 네트워크 대시보드의 과부하 알림을 확인해 주세요."
+
         const val NO_PROVIDER_ACTIONABLE_REASON =
             "지금은 답변을 처리할 온라인 AI Provider가 없습니다.\n\n" +
                 "다음 중 하나를 해주세요.\n" +

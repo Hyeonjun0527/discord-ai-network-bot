@@ -5,6 +5,7 @@ import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
+import com.discordassistant.central.routing.ProviderSafetyChecker
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -16,7 +17,15 @@ class ProviderSafetyService(
     private val events: AiNetworkEventRepository,
     private val foundation: AiNetworkFoundationService,
     private val clock: Clock = Clock.systemUTC(),
-) {
+) : ProviderSafetyChecker {
+    override fun isRoutingProtected(
+        guildId: Long,
+        providerUserId: Long,
+    ): Boolean {
+        val provider = providerCapabilities.findByGuildIdAndProviderUserId(guildId, providerUserId) ?: return false
+        return provider.overloadRisk.isOverloadRisk() || provider.providerState.equals("OVERLOADED", ignoreCase = true)
+    }
+
     fun overloadAlerts(guildId: Long): ProviderSafetyDashboard {
         val providers = providerCapabilities.findByGuildId(guildId)
         val alerts =

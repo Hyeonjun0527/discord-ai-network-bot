@@ -769,6 +769,7 @@ class PresetRegistryService(
                     requestedBy = importedBy,
                     reason = "preset import requires review: ${sourceRevision.safetyLevel}",
                     payloadHash = behavior.payloadHash(),
+                    routingSnapshot = ChannelAiRoutingSnapshot.fromRevision(sourceRevision).encode(),
                     createdAt = now,
                 ),
             )

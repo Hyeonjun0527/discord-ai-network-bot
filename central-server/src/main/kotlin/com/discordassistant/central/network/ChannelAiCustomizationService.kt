@@ -11,6 +11,8 @@ import com.discordassistant.central.persistence.AiChangeProposalEntity
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
 import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
+import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.persistence.CustomizationAuditLogEntity
 import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import org.springframework.stereotype.Service
@@ -25,6 +27,7 @@ class ChannelAiCustomizationService(
     private val versions: AiBehaviorVersionRepository,
     private val proposals: AiChangeProposalRepository,
     private val audits: CustomizationAuditLogRepository,
+    private val routingPolicies: ChannelAiRoutingPolicyRepository? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
@@ -290,12 +293,14 @@ class ChannelAiCustomizationService(
             )
             throw IllegalStateException("proposal payload changed after review request; create a new proposal")
         }
+        val now = Instant.now(clock)
         channelAi.activeBehaviorVersionId = behaviorId
-        channelAi.updatedAt = Instant.now(clock)
+        channelAi.updatedAt = now
         channelAis.save(channelAi)
+        applyRoutingSnapshot(proposal, channelAi.id, now)
         proposal.status = "approved"
         proposal.reviewedBy = reviewerUserId
-        proposal.reviewedAt = Instant.now(clock)
+        proposal.reviewedAt = now
         val saved = proposals.save(proposal)
         audit(
             guildId = proposal.guildId,
@@ -307,6 +312,20 @@ class ChannelAiCustomizationService(
             summary = "approved v${behavior.version}",
         )
         return saved
+    }
+
+    private fun applyRoutingSnapshot(
+        proposal: AiChangeProposalEntity,
+        channelAiId: Long,
+        now: Instant,
+    ) {
+        val repository = routingPolicies ?: return
+        val snapshot = ChannelAiRoutingSnapshot.decode(proposal.routingSnapshot) ?: return
+        val policy =
+            repository.findByGuildIdAndChannelId(proposal.guildId, proposal.channelId)
+                ?: ChannelAiRoutingPolicyEntity(guildId = proposal.guildId, channelId = proposal.channelId, createdAt = now)
+        snapshot.applyTo(policy, channelAiId, now)
+        repository.save(policy)
     }
 
     @Transactional

@@ -809,6 +809,7 @@ class PresetRegistryServiceTest
             assertEquals(null, routingPolicies.findByGuildIdAndChannelId(201, 301))
             val proposal = proposals.findByGuildIdAndStatus(201, "pending").single()
             assertNotNull(proposal.payloadHash)
+            assertNotNull(proposal.routingSnapshot)
             assertEquals(imported.createdBehaviorVersionId, proposal.proposedBehaviorId)
             assertEquals(1, audits.findTop10ByGuildIdAndChannelIdOrderByCreatedAtDesc(201, 301).size)
         }
@@ -873,7 +874,26 @@ class PresetRegistryServiceTest
             assertEquals("fast", routing?.responseMode)
             assertEquals("old-model", routing?.preferredModel)
             assertEquals(1, routing?.maxCandidates)
-            assertEquals(1, proposals.findByGuildIdAndStatus(211, "pending").size)
+            val proposal = proposals.findByGuildIdAndStatus(211, "pending").single()
+            val customization =
+                ChannelAiCustomizationService(
+                    channelAis = channelAis,
+                    versions = behaviorVersions,
+                    proposals = proposals,
+                    audits = audits,
+                    routingPolicies = routingPolicies,
+                    clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
+                )
+
+            val approved = customization.approveProposal(proposal.id, reviewerUserId = 99)
+
+            assertEquals("approved", approved.status)
+            assertEquals(imported.createdBehaviorVersionId, channelAis.findByGuildIdAndChannelId(211, 311)?.activeBehaviorVersionId)
+            val approvedRouting = routingPolicies.findByGuildIdAndChannelId(211, 311)
+            assertEquals("deep", approvedRouting?.responseMode)
+            assertEquals("qwen-coder", approvedRouting?.preferredModel)
+            assertEquals(3, approvedRouting?.maxCandidates)
+            assertEquals(imported.createdChannelAiId, approvedRouting?.channelAiId)
         }
 
         @Test

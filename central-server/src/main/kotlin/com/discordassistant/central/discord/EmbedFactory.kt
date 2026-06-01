@@ -137,7 +137,8 @@ object EmbedFactory {
                 currentBlock +
                     "아래 값은 **저장 후 적용될 설정 미리보기**입니다. " +
                     "언어·기본 모델·LLM 사용 허용 채널·자동 승인을 모두 고른 뒤 **저장**을 누르면 한 번에 적용됩니다.\n" +
-                    "현재 허용 채널은 아래 필드에 먼저 보여주고, 채널 드롭다운은 검색창에서 여러 채널을 연속 선택한 뒤 한 번만 확인하면 돼요.\n" +
+                    "현재 허용 채널은 아래 필드에 먼저 보여주고, 채널 드롭다운은 검색창에서 여러 채널을 한 번에 체크하면 돼요.\n" +
+                    "채널이 25개를 넘거나 멘션을 복사해둔 경우에는 **채널 여러 개 붙여넣기**를 쓰면 됩니다.\n" +
                     "드롭다운/버튼 선택은 바로 적용되지 않고 **저장 대기 변경사항**으로만 쌓입니다. " +
                     "마지막에 **설정 한 번에 저장** 버튼을 눌러야 실제 운영 설정이 바뀝니다." +
                     pendingBlock,
@@ -148,7 +149,7 @@ object EmbedFactory {
                 true,
             ).addField(
                 "#️⃣ LLM 사용 허용 채널",
-                allowedChannelText ?: if (allowedChannelCount == 0) "모든 채널 허용" else "${allowedChannelCount}개 채널만",
+                allowedChannelText ?: if (allowedChannelCount == 0) "모든 채널 허용" else "${allowedChannelCount}개 채널만 허용",
                 false,
             ).addField(
                 "✅ 프로바이더 자동 승인",

@@ -103,6 +103,8 @@ class EmbedFactoryTest {
         assertTrue(en.description?.contains("저장 후 적용될 설정 미리보기") == true)
         assertTrue(en.description?.contains("LLM 사용 허용 채널") == true)
         assertTrue(en.description?.contains("여러 채널") == true)
+        assertTrue(en.description?.contains("25개") == true)
+        assertTrue(en.description?.contains("채널 여러 개 붙여넣기") == true)
         assertTrue(en.description?.contains("저장 대기 변경사항") == true)
         assertTrue(en.description?.contains("설정 한 번에 저장") == true)
         assertTrue(en.description?.contains("실제 운영 설정") == true)

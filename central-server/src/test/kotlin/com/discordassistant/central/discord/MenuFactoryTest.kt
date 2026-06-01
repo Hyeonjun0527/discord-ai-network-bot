@@ -102,7 +102,7 @@ class MenuFactoryTest {
         assertEquals(MenuFactory.SAVE_SETTINGS, buttons.first().id)
         assertTrue(buttons.any { it.id == MenuFactory.CHANNEL_ALL && it.label?.contains("대기") == true })
         assertTrue(buttons.any { it.id == MenuFactory.CHANNEL_BULK && it.label?.contains("붙여넣기") == true })
-        assertTrue(buttons.any { it.id == MenuFactory.SAVE_SETTINGS && it.label?.contains("한 번에 저장") == true })
+        assertTrue(buttons.any { it.id == MenuFactory.SAVE_SETTINGS && it.label?.contains("저장") == true })
         assertTrue(buttons.any { it.id == MenuFactory.CANCEL_SETTINGS && it.label?.contains("취소") == true })
         assertEquals(ButtonStyle.SUCCESS, buttons.first { it.id == MenuFactory.SAVE_SETTINGS }.style)
     }

@@ -8,6 +8,8 @@ import com.discordassistant.central.persistence.AiPresetEntity
 import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
 import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
+import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.persistence.CustomizationAuditLogEntity
 import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.PresetImportEntity
@@ -34,6 +36,7 @@ class PresetRegistryService(
     private val reactions: PresetReactionRepository,
     private val reports: PresetReportRepository,
     private val channelAis: ChannelAiRepository,
+    private val routingPolicies: ChannelAiRoutingPolicyRepository,
     private val behaviorVersions: AiBehaviorVersionRepository,
     private val proposals: AiChangeProposalRepository,
     private val audits: CustomizationAuditLogRepository,
@@ -444,7 +447,29 @@ class PresetRegistryService(
                 createdAt = now,
             ),
         )
+        applyRoutingPolicySnapshot(sourceRevision, targetGuildId, targetChannelId, savedChannel.id, now)
         return AppliedPresetChannelAi(savedChannel.id, behavior.id, status)
+    }
+
+    private fun applyRoutingPolicySnapshot(
+        sourceRevision: PresetRevisionEntity,
+        targetGuildId: Long,
+        targetChannelId: Long,
+        channelAiId: Long,
+        now: Instant,
+    ) {
+        val policy =
+            routingPolicies.findByGuildIdAndChannelId(targetGuildId, targetChannelId)
+                ?: ChannelAiRoutingPolicyEntity(guildId = targetGuildId, channelId = targetChannelId, createdAt = now)
+        policy.channelAiId = channelAiId
+        policy.responseMode = normalizeResponseMode(sourceRevision.responseMode)
+        policy.preferredModel = sourceRevision.preferredModel?.trim()?.ifBlank { null }
+        policy.minQualityTier = sourceRevision.minQualityTier.trim().ifBlank { "standard" }
+        policy.maxCandidates = sourceRevision.maxCandidates.coerceIn(1, 5)
+        policy.providerTagFilter = sourceRevision.providerTagFilter?.trim()?.ifBlank { null }
+        policy.costGuard = sourceRevision.costGuard.trim().ifBlank { "provider_safe" }
+        policy.updatedAt = now
+        routingPolicies.save(policy)
     }
 
     private fun requireActivePreset(preset: AiPresetEntity) {
@@ -461,8 +486,23 @@ class PresetRegistryService(
         behavior: PresetBehaviorInput,
         createdBy: Long?,
         now: Instant,
-    ): PresetRevisionEntity =
-        revisions.save(
+    ): PresetRevisionEntity {
+        val preferredModel =
+            behavior.preferredModel
+                ?.trim()
+                ?.ifBlank { null }
+                ?.take(160)
+        val minQualityTier =
+            behavior.minQualityTier
+                .trim()
+                .ifBlank { "standard" }
+                .take(40)
+        val costGuard =
+            behavior.costGuard
+                .trim()
+                .ifBlank { "provider_safe" }
+                .take(80)
+        return revisions.save(
             PresetRevisionEntity(
                 presetId = preset.id,
                 revision = revision,
@@ -472,11 +512,18 @@ class PresetRegistryService(
                 answerLength = behavior.answerLength.trim().ifBlank { "balanced" },
                 constitution = behavior.constitution?.trim()?.ifBlank { null },
                 safetyLevel = behavior.safetyLevel.trim().ifBlank { "standard" },
+                responseMode = normalizeResponseMode(behavior.responseMode),
+                preferredModel = preferredModel,
+                minQualityTier = minQualityTier,
+                maxCandidates = behavior.maxCandidates.coerceIn(1, 5),
+                providerTagFilter = behavior.providerTagFilter.normalizedCsv(),
+                costGuard = costGuard,
                 changeSummary = behavior.changeSummary?.trim()?.ifBlank { null },
                 createdBy = createdBy,
                 createdAt = now,
             ),
         )
+    }
 
     private fun AiPresetEntity.toSummary(): PresetSummary =
         PresetSummary(
@@ -501,6 +548,12 @@ class PresetRegistryService(
             tone = tone,
             answerLength = answerLength,
             safetyLevel = safetyLevel,
+            responseMode = responseMode,
+            preferredModel = preferredModel,
+            minQualityTier = minQualityTier,
+            maxCandidates = maxCandidates,
+            providerTagFilter = splitCsv(providerTagFilter),
+            costGuard = costGuard,
             changeSummary = changeSummary,
             createdAt = createdAt.toString(),
         )
@@ -512,6 +565,12 @@ class PresetRegistryService(
             answerLength = answerLength,
             constitution = constitution,
             safetyLevel = safetyLevel,
+            responseMode = responseMode,
+            preferredModel = preferredModel,
+            minQualityTier = minQualityTier,
+            maxCandidates = maxCandidates,
+            providerTagFilter = splitCsv(providerTagFilter),
+            costGuard = costGuard,
         )
 
     private fun PresetReportEntity.toSummary(): PresetReportSummary =
@@ -539,6 +598,8 @@ class PresetRegistryService(
             purpose = revision?.purpose,
             tone = revision?.tone,
             safetyLevel = revision?.safetyLevel,
+            responseMode = revision?.responseMode,
+            preferredModel = revision?.preferredModel,
             likeCount = likeCount,
             importCount = importCount,
             reportCount = reportCount,
@@ -554,6 +615,28 @@ class PresetRegistryService(
             .replace(SECRET_PATTERN, "[redacted]")
             .take(maxLength)
             .ifBlank { "no reason provided" }
+
+    private fun normalizeResponseMode(value: String): String =
+        when (value.trim().lowercase()) {
+            "fast", "빠른", "빠른 답변" -> "fast"
+            "deep", "깊은", "깊은 답변" -> "deep"
+            "saving", "economy", "절약", "절약 모드" -> "saving"
+            else -> "balanced"
+        }
+
+    private fun List<String>.normalizedCsv(): String? =
+        map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString(",")
+            .ifBlank { null }
+
+    private fun splitCsv(value: String?): List<String> =
+        value
+            .orEmpty()
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
 
     private companion object {
         const val REPORT_REVIEW_THRESHOLD = 1
@@ -574,6 +657,12 @@ data class PresetBehaviorInput(
     val answerLength: String = "balanced",
     val constitution: String? = null,
     val safetyLevel: String = "standard",
+    val responseMode: String = "balanced",
+    val preferredModel: String? = null,
+    val minQualityTier: String = "standard",
+    val maxCandidates: Int = 1,
+    val providerTagFilter: List<String> = emptyList(),
+    val costGuard: String = "provider_safe",
     val changeSummary: String? = null,
 )
 
@@ -598,6 +687,12 @@ data class PresetRevisionSummary(
     val tone: String,
     val answerLength: String,
     val safetyLevel: String,
+    val responseMode: String,
+    val preferredModel: String?,
+    val minQualityTier: String,
+    val maxCandidates: Int,
+    val providerTagFilter: List<String>,
+    val costGuard: String,
     val changeSummary: String?,
     val createdAt: String,
 )
@@ -620,6 +715,8 @@ data class PublishedPresetSummary(
     val purpose: String?,
     val tone: String?,
     val safetyLevel: String?,
+    val responseMode: String?,
+    val preferredModel: String?,
     val likeCount: Int,
     val importCount: Int,
     val reportCount: Int,
@@ -632,6 +729,12 @@ data class PresetBehaviorSnapshot(
     val answerLength: String,
     val constitution: String?,
     val safetyLevel: String,
+    val responseMode: String,
+    val preferredModel: String?,
+    val minQualityTier: String,
+    val maxCandidates: Int,
+    val providerTagFilter: List<String>,
+    val costGuard: String,
 )
 
 data class PresetReportSummary(

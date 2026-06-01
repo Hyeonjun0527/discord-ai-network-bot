@@ -12,6 +12,7 @@ import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.PresetImportRepository
 import com.discordassistant.central.persistence.PresetReactionRepository
@@ -41,6 +42,7 @@ class PresetRegistryServiceTest
         private val reactions: PresetReactionRepository,
         private val reports: PresetReportRepository,
         private val channelAis: ChannelAiRepository,
+        private val routingPolicies: ChannelAiRoutingPolicyRepository,
         private val behaviorVersions: AiBehaviorVersionRepository,
         private val proposals: AiChangeProposalRepository,
         private val audits: CustomizationAuditLogRepository,
@@ -54,6 +56,7 @@ class PresetRegistryServiceTest
                 reactions = reactions,
                 reports = reports,
                 channelAis = channelAis,
+                routingPolicies = routingPolicies,
                 behaviorVersions = behaviorVersions,
                 proposals = proposals,
                 audits = audits,
@@ -77,6 +80,12 @@ class PresetRegistryServiceTest
                                 tone = "practical",
                                 answerLength = "balanced",
                                 constitution = "모르면 모른다고 말하기",
+                                responseMode = "deep",
+                                preferredModel = "qwen-coder",
+                                minQualityTier = "high",
+                                maxCandidates = 2,
+                                providerTagFilter = listOf("coding", "night"),
+                                costGuard = "provider_safe",
                             ),
                     ),
                 )
@@ -89,7 +98,17 @@ class PresetRegistryServiceTest
                     UpdatePresetRequest(
                         actorUserId = 77,
                         name = "코딩 튜터 v2",
-                        behavior = PresetBehaviorInput(purpose = "코드 리뷰", tone = "concise", changeSummary = "리뷰 특화"),
+                        behavior =
+                            PresetBehaviorInput(
+                                purpose = "코드 리뷰",
+                                tone = "concise",
+                                responseMode = "deep",
+                                preferredModel = "qwen-coder",
+                                minQualityTier = "high",
+                                maxCandidates = 2,
+                                providerTagFilter = listOf("coding", "night"),
+                                changeSummary = "리뷰 특화",
+                            ),
                     ),
                 )
             assertEquals("draft", updated["status"])
@@ -108,8 +127,11 @@ class PresetRegistryServiceTest
             val publishedSummary = publishedList.first() as PublishedPresetSummary
             assertEquals("코드 리뷰", publishedSummary.purpose)
             assertEquals("standard", publishedSummary.safetyLevel)
+            assertEquals("deep", publishedSummary.responseMode)
+            assertEquals("qwen-coder", publishedSummary.preferredModel)
             val publishedDetail = controller.publishedPresetDetail(publishedId)["preset"] as PublishedPresetDetail
             assertEquals("concise", publishedDetail.behavior.tone)
+            assertEquals(listOf("coding", "night"), publishedDetail.behavior.providerTagFilter)
 
             controller.like(publishedId, LikePresetRequest(userId = 88))
             controller.like(publishedId, LikePresetRequest(userId = 88))
@@ -137,6 +159,13 @@ class PresetRegistryServiceTest
             val importedBehavior = behaviorVersions.findByChannelAiIdAndId(channelAi!!.id, channelAi.activeBehaviorVersionId!!)
             assertEquals("코드 리뷰", importedBehavior?.purpose)
             assertEquals("concise", importedBehavior?.tone)
+            val importedRouting = routingPolicies.findByGuildIdAndChannelId(101, 202)
+            assertNotNull(importedRouting)
+            assertEquals("deep", importedRouting?.responseMode)
+            assertEquals("qwen-coder", importedRouting?.preferredModel)
+            assertEquals("high", importedRouting?.minQualityTier)
+            assertEquals(2, importedRouting?.maxCandidates)
+            assertEquals("coding,night", importedRouting?.providerTagFilter)
             assertEquals(1, publishedPresets.findById(publishedId).get().importCount)
 
             val report =

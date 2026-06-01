@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -153,8 +154,10 @@ class MultiResponseController(
     @GetMapping("/runs/{runId}")
     fun runDetail(
         @PathVariable runId: Long,
+        @RequestParam(defaultValue = "public") audience: String = "public",
     ): Map<String, Any?> {
         val detail = service.runDetail(runId)
+        val canSeeProviderIdentity = audience.equals("admin", ignoreCase = true)
         return mapOf(
             "id" to detail.run.id,
             "requestId" to detail.run.requestId,
@@ -173,17 +176,17 @@ class MultiResponseController(
                     )
                 },
             "candidates" to
-                detail.candidates.map {
+                detail.candidates.mapIndexed { index, candidate ->
                     mapOf(
-                        "id" to it.id,
-                        "providerUserId" to it.providerUserId,
-                        "modelName" to it.modelName,
-                        "status" to it.status,
-                        "latencyMs" to it.latencyMs,
-                        "qualityScore" to it.qualityScore,
-                        "safetyFlags" to it.safetyFlags,
-                        "answerRef" to it.answerRef,
-                    )
+                        "id" to candidate.id,
+                        "providerUserId" to if (canSeeProviderIdentity) candidate.providerUserId else null,
+                        "providerLabel" to providerLabel(candidate.providerUserId, index),
+                        "modelName" to candidate.modelName,
+                        "status" to candidate.status,
+                        "latencyMs" to candidate.latencyMs,
+                        "qualityScore" to candidate.qualityScore,
+                        "safetyFlags" to candidate.safetyFlags,
+                    ) + if (canSeeProviderIdentity) mapOf("answerRef" to candidate.answerRef) else emptyMap()
                 },
             "synthesis" to
                 detail.synthesis?.let {
@@ -191,11 +194,10 @@ class MultiResponseController(
                         "id" to it.id,
                         "status" to it.status,
                         "strategy" to it.strategy,
-                        "answerRef" to it.answerRef,
                         "selectedCandidateIds" to it.selectedCandidateIds,
                         "qualitySummary" to it.qualitySummary,
                         "safetySummary" to it.safetySummary,
-                    )
+                    ) + if (canSeeProviderIdentity) mapOf("answerRef" to it.answerRef) else emptyMap()
                 },
             "qualitySummary" to detail.qualitySummary,
             "safetySummary" to detail.safetySummary,
@@ -205,19 +207,22 @@ class MultiResponseController(
     @GetMapping("/{guildId}/provider-load")
     fun providerLoad(
         @PathVariable guildId: Long,
+        @RequestParam(defaultValue = "public") audience: String = "public",
     ): List<Map<String, Any?>> =
-        service.providerFanoutLoad(guildId).map {
+        service.providerFanoutLoad(guildId).mapIndexed { index, load ->
+            val canSeeProviderIdentity = audience.equals("admin", ignoreCase = true)
             mapOf(
-                "guildId" to it.guildId,
-                "providerUserId" to it.providerUserId,
-                "candidateCount" to it.candidateCount,
-                "completedCount" to it.completedCount,
-                "timeoutCount" to it.timeoutCount,
-                "failedCount" to it.failedCount,
-                "averageLatencyMs" to it.averageLatencyMs,
-                "averageQualityScore" to it.averageQualityScore,
-                "loadRisk" to it.loadRisk,
-                "runIds" to it.runIds,
+                "guildId" to load.guildId,
+                "providerUserId" to if (canSeeProviderIdentity) load.providerUserId else null,
+                "providerLabel" to providerLabel(load.providerUserId, index),
+                "candidateCount" to load.candidateCount,
+                "completedCount" to load.completedCount,
+                "timeoutCount" to load.timeoutCount,
+                "failedCount" to load.failedCount,
+                "averageLatencyMs" to load.averageLatencyMs,
+                "averageQualityScore" to load.averageQualityScore,
+                "loadRisk" to load.loadRisk,
+                "runIds" to load.runIds,
             )
         }
 
@@ -235,6 +240,11 @@ class MultiResponseController(
             "averageActualFanout" to stats.averageActualFanout,
         )
     }
+
+    private fun providerLabel(
+        providerUserId: Long?,
+        index: Int,
+    ): String = providerUserId?.let { "Provider ${kotlin.math.abs(it.hashCode()).toString(36).take(6)}" } ?: "Provider ${index + 1}"
 }
 
 data class SaveMultiResponsePolicyRequest(

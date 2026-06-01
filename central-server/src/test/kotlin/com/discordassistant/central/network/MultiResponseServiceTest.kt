@@ -23,6 +23,7 @@ import com.discordassistant.central.persistence.SynthesisResultRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
@@ -211,6 +212,15 @@ class MultiResponseServiceTest
             assertEquals("completed", detail["status"])
             assertEquals("avg=90.0, best=90, scored=1", detail["qualitySummary"])
             assertEquals(2, (detail["candidates"] as List<*>).size)
+            val publicCandidate = (detail["candidates"] as List<*>).first() as Map<*, *>
+            assertEquals(null, publicCandidate["providerUserId"])
+            assertTrue(publicCandidate["providerLabel"].toString().startsWith("Provider "))
+            assertTrue(!publicCandidate.containsKey("answerRef"))
+            assertTrue(!(detail["synthesis"] as Map<*, *>).containsKey("answerRef"))
+            val adminDetail = controller.runDetail(runId, audience = "admin")
+            val adminCandidate = (adminDetail["candidates"] as List<*>).first() as Map<*, *>
+            assertEquals(1L, adminCandidate["providerUserId"])
+            assertEquals("answer:req-1:a", adminCandidate["answerRef"])
             val stats = controller.stats(100)
             assertEquals(1, stats["recentRunCount"])
             assertEquals(1, stats["completedRunCount"])
@@ -325,7 +335,11 @@ class MultiResponseServiceTest
                 RecordCandidateRequest(status = "failed", latencyMs = 12_000),
             )
 
-            val load = controller.providerLoad(100)
+            val publicLoad = controller.providerLoad(100)
+            assertEquals(null, publicLoad.first()["providerUserId"])
+            assertTrue(publicLoad.first()["providerLabel"].toString().startsWith("Provider "))
+
+            val load = controller.providerLoad(100, audience = "admin")
             val risky = load.first()
             val stable = load.first { it["providerUserId"] == 71L }
 

@@ -6,6 +6,7 @@ import com.discordassistant.central.network.AiNetworkGrowthPlan
 import com.discordassistant.central.network.AiNetworkGrowthService
 import com.discordassistant.central.network.AiQualityFeedbackService
 import com.discordassistant.central.network.ModelQualitySummary
+import com.discordassistant.central.network.MultiResponseOperationsSummary
 import com.discordassistant.central.network.MultiResponseService
 import com.discordassistant.central.network.NetworkGrowthEventCard
 import com.discordassistant.central.network.ProviderSafetyDashboard
@@ -77,7 +78,16 @@ class AiNetworkDashboardController(
         val overload = ProviderSafetyDashboardResponse.from(rawOverload, DashboardAudience.from(audience))
         val executionPlan = providerSafety.executionPlan(guildId, responseMode, requestedCandidates)
         val visibility = DashboardAudience.from(audience)
-        val multiResponseOperations = MultiResponseOperationsDashboardResponse.from(multiResponse.operationsSummary(guildId), visibility)
+        val featureSnapshot = featureGate.snapshot()
+        val multiResponseOperations =
+            MultiResponseOperationsDashboardResponse.from(
+                if (featureSnapshot.multiResponseDashboard) {
+                    multiResponse.operationsSummary(guildId)
+                } else {
+                    MultiResponseOperationsSummary.disabled(guildId)
+                },
+                visibility,
+            )
         val growthPlan = growth.growthPlan(guildId)
         val growthTimeline = growth.timelineCards(guildId).take(5)
         val readiness = readiness(overview, channels, providers, modelMap, knowledgeSpaces, quality, rawOverload)
@@ -132,6 +142,7 @@ class AiNetworkDashboardController(
                 !featureSnapshot.killSwitch
         val advancedLimited =
             !featureSnapshot.multiResponse ||
+                !featureSnapshot.multiResponseDashboard ||
                 !featureSnapshot.multiResponseSynthesis ||
                 !featureSnapshot.multiResponseRag ||
                 featureSnapshot.multiResponseMaxFanout <= 1
@@ -150,6 +161,7 @@ class AiNetworkDashboardController(
                             "presets=${featureSnapshot.presets}",
                             "rag=${featureSnapshot.rag}",
                             "multi=${featureSnapshot.multiResponse}",
+                            "multiDashboard=${featureSnapshot.multiResponseDashboard}",
                             "synthesis=${featureSnapshot.multiResponseSynthesis}",
                             "multiRag=${featureSnapshot.multiResponseRag}",
                             "maxFanout=${featureSnapshot.multiResponseMaxFanout}",

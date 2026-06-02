@@ -19,6 +19,7 @@ class AiNetworkFeatureGateTest {
         assertFalse(snapshot.rag)
         assertFalse(snapshot.multiResponse)
         assertFalse(snapshot.multiResponseSynthesis)
+        assertFalse(snapshot.multiResponseDashboard)
         assertFalse(snapshot.multiResponseRag)
         assertEquals(1, snapshot.multiResponseMaxFanout)
         assertFalse(snapshot.channelAi)
@@ -39,10 +40,22 @@ class AiNetworkFeatureGateTest {
         val snapshot = gate.snapshot()
 
         assertTrue(snapshot.multiResponse)
+        assertTrue(snapshot.multiResponseDashboard)
         assertFalse(snapshot.multiResponseSynthesis)
         assertFalse(snapshot.multiResponseRag)
         assertEquals(AI_NETWORK_MAX_CANDIDATES, snapshot.multiResponseMaxFanout)
         assertThrows(IllegalStateException::class.java) { gate.requireMultiResponseSynthesisEnabled() }
         assertFalse(gate.canUseMultiResponseRag())
+    }
+
+    @Test
+    fun `multi response dashboard gate can stop projections without stopping question fanout`() {
+        val gate = AiNetworkFeatureGate(multiResponseDashboardEnabled = false)
+        val snapshot = gate.snapshot()
+
+        assertTrue(snapshot.multiResponse)
+        assertFalse(snapshot.multiResponseDashboard)
+        gate.requireMultiResponseEnabled()
+        assertThrows(IllegalStateException::class.java) { gate.requireMultiResponseDashboardEnabled() }
     }
 }

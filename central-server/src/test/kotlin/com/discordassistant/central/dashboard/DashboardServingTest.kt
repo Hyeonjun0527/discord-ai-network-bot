@@ -224,6 +224,7 @@ class DashboardServingTest
             assertTrue(js.contains("/api/ai-network/features"))
             assertTrue(js.contains("renderMultiFeatureFlags"))
             assertTrue(js.contains("multiResponseMaxFanout"))
+            assertTrue(js.contains("multiResponseDashboard"))
             assertTrue(js.contains("/api/ai-network/multi-response/pseudo-stream-plan"))
             assertTrue(js.contains("adoptionRate"))
             assertTrue(js.contains("renderAiNetwork"))

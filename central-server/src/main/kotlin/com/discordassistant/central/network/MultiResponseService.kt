@@ -464,9 +464,13 @@ class MultiResponseService(
         return runs.save(run)
     }
 
-    fun listRecent(guildId: Long): List<MultiResponseRunEntity> = runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
+    fun listRecent(guildId: Long): List<MultiResponseRunEntity> {
+        featureGate.requireMultiResponseDashboardEnabled()
+        return runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
+    }
 
     fun runDetail(runId: Long): MultiResponseRunDetail {
+        featureGate.requireMultiResponseDashboardEnabled()
         val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
         val runCandidates = candidates.findByRunId(runId)
         return MultiResponseRunDetail(
@@ -480,6 +484,7 @@ class MultiResponseService(
     }
 
     fun providerFanoutLoad(guildId: Long): List<ProviderFanoutLoadSummary> {
+        featureGate.requireMultiResponseDashboardEnabled()
         val recentRuns = runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
         val runIds = recentRuns.map { it.id }.toSet()
         if (runIds.isEmpty()) return emptyList()
@@ -519,6 +524,7 @@ class MultiResponseService(
         channelId: Long? = null,
         limit: Int = 20,
     ): MultiResponseDecisionSummary {
+        featureGate.requireMultiResponseDashboardEnabled()
         val recent =
             runs
                 .findTop20ByGuildIdOrderByStartedAtDesc(guildId)
@@ -635,7 +641,7 @@ class MultiResponseService(
         guildId: Long,
         channelId: Long? = null,
     ): MultiResponseOperationsSummary {
-        featureGate.requireMultiResponseEnabled()
+        featureGate.requireMultiResponseDashboardEnabled()
         val stats = dailyStats(guildId)
         val decisions = decisionSummary(guildId, channelId, limit = 20)
         val providerLoads = providerFanoutLoad(guildId)
@@ -764,6 +770,7 @@ class MultiResponseService(
     }
 
     fun dailyStats(guildId: Long): MultiResponseDailyStats {
+        featureGate.requireMultiResponseDashboardEnabled()
         val recent = runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
         val completed = recent.count { it.status == "completed" }
         val fallback = recent.count { it.status in setOf("no_provider", "blocked_sensitive", "failed") }
@@ -1154,7 +1161,32 @@ data class MultiResponseDecisionSummary(
     val riskCodes: List<String>,
     val nextActions: List<String>,
     val recentDecisions: List<MultiResponseDecisionItem>,
-)
+) {
+    companion object {
+        fun empty(
+            guildId: Long,
+            channelId: Long?,
+            reason: String,
+        ): MultiResponseDecisionSummary =
+            MultiResponseDecisionSummary(
+                guildId = guildId,
+                channelId = channelId,
+                recentRunCount = 0,
+                completedRunCount = 0,
+                fallbackRunCount = 0,
+                totalCandidateCount = 0,
+                acceptedCandidateCount = 0,
+                rejectedCandidateCount = 0,
+                timeoutCandidateCount = 0,
+                averageQualityScore = 0.0,
+                adoptionRate = 0.0,
+                statusCounts = mapOf("disabled" to 1),
+                riskCodes = listOf(reason),
+                nextActions = listOf("AI_NETWORK_MULTI_RESPONSE_DASHBOARD_ENABLED 값을 확인하세요."),
+                recentDecisions = emptyList(),
+            )
+    }
+}
 
 data class MultiResponseDecisionItem(
     val runId: Long,
@@ -1189,7 +1221,37 @@ data class MultiResponseOperationsSummary(
     val nextActions: List<String>,
     val providerLoads: List<ProviderFanoutLoadSummary>,
     val decisionSummary: MultiResponseDecisionSummary,
-)
+) {
+    companion object {
+        fun disabled(
+            guildId: Long,
+            channelId: Long? = null,
+            reason: String = "multi_response_dashboard_disabled",
+        ): MultiResponseOperationsSummary =
+            MultiResponseOperationsSummary(
+                guildId = guildId,
+                channelId = channelId,
+                status = "disabled",
+                safeToEnableAdvanced = false,
+                recentRunCount = 0,
+                completedRunCount = 0,
+                fallbackRunCount = 0,
+                averageActualFanout = 0.0,
+                acceptedCandidateCount = 0,
+                timeoutCandidateCount = 0,
+                rejectedCandidateCount = 0,
+                highLoadProviderCount = 0,
+                criticalLoadProviderCount = 0,
+                ragFallbackRunCount = 0,
+                blockedSensitiveRunCount = 0,
+                noProviderRunCount = 0,
+                riskCodes = listOf(reason),
+                nextActions = listOf("다중응답 대시보드가 비활성화되어 운영 통계를 숨겼어요."),
+                providerLoads = emptyList(),
+                decisionSummary = MultiResponseDecisionSummary.empty(guildId, channelId, reason),
+            )
+    }
+}
 
 data class ProviderFanoutLoadSummary(
     val guildId: Long,

@@ -196,6 +196,46 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `multi response dashboard gate blocks projections without blocking question fanout`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 153,
+                    providerUserId = 301,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3.1:8b",
+                    capabilityTags = "multi-response",
+                    overloadRisk = "normal",
+                ),
+            )
+            val dashboardOffService =
+                MultiResponseService(
+                    policies = policies,
+                    runs = runs,
+                    candidates = candidates,
+                    syntheses = syntheses,
+                    providerCapabilities = providerCapabilities,
+                    clock = fixedClock,
+                    featureGate = AiNetworkFeatureGate(multiResponseDashboardEnabled = false),
+                )
+            val dashboardOffController = MultiResponseController(dashboardOffService)
+
+            dashboardOffController.savePolicy(
+                153,
+                SaveMultiResponsePolicyRequest(channelId = 203, mode = "compare", maxCandidates = 2),
+            )
+            val started =
+                dashboardOffController.startRun(
+                    153,
+                    StartMultiResponseRunRequest(channelId = 203, requestId = "dashboard-off-keeps-fanout"),
+                )
+
+            assertEquals(1, started["candidateCount"])
+            assertThrows(IllegalStateException::class.java) { dashboardOffController.recentRuns(153) }
+            assertThrows(IllegalStateException::class.java) { dashboardOffController.operationsSummary(153) }
+        }
+
+        @Test
         fun `provider at live concurrency limit is excluded from fanout candidates`() {
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(

@@ -11,6 +11,7 @@ class AiNetworkFeatureGate(
     @param:Value("\${central.ai-network.rag-enabled:true}") private val ragEnabled: Boolean = true,
     @param:Value("\${central.ai-network.multi-response-enabled:true}") private val multiResponseEnabled: Boolean = true,
     @param:Value("\${central.ai-network.multi-response-synthesis-enabled:true}") private val multiResponseSynthesisEnabled: Boolean = true,
+    @param:Value("\${central.ai-network.multi-response-dashboard-enabled:true}") private val multiResponseDashboardEnabled: Boolean = true,
     @param:Value("\${central.ai-network.multi-response-rag-enabled:true}") private val multiResponseRagEnabled: Boolean = true,
     @param:Value("\${central.ai-network.multi-response-max-fanout:2}") private val multiResponseMaxFanout: Int = 2,
     @param:Value("\${central.ai-network.channel-ai-enabled:true}") private val channelAiEnabled: Boolean = true,
@@ -24,6 +25,7 @@ class AiNetworkFeatureGate(
             rag = available(ragEnabled),
             multiResponse = available(multiResponseEnabled),
             multiResponseSynthesis = available(multiResponseEnabled && multiResponseSynthesisEnabled),
+            multiResponseDashboard = available(dashboardEnabled && multiResponseEnabled && multiResponseDashboardEnabled),
             multiResponseRag = available(multiResponseEnabled && ragEnabled && multiResponseRagEnabled),
             multiResponseMaxFanout = maxFanout(),
             channelAi = available(channelAiEnabled),
@@ -40,6 +42,9 @@ class AiNetworkFeatureGate(
 
     fun requireMultiResponseSynthesisEnabled() =
         requireFeature("multi-response synthesis", multiResponseEnabled && multiResponseSynthesisEnabled)
+
+    fun requireMultiResponseDashboardEnabled() =
+        requireFeature("multi-response dashboard", dashboardEnabled && multiResponseEnabled && multiResponseDashboardEnabled)
 
     fun requireChannelAiEnabled() = requireFeature("channel AI customization", channelAiEnabled)
 
@@ -73,6 +78,7 @@ data class AiNetworkFeatureSnapshot(
     val rag: Boolean,
     val multiResponse: Boolean,
     val multiResponseSynthesis: Boolean,
+    val multiResponseDashboard: Boolean,
     val multiResponseRag: Boolean,
     val multiResponseMaxFanout: Int,
     val channelAi: Boolean,

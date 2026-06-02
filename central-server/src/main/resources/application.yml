@@ -75,6 +75,7 @@ central:
     rag-enabled: ${AI_NETWORK_RAG_ENABLED:true}
     multi-response-enabled: ${AI_NETWORK_MULTI_RESPONSE_ENABLED:true}
     multi-response-synthesis-enabled: ${AI_NETWORK_MULTI_RESPONSE_SYNTHESIS_ENABLED:true}
+    multi-response-dashboard-enabled: ${AI_NETWORK_MULTI_RESPONSE_DASHBOARD_ENABLED:true}
     multi-response-rag-enabled: ${AI_NETWORK_MULTI_RESPONSE_RAG_ENABLED:true}
     multi-response-max-fanout: ${AI_NETWORK_MULTI_RESPONSE_MAX_FANOUT:2}
     channel-ai-enabled: ${AI_NETWORK_CHANNEL_AI_ENABLED:true}

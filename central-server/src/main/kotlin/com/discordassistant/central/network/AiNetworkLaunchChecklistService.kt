@@ -29,7 +29,13 @@ class AiNetworkLaunchChecklistService(
         val overview = foundation.refreshOverview(guildId)
         val overload = providerSafety.overloadAlerts(guildId)
         val quality = qualityFeedback.guildSummary(guildId)
-        val multi = multiResponse.operationsSummary(guildId)
+        val features = featureGate.snapshot()
+        val multi =
+            if (features.multiResponseDashboard) {
+                multiResponse.operationsSummary(guildId)
+            } else {
+                MultiResponseOperationsSummary.disabled(guildId)
+            }
         val channelCount = channelAis.findByGuildId(guildId).size
         val providerList = providers.findByGuildId(guildId)
         val modelCount = providerList.flatMap { splitCsv(it.modelNames) }.distinct().size
@@ -37,7 +43,6 @@ class AiNetworkLaunchChecklistService(
         val sources = spaces.flatMap { knowledgeSources.findByKnowledgeSpaceId(it.id) }
         val pendingChanges =
             proposals.findByGuildIdOrderByCreatedAtDesc(guildId).count { it.status == "pending" || it.status == "stale" }
-        val features = featureGate.snapshot()
         val featureBaseReady =
             features.aiNetwork &&
                 features.dashboard &&
@@ -47,6 +52,7 @@ class AiNetworkLaunchChecklistService(
                 !features.killSwitch
         val advancedLimited =
             !features.multiResponse ||
+                !features.multiResponseDashboard ||
                 !features.multiResponseSynthesis ||
                 !features.multiResponseRag ||
                 features.multiResponseMaxFanout <= 1
@@ -64,6 +70,7 @@ class AiNetworkLaunchChecklistService(
                         "presets=${features.presets}",
                         "rag=${features.rag}",
                         "multi=${features.multiResponse}",
+                        "multiDashboard=${features.multiResponseDashboard}",
                         "synthesis=${features.multiResponseSynthesis}",
                         "multiRag=${features.multiResponseRag}",
                         "maxFanout=${features.multiResponseMaxFanout}",

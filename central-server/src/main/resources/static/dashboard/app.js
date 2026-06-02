@@ -1076,6 +1076,7 @@ function renderMultiFeatureFlags(features = {}) {
   renderList("multiFeatureFlags", [
     ["AI 네트워크", featureState(features.aiNetwork)],
     ["다중응답", featureState(features.multiResponse)],
+    ["다중응답 대시보드", featureState(features.multiResponseDashboard)],
     ["후보 합성", featureState(features.multiResponseSynthesis)],
     ["RAG 결합", featureState(features.multiResponseRag)],
     ["최대 fanout", `${maxFanout}개`],
@@ -1124,7 +1125,7 @@ async function refreshMultiOps() {
     $("multiResult").textContent = [
       `다중응답 상태: ${summary.status || "unknown"}`,
       `고급 모드 안전: ${summary.safeToEnableAdvanced ? "yes" : "no"}`,
-      `기능 플래그: multi=${featureState(features?.multiResponse)} · synthesis=${featureState(features?.multiResponseSynthesis)} · rag=${featureState(features?.multiResponseRag)} · maxFanout=${features?.multiResponseMaxFanout ?? "?"}`,
+      `기능 플래그: multi=${featureState(features?.multiResponse)} · dashboard=${featureState(features?.multiResponseDashboard)} · synthesis=${featureState(features?.multiResponseSynthesis)} · rag=${featureState(features?.multiResponseRag)} · maxFanout=${features?.multiResponseMaxFanout ?? "?"}`,
       `최근 실행: ${runs?.length || 0}건 · 채택률: ${decision?.adoptionRate ?? summary.decisionSummary?.adoptionRate ?? 0}`,
       `후보 상태: accepted=${decision?.acceptedCandidateCount ?? 0} · rejected=${decision?.rejectedCandidateCount ?? 0} · timeout=${decision?.timeoutCandidateCount ?? 0}`,
       "",

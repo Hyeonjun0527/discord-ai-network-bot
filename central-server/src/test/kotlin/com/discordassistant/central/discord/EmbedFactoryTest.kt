@@ -27,6 +27,7 @@ class EmbedFactoryTest {
         assertEquals(Color(0x57F287), e.color)
         assertEquals("2", e.fields.first { it.name == "처리중" }.value)
         assertNotNull(e.footer)
+        assertFalse(e.footer!!.text!!.contains("provider:7"))
     }
 
     @Test
@@ -77,7 +78,15 @@ class EmbedFactoryTest {
 
     @Test
     fun `설정 패널 embed — 현재 상태 필드`() {
-        val e = EmbedFactory.settingsEmbed("ko", null, 0, 0, false)
+        val e =
+            EmbedFactory.settingsEmbed(
+                "ko",
+                null,
+                0,
+                0,
+                false,
+                currentSummary = "• LLM 사용 채널: 모든 채널 허용",
+            )
         assertEquals("⚙️ 서버 설정", e.title)
         assertEquals("한국어", e.fields.first { it.name?.contains("언어") == true }.value)
         assertEquals("모든 채널 허용", e.fields.first { it.name?.contains("채널") == true }.value)
@@ -90,5 +99,31 @@ class EmbedFactoryTest {
         val en = EmbedFactory.settingsEmbed("en", "llama3", 2, 1, true)
         assertEquals("English", en.fields.first { it.name?.contains("언어") == true }.value)
         assertEquals("llama3", en.fields.first { it.name?.contains("모델") == true }.value)
+        assertTrue(e.description?.contains("현재 적용 중") == true)
+        assertTrue(e.description?.contains("모든 채널 허용") == true)
+        assertTrue(en.description?.contains("저장 후 적용될 설정 미리보기") == true)
+        assertTrue(en.description?.contains("LLM 사용 허용 채널") == true)
+        assertTrue(en.description?.contains("여러 채널") == true)
+        assertTrue(en.description?.contains("25개") == true)
+        assertTrue(en.description?.contains("채널 여러 개 붙여넣기") == true)
+        assertTrue(en.description?.contains("저장 대기 변경사항") == true)
+        assertTrue(en.description?.contains("설정 한 번에 저장") == true)
+        assertTrue(en.description?.contains("실제 운영 설정") == true)
+        assertTrue(en.footer?.text?.contains("언어·모델·채널·자동승인") == true)
+        val channelField = en.fields.first { it.name?.contains("채널") == true }
+        assertTrue(channelField.name?.contains("LLM 사용 허용 채널") == true)
+        assertFalse(channelField.isInline)
+        val pending =
+            EmbedFactory.settingsEmbed(
+                "ko",
+                null,
+                0,
+                2,
+                false,
+                allowedChannelText = "<#1111> <#2222>",
+                pendingSummary = "• LLM 사용 채널 → <#1111> <#2222>",
+            )
+        assertEquals("<#1111> <#2222>", pending.fields.first { it.name?.contains("채널") == true }.value)
+        assertTrue(pending.description?.contains("저장 대기 변경사항") == true)
     }
 }

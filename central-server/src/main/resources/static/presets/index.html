@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>냥시스턴트 프리셋 공유</title>
+  <meta name="description" content="함께 만드는 AI 네트워크의 채널 AI 프리셋을 찾아보고 서버에 가져오세요." />
+  <link rel="stylesheet" href="/presets/style.css" />
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">✦ 함께 만드는 AI 네트워크</p>
+        <h1>채널 AI 프리셋을 찾아<br />내 서버에 바로 가져오세요.</h1>
+        <p class="lead">
+          개발 질문, 번역, 회의록, 공지 작성처럼 자주 쓰는 AI 설정을 웹에서 확인하고
+          현재 디스코드 채널 AI에 적용할 수 있습니다.
+        </p>
+      </div>
+      <aside class="hero-card" aria-label="프리셋 가져오기 안내">
+        <strong>가져오기 전에</strong>
+        <span>관리자만 적용하세요.</span>
+        <span>기존 채널 AI가 있으면 미리보기에서 충돌을 확인합니다.</span>
+      </aside>
+    </section>
+
+    <section class="panel controls" aria-label="프리셋 검색">
+      <label>검색어
+        <input id="query" type="search" placeholder="예: 코딩, 번역, 회의록" autocomplete="off" />
+      </label>
+      <label>카테고리
+        <input id="category" type="text" placeholder="coding" autocomplete="off" />
+      </label>
+      <label>정렬
+        <select id="sort">
+          <option value="popular">인기순</option>
+          <option value="imports">가져오기순</option>
+          <option value="new">최신순</option>
+        </select>
+      </label>
+      <label>목록 수
+        <input id="limit" type="number" min="1" max="100" value="24" />
+      </label>
+      <button id="search">검색</button>
+    </section>
+
+    <section class="panel readiness" aria-label="웹 프리셋 기능 상태">
+      <div>
+        <h2>웹에서 가능한 일</h2>
+        <p id="webReadinessMessage">프리셋 웹 기능 상태를 확인하는 중입니다.</p>
+      </div>
+      <div id="webReadiness" class="readiness-grid" aria-live="polite"></div>
+    </section>
+
+    <section class="panel import-target" aria-label="가져오기 대상">
+      <div>
+        <h2>가져오기 대상</h2>
+        <p>디스코드 개발자 모드에서 서버 ID와 채널 ID를 복사해 넣으면, 적용 전 미리보기를 볼 수 있습니다.</p>
+      </div>
+      <label>서버 ID
+        <input id="guildId" type="text" inputmode="numeric" placeholder="Guild ID" />
+      </label>
+      <label>채널 ID
+        <input id="channelId" type="text" inputmode="numeric" placeholder="Channel ID" />
+      </label>
+      <label class="token-field">관리자 토큰
+        <input id="adminToken" type="password" autocomplete="off" placeholder="가져오기 권한 토큰" />
+      </label>
+      <button id="saveAdminToken" class="secondary" type="button">토큰 저장</button>
+      <button id="loadImportHistory" class="secondary" type="button">가져오기 기록 보기</button>
+      <p id="adminTokenStatus" class="token-status">목록 확인은 공개이고, 가져오기/미리보기만 관리자 토큰이 필요합니다.</p>
+    </section>
+
+    <section class="panel">
+      <h2>최근 가져오기 기록</h2>
+      <p class="section-copy">서버 ID와 관리자 토큰을 입력하면 이 서버로 가져온 프리셋 기록을 확인할 수 있습니다.</p>
+      <ul id="importHistory" class="history-list" aria-live="polite"></ul>
+    </section>
+
+    <section class="status-row">
+      <p id="status">프리셋을 불러오는 중입니다.</p>
+      <a href="/dashboard/">관리 대시보드 열기</a>
+    </section>
+
+    <section class="discovery-grid" aria-label="추천 프리셋과 탐색 필터">
+      <section class="panel">
+        <h2>추천 프리셋</h2>
+        <p class="section-copy">신고가 없는 공개 프리셋 중에서 좋아요·가져오기·안전 신호를 함께 본 추천입니다.</p>
+        <div id="recommendations" class="pill-list" aria-live="polite"></div>
+      </section>
+      <section class="panel">
+        <h2>빠른 탐색</h2>
+        <p class="section-copy">카테고리나 태그를 누르면 바로 목록을 좁혀볼 수 있습니다.</p>
+        <div id="facets" class="pill-list" aria-live="polite"></div>
+      </section>
+    </section>
+
+    <section id="catalog" class="catalog" aria-live="polite"></section>
+
+    <section class="panel preview-panel">
+      <h2>미리보기 / 가져오기</h2>
+      <pre id="preview">프리셋 카드의 [미리보기]를 누르세요.</pre>
+      <div class="actions">
+        <button id="confirmImport" disabled>미리보기한 프리셋 가져오기</button>
+        <button id="copyDiscordImport" class="secondary" disabled>Discord 가져오기 명령 복사</button>
+        <button id="likePreset" class="secondary" disabled>따봉 추천</button>
+        <button id="unlikePreset" class="secondary" disabled>추천 취소</button>
+        <button id="reportPreset" class="secondary" disabled>신고</button>
+      </div>
+      <p id="result" class="result"></p>
+    </section>
+  </main>
+  <script src="/presets/app.js"></script>
+</body>
+</html>

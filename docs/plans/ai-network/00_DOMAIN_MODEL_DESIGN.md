@@ -522,51 +522,51 @@ Invariant:
 
 ### 8.1 Aggregate fit 감사
 
-- [ ] 새 기능이 어느 Aggregate 의 책임인지 명확한가?
-- [ ] Aggregate 사이 순환 의존이 없는가?
-- [ ] ChannelAi 가 비대해져 God aggregate 가 되지 않는가?
-- [ ] Dashboard 는 projection 으로 남고 write model 이 되지 않는가?
-- [ ] RAG 지식이 ChannelAi 설정과 과도하게 결합되지 않는가?
+- [x] 새 기능이 어느 Aggregate 의 책임인지 명확한가? — §3/§5 의 Aggregate·schema map 과 `AiNetworkFoundationServiceTest` 가 책임/스코프를 검증한다.
+- [x] Aggregate 사이 순환 의존이 없는가? — write model(`ChannelAi`, `Preset`, `Knowledge`, `Provider`) 과 read projection(`Dashboard`) 를 분리하고 서비스가 repository 방향으로만 의존한다.
+- [x] ChannelAi 가 비대해져 God aggregate 가 되지 않는가? — 표시 이름/아이콘은 `ChannelAi`, 행동은 `AiBehaviorVersion`, 승인·라우팅·지식은 별도 aggregate/table 로 분리했다.
+- [x] Dashboard 는 projection 으로 남고 write model 이 되지 않는가? — `AiNetworkDashboardController` 는 read projection 을 읽고, write 는 별도 설정/승인 API 로 분리한다.
+- [x] RAG 지식이 ChannelAi 설정과 과도하게 결합되지 않는가? — `KnowledgeSpace` 는 독립 aggregate 이며 `channelAiId` 는 nullable reference, 검색 실패 시 기본 AI fallback 이다.
 
 ### 8.2 권한/승인 감사
 
-- [ ] 이 변경은 즉시 적용 가능한가, 승인 후 적용해야 하는가?
-- [ ] 누가 draft 를 만들고 누가 publish 할 수 있는가?
-- [ ] rollback 권한은 누구에게 있는가?
-- [ ] Provider 본인 설정과 서버 관리자 설정이 충돌하면 어느 쪽이 우선인가?
-- [ ] 변경 이력이 audit log 에 남는가?
+- [x] 이 변경은 즉시 적용 가능한가, 승인 후 적용해야 하는가? — `ChannelAiCustomizationService` 의 approval policy 가 risky/high-impact 변경을 pending proposal 로 전환한다.
+- [x] 누가 draft 를 만들고 누가 publish 할 수 있는가? — Discord 관리자/AI 관리자 역할만 draft·publish·approve 를 수행하며, 웹 write API 는 admin token filter 가 보호한다.
+- [x] rollback 권한은 누구에게 있는가? — rollback 은 채널 AI 관리 권한(`requireCanManageChannelAi`)을 통과한 관리자/AI 관리자만 수행한다.
+- [x] Provider 본인 설정과 서버 관리자 설정이 충돌하면 어느 쪽이 우선인가? — Provider 수신정지·한도·과부하 보호가 서버 라우팅/품질 추천보다 우선한다.
+- [x] 변경 이력이 audit log 에 남는가? — `CustomizationAuditLog` 와 관련 테스트가 publish/propose/approve/reject/rollback/권한거부를 기록한다.
 
 ### 8.3 버전/롤백 감사
 
-- [ ] published 설정은 불변인가?
-- [ ] 새 변경은 새 version 으로 남는가?
-- [ ] 이전 version 으로 되돌릴 수 있는가?
-- [ ] 프리셋 적용이 원본 설정을 오염시키지 않는가?
-- [ ] 마이그레이션 후 기존 채널 프로필이 보존되는가?
+- [x] published 설정은 불변인가? — `AiBehaviorVersion` 은 새 version row 로 변경하고, proposal 은 `payloadHash` 로 검토 중 변경을 stale 처리한다.
+- [x] 새 변경은 새 version 으로 남는가? — wizard/publish/preset import/rollback 모두 새 `AiBehaviorVersion` 을 생성한다.
+- [x] 이전 version 으로 되돌릴 수 있는가? — rollback 은 이전 BehaviorVersion 을 새 active rollback version 으로 복사하고 audit 을 남긴다.
+- [x] 프리셋 적용이 원본 설정을 오염시키지 않는가? — published preset import 는 detached local copy/revision 을 만들고, high-risk 는 승인 전 live config 를 바꾸지 않는다.
+- [x] 마이그레이션 후 기존 채널 프로필이 보존되는가? — `V7__channel_ai_foundation.sql` 이 `channel_ai_profile` 을 backfill 하고 legacy table 을 즉시 삭제하지 않는다.
 
 ### 8.4 Provider 보호 감사
 
-- [ ] 새 설정이 Provider 한도/일시정지/가용시간을 우회하지 않는가?
-- [ ] 빠른/깊은/품질 모드가 fan-out 을 무심코 켜지 않는가?
-- [ ] 모델 선택이 restricted 모델을 무단 사용하지 않는가?
-- [ ] RAG 검색이 긴 프롬프트를 만들어 Provider 과부하를 유발하지 않는가?
-- [ ] 대시보드가 특정 Provider 에 요청을 몰아주는 UX 를 만들지 않는가?
+- [x] 새 설정이 Provider 한도/일시정지/가용시간을 우회하지 않는가? — `ProviderSafetyService`/filter pipeline 이 보호 Provider 를 라우팅 전에 제외한다.
+- [x] 빠른/깊은/품질 모드가 fan-out 을 무심코 켜지 않는가? — multi-response 는 policy/opt-in/dry-run 으로 제한되고 기본 질문은 fan-out 하지 않는다.
+- [x] 모델 선택이 restricted 모델을 무단 사용하지 않는가? — `ChannelAiRoutingPolicyService` 가 allowlist/safe provider 조건을 만족하지 않으면 fallback/reject reason 을 반환한다.
+- [x] RAG 검색이 긴 프롬프트를 만들어 Provider 과부하를 유발하지 않는가? — RAG context 는 response mode 별 budget/token guard 로 제한되고 graceful fallback 한다.
+- [x] 대시보드가 특정 Provider 에 요청을 몰아주는 UX 를 만들지 않는가? — public dashboard 는 Provider 신원을 mask 하고, quality/trust 는 내부 shadow 신호로만 다룬다.
 
 ### 8.5 개인정보/민감정보 감사
 
-- [ ] 프롬프트 원문 저장이 필요한가? 필요 없다면 저장하지 않는가?
-- [ ] feedback 에 답변 원문/민감정보가 저장되지 않는가?
-- [ ] 지식 업로드에 민감정보 스캔/삭제 경로가 있는가?
-- [ ] 일반 유저에게 Provider 신원이 과도하게 노출되지 않는가?
-- [ ] export/delete 요청에 대응할 수 있는가?
+- [x] 프롬프트 원문 저장이 필요한가? 필요 없다면 저장하지 않는가? — `ai_request` 는 request id/state/weight/provider 만 저장하며 prompt 본문을 저장하지 않는다.
+- [x] feedback 에 답변 원문/민감정보가 저장되지 않는가? — `AiQualityFeedbackServiceTest` 가 reason/request metadata redaction 과 raw answer body 비저장을 검증한다.
+- [x] 지식 업로드에 민감정보 스캔/삭제 경로가 있는가? — Knowledge ingestion 이 sensitive/SSRF risk 를 차단·review 처리하고 delete/tombstone/reindex 경로를 제공한다.
+- [x] 일반 유저에게 Provider 신원이 과도하게 노출되지 않는가? — `DashboardAudience.PUBLIC`/`PrivacyMode.C_ADMIN_ONLY` 가 Provider id/capacity 를 masking 한다.
+- [x] export/delete 요청에 대응할 수 있는가? — prompt raw data 는 저장하지 않고, guild removal cleanup·knowledge tombstone·preset removed/unlisted flow 로 삭제 요청에 대응한다.
 
 ### 8.6 기능 간 어울림 감사
 
-- [ ] 마법사로 만든 Channel AI 가 버전 관리/승인/프리셋/RAG 와 자연스럽게 연결되는가?
-- [ ] 대시보드에서 보이는 값이 실제 라우팅에 쓰이는 값과 어긋나지 않는가?
-- [ ] AI 헌법과 지식 검색 결과가 충돌할 때 우선순위가 있는가?
-- [ ] 사용자 모델 선택과 채널 모델 정책이 충돌할 때 안내 문구가 있는가?
-- [ ] 성장 레벨이 과도한 Provider 기여 경쟁을 유도하지 않는가?
+- [x] 마법사로 만든 Channel AI 가 버전 관리/승인/프리셋/RAG 와 자연스럽게 연결되는가? — wizard 결과는 `AiBehaviorVersion`/proposal 로 저장되고 preset import·RAG prompt renderer 와 연결된다.
+- [x] 대시보드에서 보이는 값이 실제 라우팅에 쓰이는 값과 어긋나지 않는가? — routing policy/capability/model map/read projection 테스트가 availability/fallback/shadow score 를 검증한다.
+- [x] AI 헌법과 지식 검색 결과가 충돌할 때 우선순위가 있는가? — prompt renderer 는 안전→Provider 보호→Channel AI 헌법→RAG→사용자 질문 순서를 고정한다.
+- [x] 사용자 모델 선택과 채널 모델 정책이 충돌할 때 안내 문구가 있는가? — unavailable/not-allowed 모델 선택은 fallback reason 과 유저 안내를 반환한다.
+- [x] 성장 레벨이 과도한 Provider 기여 경쟁을 유도하지 않는가? — 성장 레벨은 capability projection 기반이고, growth plan 은 Provider 보호/승인 정책을 함께 노출한다.
 
 ## 9. 개발 순서 제안
 
@@ -583,9 +583,9 @@ Invariant:
 
 ## 10. 아직 결정해야 할 질문
 
-- [ ] Channel AI 표시 이름/아이콘은 version 대상인가, 현재 프로필 속성인가?
-- [ ] system prompt 를 DB 에 평문 저장할지, 암호화/마스킹 저장할지?
+- [x] Channel AI 표시 이름/아이콘은 version 대상인가, 현재 프로필 속성인가? — 결정: 현재 프로필 속성(`ChannelAi.displayName/avatarUrl`)이며 말투/헌법/목적만 behavior version 이다.
+- [x] system prompt 를 DB 에 평문 저장할지, 암호화/마스킹 저장할지? — 결정: 렌더링된 system prompt 원문은 장기 저장하지 않고 behavior 구성 필드만 저장하며 공개 응답/피드백에는 raw prompt 를 남기지 않는다.
 - [x] RAG 임베딩 저장소는 Dailyting 기준 Qdrant 를 우선 이식한다. Postgres/pgvector 는 후순위 대안으로만 둔다.
 - [x] 프리셋은 guild 내부 공유를 넘어서 웹 게시/가져오기/수정/삭제/추천/신고가 가능한 Preset Registry 로 장기 설계한다.
-- [ ] 승인 정책을 모든 서버에 강제할지, 서버별 on/off 로 둘지?
-- [ ] 웹 대시보드 인증을 Discord OAuth 로 할지, 관리자 토큰/세션으로 할지?
+- [x] 승인 정책을 모든 서버에 강제할지, 서버별 on/off 로 둘지? — 결정: 기본은 서버별/AI 관리자 역할 기반, high-risk·stale·routing snapshot 변경은 proposal 승인 흐름을 강제한다.
+- [x] 웹 대시보드 인증을 Discord OAuth 로 할지, 관리자 토큰/세션으로 할지? — 결정: 현재 릴리스는 `X-Dashboard-Admin-Token` 기반 admin token; Discord OAuth 는 차기 인증 고도화 후보로 유지한다.

@@ -66,6 +66,22 @@ internal val UNLIMITED_QUOTA =
         ): Boolean = false
     }
 
+/** Provider 보호 상태 확인. 과부하/수신정지 Provider는 품질 라우팅보다 먼저 제외한다. */
+interface ProviderSafetyChecker {
+    fun isRoutingProtected(
+        guildId: Long,
+        providerUserId: Long,
+    ): Boolean
+}
+
+internal val ALLOW_ALL_PROVIDER_SAFETY =
+    object : ProviderSafetyChecker {
+        override fun isRoutingProtected(
+            guildId: Long,
+            providerUserId: Long,
+        ): Boolean = false
+    }
+
 /** 사용량/기여 기록 트리거. JPA 구현(UsageService) 또는 테스트 fake. */
 interface UsageRecorder {
     fun recordSuccess(
@@ -81,6 +97,7 @@ interface UsageRecorder {
         state: RequestState,
         providerId: Long?,
         failReason: String?,
+        requestId: String? = null,
     ) {
     }
 
@@ -97,6 +114,8 @@ data class AiRequestInput(
     val roleIds: Set<Long>,
     val command: String = "ask",
     val isAdmin: Boolean = false,
+    val preferredModel: String? = null,
+    val responseMode: String = "balanced",
 )
 
 /** 오케스트레이션 결과. */
@@ -106,6 +125,7 @@ data class OrchestrationResult(
     val providerId: Long? = null,
     val failReason: String? = null,
     val effectiveBurden: ModelBurden? = null,
+    val requestId: String? = null,
 )
 
 /**
@@ -124,6 +144,7 @@ class RequestOrchestrator(
     private val blocklist: BlocklistChecker = ALLOW_ALL_BLOCKLIST,
     private val quota: QuotaChecker = UNLIMITED_QUOTA,
     private val idempotency: IdempotencyGuard = IdempotencyGuard(),
+    private val providerSafety: ProviderSafetyChecker = ALLOW_ALL_PROVIDER_SAFETY,
 ) {
     private val log = LoggerFactory.getLogger(RequestOrchestrator::class.java)
 
@@ -131,11 +152,11 @@ class RequestOrchestrator(
         // 멱등성: 짧은 윈도우 내 동일 요청 중복은 라우팅 없이 막는다(#243).
         if (!idempotency.tryBegin(input.guildId, input.userId, input.prompt)) {
             val dup = OrchestrationResult(RequestState.REJECTED, failReason = "동일한 요청이 방금 접수되었습니다. 잠시 후 다시 시도해 주세요.")
-            recorder.recordRequest(input, dup.state, dup.providerId, dup.failReason)
+            recorder.recordRequest(input, dup.state, dup.providerId, dup.failReason, dup.requestId)
             return dup
         }
         val result = route(input)
-        recorder.recordRequest(input, result.state, result.providerId, result.failReason)
+        recorder.recordRequest(input, result.state, result.providerId, result.failReason, result.requestId)
         return result
     }
 
@@ -153,14 +174,31 @@ class RequestOrchestrator(
         }
         // 2) 무게 판단 & 필요 수준(권한 상한 반영)
         val memberMax = policy.maxAllowedBurden(input.guildId, input.roleIds)
-        val weigh = weigher.resolve(RequestMeta(input.prompt.length, 0, input.command), memberMax)
+        val weigh =
+            weigher.resolve(
+                RequestMeta(
+                    promptChars = input.prompt.length,
+                    attachments = 0,
+                    command = input.command,
+                    responseMode = input.responseMode,
+                ),
+                memberMax,
+            )
         if (weigh.decision == WeighDecision.REJECT) {
             return OrchestrationResult(
                 RequestState.REJECTED,
                 failReason = "이 요청은 ${weigh.requiredBurden} 수준이 필요하지만 현재 권한으로는 사용할 수 없습니다.",
             )
         }
-        val ctx = RequestContext(weigh.effectiveBurden!!, input.roleIds, input.channelId, input.prompt.length, input.isAdmin)
+        val ctx =
+            RequestContext(
+                weigh.effectiveBurden!!,
+                input.roleIds,
+                input.channelId,
+                input.prompt.length,
+                input.isAdmin,
+                input.preferredModel,
+            )
 
         // 3) 후보 구성 + 필터 + 선택 + 전송(최대 2회: 원 + fallback 1회)
         val excluded = mutableSetOf<Long>()
@@ -183,14 +221,18 @@ class RequestOrchestrator(
                             allowedChannelIds = p.allowedChannelIds,
                             maxPromptChars = p.maxPromptChars,
                             failureRate = p.failureRate,
+                            inCooldown = providerSafety.isRoutingProtected(input.guildId, session.providerId),
+                            modelNames = session.capability.models.toSet(),
                         )
                     }
             val outcome = pipeline.filter(candidates, ctx)
             if (outcome.eligible.isEmpty()) {
-                return if (outcome.signal == FilterSignal.PERMISSION_DENIED) {
-                    OrchestrationResult(RequestState.REJECTED, failReason = "권한 또는 정책상 처리할 수 없습니다.")
-                } else {
-                    OrchestrationResult(RequestState.FAILED, failReason = lastReason)
+                return when {
+                    outcome.signal == FilterSignal.PERMISSION_DENIED ->
+                        OrchestrationResult(RequestState.REJECTED, failReason = "권한 또는 정책상 처리할 수 없습니다.")
+                    outcome.dropped.isNotEmpty() && outcome.dropped.values.all { it == "cooldown" } ->
+                        OrchestrationResult(RequestState.FAILED, failReason = PROVIDER_PROTECTION_ACTIONABLE_REASON)
+                    else -> OrchestrationResult(RequestState.FAILED, failReason = lastReason)
                 }
             }
             val sel = router.select(outcome.eligible, ctx)!!
@@ -202,9 +244,21 @@ class RequestOrchestrator(
             if (attempt > 0) log.info("fallback 시도 → provider {}", sel.providerId)
             try {
                 // 반환 future 는 세션 orTimeout 으로 항상 시한 내 완료/실패한다 → get() 안전.
-                val result = session.sendInfer(prompt = input.prompt).get()
+                val result =
+                    session
+                        .sendInfer(
+                            prompt = input.prompt,
+                            model = input.preferredModel,
+                            options = responseModeOptions(input.responseMode),
+                        ).get()
                 recorder.recordSuccess(input.guildId, input.userId, sel.providerId, requestId = result.requestId)
-                return OrchestrationResult(RequestState.COMPLETED, result.text, sel.providerId, effectiveBurden = ctx.requiredBurden)
+                return OrchestrationResult(
+                    RequestState.COMPLETED,
+                    result.text,
+                    sel.providerId,
+                    effectiveBurden = ctx.requiredBurden,
+                    requestId = result.requestId,
+                )
             } catch (e: Exception) {
                 lastReason = e.cause?.message ?: e.message ?: "처리 실패"
                 excluded.add(sel.providerId) // 실패 provider 일시 제외
@@ -216,6 +270,13 @@ class RequestOrchestrator(
     }
 
     companion object {
+        const val PROVIDER_PROTECTION_ACTIONABLE_REASON =
+            "지금은 참여 PC를 보호하기 위해 답변 요청을 줄이고 있어요.\n\n" +
+                "과부하 또는 보호 상태인 Provider는 자동으로 제외됩니다.\n" +
+                "• 잠시 후 다시 질문하거나 `절약`/`빠른` 모드로 시도해 주세요.\n" +
+                "• Provider라면 `/내상태`에서 수신 상태와 PC 부하를 확인해 주세요.\n" +
+                "• 관리자는 AI 네트워크 대시보드의 과부하 알림을 확인해 주세요."
+
         const val NO_PROVIDER_ACTIONABLE_REASON =
             "지금은 답변을 처리할 온라인 AI Provider가 없습니다.\n\n" +
                 "다음 중 하나를 해주세요.\n" +
@@ -229,6 +290,14 @@ class RequestOrchestrator(
                 NO_PROVIDER_ACTIONABLE_REASON
             } else {
                 "$NO_PROVIDER_ACTIONABLE_REASON\n\n세부 원인: $lastReason"
+            }
+
+        fun responseModeOptions(responseMode: String): Map<String, Any?> =
+            when (responseMode.lowercase()) {
+                "fast" -> mapOf("num_predict" to 512, "temperature" to 0.3)
+                "deep" -> mapOf("num_predict" to 2048, "temperature" to 0.5)
+                "saving" -> mapOf("num_predict" to 384, "temperature" to 0.2)
+                else -> emptyMap()
             }
     }
 }

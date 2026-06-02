@@ -1,0 +1,30 @@
+services:
+  discord-ai-qdrant:
+    image: ${DISCORD_AI_QDRANT_IMAGE:-qdrant/qdrant:v1.13.6}
+    container_name: discord-ai-qdrant
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${DISCORD_AI_QDRANT_HTTP_PORT:-6333}:6333"
+    environment:
+      QDRANT__LOG_LEVEL: ${DISCORD_AI_QDRANT_LOG_LEVEL:-WARN}
+    volumes:
+      - discord-ai-qdrant-data:/qdrant/storage
+    networks:
+      discord-ai-edge:
+        aliases:
+          - discord-ai-qdrant
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333' 2>/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  discord-ai-edge:
+    external: true
+    name: ${DISCORD_AI_EDGE_NETWORK:-discord-ai-edge}
+
+volumes:
+  discord-ai-qdrant-data:
+    name: ${DISCORD_AI_QDRANT_VOLUME:-discord-ai-qdrant-data}

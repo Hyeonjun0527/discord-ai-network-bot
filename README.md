@@ -60,6 +60,45 @@ cd provider-agent && ../.venv/bin/python -m pytest -q
 
 규칙·배포·릴리스 등 공용 규약은 [`AGENTS.md`](AGENTS.md) 가 SSOT 입니다.
 
+## 안전한 설치 기준
+
+Provider Agent 는 "믿고 설치하세요"가 아니라 **사용자가 검증할 수 있고 기본값이 안전한**
+프로그램을 지향합니다. 설치 전 아래를 확인하세요.
+
+**1) 출처와 무결성을 검증한다**
+
+- 반드시 **GitHub Release** 에서 받습니다. 설치 페이지의 명령은 항상
+  `releases/latest/download/**` 만 가리킵니다.
+- 함께 받은 `SHA256SUMS.txt` 로 해시를 검증합니다.
+  - macOS: `shasum -a 256 -c SHA256SUMS.txt --ignore-missing`
+  - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
+  - Windows: `Get-FileHash <파일> -Algorithm SHA256` 출력과 비교
+- 빌드 출처(provenance)·SBOM 을 확인할 수 있습니다:
+  `gh attestation verify discord-ai-provider-agent-<os> --repo Hyeonjun0527/discord-assistant`
+- 배포물은 **Windows 코드서명**, **macOS Developer ID 서명 + notarization** 이 적용됩니다.
+  경고가 뜨면 **우회하지 말고** 출처/해시를 다시 확인하세요.
+
+**2) 관리자 권한이 필요 없다**
+
+- 에이전트는 **일반 사용자 권한**으로 동작합니다. `sudo`·관리자 PowerShell 이 필요 없습니다.
+- 시스템 폴더 쓰기·Windows 서비스 등록·방화벽/레지스트리 변경을 하지 않습니다.
+- 설정·로그는 사용자 홈에만 저장됩니다(Windows `%APPDATA%`, macOS
+  `~/Library/Application Support`/`~/.config`, Linux `~/.config`).
+
+**3) 기본값이 안전하다**
+
+- 하루 처리 한도 **15건**·동시 **1건** 이 기본. 무제한은 `--allow-unlimited` 명시로만.
+- Ollama 는 기본 **localhost 전용**. 원격은 `--allow-remote-ollama` 위험 확인에서만.
+- CPU 고부하·배터리 방전 중 자동 일시중지. 첫 실행 시 동의 화면을 표시합니다.
+
+**4) 개인정보에 주의한다**
+
+- `/ask` 질문 내용은 처리하는 **다른 사용자의 PC(로컬 AI)로 전송**될 수 있습니다.
+- **비밀번호·API 키·토큰·개인정보는 절대 입력하지 마세요.** 에이전트는 프롬프트 원문을
+  로그/파일에 저장하지 않습니다.
+
+보안 정책·취약점 신고는 [`SECURITY.md`](SECURITY.md) 를 참고하세요.
+
 ## 문서
 
 - 운영: [`central-server/docs/OPERATIONS.md`](central-server/docs/OPERATIONS.md) · [`RUNBOOK.md`](central-server/docs/RUNBOOK.md) · [`GO_LIVE.md`](central-server/docs/GO_LIVE.md)

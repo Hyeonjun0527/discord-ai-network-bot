@@ -19,6 +19,13 @@ from provider_agent.protocol import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_auto_pause(monkeypatch):
+    """이 모듈의 테스트는 자원 자동 pause 와 무관하게 결정적이어야 한다(하드웨어 독립)."""
+    monkeypatch.setattr("provider_agent.sysinfo.load_level", lambda: "idle")
+    monkeypatch.setattr("provider_agent.sysinfo.battery_state", lambda: "charging")
+
+
 class FakeConn:
     def __init__(self) -> None:
         self.sent: list[Frame] = []

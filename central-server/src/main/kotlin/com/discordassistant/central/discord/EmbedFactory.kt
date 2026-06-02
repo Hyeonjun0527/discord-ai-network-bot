@@ -32,7 +32,7 @@ object EmbedFactory {
             .addField("상태", state.name, true)
             .addField("처리중", inFlight.toString(), true)
             .addField("실패", failures.toString(), true)
-            .setFooter("provider:$providerId")
+            .setFooter("Provider 상태")
             .build()
 
     /** 풀 요약 Embed. */
@@ -124,24 +124,38 @@ object EmbedFactory {
         poolModelCount: Int,
         allowedChannelCount: Int,
         autoApprove: Boolean,
-    ): MessageEmbed =
-        EmbedBuilder()
+        allowedChannelText: String? = null,
+        pendingSummary: String? = null,
+        currentSummary: String? = null,
+    ): MessageEmbed {
+        val currentBlock = currentSummary?.let { "**현재 적용 중**\n$it\n\n" }.orEmpty()
+        val pendingBlock = pendingSummary?.let { "\n\n**저장 대기 변경사항**\n$it" }.orEmpty()
+        return EmbedBuilder()
             .setColor(BLURPLE)
             .setTitle("⚙️ 서버 설정")
-            .setDescription("아래 **드롭다운/버튼**으로 바로 적용됩니다. 현재 설정:")
-            .addField("🌐 언어", if (language.equals("en", true)) "English" else "한국어", true)
+            .setDescription(
+                currentBlock +
+                    "아래 값은 **저장 후 적용될 설정 미리보기**입니다. " +
+                    "언어·기본 모델·LLM 사용 허용 채널·자동 승인을 모두 고른 뒤 **저장**을 누르면 한 번에 적용됩니다.\n" +
+                    "현재 허용 채널은 아래 필드에 먼저 보여주고, 채널 드롭다운은 검색창에서 여러 채널을 한 번에 체크하면 돼요.\n" +
+                    "채널이 25개를 넘거나 멘션을 복사해둔 경우에는 **채널 여러 개 붙여넣기**를 쓰면 됩니다.\n" +
+                    "드롭다운/버튼 선택은 바로 적용되지 않고 **저장 대기 변경사항**으로만 쌓입니다. " +
+                    "마지막에 **설정 한 번에 저장** 버튼을 눌러야 실제 운영 설정이 바뀝니다." +
+                    pendingBlock,
+            ).addField("🌐 언어", if (language.equals("en", true)) "English" else "한국어", true)
             .addField(
                 "🧠 기본 모델",
                 defaultModel ?: if (poolModelCount == 0) "자동 (프로바이더 연결 시 선택지 생김)" else "자동 선택",
                 true,
             ).addField(
-                "#️⃣ 사용 채널",
-                if (allowedChannelCount == 0) "모든 채널 허용" else "${allowedChannelCount}개 채널만",
-                true,
+                "#️⃣ LLM 사용 허용 채널",
+                allowedChannelText ?: if (allowedChannelCount == 0) "모든 채널 허용" else "${allowedChannelCount}개 채널만 허용",
+                false,
             ).addField(
                 "✅ 프로바이더 자동 승인",
                 if (autoApprove) "켜짐 — 신청 즉시 참여" else "꺼짐 — 관리자 승인 필요",
                 true,
-            ).setFooter("선택/클릭하면 즉시 저장됩니다.")
+            ).setFooter("현재 허용 채널을 확인한 뒤 언어·모델·채널·자동승인을 모두 고르고 마지막에 저장하세요.")
             .build()
+    }
 }

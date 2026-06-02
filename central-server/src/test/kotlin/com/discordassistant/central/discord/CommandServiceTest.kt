@@ -1,5 +1,18 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.network.ChannelAiCustomizationService
+import com.discordassistant.central.network.ChannelAiRoutingPolicyService
+import com.discordassistant.central.network.KnowledgeIngestionService
+import com.discordassistant.central.network.PresetBehaviorInput
+import com.discordassistant.central.network.PresetRegistryService
+import com.discordassistant.central.persistence.AiAdminRoleRepository
+import com.discordassistant.central.persistence.AiFeedbackRepository
+import com.discordassistant.central.persistence.CandidateAnswerRepository
+import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
+import com.discordassistant.central.persistence.MultiResponseRunRepository
+import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
+import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
+import com.discordassistant.central.persistence.SynthesisResultRepository
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
@@ -17,16 +30,20 @@ import org.springframework.transaction.annotation.Transactional
 
 private class EchoConn : AgentConnection {
     lateinit var session: ProviderSession
+    var lastInfer: InferRequest? = null
     override val remoteId = "echo"
 
     override fun sendFrame(frame: Frame) {
-        if (frame is InferRequest) session.handleFrame(InferResult(frame.requestId, "echo:${frame.prompt}"))
+        if (frame is InferRequest) {
+            lastInfer = frame
+            session.handleFrame(InferResult(frame.requestId, "echo:${frame.prompt}"))
+        }
     }
 
     override fun close(reason: String) {}
 }
 
-@SpringBootTest
+@SpringBootTest(properties = ["central.relay.public-url=wss://discord-ai.yeon.world/agent"])
 @Transactional // 공유 in-memory DB 오염 방지(테스트 후 롤백)
 class CommandServiceTest
     @Autowired
@@ -34,6 +51,17 @@ class CommandServiceTest
         val commands: CommandService,
         val registry: ConnectionRegistry,
         val usage: UsageService,
+        val knowledge: KnowledgeIngestionService,
+        val channelAiCustomization: ChannelAiCustomizationService,
+        val channelRoutingPolicies: ChannelAiRoutingPolicyService,
+        val providerCapabilities: ProviderCapabilityProfileRepository,
+        val presetRegistry: PresetRegistryService,
+        val multiResponseRuns: MultiResponseRunRepository,
+        val candidateAnswers: CandidateAnswerRepository,
+        val synthesisResults: SynthesisResultRepository,
+        val embeddingJobs: EmbeddingIndexJobRepository,
+        val aiFeedbacks: AiFeedbackRepository,
+        val aiAdminRoles: AiAdminRoleRepository,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -52,6 +80,23 @@ class CommandServiceTest
             assertTrue(admin.contains("__관리자__"))
             assertTrue(admin.contains("/채널프로필"))
             assertTrue(admin.contains("/llm-channel-profile"))
+            assertTrue(admin.contains("/ai-network-map"))
+            assertTrue(admin.contains("/ai-knowledge-list"))
+            assertTrue(admin.contains("/ai-knowledge-add"))
+            assertTrue(admin.contains("/ai-knowledge-search"))
+            assertTrue(admin.contains("/ai-knowledge-index-plan"))
+            assertTrue(admin.contains("/ai-knowledge-approve"))
+            assertTrue(admin.contains("/ai-knowledge-delete"))
+            assertTrue(admin.contains("/ai-knowledge-jobs"))
+            assertTrue(admin.contains("/ai-knowledge-job-complete"))
+            assertTrue(admin.contains("/ai-preset-catalog"))
+            assertTrue(admin.contains("/ai-preset-import"))
+            assertTrue(admin.contains("/ai-preset-moderation"))
+            assertTrue(admin.contains("/ai-preset-report-review"))
+            assertTrue(admin.contains("/ai-multi-response-status"))
+            assertTrue(admin.contains("/ai-multi-response-set"))
+            assertTrue(admin.contains("/ai-multi-response-dry-run"))
+            assertTrue(admin.contains("/ai-network-check"))
         }
 
         @Test
@@ -149,6 +194,30 @@ class CommandServiceTest
         }
 
         @Test
+        fun `saveGuildSettings — 설정 패널 선택값을 저장 버튼 한 번으로 반영`() {
+            val g = CommandContext(guildId = 778, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            val saved =
+                commands.saveGuildSettings(
+                    g,
+                    language = "en",
+                    defaultModel = "llama3",
+                    allowedChannelIds = listOf(1111L, 2222L),
+                    autoApprove = true,
+                )
+            assertTrue(saved.content.contains("저장했습니다"))
+            assertEquals("en", commands.guildLanguage(g))
+            assertEquals("llama3", commands.guildDefaultModel(g))
+            assertEquals(setOf(1111L, 2222L), commands.allowedChannelIds(g).toSet())
+            assertTrue(commands.isAutoApprove(g))
+
+            commands.saveGuildSettings(g, language = "ko", defaultModel = "__auto__", allowedChannelIds = emptyList(), autoApprove = false)
+            assertEquals("ko", commands.guildLanguage(g))
+            assertEquals(null, commands.guildDefaultModel(g))
+            assertTrue(commands.allowedChannelIds(g).isEmpty())
+            assertFalse(commands.isAutoApprove(g))
+        }
+
+        @Test
         fun `provider-join — 수동 승인이면 대기`() {
             val r = commands.providerJoin(ctx())
             assertTrue(r.content.contains("승인을 기다려"))
@@ -158,6 +227,303 @@ class CommandServiceTest
         fun `관리자 가드 — 비관리자 채널 허용 거부`() {
             assertTrue(commands.allowChannel(ctx(admin = false), 200).content.contains("⛔"))
             assertFalse(commands.allowChannel(ctx(admin = true), 200).content.contains("⛔"))
+        }
+
+        @Test
+        fun `preset catalog import like — Discord에서 공유 프리셋을 현재 채널에 적용한다`() {
+            val g = CommandContext(guildId = 77992, channelId = 88992, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            val preset =
+                presetRegistry.createPreset(
+                    guildId = g.guildId,
+                    ownerUserId = g.userId,
+                    name = "코딩 튜터",
+                    summary = "개발 질문과 코드 리뷰를 도와주는 프리셋",
+                    category = "coding",
+                    visibility = "guild_private",
+                    behavior =
+                        PresetBehaviorInput(
+                            purpose = "Kotlin/Spring Boot 개발 질문을 돕습니다.",
+                            tone = "정확하고 실용적으로",
+                            answerLength = "balanced",
+                            constitution = "모르면 모른다고 말하고 실행 가능한 예시를 먼저 제시하기",
+                            responseMode = "balanced",
+                            maxCandidates = 1,
+                        ),
+                )
+            val published = presetRegistry.publishPreset(preset.id, g.userId, title = null, description = null)
+
+            val catalog = commands.presetCatalog(g, query = "코딩", category = "coding")
+            assertTrue(catalog.content.contains("AI 프리셋 공유 목록"))
+            assertTrue(catalog.content.contains("코딩 튜터"))
+            assertTrue(catalog.content.contains("`${published.id}`"))
+            assertTrue(catalog.content.contains("https://discord-ai.yeon.world/presets"))
+            val encodedSlug = java.net.URLEncoder.encode(published.slug, Charsets.UTF_8)
+            assertTrue(catalog.content.contains("preset=$encodedSlug"))
+            assertTrue(catalog.content.contains("웹에서 검색·미리보기·가져오기"))
+
+            val liked = commands.likePreset(g.copy(isAdmin = false), published.id)
+            assertTrue(liked.content.contains("좋아요"))
+
+            val imported = commands.importPresetToCurrentChannel(g, published.id)
+            assertTrue(imported.content.contains("프리셋을 현재 채널에 가져왔습니다"))
+            assertTrue(imported.content.contains("상태: `applied`"))
+            assertTrue(imported.content.contains("채널 AI:"))
+
+            val reported = commands.reportPreset(g.copy(isAdmin = false), published.id, "프롬프트가 위험해 보여요 token=hidden")
+            assertTrue(reported.content.contains("신고를 접수"))
+            val moderation = commands.presetModeration(g).content
+            assertTrue(moderation.contains("프리셋 신고/검수 큐"))
+            assertTrue(moderation.contains("코딩 튜터"))
+            assertTrue(moderation.contains("열린 신고 1"))
+            assertTrue(moderation.contains("유형"))
+            val report = presetRegistry.listReports().single()
+            val reviewed = commands.reviewPresetReport(g, report.id, "dismiss")
+            assertTrue(reviewed.content.contains("신고를 처리"))
+        }
+
+        @Test
+        fun `multi response commands — Discord에서 정책 상태 드라이런을 관리한다`() {
+            val g = CommandContext(guildId = 77995, channelId = 88995, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = g.guildId,
+                    providerUserId = 701,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3.1:8b",
+                    capabilityTags = "coding,multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+
+            assertTrue(commands.multiResponseStatus(g.copy(isAdmin = false)).content.contains("관리자만"))
+
+            val saved =
+                commands.setMultiResponsePolicy(
+                    g,
+                    mode = "compare",
+                    maxCandidates = 2,
+                    synthesisEnabled = true,
+                    requireDistinctModels = true,
+                    timeoutSeconds = 90,
+                )
+            assertTrue(saved.content.contains("다중응답 정책을 저장했습니다"))
+            assertTrue(saved.content.contains("mode: `compare`"))
+            assertTrue(saved.content.contains("후보: `2`"))
+            assertTrue(saved.content.contains("opt-in"))
+
+            val dryRun = commands.multiResponseDryRun(g, prompt = "Kotlin Spring 설정을 비교해줘", responseMode = "deep")
+            assertTrue(dryRun.content.contains("다중응답 드라이런"))
+            assertTrue(dryRun.content.contains("status: `running`"), dryRun.content)
+            assertTrue(dryRun.content.contains("후보: `1`"), dryRun.content)
+
+            val status = commands.multiResponseStatus(g).content
+            assertTrue(status.contains("다중응답 운영 상태"))
+            assertTrue(status.contains("최근 실행: 1"), status)
+            assertTrue(status.contains("Provider 부하"))
+
+            val blocked = commands.multiResponseDryRun(g, prompt = "내 DISCORD_BOT_TOKEN=abc 를 여러 Provider로 비교해줘")
+            assertTrue(blocked.content.contains("blocked_sensitive"), blocked.content)
+            assertTrue(blocked.content.contains("fan-out을 차단"), blocked.content)
+        }
+
+        @Test
+        fun `ask — 실제 질문 경로도 다중응답 관측 런과 선택 후보를 남긴다`() {
+            val g = CommandContext(guildId = 77996, channelId = 88996, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            val conn = EchoConn()
+            val session = ProviderSession(conn, providerId = 702, guildId = g.guildId)
+            conn.session = session
+            session.capability = session.capability.copy(models = listOf("llama3.1:8b"))
+            registry.register(session)
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = g.guildId,
+                    providerUserId = 702,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3.1:8b",
+                    capabilityTags = "coding,multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            channelRoutingPolicies.save(
+                guildId = g.guildId,
+                channelId = g.channelId,
+                responseMode = "deep",
+                preferredModel = "llama3.1:8b",
+                allowedModels = listOf("llama3.1:8b"),
+                minQualityTier = "standard",
+                maxCandidates = 2,
+                providerTagFilter = listOf("coding"),
+                costGuard = "provider_safe",
+            )
+
+            try {
+                val reply = commands.ask(g, "Kotlin 설정 비교해줘", requestedResponseMode = "deep")
+
+                assertTrue(reply.content.startsWith("echo:"), reply.content)
+                val run = multiResponseRuns.findTop20ByGuildIdOrderByStartedAtDesc(g.guildId).single()
+                assertEquals("completed", run.status)
+                assertEquals(1, run.candidateCount)
+                val candidate = candidateAnswers.findByRunId(run.id).single()
+                assertEquals(702, candidate.providerUserId)
+                assertEquals("completed", candidate.status)
+                assertEquals("single_route", candidate.safetyFlags)
+                val synthesis = synthesisResults.findByRunId(run.id)!!
+                assertEquals("completed", synthesis.status)
+                assertEquals("single_route_runtime", synthesis.strategy)
+            } finally {
+                registry.unregister(session)
+            }
+        }
+
+        @Test
+        fun `knowledge commands — Discord에서 채널 RAG 지식을 추가 목록 검색한다`() {
+            val g = CommandContext(guildId = 77993, channelId = 88993, userId = 5, roleIds = setOf(1L), isAdmin = true)
+
+            val added =
+                commands.addKnowledge(
+                    g,
+                    title = "운영 규칙 README",
+                    sourceType = "link",
+                    sourceUri = "https://example.com/rules",
+                    contentPreview = null,
+                )
+            assertTrue(added.content.contains("지식 소스를 추가했습니다"))
+            assertTrue(added.content.contains("status: `pending`"))
+
+            val readiness = knowledge.guildReadiness(g.guildId)
+            val spaceId = readiness.spaces.single().knowledgeSpaceId
+            val source = knowledge.listSources(g.guildId, spaceId).single()
+            val list = commands.knowledgeList(g, spaceId)
+            assertTrue(list.content.contains("채널 지식공간 상세"))
+            assertTrue(list.content.contains("운영 규칙 README"))
+
+            knowledge.markSourceIndexed(g.guildId, spaceId, source.id, chunkCount = 1)
+            val search = commands.searchKnowledge(g, query = "운영 규칙", limit = 3)
+            assertTrue(search.content.contains("채널 지식 검색"))
+            assertTrue(search.content.contains("운영 규칙 README"))
+
+            val plan = commands.knowledgeIndexPlan(g, spaceId, force = true)
+            assertTrue(plan.content.contains("RAG 색인 계획"))
+            assertTrue(plan.content.contains("scripts/rag.sh"))
+
+            val deleted = commands.deleteKnowledge(g, spaceId, source.id, reason = "테스트 삭제")
+            assertTrue(deleted.content.contains("지식 소스를 삭제했습니다"))
+            assertTrue(deleted.content.contains("재색인 작업"))
+            val latestJob =
+                embeddingJobs
+                    .findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(g.guildId, spaceId)
+                    .first()
+            assertEquals("delete_source", latestJob.jobType)
+        }
+
+        @Test
+        fun `knowledge add — 텍스트 지식은 즉시 색인되어 검색 가능하다`() {
+            val g = CommandContext(guildId = 77997, channelId = 88997, userId = 5, roleIds = setOf(1L), isAdmin = true)
+
+            val added =
+                commands.addKnowledge(
+                    g,
+                    title = "Kotlin Spring 운영 규칙",
+                    sourceType = "text",
+                    sourceUri = null,
+                    contentPreview = "Kotlin Spring 운영은 actuator health 확인 후 rollback plan을 점검합니다.",
+                )
+
+            assertTrue(added.content.contains("status: `indexed`"), added.content)
+            assertTrue(added.content.contains("즉시 검색 가능"), added.content)
+            val search = commands.searchKnowledge(g, query = "actuator", limit = 3)
+            assertTrue(search.content.contains("Kotlin Spring 운영 규칙"), search.content)
+            assertTrue(search.content.contains("actuator health"), search.content)
+        }
+
+        @Test
+        fun `knowledge jobs — Discord에서 색인 작업을 조회하고 완료 처리한다`() {
+            val g = CommandContext(guildId = 77998, channelId = 88998, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            commands.addKnowledge(
+                g,
+                title = "FAQ",
+                sourceType = "text",
+                sourceUri = null,
+                contentPreview = "자주 묻는 질문과 답변입니다.",
+            )
+            val job = embeddingJobs.findTop20ByGuildIdOrderByQueuedAtDesc(g.guildId).single()
+
+            val listed = commands.knowledgeIndexJobs(g, limit = 5)
+            assertTrue(listed.content.contains("RAG 색인 작업 큐"))
+            assertTrue(listed.content.contains("`${job.id}`"))
+            assertTrue(listed.content.contains("queued"))
+
+            val completed = commands.completeKnowledgeIndexJob(g, job.id, status = "completed", reason = "qdrant rebuild ok")
+            assertTrue(completed.content.contains("status: `completed`"), completed.content)
+            val relisted = commands.knowledgeIndexJobs(g, spaceId = job.knowledgeSpaceId, limit = 5)
+            assertTrue(relisted.content.contains("completed"), relisted.content)
+        }
+
+        @Test
+        fun `knowledge approve — 검토 소스를 승인해 색인 대기로 전환한다`() {
+            val g = CommandContext(guildId = 77994, channelId = 88994, userId = 5, roleIds = setOf(1L), isAdmin = true)
+
+            val added =
+                commands.addKnowledge(
+                    g,
+                    title = "검토 필요한 HTTP 문서",
+                    sourceType = "link",
+                    sourceUri = "http://example.com/manual",
+                    contentPreview = null,
+                )
+            assertTrue(added.content.contains("risk: `review`"))
+
+            val spaceId =
+                knowledge
+                    .guildReadiness(g.guildId)
+                    .spaces
+                    .single()
+                    .knowledgeSpaceId
+            val source = knowledge.listSources(g.guildId, spaceId).single()
+            val approved = commands.approveKnowledge(g, spaceId, source.id, reason = "공개 문서 확인")
+            assertTrue(approved.content.contains("색인 대기 상태로 승인"))
+            assertTrue(approved.content.contains("status: `pending`"))
+        }
+
+        @Test
+        fun `aiNetworkMap — 관리자에게 Provider 모델 채널AI 지도를 보여준다`() {
+            val g = CommandContext(guildId = 77991, channelId = 88991, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = g.guildId,
+                    providerUserId = 1234,
+                    providerState = "ONLINE",
+                    modelCount = 2,
+                    modelNames = "llama3.1:8b,codellama:latest",
+                    capabilityTags = "coding,long-context",
+                    qualityTier = "specialized",
+                    maxBurden = "STANDARD",
+                    overloadRisk = "normal",
+                ),
+            )
+            commands.setChannelAiProfile(
+                g,
+                name = "코드냥",
+                avatarUrl = null,
+                reset = false,
+                purpose = "Kotlin 코드 리뷰",
+                tone = "실용적으로",
+                answerLength = "balanced",
+                constitution = "확실하지 않으면 추측하지 않기",
+            )
+
+            val reply = commands.aiNetworkMap(g)
+
+            assertTrue(reply.content.contains("AI 네트워크 지도"))
+            assertTrue(reply.content.contains("llama3.1:8b"))
+            assertTrue(reply.content.contains("codellama:latest"))
+            assertTrue(reply.content.contains("코드냥"))
+            assertTrue(reply.content.contains("Provider: 온라인 1"))
+            assertTrue(reply.content.contains("능력 태그"))
         }
 
         @Test
@@ -178,9 +544,31 @@ class CommandServiceTest
             assertTrue(set.contains("냥시스턴트"))
             assertTrue(set.contains("웹후크 관리"))
 
+            assertTrue(commands.setChannelAiProfile(ctx(admin = false), null, null, reset = true).content.contains("⛔"))
+            assertTrue(commands.setChannelAiProfile(ctx(admin = false), null, null, reset = false, rollback = true).content.contains("⛔"))
             assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("냥시스턴트"))
             assertTrue(commands.setChannelAiProfile(admin, null, null, true).content.contains("기본 봇"))
             assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("설정되지 않았습니다"))
+        }
+
+        @Test
+        fun `llm-channel-profile — AI 관리자 역할이 설정되면 일반 서버 관리자는 변경할 수 없다`() {
+            val guildId = 88100L
+            val channelId = 88200L
+            channelAiCustomization.replaceAiAdminRoles(
+                guildId = guildId,
+                roleIds = setOf(9001L),
+                actorUserId = 5,
+                actorIsGuildAdmin = true,
+            )
+            val ordinaryAdmin = CommandContext(guildId, channelId, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            val aiAdmin = ordinaryAdmin.copy(roleIds = setOf(9001L))
+
+            val denied = commands.setChannelAiProfile(ordinaryAdmin, "무단냥", null, false)
+
+            assertTrue(denied.content.contains("AI 관리자 역할"), denied.content)
+            val allowed = commands.setChannelAiProfile(aiAdmin, "권한냥", null, false)
+            assertTrue(allowed.content.contains("권한냥"), allowed.content)
         }
 
         @Test
@@ -194,6 +582,167 @@ class CommandServiceTest
                 assertEquals("echo:코드 설명", r.content)
                 assertFalse(r.content.contains("커뮤니티 풀 처리"), r.content)
                 assertFalse(r.content.contains("provider #"), r.content)
+                assertTrue(r.feedback?.requestId?.isNotBlank() == true)
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask feedback — 답변 request id로 품질 피드백을 저장하고 중복을 막는다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 771, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                val reply = commands.ask(ctx(), "품질 확인")
+                val requestId = reply.feedback?.requestId
+
+                assertTrue(requestId?.isNotBlank() == true)
+                val first = commands.submitAskFeedback(ctx(), requestId!!, rating = 1, feedbackType = "positive")
+                val duplicate = commands.submitAskFeedback(ctx(), requestId, rating = -1, feedbackType = "negative")
+
+                val saved = aiFeedbacks.findTop20ByGuildIdAndChannelIdOrderByCreatedAtDesc(100, 200).single()
+                assertTrue(first.content.contains("고마워요"))
+                assertTrue(duplicate.content.contains("고마워요"))
+                assertEquals(requestId, saved.requestId)
+                assertEquals(1, saved.rating)
+                assertEquals("positive", saved.feedbackType)
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 긴 공개 답변은 Discord 수정용 의사 스트리밍 스냅샷을 포함한다`() {
+            val g = CommandContext(guildId = 77997, channelId = 88997, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 703, guildId = g.guildId)
+            conn.session = s
+            registry.register(s)
+            try {
+                val longPrompt = "긴 답변이 필요한 질문입니다. ".repeat(40)
+                val reply = commands.ask(g, longPrompt, requestedResponseMode = "deep")
+
+                assertFalse(reply.ephemeral)
+                assertTrue(reply.content.startsWith("echo:"), reply.content)
+                val stream = reply.pseudoStream
+                assertTrue(stream != null, "긴 공개 답변에는 의사 스트리밍 계획이 있어야 함")
+                assertEquals(3, stream!!.snapshots.size)
+                assertTrue(stream.snapshots.first().length < reply.content.length)
+                assertEquals(reply.content, stream.snapshots.last())
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 원하는 모델과 응답 모드를 요청에 반영한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 79, guildId = 100)
+            conn.session = s
+            s.capability = s.capability.copy(models = listOf("llama3.1:8b", "qwen-coder"))
+            registry.register(s)
+            try {
+                val r = commands.ask(ctx(admin = true), "깊게 봐줘", requestedModel = "qwen-coder", requestedResponseMode = "deep")
+
+                assertTrue(r.content.startsWith("echo:"))
+                val sent = conn.lastInfer!!
+                assertEquals("qwen-coder", sent.model)
+                assertEquals(2048, sent.options["num_predict"])
+                assertEquals(0.5, sent.options["temperature"])
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 요청 모델을 못 쓰면 대체 모델과 이유를 유저에게 알려준다`() {
+            val guildId = 9300L
+            val channelId = 2300L
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 80, guildId = guildId)
+            conn.session = s
+            s.capability = s.capability.copy(models = listOf("llama3.1:8b"))
+            registry.register(s)
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = guildId,
+                    providerUserId = 80,
+                    providerState = "ONLINE",
+                    modelNames = "llama3.1:8b",
+                    qualityTier = "standard",
+                    overloadRisk = "normal",
+                ),
+            )
+            channelRoutingPolicies.save(
+                guildId = guildId,
+                channelId = channelId,
+                responseMode = "balanced",
+                preferredModel = "llama3.1:8b",
+                allowedModels = listOf("llama3.1:8b", "qwen-coder"),
+                minQualityTier = "standard",
+                maxCandidates = 1,
+                providerTagFilter = emptyList(),
+                costGuard = "provider_safe",
+            )
+            try {
+                val r =
+                    commands.ask(
+                        CommandContext(guildId = guildId, channelId = channelId, userId = 5, roleIds = setOf(1L), isAdmin = true),
+                        "깊게 봐줘",
+                        requestedModel = "qwen-coder",
+                    )
+
+                assertTrue(r.content.contains("↪️ 모델 대체"))
+                assertTrue(r.content.contains("요청한 모델을 처리할 온라인 Provider가 없어"))
+                assertEquals("llama3.1:8b", conn.lastInfer!!.model)
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 채널 모델 정책을 만족하는 안전 provider가 없으면 요청 모델로 우회 전송하지 않는다`() {
+            val guildId = 9301L
+            val channelId = 2301L
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 81, guildId = guildId)
+            conn.session = s
+            s.capability = s.capability.copy(models = listOf("qwen-coder"))
+            registry.register(s)
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = guildId,
+                    providerUserId = 81,
+                    providerState = "ONLINE",
+                    modelNames = "qwen-coder",
+                    qualityTier = "specialized",
+                    overloadRisk = "critical",
+                ),
+            )
+            channelRoutingPolicies.save(
+                guildId = guildId,
+                channelId = channelId,
+                responseMode = "balanced",
+                preferredModel = null,
+                allowedModels = listOf("qwen-coder"),
+                minQualityTier = "standard",
+                maxCandidates = 1,
+                providerTagFilter = emptyList(),
+                costGuard = "provider_safe",
+            )
+            try {
+                val r =
+                    commands.ask(
+                        CommandContext(guildId = guildId, channelId = channelId, userId = 5, roleIds = setOf(1L), isAdmin = true),
+                        "깊게 봐줘",
+                        requestedModel = "qwen-coder",
+                    )
+
+                assertTrue(r.content.contains("요청을 보내지 않았습니다"))
+                assertTrue(r.content.contains("Provider 보호"))
+                assertEquals(null, conn.lastInfer)
             } finally {
                 registry.unregister(s)
             }
@@ -219,11 +768,163 @@ class CommandServiceTest
 
                 val r = commands.ask(ctx(), "코드 설명")
 
-                assertTrue(r.content.contains("[채널 AI 행동 설정]"))
-                assertTrue(r.content.contains("이름: 코드냥"))
-                assertTrue(r.content.contains("역할: Kotlin 개발 도우미"))
-                assertTrue(r.content.contains("[사용자 질문]"))
-                assertTrue(r.content.endsWith("코드 설명"))
+                assertTrue(r.content.contains("[우선순위 2: 채널 AI 정체성]"), r.content)
+                assertTrue(r.content.contains("이름: 코드냥"), r.content)
+                assertTrue(r.content.contains("역할: Kotlin 개발 도우미"), r.content)
+                assertTrue(r.content.contains("[우선순위 3: AI 헌법]"), r.content)
+                assertTrue(r.content.contains("코드는 실행 가능한 예시 위주로 답합니다."), r.content)
+                assertTrue(r.content.contains("[사용자 질문]"), r.content)
+                assertTrue(r.content.endsWith("코드 설명"), r.content)
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 새 채널 AI 미리보기 renderer 와 실제 실행 prompt 가 일치한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 83, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                channelAiCustomization.createFromWizard(
+                    guildId = 100,
+                    channelId = 200,
+                    actorUserId = 77,
+                    name = "코드냥",
+                    avatarUrl = null,
+                    job = "개발 질문",
+                    tone = "짧고 명확하게",
+                    answerLength = "short",
+                    constitution = "코드는 검증 방법을 먼저 제안합니다.",
+                    requireApproval = false,
+                )
+                val preview =
+                    channelAiCustomization.promptPreview(
+                        guildId = 100,
+                        channelId = 200,
+                        userQuestion = "Kotlin Spring 설정 알려줘",
+                    )
+
+                val reply = commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘")
+
+                assertEquals(
+                    "echo:${preview.systemPrompt}\n\n${preview.userPrompt}",
+                    reply.content,
+                    "Discord ask runtime must reuse the same Channel AI prompt renderer as preview",
+                )
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 채널 지식 컨텍스트가 있으면 안전하게 프롬프트에 합성한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 80, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                val space = knowledge.createSpace(100, 200, null, "개발 지식", 77, null, null)
+                val source =
+                    knowledge.addSource(
+                        guildId = 100,
+                        spaceId = space.id,
+                        sourceType = "link",
+                        title = "Kotlin Spring 운영 가이드",
+                        sourceUri = "https://example.com/kotlin-spring-guide.md",
+                        contentPreview = "운영",
+                        addedBy = 77,
+                    )
+                knowledge.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+
+                val r = commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘")
+
+                assertTrue(r.content.contains("[채널 지식 컨텍스트]"))
+                assertTrue(r.content.contains("Kotlin Spring 운영 가이드"))
+                assertTrue(r.content.contains("[질문 실행 입력]"))
+                assertTrue(r.content.endsWith("Kotlin Spring 설정 알려줘"))
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 새 채널 AI 행동 버전과 RAG 컨텍스트를 런타임 프롬프트에 반영한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 82, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                channelAiCustomization.createFromWizard(
+                    guildId = 100,
+                    channelId = 200,
+                    actorUserId = 77,
+                    name = "코드냥",
+                    avatarUrl = null,
+                    job = "개발 질문",
+                    tone = "짧고 명확하게",
+                    answerLength = "short",
+                    constitution = "코드는 검증 방법을 먼저 제안합니다.",
+                    requireApproval = false,
+                )
+                val space = knowledge.createSpace(100, 200, null, "개발 지식", 77, null, null)
+                val source =
+                    knowledge.addSource(
+                        guildId = 100,
+                        spaceId = space.id,
+                        sourceType = "text",
+                        title = "Kotlin Spring 운영 가이드",
+                        sourceUri = null,
+                        contentPreview = "Kotlin Spring 운영에서는 profile 별 설정을 분리합니다.",
+                        addedBy = 77,
+                    )
+                knowledge.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+
+                val r = commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘", requestedResponseMode = "deep")
+
+                assertTrue(r.content.contains("[우선순위 2: 채널 AI 정체성]"), r.content)
+                assertTrue(r.content.contains("이름: 코드냥"), r.content)
+                assertTrue(r.content.contains("코드는 검증 방법을 먼저 제안합니다."), r.content)
+                assertTrue(r.content.contains("[우선순위 4: 채널 지식/RAG]"), r.content)
+                assertTrue(r.content.contains("Kotlin Spring 운영 가이드"), r.content)
+                assertTrue(r.content.contains("[사용자 질문]"), r.content)
+                assertTrue(r.content.endsWith("Kotlin Spring 설정 알려줘"), r.content)
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 응답 모드별 RAG 예산으로 지식 컨텍스트를 제한한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 81, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                val space = knowledge.createSpace(100, 200, null, "긴 개발 지식", 77, null, null)
+                listOf("A", "B", "C").forEach { prefix ->
+                    val source =
+                        knowledge.addSource(
+                            guildId = 100,
+                            spaceId = space.id,
+                            sourceType = "link",
+                            title = "$prefix Kotlin ${"설정".repeat(50)}",
+                            sourceUri = "https://example.com/$prefix/${"very-long-path".repeat(12)}",
+                            contentPreview = "운영",
+                            addedBy = 77,
+                        )
+                    knowledge.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+                }
+
+                val saving = commands.ask(ctx(admin = true), "Kotlin 설정", requestedResponseMode = "saving").content
+                assertTrue(saving.contains("A Kotlin"))
+                assertFalse(saving.contains("C Kotlin"), saving)
+
+                val deep = commands.ask(ctx(admin = true).copy(userId = 6), "Kotlin 설정", requestedResponseMode = "deep").content
+                assertTrue(deep.contains("A Kotlin"))
+                assertTrue(deep.contains("B Kotlin"))
+                assertTrue(deep.contains("C Kotlin"))
             } finally {
                 registry.unregister(s)
             }

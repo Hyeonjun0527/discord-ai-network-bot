@@ -22,7 +22,9 @@ from .protocol import (
     AuthErrFrame,
     AuthFrame,
     AuthOkFrame,
+    CancelFrame,
     Frame,
+    InferRequest,
     PingFrame,
     PongFrame,
     ProtocolError,
@@ -119,7 +121,8 @@ class AgentConnection:
                     try:
                         frame = loads_frame(msg.data)
                     except ProtocolError as exc:
-                        logger.debug("잘못된 프레임 무시: %s", exc)
+                        # unknown/malformed 프레임은 거부하고 로그에 남긴다(조용히 무시하지 않음).
+                        logger.warning("거부: 알 수 없거나 잘못된 프레임 — %s", exc)
                         continue
                     await self._dispatch(frame)
                 elif msg.type in (
@@ -143,8 +146,12 @@ class AgentConnection:
             await self.send(PongFrame())
         elif isinstance(frame, PongFrame):
             pass
-        else:
+        elif isinstance(frame, (InferRequest, CancelFrame)):
+            # 서버가 에이전트에게 지시할 수 있는 명령은 infer/cancel(+ ping) 뿐이다.
             await self._on_server_frame(self, frame)
+        else:
+            # 그 외 타입(result/status/hello 등 에이전트→서버 전용)을 서버가 보내면 거부+로그.
+            logger.warning("거부: 서버가 보낼 수 없는 프레임 type=%s", getattr(frame, "type", "?"))
 
     async def _heartbeat(self, ws: aiohttp.ClientWebSocketResponse) -> None:
         interval = self._cfg.heartbeat_seconds

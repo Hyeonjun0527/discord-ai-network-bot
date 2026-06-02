@@ -12,7 +12,7 @@ import signal
 from . import sysinfo
 from .config import AgentConfig
 from .connection import AgentConnection
-from .constants import ErrorCode
+from .constants import MAX_RESPONSE_CHARS, ErrorCode
 from .ollama import OllamaClient, OllamaError
 from .protocol import (
     CancelFrame,
@@ -67,8 +67,16 @@ class ProviderAgent:
         if req.request_id in self._cancelled:
             self._cancelled.discard(req.request_id)
             return
+        # 일일 한도·동시성은 **에이전트 내부에서 강제**한다. 서버가 더 많은 요청을 보내도
+        # 이 게이트(self._cfg.daily_limit / self._sem)를 우회할 수 없다(프로바이더 주권).
         if self._cfg.daily_limit > 0 and self._remaining <= 0:
             await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message="일일 한도 초과"))
+            return
+        # 자원 보호: CPU 고부하·배터리 방전 중에는 자동 pause(BUSY 로 반려, 한도 소모 안 함).
+        paused, reason = sysinfo.should_pause(self._cfg.pause_on_battery, self._cfg.pause_on_high_load)
+        if paused:
+            logger.info("자원 보호로 일시 중지(%s) — 요청 반려", reason)
+            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message=f"자원 보호 일시중지({reason})"))
             return
         async with self._sem:
             if req.request_id in self._cancelled:
@@ -82,13 +90,21 @@ class ProviderAgent:
             try:
                 if req.stream:
                     # 스트리밍(#142): 부분 텍스트를 ChunkFrame 으로 점진 전송 후 done 표시.
+                    # 무거운/폭주 응답 보호: 누적 길이가 MAX_RESPONSE_CHARS 를 넘으면 조기 종료.
+                    emitted = 0
                     async for kind, val in self._ollama.generate_stream(req.prompt, model):
                         if kind == "chunk":
-                            await self._safe_send(conn, ChunkFrame(req.request_id, delta=val, done=False))
+                            if emitted >= MAX_RESPONSE_CHARS:
+                                continue
+                            piece = val[: MAX_RESPONSE_CHARS - emitted]
+                            emitted += len(piece)
+                            await self._safe_send(conn, ChunkFrame(req.request_id, delta=piece, done=False))
                     await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
                     self._processed += 1
                 else:
                     text, usage = await self._ollama.generate(req.prompt, model)
+                    if len(text) > MAX_RESPONSE_CHARS:
+                        text = text[:MAX_RESPONSE_CHARS]
                     self._processed += 1
                     await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
             except OllamaError as exc:

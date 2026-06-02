@@ -18,6 +18,8 @@ data class Candidate(
     val failureRate: Double = 0.0,
     val inCooldown: Boolean = false,
     val recentHandled: Int = 0,
+    val modelNames: Set<String> = emptySet(),
+    val qualityTier: String = "standard",
 )
 
 /** 요청 라우팅 컨텍스트. */
@@ -27,6 +29,7 @@ data class RequestContext(
     val channelId: Long,
     val promptChars: Int,
     val requesterIsAdmin: Boolean = false,
+    val preferredModel: String? = null,
 )
 
 enum class FilterSignal { OK, NONE_AVAILABLE, PERMISSION_DENIED }
@@ -59,6 +62,7 @@ class ProviderFilterPipeline(
             Step("busy") { c, _ -> c.state == ProviderState.ONLINE_IDLE },
             Step("role") { c, ctx -> c.allowedRoleIds == null || c.allowedRoleIds.any { it in ctx.requesterRoleIds } },
             Step("channel") { c, ctx -> c.allowedChannelIds == null || ctx.channelId in c.allowedChannelIds },
+            Step("model") { c, ctx -> ctx.preferredModel.isNullOrBlank() || ctx.preferredModel in c.modelNames },
             Step("daily_limit") { c, _ -> c.remainingDaily > 0 },
             Step("concurrency") { c, _ -> c.activeRequests < c.maxConcurrency },
             Step("cooldown") { c, _ -> !c.inCooldown },

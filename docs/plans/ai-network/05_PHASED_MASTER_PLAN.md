@@ -199,12 +199,12 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 모든 새 테이블에 `guild_id` 또는 명시적 global scope 가 있다.
-- [ ] cross-guild 접근을 막는 테스트가 있다.
-- [ ] 설정 변경은 audit log 에 남는다.
-- [ ] feature flag 로 신규 기능을 끌 수 있다.
-- [ ] Provider overload 상태에서는 어떤 고급 기능도 실행되지 않는다.
-- [ ] projection 장애가 질문 처리 장애로 번지지 않는다.
+- [x] 모든 새 테이블에 `guild_id` 또는 명시적 global/parent scope 가 있다. — `AiNetworkFoundationServiceTest` 가 AI Network 테이블별 direct guild scope·parent/catalog scope 컬럼 계약을 검증한다.
+- [x] cross-guild 접근을 막는 테스트가 있다. — `AiNetworkFoundationServiceTest`/`KnowledgeIndexingServiceTest` 가 길드 스코프 조회와 cross-guild RAG 업데이트 차단을 검증한다.
+- [x] 설정 변경은 audit log 에 남는다. — `ChannelAiCustomizationServiceTest` 가 wizard publish/propose/approve/reject/rollback/AI admin role 변경·거부 audit 을 검증한다.
+- [x] feature flag 로 신규 기능을 끌 수 있다.
+- [x] Provider overload 상태에서는 어떤 고급 기능도 실행되지 않는다. — `ProviderSafetyServiceTest`/`MultiResponseServiceTest` 가 overload 시 deep response·multi-response·pressure boost 를 차단/다운그레이드하고 critical overload 에서 fanout 실행을 막는지 검증한다.
+- [x] projection 장애가 질문 처리 장애로 번지지 않는다.
 
 ## 6. Capability Group 1 — Channel AI MVP
 
@@ -241,11 +241,11 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 채널마다 다른 AI 이름/역할/말투가 적용된다.
-- [ ] 변경 전후 버전이 남고 rollback 된다.
-- [ ] 온보딩 문구가 채널 AI 설정에서 파생된다.
-- [ ] 민감정보 경고가 AI 헌법보다 우선한다.
-- [ ] 관리자 권한 없는 사용자는 설정을 바꿀 수 없다.
+- [x] 채널마다 다른 AI 이름/역할/말투가 적용된다. — `ChannelAiCustomizationServiceTest`, `CommandServiceTest` 가 채널별 이름·역할·말투를 prompt/runtime 에 반영하는 회귀를 고정한다.
+- [x] 변경 전후 버전이 남고 rollback 된다. — `ChannelAiCustomizationServiceTest`, `ChannelAiProfileServiceTest` 가 version history/proposal/audit 과 rollback 을 검증한다.
+- [x] 온보딩 문구가 채널 AI 설정에서 파생된다. — `ChannelAiCustomizationServiceTest` 가 active profile 기반 onboarding title/description/examples/safety notice 를 검증한다.
+- [x] 민감정보 경고가 AI 헌법보다 우선한다. — `ChannelAiCustomizationServiceTest` 가 sensitive question 에서 RAG 를 제외하고 safety warning 을 최우선으로 렌더링한다.
+- [x] 관리자 권한 없는 사용자는 설정을 바꿀 수 없다. — `CommandServiceTest` 와 `AiNetworkApiSecurityFilterTest` 가 Discord 명령/패널 및 웹 API 관리자 토큰 가드를 검증한다.
 
 ## 7. Capability Group 2 — Network Dashboard MVP
 
@@ -274,11 +274,11 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 대시보드는 projection 만 읽는다.
-- [ ] 일반 유저/Provider/관리자에게 보이는 정보가 다르다.
-- [ ] Provider 개인 정보와 민감 상태는 노출하지 않는다.
-- [ ] stale projection 은 freshness 를 표시한다.
-- [ ] dashboard 장애 시 Discord 질문 기능은 유지된다.
+- [x] 대시보드는 projection 만 읽는다. — `/dashboard` 기본 경로는 기존 overview projection 을 read-only 로 사용하고, 수동 갱신은 `refreshOverview=true` 로 분리한다.
+- [x] 일반 유저/Provider/관리자에게 보이는 정보가 다르다. — `AiNetworkDashboardControllerTest` 가 public/provider/admin audience 별 Provider 표시·상태·용량 노출 차이를 검증한다.
+- [x] Provider 개인 정보와 민감 상태는 노출하지 않는다. — `AiNetworkDashboardControllerTest` 가 public dashboard/provider/overload/multi-response load 에서 provider id·capacity·민감 risk 를 마스킹한다.
+- [x] stale projection 은 freshness 를 표시한다. — `AiNetworkDashboardControllerTest` 가 `refresh=false` stale projection 의 `freshnessStatus=stale`, `degradedReason=projection_stale` 를 검증한다.
+- [x] dashboard 장애 시 Discord 질문 기능은 유지된다. — `MultiResponseServiceTest` 와 `AiNetworkFeatureGateTest` 가 dashboard projection gate off 상태에서도 질문 fan-out 경로가 유지됨을 검증한다.
 
 ## 8. Capability Group 3 — Knowledge/RAG
 
@@ -315,12 +315,12 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] guild filter 없는 검색은 실패한다.
-- [ ] 서버 A 지식이 서버 B 질문에 노출되지 않는다.
-- [ ] 삭제된 문서는 검색 결과에서 빠진다.
-- [ ] secret pattern 감지 문서는 색인되지 않는다.
-- [ ] RAG 실패는 일반 질문 장애로 번지지 않는다.
-- [ ] golden set 기준 Hit@K/MRR/Recall 을 CI 에서 확인한다.
+- [x] guild filter 없는 검색은 실패한다.
+- [x] 서버 A 지식이 서버 B 질문에 노출되지 않는다.
+- [x] 삭제된 문서는 검색 결과에서 빠진다.
+- [x] secret pattern 감지 문서는 색인되지 않는다.
+- [x] RAG 실패는 일반 질문 장애로 번지지 않는다.
+- [x] golden set 기준 Hit@K/MRR/Recall 을 CI 에서 확인한다.
 
 ## 9. Capability Group 4 — Preset Registry
 
@@ -349,12 +349,12 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 게시된 revision 은 immutable 이다.
-- [ ] 삭제는 hard delete 보다 removed/unlisted/suspended 상태를 우선한다.
-- [ ] 같은 유저는 같은 프리셋에 like 1개만 가능하다.
-- [ ] 신고된 프리셋은 검토 상태로 전환할 수 있다.
-- [ ] 가져온 프리셋은 내 서버에서 수정 가능하지만 원본과 분리된다.
-- [ ] 비공개 prompt/secret/server ID 는 게시 payload 에 포함되지 않는다.
+- [x] 게시된 revision 은 immutable 이다.
+- [x] 삭제는 hard delete 보다 removed/unlisted/suspended 상태를 우선한다.
+- [x] 같은 유저는 같은 프리셋에 like 1개만 가능하다.
+- [x] 신고된 프리셋은 검토 상태로 전환할 수 있다.
+- [x] 가져온 프리셋은 내 서버에서 수정 가능하지만 원본과 분리된다.
+- [x] 비공개 prompt/secret/server ID 는 게시 payload 에 포함되지 않는다.
 
 ## 10. Capability Group 5 — Customization Wizard & Approval
 
@@ -374,11 +374,11 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 위험 설정은 즉시 적용되지 않고 승인 요청이 된다.
-- [ ] 승인/거절자와 사유가 audit log 에 남는다.
-- [ ] 미리보기와 실제 적용 결과가 같은 renderer 를 쓴다.
-- [ ] rollback 은 이전 BehaviorVersion 으로만 수행한다.
-- [ ] 권한 없는 관리자가 대형 서버 설정을 임의 변경할 수 없다.
+- [x] 위험 설정은 즉시 적용되지 않고 승인 요청이 된다. — `ChannelAiCustomizationServiceTest` 가 risky wizard direct publish 를 pending approval 로 강제한다.
+- [x] 승인/거절자와 사유가 audit log 에 남는다. — `ChannelAiCustomizationServiceTest` 가 approve/reject reviewer·reason·history/audit 을 검증한다.
+- [x] 미리보기와 실제 적용 결과가 같은 renderer 를 쓴다. — `CommandServiceTest` 가 Channel AI preview renderer 와 Discord `/ask` 실행 prompt 의 exact match 를 검증한다.
+- [x] rollback 은 이전 BehaviorVersion 으로만 수행한다. — `ChannelAiCustomizationServiceTest` 가 target BehaviorVersion 을 새 active rollback version 으로 복사하고 audit 을 남기는 흐름을 검증한다.
+- [x] 권한 없는 관리자가 대형 서버 설정을 임의 변경할 수 없다. — `ai_admin_role` protected mode 를 두고, `ChannelAiCustomizationServiceTest`/`CommandServiceTest` 가 AI 관리자 역할 없는 일반 서버 관리자의 채널 AI 변경을 차단한다.
 
 ## 11. Capability Group 6 — Quality Routing & Model Choice
 
@@ -398,11 +398,17 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 사용자는 질문 시 모델 또는 모드를 선택할 수 있다.
-- [ ] 선택 모델이 unavailable 일 때 대체 이유를 설명한다.
-- [ ] 품질 피드백은 raw prompt 없이 저장된다.
-- [ ] Provider trust score 는 공개 망신이 아니라 내부 라우팅 신호다.
-- [ ] 긴 질문/첨부/깊은 모드는 더 높은 비용 가중치로 계산된다.
+- [x] 사용자는 질문 시 모델 또는 모드를 선택할 수 있다. — `/ask` 의 model 자동완성·mode 선택지와
+  `CommandServiceTest`/`ChannelAiRoutingPolicyServiceTest` 가 요청 모델·빠른/균형/깊은/절약 모드 반영을 검증한다.
+- [x] 선택 모델이 unavailable 일 때 대체 이유를 설명한다. — `ChannelAiRoutingPolicyServiceTest` 와
+  `CommandServiceTest` 가 `requested_model_unavailable` fallback 및 유저 안내 문구를 검증한다.
+- [x] 품질 피드백은 raw prompt 없이 저장된다. — `AiQualityFeedbackServiceTest` 가 request id/type/reason redaction 과
+  raw answer body 비노출 review summary 를 검증한다.
+- [x] Provider trust score 는 공개 망신이 아니라 내부 라우팅 신호다. — feedback 기반 shadow quality 는
+  admin-protected candidate catalog 에서만 모델 후보 신호로 노출되고 live routing 선택을 즉시 바꾸지 않음을
+  `ChannelAiRoutingPolicyServiceTest` 가 검증한다.
+- [x] 긴 질문/첨부/깊은 모드는 더 높은 비용 가중치로 계산된다. — `RequestWeigherTest` 와
+  `RequestOrchestratorTest` 가 긴 prompt/첨부/deep 모드의 상향 가중치와 light-only Provider 미전송을 검증한다.
 
 ## 12. Capability Group 7 — Multi-response / Compare / Synthesize
 
@@ -423,12 +429,12 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 기본 질문은 fan-out 하지 않는다.
-- [ ] 민감 질문에서는 다중 응답이 자동 비활성화된다.
-- [ ] Provider opt-out 이 즉시 반영된다.
-- [ ] 후보 답변 원문 전체를 장기 저장하지 않는다.
-- [ ] 모든 후보 실패 시 단일 실패 메시지로 정리한다.
-- [ ] Provider 보호 차단 횟수가 dashboard 에 표시된다.
+- [x] 기본 질문은 fan-out 하지 않는다.
+- [x] 민감 질문에서는 다중 응답이 자동 비활성화된다.
+- [x] Provider opt-out 이 즉시 반영된다.
+- [x] 후보 답변 원문 전체를 장기 저장하지 않는다.
+- [x] 모든 후보 실패 시 단일 실패 메시지로 정리한다.
+- [x] Provider 보호 차단 횟수가 dashboard 에 표시된다.
 
 ## 13. Capability Group 8 — Advanced Network Growth
 
@@ -448,10 +454,16 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] Provider 참여 시 네트워크가 어떻게 좋아졌는지 보여준다.
-- [ ] 성장 레벨은 vanity metric 이 아니라 실제 capability 에서 계산된다.
-- [ ] 추천은 관리자 승인 전 자동 적용되지 않는다.
-- [ ] 사용자는 “함께 구축하고 있다”는 감각을 얻는다.
+- [x] Provider 참여 시 네트워크가 어떻게 좋아졌는지 보여준다. — `AiNetworkGrowthServiceTest` 와
+  dashboard test 가 Provider 참여 이벤트의 모델·태그·동시처리·일일한도·레벨 변화 impact bullet 을 검증한다.
+- [x] 성장 레벨은 vanity metric 이 아니라 실제 capability 에서 계산된다. — `AiNetworkFoundationService` 의
+  overview projection 이 온라인 Provider·모델 수·채널 AI·지식공간·피드백·과부하 신호로 레벨을 계산하고,
+  `AiNetworkGrowthServiceTest` 가 milestone gap 과 capability basis 를 검증한다.
+- [x] 추천은 관리자 승인 전 자동 적용되지 않는다. — `AiNetworkGrowthAction.autoApply=false` 와
+  `requiresAdminApproval` guard 를 노출하고, high-risk preset import 는 pending proposal 로만 생성됨을
+  `AiNetworkGrowthServiceTest`/`PresetRegistryServiceTest` 가 검증한다.
+- [x] 사용자는 “함께 구축하고 있다”는 감각을 얻는다. — growth plan `builderMessage` 와 timeline 이
+  Provider·모델·채널 AI·지식·피드백이 쌓여 함께 만들어지는 네트워크라는 문맥을 제공함을 테스트로 고정했다.
 
 ## 14. 의존성 DAG
 

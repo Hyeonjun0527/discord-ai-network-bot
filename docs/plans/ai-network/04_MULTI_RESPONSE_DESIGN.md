@@ -243,21 +243,21 @@ Kill switch:
 
 ## 10. 테스트 체크리스트
 
-- [ ] 기본 off 상태에서는 어떤 질문도 fan-out 하지 않는다.
-- [ ] channel policy 가 켜져도 guild policy 가 금지하면 실행되지 않는다.
-- [ ] 민감정보 포함 질문에서는 다중 응답이 비활성화된다.
-- [ ] Provider opt-out 상태인 Provider 는 후보에서 제외된다.
-- [ ] Provider concurrency 초과 시 후보에서 제외된다.
-- [ ] maxFanout 전역 상한을 넘기지 않는다.
-- [ ] 한 후보가 timeout 되어도 성공 후보가 있으면 fallback 응답한다.
-- [ ] 모든 후보가 실패해도 사용자에게 명확한 실패 메시지를 보낸다.
-- [ ] 후보 원문 전체가 DB 에 저장되지 않는다.
-- [ ] dashboard projection 장애가 질문 처리 장애로 번지지 않는다.
-- [ ] RAG scope filter 누락 시 검색이 실패한다.
-- [ ] 삭제된 KnowledgeSource 가 후보 context 에 포함되지 않는다.
-- [ ] pseudo-streaming edit throttle 과 충돌하지 않는다.
-- [ ] 사용자 피드백이 특정 Provider 공개 망신으로 이어지지 않는다.
-- [ ] kill switch 로 즉시 기능을 끌 수 있다.
+- [x] 기본 off 상태에서는 어떤 질문도 fan-out 하지 않는다.
+- [x] channel policy 가 켜져도 guild policy 가 금지하면 실행되지 않는다.
+- [x] 민감정보 포함 질문에서는 다중 응답이 비활성화된다.
+- [x] Provider opt-out 상태인 Provider 는 후보에서 제외된다.
+- [x] Provider concurrency 초과 시 후보에서 제외된다.
+- [x] maxFanout 전역 상한을 넘기지 않는다.
+- [x] 한 후보가 timeout 되어도 성공 후보가 있으면 fallback 응답한다.
+- [x] 모든 후보가 실패해도 사용자에게 명확한 실패 메시지를 보낸다.
+- [x] 후보 원문 전체가 DB 에 저장되지 않는다.
+- [x] dashboard projection 장애가 질문 처리 장애로 번지지 않는다.
+- [x] RAG scope filter 누락 시 검색이 실패한다.
+- [x] 삭제된 KnowledgeSource 가 후보 context 에 포함되지 않는다.
+- [x] pseudo-streaming edit throttle 과 충돌하지 않는다.
+- [x] 사용자 피드백이 특정 Provider 공개 망신으로 이어지지 않는다.
+- [x] kill switch 로 즉시 기능을 끌 수 있다.
 
 ## 11. 구현 순서
 

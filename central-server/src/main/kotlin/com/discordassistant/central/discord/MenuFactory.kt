@@ -1,8 +1,11 @@
 package com.discordassistant.central.discord
 
+import net.dv8tion.jda.api.entities.channel.ChannelType
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu
+import net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.DefaultValue
+import net.dv8tion.jda.api.interactions.components.selections.SelectOption
 import net.dv8tion.jda.api.interactions.components.selections.StringSelectMenu
 
 // Discord 버튼/Embed 에서 공통으로 쓰는 서비스 내부 심볼.
@@ -35,6 +38,10 @@ object MenuFactory {
     const val MODEL = "set:model"
     const val CHANNEL = "set:channel"
     const val CHANNEL_ALL = "set:channel-all"
+    const val CHANNEL_BULK = "set:channel-bulk"
+    const val CANCEL_SETTINGS = "set:cancel"
+    const val SAVE_SETTINGS = "set:save"
+    const val AUTO_APPROVE_SELECT = "set:autoapprove-select"
 
     // 프로바이더 참여 OS 선택(차수 19): 클릭하면 해당 OS 복붙 설치 명령을 보여준다. customId prefix "pjoin:".
     const val OS_PREFIX = "pjoin:"
@@ -57,7 +64,9 @@ object MenuFactory {
         allowedChannelCount: Int,
     ): String {
         val sb = StringBuilder()
-        sb.append("⚙️ **서버 설정** — 아래 메뉴/버튼으로 바로 적용됩니다.\n\n")
+        sb.append(
+            "⚙️ **서버 설정** — 언어·모델·채널·자동 승인을 고른 뒤 **설정 한 번에 저장**을 누르면 한 번에 적용됩니다.\n\n",
+        )
         sb.append("• **언어**: 봇 응답 언어(한/영)\n")
         if (poolModels.isEmpty()) {
             sb.append("• **기본 모델**: 아직 연결된 프로바이더가 없어 *자동 선택*만 있어요. 프로바이더가 PC를 연결하면 그 PC의 모델들이 여기 채워집니다.\n")
@@ -65,9 +74,13 @@ object MenuFactory {
             sb.append("• **기본 모델**: 현재 풀 제공 모델 ${poolModels.size}종 — 그중 기본값 선택(또는 자동)\n")
         }
         if (allowedChannelCount == 0) {
-            sb.append("• **사용 채널**: 현재 *모든 채널 허용*. 특정 채널만 허용하려면 아래에서 채널 선택\n")
+            sb.append(
+                "• **LLM 사용 허용 채널**: 현재 *모든 채널 허용*. 특정 채널만 허용하려면 채널 드롭다운에서 여러 채널을 체크한 뒤 저장\n",
+            )
         } else {
-            sb.append("• **사용 채널**: 현재 $allowedChannelCount 개 채널만 허용 — '모든 채널 허용'으로 제한 해제 가능\n")
+            sb.append(
+                "• **LLM 사용 허용 채널**: 현재 $allowedChannelCount 개 채널만 허용 — 현재 목록을 확인하고 드롭다운에서 한 번에 교체 가능\n",
+            )
         }
         sb.append("• **자동 승인**: 현재 **${if (autoApprove) "켜짐(바로 참여)" else "꺼짐(관리자 승인 필요)"}**\n")
         return sb.toString()
@@ -90,31 +103,86 @@ object MenuFactory {
         StringSelectMenu
             .create(LANG)
             .setPlaceholder("서버 언어 선택 (현재: $current)")
-            .addOption("한국어", "ko", Emoji.fromUnicode("🇰🇷"))
-            .addOption("English", "en", Emoji.fromUnicode("🇺🇸"))
-            .build()
+            .addOptions(
+                SelectOption.of("한국어", "ko").withEmoji(Emoji.fromUnicode("🇰🇷")).withDefault(current == "ko"),
+                SelectOption.of("English", "en").withEmoji(Emoji.fromUnicode("🇺🇸")).withDefault(current == "en"),
+            ).build()
 
     /** 기본 모델 선택 드롭다운(풀 제공 모델 + 자동). 모델 없으면 자동만. */
-    fun modelSelect(models: List<String>): StringSelectMenu {
+    fun modelSelect(
+        models: List<String>,
+        current: String?,
+    ): StringSelectMenu {
+        val currentValue = current ?: "__auto__"
         val b =
             StringSelectMenu
                 .create(MODEL)
-                .setPlaceholder("기본 모델 선택")
-                .addOption("자동 선택", "__auto__", Emoji.fromUnicode("🤖"))
+                .setPlaceholder("기본 모델 선택 (현재: ${current ?: "자동 선택"})")
+                .addOptions(
+                    SelectOption
+                        .of("자동 선택", "__auto__")
+                        .withEmoji(Emoji.fromUnicode("🤖"))
+                        .withDefault(currentValue == "__auto__"),
+                )
         models
             .distinct()
             .sorted()
             .take(24)
-            .forEach { b.addOption(it, it) } // 25개 한도(자동 1 + 24)
+            .forEach { b.addOptions(SelectOption.of(it, it).withDefault(it == currentValue)) } // 25개 한도(자동 1 + 24)
         return b.build()
     }
 
-    /** 채널 허용 선택(서버 채널 엔티티 선택). */
-    fun channelSelect(): EntitySelectMenu =
-        EntitySelectMenu
+    /** 자동 승인 선택 드롭다운. 저장 전 대기값만 바꾼다. */
+    fun autoApproveSelect(current: Boolean): StringSelectMenu =
+        StringSelectMenu
+            .create(AUTO_APPROVE_SELECT)
+            .setPlaceholder("프로바이더 자동 승인 선택 (현재: ${if (current) "켜짐" else "꺼짐"})")
+            .addOptions(
+                SelectOption.of("켜짐 — 신청 즉시 참여", "true").withDefault(current),
+                SelectOption.of("꺼짐 — 관리자 승인 필요", "false").withDefault(!current),
+            ).build()
+
+    /** 채널 허용 선택(서버 채널 엔티티 선택). 한 번 열어 여러 채널을 체크하고 저장 버튼으로 일괄 적용한다. */
+    fun channelSelect(currentChannelIds: Collection<Long>): EntitySelectMenu {
+        val defaults = currentChannelIds.distinct().take(25).map { DefaultValue.channel(it) }
+        val placeholder =
+            if (currentChannelIds.isEmpty()) {
+                "사용 채널: 전체 허용 중 · 특정 채널만 쓰려면 여러 채널을 한 번에 선택"
+            } else {
+                "현재 ${currentChannelIds.size}개 사용 채널 선택됨 · 여러 채널을 체크해 한 번에 교체"
+            }
+        return EntitySelectMenu
             .create(CHANNEL, EntitySelectMenu.SelectTarget.CHANNEL)
-            .setPlaceholder("LLM 사용 허용 채널 선택")
+            .setChannelTypes(ChannelType.TEXT, ChannelType.NEWS, ChannelType.FORUM, ChannelType.MEDIA)
+            .setPlaceholder(placeholder)
+            .setMinValues(0)
+            .setMaxValues(25)
+            .setDefaultValues(defaults)
             .build()
+    }
+
+    /** 설정 패널 저장/상태 버튼. 언어·모델·채널·자동승인을 고른 뒤 저장 하나로 반영한다. */
+    fun settingsActionButtons(): List<Button> =
+        listOf(
+            Button.success(SAVE_SETTINGS, "언어·모델·채널 저장"),
+            Button.secondary(CHANNEL_ALL, "모든 채널 허용 대기"),
+            Button.secondary(CHANNEL_BULK, "채널 목록 붙여넣기"),
+            Button.secondary(CANCEL_SETTINGS, "변경 취소"),
+        )
+
+    /** 채널 멘션/ID를 한 번에 붙여넣어 허용 채널 목록으로 바꾼다. 빈 입력/all/전체는 모든 채널 허용. */
+    fun parseChannelIdsBulk(input: String): List<Long> {
+        val trimmed = input.trim()
+        if (trimmed.isBlank() || trimmed.equals("all", ignoreCase = true) || trimmed == "전체" || trimmed == "모든 채널") {
+            return emptyList()
+        }
+        return Regex("\\d{5,}")
+            .findAll(trimmed)
+            .map { it.value.toLong() }
+            .distinct()
+            .take(25)
+            .toList()
+    }
 
     /** 슬림 도움말 — 핵심 3~5개만(판에서 보여줄 텍스트). */
     fun slimHelp(isAdmin: Boolean): String {

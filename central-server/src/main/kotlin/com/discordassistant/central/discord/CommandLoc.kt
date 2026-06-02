@@ -56,6 +56,50 @@ object CommandLoc {
             "llm-unblock" to L("차단해제", null, "Unblock a user (admin)", "Разблокировать пользователя (админ)"),
             "menu" to L("메뉴", "меню", "Open the start panel (ask/contribute/settings/help)", "Открыть стартовую панель"),
             "llm-settings" to L("설정", "настройки", "Open the settings panel (admin)", "Открыть панель настроек (админ)"),
+            "ai-network-map" to L("네트워크지도", null, "Show the AI network map (admin)", "Карта ИИ-сети (админ)"),
+            "ai-network-check" to L("네트워크점검", null, "Show the AI network launch checklist (admin)", "Проверка ИИ-сети (админ)"),
+            "ai-knowledge-list" to L("지식목록", null, "List channel RAG knowledge spaces (admin)", "Список знаний RAG (админ)"),
+            "ai-knowledge-add" to L("지식추가", null, "Add a RAG knowledge source to this channel (admin)", "Добавить знание RAG (админ)"),
+            "ai-knowledge-search" to L("지식검색", null, "Search this channel's RAG knowledge (admin)", "Поиск знаний RAG (админ)"),
+            "ai-knowledge-index-plan" to L("지식색인계획", null, "Show the RAG indexing plan (admin)", "План индексации RAG (админ)"),
+            "ai-knowledge-approve" to L("지식승인", null, "Approve a review-risk RAG source (admin)", "Одобрить источник RAG (админ)"),
+            "ai-knowledge-delete" to L("지식삭제", null, "Delete a RAG knowledge source (admin)", "Удалить источник RAG (админ)"),
+            "ai-knowledge-jobs" to L("지식색인작업", null, "List RAG indexing jobs (admin)", "Задачи индексации RAG (админ)"),
+            "ai-knowledge-job-complete" to
+                L(
+                    "지식색인완료",
+                    null,
+                    "Record a RAG indexing job result (admin)",
+                    "Записать результат индексации RAG (админ)",
+                ),
+            "ai-preset-catalog" to L("프리셋목록", null, "Browse shared AI presets", "Список пресетов ИИ"),
+            "ai-preset-import" to L("프리셋가져오기", null, "Import a shared preset into this channel", "Импорт пресета"),
+            "ai-preset-like" to L("프리셋좋아요", null, "Like a shared AI preset", "Лайк пресета"),
+            "ai-preset-report" to L("프리셋신고", null, "Report an unsafe or inappropriate preset", "Пожаловаться на пресет"),
+            "ai-preset-moderation" to L("프리셋검수", null, "Review preset reports (admin)", "Модерация пресетов (админ)"),
+            "ai-preset-report-review" to L("프리셋신고처리", null, "Resolve a preset report (admin)", "Решить жалобу на пресет (админ)"),
+            "ai-multi-response-status" to
+                L(
+                    "다중응답상태",
+                    null,
+                    "Show multi-response operations status (admin)",
+                    "Статус мульти-ответа (админ)",
+                ),
+            "ai-multi-response-set" to
+                L(
+                    "다중응답설정",
+                    null,
+                    "Save multi-response policy (admin)",
+                    "Настройка мульти-ответа (админ)",
+                ),
+            "ai-multi-response-dry-run" to
+                L(
+                    "다중응답실험",
+                    null,
+                    "Safely dry-run multi-response fan-out (admin)",
+                    "Пробный мульти-ответ (админ)",
+                ),
+            "bot-permissions" to L("봇권한", null, "Check bot permissions and mention setup (admin)", "Права бота (админ)"),
             "ask-long" to L("긴질문", null, "Enter a long question via modal", "Длинный вопрос (модальное окно)"),
         )
 

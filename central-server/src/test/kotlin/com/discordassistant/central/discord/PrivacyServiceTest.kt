@@ -19,12 +19,16 @@ class PrivacyServiceTest
         val privacy: PrivacyService,
     ) {
         @Test
-        fun `기본 모드 C — 일반 유저는 익명, 관리자는 provider 식별`() {
+        fun `기본 모드 C — 일반 유저와 관리자 모두 답변 문구에서는 provider snowflake 를 숨긴다`() {
             assertEquals(PrivacyMode.C_ADMIN_ONLY, privacy.mode(100))
             val user = privacy.processedNotice(100, ModelBurden.LIGHT, 7, isAdmin = false)
-            assertEquals("커뮤니티 로컬 AI 풀에서 처리됨", user)
+            assertEquals("함께 만드는 AI 네트워크에서 처리됨", user)
             val admin = privacy.processedNotice(100, ModelBurden.LIGHT, 7, isAdmin = true)
-            assertTrue(admin.contains("provider #7"))
+            assertEquals(
+                "함께 만드는 AI 네트워크에서 처리됨 · 모델 수준 LIGHT · Provider 상세는 관리자 대시보드에서 확인",
+                admin,
+            )
+            assertTrue(!admin.contains("provider #7"))
         }
 
         @Test

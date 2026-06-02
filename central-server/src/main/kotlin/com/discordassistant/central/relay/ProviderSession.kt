@@ -50,6 +50,7 @@ class ProviderSession(
     var capability: ProviderCapability = ProviderCapability(),
     private val requestTimeoutSeconds: Long = 120,
     private val maxQueue: Int = 16,
+    private val onHello: (ProviderSession, ProviderHelloFrame) -> Unit = { _, _ -> },
 ) {
     private val log = LoggerFactory.getLogger(ProviderSession::class.java)
 
@@ -109,6 +110,7 @@ class ProviderSession(
         // 내부 무제한 센티넬(Int.MAX_VALUE)로 둔다. 실제 한도가 있으면 양수를 보낸다.
         remainingDaily.set(if (hello.remainingDailyRequests > 0) hello.remainingDailyRequests else Int.MAX_VALUE)
         markSeen()
+        onHello(this, hello)
     }
 
     fun applyStatus(status: ProviderStatusFrame) {

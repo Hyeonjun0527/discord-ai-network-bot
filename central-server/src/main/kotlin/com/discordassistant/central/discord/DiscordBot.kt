@@ -6,6 +6,8 @@ import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
+import net.dv8tion.jda.api.entities.Message
+import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.channel.ChannelDeleteEvent
@@ -38,6 +40,8 @@ import net.dv8tion.jda.api.interactions.modals.Modal
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -157,7 +161,18 @@ class DiscordBot(
             listOf<net.dv8tion.jda.api.interactions.commands.build.CommandData>(
                 Commands
                     .slash("ask", "커뮤니티 로컬 AI 에게 질문합니다")
-                    .addOption(OptionType.STRING, "prompt", "질문 내용", true),
+                    .addOption(OptionType.STRING, "prompt", "질문 내용", true)
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "model", "원하는 모델(비우면 채널/서버 기본값)", false)
+                            .setAutoComplete(true),
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "mode", "응답 속도/품질 모드", false)
+                            .addChoice("빠른 답변", "fast")
+                            .addChoice("균형 모드", "balanced")
+                            .addChoice("깊은 답변", "deep")
+                            .addChoice("절약 모드", "saving"),
+                    ),
                 Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
                 Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
                 Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),
@@ -235,16 +250,7 @@ class DiscordBot(
                             .addChoice("English", "en"),
                     ).setDefaultPermissions(adminPerm),
                 Commands
-                    .slash("llm-channel-profile", "이 채널의 AI 이름·역할·말투를 설정합니다(관리자)")
-                    .addOption(OptionType.STRING, "name", "이 채널에서 보일 AI 응답 이름(예: 냥시스턴트)", false)
-                    .addOption(OptionType.ATTACHMENT, "avatar", "선택: 응답 프로필 아이콘 이미지 파일", false)
-                    .addOption(OptionType.STRING, "avatar-url", "선택: 이미지 URL(파일 업로드가 어려울 때)", false)
-                    .addOption(OptionType.STRING, "purpose", "선택: 이 채널 AI의 역할(예: Kotlin 개발 도우미)", false)
-                    .addOption(OptionType.STRING, "tone", "선택: 말투(예: 친근하게, 전문적으로, 짧고 명확하게)", false)
-                    .addOption(OptionType.STRING, "answer-length", "선택: 답변 길이(예: 짧게, 균형, 자세히)", false)
-                    .addOption(OptionType.STRING, "constitution", "선택: 이 채널에서 지킬 AI 헌법/규칙", false)
-                    .addOption(OptionType.BOOLEAN, "rollback", "직전 행동 버전으로 롤백합니다", false)
-                    .addOption(OptionType.BOOLEAN, "reset", "설정을 지우고 기본 봇 표시로 되돌립니다", false)
+                    .slash("llm-channel-profile", "이 채널의 AI 프로필 설정 패널을 엽니다(관리자)")
                     .setDefaultPermissions(adminPerm),
                 Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands
@@ -266,6 +272,119 @@ class DiscordBot(
                 // 인터랙티브(차수 13): 설정 패널(버튼/Select #147/180), 모달 입력(#189)
                 Commands.slash("menu", "시작 패널을 엽니다(질문·기여·설정·도움말 한 곳에서)"),
                 Commands.slash("llm-settings", "설정 패널을 엽니다(관리자)").setDefaultPermissions(adminPerm),
+                Commands.slash("ai-network-map", "AI 네트워크 지도와 채널 AI 구성을 봅니다(관리자)").setDefaultPermissions(adminPerm),
+                Commands.slash("ai-network-check", "AI 네트워크 출시/운영 체크리스트를 봅니다(관리자)").setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-list", "채널 RAG 지식공간과 소스 상태를 봅니다(관리자)")
+                    .addOption(OptionType.STRING, "space-id", "상세 조회할 지식공간 ID", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-add", "현재 채널 RAG 지식공간에 링크/텍스트 소스를 추가합니다(관리자)")
+                    .addOption(OptionType.STRING, "title", "지식 제목", true)
+                    .addOption(OptionType.STRING, "url", "https 링크", false)
+                    .addOption(OptionType.STRING, "text", "짧은 텍스트/FAQ 미리보기", false)
+                    .addOption(OptionType.STRING, "source-type", "link/text/faq/file/constitution/preset", false)
+                    .addOption(OptionType.STRING, "space-id", "기존 지식공간 ID", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-search", "현재 채널 또는 특정 지식공간에서 RAG 지식을 검색합니다(관리자)")
+                    .addOption(OptionType.STRING, "query", "검색어", true)
+                    .addOption(OptionType.STRING, "space-id", "검색할 지식공간 ID", false)
+                    .addOption(OptionType.INTEGER, "limit", "결과 수(1~20)", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-index-plan", "RAG 색인 계획과 실행 명령을 봅니다(관리자)")
+                    .addOption(OptionType.STRING, "space-id", "지식공간 ID", false)
+                    .addOption(OptionType.BOOLEAN, "force", "이미 색인된 소스도 재색인 계획에 포함", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-jobs", "RAG 색인 작업 큐와 최근 결과를 봅니다(관리자)")
+                    .addOption(OptionType.STRING, "space-id", "지식공간 ID", false)
+                    .addOption(OptionType.INTEGER, "limit", "결과 수(1~20)", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-job-complete", "RAG 색인 작업 완료/실패 상태를 기록합니다(관리자)")
+                    .addOption(OptionType.STRING, "job-id", "색인 작업 ID", true)
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "status", "completed/failed/cancelled", false)
+                            .addChoice("완료", "completed")
+                            .addChoice("실패", "failed")
+                            .addChoice("취소", "cancelled"),
+                    ).addOption(OptionType.STRING, "reason", "실패/취소 사유", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-approve", "검토 필요한 RAG 지식 소스를 색인 대기로 승인합니다(관리자)")
+                    .addOption(OptionType.STRING, "space-id", "지식공간 ID", true)
+                    .addOption(OptionType.STRING, "source-id", "지식 소스 ID", true)
+                    .addOption(OptionType.STRING, "reason", "승인 사유", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-knowledge-delete", "RAG 지식 소스를 삭제합니다(관리자)")
+                    .addOption(OptionType.STRING, "space-id", "지식공간 ID", true)
+                    .addOption(OptionType.STRING, "source-id", "지식 소스 ID", true)
+                    .addOption(OptionType.STRING, "reason", "삭제 사유", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-preset-catalog", "공개 AI 프리셋 공유 목록을 봅니다(관리자)")
+                    .addOption(OptionType.STRING, "query", "검색어", false)
+                    .addOption(OptionType.STRING, "category", "카테고리", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-preset-import", "공개 프리셋을 현재 채널 AI에 가져옵니다(관리자)")
+                    .addOption(OptionType.STRING, "published-id", "가져올 공개 프리셋 ID", true)
+                    .addOption(OptionType.BOOLEAN, "confirm-conflicts", "기존 채널 AI/정책 덮어쓰기 확인", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-preset-like", "공개 AI 프리셋에 좋아요를 누릅니다")
+                    .addOption(OptionType.STRING, "published-id", "좋아요할 공개 프리셋 ID", true),
+                Commands
+                    .slash("ai-preset-report", "부적절한 공개 AI 프리셋을 신고합니다")
+                    .addOption(OptionType.STRING, "published-id", "신고할 공개 프리셋 ID", true)
+                    .addOption(OptionType.STRING, "reason", "신고 사유", true),
+                Commands
+                    .slash("ai-preset-moderation", "프리셋 신고/검수 큐를 봅니다(관리자)")
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-preset-report-review", "프리셋 신고를 검수 처리합니다(관리자)")
+                    .addOption(OptionType.STRING, "report-id", "처리할 신고 ID", true)
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "decision", "dismiss/suspend/remove", true)
+                            .addChoice("신고 기각", "dismiss")
+                            .addChoice("일시 중단", "suspend")
+                            .addChoice("제거", "remove"),
+                    ).setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-multi-response-status", "다중응답 정책/부하/위험 상태를 봅니다(관리자)")
+                    .addOption(OptionType.CHANNEL, "channel", "확인할 채널(비우면 현재 채널)", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-multi-response-set", "현재 또는 선택 채널의 다중응답 정책을 저장합니다(관리자)")
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "mode", "single/compare/debate", true)
+                            .addChoice("단일 답변", "single")
+                            .addChoice("후보 비교", "compare")
+                            .addChoice("관점 비교", "debate"),
+                    ).addOption(OptionType.INTEGER, "candidates", "후보 수(1~3)", true)
+                    .addOption(OptionType.BOOLEAN, "synthesis", "후보 답변 합성 사용", false)
+                    .addOption(OptionType.BOOLEAN, "distinct-models", "서로 다른 모델 우선", false)
+                    .addOption(OptionType.INTEGER, "timeout", "타임아웃 초(10~300)", false)
+                    .addOption(OptionType.CHANNEL, "channel", "설정할 채널(비우면 현재 채널)", false)
+                    .setDefaultPermissions(adminPerm),
+                Commands
+                    .slash("ai-multi-response-dry-run", "다중응답 fan-out 후보와 RAG 컨텍스트를 안전하게 드라이런합니다(관리자)")
+                    .addOption(OptionType.STRING, "prompt", "테스트 질문/프롬프트", true)
+                    .addOptions(
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.STRING, "mode", "응답 속도/품질 모드", false)
+                            .addChoice("빠른 답변", "fast")
+                            .addChoice("균형 모드", "balanced")
+                            .addChoice("깊은 답변", "deep")
+                            .addChoice("절약 모드", "saving"),
+                    ).addOption(OptionType.CHANNEL, "channel", "드라이런할 채널(비우면 현재 채널)", false)
+                    .setDefaultPermissions(adminPerm),
                 Commands.slash("bot-permissions", "봇 권한과 @멘션 호출 설정을 점검합니다(관리자)").setDefaultPermissions(adminPerm),
                 Commands.slash("ask-long", "긴 질문을 모달 창으로 입력합니다"),
                 // 컨텍스트 메뉴(#181): 메시지 우클릭 → 그 내용으로 질문
@@ -339,6 +458,18 @@ class DiscordBot(
                     }
                     return
                 }
+                "llm-channel-profile" -> {
+                    if (!ctx.isAdmin) {
+                        event.reply("⛔ 채널 AI 프로필 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
+                    } else {
+                        event
+                            .reply(channelProfilePanelText(ctx))
+                            .addComponents(channelProfileRows())
+                            .setEphemeral(true)
+                            .queue()
+                    }
+                    return
+                }
                 "ask-long" -> {
                     val modal =
                         Modal
@@ -364,7 +495,7 @@ class DiscordBot(
                 if (useWebhookProfile) {
                     completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
                 } else {
-                    event.hook.editOriginal(reply.content).queue()
+                    editOriginalWithPseudoStream(event.hook, reply)
                 }
             } catch (e: Exception) {
                 log.warn("명령 처리 실패: {} — {}", event.name, e.message)
@@ -374,11 +505,28 @@ class DiscordBot(
 
         companion object {
             private val log = LoggerFactory.getLogger(Listener::class.java)
+            private const val DEFAULT_PSEUDO_STREAM_INTERVAL_MS = 1200L
 
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
             private val PUBLIC_COMMANDS = setOf("ask", "contributions", "community-stats", "welcome")
             private const val WEBHOOK_NAME = "discord-ai-channel-profile"
+            private const val CHANNEL_PROFILE_EDIT = "channel-profile:edit"
+            private const val CHANNEL_PROFILE_AVATAR = "channel-profile:avatar"
+            private const val CHANNEL_PROFILE_RESET = "channel-profile:reset"
+            private const val CHANNEL_PROFILE_ROLLBACK = "channel-profile:rollback"
+            private const val CHANNEL_PROFILE_SAVE_MODAL = "channel-profile:save-modal"
+            private const val CHANNEL_PROFILE_AVATAR_MODAL = "channel-profile:avatar-modal"
+            private const val SETTINGS_CHANNEL_BULK_MODAL = "settings:channel-bulk-modal"
+            private const val ASK_FEEDBACK_PREFIX = "ask-feedback:"
+            private val pendingSettings = ConcurrentHashMap<String, PendingGuildSettings>()
         }
+
+        private data class PendingGuildSettings(
+            var language: String? = null,
+            var defaultModel: String? = null,
+            var allowedChannelIds: List<Long>? = null,
+            var autoApprove: Boolean? = null,
+        )
 
         override fun onReady(event: ReadyEvent) {
             gatewayStatus.markReady(mentionAskEnabled)
@@ -426,6 +574,10 @@ class DiscordBot(
         /** 패널 버튼: 온보딩(질문/기여/상태/도움말) + 설정. */
         override fun onButtonInteraction(event: ButtonInteractionEvent) {
             val ctx = ctxOf(event) // DM(유저설치)에서도 패널 버튼 동작(관리자 버튼은 isAdmin=false 로 거부됨)
+            if (event.componentId.startsWith(ASK_FEEDBACK_PREFIX)) {
+                handleAskFeedbackButton(event, ctx)
+                return
+            }
             when (event.componentId) {
                 MenuFactory.ASK -> {
                     // 질문하기 → 모달로 질문 입력
@@ -446,6 +598,32 @@ class DiscordBot(
                 }
                 MenuFactory.HELP, "settings:help" -> {
                     event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin, event.userLocale)).setEphemeral(true).queue()
+                    return
+                }
+                CHANNEL_PROFILE_EDIT -> {
+                    if (!ctx.isAdmin) {
+                        event.reply("⛔ 채널 AI 프로필 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
+                    } else {
+                        event.replyModal(channelProfileModal(ctx)).queue()
+                    }
+                    return
+                }
+                CHANNEL_PROFILE_AVATAR -> {
+                    if (!ctx.isAdmin) {
+                        event.reply("⛔ 채널 AI 프로필 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
+                    } else {
+                        event.replyModal(channelProfileAvatarModal(ctx)).queue()
+                    }
+                    return
+                }
+                CHANNEL_PROFILE_RESET -> {
+                    val reply = commands.setChannelAiProfile(ctx, null, null, reset = true)
+                    event.reply(reply.content).setEphemeral(true).queue()
+                    return
+                }
+                CHANNEL_PROFILE_ROLLBACK -> {
+                    val reply = commands.setChannelAiProfile(ctx, null, null, reset = false, rollback = true)
+                    event.reply(reply.content).setEphemeral(true).queue()
                     return
                 }
                 MenuFactory.PROVIDER -> {
@@ -471,9 +649,31 @@ class DiscordBot(
             val reply =
                 when (event.componentId) {
                     MenuFactory.STATUS -> commands.providerStatus(ctx)
-                    MenuFactory.AUTO_APPROVE_ON -> commands.setAutoApprove(ctx, enabled = true)
-                    MenuFactory.AUTO_APPROVE_OFF -> commands.setAutoApprove(ctx, enabled = false)
-                    MenuFactory.CHANNEL_ALL -> commands.allowAllChannels(ctx)
+                    MenuFactory.AUTO_APPROVE_ON -> {
+                        pendingSettings(settingsKey(ctx)).autoApprove = true
+                        return updateSettingsPanel(event, ctx)
+                    }
+                    MenuFactory.AUTO_APPROVE_OFF -> {
+                        pendingSettings(settingsKey(ctx)).autoApprove = false
+                        return updateSettingsPanel(event, ctx)
+                    }
+                    MenuFactory.CHANNEL_ALL -> {
+                        pendingSettings(settingsKey(ctx)).allowedChannelIds = emptyList()
+                        return updateSettingsPanel(event, ctx)
+                    }
+                    MenuFactory.CHANNEL_BULK -> {
+                        if (!ctx.isAdmin) {
+                            event.reply("⛔ 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
+                        } else {
+                            event.replyModal(channelBulkModal(ctx)).queue()
+                        }
+                        return
+                    }
+                    MenuFactory.CANCEL_SETTINGS -> {
+                        pendingSettings.remove(settingsKey(ctx))
+                        return updateSettingsPanel(event, ctx)
+                    }
+                    MenuFactory.SAVE_SETTINGS -> return savePendingSettings(event, ctx)
                     MenuFactory.AUTO_APPROVE, "settings:autoapprove" -> commands.toggleAutoApprove(ctx)
                     else -> Reply("알 수 없는 동작입니다.")
                 }
@@ -487,13 +687,18 @@ class DiscordBot(
             val value = event.values.firstOrNull().orEmpty()
             val reply =
                 when (event.componentId) {
-                    MenuFactory.LANG -> commands.setGuildDefaults(ctx, defaultModel = null, language = value)
-                    MenuFactory.MODEL ->
-                        if (value == "__auto__") {
-                            Reply("✅ 기본 모델: 자동 선택")
-                        } else {
-                            commands.setGuildDefaults(ctx, defaultModel = value, language = null)
-                        }
+                    MenuFactory.LANG -> {
+                        pendingSettings(settingsKey(ctx)).language = value
+                        return updateSettingsPanel(event, ctx)
+                    }
+                    MenuFactory.MODEL -> {
+                        pendingSettings(settingsKey(ctx)).defaultModel = value
+                        return updateSettingsPanel(event, ctx)
+                    }
+                    MenuFactory.AUTO_APPROVE_SELECT -> {
+                        pendingSettings(settingsKey(ctx)).autoApprove = value.toBooleanStrictOrNull() ?: false
+                        return updateSettingsPanel(event, ctx)
+                    }
                     else -> Reply("알 수 없는 선택입니다.")
                 }
             event.reply(reply.content).setEphemeral(true).queue()
@@ -504,10 +709,9 @@ class DiscordBot(
             if (event.componentId != MenuFactory.CHANNEL) return
             val guild = event.guild ?: return
             val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
-            val channelId = event.values.firstOrNull()?.idLong
-            val reply =
-                if (channelId != null) commands.allowChannel(ctx, channelId) else Reply("채널을 선택하세요.")
-            event.reply(reply.content).setEphemeral(true).queue()
+            val channelIds = event.values.map { it.idLong }
+            pendingSettings(settingsKey(ctx)).allowedChannelIds = channelIds
+            updateSettingsPanel(event, ctx)
         }
 
         /** 봇이 서버에 들어오면 자동 온보딩 패널 게시. */
@@ -547,33 +751,294 @@ class DiscordBot(
                         .build(),
                 ).build()
 
-        /** 설정 패널 Embed(현재 상태). */
-        private fun settingsEmbed(ctx: CommandContext) =
-            EmbedFactory.settingsEmbed(
-                language = commands.guildLanguage(ctx),
-                defaultModel = commands.guildDefaultModel(ctx),
+        /** 설정 패널 Embed(현재 상태 + 저장 대기 변경사항). */
+        private fun settingsEmbed(ctx: CommandContext): MessageEmbed {
+            val pending = pendingSettings[settingsKey(ctx)]
+            val effectiveDefaultModel =
+                when (pending?.defaultModel) {
+                    "__auto__" -> null
+                    null -> commands.guildDefaultModel(ctx)
+                    else -> pending.defaultModel
+                }
+            return EmbedFactory.settingsEmbed(
+                language = pending?.language ?: commands.guildLanguage(ctx),
+                defaultModel = effectiveDefaultModel,
                 poolModelCount = commands.poolModels(ctx).size,
-                allowedChannelCount = commands.allowedChannelIds(ctx).size,
-                autoApprove = commands.isAutoApprove(ctx),
+                allowedChannelCount = effectiveAllowedChannelIds(ctx).size,
+                allowedChannelText = allowedChannelText(ctx),
+                autoApprove = pending?.autoApprove ?: commands.isAutoApprove(ctx),
+                pendingSummary = pendingSummary(ctx),
+                currentSummary = currentSettingsSummary(ctx),
             )
+        }
+
+        private fun settingsKey(ctx: CommandContext) = "${ctx.guildId}:${ctx.channelId}:${ctx.userId}"
+
+        private fun allowedChannelText(ctx: CommandContext): String = formatChannelPolicy(effectiveAllowedChannelIds(ctx))
+
+        private fun currentSettingsSummary(ctx: CommandContext): String {
+            val model = commands.guildDefaultModel(ctx) ?: "자동 선택"
+            val autoApprove = if (commands.isAutoApprove(ctx)) "켜짐" else "꺼짐"
+            return listOf(
+                "• 언어: `${commands.guildLanguage(ctx)}`",
+                "• 기본 모델: `$model`",
+                "• LLM 사용 채널: ${formatChannelPolicy(commands.allowedChannelIds(ctx))}",
+                "• 자동 승인: `$autoApprove`",
+            ).joinToString("\n")
+        }
+
+        private fun effectiveAllowedChannelIds(ctx: CommandContext): List<Long> =
+            pendingSettings[settingsKey(ctx)]?.allowedChannelIds ?: commands.allowedChannelIds(ctx)
+
+        private fun formatChannelPolicy(channelIds: Collection<Long>): String {
+            if (channelIds.isEmpty()) return "모든 채널 허용"
+            val distinct = channelIds.distinct()
+            val visible = distinct.take(12).joinToString(" ") { "<#$it>" }
+            val suffix = if (distinct.size > 12) " 외 ${distinct.size - 12}개" else ""
+            return "${distinct.size}개 채널: $visible$suffix"
+        }
+
+        private fun pendingSummary(ctx: CommandContext): String? {
+            val pending = pendingSettings[settingsKey(ctx)] ?: return null
+            val lines = mutableListOf<String>()
+            pending.language?.let { lines += "• 언어 → `$it`" }
+            pending.defaultModel?.let { lines += "• 기본 모델 → `${if (it == "__auto__") "자동 선택" else it}`" }
+            pending.allowedChannelIds?.let { ids ->
+                lines += "• LLM 사용 채널 → ${formatChannelPolicy(ids)}"
+            }
+            pending.autoApprove?.let { lines += "• 자동 승인 → `${if (it) "켜짐" else "꺼짐"}`" }
+            return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
+        }
+
+        private fun pendingSettings(key: String): PendingGuildSettings = pendingSettings.computeIfAbsent(key) { PendingGuildSettings() }
+
+        private fun savePendingSettings(
+            event: ButtonInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            val key = settingsKey(ctx)
+            val pending = pendingSettings.remove(key)
+            if (pending == null || pending == PendingGuildSettings()) {
+                event.reply("아직 저장할 변경사항이 없습니다. 언어/모델/채널/자동 승인을 먼저 선택해주세요.").setEphemeral(true).queue()
+                return
+            }
+            val reply =
+                commands.saveGuildSettings(
+                    ctx,
+                    pending.language,
+                    pending.defaultModel,
+                    pending.allowedChannelIds,
+                    pending.autoApprove,
+                )
+            event
+                .editMessageEmbeds(settingsEmbed(ctx))
+                .setComponents(settingsRows(ctx))
+                .queue({
+                    event.hook
+                        .sendMessage(reply.content)
+                        .setEphemeral(true)
+                        .queue({}, {})
+                }, {})
+        }
+
+        private fun updateSettingsPanel(
+            event: ButtonInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            event.editMessageEmbeds(settingsEmbed(ctx)).setComponents(settingsRows(ctx)).queue()
+        }
+
+        private fun updateSettingsPanel(
+            event: StringSelectInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            event.editMessageEmbeds(settingsEmbed(ctx)).setComponents(settingsRows(ctx)).queue()
+        }
+
+        private fun updateSettingsPanel(
+            event: EntitySelectInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            event.editMessageEmbeds(settingsEmbed(ctx)).setComponents(settingsRows(ctx)).queue()
+        }
 
         /** 설정 패널 액션 로우(언어·모델·채널 드롭다운 + 명시 버튼). */
         private fun settingsRows(ctx: CommandContext): List<ActionRow> =
             listOf(
-                ActionRow.of(MenuFactory.languageSelect(current = "")),
-                ActionRow.of(MenuFactory.modelSelect(commands.poolModels(ctx))),
-                ActionRow.of(MenuFactory.channelSelect()),
                 ActionRow.of(
-                    Button.success(MenuFactory.CHANNEL_ALL, "모든 채널 허용"),
-                    Button.primary(MenuFactory.AUTO_APPROVE_ON, "자동 승인 켜기"),
-                    Button.secondary(MenuFactory.AUTO_APPROVE_OFF, "자동 승인 끄기"),
+                    MenuFactory.languageSelect(current = pendingSettings[settingsKey(ctx)]?.language ?: commands.guildLanguage(ctx)),
+                ),
+                ActionRow.of(
+                    MenuFactory.modelSelect(
+                        models = commands.poolModels(ctx),
+                        current = pendingSettings[settingsKey(ctx)]?.defaultModel ?: commands.guildDefaultModel(ctx),
+                    ),
+                ),
+                ActionRow.of(MenuFactory.channelSelect(effectiveAllowedChannelIds(ctx))),
+                ActionRow.of(
+                    MenuFactory.autoApproveSelect(
+                        current = pendingSettings[settingsKey(ctx)]?.autoApprove ?: commands.isAutoApprove(ctx),
+                    ),
+                ),
+                ActionRow.of(MenuFactory.settingsActionButtons()),
+            )
+
+        /** 채널 AI 프로필 설정 패널. 긴 옵션 입력 대신 버튼→모달→저장 흐름으로 관리한다. */
+        private fun channelProfilePanelText(ctx: CommandContext): String {
+            val current = channelProfiles.get(ctx.guildId, ctx.channelId)
+            val summary =
+                if (current == null) {
+                    "아직 이 채널 전용 AI 프로필이 없습니다."
+                } else {
+                    "현재 이름: **${current.displayName}**\n" +
+                        "역할: `${current.purpose}` · 말투: `${current.tone}` · 길이: `${current.answerLength}`\n" +
+                        "아이콘: ${if (current.avatarUrl.isNullOrBlank()) "기본 봇 아이콘" else "설정됨"}\n" +
+                        "행동 버전: v${current.version}"
+                }
+            return "❂ **채널 AI 프로필 설정**\n\n" +
+                "$summary\n\n" +
+                "아래 버튼으로 설정하세요. 긴 명령어 옵션을 직접 외울 필요가 없습니다."
+        }
+
+        private fun channelProfileRows(): List<ActionRow> =
+            listOf(
+                ActionRow.of(
+                    Button.primary(CHANNEL_PROFILE_EDIT, "프로필 편집"),
+                    Button.secondary(CHANNEL_PROFILE_AVATAR, "아이콘 URL"),
+                ),
+                ActionRow.of(
+                    Button.secondary(CHANNEL_PROFILE_ROLLBACK, "이전 버전으로 롤백"),
+                    Button.danger(CHANNEL_PROFILE_RESET, "기본값으로 초기화"),
                 ),
             )
 
+        private fun channelProfileModal(ctx: CommandContext): Modal {
+            val current = channelProfiles.get(ctx.guildId, ctx.channelId)
+            return Modal
+                .create(CHANNEL_PROFILE_SAVE_MODAL, "채널 AI 프로필 저장")
+                .addActionRow(
+                    TextInput
+                        .create("name", "이름", TextInputStyle.SHORT)
+                        .setRequired(true)
+                        .setMaxLength(80)
+                        .setValue(current?.displayName ?: "냥시스턴트")
+                        .build(),
+                ).addActionRow(
+                    TextInput
+                        .create("purpose", "역할", TextInputStyle.SHORT)
+                        .setRequired(false)
+                        .setMaxLength(200)
+                        .setValue(current?.purpose ?: "general_assistant")
+                        .build(),
+                ).addActionRow(
+                    TextInput
+                        .create("tone", "말투", TextInputStyle.SHORT)
+                        .setRequired(false)
+                        .setMaxLength(80)
+                        .setValue(current?.tone ?: "friendly")
+                        .build(),
+                ).addActionRow(
+                    TextInput
+                        .create("answer-length", "답변 길이", TextInputStyle.SHORT)
+                        .setRequired(false)
+                        .setMaxLength(40)
+                        .setValue(current?.answerLength ?: "balanced")
+                        .build(),
+                ).addActionRow(
+                    TextInput
+                        .create("constitution", "AI 헌법/규칙", TextInputStyle.PARAGRAPH)
+                        .setRequired(false)
+                        .setMaxLength(2000)
+                        .setValue(current?.constitution ?: DEFAULT_CHANNEL_AI_CONSTITUTION)
+                        .build(),
+                ).build()
+        }
+
+        private fun channelProfileAvatarModal(ctx: CommandContext): Modal {
+            val current = channelProfiles.get(ctx.guildId, ctx.channelId)
+            val avatarInput =
+                TextInput
+                    .create("avatar-url", "이미지 URL", TextInputStyle.SHORT)
+                    .setRequired(false)
+                    .setMaxLength(1000)
+                    .setPlaceholder("비우고 저장하면 아이콘 URL을 제거합니다.")
+                    .apply {
+                        current
+                            ?.avatarUrl
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { setValue(it) }
+                    }.build()
+            return Modal
+                .create(CHANNEL_PROFILE_AVATAR_MODAL, "채널 AI 아이콘 URL 저장")
+                .addActionRow(avatarInput)
+                .build()
+        }
+
+        private fun channelBulkModal(ctx: CommandContext): Modal {
+            val current = effectiveAllowedChannelIds(ctx)
+            val currentText = if (current.isEmpty()) "" else current.joinToString(" ") { "<#$it>" }
+            return Modal
+                .create(SETTINGS_CHANNEL_BULK_MODAL, "LLM 사용 허용 채널 일괄 설정")
+                .addActionRow(
+                    TextInput
+                        .create("channels", "채널 멘션/ID 목록", TextInputStyle.PARAGRAPH)
+                        .setRequired(false)
+                        .setMaxLength(2000)
+                        .setPlaceholder("예: #질문 #개발 123456789012345678 / 비우거나 '전체' 입력 = 모든 채널 허용")
+                        .setValue(currentText.takeIf { it.isNotBlank() })
+                        .build(),
+                ).build()
+        }
+
         /** 긴 질문 모달 제출(#189). */
         override fun onModalInteraction(event: ModalInteractionEvent) {
-            if (event.modalId != "ask-long-modal") return
             val ctx = ctxOf(event) // DM(유저설치)에서도 긴 질문 모달 동작
+            if (event.modalId == CHANNEL_PROFILE_SAVE_MODAL) {
+                val reply =
+                    commands.setChannelAiProfile(
+                        ctx,
+                        event.getValue("name")?.asString,
+                        channelProfiles.get(ctx.guildId, ctx.channelId)?.avatarUrl,
+                        reset = false,
+                        purpose = event.getValue("purpose")?.asString,
+                        tone = event.getValue("tone")?.asString,
+                        answerLength = event.getValue("answer-length")?.asString,
+                        constitution = event.getValue("constitution")?.asString,
+                    )
+                event.reply(reply.content).setEphemeral(true).queue()
+                return
+            }
+            if (event.modalId == SETTINGS_CHANNEL_BULK_MODAL) {
+                val ids = MenuFactory.parseChannelIdsBulk(event.getValue("channels")?.asString.orEmpty())
+                pendingSettings(settingsKey(ctx)).allowedChannelIds = ids
+                event
+                    .replyEmbeds(settingsEmbed(ctx))
+                    .addComponents(settingsRows(ctx))
+                    .setEphemeral(true)
+                    .queue()
+                return
+            }
+            if (event.modalId == CHANNEL_PROFILE_AVATAR_MODAL) {
+                val current = channelProfiles.get(ctx.guildId, ctx.channelId)
+                if (current == null) {
+                    event.reply("먼저 `프로필 편집`에서 이름을 저장한 뒤 아이콘을 설정하세요.").setEphemeral(true).queue()
+                    return
+                }
+                val reply =
+                    commands.setChannelAiProfile(
+                        ctx,
+                        current.displayName,
+                        event.getValue("avatar-url")?.asString,
+                        reset = false,
+                        purpose = current.purpose,
+                        tone = current.tone,
+                        answerLength = current.answerLength,
+                        constitution = current.constitution,
+                    )
+                event.reply(reply.content).setEphemeral(true).queue()
+                return
+            }
+            if (event.modalId != "ask-long-modal") return
             val prompt = event.getValue("prompt")?.asString.orEmpty()
             val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
             event.deferReply(useWebhookProfile).queue()
@@ -581,7 +1046,7 @@ class DiscordBot(
             if (useWebhookProfile) {
                 completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
             } else {
-                event.hook.editOriginal(reply.content).queue()
+                editOriginalWithPseudoStream(event.hook, reply)
             }
         }
 
@@ -596,7 +1061,7 @@ class DiscordBot(
             if (useWebhookProfile) {
                 completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
             } else {
-                event.hook.editOriginal(reply.content).queue()
+                editOriginalWithPseudoStream(event.hook, reply)
             }
         }
 
@@ -634,10 +1099,7 @@ class DiscordBot(
                         .addReaction(Emoji.fromUnicode("✅"))
                         .queue({}, {})
                 } else {
-                    event.message
-                        .reply(reply.content)
-                        .mentionRepliedUser(false)
-                        .queue({}, {})
+                    replyToMessageWithPseudoStream(event.message, reply)
                 }
             } catch (e: Exception) {
                 log.warn(
@@ -669,7 +1131,11 @@ class DiscordBot(
             reply: Reply,
         ) {
             if (sendAnswerWebhook(channelUnion, ctx, reply)) {
-                hook.editOriginal("✅ 답변을 채널 AI 프로필로 보냈어요.").queue()
+                editOriginalWithFeedback(
+                    hook,
+                    "✅ 답변을 채널 AI 프로필로 보냈어요.\n답변이 어땠는지 아래 버튼으로 알려주세요.",
+                    reply,
+                )
                 return
             }
             if (sendBotChannelAnswer(channelUnion, reply)) {
@@ -680,7 +1146,7 @@ class DiscordBot(
                     ).queue()
                 return
             }
-            hook.editOriginal(reply.content).queue()
+            editOriginalWithPseudoStream(hook, reply)
         }
 
         private fun sendBotChannelAnswer(
@@ -690,12 +1156,106 @@ class DiscordBot(
             if (reply.ephemeral) return false
             channelUnion ?: return false
             return runCatching {
-                channelUnion.asTextChannel().sendMessage(reply.content).complete()
+                val snapshots = reply.publicPseudoStreamSnapshots()
+                val action = channelUnion.asTextChannel().sendMessage(snapshots?.first() ?: reply.content)
+                feedbackRows(reply).takeIf { it.isNotEmpty() && snapshots == null }?.let { action.setComponents(it) }
+                val sent = action.complete()
+                if (snapshots != null) scheduleMessageEdits(sent, reply, snapshots, 1)
                 true
             }.onFailure { e ->
                 log.warn("일반 봇 메시지 폴백 전송 실패: {}", e.message)
             }.getOrDefault(false)
         }
+
+        private fun editOriginalWithPseudoStream(
+            hook: InteractionHook,
+            reply: Reply,
+        ) {
+            val snapshots = reply.publicPseudoStreamSnapshots()
+            if (snapshots == null) {
+                editOriginalWithFeedback(hook, reply.content, reply)
+                return
+            }
+            hook.editOriginal(snapshots.first()).queue(
+                { scheduleOriginalEdits(hook, reply, snapshots, 1) },
+                { e ->
+                    log.warn("의사 스트리밍 초기 응답 편집 실패: {}", e.message)
+                    hook.editOriginal(reply.content).queue({}, {})
+                },
+            )
+        }
+
+        private fun scheduleOriginalEdits(
+            hook: InteractionHook,
+            reply: Reply,
+            snapshots: List<String>,
+            index: Int,
+        ) {
+            if (index >= snapshots.size) return
+            val action = hook.editOriginal(snapshots[index])
+            if (index == snapshots.lastIndex) {
+                feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
+            }
+            action.queueAfter(
+                reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
+                TimeUnit.MILLISECONDS,
+                { scheduleOriginalEdits(hook, reply, snapshots, index + 1) },
+                { e ->
+                    log.warn("의사 스트리밍 응답 편집 실패(index={}): {}", index, e.message)
+                    hook.editOriginal(reply.content).queue({}, {})
+                },
+            )
+        }
+
+        private fun replyToMessageWithPseudoStream(
+            source: Message,
+            reply: Reply,
+        ) {
+            val snapshots = reply.publicPseudoStreamSnapshots()
+            if (snapshots == null) {
+                val action = source.reply(reply.content).mentionRepliedUser(false)
+                feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
+                action.queue({}, {})
+                return
+            }
+            val action =
+                source
+                    .reply(snapshots.first())
+                    .mentionRepliedUser(false)
+            action
+                .queue(
+                    { sent -> scheduleMessageEdits(sent, reply, snapshots, 1) },
+                    { e ->
+                        log.warn("멘션 의사 스트리밍 초기 답변 실패: {}", e.message)
+                        source.reply(reply.content).mentionRepliedUser(false).queue({}, {})
+                    },
+                )
+        }
+
+        private fun scheduleMessageEdits(
+            message: Message,
+            reply: Reply,
+            snapshots: List<String>,
+            index: Int,
+        ) {
+            if (index >= snapshots.size) return
+            val action = message.editMessage(snapshots[index])
+            if (index == snapshots.lastIndex) {
+                feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
+            }
+            action.queueAfter(
+                reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
+                TimeUnit.MILLISECONDS,
+                { scheduleMessageEdits(message, reply, snapshots, index + 1) },
+                { e -> log.warn("의사 스트리밍 메시지 수정 실패(index={}): {}", index, e.message) },
+            )
+        }
+
+        private fun Reply.publicPseudoStreamSnapshots(): List<String>? =
+            pseudoStream
+                ?.snapshots
+                ?.filter { it.isNotBlank() }
+                ?.takeIf { !ephemeral && it.size > 1 }
 
         /**
          * 채널별 AI 프로필이 설정된 경우, 답변을 Discord Webhook 으로 보내 표시 이름/아이콘을 채널 단위로 바꾼다.
@@ -726,6 +1286,54 @@ class DiscordBot(
             }.onFailure { e ->
                 log.warn("채널 AI 프로필 웹훅 전송 실패(channel={}): {}", ctx.channelId, e.message)
             }.getOrDefault(false)
+        }
+
+        private fun editOriginalWithFeedback(
+            hook: InteractionHook,
+            content: String,
+            reply: Reply,
+        ) {
+            val action = hook.editOriginal(content)
+            feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
+            action.queue()
+        }
+
+        private fun feedbackRows(reply: Reply): List<ActionRow> {
+            val requestId = reply.feedback?.requestId?.takeIf { it.isNotBlank() } ?: return emptyList()
+            if ("$ASK_FEEDBACK_PREFIX${FeedbackAction.REPORT.id}:$requestId".length > 100) return emptyList()
+            return listOf(
+                ActionRow.of(
+                    Button.success("$ASK_FEEDBACK_PREFIX${FeedbackAction.UP.id}:$requestId", "좋았어요"),
+                    Button.secondary("$ASK_FEEDBACK_PREFIX${FeedbackAction.DOWN.id}:$requestId", "아쉬워요"),
+                    Button.danger("$ASK_FEEDBACK_PREFIX${FeedbackAction.REPORT.id}:$requestId", "문제 신고"),
+                ),
+            )
+        }
+
+        private enum class FeedbackAction(
+            val id: String,
+            val rating: Int,
+            val feedbackType: String,
+        ) {
+            UP("up", 1, "positive"),
+            DOWN("down", -1, "negative"),
+            REPORT("report", -1, "report"),
+        }
+
+        private fun handleAskFeedbackButton(
+            event: ButtonInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            val payload = event.componentId.removePrefix(ASK_FEEDBACK_PREFIX)
+            val actionId = payload.substringBefore(':', missingDelimiterValue = "")
+            val requestId = payload.substringAfter(':', missingDelimiterValue = "").trim()
+            val action = FeedbackAction.entries.firstOrNull { it.id == actionId }
+            if (action == null || requestId.isBlank()) {
+                event.reply("피드백 버튼 정보를 읽지 못했어요. 다시 질문한 뒤 답변 아래 버튼을 눌러주세요.").setEphemeral(true).queue()
+                return
+            }
+            val reply = commands.submitAskFeedback(ctx, requestId, action.rating, action.feedbackType)
+            event.reply(reply.content).setEphemeral(true).queue()
         }
 
         private fun mentionPrompt(
@@ -775,7 +1383,13 @@ class DiscordBot(
             ctx: CommandContext,
         ): Reply =
             when (event.name) {
-                "ask" -> commands.ask(ctx, event.getOption("prompt")?.asString.orEmpty())
+                "ask" ->
+                    commands.ask(
+                        ctx,
+                        event.getOption("prompt")?.asString.orEmpty(),
+                        requestedModel = event.getOption("model")?.asString,
+                        requestedResponseMode = event.getOption("mode")?.asString,
+                    )
                 "models" -> commands.models(ctx)
                 "catalog" -> commands.catalog(ctx)
                 "my-usage" -> commands.myUsage(ctx)
@@ -785,6 +1399,110 @@ class DiscordBot(
                 "privacy" -> commands.privacy(ctx)
                 "help" -> commands.help(ctx)
                 "bot-permissions" -> commands.botPermissions(ctx)
+                "ai-network-map" -> commands.aiNetworkMap(ctx)
+                "ai-network-check" -> commands.aiNetworkCheck(ctx)
+                "ai-knowledge-list" ->
+                    commands.knowledgeList(
+                        ctx,
+                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
+                    )
+                "ai-knowledge-add" ->
+                    commands.addKnowledge(
+                        ctx,
+                        title = event.getOption("title")!!.asString,
+                        sourceType = event.getOption("source-type")?.asString,
+                        sourceUri = event.getOption("url")?.asString,
+                        contentPreview = event.getOption("text")?.asString,
+                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
+                    )
+                "ai-knowledge-search" ->
+                    commands.searchKnowledge(
+                        ctx,
+                        query = event.getOption("query")!!.asString,
+                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
+                        limit = event.getOption("limit")?.asInt ?: 5,
+                    )
+                "ai-knowledge-index-plan" ->
+                    commands.knowledgeIndexPlan(
+                        ctx,
+                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
+                        force = event.getOption("force")?.asBoolean ?: false,
+                    )
+                "ai-knowledge-jobs" ->
+                    commands.knowledgeIndexJobs(
+                        ctx,
+                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
+                        limit = event.getOption("limit")?.asInt ?: 10,
+                    )
+                "ai-knowledge-job-complete" ->
+                    commands.completeKnowledgeIndexJob(
+                        ctx,
+                        jobId = event.getOption("job-id")!!.asString.toLongOrNull() ?: -1L,
+                        status = event.getOption("status")?.asString ?: "completed",
+                        reason = event.getOption("reason")?.asString,
+                    )
+                "ai-knowledge-approve" ->
+                    commands.approveKnowledge(
+                        ctx,
+                        spaceId = event.getOption("space-id")!!.asString.toLongOrNull() ?: -1L,
+                        sourceId = event.getOption("source-id")!!.asString.toLongOrNull() ?: -1L,
+                        reason = event.getOption("reason")?.asString ?: "approved from Discord",
+                    )
+                "ai-knowledge-delete" ->
+                    commands.deleteKnowledge(
+                        ctx,
+                        spaceId = event.getOption("space-id")!!.asString.toLongOrNull() ?: -1L,
+                        sourceId = event.getOption("source-id")!!.asString.toLongOrNull() ?: -1L,
+                        reason = event.getOption("reason")?.asString ?: "deleted from Discord",
+                    )
+                "ai-preset-catalog" ->
+                    commands.presetCatalog(
+                        ctx,
+                        query = event.getOption("query")?.asString,
+                        category = event.getOption("category")?.asString,
+                    )
+                "ai-preset-import" ->
+                    commands.importPresetToCurrentChannel(
+                        ctx,
+                        publishedPresetId = event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L,
+                        confirmConflicts = event.getOption("confirm-conflicts")?.asBoolean ?: false,
+                    )
+                "ai-preset-like" -> commands.likePreset(ctx, event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L)
+                "ai-preset-report" ->
+                    commands.reportPreset(
+                        ctx,
+                        publishedPresetId = event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L,
+                        reason = event.getOption("reason")!!.asString,
+                    )
+                "ai-preset-moderation" -> commands.presetModeration(ctx)
+                "ai-preset-report-review" ->
+                    commands.reviewPresetReport(
+                        ctx,
+                        reportId = event.getOption("report-id")!!.asString.toLongOrNull() ?: -1L,
+                        decision = event.getOption("decision")!!.asString,
+                    )
+                "ai-multi-response-status" ->
+                    commands.multiResponseStatus(
+                        ctx,
+                        channelId = event.getOption("channel")?.asChannel?.idLong,
+                    )
+                "ai-multi-response-set" ->
+                    commands.setMultiResponsePolicy(
+                        ctx,
+                        channelId = event.getOption("channel")?.asChannel?.idLong,
+                        mode = event.getOption("mode")!!.asString,
+                        maxCandidates = event.getOption("candidates")!!.asInt,
+                        synthesisEnabled = event.getOption("synthesis")?.asBoolean ?: false,
+                        requireDistinctModels = event.getOption("distinct-models")?.asBoolean ?: false,
+                        timeoutSeconds = event.getOption("timeout")?.asInt ?: 120,
+                    )
+                "ai-multi-response-dry-run" ->
+                    commands.multiResponseDryRun(
+                        ctx,
+                        prompt = event.getOption("prompt")!!.asString,
+                        channelId = event.getOption("channel")?.asChannel?.idLong,
+                        responseMode = event.getOption("mode")?.asString,
+                    )
                 "welcome" -> commands.welcome(ctx)
                 "llm-welcome-set" -> commands.setWelcome(ctx, event.getOption("message")!!.asString)
                 "provider-join" -> commands.providerJoin(ctx)

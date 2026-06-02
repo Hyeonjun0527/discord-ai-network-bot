@@ -9,7 +9,15 @@ import json
 import os
 import pathlib
 
-SAVEABLE = ("token", "relay_url", "ollama_url", "models", "max_concurrency", "daily_limit")
+SAVEABLE = (
+    "token",
+    "relay_url",
+    "ollama_url",
+    "models",
+    "max_concurrency",
+    "daily_limit",
+    "allow_remote_ollama",
+)
 
 
 def config_dir() -> pathlib.Path:

@@ -2,6 +2,22 @@ package com.discordassistant.central.discord
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.network.AiNetworkLaunchChecklistService
+import com.discordassistant.central.network.AiNetworkMap
+import com.discordassistant.central.network.AiNetworkMapService
+import com.discordassistant.central.network.AiQualityFeedbackService
+import com.discordassistant.central.network.ChannelAiCustomizationService
+import com.discordassistant.central.network.ChannelAiRoutingPolicyService
+import com.discordassistant.central.network.KnowledgeIndexingService
+import com.discordassistant.central.network.KnowledgeIngestionService
+import com.discordassistant.central.network.KnowledgeSearchService
+import com.discordassistant.central.network.ModelChoiceDecision
+import com.discordassistant.central.network.MultiResponseService
+import com.discordassistant.central.network.NetworkLaunchChecklist
+import com.discordassistant.central.network.PresetModerationSummary
+import com.discordassistant.central.network.PresetRegistryService
+import com.discordassistant.central.network.PublishedPresetSummary
+import com.discordassistant.central.persistence.PresetImportEntity
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.provider.ContributionPolicyService
 import com.discordassistant.central.provider.ProviderProtectionService
@@ -16,6 +32,20 @@ import org.springframework.stereotype.Service
 data class Reply(
     val content: String,
     val ephemeral: Boolean = true,
+    val pseudoStream: ReplyPseudoStream? = null,
+    val feedback: ReplyFeedback? = null,
+)
+
+/** Discord 긴 답변을 여러 번 수정해 보여주기 위한 의사 스트리밍 계획. */
+data class ReplyPseudoStream(
+    val editIntervalMs: Long,
+    val snapshots: List<String>,
+    val warning: String? = null,
+)
+
+/** 공개 AI 답변 아래에 붙는 품질 피드백 메타데이터. */
+data class ReplyFeedback(
+    val requestId: String,
 )
 
 /** 명령 호출 컨텍스트(JDA 이벤트에서 추출). */
@@ -45,6 +75,16 @@ class CommandService(
     private val blocklist: com.discordassistant.central.provider.BlocklistService,
     private val schedule: com.discordassistant.central.provider.ProviderScheduleService,
     private val channelProfiles: ChannelAiProfileService,
+    private val channelAiCustomization: ChannelAiCustomizationService,
+    private val channelRoutingPolicies: ChannelAiRoutingPolicyService,
+    private val knowledgeIngestion: KnowledgeIngestionService,
+    private val knowledgeIndexing: KnowledgeIndexingService,
+    private val knowledgeSearch: KnowledgeSearchService,
+    private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
+    private val aiNetworkMap: AiNetworkMapService,
+    private val presetRegistry: PresetRegistryService,
+    private val multiResponse: MultiResponseService,
+    private val qualityFeedback: AiQualityFeedbackService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
 ) {
@@ -59,6 +99,10 @@ class CommandService(
             "이 서버는 커뮤니티 로컬 AI Provider Pool 을 사용합니다. 질문 내용은 요청을 처리하는 " +
                 "커뮤니티 프로바이더의 PC 로 전송될 수 있습니다. 비밀번호·API 키·개인정보·비공개 문서 등 " +
                 "민감한 정보는 입력하지 마세요."
+
+        private const val DISCORD_REPLY_SAFE_LIMIT = 1850
+        private const val PSEUDO_STREAM_MIN_CHARS = 600
+        private val PSEUDO_STREAM_STEPS = listOf(33, 66, 100)
     }
 
     private fun lang(ctx: CommandContext): String = policy.guildLanguage(ctx.guildId)
@@ -66,24 +110,316 @@ class CommandService(
     private fun adminOnly(ctx: CommandContext): Reply? =
         if (!ctx.isAdmin) Replies.reject(Messages.get(Messages.Key.ADMIN_DENIED, lang(ctx))) else null
 
+    private fun channelAiAdminOnly(
+        ctx: CommandContext,
+        action: String,
+    ): Reply? {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            channelAiCustomization.requireCanManageChannelAi(
+                guildId = ctx.guildId,
+                channelId = ctx.channelId,
+                actorUserId = ctx.userId,
+                actorRoleIds = ctx.roleIds,
+                actorIsGuildAdmin = ctx.isAdmin,
+                action = action,
+            )
+            null
+        }.getOrElse {
+            Replies.reject(it.message ?: "AI 설정 변경 권한이 없습니다.")
+        }
+    }
+
+    private fun publicWebBaseUrl(): String? {
+        val raw = relayPublicUrl.trim().trimEnd('/').ifBlank { return null }
+        val normalized =
+            when {
+                raw.startsWith("wss://") -> "https://" + raw.removePrefix("wss://")
+                raw.startsWith("ws://") -> "http://" + raw.removePrefix("ws://")
+                else -> raw
+            }
+        return runCatching {
+            val uri = java.net.URI.create(normalized)
+            val scheme = uri.scheme ?: return@runCatching normalized.substringBefore("/agent").trimEnd('/')
+            val authority = uri.rawAuthority ?: return@runCatching normalized.substringBefore("/agent").trimEnd('/')
+            "$scheme://$authority"
+        }.getOrElse {
+            normalized.substringBefore("/agent").trimEnd('/')
+        }.ifBlank { null }
+    }
+
+    private fun presetCatalogUrl(locator: String? = null): String? {
+        val base = publicWebBaseUrl() ?: return null
+        val preset = locator?.trim()?.takeIf { it.isNotBlank() } ?: return "$base/presets"
+        return "$base/presets?preset=${java.net.URLEncoder.encode(preset, Charsets.UTF_8)}"
+    }
+
     // ── 일반 유저 ───────────────────────────────────────────────────────
     fun ask(
         ctx: CommandContext,
         prompt: String,
+        requestedModel: String? = null,
+        requestedResponseMode: String? = null,
     ): Reply {
         // 요청 우선순위(#150): 관리자/긴급 요청은 분당 쿨다운을 우회한다.
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
-        val effectivePrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { prompt.withChannelAiBehavior(it) } ?: prompt
+        val routingPolicy = channelRoutingPolicies.effective(ctx.guildId, ctx.channelId, policy.guildDefaultModel(ctx.guildId))
+        val modelChoice =
+            channelRoutingPolicies.resolveModelChoice(
+                guildId = ctx.guildId,
+                channelId = ctx.channelId,
+                requestedModel = requestedModel,
+                guildDefaultModel = policy.guildDefaultModel(ctx.guildId),
+            )
+        if (modelChoice.selectedModel == null && modelChoice.requiresAvailableModel) {
+            return Replies.warn(
+                "⚠️ ${modelChoice.explanation}\n\n" +
+                    (modelChoice.userMessage ?: "다른 모델을 선택하거나, 잠시 후 다시 시도하거나, 관리자에게 채널 모델 정책을 확인해 달라고 해주세요."),
+            )
+        }
+        val selectedModel =
+            modelChoice.selectedModel
+                ?: requestedModel?.trim()?.ifBlank { null }
+                ?: routingPolicy.preferredModel
+        val responseMode = normalizeAskResponseMode(requestedResponseMode) ?: routingPolicy.responseMode
+        val runtimeMultiResponseRun =
+            startRuntimeMultiResponseObservation(ctx, prompt, responseMode, routingPolicy.maxCandidates)
+        val effectivePrompt = prompt.composeExecutionPrompt(ctx, responseMode)
+        val startedAtNanos = System.nanoTime()
         val result =
             orchestrator.handle(
-                AiRequestInput(ctx.guildId, ctx.channelId, ctx.userId, effectivePrompt, ctx.roleIds, isAdmin = ctx.isAdmin),
+                AiRequestInput(
+                    ctx.guildId,
+                    ctx.channelId,
+                    ctx.userId,
+                    effectivePrompt,
+                    ctx.roleIds,
+                    isAdmin = ctx.isAdmin,
+                    preferredModel = selectedModel,
+                    responseMode = responseMode,
+                ),
             )
+        runtimeMultiResponseRun?.let { run ->
+            recordRuntimeMultiResponseResult(
+                runId = run.id,
+                providerId = result.providerId,
+                modelName = selectedModel,
+                result = result,
+                latencyMs = elapsedMillis(startedAtNanos),
+            )
+        }
         return when (result.state) {
-            RequestState.COMPLETED -> Reply(result.text.orEmpty(), ephemeral = false)
+            RequestState.COMPLETED -> completedAskReply(result.text.orEmpty(), modelChoice, result.requestId)
             RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
             else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
+        }
+    }
+
+    private fun completedAskReply(
+        answer: String,
+        modelChoice: ModelChoiceDecision,
+        requestId: String?,
+    ): Reply {
+        val fullContent = answer.withModelFallbackNotice(modelChoice)
+        val plan =
+            runCatching {
+                if (fullContent.length >= PSEUDO_STREAM_MIN_CHARS) {
+                    multiResponse.pseudoStreamPlan(
+                        answer = fullContent,
+                        requestedSteps = PSEUDO_STREAM_STEPS,
+                        maxDiscordChars = DISCORD_REPLY_SAFE_LIMIT,
+                    )
+                } else {
+                    null
+                }
+            }.getOrNull()
+        val rawSnapshots = plan?.snapshots?.map { it.content }.orEmpty()
+        val finalContent =
+            rawSnapshots.lastOrNull()?.withDiscordLengthNotice(plan?.warning)
+                ?: fullContent.toDiscordSafeContent()
+        val stream =
+            rawSnapshots
+                .takeIf { it.size > 1 }
+                ?.let { ReplyPseudoStream(plan!!.editIntervalMs.toLong(), it.dropLast(1) + finalContent, plan.warning) }
+        return Reply(
+            content = finalContent,
+            ephemeral = false,
+            pseudoStream = stream,
+            feedback = requestId?.trim()?.takeIf { it.isNotBlank() }?.let { ReplyFeedback(it) },
+        )
+    }
+
+    fun submitAskFeedback(
+        ctx: CommandContext,
+        requestId: String,
+        rating: Int,
+        feedbackType: String,
+        reason: String? = null,
+    ): Reply {
+        val normalizedRequestId = requestId.trim()
+        if (normalizedRequestId.isBlank()) {
+            return Replies.warn("피드백 대상을 찾지 못했어요. 다시 질문한 뒤 답변 아래 버튼을 눌러주세요.")
+        }
+        val saved =
+            qualityFeedback.submit(
+                guildId = ctx.guildId,
+                channelId = ctx.channelId,
+                requestId = normalizedRequestId,
+                userId = ctx.userId,
+                rating = rating,
+                feedbackType = feedbackType,
+                reason = reason,
+            )
+        val message =
+            if (saved.status == "needs_review") {
+                "🚩 신고로 접수했어요. 관리자가 품질 피드백 대시보드에서 확인할 수 있습니다."
+            } else {
+                "고마워요. 이 피드백은 채널 AI 품질 개선 신호로만 사용됩니다."
+            }
+        return Reply(message, ephemeral = true)
+    }
+
+    private fun startRuntimeMultiResponseObservation(
+        ctx: CommandContext,
+        prompt: String,
+        responseMode: String,
+        maxCandidates: Int,
+    ) = if (shouldObserveMultiResponse(responseMode, maxCandidates)) {
+        runCatching {
+            multiResponse.startRuntimeObservation(
+                guildId = ctx.guildId,
+                channelId = ctx.channelId,
+                promptPreview = prompt,
+                responseMode = responseMode,
+                maxCandidates = maxCandidates,
+            )
+        }.getOrNull()
+    } else {
+        null
+    }
+
+    private fun recordRuntimeMultiResponseResult(
+        runId: Long,
+        providerId: Long?,
+        modelName: String?,
+        result: com.discordassistant.central.routing.OrchestrationResult,
+        latencyMs: Int,
+    ) {
+        runCatching {
+            multiResponse.recordRuntimeSingleRouteResult(
+                runId = runId,
+                providerUserId = providerId,
+                modelName = modelName,
+                answerRef = result.toRuntimeAnswerRef(),
+                completed = result.state == RequestState.COMPLETED,
+                latencyMs = latencyMs,
+                failureReason = result.failReason,
+            )
+        }
+    }
+
+    private fun shouldObserveMultiResponse(
+        responseMode: String,
+        maxCandidates: Int,
+    ): Boolean = maxCandidates > 1 || responseMode.equals("deep", ignoreCase = true)
+
+    private fun com.discordassistant.central.routing.OrchestrationResult.toRuntimeAnswerRef(): String? =
+        if (state == RequestState.COMPLETED) {
+            "discord-ask-runtime:${java.util.UUID.randomUUID()}"
+        } else {
+            null
+        }
+
+    private fun elapsedMillis(startedAtNanos: Long): Int =
+        ((System.nanoTime() - startedAtNanos) / 1_000_000)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+
+    private fun String.withModelFallbackNotice(modelChoice: ModelChoiceDecision): String {
+        if (modelChoice.fallbackReason == null) return this
+        if (modelChoice.requestedModel == null && modelChoice.preferredModel == null) return this
+        val selected = modelChoice.selectedModel ?: "자동 선택"
+        return "$this\n\n↪️ 모델 대체: ${modelChoice.explanation} `사용 모델: $selected`"
+    }
+
+    private fun String.toDiscordSafeContent(): String =
+        if (length <= DISCORD_REPLY_SAFE_LIMIT) {
+            this
+        } else {
+            take(DISCORD_REPLY_SAFE_LIMIT).withDiscordLengthNotice("discord_message_truncated_to_$DISCORD_REPLY_SAFE_LIMIT")
+        }
+
+    private fun String.withDiscordLengthNotice(warning: String?): String {
+        if (warning == null) return this
+        val notice = "\n\n_답변이 Discord 길이 제한으로 일부 줄어들었어요._"
+        val safeText = take((DISCORD_REPLY_SAFE_LIMIT - notice.length).coerceAtLeast(100))
+        return safeText + notice
+    }
+
+    private fun normalizeAskResponseMode(value: String?): String? =
+        when (value?.trim()?.lowercase()) {
+            null, "" -> null
+            "fast", "빠른", "빠른 답변" -> "fast"
+            "deep", "깊은", "깊은 답변" -> "deep"
+            "saving", "절약", "절약 모드" -> "saving"
+            "balanced", "균형", "균형 모드" -> "balanced"
+            else -> null
+        }
+
+    private fun String.composeExecutionPrompt(
+        ctx: CommandContext,
+        responseMode: String,
+    ): String {
+        val knowledgeContext =
+            runCatching {
+                knowledgeSearch.contextPlan(
+                    guildId = ctx.guildId,
+                    query = this,
+                    responseMode = responseMode,
+                    channelId = ctx.channelId,
+                )
+            }.getOrNull()
+        val contextText = knowledgeContext?.contextText?.takeIf { it.isNotBlank() }
+        activeChannelAiExecutionPrompt(ctx, contextText)?.let { return it }
+        val behaviorPrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it) } ?: this
+        if (contextText == null) return behaviorPrompt
+        return buildString {
+            appendLine("[채널 지식 컨텍스트]")
+            appendLine(contextText)
+            appendLine()
+            appendLine("위 지식은 이 채널에 등록된 참고자료입니다.")
+            appendLine("지식과 질문이 충돌하면 확실하지 않다고 말하고, 민감정보는 요구하지 마세요.")
+            appendLine()
+            appendLine("[질문 실행 입력]")
+            append(behaviorPrompt)
+        }
+    }
+
+    private fun String.activeChannelAiExecutionPrompt(
+        ctx: CommandContext,
+        contextText: String?,
+    ): String? {
+        val history =
+            runCatching {
+                channelAiCustomization.channelHistory(ctx.guildId, ctx.channelId)
+            }.getOrNull() ?: return null
+        val activeBehaviorId = history.channelAi?.activeBehaviorVersionId ?: return null
+        val preview =
+            runCatching {
+                channelAiCustomization.promptPreview(
+                    guildId = ctx.guildId,
+                    channelId = ctx.channelId,
+                    userQuestion = this,
+                    ragContextText = contextText,
+                )
+            }.getOrNull() ?: return null
+        if (preview.behaviorVersionId != activeBehaviorId) return null
+        return buildString {
+            appendLine(preview.systemPrompt)
+            appendLine()
+            append(preview.userPrompt)
         }
     }
 
@@ -218,10 +554,683 @@ class CommandService(
             sb.append("· `/프로바이더승인`(`/provider-approve`) `/프로바이더제거`(`/provider-remove`) — 승인/제거\n")
             sb.append("· `/채널허용`(`/llm-allow-channel`) `/채널금지`(`/llm-deny-channel`) `/역할정책`(`/llm-role-policy`) — 채널·역할 정책\n")
             sb.append("· `/채널프로필`(`/llm-channel-profile`) — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
+            sb.append("· `/ai-network-map` — Provider·모델·채널AI·RAG 구성을 한눈에 보기\n")
+            sb.append("· `/ai-knowledge-list` `/ai-knowledge-add` `/ai-knowledge-search` — 채널 지식공간/RAG 소스 관리\n")
+            sb.append("· `/ai-knowledge-index-plan` `/ai-knowledge-approve` `/ai-knowledge-delete` — 색인계획·검토·삭제\n")
+            sb.append("· `/ai-knowledge-jobs` `/ai-knowledge-job-complete` — RAG 색인 작업 큐 조회·완료 처리\n")
+            sb.append("· `/ai-preset-catalog` `/ai-preset-import` — 프리셋 공유 목록 보기·현재 채널에 가져오기\n")
+            sb.append("· `/ai-preset-moderation` `/ai-preset-report-review` — 프리셋 신고 큐 확인·검수 처리\n")
+            sb.append("· `/ai-multi-response-status` `/ai-multi-response-set` `/ai-multi-response-dry-run` — 다중응답 정책·상태·안전 드라이런\n")
+            sb.append("· `/ai-network-check` — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
             sb.append("· `/사용자차단`(`/llm-block`) `/차단해제`(`/llm-unblock`) — 사용자 차단/해제\n")
         }
         sb.append("\n_민감정보(비밀번호·API 키 등)는 입력하지 마세요._")
         return Reply(sb.toString())
+    }
+
+    fun knowledgeList(
+        ctx: CommandContext,
+        spaceId: Long? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            if (spaceId != null) {
+                val status = knowledgeIngestion.spaceStatus(ctx.guildId, spaceId)
+                val sources = knowledgeIngestion.listSources(ctx.guildId, spaceId)
+                val sourceRows =
+                    sources.take(12).map {
+                        "• `${it.id}` ${it.title} — ${it.sourceType} · ${it.status} · risk=${it.riskLevel}"
+                    }
+                val sourceLines = sourceRows.joinToString("\n").ifBlank { "• 아직 지식 소스가 없습니다." }
+                Reply(
+                    "📚 **채널 지식공간 상세**\n\n" +
+                        "space `${status.knowledgeSpaceId}` · <#${status.channelId ?: ctx.channelId}> · ${status.displayName}\n" +
+                        "준비상태: `${status.readiness}` · 소스 ${status.sourceCount}개 · indexed ${status.indexedSourceCount}개 · " +
+                        "blocked ${status.blockedSourceCount}개\n\n" +
+                        "__지식 소스__\n$sourceLines",
+                )
+            } else {
+                val readiness = knowledgeIngestion.guildReadiness(ctx.guildId)
+                val spaceRows =
+                    readiness.spaces.take(12).map {
+                        "• `${it.knowledgeSpaceId}` <#${it.channelId ?: ctx.channelId}> — ${it.displayName} · " +
+                            "${it.readiness} · sources ${it.sourceCount}/indexed ${it.indexedSourceCount}"
+                    }
+                val spaceLines =
+                    spaceRows
+                        .joinToString("\n")
+                        .ifBlank {
+                            "• 아직 지식공간이 없습니다. `/ai-knowledge-add title:<제목> url:<https://...>` 로 현재 채널 지식공간을 만들 수 있어요."
+                        }
+                val next =
+                    readiness.nextActions
+                        .take(4)
+                        .joinToString("\n") { "• $it" }
+                        .ifBlank { "• 추가 조치 없음" }
+                Reply(
+                    "📚 **RAG 지식공간 목록**\n\n" +
+                        "상태: `${readiness.status}` · 지식공간 ${readiness.spaceCount}개 · 소스 ${readiness.sourceCount}개 · " +
+                        "indexed ${readiness.indexedSourceCount}개 · blocked ${readiness.blockedSourceCount}개\n\n" +
+                        "__공간__\n$spaceLines\n\n" +
+                        "__다음 행동__\n$next",
+                )
+            }
+        }.getOrElse {
+            Replies.warn("지식공간을 조회하지 못했어요. ${it.message ?: "길드/space-id를 확인해 주세요."}")
+        }
+    }
+
+    fun addKnowledge(
+        ctx: CommandContext,
+        title: String,
+        sourceType: String?,
+        sourceUri: String?,
+        contentPreview: String?,
+        spaceId: Long? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val normalizedUri = sourceUri?.trim()?.ifBlank { null }
+        val normalizedPreview = contentPreview?.trim()?.ifBlank { null }
+        if (normalizedUri == null && normalizedPreview == null) {
+            return Replies.warn("추가할 URL 또는 텍스트를 입력해 주세요. 민감정보·비밀번호·API 키는 넣지 마세요.")
+        }
+        return runCatching {
+            val targetSpaceId =
+                spaceId
+                    ?: knowledgeIngestion
+                        .guildReadiness(ctx.guildId)
+                        .spaces
+                        .firstOrNull { it.channelId == ctx.channelId }
+                        ?.knowledgeSpaceId
+                    ?: run {
+                        val created =
+                            knowledgeIngestion.createSpace(
+                                guildId = ctx.guildId,
+                                channelId = ctx.channelId,
+                                channelAiId = null,
+                                displayName = "채널 ${ctx.channelId} 지식공간",
+                                createdBy = ctx.userId,
+                                embeddingModel = null,
+                                indexName = null,
+                            )
+                        created.id
+                    }
+            val type = sourceType?.trim()?.ifBlank { null } ?: if (normalizedUri != null) "link" else "text"
+            val source =
+                knowledgeIngestion.addSource(
+                    guildId = ctx.guildId,
+                    spaceId = targetSpaceId,
+                    sourceType = type,
+                    title = title,
+                    sourceUri = normalizedUri,
+                    contentPreview = normalizedPreview,
+                    addedBy = ctx.userId,
+                )
+            val inlineIndexing =
+                knowledgeIndexing.indexInlineSourceIfPossible(
+                    guildId = ctx.guildId,
+                    spaceId = targetSpaceId,
+                    sourceId = source.id,
+                    documentText = normalizedPreview,
+                    triggeredBy = ctx.userId,
+                )
+            val plan = knowledgeIngestion.indexingPlan(ctx.guildId, targetSpaceId)
+            val effectiveStatus = if (inlineIndexing.indexed) "indexed" else source.status
+            val indexingHint =
+                when {
+                    inlineIndexing.indexed ->
+                        "텍스트를 즉시 검색 가능하게 색인했습니다. embedding 재빌드 작업 `${inlineIndexing.jobId}` 도 큐에 넣었어요."
+                    source.status == "pending" ->
+                        "색인 대기 상태입니다. 운영자는 `${plan.command}` 를 실행해 검색 가능하게 만드세요."
+                    else -> "상태가 `${source.status}` 입니다. 위험도 `${source.riskLevel}` 를 검토한 뒤 승인/삭제하세요."
+                }
+            Replies.ok(
+                "지식 소스를 추가했습니다.\n" +
+                    "space: `$targetSpaceId` · source: `${source.id}` · status: `$effectiveStatus` · risk: `${source.riskLevel}`\n" +
+                    "$indexingHint\n\n" +
+                    "`/ai-knowledge-list space-id:$targetSpaceId` 로 현재 목록을 확인할 수 있어요.",
+            )
+        }.getOrElse {
+            Replies.warn("지식 소스 추가에 실패했어요. ${it.message ?: "입력값을 확인해 주세요."}")
+        }
+    }
+
+    fun searchKnowledge(
+        ctx: CommandContext,
+        query: String,
+        spaceId: Long? = null,
+        limit: Int = 5,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val result =
+                knowledgeSearch.search(
+                    guildId = ctx.guildId,
+                    query = query,
+                    limit = limit,
+                    channelId = if (spaceId == null) ctx.channelId else null,
+                    knowledgeSpaceId = spaceId,
+                )
+            val resultRows =
+                result.results.take(10).map {
+                    val ref = it.sourceUri?.let { uri -> " · ${uri.take(80)}" } ?: ""
+                    val preview = it.contentPreview?.let { text -> " · ${text.take(100)}" } ?: ""
+                    "• `${it.sourceId}` ${it.title} — score ${it.score} · ${it.sourceType}$ref$preview"
+                }
+            val lines =
+                resultRows
+                    .joinToString("\n")
+                    .ifBlank {
+                        when (result.fallbackReason) {
+                            "blocked_sensitive_query" -> "• 민감정보처럼 보이는 검색어라 RAG 검색을 막았습니다."
+                            "rag_scope_required" -> "• 검색 범위가 없습니다. 현재 채널 또는 space-id를 지정해 주세요."
+                            "no_knowledge_space" -> "• 이 채널에 지식공간이 없습니다. 먼저 `/ai-knowledge-add` 로 지식을 추가하세요."
+                            "no_indexed_knowledge_match" -> "• 검색 가능한 indexed 지식에서 결과를 찾지 못했습니다. 색인 상태를 확인하세요."
+                            else -> "• 결과 없음"
+                        }
+                    }
+            Reply(
+                "🔎 **채널 지식 검색**\n" +
+                    "query: `$query` · scope: `${spaceId?.let { "space:$it" } ?: "current-channel"}`" +
+                    (result.fallbackReason?.let { " · fallback: `$it`" } ?: "") +
+                    "\n\n$lines",
+            )
+        }.getOrElse {
+            Replies.warn("지식 검색에 실패했어요. ${it.message ?: "검색어/space-id를 확인해 주세요."}")
+        }
+    }
+
+    fun knowledgeIndexPlan(
+        ctx: CommandContext,
+        spaceId: Long? = null,
+        force: Boolean = false,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            if (spaceId != null) {
+                val plan = knowledgeIngestion.indexingPlan(ctx.guildId, spaceId, force)
+                val indexableRows =
+                    plan.indexableSources.take(8).map {
+                        "• `${it.id}` ${it.title} — ${it.status} · risk=${it.riskLevel}"
+                    }
+                val indexable = indexableRows.joinToString("\n").ifBlank { "• 색인할 소스 없음" }
+                val blockedRows =
+                    plan.blockedSources.take(8).map {
+                        "• `${it.id}` ${it.title} — ${it.status} · risk=${it.riskLevel}"
+                    }
+                val blocked = blockedRows.joinToString("\n").ifBlank { "• 차단/검토 소스 없음" }
+                Reply(
+                    "🧭 **RAG 색인 계획**\n\n" +
+                        "space `$spaceId` · ready `${plan.ready}` · runtime `${plan.runtime}`\n" +
+                        "명령:\n`${plan.command}`\n\n" +
+                        "__색인 대상__\n$indexable\n\n" +
+                        "__검토/차단__\n$blocked",
+                )
+            } else {
+                val ops = knowledgeIngestion.indexingOperations(ctx.guildId, force)
+                val commandRows = ops.commands.take(5).map { "• `$it`" }
+                val commands = commandRows.joinToString("\n").ifBlank { "• 실행할 색인 명령 없음" }
+                val nextRows = ops.nextActions.take(5).map { "• $it" }
+                val next = nextRows.joinToString("\n").ifBlank { "• 추가 조치 없음" }
+                Reply(
+                    "🧭 **RAG 색인 운영 계획**\n\n" +
+                        "상태 `${ops.status}` · spaces ${ops.spaceCount} · readyPlans ${ops.readyPlanCount} · " +
+                        "indexable ${ops.indexableSourceCount} · blocked ${ops.blockedSourceCount}\n\n" +
+                        "__명령__\n$commands\n\n" +
+                        "__다음 행동__\n$next",
+                )
+            }
+        }.getOrElse {
+            Replies.warn("색인 계획을 만들지 못했어요. ${it.message ?: "space-id를 확인해 주세요."}")
+        }
+    }
+
+    fun knowledgeIndexJobs(
+        ctx: CommandContext,
+        spaceId: Long? = null,
+        limit: Int = 10,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val jobs = knowledgeIndexing.listIndexJobs(ctx.guildId, spaceId, limit)
+            val rows =
+                jobs.map {
+                    "• `${it.id}` space `${it.knowledgeSpaceId}` · ${it.status} · chunks ${it.chunkCount} · " +
+                        "${it.queuedAt}${it.failureReason?.let { reason -> " · $reason" } ?: ""}"
+                }
+            val lines = rows.joinToString("\n").ifBlank { "• 최근 RAG 색인 작업이 없습니다." }
+            Reply(
+                "🧱 **RAG 색인 작업 큐**\n" +
+                    "scope: `${spaceId?.let { "space:$it" } ?: "guild"}` · limit `$limit`\n\n" +
+                    "$lines\n\n" +
+                    "완료/실패 처리는 `/ai-knowledge-job-complete job-id:<id> status:<completed|failed|cancelled>` 로 기록하세요.",
+            )
+        }.getOrElse {
+            Replies.warn("색인 작업을 조회하지 못했어요. ${it.message ?: "space-id를 확인해 주세요."}")
+        }
+    }
+
+    fun completeKnowledgeIndexJob(
+        ctx: CommandContext,
+        jobId: Long,
+        status: String = "completed",
+        reason: String? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val job =
+                knowledgeIndexing.completeIndexJobSafely(
+                    guildId = ctx.guildId,
+                    jobId = jobId,
+                    status = status,
+                    failureReason = reason,
+                )
+            Replies.ok(
+                "RAG 색인 작업 상태를 기록했습니다.\n" +
+                    "job: `${job.id}` · space: `${job.knowledgeSpaceId}` · status: `${job.status}` · chunks: `${job.chunkCount}`" +
+                    (job.failureReason?.let { "\nreason: `$it`" } ?: ""),
+            )
+        }.getOrElse {
+            Replies.warn("색인 작업 상태를 기록하지 못했어요. ${it.message ?: "job-id/status를 확인해 주세요."}")
+        }
+    }
+
+    fun approveKnowledge(
+        ctx: CommandContext,
+        spaceId: Long,
+        sourceId: Long,
+        reason: String = "approved from Discord",
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val source = knowledgeIngestion.approveSourceForIndexing(ctx.guildId, spaceId, sourceId, reason)
+            Replies.ok(
+                "지식 소스를 색인 대기 상태로 승인했습니다.\n" +
+                    "space: `$spaceId` · source: `${source.id}` · status: `${source.status}` · risk: `${source.riskLevel}`\n" +
+                    "`/ai-knowledge-index-plan space-id:$spaceId` 로 색인 명령을 확인하세요.",
+            )
+        }.getOrElse {
+            Replies.warn("지식 소스를 승인하지 못했어요. ${it.message ?: "review 위험도 소스인지 확인해 주세요."}")
+        }
+    }
+
+    fun deleteKnowledge(
+        ctx: CommandContext,
+        spaceId: Long,
+        sourceId: Long,
+        reason: String = "deleted from Discord",
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val source = knowledgeIngestion.removeSource(ctx.guildId, spaceId, sourceId, reason)
+            val deletionIndex =
+                knowledgeIndexing.tombstoneDeletedSourceIndex(
+                    guildId = ctx.guildId,
+                    spaceId = spaceId,
+                    sourceId = source.id,
+                    triggeredBy = ctx.userId,
+                )
+            Replies.ok(
+                "지식 소스를 삭제했습니다. space `$spaceId` · source `${source.id}` · status `${source.status}`\n" +
+                    "재색인 작업: `${deletionIndex.jobId}` · 제거된 chunk `${deletionIndex.tombstonedChunkCount}`",
+            )
+        }.getOrElse {
+            Replies.warn("지식 소스를 삭제하지 못했어요. ${it.message ?: "space-id/source-id를 확인해 주세요."}")
+        }
+    }
+
+    fun presetCatalog(
+        ctx: CommandContext,
+        query: String? = null,
+        category: String? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val presets =
+            presetRegistry.searchPublishedPresets(query = query, category = category, sort = "popular", limit = 10)
+        return Reply(formatPresetCatalog(presets, query, category))
+    }
+
+    fun importPresetToCurrentChannel(
+        ctx: CommandContext,
+        publishedPresetId: Long,
+        confirmConflicts: Boolean = false,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            val imported =
+                presetRegistry.importPreset(
+                    publishedPresetId = publishedPresetId,
+                    targetGuildId = ctx.guildId,
+                    targetChannelId = ctx.channelId,
+                    importedBy = ctx.userId,
+                    confirmConflicts = confirmConflicts,
+                )
+            Reply(formatPresetImport(imported))
+        }.getOrElse { error ->
+            val preview =
+                runCatching {
+                    presetRegistry.previewImport(
+                        publishedPresetId = publishedPresetId,
+                        targetGuildId = ctx.guildId,
+                        targetChannelId = ctx.channelId,
+                    )
+                }.getOrNull()
+            val conflicts =
+                preview
+                    ?.conflicts
+                    ?.joinToString("\n") { "• `${it.severity}` ${it.message}" }
+                    ?.ifBlank { null }
+            Replies.warn(
+                "프리셋을 바로 가져오지 못했어요. ${error.message ?: "원인을 확인해 주세요."}\n" +
+                    (conflicts?.let { "\n충돌/확인 필요:\n$it\n" } ?: "") +
+                    "적용해도 괜찮다면 `/ai-preset-import` 에서 `confirm-conflicts: true` 로 다시 실행하세요.",
+            )
+        }
+    }
+
+    fun likePreset(
+        ctx: CommandContext,
+        publishedPresetId: Long,
+    ): Reply {
+        val published =
+            runCatching { presetRegistry.likePreset(publishedPresetId, ctx.userId) }
+                .getOrElse { return Replies.warn("프리셋 좋아요에 실패했어요. ${it.message ?: "프리셋 ID를 확인해 주세요."}") }
+        return Replies.ok("프리셋 **${published.title}** 좋아요를 반영했습니다. 현재 ${published.likeCount}개")
+    }
+
+    fun reportPreset(
+        ctx: CommandContext,
+        publishedPresetId: Long,
+        reason: String,
+    ): Reply {
+        val report =
+            runCatching { presetRegistry.reportPreset(publishedPresetId, ctx.userId, reason) }
+                .getOrElse { return Replies.warn("프리셋 신고에 실패했어요. ${it.message ?: "프리셋 ID와 신고 사유를 확인해 주세요."}") }
+        return Replies.ok(
+            "프리셋 신고를 접수했습니다. report `${report.id}` · 상태 `${report.status}`\n" +
+                "신고된 프리셋은 카탈로그 노출/가져오기 전에 관리자 검토 대상으로 전환됩니다.",
+        )
+    }
+
+    fun presetModeration(ctx: CommandContext): Reply {
+        adminOnly(ctx)?.let { return it }
+        return runCatching { Reply(formatPresetModeration(presetRegistry.moderationSummary())) }
+            .getOrElse { Replies.warn("프리셋 신고 큐를 불러오지 못했어요. ${it.message ?: "잠시 후 다시 시도해 주세요."}") }
+    }
+
+    fun reviewPresetReport(
+        ctx: CommandContext,
+        reportId: Long,
+        decision: String,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val report =
+            runCatching { presetRegistry.reviewReport(reportId, decision, reviewerUserId = ctx.userId) }
+                .getOrElse { return Replies.warn("프리셋 신고 검수 처리에 실패했어요. ${it.message ?: "report-id/decision을 확인해 주세요."}") }
+        return Replies.ok(
+            "프리셋 신고를 처리했습니다. report `${report.id}` · 결정 `${report.status}`\n" +
+                "카탈로그 노출 상태는 결정에 맞춰 자동 갱신됩니다.",
+        )
+    }
+
+    private fun formatPresetCatalog(
+        presets: List<PublishedPresetSummary>,
+        query: String?,
+        category: String?,
+    ): String {
+        val filter =
+            listOfNotNull(
+                query?.takeIf { it.isNotBlank() }?.let { "검색 `$it`" },
+                category?.takeIf { it.isNotBlank() }?.let { "카테고리 `$it`" },
+            ).joinToString(" · ").ifBlank { "인기순" }
+        val presetLines =
+            presets.take(10).map { preset ->
+                val categoryText = preset.category ?: "general"
+                val mode = preset.responseMode ?: "balanced"
+                val webLink = presetCatalogUrl(preset.slug.ifBlank { preset.id.toString() })?.let { " · <$it>" } ?: ""
+                "• `${preset.id}` **${preset.title}** — $categoryText · $mode · 👍 ${preset.likeCount} · " +
+                    "가져오기 ${preset.importCount}$webLink"
+            }
+        val lines = presetLines.joinToString("\n").ifBlank { "• 아직 공개된 프리셋이 없습니다." }
+        val webCatalog =
+            presetCatalogUrl()?.let { "웹에서 검색·미리보기·가져오기: <$it>\n" }
+                ?: "웹 카탈로그가 배포되면 `/presets` 에서 검색·미리보기·가져오기를 할 수 있습니다.\n"
+        return "📚 **AI 프리셋 공유 목록** ($filter)\n\n" +
+            "$lines\n\n" +
+            webCatalog +
+            "현재 채널에 적용하려면 `/ai-preset-import published-id:<ID>` 를 실행하세요.\n" +
+            "부적절하면 `/ai-preset-report published-id:<ID> reason:<사유>` 로 신고할 수 있습니다."
+    }
+
+    private fun formatPresetModeration(summary: PresetModerationSummary): String {
+        val queue =
+            summary.queue
+                .take(10)
+                .joinToString("\n") { item ->
+                    val reasonCodes =
+                        item.reportReasonCodes.entries
+                            .joinToString(",") { "${it.key}:${it.value}" }
+                            .ifBlank { "none" }
+                    "• `${item.publishedPresetId}` **${item.title}** — `${item.status}` · 신고 ${item.reportCount} · " +
+                        "좋아요 ${item.likeCount} · risk `${item.riskCodes.joinToString(",").ifBlank { "none" }}` · " +
+                        "유형 `$reasonCodes`\n" +
+                        "  ↳ ${item.recommendedAction}"
+                }.ifBlank { "• 검토할 프리셋 신고가 없습니다." }
+        val nextActions =
+            summary.nextActions
+                .take(5)
+                .joinToString("\n") { "• $it" }
+                .ifBlank { "• 지금은 추가 조치가 없습니다." }
+        return "🛡️ **프리셋 신고/검수 큐**\n\n" +
+            "게시 ${summary.activePublishedCount} · 검토중 ${summary.underReviewCount} · " +
+            "중단 ${summary.suspendedCount} · 제거 ${summary.removedCount}\n" +
+            "열린 신고 ${summary.openReportCount} · 처리됨 ${summary.reviewedReportCount}\n\n" +
+            "__우선 검토 대상__\n$queue\n\n" +
+            "__다음 행동__\n$nextActions\n\n" +
+            "처리: `/ai-preset-report-review report-id:<ID> decision:dismiss|suspend|remove`"
+    }
+
+    private fun formatPresetImport(imported: PresetImportEntity): String =
+        "✅ 프리셋을 현재 채널에 가져왔습니다.\n" +
+            "상태: `${imported.status}` · 보관함 프리셋: `${imported.importedPresetId ?: "-"}`\n" +
+            "원본 revision: `${imported.sourceRevisionId ?: "-"}`\n" +
+            "채널 AI: `${imported.createdChannelAiId ?: "-"}` · 행동 버전: `${imported.createdBehaviorVersionId ?: "-"}`\n" +
+            "이제 이 채널에서 질문하면 가져온 프리셋의 역할·말투·응답 정책이 적용됩니다."
+
+    fun multiResponseStatus(
+        ctx: CommandContext,
+        channelId: Long? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val targetChannelId = channelId ?: ctx.channelId
+        return runCatching {
+            val summary = multiResponse.operationsSummary(ctx.guildId, targetChannelId)
+            val riskText = summary.riskCodes.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "none"
+            val nextActions =
+                summary.nextActions
+                    .take(4)
+                    .joinToString("\n") { "• $it" }
+                    .ifBlank { "• 지금은 추가 조치가 없습니다." }
+            val topLoad =
+                summary.providerLoads
+                    .take(3)
+                    .joinToString("\n") { load ->
+                        "• Provider ${kotlin.math.abs(load.providerUserId.hashCode()).toString(36).take(6)} — " +
+                            "후보 ${load.candidateCount} · 완료 ${load.completedCount} · timeout ${load.timeoutCount} · risk `${load.loadRisk}`"
+                    }.ifBlank { "• 최근 fan-out 부하 기록 없음" }
+            val averageFanout = "%.1f".format(summary.averageActualFanout)
+            Reply(
+                "🧪 **다중응답 운영 상태** <#$targetChannelId>\n\n" +
+                    "상태: `${summary.status}` · 고급 모드 안전: `${summary.safeToEnableAdvanced}`\n" +
+                    "최근 실행: ${summary.recentRunCount} · 완료 ${summary.completedRunCount} · fallback ${summary.fallbackRunCount}\n" +
+                    "평균 fan-out: $averageFanout · 선택 후보 ${summary.acceptedCandidateCount} · " +
+                    "timeout ${summary.timeoutCandidateCount}\n" +
+                    "Provider 부하: high ${summary.highLoadProviderCount} · critical ${summary.criticalLoadProviderCount}\n" +
+                    "RAG fallback ${summary.ragFallbackRunCount} · 민감질문 차단 ${summary.blockedSensitiveRunCount} · " +
+                    "Provider 없음 ${summary.noProviderRunCount}\n" +
+                    "위험 코드: `$riskText`\n\n" +
+                    "__Provider 부하__\n$topLoad\n\n" +
+                    "__다음 행동__\n$nextActions",
+            )
+        }.getOrElse { error ->
+            Replies.warn("다중응답 상태를 불러오지 못했어요. ${error.message ?: "설정/기능 플래그를 확인해 주세요."}")
+        }
+    }
+
+    fun setMultiResponsePolicy(
+        ctx: CommandContext,
+        channelId: Long? = null,
+        mode: String = "single",
+        maxCandidates: Int = 1,
+        synthesisEnabled: Boolean = false,
+        requireDistinctModels: Boolean = false,
+        timeoutSeconds: Int = 120,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val normalizedMode =
+            when (mode.trim().lowercase()) {
+                "single", "단일" -> "single"
+                "compare", "비교" -> "compare"
+                "debate", "토론" -> "debate"
+                "deep", "깊은" -> "compare"
+                else -> "single"
+            }
+        val targetChannelId = channelId ?: ctx.channelId
+        return runCatching {
+            val policy =
+                multiResponse.savePolicy(
+                    guildId = ctx.guildId,
+                    channelId = targetChannelId,
+                    channelAiId = null,
+                    mode = normalizedMode,
+                    maxCandidates = maxCandidates,
+                    requireDistinctModels = requireDistinctModels,
+                    providerDailyLimit = 0,
+                    timeoutSeconds = timeoutSeconds,
+                    synthesisEnabled = synthesisEnabled,
+                )
+            val safetyNote =
+                if (policy.maxCandidates > 1 || policy.synthesisEnabled) {
+                    "\n⚠️ 고급 fan-out은 `multi-response` 태그로 opt-in 한 Provider만 쓰고, 과부하/민감질문이면 자동 차단됩니다."
+                } else {
+                    ""
+                }
+            Replies.ok(
+                "다중응답 정책을 저장했습니다. <#$targetChannelId>\n" +
+                    "mode: `${policy.mode}` · 후보: `${policy.maxCandidates}` · 서로 다른 모델 우선: `${policy.requireDistinctModels}`\n" +
+                    "합성: `${policy.synthesisEnabled}` · 타임아웃: `${policy.timeoutSeconds}s`$safetyNote",
+            )
+        }.getOrElse { error ->
+            Replies.warn("다중응답 정책을 저장하지 못했어요. ${error.message ?: "입력값을 확인해 주세요."}")
+        }
+    }
+
+    fun multiResponseDryRun(
+        ctx: CommandContext,
+        prompt: String,
+        channelId: Long? = null,
+        responseMode: String? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        val targetChannelId = channelId ?: ctx.channelId
+        val mode =
+            normalizeAskResponseMode(responseMode)
+                ?: channelRoutingPolicies
+                    .effective(ctx.guildId, targetChannelId, null)
+                    .responseMode
+        return runCatching {
+            val run =
+                multiResponse.startRun(
+                    guildId = ctx.guildId,
+                    channelId = targetChannelId,
+                    requestId = "discord-dry-${System.currentTimeMillis()}",
+                    promptPreview = prompt,
+                    responseMode = mode,
+                )
+            val next =
+                when (run.status) {
+                    "running" -> "후보 Provider가 계획되었습니다. 실제 답변 fan-out은 옵트인 단계에서만 연결하세요."
+                    "blocked_sensitive" -> "민감정보처럼 보여 fan-out을 차단했습니다. 단일 안전 경로로 안내하세요."
+                    "no_provider" -> "온라인 Provider, `multi-response` opt-in 태그, 과부하 상태를 확인하세요."
+                    else -> run.failureReason ?: "상태를 확인하세요."
+                }
+            Reply(
+                "🧪 **다중응답 드라이런** <#$targetChannelId>\n" +
+                    "run: `${run.id}` · status: `${run.status}` · 후보: `${run.candidateCount}`\n" +
+                    "RAG: `${run.ragContextStatus ?: "unknown"}` · context chars: `${run.ragContextChars}`\n" +
+                    "모드: `$mode`\n\n" +
+                    "다음 행동: $next",
+            )
+        }.getOrElse { error ->
+            Replies.warn("다중응답 드라이런을 만들지 못했어요. ${error.message ?: "정책/Provider 상태를 확인해 주세요."}")
+        }
+    }
+
+    fun aiNetworkMap(ctx: CommandContext): Reply {
+        adminOnly(ctx)?.let { return it }
+        return Reply(formatAiNetworkMap(aiNetworkMap.map(ctx.guildId)))
+    }
+
+    private fun formatAiNetworkMap(map: AiNetworkMap): String {
+        val modelLines =
+            map.models.take(8).map { model ->
+                val topTags = model.tags.take(3)
+                val tags = if (topTags.isEmpty()) "태그 없음" else topTags.joinToString(", ")
+                val tiers = model.qualityTiers.joinToString(",")
+                "• `${model.modelName}` — 온라인 ${model.onlineProviderCount}/${model.providerCount} · $tiers · $tags"
+            }
+        val models = modelLines.joinToString("\n").ifBlank { "• 아직 보고된 모델이 없습니다." }
+        val channelLines =
+            map.channels.take(8).map { channel ->
+                val behavior = if (channel.hasBehavior) "행동설정 ON" else "행동설정 필요"
+                "• <#${channel.channelId}> → **${channel.name}** · $behavior · 지식공간 ${channel.knowledgeSpaceCount}"
+            }
+        val channels = channelLines.joinToString("\n").ifBlank { "• 아직 채널 AI가 없습니다." }
+        val next = map.nextActions.take(5).joinToString("\n") { "• $it" }
+        val topCapabilityTags = map.capabilityTags.take(8)
+        val tags = if (topCapabilityTags.isEmpty()) "아직 태그 없음" else topCapabilityTags.joinToString(", ")
+        val providerSummary =
+            "Provider: 온라인 ${map.onlineProviderCount} / 승인 ${map.approvedProviderCount} · " +
+                "모델 ${map.modelCount}종 · 채널 AI ${map.channelAiCount}개 · 지식공간 ${map.knowledgeSpaceCount}개"
+        return "🗺️ **AI 네트워크 지도**\n\n" +
+            "레벨: `${map.networkLevel}` · 상태: `${map.healthStatus}` · 과부하 경고: `${map.overloadAlertCount}`\n" +
+            "$providerSummary\n" +
+            "능력 태그: $tags\n\n" +
+            "__모델 지도__\n$models\n\n" +
+            "__채널 AI__\n$channels\n\n" +
+            "__다음 액션__\n$next"
+    }
+
+    fun aiNetworkCheck(ctx: CommandContext): Reply {
+        adminOnly(ctx)?.let { return it }
+        return Reply(formatAiNetworkChecklist(aiNetworkLaunchChecklist.checklist(ctx.guildId)))
+    }
+
+    private fun formatAiNetworkChecklist(checklist: NetworkLaunchChecklist): String {
+        val topItems =
+            checklist.items
+                .filter { it.status != "ready" }
+                .ifEmpty { checklist.items.take(5) }
+                .take(8)
+                .joinToString("\n") { item ->
+                    val icon =
+                        when (item.status) {
+                            "ready" -> "✅"
+                            "warning" -> "⚠️"
+                            else -> "⛔"
+                        }
+                    "$icon **${item.title}** — ${item.nextAction}"
+                }
+        val next =
+            checklist.nextActions
+                .take(5)
+                .joinToString("\n") { "• $it" }
+                .ifBlank { "• 지금 막을 항목은 없습니다." }
+        return "🧭 **AI 네트워크 출시/운영 체크리스트**\n\n" +
+            "상태: `${checklist.status}` · Gate: `${checklist.releaseGate}` · 점수: `${checklist.score}`\n" +
+            "준비 ${checklist.readyCount} · 주의 ${checklist.warningCount} · 차단 ${checklist.blockedCount}\n\n" +
+            "__핵심 항목__\n$topItems\n\n" +
+            "__다음 액션__\n$next"
     }
 
     // ── 프로바이더 ──────────────────────────────────────────────────────
@@ -237,7 +1246,7 @@ class CommandService(
         answerLength: String? = null,
         constitution: String? = null,
     ): Reply {
-        adminOnly(ctx)?.let { return it }
+        channelAiAdminOnly(ctx, "channel_ai_profile")?.let { return it }
         if (reset) {
             channelProfiles.clear(ctx.guildId, ctx.channelId)
             return Reply("✅ 이 채널의 AI 응답 프로필을 기본 봇 표시로 되돌렸습니다.")
@@ -419,6 +1428,40 @@ class CommandService(
 
     /** 현재 허용 채널 목록(패널 표시용). 비면 전체 허용. */
     fun allowedChannelIds(ctx: CommandContext): List<Long> = policy.allowedChannelIds(ctx.guildId)
+
+    /** 설정 패널에서 임시 선택한 서버 언어/기본 모델/허용 채널/자동승인을 저장 버튼 한 번으로 적용한다. */
+    fun saveGuildSettings(
+        ctx: CommandContext,
+        language: String?,
+        defaultModel: String?,
+        allowedChannelIds: Collection<Long>?,
+        autoApprove: Boolean? = null,
+    ): Reply {
+        adminOnly(ctx)?.let { return it }
+        when (defaultModel) {
+            "__auto__" -> {
+                policy.clearGuildDefaultModel(ctx.guildId, ctx.userId)
+                language?.takeIf { it.isNotBlank() }?.let { policy.setGuildDefaults(ctx.guildId, null, it, ctx.userId) }
+            }
+            null -> language?.takeIf { it.isNotBlank() }?.let { policy.setGuildDefaults(ctx.guildId, null, it, ctx.userId) }
+            else -> policy.setGuildDefaults(ctx.guildId, defaultModel, language, ctx.userId)
+        }
+        allowedChannelIds?.let { policy.replaceAllowedChannels(ctx.guildId, it, ctx.userId) }
+        autoApprove?.let { policy.setAutoApprove(ctx.guildId, it, ctx.userId) }
+
+        val model = policy.guildDefaultModel(ctx.guildId) ?: "자동 선택"
+        val lang = policy.guildLanguage(ctx.guildId)
+        val channels = policy.allowedChannelIds(ctx.guildId)
+        val channelText = if (channels.isEmpty()) "모든 채널" else channels.joinToString(" ") { "<#$it>" }
+        val autoApproveText = if (policy.isAutoApprove(ctx.guildId)) "켜짐" else "꺼짐"
+        return Replies.ok(
+            "서버 설정을 저장했습니다.\n" +
+                "언어: `$lang`\n" +
+                "기본 모델: `$model`\n" +
+                "LLM 사용 채널: $channelText\n" +
+                "자동 승인: `$autoApproveText`",
+        )
+    }
 
     /** 풀이 현재 제공하는 모델 목록(패널 표시용). */
     fun poolModels(ctx: CommandContext): List<String> = autocompleteModels(ctx)

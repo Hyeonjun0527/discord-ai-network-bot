@@ -13,6 +13,7 @@ class RequestWeigherTest {
         assertEquals(RequestWeight.LIGHT, w.weigh(RequestMeta(promptChars = 50)))
         assertEquals(RequestWeight.MEDIUM, w.weigh(RequestMeta(promptChars = 500)))
         assertEquals(RequestWeight.MEDIUM, w.weigh(RequestMeta(promptChars = 50, command = "summarize")))
+        assertEquals(RequestWeight.MEDIUM, w.weigh(RequestMeta(promptChars = 50, responseMode = "deep")))
         assertEquals(RequestWeight.HEAVY, w.weigh(RequestMeta(promptChars = 3000)))
         assertEquals(RequestWeight.HEAVY, w.weigh(RequestMeta(promptChars = 50, attachments = 1)))
     }

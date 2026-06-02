@@ -19,6 +19,7 @@ private fun candidate(
     failureRate: Double = 0.0,
     cooldown: Boolean = false,
     recent: Int = 0,
+    qualityTier: String = "standard",
 ) = Candidate(
     id,
     state,
@@ -32,6 +33,8 @@ private fun candidate(
     failureRate,
     cooldown,
     recent,
+    emptySet(),
+    qualityTier,
 )
 
 private val ctxLight = RequestContext(ModelBurden.LIGHT, setOf(1L), 200L, 50)
@@ -102,6 +105,24 @@ class ProviderRouterTest {
         val b = candidate(2, recent = 0)
         val sel = router.select(listOf(a, b), ctxLight)
         assertEquals(2L, sel!!.providerId)
+    }
+
+    @Test fun `품질 티어는 공정성보다 약한 보조 신호다`() {
+        val overusedSpecialized = candidate(1, recent = 4, qualityTier = "specialized")
+        val idleStandard = candidate(2, recent = 0, qualityTier = "standard")
+
+        val sel = router.select(listOf(overusedSpecialized, idleStandard), ctxLight)
+
+        assertEquals(2L, sel!!.providerId)
+    }
+
+    @Test fun `품질이 높아도 보호 필터를 통과하지 못하면 선택되지 않는다`() {
+        val unsafeSpecialized = candidate(1, cooldown = true, qualityTier = "specialized")
+        val safeStandard = candidate(2, qualityTier = "standard")
+        val filtered = ProviderFilterPipeline().filter(listOf(unsafeSpecialized, safeStandard), ctxLight)
+
+        assertEquals("cooldown", filtered.dropped[1])
+        assertEquals(2L, router.select(filtered.eligible, ctxLight)!!.providerId)
     }
 
     @Test fun `빈 후보 → null`() {

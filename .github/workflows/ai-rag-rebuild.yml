@@ -1,0 +1,78 @@
+name: AI RAG 인덱스 재빌드
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'rag/**'
+      - 'docker/rag/Dockerfile'
+      - 'docker-compose.qdrant.yml'
+      - 'scripts/rag.sh'
+      - '.github/workflows/ai-rag-rebuild.yml'
+      - 'docs/**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-rag-rebuild-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rebuild:
+    name: AI Network RAG rebuild and eval
+    runs-on: [self-hosted, yeon-arm]
+    env:
+      DISCORD_AI_EDGE_NETWORK: discord-ai-edge
+      QDRANT_URL: http://discord-ai-qdrant:6333
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Skip stale main run
+        id: fresh
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          latest="$(git rev-parse FETCH_HEAD)"
+          if [ "$latest" != "$GITHUB_SHA" ]; then
+            echo "A newer main commit exists; skipping stale RAG rebuild"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore ENV_FILE
+        if: steps.fresh.outputs.run == 'true'
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: printf '%s' "$ENV_FILE" > .env
+
+      - name: Ensure Docker network
+        if: steps.fresh.outputs.run == 'true'
+        run: docker network inspect "$DISCORD_AI_EDGE_NETWORK" >/dev/null 2>&1 || docker network create "$DISCORD_AI_EDGE_NETWORK"
+
+      - name: Start Qdrant
+        if: steps.fresh.outputs.run == 'true'
+        run: docker compose -f docker-compose.qdrant.yml up -d
+
+      - name: Rebuild local RAG index
+        if: steps.fresh.outputs.run == 'true'
+        run: scripts/rag.sh build-local
+
+      - name: Evaluate RAG golden set
+        if: steps.fresh.outputs.run == 'true'
+        run: scripts/rag.sh eval
+
+      - name: Commit generated metadata index
+        if: steps.fresh.outputs.run == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add rag/bm25/corpus.jsonl rag/meta.db
+          if git diff --staged --quiet; then
+            echo "RAG index unchanged"
+          else
+            git commit -m "chore: rebuild AI network RAG index [skip ci]"
+            git push origin main
+          fi

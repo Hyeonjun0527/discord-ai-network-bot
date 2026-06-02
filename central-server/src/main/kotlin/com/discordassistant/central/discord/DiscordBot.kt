@@ -172,6 +172,8 @@ class DiscordBot(
                             .addChoice("균형 모드", "balanced")
                             .addChoice("깊은 답변", "deep")
                             .addChoice("절약 모드", "saving"),
+                        net.dv8tion.jda.api.interactions.commands.build
+                            .OptionData(OptionType.BOOLEAN, "web", "웹 검색으로 최신 정보를 찾아 답변(출처 표시)", false),
                     ),
                 Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
                 Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
@@ -1389,6 +1391,7 @@ class DiscordBot(
                         event.getOption("prompt")?.asString.orEmpty(),
                         requestedModel = event.getOption("model")?.asString,
                         requestedResponseMode = event.getOption("mode")?.asString,
+                        webSearch = event.getOption("web")?.asBoolean ?: false,
                     )
                 "models" -> commands.models(ctx)
                 "catalog" -> commands.catalog(ctx)

@@ -127,6 +127,7 @@ data class OrchestrationResult(
     val failReason: String? = null,
     val effectiveBurden: ModelBurden? = null,
     val requestId: String? = null,
+    val sources: List<String> = emptyList(),
 )
 
 /**
@@ -204,8 +205,9 @@ class RequestOrchestrator(
 
         // 2.5) 웹검색 증강(opt-in): 로컬 모델이 웹을 못 보므로 서버가 검색해 프롬프트에 주입한다.
         //      비활성/미설정/실패면 원본 그대로(루프 밖에서 1회만 — fallback 시 재검색 안 함).
-        val effectivePrompt =
-            if (input.webSearch && webSearch.isEnabled()) webSearch.augment(input.prompt).prompt else input.prompt
+        val augmentation =
+            if (input.webSearch && webSearch.isEnabled()) webSearch.augment(input.prompt) else WebAugmentation(input.prompt, emptyList())
+        val effectivePrompt = augmentation.prompt
 
         // 3) 후보 구성 + 필터 + 선택 + 전송(최대 2회: 원 + fallback 1회)
         val excluded = mutableSetOf<Long>()
@@ -265,6 +267,7 @@ class RequestOrchestrator(
                     sel.providerId,
                     effectiveBurden = ctx.requiredBurden,
                     requestId = result.requestId,
+                    sources = augmentation.sources,
                 )
             } catch (e: Exception) {
                 lastReason = e.cause?.message ?: e.message ?: "처리 실패"

@@ -45,6 +45,16 @@ class RolePolicyEntity(
 )
 
 @Entity
+@Table(name = "ai_admin_role")
+class AiAdminRoleEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var roleId: Long = 0,
+    var createdBy: Long? = null,
+    var createdAt: Instant = Instant.EPOCH,
+)
+
+@Entity
 @Table(name = "provider")
 class ProviderEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,

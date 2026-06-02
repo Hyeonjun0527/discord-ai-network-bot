@@ -110,6 +110,26 @@ class CommandService(
     private fun adminOnly(ctx: CommandContext): Reply? =
         if (!ctx.isAdmin) Replies.reject(Messages.get(Messages.Key.ADMIN_DENIED, lang(ctx))) else null
 
+    private fun channelAiAdminOnly(
+        ctx: CommandContext,
+        action: String,
+    ): Reply? {
+        adminOnly(ctx)?.let { return it }
+        return runCatching {
+            channelAiCustomization.requireCanManageChannelAi(
+                guildId = ctx.guildId,
+                channelId = ctx.channelId,
+                actorUserId = ctx.userId,
+                actorRoleIds = ctx.roleIds,
+                actorIsGuildAdmin = ctx.isAdmin,
+                action = action,
+            )
+            null
+        }.getOrElse {
+            Replies.reject(it.message ?: "AI 설정 변경 권한이 없습니다.")
+        }
+    }
+
     private fun publicWebBaseUrl(): String? {
         val raw = relayPublicUrl.trim().trimEnd('/').ifBlank { return null }
         val normalized =
@@ -1226,7 +1246,7 @@ class CommandService(
         answerLength: String? = null,
         constitution: String? = null,
     ): Reply {
-        adminOnly(ctx)?.let { return it }
+        channelAiAdminOnly(ctx, "channel_ai_profile")?.let { return it }
         if (reset) {
             channelProfiles.clear(ctx.guildId, ctx.channelId)
             return Reply("✅ 이 채널의 AI 응답 프로필을 기본 봇 표시로 되돌렸습니다.")

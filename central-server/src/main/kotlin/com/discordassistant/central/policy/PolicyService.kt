@@ -1,6 +1,7 @@
 package com.discordassistant.central.policy
 
 import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.persistence.AiAdminRoleRepository
 import com.discordassistant.central.persistence.AllowedChannelEntity
 import com.discordassistant.central.persistence.AllowedChannelRepository
 import com.discordassistant.central.persistence.GuildEntity
@@ -22,6 +23,7 @@ class PolicyService(
     private val roles: RolePolicyRepository,
     private val guilds: GuildRepository,
     private val audit: AuditLog,
+    private val aiAdminRoles: AiAdminRoleRepository? = null,
 ) : RoutingPolicy {
     // ── 채널 정책 ───────────────────────────────────────────────────────
     @Transactional
@@ -205,6 +207,7 @@ class PolicyService(
     fun cleanupGuild(guildId: Long) {
         channels.deleteByGuildId(guildId)
         roles.deleteByGuildId(guildId)
+        aiAdminRoles?.deleteByGuildId(guildId)
         if (guilds.existsById(guildId)) {
             guilds.deleteById(guildId)
         }

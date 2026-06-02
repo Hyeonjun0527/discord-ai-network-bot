@@ -5,6 +5,7 @@ import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.PresetBehaviorInput
 import com.discordassistant.central.network.PresetRegistryService
+import com.discordassistant.central.persistence.AiAdminRoleRepository
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
@@ -60,6 +61,7 @@ class CommandServiceTest
         val synthesisResults: SynthesisResultRepository,
         val embeddingJobs: EmbeddingIndexJobRepository,
         val aiFeedbacks: AiFeedbackRepository,
+        val aiAdminRoles: AiAdminRoleRepository,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -547,6 +549,26 @@ class CommandServiceTest
             assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("냥시스턴트"))
             assertTrue(commands.setChannelAiProfile(admin, null, null, true).content.contains("기본 봇"))
             assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("설정되지 않았습니다"))
+        }
+
+        @Test
+        fun `llm-channel-profile — AI 관리자 역할이 설정되면 일반 서버 관리자는 변경할 수 없다`() {
+            val guildId = 88100L
+            val channelId = 88200L
+            channelAiCustomization.replaceAiAdminRoles(
+                guildId = guildId,
+                roleIds = setOf(9001L),
+                actorUserId = 5,
+                actorIsGuildAdmin = true,
+            )
+            val ordinaryAdmin = CommandContext(guildId, channelId, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            val aiAdmin = ordinaryAdmin.copy(roleIds = setOf(9001L))
+
+            val denied = commands.setChannelAiProfile(ordinaryAdmin, "무단냥", null, false)
+
+            assertTrue(denied.content.contains("AI 관리자 역할"), denied.content)
+            val allowed = commands.setChannelAiProfile(aiAdmin, "권한냥", null, false)
+            assertTrue(allowed.content.contains("권한냥"), allowed.content)
         }
 
         @Test

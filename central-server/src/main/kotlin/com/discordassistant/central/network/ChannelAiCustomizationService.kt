@@ -5,6 +5,8 @@ import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_CONSTITUTION
 import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_PURPOSE
 import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_SAFETY_LEVEL
 import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_TONE
+import com.discordassistant.central.persistence.AiAdminRoleEntity
+import com.discordassistant.central.persistence.AiAdminRoleRepository
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalEntity
@@ -28,6 +30,7 @@ class ChannelAiCustomizationService(
     private val proposals: AiChangeProposalRepository,
     private val audits: CustomizationAuditLogRepository,
     private val routingPolicies: ChannelAiRoutingPolicyRepository? = null,
+    private val aiAdminRoles: AiAdminRoleRepository? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
@@ -115,6 +118,8 @@ class ChannelAiCustomizationService(
         guildId: Long,
         channelId: Long,
         actorUserId: Long?,
+        actorRoleIds: Collection<Long> = emptyList(),
+        actorIsGuildAdmin: Boolean = true,
         name: String,
         avatarUrl: String?,
         job: String,
@@ -124,6 +129,7 @@ class ChannelAiCustomizationService(
         requireApproval: Boolean,
     ): ChannelAiWizardResult {
         featureGate.requireChannelAiEnabled()
+        requireCanManageChannelAi(guildId, channelId, actorUserId, actorRoleIds, actorIsGuildAdmin, "wizard_create")
         val now = Instant.now(clock)
         val channelAi =
             channelAis.findByGuildIdAndChannelId(guildId, channelId)
@@ -191,10 +197,13 @@ class ChannelAiCustomizationService(
         channelId: Long,
         targetVersion: Int,
         actorUserId: Long?,
+        actorRoleIds: Collection<Long> = emptyList(),
+        actorIsGuildAdmin: Boolean = true,
         requireApproval: Boolean,
         reason: String?,
     ): ChannelAiWizardResult {
         featureGate.requireChannelAiEnabled()
+        requireCanManageChannelAi(guildId, channelId, actorUserId, actorRoleIds, actorIsGuildAdmin, "rollback")
         val now = Instant.now(clock)
         val channelAi =
             channelAis.findByGuildIdAndChannelId(guildId, channelId)
@@ -266,11 +275,14 @@ class ChannelAiCustomizationService(
     fun approveProposal(
         proposalId: Long,
         reviewerUserId: Long?,
+        reviewerRoleIds: Collection<Long> = emptyList(),
+        reviewerIsGuildAdmin: Boolean = true,
         reason: String? = null,
     ): AiChangeProposalEntity {
         featureGate.requireChannelAiEnabled()
         val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
         require(proposal.status == "pending") { "pending proposal only can be approved" }
+        requireCanManageChannelAi(proposal.guildId, proposal.channelId, reviewerUserId, reviewerRoleIds, reviewerIsGuildAdmin, "approve")
         val channelAiId = proposal.channelAiId ?: throw IllegalArgumentException("proposal has no channel ai")
         val behaviorId = proposal.proposedBehaviorId ?: throw IllegalArgumentException("proposal has no behavior")
         val channelAi = channelAis.findById(channelAiId).orElseThrow { IllegalArgumentException("channel ai not found: $channelAiId") }
@@ -334,11 +346,14 @@ class ChannelAiCustomizationService(
     fun rejectProposal(
         proposalId: Long,
         reviewerUserId: Long?,
+        reviewerRoleIds: Collection<Long> = emptyList(),
+        reviewerIsGuildAdmin: Boolean = true,
         reason: String?,
     ): AiChangeProposalEntity {
         featureGate.requireChannelAiEnabled()
         val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
         require(proposal.status == "pending") { "pending proposal only can be rejected" }
+        requireCanManageChannelAi(proposal.guildId, proposal.channelId, reviewerUserId, reviewerRoleIds, reviewerIsGuildAdmin, "reject")
         proposal.status = "rejected"
         proposal.reviewedBy = reviewerUserId
         proposal.reviewedAt = Instant.now(clock)
@@ -354,6 +369,91 @@ class ChannelAiCustomizationService(
             summary = proposal.reason ?: "rejected",
         )
         return saved
+    }
+
+    @Transactional
+    fun replaceAiAdminRoles(
+        guildId: Long,
+        roleIds: Collection<Long>,
+        actorUserId: Long?,
+        actorRoleIds: Collection<Long> = emptyList(),
+        actorIsGuildAdmin: Boolean = true,
+    ): AiAdminRolePolicy {
+        featureGate.requireChannelAiEnabled()
+        requireCanManageChannelAi(guildId, 0, actorUserId, actorRoleIds, actorIsGuildAdmin, "replace_ai_admin_roles")
+        val now = Instant.now(clock)
+        val normalized = roleIds.filter { it > 0 }.distinct().sorted()
+        aiAdminRoles?.deleteByGuildId(guildId)
+        normalized.forEach { roleId ->
+            aiAdminRoles?.save(
+                AiAdminRoleEntity(
+                    guildId = guildId,
+                    roleId = roleId,
+                    createdBy = actorUserId,
+                    createdAt = now,
+                ),
+            )
+        }
+        audit(
+            guildId = guildId,
+            channelId = 0,
+            actorUserId = actorUserId,
+            action = "replace_ai_admin_roles",
+            targetType = "ai_admin_role",
+            targetId = null,
+            summary = "roles=${normalized.joinToString(",").ifBlank { "fallback_to_discord_admin" }}",
+        )
+        return AiAdminRolePolicy(guildId = guildId, roleIds = normalized, protectedMode = normalized.isNotEmpty())
+    }
+
+    fun aiAdminRolePolicy(guildId: Long): AiAdminRolePolicy {
+        featureGate.requireChannelAiEnabled()
+        val roles = aiAdminRoleIds(guildId)
+        return AiAdminRolePolicy(guildId = guildId, roleIds = roles, protectedMode = roles.isNotEmpty())
+    }
+
+    fun canManageChannelAi(
+        guildId: Long,
+        actorRoleIds: Collection<Long>,
+        actorIsGuildAdmin: Boolean,
+    ): AiAdminAccessDecision {
+        val requiredRoles = aiAdminRoleIds(guildId)
+        if (requiredRoles.isEmpty()) {
+            return if (actorIsGuildAdmin) {
+                AiAdminAccessDecision(true, "discord_admin_fallback", emptyList())
+            } else {
+                AiAdminAccessDecision(false, "discord_admin_required", emptyList())
+            }
+        }
+        val actorRoles = actorRoleIds.toSet()
+        val matched = requiredRoles.filter { it in actorRoles }
+        return if (matched.isNotEmpty()) {
+            AiAdminAccessDecision(true, "ai_admin_role_matched", requiredRoles, matched)
+        } else {
+            AiAdminAccessDecision(false, "ai_admin_role_required", requiredRoles)
+        }
+    }
+
+    fun requireCanManageChannelAi(
+        guildId: Long,
+        channelId: Long,
+        actorUserId: Long?,
+        actorRoleIds: Collection<Long>,
+        actorIsGuildAdmin: Boolean,
+        action: String,
+    ): AiAdminAccessDecision {
+        val decision = canManageChannelAi(guildId, actorRoleIds, actorIsGuildAdmin)
+        if (decision.allowed) return decision
+        audit(
+            guildId = guildId,
+            channelId = channelId,
+            actorUserId = actorUserId,
+            action = "ai_admin_denied",
+            targetType = "channel_ai_permission",
+            targetId = null,
+            summary = "$action denied: ${decision.reason}",
+        )
+        throw IllegalStateException(decision.userMessage())
     }
 
     fun proposalReviewSummary(
@@ -658,6 +758,14 @@ class ChannelAiCustomizationService(
         return ApprovalDecision(required = reason != null, reason = reason)
     }
 
+    private fun aiAdminRoleIds(guildId: Long): List<Long> =
+        aiAdminRoles
+            ?.findByGuildId(guildId)
+            ?.map { it.roleId }
+            ?.distinct()
+            ?.sorted()
+            ?: emptyList()
+
     private fun AiBehaviorVersionEntity.payloadHash(): String =
         sha256(
             listOf(
@@ -758,6 +866,26 @@ data class ChannelAiProposalReviewSummary(
     val pendingItems: List<ChannelAiProposalReviewItem>,
     val recentItems: List<ChannelAiProposalReviewItem>,
 )
+
+data class AiAdminRolePolicy(
+    val guildId: Long,
+    val roleIds: List<Long>,
+    val protectedMode: Boolean,
+)
+
+data class AiAdminAccessDecision(
+    val allowed: Boolean,
+    val reason: String,
+    val requiredRoleIds: List<Long> = emptyList(),
+    val matchedRoleIds: List<Long> = emptyList(),
+) {
+    fun userMessage(): String =
+        if (requiredRoleIds.isEmpty()) {
+            "AI 설정 변경에는 서버 관리자 권한이 필요합니다."
+        } else {
+            "AI 설정 변경은 AI 관리자 역할만 할 수 있습니다. 필요한 역할: ${requiredRoleIds.joinToString(", ")}"
+        }
+}
 
 data class ChannelAiProposalReviewItem(
     val id: Long,

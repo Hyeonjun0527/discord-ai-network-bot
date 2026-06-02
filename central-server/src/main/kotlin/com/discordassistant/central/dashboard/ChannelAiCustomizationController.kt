@@ -48,6 +48,8 @@ class ChannelAiCustomizationController(
                 guildId = guildId,
                 channelId = channelId,
                 actorUserId = request.actorUserId,
+                actorRoleIds = request.actorRoleIds,
+                actorIsGuildAdmin = request.actorIsGuildAdmin,
                 name = request.name,
                 avatarUrl = request.avatarUrl,
                 job = request.job,
@@ -78,6 +80,8 @@ class ChannelAiCustomizationController(
                 channelId = channelId,
                 targetVersion = request.targetVersion,
                 actorUserId = request.actorUserId,
+                actorRoleIds = request.actorRoleIds,
+                actorIsGuildAdmin = request.actorIsGuildAdmin,
                 requireApproval = request.requireApproval,
                 reason = request.reason,
             )
@@ -96,7 +100,14 @@ class ChannelAiCustomizationController(
         @PathVariable proposalId: Long,
         @RequestBody request: ReviewChannelAiProposalRequest,
     ): Map<String, Any?> {
-        val proposal = customization.approveProposal(proposalId, request.reviewerUserId, request.reason)
+        val proposal =
+            customization.approveProposal(
+                proposalId = proposalId,
+                reviewerUserId = request.reviewerUserId,
+                reviewerRoleIds = request.reviewerRoleIds,
+                reviewerIsGuildAdmin = request.reviewerIsGuildAdmin,
+                reason = request.reason,
+            )
         return mapOf(
             "id" to proposal.id,
             "status" to proposal.status,
@@ -110,9 +121,33 @@ class ChannelAiCustomizationController(
         @PathVariable proposalId: Long,
         @RequestBody request: ReviewChannelAiProposalRequest,
     ): Map<String, Any?> {
-        val proposal = customization.rejectProposal(proposalId, request.reviewerUserId, request.reason)
+        val proposal =
+            customization.rejectProposal(
+                proposalId = proposalId,
+                reviewerUserId = request.reviewerUserId,
+                reviewerRoleIds = request.reviewerRoleIds,
+                reviewerIsGuildAdmin = request.reviewerIsGuildAdmin,
+                reason = request.reason,
+            )
         return mapOf("id" to proposal.id, "status" to proposal.status, "reason" to proposal.reason)
     }
+
+    @GetMapping("/{guildId}/ai-admin-roles")
+    fun aiAdminRoles(
+        @PathVariable guildId: Long,
+    ) = customization.aiAdminRolePolicy(guildId)
+
+    @PostMapping("/{guildId}/ai-admin-roles")
+    fun replaceAiAdminRoles(
+        @PathVariable guildId: Long,
+        @RequestBody request: ReplaceAiAdminRolesRequest,
+    ) = customization.replaceAiAdminRoles(
+        guildId = guildId,
+        roleIds = request.roleIds,
+        actorUserId = request.actorUserId,
+        actorRoleIds = request.actorRoleIds,
+        actorIsGuildAdmin = request.actorIsGuildAdmin,
+    )
 
     @GetMapping("/{guildId}/proposals/summary")
     fun proposalSummary(
@@ -191,6 +226,8 @@ data class ChannelAiWizardDraftRequest(
 
 data class ChannelAiWizardRequest(
     val actorUserId: Long? = null,
+    val actorRoleIds: Set<Long> = emptySet(),
+    val actorIsGuildAdmin: Boolean = true,
     val name: String,
     val avatarUrl: String? = null,
     val job: String,
@@ -203,13 +240,24 @@ data class ChannelAiWizardRequest(
 data class RollbackChannelAiVersionRequest(
     val targetVersion: Int,
     val actorUserId: Long? = null,
+    val actorRoleIds: Set<Long> = emptySet(),
+    val actorIsGuildAdmin: Boolean = true,
     val requireApproval: Boolean = false,
     val reason: String? = null,
 )
 
 data class ReviewChannelAiProposalRequest(
     val reviewerUserId: Long? = null,
+    val reviewerRoleIds: Set<Long> = emptySet(),
+    val reviewerIsGuildAdmin: Boolean = true,
     val reason: String? = null,
+)
+
+data class ReplaceAiAdminRolesRequest(
+    val actorUserId: Long? = null,
+    val actorRoleIds: Set<Long> = emptySet(),
+    val actorIsGuildAdmin: Boolean = true,
+    val roleIds: Set<Long> = emptySet(),
 )
 
 data class ChannelAiPromptPreviewRequest(

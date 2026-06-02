@@ -378,7 +378,7 @@ Release 0 의 하드 게이트:
 - [x] 승인/거절자와 사유가 audit log 에 남는다. — `ChannelAiCustomizationServiceTest` 가 approve/reject reviewer·reason·history/audit 을 검증한다.
 - [x] 미리보기와 실제 적용 결과가 같은 renderer 를 쓴다. — `CommandServiceTest` 가 Channel AI preview renderer 와 Discord `/ask` 실행 prompt 의 exact match 를 검증한다.
 - [x] rollback 은 이전 BehaviorVersion 으로만 수행한다. — `ChannelAiCustomizationServiceTest` 가 target BehaviorVersion 을 새 active rollback version 으로 복사하고 audit 을 남기는 흐름을 검증한다.
-- [ ] 권한 없는 관리자가 대형 서버 설정을 임의 변경할 수 없다.
+- [x] 권한 없는 관리자가 대형 서버 설정을 임의 변경할 수 없다. — `ai_admin_role` protected mode 를 두고, `ChannelAiCustomizationServiceTest`/`CommandServiceTest` 가 AI 관리자 역할 없는 일반 서버 관리자의 채널 AI 변경을 차단한다.
 
 ## 11. Capability Group 6 — Quality Routing & Model Choice
 

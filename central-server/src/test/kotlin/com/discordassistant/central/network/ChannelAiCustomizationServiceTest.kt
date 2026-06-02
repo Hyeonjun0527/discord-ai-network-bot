@@ -6,6 +6,7 @@ import com.discordassistant.central.dashboard.ChannelAiWizardDraftRequest
 import com.discordassistant.central.dashboard.ChannelAiWizardRequest
 import com.discordassistant.central.dashboard.ReviewChannelAiProposalRequest
 import com.discordassistant.central.dashboard.RollbackChannelAiVersionRequest
+import com.discordassistant.central.persistence.AiAdminRoleRepository
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
@@ -32,6 +33,7 @@ class ChannelAiCustomizationServiceTest
         private val versions: AiBehaviorVersionRepository,
         private val proposals: AiChangeProposalRepository,
         private val audits: CustomizationAuditLogRepository,
+        private val aiAdminRoles: AiAdminRoleRepository,
     ) {
         private val service =
             ChannelAiCustomizationService(
@@ -39,6 +41,7 @@ class ChannelAiCustomizationServiceTest
                 versions = versions,
                 proposals = proposals,
                 audits = audits,
+                aiAdminRoles = aiAdminRoles,
                 clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
             )
         private val controller = ChannelAiCustomizationController(service)
@@ -49,6 +52,7 @@ class ChannelAiCustomizationServiceTest
                 versions = versions,
                 proposals = proposals,
                 audits = audits,
+                aiAdminRoles = aiAdminRoles,
                 clock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC),
                 featureGate = AiNetworkFeatureGate(channelAiEnabled = false),
             )
@@ -215,6 +219,61 @@ class ChannelAiCustomizationServiceTest
             assertEquals(1, controller.pending(100).count { it["channelId"] == 204L })
             val history = controller.history(100, 204)
             assertTrue(history["audits"].toString().contains("propose"))
+        }
+
+        @Test
+        fun `configured ai admin role blocks ordinary guild admin from changing channel ai`() {
+            val policy =
+                controller.replaceAiAdminRoles(
+                    100,
+                    com.discordassistant.central.dashboard.ReplaceAiAdminRolesRequest(
+                        actorUserId = 77,
+                        actorIsGuildAdmin = true,
+                        roleIds = setOf(9001),
+                    ),
+                )
+
+            assertEquals(true, policy.protectedMode)
+            assertEquals(listOf(9001L), policy.roleIds)
+
+            val denied =
+                assertThrows(IllegalStateException::class.java) {
+                    controller.createFromWizard(
+                        100,
+                        209,
+                        ChannelAiWizardRequest(
+                            actorUserId = 78,
+                            actorRoleIds = setOf(1000),
+                            actorIsGuildAdmin = true,
+                            name = "무단냥",
+                            job = "개발 질문",
+                            tone = "친근하게",
+                            requireApproval = false,
+                        ),
+                    )
+                }
+
+            assertTrue(denied.message!!.contains("AI 관리자 역할"))
+            assertNull(channelAis.findByGuildIdAndChannelId(100, 209))
+            assertTrue(controller.history(100, 209)["audits"].toString().contains("ai_admin_denied"))
+
+            val allowed =
+                controller.createFromWizard(
+                    100,
+                    209,
+                    ChannelAiWizardRequest(
+                        actorUserId = 79,
+                        actorRoleIds = setOf(9001),
+                        actorIsGuildAdmin = false,
+                        name = "권한냥",
+                        job = "개발 질문",
+                        tone = "친근하게",
+                        requireApproval = false,
+                    ),
+                )
+
+            assertEquals("approved", allowed["status"])
+            assertNotNull(channelAis.findByGuildIdAndChannelId(100, 209)!!.activeBehaviorVersionId)
         }
 
         @Test

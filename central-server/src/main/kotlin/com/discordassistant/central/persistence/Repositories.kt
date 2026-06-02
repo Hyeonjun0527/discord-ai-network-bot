@@ -32,6 +32,17 @@ interface RolePolicyRepository : JpaRepository<RolePolicyEntity, Long> {
     ): RolePolicyEntity?
 }
 
+interface AiAdminRoleRepository : JpaRepository<AiAdminRoleEntity, Long> {
+    fun findByGuildId(guildId: Long): List<AiAdminRoleEntity>
+
+    fun existsByGuildIdAndRoleId(
+        guildId: Long,
+        roleId: Long,
+    ): Boolean
+
+    fun deleteByGuildId(guildId: Long)
+}
+
 interface ProviderRepository : JpaRepository<ProviderEntity, Long> {
     fun findByProviderUserIdAndGuildId(
         providerUserId: Long,

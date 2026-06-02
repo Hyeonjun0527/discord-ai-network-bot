@@ -1044,11 +1044,17 @@ function multiNumber(id, fallback, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function currentMultiMaxFanout() {
+  const cap = Number($("multiMaxCandidates").dataset.featureMaxFanout || "5");
+  return Number.isFinite(cap) ? Math.max(1, Math.min(5, cap)) : 5;
+}
+
 function multiPolicyPayload() {
+  const maxFanout = currentMultiMaxFanout();
   return {
     channelId: numericValue("multiChannelId"),
     mode: $("multiMode").value,
-    maxCandidates: multiNumber("multiMaxCandidates", 1, 1, 5),
+    maxCandidates: multiNumber("multiMaxCandidates", 1, 1, maxFanout),
     requireDistinctModels: $("multiDistinctModels").checked,
     providerDailyLimit: multiNumber("multiProviderDailyLimit", 0, 0, 100000),
     timeoutSeconds: multiNumber("multiTimeoutSeconds", 120, 10, 300),
@@ -1056,7 +1062,27 @@ function multiPolicyPayload() {
   };
 }
 
-function renderMultiOps(summary, runs = [], decision = {}) {
+function featureState(value) {
+  return value ? "켜짐" : "꺼짐";
+}
+
+function renderMultiFeatureFlags(features = {}) {
+  const maxFanout = Math.max(1, Math.min(5, Number(features.multiResponseMaxFanout || 1)));
+  $("multiMaxCandidates").max = String(maxFanout);
+  $("multiMaxCandidates").dataset.featureMaxFanout = String(maxFanout);
+  if (Number($("multiMaxCandidates").value || "1") > maxFanout) $("multiMaxCandidates").value = String(maxFanout);
+  $("multiSynthesis").disabled = !features.multiResponseSynthesis;
+  renderList("multiFeatureFlags", [
+    ["AI 네트워크", featureState(features.aiNetwork)],
+    ["다중응답", featureState(features.multiResponse)],
+    ["후보 합성", featureState(features.multiResponseSynthesis)],
+    ["RAG 결합", featureState(features.multiResponseRag)],
+    ["최대 fanout", `${maxFanout}개`],
+    ["kill switch", features.killSwitch ? "활성" : "비활성"],
+  ], "기능 플래그 데이터 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
+}
+
+function renderMultiOps(summary, runs = [], decision = {}, features = {}) {
   renderList("multiOps", [
     ["상태", summary.status || "unknown"],
     ["고급 모드 안전", summary.safeToEnableAdvanced ? "가능" : "주의 필요"],
@@ -1065,8 +1091,10 @@ function renderMultiOps(summary, runs = [], decision = {}) {
     ["채택률", decision.adoptionRate ?? summary.decisionSummary?.adoptionRate ?? 0],
     ["평균 품질", decision.averageQualityScore ?? summary.decisionSummary?.averageQualityScore ?? 0],
     ["fallback", `${summary.fallbackRunCount ?? 0}건`],
+    ["RAG 결합", features.multiResponseRag ? "사용 가능" : "비활성/차단"],
     ["위험 코드", (summary.riskCodes || []).join(", ") || "없음"],
   ], "다중응답 운영 데이터 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
+  renderMultiFeatureFlags(features);
   renderList("multiProviderLoad", summary.providerLoads?.slice(0, 8), "Provider 부하 데이터 없음", (p) =>
     `<li><strong>${esc(p.providerLabel || p.providerUserId || "provider")}</strong><span>${esc(p.loadRisk)} · 후보 ${esc(p.candidateCount)} · timeout ${esc(p.timeoutCount)} · 품질 ${esc(p.averageQualityScore)}</span></li>`,
   );
@@ -1084,16 +1112,18 @@ async function refreshMultiOps() {
   }
   const qs = /^\d+$/.test(channelId) ? `?channelId=${channelId}` : "";
   try {
-    const [data, runs, decision] = await Promise.all([
+    const [data, runs, decision, features] = await Promise.all([
       getJson(`/api/ai-network/multi-response/${gid}/operations-summary${qs}`),
       getJson(`/api/ai-network/multi-response/${gid}/runs`),
       getJson(`/api/ai-network/multi-response/${gid}/decision-summary${qs ? `${qs}&limit=20` : "?limit=20"}`),
+      getJson("/api/ai-network/features"),
     ]);
     const summary = data.summary || {};
-    renderMultiOps(summary, runs || [], decision || {});
+    renderMultiOps(summary, runs || [], decision || {}, features || {});
     $("multiResult").textContent = [
       `다중응답 상태: ${summary.status || "unknown"}`,
       `고급 모드 안전: ${summary.safeToEnableAdvanced ? "yes" : "no"}`,
+      `기능 플래그: multi=${featureState(features?.multiResponse)} · synthesis=${featureState(features?.multiResponseSynthesis)} · rag=${featureState(features?.multiResponseRag)} · maxFanout=${features?.multiResponseMaxFanout ?? "?"}`,
       `최근 실행: ${runs?.length || 0}건 · 채택률: ${decision?.adoptionRate ?? summary.decisionSummary?.adoptionRate ?? 0}`,
       `후보 상태: accepted=${decision?.acceptedCandidateCount ?? 0} · rejected=${decision?.rejectedCandidateCount ?? 0} · timeout=${decision?.timeoutCandidateCount ?? 0}`,
       "",

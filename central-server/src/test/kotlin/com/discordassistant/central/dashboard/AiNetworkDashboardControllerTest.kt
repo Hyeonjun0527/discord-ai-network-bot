@@ -123,6 +123,43 @@ class AiNetworkDashboardControllerTest
         }
 
         @Test
+        fun `dashboard reads existing overview projection without refreshing by default`() {
+            overviewProjections.save(
+                NetworkOverviewProjectionEntity(
+                    guildId = 806,
+                    onlineProviderCount = 7,
+                    approvedProviderCount = 7,
+                    modelCount = 9,
+                    healthStatus = "ready",
+                    refreshedAt = Instant.parse("2026-06-01T00:00:00Z"),
+                    staleAfter = Instant.parse("2026-06-01T00:01:00Z"),
+                ),
+            )
+            foundation.upsertProviderCapability(
+                guildId = 806,
+                providerUserId = 99002,
+                providerState = "ONLINE",
+                modelNames = listOf("llama3.1:8b"),
+                capabilityTags = listOf("coding"),
+                maxBurden = "STANDARD",
+                maxConcurrency = 2,
+                dailyLimit = 30,
+                overloadRisk = "normal",
+            )
+
+            val response = dashboard.dashboard(806, audience = "public")
+
+            assertEquals("network_overview_projection", response.metadata.source)
+            assertEquals("stale", response.metadata.freshnessStatus)
+            assertEquals(true, response.metadata.stale)
+            assertEquals("projection_stale", response.metadata.degradedReason)
+            assertEquals(7, response.overview.onlineProviderCount)
+            assertEquals(9, response.overview.modelCount)
+            assertEquals(1, response.providers.size)
+            assertEquals(7, overviewProjections.findByGuildId(806)!!.onlineProviderCount)
+        }
+
+        @Test
         fun `readiness becomes ready when provider channel ai knowledge feedback and safety are prepared`() {
             foundation.upsertProviderCapability(
                 guildId = 802,

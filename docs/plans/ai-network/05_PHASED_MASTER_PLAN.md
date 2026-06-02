@@ -274,7 +274,7 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 대시보드는 projection 만 읽는다. — `dashboard()` 가 아직 overview refresh 경로를 호출할 수 있어 완전 충족 전이다. 다음 slice 에서 read-only projection 조회로 고정한다.
+- [x] 대시보드는 projection 만 읽는다. — `/dashboard` 기본 경로는 기존 overview projection 을 read-only 로 사용하고, 수동 갱신은 `refreshOverview=true` 로 분리한다.
 - [x] 일반 유저/Provider/관리자에게 보이는 정보가 다르다. — `AiNetworkDashboardControllerTest` 가 public/provider/admin audience 별 Provider 표시·상태·용량 노출 차이를 검증한다.
 - [x] Provider 개인 정보와 민감 상태는 노출하지 않는다. — `AiNetworkDashboardControllerTest` 가 public dashboard/provider/overload/multi-response load 에서 provider id·capacity·민감 risk 를 마스킹한다.
 - [x] stale projection 은 freshness 를 표시한다. — `AiNetworkDashboardControllerTest` 가 `refresh=false` stale projection 의 `freshnessStatus=stale`, `degradedReason=projection_stale` 를 검증한다.

@@ -426,7 +426,7 @@ class AiNetworkDashboardControllerTest
             assertEquals("critical", adminProvider.overloadRisk)
             assertEquals(4, adminProvider.maxConcurrency)
 
-            val publicDashboard = controller.dashboard(100, audience = "public")
+            val publicDashboard = controller.dashboard(100, audience = "public", refreshOverview = true)
             val publicAlert = publicDashboard.overload.alerts.single()
             assertNull(publicAlert.providerUserId)
             assertEquals("Provider 1", publicAlert.providerLabel)
@@ -438,7 +438,7 @@ class AiNetworkDashboardControllerTest
             assertNull(publicProviderLoad.providerUserId)
             assertTrue(publicProviderLoad.providerLabel.startsWith("Provider "))
 
-            val adminDashboard = controller.dashboard(100, audience = "admin")
+            val adminDashboard = controller.dashboard(100, audience = "admin", refreshOverview = true)
             val adminAlert = adminDashboard.overload.alerts.single()
             assertEquals(300, adminAlert.providerUserId)
             assertEquals("provider:300", adminAlert.providerLabel)
@@ -507,7 +507,7 @@ class AiNetworkDashboardControllerTest
 
         @Test
         fun `dashboard next actions guide missing foundation steps`() {
-            val dashboard = controller.dashboard(501)
+            val dashboard = controller.dashboard(501, refreshOverview = true)
             val actionTypes = dashboard.nextActions.map { it.actionType }
 
             assertEquals("connect_provider", dashboard.nextActions.first().actionType)
@@ -549,7 +549,7 @@ class AiNetworkDashboardControllerTest
                 ),
             )
 
-            val dashboard = controller.dashboard(503)
+            val dashboard = controller.dashboard(503, refreshOverview = true)
             val changeApproval = controller.changeApproval(503)
 
             assertEquals("needs_review", changeApproval.status)
@@ -575,7 +575,7 @@ class AiNetworkDashboardControllerTest
                 dailyLimit = 30,
             )
 
-            val dashboard = controller.dashboard(504)
+            val dashboard = controller.dashboard(504, refreshOverview = true)
 
             assertEquals(2, dashboard.growthPlan.currentLevel)
             assertTrue(dashboard.growthPlan.actions.any { it.key == "add_second_provider" })
@@ -599,7 +599,7 @@ class AiNetworkDashboardControllerTest
                 overloadRisk = "critical",
             )
 
-            val dashboard = controller.dashboard(502, responseMode = "deep", requestedCandidates = 2)
+            val dashboard = controller.dashboard(502, responseMode = "deep", requestedCandidates = 2, refreshOverview = true)
 
             assertEquals("protect_providers", dashboard.nextActions.first().actionType)
             assertEquals("critical", dashboard.nextActions.first().severity)
@@ -668,7 +668,14 @@ class AiNetworkDashboardControllerTest
                 reason = "좋은 요약",
             )
 
-            val dashboard = controller.dashboard(130, audience = "public", responseMode = "deep", requestedCandidates = 2)
+            val dashboard =
+                controller.dashboard(
+                    130,
+                    audience = "public",
+                    responseMode = "deep",
+                    requestedCandidates = 2,
+                    refreshOverview = true,
+                )
 
             assertEquals("network_overview_projection", dashboard.metadata.source)
             assertEquals(dashboard.overview.refreshedAt, dashboard.metadata.generatedAt)

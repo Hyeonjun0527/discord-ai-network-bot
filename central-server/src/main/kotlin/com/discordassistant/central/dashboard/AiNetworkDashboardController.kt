@@ -61,9 +61,10 @@ class AiNetworkDashboardController(
         @RequestParam(defaultValue = "public") audience: String = "public",
         @RequestParam(defaultValue = "balanced") responseMode: String = "balanced",
         @RequestParam(defaultValue = "1") requestedCandidates: Int = 1,
+        @RequestParam(defaultValue = "false") refreshOverview: Boolean = false,
     ): AiNetworkDashboardResponse {
         featureGate.requireDashboardEnabled()
-        val overview = overview(guildId)
+        val overview = overview(guildId, refresh = refreshOverview)
         val channels = channels(guildId)
         val providers = providers(guildId, audience)
         val modelMap = modelMap(guildId)
@@ -79,6 +80,7 @@ class AiNetworkDashboardController(
         val executionPlan = providerSafety.executionPlan(guildId, responseMode, requestedCandidates)
         val visibility = DashboardAudience.from(audience)
         val featureSnapshot = featureGate.snapshot()
+        val overviewProjection = foundation.currentOverview(guildId) ?: foundation.emptyOverviewProjection(guildId)
         val multiResponseOperations =
             MultiResponseOperationsDashboardResponse.from(
                 if (featureSnapshot.multiResponseDashboard) {
@@ -88,7 +90,7 @@ class AiNetworkDashboardController(
                 },
                 visibility,
             )
-        val growthPlan = growth.growthPlan(guildId)
+        val growthPlan = growth.growthPlanFromOverview(guildId, overviewProjection)
         val growthTimeline = growth.timelineCards(guildId).take(5)
         val readiness = readiness(overview, channels, providers, modelMap, knowledgeSpaces, quality, rawOverload)
         return AiNetworkDashboardResponse(
@@ -250,12 +252,17 @@ class AiNetworkDashboardController(
         @RequestParam(defaultValue = "true") refresh: Boolean = true,
     ): AiNetworkOverviewResponse {
         featureGate.requireDashboardEnabled()
-        val profile = foundation.ensureNetworkProfile(guildId)
+        val profile =
+            if (refresh) {
+                foundation.ensureNetworkProfile(guildId)
+            } else {
+                foundation.currentNetworkProfile(guildId) ?: foundation.defaultNetworkProfile(guildId)
+            }
         val overview =
             if (refresh) {
                 foundation.refreshOverview(guildId)
             } else {
-                foundation.currentOverview(guildId) ?: foundation.refreshOverview(guildId)
+                foundation.currentOverview(guildId) ?: foundation.emptyOverviewProjection(guildId)
             }
         return AiNetworkOverviewResponse.from(
             guildId = profile.guildId,

@@ -174,6 +174,13 @@ class AiNetworkGrowthService(
     @Transactional
     fun growthPlan(guildId: Long): AiNetworkGrowthPlan {
         val overview = foundation.refreshOverview(guildId)
+        return growthPlanFromOverview(guildId, overview)
+    }
+
+    fun growthPlanFromOverview(
+        guildId: Long,
+        overview: NetworkOverviewProjectionEntity,
+    ): AiNetworkGrowthPlan {
         val milestones = levelMilestones(overview)
         val next = milestones.firstOrNull { !it.achieved }
         val actions = growthActions(overview, milestones).sortedWith(compareBy<AiNetworkGrowthAction> { it.priority }.thenBy { it.key })

@@ -50,6 +50,19 @@ class AiNetworkFoundationService(
             )
     }
 
+    @Transactional(readOnly = true)
+    fun currentNetworkProfile(guildId: Long): AiNetworkProfileEntity? = networkProfiles.findByGuildId(guildId)
+
+    fun defaultNetworkProfile(guildId: Long): AiNetworkProfileEntity =
+        AiNetworkProfileEntity(
+            guildId = guildId,
+            displayName = "냥시스턴트 네트워크",
+            tagline = "함께 만드는 AI 네트워크",
+            description = "여러 사용자의 로컬 AI를 안전하게 연결해 디스코드에서 바로 질문하고 답변받는 네트워크입니다.",
+            defaultSafetyNotice = "민감정보(비밀번호·API 키·개인정보)는 입력하지 마세요.",
+            networkLevel = 1,
+        )
+
     @Transactional
     fun upsertProviderCapability(
         guildId: Long,
@@ -105,6 +118,14 @@ class AiNetworkFoundationService(
 
     @Transactional(readOnly = true)
     fun currentOverview(guildId: Long): NetworkOverviewProjectionEntity? = overviewProjections.findByGuildId(guildId)
+
+    fun emptyOverviewProjection(guildId: Long): NetworkOverviewProjectionEntity =
+        NetworkOverviewProjectionEntity(
+            guildId = guildId,
+            healthStatus = "projection_missing",
+            staleAfter = Instant.EPOCH,
+            refreshedAt = Instant.EPOCH,
+        )
 
     fun isOverviewStale(overview: NetworkOverviewProjectionEntity): Boolean = overview.staleAfter?.isAfter(Instant.now(clock)) != true
 

@@ -349,21 +349,21 @@ Channel AI 설정이 깨져도 기본 질문은 가능해야 한다.
 
 ### 반드시 수정
 
-- [ ] `ChannelAi` 책임을 더 작게 제한한다.
-- [ ] snapshot/reference 정책을 명문화한다.
-- [ ] AI 헌법/RAG/사용자 질문의 prompt 우선순위를 명문화한다.
-- [ ] system prompt 저장/노출 정책을 명문화한다.
-- [ ] Provider quality score 가 Provider 보호를 넘지 못한다는 invariant 를 라우터 설계에 넣는다.
-- [ ] RAG 는 별도 보안 게이트 전까지 구현 후순위로 둔다.
-- [ ] projection stale/freshness 정책을 넣는다.
-- [ ] 기존 `channel_ai_profile` 마이그레이션 전략을 구체화한다.
+- [x] `ChannelAi` 책임을 더 작게 제한한다. — 표시 프로필만 `ChannelAi`, 행동/승인/라우팅/RAG/프리셋은 별도 모델로 분리했다.
+- [x] snapshot/reference 정책을 명문화한다. — behavior/preset import 는 snapshot, KnowledgeSpace/Provider capability 는 reference 로 유지한다.
+- [x] AI 헌법/RAG/사용자 질문의 prompt 우선순위를 명문화한다. — 안전/Provider 보호 → Channel AI 헌법 → RAG → 사용자 질문 순서로 renderer 와 테스트를 고정했다.
+- [x] system prompt 저장/노출 정책을 명문화한다. — 렌더링된 system prompt 장기 저장 금지, behavior 구성 필드 저장, 미리보기/관리자 경로 외 노출 금지로 결정했다.
+- [x] Provider quality score 가 Provider 보호를 넘지 못한다는 invariant 를 라우터 설계에 넣는다. — Provider safety filter 가 품질/모델 선택보다 먼저 실행되고, shadow quality 는 live routing 을 즉시 바꾸지 않는다.
+- [x] RAG 는 별도 보안 게이트 전까지 구현 후순위로 둔다. — RAG runtime 은 opt-in 단계로 두고 SSRF/sensitive scan/token budget/fallback 테스트를 선행했다.
+- [x] projection stale/freshness 정책을 넣는다. — `network_overview_projection.staleAfter` 와 dashboard degraded/freshness 표시 테스트를 추가했다.
+- [x] 기존 `channel_ai_profile` 마이그레이션 전략을 구체화한다. — V7 backfill/dual-read/legacy fallback/old table 보존 전략을 적용했다.
 
 ### 가능하면 수정
 
-- [ ] `AiNetworkLevel` 은 초기에 계산형 projection 으로만 둔다.
-- [ ] `AiPreset` 1차 구현은 behavior snapshot 만 지원하되, 장기 설계는 웹 게시/가져오기/수정/삭제/추천/신고까지 포함한다.
-- [ ] 대시보드 1차는 Discord 패널 + 읽기 API 만 만든다.
-- [ ] 웹 대시보드는 인증/권한 설계 이후 시작한다.
+- [x] `AiNetworkLevel` 은 초기에 계산형 projection 으로만 둔다. — `AiNetworkFoundationService.refreshOverview` 가 capability 기반으로 계산하고 growth event 는 결과만 기록한다.
+- [x] `AiPreset` 1차 구현은 behavior snapshot 만 지원하되, 장기 설계는 웹 게시/가져오기/수정/삭제/추천/신고까지 포함한다. — Preset Registry API/test 가 publish/import/revision/like/report/remove/unlist 를 검증한다.
+- [x] 대시보드 1차는 Discord 패널 + 읽기 API 만 만든다. — AI Network dashboard 는 projection read API 중심이며 write 는 별도 admin-protected endpoints 로 분리했다.
+- [x] 웹 대시보드는 인증/권한 설계 이후 시작한다. — admin audience/write API 는 `AiNetworkApiSecurityFilter` 의 dashboard admin token 없이는 차단된다.
 
 ## 12. 최종 판정
 

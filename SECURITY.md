@@ -74,6 +74,9 @@
 - **코드 서명**: Windows(코드서명), macOS(Developer ID 서명 + notarization).
 - **빌드 출처**: `gh attestation verify <파일> --repo Hyeonjun0527/discord-assistant`.
 - **SBOM**: 릴리스의 `provider-agent-sbom.spdx.json`.
+- **수동 검증 없이**: 패키지 매니저(`brew`/`winget`)는 해시를 자동 검증한다
+  ([docs/PACKAGE_MANAGERS.md](docs/PACKAGE_MANAGERS.md)). 코드서명/공증 설정은
+  [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md).
 
 자세한 안전 설치 기준은 [README 의 "안전한 설치 기준"](README.md#안전한-설치-기준)을 참고하세요.
 

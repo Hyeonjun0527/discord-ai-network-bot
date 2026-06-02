@@ -116,6 +116,7 @@ data class AiRequestInput(
     val isAdmin: Boolean = false,
     val preferredModel: String? = null,
     val responseMode: String = "balanced",
+    val webSearch: Boolean = false,
 )
 
 /** 오케스트레이션 결과. */
@@ -145,6 +146,7 @@ class RequestOrchestrator(
     private val quota: QuotaChecker = UNLIMITED_QUOTA,
     private val idempotency: IdempotencyGuard = IdempotencyGuard(),
     private val providerSafety: ProviderSafetyChecker = ALLOW_ALL_PROVIDER_SAFETY,
+    private val webSearch: WebSearchAugmenter = NoWebSearch,
 ) {
     private val log = LoggerFactory.getLogger(RequestOrchestrator::class.java)
 
@@ -200,6 +202,11 @@ class RequestOrchestrator(
                 input.preferredModel,
             )
 
+        // 2.5) 웹검색 증강(opt-in): 로컬 모델이 웹을 못 보므로 서버가 검색해 프롬프트에 주입한다.
+        //      비활성/미설정/실패면 원본 그대로(루프 밖에서 1회만 — fallback 시 재검색 안 함).
+        val effectivePrompt =
+            if (input.webSearch && webSearch.isEnabled()) webSearch.augment(input.prompt).prompt else input.prompt
+
         // 3) 후보 구성 + 필터 + 선택 + 전송(최대 2회: 원 + fallback 1회)
         val excluded = mutableSetOf<Long>()
         var lastReason = NO_PROVIDER_ACTIONABLE_REASON
@@ -247,7 +254,7 @@ class RequestOrchestrator(
                 val result =
                     session
                         .sendInfer(
-                            prompt = input.prompt,
+                            prompt = effectivePrompt,
                             model = input.preferredModel,
                             options = responseModeOptions(input.responseMode),
                         ).get()

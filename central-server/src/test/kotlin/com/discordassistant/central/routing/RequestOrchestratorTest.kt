@@ -115,6 +115,51 @@ class RequestOrchestratorTest {
         assertEquals(1, recorder.count)
     }
 
+    private val fakeWebEnabled =
+        object : WebSearchAugmenter {
+            override fun isEnabled() = true
+
+            override fun augment(prompt: String) = WebAugmentation("[웹] $prompt", listOf("https://e.com"))
+        }
+
+    @Test
+    fun `웹검색 활성 + webSearch=true → 프롬프트가 증강되어 전송`() {
+        val reg = newRegistry()
+        val s = register(reg, 1, "ok")
+        val orch =
+            RequestOrchestrator(
+                reg,
+                fakePolicy,
+                RequestWeigher(),
+                ProviderFilterPipeline(),
+                ProviderRouter(),
+                recorder,
+                fakeProfiles,
+                webSearch = fakeWebEnabled,
+            )
+        orch.handle(input.copy(webSearch = true))
+        assertEquals("[웹] 안녕", (s.connection as EchoConnection).lastInfer?.prompt)
+    }
+
+    @Test
+    fun `webSearch=false → 원본 프롬프트 전송(기본)`() {
+        val reg = newRegistry()
+        val s = register(reg, 1, "ok")
+        val orch =
+            RequestOrchestrator(
+                reg,
+                fakePolicy,
+                RequestWeigher(),
+                ProviderFilterPipeline(),
+                ProviderRouter(),
+                recorder,
+                fakeProfiles,
+                webSearch = fakeWebEnabled,
+            )
+        orch.handle(input) // webSearch 기본 false
+        assertEquals("안녕", (s.connection as EchoConnection).lastInfer?.prompt)
+    }
+
     @Test
     fun `차단 사용자 → REJECTED`() {
         val reg = newRegistry()

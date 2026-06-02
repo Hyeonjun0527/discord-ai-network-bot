@@ -24,7 +24,8 @@
     "options": {
       "temperature": 0.3
     },
-    "stream": false
+    "stream": false,
+    "task": "text"
   },
   "result": {
     "type": "result",

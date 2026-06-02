@@ -12,7 +12,7 @@ import signal
 from . import sysinfo
 from .config import AgentConfig
 from .connection import AgentConnection
-from .constants import MAX_RESPONSE_CHARS, ErrorCode
+from .constants import IMAGE_CHUNK_CHARS, MAX_RESPONSE_CHARS, ErrorCode
 from .ollama import OllamaClient, OllamaError
 from .protocol import (
     CancelFrame,
@@ -102,7 +102,16 @@ class ProviderAgent:
             # 서버가 모델을 지정하지 않으면 내가 제공하는 첫 모델로 처리한다.
             model = req.model or (self._models[0] if self._models else None)
             try:
-                if req.stream:
+                if req.task == "image":
+                    # 로컬 SD 이미지 생성(SD Phase 2). 미지원이면 에러.
+                    if self._sd is None or not self._image_ready:
+                        await self._safe_send(
+                            conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message="이미지 생성을 지원하지 않는 프로바이더입니다")
+                        )
+                    else:
+                        await self._handle_image(conn, req)
+                        self._processed += 1
+                elif req.stream:
                     # 스트리밍(#142): 부분 텍스트를 ChunkFrame 으로 점진 전송 후 done 표시.
                     # 무거운/폭주 응답 보호: 누적 길이가 MAX_RESPONSE_CHARS 를 넘으면 조기 종료.
                     emitted = 0
@@ -128,6 +137,21 @@ class ProviderAgent:
                 raise
             finally:
                 self._inflight -= 1
+
+    async def _handle_image(self, conn: AgentConnection, req: InferRequest) -> None:
+        """로컬 SD 로 이미지를 생성해 base64 PNG 를 ChunkFrame 으로 분할 전송(SD Phase 2)."""
+        from .sd import SDError
+
+        assert self._sd is not None  # 호출 전 _image_ready 로 가드됨
+        try:
+            b64 = await self._sd.txt2img(req.prompt)
+        except SDError as exc:
+            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
+            return
+        # 1MB 프레임 한계 때문에 base64 를 조각내어 보낸다. 마지막에 done=True(빈 delta).
+        for i in range(0, len(b64), IMAGE_CHUNK_CHARS):
+            await self._safe_send(conn, ChunkFrame(req.request_id, delta=b64[i : i + IMAGE_CHUNK_CHARS], done=False))
+        await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
 
     async def _safe_send(self, conn: AgentConnection, frame: Frame) -> None:
         try:

@@ -107,3 +107,57 @@ def test_image_disabled_by_default():
     assert cfg.enable_image is False
     agent_cfg_default_sd = cfg.sd_url
     assert agent_cfg_default_sd.startswith("http://127.0.0.1")
+
+
+@pytest.mark.asyncio
+async def test_handle_image_sends_chunks_then_done(monkeypatch):
+    """task=image 면 SD 생성 base64 를 ChunkFrame 으로 분할 전송 후 done."""
+    monkeypatch.setattr("provider_agent.sysinfo.should_pause", lambda *a, **k: (False, ""))
+    from test_agent import FakeConn
+
+    from provider_agent.agent import ProviderAgent
+    from provider_agent.constants import IMAGE_CHUNK_CHARS
+    from provider_agent.protocol import ChunkFrame, InferRequest
+
+    big_b64 = "Q" * (IMAGE_CHUNK_CHARS + 100)  # 2조각 나야 함
+
+    class FakeSD:
+        async def health(self):
+            return True
+
+        async def txt2img(self, prompt, options=None):
+            return big_b64
+
+    agent = ProviderAgent(AgentConfig(token="T", enable_image=True), sd=FakeSD())
+    agent._image_ready = True
+    conn = FakeConn()
+    await agent.handle_infer(conn, InferRequest(request_id="img1", prompt="고양이", task="image"))  # type: ignore[arg-type]
+    chunks = [f for f in conn.sent if isinstance(f, ChunkFrame)]
+    assert len(chunks) == 3  # 2 data + 1 done
+    assert "".join(c.delta for c in chunks if not c.done) == big_b64
+    assert chunks[-1].done is True
+    assert agent.processed == 1
+
+
+@pytest.mark.asyncio
+async def test_handle_image_unsupported_errors(monkeypatch):
+    monkeypatch.setattr("provider_agent.sysinfo.should_pause", lambda *a, **k: (False, ""))
+    from test_agent import FakeConn
+
+    from provider_agent.agent import ProviderAgent
+    from provider_agent.protocol import InferError, InferRequest
+
+    agent = ProviderAgent(AgentConfig(token="T"))  # enable_image=False → SD 없음
+    conn = FakeConn()
+    await agent.handle_infer(conn, InferRequest(request_id="img1", prompt="x", task="image"))  # type: ignore[arg-type]
+    assert isinstance(conn.sent[0], InferError)
+
+
+def test_infer_request_task_roundtrip():
+    from provider_agent.protocol import InferRequest, dumps_frame, loads_frame
+    f = InferRequest(request_id="r", prompt="p", task="image")
+    assert f.to_dict()["task"] == "image"
+    f2 = loads_frame(dumps_frame(f))
+    assert f2.task == "image"
+    # 기본값 text
+    assert loads_frame('{"type":"infer","requestId":"r"}').task == "text"

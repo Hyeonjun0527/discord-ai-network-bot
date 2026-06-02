@@ -29,6 +29,7 @@ import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.ProviderHelloFrame
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -1105,6 +1106,75 @@ class MultiResponseServiceTest
             assertEquals("ready", run.ragContextStatus)
             assertNotNull(run.ragContextSourceIds)
             assertEquals(1, run.ragContextSourceIds!!.split(",").size)
+            assertEquals(1, candidates.findByRunId(run.id).size)
+        }
+
+        @Test
+        fun `multi response excludes deleted knowledge sources from rag context snapshot`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 41,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            val ingestion =
+                KnowledgeIngestionService(
+                    spaces = knowledgeSpaces,
+                    sources = knowledgeSources,
+                    clock = fixedClock,
+                )
+            val search = KnowledgeSearchService(knowledgeSources, knowledgeSpaces)
+            val ragController =
+                MultiResponseController(
+                    MultiResponseService(
+                        policies = policies,
+                        runs = runs,
+                        candidates = candidates,
+                        syntheses = syntheses,
+                        providerCapabilities = providerCapabilities,
+                        clock = fixedClock,
+                        knowledgeSearch = search,
+                    ),
+                )
+            val space = ingestion.createSpace(100, 208, null, "삭제 지식", 77, null, null)
+            val source =
+                ingestion.addSource(
+                    guildId = 100,
+                    spaceId = space.id,
+                    sourceType = "link",
+                    title = "Kotlin Spring 운영 가이드",
+                    sourceUri = "https://example.com/deleted-kotlin-spring.md",
+                    contentPreview = "삭제 예정",
+                    addedBy = 77,
+                )
+            ingestion.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
+            val deleted = knowledgeSources.findByKnowledgeSpaceIdAndId(space.id, source.id)!!
+            deleted.status = "deleted_outdated"
+            knowledgeSources.save(deleted)
+            ragController.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 208, mode = "compare", maxCandidates = 2))
+
+            val started =
+                ragController.startRun(
+                    100,
+                    StartMultiResponseRunRequest(
+                        channelId = 208,
+                        requestId = "req-rag-deleted",
+                        promptPreview = "Kotlin Spring 설정",
+                        responseMode = "deep",
+                    ),
+                )
+
+            assertEquals("running", started["status"])
+            assertEquals("fallback:no_indexed_knowledge_match", started["ragContextStatus"])
+            val run = runs.findById(started["id"] as Long).get()
+            assertNull(run.ragContextSourceIds)
+            assertEquals(0, run.ragContextChars)
             assertEquals(1, candidates.findByRunId(run.id).size)
         }
 

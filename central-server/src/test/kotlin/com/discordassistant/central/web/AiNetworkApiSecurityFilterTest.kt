@@ -25,6 +25,17 @@ class AiNetworkApiSecurityFilterTest
             mvc
                 .perform(get("/api/ai-network/presets/catalog"))
                 .andExpect(status().isOk)
+
+            val readiness =
+                mvc
+                    .perform(get("/api/ai-network/presets/web-readiness"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+
+            assertTrue(readiness.contains("preview_import"))
+            assertTrue(readiness.contains("requiresAdminToken"))
         }
 
         @Test

@@ -179,6 +179,29 @@ function renderFacets(facets) {
   $("facets").innerHTML = buttons.length ? buttons.join("") : `<span class="badge">아직 집계된 카테고리/태그가 없습니다.</span>`;
 }
 
+function renderWebReadiness(readiness) {
+  $("webReadinessMessage").textContent = readiness?.nextAction || "목록은 바로 볼 수 있고, 가져오기는 관리자 토큰으로 미리보기 후 진행합니다.";
+  const capabilities = readiness?.capabilities || [];
+  $("webReadiness").innerHTML = capabilities.length
+    ? capabilities.map((capability) => `
+      <div class="readiness-card">
+        <strong>${esc(capability.label)}</strong>
+        <span>${capability.requiresAdminToken ? "관리자 토큰 필요" : "바로 사용 가능"}</span>
+      </div>
+    `).join("")
+    : `<span class="badge">웹 프리셋 기능 상태를 불러오지 못했습니다.</span>`;
+}
+
+async function refreshWebReadiness() {
+  try {
+    const readiness = await json("/api/ai-network/presets/web-readiness");
+    renderWebReadiness(readiness);
+  } catch (e) {
+    $("webReadinessMessage").textContent = `프리셋 웹 기능 상태 확인 실패: ${e.message}`;
+    $("webReadiness").innerHTML = `<span class="badge">목록 확인은 계속 시도할 수 있습니다.</span>`;
+  }
+}
+
 async function refreshDiscovery() {
   try {
     const [recommended, facets] = await Promise.all([
@@ -527,6 +550,6 @@ $("facets").addEventListener("click", (event) => {
 $("adminToken").value = sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
 updateAdminTokenStatus();
 const initialPresetLocator = new URLSearchParams(window.location.search).get("preset");
-Promise.all([refreshCatalog(), refreshDiscovery()]).then(() => {
+Promise.all([refreshWebReadiness(), refreshCatalog(), refreshDiscovery()]).then(() => {
   if (initialPresetLocator) previewPreset(initialPresetLocator);
 });

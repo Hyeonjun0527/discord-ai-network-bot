@@ -57,6 +57,24 @@ class PresetRegistryController(
     @GetMapping("/catalog/facets")
     fun catalogFacets(): Map<String, Any?> = mapOf("facets" to registry.catalogFacets())
 
+    @GetMapping("/web-readiness")
+    fun webReadiness(): Map<String, Any?> =
+        mapOf(
+            "status" to "ready",
+            "capabilities" to
+                listOf(
+                    PresetWebCapability("browse", "공개 프리셋 목록 확인", requiresAdminToken = false),
+                    PresetWebCapability("detail", "프리셋 상세/공유 링크 확인", requiresAdminToken = false),
+                    PresetWebCapability("recommend", "추천 프리셋과 빠른 탐색", requiresAdminToken = false),
+                    PresetWebCapability("preview_import", "서버·채널 충돌 미리보기", requiresAdminToken = true),
+                    PresetWebCapability("import", "현재 채널 AI로 가져오기", requiresAdminToken = true),
+                    PresetWebCapability("like", "따봉 추천/추천 취소", requiresAdminToken = false),
+                    PresetWebCapability("report", "부적절한 프리셋 신고", requiresAdminToken = false),
+                ),
+            "adminTokenHeader" to "X-Dashboard-Admin-Token",
+            "nextAction" to "목록은 바로 볼 수 있고, 가져오기는 관리자 토큰을 입력한 뒤 미리보기부터 진행하세요.",
+        )
+
     @GetMapping("/moderation/summary")
     fun moderationSummary(): Map<String, Any?> = mapOf("summary" to registry.moderationSummary())
 
@@ -336,6 +354,12 @@ data class UpdatePublishedPresetRequest(
     val title: String? = null,
     val description: String? = null,
     val behavior: PresetBehaviorInput? = null,
+)
+
+data class PresetWebCapability(
+    val key: String,
+    val label: String,
+    val requiresAdminToken: Boolean,
 )
 
 data class ImportPresetRequest(

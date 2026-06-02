@@ -1179,6 +1179,59 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `multi response continues provider fanout when rag context planning fails`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 42,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            val failingSearch =
+                KnowledgeSearchService(
+                    sources = knowledgeSources,
+                    spaces = knowledgeSpaces,
+                    featureGate = AiNetworkFeatureGate(ragEnabled = false),
+                )
+            val ragController =
+                MultiResponseController(
+                    MultiResponseService(
+                        policies = policies,
+                        runs = runs,
+                        candidates = candidates,
+                        syntheses = syntheses,
+                        providerCapabilities = providerCapabilities,
+                        clock = fixedClock,
+                        knowledgeSearch = failingSearch,
+                    ),
+                )
+            ragController.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 209, mode = "compare", maxCandidates = 2))
+
+            val started =
+                ragController.startRun(
+                    100,
+                    StartMultiResponseRunRequest(
+                        channelId = 209,
+                        requestId = "req-rag-failure",
+                        promptPreview = "Kotlin Spring 설정",
+                        responseMode = "deep",
+                    ),
+                )
+
+            assertEquals("running", started["status"])
+            assertEquals("fallback:IllegalStateException", started["ragContextStatus"])
+            val run = runs.findById(started["id"] as Long).get()
+            assertNull(run.ragContextSourceIds)
+            assertEquals(0, run.ragContextChars)
+            assertEquals(1, candidates.findByRunId(run.id).size)
+        }
+
+        @Test
         fun `multi response uses provider safety plan to degrade fanout before selecting candidates`() {
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(

@@ -402,6 +402,8 @@ data class MultiResponseOperationsDashboardResponse(
     val ragFallbackRunCount: Int,
     val blockedSensitiveRunCount: Int,
     val noProviderRunCount: Int,
+    val providerProtectionBlockedCount: Int,
+    val recentProviderProtectionReasons: List<String>,
     val riskCodes: List<String>,
     val nextActions: List<String>,
     val providerLoads: List<ProviderFanoutLoadDashboardResponse>,
@@ -429,6 +431,8 @@ data class MultiResponseOperationsDashboardResponse(
                 ragFallbackRunCount = summary.ragFallbackRunCount,
                 blockedSensitiveRunCount = summary.blockedSensitiveRunCount,
                 noProviderRunCount = summary.noProviderRunCount,
+                providerProtectionBlockedCount = summary.providerProtectionBlockedCount,
+                recentProviderProtectionReasons = summary.recentProviderProtectionReasons,
                 riskCodes = summary.riskCodes,
                 nextActions = summary.nextActions,
                 providerLoads =

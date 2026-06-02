@@ -1093,6 +1093,8 @@ function renderMultiOps(summary, runs = [], decision = {}, features = {}, recomm
     ["채택률", decision.adoptionRate ?? summary.decisionSummary?.adoptionRate ?? 0],
     ["평균 품질", decision.averageQualityScore ?? summary.decisionSummary?.averageQualityScore ?? 0],
     ["fallback", `${summary.fallbackRunCount ?? 0}건`],
+    ["Provider 보호 차단", `${summary.providerProtectionBlockedCount ?? 0}건`],
+    ["최근 보호 사유", (summary.recentProviderProtectionReasons || []).join(" / ") || "없음"],
     ["RAG 결합", features.multiResponseRag ? "사용 가능" : "비활성/차단"],
     ["위험 코드", (summary.riskCodes || []).join(", ") || "없음"],
   ], "다중응답 운영 데이터 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
@@ -1142,6 +1144,7 @@ async function refreshMultiOps() {
       `기능 플래그: multi=${featureState(features?.multiResponse)} · dashboard=${featureState(features?.multiResponseDashboard)} · synthesis=${featureState(features?.multiResponseSynthesis)} · rag=${featureState(features?.multiResponseRag)} · maxFanout=${features?.multiResponseMaxFanout ?? "?"}`,
       `최근 실행: ${runs?.length || 0}건 · 채택률: ${decision?.adoptionRate ?? summary.decisionSummary?.adoptionRate ?? 0}`,
       `추천 fanout: ${recommendation?.status || "unknown"} · 후보 ${recommendation?.recommendedCandidateCount ?? 0}/${recommendation?.maxSafeCandidates ?? 0}`,
+      `Provider 보호 차단: ${summary.providerProtectionBlockedCount ?? 0}건`,
       `후보 상태: accepted=${decision?.acceptedCandidateCount ?? 0} · rejected=${decision?.rejectedCandidateCount ?? 0} · timeout=${decision?.timeoutCandidateCount ?? 0}`,
       "",
       "[다음 액션]",

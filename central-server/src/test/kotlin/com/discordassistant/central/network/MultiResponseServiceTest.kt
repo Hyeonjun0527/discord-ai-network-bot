@@ -3,6 +3,7 @@ package com.discordassistant.central.network
 import com.discordassistant.central.dashboard.AdoptCandidateRequest
 import com.discordassistant.central.dashboard.CompleteBestMultiResponseRunRequest
 import com.discordassistant.central.dashboard.MultiResponseController
+import com.discordassistant.central.dashboard.MultiResponseOperationsDashboardResponse
 import com.discordassistant.central.dashboard.PseudoStreamPlanRequest
 import com.discordassistant.central.dashboard.RecordCandidateRequest
 import com.discordassistant.central.dashboard.SaveMultiResponsePolicyRequest
@@ -1058,9 +1059,15 @@ class MultiResponseServiceTest
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 203, mode = "compare", maxCandidates = 2))
 
             val started = controller.startRun(100, StartMultiResponseRunRequest(channelId = 203, requestId = "req-critical"))
+            val summary = service.operationsSummary(100, channelId = 203)
+            val rawApiSummary = controller.operationsSummary(100, channelId = 203)["summary"]
+            val apiSummary = rawApiSummary as MultiResponseOperationsDashboardResponse
 
             assertEquals("no_provider", started["status"])
             assertEquals(0, started["candidateCount"])
+            assertEquals(1, summary.providerProtectionBlockedCount)
+            assertEquals(1, apiSummary.providerProtectionBlockedCount)
+            assertTrue(summary.riskCodes.contains("provider_protection_blocked"))
         }
 
         @Test

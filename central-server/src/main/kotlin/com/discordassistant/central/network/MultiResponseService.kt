@@ -657,6 +657,16 @@ class MultiResponseService(
         val ragFallbackCount = recentRuns.count { it.ragContextStatus?.startsWith("fallback") == true }
         val blockedSensitiveCount = recentRuns.count { it.status.equals("blocked_sensitive", ignoreCase = true) }
         val noProviderCount = recentRuns.count { it.status.equals("no_provider", ignoreCase = true) }
+        val providerProtectionRuns =
+            recentRuns.filter {
+                it.status.equals("no_provider", ignoreCase = true) ||
+                    it.failureReason.isProviderProtectionReason()
+            }
+        val providerProtectionReasons =
+            providerProtectionRuns
+                .mapNotNull { it.failureReason?.trim()?.takeIf { reason -> reason.isNotBlank() } }
+                .distinct()
+                .take(5)
         val riskCodes =
             (
                 decisions.riskCodes +
@@ -666,6 +676,7 @@ class MultiResponseService(
                         "rag_context_fallback".takeIf { ragFallbackCount > 0 },
                         "blocked_sensitive_prompts".takeIf { blockedSensitiveCount > 0 },
                         "no_provider_capacity".takeIf { noProviderCount > 0 },
+                        "provider_protection_blocked".takeIf { providerProtectionRuns.isNotEmpty() },
                     )
             ).distinct()
         val nextActions =
@@ -680,6 +691,9 @@ class MultiResponseService(
                             blockedSensitiveCount > 0
                         },
                         "온라인 Provider, fan-out 참여 태그, 모델 정책을 확인하세요.".takeIf { noProviderCount > 0 },
+                        "Provider 보호로 차단된 요청이 있습니다. 후보 수/깊은 답변/가용 Provider를 점검하세요.".takeIf {
+                            providerProtectionRuns.isNotEmpty()
+                        },
                     )
             ).distinct()
         val status =
@@ -716,6 +730,8 @@ class MultiResponseService(
             ragFallbackRunCount = ragFallbackCount,
             blockedSensitiveRunCount = blockedSensitiveCount,
             noProviderRunCount = noProviderCount,
+            providerProtectionBlockedCount = providerProtectionRuns.size,
+            recentProviderProtectionReasons = providerProtectionReasons,
             riskCodes = riskCodes,
             nextActions = nextActions,
             providerLoads = providerLoads,
@@ -1187,6 +1203,12 @@ class MultiResponseService(
     private fun String.hasSensitiveMaterial(): Boolean =
         KnowledgeSafety.containsSensitiveMaterial(this) || SECRET_PATTERN.containsMatchIn(this)
 
+    private fun String?.isProviderProtectionReason(): Boolean {
+        val text = this?.trim().orEmpty()
+        if (text.isBlank()) return false
+        return PROVIDER_PROTECTION_REASON_PATTERNS.any { it.containsMatchIn(text) }
+    }
+
     private fun sha256(value: String): String =
         MessageDigest
             .getInstance("SHA-256")
@@ -1203,6 +1225,11 @@ class MultiResponseService(
         val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
         val SYNTHESIS_FLAG_SAFE_SELECTION_STRATEGIES =
             setOf("single_route_runtime", "best_successful_candidate", "best_by_heuristic")
+        val PROVIDER_PROTECTION_REASON_PATTERNS =
+            listOf(
+                Regex("(?i)provider protection|provider safety|safe provider|no_provider_capacity"),
+                Regex("Provider 보호|안전 Provider|과부하 Provider"),
+            )
         const val DISCORD_MESSAGE_SAFE_LIMIT = 1_900
         const val PSEUDO_STREAM_EDIT_INTERVAL_MS = 1_200
         val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
@@ -1350,6 +1377,8 @@ data class MultiResponseOperationsSummary(
     val ragFallbackRunCount: Int,
     val blockedSensitiveRunCount: Int,
     val noProviderRunCount: Int,
+    val providerProtectionBlockedCount: Int,
+    val recentProviderProtectionReasons: List<String>,
     val riskCodes: List<String>,
     val nextActions: List<String>,
     val providerLoads: List<ProviderFanoutLoadSummary>,
@@ -1378,6 +1407,8 @@ data class MultiResponseOperationsSummary(
                 ragFallbackRunCount = 0,
                 blockedSensitiveRunCount = 0,
                 noProviderRunCount = 0,
+                providerProtectionBlockedCount = 0,
+                recentProviderProtectionReasons = emptyList(),
                 riskCodes = listOf(reason),
                 nextActions = listOf("다중응답 대시보드가 비활성화되어 운영 통계를 숨겼어요."),
                 providerLoads = emptyList(),

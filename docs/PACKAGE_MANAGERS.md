@@ -21,14 +21,14 @@ CI(`.github/workflows/agent-build.yml`)는 릴리스마다 `provider-agent/packa
 `brew` 는 formula 의 `sha256` 과 실제 다운로드를 대조해 다르면 설치를 거부한다 → 자동 검증.
 
 **1) 한 번만: tap 저장소 만들기**
-- GitHub 에 `Hyeonjun0527/homebrew-tap` 저장소를 만든다(이름 규칙: `homebrew-<탭이름>`).
+- GitHub 에 `yeon-intergation-platform/homebrew-tap` 저장소를 만든다(이름 규칙: `homebrew-<탭이름>`).
 - `Formula/discord-ai-provider-agent.rb` 에 릴리스 자산의 렌더된 formula 를 커밋.
   (자동화하려면 tap 저장소에 푸시 권한이 있는 `HOMEBREW_TAP_TOKEN` 시크릿을 만들고,
   릴리스 후 렌더 자산을 그 저장소로 커밋하는 스텝을 추가.)
 
 **2) 사용자 설치**
 ```bash
-brew tap Hyeonjun0527/tap
+brew tap yeon-intergation-platform/tap
 brew install discord-ai-provider-agent      # 해시 자동 검증, 관리자 불필요
 discord-ai-provider-agent --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
 ```
@@ -53,12 +53,12 @@ Scoop 은 `hash` 를 자동 검증하고 포터블 실행파일을 사용자 홈
 별도 매니페스트 심사 없이 **자기 bucket** 으로 바로 배포 가능 — winget PR 보다 빠름.
 
 **1) 한 번만: bucket 저장소 만들기**
-- GitHub 에 `Hyeonjun0527/scoop-bucket` 저장소를 만들고, 릴리스 자산의 렌더된
+- GitHub 에 `yeon-intergation-platform/scoop-bucket` 저장소를 만들고, 릴리스 자산의 렌더된
   `discord-ai-provider-agent.json` 을 `bucket/` 에 커밋(CI 로 자동화 가능).
 
 **2) 사용자 설치**
 ```powershell
-scoop bucket add nyassistant https://github.com/Hyeonjun0527/scoop-bucket
+scoop bucket add nyassistant https://github.com/yeon-intergation-platform/scoop-bucket
 scoop install discord-ai-provider-agent   # 해시 자동 검증
 ```
 

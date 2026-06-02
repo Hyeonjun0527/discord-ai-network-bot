@@ -77,22 +77,41 @@ object WebSearchPromptBuilder {
 class SearxngWebSearch(
     @param:Value("\${central.search.url:}") private val searchUrl: String,
     @param:Value("\${central.search.max-results:5}") private val maxResults: Int,
+    @param:Value("\${central.search.fetch-content:true}") private val fetchContent: Boolean,
 ) : WebSearchAugmenter {
     private val log = LoggerFactory.getLogger(SearxngWebSearch::class.java)
     private val mapper = ObjectMapper()
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
+    private val fetcher = if (fetchContent) WebContentFetcher() else null
+
+    // 본문 fetch 병렬용 작은 풀(IO 바운드, 소수 동시).
+    private val fetchPool =
+        java.util.concurrent.Executors
+            .newFixedThreadPool(4)
 
     override fun isEnabled() = searchUrl.isNotBlank()
 
     override fun augment(prompt: String): WebAugmentation {
         if (!isEnabled()) return WebAugmentation(prompt, emptyList())
         return try {
-            WebSearchPromptBuilder.build(prompt, search(prompt), maxResults)
+            WebSearchPromptBuilder.build(prompt, enrich(search(prompt)), maxResults)
         } catch (e: Exception) {
             // 검색 실패는 치명적이지 않다 — 증강 없이 원본으로 진행(질문 원문은 로그하지 않음).
             log.warn("웹검색 실패 — 증강 없이 진행: {}", e.javaClass.simpleName)
             WebAugmentation(prompt, emptyList())
         }
+    }
+
+    /** 상위 결과의 본문을 병렬로 가져와 스니펫보다 깊은 컨텍스트로 대체(실패 시 스니펫 유지). */
+    private fun enrich(results: List<WebResult>): List<WebResult> {
+        val f = fetcher ?: return results
+        val futures =
+            results.map { r ->
+                java.util.concurrent.CompletableFuture
+                    .supplyAsync({ r to f.fetchText(r.url) }, fetchPool)
+                    .exceptionally { r to null }
+            }
+        return futures.map { it.join() }.map { (r, text) -> if (!text.isNullOrBlank()) r.copy(snippet = text) else r }
     }
 
     private fun search(query: String): List<WebResult> {

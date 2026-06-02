@@ -175,6 +175,9 @@ class DiscordBot(
                         net.dv8tion.jda.api.interactions.commands.build
                             .OptionData(OptionType.BOOLEAN, "web", "웹 검색으로 최신 정보를 찾아 답변(출처 표시)", false),
                     ),
+                Commands
+                    .slash("imagine", "커뮤니티 로컬 Stable Diffusion 으로 이미지를 생성합니다")
+                    .addOption(OptionType.STRING, "prompt", "만들고 싶은 이미지 설명", true),
                 Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
                 Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
                 Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),
@@ -510,7 +513,7 @@ class DiscordBot(
             private const val DEFAULT_PSEUDO_STREAM_INTERVAL_MS = 1200L
 
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
-            private val PUBLIC_COMMANDS = setOf("ask", "contributions", "community-stats", "welcome")
+            private val PUBLIC_COMMANDS = setOf("ask", "imagine", "contributions", "community-stats", "welcome")
             private const val WEBHOOK_NAME = "discord-ai-channel-profile"
             private const val CHANNEL_PROFILE_EDIT = "channel-profile:edit"
             private const val CHANNEL_PROFILE_AVATAR = "channel-profile:avatar"
@@ -1173,6 +1176,20 @@ class DiscordBot(
             hook: InteractionHook,
             reply: Reply,
         ) {
+            // 이미지 첨부(SD /imagine): 생성된 PNG 를 파일로 붙여 응답.
+            val image = reply.imagePng
+            if (image != null) {
+                hook
+                    .editOriginal(reply.content.ifBlank { "🖼️ 생성된 이미지" })
+                    .setFiles(
+                        net.dv8tion.jda.api.utils.FileUpload
+                            .fromData(image, "image.png"),
+                    ).queue({}, { e ->
+                        log.warn("이미지 첨부 응답 실패: {}", e.message)
+                        hook.editOriginal("⚠️ 이미지를 전송하지 못했어요.").queue({}, {})
+                    })
+                return
+            }
             val snapshots = reply.publicPseudoStreamSnapshots()
             if (snapshots == null) {
                 editOriginalWithFeedback(hook, reply.content, reply)
@@ -1393,6 +1410,7 @@ class DiscordBot(
                         requestedResponseMode = event.getOption("mode")?.asString,
                         webSearch = event.getOption("web")?.asBoolean ?: false,
                     )
+                "imagine" -> commands.imagine(ctx, event.getOption("prompt")?.asString.orEmpty())
                 "models" -> commands.models(ctx)
                 "catalog" -> commands.catalog(ctx)
                 "my-usage" -> commands.myUsage(ctx)

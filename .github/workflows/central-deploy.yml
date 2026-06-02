@@ -92,6 +92,14 @@ jobs:
             echo "SERVER_PORT=${SERVER_PORT}"
             echo "APP_PORT=${APP_PORT}"
           } >> .env
+          # 웹검색(SearXNG) 설정 — JSON 포맷 활성 + 안정적 시크릿(최초 1회만 생성, 이후 유지).
+          # 컨테이너(다른 uid)가 읽어야 하므로 settings 파일은 읽기 가능 권한으로 둔다.
+          mkdir -p searxng
+          if [ ! -f searxng/settings.yml ]; then
+            SX_SECRET=$(openssl rand -hex 32 2>/dev/null || (head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'))
+            printf 'use_default_settings: true\nserver:\n  secret_key: "%s"\n  limiter: false\n  image_proxy: false\nsearch:\n  formats:\n    - html\n    - json\n' "$SX_SECRET" > searxng/settings.yml
+          fi
+          chmod 755 searxng && chmod 644 searxng/settings.yml || true
           retry() {
             name="$1"
             shift

@@ -759,6 +759,44 @@ class CommandServiceTest
         }
 
         @Test
+        fun `ask — 새 채널 AI 미리보기 renderer 와 실제 실행 prompt 가 일치한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 83, guildId = 100)
+            conn.session = s
+            registry.register(s)
+            try {
+                channelAiCustomization.createFromWizard(
+                    guildId = 100,
+                    channelId = 200,
+                    actorUserId = 77,
+                    name = "코드냥",
+                    avatarUrl = null,
+                    job = "개발 질문",
+                    tone = "짧고 명확하게",
+                    answerLength = "short",
+                    constitution = "코드는 검증 방법을 먼저 제안합니다.",
+                    requireApproval = false,
+                )
+                val preview =
+                    channelAiCustomization.promptPreview(
+                        guildId = 100,
+                        channelId = 200,
+                        userQuestion = "Kotlin Spring 설정 알려줘",
+                    )
+
+                val reply = commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘")
+
+                assertEquals(
+                    "echo:${preview.systemPrompt}\n\n${preview.userPrompt}",
+                    reply.content,
+                    "Discord ask runtime must reuse the same Channel AI prompt renderer as preview",
+                )
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
         fun `ask — 채널 지식 컨텍스트가 있으면 안전하게 프롬프트에 합성한다`() {
             val conn = EchoConn()
             val s = ProviderSession(conn, providerId = 80, guildId = 100)

@@ -252,10 +252,29 @@ class DashboardServingTest
 
         @Test
         fun `디렉터리 URL 도 index 로 포워드된다`() {
+            mvc.perform(get("/")).andExpect(status().isOk)
+            mvc.perform(get("/install")).andExpect(status().isOk)
             mvc.perform(get("/dashboard/")).andExpect(status().isOk)
             mvc.perform(get("/dashboard")).andExpect(status().isOk)
             mvc.perform(get("/presets/")).andExpect(status().isOk)
             mvc.perform(get("/presets")).andExpect(status().isOk)
+        }
+
+        @Test
+        fun `설치 홈에서 프리셋 카탈로그와 대시보드로 이동할 수 있다`() {
+            val html =
+                mvc
+                    .perform(get("/install.html"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+
+            assertTrue(html.contains("""href="/presets""""))
+            assertTrue(html.contains("""href="/dashboard""""))
+            assertTrue(html.contains("""id="presetBtn""""))
+            assertTrue(html.contains("""class="cta-secondary""""))
+            assertTrue(html.contains("NYASSISTANT&nbsp;AI&nbsp;NETWORK"))
         }
 
         @Test

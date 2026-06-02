@@ -13,7 +13,7 @@
 | 코드서명(Win/macOS) | OS(자동) | OS가 게시자/위변조 자동 확인 |
 
 CI(`.github/workflows/agent-build.yml`)는 릴리스마다 `provider-agent/packaging/` 의 템플릿을
-실제 `version`·`sha256` 으로 렌더해 릴리스 자산(`discord-ai-provider-agent.rb`,
+실제 `version`·`sha256` 으로 렌더해 릴리스 자산(`discord-ai-agent-network-bot.rb`,
 `*.yaml`)으로 첨부한다.
 
 ## Homebrew (macOS/Linux)
@@ -22,15 +22,15 @@ CI(`.github/workflows/agent-build.yml`)는 릴리스마다 `provider-agent/packa
 
 **1) 한 번만: tap 저장소 만들기**
 - GitHub 에 `yeon-intergation-platform/homebrew-tap` 저장소를 만든다(이름 규칙: `homebrew-<탭이름>`).
-- `Formula/discord-ai-provider-agent.rb` 에 릴리스 자산의 렌더된 formula 를 커밋.
+- `Formula/discord-ai-agent-network-bot.rb` 에 릴리스 자산의 렌더된 formula 를 커밋.
   (자동화하려면 tap 저장소에 푸시 권한이 있는 `HOMEBREW_TAP_TOKEN` 시크릿을 만들고,
   릴리스 후 렌더 자산을 그 저장소로 커밋하는 스텝을 추가.)
 
 **2) 사용자 설치**
 ```bash
 brew tap yeon-intergation-platform/tap
-brew install discord-ai-provider-agent      # 해시 자동 검증, 관리자 불필요
-discord-ai-provider-agent --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
+brew install discord-ai-agent-network-bot      # 해시 자동 검증, 관리자 불필요
+discord-ai-agent-network-bot --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
 ```
 
 ## winget (Windows)
@@ -40,11 +40,11 @@ winget 은 매니페스트의 `InstallerSha256` 으로 자동 검증한다.
 **1) 한 번만: microsoft/winget-pkgs 에 제출**
 - 릴리스 자산의 렌더된 `provider-agent/packaging/winget/*.yaml`(version/installer/locale)을
   `microsoft/winget-pkgs` 에 PR 제출(`wingetcreate submit` 또는 수동 PR).
-- 통과되면 `winget install Hyeonjun0527.DiscordAiProviderAgent` 로 전 세계 배포.
+- 통과되면 `winget install Hyeonjun0527.DiscordAiAgentNetworkBot` 로 전 세계 배포.
 
 **2) 사용자 설치**
 ```powershell
-winget install Hyeonjun0527.DiscordAiProviderAgent   # 해시 자동 검증, 관리자 불필요
+winget install Hyeonjun0527.DiscordAiAgentNetworkBot   # 해시 자동 검증, 관리자 불필요
 ```
 
 ## Scoop (Windows, 가장 가벼운 무료 경로)
@@ -54,12 +54,12 @@ Scoop 은 `hash` 를 자동 검증하고 포터블 실행파일을 사용자 홈
 
 **1) 한 번만: bucket 저장소 만들기**
 - GitHub 에 `yeon-intergation-platform/scoop-bucket` 저장소를 만들고, 릴리스 자산의 렌더된
-  `discord-ai-provider-agent.json` 을 `bucket/` 에 커밋(CI 로 자동화 가능).
+  `discord-ai-agent-network-bot.json` 을 `bucket/` 에 커밋(CI 로 자동화 가능).
 
 **2) 사용자 설치**
 ```powershell
 scoop bucket add nyassistant https://github.com/yeon-intergation-platform/scoop-bucket
-scoop install discord-ai-provider-agent   # 해시 자동 검증
+scoop install discord-ai-agent-network-bot   # 해시 자동 검증
 ```
 
 ## 요약: "사용자가 해시검증 안 하게" 하려면 (전부 $0)

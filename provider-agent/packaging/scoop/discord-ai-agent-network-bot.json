@@ -6,9 +6,9 @@
   "license": "MIT",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/Hyeonjun0527/discord-assistant/releases/download/agent-v__VERSION__/discord-ai-provider-agent-windows.exe#/discord-ai-provider-agent.exe",
+      "url": "https://github.com/Hyeonjun0527/discord-assistant/releases/download/agent-v__VERSION__/discord-ai-agent-network-bot-windows.exe#/discord-ai-agent-network-bot.exe",
       "hash": "__WINDOWS_SHA256__",
-      "bin": "discord-ai-provider-agent.exe"
+      "bin": "discord-ai-agent-network-bot.exe"
     }
   },
   "checkver": {

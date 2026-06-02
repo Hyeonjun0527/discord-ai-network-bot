@@ -1,6 +1,6 @@
 # PyInstaller spec — 단일 실행파일(Windows/macOS/Linux 공통).
 # 빌드: cd provider-agent && pyinstaller packaging/agent.spec
-#   결과: dist/discord-ai-provider-agent (플랫폼별 실행파일)
+#   결과: dist/discord-ai-agent-network-bot (플랫폼별 실행파일)
 # block_cipher 미사용.
 from pathlib import Path
 
@@ -26,7 +26,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="discord-ai-provider-agent",
+    name="discord-ai-agent-network-bot",
     console=True,
     onefile=True,
     upx=True,

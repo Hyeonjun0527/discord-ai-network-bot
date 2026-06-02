@@ -74,7 +74,7 @@ Provider Agent 는 "믿고 설치하세요"가 아니라 **사용자가 검증�
   - Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing`
   - Windows: `Get-FileHash <파일> -Algorithm SHA256` 출력과 비교
 - 빌드 출처(provenance)·SBOM 을 확인할 수 있습니다:
-  `gh attestation verify discord-ai-provider-agent-<os> --repo Hyeonjun0527/discord-assistant`
+  `gh attestation verify discord-ai-agent-network-bot-<os> --repo Hyeonjun0527/discord-assistant`
 - 배포물은 **Windows 코드서명**, **macOS Developer ID 서명 + notarization** 이 적용됩니다.
   경고가 뜨면 **우회하지 말고** 출처/해시를 다시 확인하세요.
 - **수동 해시검증이 번거롭다면** 패키지 매니저로 설치하세요. `brew install`·`winget install`

@@ -243,6 +243,14 @@ class PresetRegistryServiceTest
             assertEquals(2, importedRouting?.maxCandidates)
             assertEquals("coding,night", importedRouting?.providerTagFilter)
             assertEquals(1, publishedPresets.findById(publishedId).get().importCount)
+            val importHistoryBeforeDelete = controller.importHistory(101, channelId = 202)["imports"] as List<*>
+            val importedSummaryBeforeDelete = importHistoryBeforeDelete.single() as PresetImportSummary
+            assertEquals(imported["id"], importedSummaryBeforeDelete.id)
+            assertEquals(publishedId, importedSummaryBeforeDelete.publishedPresetId)
+            assertEquals(imported["sourceRevisionId"], importedSummaryBeforeDelete.sourceRevisionId)
+            assertEquals(imported["importedPresetId"], importedSummaryBeforeDelete.importedPresetId)
+            assertEquals("applied", importedSummaryBeforeDelete.status)
+            assertTrue(importedSummaryBeforeDelete.detachedCopy)
 
             val report =
                 controller.report(
@@ -289,6 +297,19 @@ class PresetRegistryServiceTest
             val removed = controller.deletePublished(publishedId)
             assertEquals("removed", removed["status"])
             assertEquals("removed", publishedPresets.findById(publishedId).get().status)
+            assertThrows(IllegalArgumentException::class.java) {
+                controller.importPreset(
+                    publishedId,
+                    ImportPresetRequest(targetGuildId = 103, targetChannelId = 204, actorUserId = 89, confirmConflicts = true),
+                )
+            }
+            val importHistoryAfterDelete = controller.importHistory(101, channelId = 202)["imports"] as List<*>
+            val preservedImport = importHistoryAfterDelete.single() as PresetImportSummary
+            assertEquals(importedSummaryBeforeDelete.id, preservedImport.id)
+            assertEquals(importedSummaryBeforeDelete.publishedPresetId, preservedImport.publishedPresetId)
+            assertEquals(importedSummaryBeforeDelete.sourceRevisionId, preservedImport.sourceRevisionId)
+            assertEquals(importedSummaryBeforeDelete.importedPresetId, preservedImport.importedPresetId)
+            assertEquals(importedSummaryBeforeDelete.status, preservedImport.status)
         }
 
         @Test

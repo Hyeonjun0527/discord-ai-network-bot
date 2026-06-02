@@ -341,6 +341,60 @@ class KnowledgeIndexingServiceTest
         }
 
         @Test
+        fun `search exposes match signals and applies source priority weight`() {
+            val space = spaces.save(KnowledgeSpaceEntity(guildId = 100, channelId = 204, displayName = "우선순위 지식"))
+            val adminText =
+                sources.save(
+                    KnowledgeSourceEntity(
+                        knowledgeSpaceId = space.id,
+                        guildId = 100,
+                        sourceType = "text",
+                        title = "Kotlin 운영 메모",
+                        status = "indexed",
+                        addedBy = 77,
+                    ),
+                )
+            val linkedGuide =
+                sources.save(
+                    KnowledgeSourceEntity(
+                        knowledgeSpaceId = space.id,
+                        guildId = 100,
+                        sourceType = "link",
+                        sourceUri = "https://example.com/kotlin-help.md",
+                        title = "Kotlin 도움말",
+                        status = "indexed",
+                    ),
+                )
+            service.parseSourceToDocument(100, space.id, adminText.id, "Kotlin 운영 메모입니다.", title = adminText.title)
+            service.parseSourceToDocument(100, space.id, linkedGuide.id, "Kotlin 도움말 문서입니다.", title = linkedGuide.title)
+            service.saveRetrievalPolicy(
+                guildId = 100,
+                channelId = 204,
+                knowledgeSpaceId = space.id,
+                topK = 10,
+                tokenBudget = 1800,
+                rerankEnabled = true,
+                sourcePriority = listOf("link", "text"),
+            )
+            val search =
+                KnowledgeSearchService(
+                    sources = sources,
+                    spaces = spaces,
+                    chunks = chunks,
+                    retrievalPolicies = retrievalPolicies,
+                )
+
+            val found = search.search(100, "Kotlin", limit = 10, channelId = 204)
+
+            assertEquals(listOf(linkedGuide.id, adminText.id), found.results.map { it.sourceId })
+            val top = found.results.first()
+            assertTrue(top.sourceWeight > 0)
+            assertTrue(top.matchSignals.contains("chunk"))
+            assertTrue(top.matchSignals.contains("term_title"))
+            assertTrue(top.matchSignals.contains("source_type:link"))
+        }
+
+        @Test
         fun `reparsing a source supersedes old documents and chunks`() {
             val space = spaces.save(KnowledgeSpaceEntity(guildId = 100, channelId = 204, displayName = "재색인 지식"))
             val source =

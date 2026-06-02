@@ -52,9 +52,9 @@ class KnowledgeSearchService(
         val policy = activePolicy(guildId, channelId, knowledgeSpaceId, allowedSpaceIds)
         val topK = minOf(limit.coerceIn(1, 20), policy?.topK ?: 20)
         val candidates =
-            chunkCandidates(guildId, allowedSpaceIds, normalizedQuery)
+            chunkCandidates(guildId, allowedSpaceIds, normalizedQuery, policy)
                 .ifEmpty {
-                    sourceCandidates(guildId, allowedSpaceIds, normalizedQuery)
+                    sourceCandidates(guildId, allowedSpaceIds, normalizedQuery, policy)
                 }
         return KnowledgeSearchResponse(
             guildId = guildId,
@@ -291,11 +291,16 @@ class KnowledgeSearchService(
         }
     }
 
-    private fun KnowledgeSourceEntity.toResult(query: String): KnowledgeSearchResult? {
+    private fun KnowledgeSourceEntity.toResult(
+        query: String,
+        policy: RetrievalPolicyEntity?,
+    ): KnowledgeSearchResult? {
         val haystack = listOf(title, sourceUri.orEmpty(), sourceType).joinToString(" ").lowercase()
         val terms = query.split(Regex("\\s+")).filter { it.length >= 2 }
-        val score = terms.sumOf { term -> haystack.windowed(term.length).count { it == term } }
-        if (score <= 0) return null
+        val rawScore = terms.sumOf { term -> haystack.windowed(term.length).count { it == term } }
+        if (rawScore <= 0) return null
+        val matchSignals = matchSignals(query, terms, title, sourceUri, sourceType, content = null, chunk = false)
+        val sourceWeight = sourceWeight(policy)
         return KnowledgeSearchResult(
             sourceId = id,
             knowledgeSpaceId = knowledgeSpaceId,
@@ -303,7 +308,9 @@ class KnowledgeSearchService(
             sourceType = sourceType,
             sourceUri = sourceUri,
             riskLevel = riskLevel,
-            score = score,
+            score = rawScore + sourceWeight,
+            sourceWeight = sourceWeight,
+            matchSignals = matchSignals,
         )
     }
 
@@ -311,18 +318,20 @@ class KnowledgeSearchService(
         guildId: Long,
         allowedSpaceIds: Set<Long>,
         query: String,
+        policy: RetrievalPolicyEntity?,
     ): List<KnowledgeSearchResult> =
         sources
             .findByGuildId(guildId)
             .filter { it.knowledgeSpaceId in allowedSpaceIds }
             .filter { it.status == "indexed" }
             .filter { it.riskLevel in SEARCHABLE_RISK_LEVELS }
-            .mapNotNull { it.toResult(query) }
+            .mapNotNull { it.toResult(query, policy) }
 
     private fun chunkCandidates(
         guildId: Long,
         allowedSpaceIds: Set<Long>,
         query: String,
+        policy: RetrievalPolicyEntity?,
     ): List<KnowledgeSearchResult> {
         val chunkRepo = chunks ?: return emptyList()
         if (allowedSpaceIds.isEmpty()) return emptyList()
@@ -338,21 +347,23 @@ class KnowledgeSearchService(
             .findByGuildIdAndKnowledgeSpaceIdInAndStatus(guildId, allowedSpaceIds, "ready")
             .mapNotNull { chunk ->
                 val source = sourceById[chunk.knowledgeSourceId] ?: return@mapNotNull null
-                chunk.toResult(source, query)
+                chunk.toResult(source, query, policy)
             }
     }
 
     private fun KnowledgeChunkEntity.toResult(
         source: KnowledgeSourceEntity,
         query: String,
+        policy: RetrievalPolicyEntity?,
     ): KnowledgeSearchResult? {
         val terms = query.split(Regex("\\s+")).filter { it.length >= 2 }
         val haystack = listOf(title, source.sourceUri.orEmpty(), source.sourceType, contentPreview).joinToString(" ").lowercase()
-        val score =
+        val rawScore =
             terms.sumOf { term ->
                 haystack.windowed(term.length).count { it == term }
             } + terms.count { title.lowercase().contains(it) } * 2
-        if (score <= 0) return null
+        if (rawScore <= 0) return null
+        val sourceWeight = source.sourceWeight(policy)
         return KnowledgeSearchResult(
             sourceId = source.id,
             knowledgeSpaceId = knowledgeSpaceId,
@@ -360,11 +371,65 @@ class KnowledgeSearchService(
             sourceType = source.sourceType,
             sourceUri = source.sourceUri,
             riskLevel = source.riskLevel,
-            score = score,
+            score = rawScore + sourceWeight,
+            sourceWeight = sourceWeight,
+            matchSignals = matchSignals(query, terms, title, source.sourceUri, source.sourceType, contentPreview, chunk = true),
             chunkId = id,
             chunkIndex = chunkIndex,
             contentPreview = contentPreview,
         )
+    }
+
+    private fun KnowledgeSourceEntity.sourceWeight(policy: RetrievalPolicyEntity?): Int {
+        val rawLabels =
+            buildList {
+                add(sourceType.trim().lowercase())
+                if (addedBy != null) add("admin")
+                val publicText = "$title ${sourceUri.orEmpty()}".lowercase()
+                if ("help" in publicText || "faq" in publicText || "도움말" in publicText) add("help")
+                if ("summary" in publicText || "요약" in publicText) add("summary")
+            }
+        val labels = rawLabels.filter { it.isNotBlank() }.distinct()
+        val priorities =
+            policy
+                ?.sourcePriority
+                ?.split(",")
+                .orEmpty()
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+        val priorityIndex = priorities.indexOfFirst { it in labels }
+        val policyBoost =
+            priorityIndex
+                .takeIf { index -> index >= 0 }
+                ?.let { (priorities.size - it) * SOURCE_PRIORITY_BOOST }
+                ?: 0
+        val defaultBoost = if ("admin" in labels) DEFAULT_ADMIN_SOURCE_BOOST else 0
+        return policyBoost + defaultBoost
+    }
+
+    private fun matchSignals(
+        query: String,
+        terms: List<String>,
+        title: String,
+        sourceUri: String?,
+        sourceType: String,
+        content: String?,
+        chunk: Boolean,
+    ): List<String> {
+        val normalizedQuery = query.trim().lowercase()
+        val normalizedTitle = title.lowercase()
+        val normalizedUri = sourceUri.orEmpty().lowercase()
+        val normalizedContent = content.orEmpty().lowercase()
+        return buildList {
+            if (chunk) add("chunk")
+            if (normalizedQuery.isNotBlank() && normalizedTitle.contains(normalizedQuery)) add("exact_title")
+            if (normalizedQuery.isNotBlank() && normalizedUri.contains(normalizedQuery)) add("exact_uri")
+            if (normalizedQuery.isNotBlank() && normalizedContent.contains(normalizedQuery)) add("exact_content")
+            if (terms.any { normalizedTitle.contains(it) }) add("term_title")
+            if (terms.any { normalizedUri.contains(it) }) add("term_uri")
+            if (terms.any { normalizedContent.contains(it) }) add("term_content")
+            add("source_type:${sourceType.trim().lowercase().ifBlank { "unknown" }}")
+        }.distinct()
     }
 
     private fun KnowledgeSearchResult.toSourceRef(ref: String): KnowledgeSourceRef =
@@ -407,6 +472,8 @@ class KnowledgeSearchService(
         const val MIN_MRR = 0.7
         const val MIN_RECALL_AT_K = 0.7
         const val MIN_CONTEXT_SNIPPET_CHARS = 40
+        const val SOURCE_PRIORITY_BOOST = 6
+        const val DEFAULT_ADMIN_SOURCE_BOOST = 2
         val SEARCHABLE_RISK_LEVELS = setOf("normal", "review")
 
         fun normalizeResponseMode(value: String): String =
@@ -444,6 +511,8 @@ data class KnowledgeSearchResult(
     val sourceUri: String?,
     val riskLevel: String,
     val score: Int,
+    val sourceWeight: Int = 0,
+    val matchSignals: List<String> = emptyList(),
     val chunkId: Long? = null,
     val chunkIndex: Int? = null,
     val contentPreview: String? = null,

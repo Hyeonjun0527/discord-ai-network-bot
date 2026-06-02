@@ -253,8 +253,8 @@ Kill switch:
 - [ ] 모든 후보가 실패해도 사용자에게 명확한 실패 메시지를 보낸다.
 - [ ] 후보 원문 전체가 DB 에 저장되지 않는다.
 - [ ] dashboard projection 장애가 질문 처리 장애로 번지지 않는다.
-- [ ] RAG scope filter 누락 시 검색이 실패한다.
-- [ ] 삭제된 KnowledgeSource 가 후보 context 에 포함되지 않는다.
+- [x] RAG scope filter 누락 시 검색이 실패한다.
+- [x] 삭제된 KnowledgeSource 가 후보 context 에 포함되지 않는다.
 - [ ] pseudo-streaming edit throttle 과 충돌하지 않는다.
 - [ ] 사용자 피드백이 특정 Provider 공개 망신으로 이어지지 않는다.
 - [ ] kill switch 로 즉시 기능을 끌 수 있다.

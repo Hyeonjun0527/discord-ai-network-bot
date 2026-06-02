@@ -25,6 +25,7 @@ import com.discordassistant.central.persistence.PresetReportEntity
 import com.discordassistant.central.persistence.PresetReportRepository
 import com.discordassistant.central.persistence.PresetRevisionEntity
 import com.discordassistant.central.persistence.PresetRevisionRepository
+import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.persistence.PublishedPresetEntity
 import com.discordassistant.central.persistence.PublishedPresetRepository
@@ -40,6 +41,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -66,6 +68,7 @@ class AiNetworkFoundationServiceTest
         private val presetImports: PresetImportRepository,
         private val presetReactions: PresetReactionRepository,
         private val presetReports: PresetReportRepository,
+        private val jdbc: JdbcTemplate,
     ) {
         private val fixedClock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC)
 
@@ -79,6 +82,53 @@ class AiNetworkFoundationServiceTest
                 feedbacks = feedbacks,
                 clock = fixedClock,
             )
+
+        @Test
+        fun `foundation tables declare guild or explicit parent catalog scope`() {
+            val directGuildScopedTables =
+                listOf(
+                    "channel_ai",
+                    "ai_change_proposal",
+                    "customization_audit_log",
+                    "ai_network_profile",
+                    "provider_capability_profile",
+                    "knowledge_space",
+                    "knowledge_source",
+                    "network_overview_projection",
+                    "ai_feedback",
+                    "multi_response_policy",
+                    "multi_response_run",
+                    "ai_preset",
+                    "ai_network_event",
+                    "channel_ai_routing_policy",
+                    "knowledge_document",
+                    "knowledge_chunk",
+                    "embedding_index_job",
+                    "retrieval_policy",
+                    "ai_admin_role",
+                )
+
+            directGuildScopedTables.forEach { table ->
+                assertTrue(tableExists(table), "$table must exist")
+                assertTrue(hasColumn(table, "guild_id"), "$table must be directly guild scoped")
+            }
+
+            val parentOrCatalogScopedTables =
+                mapOf(
+                    "ai_behavior_version" to "channel_ai_id",
+                    "candidate_answer" to "run_id",
+                    "synthesis_result" to "run_id",
+                    "preset_revision" to "preset_id",
+                    "preset_reaction" to "published_preset_id",
+                    "preset_report" to "published_preset_id",
+                )
+            parentOrCatalogScopedTables.forEach { (table, column) ->
+                assertTrue(tableExists(table), "$table must exist")
+                assertTrue(hasColumn(table, column), "$table must be scoped through $column")
+            }
+            assertTrue(hasColumn("published_preset", "publisher_guild_id"), "published presets expose publisher guild scope")
+            assertTrue(hasColumn("preset_import", "target_guild_id"), "preset imports expose target guild scope")
+        }
 
         @Test
         fun `foundation profile and overview are guild scoped`() {
@@ -96,6 +146,15 @@ class AiNetworkFoundationServiceTest
                     updatedAt = Instant.now(fixedClock),
                 ),
             )
+            channelAis.save(
+                ChannelAiEntity(
+                    guildId = 101,
+                    channelId = 200,
+                    displayName = "다른길드냥",
+                    createdAt = Instant.now(fixedClock),
+                    updatedAt = Instant.now(fixedClock),
+                ),
+            )
             service.upsertProviderCapability(
                 guildId = 100,
                 providerUserId = 300,
@@ -107,7 +166,19 @@ class AiNetworkFoundationServiceTest
                 dailyLimit = 50,
                 overloadRisk = "normal",
             )
+            service.upsertProviderCapability(
+                guildId = 101,
+                providerUserId = 301,
+                providerState = "ONLINE",
+                modelNames = listOf("foreign-model"),
+                capabilityTags = listOf("foreign"),
+                maxBurden = "STANDARD",
+                maxConcurrency = 1,
+                dailyLimit = 10,
+                overloadRisk = "normal",
+            )
             feedbacks.save(AiFeedbackEntity(guildId = 100, channelId = 200, rating = 1))
+            feedbacks.save(AiFeedbackEntity(guildId = 101, channelId = 200, rating = 1))
 
             val overview = service.refreshOverview(guildId = 100)
 
@@ -118,6 +189,62 @@ class AiNetworkFoundationServiceTest
             assertEquals("ready", overview.healthStatus)
             assertNull(overviewProjections.findByGuildId(999))
         }
+
+        @Test
+        fun `foundation scoped repository lookups do not leak cross guild rows`() {
+            val channelAi =
+                channelAis.save(
+                    ChannelAiEntity(
+                        guildId = 100,
+                        channelId = 201,
+                        displayName = "A",
+                        createdAt = Instant.now(fixedClock),
+                        updatedAt = Instant.now(fixedClock),
+                    ),
+                )
+            val space =
+                service.createKnowledgeSpace(
+                    guildId = 100,
+                    channelId = 201,
+                    channelAiId = channelAi.id,
+                    displayName = "A-space",
+                    createdBy = 77,
+                )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 100,
+                    providerUserId = 300,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3.1:8b",
+                ),
+            )
+
+            assertEquals(space.id, knowledgeSpaces.findByGuildIdAndId(100, space.id)?.id)
+            assertNull(knowledgeSpaces.findByGuildIdAndId(999, space.id))
+            assertEquals(1, providerCapabilities.findByGuildId(100).size)
+            assertEquals(0, providerCapabilities.findByGuildId(999).size)
+            assertEquals(1, channelAis.findByGuildId(100).size)
+            assertEquals(0, channelAis.findByGuildId(999).size)
+        }
+
+        private fun tableExists(table: String): Boolean =
+            jdbc.queryForObject(
+                "select count(*) from information_schema.tables where lower(table_name) = ?",
+                Int::class.java,
+                table,
+            )!! > 0
+
+        private fun hasColumn(
+            table: String,
+            column: String,
+        ): Boolean =
+            jdbc.queryForObject(
+                "select count(*) from information_schema.columns where lower(table_name) = ? and lower(column_name) = ?",
+                Int::class.java,
+                table,
+                column,
+            )!! > 0
 
         @Test
         fun `knowledge foundation stores metadata without document body`() {

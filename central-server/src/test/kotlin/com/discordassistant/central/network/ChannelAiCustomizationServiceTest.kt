@@ -235,6 +235,11 @@ class ChannelAiCustomizationServiceTest
 
             assertEquals(true, policy.protectedMode)
             assertEquals(listOf(9001L), policy.roleIds)
+            assertTrue(
+                audits
+                    .findTop10ByGuildIdAndChannelIdOrderByCreatedAtDesc(100, 0)
+                    .any { it.action == "replace_ai_admin_roles" },
+            )
 
             val denied =
                 assertThrows(IllegalStateException::class.java) {

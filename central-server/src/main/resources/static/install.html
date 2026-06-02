@@ -229,6 +229,7 @@
 <span class="k">brew</span> install ollama
 <span class="k">brew</span> services start ollama
 <span class="k">ollama</span> pull llama3.1:8b
+<span class="c"># (선택) 비전·멀티모달 모델: ollama pull gemma4</span>
 <span class="c"># 2) 에이전트 + 체크섬 받기(GitHub Release)</span>
 <span class="k">curl</span> -L -o discord-ai-network-bot-macos https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-macos
 <span class="k">curl</span> -L -o SHA256SUMS.txt https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt
@@ -249,6 +250,7 @@
           <pre><code class="sh" id="cmd-win"><span class="c"># 1) Ollama 설치 + 모델 (관리자 권한 불필요)</span>
 <span class="k">winget</span> install --id Ollama.Ollama -e --accept-source-agreements
 <span class="k">ollama</span> pull llama3.1:8b
+<span class="c"># (선택) 비전·멀티모달 모델: ollama pull gemma4</span>
 <span class="c"># 2) 에이전트 + 체크섬 받기(GitHub Release)</span>
 <span class="k">Invoke-WebRequest</span> https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-windows.exe -OutFile discord-ai-network-bot-windows.exe
 <span class="k">Invoke-WebRequest</span> https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt -OutFile SHA256SUMS.txt
@@ -269,6 +271,7 @@
           <pre><code class="sh" id="cmd-linux"><span class="c"># 1) Ollama 설치 + 모델</span>
 <span class="k">curl</span> -fsSL https://ollama.com/install.sh | sh
 <span class="k">ollama</span> pull llama3.1:8b
+<span class="c"># (선택) 비전·멀티모달 모델: ollama pull gemma4</span>
 <span class="c"># 2) 에이전트 + 체크섬 받기(GitHub Release)</span>
 <span class="k">curl</span> -L -o discord-ai-network-bot-linux https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-linux
 <span class="k">curl</span> -L -o SHA256SUMS.txt https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt

@@ -231,13 +231,20 @@
       <label>검색 결과 수
         <input id="knowledgeSearchLimit" type="number" min="1" max="20" value="5" />
       </label>
+      <label>평가 K
+        <input id="knowledgeEvalK" type="number" min="1" max="20" value="10" />
+      </label>
     </div>
+    <label>골든 케이스 JSON
+      <textarea id="knowledgeEvalCases" rows="5" placeholder='[{"name":"운영 규칙","query":"롤백 방법","expectedSourceIds":[1],"channelId":123}]'></textarea>
+    </label>
     <div class="row">
       <button id="knowledgeCreateSpace">지식공간 만들기</button>
       <button id="knowledgeAddSource">지식 소스 추가</button>
       <button id="knowledgeQueueJob">색인 작업 큐잉</button>
       <button id="knowledgeCompleteJob">색인 작업 완료 처리</button>
       <button id="knowledgeSearch">검색/가중치 테스트</button>
+      <button id="knowledgeEvaluate">RAG 평가 실행</button>
       <button id="knowledgeRefresh">RAG 상태 새로고침</button>
     </div>
     <div class="network-grid">

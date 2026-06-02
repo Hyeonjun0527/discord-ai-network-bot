@@ -525,6 +525,54 @@ async function searchKnowledge() {
   }
 }
 
+function knowledgeEvalPayload() {
+  const raw = $("knowledgeEvalCases").value.trim();
+  const parsed = raw ? JSON.parse(raw) : [];
+  const cases = Array.isArray(parsed) ? parsed : (parsed.cases || []);
+  return {
+    k: Math.min(20, Math.max(1, Number($("knowledgeEvalK").value || 10))),
+    cases,
+  };
+}
+
+async function evaluateKnowledge() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("knowledgeResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  let payload;
+  try {
+    payload = knowledgeEvalPayload();
+  } catch (e) {
+    $("knowledgeResult").textContent = `골든 케이스 JSON 파싱 실패: ${e.message}`;
+    return;
+  }
+  if (!payload.cases.length) {
+    $("knowledgeResult").textContent = "골든 케이스 JSON을 1개 이상 입력하세요.";
+    return;
+  }
+  try {
+    const result = await postJson(`/api/ai-network/knowledge/${gid}/eval`, payload);
+    const rows = result.cases || [];
+    $("knowledgeResult").textContent = [
+      `RAG 평가: ${result.passed ? "PASS" : "FAIL"} · cases=${result.caseCount} · k=${result.k}`,
+      `hitAtK=${Number(result.hitAtK || 0).toFixed(2)} · mrr=${Number(result.mrr || 0).toFixed(2)} · recallAtK=${Number(result.recallAtK || 0).toFixed(2)}`,
+      "",
+      ...(rows.length
+        ? rows.map((row) => [
+          `${row.hit ? "✓" : "✕"} ${row.name} · rank=${row.firstHitRank || "-"} · recall=${Number(row.recall || 0).toFixed(2)}`,
+          `query=${row.query}`,
+          `expected=${(row.expectedSourceIds || []).join(", ") || "-"} · returned=${(row.returnedSourceIds || []).join(", ") || "-"}`,
+          row.fallbackReason ? `fallback=${row.fallbackReason}` : null,
+        ].filter(Boolean).join("\n"))
+        : ["평가 결과가 없습니다."]),
+    ].join("\n\n");
+  } catch (e) {
+    $("knowledgeResult").textContent = `RAG 평가 실패: ${e.message}`;
+  }
+}
+
 function qualityFeedbackPayload() {
   return {
     requestId: $("qualityRequestId").value.trim() || null,
@@ -1358,6 +1406,7 @@ $("knowledgeAddSource").addEventListener("click", addKnowledgeSource);
 $("knowledgeQueueJob").addEventListener("click", queueKnowledgeIndexJob);
 $("knowledgeCompleteJob").addEventListener("click", completeKnowledgeIndexJob);
 $("knowledgeSearch").addEventListener("click", searchKnowledge);
+$("knowledgeEvaluate").addEventListener("click", evaluateKnowledge);
 $("knowledgeRefresh").addEventListener("click", refreshKnowledge);
 $("qualitySubmitFeedback").addEventListener("click", submitQualityFeedback);
 $("qualityRefresh").addEventListener("click", refreshQualityDashboard);

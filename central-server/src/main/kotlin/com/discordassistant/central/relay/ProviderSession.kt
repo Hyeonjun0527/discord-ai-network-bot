@@ -26,6 +26,7 @@ data class ProviderCapability(
     val models: List<String> = emptyList(),
     val maxConcurrency: Int = 1,
     val remainingDailyRequests: Int = 0,
+    val capabilities: List<String> = listOf("text"),
 )
 
 /** 프로바이더 실시간 상태(provider_status 로 보고). */
@@ -105,6 +106,7 @@ class ProviderSession(
                 models = hello.models,
                 maxConcurrency = hello.maxConcurrency,
                 remainingDailyRequests = hello.remainingDailyRequests,
+                capabilities = hello.capabilities.ifEmpty { listOf("text") },
             )
         // hello 의 remaining <= 0 은 "일일 한도 없음(무제한)"을 의미한다(에이전트 daily_limit=0).
         // 내부 무제한 센티넬(Int.MAX_VALUE)로 둔다. 실제 한도가 있으면 양수를 보낸다.
@@ -224,6 +226,58 @@ class ProviderSession(
         }
     }
 
+    /**
+     * 이미지 생성(SD Phase 2): InferRequest(task=image) 송신 후 에이전트가 보낸 base64 PNG 청크를
+     * 드레인·조립해 **PNG 바이트**로 디코드한다. 이미지 생성은 느리므로 더 긴 타임아웃을 쓴다.
+     */
+    fun sendImage(prompt: String): CompletableFuture<ByteArray> {
+        val cap = capability.maxConcurrency + maxQueue
+        if (inFlight.get() >= cap) {
+            return CompletableFuture.failedFuture(AgentBusyException("대기 큐가 가득 찼습니다."))
+        }
+        val requestId = UUID.randomUUID().toString().replace("-", "")
+        val queue: java.util.concurrent.BlockingQueue<ChunkFrame> = java.util.concurrent.LinkedBlockingQueue()
+        streams[requestId] = queue
+        inFlight.incrementAndGet()
+        if (remainingDaily.get() != Int.MAX_VALUE) remainingDaily.decrementAndGet()
+        transitionTo(ProviderState.ONLINE_BUSY)
+        try {
+            connection.sendFrame(InferRequest(requestId, prompt = prompt, task = "image"))
+        } catch (e: Exception) {
+            streams.remove(requestId)
+            cleanup(requestId)
+            return CompletableFuture.failedFuture(ConnectionClosedException("전송 실패: ${e.message}"))
+        }
+        val imageTimeout = maxOf(requestTimeoutSeconds, IMAGE_TIMEOUT_SECONDS)
+        return CompletableFuture.supplyAsync {
+            val sb = StringBuilder()
+            val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(imageTimeout)
+            try {
+                while (true) {
+                    val remaining = deadlineNanos - System.nanoTime()
+                    if (remaining <= 0) {
+                        safeSend(CancelFrame(requestId))
+                        throw RemoteTimeoutException("이미지 생성 시간 초과(${imageTimeout}초)")
+                    }
+                    val chunk = queue.poll(remaining, TimeUnit.NANOSECONDS) ?: continue
+                    if (chunk.done) break
+                    sb.append(chunk.delta)
+                    if (sb.length > MAX_IMAGE_B64_CHARS) {
+                        safeSend(CancelFrame(requestId))
+                        throw RemoteInferException("OLLAMA_ERROR", "이미지가 너무 큽니다")
+                    }
+                }
+                consecutiveFailures.set(0)
+                java.util.Base64
+                    .getDecoder()
+                    .decode(sb.toString())
+            } finally {
+                streams.remove(requestId)
+                cleanup(requestId)
+            }
+        }
+    }
+
     private fun cleanup(requestId: String) {
         pending.remove(requestId)
         if (inFlight.decrementAndGet() <= 0) transitionTo(ProviderState.ONLINE_IDLE)
@@ -268,5 +322,11 @@ class ProviderSession(
     companion object {
         /** 연속 실패가 이 횟수에 도달하면 자동 비활성화(UNHEALTHY). */
         private const val FAILURE_THRESHOLD = 3
+
+        /** 이미지 생성은 느리므로 최소 이 시간까지 기다린다(SD Phase 2). */
+        private const val IMAGE_TIMEOUT_SECONDS = 180L
+
+        /** 조립된 이미지 base64 의 최대 문자 수(폭주/메모리 보호, 약 6MB 바이너리). */
+        private const val MAX_IMAGE_B64_CHARS = 8_000_000
     }
 }

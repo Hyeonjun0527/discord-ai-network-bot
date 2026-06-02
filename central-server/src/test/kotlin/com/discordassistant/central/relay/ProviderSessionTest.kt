@@ -1,6 +1,7 @@
 package com.discordassistant.central.relay
 
 import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.relay.protocol.ChunkFrame
 import com.discordassistant.central.relay.protocol.ErrorCode
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.InferError
@@ -172,6 +173,35 @@ class ProviderSessionTest {
         s.handleFrame(ProviderHelloFrame(models = listOf("llama3.1:8b"), maxConcurrency = 2, remainingDailyRequests = 42))
         assertEquals(listOf("llama3.1:8b"), s.capability.models)
         assertEquals(2, s.capability.maxConcurrency)
+    }
+
+    @Test
+    fun `provider_hello capabilities 반영(image)`() {
+        val s = session(FakeConnection())
+        s.handleFrame(ProviderHelloFrame(models = listOf("m"), capabilities = listOf("text", "image")))
+        assertTrue(s.capability.capabilities.contains("image"))
+    }
+
+    @Test
+    fun `sendImage — task=image 송신 후 청크 재조립으로 PNG 바이트 복원`() {
+        val conn = FakeConnection()
+        val s = session(conn)
+        val original = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+        val b64 =
+            java.util.Base64
+                .getEncoder()
+                .encodeToString(original)
+        val fut = s.sendImage("고양이")
+        val req = conn.sent.filterIsInstance<InferRequest>().single()
+        assertEquals("image", req.task)
+        assertEquals("고양이", req.prompt)
+        val mid = b64.length / 2
+        s.handleFrame(ChunkFrame(req.requestId, b64.substring(0, mid), done = false))
+        s.handleFrame(ChunkFrame(req.requestId, b64.substring(mid), done = false))
+        s.handleFrame(ChunkFrame(req.requestId, "", done = true))
+        val bytes = fut.get(3, TimeUnit.SECONDS)
+        assertTrue(original.contentEquals(bytes))
+        assertEquals(ProviderState.ONLINE_IDLE, s.state)
     }
 }
 

@@ -34,6 +34,7 @@ data class Reply(
     val ephemeral: Boolean = true,
     val pseudoStream: ReplyPseudoStream? = null,
     val feedback: ReplyFeedback? = null,
+    val imagePng: ByteArray? = null,
 )
 
 /** Discord 긴 답변을 여러 번 수정해 보여주기 위한 의사 스트리밍 계획. */
@@ -219,6 +220,31 @@ class CommandService(
                 completedAskReply(result.text.orEmpty().withWebSources(result.sources), modelChoice, result.requestId)
             RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
             else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
+        }
+    }
+
+    /** /imagine — 이미지 생성 가능한 프로바이더(로컬 SD)에게 이미지를 만들게 한다(SD Phase 2c). */
+    fun imagine(
+        ctx: CommandContext,
+        prompt: String,
+    ): Reply {
+        if (prompt.isBlank()) return Replies.warn("이미지로 만들 내용을 입력해 주세요.")
+        if (!ctx.isAdmin && !rateLimiter.tryAcquire("imagine:${ctx.guildId}:${ctx.userId}")) {
+            return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, lang(ctx)))
+        }
+        val candidates = registry.byGuild(ctx.guildId).filter { "image" in it.capability.capabilities }
+        if (candidates.isEmpty()) {
+            return Replies.warn(
+                "🖼️ 이미지 생성 가능한 프로바이더가 없습니다. " +
+                    "(프로바이더가 로컬 Stable Diffusion 을 켜고 에이전트를 `--enable-image` 로 실행해야 합니다)",
+            )
+        }
+        val session = candidates.minByOrNull { it.activeRequests } ?: candidates.first()
+        return try {
+            val bytes = session.sendImage(prompt).get()
+            Reply("🖼️ \"${prompt.take(200)}\"", ephemeral = false, imagePng = bytes)
+        } catch (e: Exception) {
+            Replies.warn("이미지 생성에 실패했어요. 잠시 후 다시 시도해 주세요.")
         }
     }
 

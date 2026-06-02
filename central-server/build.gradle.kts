@@ -92,11 +92,19 @@ tasks.withType<Test> {
             excludeTags("integration-docker")
         }
     }
-    if (!project.hasProperty("dockerTests")) {
+    if (project.hasProperty("dockerTests")) {
+        // integration CI 잡은 build 잡에서 이미 검증한 일반 단위 테스트를 다시 돌리지 않는다.
+        // Docker 가 필요한 BDD/Testcontainers 계약만 실행해 GitHub runner 메모리 고갈을 방지한다.
+        include("**/RunCucumberBddTest.class")
+        include("**/PostgresFlywayIntegrationTest.class")
+        maxHeapSize = "1536m"
+    } else {
         // Cucumber BDD 스위트는 Testcontainers Postgres(실 DB) 필요 → 기본 빌드에서 클래스 단위 제외(실행: -PdockerTests).
         // (스위트는 태그 게이트가 자식 시나리오에 전파되지 않아 클래스 제외로 게이트한다.)
         exclude("**/RunCucumberBddTest.class")
+        maxHeapSize = "1024m"
     }
+    maxParallelForks = 1
     // Testcontainers 가 Docker 소켓을 찾도록 호스트 환경의 DOCKER_HOST 를 테스트 JVM 에 전달(있을 때만).
     System.getenv("DOCKER_HOST")?.let { environment("DOCKER_HOST", it) }
 }

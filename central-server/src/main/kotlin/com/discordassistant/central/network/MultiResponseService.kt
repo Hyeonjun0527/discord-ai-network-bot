@@ -12,6 +12,7 @@ import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.persistence.SynthesisResultEntity
 import com.discordassistant.central.persistence.SynthesisResultRepository
+import com.discordassistant.central.relay.ConnectionRegistry
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest
@@ -31,6 +32,7 @@ class MultiResponseService(
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
     private val safety: ProviderSafetyService? = null,
     private val knowledgeSearch: KnowledgeSearchService? = null,
+    private val connectionRegistry: ConnectionRegistry? = null,
 ) {
     @Transactional
     fun savePolicy(
@@ -852,6 +854,7 @@ class MultiResponseService(
         val ranked =
             providers
                 .filter { it.providerState.equals("ONLINE", ignoreCase = true) }
+                .filter { it.hasLiveCapacity(guildId) }
                 .filter { !it.overloadRisk.equals("high", ignoreCase = true) && !it.overloadRisk.equals("critical", ignoreCase = true) }
                 .filter { policy.providerDailyLimit <= 0 || it.dailyLimit <= 0 || it.dailyLimit >= policy.providerDailyLimit }
                 .filter { !advancedFanout || it.hasFanoutOptIn() }
@@ -870,6 +873,14 @@ class MultiResponseService(
             if (selected.size >= effectiveMaxCandidates) break
         }
         return selected
+    }
+
+    private fun ProviderCapabilityProfileEntity.hasLiveCapacity(guildId: Long): Boolean {
+        if (maxConcurrency <= 0) return false
+        val session = connectionRegistry?.byProvider(guildId, providerUserId) ?: return true
+        val liveCap = session.capability.maxConcurrency.coerceAtLeast(1)
+        val profileCap = maxConcurrency.coerceAtLeast(1)
+        return session.activeRequests < minOf(liveCap, profileCap)
     }
 
     private fun matchingRuntimeCandidate(

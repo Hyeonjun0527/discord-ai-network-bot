@@ -21,6 +21,10 @@ import com.discordassistant.central.persistence.NetworkOverviewProjectionReposit
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.persistence.SynthesisResultRepository
+import com.discordassistant.central.relay.AgentConnection
+import com.discordassistant.central.relay.ConnectionRegistry
+import com.discordassistant.central.relay.ProviderSession
+import com.discordassistant.central.relay.protocol.Frame
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -32,6 +36,14 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+
+private class BusyProbeConnection : AgentConnection {
+    override val remoteId: String = "busy-probe"
+
+    override fun sendFrame(frame: Frame) = Unit
+
+    override fun close(reason: String) = Unit
+}
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -180,6 +192,61 @@ class MultiResponseServiceTest
             assertEquals(false, policies.findByGuildIdAndChannelId(101, 201)!!.synthesisEnabled)
             assertEquals(1, started["candidateCount"])
             assertEquals(1, candidates.findByRunId(started["id"] as Long).size)
+        }
+
+        @Test
+        fun `provider at live concurrency limit is excluded from fanout candidates`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 152,
+                    providerUserId = 201,
+                    providerState = "ONLINE",
+                    modelCount = 2,
+                    modelNames = "llama3.1:8b,qwen-coder",
+                    capabilityTags = "multi-response",
+                    qualityTier = "specialized",
+                    maxConcurrency = 1,
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 152,
+                    providerUserId = 202,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "mistral",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    maxConcurrency = 1,
+                    overloadRisk = "normal",
+                ),
+            )
+            val registry = ConnectionRegistry()
+            val busySession = ProviderSession(BusyProbeConnection(), providerId = 201, guildId = 152)
+            registry.register(busySession)
+            busySession.sendInfer("keep provider busy")
+            val capacityAwareService =
+                MultiResponseService(
+                    policies = policies,
+                    runs = runs,
+                    candidates = candidates,
+                    syntheses = syntheses,
+                    providerCapabilities = providerCapabilities,
+                    clock = fixedClock,
+                    connectionRegistry = registry,
+                )
+            val capacityAwareController = MultiResponseController(capacityAwareService)
+            capacityAwareController.savePolicy(
+                152,
+                SaveMultiResponsePolicyRequest(channelId = 252, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
+            )
+
+            val started = capacityAwareController.startRun(152, StartMultiResponseRunRequest(channelId = 252, requestId = "busy-provider"))
+            val planned = candidates.findByRunId(started["id"] as Long)
+
+            assertEquals(1, started["candidateCount"])
+            assertEquals(listOf(202L), planned.map { it.providerUserId })
         }
 
         @Test

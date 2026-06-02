@@ -1056,17 +1056,22 @@ function multiPolicyPayload() {
   };
 }
 
-function renderMultiOps(summary) {
+function renderMultiOps(summary, runs = [], decision = {}) {
   renderList("multiOps", [
     ["상태", summary.status || "unknown"],
     ["고급 모드 안전", summary.safeToEnableAdvanced ? "가능" : "주의 필요"],
     ["최근 실행", `${summary.recentRunCount ?? 0}건`],
     ["평균 후보 수", summary.averageActualFanout ?? 0],
+    ["채택률", decision.adoptionRate ?? summary.decisionSummary?.adoptionRate ?? 0],
+    ["평균 품질", decision.averageQualityScore ?? summary.decisionSummary?.averageQualityScore ?? 0],
     ["fallback", `${summary.fallbackRunCount ?? 0}건`],
     ["위험 코드", (summary.riskCodes || []).join(", ") || "없음"],
   ], "다중응답 운영 데이터 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
   renderList("multiProviderLoad", summary.providerLoads?.slice(0, 8), "Provider 부하 데이터 없음", (p) =>
     `<li><strong>${esc(p.providerLabel || p.providerUserId || "provider")}</strong><span>${esc(p.loadRisk)} · 후보 ${esc(p.candidateCount)} · timeout ${esc(p.timeoutCount)} · 품질 ${esc(p.averageQualityScore)}</span></li>`,
+  );
+  renderList("multiRecentRuns", runs?.slice(0, 8), "최근 다중응답 실행 없음", (run) =>
+    `<li><strong>#${esc(run.id)} · ${esc(run.status)}</strong><span>#${esc(run.channelId)} · 후보 ${esc(run.candidateCount)} · ${esc(run.requestId || "request")}</span></li>`,
   );
 }
 
@@ -1079,12 +1084,18 @@ async function refreshMultiOps() {
   }
   const qs = /^\d+$/.test(channelId) ? `?channelId=${channelId}` : "";
   try {
-    const data = await getJson(`/api/ai-network/multi-response/${gid}/operations-summary${qs}`);
+    const [data, runs, decision] = await Promise.all([
+      getJson(`/api/ai-network/multi-response/${gid}/operations-summary${qs}`),
+      getJson(`/api/ai-network/multi-response/${gid}/runs`),
+      getJson(`/api/ai-network/multi-response/${gid}/decision-summary${qs ? `${qs}&limit=20` : "?limit=20"}`),
+    ]);
     const summary = data.summary || {};
-    renderMultiOps(summary);
+    renderMultiOps(summary, runs || [], decision || {});
     $("multiResult").textContent = [
       `다중응답 상태: ${summary.status || "unknown"}`,
       `고급 모드 안전: ${summary.safeToEnableAdvanced ? "yes" : "no"}`,
+      `최근 실행: ${runs?.length || 0}건 · 채택률: ${decision?.adoptionRate ?? summary.decisionSummary?.adoptionRate ?? 0}`,
+      `후보 상태: accepted=${decision?.acceptedCandidateCount ?? 0} · rejected=${decision?.rejectedCandidateCount ?? 0} · timeout=${decision?.timeoutCandidateCount ?? 0}`,
       "",
       "[다음 액션]",
       ...((summary.nextActions || []).length ? summary.nextActions.map((a) => `- ${a}`) : ["- 없음"]),

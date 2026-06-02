@@ -579,6 +579,9 @@ class AiNetworkDashboardControllerTest
 
             assertEquals(2, dashboard.growthPlan.currentLevel)
             assertTrue(dashboard.growthPlan.actions.any { it.key == "add_second_provider" })
+            assertTrue(dashboard.growthPlan.builderMessage.contains("Provider 1명"))
+            assertTrue(dashboard.growthPlan.capabilityBasis.contains("onlineProviderCount=1"))
+            assertTrue(dashboard.growthPlan.actions.all { !it.autoApply })
             val providerJoined = dashboard.growthTimeline.first { it.eventType == "provider_joined" }
             assertTrue(providerJoined.impactBullets.any { it.contains("llama3.1:8b") })
             assertTrue(dashboard.nextActions.any { it.actionType == "growth_add_second_provider" })

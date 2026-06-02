@@ -454,10 +454,16 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] Provider 참여 시 네트워크가 어떻게 좋아졌는지 보여준다.
-- [ ] 성장 레벨은 vanity metric 이 아니라 실제 capability 에서 계산된다.
-- [ ] 추천은 관리자 승인 전 자동 적용되지 않는다.
-- [ ] 사용자는 “함께 구축하고 있다”는 감각을 얻는다.
+- [x] Provider 참여 시 네트워크가 어떻게 좋아졌는지 보여준다. — `AiNetworkGrowthServiceTest` 와
+  dashboard test 가 Provider 참여 이벤트의 모델·태그·동시처리·일일한도·레벨 변화 impact bullet 을 검증한다.
+- [x] 성장 레벨은 vanity metric 이 아니라 실제 capability 에서 계산된다. — `AiNetworkFoundationService` 의
+  overview projection 이 온라인 Provider·모델 수·채널 AI·지식공간·피드백·과부하 신호로 레벨을 계산하고,
+  `AiNetworkGrowthServiceTest` 가 milestone gap 과 capability basis 를 검증한다.
+- [x] 추천은 관리자 승인 전 자동 적용되지 않는다. — `AiNetworkGrowthAction.autoApply=false` 와
+  `requiresAdminApproval` guard 를 노출하고, high-risk preset import 는 pending proposal 로만 생성됨을
+  `AiNetworkGrowthServiceTest`/`PresetRegistryServiceTest` 가 검증한다.
+- [x] 사용자는 “함께 구축하고 있다”는 감각을 얻는다. — growth plan `builderMessage` 와 timeline 이
+  Provider·모델·채널 AI·지식·피드백이 쌓여 함께 만들어지는 네트워크라는 문맥을 제공함을 테스트로 고정했다.
 
 ## 14. 의존성 DAG
 

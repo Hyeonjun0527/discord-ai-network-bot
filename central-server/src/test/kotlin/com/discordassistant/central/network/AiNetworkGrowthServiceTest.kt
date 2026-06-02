@@ -173,6 +173,10 @@ class AiNetworkGrowthServiceTest
             assertEquals(2, emptyPlan.targetLevel)
             assertEquals("connect_first_provider", emptyPlan.actions.first().key)
             assertEquals("/프로바이더참여", emptyPlan.actions.first().command)
+            assertTrue(emptyPlan.builderMessage.contains("함께 만들어지고 있어요"))
+            assertTrue(emptyPlan.capabilityBasis.contains("onlineProviderCount=0"))
+            assertTrue(emptyPlan.recommendationPolicy.contains("자동 적용되지"))
+            assertTrue(emptyPlan.actions.all { !it.autoApply })
 
             channelAis.save(ChannelAiEntity(guildId = 812, channelId = 912, displayName = "코드냥"))
             growth.recordProviderJoined(812, 77, listOf("llama3.1:8b"), listOf("coding"), "STANDARD", 1, 0)
@@ -192,5 +196,19 @@ class AiNetworkGrowthServiceTest
             assertEquals("resolve_provider_overload", riskyPlan.actions.first().key)
             assertEquals("critical", riskyPlan.actions.first().severity)
             assertTrue(riskyPlan.summary.contains("Provider 보호"))
+        }
+
+        @Test
+        fun `growth recommendations expose approval guard for settings changes`() {
+            val plan = controller.plan(820)
+
+            val channelAiAction = plan.actions.single { it.key == "create_first_channel_ai" }
+            val providerAction = plan.actions.single { it.key == "connect_first_provider" }
+
+            assertTrue(channelAiAction.requiresAdminApproval)
+            assertFalse(channelAiAction.autoApply)
+            assertFalse(providerAction.requiresAdminApproval)
+            assertFalse(providerAction.autoApply)
+            assertTrue(plan.recommendationPolicy.contains("관리자 검토"))
         }
     }

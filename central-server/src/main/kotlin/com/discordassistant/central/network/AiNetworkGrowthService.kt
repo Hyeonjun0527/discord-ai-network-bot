@@ -191,6 +191,9 @@ class AiNetworkGrowthService(
             targetTitle = next?.title,
             healthStatus = overview.healthStatus,
             summary = growthPlanSummary(overview, next, actions),
+            builderMessage = builderMessage(overview),
+            capabilityBasis = capabilityBasis(overview),
+            recommendationPolicy = RECOMMENDATION_POLICY,
             actions = actions,
         )
     }
@@ -315,6 +318,7 @@ class AiNetworkGrowthService(
                         command = "/채널프로필",
                         dashboardPath = "/dashboard/channels",
                         unlocksLevel = 3,
+                        requiresAdminApproval = true,
                     ),
                 )
             }
@@ -329,6 +333,7 @@ class AiNetworkGrowthService(
                         command = "/채널프로필",
                         dashboardPath = "/dashboard/channels",
                         unlocksLevel = 4,
+                        requiresAdminApproval = true,
                     ),
                 )
             }
@@ -357,6 +362,7 @@ class AiNetworkGrowthService(
                         command = "/지식추가",
                         dashboardPath = "/dashboard/knowledge",
                         unlocksLevel = 4,
+                        requiresAdminApproval = true,
                     ),
                 )
             }
@@ -399,6 +405,7 @@ class AiNetworkGrowthService(
                         command = null,
                         dashboardPath = "/dashboard/experiments",
                         unlocksLevel = null,
+                        requiresAdminApproval = true,
                     ),
                 )
             }
@@ -413,6 +420,8 @@ class AiNetworkGrowthService(
         command: String?,
         dashboardPath: String,
         unlocksLevel: Int?,
+        requiresAdminApproval: Boolean = false,
+        autoApply: Boolean = false,
     ): AiNetworkGrowthAction =
         AiNetworkGrowthAction(
             key = key,
@@ -423,6 +432,23 @@ class AiNetworkGrowthService(
             command = command,
             dashboardPath = dashboardPath,
             unlocksLevel = unlocksLevel,
+            requiresAdminApproval = requiresAdminApproval,
+            autoApply = autoApply,
+        )
+
+    private fun builderMessage(overview: NetworkOverviewProjectionEntity): String =
+        "이 서버의 AI 네트워크는 Provider ${overview.onlineProviderCount}명, 모델 ${overview.modelCount}개, " +
+            "채널 AI ${overview.channelAiCount}개, 지식공간 ${overview.knowledgeSpaceCount}개, " +
+            "품질 피드백 ${overview.feedbackCount}개가 쌓이면서 함께 만들어지고 있어요."
+
+    private fun capabilityBasis(overview: NetworkOverviewProjectionEntity): List<String> =
+        listOf(
+            "onlineProviderCount=${overview.onlineProviderCount}",
+            "modelCount=${overview.modelCount}",
+            "channelAiCount=${overview.channelAiCount}",
+            "knowledgeSpaceCount=${overview.knowledgeSpaceCount}",
+            "feedbackCount=${overview.feedbackCount}",
+            "overloadAlertCount=${overview.overloadAlertCount}",
         )
 
     private fun growthPlanSummary(
@@ -578,6 +604,12 @@ class AiNetworkGrowthService(
             5 -> "피드백과 보호 신호를 바탕으로 고품질 라우팅을 실험할 수 있어요."
             else -> "더 강한 AI 네트워크 기능을 사용할 수 있어요."
         }
+
+    private companion object {
+        const val RECOMMENDATION_POLICY =
+            "성장 추천은 자동 적용되지 않으며, " +
+                "채널 AI·지식·실험 설정은 관리자 검토/승인 후에만 바뀝니다."
+    }
 }
 
 data class ProviderGrowthResult(
@@ -622,6 +654,9 @@ data class AiNetworkGrowthPlan(
     val targetTitle: String?,
     val healthStatus: String,
     val summary: String,
+    val builderMessage: String,
+    val capabilityBasis: List<String>,
+    val recommendationPolicy: String,
     val actions: List<AiNetworkGrowthAction>,
 )
 
@@ -634,6 +669,8 @@ data class AiNetworkGrowthAction(
     val command: String?,
     val dashboardPath: String,
     val unlocksLevel: Int?,
+    val requiresAdminApproval: Boolean = false,
+    val autoApply: Boolean = false,
 )
 
 data class AiNetworkLevelMilestone(

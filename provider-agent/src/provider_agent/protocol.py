@@ -161,6 +161,7 @@ class InferRequest:
     prompt: str = ""
     options: dict[str, Any] = field(default_factory=dict)
     stream: bool = False  # true 면 ChunkFrame 으로 점진 응답(#142)
+    task: str = "text"  # "text" | "image"(로컬 SD 이미지 생성, SD Phase 2)
 
     def __post_init__(self) -> None:
         if len(self.prompt) > MAX_PROMPT_CHARS:
@@ -181,6 +182,7 @@ class InferRequest:
             "prompt": self.prompt,
             "options": filter_options(self.options),
             "stream": self.stream,
+            "task": self.task,
         }
 
     @classmethod
@@ -191,6 +193,7 @@ class InferRequest:
             prompt=str(d.get("prompt", "")),
             options=filter_options(d.get("options")),
             stream=bool(d.get("stream", False)),
+            task=str(d.get("task", "text")),
         )
 
 

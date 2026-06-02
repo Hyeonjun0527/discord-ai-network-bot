@@ -17,6 +17,8 @@ DEFAULT_DAILY_LIMIT: Final[int] = 15
 MAX_RESPONSE_CHARS: Final[int] = 24_000
 # 응답 토큰 상한(서버 옵션 num_predict 의 하드 캡). 서버가 더 큰 값을 줘도 이 값으로 클램프.
 MAX_NUM_PREDICT: Final[int] = 2_048
+# 이미지(base64) 전송 시 ChunkFrame 한 조각의 최대 문자 수(1MB 프레임 한계 내, SD Phase 2).
+IMAGE_CHUNK_CHARS: Final[int] = 600_000
 
 AGENT_VERSION: Final[str] = "0.3.0"
 

@@ -120,6 +120,7 @@ data class InferRequest(
     val prompt: String = "",
     val options: Map<String, Any?> = emptyMap(),
     val stream: Boolean = false, // true 면 에이전트가 ChunkFrame 으로 점진 응답(차수 11 #142)
+    val task: String = "text", // "text" | "image"(로컬 SD 이미지 생성, SD Phase 2)
     override val type: String = FrameType.INFER,
 ) : Frame() {
     init {

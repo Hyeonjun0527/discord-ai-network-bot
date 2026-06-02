@@ -16,8 +16,13 @@ def main(argv: list[str] | None = None) -> int:
     log = logging.getLogger("provider_agent")
     log.info("Provider Agent %s", cfg.agent_version)
     if cfg.self_test:
+        # 자가 점검은 연결/처리 없이 Ollama 만 확인하므로 동의 화면 없이 진행한다.
         from .agent import self_test
         return self_test(cfg)
+    # 첫 실행 동의(사용량 제한·서버/Ollama 주소·개인정보 안내). 미동의면 종료.
+    from .consent import ensure_consent
+    if not ensure_consent(cfg):
+        return 2
     log.info("설정: %s", cfg.masked())
     from .agent import run_agent
     exit_code: int = run_agent(cfg)

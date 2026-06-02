@@ -33,3 +33,18 @@ def battery_state() -> str:
     if bat is None:
         return ""
     return "charging" if bat.power_plugged else "discharging"
+
+
+def should_pause(pause_on_battery: bool = True, pause_on_high_load: bool = True) -> tuple[bool, str]:
+    """자원 보호용 자동 pause 판단. (pause 여부, 사유) 를 반환한다.
+
+    - CPU 고부하('high') → pause(다른 작업 보호)
+    - 배터리 방전 중('discharging') → pause(노트북 배터리 보호)
+
+    psutil 이 없으면 신호를 못 읽어 항상 (False, '') — 즉, 모니터 의존성 없이도 동작은 한다.
+    """
+    if pause_on_high_load and load_level() == "high":
+        return True, "high_load"
+    if pause_on_battery and battery_state() == "discharging":
+        return True, "on_battery"
+    return False, ""

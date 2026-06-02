@@ -174,7 +174,16 @@ class RequestOrchestrator(
         }
         // 2) 무게 판단 & 필요 수준(권한 상한 반영)
         val memberMax = policy.maxAllowedBurden(input.guildId, input.roleIds)
-        val weigh = weigher.resolve(RequestMeta(input.prompt.length, 0, input.command), memberMax)
+        val weigh =
+            weigher.resolve(
+                RequestMeta(
+                    promptChars = input.prompt.length,
+                    attachments = 0,
+                    command = input.command,
+                    responseMode = input.responseMode,
+                ),
+                memberMax,
+            )
         if (weigh.decision == WeighDecision.REJECT) {
             return OrchestrationResult(
                 RequestState.REJECTED,

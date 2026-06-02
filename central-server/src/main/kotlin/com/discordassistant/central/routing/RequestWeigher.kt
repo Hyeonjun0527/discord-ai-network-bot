@@ -9,6 +9,7 @@ data class RequestMeta(
     val promptChars: Int,
     val attachments: Int = 0,
     val command: String = "ask",
+    val responseMode: String = "balanced",
 )
 
 enum class WeighDecision { ACCEPT, DOWNGRADE, REJECT }
@@ -32,7 +33,13 @@ class RequestWeigher {
     /** 메타데이터 → 요청 무게(휴리스틱). 첨부/긴 프롬프트/무거운 명령일수록 무겁다. */
     fun weigh(meta: RequestMeta): RequestWeight {
         if (meta.attachments > 0 || meta.promptChars >= 2000) return RequestWeight.HEAVY
-        if (meta.promptChars >= 400 || meta.command in HEAVYISH_COMMANDS) return RequestWeight.MEDIUM
+        if (
+            meta.promptChars >= 400 ||
+            meta.command in HEAVYISH_COMMANDS ||
+            meta.responseMode.normalizedMode() == "deep"
+        ) {
+            return RequestWeight.MEDIUM
+        }
         return RequestWeight.LIGHT
     }
 
@@ -58,5 +65,13 @@ class RequestWeigher {
 
     companion object {
         private val HEAVYISH_COMMANDS = setOf("summarize", "digest", "summarize-channels")
+
+        private fun String.normalizedMode(): String =
+            trim().lowercase().let {
+                when (it) {
+                    "deep", "깊은", "깊은 답변" -> "deep"
+                    else -> it
+                }
+            }
     }
 }

@@ -214,6 +214,28 @@ class RequestOrchestratorTest {
     }
 
     @Test
+    fun `deep 응답 모드는 짧은 질문도 light only provider 에 바로 보내지 않는다`() {
+        try {
+            fakeProfiles.supported = setOf(ModelBurden.LIGHT)
+
+            val normalReg = newRegistry()
+            register(normalReg, 1, "ok")
+            val normal = orchestrator(normalReg).handle(input.copy(userId = 61, responseMode = "balanced"))
+
+            val deepReg = newRegistry()
+            val lightOnly = register(deepReg, 2, "ok")
+            val deep = orchestrator(deepReg).handle(input.copy(userId = 62, responseMode = "deep"))
+
+            assertEquals(RequestState.COMPLETED, normal.state)
+            assertEquals(RequestState.REJECTED, deep.state)
+            assertEquals(null, deep.providerId)
+            assertEquals(null, (lightOnly.connection as EchoConnection).lastInfer)
+        } finally {
+            fakeProfiles.supported = setOf(ModelBurden.LIGHT, ModelBurden.STANDARD, ModelBurden.HEAVY)
+        }
+    }
+
+    @Test
     fun `Provider 보호 상태면 단일 질문 라우팅에서도 제외하고 안전한 provider 로 보낸다`() {
         val reg = newRegistry()
         val protected = register(reg, 1, "ok")

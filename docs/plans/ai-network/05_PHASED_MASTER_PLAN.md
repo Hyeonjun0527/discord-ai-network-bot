@@ -398,11 +398,17 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 사용자는 질문 시 모델 또는 모드를 선택할 수 있다.
-- [ ] 선택 모델이 unavailable 일 때 대체 이유를 설명한다.
-- [ ] 품질 피드백은 raw prompt 없이 저장된다.
-- [ ] Provider trust score 는 공개 망신이 아니라 내부 라우팅 신호다.
-- [ ] 긴 질문/첨부/깊은 모드는 더 높은 비용 가중치로 계산된다.
+- [x] 사용자는 질문 시 모델 또는 모드를 선택할 수 있다. — `/ask` 의 model 자동완성·mode 선택지와
+  `CommandServiceTest`/`ChannelAiRoutingPolicyServiceTest` 가 요청 모델·빠른/균형/깊은/절약 모드 반영을 검증한다.
+- [x] 선택 모델이 unavailable 일 때 대체 이유를 설명한다. — `ChannelAiRoutingPolicyServiceTest` 와
+  `CommandServiceTest` 가 `requested_model_unavailable` fallback 및 유저 안내 문구를 검증한다.
+- [x] 품질 피드백은 raw prompt 없이 저장된다. — `AiQualityFeedbackServiceTest` 가 request id/type/reason redaction 과
+  raw answer body 비노출 review summary 를 검증한다.
+- [x] Provider trust score 는 공개 망신이 아니라 내부 라우팅 신호다. — feedback 기반 shadow quality 는
+  admin-protected candidate catalog 에서만 모델 후보 신호로 노출되고 live routing 선택을 즉시 바꾸지 않음을
+  `ChannelAiRoutingPolicyServiceTest` 가 검증한다.
+- [x] 긴 질문/첨부/깊은 모드는 더 높은 비용 가중치로 계산된다. — `RequestWeigherTest` 와
+  `RequestOrchestratorTest` 가 긴 prompt/첨부/deep 모드의 상향 가중치와 light-only Provider 미전송을 검증한다.
 
 ## 12. Capability Group 7 — Multi-response / Compare / Synthesize
 

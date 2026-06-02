@@ -241,11 +241,11 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 채널마다 다른 AI 이름/역할/말투가 적용된다.
-- [ ] 변경 전후 버전이 남고 rollback 된다.
-- [ ] 온보딩 문구가 채널 AI 설정에서 파생된다.
-- [ ] 민감정보 경고가 AI 헌법보다 우선한다.
-- [ ] 관리자 권한 없는 사용자는 설정을 바꿀 수 없다.
+- [x] 채널마다 다른 AI 이름/역할/말투가 적용된다. — `ChannelAiCustomizationServiceTest`, `CommandServiceTest` 가 채널별 이름·역할·말투를 prompt/runtime 에 반영하는 회귀를 고정한다.
+- [x] 변경 전후 버전이 남고 rollback 된다. — `ChannelAiCustomizationServiceTest`, `ChannelAiProfileServiceTest` 가 version history/proposal/audit 과 rollback 을 검증한다.
+- [x] 온보딩 문구가 채널 AI 설정에서 파생된다. — `ChannelAiCustomizationServiceTest` 가 active profile 기반 onboarding title/description/examples/safety notice 를 검증한다.
+- [x] 민감정보 경고가 AI 헌법보다 우선한다. — `ChannelAiCustomizationServiceTest` 가 sensitive question 에서 RAG 를 제외하고 safety warning 을 최우선으로 렌더링한다.
+- [x] 관리자 권한 없는 사용자는 설정을 바꿀 수 없다. — `CommandServiceTest` 와 `AiNetworkApiSecurityFilterTest` 가 Discord 명령/패널 및 웹 API 관리자 토큰 가드를 검증한다.
 
 ## 7. Capability Group 2 — Network Dashboard MVP
 

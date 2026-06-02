@@ -95,6 +95,26 @@ class AiNetworkApiSecurityFilterTest
         }
 
         @Test
+        fun `channel ai reads and writes are admin token protected`() {
+            mvc
+                .perform(get("/api/ai-network/channel-ai/100/200/history"))
+                .andExpect(status().isForbidden)
+
+            mvc
+                .perform(
+                    post("/api/ai-network/channel-ai/100/200/wizard")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{"actorUserId":1,"name":"코드냥","job":"개발 질문","tone":"짧고 명확하게"}"""),
+                ).andExpect(status().isForbidden)
+
+            mvc
+                .perform(
+                    get("/api/ai-network/channel-ai/wizard/options")
+                        .header(AiNetworkApiSecurityFilter.ADMIN_TOKEN_HEADER, "test-token"),
+                ).andExpect(status().isOk)
+        }
+
+        @Test
         fun `preset import preview and import are rejected without dashboard token`() {
             val body = """{"targetGuildId":100,"targetChannelId":200,"actorUserId":1}"""
             mvc

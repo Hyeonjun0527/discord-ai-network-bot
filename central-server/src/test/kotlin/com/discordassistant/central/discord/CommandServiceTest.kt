@@ -542,6 +542,8 @@ class CommandServiceTest
             assertTrue(set.contains("냥시스턴트"))
             assertTrue(set.contains("웹후크 관리"))
 
+            assertTrue(commands.setChannelAiProfile(ctx(admin = false), null, null, reset = true).content.contains("⛔"))
+            assertTrue(commands.setChannelAiProfile(ctx(admin = false), null, null, reset = false, rollback = true).content.contains("⛔"))
             assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("냥시스턴트"))
             assertTrue(commands.setChannelAiProfile(admin, null, null, true).content.contains("기본 봇"))
             assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("설정되지 않았습니다"))

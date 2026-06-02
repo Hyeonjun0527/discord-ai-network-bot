@@ -155,6 +155,7 @@ class ProviderSafetyServiceTest
             assertEquals(1, plan.maxSafeCandidates)
             assertTrue(plan.disabledFeatures.contains("multi_response"))
             assertTrue(plan.disabledFeatures.contains("deep_response"))
+            assertTrue(plan.disabledFeatures.contains("provider_pressure_boost"))
             assertTrue(plan.reasons.any { it.contains("Provider 보호") })
         }
 

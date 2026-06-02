@@ -203,7 +203,7 @@ Release 0 의 하드 게이트:
 - [x] cross-guild 접근을 막는 테스트가 있다. — `AiNetworkFoundationServiceTest`/`KnowledgeIndexingServiceTest` 가 길드 스코프 조회와 cross-guild RAG 업데이트 차단을 검증한다.
 - [x] 설정 변경은 audit log 에 남는다. — `ChannelAiCustomizationServiceTest` 가 wizard publish/propose/approve/reject/rollback/AI admin role 변경·거부 audit 을 검증한다.
 - [x] feature flag 로 신규 기능을 끌 수 있다.
-- [ ] Provider overload 상태에서는 어떤 고급 기능도 실행되지 않는다.
+- [x] Provider overload 상태에서는 어떤 고급 기능도 실행되지 않는다. — `ProviderSafetyServiceTest`/`MultiResponseServiceTest` 가 overload 시 deep response·multi-response·pressure boost 를 차단/다운그레이드하고 critical overload 에서 fanout 실행을 막는지 검증한다.
 - [x] projection 장애가 질문 처리 장애로 번지지 않는다.
 
 ## 6. Capability Group 1 — Channel AI MVP

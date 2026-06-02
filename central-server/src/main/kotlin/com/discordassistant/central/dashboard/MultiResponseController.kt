@@ -30,8 +30,15 @@ class MultiResponseController(
                 providerDailyLimit = request.providerDailyLimit,
                 timeoutSeconds = request.timeoutSeconds,
                 synthesisEnabled = request.synthesisEnabled,
+                disabledReason = request.disabledReason,
             )
-        return mapOf("id" to policy.id, "mode" to policy.mode, "maxCandidates" to policy.maxCandidates)
+        return mapOf(
+            "id" to policy.id,
+            "mode" to policy.mode,
+            "maxCandidates" to policy.maxCandidates,
+            "synthesisEnabled" to policy.synthesisEnabled,
+            "disabledReason" to policy.disabledReason,
+        )
     }
 
     @PostMapping("/{guildId}/runs")
@@ -187,6 +194,7 @@ class MultiResponseController(
                         "mode" to it.mode,
                         "maxCandidates" to it.maxCandidates,
                         "synthesisEnabled" to it.synthesisEnabled,
+                        "disabledReason" to it.disabledReason,
                     )
                 },
             "candidates" to
@@ -297,6 +305,7 @@ data class SaveMultiResponsePolicyRequest(
     val providerDailyLimit: Int = 0,
     val timeoutSeconds: Int = 120,
     val synthesisEnabled: Boolean = false,
+    val disabledReason: String? = null,
 )
 
 data class StartMultiResponseRunRequest(

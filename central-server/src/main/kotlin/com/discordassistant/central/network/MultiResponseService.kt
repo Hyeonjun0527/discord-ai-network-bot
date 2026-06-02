@@ -45,6 +45,7 @@ class MultiResponseService(
         providerDailyLimit: Int,
         timeoutSeconds: Int,
         synthesisEnabled: Boolean,
+        disabledReason: String? = null,
     ): MultiResponsePolicyEntity {
         featureGate.requireMultiResponseEnabled()
         val now = Instant.now(clock)
@@ -56,12 +57,21 @@ class MultiResponseService(
             }
         val entity = existing ?: MultiResponsePolicyEntity(guildId = guildId, channelId = channelId, createdAt = now)
         entity.channelAiId = channelAiId
-        entity.mode = mode.trim().ifBlank { "single" }
+        entity.mode = mode.trim().lowercase().ifBlank { "single" }
         entity.maxCandidates = maxCandidates.coerceIn(1, featureGate.multiResponseMaxFanout())
         entity.requireDistinctModels = requireDistinctModels
         entity.providerDailyLimit = providerDailyLimit.coerceAtLeast(0)
         entity.timeoutSeconds = timeoutSeconds.coerceIn(10, 300)
-        entity.synthesisEnabled = synthesisEnabled && featureGate.snapshot().multiResponseSynthesis && entity.maxCandidates > 1
+        entity.disabledReason =
+            sanitizeDisabledReason(disabledReason)
+                .takeUnless { it.isNullOrBlank() }
+                ?: disabledReasonForMode(entity.mode)
+        if (entity.isDisabled()) {
+            entity.maxCandidates = 1
+            entity.synthesisEnabled = false
+        } else {
+            entity.synthesisEnabled = synthesisEnabled && featureGate.snapshot().multiResponseSynthesis && entity.maxCandidates > 1
+        }
         entity.updatedAt = now
         return policies.save(entity)
     }
@@ -75,9 +85,12 @@ class MultiResponseService(
         responseMode: String = "balanced",
     ): MultiResponseRunEntity {
         featureGate.requireMultiResponseEnabled()
+        val guildPolicy = policies.findByGuildIdAndChannelIdIsNull(guildId)
+        val channelPolicy = policies.findByGuildIdAndChannelId(guildId, channelId)
+        val disabledPolicy = disabledPolicy(guildPolicy, channelPolicy)
         val policy =
-            policies.findByGuildIdAndChannelId(guildId, channelId)
-                ?: policies.findByGuildIdAndChannelIdIsNull(guildId)
+            channelPolicy
+                ?: guildPolicy
                 ?: savePolicy(
                     guildId = guildId,
                     channelId = channelId,
@@ -95,11 +108,12 @@ class MultiResponseService(
                     guildId = guildId,
                     channelId = channelId,
                     requestId = sanitizeRequestId(requestId),
-                    policyId = policy.id,
+                    policyId = disabledPolicy?.id ?: policy.id,
                     status = "planned",
                     startedAt = Instant.now(clock),
                 ),
             )
+        disabledPolicy?.let { return saveDisabledRun(run, it) }
         if (promptPreview.isSensitivePrompt()) {
             run.status = "blocked_sensitive"
             run.failureReason = "multi-response fan-out disabled for sensitive-looking prompt"
@@ -149,9 +163,10 @@ class MultiResponseService(
         maxCandidates: Int = 1,
     ): MultiResponseRunEntity {
         featureGate.requireMultiResponseEnabled()
-        val savedPolicy =
-            policies.findByGuildIdAndChannelId(guildId, channelId)
-                ?: policies.findByGuildIdAndChannelIdIsNull(guildId)
+        val guildPolicy = policies.findByGuildIdAndChannelIdIsNull(guildId)
+        val channelPolicy = policies.findByGuildIdAndChannelId(guildId, channelId)
+        val disabledPolicy = disabledPolicy(guildPolicy, channelPolicy)
+        val savedPolicy = channelPolicy ?: guildPolicy
         val effectiveMaxCandidates = maxCandidates.coerceIn(1, featureGate.multiResponseMaxFanout())
         val runtimePolicy =
             savedPolicy
@@ -173,11 +188,12 @@ class MultiResponseService(
                     guildId = guildId,
                     channelId = channelId,
                     requestId = sanitizeRequestId(requestId),
-                    policyId = savedPolicy?.id,
+                    policyId = disabledPolicy?.id ?: savedPolicy?.id,
                     status = "planned",
                     startedAt = Instant.now(clock),
                 ),
             )
+        disabledPolicy?.let { return saveDisabledRun(run, it) }
         if (promptPreview.isSensitivePrompt()) {
             run.status = "blocked_sensitive"
             run.failureReason = "multi-response fan-out disabled for sensitive-looking prompt"
@@ -841,6 +857,42 @@ class MultiResponseService(
             .mapNotNull { it.trim().toLongOrNull() }
             .toSet()
 
+    private fun disabledPolicy(
+        guildPolicy: MultiResponsePolicyEntity?,
+        channelPolicy: MultiResponsePolicyEntity?,
+    ): MultiResponsePolicyEntity? =
+        when {
+            guildPolicy?.isDisabled() == true -> guildPolicy
+            channelPolicy?.isDisabled() == true -> channelPolicy
+            else -> null
+        }
+
+    private fun saveDisabledRun(
+        run: MultiResponseRunEntity,
+        policy: MultiResponsePolicyEntity,
+    ): MultiResponseRunEntity {
+        run.status = "disabled_by_policy"
+        run.candidateCount = 0
+        run.failureReason = policy.disabledMessage()
+        run.ragContextStatus = "skipped_policy_disabled"
+        run.finishedAt = Instant.now(clock)
+        return runs.save(run)
+    }
+
+    private fun MultiResponsePolicyEntity.isDisabled(): Boolean =
+        mode.trim().lowercase() in DISABLED_POLICY_MODES || !disabledReason.isNullOrBlank()
+
+    private fun MultiResponsePolicyEntity.disabledMessage(): String {
+        val scope = if (channelId == null) "guild" else "channel"
+        val reason = disabledReason?.trim()?.takeIf { it.isNotBlank() } ?: "policy_disabled"
+        return "multi-response disabled by $scope policy: $reason".take(500)
+    }
+
+    private fun disabledReasonForMode(mode: String): String? =
+        mode.takeIf { it.trim().lowercase() in DISABLED_POLICY_MODES }?.let { "policy_disabled" }
+
+    private fun sanitizeDisabledReason(reason: String?): String? = reason?.trim()?.take(500)
+
     private fun selectProviders(
         guildId: Long,
         policy: MultiResponsePolicyEntity,
@@ -857,6 +909,7 @@ class MultiResponseService(
                 .filter { it.hasLiveCapacity(guildId) }
                 .filter { !it.overloadRisk.equals("high", ignoreCase = true) && !it.overloadRisk.equals("critical", ignoreCase = true) }
                 .filter { policy.providerDailyLimit <= 0 || it.dailyLimit <= 0 || it.dailyLimit >= policy.providerDailyLimit }
+                .filter { !advancedFanout || !it.hasFanoutExclusion() }
                 .filter { !advancedFanout || it.hasFanoutOptIn() }
                 .sortedWith(
                     compareByDescending<ProviderCapabilityProfileEntity> { it.qualityTier == "specialized" }
@@ -967,6 +1020,16 @@ class MultiResponseService(
             selectedCandidateIds.size <= 1 &&
             strategy.trim().lowercase() in SYNTHESIS_FLAG_SAFE_SELECTION_STRATEGIES
 
+    private fun ProviderCapabilityProfileEntity.hasFanoutExclusion(): Boolean {
+        val tags =
+            capabilityTags
+                .orEmpty()
+                .split(",")
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+        return tags.any { it in FANOUT_EXCLUSION_TAGS }
+    }
+
     private fun ProviderCapabilityProfileEntity.hasFanoutOptIn(): Boolean {
         val tags =
             capabilityTags
@@ -1038,6 +1101,8 @@ class MultiResponseService(
 
     private companion object {
         val FANOUT_OPT_IN_TAGS = setOf("multi-response", "multi_response", "fanout", "fanout-opt-in")
+        val FANOUT_EXCLUSION_TAGS = setOf("fanout-excluded", "fanout-opt-out", "no-fanout", "multi-response-excluded")
+        val DISABLED_POLICY_MODES = setOf("disabled", "off", "kill_switch", "kill-switch")
         val FALLBACK_RUN_STATUSES = setOf("no_provider", "blocked_sensitive", "failed")
         val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
         val SYNTHESIS_FLAG_SAFE_SELECTION_STRATEGIES =

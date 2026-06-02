@@ -1059,6 +1059,7 @@ function multiPolicyPayload() {
     providerDailyLimit: multiNumber("multiProviderDailyLimit", 0, 0, 100000),
     timeoutSeconds: multiNumber("multiTimeoutSeconds", 120, 10, 300),
     synthesisEnabled: $("multiSynthesis").checked,
+    disabledReason: $("multiDisabledReason").value.trim() || null,
   };
 }
 
@@ -1143,7 +1144,9 @@ async function saveMultiPolicy() {
   }
   try {
     const result = await postJson(`/api/ai-network/multi-response/${gid}/policy`, multiPolicyPayload());
-    $("multiResult").textContent = `다중응답 정책 저장 완료: policy=${result.id} · ${result.mode} · candidates=${result.maxCandidates}`;
+    $("multiResult").textContent =
+      `다중응답 정책 저장 완료: policy=${result.id} · ${result.mode} · candidates=${result.maxCandidates}` +
+      (result.disabledReason ? ` · disabled=${result.disabledReason}` : "");
     await refreshMultiOps();
   } catch (e) {
     $("multiResult").textContent = `다중응답 정책 저장 실패: ${e.message}`;

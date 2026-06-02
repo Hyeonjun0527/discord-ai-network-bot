@@ -317,6 +317,83 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `guild multi response kill switch overrides channel policy`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 154,
+                    providerUserId = 401,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3.1:8b",
+                    capabilityTags = "multi-response",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(
+                154,
+                SaveMultiResponsePolicyRequest(
+                    channelId = null,
+                    mode = "disabled",
+                    maxCandidates = 2,
+                    synthesisEnabled = true,
+                    disabledReason = "provider rest window",
+                ),
+            )
+            controller.savePolicy(
+                154,
+                SaveMultiResponsePolicyRequest(channelId = 254, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
+            )
+
+            val started = controller.startRun(154, StartMultiResponseRunRequest(channelId = 254, requestId = "guild-disabled"))
+            val run = runs.findById(started["id"] as Long).get()
+
+            assertEquals("disabled_by_policy", started["status"])
+            assertEquals(0, started["candidateCount"])
+            assertEquals("skipped_policy_disabled", started["ragContextStatus"])
+            assertTrue(run.failureReason!!.contains("guild policy"))
+            assertTrue(run.failureReason!!.contains("provider rest window"))
+            assertTrue(candidates.findByRunId(run.id).isEmpty())
+        }
+
+        @Test
+        fun `provider fanout exclusion tag removes provider from advanced candidates`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 155,
+                    providerUserId = 501,
+                    providerState = "ONLINE",
+                    modelCount = 2,
+                    modelNames = "llama3.1:8b,qwen-coder",
+                    capabilityTags = "multi-response,fanout-excluded",
+                    qualityTier = "specialized",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 155,
+                    providerUserId = 502,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "mistral",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(
+                155,
+                SaveMultiResponsePolicyRequest(channelId = 255, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
+            )
+
+            val started = controller.startRun(155, StartMultiResponseRunRequest(channelId = 255, requestId = "fanout-exclusion"))
+            val planned = candidates.findByRunId(started["id"] as Long)
+
+            assertEquals(1, started["candidateCount"])
+            assertEquals(listOf(502L), planned.map { it.providerUserId })
+        }
+
+        @Test
         fun `multi response run plans safe candidates and completes synthesis`() {
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(

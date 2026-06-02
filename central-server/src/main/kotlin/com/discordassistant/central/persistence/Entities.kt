@@ -384,6 +384,7 @@ class MultiResponsePolicyEntity(
     var providerDailyLimit: Int = 0,
     var timeoutSeconds: Int = 120,
     var synthesisEnabled: Boolean = false,
+    var disabledReason: String? = null,
     var createdAt: Instant = Instant.EPOCH,
     var updatedAt: Instant = Instant.EPOCH,
 )

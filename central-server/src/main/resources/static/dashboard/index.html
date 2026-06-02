@@ -459,8 +459,10 @@
           <option value="single">single · 단일 답변</option>
           <option value="compare">compare · 후보 비교</option>
           <option value="debate">debate · 관점 비교</option>
+          <option value="disabled">disabled · guild/channel 중지</option>
         </select>
       </label>
+      <label>비활성 사유<input id="multiDisabledReason" type="text" maxlength="500" placeholder="예: 야간 과부하로 일시 중지" /></label>
       <label>후보 수<input id="multiMaxCandidates" type="number" min="1" max="5" value="1" /></label>
       <label>타임아웃(초)<input id="multiTimeoutSeconds" type="number" min="10" max="300" value="120" /></label>
       <label>Provider 일일 한도<input id="multiProviderDailyLimit" type="number" min="0" value="0" /></label>

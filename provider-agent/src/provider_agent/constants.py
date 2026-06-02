@@ -18,7 +18,7 @@ MAX_RESPONSE_CHARS: Final[int] = 24_000
 # 응답 토큰 상한(서버 옵션 num_predict 의 하드 캡). 서버가 더 큰 값을 줘도 이 값으로 클램프.
 MAX_NUM_PREDICT: Final[int] = 2_048
 
-AGENT_VERSION: Final[str] = "0.2.1"
+AGENT_VERSION: Final[str] = "0.2.2"
 
 
 class FrameType:

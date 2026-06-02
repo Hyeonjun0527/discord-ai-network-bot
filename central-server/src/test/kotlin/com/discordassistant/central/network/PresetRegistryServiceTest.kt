@@ -313,6 +313,68 @@ class PresetRegistryServiceTest
         }
 
         @Test
+        fun `published preset updates create immutable revisions and imports stay detached`() {
+            val created =
+                controller.create(
+                    710,
+                    CreatePresetRequest(
+                        actorUserId = 77,
+                        name = "운영 공지 프리셋",
+                        summary = "초기 공지 작성",
+                        category = "ops",
+                        behavior =
+                            PresetBehaviorInput(
+                                purpose = "초기 공지 작성",
+                                tone = "friendly",
+                                answerLength = "balanced",
+                                changeSummary = "initial",
+                            ),
+                    ),
+                )
+            val presetId = created["id"] as Long
+            val published = controller.publish(presetId, PublishPresetRequest(actorUserId = 77))
+            val publishedId = published["id"] as Long
+            val originalRevisionId = publishedPresets.findById(publishedId).orElseThrow().revisionId
+
+            val imported =
+                controller.importPreset(
+                    publishedId,
+                    ImportPresetRequest(targetGuildId = 711, targetChannelId = null, actorUserId = 88),
+                )
+            val importedPresetId = imported["importedPresetId"] as Long
+            assertEquals(originalRevisionId, imported["sourceRevisionId"])
+
+            val updatedPublished =
+                controller.updatePublished(
+                    publishedId,
+                    UpdatePublishedPresetRequest(
+                        actorUserId = 77,
+                        title = "운영 공지 프리셋 v2",
+                        behavior =
+                            PresetBehaviorInput(
+                                purpose = "릴리즈 노트 작성",
+                                tone = "formal",
+                                answerLength = "short",
+                                changeSummary = "release-note mode",
+                            ),
+                    ),
+                )
+            val newRevisionId = updatedPublished["revisionId"] as Long
+            assertTrue(newRevisionId > originalRevisionId)
+            assertEquals(newRevisionId, publishedPresets.findById(publishedId).orElseThrow().revisionId)
+            assertEquals("초기 공지 작성", revisions.findById(originalRevisionId).orElseThrow().purpose)
+            assertEquals("릴리즈 노트 작성", revisions.findById(newRevisionId).orElseThrow().purpose)
+
+            val importedDetail = controller.presetDetail(importedPresetId)["preset"] as PresetDetail
+            assertEquals("초기 공지 작성", importedDetail.revisions.single().purpose)
+            val history = controller.importHistory(711)["imports"] as List<*>
+            val preserved = history.single() as PresetImportSummary
+            assertEquals(originalRevisionId, preserved.sourceRevisionId)
+            assertEquals(importedPresetId, preserved.importedPresetId)
+            assertTrue(preserved.detachedCopy)
+        }
+
+        @Test
         fun `published preset catalog searches filters sorts and limits for web registry`() {
             val coding =
                 service.createPreset(

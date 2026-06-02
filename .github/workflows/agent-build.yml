@@ -1,6 +1,7 @@
-# Provider Agent 멀티 플랫폼 단일 실행파일 빌드 + 릴리스 (차수 9 #116, 배포물 버전관리).
+# Provider Agent 멀티 플랫폼 단일 실행파일 빌드 + 릴리스 (배포 신뢰성 강화).
 # agent-v* 태그 push 시 Windows/macOS/Linux 단일 실행파일을 PyInstaller 로 빌드해
-# GitHub Release 에 OS별 자산으로 첨부한다(다운로드 링크: releases/latest/download/<asset>).
+# 서명(Win signtool / macOS Developer ID + notarization)하고, 단일 SHA256SUMS.txt·SBOM·
+# GitHub artifact attestation 과 함께 GitHub Release 에 첨부한다.
 name: agent-build
 
 on:
@@ -10,6 +11,8 @@ on:
 
 permissions:
   contents: write # 릴리스 생성/자산 업로드
+  id-token: write # artifact attestation(Sigstore OIDC)
+  attestations: write # attest-build-provenance
 
 jobs:
   build:
@@ -32,21 +35,36 @@ jobs:
           pip install . pyinstaller
       - name: 빌드
         run: pyinstaller packaging/agent.spec
-      # macOS 서명/공증(#106). 인증서 시크릿이 있을 때만 실행.
+      # macOS Developer ID 서명 + notarization(#106). 인증서/Apple 계정 시크릿이 있을 때만 실행.
       - name: macOS codesign + notarize
         if: runner.os == 'macOS' && env.MACOS_CERT_P12 != ''
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
           MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
+          set -euo pipefail
           echo "$MACOS_CERT_P12" | base64 --decode > cert.p12
           security create-keychain -p ci build.keychain
           security import cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
           security unlock-keychain -p ci build.keychain
-          codesign --deep --force --options runtime --sign "$MACOS_SIGN_IDENTITY" dist/discord-ai-provider-agent
-          codesign --verify --verbose dist/discord-ai-provider-agent
-      # Windows 서명/SmartScreen(#107). 인증서 시크릿이 있을 때만 실행.
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
+          # 하드웨어 런타임으로 Developer ID 서명(notarization 요건).
+          codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" dist/discord-ai-provider-agent
+          codesign --verify --strict --verbose=2 dist/discord-ai-provider-agent
+          # notarization: 단일 실행파일은 zip 으로 제출(스테이플 불가 → 온라인 검증).
+          if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
+            ditto -c -k --keepParent dist/discord-ai-provider-agent dist/notarize.zip
+            xcrun notarytool submit dist/notarize.zip \
+              --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+            rm -f dist/notarize.zip
+          else
+            echo "::warning::APPLE_ID/TEAM_ID/APP_PASSWORD 미설정 — 서명만 하고 notarization 생략"
+          fi
+      # Windows 코드서명(#107, SmartScreen 평판). 인증서 시크릿이 있을 때만 실행.
       - name: Windows signtool
         if: runner.os == 'Windows' && env.WINDOWS_CERT_PFX != ''
         shell: pwsh
@@ -57,7 +75,7 @@ jobs:
           [IO.File]::WriteAllBytes("cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
           & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\discord-ai-provider-agent.exe
           & signtool verify /pa dist\discord-ai-provider-agent.exe
-      - name: OS별 자산 이름 + 체크섬
+      - name: OS별 자산 이름
         shell: bash
         run: |
           cd dist
@@ -66,13 +84,52 @@ jobs:
             macOS)   mv discord-ai-provider-agent discord-ai-provider-agent-macos ;;
             Windows) mv discord-ai-provider-agent.exe discord-ai-provider-agent-windows.exe ;;
           esac
-          if command -v shasum >/dev/null; then shasum -a 256 discord-ai-provider-agent-* > SHA256SUMS-$RUNNER_OS.txt; else sha256sum discord-ai-provider-agent-* > SHA256SUMS-$RUNNER_OS.txt; fi
-          cat SHA256SUMS-*.txt
+          ls -la
       - uses: actions/upload-artifact@v4
         with:
           name: provider-agent-${{ matrix.os }}
           path: provider-agent/dist/discord-ai-provider-agent-*
-      # 태그 push 시에만 GitHub Release 에 OS 자산 첨부(각 OS 잡이 같은 릴리스에 append).
+
+  # 모든 OS 빌드를 모아 단일 SHA256SUMS.txt·SBOM·attestation 을 만들고 릴리스에 첨부.
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: provider-agent-*
+          merge-multiple: true
+          path: dist
+      - name: 단일 SHA256SUMS.txt 생성
+        run: |
+          cd dist
+          sha256sum discord-ai-provider-agent-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      # SBOM(소프트웨어 자재명세서) — provider-agent 의존성 그래프를 SPDX 로 생성.
+      - name: SBOM 생성(syft/SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: provider-agent
+          format: spdx-json
+          artifact-name: provider-agent-sbom.spdx.json
+          output-file: dist/provider-agent-sbom.spdx.json
+      # GitHub artifact attestation — 바이너리 빌드 출처(provenance) 증명.
+      - name: 빌드 출처 attestation
+        if: startsWith(github.ref, 'refs/tags/agent-v')
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/discord-ai-provider-agent-*
+      - name: SBOM attestation
+        if: startsWith(github.ref, 'refs/tags/agent-v')
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: dist/discord-ai-provider-agent-linux
+          sbom-path: dist/provider-agent-sbom.spdx.json
       - name: GitHub Release 업로드
         if: startsWith(github.ref, 'refs/tags/agent-v')
         uses: softprops/action-gh-release@v2
@@ -82,9 +139,18 @@ jobs:
           body: |
             커뮤니티 Provider Agent — 내 PC 의 Ollama 를 풀에 연결하는 단일 실행파일.
             자기 OS 파일을 받아 `--token <토큰> --relay-url wss://discord-ai.yeon.world/agent` 로 실행하세요.
+
+            ## 검증 방법(권장)
+            1. `SHA256SUMS.txt` 를 함께 받아 해시를 대조하세요.
+               - macOS/Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing` (macOS 는 `shasum -a 256 -c`)
+               - Windows: `Get-FileHash <파일> -Algorithm SHA256` 출력과 비교
+            2. 빌드 출처(provenance)·SBOM attestation 확인:
+               `gh attestation verify discord-ai-provider-agent-<os> --repo Hyeonjun0527/discord-assistant`
+            3. 일반 사용자 권한으로 실행하세요(관리자/sudo 불필요).
           files: |
-            provider-agent/dist/discord-ai-provider-agent-*
-            provider-agent/dist/SHA256SUMS-*.txt
+            dist/discord-ai-provider-agent-*
+            dist/SHA256SUMS.txt
+            dist/provider-agent-sbom.spdx.json
 
   # 빌드된 바이너리를 원격 central 의 다운로드 폴더로 배치 → central 이 /download/** 로 서빙.
   # (레포 비공개 유지: 같은 run 의 아티팩트를 받아 self-hosted 러너에서 복사 — 토큰/공개 불필요)

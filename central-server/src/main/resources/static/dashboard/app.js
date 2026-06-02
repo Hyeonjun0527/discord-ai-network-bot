@@ -1084,7 +1084,7 @@ function renderMultiFeatureFlags(features = {}) {
   ], "기능 플래그 데이터 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
 }
 
-function renderMultiOps(summary, runs = [], decision = {}, features = {}) {
+function renderMultiOps(summary, runs = [], decision = {}, features = {}, recommendation = {}) {
   renderList("multiOps", [
     ["상태", summary.status || "unknown"],
     ["고급 모드 안전", summary.safeToEnableAdvanced ? "가능" : "주의 필요"],
@@ -1097,6 +1097,14 @@ function renderMultiOps(summary, runs = [], decision = {}, features = {}) {
     ["위험 코드", (summary.riskCodes || []).join(", ") || "없음"],
   ], "다중응답 운영 데이터 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
   renderMultiFeatureFlags(features);
+  renderList("multiRecommendation", [
+    ["상태", recommendation.status || "unknown"],
+    ["정책", `${recommendation.policySource || "-"} · ${recommendation.policyMode || "-"}`],
+    ["추천 후보", `${recommendation.recommendedCandidateCount ?? 0}/${recommendation.maxSafeCandidates ?? 0}`],
+    ["fanout", recommendation.fanoutAllowed ? "가능" : "단일/차단"],
+    ["사유", (recommendation.reasons || []).join(", ") || "없음"],
+    ["Provider", (recommendation.providers || []).map((p) => `${p.providerLabel}·${p.modelName || "-"}`).join(" / ") || "없음"],
+  ], "추천 fanout 미리보기 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
   renderList("multiProviderLoad", summary.providerLoads?.slice(0, 8), "Provider 부하 데이터 없음", (p) =>
     `<li><strong>${esc(p.providerLabel || p.providerUserId || "provider")}</strong><span>${esc(p.loadRisk)} · 후보 ${esc(p.candidateCount)} · timeout ${esc(p.timeoutCount)} · 품질 ${esc(p.averageQualityScore)}</span></li>`,
   );
@@ -1113,20 +1121,27 @@ async function refreshMultiOps() {
     return;
   }
   const qs = /^\d+$/.test(channelId) ? `?channelId=${channelId}` : "";
+  const recommendationQs = new URLSearchParams({
+    responseMode: $("multiMode").value,
+    requestedCandidates: String(multiNumber("multiMaxCandidates", 1, 1, currentMultiMaxFanout())),
+  });
+  if (/^\d+$/.test(channelId)) recommendationQs.set("channelId", channelId);
   try {
-    const [data, runs, decision, features] = await Promise.all([
+    const [data, runs, decision, features, recommendation] = await Promise.all([
       getJson(`/api/ai-network/multi-response/${gid}/operations-summary${qs}`),
       getJson(`/api/ai-network/multi-response/${gid}/runs`),
       getJson(`/api/ai-network/multi-response/${gid}/decision-summary${qs ? `${qs}&limit=20` : "?limit=20"}`),
       getJson("/api/ai-network/features"),
+      getJson(`/api/ai-network/multi-response/${gid}/recommendation?${recommendationQs.toString()}`),
     ]);
     const summary = data.summary || {};
-    renderMultiOps(summary, runs || [], decision || {}, features || {});
+    renderMultiOps(summary, runs || [], decision || {}, features || {}, recommendation || {});
     $("multiResult").textContent = [
       `다중응답 상태: ${summary.status || "unknown"}`,
       `고급 모드 안전: ${summary.safeToEnableAdvanced ? "yes" : "no"}`,
       `기능 플래그: multi=${featureState(features?.multiResponse)} · dashboard=${featureState(features?.multiResponseDashboard)} · synthesis=${featureState(features?.multiResponseSynthesis)} · rag=${featureState(features?.multiResponseRag)} · maxFanout=${features?.multiResponseMaxFanout ?? "?"}`,
       `최근 실행: ${runs?.length || 0}건 · 채택률: ${decision?.adoptionRate ?? summary.decisionSummary?.adoptionRate ?? 0}`,
+      `추천 fanout: ${recommendation?.status || "unknown"} · 후보 ${recommendation?.recommendedCandidateCount ?? 0}/${recommendation?.maxSafeCandidates ?? 0}`,
       `후보 상태: accepted=${decision?.acceptedCandidateCount ?? 0} · rejected=${decision?.rejectedCandidateCount ?? 0} · timeout=${decision?.timeoutCandidateCount ?? 0}`,
       "",
       "[다음 액션]",

@@ -276,6 +276,40 @@ class MultiResponseController(
         )
     }
 
+    @GetMapping("/{guildId}/recommendation")
+    fun fanoutRecommendation(
+        @PathVariable guildId: Long,
+        @RequestParam(required = false) channelId: Long? = null,
+        @RequestParam(defaultValue = "balanced") responseMode: String = "balanced",
+        @RequestParam(defaultValue = "1") requestedCandidates: Int = 1,
+        @RequestParam(defaultValue = "public") audience: String = "public",
+    ): Map<String, Any?> {
+        val visibility = DashboardAudience.from(audience)
+        val recommendation = service.recommendFanout(guildId, channelId, responseMode, requestedCandidates)
+        return mapOf(
+            "guildId" to recommendation.guildId,
+            "channelId" to recommendation.channelId,
+            "policySource" to recommendation.policySource,
+            "policyMode" to recommendation.policyMode,
+            "requestedCandidates" to recommendation.requestedCandidates,
+            "maxSafeCandidates" to recommendation.maxSafeCandidates,
+            "recommendedCandidateCount" to recommendation.recommendedCandidateCount,
+            "fanoutAllowed" to recommendation.fanoutAllowed,
+            "status" to recommendation.status,
+            "reasons" to recommendation.reasons,
+            "providers" to
+                recommendation.providers.mapIndexed { index, provider ->
+                    mapOf(
+                        "providerUserId" to if (visibility.canSeeProviderIdentity) provider.providerUserId else null,
+                        "providerLabel" to providerLabel(provider.providerUserId, index),
+                        "modelName" to provider.modelName,
+                        "qualityTier" to provider.qualityTier,
+                        "overloadRisk" to DashboardAudience.PUBLIC.risk(provider.overloadRisk),
+                    )
+                },
+        )
+    }
+
     @GetMapping("/{guildId}/operations-summary")
     fun operationsSummary(
         @PathVariable guildId: Long,

@@ -236,6 +236,79 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `fanout recommendation does not create run or candidates`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 154,
+                    providerUserId = 401,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3.1:8b",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 154,
+                    providerUserId = 402,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "qwen2.5-coder",
+                    capabilityTags = "multi-response",
+                    qualityTier = "specialized",
+                    overloadRisk = "normal",
+                ),
+            )
+            controller.savePolicy(
+                154,
+                SaveMultiResponsePolicyRequest(channelId = 204, mode = "compare", maxCandidates = 2),
+            )
+            val runCountBefore = runs.count()
+            val candidateCountBefore = candidates.count()
+
+            val recommendation = service.recommendFanout(guildId = 154, channelId = 204, requestedCandidates = 2)
+            val apiRecommendation =
+                controller.fanoutRecommendation(154, channelId = 204, responseMode = "compare", requestedCandidates = 2)
+
+            assertEquals("fanout_recommended", recommendation.status)
+            assertEquals(2, recommendation.recommendedCandidateCount)
+            assertEquals(2, recommendation.providers.size)
+            assertEquals("fanout_recommended", apiRecommendation["status"])
+            assertEquals(2, apiRecommendation["recommendedCandidateCount"])
+            assertEquals(runCountBefore, runs.count())
+            assertEquals(candidateCountBefore, candidates.count())
+        }
+
+        @Test
+        fun `fanout recommendation reports disabled policy without creating run`() {
+            controller.savePolicy(
+                155,
+                SaveMultiResponsePolicyRequest(
+                    channelId = null,
+                    mode = "disabled",
+                    maxCandidates = 2,
+                    disabledReason = "maintenance window",
+                ),
+            )
+            val runCountBefore = runs.count()
+
+            val recommendation = service.recommendFanout(guildId = 155, channelId = 205, requestedCandidates = 2)
+            val disabledSummary = MultiResponseOperationsSummary.disabled(155, 205)
+
+            assertEquals("disabled_by_policy", recommendation.status)
+            assertEquals("guild", recommendation.policySource)
+            assertTrue(recommendation.reasons.single().contains("maintenance window"))
+            val disabledDecision = disabledSummary.decisionSummary
+            val disabledStatus = disabledDecision.statusCounts.keys.single()
+
+            assertEquals("disabled", disabledSummary.status)
+            assertEquals("disabled", disabledStatus)
+            assertEquals(runCountBefore, runs.count())
+        }
+
+        @Test
         fun `provider at live concurrency limit is excluded from fanout candidates`() {
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(

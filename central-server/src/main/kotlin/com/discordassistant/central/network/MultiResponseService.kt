@@ -794,6 +794,95 @@ class MultiResponseService(
         )
     }
 
+    fun recommendFanout(
+        guildId: Long,
+        channelId: Long? = null,
+        responseMode: String = "balanced",
+        requestedCandidates: Int = 1,
+    ): MultiResponseFanoutRecommendation {
+        featureGate.requireMultiResponseDashboardEnabled()
+        val guildPolicy = policies.findByGuildIdAndChannelIdIsNull(guildId)
+        val channelPolicy = channelId?.let { policies.findByGuildIdAndChannelId(guildId, it) }
+        val disabledPolicy = disabledPolicy(guildPolicy, channelPolicy)
+        val policySource =
+            when {
+                channelPolicy != null -> "channel"
+                guildPolicy != null -> "guild"
+                else -> "default"
+            }
+        val policy =
+            channelPolicy
+                ?: guildPolicy
+                ?: MultiResponsePolicyEntity(
+                    guildId = guildId,
+                    channelId = channelId,
+                    mode = responseMode.trim().lowercase().ifBlank { "single" },
+                    maxCandidates = requestedCandidates.coerceIn(1, featureGate.multiResponseMaxFanout()),
+                    createdAt = Instant.now(clock),
+                    updatedAt = Instant.now(clock),
+                )
+        if (disabledPolicy != null) {
+            return MultiResponseFanoutRecommendation.disabled(
+                guildId = guildId,
+                channelId = channelId,
+                policySource = policySource,
+                policyMode = disabledPolicy.mode,
+                reason = disabledPolicy.disabledMessage(),
+            )
+        }
+        val executionPlan = safety?.executionPlan(guildId, policy.mode, policy.maxCandidates)
+        val maxSafeCandidates = executionPlan?.maxSafeCandidates ?: policy.maxCandidates
+        if (maxSafeCandidates <= 0) {
+            return MultiResponseFanoutRecommendation(
+                guildId = guildId,
+                channelId = channelId,
+                policySource = policySource,
+                policyMode = policy.mode,
+                requestedCandidates = policy.maxCandidates,
+                maxSafeCandidates = 0,
+                recommendedCandidateCount = 0,
+                fanoutAllowed = false,
+                status = "blocked_provider_safety",
+                reasons = executionPlan?.reasons?.takeIf { it.isNotEmpty() } ?: listOf("provider_safety_blocked"),
+                providers = emptyList(),
+            )
+        }
+        val selectedProviders =
+            selectProviders(
+                guildId = guildId,
+                policy = policy,
+                maxCandidates = maxSafeCandidates,
+                fanoutAllowed = executionPlan?.fanoutAllowed ?: true,
+            )
+        val status =
+            when {
+                selectedProviders.isEmpty() -> "no_provider"
+                selectedProviders.size > 1 -> "fanout_recommended"
+                else -> "single_recommended"
+            }
+        return MultiResponseFanoutRecommendation(
+            guildId = guildId,
+            channelId = channelId,
+            policySource = policySource,
+            policyMode = policy.mode,
+            requestedCandidates = policy.maxCandidates,
+            maxSafeCandidates = maxSafeCandidates,
+            recommendedCandidateCount = selectedProviders.size,
+            fanoutAllowed = (executionPlan?.fanoutAllowed ?: true) && selectedProviders.size > 1,
+            status = status,
+            reasons = executionPlan?.reasons.orEmpty().ifEmpty { listOf(status) },
+            providers =
+                selectedProviders.map {
+                    MultiResponseRecommendedProvider(
+                        providerUserId = it.providerUserId,
+                        modelName = it.firstModel(),
+                        qualityTier = it.qualityTier,
+                        overloadRisk = it.overloadRisk,
+                    )
+                },
+        )
+    }
+
     private fun normalizePseudoStreamSteps(requestedSteps: List<Int>): List<Int> {
         val normalized =
             requestedSteps
@@ -1143,6 +1232,50 @@ data class MultiResponseDailyStats(
     val fallbackRunCount: Int,
     val timeoutCandidateCount: Int,
     val averageActualFanout: Double,
+)
+
+data class MultiResponseFanoutRecommendation(
+    val guildId: Long,
+    val channelId: Long?,
+    val policySource: String,
+    val policyMode: String,
+    val requestedCandidates: Int,
+    val maxSafeCandidates: Int,
+    val recommendedCandidateCount: Int,
+    val fanoutAllowed: Boolean,
+    val status: String,
+    val reasons: List<String>,
+    val providers: List<MultiResponseRecommendedProvider>,
+) {
+    companion object {
+        fun disabled(
+            guildId: Long,
+            channelId: Long?,
+            policySource: String,
+            policyMode: String,
+            reason: String,
+        ): MultiResponseFanoutRecommendation =
+            MultiResponseFanoutRecommendation(
+                guildId = guildId,
+                channelId = channelId,
+                policySource = policySource,
+                policyMode = policyMode,
+                requestedCandidates = 0,
+                maxSafeCandidates = 0,
+                recommendedCandidateCount = 0,
+                fanoutAllowed = false,
+                status = "disabled_by_policy",
+                reasons = listOf(reason),
+                providers = emptyList(),
+            )
+    }
+}
+
+data class MultiResponseRecommendedProvider(
+    val providerUserId: Long,
+    val modelName: String?,
+    val qualityTier: String,
+    val overloadRisk: String,
 )
 
 data class MultiResponseDecisionSummary(

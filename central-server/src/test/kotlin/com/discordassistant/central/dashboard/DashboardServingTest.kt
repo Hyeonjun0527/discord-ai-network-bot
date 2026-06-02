@@ -219,6 +219,8 @@ class DashboardServingTest
             assertTrue(js.contains("/api/ai-network/multi-response/${'$'}{gid}/policy"))
             assertTrue(js.contains("disabledReason"))
             assertTrue(js.contains("/api/ai-network/multi-response/${'$'}{gid}/operations-summary"))
+            assertTrue(js.contains("/api/ai-network/multi-response/${'$'}{gid}/recommendation"))
+            assertTrue(js.contains("multiRecommendation"))
             assertTrue(js.contains("/api/ai-network/multi-response/${'$'}{gid}/runs"))
             assertTrue(js.contains("/api/ai-network/multi-response/${'$'}{gid}/decision-summary"))
             assertTrue(js.contains("/api/ai-network/features"))

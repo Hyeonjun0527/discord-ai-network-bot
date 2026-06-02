@@ -24,7 +24,10 @@ object ProviderOnboarding {
         val relay = relayUrl.ifBlank { "wss://<관리자에게 문의>/agent" }
         val note =
             "\n토큰은 ⏳ **10분·1회용**. 연결되면 `/내상태`(provider-status)로 확인하세요. " +
-                "📄 웹 가이드·GitHub Release: $INSTALL_PAGE · **민감정보 입력 금지.**"
+                "📄 웹 가이드·GitHub Release: $INSTALL_PAGE · **민감정보 입력 금지.**" +
+                "\n🖼️ (선택) **이미지 생성도 제공**하려면 로컬 Stable Diffusion(A1111 등)을 켜고 " +
+                "에이전트에 `--enable-image` 를 추가하세요. 그러면 `/imagine` 요청을 받을 수 있어요. " +
+                "누구나 이미지 프로바이더가 될 수 있습니다."
         return when (os.lowercase()) {
             "mac", "macos" ->
                 "🍎 **macOS** — 먼저 터미널을 여세요: `⌘ Space` → `Terminal` 입력 → Enter / 또는 Finder → 응용 프로그램 → 유틸리티 → 터미널.\n" +

@@ -44,8 +44,26 @@ winget 은 매니페스트의 `InstallerSha256` 으로 자동 검증한다.
 winget install Hyeonjun0527.DiscordAiProviderAgent   # 해시 자동 검증, 관리자 불필요
 ```
 
-## 요약: "사용자가 해시검증 안 하게" 하려면
-1. **패키지 매니저 등록**(위) — 가장 직접적. 매니저가 검증.
-2. **코드서명/공증**([RELEASE_SIGNING.md](RELEASE_SIGNING.md)) — OS가 검증.
-3. 둘 다 갖추면 사용자는 `brew install` / `winget install` 한 줄이면 끝이고,
-   무결성·게시자 검증은 매니저와 OS가 대신한다.
+## Scoop (Windows, 가장 가벼운 무료 경로)
+
+Scoop 은 `hash` 를 자동 검증하고 포터블 실행파일을 사용자 홈에 설치한다(관리자 불필요).
+별도 매니페스트 심사 없이 **자기 bucket** 으로 바로 배포 가능 — winget PR 보다 빠름.
+
+**1) 한 번만: bucket 저장소 만들기**
+- GitHub 에 `Hyeonjun0527/scoop-bucket` 저장소를 만들고, 릴리스 자산의 렌더된
+  `discord-ai-provider-agent.json` 을 `bucket/` 에 커밋(CI 로 자동화 가능).
+
+**2) 사용자 설치**
+```powershell
+scoop bucket add nyassistant https://github.com/Hyeonjun0527/scoop-bucket
+scoop install discord-ai-provider-agent   # 해시 자동 검증
+```
+
+## 요약: "사용자가 해시검증 안 하게" 하려면 (전부 $0)
+1. **패키지 매니저 등록**(위) — 가장 직접적. 매니저가 sha256 자동 검증.
+   - macOS: Homebrew tap. **brew 로 받은 파일은 격리 속성이 안 붙어 Gatekeeper 가 안 막는다**
+     → Apple Developer($99) 없이도 경고 없이 실행.
+   - Windows: Scoop bucket(가장 빠름) 또는 winget. 둘 다 해시 자동 검증.
+2. **무료 코드서명**([RELEASE_SIGNING.md](RELEASE_SIGNING.md)) — Windows 는 **SignPath 무료 OSS**.
+3. 결과적으로 사용자는 `brew install` / `scoop install` / `winget install` 한 줄이면 끝이고,
+   유료 인증서는 **선택**이다.

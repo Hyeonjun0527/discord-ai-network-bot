@@ -315,11 +315,11 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] guild filter 없는 검색은 실패한다.
-- [ ] 서버 A 지식이 서버 B 질문에 노출되지 않는다.
+- [x] guild filter 없는 검색은 실패한다.
+- [x] 서버 A 지식이 서버 B 질문에 노출되지 않는다.
 - [x] 삭제된 문서는 검색 결과에서 빠진다.
-- [ ] secret pattern 감지 문서는 색인되지 않는다.
-- [ ] RAG 실패는 일반 질문 장애로 번지지 않는다.
+- [x] secret pattern 감지 문서는 색인되지 않는다.
+- [x] RAG 실패는 일반 질문 장애로 번지지 않는다.
 - [ ] golden set 기준 Hit@K/MRR/Recall 을 CI 에서 확인한다.
 
 ## 9. Capability Group 4 — Preset Registry
@@ -350,11 +350,11 @@ Release 0 의 하드 게이트:
 ### DoD
 
 - [x] 게시된 revision 은 immutable 이다.
-- [ ] 삭제는 hard delete 보다 removed/unlisted/suspended 상태를 우선한다.
-- [ ] 같은 유저는 같은 프리셋에 like 1개만 가능하다.
-- [ ] 신고된 프리셋은 검토 상태로 전환할 수 있다.
+- [x] 삭제는 hard delete 보다 removed/unlisted/suspended 상태를 우선한다.
+- [x] 같은 유저는 같은 프리셋에 like 1개만 가능하다.
+- [x] 신고된 프리셋은 검토 상태로 전환할 수 있다.
 - [x] 가져온 프리셋은 내 서버에서 수정 가능하지만 원본과 분리된다.
-- [ ] 비공개 prompt/secret/server ID 는 게시 payload 에 포함되지 않는다.
+- [x] 비공개 prompt/secret/server ID 는 게시 payload 에 포함되지 않는다.
 
 ## 10. Capability Group 5 — Customization Wizard & Approval
 

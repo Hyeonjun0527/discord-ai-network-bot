@@ -29,9 +29,19 @@ logger = logging.getLogger("provider_agent.agent")
 
 
 class ProviderAgent:
-    def __init__(self, cfg: AgentConfig, ollama: OllamaClient | None = None) -> None:
+    def __init__(self, cfg: AgentConfig, ollama: OllamaClient | None = None, sd=None) -> None:
         self._cfg = cfg
         self._ollama = ollama or OllamaClient(cfg.ollama_url, cfg.request_timeout)
+        # 로컬 SD(이미지 생성)는 opt-in(--enable-image). 런타임 health 로 capability 확정(SD Phase 1).
+        if sd is not None:
+            self._sd = sd
+        elif cfg.enable_image:
+            from .sd import SDClient
+
+            self._sd = SDClient(cfg.sd_url, cfg.request_timeout)
+        else:
+            self._sd = None
+        self._image_ready = False
         self._sem = asyncio.Semaphore(cfg.max_concurrency)
         self._remaining = cfg.daily_limit  # 0 = 무제한
         self._models: list[str] = list(cfg.models)
@@ -44,10 +54,14 @@ class ProviderAgent:
 
     # ── 핸드셰이크 ──────────────────────────────────────────────────────
     def _build_hello(self) -> ProviderHelloFrame:
+        capabilities = ["text"]
+        if self._image_ready:
+            capabilities.append("image")
         return ProviderHelloFrame(
             models=self._models,
             max_concurrency=self._cfg.max_concurrency,
             remaining_daily_requests=(self._remaining if self._cfg.daily_limit > 0 else 0),
+            capabilities=capabilities,
         )
 
     # ── 서버 프레임 처리 ────────────────────────────────────────────────
@@ -152,6 +166,14 @@ class ProviderAgent:
             except OllamaError as exc:
                 logger.warning("Ollama 모델 목록 실패(%s) — 빈 목록으로 진행", exc)
 
+        # SD 이미지 capability: opt-in + 런타임 health 로 확정.
+        if self._sd is not None:
+            self._image_ready = await self._sd.health()
+            if self._image_ready:
+                logger.info("이미지 생성(SD) 활성: %s", self._cfg.sd_url)
+            else:
+                logger.warning("SD(%s) 에 닿지 못해 이미지 capability 비활성", self._cfg.sd_url)
+
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
@@ -214,6 +236,20 @@ async def _self_test(cfg: AgentConfig) -> int:
             logger.info("✅ 추론 테스트 OK (model=%s): %r", target, text[:40])
         except OllamaError as exc:
             logger.error("⚠️ 추론 테스트 실패: %s", exc)
+            return 1
+    # 이미지(SD) opt-in 점검: 도달·1장 생성.
+    if cfg.enable_image:
+        from .sd import SDClient, SDError
+
+        sd = SDClient(cfg.sd_url, cfg.request_timeout)
+        if not await sd.health():
+            logger.error("❌ SD 연결 실패: %s", cfg.sd_url)
+            return 1
+        try:
+            img = await sd.txt2img("a small red circle", {"steps": 4, "width": 64, "height": 64})
+            logger.info("✅ SD 이미지 생성 OK (%s): %d bytes(base64)", cfg.sd_url, len(img))
+        except SDError as exc:
+            logger.error("⚠️ SD 생성 테스트 실패: %s", exc)
             return 1
     return 0
 

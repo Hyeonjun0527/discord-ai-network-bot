@@ -22,6 +22,7 @@ def test_camelcase_wire_keys_match_kotlin():
         "models": ["llama3.1:8b"],
         "maxConcurrency": 2,
         "remainingDailyRequests": 42,
+        "capabilities": ["text"],
     }
     assert json.loads(p.dumps_frame(p.InferResult(request_id="r1", text="답", usage=p.Usage(3, 4)))) == {
         "type": "result",

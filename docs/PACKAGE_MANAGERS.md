@@ -40,11 +40,11 @@ winget 은 매니페스트의 `InstallerSha256` 으로 자동 검증한다.
 **1) 한 번만: microsoft/winget-pkgs 에 제출**
 - 릴리스 자산의 렌더된 `provider-agent/packaging/winget/*.yaml`(version/installer/locale)을
   `microsoft/winget-pkgs` 에 PR 제출(`wingetcreate submit` 또는 수동 PR).
-- 통과되면 `winget install Hyeonjun0527.DiscordAiAgentNetworkBot` 로 전 세계 배포.
+- 통과되면 `winget install discord-ai-agent-network-bot` 로 전 세계 배포.
 
 **2) 사용자 설치**
 ```powershell
-winget install Hyeonjun0527.DiscordAiAgentNetworkBot   # 해시 자동 검증, 관리자 불필요
+winget install discord-ai-agent-network-bot   # 해시 자동 검증, 관리자 불필요
 ```
 
 ## Scoop (Windows, 가장 가벼운 무료 경로)

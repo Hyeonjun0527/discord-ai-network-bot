@@ -148,6 +148,8 @@ jobs:
           for f in provider-agent/packaging/winget/*.yaml; do
             sed -e "s/__VERSION__/$VER/g" -e "s/__WINDOWS_SHA256__/$WIN/g" "$f" > "dist/pkg/winget/$(basename "$f")"
           done
+          sed -e "s/__VERSION__/$VER/g" -e "s/__WINDOWS_SHA256__/$WIN/g" \
+            provider-agent/packaging/scoop/discord-ai-provider-agent.json > dist/pkg/discord-ai-provider-agent.json
           echo "렌더된 매니페스트:"; ls -R dist/pkg
       # SBOM(소프트웨어 자재명세서) — provider-agent 의존성 그래프를 SPDX 로 생성.
       - name: SBOM 생성(syft/SPDX)
@@ -191,6 +193,7 @@ jobs:
             dist/SHA256SUMS.txt
             dist/provider-agent-sbom.spdx.json
             dist/pkg/discord-ai-provider-agent.rb
+            dist/pkg/discord-ai-provider-agent.json
             dist/pkg/winget/*.yaml
 
   # 빌드된 바이너리를 원격 central 의 다운로드 폴더로 배치 → central 이 /download/** 로 서빙.

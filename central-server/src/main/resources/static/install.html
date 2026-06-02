@@ -238,7 +238,7 @@
 <span class="k">chmod</span> +x discord-ai-provider-agent-macos
 <span class="k">./discord-ai-provider-agent-macos</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
         </div>
-        <div class="note"><span class="ic">i</span><p>이 도구는 <b>일반 사용자 권한</b>으로 실행합니다(<code>sudo</code>·관리자 불필요). 설정·로그는 <code>~/Library/Application Support</code> / <code>~/.config</code> 아래에만 저장됩니다. 배포물은 <b>Apple Developer ID 서명 + 공증(notarization)</b>이 적용되어, 정상 다운로드 시 Gatekeeper 경고 없이 실행됩니다. 위 <b>3) 무결성 검증</b>이 <code>OK</code> 인지 꼭 확인하세요. (GUI 앱이 아니라 <b>터미널에서 실행</b>하는 도구라 더블클릭하지 않습니다.)</p></div>
+        <div class="note"><span class="ic">i</span><p>이 도구는 <b>일반 사용자 권한</b>으로 실행합니다(<code>sudo</code>·관리자 불필요). 설정·로그는 <code>~/Library/Application Support</code> / <code>~/.config</code> 아래에만 저장됩니다. 위 <code>curl</code> 로 받으면 격리(quarantine) 속성이 붙지 않아 <b>Gatekeeper 경고 없이</b> 실행됩니다(<code>brew</code> 설치도 동일). 신뢰의 근거는 위 <b>3) 무결성 검증</b>(<code>OK</code> 확인)과 빌드 attestation 입니다. (GUI 앱이 아니라 <b>터미널에서 실행</b>하는 도구라 더블클릭하지 않습니다.)</p></div>
       </div>
 
       <div class="panel" data-os="win">
@@ -258,7 +258,7 @@
 <span class="c"># 4) 실행 (일반 사용자 권한)</span>
 <span class="k">.\discord-ai-provider-agent-windows.exe</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
         </div>
-        <div class="note"><span class="ic">i</span><p>이 도구는 <b>일반 사용자 권한</b>으로 실행합니다(관리자 PowerShell 불필요). 설정·로그는 <code>%APPDATA%</code> 아래에만 저장됩니다. 배포물은 <b>코드 서명</b>이 적용되어 정상 다운로드 시 SmartScreen 경고가 표시되지 않습니다. 위 <b>3) 무결성 검증</b>으로 해시가 일치하는지 꼭 확인하세요. 경고를 <u>우회하지 말고</u>, 해시가 다르면 실행하지 마세요.</p></div>
+        <div class="note"><span class="ic">i</span><p>이 도구는 <b>일반 사용자 권한</b>으로 실행합니다(관리자 PowerShell 불필요). 설정·로그는 <code>%APPDATA%</code> 아래에만 저장됩니다. 신뢰의 근거는 위 <b>3) 무결성 검증</b>(해시 일치)과 빌드 attestation 입니다. SmartScreen 경고가 보이더라도 <u>우회하지 말고</u> 해시를 확인하세요(다르면 실행 금지). 더 매끄럽게 받으려면 <code>winget install Hyeonjun0527.DiscordAiProviderAgent</code> 또는 Scoop 으로 설치하면 해시가 자동 검증됩니다.</p></div>
       </div>
 
       <div class="panel" data-os="linux">
@@ -286,7 +286,7 @@
   <section id="safety" style="margin-top:64px">
     <div class="sec-label">// 안전하게 설치하기 — 설치 전 확인</div>
     <div class="steps" style="margin-bottom:24px">
-      <div class="step"><div class="num">검증</div><h3>출처·해시 확인</h3><p>반드시 <b>GitHub Release</b>에서 받고, <code>SHA256SUMS.txt</code> 로 해시를 검증하세요. 서명/공증(Apple)·코드서명(Windows)이 적용된 배포물이며, GitHub <b>artifact attestation</b>과 <b>SBOM</b>으로 빌드 출처를 확인할 수 있습니다.</p></div>
+      <div class="step"><div class="num">검증</div><h3>출처·해시 확인</h3><p>반드시 <b>GitHub Release</b>에서 받고, <code>SHA256SUMS.txt</code> 로 해시를 검증하세요. GitHub <b>artifact attestation</b>과 <b>SBOM</b>으로 빌드 출처를 확인할 수 있습니다. <code>brew</code>·<code>winget</code>·<code>scoop</code> 로 설치하면 해시가 <b>자동 검증</b>됩니다.</p></div>
       <div class="step"><div class="num">권한</div><h3>관리자 권한 불필요</h3><p>에이전트는 <b>일반 사용자 권한</b>으로 동작합니다. <code>sudo</code>·관리자 PowerShell·시스템 폴더 쓰기·방화벽/레지스트리 변경이 필요 없습니다. 설정·로그는 홈 디렉터리에만 저장됩니다.</p></div>
       <div class="step"><div class="num">기본값</div><h3>안전한 기본 설정</h3><p>하루 처리 한도 <b>15건</b>·동시 <b>1건</b>이 기본이며, 무제한은 <code>--allow-unlimited</code> 로만 가능합니다. Ollama 는 기본 <b>localhost 전용</b>입니다.</p></div>
     </div>

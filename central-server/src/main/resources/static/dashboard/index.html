@@ -224,11 +224,20 @@
     <label>색인 작업 사유
       <input id="knowledgeJobReason" type="text" placeholder="실패/취소 사유 또는 완료 메모" />
     </label>
+    <div class="form-grid">
+      <label>검색 테스트 질문
+        <input id="knowledgeSearchQuery" type="search" placeholder="예: 배포 실패 시 롤백 방법" />
+      </label>
+      <label>검색 결과 수
+        <input id="knowledgeSearchLimit" type="number" min="1" max="20" value="5" />
+      </label>
+    </div>
     <div class="row">
       <button id="knowledgeCreateSpace">지식공간 만들기</button>
       <button id="knowledgeAddSource">지식 소스 추가</button>
       <button id="knowledgeQueueJob">색인 작업 큐잉</button>
       <button id="knowledgeCompleteJob">색인 작업 완료 처리</button>
+      <button id="knowledgeSearch">검색/가중치 테스트</button>
       <button id="knowledgeRefresh">RAG 상태 새로고침</button>
     </div>
     <div class="network-grid">

@@ -480,6 +480,51 @@ async function completeKnowledgeIndexJob() {
   }
 }
 
+function knowledgeSearchUrl(gid) {
+  const params = new URLSearchParams();
+  const query = $("knowledgeSearchQuery").value.trim();
+  const limit = Math.min(20, Math.max(1, Number($("knowledgeSearchLimit").value || 5)));
+  const channelId = $("knowledgeChannelId").value.trim();
+  const spaceId = $("knowledgeSpaceId").value.trim();
+  params.set("query", query);
+  params.set("limit", String(limit));
+  if (/^\d+$/.test(channelId)) params.set("channelId", channelId);
+  if (/^\d+$/.test(spaceId)) params.set("knowledgeSpaceId", spaceId);
+  return `/api/ai-network/knowledge/${gid}/search?${params.toString()}`;
+}
+
+async function searchKnowledge() {
+  const gid = $("guildId").value.trim();
+  const query = $("knowledgeSearchQuery").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    $("knowledgeResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    return;
+  }
+  if (!query) {
+    $("knowledgeResult").textContent = "검색 테스트 질문을 입력하세요.";
+    return;
+  }
+  try {
+    const result = await getJson(knowledgeSearchUrl(gid));
+    const rows = result.results || [];
+    $("knowledgeResult").textContent = [
+      `RAG 검색 결과: ${rows.length}개 · query="${result.query || query}"`,
+      result.fallbackReason ? `fallback=${result.fallbackReason}` : "fallback=none",
+      "",
+      ...(rows.length
+        ? rows.map((row, index) => [
+          `#${index + 1} source=${row.sourceId} chunk=${row.chunkId || "-"} space=${row.knowledgeSpaceId}`,
+          `title=${row.title} · type=${row.sourceType} · risk=${row.riskLevel}`,
+          `score=${row.score} · sourceWeight=${row.sourceWeight ?? 0} · signals=${(row.matchSignals || []).join(", ") || "-"}`,
+          row.contentPreview ? `preview=${row.contentPreview}` : null,
+        ].filter(Boolean).join("\n"))
+        : ["검색 결과가 없습니다. 지식공간/색인/질문 키워드를 확인하세요."]),
+    ].join("\n\n");
+  } catch (e) {
+    $("knowledgeResult").textContent = `RAG 검색 실패: ${e.message}`;
+  }
+}
+
 function qualityFeedbackPayload() {
   return {
     requestId: $("qualityRequestId").value.trim() || null,
@@ -1312,6 +1357,7 @@ $("knowledgeCreateSpace").addEventListener("click", createKnowledgeSpace);
 $("knowledgeAddSource").addEventListener("click", addKnowledgeSource);
 $("knowledgeQueueJob").addEventListener("click", queueKnowledgeIndexJob);
 $("knowledgeCompleteJob").addEventListener("click", completeKnowledgeIndexJob);
+$("knowledgeSearch").addEventListener("click", searchKnowledge);
 $("knowledgeRefresh").addEventListener("click", refreshKnowledge);
 $("qualitySubmitFeedback").addEventListener("click", submitQualityFeedback);
 $("qualityRefresh").addEventListener("click", refreshQualityDashboard);

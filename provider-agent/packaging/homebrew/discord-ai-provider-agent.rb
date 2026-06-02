@@ -1,9 +1,9 @@
 # Homebrew formula (tap 용). `brew` 가 url 의 sha256 을 **자동 검증**하므로 사용자는 수동
 # 해시검증을 하지 않아도 된다. 릴리스마다 CI(agent-build.yml)가 version·sha256 을 채워
-# 렌더링한 결과를 tap 저장소(homebrew-tap)로 보낸다.
+# 렌더링한 결과를 tap 저장소(yeon-intergation-platform/homebrew-tap)로 보낸다.
 #
 # 사용자 설치:
-#   brew tap Hyeonjun0527/tap
+#   brew tap yeon-intergation-platform/tap
 #   brew install discord-ai-provider-agent
 class DiscordAiProviderAgent < Formula
   desc "커뮤니티 Provider Agent — 내 PC의 로컬 Ollama 를 중앙 서버에 연결"

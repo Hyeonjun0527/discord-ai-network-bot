@@ -215,7 +215,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HAS_TOKEN: ${{ secrets.PKG_PUSH_TOKEN != '' && 'true' || 'false' }}
-      OWNER: Hyeonjun0527
+      OWNER: yeon-intergation-platform # tap/bucket 레포가 있는 org(릴리스 자산은 메인 레포에 남음)
     steps:
       - uses: actions/download-artifact@v4
         with:

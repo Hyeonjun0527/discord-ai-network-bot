@@ -1,5 +1,11 @@
 # 패키지 매니저 셋업 가이드 (Homebrew tap · Scoop bucket) — $0
 
+> ✅ **이미 구성됨**: tap/bucket 레포는 org `yeon-intergation-platform` 아래에 있고
+> (`yeon-intergation-platform/homebrew-tap`, `.../scoop-bucket`), `agent-v0.1.2` 로 채워졌다.
+> 또한 **버전은 자동 증가**한다 — `agent-autorelease.yml` 이 main 의 provider-agent 코드 변경에서
+> 다음 SemVer 를 계산해 태그를 끊고, `agent-build.yml` 이 릴리스+패키지매니저 갱신을 잇는다.
+> 남은 수동 단계는 **PAT 등록(3단계)** 하나뿐. 아래는 처음부터 다시 구성할 때의 참고 절차다.
+
 이 문서는 **메인테이너가 한 번만** 수행하는 셋업이다. 끝나면 사용자는 `brew install` /
 `scoop install` 한 줄로 설치하고, 무결성(sha256)은 매니저가 자동 검증한다(수동 해시검증 불필요).
 
@@ -39,14 +45,14 @@ tap 저장소 이름은 **반드시 `homebrew-<탭이름>`** 형식이어야 한
 
 ```bash
 # 1) tap 저장소 생성(공개)
-gh repo create Hyeonjun0527/homebrew-tap --public -d "Homebrew tap — discord-ai-provider-agent"
+gh repo create yeon-intergation-platform/homebrew-tap --public -d "Homebrew tap — discord-ai-provider-agent"
 
 # 2) 릴리스에서 렌더된 formula 내려받기
 gh release download agent-v0.1.1 -R Hyeonjun0527/discord-assistant \
   -p discord-ai-provider-agent.rb -D /tmp/tap
 
 # 3) tap 에 커밋
-git clone https://github.com/Hyeonjun0527/homebrew-tap /tmp/homebrew-tap
+git clone https://github.com/yeon-intergation-platform/homebrew-tap /tmp/homebrew-tap
 mkdir -p /tmp/homebrew-tap/Formula
 cp /tmp/tap/discord-ai-provider-agent.rb /tmp/homebrew-tap/Formula/
 cd /tmp/homebrew-tap
@@ -57,7 +63,7 @@ git push
 
 **사용자 설치(검증 자동):**
 ```bash
-brew tap Hyeonjun0527/tap
+brew tap yeon-intergation-platform/tap
 brew install discord-ai-provider-agent      # brew 가 sha256 자동 검증, 관리자 불필요
 ```
 > macOS: brew 로 받은 파일은 격리(quarantine)가 안 붙어 Gatekeeper 경고 없이 실행된다(Apple $99 불필요).
@@ -68,14 +74,14 @@ brew install discord-ai-provider-agent      # brew 가 sha256 자동 검증, 관
 
 ```bash
 # 1) bucket 저장소 생성(공개)
-gh repo create Hyeonjun0527/scoop-bucket --public -d "Scoop bucket — discord-ai-provider-agent"
+gh repo create yeon-intergation-platform/scoop-bucket --public -d "Scoop bucket — discord-ai-provider-agent"
 
 # 2) 릴리스에서 렌더된 manifest 내려받기
 gh release download agent-v0.1.1 -R Hyeonjun0527/discord-assistant \
   -p discord-ai-provider-agent.json -D /tmp/sb
 
 # 3) bucket 에 커밋(매니페스트는 bucket/ 폴더에)
-git clone https://github.com/Hyeonjun0527/scoop-bucket /tmp/scoop-bucket
+git clone https://github.com/yeon-intergation-platform/scoop-bucket /tmp/scoop-bucket
 mkdir -p /tmp/scoop-bucket/bucket
 cp /tmp/sb/discord-ai-provider-agent.json /tmp/scoop-bucket/bucket/
 cd /tmp/scoop-bucket
@@ -86,7 +92,7 @@ git push
 
 **사용자 설치(검증 자동):**
 ```powershell
-scoop bucket add nyassistant https://github.com/Hyeonjun0527/scoop-bucket
+scoop bucket add nyassistant https://github.com/yeon-intergation-platform/scoop-bucket
 scoop install discord-ai-provider-agent     # scoop 이 hash 자동 검증, 관리자 불필요
 ```
 
@@ -114,7 +120,7 @@ PAT 가 없으면 그 잡은 조용히 스킵된다(수동 갱신은 1·2단계 
 
 ## 4단계: 동작 확인
 
-- macOS: `brew update && brew install Hyeonjun0527/tap/discord-ai-provider-agent && discord-ai-provider-agent --version`
+- macOS: `brew update && brew install yeon-intergation-platform/tap/discord-ai-provider-agent && discord-ai-provider-agent --version`
 - Windows: `scoop install discord-ai-provider-agent; discord-ai-provider-agent --version`
 
 설치 페이지는 이미 `winget`/`scoop` 안내를 포함한다. Homebrew 안내를 페이지에 추가하고 싶으면

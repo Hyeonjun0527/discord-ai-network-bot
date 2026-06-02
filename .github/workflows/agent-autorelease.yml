@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # agent-build 를 workflow_dispatch 로 트리거하기 위함
 
 concurrency: agent-autorelease
 
@@ -35,6 +36,7 @@ jobs:
       - name: 다음 버전 계산 + 버전 파일 갱신 + 태그 push
         env:
           FORCE_BUMP: ${{ inputs.bump }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git fetch --tags --force
@@ -79,4 +81,8 @@ jobs:
           git tag "agent-v$NEW"
           git push origin HEAD:main
           git push origin "agent-v$NEW"
-          echo "agent-v$NEW 태그 push 완료 → agent-build 가 릴리스/패키지매니저 갱신을 이어서 수행."
+          # GITHUB_TOKEN 이 push 한 태그는 안전장치로 다른 워크플로를 트리거하지 않는다.
+          # 단 workflow_dispatch/repository_dispatch 는 예외라 GITHUB_TOKEN 으로도 실행된다 →
+          # agent-build 를 태그 ref 로 명시 트리거(빌드/릴리스/패키지매니저 갱신을 이어서 수행).
+          gh workflow run agent-build.yml --ref "agent-v$NEW"
+          echo "agent-v$NEW 태그 push + agent-build dispatch 완료."

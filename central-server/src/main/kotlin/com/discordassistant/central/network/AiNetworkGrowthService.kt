@@ -558,24 +558,9 @@ class AiNetworkGrowthService(
         )
     }
 
-    private fun inferCapabilityTags(modelNames: List<String>): List<String> {
-        val joined = modelNames.joinToString(" ").lowercase()
-        return buildSet {
-            if (listOf("code", "coder", "deepseek", "qwen").any { it in joined }) add("coding")
-            if (listOf("translate", "nllb", "aya").any { it in joined }) add("translation")
-            if (listOf("32b", "70b", "long", "large").any { it in joined }) add("long-context")
-            if (modelNames.isNotEmpty()) add("local-llm")
-        }.toList()
-    }
+    private fun inferCapabilityTags(modelNames: List<String>): List<String> = ModelClassifier.capabilityTags(modelNames)
 
-    private fun inferMaxBurden(modelNames: List<String>): String {
-        val joined = modelNames.joinToString(" ").lowercase()
-        return when {
-            listOf("70b", "large", "mixtral").any { it in joined } -> "HEAVY"
-            listOf("13b", "14b", "32b", "coder", "deepseek", "qwen").any { it in joined } -> "STANDARD"
-            else -> "LIGHT"
-        }
-    }
+    private fun inferMaxBurden(modelNames: List<String>): String = ModelClassifier.maxBurden(modelNames)
 
     private fun normalizeCsv(value: String?): List<String> = normalizeList(value.orEmpty().split(","))
 

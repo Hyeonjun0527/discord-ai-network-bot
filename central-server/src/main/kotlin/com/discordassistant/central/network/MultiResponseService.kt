@@ -878,6 +878,7 @@ class MultiResponseService(
     private fun ProviderCapabilityProfileEntity.hasLiveCapacity(guildId: Long): Boolean {
         if (maxConcurrency <= 0) return false
         val session = connectionRegistry?.byProvider(guildId, providerUserId) ?: return true
+        if (session.remainingDailyRequests <= 0) return false
         val liveCap = session.capability.maxConcurrency.coerceAtLeast(1)
         val profileCap = maxConcurrency.coerceAtLeast(1)
         return session.activeRequests < minOf(liveCap, profileCap)

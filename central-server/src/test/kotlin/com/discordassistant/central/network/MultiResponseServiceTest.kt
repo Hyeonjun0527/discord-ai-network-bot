@@ -25,6 +25,7 @@ import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
+import com.discordassistant.central.relay.protocol.ProviderHelloFrame
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -247,6 +248,72 @@ class MultiResponseServiceTest
 
             assertEquals(1, started["candidateCount"])
             assertEquals(listOf(202L), planned.map { it.providerUserId })
+        }
+
+        @Test
+        fun `provider with exhausted live daily limit is excluded from fanout candidates`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 153,
+                    providerUserId = 301,
+                    providerState = "ONLINE",
+                    modelCount = 2,
+                    modelNames = "llama3.1:8b,qwen-coder",
+                    capabilityTags = "multi-response",
+                    qualityTier = "specialized",
+                    maxConcurrency = 2,
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 153,
+                    providerUserId = 302,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "mistral",
+                    capabilityTags = "multi-response",
+                    qualityTier = "high",
+                    maxConcurrency = 1,
+                    overloadRisk = "normal",
+                ),
+            )
+            val registry = ConnectionRegistry()
+            val exhaustedSession = ProviderSession(BusyProbeConnection(), providerId = 301, guildId = 153)
+            exhaustedSession.applyHello(
+                ProviderHelloFrame(
+                    models = listOf("llama3.1:8b", "qwen-coder"),
+                    maxConcurrency = 2,
+                    remainingDailyRequests = 1,
+                ),
+            )
+            registry.register(exhaustedSession)
+            exhaustedSession.sendInfer("consume last daily slot")
+            val capacityAwareService =
+                MultiResponseService(
+                    policies = policies,
+                    runs = runs,
+                    candidates = candidates,
+                    syntheses = syntheses,
+                    providerCapabilities = providerCapabilities,
+                    clock = fixedClock,
+                    connectionRegistry = registry,
+                )
+            val capacityAwareController = MultiResponseController(capacityAwareService)
+            capacityAwareController.savePolicy(
+                153,
+                SaveMultiResponsePolicyRequest(channelId = 253, mode = "compare", maxCandidates = 2, synthesisEnabled = true),
+            )
+
+            val started =
+                capacityAwareController.startRun(
+                    153,
+                    StartMultiResponseRunRequest(channelId = 253, requestId = "daily-exhausted"),
+                )
+            val planned = candidates.findByRunId(started["id"] as Long)
+
+            assertEquals(1, started["candidateCount"])
+            assertEquals(listOf(302L), planned.map { it.providerUserId })
         }
 
         @Test

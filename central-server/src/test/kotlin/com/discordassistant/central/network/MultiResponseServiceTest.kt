@@ -198,6 +198,41 @@ class MultiResponseServiceTest
         }
 
         @Test
+        fun `default question without multi response policy stays single route`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 102,
+                    providerUserId = 21,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3",
+                    capabilityTags = "multi-response",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 102,
+                    providerUserId = 22,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "qwen",
+                    capabilityTags = "multi-response",
+                    overloadRisk = "normal",
+                ),
+            )
+
+            val started = controller.startRun(102, StartMultiResponseRunRequest(channelId = 202, requestId = "default-single"))
+            val savedPolicy = policies.findByGuildIdAndChannelId(102, 202)!!
+
+            assertEquals("single", savedPolicy.mode)
+            assertEquals(1, savedPolicy.maxCandidates)
+            assertEquals(false, savedPolicy.synthesisEnabled)
+            assertEquals(1, started["candidateCount"])
+            assertEquals(1, candidates.findByRunId(started["id"] as Long).size)
+        }
+
+        @Test
         fun `multi response dashboard gate blocks projections without blocking question fanout`() {
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(

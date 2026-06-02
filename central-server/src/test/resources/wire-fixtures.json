@@ -63,7 +63,10 @@
       "m"
     ],
     "maxConcurrency": 2,
-    "remainingDailyRequests": 42
+    "remainingDailyRequests": 42,
+    "capabilities": [
+      "text"
+    ]
   },
   "provider_status": {
     "type": "provider_status",

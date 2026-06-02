@@ -29,6 +29,9 @@ class AgentConfig:
     allow_remote_ollama: bool = False  # 기본 localhost 전용; True 면 원격 Ollama 허용(위험)
     pause_on_battery: bool = True  # 배터리(방전) 중에는 자동 pause(자원 보호)
     pause_on_high_load: bool = True  # CPU 고부하 시 자동 pause(자원 보호)
+    enable_image: bool = False  # 로컬 SD 이미지 생성 capability 광고(opt-in, SD Phase 1)
+    sd_url: str = "http://127.0.0.1:7860"  # 로컬 Stable Diffusion(A1111) 주소
+    allow_remote_sd: bool = False  # 기본 localhost 전용; True 면 원격 SD 허용(위험)
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
     agent_version: str = AGENT_VERSION
     platform: str = field(default_factory=lambda: _platform.platform())
@@ -61,6 +64,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--daily-limit", type=int, help=f"하루 처리 한도 (기본 {DEFAULT_DAILY_LIMIT}, 0=무제한은 --allow-unlimited 필요)")
     p.add_argument("--allow-unlimited", action="store_true", help="일일 한도 무제한(0)을 명시적으로 허용(위험)")
     p.add_argument("--allow-remote-ollama", action="store_true", help="원격 Ollama 주소 허용(기본 localhost 전용, 위험 확인 옵션)")
+    p.add_argument("--enable-image", action="store_true", help="로컬 Stable Diffusion 이미지 생성 제공(opt-in)")
+    p.add_argument("--sd-url", help="로컬 Stable Diffusion(A1111) 주소 (기본 http://127.0.0.1:7860)")
+    p.add_argument("--allow-remote-sd", action="store_true", help="원격 SD 주소 허용(기본 localhost 전용, 위험 확인 옵션)")
     p.add_argument("--run-on-battery", action="store_true", help="배터리(방전) 중에도 처리 계속(기본은 자동 pause)")
     p.add_argument("--request-timeout", type=float, help="요청당 타임아웃 초 (기본 120)")
     p.add_argument("--heartbeat", type=float, dest="heartbeat_seconds", help="heartbeat 주기 초 (기본 30)")
@@ -102,6 +108,19 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
     except RemoteOllamaBlocked as exc:
         parser.error(str(exc))
 
+    enable_image = bool(args.enable_image) or bool(saved.get("enable_image"))
+    sd_url = (args.sd_url or _env("SD_BASE_URL") or saved.get("sd_url") or "http://127.0.0.1:7860").rstrip("/")
+    allow_remote_sd = bool(args.allow_remote_sd) or bool(saved.get("allow_remote_sd"))
+    if enable_image:
+        # SD 도 기본 localhost 전용(netguard 재사용). 원격은 --allow-remote-sd 에서만.
+        try:
+            ensure_ollama_allowed(sd_url, allow_remote_sd)
+        except RemoteOllamaBlocked:
+            parser.error(
+                f"원격 SD 주소가 차단되었습니다: {sd_url!r}. 기본값은 localhost 만 허용합니다. "
+                "원격 SD 를 정말 쓰려면 --allow-remote-sd 옵션을 명시하세요."
+            )
+
     # 일일 한도: 기본 DEFAULT_DAILY_LIMIT. 0(무제한)은 --allow-unlimited 가 있을 때만 허용.
     if args.daily_limit is not None:
         requested_limit = args.daily_limit
@@ -137,6 +156,9 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         telemetry=bool(args.telemetry),
         allow_remote_ollama=allow_remote_ollama,
         pause_on_battery=not bool(args.run_on_battery),
+        enable_image=enable_image,
+        sd_url=sd_url,
+        allow_remote_sd=allow_remote_sd,
         assume_yes=bool(args.yes),
     )
     if args.save_config:

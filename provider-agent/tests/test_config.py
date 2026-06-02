@@ -88,3 +88,25 @@ def test_remote_ollama_allowed_with_flag(monkeypatch, tmp_path):
     )
     assert cfg.ollama_url == "http://192.168.0.10:11434"
     assert cfg.allow_remote_ollama is True
+
+
+def test_image_sd_localhost_default(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfg, _ = config_from_args(["--token", "T", "--enable-image"])
+    assert cfg.enable_image is True
+    assert cfg.sd_url == "http://127.0.0.1:7860"
+
+
+def test_remote_sd_blocked_by_default(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    with pytest.raises(SystemExit):
+        config_from_args(["--token", "T", "--enable-image", "--sd-url", "http://192.168.0.9:7860"])
+
+
+def test_remote_sd_allowed_with_flag(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfg, _ = config_from_args(
+        ["--token", "T", "--enable-image", "--sd-url", "http://192.168.0.9:7860", "--allow-remote-sd"]
+    )
+    assert cfg.sd_url == "http://192.168.0.9:7860"
+    assert cfg.allow_remote_sd is True

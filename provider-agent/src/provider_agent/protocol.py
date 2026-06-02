@@ -324,6 +324,9 @@ class ProviderHelloFrame:
     models: list[str] = field(default_factory=list)
     max_concurrency: int = 1
     remaining_daily_requests: int = 0
+    # 제공 능력. 기본 ["text"]; 로컬 SD 이미지 생성 가능 시 "image" 추가(SD Phase 1).
+    # 서버는 모르는 키를 무시(하위호환) — Phase 2 에서 라우팅에 사용.
+    capabilities: list[str] = field(default_factory=lambda: ["text"])
 
     @property
     def type(self) -> str:
@@ -335,6 +338,7 @@ class ProviderHelloFrame:
             "models": list(self.models),
             "maxConcurrency": self.max_concurrency,
             "remainingDailyRequests": self.remaining_daily_requests,
+            "capabilities": list(self.capabilities),
         }
 
     @classmethod
@@ -343,6 +347,7 @@ class ProviderHelloFrame:
             models=[str(m) for m in (d.get("models") or [])],
             max_concurrency=int(d.get("maxConcurrency", 1) or 1),
             remaining_daily_requests=int(d.get("remainingDailyRequests", 0) or 0),
+            capabilities=[str(c) for c in (d.get("capabilities") or ["text"])],
         )
 
 

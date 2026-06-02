@@ -172,6 +172,8 @@ data class ProviderHelloFrame(
     val models: List<String> = emptyList(),
     val maxConcurrency: Int = 1,
     val remainingDailyRequests: Int = 0,
+    // 제공 능력. 기본 ["text"]; 로컬 SD 가능 시 "image" 포함(SD Phase 1, 라우팅은 Phase 2).
+    val capabilities: List<String> = listOf("text"),
     override val type: String = FrameType.PROVIDER_HELLO,
 ) : Frame()
 

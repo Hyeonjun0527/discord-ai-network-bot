@@ -29,7 +29,7 @@
 ### 검증(시크릿 없이도 오늘부터 동작)
 ```bash
 sha256sum -c SHA256SUMS.txt --ignore-missing      # macOS: shasum -a 256 -c
-gh attestation verify discord-ai-agent-network-bot-<os> --repo Hyeonjun0527/discord-assistant
+gh attestation verify discord-ai-network-bot-<os> --repo Hyeonjun0527/discord-ai-network-bot
 ```
 패키지 매니저로 설치하면 위 검증을 매니저가 자동으로 한다 → [PACKAGE_MANAGERS.md](PACKAGE_MANAGERS.md).
 

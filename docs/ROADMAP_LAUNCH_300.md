@@ -23,7 +23,7 @@
 
 - [x] 1. 에이전트 코드 위치 결정(`provider-agent/` 신규 — 경량 독립 패키지)
 - [x] 2. 패키지/의존성 설정(aiohttp, 봇 의존성 없음)
-- [x] 3. `discord-ai-agent-network-bot` 콘솔 스크립트 등록(pyproject)
+- [x] 3. `discord-ai-network-bot` 콘솔 스크립트 등록(pyproject)
 - [x] 4. WS 프로토콜(api.md §8) Python 구현 — 프레임 dataclass 12종(camelCase 와이어)
 - [x] 5. 프레임 직렬화/역직렬화(JSON, 한국어 보존, ensure_ascii=False)
 - [x] 6. 알 수 없는 타입/필수 누락 → ProtocolError

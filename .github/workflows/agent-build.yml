@@ -77,11 +77,11 @@ jobs:
           security unlock-keychain -p ci build.keychain
           security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
           # 하드웨어 런타임으로 Developer ID 서명(notarization 요건).
-          codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" dist/discord-ai-agent-network-bot
-          codesign --verify --strict --verbose=2 dist/discord-ai-agent-network-bot
+          codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" dist/discord-ai-network-bot
+          codesign --verify --strict --verbose=2 dist/discord-ai-network-bot
           # notarization: 단일 실행파일은 zip 으로 제출(스테이플 불가 → 온라인 검증).
           if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
-            ditto -c -k --keepParent dist/discord-ai-agent-network-bot dist/notarize.zip
+            ditto -c -k --keepParent dist/discord-ai-network-bot dist/notarize.zip
             xcrun notarytool submit dist/notarize.zip \
               --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
             rm -f dist/notarize.zip
@@ -97,22 +97,22 @@ jobs:
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
           [IO.File]::WriteAllBytes("cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
-          & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\discord-ai-agent-network-bot.exe
-          & signtool verify /pa dist\discord-ai-agent-network-bot.exe
+          & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\discord-ai-network-bot.exe
+          & signtool verify /pa dist\discord-ai-network-bot.exe
       - name: OS별 자산 이름
         shell: bash
         run: |
           cd dist
           case "$RUNNER_OS" in
-            Linux)   mv discord-ai-agent-network-bot discord-ai-agent-network-bot-linux ;;
-            macOS)   mv discord-ai-agent-network-bot discord-ai-agent-network-bot-macos ;;
-            Windows) mv discord-ai-agent-network-bot.exe discord-ai-agent-network-bot-windows.exe ;;
+            Linux)   mv discord-ai-network-bot discord-ai-network-bot-linux ;;
+            macOS)   mv discord-ai-network-bot discord-ai-network-bot-macos ;;
+            Windows) mv discord-ai-network-bot.exe discord-ai-network-bot-windows.exe ;;
           esac
           ls -la
       - uses: actions/upload-artifact@v4
         with:
           name: provider-agent-${{ matrix.os }}
-          path: provider-agent/dist/discord-ai-agent-network-bot-*
+          path: provider-agent/dist/discord-ai-network-bot-*
 
   # 모든 OS 빌드를 모아 단일 SHA256SUMS.txt·SBOM·attestation 을 만들고 릴리스에 첨부.
   release:
@@ -132,7 +132,7 @@ jobs:
       - name: 단일 SHA256SUMS.txt 생성
         run: |
           cd dist
-          sha256sum discord-ai-agent-network-bot-* > SHA256SUMS.txt
+          sha256sum discord-ai-network-bot-* > SHA256SUMS.txt
           cat SHA256SUMS.txt
       # 패키지 매니저 매니페스트 렌더링(Homebrew/winget). 매니저가 sha256 을 자동 검증하므로
       # 사용자는 수동 해시검증이 불필요해진다. 렌더 결과를 릴리스 자산으로 첨부.
@@ -142,17 +142,17 @@ jobs:
           set -euo pipefail
           VER="${GITHUB_REF_NAME#agent-v}"
           sha() { awk -v f="$1" '$2==f {print $1}' dist/SHA256SUMS.txt; }
-          MAC=$(sha discord-ai-agent-network-bot-macos)
-          LIN=$(sha discord-ai-agent-network-bot-linux)
-          WIN=$(sha discord-ai-agent-network-bot-windows.exe)
+          MAC=$(sha discord-ai-network-bot-macos)
+          LIN=$(sha discord-ai-network-bot-linux)
+          WIN=$(sha discord-ai-network-bot-windows.exe)
           mkdir -p dist/pkg/winget
           sed -e "s/__VERSION__/$VER/g" -e "s/__MACOS_SHA256__/$MAC/g" -e "s/__LINUX_SHA256__/$LIN/g" \
-            provider-agent/packaging/homebrew/discord-ai-agent-network-bot.rb > dist/pkg/discord-ai-agent-network-bot.rb
+            provider-agent/packaging/homebrew/discord-ai-network-bot.rb > dist/pkg/discord-ai-network-bot.rb
           for f in provider-agent/packaging/winget/*.yaml; do
             sed -e "s/__VERSION__/$VER/g" -e "s/__WINDOWS_SHA256__/$WIN/g" "$f" > "dist/pkg/winget/$(basename "$f")"
           done
           sed -e "s/__VERSION__/$VER/g" -e "s/__WINDOWS_SHA256__/$WIN/g" \
-            provider-agent/packaging/scoop/discord-ai-agent-network-bot.json > dist/pkg/discord-ai-agent-network-bot.json
+            provider-agent/packaging/scoop/discord-ai-network-bot.json > dist/pkg/discord-ai-network-bot.json
           echo "렌더된 매니페스트:"; ls -R dist/pkg
       # SBOM(소프트웨어 자재명세서) — provider-agent 의존성 그래프를 SPDX 로 생성.
       - name: SBOM 생성(syft/SPDX)
@@ -167,12 +167,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/agent-v')
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: dist/discord-ai-agent-network-bot-*
+          subject-path: dist/discord-ai-network-bot-*
       - name: SBOM attestation
         if: startsWith(github.ref, 'refs/tags/agent-v')
         uses: actions/attest-sbom@v2
         with:
-          subject-path: dist/discord-ai-agent-network-bot-linux
+          subject-path: dist/discord-ai-network-bot-linux
           sbom-path: dist/provider-agent-sbom.spdx.json
       - name: GitHub Release 업로드
         if: startsWith(github.ref, 'refs/tags/agent-v')
@@ -189,14 +189,14 @@ jobs:
                - macOS/Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing` (macOS 는 `shasum -a 256 -c`)
                - Windows: `Get-FileHash <파일> -Algorithm SHA256` 출력과 비교
             2. 빌드 출처(provenance)·SBOM attestation 확인:
-               `gh attestation verify discord-ai-agent-network-bot-<os> --repo Hyeonjun0527/discord-assistant`
+               `gh attestation verify discord-ai-network-bot-<os> --repo Hyeonjun0527/discord-ai-network-bot`
             3. 일반 사용자 권한으로 실행하세요(관리자/sudo 불필요).
           files: |
-            dist/discord-ai-agent-network-bot-*
+            dist/discord-ai-network-bot-*
             dist/SHA256SUMS.txt
             dist/provider-agent-sbom.spdx.json
-            dist/pkg/discord-ai-agent-network-bot.rb
-            dist/pkg/discord-ai-agent-network-bot.json
+            dist/pkg/discord-ai-network-bot.rb
+            dist/pkg/discord-ai-network-bot.json
             dist/pkg/winget/*.yaml
       # 다음 잡(tap/bucket 자동 갱신)에서 쓰도록 렌더된 매니페스트를 아티팩트로 올린다.
       - name: 매니페스트 아티팩트 업로드
@@ -242,14 +242,14 @@ jobs:
           VER="${GITHUB_REF_NAME#agent-v}"
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${ORG}/homebrew-tap.git" tap
           mkdir -p tap/Formula
-          cp pkg/discord-ai-agent-network-bot.rb tap/Formula/discord-ai-agent-network-bot.rb
-          # 이전 이름(discord-ai-provider-agent)의 잔존 formula 제거(rename 정리).
-          rm -f tap/Formula/discord-ai-provider-agent.rb
+          cp pkg/discord-ai-network-bot.rb tap/Formula/discord-ai-network-bot.rb
+          # 이전 이름들의 잔존 formula 제거(rename 정리) — 현재 이름만 남긴다.
+          find tap/Formula -maxdepth 1 -name 'discord-ai-*.rb' ! -name 'discord-ai-network-bot.rb' -delete 2>/dev/null || true
           cd tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A Formula
-          git commit -m "discord-ai-agent-network-bot ${VER}" || { echo "변경 없음"; exit 0; }
+          git commit -m "discord-ai-network-bot ${VER}" || { echo "변경 없음"; exit 0; }
           git push
       - name: Scoop bucket 갱신
         if: env.HAS_APP == 'true'
@@ -260,13 +260,13 @@ jobs:
           VER="${GITHUB_REF_NAME#agent-v}"
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${ORG}/scoop-bucket.git" bucket
           mkdir -p bucket/bucket
-          cp pkg/discord-ai-agent-network-bot.json bucket/bucket/discord-ai-agent-network-bot.json
-          rm -f bucket/bucket/discord-ai-provider-agent.json
+          cp pkg/discord-ai-network-bot.json bucket/bucket/discord-ai-network-bot.json
+          find bucket/bucket -maxdepth 1 -name 'discord-ai-*.json' ! -name 'discord-ai-network-bot.json' -delete 2>/dev/null || true
           cd bucket
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A bucket
-          git commit -m "discord-ai-agent-network-bot ${VER}" || { echo "변경 없음"; exit 0; }
+          git commit -m "discord-ai-network-bot ${VER}" || { echo "변경 없음"; exit 0; }
           git push
       - name: 안내(App 미설정)
         if: env.HAS_APP != 'true'
@@ -288,6 +288,6 @@ jobs:
           set -e
           DEST="$HOME/deploy/central-server/downloads"
           mkdir -p "$DEST"
-          cp -f agent-bins/discord-ai-agent-network-bot-* "$DEST/"
-          chmod +x "$DEST"/discord-ai-agent-network-bot-* 2>/dev/null || true
+          cp -f agent-bins/discord-ai-network-bot-* "$DEST/"
+          chmod +x "$DEST"/discord-ai-network-bot-* 2>/dev/null || true
           ls -la "$DEST"

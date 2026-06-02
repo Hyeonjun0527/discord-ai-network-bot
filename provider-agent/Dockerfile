@@ -9,4 +9,4 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir .
 # 토큰/주소는 환경변수로 주입(AGENT_TOKEN, RELAY_URL, OLLAMA_BASE_URL).
-ENTRYPOINT ["discord-ai-agent-network-bot"]
+ENTRYPOINT ["discord-ai-network-bot"]

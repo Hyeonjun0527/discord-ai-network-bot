@@ -54,7 +54,7 @@ DISCORD_ENABLED=true DISCORD_BOT_TOKEN='토큰' DISCORD_GUILD_ID='서버ID' CENT
 3. 에이전트 실행:
    ```bash
    pip install -e provider-agent            # 또는 배포물/Docker(packaging/README.md)
-discord-ai-agent-network-bot --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
+discord-ai-network-bot --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
    ```
    → 풀에 등록되면 `/providers`(관리자)·`/catalog` 에 나타난다.
 

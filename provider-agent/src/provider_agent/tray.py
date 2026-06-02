@@ -3,7 +3,7 @@
 `pystray` + `Pillow` 가 설치된 데스크톱 환경에서만 동작한다(헤드리스/서버는 자동 비활성).
 상태 표시 + 종료 메뉴를 제공한다. 의존성 미설치 시 graceful no-op(False 반환).
 
-설치: pip install 'discord-ai-agent-network-bot[tray]'
+설치: pip install 'discord-ai-network-bot[tray]'
 """
 from __future__ import annotations
 

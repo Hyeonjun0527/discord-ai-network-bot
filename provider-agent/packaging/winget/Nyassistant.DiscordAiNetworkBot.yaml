@@ -1,4 +1,4 @@
-PackageIdentifier: Nyassistant.DiscordAiAgentNetworkBot
+PackageIdentifier: Nyassistant.DiscordAiNetworkBot
 PackageVersion: __VERSION__
 DefaultLocale: en-US
 ManifestType: version

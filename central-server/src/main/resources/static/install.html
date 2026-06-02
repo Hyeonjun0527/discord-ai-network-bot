@@ -230,13 +230,13 @@
 <span class="k">brew</span> services start ollama
 <span class="k">ollama</span> pull llama3.1:8b
 <span class="c"># 2) 에이전트 + 체크섬 받기(GitHub Release)</span>
-<span class="k">curl</span> -L -o discord-ai-agent-network-bot-macos https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/discord-ai-agent-network-bot-macos
+<span class="k">curl</span> -L -o discord-ai-network-bot-macos https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/discord-ai-network-bot-macos
 <span class="k">curl</span> -L -o SHA256SUMS.txt https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/SHA256SUMS.txt
 <span class="c"># 3) 무결성 검증 — OK 가 나와야 함</span>
 <span class="k">shasum</span> -a 256 -c SHA256SUMS.txt --ignore-missing
 <span class="c"># 4) 실행 (일반 사용자 권한, sudo 불필요)</span>
-<span class="k">chmod</span> +x discord-ai-agent-network-bot-macos
-<span class="k">./discord-ai-agent-network-bot-macos</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
+<span class="k">chmod</span> +x discord-ai-network-bot-macos
+<span class="k">./discord-ai-network-bot-macos</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
         </div>
         <div class="note"><span class="ic">i</span><p>이 도구는 <b>일반 사용자 권한</b>으로 실행합니다(<code>sudo</code>·관리자 불필요). 설정·로그는 <code>~/Library/Application Support</code> / <code>~/.config</code> 아래에만 저장됩니다. 위 <code>curl</code> 로 받으면 격리(quarantine) 속성이 붙지 않아 <b>Gatekeeper 경고 없이</b> 실행됩니다(<code>brew</code> 설치도 동일). 신뢰의 근거는 위 <b>3) 무결성 검증</b>(<code>OK</code> 확인)과 빌드 attestation 입니다. (GUI 앱이 아니라 <b>터미널에서 실행</b>하는 도구라 더블클릭하지 않습니다.)</p></div>
       </div>
@@ -250,15 +250,15 @@
 <span class="k">winget</span> install --id Ollama.Ollama -e --accept-source-agreements
 <span class="k">ollama</span> pull llama3.1:8b
 <span class="c"># 2) 에이전트 + 체크섬 받기(GitHub Release)</span>
-<span class="k">Invoke-WebRequest</span> https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/discord-ai-agent-network-bot-windows.exe -OutFile discord-ai-agent-network-bot-windows.exe
+<span class="k">Invoke-WebRequest</span> https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/discord-ai-network-bot-windows.exe -OutFile discord-ai-network-bot-windows.exe
 <span class="k">Invoke-WebRequest</span> https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/SHA256SUMS.txt -OutFile SHA256SUMS.txt
 <span class="c"># 3) 무결성 검증 — 출력 해시가 SHA256SUMS.txt 의 windows 줄과 같아야 함</span>
-<span class="k">Get-FileHash</span> discord-ai-agent-network-bot-windows.exe -Algorithm SHA256
+<span class="k">Get-FileHash</span> discord-ai-network-bot-windows.exe -Algorithm SHA256
 <span class="k">type</span> SHA256SUMS.txt
 <span class="c"># 4) 실행 (일반 사용자 권한)</span>
-<span class="k">.\discord-ai-agent-network-bot-windows.exe</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
+<span class="k">.\discord-ai-network-bot-windows.exe</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
         </div>
-        <div class="note"><span class="ic">i</span><p>이 도구는 <b>일반 사용자 권한</b>으로 실행합니다(관리자 PowerShell 불필요). 설정·로그는 <code>%APPDATA%</code> 아래에만 저장됩니다. 신뢰의 근거는 위 <b>3) 무결성 검증</b>(해시 일치)과 빌드 attestation 입니다. SmartScreen 경고가 보이더라도 <u>우회하지 말고</u> 해시를 확인하세요(다르면 실행 금지). 더 매끄럽게 받으려면 <code>winget install discord-ai-agent-network-bot</code> 또는 Scoop 으로 설치하면 해시가 자동 검증됩니다.</p></div>
+        <div class="note"><span class="ic">i</span><p>이 도구는 <b>일반 사용자 권한</b>으로 실행합니다(관리자 PowerShell 불필요). 설정·로그는 <code>%APPDATA%</code> 아래에만 저장됩니다. 신뢰의 근거는 위 <b>3) 무결성 검증</b>(해시 일치)과 빌드 attestation 입니다. SmartScreen 경고가 보이더라도 <u>우회하지 말고</u> 해시를 확인하세요(다르면 실행 금지). 더 매끄럽게 받으려면 <code>winget install discord-ai-network-bot</code> 또는 Scoop 으로 설치하면 해시가 자동 검증됩니다.</p></div>
       </div>
 
       <div class="panel" data-os="linux">
@@ -270,13 +270,13 @@
 <span class="k">curl</span> -fsSL https://ollama.com/install.sh | sh
 <span class="k">ollama</span> pull llama3.1:8b
 <span class="c"># 2) 에이전트 + 체크섬 받기(GitHub Release)</span>
-<span class="k">curl</span> -L -o discord-ai-agent-network-bot-linux https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/discord-ai-agent-network-bot-linux
+<span class="k">curl</span> -L -o discord-ai-network-bot-linux https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/discord-ai-network-bot-linux
 <span class="k">curl</span> -L -o SHA256SUMS.txt https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download/SHA256SUMS.txt
 <span class="c"># 3) 무결성 검증 — OK 가 나와야 함</span>
 <span class="k">sha256sum</span> -c SHA256SUMS.txt --ignore-missing
 <span class="c"># 4) 실행 (일반 사용자 권한, sudo 불필요)</span>
-<span class="k">chmod</span> +x discord-ai-agent-network-bot-linux
-<span class="k">./discord-ai-agent-network-bot-linux</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
+<span class="k">chmod</span> +x discord-ai-network-bot-linux
+<span class="k">./discord-ai-network-bot-linux</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
         </div>
         <div class="note"><span class="ic">i</span><p><b>일반 사용자 권한</b>으로 실행합니다(<code>sudo</code> 불필요). 설정·로그는 <code>~/.config</code> 아래에만 저장됩니다. 상시 구동은 <b>사용자 단위</b> <code>systemctl --user</code> 서비스로 등록하세요(소스의 <code>packaging/</code> 가이드, 시스템 서비스 등록 불필요).</p></div>
       </div>

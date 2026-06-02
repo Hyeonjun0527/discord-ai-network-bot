@@ -14,7 +14,7 @@ pip install -e ".[dev]"            # 개발
 # 또는 배포물: GitHub Release 단일 실행파일(서명·체크섬·SBOM·attestation 제공)
 
 # Discord 에서 /provider-join → 토큰 받기 → 실행(일반 사용자 권한, sudo 불필요):
-discord-ai-agent-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent --model llama3.1:8b
+discord-ai-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent --model llama3.1:8b
 # 또는 환경변수: AGENT_TOKEN, RELAY_URL, OLLAMA_BASE_URL
 ```
 첫 실행 시 **사용량 제한·서버 주소·Ollama 주소·개인정보 안내**를 보여주고 동의를 받습니다.
@@ -23,7 +23,7 @@ discord-ai-agent-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/
 ## 일반 사용자 권한으로 동작
 - **관리자/sudo 불필요.** 시스템 폴더 쓰기·서비스 등록·방화벽/레지스트리 변경을 하지 않는다.
 - 설정/로그는 사용자 홈에만 저장: Windows `%APPDATA%`(또는 `XDG_CONFIG_HOME`),
-  macOS/Linux `~/.config/discord-ai-agent-network-bot/`(시크릿 파일 `0600`).
+  macOS/Linux `~/.config/discord-ai-network-bot/`(시크릿 파일 `0600`).
 - 상시 구동은 사용자 단위 서비스(`systemctl --user`, launchd LaunchAgent)로 등록.
 
 ## 안전 기본값
@@ -44,7 +44,7 @@ discord-ai-agent-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/
 GitHub Release 에서 받고 무결성을 검증하세요(상세: 루트 [README "안전한 설치 기준"](../README.md#안전한-설치-기준)).
 ```bash
 sha256sum -c SHA256SUMS.txt --ignore-missing        # Linux (macOS: shasum -a 256 -c)
-gh attestation verify discord-ai-agent-network-bot-linux --repo Hyeonjun0527/discord-assistant
+gh attestation verify discord-ai-network-bot-linux --repo Hyeonjun0527/discord-assistant
 ```
 
 ## 경량 의존성

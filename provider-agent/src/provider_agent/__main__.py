@@ -1,4 +1,4 @@
-"""CLI 엔트리포인트. ``discord-ai-agent-network-bot`` 콘솔 스크립트가 이 main() 을 호출한다.
+"""CLI 엔트리포인트. ``discord-ai-network-bot`` 콘솔 스크립트가 이 main() 을 호출한다.
 
 차수 1 에서는 설정 파싱까지. 실제 연결/실행은 차수 2~3 의 agent.run 으로 연결된다.
 """

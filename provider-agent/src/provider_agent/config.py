@@ -50,7 +50,7 @@ def _env(name: str, default: str = "") -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="discord-ai-agent-network-bot",
+        prog="discord-ai-network-bot",
         description="내 PC의 로컬 Ollama 를 커뮤니티 중앙 서버에 연결하는 프로바이더 에이전트",
     )
     p.add_argument("--token", help="중앙 서버에서 발급받은 일회용 토큰 (또는 AGENT_TOKEN)")

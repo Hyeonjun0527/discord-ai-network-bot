@@ -55,11 +55,11 @@ class MultiResponseService(
         val entity = existing ?: MultiResponsePolicyEntity(guildId = guildId, channelId = channelId, createdAt = now)
         entity.channelAiId = channelAiId
         entity.mode = mode.trim().ifBlank { "single" }
-        entity.maxCandidates = maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES)
+        entity.maxCandidates = maxCandidates.coerceIn(1, featureGate.multiResponseMaxFanout())
         entity.requireDistinctModels = requireDistinctModels
         entity.providerDailyLimit = providerDailyLimit.coerceAtLeast(0)
         entity.timeoutSeconds = timeoutSeconds.coerceIn(10, 300)
-        entity.synthesisEnabled = synthesisEnabled
+        entity.synthesisEnabled = synthesisEnabled && featureGate.snapshot().multiResponseSynthesis && entity.maxCandidates > 1
         entity.updatedAt = now
         return policies.save(entity)
     }
@@ -150,17 +150,18 @@ class MultiResponseService(
         val savedPolicy =
             policies.findByGuildIdAndChannelId(guildId, channelId)
                 ?: policies.findByGuildIdAndChannelIdIsNull(guildId)
+        val effectiveMaxCandidates = maxCandidates.coerceIn(1, featureGate.multiResponseMaxFanout())
         val runtimePolicy =
             savedPolicy
                 ?: MultiResponsePolicyEntity(
                     guildId = guildId,
                     channelId = channelId,
-                    mode = runtimeObservationMode(responseMode, maxCandidates),
-                    maxCandidates = maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES),
+                    mode = runtimeObservationMode(responseMode, effectiveMaxCandidates),
+                    maxCandidates = effectiveMaxCandidates,
                     requireDistinctModels = false,
                     providerDailyLimit = 0,
                     timeoutSeconds = 120,
-                    synthesisEnabled = maxCandidates > 1,
+                    synthesisEnabled = effectiveMaxCandidates > 1 && featureGate.snapshot().multiResponseSynthesis,
                     createdAt = Instant.now(clock),
                     updatedAt = Instant.now(clock),
                 )
@@ -305,6 +306,9 @@ class MultiResponseService(
         safetySummary: String? = null,
     ): SynthesisResultEntity {
         featureGate.requireMultiResponseEnabled()
+        if (!synthesisAllowed(strategy, selectedCandidateIds)) {
+            featureGate.requireMultiResponseSynthesisEnabled()
+        }
         val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
         val runCandidates = candidates.findByRunId(runId)
         require(selectedCandidateIds.all { selectedId -> runCandidates.any { it.id == selectedId } }) {
@@ -843,8 +847,8 @@ class MultiResponseService(
     ): List<ProviderCapabilityProfileEntity> {
         val providers = providerCapabilities.findByGuildId(guildId)
         if (providers.any { it.overloadRisk.equals("critical", ignoreCase = true) }) return emptyList()
-        val advancedFanout = policy.maxCandidates > 1 || !policy.mode.equals("single", ignoreCase = true) || policy.synthesisEnabled
-        val effectiveMaxCandidates = if (fanoutAllowed) maxCandidates else 1
+        val effectiveMaxCandidates = if (fanoutAllowed) maxCandidates.coerceIn(1, featureGate.multiResponseMaxFanout()) else 1
+        val advancedFanout = effectiveMaxCandidates > 1 || policy.synthesisEnabled
         val ranked =
             providers
                 .filter { it.providerState.equals("ONLINE", ignoreCase = true) }
@@ -893,6 +897,10 @@ class MultiResponseService(
         promptPreview: String?,
         responseMode: String,
     ) {
+        if (!featureGate.canUseMultiResponseRag()) {
+            run.ragContextStatus = "skipped_feature_disabled"
+            return
+        }
         val search = knowledgeSearch
         if (search == null) {
             run.ragContextStatus = "skipped_no_rag_service"
@@ -938,6 +946,14 @@ class MultiResponseService(
         val statuses = runCandidates.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
         return "multi-response failed: no successful candidate; statuses=$statuses".take(500)
     }
+
+    private fun synthesisAllowed(
+        strategy: String,
+        selectedCandidateIds: List<Long>,
+    ): Boolean =
+        featureGate.snapshot().multiResponseSynthesis ||
+            selectedCandidateIds.size <= 1 &&
+            strategy.trim().lowercase() in SYNTHESIS_FLAG_SAFE_SELECTION_STRATEGIES
 
     private fun ProviderCapabilityProfileEntity.hasFanoutOptIn(): Boolean {
         val tags =
@@ -1012,6 +1028,8 @@ class MultiResponseService(
         val FANOUT_OPT_IN_TAGS = setOf("multi-response", "multi_response", "fanout", "fanout-opt-in")
         val FALLBACK_RUN_STATUSES = setOf("no_provider", "blocked_sensitive", "failed")
         val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
+        val SYNTHESIS_FLAG_SAFE_SELECTION_STRATEGIES =
+            setOf("single_route_runtime", "best_successful_candidate", "best_by_heuristic")
         const val DISCORD_MESSAGE_SAFE_LIMIT = 1_900
         const val PSEUDO_STREAM_EDIT_INTERVAL_MS = 1_200
         val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")

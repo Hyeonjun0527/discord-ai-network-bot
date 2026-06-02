@@ -74,6 +74,9 @@ central:
     presets-enabled: ${AI_NETWORK_PRESETS_ENABLED:true}
     rag-enabled: ${AI_NETWORK_RAG_ENABLED:true}
     multi-response-enabled: ${AI_NETWORK_MULTI_RESPONSE_ENABLED:true}
+    multi-response-synthesis-enabled: ${AI_NETWORK_MULTI_RESPONSE_SYNTHESIS_ENABLED:true}
+    multi-response-rag-enabled: ${AI_NETWORK_MULTI_RESPONSE_RAG_ENABLED:true}
+    multi-response-max-fanout: ${AI_NETWORK_MULTI_RESPONSE_MAX_FANOUT:2}
     channel-ai-enabled: ${AI_NETWORK_CHANNEL_AI_ENABLED:true}
     # 운영 긴급 차단. true 면 AI Network 신규 기능 API/고급 워크플로가 즉시 멈춘다.
     kill-switch: ${AI_NETWORK_KILL_SWITCH:false}

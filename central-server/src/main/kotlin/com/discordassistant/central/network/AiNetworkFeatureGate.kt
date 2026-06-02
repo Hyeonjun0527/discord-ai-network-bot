@@ -10,6 +10,9 @@ class AiNetworkFeatureGate(
     @param:Value("\${central.ai-network.presets-enabled:true}") private val presetsEnabled: Boolean = true,
     @param:Value("\${central.ai-network.rag-enabled:true}") private val ragEnabled: Boolean = true,
     @param:Value("\${central.ai-network.multi-response-enabled:true}") private val multiResponseEnabled: Boolean = true,
+    @param:Value("\${central.ai-network.multi-response-synthesis-enabled:true}") private val multiResponseSynthesisEnabled: Boolean = true,
+    @param:Value("\${central.ai-network.multi-response-rag-enabled:true}") private val multiResponseRagEnabled: Boolean = true,
+    @param:Value("\${central.ai-network.multi-response-max-fanout:2}") private val multiResponseMaxFanout: Int = 2,
     @param:Value("\${central.ai-network.channel-ai-enabled:true}") private val channelAiEnabled: Boolean = true,
     @param:Value("\${central.ai-network.kill-switch:false}") private val killSwitch: Boolean = false,
 ) {
@@ -20,6 +23,9 @@ class AiNetworkFeatureGate(
             presets = available(presetsEnabled),
             rag = available(ragEnabled),
             multiResponse = available(multiResponseEnabled),
+            multiResponseSynthesis = available(multiResponseEnabled && multiResponseSynthesisEnabled),
+            multiResponseRag = available(multiResponseEnabled && ragEnabled && multiResponseRagEnabled),
+            multiResponseMaxFanout = maxFanout(),
             channelAi = available(channelAiEnabled),
             killSwitch = killSwitch,
         )
@@ -32,7 +38,14 @@ class AiNetworkFeatureGate(
 
     fun requireMultiResponseEnabled() = requireFeature("multi-response", multiResponseEnabled)
 
+    fun requireMultiResponseSynthesisEnabled() =
+        requireFeature("multi-response synthesis", multiResponseEnabled && multiResponseSynthesisEnabled)
+
     fun requireChannelAiEnabled() = requireFeature("channel AI customization", channelAiEnabled)
+
+    fun canUseMultiResponseRag(): Boolean = available(multiResponseEnabled && ragEnabled && multiResponseRagEnabled)
+
+    fun multiResponseMaxFanout(): Int = maxFanout()
 
     private fun requireFeature(
         name: String,
@@ -44,6 +57,13 @@ class AiNetworkFeatureGate(
     }
 
     private fun available(flag: Boolean): Boolean = aiNetworkEnabled && flag && !killSwitch
+
+    private fun maxFanout(): Int =
+        if (available(multiResponseEnabled)) {
+            multiResponseMaxFanout.coerceIn(1, AI_NETWORK_MAX_CANDIDATES)
+        } else {
+            1
+        }
 }
 
 data class AiNetworkFeatureSnapshot(
@@ -52,6 +72,9 @@ data class AiNetworkFeatureSnapshot(
     val presets: Boolean,
     val rag: Boolean,
     val multiResponse: Boolean,
+    val multiResponseSynthesis: Boolean,
+    val multiResponseRag: Boolean,
+    val multiResponseMaxFanout: Int,
     val channelAi: Boolean,
     val killSwitch: Boolean,
 )

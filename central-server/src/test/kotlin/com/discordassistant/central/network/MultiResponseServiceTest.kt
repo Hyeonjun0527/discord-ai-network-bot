@@ -122,15 +122,64 @@ class MultiResponseServiceTest
         }
 
         @Test
-        fun `multi response policy enforces global fanout cap of three`() {
+        fun `multi response policy enforces configured global fanout cap`() {
             val saved =
                 controller.savePolicy(
                     100,
                     SaveMultiResponsePolicyRequest(channelId = 199, mode = "compare", maxCandidates = 10, synthesisEnabled = true),
                 )
 
-            assertEquals(3, saved["maxCandidates"])
-            assertEquals(3, policies.findByGuildIdAndChannelId(100, 199)!!.maxCandidates)
+            assertEquals(2, saved["maxCandidates"])
+            assertEquals(2, policies.findByGuildIdAndChannelId(100, 199)!!.maxCandidates)
+        }
+
+        @Test
+        fun `configured max fanout limits saved policies and provider selection`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 101,
+                    providerUserId = 11,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3.1:8b",
+                    capabilityTags = "multi-response",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 101,
+                    providerUserId = 12,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "mistral",
+                    capabilityTags = "multi-response",
+                    overloadRisk = "normal",
+                ),
+            )
+            val cappedService =
+                MultiResponseService(
+                    policies = policies,
+                    runs = runs,
+                    candidates = candidates,
+                    syntheses = syntheses,
+                    providerCapabilities = providerCapabilities,
+                    clock = fixedClock,
+                    featureGate = AiNetworkFeatureGate(multiResponseMaxFanout = 1),
+                )
+            val cappedController = MultiResponseController(cappedService)
+
+            val saved =
+                cappedController.savePolicy(
+                    101,
+                    SaveMultiResponsePolicyRequest(channelId = 201, mode = "compare", maxCandidates = 5, synthesisEnabled = true),
+                )
+            val started = cappedController.startRun(101, StartMultiResponseRunRequest(channelId = 201, requestId = "fanout-1"))
+
+            assertEquals(1, saved["maxCandidates"])
+            assertEquals(false, policies.findByGuildIdAndChannelId(101, 201)!!.synthesisEnabled)
+            assertEquals(1, started["candidateCount"])
+            assertEquals(1, candidates.findByRunId(started["id"] as Long).size)
         }
 
         @Test
@@ -966,6 +1015,102 @@ class MultiResponseServiceTest
             val adminSummary =
                 adminResponse["summary"] as com.discordassistant.central.dashboard.MultiResponseOperationsDashboardResponse
             assertTrue(adminSummary.providerLoads.any { it.providerUserId == 182L })
+        }
+
+        @Test
+        fun `synthesis feature flag blocks multi candidate synthesis without disabling best candidate selection`() {
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 421,
+                    providerUserId = 191,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "llama3.1:8b",
+                    capabilityTags = "multi-response",
+                    overloadRisk = "normal",
+                ),
+            )
+            providerCapabilities.save(
+                ProviderCapabilityProfileEntity(
+                    guildId = 421,
+                    providerUserId = 192,
+                    providerState = "ONLINE",
+                    modelCount = 1,
+                    modelNames = "qwen-coder",
+                    capabilityTags = "multi-response",
+                    overloadRisk = "normal",
+                ),
+            )
+            val noSynthesisService =
+                MultiResponseService(
+                    policies = policies,
+                    runs = runs,
+                    candidates = candidates,
+                    syntheses = syntheses,
+                    providerCapabilities = providerCapabilities,
+                    clock = fixedClock,
+                    featureGate = AiNetworkFeatureGate(multiResponseSynthesisEnabled = false, multiResponseMaxFanout = 2),
+                )
+
+            noSynthesisService.savePolicy(
+                guildId = 421,
+                channelId = 521,
+                channelAiId = null,
+                mode = "compare",
+                maxCandidates = 2,
+                requireDistinctModels = false,
+                providerDailyLimit = 0,
+                timeoutSeconds = 120,
+                synthesisEnabled = true,
+            )
+            assertEquals(false, policies.findByGuildIdAndChannelId(421, 521)!!.synthesisEnabled)
+            val run = noSynthesisService.startRun(421, 521, requestId = "no-synth")
+            val planned = candidates.findByRunId(run.id)
+            planned.forEachIndexed { index, candidate ->
+                noSynthesisService.recordCandidate(
+                    run.id,
+                    candidate.id,
+                    answerRef = "answer:${index + 1}",
+                    status = "completed",
+                    latencyMs = 100 + index,
+                    safetyFlags = emptyList(),
+                    qualityScore = 80 + index,
+                )
+            }
+
+            assertThrows(IllegalStateException::class.java) {
+                noSynthesisService.synthesize(run.id, "answer:final", planned.map { it.id }, strategy = "cross_model_synthesis")
+            }
+            val completed = noSynthesisService.completeBestEffort(run.id)
+            assertEquals("completed", completed.run.status)
+            assertNotNull(completed.synthesis)
+        }
+
+        @Test
+        fun `multi response rag feature flag skips rag context without disabling run planning`() {
+            val noRagService =
+                MultiResponseService(
+                    policies = policies,
+                    runs = runs,
+                    candidates = candidates,
+                    syntheses = syntheses,
+                    providerCapabilities = providerCapabilities,
+                    clock = fixedClock,
+                    featureGate = AiNetworkFeatureGate(multiResponseRagEnabled = false),
+                    knowledgeSearch = KnowledgeSearchService(knowledgeSources, knowledgeSpaces),
+                )
+
+            val run =
+                noRagService.startRuntimeObservation(
+                    guildId = 422,
+                    channelId = 522,
+                    requestId = "rag-disabled",
+                    promptPreview = "Kotlin 운영 가이드 알려줘",
+                    responseMode = "deep",
+                    maxCandidates = 1,
+                )
+
+            assertEquals("skipped_feature_disabled", run.ragContextStatus)
         }
 
         @Test

@@ -87,6 +87,8 @@ class CommandService(
     private val qualityFeedback: AiQualityFeedbackService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
+    private val webSearchAugmenter: com.discordassistant.central.routing.WebSearchAugmenter =
+        com.discordassistant.central.routing.NoWebSearch,
 ) {
     companion object {
         /**
@@ -160,6 +162,7 @@ class CommandService(
         prompt: String,
         requestedModel: String? = null,
         requestedResponseMode: String? = null,
+        webSearch: Boolean = false,
     ): Reply {
         // 요청 우선순위(#150): 관리자/긴급 요청은 분당 쿨다운을 우회한다.
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
@@ -199,6 +202,7 @@ class CommandService(
                     isAdmin = ctx.isAdmin,
                     preferredModel = selectedModel,
                     responseMode = responseMode,
+                    webSearch = webSearch && webSearchAugmenter.isEnabled(),
                 ),
             )
         runtimeMultiResponseRun?.let { run ->
@@ -211,10 +215,22 @@ class CommandService(
             )
         }
         return when (result.state) {
-            RequestState.COMPLETED -> completedAskReply(result.text.orEmpty(), modelChoice, result.requestId)
+            RequestState.COMPLETED ->
+                completedAskReply(result.text.orEmpty().withWebSources(result.sources), modelChoice, result.requestId)
             RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
             else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
         }
+    }
+
+    /** 웹검색 출처를 답변 하단에 [n] URL 형식으로 덧붙인다(없으면 그대로). 최대 5개. */
+    private fun String.withWebSources(sources: List<String>): String {
+        if (sources.isEmpty()) return this
+        val footer =
+            buildString {
+                append("\n\n🔎 출처(웹검색)")
+                sources.take(5).forEachIndexed { i, url -> append("\n[${i + 1}] $url") }
+            }
+        return this + footer
     }
 
     private fun completedAskReply(

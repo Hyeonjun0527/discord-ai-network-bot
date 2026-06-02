@@ -26,7 +26,7 @@ curl -s localhost:8080/actuator/health   # {"status":"UP"} 확인
 2. 자기 PC 에서 에이전트 실행:
    ```bash
    pip install -e provider-agent        # 또는 배포 실행파일
-   discord-ai-provider-agent --token <발급토큰> \
+   discord-ai-agent-network-bot --token <발급토큰> \
        --relay-url ws://<서버>:8080/agent --model llama3.1:8b
    ```
 3. 에이전트가 풀에 등록되면 그 서버의 `/ask` 일부가 이 PC 에서 처리된다.

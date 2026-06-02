@@ -7,13 +7,13 @@
 #   - Docker Desktop installed and running (the deploy uses `docker compose`)
 #
 # Usage:
-#   REPO=Hyeonjun0527/discord-assistant bash deploy/setup-runner.sh
+#   REPO=Hyeonjun0527/discord-ai-network-bot bash deploy/setup-runner.sh
 #   # optional: RUNNER_VERSION=2.323.0 RUNNER_DIR="$HOME/actions-runner" LABELS="self-hosted,macOS,ARM64"
 #
 # The deploy workflow targets runs-on: [self-hosted, macOS, ARM64].
 set -euo pipefail
 
-REPO="${REPO:-Hyeonjun0527/discord-assistant}"
+REPO="${REPO:-Hyeonjun0527/discord-ai-network-bot}"
 RUNNER_DIR="${RUNNER_DIR:-$HOME/actions-runner}"
 LABELS="${LABELS:-self-hosted,macOS,ARM64}"
 RUNNER_NAME="${RUNNER_NAME:-$(hostname -s)-arm64}"

@@ -44,7 +44,7 @@ discord-ai-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent 
 GitHub Release 에서 받고 무결성을 검증하세요(상세: 루트 [README "안전한 설치 기준"](../README.md#안전한-설치-기준)).
 ```bash
 sha256sum -c SHA256SUMS.txt --ignore-missing        # Linux (macOS: shasum -a 256 -c)
-gh attestation verify discord-ai-network-bot-linux --repo Hyeonjun0527/discord-assistant
+gh attestation verify discord-ai-network-bot-linux --repo Hyeonjun0527/discord-ai-network-bot
 ```
 
 ## 경량 의존성

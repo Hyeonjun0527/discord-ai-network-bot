@@ -30,11 +30,11 @@ git push origin agent-v0.1.1
 함께 **렌더된 매니페스트**(`discord-ai-network-bot.rb`, `.json`, winget `*.yaml`)를 릴리스에 첨부한다.
 
 > 무료 경로라 서명 시크릿이 없어도 릴리스가 통과한다(서명 게이트는 `REQUIRE_SIGNED_RELEASE=true`
-> 변수일 때만 작동). 진행 상황: `gh run watch -R Hyeonjun0527/discord-assistant`
+> 변수일 때만 작동). 진행 상황: `gh run watch -R Hyeonjun0527/discord-ai-network-bot`
 
 완료되면 자산 확인:
 ```bash
-gh release view agent-v0.1.1 -R Hyeonjun0527/discord-assistant
+gh release view agent-v0.1.1 -R Hyeonjun0527/discord-ai-network-bot
 ```
 
 ---
@@ -48,7 +48,7 @@ tap 저장소 이름은 **반드시 `homebrew-<탭이름>`** 형식이어야 한
 gh repo create yeon-intergation-platform/homebrew-tap --public -d "Homebrew tap — discord-ai-network-bot"
 
 # 2) 릴리스에서 렌더된 formula 내려받기
-gh release download agent-v0.1.1 -R Hyeonjun0527/discord-assistant \
+gh release download agent-v0.1.1 -R Hyeonjun0527/discord-ai-network-bot \
   -p discord-ai-network-bot.rb -D /tmp/tap
 
 # 3) tap 에 커밋
@@ -77,7 +77,7 @@ brew install discord-ai-network-bot      # brew 가 sha256 자동 검증, 관리
 gh repo create yeon-intergation-platform/scoop-bucket --public -d "Scoop bucket — discord-ai-network-bot"
 
 # 2) 릴리스에서 렌더된 manifest 내려받기
-gh release download agent-v0.1.1 -R Hyeonjun0527/discord-assistant \
+gh release download agent-v0.1.1 -R Hyeonjun0527/discord-ai-network-bot \
   -p discord-ai-network-bot.json -D /tmp/sb
 
 # 3) bucket 에 커밋(매니페스트는 bucket/ 폴더에)
@@ -118,8 +118,8 @@ org `yeon-intergation-platform` 은 장수명 PAT·deploy key 를 정책으로 �
    `homebrew-tap`, `scoop-bucket` 선택 → Install
 4. **시크릿 등록**(메인 레포):
    ```bash
-   gh secret set PKG_APP_ID -R Hyeonjun0527/discord-assistant --body "<APP_ID>"
-   gh secret set PKG_APP_PRIVATE_KEY -R Hyeonjun0527/discord-assistant < ~/keys/github-app.pem
+   gh secret set PKG_APP_ID -R Hyeonjun0527/discord-ai-network-bot --body "<APP_ID>"
+   gh secret set PKG_APP_PRIVATE_KEY -R Hyeonjun0527/discord-ai-network-bot < ~/keys/github-app.pem
    ```
 
 이후 main 에 provider-agent 코드를 push 하면 `agent-autorelease` 가 버전을 올려 태그를 끊고,

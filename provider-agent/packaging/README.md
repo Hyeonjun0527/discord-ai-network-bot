@@ -51,5 +51,5 @@ discord-ai-network-bot --self-test --ollama-url http://localhost:11434   # 연�
 ## 무결성 / 검증
 - 공식 Release 는 단일 `SHA256SUMS.txt` 를 함께 제공한다.
   - `sha256sum -c SHA256SUMS.txt --ignore-missing` (macOS: `shasum -a 256 -c`)
-- 빌드 출처/SBOM: `gh attestation verify <파일> --repo Hyeonjun0527/discord-assistant`.
+- 빌드 출처/SBOM: `gh attestation verify <파일> --repo Hyeonjun0527/discord-ai-network-bot`.
 - 로컬 빌드 체크섬: `shasum -a 256 dist/discord-ai-network-bot > SHA256SUMS`

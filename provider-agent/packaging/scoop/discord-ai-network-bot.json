@@ -2,16 +2,16 @@
   "//": "Scoop 매니페스트(무료). scoop 이 hash 를 자동 검증하므로 수동 해시검증 불필요. CI 가 __VERSION__/__WINDOWS_SHA256__ 를 채워 렌더한다.",
   "version": "__VERSION__",
   "description": "커뮤니티 Provider Agent — 내 PC의 로컬 Ollama 를 중앙 서버에 연결",
-  "homepage": "https://github.com/Hyeonjun0527/discord-assistant",
+  "homepage": "https://github.com/Hyeonjun0527/discord-ai-network-bot",
   "license": "MIT",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/Hyeonjun0527/discord-assistant/releases/download/agent-v__VERSION__/discord-ai-network-bot-windows.exe#/discord-ai-network-bot.exe",
+      "url": "https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/download/agent-v__VERSION__/discord-ai-network-bot-windows.exe#/discord-ai-network-bot.exe",
       "hash": "__WINDOWS_SHA256__",
       "bin": "discord-ai-network-bot.exe"
     }
   },
   "checkver": {
-    "github": "https://github.com/Hyeonjun0527/discord-assistant"
+    "github": "https://github.com/Hyeonjun0527/discord-ai-network-bot"
   }
 }

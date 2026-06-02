@@ -7,7 +7,7 @@ package com.discordassistant.central.discord
  */
 object ProviderOnboarding {
     // 단일 실행파일 다운로드 — 사용자가 신뢰할 수 있게 GitHub Releases 자산으로 안내한다.
-    private const val DL = "https://github.com/Hyeonjun0527/discord-assistant/releases/latest/download"
+    private const val DL = "https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download"
 
     // 설치 랜딩 페이지(차수 19) — OS별 복붙 명령 + 소스 코드 버튼. 링크만 던지지 않고 정제된 가이드로 안내.
     const val INSTALL_PAGE = "https://discord-ai.yeon.world/install"

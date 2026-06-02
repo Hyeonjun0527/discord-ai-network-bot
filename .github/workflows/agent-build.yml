@@ -189,7 +189,7 @@ jobs:
                - macOS/Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing` (macOS 는 `shasum -a 256 -c`)
                - Windows: `Get-FileHash <파일> -Algorithm SHA256` 출력과 비교
             2. 빌드 출처(provenance)·SBOM attestation 확인:
-               `gh attestation verify discord-ai-network-bot-<os> --repo Hyeonjun0527/discord-assistant`
+               `gh attestation verify discord-ai-network-bot-<os> --repo Hyeonjun0527/discord-ai-network-bot`
             3. 일반 사용자 권한으로 실행하세요(관리자/sudo 불필요).
           files: |
             dist/discord-ai-network-bot-*

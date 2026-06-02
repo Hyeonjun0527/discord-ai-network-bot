@@ -36,24 +36,27 @@ jobs:
       - name: 빌드
         run: pyinstaller packaging/agent.spec
       # 릴리스 서명 게이트: agent-v* 태그 빌드는 미서명으로 통과시키지 않는다(조용한 미서명 금지).
-      - name: macOS 서명 시크릿 게이트
-        if: startsWith(github.ref, 'refs/tags/agent-v') && runner.os == 'macOS'
+      # 서명 강제는 **opt-in**: 레포 변수 REQUIRE_SIGNED_RELEASE=true 일 때만 미서명 릴리스를 막는다.
+      # 기본(미설정)은 무료($0) 경로 — 미서명 + 체크섬/attestation/패키지매니저로 검증. 유료 인증서를
+      # 등록한 뒤 변수를 켜면 그때부터 미서명 릴리스가 차단된다.
+      - name: macOS 서명 시크릿 게이트(opt-in)
+        if: startsWith(github.ref, 'refs/tags/agent-v') && runner.os == 'macOS' && vars.REQUIRE_SIGNED_RELEASE == 'true'
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
         run: |
           if [ -z "${MACOS_CERT_P12}" ] || [ -z "${APPLE_ID}" ]; then
-            echo "::error::릴리스(agent-v*)인데 macOS 서명/공증 시크릿(MACOS_CERT_P12·APPLE_ID 등)이 없습니다. 미서명 릴리스 발행을 막습니다."
+            echo "::error::REQUIRE_SIGNED_RELEASE=true 인데 macOS 서명/공증 시크릿이 없습니다. 미서명 릴리스를 막습니다."
             exit 1
           fi
-      - name: Windows 서명 시크릿 게이트
-        if: startsWith(github.ref, 'refs/tags/agent-v') && runner.os == 'Windows'
+      - name: Windows 서명 시크릿 게이트(opt-in)
+        if: startsWith(github.ref, 'refs/tags/agent-v') && runner.os == 'Windows' && vars.REQUIRE_SIGNED_RELEASE == 'true'
         shell: bash
         env:
           WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
         run: |
           if [ -z "${WINDOWS_CERT_PFX}" ]; then
-            echo "::error::릴리스(agent-v*)인데 Windows 코드서명 시크릿(WINDOWS_CERT_PFX)이 없습니다. 미서명 릴리스 발행을 막습니다."
+            echo "::error::REQUIRE_SIGNED_RELEASE=true 인데 Windows 코드서명 시크릿이 없습니다. 미서명 릴리스를 막습니다."
             exit 1
           fi
       # macOS Developer ID 서명 + notarization(#106). 인증서/Apple 계정 시크릿이 있을 때만 실행.
@@ -195,6 +198,64 @@ jobs:
             dist/pkg/discord-ai-provider-agent.rb
             dist/pkg/discord-ai-provider-agent.json
             dist/pkg/winget/*.yaml
+      # 다음 잡(tap/bucket 자동 갱신)에서 쓰도록 렌더된 매니페스트를 아티팩트로 올린다.
+      - name: 매니페스트 아티팩트 업로드
+        if: startsWith(github.ref, 'refs/tags/agent-v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-manifests
+          path: dist/pkg/
+
+  # 패키지 매니저 저장소(Homebrew tap·Scoop bucket) 자동 갱신.
+  # PAT 시크릿 PKG_PUSH_TOKEN(tap·bucket 레포 push 권한)이 있을 때만 실행 — 없으면 통째로 스킵.
+  # 사용자는 한 번만 두 레포 + PAT 를 만들면, 이후 릴리스마다 매니페스트가 자동으로 갱신된다.
+  publish-pkg-managers:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/agent-v')
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.PKG_PUSH_TOKEN != '' && 'true' || 'false' }}
+      OWNER: Hyeonjun0527
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-manifests
+          path: pkg
+      - name: Homebrew tap 갱신
+        if: env.HAS_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PKG_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME#agent-v}"
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp pkg/discord-ai-provider-agent.rb tap/Formula/discord-ai-provider-agent.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/discord-ai-provider-agent.rb
+          git commit -m "discord-ai-provider-agent ${VER}" || { echo "변경 없음"; exit 0; }
+          git push
+      - name: Scoop bucket 갱신
+        if: env.HAS_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PKG_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME#agent-v}"
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/scoop-bucket.git" bucket
+          mkdir -p bucket/bucket
+          cp pkg/discord-ai-provider-agent.json bucket/bucket/discord-ai-provider-agent.json
+          cd bucket
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bucket/discord-ai-provider-agent.json
+          git commit -m "discord-ai-provider-agent ${VER}" || { echo "변경 없음"; exit 0; }
+          git push
+      - name: 안내(토큰 없음)
+        if: env.HAS_TOKEN != 'true'
+        run: echo "PKG_PUSH_TOKEN 미설정 — tap/bucket 자동 갱신을 건너뜁니다. docs/SETUP_PACKAGE_MANAGERS.md 참고."
 
   # 빌드된 바이너리를 원격 central 의 다운로드 폴더로 배치 → central 이 /download/** 로 서빙.
   # (레포 비공개 유지: 같은 run 의 아티팩트를 받아 self-hosted 러너에서 복사 — 토큰/공개 불필요)

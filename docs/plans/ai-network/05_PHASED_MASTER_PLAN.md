@@ -274,11 +274,11 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 대시보드는 projection 만 읽는다.
-- [ ] 일반 유저/Provider/관리자에게 보이는 정보가 다르다.
-- [ ] Provider 개인 정보와 민감 상태는 노출하지 않는다.
-- [ ] stale projection 은 freshness 를 표시한다.
-- [ ] dashboard 장애 시 Discord 질문 기능은 유지된다.
+- [ ] 대시보드는 projection 만 읽는다. — `dashboard()` 가 아직 overview refresh 경로를 호출할 수 있어 완전 충족 전이다. 다음 slice 에서 read-only projection 조회로 고정한다.
+- [x] 일반 유저/Provider/관리자에게 보이는 정보가 다르다. — `AiNetworkDashboardControllerTest` 가 public/provider/admin audience 별 Provider 표시·상태·용량 노출 차이를 검증한다.
+- [x] Provider 개인 정보와 민감 상태는 노출하지 않는다. — `AiNetworkDashboardControllerTest` 가 public dashboard/provider/overload/multi-response load 에서 provider id·capacity·민감 risk 를 마스킹한다.
+- [x] stale projection 은 freshness 를 표시한다. — `AiNetworkDashboardControllerTest` 가 `refresh=false` stale projection 의 `freshnessStatus=stale`, `degradedReason=projection_stale` 를 검증한다.
+- [x] dashboard 장애 시 Discord 질문 기능은 유지된다. — `MultiResponseServiceTest` 와 `AiNetworkFeatureGateTest` 가 dashboard projection gate off 상태에서도 질문 fan-out 경로가 유지됨을 검증한다.
 
 ## 8. Capability Group 3 — Knowledge/RAG
 

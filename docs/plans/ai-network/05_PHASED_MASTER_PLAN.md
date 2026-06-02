@@ -320,7 +320,7 @@ Release 0 의 하드 게이트:
 - [x] 삭제된 문서는 검색 결과에서 빠진다.
 - [x] secret pattern 감지 문서는 색인되지 않는다.
 - [x] RAG 실패는 일반 질문 장애로 번지지 않는다.
-- [ ] golden set 기준 Hit@K/MRR/Recall 을 CI 에서 확인한다.
+- [x] golden set 기준 Hit@K/MRR/Recall 을 CI 에서 확인한다.
 
 ## 9. Capability Group 4 — Preset Registry
 

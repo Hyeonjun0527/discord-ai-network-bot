@@ -10,11 +10,22 @@ from .config import config_from_args
 from .logging_setup import setup_logging
 
 
+def _warn_risky_config(cfg, log: logging.Logger) -> None:
+    """안전 기본값을 끈 위험 옵션이 켜져 있으면 눈에 띄게 경고한다."""
+    if cfg.allow_remote_ollama:
+        log.warning("⚠️ 원격 Ollama 허용됨(--allow-remote-ollama): localhost 외 주소로 요청이 나갑니다.")
+    if cfg.daily_limit == 0:
+        log.warning("⚠️ 일일 한도 무제한(--allow-unlimited): 처리량 상한이 없습니다.")
+    if not cfg.pause_on_battery:
+        log.warning("⚠️ 배터리 중에도 처리(--run-on-battery): 방전 중에도 자동 일시중지하지 않습니다.")
+
+
 def main(argv: list[str] | None = None) -> int:
     cfg, verbose = config_from_args(argv)
     setup_logging(verbose, cfg.log_file)
     log = logging.getLogger("provider_agent")
     log.info("Provider Agent %s", cfg.agent_version)
+    _warn_risky_config(cfg, log)
     if cfg.self_test:
         # 자가 점검은 연결/처리 없이 Ollama 만 확인하므로 동의 화면 없이 진행한다.
         from .agent import self_test

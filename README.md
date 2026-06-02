@@ -77,6 +77,9 @@ Provider Agent 는 "믿고 설치하세요"가 아니라 **사용자가 검증�
   `gh attestation verify discord-ai-provider-agent-<os> --repo Hyeonjun0527/discord-assistant`
 - 배포물은 **Windows 코드서명**, **macOS Developer ID 서명 + notarization** 이 적용됩니다.
   경고가 뜨면 **우회하지 말고** 출처/해시를 다시 확인하세요.
+- **수동 해시검증이 번거롭다면** 패키지 매니저로 설치하세요. `brew install`·`winget install`
+  은 해시를 **자동 검증**합니다([`docs/PACKAGE_MANAGERS.md`](docs/PACKAGE_MANAGERS.md)).
+  서명/공증 설정은 [`docs/RELEASE_SIGNING.md`](docs/RELEASE_SIGNING.md) 참고.
 
 **2) 관리자 권한이 필요 없다**
 

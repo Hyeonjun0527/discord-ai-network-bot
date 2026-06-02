@@ -122,8 +122,41 @@ class AiNetworkDashboardController(
                     blocking = it.status == "blocked",
                 )
             }
+        val featureSnapshot = featureGate.snapshot()
+        val featureBaseReady =
+            featureSnapshot.aiNetwork &&
+                featureSnapshot.dashboard &&
+                featureSnapshot.channelAi &&
+                featureSnapshot.presets &&
+                featureSnapshot.rag &&
+                !featureSnapshot.killSwitch
+        val advancedLimited =
+            !featureSnapshot.multiResponse ||
+                !featureSnapshot.multiResponseSynthesis ||
+                !featureSnapshot.multiResponseRag ||
+                featureSnapshot.multiResponseMaxFanout <= 1
         val safetyItems =
             listOf(
+                checklistItem(
+                    key = "feature_flags",
+                    title = "기능 플래그/kill switch",
+                    passed = featureBaseReady && !advancedLimited,
+                    warning = featureBaseReady && advancedLimited,
+                    evidence =
+                        listOf(
+                            "aiNetwork=${featureSnapshot.aiNetwork}",
+                            "dashboard=${featureSnapshot.dashboard}",
+                            "channelAi=${featureSnapshot.channelAi}",
+                            "presets=${featureSnapshot.presets}",
+                            "rag=${featureSnapshot.rag}",
+                            "multi=${featureSnapshot.multiResponse}",
+                            "synthesis=${featureSnapshot.multiResponseSynthesis}",
+                            "multiRag=${featureSnapshot.multiResponseRag}",
+                            "maxFanout=${featureSnapshot.multiResponseMaxFanout}",
+                            "killSwitch=${featureSnapshot.killSwitch}",
+                        ),
+                    nextAction = "ENV_FILE 의 AI_NETWORK_* 플래그와 maxFanout 가 의도한 운영값인지 확인하세요.",
+                ),
                 checklistItem(
                     key = "provider_overload",
                     title = "Provider 과부하 보호",

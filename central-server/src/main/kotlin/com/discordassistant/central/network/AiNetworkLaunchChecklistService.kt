@@ -35,9 +35,42 @@ class AiNetworkLaunchChecklistService(
         val modelCount = providerList.flatMap { splitCsv(it.modelNames) }.distinct().size
         val spaces = knowledgeSpaces.findByGuildId(guildId)
         val sources = spaces.flatMap { knowledgeSources.findByKnowledgeSpaceId(it.id) }
-        val pendingChanges = proposals.findByGuildIdOrderByCreatedAtDesc(guildId).count { it.status == "pending" || it.status == "stale" }
+        val pendingChanges =
+            proposals.findByGuildIdOrderByCreatedAtDesc(guildId).count { it.status == "pending" || it.status == "stale" }
+        val features = featureGate.snapshot()
+        val featureBaseReady =
+            features.aiNetwork &&
+                features.dashboard &&
+                features.channelAi &&
+                features.presets &&
+                features.rag &&
+                !features.killSwitch
+        val advancedLimited =
+            !features.multiResponse ||
+                !features.multiResponseSynthesis ||
+                !features.multiResponseRag ||
+                features.multiResponseMaxFanout <= 1
         val items =
             listOf(
+                item(
+                    "feature_flags",
+                    "기능 플래그/kill switch",
+                    featureBaseReady && !advancedLimited,
+                    featureBaseReady && advancedLimited,
+                    listOf(
+                        "aiNetwork=${features.aiNetwork}",
+                        "dashboard=${features.dashboard}",
+                        "channelAi=${features.channelAi}",
+                        "presets=${features.presets}",
+                        "rag=${features.rag}",
+                        "multi=${features.multiResponse}",
+                        "synthesis=${features.multiResponseSynthesis}",
+                        "multiRag=${features.multiResponseRag}",
+                        "maxFanout=${features.multiResponseMaxFanout}",
+                        "killSwitch=${features.killSwitch}",
+                    ),
+                    "ENV_FILE 의 AI_NETWORK_* 플래그와 maxFanout 가 의도한 운영값인지 확인하세요.",
+                ),
                 item(
                     "providers",
                     "Provider 상태",

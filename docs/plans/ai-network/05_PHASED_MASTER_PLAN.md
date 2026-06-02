@@ -202,9 +202,9 @@ Release 0 의 하드 게이트:
 - [ ] 모든 새 테이블에 `guild_id` 또는 명시적 global scope 가 있다.
 - [ ] cross-guild 접근을 막는 테스트가 있다.
 - [ ] 설정 변경은 audit log 에 남는다.
-- [ ] feature flag 로 신규 기능을 끌 수 있다.
+- [x] feature flag 로 신규 기능을 끌 수 있다.
 - [ ] Provider overload 상태에서는 어떤 고급 기능도 실행되지 않는다.
-- [ ] projection 장애가 질문 처리 장애로 번지지 않는다.
+- [x] projection 장애가 질문 처리 장애로 번지지 않는다.
 
 ## 6. Capability Group 1 — Channel AI MVP
 
@@ -423,12 +423,12 @@ Release 0 의 하드 게이트:
 
 ### DoD
 
-- [ ] 기본 질문은 fan-out 하지 않는다.
-- [ ] 민감 질문에서는 다중 응답이 자동 비활성화된다.
-- [ ] Provider opt-out 이 즉시 반영된다.
-- [ ] 후보 답변 원문 전체를 장기 저장하지 않는다.
-- [ ] 모든 후보 실패 시 단일 실패 메시지로 정리한다.
-- [ ] Provider 보호 차단 횟수가 dashboard 에 표시된다.
+- [x] 기본 질문은 fan-out 하지 않는다.
+- [x] 민감 질문에서는 다중 응답이 자동 비활성화된다.
+- [x] Provider opt-out 이 즉시 반영된다.
+- [x] 후보 답변 원문 전체를 장기 저장하지 않는다.
+- [x] 모든 후보 실패 시 단일 실패 메시지로 정리한다.
+- [x] Provider 보호 차단 횟수가 dashboard 에 표시된다.
 
 ## 13. Capability Group 8 — Advanced Network Growth
 

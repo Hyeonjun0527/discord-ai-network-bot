@@ -35,6 +35,8 @@ class RelayWebSocketHandler(
     private val growth: AiNetworkGrowthService? = null,
     @param:Value("\${central.relay.request-timeout-seconds:120}") private val requestTimeout: Long,
     @param:Value("\${central.relay.heartbeat-seconds:30}") private val heartbeatSeconds: Long,
+    // durable 토큰 발급기(있으면 인증 성공 시 재사용 토큰을 auth_ok 로 내려줌). TokenService 가 구현.
+    private val durableIssuer: com.discordassistant.central.provider.DurableTokenIssuer? = null,
 ) : TextWebSocketHandler() {
     private val log = LoggerFactory.getLogger(RelayWebSocketHandler::class.java)
 
@@ -102,7 +104,9 @@ class RelayWebSocketHandler(
         registry.register(ps)
         authed[session.id] = ps
         pendingAuth.remove(session.id)
-        conn.sendFrame(AuthOkFrame(sessionId = session.id))
+        // 재연결·재시작에 재사용할 durable 토큰 발급(시크릿 설정 시). 비면 기존 일회용 동작.
+        val durable = durableIssuer?.issueDurable(binding.providerId, binding.guildId).orEmpty()
+        conn.sendFrame(AuthOkFrame(sessionId = session.id, providerToken = durable))
         log.info("에이전트 인증 성공: provider={} guild={}", binding.providerId, binding.guildId)
     }
 

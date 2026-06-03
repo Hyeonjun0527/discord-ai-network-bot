@@ -53,6 +53,8 @@ class AgentConnection:
         hello_provider: HelloProvider,
     ) -> None:
         self._cfg = cfg
+        # 현재 인증에 쓰는 토큰. 서버가 durable 토큰을 내려주면 그걸로 교체해 재연결·재시작에 재사용.
+        self._token = cfg.token
         self._on_server_frame = on_server_frame
         self._hello_provider = hello_provider
         self._ws: aiohttp.ClientWebSocketResponse | None = None
@@ -106,7 +108,7 @@ class AgentConnection:
         await ws.send_str(
             dumps_frame(
                 AuthFrame(
-                    token=self._cfg.token,
+                    token=self._token,
                     agent_version=self._cfg.agent_version,
                     platform=self._cfg.platform,
                 )
@@ -138,6 +140,13 @@ class AgentConnection:
     async def _dispatch(self, frame: Frame) -> None:
         if isinstance(frame, AuthOkFrame):
             self._authed.set()
+            # 서버가 durable 토큰을 내려주면, 이후 재연결·재시작에 재사용하도록 교체·저장한다.
+            if frame.provider_token and frame.provider_token != self._token:
+                from .config_file import persist_token
+
+                self._token = frame.provider_token
+                persist_token(frame.provider_token)
+                logger.info("재사용 가능한 프로바이더 토큰 저장됨 — 다음부터 자동 재연결")
             logger.info("인증 성공(session=%s) — provider_hello 전송", frame.session_id)
             await self.send(self._hello_provider())
         elif isinstance(frame, AuthErrFrame):

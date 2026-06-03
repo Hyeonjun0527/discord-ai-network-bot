@@ -85,8 +85,14 @@ jobs:
           fi
           printf '%s\n' "$ENV_FILE" > .env
           tr -d '\r' < .env > .env.tmp && mv .env.tmp .env
-          awk '!/^(CENTRAL_IMAGE|SERVER_PORT|APP_PORT)=/' .env > .env.tmp
+          awk '!/^(CENTRAL_IMAGE|SERVER_PORT|APP_PORT|CENTRAL_DURABLE_SECRET)=/' .env > .env.tmp
           mv .env.tmp .env
+          # durable 프로바이더 토큰 서명 시크릿 — 최초 1회 생성 후 유지(배포마다 바뀌면 토큰 전부 무효화).
+          if [ ! -f .durable-secret ]; then
+            (openssl rand -hex 32 2>/dev/null || (head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')) > .durable-secret
+          fi
+          chmod 600 .durable-secret
+          echo "CENTRAL_DURABLE_SECRET=$(cat .durable-secret)" >> .env
           {
             echo "CENTRAL_IMAGE=${IMAGE}:${GIT_SHA}"
             echo "SERVER_PORT=${SERVER_PORT}"

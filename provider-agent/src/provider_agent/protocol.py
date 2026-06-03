@@ -120,6 +120,7 @@ class AuthFrame:
 class AuthOkFrame:
     protocol_version: str = PROTOCOL_VERSION
     session_id: str = ""
+    provider_token: str = ""  # 재연결·재시작 재사용용 durable 토큰(비면 미발급)
 
     @property
     def type(self) -> str:
@@ -130,11 +131,16 @@ class AuthOkFrame:
             "type": FrameType.AUTH_OK,
             "protocolVersion": self.protocol_version,
             "sessionId": self.session_id,
+            "providerToken": self.provider_token,
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "AuthOkFrame":
-        return cls(str(d.get("protocolVersion", PROTOCOL_VERSION)), str(d.get("sessionId", "")))
+        return cls(
+            str(d.get("protocolVersion", PROTOCOL_VERSION)),
+            str(d.get("sessionId", "")),
+            str(d.get("providerToken", "")),
+        )
 
 
 @dataclass(frozen=True, slots=True)

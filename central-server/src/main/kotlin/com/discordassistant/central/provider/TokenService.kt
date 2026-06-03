@@ -19,7 +19,9 @@ import java.util.concurrent.TimeUnit
 @Component
 class TokenService(
     @param:Value("\${central.token.ttl-seconds:600}") private val ttlSeconds: Long,
-) : TokenVerifier {
+    private val durable: DurableTokenService = DurableTokenService("", 0),
+) : TokenVerifier,
+    DurableTokenIssuer {
     private data class Record(
         val providerId: Long,
         val guildId: Long?,
@@ -53,15 +55,22 @@ class TokenService(
     }
 
     override fun verify(token: String): OwnerBinding? {
+        // durable(dv1.) 토큰은 재사용 가능 — 소모하지 않고 HMAC 검증.
+        if (token.startsWith("dv1.")) return durable.verify(token)
         val h = hash(token)
         val rec = store[h] ?: return null
         if (System.nanoTime() > rec.expiresAtNanos) {
             store.remove(h)
             return null
         }
-        store.remove(h) // 단발성
+        store.remove(h) // 일회용 페어링 토큰은 단발성
         return OwnerBinding(rec.providerId, rec.guildId)
     }
+
+    override fun issueDurable(
+        providerId: Long,
+        guildId: Long?,
+    ): String? = durable.issueDurable(providerId, guildId)
 
     /** 폐기(revoke). 발급한 토큰을 무효화한다. 발급 측은 평문을 알 때만 호출 가능. */
     fun revoke(token: String) {

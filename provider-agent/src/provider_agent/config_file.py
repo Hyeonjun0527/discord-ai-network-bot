@@ -46,6 +46,26 @@ def save_config(cfg, path: pathlib.Path | None = None) -> pathlib.Path:
     return path
 
 
+def persist_token(token: str, path: pathlib.Path | None = None) -> None:
+    """저장 설정에 **토큰만** 갱신한다(durable 토큰 재사용용). 다른 필드는 유지, 권한 0600.
+
+    인증 성공 시 서버가 내려준 durable 토큰을 저장해, 다음 실행/재연결에 같은 토큰으로 인증한다.
+    """
+    path = path or config_path()
+    try:
+        data: dict = {}
+        if path.exists():
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        data["token"] = token
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
 def load_config(path: pathlib.Path | None = None) -> dict:
     """저장된 설정을 dict 로 로드. 없으면 빈 dict."""
     path = path or config_path()

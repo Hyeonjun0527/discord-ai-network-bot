@@ -80,4 +80,17 @@ class ArchitectureTest {
                 "..central.dashboard..",
                 "..central.dev..",
             )
+
+    // 서비스(@Service)는 웹 계층(web/dashboard/dev) 패키지에 두지 않는다(도메인/집계 로직이 웹에 새지 않게).
+    @ArchTest
+    val servicesNotInWebLayers: ArchRule =
+        noClasses()
+            .that()
+            .areAnnotatedWith(org.springframework.stereotype.Service::class.java)
+            .should()
+            .resideInAnyPackage(
+                "..central.web..",
+                "..central.dashboard..",
+                "..central.dev..",
+            )
 }

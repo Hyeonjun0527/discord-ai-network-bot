@@ -4,6 +4,7 @@ import com.discordassistant.central.persistence.AiRequestEntity
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.UsageLogEntity
 import com.discordassistant.central.persistence.UsageLogRepository
+import com.discordassistant.central.usage.AnalyticsService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired

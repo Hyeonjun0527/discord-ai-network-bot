@@ -135,3 +135,88 @@ requirements:
     tests:
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/web/AiNetworkApiSecurityFilterTest.kt
+  # 서버 AI 자동 온보딩(Phase 1 — 동의 기반 골격, 휴리스틱 draft + 승인 카드).
+  # Phase 1 은 LLM 추론·메시지 백필이 없으므로 P1(단위 추적). Phase 2/3 에서 P0 흐름·feature 시나리오로 승격 예정.
+  - id: REQ-ONBOARD-001
+    title: 관리자가 자동 온보딩을 시작하면 동의가 기록되고 휴리스틱 draft 의 PENDING 제안이 생성된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+  - id: REQ-ONBOARD-002
+    title: 온보딩 제안을 승인하면 채널 AI 활성 behavior 버전으로 전환된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+  - id: REQ-ONBOARD-003
+    title: 비관리자/미동의 사용자의 자동 온보딩 시작·승인·거절은 거부된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/CommandServiceTest.kt
+  # Phase 2b — 과거 메시지 백필 + RAG 색인. 핀/공지 기본, 본문은 화이트리스트 채널 + MESSAGE_CONTENT 활성 시에만.
+  # 봇/시스템 메시지·민감정보·opt-out 제외 + 작성자 익명화 + row 삭제로 즉시 잊을 수 있는 RAG 색인.
+  - id: REQ-ONBOARD-004
+    title: 백필 시 봇/시스템 메시지·민감정보 라인·opt-out 사용자는 RAG 색인에서 제외되고 작성자는 익명화된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/GuildHistoryBackfillServiceTest.kt
+  - id: REQ-ONBOARD-005
+    title: 정제된 백필 텍스트는 채널 지식공간의 RAG source 로 색인되고 run 에 색인 메타가 기록된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+  # 개인정보 보호 강화(적대적 리뷰 S1/S2/S3 대응):
+  #  - 유저 단위 opt-out 실연동(/ai-onboard-optout 으로 본인 메시지를 백필 색인에서 제외),
+  #  - 제3자 멘션(user/role/channel) 익명 토큰 마스킹(표시이름/실명 비노출),
+  #  - 백필 색인 실패가 consent/proposal/run 생성을 롤백하지 않는 트랜잭션 격리.
+  - id: REQ-ONBOARD-006
+    title: 본인 opt-out·제3자 멘션 마스킹·색인 실패 격리로 개인정보를 보호하며 온보딩 본체는 보존된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/GuildHistoryBackfillServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/CommandServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+  # Phase 3 — 정제 백필 텍스트를 LLM(Provider Pool 경유, 동기 호출)으로 분석해 채널 AI 페르소나를 휴리스틱보다 풍부하게 제안.
+  # 출력은 엄격 JSON(name/purpose/tone/answerLength/customInstruction)만, robust 파싱. LLM 자유 지침도 위험/민감 가드를 거친다.
+  - id: REQ-ONBOARD-007
+    title: 정제 백필 텍스트를 LLM 분석해 채널 AI 페르소나(이름/역할/말투/길이/자유지침)를 제안하고 출처를 llm 으로 기록한다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/OnboardingAnalyzerTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+  # 프로바이더 부재/거부/실패/타임아웃/빈 응답/JSON 파싱 실패/위험 출력 → Phase 1 휴리스틱으로 graceful fallback(온보딩 무중단).
+  - id: REQ-ONBOARD-008
+    title: 프로바이더 부재·LLM 실패·파싱 실패 시 휴리스틱 draft 로 폴백하고 출처를 heuristic 으로 기록한다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/OnboardingAnalyzerTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+  # 채널 AI 자유 지침(custom instruction) — 슬롯(가드레일)과 공존하는 자연어 페르소나 색깔.
+  # behavior 버전의 일부로 저장·버전관리되고 /ask 시스템 프롬프트 정체성 블록 뒤([우선순위 2.5])에 삽입된다.
+  - id: REQ-INSTRUCTION-001
+    title: 관리자가 추가한 자유 지침은 behavior 버전으로 저장되고 시스템 프롬프트 정체성 블록에 삽입된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/ChannelAiCustomizationServiceTest.kt
+  - id: REQ-INSTRUCTION-002
+    title: 민감정보/위험 용어가 담긴 자유 지침은 자동 적용되지 않고 승인 대기열로 강제된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/ChannelAiCustomizationServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/CommandServiceTest.kt

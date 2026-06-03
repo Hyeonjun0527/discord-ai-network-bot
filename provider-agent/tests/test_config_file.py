@@ -60,3 +60,44 @@ def test_tray_graceful_without_deps():
     assert isinstance(tray.tray_available(), bool)
     if not tray.tray_available():
         assert tray.run_tray(lambda: "ok", lambda: None) is False
+
+
+# ── 멀티-서버 연결 목록 ───────────────────────────────────────────────
+
+
+def test_load_connections_migrates_single_token(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from provider_agent.config_file import load_connections, persist_partial
+
+    persist_partial({"token": "TOK1"})  # 구버전: 단일 token
+    conns = load_connections()
+    assert conns == [{"token": "TOK1", "guild_id": None, "guild_name": None}]
+
+
+def test_add_remove_connection_by_guild(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from provider_agent.config_file import add_connection, load_connections, remove_connection
+
+    add_connection("TA", guild_id=100, guild_name="A")
+    add_connection("TB", guild_id=200, guild_name="B")
+    conns = load_connections()
+    assert {c["guild_id"] for c in conns} == {100, 200}
+    # 같은 길드 재추가 → 교체(중복 아님)
+    add_connection("TA2", guild_id=100, guild_name="A2")
+    conns = load_connections()
+    a = next(c for c in conns if c["guild_id"] == 100)
+    assert a["token"] == "TA2" and len(conns) == 2
+    # 길드 200 해제
+    remove_connection(guild_id=200)
+    conns = load_connections()
+    assert [c["guild_id"] for c in conns] == [100]
+
+
+def test_set_connection_token_durable_refresh(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from provider_agent.config_file import add_connection, load_connections, set_connection_token
+
+    add_connection("ONBOARD", guild_id=100, guild_name="A")
+    set_connection_token("DURABLE", guild_id=100, old_token="ONBOARD")
+    conns = load_connections()
+    assert conns[0]["token"] == "DURABLE"

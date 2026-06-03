@@ -63,6 +63,8 @@ class CommandServiceTest
         val aiFeedbacks: AiFeedbackRepository,
         val aiAdminRoles: AiAdminRoleRepository,
         val aiLevel: com.discordassistant.central.network.AiLevelService,
+        val onboardingOptOuts: com.discordassistant.central.persistence.GuildOnboardingOptOutRepository,
+        val channelAis: com.discordassistant.central.persistence.ChannelAiRepository,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -73,31 +75,41 @@ class CommandServiceTest
         }
 
         @Test
-        fun `help — 유저 섹션은 항상, 관리자 섹션은 관리자만`() {
+        fun `help — 유저 섹션은 항상, 관리자 섹션은 관리자만 (한국어 표기)`() {
+            // 기본(default) 로케일은 한국어 — 슬래시 메뉴(/질문 등)와 일치하도록 한국어 명령명으로 표기.
             val user = commands.help(ctx(admin = false)).content
-            assertTrue(user.contains("/ask"))
+            assertTrue(user.contains("/질문"))
             assertTrue(!user.contains("__관리자__"))
             val admin = commands.help(ctx(admin = true)).content
             assertTrue(admin.contains("__관리자__"))
             assertTrue(admin.contains("/채널프로필"))
-            assertTrue(admin.contains("/llm-channel-profile"))
-            assertTrue(admin.contains("/ai-network-map"))
-            assertTrue(admin.contains("/ai-knowledge-list"))
-            assertTrue(admin.contains("/ai-knowledge-add"))
-            assertTrue(admin.contains("/ai-knowledge-search"))
-            assertTrue(admin.contains("/ai-knowledge-index-plan"))
-            assertTrue(admin.contains("/ai-knowledge-approve"))
-            assertTrue(admin.contains("/ai-knowledge-delete"))
-            assertTrue(admin.contains("/ai-knowledge-jobs"))
-            assertTrue(admin.contains("/ai-knowledge-job-complete"))
-            assertTrue(admin.contains("/ai-preset-catalog"))
-            assertTrue(admin.contains("/ai-preset-import"))
-            assertTrue(admin.contains("/ai-preset-moderation"))
-            assertTrue(admin.contains("/ai-preset-report-review"))
-            assertTrue(admin.contains("/ai-multi-response-status"))
-            assertTrue(admin.contains("/ai-multi-response-set"))
-            assertTrue(admin.contains("/ai-multi-response-dry-run"))
-            assertTrue(admin.contains("/ai-network-check"))
+            assertTrue(admin.contains("/네트워크지도"))
+            assertTrue(admin.contains("/지식목록"))
+            assertTrue(admin.contains("/지식추가"))
+            assertTrue(admin.contains("/지식검색"))
+            assertTrue(admin.contains("/지식색인계획"))
+            assertTrue(admin.contains("/지식승인"))
+            assertTrue(admin.contains("/지식삭제"))
+            assertTrue(admin.contains("/지식색인작업"))
+            assertTrue(admin.contains("/지식색인완료"))
+            assertTrue(admin.contains("/프리셋목록"))
+            assertTrue(admin.contains("/프리셋가져오기"))
+            assertTrue(admin.contains("/프리셋검수"))
+            assertTrue(admin.contains("/프리셋신고처리"))
+            assertTrue(admin.contains("/다중응답상태"))
+            assertTrue(admin.contains("/다중응답설정"))
+            assertTrue(admin.contains("/다중응답실험"))
+            assertTrue(admin.contains("/네트워크점검"))
+        }
+
+        @Test
+        fun `help — 영어 클라이언트는 영어 명령명으로 표기`() {
+            val user =
+                commands
+                    .help(ctx(admin = false), net.dv8tion.jda.api.interactions.DiscordLocale.ENGLISH_US)
+                    .content
+            assertTrue(user.contains("/ask"))
+            assertTrue(!user.contains("/질문"))
         }
 
         @Test
@@ -584,6 +596,100 @@ class CommandServiceTest
             assertTrue(denied.content.contains("AI 관리자 역할"), denied.content)
             val allowed = commands.setChannelAiProfile(aiAdmin, "권한냥", null, false)
             assertTrue(allowed.content.contains("권한냥"), allowed.content)
+        }
+
+        // REQ-ONBOARD-003: 비관리자는 자동 온보딩 시작/승인/거절이 모두 거부된다.
+        @Test
+        fun `ai-onboard — 비관리자는 자동 온보딩 시작 승인 거절이 모두 거부된다`() {
+            val user = CommandContext(guildId = 100, channelId = 70300, userId = 5, roleIds = setOf(1L), isAdmin = false)
+
+            val startOutcome = commands.startAutoOnboarding(user, channelName = "dev-help")
+            assertTrue(startOutcome is OnboardingStartOutcome.Rejected)
+            assertTrue((startOutcome as OnboardingStartOutcome.Rejected).reply.content.contains("⛔"))
+
+            assertTrue(commands.approveOnboarding(user, proposalId = 1L).content.contains("⛔"))
+            assertTrue(commands.rejectOnboarding(user, proposalId = 1L).content.contains("⛔"))
+        }
+
+        // REQ-ONBOARD-001/002: 관리자는 자동 온보딩으로 PENDING draft 를 만들고 승인해 적용한다.
+        @Test
+        fun `ai-onboard — 관리자가 휴리스틱 draft PENDING 제안을 만들고 승인한다`() {
+            val admin = CommandContext(guildId = 100, channelId = 70301, userId = 5, roleIds = setOf(1L), isAdmin = true)
+
+            val outcome = commands.startAutoOnboarding(admin, channelName = "dev-talk")
+            assertTrue(outcome is OnboardingStartOutcome.Started)
+            val result = (outcome as OnboardingStartOutcome.Started).result
+            assertEquals("pending", result.status)
+            assertEquals("코드냥", result.name)
+
+            val approved = commands.approveOnboarding(admin, result.proposalId)
+            assertTrue(approved.content.contains("승인"), approved.content)
+        }
+
+        // REQ-ONBOARD-006: 누구나 본인 opt-out 을 등록/해제할 수 있고(관리자 권한 불필요), DB 에 반영된다.
+        @Test
+        fun `ai-onboard-optout — 본인 opt-out 등록과 해제가 DB 에 반영된다`() {
+            val user = CommandContext(guildId = 100, channelId = 70400, userId = 4242, roleIds = setOf(1L), isAdmin = false)
+            assertFalse(onboardingOptOuts.existsByGuildIdAndUserId(100, 4242))
+
+            // 등록(enable=true) — 관리자 아님에도 허용.
+            val on = commands.setOnboardingOptOut(user, enable = true)
+            assertTrue(on.content.contains("제외"), on.content)
+            assertTrue(onboardingOptOuts.existsByGuildIdAndUserId(100, 4242))
+
+            // 멱등: 다시 enable=true 면 이미 적용됨 안내(중복 row 안 생김).
+            commands.setOnboardingOptOut(user, enable = true)
+            assertEquals(1, onboardingOptOuts.findByGuildId(100).count { it.userId == 4242L })
+
+            // 해제(enable=false).
+            val off = commands.setOnboardingOptOut(user, enable = false)
+            assertTrue(off.content.contains("해제"), off.content)
+            assertFalse(onboardingOptOuts.existsByGuildIdAndUserId(100, 4242))
+
+            // 토글(enable=null) — 없으면 등록.
+            commands.setOnboardingOptOut(user, enable = null)
+            assertTrue(onboardingOptOuts.existsByGuildIdAndUserId(100, 4242))
+        }
+
+        // REQ-INSTRUCTION-002: 비관리자의 /ai-instruction 자유 지침 추가는 거부된다.
+        @Test
+        fun `ai-instruction — 비관리자는 자유 지침을 추가할 수 없다`() {
+            val user = CommandContext(guildId = 100, channelId = 70400, userId = 5, roleIds = setOf(1L), isAdmin = false)
+
+            val reply = commands.setChannelAiInstruction(user, "너는 우리 길드 공대장 냥대장이야")
+            assertTrue(reply.content.contains("⛔"), reply.content)
+        }
+
+        // REQ-INSTRUCTION-001: 관리자의 /ai-instruction 자유 지침은 즉시 적용되지 않고 항상 사람 검토 대기열로 간다(#5).
+        @Test
+        fun `ai-instruction — 관리자 자유 지침은 즉시 적용이 아니라 검토 대기열로 간다`() {
+            val admin = CommandContext(guildId = 100, channelId = 70401, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            val created =
+                channelAiCustomization.createFromWizard(
+                    guildId = 100,
+                    channelId = 70401,
+                    actorUserId = 5,
+                    name = "코드냥",
+                    avatarUrl = null,
+                    job = "개발 질문",
+                    tone = "친근하게",
+                    answerLength = "balanced",
+                    constitution = null,
+                    requireApproval = false,
+                )
+            val baseActive = created.behaviorVersionId
+
+            val empty = commands.setChannelAiInstruction(admin, "   ")
+            assertTrue(empty.content.contains("자유 지침이 없"), empty.content)
+
+            val applied = commands.setChannelAiInstruction(admin, "너는 우리 길드 공대장 냥대장이야. 반말 쓰고 트수 드립 좋아함")
+            // 즉시 적용 문구가 아니라 검토 대기열 안내여야 한다.
+            assertTrue(applied.content.contains("검토 대기열"), applied.content)
+
+            // 제안은 PENDING 으로만 만들어지고, 활성 behavior 는 여전히 온보딩 때의 버전이어야 한다(즉시 active 아님).
+            assertTrue(channelAiCustomization.pendingProposals(100).any { it.channelId == 70401L })
+            val active = channelAis.findByGuildIdAndChannelId(100, 70401)!!.activeBehaviorVersionId
+            assertEquals(baseActive, active)
         }
 
         @Test

@@ -706,9 +706,8 @@ class PresetRegistryService(
                 .ifBlank { sourceRevision.name.take(80).ifBlank { "냥시스턴트" } }
         channelAi.updatedAt = now
         val savedChannel = channelAis.saveAndFlush(channelAi)
-        val nextVersion = (behaviorVersions.findTopByChannelAiIdOrderByVersionDesc(savedChannel.id)?.version ?: 0) + 1
         val behavior =
-            behaviorVersions.saveAndFlush(
+            saveNextBehaviorVersion(savedChannel.id) { nextVersion ->
                 AiBehaviorVersionEntity(
                     channelAiId = savedChannel.id,
                     version = nextVersion,
@@ -720,8 +719,8 @@ class PresetRegistryService(
                     createdBy = importedBy,
                     createdAt = now,
                     changeSummary = "imported from published preset #${published.id} revision #${sourceRevision.revision}",
-                ),
-            )
+                )
+            }
         val highRisk = sourceRevision.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS
         val status = if (highRisk) PresetImportStatus.NEEDS_REVIEW else PresetImportStatus.APPLIED
         if (highRisk) {
@@ -758,6 +757,33 @@ class PresetRegistryService(
             ),
         )
         return AppliedPresetChannelAi(savedChannel.id, behavior.id, status)
+    }
+
+    /**
+     * behavior version 채번(`MAX(version)+1`)+insert 를 동시성 안전하게 수행한다(#2와 동일 패턴).
+     * 채널 AI 행을 PESSIMISTIC_WRITE 로 잠가 같은 채널의 채번을 직렬화하고, 유니크 위반 시
+     * version 을 재조회해 최대 [MAX_VERSION_RETRIES] 회 재시도한다.
+     */
+    private fun saveNextBehaviorVersion(
+        channelAiId: Long,
+        build: (Int) -> AiBehaviorVersionEntity,
+    ): AiBehaviorVersionEntity {
+        var attempt = 0
+        while (true) {
+            channelAis.findByIdForUpdate(channelAiId)
+            val nextVersion = (behaviorVersions.findTopByChannelAiIdOrderByVersionDesc(channelAiId)?.version ?: 0) + 1
+            try {
+                return behaviorVersions.saveAndFlush(build(nextVersion))
+            } catch (ex: org.springframework.dao.DataIntegrityViolationException) {
+                attempt += 1
+                if (attempt >= MAX_VERSION_RETRIES) {
+                    throw IllegalStateException(
+                        "프리셋 적용 중 채널 AI 행동 버전 채번이 동시 변경과 계속 충돌했어요. 잠시 후 다시 시도해 주세요.",
+                        ex,
+                    )
+                }
+            }
+        }
     }
 
     private fun applyRoutingPolicySnapshot(
@@ -894,6 +920,9 @@ class PresetRegistryService(
                 constitution.orEmpty(),
                 safetyLevel,
                 changeSummary.orEmpty(),
+                // ChannelAiCustomizationService.payloadHash 와 동일 필드 구성을 유지해야 한다(preset import 제안도
+                // 같은 approveProposal 에서 해시 검증을 받기 때문). 자유 지침 컬럼 추가에 맞춰 같이 포함한다.
+                customInstruction.orEmpty(),
             ).joinToString("\u001F"),
         )
 
@@ -1036,6 +1065,7 @@ class PresetRegistryService(
             .toList()
 
     private companion object {
+        const val MAX_VERSION_RETRIES = 5
         const val REPORT_REVIEW_THRESHOLD = 1
         const val REDACTED_PUBLIC_TITLE = "비공개 프리셋"
         const val REDACTED_PUBLIC_TEXT = "[비공개 처리됨]"

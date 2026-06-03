@@ -63,7 +63,7 @@ class ProviderConnectController(
         if (!enabled) {
             return page(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "‘토큰 받기’가 아직 설정되지 않았습니다. 디스코드에서 <b>/provider-join</b> 으로 토큰을 받아 붙여넣어 주세요.",
+                "‘토큰 받기’가 아직 설정되지 않았습니다. 디스코드에서 <b>/프로바이더참여</b> 으로 토큰을 받아 붙여넣어 주세요.",
             )
         }
         if (!isLocalCallback(cb)) return page(HttpStatus.BAD_REQUEST, "잘못된 콜백 주소입니다.")
@@ -105,7 +105,8 @@ class ProviderConnectController(
                     HttpStatus.OK,
                     "이 봇이 들어가 있는 서버 중 당신이 속한 곳이 없습니다.<br>봇이 있는 서버에 가입한 뒤 다시 시도해 주세요.",
                 )
-            candidates.size == 1 -> issueAndRedirect(entry.cb, entry.localState, userId, candidates[0].id)
+            candidates.size == 1 ->
+                issueAndRedirect(entry.cb, entry.localState, userId, candidates[0].id, candidates[0].name)
             else -> chooserPage(entry, userId, candidates)
         }
     }
@@ -118,10 +119,10 @@ class ProviderConnectController(
         val entry =
             selections.take(sel)
                 ?: return page(HttpStatus.BAD_REQUEST, "만료되었거나 잘못된 요청입니다. 처음부터 다시 시도해 주세요.")
-        if (entry.candidates.none { it.id == guild }) {
-            return page(HttpStatus.BAD_REQUEST, "선택할 수 없는 서버입니다.")
-        }
-        return issueAndRedirect(entry.cb, entry.localState, entry.userId, guild)
+        val picked =
+            entry.candidates.firstOrNull { it.id == guild }
+                ?: return page(HttpStatus.BAD_REQUEST, "선택할 수 없는 서버입니다.")
+        return issueAndRedirect(entry.cb, entry.localState, entry.userId, guild, picked.name)
     }
 
     /** 선택된 서버에 가입(자동 승인 정책)·토큰 발급 후 로컬 콜백으로 리디렉트. 승인 대기면 error=pending. */
@@ -130,11 +131,13 @@ class ProviderConnectController(
         localState: String,
         userId: Long,
         guildId: Long,
+        guildName: String,
     ): ResponseEntity<String> {
         val join = registration.requestJoin(userId, guildId, autoApprove = policy.isAutoApprove(guildId))
         val token = join.token ?: registration.issueOnboardingToken(userId, guildId)
         return if (token != null) {
-            redirectToCb(cb, localState, token = token)
+            // 성공: 토큰과 함께 어느 서버인지(guildId/guildName)도 전달 → 에이전트가 '내 서버 목록'에 표시.
+            redirectToCb(cb, localState, token = token, guildId = guildId, guildName = guildName)
         } else {
             // 자동 승인이 아니어서 관리자 승인 대기 상태(PENDING).
             redirectToCb(cb, localState, error = "pending")
@@ -181,12 +184,16 @@ class ProviderConnectController(
         localState: String,
         token: String? = null,
         error: String? = null,
+        guildId: Long? = null,
+        guildName: String? = null,
     ): ResponseEntity<String> {
         val params =
             buildList {
                 add("state=" + enc(localState))
                 token?.let { add("token=" + enc(it)) }
                 error?.let { add("error=" + enc(it)) }
+                guildId?.let { add("guild=" + it) }
+                guildName?.let { if (it.isNotBlank()) add("guildName=" + enc(it)) }
             }.joinToString("&")
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create("$cb?$params")).build()
     }

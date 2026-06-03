@@ -216,6 +216,35 @@ class CustomizationAuditLogEntity(
 )
 
 @Entity
+@Table(name = "guild_onboarding_consent")
+class GuildOnboardingConsentEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var actorUserId: Long? = null,
+    @Column(name = "channel_whitelist") var channelWhitelist: String? = null,
+    @Column(name = "message_backfill_opted_in") var messageBackfillOptedIn: Boolean = false,
+    var createdAt: Instant = Instant.EPOCH,
+)
+
+@Entity
+@Table(name = "guild_onboarding_run")
+class GuildOnboardingRunEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var channelId: Long = 0,
+    var consentId: Long? = null,
+    var proposalId: Long? = null,
+    var channelAiId: Long? = null,
+    var knowledgeSpaceId: Long? = null,
+    var analysisSource: String = "heuristic",
+    var status: String = "draft",
+    var backfilledMessageCount: Int = 0,
+    var scrubbedCount: Int = 0,
+    var createdAt: Instant = Instant.EPOCH,
+    var updatedAt: Instant = Instant.EPOCH,
+)
+
+@Entity
 @Table(name = "ai_network_profile")
 class AiNetworkProfileEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,

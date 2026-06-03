@@ -112,6 +112,9 @@ object SlashCommandCatalog {
             Commands
                 .slash("llm-channel-profile", "이 채널의 AI 프로필 설정 패널을 엽니다(관리자)")
                 .setDefaultPermissions(adminPerm),
+            Commands
+                .slash("ai-onboard", "이 채널 AI를 자동으로 설정합니다(관리자)")
+                .setDefaultPermissions(adminPerm),
             Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)").setDefaultPermissions(adminPerm),
             Commands
                 .slash("provider-approve", "프로바이더 등록을 승인합니다(관리자)")

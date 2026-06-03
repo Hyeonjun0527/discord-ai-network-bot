@@ -253,6 +253,10 @@ class DiscordBot(
                     }
                     return
                 }
+                "ai-onboard" -> {
+                    replyOnboardingProposal(event, ctx, event.channel.name)
+                    return
+                }
                 "ask-long" -> {
                     val modal =
                         Modal
@@ -309,6 +313,10 @@ class DiscordBot(
             private const val CHANNEL_PROFILE_AVATAR_MODAL = "channel-profile:avatar-modal"
             private const val SETTINGS_CHANNEL_BULK_MODAL = "settings:channel-bulk-modal"
             private const val ASK_FEEDBACK_PREFIX = "ask-feedback:"
+            private const val ONBOARD_PREFIX = "onboard:"
+            private const val ONBOARD_ACTION_START = "start"
+            private const val ONBOARD_ACTION_APPROVE = "approve"
+            private const val ONBOARD_ACTION_REJECT = "reject"
             private val pendingSettings = ConcurrentHashMap<String, PendingGuildSettings>()
         }
 
@@ -367,6 +375,10 @@ class DiscordBot(
             val ctx = ctxOf(event) // DM(유저설치)에서도 패널 버튼 동작(관리자 버튼은 isAdmin=false 로 거부됨)
             if (event.componentId.startsWith(ASK_FEEDBACK_PREFIX)) {
                 handleAskFeedbackButton(event, ctx)
+                return
+            }
+            if (event.componentId.startsWith(ONBOARD_PREFIX)) {
+                handleOnboardingButton(event, ctx)
                 return
             }
             when (event.componentId) {
@@ -508,10 +520,13 @@ class DiscordBot(
         /** 봇이 서버에 들어오면 자동 온보딩 패널 게시. */
         override fun onGuildJoin(event: GuildJoinEvent) {
             val channel = event.guild.systemChannel ?: return // 시스템 채널 없으면 스킵
+            // 입장 즉시 자동 실행 금지 — consent-first. 관리자가 "AI 자동 설정하기" 버튼을 눌러야 시작된다.
             channel
                 .sendMessageEmbeds(EmbedFactory.mainMenuEmbed(isAdmin = true))
-                .setComponents(ActionRow.of(MenuFactory.mainButtons(isAdmin = true)))
-                .queue({}, {})
+                .setComponents(
+                    ActionRow.of(MenuFactory.mainButtons(isAdmin = true)),
+                    ActionRow.of(Button.primary("$ONBOARD_PREFIX$ONBOARD_ACTION_START", "🐾 AI 자동 설정하기")),
+                ).queue({}, {})
         }
 
         /** 봇이 서버에서 제거되면 그 서버의 프로바이더 연결/등록/설정을 정리한다. */
@@ -1123,6 +1138,71 @@ class DiscordBot(
             UP("up", 1, "positive"),
             DOWN("down", -1, "negative"),
             REPORT("report", -1, "report"),
+        }
+
+        /**
+         * 서버 AI 자동 온보딩 버튼(Phase 1):
+         *  - `onboard:start` — 입장 배너에서 시작 → 제안 카드 + 승인/거절 버튼.
+         *  - `onboard:approve:<proposalId>` / `onboard:reject:<proposalId>` — 제안 검토.
+         */
+        private fun handleOnboardingButton(
+            event: ButtonInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            val payload = event.componentId.removePrefix(ONBOARD_PREFIX)
+            val action = payload.substringBefore(':', missingDelimiterValue = payload)
+            if (action == ONBOARD_ACTION_START) {
+                replyOnboardingProposal(event, ctx, event.channel.name)
+                return
+            }
+            if (action != ONBOARD_ACTION_APPROVE && action != ONBOARD_ACTION_REJECT) {
+                event.reply("알 수 없는 온보딩 동작입니다.").setEphemeral(true).queue()
+                return
+            }
+            val proposalId = payload.substringAfter(':', missingDelimiterValue = "").trim().toLongOrNull()
+            if (proposalId == null) {
+                event.reply("제안 정보를 읽지 못했어요. `/ai-onboard` 로 다시 시작해 주세요.").setEphemeral(true).queue()
+                return
+            }
+            val reply =
+                if (action == ONBOARD_ACTION_APPROVE) {
+                    commands.approveOnboarding(ctx, proposalId)
+                } else {
+                    commands.rejectOnboarding(ctx, proposalId)
+                }
+            event.reply(reply.content).setEphemeral(true).queue()
+        }
+
+        /** 온보딩 시작 → 제안 카드 embed + 승인/거절 버튼으로 응답(ephemeral). 권한/실패 시 안내 텍스트. */
+        private fun replyOnboardingProposal(
+            event: net.dv8tion.jda.api.events.interaction.GenericInteractionCreateEvent,
+            ctx: CommandContext,
+            channelName: String?,
+        ) {
+            val callback = event as net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
+            when (val outcome = commands.startAutoOnboarding(ctx, channelName)) {
+                is OnboardingStartOutcome.Rejected ->
+                    callback.reply(outcome.reply.content).setEphemeral(true).queue()
+                is OnboardingStartOutcome.Started -> {
+                    val r = outcome.result
+                    callback
+                        .replyEmbeds(
+                            EmbedFactory.onboardingProposalEmbed(
+                                name = r.name,
+                                purpose = r.job,
+                                tone = r.tone,
+                                answerLength = r.answerLength,
+                                constitution = r.constitution,
+                            ),
+                        ).addComponents(
+                            ActionRow.of(
+                                Button.success("$ONBOARD_PREFIX$ONBOARD_ACTION_APPROVE:${r.proposalId}", "✅ 승인하고 적용"),
+                                Button.danger("$ONBOARD_PREFIX$ONBOARD_ACTION_REJECT:${r.proposalId}", "🚫 거절"),
+                            ),
+                        ).setEphemeral(true)
+                        .queue()
+                }
+            }
         }
 
         private fun handleAskFeedbackButton(

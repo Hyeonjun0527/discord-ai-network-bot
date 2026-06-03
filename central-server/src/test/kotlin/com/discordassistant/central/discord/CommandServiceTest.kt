@@ -572,6 +572,34 @@ class CommandServiceTest
             assertTrue(allowed.content.contains("권한냥"), allowed.content)
         }
 
+        // REQ-ONBOARD-003: 비관리자는 자동 온보딩 시작/승인/거절이 모두 거부된다.
+        @Test
+        fun `ai-onboard — 비관리자는 자동 온보딩 시작 승인 거절이 모두 거부된다`() {
+            val user = CommandContext(guildId = 100, channelId = 70300, userId = 5, roleIds = setOf(1L), isAdmin = false)
+
+            val startOutcome = commands.startAutoOnboarding(user, channelName = "dev-help")
+            assertTrue(startOutcome is OnboardingStartOutcome.Rejected)
+            assertTrue((startOutcome as OnboardingStartOutcome.Rejected).reply.content.contains("⛔"))
+
+            assertTrue(commands.approveOnboarding(user, proposalId = 1L).content.contains("⛔"))
+            assertTrue(commands.rejectOnboarding(user, proposalId = 1L).content.contains("⛔"))
+        }
+
+        // REQ-ONBOARD-001/002: 관리자는 자동 온보딩으로 PENDING draft 를 만들고 승인해 적용한다.
+        @Test
+        fun `ai-onboard — 관리자가 휴리스틱 draft PENDING 제안을 만들고 승인한다`() {
+            val admin = CommandContext(guildId = 100, channelId = 70301, userId = 5, roleIds = setOf(1L), isAdmin = true)
+
+            val outcome = commands.startAutoOnboarding(admin, channelName = "dev-talk")
+            assertTrue(outcome is OnboardingStartOutcome.Started)
+            val result = (outcome as OnboardingStartOutcome.Started).result
+            assertEquals("pending", result.status)
+            assertEquals("코드냥", result.name)
+
+            val approved = commands.approveOnboarding(admin, result.proposalId)
+            assertTrue(approved.content.contains("승인"), approved.content)
+        }
+
         @Test
         fun `ask — echo 프로바이더 연결 시 완료`() {
             val conn = EchoConn()

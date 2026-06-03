@@ -117,6 +117,34 @@ object EmbedFactory {
         return b.build()
     }
 
+    /**
+     * 서버 AI 자동 온보딩 제안 카드(Phase 1). 휴리스틱으로 만든 채널 AI draft 를 보여주고
+     * 아래 승인/거절 버튼으로 검토받는다. "알게 된 것"은 Phase 2(서버 분석)에서 채워질 placeholder.
+     */
+    fun onboardingProposalEmbed(
+        name: String,
+        purpose: String,
+        tone: String,
+        answerLength: String,
+        constitution: String,
+    ): MessageEmbed {
+        val constitutionSummary = constitution.lines().take(4).joinToString("\n") { "• ${it.trim()}" }
+        return EmbedBuilder()
+            .setColor(DEEP_INDIGO)
+            .setTitle("🐾 채널 AI 자동 설정 제안")
+            .setDescription(
+                "이 채널을 분석해 아래 AI 페르소나 초안을 만들었어요. " +
+                    "검토 후 **승인**하면 이 채널 `/ask` 답변에 적용되고, **거절**하면 적용되지 않습니다.",
+            ).addField("이름", name, true)
+            .addField("역할", purpose.take(200), true)
+            .addField("말투", tone, true)
+            .addField("답변 길이", answerLength, true)
+            .addField("헌법(요약)", constitutionSummary.ifBlank { "기본 안전 규칙" }, false)
+            .addField("알게 된 것", "(추후 서버 분석으로 채워집니다)", false)
+            .setFooter("자동 설정은 항상 관리자 승인 후에만 적용됩니다. 민감정보는 수집하지 않습니다.")
+            .build()
+    }
+
     /** 설정 패널 Embed(현재 상태를 필드로). 컴포넌트(드롭다운/버튼)는 메시지에 함께 첨부. */
     fun settingsEmbed(
         language: String,

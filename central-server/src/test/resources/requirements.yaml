@@ -91,3 +91,25 @@ requirements:
     tests:
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/relay/ProviderSessionTest.kt
+  # 서버 AI 자동 온보딩(Phase 1 — 동의 기반 골격, 휴리스틱 draft + 승인 카드).
+  # Phase 1 은 LLM 추론·메시지 백필이 없으므로 P1(단위 추적). Phase 2/3 에서 P0 흐름·feature 시나리오로 승격 예정.
+  - id: REQ-ONBOARD-001
+    title: 관리자가 자동 온보딩을 시작하면 동의가 기록되고 휴리스틱 draft 의 PENDING 제안이 생성된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+  - id: REQ-ONBOARD-002
+    title: 온보딩 제안을 승인하면 채널 AI 활성 behavior 버전으로 전환된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+  - id: REQ-ONBOARD-003
+    title: 비관리자/미동의 사용자의 자동 온보딩 시작·승인·거절은 거부된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/CommandServiceTest.kt

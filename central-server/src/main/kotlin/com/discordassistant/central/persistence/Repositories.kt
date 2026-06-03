@@ -216,6 +216,20 @@ interface AiNetworkProfileRepository : JpaRepository<AiNetworkProfileEntity, Lon
     fun findByGuildId(guildId: Long): AiNetworkProfileEntity?
 }
 
+interface GuildOnboardingConsentRepository : JpaRepository<GuildOnboardingConsentEntity, Long> {
+    fun findByGuildIdOrderByCreatedAtDesc(guildId: Long): List<GuildOnboardingConsentEntity>
+
+    fun deleteByGuildId(guildId: Long)
+}
+
+interface GuildOnboardingRunRepository : JpaRepository<GuildOnboardingRunEntity, Long> {
+    fun findByGuildIdOrderByCreatedAtDesc(guildId: Long): List<GuildOnboardingRunEntity>
+
+    fun findByProposalId(proposalId: Long): GuildOnboardingRunEntity?
+
+    fun deleteByGuildId(guildId: Long)
+}
+
 interface ProviderCapabilityProfileRepository : JpaRepository<ProviderCapabilityProfileEntity, Long> {
     fun findByGuildId(guildId: Long): List<ProviderCapabilityProfileEntity>
 

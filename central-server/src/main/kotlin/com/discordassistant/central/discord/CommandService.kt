@@ -8,6 +8,8 @@ import com.discordassistant.central.network.AiNetworkMapService
 import com.discordassistant.central.network.AiQualityFeedbackService
 import com.discordassistant.central.network.ChannelAiCustomizationService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
+import com.discordassistant.central.network.GuildOnboardingResult
+import com.discordassistant.central.network.GuildOnboardingService
 import com.discordassistant.central.network.KnowledgeIndexingService
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.KnowledgeSearchService
@@ -58,6 +60,17 @@ data class CommandContext(
     val isAdmin: Boolean,
 )
 
+/** `/ai-onboard` 시작 결과: 제안 카드용 draft 가 만들어졌거나(Started), 권한/기능 게이트로 거부됨(Rejected). */
+sealed interface OnboardingStartOutcome {
+    data class Started(
+        val result: GuildOnboardingResult,
+    ) : OnboardingStartOutcome
+
+    data class Rejected(
+        val reply: Reply,
+    ) : OnboardingStartOutcome
+}
+
 /**
  * 슬래시 명령 비즈니스 로직 (K-차수 13). JDA 이벤트와 분리된 순수 로직이라 단위 테스트 가능하다.
  * JDA 리스너는 이벤트→CommandContext 변환만 담당한다.
@@ -92,6 +105,7 @@ class CommandService(
         com.discordassistant.central.routing.NoWebSearch,
     private val providerCommands: ProviderSelfServiceCommands =
         ProviderSelfServiceCommands(registration, protection, policy, registry, contributionPolicy, schedule, ""),
+    private val guildOnboarding: GuildOnboardingService,
 ) {
     companion object {
         /**
@@ -599,6 +613,7 @@ class CommandService(
             sb.append("· `/프로바이더승인`(`/provider-approve`) `/프로바이더제거`(`/provider-remove`) — 승인/제거\n")
             sb.append("· `/채널허용`(`/llm-allow-channel`) `/채널금지`(`/llm-deny-channel`) `/역할정책`(`/llm-role-policy`) — 채널·역할 정책\n")
             sb.append("· `/채널프로필`(`/llm-channel-profile`) — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
+            sb.append("· `/ai-onboard` — 이 채널 AI를 자동으로 설정(휴리스틱 draft → 승인 카드)\n")
             sb.append("· `/ai-network-map` — Provider·모델·채널AI·RAG 구성을 한눈에 보기\n")
             sb.append("· `/ai-knowledge-list` `/ai-knowledge-add` `/ai-knowledge-search` — 채널 지식공간/RAG 소스 관리\n")
             sb.append("· `/ai-knowledge-index-plan` `/ai-knowledge-approve` `/ai-knowledge-delete` — 색인계획·검토·삭제\n")
@@ -1337,6 +1352,73 @@ class CommandService(
                 "역할: `${profile.purpose}` · 말투: `${profile.tone}` · 길이: `${profile.answerLength}`\n" +
                 "이후 `/ask` 답변은 이 채널에서 그 이름으로 보입니다. 봇에 `웹후크 관리` 권한이 필요해요.",
         )
+    }
+
+    // ── 서버 AI 자동 온보딩(Phase 1) ─────────────────────────────────────
+
+    /**
+     * `/ai-onboard` 또는 입장 배너 버튼 → 동의 기록 + 휴리스틱 draft + PENDING 제안 생성.
+     * 성공하면 [OnboardingStartOutcome.Started](제안 카드용 데이터), 권한/기능 게이트 실패하면 [OnboardingStartOutcome.Rejected].
+     */
+    fun startAutoOnboarding(
+        ctx: CommandContext,
+        channelName: String? = null,
+    ): OnboardingStartOutcome {
+        channelAiAdminOnly(ctx, "auto_onboard_start")?.let { return OnboardingStartOutcome.Rejected(it) }
+        return runCatching {
+            val result =
+                guildOnboarding.startOnboarding(
+                    guildId = ctx.guildId,
+                    channelId = ctx.channelId,
+                    actorUserId = ctx.userId,
+                    actorRoleIds = ctx.roleIds,
+                    actorIsGuildAdmin = ctx.isAdmin,
+                    channelName = channelName,
+                )
+            OnboardingStartOutcome.Started(result)
+        }.getOrElse {
+            OnboardingStartOutcome.Rejected(Replies.warn("AI 자동 설정을 시작하지 못했어요. ${it.message ?: "잠시 후 다시 시도해 주세요."}"))
+        }
+    }
+
+    fun approveOnboarding(
+        ctx: CommandContext,
+        proposalId: Long,
+    ): Reply {
+        channelAiAdminOnly(ctx, "auto_onboard_approve")?.let { return it }
+        return runCatching {
+            val review =
+                guildOnboarding.approveOnboarding(
+                    proposalId = proposalId,
+                    reviewerUserId = ctx.userId,
+                    reviewerRoleIds = ctx.roleIds,
+                    reviewerIsGuildAdmin = ctx.isAdmin,
+                    reason = "auto onboarding approved",
+                )
+            Replies.ok("✅ 이 채널 AI 자동 설정을 승인했습니다. 이제 `/ask` 답변에 적용됩니다. (제안 `${review.id}`)")
+        }.getOrElse {
+            Replies.warn("AI 자동 설정 승인에 실패했어요. ${it.message ?: "이미 처리된 제안인지 확인해 주세요."}")
+        }
+    }
+
+    fun rejectOnboarding(
+        ctx: CommandContext,
+        proposalId: Long,
+    ): Reply {
+        channelAiAdminOnly(ctx, "auto_onboard_reject")?.let { return it }
+        return runCatching {
+            val review =
+                guildOnboarding.rejectOnboarding(
+                    proposalId = proposalId,
+                    reviewerUserId = ctx.userId,
+                    reviewerRoleIds = ctx.roleIds,
+                    reviewerIsGuildAdmin = ctx.isAdmin,
+                    reason = "auto onboarding rejected",
+                )
+            Replies.ok("🚫 이 채널 AI 자동 설정 제안을 거절했습니다. 제안은 적용되지 않습니다. (제안 `${review.id}`)")
+        }.getOrElse {
+            Replies.warn("AI 자동 설정 거절에 실패했어요. ${it.message ?: "이미 처리된 제안인지 확인해 주세요."}")
+        }
     }
 
     // 프로바이더 본인 self-service 명령은 ProviderSelfServiceCommands 로 분리(god class 축소). 시그니처 유지·위임.

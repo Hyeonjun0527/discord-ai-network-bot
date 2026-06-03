@@ -61,7 +61,7 @@ class UsageService(
                 channelId = input.channelId,
                 userId = input.userId,
                 providerId = providerId,
-                state = state.name,
+                state = state,
                 failReason = failReason?.take(500),
                 createdAt = Instant.now(),
             ),

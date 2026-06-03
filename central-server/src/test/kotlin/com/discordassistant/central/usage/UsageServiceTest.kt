@@ -26,7 +26,7 @@ class UsageServiceTest
             svc.recordRequest(input, RequestState.COMPLETED, providerId = 7, failReason = null)
             val all = requests.findAll().toList()
             assertEquals(1, all.size)
-            assertEquals("COMPLETED", all[0].state)
+            assertEquals(RequestState.COMPLETED, all[0].state)
             assertEquals(7L, all[0].providerId)
         }
 

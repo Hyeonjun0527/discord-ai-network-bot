@@ -1,6 +1,7 @@
 package com.discordassistant.central.persistence
 
 import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.domain.RequestState
 import jakarta.persistence.Column
 import jakarta.persistence.Convert
 import jakarta.persistence.Entity
@@ -101,7 +102,8 @@ class AiRequestEntity(
     var weight: String = "LIGHT",
     var requiredBurden: String = "LIGHT",
     var providerId: Long? = null,
-    var state: String = "RECEIVED",
+    @Convert(converter = RequestStateConverter::class)
+    var state: RequestState = RequestState.RECEIVED,
     var failReason: String? = null,
     var createdAt: Instant = Instant.EPOCH,
 )

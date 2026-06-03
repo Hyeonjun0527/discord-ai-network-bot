@@ -290,11 +290,11 @@ class DashboardServingTest
                     .response
                     .contentAsString
 
+            // 정적 응답은 ASCII 로만 단언(MockMvc 가 비-UTF-8 로 디코드 → 한글 매칭 취약).
             assertTrue(html.contains("""href="/presets""""))
             assertTrue(html.contains("""href="/dashboard""""))
-            assertTrue(html.contains("""id="presetBtn""""))
-            assertTrue(html.contains("""class="cta-secondary""""))
-            assertTrue(html.contains("NYASSISTANT&nbsp;AI&nbsp;NETWORK"))
+            assertTrue(html.contains("""id="install"""")) // 설치 섹션 앵커(랜딩 본문)
+            assertTrue(html.contains("NYASSISTANT AI NETWORK")) // 브랜드 표기
         }
 
         @Test

@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalEntity
@@ -723,7 +724,7 @@ class PresetRegistryService(
                     channelId = targetChannelId,
                     channelAiId = savedChannel.id,
                     proposedBehaviorId = behavior.id,
-                    status = "pending",
+                    status = ProposalStatus.PENDING,
                     requestedBy = importedBy,
                     reason = "preset import requires review: ${sourceRevision.safetyLevel}",
                     payloadHash = behavior.payloadHash(),

@@ -8,6 +8,7 @@ import com.discordassistant.central.dashboard.KnowledgeSpaceResponse
 import com.discordassistant.central.dashboard.ModelMapResponse
 import com.discordassistant.central.dashboard.ProviderCapabilityResponse
 import com.discordassistant.central.dashboard.PublishedPresetResponse
+import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetRepository
@@ -100,9 +101,9 @@ class AiNetworkDashboardQueryService(
 
     fun changeApproval(guildId: Long): ChannelAiChangeApprovalDashboardResponse {
         val all = proposals.findByGuildIdOrderByCreatedAtDesc(guildId)
-        val pending = all.filter { it.status == "pending" }
-        val stale = all.filter { it.status == "stale" }
-        val rejected = all.filter { it.status == "rejected" }
+        val pending = all.filter { it.status == ProposalStatus.PENDING }
+        val stale = all.filter { it.status == ProposalStatus.STALE }
+        val rejected = all.filter { it.status == ProposalStatus.REJECTED }
         val status =
             when {
                 stale.isNotEmpty() -> "blocked"

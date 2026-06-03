@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
@@ -42,7 +43,9 @@ class AiNetworkLaunchChecklistService(
         val spaces = knowledgeSpaces.findByGuildId(guildId)
         val sources = spaces.flatMap { knowledgeSources.findByKnowledgeSpaceId(it.id) }
         val pendingChanges =
-            proposals.findByGuildIdOrderByCreatedAtDesc(guildId).count { it.status == "pending" || it.status == "stale" }
+            proposals.findByGuildIdOrderByCreatedAtDesc(guildId).count {
+                it.status == ProposalStatus.PENDING || it.status == ProposalStatus.STALE
+            }
         val featureBaseReady =
             features.aiNetwork &&
                 features.dashboard &&

@@ -1,6 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.dashboard.AiNetworkDashboardController
+import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalEntity
@@ -537,7 +538,7 @@ class AiNetworkDashboardControllerTest
                     channelId = 603,
                     channelAiId = channelAi.id,
                     proposedBehaviorId = behavior.id,
-                    status = "pending",
+                    status = ProposalStatus.PENDING,
                     requestedBy = 77,
                     reason = "high risk safety level",
                     createdAt = Instant.parse("2026-06-01T00:00:00Z"),

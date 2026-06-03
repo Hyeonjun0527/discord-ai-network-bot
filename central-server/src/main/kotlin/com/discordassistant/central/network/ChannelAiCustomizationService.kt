@@ -5,6 +5,7 @@ import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_CONSTITUTION
 import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_PURPOSE
 import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_SAFETY_LEVEL
 import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_TONE
+import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.persistence.AiAdminRoleEntity
 import com.discordassistant.central.persistence.AiAdminRoleRepository
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
@@ -157,7 +158,7 @@ class ChannelAiCustomizationService(
                 ),
             )
         val approvalDecision = approvalDecision(requireApproval, behavior, channelAi.displayName)
-        val status = if (approvalDecision.required) "pending" else "approved"
+        val status = if (approvalDecision.required) ProposalStatus.PENDING else ProposalStatus.APPROVED
         if (!approvalDecision.required) {
             savedChannel.activeBehaviorVersionId = behavior.id
             savedChannel.updatedAt = now
@@ -186,9 +187,9 @@ class ChannelAiCustomizationService(
             action = if (approvalDecision.required) "propose" else "publish",
             targetType = "ai_behavior_version",
             targetId = behavior.id,
-            summary = "wizard created v${behavior.version} status=$status reason=${approvalDecision.reason ?: "none"}",
+            summary = "wizard created v${behavior.version} status=${status.wire} reason=${approvalDecision.reason ?: "none"}",
         )
-        return ChannelAiWizardResult(savedChannel.id, behavior.id, behavior.version, proposal.id, status, approvalDecision.reason)
+        return ChannelAiWizardResult(savedChannel.id, behavior.id, behavior.version, proposal.id, status.wire, approvalDecision.reason)
     }
 
     @Transactional
@@ -230,7 +231,7 @@ class ChannelAiCustomizationService(
                 ),
             )
         val approvalDecision = approvalDecision(requireApproval, rollbackBehavior, channelAi.displayName)
-        val status = if (approvalDecision.required) "pending" else "approved"
+        val status = if (approvalDecision.required) ProposalStatus.PENDING else ProposalStatus.APPROVED
         if (!approvalDecision.required) {
             channelAi.activeBehaviorVersionId = rollbackBehavior.id
             channelAi.updatedAt = now
@@ -259,14 +260,14 @@ class ChannelAiCustomizationService(
             action = if (approvalDecision.required) "rollback_propose" else "rollback_publish",
             targetType = "ai_behavior_version",
             targetId = rollbackBehavior.id,
-            summary = "rollback copied v${target.version} into v${rollbackBehavior.version} status=$status",
+            summary = "rollback copied v${target.version} into v${rollbackBehavior.version} status=${status.wire}",
         )
         return ChannelAiWizardResult(
             channelAiId = channelAi.id,
             behaviorVersionId = rollbackBehavior.id,
             version = rollbackBehavior.version,
             proposalId = proposal.id,
-            status = status,
+            status = status.wire,
             approvalReason = approvalDecision.reason,
         )
     }
@@ -281,7 +282,7 @@ class ChannelAiCustomizationService(
     ): AiChangeProposalReview {
         featureGate.requireChannelAiEnabled()
         val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
-        require(proposal.status == "pending") { "pending proposal only can be approved" }
+        require(proposal.status == ProposalStatus.PENDING) { "pending proposal only can be approved" }
         requireCanManageChannelAi(proposal.guildId, proposal.channelId, reviewerUserId, reviewerRoleIds, reviewerIsGuildAdmin, "approve")
         val channelAiId = proposal.channelAiId ?: throw IllegalArgumentException("proposal has no channel ai")
         val behaviorId = proposal.proposedBehaviorId ?: throw IllegalArgumentException("proposal has no behavior")
@@ -290,7 +291,7 @@ class ChannelAiCustomizationService(
             versions.findByChannelAiIdAndId(channelAiId, behaviorId)
                 ?: throw IllegalArgumentException("behavior not found: $behaviorId")
         if (proposal.payloadHash != null && proposal.payloadHash != behavior.payloadHash()) {
-            proposal.status = "stale"
+            proposal.transitionTo(ProposalStatus.STALE)
             proposal.reviewedBy = reviewerUserId
             proposal.reviewedAt = Instant.now(clock)
             proposal.reason = "proposal payload changed after review request"
@@ -311,7 +312,7 @@ class ChannelAiCustomizationService(
         channelAi.updatedAt = now
         channelAis.save(channelAi)
         applyRoutingSnapshot(proposal, channelAi.id, now)
-        proposal.status = "approved"
+        proposal.transitionTo(ProposalStatus.APPROVED)
         proposal.reviewedBy = reviewerUserId
         proposal.reason = reason?.trim()?.take(500) ?: proposal.reason
         proposal.reviewedAt = now
@@ -352,9 +353,9 @@ class ChannelAiCustomizationService(
     ): AiChangeProposalReview {
         featureGate.requireChannelAiEnabled()
         val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
-        require(proposal.status == "pending") { "pending proposal only can be rejected" }
+        require(proposal.status == ProposalStatus.PENDING) { "pending proposal only can be rejected" }
         requireCanManageChannelAi(proposal.guildId, proposal.channelId, reviewerUserId, reviewerRoleIds, reviewerIsGuildAdmin, "reject")
-        proposal.status = "rejected"
+        proposal.transitionTo(ProposalStatus.REJECTED)
         proposal.reviewedBy = reviewerUserId
         proposal.reviewedAt = Instant.now(clock)
         proposal.reason = reason?.trim()?.take(500) ?: proposal.reason
@@ -462,8 +463,8 @@ class ChannelAiCustomizationService(
     ): ChannelAiProposalReviewSummary {
         featureGate.requireChannelAiEnabled()
         val all = proposals.findByGuildIdOrderByCreatedAtDesc(guildId)
-        val pending = all.filter { it.status == "pending" }
-        val statusCounts = all.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
+        val pending = all.filter { it.status == ProposalStatus.PENDING }
+        val statusCounts = all.groupingBy { it.status.wire }.eachCount()
         val reasonCounts =
             all
                 .mapNotNull { it.reason?.trim()?.takeIf { reason -> reason.isNotBlank() } }
@@ -508,7 +509,7 @@ class ChannelAiCustomizationService(
 
     fun pendingProposals(guildId: Long): List<PendingProposalView> {
         featureGate.requireChannelAiEnabled()
-        return proposals.findByGuildIdAndStatus(guildId, "pending").map { it.toPendingView() }
+        return proposals.findByGuildIdAndStatus(guildId, ProposalStatus.PENDING).map { it.toPendingView() }
     }
 
     fun channelHistory(
@@ -537,7 +538,7 @@ class ChannelAiCustomizationService(
                 proposalHistory.map {
                     ChannelAiProposalView(
                         id = it.id,
-                        status = it.status,
+                        status = it.status.wire,
                         proposedBehaviorId = it.proposedBehaviorId,
                         requestedBy = it.requestedBy,
                         reviewedBy = it.reviewedBy,
@@ -647,8 +648,17 @@ class ChannelAiCustomizationService(
         )
     }
 
+    /**
+     * 제안 상태 전이(가드 적용). 도출한 전이맵([ProposalStatus])에 없는 전이는 거부한다.
+     * 현재 코드의 모든 전이(`PENDING → {APPROVED, REJECTED, STALE}`)는 허용되므로 동작 불변이다.
+     */
+    private fun AiChangeProposalEntity.transitionTo(next: ProposalStatus) {
+        require(status.canTransitionTo(next)) { "illegal proposal transition: ${status.wire} -> ${next.wire}" }
+        status = next
+    }
+
     private fun AiChangeProposalEntity.toReview(): AiChangeProposalReview =
-        AiChangeProposalReview(id = id, status = status, reviewedBy = reviewedBy, reason = reason)
+        AiChangeProposalReview(id = id, status = status.wire, reviewedBy = reviewedBy, reason = reason)
 
     private fun AiChangeProposalEntity.toPendingView(): PendingProposalView =
         PendingProposalView(
@@ -667,7 +677,7 @@ class ChannelAiCustomizationService(
             channelId = channelId,
             channelAiId = channelAiId,
             proposedBehaviorId = proposedBehaviorId,
-            status = status,
+            status = status.wire,
             requestedBy = requestedBy,
             reviewedBy = reviewedBy,
             reason = reason,

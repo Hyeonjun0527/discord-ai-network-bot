@@ -667,38 +667,51 @@ def _schedule_exit(delay: float = 1.2) -> None:
     threading.Timer(delay, lambda: os._exit(0)).start()
 
 
-def _maybe_auto_update() -> None:
-    """auto_update(기본 ON)면 백그라운드로 새 버전 검사·적용. 빌드된 앱·구버전일 때만 실제 교체.
+def _start_auto_update_watcher() -> None:
+    """auto_update(기본 ON)면 **시작 시 + 주기적으로** 새 버전을 검사·적용한다(실행 중에도).
 
-    네트워크/다운로드는 데몬 스레드에서. 적용되면 헬퍼가 swap 후 재실행하고 이 프로세스는 종료된다.
-    실패는 조용히 무시(자동 업데이트가 앱 기동을 막지 않는다).
+    앱을 켜 둔 채 새 버전이 나와도 다음 주기에 자동으로 받아 교체·재실행한다(껐다 켜야만
+    적용되는 문제 해소). 다운로드 진행률은 _progress 에 반영되어 열려 있는 GUI 에 프로그래스바로
+    보인다. 빌드된 앱·구버전·지원 OS 일 때만 실제 교체. 실패·미설정은 조용히 무시한다.
+    간격은 기본 2시간(AGENT_UPDATE_INTERVAL_S 로 조정, 테스트용).
     """
+    import os
     import threading
+    import time
 
-    if not bool(load_config().get("auto_update", True)):
-        return
+    interval = max(30.0, float(os.getenv("AGENT_UPDATE_INTERVAL_S") or 7200))
 
-    def _worker() -> None:
-        try:
-            import time
+    def _loop() -> None:
+        while True:
+            if _auto_update_once():
+                return  # 적용 시작 → 곧 종료·재실행되므로 루프 종료
+            time.sleep(interval)
 
-            from . import updater
+    threading.Thread(target=_loop, daemon=True).start()
 
-            if not updater.check().get("outdated"):
-                return
-            result = updater.apply_update()
+
+def _auto_update_once() -> bool:
+    """자동 업데이트 1회 검사. 토글 ON + 구버전 + 지원이면 받아 적용하고 종료를 예약한다.
+
+    적용을 시작했으면 True(다운로드는 _progress 로 프로그래스바에 반영). 실패·해당없음은 False.
+    """
+    from . import updater
+
+    try:
+        if not bool(load_config().get("auto_update", True)) or updater.is_updating():
+            return False
+        info = updater.check()
+        if info.get("outdated") and info.get("supported"):
+            logging.getLogger("provider_agent").info(
+                "자동 업데이트: v%s → v%s 적용", info.get("current"), info.get("latest")
+            )
+            result = updater.apply_update()  # _progress 갱신(프로그래스바) + swap 헬퍼
             if result.get("ok") and result.get("restarting"):
-                logging.getLogger("provider_agent").info(
-                    "자동 업데이트: %s", result.get("message", "업데이트 적용 중")
-                )
-                time.sleep(0.5)
-                import os
-
-                os._exit(0)  # 헬퍼가 교체·재실행
-        except Exception:  # noqa: BLE001
-            pass
-
-    threading.Thread(target=_worker, daemon=True).start()
+                _schedule_exit()  # 헬퍼가 교체·재실행
+                return True
+    except Exception:  # noqa: BLE001 - 자동 업데이트 실패는 앱 동작을 막지 않는다
+        pass
+    return False
 
 
 def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
@@ -710,7 +723,7 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
         f"\n제어판: {url}\n(창이 안 보이면 위 주소를 브라우저에서 여세요. AGENT_GUI_BROWSER=1 로 브라우저 강제.)\n",
         flush=True,
     )
-    _maybe_auto_update()  # 자동 업데이트 ON 이면 백그라운드 검사·적용(있으면 교체·재실행)
+    _start_auto_update_watcher()  # 자동 업데이트 ON 이면 시작 시+주기적으로 검사·적용(실행 중에도)
 
     if _webview_available():
         try:

@@ -365,14 +365,14 @@ class CommandServiceTest
 
                 assertTrue(reply.content.startsWith("echo:"), reply.content)
                 val run = multiResponseRuns.findTop20ByGuildIdOrderByStartedAtDesc(g.guildId).single()
-                assertEquals("completed", run.status)
+                assertEquals("completed", run.status.wire)
                 assertEquals(1, run.candidateCount)
                 val candidate = candidateAnswers.findByRunId(run.id).single()
                 assertEquals(702, candidate.providerUserId)
-                assertEquals("completed", candidate.status)
+                assertEquals("completed", candidate.status.wire)
                 assertEquals("single_route", candidate.safetyFlags)
                 val synthesis = synthesisResults.findByRunId(run.id)!!
-                assertEquals("completed", synthesis.status)
+                assertEquals("completed", synthesis.status.wire)
                 assertEquals("single_route_runtime", synthesis.strategy)
             } finally {
                 registry.unregister(session)

@@ -1,10 +1,13 @@
 package com.discordassistant.central.persistence
 
+import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.MultiResponseRunStatus
 import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderState
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.domain.SynthesisStatus
 import jakarta.persistence.Column
 import jakarta.persistence.Convert
 import jakarta.persistence.Entity
@@ -406,7 +409,8 @@ class MultiResponseRunEntity(
     var channelId: Long = 0,
     var requestId: String = "",
     var policyId: Long? = null,
-    var status: String = "created",
+    @Convert(converter = MultiResponseRunStatusConverter::class)
+    var status: MultiResponseRunStatus = MultiResponseRunStatus.CREATED,
     var candidateCount: Int = 0,
     var selectedCandidateId: Long? = null,
     var ragContextStatus: String? = null,
@@ -425,7 +429,8 @@ class CandidateAnswerEntity(
     var providerUserId: Long? = null,
     var modelName: String? = null,
     var answerRef: String? = null,
-    var status: String = "pending",
+    @Convert(converter = CandidateStatusConverter::class)
+    var status: CandidateStatus = CandidateStatus.PENDING,
     var latencyMs: Int? = null,
     var safetyFlags: String? = null,
     var qualityScore: Int? = null,
@@ -438,7 +443,8 @@ class SynthesisResultEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
     var runId: Long = 0,
     var answerRef: String? = null,
-    var status: String = "pending",
+    @Convert(converter = SynthesisStatusConverter::class)
+    var status: SynthesisStatus = SynthesisStatus.PENDING,
     var selectedCandidateIds: String? = null,
     var strategy: String = "best_by_heuristic",
     var qualitySummary: String? = null,

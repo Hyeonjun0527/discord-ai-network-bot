@@ -87,6 +87,13 @@ def test_connect_base_derives_https():
     assert webui._connect_base("ws://localhost:8080/agent") == "http://localhost:8080"
 
 
+def test_default_relay_env_override(monkeypatch):
+    monkeypatch.delenv("RELAY_URL", raising=False)
+    assert webui._default_relay() == webui.DEFAULT_RELAY  # 기본은 prod 고정
+    monkeypatch.setenv("RELAY_URL", "ws://localhost:8085/agent")
+    assert webui._default_relay() == "ws://localhost:8085/agent"  # 로컬 개발 우회
+
+
 def test_webview_available_browser_optout(monkeypatch):
     monkeypatch.setenv("AGENT_GUI_BROWSER", "1")
     assert webui._webview_available() is False

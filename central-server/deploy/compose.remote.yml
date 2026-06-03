@@ -44,6 +44,10 @@ services:
       CENTRAL_SEARCH_URL: ${CENTRAL_SEARCH_URL:-http://searxng:8080}
       CENTRAL_SEARCH_MAX_RESULTS: ${CENTRAL_SEARCH_MAX_RESULTS:-5}
       CENTRAL_SEARCH_FETCH_CONTENT: ${CENTRAL_SEARCH_FETCH_CONTENT:-true}
+      # 웹 ‘토큰 받기’ Discord OAuth(설정 시 활성, 비면 503 안내 → 복붙 폴백). 시크릿은 ENV_FILE 주입.
+      CONNECT_DISCORD_CLIENT_ID: ${CONNECT_DISCORD_CLIENT_ID:-}
+      CONNECT_DISCORD_CLIENT_SECRET: ${CONNECT_DISCORD_CLIENT_SECRET:-}
+      CONNECT_PUBLIC_BASE_URL: ${CONNECT_PUBLIC_BASE_URL:-https://discord-ai.yeon.world}
     networks:
       default: {}
       yeon-edge:

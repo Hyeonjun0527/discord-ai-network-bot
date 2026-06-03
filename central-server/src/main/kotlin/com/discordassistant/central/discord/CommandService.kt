@@ -8,12 +8,15 @@ import com.discordassistant.central.network.AiNetworkMapService
 import com.discordassistant.central.network.AiQualityFeedbackService
 import com.discordassistant.central.network.ChannelAiCustomizationService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
+import com.discordassistant.central.network.GuildOnboardingResult
+import com.discordassistant.central.network.GuildOnboardingService
 import com.discordassistant.central.network.KnowledgeIndexingService
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
 import com.discordassistant.central.network.MultiResponseService
 import com.discordassistant.central.network.NetworkLaunchChecklist
+import com.discordassistant.central.network.OnboardingAnalysisContext
 import com.discordassistant.central.network.PresetImportResult
 import com.discordassistant.central.network.PresetModerationSummary
 import com.discordassistant.central.network.PresetRegistryService
@@ -58,6 +61,17 @@ data class CommandContext(
     val isAdmin: Boolean,
 )
 
+/** `/ai-onboard` 시작 결과: 제안 카드용 draft 가 만들어졌거나(Started), 권한/기능 게이트로 거부됨(Rejected). */
+sealed interface OnboardingStartOutcome {
+    data class Started(
+        val result: GuildOnboardingResult,
+    ) : OnboardingStartOutcome
+
+    data class Rejected(
+        val reply: Reply,
+    ) : OnboardingStartOutcome
+}
+
 /**
  * 슬래시 명령 비즈니스 로직 (K-차수 13). JDA 이벤트와 분리된 순수 로직이라 단위 테스트 가능하다.
  * JDA 리스너는 이벤트→CommandContext 변환만 담당한다.
@@ -92,6 +106,8 @@ class CommandService(
         com.discordassistant.central.routing.NoWebSearch,
     private val providerCommands: ProviderSelfServiceCommands =
         ProviderSelfServiceCommands(registration, protection, policy, registry, contributionPolicy, schedule, ""),
+    private val guildOnboarding: GuildOnboardingService,
+    private val onboardingOptOuts: com.discordassistant.central.persistence.GuildOnboardingOptOutRepository,
 ) {
     companion object {
         /**
@@ -607,6 +623,8 @@ class CommandService(
             sb.append("· ${c("provider-approve")} ${c("provider-remove")} — 승인/제거\n")
             sb.append("· ${c("llm-allow-channel")} ${c("llm-deny-channel")} ${c("llm-role-policy")} — 채널·역할 정책\n")
             sb.append("· ${c("llm-channel-profile")} — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
+            sb.append("· ${c("ai-onboard")} — 이 채널 AI를 자동으로 설정(휴리스틱 draft → 승인 카드)\n")
+            sb.append("· ${c("ai-instruction")} — 이 채널 AI에 자연어 자유 지침(페르소나/말투 색깔) 추가·수정\n")
             sb.append("· ${c("ai-network-map")} — Provider·모델·채널AI·RAG 구성을 한눈에 보기\n")
             sb.append("· ${c("ai-knowledge-list")} ${c("ai-knowledge-add")} ${c("ai-knowledge-search")} — 채널 지식공간/RAG 소스 관리\n")
             sb.append("· ${c("ai-knowledge-index-plan")} ${c("ai-knowledge-approve")} ${c("ai-knowledge-delete")} — 색인계획·검토·삭제\n")
@@ -1348,6 +1366,182 @@ class CommandService(
                 "역할: `${profile.purpose}` · 말투: `${profile.tone}` · 길이: `${profile.answerLength}`\n" +
                 "이후 `/질문` 답변은 이 채널에서 그 이름으로 보입니다. 봇에 `웹후크 관리` 권한이 필요해요.",
         )
+    }
+
+    // ── 서버 AI 자동 온보딩(Phase 1) ─────────────────────────────────────
+
+    /**
+     * `/ai-onboard` 또는 입장 배너 버튼 → 동의 기록 + 휴리스틱 draft + PENDING 제안 생성.
+     * 성공하면 [OnboardingStartOutcome.Started](제안 카드용 데이터), 권한/기능 게이트 실패하면 [OnboardingStartOutcome.Rejected].
+     */
+    fun startAutoOnboarding(
+        ctx: CommandContext,
+        channelName: String? = null,
+        channelWhitelist: Set<Long> = emptySet(),
+        historyLimit: Int = 0,
+        backfill: GuildOnboardingService.BackfillInput? = null,
+    ): OnboardingStartOutcome {
+        channelAiAdminOnly(ctx, "auto_onboard_start")?.let { return OnboardingStartOutcome.Rejected(it) }
+        return runCatching {
+            // LLM 분석은 DB 트랜잭션 밖(여기 — slow 명령 실행 풀)에서 먼저 수행한다(B1). analyze 는 비트랜잭션
+            // 메서드라 프록시를 거쳐도 트랜잭션/커넥션을 열지 않는다. startOnboarding 은 그 결과만 받아 짧은 트랜잭션으로 처리.
+            // (analyze/startOnboarding 을 여기서 각각 부르므로 self-invocation 프록시 우회 함정도 없다.)
+            // 분석은 **실제 길드/채널/actor** 컨텍스트로 라우팅한다(A) — 프로바이더가 길드별 풀이라 실제 guildId 가 필수.
+            val analysis =
+                guildOnboarding.analyze(
+                    backfill,
+                    OnboardingAnalysisContext(
+                        guildId = ctx.guildId,
+                        channelId = ctx.channelId,
+                        actorUserId = ctx.userId,
+                        actorRoleIds = ctx.roleIds,
+                        actorIsGuildAdmin = ctx.isAdmin,
+                    ),
+                )
+            val result =
+                guildOnboarding.startOnboarding(
+                    guildId = ctx.guildId,
+                    channelId = ctx.channelId,
+                    actorUserId = ctx.userId,
+                    actorRoleIds = ctx.roleIds,
+                    actorIsGuildAdmin = ctx.isAdmin,
+                    channelName = channelName,
+                    channelWhitelist = channelWhitelist,
+                    historyLimit = historyLimit,
+                    backfill = backfill,
+                    analysis = analysis,
+                )
+            OnboardingStartOutcome.Started(result)
+        }.getOrElse {
+            OnboardingStartOutcome.Rejected(Replies.warn("AI 자동 설정을 시작하지 못했어요. ${it.message ?: "잠시 후 다시 시도해 주세요."}"))
+        }
+    }
+
+    fun approveOnboarding(
+        ctx: CommandContext,
+        proposalId: Long,
+    ): Reply {
+        channelAiAdminOnly(ctx, "auto_onboard_approve")?.let { return it }
+        return runCatching {
+            val review =
+                guildOnboarding.approveOnboarding(
+                    proposalId = proposalId,
+                    reviewerUserId = ctx.userId,
+                    reviewerRoleIds = ctx.roleIds,
+                    reviewerIsGuildAdmin = ctx.isAdmin,
+                    reason = "auto onboarding approved",
+                )
+            Replies.ok("✅ 이 채널 AI 자동 설정을 승인했습니다. 이제 `/ask` 답변에 적용됩니다. (제안 `${review.id}`)")
+        }.getOrElse {
+            Replies.warn("AI 자동 설정 승인에 실패했어요. ${it.message ?: "이미 처리된 제안인지 확인해 주세요."}")
+        }
+    }
+
+    fun rejectOnboarding(
+        ctx: CommandContext,
+        proposalId: Long,
+    ): Reply {
+        channelAiAdminOnly(ctx, "auto_onboard_reject")?.let { return it }
+        return runCatching {
+            val review =
+                guildOnboarding.rejectOnboarding(
+                    proposalId = proposalId,
+                    reviewerUserId = ctx.userId,
+                    reviewerRoleIds = ctx.roleIds,
+                    reviewerIsGuildAdmin = ctx.isAdmin,
+                    reason = "auto onboarding rejected",
+                )
+            Replies.ok("🚫 이 채널 AI 자동 설정 제안을 거절했습니다. 제안은 적용되지 않습니다. (제안 `${review.id}`)")
+        }.getOrElse {
+            Replies.warn("AI 자동 설정 거절에 실패했어요. ${it.message ?: "이미 처리된 제안인지 확인해 주세요."}")
+        }
+    }
+
+    /**
+     * `/ai-onboard-optout` — 누구나 **본인에 한해** 자신의 메시지를 자동 온보딩 백필 RAG 색인에서 제외/해제한다(관리자 권한 불필요).
+     * [enable] = true 면 제외 등록, false 면 해제, null 이면 현재 상태를 토글한다. 길드 단위로 격리된다.
+     * 이미 색인된 과거 데이터는 row 삭제(소스 삭제)로 잊을 수 있고, 이 설정은 이후 백필부터 본인 메시지를 색인하지 않게 한다.
+     */
+    fun setOnboardingOptOut(
+        ctx: CommandContext,
+        enable: Boolean? = null,
+    ): Reply {
+        if (ctx.guildId == DM_SCOPE) {
+            return Replies.warn("이 명령은 서버에서만 사용할 수 있어요.")
+        }
+        return runCatching {
+            val currentlyOptedOut = onboardingOptOuts.existsByGuildIdAndUserId(ctx.guildId, ctx.userId)
+            val target = enable ?: !currentlyOptedOut
+            if (target == currentlyOptedOut) {
+                if (target) {
+                    Reply("이미 이 서버의 AI 자동 학습(백필 색인)에서 내 메시지를 제외하고 있어요.")
+                } else {
+                    Reply("이미 제외 설정이 없어요. 내 메시지는 (관리자가 백필을 실행하면) 색인 대상이 될 수 있어요.")
+                }
+            } else if (target) {
+                // 유니크 인덱스로 중복 방지 — 경합 시 예외는 runCatching 이 잡는다(아래 getOrElse).
+                onboardingOptOuts.save(
+                    com.discordassistant.central.persistence.GuildOnboardingOptOutEntity(
+                        guildId = ctx.guildId,
+                        userId = ctx.userId,
+                        createdAt = java.time.Instant.now(),
+                    ),
+                )
+                Replies.ok("✅ 이 서버의 AI 자동 학습(백필 색인)에서 내 메시지를 제외했어요. 이후 백필부터 내 메시지는 색인되지 않습니다.")
+            } else {
+                onboardingOptOuts.deleteByGuildIdAndUserId(ctx.guildId, ctx.userId)
+                Replies.ok("✅ 제외 설정을 해제했어요. 내 메시지가 다시 백필 색인 대상이 될 수 있어요(관리자가 백필을 실행할 때).")
+            }
+        }.getOrElse {
+            Replies.warn("opt-out 설정을 변경하지 못했어요. 잠시 후 다시 시도해 주세요.")
+        }
+    }
+
+    // ── 채널 AI 자유 지침(custom instruction) ────────────────────────────
+
+    /**
+     * `/ai-instruction` — 이 채널 AI에 자연어 자유 지침을 추가/수정한다.
+     * text 가 비어 있으면 현재 지침을 확인만 한다. text 가 있으면 활성 behavior 를 베이스로
+     * customInstruction 만 교체한 **새 behavior 버전 제안**을 만든다(위험 지침은 승인 큐로 강제).
+     */
+    fun setChannelAiInstruction(
+        ctx: CommandContext,
+        text: String?,
+    ): Reply {
+        channelAiAdminOnly(ctx, "set_custom_instruction")?.let { return it }
+        val instruction = text?.trim().orEmpty()
+        if (instruction.isBlank()) {
+            return runCatching {
+                val current = channelAiCustomization.currentCustomInstruction(ctx.guildId, ctx.channelId)
+                if (current.isNullOrBlank()) {
+                    Reply("현재 이 채널 AI에는 자유 지침이 없어요. `text` 옵션에 자연어 지침을 적어 추가하세요.")
+                } else {
+                    Reply("현재 이 채널 AI 자유 지침:\n> ${current.replace("\n", "\n> ")}")
+                }
+            }.getOrElse {
+                Replies.warn("자유 지침을 확인하지 못했어요. ${it.message ?: "이 채널에 채널 AI가 있는지 확인해 주세요."}")
+            }
+        }
+        return runCatching {
+            // 자유 지침은 위험어 substring 우회(변형 인젝션) 위험이 있어 즉시 적용하지 않고 항상 사람 검토를 거친다(#5).
+            // 온보딩 경로와 동일하게 requireApproval=true 로 PENDING 제안을 만들고, 관리자 승인 후에만 active 가 된다.
+            val result =
+                channelAiCustomization.proposeCustomInstruction(
+                    guildId = ctx.guildId,
+                    channelId = ctx.channelId,
+                    actorUserId = ctx.userId,
+                    actorRoleIds = ctx.roleIds,
+                    actorIsGuildAdmin = ctx.isAdmin,
+                    customInstruction = instruction,
+                    requireApproval = true,
+                )
+            Replies.ok(
+                "📝 자유 지침을 검토 대기열에 올렸어요(v${result.version}). " +
+                    "관리자 승인 후 `/ask` 답변에 적용됩니다. (제안 `${result.proposalId}`)",
+            )
+        }.getOrElse {
+            Replies.warn("자유 지침을 적용하지 못했어요. ${it.message ?: "잠시 후 다시 시도해 주세요."}")
+        }
     }
 
     // 프로바이더 본인 self-service 명령은 ProviderSelfServiceCommands 로 분리(god class 축소). 시그니처 유지·위임.

@@ -20,6 +20,7 @@ SAVEABLE = (
     "enable_image",
     "sd_url",
     "allow_remote_sd",
+    "auto_update",
 )
 
 
@@ -64,6 +65,105 @@ def persist_token(token: str, path: pathlib.Path | None = None) -> None:
         os.chmod(path, 0o600)
     except OSError:
         pass
+
+
+def persist_partial(updates: dict, path: pathlib.Path | None = None) -> None:
+    """저장 설정에 **일부 필드만** 병합 갱신한다(0600). 토큰 등 다른 필드는 유지.
+
+    토글류 단일 설정(예: auto_update)을 다른 값에 영향 없이 즉시 저장할 때 쓴다.
+    """
+    path = path or config_path()
+    try:
+        data: dict = {}
+        if path.exists():
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        data.update(updates)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def load_connections(path: pathlib.Path | None = None) -> list[dict]:
+    """저장된 서버 연결 목록 ``[{token, guild_id, guild_name}]``.
+
+    멀티-서버: 한 에이전트가 여러 디스코드 서버(길드)의 프로바이더로 동시에 붙는다. 구버전의 단일
+    ``token`` 은 자동으로 connections[0] 로 변환한다(하위호환).
+    """
+    data = load_config(path)
+    out: list[dict] = []
+    raw = data.get("connections")
+    if isinstance(raw, list):
+        for c in raw:
+            if isinstance(c, dict) and str(c.get("token") or "").strip():
+                out.append(
+                    {"token": str(c["token"]), "guild_id": c.get("guild_id"), "guild_name": c.get("guild_name")}
+                )
+    if not out:
+        tok = str(data.get("token") or "").strip()
+        if tok:
+            out.append({"token": tok, "guild_id": None, "guild_name": None})
+    return out
+
+
+def save_connections(conns: list[dict], path: pathlib.Path | None = None) -> None:
+    """연결 목록을 병합 저장(0600). 첫 토큰을 ``token`` 에도 미러(구버전·기존 코드 호환)."""
+    norm = [
+        {"token": str(c["token"]), "guild_id": c.get("guild_id"), "guild_name": c.get("guild_name")}
+        for c in conns
+        if str(c.get("token") or "").strip()
+    ]
+    persist_partial({"connections": norm, "token": norm[0]["token"] if norm else ""}, path)
+
+
+def _same_connection(c: dict, token: str, guild_id: int | None) -> bool:
+    """같은 연결인지: 길드ID 가 둘 다 있으면 그걸로, 아니면 토큰으로 판단."""
+    if guild_id is not None and c.get("guild_id") is not None:
+        return bool(c["guild_id"] == guild_id)
+    return bool(c["token"] == token)
+
+
+def add_connection(
+    token: str, guild_id: int | None = None, guild_name: str | None = None, path: pathlib.Path | None = None
+) -> list[dict]:
+    """서버 연결을 추가(같은 길드/토큰이면 교체). 갱신된 목록 반환."""
+    conns = [c for c in load_connections(path) if not _same_connection(c, token, guild_id)]
+    conns.append({"token": token, "guild_id": guild_id, "guild_name": guild_name})
+    save_connections(conns, path)
+    return conns
+
+
+def remove_connection(
+    guild_id: int | None = None, token: str | None = None, path: pathlib.Path | None = None
+) -> list[dict]:
+    """서버 연결을 제거(길드ID 우선, 없으면 토큰). 갱신된 목록 반환."""
+    def keep(c: dict) -> bool:
+        if guild_id is not None:
+            return bool(c.get("guild_id") != guild_id)
+        if token is not None:
+            return bool(c["token"] != token)
+        return True
+
+    conns = [c for c in load_connections(path) if keep(c)]
+    save_connections(conns, path)
+    return conns
+
+
+def set_connection_token(
+    new_token: str, guild_id: int | None = None, old_token: str | None = None, path: pathlib.Path | None = None
+) -> None:
+    """durable 토큰 갱신: 해당 연결(길드ID 또는 옛 토큰)의 token 을 교체 저장."""
+    conns = load_connections(path)
+    for c in conns:
+        if (guild_id is not None and c.get("guild_id") == guild_id) or (
+            old_token is not None and c["token"] == old_token
+        ):
+            c["token"] = new_token
+            break
+    save_connections(conns, path)
 
 
 def load_config(path: pathlib.Path | None = None) -> dict:

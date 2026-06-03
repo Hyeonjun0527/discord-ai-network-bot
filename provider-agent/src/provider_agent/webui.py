@@ -22,6 +22,7 @@ from aiohttp import web
 
 from .config import AgentConfig, config_from_args
 from .config_file import load_config, save_config
+from .constants import AGENT_VERSION
 from .netguard import RemoteOllamaBlocked, ensure_ollama_allowed
 
 # 공개 기본 중앙 서버(유저는 입력하지 않음). 자체호스팅만 고급에서 바꿀 수 있다.
@@ -138,7 +139,7 @@ def _connect_base(relay: str) -> str:
 
 def _page(session_key: str) -> str:
     """세션 키를 주입한 제어판 HTML. 디자인은 데스크톱 앱 카드(레퍼런스), 동작은 실제 API 연결."""
-    return _PAGE_TEMPLATE.replace("__SESSION_KEY__", session_key)
+    return _PAGE_TEMPLATE.replace("__SESSION_KEY__", session_key).replace("__VERSION__", AGENT_VERSION)
 
 
 # macOS 데스크톱 앱 카드 디자인(레퍼런스) — 정적 목업을 실제 백엔드(/api/*)에 연결.
@@ -151,6 +152,7 @@ body{margin:0;color:var(--text);background:radial-gradient(circle at 18% 0%,rgba
 body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.10;background-image:linear-gradient(rgba(148,163,184,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.18) 1px,transparent 1px);background-size:34px 34px;mask-image:linear-gradient(to bottom,rgba(0,0,0,.92),transparent 84%)}
 button,input{font:inherit}
 .window{width:100%;min-height:100vh}
+.appver{position:fixed;top:11px;right:13px;z-index:6;font:700 11.5px/1 ui-monospace,Menlo,monospace;color:var(--faint);background:rgba(8,17,29,.7);border:1px solid var(--line);border-radius:8px;padding:4px 8px;letter-spacing:.02em;backdrop-filter:blur(6px)}
 main{padding:22px 20px 22px}
 .hero{display:grid;grid-template-columns:48px minmax(0,1fr);gap:13px;align-items:center;margin-bottom:14px}
 .logo{width:48px;height:48px;border-radius:14px;overflow:hidden;border:1px solid rgba(122,156,219,.34);box-shadow:0 0 0 5px rgba(79,125,255,.06);background:#0e1623}.logo img{width:100%;height:100%;object-fit:cover}
@@ -193,9 +195,12 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 .details-body{border-top:1px solid rgba(148,163,184,.10);padding:12px 16px;color:var(--muted);line-height:1.6}
 #log{background:#070d16;border:1px solid rgba(148,163,184,.14);border-radius:9px;padding:10px;height:120px;overflow:auto;font:12px/1.5 ui-monospace,Menlo,monospace;color:#8fa0b6;white-space:pre-wrap}
 .ro{word-break:break-all;color:#9fb0c6}
+.pbar{height:8px;border-radius:6px;background:rgba(148,163,184,.15);overflow:hidden;margin-top:10px;display:none}
+.pfill{height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--blue2));border-radius:6px;transition:width .25s ease}
 @media (max-width:560px){.hero{grid-template-columns:1fr}.card{grid-template-columns:1fr}.token-row{grid-template-columns:1fr}.grid2{grid-template-columns:1fr}}
 </style></head><body>
 <div class="window">
+<div class="appver" title="설치된 버전">v__VERSION__</div>
 <main>
 <section class="hero"><div class="logo"><img src="/mascot.png" alt="냥시스턴트 마스코트"></div><div><h1>AI 네트워크 구축 도우미 · 냥시스턴트</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
 <section class="card"><div class="ring off" id="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
@@ -205,18 +210,38 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 실행</div><div class="setting-desc">앱을 닫아도 로그인 때 백그라운드로 실행합니다. (앱을 열어 둘 땐 꺼 두세요)</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 환경이 있으면 /imagine 요청을 처리합니다.</div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
 </div>
-<button class="primary-btn" type="button" id="go" onclick="connect()">🔗 연동하기</button>
+<button class="primary-btn" type="button" id="go" onclick="connect()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;vertical-align:-4px;margin-right:9px"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 0 1 0 10h-2"></path><path d="M8 12h8"></path></svg><span>연동하기</span></button>
 <div class="helper" style="text-align:center;margin-top:9px">처음이면 디스코드 로그인 창이 열려요. 한 번 연동하면 다음부턴 바로 연결됩니다.</div>
 <div id="msg"></div>
+<section id="serversSec" style="display:none;margin-top:16px"><h2>내 서버</h2>
+<div class="settings" id="serverList"></div>
+<button class="secondary-btn" type="button" id="addServerBtn" style="width:100%;margin-top:10px" onclick="addServer()">＋ 다른 서버에 연결</button>
+<div class="helper" id="addServerHelp" style="margin-top:7px">여러 디스코드 서버의 프로바이더로 동시에 연결할 수 있어요.</div></section>
 <details><summary><span>로그 보기</span><span>⌄</span></summary><div class="details-body"><div id="log"></div></div></details>
 <details><summary><span>고급 · 토큰 직접 입력</span><span>⌄</span></summary><div class="details-body">
 <label class="input" style="margin-bottom:11px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:20px;height:20px;flex:0 0 auto"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg><input type="password" id="token" placeholder="/provider-join 토큰 붙여넣기(선택)"></label>
-중앙 서버(고정): <span class="ro" id="relay"></span></div></details>
+중앙 서버(고정): <span class="ro" id="relay"></span>
+<div id="installRow" style="display:none;margin-top:13px">
+<button class="secondary-btn" type="button" id="installBtn" style="width:100%" onclick="install()">응용 프로그램에 추가하기</button>
+<div class="helper" id="installHelp" style="margin-top:7px"></div></div>
+<div id="updateRow" style="display:none;margin-top:14px;border-top:1px solid rgba(148,163,184,.10);padding-top:13px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+<div><div style="font-weight:850;font-size:14px;letter-spacing:-.02em">자동 업데이트</div><div class="helper" style="margin-top:2px">새 버전이 나오면 앱 시작 때 자동으로 받아 적용합니다.</div></div>
+<div class="toggle" id="autoupd" onclick="toggleAutoUpdate()"></div></div>
+<div id="verStatus" style="margin-top:10px">버전 확인 중…</div>
+<button class="secondary-btn" type="button" id="updateBtn" style="width:100%;margin-top:9px;display:none" onclick="doUpdate()"></button>
+<div class="pbar" id="pbar"><div class="pfill" id="pfill"></div></div></div>
+</div></details>
 </section>
 </main></div>
 <script>
 const K="__SESSION_KEY__";const H={"X-Session":K};let RUN=false;let HAS_MODELS=false;
 const MICON='<svg class="model-icon" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M27 20c0-6 7-8 11-4 4-4 11-2 11 4v18c0 10-6 18-17 18S15 48 15 38V26c0-5 4-9 9-9h3Z"></path><path d="M30 31h.1M46 31h.1M31 43c4 3 10 3 14 0"></path><path d="M20 55v10M42 55v10M52 48v14"></path></svg>';
+const IINSTALL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px;vertical-align:-4px;margin-right:8px"><path d="M12 3v10"></path><path d="m8 11 4 4 4-4"></path><rect x="4" y="16.5" width="16" height="4.5" rx="1.5"></rect></svg>';
+const ICHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:6px"><path d="M20 6 9 17l-5-5"></path></svg>';
+const IWARN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:6px"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"></path><path d="M12 9v4M12 17h.01"></path></svg>';
+const ILINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;vertical-align:-4px;margin-right:9px"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 0 1 0 10h-2"></path><path d="M8 12h8"></path></svg>';
+const ISTOP='<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:17px;height:17px;vertical-align:-3px;margin-right:9px"><rect x="6" y="6" width="12" height="12" rx="2.5"></rect></svg>';
 async function j(u,o){o=o||{};o.headers=Object.assign({},H,o.headers||{});const r=await fetch(u,o);return r.json();}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');HAS_MODELS=d.models.length>0;
@@ -238,7 +263,7 @@ let chips='<div class="chip"><span class="dot'+(HAS_MODELS?'':' grey')+'"></span
 chips+='<div class="chip">제공 모델 '+cnt+'개</div>';
 chips+='<div class="chip"><span class="dot'+(s.connected?'':' grey')+'"></span>'+(s.running?(s.connected?('처리 '+s.processed+'건'):'연결 시도 중'):'중지됨')+(s.imageReady?' · 🖼️':'')+'</div>';
 document.getElementById('chips').innerHTML=chips;
-const go=document.getElementById('go');go.textContent=s.running?'■ 중지':'🔗 연동하기';go.className='primary-btn'+(s.running?' stop':'');
+const go=document.getElementById('go');go.innerHTML=s.running?ISTOP+'<span>중지</span>':ILINK+'<span>연동하기</span>';go.className='primary-btn'+(s.running?' stop':'');
 const lg=await j('/api/logs');const el=document.getElementById('log');el.textContent=lg.lines.join('\n');el.scrollTop=el.scrollHeight;}
 // 버튼 하나로 모든 걸: 실행 중이면 중지, 아니면 (설정 저장 → 토큰 있으면 바로 연결 / 없으면 브라우저 로그인 → 콜백이 자동 연결).
 async function connect(){const msg=document.getElementById('msg');if(RUN){await j('/api/stop',{method:'POST'});await refresh();return;}
@@ -251,7 +276,69 @@ if(s.hasToken){const st=await j('/api/start',{method:'POST'});if(!st.ok){msg.cla
 if(s.connectEnabled){const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
 if(r.ok){msg.className='ok';msg.textContent='🌐 브라우저에서 디스코드 로그인·승인하면 자동으로 연결됩니다.';}else{msg.className='err';msg.textContent='⚠️ '+(r.error||'브라우저 열기 실패');}return;}
 msg.className='err';msg.textContent='⚠️ 토큰이 필요합니다. ‘고급’에서 /provider-join 토큰을 붙여넣어 주세요.';}
-loadModels();refresh();setInterval(refresh,2000);
+// 설치 버튼: 맥/윈도우만, 빌드된 앱에서만 활성. 상태는 거의 안 변하므로 1회 + 설치 후에만 갱신.
+function setHelp(el,kind,msg){const c=kind==='ok'?'#9fe0a0':kind==='err'?'#ff8a8a':'var(--muted)';const ic=kind==='ok'?ICHECK:kind==='err'?IWARN:'';el.innerHTML='<span style="color:'+c+'">'+ic+esc(msg)+'</span>';}
+async function loadInstall(){let d;try{d=await j('/api/install-info');}catch(e){return;}
+const row=document.getElementById('installRow');if(!d||(d.platform!=='mac'&&d.platform!=='win')){row.style.display='none';return;}
+row.style.display='block';const btn=document.getElementById('installBtn'),help=document.getElementById('installHelp');
+btn.innerHTML=IINSTALL+'<span>'+esc(d.label)+'</span>';
+if(!d.supported){btn.disabled=true;btn.style.opacity='.55';setHelp(help,'muted',d.reason||'지원되지 않아요.');return;}
+btn.disabled=false;btn.style.opacity='';
+if(d.installed){btn.disabled=true;btn.style.opacity='.55';setHelp(help,'ok','이미 설치되어 있어요.');}
+else{setHelp(help,'muted',d.platform==='win'?'시작 메뉴에 ‘냥시스턴트’ 바로가기를 추가합니다.':'이 앱을 응용 프로그램 폴더로 복사합니다. (관리자 권한 불필요)');}}
+async function install(){const btn=document.getElementById('installBtn'),help=document.getElementById('installHelp');
+const old=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span>설치 중…</span>';help.innerHTML='';
+let r;try{r=await j('/api/install',{method:'POST'});}catch(e){r={ok:false,error:'요청에 실패했어요.'};}
+if(r.ok){btn.style.opacity='.55';btn.innerHTML=ICHECK+'<span>완료</span>';setHelp(help,'ok',r.message||'완료했어요.');}
+else{btn.disabled=false;btn.innerHTML=old;setHelp(help,'err',r.error||'실패했어요.');}}
+// 업데이트: 현재/최신 버전 비교 + 자동 업데이트 토글 + (구버전이면) 수동 업데이트 버튼.
+let AUTOUPD=true;
+async function loadUpdate(){let d;try{d=await j('/api/update-info');}catch(e){return;}
+const row=document.getElementById('updateRow');row.style.display='block';
+AUTOUPD=!!d.autoUpdate;document.getElementById('autoupd').classList.toggle('on',AUTOUPD);
+const vs=document.getElementById('verStatus'),btn=document.getElementById('updateBtn');btn.style.display='none';
+if(d.error){setHelp(vs,'muted','현재 v'+d.current+' · '+d.error);return;}
+if(d.outdated){setHelp(vs,'muted','현재 v'+d.current+' → 최신 v'+d.latest+' 업데이트 있음');
+if(d.supported){btn.disabled=false;btn.style.display='block';btn.innerHTML=IINSTALL+'<span>지금 업데이트</span>';}
+}else{setHelp(vs,'ok','현재 v'+d.current+' · 최신입니다');}}
+async function toggleAutoUpdate(){AUTOUPD=!AUTOUPD;document.getElementById('autoupd').classList.toggle('on',AUTOUPD);
+try{await j('/api/auto-update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoUpdate:AUTOUPD})});}catch(e){}}
+let UPDATING=false;
+function fmtMB(b){return (b/1048576).toFixed(1);}
+function renderProgress(p){const bar=document.getElementById('pbar'),fill=document.getElementById('pfill'),vs=document.getElementById('verStatus'),btn=document.getElementById('updateBtn');
+const active=['downloading','verifying','installing','restarting'].includes(p.phase);
+bar.style.display=active?'block':'none';if(active)btn.style.display='none';
+if(p.phase==='downloading'){fill.style.width=(p.total>0?p.percent:25)+'%';
+const sz=p.total>0?(' '+fmtMB(p.downloaded)+'/'+fmtMB(p.total)+'MB'):'';
+setHelp(vs,'muted','내려받는 중 '+(p.total>0?p.percent+'%':'…')+sz);}
+else if(p.phase==='verifying'){fill.style.width='100%';setHelp(vs,'muted','무결성 검증 중…');}
+else if(p.phase==='installing'){fill.style.width='100%';setHelp(vs,'muted','설치 중…');}
+else if(p.phase==='restarting'){fill.style.width='100%';setHelp(vs,'ok',p.message||'업데이트 완료 — 곧 다시 열립니다.');}
+else if(p.phase==='error'){bar.style.display='none';setHelp(vs,'err',p.error||'업데이트 실패');}}
+async function pollProgress(){let p;try{p=await j('/api/update-progress');}catch(e){return;}
+const active=['downloading','verifying','installing','restarting'].includes(p.phase);
+if(active){UPDATING=true;renderProgress(p);}
+else if(p.phase==='error'){renderProgress(p);if(UPDATING){UPDATING=false;const b=document.getElementById('updateBtn');b.disabled=false;b.innerHTML=IINSTALL+'<span>다시 시도</span>';b.style.display='block';}}
+else if(UPDATING){UPDATING=false;document.getElementById('pbar').style.display='none';loadUpdate();}}
+async function doUpdate(){const btn=document.getElementById('updateBtn');btn.disabled=true;btn.innerHTML='<span>준비 중…</span>';UPDATING=true;
+try{await j('/api/update',{method:'POST'});}catch(e){}}
+// 내 서버 목록(멀티-서버): 연결된 디스코드 서버들 표시·서버별 해제·다른 서버 추가(OAuth).
+async function loadServers(){let d;try{d=await j('/api/servers');}catch(e){return;}
+const sec=document.getElementById('serversSec'),list=document.getElementById('serverList');
+if(!d.servers||!d.servers.length){sec.style.display='none';return;}
+sec.style.display='block';
+list.innerHTML=d.servers.map(s=>{const nm=esc(s.guildName||(s.guildId?('서버 '+s.guildId):'이름 미상'));const gid=s.guildId==null?'null':s.guildId;
+return '<div style="display:flex;align-items:center;gap:11px;min-height:56px;border-bottom:1px solid rgba(148,163,184,.10)">'
++'<span class="dot'+(s.connected?'':' grey')+'"></span>'
++'<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14.5px;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nm+'</div>'
++'<div class="helper" style="margin:1px 0 0">'+(s.connected?'연결됨':'대기 중…')+'</div></div>'
++'<button class="secondary-btn" style="min-height:34px;padding:0 13px;font-size:13px" onclick="removeServer('+gid+')">해제</button></div>';}).join('');}
+async function removeServer(gid){const r=await j('/api/server-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({guildId:gid})});loadServers();refresh();}
+async function addServer(){const help=document.getElementById('addServerHelp');const s=await j('/api/status');
+if(!s.connectEnabled){help.innerHTML='<span style="color:#ffd479">디스코드 로그인 추가가 아직 활성화되지 않았어요. ‘고급’에서 다른 서버의 /provider-join 토큰을 붙여넣어 추가하세요.</span>';return;}
+const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
+help.innerHTML=r.ok?'<span style="color:#9fe0a0">🌐 브라우저에서 추가할 서버를 고르세요. 완료되면 목록에 나타납니다.</span>':('⚠️ '+esc(r.error||'브라우저 열기 실패'));}
+loadModels();refresh();loadInstall();loadUpdate();loadServers();setInterval(refresh,2000);setInterval(loadServers,2500);setInterval(pollProgress,600);
 </script></body></html>"""
 
 
@@ -313,7 +400,11 @@ def build_app(session_key: str) -> web.Application:
         enable_image = bool(data.get("enableImage"))
         relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
         cfg = AgentConfig(
-            token=token, relay_url=relay, models=tuple(models_list), enable_image=enable_image
+            token=token,
+            relay_url=relay,
+            models=tuple(models_list),
+            enable_image=enable_image,
+            auto_update=bool(saved.get("auto_update", True)),  # 저장된 자동업데이트 설정 보존(초기화 방지)
         )
         if enable_image:
             try:
@@ -323,6 +414,12 @@ def build_app(session_key: str) -> web.Application:
         save_config(cfg)
         service_installed = False
         if data.get("installService"):
+            # 자동 실행 서비스를 로드하면 RunAtLoad 로 헤드리스 인스턴스가 곧바로 뜬다.
+            # 그 인스턴스가 이번 세션의 프로바이더 연결을 가로채지 않도록, GUI 가 먼저 락을 쥔다
+            # (서비스 쪽은 singleton 으로 깔끔히 종료 → 중복 연결·창 2개 없음).
+            from . import singleton
+
+            singleton.acquire()
             from .service import install_service
 
             try:
@@ -385,24 +482,111 @@ def build_app(session_key: str) -> web.Application:
                 "<script>setTimeout(()=>window.close(),2200)</script>",
                 content_type="text/html",
             )
-        saved = load_config()
-        relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
-        save_config(
-            AgentConfig(
-                token=token,
-                relay_url=relay,
-                models=tuple(saved.get("models") or ()),
-                enable_image=bool(saved.get("enable_image")),
-            )
-        )
-        # 토큰을 받았으니 곧바로 연결까지 자동으로(유저는 추가 클릭 없이 연동 완료).
-        _start_agent()
+        # 멀티-서버: 서버가 함께 보내는 guild(id)·guildName 으로 '내 서버 목록'에 추가(교체 아님).
+        gid_raw = (req.query.get("guild") or "").strip()
+        guild_id = int(gid_raw) if gid_raw.isdigit() else None
+        guild_name = (req.query.get("guildName") or "").strip() or None
+        agent = _state["agent"]
+        task = _state["task"]
+        if agent is not None and task is not None and not task.done():
+            await agent.add_connection(token, guild_id, guild_name)  # 실행 중이면 즉시 새 서버 접속
+        else:
+            from .config_file import add_connection
+
+            add_connection(token, guild_id, guild_name)  # 저장 후
+            _start_agent()  # 저장된 모든 서버로 접속 시작
+        label = guild_name or "서버"
         return web.Response(
             text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#b8ff39;text-align:center;padding-top:80px'>"
-            "✅ 연동 완료! 자동으로 연결했어요. <b>이 탭을 닫고 앱 창으로 돌아가세요.</b>"
+            f"✅ ‘{label}’ 연동 완료! 자동으로 연결했어요. <b>이 탭을 닫고 앱 창으로 돌아가세요.</b>"
             "<script>setTimeout(()=>window.close(),1800)</script>",
             content_type="text/html",
         )
+
+    async def servers(req: web.Request) -> web.Response:
+        """'내 서버 목록': 실행 중이면 실시간 연결상태, 아니면 저장된 목록(연결 안 됨)."""
+        _auth(req)
+        agent = _state["agent"]
+        task = _state["task"]
+        if agent is not None and task is not None and not task.done():
+            return web.json_response({"servers": agent.connections_status()})
+        from .config_file import load_connections
+
+        saved = load_connections()
+        return web.json_response(
+            {"servers": [
+                {"guildId": c.get("guild_id"), "guildName": c.get("guild_name"), "connected": False}
+                for c in saved
+            ]}
+        )
+
+    async def server_remove(req: web.Request) -> web.Response:
+        """서버 연결 해제(길드ID 기준). 실행 중이면 즉시 끊고, 아니면 저장 목록에서 제거."""
+        _auth(req)
+        data = await req.json()
+        gid_raw = data.get("guildId")
+        guild_id = int(gid_raw) if isinstance(gid_raw, (int, str)) and str(gid_raw).lstrip("-").isdigit() else None
+        agent = _state["agent"]
+        task = _state["task"]
+        if agent is not None and task is not None and not task.done():
+            await agent.remove_connection(guild_id=guild_id)
+        else:
+            from .config_file import remove_connection
+
+            remove_connection(guild_id=guild_id)
+        return web.json_response({"ok": True})
+
+    async def install_info(req: web.Request) -> web.Response:
+        _auth(req)
+        from .installer import install_info as _info
+
+        return web.json_response(_info())
+
+    async def install(req: web.Request) -> web.Response:
+        _auth(req)
+        from .installer import install_app
+
+        return web.json_response(install_app())
+
+    async def update_info(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import updater
+
+        loop = asyncio.get_event_loop()
+        info = await loop.run_in_executor(None, updater.check)  # 네트워크 → 스레드풀
+        info["autoUpdate"] = bool(load_config().get("auto_update", True))
+        return web.json_response(info)
+
+    async def update_apply(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import updater
+
+        # 백그라운드 스레드에서 다운로드·교체(프런트는 /api/update-progress 로 진행률 폴링).
+        if updater.is_updating():
+            return web.json_response({"ok": True, "started": True})
+
+        def _worker() -> None:
+            result = updater.apply_update()
+            if result.get("ok") and result.get("restarting"):
+                _schedule_exit()  # 교체 위해 종료 → 헬퍼가 swap·재실행
+
+        threading.Thread(target=_worker, daemon=True).start()
+        return web.json_response({"ok": True, "started": True})
+
+    async def update_progress(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import updater
+
+        return web.json_response(updater.update_progress())
+
+    async def auto_update_set(req: web.Request) -> web.Response:
+        _auth(req)
+        from .config_file import persist_partial
+
+        data = await req.json()
+        on = bool(data.get("autoUpdate"))
+        persist_partial({"auto_update": on})  # 다른 설정 영향 없이 즉시 저장
+        return web.json_response({"ok": True, "autoUpdate": on})
 
     async def start(req: web.Request) -> web.Response:
         _auth(req)
@@ -433,6 +617,14 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/logs", logs)
     app.router.add_get("/connect/callback", connect_callback)
     app.router.add_post("/api/connect-open", connect_open)
+    app.router.add_get("/api/servers", servers)
+    app.router.add_post("/api/server-remove", server_remove)
+    app.router.add_get("/api/install-info", install_info)
+    app.router.add_post("/api/install", install)
+    app.router.add_get("/api/update-info", update_info)
+    app.router.add_get("/api/update-progress", update_progress)
+    app.router.add_post("/api/update", update_apply)
+    app.router.add_post("/api/auto-update", auto_update_set)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)
@@ -523,6 +715,61 @@ def _set_macos_app_identity(name: str) -> None:
         pass
 
 
+def _schedule_exit(delay: float = 1.2) -> None:
+    """응답을 보낸 뒤 곧 프로세스를 종료(업데이트 헬퍼가 교체·재실행하도록). 데몬 타이머."""
+    import os
+    import threading
+
+    threading.Timer(delay, lambda: os._exit(0)).start()
+
+
+def _start_auto_update_watcher() -> None:
+    """auto_update(기본 ON)면 **시작 시 + 주기적으로** 새 버전을 검사·적용한다(실행 중에도).
+
+    앱을 켜 둔 채 새 버전이 나와도 다음 주기에 자동으로 받아 교체·재실행한다(껐다 켜야만
+    적용되는 문제 해소). 다운로드 진행률은 _progress 에 반영되어 열려 있는 GUI 에 프로그래스바로
+    보인다. 빌드된 앱·구버전·지원 OS 일 때만 실제 교체. 실패·미설정은 조용히 무시한다.
+    간격은 기본 2시간(AGENT_UPDATE_INTERVAL_S 로 조정, 테스트용).
+    """
+    import os
+    import threading
+    import time
+
+    interval = max(30.0, float(os.getenv("AGENT_UPDATE_INTERVAL_S") or 7200))
+
+    def _loop() -> None:
+        while True:
+            if _auto_update_once():
+                return  # 적용 시작 → 곧 종료·재실행되므로 루프 종료
+            time.sleep(interval)
+
+    threading.Thread(target=_loop, daemon=True).start()
+
+
+def _auto_update_once() -> bool:
+    """자동 업데이트 1회 검사. 토글 ON + 구버전 + 지원이면 받아 적용하고 종료를 예약한다.
+
+    적용을 시작했으면 True(다운로드는 _progress 로 프로그래스바에 반영). 실패·해당없음은 False.
+    """
+    from . import updater
+
+    try:
+        if not bool(load_config().get("auto_update", True)) or updater.is_updating():
+            return False
+        info = updater.check()
+        if info.get("outdated") and info.get("supported"):
+            logging.getLogger("provider_agent").info(
+                "자동 업데이트: v%s → v%s 적용", info.get("current"), info.get("latest")
+            )
+            result = updater.apply_update()  # _progress 갱신(프로그래스바) + swap 헬퍼
+            if result.get("ok") and result.get("restarting"):
+                _schedule_exit()  # 헬퍼가 교체·재실행
+                return True
+    except Exception:  # noqa: BLE001 - 자동 업데이트 실패는 앱 동작을 막지 않는다
+        pass
+    return False
+
+
 def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
     """로컬 제어판을 네이티브 앱 창으로 띄운다(웹뷰 없으면 브라우저 폴백)."""
     session_key = secrets.token_urlsafe(24)
@@ -532,6 +779,7 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
         f"\n제어판: {url}\n(창이 안 보이면 위 주소를 브라우저에서 여세요. AGENT_GUI_BROWSER=1 로 브라우저 강제.)\n",
         flush=True,
     )
+    _start_auto_update_watcher()  # 자동 업데이트 ON 이면 시작 시+주기적으로 검사·적용(실행 중에도)
 
     if _webview_available():
         try:

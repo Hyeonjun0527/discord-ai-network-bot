@@ -58,6 +58,19 @@ class FakeOllama:
         yield ("done", self.usage)
 
 
+def test_hello_advertises_only_selected_models():
+    """서버에 광고(provider_hello)되는 모델 = 사용자가 고른 목록 그대로. 서버는 이 목록만 라우팅한다."""
+    agent = ProviderAgent(AgentConfig(token="T", models=("llama3.1:8b", "gemma2")), ollama=FakeOllama())  # type: ignore[arg-type]
+    assert agent._build_hello().models == ["llama3.1:8b", "gemma2"]
+
+
+def test_hello_empty_when_nothing_selected():
+    """아무것도 선택 안 하면 광고 목록이 비어, 서버가 이 PC로 텍스트 요청을 라우팅하지 않는다
+    (예전의 '빈 목록 → 전체 자동감지' 폴백이 되살아나지 않게 회귀 방지)."""
+    agent = ProviderAgent(AgentConfig(token="T", models=()), ollama=FakeOllama())  # type: ignore[arg-type]
+    assert agent._build_hello().models == []
+
+
 @pytest.mark.asyncio
 async def test_handle_infer_streaming_emits_chunks():
     """스트리밍(#142): req.stream 시 ChunkFrame 점진 전송 + done 종료."""
@@ -163,3 +176,35 @@ def test_reload_models_hot_reload(monkeypatch, tmp_path):
     save_config(AgentConfig(token="T", models=("a", "b")))
     assert agent.reload_models() == ["a", "b"]
     assert agent._models == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_multi_connection_add_remove(monkeypatch, tmp_path):
+    """멀티-서버: 실행 중 연결 추가/해제가 엔트리·상태에 반영된다(네트워크 없이 가짜 연결)."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+    class FakeConn:
+        def __init__(self, cfg, on_frame, hello, on_durable_token=None):
+            self._authed = True
+
+        @property
+        def authed(self):
+            return self._authed
+
+        async def run(self):
+            await asyncio.Event().wait()
+
+        async def stop(self):
+            self._authed = False
+
+    monkeypatch.setattr("provider_agent.agent.AgentConnection", FakeConn)
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
+    await agent.add_connection("TA", guild_id=100, guild_name="A")
+    await agent.add_connection("TB", guild_id=200, guild_name="B")
+    st = agent.connections_status()
+    assert {s["guildId"] for s in st} == {100, 200}
+    assert agent.is_connected() is True
+    assert await agent.remove_connection(guild_id=100) is True
+    assert [s["guildId"] for s in agent.connections_status()] == [200]
+    await agent.remove_connection(guild_id=200)
+    assert agent.is_connected() is False

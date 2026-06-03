@@ -254,6 +254,167 @@ async def test_start_stop_lifecycle(monkeypatch):
         await client.close()
 
 
+@pytest.mark.asyncio
+async def test_install_info_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        "provider_agent.installer.install_info",
+        lambda: {"platform": "mac", "supported": True, "installed": False, "label": "응용 프로그램에 추가하기"},
+    )
+    client = await _client()
+    try:
+        assert (await client.get("/api/install-info")).status == 403  # 키 없음
+        d = await (await client.get("/api/install-info", headers={"X-Session": KEY})).json()
+        assert d["platform"] == "mac" and d["supported"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_install_endpoint_delegates(monkeypatch):
+    monkeypatch.setattr(
+        "provider_agent.installer.install_app",
+        lambda: {"ok": True, "message": "응용 프로그램에 추가했어요."},
+    )
+    client = await _client()
+    try:
+        assert (await client.post("/api/install")).status == 403  # 키 없음
+        d = await (await client.post("/api/install", headers={"X-Session": KEY})).json()
+        assert d["ok"] is True and "추가" in d["message"]
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_update_info_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        "provider_agent.updater.check",
+        lambda: {"current": "0.19.0", "latest": "0.20.0", "outdated": True, "supported": True, "error": None},
+    )
+    client = await _client()
+    try:
+        assert (await client.get("/api/update-info")).status == 403  # 키 없음
+        d = await (await client.get("/api/update-info", headers={"X-Session": KEY})).json()
+        assert d["outdated"] is True and d["latest"] == "0.20.0"
+        assert "autoUpdate" in d  # 토글 현재값 포함
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_auto_update_toggle_persists(monkeypatch):
+    client = await _client()
+    try:
+        await client.post("/api/auto-update", headers={"X-Session": KEY}, json={"autoUpdate": False})
+        assert load_config().get("auto_update") is False  # 저장됨
+        await client.post("/api/auto-update", headers={"X-Session": KEY}, json={"autoUpdate": True})
+        assert load_config().get("auto_update") is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_update_apply_runs_in_background_and_schedules_restart(monkeypatch):
+    monkeypatch.setattr("provider_agent.updater.is_updating", lambda: False)
+    monkeypatch.setattr(
+        "provider_agent.updater.apply_update",
+        lambda: {"ok": True, "restarting": True, "message": "업데이트 중"},
+    )
+    exited = {}
+    monkeypatch.setattr("provider_agent.webui._schedule_exit", lambda *a, **k: exited.setdefault("called", True))
+    client = await _client()
+    try:
+        d = await (await client.post("/api/update", headers={"X-Session": KEY})).json()
+        assert d["ok"] is True and d["started"] is True  # 즉시 시작 응답(다운로드는 백그라운드)
+        await asyncio.sleep(0.1)  # 워커 스레드가 apply_update 를 끝낼 시간
+        assert exited.get("called") is True  # 교체 위해 종료 예약됨
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_update_progress_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        "provider_agent.updater.update_progress",
+        lambda: {"phase": "downloading", "downloaded": 5, "total": 10, "percent": 50, "message": "내려받는 중", "error": None},
+    )
+    client = await _client()
+    try:
+        assert (await client.get("/api/update-progress")).status == 403  # 키 없음
+        d = await (await client.get("/api/update-progress", headers={"X-Session": KEY})).json()
+        assert d["phase"] == "downloading" and d["percent"] == 50
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_servers_lists_saved_when_not_running(monkeypatch):
+    # 실행 중이 아니면 저장된 연결 목록을 connected=False 로 보여준다.
+    from provider_agent.config_file import add_connection
+
+    add_connection("TA", guild_id=100, guild_name="서버A")
+    add_connection("TB", guild_id=200, guild_name="서버B")
+    client = await _client()
+    try:
+        assert (await client.get("/api/servers")).status == 403  # 키 없음
+        d = await (await client.get("/api/servers", headers={"X-Session": KEY})).json()
+        names = {s["guildName"] for s in d["servers"]}
+        assert names == {"서버A", "서버B"}
+        assert all(s["connected"] is False for s in d["servers"])
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_server_remove_deletes_saved(monkeypatch):
+    from provider_agent.config_file import add_connection, load_connections
+
+    add_connection("TA", guild_id=100, guild_name="서버A")
+    add_connection("TB", guild_id=200, guild_name="서버B")
+    client = await _client()
+    try:
+        await client.post("/api/server-remove", headers={"X-Session": KEY}, json={"guildId": 100})
+        left = [c["guild_id"] for c in load_connections()]
+        assert left == [200]  # 길드 100 해제됨
+    finally:
+        await client.close()
+
+
+def test_auto_update_once_applies_when_outdated(monkeypatch):
+    # 실행 중 주기 검사: 토글 ON + 구버전 + 지원이면 받아 적용하고 종료 예약(껐다 켜지 않아도 적용).
+    monkeypatch.setattr(webui, "load_config", lambda: {"auto_update": True})
+    monkeypatch.setattr("provider_agent.updater.is_updating", lambda: False)
+    monkeypatch.setattr(
+        "provider_agent.updater.check",
+        lambda: {"current": "0.19.0", "latest": "0.20.0", "outdated": True, "supported": True, "error": None},
+    )
+    monkeypatch.setattr("provider_agent.updater.apply_update", lambda: {"ok": True, "restarting": True})
+    exited = {}
+    monkeypatch.setattr(webui, "_schedule_exit", lambda *a, **k: exited.setdefault("called", True))
+    assert webui._auto_update_once() is True
+    assert exited.get("called") is True
+
+
+def test_auto_update_once_skips_when_latest(monkeypatch):
+    monkeypatch.setattr(webui, "load_config", lambda: {"auto_update": True})
+    monkeypatch.setattr("provider_agent.updater.is_updating", lambda: False)
+    monkeypatch.setattr(
+        "provider_agent.updater.check",
+        lambda: {"current": "0.20.0", "latest": "0.20.0", "outdated": False, "supported": True, "error": None},
+    )
+    called = {}
+    monkeypatch.setattr("provider_agent.updater.apply_update", lambda: called.setdefault("apply", True) or {})
+    assert webui._auto_update_once() is False
+    assert "apply" not in called  # 최신이면 교체 시도 안 함
+
+
+def test_auto_update_once_skips_when_toggle_off(monkeypatch):
+    monkeypatch.setattr(webui, "load_config", lambda: {"auto_update": False})
+    called = {}
+    monkeypatch.setattr("provider_agent.updater.check", lambda: called.setdefault("checked", True) or {})
+    assert webui._auto_update_once() is False
+    assert "checked" not in called  # 토글 OFF 면 검사조차 안 함
+
+
 def test_brand_icon_png_returns_png_bytes():
     from provider_agent.webui import _brand_icon_png
 

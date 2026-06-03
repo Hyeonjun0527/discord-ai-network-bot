@@ -55,6 +55,39 @@ class KnowledgeIngestionService(
         return saved.toMutationResult()
     }
 
+    /**
+     * 같은 채널 AI + 표시이름의 기존 지식공간이 있으면 그대로 재사용하고, 없으면 새로 만든다(B — 재실행 중복 space 방지).
+     * 온보딩 백필이 `/ai-onboard` 재실행마다 같은 채널에 "서버 대화 요약" 지식공간을 무한 생성하던 문제를 막는다.
+     * (기존 source 정리는 범위 밖 — 중복 **space** 만 막는다. 새 백필 텍스트는 기존 space 에 source 로 추가된다.)
+     */
+    fun findOrCreateSpace(
+        guildId: Long,
+        channelId: Long?,
+        channelAiId: Long?,
+        displayName: String,
+        createdBy: Long?,
+        embeddingModel: String?,
+        indexName: String?,
+    ): KnowledgeSpaceMutationResult {
+        featureGate.requireRagEnabled()
+        val normalizedName = displayName.trim().ifBlank { "채널 지식공간" }
+        if (channelAiId != null) {
+            val existing = spaces.findFirstByChannelAiIdAndDisplayNameOrderByIdAsc(channelAiId, normalizedName)
+            if (existing != null && existing.guildId == guildId) {
+                return existing.toMutationResult()
+            }
+        }
+        return createSpace(
+            guildId = guildId,
+            channelId = channelId,
+            channelAiId = channelAiId,
+            displayName = normalizedName,
+            createdBy = createdBy,
+            embeddingModel = embeddingModel,
+            indexName = indexName,
+        )
+    }
+
     fun listSources(
         guildId: Long,
         spaceId: Long,
@@ -316,6 +349,14 @@ class KnowledgeIngestionService(
         )
     }
 
+    /**
+     * 지식 소스를 추가한다.
+     *
+     * @param screenInjection 사용자 생성 콘텐츠(예: 온보딩 백필)일 때 `true`. 이 경우 본문에
+     *  [KnowledgeSafety.looksRiskyInstruction] 매칭(프롬프트 인젝션/탈옥/권한탈취 의도)이 있으면
+     *  risk 를 `review`(status REVIEW)로 상향해 **자동 인라인 색인을 막고 관리자 검토 큐로** 보낸다.
+     *  관리자가 입력하는 지침/프리셋 경로(CommandService/대시보드)는 `false`(기본)로 기존 동작을 유지한다.
+     */
     @Transactional
     fun addSource(
         guildId: Long,
@@ -325,6 +366,7 @@ class KnowledgeIngestionService(
         sourceUri: String?,
         contentPreview: String?,
         addedBy: Long?,
+        screenInjection: Boolean = false,
     ): KnowledgeSourceMutationResult {
         featureGate.requireRagEnabled()
         val space =
@@ -333,7 +375,7 @@ class KnowledgeIngestionService(
         val now = Instant.now(clock)
         val normalizedType = sourceType.trim().lowercase().ifBlank { "text" }
         val normalizedUri = sourceUri?.trim()?.ifBlank { null }
-        val validation = validateSource(normalizedType, normalizedUri, contentPreview)
+        val validation = validateSource(normalizedType, normalizedUri, contentPreview, screenInjection)
         val source =
             sources.save(
                 KnowledgeSourceEntity(
@@ -562,6 +604,7 @@ class KnowledgeIngestionService(
         sourceType: String,
         sourceUri: String?,
         contentPreview: String?,
+        screenInjection: Boolean = false,
     ): SourceValidation {
         if (sourceType !in ALLOWED_SOURCE_TYPES) {
             return SourceValidation("review", blocked(KnowledgeSourceStatus.Kind.BLOCKED_TYPE))
@@ -576,6 +619,11 @@ class KnowledgeIngestionService(
         if (sourceUri != null) {
             val uriRisk = validateUri(sourceUri)
             if (uriRisk != null) return uriRisk
+        }
+        // 사용자 생성 콘텐츠(백필)에 남은 프롬프트 인젝션 의심 문구는 자동 색인하지 않고 관리자 검토 큐로 보낸다.
+        // (status REVIEW → indexInlineSourceIfPossible 가 isPending 이 아니라 스킵. 관리자는 approveSourceForIndexing 으로 승인 가능.)
+        if (screenInjection && KnowledgeSafety.looksRiskyInstruction(contentPreview)) {
+            return SourceValidation("review", KnowledgeSourceStatus(KnowledgeSourceStatus.Kind.REVIEW))
         }
         return SourceValidation("normal", KnowledgeSourceStatus.PENDING)
     }

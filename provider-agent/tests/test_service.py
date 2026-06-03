@@ -6,11 +6,16 @@ from pathlib import Path
 import provider_agent.service as svc
 
 
-def test_launchd_plist_has_exe_and_yes():
+def test_launchd_plist_runs_headless_service():
+    # macOS .app 바이너리를 헤드리스(`--service`)로 실행하고, KeepAlive 는 '크래시 시에만'이어야
+    # GUI 를 열어 둔 동안 재실행 폭주/창 2개가 생기지 않는다.
     p = svc.launchd_plist("/usr/local/bin/discord-ai-network-bot")
     assert "/usr/local/bin/discord-ai-network-bot" in p
-    assert "<string>--yes</string>" in p
-    assert "RunAtLoad" in p and "KeepAlive" in p
+    assert "<string>--service</string>" in p
+    assert "<string>--yes</string>" not in p  # GUI 창을 또 띄우던 옛 동작 회귀 방지
+    assert "RunAtLoad" in p
+    assert "<key>KeepAlive</key><dict><key>Crashed</key><true/></dict>" in p
+    assert "<key>ProcessType</key><string>Background</string>" in p
 
 
 def test_systemd_unit_has_exe_and_yes():

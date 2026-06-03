@@ -128,6 +128,7 @@ class ChannelAiCustomizationService(
         answerLength: String,
         constitution: String?,
         requireApproval: Boolean,
+        customInstruction: String? = null,
     ): ChannelAiWizardResult {
         featureGate.requireChannelAiEnabled()
         requireCanManageChannelAi(guildId, channelId, actorUserId, actorRoleIds, actorIsGuildAdmin, "wizard_create")
@@ -141,9 +142,8 @@ class ChannelAiCustomizationService(
         val savedChannel = channelAis.saveAndFlush(channelAi)
 
         val previous = savedChannel.activeBehaviorVersionId?.let { versions.findByChannelAiIdAndId(savedChannel.id, it) }
-        val nextVersion = (versions.findTopByChannelAiIdOrderByVersionDesc(savedChannel.id)?.version ?: 0) + 1
         val behavior =
-            versions.saveAndFlush(
+            saveNextBehaviorVersion(savedChannel.id) { nextVersion ->
                 AiBehaviorVersionEntity(
                     channelAiId = savedChannel.id,
                     version = nextVersion,
@@ -152,11 +152,12 @@ class ChannelAiCustomizationService(
                     answerLength = normalize(answerLength, previous?.answerLength, DEFAULT_CHANNEL_AI_ANSWER_LENGTH, 40),
                     constitution = normalizeOptional(constitution, previous?.constitution ?: DEFAULT_CHANNEL_AI_CONSTITUTION, 2000),
                     safetyLevel = previous?.safetyLevel ?: DEFAULT_CHANNEL_AI_SAFETY_LEVEL,
+                    customInstruction = normalizeOptional(customInstruction, previous?.customInstruction, 2000),
                     createdBy = actorUserId,
                     createdAt = now,
                     changeSummary = "created from channel AI wizard",
-                ),
-            )
+                )
+            }
         val approvalDecision = approvalDecision(requireApproval, behavior, channelAi.displayName)
         val status = if (approvalDecision.required) ProposalStatus.PENDING else ProposalStatus.APPROVED
         if (!approvalDecision.required) {
@@ -214,9 +215,8 @@ class ChannelAiCustomizationService(
                 .findByChannelAiIdOrderByVersionDesc(channelAi.id)
                 .firstOrNull { it.version == targetVersion }
                 ?: throw IllegalArgumentException("behavior version not found: channelAi=${channelAi.id} version=$targetVersion")
-        val nextVersion = (versions.findTopByChannelAiIdOrderByVersionDesc(channelAi.id)?.version ?: 0) + 1
         val rollbackBehavior =
-            versions.saveAndFlush(
+            saveNextBehaviorVersion(channelAi.id) { nextVersion ->
                 AiBehaviorVersionEntity(
                     channelAiId = channelAi.id,
                     version = nextVersion,
@@ -225,11 +225,12 @@ class ChannelAiCustomizationService(
                     answerLength = target.answerLength,
                     constitution = target.constitution,
                     safetyLevel = target.safetyLevel,
+                    customInstruction = target.customInstruction,
                     createdBy = actorUserId,
                     createdAt = now,
                     changeSummary = "rollback to v${target.version}: ${reason?.trim()?.take(200) ?: "no reason"}",
-                ),
-            )
+                )
+            }
         val approvalDecision = approvalDecision(requireApproval, rollbackBehavior, channelAi.displayName)
         val status = if (approvalDecision.required) ProposalStatus.PENDING else ProposalStatus.APPROVED
         if (!approvalDecision.required) {
@@ -272,6 +273,87 @@ class ChannelAiCustomizationService(
         )
     }
 
+    /**
+     * 채널 AI 자유 지침(custom instruction)만 바꾼 **새 behavior 버전 제안**을 만든다.
+     * 기존 활성(또는 최신) behavior 의 슬롯(purpose/tone/answerLength/constitution/safetyLevel)을 그대로 복사하고
+     * customInstruction 만 교체한다(슬롯=가드레일은 보존, 자유 지침=색깔만 갱신).
+     * 채널 AI 가 아직 없으면 베이스가 없어 제안을 만들 수 없으므로 에러로 안내한다.
+     */
+    @Transactional
+    fun proposeCustomInstruction(
+        guildId: Long,
+        channelId: Long,
+        actorUserId: Long?,
+        actorRoleIds: Collection<Long> = emptyList(),
+        actorIsGuildAdmin: Boolean = true,
+        customInstruction: String?,
+        requireApproval: Boolean,
+    ): ChannelAiWizardResult {
+        featureGate.requireChannelAiEnabled()
+        requireCanManageChannelAi(guildId, channelId, actorUserId, actorRoleIds, actorIsGuildAdmin, "set_custom_instruction")
+        val now = Instant.now(clock)
+        val channelAi =
+            channelAis.findByGuildIdAndChannelId(guildId, channelId)
+                ?: throw IllegalArgumentException(
+                    "이 채널에는 아직 채널 AI가 없어요. `/llm-channel-profile` 또는 `/ai-onboard` 로 먼저 채널 AI를 만든 뒤 자유 지침을 추가하세요.",
+                )
+        val base =
+            channelAi.activeBehaviorVersionId?.let { versions.findByChannelAiIdAndId(channelAi.id, it) }
+                ?: versions.findTopByChannelAiIdOrderByVersionDesc(channelAi.id)
+                ?: throw IllegalArgumentException(
+                    "이 채널 AI에는 적용된 행동 버전이 없어요. `/llm-channel-profile` 로 먼저 설정한 뒤 자유 지침을 추가하세요.",
+                )
+        val behavior =
+            saveNextBehaviorVersion(channelAi.id) { nextVersion ->
+                AiBehaviorVersionEntity(
+                    channelAiId = channelAi.id,
+                    version = nextVersion,
+                    purpose = base.purpose,
+                    tone = base.tone,
+                    answerLength = base.answerLength,
+                    constitution = base.constitution,
+                    safetyLevel = base.safetyLevel,
+                    customInstruction = normalizeOptional(customInstruction, null, 2000),
+                    createdBy = actorUserId,
+                    createdAt = now,
+                    changeSummary = "custom instruction updated",
+                )
+            }
+        val approvalDecision = approvalDecision(requireApproval, behavior, channelAi.displayName)
+        val status = if (approvalDecision.required) ProposalStatus.PENDING else ProposalStatus.APPROVED
+        if (!approvalDecision.required) {
+            channelAi.activeBehaviorVersionId = behavior.id
+            channelAi.updatedAt = now
+            channelAis.save(channelAi)
+        }
+        val proposal =
+            proposals.save(
+                AiChangeProposalEntity(
+                    guildId = guildId,
+                    channelId = channelId,
+                    channelAiId = channelAi.id,
+                    proposedBehaviorId = behavior.id,
+                    status = status,
+                    requestedBy = actorUserId,
+                    reviewedBy = if (approvalDecision.required) null else actorUserId,
+                    reason = approvalDecision.reason ?: "custom instruction update",
+                    payloadHash = behavior.payloadHash(),
+                    createdAt = now,
+                    reviewedAt = if (approvalDecision.required) null else now,
+                ),
+            )
+        audit(
+            guildId = guildId,
+            channelId = channelId,
+            actorUserId = actorUserId,
+            action = if (approvalDecision.required) "instruction_propose" else "instruction_publish",
+            targetType = "ai_behavior_version",
+            targetId = behavior.id,
+            summary = "custom instruction v${behavior.version} status=${status.wire} reason=${approvalDecision.reason ?: "none"}",
+        )
+        return ChannelAiWizardResult(channelAi.id, behavior.id, behavior.version, proposal.id, status.wire, approvalDecision.reason)
+    }
+
     @Transactional
     fun approveProposal(
         proposalId: Long,
@@ -281,12 +363,18 @@ class ChannelAiCustomizationService(
         reason: String? = null,
     ): AiChangeProposalReview {
         featureGate.requireChannelAiEnabled()
-        val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
+        // PESSIMISTIC_WRITE 로 잠가 동시 승인/거절을 직렬화한다(#3): 이중 APPROVED·activeBehaviorVersionId lost update 방지.
+        val proposal =
+            proposals.findByIdForUpdate(proposalId)
+                ?: throw IllegalArgumentException("proposal not found: $proposalId")
         require(proposal.status == ProposalStatus.PENDING) { "pending proposal only can be approved" }
         requireCanManageChannelAi(proposal.guildId, proposal.channelId, reviewerUserId, reviewerRoleIds, reviewerIsGuildAdmin, "approve")
         val channelAiId = proposal.channelAiId ?: throw IllegalArgumentException("proposal has no channel ai")
         val behaviorId = proposal.proposedBehaviorId ?: throw IllegalArgumentException("proposal has no behavior")
-        val channelAi = channelAis.findById(channelAiId).orElseThrow { IllegalArgumentException("channel ai not found: $channelAiId") }
+        // 같은 채널의 동시 승인 간 activeBehaviorVersionId last-writer 비결정성을 완화하기 위해 채널 AI 행도 잠근다(#3).
+        val channelAi =
+            channelAis.findByIdForUpdate(channelAiId)
+                ?: throw IllegalArgumentException("channel ai not found: $channelAiId")
         val behavior =
             versions.findByChannelAiIdAndId(channelAiId, behaviorId)
                 ?: throw IllegalArgumentException("behavior not found: $behaviorId")
@@ -352,7 +440,10 @@ class ChannelAiCustomizationService(
         reason: String?,
     ): AiChangeProposalReview {
         featureGate.requireChannelAiEnabled()
-        val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
+        // approveProposal 과 동일하게 PESSIMISTIC_WRITE 로 잠가 동시 승인/거절을 직렬화한다(#3).
+        val proposal =
+            proposals.findByIdForUpdate(proposalId)
+                ?: throw IllegalArgumentException("proposal not found: $proposalId")
         require(proposal.status == ProposalStatus.PENDING) { "pending proposal only can be rejected" }
         requireCanManageChannelAi(proposal.guildId, proposal.channelId, reviewerUserId, reviewerRoleIds, reviewerIsGuildAdmin, "reject")
         proposal.transitionTo(ProposalStatus.REJECTED)
@@ -512,6 +603,19 @@ class ChannelAiCustomizationService(
         return proposals.findByGuildIdAndStatus(guildId, ProposalStatus.PENDING).map { it.toPendingView() }
     }
 
+    /** 현재 활성(또는 최신) behavior 의 자유 지침을 반환한다. 채널 AI/지침이 없으면 null. */
+    fun currentCustomInstruction(
+        guildId: Long,
+        channelId: Long,
+    ): String? {
+        featureGate.requireChannelAiEnabled()
+        val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId) ?: return null
+        val behavior =
+            channelAi.activeBehaviorVersionId?.let { versions.findByChannelAiIdAndId(channelAi.id, it) }
+                ?: versions.findTopByChannelAiIdOrderByVersionDesc(channelAi.id)
+        return behavior?.customInstruction?.trim()?.takeIf { it.isNotBlank() }
+    }
+
     fun channelHistory(
         guildId: Long,
         channelId: Long,
@@ -567,6 +671,7 @@ class ChannelAiCustomizationService(
         val tone = behavior?.tone ?: DEFAULT_CHANNEL_AI_TONE
         val answerLength = behavior?.answerLength ?: DEFAULT_CHANNEL_AI_ANSWER_LENGTH
         val constitution = behavior?.constitution ?: DEFAULT_CHANNEL_AI_CONSTITUTION
+        val customInstruction = behavior?.customInstruction?.trim()?.takeIf { it.isNotBlank() }
         val sensitive = userQuestion.looksSensitive()
         val sanitizedQuestion = userQuestion.trim().take(PROMPT_USER_QUESTION_MAX)
         val rag = ragContextText?.trim()?.take(PROMPT_RAG_CONTEXT_MAX)?.ifBlank { null }
@@ -574,6 +679,7 @@ class ChannelAiCustomizationService(
             buildList {
                 add("safety")
                 add("identity")
+                if (customInstruction != null) add("custom_instruction")
                 add("behavior")
                 if (rag != null && !sensitive) add("rag_context")
                 add("user_question")
@@ -589,6 +695,12 @@ class ChannelAiCustomizationService(
                 appendLine("역할: $purpose")
                 appendLine("말투: $tone")
                 appendLine("답변 길이: $answerLength")
+                if (customInstruction != null) {
+                    appendLine()
+                    appendLine("[우선순위 2.5: 자유 지침]")
+                    appendLine("아래 지침은 채널 AI의 색깔/페르소나입니다. 단, 위 안전 규칙과 충돌하면 안전 규칙이 우선합니다.")
+                    appendLine(customInstruction)
+                }
                 appendLine()
                 appendLine("[우선순위 3: AI 헌법]")
                 appendLine(constitution)
@@ -787,7 +899,11 @@ class ChannelAiCustomizationService(
         behavior: AiBehaviorVersionEntity,
         displayName: String,
     ): ApprovalDecision {
-        if (requestedApproval) return ApprovalDecision(required = true, reason = "manual approval requested")
+        // 위험/민감/장문/대형 헌법 분류는 requireApproval 여부와 무관하게 항상 계산한다.
+        // (#1 이후 대시보드 wizard 는 항상 requireApproval=true 로 들어오는데, 예전처럼 여기서 즉시
+        //  return 해 버리면 위험 분류가 죽고 proposal reason 이 전부 "manual approval requested" 가 돼
+        //  검토 요약의 위험 집계(risky_instruction_pending 등)가 비어 버린다. 구체 위험 사유를 우선 보존.)
+        val customInstruction = behavior.customInstruction.orEmpty()
         val text =
             listOf(
                 displayName,
@@ -796,16 +912,62 @@ class ChannelAiCustomizationService(
                 behavior.answerLength,
                 behavior.constitution.orEmpty(),
                 behavior.safetyLevel,
+                customInstruction,
             ).joinToString("\n").lowercase()
-        val reason =
+        val riskReason =
             when {
                 behavior.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS -> "high risk safety level"
                 behavior.answerLength.equals("long", ignoreCase = true) -> "long answer mode can increase provider load"
-                RISKY_WIZARD_TERMS.any { it in text } -> "risky channel AI instruction requires review"
+                // 위험어는 KnowledgeSafety.RISKY_INSTRUCTION_TERMS 단일 출처를 공유한다(OnboardingAnalyzer 와 동기화 — S2).
+                KnowledgeSafety.looksRiskyInstruction(text) -> "risky channel AI instruction requires review"
+                // 자유 지침에 토큰/비밀번호/개인키 같은 민감정보가 들어오면 자동 승인하지 않고 검토 큐로 보낸다.
+                customInstruction.looksSensitive() -> "custom instruction contains sensitive material requires review"
                 behavior.constitution.orEmpty().length > SAFE_CONSTITUTION_CHARS -> "large constitution requires review"
                 else -> null
             }
-        return ApprovalDecision(required = reason != null, reason = reason)
+        // 명시적 승인 요청이면 항상 검토 필요(required=true). 사유는 구체 위험 분류를 우선하고,
+        // 위험 요소가 없으면 일반 "manual approval requested" 로 폴백한다.
+        if (requestedApproval) {
+            return ApprovalDecision(required = true, reason = riskReason ?: "manual approval requested")
+        }
+        return ApprovalDecision(required = riskReason != null, reason = riskReason)
+    }
+
+    /**
+     * behavior version 채번(`MAX(version)+1`)과 insert 를 동시성 안전하게 수행한다.
+     *
+     * 1) 채널 AI 행을 PESSIMISTIC_WRITE 로 잠가(`findByIdForUpdate`) 같은 채널의 채번을 직렬화한다 —
+     *    동시 두 요청이 같은 version 으로 insert 하다 `uk_ai_behavior_version` 유니크를 깨고
+     *    트랜잭션 전체가 롤백되는 race(#2)를 막는다.
+     * 2) 락이 보장되지 않는 환경(테스트용 인메모리 DB 등)을 위해, 유니크 위반
+     *    ([DataIntegrityViolationException])이 나면 version 을 재조회해 최대 [MAX_VERSION_RETRIES] 회
+     *    재시도하는 낙관적 보호막을 덧댄다. 채번+behavior insert 만 재시도 범위에 두므로
+     *    호출처의 다른 부작용(channelAi.save 등)은 중복되지 않는다.
+     *
+     * @param channelAiId 채번 대상 채널 AI id (이미 저장/flush 된 행이어야 한다).
+     * @param build 확정된 version 으로 새 [AiBehaviorVersionEntity] 를 만드는 빌더.
+     */
+    private fun saveNextBehaviorVersion(
+        channelAiId: Long,
+        build: (Int) -> AiBehaviorVersionEntity,
+    ): AiBehaviorVersionEntity {
+        var attempt = 0
+        while (true) {
+            // 채널 AI 행 락으로 같은 채널의 채번을 직렬화한다(트랜잭션 안에서만 유효).
+            channelAis.findByIdForUpdate(channelAiId)
+            val nextVersion = (versions.findTopByChannelAiIdOrderByVersionDesc(channelAiId)?.version ?: 0) + 1
+            try {
+                return versions.saveAndFlush(build(nextVersion))
+            } catch (ex: org.springframework.dao.DataIntegrityViolationException) {
+                attempt += 1
+                if (attempt >= MAX_VERSION_RETRIES) {
+                    throw IllegalStateException(
+                        "채널 AI 행동 버전 채번이 동시 변경과 계속 충돌했어요. 잠시 후 다시 시도해 주세요.",
+                        ex,
+                    )
+                }
+            }
+        }
     }
 
     private fun aiAdminRoleIds(guildId: Long): List<Long> =
@@ -827,6 +989,7 @@ class ChannelAiCustomizationService(
                 constitution.orEmpty(),
                 safetyLevel,
                 changeSummary.orEmpty(),
+                customInstruction.orEmpty(),
             ).joinToString("\u001F"),
         )
 
@@ -873,6 +1036,7 @@ class ChannelAiCustomizationService(
     ): String? = value?.trim()?.takeIf { it.isNotBlank() }?.take(max) ?: previous
 
     private companion object {
+        const val MAX_VERSION_RETRIES = 5
         const val SAFE_CONSTITUTION_CHARS = 1200
         const val PROMPT_USER_QUESTION_MAX = 4_000
         const val PROMPT_RAG_CONTEXT_MAX = 4_000
@@ -883,21 +1047,6 @@ class ChannelAiCustomizationService(
                 Regex("(?i)(api[_-]?key|bot[_-]?token|discord[_-]?bot[_-]?token|private[_-]?key|access[_-]?token)"),
                 Regex("(?i)-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"),
                 Regex("(?i)sk-[A-Za-z0-9_-]{20,}"),
-            )
-        val RISKY_WIZARD_TERMS =
-            setOf(
-                "ignore previous",
-                "ignore safety",
-                "bypass",
-                "jailbreak",
-                "토큰을 알려",
-                "토큰 수집",
-                "비밀번호를 알려",
-                "비밀번호 수집",
-                "개인키를 알려",
-                "개인정보 수집",
-                "관리자 권한",
-                "안전 규칙 무시",
             )
     }
 }

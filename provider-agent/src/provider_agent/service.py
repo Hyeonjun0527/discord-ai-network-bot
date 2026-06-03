@@ -27,15 +27,19 @@ def executable_path() -> str:
 
 def launchd_plist(exe: str, label: str = SERVICE_LABEL) -> str:
     log = f"{Path.home()}/Library/Logs/{label}.log"
+    # `--service`: .app 번들 바이너리를 **헤드리스**(창·Dock 아이콘 없음)로 실행한다.
+    # KeepAlive 는 '크래시 시에만' — 정상 종료(예: GUI 가 이미 연결돼 singleton 으로 빠지는 경우)에는
+    # 재실행하지 않아 앱을 열어 둔 동안 재실행 폭주/창 깜빡임이 생기지 않는다.
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
         '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
         '<plist version="1.0"><dict>\n'
         f"  <key>Label</key><string>{label}</string>\n"
-        f"  <key>ProgramArguments</key><array><string>{exe}</string><string>--yes</string></array>\n"
+        f"  <key>ProgramArguments</key><array><string>{exe}</string><string>--service</string></array>\n"
         "  <key>RunAtLoad</key><true/>\n"
-        "  <key>KeepAlive</key><true/>\n"
+        "  <key>KeepAlive</key><dict><key>Crashed</key><true/></dict>\n"
+        "  <key>ProcessType</key><string>Background</string>\n"
         f"  <key>StandardOutPath</key><string>{log}</string>\n"
         f"  <key>StandardErrorPath</key><string>{log}</string>\n"
         "</dict></plist>\n"

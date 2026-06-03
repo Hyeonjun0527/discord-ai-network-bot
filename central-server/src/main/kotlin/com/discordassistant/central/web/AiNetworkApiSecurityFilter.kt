@@ -27,13 +27,20 @@ class AiNetworkApiSecurityFilter(
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        if (requiresAdminAccess(request) && !hasAdminAccess(request)) {
-            response.status = HttpServletResponse.SC_FORBIDDEN
-            response.contentType = "application/json;charset=UTF-8"
-            response.writer.write(
-                """{"error":"dashboard_admin_required","message":"AI 네트워크 관리자 작업에는 Discord OAuth 로그인 또는 X-Dashboard-Admin-Token 헤더가 필요합니다."}""",
-            )
-            return
+        val requiresAdmin = requiresAdminAccess(request)
+        if (requiresAdmin) {
+            // 통과/차단만 하지 말고 **인증 주체**를 request attribute 로 실어 컨트롤러로 넘긴다(#1):
+            // 컨트롤러는 권한/신원을 body 가 아니라 이 주체에서 유도한다(클라이언트 isGuildAdmin/roleIds 불신).
+            val actor = resolveAdminActor(request)
+            if (actor == null) {
+                response.status = HttpServletResponse.SC_FORBIDDEN
+                response.contentType = "application/json;charset=UTF-8"
+                response.writer.write(
+                    """{"error":"dashboard_admin_required","message":"AI 네트워크 관리자 작업에는 Discord OAuth 로그인 또는 X-Dashboard-Admin-Token 헤더가 필요합니다."}""",
+                )
+                return
+            }
+            request.setAttribute(DashboardActor.REQUEST_ATTRIBUTE, actor)
         }
         filterChain.doFilter(request, response)
     }
@@ -75,15 +82,24 @@ class AiNetworkApiSecurityFilter(
             GUILD_DASHBOARD_READ.matches(path) ||
             LAUNCH_CHECKLIST.matches(path)
 
-    private fun hasAdminAccess(request: HttpServletRequest): Boolean {
+    /**
+     * 관리자 접근을 허용하면 인증 주체([DashboardActor])를, 막으면 null 을 반환한다.
+     * self-hosted 단일 운영자 모델: 통과한 주체는 **신뢰된 전역 대시보드 관리자**다.
+     */
+    private fun resolveAdminActor(request: HttpServletRequest): DashboardActor? {
         val configuredToken = adminToken.trim()
         val headerToken = request.getHeader(ADMIN_TOKEN_HEADER)?.trim()
-        if (configuredToken.isNotEmpty() && headerToken == configuredToken) return true
-        val authentication = SecurityContextHolder.getContext().authentication ?: return false
-        if (!authentication.isAuthenticated || authentication is AnonymousAuthenticationToken) return false
+        // admin-token 헤더 통과 → system 주체(운영자 자동화/CLI). user id 는 없다.
+        if (configuredToken.isNotEmpty() && headerToken == configuredToken) {
+            return DashboardActor(userId = null, systemToken = true)
+        }
+        val authentication = SecurityContextHolder.getContext().authentication ?: return null
+        if (!authentication.isAuthenticated || authentication is AnonymousAuthenticationToken) return null
         // OAuth 로그인 사용자는 **허용목록에 있을 때만** 관리자(로그인했다고 무조건 관리자 아님).
         // 허용목록 미설정이면 fail-closed: OAuth 만으로는 통과 불가(관리자 토큰 헤더로만).
-        return authentication.name in adminUserIds
+        if (authentication.name !in adminUserIds) return null
+        // OAuth 통과 → authentication.name 은 Discord user id. 추적성을 위해 user id 로 실어 넘긴다.
+        return DashboardActor(userId = authentication.name.toLongOrNull(), systemToken = false)
     }
 
     private fun normalizedPath(request: HttpServletRequest): String {

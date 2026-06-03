@@ -18,6 +18,7 @@ import com.discordassistant.central.network.QualityReviewSummary
 import com.discordassistant.central.network.QualitySummary
 import com.discordassistant.central.persistence.AiChangeProposalEntity
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
+import com.discordassistant.central.usage.AnalyticsService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
@@ -29,11 +30,13 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/ai-network")
 class AiNetworkDashboardController(
     private val foundation: AiNetworkFoundationService,
+    private val aiLevel: com.discordassistant.central.network.AiLevelService,
     private val growth: AiNetworkGrowthService,
     private val qualityFeedback: AiQualityFeedbackService,
     private val providerSafety: ProviderSafetyService,
     private val query: AiNetworkDashboardQueryService,
     private val multiResponse: MultiResponseService,
+    private val analytics: AnalyticsService,
     private val readinessService: AiNetworkReadinessService = AiNetworkReadinessService(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
@@ -141,11 +144,15 @@ class AiNetworkDashboardController(
             } else {
                 foundation.currentOverview(guildId) ?: foundation.emptyOverviewProjection(guildId)
             }
+        val level = aiLevel.levelView(guildId)
         return AiNetworkOverviewResponse.from(
             guildId = profile.guildId,
             displayName = profile.displayName,
             tagline = profile.tagline,
             overview = overview,
+            aiLevel = level.aiLevel,
+            totalXp = level.totalXp,
+            xpToNext = level.xpToNext,
             freshnessStatus = foundation.overviewFreshnessStatus(overview),
             degradedReason = foundation.overviewDegradedReason(overview),
         )
@@ -239,6 +246,35 @@ class AiNetworkDashboardController(
     ): List<ModelMapResponse> {
         featureGate.requireDashboardEnabled()
         return query.modelMap(guildId)
+    }
+
+    /** 어드민 (a): 채널 사용 현황 — 채널별 요청 수·고유 유저 수·마지막 사용 시각(집계만). */
+    @GetMapping("/{guildId}/channel-usage")
+    fun channelUsage(
+        @PathVariable guildId: Long,
+    ): List<ChannelUsageResponse> {
+        featureGate.requireDashboardEnabled()
+        return analytics.channelUsage(guildId).map { ChannelUsageResponse.from(it) }
+    }
+
+    /** 어드민 (d): 기능 사용 유저 목록 — userId·요청 수·첫/마지막 사용(프롬프트 본문 비노출, 집계만). */
+    @GetMapping("/{guildId}/users")
+    fun featureUsers(
+        @PathVariable guildId: Long,
+        @RequestParam(defaultValue = "20") limit: Int = 20,
+    ): List<FeatureUserResponse> {
+        featureGate.requireDashboardEnabled()
+        return analytics.featureUsers(guildId, limit.coerceIn(1, 200)).map { FeatureUserResponse.from(it) }
+    }
+
+    /** 어드민 (c): 프로바이더 참여 이력 타임라인. ?providerUserId= 로 특정 프로바이더만 조회 가능. */
+    @GetMapping("/{guildId}/provider-history")
+    fun providerHistory(
+        @PathVariable guildId: Long,
+        @RequestParam(required = false) providerUserId: Long? = null,
+    ): List<ProviderHistoryResponse> {
+        featureGate.requireDashboardEnabled()
+        return analytics.providerHistoryTimeline(guildId, providerUserId).map { ProviderHistoryResponse.from(it) }
     }
 
     @GetMapping("/{guildId}/knowledge-spaces")
@@ -465,6 +501,9 @@ data class AiNetworkOverviewResponse(
     val feedbackCount: Int,
     val overloadAlertCount: Int,
     val networkLevel: Int,
+    val aiLevel: Int,
+    val totalXp: Long,
+    val xpToNext: Long,
     val healthStatus: String,
     val refreshedAt: String,
     val staleAfter: String?,
@@ -478,6 +517,9 @@ data class AiNetworkOverviewResponse(
             displayName: String,
             tagline: String,
             overview: NetworkOverviewProjectionEntity,
+            aiLevel: Int,
+            totalXp: Long,
+            xpToNext: Long,
             freshnessStatus: String,
             degradedReason: String?,
         ): AiNetworkOverviewResponse =
@@ -493,6 +535,9 @@ data class AiNetworkOverviewResponse(
                 feedbackCount = overview.feedbackCount,
                 overloadAlertCount = overview.overloadAlertCount,
                 networkLevel = overview.networkLevel,
+                aiLevel = aiLevel,
+                totalXp = totalXp,
+                xpToNext = xpToNext,
                 healthStatus = overview.healthStatus,
                 refreshedAt = overview.refreshedAt.toString(),
                 staleAfter = overview.staleAfter?.toString(),
@@ -562,6 +607,9 @@ data class ProviderCapabilityResponse(
     val maxConcurrency: Int?,
     val dailyLimit: Int?,
     val overloadRisk: String,
+    // 가용시간(UTC 시)·마지막 활동 — 운영 식별 정보이므로 capacity 가시성(provider/admin)에서만 채움.
+    val availableFromHour: Int? = null,
+    val availableToHour: Int? = null,
     val lastSeenAt: String?,
 )
 
@@ -634,3 +682,61 @@ data class PublishedPresetResponse(
     val reportCount: Int,
     val publishedAt: String,
 )
+
+/** 어드민 (a) 채널 사용 현황 응답(집계만, 프롬프트/메시지 본문 없음). */
+data class ChannelUsageResponse(
+    val channelId: Long,
+    val requestCount: Long,
+    val distinctUsers: Long,
+    val lastUsedAt: String?,
+) {
+    companion object {
+        fun from(usage: AnalyticsService.ChannelUsage): ChannelUsageResponse =
+            ChannelUsageResponse(
+                channelId = usage.channelId,
+                requestCount = usage.requestCount,
+                distinctUsers = usage.distinctUsers,
+                lastUsedAt = usage.lastUsedAt,
+            )
+    }
+}
+
+/** 어드민 (d) 기능 사용 유저 응답(userId·집계만, 프롬프트/메시지 본문 없음). */
+data class FeatureUserResponse(
+    val userId: Long,
+    val requestCount: Long,
+    val firstUsedAt: String?,
+    val lastUsedAt: String?,
+) {
+    companion object {
+        fun from(usage: AnalyticsService.UserUsage): FeatureUserResponse =
+            FeatureUserResponse(
+                userId = usage.userId,
+                requestCount = usage.requestCount,
+                firstUsedAt = usage.firstUsedAt,
+                lastUsedAt = usage.lastUsedAt,
+            )
+    }
+}
+
+/** 어드민 (c) 프로바이더 참여 이력 응답(이벤트 메타데이터만). */
+data class ProviderHistoryResponse(
+    val id: Long,
+    val eventType: String,
+    val providerUserId: Long?,
+    val title: String,
+    val summary: String?,
+    val createdAt: String,
+) {
+    companion object {
+        fun from(entry: AnalyticsService.ProviderHistoryEntry): ProviderHistoryResponse =
+            ProviderHistoryResponse(
+                id = entry.id,
+                eventType = entry.eventType,
+                providerUserId = entry.providerUserId,
+                title = entry.title,
+                summary = entry.summary,
+                createdAt = entry.createdAt,
+            )
+    }
+}

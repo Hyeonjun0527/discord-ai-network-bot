@@ -10,8 +10,10 @@ import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.domain.RetrievalPolicyStatus
 import jakarta.persistence.LockModeType
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.Instant
@@ -96,6 +98,64 @@ interface AiRequestRepository : JpaRepository<AiRequestEntity, Long> {
         providerId: Long,
         state: RequestState,
     ): List<AiRequestEntity>
+
+    /**
+     * 채널 사용 현황 집계(Phase 2 어드민 대시보드 (a)). 채널별 요청 수·고유 유저 수·마지막 사용 시각.
+     * group by 집계로 N+1 을 피한다(idx_ai_request_guild 의 guild_id 프리픽스 활용).
+     * 프라이버시: 프롬프트 본문·메시지 내용 미포함 — 집계 수치와 channelId/시각만.
+     */
+    @Query(
+        """
+        select r.channelId as channelId,
+               count(r) as requestCount,
+               count(distinct r.userId) as distinctUserCount,
+               max(r.createdAt) as lastUsedAt
+        from AiRequestEntity r
+        where r.guildId = :guildId
+        group by r.channelId
+        order by count(r) desc, r.channelId asc
+        """,
+    )
+    fun aggregateChannelUsageByGuild(guildId: Long): List<ChannelUsageSummary>
+
+    /**
+     * 기능 사용 유저 집계(Phase 2 어드민 대시보드 (d)). 유저별 요청 수·첫 사용·마지막 사용.
+     * 프라이버시: userId 와 집계만 — 프롬프트 원문/메시지 본문은 일절 노출하지 않는다.
+     * [pageable] 로 DB 레벨에서 상위 N 만 잘라 가져온다(수십만 유저 길드에서 전체 group-by 결과를
+     * JVM 으로 다 보내지 않게). 정렬은 @Query 의 ORDER BY(요청수 desc, userId asc)를 유지한다.
+     */
+    @Query(
+        """
+        select r.userId as userId,
+               count(r) as requestCount,
+               min(r.createdAt) as firstUsedAt,
+               max(r.createdAt) as lastUsedAt
+        from AiRequestEntity r
+        where r.guildId = :guildId
+        group by r.userId
+        order by count(r) desc, r.userId asc
+        """,
+    )
+    fun aggregateUserUsageByGuild(
+        guildId: Long,
+        pageable: Pageable,
+    ): List<UserUsageSummary>
+}
+
+/** 채널 사용 현황 projection(프라이버시: 집계만, 프롬프트/메시지 본문 없음). */
+interface ChannelUsageSummary {
+    val channelId: Long
+    val requestCount: Long
+    val distinctUserCount: Long
+    val lastUsedAt: Instant?
+}
+
+/** 기능 사용 유저 projection(프라이버시: userId·집계만, 프롬프트/메시지 본문 없음). */
+interface UserUsageSummary {
+    val userId: Long
+    val requestCount: Long
+    val firstUsedAt: Instant?
+    val lastUsedAt: Instant?
 }
 
 interface UsageLogRepository : JpaRepository<UsageLogEntity, Long> {
@@ -239,6 +299,36 @@ interface CustomizationAuditLogRepository : JpaRepository<CustomizationAuditLogE
 
 interface AiNetworkProfileRepository : JpaRepository<AiNetworkProfileEntity, Long> {
     fun findByGuildId(guildId: Long): AiNetworkProfileEntity?
+
+    /**
+     * 활동 경험치를 원자적으로 증가시킨다(read-modify-write 없음, 동시 적립 안전).
+     * @return 갱신된 행 수(프로필이 없으면 0).
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        "UPDATE AiNetworkProfileEntity p SET p.totalXp = p.totalXp + :amount, p.lastXpAt = :at " +
+            "WHERE p.guildId = :guildId",
+    )
+    fun addXp(
+        @Param("guildId") guildId: Long,
+        @Param("amount") amount: Long,
+        @Param("at") at: Instant,
+    ): Int
+
+    /**
+     * 활동 레벨을 조건부로 상향한다 — 현재 레벨이 newLevel 보다 낮을 때만 1행에 영향.
+     * 동시 요청 중 레벨을 실제로 올린 트랜잭션만 1행을 반환하므로 ai_level_up 이벤트 중복을 막는다.
+     * @return 갱신된 행 수(올라간 경우 1, 아니면 0).
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        "UPDATE AiNetworkProfileEntity p SET p.aiLevel = :newLevel " +
+            "WHERE p.guildId = :guildId AND p.aiLevel < :newLevel",
+    )
+    fun raiseLevel(
+        @Param("guildId") guildId: Long,
+        @Param("newLevel") newLevel: Int,
+    ): Int
 }
 
 interface GuildOnboardingConsentRepository : JpaRepository<GuildOnboardingConsentEntity, Long> {
@@ -470,6 +560,19 @@ interface AiNetworkEventRepository : JpaRepository<AiNetworkEventEntity, Long> {
         guildId: Long,
         eventType: String,
     ): List<AiNetworkEventEntity>
+
+    /** 프로바이더별 참여 이력 타임라인(Phase 2 어드민 대시보드 (c)). 최신순 최대 50건. */
+    fun findTop50ByGuildIdAndProviderUserIdOrderByCreatedAtDesc(
+        guildId: Long,
+        providerUserId: Long,
+    ): List<AiNetworkEventEntity>
+
+    /**
+     * 길드 전체 프로바이더 참여 이력 타임라인(특정 프로바이더 필터 없이). 최신순 최대 50건.
+     * "프로바이더 참여 이력" 의미에 맞게 providerUserId 가 있는 이벤트(provider_joined/overload 등)만 —
+     * ai_level_up·network_level 등 프로바이더 무관(providerUserId=null) 이벤트는 제외한다.
+     */
+    fun findTop50ByGuildIdAndProviderUserIdIsNotNullOrderByCreatedAtDesc(guildId: Long): List<AiNetworkEventEntity>
 }
 
 interface ChannelAiRoutingPolicyRepository : JpaRepository<ChannelAiRoutingPolicyEntity, Long> {

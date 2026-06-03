@@ -15,11 +15,13 @@ class AiNetworkMapService(
     private val providers: ProviderCapabilityProfileRepository,
     private val channelAis: ChannelAiRepository,
     private val knowledgeSpaces: KnowledgeSpaceRepository,
+    private val aiLevel: AiLevelService,
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
     fun map(guildId: Long): AiNetworkMap {
         featureGate.requireDashboardEnabled()
         val overview = foundation.refreshOverview(guildId)
+        val levelView = aiLevel.levelView(guildId)
         val providerList = providers.findByGuildId(guildId)
         val channels = channelAis.findByGuildId(guildId)
         val spaces = knowledgeSpaces.findByGuildId(guildId)
@@ -62,6 +64,9 @@ class AiNetworkMapService(
         return AiNetworkMap(
             guildId = guildId,
             networkLevel = overview.networkLevel,
+            aiLevel = levelView.aiLevel,
+            totalXp = levelView.totalXp,
+            xpToNext = levelView.xpToNext,
             healthStatus = overview.healthStatus,
             onlineProviderCount = overview.onlineProviderCount,
             approvedProviderCount = overview.approvedProviderCount,
@@ -87,6 +92,9 @@ class AiNetworkMapService(
 data class AiNetworkMap(
     val guildId: Long,
     val networkLevel: Int,
+    val aiLevel: Int,
+    val totalXp: Long,
+    val xpToNext: Long,
     val healthStatus: String,
     val onlineProviderCount: Int,
     val approvedProviderCount: Int,

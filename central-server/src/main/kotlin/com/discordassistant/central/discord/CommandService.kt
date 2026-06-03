@@ -97,6 +97,7 @@ class CommandService(
     private val knowledgeSearch: KnowledgeSearchService,
     private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
     private val aiNetworkMap: AiNetworkMapService,
+    private val aiLevel: com.discordassistant.central.network.AiLevelService,
     private val presetRegistry: PresetRegistryService,
     private val multiResponse: MultiResponseService,
     private val qualityFeedback: AiQualityFeedbackService,
@@ -1240,6 +1241,31 @@ class CommandService(
         }
     }
 
+    /** 이 서버 냥시스턴트의 활동 레벨/경험치/진행도(public·비관리자). */
+    fun aiLevel(ctx: CommandContext): Reply {
+        val view = aiLevel.levelView(ctx.guildId)
+        val bar = xpProgressBar(view.progressInLevel, view.levelSpan)
+        return Reply(
+            "🐾 **이 서버 냥시스턴트 활동 레벨**\n" +
+                "활동 레벨: **${view.aiLevel}** · 누적 경험치: **${view.totalXp} XP**\n" +
+                "$bar\n" +
+                "다음 레벨까지: **${view.xpToNext} XP** (현재 구간 ${view.progressInLevel}/${view.levelSpan})\n" +
+                "_질문(/ask) 답변이 성공할 때마다 ${com.discordassistant.central.network.AiLevelFormula.XP_PER_ASK_SUCCESS} XP 가 쌓여요._",
+            ephemeral = false,
+        )
+    }
+
+    private fun xpProgressBar(
+        gained: Long,
+        needed: Long,
+    ): String {
+        if (needed <= 0L) return "▰▰▰▰▰▰▰▰▰▰ 100%"
+        val ratio = (gained.toDouble() / needed.toDouble()).coerceIn(0.0, 1.0)
+        val filled = (ratio * 10).toInt().coerceIn(0, 10)
+        val pct = (ratio * 100).toInt()
+        return "${"▰".repeat(filled)}${"▱".repeat(10 - filled)} $pct%"
+    }
+
     fun aiNetworkMap(ctx: CommandContext): Reply {
         adminOnly(ctx)?.let { return it }
         return Reply(formatAiNetworkMap(aiNetworkMap.map(ctx.guildId)))
@@ -1267,7 +1293,8 @@ class CommandService(
             "Provider: 온라인 ${map.onlineProviderCount} / 승인 ${map.approvedProviderCount} · " +
                 "모델 ${map.modelCount}종 · 채널 AI ${map.channelAiCount}개 · 지식공간 ${map.knowledgeSpaceCount}개"
         return "🗺️ **AI 네트워크 지도**\n\n" +
-            "레벨: `${map.networkLevel}` · 상태: `${map.healthStatus}` · 과부하 경고: `${map.overloadAlertCount}`\n" +
+            "구성 단계: `${map.networkLevel}` · 활동 레벨: `${map.aiLevel}` (XP ${map.totalXp}, 다음까지 ${map.xpToNext})\n" +
+            "상태: `${map.healthStatus}` · 과부하 경고: `${map.overloadAlertCount}`\n" +
             "$providerSummary\n" +
             "능력 태그: $tags\n\n" +
             "__모델 지도__\n$models\n\n" +

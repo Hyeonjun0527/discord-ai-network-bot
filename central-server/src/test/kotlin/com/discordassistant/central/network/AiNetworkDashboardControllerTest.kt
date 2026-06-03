@@ -14,6 +14,7 @@ import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
 import com.discordassistant.central.persistence.AiPresetEntity
 import com.discordassistant.central.persistence.AiPresetRepository
+import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity
 import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
@@ -37,6 +38,8 @@ import com.discordassistant.central.persistence.ProviderCapabilityProfileReposit
 import com.discordassistant.central.persistence.PublishedPresetEntity
 import com.discordassistant.central.persistence.PublishedPresetRepository
 import com.discordassistant.central.persistence.SynthesisResultRepository
+import com.discordassistant.central.persistence.UsageLogRepository
+import com.discordassistant.central.usage.AnalyticsService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -73,8 +76,12 @@ class AiNetworkDashboardControllerTest
         private val presetRevisions: PresetRevisionRepository,
         private val publishedPresets: PublishedPresetRepository,
         private val presetImports: PresetImportRepository,
+        private val aiRequests: AiRequestRepository,
+        private val usageLogs: UsageLogRepository,
     ) {
         private val fixedClock = Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneOffset.UTC)
+
+        private val analytics = AnalyticsService(usageLogs, aiRequests, events)
 
         private val foundation =
             AiNetworkFoundationService(
@@ -97,6 +104,7 @@ class AiNetworkDashboardControllerTest
             )
 
         private val providerSafety = ProviderSafetyService(providerCapabilities, events, foundation, fixedClock)
+        private val aiLevel = AiLevelService(networkProfiles, events, fixedClock)
         private val growth = AiNetworkGrowthService(foundation, events, providerCapabilities, fixedClock)
         private val multiResponse =
             MultiResponseService(
@@ -127,11 +135,13 @@ class AiNetworkDashboardControllerTest
         private val controller =
             AiNetworkDashboardController(
                 foundation = foundation,
+                aiLevel = aiLevel,
                 growth = growth,
                 qualityFeedback = qualityFeedback,
                 providerSafety = providerSafety,
                 query = dashboardQuery,
                 multiResponse = multiResponse,
+                analytics = analytics,
             )
 
         @Test
@@ -139,11 +149,13 @@ class AiNetworkDashboardControllerTest
             val disabledController =
                 AiNetworkDashboardController(
                     foundation = foundation,
+                    aiLevel = aiLevel,
                     growth = growth,
                     qualityFeedback = qualityFeedback,
                     providerSafety = providerSafety,
                     query = dashboardQuery,
                     multiResponse = multiResponse,
+                    analytics = analytics,
                     featureGate = AiNetworkFeatureGate(dashboardEnabled = false),
                 )
 

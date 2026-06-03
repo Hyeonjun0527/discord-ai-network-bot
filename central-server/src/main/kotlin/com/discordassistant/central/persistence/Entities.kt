@@ -268,6 +268,10 @@ class AiNetworkProfileEntity(
     var description: String? = null,
     var defaultSafetyNotice: String? = null,
     var networkLevel: Int = 1,
+    // 활동 경험치/레벨(V34, Phase 1). networkLevel(milestone 기반 "구성 단계")과 별개 — 사용량 기반 단조 증가.
+    var totalXp: Long = 0,
+    var aiLevel: Int = 1,
+    var lastXpAt: Instant? = null,
     var createdAt: Instant = Instant.EPOCH,
     var updatedAt: Instant = Instant.EPOCH,
 )

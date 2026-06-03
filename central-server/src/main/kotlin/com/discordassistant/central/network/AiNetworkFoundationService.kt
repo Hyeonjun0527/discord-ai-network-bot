@@ -99,6 +99,9 @@ class AiNetworkFoundationService(
         maxConcurrency: Int,
         dailyLimit: Int,
         overloadRisk: String,
+        // 가용시간(UTC 시 0..23). null 이면 미설정(기존 호출 호환 — 추가 인자).
+        availableFromHour: Int? = null,
+        availableToHour: Int? = null,
     ): ProviderCapabilityProfileEntity {
         val now = Instant.now(clock)
         val entity =
@@ -113,6 +116,8 @@ class AiNetworkFoundationService(
         entity.maxConcurrency = maxConcurrency.coerceAtLeast(1)
         entity.dailyLimit = dailyLimit.coerceAtLeast(0)
         entity.overloadRisk = overloadRisk
+        if (availableFromHour != null) entity.availableFromHour = availableFromHour.coerceIn(0, 23)
+        if (availableToHour != null) entity.availableToHour = availableToHour.coerceIn(0, 23)
         entity.lastSeenAt = now
         entity.updatedAt = now
         return providerCapabilities.save(entity)

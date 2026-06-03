@@ -91,6 +91,50 @@ requirements:
     tests:
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/relay/ProviderSessionTest.kt
+  - id: REQ-XP-001
+    title: 질문 답변이 성공하면 서버(길드) AI 경험치를 획득한다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/AiLevelServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/usage/UsageServiceTest.kt
+  - id: REQ-XP-002
+    title: 경험치 임계 통과 시 레벨업 이벤트(ai_level_up)를 1건 기록한다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/AiLevelServiceTest.kt
+  - id: REQ-ADMIN-001
+    title: 어드민 대시보드는 채널별 요청수·고유유저수·마지막사용시각을 집계로 보여준다(프롬프트 본문 미노출)
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AnalyticsServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AiNetworkDashboardControllerTest.kt
+  - id: REQ-ADMIN-002
+    title: 어드민 대시보드는 기능 사용 유저(userId·요청수·첫·마지막)를 집계로만 보여준다(프롬프트 원문 미노출)
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AnalyticsServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AiNetworkDashboardControllerTest.kt
+  - id: REQ-ADMIN-003
+    title: 어드민 대시보드는 프로바이더 참여 이력 타임라인을 최신순으로 제공한다(프로바이더 필터 포함)
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AnalyticsServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AiNetworkDashboardControllerTest.kt
+  - id: REQ-ADMIN-004
+    title: 어드민 전용 신규 read 엔드포인트는 관리자 토큰 없이는 403 으로 차단된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/web/AiNetworkApiSecurityFilterTest.kt
   # 서버 AI 자동 온보딩(Phase 1 — 동의 기반 골격, 휴리스틱 draft + 승인 카드).
   # Phase 1 은 LLM 추론·메시지 백필이 없으므로 P1(단위 추적). Phase 2/3 에서 P0 흐름·feature 시나리오로 승격 예정.
   - id: REQ-ONBOARD-001

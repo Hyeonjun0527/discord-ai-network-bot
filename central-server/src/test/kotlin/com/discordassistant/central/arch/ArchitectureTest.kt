@@ -81,6 +81,18 @@ class ArchitectureTest {
                 "..central.dev..",
             )
 
+    // 컨트롤러(web 어댑터)는 리포지토리를 직접 주입/호출하지 않는다 — DB 접근은 서비스 경유(감사 2026-06-03 C).
+    // god class·N+1·데이터 누수 방지. 읽기/매핑은 *QueryService/*Service 가 담당한다.
+    // (엔티티를 web 에서 매핑하는 더 깊은 정리는 점진 리팩터로 별도 진행 — 우선 리포지토리 직접 의존만 차단.)
+    @ArchTest
+    val controllersDoNotInjectRepositories: ArchRule =
+        noClasses()
+            .that()
+            .haveSimpleNameEndingWith("Controller")
+            .should()
+            .dependOnClassesThat()
+            .haveSimpleNameEndingWith("Repository")
+
     // 서비스(@Service)는 웹 계층(web/dashboard/dev) 패키지에 두지 않는다(도메인/집계 로직이 웹에 새지 않게).
     @ArchTest
     val servicesNotInWebLayers: ArchRule =

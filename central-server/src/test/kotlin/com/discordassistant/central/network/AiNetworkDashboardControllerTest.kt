@@ -105,12 +105,8 @@ class AiNetworkDashboardControllerTest
                 clock = fixedClock,
             )
 
-        private val controller =
-            AiNetworkDashboardController(
-                foundation = foundation,
-                growth = growth,
-                qualityFeedback = qualityFeedback,
-                providerSafety = providerSafety,
+        private val dashboardQuery =
+            AiNetworkDashboardQueryService(
                 channelAis = channelAis,
                 behaviorVersions = behaviorVersions,
                 proposals = proposals,
@@ -122,6 +118,15 @@ class AiNetworkDashboardControllerTest
                 presets = presets,
                 publishedPresets = publishedPresets,
                 presetImports = presetImports,
+            )
+
+        private val controller =
+            AiNetworkDashboardController(
+                foundation = foundation,
+                growth = growth,
+                qualityFeedback = qualityFeedback,
+                providerSafety = providerSafety,
+                query = dashboardQuery,
                 multiResponse = multiResponse,
             )
 
@@ -133,17 +138,7 @@ class AiNetworkDashboardControllerTest
                     growth = growth,
                     qualityFeedback = qualityFeedback,
                     providerSafety = providerSafety,
-                    channelAis = channelAis,
-                    behaviorVersions = behaviorVersions,
-                    proposals = proposals,
-                    routingPolicies = routingPolicies,
-                    multiResponsePolicies = multiResponsePolicies,
-                    providerCapabilities = providerCapabilities,
-                    knowledgeSpaces = knowledgeSpaces,
-                    knowledgeSources = knowledgeSources,
-                    presets = presets,
-                    publishedPresets = publishedPresets,
-                    presetImports = presetImports,
+                    query = dashboardQuery,
                     multiResponse = multiResponse,
                     featureGate = AiNetworkFeatureGate(dashboardEnabled = false),
                 )

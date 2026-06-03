@@ -51,6 +51,7 @@ class ChannelAiRoutingPolicyService(
         return policies.save(policy)
     }
 
+    @Transactional(readOnly = true)
     fun effective(
         guildId: Long,
         channelId: Long,
@@ -74,6 +75,7 @@ class ChannelAiRoutingPolicyService(
         return policies.findByGuildId(guildId)
     }
 
+    @Transactional(readOnly = true)
     fun resolveModelChoice(
         guildId: Long,
         channelId: Long,
@@ -106,6 +108,7 @@ class ChannelAiRoutingPolicyService(
         )
     }
 
+    @Transactional(readOnly = true)
     fun modelCandidates(
         guildId: Long,
         channelId: Long,

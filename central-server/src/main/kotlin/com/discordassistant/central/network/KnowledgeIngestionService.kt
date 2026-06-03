@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.KnowledgeSourceStatus
+import com.discordassistant.central.domain.KnowledgeSpaceStatus
 import com.discordassistant.central.persistence.CustomizationAuditLogEntity
 import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.KnowledgeSourceEntity
@@ -41,7 +43,7 @@ class KnowledgeIngestionService(
                     channelId = channelId,
                     channelAiId = channelAiId,
                     displayName = displayName.trim().ifBlank { "채널 지식공간" },
-                    status = "draft",
+                    status = KnowledgeSpaceStatus.DRAFT,
                     embeddingModel = embeddingModel?.trim()?.ifBlank { null },
                     indexName = indexName?.trim()?.ifBlank { null },
                     createdBy = createdBy,
@@ -63,7 +65,7 @@ class KnowledgeIngestionService(
                 ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
         return sources
             .findByKnowledgeSpaceId(space.id)
-            .filter { !it.status.startsWith("deleted") }
+            .filter { !it.status.isDeleted }
             .sortedWith(compareByDescending<KnowledgeSourceEntity> { it.addedAt }.thenBy { it.id })
             .map { it.toSummary() }
     }
@@ -76,11 +78,11 @@ class KnowledgeIngestionService(
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
                 ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
-        val sourceList = sources.findByKnowledgeSpaceId(space.id).filter { !it.status.startsWith("deleted") }
-        val indexed = sourceList.count { it.status == "indexed" }
-        val blocked = sourceList.count { it.status.startsWith("blocked") || it.riskLevel in BLOCKING_RISK_LEVELS }
-        val pending = sourceList.count { it.status == "pending" }
-        val rejected = sourceList.count { it.status.startsWith("rejected") }
+        val sourceList = sources.findByKnowledgeSpaceId(space.id).filter { !it.status.isDeleted }
+        val indexed = sourceList.count { it.status.isIndexed }
+        val blocked = sourceList.count { it.status.isBlocked || it.riskLevel in BLOCKING_RISK_LEVELS }
+        val pending = sourceList.count { it.status.isPending }
+        val rejected = sourceList.count { it.status.isRejected }
         val readiness =
             when {
                 indexed > 0 && blocked == 0 && pending == 0 -> "ready"
@@ -96,7 +98,7 @@ class KnowledgeIngestionService(
             channelId = space.channelId,
             channelAiId = space.channelAiId,
             displayName = space.displayName,
-            status = space.status,
+            status = space.status.wire,
             readiness = readiness,
             sourceCount = sourceList.size,
             indexedSourceCount = indexed,
@@ -105,7 +107,7 @@ class KnowledgeIngestionService(
             rejectedSourceCount = rejected,
             chunkCount = space.chunkCount,
             riskLevels = sourceList.groupingBy { it.riskLevel }.eachCount(),
-            sourceStatuses = sourceList.groupingBy { it.status }.eachCount(),
+            sourceStatuses = sourceList.groupingBy { it.status.wire }.eachCount(),
         )
     }
 
@@ -236,13 +238,13 @@ class KnowledgeIngestionService(
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
                 ?: throw IllegalArgumentException("knowledge space not found: guild=$guildId space=$spaceId")
-        val sourceList = sources.findByKnowledgeSpaceId(space.id).filter { !it.status.startsWith("deleted") }
+        val sourceList = sources.findByKnowledgeSpaceId(space.id).filter { !it.status.isDeleted }
         val indexable =
             sourceList
                 .filter { it.riskLevel in INDEXABLE_RISK_LEVELS }
-                .filter { force || it.status == "pending" || it.status == "indexed" }
-                .sortedWith(compareBy<KnowledgeSourceEntity> { it.status }.thenBy { it.id })
-        val blocked = sourceList.filter { it.riskLevel !in INDEXABLE_RISK_LEVELS || it.status.startsWith("blocked") }
+                .filter { force || it.status.isPending || it.status.isIndexed }
+                .sortedWith(compareBy<KnowledgeSourceEntity> { it.status.wire }.thenBy { it.id })
+        val blocked = sourceList.filter { it.riskLevel !in INDEXABLE_RISK_LEVELS || it.status.isBlocked }
         val collection = space.indexName?.trim()?.ifBlank { null } ?: defaultCollectionName(guildId, space.channelId, space.id)
         val embeddingModel = space.embeddingModel?.trim()?.ifBlank { null } ?: DEFAULT_EMBEDDING_MODEL
         val command =
@@ -348,7 +350,7 @@ class KnowledgeIngestionService(
                 ),
             )
         space.sourceCount = sources.findByKnowledgeSpaceId(space.id).size
-        space.status = if (validation.initialStatus == "pending") "pending_index" else "needs_review"
+        space.status = if (validation.initialStatus.isPending) KnowledgeSpaceStatus.PENDING_INDEX else KnowledgeSpaceStatus.NEEDS_REVIEW
         space.updatedAt = now
         spaces.save(space)
         audit(
@@ -379,12 +381,12 @@ class KnowledgeIngestionService(
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "knowledge source belongs to another guild" }
         require(source.riskLevel == "review") { "only review-risk source can be manually approved: ${source.riskLevel}" }
-        require(source.status.startsWith("blocked") || source.status == "review") {
-            "only blocked/review source can be manually approved: ${source.status}"
+        require(source.status.isBlocked || source.status.isReview) {
+            "only blocked/review source can be manually approved: ${source.status.wire}"
         }
-        source.status = "pending"
+        source.status = KnowledgeSourceStatus.PENDING
         val saved = sources.save(source)
-        space.status = "pending_index"
+        space.status = KnowledgeSpaceStatus.PENDING_INDEX
         space.updatedAt = Instant.now(clock)
         spaces.save(space)
         audit(guildId, space.channelId, null, "knowledge_source_approve", "knowledge_source", saved.id, reason)
@@ -406,15 +408,15 @@ class KnowledgeIngestionService(
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "knowledge source belongs to another guild" }
-        require(source.status == "pending") { "only pending source can be indexed: ${source.status}" }
+        require(source.status.isPending) { "only pending source can be indexed: ${source.status.wire}" }
         require(source.riskLevel == "normal" || source.riskLevel == "review") { "unsafe source cannot be indexed: ${source.riskLevel}" }
         val now = Instant.now(clock)
-        source.status = "indexed"
+        source.status = KnowledgeSourceStatus.INDEXED
         source.indexedAt = now
         val saved = sources.save(source)
         space.sourceCount = sources.findByKnowledgeSpaceId(space.id).size
         space.chunkCount = chunkCount.coerceAtLeast(0)
-        space.status = "ready"
+        space.status = KnowledgeSpaceStatus.READY
         space.updatedAt = now
         spaces.save(space)
         audit(guildId, space.channelId, null, "knowledge_source_indexed", "knowledge_source", saved.id, "chunks=${space.chunkCount}")
@@ -436,7 +438,7 @@ class KnowledgeIngestionService(
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "knowledge source belongs to another guild" }
-        source.status = "rejected:${sanitizeReason(reason)}"
+        source.status = KnowledgeSourceStatus.rejected(sanitizeReason(reason))
         val saved = sources.save(source)
         audit(guildId, space.channelId, null, "knowledge_source_reject", "knowledge_source", saved.id, reason)
         return saved.toMutationResult()
@@ -457,9 +459,9 @@ class KnowledgeIngestionService(
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "knowledge source belongs to another guild" }
-        source.status = "deleted:${sanitizeReason(reason)}"
+        source.status = KnowledgeSourceStatus.deleted(sanitizeReason(reason))
         val saved = sources.save(source)
-        space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { it.status.startsWith("deleted").not() }
+        space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { it.status.isDeleted.not() }
         space.updatedAt = Instant.now(clock)
         spaces.save(space)
         audit(guildId, space.channelId, null, "knowledge_source_delete", "knowledge_source", saved.id, reason)
@@ -495,7 +497,7 @@ class KnowledgeIngestionService(
             sourceType = sourceType,
             title = title,
             sourceUri = sourceUri,
-            status = status,
+            status = status.wire,
             riskLevel = riskLevel,
             contentHash = contentHash,
         )
@@ -531,7 +533,7 @@ class KnowledgeIngestionService(
             sourceType = sourceType,
             title = title,
             sourceUri = sourceUri,
-            status = status,
+            status = status.wire,
             contentHash = contentHash,
             riskLevel = riskLevel,
             addedBy = addedBy,
@@ -542,14 +544,14 @@ class KnowledgeIngestionService(
     private fun KnowledgeSpaceEntity.toMutationResult(): KnowledgeSpaceMutationResult =
         KnowledgeSpaceMutationResult(
             id = id,
-            status = status,
+            status = status.wire,
             displayName = displayName,
         )
 
     private fun KnowledgeSourceEntity.toMutationResult(): KnowledgeSourceMutationResult =
         KnowledgeSourceMutationResult(
             id = id,
-            status = status,
+            status = status.wire,
             riskLevel = riskLevel,
             indexedAt = indexedAt,
         )
@@ -562,31 +564,40 @@ class KnowledgeIngestionService(
         contentPreview: String?,
     ): SourceValidation {
         if (sourceType !in ALLOWED_SOURCE_TYPES) {
-            return SourceValidation("review", "blocked_type")
+            return SourceValidation("review", blocked(KnowledgeSourceStatus.Kind.BLOCKED_TYPE))
         }
         val text = listOf(sourceType, sourceUri.orEmpty(), contentPreview.orEmpty()).joinToString(" ")
         if (contentPreview.orEmpty().length > MAX_CONTENT_PREVIEW_CHARS) {
-            return SourceValidation("review", "blocked_too_large")
+            return SourceValidation("review", blocked(KnowledgeSourceStatus.Kind.BLOCKED_TOO_LARGE))
         }
         if (KnowledgeSafety.containsSensitiveMaterial(text)) {
-            return SourceValidation("sensitive", "blocked_sensitive")
+            return SourceValidation("sensitive", KnowledgeSourceStatus.BLOCKED_SENSITIVE)
         }
         if (sourceUri != null) {
             val uriRisk = validateUri(sourceUri)
             if (uriRisk != null) return uriRisk
         }
-        return SourceValidation("normal", "pending")
+        return SourceValidation("normal", KnowledgeSourceStatus.PENDING)
     }
 
+    private fun blocked(kind: KnowledgeSourceStatus.Kind): KnowledgeSourceStatus = KnowledgeSourceStatus(kind)
+
     private fun validateUri(sourceUri: String): SourceValidation? {
-        val uri = runCatching { URI(sourceUri) }.getOrNull() ?: return SourceValidation("review", "blocked_bad_uri")
-        if (uri.scheme != "https") return SourceValidation("review", "blocked_non_https")
-        if (uri.rawUserInfo != null) return SourceValidation("sensitive", "blocked_sensitive")
-        val host = normalizedUriHost(uri) ?: return SourceValidation("review", "blocked_bad_uri")
+        val uri =
+            runCatching { URI(sourceUri) }.getOrNull()
+                ?: return SourceValidation("review", blocked(KnowledgeSourceStatus.Kind.BLOCKED_BAD_URI))
+        if (uri.scheme != "https") return SourceValidation("review", blocked(KnowledgeSourceStatus.Kind.BLOCKED_NON_HTTPS))
+        if (uri.rawUserInfo != null) return SourceValidation("sensitive", KnowledgeSourceStatus.BLOCKED_SENSITIVE)
+        val host =
+            normalizedUriHost(uri)
+                ?: return SourceValidation("review", blocked(KnowledgeSourceStatus.Kind.BLOCKED_BAD_URI))
         return when {
-            host == "localhost" || host.endsWith(".localhost") -> SourceValidation("ssrf", "blocked_ssrf")
-            host.endsWith(".local") || host.endsWith(".internal") -> SourceValidation("ssrf", "blocked_ssrf")
-            isBlockedAddressLiteral(host) -> SourceValidation("ssrf", "blocked_ssrf")
+            host == "localhost" || host.endsWith(".localhost") -> SourceValidation("ssrf", blocked(KnowledgeSourceStatus.Kind.BLOCKED_SSRF))
+            host.endsWith(
+                ".local",
+            ) ||
+                host.endsWith(".internal") -> SourceValidation("ssrf", blocked(KnowledgeSourceStatus.Kind.BLOCKED_SSRF))
+            isBlockedAddressLiteral(host) -> SourceValidation("ssrf", blocked(KnowledgeSourceStatus.Kind.BLOCKED_SSRF))
             else -> null
         }
     }
@@ -699,7 +710,7 @@ class KnowledgeIngestionService(
 
     private data class SourceValidation(
         val riskLevel: String,
-        val initialStatus: String,
+        val initialStatus: KnowledgeSourceStatus,
     )
 
     private companion object {

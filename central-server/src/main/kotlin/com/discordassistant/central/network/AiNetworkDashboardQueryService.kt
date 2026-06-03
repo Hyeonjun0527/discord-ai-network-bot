@@ -8,6 +8,7 @@ import com.discordassistant.central.dashboard.KnowledgeSpaceResponse
 import com.discordassistant.central.dashboard.ModelMapResponse
 import com.discordassistant.central.dashboard.ProviderCapabilityResponse
 import com.discordassistant.central.dashboard.PublishedPresetResponse
+import com.discordassistant.central.domain.KnowledgeSpaceStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
@@ -53,14 +54,14 @@ class AiNetworkDashboardQueryService(
                 spaces.sumOf { space ->
                     knowledgeSources
                         .findByKnowledgeSpaceId(space.id)
-                        .count { it.status == "indexed" }
+                        .count { it.status.isIndexed }
                 }
             val blockedSources =
                 spaces.sumOf { space ->
                     knowledgeSources
                         .findByKnowledgeSpaceId(space.id)
                         .count {
-                            it.status.startsWith("blocked") ||
+                            it.status.isBlocked ||
                                 it.riskLevel in BLOCKING_KNOWLEDGE_RISKS
                         }
                 }
@@ -69,7 +70,7 @@ class AiNetworkDashboardQueryService(
                     indexedSources > 0 && blockedSources == 0 -> "ready"
                     indexedSources > 0 -> "partial"
                     blockedSources > 0 -> "needs_review"
-                    spaces.any { it.status == "pending_index" } -> "indexing_needed"
+                    spaces.any { it.status == KnowledgeSpaceStatus.PENDING_INDEX } -> "indexing_needed"
                     else -> "empty"
                 }
             val multi =
@@ -195,7 +196,7 @@ class AiNetworkDashboardQueryService(
                 channelId = it.channelId,
                 channelAiId = it.channelAiId,
                 name = it.displayName,
-                status = it.status,
+                status = it.status.wire,
                 sourceCount = it.sourceCount,
                 chunkCount = it.chunkCount,
                 embeddingModel = it.embeddingModel,

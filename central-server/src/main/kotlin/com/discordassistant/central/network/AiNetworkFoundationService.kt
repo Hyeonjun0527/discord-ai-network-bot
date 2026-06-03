@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.KnowledgeSpaceStatus
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkProfileEntity
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -132,7 +133,7 @@ class AiNetworkFoundationService(
                 channelId = channelId,
                 channelAiId = channelAiId,
                 displayName = displayName.trim().ifBlank { "채널 지식공간" },
-                status = "draft",
+                status = KnowledgeSpaceStatus.DRAFT,
                 createdBy = createdBy,
                 createdAt = now,
                 updatedAt = now,

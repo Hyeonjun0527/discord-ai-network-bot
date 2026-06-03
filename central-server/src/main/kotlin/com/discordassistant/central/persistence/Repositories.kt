@@ -1,6 +1,8 @@
 package com.discordassistant.central.persistence
 
 import com.discordassistant.central.domain.FeedbackStatus
+import com.discordassistant.central.domain.KnowledgeChunkStatus
+import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderState
@@ -243,7 +245,7 @@ interface KnowledgeSourceRepository : JpaRepository<KnowledgeSourceEntity, Long>
     fun findByGuildIdAndKnowledgeSpaceIdInAndStatusAndRiskLevelIn(
         guildId: Long,
         knowledgeSpaceIds: Collection<Long>,
-        status: String,
+        status: KnowledgeSourceStatus,
         riskLevels: Collection<String>,
     ): List<KnowledgeSourceEntity>
 
@@ -264,13 +266,13 @@ interface KnowledgeDocumentRepository : JpaRepository<KnowledgeDocumentEntity, L
 interface KnowledgeChunkRepository : JpaRepository<KnowledgeChunkEntity, Long> {
     fun findByKnowledgeSpaceIdAndStatus(
         knowledgeSpaceId: Long,
-        status: String,
+        status: KnowledgeChunkStatus,
     ): List<KnowledgeChunkEntity>
 
     fun findByGuildIdAndKnowledgeSpaceIdInAndStatus(
         guildId: Long,
         knowledgeSpaceIds: Collection<Long>,
-        status: String,
+        status: KnowledgeChunkStatus,
     ): List<KnowledgeChunkEntity>
 
     fun findByKnowledgeDocumentIdOrderByChunkIndex(knowledgeDocumentId: Long): List<KnowledgeChunkEntity>

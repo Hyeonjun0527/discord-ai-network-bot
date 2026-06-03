@@ -1,7 +1,12 @@
 package com.discordassistant.central.persistence
 
 import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.EmbeddingJobStatus
 import com.discordassistant.central.domain.FeedbackStatus
+import com.discordassistant.central.domain.KnowledgeChunkStatus
+import com.discordassistant.central.domain.KnowledgeDocumentStatus
+import com.discordassistant.central.domain.KnowledgeSourceStatus
+import com.discordassistant.central.domain.KnowledgeSpaceStatus
 import com.discordassistant.central.domain.MultiResponseRunStatus
 import com.discordassistant.central.domain.PresetImportStatus
 import com.discordassistant.central.domain.PresetReportStatus
@@ -253,7 +258,8 @@ class KnowledgeSpaceEntity(
     var channelId: Long? = null,
     var channelAiId: Long? = null,
     var displayName: String = "",
-    var status: String = "draft",
+    @Convert(converter = KnowledgeSpaceStatusConverter::class)
+    var status: KnowledgeSpaceStatus = KnowledgeSpaceStatus.DRAFT,
     var sourceCount: Int = 0,
     var chunkCount: Int = 0,
     var embeddingModel: String? = null,
@@ -272,7 +278,8 @@ class KnowledgeSourceEntity(
     var sourceType: String = "",
     var sourceUri: String? = null,
     var title: String = "",
-    var status: String = "pending",
+    @Convert(converter = KnowledgeSourceStatusConverter::class)
+    var status: KnowledgeSourceStatus = KnowledgeSourceStatus.PENDING,
     var contentHash: String? = null,
     var riskLevel: String = "normal",
     var addedBy: Long? = null,
@@ -292,7 +299,8 @@ class KnowledgeDocumentEntity(
     var documentType: String = "markdown",
     var contentHash: String = "",
     var tokenEstimate: Int = 0,
-    var status: String = "parsed",
+    @Convert(converter = KnowledgeDocumentStatusConverter::class)
+    var status: KnowledgeDocumentStatus = KnowledgeDocumentStatus.PARSED,
     var parsedAt: Instant = Instant.EPOCH,
 )
 
@@ -311,7 +319,8 @@ class KnowledgeChunkEntity(
     var embeddingTextHash: String = "",
     var tokenEstimate: Int = 0,
     var qdrantPointId: String? = null,
-    var status: String = "ready",
+    @Convert(converter = KnowledgeChunkStatusConverter::class)
+    var status: KnowledgeChunkStatus = KnowledgeChunkStatus.READY,
     var createdAt: Instant = Instant.EPOCH,
 )
 
@@ -323,7 +332,8 @@ class EmbeddingIndexJobEntity(
     var knowledgeSpaceId: Long = 0,
     var triggeredBy: Long? = null,
     var jobType: String = "rebuild",
-    var status: String = "queued",
+    @Convert(converter = EmbeddingJobStatusConverter::class)
+    var status: EmbeddingJobStatus = EmbeddingJobStatus.QUEUED,
     var collectionName: String = "discord_ai_network",
     var embeddingModel: String = "text-embedding-3-large",
     var sourceCount: Int = 0,

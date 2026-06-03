@@ -1,6 +1,8 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.domain.FeedbackStatus
+import com.discordassistant.central.domain.KnowledgeSourceStatus
+import com.discordassistant.central.domain.KnowledgeSpaceStatus
 import com.discordassistant.central.network.AiNetworkFoundationService
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
@@ -211,7 +213,7 @@ class AiNetworkDashboardControllerTest
                         channelId = 902,
                         channelAiId = channelAi.id,
                         displayName = "개발 지식",
-                        status = "ready",
+                        status = KnowledgeSpaceStatus.READY,
                         sourceCount = 1,
                     ),
                 )
@@ -222,7 +224,7 @@ class AiNetworkDashboardControllerTest
                     sourceType = "link",
                     sourceUri = "https://example.com/readme.md",
                     title = "README",
-                    status = "indexed",
+                    status = KnowledgeSourceStatus.INDEXED,
                 ),
             )
             feedbacks.save(AiFeedbackEntity(guildId = 802, channelId = 902, rating = 1, status = FeedbackStatus.RESOLVED))

@@ -43,6 +43,57 @@ object NoWebSearch : WebSearchAugmenter {
     override fun augment(prompt: String) = WebAugmentation(prompt, emptyList())
 }
 
+/**
+ * 순수 함수 BM25 재랭킹(테스트 가능, 외부 서비스 불필요). 검색 백엔드(SearXNG) 기본 순서는
+ * 질의 의도를 충분히 반영하지 못할 때가 있어, 제목(가중)·본문에 대한 질의어 적합도로 재정렬한다.
+ * 동점이면 원래 순서를 유지(stable). 질의어가 없거나 결과 1개 이하면 그대로 반환.
+ */
+object WebResultReranker {
+    private const val K1 = 1.5 // term frequency 포화
+    private const val B = 0.75 // 문서 길이 정규화
+    private const val TITLE_WEIGHT = 3 // 제목 일치는 본문보다 강한 신호
+    private val SPLIT = Regex("[^\\p{L}\\p{Nd}]+")
+
+    fun rerank(
+        query: String,
+        results: List<WebResult>,
+    ): List<WebResult> {
+        if (results.size <= 1) return results
+        val terms = tokenize(query)
+        if (terms.isEmpty()) return results
+        val docs = results.map { tokenize(it.title).let { t -> List(TITLE_WEIGHT) { t }.flatten() } + tokenize(it.snippet) }
+        val avgLen = docs.sumOf { it.size }.toDouble() / docs.size
+        val n = docs.size
+        val df = terms.associateWith { term -> docs.count { it.contains(term) } }
+        return results
+            .mapIndexed { idx, r -> Triple(idx, r, bm25(terms, docs[idx], df, n, avgLen)) }
+            .sortedWith(compareByDescending<Triple<Int, WebResult, Double>> { it.third }.thenBy { it.first })
+            .map { it.second }
+    }
+
+    private fun bm25(
+        terms: List<String>,
+        doc: List<String>,
+        df: Map<String, Int>,
+        n: Int,
+        avgLen: Double,
+    ): Double {
+        if (doc.isEmpty()) return 0.0
+        val dl = doc.size.toDouble()
+        return terms.sumOf { term ->
+            val tf = doc.count { it == term }.toDouble()
+            if (tf == 0.0) {
+                0.0
+            } else {
+                val idf = kotlin.math.ln(((n - (df[term] ?: 0) + 0.5) / ((df[term] ?: 0) + 0.5)) + 1.0)
+                idf * (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * dl / avgLen))
+            }
+        }
+    }
+
+    private fun tokenize(text: String): List<String> = text.lowercase().split(SPLIT).filter { it.isNotBlank() }
+}
+
 /** 순수 함수: 검색 결과로 프롬프트를 증강(테스트 가능). 결과가 없으면 원본 그대로. */
 object WebSearchPromptBuilder {
     fun build(
@@ -78,6 +129,7 @@ class SearxngWebSearch(
     @param:Value("\${central.search.url:}") private val searchUrl: String,
     @param:Value("\${central.search.max-results:5}") private val maxResults: Int,
     @param:Value("\${central.search.fetch-content:true}") private val fetchContent: Boolean,
+    @param:Value("\${central.search.rerank:true}") private val rerank: Boolean,
 ) : WebSearchAugmenter {
     private val log = LoggerFactory.getLogger(SearxngWebSearch::class.java)
     private val mapper = ObjectMapper()
@@ -94,7 +146,13 @@ class SearxngWebSearch(
     override fun augment(prompt: String): WebAugmentation {
         if (!isEnabled()) return WebAugmentation(prompt, emptyList())
         return try {
-            WebSearchPromptBuilder.build(prompt, enrich(search(prompt)), maxResults)
+            // 재랭킹 시에는 후보를 넉넉히 받아(스니펫 기준 1차 재랭킹) 상위만 본문 fetch 후 본문 기준 2차 재랭킹.
+            val pool = if (rerank) (maxResults * 3).coerceIn(maxResults, 15) else maxResults
+            val candidates = search(prompt, pool)
+            val picked = if (rerank) WebResultReranker.rerank(prompt, candidates).take(maxResults) else candidates
+            val enriched = enrich(picked)
+            val ordered = if (rerank) WebResultReranker.rerank(prompt, enriched) else enriched
+            WebSearchPromptBuilder.build(prompt, ordered, maxResults)
         } catch (e: Exception) {
             // 검색 실패는 치명적이지 않다 — 증강 없이 원본으로 진행(질문 원문은 로그하지 않음).
             log.warn("웹검색 실패 — 증강 없이 진행: {}", e.javaClass.simpleName)
@@ -114,7 +172,10 @@ class SearxngWebSearch(
         return futures.map { it.join() }.map { (r, text) -> if (!text.isNullOrBlank()) r.copy(snippet = text) else r }
     }
 
-    private fun search(query: String): List<WebResult> {
+    private fun search(
+        query: String,
+        limit: Int,
+    ): List<WebResult> {
         val base = searchUrl.trimEnd('/')
         val q = URLEncoder.encode(query, StandardCharsets.UTF_8)
         val uri = URI.create("$base/search?format=json&safesearch=1&q=$q")
@@ -128,7 +189,7 @@ class SearxngWebSearch(
         if (resp.statusCode() !in 200..299) return emptyList()
         val arr = mapper.readTree(resp.body()).get("results") ?: return emptyList()
         return arr
-            .take(maxResults)
+            .take(limit)
             .map { n ->
                 WebResult(
                     title = n.get("title")?.asText().orEmpty(),

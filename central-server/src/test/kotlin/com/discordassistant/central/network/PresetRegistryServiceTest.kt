@@ -10,7 +10,9 @@ import com.discordassistant.central.dashboard.ReviewPresetReportRequest
 import com.discordassistant.central.dashboard.SaveChannelPresetRequest
 import com.discordassistant.central.dashboard.UpdatePresetRequest
 import com.discordassistant.central.dashboard.UpdatePublishedPresetRequest
+import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProposalStatus
+import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
@@ -279,7 +281,7 @@ class PresetRegistryServiceTest
             assertEquals("sensitive_data", openReport.reasonCode)
             assertEquals("검토 필요 [redacted]", openReport.details)
             assertEquals(1, publishedPresets.findById(publishedId).get().reportCount)
-            assertEquals("under_review", publishedPresets.findById(publishedId).get().status)
+            assertEquals(PublishedPresetStatus.UNDER_REVIEW, publishedPresets.findById(publishedId).get().status)
             assertEquals(0, (controller.publishedPresets()["presets"] as List<*>).size)
             assertThrows(IllegalArgumentException::class.java) {
                 controller.importPreset(
@@ -292,12 +294,12 @@ class PresetRegistryServiceTest
             assertEquals("dismiss", reviewed["status"])
             assertEquals(91L, reviewed["reviewedBy"])
             assertEquals(91L, reports.findById(reportId).orElseThrow().reviewedBy)
-            assertEquals("published", publishedPresets.findById(publishedId).get().status)
+            assertEquals(PublishedPresetStatus.PUBLISHED, publishedPresets.findById(publishedId).get().status)
             assertEquals(1, (controller.publishedPresets()["presets"] as List<*>).size)
 
             val removed = controller.deletePublished(publishedId)
             assertEquals("removed", removed["status"])
-            assertEquals("removed", publishedPresets.findById(publishedId).get().status)
+            assertEquals(PublishedPresetStatus.REMOVED, publishedPresets.findById(publishedId).get().status)
             assertThrows(IllegalArgumentException::class.java) {
                 controller.importPreset(
                     publishedId,
@@ -518,8 +520,8 @@ class PresetRegistryServiceTest
             assertThrows(IllegalArgumentException::class.java) {
                 service.publishPreset(preset.id, publisherUserId = 77, title = null, description = null)
             }
-            assertEquals("draft", presets.findById(preset.id).orElseThrow().status)
-            assertEquals(0, publishedPresets.findByStatusOrderByLikeCountDescPublishedAtDesc("published").size)
+            assertEquals(PresetStatus.DRAFT, presets.findById(preset.id).orElseThrow().status)
+            assertEquals(0, publishedPresets.findByStatusOrderByLikeCountDescPublishedAtDesc(PublishedPresetStatus.PUBLISHED).size)
 
             service.updatePreset(
                 presetId = preset.id,
@@ -564,7 +566,7 @@ class PresetRegistryServiceTest
             assertThrows(IllegalArgumentException::class.java) {
                 service.publishPreset(preset.id, publisherUserId = 77, title = null, description = "api_key=secret-value")
             }
-            assertEquals("draft", presets.findById(preset.id).orElseThrow().status)
+            assertEquals(PresetStatus.DRAFT, presets.findById(preset.id).orElseThrow().status)
 
             val categorySecret =
                 service.createPreset(
@@ -892,7 +894,7 @@ class PresetRegistryServiceTest
             val removed = controller.delete(preset.id)
 
             assertEquals("removed", removed["status"])
-            assertEquals("removed", presets.findById(preset.id).get().status)
+            assertEquals(PresetStatus.REMOVED, presets.findById(preset.id).get().status)
             assertEquals(1, revisions.findByPresetIdOrderByRevisionDesc(preset.id).size)
             assertThrows(IllegalArgumentException::class.java) {
                 service.updatePreset(

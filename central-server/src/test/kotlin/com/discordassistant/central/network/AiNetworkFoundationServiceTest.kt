@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -376,7 +377,10 @@ class AiNetworkFoundationServiceTest
 
             assertEquals(preset.id, presets.findByGuildId(100).single().id)
             assertEquals(revision.id, presetRevisions.findByPresetIdOrderByRevisionDesc(preset.id).single().id)
-            assertEquals(published.id, publishedPresets.findByStatusOrderByLikeCountDescPublishedAtDesc("published").single().id)
+            assertEquals(
+                published.id,
+                publishedPresets.findByStatusOrderByLikeCountDescPublishedAtDesc(PublishedPresetStatus.PUBLISHED).single().id,
+            )
             assertEquals(imported.id, presetImports.findByTargetGuildId(101).single().id)
             assertNotNull(presetReactions.findByPublishedPresetIdAndUserIdAndReaction(published.id, 90, "like"))
             assertEquals(1, presetReports.findByStatus("open").size)

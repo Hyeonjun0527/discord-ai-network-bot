@@ -2,6 +2,8 @@ package com.discordassistant.central.persistence
 
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.domain.PublishedPresetStatus
+import com.discordassistant.central.domain.RequestState
 import org.springframework.data.jpa.repository.JpaRepository
 import java.time.Instant
 
@@ -83,7 +85,7 @@ interface AiRequestRepository : JpaRepository<AiRequestEntity, Long> {
 
     fun findByProviderIdAndState(
         providerId: Long,
-        state: String,
+        state: RequestState,
     ): List<AiRequestEntity>
 }
 
@@ -367,7 +369,7 @@ interface PresetRevisionRepository : JpaRepository<PresetRevisionEntity, Long> {
 }
 
 interface PublishedPresetRepository : JpaRepository<PublishedPresetEntity, Long> {
-    fun findByStatusOrderByLikeCountDescPublishedAtDesc(status: String): List<PublishedPresetEntity>
+    fun findByStatusOrderByLikeCountDescPublishedAtDesc(status: PublishedPresetStatus): List<PublishedPresetEntity>
 
     fun findBySlug(slug: String): PublishedPresetEntity?
 }

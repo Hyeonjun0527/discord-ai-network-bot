@@ -9,6 +9,7 @@ import com.discordassistant.central.dashboard.ModelMapResponse
 import com.discordassistant.central.dashboard.ProviderCapabilityResponse
 import com.discordassistant.central.dashboard.PublishedPresetResponse
 import com.discordassistant.central.domain.ProposalStatus
+import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetRepository
@@ -214,7 +215,7 @@ class AiNetworkDashboardQueryService(
                         "summary" to it.summary,
                         "category" to it.category,
                         "visibility" to it.visibility,
-                        "status" to it.status,
+                        "status" to it.status.wire,
                         "currentRevisionId" to it.currentRevisionId,
                     )
                 },
@@ -231,7 +232,7 @@ class AiNetworkDashboardQueryService(
         )
 
     fun publishedPresets(): List<PublishedPresetResponse> =
-        publishedPresets.findByStatusOrderByLikeCountDescPublishedAtDesc("published").map {
+        publishedPresets.findByStatusOrderByLikeCountDescPublishedAtDesc(PublishedPresetStatus.PUBLISHED).map {
             PublishedPresetResponse(
                 id = it.id,
                 slug = it.slug,

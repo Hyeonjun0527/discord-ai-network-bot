@@ -1,6 +1,8 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProposalStatus
+import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalEntity
@@ -76,7 +78,7 @@ class PresetRegistryService(
                     summary = summary?.trim(),
                     category = category.trim().ifBlank { "general" },
                     visibility = visibility.trim().ifBlank { "guild_private" },
-                    status = "draft",
+                    status = PresetStatus.DRAFT,
                     createdAt = now,
                     updatedAt = now,
                 ),
@@ -226,7 +228,7 @@ class PresetRegistryService(
         val publishTitle = title?.trim()?.ifBlank { null } ?: preset.name
         val publishDescription = description?.trim()?.ifBlank { null } ?: preset.summary
         requirePublishablePublicMetadata(publishTitle, publishDescription, preset.category)
-        preset.status = "published"
+        preset.transitionTo(PresetStatus.PUBLISHED)
         preset.visibility = "published"
         presets.save(preset)
         return publishedPresets
@@ -239,7 +241,7 @@ class PresetRegistryService(
                     slug = uniqueSlug(publishTitle.take(120), preset.id),
                     title = publishTitle.take(120),
                     description = publishDescription?.take(500),
-                    status = "published",
+                    status = PublishedPresetStatus.PUBLISHED,
                     publishedAt = Instant.now(clock),
                 ),
             ).toWriteResult()
@@ -416,7 +418,9 @@ class PresetRegistryService(
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
-        require(published.status !in setOf("removed", "unlisted")) { "${published.status} preset cannot be unliked" }
+        require(published.status !in setOf(PublishedPresetStatus.REMOVED, PublishedPresetStatus.UNLISTED)) {
+            "${published.status.wire} preset cannot be unliked"
+        }
         reactions.findByPublishedPresetIdAndUserIdAndReaction(publishedPresetId, userId, "like")?.let { reaction ->
             reactions.delete(reaction)
             published.likeCount = (published.likeCount - 1).coerceAtLeast(0)
@@ -437,15 +441,17 @@ class PresetRegistryService(
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
-        require(published.status !in setOf("removed", "unlisted")) { "${published.status} preset cannot be reported" }
+        require(published.status !in setOf(PublishedPresetStatus.REMOVED, PublishedPresetStatus.UNLISTED)) {
+            "${published.status.wire} preset cannot be reported"
+        }
         reporterUserId?.let { reporter ->
             reports.findByPublishedPresetIdAndReporterUserIdAndStatus(publishedPresetId, reporter, "open")?.let {
                 return it.toWriteResult()
             }
         }
         published.reportCount += 1
-        if (published.reportCount >= REPORT_REVIEW_THRESHOLD && published.status == "published") {
-            published.status = "under_review"
+        if (published.reportCount >= REPORT_REVIEW_THRESHOLD && published.status == PublishedPresetStatus.PUBLISHED) {
+            published.transitionTo(PublishedPresetStatus.UNDER_REVIEW)
         }
         publishedPresets.save(published)
         val sanitizedReason = sanitizeText(reason, maxLength = 500)
@@ -471,7 +477,7 @@ class PresetRegistryService(
     fun deletePreset(presetId: Long): PresetWriteResult {
         featureGate.requirePresetEnabled()
         val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
-        preset.status = "removed"
+        preset.transitionTo(PresetStatus.REMOVED)
         preset.visibility = "removed"
         preset.updatedAt = Instant.now(clock)
         return presets.save(preset).toWriteResult()
@@ -484,7 +490,7 @@ class PresetRegistryService(
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
-        published.status = "removed"
+        published.transitionTo(PublishedPresetStatus.REMOVED)
         return publishedPresets.save(published).toWriteResult()
     }
 
@@ -495,8 +501,8 @@ class PresetRegistryService(
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
-        require(published.status != "removed") { "removed preset cannot be unlisted" }
-        published.status = "unlisted"
+        require(published.status != PublishedPresetStatus.REMOVED) { "removed preset cannot be unlisted" }
+        published.transitionTo(PublishedPresetStatus.UNLISTED)
         return publishedPresets.save(published).toWriteResult()
     }
 
@@ -507,14 +513,16 @@ class PresetRegistryService(
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
-        require(published.status == "unlisted") { "only unlisted preset can be republished: ${published.status}" }
+        require(published.status == PublishedPresetStatus.UNLISTED) {
+            "only unlisted preset can be republished: ${published.status.wire}"
+        }
         val revision =
             revisions.findById(published.revisionId).orElseThrow {
                 IllegalArgumentException("published revision not found: ${published.revisionId}")
             }
         requirePublishablePublicMetadata(published.title, published.description)
         requirePublishableRevision(revision)
-        published.status = "published"
+        published.transitionTo(PublishedPresetStatus.PUBLISHED)
         return publishedPresets.save(published).toWriteResult()
     }
 
@@ -541,9 +549,12 @@ class PresetRegistryService(
         report.reviewedBy = reviewerUserId
         report.reviewedAt = Instant.now(clock)
         when (report.status) {
-            "suspend", "suspended" -> published.status = "suspended"
-            "remove", "removed" -> published.status = "removed"
-            "dismiss", "dismissed" -> if (published.status == "under_review") published.status = "published"
+            "suspend", "suspended" -> published.transitionTo(PublishedPresetStatus.SUSPENDED)
+            "remove", "removed" -> published.transitionTo(PublishedPresetStatus.REMOVED)
+            "dismiss", "dismissed" ->
+                if (published.status == PublishedPresetStatus.UNDER_REVIEW) {
+                    published.transitionTo(PublishedPresetStatus.PUBLISHED)
+                }
         }
         publishedPresets.save(published)
         return reports.save(report).toWriteResult()
@@ -555,14 +566,14 @@ class PresetRegistryService(
         PresetWriteResult(
             id = id,
             currentRevisionId = currentRevisionId,
-            status = status,
+            status = status.wire,
         )
 
     private fun PublishedPresetEntity.toWriteResult(): PublishedPresetWriteResult =
         PublishedPresetWriteResult(
             id = id,
             revisionId = revisionId,
-            status = status,
+            status = status.wire,
             slug = slug,
             title = title,
             description = description,
@@ -775,11 +786,25 @@ class PresetRegistryService(
     }
 
     private fun requireActivePreset(preset: AiPresetEntity) {
-        require(preset.status != "removed") { "removed preset cannot be changed" }
+        require(preset.status != PresetStatus.REMOVED) { "removed preset cannot be changed" }
     }
 
     private fun requirePublishedPreset(published: PublishedPresetEntity) {
-        require(published.status == "published") { "published preset is not importable or likable: ${published.status}" }
+        require(published.status == PublishedPresetStatus.PUBLISHED) {
+            "published preset is not importable or likable: ${published.status.wire}"
+        }
+    }
+
+    /** 도메인 전이 가드: 허용되지 않은 전이는 거부(기존 코드가 실제 하는 전이는 [PresetStatus] 맵에서 전부 허용). */
+    private fun AiPresetEntity.transitionTo(next: PresetStatus) {
+        require(status.canTransitionTo(next)) { "illegal preset status transition: ${status.wire} -> ${next.wire}" }
+        status = next
+    }
+
+    /** 도메인 전이 가드: 허용되지 않은 전이는 거부(기존 코드가 실제 하는 전이는 [PublishedPresetStatus] 맵에서 전부 허용). */
+    private fun PublishedPresetEntity.transitionTo(next: PublishedPresetStatus) {
+        require(status.canTransitionTo(next)) { "illegal published preset status transition: ${status.wire} -> ${next.wire}" }
+        status = next
     }
 
     private fun requirePublishablePublicMetadata(vararg values: String?) {

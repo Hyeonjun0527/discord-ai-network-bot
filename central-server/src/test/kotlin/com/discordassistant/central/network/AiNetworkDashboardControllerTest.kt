@@ -1,7 +1,9 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.dashboard.AiNetworkDashboardController
+import com.discordassistant.central.domain.CandidateStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
+import com.discordassistant.central.domain.MultiResponseRunStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
@@ -391,7 +393,7 @@ class AiNetworkDashboardControllerTest
                         guildId = 100,
                         channelId = 200,
                         requestId = "masked-dashboard-run",
-                        status = "completed",
+                        status = MultiResponseRunStatus.COMPLETED,
                         candidateCount = 1,
                         startedAt = Instant.parse("2026-06-01T00:00:00Z"),
                     ),
@@ -402,7 +404,7 @@ class AiNetworkDashboardControllerTest
                     providerUserId = 300,
                     modelName = "llama3.1:8b",
                     answerRef = "answer:masked-dashboard-run",
-                    status = "completed",
+                    status = CandidateStatus.COMPLETED,
                     latencyMs = 800,
                     qualityScore = 91,
                     createdAt = Instant.parse("2026-06-01T00:00:00Z"),

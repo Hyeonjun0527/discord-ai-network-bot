@@ -8,6 +8,7 @@ import com.discordassistant.central.domain.EmbeddingJobStatus
 import com.discordassistant.central.domain.KnowledgeChunkStatus
 import com.discordassistant.central.domain.KnowledgeDocumentStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
+import com.discordassistant.central.domain.RetrievalPolicyStatus
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.persistence.KnowledgeChunkRepository
 import com.discordassistant.central.persistence.KnowledgeDocumentRepository
@@ -280,7 +281,7 @@ class KnowledgeIndexingServiceTest
             assertEquals(
                 policy.id,
                 retrievalPolicies
-                    .findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(100, 201, space.id, "active")
+                    .findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(100, 201, space.id, RetrievalPolicyStatus.ACTIVE)
                     ?.id,
             )
         }

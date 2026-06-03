@@ -2,6 +2,7 @@ package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.KnowledgeChunkStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
+import com.discordassistant.central.domain.RetrievalPolicyStatus
 import com.discordassistant.central.persistence.KnowledgeChunkEntity
 import com.discordassistant.central.persistence.KnowledgeChunkRepository
 import com.discordassistant.central.persistence.KnowledgeSourceEntity
@@ -483,10 +484,11 @@ class KnowledgeSearchService(
     ): RetrievalPolicyEntity? {
         val repo = retrievalPolicies ?: return null
         knowledgeSpaceId?.let { spaceId ->
-            return repo.findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(guildId, channelId, spaceId, "active")
-                ?: repo.findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(guildId, null, spaceId, "active")
+            return repo.findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(guildId, channelId, spaceId, RetrievalPolicyStatus.ACTIVE)
+                ?: repo.findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(guildId, null, spaceId, RetrievalPolicyStatus.ACTIVE)
         }
-        val channelPolicies = channelId?.let { repo.findByGuildIdAndChannelIdAndStatus(guildId, it, "active") }.orEmpty()
+        val channelPolicies =
+            channelId?.let { repo.findByGuildIdAndChannelIdAndStatus(guildId, it, RetrievalPolicyStatus.ACTIVE) }.orEmpty()
         return channelPolicies.firstOrNull { it.knowledgeSpaceId in allowedSpaceIds }
             ?: channelPolicies.firstOrNull { it.knowledgeSpaceId == null }
     }

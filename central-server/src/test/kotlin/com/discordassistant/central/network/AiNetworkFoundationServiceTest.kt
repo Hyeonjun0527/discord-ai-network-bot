@@ -1,6 +1,10 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.MultiResponseRunStatus
+import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
+import com.discordassistant.central.domain.SynthesisStatus
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -304,7 +308,7 @@ class AiNetworkFoundationServiceTest
                         channelId = 202,
                         requestId = "req-1",
                         policyId = policy.id,
-                        status = "running",
+                        status = MultiResponseRunStatus.RUNNING,
                     ),
                 )
             candidateAnswers.save(
@@ -313,14 +317,14 @@ class AiNetworkFoundationServiceTest
                     providerUserId = 300,
                     modelName = "llama3.1:8b",
                     answerRef = "answer:req-1:a",
-                    status = "completed",
+                    status = CandidateStatus.COMPLETED,
                 ),
             )
             synthesisResults.save(
                 SynthesisResultEntity(
                     runId = run.id,
                     answerRef = "answer:req-1:final",
-                    status = "completed",
+                    status = SynthesisStatus.COMPLETED,
                     selectedCandidateIds = "1",
                 ),
             )
@@ -383,7 +387,7 @@ class AiNetworkFoundationServiceTest
             )
             assertEquals(imported.id, presetImports.findByTargetGuildId(101).single().id)
             assertNotNull(presetReactions.findByPublishedPresetIdAndUserIdAndReaction(published.id, 90, "like"))
-            assertEquals(1, presetReports.findByStatus("open").size)
+            assertEquals(1, presetReports.findByStatus(PresetReportStatus.OPEN).size)
         }
 
         @Test

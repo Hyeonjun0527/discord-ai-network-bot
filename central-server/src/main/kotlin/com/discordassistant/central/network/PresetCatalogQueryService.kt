@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.persistence.AiPresetEntity
@@ -163,8 +164,12 @@ class PresetCatalogQueryService(
     @Transactional(readOnly = true)
     fun listReports(status: String = "open"): List<PresetReportSummary> {
         featureGate.requirePresetEnabled()
+        // 빈 값은 기존과 동일하게 open 으로 본다. 캐노니컬이 아닌 status 필터는 매칭 행이 없으므로
+        // 빈 결과를 돌려준다(기존 String findByStatus("foobar")=빈 리스트 동작 보존).
+        val normalized = status.trim().lowercase().ifBlank { PresetReportStatus.OPEN.wire }
+        val target = PresetReportStatus.entries.firstOrNull { it.wire == normalized } ?: return emptyList()
         return reports
-            .findByStatus(status.trim().lowercase().ifBlank { "open" })
+            .findByStatus(target)
             .sortedWith(compareByDescending<PresetReportEntity> { it.createdAt }.thenBy { it.id })
             .map { it.toSummary() }
     }
@@ -174,8 +179,8 @@ class PresetCatalogQueryService(
         featureGate.requirePresetEnabled()
         val published = publishedPresets.findAll()
         val reportRows = reports.findAll()
-        val reportStatusCounts = reportRows.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
-        val openReportsByPreset = reportRows.filter { it.status == "open" }.groupBy { it.publishedPresetId }
+        val reportStatusCounts = reportRows.groupingBy { it.status.wire }.eachCount()
+        val openReportsByPreset = reportRows.filter { it.status == PresetReportStatus.OPEN }.groupBy { it.publishedPresetId }
         val queue =
             published
                 .map { preset -> moderationItem(preset, openReportsByPreset[preset.id].orEmpty()) }
@@ -194,7 +199,7 @@ class PresetCatalogQueryService(
             suspendedCount = statusCounts["suspended"] ?: 0,
             removedCount = statusCounts["removed"] ?: 0,
             openReportCount = reportStatusCounts["open"] ?: 0,
-            reviewedReportCount = reportRows.count { it.status != "open" },
+            reviewedReportCount = reportRows.count { it.status != PresetReportStatus.OPEN },
             statusCounts = statusCounts,
             reportStatusCounts = reportStatusCounts,
             queue = queue.take(50),
@@ -322,7 +327,7 @@ class PresetCatalogQueryService(
             importedPresetId = importedPresetId,
             createdChannelAiId = createdChannelAiId,
             createdBehaviorVersionId = createdBehaviorVersionId,
-            status = status,
+            status = status.wire,
             importedAt = importedAt.toString(),
             detachedCopy = importedPresetId != null,
         )
@@ -335,7 +340,7 @@ class PresetCatalogQueryService(
             reason = reason,
             reasonCode = reasonCode,
             details = details,
-            status = status,
+            status = status.wire,
             createdAt = createdAt.toString(),
             reviewedBy = reviewedBy,
             reviewedAt = reviewedAt?.toString(),

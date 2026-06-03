@@ -1,5 +1,6 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.KnowledgeSpaceStatus
 import com.discordassistant.central.network.AiNetworkFoundationService
@@ -226,7 +227,7 @@ class AiNetworkDashboardControllerTest
                     status = KnowledgeSourceStatus.INDEXED,
                 ),
             )
-            feedbacks.save(AiFeedbackEntity(guildId = 802, channelId = 902, rating = 1, status = "resolved"))
+            feedbacks.save(AiFeedbackEntity(guildId = 802, channelId = 902, rating = 1, status = FeedbackStatus.RESOLVED))
 
             val readiness = dashboard.readiness(802, audience = "admin")
 

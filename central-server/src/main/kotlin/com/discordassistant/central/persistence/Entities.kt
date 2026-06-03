@@ -1,6 +1,8 @@
 package com.discordassistant.central.persistence
 
+import com.discordassistant.central.domain.ProviderState
 import jakarta.persistence.Column
+import jakarta.persistence.Convert
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
@@ -60,7 +62,8 @@ class ProviderEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
     var providerUserId: Long = 0,
     var guildId: Long = 0,
-    var state: String = "PENDING",
+    @Convert(converter = ProviderStateConverter::class)
+    var state: ProviderState = ProviderState.PENDING,
     var createdAt: Instant = Instant.EPOCH,
 )
 

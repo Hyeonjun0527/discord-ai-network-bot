@@ -30,6 +30,9 @@ data class ProviderProfile(
 
 interface ProviderProfileProvider {
     fun profile(providerId: Long): ProviderProfile
+
+    /** 여러 프로바이더 프로필을 한 번에(라우팅 핫패스의 후보당 쿼리 N+1 방지). 기본은 개별 호출. */
+    fun profilesFor(providerIds: Collection<Long>): Map<Long, ProviderProfile> = providerIds.associateWith { profile(it) }
 }
 
 /** 차단 사용자 확인(차수 11). BlocklistService 가 구현. 기본은 차단 없음. */
@@ -213,12 +216,12 @@ class RequestOrchestrator(
         val excluded = mutableSetOf<Long>()
         var lastReason = NO_PROVIDER_ACTIONABLE_REASON
         repeat(2) { attempt ->
+            val sessions = registry.byGuild(input.guildId).filter { it.providerId !in excluded }
+            val profileMap = profiles.profilesFor(sessions.map { it.providerId }) // 후보 프로필 일괄 조회(N+1 제거)
             val candidates =
-                registry
-                    .byGuild(input.guildId)
-                    .filter { it.providerId !in excluded }
+                sessions
                     .map { session ->
-                        val p = profiles.profile(session.providerId)
+                        val p = profileMap[session.providerId] ?: profiles.profile(session.providerId)
                         Candidate(
                             providerId = session.providerId,
                             state = session.state,

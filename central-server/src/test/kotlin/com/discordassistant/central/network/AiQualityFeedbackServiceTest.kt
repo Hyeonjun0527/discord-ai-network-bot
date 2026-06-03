@@ -3,6 +3,7 @@ package com.discordassistant.central.network
 import com.discordassistant.central.dashboard.AiQualityFeedbackController
 import com.discordassistant.central.dashboard.ResolveAiFeedbackRequest
 import com.discordassistant.central.dashboard.SubmitAiFeedbackRequest
+import com.discordassistant.central.domain.CandidateStatus
 import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity
@@ -225,7 +226,7 @@ class AiQualityFeedbackServiceTest
                     runId = run.id,
                     providerUserId = 1,
                     modelName = "qwen-coder",
-                    status = "completed",
+                    status = CandidateStatus.COMPLETED,
                     qualityScore = 90,
                     safetyFlags = "ok",
                     latencyMs = 1000,

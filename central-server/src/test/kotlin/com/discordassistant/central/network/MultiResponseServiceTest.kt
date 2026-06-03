@@ -615,7 +615,13 @@ class MultiResponseServiceTest
             assertEquals("completed", synthesis["status"])
             assertEquals("best_by_heuristic", synthesis["strategy"])
             assertEquals("no candidate safety flags", synthesis["safetySummary"])
-            assertEquals("completed", runs.findById(runId).get().status)
+            assertEquals(
+                "completed",
+                runs
+                    .findById(runId)
+                    .get()
+                    .status.wire,
+            )
             assertEquals(first.id, runs.findById(runId).get().selectedCandidateId)
             assertNotNull(syntheses.findByRunId(runId))
             assertEquals("no candidate safety flags", syntheses.findByRunId(runId)?.safetySummary)
@@ -845,7 +851,13 @@ class MultiResponseServiceTest
             assertEquals("completed", completed["status"])
             assertEquals(good.id, completed["selectedCandidateId"])
             assertEquals("answer:req-best-effort:good", completed["answerRef"])
-            assertEquals("completed", runs.findById(runId).get().status)
+            assertEquals(
+                "completed",
+                runs
+                    .findById(runId)
+                    .get()
+                    .status.wire,
+            )
             assertEquals(good.id, runs.findById(runId).get().selectedCandidateId)
             assertEquals("best_successful_candidate", syntheses.findByRunId(runId)?.strategy)
         }
@@ -878,7 +890,13 @@ class MultiResponseServiceTest
 
             assertEquals("failed", completed["status"])
             assertNotNull(completed["fallbackReason"])
-            assertEquals("failed", runs.findById(runId).get().status)
+            assertEquals(
+                "failed",
+                runs
+                    .findById(runId)
+                    .get()
+                    .status.wire,
+            )
             assertEquals(null, syntheses.findByRunId(runId))
         }
 

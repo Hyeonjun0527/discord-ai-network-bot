@@ -347,6 +347,25 @@ async def test_update_progress_endpoint(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_connect_enabled_env_override(monkeypatch):
+    # env 강제(개발/오버라이드)면 서버 probe 없이 활성.
+    monkeypatch.setenv("AGENT_CONNECT_ENABLED", "1")
+    assert await webui._connect_enabled() is True
+
+
+@pytest.mark.asyncio
+async def test_connect_enabled_reflects_server(monkeypatch):
+    # env 없으면 서버 /provider/connect/status 응답을 따른다(60초 캐시).
+    monkeypatch.delenv("AGENT_CONNECT_ENABLED", raising=False)
+    webui._connect_cache["ts"] = 0.0
+    monkeypatch.setattr(webui, "_probe_connect_status", lambda: True)
+    assert await webui._connect_enabled() is True
+    webui._connect_cache["ts"] = 0.0
+    monkeypatch.setattr(webui, "_probe_connect_status", lambda: False)
+    assert await webui._connect_enabled() is False
+
+
+@pytest.mark.asyncio
 async def test_servers_lists_saved_when_not_running(monkeypatch):
     # 실행 중이 아니면 저장된 연결 목록을 connected=False 로 보여준다.
     from provider_agent.config_file import add_connection

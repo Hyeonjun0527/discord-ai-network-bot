@@ -101,6 +101,25 @@ def _build_cfg_from_saved() -> AgentConfig | None:
         return None
 
 
+def _start_agent() -> dict:
+    """저장된 설정으로 에이전트를 시작한다(이미 실행 중이면 무시). 같은 이벤트 루프의 핸들러에서 호출.
+
+    /api/start 와 OAuth 콜백(토큰 받은 직후 자동 연결)에서 공용으로 쓴다.
+    """
+    task = _state["task"]
+    if task is not None and not task.done():
+        return {"ok": False, "error": "이미 실행 중입니다."}
+    cfg = _build_cfg_from_saved()
+    if cfg is None or not cfg.token:
+        return {"ok": False, "error": "먼저 토큰을 저장하세요."}
+    from .agent import ProviderAgent
+
+    agent = ProviderAgent(cfg)
+    _state["agent"] = agent
+    _state["task"] = asyncio.create_task(agent.run(install_signals=False))
+    return {"ok": True}
+
+
 def _connect_base(relay: str) -> str:
     """relay(wss://…/agent) → 중앙 서버 https 베이스. 토큰 받기 OAuth 시작점 도출."""
     base = relay.replace("wss://", "https://").replace("ws://", "http://")
@@ -173,19 +192,18 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <section class="hero"><div class="logo"><img src="/mascot.png" alt="냥시스턴트 마스코트"></div><div><h1>AI 네트워크 구축 도우미 · 냥시스턴트</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
 <section class="card"><div class="ring off" id="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
 <div><div class="status-title" id="stitle">대기 중</div><div class="status-body" id="ssub">연결 시작을 누르면 풀에 등록됩니다.</div><div class="chips" id="chips"></div></div></section>
-<section><h2>1. 연결 토큰</h2>
-<div class="token-row"><label class="input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg><input type="password" id="token" placeholder="발급받은 토큰을 입력하세요"></label>
-<button class="secondary-btn" type="button" onclick="getToken()">토큰 받기 ↗</button></div>
-<div class="helper">Discord에서 발급한 토큰을 붙여넣은 뒤 연결을 시작하세요.</div></section>
-<section><h2>2. 제공 모델</h2><div class="grid2" id="models"></div></section>
-<section><h2>3. 설정</h2><div class="settings">
+<section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div></section>
+<section><h2>2. 설정</h2><div class="settings">
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 실행</div><div class="setting-desc">로그인 후 에이전트를 자동으로 실행합니다.</div></div><div class="toggle on" id="svc" onclick="this.classList.toggle('on')"></div></div>
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 환경이 있으면 /imagine 요청을 처리합니다.</div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
 </div>
-<button class="primary-btn" type="button" id="go" onclick="toggle()">▶ 연결 시작</button>
+<button class="primary-btn" type="button" id="go" onclick="connect()">🔗 연동하기</button>
+<div class="helper" style="text-align:center;margin-top:9px">처음이면 디스코드 로그인 창이 열려요. 한 번 연동하면 다음부턴 바로 연결됩니다.</div>
 <div id="msg"></div>
 <details><summary><span>로그 보기</span><span>⌄</span></summary><div class="details-body"><div id="log"></div></div></details>
-<details><summary><span>고급 설정</span><span>⌄</span></summary><div class="details-body">중앙 서버(고정): <span class="ro" id="relay"></span></div></details>
+<details><summary><span>고급 · 토큰 직접 입력</span><span>⌄</span></summary><div class="details-body">
+<label class="input" style="margin-bottom:11px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:20px;height:20px;flex:0 0 auto"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg><input type="password" id="token" placeholder="/provider-join 토큰 붙여넣기(선택)"></label>
+중앙 서버(고정): <span class="ro" id="relay"></span></div></details>
 </section>
 </main></div>
 <script>
@@ -212,21 +230,19 @@ let chips='<div class="chip"><span class="dot'+(HAS_MODELS?'':' grey')+'"></span
 chips+='<div class="chip">제공 모델 '+cnt+'개</div>';
 chips+='<div class="chip"><span class="dot'+(s.connected?'':' grey')+'"></span>'+(s.running?(s.connected?('처리 '+s.processed+'건'):'연결 시도 중'):'중지됨')+(s.imageReady?' · 🖼️':'')+'</div>';
 document.getElementById('chips').innerHTML=chips;
-const go=document.getElementById('go');go.textContent=s.running?'■ 중지':'▶ 연결 시작';go.className='primary-btn'+(s.running?' stop':'');
+const go=document.getElementById('go');go.textContent=s.running?'■ 중지':'🔗 연동하기';go.className='primary-btn'+(s.running?' stop':'');
 const lg=await j('/api/logs');const el=document.getElementById('log');el.textContent=lg.lines.join('\n');el.scrollTop=el.scrollHeight;}
-async function getToken(){const s=await j('/api/status');const msg=document.getElementById('msg');
-if(!s.connectEnabled){msg.className='';msg.textContent='토큰 받기는 곧 지원돼요. 지금은 디스코드 /provider-join 토큰을 붙여넣어 주세요.';return;}
-// 앱 창은 그대로 두고, 시스템 기본 브라우저에서 디스코드 로그인을 연다(웹뷰 차단 회피).
-const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
-if(r.ok){msg.className='ok';msg.textContent='🌐 브라우저에서 디스코드 로그인 후, 이 창으로 돌아오면 토큰이 자동 입력됩니다.';}
-else{msg.className='err';msg.textContent='⚠️ '+(r.error||'브라우저 열기 실패');}}
-async function toggle(){const msg=document.getElementById('msg');if(RUN){await j('/api/stop',{method:'POST'});await refresh();return;}
+// 버튼 하나로 모든 걸: 실행 중이면 중지, 아니면 (설정 저장 → 토큰 있으면 바로 연결 / 없으면 브라우저 로그인 → 콜백이 자동 연결).
+async function connect(){const msg=document.getElementById('msg');if(RUN){await j('/api/stop',{method:'POST'});await refresh();return;}
 if(HAS_MODELS&&!selectedModels().length){msg.className='err';msg.textContent='⚠️ 제공할 모델을 1개 이상 선택하세요.';return;}
-msg.className='';msg.textContent='저장하고 연결하는 중…';
+msg.className='';msg.textContent='설정 저장 중…';
 const su=await j('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:document.getElementById('token').value.trim(),models:selectedModels(),enableImage:on('img'),installService:on('svc')})});
 if(!su.ok){msg.className='err';msg.textContent='⚠️ '+(su.error||'저장 실패');return;}document.getElementById('token').value='';
-const st=await j('/api/start',{method:'POST'});
-if(!st.ok){msg.className='err';msg.textContent='⚠️ '+st.error;}else{msg.className='ok';msg.textContent='✅ 연결 시작'+(su.serviceInstalled?' · 자동 실행 등록':'');}await refresh();}
+const s=await j('/api/status');
+if(s.hasToken){const st=await j('/api/start',{method:'POST'});if(!st.ok){msg.className='err';msg.textContent='⚠️ '+st.error;}else{msg.className='ok';msg.textContent='✅ 연결 시작'+(su.serviceInstalled?' · 자동 실행 등록':'');}await refresh();return;}
+if(s.connectEnabled){const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
+if(r.ok){msg.className='ok';msg.textContent='🌐 브라우저에서 디스코드 로그인·승인하면 자동으로 연결됩니다.';}else{msg.className='err';msg.textContent='⚠️ '+(r.error||'브라우저 열기 실패');}return;}
+msg.className='err';msg.textContent='⚠️ 토큰이 필요합니다. ‘고급’에서 /provider-join 토큰을 붙여넣어 주세요.';}
 loadModels();refresh();setInterval(refresh,2000);
 </script></body></html>"""
 
@@ -283,11 +299,8 @@ def build_app(session_key: str) -> web.Application:
         _auth(req)
         data = await req.json()
         saved = load_config()
+        # 토큰은 선택: 입력이 있으면 그것, 없으면 저장값 유지(없어도 설정만 저장 가능 — 연동하기 전 단계).
         token = str(data.get("token", "")).strip() or str(saved.get("token", ""))
-        if not token:
-            return web.json_response(
-                {"ok": False, "error": "토큰을 먼저 입력하세요(또는 ‘토큰 받기’)."}
-            )
         models_list = [str(m).strip() for m in (data.get("models") or []) if str(m).strip()]
         enable_image = bool(data.get("enableImage"))
         relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
@@ -309,7 +322,7 @@ def build_app(session_key: str) -> web.Application:
                 service_installed = True
             except Exception:  # noqa: BLE001
                 pass
-        return web.json_response({"ok": True, "serviceInstalled": service_installed})
+        return web.json_response({"ok": True, "serviceInstalled": service_installed, "hasToken": bool(token)})
 
     async def connect_open(req: web.Request) -> web.Response:
         """‘토큰 받기’: 앱 창은 그대로 두고 **시스템 기본 브라우저**에서 디스코드 OAuth 를 연다.
@@ -360,27 +373,18 @@ def build_app(session_key: str) -> web.Application:
                 enable_image=bool(saved.get("enable_image")),
             )
         )
+        # 토큰을 받았으니 곧바로 연결까지 자동으로(유저는 추가 클릭 없이 연동 완료).
+        _start_agent()
         return web.Response(
             text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#b8ff39;text-align:center;padding-top:80px'>"
-            "✅ 토큰을 받았습니다. <b>이 탭을 닫고 앱 창으로 돌아가</b> ‘연결 시작’을 누르세요."
+            "✅ 연동 완료! 자동으로 연결했어요. <b>이 탭을 닫고 앱 창으로 돌아가세요.</b>"
             "<script>setTimeout(()=>window.close(),1800)</script>",
             content_type="text/html",
         )
 
     async def start(req: web.Request) -> web.Response:
         _auth(req)
-        task = _state["task"]
-        if task is not None and not task.done():
-            return web.json_response({"ok": False, "error": "이미 실행 중입니다."})
-        cfg = _build_cfg_from_saved()
-        if cfg is None or not cfg.token:
-            return web.json_response({"ok": False, "error": "먼저 토큰을 저장하세요."})
-        from .agent import ProviderAgent
-
-        agent = ProviderAgent(cfg)
-        _state["agent"] = agent
-        _state["task"] = asyncio.create_task(agent.run(install_signals=False))
-        return web.json_response({"ok": True})
+        return web.json_response(_start_agent())
 
     async def stop(req: web.Request) -> web.Response:
         _auth(req)

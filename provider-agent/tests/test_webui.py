@@ -27,6 +27,26 @@ async def _client() -> TestClient:
     return client
 
 
+class FakeAgent:
+    """실제 연결 없이 시작/중지 라이프사이클만 흉내(테스트용)."""
+
+    def __init__(self, cfg):
+        self._stop = asyncio.Event()
+        self.processed = 3
+        self.image_ready = False
+        self.models = ["m"]
+
+    async def run(self, install_signals=True):
+        await self._stop.wait()
+        return 0
+
+    def request_stop(self):
+        self._stop.set()
+
+    def is_connected(self):
+        return True
+
+
 @pytest.mark.asyncio
 async def test_index_and_auth():
     client = await _client()
@@ -165,40 +185,24 @@ async def test_connect_callback_rejects_bad_state():
 
 
 @pytest.mark.asyncio
-async def test_connect_callback_saves_token():
+async def test_connect_callback_saves_token_and_autostarts(monkeypatch):
+    monkeypatch.setattr("provider_agent.agent.ProviderAgent", FakeAgent)
     client = await _client()
     try:
         r = await client.get("/connect/callback", params={"token": "GOT-TOKEN", "state": KEY})
         assert r.status == 200
         assert load_config()["token"] == "GOT-TOKEN"  # 콜백이 토큰을 저장
+        await asyncio.sleep(0.05)
+        st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
+        assert st["running"] is True  # 토큰 받은 직후 자동 연결(추가 클릭 불필요)
+        await client.post("/api/stop", headers={"X-Session": KEY})
     finally:
         await client.close()
 
 
 @pytest.mark.asyncio
 async def test_start_stop_lifecycle(monkeypatch):
-    # 토큰 저장
     monkeypatch.setattr("provider_agent.service.install_service", lambda: "ok")
-    started = {}
-
-    class FakeAgent:
-        def __init__(self, cfg):
-            self._stop = asyncio.Event()
-            self.processed = 3
-            self.image_ready = False
-            self.models = ["m"]
-
-        async def run(self, install_signals=True):
-            started["ran"] = True
-            await self._stop.wait()
-            return 0
-
-        def request_stop(self):
-            self._stop.set()
-
-        def is_connected(self):
-            return True
-
     monkeypatch.setattr("provider_agent.agent.ProviderAgent", FakeAgent)
     client = await _client()
     try:

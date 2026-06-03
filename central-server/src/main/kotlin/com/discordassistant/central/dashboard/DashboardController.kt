@@ -4,6 +4,7 @@ import com.discordassistant.central.network.AiNetworkFeatureGate
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.relay.ConnectionRegistry
+import com.discordassistant.central.usage.AnalyticsService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping

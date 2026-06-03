@@ -1,4 +1,4 @@
-package com.discordassistant.central.dashboard
+package com.discordassistant.central.usage
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.persistence.AiRequestRepository

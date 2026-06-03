@@ -6,6 +6,7 @@ import com.discordassistant.central.dashboard.ChannelAiWizardDraftRequest
 import com.discordassistant.central.dashboard.ChannelAiWizardRequest
 import com.discordassistant.central.dashboard.ReviewChannelAiProposalRequest
 import com.discordassistant.central.dashboard.RollbackChannelAiVersionRequest
+import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.persistence.AiAdminRoleRepository
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
@@ -168,7 +169,7 @@ class ChannelAiCustomizationServiceTest
             }
 
             val stale = proposals.findById(proposalId).orElseThrow()
-            assertEquals("stale", stale.status)
+            assertEquals(ProposalStatus.STALE, stale.status)
             assertEquals("proposal payload changed after review request", stale.reason)
             assertNull(channelAis.findByGuildIdAndChannelId(100, 207)!!.activeBehaviorVersionId)
             assertTrue(controller.history(100, 207)["audits"].toString().contains("stale_payload"))

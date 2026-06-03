@@ -1,5 +1,6 @@
 package com.discordassistant.central.persistence
 
+import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderState
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
@@ -177,7 +178,7 @@ interface AiBehaviorVersionRepository : JpaRepository<AiBehaviorVersionEntity, L
 interface AiChangeProposalRepository : JpaRepository<AiChangeProposalEntity, Long> {
     fun findByGuildIdAndStatus(
         guildId: Long,
-        status: String,
+        status: ProposalStatus,
     ): List<AiChangeProposalEntity>
 
     fun findByGuildIdOrderByCreatedAtDesc(guildId: Long): List<AiChangeProposalEntity>

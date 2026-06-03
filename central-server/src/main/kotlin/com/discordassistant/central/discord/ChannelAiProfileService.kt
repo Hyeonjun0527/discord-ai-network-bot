@@ -1,5 +1,6 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalEntity
@@ -101,7 +102,7 @@ class ChannelAiProfileService(
                 channelId = channelId,
                 channelAiId = savedChannel.id,
                 proposedBehaviorId = behavior.id,
-                status = "approved",
+                status = ProposalStatus.APPROVED,
                 requestedBy = actorId,
                 reviewedBy = actorId,
                 reason = "Release 1 direct publish",

@@ -11,6 +11,7 @@ import com.discordassistant.central.dashboard.SaveChannelPresetRequest
 import com.discordassistant.central.dashboard.UpdatePresetRequest
 import com.discordassistant.central.dashboard.UpdatePublishedPresetRequest
 import com.discordassistant.central.domain.PresetStatus
+import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
@@ -874,7 +875,7 @@ class PresetRegistryServiceTest
             assertEquals(true, preview.willApplyToChannel)
             assertEquals(true, preview.willCreateApprovalProposal)
             assertTrue(preview.conflicts.any { it.code == "high_risk_requires_review" && it.severity == "blocker" })
-            assertEquals(0, proposals.findByGuildIdAndStatus(303, "pending").size)
+            assertEquals(0, proposals.findByGuildIdAndStatus(303, ProposalStatus.PENDING).size)
         }
 
         @Test
@@ -1040,7 +1041,7 @@ class PresetRegistryServiceTest
             assertNotNull(channelAi)
             assertEquals(null, channelAi?.activeBehaviorVersionId)
             assertEquals(null, routingPolicies.findByGuildIdAndChannelId(201, 301))
-            val proposal = proposals.findByGuildIdAndStatus(201, "pending").single()
+            val proposal = proposals.findByGuildIdAndStatus(201, ProposalStatus.PENDING).single()
             assertNotNull(proposal.payloadHash)
             assertNotNull(proposal.routingSnapshot)
             assertEquals(imported.createdBehaviorVersionId, proposal.proposedBehaviorId)
@@ -1107,7 +1108,7 @@ class PresetRegistryServiceTest
             assertEquals("fast", routing?.responseMode)
             assertEquals("old-model", routing?.preferredModel)
             assertEquals(1, routing?.maxCandidates)
-            val proposal = proposals.findByGuildIdAndStatus(211, "pending").single()
+            val proposal = proposals.findByGuildIdAndStatus(211, ProposalStatus.PENDING).single()
             val customization =
                 ChannelAiCustomizationService(
                     channelAis = channelAis,

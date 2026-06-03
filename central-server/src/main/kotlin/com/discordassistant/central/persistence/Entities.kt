@@ -1,6 +1,7 @@
 package com.discordassistant.central.persistence
 
 import com.discordassistant.central.domain.PresetStatus
+import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderState
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
@@ -177,7 +178,8 @@ class AiChangeProposalEntity(
     var channelId: Long = 0,
     var channelAiId: Long? = null,
     var proposedBehaviorId: Long? = null,
-    var status: String = "approved",
+    @Convert(converter = ProposalStatusConverter::class)
+    var status: ProposalStatus = ProposalStatus.APPROVED,
     var requestedBy: Long? = null,
     var reviewedBy: Long? = null,
     var reason: String? = null,

@@ -26,6 +26,11 @@ def main(argv: list[str] | None = None) -> int:
     log = logging.getLogger("provider_agent")
     log.info("Provider Agent %s", cfg.agent_version)
     _warn_risky_config(cfg, log)
+    if cfg.gui:
+        # 브라우저 설정 UI(토큰·풀 설정·자동시작을 클릭으로). 127.0.0.1 전용.
+        from .webui import run_gui
+        run_gui()
+        return 0
     if cfg.install_service:
         # 설정은 이미 저장됨(config_from_args). 자동 시작 서비스만 등록하고 종료.
         from .service import install_service

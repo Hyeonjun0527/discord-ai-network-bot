@@ -39,6 +39,7 @@ class TokenService(
         providerId: Long,
         guildId: Long?,
     ): String {
+        pruneExpired() // 만료된 미사용 토큰을 발급 시점에 정리(무한 증가 방지).
         val token =
             (0 until 15)
                 .map { alphabet[random.nextInt(alphabet.length)] }
@@ -52,6 +53,12 @@ class TokenService(
                 System.nanoTime() + TimeUnit.SECONDS.toNanos(ttlSeconds),
             )
         return token
+    }
+
+    /** 만료된(미사용) 페어링 토큰 제거. 검증 시에만 정리되던 것을 발급 시점에도 정리한다. */
+    private fun pruneExpired() {
+        val now = System.nanoTime()
+        store.entries.removeIf { now > it.value.expiresAtNanos }
     }
 
     override fun verify(token: String): OwnerBinding? {

@@ -163,9 +163,11 @@ class ConnectStateStore(
         cb: String,
         localState: String,
     ): String {
+        val now = clock.millis()
+        map.values.removeIf { now > it.expiresAt } // 미완료 흐름이 쌓이지 않게 발급 시 만료분 정리.
         val raw = ByteArray(24).also { rnd.nextBytes(it) }
         val state = b64.encodeToString(raw)
-        map[state] = Entry(cb, localState, clock.millis() + ttlMillis)
+        map[state] = Entry(cb, localState, now + ttlMillis)
         return state
     }
 
@@ -202,9 +204,11 @@ class ProviderSelectionStore(
         userId: Long,
         candidates: List<GuildBrief>,
     ): String {
+        val now = clock.millis()
+        map.values.removeIf { now > it.expiresAt }
         val raw = ByteArray(24).also { rnd.nextBytes(it) }
         val key = b64.encodeToString(raw)
-        map[key] = Entry(cb, localState, userId, candidates, clock.millis() + ttlMillis)
+        map[key] = Entry(cb, localState, userId, candidates, now + ttlMillis)
         return key
     }
 

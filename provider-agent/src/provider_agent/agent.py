@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+from collections import deque
 
 from . import sysinfo
 from .config import AgentConfig
@@ -47,7 +48,10 @@ class ProviderAgent:
         self._models: list[str] = list(cfg.models)
         self._inflight = 0
         self._processed = 0  # 누적 처리 건수(로컬 요약)
+        # 취소 표시. 수신된 적 없는 cancel 이 무한히 쌓이지 않게 FIFO 로 상한(가장 오래된 것부터 폐기).
         self._cancelled: set[str] = set()
+        self._cancel_order: deque[str] = deque()
+        self._cancel_cap = 4096
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._stop = asyncio.Event()
         self._conn = AgentConnection(cfg, self._on_server_frame, self._build_hello)
@@ -72,10 +76,19 @@ class ProviderAgent:
             self._tasks[req_id] = task
             task.add_done_callback(lambda _t: self._tasks.pop(req_id, None))
         elif isinstance(frame, CancelFrame):
-            self._cancelled.add(frame.request_id)
+            self._mark_cancelled(frame.request_id)
             existing = self._tasks.get(frame.request_id)
             if existing is not None:
                 existing.cancel()
+
+    def _mark_cancelled(self, request_id: str) -> None:
+        """취소 표시(상한 FIFO). 수신 안 된 cancel 이 무한 누적되지 않게 가장 오래된 것부터 폐기."""
+        if request_id in self._cancelled:
+            return
+        self._cancelled.add(request_id)
+        self._cancel_order.append(request_id)
+        while len(self._cancel_order) > self._cancel_cap:
+            self._cancelled.discard(self._cancel_order.popleft())
 
     async def handle_infer(self, conn: AgentConnection, req: InferRequest) -> None:
         if req.request_id in self._cancelled:

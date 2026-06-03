@@ -278,7 +278,7 @@ class ChannelAiCustomizationService(
         reviewerRoleIds: Collection<Long> = emptyList(),
         reviewerIsGuildAdmin: Boolean = true,
         reason: String? = null,
-    ): AiChangeProposalEntity {
+    ): AiChangeProposalReview {
         featureGate.requireChannelAiEnabled()
         val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
         require(proposal.status == "pending") { "pending proposal only can be approved" }
@@ -325,7 +325,7 @@ class ChannelAiCustomizationService(
             targetId = behaviorId,
             summary = proposal.reason ?: "approved v${behavior.version}",
         )
-        return saved
+        return saved.toReview()
     }
 
     private fun applyRoutingSnapshot(
@@ -349,7 +349,7 @@ class ChannelAiCustomizationService(
         reviewerRoleIds: Collection<Long> = emptyList(),
         reviewerIsGuildAdmin: Boolean = true,
         reason: String?,
-    ): AiChangeProposalEntity {
+    ): AiChangeProposalReview {
         featureGate.requireChannelAiEnabled()
         val proposal = proposals.findById(proposalId).orElseThrow { IllegalArgumentException("proposal not found: $proposalId") }
         require(proposal.status == "pending") { "pending proposal only can be rejected" }
@@ -368,7 +368,7 @@ class ChannelAiCustomizationService(
             targetId = proposal.id,
             summary = proposal.reason ?: "rejected",
         )
-        return saved
+        return saved.toReview()
     }
 
     @Transactional
@@ -506,9 +506,9 @@ class ChannelAiCustomizationService(
         )
     }
 
-    fun pendingProposals(guildId: Long): List<AiChangeProposalEntity> {
+    fun pendingProposals(guildId: Long): List<PendingProposalView> {
         featureGate.requireChannelAiEnabled()
-        return proposals.findByGuildIdAndStatus(guildId, "pending")
+        return proposals.findByGuildIdAndStatus(guildId, "pending").map { it.toPendingView() }
     }
 
     fun channelHistory(
@@ -520,7 +520,34 @@ class ChannelAiCustomizationService(
         val behaviorVersions = channelAi?.let { versions.findByChannelAiIdOrderByVersionDesc(it.id) } ?: emptyList()
         val proposalHistory = proposals.findByGuildIdAndChannelIdOrderByCreatedAtDesc(guildId, channelId)
         val auditHistory = audits.findTop10ByGuildIdAndChannelIdOrderByCreatedAtDesc(guildId, channelId)
-        return ChannelAiHistory(channelAi, behaviorVersions, proposalHistory, auditHistory)
+        return ChannelAiHistory(
+            channelAi = channelAi?.let { ChannelAiHistoryHeader(id = it.id, activeBehaviorVersionId = it.activeBehaviorVersionId) },
+            versions =
+                behaviorVersions.map {
+                    ChannelAiBehaviorVersionView(
+                        id = it.id,
+                        version = it.version,
+                        purpose = it.purpose,
+                        tone = it.tone,
+                        answerLength = it.answerLength,
+                        createdAt = it.createdAt.toString(),
+                    )
+                },
+            proposals =
+                proposalHistory.map {
+                    ChannelAiProposalView(
+                        id = it.id,
+                        status = it.status,
+                        proposedBehaviorId = it.proposedBehaviorId,
+                        requestedBy = it.requestedBy,
+                        reviewedBy = it.reviewedBy,
+                    )
+                },
+            audits =
+                auditHistory.map {
+                    ChannelAiAuditView(action = it.action, targetType = it.targetType, targetId = it.targetId)
+                },
+        )
     }
 
     fun promptPreview(
@@ -619,6 +646,19 @@ class ChannelAiCustomizationService(
             empty = channelAi == null,
         )
     }
+
+    private fun AiChangeProposalEntity.toReview(): AiChangeProposalReview =
+        AiChangeProposalReview(id = id, status = status, reviewedBy = reviewedBy, reason = reason)
+
+    private fun AiChangeProposalEntity.toPendingView(): PendingProposalView =
+        PendingProposalView(
+            id = id,
+            channelId = channelId,
+            channelAiId = channelAiId,
+            proposedBehaviorId = proposedBehaviorId,
+            requestedBy = requestedBy,
+            createdAt = createdAt.toString(),
+        )
 
     private fun AiChangeProposalEntity.toReviewItem(): ChannelAiProposalReviewItem {
         val behavior = proposedBehaviorId?.let { behaviorId -> channelAiId?.let { versions.findByChannelAiIdAndId(it, behaviorId) } }
@@ -929,10 +969,54 @@ data class ChannelAiWizardResult(
 )
 
 data class ChannelAiHistory(
-    val channelAi: ChannelAiEntity?,
-    val versions: List<AiBehaviorVersionEntity>,
-    val proposals: List<AiChangeProposalEntity>,
-    val audits: List<CustomizationAuditLogEntity>,
+    val channelAi: ChannelAiHistoryHeader?,
+    val versions: List<ChannelAiBehaviorVersionView>,
+    val proposals: List<ChannelAiProposalView>,
+    val audits: List<ChannelAiAuditView>,
+)
+
+data class ChannelAiHistoryHeader(
+    val id: Long,
+    val activeBehaviorVersionId: Long?,
+)
+
+data class ChannelAiBehaviorVersionView(
+    val id: Long,
+    val version: Int,
+    val purpose: String,
+    val tone: String,
+    val answerLength: String,
+    val createdAt: String,
+)
+
+data class ChannelAiProposalView(
+    val id: Long,
+    val status: String,
+    val proposedBehaviorId: Long?,
+    val requestedBy: Long?,
+    val reviewedBy: Long?,
+)
+
+data class ChannelAiAuditView(
+    val action: String,
+    val targetType: String,
+    val targetId: Long?,
+)
+
+data class AiChangeProposalReview(
+    val id: Long,
+    val status: String,
+    val reviewedBy: Long?,
+    val reason: String?,
+)
+
+data class PendingProposalView(
+    val id: Long,
+    val channelId: Long,
+    val channelAiId: Long?,
+    val proposedBehaviorId: Long?,
+    val requestedBy: Long?,
+    val createdAt: String,
 )
 
 data class ChannelAiWizardDraft(

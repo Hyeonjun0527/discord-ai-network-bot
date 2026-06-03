@@ -63,7 +63,7 @@ class ProviderConnectController(
         if (!enabled) {
             return page(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "‘토큰 받기’가 아직 설정되지 않았습니다. 디스코드에서 <b>/provider-join</b> 으로 토큰을 받아 붙여넣어 주세요.",
+                "‘토큰 받기’가 아직 설정되지 않았습니다. 디스코드에서 <b>/프로바이더참여</b> 으로 토큰을 받아 붙여넣어 주세요.",
             )
         }
         if (!isLocalCallback(cb)) return page(HttpStatus.BAD_REQUEST, "잘못된 콜백 주소입니다.")

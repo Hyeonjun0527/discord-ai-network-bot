@@ -70,7 +70,7 @@ object EmbedFactory {
         if (isAdmin) {
             b.addField("${MenuSymbols.SETTINGS} 설정", "서버 언어·채널·승인 관리", true)
         }
-        return b.setFooter("언제든 /menu 로 다시 열 수 있어요.").build()
+        return b.setFooter("언제든 /메뉴 로 다시 열 수 있어요.").build()
     }
 
     /**

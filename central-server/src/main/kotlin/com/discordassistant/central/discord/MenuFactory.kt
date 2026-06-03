@@ -188,10 +188,10 @@ object MenuFactory {
     fun slimHelp(isAdmin: Boolean): String {
         val sb = StringBuilder()
         sb.append("**핵심만 빠르게** — 자세한 건 버튼으로!\n\n")
-        sb.append("${MenuSymbols.ASK} **`/ask <질문>`** — 풀의 AI 에게 질문 (또는 위 `질문하기` 버튼)\n")
+        sb.append("${MenuSymbols.ASK} **`/질문 <질문>`** — 풀의 AI 에게 질문 (또는 위 `질문하기` 버튼)\n")
         sb.append("${MenuSymbols.PROVIDER} **`함께 도와주기`** 버튼 — 내 컴퓨터의 AI 로 커뮤니티 답변 돕기\n")
         sb.append("${MenuSymbols.STATUS} **`내 상태`** 버튼 — 내 사용량/기여 확인\n")
-        sb.append("${MenuSymbols.HELP} **`/menu`** — 언제든 이 판을 다시 열기\n")
+        sb.append("${MenuSymbols.HELP} **`/메뉴`** — 언제든 이 판을 다시 열기\n")
         if (isAdmin) {
             sb.append("${MenuSymbols.SETTINGS} **`설정`** 버튼(관리자) — 언어·기본모델·자동승인·허용채널을 드롭다운으로\n")
         }

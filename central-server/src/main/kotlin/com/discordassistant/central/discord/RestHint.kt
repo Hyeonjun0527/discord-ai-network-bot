@@ -14,7 +14,7 @@ object RestHint {
     ): String? =
         when {
             state == ProviderState.LIMITED ->
-                "💤 부하가 높습니다. `/provider-pause` 로 잠시 쉬어가도 좋아요."
+                "💤 부하가 높습니다. `/수신정지` 로 잠시 쉬어가도 좋아요."
             remainingDaily in 1..5 ->
                 "💤 오늘 한도가 거의 찼어요. 무리하지 말고 쉬어도 됩니다. 고마워요!"
             else -> null

@@ -26,7 +26,7 @@ object ProviderOnboarding {
             "\n토큰은 ⏳ **10분·1회용**. 연결되면 `/내상태`(provider-status)로 확인하세요. " +
                 "📄 웹 가이드·GitHub Release: $INSTALL_PAGE · **민감정보 입력 금지.**" +
                 "\n🖼️ (선택) **이미지 생성도 제공**하려면 로컬 Stable Diffusion(A1111 등)을 켜고 " +
-                "에이전트에 `--enable-image` 를 추가하세요. 그러면 `/imagine` 요청을 받을 수 있어요. " +
+                "에이전트에 `--enable-image` 를 추가하세요. 그러면 `/그림` 요청을 받을 수 있어요. " +
                 "누구나 이미지 프로바이더가 될 수 있습니다."
         return when (os.lowercase()) {
             "mac", "macos" ->
@@ -74,7 +74,7 @@ object ProviderOnboarding {
         sb.append("   내 OS 탭(macOS/Windows/Linux)에서 **GitHub Release 다운로드 명령**을 그대로 복사하세요.\n\n")
         sb.append("**2) 명령의 토큰 자리에 아래 값을 넣어 실행** (⏳ **10분·1회용**):\n")
         sb.append("```\n--token $token --relay-url $relay\n```\n")
-        sb.append("연결되면 `/provider-status` 로 확인. ")
+        sb.append("연결되면 `/내상태` 로 확인. ")
         if (relayUrl.isBlank()) {
             sb.append("⚠️ 연결 주소 미설정 시 관리자에게 `relay-url` 문의. ")
         }

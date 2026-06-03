@@ -20,6 +20,7 @@ SAVEABLE = (
     "enable_image",
     "sd_url",
     "allow_remote_sd",
+    "auto_update",
 )
 
 
@@ -59,6 +60,26 @@ def persist_token(token: str, path: pathlib.Path | None = None) -> None:
             if isinstance(loaded, dict):
                 data = loaded
         data["token"] = token
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def persist_partial(updates: dict, path: pathlib.Path | None = None) -> None:
+    """저장 설정에 **일부 필드만** 병합 갱신한다(0600). 토큰 등 다른 필드는 유지.
+
+    토글류 단일 설정(예: auto_update)을 다른 값에 영향 없이 즉시 저장할 때 쓴다.
+    """
+    path = path or config_path()
+    try:
+        data: dict = {}
+        if path.exists():
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        data.update(updates)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         os.chmod(path, 0o600)

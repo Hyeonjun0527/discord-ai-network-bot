@@ -254,6 +254,81 @@ async def test_start_stop_lifecycle(monkeypatch):
         await client.close()
 
 
+@pytest.mark.asyncio
+async def test_install_info_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        "provider_agent.installer.install_info",
+        lambda: {"platform": "mac", "supported": True, "installed": False, "label": "응용 프로그램에 추가하기"},
+    )
+    client = await _client()
+    try:
+        assert (await client.get("/api/install-info")).status == 403  # 키 없음
+        d = await (await client.get("/api/install-info", headers={"X-Session": KEY})).json()
+        assert d["platform"] == "mac" and d["supported"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_install_endpoint_delegates(monkeypatch):
+    monkeypatch.setattr(
+        "provider_agent.installer.install_app",
+        lambda: {"ok": True, "message": "응용 프로그램에 추가했어요."},
+    )
+    client = await _client()
+    try:
+        assert (await client.post("/api/install")).status == 403  # 키 없음
+        d = await (await client.post("/api/install", headers={"X-Session": KEY})).json()
+        assert d["ok"] is True and "추가" in d["message"]
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_update_info_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        "provider_agent.updater.check",
+        lambda: {"current": "0.19.0", "latest": "0.20.0", "outdated": True, "supported": True, "error": None},
+    )
+    client = await _client()
+    try:
+        assert (await client.get("/api/update-info")).status == 403  # 키 없음
+        d = await (await client.get("/api/update-info", headers={"X-Session": KEY})).json()
+        assert d["outdated"] is True and d["latest"] == "0.20.0"
+        assert "autoUpdate" in d  # 토글 현재값 포함
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_auto_update_toggle_persists(monkeypatch):
+    client = await _client()
+    try:
+        await client.post("/api/auto-update", headers={"X-Session": KEY}, json={"autoUpdate": False})
+        assert load_config().get("auto_update") is False  # 저장됨
+        await client.post("/api/auto-update", headers={"X-Session": KEY}, json={"autoUpdate": True})
+        assert load_config().get("auto_update") is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_update_apply_triggers_restart(monkeypatch):
+    monkeypatch.setattr(
+        "provider_agent.updater.apply_update",
+        lambda: {"ok": True, "restarting": True, "message": "업데이트 중"},
+    )
+    exited = {}
+    monkeypatch.setattr("provider_agent.webui._schedule_exit", lambda *a, **k: exited.setdefault("called", True))
+    client = await _client()
+    try:
+        d = await (await client.post("/api/update", headers={"X-Session": KEY})).json()
+        assert d["ok"] is True and d["restarting"] is True
+        assert exited.get("called") is True  # 교체 위해 종료 예약됨
+    finally:
+        await client.close()
+
+
 def test_brand_icon_png_returns_png_bytes():
     from provider_agent.webui import _brand_icon_png
 

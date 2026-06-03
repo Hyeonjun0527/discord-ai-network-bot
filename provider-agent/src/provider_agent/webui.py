@@ -22,6 +22,7 @@ from aiohttp import web
 
 from .config import AgentConfig, config_from_args
 from .config_file import load_config, save_config
+from .constants import AGENT_VERSION
 from .netguard import RemoteOllamaBlocked, ensure_ollama_allowed
 
 # 공개 기본 중앙 서버(유저는 입력하지 않음). 자체호스팅만 고급에서 바꿀 수 있다.
@@ -138,7 +139,7 @@ def _connect_base(relay: str) -> str:
 
 def _page(session_key: str) -> str:
     """세션 키를 주입한 제어판 HTML. 디자인은 데스크톱 앱 카드(레퍼런스), 동작은 실제 API 연결."""
-    return _PAGE_TEMPLATE.replace("__SESSION_KEY__", session_key)
+    return _PAGE_TEMPLATE.replace("__SESSION_KEY__", session_key).replace("__VERSION__", AGENT_VERSION)
 
 
 # macOS 데스크톱 앱 카드 디자인(레퍼런스) — 정적 목업을 실제 백엔드(/api/*)에 연결.
@@ -151,6 +152,7 @@ body{margin:0;color:var(--text);background:radial-gradient(circle at 18% 0%,rgba
 body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.10;background-image:linear-gradient(rgba(148,163,184,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.18) 1px,transparent 1px);background-size:34px 34px;mask-image:linear-gradient(to bottom,rgba(0,0,0,.92),transparent 84%)}
 button,input{font:inherit}
 .window{width:100%;min-height:100vh}
+.appver{position:fixed;top:11px;right:13px;z-index:6;font:700 11.5px/1 ui-monospace,Menlo,monospace;color:var(--faint);background:rgba(8,17,29,.7);border:1px solid var(--line);border-radius:8px;padding:4px 8px;letter-spacing:.02em;backdrop-filter:blur(6px)}
 main{padding:22px 20px 22px}
 .hero{display:grid;grid-template-columns:48px minmax(0,1fr);gap:13px;align-items:center;margin-bottom:14px}
 .logo{width:48px;height:48px;border-radius:14px;overflow:hidden;border:1px solid rgba(122,156,219,.34);box-shadow:0 0 0 5px rgba(79,125,255,.06);background:#0e1623}.logo img{width:100%;height:100%;object-fit:cover}
@@ -196,6 +198,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 @media (max-width:560px){.hero{grid-template-columns:1fr}.card{grid-template-columns:1fr}.token-row{grid-template-columns:1fr}.grid2{grid-template-columns:1fr}}
 </style></head><body>
 <div class="window">
+<div class="appver" title="설치된 버전">v__VERSION__</div>
 <main>
 <section class="hero"><div class="logo"><img src="/mascot.png" alt="냥시스턴트 마스코트"></div><div><h1>AI 네트워크 구축 도우미 · 냥시스턴트</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
 <section class="card"><div class="ring off" id="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
@@ -205,18 +208,33 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 실행</div><div class="setting-desc">앱을 닫아도 로그인 때 백그라운드로 실행합니다. (앱을 열어 둘 땐 꺼 두세요)</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 환경이 있으면 /imagine 요청을 처리합니다.</div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
 </div>
-<button class="primary-btn" type="button" id="go" onclick="connect()">🔗 연동하기</button>
+<button class="primary-btn" type="button" id="go" onclick="connect()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;vertical-align:-4px;margin-right:9px"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 0 1 0 10h-2"></path><path d="M8 12h8"></path></svg><span>연동하기</span></button>
 <div class="helper" style="text-align:center;margin-top:9px">처음이면 디스코드 로그인 창이 열려요. 한 번 연동하면 다음부턴 바로 연결됩니다.</div>
 <div id="msg"></div>
 <details><summary><span>로그 보기</span><span>⌄</span></summary><div class="details-body"><div id="log"></div></div></details>
 <details><summary><span>고급 · 토큰 직접 입력</span><span>⌄</span></summary><div class="details-body">
 <label class="input" style="margin-bottom:11px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:20px;height:20px;flex:0 0 auto"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg><input type="password" id="token" placeholder="/provider-join 토큰 붙여넣기(선택)"></label>
-중앙 서버(고정): <span class="ro" id="relay"></span></div></details>
+중앙 서버(고정): <span class="ro" id="relay"></span>
+<div id="installRow" style="display:none;margin-top:13px">
+<button class="secondary-btn" type="button" id="installBtn" style="width:100%" onclick="install()">응용 프로그램에 추가하기</button>
+<div class="helper" id="installHelp" style="margin-top:7px"></div></div>
+<div id="updateRow" style="display:none;margin-top:14px;border-top:1px solid rgba(148,163,184,.10);padding-top:13px">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+<div><div style="font-weight:850;font-size:14px;letter-spacing:-.02em">자동 업데이트</div><div class="helper" style="margin-top:2px">새 버전이 나오면 앱 시작 때 자동으로 받아 적용합니다.</div></div>
+<div class="toggle" id="autoupd" onclick="toggleAutoUpdate()"></div></div>
+<div id="verStatus" style="margin-top:10px">버전 확인 중…</div>
+<button class="secondary-btn" type="button" id="updateBtn" style="width:100%;margin-top:9px;display:none" onclick="doUpdate()"></button></div>
+</div></details>
 </section>
 </main></div>
 <script>
 const K="__SESSION_KEY__";const H={"X-Session":K};let RUN=false;let HAS_MODELS=false;
 const MICON='<svg class="model-icon" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M27 20c0-6 7-8 11-4 4-4 11-2 11 4v18c0 10-6 18-17 18S15 48 15 38V26c0-5 4-9 9-9h3Z"></path><path d="M30 31h.1M46 31h.1M31 43c4 3 10 3 14 0"></path><path d="M20 55v10M42 55v10M52 48v14"></path></svg>';
+const IINSTALL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px;vertical-align:-4px;margin-right:8px"><path d="M12 3v10"></path><path d="m8 11 4 4 4-4"></path><rect x="4" y="16.5" width="16" height="4.5" rx="1.5"></rect></svg>';
+const ICHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:6px"><path d="M20 6 9 17l-5-5"></path></svg>';
+const IWARN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:6px"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"></path><path d="M12 9v4M12 17h.01"></path></svg>';
+const ILINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;vertical-align:-4px;margin-right:9px"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 0 1 0 10h-2"></path><path d="M8 12h8"></path></svg>';
+const ISTOP='<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:17px;height:17px;vertical-align:-3px;margin-right:9px"><rect x="6" y="6" width="12" height="12" rx="2.5"></rect></svg>';
 async function j(u,o){o=o||{};o.headers=Object.assign({},H,o.headers||{});const r=await fetch(u,o);return r.json();}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');HAS_MODELS=d.models.length>0;
@@ -238,7 +256,7 @@ let chips='<div class="chip"><span class="dot'+(HAS_MODELS?'':' grey')+'"></span
 chips+='<div class="chip">제공 모델 '+cnt+'개</div>';
 chips+='<div class="chip"><span class="dot'+(s.connected?'':' grey')+'"></span>'+(s.running?(s.connected?('처리 '+s.processed+'건'):'연결 시도 중'):'중지됨')+(s.imageReady?' · 🖼️':'')+'</div>';
 document.getElementById('chips').innerHTML=chips;
-const go=document.getElementById('go');go.textContent=s.running?'■ 중지':'🔗 연동하기';go.className='primary-btn'+(s.running?' stop':'');
+const go=document.getElementById('go');go.innerHTML=s.running?ISTOP+'<span>중지</span>':ILINK+'<span>연동하기</span>';go.className='primary-btn'+(s.running?' stop':'');
 const lg=await j('/api/logs');const el=document.getElementById('log');el.textContent=lg.lines.join('\n');el.scrollTop=el.scrollHeight;}
 // 버튼 하나로 모든 걸: 실행 중이면 중지, 아니면 (설정 저장 → 토큰 있으면 바로 연결 / 없으면 브라우저 로그인 → 콜백이 자동 연결).
 async function connect(){const msg=document.getElementById('msg');if(RUN){await j('/api/stop',{method:'POST'});await refresh();return;}
@@ -251,7 +269,40 @@ if(s.hasToken){const st=await j('/api/start',{method:'POST'});if(!st.ok){msg.cla
 if(s.connectEnabled){const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
 if(r.ok){msg.className='ok';msg.textContent='🌐 브라우저에서 디스코드 로그인·승인하면 자동으로 연결됩니다.';}else{msg.className='err';msg.textContent='⚠️ '+(r.error||'브라우저 열기 실패');}return;}
 msg.className='err';msg.textContent='⚠️ 토큰이 필요합니다. ‘고급’에서 /provider-join 토큰을 붙여넣어 주세요.';}
-loadModels();refresh();setInterval(refresh,2000);
+// 설치 버튼: 맥/윈도우만, 빌드된 앱에서만 활성. 상태는 거의 안 변하므로 1회 + 설치 후에만 갱신.
+function setHelp(el,kind,msg){const c=kind==='ok'?'#9fe0a0':kind==='err'?'#ff8a8a':'var(--muted)';const ic=kind==='ok'?ICHECK:kind==='err'?IWARN:'';el.innerHTML='<span style="color:'+c+'">'+ic+esc(msg)+'</span>';}
+async function loadInstall(){let d;try{d=await j('/api/install-info');}catch(e){return;}
+const row=document.getElementById('installRow');if(!d||(d.platform!=='mac'&&d.platform!=='win')){row.style.display='none';return;}
+row.style.display='block';const btn=document.getElementById('installBtn'),help=document.getElementById('installHelp');
+btn.innerHTML=IINSTALL+'<span>'+esc(d.label)+'</span>';
+if(!d.supported){btn.disabled=true;btn.style.opacity='.55';setHelp(help,'muted',d.reason||'지원되지 않아요.');return;}
+btn.disabled=false;btn.style.opacity='';
+if(d.installed){btn.disabled=true;btn.style.opacity='.55';setHelp(help,'ok','이미 설치되어 있어요.');}
+else{setHelp(help,'muted',d.platform==='win'?'시작 메뉴에 ‘냥시스턴트’ 바로가기를 추가합니다.':'이 앱을 응용 프로그램 폴더로 복사합니다. (관리자 권한 불필요)');}}
+async function install(){const btn=document.getElementById('installBtn'),help=document.getElementById('installHelp');
+const old=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span>설치 중…</span>';help.innerHTML='';
+let r;try{r=await j('/api/install',{method:'POST'});}catch(e){r={ok:false,error:'요청에 실패했어요.'};}
+if(r.ok){btn.style.opacity='.55';btn.innerHTML=ICHECK+'<span>완료</span>';setHelp(help,'ok',r.message||'완료했어요.');}
+else{btn.disabled=false;btn.innerHTML=old;setHelp(help,'err',r.error||'실패했어요.');}}
+// 업데이트: 현재/최신 버전 비교 + 자동 업데이트 토글 + (구버전이면) 수동 업데이트 버튼.
+let AUTOUPD=true;
+async function loadUpdate(){let d;try{d=await j('/api/update-info');}catch(e){return;}
+const row=document.getElementById('updateRow');row.style.display='block';
+AUTOUPD=!!d.autoUpdate;document.getElementById('autoupd').classList.toggle('on',AUTOUPD);
+const vs=document.getElementById('verStatus'),btn=document.getElementById('updateBtn');btn.style.display='none';
+if(d.error){setHelp(vs,'muted','현재 v'+d.current+' · '+d.error);return;}
+if(d.outdated){setHelp(vs,'muted','현재 v'+d.current+' → 최신 v'+d.latest+' 업데이트 있음');
+if(d.supported){btn.disabled=false;btn.style.display='block';btn.innerHTML=IINSTALL+'<span>지금 업데이트</span>';}
+}else{setHelp(vs,'ok','현재 v'+d.current+' · 최신입니다');}}
+async function toggleAutoUpdate(){AUTOUPD=!AUTOUPD;document.getElementById('autoupd').classList.toggle('on',AUTOUPD);
+try{await j('/api/auto-update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoUpdate:AUTOUPD})});}catch(e){}}
+async function doUpdate(){const btn=document.getElementById('updateBtn'),vs=document.getElementById('verStatus');
+btn.disabled=true;btn.innerHTML='<span>업데이트 받는 중… 잠시 후 자동 재시작</span>';setHelp(vs,'muted','새 버전을 내려받는 중입니다…');
+let r;try{r=await j('/api/update',{method:'POST'});}catch(e){r={ok:false,error:'요청에 실패했어요.'};}
+if(r.ok&&r.restarting){setHelp(vs,'ok',r.message||'업데이트 중 — 곧 다시 열립니다.');btn.innerHTML='<span>재시작 중…</span>';}
+else if(r.ok){setHelp(vs,'ok',r.message||'이미 최신이에요.');loadUpdate();}
+else{btn.disabled=false;btn.innerHTML=IINSTALL+'<span>지금 업데이트</span>';setHelp(vs,'err',r.error||'업데이트 실패');}}
+loadModels();refresh();loadInstall();loadUpdate();setInterval(refresh,2000);
 </script></body></html>"""
 
 
@@ -313,7 +364,11 @@ def build_app(session_key: str) -> web.Application:
         enable_image = bool(data.get("enableImage"))
         relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
         cfg = AgentConfig(
-            token=token, relay_url=relay, models=tuple(models_list), enable_image=enable_image
+            token=token,
+            relay_url=relay,
+            models=tuple(models_list),
+            enable_image=enable_image,
+            auto_update=bool(saved.get("auto_update", True)),  # 저장된 자동업데이트 설정 보존(초기화 방지)
         )
         if enable_image:
             try:
@@ -323,6 +378,12 @@ def build_app(session_key: str) -> web.Application:
         save_config(cfg)
         service_installed = False
         if data.get("installService"):
+            # 자동 실행 서비스를 로드하면 RunAtLoad 로 헤드리스 인스턴스가 곧바로 뜬다.
+            # 그 인스턴스가 이번 세션의 프로바이더 연결을 가로채지 않도록, GUI 가 먼저 락을 쥔다
+            # (서비스 쪽은 singleton 으로 깔끔히 종료 → 중복 연결·창 2개 없음).
+            from . import singleton
+
+            singleton.acquire()
             from .service import install_service
 
             try:
@@ -393,6 +454,7 @@ def build_app(session_key: str) -> web.Application:
                 relay_url=relay,
                 models=tuple(saved.get("models") or ()),
                 enable_image=bool(saved.get("enable_image")),
+                auto_update=bool(saved.get("auto_update", True)),
             )
         )
         # 토큰을 받았으니 곧바로 연결까지 자동으로(유저는 추가 클릭 없이 연동 완료).
@@ -403,6 +465,46 @@ def build_app(session_key: str) -> web.Application:
             "<script>setTimeout(()=>window.close(),1800)</script>",
             content_type="text/html",
         )
+
+    async def install_info(req: web.Request) -> web.Response:
+        _auth(req)
+        from .installer import install_info as _info
+
+        return web.json_response(_info())
+
+    async def install(req: web.Request) -> web.Response:
+        _auth(req)
+        from .installer import install_app
+
+        return web.json_response(install_app())
+
+    async def update_info(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import updater
+
+        loop = asyncio.get_event_loop()
+        info = await loop.run_in_executor(None, updater.check)  # 네트워크 → 스레드풀
+        info["autoUpdate"] = bool(load_config().get("auto_update", True))
+        return web.json_response(info)
+
+    async def update_apply(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import updater
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, updater.apply_update)
+        if result.get("ok") and result.get("restarting"):
+            _schedule_exit()  # 응답 전송 후 곧 종료 → 헬퍼가 교체·재실행
+        return web.json_response(result)
+
+    async def auto_update_set(req: web.Request) -> web.Response:
+        _auth(req)
+        from .config_file import persist_partial
+
+        data = await req.json()
+        on = bool(data.get("autoUpdate"))
+        persist_partial({"auto_update": on})  # 다른 설정 영향 없이 즉시 저장
+        return web.json_response({"ok": True, "autoUpdate": on})
 
     async def start(req: web.Request) -> web.Response:
         _auth(req)
@@ -433,6 +535,11 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/logs", logs)
     app.router.add_get("/connect/callback", connect_callback)
     app.router.add_post("/api/connect-open", connect_open)
+    app.router.add_get("/api/install-info", install_info)
+    app.router.add_post("/api/install", install)
+    app.router.add_get("/api/update-info", update_info)
+    app.router.add_post("/api/update", update_apply)
+    app.router.add_post("/api/auto-update", auto_update_set)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)
@@ -523,6 +630,48 @@ def _set_macos_app_identity(name: str) -> None:
         pass
 
 
+def _schedule_exit(delay: float = 1.2) -> None:
+    """응답을 보낸 뒤 곧 프로세스를 종료(업데이트 헬퍼가 교체·재실행하도록). 데몬 타이머."""
+    import os
+    import threading
+
+    threading.Timer(delay, lambda: os._exit(0)).start()
+
+
+def _maybe_auto_update() -> None:
+    """auto_update(기본 ON)면 백그라운드로 새 버전 검사·적용. 빌드된 앱·구버전일 때만 실제 교체.
+
+    네트워크/다운로드는 데몬 스레드에서. 적용되면 헬퍼가 swap 후 재실행하고 이 프로세스는 종료된다.
+    실패는 조용히 무시(자동 업데이트가 앱 기동을 막지 않는다).
+    """
+    import threading
+
+    if not bool(load_config().get("auto_update", True)):
+        return
+
+    def _worker() -> None:
+        try:
+            import time
+
+            from . import updater
+
+            if not updater.check().get("outdated"):
+                return
+            result = updater.apply_update()
+            if result.get("ok") and result.get("restarting"):
+                logging.getLogger("provider_agent").info(
+                    "자동 업데이트: %s", result.get("message", "업데이트 적용 중")
+                )
+                time.sleep(0.5)
+                import os
+
+                os._exit(0)  # 헬퍼가 교체·재실행
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
     """로컬 제어판을 네이티브 앱 창으로 띄운다(웹뷰 없으면 브라우저 폴백)."""
     session_key = secrets.token_urlsafe(24)
@@ -532,6 +681,7 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
         f"\n제어판: {url}\n(창이 안 보이면 위 주소를 브라우저에서 여세요. AGENT_GUI_BROWSER=1 로 브라우저 강제.)\n",
         flush=True,
     )
+    _maybe_auto_update()  # 자동 업데이트 ON 이면 백그라운드 검사·적용(있으면 교체·재실행)
 
     if _webview_available():
         try:

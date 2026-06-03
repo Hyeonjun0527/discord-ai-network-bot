@@ -53,8 +53,8 @@ class ProviderSafetyController(
             put("providerLabel", providerMutationLabel(providerUserId, visibility))
             if (visibility.canSeeProviderIdentity) put("providerCapabilityId", result.providerCapabilityId)
             put("eventId", result.eventId)
-            put("overloadAlertCount", result.overview.overloadAlertCount)
-            put("healthStatus", result.overview.healthStatus)
+            put("overloadAlertCount", result.overloadAlertCount)
+            put("healthStatus", result.healthStatus)
         }
     }
 

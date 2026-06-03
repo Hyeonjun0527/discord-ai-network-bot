@@ -28,27 +28,31 @@ class AiQualityFeedbackService(
         rating: Int?,
         feedbackType: String,
         reason: String?,
-    ): AiFeedbackEntity {
+    ): AiFeedbackResult {
         val normalizedRequestId = sanitizeRequestId(requestId)
         if (normalizedRequestId != null && userId != null) {
-            feedbacks.findByGuildIdAndRequestIdAndUserId(guildId, normalizedRequestId, userId)?.let { return it }
+            feedbacks.findByGuildIdAndRequestIdAndUserId(guildId, normalizedRequestId, userId)?.let {
+                return AiFeedbackResult.from(it)
+            }
         }
         val normalizedFeedbackType = sanitizeFeedbackType(feedbackType)
         val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
-        return feedbacks.save(
-            AiFeedbackEntity(
-                guildId = guildId,
-                channelId = channelId,
-                requestId = normalizedRequestId,
-                userId = userId,
-                channelAiId = channelAi?.id,
-                rating = rating?.coerceIn(-1, 1),
-                feedbackType = normalizedFeedbackType,
-                reason = sanitizeReason(reason),
-                status = if (normalizedFeedbackType.contains("report")) "needs_review" else "open",
-                createdAt = Instant.now(clock),
-            ),
-        )
+        val saved =
+            feedbacks.save(
+                AiFeedbackEntity(
+                    guildId = guildId,
+                    channelId = channelId,
+                    requestId = normalizedRequestId,
+                    userId = userId,
+                    channelAiId = channelAi?.id,
+                    rating = rating?.coerceIn(-1, 1),
+                    feedbackType = normalizedFeedbackType,
+                    reason = sanitizeReason(reason),
+                    status = if (normalizedFeedbackType.contains("report")) "needs_review" else "open",
+                    createdAt = Instant.now(clock),
+                ),
+            )
+        return AiFeedbackResult.from(saved)
     }
 
     fun channelSummary(
@@ -90,13 +94,13 @@ class AiQualityFeedbackService(
         status: String,
         reviewerUserId: Long?,
         resolutionReason: String?,
-    ): AiFeedbackEntity {
+    ): AiFeedbackReviewResult {
         val feedback = feedbacks.findByGuildIdAndId(guildId, feedbackId) ?: error("feedback_not_found")
         feedback.status = normalizeReviewStatus(status)
         feedback.reviewedBy = reviewerUserId
         feedback.reviewedAt = Instant.now(clock)
         feedback.resolutionReason = sanitizeReason(resolutionReason)
-        return feedbacks.save(feedback)
+        return AiFeedbackReviewResult.from(feedbacks.save(feedback))
     }
 
     fun modelQuality(guildId: Long): List<ModelQualitySummary> {
@@ -226,6 +230,38 @@ class AiQualityFeedbackService(
         val SECRET_PATTERN =
             Regex(
                 pattern = """(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""",
+            )
+    }
+}
+
+data class AiFeedbackResult(
+    val id: Long,
+    val status: String,
+    val rating: Int?,
+) {
+    companion object {
+        fun from(entity: AiFeedbackEntity): AiFeedbackResult =
+            AiFeedbackResult(
+                id = entity.id,
+                status = entity.status,
+                rating = entity.rating,
+            )
+    }
+}
+
+data class AiFeedbackReviewResult(
+    val id: Long,
+    val status: String,
+    val reviewedBy: Long?,
+    val reviewedAt: String?,
+) {
+    companion object {
+        fun from(entity: AiFeedbackEntity): AiFeedbackReviewResult =
+            AiFeedbackReviewResult(
+                id = entity.id,
+                status = entity.status,
+                reviewedBy = entity.reviewedBy,
+                reviewedAt = entity.reviewedAt?.toString(),
             )
     }
 }

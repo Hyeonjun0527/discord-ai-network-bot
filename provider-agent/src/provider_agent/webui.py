@@ -112,6 +112,14 @@ def _start_agent() -> dict:
     cfg = _build_cfg_from_saved()
     if cfg is None or not cfg.token:
         return {"ok": False, "error": "먼저 토큰을 저장하세요."}
+    # 단일 인스턴스: 백그라운드 자동실행 서비스 등 다른 에이전트가 이미 연결돼 있으면 막는다(핑퐁 방지).
+    from . import singleton
+
+    if not singleton.acquire():
+        return {
+            "ok": False,
+            "error": "이미 다른 인스턴스(백그라운드 자동 실행 등)가 연결돼 있어요. 그 인스턴스를 끄거나 ‘자동 실행’을 해제한 뒤 다시 시도하세요.",
+        }
     from .agent import ProviderAgent
 
     agent = ProviderAgent(cfg)
@@ -194,7 +202,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <div><div class="status-title" id="stitle">대기 중</div><div class="status-body" id="ssub">연결 시작을 누르면 풀에 등록됩니다.</div><div class="chips" id="chips"></div></div></section>
 <section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div></section>
 <section><h2>2. 설정</h2><div class="settings">
-<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 실행</div><div class="setting-desc">로그인 후 에이전트를 자동으로 실행합니다.</div></div><div class="toggle on" id="svc" onclick="this.classList.toggle('on')"></div></div>
+<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 실행</div><div class="setting-desc">앱을 닫아도 로그인 때 백그라운드로 실행합니다. (앱을 열어 둘 땐 꺼 두세요)</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 환경이 있으면 /imagine 요청을 처리합니다.</div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
 </div>
 <button class="primary-btn" type="button" id="go" onclick="connect()">🔗 연동하기</button>
@@ -399,6 +407,9 @@ def build_app(session_key: str) -> web.Application:
                 pass
         _state["agent"] = None
         _state["task"] = None
+        from . import singleton
+
+        singleton.release()  # 다음 시작/다른 인스턴스를 위해 락 해제
         return web.json_response({"ok": True})
 
     app.router.add_get("/", index)

@@ -50,11 +50,30 @@ class KnowledgeSearchService(
             return KnowledgeSearchResponse(guildId = guildId, query = query, results = emptyList(), fallbackReason = "no_knowledge_space")
         }
         val policy = activePolicy(guildId, channelId, knowledgeSpaceId, allowedSpaceIds)
+        return searchWithScope(guildId, query, normalizedQuery, limit, allowedSpaceIds, policy)
+    }
+
+    /**
+     * Search core that runs once `allowedSpaceIds` and `policy` are already resolved, so callers
+     * (e.g. [promptContext]) that need those scope/policy lookups can reuse them instead of
+     * re-querying. Behavior is identical to the public [search] entry point.
+     */
+    private fun searchWithScope(
+        guildId: Long,
+        query: String,
+        normalizedQuery: String,
+        limit: Int,
+        allowedSpaceIds: Set<Long>,
+        policy: RetrievalPolicyEntity?,
+    ): KnowledgeSearchResponse {
         val topK = minOf(limit.coerceIn(1, 20), policy?.topK ?: 20)
+        // Narrow the candidate set in the DB (guild + allowed spaces + indexed + searchable risk)
+        // and load it once; reused by both the chunk and source scoring passes.
+        val searchableSources = searchableSources(guildId, allowedSpaceIds)
         val candidates =
-            chunkCandidates(guildId, allowedSpaceIds, normalizedQuery, policy)
+            chunkCandidates(guildId, allowedSpaceIds, searchableSources, normalizedQuery, policy)
                 .ifEmpty {
-                    sourceCandidates(guildId, allowedSpaceIds, normalizedQuery, policy)
+                    sourceCandidates(searchableSources, normalizedQuery, policy)
                 }
         return KnowledgeSearchResponse(
             guildId = guildId,
@@ -151,7 +170,17 @@ class KnowledgeSearchService(
         }
         val allowedSpaceIds = allowedSpaceIds(guildId, channelId, knowledgeSpaceId)
         val policy = activePolicy(guildId, channelId, knowledgeSpaceId, allowedSpaceIds)
-        val search = search(guildId, query, limit = policy?.topK ?: 10, channelId = channelId, knowledgeSpaceId = knowledgeSpaceId)
+        // Reuse the scope/policy lookups already resolved above instead of re-querying inside search().
+        val normalizedQuery = query.trim().lowercase()
+        val search =
+            when {
+                normalizedQuery.isBlank() ->
+                    KnowledgeSearchResponse(guildId = guildId, query = query, results = emptyList(), fallbackReason = "empty_query")
+                allowedSpaceIds.isEmpty() ->
+                    KnowledgeSearchResponse(guildId = guildId, query = query, results = emptyList(), fallbackReason = "no_knowledge_space")
+                else ->
+                    searchWithScope(guildId, query, normalizedQuery, policy?.topK ?: 10, allowedSpaceIds, policy)
+            }
         val budget = minOf(maxChars.coerceIn(200, 8_000), policy?.tokenBudget ?: 8_000)
         val entries = mutableListOf<KnowledgePromptEntry>()
         val sourceRefs = mutableListOf<KnowledgeSourceRef>()
@@ -314,34 +343,35 @@ class KnowledgeSearchService(
         )
     }
 
-    private fun sourceCandidates(
+    private fun searchableSources(
         guildId: Long,
         allowedSpaceIds: Set<Long>,
+    ): List<KnowledgeSourceEntity> {
+        if (allowedSpaceIds.isEmpty()) return emptyList()
+        return sources.findByGuildIdAndKnowledgeSpaceIdInAndStatusAndRiskLevelIn(
+            guildId,
+            allowedSpaceIds,
+            "indexed",
+            SEARCHABLE_RISK_LEVELS,
+        )
+    }
+
+    private fun sourceCandidates(
+        searchableSources: List<KnowledgeSourceEntity>,
         query: String,
         policy: RetrievalPolicyEntity?,
-    ): List<KnowledgeSearchResult> =
-        sources
-            .findByGuildId(guildId)
-            .filter { it.knowledgeSpaceId in allowedSpaceIds }
-            .filter { it.status == "indexed" }
-            .filter { it.riskLevel in SEARCHABLE_RISK_LEVELS }
-            .mapNotNull { it.toResult(query, policy) }
+    ): List<KnowledgeSearchResult> = searchableSources.mapNotNull { it.toResult(query, policy) }
 
     private fun chunkCandidates(
         guildId: Long,
         allowedSpaceIds: Set<Long>,
+        searchableSources: List<KnowledgeSourceEntity>,
         query: String,
         policy: RetrievalPolicyEntity?,
     ): List<KnowledgeSearchResult> {
         val chunkRepo = chunks ?: return emptyList()
         if (allowedSpaceIds.isEmpty()) return emptyList()
-        val sourceById =
-            sources
-                .findByGuildId(guildId)
-                .filter { it.knowledgeSpaceId in allowedSpaceIds }
-                .filter { it.status == "indexed" }
-                .filter { it.riskLevel in SEARCHABLE_RISK_LEVELS }
-                .associateBy { it.id }
+        val sourceById = searchableSources.associateBy { it.id }
         if (sourceById.isEmpty()) return emptyList()
         return chunkRepo
             .findByGuildIdAndKnowledgeSpaceIdInAndStatus(guildId, allowedSpaceIds, "ready")

@@ -61,7 +61,7 @@ class AiQualityFeedbackController(
             "id" to saved.id,
             "status" to saved.status,
             "reviewedBy" to saved.reviewedBy,
-            "reviewedAt" to saved.reviewedAt?.toString(),
+            "reviewedAt" to saved.reviewedAt,
         )
     }
 

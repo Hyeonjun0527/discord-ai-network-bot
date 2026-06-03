@@ -2,7 +2,6 @@ package com.discordassistant.central.network
 
 import com.discordassistant.central.persistence.AiNetworkEventEntity
 import com.discordassistant.central.persistence.AiNetworkEventRepository
-import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.routing.ProviderSafetyChecker
@@ -150,7 +149,12 @@ class ProviderSafetyService(
                 ),
             )
         val overview = foundation.refreshOverview(guildId)
-        return ProviderSafetyMutationResult(saved.id, event.id, overview)
+        return ProviderSafetyMutationResult(
+            providerCapabilityId = saved.id,
+            eventId = event.id,
+            overloadAlertCount = overview.overloadAlertCount,
+            healthStatus = overview.healthStatus,
+        )
     }
 
     private fun ProviderCapabilityProfileEntity.toAlert(): ProviderOverloadAlert =
@@ -265,5 +269,6 @@ data class ProviderSafetyExecutionPlan(
 data class ProviderSafetyMutationResult(
     val providerCapabilityId: Long,
     val eventId: Long,
-    val overview: NetworkOverviewProjectionEntity,
+    val overloadAlertCount: Int,
+    val healthStatus: String,
 )

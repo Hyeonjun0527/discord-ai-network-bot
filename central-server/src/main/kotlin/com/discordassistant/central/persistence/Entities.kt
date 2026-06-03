@@ -1,12 +1,16 @@
 package com.discordassistant.central.persistence
 
 import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.domain.MultiResponseRunStatus
+import com.discordassistant.central.domain.PresetImportStatus
+import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderState
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.domain.RetrievalPolicyStatus
 import com.discordassistant.central.domain.SynthesisStatus
 import jakarta.persistence.Column
 import jakarta.persistence.Convert
@@ -341,7 +345,8 @@ class RetrievalPolicyEntity(
     var tokenBudget: Int = 1800,
     var rerankEnabled: Boolean = true,
     var sourcePriority: String? = null,
-    var status: String = "active",
+    @Convert(converter = RetrievalPolicyStatusConverter::class)
+    var status: RetrievalPolicyStatus = RetrievalPolicyStatus.ACTIVE,
     var createdAt: Instant = Instant.EPOCH,
     var updatedAt: Instant = Instant.EPOCH,
 )
@@ -376,7 +381,8 @@ class AiFeedbackEntity(
     var rating: Int? = null,
     var feedbackType: String = "general",
     var reason: String? = null,
-    var status: String = "open",
+    @Convert(converter = FeedbackStatusConverter::class)
+    var status: FeedbackStatus = FeedbackStatus.OPEN,
     var reviewedBy: Long? = null,
     var reviewedAt: Instant? = null,
     var resolutionReason: String? = null,
@@ -527,7 +533,8 @@ class PresetImportEntity(
     var importedPresetId: Long? = null,
     var createdChannelAiId: Long? = null,
     var createdBehaviorVersionId: Long? = null,
-    var status: String = "imported",
+    @Convert(converter = PresetImportStatusConverter::class)
+    var status: PresetImportStatus = PresetImportStatus.IMPORTED,
     var importedAt: Instant = Instant.EPOCH,
 )
 
@@ -550,7 +557,8 @@ class PresetReportEntity(
     var reason: String = "",
     var reasonCode: String = "other",
     var details: String? = null,
-    var status: String = "open",
+    @Convert(converter = PresetReportStatusConverter::class)
+    var status: PresetReportStatus = PresetReportStatus.OPEN,
     var createdAt: Instant = Instant.EPOCH,
     var reviewedBy: Long? = null,
     var reviewedAt: Instant? = null,

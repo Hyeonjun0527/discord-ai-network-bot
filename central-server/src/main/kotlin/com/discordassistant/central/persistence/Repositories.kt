@@ -1,9 +1,12 @@
 package com.discordassistant.central.persistence
 
+import com.discordassistant.central.domain.FeedbackStatus
+import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderState
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.domain.RetrievalPolicyStatus
 import org.springframework.data.jpa.repository.JpaRepository
 import java.time.Instant
 
@@ -287,13 +290,13 @@ interface RetrievalPolicyRepository : JpaRepository<RetrievalPolicyEntity, Long>
         guildId: Long,
         channelId: Long?,
         knowledgeSpaceId: Long?,
-        status: String,
+        status: RetrievalPolicyStatus,
     ): RetrievalPolicyEntity?
 
     fun findByGuildIdAndChannelIdAndStatus(
         guildId: Long,
         channelId: Long?,
-        status: String,
+        status: RetrievalPolicyStatus,
     ): List<RetrievalPolicyEntity>
 }
 
@@ -326,7 +329,7 @@ interface AiFeedbackRepository : JpaRepository<AiFeedbackEntity, Long> {
 
     fun findTop50ByGuildIdAndStatusOrderByCreatedAtDesc(
         guildId: Long,
-        status: String,
+        status: FeedbackStatus,
     ): List<AiFeedbackEntity>
 }
 
@@ -387,12 +390,12 @@ interface PresetReactionRepository : JpaRepository<PresetReactionEntity, Long> {
 }
 
 interface PresetReportRepository : JpaRepository<PresetReportEntity, Long> {
-    fun findByStatus(status: String): List<PresetReportEntity>
+    fun findByStatus(status: PresetReportStatus): List<PresetReportEntity>
 
     fun findByPublishedPresetIdAndReporterUserIdAndStatus(
         publishedPresetId: Long,
         reporterUserId: Long,
-        status: String,
+        status: PresetReportStatus,
     ): PresetReportEntity?
 }
 

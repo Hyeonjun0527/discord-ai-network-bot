@@ -32,7 +32,7 @@ class ChannelAiRoutingPolicyService(
         maxCandidates: Int,
         providerTagFilter: List<String>,
         costGuard: String,
-    ): ChannelAiRoutingPolicyEntity {
+    ): SavedChannelAiRoutingPolicy {
         featureGate.requireChannelAiEnabled()
         val now = Instant.now(clock)
         val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
@@ -48,7 +48,7 @@ class ChannelAiRoutingPolicyService(
         policy.providerTagFilter = providerTagFilter.normalizedCsv()
         policy.costGuard = costGuard.trim().ifBlank { "provider_safe" }
         policy.updatedAt = now
-        return policies.save(policy)
+        return policies.save(policy).toSavedDto()
     }
 
     @Transactional(readOnly = true)
@@ -70,9 +70,9 @@ class ChannelAiRoutingPolicyService(
         )
     }
 
-    fun list(guildId: Long): List<ChannelAiRoutingPolicyEntity> {
+    fun list(guildId: Long): List<ChannelAiRoutingPolicySummary> {
         featureGate.requireChannelAiEnabled()
-        return policies.findByGuildId(guildId)
+        return policies.findByGuildId(guildId).map { it.toSummaryDto() }
     }
 
     @Transactional(readOnly = true)
@@ -394,6 +394,26 @@ class ChannelAiRoutingPolicyService(
             .split(",")
             .map { it.trim() }
             .filter { it.isNotBlank() }
+
+    private fun ChannelAiRoutingPolicyEntity.toSavedDto(): SavedChannelAiRoutingPolicy =
+        SavedChannelAiRoutingPolicy(
+            id = id,
+            channelAiId = channelAiId,
+            responseMode = responseMode,
+            preferredModel = preferredModel,
+            allowedModels = allowedModels,
+            costGuard = costGuard,
+        )
+
+    private fun ChannelAiRoutingPolicyEntity.toSummaryDto(): ChannelAiRoutingPolicySummary =
+        ChannelAiRoutingPolicySummary(
+            channelId = channelId,
+            responseMode = responseMode,
+            preferredModel = preferredModel,
+            allowedModels = allowedModels,
+            minQualityTier = minQualityTier,
+            maxCandidates = maxCandidates,
+        )
 }
 
 private data class ProviderFeedbackSignal(
@@ -428,6 +448,24 @@ data class EffectiveRoutingPolicy(
     val maxCandidates: Int,
     val providerTagFilter: List<String>,
     val costGuard: String,
+)
+
+data class SavedChannelAiRoutingPolicy(
+    val id: Long,
+    val channelAiId: Long?,
+    val responseMode: String,
+    val preferredModel: String?,
+    val allowedModels: String?,
+    val costGuard: String,
+)
+
+data class ChannelAiRoutingPolicySummary(
+    val channelId: Long,
+    val responseMode: String,
+    val preferredModel: String?,
+    val allowedModels: String?,
+    val minQualityTier: String,
+    val maxCandidates: Int,
 )
 
 data class ModelCandidateCatalog(

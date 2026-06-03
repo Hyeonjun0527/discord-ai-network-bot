@@ -49,6 +49,8 @@ class PolicyServiceTest
 
         @Test
         fun `승인 방식 설정`() {
+            assertTrue(policy.isAutoApprove(100)) // 기본 자동 승인 ON
+            policy.setAutoApprove(100, false, adminId = 1)
             assertFalse(policy.isAutoApprove(100))
             policy.setAutoApprove(100, true, adminId = 1)
             assertTrue(policy.isAutoApprove(100))

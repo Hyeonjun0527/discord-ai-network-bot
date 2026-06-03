@@ -38,7 +38,7 @@ import java.time.Instant
 class GuildEntity(
     @Id var id: Long = 0, // Discord guild_id
     @Column(name = "privacy_mode") var privacyMode: String = "C_ADMIN_ONLY",
-    @Column(name = "auto_approve") var autoApprove: Boolean = false,
+    @Column(name = "auto_approve") var autoApprove: Boolean = true, // 기본 자동 승인(유입 마찰 최소화). /서버기본값·설정으로 끌 수 있음
     @Column(name = "default_model") var defaultModel: String? = null,
     @Column(name = "language") var language: String = "ko",
     @Column(name = "welcome_message") var welcomeMessage: String? = null,

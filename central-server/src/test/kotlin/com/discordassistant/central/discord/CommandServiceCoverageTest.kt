@@ -86,7 +86,9 @@ class CommandServiceCoverageTest
 
         @Test
         fun `providerJoin — 수동 승인 길드는 대기 안내`() {
-            assertTrue(commands.providerJoin(user()).content.contains("승인을 기다려"))
+            val applicant = user()
+            commands.setAutoApprove(user(guildId = applicant.guildId, admin = true), enabled = false) // 기본 자동 → 수동
+            assertTrue(commands.providerJoin(applicant).content.contains("승인을 기다려"))
         }
 
         // ── 관리자 명령(정상 경로) ───────────────────────────────────────
@@ -131,6 +133,7 @@ class CommandServiceCoverageTest
         @Test
         fun `approveProvider — 대기 없으면 안내, 신청 후엔 온보딩`() {
             val admin = user(admin = true)
+            commands.setAutoApprove(admin, enabled = false) // 기본 자동 → 수동(승인 대기열 생기게)
             assertTrue(commands.approveProvider(admin, 8_888_001L).content.contains("승인할 대기 중"))
             // 같은 길드에서 고유 유저가 신청 → 승인하면 온보딩(에페메랄) 반환.
             val applicant =

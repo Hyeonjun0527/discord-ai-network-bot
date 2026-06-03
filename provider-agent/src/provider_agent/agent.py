@@ -284,6 +284,13 @@ class ProviderAgent:
 
 
 def run_agent(cfg: AgentConfig) -> int:
+    # 단일 인스턴스: 이미 다른 에이전트(예: GUI 안에서 실행 중)가 연결돼 있으면 조용히 종료한다.
+    # (둘이 같은 프로바이더로 동시에 붙으면 서버가 번갈아 끊어 핑퐁이 생긴다.)
+    from . import singleton
+
+    if not singleton.acquire():
+        logger.warning("다른 에이전트 인스턴스가 이미 실행 중입니다 — 이 인스턴스는 종료합니다(중복 연결 방지).")
+        return 0
     return asyncio.run(ProviderAgent(cfg).run())
 
 

@@ -14,11 +14,15 @@ KEY = "test-session-key"
 
 @pytest.fixture(autouse=True)
 def _reset(monkeypatch, tmp_path):
+    from provider_agent import singleton
+
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     webui._state["agent"] = None
     webui._state["task"] = None
     webui._log_lines.clear()
+    singleton.release()  # 락 보유 상태가 다음 테스트로 새지 않게
     yield
+    singleton.release()
 
 
 async def _client() -> TestClient:
@@ -196,6 +200,24 @@ async def test_connect_callback_saves_token_and_autostarts(monkeypatch):
         st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
         assert st["running"] is True  # 토큰 받은 직후 자동 연결(추가 클릭 불필요)
         await client.post("/api/stop", headers={"X-Session": KEY})
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_start_blocked_when_another_instance_holds_lock(monkeypatch):
+    from provider_agent import singleton
+
+    monkeypatch.setattr("provider_agent.agent.ProviderAgent", FakeAgent)
+    # 다른 인스턴스가 락을 잡고 있는 상황을 시뮬레이션
+    monkeypatch.setattr(singleton, "acquire", lambda: False)
+    client = await _client()
+    try:
+        await client.post("/api/setup", headers={"X-Session": KEY}, json={"token": "T", "models": ["m"]})
+        d = await (await client.post("/api/start", headers={"X-Session": KEY})).json()
+        assert d["ok"] is False and "인스턴스" in d["error"]  # 중복 연결 차단
+        st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
+        assert st["running"] is False
     finally:
         await client.close()
 

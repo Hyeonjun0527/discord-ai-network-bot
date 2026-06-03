@@ -6,6 +6,16 @@ import pytest
 from provider_agent.config import config_from_args
 
 
+@pytest.fixture(autouse=True)
+def _isolated_config(monkeypatch, tmp_path):
+    # 저장된 설정 파일(~/.config) 을 읽지 않도록 격리한다(실사용 토큰이 테스트에 새지 않게).
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.delenv("AGENT_TOKEN", raising=False)
+    monkeypatch.delenv("RELAY_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    yield
+
+
 def test_cli_args():
     # 원격 Ollama 주소(o)는 안전 기본값에 막히므로 --allow-remote-ollama 를 명시한다.
     cfg, verbose = config_from_args(

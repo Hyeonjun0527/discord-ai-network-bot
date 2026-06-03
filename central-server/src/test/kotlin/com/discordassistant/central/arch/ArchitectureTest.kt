@@ -81,9 +81,18 @@ class ArchitectureTest {
                 "..central.dev..",
             )
 
-    // 컨트롤러(web 어댑터)는 리포지토리를 직접 주입/호출하지 않는다 — DB 접근은 서비스 경유(감사 2026-06-03 C).
-    // god class·N+1·데이터 누수 방지. 읽기/매핑은 *QueryService/*Service 가 담당한다.
-    // (엔티티를 web 에서 매핑하는 더 깊은 정리는 점진 리팩터로 별도 진행 — 우선 리포지토리 직접 의존만 차단.)
+    // 컨트롤러(web 어댑터)는 영속 계층(persistence)에 **전혀** 의존하지 않는다 — 리포지토리도, 엔티티도(감사 2026-06-03 C).
+    // 서비스가 엔티티 대신 DTO/view 를 반환하므로 web 계층에 JPA 엔티티가 새지 않는다(177곳 정리 완료).
+    // 이 규칙이 아래 controllersDoNotInjectRepositories(리포지토리 한정)를 포함·강화한다.
+    @ArchTest
+    val controllersDoNotTouchPersistence: ArchRule =
+        noClasses()
+            .that()
+            .haveSimpleNameEndingWith("Controller")
+            .should()
+            .dependOnClassesThat()
+            .resideInAPackage("..central.persistence..")
+
     @ArchTest
     val controllersDoNotInjectRepositories: ArchRule =
         noClasses()

@@ -34,3 +34,6 @@ personal_space/
 .vscode/
 .idea/
 scripts/.e2e-logs/
+
+# Claude Code 임시 worktree(에이전트 격리) — 커밋 금지
+.claude/worktrees/

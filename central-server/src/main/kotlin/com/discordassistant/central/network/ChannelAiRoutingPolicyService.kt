@@ -232,10 +232,17 @@ class ChannelAiRoutingPolicyService(
     }
 
     private fun providerFeedbackSignals(guildId: Long): Map<Long, ProviderFeedbackSignal> {
+        val feedbackRows = feedbacks.findTop200ByGuildIdOrderByCreatedAtDesc(guildId)
+        val requestIds = feedbackRows.mapNotNull { it.requestId?.takeIf { id -> id.isNotBlank() } }.toSet()
+        if (requestIds.isEmpty()) return emptyMap()
+        val providerByRequestId =
+            requests
+                .findByRequestIdIn(requestIds)
+                .associate { it.requestId to it.providerId }
         val signals = mutableMapOf<Long, ProviderFeedbackSignal>()
-        feedbacks.findTop200ByGuildIdOrderByCreatedAtDesc(guildId).forEach { feedback ->
+        feedbackRows.forEach { feedback ->
             val requestId = feedback.requestId?.takeIf { it.isNotBlank() } ?: return@forEach
-            val providerId = requests.findByRequestId(requestId)?.providerId ?: return@forEach
+            val providerId = providerByRequestId[requestId] ?: return@forEach
             val current = signals[providerId] ?: ProviderFeedbackSignal.EMPTY
             signals[providerId] = current.plus(feedback.rating ?: 0, feedback.feedbackType)
         }

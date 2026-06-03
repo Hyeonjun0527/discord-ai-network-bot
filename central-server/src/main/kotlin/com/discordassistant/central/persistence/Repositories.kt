@@ -73,6 +73,8 @@ interface ProviderContributionPolicyRepository : JpaRepository<ProviderContribut
 interface AiRequestRepository : JpaRepository<AiRequestEntity, Long> {
     fun findByRequestId(requestId: String): AiRequestEntity?
 
+    fun findByRequestIdIn(requestIds: Collection<String>): List<AiRequestEntity>
+
     fun countByGuildId(guildId: Long): Long
 
     fun findTop20ByGuildIdOrderByIdDesc(guildId: Long): List<AiRequestEntity>

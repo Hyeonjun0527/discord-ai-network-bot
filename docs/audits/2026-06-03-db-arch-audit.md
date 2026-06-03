@@ -72,9 +72,21 @@ ConnectionRegistry 키 조회 O(1) / IMAGE_CHUNK_CHARS vs 1MB 프레임 안전 /
 - ✅ #103 `PresetRegistryService` 1612→1209 → `PresetCatalogQueryService`(read 카탈로그/검색/moderation, write 와 공유 헬퍼는 양쪽 보유)
 - ✅ #104 `MultiResponseService` 1460→1128 → `MultiResponseReportingService`(read 리포팅/분석, summarize 헬퍼는 양쪽 보유)
 
-> 비고: 엔티티를 web 에서 직접 매핑하는 더 깊은 정리(서비스가 엔티티 대신 DTO 반환, ~177곳)는
-> 후속 점진 리팩터로 남김. ArchUnit 규칙은 우선 **리포지토리 직접 주입**만 차단한다.
+### ✅ B/A 잔여 성능·스키마 결함 수정 완료(2026-06-03, 6 PR)
+- ✅ #106 ChannelAiRoutingPolicyService.providerFeedbackSignals N+1 → findByRequestIdIn IN 일괄
+- ✅ #108 KnowledgeSearchService 풀로드+메모리필터 → WHERE 푸시다운 + 중복 scope/policy 조회 제거
+- ✅ #109 PolicyService/QuotaService/AnalyticsService readOnly 트랜잭션 + **길드정책 짧은TTL 캐시(무효화 11곳)**
+- ✅ #107 V31 contribution_log.guild_id DEFAULT 0 제거 · #110 V32 단일행 가정 3테이블 dedup 후 UNIQUE 제약
+  (provider·multi_response_policy·retrieval_policy; H2 미지원 표현식인덱스 대신 일반 UNIQUE)
 
-### ⬜ 남은 항목 — 별도 작업
-- **길드정책 캐시**(PolicyService roles.findByGuildId 반복): 무효화 설계 동반 — 별도 작업.
-- **빈약 도메인(엔티티 var 데이터백)·엔티티↛web 매핑 제거**: 대규모 점진 리팩터, 기능 결함 아님.
+### ✅ entity↛web 매핑 제거 완료(2026-06-03, 7 PR — 177곳 → 0)
+서비스가 JPA 엔티티 대신 DTO/view 를 반환하도록 바꿔 web 계층의 엔티티 누수를 근원 제거(응답 JSON·HTTP 시그니처 불변):
+- ✅ #112 AiQualityFeedback·ProviderSafety(9) · #113 ChannelAiRoutingPolicy(11) · #114 AiNetworkDashboard(3)
+- ✅ #115 KnowledgeIngestion(18) · #116 ChannelAiCustomization(29) · #117 MultiResponse(68) · #118 PresetRegistry(39)
+- ✅ **ArchUnit `controllersDoNotTouchPersistence` 규칙 추가**(리포지토리+엔티티 모두 차단) — 재발 방지 capstone
+
+### ✅ ChannelAi 이중 엔티티 단일화 완료
+- ✅ #111 V33 channel_ai_profile → channel_ai 백필 후 DROP, legacy ChannelAiProfileEntity/Repository·동기화 코드 제거
+
+### ⬜ 남은 항목 — 별도 작업(기능 결함 아님)
+- **빈약 도메인(엔티티 var 데이터백·상태 bare String)**: 도메인 모델 풍부화 — 대규모 점진 리팩터.

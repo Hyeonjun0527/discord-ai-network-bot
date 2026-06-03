@@ -63,6 +63,7 @@ class CommandServiceTest
         val aiFeedbacks: AiFeedbackRepository,
         val aiAdminRoles: AiAdminRoleRepository,
         val onboardingOptOuts: com.discordassistant.central.persistence.GuildOnboardingOptOutRepository,
+        val channelAis: com.discordassistant.central.persistence.ChannelAiRepository,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -635,31 +636,36 @@ class CommandServiceTest
             assertTrue(reply.content.contains("⛔"), reply.content)
         }
 
-        // REQ-INSTRUCTION-001: 관리자는 활성 채널 AI 에 자유 지침을 추가해 적용한다.
+        // REQ-INSTRUCTION-001: 관리자의 /ai-instruction 자유 지침은 즉시 적용되지 않고 항상 사람 검토 대기열로 간다(#5).
         @Test
-        fun `ai-instruction — 관리자는 활성 채널 AI 에 자유 지침을 적용한다`() {
+        fun `ai-instruction — 관리자 자유 지침은 즉시 적용이 아니라 검토 대기열로 간다`() {
             val admin = CommandContext(guildId = 100, channelId = 70401, userId = 5, roleIds = setOf(1L), isAdmin = true)
-            channelAiCustomization.createFromWizard(
-                guildId = 100,
-                channelId = 70401,
-                actorUserId = 5,
-                name = "코드냥",
-                avatarUrl = null,
-                job = "개발 질문",
-                tone = "친근하게",
-                answerLength = "balanced",
-                constitution = null,
-                requireApproval = false,
-            )
+            val created =
+                channelAiCustomization.createFromWizard(
+                    guildId = 100,
+                    channelId = 70401,
+                    actorUserId = 5,
+                    name = "코드냥",
+                    avatarUrl = null,
+                    job = "개발 질문",
+                    tone = "친근하게",
+                    answerLength = "balanced",
+                    constitution = null,
+                    requireApproval = false,
+                )
+            val baseActive = created.behaviorVersionId
 
             val empty = commands.setChannelAiInstruction(admin, "   ")
             assertTrue(empty.content.contains("자유 지침이 없"), empty.content)
 
             val applied = commands.setChannelAiInstruction(admin, "너는 우리 길드 공대장 냥대장이야. 반말 쓰고 트수 드립 좋아함")
-            assertTrue(applied.content.contains("적용"), applied.content)
+            // 즉시 적용 문구가 아니라 검토 대기열 안내여야 한다.
+            assertTrue(applied.content.contains("검토 대기열"), applied.content)
 
-            val current = commands.setChannelAiInstruction(admin, null)
-            assertTrue(current.content.contains("냥대장"), current.content)
+            // 제안은 PENDING 으로만 만들어지고, 활성 behavior 는 여전히 온보딩 때의 버전이어야 한다(즉시 active 아님).
+            assertTrue(channelAiCustomization.pendingProposals(100).any { it.channelId == 70401L })
+            val active = channelAis.findByGuildIdAndChannelId(100, 70401)!!.activeBehaviorVersionId
+            assertEquals(baseActive, active)
         }
 
         @Test

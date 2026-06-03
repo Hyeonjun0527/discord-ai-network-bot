@@ -24,7 +24,8 @@ class OnboardingBackfillIndexer(
 ) {
     /**
      * 정제된 백필 텍스트를 지식공간/소스로 색인한다(독립 트랜잭션). 빈 텍스트면 null.
-     * 민감/SSRF 위험으로 자동 색인이 막히면 `indexed=false` 로 남고 검토 큐로 간다(기존 indexInlineSourceIfPossible 동작).
+     * 민감/SSRF/프롬프트 인젝션 의심으로 자동 색인이 막히면 `indexed=false` 로 남고 검토 큐로 간다
+     * (addSource(screenInjection=true) + indexInlineSourceIfPossible 가 status REVIEW 를 스킵).
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     fun indexBackfill(
@@ -56,8 +57,11 @@ class OnboardingBackfillIndexer(
                 sourceUri = null,
                 contentPreview = text,
                 addedBy = actorUserId,
+                // 백필은 비관리자 사용자 생성 콘텐츠 → 저장형 프롬프트 인젝션 스크리닝. 의심 문구가 남으면
+                // risk 가 review(status REVIEW)로 상향돼 indexInlineSourceIfPossible 가 자동 색인하지 않고 검토 큐로 간다.
+                screenInjection = true,
             )
-        // 위험도 normal/review + status pending 일 때만 인라인 색인(민감/SSRF 는 검토 큐로).
+        // 위험도 normal + status pending 일 때만 인라인 색인(민감/SSRF/인젝션 의심은 검토 큐로).
         val indexResult =
             knowledgeIndexing.indexInlineSourceIfPossible(
                 guildId = guildId,

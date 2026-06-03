@@ -1512,6 +1512,8 @@ class CommandService(
             }
         }
         return runCatching {
+            // 자유 지침은 위험어 substring 우회(변형 인젝션) 위험이 있어 즉시 적용하지 않고 항상 사람 검토를 거친다(#5).
+            // 온보딩 경로와 동일하게 requireApproval=true 로 PENDING 제안을 만들고, 관리자 승인 후에만 active 가 된다.
             val result =
                 channelAiCustomization.proposeCustomInstruction(
                     guildId = ctx.guildId,
@@ -1520,18 +1522,12 @@ class CommandService(
                     actorRoleIds = ctx.roleIds,
                     actorIsGuildAdmin = ctx.isAdmin,
                     customInstruction = instruction,
-                    requireApproval = false,
+                    requireApproval = true,
                 )
-            if (result.status == "approved") {
-                Replies.ok(
-                    "✅ 이 채널 AI 자유 지침을 적용했어요(v${result.version}). 이후 `/ask` 답변에 반영됩니다.",
-                )
-            } else {
-                Replies.warn(
-                    "📝 자유 지침을 제안했지만 검토가 필요해 승인 대기열로 보냈어요" +
-                        "${result.approvalReason?.let { " (사유: $it)" } ?: ""}. 관리자 승인 후 적용됩니다. (제안 `${result.proposalId}`)",
-                )
-            }
+            Replies.ok(
+                "📝 자유 지침을 검토 대기열에 올렸어요(v${result.version}). " +
+                    "관리자 승인 후 `/ask` 답변에 적용됩니다. (제안 `${result.proposalId}`)",
+            )
         }.getOrElse {
             Replies.warn("자유 지침을 적용하지 못했어요. ${it.message ?: "잠시 후 다시 시도해 주세요."}")
         }

@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/ai-network")
 class AiNetworkDashboardController(
     private val foundation: AiNetworkFoundationService,
+    private val aiLevel: com.discordassistant.central.network.AiLevelService,
     private val growth: AiNetworkGrowthService,
     private val qualityFeedback: AiQualityFeedbackService,
     private val providerSafety: ProviderSafetyService,
@@ -141,11 +142,15 @@ class AiNetworkDashboardController(
             } else {
                 foundation.currentOverview(guildId) ?: foundation.emptyOverviewProjection(guildId)
             }
+        val level = aiLevel.levelView(guildId)
         return AiNetworkOverviewResponse.from(
             guildId = profile.guildId,
             displayName = profile.displayName,
             tagline = profile.tagline,
             overview = overview,
+            aiLevel = level.aiLevel,
+            totalXp = level.totalXp,
+            xpToNext = level.xpToNext,
             freshnessStatus = foundation.overviewFreshnessStatus(overview),
             degradedReason = foundation.overviewDegradedReason(overview),
         )
@@ -465,6 +470,9 @@ data class AiNetworkOverviewResponse(
     val feedbackCount: Int,
     val overloadAlertCount: Int,
     val networkLevel: Int,
+    val aiLevel: Int,
+    val totalXp: Long,
+    val xpToNext: Long,
     val healthStatus: String,
     val refreshedAt: String,
     val staleAfter: String?,
@@ -478,6 +486,9 @@ data class AiNetworkOverviewResponse(
             displayName: String,
             tagline: String,
             overview: NetworkOverviewProjectionEntity,
+            aiLevel: Int,
+            totalXp: Long,
+            xpToNext: Long,
             freshnessStatus: String,
             degradedReason: String?,
         ): AiNetworkOverviewResponse =
@@ -493,6 +504,9 @@ data class AiNetworkOverviewResponse(
                 feedbackCount = overview.feedbackCount,
                 overloadAlertCount = overview.overloadAlertCount,
                 networkLevel = overview.networkLevel,
+                aiLevel = aiLevel,
+                totalXp = totalXp,
+                xpToNext = xpToNext,
                 healthStatus = overview.healthStatus,
                 refreshedAt = overview.refreshedAt.toString(),
                 staleAfter = overview.staleAfter?.toString(),

@@ -91,3 +91,17 @@ requirements:
     tests:
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/relay/ProviderSessionTest.kt
+  - id: REQ-XP-001
+    title: 질문 답변이 성공하면 서버(길드) AI 경험치를 획득한다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/AiLevelServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/usage/UsageServiceTest.kt
+  - id: REQ-XP-002
+    title: 경험치 임계 통과 시 레벨업 이벤트(ai_level_up)를 1건 기록한다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/AiLevelServiceTest.kt

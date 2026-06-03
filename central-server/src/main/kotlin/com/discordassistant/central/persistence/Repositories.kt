@@ -10,6 +10,9 @@ import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.domain.RetrievalPolicyStatus
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import java.time.Instant
 
 interface GuildRepository : JpaRepository<GuildEntity, Long>
@@ -214,6 +217,36 @@ interface CustomizationAuditLogRepository : JpaRepository<CustomizationAuditLogE
 
 interface AiNetworkProfileRepository : JpaRepository<AiNetworkProfileEntity, Long> {
     fun findByGuildId(guildId: Long): AiNetworkProfileEntity?
+
+    /**
+     * 활동 경험치를 원자적으로 증가시킨다(read-modify-write 없음, 동시 적립 안전).
+     * @return 갱신된 행 수(프로필이 없으면 0).
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        "UPDATE AiNetworkProfileEntity p SET p.totalXp = p.totalXp + :amount, p.lastXpAt = :at " +
+            "WHERE p.guildId = :guildId",
+    )
+    fun addXp(
+        @Param("guildId") guildId: Long,
+        @Param("amount") amount: Long,
+        @Param("at") at: Instant,
+    ): Int
+
+    /**
+     * 활동 레벨을 조건부로 상향한다 — 현재 레벨이 newLevel 보다 낮을 때만 1행에 영향.
+     * 동시 요청 중 레벨을 실제로 올린 트랜잭션만 1행을 반환하므로 ai_level_up 이벤트 중복을 막는다.
+     * @return 갱신된 행 수(올라간 경우 1, 아니면 0).
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        "UPDATE AiNetworkProfileEntity p SET p.aiLevel = :newLevel " +
+            "WHERE p.guildId = :guildId AND p.aiLevel < :newLevel",
+    )
+    fun raiseLevel(
+        @Param("guildId") guildId: Long,
+        @Param("newLevel") newLevel: Int,
+    ): Int
 }
 
 interface ProviderCapabilityProfileRepository : JpaRepository<ProviderCapabilityProfileEntity, Long> {

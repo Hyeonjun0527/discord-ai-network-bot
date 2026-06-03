@@ -62,6 +62,7 @@ class CommandServiceTest
         val embeddingJobs: EmbeddingIndexJobRepository,
         val aiFeedbacks: AiFeedbackRepository,
         val aiAdminRoles: AiAdminRoleRepository,
+        val aiLevel: com.discordassistant.central.network.AiLevelService,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -525,6 +526,19 @@ class CommandServiceTest
             assertTrue(reply.content.contains("코드냥"))
             assertTrue(reply.content.contains("Provider: 온라인 1"))
             assertTrue(reply.content.contains("능력 태그"))
+        }
+
+        @Test
+        fun `level — 서버 냥시스턴트의 활동 레벨과 경험치를 누구나 본다`() {
+            val g = CommandContext(guildId = 55501, channelId = 66601, userId = 9, roleIds = setOf(1L), isAdmin = false)
+            // 12회 적립(=120xp) → L2, 구간 (20, 200)
+            repeat(12) { aiLevel.awardAskXp(g.guildId) }
+
+            val reply = commands.aiLevel(g)
+            assertTrue(reply.content.contains("활동 레벨"))
+            assertTrue(reply.content.contains("**2**"), "레벨 2 표시: ${reply.content}")
+            assertTrue(reply.content.contains("120 XP"), "누적 XP 표시: ${reply.content}")
+            assertFalse(reply.ephemeral, "공개(public) 응답이어야 함")
         }
 
         @Test

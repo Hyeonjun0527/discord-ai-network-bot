@@ -299,7 +299,7 @@ class DiscordBot(
             private val SLOW_COMMANDS = setOf("ask", "imagine")
 
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
-            private val PUBLIC_COMMANDS = setOf("ask", "imagine", "contributions", "community-stats", "welcome")
+            private val PUBLIC_COMMANDS = setOf("ask", "imagine", "contributions", "community-stats", "welcome", "level")
             private const val WEBHOOK_NAME = "discord-ai-channel-profile"
             private const val CHANNEL_PROFILE_EDIT = "channel-profile:edit"
             private const val CHANNEL_PROFILE_AVATAR = "channel-profile:avatar"
@@ -1202,6 +1202,7 @@ class DiscordBot(
                 "my-usage" -> commands.myUsage(ctx)
                 "contributions" -> commands.contributions(ctx)
                 "community-stats" -> commands.communityStats(ctx)
+                "level" -> commands.aiLevel(ctx)
                 "fairness" -> commands.fairness(ctx)
                 "privacy" -> commands.privacy(ctx)
                 "help" -> commands.help(ctx)

@@ -1,6 +1,7 @@
 package com.discordassistant.central.usage
 
 import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.network.AiLevelService
 import com.discordassistant.central.persistence.AiRequestEntity
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.ContributionLogEntity
@@ -11,6 +12,7 @@ import com.discordassistant.central.persistence.UsageLogEntity
 import com.discordassistant.central.persistence.UsageLogRepository
 import com.discordassistant.central.routing.AiRequestInput
 import com.discordassistant.central.routing.UsageRecorder
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -26,7 +28,10 @@ class UsageService(
     private val contribution: ContributionLogRepository,
     private val requests: AiRequestRepository,
     private val health: ProviderHealthRepository,
+    private val aiLevel: AiLevelService,
 ) : UsageRecorder {
+    private val log = LoggerFactory.getLogger(UsageService::class.java)
+
     @Transactional
     override fun recordSuccess(
         guildId: Long,
@@ -37,6 +42,9 @@ class UsageService(
         val now = Instant.now()
         usage.save(UsageLogEntity(guildId = guildId, userId = userId, requestId = requestId, createdAt = now))
         contribution.save(ContributionLogEntity(guildId = guildId, providerId = providerId, requestId = requestId, createdAt = now))
+        // 게이미피케이션 경험치 적립은 비핵심 — 실패가 답변/usage 기록을 롤백/실패시키지 않도록 best-effort 격리.
+        runCatching { aiLevel.awardAskXp(guildId) }
+            .onFailure { e -> log.warn("AI 경험치 적립 실패(guildId={}): {}", guildId, e.message) }
     }
 
     fun recordRequest(

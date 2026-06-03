@@ -29,6 +29,7 @@ object CommandLoc {
             "my-usage" to L("내사용량", "моё-использование", "Check your usage today", "Ваше использование за сегодня"),
             "contributions" to L("기여순위", "вклад", "Community contribution leaderboard", "Таблица вклада сообщества"),
             "community-stats" to L("커뮤니티통계", "статистика", "Anonymous community stats", "Анонимная статистика сообщества"),
+            "level" to L("레벨", "уровень", "Show this server AI's activity level/XP", "Уровень активности ИИ сервера"),
             "fairness" to L("공정성", null, "Fairness report (admin)", "Отчёт о справедливости (админ)"),
             "privacy" to L("프라이버시", "конфиденциальность", "AI processing & privacy notice", "Обработка ИИ и конфиденциальность"),
             "help" to L("도움말", "помощь", "Show the full command help", "Показать справку по командам"),

@@ -12,7 +12,16 @@ import org.springframework.web.filter.OncePerRequestFilter
 @Component
 class AiNetworkApiSecurityFilter(
     @param:Value("\${central.dashboard.admin-token:}") private val adminToken: String,
+    @param:Value("\${central.dashboard.admin-user-ids:}") private val adminUserIdsRaw: String,
 ) : OncePerRequestFilter() {
+    // 관리자 Discord user id 허용목록(콤마 구분). 비면 OAuth 로그인만으로는 관리자 권한을 주지 않는다.
+    private val adminUserIds: Set<String> =
+        adminUserIdsRaw
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
@@ -71,7 +80,10 @@ class AiNetworkApiSecurityFilter(
         val headerToken = request.getHeader(ADMIN_TOKEN_HEADER)?.trim()
         if (configuredToken.isNotEmpty() && headerToken == configuredToken) return true
         val authentication = SecurityContextHolder.getContext().authentication ?: return false
-        return authentication.isAuthenticated && authentication !is AnonymousAuthenticationToken
+        if (!authentication.isAuthenticated || authentication is AnonymousAuthenticationToken) return false
+        // OAuth 로그인 사용자는 **허용목록에 있을 때만** 관리자(로그인했다고 무조건 관리자 아님).
+        // 허용목록 미설정이면 fail-closed: OAuth 만으로는 통과 불가(관리자 토큰 헤더로만).
+        return authentication.name in adminUserIds
     }
 
     private fun normalizedPath(request: HttpServletRequest): String {

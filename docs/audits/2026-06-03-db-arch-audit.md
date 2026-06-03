@@ -56,16 +56,25 @@
 DurableTokenService 무상태 HMAC·DB 폐기 / ProviderScheduleService 영속+트랜잭션 / UsageService GROUP BY 집계 /
 ConnectionRegistry 키 조회 O(1) / IMAGE_CHUNK_CHARS vs 1MB 프레임 안전 / SSRF UrlSafety·KnowledgeIngestion 파싱 견고.
 
-## 수정 현황(2026-06-03 후속, 12 PR 머지)
+## 수정 현황(2026-06-03 후속, 17 PR 머지)
 - ✅ #85 단일 인스턴스 락(핑퐁) · #88 V28 인덱스 · #89 무한증가 스토어 상한
 - ✅ #90 대시보드 admin 허용목록(fail-closed) · #91 상태전이 가드 일원화
 - ✅ #92 블록리스트 영속화 · #94 등록 영속화(재시작 유지) · #93 V30 컬럼 TEXT 전환
 - ✅ #95 /ask 후보 프로필 N+1 제거+중복쿼리 · #96 readOnly 트랜잭션 · #97 ask/imagine JDA 스레드 오프로드
 - ✅ #98 AnalyticsService 웹계층 밖 이동 + ArchUnit servicesNotInWebLayers 규칙(재발 방지)
 
-### ⬜ 남은 항목 — 대규모 순수 리팩터(기능 결함 아님, 점진·리뷰 권장)
-- **God class 분해**(CommandService 1618·DiscordBot 1629·PresetRegistryService 1612·
-  MultiResponseService 1460·AiNetworkDashboardController 1466, 합 ~7.8k줄): 동작 보존 리팩터.
-  무테스트 대량 분해는 라이브 봇 회귀 위험·기능 이득 0 → 코히전 단위로 1 PR 씩 점진 추출 권장
-  (Analytics 추출 + ArchUnit 규칙으로 패턴 시작함). controller↛persistence 규칙도 컨트롤러 정리가 전제라 같은 작업.
+### ✅ God class 분해 완료(2026-06-03, 5 PR — 동작 보존, 코히전 단위 점진 추출)
+모든 god class 를 응집 단위로 분리하고 원본은 같은 시그니처로 위임(외부 동작 불변). 각 PR CI(단위/ArchUnit/추적성/Kover≥90%) 그린:
+- ✅ #100 `CommandService` → `ProviderSelfServiceCommands`(프로바이더 self-service 명령 추출)
+- ✅ #101 `DiscordBot` 1629→1406 → `SlashCommandCatalog`(슬래시/컨텍스트 명령 정의 카탈로그) + 드리프트 가드 갱신
+- ✅ #102 `AiNetworkDashboardController` 1466→1191 → `AiNetworkDashboardQueryService`(영속 read·매핑) + `DashboardController` 리포지토리 의존 제거
+  + **ArchUnit `controllersDoNotInjectRepositories` 규칙 추가** → C항목의 controller↛persistence(리포지토리 직접 주입) 해소·재발 방지
+- ✅ #103 `PresetRegistryService` 1612→1209 → `PresetCatalogQueryService`(read 카탈로그/검색/moderation, write 와 공유 헬퍼는 양쪽 보유)
+- ✅ #104 `MultiResponseService` 1460→1128 → `MultiResponseReportingService`(read 리포팅/분석, summarize 헬퍼는 양쪽 보유)
+
+> 비고: 엔티티를 web 에서 직접 매핑하는 더 깊은 정리(서비스가 엔티티 대신 DTO 반환, ~177곳)는
+> 후속 점진 리팩터로 남김. ArchUnit 규칙은 우선 **리포지토리 직접 주입**만 차단한다.
+
+### ⬜ 남은 항목 — 별도 작업
 - **길드정책 캐시**(PolicyService roles.findByGuildId 반복): 무효화 설계 동반 — 별도 작업.
+- **빈약 도메인(엔티티 var 데이터백)·엔티티↛web 매핑 제거**: 대규모 점진 리팩터, 기능 결함 아님.

@@ -145,7 +145,7 @@ class AiQualityFeedbackService(
                 candidateId = it.id,
                 providerUserId = it.providerUserId,
                 modelName = it.modelName,
-                status = it.status,
+                status = it.status.wire,
                 qualityScore = it.qualityScore,
                 safetyFlags =
                     it.safetyFlags

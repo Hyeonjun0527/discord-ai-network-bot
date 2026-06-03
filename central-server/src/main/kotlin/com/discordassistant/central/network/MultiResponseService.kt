@@ -1,5 +1,8 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.MultiResponseRunStatus
+import com.discordassistant.central.domain.SynthesisStatus
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity
@@ -152,13 +155,13 @@ class MultiResponseService(
                     channelId = channelId,
                     requestId = sanitizeRequestId(requestId),
                     policyId = disabledPolicy?.id ?: policy.id,
-                    status = "planned",
+                    status = MultiResponseRunStatus.PLANNED,
                     startedAt = Instant.now(clock),
                 ),
             )
         disabledPolicy?.let { return saveDisabledRun(run, it) }
         if (promptPreview.isSensitivePrompt()) {
-            run.status = "blocked_sensitive"
+            run.status = MultiResponseRunStatus.BLOCKED_SENSITIVE
             run.failureReason = "multi-response fan-out disabled for sensitive-looking prompt"
             run.ragContextStatus = "skipped_sensitive_prompt"
             run.finishedAt = Instant.now(clock)
@@ -167,7 +170,7 @@ class MultiResponseService(
         applyRagContextSnapshot(run, promptPreview, responseMode)
         val executionPlan = safety?.executionPlan(guildId, policy.mode, policy.maxCandidates)
         if (executionPlan != null && executionPlan.maxSafeCandidates == 0) {
-            run.status = "no_provider"
+            run.status = MultiResponseRunStatus.NO_PROVIDER
             run.failureReason = executionPlan.reasons.joinToString(" ")
             run.finishedAt = Instant.now(clock)
             return runs.save(run)
@@ -186,13 +189,13 @@ class MultiResponseService(
                     runId = run.id,
                     providerUserId = provider.providerUserId,
                     modelName = firstModel,
-                    status = "planned",
+                    status = CandidateStatus.PLANNED,
                     createdAt = Instant.now(clock),
                 ),
             )
         }
         run.candidateCount = selectedProviders.size
-        run.status = if (selectedProviders.isEmpty()) "no_provider" else "running"
+        run.status = if (selectedProviders.isEmpty()) MultiResponseRunStatus.NO_PROVIDER else MultiResponseRunStatus.RUNNING
         return runs.save(run)
     }
 
@@ -232,13 +235,13 @@ class MultiResponseService(
                     channelId = channelId,
                     requestId = sanitizeRequestId(requestId),
                     policyId = disabledPolicy?.id ?: savedPolicy?.id,
-                    status = "planned",
+                    status = MultiResponseRunStatus.PLANNED,
                     startedAt = Instant.now(clock),
                 ),
             )
         disabledPolicy?.let { return saveDisabledRun(run, it) }
         if (promptPreview.isSensitivePrompt()) {
-            run.status = "blocked_sensitive"
+            run.status = MultiResponseRunStatus.BLOCKED_SENSITIVE
             run.failureReason = "multi-response fan-out disabled for sensitive-looking prompt"
             run.ragContextStatus = "skipped_sensitive_prompt"
             run.finishedAt = Instant.now(clock)
@@ -247,7 +250,7 @@ class MultiResponseService(
         applyRagContextSnapshot(run, promptPreview, responseMode)
         val executionPlan = safety?.executionPlan(guildId, runtimePolicy.mode, runtimePolicy.maxCandidates)
         if (executionPlan != null && executionPlan.maxSafeCandidates == 0) {
-            run.status = "no_provider"
+            run.status = MultiResponseRunStatus.NO_PROVIDER
             run.failureReason = executionPlan.reasons.joinToString(" ")
             run.finishedAt = Instant.now(clock)
             return runs.save(run)
@@ -265,13 +268,13 @@ class MultiResponseService(
                     runId = run.id,
                     providerUserId = provider.providerUserId,
                     modelName = provider.firstModel(),
-                    status = "planned",
+                    status = CandidateStatus.PLANNED,
                     createdAt = Instant.now(clock),
                 ),
             )
         }
         run.candidateCount = selectedProviders.size
-        run.status = if (selectedProviders.isEmpty()) "no_provider" else "running"
+        run.status = if (selectedProviders.isEmpty()) MultiResponseRunStatus.NO_PROVIDER else MultiResponseRunStatus.RUNNING
         return runs.save(run)
     }
 
@@ -287,7 +290,7 @@ class MultiResponseService(
     ): MultiResponseCompletion {
         featureGate.requireMultiResponseEnabled()
         val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
-        if (run.status.equals("blocked_sensitive", ignoreCase = true)) {
+        if (run.status == MultiResponseRunStatus.BLOCKED_SENSITIVE) {
             return MultiResponseCompletion(
                 run = run.toView(),
                 synthesis = syntheses.findByRunId(runId)?.toView(),
@@ -303,14 +306,15 @@ class MultiResponseService(
                         runId = runId,
                         providerUserId = providerUserId,
                         modelName = modelName,
-                        status = "planned",
+                        status = CandidateStatus.PLANNED,
                         createdAt = now,
                     ),
                 )
         candidate.modelName = modelName ?: candidate.modelName
         candidate.latencyMs = latencyMs
         candidate.answerRef = answerRef?.trim()?.ifBlank { null }
-        candidate.status = if (completed && !candidate.answerRef.isNullOrBlank()) "completed" else "failed"
+        candidate.status =
+            if (completed && !candidate.answerRef.isNullOrBlank()) CandidateStatus.COMPLETED else CandidateStatus.FAILED
         candidate.safetyFlags = if (completed) "single_route" else null
         candidate.qualityScore = if (completed) 80 else null
         val savedCandidate = candidates.save(candidate)
@@ -330,8 +334,8 @@ class MultiResponseService(
         }
         run.status =
             when {
-                run.status.equals("no_provider", ignoreCase = true) -> "no_provider"
-                else -> "failed"
+                run.status == MultiResponseRunStatus.NO_PROVIDER -> MultiResponseRunStatus.NO_PROVIDER
+                else -> MultiResponseRunStatus.FAILED
             }
         run.failureReason = failureReason?.trim()?.take(500) ?: run.failureReason ?: "single route failed"
         run.finishedAt = now
@@ -354,7 +358,7 @@ class MultiResponseService(
             candidates.findByRunIdAndId(runId, candidateId)
                 ?: throw IllegalArgumentException("candidate not found: run=$runId candidate=$candidateId")
         candidate.answerRef = answerRef
-        candidate.status = status.trim().ifBlank { "completed" }
+        candidate.status = CandidateStatus.fromWire(status.trim().ifBlank { "completed" })
         candidate.latencyMs = latencyMs
         candidate.safetyFlags = safetyFlags.joinToString(",").ifBlank { null }
         candidate.qualityScore = qualityScore
@@ -384,13 +388,13 @@ class MultiResponseService(
             syntheses.findByRunId(runId)
                 ?: SynthesisResultEntity(runId = runId, createdAt = now)
         synthesis.answerRef = answerRef.trim()
-        synthesis.status = "completed"
+        synthesis.status = SynthesisStatus.COMPLETED
         synthesis.selectedCandidateIds = selectedCandidateIds.joinToString(",")
         synthesis.strategy = strategy.trim().ifBlank { "best_by_heuristic" }.take(80)
         synthesis.qualitySummary = qualitySummary?.trim()?.take(1000)?.ifBlank { null } ?: summarizeQuality(runCandidates)
         synthesis.safetySummary = safetySummary?.trim()?.take(1000)?.ifBlank { null } ?: summarizeSafety(runCandidates)
         val saved = syntheses.save(synthesis)
-        run.status = "completed"
+        run.status = MultiResponseRunStatus.COMPLETED
         run.selectedCandidateId = selectedCandidateIds.firstOrNull()
         run.finishedAt = now
         runs.save(run)
@@ -407,7 +411,7 @@ class MultiResponseService(
         val runCandidates = candidates.findByRunId(runId)
         val successful =
             runCandidates
-                .filter { it.status.equals("completed", ignoreCase = true) }
+                .filter { it.status == CandidateStatus.COMPLETED }
                 .filter { !it.answerRef.isNullOrBlank() }
                 .filter { !it.hasBlockingSafetyFlag() }
                 .sortedWith(
@@ -417,7 +421,7 @@ class MultiResponseService(
                 )
         val best = successful.firstOrNull()
         if (best == null) {
-            run.status = "failed"
+            run.status = MultiResponseRunStatus.FAILED
             run.failureReason = failureSummary(runCandidates)
             run.finishedAt = Instant.now(clock)
             runs.save(run)
@@ -450,7 +454,7 @@ class MultiResponseService(
         val candidate =
             candidates.findByRunIdAndId(runId, candidateId)
                 ?: throw IllegalArgumentException("candidate not found: run=$runId candidate=$candidateId")
-        require(candidate.status.equals("completed", ignoreCase = true)) { "only completed candidates can be adopted" }
+        require(candidate.status == CandidateStatus.COMPLETED) { "only completed candidates can be adopted" }
         require(!candidate.answerRef.isNullOrBlank()) { "candidate answerRef is required for adoption" }
         val normalizedRating = rating?.coerceIn(-1, 1)
         if (normalizedRating != null) {
@@ -466,14 +470,14 @@ class MultiResponseService(
             syntheses.findByRunId(runId)
                 ?: SynthesisResultEntity(runId = runId, createdAt = now)
         synthesis.answerRef = candidate.answerRef
-        synthesis.status = "completed"
+        synthesis.status = SynthesisStatus.COMPLETED
         synthesis.selectedCandidateIds = candidate.id.toString()
         synthesis.strategy = "user_selected_candidate"
         synthesis.qualitySummary = "user selected candidate #${candidate.id}"
         synthesis.safetySummary = summarizeSafety(listOf(candidate))
         val savedSynthesis = syntheses.save(synthesis)
         run.selectedCandidateId = candidate.id
-        run.status = "completed"
+        run.status = MultiResponseRunStatus.COMPLETED
         run.finishedAt = run.finishedAt ?: now
         val savedRun = runs.save(run)
         val feedback =
@@ -505,7 +509,7 @@ class MultiResponseService(
     ): MultiResponseRunView {
         featureGate.requireMultiResponseEnabled()
         val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
-        run.status = "failed"
+        run.status = MultiResponseRunStatus.FAILED
         run.failureReason = reason.trim().take(500)
         run.finishedAt = Instant.now(clock)
         return runs.save(run).toView()
@@ -702,7 +706,7 @@ class MultiResponseService(
         run: MultiResponseRunEntity,
         policy: MultiResponsePolicyEntity,
     ): MultiResponseRunEntity {
-        run.status = "disabled_by_policy"
+        run.status = MultiResponseRunStatus.DISABLED_BY_POLICY
         run.candidateCount = 0
         run.failureReason = policy.disabledMessage()
         run.ragContextStatus = "skipped_policy_disabled"
@@ -839,7 +843,7 @@ class MultiResponseService(
 
     private fun failureSummary(runCandidates: List<CandidateAnswerEntity>): String {
         if (runCandidates.isEmpty()) return "multi-response failed: no candidates were planned"
-        val statuses = runCandidates.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
+        val statuses = runCandidates.groupingBy { it.status.wire }.eachCount()
         return "multi-response failed: no successful candidate; statuses=$statuses".take(500)
     }
 
@@ -1023,7 +1027,7 @@ internal fun MultiResponseRunEntity.toView(): MultiResponseRunView =
         channelId = channelId,
         requestId = requestId,
         policyId = policyId,
-        status = status,
+        status = status.wire,
         candidateCount = candidateCount,
         selectedCandidateId = selectedCandidateId,
         ragContextStatus = ragContextStatus,
@@ -1055,7 +1059,7 @@ internal fun CandidateAnswerEntity.toView(): CandidateAnswerView =
         providerUserId = providerUserId,
         modelName = modelName,
         answerRef = answerRef,
-        status = status,
+        status = status.wire,
         latencyMs = latencyMs,
         safetyFlags = safetyFlags,
         qualityScore = qualityScore,
@@ -1066,7 +1070,7 @@ internal fun SynthesisResultEntity.toView(): SynthesisResultView =
         id = id,
         runId = runId,
         answerRef = answerRef,
-        status = status,
+        status = status.wire,
         selectedCandidateIds = selectedCandidateIds,
         strategy = strategy,
         qualitySummary = qualitySummary,

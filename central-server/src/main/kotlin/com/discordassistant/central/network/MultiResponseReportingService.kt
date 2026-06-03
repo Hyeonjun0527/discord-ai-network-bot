@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.MultiResponseRunStatus
 import com.discordassistant.central.persistence.CandidateAnswerEntity
 import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.MultiResponsePolicyRepository
@@ -52,12 +54,12 @@ class MultiResponseReportingService(
             .groupBy { it.providerUserId!! }
             .map { (providerUserId, providerCandidates) ->
                 val latencyValues = providerCandidates.mapNotNull { it.latencyMs }
-                val timeoutCount = providerCandidates.count { it.status.equals("timeout", ignoreCase = true) }
+                val timeoutCount = providerCandidates.count { it.status == CandidateStatus.TIMEOUT }
                 val failedCount =
                     providerCandidates.count {
-                        it.status.equals("failed", ignoreCase = true) || it.status.equals("rejected", ignoreCase = true)
+                        it.status == CandidateStatus.FAILED || it.status == CandidateStatus.REJECTED
                     }
-                val completedCount = providerCandidates.count { it.status.equals("completed", ignoreCase = true) }
+                val completedCount = providerCandidates.count { it.status == CandidateStatus.COMPLETED }
                 ProviderFanoutLoadSummary(
                     guildId = guildId,
                     providerUserId = providerUserId,
@@ -89,7 +91,7 @@ class MultiResponseReportingService(
                 .filter { channelId == null || it.channelId == channelId }
         val runCandidates = recent.flatMap { run -> candidates.findByRunId(run.id).map { run to it } }
         val synthesesByRunId = recent.mapNotNull { run -> syntheses.findByRunId(run.id)?.let { run.id to it } }.toMap()
-        val completedRuns = recent.count { it.status.equals("completed", ignoreCase = true) }
+        val completedRuns = recent.count { it.status == MultiResponseRunStatus.COMPLETED }
         val fallbackRuns = recent.count { it.status in FALLBACK_RUN_STATUSES }
         val acceptedCandidates =
             runCandidates.count { (run, candidate) ->
@@ -100,16 +102,16 @@ class MultiResponseReportingService(
                         .orEmpty()
                         .contains(candidate.id)
             }
-        val timeoutCandidates = runCandidates.count { it.second.status.equals("timeout", ignoreCase = true) }
+        val timeoutCandidates = runCandidates.count { it.second.status == CandidateStatus.TIMEOUT }
         val rejectedCandidates =
             runCandidates.count { (_, candidate) ->
-                candidate.status.equals("failed", ignoreCase = true) ||
-                    candidate.status.equals("rejected", ignoreCase = true) ||
+                candidate.status == CandidateStatus.FAILED ||
+                    candidate.status == CandidateStatus.REJECTED ||
                     candidate.hasBlockingSafetyFlag()
             }
         val qualityScores = runCandidates.mapNotNull { it.second.qualityScore }
-        val statusCounts = runCandidates.groupingBy { it.second.status.ifBlank { "unknown" } }.eachCount()
-        val completedCandidates = runCandidates.count { it.second.status.equals("completed", ignoreCase = true) }
+        val statusCounts = runCandidates.groupingBy { it.second.status.wire }.eachCount()
+        val completedCandidates = runCandidates.count { it.second.status == CandidateStatus.COMPLETED }
         val adoptionRate = if (completedCandidates == 0) 0.0 else acceptedCandidates.toDouble() / completedCandidates
         val timeoutRate = if (runCandidates.isEmpty()) 0.0 else timeoutCandidates.toDouble() / runCandidates.size
         val averageQualityScore = qualityScores.takeIf { it.isNotEmpty() }?.average() ?: 0.0
@@ -152,7 +154,7 @@ class MultiResponseReportingService(
                                 requestId = run.requestId,
                                 channelId = run.channelId,
                                 candidateId = null,
-                                status = run.status,
+                                status = run.status.wire,
                                 qualityScore = null,
                                 selected = false,
                                 reason = run.failureReason ?: run.ragContextStatus ?: "no candidate recorded",
@@ -167,7 +169,7 @@ class MultiResponseReportingService(
                                 requestId = run.requestId,
                                 channelId = run.channelId,
                                 candidateId = candidate.id,
-                                status = candidate.status,
+                                status = candidate.status.wire,
                                 qualityScore = candidate.qualityScore,
                                 selected = selected,
                                 reason = decisionReason(run, candidate, selected),
@@ -213,11 +215,11 @@ class MultiResponseReportingService(
                 it.loadRisk.equals("high", ignoreCase = true) || it.loadRisk.equals("critical", ignoreCase = true)
             }
         val ragFallbackCount = recentRuns.count { it.ragContextStatus?.startsWith("fallback") == true }
-        val blockedSensitiveCount = recentRuns.count { it.status.equals("blocked_sensitive", ignoreCase = true) }
-        val noProviderCount = recentRuns.count { it.status.equals("no_provider", ignoreCase = true) }
+        val blockedSensitiveCount = recentRuns.count { it.status == MultiResponseRunStatus.BLOCKED_SENSITIVE }
+        val noProviderCount = recentRuns.count { it.status == MultiResponseRunStatus.NO_PROVIDER }
         val providerProtectionRuns =
             recentRuns.filter {
-                it.status.equals("no_provider", ignoreCase = true) ||
+                it.status == MultiResponseRunStatus.NO_PROVIDER ||
                     it.failureReason.isProviderProtectionReason()
             }
         val providerProtectionReasons =
@@ -300,12 +302,12 @@ class MultiResponseReportingService(
     fun dailyStats(guildId: Long): MultiResponseDailyStats {
         featureGate.requireMultiResponseDashboardEnabled()
         val recent = runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
-        val completed = recent.count { it.status == "completed" }
-        val fallback = recent.count { it.status in setOf("no_provider", "blocked_sensitive", "failed") }
+        val completed = recent.count { it.status == MultiResponseRunStatus.COMPLETED }
+        val fallback = recent.count { it.status in FALLBACK_RUN_STATUSES }
         val timeoutCandidates =
             recent
                 .flatMap { candidates.findByRunId(it.id) }
-                .count { it.status.equals("timeout", ignoreCase = true) }
+                .count { it.status == CandidateStatus.TIMEOUT }
         val actualFanout =
             recent
                 .map { it.candidateCount }
@@ -355,11 +357,11 @@ class MultiResponseReportingService(
         when {
             selected -> "selected_by_${syntheses.findByRunId(run.id)?.strategy ?: "run"}"
             candidate.hasBlockingSafetyFlag() -> "blocked_by_safety_flags"
-            candidate.status.equals("timeout", ignoreCase = true) -> "candidate_timeout"
-            candidate.status.equals("failed", ignoreCase = true) -> "candidate_failed"
-            candidate.status.equals("rejected", ignoreCase = true) -> "candidate_rejected"
-            candidate.status.equals("completed", ignoreCase = true) -> "completed_not_selected"
-            else -> run.failureReason ?: "candidate_${candidate.status.ifBlank { "unknown" }}"
+            candidate.status == CandidateStatus.TIMEOUT -> "candidate_timeout"
+            candidate.status == CandidateStatus.FAILED -> "candidate_failed"
+            candidate.status == CandidateStatus.REJECTED -> "candidate_rejected"
+            candidate.status == CandidateStatus.COMPLETED -> "completed_not_selected"
+            else -> run.failureReason ?: "candidate_${candidate.status.wire}"
         }
 
     private fun String?.toIdSet(): Set<Long> =
@@ -403,7 +405,12 @@ class MultiResponseReportingService(
     }
 
     private companion object {
-        val FALLBACK_RUN_STATUSES = setOf("no_provider", "blocked_sensitive", "failed")
+        val FALLBACK_RUN_STATUSES =
+            setOf(
+                MultiResponseRunStatus.NO_PROVIDER,
+                MultiResponseRunStatus.BLOCKED_SENSITIVE,
+                MultiResponseRunStatus.FAILED,
+            )
         val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
         val PROVIDER_PROTECTION_REASON_PATTERNS =
             listOf(

@@ -31,7 +31,7 @@ class KnowledgeIngestionService(
         createdBy: Long?,
         embeddingModel: String?,
         indexName: String?,
-    ): KnowledgeSpaceEntity {
+    ): KnowledgeSpaceMutationResult {
         featureGate.requireRagEnabled()
         val now = Instant.now(clock)
         val saved =
@@ -50,7 +50,7 @@ class KnowledgeIngestionService(
                 ),
             )
         audit(saved.guildId, saved.channelId, createdBy, "knowledge_space_create", "knowledge_space", saved.id, saved.displayName)
-        return saved
+        return saved.toMutationResult()
     }
 
     fun listSources(
@@ -323,7 +323,7 @@ class KnowledgeIngestionService(
         sourceUri: String?,
         contentPreview: String?,
         addedBy: Long?,
-    ): KnowledgeSourceEntity {
+    ): KnowledgeSourceMutationResult {
         featureGate.requireRagEnabled()
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
@@ -360,7 +360,7 @@ class KnowledgeIngestionService(
             targetId = source.id,
             summary = "${source.sourceType}:${source.riskLevel}",
         )
-        return source
+        return source.toMutationResult()
     }
 
     @Transactional
@@ -369,7 +369,7 @@ class KnowledgeIngestionService(
         spaceId: Long,
         sourceId: Long,
         reason: String,
-    ): KnowledgeSourceEntity {
+    ): KnowledgeSourceMutationResult {
         featureGate.requireRagEnabled()
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
@@ -388,7 +388,7 @@ class KnowledgeIngestionService(
         space.updatedAt = Instant.now(clock)
         spaces.save(space)
         audit(guildId, space.channelId, null, "knowledge_source_approve", "knowledge_source", saved.id, reason)
-        return saved
+        return saved.toMutationResult()
     }
 
     @Transactional
@@ -397,7 +397,7 @@ class KnowledgeIngestionService(
         spaceId: Long,
         sourceId: Long,
         chunkCount: Int,
-    ): KnowledgeSourceEntity {
+    ): KnowledgeSourceMutationResult {
         featureGate.requireRagEnabled()
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
@@ -418,7 +418,7 @@ class KnowledgeIngestionService(
         space.updatedAt = now
         spaces.save(space)
         audit(guildId, space.channelId, null, "knowledge_source_indexed", "knowledge_source", saved.id, "chunks=${space.chunkCount}")
-        return saved
+        return saved.toMutationResult()
     }
 
     @Transactional
@@ -427,7 +427,7 @@ class KnowledgeIngestionService(
         spaceId: Long,
         sourceId: Long,
         reason: String,
-    ): KnowledgeSourceEntity {
+    ): KnowledgeSourceMutationResult {
         featureGate.requireRagEnabled()
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
@@ -439,7 +439,7 @@ class KnowledgeIngestionService(
         source.status = "rejected:${sanitizeReason(reason)}"
         val saved = sources.save(source)
         audit(guildId, space.channelId, null, "knowledge_source_reject", "knowledge_source", saved.id, reason)
-        return saved
+        return saved.toMutationResult()
     }
 
     @Transactional
@@ -448,7 +448,7 @@ class KnowledgeIngestionService(
         spaceId: Long,
         sourceId: Long,
         reason: String,
-    ): KnowledgeSourceEntity {
+    ): KnowledgeSourceMutationResult {
         featureGate.requireRagEnabled()
         val space =
             spaces.findByGuildIdAndId(guildId, spaceId)
@@ -463,7 +463,7 @@ class KnowledgeIngestionService(
         space.updatedAt = Instant.now(clock)
         spaces.save(space)
         audit(guildId, space.channelId, null, "knowledge_source_delete", "knowledge_source", saved.id, reason)
-        return saved
+        return saved.toMutationResult()
     }
 
     private fun audit(
@@ -537,6 +537,21 @@ class KnowledgeIngestionService(
             addedBy = addedBy,
             addedAt = addedAt.toString(),
             indexedAt = indexedAt?.toString(),
+        )
+
+    private fun KnowledgeSpaceEntity.toMutationResult(): KnowledgeSpaceMutationResult =
+        KnowledgeSpaceMutationResult(
+            id = id,
+            status = status,
+            displayName = displayName,
+        )
+
+    private fun KnowledgeSourceEntity.toMutationResult(): KnowledgeSourceMutationResult =
+        KnowledgeSourceMutationResult(
+            id = id,
+            status = status,
+            riskLevel = riskLevel,
+            indexedAt = indexedAt,
         )
 
     private fun sanitizeReason(reason: String): String = KnowledgeSafety.redactReason(reason)
@@ -697,6 +712,21 @@ class KnowledgeIngestionService(
         val IPV4_NUMBER_PART = Regex("""(?i)(?:0x[0-9a-f]+|\d+)""")
     }
 }
+
+/** 지식공간 변경(생성 등) 결과를 컨트롤러/봇에 노출하는 DTO. JPA 엔티티 누수를 막는다. */
+data class KnowledgeSpaceMutationResult(
+    val id: Long,
+    val status: String,
+    val displayName: String,
+)
+
+/** 지식 소스 변경(추가/승인/색인/삭제/거절) 결과를 컨트롤러/봇에 노출하는 DTO. JPA 엔티티 누수를 막는다. */
+data class KnowledgeSourceMutationResult(
+    val id: Long,
+    val status: String,
+    val riskLevel: String,
+    val indexedAt: Instant?,
+)
 
 data class KnowledgeSourceSummary(
     val id: Long,

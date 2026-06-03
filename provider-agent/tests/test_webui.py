@@ -252,3 +252,18 @@ async def test_start_stop_lifecycle(monkeypatch):
         assert st2["running"] is False
     finally:
         await client.close()
+
+
+def test_brand_icon_png_returns_png_bytes():
+    from provider_agent.webui import _brand_icon_png
+
+    png = _brand_icon_png()
+    # PIL 있으면 PNG 시그니처, 없으면 None(둘 다 허용 — dock 아이콘은 선택적)
+    assert png is None or png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_set_macos_app_identity_is_safe_everywhere():
+    from provider_agent.webui import _set_macos_app_identity
+
+    # 비-macOS 는 no-op, macOS 면 dock 이름/아이콘 설정 — 어느 쪽이든 예외 없이 끝나야 한다.
+    _set_macos_app_identity("냥시스턴트")

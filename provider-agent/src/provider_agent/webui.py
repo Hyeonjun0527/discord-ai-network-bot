@@ -476,6 +476,66 @@ def _webview_available() -> bool:
     return True
 
 
+APP_DISPLAY_NAME = "냥시스턴트"
+
+
+def _brand_icon_png(size: int = 512) -> bytes | None:
+    """dock 아이콘용 브랜드 마크(blurple 라운드 사각 + 흰 말풍선)를 PNG 바이트로 생성."""
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return None
+    import io
+
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    r = size * 0.22
+    d.rounded_rectangle((0, 0, size - 1, size - 1), radius=r, fill=(88, 101, 242, 255))  # Discord blurple
+    # 흰 말풍선(둥근 사각 + 꼬리)
+    pad = size * 0.24
+    d.rounded_rectangle((pad, pad, size - pad, size - pad * 1.25), radius=size * 0.12, fill=(255, 255, 255, 255))
+    cx = size * 0.40
+    ty = size - pad * 1.25
+    d.polygon([(cx, ty - 2), (cx + size * 0.13, ty - 2), (cx + size * 0.02, ty + size * 0.11)], fill=(255, 255, 255, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _set_macos_app_identity(name: str) -> None:
+    """macOS dock/메뉴바 앱 이름·아이콘 설정. 번들 아닌 Python 프로세스가 'Python'/로켓으로 뜨는 것 교정.
+
+    pyobjc(웹뷰 cocoa 백엔드 의존)·PIL 이 없거나 macOS 가 아니면 조용히 무시(GUI 동작 불변).
+    """
+    import sys
+
+    if sys.platform != "darwin":
+        return
+    try:
+        from Foundation import NSBundle  # type: ignore[import-not-found]
+
+        bundle = NSBundle.mainBundle()
+        info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
+        if info is not None:
+            info["CFBundleName"] = name
+            info["CFBundleDisplayName"] = name
+    except Exception:  # noqa: BLE001 - 이름 설정 실패는 치명적이지 않음
+        pass
+    try:
+        png = _brand_icon_png()
+        if png is None:
+            return
+        from AppKit import NSApplication, NSImage  # type: ignore[import-not-found]
+        from Foundation import NSData  # type: ignore[import-not-found]
+
+        data = NSData.dataWithBytes_length_(png, len(png))
+        image = NSImage.alloc().initWithData_(data)
+        if image is not None:
+            NSApplication.sharedApplication().setApplicationIconImage_(image)
+    except Exception:  # noqa: BLE001 - 아이콘 설정 실패는 치명적이지 않음
+        pass
+
+
 def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
     """로컬 제어판을 네이티브 앱 창으로 띄운다(웹뷰 없으면 브라우저 폴백)."""
     session_key = secrets.token_urlsafe(24)
@@ -490,8 +550,9 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
         try:
             import webview  # type: ignore[import-untyped]
 
+            _set_macos_app_identity(APP_DISPLAY_NAME)  # dock 이름/아이콘을 'Python'/로켓 대신 브랜드로
             webview.create_window(
-                "로컬 AI 제공자 설정 · 냥시스턴트", url, width=600, height=800, min_size=(400, 600)
+                f"로컬 AI 제공자 설정 · {APP_DISPLAY_NAME}", url, width=600, height=800, min_size=(400, 600)
             )
             webview.start()  # 메인 스레드 점유, 창 닫으면 반환
             return

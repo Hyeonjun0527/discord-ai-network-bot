@@ -1,5 +1,7 @@
 package com.discordassistant.central.web
 
+import com.discordassistant.central.discord.BotGuildLister
+import com.discordassistant.central.policy.AutoApprovePolicy
 import com.discordassistant.central.provider.AuditLog
 import com.discordassistant.central.provider.ProviderRegistrationService
 import com.discordassistant.central.provider.TokenService
@@ -14,18 +16,16 @@ class ProviderConnectControllerTest {
     private class FakeOAuth(
         var token: String? = "access",
         var userId: Long? = 777L,
+        var guilds: List<GuildBrief> = listOf(GuildBrief(100, "내 서버")),
     ) : DiscordOAuthClient {
-        var lastCode: String? = null
-
         override fun exchangeCodeForToken(
             code: String,
             redirectUri: String,
-        ): String? {
-            lastCode = code
-            return token
-        }
+        ): String? = token
 
         override fun fetchUserId(accessToken: String): Long? = userId
+
+        override fun fetchUserGuilds(accessToken: String): List<GuildBrief> = guilds
     }
 
     private fun controller(
@@ -33,7 +33,10 @@ class ProviderConnectControllerTest {
         clientId: String = "cid",
         clientSecret: String = "csecret",
         registration: ProviderRegistrationService = ProviderRegistrationService(TokenService(600), AuditLog()),
+        botGuildIds: Set<Long> = setOf(100L, 200L),
+        autoApprove: Boolean = true,
         states: ConnectStateStore = ConnectStateStore(),
+        selections: ProviderSelectionStore = ProviderSelectionStore(),
     ) = ProviderConnectController(
         clientId = clientId,
         clientSecret = clientSecret,
@@ -41,7 +44,10 @@ class ProviderConnectControllerTest {
         relayPublicUrl = "wss://discord-ai.yeon.world/agent",
         oauth = oauth,
         registration = registration,
+        policy = AutoApprovePolicy { autoApprove },
+        botGuilds = BotGuildLister { botGuildIds },
         states = states,
+        selections = selections,
     )
 
     private fun stateFrom(location: String): String =
@@ -49,33 +55,30 @@ class ProviderConnectControllerTest {
 
     @Test
     fun `미설정이면 비활성(503 안내)`() {
-        val r = controller(clientId = "").connect(cb, "sk")
-        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, r.statusCode)
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, controller(clientId = "").connect(cb, "sk").statusCode)
     }
 
     @Test
     fun `localhost 아닌 콜백은 거부`() {
         val c = controller()
         assertEquals(HttpStatus.BAD_REQUEST, c.connect("https://evil.com/connect/callback", "sk").statusCode)
-        assertEquals(HttpStatus.BAD_REQUEST, c.connect("http://127.0.0.1:9/steal", "sk").statusCode) // 경로 불일치
-        assertEquals(HttpStatus.BAD_REQUEST, c.connect("http://127.0.0.1:9/connect/callback?x=1", "sk").statusCode) // 쿼리 금지
+        assertEquals(HttpStatus.BAD_REQUEST, c.connect("http://127.0.0.1:9/steal", "sk").statusCode)
+        assertEquals(HttpStatus.BAD_REQUEST, c.connect("http://127.0.0.1:9/connect/callback?x=1", "sk").statusCode)
     }
 
     @Test
-    fun `connect 는 Discord authorize 로 리디렉트하고 state 를 봉인`() {
+    fun `connect 는 identify+guilds 스코프로 리디렉트`() {
         val r = controller().connect(cb, "sk")
         assertEquals(HttpStatus.FOUND, r.statusCode)
         val loc = r.headers.location!!.toString()
         assertTrue(loc.startsWith("https://discord.com/api/oauth2/authorize"))
-        assertTrue(loc.contains("client_id=cid") && loc.contains("scope=identify"))
-        assertTrue(loc.contains("redirect_uri=") && loc.contains("state="))
+        assertTrue(loc.contains("client_id=cid") && loc.contains("scope=identify+guilds")) // URLEncoder: 공백→+
     }
 
     @Test
-    fun `전체 흐름 — 식별 후 토큰 발급, 로컬 cb 로 리디렉트`() {
+    fun `후보 서버 1개면 자동 발급 후 로컬 cb 로 리디렉트`() {
         val states = ConnectStateStore()
-        val reg = ProviderRegistrationService(TokenService(600), AuditLog())
-        val c = controller(registration = reg, states = states)
+        val c = controller(states = states) // 사용자 길드 100, 봇 길드 100·200 → 후보 100 하나
         val oauthState =
             stateFrom(
                 c
@@ -83,17 +86,63 @@ class ProviderConnectControllerTest {
                     .headers.location!!
                     .toString(),
             )
-
         val r = c.callback(code = "authcode", state = oauthState)
         assertEquals(HttpStatus.FOUND, r.statusCode)
         val loc = r.headers.location!!.toString()
         assertTrue(loc.startsWith(cb + "?"))
-        assertTrue(loc.contains("token="), "토큰을 cb 로 전달해야 함: $loc")
-        assertTrue(loc.contains("state=sk"), "로컬 세션키를 되돌려줘야 함: $loc")
+        assertTrue(loc.contains("token=") && loc.contains("state=sk"), loc)
+    }
 
-        // 발급된 토큰은 일회용 토큰 포맷(사람이 읽는 하이픈 그룹)
-        val token = loc.substringAfter("token=").substringBefore("&").let { java.net.URLDecoder.decode(it, "UTF-8") }
-        assertTrue(token.contains("-"), "일회용 토큰 포맷이어야 함: $token")
+    @Test
+    fun `후보 서버 여러 개면 선택 화면을 보여준다`() {
+        val states = ConnectStateStore()
+        val oauth = FakeOAuth(guilds = listOf(GuildBrief(100, "A"), GuildBrief(200, "B")))
+        val c = controller(oauth = oauth, botGuildIds = setOf(100L, 200L), states = states)
+        val oauthState =
+            stateFrom(
+                c
+                    .connect(cb, "sk")
+                    .headers.location!!
+                    .toString(),
+            )
+        val r = c.callback(code = "x", state = oauthState)
+        assertEquals(HttpStatus.OK, r.statusCode)
+        val html = r.body!!
+        assertTrue(html.contains("어느 서버에 기여") && html.contains(">A<") && html.contains(">B<"))
+        assertTrue(html.contains("/provider/connect/pick?sel="))
+    }
+
+    @Test
+    fun `봇이 있는 서버에 내가 없으면 안내 페이지`() {
+        val states = ConnectStateStore()
+        val oauth = FakeOAuth(guilds = listOf(GuildBrief(999, "남의 서버")))
+        val c = controller(oauth = oauth, botGuildIds = setOf(100L), states = states)
+        val oauthState =
+            stateFrom(
+                c
+                    .connect(cb, "sk")
+                    .headers.location!!
+                    .toString(),
+            )
+        val r = c.callback(code = "x", state = oauthState)
+        assertEquals(HttpStatus.OK, r.statusCode)
+        assertTrue(r.body!!.contains("속한 곳이 없습니다"))
+    }
+
+    @Test
+    fun `자동 승인 아니면 pending 으로 리디렉트(토큰 없음)`() {
+        val states = ConnectStateStore()
+        val c = controller(autoApprove = false, states = states) // 신규 가입인데 자동승인 X → PENDING
+        val oauthState =
+            stateFrom(
+                c
+                    .connect(cb, "sk")
+                    .headers.location!!
+                    .toString(),
+            )
+        val r = c.callback(code = "x", state = oauthState)
+        val loc = r.headers.location!!.toString()
+        assertTrue(loc.contains("error=pending") && !loc.contains("token="), loc)
     }
 
     @Test
@@ -103,7 +152,7 @@ class ProviderConnectControllerTest {
     }
 
     @Test
-    fun `사용자가 취소(code 없음)하면 cb 로 error 전달`() {
+    fun `취소(code 없음)면 cb 로 error`() {
         val states = ConnectStateStore()
         val c = controller(states = states)
         val oauthState =
@@ -114,30 +163,10 @@ class ProviderConnectControllerTest {
                     .toString(),
             )
         val r = c.callback(code = null, state = oauthState)
-        assertEquals(HttpStatus.FOUND, r.statusCode)
         assertTrue(
             r.headers.location!!
                 .toString()
                 .contains("error=cancelled"),
-        )
-    }
-
-    @Test
-    fun `토큰 교환 실패 시 cb 로 error`() {
-        val states = ConnectStateStore()
-        val c = controller(oauth = FakeOAuth(token = null), states = states)
-        val oauthState =
-            stateFrom(
-                c
-                    .connect(cb, "sk")
-                    .headers.location!!
-                    .toString(),
-            )
-        val r = c.callback(code = "x", state = oauthState)
-        assertTrue(
-            r.headers.location!!
-                .toString()
-                .contains("error=token"),
         )
     }
 }

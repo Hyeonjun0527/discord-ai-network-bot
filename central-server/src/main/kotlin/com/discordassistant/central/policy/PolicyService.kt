@@ -13,6 +13,11 @@ import com.discordassistant.central.routing.RoutingPolicy
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
+/** 길드별 프로바이더 자동 승인 여부(웹 ‘토큰 받기’ 서버 선택에서 즉시 발급 가능 여부 판단). */
+fun interface AutoApprovePolicy {
+    fun isAutoApprove(guildId: Long): Boolean
+}
+
 /**
  * 서버(길드) 정책 (K-차수 7, specs §6/§18). 허용 채널·역할별 허용 모델 수준·승인 방식.
  * 라우팅이 쓰는 부분은 [RoutingPolicy] 로 노출한다.
@@ -24,7 +29,8 @@ class PolicyService(
     private val guilds: GuildRepository,
     private val audit: AuditLog,
     private val aiAdminRoles: AiAdminRoleRepository? = null,
-) : RoutingPolicy {
+) : RoutingPolicy,
+    AutoApprovePolicy {
     // ── 채널 정책 ───────────────────────────────────────────────────────
     @Transactional
     fun allowChannel(
@@ -146,7 +152,7 @@ class PolicyService(
         audit.record("set_auto_approve", "admin:$adminId", "guild:$guildId", value.toString())
     }
 
-    fun isAutoApprove(guildId: Long): Boolean = guilds.findById(guildId).map { it.autoApprove }.orElse(false)
+    override fun isAutoApprove(guildId: Long): Boolean = guilds.findById(guildId).map { it.autoApprove }.orElse(false)
 
     /** 길드 기본 모델/언어 설정(차수 11 #146). null/blank 인 항목은 변경하지 않는다. */
     fun setGuildDefaults(

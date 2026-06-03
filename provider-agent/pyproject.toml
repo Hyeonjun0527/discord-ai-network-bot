@@ -43,6 +43,9 @@ discord-ai-network-bot = "provider_agent.__main__:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+provider_agent = ["assets/*.png"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

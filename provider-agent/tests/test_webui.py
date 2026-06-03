@@ -39,6 +39,19 @@ async def test_index_and_auth():
 
 
 @pytest.mark.asyncio
+async def test_mascot_served():
+    client = await _client()
+    try:
+        r = await client.get("/mascot.png")  # 이미지는 인증 없이 제공(민감정보 아님)
+        assert r.status == 200
+        assert r.headers["Content-Type"] == "image/png"
+        body = await r.read()
+        assert body[:4] == b"\x89PNG"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_models_autodetected(monkeypatch):
     async def fake_detect():
         return ["llama3.1:8b", "gemma4"]

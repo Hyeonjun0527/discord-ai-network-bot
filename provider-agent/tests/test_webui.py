@@ -372,9 +372,16 @@ async def test_server_remove_deletes_saved(monkeypatch):
     add_connection("TB", guild_id=200, guild_name="서버B")
     client = await _client()
     try:
-        await client.post("/api/server-remove", headers={"X-Session": KEY}, json={"guildId": 100})
+        # index 0(서버A) 해제
+        await client.post("/api/server-remove", headers={"X-Session": KEY}, json={"index": 0})
         left = [c["guild_id"] for c in load_connections()]
-        assert left == [200]  # 길드 100 해제됨
+        assert left == [200]  # 서버A 해제됨
+        # 이름 바꾸기(토큰-추가 '이름 미상' 라벨링) — 남은 index 0
+        await client.post("/api/server-rename", headers={"X-Session": KEY}, json={"index": 0, "name": "새이름"})
+        assert load_connections()[0]["guild_name"] == "새이름"
+        # 토큰으로 서버 추가(별명)
+        await client.post("/api/server-add-token", headers={"X-Session": KEY}, json={"token": "TC", "name": "토큰서버"})
+        assert any(c["guild_name"] == "토큰서버" for c in load_connections())
     finally:
         await client.close()
 

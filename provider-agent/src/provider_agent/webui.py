@@ -215,8 +215,13 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <div id="msg"></div>
 <section id="serversSec" style="display:none;margin-top:16px"><h2>내 서버</h2>
 <div class="settings" id="serverList"></div>
-<button class="secondary-btn" type="button" id="addServerBtn" style="width:100%;margin-top:10px" onclick="addServer()">＋ 다른 서버에 연결</button>
-<div class="helper" id="addServerHelp" style="margin-top:7px">여러 디스코드 서버의 프로바이더로 동시에 연결할 수 있어요.</div></section>
+<button class="secondary-btn" type="button" id="addServerBtn" style="width:100%;margin-top:10px" onclick="addServer()">＋ 다른 서버에 연결(디스코드 로그인)</button>
+<div class="helper" id="addServerHelp" style="margin-top:7px">여러 디스코드 서버의 프로바이더로 동시에 연결할 수 있어요.</div>
+<details style="margin-top:10px"><summary><span>토큰으로 추가</span><span>⌄</span></summary><div class="details-body">
+<label class="input" style="margin-bottom:9px"><input type="text" id="addTokName" placeholder="서버 별명(예: 우리 동아리)"></label>
+<label class="input" style="margin-bottom:9px"><input type="password" id="addTokVal" placeholder="다른 서버의 /provider-join 토큰"></label>
+<button class="secondary-btn" type="button" style="width:100%" onclick="addByToken()">추가</button>
+<div class="helper" id="addTokHelp" style="margin-top:7px">디스코드 로그인 추가가 안 될 때, 그 서버에서 받은 토큰을 붙여넣어 추가합니다.</div></div></details></section>
 <details><summary><span>로그 보기</span><span>⌄</span></summary><div class="details-body"><div id="log"></div></div></details>
 <details><summary><span>고급 · 토큰 직접 입력</span><span>⌄</span></summary><div class="details-body">
 <label class="input" style="margin-bottom:11px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:20px;height:20px;flex:0 0 auto"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg><input type="password" id="token" placeholder="/provider-join 토큰 붙여넣기(선택)"></label>
@@ -327,13 +332,21 @@ async function loadServers(){let d;try{d=await j('/api/servers');}catch(e){retur
 const sec=document.getElementById('serversSec'),list=document.getElementById('serverList');
 if(!d.servers||!d.servers.length){sec.style.display='none';return;}
 sec.style.display='block';
-list.innerHTML=d.servers.map(s=>{const nm=esc(s.guildName||(s.guildId?('서버 '+s.guildId):'이름 미상'));const gid=s.guildId==null?'null':s.guildId;
-return '<div style="display:flex;align-items:center;gap:11px;min-height:56px;border-bottom:1px solid rgba(148,163,184,.10)">'
+list.innerHTML=d.servers.map((s,i)=>{const idx=s.index!=null?s.index:i;const named=!!(s.guildName);const nm=esc(s.guildName||(s.guildId?('서버 '+s.guildId):'이름 미상'));
+return '<div style="display:flex;align-items:center;gap:10px;min-height:56px;border-bottom:1px solid rgba(148,163,184,.10)">'
 +'<span class="dot'+(s.connected?'':' grey')+'"></span>'
-+'<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14.5px;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nm+'</div>'
++'<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14.5px;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nm+(named?'':' <span class="helper" style="font-weight:600">(이름 미상)</span>')+'</div>'
 +'<div class="helper" style="margin:1px 0 0">'+(s.connected?'연결됨':'대기 중…')+'</div></div>'
-+'<button class="secondary-btn" style="min-height:34px;padding:0 13px;font-size:13px" onclick="removeServer('+gid+')">해제</button></div>';}).join('');}
-async function removeServer(gid){const r=await j('/api/server-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({guildId:gid})});loadServers();refresh();}
++'<button class="secondary-btn" title="이름 바꾸기" style="min-height:34px;padding:0 11px;font-size:13px" onclick="renameServer('+idx+')">✏</button>'
++'<button class="secondary-btn" style="min-height:34px;padding:0 12px;font-size:13px" onclick="removeServer('+idx+')">해제</button></div>';}).join('');}
+async function removeServer(idx){await j('/api/server-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx})});loadServers();refresh();}
+async function renameServer(idx){const name=prompt('이 서버의 표시 이름을 입력하세요');if(name==null)return;
+await j('/api/server-rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx,name:name})});loadServers();}
+async function addByToken(){const help=document.getElementById('addTokHelp');const tok=document.getElementById('addTokVal').value.trim();const nm=document.getElementById('addTokName').value.trim();
+if(!tok){help.innerHTML='<span style="color:#ff8a8a">토큰을 입력하세요.</span>';return;}
+const r=await j('/api/server-add-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:tok,name:nm})});
+if(r.ok){document.getElementById('addTokVal').value='';document.getElementById('addTokName').value='';help.innerHTML='<span style="color:#9fe0a0">추가했어요.</span>';loadServers();refresh();}
+else{help.innerHTML='<span style="color:#ff8a8a">⚠️ '+esc(r.error||'추가 실패')+'</span>';}}
 async function addServer(){const help=document.getElementById('addServerHelp');const s=await j('/api/status');
 if(!s.connectEnabled){help.innerHTML='<span style="color:#ffd479">디스코드 로그인 추가가 아직 활성화되지 않았어요. ‘고급’에서 다른 서버의 /provider-join 토큰을 붙여넣어 추가하세요.</span>';return;}
 const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
@@ -515,25 +528,67 @@ def build_app(session_key: str) -> web.Application:
         saved = load_connections()
         return web.json_response(
             {"servers": [
-                {"guildId": c.get("guild_id"), "guildName": c.get("guild_name"), "connected": False}
-                for c in saved
+                {"index": i, "guildId": c.get("guild_id"), "guildName": c.get("guild_name"), "connected": False}
+                for i, c in enumerate(saved)
             ]}
         )
 
-    async def server_remove(req: web.Request) -> web.Response:
-        """서버 연결 해제(길드ID 기준). 실행 중이면 즉시 끊고, 아니면 저장 목록에서 제거."""
-        _auth(req)
-        data = await req.json()
-        gid_raw = data.get("guildId")
-        guild_id = int(gid_raw) if isinstance(gid_raw, (int, str)) and str(gid_raw).lstrip("-").isdigit() else None
+    def _running_agent() -> object | None:
         agent = _state["agent"]
         task = _state["task"]
-        if agent is not None and task is not None and not task.done():
-            await agent.remove_connection(guild_id=guild_id)
-        else:
-            from .config_file import remove_connection
+        return agent if (agent is not None and task is not None and not task.done()) else None
 
-            remove_connection(guild_id=guild_id)
+    async def server_remove(req: web.Request) -> web.Response:
+        """서버 연결 해제(목록 index 기준 — 길드ID 없는 토큰-추가 연결도 정확히 지목)."""
+        _auth(req)
+        data = await req.json()
+        try:
+            index = int(data.get("index"))
+        except (TypeError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 항목"})
+        agent = _running_agent()
+        if agent is not None:
+            await agent.remove_connection_at(index)  # type: ignore[attr-defined]
+        else:
+            from .config_file import remove_connection_at
+
+            remove_connection_at(index)
+        return web.json_response({"ok": True})
+
+    async def server_rename(req: web.Request) -> web.Response:
+        """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). index + name."""
+        _auth(req)
+        data = await req.json()
+        try:
+            index = int(data.get("index"))
+        except (TypeError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 항목"})
+        name = str(data.get("name") or "").strip()[:60]
+        agent = _running_agent()
+        if agent is not None:
+            await agent.rename_connection(index, name)  # type: ignore[attr-defined]
+        else:
+            from .config_file import rename_connection
+
+            rename_connection(index, name)
+        return web.json_response({"ok": True})
+
+    async def server_add_token(req: web.Request) -> web.Response:
+        """토큰으로 서버 추가(+ 직접 입력한 별명). 다른 서버의 /provider-join 토큰을 붙여넣을 때."""
+        _auth(req)
+        data = await req.json()
+        token = str(data.get("token") or "").strip()
+        name = str(data.get("name") or "").strip()[:60] or None
+        if not token:
+            return web.json_response({"ok": False, "error": "토큰을 입력하세요."})
+        agent = _running_agent()
+        if agent is not None:
+            await agent.add_connection(token, None, name)  # type: ignore[attr-defined]
+        else:
+            from .config_file import add_connection
+
+            add_connection(token, None, name)
+            _start_agent()
         return web.json_response({"ok": True})
 
     async def install_info(req: web.Request) -> web.Response:
@@ -619,6 +674,8 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/connect-open", connect_open)
     app.router.add_get("/api/servers", servers)
     app.router.add_post("/api/server-remove", server_remove)
+    app.router.add_post("/api/server-rename", server_rename)
+    app.router.add_post("/api/server-add-token", server_add_token)
     app.router.add_get("/api/install-info", install_info)
     app.router.add_post("/api/install", install)
     app.router.add_get("/api/update-info", update_info)

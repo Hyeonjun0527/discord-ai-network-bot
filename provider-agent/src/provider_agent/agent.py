@@ -268,11 +268,35 @@ class ProviderAgent:
                     removed = True
         return removed
 
+    async def rename_connection(self, index: int, name: str | None) -> bool:
+        """index 번째 연결의 표시 이름을 바꾼다(토큰-추가 '이름 미상' 라벨링)."""
+        from .config_file import rename_connection as _save
+
+        label = (name or "").strip() or None
+        _save(index, label)
+        async with self._entries_lock:
+            if 0 <= index < len(self._entries):
+                self._entries[index]["guild_name"] = label
+                return True
+        return False
+
+    async def remove_connection_at(self, index: int) -> bool:
+        """index 번째 연결을 해제(길드ID 없는 토큰-추가 연결도 정확히 지목)."""
+        from .config_file import remove_connection_at as _save
+
+        async with self._entries_lock:
+            if 0 <= index < len(self._entries):
+                e = self._entries.pop(index)
+                await self._stop_entry(e)
+                _save(index)  # 엔트리·config 가 같은 순서라 같은 index
+                return True
+        return False
+
     def connections_status(self) -> list[dict]:
-        """GUI '내 서버 목록'용: 연결별 길드/연결상태(토큰은 노출하지 않음)."""
+        """GUI '내 서버 목록'용: 연결별 index/길드/연결상태(토큰은 노출하지 않음)."""
         return [
-            {"guildId": e["guild_id"], "guildName": e["guild_name"], "connected": e["conn"].authed}
-            for e in self._entries
+            {"index": i, "guildId": e["guild_id"], "guildName": e["guild_name"], "connected": e["conn"].authed}
+            for i, e in enumerate(self._entries)
         ]
 
     @property
@@ -389,6 +413,12 @@ def run_agent(cfg: AgentConfig) -> int:
     if not singleton.acquire():
         logger.warning("다른 에이전트 인스턴스가 이미 실행 중입니다 — 이 인스턴스는 종료합니다(중복 연결 방지).")
         return 0
+    # 헤드리스(자동실행 서비스 등)도 주기적으로 새 버전을 받아 헤드리스로 교체·재실행한다
+    # (GUI 워처와 별개 — 창 없이 도는 서비스가 껐다 켜야만 업데이트되던 문제 해소).
+    if cfg.auto_update:
+        from . import updater
+
+        updater.start_service_update_watcher()
     return asyncio.run(ProviderAgent(cfg).run())
 
 

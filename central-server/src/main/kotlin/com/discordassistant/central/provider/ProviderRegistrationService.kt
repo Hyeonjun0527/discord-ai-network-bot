@@ -9,7 +9,14 @@ data class ProviderRecord(
     val providerId: Long,
     val guildId: Long,
     var state: ProviderState,
-)
+) {
+    /** 상태머신 가드를 거쳐 전이한다(불가 전이는 false, 상태 불변). 등록/관리 경로 일관성. */
+    fun transitionTo(next: ProviderState): Boolean {
+        if (!state.canTransitionTo(next)) return false
+        state = next
+        return true
+    }
+}
 
 /** 등록/승인 결과. 승인된 경우 일회용 토큰(평문)을 한 번만 돌려준다. */
 data class JoinResult(
@@ -99,7 +106,7 @@ class ProviderRegistrationService(
     ): String? {
         val rec = providers[ProviderGuildKey(providerId, guildId)] ?: return null
         if (rec.state != ProviderState.PENDING) return null
-        rec.state = ProviderState.APPROVED
+        if (!rec.transitionTo(ProviderState.APPROVED)) return null // 상태머신 가드(PENDING→APPROVED 허용)
         val token = tokens.issue(providerId, guildId)
         audit.record("provider_approve", "admin:$adminId", "provider:$providerId", "guild:$guildId")
         return token
@@ -146,7 +153,7 @@ class ProviderRegistrationService(
         adminId: Long,
     ): Boolean {
         val rec = providers[ProviderGuildKey(providerId, guildId)] ?: return false
-        rec.state = ProviderState.REMOVED
+        rec.transitionTo(ProviderState.REMOVED) // 상태머신 가드(이미 REMOVED 면 no-op). 폐기는 멱등하게 진행.
         tokens.revokeProviderGuild(providerId, guildId)
         tokens.revokeDurable(providerId, guildId)
         audit.record("provider_remove", "admin:$adminId", "provider:$providerId", "guild:$guildId")

@@ -9,6 +9,7 @@ OS 내장 웹뷰(pywebview: macOS WKWebView / Windows WebView2 / Linux WebKit)�
 
 보안: 127.0.0.1 만 바인딩 + 세션 키. 토큰 콜백(`/connect/callback`)은 state==세션키로 검증.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,6 +26,14 @@ from .netguard import RemoteOllamaBlocked, ensure_ollama_allowed
 
 # 공개 기본 중앙 서버(유저는 입력하지 않음). 자체호스팅만 고급에서 바꿀 수 있다.
 DEFAULT_RELAY = "wss://discord-ai.yeon.world/agent"
+
+
+def _default_relay() -> str:
+    """기본 중앙 서버 주소. 로컬 개발은 RELAY_URL 환경변수로 우회(예: ws://localhost:8085/agent)."""
+    import os
+
+    return (os.getenv("RELAY_URL") or DEFAULT_RELAY).rstrip("/")
+
 
 # 최근 로그 라인(대시보드 표시용).
 _log_lines: deque[str] = deque(maxlen=200)
@@ -44,7 +53,9 @@ def _attach_log_capture() -> None:
     if _log_attached:
         return
     h = _RingHandler()
-    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)-5s | %(message)s", datefmt="%H:%M:%S"))
+    h.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)-5s | %(message)s", datefmt="%H:%M:%S")
+    )
     logging.getLogger("provider_agent").addHandler(h)
     _log_attached = True
 
@@ -131,7 +142,7 @@ def _page(session_key: str) -> str:
         f"const K='{session_key}';const H={{'X-Session':K}};let RUN=false;"
         "async function j(u,o){o=o||{};o.headers=Object.assign({},H,o.headers||{});const r=await fetch(u,o);return r.json();}"
         "async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');"
-        "if(!d.models.length){box.innerHTML=\"<small>Ollama 에서 모델을 못 찾았어요. <code>ollama pull llama3.1:8b</code> 후 새로고침.</small>\";return;}"
+        'if(!d.models.length){box.innerHTML="<small>Ollama 에서 모델을 못 찾았어요. <code>ollama pull llama3.1:8b</code> 후 새로고침.</small>";return;}'
         "box.innerHTML=d.models.map(m=>`<label class=chk><input type=checkbox class=mc value='${m}' ${d.selected.includes(m)||!d.selected.length?'checked':''}>${m}</label>`).join('');}"
         "function selectedModels(){return [...document.querySelectorAll('.mc:checked')].map(c=>c.value);}"
         "async function refresh(){const s=await j('/api/status');RUN=s.running;"
@@ -172,7 +183,9 @@ def build_app(session_key: str) -> web.Application:
     async def models(req: web.Request) -> web.Response:
         _auth(req)
         saved = load_config()
-        return web.json_response({"models": await _detect_models(), "selected": list(saved.get("models") or [])})
+        return web.json_response(
+            {"models": await _detect_models(), "selected": list(saved.get("models") or [])}
+        )
 
     async def status(req: web.Request) -> web.Response:
         _auth(req)
@@ -190,7 +203,7 @@ def build_app(session_key: str) -> web.Application:
                 "imageReady": bool(agent and agent.image_ready),
                 "models": list(agent.models) if agent else list(saved.get("models") or []),
                 "hasToken": bool(saved.get("token")),
-                "relayUrl": saved.get("relay_url") or DEFAULT_RELAY,
+                "relayUrl": saved.get("relay_url") or _default_relay(),
                 "enableImage": bool(saved.get("enable_image")),
                 # ‘토큰 받기’ OAuth 는 중앙 서버 /provider/connect 가 배포된 뒤 켠다(그전엔 복붙 안내).
                 "connectEnabled": bool(os.getenv("AGENT_CONNECT_ENABLED")),
@@ -207,11 +220,15 @@ def build_app(session_key: str) -> web.Application:
         saved = load_config()
         token = str(data.get("token", "")).strip() or str(saved.get("token", ""))
         if not token:
-            return web.json_response({"ok": False, "error": "토큰을 먼저 입력하세요(또는 ‘토큰 받기’)."})
+            return web.json_response(
+                {"ok": False, "error": "토큰을 먼저 입력하세요(또는 ‘토큰 받기’)."}
+            )
         models_list = [str(m).strip() for m in (data.get("models") or []) if str(m).strip()]
         enable_image = bool(data.get("enableImage"))
-        relay = (saved.get("relay_url") or DEFAULT_RELAY).rstrip("/")
-        cfg = AgentConfig(token=token, relay_url=relay, models=tuple(models_list), enable_image=enable_image)
+        relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
+        cfg = AgentConfig(
+            token=token, relay_url=relay, models=tuple(models_list), enable_image=enable_image
+        )
         if enable_image:
             try:
                 ensure_ollama_allowed(cfg.sd_url, cfg.allow_remote_sd)
@@ -241,8 +258,15 @@ def build_app(session_key: str) -> web.Application:
         if not token:
             return web.Response(status=400, text="토큰이 비어 있습니다")
         saved = load_config()
-        relay = (saved.get("relay_url") or DEFAULT_RELAY).rstrip("/")
-        save_config(AgentConfig(token=token, relay_url=relay, models=tuple(saved.get("models") or ()), enable_image=bool(saved.get("enable_image"))))
+        relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
+        save_config(
+            AgentConfig(
+                token=token,
+                relay_url=relay,
+                models=tuple(saved.get("models") or ()),
+                enable_image=bool(saved.get("enable_image")),
+            )
+        )
         return web.Response(
             text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#b8ff39;text-align:center;padding-top:80px'>"
             "✅ 토큰을 받았습니다. 돌아갑니다…<script>setTimeout(()=>location.href='/',900)</script>",
@@ -332,17 +356,24 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
     session_key = secrets.token_urlsafe(24)
     app = build_app(session_key)
     url = _start_server_thread(app, host, port)
-    print(f"\n제어판: {url}\n(창이 안 보이면 위 주소를 브라우저에서 여세요. AGENT_GUI_BROWSER=1 로 브라우저 강제.)\n", flush=True)
+    print(
+        f"\n제어판: {url}\n(창이 안 보이면 위 주소를 브라우저에서 여세요. AGENT_GUI_BROWSER=1 로 브라우저 강제.)\n",
+        flush=True,
+    )
 
     if _webview_available():
         try:
             import webview  # type: ignore[import-untyped]
 
-            webview.create_window("내 PC 를 AI 일꾼으로", url, width=460, height=820, min_size=(380, 560))
+            webview.create_window(
+                "내 PC 를 AI 일꾼으로", url, width=460, height=820, min_size=(380, 560)
+            )
             webview.start()  # 메인 스레드 점유, 창 닫으면 반환
             return
         except Exception as exc:  # noqa: BLE001 - 웹뷰 실패 시 브라우저로 폴백
-            logging.getLogger("provider_agent").warning("네이티브 창 실패(%s) — 브라우저로 폴백", exc)
+            logging.getLogger("provider_agent").warning(
+                "네이티브 창 실패(%s) — 브라우저로 폴백", exc
+            )
 
     import webbrowser
 

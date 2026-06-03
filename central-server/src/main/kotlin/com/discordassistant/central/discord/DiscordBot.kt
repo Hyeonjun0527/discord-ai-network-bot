@@ -1464,6 +1464,7 @@ class DiscordBot(
                         )
                     }
                 }
+                "ai-instruction" -> commands.setChannelAiInstruction(ctx, event.getOption("text")?.asString)
                 "providers" -> commands.providers(ctx)
                 "provider-approve" -> {
                     val target = event.getOption("user")!!.asUser

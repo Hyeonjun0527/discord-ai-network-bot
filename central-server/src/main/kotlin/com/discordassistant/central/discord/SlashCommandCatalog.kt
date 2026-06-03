@@ -115,6 +115,10 @@ object SlashCommandCatalog {
             Commands
                 .slash("ai-onboard", "이 채널 AI를 자동으로 설정합니다(관리자)")
                 .setDefaultPermissions(adminPerm),
+            Commands
+                .slash("ai-instruction", "이 채널 AI에 자유 지침을 추가/수정합니다(관리자)")
+                .addOption(OptionType.STRING, "text", "AI에게 줄 자연어 지침(비우면 현재 지침 확인)", false)
+                .setDefaultPermissions(adminPerm),
             Commands.slash("providers", "프로바이더 풀 상태를 봅니다(관리자)").setDefaultPermissions(adminPerm),
             Commands
                 .slash("provider-approve", "프로바이더 등록을 승인합니다(관리자)")

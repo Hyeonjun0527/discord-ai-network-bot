@@ -177,6 +177,7 @@ class AiBehaviorVersionEntity(
     var answerLength: String = "balanced",
     var constitution: String? = null,
     var safetyLevel: String = "standard",
+    @Column(name = "custom_instruction") var customInstruction: String? = null,
     var createdBy: Long? = null,
     var createdAt: Instant = Instant.EPOCH,
     var changeSummary: String? = null,

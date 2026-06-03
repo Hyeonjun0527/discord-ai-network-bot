@@ -113,3 +113,19 @@ requirements:
         path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/discord/CommandServiceTest.kt
+  # 채널 AI 자유 지침(custom instruction) — 슬롯(가드레일)과 공존하는 자연어 페르소나 색깔.
+  # behavior 버전의 일부로 저장·버전관리되고 /ask 시스템 프롬프트 정체성 블록 뒤([우선순위 2.5])에 삽입된다.
+  - id: REQ-INSTRUCTION-001
+    title: 관리자가 추가한 자유 지침은 behavior 버전으로 저장되고 시스템 프롬프트 정체성 블록에 삽입된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/ChannelAiCustomizationServiceTest.kt
+  - id: REQ-INSTRUCTION-002
+    title: 민감정보/위험 용어가 담긴 자유 지침은 자동 적용되지 않고 승인 대기열로 강제된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/ChannelAiCustomizationServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/discord/CommandServiceTest.kt

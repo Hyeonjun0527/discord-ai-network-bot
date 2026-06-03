@@ -614,6 +614,7 @@ class CommandService(
             sb.append("· `/채널허용`(`/llm-allow-channel`) `/채널금지`(`/llm-deny-channel`) `/역할정책`(`/llm-role-policy`) — 채널·역할 정책\n")
             sb.append("· `/채널프로필`(`/llm-channel-profile`) — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
             sb.append("· `/ai-onboard` — 이 채널 AI를 자동으로 설정(휴리스틱 draft → 승인 카드)\n")
+            sb.append("· `/ai-instruction` — 이 채널 AI에 자연어 자유 지침(페르소나/말투 색깔) 추가·수정\n")
             sb.append("· `/ai-network-map` — Provider·모델·채널AI·RAG 구성을 한눈에 보기\n")
             sb.append("· `/ai-knowledge-list` `/ai-knowledge-add` `/ai-knowledge-search` — 채널 지식공간/RAG 소스 관리\n")
             sb.append("· `/ai-knowledge-index-plan` `/ai-knowledge-approve` `/ai-knowledge-delete` — 색인계획·검토·삭제\n")
@@ -1418,6 +1419,57 @@ class CommandService(
             Replies.ok("🚫 이 채널 AI 자동 설정 제안을 거절했습니다. 제안은 적용되지 않습니다. (제안 `${review.id}`)")
         }.getOrElse {
             Replies.warn("AI 자동 설정 거절에 실패했어요. ${it.message ?: "이미 처리된 제안인지 확인해 주세요."}")
+        }
+    }
+
+    // ── 채널 AI 자유 지침(custom instruction) ────────────────────────────
+
+    /**
+     * `/ai-instruction` — 이 채널 AI에 자연어 자유 지침을 추가/수정한다.
+     * text 가 비어 있으면 현재 지침을 확인만 한다. text 가 있으면 활성 behavior 를 베이스로
+     * customInstruction 만 교체한 **새 behavior 버전 제안**을 만든다(위험 지침은 승인 큐로 강제).
+     */
+    fun setChannelAiInstruction(
+        ctx: CommandContext,
+        text: String?,
+    ): Reply {
+        channelAiAdminOnly(ctx, "set_custom_instruction")?.let { return it }
+        val instruction = text?.trim().orEmpty()
+        if (instruction.isBlank()) {
+            return runCatching {
+                val current = channelAiCustomization.currentCustomInstruction(ctx.guildId, ctx.channelId)
+                if (current.isNullOrBlank()) {
+                    Reply("현재 이 채널 AI에는 자유 지침이 없어요. `text` 옵션에 자연어 지침을 적어 추가하세요.")
+                } else {
+                    Reply("현재 이 채널 AI 자유 지침:\n> ${current.replace("\n", "\n> ")}")
+                }
+            }.getOrElse {
+                Replies.warn("자유 지침을 확인하지 못했어요. ${it.message ?: "이 채널에 채널 AI가 있는지 확인해 주세요."}")
+            }
+        }
+        return runCatching {
+            val result =
+                channelAiCustomization.proposeCustomInstruction(
+                    guildId = ctx.guildId,
+                    channelId = ctx.channelId,
+                    actorUserId = ctx.userId,
+                    actorRoleIds = ctx.roleIds,
+                    actorIsGuildAdmin = ctx.isAdmin,
+                    customInstruction = instruction,
+                    requireApproval = false,
+                )
+            if (result.status == "approved") {
+                Replies.ok(
+                    "✅ 이 채널 AI 자유 지침을 적용했어요(v${result.version}). 이후 `/ask` 답변에 반영됩니다.",
+                )
+            } else {
+                Replies.warn(
+                    "📝 자유 지침을 제안했지만 검토가 필요해 승인 대기열로 보냈어요" +
+                        "${result.approvalReason?.let { " (사유: $it)" } ?: ""}. 관리자 승인 후 적용됩니다. (제안 `${result.proposalId}`)",
+                )
+            }
+        }.getOrElse {
+            Replies.warn("자유 지침을 적용하지 못했어요. ${it.message ?: "잠시 후 다시 시도해 주세요."}")
         }
     }
 

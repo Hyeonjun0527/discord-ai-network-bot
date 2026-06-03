@@ -894,6 +894,9 @@ class PresetRegistryService(
                 constitution.orEmpty(),
                 safetyLevel,
                 changeSummary.orEmpty(),
+                // ChannelAiCustomizationService.payloadHash 와 동일 필드 구성을 유지해야 한다(preset import 제안도
+                // 같은 approveProposal 에서 해시 검증을 받기 때문). 자유 지침 컬럼 추가에 맞춰 같이 포함한다.
+                customInstruction.orEmpty(),
             ).joinToString("\u001F"),
         )
 

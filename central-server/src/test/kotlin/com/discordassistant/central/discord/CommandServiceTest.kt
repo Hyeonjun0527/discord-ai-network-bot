@@ -600,6 +600,42 @@ class CommandServiceTest
             assertTrue(approved.content.contains("승인"), approved.content)
         }
 
+        // REQ-INSTRUCTION-002: 비관리자의 /ai-instruction 자유 지침 추가는 거부된다.
+        @Test
+        fun `ai-instruction — 비관리자는 자유 지침을 추가할 수 없다`() {
+            val user = CommandContext(guildId = 100, channelId = 70400, userId = 5, roleIds = setOf(1L), isAdmin = false)
+
+            val reply = commands.setChannelAiInstruction(user, "너는 우리 길드 공대장 냥대장이야")
+            assertTrue(reply.content.contains("⛔"), reply.content)
+        }
+
+        // REQ-INSTRUCTION-001: 관리자는 활성 채널 AI 에 자유 지침을 추가해 적용한다.
+        @Test
+        fun `ai-instruction — 관리자는 활성 채널 AI 에 자유 지침을 적용한다`() {
+            val admin = CommandContext(guildId = 100, channelId = 70401, userId = 5, roleIds = setOf(1L), isAdmin = true)
+            channelAiCustomization.createFromWizard(
+                guildId = 100,
+                channelId = 70401,
+                actorUserId = 5,
+                name = "코드냥",
+                avatarUrl = null,
+                job = "개발 질문",
+                tone = "친근하게",
+                answerLength = "balanced",
+                constitution = null,
+                requireApproval = false,
+            )
+
+            val empty = commands.setChannelAiInstruction(admin, "   ")
+            assertTrue(empty.content.contains("자유 지침이 없"), empty.content)
+
+            val applied = commands.setChannelAiInstruction(admin, "너는 우리 길드 공대장 냥대장이야. 반말 쓰고 트수 드립 좋아함")
+            assertTrue(applied.content.contains("적용"), applied.content)
+
+            val current = commands.setChannelAiInstruction(admin, null)
+            assertTrue(current.content.contains("냥대장"), current.content)
+        }
+
         @Test
         fun `ask — echo 프로바이더 연결 시 완료`() {
             val conn = EchoConn()

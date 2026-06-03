@@ -1371,6 +1371,10 @@ class CommandService(
     ): OnboardingStartOutcome {
         channelAiAdminOnly(ctx, "auto_onboard_start")?.let { return OnboardingStartOutcome.Rejected(it) }
         return runCatching {
+            // LLM 분석은 DB 트랜잭션 밖(여기 — slow 명령 실행 풀)에서 먼저 수행한다(B1). analyze 는 비트랜잭션
+            // 메서드라 프록시를 거쳐도 트랜잭션/커넥션을 열지 않는다. startOnboarding 은 그 결과만 받아 짧은 트랜잭션으로 처리.
+            // (analyze/startOnboarding 을 여기서 각각 부르므로 self-invocation 프록시 우회 함정도 없다.)
+            val analysis = guildOnboarding.analyze(backfill)
             val result =
                 guildOnboarding.startOnboarding(
                     guildId = ctx.guildId,
@@ -1382,6 +1386,7 @@ class CommandService(
                     channelWhitelist = channelWhitelist,
                     historyLimit = historyLimit,
                     backfill = backfill,
+                    analysis = analysis,
                 )
             OnboardingStartOutcome.Started(result)
         }.getOrElse {

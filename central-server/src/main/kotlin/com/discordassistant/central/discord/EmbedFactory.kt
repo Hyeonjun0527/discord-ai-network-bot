@@ -131,19 +131,27 @@ object EmbedFactory {
         scrubbedCount: Int = 0,
         knowledgeIndexed: Boolean = false,
         knowledgeSpaceCreated: Boolean = false,
+        analysisSource: String = "heuristic",
+        customInstruction: String? = null,
     ): MessageEmbed {
         val constitutionSummary = constitution.lines().take(4).joinToString("\n") { "• ${it.trim()}" }
-        return EmbedBuilder()
-            .setColor(DEEP_INDIGO)
-            .setTitle("🐾 채널 AI 자동 설정 제안")
-            .setDescription(
-                "이 채널을 분석해 아래 AI 페르소나 초안을 만들었어요. " +
-                    "검토 후 **승인**하면 이 채널 `/ask` 답변에 적용되고, **거절**하면 적용되지 않습니다.",
-            ).addField("이름", name, true)
-            .addField("역할", purpose.take(200), true)
-            .addField("말투", tone, true)
-            .addField("답변 길이", answerLength, true)
-            .addField("헌법(요약)", constitutionSummary.ifBlank { "기본 안전 규칙" }, false)
+        val builder =
+            EmbedBuilder()
+                .setColor(DEEP_INDIGO)
+                .setTitle("🐾 채널 AI 자동 설정 제안")
+                .setDescription(
+                    "이 채널을 분석해 아래 AI 페르소나 초안을 만들었어요. " +
+                        "검토 후 **승인**하면 이 채널 `/ask` 답변에 적용되고, **거절**하면 적용되지 않습니다.",
+                ).addField("분석 방식", onboardingAnalysisSourceLabel(analysisSource), false)
+                .addField("이름", name, true)
+                .addField("역할", purpose.take(200), true)
+                .addField("말투", tone, true)
+                .addField("답변 길이", answerLength, true)
+                .addField("헌법(요약)", constitutionSummary.ifBlank { "기본 안전 규칙" }, false)
+        customInstruction?.trim()?.takeIf { it.isNotBlank() }?.let {
+            builder.addField("자유 지침", it.take(300), false)
+        }
+        return builder
             .addField(
                 "알게 된 것",
                 onboardingBackfillSummary(backfilledMessageCount, scrubbedCount, knowledgeIndexed, knowledgeSpaceCreated),
@@ -151,6 +159,13 @@ object EmbedFactory {
             ).setFooter("자동 설정은 항상 관리자 승인 후에만 적용됩니다. 민감정보·봇 메시지는 수집하지 않으며, 작성자는 익명화됩니다.")
             .build()
     }
+
+    /** 분석 출처 라벨(제안 카드 표기): LLM 분석 기반 vs 휴리스틱. */
+    private fun onboardingAnalysisSourceLabel(analysisSource: String): String =
+        when (analysisSource.lowercase()) {
+            "llm" -> "🤖 LLM 분석 기반 (서버 대화를 분석해 제안)"
+            else -> "🧭 휴리스틱 (채널명 기반 기본 제안)"
+        }
 
     /** 백필 요약 문구(수집 N건 / 스크럽 M건 / 지식공간 색인됨·검토대기·없음). */
     private fun onboardingBackfillSummary(

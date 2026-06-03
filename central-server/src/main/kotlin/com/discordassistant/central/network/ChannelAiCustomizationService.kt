@@ -909,7 +909,8 @@ class ChannelAiCustomizationService(
             when {
                 behavior.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS -> "high risk safety level"
                 behavior.answerLength.equals("long", ignoreCase = true) -> "long answer mode can increase provider load"
-                RISKY_WIZARD_TERMS.any { it in text } -> "risky channel AI instruction requires review"
+                // 위험어는 KnowledgeSafety.RISKY_INSTRUCTION_TERMS 단일 출처를 공유한다(OnboardingAnalyzer 와 동기화 — S2).
+                KnowledgeSafety.looksRiskyInstruction(text) -> "risky channel AI instruction requires review"
                 // 자유 지침에 토큰/비밀번호/개인키 같은 민감정보가 들어오면 자동 승인하지 않고 검토 큐로 보낸다.
                 customInstruction.looksSensitive() -> "custom instruction contains sensitive material requires review"
                 behavior.constitution.orEmpty().length > SAFE_CONSTITUTION_CHARS -> "large constitution requires review"
@@ -994,21 +995,6 @@ class ChannelAiCustomizationService(
                 Regex("(?i)(api[_-]?key|bot[_-]?token|discord[_-]?bot[_-]?token|private[_-]?key|access[_-]?token)"),
                 Regex("(?i)-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"),
                 Regex("(?i)sk-[A-Za-z0-9_-]{20,}"),
-            )
-        val RISKY_WIZARD_TERMS =
-            setOf(
-                "ignore previous",
-                "ignore safety",
-                "bypass",
-                "jailbreak",
-                "토큰을 알려",
-                "토큰 수집",
-                "비밀번호를 알려",
-                "비밀번호 수집",
-                "개인키를 알려",
-                "개인정보 수집",
-                "관리자 권한",
-                "안전 규칙 무시",
             )
     }
 }

@@ -1295,6 +1295,8 @@ class DiscordBot(
                 scrubbedCount = r.scrubbedCount,
                 knowledgeIndexed = r.knowledgeIndexed,
                 knowledgeSpaceCreated = r.knowledgeSpaceId != null,
+                analysisSource = r.analysisSource,
+                customInstruction = r.customInstruction,
             )
 
         private fun onboardingButtons(proposalId: Long): ActionRow =

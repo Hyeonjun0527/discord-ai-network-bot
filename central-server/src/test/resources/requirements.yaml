@@ -141,6 +141,25 @@ requirements:
         path: src/test/kotlin/com/discordassistant/central/discord/CommandServiceTest.kt
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+  # Phase 3 — 정제 백필 텍스트를 LLM(Provider Pool 경유, 동기 호출)으로 분석해 채널 AI 페르소나를 휴리스틱보다 풍부하게 제안.
+  # 출력은 엄격 JSON(name/purpose/tone/answerLength/customInstruction)만, robust 파싱. LLM 자유 지침도 위험/민감 가드를 거친다.
+  - id: REQ-ONBOARD-007
+    title: 정제 백필 텍스트를 LLM 분석해 채널 AI 페르소나(이름/역할/말투/길이/자유지침)를 제안하고 출처를 llm 으로 기록한다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/OnboardingAnalyzerTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
+  # 프로바이더 부재/거부/실패/타임아웃/빈 응답/JSON 파싱 실패/위험 출력 → Phase 1 휴리스틱으로 graceful fallback(온보딩 무중단).
+  - id: REQ-ONBOARD-008
+    title: 프로바이더 부재·LLM 실패·파싱 실패 시 휴리스틱 draft 로 폴백하고 출처를 heuristic 으로 기록한다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/OnboardingAnalyzerTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/network/GuildOnboardingServiceTest.kt
   # 채널 AI 자유 지침(custom instruction) — 슬롯(가드레일)과 공존하는 자연어 페르소나 색깔.
   # behavior 버전의 일부로 저장·버전관리되고 /ask 시스템 프롬프트 정체성 블록 뒤([우선순위 2.5])에 삽입된다.
   - id: REQ-INSTRUCTION-001

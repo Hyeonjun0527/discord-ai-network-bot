@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.PresetStatus
+import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.persistence.AiPresetEntity
 import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.PresetImportEntity
@@ -35,7 +37,7 @@ class PresetCatalogQueryService(
         featureGate.requirePresetEnabled()
         return presets
             .findByGuildId(guildId)
-            .filter { it.status != "removed" }
+            .filter { it.status != PresetStatus.REMOVED }
             .sortedWith(compareByDescending<AiPresetEntity> { it.updatedAt }.thenBy { it.id })
             .map { it.toSummary() }
     }
@@ -56,7 +58,7 @@ class PresetCatalogQueryService(
         val cappedLimit = limit.coerceIn(1, 100)
         val summaries =
             publishedPresets
-                .findByStatusOrderByLikeCountDescPublishedAtDesc("published")
+                .findByStatusOrderByLikeCountDescPublishedAtDesc(PublishedPresetStatus.PUBLISHED)
                 .map { publishedSummary(it) }
                 .filter { summary ->
                     normalizedQuery == null || summary.searchHaystack().contains(normalizedQuery)
@@ -94,7 +96,7 @@ class PresetCatalogQueryService(
         featureGate.requirePresetEnabled()
         val normalizedCategory = category.normalizedSearchToken()
         return publishedPresets
-            .findByStatusOrderByLikeCountDescPublishedAtDesc("published")
+            .findByStatusOrderByLikeCountDescPublishedAtDesc(PublishedPresetStatus.PUBLISHED)
             .map { publishedSummary(it) }
             .filter { it.reportCount == 0 }
             .filter { normalizedCategory == null || it.category.orEmpty().lowercase() == normalizedCategory }
@@ -112,7 +114,7 @@ class PresetCatalogQueryService(
         featureGate.requirePresetEnabled()
         val summaries =
             publishedPresets
-                .findByStatusOrderByLikeCountDescPublishedAtDesc("published")
+                .findByStatusOrderByLikeCountDescPublishedAtDesc(PublishedPresetStatus.PUBLISHED)
                 .map { publishedSummary(it) }
         return PresetCatalogFacets(
             totalPublished = summaries.size,
@@ -184,7 +186,7 @@ class PresetCatalogQueryService(
                         .thenByDescending { it.likeCount }
                         .thenBy { it.publishedPresetId },
                 )
-        val statusCounts = published.groupingBy { it.status.ifBlank { "unknown" } }.eachCount()
+        val statusCounts = published.groupingBy { it.status.wire }.eachCount()
         return PresetModerationSummary(
             totalPublishedRows = published.size,
             activePublishedCount = statusCounts["published"] ?: 0,
@@ -242,11 +244,13 @@ class PresetCatalogQueryService(
     // --- 가드 (write 와 공유하므로 PresetRegistryService 에도 동일하게 유지) ---
 
     private fun requireActivePreset(preset: AiPresetEntity) {
-        require(preset.status != "removed") { "removed preset cannot be changed" }
+        require(preset.status != PresetStatus.REMOVED) { "removed preset cannot be changed" }
     }
 
     private fun requirePublishedPreset(published: PublishedPresetEntity) {
-        require(published.status == "published") { "published preset is not importable or likable: ${published.status}" }
+        require(published.status == PublishedPresetStatus.PUBLISHED) {
+            "published preset is not importable or likable: ${published.status.wire}"
+        }
     }
 
     // --- read-only 매핑 헬퍼 (write 가 쓰지 않으므로 이동) ---
@@ -260,7 +264,7 @@ class PresetCatalogQueryService(
             summary = summary,
             category = category,
             visibility = visibility,
-            status = status,
+            status = status.wire,
             currentRevisionId = currentRevisionId,
             updatedAt = updatedAt.toString(),
         )
@@ -425,7 +429,7 @@ class PresetCatalogQueryService(
             slug = slug.publicSlug(id),
             title = title.publicRequired(maxLength = 120, fallback = REDACTED_PUBLIC_TITLE),
             description = description.publicOptional(maxLength = 500),
-            status = status,
+            status = status.wire,
             category = (preset?.category).publicOptional(maxLength = 80),
             purpose = (revision?.purpose).publicOptional(maxLength = 1000),
             tone = (revision?.tone).publicOptional(maxLength = 160),

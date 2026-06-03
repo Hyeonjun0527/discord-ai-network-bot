@@ -1,6 +1,8 @@
 package com.discordassistant.central.persistence
 
+import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.domain.PublishedPresetStatus
 import jakarta.persistence.Column
 import jakarta.persistence.Convert
 import jakarta.persistence.Entity
@@ -450,7 +452,8 @@ class AiPresetEntity(
     var summary: String? = null,
     var category: String = "general",
     var visibility: String = "guild_private",
-    var status: String = "draft",
+    @Convert(converter = PresetStatusConverter::class)
+    var status: PresetStatus = PresetStatus.DRAFT,
     var currentRevisionId: Long? = null,
     var createdAt: Instant = Instant.EPOCH,
     var updatedAt: Instant = Instant.EPOCH,
@@ -494,7 +497,8 @@ class PublishedPresetEntity(
     var slug: String = "",
     var title: String = "",
     var description: String? = null,
-    var status: String = "published",
+    @Convert(converter = PublishedPresetStatusConverter::class)
+    var status: PublishedPresetStatus = PublishedPresetStatus.PUBLISHED,
     var likeCount: Int = 0,
     var importCount: Int = 0,
     var reportCount: Int = 0,

@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.PresetImportStatus
+import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
@@ -377,7 +379,7 @@ class PresetRegistryService(
                     importedPresetId = importedPreset.id,
                     createdChannelAiId = applied?.channelAiId,
                     createdBehaviorVersionId = applied?.behaviorVersionId,
-                    status = applied?.status ?: "imported",
+                    status = applied?.status ?: PresetImportStatus.IMPORTED,
                     importedAt = now,
                 ),
             ).toResult()
@@ -445,7 +447,7 @@ class PresetRegistryService(
             "${published.status.wire} preset cannot be reported"
         }
         reporterUserId?.let { reporter ->
-            reports.findByPublishedPresetIdAndReporterUserIdAndStatus(publishedPresetId, reporter, "open")?.let {
+            reports.findByPublishedPresetIdAndReporterUserIdAndStatus(publishedPresetId, reporter, PresetReportStatus.OPEN)?.let {
                 return it.toWriteResult()
             }
         }
@@ -538,23 +540,17 @@ class PresetRegistryService(
             publishedPresets.findById(report.publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: ${report.publishedPresetId}")
             }
-        val normalized = decision.trim().lowercase().ifBlank { "reviewed" }
-        report.status =
-            when (normalized) {
-                "dismissed" -> "dismiss"
-                "removed" -> "remove"
-                "suspended" -> "suspend"
-                else -> normalized
-            }
+        report.status = PresetReportStatus.fromDecision(decision)
         report.reviewedBy = reviewerUserId
         report.reviewedAt = Instant.now(clock)
         when (report.status) {
-            "suspend", "suspended" -> published.transitionTo(PublishedPresetStatus.SUSPENDED)
-            "remove", "removed" -> published.transitionTo(PublishedPresetStatus.REMOVED)
-            "dismiss", "dismissed" ->
+            PresetReportStatus.SUSPEND -> published.transitionTo(PublishedPresetStatus.SUSPENDED)
+            PresetReportStatus.REMOVE -> published.transitionTo(PublishedPresetStatus.REMOVED)
+            PresetReportStatus.DISMISS ->
                 if (published.status == PublishedPresetStatus.UNDER_REVIEW) {
                     published.transitionTo(PublishedPresetStatus.PUBLISHED)
                 }
+            PresetReportStatus.OPEN, PresetReportStatus.REVIEWED -> Unit
         }
         publishedPresets.save(published)
         return reports.save(report).toWriteResult()
@@ -587,13 +583,13 @@ class PresetRegistryService(
             sourceRevisionId = sourceRevisionId,
             createdChannelAiId = createdChannelAiId,
             createdBehaviorVersionId = createdBehaviorVersionId,
-            status = status,
+            status = status.wire,
         )
 
     private fun PresetReportEntity.toWriteResult(): PresetReportWriteResult =
         PresetReportWriteResult(
             id = id,
-            status = status,
+            status = status.wire,
             reasonCode = reasonCode,
             reviewedBy = reviewedBy,
             reviewedAt = reviewedAt?.toString(),
@@ -727,7 +723,7 @@ class PresetRegistryService(
                 ),
             )
         val highRisk = sourceRevision.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS
-        val status = if (highRisk) "needs_review" else "applied"
+        val status = if (highRisk) PresetImportStatus.NEEDS_REVIEW else PresetImportStatus.APPLIED
         if (highRisk) {
             proposals.save(
                 AiChangeProposalEntity(
@@ -757,7 +753,7 @@ class PresetRegistryService(
                 action = if (highRisk) "preset_import_proposed" else "preset_import_applied",
                 targetType = "ai_behavior_version",
                 targetId = behavior.id,
-                summary = "publishedPreset=${published.id} revision=${sourceRevision.revision} status=$status",
+                summary = "publishedPreset=${published.id} revision=${sourceRevision.revision} status=${status.wire}",
                 createdAt = now,
             ),
         )
@@ -1052,7 +1048,7 @@ class PresetRegistryService(
 private data class AppliedPresetChannelAi(
     val channelAiId: Long,
     val behaviorVersionId: Long,
-    val status: String,
+    val status: PresetImportStatus,
 )
 
 /**

@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.RetrievalPolicyStatus
 import com.discordassistant.central.persistence.EmbeddingIndexJobEntity
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.persistence.KnowledgeChunkEntity
@@ -160,7 +161,7 @@ class KnowledgeIndexingService(
                 guildId = guildId,
                 channelId = channelId,
                 knowledgeSpaceId = knowledgeSpaceId,
-                status = "active",
+                status = RetrievalPolicyStatus.ACTIVE,
             )
         val entity =
             existing
@@ -174,7 +175,7 @@ class KnowledgeIndexingService(
         entity.tokenBudget = tokenBudget.coerceIn(256, 8000)
         entity.rerankEnabled = rerankEnabled
         entity.sourcePriority = sourcePriority.joinToString(",") { it.trim() }.take(500).ifBlank { null }
-        entity.status = "active"
+        entity.status = RetrievalPolicyStatus.ACTIVE
         entity.updatedAt = now
         return retrievalPolicies.save(entity)
     }

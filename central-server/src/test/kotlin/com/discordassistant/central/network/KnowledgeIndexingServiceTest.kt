@@ -4,6 +4,7 @@ import com.discordassistant.central.dashboard.AddKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.CreateKnowledgeSpaceRequest
 import com.discordassistant.central.dashboard.DeleteKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.KnowledgeIngestionController
+import com.discordassistant.central.domain.RetrievalPolicyStatus
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.persistence.KnowledgeChunkRepository
 import com.discordassistant.central.persistence.KnowledgeDocumentRepository
@@ -276,7 +277,7 @@ class KnowledgeIndexingServiceTest
             assertEquals(
                 policy.id,
                 retrievalPolicies
-                    .findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(100, 201, space.id, "active")
+                    .findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(100, 201, space.id, RetrievalPolicyStatus.ACTIVE)
                     ?.id,
             )
         }

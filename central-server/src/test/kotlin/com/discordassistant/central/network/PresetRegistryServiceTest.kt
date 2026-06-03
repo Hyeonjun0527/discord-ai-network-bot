@@ -10,6 +10,7 @@ import com.discordassistant.central.dashboard.ReviewPresetReportRequest
 import com.discordassistant.central.dashboard.SaveChannelPresetRequest
 import com.discordassistant.central.dashboard.UpdatePresetRequest
 import com.discordassistant.central.dashboard.UpdatePublishedPresetRequest
+import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
@@ -273,7 +274,7 @@ class PresetRegistryServiceTest
                     ReportPresetRequest(reporterUserId = 90, reason = "중복 신고"),
                 )
             assertEquals(reportId, duplicateReport["id"])
-            assertEquals(1, reports.findByStatus("open").size)
+            assertEquals(1, reports.findByStatus(PresetReportStatus.OPEN).size)
             val openReports = controller.reports()["reports"] as List<*>
             assertEquals(1, openReports.size)
             val openReport = openReports.single() as PresetReportSummary

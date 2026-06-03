@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity
@@ -486,7 +487,7 @@ class MultiResponseService(
                     rating = normalizedRating,
                     feedbackType = "candidate_adoption",
                     reason = sanitizeText(reason, maxLength = 500),
-                    status = "open",
+                    status = FeedbackStatus.OPEN,
                     createdAt = now,
                 ),
             )

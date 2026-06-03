@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerRepository
@@ -48,7 +49,7 @@ class AiQualityFeedbackService(
                     rating = rating?.coerceIn(-1, 1),
                     feedbackType = normalizedFeedbackType,
                     reason = sanitizeReason(reason),
-                    status = if (normalizedFeedbackType.contains("report")) "needs_review" else "open",
+                    status = if (normalizedFeedbackType.contains("report")) FeedbackStatus.NEEDS_REVIEW else FeedbackStatus.OPEN,
                     createdAt = Instant.now(clock),
                 ),
             )
@@ -69,7 +70,7 @@ class AiQualityFeedbackService(
     }
 
     fun reviewSummary(guildId: Long): QualityReviewSummary {
-        val queue = feedbacks.findTop50ByGuildIdAndStatusOrderByCreatedAtDesc(guildId, "needs_review")
+        val queue = feedbacks.findTop50ByGuildIdAndStatusOrderByCreatedAtDesc(guildId, FeedbackStatus.NEEDS_REVIEW)
         val channelCounts = queue.groupingBy { it.channelId }.eachCount()
         val topChannels =
             channelCounts
@@ -168,7 +169,7 @@ class AiQualityFeedbackService(
             positive = recent.count { (it.rating ?: 0) > 0 },
             negative = recent.count { (it.rating ?: 0) < 0 },
             reports = recent.count { it.feedbackType.contains("report", ignoreCase = true) },
-            openReports = recent.count { it.status == "needs_review" },
+            openReports = recent.count { it.status == FeedbackStatus.NEEDS_REVIEW },
             recentReasons = recent.mapNotNull { it.reason }.take(5),
         )
 
@@ -208,11 +209,11 @@ class AiQualityFeedbackService(
             .digest(value.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
-    private fun normalizeReviewStatus(status: String): String =
+    private fun normalizeReviewStatus(status: String): FeedbackStatus =
         when (status.trim().lowercase()) {
-            "resolve", "resolved", "done" -> "resolved"
-            "dismiss", "dismissed", "ignore", "ignored" -> "dismissed"
-            "needs_review", "reopen", "open" -> "needs_review"
+            "resolve", "resolved", "done" -> FeedbackStatus.RESOLVED
+            "dismiss", "dismissed", "ignore", "ignored" -> FeedbackStatus.DISMISSED
+            "needs_review", "reopen", "open" -> FeedbackStatus.NEEDS_REVIEW
             else -> error("invalid_feedback_review_status")
         }
 
@@ -243,7 +244,7 @@ data class AiFeedbackResult(
         fun from(entity: AiFeedbackEntity): AiFeedbackResult =
             AiFeedbackResult(
                 id = entity.id,
-                status = entity.status,
+                status = entity.status.wire,
                 rating = entity.rating,
             )
     }
@@ -259,7 +260,7 @@ data class AiFeedbackReviewResult(
         fun from(entity: AiFeedbackEntity): AiFeedbackReviewResult =
             AiFeedbackReviewResult(
                 id = entity.id,
-                status = entity.status,
+                status = entity.status.wire,
                 reviewedBy = entity.reviewedBy,
                 reviewedAt = entity.reviewedAt?.toString(),
             )

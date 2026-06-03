@@ -202,18 +202,20 @@ def _verify_checksum(zip_path: Path, asset_name: str, sums_url: str | None) -> s
     return None
 
 
-def apply_update() -> dict:
+def apply_update(relaunch: str = "gui") -> dict:
     """현재 OS 에 맞게 최신 버전을 받아 교체·재실행한다. `{ok, message|error, restarting?}`.
 
+    relaunch: 교체 후 다시 띄울 방식 — "gui"(창) 또는 "service"(헤드리스, 창 없음). 헤드리스
+    자동실행 서비스가 자기 자신을 업데이트할 땐 "service" 로 재실행해 창이 뜨지 않게 한다.
     진행률은 _progress 에 갱신되어 UI 가 /api/update-progress 로 폴링한다(프로그래스바).
     """
     if not _frozen():
         return {"ok": False, "error": "빌드된 앱에서만 업데이트할 수 있어요(개발 빌드는 git 으로 갱신)."}
     _set_progress(phase="downloading", downloaded=0, total=0, percent=0, message="업데이트 준비 중…", error=None)
     if sys.platform == "darwin":
-        result = _apply_macos()
+        result = _apply_macos(relaunch)
     elif sys.platform.startswith("win"):
-        result = _apply_windows()
+        result = _apply_windows(relaunch)
     else:
         result = {"ok": False, "error": "이 OS 는 인앱 업데이트를 지원하지 않아요."}
     if result.get("ok") and result.get("restarting"):
@@ -225,7 +227,7 @@ def apply_update() -> dict:
     return result
 
 
-def _apply_macos() -> dict:
+def _apply_macos(relaunch: str = "gui") -> dict:
     from .installer import _macos_bundle_path  # .app 경로 탐색 재사용
 
     bundle = _macos_bundle_path()
@@ -264,6 +266,14 @@ def _apply_macos() -> dict:
         return {"ok": False, "error": "패키지에서 앱을 찾지 못했어요."}
 
     # 현재 프로세스가 종료된 뒤 교체·재실행하는 헬퍼(데몬). 실행 중 번들을 자기 자신이 덮어쓰지 않도록 분리.
+    # gui → 창으로 다시 열고(open), service → 헤드리스 바이너리(--service)로 창 없이 재실행.
+    binname = bundle.name[:-4] if bundle.name.endswith(".app") else bundle.name
+    macos_bin = f"{bundle}/Contents/MacOS/{binname}"
+    relaunch_line = (
+        f'open "{bundle}"\n'
+        if relaunch != "service"
+        else f'nohup "{macos_bin}" --service >/dev/null 2>&1 &\n'
+    )
     pid = os.getpid()
     helper = tmp / "swap.sh"
     helper.write_text(
@@ -272,8 +282,8 @@ def _apply_macos() -> dict:
         f'rm -rf "{bundle}"\n'
         f'ditto "{new_app}" "{bundle}"\n'
         f'xattr -dr com.apple.quarantine "{bundle}" 2>/dev/null\n'
-        f'open "{bundle}"\n'
-        f'rm -rf "{tmp}"\n',
+        + relaunch_line
+        + f'rm -rf "{tmp}"\n',
         encoding="utf-8",
     )
     helper.chmod(0o755)
@@ -291,7 +301,39 @@ def _apply_macos() -> dict:
     }
 
 
-def _apply_windows() -> dict:
+def start_service_update_watcher(interval_s: float | None = None) -> None:
+    """헤드리스 자동실행 서비스용 주기 자동 업데이트 워처(데몬 스레드).
+
+    창 없이 도는 서비스도 새 버전을 주기적으로 받아 **헤드리스로** 교체·재실행한다(껐다 켜야만
+    적용되던 문제 해소). 빌드된 앱에서만 동작하고, auto_update 가 꺼져 있으면 적용하지 않는다.
+    """
+    import threading
+    import time
+
+    if not _frozen():
+        return
+    interval = interval_s if interval_s is not None else max(30.0, float(os.getenv("AGENT_UPDATE_INTERVAL_S") or 7200))
+
+    def _loop() -> None:
+        from .config_file import load_config
+
+        while True:
+            try:
+                if bool(load_config().get("auto_update", True)) and not is_updating():
+                    info = check()
+                    if info.get("outdated") and info.get("supported"):
+                        result = apply_update(relaunch="service")
+                        if result.get("ok") and result.get("restarting"):
+                            time.sleep(0.5)
+                            os._exit(0)  # 헬퍼가 교체·헤드리스 재실행
+            except Exception:  # noqa: BLE001 - 자동 업데이트 실패는 서비스 동작을 막지 않는다
+                pass
+            time.sleep(interval)
+
+    threading.Thread(target=_loop, daemon=True).start()
+
+
+def _apply_windows(relaunch: str = "gui") -> dict:
     latest = None
     try:
         latest = fetch_latest()
@@ -316,12 +358,13 @@ def _apply_windows() -> dict:
     _set_progress(phase="installing", message="설치 중…")
     # 실행 중 exe 는 못 덮어쓰므로, 종료를 기다렸다가 교체·재실행하는 배치를 분리 실행.
     pid = os.getpid()
+    arg = "--service" if relaunch == "service" else "--gui"
     bat = tmp / "swap.bat"
     bat.write_text(
         "@echo off\r\n"
         f':wait\r\ntasklist /FI "PID eq {pid}" | find "{pid}" >nul && (timeout /t 1 >nul & goto wait)\r\n'
         f'copy /Y "{new_exe}" "{exe}" >nul\r\n'
-        f'start "" "{exe}" --gui\r\n',
+        f'start "" "{exe}" {arg}\r\n',
         encoding="utf-8",
     )
     subprocess.Popen(  # noqa: S603

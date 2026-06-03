@@ -152,6 +152,24 @@ def remove_connection(
     return conns
 
 
+def rename_connection(index: int, name: str | None, path: pathlib.Path | None = None) -> list[dict]:
+    """index 번째 연결의 표시 이름(guild_name)을 바꾼다(토큰-추가 연결의 '이름 미상' 라벨링)."""
+    conns = load_connections(path)
+    if 0 <= index < len(conns):
+        conns[index]["guild_name"] = (name or "").strip() or None
+        save_connections(conns, path)
+    return conns
+
+
+def remove_connection_at(index: int, path: pathlib.Path | None = None) -> list[dict]:
+    """index 번째 연결을 제거(길드ID 가 없는 토큰-추가 연결도 정확히 지목)."""
+    conns = load_connections(path)
+    if 0 <= index < len(conns):
+        conns.pop(index)
+        save_connections(conns, path)
+    return conns
+
+
 def set_connection_token(
     new_token: str, guild_id: int | None = None, old_token: str | None = None, path: pathlib.Path | None = None
 ) -> None:

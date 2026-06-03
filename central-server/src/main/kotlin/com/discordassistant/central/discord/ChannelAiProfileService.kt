@@ -5,8 +5,6 @@ import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalEntity
 import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
-import com.discordassistant.central.persistence.ChannelAiProfileEntity
-import com.discordassistant.central.persistence.ChannelAiProfileRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.CustomizationAuditLogEntity
 import com.discordassistant.central.persistence.CustomizationAuditLogRepository
@@ -35,7 +33,6 @@ data class ChannelAiProfile(
 
 @Service
 class ChannelAiProfileService(
-    private val legacyProfiles: ChannelAiProfileRepository,
     private val channelAis: ChannelAiRepository,
     private val behaviorVersions: AiBehaviorVersionRepository,
     private val proposals: AiChangeProposalRepository,
@@ -46,8 +43,7 @@ class ChannelAiProfileService(
         channelId: Long,
     ): ChannelAiProfile? {
         val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
-        if (channelAi != null) return channelAi.toProfile()
-        return legacyProfiles.findByGuildIdAndChannelId(guildId, channelId)?.toProfile()
+        return channelAi?.toProfile()
     }
 
     @Transactional
@@ -99,7 +95,6 @@ class ChannelAiProfileService(
         savedChannel.activeBehaviorVersionId = behavior.id
         savedChannel.updatedAt = now
         channelAis.save(savedChannel)
-        syncLegacyProfile(guildId, channelId, normalizedName, normalizedAvatar)
         proposals.save(
             AiChangeProposalEntity(
                 guildId = guildId,
@@ -144,7 +139,6 @@ class ChannelAiProfileService(
             proposals.deleteByChannelAiId(channelAi.id)
             channelAis.delete(channelAi)
         }
-        legacyProfiles.deleteByGuildIdAndChannelId(guildId, channelId)
         audits.deleteByGuildIdAndChannelId(guildId, channelId)
     }
 
@@ -156,7 +150,6 @@ class ChannelAiProfileService(
         }
         audits.deleteByGuildId(guildId)
         proposals.deleteByGuildId(guildId)
-        legacyProfiles.deleteByGuildId(guildId)
     }
 
     fun recentAudit(
@@ -183,28 +176,6 @@ class ChannelAiProfileService(
             answerLength = behavior?.answerLength ?: DEFAULT_CHANNEL_AI_ANSWER_LENGTH,
             constitution = behavior?.constitution ?: DEFAULT_CHANNEL_AI_CONSTITUTION,
         )
-
-    private fun ChannelAiProfileEntity.toProfile() =
-        ChannelAiProfile(
-            guildId = guildId,
-            channelId = channelId,
-            displayName = displayName,
-            avatarUrl = avatarUrl,
-        )
-
-    private fun syncLegacyProfile(
-        guildId: Long,
-        channelId: Long,
-        displayName: String,
-        avatarUrl: String?,
-    ) {
-        val legacy =
-            legacyProfiles.findByGuildIdAndChannelId(guildId, channelId)
-                ?: ChannelAiProfileEntity(guildId = guildId, channelId = channelId)
-        legacy.displayName = displayName
-        legacy.avatarUrl = avatarUrl
-        legacyProfiles.save(legacy)
-    }
 
     private fun audit(
         guildId: Long,

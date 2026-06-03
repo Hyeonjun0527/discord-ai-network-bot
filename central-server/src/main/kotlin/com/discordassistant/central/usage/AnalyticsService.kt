@@ -4,6 +4,7 @@ import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.UsageLogRepository
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -19,6 +20,7 @@ class AnalyticsService(
     private val requests: AiRequestRepository,
 ) {
     /** 최근 [days]일의 일자별 요청 수(과거→오늘 순). UTC 자정 경계. */
+    @Transactional(readOnly = true)
     fun usageTrend(
         guildId: Long,
         days: Int = 7,
@@ -34,6 +36,7 @@ class AnalyticsService(
     }
 
     /** 프로바이더의 부하 가중 기여 점수(완료 요청의 부담 수준 합). */
+    @Transactional(readOnly = true)
     fun providerComputeScore(providerId: Long): Long =
         requests
             .findByProviderIdAndState(providerId, "COMPLETED")
@@ -43,6 +46,7 @@ class AnalyticsService(
      * 프로바이더 본인 처리 내역(차수 12 #166). 프라이버시: **프롬프트 본문·요청 유저 id 미포함**.
      * 처리한 요청의 식별자/부담/시각만 노출(최신순).
      */
+    @Transactional(readOnly = true)
     fun providerHistory(providerId: Long): List<Map<String, Any?>> =
         requests
             .findByProviderIdAndState(providerId, "COMPLETED")
@@ -51,12 +55,14 @@ class AnalyticsService(
             .map { mapOf("requestId" to it.requestId, "burden" to it.requiredBurden, "createdAt" to it.createdAt.toString()) }
 
     /** 길드 총 요청 수(대시보드 개요). 컨트롤러가 리포지토리를 직접 보지 않도록 서비스가 집계한다. */
+    @Transactional(readOnly = true)
     fun guildRequestCount(guildId: Long): Long = requests.countByGuildId(guildId)
 
     /**
      * 길드 최근 요청 로그(최대 20건, 최신순). 프라이버시: 프롬프트 본문·요청 유저 id 미포함.
      * 엔티티가 아니라 [RequestLogEntry] DTO 로 반환해 web 어댑터가 persistence 에 의존하지 않게 한다.
      */
+    @Transactional(readOnly = true)
     fun recentGuildRequests(guildId: Long): List<RequestLogEntry> =
         requests.findTop20ByGuildIdOrderByIdDesc(guildId).map {
             RequestLogEntry(

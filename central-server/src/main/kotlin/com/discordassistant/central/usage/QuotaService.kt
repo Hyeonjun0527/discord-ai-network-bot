@@ -4,6 +4,7 @@ import com.discordassistant.central.persistence.UsageLogRepository
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.routing.QuotaChecker
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -16,6 +17,7 @@ class QuotaService(
     private val usage: UsageLogRepository,
     private val policy: PolicyService,
 ) : QuotaChecker {
+    @Transactional(readOnly = true)
     override fun exceededQuota(
         guildId: Long,
         userId: Long,

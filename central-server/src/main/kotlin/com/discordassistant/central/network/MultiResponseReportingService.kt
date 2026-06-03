@@ -22,9 +22,9 @@ class MultiResponseReportingService(
     private val syntheses: SynthesisResultRepository,
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
-    fun listRecent(guildId: Long): List<MultiResponseRunEntity> {
+    fun listRecent(guildId: Long): List<MultiResponseRunView> {
         featureGate.requireMultiResponseDashboardEnabled()
-        return runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId)
+        return runs.findTop20ByGuildIdOrderByStartedAtDesc(guildId).map { it.toView() }
     }
 
     fun runDetail(runId: Long): MultiResponseRunDetail {
@@ -32,10 +32,10 @@ class MultiResponseReportingService(
         val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
         val runCandidates = candidates.findByRunId(runId)
         return MultiResponseRunDetail(
-            run = run,
-            candidates = runCandidates,
-            synthesis = syntheses.findByRunId(runId),
-            policy = run.policyId?.let { policies.findById(it).orElse(null) },
+            run = run.toView(),
+            candidates = runCandidates.map { it.toView() },
+            synthesis = syntheses.findByRunId(runId)?.toView(),
+            policy = run.policyId?.let { policies.findById(it).orElse(null)?.toView() },
             safetySummary = summarizeSafety(runCandidates),
             qualitySummary = summarizeQuality(runCandidates),
         )

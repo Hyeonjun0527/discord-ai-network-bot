@@ -179,6 +179,19 @@ async def test_connect_open_disabled_without_env(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_connect_callback_shows_friendly_error():
+    client = await _client()
+    try:
+        # 토큰 대신 error=pending → 400 아니라 친절한 안내 페이지(200), 토큰 저장 안 함
+        r = await client.get("/connect/callback", params={"error": "pending", "state": KEY})
+        assert r.status == 200
+        assert "승인을 기다리는" in await r.text()
+        assert not load_config().get("token")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_connect_callback_rejects_bad_state():
     client = await _client()
     try:

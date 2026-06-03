@@ -368,9 +368,23 @@ def build_app(session_key: str) -> web.Application:
         """
         if req.query.get("state") != session_key:
             return web.Response(status=403, text="잘못된 요청(state 불일치)")
+        # 서버가 토큰 대신 error 를 보낼 수 있다(취소·승인대기·인증실패) — 친절히 안내.
+        err = (req.query.get("error") or "").strip()
         token = (req.query.get("token") or "").strip()
         if not token:
-            return web.Response(status=400, text="토큰이 비어 있습니다")
+            messages = {
+                "pending": "🕒 관리자 승인을 기다리는 중입니다. 승인되면 다시 ‘연동하기’를 눌러 주세요.",
+                "cancelled": "취소되었습니다. 다시 시도하려면 앱에서 ‘연동하기’를 눌러 주세요.",
+                "token": "디스코드 인증에 실패했어요. 다시 시도해 주세요.",
+                "identify": "디스코드 사용자 확인에 실패했어요. 다시 시도해 주세요.",
+            }
+            msg = messages.get(err, "토큰을 받지 못했습니다. 다시 시도해 주세요.")
+            return web.Response(
+                text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#e8eaed;text-align:center;padding-top:80px'>"
+                f"<div style='max-width:360px;margin:0 auto;line-height:1.6'>{msg}<br><b>이 탭을 닫고 앱으로 돌아가세요.</b></div>"
+                "<script>setTimeout(()=>window.close(),2200)</script>",
+                content_type="text/html",
+            )
         saved = load_config()
         relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
         save_config(

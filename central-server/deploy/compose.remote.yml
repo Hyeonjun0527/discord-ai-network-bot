@@ -38,6 +38,8 @@ services:
       RELAY_PUBLIC_URL: ${RELAY_PUBLIC_URL:-wss://discord-ai.yeon.world/agent}
       SERVER_PORT: ${SERVER_PORT:-8085}
       CENTRAL_DEV_ENABLED: "false"
+      # durable 프로바이더 토큰 서명 시크릿(설정 시 재연결·재시작 재사용 토큰 활성). 배포 스크립트가 고정 생성.
+      CENTRAL_DURABLE_SECRET: ${CENTRAL_DURABLE_SECRET:-}
       # 웹검색 백엔드(SearXNG, 같은 네트워크). 죽어도 web 검색은 graceful 폴백 → 봇 영향 없음.
       CENTRAL_SEARCH_URL: ${CENTRAL_SEARCH_URL:-http://searxng:8080}
       CENTRAL_SEARCH_MAX_RESULTS: ${CENTRAL_SEARCH_MAX_RESULTS:-5}

@@ -104,6 +104,8 @@ data class AuthFrame(
 data class AuthOkFrame(
     val protocolVersion: String = PROTOCOL_VERSION,
     val sessionId: String = "",
+    // 재연결·재시작에 재사용할 durable 토큰(비면 미발급). 에이전트가 저장해 다음부터 이 토큰으로 인증.
+    val providerToken: String = "",
     override val type: String = FrameType.AUTH_OK,
 ) : Frame()
 

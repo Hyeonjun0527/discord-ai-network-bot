@@ -16,8 +16,9 @@ from provider_agent.connection import AgentConnection
 class FakeRelay:
     """중앙 서버 흉내. mode 에 따라 시나리오를 바꾼다."""
 
-    def __init__(self, mode: str = "ok") -> None:
+    def __init__(self, mode: str = "ok", durable_token: str = "") -> None:
         self.mode = mode
+        self.durable_token = durable_token
         self.received: list[p.Frame] = []
         self.connections = 0
         self.got_hello = asyncio.Event()
@@ -39,7 +40,9 @@ class FakeRelay:
                     await ws.send_str(p.dumps_frame(p.AuthErrFrame(message="bad token")))
                     await ws.close()
                     break
-                await ws.send_str(p.dumps_frame(p.AuthOkFrame(session_id="s1")))
+                await ws.send_str(
+                    p.dumps_frame(p.AuthOkFrame(session_id="s1", provider_token=self.durable_token))
+                )
             elif isinstance(frame, p.ProviderHelloFrame):
                 self.got_hello.set()
                 if self.mode == "infer":
@@ -146,6 +149,28 @@ async def test_reconnect_after_drop():
                 break
             await asyncio.sleep(0.1)
         assert relay.connections >= 2  # 끊긴 뒤 재연결함
+    finally:
+        await conn.stop()
+        task.cancel()
+        await server.close()
+
+
+@pytest.mark.asyncio
+async def test_durable_token_persisted_and_reused(monkeypatch, tmp_path):
+    """auth_ok 의 providerToken 을 저장하고 이후 인증에 재사용한다(재연결·재시작 set-and-forget)."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from provider_agent.config_file import load_config
+
+    relay = FakeRelay("ok", durable_token="dv1.DURABLE.TOKEN")
+    server, url = await _start(relay)
+    cfg = AgentConfig(token="ONETIME", relay_url=url, heartbeat_seconds=5)
+    conn = AgentConnection(cfg, _noop, lambda: p.ProviderHelloFrame(models=["m"]))
+    task = asyncio.create_task(conn.run())
+    try:
+        await asyncio.wait_for(relay.got_hello.wait(), 3)
+        # durable 토큰이 in-memory 교체 + config 에 저장됨
+        assert conn._token == "dv1.DURABLE.TOKEN"
+        assert load_config().get("token") == "dv1.DURABLE.TOKEN"
     finally:
         await conn.stop()
         task.cancel()

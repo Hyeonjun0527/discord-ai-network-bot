@@ -9,7 +9,8 @@
   "auth_ok": {
     "type": "auth_ok",
     "protocolVersion": "1.0",
-    "sessionId": "s1"
+    "sessionId": "s1",
+    "providerToken": ""
   },
   "auth_err": {
     "type": "auth_err",

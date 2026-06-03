@@ -1,6 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.FanoutLoadRisk
 import com.discordassistant.central.domain.MultiResponseRunStatus
 import com.discordassistant.central.persistence.CandidateAnswerEntity
 import com.discordassistant.central.persistence.CandidateAnswerRepository
@@ -69,11 +70,12 @@ class MultiResponseReportingService(
                     failedCount = failedCount,
                     averageLatencyMs = latencyValues.takeIf { it.isNotEmpty() }?.average() ?: 0.0,
                     averageQualityScore = providerCandidates.mapNotNull { it.qualityScore }.takeIf { it.isNotEmpty() }?.average() ?: 0.0,
-                    loadRisk = fanoutLoadRisk(providerCandidates.size, timeoutCount, failedCount, latencyValues),
+                    loadRisk =
+                        FanoutLoadRisk.classify(providerCandidates.size, timeoutCount, failedCount, latencyValues).wire,
                     runIds = providerCandidates.map { it.runId }.filter { it in runIds }.distinct(),
                 )
             }.sortedWith(
-                compareByDescending<ProviderFanoutLoadSummary> { riskRank(it.loadRisk) }
+                compareByDescending<ProviderFanoutLoadSummary> { FanoutLoadRisk.rankOf(it.loadRisk) }
                     .thenByDescending { it.candidateCount }
                     .thenBy { it.providerUserId },
             )
@@ -323,31 +325,6 @@ class MultiResponseReportingService(
             averageActualFanout = actualFanout,
         )
     }
-
-    private fun fanoutLoadRisk(
-        candidateCount: Int,
-        timeoutCount: Int,
-        failedCount: Int,
-        latencyValues: List<Int>,
-    ): String {
-        val timeoutRate = if (candidateCount == 0) 0.0 else timeoutCount.toDouble() / candidateCount
-        val failureRate = if (candidateCount == 0) 0.0 else (timeoutCount + failedCount).toDouble() / candidateCount
-        val averageLatency = latencyValues.takeIf { it.isNotEmpty() }?.average() ?: 0.0
-        return when {
-            timeoutRate >= 0.5 || failureRate >= 0.75 -> "critical"
-            timeoutRate >= 0.25 || failureRate >= 0.4 || averageLatency >= 10_000 -> "high"
-            candidateCount >= 5 || averageLatency >= 5_000 -> "watch"
-            else -> "normal"
-        }
-    }
-
-    private fun riskRank(value: String): Int =
-        when (value.lowercase()) {
-            "critical" -> 4
-            "high" -> 3
-            "watch" -> 2
-            else -> 1
-        }
 
     private fun decisionReason(
         run: MultiResponseRunEntity,

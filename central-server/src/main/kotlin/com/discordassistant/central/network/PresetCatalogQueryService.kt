@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.PresetModerationRules
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
@@ -186,7 +187,7 @@ class PresetCatalogQueryService(
                 .map { preset -> moderationItem(preset, openReportsByPreset[preset.id].orEmpty()) }
                 .filter { it.riskCodes.isNotEmpty() }
                 .sortedWith(
-                    compareBy<PresetModerationQueueItem> { moderationSeverityRank(it) }
+                    compareBy<PresetModerationQueueItem> { PresetModerationRules.severityRank(it.status, it.riskCodes) }
                         .thenByDescending { it.reportCount }
                         .thenByDescending { it.likeCount }
                         .thenBy { it.publishedPresetId },
@@ -375,22 +376,9 @@ class PresetCatalogQueryService(
             safetyLevel = summary.safetyLevel,
             riskCodes = riskCodes,
             reportReasonCodes = reportReasonCodes,
-            recommendedAction = presetModerationAction(summary.status, riskCodes),
+            recommendedAction = PresetModerationRules.recommendedAction(summary.status, riskCodes),
         )
     }
-
-    private fun presetModerationAction(
-        status: String,
-        riskCodes: List<String>,
-    ): String =
-        when {
-            status == "removed" -> "removed 상태를 유지하고 카탈로그에는 노출하지 마세요."
-            status == "suspended" -> "검수자가 수정 요청 또는 제거 결정을 내려야 합니다."
-            "popular_reported" in riskCodes -> "인기 프리셋이 신고됐으므로 우선 검토하고 필요하면 일시 중단하세요."
-            "reported" in riskCodes -> "신고 사유를 확인하고 dismiss/suspend/remove 중 하나로 처리하세요."
-            "high_safety_level" in riskCodes -> "높은 안전 등급 프리셋은 게시 설명과 행동 스냅샷을 수동 검토하세요."
-            else -> "추가 조치가 필요 없습니다."
-        }
 
     private fun presetModerationNextActions(
         queue: List<PresetModerationQueueItem>,
@@ -403,16 +391,6 @@ class PresetCatalogQueryService(
             if (queue.any { it.status == "suspended" }) add("suspended 프리셋은 수정 요청 또는 제거로 상태를 확정하세요.")
             if (isEmpty()) add("프리셋 검수 큐가 비어 있습니다.")
         }.distinct()
-
-    private fun moderationSeverityRank(item: PresetModerationQueueItem): Int =
-        when {
-            item.status == "under_review" -> 0
-            "popular_reported" in item.riskCodes -> 1
-            item.status == "suspended" -> 2
-            "reported" in item.riskCodes -> 3
-            "high_safety_level" in item.riskCodes -> 4
-            else -> 5
-        }
 
     private fun publishedSummary(published: PublishedPresetEntity): PublishedPresetSummary {
         val revision = revisions.findById(published.revisionId).orElse(null)

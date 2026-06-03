@@ -120,14 +120,11 @@ _PAGE_TEMPLATE = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>로컬 AI 제공자 설정 — 냥시스턴트</title><style>
 :root{color-scheme:dark;--bg:#08111d;--bg2:#040811;--line:rgba(148,163,184,.17);--line2:rgba(79,125,255,.36);--text:#edf4ff;--muted:#a7b3c5;--faint:#76849a;--blue:#4f7dff;--blue2:#2f63d6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",sans-serif}
 *{box-sizing:border-box}html,body{min-height:100%}
-body{margin:0;color:var(--text);background:radial-gradient(circle at 18% 0%,rgba(64,96,180,.18),transparent 32%),radial-gradient(circle at 85% 16%,rgba(54,86,156,.10),transparent 28%),linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);display:grid;place-items:start center;padding:10px 12px}
+body{margin:0;color:var(--text);background:radial-gradient(circle at 18% 0%,rgba(64,96,180,.18),transparent 32%),radial-gradient(circle at 85% 16%,rgba(54,86,156,.10),transparent 28%),linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);display:block;padding:0}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.10;background-image:linear-gradient(rgba(148,163,184,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.18) 1px,transparent 1px);background-size:34px 34px;mask-image:linear-gradient(to bottom,rgba(0,0,0,.92),transparent 84%)}
 button,input{font:inherit}
-.window{width:min(620px,100%);border-radius:22px;overflow:hidden;border:1px solid rgba(148,163,184,.18);background:linear-gradient(180deg,rgba(13,22,35,.98),rgba(7,13,23,.99));box-shadow:0 26px 80px rgba(0,0,0,.48),inset 0 1px 0 rgba(255,255,255,.04)}
-.titlebar{height:44px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 18px;border-bottom:1px solid rgba(148,163,184,.12);background:rgba(9,15,26,.82)}
-.traffic{display:flex;gap:8px}.traffic span{width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16)}.red{background:#ff625d}.yellow{background:#ffbd2e}.green{background:#28c840}
-.title{font-size:13px;font-weight:800;letter-spacing:-.01em;color:#e8eff8}.dots{justify-self:end;color:#96a3b7;letter-spacing:4px;font-weight:900;font-size:12px}
-main{padding:16px 20px 20px}
+.window{width:100%;min-height:100vh}
+main{padding:22px 20px 22px}
 .hero{display:grid;grid-template-columns:48px minmax(0,1fr);gap:13px;align-items:center;margin-bottom:14px}
 .logo{width:48px;height:48px;border-radius:14px;overflow:hidden;border:1px solid rgba(122,156,219,.34);box-shadow:0 0 0 5px rgba(79,125,255,.06);background:#0e1623}.logo img{width:100%;height:100%;object-fit:cover}
 h1{margin:0;font-size:clamp(19px,3.2vw,24px);line-height:1.15;letter-spacing:-.04em;font-weight:850}
@@ -172,7 +169,6 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 @media (max-width:560px){.hero{grid-template-columns:1fr}.card{grid-template-columns:1fr}.token-row{grid-template-columns:1fr}.grid2{grid-template-columns:1fr}}
 </style></head><body>
 <div class="window">
-<div class="titlebar"><div class="traffic"><span class="red"></span><span class="yellow"></span><span class="green"></span></div><div class="title">로컬 AI 제공자 설정</div><div class="dots">•••</div></div>
 <main>
 <section class="hero"><div class="logo"><img src="/mascot.png" alt="냥시스턴트 마스코트"></div><div><h1>AI 네트워크 구축 도우미 · 냥시스턴트</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
 <section class="card"><div class="ring off" id="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
@@ -434,7 +430,7 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
             import webview  # type: ignore[import-untyped]
 
             webview.create_window(
-                "내 PC 를 AI 일꾼으로", url, width=600, height=800, min_size=(400, 600)
+                "로컬 AI 제공자 설정 · 냥시스턴트", url, width=600, height=800, min_size=(400, 600)
             )
             webview.start()  # 메인 스레드 점유, 창 닫으면 반환
             return

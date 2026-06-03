@@ -133,16 +133,6 @@ class ProviderHealthEntity(
 )
 
 @Entity
-@Table(name = "channel_ai_profile")
-class ChannelAiProfileEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var guildId: Long = 0,
-    var channelId: Long = 0,
-    @Column(name = "display_name") var displayName: String = "냥시스턴트",
-    @Column(name = "avatar_url") var avatarUrl: String? = null,
-)
-
-@Entity
 @Table(name = "channel_ai")
 class ChannelAiEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,

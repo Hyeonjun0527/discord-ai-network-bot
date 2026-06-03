@@ -14,6 +14,7 @@ import ssl
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -32,6 +33,31 @@ APP_NAME = "냥시스턴트"
 MAC_ASSET = "nyassistant-macos.zip"  # agent-build.yml 이 릴리스에 올리는 .app zip
 WIN_ASSET = "nyassistant-windows.exe"  # Windows 네이티브 GUI exe(릴리스 자산)
 SUMS_ASSET = "SHA256SUMS.txt"
+
+
+# ── 진행 상태(다운로드 프로그래스바용) — UI 가 /api/update-progress 로 폴링 ──────────────
+# phase: idle | downloading | verifying | installing | restarting | done | error
+_progress_lock = threading.Lock()
+_progress: dict = {"phase": "idle", "downloaded": 0, "total": 0, "percent": 0, "message": "", "error": None}
+
+
+def update_progress() -> dict:
+    """현재 업데이트 진행 상태의 스냅샷(폴링용)."""
+    with _progress_lock:
+        return dict(_progress)
+
+
+def is_updating() -> bool:
+    with _progress_lock:
+        return _progress["phase"] in ("downloading", "verifying", "installing", "restarting")
+
+
+def _set_progress(**kw: object) -> None:
+    with _progress_lock:
+        _progress.update(kw)
+        total = int(_progress["total"] or 0)
+        done = int(_progress["downloaded"] or 0)
+        _progress["percent"] = int(done * 100 / total) if total > 0 else 0
 
 
 def current_version() -> str:
@@ -60,6 +86,24 @@ def _http_get(url: str, accept: str, timeout: float = 20.0) -> bytes:
     req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": _USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:  # noqa: S310 - https 고정
         return bytes(resp.read())
+
+
+def _download(url: str, dest: Path, timeout: float = 180.0) -> None:
+    """url 을 dest 로 스트리밍 다운로드하며 진행률(_progress)을 갱신한다."""
+    req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:  # noqa: S310
+        total = int(resp.headers.get("Content-Length") or 0)
+        _set_progress(phase="downloading", downloaded=0, total=total, message="새 버전 내려받는 중…", error=None)
+        with open(dest, "wb") as f:
+            while True:
+                chunk = resp.read(262144)
+                if not chunk:
+                    break
+                f.write(chunk)
+                with _progress_lock:
+                    _progress["downloaded"] = int(_progress["downloaded"]) + len(chunk)
+                    tot = int(_progress["total"] or 0)
+                    _progress["percent"] = int(int(_progress["downloaded"]) * 100 / tot) if tot > 0 else 0
 
 
 def _url_ok(url: str, timeout: float = 15.0) -> bool:
@@ -159,14 +203,26 @@ def _verify_checksum(zip_path: Path, asset_name: str, sums_url: str | None) -> s
 
 
 def apply_update() -> dict:
-    """현재 OS 에 맞게 최신 버전을 받아 교체·재실행한다. `{ok, message|error, restarting?}`."""
+    """현재 OS 에 맞게 최신 버전을 받아 교체·재실행한다. `{ok, message|error, restarting?}`.
+
+    진행률은 _progress 에 갱신되어 UI 가 /api/update-progress 로 폴링한다(프로그래스바).
+    """
     if not _frozen():
         return {"ok": False, "error": "빌드된 앱에서만 업데이트할 수 있어요(개발 빌드는 git 으로 갱신)."}
+    _set_progress(phase="downloading", downloaded=0, total=0, percent=0, message="업데이트 준비 중…", error=None)
     if sys.platform == "darwin":
-        return _apply_macos()
-    if sys.platform.startswith("win"):
-        return _apply_windows()
-    return {"ok": False, "error": "이 OS 는 인앱 업데이트를 지원하지 않아요."}
+        result = _apply_macos()
+    elif sys.platform.startswith("win"):
+        result = _apply_windows()
+    else:
+        result = {"ok": False, "error": "이 OS 는 인앱 업데이트를 지원하지 않아요."}
+    if result.get("ok") and result.get("restarting"):
+        _set_progress(phase="restarting", message=str(result.get("message") or "업데이트 적용 중…"))
+    elif result.get("ok"):
+        _set_progress(phase="done", message=str(result.get("message") or "최신입니다."))
+    else:
+        _set_progress(phase="error", error=str(result.get("error") or "업데이트 실패"))
+    return result
 
 
 def _apply_macos() -> dict:
@@ -188,14 +244,16 @@ def _apply_macos() -> dict:
     tmp = Path(tempfile.mkdtemp(prefix="nyas-update-"))
     zip_path = tmp / MAC_ASSET
     try:
-        zip_path.write_bytes(_http_get(url, "application/octet-stream", timeout=180))
+        _download(url, zip_path)
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"다운로드 실패: {exc}"}
 
+    _set_progress(phase="verifying", message="무결성 검증 중…")
     bad = _verify_checksum(zip_path, MAC_ASSET, latest["assets"].get(SUMS_ASSET))
     if bad:
         return {"ok": False, "error": bad}
 
+    _set_progress(phase="installing", message="설치 중…")
     extract = tmp / "x"
     try:
         subprocess.run(["ditto", "-x", "-k", str(zip_path), str(extract)], check=True, capture_output=True, text=True)
@@ -248,12 +306,14 @@ def _apply_windows() -> dict:
     tmp = Path(tempfile.mkdtemp(prefix="nyas-update-"))
     new_exe = tmp / WIN_ASSET
     try:
-        new_exe.write_bytes(_http_get(url, "application/octet-stream", timeout=180))
+        _download(url, new_exe)
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"다운로드 실패: {exc}"}
+    _set_progress(phase="verifying", message="무결성 검증 중…")
     bad = _verify_checksum(new_exe, WIN_ASSET, latest["assets"].get(SUMS_ASSET))
     if bad:
         return {"ok": False, "error": bad}
+    _set_progress(phase="installing", message="설치 중…")
     # 실행 중 exe 는 못 덮어쓰므로, 종료를 기다렸다가 교체·재실행하는 배치를 분리 실행.
     pid = os.getpid()
     bat = tmp / "swap.bat"

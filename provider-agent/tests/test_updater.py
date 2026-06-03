@@ -105,7 +105,7 @@ def test_macos_apply_downloads_swaps_and_relaunches(monkeypatch, tmp_path):
         updater, "fetch_latest",
         lambda: {"version": "0.20.0", "tag": "t", "assets": {updater.MAC_ASSET: "https://x/app.zip"}},
     )
-    monkeypatch.setattr(updater, "_http_get", lambda url, accept, timeout=20.0: b"ZIPBYTES")
+    monkeypatch.setattr(updater, "_download", lambda url, dest, timeout=180.0: Path(dest).write_bytes(b"ZIPBYTES"))
     monkeypatch.setattr(updater, "_verify_checksum", lambda *a, **k: None)
 
     def fake_run(cmd, **kw):
@@ -137,13 +137,14 @@ def test_windows_apply_downloads_and_relaunches(monkeypatch, tmp_path):
         updater, "fetch_latest",
         lambda: {"version": "0.20.0", "tag": "agent-v0.20.0", "assets": {updater.WIN_ASSET: "https://x/app.exe"}},
     )
-    monkeypatch.setattr(updater, "_http_get", lambda url, accept, timeout=20.0: b"NEWEXE")
+    monkeypatch.setattr(updater, "_download", lambda url, dest, timeout=180.0: Path(dest).write_bytes(b"NEWEXE"))
     monkeypatch.setattr(updater, "_verify_checksum", lambda *a, **k: None)
     calls = []
     monkeypatch.setattr(updater.subprocess, "Popen", lambda *a, **k: calls.append(a) or object())
     r = updater.apply_update()
     assert r["ok"] is True and r["restarting"] is True and r["version"] == "0.20.0"
     assert calls, "교체·재실행 배치(Popen)가 호출돼야 한다"
+    assert updater.update_progress()["phase"] == "restarting"  # 진행상태가 재시작으로
 
 
 def test_macos_apply_noop_when_already_latest(monkeypatch, tmp_path):

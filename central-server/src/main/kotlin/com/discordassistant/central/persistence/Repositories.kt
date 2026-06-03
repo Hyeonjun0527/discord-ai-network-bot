@@ -1,5 +1,6 @@
 package com.discordassistant.central.persistence
 
+import com.discordassistant.central.domain.ProviderState
 import org.springframework.data.jpa.repository.JpaRepository
 import java.time.Instant
 
@@ -51,7 +52,7 @@ interface ProviderRepository : JpaRepository<ProviderEntity, Long> {
 
     fun findByGuildIdAndState(
         guildId: Long,
-        state: String,
+        state: ProviderState,
     ): List<ProviderEntity>
 
     fun deleteByProviderUserIdAndGuildId(

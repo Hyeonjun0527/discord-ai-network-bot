@@ -1,5 +1,6 @@
 package com.discordassistant.central.persistence
 
+import com.discordassistant.central.domain.ProviderState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -22,11 +23,13 @@ class PersistenceTest
     ) {
         @Test
         fun `provider 저장·조회`() {
-            providerRepo.save(ProviderEntity(providerUserId = 11, guildId = 100, state = "PENDING", createdAt = Instant.now()))
+            providerRepo.save(
+                ProviderEntity(providerUserId = 11, guildId = 100, state = ProviderState.PENDING, createdAt = Instant.now()),
+            )
             val found = providerRepo.findByProviderUserIdAndGuildId(11, 100)
             assertNotNull(found)
-            assertEquals("PENDING", found!!.state)
-            assertEquals(1, providerRepo.findByGuildIdAndState(100, "PENDING").size)
+            assertEquals(ProviderState.PENDING, found!!.state)
+            assertEquals(1, providerRepo.findByGuildIdAndState(100, ProviderState.PENDING).size)
         }
 
         @Test

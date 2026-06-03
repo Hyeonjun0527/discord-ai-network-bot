@@ -28,7 +28,9 @@ class ProviderRegistrationPersistenceTest
 
         @Test
         fun `DB 의 등록을 load 로 캐시 복원한다(재시작 시뮬레이션)`() {
-            repo.save(ProviderEntity(providerUserId = 88_001L, guildId = 88_002L, state = "APPROVED", createdAt = Instant.now()))
+            repo.save(
+                ProviderEntity(providerUserId = 88_001L, guildId = 88_002L, state = ProviderState.APPROVED, createdAt = Instant.now()),
+            )
             service.load() // 재시작 가정: DB 에서 캐시 적재
             assertEquals(ProviderState.APPROVED, service.stateOf(88_001L, 88_002L))
         }

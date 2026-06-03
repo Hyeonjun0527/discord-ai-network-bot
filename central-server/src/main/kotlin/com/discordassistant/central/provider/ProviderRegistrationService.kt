@@ -54,8 +54,8 @@ class ProviderRegistrationService(
     fun load() {
         val r = repo ?: return
         r.findAll().forEach { e ->
-            val state = runCatching { ProviderState.valueOf(e.state) }.getOrNull() ?: return@forEach
-            providers[ProviderGuildKey(e.providerUserId, e.guildId)] = ProviderRecord(e.providerUserId, e.guildId, state)
+            // e.state 는 ProviderStateConverter 가 enum 으로 복원한다(깨진 값은 OFFLINE 폴백).
+            providers[ProviderGuildKey(e.providerUserId, e.guildId)] = ProviderRecord(e.providerUserId, e.guildId, e.state)
         }
     }
 
@@ -64,11 +64,11 @@ class ProviderRegistrationService(
         val r = repo ?: return
         val e = r.findByProviderUserIdAndGuildId(rec.providerId, rec.guildId)
         if (e != null) {
-            e.state = rec.state.name
+            e.state = rec.state
             r.save(e)
         } else {
             r.save(
-                ProviderEntity(providerUserId = rec.providerId, guildId = rec.guildId, state = rec.state.name, createdAt = Instant.now()),
+                ProviderEntity(providerUserId = rec.providerId, guildId = rec.guildId, state = rec.state, createdAt = Instant.now()),
             )
         }
     }

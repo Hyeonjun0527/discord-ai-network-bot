@@ -43,6 +43,7 @@ class SecurityConfig(
                     authorize("/actuator/health", permitAll)
                     authorize("/api/metrics/**", permitAll)
                     authorize("/agent/**", permitAll)
+                    authorize("/provider/connect/**", permitAll) // 웹 ‘토큰 받기’ OAuth 온보딩
                     authorize("/login/**", permitAll)
                     authorize("/oauth2/**", permitAll)
                     // 그 외(대시보드 데이터/쓰기 API)는 인증 필요.

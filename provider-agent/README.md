@@ -22,8 +22,16 @@ discord-ai-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent 
 
 ## 한 번 설정, 자동 연결 (set-and-forget)
 매번 터미널에 토큰을 다시 칠 필요 없이, **한 번만 설정**하면 로그인할 때마다 알아서 풀에 연결됩니다.
+
+**가장 쉬운 길 — 브라우저 설정 UI(`--gui`)**: 터미널 명령을 외울 필요 없이 클릭으로 설정.
 ```bash
-# 1) 처음 한 번: 설정 저장 + 자동 시작 서비스 등록(관리자 불필요)
+discord-ai-network-bot --gui     # 127.0.0.1 설정창이 브라우저로 열림 → 토큰 붙여넣고 저장
+```
+- 토큰·중앙서버 주소·제공 모델·**이미지 제공(체크)**·**자동 시작(체크)** 을 한 화면에서 설정 → 저장.
+- 로컬 전용(127.0.0.1) + 세션 키로 보호. 저장하면 자동 시작까지 등록됩니다.
+
+**터미널로 한 번에(동일 결과):**
+```bash
 discord-ai-network-bot --token <1회용토큰> --relay-url wss://discord-ai.yeon.world/agent \
   --save-config --install-service
 ```

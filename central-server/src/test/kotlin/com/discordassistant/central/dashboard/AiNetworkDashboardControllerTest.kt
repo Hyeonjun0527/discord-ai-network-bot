@@ -8,6 +8,10 @@ import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
+import com.discordassistant.central.persistence.AiNetworkEventEntity
+import com.discordassistant.central.persistence.AiNetworkEventRepository
+import com.discordassistant.central.persistence.AiRequestEntity
+import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
@@ -40,7 +44,117 @@ class AiNetworkDashboardControllerTest
         private val knowledgeSources: KnowledgeSourceRepository,
         private val feedbacks: AiFeedbackRepository,
         private val overviewProjections: NetworkOverviewProjectionRepository,
+        private val aiRequests: AiRequestRepository,
+        private val networkEvents: AiNetworkEventRepository,
     ) {
+        @Test
+        fun `channel usage aggregates per channel without exposing prompts (Phase2 a)`() {
+            val t0 = Instant.parse("2026-06-01T00:00:00Z")
+            aiRequests.save(AiRequestEntity(requestId = "cu1", guildId = 810, channelId = 11, userId = 1, createdAt = t0))
+            aiRequests.save(AiRequestEntity(requestId = "cu2", guildId = 810, channelId = 11, userId = 2, createdAt = t0.plusSeconds(60)))
+            aiRequests.save(AiRequestEntity(requestId = "cu3", guildId = 810, channelId = 12, userId = 1, createdAt = t0.plusSeconds(30)))
+
+            val usage = dashboard.channelUsage(810)
+
+            assertEquals(2, usage.size)
+            val ch11 = usage.first { it.channelId == 11L }
+            assertEquals(2L, ch11.requestCount)
+            assertEquals(2L, ch11.distinctUsers)
+            // 프라이버시: 응답 필드는 집계만(프롬프트/메시지 본문 필드 없음)
+            val fields = ChannelUsageResponse::class.java.declaredFields.map { it.name }
+            assertTrue(fields.none { it.contains("prompt", ignoreCase = true) || it.contains("message", ignoreCase = true) })
+        }
+
+        @Test
+        fun `feature users list aggregates per user and omits prompt content (Phase2 d)`() {
+            val t0 = Instant.parse("2026-06-02T00:00:00Z")
+            aiRequests.save(AiRequestEntity(requestId = "fu1", guildId = 811, channelId = 1, userId = 7, createdAt = t0))
+            aiRequests.save(AiRequestEntity(requestId = "fu2", guildId = 811, channelId = 1, userId = 7, createdAt = t0.plusSeconds(120)))
+            aiRequests.save(AiRequestEntity(requestId = "fu3", guildId = 811, channelId = 2, userId = 8, createdAt = t0.plusSeconds(60)))
+
+            val users = dashboard.featureUsers(811)
+
+            assertEquals(2, users.size)
+            val u7 = users.first { it.userId == 7L }
+            assertEquals(2L, u7.requestCount)
+            assertEquals(t0.toString(), u7.firstUsedAt)
+            assertEquals(t0.plusSeconds(120).toString(), u7.lastUsedAt)
+            // 프라이버시: userId·집계만(프롬프트/메시지 본문 필드 없음)
+            val fields = FeatureUserResponse::class.java.declaredFields.map { it.name }
+            assertTrue(fields.none { it.contains("prompt", ignoreCase = true) || it.contains("message", ignoreCase = true) })
+        }
+
+        @Test
+        fun `provider history returns timeline and supports provider filter (Phase2 c)`() {
+            val t0 = Instant.parse("2026-06-03T00:00:00Z")
+            networkEvents.save(
+                AiNetworkEventEntity(guildId = 812, eventType = "provider_joined", providerUserId = 500, title = "참여", createdAt = t0),
+            )
+            networkEvents.save(
+                AiNetworkEventEntity(
+                    guildId = 812,
+                    eventType = "provider_overload",
+                    providerUserId = 500,
+                    title = "과부하",
+                    createdAt = t0.plusSeconds(60),
+                ),
+            )
+            networkEvents.save(
+                AiNetworkEventEntity(
+                    guildId = 812,
+                    eventType = "provider_joined",
+                    providerUserId = 600,
+                    title = "다른 참여",
+                    createdAt = t0.plusSeconds(30),
+                ),
+            )
+            // 프로바이더 무관 이벤트 — 필터 없는 조회에서 제외돼야 한다.
+            networkEvents.save(
+                AiNetworkEventEntity(
+                    guildId = 812,
+                    eventType = "network_level",
+                    providerUserId = null,
+                    title = "네트워크 레벨업",
+                    createdAt = t0.plusSeconds(90),
+                ),
+            )
+
+            val all = dashboard.providerHistory(812)
+            assertEquals(3, all.size) // network_level 제외
+            assertTrue(all.all { it.providerUserId != null })
+            assertEquals("과부하", all[0].title)
+
+            val filtered = dashboard.providerHistory(812, providerUserId = 500)
+            assertEquals(2, filtered.size)
+            assertTrue(filtered.all { it.providerUserId == 500L })
+        }
+
+        @Test
+        fun `provider status exposes availability hours and last seen for admin`() {
+            foundation.upsertProviderCapability(
+                guildId = 813,
+                providerUserId = 700,
+                providerState = "ONLINE",
+                modelNames = listOf("llama3.1:8b"),
+                capabilityTags = listOf("coding"),
+                maxBurden = "STANDARD",
+                maxConcurrency = 2,
+                dailyLimit = 30,
+                overloadRisk = "normal",
+                availableFromHour = 9,
+                availableToHour = 18,
+            )
+
+            val admin = dashboard.providers(813, audience = "admin").single()
+            assertEquals(9, admin.availableFromHour)
+            assertEquals(18, admin.availableToHour)
+
+            // 공개 뷰는 가용시간을 숨긴다(capacity 가시성 없음)
+            val public = dashboard.providers(813, audience = "public").single()
+            assertEquals(null, public.availableFromHour)
+            assertEquals(null, public.availableToHour)
+        }
+
         @Test
         fun `readiness exposes blocked launch gaps with next actions`() {
             val readiness = dashboard.readiness(801)

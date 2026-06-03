@@ -99,7 +99,8 @@ class AiNetworkApiSecurityFilter(
         private val PUBLIC_PRESET_REPORT = Regex("^/api/ai-network/presets/published/\\d+/report$")
         private val GUILD_DASHBOARD_READ =
             Regex(
-                "^/api/ai-network/\\d+/(dashboard|overview|readiness|channels|channels/summary|change-approval|providers|model-map|knowledge-spaces|presets)$",
+                "^/api/ai-network/\\d+/(dashboard|overview|readiness|channels|channels/summary|change-approval|" +
+                    "providers|model-map|channel-usage|users|provider-history|knowledge-spaces|presets)$",
             )
         private val LAUNCH_CHECKLIST = Regex("^/api/ai-network/\\d+/launch-checklist$")
         private val SENSITIVE_AI_NETWORK_READ_PREFIXES =

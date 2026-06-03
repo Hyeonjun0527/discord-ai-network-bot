@@ -2,8 +2,10 @@ package com.discordassistant.central.usage
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.UsageLogRepository
+import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -19,6 +21,7 @@ import java.time.temporal.ChronoUnit
 class AnalyticsService(
     private val usage: UsageLogRepository,
     private val requests: AiRequestRepository,
+    private val networkEvents: AiNetworkEventRepository,
 ) {
     /** 최근 [days]일의 일자별 요청 수(과거→오늘 순). UTC 자정 경계. */
     @Transactional(readOnly = true)
@@ -76,6 +79,74 @@ class AnalyticsService(
             )
         }
 
+    /**
+     * 채널 사용 현황(Phase 2 어드민 대시보드 (a)). 어떤 디스코드 채널이 AI/풀을 쓰는지 —
+     * 채널별 요청 수·고유 유저 수·마지막 사용 시각. group by 집계라 N+1 없음.
+     * 프라이버시: 프롬프트 본문·메시지 내용 미포함, 집계 수치와 channelId/시각만.
+     */
+    @Transactional(readOnly = true)
+    fun channelUsage(guildId: Long): List<ChannelUsage> =
+        requests.aggregateChannelUsageByGuild(guildId).map {
+            ChannelUsage(
+                channelId = it.channelId,
+                requestCount = it.requestCount,
+                distinctUsers = it.distinctUserCount,
+                lastUsedAt = it.lastUsedAt?.toString(),
+            )
+        }
+
+    /**
+     * 기능 사용 유저 목록(Phase 2 어드민 대시보드 (d)). 우리 기능을 쓰는 유저 상위 [limit]명 —
+     * userId·요청 수·첫 사용·마지막 사용. 프라이버시: 집계만, **프롬프트 원문/메시지 본문 절대 미노출**.
+     */
+    @Transactional(readOnly = true)
+    fun featureUsers(
+        guildId: Long,
+        limit: Int = 20,
+    ): List<UserUsage> {
+        require(limit in 1..200) { "limit 은 1..200" }
+        // DB 레벨에서 상위 limit 만 잘라 가져온다(.take 메모리 절단 제거 — @Query 의 ORDER BY 가 정렬 유지).
+        return requests
+            .aggregateUserUsageByGuild(guildId, PageRequest.of(0, limit))
+            .map {
+                UserUsage(
+                    userId = it.userId,
+                    requestCount = it.requestCount,
+                    firstUsedAt = it.firstUsedAt?.toString(),
+                    lastUsedAt = it.lastUsedAt?.toString(),
+                )
+            }
+    }
+
+    /**
+     * 프로바이더 참여 이력 타임라인(Phase 2 어드민 대시보드 (c)). join/approve/overload 등 프로바이더
+     * 관련 네트워크 이벤트를 최신순으로(최대 50건). [providerUserId] 가 있으면 해당 프로바이더만 필터,
+     * 없으면 프로바이더 관련 이벤트(providerUserId IS NOT NULL)만 — ai_level_up/network_level 같은
+     * 프로바이더 무관 이벤트는 제외한다. 프라이버시: 이벤트 메타데이터만(요청 프롬프트·유저 메시지 본문 없음).
+     */
+    @Transactional(readOnly = true)
+    fun providerHistoryTimeline(
+        guildId: Long,
+        providerUserId: Long? = null,
+    ): List<ProviderHistoryEntry> {
+        val events =
+            if (providerUserId != null) {
+                networkEvents.findTop50ByGuildIdAndProviderUserIdOrderByCreatedAtDesc(guildId, providerUserId)
+            } else {
+                networkEvents.findTop50ByGuildIdAndProviderUserIdIsNotNullOrderByCreatedAtDesc(guildId)
+            }
+        return events.map {
+            ProviderHistoryEntry(
+                id = it.id,
+                eventType = it.eventType,
+                providerUserId = it.providerUserId,
+                title = it.title,
+                summary = it.summary,
+                createdAt = it.createdAt.toString(),
+            )
+        }
+    }
+
     private fun burdenWeight(name: String): Int =
         when (runCatching { ModelBurden.valueOf(name) }.getOrNull()) {
             ModelBurden.LIGHT -> 1
@@ -97,6 +168,32 @@ class AnalyticsService(
         val requiredBurden: String,
         val providerId: Long?,
         val failReason: String?,
+        val createdAt: String,
+    )
+
+    /** 채널 사용 현황 한 줄(프롬프트/메시지 본문 제외, 집계만). */
+    data class ChannelUsage(
+        val channelId: Long,
+        val requestCount: Long,
+        val distinctUsers: Long,
+        val lastUsedAt: String?,
+    )
+
+    /** 기능 사용 유저 한 줄(프롬프트/메시지 본문 제외, userId·집계만). */
+    data class UserUsage(
+        val userId: Long,
+        val requestCount: Long,
+        val firstUsedAt: String?,
+        val lastUsedAt: String?,
+    )
+
+    /** 프로바이더 참여 이력 타임라인 한 줄(이벤트 메타데이터만). */
+    data class ProviderHistoryEntry(
+        val id: Long,
+        val eventType: String,
+        val providerUserId: Long?,
+        val title: String,
+        val summary: String?,
         val createdAt: String,
     )
 }

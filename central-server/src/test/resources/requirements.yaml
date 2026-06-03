@@ -105,3 +105,33 @@ requirements:
     tests:
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/network/AiLevelServiceTest.kt
+  - id: REQ-ADMIN-001
+    title: 어드민 대시보드는 채널별 요청수·고유유저수·마지막사용시각을 집계로 보여준다(프롬프트 본문 미노출)
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AnalyticsServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AiNetworkDashboardControllerTest.kt
+  - id: REQ-ADMIN-002
+    title: 어드민 대시보드는 기능 사용 유저(userId·요청수·첫·마지막)를 집계로만 보여준다(프롬프트 원문 미노출)
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AnalyticsServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AiNetworkDashboardControllerTest.kt
+  - id: REQ-ADMIN-003
+    title: 어드민 대시보드는 프로바이더 참여 이력 타임라인을 최신순으로 제공한다(프로바이더 필터 포함)
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AnalyticsServiceTest.kt
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/dashboard/AiNetworkDashboardControllerTest.kt
+  - id: REQ-ADMIN-004
+    title: 어드민 전용 신규 read 엔드포인트는 관리자 토큰 없이는 403 으로 차단된다
+    priority: P1
+    tests:
+      - type: unit
+        path: src/test/kotlin/com/discordassistant/central/web/AiNetworkApiSecurityFilterTest.kt

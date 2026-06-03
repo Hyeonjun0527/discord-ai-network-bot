@@ -1274,7 +1274,59 @@ function renderAiNetwork(data) {
   renderList("qualityReview", qualityItems, "품질 데이터 없음", ([label, value]) =>
     `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
   );
+  renderProviderStatus(data.providers);
+  renderChannelUsage(data.channelUsage);
+  renderFeatureUsers(data.featureUsers);
+  renderProviderHistory(data.providerHistory);
   renderLaunchChecklist(data.launchChecklist || null);
+}
+
+// 어드민 (b): 프로바이더 상태(가용시간·마지막 활동 포함). dashboard 페이로드의 providers 보강.
+function renderProviderStatus(providers) {
+  renderList("providerStatus", providers, "참여 중인 프로바이더 없음", (p) => {
+    const availability =
+      p.availableFromHour != null && p.availableToHour != null
+        ? `가용 ${p.availableFromHour}~${p.availableToHour}시(UTC)`
+        : "가용시간 미설정";
+    return `<li><strong>${esc(p.providerLabel)} · ${esc(p.state)}</strong><span>모델 ${esc(p.modelCount)} · 품질 ${esc(p.qualityTier)} · 부담 ${esc(p.maxBurden)} · 위험 ${esc(p.overloadRisk)} · ${esc(availability)} · 마지막 활동 ${esc(p.lastSeenAt || "기록 없음")}</span></li>`;
+  });
+}
+
+// 어드민 (a): 채널 사용 현황.
+function renderChannelUsage(channelUsage) {
+  renderList("channelUsage", channelUsage, "아직 채널 사용 기록이 없습니다", (c) =>
+    `<li><strong>#${esc(c.channelId)}</strong><span>요청 ${esc(c.requestCount)}건 · 유저 ${esc(c.distinctUsers)}명 · 마지막 ${esc(c.lastUsedAt || "-")}</span></li>`,
+  );
+}
+
+// 어드민 (d): 기능 사용 유저(집계만, 프롬프트 본문 없음).
+function renderFeatureUsers(featureUsers) {
+  renderList("featureUsers", featureUsers, "아직 기능을 사용한 유저가 없습니다", (u) =>
+    `<li><strong>유저 ${esc(u.userId)}</strong><span>요청 ${esc(u.requestCount)}건 · 첫 사용 ${esc(u.firstUsedAt || "-")} · 마지막 ${esc(u.lastUsedAt || "-")}</span></li>`,
+  );
+}
+
+// 어드민 (c): 프로바이더 참여 이력 타임라인.
+function renderProviderHistory(history) {
+  renderList("providerHistory", history?.slice(0, 20), "프로바이더 참여 이력이 없습니다", (e) =>
+    `<li><strong>${esc(e.title)} · ${esc(e.eventType)}</strong><span>provider ${esc(e.providerUserId ?? "-")} · ${esc(e.summary || "")} · ${esc(e.createdAt)}</span></li>`,
+  );
+}
+
+async function refreshProviderHistory() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    alert("길드 ID(숫자)를 입력하세요.");
+    return;
+  }
+  const providerUserId = $("providerHistoryUserId").value.trim();
+  const suffix = /^\d+$/.test(providerUserId) ? `?providerUserId=${providerUserId}` : "";
+  try {
+    const history = await getJson(`/api/ai-network/${gid}/provider-history${suffix}`);
+    renderProviderHistory(history);
+  } catch (e) {
+    renderProviderHistory([]);
+  }
 }
 
 function renderLaunchChecklist(checklist) {
@@ -1398,24 +1450,32 @@ async function loadGuild() {
     return;
   }
   try {
-    const [overview, trend, requests, providers, aiNetwork, launchChecklist] = await Promise.all([
-      getJson(`/api/dashboard/${gid}/overview`),
-      getJson(`/api/dashboard/${gid}/usage-trend?days=7`),
-      getJson(`/api/dashboard/${gid}/requests`),
-      getJson(`/api/metrics/pool/${gid}`),
-      getJson(`/api/ai-network/${gid}/dashboard?audience=admin`),
-      getJson(`/api/ai-network/${gid}/launch-checklist?audience=admin`),
-    ]);
+    const [overview, trend, requests, providers, aiNetwork, launchChecklist, channelUsage, featureUsers, providerHistory] =
+      await Promise.all([
+        getJson(`/api/dashboard/${gid}/overview`),
+        getJson(`/api/dashboard/${gid}/usage-trend?days=7`),
+        getJson(`/api/dashboard/${gid}/requests`),
+        getJson(`/api/metrics/pool/${gid}`),
+        getJson(`/api/ai-network/${gid}/dashboard?audience=admin`),
+        getJson(`/api/ai-network/${gid}/launch-checklist?audience=admin`),
+        getJson(`/api/ai-network/${gid}/channel-usage`),
+        getJson(`/api/ai-network/${gid}/users?limit=20`),
+        getJson(`/api/ai-network/${gid}/provider-history`),
+      ]);
 
+    const level = aiNetwork.overview || {};
     $("guildOverview").innerHTML = [
       ["활성 프로바이더", overview.activeProviders],
       ["총 요청", overview.totalRequests],
+      ["AI 레벨", `Lv.${level.aiLevel ?? 1}`],
+      ["누적 경험치", level.totalXp ?? 0],
+      ["다음 레벨까지", level.xpToNext ?? 0],
       ["기본 모델", overview.defaultModel || "(자동)"],
       ["언어", overview.language],
       ["자동승인", overview.autoApprove ? "예" : "아니오"],
     ].map(([l, v]) => `<div class="stat"><div class="num">${v}</div><div class="lbl">${l}</div></div>`).join("");
 
-    renderAiNetwork({ ...aiNetwork, launchChecklist });
+    renderAiNetwork({ ...aiNetwork, launchChecklist, channelUsage, featureUsers, providerHistory });
 
     // 프로바이더 상세(#200)
     const ptbody = document.querySelector("#providers tbody");
@@ -1495,6 +1555,7 @@ $("multiRefreshOps").addEventListener("click", refreshMultiOps);
 $("pseudoStreamPlan").addEventListener("click", planPseudoStream);
 $("dashboardProjectionRefresh").addEventListener("click", refreshDashboardProjection);
 $("launchChecklistRefresh").addEventListener("click", refreshLaunchChecklist);
+$("providerHistoryRefresh").addEventListener("click", refreshProviderHistory);
 document.addEventListener("click", (event) => {
   const selectButton = event.target.closest(".select-published-preset");
   if (selectButton) $("publishedPresetId").value = selectButton.dataset.presetId || "";

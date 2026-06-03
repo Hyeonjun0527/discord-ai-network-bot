@@ -149,6 +149,8 @@ class AiNetworkDashboardQueryService(
                 maxConcurrency = if (visibility.canSeeProviderCapacity) provider.maxConcurrency else null,
                 dailyLimit = if (visibility.canSeeProviderCapacity) provider.dailyLimit else null,
                 overloadRisk = visibility.risk(provider.overloadRisk),
+                availableFromHour = if (visibility.canSeeProviderCapacity) provider.availableFromHour else null,
+                availableToHour = if (visibility.canSeeProviderCapacity) provider.availableToHour else null,
                 lastSeenAt = if (visibility.canSeeProviderCapacity) provider.lastSeenAt?.toString() else null,
             )
         }

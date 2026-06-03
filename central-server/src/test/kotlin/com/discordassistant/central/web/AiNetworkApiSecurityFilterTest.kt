@@ -76,6 +76,42 @@ class AiNetworkApiSecurityFilterTest
         }
 
         @Test
+        fun `phase2 admin reads are rejected without dashboard token`() {
+            mvc
+                .perform(get("/api/ai-network/100/channel-usage"))
+                .andExpect(status().isForbidden)
+
+            mvc
+                .perform(get("/api/ai-network/100/users"))
+                .andExpect(status().isForbidden)
+
+            mvc
+                .perform(get("/api/ai-network/100/provider-history"))
+                .andExpect(status().isForbidden)
+        }
+
+        @Test
+        fun `phase2 admin reads are allowed with dashboard token`() {
+            mvc
+                .perform(
+                    get("/api/ai-network/100/channel-usage")
+                        .header(AiNetworkApiSecurityFilter.ADMIN_TOKEN_HEADER, "test-token"),
+                ).andExpect(status().isOk)
+
+            mvc
+                .perform(
+                    get("/api/ai-network/100/users")
+                        .header(AiNetworkApiSecurityFilter.ADMIN_TOKEN_HEADER, "test-token"),
+                ).andExpect(status().isOk)
+
+            mvc
+                .perform(
+                    get("/api/ai-network/100/provider-history")
+                        .header(AiNetworkApiSecurityFilter.ADMIN_TOKEN_HEADER, "test-token"),
+                ).andExpect(status().isOk)
+        }
+
+        @Test
         fun `guild dashboard reads are allowed with dashboard token`() {
             mvc
                 .perform(

@@ -176,3 +176,35 @@ def test_reload_models_hot_reload(monkeypatch, tmp_path):
     save_config(AgentConfig(token="T", models=("a", "b")))
     assert agent.reload_models() == ["a", "b"]
     assert agent._models == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_multi_connection_add_remove(monkeypatch, tmp_path):
+    """멀티-서버: 실행 중 연결 추가/해제가 엔트리·상태에 반영된다(네트워크 없이 가짜 연결)."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+
+    class FakeConn:
+        def __init__(self, cfg, on_frame, hello, on_durable_token=None):
+            self._authed = True
+
+        @property
+        def authed(self):
+            return self._authed
+
+        async def run(self):
+            await asyncio.Event().wait()
+
+        async def stop(self):
+            self._authed = False
+
+    monkeypatch.setattr("provider_agent.agent.AgentConnection", FakeConn)
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
+    await agent.add_connection("TA", guild_id=100, guild_name="A")
+    await agent.add_connection("TB", guild_id=200, guild_name="B")
+    st = agent.connections_status()
+    assert {s["guildId"] for s in st} == {100, 200}
+    assert agent.is_connected() is True
+    assert await agent.remove_connection(guild_id=100) is True
+    assert [s["guildId"] for s in agent.connections_status()] == [200]
+    await agent.remove_connection(guild_id=200)
+    assert agent.is_connected() is False

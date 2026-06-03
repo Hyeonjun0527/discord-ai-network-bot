@@ -346,6 +346,39 @@ async def test_update_progress_endpoint(monkeypatch):
         await client.close()
 
 
+@pytest.mark.asyncio
+async def test_servers_lists_saved_when_not_running(monkeypatch):
+    # 실행 중이 아니면 저장된 연결 목록을 connected=False 로 보여준다.
+    from provider_agent.config_file import add_connection
+
+    add_connection("TA", guild_id=100, guild_name="서버A")
+    add_connection("TB", guild_id=200, guild_name="서버B")
+    client = await _client()
+    try:
+        assert (await client.get("/api/servers")).status == 403  # 키 없음
+        d = await (await client.get("/api/servers", headers={"X-Session": KEY})).json()
+        names = {s["guildName"] for s in d["servers"]}
+        assert names == {"서버A", "서버B"}
+        assert all(s["connected"] is False for s in d["servers"])
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_server_remove_deletes_saved(monkeypatch):
+    from provider_agent.config_file import add_connection, load_connections
+
+    add_connection("TA", guild_id=100, guild_name="서버A")
+    add_connection("TB", guild_id=200, guild_name="서버B")
+    client = await _client()
+    try:
+        await client.post("/api/server-remove", headers={"X-Session": KEY}, json={"guildId": 100})
+        left = [c["guild_id"] for c in load_connections()]
+        assert left == [200]  # 길드 100 해제됨
+    finally:
+        await client.close()
+
+
 def test_auto_update_once_applies_when_outdated(monkeypatch):
     # 실행 중 주기 검사: 토글 ON + 구버전 + 지원이면 받아 적용하고 종료 예약(껐다 켜지 않아도 적용).
     monkeypatch.setattr(webui, "load_config", lambda: {"auto_update": True})

@@ -54,7 +54,10 @@ class ProviderAgent:
         self._cancel_cap = 4096
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._stop = asyncio.Event()
-        self._conn = AgentConnection(cfg, self._on_server_frame, self._build_hello)
+        # 멀티-서버: 여러 디스코드 길드에 동시 접속. 각 항목 {conn, task, status_task, guild_id, guild_name, token}.
+        # 공유 자원(ollama·세마포어·일일한도·모델)은 위에서 인스턴스 단위로 묶여 모든 연결이 함께 쓴다.
+        self._entries: list[dict] = []
+        self._entries_lock = asyncio.Lock()
 
     # ── 핸드셰이크 ──────────────────────────────────────────────────────
     def _build_hello(self) -> ProviderHelloFrame:
@@ -200,7 +203,77 @@ class ProviderAgent:
         self._stop.set()
 
     def is_connected(self) -> bool:
-        return self._conn.authed
+        """하나라도 인증된 연결이 있으면 연결됨으로 본다(멀티-서버)."""
+        return any(e["conn"].authed for e in self._entries)
+
+    # ── 멀티-서버 연결 관리 ─────────────────────────────────────────────
+    def _make_entry(self, token: str, guild_id: int | None, guild_name: str | None) -> dict:
+        """토큰 1개에 대한 연결 엔트리 생성(공유 핸들러·hello 재사용, durable 토큰은 자기 엔트리에 저장)."""
+        import dataclasses
+
+        ccfg = dataclasses.replace(self._cfg, token=token)
+
+        def _persist(new_token: str, gid: int | None = guild_id, old: str = token) -> None:
+            try:
+                from .config_file import set_connection_token
+
+                set_connection_token(new_token, guild_id=gid, old_token=old)
+            except Exception:  # noqa: BLE001
+                pass
+
+        conn = AgentConnection(ccfg, self._on_server_frame, self._build_hello, on_durable_token=_persist)
+        return {"conn": conn, "task": None, "status_task": None,
+                "guild_id": guild_id, "guild_name": guild_name, "token": token}
+
+    def _spawn_entry(self, entry: dict) -> None:
+        entry["task"] = asyncio.create_task(entry["conn"].run())
+        entry["status_task"] = asyncio.create_task(self._status_loop(entry["conn"]))
+        self._entries.append(entry)
+
+    async def _stop_entry(self, entry: dict) -> None:
+        try:
+            await entry["conn"].stop()
+        except Exception:  # noqa: BLE001
+            pass
+        for t in (entry["task"], entry["status_task"]):
+            if t is not None:
+                t.cancel()
+        tasks = [t for t in (entry["task"], entry["status_task"]) if t is not None]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def add_connection(self, token: str, guild_id: int | None = None, guild_name: str | None = None) -> None:
+        """실행 중에 서버 연결을 추가(같은 길드/토큰이면 교체). 저장 + 즉시 접속."""
+        from .config_file import add_connection as _save
+
+        _save(token, guild_id, guild_name)
+        async with self._entries_lock:
+            for e in list(self._entries):
+                if (guild_id is not None and e["guild_id"] == guild_id) or e["token"] == token:
+                    await self._stop_entry(e)
+                    self._entries.remove(e)
+            self._spawn_entry(self._make_entry(token, guild_id, guild_name))
+
+    async def remove_connection(self, guild_id: int | None = None, token: str | None = None) -> bool:
+        """실행 중에 서버 연결을 해제(길드ID 우선). 저장 + 즉시 끊기."""
+        from .config_file import remove_connection as _save
+
+        _save(guild_id=guild_id, token=token)
+        removed = False
+        async with self._entries_lock:
+            for e in list(self._entries):
+                if (guild_id is not None and e["guild_id"] == guild_id) or (token is not None and e["token"] == token):
+                    await self._stop_entry(e)
+                    self._entries.remove(e)
+                    removed = True
+        return removed
+
+    def connections_status(self) -> list[dict]:
+        """GUI '내 서버 목록'용: 연결별 길드/연결상태(토큰은 노출하지 않음)."""
+        return [
+            {"guildId": e["guild_id"], "guildName": e["guild_name"], "connected": e["conn"].authed}
+            for e in self._entries
+        ]
 
     @property
     def image_ready(self) -> bool:
@@ -268,16 +341,27 @@ class ProviderAgent:
         if self._cfg.tray:
             self._start_tray()
 
-        conn_task = asyncio.create_task(self._conn.run())
-        status_task = asyncio.create_task(self._status_loop(self._conn))
+        # 저장된 모든 서버 연결을 동시에 띄운다(없으면 cfg.token 하나). 연결 하나가 죽어도(인증실패 등)
+        # 나머지는 유지 — run 은 stop 요청까지만 대기한다.
+        from .config_file import load_connections
+
+        saved = load_connections()
+        if not saved and self._cfg.token:
+            saved = [{"token": self._cfg.token, "guild_id": None, "guild_name": None}]
+        async with self._entries_lock:
+            for s in saved:
+                self._spawn_entry(self._make_entry(s["token"], s.get("guild_id"), s.get("guild_name")))
+
         stop_task = asyncio.create_task(self._stop.wait())
         try:
-            await asyncio.wait({conn_task, stop_task}, return_when=asyncio.FIRST_COMPLETED)
+            await stop_task
         finally:
-            await self._conn.stop()
-            for task in (status_task, conn_task, stop_task):
-                task.cancel()
-            await asyncio.gather(status_task, conn_task, stop_task, return_exceptions=True)
+            async with self._entries_lock:
+                entries = list(self._entries)
+                self._entries.clear()
+            for e in entries:
+                await self._stop_entry(e)
+            stop_task.cancel()
         logger.info("에이전트 종료")
         return 0
 

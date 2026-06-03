@@ -213,6 +213,10 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <button class="primary-btn" type="button" id="go" onclick="connect()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;vertical-align:-4px;margin-right:9px"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 0 1 0 10h-2"></path><path d="M8 12h8"></path></svg><span>연동하기</span></button>
 <div class="helper" style="text-align:center;margin-top:9px">처음이면 디스코드 로그인 창이 열려요. 한 번 연동하면 다음부턴 바로 연결됩니다.</div>
 <div id="msg"></div>
+<section id="serversSec" style="display:none;margin-top:16px"><h2>내 서버</h2>
+<div class="settings" id="serverList"></div>
+<button class="secondary-btn" type="button" id="addServerBtn" style="width:100%;margin-top:10px" onclick="addServer()">＋ 다른 서버에 연결</button>
+<div class="helper" id="addServerHelp" style="margin-top:7px">여러 디스코드 서버의 프로바이더로 동시에 연결할 수 있어요.</div></section>
 <details><summary><span>로그 보기</span><span>⌄</span></summary><div class="details-body"><div id="log"></div></div></details>
 <details><summary><span>고급 · 토큰 직접 입력</span><span>⌄</span></summary><div class="details-body">
 <label class="input" style="margin-bottom:11px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:20px;height:20px;flex:0 0 auto"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg><input type="password" id="token" placeholder="/provider-join 토큰 붙여넣기(선택)"></label>
@@ -318,7 +322,23 @@ else if(p.phase==='error'){renderProgress(p);if(UPDATING){UPDATING=false;const b
 else if(UPDATING){UPDATING=false;document.getElementById('pbar').style.display='none';loadUpdate();}}
 async function doUpdate(){const btn=document.getElementById('updateBtn');btn.disabled=true;btn.innerHTML='<span>준비 중…</span>';UPDATING=true;
 try{await j('/api/update',{method:'POST'});}catch(e){}}
-loadModels();refresh();loadInstall();loadUpdate();setInterval(refresh,2000);setInterval(pollProgress,600);
+// 내 서버 목록(멀티-서버): 연결된 디스코드 서버들 표시·서버별 해제·다른 서버 추가(OAuth).
+async function loadServers(){let d;try{d=await j('/api/servers');}catch(e){return;}
+const sec=document.getElementById('serversSec'),list=document.getElementById('serverList');
+if(!d.servers||!d.servers.length){sec.style.display='none';return;}
+sec.style.display='block';
+list.innerHTML=d.servers.map(s=>{const nm=esc(s.guildName||(s.guildId?('서버 '+s.guildId):'이름 미상'));const gid=s.guildId==null?'null':s.guildId;
+return '<div style="display:flex;align-items:center;gap:11px;min-height:56px;border-bottom:1px solid rgba(148,163,184,.10)">'
++'<span class="dot'+(s.connected?'':' grey')+'"></span>'
++'<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14.5px;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nm+'</div>'
++'<div class="helper" style="margin:1px 0 0">'+(s.connected?'연결됨':'대기 중…')+'</div></div>'
++'<button class="secondary-btn" style="min-height:34px;padding:0 13px;font-size:13px" onclick="removeServer('+gid+')">해제</button></div>';}).join('');}
+async function removeServer(gid){const r=await j('/api/server-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({guildId:gid})});loadServers();refresh();}
+async function addServer(){const help=document.getElementById('addServerHelp');const s=await j('/api/status');
+if(!s.connectEnabled){help.innerHTML='<span style="color:#ffd479">디스코드 로그인 추가가 아직 활성화되지 않았어요. ‘고급’에서 다른 서버의 /provider-join 토큰을 붙여넣어 추가하세요.</span>';return;}
+const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
+help.innerHTML=r.ok?'<span style="color:#9fe0a0">🌐 브라우저에서 추가할 서버를 고르세요. 완료되면 목록에 나타납니다.</span>':('⚠️ '+esc(r.error||'브라우저 열기 실패'));}
+loadModels();refresh();loadInstall();loadUpdate();loadServers();setInterval(refresh,2000);setInterval(loadServers,2500);setInterval(pollProgress,600);
 </script></body></html>"""
 
 
@@ -462,25 +482,59 @@ def build_app(session_key: str) -> web.Application:
                 "<script>setTimeout(()=>window.close(),2200)</script>",
                 content_type="text/html",
             )
-        saved = load_config()
-        relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
-        save_config(
-            AgentConfig(
-                token=token,
-                relay_url=relay,
-                models=tuple(saved.get("models") or ()),
-                enable_image=bool(saved.get("enable_image")),
-                auto_update=bool(saved.get("auto_update", True)),
-            )
-        )
-        # 토큰을 받았으니 곧바로 연결까지 자동으로(유저는 추가 클릭 없이 연동 완료).
-        _start_agent()
+        # 멀티-서버: 서버가 함께 보내는 guild(id)·guildName 으로 '내 서버 목록'에 추가(교체 아님).
+        gid_raw = (req.query.get("guild") or "").strip()
+        guild_id = int(gid_raw) if gid_raw.isdigit() else None
+        guild_name = (req.query.get("guildName") or "").strip() or None
+        agent = _state["agent"]
+        task = _state["task"]
+        if agent is not None and task is not None and not task.done():
+            await agent.add_connection(token, guild_id, guild_name)  # 실행 중이면 즉시 새 서버 접속
+        else:
+            from .config_file import add_connection
+
+            add_connection(token, guild_id, guild_name)  # 저장 후
+            _start_agent()  # 저장된 모든 서버로 접속 시작
+        label = guild_name or "서버"
         return web.Response(
             text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#b8ff39;text-align:center;padding-top:80px'>"
-            "✅ 연동 완료! 자동으로 연결했어요. <b>이 탭을 닫고 앱 창으로 돌아가세요.</b>"
+            f"✅ ‘{label}’ 연동 완료! 자동으로 연결했어요. <b>이 탭을 닫고 앱 창으로 돌아가세요.</b>"
             "<script>setTimeout(()=>window.close(),1800)</script>",
             content_type="text/html",
         )
+
+    async def servers(req: web.Request) -> web.Response:
+        """'내 서버 목록': 실행 중이면 실시간 연결상태, 아니면 저장된 목록(연결 안 됨)."""
+        _auth(req)
+        agent = _state["agent"]
+        task = _state["task"]
+        if agent is not None and task is not None and not task.done():
+            return web.json_response({"servers": agent.connections_status()})
+        from .config_file import load_connections
+
+        saved = load_connections()
+        return web.json_response(
+            {"servers": [
+                {"guildId": c.get("guild_id"), "guildName": c.get("guild_name"), "connected": False}
+                for c in saved
+            ]}
+        )
+
+    async def server_remove(req: web.Request) -> web.Response:
+        """서버 연결 해제(길드ID 기준). 실행 중이면 즉시 끊고, 아니면 저장 목록에서 제거."""
+        _auth(req)
+        data = await req.json()
+        gid_raw = data.get("guildId")
+        guild_id = int(gid_raw) if isinstance(gid_raw, (int, str)) and str(gid_raw).lstrip("-").isdigit() else None
+        agent = _state["agent"]
+        task = _state["task"]
+        if agent is not None and task is not None and not task.done():
+            await agent.remove_connection(guild_id=guild_id)
+        else:
+            from .config_file import remove_connection
+
+            remove_connection(guild_id=guild_id)
+        return web.json_response({"ok": True})
 
     async def install_info(req: web.Request) -> web.Response:
         _auth(req)
@@ -563,6 +617,8 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/logs", logs)
     app.router.add_get("/connect/callback", connect_callback)
     app.router.add_post("/api/connect-open", connect_open)
+    app.router.add_get("/api/servers", servers)
+    app.router.add_post("/api/server-remove", server_remove)
     app.router.add_get("/api/install-info", install_info)
     app.router.add_post("/api/install", install)
     app.router.add_get("/api/update-info", update_info)

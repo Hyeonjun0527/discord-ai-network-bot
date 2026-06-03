@@ -41,6 +41,8 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -102,6 +104,11 @@ class DiscordBot(
 
     private val fallbackAttempted = AtomicBoolean(false)
 
+    // 추론(ask/imagine)은 길어서 JDA 게이트웨이 스레드를 점유하면 안 된다(동시 요청 시 봇 전체 stall).
+    // deferReply 로 ack 한 뒤 실제 처리는 이 전용 풀에서(나머지 빠른 명령은 리스너 스레드 그대로).
+    private val commandExecutor: ExecutorService =
+        Executors.newFixedThreadPool(8) { r -> Thread(r, "discord-cmd").apply { isDaemon = true } }
+
     @PostConstruct
     fun start() {
         if (!enabled || token.isBlank()) {
@@ -125,6 +132,7 @@ class DiscordBot(
                 gatewayStatus,
                 mentionAskEnabled = messageContentIntent,
                 onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
+                slowCommandExecutor = commandExecutor,
             )
         val instance = builder.addEventListeners(listener).build()
         jda = instance
@@ -161,6 +169,7 @@ class DiscordBot(
     @PreDestroy
     fun stop() {
         jda?.shutdown()
+        commandExecutor.shutdown()
     }
 
     private fun registerCommands(action: net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction) {
@@ -423,6 +432,7 @@ class DiscordBot(
         private val gatewayStatus: DiscordGatewayStatus,
         private val mentionAskEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
+        private val slowCommandExecutor: ExecutorService,
     ) : ListenerAdapter() {
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
@@ -504,22 +514,30 @@ class DiscordBot(
             val useWebhookProfile = event.name == "ask" && channelProfiles.get(ctx.guildId, ctx.channelId) != null
             val isPublic = event.name in PUBLIC_COMMANDS
             event.deferReply(if (useWebhookProfile) true else !isPublic).queue()
-            try {
-                val reply = dispatch(event, ctx)
-                if (useWebhookProfile) {
-                    completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
-                } else {
-                    editOriginalWithPseudoStream(event.hook, reply)
+            val work =
+                Runnable {
+                    try {
+                        val reply = dispatch(event, ctx)
+                        if (useWebhookProfile) {
+                            completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
+                        } else {
+                            editOriginalWithPseudoStream(event.hook, reply)
+                        }
+                    } catch (e: Exception) {
+                        log.warn("명령 처리 실패: {} — {}", event.name, e.message)
+                        event.hook.editOriginal("⚠️ 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.").queue({}, {})
+                    }
                 }
-            } catch (e: Exception) {
-                log.warn("명령 처리 실패: {} — {}", event.name, e.message)
-                event.hook.editOriginal("⚠️ 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.").queue({}, {})
-            }
+            // 추론(ask/imagine)은 길어서 게이트웨이 스레드 밖에서. 나머지 빠른 명령은 그대로 실행.
+            if (event.name in SLOW_COMMANDS) slowCommandExecutor.execute(work) else work.run()
         }
 
         companion object {
             private val log = LoggerFactory.getLogger(Listener::class.java)
             private const val DEFAULT_PSEUDO_STREAM_INTERVAL_MS = 1200L
+
+            // 추론으로 오래 걸리는 명령 — 게이트웨이 스레드 밖(전용 풀)에서 처리한다.
+            private val SLOW_COMMANDS = setOf("ask", "imagine")
 
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
             private val PUBLIC_COMMANDS = setOf("ask", "imagine", "contributions", "community-stats", "welcome")

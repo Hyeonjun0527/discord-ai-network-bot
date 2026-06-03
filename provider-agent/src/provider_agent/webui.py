@@ -137,12 +137,14 @@ def _connect_base(relay: str) -> str:
     return base.rstrip("/")
 
 
-# ‘디스코드 로그인’ OAuth 가능 여부는 서버 설정에 달려 있다 → 서버에 물어 캐시(60초). env 는 강제 오버라이드.
-_connect_cache: dict = {"enabled": False, "ts": 0.0}
+# ‘디스코드 로그인’ OAuth 가능 여부는 서버 설정에 달려 있다 → 백그라운드로 서버에 물어 캐시.
+# env(AGENT_CONNECT_ENABLED)는 강제 오버라이드. _connect_enabled()는 동기·즉시(캐시 읽기)라
+# 이벤트루프를 막지 않는다(네트워크는 _start_connect_status_refresher 데몬이 담당).
+_connect_cache: dict = {"enabled": False}
 
 
 def _probe_connect_status() -> bool:
-    """중앙 서버에 OAuth(디스코드 로그인) 활성 여부를 물어본다. 실패하면 False(블로킹 — executor 에서 호출)."""
+    """중앙 서버에 OAuth(디스코드 로그인) 활성 여부를 물어본다(블로킹). 실패하면 False."""
     import json
     import ssl
     import urllib.request
@@ -159,19 +161,29 @@ def _probe_connect_status() -> bool:
         return False
 
 
-async def _connect_enabled() -> bool:
-    """디스코드 로그인 추가 버튼을 켤지. env(AGENT_CONNECT_ENABLED) 강제 우선, 아니면 서버 상태(60초 캐시)."""
+def _connect_enabled() -> bool:
+    """디스코드 로그인 추가 버튼을 켤지. env 강제 우선, 아니면 백그라운드로 갱신된 서버 상태(캐시)."""
     import os
-    import time
 
     if os.getenv("AGENT_CONNECT_ENABLED"):
         return True
-    now = time.monotonic()
-    if now - _connect_cache["ts"] > 60:
-        _connect_cache["ts"] = now
-        loop = asyncio.get_event_loop()
-        _connect_cache["enabled"] = await loop.run_in_executor(None, _probe_connect_status)
     return bool(_connect_cache["enabled"])
+
+
+def _start_connect_status_refresher(interval_s: float = 60.0) -> None:
+    """서버 OAuth 활성 여부를 주기적으로 갱신하는 데몬(첫 갱신 즉시). GUI 시작 시 호출."""
+    import threading
+    import time
+
+    def _loop() -> None:
+        while True:
+            try:
+                _connect_cache["enabled"] = _probe_connect_status()
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(interval_s)
+
+    threading.Thread(target=_loop, daemon=True).start()
 
 
 def _page(session_key: str) -> str:
@@ -431,7 +443,7 @@ def build_app(session_key: str) -> web.Application:
                 "enableImage": bool(saved.get("enable_image")),
                 # ‘디스코드 로그인’ OAuth 가능 여부는 **서버 설정**으로 결정된다(에이전트 env 불필요).
                 # 서버에 OAuth 앱(client-id/secret)이 설정돼 있으면 자동으로 켜진다.
-                "connectEnabled": await _connect_enabled(),
+                "connectEnabled": _connect_enabled(),
             }
         )
 
@@ -489,7 +501,7 @@ def build_app(session_key: str) -> web.Application:
         import webbrowser
         from urllib.parse import quote
 
-        if not await _connect_enabled():
+        if not _connect_enabled():
             return web.json_response(
                 {"ok": False, "error": "서버에 디스코드 로그인(OAuth)이 아직 설정되지 않았어요. 토큰으로 추가하세요."}
             )
@@ -874,6 +886,7 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
         flush=True,
     )
     _start_auto_update_watcher()  # 자동 업데이트 ON 이면 시작 시+주기적으로 검사·적용(실행 중에도)
+    _start_connect_status_refresher()  # 서버의 디스코드 로그인(OAuth) 활성 여부 주기 갱신
 
     if _webview_available():
         try:

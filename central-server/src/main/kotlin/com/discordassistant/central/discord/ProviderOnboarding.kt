@@ -38,7 +38,6 @@ object ProviderOnboarding {
                     "ollama pull llama3.1:8b\n" +
                     "curl -L -o discord-ai-network-bot-macos $DL/discord-ai-network-bot-macos " +
                     "&& chmod +x discord-ai-network-bot-macos\n" +
-                    "codesign --force --deep --sign - discord-ai-network-bot-macos\n" +
                     "./discord-ai-network-bot-macos --token $token --relay-url $relay\n" +
                     "```" + note
             "windows", "win" ->

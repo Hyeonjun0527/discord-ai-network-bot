@@ -17,6 +17,9 @@ SAVEABLE = (
     "max_concurrency",
     "daily_limit",
     "allow_remote_ollama",
+    "enable_image",
+    "sd_url",
+    "allow_remote_sd",
 )
 
 

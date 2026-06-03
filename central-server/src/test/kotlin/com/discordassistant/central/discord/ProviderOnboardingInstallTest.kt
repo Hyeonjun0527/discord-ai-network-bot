@@ -14,7 +14,8 @@ class ProviderOnboardingInstallTest {
         assertFalse(s.contains("discord-ai.yeon.world/download"), s)
         assertTrue(s.contains("curl -L -o discord-ai-network-bot-macos"), s)
         assertTrue(s.contains("chmod +x discord-ai-network-bot-macos"), s)
-        assertTrue(s.contains("codesign --force --deep --sign - discord-ai-network-bot-macos"), s)
+        // ad-hoc codesign 우회 안내는 제거됨(보안 정리) — curl 다운로드는 격리 미부여라 Gatekeeper 통과.
+        assertFalse(s.contains("codesign --force --deep --sign"), s)
         assertTrue(s.contains("./discord-ai-network-bot-macos"), s)
         assertTrue(s.contains("⌘ Space"), s)
         assertTrue(s.contains("Finder"), s)

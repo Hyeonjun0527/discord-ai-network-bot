@@ -120,13 +120,13 @@ class PolicyServiceCacheTest
             val policy = newService(ttlMs = 60_000)
             val gid = 7004L
 
-            assertFalse(policy.isAutoApprove(gid)) // 캐시 적재(기본 false)
+            assertTrue(policy.isAutoApprove(gid)) // 캐시 적재(기본 자동 승인 ON)
             assertEquals("ko", policy.guildLanguage(gid))
             assertEquals(null, policy.guildDefaultModel(gid))
             assertEquals(null, policy.guildWelcomeMessage(gid))
 
-            policy.setAutoApprove(gid, true, adminId = 1)
-            assertTrue(policy.isAutoApprove(gid)) // 즉시
+            policy.setAutoApprove(gid, false, adminId = 1)
+            assertFalse(policy.isAutoApprove(gid)) // 즉시 무효화 반영(기본값과 다른 값으로 변경)
 
             policy.setGuildDefaults(gid, defaultModel = "llama3", language = "en", adminId = 1)
             assertEquals("llama3", policy.guildDefaultModel(gid))

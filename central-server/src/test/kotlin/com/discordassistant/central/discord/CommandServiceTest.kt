@@ -219,6 +219,7 @@ class CommandServiceTest
 
         @Test
         fun `provider-join — 수동 승인이면 대기`() {
+            commands.setAutoApprove(ctx(admin = true), enabled = false) // 기본이 자동 승인 → 수동으로 전환
             val r = commands.providerJoin(ctx())
             assertTrue(r.content.contains("승인을 기다려"))
         }

@@ -96,7 +96,8 @@ class PolicyService(
         guilds
             .findById(guildId)
             .map { GuildSettings(it.autoApprove, it.defaultModel, it.language, it.welcomeMessage) }
-            .orElse(GuildSettings(autoApprove = false, defaultModel = null, language = "ko", welcomeMessage = null))
+            // 설정 안 한 길드의 기본값: 자동 승인 ON(유입 마찰 최소화). 관리자가 /서버기본값·설정으로 끌 수 있음.
+            .orElse(GuildSettings(autoApprove = true, defaultModel = null, language = "ko", welcomeMessage = null))
 
     private fun cachedChannelIds(guildId: Long): List<Long> = read(channelCache, guildId, ::loadChannelIds)
 

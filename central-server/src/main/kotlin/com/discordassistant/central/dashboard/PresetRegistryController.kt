@@ -280,7 +280,7 @@ class PresetRegistryController(
             "id" to report.id,
             "status" to report.status,
             "reviewedBy" to report.reviewedBy,
-            "reviewedAt" to report.reviewedAt?.toString(),
+            "reviewedAt" to report.reviewedAt,
         )
     }
 

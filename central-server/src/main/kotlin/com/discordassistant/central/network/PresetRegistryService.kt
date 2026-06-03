@@ -63,7 +63,7 @@ class PresetRegistryService(
         category: String,
         visibility: String,
         behavior: PresetBehaviorInput,
-    ): AiPresetEntity {
+    ): PresetWriteResult {
         featureGate.requirePresetEnabled()
         val now = Instant.now(clock)
         val preset =
@@ -83,7 +83,7 @@ class PresetRegistryService(
         val revision = createRevision(preset, revision = 1, behavior = behavior, createdBy = ownerUserId, now = now)
         preset.currentRevisionId = revision.id
         preset.updatedAt = now
-        return presets.save(preset)
+        return presets.save(preset).toWriteResult()
     }
 
     @Transactional
@@ -95,7 +95,7 @@ class PresetRegistryService(
         summary: String?,
         category: String = "channel_ai",
         visibility: String = "guild_private",
-    ): AiPresetEntity {
+    ): PresetWriteResult {
         featureGate.requirePresetEnabled()
         val channelAi =
             channelAis.findByGuildIdAndChannelId(guildId, channelId)
@@ -185,7 +185,7 @@ class PresetRegistryService(
         category: String?,
         visibility: String?,
         behavior: PresetBehaviorInput?,
-    ): AiPresetEntity {
+    ): PresetWriteResult {
         featureGate.requirePresetEnabled()
         val now = Instant.now(clock)
         val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
@@ -200,7 +200,7 @@ class PresetRegistryService(
             preset.currentRevisionId = revision.id
         }
         preset.updatedAt = now
-        return presets.save(preset)
+        return presets.save(preset).toWriteResult()
     }
 
     @Transactional
@@ -209,7 +209,7 @@ class PresetRegistryService(
         publisherUserId: Long?,
         title: String?,
         description: String?,
-    ): PublishedPresetEntity {
+    ): PublishedPresetWriteResult {
         featureGate.requirePresetEnabled()
         val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
         requireActivePreset(preset)
@@ -228,19 +228,20 @@ class PresetRegistryService(
         preset.status = "published"
         preset.visibility = "published"
         presets.save(preset)
-        return publishedPresets.save(
-            PublishedPresetEntity(
-                presetId = preset.id,
-                revisionId = revisionId,
-                publisherGuildId = preset.guildId,
-                publisherUserId = publisherUserId,
-                slug = uniqueSlug(publishTitle.take(120), preset.id),
-                title = publishTitle.take(120),
-                description = publishDescription?.take(500),
-                status = "published",
-                publishedAt = Instant.now(clock),
-            ),
-        )
+        return publishedPresets
+            .save(
+                PublishedPresetEntity(
+                    presetId = preset.id,
+                    revisionId = revisionId,
+                    publisherGuildId = preset.guildId,
+                    publisherUserId = publisherUserId,
+                    slug = uniqueSlug(publishTitle.take(120), preset.id),
+                    title = publishTitle.take(120),
+                    description = publishDescription?.take(500),
+                    status = "published",
+                    publishedAt = Instant.now(clock),
+                ),
+            ).toWriteResult()
     }
 
     @Transactional(readOnly = true)
@@ -271,7 +272,7 @@ class PresetRegistryService(
         title: String?,
         description: String?,
         behavior: PresetBehaviorInput?,
-    ): PublishedPresetEntity {
+    ): PublishedPresetWriteResult {
         featureGate.requirePresetEnabled()
         val now = Instant.now(clock)
         val published =
@@ -298,7 +299,7 @@ class PresetRegistryService(
             requirePublishableRevision(revision)
             published.revisionId = revision.id
         }
-        return publishedPresets.save(published)
+        return publishedPresets.save(published).toWriteResult()
     }
 
     @Transactional
@@ -308,7 +309,7 @@ class PresetRegistryService(
         targetChannelId: Long?,
         importedBy: Long?,
         confirmConflicts: Boolean = false,
-    ): PresetImportEntity {
+    ): PresetImportResult {
         featureGate.requirePresetEnabled()
         val published =
             publishedPresets.findById(publishedPresetId).orElseThrow {
@@ -362,27 +363,28 @@ class PresetRegistryService(
             }
         published.importCount += 1
         publishedPresets.save(published)
-        return imports.save(
-            PresetImportEntity(
-                publishedPresetId = publishedPresetId,
-                sourceRevisionId = sourceRevision.id,
-                targetGuildId = targetGuildId,
-                targetChannelId = targetChannelId,
-                importedBy = importedBy,
-                importedPresetId = importedPreset.id,
-                createdChannelAiId = applied?.channelAiId,
-                createdBehaviorVersionId = applied?.behaviorVersionId,
-                status = applied?.status ?: "imported",
-                importedAt = now,
-            ),
-        )
+        return imports
+            .save(
+                PresetImportEntity(
+                    publishedPresetId = publishedPresetId,
+                    sourceRevisionId = sourceRevision.id,
+                    targetGuildId = targetGuildId,
+                    targetChannelId = targetChannelId,
+                    importedBy = importedBy,
+                    importedPresetId = importedPreset.id,
+                    createdChannelAiId = applied?.channelAiId,
+                    createdBehaviorVersionId = applied?.behaviorVersionId,
+                    status = applied?.status ?: "imported",
+                    importedAt = now,
+                ),
+            ).toResult()
     }
 
     @Transactional
     fun likePreset(
         publishedPresetId: Long,
         userId: Long,
-    ): PublishedPresetEntity {
+    ): PublishedPresetWriteResult {
         featureGate.requirePresetEnabled()
         val published =
             publishedPresets.findById(publishedPresetId).orElseThrow {
@@ -400,14 +402,14 @@ class PresetRegistryService(
             )
             published.likeCount += 1
         }
-        return publishedPresets.save(published)
+        return publishedPresets.save(published).toWriteResult()
     }
 
     @Transactional
     fun unlikePreset(
         publishedPresetId: Long,
         userId: Long,
-    ): PublishedPresetEntity {
+    ): PublishedPresetWriteResult {
         featureGate.requirePresetEnabled()
         val published =
             publishedPresets.findById(publishedPresetId).orElseThrow {
@@ -418,7 +420,7 @@ class PresetRegistryService(
             reactions.delete(reaction)
             published.likeCount = (published.likeCount - 1).coerceAtLeast(0)
         }
-        return publishedPresets.save(published)
+        return publishedPresets.save(published).toWriteResult()
     }
 
     @Transactional
@@ -428,7 +430,7 @@ class PresetRegistryService(
         reason: String,
         reasonCode: String? = null,
         details: String? = null,
-    ): PresetReportEntity {
+    ): PresetReportWriteResult {
         featureGate.requirePresetEnabled()
         val published =
             publishedPresets.findById(publishedPresetId).orElseThrow {
@@ -437,7 +439,7 @@ class PresetRegistryService(
         require(published.status !in setOf("removed", "unlisted")) { "${published.status} preset cannot be reported" }
         reporterUserId?.let { reporter ->
             reports.findByPublishedPresetIdAndReporterUserIdAndStatus(publishedPresetId, reporter, "open")?.let {
-                return it
+                return it.toWriteResult()
             }
         }
         published.reportCount += 1
@@ -451,41 +453,42 @@ class PresetRegistryService(
                 ?.let { sanitizeText(it, maxLength = 500) }
                 ?.takeIf { it != "no reason provided" }
         val normalizedReasonCode = normalizeReportReasonCode(reasonCode ?: reason)
-        return reports.save(
-            PresetReportEntity(
-                publishedPresetId = publishedPresetId,
-                reporterUserId = reporterUserId,
-                reason = sanitizedReason,
-                reasonCode = normalizedReasonCode,
-                details = sanitizedDetails,
-                createdAt = Instant.now(clock),
-            ),
-        )
+        return reports
+            .save(
+                PresetReportEntity(
+                    publishedPresetId = publishedPresetId,
+                    reporterUserId = reporterUserId,
+                    reason = sanitizedReason,
+                    reasonCode = normalizedReasonCode,
+                    details = sanitizedDetails,
+                    createdAt = Instant.now(clock),
+                ),
+            ).toWriteResult()
     }
 
     @Transactional
-    fun deletePreset(presetId: Long): AiPresetEntity {
+    fun deletePreset(presetId: Long): PresetWriteResult {
         featureGate.requirePresetEnabled()
         val preset = presets.findById(presetId).orElseThrow { IllegalArgumentException("preset not found: $presetId") }
         preset.status = "removed"
         preset.visibility = "removed"
         preset.updatedAt = Instant.now(clock)
-        return presets.save(preset)
+        return presets.save(preset).toWriteResult()
     }
 
     @Transactional
-    fun deletePublishedPreset(publishedPresetId: Long): PublishedPresetEntity {
+    fun deletePublishedPreset(publishedPresetId: Long): PublishedPresetWriteResult {
         featureGate.requirePresetEnabled()
         val published =
             publishedPresets.findById(publishedPresetId).orElseThrow {
                 IllegalArgumentException("published preset not found: $publishedPresetId")
             }
         published.status = "removed"
-        return publishedPresets.save(published)
+        return publishedPresets.save(published).toWriteResult()
     }
 
     @Transactional
-    fun unlistPublishedPreset(publishedPresetId: Long): PublishedPresetEntity {
+    fun unlistPublishedPreset(publishedPresetId: Long): PublishedPresetWriteResult {
         featureGate.requirePresetEnabled()
         val published =
             publishedPresets.findById(publishedPresetId).orElseThrow {
@@ -493,11 +496,11 @@ class PresetRegistryService(
             }
         require(published.status != "removed") { "removed preset cannot be unlisted" }
         published.status = "unlisted"
-        return publishedPresets.save(published)
+        return publishedPresets.save(published).toWriteResult()
     }
 
     @Transactional
-    fun republishPreset(publishedPresetId: Long): PublishedPresetEntity {
+    fun republishPreset(publishedPresetId: Long): PublishedPresetWriteResult {
         featureGate.requirePresetEnabled()
         val published =
             publishedPresets.findById(publishedPresetId).orElseThrow {
@@ -511,7 +514,7 @@ class PresetRegistryService(
         requirePublishablePublicMetadata(published.title, published.description)
         requirePublishableRevision(revision)
         published.status = "published"
-        return publishedPresets.save(published)
+        return publishedPresets.save(published).toWriteResult()
     }
 
     @Transactional
@@ -519,7 +522,7 @@ class PresetRegistryService(
         reportId: Long,
         decision: String,
         reviewerUserId: Long? = null,
-    ): PresetReportEntity {
+    ): PresetReportWriteResult {
         featureGate.requirePresetEnabled()
         val report = reports.findById(reportId).orElseThrow { IllegalArgumentException("preset report not found: $reportId") }
         val published =
@@ -542,8 +545,47 @@ class PresetRegistryService(
             "dismiss", "dismissed" -> if (published.status == "under_review") published.status = "published"
         }
         publishedPresets.save(published)
-        return reports.save(report)
+        return reports.save(report).toWriteResult()
     }
+
+    // --- write 결과 엔티티 → DTO 매핑 (web↛entity 누수 제거, 원시값 그대로) ---
+
+    private fun AiPresetEntity.toWriteResult(): PresetWriteResult =
+        PresetWriteResult(
+            id = id,
+            currentRevisionId = currentRevisionId,
+            status = status,
+        )
+
+    private fun PublishedPresetEntity.toWriteResult(): PublishedPresetWriteResult =
+        PublishedPresetWriteResult(
+            id = id,
+            revisionId = revisionId,
+            status = status,
+            slug = slug,
+            title = title,
+            description = description,
+            likeCount = likeCount,
+        )
+
+    private fun PresetImportEntity.toResult(): PresetImportResult =
+        PresetImportResult(
+            id = id,
+            importedPresetId = importedPresetId,
+            sourceRevisionId = sourceRevisionId,
+            createdChannelAiId = createdChannelAiId,
+            createdBehaviorVersionId = createdBehaviorVersionId,
+            status = status,
+        )
+
+    private fun PresetReportEntity.toWriteResult(): PresetReportWriteResult =
+        PresetReportWriteResult(
+            id = id,
+            status = status,
+            reasonCode = reasonCode,
+            reviewedBy = reviewedBy,
+            reviewedAt = reviewedAt?.toString(),
+        )
 
     private fun buildImportPreview(
         published: PublishedPresetEntity,
@@ -985,6 +1027,44 @@ private data class AppliedPresetChannelAi(
     val channelAiId: Long,
     val behaviorVersionId: Long,
     val status: String,
+)
+
+/**
+ * write 결과 DTO. 컨트롤러/CommandService 가 JPA 엔티티 대신 이 값을 읽어 응답을 만든다
+ * (web↛entity 누수 제거, 감사 2026-06-03 C). 필드는 컨트롤러가 기존에 엔티티에서 직접 읽던
+ * 원시값(raw)을 그대로 담아 HTTP 응답 JSON 을 불변으로 유지한다(공개 마스킹 미적용).
+ */
+data class PresetWriteResult(
+    val id: Long,
+    val currentRevisionId: Long?,
+    val status: String,
+)
+
+data class PublishedPresetWriteResult(
+    val id: Long,
+    val revisionId: Long,
+    val status: String,
+    val slug: String,
+    val title: String,
+    val description: String?,
+    val likeCount: Int,
+)
+
+data class PresetImportResult(
+    val id: Long,
+    val importedPresetId: Long?,
+    val sourceRevisionId: Long?,
+    val createdChannelAiId: Long?,
+    val createdBehaviorVersionId: Long?,
+    val status: String,
+)
+
+data class PresetReportWriteResult(
+    val id: Long,
+    val status: String,
+    val reasonCode: String,
+    val reviewedBy: Long?,
+    val reviewedAt: String?,
 )
 
 data class PresetBehaviorInput(

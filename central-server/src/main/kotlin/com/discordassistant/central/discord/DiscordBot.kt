@@ -69,6 +69,11 @@ private val DM_COMMANDS =
         "provider-status",
     )
 
+/** 봇이 현재 들어가 있는 길드(서버) id 목록을 제공한다(웹 ‘토큰 받기’ 서버 선택용). */
+fun interface BotGuildLister {
+    fun botGuildIds(): Set<Long>
+}
+
 /**
  * Discord(JDA) 부트스트랩 + 슬래시 명령 등록/디스패치 (K-차수 13).
  * central.discord.enabled=true 이고 토큰이 있을 때만 연결한다(테스트/CI 는 비활성).
@@ -88,9 +93,13 @@ class DiscordBot(
     @param:Value("\${central.discord.message-content-intent-enabled:true}") private val messageContentIntentEnabled: Boolean,
     @param:Value("\${central.discord.fallback-without-message-content-on-4014:true}") private val fallbackWithoutMessageContentOn4014:
         Boolean,
-) {
+) : BotGuildLister {
     private val log = LoggerFactory.getLogger(DiscordBot::class.java)
     private var jda: JDA? = null
+
+    /** 봇이 들어가 있는 길드 id 집합(JDA 미연결/비활성이면 빈 집합). */
+    override fun botGuildIds(): Set<Long> = jda?.guilds?.map { it.idLong }?.toSet() ?: emptySet()
+
     private val fallbackAttempted = AtomicBoolean(false)
 
     @PostConstruct

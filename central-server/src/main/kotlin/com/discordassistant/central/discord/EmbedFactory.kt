@@ -117,6 +117,75 @@ object EmbedFactory {
         return b.build()
     }
 
+    /**
+     * 서버 AI 자동 온보딩 제안 카드. 휴리스틱으로 만든 채널 AI draft 를 보여주고
+     * 아래 승인/거절 버튼으로 검토받는다. "알게 된 것"은 Phase 2b 백필 요약(수집/스크럽/색인 상태)으로 채운다.
+     */
+    fun onboardingProposalEmbed(
+        name: String,
+        purpose: String,
+        tone: String,
+        answerLength: String,
+        constitution: String,
+        backfilledMessageCount: Int = 0,
+        scrubbedCount: Int = 0,
+        knowledgeIndexed: Boolean = false,
+        knowledgeSpaceCreated: Boolean = false,
+        analysisSource: String = "heuristic",
+        customInstruction: String? = null,
+    ): MessageEmbed {
+        val constitutionSummary = constitution.lines().take(4).joinToString("\n") { "• ${it.trim()}" }
+        val builder =
+            EmbedBuilder()
+                .setColor(DEEP_INDIGO)
+                .setTitle("🐾 채널 AI 자동 설정 제안")
+                .setDescription(
+                    "이 채널을 분석해 아래 AI 페르소나 초안을 만들었어요. " +
+                        "검토 후 **승인**하면 이 채널 `/ask` 답변에 적용되고, **거절**하면 적용되지 않습니다.",
+                ).addField("분석 방식", onboardingAnalysisSourceLabel(analysisSource), false)
+                .addField("이름", name, true)
+                .addField("역할", purpose.take(200), true)
+                .addField("말투", tone, true)
+                .addField("답변 길이", answerLength, true)
+                .addField("헌법(요약)", constitutionSummary.ifBlank { "기본 안전 규칙" }, false)
+        customInstruction?.trim()?.takeIf { it.isNotBlank() }?.let {
+            builder.addField("자유 지침", it.take(300), false)
+        }
+        return builder
+            .addField(
+                "알게 된 것",
+                onboardingBackfillSummary(backfilledMessageCount, scrubbedCount, knowledgeIndexed, knowledgeSpaceCreated),
+                false,
+            ).setFooter("자동 설정은 항상 관리자 승인 후에만 적용됩니다. 민감정보·봇 메시지는 수집하지 않으며, 작성자는 익명화됩니다.")
+            .build()
+    }
+
+    /** 분석 출처 라벨(제안 카드 표기): LLM 분석 기반 vs 휴리스틱. */
+    private fun onboardingAnalysisSourceLabel(analysisSource: String): String =
+        when (analysisSource.lowercase()) {
+            "llm" -> "🤖 LLM 분석 기반 (서버 대화를 분석해 제안)"
+            else -> "🧭 휴리스틱 (채널명 기반 기본 제안)"
+        }
+
+    /** 백필 요약 문구(수집 N건 / 스크럽 M건 / 지식공간 색인됨·검토대기·없음). */
+    private fun onboardingBackfillSummary(
+        backfilledMessageCount: Int,
+        scrubbedCount: Int,
+        knowledgeIndexed: Boolean,
+        knowledgeSpaceCreated: Boolean,
+    ): String {
+        if (!knowledgeSpaceCreated && backfilledMessageCount == 0) {
+            return "수집된 과거 메시지가 없어 RAG 지식은 비어 있어요. `/ai-onboard` 의 backfill-channel·history-limit 으로 본문을 학습시킬 수 있어요."
+        }
+        val indexState =
+            when {
+                knowledgeIndexed -> "지식공간 색인됨 ✅"
+                knowledgeSpaceCreated -> "지식공간 생성됨(검토 대기) ⏳"
+                else -> "지식공간 없음"
+            }
+        return "수집 ${backfilledMessageCount}건 · 민감정보 스크럽 ${scrubbedCount}건 · $indexState"
+    }
+
     /** 설정 패널 Embed(현재 상태를 필드로). 컴포넌트(드롭다운/버튼)는 메시지에 함께 첨부. */
     fun settingsEmbed(
         language: String,

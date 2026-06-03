@@ -9,7 +9,11 @@ import com.discordassistant.central.domain.ProviderState
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.domain.RetrievalPolicyStatus
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import java.time.Instant
 
 interface GuildRepository : JpaRepository<GuildEntity, Long>
@@ -159,6 +163,17 @@ interface ChannelAiRepository : JpaRepository<ChannelAiEntity, Long> {
         channelId: Long,
     ): ChannelAiEntity?
 
+    /**
+     * 채널 AI 행을 PESSIMISTIC_WRITE 로 잠근 채 조회한다(트랜잭션 필요).
+     * behavior version 채번(`MAX(version)+1`)을 같은 채널 안에서 직렬화해
+     * `uk_ai_behavior_version` 유니크 위반 race(동시 두 요청이 같은 version 으로 insert)를 막는 데 쓴다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from ChannelAiEntity c where c.id = :id")
+    fun findByIdForUpdate(
+        @Param("id") id: Long,
+    ): ChannelAiEntity?
+
     fun deleteByGuildIdAndChannelId(
         guildId: Long,
         channelId: Long,
@@ -185,6 +200,16 @@ interface AiChangeProposalRepository : JpaRepository<AiChangeProposalEntity, Lon
         guildId: Long,
         status: ProposalStatus,
     ): List<AiChangeProposalEntity>
+
+    /**
+     * 제안 행을 PESSIMISTIC_WRITE 로 잠근 채 조회한다(트랜잭션 필요).
+     * 동시 승인/거절(`approveProposal`/`rejectProposal`)을 직렬화해 이중 APPROVED·lost update 를 막는다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from AiChangeProposalEntity p where p.id = :id")
+    fun findByIdForUpdate(
+        @Param("id") id: Long,
+    ): AiChangeProposalEntity?
 
     fun findByGuildIdOrderByCreatedAtDesc(guildId: Long): List<AiChangeProposalEntity>
 
@@ -216,6 +241,37 @@ interface AiNetworkProfileRepository : JpaRepository<AiNetworkProfileEntity, Lon
     fun findByGuildId(guildId: Long): AiNetworkProfileEntity?
 }
 
+interface GuildOnboardingConsentRepository : JpaRepository<GuildOnboardingConsentEntity, Long> {
+    fun findByGuildIdOrderByCreatedAtDesc(guildId: Long): List<GuildOnboardingConsentEntity>
+
+    fun deleteByGuildId(guildId: Long)
+}
+
+interface GuildOnboardingRunRepository : JpaRepository<GuildOnboardingRunEntity, Long> {
+    fun findByGuildIdOrderByCreatedAtDesc(guildId: Long): List<GuildOnboardingRunEntity>
+
+    fun findByProposalId(proposalId: Long): GuildOnboardingRunEntity?
+
+    fun deleteByGuildId(guildId: Long)
+}
+
+interface GuildOnboardingOptOutRepository : JpaRepository<GuildOnboardingOptOutEntity, Long> {
+    fun findByGuildId(guildId: Long): List<GuildOnboardingOptOutEntity>
+
+    fun existsByGuildIdAndUserId(
+        guildId: Long,
+        userId: Long,
+    ): Boolean
+
+    @org.springframework.transaction.annotation.Transactional
+    fun deleteByGuildIdAndUserId(
+        guildId: Long,
+        userId: Long,
+    )
+
+    fun deleteByGuildId(guildId: Long)
+}
+
 interface ProviderCapabilityProfileRepository : JpaRepository<ProviderCapabilityProfileEntity, Long> {
     fun findByGuildId(guildId: Long): List<ProviderCapabilityProfileEntity>
 
@@ -236,6 +292,12 @@ interface KnowledgeSpaceRepository : JpaRepository<KnowledgeSpaceEntity, Long> {
     fun findByGuildIdAndId(
         guildId: Long,
         id: Long,
+    ): KnowledgeSpaceEntity?
+
+    /** 온보딩 백필 지식공간 재사용용 — 같은 채널 AI + 같은 표시이름의 기존 space(가장 먼저 만든 것)를 찾는다. */
+    fun findFirstByChannelAiIdAndDisplayNameOrderByIdAsc(
+        channelAiId: Long,
+        displayName: String,
     ): KnowledgeSpaceEntity?
 }
 

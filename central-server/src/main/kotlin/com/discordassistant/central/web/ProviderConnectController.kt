@@ -119,8 +119,9 @@ class ProviderConnectController(
         val entry =
             selections.take(sel)
                 ?: return page(HttpStatus.BAD_REQUEST, "만료되었거나 잘못된 요청입니다. 처음부터 다시 시도해 주세요.")
-        val picked = entry.candidates.firstOrNull { it.id == guild }
-            ?: return page(HttpStatus.BAD_REQUEST, "선택할 수 없는 서버입니다.")
+        val picked =
+            entry.candidates.firstOrNull { it.id == guild }
+                ?: return page(HttpStatus.BAD_REQUEST, "선택할 수 없는 서버입니다.")
         return issueAndRedirect(entry.cb, entry.localState, entry.userId, guild, picked.name)
     }
 

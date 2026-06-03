@@ -17,9 +17,12 @@ def _reset(monkeypatch, tmp_path):
     from provider_agent import singleton
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.delenv("AGENT_CONNECT_ENABLED", raising=False)
     webui._state["agent"] = None
     webui._state["task"] = None
     webui._log_lines.clear()
+    # 테스트는 실네트워크 금지: connectEnabled 캐시를 매번 비활성으로 리셋(probe 데몬은 GUI 에서만 시작).
+    webui._connect_cache["enabled"] = False
     singleton.release()  # 락 보유 상태가 다음 테스트로 새지 않게
     yield
     singleton.release()
@@ -344,6 +347,21 @@ async def test_update_progress_endpoint(monkeypatch):
         assert d["phase"] == "downloading" and d["percent"] == 50
     finally:
         await client.close()
+
+
+def test_connect_enabled_env_override(monkeypatch):
+    # env 강제(개발/오버라이드)면 캐시와 무관하게 활성.
+    monkeypatch.setenv("AGENT_CONNECT_ENABLED", "1")
+    assert webui._connect_enabled() is True
+
+
+def test_connect_enabled_reflects_server(monkeypatch):
+    # env 없으면 백그라운드로 갱신된 서버 상태(캐시)를 따른다.
+    monkeypatch.delenv("AGENT_CONNECT_ENABLED", raising=False)
+    webui._connect_cache["enabled"] = True
+    assert webui._connect_enabled() is True
+    webui._connect_cache["enabled"] = False
+    assert webui._connect_enabled() is False
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseBody
 import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -79,6 +80,11 @@ class ProviderConnectController(
                 "&prompt=consent"
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(authorize)).build()
     }
+
+    /** 에이전트가 '디스코드 로그인 추가' 버튼을 켤지 판단하도록 OAuth 활성 여부만 알려준다(설정 노출 없음). */
+    @GetMapping("/provider/connect/status", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseBody
+    fun connectStatus(): Map<String, Boolean> = mapOf("enabled" to enabled)
 
     @GetMapping("/provider/connect/callback")
     fun callback(

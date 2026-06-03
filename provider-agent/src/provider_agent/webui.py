@@ -137,6 +137,55 @@ def _connect_base(relay: str) -> str:
     return base.rstrip("/")
 
 
+# ‘디스코드 로그인’ OAuth 가능 여부는 서버 설정에 달려 있다 → 백그라운드로 서버에 물어 캐시.
+# env(AGENT_CONNECT_ENABLED)는 강제 오버라이드. _connect_enabled()는 동기·즉시(캐시 읽기)라
+# 이벤트루프를 막지 않는다(네트워크는 _start_connect_status_refresher 데몬이 담당).
+_connect_cache: dict = {"enabled": False}
+
+
+def _probe_connect_status() -> bool:
+    """중앙 서버에 OAuth(디스코드 로그인) 활성 여부를 물어본다(블로킹). 실패하면 False."""
+    import json
+    import ssl
+    import urllib.request
+
+    import certifi
+
+    base = _connect_base(load_config().get("relay_url") or _default_relay())
+    try:
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        req = urllib.request.Request(base + "/provider/connect/status", headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=4, context=ctx) as resp:  # noqa: S310 - https 고정
+            return bool(json.loads(resp.read().decode("utf-8")).get("enabled"))
+    except Exception:  # noqa: BLE001 - 서버 미설정/네트워크 실패는 비활성으로
+        return False
+
+
+def _connect_enabled() -> bool:
+    """디스코드 로그인 추가 버튼을 켤지. env 강제 우선, 아니면 백그라운드로 갱신된 서버 상태(캐시)."""
+    import os
+
+    if os.getenv("AGENT_CONNECT_ENABLED"):
+        return True
+    return bool(_connect_cache["enabled"])
+
+
+def _start_connect_status_refresher(interval_s: float = 60.0) -> None:
+    """서버 OAuth 활성 여부를 주기적으로 갱신하는 데몬(첫 갱신 즉시). GUI 시작 시 호출."""
+    import threading
+    import time
+
+    def _loop() -> None:
+        while True:
+            try:
+                _connect_cache["enabled"] = _probe_connect_status()
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(interval_s)
+
+    threading.Thread(target=_loop, daemon=True).start()
+
+
 def _page(session_key: str) -> str:
     """세션 키를 주입한 제어판 HTML. 디자인은 데스크톱 앱 카드(레퍼런스), 동작은 실제 API 연결."""
     return _PAGE_TEMPLATE.replace("__SESSION_KEY__", session_key).replace("__VERSION__", AGENT_VERSION)
@@ -337,7 +386,7 @@ return '<div style="display:flex;align-items:center;gap:10px;min-height:56px;bor
 +'<span class="dot'+(s.connected?'':' grey')+'"></span>'
 +'<div style="flex:1;min-width:0"><div style="font-weight:800;font-size:14.5px;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+nm+(named?'':' <span class="helper" style="font-weight:600">(이름 미상)</span>')+'</div>'
 +'<div class="helper" style="margin:1px 0 0">'+(s.connected?'연결됨':'대기 중…')+'</div></div>'
-+'<button class="secondary-btn" title="이름 바꾸기" style="min-height:34px;padding:0 11px;font-size:13px" onclick="renameServer('+idx+')">✏</button>'
++'<button class="secondary-btn" style="min-height:34px;padding:0 12px;font-size:13px" onclick="renameServer('+idx+')">수정</button>'
 +'<button class="secondary-btn" style="min-height:34px;padding:0 12px;font-size:13px" onclick="removeServer('+idx+')">해제</button></div>';}).join('');}
 async function removeServer(idx){await j('/api/server-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx})});loadServers();refresh();}
 async function renameServer(idx){const name=prompt('이 서버의 표시 이름을 입력하세요');if(name==null)return;
@@ -378,8 +427,6 @@ def build_app(session_key: str) -> web.Application:
 
     async def status(req: web.Request) -> web.Response:
         _auth(req)
-        import os
-
         saved = load_config()
         agent = _state["agent"]
         task = _state["task"]
@@ -394,8 +441,9 @@ def build_app(session_key: str) -> web.Application:
                 "hasToken": bool(saved.get("token")),
                 "relayUrl": saved.get("relay_url") or _default_relay(),
                 "enableImage": bool(saved.get("enable_image")),
-                # ‘토큰 받기’ OAuth 는 중앙 서버 /provider/connect 가 배포된 뒤 켠다(그전엔 복붙 안내).
-                "connectEnabled": bool(os.getenv("AGENT_CONNECT_ENABLED")),
+                # ‘디스코드 로그인’ OAuth 가능 여부는 **서버 설정**으로 결정된다(에이전트 env 불필요).
+                # 서버에 OAuth 앱(client-id/secret)이 설정돼 있으면 자동으로 켜진다.
+                "connectEnabled": _connect_enabled(),
             }
         )
 
@@ -449,13 +497,14 @@ def build_app(session_key: str) -> web.Application:
         서버의 콜백(localhost)만 허용, state 는 서버 세션키를 사용(콜백에서 검증).
         """
         _auth(req)
-        import os
         import re
         import webbrowser
         from urllib.parse import quote
 
-        if not os.getenv("AGENT_CONNECT_ENABLED"):
-            return web.json_response({"ok": False, "error": "토큰 받기가 아직 활성화되지 않았습니다."})
+        if not _connect_enabled():
+            return web.json_response(
+                {"ok": False, "error": "서버에 디스코드 로그인(OAuth)이 아직 설정되지 않았어요. 토큰으로 추가하세요."}
+            )
         data = await req.json()
         origin = str(data.get("origin", "")).strip()
         if not re.fullmatch(r"http://(127\.0\.0\.1|localhost)(:\d+)?", origin):
@@ -837,6 +886,7 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
         flush=True,
     )
     _start_auto_update_watcher()  # 자동 업데이트 ON 이면 시작 시+주기적으로 검사·적용(실행 중에도)
+    _start_connect_status_refresher()  # 서버의 디스코드 로그인(OAuth) 활성 여부 주기 갱신
 
     if _webview_available():
         try:

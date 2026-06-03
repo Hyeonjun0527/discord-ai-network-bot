@@ -62,6 +62,7 @@ class CommandServiceTest
         val embeddingJobs: EmbeddingIndexJobRepository,
         val aiFeedbacks: AiFeedbackRepository,
         val aiAdminRoles: AiAdminRoleRepository,
+        val onboardingOptOuts: com.discordassistant.central.persistence.GuildOnboardingOptOutRepository,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -598,6 +599,31 @@ class CommandServiceTest
 
             val approved = commands.approveOnboarding(admin, result.proposalId)
             assertTrue(approved.content.contains("승인"), approved.content)
+        }
+
+        // REQ-ONBOARD-006: 누구나 본인 opt-out 을 등록/해제할 수 있고(관리자 권한 불필요), DB 에 반영된다.
+        @Test
+        fun `ai-onboard-optout — 본인 opt-out 등록과 해제가 DB 에 반영된다`() {
+            val user = CommandContext(guildId = 100, channelId = 70400, userId = 4242, roleIds = setOf(1L), isAdmin = false)
+            assertFalse(onboardingOptOuts.existsByGuildIdAndUserId(100, 4242))
+
+            // 등록(enable=true) — 관리자 아님에도 허용.
+            val on = commands.setOnboardingOptOut(user, enable = true)
+            assertTrue(on.content.contains("제외"), on.content)
+            assertTrue(onboardingOptOuts.existsByGuildIdAndUserId(100, 4242))
+
+            // 멱등: 다시 enable=true 면 이미 적용됨 안내(중복 row 안 생김).
+            commands.setOnboardingOptOut(user, enable = true)
+            assertEquals(1, onboardingOptOuts.findByGuildId(100).count { it.userId == 4242L })
+
+            // 해제(enable=false).
+            val off = commands.setOnboardingOptOut(user, enable = false)
+            assertTrue(off.content.contains("해제"), off.content)
+            assertFalse(onboardingOptOuts.existsByGuildIdAndUserId(100, 4242))
+
+            // 토글(enable=null) — 없으면 등록.
+            commands.setOnboardingOptOut(user, enable = null)
+            assertTrue(onboardingOptOuts.existsByGuildIdAndUserId(100, 4242))
         }
 
         // REQ-INSTRUCTION-002: 비관리자의 /ai-instruction 자유 지침 추가는 거부된다.

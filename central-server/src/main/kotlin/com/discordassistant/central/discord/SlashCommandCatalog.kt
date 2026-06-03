@@ -114,7 +114,13 @@ object SlashCommandCatalog {
                 .setDefaultPermissions(adminPerm),
             Commands
                 .slash("ai-onboard", "이 채널 AI를 자동으로 설정합니다(관리자)")
+                .addOption(OptionType.CHANNEL, "backfill-channel", "본문까지 학습할 채널(생략 시 핀/공지만)", false)
+                .addOption(OptionType.INTEGER, "history-limit", "수집할 최근 메시지 수(최대 100)", false)
                 .setDefaultPermissions(adminPerm),
+            // 누구나 본인에 한해 사용(관리자 권한 불필요) — 본인 메시지를 자동 온보딩 백필 RAG 색인에서 제외.
+            Commands
+                .slash("ai-onboard-optout", "내 메시지를 서버 AI 자동 학습(백필 색인)에서 제외/해제합니다")
+                .addOption(OptionType.BOOLEAN, "enable", "true=제외 등록, false=해제(생략 시 토글)", false),
             Commands
                 .slash("ai-instruction", "이 채널 AI에 자유 지침을 추가/수정합니다(관리자)")
                 .addOption(OptionType.STRING, "text", "AI에게 줄 자연어 지침(비우면 현재 지침 확인)", false)

@@ -230,6 +230,23 @@ interface GuildOnboardingRunRepository : JpaRepository<GuildOnboardingRunEntity,
     fun deleteByGuildId(guildId: Long)
 }
 
+interface GuildOnboardingOptOutRepository : JpaRepository<GuildOnboardingOptOutEntity, Long> {
+    fun findByGuildId(guildId: Long): List<GuildOnboardingOptOutEntity>
+
+    fun existsByGuildIdAndUserId(
+        guildId: Long,
+        userId: Long,
+    ): Boolean
+
+    @org.springframework.transaction.annotation.Transactional
+    fun deleteByGuildIdAndUserId(
+        guildId: Long,
+        userId: Long,
+    )
+
+    fun deleteByGuildId(guildId: Long)
+}
+
 interface ProviderCapabilityProfileRepository : JpaRepository<ProviderCapabilityProfileEntity, Long> {
     fun findByGuildId(guildId: Long): List<ProviderCapabilityProfileEntity>
 

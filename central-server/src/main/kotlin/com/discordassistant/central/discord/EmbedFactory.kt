@@ -118,8 +118,8 @@ object EmbedFactory {
     }
 
     /**
-     * 서버 AI 자동 온보딩 제안 카드(Phase 1). 휴리스틱으로 만든 채널 AI draft 를 보여주고
-     * 아래 승인/거절 버튼으로 검토받는다. "알게 된 것"은 Phase 2(서버 분석)에서 채워질 placeholder.
+     * 서버 AI 자동 온보딩 제안 카드. 휴리스틱으로 만든 채널 AI draft 를 보여주고
+     * 아래 승인/거절 버튼으로 검토받는다. "알게 된 것"은 Phase 2b 백필 요약(수집/스크럽/색인 상태)으로 채운다.
      */
     fun onboardingProposalEmbed(
         name: String,
@@ -127,6 +127,10 @@ object EmbedFactory {
         tone: String,
         answerLength: String,
         constitution: String,
+        backfilledMessageCount: Int = 0,
+        scrubbedCount: Int = 0,
+        knowledgeIndexed: Boolean = false,
+        knowledgeSpaceCreated: Boolean = false,
     ): MessageEmbed {
         val constitutionSummary = constitution.lines().take(4).joinToString("\n") { "• ${it.trim()}" }
         return EmbedBuilder()
@@ -140,9 +144,31 @@ object EmbedFactory {
             .addField("말투", tone, true)
             .addField("답변 길이", answerLength, true)
             .addField("헌법(요약)", constitutionSummary.ifBlank { "기본 안전 규칙" }, false)
-            .addField("알게 된 것", "(추후 서버 분석으로 채워집니다)", false)
-            .setFooter("자동 설정은 항상 관리자 승인 후에만 적용됩니다. 민감정보는 수집하지 않습니다.")
+            .addField(
+                "알게 된 것",
+                onboardingBackfillSummary(backfilledMessageCount, scrubbedCount, knowledgeIndexed, knowledgeSpaceCreated),
+                false,
+            ).setFooter("자동 설정은 항상 관리자 승인 후에만 적용됩니다. 민감정보·봇 메시지는 수집하지 않으며, 작성자는 익명화됩니다.")
             .build()
+    }
+
+    /** 백필 요약 문구(수집 N건 / 스크럽 M건 / 지식공간 색인됨·검토대기·없음). */
+    private fun onboardingBackfillSummary(
+        backfilledMessageCount: Int,
+        scrubbedCount: Int,
+        knowledgeIndexed: Boolean,
+        knowledgeSpaceCreated: Boolean,
+    ): String {
+        if (!knowledgeSpaceCreated && backfilledMessageCount == 0) {
+            return "수집된 과거 메시지가 없어 RAG 지식은 비어 있어요. `/ai-onboard` 의 backfill-channel·history-limit 으로 본문을 학습시킬 수 있어요."
+        }
+        val indexState =
+            when {
+                knowledgeIndexed -> "지식공간 색인됨 ✅"
+                knowledgeSpaceCreated -> "지식공간 생성됨(검토 대기) ⏳"
+                else -> "지식공간 없음"
+            }
+        return "수집 ${backfilledMessageCount}건 · 민감정보 스크럽 ${scrubbedCount}건 · $indexState"
     }
 
     /** 설정 패널 Embed(현재 상태를 필드로). 컴포넌트(드롭다운/버튼)는 메시지에 함께 첨부. */

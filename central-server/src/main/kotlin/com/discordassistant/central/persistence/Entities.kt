@@ -245,6 +245,19 @@ class GuildOnboardingRunEntity(
     var updatedAt: Instant = Instant.EPOCH,
 )
 
+/**
+ * 자동 온보딩 백필 색인에서 본인 메시지를 제외하기로 한 사용자(유저 단위 opt-out).
+ * `/ai-onboard-optout` 으로 누구나 본인에 한해 등록/해제할 수 있다(관리자 권한 불필요). 길드 단위로 격리된다.
+ */
+@Entity
+@Table(name = "guild_onboarding_opt_out")
+class GuildOnboardingOptOutEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var userId: Long = 0,
+    var createdAt: Instant = Instant.EPOCH,
+)
+
 @Entity
 @Table(name = "ai_network_profile")
 class AiNetworkProfileEntity(

@@ -27,9 +27,24 @@ class GuildOnboardingService(
     private val channelAiCustomization: ChannelAiCustomizationService,
     private val consents: GuildOnboardingConsentRepository,
     private val runs: GuildOnboardingRunRepository,
+    private val backfillIndexer: OnboardingBackfillIndexer,
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
+    /**
+     * 이미 정제(sanitize)된 백필 입력. JDA 접근은 discord 레이어(CommandService/GuildHistoryBackfillService)가 하고,
+     * 이 network 서비스는 **정제 결과(텍스트 + 카운트)만** 받아 RAG 색인·run 기록을 담당한다(레이어 규칙 — JDA 비의존).
+     *
+     * @param indexText 색인용 정제 텍스트(작성자 익명화·민감 라인 제거 완료). 비어 있으면 색인하지 않는다.
+     * @param backfilledMessageCount 색인된 메시지 수(run 기록용).
+     * @param scrubbedCount 스크럽된 민감 라인 수(run 기록용).
+     */
+    data class BackfillInput(
+        val indexText: String,
+        val backfilledMessageCount: Int,
+        val scrubbedCount: Int,
+    )
+
     @Transactional
     fun startOnboarding(
         guildId: Long,
@@ -38,6 +53,9 @@ class GuildOnboardingService(
         actorRoleIds: Collection<Long> = emptyList(),
         actorIsGuildAdmin: Boolean = true,
         channelName: String? = null,
+        channelWhitelist: Set<Long> = emptySet(),
+        historyLimit: Int = 0,
+        backfill: BackfillInput? = null,
     ): GuildOnboardingResult {
         featureGate.requireChannelAiEnabled()
         // 권한 게이트는 createFromWizard 안에서도 강제되지만, consent/run 행을 남기기 전에 먼저 확인한다.
@@ -51,14 +69,15 @@ class GuildOnboardingService(
         )
         val now = Instant.now(clock)
 
-        // 1) consent 기록 — Phase 1 은 메시지 백필 미동의·화이트리스트 없음.
+        // 1) consent 기록 — 화이트리스트가 있으면 메시지 본문 백필 동의로 기록(채널 id CSV 직렬화).
+        val optedIn = channelWhitelist.isNotEmpty()
         val consent =
             consents.save(
                 GuildOnboardingConsentEntity(
                     guildId = guildId,
                     actorUserId = actorUserId,
-                    channelWhitelist = null,
-                    messageBackfillOptedIn = false,
+                    channelWhitelist = serializeWhitelist(channelWhitelist),
+                    messageBackfillOptedIn = optedIn,
                     createdAt = now,
                 ),
             )
@@ -84,7 +103,13 @@ class GuildOnboardingService(
                 requireApproval = true,
             )
 
-        // 4) run 추적(proposed).
+        // 4) 백필 텍스트가 있으면 RAG 지식공간 생성 + source 색인(위험도 review/sensitive 면 자동 색인 안 됨 — 검토 큐).
+        //    "파인튜닝 학습"이 아니라 RAG 색인이라 source row 삭제로 즉시 잊을 수 있다.
+        //    색인은 OnboardingBackfillIndexer 의 REQUIRES_NEW 독립 트랜잭션에서 수행한다 → 색인 실패가
+        //    consent/proposal/run(아래)을 롤백하지 않는다(S3 — 공유 트랜잭션 rollback-only 함정 차단).
+        val indexed = indexBackfillIfPresent(guildId, channelId, wizard.channelAiId, actorUserId, backfill)
+
+        // 5) run 추적(proposed).
         runs.save(
             GuildOnboardingRunEntity(
                 guildId = guildId,
@@ -92,11 +117,11 @@ class GuildOnboardingService(
                 consentId = consent.id,
                 proposalId = wizard.proposalId,
                 channelAiId = wizard.channelAiId,
-                knowledgeSpaceId = null,
+                knowledgeSpaceId = indexed?.knowledgeSpaceId,
                 analysisSource = "heuristic",
                 status = "proposed",
-                backfilledMessageCount = 0,
-                scrubbedCount = 0,
+                backfilledMessageCount = backfill?.backfilledMessageCount ?: 0,
+                scrubbedCount = backfill?.scrubbedCount ?: 0,
                 createdAt = now,
                 updatedAt = now,
             ),
@@ -115,8 +140,43 @@ class GuildOnboardingService(
             answerLength = draft.answerLength,
             constitution = draft.constitution,
             preview = draft.preview,
+            knowledgeSpaceId = indexed?.knowledgeSpaceId,
+            backfilledMessageCount = backfill?.backfilledMessageCount ?: 0,
+            scrubbedCount = backfill?.scrubbedCount ?: 0,
+            knowledgeIndexed = indexed?.indexed ?: false,
         )
     }
+
+    /**
+     * 정제된 백필 텍스트를 RAG 지식공간/소스로 색인한다(텍스트가 있을 때만). 색인은 [OnboardingBackfillIndexer] 의
+     * REQUIRES_NEW 독립 트랜잭션에서 수행하므로, 색인 실패는 이 호출부(startOnboarding)의 consent/proposal/run 을 롤백하지 않는다.
+     * runCatching 으로 실패를 삼켜 온보딩 본체가 절대 막히지 않게 한다(색인 없이 진행).
+     */
+    private fun indexBackfillIfPresent(
+        guildId: Long,
+        channelId: Long,
+        channelAiId: Long,
+        actorUserId: Long?,
+        backfill: BackfillInput?,
+    ): BackfillIndexResult? {
+        val text = backfill?.indexText?.trim()
+        if (text.isNullOrBlank()) return null
+        return runCatching {
+            backfillIndexer.indexBackfill(
+                guildId = guildId,
+                channelId = channelId,
+                channelAiId = channelAiId,
+                actorUserId = actorUserId,
+                indexText = text,
+            )
+        }.getOrElse {
+            log.warn("onboarding backfill indexing failed guild={} channel={}: {}", guildId, channelId, it.message)
+            null
+        }
+    }
+
+    private fun serializeWhitelist(channelWhitelist: Set<Long>): String? =
+        channelWhitelist.takeIf { it.isNotEmpty() }?.sorted()?.joinToString(",")
 
     @Transactional
     fun approveOnboarding(
@@ -213,4 +273,8 @@ data class GuildOnboardingResult(
     val answerLength: String,
     val constitution: String,
     val preview: String,
+    val knowledgeSpaceId: Long? = null,
+    val backfilledMessageCount: Int = 0,
+    val scrubbedCount: Int = 0,
+    val knowledgeIndexed: Boolean = false,
 )

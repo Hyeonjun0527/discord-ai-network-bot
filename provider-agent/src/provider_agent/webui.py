@@ -143,10 +143,10 @@ def _page(session_key: str) -> str:
         "document.getElementById('stxt').textContent=s.running?(s.connected?'실행 중 · 연결됨':'연결하는 중…'):'중지됨';"
         "document.getElementById('ssub').textContent=s.running?(s.connected?`처리 ${s.processed}건`+(s.imageReady?' · 🖼️ 이미지 제공':''):'중앙 서버에 연결 시도 중'):'시작을 누르면 풀에 연결됩니다';"
         "const lg=await j('/api/logs');const el=document.getElementById('log');el.textContent=lg.lines.join('\\n');el.scrollTop=el.scrollHeight;}"
-        "function getToken(){const base=document.getElementById('relay').textContent;"
-        "if(!base){msg.className='err';msg.textContent='상태 로딩 중 — 잠시 후 다시';return;}"
+        "async function getToken(){const s=await j('/api/status');"
+        "if(!s.connectEnabled){msg.className='';msg.textContent='‘토큰 받기’는 곧 지원돼요. 지금은 디스코드 /provider-join 토큰을 붙여넣어 주세요.';return;}"
         "const cb=location.origin+'/connect/callback';"
-        "location.href=base.replace('wss://','https://').replace('ws://','http://').replace(/\\/agent$/,'')+'/provider/connect?cb='+encodeURIComponent(cb)+'&state='+encodeURIComponent(K);}"
+        "location.href=s.relayUrl.replace('wss://','https://').replace('ws://','http://').replace(/\\/agent$/,'')+'/provider/connect?cb='+encodeURIComponent(cb)+'&state='+encodeURIComponent(K);}"
         "async function toggle(){if(RUN){await j('/api/stop',{method:'POST'});await refresh();return;}"
         "msg.className='';msg.textContent='저장하고 시작하는 중…';"
         "const su=await j('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token.value.trim(),models:selectedModels(),enableImage:image.checked,installService:service.checked})});"
@@ -176,6 +176,8 @@ def build_app(session_key: str) -> web.Application:
 
     async def status(req: web.Request) -> web.Response:
         _auth(req)
+        import os
+
         saved = load_config()
         agent = _state["agent"]
         task = _state["task"]
@@ -190,6 +192,8 @@ def build_app(session_key: str) -> web.Application:
                 "hasToken": bool(saved.get("token")),
                 "relayUrl": saved.get("relay_url") or DEFAULT_RELAY,
                 "enableImage": bool(saved.get("enable_image")),
+                # ‘토큰 받기’ OAuth 는 중앙 서버 /provider/connect 가 배포된 뒤 켠다(그전엔 복붙 안내).
+                "connectEnabled": bool(os.getenv("AGENT_CONNECT_ENABLED")),
             }
         )
 

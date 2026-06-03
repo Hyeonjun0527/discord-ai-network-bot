@@ -53,6 +53,13 @@ interface ProviderRepository : JpaRepository<ProviderEntity, Long> {
         guildId: Long,
         state: String,
     ): List<ProviderEntity>
+
+    fun deleteByProviderUserIdAndGuildId(
+        providerUserId: Long,
+        guildId: Long,
+    )
+
+    fun deleteByGuildId(guildId: Long)
 }
 
 interface ProviderContributionPolicyRepository : JpaRepository<ProviderContributionPolicyEntity, Long> {

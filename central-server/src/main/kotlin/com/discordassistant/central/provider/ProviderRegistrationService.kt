@@ -1,7 +1,12 @@
 package com.discordassistant.central.provider
 
 import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.persistence.ProviderEntity
+import com.discordassistant.central.persistence.ProviderRepository
+import jakarta.annotation.PostConstruct
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 /** 프로바이더 등록 레코드(인메모리; JPA 영속화는 K-차수 6). */
@@ -39,14 +44,48 @@ private data class ProviderGuildKey(
 class ProviderRegistrationService(
     private val tokens: TokenService,
     private val audit: AuditLog,
+    // 영속화(재시작에도 등록/승인 유지). 미주입(단위 테스트)이면 인메모리만으로 동작(하위호환).
+    private val repo: ProviderRepository? = null,
 ) {
     private val providers = ConcurrentHashMap<ProviderGuildKey, ProviderRecord>()
+
+    /** 시작 시 DB 의 등록을 인메모리 캐시로 적재(재시작 복원). 읽기는 항상 캐시에서 한다. */
+    @PostConstruct
+    fun load() {
+        val r = repo ?: return
+        r.findAll().forEach { e ->
+            val state = runCatching { ProviderState.valueOf(e.state) }.getOrNull() ?: return@forEach
+            providers[ProviderGuildKey(e.providerUserId, e.guildId)] = ProviderRecord(e.providerUserId, e.guildId, state)
+        }
+    }
+
+    /** 캐시 변경을 DB 에 반영(upsert). repo 미주입이면 no-op. */
+    private fun persist(rec: ProviderRecord) {
+        val r = repo ?: return
+        val e = r.findByProviderUserIdAndGuildId(rec.providerId, rec.guildId)
+        if (e != null) {
+            e.state = rec.state.name
+            r.save(e)
+        } else {
+            r.save(
+                ProviderEntity(providerUserId = rec.providerId, guildId = rec.guildId, state = rec.state.name, createdAt = Instant.now()),
+            )
+        }
+    }
+
+    private fun deleteRow(
+        providerId: Long,
+        guildId: Long,
+    ) {
+        repo?.deleteByProviderUserIdAndGuildId(providerId, guildId)
+    }
 
     /** 활성(미제거) 등록 여부. */
     private fun isActive(rec: ProviderRecord?): Boolean =
         rec != null && rec.state != ProviderState.REMOVED && rec.state != ProviderState.UNREGISTERED
 
     /** 프로바이더 참여 요청. autoApprove 면 즉시 승인+토큰, 아니면 PENDING. */
+    @Transactional
     fun requestJoin(
         providerId: Long,
         guildId: Long,
@@ -58,12 +97,16 @@ class ProviderRegistrationService(
             return JoinResult(existing!!.state, null) // 이미 해당 서버에 등록/대기 중
         }
         return if (autoApprove) {
-            providers[key] = ProviderRecord(providerId, guildId, ProviderState.APPROVED)
+            val rec = ProviderRecord(providerId, guildId, ProviderState.APPROVED)
+            providers[key] = rec
+            persist(rec)
             val token = tokens.issue(providerId, guildId)
             audit.record("provider_join_auto", "provider:$providerId", "guild:$guildId")
             JoinResult(ProviderState.APPROVED, token)
         } else {
-            providers[key] = ProviderRecord(providerId, guildId, ProviderState.PENDING)
+            val rec = ProviderRecord(providerId, guildId, ProviderState.PENDING)
+            providers[key] = rec
+            persist(rec)
             audit.record("provider_join_request", "provider:$providerId", "guild:$guildId")
             JoinResult(ProviderState.PENDING, null)
         }
@@ -99,6 +142,7 @@ class ProviderRegistrationService(
     }
 
     /** 관리자 승인(PENDING → APPROVED). 승인 토큰(평문) 반환, 실패 시 null. */
+    @Transactional
     fun approve(
         providerId: Long,
         guildId: Long,
@@ -107,6 +151,7 @@ class ProviderRegistrationService(
         val rec = providers[ProviderGuildKey(providerId, guildId)] ?: return null
         if (rec.state != ProviderState.PENDING) return null
         if (!rec.transitionTo(ProviderState.APPROVED)) return null // 상태머신 가드(PENDING→APPROVED 허용)
+        persist(rec)
         val token = tokens.issue(providerId, guildId)
         audit.record("provider_approve", "admin:$adminId", "provider:$providerId", "guild:$guildId")
         return token
@@ -122,6 +167,7 @@ class ProviderRegistrationService(
     }
 
     /** 등록 요청 거절(PENDING 제거). */
+    @Transactional
     fun reject(
         providerId: Long,
         guildId: Long,
@@ -131,6 +177,7 @@ class ProviderRegistrationService(
         val rec = providers[key] ?: return false
         if (rec.state != ProviderState.PENDING) return false
         providers.remove(key)
+        deleteRow(providerId, guildId)
         tokens.revokeProviderGuild(providerId, guildId)
         tokens.revokeDurable(providerId, guildId)
         audit.record("provider_reject", "admin:$adminId", "provider:$providerId", "guild:$guildId")
@@ -147,6 +194,7 @@ class ProviderRegistrationService(
     }
 
     /** 풀에서 제거(→ REMOVED). 서버별 제거. */
+    @Transactional
     fun remove(
         providerId: Long,
         guildId: Long,
@@ -154,6 +202,7 @@ class ProviderRegistrationService(
     ): Boolean {
         val rec = providers[ProviderGuildKey(providerId, guildId)] ?: return false
         rec.transitionTo(ProviderState.REMOVED) // 상태머신 가드(이미 REMOVED 면 no-op). 폐기는 멱등하게 진행.
+        persist(rec)
         tokens.revokeProviderGuild(providerId, guildId)
         tokens.revokeDurable(providerId, guildId)
         audit.record("provider_remove", "admin:$adminId", "provider:$providerId", "guild:$guildId")
@@ -170,10 +219,12 @@ class ProviderRegistrationService(
     }
 
     /** 봇이 길드에서 제거되면 해당 길드에 묶인 등록/승인 상태를 모두 제거하고 토큰을 폐기한다. */
+    @Transactional
     fun removeGuild(guildId: Long): List<Long> {
         val removedRecords = providers.entries.filter { it.value.guildId == guildId }
         val removed = removedRecords.map { it.value.providerId }
         removedRecords.forEach { providers.remove(it.key) }
+        repo?.deleteByGuildId(guildId)
         val revoked = tokens.revokeGuild(guildId)
         removed.forEach { tokens.revokeDurable(it, guildId) }
         audit.record("guild_provider_cleanup", "system", "guild:$guildId", "providers=${removed.size},tokens=$revoked")
@@ -181,12 +232,14 @@ class ProviderRegistrationService(
     }
 
     /** 멤버가 서버를 나가면 해당 서버의 프로바이더 등록만 제거한다. */
+    @Transactional
     fun removeMemberFromGuild(
         providerId: Long,
         guildId: Long,
     ): Boolean {
         val key = ProviderGuildKey(providerId, guildId)
         val removed = providers.remove(key) != null
+        deleteRow(providerId, guildId)
         val revoked = tokens.revokeProviderGuild(providerId, guildId)
         tokens.revokeDurable(providerId, guildId)
         if (removed || revoked > 0) {

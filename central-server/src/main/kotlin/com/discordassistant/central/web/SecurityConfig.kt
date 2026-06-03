@@ -40,6 +40,7 @@ class SecurityConfig(
                     authorize("/", permitAll) // 설치 랜딩(차수 19)
                     authorize("/install", permitAll)
                     authorize("/install.html", permitAll)
+                    authorize("/img/**", permitAll) // 랜딩 이미지(마스코트 등)
                     authorize("/actuator/health", permitAll)
                     authorize("/api/metrics/**", permitAll)
                     authorize("/agent/**", permitAll)

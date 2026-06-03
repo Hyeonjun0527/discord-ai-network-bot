@@ -1,335 +1,355 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>냥시스턴트 AI 네트워크 — 설치와 프리셋</title>
-<meta name="description" content="내 PC의 로컬 AI를 연결하고, 채널 AI 프리셋을 찾아 가져올 수 있는 함께 만드는 AI 네트워크입니다." />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-<style>
-  :root {
-    --bg: #0a0b0d;
-    --panel: #111317;
-    --panel-2: #15181d;
-    --line: #23262d;
-    --line-soft: #1a1d23;
-    --ink: #e8eaed;
-    --mut: #878d97;
-    --dim: #5a606b;
-    --acc: #b8ff39;          /* signal lime */
-    --acc-soft: rgba(184,255,57,.14);
-    --amber: #ffb454;
-    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    --sans: "Pretendard Variable", Pretendard, -apple-system, system-ui, sans-serif;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-  body {
-    background: var(--bg);
-    color: var(--ink);
-    font-family: var(--sans);
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-    overflow-x: hidden;
-    position: relative;
-  }
-  /* grid + grain atmosphere */
-  body::before {
-    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background-image:
-      linear-gradient(var(--line-soft) 1px, transparent 1px),
-      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
-    background-size: 56px 56px;
-    mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 30%, transparent 75%);
-    opacity: .5;
-  }
-  body::after {
-    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .035;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-  .wrap { position: relative; z-index: 1; max-width: 1080px; margin: 0 auto; padding: 0 24px; }
-
-  /* ── top nav ── */
-  nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
-  .brand { display: flex; align-items: center; gap: 11px; font-family: var(--mono); font-weight: 700; letter-spacing: -.02em; font-size: 15px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 0 4px var(--acc-soft); animation: pulse 2.4s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 4px var(--acc-soft); } 50% { box-shadow: 0 0 0 8px transparent; } }
-  .navlinks { display: flex; gap: 10px; }
-  .navbtn {
-    display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 9px;
-    border: 1px solid var(--line); color: var(--ink); text-decoration: none;
-    font-family: var(--mono); font-size: 13px; font-weight: 500; background: var(--panel);
-    transition: border-color .18s, transform .18s, background .18s;
-  }
-  .navbtn:hover { border-color: var(--acc); transform: translateY(-1px); background: var(--panel-2); }
-  .navbtn svg { width: 16px; height: 16px; }
-
-  /* ── hero ── */
-  header { padding: 70px 0 54px; }
-  .eyebrow {
-    font-family: var(--mono); font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase;
-    color: var(--acc); display: inline-flex; align-items: center; gap: 9px; margin-bottom: 26px;
-    animation: rise .7s both;
-  }
-  .eyebrow::before { content: ""; width: 26px; height: 1px; background: var(--acc); display: inline-block; }
-  h1 {
-    font-family: var(--sans); font-weight: 800; letter-spacing: -.035em; line-height: 1.04;
-    font-size: clamp(40px, 7vw, 76px); animation: rise .7s .05s both;
-  }
-  h1 .glow { color: var(--acc); text-shadow: 0 0 38px rgba(184,255,57,.35); }
-  .sub { margin-top: 22px; max-width: 560px; color: var(--mut); font-size: 17.5px; animation: rise .7s .12s both; }
-  .hero-cta { margin-top: 34px; display: flex; flex-wrap: wrap; gap: 13px; align-items: center; animation: rise .7s .19s both; }
-  .cta-primary {
-    display: inline-flex; align-items: center; gap: 9px; padding: 14px 22px; border-radius: 11px;
-    background: var(--acc); color: #0a0b0d; text-decoration: none; font-weight: 700; font-size: 15px;
-    border: 1px solid var(--acc); transition: transform .18s, box-shadow .18s;
-    box-shadow: 0 8px 30px -10px rgba(184,255,57,.5);
-  }
-  .cta-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 38px -10px rgba(184,255,57,.65); }
-  .cta-secondary {
-    display: inline-flex; align-items: center; gap: 9px; padding: 14px 20px; border-radius: 11px;
-    background: var(--panel); color: var(--ink); text-decoration: none; font-weight: 700; font-size: 15px;
-    border: 1px solid var(--line); transition: transform .18s, border-color .18s, background .18s;
-  }
-  .cta-secondary:hover { transform: translateY(-2px); border-color: var(--acc); background: var(--panel-2); }
-  .cta-note { font-family: var(--mono); font-size: 12.5px; color: var(--dim); }
-  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
-
-  /* ── steps strip ── */
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line);
-    border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-bottom: 64px; animation: rise .7s .26s both; }
-  .step { background: var(--panel); padding: 22px 22px 24px; }
-  .step .num { font-family: var(--mono); font-size: 12px; color: var(--acc); letter-spacing: .1em; }
-  .step h3 { font-size: 15.5px; margin: 10px 0 5px; font-weight: 700; letter-spacing: -.01em; }
-  .step p { font-size: 13.5px; color: var(--mut); }
-  .step code { font-family: var(--mono); color: var(--ink); background: var(--panel-2); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; border: 1px solid var(--line); }
-
-  /* ── installer ── */
-  .sec-label { font-family: var(--mono); font-size: 12.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-bottom: 16px; }
-  .installer { border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, var(--panel) 0%, var(--bg) 130%); overflow: hidden; }
-  .tabs { display: flex; gap: 2px; padding: 10px 10px 0; background: var(--panel-2); border-bottom: 1px solid var(--line); }
-  .tab {
-    appearance: none; border: none; background: transparent; color: var(--mut); cursor: pointer;
-    font-family: var(--mono); font-size: 13.5px; font-weight: 500; padding: 13px 20px; border-radius: 9px 9px 0 0;
-    display: inline-flex; align-items: center; gap: 8px; position: relative; transition: color .15s, background .15s;
-  }
-  .tab:hover { color: var(--ink); }
-  .tab[aria-selected="true"] { color: var(--ink); background: var(--bg); }
-  .tab[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--acc); }
-  .panel { display: none; padding: 4px; }
-  .panel.on { display: block; animation: fade .35s both; }
-  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-
-  .open-terminal {
-    margin: 0 0 14px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px;
-    background: rgba(184,255,57,.06); color: var(--mut); font-size: 13.5px;
-  }
-  .open-terminal b { color: var(--ink); }
-  .open-terminal code { font-family: var(--mono); color: var(--acc); background: var(--panel-2); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
-  .term { background: var(--bg); border-radius: 12px; padding: 0; }
-  .term-bar { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid var(--line-soft); }
-  .term-dots { display: flex; gap: 7px; }
-  .term-dots i { width: 11px; height: 11px; border-radius: 50%; background: var(--line); display: block; }
-  .term-title { font-family: var(--mono); font-size: 12px; color: var(--dim); }
-  .copy {
-    appearance: none; cursor: pointer; font-family: var(--mono); font-size: 12.5px; font-weight: 600;
-    color: #0a0b0d; background: var(--acc); border: none; padding: 8px 16px; border-radius: 8px;
-    display: inline-flex; align-items: center; gap: 7px; transition: transform .15s, filter .15s;
-  }
-  .copy:hover { transform: translateY(-1px); filter: brightness(1.05); }
-  .copy.done { background: var(--panel); color: var(--acc); box-shadow: inset 0 0 0 1px var(--acc); }
-  pre { margin: 0; padding: 22px 20px; overflow-x: auto; }
-  code.sh { font-family: var(--mono); font-size: 13.5px; line-height: 2; color: var(--ink); white-space: pre; display: block; }
-  code.sh .c { color: var(--dim); }      /* comment */
-  code.sh .k { color: var(--acc); }       /* command verb */
-  code.sh .t { color: var(--amber); }     /* token placeholder */
-
-  .note {
-    display: flex; gap: 13px; align-items: flex-start; margin-top: 16px; padding: 16px 18px;
-    border: 1px solid var(--line); border-left: 2px solid var(--amber); border-radius: 10px; background: var(--panel);
-  }
-  .note .ic { color: var(--amber); flex: 0 0 auto; font-family: var(--mono); font-weight: 700; }
-  .note p { font-size: 13.5px; color: var(--mut); }
-  .note code { font-family: var(--mono); color: var(--ink); background: var(--panel-2); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
-  .note b { color: var(--ink); font-weight: 700; }
-
-  /* ── footer ── */
-  footer { margin: 70px 0 50px; padding-top: 26px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between; align-items: center; }
-  footer p { font-size: 13px; color: var(--dim); font-family: var(--mono); }
-  footer .warn { color: var(--mut); }
-  footer .warn b { color: var(--amber); }
-
-  @media (max-width: 680px) {
-    .steps { grid-template-columns: 1fr; }
-    .navbtn span { display: none; }
-    header { padding: 48px 0 40px; }
-  }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NYASSISTANT AI NETWORK — 내 PC를 AI 일꾼으로</title>
+  <style>
+    :root {
+      --bg: #07101b; --panel: #0c1522; --line: rgba(157, 181, 221, .14);
+      --text: #ecf2fb; --muted: #a4b1c4; --subtle: #76849a;
+      --blue: #4d7dff; --warn: #e3a53f;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0; color: var(--text);
+      background:
+        radial-gradient(circle at 18% 0%, rgba(54, 90, 168, .17), transparent 30%),
+        radial-gradient(circle at 90% 8%, rgba(51, 89, 166, .12), transparent 24%),
+        linear-gradient(180deg, #06101a 0%, #040a12 100%);
+    }
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .12;
+      background-image:
+        linear-gradient(rgba(140,164,201,.13) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(140,164,201,.13) 1px, transparent 1px);
+      background-size: 36px 36px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,.95), transparent 88%);
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; }
+    .page { width: min(1160px, calc(100% - 40px)); margin: 22px auto 38px; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 18px;
+      padding: 14px 18px; border: 1px solid var(--line); border-radius: 18px;
+      background: rgba(11, 19, 31, .86); backdrop-filter: blur(16px);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-logo {
+      width: 36px; height: 36px; border-radius: 11px; overflow: hidden;
+      border: 1px solid rgba(117, 153, 222, .35); box-shadow: 0 0 0 4px rgba(77, 125, 255, .08);
+      background: linear-gradient(180deg, #0d1627, #0b1321); flex: 0 0 auto;
+    }
+    .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
+    .brand-name { font-size: 14px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
+    .nav { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .nav a {
+      display: inline-flex; align-items: center; gap: 8px; padding: 11px 14px; border-radius: 12px;
+      color: #d6deea; background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.04); transition: .18s ease;
+    }
+    .nav a:hover { border-color: rgba(117, 153, 222, .24); background: rgba(77, 125, 255, .07); }
+    .nav svg { width: 15px; height: 15px; opacity: .88; }
+    .hero { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1.08fr) 380px; gap: 22px; align-items: stretch; }
+    .hero-copy, .hero-card {
+      border: 1px solid var(--line); border-radius: 28px;
+      background: linear-gradient(180deg, rgba(14, 23, 36, .92), rgba(9, 15, 26, .96));
+      position: relative; overflow: hidden;
+    }
+    .hero-copy { padding: 34px 34px 30px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+      border: 1px solid rgba(145, 170, 212, .18); color: #b6c3d8; font-size: 13px; letter-spacing: .08em;
+      background: rgba(255,255,255,.02); margin-bottom: 26px;
+    }
+    .hero h1 { margin: 0; font-size: clamp(44px, 5vw, 70px); line-height: .98; letter-spacing: -0.045em; font-weight: 800; }
+    .hero h1 .accent { color: #86a8ff; }
+    .hero p { margin: 22px 0 0; max-width: 560px; color: var(--muted); font-size: 17px; line-height: 1.78; letter-spacing: -.015em; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 28px; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      min-height: 54px; padding: 0 22px; border-radius: 14px; border: 1px solid rgba(118, 150, 212, .22);
+      color: #eef3fb; background: rgba(255,255,255,.02); font-weight: 700; letter-spacing: -.01em; cursor: pointer; transition: .2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn.primary { background: linear-gradient(180deg, #4f7dff, #3c67d8); border-color: rgba(123, 155, 224, .42); box-shadow: 0 14px 34px rgba(44, 84, 179, .18), inset 0 1px 0 rgba(255,255,255,.18); }
+    .btn.ghost:hover { background: rgba(77, 125, 255, .07); }
+    .inline-link { align-self: center; color: #aab8ce; font-size: 14px; }
+    .inline-link code { color: #8db0ff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .hero-card { padding: 24px; display: flex; align-items: center; justify-content: center; min-height: 100%; }
+    .hero-card::before {
+      content: ""; position: absolute; inset: 0;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(78, 116, 194, .12), transparent 35%),
+        linear-gradient(rgba(122,145,182,.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(122,145,182,.06) 1px, transparent 1px);
+      background-size: auto, 24px 24px, 24px 24px; opacity: .6;
+      mask-image: linear-gradient(180deg, rgba(0,0,0,.8), rgba(0,0,0,.15));
+    }
+    .hero-art { position: relative; z-index: 1; width: 100%; height: 100%; display: grid; place-items: center; }
+    .hero-art img { width: min(265px, 78%); aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 18px 28px rgba(0,0,0,.36)); }
+    .steps { margin-top: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .step {
+      position: relative; padding: 22px 22px 20px; border-radius: 18px; border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(13, 22, 35, .92), rgba(10, 16, 28, .96)); min-height: 150px;
+    }
+    .step-index { color: #80a3ff; font-weight: 700; font-size: 12px; letter-spacing: .12em; }
+    .step-title { margin-top: 14px; font-size: 27px; font-weight: 700; letter-spacing: -.025em; }
+    .step-text { margin-top: 12px; color: var(--muted); line-height: 1.65; font-size: 15px; }
+    .step-icon {
+      position: absolute; right: 22px; top: 26px; width: 42px; height: 42px; border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.06); display: grid; place-items: center; color: #9bb5e9; background: rgba(255,255,255,.02);
+    }
+    .step code, .step-text code { color: #9fbcff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .section-label { margin: 28px 0 12px; color: #d2dbe7; font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
+    .section-label span { color: var(--subtle); font-weight: 500; }
+    .tabs { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 18px 18px 0 0; overflow: hidden; background: rgba(13, 21, 34, .92); }
+    .tab {
+      display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 58px; cursor: pointer;
+      color: #bcc7d8; background: transparent; border: 0; border-right: 1px solid rgba(255,255,255,.04); font-weight: 700;
+    }
+    .tab:last-child { border-right: 0; }
+    .tab.active { color: #eff3fb; background: linear-gradient(180deg, rgba(77, 125, 255, .14), rgba(77, 125, 255, .05)); box-shadow: inset 0 -2px 0 #5482ff; }
+    .install { border: 1px solid var(--line); border-top: 0; border-radius: 0 0 22px 22px; background: linear-gradient(180deg, rgba(12, 20, 33, .92), rgba(9, 16, 27, .98)); padding: 24px; }
+    .install-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 18px; }
+    .install-title { font-size: 26px; font-weight: 700; letter-spacing: -.03em; margin: 0; }
+    .install-hint { margin-top: 8px; color: var(--muted); line-height: 1.72; font-size: 15px; }
+    .install-hint code { color: #9fbcff; font-family: ui-monospace, Menlo, monospace; }
+    .install-copy { flex: 0 0 auto; }
+    .code-shell { border-radius: 18px; overflow: hidden; border: 1px solid rgba(152, 177, 219, .14); background: #09111d; }
+    .shell-top { height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid rgba(255,255,255,.04); background: rgba(255,255,255,.02); }
+    .shell-dots { display: flex; gap: 8px; }
+    .shell-dots span { width: 11px; height: 11px; border-radius: 50%; display: block; background: #2d3c53; }
+    .shell-name { color: #8ea0b8; font-size: 13px; }
+    .copy-btn { border: 1px solid rgba(120,154,220,.18); background: rgba(77,125,255,.08); color: #dce5f3; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+    pre { margin: 0; padding: 18px 20px 20px; overflow-x: auto; font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #dce4ef; }
+    .g { color: #9cc56f; } .b { color: #8bb2ff; word-break: break-all; } .o { color: #efb161; } .c { color: #7e8ca3; }
+    .alerts { margin-top: 18px; display: grid; gap: 14px; }
+    .alert { display: grid; grid-template-columns: 40px 1fr; gap: 14px; align-items: start; padding: 16px 18px; border-radius: 16px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(12, 20, 31, .94), rgba(9, 16, 26, .98)); }
+    .alert-icon { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 18px; color: #ecf2fb; background: rgba(77, 125, 255, .14); border: 1px solid rgba(119, 153, 221, .28); }
+    .alert.warn .alert-icon { background: rgba(227, 165, 63, .12); border-color: rgba(227,165,63,.22); color: #ffd9a0; }
+    .alert-title { font-size: 19px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 6px; }
+    .alert-body { color: var(--muted); line-height: 1.72; font-size: 15px; }
+    .alert-body code { color: #a2bfff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    footer { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; color: #7d8aa0; font-size: 14px; padding: 18px 8px 0; }
+    footer .warn { color: var(--warn); }
+    @media (max-width: 1024px) { .hero { grid-template-columns: 1fr; } .hero-card { min-height: 300px; } .steps { grid-template-columns: 1fr; } }
+    @media (max-width: 720px) {
+      .page { width: min(100%, calc(100% - 24px)); margin-top: 12px; }
+      .topbar { padding: 14px; align-items: flex-start; flex-direction: column; }
+      .nav { width: 100%; justify-content: flex-start; }
+      .hero-copy { padding: 26px 22px; } .hero h1 { font-size: 40px; } .hero p { font-size: 15px; }
+      .step-title { font-size: 23px; }
+      .tabs { grid-template-columns: 1fr; border-radius: 18px; }
+      .tab { border-right: 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+      .tab:last-child { border-bottom: 0; }
+      .install { border-top: 1px solid var(--line); border-radius: 18px; margin-top: 12px; }
+      .install-head { flex-direction: column; } footer { padding-bottom: 26px; }
+    }
+  </style>
 </head>
 <body>
-<div class="wrap">
-  <nav>
-    <div class="brand"><span class="dot"></span> NYASSISTANT&nbsp;AI&nbsp;NETWORK</div>
-    <div class="navlinks">
-      <a class="navbtn" id="presetBtn" href="/presets">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4.75A2.75 2.75 0 0 1 6.75 2h10.5A2.75 2.75 0 0 1 20 4.75v14.5A2.75 2.75 0 0 1 17.25 22H6.75A2.75 2.75 0 0 1 4 19.25V4.75Zm3 .75v2h10v-2H7Zm0 4.5v2h10v-2H7Zm0 4.5v2h6v-2H7Z"/></svg>
-        <span>프리셋</span>
-      </a>
-      <a class="navbtn" id="dashboardBtn" href="/dashboard">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 13h7V4H4v9Zm0 7h7v-5H4v5Zm9 0h7v-9h-7v9Zm0-16v5h7V4h-7Z"/></svg>
-        <span>대시보드</span>
-      </a>
-      <a class="navbtn" id="ghBtn" href="https://github.com/Hyeonjun0527/discord-ai-network-bot/tree/main/provider-agent" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.7c-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05a9.4 9.4 0 0 1 5 0c1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.79-4.57 5.05.36.32.68.94.68 1.9v2.82c0 .27.18.6.69.49A10.26 10.26 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
-        <span>소스 코드</span>
-      </a>
-      <a class="navbtn" id="dcBtn" href="https://discord.com/app" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.27 5.33A16.6 16.6 0 0 0 15.1 4l-.2.4a13 13 0 0 1 3.7 1.9 12.3 12.3 0 0 0-10.6 0A13 13 0 0 1 11.7 4.4L11.5 4a16.6 16.6 0 0 0-4.16 1.33C4.6 9.4 3.86 13.37 4.23 17.28a16.7 16.7 0 0 0 5.06 2.56l.4-.6c-.69-.26-1.34-.58-1.95-.95l.48-.36a11.9 11.9 0 0 0 10.16 0l.48.36c-.61.37-1.27.69-1.96.95l.4.6a16.6 16.6 0 0 0 5.07-2.56c.43-4.53-.7-8.46-2.58-11.95ZM9.68 14.81c-.99 0-1.8-.92-1.8-2.04 0-1.13.79-2.05 1.8-2.05 1.02 0 1.83.93 1.81 2.05 0 1.12-.8 2.04-1.81 2.04Zm4.64 0c-.99 0-1.8-.92-1.8-2.04 0-1.13.8-2.05 1.8-2.05 1.02 0 1.83.93 1.81 2.05 0 1.12-.79 2.04-1.81 2.04Z"/></svg>
-        <span>Discord</span>
-      </a>
-    </div>
-  </nav>
-
-  <header>
-    <span class="eyebrow">Community Local AI · Provider</span>
-    <h1>내 PC를 이 커뮤니티의<br /><span class="glow">AI 일꾼</span>으로.</h1>
-    <p class="sub">남는 컴퓨팅으로 동료들의 <code style="font-family:var(--mono);color:var(--ink)">/ask</code> 질문에 답하세요.
-       디스코드에서 받은 토큰 하나면 됩니다. 채널 AI 프리셋은 웹에서 찾아보고, 설치는 OS별 복붙 명령으로 시작합니다. 금전 거래 없음 — 기여와 공정성.</p>
-    <div class="hero-cta">
-      <a class="cta-primary" href="#install">설치 명령 보기 ↓</a>
-      <a class="cta-secondary" href="/presets">채널 AI 프리셋 보기</a>
-      <span class="cta-note">// 먼저 디스코드에서 <b style="color:var(--amber)">/provider-join</b> → 토큰 받기</span>
-    </div>
-  </header>
-
-  <section class="steps">
-    <div class="step"><div class="num">STEP 01</div><h3>토큰 받기</h3><p>디스코드에서 <code>/provider-join</code> → 내 OS 선택 → 10분·1회용 토큰 발급.</p></div>
-    <div class="step"><div class="num">STEP 02</div><h3>터미널 열기</h3><p>아래 OS 탭에서 단축키/GUI 방법대로 터미널 또는 PowerShell을 먼저 여세요.</p></div>
-    <div class="step"><div class="num">STEP 03</div><h3>연결 확인</h3><p>실행되면 디스코드 <code>/provider-status</code> 로 온라인 상태 확인.</p></div>
-  </section>
-
-  <section id="install">
-    <div class="sec-label">// 설치 — 내 컴퓨터를 고르세요</div>
-    <div class="installer">
-      <div class="tabs" role="tablist">
-        <button class="tab" role="tab" aria-selected="true" data-os="mac">🍎 macOS</button>
-        <button class="tab" role="tab" aria-selected="false" data-os="win">🪟 Windows</button>
-        <button class="tab" role="tab" aria-selected="false" data-os="linux">🐧 Linux</button>
+  <div class="page">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-logo"><img src="/img/provider-img1.png" alt="마스코트" /></div>
+        <div class="brand-name">NYASSISTANT AI NETWORK</div>
       </div>
+      <nav class="nav">
+        <a href="/presets"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>프리셋</a>
+        <a href="/dashboard"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>대시보드</a>
+        <a href="https://github.com/Hyeonjun0527/discord-ai-network-bot/tree/main/provider-agent" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18c-4.97 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77 5.44 5.44 0 0 0 3.5 8.52c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>소스 코드</a>
+        <a href="https://discord.com/app" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>Discord</a>
+      </nav>
+    </header>
 
-      <div class="panel on" data-os="mac">
-        <div class="open-terminal"><b>터미널 여는 법</b><br />단축키: <code>⌘ Space</code> → <code>Terminal</code> 입력 → Enter<br />GUI: Finder → 응용 프로그램 → 유틸리티 → 터미널</div>
-        <div class="term">
-          <div class="term-bar"><div class="term-dots"><i></i><i></i><i></i></div><span class="term-title">terminal — zsh</span>
-            <button class="copy" data-target="cmd-mac">복사</button></div>
-          <pre><code class="sh" id="cmd-mac"><span class="c"># 1) Ollama 설치 + 모델 (관리자 권한 불필요)</span>
-<span class="k">brew</span> install ollama
-<span class="k">brew</span> services start ollama
-<span class="k">ollama</span> pull llama3.1:8b
-<span class="c"># (선택) 비전·멀티모달 모델: ollama pull gemma4</span>
-<span class="c"># 2) 에이전트 + 체크섬 받기(GitHub Release)</span>
-<span class="k">curl</span> -L -o discord-ai-network-bot-macos https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-macos
-<span class="k">curl</span> -L -o SHA256SUMS.txt https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt
-<span class="c"># 3) 무결성 검증 — OK 가 나와야 함</span>
-<span class="k">shasum</span> -a 256 -c SHA256SUMS.txt --ignore-missing
-<span class="c"># 4) 실행 (일반 사용자 권한, sudo 불필요)</span>
-<span class="k">chmod</span> +x discord-ai-network-bot-macos
-<span class="k">./discord-ai-network-bot-macos</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow">COMMUNITY LOCAL AI · PROVIDER</div>
+        <h1>내 PC를<br>커뮤니티의 <span class="accent">AI 일꾼</span>으로.</h1>
+        <p>
+          남는 컴퓨터로 동료들의 <code>/ask</code> 질문에 답하세요.<br>
+          디스코드에서 받은 토큰 하나면 됩니다. 채널 AI 프리셋은 웹에서 찾아보고,
+          설치는 OS별 빠른 명령으로 시작합니다. <b>판매가 아니라 기여·공정성</b>입니다.
+        </p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#install">설치 명령 받기 ↓</a>
+          <a class="btn ghost" href="/presets">채널 AI 프리셋 보기</a>
+          <div class="inline-link">또는 디스코드에서 <code>/provider-join</code></div>
         </div>
-        <div class="note"><span class="ic">i</span><p>이 도구는 <b>일반 사용자 권한</b>으로 실행합니다(<code>sudo</code>·관리자 불필요). 설정·로그는 <code>~/Library/Application Support</code> / <code>~/.config</code> 아래에만 저장됩니다. 위 <code>curl</code> 로 받으면 격리(quarantine) 속성이 붙지 않아 <b>Gatekeeper 경고 없이</b> 실행됩니다(<code>brew</code> 설치도 동일). 신뢰의 근거는 위 <b>3) 무결성 검증</b>(<code>OK</code> 확인)과 빌드 attestation 입니다. (GUI 앱이 아니라 <b>터미널에서 실행</b>하는 도구라 더블클릭하지 않습니다.)</p></div>
+      </div>
+      <div class="hero-card">
+        <div class="hero-art"><img src="/img/provider-img2.png" alt="AI 마스코트" /></div>
+      </div>
+    </section>
+
+    <section class="steps">
+      <article class="step">
+        <div class="step-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 10h8M8 14h5"/><rect x="3" y="4" width="18" height="14" rx="4"/><path d="m8 20 4-2 4 2"/></svg></div>
+        <div class="step-index">STEP 01</div>
+        <div class="step-title">토큰 받기</div>
+        <div class="step-text">디스코드에서 <code>/provider-join</code> → 내 OS 선택 → 10분·1회용 토큰 발급. (재사용 토큰은 첫 연결 시 자동 저장)</div>
+      </article>
+      <article class="step">
+        <div class="step-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg></div>
+        <div class="step-index">STEP 02</div>
+        <div class="step-title">설치 · 실행</div>
+        <div class="step-text">아래 OS 탭의 명령을 복사해 실행하세요. <b>출처·해시 검증</b> 단계가 포함되어 있습니다.</div>
+      </article>
+      <article class="step">
+        <div class="step-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <div class="step-index">STEP 03</div>
+        <div class="step-title">연결 확인</div>
+        <div class="step-text">설치되면 디스코드 <code>/provider-status</code> 로 온라인 상태를 확인하세요.</div>
+      </article>
+    </section>
+
+    <div class="section-label" id="install">설치 <span>— 내 컴퓨터를 고르세요</span></div>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-os="mac">🍎 macOS</button>
+      <button class="tab" data-os="win">🪟 Windows</button>
+      <button class="tab" data-os="linux">🐧 Linux</button>
+    </div>
+    <section class="install">
+      <div class="install-head">
+        <div>
+          <h2 class="install-title" id="installTitle">터미널 여는 법</h2>
+          <div class="install-hint" id="installHint"></div>
+        </div>
+        <button class="copy-btn install-copy" id="copyBtn">복사</button>
+      </div>
+      <div class="code-shell">
+        <div class="shell-top">
+          <div class="shell-dots"><span></span><span></span><span></span></div>
+          <div class="shell-name" id="shellName">terminal — zsh</div>
+          <button class="copy-btn" id="copyBtn2">복사</button>
+        </div>
+        <pre id="codeBlock"></pre>
       </div>
 
-      <div class="panel" data-os="win">
-        <div class="open-terminal"><b>PowerShell 여는 법</b> (관리자 권한 불필요)<br />단축키: <code>Win + X</code> → <b>터미널</b> 또는 <b>Windows PowerShell</b><br />GUI: 시작 버튼 → <code>PowerShell</code> 검색 → 그냥 클릭해서 열기</div>
-        <div class="term">
-          <div class="term-bar"><div class="term-dots"><i></i><i></i><i></i></div><span class="term-title">PowerShell</span>
-            <button class="copy" data-target="cmd-win">복사</button></div>
-          <pre><code class="sh" id="cmd-win"><span class="c"># 1) Ollama 설치 + 모델 (관리자 권한 불필요)</span>
-<span class="k">winget</span> install --id Ollama.Ollama -e --accept-source-agreements
-<span class="k">ollama</span> pull llama3.1:8b
-<span class="c"># (선택) 비전·멀티모달 모델: ollama pull gemma4</span>
-<span class="c"># 2) 에이전트 + 체크섬 받기(GitHub Release)</span>
-<span class="k">Invoke-WebRequest</span> https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-windows.exe -OutFile discord-ai-network-bot-windows.exe
-<span class="k">Invoke-WebRequest</span> https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt -OutFile SHA256SUMS.txt
+      <div class="alerts">
+        <article class="alert">
+          <div class="alert-icon">i</div>
+          <div>
+            <div class="alert-title">출처 검증 · 일반 사용자 권한</div>
+            <div class="alert-body">반드시 <b>GitHub Release</b>에서 받고 <code>SHA256SUMS.txt</code> 로 무결성을 검증하세요(위 3단계). <code>sudo</code>·관리자 권한이 필요 없고, 설정·로그는 홈 디렉터리에만 저장됩니다. <code>brew</code>·<code>winget</code>·<code>scoop</code> 로 설치하면 해시가 <b>자동 검증</b>되며, 빌드 <b>attestation·SBOM</b>으로 출처를 확인할 수 있습니다.</div>
+          </div>
+        </article>
+        <article class="alert warn">
+          <div class="alert-icon">!</div>
+          <div>
+            <div class="alert-title">개인정보 주의</div>
+            <div class="alert-body"><code>/ask</code> 로 들어온 <b>다른 사용자의 질문이 당신의 PC로 전송</b>되어 로컬 AI가 처리하고, 반대로 <b>당신의 질문도 다른 사용자의 PC로</b> 전송될 수 있습니다. <b>비밀번호·API 키·토큰·개인정보는 절대 입력하지 마세요.</b> 에이전트는 프롬프트 원문을 로그/파일에 저장하지 않습니다.</div>
+          </div>
+        </article>
+        <article class="alert">
+          <div class="alert-icon">⚙</div>
+          <div>
+            <div class="alert-title">안전한 기본값</div>
+            <div class="alert-body">하루 처리 한도 <b>15건</b>·동시 <b>1건</b>이 기본이며, 무제한은 <code>--allow-unlimited</code> 로만 가능합니다. Ollama 는 기본 <b>localhost 전용</b>입니다.</div>
+          </div>
+        </article>
+        <article class="alert">
+          <div class="alert-icon">＋</div>
+          <div>
+            <div class="alert-title">선택 — 이미지 생성도 제공</div>
+            <div class="alert-body">누구나 이미지 프로바이더가 될 수 있습니다. 로컬 <b>Stable Diffusion</b>(AUTOMATIC1111 등)을 켜고 에이전트에 <code>--enable-image</code> 를 추가하면 <code>/imagine</code> 요청을 처리합니다(GPU 권장).</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      <div>커뮤니티 로컬 AI Provider Pool · 남는 컴퓨팅 파워를 유용한 응답 자원으로 (<span class="warn">기여·공정성, 금전 거래 아님</span>)</div>
+      <div class="warn">⚠ 비밀번호 · API 키 등 민감정보는 절대 입력하지 마세요.</div>
+    </footer>
+  </div>
+
+  <script>
+    const osData = {
+      mac: {
+        shell: 'terminal — zsh',
+        hint: '단축키: <code>⌘ Space</code> → <code>Terminal</code> 입력 → Enter · 또는 Finder → 응용 프로그램 → 유틸리티 → 터미널',
+        code: `<span class="c"># 1) Ollama 설치 + 모델 (관리자 권한 불필요)</span>
+<span class="g">brew</span> install ollama
+<span class="g">brew</span> services start ollama
+<span class="g">ollama</span> pull llama3.1:8b   <span class="c"># (선택) 비전·멀티모달: ollama pull gemma4</span>
+
+<span class="c"># 2) 에이전트 + 체크섬 받기 (GitHub Release)</span>
+<span class="g">curl</span> -L -o discord-ai-network-bot-macos <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-macos</span>
+<span class="g">curl</span> -L -o SHA256SUMS.txt <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt</span>
+
+<span class="c"># 3) 무결성 검증 — OK 가 나와야 함</span>
+<span class="g">shasum</span> -a 256 -c SHA256SUMS.txt --ignore-missing
+
+<span class="c"># 4) 실행 (sudo 불필요)</span>
+<span class="g">chmod</span> +x discord-ai-network-bot-macos
+<span class="g">./discord-ai-network-bot-macos</span> --token <span class="o">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url <span class="b">wss://discord-ai.yeon.world/agent</span>`
+      },
+      win: {
+        shell: 'PowerShell',
+        hint: '시작 메뉴에서 <code>PowerShell</code> 검색 → Enter (관리자 권한 불필요) · 또는 <code>Win + X</code> → 터미널',
+        code: `<span class="c"># 1) Ollama 설치 + 모델 (관리자 권한 불필요)</span>
+<span class="g">winget</span> install --id Ollama.Ollama -e --accept-source-agreements
+<span class="g">ollama</span> pull llama3.1:8b   <span class="c"># (선택) 비전·멀티모달: ollama pull gemma4</span>
+
+<span class="c"># 2) 에이전트 + 체크섬 받기 (GitHub Release)</span>
+<span class="g">Invoke-WebRequest</span> <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-windows.exe</span> -OutFile discord-ai-network-bot-windows.exe
+<span class="g">Invoke-WebRequest</span> <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt</span> -OutFile SHA256SUMS.txt
+
 <span class="c"># 3) 무결성 검증 — 출력 해시가 SHA256SUMS.txt 의 windows 줄과 같아야 함</span>
-<span class="k">Get-FileHash</span> discord-ai-network-bot-windows.exe -Algorithm SHA256
-<span class="k">type</span> SHA256SUMS.txt
+<span class="g">Get-FileHash</span> discord-ai-network-bot-windows.exe -Algorithm SHA256
+<span class="g">type</span> SHA256SUMS.txt
+
 <span class="c"># 4) 실행 (일반 사용자 권한)</span>
-<span class="k">.\discord-ai-network-bot-windows.exe</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
-        </div>
-        <div class="note"><span class="ic">i</span><p>이 도구는 <b>일반 사용자 권한</b>으로 실행합니다(관리자 PowerShell 불필요). 설정·로그는 <code>%APPDATA%</code> 아래에만 저장됩니다. 신뢰의 근거는 위 <b>3) 무결성 검증</b>(해시 일치)과 빌드 attestation 입니다. SmartScreen 경고가 보이더라도 <u>우회하지 말고</u> 해시를 확인하세요(다르면 실행 금지). 더 매끄럽게 받으려면 <code>winget install discord-ai-network-bot</code> 또는 Scoop 으로 설치하면 해시가 자동 검증됩니다.</p></div>
-      </div>
+<span class="g">.\discord-ai-network-bot-windows.exe</span> --token <span class="o">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url <span class="b">wss://discord-ai.yeon.world/agent</span>`
+      },
+      linux: {
+        shell: 'terminal — bash',
+        hint: '앱 메뉴에서 Terminal 검색 → Enter · 또는 <code>Ctrl + Alt + T</code>',
+        code: `<span class="c"># 1) Ollama 설치 + 모델</span>
+<span class="g">curl</span> -fsSL <span class="b">https://ollama.com/install.sh</span> | <span class="g">sh</span>
+<span class="g">ollama</span> pull llama3.1:8b   <span class="c"># (선택) 비전·멀티모달: ollama pull gemma4</span>
 
-      <div class="panel" data-os="linux">
-        <div class="open-terminal"><b>터미널 여는 법</b><br />단축키: <code>Ctrl + Alt + T</code><br />GUI: 앱 메뉴/프로그램 목록에서 Terminal 또는 터미널 검색</div>
-        <div class="term">
-          <div class="term-bar"><div class="term-dots"><i></i><i></i><i></i></div><span class="term-title">terminal — bash</span>
-            <button class="copy" data-target="cmd-linux">복사</button></div>
-          <pre><code class="sh" id="cmd-linux"><span class="c"># 1) Ollama 설치 + 모델</span>
-<span class="k">curl</span> -fsSL https://ollama.com/install.sh | sh
-<span class="k">ollama</span> pull llama3.1:8b
-<span class="c"># (선택) 비전·멀티모달 모델: ollama pull gemma4</span>
-<span class="c"># 2) 에이전트 + 체크섬 받기(GitHub Release)</span>
-<span class="k">curl</span> -L -o discord-ai-network-bot-linux https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-linux
-<span class="k">curl</span> -L -o SHA256SUMS.txt https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt
+<span class="c"># 2) 에이전트 + 체크섬 받기 (GitHub Release)</span>
+<span class="g">curl</span> -L -o discord-ai-network-bot-linux <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-linux</span>
+<span class="g">curl</span> -L -o SHA256SUMS.txt <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt</span>
+
 <span class="c"># 3) 무결성 검증 — OK 가 나와야 함</span>
-<span class="k">sha256sum</span> -c SHA256SUMS.txt --ignore-missing
-<span class="c"># 4) 실행 (일반 사용자 권한, sudo 불필요)</span>
-<span class="k">chmod</span> +x discord-ai-network-bot-linux
-<span class="k">./discord-ai-network-bot-linux</span> --token <span class="t">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url wss://discord-ai.yeon.world/agent</code></pre>
-        </div>
-        <div class="note"><span class="ic">i</span><p><b>일반 사용자 권한</b>으로 실행합니다(<code>sudo</code> 불필요). 설정·로그는 <code>~/.config</code> 아래에만 저장됩니다. 상시 구동은 <b>사용자 단위</b> <code>systemctl --user</code> 서비스로 등록하세요(소스의 <code>packaging/</code> 가이드, 시스템 서비스 등록 불필요).</p></div>
-      </div>
-    </div>
-  </section>
+<span class="g">sha256sum</span> -c SHA256SUMS.txt --ignore-missing
 
-  <section id="safety" style="margin-top:64px">
-    <div class="sec-label">// 안전하게 설치하기 — 설치 전 확인</div>
-    <div class="steps" style="margin-bottom:24px">
-      <div class="step"><div class="num">검증</div><h3>출처·해시 확인</h3><p>반드시 <b>GitHub Release</b>에서 받고, <code>SHA256SUMS.txt</code> 로 해시를 검증하세요. GitHub <b>artifact attestation</b>과 <b>SBOM</b>으로 빌드 출처를 확인할 수 있습니다. <code>brew</code>·<code>winget</code>·<code>scoop</code> 로 설치하면 해시가 <b>자동 검증</b>됩니다.</p></div>
-      <div class="step"><div class="num">권한</div><h3>관리자 권한 불필요</h3><p>에이전트는 <b>일반 사용자 권한</b>으로 동작합니다. <code>sudo</code>·관리자 PowerShell·시스템 폴더 쓰기·방화벽/레지스트리 변경이 필요 없습니다. 설정·로그는 홈 디렉터리에만 저장됩니다.</p></div>
-      <div class="step"><div class="num">기본값</div><h3>안전한 기본 설정</h3><p>하루 처리 한도 <b>15건</b>·동시 <b>1건</b>이 기본이며, 무제한은 <code>--allow-unlimited</code> 로만 가능합니다. Ollama 는 기본 <b>localhost 전용</b>입니다.</p></div>
-    </div>
-    <div class="note"><span class="ic">!</span><p><b>개인정보 주의</b> — <code>/ask</code> 로 들어온 <b>다른 사용자의 질문 내용이 당신(프로바이더)의 PC로 전송</b>되어 로컬 AI가 처리합니다. 반대로 <b>당신이 디스코드에서 질문하면 그 내용이 다른 사용자의 PC로 전송</b>될 수 있습니다. <b>비밀번호·API 키·토큰·주민번호 등 민감정보나 개인정보는 절대 입력하지 마세요.</b> 에이전트는 프롬프트 원문을 로그/파일에 저장하지 않습니다.</p></div>
-    <div class="note"><span class="ic">i</span><p>🖼️ <b>(선택) 이미지 생성도 제공하기</b> — 누구나 가능합니다. 로컬 <b>Stable Diffusion</b>(AUTOMATIC1111 등)을 켜고 에이전트에 <code>--enable-image</code> 를 추가하면 <code>/imagine</code> 요청을 받는 이미지 프로바이더가 됩니다(GPU 권장). 자세히: 소스의 <code>docs/IMAGE_PROVIDER.md</code>.</p></div>
-  </section>
+<span class="c"># 4) 실행 (sudo 불필요 · 상시구동은 systemctl --user)</span>
+<span class="g">chmod</span> +x discord-ai-network-bot-linux
+<span class="g">./discord-ai-network-bot-linux</span> --token <span class="o">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url <span class="b">wss://discord-ai.yeon.world/agent</span>`
+      }
+    };
 
-  <footer>
-    <p>커뮤니티 로컬 AI Provider Pool · <span class="warn">기여와 공정성, 금전 거래 아님</span></p>
-    <p class="warn"><b>⚠</b> 비밀번호·API 키 등 민감정보는 절대 입력하지 마세요.</p>
-  </footer>
-</div>
-
-<script>
-  // OS 탭 — 클라이언트 OS 자동 선택 + 전환
-  (function () {
-    var tabs = document.querySelectorAll('.tab');
-    var panels = document.querySelectorAll('.panel');
-    function select(os) {
-      tabs.forEach(function (t) { t.setAttribute('aria-selected', String(t.dataset.os === os)); });
-      panels.forEach(function (p) { p.classList.toggle('on', p.dataset.os === os); });
+    const tabs = [...document.querySelectorAll('.tab')];
+    function setOS(key) {
+      tabs.forEach(t => t.classList.toggle('active', t.dataset.os === key));
+      document.getElementById('installHint').innerHTML = osData[key].hint;
+      document.getElementById('codeBlock').innerHTML = osData[key].code;
+      document.getElementById('shellName').textContent = osData[key].shell;
     }
-    tabs.forEach(function (t) { t.addEventListener('click', function () { select(t.dataset.os); }); });
-    var ua = navigator.userAgent;
-    if (/Windows/i.test(ua)) select('win');
-    else if (/Linux|X11/i.test(ua) && !/Android/i.test(ua)) select('linux');
-    else select('mac');
-  })();
+    tabs.forEach(t => t.addEventListener('click', () => setOS(t.dataset.os)));
+    const ua = navigator.userAgent;
+    if (/Windows/i.test(ua)) setOS('win');
+    else if (/Linux|X11/i.test(ua) && !/Android/i.test(ua)) setOS('linux');
+    else setOS('mac');
 
-  // 복사 버튼 — 코드 텍스트 추출(주석/하이라이트 제거 없이 원문)
-  document.querySelectorAll('.copy').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var el = document.getElementById(btn.dataset.target);
-      var text = el.innerText.replace(/ /g, ' ');
-      navigator.clipboard.writeText(text).then(function () {
-        btn.textContent = '복사됨 ✓'; btn.classList.add('done');
-        setTimeout(function () { btn.textContent = '복사'; btn.classList.remove('done'); }, 1800);
+    function copyCode() {
+      const text = document.getElementById('codeBlock').innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        ['copyBtn', 'copyBtn2'].forEach(id => {
+          const b = document.getElementById(id); const o = b.textContent;
+          b.textContent = '복사됨 ✓';
+          setTimeout(() => { b.textContent = o; }, 1600);
+        });
       });
-    });
-  });
-</script>
+    }
+    document.getElementById('copyBtn').addEventListener('click', copyCode);
+    document.getElementById('copyBtn2').addEventListener('click', copyCode);
+  </script>
 </body>
 </html>

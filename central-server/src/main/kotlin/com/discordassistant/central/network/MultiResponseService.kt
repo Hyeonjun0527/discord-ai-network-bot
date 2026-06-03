@@ -54,6 +54,32 @@ class MultiResponseService(
         timeoutSeconds: Int,
         synthesisEnabled: Boolean,
         disabledReason: String? = null,
+    ): MultiResponsePolicyView =
+        savePolicyEntity(
+            guildId = guildId,
+            channelId = channelId,
+            channelAiId = channelAiId,
+            mode = mode,
+            maxCandidates = maxCandidates,
+            requireDistinctModels = requireDistinctModels,
+            providerDailyLimit = providerDailyLimit,
+            timeoutSeconds = timeoutSeconds,
+            synthesisEnabled = synthesisEnabled,
+            disabledReason = disabledReason,
+        ).toView()
+
+    @Transactional
+    fun savePolicyEntity(
+        guildId: Long,
+        channelId: Long?,
+        channelAiId: Long?,
+        mode: String,
+        maxCandidates: Int,
+        requireDistinctModels: Boolean,
+        providerDailyLimit: Int,
+        timeoutSeconds: Int,
+        synthesisEnabled: Boolean,
+        disabledReason: String? = null,
     ): MultiResponsePolicyEntity {
         featureGate.requireMultiResponseEnabled()
         val now = Instant.now(clock)
@@ -91,6 +117,15 @@ class MultiResponseService(
         requestId: String = newRequestId(),
         promptPreview: String? = null,
         responseMode: String = "balanced",
+    ): MultiResponseRunView = startRunEntity(guildId, channelId, requestId, promptPreview, responseMode).toView()
+
+    @Transactional
+    fun startRunEntity(
+        guildId: Long,
+        channelId: Long,
+        requestId: String = newRequestId(),
+        promptPreview: String? = null,
+        responseMode: String = "balanced",
     ): MultiResponseRunEntity {
         featureGate.requireMultiResponseEnabled()
         val guildPolicy = policies.findByGuildIdAndChannelIdIsNull(guildId)
@@ -99,7 +134,7 @@ class MultiResponseService(
         val policy =
             channelPolicy
                 ?: guildPolicy
-                ?: savePolicy(
+                ?: savePolicyEntity(
                     guildId = guildId,
                     channelId = channelId,
                     channelAiId = null,
@@ -253,7 +288,11 @@ class MultiResponseService(
         featureGate.requireMultiResponseEnabled()
         val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
         if (run.status.equals("blocked_sensitive", ignoreCase = true)) {
-            return MultiResponseCompletion(run = run, synthesis = syntheses.findByRunId(runId), fallbackReason = run.failureReason)
+            return MultiResponseCompletion(
+                run = run.toView(),
+                synthesis = syntheses.findByRunId(runId)?.toView(),
+                fallbackReason = run.failureReason,
+            )
         }
         val now = Instant.now(clock)
         val runCandidates = candidates.findByRunId(runId)
@@ -287,7 +326,7 @@ class MultiResponseService(
                     safetySummary = "single_route",
                 )
             val savedRun = runs.findById(runId).orElse(run)
-            return MultiResponseCompletion(run = savedRun, synthesis = synthesis, fallbackReason = null)
+            return MultiResponseCompletion(run = savedRun.toView(), synthesis = synthesis, fallbackReason = null)
         }
         run.status =
             when {
@@ -297,7 +336,7 @@ class MultiResponseService(
         run.failureReason = failureReason?.trim()?.take(500) ?: run.failureReason ?: "single route failed"
         run.finishedAt = now
         val savedRun = runs.save(run)
-        return MultiResponseCompletion(run = savedRun, synthesis = null, fallbackReason = savedRun.failureReason)
+        return MultiResponseCompletion(run = savedRun.toView(), synthesis = null, fallbackReason = savedRun.failureReason)
     }
 
     @Transactional
@@ -309,7 +348,7 @@ class MultiResponseService(
         latencyMs: Int?,
         safetyFlags: List<String>,
         qualityScore: Int?,
-    ): CandidateAnswerEntity {
+    ): CandidateAnswerView {
         featureGate.requireMultiResponseEnabled()
         val candidate =
             candidates.findByRunIdAndId(runId, candidateId)
@@ -319,7 +358,7 @@ class MultiResponseService(
         candidate.latencyMs = latencyMs
         candidate.safetyFlags = safetyFlags.joinToString(",").ifBlank { null }
         candidate.qualityScore = qualityScore
-        return candidates.save(candidate)
+        return candidates.save(candidate).toView()
     }
 
     @Transactional
@@ -330,7 +369,7 @@ class MultiResponseService(
         strategy: String = "best_by_heuristic",
         qualitySummary: String? = null,
         safetySummary: String? = null,
-    ): SynthesisResultEntity {
+    ): SynthesisResultView {
         featureGate.requireMultiResponseEnabled()
         if (!synthesisAllowed(strategy, selectedCandidateIds)) {
             featureGate.requireMultiResponseSynthesisEnabled()
@@ -355,7 +394,7 @@ class MultiResponseService(
         run.selectedCandidateId = selectedCandidateIds.firstOrNull()
         run.finishedAt = now
         runs.save(run)
-        return saved
+        return saved.toView()
     }
 
     @Transactional
@@ -382,7 +421,7 @@ class MultiResponseService(
             run.failureReason = failureSummary(runCandidates)
             run.finishedAt = Instant.now(clock)
             runs.save(run)
-            return MultiResponseCompletion(run = run, synthesis = null, fallbackReason = run.failureReason)
+            return MultiResponseCompletion(run = run.toView(), synthesis = null, fallbackReason = run.failureReason)
         }
         val synthesis =
             synthesize(
@@ -394,7 +433,7 @@ class MultiResponseService(
                 safetySummary = null,
             )
         val savedRun = runs.findById(runId).orElse(run)
-        return MultiResponseCompletion(run = savedRun, synthesis = synthesis, fallbackReason = null)
+        return MultiResponseCompletion(run = savedRun.toView(), synthesis = synthesis, fallbackReason = null)
     }
 
     @Transactional
@@ -452,9 +491,9 @@ class MultiResponseService(
                 ),
             )
         return CandidateAdoptionResult(
-            run = savedRun,
-            candidate = candidate,
-            synthesis = savedSynthesis,
+            run = savedRun.toView(),
+            candidate = candidate.toView(),
+            synthesis = savedSynthesis.toView(),
             feedbackId = feedback?.id,
         )
     }
@@ -463,16 +502,16 @@ class MultiResponseService(
     fun failRun(
         runId: Long,
         reason: String,
-    ): MultiResponseRunEntity {
+    ): MultiResponseRunView {
         featureGate.requireMultiResponseEnabled()
         val run = runs.findById(runId).orElseThrow { IllegalArgumentException("run not found: $runId") }
         run.status = "failed"
         run.failureReason = reason.trim().take(500)
         run.finishedAt = Instant.now(clock)
-        return runs.save(run)
+        return runs.save(run).toView()
     }
 
-    fun listRecent(guildId: Long): List<MultiResponseRunEntity> = reporting.listRecent(guildId)
+    fun listRecent(guildId: Long): List<MultiResponseRunView> = reporting.listRecent(guildId)
 
     fun runDetail(runId: Long): MultiResponseRunDetail = reporting.runDetail(runId)
 
@@ -912,13 +951,127 @@ class MultiResponseService(
 }
 
 data class MultiResponseRunDetail(
-    val run: MultiResponseRunEntity,
-    val candidates: List<CandidateAnswerEntity>,
-    val synthesis: SynthesisResultEntity?,
-    val policy: MultiResponsePolicyEntity?,
+    val run: MultiResponseRunView,
+    val candidates: List<CandidateAnswerView>,
+    val synthesis: SynthesisResultView?,
+    val policy: MultiResponsePolicyView?,
     val safetySummary: String,
     val qualitySummary: String,
 )
+
+/** 컨트롤러/디스코드 어댑터가 읽는 run 요약 DTO. JPA 엔티티를 web 계층에 노출하지 않기 위한 뷰. */
+data class MultiResponseRunView(
+    val id: Long,
+    val guildId: Long,
+    val channelId: Long,
+    val requestId: String,
+    val policyId: Long?,
+    val status: String,
+    val candidateCount: Int,
+    val selectedCandidateId: Long?,
+    val ragContextStatus: String?,
+    val ragContextSourceIds: String?,
+    val ragContextChars: Int,
+    val startedAt: Instant,
+    val finishedAt: Instant?,
+    val failureReason: String?,
+)
+
+/** 컨트롤러/디스코드 어댑터가 읽는 정책 요약 DTO. */
+data class MultiResponsePolicyView(
+    val id: Long,
+    val guildId: Long,
+    val channelId: Long?,
+    val mode: String,
+    val maxCandidates: Int,
+    val requireDistinctModels: Boolean,
+    val providerDailyLimit: Int,
+    val timeoutSeconds: Int,
+    val synthesisEnabled: Boolean,
+    val disabledReason: String?,
+)
+
+/** 컨트롤러가 읽는 후보 요약 DTO. */
+data class CandidateAnswerView(
+    val id: Long,
+    val runId: Long,
+    val providerUserId: Long?,
+    val modelName: String?,
+    val answerRef: String?,
+    val status: String,
+    val latencyMs: Int?,
+    val safetyFlags: String?,
+    val qualityScore: Int?,
+)
+
+/** 컨트롤러가 읽는 합성 결과 요약 DTO. */
+data class SynthesisResultView(
+    val id: Long,
+    val runId: Long,
+    val answerRef: String?,
+    val status: String,
+    val selectedCandidateIds: String?,
+    val strategy: String,
+    val qualitySummary: String?,
+    val safetySummary: String?,
+)
+
+internal fun MultiResponseRunEntity.toView(): MultiResponseRunView =
+    MultiResponseRunView(
+        id = id,
+        guildId = guildId,
+        channelId = channelId,
+        requestId = requestId,
+        policyId = policyId,
+        status = status,
+        candidateCount = candidateCount,
+        selectedCandidateId = selectedCandidateId,
+        ragContextStatus = ragContextStatus,
+        ragContextSourceIds = ragContextSourceIds,
+        ragContextChars = ragContextChars,
+        startedAt = startedAt,
+        finishedAt = finishedAt,
+        failureReason = failureReason,
+    )
+
+internal fun MultiResponsePolicyEntity.toView(): MultiResponsePolicyView =
+    MultiResponsePolicyView(
+        id = id,
+        guildId = guildId,
+        channelId = channelId,
+        mode = mode,
+        maxCandidates = maxCandidates,
+        requireDistinctModels = requireDistinctModels,
+        providerDailyLimit = providerDailyLimit,
+        timeoutSeconds = timeoutSeconds,
+        synthesisEnabled = synthesisEnabled,
+        disabledReason = disabledReason,
+    )
+
+internal fun CandidateAnswerEntity.toView(): CandidateAnswerView =
+    CandidateAnswerView(
+        id = id,
+        runId = runId,
+        providerUserId = providerUserId,
+        modelName = modelName,
+        answerRef = answerRef,
+        status = status,
+        latencyMs = latencyMs,
+        safetyFlags = safetyFlags,
+        qualityScore = qualityScore,
+    )
+
+internal fun SynthesisResultEntity.toView(): SynthesisResultView =
+    SynthesisResultView(
+        id = id,
+        runId = runId,
+        answerRef = answerRef,
+        status = status,
+        selectedCandidateIds = selectedCandidateIds,
+        strategy = strategy,
+        qualitySummary = qualitySummary,
+        safetySummary = safetySummary,
+    )
 
 data class MultiResponseDailyStats(
     val guildId: Long,
@@ -1099,15 +1252,15 @@ data class ProviderFanoutLoadSummary(
 )
 
 data class MultiResponseCompletion(
-    val run: MultiResponseRunEntity,
-    val synthesis: SynthesisResultEntity?,
+    val run: MultiResponseRunView,
+    val synthesis: SynthesisResultView?,
     val fallbackReason: String?,
 )
 
 data class CandidateAdoptionResult(
-    val run: MultiResponseRunEntity,
-    val candidate: CandidateAnswerEntity,
-    val synthesis: SynthesisResultEntity,
+    val run: MultiResponseRunView,
+    val candidate: CandidateAnswerView,
+    val synthesis: SynthesisResultView,
     val feedbackId: Long?,
 )
 

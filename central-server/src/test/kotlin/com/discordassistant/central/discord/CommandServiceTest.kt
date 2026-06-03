@@ -74,31 +74,41 @@ class CommandServiceTest
         }
 
         @Test
-        fun `help — 유저 섹션은 항상, 관리자 섹션은 관리자만`() {
+        fun `help — 유저 섹션은 항상, 관리자 섹션은 관리자만 (한국어 표기)`() {
+            // 기본(default) 로케일은 한국어 — 슬래시 메뉴(/질문 등)와 일치하도록 한국어 명령명으로 표기.
             val user = commands.help(ctx(admin = false)).content
-            assertTrue(user.contains("/ask"))
+            assertTrue(user.contains("/질문"))
             assertTrue(!user.contains("__관리자__"))
             val admin = commands.help(ctx(admin = true)).content
             assertTrue(admin.contains("__관리자__"))
             assertTrue(admin.contains("/채널프로필"))
-            assertTrue(admin.contains("/llm-channel-profile"))
-            assertTrue(admin.contains("/ai-network-map"))
-            assertTrue(admin.contains("/ai-knowledge-list"))
-            assertTrue(admin.contains("/ai-knowledge-add"))
-            assertTrue(admin.contains("/ai-knowledge-search"))
-            assertTrue(admin.contains("/ai-knowledge-index-plan"))
-            assertTrue(admin.contains("/ai-knowledge-approve"))
-            assertTrue(admin.contains("/ai-knowledge-delete"))
-            assertTrue(admin.contains("/ai-knowledge-jobs"))
-            assertTrue(admin.contains("/ai-knowledge-job-complete"))
-            assertTrue(admin.contains("/ai-preset-catalog"))
-            assertTrue(admin.contains("/ai-preset-import"))
-            assertTrue(admin.contains("/ai-preset-moderation"))
-            assertTrue(admin.contains("/ai-preset-report-review"))
-            assertTrue(admin.contains("/ai-multi-response-status"))
-            assertTrue(admin.contains("/ai-multi-response-set"))
-            assertTrue(admin.contains("/ai-multi-response-dry-run"))
-            assertTrue(admin.contains("/ai-network-check"))
+            assertTrue(admin.contains("/네트워크지도"))
+            assertTrue(admin.contains("/지식목록"))
+            assertTrue(admin.contains("/지식추가"))
+            assertTrue(admin.contains("/지식검색"))
+            assertTrue(admin.contains("/지식색인계획"))
+            assertTrue(admin.contains("/지식승인"))
+            assertTrue(admin.contains("/지식삭제"))
+            assertTrue(admin.contains("/지식색인작업"))
+            assertTrue(admin.contains("/지식색인완료"))
+            assertTrue(admin.contains("/프리셋목록"))
+            assertTrue(admin.contains("/프리셋가져오기"))
+            assertTrue(admin.contains("/프리셋검수"))
+            assertTrue(admin.contains("/프리셋신고처리"))
+            assertTrue(admin.contains("/다중응답상태"))
+            assertTrue(admin.contains("/다중응답설정"))
+            assertTrue(admin.contains("/다중응답실험"))
+            assertTrue(admin.contains("/네트워크점검"))
+        }
+
+        @Test
+        fun `help — 영어 클라이언트는 영어 명령명으로 표기`() {
+            val user =
+                commands
+                    .help(ctx(admin = false), net.dv8tion.jda.api.interactions.DiscordLocale.ENGLISH_US)
+                    .content
+            assertTrue(user.contains("/ask"))
+            assertTrue(!user.contains("/질문"))
         }
 
         @Test

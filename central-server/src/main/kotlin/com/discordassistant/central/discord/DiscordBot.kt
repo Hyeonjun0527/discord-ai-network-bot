@@ -1478,7 +1478,7 @@ class DiscordBot(
                 "community-stats" -> commands.communityStats(ctx)
                 "fairness" -> commands.fairness(ctx)
                 "privacy" -> commands.privacy(ctx)
-                "help" -> commands.help(ctx)
+                "help" -> commands.help(ctx, event.userLocale)
                 "bot-permissions" -> commands.botPermissions(ctx)
                 "ai-network-map" -> commands.aiNetworkMap(ctx)
                 "ai-network-check" -> commands.aiNetworkCheck(ctx)

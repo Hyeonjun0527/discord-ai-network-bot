@@ -24,6 +24,7 @@ object CommandLoc {
     private val TABLE: Map<String, L> =
         mapOf(
             "ask" to L("질문", "спросить", "Ask the community local AI", "Спросить локальный ИИ сообщества"),
+            "imagine" to L("그림", "картинка", "Generate an image (community local Stable Diffusion)", "Сгенерировать изображение"),
             "models" to L("모델", "модели", "Check available model levels", "Доступные уровни моделей"),
             "catalog" to L("모델목록", "каталог", "List models offered in this server", "Список моделей этого сервера"),
             "my-usage" to L("내사용량", "моё-использование", "Check your usage today", "Ваше использование за сегодня"),

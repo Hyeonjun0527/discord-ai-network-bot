@@ -144,10 +144,10 @@ class MenuFactoryTest {
     @Test
     fun `슬림 도움말 — 핵심만, 관리자만 설정 언급`() {
         val user = MenuFactory.slimHelp(isAdmin = false)
-        assertTrue(user.contains("/ask"))
+        assertTrue(user.contains("/질문"))
         assertTrue(user.contains("함께 도와주기"))
         assertTrue(user.contains("내 상태"))
-        assertTrue(user.contains("/menu"))
+        assertTrue(user.contains("/메뉴"))
         assertFalse(user.contains(MenuSymbols.SETTINGS))
         assertTrue(MenuFactory.slimHelp(isAdmin = true).contains(MenuSymbols.SETTINGS))
     }

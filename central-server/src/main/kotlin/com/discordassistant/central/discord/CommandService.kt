@@ -169,13 +169,14 @@ class CommandService(
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
-        val routingPolicy = channelRoutingPolicies.effective(ctx.guildId, ctx.channelId, policy.guildDefaultModel(ctx.guildId))
+        val guildDefaultModel = policy.guildDefaultModel(ctx.guildId) // 1회 조회 후 재사용(중복 SELECT 제거)
+        val routingPolicy = channelRoutingPolicies.effective(ctx.guildId, ctx.channelId, guildDefaultModel)
         val modelChoice =
             channelRoutingPolicies.resolveModelChoice(
                 guildId = ctx.guildId,
                 channelId = ctx.channelId,
                 requestedModel = requestedModel,
-                guildDefaultModel = policy.guildDefaultModel(ctx.guildId),
+                guildDefaultModel = guildDefaultModel,
             )
         if (modelChoice.selectedModel == null && modelChoice.requiresAvailableModel) {
             return Replies.warn(

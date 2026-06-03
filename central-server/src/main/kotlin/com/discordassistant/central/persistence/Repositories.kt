@@ -65,6 +65,8 @@ interface ProviderRepository : JpaRepository<ProviderEntity, Long> {
 interface ProviderContributionPolicyRepository : JpaRepository<ProviderContributionPolicyEntity, Long> {
     fun findByProviderId(providerId: Long): List<ProviderContributionPolicyEntity>
 
+    fun findByProviderIdIn(providerIds: Collection<Long>): List<ProviderContributionPolicyEntity>
+
     fun deleteByProviderIdIn(providerIds: Collection<Long>)
 }
 

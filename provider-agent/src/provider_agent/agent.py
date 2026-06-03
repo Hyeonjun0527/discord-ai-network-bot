@@ -233,12 +233,13 @@ class ProviderAgent:
 
     # ── 실행 ────────────────────────────────────────────────────────────
     async def run(self, install_signals: bool = True) -> int:
+        # 선택한 모델만 제공한다. 아무것도 선택하지 않았으면 자동으로 전체를 제공하지 않는다
+        # (예전의 "빈 목록 → 전체 자동감지" 폴백 제거 — 사용자가 고른 모델만 광고·라우팅).
         if not self._models:
-            try:
-                self._models = await self._ollama.list_models()
-                logger.info("감지된 모델: %s", self._models or "(없음)")
-            except OllamaError as exc:
-                logger.warning("Ollama 모델 목록 실패(%s) — 빈 목록으로 진행", exc)
+            logger.warning(
+                "제공할 모델이 선택되지 않았습니다 — 텍스트 요청을 제공하지 않습니다"
+                "(앱 ‘제공 모델’에서 1개 이상 선택하세요)."
+            )
 
         # SD 이미지 capability: opt-in + 런타임 health 로 확정.
         if self._sd is not None:

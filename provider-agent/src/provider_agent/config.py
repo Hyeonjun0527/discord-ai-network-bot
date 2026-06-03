@@ -36,6 +36,7 @@ class AgentConfig:
     install_service: bool = False  # 자동 시작 서비스 등록 후 종료(--install-service, 저장 안 함)
     gui: bool = False  # 브라우저 설정 UI(--gui, 토큰 없이 가능, 저장 안 함)
     tray: bool = False  # 실행 중 시스템 트레이 아이콘(라이브 상태·중지·설정 열기, 데스크톱 전용)
+    auto_update: bool = True  # 시작 시 새 버전이 있으면 자동으로 받아 교체·재실행(기본 ON, 고급에서 토글)
     agent_version: str = AGENT_VERSION
     platform: str = field(default_factory=lambda: _platform.platform())
 
@@ -169,6 +170,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         install_service=bool(args.install_service),
         gui=bool(args.gui),
         tray=bool(args.tray) or bool(saved.get("tray")),
+        auto_update=bool(saved.get("auto_update", True)),
     )
     # 서비스 등록은 저장된 설정으로 무인자 실행하므로 설정 저장이 전제다.
     if args.save_config or args.install_service:

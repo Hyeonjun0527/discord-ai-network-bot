@@ -58,6 +58,19 @@ class FakeOllama:
         yield ("done", self.usage)
 
 
+def test_hello_advertises_only_selected_models():
+    """서버에 광고(provider_hello)되는 모델 = 사용자가 고른 목록 그대로. 서버는 이 목록만 라우팅한다."""
+    agent = ProviderAgent(AgentConfig(token="T", models=("llama3.1:8b", "gemma2")), ollama=FakeOllama())  # type: ignore[arg-type]
+    assert agent._build_hello().models == ["llama3.1:8b", "gemma2"]
+
+
+def test_hello_empty_when_nothing_selected():
+    """아무것도 선택 안 하면 광고 목록이 비어, 서버가 이 PC로 텍스트 요청을 라우팅하지 않는다
+    (예전의 '빈 목록 → 전체 자동감지' 폴백이 되살아나지 않게 회귀 방지)."""
+    agent = ProviderAgent(AgentConfig(token="T", models=()), ollama=FakeOllama())  # type: ignore[arg-type]
+    assert agent._build_hello().models == []
+
+
 @pytest.mark.asyncio
 async def test_handle_infer_streaming_emits_chunks():
     """스트리밍(#142): req.stream 시 ChunkFrame 점진 전송 + done 종료."""

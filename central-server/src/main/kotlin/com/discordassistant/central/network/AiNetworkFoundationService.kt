@@ -63,6 +63,30 @@ class AiNetworkFoundationService(
             networkLevel = 1,
         )
 
+    /**
+     * web/dashboard 계층이 [AiNetworkProfileEntity] 를 직접 만지지 않도록, 노출 가능한 프로필 메타데이터만
+     * 담은 안전한 view 를 반환한다(감사 2026-06-03 C: entity↛web).
+     *
+     * @param refresh true 면 프로필을 보장(없으면 생성)하고, false 면 현재 프로필 또는 기본값을 읽는다.
+     */
+    @Transactional
+    fun networkProfileView(
+        guildId: Long,
+        refresh: Boolean,
+    ): NetworkProfileView {
+        val profile =
+            if (refresh) {
+                ensureNetworkProfile(guildId)
+            } else {
+                currentNetworkProfile(guildId) ?: defaultNetworkProfile(guildId)
+            }
+        return NetworkProfileView(
+            guildId = profile.guildId,
+            displayName = profile.displayName,
+            tagline = profile.tagline,
+        )
+    }
+
     @Transactional
     fun upsertProviderCapability(
         guildId: Long,
@@ -217,3 +241,13 @@ class AiNetworkFoundationService(
         const val PROJECTION_STALE_SECONDS = 300L
     }
 }
+
+/**
+ * 네트워크 프로필 중 web/dashboard 응답에 노출 가능한 메타데이터만 담는 안전한 view.
+ * 엔티티가 web 계층으로 새지 않도록 컨트롤러는 이 view 만 소비한다.
+ */
+data class NetworkProfileView(
+    val guildId: Long,
+    val displayName: String,
+    val tagline: String,
+)

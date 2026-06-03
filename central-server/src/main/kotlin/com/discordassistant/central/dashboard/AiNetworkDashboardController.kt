@@ -232,12 +232,7 @@ class AiNetworkDashboardController(
         @RequestParam(defaultValue = "true") refresh: Boolean = true,
     ): AiNetworkOverviewResponse {
         featureGate.requireDashboardEnabled()
-        val profile =
-            if (refresh) {
-                foundation.ensureNetworkProfile(guildId)
-            } else {
-                foundation.currentNetworkProfile(guildId) ?: foundation.defaultNetworkProfile(guildId)
-            }
+        val profile = foundation.networkProfileView(guildId, refresh = refresh)
         val overview =
             if (refresh) {
                 foundation.refreshOverview(guildId)

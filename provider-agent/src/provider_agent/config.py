@@ -33,6 +33,7 @@ class AgentConfig:
     sd_url: str = "http://127.0.0.1:7860"  # 로컬 Stable Diffusion(A1111) 주소
     allow_remote_sd: bool = False  # 기본 localhost 전용; True 면 원격 SD 허용(위험)
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
+    install_service: bool = False  # 자동 시작 서비스 등록 후 종료(--install-service, 저장 안 함)
     agent_version: str = AGENT_VERSION
     platform: str = field(default_factory=lambda: _platform.platform())
 
@@ -73,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--log-file", help="로그를 파일에도 기록(회전)")
     p.add_argument("--self-test", action="store_true", help="연결 없이 Ollama 자가 점검 후 종료")
     p.add_argument("--save-config", action="store_true", help="현재 설정을 ~/.config 에 저장(시크릿 0600)")
+    p.add_argument("--install-service", action="store_true", help="로그인 시 자동 실행되는 사용자 서비스 등록 후 종료(관리자 불필요)")
     p.add_argument("--telemetry", action="store_true", help="익명 텔레메트리 opt-in(기본 꺼짐)")
     p.add_argument("--yes", action="store_true", help="첫 실행 동의 화면을 자동 승인(스크립트/서비스용)")
     p.add_argument("-v", "--verbose", action="store_true", help="디버그 로그")
@@ -160,7 +162,9 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         sd_url=sd_url,
         allow_remote_sd=allow_remote_sd,
         assume_yes=bool(args.yes),
+        install_service=bool(args.install_service),
     )
-    if args.save_config:
+    # 서비스 등록은 저장된 설정으로 무인자 실행하므로 설정 저장이 전제다.
+    if args.save_config or args.install_service:
         save_config(cfg)
     return cfg, bool(args.verbose)

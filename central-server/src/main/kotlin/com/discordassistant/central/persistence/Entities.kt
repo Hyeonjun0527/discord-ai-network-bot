@@ -590,3 +590,13 @@ class ProviderDurableRevocationEntity(
     var guildId: Long = 0,
     var revokedAtEpoch: Long = 0,
 )
+
+@Entity
+@Table(name = "blocklist")
+class BlocklistEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var guildId: Long = 0,
+    var userId: Long = 0,
+    var blockedBy: Long? = null,
+    var createdAt: Instant = Instant.EPOCH,
+)

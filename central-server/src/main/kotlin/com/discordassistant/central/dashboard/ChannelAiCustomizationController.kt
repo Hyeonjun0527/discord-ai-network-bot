@@ -165,7 +165,7 @@ class ChannelAiCustomizationController(
                 "channelAiId" to it.channelAiId,
                 "proposedBehaviorId" to it.proposedBehaviorId,
                 "requestedBy" to it.requestedBy,
-                "createdAt" to it.createdAt.toString(),
+                "createdAt" to it.createdAt,
             )
         }
 
@@ -199,7 +199,7 @@ class ChannelAiCustomizationController(
                         "purpose" to it.purpose,
                         "tone" to it.tone,
                         "answerLength" to it.answerLength,
-                        "createdAt" to it.createdAt.toString(),
+                        "createdAt" to it.createdAt,
                     )
                 },
             "proposals" to

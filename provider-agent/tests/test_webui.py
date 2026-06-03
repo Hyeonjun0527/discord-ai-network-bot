@@ -346,6 +346,42 @@ async def test_update_progress_endpoint(monkeypatch):
         await client.close()
 
 
+def test_auto_update_once_applies_when_outdated(monkeypatch):
+    # 실행 중 주기 검사: 토글 ON + 구버전 + 지원이면 받아 적용하고 종료 예약(껐다 켜지 않아도 적용).
+    monkeypatch.setattr(webui, "load_config", lambda: {"auto_update": True})
+    monkeypatch.setattr("provider_agent.updater.is_updating", lambda: False)
+    monkeypatch.setattr(
+        "provider_agent.updater.check",
+        lambda: {"current": "0.19.0", "latest": "0.20.0", "outdated": True, "supported": True, "error": None},
+    )
+    monkeypatch.setattr("provider_agent.updater.apply_update", lambda: {"ok": True, "restarting": True})
+    exited = {}
+    monkeypatch.setattr(webui, "_schedule_exit", lambda *a, **k: exited.setdefault("called", True))
+    assert webui._auto_update_once() is True
+    assert exited.get("called") is True
+
+
+def test_auto_update_once_skips_when_latest(monkeypatch):
+    monkeypatch.setattr(webui, "load_config", lambda: {"auto_update": True})
+    monkeypatch.setattr("provider_agent.updater.is_updating", lambda: False)
+    monkeypatch.setattr(
+        "provider_agent.updater.check",
+        lambda: {"current": "0.20.0", "latest": "0.20.0", "outdated": False, "supported": True, "error": None},
+    )
+    called = {}
+    monkeypatch.setattr("provider_agent.updater.apply_update", lambda: called.setdefault("apply", True) or {})
+    assert webui._auto_update_once() is False
+    assert "apply" not in called  # 최신이면 교체 시도 안 함
+
+
+def test_auto_update_once_skips_when_toggle_off(monkeypatch):
+    monkeypatch.setattr(webui, "load_config", lambda: {"auto_update": False})
+    called = {}
+    monkeypatch.setattr("provider_agent.updater.check", lambda: called.setdefault("checked", True) or {})
+    assert webui._auto_update_once() is False
+    assert "checked" not in called  # 토글 OFF 면 검사조차 안 함
+
+
 def test_brand_icon_png_returns_png_bytes():
     from provider_agent.webui import _brand_icon_png
 

@@ -175,7 +175,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <div><div class="status-title" id="stitle">대기 중</div><div class="status-body" id="ssub">연결 시작을 누르면 풀에 등록됩니다.</div><div class="chips" id="chips"></div></div></section>
 <section><h2>1. 연결 토큰</h2>
 <div class="token-row"><label class="input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg><input type="password" id="token" placeholder="발급받은 토큰을 입력하세요"></label>
-<button class="secondary-btn" type="button" onclick="getToken()">토큰 발급 안내 ↗</button></div>
+<button class="secondary-btn" type="button" onclick="getToken()">토큰 받기 ↗</button></div>
 <div class="helper">Discord에서 발급한 토큰을 붙여넣은 뒤 연결을 시작하세요.</div></section>
 <section><h2>2. 제공 모델</h2><div class="grid2" id="models"></div></section>
 <section><h2>3. 설정</h2><div class="settings">
@@ -215,9 +215,11 @@ document.getElementById('chips').innerHTML=chips;
 const go=document.getElementById('go');go.textContent=s.running?'■ 중지':'▶ 연결 시작';go.className='primary-btn'+(s.running?' stop':'');
 const lg=await j('/api/logs');const el=document.getElementById('log');el.textContent=lg.lines.join('\n');el.scrollTop=el.scrollHeight;}
 async function getToken(){const s=await j('/api/status');const msg=document.getElementById('msg');
-if(!s.connectEnabled){msg.className='';msg.textContent='토큰 발급은 곧 지원돼요. 지금은 디스코드 /provider-join 토큰을 붙여넣어 주세요.';return;}
-const cb=location.origin+'/connect/callback';
-location.href=s.relayUrl.replace('wss://','https://').replace('ws://','http://').replace(/\/agent$/,'')+'/provider/connect?cb='+encodeURIComponent(cb)+'&state='+encodeURIComponent(K);}
+if(!s.connectEnabled){msg.className='';msg.textContent='토큰 받기는 곧 지원돼요. 지금은 디스코드 /provider-join 토큰을 붙여넣어 주세요.';return;}
+// 앱 창은 그대로 두고, 시스템 기본 브라우저에서 디스코드 로그인을 연다(웹뷰 차단 회피).
+const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
+if(r.ok){msg.className='ok';msg.textContent='🌐 브라우저에서 디스코드 로그인 후, 이 창으로 돌아오면 토큰이 자동 입력됩니다.';}
+else{msg.className='err';msg.textContent='⚠️ '+(r.error||'브라우저 열기 실패');}}
 async function toggle(){const msg=document.getElementById('msg');if(RUN){await j('/api/stop',{method:'POST'});await refresh();return;}
 if(HAS_MODELS&&!selectedModels().length){msg.className='err';msg.textContent='⚠️ 제공할 모델을 1개 이상 선택하세요.';return;}
 msg.className='';msg.textContent='저장하고 연결하는 중…';
@@ -309,6 +311,34 @@ def build_app(session_key: str) -> web.Application:
                 pass
         return web.json_response({"ok": True, "serviceInstalled": service_installed})
 
+    async def connect_open(req: web.Request) -> web.Response:
+        """‘토큰 받기’: 앱 창은 그대로 두고 **시스템 기본 브라우저**에서 디스코드 OAuth 를 연다.
+
+        웹뷰 내부에서 디스코드 로그인을 열면 차단될 수 있어 호스트 브라우저로 연다. cb 는 이 로컬
+        서버의 콜백(localhost)만 허용, state 는 서버 세션키를 사용(콜백에서 검증).
+        """
+        _auth(req)
+        import os
+        import re
+        import webbrowser
+        from urllib.parse import quote
+
+        if not os.getenv("AGENT_CONNECT_ENABLED"):
+            return web.json_response({"ok": False, "error": "토큰 받기가 아직 활성화되지 않았습니다."})
+        data = await req.json()
+        origin = str(data.get("origin", "")).strip()
+        if not re.fullmatch(r"http://(127\.0\.0\.1|localhost)(:\d+)?", origin):
+            return web.json_response({"ok": False, "error": "로컬 주소가 아닙니다."})
+        saved = load_config()
+        base = _connect_base(saved.get("relay_url") or _default_relay())
+        cb = origin + "/connect/callback"
+        url = f"{base}/provider/connect?cb={quote(cb, safe='')}&state={quote(session_key, safe='')}"
+        try:
+            webbrowser.open(url)
+        except Exception:  # noqa: BLE001
+            return web.json_response({"ok": False, "error": "브라우저를 열 수 없습니다."})
+        return web.json_response({"ok": True})
+
     async def connect_callback(req: web.Request) -> web.Response:
         """‘토큰 받기’ OAuth 콜백: 중앙 서버가 디스코드 인증 후 token·state 를 붙여 리디렉트.
 
@@ -332,7 +362,8 @@ def build_app(session_key: str) -> web.Application:
         )
         return web.Response(
             text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#b8ff39;text-align:center;padding-top:80px'>"
-            "✅ 토큰을 받았습니다. 돌아갑니다…<script>setTimeout(()=>location.href='/',900)</script>",
+            "✅ 토큰을 받았습니다. <b>이 탭을 닫고 앱 창으로 돌아가</b> ‘연결 시작’을 누르세요."
+            "<script>setTimeout(()=>window.close(),1800)</script>",
             content_type="text/html",
         )
 
@@ -372,6 +403,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/status", status)
     app.router.add_get("/api/logs", logs)
     app.router.add_get("/connect/callback", connect_callback)
+    app.router.add_post("/api/connect-open", connect_open)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)

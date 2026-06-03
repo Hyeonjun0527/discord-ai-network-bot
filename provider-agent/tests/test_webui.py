@@ -113,6 +113,48 @@ def test_webview_available_browser_optout(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_connect_open_opens_system_browser(monkeypatch):
+    monkeypatch.setenv("AGENT_CONNECT_ENABLED", "1")
+    opened = {}
+    monkeypatch.setattr("webbrowser.open", lambda u: opened.setdefault("url", u))
+    client = await _client()
+    try:
+        r = await client.post("/api/connect-open", headers={"X-Session": KEY}, json={"origin": "http://127.0.0.1:55555"})
+        d = await r.json()
+        assert d["ok"] is True
+        # 시스템 브라우저를 중앙 서버 connect 로 열되, cb 는 로컬 콜백·state 는 세션키
+        assert opened["url"].startswith("https://discord-ai.yeon.world/provider/connect?")
+        assert "127.0.0.1%3A55555%2Fconnect%2Fcallback" in opened["url"]
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_connect_open_rejects_non_localhost(monkeypatch):
+    monkeypatch.setenv("AGENT_CONNECT_ENABLED", "1")
+    monkeypatch.setattr("webbrowser.open", lambda u: (_ for _ in ()).throw(AssertionError("열면 안 됨")))
+    client = await _client()
+    try:
+        r = await client.post("/api/connect-open", headers={"X-Session": KEY}, json={"origin": "https://evil.com"})
+        d = await r.json()
+        assert d["ok"] is False  # localhost 아니면 거부(브라우저 안 엶)
+        assert (await client.post("/api/connect-open", json={"origin": "http://127.0.0.1:1"})).status == 403  # 키 없음
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_connect_open_disabled_without_env(monkeypatch):
+    monkeypatch.delenv("AGENT_CONNECT_ENABLED", raising=False)
+    client = await _client()
+    try:
+        d = await (await client.post("/api/connect-open", headers={"X-Session": KEY}, json={"origin": "http://127.0.0.1:1"})).json()
+        assert d["ok"] is False  # 미활성이면 안 엶
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_connect_callback_rejects_bad_state():
     client = await _client()
     try:

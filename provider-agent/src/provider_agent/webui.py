@@ -195,6 +195,8 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 .details-body{border-top:1px solid rgba(148,163,184,.10);padding:12px 16px;color:var(--muted);line-height:1.6}
 #log{background:#070d16;border:1px solid rgba(148,163,184,.14);border-radius:9px;padding:10px;height:120px;overflow:auto;font:12px/1.5 ui-monospace,Menlo,monospace;color:#8fa0b6;white-space:pre-wrap}
 .ro{word-break:break-all;color:#9fb0c6}
+.pbar{height:8px;border-radius:6px;background:rgba(148,163,184,.15);overflow:hidden;margin-top:10px;display:none}
+.pfill{height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--blue2));border-radius:6px;transition:width .25s ease}
 @media (max-width:560px){.hero{grid-template-columns:1fr}.card{grid-template-columns:1fr}.token-row{grid-template-columns:1fr}.grid2{grid-template-columns:1fr}}
 </style></head><body>
 <div class="window">
@@ -223,7 +225,8 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <div><div style="font-weight:850;font-size:14px;letter-spacing:-.02em">자동 업데이트</div><div class="helper" style="margin-top:2px">새 버전이 나오면 앱 시작 때 자동으로 받아 적용합니다.</div></div>
 <div class="toggle" id="autoupd" onclick="toggleAutoUpdate()"></div></div>
 <div id="verStatus" style="margin-top:10px">버전 확인 중…</div>
-<button class="secondary-btn" type="button" id="updateBtn" style="width:100%;margin-top:9px;display:none" onclick="doUpdate()"></button></div>
+<button class="secondary-btn" type="button" id="updateBtn" style="width:100%;margin-top:9px;display:none" onclick="doUpdate()"></button>
+<div class="pbar" id="pbar"><div class="pfill" id="pfill"></div></div></div>
 </div></details>
 </section>
 </main></div>
@@ -296,13 +299,26 @@ if(d.supported){btn.disabled=false;btn.style.display='block';btn.innerHTML=IINST
 }else{setHelp(vs,'ok','현재 v'+d.current+' · 최신입니다');}}
 async function toggleAutoUpdate(){AUTOUPD=!AUTOUPD;document.getElementById('autoupd').classList.toggle('on',AUTOUPD);
 try{await j('/api/auto-update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({autoUpdate:AUTOUPD})});}catch(e){}}
-async function doUpdate(){const btn=document.getElementById('updateBtn'),vs=document.getElementById('verStatus');
-btn.disabled=true;btn.innerHTML='<span>업데이트 받는 중… 잠시 후 자동 재시작</span>';setHelp(vs,'muted','새 버전을 내려받는 중입니다…');
-let r;try{r=await j('/api/update',{method:'POST'});}catch(e){r={ok:false,error:'요청에 실패했어요.'};}
-if(r.ok&&r.restarting){setHelp(vs,'ok',r.message||'업데이트 중 — 곧 다시 열립니다.');btn.innerHTML='<span>재시작 중…</span>';}
-else if(r.ok){setHelp(vs,'ok',r.message||'이미 최신이에요.');loadUpdate();}
-else{btn.disabled=false;btn.innerHTML=IINSTALL+'<span>지금 업데이트</span>';setHelp(vs,'err',r.error||'업데이트 실패');}}
-loadModels();refresh();loadInstall();loadUpdate();setInterval(refresh,2000);
+let UPDATING=false;
+function fmtMB(b){return (b/1048576).toFixed(1);}
+function renderProgress(p){const bar=document.getElementById('pbar'),fill=document.getElementById('pfill'),vs=document.getElementById('verStatus'),btn=document.getElementById('updateBtn');
+const active=['downloading','verifying','installing','restarting'].includes(p.phase);
+bar.style.display=active?'block':'none';if(active)btn.style.display='none';
+if(p.phase==='downloading'){fill.style.width=(p.total>0?p.percent:25)+'%';
+const sz=p.total>0?(' '+fmtMB(p.downloaded)+'/'+fmtMB(p.total)+'MB'):'';
+setHelp(vs,'muted','내려받는 중 '+(p.total>0?p.percent+'%':'…')+sz);}
+else if(p.phase==='verifying'){fill.style.width='100%';setHelp(vs,'muted','무결성 검증 중…');}
+else if(p.phase==='installing'){fill.style.width='100%';setHelp(vs,'muted','설치 중…');}
+else if(p.phase==='restarting'){fill.style.width='100%';setHelp(vs,'ok',p.message||'업데이트 완료 — 곧 다시 열립니다.');}
+else if(p.phase==='error'){bar.style.display='none';setHelp(vs,'err',p.error||'업데이트 실패');}}
+async function pollProgress(){let p;try{p=await j('/api/update-progress');}catch(e){return;}
+const active=['downloading','verifying','installing','restarting'].includes(p.phase);
+if(active){UPDATING=true;renderProgress(p);}
+else if(p.phase==='error'){renderProgress(p);if(UPDATING){UPDATING=false;const b=document.getElementById('updateBtn');b.disabled=false;b.innerHTML=IINSTALL+'<span>다시 시도</span>';b.style.display='block';}}
+else if(UPDATING){UPDATING=false;document.getElementById('pbar').style.display='none';loadUpdate();}}
+async function doUpdate(){const btn=document.getElementById('updateBtn');btn.disabled=true;btn.innerHTML='<span>준비 중…</span>';UPDATING=true;
+try{await j('/api/update',{method:'POST'});}catch(e){}}
+loadModels();refresh();loadInstall();loadUpdate();setInterval(refresh,2000);setInterval(pollProgress,600);
 </script></body></html>"""
 
 
@@ -491,11 +507,23 @@ def build_app(session_key: str) -> web.Application:
         _auth(req)
         from . import updater
 
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, updater.apply_update)
-        if result.get("ok") and result.get("restarting"):
-            _schedule_exit()  # 응답 전송 후 곧 종료 → 헬퍼가 교체·재실행
-        return web.json_response(result)
+        # 백그라운드 스레드에서 다운로드·교체(프런트는 /api/update-progress 로 진행률 폴링).
+        if updater.is_updating():
+            return web.json_response({"ok": True, "started": True})
+
+        def _worker() -> None:
+            result = updater.apply_update()
+            if result.get("ok") and result.get("restarting"):
+                _schedule_exit()  # 교체 위해 종료 → 헬퍼가 swap·재실행
+
+        threading.Thread(target=_worker, daemon=True).start()
+        return web.json_response({"ok": True, "started": True})
+
+    async def update_progress(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import updater
+
+        return web.json_response(updater.update_progress())
 
     async def auto_update_set(req: web.Request) -> web.Response:
         _auth(req)
@@ -538,6 +566,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/install-info", install_info)
     app.router.add_post("/api/install", install)
     app.router.add_get("/api/update-info", update_info)
+    app.router.add_get("/api/update-progress", update_progress)
     app.router.add_post("/api/update", update_apply)
     app.router.add_post("/api/auto-update", auto_update_set)
     app.router.add_post("/api/setup", setup)

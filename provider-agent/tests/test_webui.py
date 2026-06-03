@@ -313,7 +313,8 @@ async def test_auto_update_toggle_persists(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_update_apply_triggers_restart(monkeypatch):
+async def test_update_apply_runs_in_background_and_schedules_restart(monkeypatch):
+    monkeypatch.setattr("provider_agent.updater.is_updating", lambda: False)
     monkeypatch.setattr(
         "provider_agent.updater.apply_update",
         lambda: {"ok": True, "restarting": True, "message": "업데이트 중"},
@@ -323,8 +324,24 @@ async def test_update_apply_triggers_restart(monkeypatch):
     client = await _client()
     try:
         d = await (await client.post("/api/update", headers={"X-Session": KEY})).json()
-        assert d["ok"] is True and d["restarting"] is True
+        assert d["ok"] is True and d["started"] is True  # 즉시 시작 응답(다운로드는 백그라운드)
+        await asyncio.sleep(0.1)  # 워커 스레드가 apply_update 를 끝낼 시간
         assert exited.get("called") is True  # 교체 위해 종료 예약됨
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_update_progress_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        "provider_agent.updater.update_progress",
+        lambda: {"phase": "downloading", "downloaded": 5, "total": 10, "percent": 50, "message": "내려받는 중", "error": None},
+    )
+    client = await _client()
+    try:
+        assert (await client.get("/api/update-progress")).status == 403  # 키 없음
+        d = await (await client.get("/api/update-progress", headers={"X-Session": KEY})).json()
+        assert d["phase"] == "downloading" and d["percent"] == 50
     finally:
         await client.close()
 

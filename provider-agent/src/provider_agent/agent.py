@@ -181,8 +181,24 @@ class ProviderAgent:
         except asyncio.CancelledError:
             return
 
+    # ── 제어/상태(웹 UI·트레이용) ──────────────────────────────────────
+    def request_stop(self) -> None:
+        """실행 중인 에이전트에 정상 종료를 요청한다(웹 UI/트레이 중지 버튼)."""
+        self._stop.set()
+
+    def is_connected(self) -> bool:
+        return self._conn.authed
+
+    @property
+    def image_ready(self) -> bool:
+        return self._image_ready
+
+    @property
+    def models(self) -> list[str]:
+        return list(self._models)
+
     # ── 실행 ────────────────────────────────────────────────────────────
-    async def run(self) -> int:
+    async def run(self, install_signals: bool = True) -> int:
         if not self._models:
             try:
                 self._models = await self._ollama.list_models()
@@ -198,19 +214,21 @@ class ProviderAgent:
             else:
                 logger.warning("SD(%s) 에 닿지 못해 이미지 capability 비활성", self._cfg.sd_url)
 
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
-                loop.add_signal_handler(sig, self._stop.set)
-            except (NotImplementedError, AttributeError, ValueError):  # pragma: no cover - Windows 등
-                pass
-        # 설정 hot-reload(#129): SIGHUP → 저장 설정에서 models 재적용.
-        sighup = getattr(signal, "SIGHUP", None)
-        if sighup is not None:
-            try:
-                loop.add_signal_handler(sighup, self.reload_models)
-            except (NotImplementedError, AttributeError, ValueError):  # pragma: no cover
-                pass
+        # 웹 UI/트레이에서 같은 루프의 태스크로 돌릴 때는 시그널 핸들러를 설치하지 않는다.
+        if install_signals:
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                try:
+                    loop.add_signal_handler(sig, self._stop.set)
+                except (NotImplementedError, AttributeError, ValueError):  # pragma: no cover - Windows 등
+                    pass
+            # 설정 hot-reload(#129): SIGHUP → 저장 설정에서 models 재적용.
+            sighup = getattr(signal, "SIGHUP", None)
+            if sighup is not None:
+                try:
+                    loop.add_signal_handler(sighup, self.reload_models)
+                except (NotImplementedError, AttributeError, ValueError):  # pragma: no cover
+                    pass
 
         conn_task = asyncio.create_task(self._conn.run())
         status_task = asyncio.create_task(self._status_loop(self._conn))

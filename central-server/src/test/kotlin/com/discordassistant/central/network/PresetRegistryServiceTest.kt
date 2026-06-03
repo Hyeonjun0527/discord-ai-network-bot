@@ -617,10 +617,13 @@ class PresetRegistryServiceTest
                     behavior = PresetBehaviorInput(purpose = "개발 질문", tone = "practical"),
                 )
             val published = service.publishPreset(preset.id, publisherUserId = 77, title = "레거시", description = "안전")
-            published.title = "token=legacy-secret"
-            published.description = "api_key=legacy-secret"
-            published.slug = "token-legacy-secret"
-            publishedPresets.saveAndFlush(published)
+            // 레거시 데이터 시뮬레이션: 저장된 엔티티를 직접 불러와 비밀 문자열을 주입한다
+            // (service write 결과는 DTO 이므로 엔티티 변경은 리포지토리에서 다시 로드해 수행).
+            val publishedEntity = publishedPresets.findById(published.id).orElseThrow()
+            publishedEntity.title = "token=legacy-secret"
+            publishedEntity.description = "api_key=legacy-secret"
+            publishedEntity.slug = "token-legacy-secret"
+            publishedPresets.saveAndFlush(publishedEntity)
             val revision = revisions.findById(published.revisionId).orElseThrow()
             revision.purpose = "api_key=legacy-purpose"
             revisions.saveAndFlush(revision)

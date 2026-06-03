@@ -14,10 +14,10 @@ import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
 import com.discordassistant.central.network.MultiResponseService
 import com.discordassistant.central.network.NetworkLaunchChecklist
+import com.discordassistant.central.network.PresetImportResult
 import com.discordassistant.central.network.PresetModerationSummary
 import com.discordassistant.central.network.PresetRegistryService
 import com.discordassistant.central.network.PublishedPresetSummary
-import com.discordassistant.central.persistence.PresetImportEntity
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.provider.ContributionPolicyService
 import com.discordassistant.central.provider.ProviderProtectionService
@@ -1075,7 +1075,7 @@ class CommandService(
             "처리: `/ai-preset-report-review report-id:<ID> decision:dismiss|suspend|remove`"
     }
 
-    private fun formatPresetImport(imported: PresetImportEntity): String =
+    private fun formatPresetImport(imported: PresetImportResult): String =
         "✅ 프리셋을 현재 채널에 가져왔습니다.\n" +
             "상태: `${imported.status}` · 보관함 프리셋: `${imported.importedPresetId ?: "-"}`\n" +
             "원본 revision: `${imported.sourceRevisionId ?: "-"}`\n" +

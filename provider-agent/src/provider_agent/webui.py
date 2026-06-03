@@ -154,7 +154,11 @@ def _probe_connect_status() -> bool:
     base = _connect_base(load_config().get("relay_url") or _default_relay())
     try:
         ctx = ssl.create_default_context(cafile=certifi.where())
-        req = urllib.request.Request(base + "/provider/connect/status", headers={"Accept": "application/json"})
+        # User-Agent 필수: 서버 앞단(WAF/CDN)이 기본 'Python-urllib' UA 를 403 으로 막는다.
+        req = urllib.request.Request(
+            base + "/provider/connect/status",
+            headers={"Accept": "application/json", "User-Agent": f"nyassistant-agent/{AGENT_VERSION}"},
+        )
         with urllib.request.urlopen(req, timeout=4, context=ctx) as resp:  # noqa: S310 - https 고정
             return bool(json.loads(resp.read().decode("utf-8")).get("enabled"))
     except Exception:  # noqa: BLE001 - 서버 미설정/네트워크 실패는 비활성으로

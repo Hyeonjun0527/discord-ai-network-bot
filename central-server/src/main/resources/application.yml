@@ -64,6 +64,13 @@ central:
     request-timeout-seconds: ${RELAY_REQUEST_TIMEOUT_SECONDS:120}
   token:
     ttl-seconds: ${AGENT_TOKEN_TTL_SECONDS:600}
+  connect:
+    # 웹 ‘토큰 받기’(--gui 버튼) Discord OAuth. client-id/secret 미설정이면 비활성(복붙 안내).
+    # Discord 개발자 포털에 redirect URI <공개주소>/provider/connect/callback 등록 필요.
+    discord-client-id: ${CONNECT_DISCORD_CLIENT_ID:}
+    discord-client-secret: ${CONNECT_DISCORD_CLIENT_SECRET:}
+    # 공개 베이스 URL(예: https://discord-ai.yeon.world). 비우면 relay.public-url 에서 도출.
+    public-base-url: ${CONNECT_PUBLIC_BASE_URL:}
   dashboard:
     # Discord OAuth 를 켜기 전에도 운영 AI Network 관리자 API 를 막기 위한 임시 운영 토큰.
     # 설정하면 X-Dashboard-Admin-Token 헤더가 일치할 때만 admin audience/쓰기 API 를 허용한다.

@@ -74,6 +74,23 @@ class ProviderRegistrationService(
         return if (rec.state == ProviderState.APPROVED) tokens.issue(providerId, guildId) else null
     }
 
+    /**
+     * 웹 ‘토큰 받기’(OAuth 온보딩): 이미 활성 등록이면 새 일회용 토큰을 발급한다. 이미 연결한 적
+     * 있는(ONLINE/OFFLINE 등) 프로바이더가 재설치·재페어링할 때도 토큰을 받을 수 있게 한다.
+     * 승인 대기(PENDING)·제거됨(REMOVED)·미등록은 null(먼저 requestJoin 필요).
+     */
+    fun issueOnboardingToken(
+        providerId: Long,
+        guildId: Long,
+    ): String? {
+        val rec = providers[ProviderGuildKey(providerId, guildId)] ?: return null
+        return if (rec.state != ProviderState.PENDING && rec.state != ProviderState.REMOVED) {
+            tokens.issue(providerId, guildId)
+        } else {
+            null
+        }
+    }
+
     /** 관리자 승인(PENDING → APPROVED). 승인 토큰(평문) 반환, 실패 시 null. */
     fun approve(
         providerId: Long,

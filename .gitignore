@@ -37,3 +37,7 @@ scripts/.e2e-logs/
 
 # Claude Code 임시 worktree(에이전트 격리) — 커밋 금지
 .claude/worktrees/
+
+# provider-agent PyInstaller 빌드 산출물
+provider-agent/dist/
+provider-agent/build/

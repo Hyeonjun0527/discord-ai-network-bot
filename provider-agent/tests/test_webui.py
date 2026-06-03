@@ -17,9 +17,14 @@ def _reset(monkeypatch, tmp_path):
     from provider_agent import singleton
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.delenv("AGENT_CONNECT_ENABLED", raising=False)
     webui._state["agent"] = None
     webui._state["task"] = None
     webui._log_lines.clear()
+    # 테스트는 실네트워크 금지: connect status probe 를 막고 캐시를 매번 리셋(이벤트루프 누수 방지).
+    webui._connect_cache["ts"] = 0.0
+    webui._connect_cache["enabled"] = False
+    monkeypatch.setattr(webui, "_probe_connect_status", lambda: False)
     singleton.release()  # 락 보유 상태가 다음 테스트로 새지 않게
     yield
     singleton.release()

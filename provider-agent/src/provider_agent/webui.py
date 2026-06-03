@@ -480,26 +480,13 @@ APP_DISPLAY_NAME = "냥시스턴트"
 
 
 def _brand_icon_png(size: int = 512) -> bytes | None:
-    """dock 아이콘용 브랜드 마크(blurple 라운드 사각 + 흰 말풍선)를 PNG 바이트로 생성."""
+    """dock 아이콘용 브랜드 마스코트(냥시스턴트 고양이) PNG 바이트. 번들 에셋을 우선 로드한다."""
     try:
-        from PIL import Image, ImageDraw
-    except ImportError:
-        return None
-    import io
+        from importlib import resources
 
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    r = size * 0.22
-    d.rounded_rectangle((0, 0, size - 1, size - 1), radius=r, fill=(88, 101, 242, 255))  # Discord blurple
-    # 흰 말풍선(둥근 사각 + 꼬리)
-    pad = size * 0.24
-    d.rounded_rectangle((pad, pad, size - pad, size - pad * 1.25), radius=size * 0.12, fill=(255, 255, 255, 255))
-    cx = size * 0.40
-    ty = size - pad * 1.25
-    d.polygon([(cx, ty - 2), (cx + size * 0.13, ty - 2), (cx + size * 0.02, ty + size * 0.11)], fill=(255, 255, 255, 255))
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return buf.getvalue()
+        return (resources.files("provider_agent") / "assets" / "app-icon.png").read_bytes()
+    except Exception:  # noqa: BLE001 - 에셋 없으면 dock 아이콘 미설정(치명적 아님)
+        return None
 
 
 def _set_macos_app_identity(name: str) -> None:

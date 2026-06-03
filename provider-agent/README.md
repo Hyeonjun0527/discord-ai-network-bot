@@ -32,6 +32,16 @@ discord-ai-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent 
 - CPU 고부하·배터리 방전 중 **자동 일시중지**(`--run-on-battery` 로 배터리 중에도 계속).
 - 응답 크기 상한으로 폭주 응답을 잘라낸다.
 
+## 이미지 프로바이더(선택) — 누구나 가능
+로컬 **Stable Diffusion**(AUTOMATIC1111 등, `--api`)을 켜고 `--enable-image` 를 추가하면 `/imagine`
+요청을 받는 이미지 프로바이더가 된다(텍스트와 동일한 풀, 별도 인프라 불필요).
+```bash
+discord-ai-network-bot --token <토큰> --relay-url wss://<서버>/agent --enable-image
+# SD 주소 변경: --sd-url http://127.0.0.1:7860 (기본). 원격은 --allow-remote-sd 명시 시만.
+```
+- SD 도 **localhost 전용**(netguard), 옵션 화이트리스트·해상도/steps 상한. GPU 권장.
+- 점검: `--self-test --enable-image`. 자세히: [`docs/IMAGE_PROVIDER.md`](../docs/IMAGE_PROVIDER.md).
+
 ## 동작
 ```
 [내 PC] Ollama(localhost:11434) ← 에이전트 ──outbound wss──▶ [중앙 서버] ──▶ Discord

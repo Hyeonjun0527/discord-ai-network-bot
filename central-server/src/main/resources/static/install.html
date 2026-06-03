@@ -294,6 +294,7 @@
       <div class="step"><div class="num">기본값</div><h3>안전한 기본 설정</h3><p>하루 처리 한도 <b>15건</b>·동시 <b>1건</b>이 기본이며, 무제한은 <code>--allow-unlimited</code> 로만 가능합니다. Ollama 는 기본 <b>localhost 전용</b>입니다.</p></div>
     </div>
     <div class="note"><span class="ic">!</span><p><b>개인정보 주의</b> — <code>/ask</code> 로 들어온 <b>다른 사용자의 질문 내용이 당신(프로바이더)의 PC로 전송</b>되어 로컬 AI가 처리합니다. 반대로 <b>당신이 디스코드에서 질문하면 그 내용이 다른 사용자의 PC로 전송</b>될 수 있습니다. <b>비밀번호·API 키·토큰·주민번호 등 민감정보나 개인정보는 절대 입력하지 마세요.</b> 에이전트는 프롬프트 원문을 로그/파일에 저장하지 않습니다.</p></div>
+    <div class="note"><span class="ic">i</span><p>🖼️ <b>(선택) 이미지 생성도 제공하기</b> — 누구나 가능합니다. 로컬 <b>Stable Diffusion</b>(AUTOMATIC1111 등)을 켜고 에이전트에 <code>--enable-image</code> 를 추가하면 <code>/imagine</code> 요청을 받는 이미지 프로바이더가 됩니다(GPU 권장). 자세히: 소스의 <code>docs/IMAGE_PROVIDER.md</code>.</p></div>
   </section>
 
   <footer>

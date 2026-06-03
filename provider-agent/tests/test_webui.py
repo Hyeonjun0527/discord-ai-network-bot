@@ -82,6 +82,37 @@ async def test_start_requires_saved_token():
         await client.close()
 
 
+def test_connect_base_derives_https():
+    assert webui._connect_base("wss://discord-ai.yeon.world/agent") == "https://discord-ai.yeon.world"
+    assert webui._connect_base("ws://localhost:8080/agent") == "http://localhost:8080"
+
+
+def test_webview_available_browser_optout(monkeypatch):
+    monkeypatch.setenv("AGENT_GUI_BROWSER", "1")
+    assert webui._webview_available() is False
+
+
+@pytest.mark.asyncio
+async def test_connect_callback_rejects_bad_state():
+    client = await _client()
+    try:
+        r = await client.get("/connect/callback", params={"token": "T", "state": "wrong"})
+        assert r.status == 403
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_connect_callback_saves_token():
+    client = await _client()
+    try:
+        r = await client.get("/connect/callback", params={"token": "GOT-TOKEN", "state": KEY})
+        assert r.status == 200
+        assert load_config()["token"] == "GOT-TOKEN"  # 콜백이 토큰을 저장
+    finally:
+        await client.close()
+
+
 @pytest.mark.asyncio
 async def test_start_stop_lifecycle(monkeypatch):
     # 토큰 저장

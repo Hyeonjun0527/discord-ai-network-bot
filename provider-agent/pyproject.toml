@@ -32,6 +32,10 @@ tray = [
   "pystray>=0.19",
   "Pillow>=10",
 ]
+# 네이티브 앱 창(--gui). 없으면 브라우저로 폴백.
+gui = [
+  "pywebview>=5",
+]
 
 [project.scripts]
 discord-ai-network-bot = "provider_agent.__main__:main"

@@ -28,8 +28,9 @@ REPO = "Hyeonjun0527/discord-ai-network-bot"
 _RELEASES_LATEST = f"https://github.com/{REPO}/releases/latest"
 _DOWNLOAD_BASE = f"https://github.com/{REPO}/releases/download"
 APP_NAME = "냥시스턴트"
-MAC_ASSET = "냥시스턴트-macos.zip"  # agent-build.yml 이 릴리스에 올리는 .app zip
-WIN_ASSET = "냥시스턴트-windows.exe"  # Windows 네이티브 GUI exe(릴리스 자산)
+# 릴리스 자산명은 ASCII 여야 한다 — GitHub 이 자산 파일명의 한글을 스트립하기 때문(예: '냥시스턴트-…'→'-…').
+MAC_ASSET = "nyassistant-macos.zip"  # agent-build.yml 이 릴리스에 올리는 .app zip
+WIN_ASSET = "nyassistant-windows.exe"  # Windows 네이티브 GUI exe(릴리스 자산)
 SUMS_ASSET = "SHA256SUMS.txt"
 
 

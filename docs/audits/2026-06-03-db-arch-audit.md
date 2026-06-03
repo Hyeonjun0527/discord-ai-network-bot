@@ -56,6 +56,16 @@
 DurableTokenService 무상태 HMAC·DB 폐기 / ProviderScheduleService 영속+트랜잭션 / UsageService GROUP BY 집계 /
 ConnectionRegistry 키 조회 O(1) / IMAGE_CHUNK_CHARS vs 1MB 프레임 안전 / SSRF UrlSafety·KnowledgeIngestion 파싱 견고.
 
-## 다음 우선순위(권장)
-1. (HIGH·안전) ArchUnit 규칙 추가 + 컨트롤러→서비스 이전 / 2. 등록·블록리스트 영속화 /
-3. /ask 핫패스 쿼리 일괄화·길드정책 캐시 + JDA 스레드 오프로드 / 4. 무한증가 스토어 스윕·singleton 레퍼런스카운트 / 5. admin 권한 길드검증.
+## 수정 현황(2026-06-03 후속, 12 PR 머지)
+- ✅ #85 단일 인스턴스 락(핑퐁) · #88 V28 인덱스 · #89 무한증가 스토어 상한
+- ✅ #90 대시보드 admin 허용목록(fail-closed) · #91 상태전이 가드 일원화
+- ✅ #92 블록리스트 영속화 · #94 등록 영속화(재시작 유지) · #93 V30 컬럼 TEXT 전환
+- ✅ #95 /ask 후보 프로필 N+1 제거+중복쿼리 · #96 readOnly 트랜잭션 · #97 ask/imagine JDA 스레드 오프로드
+- ✅ #98 AnalyticsService 웹계층 밖 이동 + ArchUnit servicesNotInWebLayers 규칙(재발 방지)
+
+### ⬜ 남은 항목 — 대규모 순수 리팩터(기능 결함 아님, 점진·리뷰 권장)
+- **God class 분해**(CommandService 1618·DiscordBot 1629·PresetRegistryService 1612·
+  MultiResponseService 1460·AiNetworkDashboardController 1466, 합 ~7.8k줄): 동작 보존 리팩터.
+  무테스트 대량 분해는 라이브 봇 회귀 위험·기능 이득 0 → 코히전 단위로 1 PR 씩 점진 추출 권장
+  (Analytics 추출 + ArchUnit 규칙으로 패턴 시작함). controller↛persistence 규칙도 컨트롤러 정리가 전제라 같은 작업.
+- **길드정책 캐시**(PolicyService roles.findByGuildId 반복): 무효화 설계 동반 — 별도 작업.

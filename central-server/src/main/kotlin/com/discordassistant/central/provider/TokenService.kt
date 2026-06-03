@@ -72,6 +72,12 @@ class TokenService(
         guildId: Long?,
     ): String? = durable.issueDurable(providerId, guildId)
 
+    /** (provider,guild) 의 durable(재사용) 토큰을 즉시 폐기한다(제거/거절 시). */
+    fun revokeDurable(
+        providerId: Long,
+        guildId: Long,
+    ) = durable.revoke(providerId, guildId)
+
     /** 폐기(revoke). 발급한 토큰을 무효화한다. 발급 측은 평문을 알 때만 호출 가능. */
     fun revoke(token: String) {
         store.remove(hash(token))

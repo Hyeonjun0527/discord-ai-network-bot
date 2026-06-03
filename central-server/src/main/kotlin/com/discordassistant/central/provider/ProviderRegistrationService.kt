@@ -108,6 +108,7 @@ class ProviderRegistrationService(
         if (rec.state != ProviderState.PENDING) return false
         providers.remove(key)
         tokens.revokeProviderGuild(providerId, guildId)
+        tokens.revokeDurable(providerId, guildId)
         audit.record("provider_reject", "admin:$adminId", "provider:$providerId", "guild:$guildId")
         return true
     }
@@ -130,6 +131,7 @@ class ProviderRegistrationService(
         val rec = providers[ProviderGuildKey(providerId, guildId)] ?: return false
         rec.state = ProviderState.REMOVED
         tokens.revokeProviderGuild(providerId, guildId)
+        tokens.revokeDurable(providerId, guildId)
         audit.record("provider_remove", "admin:$adminId", "provider:$providerId", "guild:$guildId")
         return true
     }
@@ -149,6 +151,7 @@ class ProviderRegistrationService(
         val removed = removedRecords.map { it.value.providerId }
         removedRecords.forEach { providers.remove(it.key) }
         val revoked = tokens.revokeGuild(guildId)
+        removed.forEach { tokens.revokeDurable(it, guildId) }
         audit.record("guild_provider_cleanup", "system", "guild:$guildId", "providers=${removed.size},tokens=$revoked")
         return removed
     }
@@ -161,6 +164,7 @@ class ProviderRegistrationService(
         val key = ProviderGuildKey(providerId, guildId)
         val removed = providers.remove(key) != null
         val revoked = tokens.revokeProviderGuild(providerId, guildId)
+        tokens.revokeDurable(providerId, guildId)
         if (removed || revoked > 0) {
             audit.record("guild_member_provider_cleanup", "system", "provider:$providerId", "guild:$guildId,tokens=$revoked")
         }

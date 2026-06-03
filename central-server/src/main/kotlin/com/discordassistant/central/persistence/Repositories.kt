@@ -405,3 +405,10 @@ interface ChannelAiRoutingPolicyRepository : JpaRepository<ChannelAiRoutingPolic
 
     fun findByGuildId(guildId: Long): List<ChannelAiRoutingPolicyEntity>
 }
+
+interface ProviderDurableRevocationRepository : JpaRepository<ProviderDurableRevocationEntity, Long> {
+    fun findByProviderIdAndGuildId(
+        providerId: Long,
+        guildId: Long,
+    ): ProviderDurableRevocationEntity?
+}

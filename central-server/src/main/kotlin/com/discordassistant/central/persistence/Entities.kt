@@ -581,3 +581,12 @@ class ChannelAiRoutingPolicyEntity(
     var createdAt: Instant = Instant.EPOCH,
     var updatedAt: Instant = Instant.EPOCH,
 )
+
+@Entity
+@Table(name = "provider_durable_revocation")
+class ProviderDurableRevocationEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    var providerId: Long = 0,
+    var guildId: Long = 0,
+    var revokedAtEpoch: Long = 0,
+)

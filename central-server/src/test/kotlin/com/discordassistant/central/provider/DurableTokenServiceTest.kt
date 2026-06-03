@@ -89,4 +89,53 @@ class DurableTokenServiceTest {
         // 재검증도 가능(재사용)
         assertNotNull(ts.verify(t))
     }
+
+    /** 테스트용 인메모리 폐기 저장소. */
+    private class FakeRevocations : DurableTokenRevocations {
+        val map = HashMap<Pair<Long, Long>, Long>()
+
+        override fun revokedAtEpoch(
+            providerId: Long,
+            guildId: Long,
+        ): Long? = map[providerId to guildId]
+
+        override fun revoke(
+            providerId: Long,
+            guildId: Long,
+            atEpochSec: Long,
+        ) {
+            map[providerId to guildId] = maxOf(map[providerId to guildId] ?: Long.MIN_VALUE, atEpochSec)
+        }
+    }
+
+    private fun svcWith(
+        rev: DurableTokenRevocations,
+        ttl: Long = 1000,
+        nowEpoch: Long = 1_000_000,
+    ) = DurableTokenService(secret, ttl, Clock.fixed(Instant.ofEpochSecond(nowEpoch), ZoneOffset.UTC), rev)
+
+    @Test
+    fun `폐기하면 그 이전 발급 토큰은 거부, 재발급분은 통과`() {
+        val rev = FakeRevocations()
+        // t=1000 에 발급
+        val issued = svcWith(rev, nowEpoch = 1_000).issueDurable(42, 100)!!
+        // 폐기 전에는 통과
+        assertNotNull(svcWith(rev, nowEpoch = 1_010).verify(issued))
+        // t=1005 에 폐기 → issuedAt(1000) <= revokedAt(1005) → 거부
+        svcWith(rev, nowEpoch = 1_005).revoke(42, 100)
+        assertNull(svcWith(rev, nowEpoch = 1_010).verify(issued))
+        // 재페어링: t=1010 에 새로 발급된 토큰은 revokedAt(1005) 보다 늦어 통과
+        val reissued = svcWith(rev, nowEpoch = 1_010).issueDurable(42, 100)!!
+        assertNotNull(svcWith(rev, nowEpoch = 1_011).verify(reissued))
+    }
+
+    @Test
+    fun `폐기는 해당 provider-guild 에만 영향`() {
+        val rev = FakeRevocations()
+        val tA = svcWith(rev, nowEpoch = 1_000).issueDurable(1, 10)!!
+        val tB = svcWith(rev, nowEpoch = 1_000).issueDurable(2, 20)!!
+        svcWith(rev, nowEpoch = 1_005).revoke(1, 10)
+        assertNull(svcWith(rev, nowEpoch = 1_010).verify(tA)) // 폐기됨
+        assertNotNull(svcWith(rev, nowEpoch = 1_010).verify(tB)) // 무관
+    }
 }

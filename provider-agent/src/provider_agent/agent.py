@@ -197,6 +197,27 @@ class ProviderAgent:
     def models(self) -> list[str]:
         return list(self._models)
 
+    def status_line(self) -> str:
+        """트레이/콘솔용 한 줄 상태 요약."""
+        conn = "연결됨" if self.is_connected() else "연결 끊김"
+        img = " · 이미지" if self._image_ready else ""
+        remaining = "무제한" if self._cfg.daily_limit == 0 else str(self._remaining)
+        return f"{conn} · 처리 {self._processed} · 잔여 {remaining}{img}"
+
+    def _start_tray(self) -> None:
+        """데스크톱이면 트레이 아이콘을 띄운다(라이브 상태 + 중지). 헤드리스/미설치는 no-op."""
+        from . import tray as _tray
+
+        if not _tray.tray_available():
+            logger.info("트레이 미지원 환경 — 콘솔 상태로 진행")
+            return
+        loop = asyncio.get_running_loop()
+
+        def _on_quit() -> None:  # 트레이 스레드 → asyncio 루프로 안전 전달
+            loop.call_soon_threadsafe(self._stop.set)
+
+        _tray.run_tray(self.status_line, _on_quit)
+
     # ── 실행 ────────────────────────────────────────────────────────────
     async def run(self, install_signals: bool = True) -> int:
         if not self._models:
@@ -229,6 +250,9 @@ class ProviderAgent:
                     loop.add_signal_handler(sighup, self.reload_models)
                 except (NotImplementedError, AttributeError, ValueError):  # pragma: no cover
                     pass
+
+        if self._cfg.tray:
+            self._start_tray()
 
         conn_task = asyncio.create_task(self._conn.run())
         status_task = asyncio.create_task(self._status_loop(self._conn))

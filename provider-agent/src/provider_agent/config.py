@@ -35,6 +35,7 @@ class AgentConfig:
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
     install_service: bool = False  # 자동 시작 서비스 등록 후 종료(--install-service, 저장 안 함)
     gui: bool = False  # 브라우저 설정 UI(--gui, 토큰 없이 가능, 저장 안 함)
+    tray: bool = False  # 실행 중 시스템 트레이 아이콘(라이브 상태·중지·설정 열기, 데스크톱 전용)
     agent_version: str = AGENT_VERSION
     platform: str = field(default_factory=lambda: _platform.platform())
 
@@ -77,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--save-config", action="store_true", help="현재 설정을 ~/.config 에 저장(시크릿 0600)")
     p.add_argument("--install-service", action="store_true", help="로그인 시 자동 실행되는 사용자 서비스 등록 후 종료(관리자 불필요)")
     p.add_argument("--gui", action="store_true", help="브라우저 설정 UI 를 띄운다(토큰·풀 설정·자동시작을 클릭으로)")
+    p.add_argument("--tray", action="store_true", help="실행 중 시스템 트레이 아이콘 표시(라이브 상태·중지, 데스크톱 전용)")
     p.add_argument("--telemetry", action="store_true", help="익명 텔레메트리 opt-in(기본 꺼짐)")
     p.add_argument("--yes", action="store_true", help="첫 실행 동의 화면을 자동 승인(스크립트/서비스용)")
     p.add_argument("-v", "--verbose", action="store_true", help="디버그 로그")
@@ -166,6 +168,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         assume_yes=bool(args.yes),
         install_service=bool(args.install_service),
         gui=bool(args.gui),
+        tray=bool(args.tray) or bool(saved.get("tray")),
     )
     # 서비스 등록은 저장된 설정으로 무인자 실행하므로 설정 저장이 전제다.
     if args.save_config or args.install_service:

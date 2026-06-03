@@ -103,7 +103,7 @@ class AiNetworkLaunchChecklistService(
                     "RAG 지식",
                     spaces.isNotEmpty() &&
                         sources.any {
-                            it.status == "indexed"
+                            it.status.isIndexed
                         },
                     spaces.isNotEmpty(),
                     listOf("spaces=${spaces.size}", "sources=${sources.size}"),

@@ -1,5 +1,10 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.EmbeddingJobStatus
+import com.discordassistant.central.domain.KnowledgeChunkStatus
+import com.discordassistant.central.domain.KnowledgeDocumentStatus
+import com.discordassistant.central.domain.KnowledgeSourceStatus
+import com.discordassistant.central.domain.KnowledgeSpaceStatus
 import com.discordassistant.central.persistence.EmbeddingIndexJobEntity
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.persistence.KnowledgeChunkEntity
@@ -42,11 +47,11 @@ class KnowledgeIndexingService(
         val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
         val source = sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId) ?: error("knowledge source not found")
         require(source.guildId == guildId) { "cross-guild knowledge source is not allowed" }
-        require(!source.status.startsWith("deleted")) { "deleted knowledge source cannot be parsed" }
+        require(!source.status.isDeleted) { "deleted knowledge source cannot be parsed" }
         val clean = documentText.trim()
         require(clean.isNotBlank()) { "document text is required" }
         if (KnowledgeSafety.containsSensitiveMaterial(clean)) {
-            source.status = "blocked_sensitive"
+            source.status = KnowledgeSourceStatus.BLOCKED_SENSITIVE
             source.riskLevel = "sensitive"
             source.contentHash = sha256(clean)
             sources.save(source)
@@ -64,7 +69,7 @@ class KnowledgeIndexingService(
                     documentType = source.sourceType.ifBlank { "text" },
                     contentHash = sha256(clean),
                     tokenEstimate = estimateTokens(clean),
-                    status = "parsed",
+                    status = KnowledgeDocumentStatus.PARSED,
                     parsedAt = now,
                 ),
             )
@@ -82,12 +87,12 @@ class KnowledgeIndexingService(
                     embeddingTextHash = sha256("${doc.title}\n$chunkText"),
                     tokenEstimate = estimateTokens(chunkText),
                     qdrantPointId = "ks-${space.id}-doc-${doc.id}-chunk-${index + 1}",
-                    status = "ready",
+                    status = KnowledgeChunkStatus.READY,
                     createdAt = now,
                 )
             }
         chunks.saveAll(chunkEntities)
-        space.chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, "ready").size
+        space.chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, KnowledgeChunkStatus.READY).size
         space.updatedAt = now
         spaces.save(space)
         source.contentHash = doc.contentHash
@@ -106,15 +111,15 @@ class KnowledgeIndexingService(
     ): EmbeddingIndexJobEntity {
         featureGate.requireRagEnabled()
         val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
-        val sourceCount = sources.findByKnowledgeSpaceId(space.id).count { !it.status.startsWith("deleted") }
-        val chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, "ready").size
+        val sourceCount = sources.findByKnowledgeSpaceId(space.id).count { !it.status.isDeleted }
+        val chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, KnowledgeChunkStatus.READY).size
         return jobs.save(
             EmbeddingIndexJobEntity(
                 guildId = guildId,
                 knowledgeSpaceId = space.id,
                 triggeredBy = triggeredBy,
                 jobType = jobType.trim().ifBlank { "rebuild" },
-                status = "queued",
+                status = EmbeddingJobStatus.QUEUED,
                 collectionName = collectionName,
                 embeddingModel = embeddingModel,
                 sourceCount = sourceCount,
@@ -128,7 +133,7 @@ class KnowledgeIndexingService(
     fun completeIndexJob(
         guildId: Long,
         jobId: Long,
-        status: String,
+        status: EmbeddingJobStatus,
         failureReason: String? = null,
     ): EmbeddingIndexJobEntity {
         featureGate.requireRagEnabled()
@@ -136,7 +141,7 @@ class KnowledgeIndexingService(
         require(job.guildId == guildId) { "cross-guild index job update is not allowed" }
         val now = Instant.now(clock)
         if (job.startedAt == null) job.startedAt = job.queuedAt
-        job.status = status.trim().ifBlank { "completed" }
+        job.status = status
         job.failureReason = failureReason?.trim()?.take(500)?.ifBlank { null }
         job.finishedAt = now
         return jobs.save(job)
@@ -185,7 +190,7 @@ class KnowledgeIndexingService(
     ): List<KnowledgeChunkEntity> {
         featureGate.requireRagEnabled()
         spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
-        return chunks.findByKnowledgeSpaceIdAndStatus(spaceId, "ready").filter { it.guildId == guildId }
+        return chunks.findByKnowledgeSpaceIdAndStatus(spaceId, KnowledgeChunkStatus.READY).filter { it.guildId == guildId }
     }
 
     fun listIndexJobs(
@@ -226,7 +231,7 @@ class KnowledgeIndexingService(
         if (source.sourceType !in INLINE_INDEXABLE_SOURCE_TYPES) {
             return InlineKnowledgeIndexingResult(sourceId = source.id, indexed = false, skippedReason = "source_type_not_inline")
         }
-        if (source.status != "pending") {
+        if (!source.status.isPending) {
             return InlineKnowledgeIndexingResult(sourceId = source.id, indexed = false, skippedReason = "source_not_pending")
         }
         val document =
@@ -239,14 +244,14 @@ class KnowledgeIndexingService(
             )
         val now = Instant.now(clock)
         val indexedSource = sources.findByKnowledgeSpaceIdAndId(spaceId, source.id) ?: source
-        indexedSource.status = "indexed"
+        indexedSource.status = KnowledgeSourceStatus.INDEXED
         indexedSource.indexedAt = now
         sources.save(indexedSource)
         val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
-        val chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, "ready").size
-        space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { !it.status.startsWith("deleted") }
+        val chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, KnowledgeChunkStatus.READY).size
+        space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { !it.status.isDeleted }
         space.chunkCount = chunkCount
-        space.status = "ready"
+        space.status = KnowledgeSpaceStatus.READY
         space.updatedAt = now
         spaces.save(space)
         val job = queueIndexJob(guildId, space.id, triggeredBy = triggeredBy)
@@ -290,21 +295,21 @@ class KnowledgeIndexingService(
         val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
         val source = sources.findByKnowledgeSpaceIdAndId(space.id, sourceId) ?: error("knowledge source not found")
         require(source.guildId == guildId) { "cross-guild knowledge source is not allowed" }
-        require(source.status.startsWith("deleted")) { "source must be deleted before index tombstone: ${source.status}" }
+        require(source.status.isDeleted) { "source must be deleted before index tombstone: ${source.status.wire}" }
         val docs = documents.findByKnowledgeSourceId(source.id)
         val sourceChunks =
             docs.flatMap { doc ->
                 chunks.findByKnowledgeDocumentIdOrderByChunkIndex(doc.id)
             }
-        val tombstonedDocs = docs.count { it.status != "deleted" }
-        val tombstonedChunks = sourceChunks.count { it.status != "deleted" }
-        docs.filter { it.status != "deleted" }.forEach { it.status = "deleted" }
-        sourceChunks.filter { it.status != "deleted" }.forEach { it.status = "deleted" }
+        val tombstonedDocs = docs.count { it.status != KnowledgeDocumentStatus.DELETED }
+        val tombstonedChunks = sourceChunks.count { it.status != KnowledgeChunkStatus.DELETED }
+        docs.filter { it.status != KnowledgeDocumentStatus.DELETED }.forEach { it.status = KnowledgeDocumentStatus.DELETED }
+        sourceChunks.filter { it.status != KnowledgeChunkStatus.DELETED }.forEach { it.status = KnowledgeChunkStatus.DELETED }
         if (sourceChunks.isNotEmpty()) chunks.saveAll(sourceChunks)
         if (docs.isNotEmpty()) documents.saveAll(docs)
-        val activeSources = sources.findByKnowledgeSpaceId(space.id).filter { !it.status.startsWith("deleted") }
+        val activeSources = sources.findByKnowledgeSpaceId(space.id).filter { !it.status.isDeleted }
         space.sourceCount = activeSources.size
-        space.chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, "ready").size
+        space.chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, KnowledgeChunkStatus.READY).size
         space.status = statusAfterDeletion(activeSources)
         space.updatedAt = Instant.now(clock)
         spaces.save(space)
@@ -335,10 +340,10 @@ class KnowledgeIndexingService(
     ): KnowledgeIndexJobSummary {
         val normalizedStatus =
             when (status.trim().lowercase()) {
-                "", "done", "success", "completed", "complete" -> "completed"
-                "failed", "failure", "error" -> "failed"
-                "cancelled", "canceled", "cancel" -> "cancelled"
-                else -> "failed"
+                "", "done", "success", "completed", "complete" -> EmbeddingJobStatus.COMPLETED
+                "failed", "failure", "error" -> EmbeddingJobStatus.FAILED
+                "cancelled", "canceled", "cancel" -> EmbeddingJobStatus.CANCELLED
+                else -> EmbeddingJobStatus.FAILED
             }
         return completeIndexJob(
             guildId = guildId,
@@ -356,22 +361,22 @@ class KnowledgeIndexingService(
                 chunks.findByKnowledgeDocumentIdOrderByChunkIndex(doc.id)
             }
         existingChunks
-            .filter { it.status == "ready" }
-            .forEach { it.status = "superseded" }
+            .filter { it.status == KnowledgeChunkStatus.READY }
+            .forEach { it.status = KnowledgeChunkStatus.SUPERSEDED }
         existingDocs
-            .filter { it.status == "parsed" }
-            .forEach { it.status = "superseded" }
+            .filter { it.status == KnowledgeDocumentStatus.PARSED }
+            .forEach { it.status = KnowledgeDocumentStatus.SUPERSEDED }
         chunks.saveAll(existingChunks)
         documents.saveAll(existingDocs)
     }
 
-    private fun statusAfterDeletion(activeSources: List<KnowledgeSourceEntity>): String =
+    private fun statusAfterDeletion(activeSources: List<KnowledgeSourceEntity>): KnowledgeSpaceStatus =
         when {
-            activeSources.isEmpty() -> "draft"
-            activeSources.any { it.status.startsWith("blocked") || it.riskLevel in BLOCKING_RISK_LEVELS } -> "needs_review"
-            activeSources.any { it.status == "pending" } -> "pending_index"
-            activeSources.any { it.status == "indexed" } -> "ready"
-            else -> "needs_review"
+            activeSources.isEmpty() -> KnowledgeSpaceStatus.DRAFT
+            activeSources.any { it.status.isBlocked || it.riskLevel in BLOCKING_RISK_LEVELS } -> KnowledgeSpaceStatus.NEEDS_REVIEW
+            activeSources.any { it.status.isPending } -> KnowledgeSpaceStatus.PENDING_INDEX
+            activeSources.any { it.status.isIndexed } -> KnowledgeSpaceStatus.READY
+            else -> KnowledgeSpaceStatus.NEEDS_REVIEW
         }
 
     private fun splitChunks(text: String): List<String> =
@@ -396,7 +401,7 @@ class KnowledgeIndexingService(
             knowledgeSpaceId = knowledgeSpaceId,
             triggeredBy = triggeredBy,
             jobType = jobType,
-            status = status,
+            status = status.wire,
             collectionName = collectionName,
             embeddingModel = embeddingModel,
             sourceCount = sourceCount,

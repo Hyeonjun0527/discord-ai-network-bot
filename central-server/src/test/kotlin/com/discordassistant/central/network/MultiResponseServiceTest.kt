@@ -9,6 +9,7 @@ import com.discordassistant.central.dashboard.RecordCandidateRequest
 import com.discordassistant.central.dashboard.SaveMultiResponsePolicyRequest
 import com.discordassistant.central.dashboard.StartMultiResponseRunRequest
 import com.discordassistant.central.dashboard.SynthesizeRunRequest
+import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -1190,7 +1191,7 @@ class MultiResponseServiceTest
                 )
             ingestion.markSourceIndexed(100, space.id, source.id, chunkCount = 1)
             val deleted = knowledgeSources.findByKnowledgeSpaceIdAndId(space.id, source.id)!!
-            deleted.status = "deleted_outdated"
+            deleted.status = KnowledgeSourceStatus.deleted("outdated")
             knowledgeSources.save(deleted)
             ragController.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 208, mode = "compare", maxCandidates = 2))
 

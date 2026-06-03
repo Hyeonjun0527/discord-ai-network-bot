@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.KnowledgeChunkStatus
+import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.persistence.KnowledgeChunkEntity
 import com.discordassistant.central.persistence.KnowledgeChunkRepository
 import com.discordassistant.central.persistence.KnowledgeSourceEntity
@@ -351,7 +353,7 @@ class KnowledgeSearchService(
         return sources.findByGuildIdAndKnowledgeSpaceIdInAndStatusAndRiskLevelIn(
             guildId,
             allowedSpaceIds,
-            "indexed",
+            KnowledgeSourceStatus.INDEXED,
             SEARCHABLE_RISK_LEVELS,
         )
     }
@@ -374,7 +376,7 @@ class KnowledgeSearchService(
         val sourceById = searchableSources.associateBy { it.id }
         if (sourceById.isEmpty()) return emptyList()
         return chunkRepo
-            .findByGuildIdAndKnowledgeSpaceIdInAndStatus(guildId, allowedSpaceIds, "ready")
+            .findByGuildIdAndKnowledgeSpaceIdInAndStatus(guildId, allowedSpaceIds, KnowledgeChunkStatus.READY)
             .mapNotNull { chunk ->
                 val source = sourceById[chunk.knowledgeSourceId] ?: return@mapNotNull null
                 chunk.toResult(source, query, policy)

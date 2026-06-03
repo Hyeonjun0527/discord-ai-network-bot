@@ -1,6 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.dashboard.AiNetworkDashboardController
+import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
@@ -255,7 +256,7 @@ class AiNetworkDashboardControllerTest
                     guildId = 100,
                     sourceType = "link",
                     title = "Kotlin Spring 운영 가이드",
-                    status = "indexed",
+                    status = KnowledgeSourceStatus.INDEXED,
                     riskLevel = "normal",
                 ),
             )
@@ -345,7 +346,7 @@ class AiNetworkDashboardControllerTest
                     guildId = 140,
                     sourceType = "text",
                     title = "용어집",
-                    status = "indexed",
+                    status = KnowledgeSourceStatus.INDEXED,
                     riskLevel = "normal",
                 ),
             )

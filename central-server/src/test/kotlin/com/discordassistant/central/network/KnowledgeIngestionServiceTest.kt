@@ -221,7 +221,7 @@ class KnowledgeIngestionServiceTest
                 )
             assertEquals("indexed", indexed["status"])
             assertEquals(12, spaces.findByGuildIdAndId(100, spaceId)!!.chunkCount)
-            assertEquals("ready", spaces.findByGuildIdAndId(100, spaceId)!!.status)
+            assertEquals("ready", spaces.findByGuildIdAndId(100, spaceId)!!.status.wire)
         }
 
         @Test
@@ -808,7 +808,7 @@ class KnowledgeIngestionServiceTest
                 )
             assertEquals("pending", approved["status"])
             controller.markIndexed(100, space.id, nonHttps.id, MarkKnowledgeSourceIndexedRequest(chunkCount = 2))
-            assertEquals("indexed", sources.findByKnowledgeSpaceIdAndId(space.id, nonHttps.id)?.status)
+            assertEquals("indexed", sources.findByKnowledgeSpaceIdAndId(space.id, nonHttps.id)?.status?.wire)
 
             val rejected = controller.reject(100, space.id, badType.id, RejectKnowledgeSourceRequest("token=secret should hide"))
             assertEquals("rejected:[redacted] should hide", rejected["status"])

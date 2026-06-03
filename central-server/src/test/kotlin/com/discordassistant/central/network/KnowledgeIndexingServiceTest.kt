@@ -4,6 +4,10 @@ import com.discordassistant.central.dashboard.AddKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.CreateKnowledgeSpaceRequest
 import com.discordassistant.central.dashboard.DeleteKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.KnowledgeIngestionController
+import com.discordassistant.central.domain.EmbeddingJobStatus
+import com.discordassistant.central.domain.KnowledgeChunkStatus
+import com.discordassistant.central.domain.KnowledgeDocumentStatus
+import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.persistence.KnowledgeChunkRepository
 import com.discordassistant.central.persistence.KnowledgeDocumentRepository
@@ -57,7 +61,7 @@ class KnowledgeIndexingServiceTest
                         guildId = 100,
                         sourceType = "text",
                         title = "배포 절차",
-                        status = "approved",
+                        status = KnowledgeSourceStatus.fromWire("approved"),
                     ),
                 )
 
@@ -75,7 +79,7 @@ class KnowledgeIndexingServiceTest
             assertEquals(2, spaces.findByGuildIdAndId(100, space.id)!!.chunkCount)
             assertEquals(1, job.sourceCount)
             assertEquals(2, job.chunkCount)
-            assertEquals("queued", job.status)
+            assertEquals("queued", job.status.wire)
             assertTrue(service.readyChunks(100, space.id).all { it.guildId == 100L && it.channelId == 200L })
         }
 
@@ -104,7 +108,7 @@ class KnowledgeIndexingServiceTest
                         guildId = 101,
                         sourceType = "text",
                         title = "운영 규칙",
-                        status = "pending",
+                        status = KnowledgeSourceStatus.PENDING,
                     ),
                 )
 
@@ -119,8 +123,8 @@ class KnowledgeIndexingServiceTest
 
             assertEquals(true, result.indexed)
             assertEquals(2, result.chunkCount)
-            assertEquals("indexed", sources.findByKnowledgeSpaceIdAndId(space.id, source.id)!!.status)
-            assertEquals("ready", spaces.findByGuildIdAndId(101, space.id)!!.status)
+            assertEquals("indexed", sources.findByKnowledgeSpaceIdAndId(space.id, source.id)!!.status.wire)
+            assertEquals("ready", spaces.findByGuildIdAndId(101, space.id)!!.status.wire)
             assertEquals(1, jobs.findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(101, space.id).size)
             assertEquals(2, service.readyChunks(101, space.id).size)
         }
@@ -135,7 +139,7 @@ class KnowledgeIndexingServiceTest
                         guildId = 104,
                         sourceType = "text",
                         title = "운영 env",
-                        status = "pending",
+                        status = KnowledgeSourceStatus.PENDING,
                         riskLevel = "normal",
                     ),
                 )
@@ -150,10 +154,10 @@ class KnowledgeIndexingServiceTest
             }
 
             val blocked = sources.findByKnowledgeSpaceIdAndId(space.id, source.id)!!
-            assertEquals("blocked_sensitive", blocked.status)
+            assertEquals("blocked_sensitive", blocked.status.wire)
             assertEquals("sensitive", blocked.riskLevel)
             assertTrue(documents.findByKnowledgeSourceId(source.id).isEmpty())
-            assertTrue(chunks.findByKnowledgeSpaceIdAndStatus(space.id, "ready").isEmpty())
+            assertTrue(chunks.findByKnowledgeSpaceIdAndStatus(space.id, KnowledgeChunkStatus.READY).isEmpty())
         }
 
         @Test
@@ -248,8 +252,8 @@ class KnowledgeIndexingServiceTest
             assertEquals(2, deleted["tombstonedChunkCount"])
             assertEquals(0, deleted["remainingReadyChunkCount"])
             assertTrue(service.readyChunks(105, spaceId).isEmpty())
-            assertTrue(documents.findByKnowledgeSourceId(sourceId).all { it.status == "deleted" })
-            assertTrue(chunks.findByKnowledgeSpaceIdAndStatus(spaceId, "deleted").size >= 2)
+            assertTrue(documents.findByKnowledgeSourceId(sourceId).all { it.status == KnowledgeDocumentStatus.DELETED })
+            assertTrue(chunks.findByKnowledgeSpaceIdAndStatus(spaceId, KnowledgeChunkStatus.DELETED).size >= 2)
             assertEquals("delete_source", jobs.findById(deletionJobId).get().jobType)
             val afterDelete = search.search(105, "삭제", limit = 5, channelId = 205)
             assertTrue(afterDelete.results.isEmpty())
@@ -291,7 +295,7 @@ class KnowledgeIndexingServiceTest
                         guildId = 100,
                         sourceType = "text",
                         title = "Kotlin 운영 가이드",
-                        status = "indexed",
+                        status = KnowledgeSourceStatus.INDEXED,
                     ),
                 )
             service.parseSourceToDocument(
@@ -333,7 +337,7 @@ class KnowledgeIndexingServiceTest
             assertTrue(context.contextText.contains("actuator health"))
 
             val deleted = sources.findByKnowledgeSpaceIdAndId(space.id, source.id)!!
-            deleted.status = "deleted_outdated"
+            deleted.status = KnowledgeSourceStatus.deleted("outdated")
             sources.save(deleted)
             val afterDelete = search.search(100, "Kotlin", limit = 10, channelId = 203)
             assertTrue(afterDelete.results.isEmpty())
@@ -350,7 +354,7 @@ class KnowledgeIndexingServiceTest
                         guildId = 100,
                         sourceType = "text",
                         title = "Kotlin 운영 메모",
-                        status = "indexed",
+                        status = KnowledgeSourceStatus.INDEXED,
                         addedBy = 77,
                     ),
                 )
@@ -362,7 +366,7 @@ class KnowledgeIndexingServiceTest
                         sourceType = "link",
                         sourceUri = "https://example.com/kotlin-help.md",
                         title = "Kotlin 도움말",
-                        status = "indexed",
+                        status = KnowledgeSourceStatus.INDEXED,
                     ),
                 )
             service.parseSourceToDocument(100, space.id, adminText.id, "Kotlin 운영 메모입니다.", title = adminText.title)
@@ -404,7 +408,7 @@ class KnowledgeIndexingServiceTest
                         guildId = 100,
                         sourceType = "text",
                         title = "운영 가이드",
-                        status = "indexed",
+                        status = KnowledgeSourceStatus.INDEXED,
                     ),
                 )
 
@@ -423,9 +427,21 @@ class KnowledgeIndexingServiceTest
                     documentText = "new deploy",
                 )
 
-            assertEquals("superseded", documents.findById(first.id).get().status)
-            assertEquals("parsed", documents.findById(second.id).get().status)
-            assertTrue(chunks.findByKnowledgeDocumentIdOrderByChunkIndex(first.id).all { it.status == "superseded" })
+            assertEquals(
+                "superseded",
+                documents
+                    .findById(first.id)
+                    .get()
+                    .status.wire,
+            )
+            assertEquals(
+                "parsed",
+                documents
+                    .findById(second.id)
+                    .get()
+                    .status.wire,
+            )
+            assertTrue(chunks.findByKnowledgeDocumentIdOrderByChunkIndex(first.id).all { it.status == KnowledgeChunkStatus.SUPERSEDED })
             assertEquals(listOf(second.id), service.readyChunks(100, space.id).map { it.knowledgeDocumentId }.distinct())
             assertEquals(1, spaces.findByGuildIdAndId(100, space.id)!!.chunkCount)
         }
@@ -459,7 +475,7 @@ class KnowledgeIndexingServiceTest
                         guildId = 999,
                         sourceType = "text",
                         title = "foreign",
-                        status = "approved",
+                        status = KnowledgeSourceStatus.fromWire("approved"),
                     ),
                 )
 
@@ -469,7 +485,7 @@ class KnowledgeIndexingServiceTest
 
             val job = service.queueIndexJob(100, space.id, triggeredBy = 77)
             assertThrows(IllegalArgumentException::class.java) {
-                service.completeIndexJob(999, job.id, "completed")
+                service.completeIndexJob(999, job.id, EmbeddingJobStatus.COMPLETED)
             }
         }
     }

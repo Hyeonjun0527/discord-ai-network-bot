@@ -50,6 +50,25 @@ class AnalyticsService(
             .take(20)
             .map { mapOf("requestId" to it.requestId, "burden" to it.requiredBurden, "createdAt" to it.createdAt.toString()) }
 
+    /** 길드 총 요청 수(대시보드 개요). 컨트롤러가 리포지토리를 직접 보지 않도록 서비스가 집계한다. */
+    fun guildRequestCount(guildId: Long): Long = requests.countByGuildId(guildId)
+
+    /**
+     * 길드 최근 요청 로그(최대 20건, 최신순). 프라이버시: 프롬프트 본문·요청 유저 id 미포함.
+     * 엔티티가 아니라 [RequestLogEntry] DTO 로 반환해 web 어댑터가 persistence 에 의존하지 않게 한다.
+     */
+    fun recentGuildRequests(guildId: Long): List<RequestLogEntry> =
+        requests.findTop20ByGuildIdOrderByIdDesc(guildId).map {
+            RequestLogEntry(
+                requestId = it.requestId,
+                state = it.state,
+                requiredBurden = it.requiredBurden,
+                providerId = it.providerId,
+                failReason = it.failReason,
+                createdAt = it.createdAt.toString(),
+            )
+        }
+
     private fun burdenWeight(name: String): Int =
         when (runCatching { ModelBurden.valueOf(name) }.getOrNull()) {
             ModelBurden.LIGHT -> 1
@@ -62,5 +81,15 @@ class AnalyticsService(
     data class DailyCount(
         val date: String,
         val count: Long,
+    )
+
+    /** 대시보드 요청 로그 한 줄(프롬프트 본문·유저 id 제외). */
+    data class RequestLogEntry(
+        val requestId: String,
+        val state: String,
+        val requiredBurden: String,
+        val providerId: Long?,
+        val failReason: String?,
+        val createdAt: String,
     )
 }

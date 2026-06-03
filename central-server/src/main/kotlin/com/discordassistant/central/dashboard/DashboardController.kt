@@ -1,7 +1,6 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.network.AiNetworkFeatureGate
-import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.usage.AnalyticsService
@@ -22,7 +21,6 @@ import kotlin.math.abs
 class DashboardController(
     private val registry: ConnectionRegistry,
     private val policy: PolicyService,
-    private val requests: AiRequestRepository,
     private val analytics: AnalyticsService,
     private val featureGate: AiNetworkFeatureGate,
 ) {
@@ -38,7 +36,7 @@ class DashboardController(
             "defaultModel" to policy.guildDefaultModel(guildId),
             "language" to policy.guildLanguage(guildId),
             "autoApprove" to policy.isAutoApprove(guildId),
-            "totalRequests" to requests.countByGuildId(guildId),
+            "totalRequests" to analytics.guildRequestCount(guildId),
         )
     }
 
@@ -75,7 +73,7 @@ class DashboardController(
         @RequestParam(defaultValue = "public") audience: String = "public",
     ): List<Map<String, Any?>> {
         featureGate.requireDashboardEnabled()
-        return requests.findTop20ByGuildIdOrderByIdDesc(guildId).mapIndexed { index, request ->
+        return analytics.recentGuildRequests(guildId).mapIndexed { index, request ->
             val visibility = DashboardAudience.from(audience)
             buildMap {
                 val providerId = request.providerId
@@ -87,7 +85,7 @@ class DashboardController(
                     put("providerId", providerId)
                 }
                 put("failReason", request.failReason)
-                put("createdAt", request.createdAt.toString())
+                put("createdAt", request.createdAt)
             }
         }
     }

@@ -128,11 +128,11 @@ jobs:
           esac
           # macOS GUI .app → 인앱 업데이트가 받는 배포 zip(서명/staple 이 끝난 뒤 압축).
           if [ "$RUNNER_OS" = "macOS" ] && [ -d "냥시스턴트.app" ]; then
-            ditto -c -k --keepParent "냥시스턴트.app" "냥시스턴트-macos.zip"
+            ditto -c -k --keepParent "냥시스턴트.app" "nyassistant-macos.zip"
           fi
           # Windows GUI exe(네이티브 창) → 인앱 업데이트가 받는 배포 자산.
           if [ "$RUNNER_OS" = "Windows" ] && [ -f "냥시스턴트.exe" ]; then
-            mv "냥시스턴트.exe" "냥시스턴트-windows.exe"
+            mv "냥시스턴트.exe" "nyassistant-windows.exe"
           fi
           ls -la
       - uses: actions/upload-artifact@v4
@@ -140,8 +140,8 @@ jobs:
           name: provider-agent-${{ matrix.os }}
           path: |
             provider-agent/dist/discord-ai-network-bot-*
-            provider-agent/dist/냥시스턴트-macos.zip
-            provider-agent/dist/냥시스턴트-windows.exe
+            provider-agent/dist/nyassistant-macos.zip
+            provider-agent/dist/nyassistant-windows.exe
 
   # 모든 OS 빌드를 모아 단일 SHA256SUMS.txt·SBOM·attestation 을 만들고 릴리스에 첨부.
   release:
@@ -161,7 +161,7 @@ jobs:
       - name: 단일 SHA256SUMS.txt 생성
         run: |
           cd dist
-          for f in discord-ai-network-bot-* 냥시스턴트-macos.zip 냥시스턴트-windows.exe; do [ -e "$f" ] && sha256sum "$f"; done > SHA256SUMS.txt
+          for f in discord-ai-network-bot-* nyassistant-macos.zip nyassistant-windows.exe; do [ -e "$f" ] && sha256sum "$f"; done > SHA256SUMS.txt
           cat SHA256SUMS.txt
       # 패키지 매니저 매니페스트 렌더링(Homebrew/winget). 매니저가 sha256 을 자동 검증하므로
       # 사용자는 수동 해시검증이 불필요해진다. 렌더 결과를 릴리스 자산으로 첨부.
@@ -222,8 +222,8 @@ jobs:
             3. 일반 사용자 권한으로 실행하세요(관리자/sudo 불필요).
           files: |
             dist/discord-ai-network-bot-*
-            dist/냥시스턴트-macos.zip
-            dist/냥시스턴트-windows.exe
+            dist/nyassistant-macos.zip
+            dist/nyassistant-windows.exe
             dist/SHA256SUMS.txt
             dist/provider-agent-sbom.spdx.json
             dist/pkg/discord-ai-network-bot.rb

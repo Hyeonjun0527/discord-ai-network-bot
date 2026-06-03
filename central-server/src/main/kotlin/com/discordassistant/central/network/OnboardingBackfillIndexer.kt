@@ -36,12 +36,13 @@ class OnboardingBackfillIndexer(
     ): BackfillIndexResult? {
         val text = indexText.trim()
         if (text.isBlank()) return null
+        // 재실행 시 같은 채널 AI 의 "서버 대화 요약" 지식공간을 재사용한다(B — 중복 space 방지). 없으면 새로 만든다.
         val space =
-            knowledgeIngestion.createSpace(
+            knowledgeIngestion.findOrCreateSpace(
                 guildId = guildId,
                 channelId = channelId,
                 channelAiId = channelAiId,
-                displayName = "서버 대화 요약",
+                displayName = BACKFILL_SPACE_NAME,
                 createdBy = actorUserId,
                 embeddingModel = null,
                 indexName = null,
@@ -51,7 +52,7 @@ class OnboardingBackfillIndexer(
                 guildId = guildId,
                 spaceId = space.id,
                 sourceType = "faq",
-                title = "서버 대화 요약",
+                title = BACKFILL_SPACE_NAME,
                 sourceUri = null,
                 contentPreview = text,
                 addedBy = actorUserId,
@@ -70,6 +71,9 @@ class OnboardingBackfillIndexer(
 
     private companion object {
         private val log = LoggerFactory.getLogger(OnboardingBackfillIndexer::class.java)
+
+        // 온보딩 백필 지식공간 표시이름. findOrCreateSpace 재사용 키(channelAiId + 이 이름)이기도 하다.
+        const val BACKFILL_SPACE_NAME = "서버 대화 요약"
     }
 }
 

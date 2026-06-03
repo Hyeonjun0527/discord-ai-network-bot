@@ -28,7 +28,7 @@ class GuildOnboardingService(
     private val consents: GuildOnboardingConsentRepository,
     private val runs: GuildOnboardingRunRepository,
     private val backfillIndexer: OnboardingBackfillIndexer,
-    private val onboardingLlm: OnboardingLlm = OnboardingLlm { null },
+    private val onboardingLlm: OnboardingLlm = OnboardingLlm { _, _ -> null },
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
 ) {
@@ -55,11 +55,18 @@ class GuildOnboardingService(
      *
      * 자기호출(self-invocation) 프록시 우회 함정을 피하려고 `analyze` 와 `startOnboarding` 은 호출자가 각각 부른다.
      * 백필 텍스트가 없거나, 프로바이더 부재/실패/빈 응답/JSON 파싱 실패/위험 출력이면 `null`(→ 휴리스틱 폴백).
+     *
+     * **실제 길드/채널/actor 컨텍스트로 라우팅한다**(A) — 프로바이더는 길드별 풀에서 찾으므로 더미 guildId 로는
+     * 항상 NO_PROVIDER 가 되어 LLM 이 동작하지 않는다. 호출자(CommandService.startAutoOnboarding)는 이미
+     * 같은 값을 갖고 있으니 그대로 넘긴다.
      */
-    fun analyze(backfill: BackfillInput?): OnboardingAnalysis? {
+    fun analyze(
+        backfill: BackfillInput?,
+        context: OnboardingAnalysisContext,
+    ): OnboardingAnalysis? {
         val text = backfill?.indexText?.trim()
         if (text.isNullOrBlank()) return null
-        return runCatching { analyzer.analyze(text) }
+        return runCatching { analyzer.analyze(text, context) }
             .getOrElse {
                 log.warn("onboarding LLM analysis failed; falling back to heuristic: {}", it.message)
                 null

@@ -16,6 +16,7 @@ import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
 import com.discordassistant.central.network.MultiResponseService
 import com.discordassistant.central.network.NetworkLaunchChecklist
+import com.discordassistant.central.network.OnboardingAnalysisContext
 import com.discordassistant.central.network.PresetImportResult
 import com.discordassistant.central.network.PresetModerationSummary
 import com.discordassistant.central.network.PresetRegistryService
@@ -1374,7 +1375,18 @@ class CommandService(
             // LLM 분석은 DB 트랜잭션 밖(여기 — slow 명령 실행 풀)에서 먼저 수행한다(B1). analyze 는 비트랜잭션
             // 메서드라 프록시를 거쳐도 트랜잭션/커넥션을 열지 않는다. startOnboarding 은 그 결과만 받아 짧은 트랜잭션으로 처리.
             // (analyze/startOnboarding 을 여기서 각각 부르므로 self-invocation 프록시 우회 함정도 없다.)
-            val analysis = guildOnboarding.analyze(backfill)
+            // 분석은 **실제 길드/채널/actor** 컨텍스트로 라우팅한다(A) — 프로바이더가 길드별 풀이라 실제 guildId 가 필수.
+            val analysis =
+                guildOnboarding.analyze(
+                    backfill,
+                    OnboardingAnalysisContext(
+                        guildId = ctx.guildId,
+                        channelId = ctx.channelId,
+                        actorUserId = ctx.userId,
+                        actorRoleIds = ctx.roleIds,
+                        actorIsGuildAdmin = ctx.isAdmin,
+                    ),
+                )
             val result =
                 guildOnboarding.startOnboarding(
                     guildId = ctx.guildId,

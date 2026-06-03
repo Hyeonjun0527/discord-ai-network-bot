@@ -24,15 +24,19 @@ class OnboardingAnalyzer(
      * 정제 텍스트를 분석해 LLM 페르소나 제안을 돌려준다. 분석이 불가능하거나 신뢰할 수 없으면 `null`(→ 휴리스틱 폴백).
      *
      * @param indexText 정제된 백필 텍스트(작성자 익명화·민감 라인 제거 완료). 비어 있으면 분석하지 않는다(`null`).
+     * @param context 라우팅 컨텍스트(실제 길드/채널/actor). 프로바이더는 길드별 풀에서 찾으므로 실제 guildId 가 필수다(A).
      */
-    fun analyze(indexText: String?): OnboardingAnalysis? {
+    fun analyze(
+        indexText: String?,
+        context: OnboardingAnalysisContext,
+    ): OnboardingAnalysis? {
         val text = indexText?.trim()
         if (text.isNullOrBlank()) return null
         // LLM 출력에 정제 텍스트의 민감 흔적이 섞여 들어오는 일이 없도록, 입력 자체도 한 번 더 점검한다.
         val safeInput = if (KnowledgeSafety.containsSensitiveMaterial(text)) scrubSensitiveLines(text) else text
         val prompt = buildAnalysisPrompt(safeInput)
         val raw =
-            runCatching { llm.complete(prompt) }
+            runCatching { llm.complete(prompt, context) }
                 .getOrElse {
                     log.warn("onboarding LLM call failed: {}", it.message)
                     null
@@ -188,9 +192,25 @@ data class OnboardingAnalysis(
 )
 
 /**
- * 온보딩 분석의 LLM 호출 경계(I/O 격리). 프롬프트를 주면 LLM 응답 텍스트를 동기로 돌려주거나,
+ * 온보딩 분석 라우팅 컨텍스트. 프로바이더는 [com.discordassistant.central.routing.RequestOrchestrator] 에서
+ * **길드별 풀**(`registry.byGuild(guildId)`)로 찾으므로, 분석 요청을 **실제 길드/채널/actor** 로 라우팅해야 한다(A).
+ * guildId=0 같은 더미로 보내면 그 길드 풀이 비어 항상 NO_PROVIDER → 휴리스틱 폴백이 된다.
+ */
+data class OnboardingAnalysisContext(
+    val guildId: Long,
+    val channelId: Long,
+    val actorUserId: Long?,
+    val actorRoleIds: Set<Long> = emptySet(),
+    val actorIsGuildAdmin: Boolean = true,
+)
+
+/**
+ * 온보딩 분석의 LLM 호출 경계(I/O 격리). 프롬프트와 라우팅 컨텍스트를 주면 LLM 응답 텍스트를 동기로 돌려주거나,
  * 프로바이더 부재/실패/타임아웃이면 `null` 을 돌려준다(예외 던지지 않음 — 호출부 폴백을 단순화).
  */
 fun interface OnboardingLlm {
-    fun complete(prompt: String): String?
+    fun complete(
+        prompt: String,
+        context: OnboardingAnalysisContext,
+    ): String?
 }

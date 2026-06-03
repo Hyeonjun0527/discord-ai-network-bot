@@ -100,6 +100,28 @@ class GuildOnboardingServiceTest
                 clock = clock,
             )
 
+        /** 분석 호출 시 받은 라우팅 컨텍스트를 캡처하는 fake LLM(고정 응답). guildId 등 실제값 전달을 단언하는 데 쓴다(A). */
+        private class CapturingLlm(
+            private val response: String?,
+        ) : OnboardingLlm {
+            var lastContext: OnboardingAnalysisContext? = null
+
+            override fun complete(
+                prompt: String,
+                context: OnboardingAnalysisContext,
+            ): String? {
+                lastContext = context
+                return response
+            }
+        }
+
+        /** 기본 분석 컨텍스트(테스트 편의). guildId 는 0 이 아닌 실제 길드. */
+        private fun ctx(
+            guildId: Long = 200,
+            channelId: Long = 400,
+            actorUserId: Long? = 77,
+        ) = OnboardingAnalysisContext(guildId = guildId, channelId = channelId, actorUserId = actorUserId)
+
         /** 백필 텍스트가 있을 때 LLM 분석을 실제로 쓰는 서비스(고정 응답 fake LLM 주입). */
         private fun serviceWithLlm(response: String?) =
             GuildOnboardingService(
@@ -107,7 +129,7 @@ class GuildOnboardingServiceTest
                 consents = consents,
                 runs = runs,
                 backfillIndexer = backfillIndexer,
-                onboardingLlm = OnboardingLlm { response },
+                onboardingLlm = OnboardingLlm { _, _ -> response },
                 clock = clock,
             )
 
@@ -308,6 +330,43 @@ class GuildOnboardingServiceTest
             assertEquals("305,306", consent.channelWhitelist)
         }
 
+        // REQ-ONBOARD-005 (B) — 같은 채널 AI 로 백필을 두 번 해도 knowledge_space 는 재사용되어 1개만 남는다(중복 방지).
+        @Test
+        fun `repeated backfill reuses the same knowledge space`() {
+            fun runOnce(text: String) =
+                service.startOnboarding(
+                    guildId = 100,
+                    channelId = 320,
+                    actorUserId = 77,
+                    actorIsGuildAdmin = true,
+                    channelName = "dev-help",
+                    channelWhitelist = setOf(320L),
+                    historyLimit = 50,
+                    backfill =
+                        GuildOnboardingService.BackfillInput(
+                            indexText = text,
+                            backfilledMessageCount = 1,
+                            scrubbedCount = 0,
+                        ),
+                )
+
+            val first = runOnce("[익명1] 첫 번째 백필 대화")
+            val second = runOnce("[익명2] 두 번째 백필 대화")
+
+            // 두 실행 모두 지식공간 id 가 동일(재사용)
+            assertNotNull(first.knowledgeSpaceId)
+            assertEquals(first.knowledgeSpaceId, second.knowledgeSpaceId)
+            // 같은 채널 AI(channel=320)에 "서버 대화 요약" 지식공간이 정확히 1개
+            val channelAiId = channelAis.findByGuildIdAndChannelId(100, 320)!!.id
+            val onboardingSpaces =
+                spaces.findByGuildIdAndChannelId(100, 320).filter {
+                    it.channelAiId == channelAiId && it.displayName == "서버 대화 요약"
+                }
+            assertEquals(1, onboardingSpaces.size)
+            // 재실행으로 source 는 누적(2개) — 중복 막는 건 space 뿐(범위 한정)
+            assertEquals(2, sources.findByKnowledgeSpaceId(first.knowledgeSpaceId!!).size)
+        }
+
         // REQ-ONBOARD-005 (회귀) — 백필 없으면 Phase 1 동작 유지(지식공간 생성 안 됨·미동의).
         @Test
         fun `no backfill keeps phase1 behavior`() {
@@ -380,7 +439,7 @@ class GuildOnboardingServiceTest
                     backfilledMessageCount = 2,
                     scrubbedCount = 0,
                 )
-            val analysis = svc.analyze(backfill)
+            val analysis = svc.analyze(backfill, ctx(guildId = 200, channelId = 400, actorUserId = 77))
             assertNotNull(analysis) // LLM 분석이 트랜잭션 밖에서 성공
             val result =
                 svc.startOnboarding(
@@ -413,7 +472,7 @@ class GuildOnboardingServiceTest
                     scrubbedCount = 0,
                 )
             // analyze 는 비트랜잭션 — 실패해도 예외 없이 null(온보딩 본체 무영향).
-            val analysis = svc.analyze(backfill)
+            val analysis = svc.analyze(backfill, ctx(guildId = 200, channelId = 401))
             assertNull(analysis)
             val result =
                 svc.startOnboarding(
@@ -443,7 +502,7 @@ class GuildOnboardingServiceTest
                     backfilledMessageCount = 1,
                     scrubbedCount = 0,
                 )
-            val analysis = svc.analyze(backfill)
+            val analysis = svc.analyze(backfill, ctx(guildId = 200, channelId = 402))
             assertNull(analysis)
             val result =
                 svc.startOnboarding(
@@ -464,11 +523,49 @@ class GuildOnboardingServiceTest
         // REQ-ONBOARD-007 — 백필 텍스트가 없으면 analyze 는 LLM 을 호출하지 않고 null(휴리스틱) 을 돌려준다.
         @Test
         fun `analyze without backfill text returns null`() {
-            assertNull(serviceWithLlm("""{"name":"x","purpose":"y","tone":"z"}""").analyze(null))
+            assertNull(serviceWithLlm("""{"name":"x","purpose":"y","tone":"z"}""").analyze(null, ctx()))
             assertNull(
                 serviceWithLlm("""{"name":"x","purpose":"y","tone":"z"}""")
-                    .analyze(GuildOnboardingService.BackfillInput(indexText = "   ", backfilledMessageCount = 0, scrubbedCount = 0)),
+                    .analyze(
+                        GuildOnboardingService.BackfillInput(indexText = "   ", backfilledMessageCount = 0, scrubbedCount = 0),
+                        ctx(),
+                    ),
             )
+        }
+
+        // REQ-ONBOARD-007 (A) — 분석이 더미가 아니라 **실제 guildId/channelId/userId** 컨텍스트로 라우팅된다.
+        //  guildId=0 이면 길드별 프로바이더 풀이 비어 LLM 이 100% 폴백되므로, 실제값 전달이 Phase 3 동작의 전제다.
+        @Test
+        fun `analyze routes with the real guild context`() {
+            val capturing = CapturingLlm("""{"name":"실길드냥","purpose":"역할","tone":"친근하게"}""")
+            val svc =
+                GuildOnboardingService(
+                    channelAiCustomization = customization,
+                    consents = consents,
+                    runs = runs,
+                    backfillIndexer = backfillIndexer,
+                    onboardingLlm = capturing,
+                    clock = clock,
+                )
+            val analysis =
+                svc.analyze(
+                    GuildOnboardingService.BackfillInput(indexText = "[익명1] 대화", backfilledMessageCount = 1, scrubbedCount = 0),
+                    OnboardingAnalysisContext(
+                        guildId = 5150,
+                        channelId = 6160,
+                        actorUserId = 7170,
+                        actorRoleIds = setOf(1L, 2L),
+                        actorIsGuildAdmin = true,
+                    ),
+                )
+
+            assertNotNull(analysis)
+            assertEquals("실길드냥", analysis!!.name)
+            val captured = capturing.lastContext!!
+            assertEquals(5150L, captured.guildId) // 0 이 아니라 실제 길드!
+            assertEquals(6160L, captured.channelId)
+            assertEquals(7170L, captured.actorUserId)
+            assertEquals(setOf(1L, 2L), captured.actorRoleIds)
         }
 
         // REQ-ONBOARD-007 (S1) — LLM 이 위험한 자유 지침을 제안하면 startOnboarding 의 2차 가드에서 제거되지만,

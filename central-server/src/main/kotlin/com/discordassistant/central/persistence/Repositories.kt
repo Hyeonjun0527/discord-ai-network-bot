@@ -268,6 +268,12 @@ interface KnowledgeSpaceRepository : JpaRepository<KnowledgeSpaceEntity, Long> {
         guildId: Long,
         id: Long,
     ): KnowledgeSpaceEntity?
+
+    /** 온보딩 백필 지식공간 재사용용 — 같은 채널 AI + 같은 표시이름의 기존 space(가장 먼저 만든 것)를 찾는다. */
+    fun findFirstByChannelAiIdAndDisplayNameOrderByIdAsc(
+        channelAiId: Long,
+        displayName: String,
+    ): KnowledgeSpaceEntity?
 }
 
 interface KnowledgeSourceRepository : JpaRepository<KnowledgeSourceEntity, Long> {

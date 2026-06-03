@@ -9,7 +9,12 @@ import org.junit.jupiter.api.Test
  * 온보딩 LLM 분석의 **순수 로직**(프롬프트/파싱/안전 가드) 단위테스트. I/O 는 [OnboardingLlm] fake 로 격리한다.
  */
 class OnboardingAnalyzerTest {
-    private fun analyzer(response: String?) = OnboardingAnalyzer(OnboardingLlm { response })
+    private val testContext = OnboardingAnalysisContext(guildId = 200, channelId = 400, actorUserId = 77)
+
+    private fun analyzer(response: String?) = OnboardingAnalyzer(OnboardingLlm { _, _ -> response })
+
+    /** 순수 파싱/가드 로직 검증용 — 고정 테스트 컨텍스트로 analyze 를 부른다. */
+    private fun OnboardingAnalyzer.analyze(indexText: String?): OnboardingAnalysis? = analyze(indexText, testContext)
 
     @Test
     fun `valid json parses into analysis`() {

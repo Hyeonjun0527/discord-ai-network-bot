@@ -26,6 +26,12 @@ def main(argv: list[str] | None = None) -> int:
     log = logging.getLogger("provider_agent")
     log.info("Provider Agent %s", cfg.agent_version)
     _warn_risky_config(cfg, log)
+    if cfg.install_service:
+        # 설정은 이미 저장됨(config_from_args). 자동 시작 서비스만 등록하고 종료.
+        from .service import install_service
+        where = install_service()
+        log.info("✅ 자동 시작 서비스 등록: %s — 이제 로그인 시 자동 연결됩니다.", where)
+        return 0
     if cfg.self_test:
         # 자가 점검은 연결/처리 없이 Ollama 만 확인하므로 동의 화면 없이 진행한다.
         from .agent import self_test

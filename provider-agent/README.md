@@ -20,6 +20,20 @@ discord-ai-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent 
 첫 실행 시 **사용량 제한·서버 주소·Ollama 주소·개인정보 안내**를 보여주고 동의를 받습니다.
 서비스/스크립트에서는 `--yes` 또는 `AGENT_ACCEPT_TERMS=1` 로 사전 동의하세요.
 
+## 한 번 설정, 자동 연결 (set-and-forget)
+매번 터미널에 토큰을 다시 칠 필요 없이, **한 번만 설정**하면 로그인할 때마다 알아서 풀에 연결됩니다.
+```bash
+# 1) 처음 한 번: 설정 저장 + 자동 시작 서비스 등록(관리자 불필요)
+discord-ai-network-bot --token <1회용토큰> --relay-url wss://discord-ai.yeon.world/agent \
+  --save-config --install-service
+```
+- 인증에 성공하면 서버가 **재사용 가능한 토큰**(durable)을 내려주고 에이전트가 저장합니다 →
+  재연결·재시작·재부팅에도 `/provider-join` 을 다시 할 필요가 없습니다(만료 전까지).
+- `--install-service` 는 macOS LaunchAgent / Linux `systemctl --user` / Windows 작업 스케줄러에
+  **사용자 단위**로 등록(시스템 권한·서비스 등록 불필요). 로그인 시 자동 실행.
+- 이미지도 제공하려면 위 명령에 `--enable-image` 를 더하면 됩니다(아래 참고). 텍스트·이미지는
+  **중복 선택**(둘 다 켜기) 가능합니다.
+
 ## 일반 사용자 권한으로 동작
 - **관리자/sudo 불필요.** 시스템 폴더 쓰기·서비스 등록·방화벽/레지스트리 변경을 하지 않는다.
 - 설정/로그는 사용자 홈에만 저장: Windows `%APPDATA%`(또는 `XDG_CONFIG_HOME`),

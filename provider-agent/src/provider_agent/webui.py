@@ -146,9 +146,11 @@ section{margin-top:15px}h2{margin:0 0 9px;font-size:17px;font-weight:850;letter-
 .secondary-btn{min-height:50px;border-radius:13px;border:1px solid var(--line2);background:rgba(79,125,255,.05);color:#eef4ff;font-weight:800;font-size:14px;cursor:pointer}
 .helper{margin:8px 0 0;color:var(--muted);font-size:12.5px;line-height:1.55}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.model{min-height:76px;display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:center;padding:13px 15px;border-radius:14px;border:1px solid rgba(148,163,184,.14);background:linear-gradient(180deg,rgba(17,28,43,.68),rgba(10,17,28,.76));cursor:pointer;text-align:left;color:var(--text)}
-.model.is-selected{border-color:var(--line2);background:linear-gradient(180deg,rgba(25,39,65,.82),rgba(11,20,36,.82))}
-.model-icon{width:38px;height:38px;color:#dbe6f4;opacity:.55}.model.is-selected .model-icon{opacity:1}
+.model{position:relative;min-height:76px;display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:center;padding:13px 15px;border-radius:14px;border:1px solid rgba(148,163,184,.14);background:linear-gradient(180deg,rgba(17,28,43,.68),rgba(10,17,28,.76));cursor:pointer;text-align:left;color:var(--text);opacity:.5;transition:opacity .12s,border-color .12s}
+.model.is-selected{opacity:1;border-color:var(--line2);background:linear-gradient(180deg,rgba(25,39,65,.82),rgba(11,20,36,.82))}
+.model .mcheck{position:absolute;top:9px;right:9px;width:22px;height:22px;border-radius:7px;display:grid;place-items:center;background:linear-gradient(180deg,#4b82ff,#285bcb);opacity:0;transition:opacity .12s}
+.model.is-selected .mcheck{opacity:1}.model .mcheck svg{width:14px;height:14px;color:#fff}
+.model-icon{width:38px;height:38px;color:#dbe6f4}
 .model-name{font-size:16px;font-weight:800;letter-spacing:-.02em;margin-bottom:6px;word-break:break-all}
 .badge{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:7px;border:1px solid rgba(79,125,255,.34);background:rgba(79,125,255,.08);color:#89acff;font-size:12px;font-weight:800}.badge.neutral{color:#c4cedd;border-color:rgba(148,163,184,.20);background:rgba(148,163,184,.08)}
 .empty{color:#8492a6;font-size:13px;grid-column:1/-1}.empty code{background:#152133;padding:2px 7px;border-radius:6px;color:#cdd}
@@ -197,7 +199,9 @@ async function j(u,o){o=o||{};o.headers=Object.assign({},H,o.headers||{});const 
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');HAS_MODELS=d.models.length>0;
 if(!d.models.length){box.innerHTML='<div class="empty">Ollama에서 모델을 못 찾았어요. <code>ollama pull llama3.1:8b</code> 후 새로고침하세요.</div>';return;}
-box.innerHTML=d.models.map(m=>{const sel=d.selected.includes(m)||!d.selected.length;return `<article class="model${sel?' is-selected':''}" data-model="${esc(m)}" onclick="this.classList.toggle('is-selected')">${MICON}<div><div class="model-name">${esc(m)}</div><span class="badge">사용 가능</span></div></article>`;}).join('');}
+const CMK='<span class="mcheck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>';
+box.innerHTML=d.models.map(m=>{const sel=d.selected.includes(m)||!d.selected.length;return `<article class="model${sel?' is-selected':''}" data-model="${esc(m)}" onclick="toggleModel(this)">${CMK}${MICON}<div><div class="model-name">${esc(m)}</div><span class="badge${sel?'':' neutral'}">${sel?'제공 중':'선택 안 함'}</span></div></article>`;}).join('');}
+function toggleModel(el){el.classList.toggle('is-selected');const sel=el.classList.contains('is-selected');const b=el.querySelector('.badge');b.textContent=sel?'제공 중':'선택 안 함';b.className='badge'+(sel?'':' neutral');}
 function selectedModels(){return [...document.querySelectorAll('.model.is-selected')].map(c=>c.dataset.model);}
 function on(id){return document.getElementById(id).classList.contains('on');}
 async function refresh(){const s=await j('/api/status');RUN=s.running;
@@ -219,6 +223,7 @@ if(!s.connectEnabled){msg.className='';msg.textContent='토큰 발급은 곧 지
 const cb=location.origin+'/connect/callback';
 location.href=s.relayUrl.replace('wss://','https://').replace('ws://','http://').replace(/\/agent$/,'')+'/provider/connect?cb='+encodeURIComponent(cb)+'&state='+encodeURIComponent(K);}
 async function toggle(){const msg=document.getElementById('msg');if(RUN){await j('/api/stop',{method:'POST'});await refresh();return;}
+if(HAS_MODELS&&!selectedModels().length){msg.className='err';msg.textContent='⚠️ 제공할 모델을 1개 이상 선택하세요.';return;}
 msg.className='';msg.textContent='저장하고 연결하는 중…';
 const su=await j('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:document.getElementById('token').value.trim(),models:selectedModels(),enableImage:on('img'),installService:on('svc')})});
 if(!su.ok){msg.className='err';msg.textContent='⚠️ '+(su.error||'저장 실패');return;}document.getElementById('token').value='';

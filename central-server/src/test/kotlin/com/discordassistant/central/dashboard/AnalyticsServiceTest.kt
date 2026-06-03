@@ -1,5 +1,6 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.persistence.AiRequestEntity
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.UsageLogEntity
@@ -46,17 +47,22 @@ class AnalyticsServiceTest
 
         @Test
         fun `처리 부하 회계 — 부담 가중 합(#228)`() {
-            requests.save(AiRequestEntity(requestId = "r1", providerId = 50, state = "COMPLETED", requiredBurden = "LIGHT"))
-            requests.save(AiRequestEntity(requestId = "r2", providerId = 50, state = "COMPLETED", requiredBurden = "HEAVY"))
-            requests.save(AiRequestEntity(requestId = "r3", providerId = 50, state = "REJECTED", requiredBurden = "HEAVY")) // 완료 아님 → 제외
+            requests.save(AiRequestEntity(requestId = "r1", providerId = 50, state = RequestState.COMPLETED, requiredBurden = "LIGHT"))
+            requests.save(AiRequestEntity(requestId = "r2", providerId = 50, state = RequestState.COMPLETED, requiredBurden = "HEAVY"))
+            // r3 은 완료 아님 → 제외
+            requests.save(AiRequestEntity(requestId = "r3", providerId = 50, state = RequestState.REJECTED, requiredBurden = "HEAVY"))
             // LIGHT(1) + HEAVY(3) = 4
             assertEquals(4L, analytics.providerComputeScore(50))
         }
 
         @Test
         fun `프로바이더 처리 내역 — 프롬프트·유저 미포함(#166)`() {
-            requests.save(AiRequestEntity(requestId = "h1", providerId = 60, userId = 999, state = "COMPLETED", requiredBurden = "LIGHT"))
-            requests.save(AiRequestEntity(requestId = "h2", providerId = 60, userId = 888, state = "REJECTED", requiredBurden = "HEAVY"))
+            requests.save(
+                AiRequestEntity(requestId = "h1", providerId = 60, userId = 999, state = RequestState.COMPLETED, requiredBurden = "LIGHT"),
+            )
+            requests.save(
+                AiRequestEntity(requestId = "h2", providerId = 60, userId = 888, state = RequestState.REJECTED, requiredBurden = "HEAVY"),
+            )
             val hist = analytics.providerHistory(60)
             assertEquals(1, hist.size) // 완료만
             assertEquals("h1", hist[0]["requestId"])

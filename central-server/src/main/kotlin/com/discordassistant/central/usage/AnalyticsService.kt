@@ -1,6 +1,7 @@
 package com.discordassistant.central.usage
 
 import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.UsageLogRepository
 import org.springframework.stereotype.Service
@@ -39,7 +40,7 @@ class AnalyticsService(
     @Transactional(readOnly = true)
     fun providerComputeScore(providerId: Long): Long =
         requests
-            .findByProviderIdAndState(providerId, "COMPLETED")
+            .findByProviderIdAndState(providerId, RequestState.COMPLETED)
             .sumOf { burdenWeight(it.requiredBurden).toLong() }
 
     /**
@@ -49,7 +50,7 @@ class AnalyticsService(
     @Transactional(readOnly = true)
     fun providerHistory(providerId: Long): List<Map<String, Any?>> =
         requests
-            .findByProviderIdAndState(providerId, "COMPLETED")
+            .findByProviderIdAndState(providerId, RequestState.COMPLETED)
             .sortedByDescending { it.id }
             .take(20)
             .map { mapOf("requestId" to it.requestId, "burden" to it.requiredBurden, "createdAt" to it.createdAt.toString()) }
@@ -67,7 +68,7 @@ class AnalyticsService(
         requests.findTop20ByGuildIdOrderByIdDesc(guildId).map {
             RequestLogEntry(
                 requestId = it.requestId,
-                state = it.state,
+                state = it.state.name,
                 requiredBurden = it.requiredBurden,
                 providerId = it.providerId,
                 failReason = it.failReason,

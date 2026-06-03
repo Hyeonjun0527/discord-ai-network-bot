@@ -2,6 +2,7 @@ package com.discordassistant.central.persistence
 
 import com.discordassistant.central.domain.ProviderState
 import com.discordassistant.central.domain.PublishedPresetStatus
+import com.discordassistant.central.domain.RequestState
 import org.springframework.data.jpa.repository.JpaRepository
 import java.time.Instant
 
@@ -83,7 +84,7 @@ interface AiRequestRepository : JpaRepository<AiRequestEntity, Long> {
 
     fun findByProviderIdAndState(
         providerId: Long,
-        state: String,
+        state: RequestState,
     ): List<AiRequestEntity>
 }
 

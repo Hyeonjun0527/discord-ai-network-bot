@@ -412,3 +412,19 @@ interface ProviderDurableRevocationRepository : JpaRepository<ProviderDurableRev
         guildId: Long,
     ): ProviderDurableRevocationEntity?
 }
+
+interface BlocklistRepository : JpaRepository<BlocklistEntity, Long> {
+    fun findByGuildIdAndUserId(
+        guildId: Long,
+        userId: Long,
+    ): BlocklistEntity?
+
+    fun findByGuildId(guildId: Long): List<BlocklistEntity>
+
+    fun deleteByGuildIdAndUserId(
+        guildId: Long,
+        userId: Long,
+    )
+
+    fun deleteByGuildId(guildId: Long)
+}

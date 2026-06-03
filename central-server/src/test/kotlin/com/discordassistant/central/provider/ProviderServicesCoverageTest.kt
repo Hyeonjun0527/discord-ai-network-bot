@@ -18,8 +18,20 @@ class ProviderServicesCoverageTest
     constructor(
         val blocklist: BlocklistService,
         val schedule: ProviderScheduleService,
+        val blocklistRepo: com.discordassistant.central.persistence.BlocklistRepository,
     ) {
         private fun clockAtHour(h: Int): Clock = Clock.fixed(Instant.parse("2026-01-01T%02d:30:00Z".format(h)), ZoneOffset.UTC)
+
+        @Test
+        fun `blocklist — DB 영속 후 재로드(재시작에도 차단 유지)`() {
+            val g = 52_001L
+            val u = 52_002L
+            blocklist.block(g, u, adminId = 9L)
+            assertTrue(blocklistRepo.findByGuildIdAndUserId(g, u) != null) // DB 저장됨
+            blocklist.load() // 캐시 재적재(재시작 시뮬레이션) — 그래도 차단 유지
+            assertTrue(blocklist.isBlocked(g, u))
+            blocklist.unblock(g, u, adminId = 9L)
+        }
 
         @Test
         fun `blocklist — 차단·조회·해제 라이프사이클`() {

@@ -1,0 +1,75 @@
+{
+  "_meta": {
+    "note": "문구(copy) i18n 의 단일 진실 원천(SSOT) — central-server(봇)·웹·데스크톱 앱이 공유한다. scripts/gen_i18n.py 가 이 파일에서 모듈별 생성본을 만든다(생성본은 직접 편집 금지). 섹션: bot(런타임 메시지)·web(설치 랜딩)·agent(데스크톱 앱). 키마다 ko/en/ja 가 모두 있어야 한다(가드: scripts/check_i18n.py / gen_i18n.py --check). 변경 후 `make i18n-gen` 으로 생성본 갱신.",
+    "locales": ["ko", "en", "ja"],
+    "default": "ko"
+  },
+  "bot": {
+    "privacyNotice": {
+      "ko": "이 서버는 커뮤니티 로컬 AI Provider Pool 을 사용합니다. 질문 내용은 요청을 처리하는 커뮤니티 프로바이더의 PC 로 전송될 수 있습니다. 비밀번호·API 키·개인정보·비공개 문서 등 민감한 정보는 입력하지 마세요.",
+      "en": "This server uses a community local AI Provider Pool. Your question may be sent to a community provider's PC for processing. Do not enter sensitive information such as passwords, API keys, personal data, or private documents.",
+      "ja": "このサーバーはコミュニティのローカルAIプロバイダープールを使用します。質問内容は、リクエストを処理するコミュニティプロバイダーのPCに送信される場合があります。パスワード・APIキー・個人情報・非公開文書などの機密情報は入力しないでください。"
+    },
+    "cooldown": {
+      "ko": "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.",
+      "en": "Too many requests. Please try again shortly.",
+      "ja": "リクエストが頻繁すぎます。しばらくしてからもう一度お試しください。"
+    },
+    "noProvider": {
+      "ko": "현재 풀에 온라인 프로바이더가 없습니다.",
+      "en": "No online providers are available in the pool right now.",
+      "ja": "現在、プールにオンラインのプロバイダーがいません。"
+    },
+    "adminDenied": {
+      "ko": "이 명령은 관리자만 사용할 수 있습니다.",
+      "en": "This command is for administrators only.",
+      "ja": "このコマンドは管理者のみが使用できます。"
+    }
+  },
+  "web": {
+    "navPresets": { "ko": "프리셋", "en": "Presets", "ja": "プリセット" },
+    "navDashboard": { "ko": "대시보드", "en": "Dashboard", "ja": "ダッシュボード" },
+    "navSource": { "ko": "소스 코드", "en": "Source", "ja": "ソースコード" },
+    "heroEyebrow": { "ko": "우리 서버만의 AI · 냥시스턴트", "en": "Your server's own AI · Nyassistant", "ja": "あなたのサーバーだけのAI · ニャシスタント" },
+    "heroHeadline": {
+      "ko": "당신의 디스코드 서버에<br><span class=\"accent\">AI 멤버</span>를 연결하세요.",
+      "en": "Connect an <span class=\"accent\">AI member</span><br>to your Discord server.",
+      "ja": "あなたのDiscordサーバーに<br><span class=\"accent\">AIメンバー</span>をつなげましょう。"
+    },
+    "heroBody": {
+      "ko": "멤버들의 <code>/질문</code>에 답하고, 서버 규칙과 공지를 기억하고, 채널 분위기에 맞게 대화하는 AI를 만들 수 있어요.<br><b>우리 서버 안에 언제든 부를 수 있는 AI 멤버</b>가 생깁니다.",
+      "en": "Build an AI that answers members' <code>/ask</code>, remembers your server rules and notices, and chats to fit each channel.<br><b>An AI member you can call anytime, right inside your server.</b>",
+      "ja": "メンバーの <code>/質問</code> に答え、サーバーのルールやお知らせを覚え、チャンネルの雰囲気に合わせて話すAIを作れます。<br><b>サーバーの中でいつでも呼べるAIメンバー</b>ができます。"
+    },
+    "heroCtaPrimary": { "ko": "우리 서버 AI 켜기 ↓", "en": "Turn on your server AI ↓", "ja": "サーバーAIをオンに ↓" },
+    "heroCtaPresets": { "ko": "채널 AI 프리셋 보기", "en": "Browse channel AI presets", "ja": "チャンネルAIプリセットを見る" },
+    "step1Title": { "ko": "토큰 받기", "en": "Get a token", "ja": "トークンを取得" },
+    "step1Text": {
+      "ko": "디스코드에서 <code>/프로바이더참여</code> → 내 OS 선택 → 10분·1회용 토큰 발급. (재사용 토큰은 첫 연결 시 자동 저장)",
+      "en": "In Discord run <code>/provider-join</code> → pick your OS → get a 10-min, single-use token. (A reusable token is saved automatically on first connect.)",
+      "ja": "Discordで <code>/プロバイダー参加</code> → OSを選択 → 10分・1回限りのトークンを発行。（再利用トークンは初回接続時に自動保存）"
+    },
+    "step2Title": { "ko": "앱 설치", "en": "Install the app", "ja": "アプリをインストール" },
+    "step2Text": {
+      "ko": "아래 OS 탭에서 패키지 매니저로 데스크톱 앱(냥시스턴트)을 설치하세요. <b>해시 검증</b>이 자동으로 됩니다.",
+      "en": "Use the package manager in the OS tab below to install the desktop app (Nyassistant). <b>Hash verification</b> is automatic.",
+      "ja": "下のOSタブのパッケージマネージャーでデスクトップアプリ（ニャシスタント）をインストール。<b>ハッシュ検証</b>は自動です。"
+    },
+    "step3Title": { "ko": "연결 확인", "en": "Confirm connection", "ja": "接続を確認" },
+    "step3Text": {
+      "ko": "설치되면 디스코드 <code>/내상태</code> 로 온라인 상태를 확인하세요.",
+      "en": "Once installed, check your online status with <code>/provider-status</code> in Discord.",
+      "ja": "インストール後、Discordの <code>/自分の状態</code> でオンライン状態を確認してください。"
+    },
+    "installLabel": { "ko": "설치 <span>— 내 컴퓨터를 고르세요</span>", "en": "Install <span>— pick your computer</span>", "ja": "インストール <span>— お使いのPCを選択</span>" }
+  },
+  "agent": {
+    "alreadyRunning": { "ko": "이미 실행 중입니다.", "en": "Already running.", "ja": "すでに実行中です。" },
+    "saveTokenFirst": { "ko": "먼저 토큰을 저장하세요.", "en": "Please save a token first.", "ja": "先にトークンを保存してください。" },
+    "otherInstanceConnected": {
+      "ko": "이미 다른 인스턴스(백그라운드 자동 실행 등)가 연결돼 있어요. 그 인스턴스를 끄거나 ‘자동 실행’을 해제한 뒤 다시 시도하세요.",
+      "en": "Another instance (e.g. background auto-run) is already connected. Stop it or turn off ‘auto-run’, then try again.",
+      "ja": "別のインスタンス（バックグラウンド自動実行など）が既に接続されています。そのインスタンスを終了するか『自動実行』を解除してから、もう一度お試しください。"
+    }
+  }
+}

@@ -78,6 +78,7 @@ class SecurityConfig(
                     authorize("/install", permitAll)
                     authorize("/install.html", permitAll)
                     authorize("/img/**", permitAll) // 랜딩 이미지(마스코트 등)
+                    authorize("/i18n/**", permitAll) // 웹 문구 i18n(공개 정적, 설치 랜딩 다국어)
                     authorize("/actuator/health", permitAll)
                     authorize("/api/metrics/**", permitAll)
                     authorize("/agent/**", permitAll)

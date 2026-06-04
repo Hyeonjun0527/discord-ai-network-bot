@@ -1,0 +1,18 @@
+{
+  "_generated": "GENERATED from i18n/messages.json by scripts/gen_i18n.py — DO NOT EDIT. 문구 변경은 i18n/messages.json 에서.",
+  "alreadyRunning": {
+    "ko": "이미 실행 중입니다.",
+    "en": "Already running.",
+    "ja": "すでに実行中です。"
+  },
+  "saveTokenFirst": {
+    "ko": "먼저 토큰을 저장하세요.",
+    "en": "Please save a token first.",
+    "ja": "先にトークンを保存してください。"
+  },
+  "otherInstanceConnected": {
+    "ko": "이미 다른 인스턴스(백그라운드 자동 실행 등)가 연결돼 있어요. 그 인스턴스를 끄거나 ‘자동 실행’을 해제한 뒤 다시 시도하세요.",
+    "en": "Another instance (e.g. background auto-run) is already connected. Stop it or turn off ‘auto-run’, then try again.",
+    "ja": "別のインスタンス（バックグラウンド自動実行など）が既に接続されています。そのインスタンスを終了するか『自動実行』を解除してから、もう一度お試しください。"
+  }
+}

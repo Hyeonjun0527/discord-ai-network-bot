@@ -1,5 +1,7 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.discord.BotGuildInfo
+import com.discordassistant.central.discord.BotGuildLister
 import com.discordassistant.central.network.AiNetworkFeatureGate
 import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.relay.ConnectionRegistry
@@ -23,7 +25,19 @@ class DashboardController(
     private val policy: PolicyService,
     private val analytics: AnalyticsService,
     private val featureGate: AiNetworkFeatureGate,
+    private val botGuilds: BotGuildLister,
 ) {
+    /**
+     * 봇이 들어가 있는 서버 목록(id + 이름). 어드민 서버 선택 드롭다운용 — 운영자가 18자리 길드 ID 를
+     * 외워 입력하지 않아도 되게 한다. 어드민 전용([AiNetworkApiSecurityFilter] 가 `/api/dashboard/guilds`
+     * 를 관리자 토큰/OAuth 로 보호). 봇 비활성/미연결이면 빈 목록.
+     */
+    @GetMapping("/guilds")
+    fun guilds(): List<BotGuildInfo> {
+        featureGate.requireDashboardEnabled()
+        return botGuilds.botGuilds()
+    }
+
     /** 서버 개요: 풀 크기·정책 요약·총 요청 수. */
     @GetMapping("/{guildId}/overview")
     fun overview(

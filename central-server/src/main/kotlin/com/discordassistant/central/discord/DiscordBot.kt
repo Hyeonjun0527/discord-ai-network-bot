@@ -72,9 +72,18 @@ private val DM_COMMANDS =
         "provider-status",
     )
 
-/** 봇이 현재 들어가 있는 길드(서버) id 목록을 제공한다(웹 ‘토큰 받기’ 서버 선택용). */
-fun interface BotGuildLister {
+/** 봇이 들어가 있는 서버(길드) 한 건의 식별 정보(어드민 서버 선택 드롭다운용). */
+data class BotGuildInfo(
+    val id: Long,
+    val name: String,
+)
+
+/** 봇이 현재 들어가 있는 길드(서버) 목록을 제공한다(웹 ‘토큰 받기’·어드민 서버 선택용). */
+interface BotGuildLister {
     fun botGuildIds(): Set<Long>
+
+    /** 봇이 들어가 있는 서버를 이름과 함께 반환(미연결/비활성이면 빈 목록). 어드민 드롭다운용. */
+    fun botGuilds(): List<BotGuildInfo>
 }
 
 /**
@@ -104,6 +113,14 @@ class DiscordBot(
 
     /** 봇이 들어가 있는 길드 id 집합(JDA 미연결/비활성이면 빈 집합). */
     override fun botGuildIds(): Set<Long> = jda?.guilds?.map { it.idLong }?.toSet() ?: emptySet()
+
+    /** 봇이 들어가 있는 서버를 이름과 함께(이름 오름차순). JDA 미연결/비활성이면 빈 목록. */
+    override fun botGuilds(): List<BotGuildInfo> =
+        jda
+            ?.guilds
+            ?.map { BotGuildInfo(it.idLong, it.name) }
+            ?.sortedBy { it.name.lowercase() }
+            ?: emptyList()
 
     private val fallbackAttempted = AtomicBoolean(false)
 

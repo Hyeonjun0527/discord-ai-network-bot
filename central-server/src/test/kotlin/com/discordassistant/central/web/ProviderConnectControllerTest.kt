@@ -1,5 +1,6 @@
 package com.discordassistant.central.web
 
+import com.discordassistant.central.discord.BotGuildInfo
 import com.discordassistant.central.discord.BotGuildLister
 import com.discordassistant.central.policy.AutoApprovePolicy
 import com.discordassistant.central.provider.AuditLog
@@ -45,7 +46,12 @@ class ProviderConnectControllerTest {
         oauth = oauth,
         registration = registration,
         policy = AutoApprovePolicy { autoApprove },
-        botGuilds = BotGuildLister { botGuildIds },
+        botGuilds =
+            object : BotGuildLister {
+                override fun botGuildIds() = botGuildIds
+
+                override fun botGuilds() = botGuildIds.map { BotGuildInfo(it, "Guild $it") }
+            },
         states = states,
         selections = selections,
     )

@@ -204,6 +204,9 @@ _PAGE_TEMPLATE = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 body{margin:0;color:var(--text);background:radial-gradient(circle at 18% 0%,rgba(64,96,180,.18),transparent 32%),radial-gradient(circle at 85% 16%,rgba(54,86,156,.10),transparent 28%),linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);display:block;padding:0}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.10;background-image:linear-gradient(rgba(148,163,184,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.18) 1px,transparent 1px);background-size:34px 34px;mask-image:linear-gradient(to bottom,rgba(0,0,0,.92),transparent 84%)}
 button,input{font:inherit}
+/* 클릭 가능한 모든 요소는 손가락 포인터(데스크톱 webview 에서 기본 화살표로 보이는 문제 방지). */
+button,summary,.toggle,.model,[onclick]{cursor:pointer}
+button:disabled{cursor:default}
 .window{width:100%;min-height:100vh}
 .appver{position:fixed;top:11px;right:13px;z-index:6;font:700 11.5px/1 ui-monospace,Menlo,monospace;color:var(--faint);background:rgba(8,17,29,.7);border:1px solid var(--line);border-radius:8px;padding:4px 8px;letter-spacing:.02em;backdrop-filter:blur(6px)}
 main{padding:22px 20px 22px}
@@ -260,7 +263,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <div><div class="status-title" id="stitle">대기 중</div><div class="status-body" id="ssub">연결 시작을 누르면 풀에 등록됩니다.</div><div class="chips" id="chips"></div></div></section>
 <section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div></section>
 <section><h2>2. 설정</h2><div class="settings">
-<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 실행</div><div class="setting-desc">앱을 닫아도 로그인 때 백그라운드로 실행합니다. (앱을 열어 둘 땐 꺼 두세요)</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
+<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 연결</div><div class="setting-desc">앱을 닫아도 로그인하면 백그라운드에서 자동으로 연결돼 있어요. 이 앱은 설정을 바꿀 때만 열면 됩니다.</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 환경이 있으면 /imagine 요청을 처리합니다.</div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
 </div>
 <button class="primary-btn" type="button" id="go" onclick="connect()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;vertical-align:-4px;margin-right:9px"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 0 1 0 10h-2"></path><path d="M8 12h8"></path></svg><span>연동하기</span></button>

@@ -25,7 +25,7 @@
 
   <nav class="side">
     <a data-page="overview" class="active"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</a>
-    <a data-page="guild"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/></svg>길드 상세</a>
+    <a data-page="guild"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/></svg>서버 상세</a>
     <a data-page="providers"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>참여 PC</a>
     <div class="navhint">관리</div>
     <a data-page="channel-ai"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>채널 AI</a>
@@ -54,7 +54,7 @@
       <div class="grid2">
         <article class="card">
           <h3>네트워크 준비 상태</h3>
-          <ul class="list" id="ovReadiness"><li class="empty">'길드 상세'에서 서버를 선택하면 준비 상태가 표시됩니다.</li></ul>
+          <ul class="list" id="ovReadiness"><li class="empty">'서버 상세'에서 서버를 선택하면 준비 상태가 표시됩니다.</li></ul>
         </article>
         <article class="card">
           <h3>지금 할 일</h3>
@@ -81,15 +81,15 @@
       <article class="card">
         <h3>최근 요청 로그</h3>
         <table id="requests"><thead><tr><th>requestId</th><th>상태</th><th>부담</th><th>provider</th><th>시각</th></tr></thead><tbody></tbody></table>
-        <p class="muted">서버별 상세는 좌측 <b>길드 상세</b>에서 길드 ID를 입력하면 채워집니다.</p>
+        <p class="muted">서버별 상세는 좌측 <b>서버 상세</b>에서 서버 ID를 입력하면 채워집니다.</p>
       </article>
     </section>
 
-    <!-- ════ 길드 상세 ════ -->
+    <!-- ════ 서버 상세 ════ -->
     <section class="page" data-page="guild" hidden>
-      <div class="page-head"><h2>길드 상세</h2><p>특정 디스코드 서버(길드)의 AI 네트워크 요약·채널 AI·모델 지도·성장·체크리스트를 봅니다.</p></div>
+      <div class="page-head"><h2>서버 상세</h2><p>특정 디스코드 서버의 AI 네트워크 요약·채널 AI·모델 지도·성장·체크리스트를 봅니다.</p></div>
       <div class="toolbar">
-        <input id="guildId" type="text" inputmode="numeric" placeholder="길드 ID 입력" style="max-width:240px" />
+        <input id="guildId" type="text" inputmode="numeric" placeholder="서버 ID 입력" style="max-width:240px" />
         <button id="loadGuild" class="primary">불러오기</button>
       </div>
       <div id="guildOverview" class="stats"></div>
@@ -132,7 +132,7 @@
           <article class="card"><h3>알림 목록</h3><ul id="safetyOverloadAlerts" class="list"></ul></article>
           <article class="card"><h3>실행 계획</h3><ul id="safetyExecutionPlan" class="list"></ul></article>
         </div>
-        <pre id="safetyResult" class="preview">길드 ID('길드 상세'에서 입력)를 기준으로 과부하 현황을 새로고침하세요.</pre>
+        <pre id="safetyResult" class="preview">서버 ID('서버 상세'에서 입력)를 기준으로 과부하 현황을 새로고침하세요.</pre>
       </div>
     </section>
 
@@ -140,7 +140,7 @@
     <section class="page" data-page="channel-ai" hidden>
       <div class="page-head"><h2>채널 AI</h2><p>질문식 마법사로 채널 AI 이름·역할·말투·답변 길이·안전 규칙을 만든 뒤 저장합니다.</p></div>
       <div class="toolbar"><button id="openChannelAiDrawer" class="primary">＋ 채널 AI 만들기</button></div>
-      <article class="card"><h3>안내</h3><p class="muted">‘＋ 채널 AI 만들기’를 누르면 오른쪽에서 입력 패널이 열립니다. 만든 채널 AI 목록은 ‘길드 상세 → 채널 AI’ 카드에서 확인합니다.</p></article>
+      <article class="card"><h3>안내</h3><p class="muted">‘＋ 채널 AI 만들기’를 누르면 오른쪽에서 입력 패널이 열립니다. 만든 채널 AI 목록은 ‘서버 상세 → 채널 AI’ 카드에서 확인합니다.</p></article>
       <div class="drawer-backdrop" id="channelAiBackdrop"></div>
       <aside class="drawer" id="channelAiDrawer">
         <div class="drawer-head"><h3>이 채널 AI 만들기</h3><button class="x" id="closeChannelAiDrawer">×</button></div>
@@ -175,7 +175,7 @@
           <article class="card"><h3>모델 후보</h3><ul id="routingModelCandidates" class="list"></ul></article>
           <article class="card"><h3>선택 결과</h3><ul id="routingModelChoice" class="list"></ul></article>
         </div>
-        <pre id="routingResult" class="preview">길드 ID와 채널 ID를 입력한 뒤 모델 후보를 확인하세요.</pre>
+        <pre id="routingResult" class="preview">서버 ID와 채널 ID를 입력한 뒤 모델 후보를 확인하세요.</pre>
       </div>
     </section>
 
@@ -206,7 +206,7 @@
           <article class="card"><h3>RAG 준비 상태</h3><ul id="knowledgeReadiness" class="list"></ul></article>
           <article class="card"><h3>색인 작업</h3><ul id="knowledgeIndexing" class="list"></ul></article>
         </div>
-        <pre id="knowledgeResult" class="preview">길드 ID를 입력한 뒤 RAG 상태를 새로고침하세요.</pre>
+        <pre id="knowledgeResult" class="preview">서버 ID를 입력한 뒤 RAG 상태를 새로고침하세요.</pre>
       </div>
     </section>
 
@@ -232,7 +232,7 @@
           <article class="card"><h3>신고 검토 큐</h3><ul id="qualityReviewQueue" class="list"></ul></article>
           <article class="card"><h3>모델 품질 신호</h3><ul id="qualityModelSignals" class="list"></ul></article>
         </div>
-        <pre id="qualityResult" class="preview">길드 ID를 입력한 뒤 품질 현황을 새로고침하세요.</pre>
+        <pre id="qualityResult" class="preview">서버 ID를 입력한 뒤 품질 현황을 새로고침하세요.</pre>
       </div>
     </section>
 
@@ -274,7 +274,7 @@
           <article class="card"><h3>신고/검수 큐</h3><ul id="presetModerationList" class="list"></ul></article>
         </div>
         <pre id="presetImportPreview" class="preview">가져올 프리셋의 [미리보기]를 먼저 누르면, 덮어쓰기/승인 필요 여부를 확인한 뒤 가져올 수 있습니다.</pre>
-        <pre id="presetManageResult" class="preview">길드 ID를 입력한 뒤 프리셋을 새로고침하세요.</pre>
+        <pre id="presetManageResult" class="preview">서버 ID를 입력한 뒤 프리셋을 새로고침하세요.</pre>
       </div>
     </section>
 
@@ -302,7 +302,7 @@
           <article class="card"><h3>Provider 부하</h3><ul id="multiProviderLoad" class="list"></ul></article>
           <article class="card"><h3>최근 실행</h3><ul id="multiRecentRuns" class="list"></ul></article>
         </div>
-        <pre id="multiResult" class="preview">길드 ID를 입력한 뒤 운영 상태를 새로고침하세요.</pre>
+        <pre id="multiResult" class="preview">서버 ID를 입력한 뒤 운영 상태를 새로고침하세요.</pre>
       </div>
     </section>
 

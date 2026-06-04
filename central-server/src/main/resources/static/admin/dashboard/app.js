@@ -228,7 +228,7 @@ async function createChannelAi() {
   const gid = $("guildId").value.trim();
   const channelId = $("wizardChannelId").value.trim();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(channelId)) {
-    $("wizardPreview").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    $("wizardPreview").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -288,7 +288,7 @@ function renderRoutingChoice(choice) {
 async function loadEffectiveRoutingPolicy() {
   const ids = routingIds();
   if (!ids) {
-    $("routingResult").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    $("routingResult").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -309,7 +309,7 @@ async function loadEffectiveRoutingPolicy() {
 async function saveRoutingPolicy() {
   const ids = routingIds();
   if (!ids) {
-    $("routingResult").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    $("routingResult").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -325,7 +325,7 @@ async function saveRoutingPolicy() {
 async function loadModelCandidates() {
   const ids = routingIds();
   if (!ids) {
-    $("routingResult").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    $("routingResult").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -345,7 +345,7 @@ async function loadModelCandidates() {
 async function checkModelChoice() {
   const ids = routingIds();
   if (!ids) {
-    $("routingResult").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    $("routingResult").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -420,7 +420,7 @@ function renderKnowledgeIndexing(ops, jobs = []) {
 async function refreshKnowledge() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("knowledgeResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("knowledgeResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -442,7 +442,7 @@ async function refreshKnowledge() {
 async function createKnowledgeSpace() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("knowledgeResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("knowledgeResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -459,7 +459,7 @@ async function addKnowledgeSource() {
   const gid = $("guildId").value.trim();
   const spaceId = $("knowledgeSpaceId").value.trim();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(spaceId)) {
-    $("knowledgeResult").textContent = "길드 ID와 지식공간 ID를 숫자로 입력하세요.";
+    $("knowledgeResult").textContent = "서버 ID와 지식공간 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -479,7 +479,7 @@ async function queueKnowledgeIndexJob() {
   const gid = $("guildId").value.trim();
   const spaceId = $("knowledgeSpaceId").value.trim();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(spaceId)) {
-    $("knowledgeResult").textContent = "길드 ID와 지식공간 ID를 숫자로 입력하세요.";
+    $("knowledgeResult").textContent = "서버 ID와 지식공간 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -496,7 +496,7 @@ async function completeKnowledgeIndexJob() {
   const gid = $("guildId").value.trim();
   const jobId = $("knowledgeJobId").value.trim();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(jobId)) {
-    $("knowledgeResult").textContent = "길드 ID와 색인 작업 ID를 숫자로 입력하세요.";
+    $("knowledgeResult").textContent = "서버 ID와 색인 작업 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -528,7 +528,7 @@ async function searchKnowledge() {
   const gid = $("guildId").value.trim();
   const query = $("knowledgeSearchQuery").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("knowledgeResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("knowledgeResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   if (!query) {
@@ -569,7 +569,7 @@ function knowledgeEvalPayload() {
 async function evaluateKnowledge() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("knowledgeResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("knowledgeResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   let payload;
@@ -648,7 +648,7 @@ async function refreshQualityDashboard() {
   const gid = $("guildId").value.trim();
   const channelId = $("qualityChannelId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("qualityResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("qualityResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -676,7 +676,7 @@ async function submitQualityFeedback() {
   const gid = $("guildId").value.trim();
   const channelId = $("qualityChannelId").value.trim();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(channelId)) {
-    $("qualityResult").textContent = "길드 ID와 채널 ID를 숫자로 입력하세요.";
+    $("qualityResult").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -694,7 +694,7 @@ async function resolveQualityFeedback() {
   const gid = $("guildId").value.trim();
   const feedbackId = $("qualityFeedbackId").value.trim();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(feedbackId)) {
-    $("qualityResult").textContent = "길드 ID와 피드백 ID를 숫자로 입력하세요.";
+    $("qualityResult").textContent = "서버 ID와 피드백 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -739,7 +739,7 @@ function renderProviderSafety(dashboard, plan) {
 async function refreshProviderSafety() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("safetyResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("safetyResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   const responseMode = $("safetyResponseMode").value;
@@ -761,7 +761,7 @@ async function markProviderOverload() {
   const gid = $("guildId").value.trim();
   const providerId = $("safetyProviderId").value.trim();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(providerId)) {
-    $("safetyResult").textContent = "길드 ID와 Provider 사용자 ID를 숫자로 입력하세요.";
+    $("safetyResult").textContent = "서버 ID와 Provider 사용자 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -830,7 +830,7 @@ function renderPresetLists(local, published) {
 async function refreshPresets() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("presetManageResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("presetManageResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -853,7 +853,7 @@ async function refreshPresets() {
 async function createPreset() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("presetManageResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("presetManageResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -1150,7 +1150,7 @@ async function refreshMultiOps() {
   const gid = $("guildId").value.trim();
   const channelId = $("multiChannelId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("multiResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("multiResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   const qs = /^\d+$/.test(channelId) ? `?channelId=${channelId}` : "";
@@ -1189,7 +1189,7 @@ async function refreshMultiOps() {
 async function saveMultiPolicy() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("multiResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("multiResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -1254,7 +1254,7 @@ function metadataFromOverview(overview) {
 async function refreshDashboardProjection() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    $("dashboardProjectionResult").textContent = "길드 ID를 숫자로 입력하세요.";
+    $("dashboardProjectionResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   try {
@@ -1314,7 +1314,7 @@ function renderAiNetwork(data) {
   renderProviderDonut(data.providers);
 }
 
-// Overview 페이지의 '네트워크 준비 상태'·'지금 할 일' 카드를 길드 데이터로 채운다.
+// Overview 페이지의 '네트워크 준비 상태'·'지금 할 일' 카드를 서버 데이터로 채운다.
 function renderOverviewSummary(data) {
   const readiness = data.readiness?.status || data.overview?.healthStatus || "unknown";
   const readyRows = [
@@ -1372,7 +1372,7 @@ function renderProviderHistory(history) {
 async function refreshProviderHistory() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    alert("길드 ID(숫자)를 입력하세요.");
+    alert("서버 ID(숫자)를 입력하세요.");
     return;
   }
   const providerUserId = $("providerHistoryUserId").value.trim();
@@ -1402,7 +1402,7 @@ function renderLaunchChecklist(checklist) {
 async function refreshLaunchChecklist() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    alert("길드 ID(숫자)를 입력하세요.");
+    alert("서버 ID(숫자)를 입력하세요.");
     return;
   }
   try {
@@ -1449,7 +1449,7 @@ async function previewPresetImport(publishedPresetId) {
   const gid = $("guildId").value.trim();
   const channelId = $("wizardChannelId").value.trim();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(channelId)) {
-    $("presetImportResult").textContent = "프리셋을 가져오려면 길드 ID와 채널 ID를 먼저 입력하세요.";
+    $("presetImportResult").textContent = "프리셋을 가져오려면 서버 ID와 채널 ID를 먼저 입력하세요.";
     return;
   }
   try {
@@ -1498,11 +1498,11 @@ async function importPreset() {
   }
 }
 
-// 길드 상세(#198 개요 / #201 로그 / #202 차트)
+// 서버 상세(#198 개요 / #201 로그 / #202 차트)
 async function loadGuild() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    alert("길드 ID(숫자)를 입력하세요.");
+    alert("서버 ID(숫자)를 입력하세요.");
     return;
   }
   try {
@@ -1554,7 +1554,7 @@ async function loadGuild() {
 async function postWrite(path, params) {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
-    alert("길드 ID(숫자)를 먼저 입력하세요.");
+    alert("서버 ID(숫자)를 먼저 입력하세요.");
     return;
   }
   const qs = new URLSearchParams(params).toString();

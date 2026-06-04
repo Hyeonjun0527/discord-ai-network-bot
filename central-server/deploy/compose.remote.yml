@@ -48,6 +48,12 @@ services:
       CONNECT_DISCORD_CLIENT_ID: ${CONNECT_DISCORD_CLIENT_ID:-}
       CONNECT_DISCORD_CLIENT_SECRET: ${CONNECT_DISCORD_CLIENT_SECRET:-}
       CONNECT_PUBLIC_BASE_URL: ${CONNECT_PUBLIC_BASE_URL:-https://discord-ai.yeon.world}
+      # 대시보드 관리자 Discord 로그인(B안). true + 허용목록 설정 시 /dashboard/ 가 로그인·관리자 제한.
+      # 위 CONNECT_DISCORD_CLIENT_ID/SECRET(같은 OAuth 앱) 재사용 — 앱에 redirect URI
+      # <공개주소>/login/oauth2/code/discord 추가 등록 필요. user-id 는 콤마 구분.
+      CENTRAL_OAUTH_ENABLED: ${CENTRAL_OAUTH_ENABLED:-false}
+      CENTRAL_DASHBOARD_ADMIN_USER_IDS: ${CENTRAL_DASHBOARD_ADMIN_USER_IDS:-}
+      CENTRAL_DASHBOARD_ADMIN_TOKEN: ${CENTRAL_DASHBOARD_ADMIN_TOKEN:-}
     networks:
       default: {}
       yeon-edge:

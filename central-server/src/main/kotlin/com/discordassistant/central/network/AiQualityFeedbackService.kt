@@ -1,6 +1,8 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.FeedbackStatus
+import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerRepository
@@ -124,15 +126,15 @@ class AiQualityFeedbackService(
                     }
                 val avgTier =
                     when {
-                        candidates.any { it.qualityTier == "specialized" } -> "specialized"
-                        candidates.any { it.qualityTier == "high" } -> "high"
-                        else -> "standard"
+                        candidates.any { it.qualityTier == ModelQualityTier.SPECIALIZED.wire } -> ModelQualityTier.SPECIALIZED.wire
+                        candidates.any { it.qualityTier == ModelQualityTier.HIGH.wire } -> ModelQualityTier.HIGH.wire
+                        else -> ModelQualityTier.STANDARD.wire
                     }
                 ModelQualitySummary(
                     modelName = model,
                     providerCount = candidates.size,
                     qualityTier = avgTier,
-                    overloadRiskCount = candidates.count { it.overloadRisk == "high" },
+                    overloadRiskCount = candidates.count { OverloadRisk.normalize(it.overloadRisk) == OverloadRisk.HIGH },
                 )
             }.sortedWith(
                 compareByDescending<ModelQualitySummary> { it.providerCount }

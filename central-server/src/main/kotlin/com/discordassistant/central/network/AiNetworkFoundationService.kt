@@ -1,6 +1,9 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.KnowledgeSpaceStatus
+import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkProfileEntity
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -167,12 +170,8 @@ class AiNetworkFoundationService(
     fun refreshOverview(guildId: Long): NetworkOverviewProjectionEntity {
         val now = Instant.now(clock)
         val capabilities = providerCapabilities.findByGuildId(guildId)
-        val onlineProviders = capabilities.count { it.providerState.equals("ONLINE", ignoreCase = true) }
-        val overloadAlerts =
-            capabilities.count {
-                it.overloadRisk.equals("high", ignoreCase = true) ||
-                    it.overloadRisk.equals("critical", ignoreCase = true)
-            }
+        val onlineProviders = capabilities.count { ProviderAvailability.isOnline(it.providerState) }
+        val overloadAlerts = capabilities.count { OverloadRisk.isOverloadRisk(it.overloadRisk) }
         val channelAiCount = channelAis.findByGuildId(guildId).size
         val knowledgeSpaceCount = knowledgeSpaces.findByGuildId(guildId).size
         val feedbackCount = feedbacks.countByGuildId(guildId).toInt()
@@ -196,7 +195,10 @@ class AiNetworkFoundationService(
             overviewProjections.findByGuildId(guildId)
                 ?: NetworkOverviewProjectionEntity(guildId = guildId)
         entity.onlineProviderCount = onlineProviders
-        entity.approvedProviderCount = capabilities.count { !it.providerState.equals("PENDING", ignoreCase = true) }
+        entity.approvedProviderCount =
+            capabilities.count {
+                ProviderAvailability.fromWire(it.providerState) != ProviderAvailability.PENDING
+            }
         entity.modelCount = modelCount
         entity.channelAiCount = channelAiCount
         entity.knowledgeSpaceCount = knowledgeSpaceCount
@@ -220,11 +222,11 @@ class AiNetworkFoundationService(
     ): String {
         val joined = (modelNames + capabilityTags).joinToString(" ").lowercase()
         return when {
-            "coding" in joined || "code" in joined || "coder" in joined -> "specialized"
-            "70b" in joined || "large" in joined || "long-context" in joined -> "high"
-            modelNames.isNotEmpty() -> "standard"
-            else -> "unknown"
-        }
+            "coding" in joined || "code" in joined || "coder" in joined -> ModelQualityTier.SPECIALIZED
+            "70b" in joined || "large" in joined || "long-context" in joined -> ModelQualityTier.HIGH
+            modelNames.isNotEmpty() -> ModelQualityTier.STANDARD
+            else -> ModelQualityTier.UNKNOWN
+        }.wire
     }
 
     private fun inferNetworkLevel(

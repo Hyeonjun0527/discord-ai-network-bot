@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiNetworkEventEntity
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
@@ -31,7 +33,7 @@ class AiNetworkGrowthService(
         val existing = providerCapabilities.findByGuildIdAndProviderUserId(guildId, providerUserId)
         val shouldRecordGrowth =
             existing == null ||
-                !existing.providerState.equals("ONLINE", ignoreCase = true) ||
+                !ProviderAvailability.isOnline(existing.providerState) ||
                 normalizeCsv(existing.modelNames) != normalizedModels ||
                 existing.maxConcurrency != maxConcurrency.coerceAtLeast(1) ||
                 existing.dailyLimit != dailyLimit
@@ -40,13 +42,13 @@ class AiNetworkGrowthService(
             foundation.upsertProviderCapability(
                 guildId = guildId,
                 providerUserId = providerUserId,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE.wire,
                 modelNames = normalizedModels,
                 capabilityTags = capabilityTags,
                 maxBurden = maxBurden,
                 maxConcurrency = maxConcurrency,
                 dailyLimit = dailyLimit,
-                overloadRisk = existing?.overloadRisk ?: "normal",
+                overloadRisk = existing?.overloadRisk ?: OverloadRisk.NORMAL.wire,
             )
         val overview = foundation.refreshOverview(guildId)
         val event =
@@ -83,7 +85,7 @@ class AiNetworkGrowthService(
         foundation.upsertProviderCapability(
             guildId = guildId,
             providerUserId = providerUserId,
-            providerState = "OFFLINE",
+            providerState = ProviderAvailability.OFFLINE.wire,
             modelNames = normalizeCsv(existing.modelNames),
             capabilityTags = normalizeCsv(existing.capabilityTags),
             maxBurden = existing.maxBurden,
@@ -109,13 +111,13 @@ class AiNetworkGrowthService(
             foundation.upsertProviderCapability(
                 guildId = guildId,
                 providerUserId = providerUserId,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE.wire,
                 modelNames = modelNames,
                 capabilityTags = capabilityTags,
                 maxBurden = maxBurden,
                 maxConcurrency = maxConcurrency,
                 dailyLimit = dailyLimit,
-                overloadRisk = "normal",
+                overloadRisk = OverloadRisk.NORMAL.wire,
             )
         val overview = foundation.refreshOverview(guildId)
         val event =

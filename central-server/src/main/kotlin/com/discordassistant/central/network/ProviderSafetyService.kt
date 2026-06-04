@@ -1,6 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiNetworkEventEntity
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
@@ -24,7 +25,7 @@ class ProviderSafetyService(
     ): Boolean {
         val provider = providerCapabilities.findByGuildIdAndProviderUserId(guildId, providerUserId) ?: return false
         return OverloadRisk.isOverloadRisk(provider.overloadRisk) ||
-            provider.providerState.equals("OVERLOADED", ignoreCase = true)
+            ProviderAvailability.fromWire(provider.providerState) == ProviderAvailability.OVERLOADED
     }
 
     fun overloadAlerts(guildId: Long): ProviderSafetyDashboard {
@@ -32,7 +33,8 @@ class ProviderSafetyService(
         val alerts =
             providers
                 .filter {
-                    OverloadRisk.isOverloadRisk(it.overloadRisk) || it.providerState.equals("OVERLOADED", ignoreCase = true)
+                    OverloadRisk.isOverloadRisk(it.overloadRisk) ||
+                        ProviderAvailability.fromWire(it.providerState) == ProviderAvailability.OVERLOADED
                 }.map { it.toAlert() }
                 .sortedWith(
                     compareByDescending<ProviderOverloadAlert> { it.severityRank }
@@ -41,12 +43,12 @@ class ProviderSafetyService(
         return ProviderSafetyDashboard(
             guildId = guildId,
             alertCount = alerts.size,
-            highRiskCount = alerts.count { it.risk == "high" || it.risk == "critical" },
+            highRiskCount = alerts.count { OverloadRisk.isOverloadRisk(it.risk) },
             safeOnlineProviderCount =
                 providers.count {
-                    it.providerState.equals("ONLINE", ignoreCase = true) && !OverloadRisk.isOverloadRisk(it.overloadRisk)
+                    ProviderAvailability.isOnline(it.providerState) && !OverloadRisk.isOverloadRisk(it.overloadRisk)
                 },
-            fanoutSafe = alerts.none { it.risk == "critical" } && alerts.size < providers.size,
+            fanoutSafe = alerts.none { OverloadRisk.normalize(it.risk) == OverloadRisk.CRITICAL } && alerts.size < providers.size,
             alerts = alerts,
         )
     }
@@ -59,7 +61,7 @@ class ProviderSafetyService(
         val safeCapacity = dashboard.safeOnlineProviderCount.coerceAtLeast(0)
         val requested = requestedCandidates.coerceAtLeast(1)
         val allowedCandidates = requested.coerceAtMost(safeCapacity.coerceAtLeast(1))
-        val blocked = safeCapacity == 0 || dashboard.alerts.any { it.risk == "critical" }
+        val blocked = safeCapacity == 0 || dashboard.alerts.any { OverloadRisk.normalize(it.risk) == OverloadRisk.CRITICAL }
         return ProviderSafetyGuard(
             guildId = guildId,
             requestedCandidates = requested,
@@ -68,7 +70,7 @@ class ProviderSafetyService(
             reason =
                 when {
                     safeCapacity == 0 -> "사용 가능한 안전 Provider가 없습니다. Provider 보호를 위해 요청을 줄였어요."
-                    dashboard.alerts.any { it.risk == "critical" } -> "심각한 과부하 알림이 있어 고급 요청을 잠시 멈췄어요."
+                    dashboard.alerts.any { OverloadRisk.normalize(it.risk) == OverloadRisk.CRITICAL } -> "심각한 과부하 알림이 있어 고급 요청을 잠시 멈췄어요."
                     requested > allowedCandidates -> "Provider 보호를 위해 후보 수를 $allowedCandidates 개로 제한해야 해요."
                     else -> "요청을 처리할 수 있는 안전 용량이 있습니다."
                 },
@@ -135,7 +137,12 @@ class ProviderSafetyService(
             providerCapabilities.findByGuildIdAndProviderUserId(guildId, providerUserId)
                 ?: ProviderCapabilityProfileEntity(guildId = guildId, providerUserId = providerUserId)
         provider.overloadRisk = OverloadRisk.normalize(overloadRisk).wire
-        provider.providerState = if (OverloadRisk.isOverloadRisk(provider.overloadRisk)) "OVERLOADED" else "ONLINE"
+        provider.providerState =
+            if (OverloadRisk.isOverloadRisk(provider.overloadRisk)) {
+                ProviderAvailability.OVERLOADED.wire
+            } else {
+                ProviderAvailability.ONLINE.wire
+            }
         provider.updatedAt = now
         provider.lastSeenAt = now
         val saved = providerCapabilities.save(provider)
@@ -191,9 +198,9 @@ class ProviderSafetyService(
         }
 
     private fun recommendedAction(risk: String): String =
-        when (risk) {
-            "critical" -> "즉시 수신정지하고, 다중응답/깊은답변을 끈 뒤 상태가 안정되면 재개하세요."
-            "high" -> "다중응답 후보에서 제외하고, 요청량을 줄인 뒤 Provider에게 휴식을 권장하세요."
+        when (OverloadRisk.normalize(risk)) {
+            OverloadRisk.CRITICAL -> "즉시 수신정지하고, 다중응답/깊은답변을 끈 뒤 상태가 안정되면 재개하세요."
+            OverloadRisk.HIGH -> "다중응답 후보에서 제외하고, 요청량을 줄인 뒤 Provider에게 휴식을 권장하세요."
             else -> "일반 라우팅에 포함할 수 있지만, 실패율과 응답 지연을 계속 관찰하세요."
         }
 

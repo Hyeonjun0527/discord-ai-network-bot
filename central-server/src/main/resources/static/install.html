@@ -792,16 +792,29 @@
       let tx = 0, ty = 0, px = 0, py = 0;
       const raycaster = new THREE.Raycaster();
       const ndc = new THREE.Vector2();
+      // 설치 카드 직접 다운로드(서버 /download/ 공개 자산 — 정적 미리보기에선 404, 운영에선 동작).
+      const DL = { mac: '/download/nyassistant-macos.zip', win: '/download/nyassistant-windows.exe' };
+      // 패널 전면 UV(0~1) → 캔버스 y → 어느 설치 카드 위인지(mac/win/null). 카드 y: mac 172~346, win 368~542.
+      const rowFromUV = (uv) => { if (!uv) return null; const cy = (1 - uv.y) * TH; if (cy >= 168 && cy <= 352) return 'mac'; if (cy >= 364 && cy <= 548) return 'win'; return null; };
+      const ndcFrom = (e) => { const r = root.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1)); return r; };
       root.addEventListener('pointermove', (e) => {
-        const r = root.getBoundingClientRect();
-        ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1));
+        const r = ndcFrom(e);
         raycaster.setFromCamera(ndc, camera);
-        if (raycaster.intersectObjects([body, face], false).length > 0) {
+        const overPanel = raycaster.intersectObjects([body, face], false).length > 0;
+        const faceHit = raycaster.intersectObject(face, false)[0];
+        if (overPanel) {
           tx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 2)));
           ty = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height / 2)));
         } else { tx = 0; ty = 0; }
+        root.style.cursor = (faceHit && rowFromUV(faceHit.uv)) ? 'pointer' : 'default';
       }, { passive: true });
-      root.addEventListener('pointerleave', () => { tx = 0; ty = 0; }, { passive: true });
+      root.addEventListener('pointerleave', () => { tx = 0; ty = 0; root.style.cursor = 'default'; }, { passive: true });
+      root.addEventListener('click', (e) => {
+        ndcFrom(e); raycaster.setFromCamera(ndc, camera);
+        const faceHit = raycaster.intersectObject(face, false)[0];
+        const row = faceHit && rowFromUV(faceHit.uv);
+        if (row) window.open(DL[row], '_blank', 'noopener');
+      });
 
       // 가시성 기반 일시정지
       let visible = true;

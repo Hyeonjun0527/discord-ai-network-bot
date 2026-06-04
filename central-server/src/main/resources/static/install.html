@@ -104,13 +104,15 @@
     .step code, .step-text code { color: #9fbcff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .section-label { margin: 28px 0 12px; color: #d2dbe7; font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
     .section-label span { color: var(--subtle); font-weight: 500; }
-    .tabs { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 18px 18px 0 0; overflow: hidden; background: rgba(13, 21, 34, .92); }
+    .tabs { display: grid; grid-template-columns: repeat(2, 1fr); border: 1px solid var(--line); border-radius: 18px 18px 0 0; overflow: hidden; background: rgba(13, 21, 34, .92); }
     .tab {
       display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 58px; cursor: pointer;
       color: #bcc7d8; background: transparent; border: 0; border-right: 1px solid rgba(255,255,255,.04); font-weight: 700;
     }
     .tab:last-child { border-right: 0; }
+    .tab svg { width: 17px; height: 17px; flex: 0 0 auto; opacity: .92; }
     .tab.active { color: #eff3fb; background: linear-gradient(180deg, rgba(77, 125, 255, .14), rgba(77, 125, 255, .05)); box-shadow: inset 0 -2px 0 #5482ff; }
+    .tab.active svg { opacity: 1; }
     .install { border: 1px solid var(--line); border-top: 0; border-radius: 0 0 22px 22px; background: linear-gradient(180deg, rgba(12, 20, 33, .92), rgba(9, 16, 27, .98)); padding: 24px; }
     .install-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 18px; }
     .install-title { font-size: 26px; font-weight: 700; letter-spacing: -.03em; margin: 0; }
@@ -207,8 +209,14 @@
 
     <div class="section-label" id="install">설치 <span>— 내 컴퓨터를 고르세요</span></div>
     <div class="tabs" id="tabs">
-      <button class="tab active" data-os="mac">🍎 macOS</button>
-      <button class="tab" data-os="win">🪟 Windows</button>
+      <button class="tab active" data-os="mac" aria-label="macOS">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.464 2.338-1.282 3.714 1.345.104 2.726-.688 3.57-1.701"/></svg>
+        <span>macOS</span>
+      </button>
+      <button class="tab" data-os="win" aria-label="Windows">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M0 3.45 9.75 2.1v9.45H0zM10.95 1.93 24 0v11.4H10.95zM0 12.6h9.75v9.45L0 20.7zM10.95 12.6H24V24l-13.05-1.83z"/></svg>
+        <span>Windows</span>
+      </button>
     </div>
     <section class="install">
       <div class="install-head">

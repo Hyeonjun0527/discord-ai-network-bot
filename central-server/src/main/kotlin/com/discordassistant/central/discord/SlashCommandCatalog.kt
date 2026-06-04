@@ -1,16 +1,30 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.domain.EmbeddingJobStatus
+import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.domain.MultiResponseMode
+import com.discordassistant.central.domain.PresetReportStatus
+import com.discordassistant.central.domain.ProviderModelScope
+import com.discordassistant.central.domain.ResponseMode
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.OptionType
 import net.dv8tion.jda.api.interactions.commands.build.CommandData
 import net.dv8tion.jda.api.interactions.commands.build.Commands
+import net.dv8tion.jda.api.interactions.commands.build.OptionData
 
 /**
- * 슬래시/컨텍스트 명령 **정의 카탈로그**. DiscordBot(god class)에서 명령 정의 블록을 분리
- * (순수 빌더 — JDA 외 의존 없음). 로컬라이즈/등록/길드스코프 처리는 DiscordBot 이 그대로 한다.
+ * 슬래시/컨텍스트 명령 **정의 카탈로그**. DiscordBot(god class)에서 명령 정의 블록을 분리.
+ * 선택지(choice)는 도메인 enum(ResponseMode·ModelBurden·PresetReportStatus·EmbeddingJobStatus·
+ * ProviderModelScope·MultiResponseMode)의 `*Choices()` SSOT 만 사용한다 — 라벨/값을 재하드코딩하지 않는다.
  */
 object SlashCommandCatalog {
+    /** (라벨, 와이어값) 쌍 목록을 옵션 choice 로 그대로 부착(도메인 enum SSOT 소비용). */
+    private fun OptionData.choicePairs(pairs: List<Pair<String, String>>): OptionData {
+        pairs.forEach { (label, value) -> addChoice(label, value) }
+        return this
+    }
+
     fun all(): List<CommandData> {
         val adminPerm = DefaultMemberPermissions.enabledFor(Permission.MANAGE_SERVER)
         return listOf<net.dv8tion.jda.api.interactions.commands.build.CommandData>(
@@ -23,10 +37,7 @@ object SlashCommandCatalog {
                         .setAutoComplete(true),
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.STRING, "mode", "응답 속도/품질 모드", false)
-                        .addChoice("빠른 답변", "fast")
-                        .addChoice("균형 모드", "balanced")
-                        .addChoice("깊은 답변", "deep")
-                        .addChoice("절약 모드", "saving"),
+                        .choicePairs(ResponseMode.slashChoices()),
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.BOOLEAN, "web", "웹 검색으로 최신 정보를 찾아 답변(출처 표시)", false),
                 ),
@@ -72,9 +83,7 @@ object SlashCommandCatalog {
                         .setAutoComplete(true),
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.STRING, "role", "허용 범위", true)
-                        .addChoice("모두", "all")
-                        .addChoice("신뢰 역할", "trusted")
-                        .addChoice("관리자만", "admin"),
+                        .choicePairs(ProviderModelScope.slashChoices()),
                 ),
             Commands
                 .slash("provider-schedule", "가용 시간대를 설정합니다(UTC 시, 시간 밖 자동정지)")
@@ -94,9 +103,7 @@ object SlashCommandCatalog {
                 .addOptions(
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.STRING, "level", "허용 모델 수준", true)
-                        .addChoice("LIGHT (가벼움)", "LIGHT")
-                        .addChoice("STANDARD (표준)", "STANDARD")
-                        .addChoice("HEAVY (무거움)", "HEAVY"),
+                        .choicePairs(ModelBurden.rolePolicyChoices()),
                 ).addOption(OptionType.INTEGER, "limit", "하루 한도", true)
                 .setDefaultPermissions(adminPerm),
             Commands
@@ -182,9 +189,7 @@ object SlashCommandCatalog {
                 .addOptions(
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.STRING, "status", "completed/failed/cancelled", false)
-                        .addChoice("완료", "completed")
-                        .addChoice("실패", "failed")
-                        .addChoice("취소", "cancelled"),
+                        .choicePairs(EmbeddingJobStatus.completionChoices()),
                 ).addOption(OptionType.STRING, "reason", "실패/취소 사유", false)
                 .setDefaultPermissions(adminPerm),
             Commands
@@ -225,9 +230,7 @@ object SlashCommandCatalog {
                 .addOptions(
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.STRING, "decision", "dismiss/suspend/remove", true)
-                        .addChoice("신고 기각", "dismiss")
-                        .addChoice("일시 중단", "suspend")
-                        .addChoice("제거", "remove"),
+                        .choicePairs(PresetReportStatus.decisionChoices()),
                 ).setDefaultPermissions(adminPerm),
             Commands
                 .slash("ai-multi-response-status", "다중응답 정책/부하/위험 상태를 봅니다(관리자)")
@@ -238,9 +241,7 @@ object SlashCommandCatalog {
                 .addOptions(
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.STRING, "mode", "single/compare/debate", true)
-                        .addChoice("단일 답변", "single")
-                        .addChoice("후보 비교", "compare")
-                        .addChoice("관점 비교", "debate"),
+                        .choicePairs(MultiResponseMode.slashChoices()),
                 ).addOption(OptionType.INTEGER, "candidates", "후보 수(1~3)", true)
                 .addOption(OptionType.BOOLEAN, "synthesis", "후보 답변 합성 사용", false)
                 .addOption(OptionType.BOOLEAN, "distinct-models", "서로 다른 모델 우선", false)
@@ -253,10 +254,7 @@ object SlashCommandCatalog {
                 .addOptions(
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.STRING, "mode", "응답 속도/품질 모드", false)
-                        .addChoice("빠른 답변", "fast")
-                        .addChoice("균형 모드", "balanced")
-                        .addChoice("깊은 답변", "deep")
-                        .addChoice("절약 모드", "saving"),
+                        .choicePairs(ResponseMode.slashChoices()),
                 ).addOption(OptionType.CHANNEL, "channel", "드라이런할 채널(비우면 현재 채널)", false)
                 .setDefaultPermissions(adminPerm),
             Commands.slash("bot-permissions", "봇 권한과 @멘션 호출 설정을 점검합니다(관리자)").setDefaultPermissions(adminPerm),

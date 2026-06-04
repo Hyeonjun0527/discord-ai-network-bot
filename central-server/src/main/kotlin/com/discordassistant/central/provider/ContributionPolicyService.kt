@@ -50,17 +50,21 @@ class ContributionPolicyService(
         audit.record("provider_limit", "provider:$providerId", "model:$model", "$dailyLimit/$maxConcurrency/$maxSeconds")
     }
 
-    /** 모델별 허용 범위(역할 등급) 설정. all | trusted | admin. */
+    /** 모델별 허용 범위(역할 등급) 설정. all | trusted | admin([ProviderModelScope] SSOT 로 정규화). */
     @Transactional
     fun setScope(
         providerId: Long,
         model: String,
         allowedRole: String,
     ) {
+        val scope =
+            com.discordassistant.central.domain.ProviderModelScope
+                .fromWire(allowedRole)
+                .wire
         val p = policyFor(providerId, model)
-        p.allowedRole = allowedRole
+        p.allowedRole = scope
         repo.save(p)
-        audit.record("provider_scope", "provider:$providerId", "model:$model", allowedRole)
+        audit.record("provider_scope", "provider:$providerId", "model:$model", scope)
     }
 
     fun policies(providerId: Long): List<ProviderContributionPolicyEntity> = repo.findByProviderId(providerId)

@@ -24,21 +24,23 @@ package com.discordassistant.central.domain
  */
 enum class PresetReportStatus(
     val wire: String,
+    /** Discord 슬래시 옵션 등 사용자 표시용 한글 라벨(SSOT). */
+    val label: String,
 ) {
     /** 접수되어 검수 대기 중인 신고. */
-    OPEN("open"),
+    OPEN("open", "접수"),
 
     /** 검수자가 기각함(reviewReport decision=dismiss). */
-    DISMISS("dismiss"),
+    DISMISS("dismiss", "신고 기각"),
 
     /** 검수자가 대상 프리셋을 일시 중단함(decision=suspend). */
-    SUSPEND("suspend"),
+    SUSPEND("suspend", "일시 중단"),
 
     /** 검수자가 대상 프리셋을 제거함(decision=remove). */
-    REMOVE("remove"),
+    REMOVE("remove", "제거"),
 
     /** 그 외 검수 처리(비-캐노니컬/빈 decision 의 기본 귀결). */
-    REVIEWED("reviewed"),
+    REVIEWED("reviewed", "검수 완료"),
     ;
 
     /** 아직 처리되지 않은(큐에 노출되는) 신고. */
@@ -48,6 +50,12 @@ enum class PresetReportStatus(
     fun canTransitionTo(next: PresetReportStatus): Boolean = next == this || next in ALLOWED[this].orEmpty()
 
     companion object {
+        /**
+         * `/ai-preset-report-review` 에서 관리자가 고르는 검수 결정의 (라벨, 와이어값) choice — SSOT.
+         * 슬래시 옵션은 dismiss/suspend/remove 셋으로 제한된다(OPEN/REVIEWED 는 직접 선택 대상 아님).
+         */
+        fun decisionChoices(): List<Pair<String, String>> = listOf(DISMISS, SUSPEND, REMOVE).map { it.label to it.wire }
+
         private val REVIEW_DECISIONS: Set<PresetReportStatus> = setOf(DISMISS, SUSPEND, REMOVE, REVIEWED)
 
         private val ALLOWED: Map<PresetReportStatus, Set<PresetReportStatus>> =

@@ -16,6 +16,10 @@ spring:
 
 server:
   port: 8080
+  # Cloudflare Tunnel(TLS 종단) 뒤라 Spring 이 X-Forwarded-Proto/Host 를 반영해야 baseUrl 이 https 가 된다.
+  # 안 그러면 OAuth2 redirect_uri 가 http:// 로 생성돼 디스코드 'invalid redirect_uri' 로 로그인 실패.
+  # 이 컨테이너는 localhost(터널)만 도달하므로 헤더 신뢰 안전.
+  forward-headers-strategy: framework
 
 # 운영 관측(Actuator). 헬스/정보만 노출.
 management:

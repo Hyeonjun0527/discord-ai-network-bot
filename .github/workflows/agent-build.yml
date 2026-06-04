@@ -117,6 +117,35 @@ jobs:
             & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\냥시스턴트.exe
             & signtool verify /pa dist\냥시스턴트.exe
           }
+      # Windows 코드서명 — SSL.com eSigner(클라우드, 토큰리스). 한국 개인은 Azure Trusted Signing 불가 →
+      # SSL.com IV + eSigner 사용. Variables 에 WINDOWS_SIGN_PROVIDER=esigner 일 때만 동작(평소 비활성).
+      # 시크릿: ES_USERNAME / ES_PASSWORD / ES_CREDENTIAL_ID / ES_TOTP_SECRET. (액션 버전은 추후 핀 고정 권장)
+      - name: Windows eSigner sign (CLI exe)
+        if: runner.os == 'Windows' && vars.WINDOWS_SIGN_PROVIDER == 'esigner'
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{ secrets.ES_USERNAME }}
+          password: ${{ secrets.ES_PASSWORD }}
+          credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
+          file_path: ${{ github.workspace }}\dist\discord-ai-network-bot.exe
+          override: 'true'
+          malware_block: 'false'
+          environment_name: PROD
+      - name: Windows eSigner sign (GUI exe)
+        if: runner.os == 'Windows' && vars.WINDOWS_SIGN_PROVIDER == 'esigner' && hashFiles('dist/냥시스턴트.exe') != ''
+        uses: sslcom/esigner-codesign@develop
+        with:
+          command: sign
+          username: ${{ secrets.ES_USERNAME }}
+          password: ${{ secrets.ES_PASSWORD }}
+          credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
+          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
+          file_path: ${{ github.workspace }}\dist\냥시스턴트.exe
+          override: 'true'
+          malware_block: 'false'
+          environment_name: PROD
       - name: OS별 자산 이름
         shell: bash
         run: |

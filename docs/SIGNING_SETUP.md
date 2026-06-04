@@ -1,6 +1,6 @@
 # 서명/공증 세팅 런북 — 직접 다운로드 무경고 설치
 
-목표: 사용자가 사이트에서 받은 설치 파일을 **경고 없이** 설치. macOS=Apple Developer ID 서명+공증, Windows=**Azure Trusted Signing**. CI 파이프라인(`.github/workflows/agent-build.yml`)은 이미 있고, **인증서/시크릿만** 채우면 켜진다.
+목표: 사용자가 사이트에서 받은 설치 파일을 설치할 때 OS 경고 최소화. macOS=Apple Developer ID 서명+공증(즉시 무경고), Windows=**SSL.com IV 코드서명 + eSigner**(평판형, 즉시 무경고는 사업자+EV 필요). CI 파이프라인(`.github/workflows/agent-build.yml`)은 준비돼 있고, **인증서/시크릿 + 활성화 변수**만 채우면 켜진다. (※ Azure Trusted Signing 은 한국 미지원이라 제외.)
 
 > 표기: ☁️=웹 클릭, 💻=Mac 로컬 작업(클릭만으로 불가), ⏳=검증 대기.
 
@@ -35,43 +35,42 @@
 
 ---
 
-## B. Windows — Azure Trusted Signing
+## B. Windows — SSL.com IV Code Signing + eSigner (클라우드)
 
-> EV 인증서(고가·HW 토큰) 대신 Microsoft의 Trusted Signing 사용. 요금 저렴(요금은 포털에서 확인, 대략 월 $단위). 단 **신원 검증** 필요(⏳). 우리 CI는 PFX/signtool → **Trusted Signing 액션으로 교체 예정**(개발자=Claude 가 코드 처리).
+> ⚠️ **Azure Trusted Signing 은 한국에서 불가**(개인=US/CA만, 조직=US/CA/EU/UK만 — 한국 제외). 그래서
+> 한국 개인 개발자는 **SSL.com IV(Personal ID) 코드서명 + eSigner 클라우드 서명**으로 간다.
+> - **IV** = 개인 명의(사업자 불필요). 단 **즉시 무경고는 불가** → SmartScreen 은 다운로드 평판이 쌓이며 점차 사라짐.
+> - 즉시 무경고(EV급)는 사업자(조직)만 → 향후 사업자 등록 시 EV/Sole-Proprietor EV 로 업그레이드 고려.
 
-### B1. ☁️ Azure 구독
-- https://portal.azure.com 가입(구독 없으면 생성).
+### B1. ☁️ 구매
+- https://www.ssl.com → Code Signing → **IV Code Signing** ($129/년~). **Key Storage = eSigner Cloud Signing** 선택(토큰 X, CI 필수). Validation = Standard.
 
-### B2. ☁️ Trusted Signing 계정 생성
-- 포털 상단 검색 **"Trusted Signing"** → **Create** → 리소스 그룹/리전/계정 이름 입력.
+### B2. ⏳ 신원 검증 (Individual)
+- 주문 후 Validations → 개인 신원확인: **정부 신분증 앞/뒤 + 신분증 든 셀피**. (여권 권장 — 주민번호 노출 0. 주민등록증이면 주민번호 뒷자리 마스킹.)
+- 검증 승인까지 수일.
 
-### B3. ⏳ Identity validation (신원 검증)
-- Trusted Signing 계정 → **Identity validations → New** → 개인(Individual) 또는 조직(Organization) 검증 진행. 서류/확인에 시간 소요(수일 가능). 
-- ※ 자격 요건(국가·개인/조직 조건)은 포털 안내를 따른다(요건이 안 맞으면 조직 검증 필요).
+### B3. ☁️ eSigner 등록 (발급 후)
+- 인증서 발급되면 **eSigner 활성화** + **2FA(TOTP) 등록** → **Credential ID** 확인.
 
-### B4. ☁️ Certificate Profile 생성
-- 계정 → **Certificate profiles → Create** → 종류 **Public Trust** → 검증된 Identity 연결. 프로필 이름 메모(=`profile name`).
+### B4. ☁️ GitHub 시크릿 등록
+`ES_USERNAME`(SSL.com 로그인) · `ES_PASSWORD` · `ES_CREDENTIAL_ID` · `ES_TOTP_SECRET`(2FA seed).
 
-### B5. ☁️ 서명용 서비스 주체(앱 등록) + 권한
-- Microsoft Entra ID → App registrations → New registration → 클라이언트 시크릿 생성. → `AZURE_TENANT_ID` · `AZURE_CLIENT_ID` · `AZURE_CLIENT_SECRET`.
-- Trusted Signing 계정 IAM(Access control) → 이 앱에 **"Trusted Signing Certificate Profile Signer"** 역할 부여.
-- 메모: **endpoint**(예: `https://eus.codesigning.azure.net/`, 리전별 상이) · **account name** · **profile name**.
+### B5. ☁️ 활성화 스위치
+- 저장소 Settings → Secrets and variables → Actions → **Variables** 에 `WINDOWS_SIGN_PROVIDER = esigner` 추가.
 
-### B6. ☁️ GitHub 시크릿 등록
-`AZURE_TENANT_ID` · `AZURE_CLIENT_ID` · `AZURE_CLIENT_SECRET` · `TRUSTED_SIGNING_ENDPOINT` · `TRUSTED_SIGNING_ACCOUNT` · `TRUSTED_SIGNING_PROFILE`.
-
-### B7. 💻(Claude) CI 교체
-- `agent-build.yml` Windows 서명 단계를 `azure/trusted-signing-action` 으로 교체(현재 signtool+PFX 대신). → 별도 작업으로 진행.
+### B6. 💻(Claude) CI
+- `agent-build.yml` 에 **`sslcom/esigner-codesign`** 액션으로 Windows exe 서명 단계 추가(위 변수/시크릿 게이트, 없으면 비활성). ← **선반영 완료**.
 
 ---
 
 ## C. 활성화 + 검증
 
-1. ☁️ 저장소 Settings → Secrets and variables → Actions → **Variables** 에 `REQUIRE_SIGNED_RELEASE = true` 추가(미서명 릴리스 차단).
-2. 새 릴리스 태그(`agent-v*`) push → CI 가 서명/공증/스테이플 + Windows 서명 수행.
-3. 검증: macOS `spctl -a -vvv 냥시스턴트.app`(accepted), `xcrun stapler validate`; Windows `signtool verify /pa`. 실제 다운로드해서 경고 없는지 확인.
+1. ☁️ macOS: A 단계 시크릿 채우기 → (선택) Variables `REQUIRE_SIGNED_RELEASE = true` 로 미서명 릴리스 차단.
+2. ☁️ Windows: B4 시크릿 + `WINDOWS_SIGN_PROVIDER=esigner` 설정.
+3. 새 릴리스 태그(`agent-v*`) push → CI 가 macOS 공증/staple + Windows eSigner 서명 수행.
+4. 검증: macOS `spctl -a -vvv 냥시스턴트.app`(accepted)·`xcrun stapler validate`; Windows `signtool verify /pa nyassistant-windows.exe`. 실제 브라우저로 받아 경고 확인(mac=무경고, win=평판 쌓이는 중이면 초기 경고 가능).
 
 ## 비용 요약
-- Apple Developer Program **$99/년** (필수, 공증의 전제).
-- Azure Trusted Signing: 월 구독(포털 확인) + 신원 검증.
-- 둘 다 **외부 계정/결제** — 코드로 대체 불가.
+- **macOS**: Apple Developer Program **$99/년** → 공증으로 **즉시 무경고**.
+- **Windows**: SSL.com **IV ~$129/년 + eSigner 구독** → 서명은 되나 **즉시 무경고 아님**(평판형). 즉시 무경고는 사업자+EV 필요.
+- 모두 **외부 계정/결제** — 코드로 대체 불가.

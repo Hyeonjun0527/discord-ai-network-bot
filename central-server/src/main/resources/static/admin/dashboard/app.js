@@ -169,6 +169,8 @@ async function loadWizardOptions() {
     fillSelect("wizardJob", options.jobs);
     fillSelect("wizardTone", options.tones);
     fillSelect("wizardLength", options.answerLengths);
+    // 프리셋 말투도 같은 알려진 옵션에서 선택(자유입력 제거).
+    if ($("presetTone")) fillSelect("presetTone", options.tones);
     const firstJob = options.jobs?.[0];
     if (firstJob?.recommendedName && !$("wizardName").value) $("wizardName").value = firstJob.recommendedName;
     $("wizardPreview").textContent = (options.safetyRules || []).map((rule) => `- ${rule}`).join("\n");
@@ -820,7 +822,7 @@ function publishedPresetPayload() {
 
 function renderPresetLists(local, published) {
   renderList("localPresetList", local?.presets?.slice(0, 8), "서버 프리셋 없음", (p) =>
-    `<li><strong>${esc(p.id)} · ${esc(p.name)}</strong><span>${esc(p.category)} · ${esc(p.status)} · ${esc(p.visibility)}</span></li>`,
+    `<li class="pick-local-preset channel-item" data-local-preset-id="${esc(p.id)}"><strong>${esc(p.id)} · ${esc(p.name)}</strong><span>${esc(p.category)} · ${esc(p.status)} · ${esc(p.visibility)} · 클릭하여 선택</span></li>`,
   );
   renderList("publishedPresetList", published?.presets?.slice(0, 8), "게시 프리셋 없음", (p) =>
     `<li><strong>${esc(p.id)} · ${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · 신고 ${esc(p.reportCount)} · ${esc(p.category || "general")} · ${(p.tags || []).map(esc).join(", ") || "태그 없음"}</span><button class="mini select-published-preset" data-preset-id="${esc(p.id)}">선택</button><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button><button class="mini report-preset" data-preset-id="${esc(p.id)}">신고</button><button class="mini unlist-published-preset" data-preset-id="${esc(p.id)}">비공개</button><button class="mini remove-published-preset" data-preset-id="${esc(p.id)}">숨김</button></li>`,
@@ -1547,6 +1549,8 @@ async function loadGuild() {
       `<tr><td>${r.requestId}</td><td>${r.state}</td><td>${r.burden}</td><td>${r.providerId ?? "-"}</td><td>${r.createdAt}</td></tr>`,
     ).join("") || `<tr><td colspan="5">요청 없음</td></tr>`;
     loadProviderPicker();
+    loadChannelPicker();
+    loadServerModelOptions();
   } catch (e) {
     alert(`불러오기 실패: ${e.message}`);
   }
@@ -1627,6 +1631,9 @@ document.addEventListener("click", (event) => {
   if (unlistButton) unlistPublishedPreset(unlistButton.dataset.presetId);
   const removeButton = event.target.closest(".remove-published-preset");
   if (removeButton) deletePublishedPreset(removeButton.dataset.presetId);
+  // 행 전체 클릭으로 프리셋 ID 선택(직접 입력 제거).
+  const localPick = event.target.closest(".pick-local-preset");
+  if (localPick) $("presetId").value = localPick.dataset.localPresetId || "";
 });
 // 로그인 상태(Discord OAuth): 로그인 버튼 / 로그아웃 / 유저 표시.
 async function loadAuth() {
@@ -1687,6 +1694,7 @@ function showServerTab(name) {
     b.classList.toggle("active", b.dataset.stab === name);
   });
   if (name === "providers") loadProviderPicker();
+  if (name === "channels") loadChannelPicker();
 }
 document.querySelectorAll("#serverTabs .tab").forEach((b) => {
   b.addEventListener("click", () => showServerTab(b.dataset.stab));
@@ -1731,7 +1739,7 @@ function renderServerChannels(channels) {
   renderList(
     "serverChannelList",
     channels,
-    "이 서버에 채널 AI가 없습니다. 위에서 새 채널 ID를 입력해 채널을 열고 만들 수 있습니다.",
+    "이 서버에 채널 AI가 없습니다. 위 ‘채널 선택’ 드롭다운에서 디스코드 채널을 골라 만들 수 있습니다.",
     (c) =>
       `<li class="channel-item" data-channel-id="${esc(c.channelId)}" data-channel-name="${esc(c.name || "")}">` +
       `<strong>#${esc(c.channelId)} · ${esc(c.name || "이름 없음")}</strong>` +
@@ -1742,11 +1750,44 @@ $("serverChannelList")?.addEventListener("click", (e) => {
   const li = e.target.closest(".channel-item");
   if (li) openChannel(li.dataset.channelId, li.dataset.channelName);
 });
-$("openNewChannel")?.addEventListener("click", () => openChannel($("newChannelId").value, ""));
 $("channelBack")?.addEventListener("click", () => {
   showPage("server");
   showServerTab("channels");
 });
+
+// 채널 선택 드롭다운(서버의 실제 디스코드 텍스트 채널). 채널 ID 직접 입력 제거.
+async function loadChannelPicker() {
+  const sel = $("channelPicker");
+  const gid = $("guildId").value.trim();
+  if (!sel || !/^\d+$/.test(gid)) return;
+  try {
+    const channels = await getJson(`/api/dashboard/${gid}/channels`);
+    sel.innerHTML = channels.length
+      ? '<option value="">채널 선택…</option>' +
+        channels.map((c) => `<option value="${esc(c.id)}">#${esc(c.name)} (${esc(c.id)})</option>`).join("")
+      : '<option value="">연결된 채널 없음(봇 미연결)</option>';
+  } catch (e) {
+    sel.innerHTML = '<option value="">채널 목록 불가(권한/봇)</option>';
+  }
+}
+$("channelPicker")?.addEventListener("change", (e) => {
+  const opt = e.target.selectedOptions[0];
+  if (e.target.value) openChannel(e.target.value, opt ? opt.textContent.replace(/^#/, "").replace(/\s*\(\d+\)$/, "") : "");
+});
+
+// 서버 모델 datalist(선호/요청/허용 모델 입력의 제안). 모델 지도에서 채운다.
+async function loadServerModelOptions() {
+  const dl = $("serverModelOptions");
+  const gid = $("guildId").value.trim();
+  if (!dl || !/^\d+$/.test(gid)) return;
+  try {
+    const models = await getJson(`/api/ai-network/${gid}/model-map`);
+    const names = [...new Set((models || []).map((m) => m.modelName).filter(Boolean))];
+    dl.innerHTML = names.map((n) => `<option value="${esc(n)}"></option>`).join("");
+  } catch (e) {
+    /* 권한 없음/빈 서버 → 제안 비움(직접 입력 가능) */
+  }
+}
 
 // 서버 선택 드롭다운(봇이 들어가 있는 서버 목록). 18자리 ID 를 외워 입력하지 않게 한다.
 async function loadGuildPicker() {

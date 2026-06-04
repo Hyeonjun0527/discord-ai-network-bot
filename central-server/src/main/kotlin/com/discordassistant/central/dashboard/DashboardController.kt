@@ -1,5 +1,6 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.discord.BotChannelInfo
 import com.discordassistant.central.discord.BotGuildInfo
 import com.discordassistant.central.discord.BotGuildLister
 import com.discordassistant.central.network.AiNetworkFeatureGate
@@ -36,6 +37,19 @@ class DashboardController(
     fun guilds(): List<BotGuildInfo> {
         featureGate.requireDashboardEnabled()
         return botGuilds.botGuilds()
+    }
+
+    /**
+     * 한 서버의 텍스트 채널 목록(id + 이름). 어드민 채널 선택 드롭다운용 — 채널 ID 를 직접 입력하지 않고
+     * 실제 디스코드 채널을 골라 채널 상세로 들어가게 한다. 어드민 전용([AiNetworkApiSecurityFilter] 가
+     * `/api/dashboard/{id}/channels` 를 관리자 토큰/OAuth 로 보호). 봇 비활성/서버 미참여면 빈 목록.
+     */
+    @GetMapping("/{guildId}/channels")
+    fun channels(
+        @PathVariable guildId: Long,
+    ): List<BotChannelInfo> {
+        featureGate.requireDashboardEnabled()
+        return botGuilds.botChannels(guildId)
     }
 
     /** 서버 개요: 풀 크기·정책 요약·총 요청 수. */

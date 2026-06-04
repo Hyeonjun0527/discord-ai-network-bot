@@ -118,12 +118,11 @@
       <!-- ── 채널 목록 ── -->
       <div class="tabpane" data-stab="channels" hidden>
         <div class="toolbar">
-          <input id="newChannelId" type="text" inputmode="numeric" placeholder="새 채널 ID(디스코드 채널)" style="max-width:240px" />
-          <button id="openNewChannel" class="primary">채널 열기</button>
-          <span class="muted">기존 채널은 아래 목록에서 클릭하세요.</span>
+          <select id="channelPicker" style="max-width:360px"><option value="">채널 선택…</option></select>
+          <span class="muted">디스코드 채널을 고르거나, 아래 ‘채널 AI’ 목록에서 클릭하세요.</span>
         </div>
         <article class="card"><h3>이 서버의 채널 AI</h3>
-          <ul id="serverChannelList" class="list"><li class="empty">서버를 불러오면 채널 목록이 표시됩니다. 채널을 클릭하면 그 채널의 AI·모델·지식·품질·고급 설정으로 들어갑니다.</li></ul>
+          <ul id="serverChannelList" class="list"><li class="empty">서버를 불러오면 채널 AI 목록이 표시됩니다. 채널을 선택/클릭하면 그 채널의 AI·모델·지식·품질·고급 설정으로 들어갑니다.</li></ul>
         </article>
       </div>
 
@@ -160,11 +159,11 @@
             <label>프리셋 ID<input id="presetId" type="text" inputmode="numeric" placeholder="수정/게시/삭제할 ID" /></label>
             <label>게시 프리셋 ID<input id="publishedPresetId" type="text" inputmode="numeric" placeholder="좋아요/가져오기 ID" /></label>
             <label>프리셋 이름<input id="presetName" type="text" placeholder="예: 코딩 튜터" /></label>
-            <label>카테고리<input id="presetCategory" type="text" placeholder="예: coding, translation" /></label>
-            <label>말투<input id="presetTone" type="text" placeholder="friendly / professional / concise" /></label>
-            <label>태그<input id="presetTags" type="text" placeholder="coding, kotlin, review" /></label>
-            <label>응답 모드<input id="presetResponseMode" type="text" placeholder="fast / balanced / deep" /></label>
-            <label>선호 모델<input id="presetPreferredModel" type="text" placeholder="선택" /></label>
+            <label>카테고리<input id="presetCategory" type="text" list="categoryOptions" placeholder="목록에서 선택 또는 입력" /></label>
+            <label>말투<select id="presetTone"></select></label>
+            <label>태그<input id="presetTags" type="text" list="tagOptions" placeholder="쉼표: coding, kotlin, review" /></label>
+            <label>응답 모드<select id="presetResponseMode"><option value="balanced">균형</option><option value="fast">빠른 답변</option><option value="deep">깊은 답변</option><option value="saving">절약</option></select></label>
+            <label>선호 모델<input id="presetPreferredModel" type="text" list="serverModelOptions" placeholder="서버 모델에서 선택" /></label>
             <label>후보 수<input id="presetMaxCandidates" type="number" min="1" max="5" value="1" /></label>
           </div>
           <label>요약<input id="presetSummary" type="text" placeholder="프리셋 설명" /></label>
@@ -249,9 +248,9 @@
         <div class="panel">
           <input id="routingChannelId" type="hidden" />
           <div class="form-grid">
-            <label>요청 모델<input id="routingRequestedModel" type="text" placeholder="예: llama3.1:8b" /></label>
-            <label>선호 모델<input id="routingPreferredModel" type="text" placeholder="정책 기본 모델" /></label>
-            <label>허용 모델 목록<input id="routingAllowedModels" type="text" placeholder="쉼표: llama3.1:8b, qwen2.5:14b" /></label>
+            <label>요청 모델<input id="routingRequestedModel" type="text" list="serverModelOptions" placeholder="서버 모델에서 선택" /></label>
+            <label>선호 모델<input id="routingPreferredModel" type="text" list="serverModelOptions" placeholder="정책 기본 모델" /></label>
+            <label>허용 모델 목록<input id="routingAllowedModels" type="text" list="serverModelOptions" placeholder="쉼표: llama3.1:8b, qwen2.5:14b" /></label>
             <label>Provider 태그 필터<input id="routingProviderTags" type="text" placeholder="쉼표: coding, long-context" /></label>
             <label>응답 모드<select id="routingResponseMode"><option value="fast">빠른 답변</option><option value="balanced" selected>균형</option><option value="deep">깊은 답변</option><option value="saving">절약</option></select></label>
             <label>최소 품질<select id="routingMinQualityTier"><option value="standard" selected>standard</option><option value="high">high</option><option value="specialized">specialized</option></select></label>
@@ -350,6 +349,15 @@
       </div>
     </section>
   </main>
+
+  <!-- 자유입력 대신 ‘선택/제안’: 서버 모델·태그·카테고리 datalist(앱이 서버별로 채움). -->
+  <datalist id="serverModelOptions"></datalist>
+  <datalist id="tagOptions">
+    <option value="coding"></option><option value="translation"></option><option value="long-context"></option><option value="vision"></option><option value="local-llm"></option>
+  </datalist>
+  <datalist id="categoryOptions">
+    <option value="general"></option><option value="coding"></option><option value="translation"></option><option value="writing"></option><option value="research"></option><option value="support"></option>
+  </datalist>
 
   <footer>읽기 5초 폴링 · 관리자 작업은 OAuth 또는 X-Dashboard-Admin-Token 필요 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
   <script src="/admin/dashboard/app.js"></script>

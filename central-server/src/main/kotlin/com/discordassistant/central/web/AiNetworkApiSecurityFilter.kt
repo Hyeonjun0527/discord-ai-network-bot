@@ -61,8 +61,9 @@ class AiNetworkApiSecurityFilter(
             return true
         }
         if (path.startsWith("/api/dashboard") && method in UNSAFE_METHODS) return true
-        // 서버 목록(이름 포함)은 운영 정보이므로 GET 이라도 관리자만(토큰/OAuth). 어드민 드롭다운용.
+        // 서버 목록(이름 포함)·채널 목록은 운영 정보이므로 GET 이라도 관리자만(토큰/OAuth). 어드민 드롭다운용.
         if (path == "/api/dashboard/guilds") return true
+        if (DASHBOARD_CHANNELS.matches(path)) return true
         if (!path.startsWith("/api/ai-network")) return false
         if (isPublicAiNetworkEndpoint(path, method)) return false
         if (method in UNSAFE_METHODS) return true
@@ -113,6 +114,7 @@ class AiNetworkApiSecurityFilter(
     companion object {
         const val ADMIN_TOKEN_HEADER = "X-Dashboard-Admin-Token"
         private val UNSAFE_METHODS = setOf("POST", "PUT", "PATCH", "DELETE")
+        private val DASHBOARD_CHANNELS = Regex("^/api/dashboard/\\d+/channels$")
         private val PUBLIC_PRESET_LIKE = Regex("^/api/ai-network/presets/published/\\d+/like$")
         private val PUBLIC_PRESET_REPORT = Regex("^/api/ai-network/presets/published/\\d+/report$")
         private val GUILD_DASHBOARD_READ =

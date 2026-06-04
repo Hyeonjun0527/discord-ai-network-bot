@@ -1,5 +1,7 @@
 package com.discordassistant.central.dashboard
-
+import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
@@ -36,10 +38,10 @@ class ChannelAiRoutingPolicyControllerTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 10,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "qwen-coder",
-                    qualityTier = "specialized",
-                    overloadRisk = "critical",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.CRITICAL,
                 ),
             )
 

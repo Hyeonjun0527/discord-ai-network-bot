@@ -144,15 +144,15 @@ class AiNetworkDashboardQueryService(
             ProviderCapabilityResponse(
                 providerUserId = if (visibility.canSeeProviderIdentity) provider.providerUserId else null,
                 providerLabel = if (visibility.canSeeProviderIdentity) "provider:${provider.providerUserId}" else "Provider ${index + 1}",
-                state = visibility.state(provider.providerState),
+                state = visibility.state(provider.providerState.wire),
                 modelCount = provider.modelCount,
                 models = splitCsv(provider.modelNames),
                 tags = splitCsv(provider.capabilityTags),
-                qualityTier = provider.qualityTier,
-                maxBurden = provider.maxBurden,
+                qualityTier = provider.qualityTier.wire,
+                maxBurden = provider.maxBurden.name,
                 maxConcurrency = if (visibility.canSeeProviderCapacity) provider.maxConcurrency else null,
                 dailyLimit = if (visibility.canSeeProviderCapacity) provider.dailyLimit else null,
-                overloadRisk = visibility.risk(provider.overloadRisk),
+                overloadRisk = visibility.risk(provider.overloadRisk.wire),
                 availableFromHour = if (visibility.canSeeProviderCapacity) provider.availableFromHour else null,
                 availableToHour = if (visibility.canSeeProviderCapacity) provider.availableToHour else null,
                 lastSeenAt = if (visibility.canSeeProviderCapacity) provider.lastSeenAt?.toString() else null,
@@ -180,10 +180,20 @@ class AiNetworkDashboardQueryService(
                 ModelMapResponse(
                     modelName = modelName,
                     totalProviderCount = providers.size,
-                    onlineProviderCount = providers.count { ProviderAvailability.isOnline(it.providerState) },
-                    protectedProviderCount = providers.count { OverloadRisk.isOverloadRisk(it.overloadRisk) },
-                    qualityTiers = providers.map { it.qualityTier }.distinct().sortedByDescending { ModelQualityTier.rankOf(it) },
-                    maxBurdens = providers.map { it.maxBurden }.distinct().sortedByDescending { ModelBurden.rankOf(it) },
+                    onlineProviderCount = providers.count { it.providerState == ProviderAvailability.ONLINE },
+                    protectedProviderCount = providers.count { it.overloadRisk.isOverload },
+                    qualityTiers =
+                        providers
+                            .map { it.qualityTier }
+                            .distinct()
+                            .sortedByDescending { it.rank }
+                            .map { it.wire },
+                    maxBurdens =
+                        providers
+                            .map { it.maxBurden }
+                            .distinct()
+                            .sortedByDescending { it.rank }
+                            .map { it.name },
                     tags = providers.flatMap { it.tags }.distinct().sorted(),
                     channelCount = modelToChannels[modelName].orEmpty().size,
                     channels = modelToChannels[modelName].orEmpty().sorted(),
@@ -304,10 +314,10 @@ class AiNetworkDashboardQueryService(
 
     private data class ModelProviderSnapshot(
         val modelName: String,
-        val providerState: String,
-        val qualityTier: String,
-        val maxBurden: String,
-        val overloadRisk: String,
+        val providerState: ProviderAvailability,
+        val qualityTier: ModelQualityTier,
+        val maxBurden: ModelBurden,
+        val overloadRisk: OverloadRisk,
         val tags: List<String>,
     )
 

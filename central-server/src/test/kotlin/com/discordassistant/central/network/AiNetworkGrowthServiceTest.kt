@@ -1,7 +1,9 @@
 package com.discordassistant.central.network
-
 import com.discordassistant.central.dashboard.AiNetworkGrowthController
 import com.discordassistant.central.dashboard.ProviderJoinedRequest
+import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -105,9 +107,9 @@ class AiNetworkGrowthServiceTest
             assertTrue(first.changed)
             assertTrue(first.eventId != null)
             val profile = providerCapabilities.findByGuildIdAndProviderUserId(333, 77)!!
-            assertEquals("ONLINE", profile.providerState)
+            assertEquals(ProviderAvailability.ONLINE, profile.providerState)
             assertEquals("qwen2.5-coder:7b,llama3.1:8b", profile.modelNames)
-            assertEquals("STANDARD", profile.maxBurden)
+            assertEquals(ModelBurden.STANDARD, profile.maxBurden)
             assertEquals(2, profile.maxConcurrency)
             assertEquals(25, profile.dailyLimit)
             assertTrue(profile.capabilityTags!!.contains("coding"))
@@ -129,7 +131,7 @@ class AiNetworkGrowthServiceTest
             growth.markProviderOffline(333, 77)
 
             val offline = providerCapabilities.findByGuildIdAndProviderUserId(333, 77)!!
-            assertEquals("OFFLINE", offline.providerState)
+            assertEquals(ProviderAvailability.OFFLINE, offline.providerState)
             assertEquals(0, overviewProjections.findByGuildId(333)!!.onlineProviderCount)
         }
 
@@ -183,13 +185,13 @@ class AiNetworkGrowthServiceTest
             foundation.upsertProviderCapability(
                 guildId = 812,
                 providerUserId = 77,
-                providerState = "OVERLOADED",
+                providerState = ProviderAvailability.OVERLOADED,
                 modelNames = listOf("llama3.1:8b"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 1,
                 dailyLimit = 0,
-                overloadRisk = "high",
+                overloadRisk = OverloadRisk.HIGH,
             )
 
             val riskyPlan = controller.plan(812)

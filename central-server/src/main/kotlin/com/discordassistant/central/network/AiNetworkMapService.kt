@@ -34,9 +34,9 @@ class AiNetworkMapService(
                     AiNetworkModelNode(
                         modelName = modelName,
                         providerCount = providersForModel.size,
-                        onlineProviderCount = providersForModel.count { ProviderAvailability.isOnline(it.providerState) },
-                        qualityTiers = providersForModel.map { it.qualityTier }.distinct().sorted(),
-                        maxBurdens = providersForModel.map { it.maxBurden }.distinct().sorted(),
+                        onlineProviderCount = providersForModel.count { it.providerState == ProviderAvailability.ONLINE },
+                        qualityTiers = providersForModel.map { it.qualityTier.wire }.distinct().sorted(),
+                        maxBurdens = providersForModel.map { it.maxBurden.name }.distinct().sorted(),
                         tags = providersForModel.flatMap { splitCsv(it.capabilityTags) }.distinct().sorted(),
                     )
                 }.sortedWith(compareByDescending<AiNetworkModelNode> { it.onlineProviderCount }.thenBy { it.modelName })

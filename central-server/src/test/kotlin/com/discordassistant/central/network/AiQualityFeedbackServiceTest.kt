@@ -1,10 +1,12 @@
 package com.discordassistant.central.network
-
 import com.discordassistant.central.dashboard.AiQualityFeedbackController
 import com.discordassistant.central.dashboard.ResolveAiFeedbackRequest
 import com.discordassistant.central.dashboard.SubmitAiFeedbackRequest
 import com.discordassistant.central.domain.CandidateStatus
 import com.discordassistant.central.domain.FeedbackStatus
+import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity
 import com.discordassistant.central.persistence.CandidateAnswerRepository
@@ -203,21 +205,21 @@ class AiQualityFeedbackServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 1,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 2,
                     modelNames = "llama3.1:8b,qwen-coder",
-                    qualityTier = "specialized",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 2,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3.1:8b",
-                    qualityTier = "standard",
-                    overloadRisk = "high",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.HIGH,
                 ),
             )
             val run = runs.save(MultiResponseRunEntity(guildId = 100, channelId = 200, requestId = "run-55"))

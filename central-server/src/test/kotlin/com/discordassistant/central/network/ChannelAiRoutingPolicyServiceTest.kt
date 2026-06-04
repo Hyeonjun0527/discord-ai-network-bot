@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
-
+import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiRequestEntity
@@ -120,20 +122,20 @@ class ChannelAiRoutingPolicyServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 1,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "llama3.1:8b",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 2,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "qwen-coder",
-                    qualityTier = "specialized",
-                    overloadRisk = "critical",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.CRITICAL,
                 ),
             )
 
@@ -161,10 +163,10 @@ class ChannelAiRoutingPolicyServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 4,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "qwen-coder",
-                    qualityTier = "specialized",
-                    overloadRisk = "critical",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.CRITICAL,
                 ),
             )
 
@@ -202,10 +204,10 @@ class ChannelAiRoutingPolicyServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 3,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "llama3.1:8b,qwen-coder",
-                    qualityTier = "specialized",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
 
@@ -232,44 +234,44 @@ class ChannelAiRoutingPolicyServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 10,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "qwen-coder,llama3.1:8b",
                     capabilityTags = "coding,night",
-                    qualityTier = "specialized",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 11,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "llama3.1:8b",
                     capabilityTags = "summary",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 12,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "tiny",
                     capabilityTags = "coding",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 13,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "qwen-coder",
                     capabilityTags = "coding",
-                    qualityTier = "specialized",
-                    overloadRisk = "critical",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.CRITICAL,
                 ),
             )
 
@@ -325,20 +327,20 @@ class ChannelAiRoutingPolicyServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 101,
                     providerUserId = 21,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "z-good",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 101,
                     providerUserId = 22,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "a-bad",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             requests.save(

@@ -668,8 +668,8 @@ class MultiResponseService(
                     MultiResponseRecommendedProvider(
                         providerUserId = it.providerUserId,
                         modelName = it.firstModel(),
-                        qualityTier = it.qualityTier,
-                        overloadRisk = it.overloadRisk,
+                        qualityTier = it.qualityTier.wire,
+                        overloadRisk = it.overloadRisk.wire,
                     )
                 },
         )
@@ -741,20 +741,20 @@ class MultiResponseService(
         fanoutAllowed: Boolean = true,
     ): List<ProviderCapabilityProfileEntity> {
         val providers = providerCapabilities.findByGuildId(guildId)
-        if (providers.any { OverloadRisk.normalize(it.overloadRisk) == OverloadRisk.CRITICAL }) return emptyList()
+        if (providers.any { it.overloadRisk == OverloadRisk.CRITICAL }) return emptyList()
         val effectiveMaxCandidates = if (fanoutAllowed) maxCandidates.coerceIn(1, featureGate.multiResponseMaxFanout()) else 1
         val advancedFanout = effectiveMaxCandidates > 1 || policy.synthesisEnabled
         val ranked =
             providers
-                .filter { ProviderAvailability.isOnline(it.providerState) }
+                .filter { it.providerState == ProviderAvailability.ONLINE }
                 .filter { it.hasLiveCapacity(guildId) }
-                .filter { !OverloadRisk.isOverloadRisk(it.overloadRisk) }
+                .filter { !it.overloadRisk.isOverload }
                 .filter { policy.providerDailyLimit <= 0 || it.dailyLimit <= 0 || it.dailyLimit >= policy.providerDailyLimit }
                 .filter { !advancedFanout || !it.hasFanoutExclusion() }
                 .filter { !advancedFanout || it.hasFanoutOptIn() }
                 .sortedWith(
-                    compareByDescending<ProviderCapabilityProfileEntity> { it.qualityTier == ModelQualityTier.SPECIALIZED.wire }
-                        .thenByDescending { it.qualityTier == ModelQualityTier.HIGH.wire }
+                    compareByDescending<ProviderCapabilityProfileEntity> { it.qualityTier == ModelQualityTier.SPECIALIZED }
+                        .thenByDescending { it.qualityTier == ModelQualityTier.HIGH }
                         .thenByDescending { it.modelCount }
                         .thenBy { it.providerUserId },
                 )

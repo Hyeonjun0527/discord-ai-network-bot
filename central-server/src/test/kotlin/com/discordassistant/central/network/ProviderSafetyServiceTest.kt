@@ -1,7 +1,8 @@
 package com.discordassistant.central.network
-
 import com.discordassistant.central.dashboard.MarkProviderOverloadRequest
 import com.discordassistant.central.dashboard.ProviderSafetyController
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -54,18 +55,18 @@ class ProviderSafetyServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 1,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "llama3.1:8b",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 2,
-                    providerState = "OVERLOADED",
+                    providerState = ProviderAvailability.OVERLOADED,
                     modelNames = "qwen-coder",
-                    overloadRisk = "high",
+                    overloadRisk = OverloadRisk.HIGH,
                 ),
             )
 
@@ -131,18 +132,18 @@ class ProviderSafetyServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 200,
                     providerUserId = 1,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "llama3.1:8b",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 200,
                     providerUserId = 2,
-                    providerState = "OVERLOADED",
+                    providerState = ProviderAvailability.OVERLOADED,
                     modelNames = "qwen-coder",
-                    overloadRisk = "high",
+                    overloadRisk = OverloadRisk.HIGH,
                 ),
             )
 
@@ -165,18 +166,18 @@ class ProviderSafetyServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 201,
                     providerUserId = 1,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "llama3.1:8b",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 201,
                     providerUserId = 2,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "qwen-coder",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
 

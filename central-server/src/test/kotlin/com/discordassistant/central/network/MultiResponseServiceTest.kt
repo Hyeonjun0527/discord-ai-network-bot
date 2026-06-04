@@ -1,5 +1,4 @@
 package com.discordassistant.central.network
-
 import com.discordassistant.central.dashboard.AdoptCandidateRequest
 import com.discordassistant.central.dashboard.CompleteBestMultiResponseRunRequest
 import com.discordassistant.central.dashboard.MultiResponseController
@@ -10,6 +9,9 @@ import com.discordassistant.central.dashboard.SaveMultiResponsePolicyRequest
 import com.discordassistant.central.dashboard.StartMultiResponseRunRequest
 import com.discordassistant.central.dashboard.SynthesizeRunRequest
 import com.discordassistant.central.domain.KnowledgeSourceStatus
+import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -155,22 +157,22 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 101,
                     providerUserId = 11,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3.1:8b",
                     capabilityTags = "multi-response",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 101,
                     providerUserId = 12,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "mistral",
                     capabilityTags = "multi-response",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             val cappedService =
@@ -204,22 +206,22 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 102,
                     providerUserId = 21,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 102,
                     providerUserId = 22,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "qwen",
                     capabilityTags = "multi-response",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
 
@@ -239,11 +241,11 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 153,
                     providerUserId = 301,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3.1:8b",
                     capabilityTags = "multi-response",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             val dashboardOffService =
@@ -279,24 +281,24 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 154,
                     providerUserId = 401,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3.1:8b",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 154,
                     providerUserId = 402,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "qwen2.5-coder",
                     capabilityTags = "multi-response",
-                    qualityTier = "specialized",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(
@@ -352,26 +354,26 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 152,
                     providerUserId = 201,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 2,
                     modelNames = "llama3.1:8b,qwen-coder",
                     capabilityTags = "multi-response",
-                    qualityTier = "specialized",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
                     maxConcurrency = 1,
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 152,
                     providerUserId = 202,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "mistral",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
+                    qualityTier = ModelQualityTier.HIGH,
                     maxConcurrency = 1,
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             val registry = ConnectionRegistry()
@@ -407,26 +409,26 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 153,
                     providerUserId = 301,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 2,
                     modelNames = "llama3.1:8b,qwen-coder",
                     capabilityTags = "multi-response",
-                    qualityTier = "specialized",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
                     maxConcurrency = 2,
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 153,
                     providerUserId = 302,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "mistral",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
+                    qualityTier = ModelQualityTier.HIGH,
                     maxConcurrency = 1,
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             val registry = ConnectionRegistry()
@@ -473,11 +475,11 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 154,
                     providerUserId = 401,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3.1:8b",
                     capabilityTags = "multi-response",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(
@@ -512,24 +514,24 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 155,
                     providerUserId = 501,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 2,
                     modelNames = "llama3.1:8b,qwen-coder",
                     capabilityTags = "multi-response,fanout-excluded",
-                    qualityTier = "specialized",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 155,
                     providerUserId = 502,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "mistral",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(
@@ -550,35 +552,35 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 1,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 2,
                     modelNames = "llama3.1:8b,qwen-coder",
                     capabilityTags = "coding,multi-response",
-                    qualityTier = "specialized",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 2,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "mistral",
-                    qualityTier = "standard",
+                    qualityTier = ModelQualityTier.STANDARD,
                     capabilityTags = "multi-response",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 3,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "overloaded",
-                    qualityTier = "high",
-                    overloadRisk = "high",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.HIGH,
                 ),
             )
 
@@ -652,12 +654,12 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 4,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 206, mode = "compare", maxCandidates = 1))
@@ -683,12 +685,12 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 41,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(
@@ -735,24 +737,24 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 71,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 72,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "qwen",
                     capabilityTags = "multi-response",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(
@@ -807,24 +809,24 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 51,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 52,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "qwen",
                     capabilityTags = "multi-response",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(
@@ -869,12 +871,12 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 61,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 206, mode = "compare", maxCandidates = 1))
@@ -907,12 +909,12 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 41,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 204, mode = "compare", maxCandidates = 1))
@@ -934,11 +936,11 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 3,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "overloaded",
-                    qualityTier = "high",
-                    overloadRisk = "high",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.HIGH,
                 ),
             )
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 200, mode = "compare", maxCandidates = 3))
@@ -955,36 +957,36 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 10,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 11,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 12,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "qwen",
                     capabilityTags = "coding",
-                    qualityTier = "specialized",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(
@@ -1011,12 +1013,12 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 20,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 202, mode = "compare", maxCandidates = 2))
@@ -1062,12 +1064,12 @@ class MultiResponseServiceTest
                     ProviderCapabilityProfileEntity(
                         guildId = 100,
                         providerUserId = 21,
-                        providerState = "ONLINE",
+                        providerState = ProviderAvailability.ONLINE,
                         modelCount = 1,
                         modelNames = "llama3",
                         capabilityTags = "multi-response",
-                        qualityTier = "high",
-                        overloadRisk = "normal",
+                        qualityTier = ModelQualityTier.HIGH,
+                        overloadRisk = OverloadRisk.NORMAL,
                     ),
                 )
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 204, mode = "compare", maxCandidates = 2))
@@ -1091,24 +1093,24 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 30,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 31,
-                    providerState = "OVERLOADED",
+                    providerState = ProviderAvailability.OVERLOADED,
                     modelCount = 1,
                     modelNames = "qwen",
                     capabilityTags = "multi-response",
-                    qualityTier = "specialized",
-                    overloadRisk = "critical",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.CRITICAL,
                 ),
             )
             controller.savePolicy(100, SaveMultiResponsePolicyRequest(channelId = 203, mode = "compare", maxCandidates = 2))
@@ -1131,12 +1133,12 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 40,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             val ragController = ragAwareController()
@@ -1169,12 +1171,12 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 41,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             val ingestion =
@@ -1238,12 +1240,12 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 42,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             val failingSearch =
@@ -1291,24 +1293,24 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 300,
                     providerUserId = 101,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 300,
                     providerUserId = 102,
-                    providerState = "OVERLOADED",
+                    providerState = ProviderAvailability.OVERLOADED,
                     modelCount = 1,
                     modelNames = "qwen",
                     capabilityTags = "multi-response",
-                    qualityTier = "specialized",
-                    overloadRisk = "high",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.HIGH,
                 ),
             )
             val safetyController = MultiResponseController(safetyAwareService())
@@ -1361,12 +1363,12 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 301,
                     providerUserId = 201,
-                    providerState = "OVERLOADED",
+                    providerState = ProviderAvailability.OVERLOADED,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "critical",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.CRITICAL,
                 ),
             )
             val safetyController = MultiResponseController(safetyAwareService())
@@ -1386,24 +1388,24 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 81,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 82,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "qwen",
                     capabilityTags = "multi-response",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(
@@ -1460,24 +1462,24 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 420,
                     providerUserId = 181,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3",
                     capabilityTags = "multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 420,
                     providerUserId = 182,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "qwen",
                     capabilityTags = "multi-response",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             controller.savePolicy(
@@ -1531,22 +1533,22 @@ class MultiResponseServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 421,
                     providerUserId = 191,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3.1:8b",
                     capabilityTags = "multi-response",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = 421,
                     providerUserId = 192,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "qwen-coder",
                     capabilityTags = "multi-response",
-                    overloadRisk = "normal",
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             val noSynthesisService =

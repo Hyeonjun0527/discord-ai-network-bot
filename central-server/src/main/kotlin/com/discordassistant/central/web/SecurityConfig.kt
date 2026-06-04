@@ -1,10 +1,16 @@
 package com.discordassistant.central.web
 
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.invoke
+import org.springframework.security.oauth2.client.registration.ClientRegistration
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository
+import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository
+import org.springframework.security.oauth2.core.AuthorizationGrantType
+import org.springframework.security.oauth2.core.ClientAuthenticationMethod
 import org.springframework.security.web.SecurityFilterChain
 
 /**
@@ -19,7 +25,36 @@ import org.springframework.security.web.SecurityFilterChain
 @Configuration
 class SecurityConfig(
     @param:Value("\${central.oauth.enabled:false}") private val oauthEnabled: Boolean,
+    @param:Value("\${central.connect.discord-client-id:}") private val discordClientId: String,
+    @param:Value("\${central.connect.discord-client-secret:}") private val discordClientSecret: String,
 ) {
+    /**
+     * 대시보드 관리자 Discord 로그인용 OAuth2 클라이언트 등록(central.oauth.enabled=true 일 때만 생성).
+     * 기존 ‘토큰 받기’ OAuth 앱(client-id/secret)을 재사용한다. Discord 는 Spring 기본 제공자가 아니라
+     * 엔드포인트를 직접 지정. 빈 client-id 로 application.yml 에 등록하면 부팅이 깨지므로 코드로 조건부 생성한다.
+     * 디스코드 OAuth 앱에 redirect URI <공개주소>/login/oauth2/code/discord 추가 등록 필요.
+     */
+    @Bean
+    @ConditionalOnProperty(prefix = "central.oauth", name = ["enabled"], havingValue = "true")
+    fun discordClientRegistrationRepository(): ClientRegistrationRepository {
+        val registration =
+            ClientRegistration
+                .withRegistrationId("discord")
+                .clientId(discordClientId)
+                .clientSecret(discordClientSecret)
+                .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .redirectUri("{baseUrl}/login/oauth2/code/discord")
+                .scope("identify")
+                .authorizationUri("https://discord.com/api/oauth2/authorize")
+                .tokenUri("https://discord.com/api/oauth2/token")
+                .userInfoUri("https://discord.com/api/users/@me")
+                .userNameAttributeName("id")
+                .clientName("Discord")
+                .build()
+        return InMemoryClientRegistrationRepository(registration)
+    }
+
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http {

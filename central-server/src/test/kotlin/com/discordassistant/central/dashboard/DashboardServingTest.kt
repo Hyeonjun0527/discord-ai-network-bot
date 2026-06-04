@@ -294,7 +294,9 @@ class DashboardServingTest
             assertTrue(html.contains("""href="/presets""""))
             assertTrue(html.contains("""href="/admin/dashboard""""))
             assertTrue(html.contains("""id="install"""")) // 설치 섹션 앵커(랜딩 본문)
-            assertTrue(html.contains("NYASSISTANT AI NETWORK")) // 브랜드 표기
+            // 브랜드 워드마크는 brand-name/brand-sub 두 요소로 표기(window.__BRAND 단일 소스 주입, HTML 리터럴 폴백).
+            assertTrue(html.contains("NYASSISTANT")) // 브랜드명
+            assertTrue(html.contains("AI NETWORK")) // 브랜드 서브
         }
 
         @Test

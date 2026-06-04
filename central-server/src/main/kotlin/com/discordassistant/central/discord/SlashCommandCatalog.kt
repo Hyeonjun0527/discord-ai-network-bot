@@ -6,6 +6,7 @@ import com.discordassistant.central.domain.MultiResponseMode
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.ProviderModelScope
 import com.discordassistant.central.domain.ResponseMode
+import com.discordassistant.central.domain.SupportedLanguage
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions
 import net.dv8tion.jda.api.interactions.commands.OptionType
@@ -114,8 +115,7 @@ object SlashCommandCatalog {
                         .setAutoComplete(true),
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.STRING, "language", "언어", false)
-                        .addChoice("한국어", "ko")
-                        .addChoice("English", "en"),
+                        .choicePairs(SupportedLanguage.choices()),
                 ).setDefaultPermissions(adminPerm),
             Commands
                 .slash("llm-channel-profile", "이 채널의 AI 프로필 설정 패널을 엽니다(관리자)")

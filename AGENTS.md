@@ -68,6 +68,11 @@ cd provider-agent && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov
 - **패키지/릴리스 자산명 변경**: 패키지 ID·릴리스 자산 파일명·설치 명령의 SSOT 는 `packaging/assets.json`
   이다. 매니페스트(winget/scoop/brew)·릴리스 CI(`agent-build.yml`)·앱 가이드(`InstallGuide.kt`)·문서가
   모두 이 값을 써야 한다. 변경 후 `make packaging-check`(= `scripts/check_packaging.py`)로 드리프트 검증.
+- **사용자 노출 문구(i18n) 변경**: 런타임 메시지 문구의 SSOT 는 `central-server/.../resources/i18n/messages.json`
+  이고 `discord/I18n`(+ `Messages` facade)이 읽는다. 완전 지원 언어는 **ko/en/ja**(`domain/SupportedLanguage`),
+  모든 키에 세 언어가 있어야 한다(가드: `I18nMessagesDriftTest`). 슬래시 명령 이름/설명은 `discord/CommandLoc`
+  이 Discord 로컬라이제이션으로 처리(ko/en/ja 필수, 가드 `CommandLocJaCoverageTest`). 응답 언어는 요청자
+  Discord 로케일 우선 → 길드 기본 폴백.
 - **문서 변경**: `scripts/check_links.py`(상대 링크) 통과.
 
 ## 커밋 / 브랜치 / PR

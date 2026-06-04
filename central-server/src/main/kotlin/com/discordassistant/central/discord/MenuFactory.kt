@@ -107,6 +107,7 @@ object MenuFactory {
             .addOptions(
                 SelectOption.of("한국어", "ko").withEmoji(Emoji.fromUnicode("🇰🇷")).withDefault(current == "ko"),
                 SelectOption.of("English", "en").withEmoji(Emoji.fromUnicode("🇺🇸")).withDefault(current == "en"),
+                SelectOption.of("日本語", "ja").withEmoji(Emoji.fromUnicode("🇯🇵")).withDefault(current == "ja"),
             ).build()
 
     /** 기본 모델 선택 드롭다운(풀 제공 모델 + 자동). 모델 없으면 자동만. */

@@ -1,0 +1,27 @@
+{
+  "_meta": {
+    "note": "런타임 사용자 노출 메시지 문구의 단일 진실 원천(SSOT). discord/I18n.kt 가 시작 시 로드한다. 키마다 ko/en/ja 가 모두 있어야 한다(가드: I18nMessagesDriftTest). {0},{1}... 자리표시자는 인자로 치환된다. 미지원 로케일/키는 en→ko→키 순으로 폴백. 하드코딩된 응답 문자열을 이 파일로 점진 이관한다.",
+    "locales": ["ko", "en", "ja"],
+    "default": "ko"
+  },
+  "privacyNotice": {
+    "ko": "이 서버는 커뮤니티 로컬 AI Provider Pool 을 사용합니다. 질문 내용은 요청을 처리하는 커뮤니티 프로바이더의 PC 로 전송될 수 있습니다. 비밀번호·API 키·개인정보·비공개 문서 등 민감한 정보는 입력하지 마세요.",
+    "en": "This server uses a community local AI Provider Pool. Your question may be sent to a community provider's PC for processing. Do not enter sensitive information such as passwords, API keys, personal data, or private documents.",
+    "ja": "このサーバーはコミュニティのローカルAIプロバイダープールを使用します。質問内容は、リクエストを処理するコミュニティプロバイダーのPCに送信される場合があります。パスワード・APIキー・個人情報・非公開文書などの機密情報は入力しないでください。"
+  },
+  "cooldown": {
+    "ko": "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.",
+    "en": "Too many requests. Please try again shortly.",
+    "ja": "リクエストが頻繁すぎます。しばらくしてからもう一度お試しください。"
+  },
+  "noProvider": {
+    "ko": "현재 풀에 온라인 프로바이더가 없습니다.",
+    "en": "No online providers are available in the pool right now.",
+    "ja": "現在、プールにオンラインのプロバイダーがいません。"
+  },
+  "adminDenied": {
+    "ko": "이 명령은 관리자만 사용할 수 있습니다.",
+    "en": "This command is for administrators only.",
+    "ja": "このコマンドは管理者のみが使用できます。"
+  }
+}

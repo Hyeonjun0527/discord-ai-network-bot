@@ -60,6 +60,11 @@ data class CommandContext(
     val userId: Long,
     val roleIds: Set<Long>,
     val isAdmin: Boolean,
+    /**
+     * 요청자의 Discord 클라이언트 언어를 지원 언어 코드(ko/en/ja)로 정규화한 값. 미지원 로케일이면 null.
+     * 응답 언어는 이 값을 우선하고, 없으면 길드 기본 언어로 폴백한다([CommandService.lang]).
+     */
+    val userLang: String? = null,
 )
 
 /** `/ai-onboard` 시작 결과: 제안 카드용 draft 가 만들어졌거나(Started), 권한/기능 게이트로 거부됨(Rejected). */
@@ -128,7 +133,8 @@ class CommandService(
         private val PSEUDO_STREAM_STEPS = listOf(33, 66, 100)
     }
 
-    private fun lang(ctx: CommandContext): String = policy.guildLanguage(ctx.guildId)
+    // 응답 언어: 요청자 Discord 언어(ko/en/ja) 우선 → 없으면 길드 기본 언어. (유저 로케일 우선 정책)
+    private fun lang(ctx: CommandContext): String = ctx.userLang ?: policy.guildLanguage(ctx.guildId)
 
     private fun adminOnly(ctx: CommandContext): Reply? =
         if (!ctx.isAdmin) Replies.reject(Messages.get(Messages.Key.ADMIN_DENIED, lang(ctx))) else null

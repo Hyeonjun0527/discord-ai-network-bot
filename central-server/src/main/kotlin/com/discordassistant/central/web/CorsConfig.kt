@@ -40,8 +40,6 @@ class CorsConfig(
         registry.addViewController("/admin/dashboard/").setViewName("forward:/admin/dashboard/index.html")
         registry.addViewController("/presets").setViewName("forward:/presets/index.html")
         registry.addViewController("/presets/").setViewName("forward:/presets/index.html")
-        // 프로바이더 설치 랜딩 페이지: 루트(/)와 /install 둘 다 노출(차수 19 UX).
-        registry.addViewController("/").setViewName("forward:/install.html")
-        registry.addViewController("/install").setViewName("forward:/install.html")
+        // 설치 랜딩 페이지(/, /install)는 InstallPageController 가 SSOT(InstallGuide)를 주입해 서빙한다.
     }
 }

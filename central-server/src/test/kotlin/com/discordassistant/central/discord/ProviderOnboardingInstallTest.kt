@@ -35,19 +35,14 @@ class ProviderOnboardingInstallTest {
     }
 
     @Test
-    fun `Linux — install_sh + linux 바이너리`() {
+    fun `Linux — 미지원(GUI 앱 없음) → 폴백 안내`() {
+        // GUI 데스크톱 앱(냥시스턴트)은 mac/Windows 만 배포 — Linux 가이드/다운로드는 폐기, 전체 안내로 폴백.
         val s = ProviderOnboarding.installCommand("linux", "TOK", "")
-        assertTrue(s.contains("ollama.com/install.sh"), s)
-        assertTrue(s.contains("releases/latest/download/discord-ai-network-bot-linux"), s)
-        assertFalse(s.contains("discord-ai.yeon.world/download"), s)
-        assertTrue(s.contains("curl -L -o discord-ai-network-bot-linux"), s)
-        assertTrue(s.contains("chmod +x discord-ai-network-bot-linux"), s)
-        assertTrue(s.contains("./discord-ai-network-bot-linux"), s)
-        assertFalse(s.contains("discord-ai-network-bot-macos"), s)
-        assertFalse(s.contains("discord-ai-network-bot-windows.exe"), s)
-        assertTrue(s.contains("Ctrl + Alt + T"), s)
-        assertTrue(s.contains("앱 메뉴"), s)
-        assertTrue(s.contains("관리자에게 문의")) // relay 미설정 시 플레이스홀더
+        assertTrue(s.contains("승인되었습니다"), s) // message() 폴백
+        assertTrue(s.contains("TOK"), s)
+        // 옛 Linux CLI 바이너리 다운로드 흔적이 전혀 없어야 한다.
+        assertFalse(s.contains("discord-ai-network-bot-linux"), s)
+        assertFalse(s.contains("ollama.com/install.sh"), s)
     }
 
     @Test

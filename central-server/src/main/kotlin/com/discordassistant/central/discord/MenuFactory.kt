@@ -47,14 +47,15 @@ object MenuFactory {
     const val OS_PREFIX = "pjoin:"
     const val OS_MAC = "pjoin:mac"
     const val OS_WINDOWS = "pjoin:windows"
-    const val OS_LINUX = "pjoin:linux"
 
-    /** 프로바이더 참여: 설치할 컴퓨터(OS) 선택 버튼. 클릭 → 그 OS 의 복붙 명령. */
+    /**
+     * 프로바이더 참여: 설치할 컴퓨터(OS) 선택 버튼. 클릭 → 그 OS 의 복붙 명령.
+     * GUI 데스크톱 앱(냥시스턴트)이 배포되는 mac/Windows 만 — Linux 가이드는 폐기.
+     */
     fun osButtons(): List<Button> =
         listOf(
             Button.primary(OS_MAC, "macOS").withEmoji(Emoji.fromUnicode("🍎")),
             Button.primary(OS_WINDOWS, "Windows").withEmoji(Emoji.fromUnicode("🪟")),
-            Button.secondary(OS_LINUX, "Linux").withEmoji(Emoji.fromUnicode("🐧")),
         )
 
     /** 설정 패널 상단 안내 텍스트(현재 상태 포함). */

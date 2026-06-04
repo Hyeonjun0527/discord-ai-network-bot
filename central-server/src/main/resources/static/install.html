@@ -110,12 +110,39 @@
       filter: blur(8px); z-index: 0;
     }
     .hero-art img { position: relative; z-index: 1; width: min(620px, 100%); object-fit: contain; filter: drop-shadow(0 30px 60px rgba(0,0,0,.5)); }
-    /* Three.js 3D 컨트롤 패널 (WebGL 지원 시) — 미지원/모션축소 시 아래 webp 폴백 유지 */
-    #hero3d { position: relative; width: min(640px, 100%); aspect-ratio: 4 / 3; margin: 0 auto; }
-    #hero3dCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; opacity: 0; transition: opacity .7s ease; }
+    /* ── 시네마틱 스크롤(긴 섹션 + sticky pin + Three.js 패널 스크럽) ── */
+    .cine-topbar { position: fixed; inset: 0 0 auto 0; z-index: 60; margin: 0; width: 100%; border-radius: 0; border: 0; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, rgba(6,12,24,.9), rgba(6,12,24,0)); backdrop-filter: blur(10px); padding: 14px 30px; }
+    #cine { position: relative; height: 560vh; }
+    .cine-stage { position: sticky; top: 0; height: 100vh; width: 100%; overflow: hidden; }
+    #hero3d { margin: 0; } /* position 은 .cine-stage(sticky)가 소유 — id 로 덮어쓰지 않음 */
+    #hero3dCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; opacity: 0; transition: opacity .8s ease; }
     #hero3d.ready #hero3dCanvas { opacity: 1; }
-    #hero3dFallback { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; transition: opacity .7s ease; filter: drop-shadow(0 30px 60px rgba(0,0,0,.5)); }
+    #hero3dFallback { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; transition: opacity .8s ease; filter: drop-shadow(0 30px 60px rgba(0,0,0,.5)); }
     #hero3d.ready #hero3dFallback { opacity: 0; pointer-events: none; }
+    .cine-vignette { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: radial-gradient(130% 95% at 62% 45%, transparent 36%, rgba(4,8,15,.5) 76%, rgba(4,8,15,.92) 100%); }
+    .hud { position: absolute; width: 26px; height: 26px; border: 2px solid rgba(150,180,255,.45); z-index: 4; pointer-events: none; }
+    .hud.tl { left: 28px; top: 100px; border-right: 0; border-bottom: 0; }
+    .hud.tr { right: 28px; top: 100px; border-left: 0; border-bottom: 0; }
+    .hud.bl { left: 28px; bottom: 72px; border-right: 0; border-top: 0; }
+    .hud.br { right: 28px; bottom: 72px; border-left: 0; border-top: 0; }
+    .cine-telemetry { position: absolute; top: 100px; left: 64px; right: 64px; z-index: 4; display: flex; justify-content: space-between; color: var(--subtle); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; pointer-events: none; }
+    .beat { position: absolute; left: 64px; bottom: 17vh; max-width: 660px; z-index: 5; opacity: 0; will-change: opacity, transform; }
+    .beat .eyebrow { margin-bottom: 18px; }
+    .beat h1 { margin: 0; font-size: clamp(46px, 6.4vw, 92px); line-height: .98; letter-spacing: -.045em; font-weight: 800; }
+    .beat h2 { margin: 0; font-size: clamp(40px, 5.2vw, 74px); line-height: 1.02; letter-spacing: -.04em; font-weight: 800; }
+    .beat h1 .accent, .beat h2 .accent { background: linear-gradient(92deg,#7fe9ff,#9b7bff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .beat p { margin: 20px 0 0; color: var(--muted); font-size: clamp(15px,1.4vw,19px); line-height: 1.7; max-width: 540px; }
+    .beat .beat-num { color: #7e8ff0; font-weight: 800; letter-spacing: .16em; margin-bottom: 12px; font-size: 14px; }
+    .beat .hero-actions { margin-top: 26px; }
+    .cine-bottom { position: absolute; left: 30px; right: 30px; bottom: 22px; z-index: 6; display: flex; justify-content: space-between; align-items: center; color: var(--subtle); font: 600 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .16em; pointer-events: none; }
+    .cine-bottom .cine-mid { opacity: .55; }
+    #scrollHint { transition: opacity .4s ease; }
+    .cine-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; z-index: 6; background: rgba(255,255,255,.06); }
+    #cineFill { height: 100%; width: 100%; transform-origin: left; transform: scaleX(0); background: linear-gradient(90deg,#7fe9ff,#9b7bff,#ff6bd6); }
+    #provider { padding-top: 96px; }
+    html.lenis, html.lenis body { height: auto; }
+    .lenis.lenis-smooth { scroll-behavior: auto !important; }
+    @media (max-width: 720px) { .beat { left: 22px; right: 22px; bottom: 15vh; } .cine-telemetry { left: 24px; right: 24px; } .cine-topbar { padding: 12px 16px; } }
 
     /* ── Feature steps ── */
     .feat-head { text-align: center; margin: 56px 0 28px; }
@@ -217,21 +244,18 @@
   </style>
 </head>
 <body>
-  <div class="page" id="top">
-    <header class="topbar">
+  <header class="topbar cine-topbar">
       <div class="brand">
-        <div class="brand-logo"><img src="/img/provider-img1.png" alt="마스코트" /></div>
+        <div class="brand-logo"><img src="/img/mascot-ai.png" alt="마스코트" /></div>
         <div class="brand-text">
           <span class="brand-name">NYASSISTANT</span>
           <span class="brand-sub">AI NETWORK</span>
         </div>
       </div>
       <nav class="nav">
-        <a href="#top" data-i18n="navHome">홈</a>
-        <a href="#steps" data-i18n="navFeatures">기능</a>
-        <a href="#steps" data-i18n="navHowto">사용 방법</a>
         <a href="/presets" data-i18n="navPresets">프리셋</a>
         <a href="https://github.com/Hyeonjun0527/discord-ai-network-bot/tree/main/provider-agent" target="_blank" rel="noopener" data-i18n="navSource">소스 코드</a>
+        <a href="#provider" data-i18n="navHowto">사용 방법</a>
       </nav>
       <div class="top-actions">
         <a class="btn-dash" href="/admin/dashboard">
@@ -250,79 +274,52 @@
       </div>
     </header>
 
-    <section class="hero">
-      <div class="hero-copy">
-        <div class="eyebrow" data-i18n="heroEyebrow">AI 멤버 연결의 새로운 표준</div>
-        <h1 data-i18n="heroHeadline">AI 멤버를<br>당신의 디스코드 서버에<br><span class="accent">연결하세요.</span></h1>
-        <p data-i18n="heroBody">
-          대화하고, 명령을 수행하고, 서버를 관리하는<br>
-          지능형 AI 멤버를 몇 분 안에 초대할 수 있습니다.
-        </p>
-        <div class="hero-actions">
-          <a class="btn primary" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>
-            <span data-i18n="heroCtaPrimary">디스코드에 봇 추가</span>
-          </a>
-          <a class="btn ghost" href="#steps" data-i18n="heroCtaSecondary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z" fill="currentColor"/></svg>
-            작동 방식 알아보기
-          </a>
-        </div>
-        <div class="hero-chips">
-          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span data-i18n="heroChip1">설치 1분 완성</span></span>
-          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg><span data-i18n="heroChip2">안정적 &amp; 안전한 연결</span></span>
-          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v4h-4"/></svg><span data-i18n="heroChip3">지속적 기능 업데이트</span></span>
-        </div>
-      </div>
-      <div class="hero-art" id="hero3d">
+    <!-- ═══ 시네마틱 스크롤: 긴 섹션 + sticky pin + Three.js 패널 스크럽 ═══ -->
+    <section id="cine">
+      <div class="cine-stage" id="hero3d">
         <canvas id="hero3dCanvas" aria-hidden="true"></canvas>
-        <img id="hero3dFallback" src="/img/install-panel.webp" alt="냥시스턴트 AI 컨트롤 패널" />
+        <img id="hero3dFallback" src="/img/install-panel.webp" alt="냥시스턴트 설치 패널" />
+        <div class="cine-vignette"></div>
+        <span class="hud tl"></span><span class="hud tr"></span><span class="hud bl"></span><span class="hud br"></span>
+        <div class="cine-telemetry"><span>NETWORK LINK — LIVE</span><span>CENTRAL NODE · 99.9%</span></div>
+
+        <div class="beat" data-beat="0">
+          <div class="eyebrow" data-i18n="heroEyebrow">AI 멤버 연결의 새로운 표준</div>
+          <h1 data-i18n="heroHeadline">AI 멤버를<br>당신의 디스코드 서버에<br><span class="accent">연결하세요.</span></h1>
+          <p data-i18n="heroBody">대화하고, 명령을 수행하고, 서버를 관리하는<br>지능형 AI 멤버를 몇 분 안에 초대할 수 있습니다.</p>
+          <div class="hero-actions">
+            <a class="btn primary" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>
+              <span data-i18n="heroCtaPrimary">디스코드에 봇 추가</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="beat" data-beat="1"><div class="beat-num">STEP 01</div><h2 data-i18n="feat1Title">봇 초대하기</h2><p data-i18n="feat1Text">Discord 서버에 봇을 초대하고 권한을 설정하세요.</p></div>
+        <div class="beat" data-beat="2"><div class="beat-num">STEP 02</div><h2 data-i18n="feat2Title">명령 실행하기</h2><p data-i18n="feat2Text">다양한 명령어로 AI 멤버를 활용해 보세요.</p></div>
+        <div class="beat" data-beat="3"><div class="beat-num">STEP 03</div><h2 data-i18n="feat3Title">서버 자동화</h2><p data-i18n="feat3Text">반복적인 작업은 AI에게 맡기고, 커뮤니티에 집중하세요.</p></div>
+
+        <div class="beat" data-beat="4">
+          <div class="eyebrow">READY · 중앙 네트워크 온라인</div>
+          <h2>지금 <span class="accent">AI 멤버</span>를<br>연결하세요</h2>
+          <div class="hero-actions">
+            <a class="btn primary" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>
+              <span data-i18n="heroCtaPrimary">디스코드에 봇 추가</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="cine-bottom">
+          <span id="seq">SEQ 001 / 169</span>
+          <span class="cine-mid">NYASSISTANT // NETWORK · DIAGNOSTIC</span>
+          <span id="scrollHint">SCROLL ↓</span>
+        </div>
+        <div class="cine-progress"><div id="cineFill"></div></div>
       </div>
     </section>
 
-    <div class="feat-head" id="steps">
-      <div class="feat-eyebrow" data-i18n="featEyebrow">간단한 3단계로 시작</div>
-      <h2 class="feat-title" data-i18n="featHeading">빠르고 간편한 설정</h2>
-    </div>
-    <section class="feat-grid">
-      <article class="feat-card">
-        <div class="feat-num">01</div>
-        <div class="feat-name" data-i18n="feat1Title">봇 초대하기</div>
-        <div class="feat-text" data-i18n="feat1Text">Discord 서버에 봇을 초대하고 권한을 설정하세요.</div>
-        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.4"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M15 11h6"/></svg></div>
-      </article>
-      <article class="feat-card">
-        <div class="feat-num">02</div>
-        <div class="feat-name" data-i18n="feat2Title">명령 실행하기</div>
-        <div class="feat-text" data-i18n="feat2Text">다양한 명령어로 AI 멤버를 활용해 보세요.</div>
-        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 10l2.5 2L7 14M12.5 14H16"/></svg></div>
-      </article>
-      <article class="feat-card">
-        <div class="feat-num">03</div>
-        <div class="feat-name" data-i18n="feat3Title">서버 자동화</div>
-        <div class="feat-text" data-i18n="feat3Text">반복적인 작업은 AI에게 맡기고, 커뮤니티에 집중하세요.</div>
-        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m8.5 12 2.5 2.5L15.5 9"/></svg></div>
-      </article>
-    </section>
-
-    <section class="stats">
-      <div class="stat">
-        <div class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
-        <div><div class="stat-val">99.9%</div><div class="stat-lbl" data-i18n="statUptimeLabel">가동률 보장</div></div>
-      </div>
-      <div class="stat">
-        <div class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 7h14M5 12h14M5 17h14"/><circle cx="8" cy="7" r="1.4" fill="currentColor"/><circle cx="8" cy="17" r="1.4" fill="currentColor"/></svg></div>
-        <div><div class="stat-val">10K+</div><div class="stat-lbl" data-i18n="statServersLabel">활성 서버</div></div>
-      </div>
-      <div class="stat">
-        <div class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 8-4 4 4 4M18 8l4 4-4 4M14 4l-4 16"/></svg></div>
-        <div><div class="stat-val">1M+</div><div class="stat-lbl" data-i18n="statCommandsLabel">명령 실행</div></div>
-      </div>
-      <div class="stat">
-        <div class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
-        <div><div class="stat-val" data-i18n="statSecurityValue">보안 우선</div><div class="stat-lbl" data-i18n="statSecurityLabel">데이터 보호 설계</div></div>
-      </div>
-    </section>
+    <div class="page" id="provider">
 
     <div class="section-label" id="install" data-i18n="providerLabel">프로바이더로 참여 <span>— 내 PC의 로컬 AI를 풀에 기여 (선택)</span></div>
     <div class="tabs" id="tabs">
@@ -483,6 +480,51 @@
     }
     document.getElementById('copyBtn').addEventListener('click', copyCode);
     document.getElementById('copyBtn2').addEventListener('click', copyCode);
+  </script>
+
+  <!-- 부드러운 스크롤(Lenis) — 있으면 사용, 실패 시 네이티브 스크롤 -->
+  <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.20/dist/lenis.min.js"></script>
+  <script>
+    // 시네마틱 스크롤 진행도(0~1) → SEQ 카운터·진행바·텍스트 비트 페이드. window.__cineP 로 Three.js 패널 스크럽과 공유.
+    (function cinematic() {
+      const cine = document.getElementById('cine'); if (!cine) return;
+      const seqEl = document.getElementById('seq'), fillEl = document.getElementById('cineFill'), hintEl = document.getElementById('scrollHint');
+      const beats = [...document.querySelectorAll('.beat')];
+      const TOTAL = 169, N = beats.length || 1;
+      const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (window.Lenis && !reduce) {
+        const lenis = new window.Lenis({ lerp: 0.1, smoothWheel: true });
+        const raf = (time) => { lenis.raf(time); requestAnimationFrame(raf); };
+        requestAnimationFrame(raf);
+      }
+      const progress = () => {
+        const r = cine.getBoundingClientRect();
+        const scrollable = cine.offsetHeight - window.innerHeight;
+        return scrollable <= 0 ? 0 : Math.min(1, Math.max(0, -r.top / scrollable));
+      };
+      let lastSeq = -1, ticking = false;
+      function update() {
+        ticking = false;
+        const p = progress(); window.__cineP = p;
+        const n = Math.min(TOTAL, Math.floor(p * TOTAL) + 1);
+        if (n !== lastSeq) { lastSeq = n; if (seqEl) seqEl.textContent = 'SEQ ' + String(n).padStart(3, '0') + ' / ' + TOTAL; }
+        if (fillEl) fillEl.style.transform = 'scaleX(' + p + ')';
+        if (hintEl) hintEl.style.opacity = p > 0.02 ? '0' : '1';
+        beats.forEach((el, i) => {
+          const seg = 1 / N, start = i * seg, local = (p - start) / seg; let op;
+          if (i === 0) op = (local > 1) ? 0 : Math.max(0, Math.min(1, (1 - local) / 0.3)); // 첫 비트는 최상단에서 바로 보임
+          else if (i === N - 1) op = Math.max(0, Math.min(1, local / 0.3));                // 마지막 비트는 끝까지 유지
+          else if (p < start || local > 1) op = 0;
+          else op = Math.max(0, Math.min(1, Math.min(local / 0.3, (1 - local) / 0.3)));
+          el.style.opacity = String(op);
+          el.style.transform = 'translateY(' + ((1 - op) * 26) + 'px)';
+          el.style.pointerEvents = op > 0.5 ? 'auto' : 'none';
+        });
+      }
+      window.addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+      window.addEventListener('resize', update, { passive: true });
+      update();
+    })();
   </script>
 
   <script type="module">
@@ -721,7 +763,7 @@
       if (langSel) langSel.addEventListener('change', () => { needsRedraw = true; });
 
       const baseY = -0.5, baseX = -0.12, baseZ = -0.08;
-      let t = 0, last = performance.now(), revealed = false, intro = 0, dotPrev = true, needsRedraw = false, raf = 0;
+      let t = 0, last = performance.now(), revealed = false, intro = 0, dotPrev = true, needsRedraw = false, raf = 0, cpEased = 0;
       requestPanelRedraw = () => { needsRedraw = true; }; // 마스코트 로드 완료 시 즉시 재그리기
       function loop() {
         cancelAnimationFrame(raf);
@@ -730,12 +772,16 @@
         const dotOn = (Math.floor(t / 0.7) % 2) === 0;
         if (dotOn !== dotPrev) { dotPrev = dotOn; needsRedraw = true; }
         if (needsRedraw) { drawPanel(intro, dotOn); tex.needsUpdate = true; needsRedraw = false; }
-        px += (tx - px) * 0.07; py += (ty - py) * 0.07; // 포인터 감쇠 추종(자연스러운 흐름)
-        group.rotation.y = baseY - px * 0.30; // 마우스 올린 쪽이 앞으로 튀어나오게(좌우)
-        group.rotation.x = baseX - py * 0.18; // 마우스 올린 쪽이 앞으로(상하)
-        group.rotation.z = baseZ + px * 0.03;
-        group.position.x = px * 0.05;
-        group.position.y = Math.sin(t * 0.8) * 0.04;
+        px += (tx - px) * 0.07; py += (ty - py) * 0.07; // 포인터 감쇠 추종
+        cpEased += ((window.__cineP || 0) - cpEased) * 0.12; // 스크롤 진행도 감쇠 추종
+        const e = cpEased;
+        group.rotation.y = -0.35 - e * 0.35 - px * 0.22;                       // 우측 측면 유지하며 스크롤 따라 살짝 더 회전 + 포인터
+        group.rotation.x = -0.06 - Math.sin(e * Math.PI) * 0.10 - py * 0.12;
+        group.rotation.z = -0.04 + e * 0.10 + px * 0.02;
+        group.position.x = 0.30 - e * 0.25 + px * 0.05;                        // 우측 → 중앙 살짝 드리프트
+        group.position.y = Math.sin(t * 0.7) * 0.03;
+        camera.position.z = 4.5 - Math.sin(e * Math.PI) * 0.7;                 // 중반에 가까워졌다 멀어짐
+        camera.lookAt(0, 0.05, 0);
         renderer.render(scene, camera);
         if (!revealed) { revealed = true; root.classList.add('ready'); }
         if (visible) raf = requestAnimationFrame(loop);

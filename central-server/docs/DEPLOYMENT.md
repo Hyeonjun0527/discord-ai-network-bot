@@ -63,6 +63,7 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
     - 페이지 헤더에 로그인 상태/**로그아웃** 버튼(`/api/me`로 상태 조회, `/logout` POST). 수동 시작 URL: `https://discord-ai.yeon.world/oauth2/authorization/discord`.
     - 코드: `SecurityConfig`가 `central.oauth.enabled=true`일 때만 Discord OAuth2 `ClientRegistration`을 **코드로** 생성(빈 client-id로 application.yml에 두면 부팅이 깨짐). `CONNECT_DISCORD_*` 앱 재사용.
   - **A안 — 관리자 토큰**: `CENTRAL_DASHBOARD_ADMIN_TOKEN=<비밀>` → 페이지 상단 "관리자 접근"에 입력(이후 `X-Dashboard-Admin-Token` 자동 첨부). OAuth OFF 환경에서 페이지는 공개(읽기), 어드민 작업만 토큰 보호.
+    - 정책 쓰기(`/api/dashboard/{id}/welcome`·`auto-approve`·`role-policy`)도 **OAuth 없이 토큰만으로 동작**한다(`DashboardWriteController`는 항상 등록, 인증은 `AiNetworkApiSecurityFilter`가 토큰/OAuth 허용목록으로 강제 — 둘 다 없으면 403). 로컬(`localhost:8080`)에서도 `CENTRAL_DASHBOARD_ADMIN_TOKEN`만 주면 전 기능 테스트 가능.
 - **디스코드 userId 얻기**: 디스코드 설정 → 고급 → **개발자 모드 ON** → 내 프로필 우클릭 → **"사용자 ID 복사"**(18~19자리 숫자).
 - 로컬: `http://localhost:8080/admin/dashboard/`.
 

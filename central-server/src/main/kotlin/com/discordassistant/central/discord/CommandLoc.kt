@@ -51,6 +51,10 @@ object CommandLoc {
             "llm-role-policy" to L("역할정책", null, "Set per-role allowed level (admin)", "Политика по ролям (админ)"),
             "llm-guild-defaults" to L("서버기본값", null, "Set default model/language (admin)", "Модель/язык по умолчанию (админ)"),
             "llm-channel-profile" to L("채널프로필", null, "Set this channel's AI answer profile (admin)", "Профиль ИИ канала (админ)"),
+            "ai-onboard" to L("ai자동설정", null, "Auto-configure this channel's AI (admin)", "Авто-настройка ИИ канала (админ)"),
+            "ai-onboard-optout" to
+                L("학습제외", null, "Opt your messages out of server AI auto-learning", "Исключить мои сообщения из авто-обучения ИИ"),
+            "ai-instruction" to L("ai지침", null, "Add/edit this channel AI's freeform instruction (admin)", "Инструкция ИИ канала (админ)"),
             "providers" to L("프로바이더목록", null, "View the provider pool (admin)", "Список пула провайдеров (админ)"),
             "provider-approve" to L("프로바이더승인", null, "Approve a provider (admin)", "Одобрить провайдера (админ)"),
             "provider-remove" to L("프로바이더제거", null, "Remove a provider (admin)", "Удалить провайдера (админ)"),

@@ -56,10 +56,12 @@ EXPECT: dict[str, list[str]] = {
         pkg["wingetId"],
         install["mac"],
     ],
-    # 웹 랜딩의 "직접 다운로드" 버튼은 자산명을 리터럴(/download/<asset>)로 가리키므로 드리프트 검사 대상.
+    # 웹 랜딩: "직접 다운로드" 자산명 리터럴 + 브랜드 워드마크(SSOT of record) 드리프트 검사.
     "central-server/src/main/resources/static/install.html": [
         asset["guiMacDmg"],
         asset["guiWin"],
+        A["brandName"],
+        A["brandTagline"],
     ],
     "docs/PACKAGE_MANAGERS.md": [
         pkg["wingetId"],

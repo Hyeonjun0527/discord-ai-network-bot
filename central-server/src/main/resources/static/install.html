@@ -522,6 +522,19 @@
     document.getElementById('copyBtn2').addEventListener('click', copyCode);
   </script>
 
+  <!-- 브랜드 워드마크 단일 소스. SSOT(of record): packaging/assets.json {brandName, brandTagline}.
+       HTML 의 리터럴은 no-JS/SEO 폴백 겸 드리프트 가드(check_packaging) 대상이며, 여기서 한 번에 주입한다. -->
+  <script>
+    window.__BRAND = { name: 'NYASSISTANT', sub: 'AI NETWORK' };
+    (function applyBrand() {
+      const b = window.__BRAND;
+      const set = (sel, v) => document.querySelectorAll(sel).forEach(e => { e.textContent = v; });
+      set('.brand-name', b.name);
+      set('.brand-sub', b.sub);
+      const cm = document.querySelector('.cine-mid'); if (cm) cm.textContent = b.name + ' // NETWORK · DIAGNOSTIC';
+    })();
+  </script>
+
   <!-- 부드러운 스크롤(Lenis) — 있으면 사용, 실패 시 네이티브 스크롤 -->
   <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.20/dist/lenis.min.js"></script>
   <script>
@@ -636,7 +649,7 @@
       cx.restore();
       cx.save(); cx.lineWidth = 2; cx.strokeStyle = hexRGBA(THEME.cyan, .6); rr(hx, hy, ls, ls, 18); cx.stroke(); cx.restore();
       cx.fillStyle = '#eef2fb'; cx.font = '700 40px -apple-system, "Apple SD Gothic Neo", sans-serif'; cx.textBaseline = 'alphabetic';
-      cx.fillText('NYASSISTANT', hx + 86, hy + 32);
+      cx.fillText((window.__BRAND && window.__BRAND.name) || 'NYASSISTANT', hx + 86, hy + 32);
       cx.fillStyle = '#8aa6c8'; cx.font = '600 22px -apple-system, sans-serif'; cx.fillText(d.sub, hx + 86, hy + 60);
       const dots = [THEME.cyan, THEME.blue, THEME.violet];
       cx.save(); cx.shadowBlur = 14;

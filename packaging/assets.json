@@ -6,6 +6,8 @@
   },
   "releaseTagPrefix": "agent-v",
   "appDisplayName": "냥시스턴트",
+  "brandName": "NYASSISTANT",
+  "brandTagline": "AI NETWORK",
   "macAppBundle": "냥시스턴트.app",
   "packages": {
     "wingetId": "Nyassistant.DiscordAiNetworkBot",

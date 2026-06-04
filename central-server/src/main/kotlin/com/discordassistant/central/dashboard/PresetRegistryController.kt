@@ -2,6 +2,8 @@ package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.network.PresetBehaviorInput
 import com.discordassistant.central.network.PresetRegistryService
+import com.discordassistant.central.network.PresetWriteResult
+import com.discordassistant.central.network.PublishedPresetWriteResult
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -122,7 +124,7 @@ class PresetRegistryController(
                 visibility = request.visibility ?: "guild_private",
                 behavior = request.behavior ?: PresetBehaviorInput(),
             )
-        return mapOf("id" to preset.id, "currentRevisionId" to preset.currentRevisionId, "status" to preset.status)
+        return presetWriteResult(preset)
     }
 
     @PostMapping("/guilds/{guildId}/channels/{channelId}/save-from-channel")
@@ -141,7 +143,7 @@ class PresetRegistryController(
                 category = request.category ?: "channel_ai",
                 visibility = request.visibility ?: "guild_private",
             )
-        return mapOf("id" to preset.id, "currentRevisionId" to preset.currentRevisionId, "status" to preset.status)
+        return presetWriteResult(preset)
     }
 
     @PutMapping("/{presetId}")
@@ -159,7 +161,7 @@ class PresetRegistryController(
                 visibility = request.visibility,
                 behavior = request.behavior,
             )
-        return mapOf("id" to preset.id, "currentRevisionId" to preset.currentRevisionId, "status" to preset.status)
+        return presetWriteResult(preset)
     }
 
     @PostMapping("/{presetId}/publish")
@@ -242,7 +244,7 @@ class PresetRegistryController(
         @RequestBody request: LikePresetRequest,
     ): Map<String, Any?> {
         val published = registry.likePreset(publishedPresetId, request.userId)
-        return mapOf("id" to published.id, "likeCount" to published.likeCount)
+        return likeWriteResult(published)
     }
 
     @DeleteMapping("/published/{publishedPresetId}/like")
@@ -251,7 +253,7 @@ class PresetRegistryController(
         @RequestBody request: LikePresetRequest,
     ): Map<String, Any?> {
         val published = registry.unlikePreset(publishedPresetId, request.userId)
-        return mapOf("id" to published.id, "likeCount" to published.likeCount)
+        return likeWriteResult(published)
     }
 
     @PostMapping("/published/{publishedPresetId}/report")
@@ -384,3 +386,10 @@ data class ReviewPresetReportRequest(
     val decision: String,
     val reviewerUserId: Long? = null,
 )
+
+// 동일하게 반복되던 응답 직렬화를 한곳으로(중복 제거). 응답 키/값은 기존과 동일.
+private fun presetWriteResult(preset: PresetWriteResult): Map<String, Any?> =
+    mapOf("id" to preset.id, "currentRevisionId" to preset.currentRevisionId, "status" to preset.status)
+
+private fun likeWriteResult(published: PublishedPresetWriteResult): Map<String, Any?> =
+    mapOf("id" to published.id, "likeCount" to published.likeCount)

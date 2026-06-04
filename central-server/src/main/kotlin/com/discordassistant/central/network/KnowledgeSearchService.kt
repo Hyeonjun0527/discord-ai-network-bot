@@ -11,6 +11,7 @@ import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.RetrievalPolicyEntity
 import com.discordassistant.central.persistence.RetrievalPolicyRepository
 import org.springframework.stereotype.Service
+import com.discordassistant.central.domain.ContentSafety.USABLE_KNOWLEDGE_RISK_LEVELS as SEARCHABLE_RISK_LEVELS
 
 @Service
 class KnowledgeSearchService(
@@ -508,7 +509,6 @@ class KnowledgeSearchService(
         const val MIN_CONTEXT_SNIPPET_CHARS = 40
         const val SOURCE_PRIORITY_BOOST = 6
         const val DEFAULT_ADMIN_SOURCE_BOOST = 2
-        val SEARCHABLE_RISK_LEVELS = setOf("normal", "review")
 
         fun normalizeResponseMode(value: String): String =
             when (value.trim().lowercase()) {

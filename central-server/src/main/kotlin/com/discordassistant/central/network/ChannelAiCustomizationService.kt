@@ -5,6 +5,7 @@ import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_CONSTITUTION
 import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_PURPOSE
 import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_SAFETY_LEVEL
 import com.discordassistant.central.discord.DEFAULT_CHANNEL_AI_TONE
+import com.discordassistant.central.domain.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.persistence.AiAdminRoleEntity
 import com.discordassistant.central.persistence.AiAdminRoleRepository
@@ -1040,7 +1041,6 @@ class ChannelAiCustomizationService(
         const val SAFE_CONSTITUTION_CHARS = 1200
         const val PROMPT_USER_QUESTION_MAX = 4_000
         const val PROMPT_RAG_CONTEXT_MAX = 4_000
-        val HIGH_RISK_SAFETY_LEVELS = setOf("high", "restricted", "dangerous")
         val SENSITIVE_PROMPT_PATTERNS =
             listOf(
                 Regex("""(?i)\b(password|passwd|pwd|secret)\b"""),

@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import com.discordassistant.central.domain.PresetImportStatus
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
@@ -1070,7 +1071,6 @@ class PresetRegistryService(
         const val REDACTED_PUBLIC_TITLE = "비공개 프리셋"
         const val REDACTED_PUBLIC_TEXT = "[비공개 처리됨]"
         val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
-        val HIGH_RISK_SAFETY_LEVELS = setOf("high", "restricted", "dangerous")
         val CONFIRM_REQUIRED_CONFLICT_SEVERITIES = setOf("warning", "blocker")
     }
 }

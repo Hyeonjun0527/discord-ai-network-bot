@@ -1,6 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.ContentSafety.BLOCKING_SAFETY_FLAGS
 import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.MultiResponseRunStatus
@@ -942,7 +943,6 @@ class MultiResponseService(
         val FANOUT_OPT_IN_TAGS = setOf("multi-response", "multi_response", "fanout", "fanout-opt-in")
         val FANOUT_EXCLUSION_TAGS = setOf("fanout-excluded", "fanout-opt-out", "no-fanout", "multi-response-excluded")
         val DISABLED_POLICY_MODES = setOf("disabled", "off", "kill_switch", "kill-switch")
-        val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
         val SYNTHESIS_FLAG_SAFE_SELECTION_STRATEGIES =
             setOf("single_route_runtime", "best_successful_candidate", "best_by_heuristic")
         const val DISCORD_MESSAGE_SAFE_LIMIT = 1_900

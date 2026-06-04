@@ -314,7 +314,13 @@ class KnowledgeSpaceEntity(
     var createdBy: Long? = null,
     var createdAt: Instant = Instant.EPOCH,
     var updatedAt: Instant = Instant.EPOCH,
-)
+) {
+    /** 도메인 전이 가드: 허용되지 않은 status 전이는 거부([KnowledgeSpaceStatus] ALLOWED 맵 기준). */
+    fun transitionTo(next: KnowledgeSpaceStatus) {
+        require(status.canTransitionTo(next)) { "illegal knowledge space status transition: ${status.wire} -> ${next.wire}" }
+        status = next
+    }
+}
 
 @Entity
 @Table(name = "knowledge_source")
@@ -332,7 +338,13 @@ class KnowledgeSourceEntity(
     var addedBy: Long? = null,
     var addedAt: Instant = Instant.EPOCH,
     var indexedAt: Instant? = null,
-)
+) {
+    /** 도메인 전이 가드: 허용되지 않은 status 전이는 거부([KnowledgeSourceStatus] 의 kind 기준 전이 규칙). */
+    fun transitionTo(next: KnowledgeSourceStatus) {
+        require(status.canTransitionTo(next)) { "illegal knowledge source status transition: ${status.wire} -> ${next.wire}" }
+        status = next
+    }
+}
 
 @Entity
 @Table(name = "knowledge_document")
@@ -349,7 +361,13 @@ class KnowledgeDocumentEntity(
     @Convert(converter = KnowledgeDocumentStatusConverter::class)
     var status: KnowledgeDocumentStatus = KnowledgeDocumentStatus.PARSED,
     var parsedAt: Instant = Instant.EPOCH,
-)
+) {
+    /** 도메인 전이 가드: 허용되지 않은 status 전이는 거부([KnowledgeDocumentStatus] ALLOWED 맵 기준). */
+    fun transitionTo(next: KnowledgeDocumentStatus) {
+        require(status.canTransitionTo(next)) { "illegal knowledge document status transition: ${status.wire} -> ${next.wire}" }
+        status = next
+    }
+}
 
 @Entity
 @Table(name = "knowledge_chunk")
@@ -369,7 +387,13 @@ class KnowledgeChunkEntity(
     @Convert(converter = KnowledgeChunkStatusConverter::class)
     var status: KnowledgeChunkStatus = KnowledgeChunkStatus.READY,
     var createdAt: Instant = Instant.EPOCH,
-)
+) {
+    /** 도메인 전이 가드: 허용되지 않은 status 전이는 거부([KnowledgeChunkStatus] ALLOWED 맵 기준). */
+    fun transitionTo(next: KnowledgeChunkStatus) {
+        require(status.canTransitionTo(next)) { "illegal knowledge chunk status transition: ${status.wire} -> ${next.wire}" }
+        status = next
+    }
+}
 
 @Entity
 @Table(name = "embedding_index_job")
@@ -482,7 +506,13 @@ class MultiResponseRunEntity(
     var startedAt: Instant = Instant.EPOCH,
     var finishedAt: Instant? = null,
     var failureReason: String? = null,
-)
+) {
+    /** 도메인 전이 가드: 허용되지 않은 status 전이는 거부([MultiResponseRunStatus] ALLOWED 맵 기준). */
+    fun transitionTo(next: MultiResponseRunStatus) {
+        require(status.canTransitionTo(next)) { "illegal multi-response run status transition: ${status.wire} -> ${next.wire}" }
+        status = next
+    }
+}
 
 @Entity
 @Table(name = "candidate_answer")

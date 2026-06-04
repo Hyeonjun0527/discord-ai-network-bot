@@ -1,10 +1,12 @@
 package com.discordassistant.central.network
-
 import com.discordassistant.central.dashboard.AiNetworkDashboardController
 import com.discordassistant.central.domain.CandidateStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
+import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.MultiResponseRunStatus
+import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProposalStatus
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalEntity
@@ -170,13 +172,13 @@ class AiNetworkDashboardControllerTest
             foundation.upsertProviderCapability(
                 guildId = 100,
                 providerUserId = 300,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("llama3.1:8b"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 2,
                 dailyLimit = 20,
-                overloadRisk = "normal",
+                overloadRisk = OverloadRisk.NORMAL,
             )
 
             val response = controller.overview(100)
@@ -255,13 +257,13 @@ class AiNetworkDashboardControllerTest
             foundation.upsertProviderCapability(
                 guildId = 100,
                 providerUserId = 300,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("llama3.1:8b", "qwen-coder"),
                 capabilityTags = listOf("coding", "night"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 2,
                 dailyLimit = 20,
-                overloadRisk = "normal",
+                overloadRisk = OverloadRisk.NORMAL,
             )
             val knowledgeSpace = foundation.createKnowledgeSpace(100, 200, channelAi.id, "코드 지식", 77)
             knowledgeSources.save(
@@ -391,13 +393,13 @@ class AiNetworkDashboardControllerTest
             foundation.upsertProviderCapability(
                 guildId = 100,
                 providerUserId = 300,
-                providerState = "OVERLOADED",
+                providerState = ProviderAvailability.OVERLOADED,
                 modelNames = listOf("llama3.1:8b"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "DEEP",
+                maxBurden = ModelBurden.HEAVY,
                 maxConcurrency = 4,
                 dailyLimit = 99,
-                overloadRisk = "critical",
+                overloadRisk = OverloadRisk.CRITICAL,
             )
             val run =
                 multiResponseRuns.save(
@@ -465,24 +467,24 @@ class AiNetworkDashboardControllerTest
             foundation.upsertProviderCapability(
                 guildId = 120,
                 providerUserId = 301,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("llama3.1:8b", "qwen-coder"),
                 capabilityTags = listOf("coding", "night"),
-                maxBurden = "HEAVY",
+                maxBurden = ModelBurden.HEAVY,
                 maxConcurrency = 2,
                 dailyLimit = 20,
-                overloadRisk = "normal",
+                overloadRisk = OverloadRisk.NORMAL,
             )
             foundation.upsertProviderCapability(
                 guildId = 120,
                 providerUserId = 302,
-                providerState = "OVERLOADED",
+                providerState = ProviderAvailability.OVERLOADED,
                 modelNames = listOf("qwen-coder"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 1,
                 dailyLimit = 10,
-                overloadRisk = "critical",
+                overloadRisk = OverloadRisk.CRITICAL,
             )
             routingPolicies.save(
                 ChannelAiRoutingPolicyEntity(
@@ -604,13 +606,13 @@ class AiNetworkDashboardControllerTest
             foundation.upsertProviderCapability(
                 guildId = 502,
                 providerUserId = 777,
-                providerState = "OVERLOADED",
+                providerState = ProviderAvailability.OVERLOADED,
                 modelNames = listOf("llama3.1:8b"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "DEEP",
+                maxBurden = ModelBurden.HEAVY,
                 maxConcurrency = 1,
                 dailyLimit = 5,
-                overloadRisk = "critical",
+                overloadRisk = OverloadRisk.CRITICAL,
             )
 
             val dashboard = controller.dashboard(502, responseMode = "deep", requestedCandidates = 2, refreshOverview = true)
@@ -653,24 +655,24 @@ class AiNetworkDashboardControllerTest
             foundation.upsertProviderCapability(
                 guildId = 130,
                 providerUserId = 330,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("llama3.1:8b"),
                 capabilityTags = listOf("summary"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 2,
                 dailyLimit = 30,
-                overloadRisk = "normal",
+                overloadRisk = OverloadRisk.NORMAL,
             )
             foundation.upsertProviderCapability(
                 guildId = 130,
                 providerUserId = 331,
-                providerState = "OVERLOADED",
+                providerState = ProviderAvailability.OVERLOADED,
                 modelNames = listOf("qwen-coder"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "DEEP",
+                maxBurden = ModelBurden.HEAVY,
                 maxConcurrency = 1,
                 dailyLimit = 5,
-                overloadRisk = "critical",
+                overloadRisk = OverloadRisk.CRITICAL,
             )
             qualityFeedback.submit(
                 guildId = 130,

@@ -1,8 +1,10 @@
 package com.discordassistant.central.network
-
 import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.MultiResponseRunStatus
+import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.PresetReportStatus
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.SynthesisStatus
 import com.discordassistant.central.persistence.AiFeedbackEntity
@@ -163,24 +165,24 @@ class AiNetworkFoundationServiceTest
             service.upsertProviderCapability(
                 guildId = 100,
                 providerUserId = 300,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("llama3.1:8b", "qwen-coder"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 2,
                 dailyLimit = 50,
-                overloadRisk = "normal",
+                overloadRisk = OverloadRisk.NORMAL,
             )
             service.upsertProviderCapability(
                 guildId = 101,
                 providerUserId = 301,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("foreign-model"),
                 capabilityTags = listOf("foreign"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 1,
                 dailyLimit = 10,
-                overloadRisk = "normal",
+                overloadRisk = OverloadRisk.NORMAL,
             )
             feedbacks.save(AiFeedbackEntity(guildId = 100, channelId = 200, rating = 1))
             feedbacks.save(AiFeedbackEntity(guildId = 101, channelId = 200, rating = 1))
@@ -219,7 +221,7 @@ class AiNetworkFoundationServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = 100,
                     providerUserId = 300,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3.1:8b",
                 ),
@@ -424,13 +426,13 @@ class AiNetworkFoundationServiceTest
             service.upsertProviderCapability(
                 guildId = 100,
                 providerUserId = 301,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("llama3.1:8b"),
                 capabilityTags = emptyList(),
-                maxBurden = "LIGHT",
+                maxBurden = ModelBurden.LIGHT,
                 maxConcurrency = 1,
                 dailyLimit = 10,
-                overloadRisk = "high",
+                overloadRisk = OverloadRisk.HIGH,
             )
 
             val overview = service.refreshOverview(100)

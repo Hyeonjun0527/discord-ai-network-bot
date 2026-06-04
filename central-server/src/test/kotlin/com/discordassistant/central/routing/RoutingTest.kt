@@ -1,5 +1,4 @@
 package com.discordassistant.central.routing
-
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.ProviderState
 import org.junit.jupiter.api.Assertions.assertEquals

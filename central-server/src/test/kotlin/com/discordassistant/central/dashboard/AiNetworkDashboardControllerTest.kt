@@ -1,8 +1,10 @@
 package com.discordassistant.central.dashboard
-
 import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.KnowledgeSpaceStatus
+import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.network.AiNetworkFoundationService
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
@@ -134,13 +136,13 @@ class AiNetworkDashboardControllerTest
             foundation.upsertProviderCapability(
                 guildId = 813,
                 providerUserId = 700,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("llama3.1:8b"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 2,
                 dailyLimit = 30,
-                overloadRisk = "normal",
+                overloadRisk = OverloadRisk.NORMAL,
                 availableFromHour = 9,
                 availableToHour = 18,
             )
@@ -180,13 +182,13 @@ class AiNetworkDashboardControllerTest
             foundation.upsertProviderCapability(
                 guildId = 804,
                 providerUserId = 99001,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("llama3.1:8b"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 3,
                 dailyLimit = 40,
-                overloadRisk = "high",
+                overloadRisk = OverloadRisk.HIGH,
             )
 
             val public = dashboard.providers(804, audience = "public").single()
@@ -255,13 +257,13 @@ class AiNetworkDashboardControllerTest
             foundation.upsertProviderCapability(
                 guildId = 806,
                 providerUserId = 99002,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("llama3.1:8b"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 2,
                 dailyLimit = 30,
-                overloadRisk = "normal",
+                overloadRisk = OverloadRisk.NORMAL,
             )
 
             val response = dashboard.dashboard(806, audience = "public")
@@ -281,13 +283,13 @@ class AiNetworkDashboardControllerTest
             foundation.upsertProviderCapability(
                 guildId = 802,
                 providerUserId = 300,
-                providerState = "ONLINE",
+                providerState = ProviderAvailability.ONLINE,
                 modelNames = listOf("llama3.1:8b", "qwen-coder"),
                 capabilityTags = listOf("coding"),
-                maxBurden = "STANDARD",
+                maxBurden = ModelBurden.STANDARD,
                 maxConcurrency = 2,
                 dailyLimit = 50,
-                overloadRisk = "normal",
+                overloadRisk = OverloadRisk.NORMAL,
             )
             val channelAi =
                 channelAis.save(

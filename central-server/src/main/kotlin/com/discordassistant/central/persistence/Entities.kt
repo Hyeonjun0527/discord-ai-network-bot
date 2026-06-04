@@ -7,11 +7,15 @@ import com.discordassistant.central.domain.KnowledgeChunkStatus
 import com.discordassistant.central.domain.KnowledgeDocumentStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.KnowledgeSpaceStatus
+import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.MultiResponseRunStatus
+import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.PresetImportStatus
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProposalStatus
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.domain.ProviderState
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
@@ -282,17 +286,21 @@ class ProviderCapabilityProfileEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
     var guildId: Long = 0,
     var providerUserId: Long = 0,
-    var providerState: String = "UNKNOWN",
+    @Convert(converter = ProviderAvailabilityConverter::class)
+    var providerState: ProviderAvailability = ProviderAvailability.UNKNOWN,
     var modelCount: Int = 0,
     var modelNames: String? = null,
     var capabilityTags: String? = null,
-    var qualityTier: String = "unknown",
-    var maxBurden: String = "LIGHT",
+    @Convert(converter = ModelQualityTierConverter::class)
+    var qualityTier: ModelQualityTier = ModelQualityTier.UNKNOWN,
+    @Convert(converter = ModelBurdenConverter::class)
+    var maxBurden: ModelBurden = ModelBurden.LIGHT,
     var maxConcurrency: Int = 1,
     var dailyLimit: Int = 0,
     var availableFromHour: Int? = null,
     var availableToHour: Int? = null,
-    var overloadRisk: String = "normal",
+    @Convert(converter = OverloadRiskConverter::class)
+    var overloadRisk: OverloadRisk = OverloadRisk.NORMAL,
     var lastSeenAt: Instant? = null,
     var updatedAt: Instant = Instant.EPOCH,
 )

@@ -132,13 +132,13 @@ class ChannelAiRoutingPolicyService(
                         val providerTags = splitCsv(provider.capabilityTags).toSet()
                         val reasons =
                             buildList {
-                                if (!ProviderAvailability.isOnline(provider.providerState)) add("provider_offline")
-                                if (OverloadRisk.normalize(provider.overloadRisk) ==
+                                if (provider.providerState != ProviderAvailability.ONLINE) add("provider_offline")
+                                if (provider.overloadRisk ==
                                     OverloadRisk.CRITICAL
                                 ) {
                                     add("provider_critical_overload")
                                 }
-                                if (ModelQualityTier.rankOf(provider.qualityTier) <
+                                if (provider.qualityTier.rank <
                                     ModelQualityTier.rankOf(effective.minQualityTier)
                                 ) {
                                     add("quality_below_minimum")
@@ -149,10 +149,10 @@ class ChannelAiRoutingPolicyService(
                         ModelCandidate(
                             modelName = modelName,
                             providerUserId = provider.providerUserId,
-                            providerState = provider.providerState,
-                            qualityTier = provider.qualityTier,
-                            maxBurden = provider.maxBurden,
-                            overloadRisk = provider.overloadRisk,
+                            providerState = provider.providerState.wire,
+                            qualityTier = provider.qualityTier.wire,
+                            maxBurden = provider.maxBurden.name,
+                            overloadRisk = provider.overloadRisk.wire,
                             tags = providerTags.sorted(),
                             shadowQualityScore = feedback.shadowScore,
                             feedbackPositive = feedback.positive,
@@ -298,9 +298,9 @@ class ChannelAiRoutingPolicyService(
         providerCapabilities
             .findByGuildId(guildId)
             .asSequence()
-            .filter { ProviderAvailability.isOnline(it.providerState) }
-            .filter { OverloadRisk.normalize(it.overloadRisk) != OverloadRisk.CRITICAL }
-            .filter { ModelQualityTier.rankOf(it.qualityTier) >= ModelQualityTier.rankOf(minQualityTier) }
+            .filter { it.providerState == ProviderAvailability.ONLINE }
+            .filter { it.overloadRisk != OverloadRisk.CRITICAL }
+            .filter { it.qualityTier.rank >= ModelQualityTier.rankOf(minQualityTier) }
             .filter { provider -> providerMatchesTags(provider.capabilityTags, providerTagFilter) }
             .flatMap { splitCsv(it.modelNames).asSequence() }
             .filter { allowedModels.isEmpty() || allowedModels.contains(it) }

@@ -126,15 +126,15 @@ class AiQualityFeedbackService(
                     }
                 val avgTier =
                     when {
-                        candidates.any { it.qualityTier == ModelQualityTier.SPECIALIZED.wire } -> ModelQualityTier.SPECIALIZED.wire
-                        candidates.any { it.qualityTier == ModelQualityTier.HIGH.wire } -> ModelQualityTier.HIGH.wire
+                        candidates.any { it.qualityTier == ModelQualityTier.SPECIALIZED } -> ModelQualityTier.SPECIALIZED.wire
+                        candidates.any { it.qualityTier == ModelQualityTier.HIGH } -> ModelQualityTier.HIGH.wire
                         else -> ModelQualityTier.STANDARD.wire
                     }
                 ModelQualitySummary(
                     modelName = model,
                     providerCount = candidates.size,
                     qualityTier = avgTier,
-                    overloadRiskCount = candidates.count { OverloadRisk.normalize(it.overloadRisk) == OverloadRisk.HIGH },
+                    overloadRiskCount = candidates.count { it.overloadRisk == OverloadRisk.HIGH },
                 )
             }.sortedWith(
                 compareByDescending<ModelQualitySummary> { it.providerCount }

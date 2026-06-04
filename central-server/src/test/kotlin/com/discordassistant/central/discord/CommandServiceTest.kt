@@ -1,5 +1,8 @@
 package com.discordassistant.central.discord
-
+import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.network.ChannelAiCustomizationService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIngestionService
@@ -302,12 +305,12 @@ class CommandServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = g.guildId,
                     providerUserId = 701,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3.1:8b",
                     capabilityTags = "coding,multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
 
@@ -354,12 +357,12 @@ class CommandServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = g.guildId,
                     providerUserId = 702,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 1,
                     modelNames = "llama3.1:8b",
                     capabilityTags = "coding,multi-response",
-                    qualityTier = "high",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.HIGH,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             channelRoutingPolicies.save(
@@ -510,13 +513,13 @@ class CommandServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = g.guildId,
                     providerUserId = 1234,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelCount = 2,
                     modelNames = "llama3.1:8b,codellama:latest",
                     capabilityTags = "coding,long-context",
-                    qualityTier = "specialized",
-                    maxBurden = "STANDARD",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    maxBurden = ModelBurden.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             commands.setChannelAiProfile(
@@ -790,10 +793,10 @@ class CommandServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = guildId,
                     providerUserId = 80,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "llama3.1:8b",
-                    qualityTier = "standard",
-                    overloadRisk = "normal",
+                    qualityTier = ModelQualityTier.STANDARD,
+                    overloadRisk = OverloadRisk.NORMAL,
                 ),
             )
             channelRoutingPolicies.save(
@@ -836,10 +839,10 @@ class CommandServiceTest
                 ProviderCapabilityProfileEntity(
                     guildId = guildId,
                     providerUserId = 81,
-                    providerState = "ONLINE",
+                    providerState = ProviderAvailability.ONLINE,
                     modelNames = "qwen-coder",
-                    qualityTier = "specialized",
-                    overloadRisk = "critical",
+                    qualityTier = ModelQualityTier.SPECIALIZED,
+                    overloadRisk = OverloadRisk.CRITICAL,
                 ),
             )
             channelRoutingPolicies.save(

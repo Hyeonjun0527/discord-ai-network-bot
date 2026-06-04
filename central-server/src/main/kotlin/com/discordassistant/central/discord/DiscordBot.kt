@@ -78,12 +78,21 @@ data class BotGuildInfo(
     val name: String,
 )
 
-/** 봇이 현재 들어가 있는 길드(서버) 목록을 제공한다(웹 ‘토큰 받기’·어드민 서버 선택용). */
+/** 서버 안 텍스트 채널 한 건(어드민 채널 선택 드롭다운용). */
+data class BotChannelInfo(
+    val id: Long,
+    val name: String,
+)
+
+/** 봇이 현재 들어가 있는 길드(서버)·채널 목록을 제공한다(웹 ‘토큰 받기’·어드민 선택용). */
 interface BotGuildLister {
     fun botGuildIds(): Set<Long>
 
     /** 봇이 들어가 있는 서버를 이름과 함께 반환(미연결/비활성이면 빈 목록). 어드민 드롭다운용. */
     fun botGuilds(): List<BotGuildInfo>
+
+    /** 한 서버의 텍스트 채널을 이름과 함께 반환(미연결/없으면 빈 목록). 어드민 채널 드롭다운용. */
+    fun botChannels(guildId: Long): List<BotChannelInfo>
 }
 
 /**
@@ -120,6 +129,14 @@ class DiscordBot(
             ?.guilds
             ?.map { BotGuildInfo(it.idLong, it.name) }
             ?.sortedBy { it.name.lowercase() }
+            ?: emptyList()
+
+    /** 한 서버의 텍스트 채널을 이름과 함께(채널 위치 순). JDA 미연결/서버 없음이면 빈 목록. */
+    override fun botChannels(guildId: Long): List<BotChannelInfo> =
+        jda
+            ?.getGuildById(guildId)
+            ?.textChannels
+            ?.map { BotChannelInfo(it.idLong, it.name) }
             ?: emptyList()
 
     private val fallbackAttempted = AtomicBoolean(false)

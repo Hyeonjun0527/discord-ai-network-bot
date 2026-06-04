@@ -29,6 +29,12 @@ data class JoinResult(
     val token: String?,
 )
 
+/** 에이전트 동기화에서 ‘이 길드에 이 토큰으로 연결하라’는 한 건. */
+data class AgentJoinToken(
+    val guildId: Long,
+    val token: String,
+)
+
 private data class ProviderGuildKey(
     val providerId: Long,
     val guildId: Long,
@@ -123,6 +129,25 @@ class ProviderRegistrationService(
         val rec = providers[ProviderGuildKey(providerId, guildId)] ?: return null
         return if (rec.state == ProviderState.APPROVED) tokens.issue(providerId, guildId) else null
     }
+
+    /**
+     * 에이전트 동기화용: durable 신원(providerId)으로, 아직 연결돼 있지 않은([alreadyConnected] 제외) **승인된**
+     * 길드 각각에 일회용 토큰을 발급한다. 연동된(앱 실행 중) 사용자가 `/provider참여` 한 서버에 앱이 자동
+     * 연결되게 한다(가이드/재설치 없이 참여 완료). PENDING(미승인)·REMOVED·미등록은 제외.
+     */
+    @Transactional
+    fun joinsToConnect(
+        providerId: Long,
+        alreadyConnected: Set<Long>,
+    ): List<AgentJoinToken> =
+        providers.values
+            .filter {
+                it.providerId == providerId &&
+                    it.guildId !in alreadyConnected &&
+                    it.state != ProviderState.PENDING &&
+                    it.state != ProviderState.REMOVED &&
+                    it.state != ProviderState.UNREGISTERED
+            }.map { AgentJoinToken(it.guildId, tokens.issue(it.providerId, it.guildId)) }
 
     /**
      * 웹 ‘토큰 받기’(OAuth 온보딩): 이미 활성 등록이면 새 일회용 토큰을 발급한다. 이미 연결한 적

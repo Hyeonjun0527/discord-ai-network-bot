@@ -78,6 +78,19 @@ class ConnectionRegistry {
         return matches.singleOrNull()
     }
 
+    /**
+     * 이 Discord 사용자가 **현재 에이전트로 연결돼 있는가**(= ‘연동됨’). 어느 길드/DM 풀이든 활성 세션이 하나라도
+     * 있으면 true. `/provider참여` 가 연동된 사용자에게 가이드 대신 자동 참여를 안내할지 판정한다.
+     */
+    fun isProviderLinked(providerId: Long): Boolean = byProviderGuild.values.any { it.providerId == providerId }
+
+    /** 이 provider 가 현재 연결돼 있는 길드 집합(에이전트 동기화에서 ‘이미 연결된 길드’ 제외용). */
+    fun providerGuilds(providerId: Long): Set<Long> =
+        byProviderGuild.values
+            .filter { it.providerId == providerId }
+            .mapNotNull { it.guildId }
+            .toSet()
+
     /** 길드의 프로바이더 풀(스냅샷 복사). */
     fun byGuild(guildId: Long): List<ProviderSession> = byGuild[guildId]?.toList() ?: emptyList()
 

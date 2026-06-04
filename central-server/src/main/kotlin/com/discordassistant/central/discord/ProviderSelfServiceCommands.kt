@@ -25,10 +25,26 @@ class ProviderSelfServiceCommands(
     private val schedule: ProviderScheduleService,
     @param:Value("\${central.relay.public-url:}") private val relayPublicUrl: String,
 ) {
+    /** 이 사용자가 ‘연동됨’(앱이 어느 서버든 연결돼 있음)인가 — 가이드 대신 자동 참여로 분기하는 기준. */
+    fun providerLinked(ctx: CommandContext): Boolean = registry.isProviderLinked(ctx.userId)
+
     fun providerJoin(ctx: CommandContext): Reply {
+        // 이미 이 서버에 연결돼 있으면 더 할 일 없음(참여 완료 상태 확인).
+        if (registry.byProvider(ctx.guildId, ctx.userId) != null) {
+            return Reply("✅ 이미 이 서버에 참여 중이에요. 앱에서 모델·한도를 조정할 수 있어요.", ephemeral = true)
+        }
         // DM 글로벌 풀은 승인할 관리자가 없으므로 자동 승인(본인 PC 를 자발적으로 기여). 길드는 기존 정책대로.
         val auto = ctx.guildId == CommandService.DM_SCOPE || policy.isAutoApprove(ctx.guildId)
         val r = registration.requestJoin(ctx.userId, ctx.guildId, autoApprove = auto)
+        // 연동된(앱 실행 중) 사용자: 등록만 보장하면 앱이 동기화로 이 서버에 **자동 연결**한다(가이드/재설치 불필요).
+        if (providerLinked(ctx)) {
+            return if (auto || r.state == com.discordassistant.central.domain.ProviderState.APPROVED) {
+                Reply("✅ 참여 등록 완료! 실행 중인 냥시스턴트 앱이 잠시 후 이 서버에 자동으로 연결됩니다.", ephemeral = true)
+            } else {
+                Reply("📋 참여 신청을 접수했어요(${r.state}). 관리자 승인 후 앱이 자동으로 이 서버에 연결됩니다.", ephemeral = true)
+            }
+        }
+        // 미연동(앱 없음/미연결): 기존 설치 가이드.
         return if (r.token != null) {
             Reply(ProviderOnboarding.message(r.token, relayPublicUrl), ephemeral = true)
         } else {

@@ -13,7 +13,7 @@ from collections import deque
 from . import sysinfo
 from .config import AgentConfig
 from .connection import AgentConnection
-from .constants import IMAGE_CHUNK_CHARS, MAX_RESPONSE_CHARS, ErrorCode
+from .constants import AGENT_VERSION, IMAGE_CHUNK_CHARS, MAX_RESPONSE_CHARS, ErrorCode
 from .ollama import OllamaClient, OllamaError
 from .protocol import (
     CancelFrame,
@@ -27,6 +27,39 @@ from .protocol import (
 )
 
 logger = logging.getLogger("provider_agent.agent")
+
+
+def _agent_sync_base(relay: str) -> str:
+    """relay(wss://…/agent) → 중앙 서버 https 베이스(에이전트 동기화 엔드포인트용)."""
+    base = relay.replace("wss://", "https://").replace("ws://", "http://")
+    if base.endswith("/agent"):
+        base = base[: -len("/agent")]
+    return base.rstrip("/")
+
+
+def _post_agent_sync(base: str, durable_token: str) -> list[dict]:
+    """중앙 서버에 durable 토큰으로 자동 동기화 요청 → 승인된 미연결 서버의 일회용 토큰 목록."""
+    import json
+    import ssl
+    import urllib.request
+
+    import certifi
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    body = json.dumps({"durableToken": durable_token}).encode("utf-8")
+    # User-Agent 필수(WAF 가 기본 Python-urllib UA 를 403 으로 막는다).
+    req = urllib.request.Request(
+        base + "/provider/agent/sync",
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": f"nyassistant-agent/{AGENT_VERSION}",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+        return list(json.loads(resp.read().decode("utf-8")).get("joins") or [])
 
 
 class ProviderAgent:
@@ -299,6 +332,41 @@ class ProviderAgent:
             for i, e in enumerate(self._entries)
         ]
 
+    # ── 자동 동기화: 연동된 사용자가 디스코드 /프로바이더참여 한 새 서버에 앱이 스스로 연결 ──────
+    async def _sync_joins_once(self) -> None:
+        """durable 토큰(=연동 신원)으로 중앙 서버에 묻고, 승인됐지만 아직 연결 안 된 서버에 자동 연결한다."""
+        from .config_file import load_connections
+
+        durable = next(
+            (c.get("token") or "" for c in load_connections() if (c.get("token") or "").startswith("dv1.")),
+            "",
+        )
+        if not durable:
+            return  # durable 토큰이 아직 없으면(미연동) 동기화 불가 — 디스코드는 가이드를 준다.
+        base = _agent_sync_base(self._cfg.relay_url)
+        try:
+            joins = await asyncio.to_thread(_post_agent_sync, base, durable)
+        except Exception:  # noqa: BLE001 - 네트워크/서버 실패는 다음 주기에 재시도
+            return
+        existing = {e["guildId"] for e in self.connections_status() if e.get("guildId") is not None}
+        for jn in joins:
+            gid = jn.get("guildId")
+            token = jn.get("token")
+            if not token or gid is None or gid in existing:
+                continue
+            logger.info("새 서버 자동 참여(동기화): guild=%s", gid)
+            await self.add_connection(token, gid, jn.get("guildName"))
+
+    async def _sync_loop(self, interval_s: float = 45.0) -> None:
+        """첫 연결 직후 한 번, 그 뒤 주기적으로 자동 참여 동기화. stop 요청 시 종료."""
+        await asyncio.sleep(5.0)
+        while not self._stop.is_set():
+            await self._sync_joins_once()
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=interval_s)
+            except asyncio.TimeoutError:
+                pass
+
     @property
     def image_ready(self) -> bool:
         return self._image_ready
@@ -376,10 +444,13 @@ class ProviderAgent:
             for s in saved:
                 self._spawn_entry(self._make_entry(s["token"], s.get("guild_id"), s.get("guild_name")))
 
+        # 연동된 사용자가 디스코드 /프로바이더참여 한 새 서버에 자동 연결되도록 동기화 루프를 띄운다.
+        sync_task = asyncio.create_task(self._sync_loop())
         stop_task = asyncio.create_task(self._stop.wait())
         try:
             await stop_task
         finally:
+            sync_task.cancel()
             async with self._entries_lock:
                 entries = list(self._entries)
                 self._entries.clear()

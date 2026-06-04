@@ -44,17 +44,22 @@ EXPECT: dict[str, list[str]] = {
     ],
     ".github/workflows/agent-build.yml": [
         asset["guiMac"],
+        asset["guiMacDmg"],
         asset["guiWin"],
         asset["cliLinux"],
         asset["cliMac"],
         asset["cliWin"],
         A["macAppBundle"],
     ],
-    # 디스코드 가이드(ProviderOnboarding)와 웹 랜딩(install.html)의 SSOT 는 InstallGuide.kt 다
-    # (웹은 InstallPageController 가 런타임 주입). 따라서 install.html 은 리터럴을 갖지 않으므로 검사 대상이 아니다.
+    # 디스코드 가이드(ProviderOnboarding)의 설치 명령 SSOT 는 InstallGuide.kt.
     "central-server/src/main/kotlin/com/discordassistant/central/domain/InstallGuide.kt": [
         pkg["wingetId"],
         install["mac"],
+    ],
+    # 웹 랜딩의 "직접 다운로드" 버튼은 자산명을 리터럴(/download/<asset>)로 가리키므로 드리프트 검사 대상.
+    "central-server/src/main/resources/static/install.html": [
+        asset["guiMacDmg"],
+        asset["guiWin"],
     ],
     "docs/PACKAGE_MANAGERS.md": [
         pkg["wingetId"],

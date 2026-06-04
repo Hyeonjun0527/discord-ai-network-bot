@@ -17,6 +17,7 @@
   },
   "assets": {
     "guiMac": "nyassistant-macos.zip",
+    "guiMacDmg": "nyassistant-macos.dmg",
     "guiWin": "nyassistant-windows.exe",
     "cliLinux": "discord-ai-network-bot-linux",
     "cliMac": "discord-ai-network-bot-macos",

@@ -793,9 +793,17 @@
       const raycaster = new THREE.Raycaster();
       const ndc = new THREE.Vector2();
       // 설치 카드 직접 다운로드(서버 /download/ 공개 자산 — 정적 미리보기에선 404, 운영에선 동작).
-      const DL = { mac: '/download/nyassistant-macos.zip', win: '/download/nyassistant-windows.exe' };
-      // 패널 전면 UV(0~1) → 캔버스 y → 어느 설치 카드 위인지(mac/win/null). 카드 y: mac 172~346, win 368~542.
-      const rowFromUV = (uv) => { if (!uv) return null; const cy = (1 - uv.y) * TH; if (cy >= 168 && cy <= 352) return 'mac'; if (cy >= 364 && cy <= 548) return 'win'; return null; };
+      const DL = { mac: '/download/nyassistant-macos.dmg', win: '/download/nyassistant-windows.exe' };
+      // 패널 전면 UV(0~1) → 캔버스 좌표 → "다운로드(↓) 버튼" 위인지(mac/win/null)만 판정.
+      // 버튼 사각형: x 876~948, mac y 223~295 · win y 419~491 (drawPanel 기준). 클릭 편하게 약간 패딩.
+      const rowFromUV = (uv) => {
+        if (!uv) return null;
+        const cx = uv.x * TW, cy = (1 - uv.y) * TH;
+        if (cx < 862 || cx > 962) return null;
+        if (cy >= 207 && cy <= 311) return 'mac';
+        if (cy >= 403 && cy <= 507) return 'win';
+        return null;
+      };
       const ndcFrom = (e) => { const r = root.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1)); return r; };
       root.addEventListener('pointermove', (e) => {
         const r = ndcFrom(e);

@@ -784,8 +784,25 @@
       );
       rimMesh.position.z = 0.23;
 
+      // ── 글래시 바닥 반사: 림 네온을 아래로 뒤집어(가산합성·페이드) + 바닥 흡수 그라데이션(배경색과 어울림) ──
+      const refl = new THREE.Mesh(
+        new THREE.PlaneGeometry(W * (RW / 1024), H * (RH / 768)),
+        new THREE.MeshBasicMaterial({ map: rimTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.22 }),
+      );
+      refl.scale.y = -1; refl.position.set(0, -H * 1.06, 0.04); // 패널 바로 아래로 거울상
+      // 아래로 갈수록 배경색(다크)으로 흡수 → 글래시 바닥에 녹아드는 느낌. 우리 배경과 어울리는 톤.
+      const fcv = document.createElement('canvas'); fcv.width = 4; fcv.height = 160;
+      const fctx = fcv.getContext('2d'); const fgr = fctx.createLinearGradient(0, 0, 0, 160);
+      fgr.addColorStop(0, 'rgba(6,11,22,0)'); fgr.addColorStop(.65, 'rgba(6,11,22,.85)'); fgr.addColorStop(1, 'rgba(6,11,22,.98)');
+      fctx.fillStyle = fgr; fctx.fillRect(0, 0, 4, 160);
+      const floorFade = new THREE.Mesh(
+        new THREE.PlaneGeometry(W * 2.6, H * 1.5),
+        new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(fcv), transparent: true, depthWrite: false }),
+      );
+      floorFade.position.set(0, -H * 1.5, 0.05);
+
       const group = new THREE.Group();
-      group.add(body); group.add(rimMesh); group.add(face);
+      group.add(refl); group.add(floorFade); group.add(body); group.add(rimMesh); group.add(face);
       // 각도: 우측 측면 두께 보이게(우측 앞, y-) · 뒤로 기울임(top 후퇴, x-) · 시계방향 롤(top 우하향, z-)
       group.rotation.set(-0.12, -0.5, -0.08);
       scene.add(group);
@@ -865,9 +882,9 @@
         group.rotation.x = -0.06 - Math.sin(e * Math.PI) * 0.10 - py * 0.12;
         group.rotation.z = -0.04 + e * 0.10 + px * 0.02;
         group.position.x = 0.90 - e * 0.25 + px * 0.05;                        // 우측 배치(스크롤 따라 살짝 중앙으로)
-        group.position.y = Math.sin(t * 0.7) * 0.03;
+        group.position.y = 0.18 + Math.sin(t * 0.7) * 0.035;                   // 바닥 위로 떠 있게(+ 미세 부유)
         camera.position.z = 4.5 - Math.sin(e * Math.PI) * 0.7;                 // 중반에 가까워졌다 멀어짐
-        camera.lookAt(0, 0.05, 0);
+        camera.lookAt(0, 0.0, 0);
         renderer.render(scene, camera);
         if (!revealed) { revealed = true; root.classList.add('ready'); }
         if (visible) raf = requestAnimationFrame(loop);

@@ -267,7 +267,7 @@ class AiNetworkReadinessService {
                         description = "온라인 Provider가 없어 질문을 처리할 로컬 AI가 없습니다. /프로바이더참여 안내로 첫 PC를 연결하세요.",
                         ctaLabel = "Provider 참여 안내 열기",
                         discordCommand = "/프로바이더참여",
-                        dashboardPath = "/dashboard/providers",
+                        dashboardPath = "/admin/dashboard/providers",
                     ),
                 )
             }
@@ -281,7 +281,7 @@ class AiNetworkReadinessService {
                         description = "채널별 이름·역할·말투가 아직 없습니다. 설정 패널에서 이 채널 AI 프로필을 만들면 네트워크 정체성이 생깁니다.",
                         ctaLabel = "채널 AI 설정",
                         discordCommand = "/채널프로필",
-                        dashboardPath = "/dashboard/channels",
+                        dashboardPath = "/admin/dashboard/channels",
                     ),
                 )
             }
@@ -295,7 +295,7 @@ class AiNetworkReadinessService {
                         description = "현재 선택 가능한 모델이 적습니다. 다른 모델을 가진 Provider가 참여하면 질문 유형별 라우팅 품질이 좋아집니다.",
                         ctaLabel = "모델 지도 확인",
                         discordCommand = null,
-                        dashboardPath = "/dashboard/model-map",
+                        dashboardPath = "/admin/dashboard/model-map",
                     ),
                 )
             }
@@ -316,7 +316,7 @@ class AiNetworkReadinessService {
                         description = "README·운영규칙·FAQ를 지식공간에 등록하면 채널 AI가 서버 맥락을 더 잘 반영할 수 있습니다.",
                         ctaLabel = "지식 추가",
                         discordCommand = "/지식추가",
-                        dashboardPath = "/dashboard/knowledge",
+                        dashboardPath = "/admin/dashboard/knowledge",
                     ),
                 )
             }
@@ -333,7 +333,7 @@ class AiNetworkReadinessService {
                                 "승인/거절 후에만 채널 AI가 안전하게 바뀝니다.",
                         ctaLabel = "AI 변경 승인 대기열",
                         discordCommand = null,
-                        dashboardPath = "/dashboard/channels/approvals",
+                        dashboardPath = "/admin/dashboard/channels/approvals",
                     ),
                 )
             }
@@ -347,7 +347,7 @@ class AiNetworkReadinessService {
                         description = "미처리 신고가 ${quality.openReports}건 있습니다. 신고를 resolved/dismissed 로 정리해야 대시보드 품질 상태를 신뢰할 수 있습니다.",
                         ctaLabel = "품질 신고 검토",
                         discordCommand = null,
-                        dashboardPath = "/dashboard/quality/review",
+                        dashboardPath = "/admin/dashboard/quality/review",
                     ),
                 )
             }
@@ -361,7 +361,7 @@ class AiNetworkReadinessService {
                         description = "아직 품질 피드백이 없습니다. 따봉/신고/사유를 모으면 모델 선택과 채널 AI 개선 근거가 생깁니다.",
                         ctaLabel = "품질 대시보드 보기",
                         discordCommand = null,
-                        dashboardPath = "/dashboard/quality",
+                        dashboardPath = "/admin/dashboard/quality",
                     ),
                 )
             }
@@ -375,7 +375,7 @@ class AiNetworkReadinessService {
                         description = "과부하 Provider가 있어 깊은 답변·다중 응답보다 보호 정책이 우선됩니다. 수신정지/절약 모드/후보 수 제한을 확인하세요.",
                         ctaLabel = "과부하 알림 확인",
                         discordCommand = "/내상태",
-                        dashboardPath = "/dashboard/providers/overload",
+                        dashboardPath = "/admin/dashboard/providers/overload",
                     ),
                 )
             }
@@ -407,7 +407,7 @@ class AiNetworkReadinessService {
                         description = "Provider·채널 AI·지식·피드백 기반이 갖춰졌습니다. 이제 프리셋 공유나 다중 응답 실험을 단계적으로 켜도 됩니다.",
                         ctaLabel = "고급 기능 검토",
                         discordCommand = null,
-                        dashboardPath = "/dashboard/experiments",
+                        dashboardPath = "/admin/dashboard/experiments",
                     ),
                 )
             }

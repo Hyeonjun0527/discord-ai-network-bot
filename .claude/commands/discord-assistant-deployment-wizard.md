@@ -32,7 +32,7 @@ description: >-
 ### 어드민 대시보드 켜기 (B안: 디스코드 OAuth)
 1. ENV_FILE에 추가: `CENTRAL_OAUTH_ENABLED=true`, `CENTRAL_DASHBOARD_ADMIN_USER_IDS=<디스코드 userId(콤마구분)>`.
 2. 디스코드 개발자 포털 → OAuth 앱(`CONNECT_DISCORD_CLIENT_ID`) → Redirects에 `https://discord-ai.yeon.world/login/oauth2/code/discord` 추가.
-3. 재배포(아래) → `https://discord-ai.yeon.world/dashboard/` 접속 → 디스코드 로그인 → 허용목록이면 어드민.
+3. 재배포(아래) → `https://discord-ai.yeon.world/admin/dashboard/` 접속 → 디스코드 로그인 → 허용목록이면 어드민.
 - userId: 디스코드 설정→고급→개발자 모드 ON→프로필 우클릭 "사용자 ID 복사"(18~19자리).
 - 대안 A안(토큰): `CENTRAL_DASHBOARD_ADMIN_TOKEN=<비밀>` → 페이지 "관리자 접근"에 입력.
 
@@ -43,7 +43,7 @@ description: >-
 ### 라이브 점검 (User-Agent 필수)
 ```bash
 curl -A x https://discord-ai.yeon.world/provider/connect/status      # {"enabled":true} = OAuth 켜짐
-curl -A x -o /dev/null -w '%{http_code}\n' https://discord-ai.yeon.world/dashboard/
+curl -A x -o /dev/null -w '%{http_code}\n' https://discord-ai.yeon.world/admin/dashboard/
 ```
 
 ### 에이전트 릴리스

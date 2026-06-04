@@ -1570,6 +1570,36 @@ document.addEventListener("click", (event) => {
   const removeButton = event.target.closest(".remove-published-preset");
   if (removeButton) deletePublishedPreset(removeButton.dataset.presetId);
 });
+// 로그인 상태(Discord OAuth): 로그인 버튼 / 로그아웃 / 유저 표시.
+async function loadAuth() {
+  let me;
+  try {
+    me = await (await fetch("/api/me", { headers: { Accept: "application/json" } })).json();
+  } catch (e) {
+    return;
+  }
+  const loginLink = $("discordLogin");
+  const userSpan = $("authUser");
+  const logoutBtn = $("logoutBtn");
+  if (me.authenticated) {
+    userSpan.textContent = (me.admin ? "관리자 " : "로그인 ") + (me.userId || "");
+    userSpan.style.display = "";
+    logoutBtn.style.display = "";
+    loginLink.style.display = "none";
+  } else if (me.oauthEnabled) {
+    // OAuth 활성인데 미로그인(엣지) — 로그인 버튼 노출. 보통은 보호 경로라 자동 리디렉트됨.
+    loginLink.style.display = "";
+    userSpan.style.display = "none";
+    logoutBtn.style.display = "none";
+  }
+}
+$("logoutBtn").addEventListener("click", async () => {
+  try {
+    await fetch("/logout", { method: "POST" });
+  } catch (e) {}
+  location.href = "/admin/dashboard/";
+});
+loadAuth();
 loadWizardOptions();
 refreshPool();
 setInterval(refreshPool, 5000);

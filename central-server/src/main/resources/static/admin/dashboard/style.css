@@ -57,3 +57,8 @@ select { padding: .5rem; border-radius: 8px; border: 1px solid #8886; background
 .check { display: flex; align-items: center; gap: .5rem; padding-top: 1.4rem; }
 .check input { flex: 0; }
 .preview { min-height: 110px; white-space: pre-wrap; border: 1px solid #8883; border-radius: 10px; padding: .8rem; background: #8881; overflow: auto; }
+
+/* 로그인 상태 박스(디스코드 OAuth) — 헤더 우측 */
+.auth-box { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
+.auth-box a { color: #5865F2; font-weight: 600; text-decoration: none; }
+.auth-box a:hover { text-decoration: underline; }

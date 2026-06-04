@@ -52,7 +52,7 @@ class KnowledgeIndexingService(
         val clean = documentText.trim()
         require(clean.isNotBlank()) { "document text is required" }
         if (KnowledgeSafety.containsSensitiveMaterial(clean)) {
-            source.status = KnowledgeSourceStatus.BLOCKED_SENSITIVE
+            source.transitionTo(KnowledgeSourceStatus.BLOCKED_SENSITIVE)
             source.riskLevel = "sensitive"
             source.contentHash = sha256(clean)
             sources.save(source)
@@ -245,14 +245,14 @@ class KnowledgeIndexingService(
             )
         val now = Instant.now(clock)
         val indexedSource = sources.findByKnowledgeSpaceIdAndId(spaceId, source.id) ?: source
-        indexedSource.status = KnowledgeSourceStatus.INDEXED
+        indexedSource.transitionTo(KnowledgeSourceStatus.INDEXED)
         indexedSource.indexedAt = now
         sources.save(indexedSource)
         val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
         val chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, KnowledgeChunkStatus.READY).size
         space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { !it.status.isDeleted }
         space.chunkCount = chunkCount
-        space.status = KnowledgeSpaceStatus.READY
+        space.transitionTo(KnowledgeSpaceStatus.READY)
         space.updatedAt = now
         spaces.save(space)
         val job = queueIndexJob(guildId, space.id, triggeredBy = triggeredBy)
@@ -304,8 +304,8 @@ class KnowledgeIndexingService(
             }
         val tombstonedDocs = docs.count { it.status != KnowledgeDocumentStatus.DELETED }
         val tombstonedChunks = sourceChunks.count { it.status != KnowledgeChunkStatus.DELETED }
-        docs.filter { it.status != KnowledgeDocumentStatus.DELETED }.forEach { it.status = KnowledgeDocumentStatus.DELETED }
-        sourceChunks.filter { it.status != KnowledgeChunkStatus.DELETED }.forEach { it.status = KnowledgeChunkStatus.DELETED }
+        docs.filter { it.status != KnowledgeDocumentStatus.DELETED }.forEach { it.transitionTo(KnowledgeDocumentStatus.DELETED) }
+        sourceChunks.filter { it.status != KnowledgeChunkStatus.DELETED }.forEach { it.transitionTo(KnowledgeChunkStatus.DELETED) }
         if (sourceChunks.isNotEmpty()) chunks.saveAll(sourceChunks)
         if (docs.isNotEmpty()) documents.saveAll(docs)
         val activeSources = sources.findByKnowledgeSpaceId(space.id).filter { !it.status.isDeleted }
@@ -363,10 +363,10 @@ class KnowledgeIndexingService(
             }
         existingChunks
             .filter { it.status == KnowledgeChunkStatus.READY }
-            .forEach { it.status = KnowledgeChunkStatus.SUPERSEDED }
+            .forEach { it.transitionTo(KnowledgeChunkStatus.SUPERSEDED) }
         existingDocs
             .filter { it.status == KnowledgeDocumentStatus.PARSED }
-            .forEach { it.status = KnowledgeDocumentStatus.SUPERSEDED }
+            .forEach { it.transitionTo(KnowledgeDocumentStatus.SUPERSEDED) }
         chunks.saveAll(existingChunks)
         documents.saveAll(existingDocs)
     }

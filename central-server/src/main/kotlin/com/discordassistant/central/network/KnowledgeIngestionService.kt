@@ -427,9 +427,9 @@ class KnowledgeIngestionService(
         require(source.status.isBlocked || source.status.isReview) {
             "only blocked/review source can be manually approved: ${source.status.wire}"
         }
-        source.status = KnowledgeSourceStatus.PENDING
+        source.transitionTo(KnowledgeSourceStatus.PENDING)
         val saved = sources.save(source)
-        space.status = KnowledgeSpaceStatus.PENDING_INDEX
+        space.transitionTo(KnowledgeSpaceStatus.PENDING_INDEX)
         space.updatedAt = Instant.now(clock)
         spaces.save(space)
         audit(guildId, space.channelId, null, "knowledge_source_approve", "knowledge_source", saved.id, reason)
@@ -454,12 +454,12 @@ class KnowledgeIngestionService(
         require(source.status.isPending) { "only pending source can be indexed: ${source.status.wire}" }
         require(source.riskLevel == "normal" || source.riskLevel == "review") { "unsafe source cannot be indexed: ${source.riskLevel}" }
         val now = Instant.now(clock)
-        source.status = KnowledgeSourceStatus.INDEXED
+        source.transitionTo(KnowledgeSourceStatus.INDEXED)
         source.indexedAt = now
         val saved = sources.save(source)
         space.sourceCount = sources.findByKnowledgeSpaceId(space.id).size
         space.chunkCount = chunkCount.coerceAtLeast(0)
-        space.status = KnowledgeSpaceStatus.READY
+        space.transitionTo(KnowledgeSpaceStatus.READY)
         space.updatedAt = now
         spaces.save(space)
         audit(guildId, space.channelId, null, "knowledge_source_indexed", "knowledge_source", saved.id, "chunks=${space.chunkCount}")
@@ -481,7 +481,7 @@ class KnowledgeIngestionService(
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "knowledge source belongs to another guild" }
-        source.status = KnowledgeSourceStatus.rejected(sanitizeReason(reason))
+        source.transitionTo(KnowledgeSourceStatus.rejected(sanitizeReason(reason)))
         val saved = sources.save(source)
         audit(guildId, space.channelId, null, "knowledge_source_reject", "knowledge_source", saved.id, reason)
         return saved.toMutationResult()
@@ -502,7 +502,7 @@ class KnowledgeIngestionService(
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
                 ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "knowledge source belongs to another guild" }
-        source.status = KnowledgeSourceStatus.deleted(sanitizeReason(reason))
+        source.transitionTo(KnowledgeSourceStatus.deleted(sanitizeReason(reason)))
         val saved = sources.save(source)
         space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { it.status.isDeleted.not() }
         space.updatedAt = Instant.now(clock)

@@ -9,7 +9,7 @@
     central-server 가 동일 출처로 서빙(/admin/dashboard/) → CORS 불필요. 읽기전용 모니터링.
     관리자 API 는 Discord OAuth2 또는 X-Dashboard-Admin-Token 헤더로 보호한다.
   -->
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/admin/dashboard/style.css" />
 </head>
 <body>
   <header>
@@ -531,6 +531,6 @@
   </section>
 
   <footer>읽기 5초 폴링 · 관리자 작업은 OAuth 또는 X-Dashboard-Admin-Token 필요 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
-  <script src="app.js"></script>
+  <script src="/admin/dashboard/app.js"></script>
 </body>
 </html>

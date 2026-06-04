@@ -41,7 +41,7 @@
       "en": "Build an AI that answers members' <code>/ask</code>, remembers your server rules and notices, and chats to fit each channel.<br><b>An AI member you can call anytime, right inside your server.</b>",
       "ja": "メンバーの <code>/質問</code> に答え、サーバーのルールやお知らせを覚え、チャンネルの雰囲気に合わせて話すAIを作れます。<br><b>サーバーの中でいつでも呼べるAIメンバー</b>ができます。"
     },
-    "heroCtaPrimary": { "ko": "우리 서버 AI 켜기 ↓", "en": "Turn on your server AI ↓", "ja": "サーバーAIをオンに ↓" },
+    "heroCtaPrimary": { "ko": "디스코드에 봇 추가", "en": "Add the bot to Discord", "ja": "Discordにボットを追加" },
     "heroCtaPresets": { "ko": "채널 AI 프리셋 보기", "en": "Browse channel AI presets", "ja": "チャンネルAIプリセットを見る" },
     "step1Title": { "ko": "토큰 받기", "en": "Get a token", "ja": "トークンを取得" },
     "step1Text": {

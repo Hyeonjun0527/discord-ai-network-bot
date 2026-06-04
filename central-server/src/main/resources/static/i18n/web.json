@@ -31,9 +31,9 @@
     "ja": "メンバーの <code>/質問</code> に答え、サーバーのルールやお知らせを覚え、チャンネルの雰囲気に合わせて話すAIを作れます。<br><b>サーバーの中でいつでも呼べるAIメンバー</b>ができます。"
   },
   "heroCtaPrimary": {
-    "ko": "우리 서버 AI 켜기 ↓",
-    "en": "Turn on your server AI ↓",
-    "ja": "サーバーAIをオンに ↓"
+    "ko": "디스코드에 봇 추가",
+    "en": "Add the bot to Discord",
+    "ja": "Discordにボットを追加"
   },
   "heroCtaPresets": {
     "ko": "채널 AI 프리셋 보기",

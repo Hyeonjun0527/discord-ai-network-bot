@@ -140,11 +140,6 @@
     "en": "data protection by design",
     "ja": "データ保護設計"
   },
-  "providerLabel": {
-    "ko": "프로바이더로 참여 <span>— 내 PC의 로컬 AI를 풀에 기여 (선택)</span>",
-    "en": "Become a provider <span>— contribute your PC's local AI (optional)</span>",
-    "ja": "プロバイダーとして参加 <span>— あなたのPCのローカルAIを提供（任意）</span>"
-  },
   "step1Title": {
     "ko": "토큰 받기",
     "en": "Get a token",

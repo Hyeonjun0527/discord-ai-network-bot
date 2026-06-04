@@ -75,11 +75,6 @@
     "statCommandsLabel": { "ko": "명령 실행", "en": "commands run", "ja": "コマンド実行" },
     "statSecurityValue": { "ko": "보안 우선", "en": "Security-first", "ja": "セキュリティ優先" },
     "statSecurityLabel": { "ko": "데이터 보호 설계", "en": "data protection by design", "ja": "データ保護設計" },
-    "providerLabel": {
-      "ko": "프로바이더로 참여 <span>— 내 PC의 로컬 AI를 풀에 기여 (선택)</span>",
-      "en": "Become a provider <span>— contribute your PC's local AI (optional)</span>",
-      "ja": "プロバイダーとして参加 <span>— あなたのPCのローカルAIを提供（任意）</span>"
-    },
     "step1Title": { "ko": "토큰 받기", "en": "Get a token", "ja": "トークンを取得" },
     "step1Text": {
       "ko": "디스코드에서 <code>/프로바이더참여</code> → 내 OS 선택 → 10분·1회용 토큰 발급. (재사용 토큰은 첫 연결 시 자동 저장)",

@@ -143,8 +143,7 @@
     #hero3d { margin: 0; } /* position 은 .cine-stage(sticky)가 소유 — id 로 덮어쓰지 않음 */
     #hero3dCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; opacity: 0; transition: opacity .8s ease; }
     #hero3d.ready #hero3dCanvas { opacity: 1; }
-    #hero3dFallback { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; transition: opacity .8s ease; filter: drop-shadow(0 30px 60px rgba(0,0,0,.5)); }
-    #hero3d.ready #hero3dFallback { opacity: 0; pointer-events: none; }
+    /* webp 폴백 제거: WebGL 없으면 패널 없이 빈 채로(텍스트·CTA 는 정상). */
     .cine-vignette { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: radial-gradient(130% 95% at 62% 45%, transparent 36%, rgba(4,8,15,.5) 76%, rgba(4,8,15,.92) 100%); }
     /* WebGL 네온 글로우(림·헤일로) 밴딩 디더 — 캔버스 위에 그레이 노이즈를 얹어 계단 제거(맥북 등 고품질 디스플레이) */
     .cine-noise { position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: .4; mix-blend-mode: overlay; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E") repeat; }
@@ -306,7 +305,6 @@
     <section id="cine">
       <div class="cine-stage" id="hero3d">
         <canvas id="hero3dCanvas" aria-hidden="true"></canvas>
-        <img id="hero3dFallback" src="/img/install-panel.webp" alt="냥시스턴트 설치 패널" />
         <div class="cine-vignette"></div>
         <div class="cine-noise"></div>
         <span class="hud tl"></span><span class="hud tr"></span><span class="hud bl"></span><span class="hud br"></span>
@@ -314,7 +312,7 @@
 
         <div class="beat" data-beat="0">
           <div class="eyebrow" data-i18n="heroEyebrow">AI 멤버 연결의 새로운 표준</div>
-          <h1 data-i18n="heroHeadline">AI 멤버를<br>당신의 디스코드 서버에<br><span class="accent">연결하세요.</span></h1>
+          <h1 data-i18n="heroHeadline">당신의<br>디스코드 서버에<br>AI 멤버를 <span class="accent">초대하세요.</span></h1>
           <p data-i18n="heroBody">대화하고, 명령을 수행하고, 서버를 관리하는<br>지능형 AI 멤버를 몇 분 안에 초대할 수 있습니다.</p>
           <div class="hero-actions">
             <a class="btn primary" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener">
@@ -448,7 +446,7 @@
           apply();
         });
       }
-      fetch('/i18n/web.json')
+      fetch('/i18n/web.json', { cache: 'no-cache' }) // 항상 서버 재검증(변경 없으면 304) — stale 캐시로 폴백 덮어쓰기 방지
         .then(r => r.ok ? r.json() : null)
         .then(d => { if (d) { dict = d; apply(); } })
         .catch(() => {}); // 실패 시 기본(HTML 의 한국어) 유지
@@ -571,7 +569,7 @@
 
   <script type="module">
     // 히어로 3D 컨트롤 패널(Three.js, CDN ESM). 우리 테마(다크 네이비 + 보라/파랑 네온)에 맞춰 커스텀.
-    // WebGL 미지원·prefers-reduced-motion·CDN 실패 시 webp(#hero3dFallback) 폴백 유지. 화면 밖이면 렌더 일시정지.
+    // WebGL 미지원·prefers-reduced-motion·CDN 실패 시 → 패널 없이 빈 채로(폴백 이미지 없음). 화면 밖이면 렌더 일시정지.
     const root = document.getElementById('hero3d');
     const canvas = document.getElementById('hero3dCanvas');
     const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -671,13 +669,18 @@
         // 텍스트
         cx.fillStyle = '#eef2fb'; cx.font = '700 44px -apple-system, "Apple SD Gothic Neo", sans-serif'; cx.fillText(row.title, 208, ry + rh / 2 - 8);
         cx.fillStyle = '#9fb0cc'; cx.font = '400 26px -apple-system, "Apple SD Gothic Neo", sans-serif'; cx.fillText(row.desc, 208, ry + rh / 2 + 34);
-        // 드롭다운 버튼(라운드 글래스 + 색별 네온 외곽 + 쉐브론)
+        // 설치 버튼(라운드 글래스 + 색별 네온 외곽 + 다운로드/설치 아이콘)
         const bs = 72, bX = cardX + cw - 28 - bs, bY = ry + (rh - bs) / 2;
         const glow = isMac ? hexRGBA(THEME.violet, .85) : hexRGBA(THEME.cyan, .85);
         cx.fillStyle = 'rgba(255,255,255,.06)'; rr(bX, bY, bs, bs, 18); cx.fill();
         cx.save(); cx.shadowColor = glow; cx.shadowBlur = 16; cx.lineWidth = 2.2; cx.strokeStyle = isMac ? hexRGBA(THEME.violet, .6) : hexRGBA(THEME.cyan, .6); rr(bX, bY, bs, bs, 18); cx.stroke(); cx.restore();
-        cx.save(); cx.strokeStyle = '#eaf2ff'; cx.lineWidth = 4.5; cx.lineCap = 'round'; cx.lineJoin = 'round';
-        const ccx = bX + bs / 2, ccy = bY + bs / 2; cx.beginPath(); cx.moveTo(ccx - 13, ccy - 6); cx.lineTo(ccx, ccy + 8); cx.lineTo(ccx + 13, ccy - 6); cx.stroke(); cx.restore();
+        // 다운로드 글리프: 세로축 + 아래 화살촉 + 받침(tray)
+        cx.save(); cx.strokeStyle = '#eaf2ff'; cx.lineWidth = 4; cx.lineCap = 'round'; cx.lineJoin = 'round';
+        const ccx = bX + bs / 2, ccy = bY + bs / 2; cx.beginPath();
+        cx.moveTo(ccx, ccy - 16); cx.lineTo(ccx, ccy + 5);
+        cx.moveTo(ccx - 9, ccy - 4); cx.lineTo(ccx, ccy + 6); cx.lineTo(ccx + 9, ccy - 4);
+        cx.moveTo(ccx - 12, ccy + 15); cx.lineTo(ccx + 12, ccy + 15);
+        cx.stroke(); cx.restore();
       });
       // ── 푸터: 중앙 네트워크 서버 상태 · 온라인 ──
       const fy = ry0 + 2 * (rh + gap) + 8;
@@ -689,12 +692,13 @@
     }
 
     (async function init() {
-      if (reduceMotion) return; // 모션 최소화 사용자 → 정적 webp 유지
+      // WebGL 미지원·CDN 실패·모션축소 시 → 그냥 패널 없이(빈 채로). webp 폴백 안 띄움.
+      if (reduceMotion) return;
       let THREE;
-      try { THREE = await import('three'); } catch (e) { return; } // CDN 실패 → webp 유지
+      try { THREE = await import('three'); } catch (e) { return; }
       let renderer;
       try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); }
-      catch (e) { return; } // WebGL 미지원 → webp 유지
+      catch (e) { return; }
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       renderer.setPixelRatio(dpr);
@@ -725,38 +729,38 @@
       const face = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.985, H * 0.985), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
       face.position.z = 0.31;
 
-      // 뒤쪽 네온 헤일로(가산 합성) — 패널 뒤 보라/파랑 광원
-      const halo = document.createElement('canvas'); halo.width = halo.height = 512;
-      const hc = halo.getContext('2d'); const hg = hc.createRadialGradient(256, 256, 12, 256, 256, 256);
-      hg.addColorStop(0, hexRGBA(THEME.violet, .7)); hg.addColorStop(.5, hexRGBA(THEME.blue, .3)); hg.addColorStop(1, 'rgba(0,0,0,0)');
-      hc.fillStyle = hg; hc.fillRect(0, 0, 512, 512);
-      const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.9, H * 1.9), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(halo), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-      haloMesh.position.z = -0.35;
+      // (제거됨) 뒤쪽 네온 헤일로 — 큰 라디얼 가산합성이라 광색역 디스플레이에서 밴딩 유발 → 삭제.
 
       // ── 네온 글래스 프레임: 두꺼운 멀티컬러(시안→블루→바이올렛→퍼플→핑크) 글로우 + 외/내 이중 라인 + 코너 글로우 ──
-      const RW = 1360, RH = 1040;
+      const RW = 1700, RH = 1320; // 넓은 여백 — 와이드 글로우가 평면 끝에서 잘려 "선 경계" 생기지 않게
       const rim = document.createElement('canvas'); rim.width = RW; rim.height = RH;
       const rc = rim.getContext('2d');
       const bx = (RW - 1024) / 2, by = (RH - 768) / 2, bw = 1024, bh = 768;
       const rrk = (x, y, w, h, r) => { rc.beginPath(); rc.moveTo(x + r, y); rc.arcTo(x + w, y, x + w, y + h, r); rc.arcTo(x + w, y + h, x, y + h, r); rc.arcTo(x, y + h, x, y, r); rc.arcTo(x, y, x + w, y, r); rc.closePath(); };
       const mc = rc.createLinearGradient(bx, by, bx + bw, by + bh);
-      mc.addColorStop(0, THEME.cyan); mc.addColorStop(.28, THEME.blue); mc.addColorStop(.55, THEME.violet); mc.addColorStop(.8, THEME.purple); mc.addColorStop(1, THEME.pink);
+      // 핑크 제거 — 우리 브랜드 블루/시안 중심(+바이올렛 한 포인트). 오른쪽·아래쪽이 파란색으로.
+      mc.addColorStop(0, THEME.cyan); mc.addColorStop(.35, THEME.blue); mc.addColorStop(.62, THEME.violet); mc.addColorStop(.85, THEME.blue); mc.addColorStop(1, THEME.cyan);
       rc.lineJoin = 'round';
-      // 외곽 와이드 글로우(여러 패스로 두꺼운 발광)
-      [[120, 30, .42], [80, 22, .55], [46, 14, .72], [22, 8, .9]].forEach(([blur, w, a]) => {
+      // 외곽 와이드 글로우 — 가우시안 패스를 촘촘히(GN개) 겹쳐 부드러운 falloff.
+      // 패스가 적으면 가우시안들이 섞이며 동심원 계단(ring)이 보이므로, blur 간격을 코어 쪽으로
+      // 갈수록 더 잘게(비선형) 깔아 34→0 식 급변을 없앤다. (사용자 지적: 끝부분을 훨씬 더 다단계로)
+      const GN = 30;
+      for (let i = 0; i < GN; i++) {
+        const f = i / (GN - 1);                       // 0 = 가장 넓은 꼬리 … 1 = 코어
+        const blur = 300 * Math.pow(1 - f, 2) + 4;    // 300→4, 코어 쪽일수록 촘촘
+        const a = 0.04 + 0.6 * Math.pow(f, 2.2);      // 바깥은 아주 옅게, 코어로 갈수록 진하게
+        const w = 7 + 34 * (1 - f);
         rc.shadowBlur = blur; rc.shadowColor = hexRGBA(THEME.violet, a);
         rc.globalAlpha = a; rc.lineWidth = w; rc.strokeStyle = mc; rrk(bx, by, bw, bh, 80); rc.stroke();
-      });
+      }
       // 선명한 외곽 코어(멀티컬러 + 흰 코어)
       rc.shadowBlur = 0; rc.globalAlpha = 1; rc.lineWidth = 5; rc.strokeStyle = mc; rrk(bx, by, bw, bh, 80); rc.stroke();
       rc.lineWidth = 2.5; rc.strokeStyle = '#f4f8ff'; rrk(bx, by, bw, bh, 80); rc.stroke();
       // 안쪽 네온 라인 2겹(두꺼운 아크릴 프레임 두께감)
       rc.save(); rc.shadowBlur = 14; rc.shadowColor = hexRGBA(THEME.cyan, .9); rc.globalAlpha = .9; rc.lineWidth = 3; rc.strokeStyle = mc; rrk(bx + 30, by + 30, bw - 60, bh - 60, 60); rc.stroke();
       rc.shadowBlur = 6; rc.globalAlpha = .45; rc.lineWidth = 2; rrk(bx + 58, by + 58, bw - 116, bh - 116, 46); rc.stroke(); rc.restore();
-      // 부위별 강한 색 핫스팟(균일X): 좌상 시안 · 우상 바이올렛 · 좌하 퍼플 · 우하 시안
-      const corner = (cxp, cyp, col, rad) => { const g = rc.createRadialGradient(cxp, cyp, 2, cxp, cyp, rad); g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)'); rc.fillStyle = g; rc.fillRect(cxp - rad, cyp - rad, rad * 2, rad * 2); };
-      corner(bx, by, hexRGBA(THEME.cyan, .6), 160); corner(bx + bw, by, hexRGBA(THEME.violet, .68), 175);
-      corner(bx, by + bh, hexRGBA(THEME.purple, .72), 185); corner(bx + bw, by + bh, hexRGBA(THEME.cyan, .7), 185);
+      // (제거됨) 모서리 색 핫스팟 — 4개 라디얼 색 원이 "싸구려 게임 빛"처럼 비현실적이고
+      // 큰 라디얼이라 밴딩도 유발. 실제 네온은 테두리 전체가 균일하게 번지므로 림 라인 글로우로 충분.
       const rimTex = new THREE.CanvasTexture(rim); rimTex.colorSpace = THREE.SRGBColorSpace; rimTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
       const rimMesh = new THREE.Mesh(
         new THREE.PlaneGeometry(W * (RW / 1024), H * (RH / 768)),
@@ -765,7 +769,7 @@
       rimMesh.position.z = 0.23;
 
       const group = new THREE.Group();
-      group.add(haloMesh); group.add(body); group.add(rimMesh); group.add(face);
+      group.add(body); group.add(rimMesh); group.add(face);
       // 각도: 우측 측면 두께 보이게(우측 앞, y-) · 뒤로 기울임(top 후퇴, x-) · 시계방향 롤(top 우하향, z-)
       group.rotation.set(-0.12, -0.5, -0.08);
       scene.add(group);
@@ -783,14 +787,21 @@
       resize();
       new ResizeObserver(resize).observe(root);
 
-      // 마우스 패럴랙스(부드럽게): 패널 위에 있을 때만 기울임. 패널 기준 좌표(-1~1) → 루프에서 px,py 로 감쇠 추종.
+      // 마우스 패럴랙스: 레이캐스팅으로 "실제 패널 메시(body·face) 위"일 때만 기울임(글로우 마진 제외).
+      // 패널 밖이면 tx,ty=0 → 기본 각도로 복귀. 좌표는 패널 기준(-1~1), 루프에서 px,py 로 감쇠 추종.
       let tx = 0, ty = 0, px = 0, py = 0;
+      const raycaster = new THREE.Raycaster();
+      const ndc = new THREE.Vector2();
       root.addEventListener('pointermove', (e) => {
         const r = root.getBoundingClientRect();
-        tx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 2)));
-        ty = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height / 2)));
+        ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1));
+        raycaster.setFromCamera(ndc, camera);
+        if (raycaster.intersectObjects([body, face], false).length > 0) {
+          tx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 2)));
+          ty = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height / 2)));
+        } else { tx = 0; ty = 0; }
       }, { passive: true });
-      root.addEventListener('pointerleave', () => { tx = 0; ty = 0; }, { passive: true }); // 패널 밖이면 기본 각도로 복귀
+      root.addEventListener('pointerleave', () => { tx = 0; ty = 0; }, { passive: true });
 
       // 가시성 기반 일시정지
       let visible = true;
@@ -816,7 +827,7 @@
         group.rotation.y = -0.35 - e * 0.35 - px * 0.22;                       // 우측 측면 유지하며 스크롤 따라 살짝 더 회전 + 포인터
         group.rotation.x = -0.06 - Math.sin(e * Math.PI) * 0.10 - py * 0.12;
         group.rotation.z = -0.04 + e * 0.10 + px * 0.02;
-        group.position.x = 0.30 - e * 0.25 + px * 0.05;                        // 우측 → 중앙 살짝 드리프트
+        group.position.x = 0.90 - e * 0.25 + px * 0.05;                        // 우측 배치(스크롤 따라 살짝 중앙으로)
         group.position.y = Math.sin(t * 0.7) * 0.03;
         camera.position.z = 4.5 - Math.sin(e * Math.PI) * 0.7;                 // 중반에 가까워졌다 멀어짐
         camera.lookAt(0, 0.05, 0);

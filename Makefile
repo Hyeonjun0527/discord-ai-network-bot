@@ -30,6 +30,9 @@ contract: wire-check  ## 크로스언어 컨트랙트 테스트(양측) + 와이
 	cd provider-agent && PYTHONPATH=src ../$(PY)/python -m pytest tests/test_contract.py -q
 	JAVA_HOME=$(JAVA_HOME) $(CENTRAL) test --no-daemon --tests '*WireContractTest*'
 
+packaging-check:  ## 패키지 자산명 SSOT(packaging/assets.json) 드리프트 검사
+	python3 scripts/check_packaging.py
+
 e2e:  ## 로컬 E2E 실연동(mock Ollama+서버+에이전트)
 	$(PY)/python scripts/e2e_local.py
 

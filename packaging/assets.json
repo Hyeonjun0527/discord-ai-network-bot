@@ -1,0 +1,29 @@
+{
+  "_comment": "패키지/릴리스 자산 식별자의 단일 진실 원천(SSOT). 매니페스트(winget/scoop/brew)·릴리스 CI(agent-build.yml)·앱 가이드 코드(InstallGuide.kt)·웹 랜딩(install.html)·문서가 모두 이 값을 써야 한다. scripts/check_packaging.py 가 일치를 강제하므로, 자산명/패키지 ID 를 바꾸려면 여기서 바꾸고 소비처를 함께 갱신해야 한다(드리프트 시 CI 실패).",
+  "repo": {
+    "owner": "Hyeonjun0527",
+    "name": "discord-ai-network-bot"
+  },
+  "releaseTagPrefix": "agent-v",
+  "appDisplayName": "냥시스턴트",
+  "macAppBundle": "냥시스턴트.app",
+  "packages": {
+    "wingetId": "Nyassistant.DiscordAiNetworkBot",
+    "homebrewCask": "nyassistant",
+    "homebrewTap": "yeon-intergation-platform/tap",
+    "homebrewFormula": "discord-ai-network-bot",
+    "scoopBin": "nyassistant.exe",
+    "command": "nyassistant"
+  },
+  "assets": {
+    "guiMac": "nyassistant-macos.zip",
+    "guiWin": "nyassistant-windows.exe",
+    "cliLinux": "discord-ai-network-bot-linux",
+    "cliMac": "discord-ai-network-bot-macos",
+    "cliWin": "discord-ai-network-bot-windows.exe"
+  },
+  "installCommands": {
+    "mac": "brew install --cask yeon-intergation-platform/tap/nyassistant",
+    "win": "winget install --id Nyassistant.DiscordAiNetworkBot -e --accept-source-agreements"
+  }
+}

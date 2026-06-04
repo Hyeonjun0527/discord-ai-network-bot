@@ -1312,6 +1312,7 @@ function renderAiNetwork(data) {
   renderLaunchChecklist(data.launchChecklist || null);
   renderOverviewSummary(data);
   renderProviderDonut(data.providers);
+  renderServerChannels(data.channels || []);
 }
 
 // Overview 페이지의 '네트워크 준비 상태'·'지금 할 일' 카드를 서버 데이터로 채운다.
@@ -1545,6 +1546,7 @@ async function loadGuild() {
     tbody.innerHTML = requests.map((r) =>
       `<tr><td>${r.requestId}</td><td>${r.state}</td><td>${r.burden}</td><td>${r.providerId ?? "-"}</td><td>${r.createdAt}</td></tr>`,
     ).join("") || `<tr><td colspan="5">요청 없음</td></tr>`;
+    loadProviderPicker();
   } catch (e) {
     alert(`불러오기 실패: ${e.message}`);
   }
@@ -1655,20 +1657,13 @@ $("logoutBtn").addEventListener("click", async () => {
   } catch (e) {}
   location.href = "/admin/dashboard/";
 });
-// ── 사이드바 라우터: data-page 로 페이지 전환(해시 동기화). ────────────────
+// ── 라우터(entity-first): Overview → 서버(서브탭) → 채널(탭). ────────────────
 function showPage(name) {
-  const pages = document.querySelectorAll("main .page");
-  let matched = false;
-  pages.forEach((p) => {
-    const on = p.dataset.page === name;
-    p.hidden = !on;
-    if (on) matched = true;
+  const valid = ["overview", "server", "channel"];
+  if (!valid.includes(name)) name = "overview";
+  document.querySelectorAll("main .page").forEach((p) => {
+    p.hidden = p.dataset.page !== name;
   });
-  if (!matched) {
-    const first = document.querySelector('main .page[data-page="overview"]');
-    if (first) first.hidden = false;
-    name = "overview";
-  }
   document.querySelectorAll("nav.side a").forEach((a) => {
     a.classList.toggle("active", a.dataset.page === name);
   });
@@ -1683,21 +1678,123 @@ document.querySelectorAll("nav.side a").forEach((a) => {
   });
 });
 
-// 채널 AI 만들기 드로어(오른쪽 슬라이드 패널).
-function openChannelAiDrawer() {
-  $("channelAiDrawer")?.classList.add("open");
-  $("channelAiBackdrop")?.classList.add("open");
+// 서버 상세 서브탭(요약·채널·참여PC·프리셋·정책).
+function showServerTab(name) {
+  document.querySelectorAll('main .page[data-page="server"] .tabpane').forEach((p) => {
+    p.hidden = p.dataset.stab !== name;
+  });
+  document.querySelectorAll("#serverTabs .tab").forEach((b) => {
+    b.classList.toggle("active", b.dataset.stab === name);
+  });
+  if (name === "providers") loadProviderPicker();
 }
-function closeChannelAiDrawer() {
-  $("channelAiDrawer")?.classList.remove("open");
-  $("channelAiBackdrop")?.classList.remove("open");
+document.querySelectorAll("#serverTabs .tab").forEach((b) => {
+  b.addEventListener("click", () => showServerTab(b.dataset.stab));
+});
+
+// 채널 상세 탭(채널AI·모델·지식·품질·고급).
+function showChannelTab(name) {
+  document.querySelectorAll('main .page[data-page="channel"] .tabpane').forEach((p) => {
+    p.hidden = p.dataset.ctab !== name;
+  });
+  document.querySelectorAll("#channelTabs .tab").forEach((b) => {
+    b.classList.toggle("active", b.dataset.ctab === name);
+  });
 }
-$("openChannelAiDrawer")?.addEventListener("click", openChannelAiDrawer);
-$("closeChannelAiDrawer")?.addEventListener("click", closeChannelAiDrawer);
-$("channelAiBackdrop")?.addEventListener("click", closeChannelAiDrawer);
+document.querySelectorAll("#channelTabs .tab").forEach((b) => {
+  b.addEventListener("click", () => showChannelTab(b.dataset.ctab));
+});
+
+// 채널 선택 = 클릭/입력 한 번으로 모든 채널-스코프 설정의 channelId 를 동기화(직접 입력 제거).
+const CHANNEL_ID_FIELDS = ["wizardChannelId", "routingChannelId", "knowledgeChannelId", "qualityChannelId", "multiChannelId"];
+function openChannel(channelId, name) {
+  const cid = String(channelId || "").trim();
+  if (!/^\d+$/.test(cid)) {
+    alert("채널 ID(숫자)를 입력하거나 목록에서 채널을 선택하세요.");
+    return;
+  }
+  CHANNEL_ID_FIELDS.forEach((id) => {
+    const el = $(id);
+    if (el) el.value = cid;
+  });
+  const label = name && name.trim() ? name.trim() : `채널 ${cid}`;
+  $("channelDetailName").textContent = `채널 상세 · ${label}`;
+  $("channelCrumbName").textContent = label;
+  $("channelCrumb").hidden = false;
+  if (history.replaceState) history.replaceState(null, "", "#channel");
+  showPage("channel");
+  showChannelTab("channel-ai");
+}
+
+// 서버 채널 목록(클릭 → 채널 상세). renderAiNetwork 가 data.channels 로 호출.
+function renderServerChannels(channels) {
+  renderList(
+    "serverChannelList",
+    channels,
+    "이 서버에 채널 AI가 없습니다. 위에서 새 채널 ID를 입력해 채널을 열고 만들 수 있습니다.",
+    (c) =>
+      `<li class="channel-item" data-channel-id="${esc(c.channelId)}" data-channel-name="${esc(c.name || "")}">` +
+      `<strong>#${esc(c.channelId)} · ${esc(c.name || "이름 없음")}</strong>` +
+      `<span>${esc(c.readinessStatus || "")} · ${esc(c.purpose || "역할 미설정")} · 클릭하여 상세 →</span></li>`,
+  );
+}
+$("serverChannelList")?.addEventListener("click", (e) => {
+  const li = e.target.closest(".channel-item");
+  if (li) openChannel(li.dataset.channelId, li.dataset.channelName);
+});
+$("openNewChannel")?.addEventListener("click", () => openChannel($("newChannelId").value, ""));
+$("channelBack")?.addEventListener("click", () => {
+  showPage("server");
+  showServerTab("channels");
+});
+
+// 서버 선택 드롭다운(봇이 들어가 있는 서버 목록). 18자리 ID 를 외워 입력하지 않게 한다.
+async function loadGuildPicker() {
+  const sel = $("guildPicker");
+  if (!sel) return;
+  try {
+    const guilds = await getJson("/api/dashboard/guilds");
+    sel.innerHTML = guilds.length
+      ? '<option value="">서버 선택…</option>' +
+        guilds.map((g) => `<option value="${esc(g.id)}">${esc(g.name)} (${esc(g.id)})</option>`).join("")
+      : '<option value="">연결된 서버 없음 — ID 직접 입력</option>';
+  } catch (e) {
+    sel.innerHTML = '<option value="">서버 목록 불가(권한/봇) — ID 직접 입력</option>';
+  }
+}
+$("guildPicker")?.addEventListener("change", (e) => {
+  const v = e.target.value;
+  if (!v) return;
+  $("guildId").value = v;
+  loadGuild();
+});
+
+// 참여 PC 선택 드롭다운(선택한 서버의 프로바이더). userId 직접 입력 대신 클릭 선택.
+async function loadProviderPicker() {
+  const sel = $("safetyProviderPicker");
+  const gid = $("guildId").value.trim();
+  if (!sel || !/^\d+$/.test(gid)) return;
+  try {
+    const providers = await getJson(`/api/ai-network/${gid}/providers?audience=admin`);
+    const rows = (providers || []).filter((p) => p.providerUserId != null);
+    sel.innerHTML = rows.length
+      ? '<option value="">참여 PC 선택…</option>' +
+        rows
+          .map((p) => `<option value="${esc(p.providerUserId)}">${esc(p.providerLabel)} · ${esc(p.state)} · 모델 ${esc(p.modelCount)}</option>`)
+          .join("")
+      : '<option value="">참여 PC 없음 — ID 직접 입력</option>';
+  } catch (e) {
+    sel.innerHTML = '<option value="">목록 불가(권한) — ID 직접 입력</option>';
+  }
+}
+$("safetyProviderPicker")?.addEventListener("change", (e) => {
+  if (e.target.value) $("safetyProviderId").value = e.target.value;
+});
 
 showPage((location.hash || "#overview").slice(1));
+showServerTab("summary");
 loadAuth();
 loadWizardOptions();
+loadGuildPicker();
 refreshPool();
 setInterval(refreshPool, 5000);

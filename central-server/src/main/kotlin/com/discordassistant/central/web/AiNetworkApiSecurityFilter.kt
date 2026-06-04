@@ -61,6 +61,8 @@ class AiNetworkApiSecurityFilter(
             return true
         }
         if (path.startsWith("/api/dashboard") && method in UNSAFE_METHODS) return true
+        // 서버 목록(이름 포함)은 운영 정보이므로 GET 이라도 관리자만(토큰/OAuth). 어드민 드롭다운용.
+        if (path == "/api/dashboard/guilds") return true
         if (!path.startsWith("/api/ai-network")) return false
         if (isPublicAiNetworkEndpoint(path, method)) return false
         if (method in UNSAFE_METHODS) return true

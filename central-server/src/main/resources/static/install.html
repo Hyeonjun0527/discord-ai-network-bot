@@ -30,7 +30,7 @@
 
       /* 중립(구조색) */
       --bg-0: #060c18; --bg-1: #03070f; --panel: #0c1424;
-      --line: color-mix(in srgb, var(--c-accent) 16%, transparent);
+      --line: rgba(150, 168, 220, .12);  /* 중립 테두리(원래값 유지 — accent 로 물들이지 않음) */
       --text: #eef2fb; --muted: #9aa6bf; --subtle: #6f7c95; --warn: #e3a53f;
       --glow: var(--c-accent);
 
@@ -43,8 +43,8 @@
     body {
       margin: 0; color: var(--text);
       background:
-        radial-gradient(1100px 520px at 78% 2%, color-mix(in srgb, var(--c-purple) 22%, transparent), transparent 60%),
-        radial-gradient(900px 480px at 18% 0%, color-mix(in srgb, var(--c-blue) 18%, transparent), transparent 55%),
+        radial-gradient(1100px 520px at 78% 2%, rgba(86, 78, 196, .20), transparent 60%),
+        radial-gradient(900px 480px at 18% 0%, rgba(46, 86, 178, .16), transparent 55%),
         linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 100%);
     }
     body::before {
@@ -150,10 +150,10 @@
     .hud.bl { left: 28px; bottom: 72px; border-right: 0; border-top: 0; }
     .hud.br { right: 28px; bottom: 72px; border-left: 0; border-top: 0; }
     .cine-telemetry { position: absolute; top: 100px; left: 64px; right: 64px; z-index: 4; display: flex; justify-content: space-between; color: var(--subtle); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; pointer-events: none; }
-    .beat { position: absolute; left: 64px; bottom: 17vh; max-width: 660px; z-index: 5; opacity: 0; will-change: opacity, transform; }
-    .beat .eyebrow { margin-bottom: 18px; }
-    .beat h1 { margin: 0; font-size: clamp(46px, 6.4vw, 92px); line-height: .98; letter-spacing: -.045em; font-weight: 800; }
-    .beat h2 { margin: 0; font-size: clamp(40px, 5.2vw, 74px); line-height: 1.02; letter-spacing: -.04em; font-weight: 800; }
+    .beat { position: absolute; left: 64px; bottom: 13vh; max-width: 620px; z-index: 5; opacity: 0; will-change: opacity, transform; }
+    .beat .eyebrow { margin-bottom: 14px; }
+    .beat h1 { margin: 0; font-size: clamp(36px, 4.8vw, 72px); line-height: 1.0; letter-spacing: -.04em; font-weight: 800; }
+    .beat h2 { margin: 0; font-size: clamp(32px, 4.2vw, 60px); line-height: 1.04; letter-spacing: -.035em; font-weight: 800; }
     .beat h1 .accent, .beat h2 .accent { background: var(--grad-accent); -webkit-background-clip: text; background-clip: text; color: transparent; }
     .beat p { margin: 20px 0 0; color: var(--muted); font-size: clamp(15px,1.4vw,19px); line-height: 1.7; max-width: 540px; }
     .beat .beat-num { color: var(--c-accent); font-weight: 800; letter-spacing: .16em; margin-bottom: 12px; font-size: 14px; }

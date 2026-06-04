@@ -65,6 +65,9 @@ cd provider-agent && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov
   SSOT 는 `protocol/wire-contract.json` 이다. 수정 후 `make wire-gen`(= `python scripts/gen_wire_contract.py`)
   으로 Kotlin(`WireContractGenerated.kt`)·Python(`_wire_contract_generated.py`)을 재생성한다(직접 편집 금지).
   검증은 `make contract`(드리프트 체크 `wire-check` + 양측 컨트랙트 테스트 WireContractTest·test_contract).
+- **패키지/릴리스 자산명 변경**: 패키지 ID·릴리스 자산 파일명·설치 명령의 SSOT 는 `packaging/assets.json`
+  이다. 매니페스트(winget/scoop/brew)·릴리스 CI(`agent-build.yml`)·앱 가이드(`InstallGuide.kt`)·문서가
+  모두 이 값을 써야 한다. 변경 후 `make packaging-check`(= `scripts/check_packaging.py`)로 드리프트 검증.
 - **문서 변경**: `scripts/check_links.py`(상대 링크) 통과.
 
 ## 커밋 / 브랜치 / PR

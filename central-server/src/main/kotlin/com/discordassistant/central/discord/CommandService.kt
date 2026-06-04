@@ -2,6 +2,7 @@ package com.discordassistant.central.discord
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.network.AiNetworkLaunchChecklistService
 import com.discordassistant.central.network.AiNetworkMap
 import com.discordassistant.central.network.AiNetworkMapService
@@ -420,15 +421,7 @@ class CommandService(
         return safeText + notice
     }
 
-    private fun normalizeAskResponseMode(value: String?): String? =
-        when (value?.trim()?.lowercase()) {
-            null, "" -> null
-            "fast", "빠른", "빠른 답변" -> "fast"
-            "deep", "깊은", "깊은 답변" -> "deep"
-            "saving", "절약", "절약 모드" -> "saving"
-            "balanced", "균형", "균형 모드" -> "balanced"
-            else -> null
-        }
+    private fun normalizeAskResponseMode(value: String?): String? = ResponseMode.normalizeOrNull(value)?.wire
 
     private fun String.composeExecutionPrompt(
         ctx: CommandContext,

@@ -9,7 +9,11 @@ import com.discordassistant.central.dashboard.ModelMapResponse
 import com.discordassistant.central.dashboard.ProviderCapabilityResponse
 import com.discordassistant.central.dashboard.PublishedPresetResponse
 import com.discordassistant.central.domain.KnowledgeSpaceStatus
+import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProposalStatus
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalRepository
@@ -176,10 +180,10 @@ class AiNetworkDashboardQueryService(
                 ModelMapResponse(
                     modelName = modelName,
                     totalProviderCount = providers.size,
-                    onlineProviderCount = providers.count { it.providerState.equals("ONLINE", ignoreCase = true) },
-                    protectedProviderCount = providers.count { it.overloadRisk.lowercase() in PROTECTED_OVERLOAD_RISKS },
-                    qualityTiers = providers.map { it.qualityTier }.distinct().sortedByDescending { qualityRank(it) },
-                    maxBurdens = providers.map { it.maxBurden }.distinct().sortedByDescending { burdenRank(it) },
+                    onlineProviderCount = providers.count { ProviderAvailability.isOnline(it.providerState) },
+                    protectedProviderCount = providers.count { OverloadRisk.isOverloadRisk(it.overloadRisk) },
+                    qualityTiers = providers.map { it.qualityTier }.distinct().sortedByDescending { ModelQualityTier.rankOf(it) },
+                    maxBurdens = providers.map { it.maxBurden }.distinct().sortedByDescending { ModelBurden.rankOf(it) },
                     tags = providers.flatMap { it.tags }.distinct().sorted(),
                     channelCount = modelToChannels[modelName].orEmpty().size,
                     channels = modelToChannels[modelName].orEmpty().sorted(),
@@ -291,23 +295,6 @@ class AiNetworkDashboardQueryService(
         return copy(readinessStatus = readiness, missingParts = missing, nextActions = actions)
     }
 
-    private fun qualityRank(value: String): Int =
-        when (value.trim().lowercase()) {
-            "specialized" -> 3
-            "high" -> 2
-            "standard" -> 1
-            else -> 0
-        }
-
-    private fun burdenRank(value: String): Int =
-        when (value.trim().uppercase()) {
-            "RESTRICTED" -> 4
-            "HEAVY", "DEEP" -> 3
-            "STANDARD" -> 2
-            "LIGHT" -> 1
-            else -> 0
-        }
-
     private fun splitCsv(value: String?): List<String> =
         value
             .orEmpty()
@@ -326,6 +313,5 @@ class AiNetworkDashboardQueryService(
 
     private companion object {
         val BLOCKING_KNOWLEDGE_RISKS = setOf("sensitive", "ssrf")
-        val PROTECTED_OVERLOAD_RISKS = setOf("high", "critical")
     }
 }

@@ -15,6 +15,7 @@ import java.net.URI
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
+import com.discordassistant.central.domain.ContentSafety.USABLE_KNOWLEDGE_RISK_LEVELS as INDEXABLE_RISK_LEVELS
 
 @Service
 class KnowledgeIngestionService(
@@ -766,7 +767,6 @@ class KnowledgeIngestionService(
         const val DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
         val ALLOWED_SOURCE_TYPES = setOf("file", "link", "text", "faq", "constitution", "preset")
         val BLOCKING_RISK_LEVELS = setOf("sensitive", "ssrf")
-        val INDEXABLE_RISK_LEVELS = setOf("normal", "review")
         val IPV4_LITERAL = Regex("""\d{1,3}(?:\.\d{1,3}){3}""")
         val IPV4_NUMBER_PART = Regex("""(?i)(?:0x[0-9a-f]+|\d+)""")
     }

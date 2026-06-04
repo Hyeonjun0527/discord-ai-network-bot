@@ -1,5 +1,9 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
+import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
@@ -128,9 +132,17 @@ class ChannelAiRoutingPolicyService(
                         val providerTags = splitCsv(provider.capabilityTags).toSet()
                         val reasons =
                             buildList {
-                                if (!provider.providerState.equals("ONLINE", ignoreCase = true)) add("provider_offline")
-                                if (provider.overloadRisk.equals("critical", ignoreCase = true)) add("provider_critical_overload")
-                                if (qualityRank(provider.qualityTier) < qualityRank(effective.minQualityTier)) add("quality_below_minimum")
+                                if (!ProviderAvailability.isOnline(provider.providerState)) add("provider_offline")
+                                if (OverloadRisk.normalize(provider.overloadRisk) ==
+                                    OverloadRisk.CRITICAL
+                                ) {
+                                    add("provider_critical_overload")
+                                }
+                                if (ModelQualityTier.rankOf(provider.qualityTier) <
+                                    ModelQualityTier.rankOf(effective.minQualityTier)
+                                ) {
+                                    add("quality_below_minimum")
+                                }
                                 if (allowedModels.isNotEmpty() && modelName !in allowedModels) add("model_not_allowed")
                                 if (tagFilter.isNotEmpty() && providerTags.intersect(tagFilter).isEmpty()) add("provider_tag_mismatch")
                             }
@@ -202,15 +214,15 @@ class ChannelAiRoutingPolicyService(
             .map { (modelName, modelCandidates) ->
                 val eligible = modelCandidates.filter { it.eligible }
                 val reasons = modelCandidates.flatMap { it.ineligibleReasons }.distinct().sorted()
-                val bestQuality = modelCandidates.maxOfOrNull { qualityRank(it.qualityTier) } ?: 0
-                val protectedCount = modelCandidates.count { it.overloadRisk.equals("critical", ignoreCase = true) }
+                val bestQuality = modelCandidates.maxOfOrNull { ModelQualityTier.rankOf(it.qualityTier) } ?: 0
+                val protectedCount = modelCandidates.count { OverloadRisk.normalize(it.overloadRisk) == OverloadRisk.CRITICAL }
                 val shadowScore = modelCandidates.filter { it.eligible }.sumOf { it.shadowQualityScore }
                 ModelCandidateSummary(
                     modelName = modelName,
                     eligibleProviderCount = eligible.size,
                     totalProviderCount = modelCandidates.size,
                     protectedProviderCount = protectedCount,
-                    bestQualityTier = qualityTierName(bestQuality),
+                    bestQualityTier = ModelQualityTier.ofRank(bestQuality).wire,
                     shadowQualityScore = shadowScore,
                     feedbackPositive = modelCandidates.sumOf { it.feedbackPositive },
                     feedbackNegative = modelCandidates.sumOf { it.feedbackNegative },
@@ -225,7 +237,7 @@ class ChannelAiRoutingPolicyService(
                 compareByDescending<ModelCandidateSummary> { it.preferred && it.available }
                     .thenByDescending { it.available }
                     .thenByDescending { it.eligibleProviderCount }
-                    .thenByDescending { qualityRank(it.bestQualityTier) }
+                    .thenByDescending { ModelQualityTier.rankOf(it.bestQualityTier) }
                     .thenByDescending { it.shadowQualityScore }
                     .thenBy { it.modelName },
             ).markRecommended()
@@ -251,14 +263,6 @@ class ChannelAiRoutingPolicyService(
 
     private fun List<ModelCandidateSummary>.markRecommended(): List<ModelCandidateSummary> =
         mapIndexed { index, summary -> summary.copy(recommended = index == 0 && summary.available) }
-
-    private fun qualityTierName(rank: Int): String =
-        when (rank) {
-            3 -> "specialized"
-            2 -> "high"
-            1 -> "standard"
-            else -> "unknown"
-        }
 
     private fun modelCandidateSafetySummary(
         candidates: List<ModelCandidate>,
@@ -294,9 +298,9 @@ class ChannelAiRoutingPolicyService(
         providerCapabilities
             .findByGuildId(guildId)
             .asSequence()
-            .filter { it.providerState.equals("ONLINE", ignoreCase = true) }
-            .filter { !it.overloadRisk.equals("critical", ignoreCase = true) }
-            .filter { qualityRank(it.qualityTier) >= qualityRank(minQualityTier) }
+            .filter { ProviderAvailability.isOnline(it.providerState) }
+            .filter { OverloadRisk.normalize(it.overloadRisk) != OverloadRisk.CRITICAL }
+            .filter { ModelQualityTier.rankOf(it.qualityTier) >= ModelQualityTier.rankOf(minQualityTier) }
             .filter { provider -> providerMatchesTags(provider.capabilityTags, providerTagFilter) }
             .flatMap { splitCsv(it.modelNames).asSequence() }
             .filter { allowedModels.isEmpty() || allowedModels.contains(it) }
@@ -365,21 +369,7 @@ class ChannelAiRoutingPolicyService(
             else -> null
         }
 
-    private fun qualityRank(value: String): Int =
-        when (value.trim().lowercase()) {
-            "specialized" -> 3
-            "high" -> 2
-            "standard" -> 1
-            else -> 0
-        }
-
-    private fun normalizeResponseMode(value: String): String =
-        when (value.trim().lowercase()) {
-            "fast", "빠른", "빠른 답변" -> "fast"
-            "deep", "깊은", "깊은 답변" -> "deep"
-            "saving", "절약", "절약 모드" -> "saving"
-            else -> "balanced"
-        }
+    private fun normalizeResponseMode(value: String): String = ResponseMode.normalize(value).wire
 
     private fun List<String>.normalizedCsv(): String? =
         map { it.trim() }

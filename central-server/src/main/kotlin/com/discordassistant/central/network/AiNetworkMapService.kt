@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
@@ -33,7 +34,7 @@ class AiNetworkMapService(
                     AiNetworkModelNode(
                         modelName = modelName,
                         providerCount = providersForModel.size,
-                        onlineProviderCount = providersForModel.count { it.providerState.equals("ONLINE", ignoreCase = true) },
+                        onlineProviderCount = providersForModel.count { ProviderAvailability.isOnline(it.providerState) },
                         qualityTiers = providersForModel.map { it.qualityTier }.distinct().sorted(),
                         maxBurdens = providersForModel.map { it.maxBurden }.distinct().sorted(),
                         tags = providersForModel.flatMap { splitCsv(it.capabilityTags) }.distinct().sorted(),

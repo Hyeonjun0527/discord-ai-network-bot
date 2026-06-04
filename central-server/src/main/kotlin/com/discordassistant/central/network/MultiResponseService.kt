@@ -1,8 +1,12 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.ContentSafety.BLOCKING_SAFETY_FLAGS
 import com.discordassistant.central.domain.FeedbackStatus
+import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.MultiResponseRunStatus
+import com.discordassistant.central.domain.OverloadRisk
+import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.domain.SynthesisStatus
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
@@ -736,20 +740,20 @@ class MultiResponseService(
         fanoutAllowed: Boolean = true,
     ): List<ProviderCapabilityProfileEntity> {
         val providers = providerCapabilities.findByGuildId(guildId)
-        if (providers.any { it.overloadRisk.equals("critical", ignoreCase = true) }) return emptyList()
+        if (providers.any { OverloadRisk.normalize(it.overloadRisk) == OverloadRisk.CRITICAL }) return emptyList()
         val effectiveMaxCandidates = if (fanoutAllowed) maxCandidates.coerceIn(1, featureGate.multiResponseMaxFanout()) else 1
         val advancedFanout = effectiveMaxCandidates > 1 || policy.synthesisEnabled
         val ranked =
             providers
-                .filter { it.providerState.equals("ONLINE", ignoreCase = true) }
+                .filter { ProviderAvailability.isOnline(it.providerState) }
                 .filter { it.hasLiveCapacity(guildId) }
-                .filter { !it.overloadRisk.equals("high", ignoreCase = true) && !it.overloadRisk.equals("critical", ignoreCase = true) }
+                .filter { !OverloadRisk.isOverloadRisk(it.overloadRisk) }
                 .filter { policy.providerDailyLimit <= 0 || it.dailyLimit <= 0 || it.dailyLimit >= policy.providerDailyLimit }
                 .filter { !advancedFanout || !it.hasFanoutExclusion() }
                 .filter { !advancedFanout || it.hasFanoutOptIn() }
                 .sortedWith(
-                    compareByDescending<ProviderCapabilityProfileEntity> { it.qualityTier == "specialized" }
-                        .thenByDescending { it.qualityTier == "high" }
+                    compareByDescending<ProviderCapabilityProfileEntity> { it.qualityTier == ModelQualityTier.SPECIALIZED.wire }
+                        .thenByDescending { it.qualityTier == ModelQualityTier.HIGH.wire }
                         .thenByDescending { it.modelCount }
                         .thenBy { it.providerUserId },
                 )
@@ -939,7 +943,6 @@ class MultiResponseService(
         val FANOUT_OPT_IN_TAGS = setOf("multi-response", "multi_response", "fanout", "fanout-opt-in")
         val FANOUT_EXCLUSION_TAGS = setOf("fanout-excluded", "fanout-opt-out", "no-fanout", "multi-response-excluded")
         val DISABLED_POLICY_MODES = setOf("disabled", "off", "kill_switch", "kill-switch")
-        val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
         val SYNTHESIS_FLAG_SAFE_SELECTION_STRATEGIES =
             setOf("single_route_runtime", "best_successful_candidate", "best_by_heuristic")
         const val DISCORD_MESSAGE_SAFE_LIMIT = 1_900

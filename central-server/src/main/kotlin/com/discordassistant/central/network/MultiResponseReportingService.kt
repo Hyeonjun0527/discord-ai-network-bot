@@ -1,6 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.CandidateStatus
+import com.discordassistant.central.domain.ContentSafety.BLOCKING_SAFETY_FLAGS
 import com.discordassistant.central.domain.FanoutLoadRisk
 import com.discordassistant.central.domain.MultiResponseRunStatus
 import com.discordassistant.central.persistence.CandidateAnswerEntity
@@ -388,7 +389,6 @@ class MultiResponseReportingService(
                 MultiResponseRunStatus.BLOCKED_SENSITIVE,
                 MultiResponseRunStatus.FAILED,
             )
-        val BLOCKING_SAFETY_FLAGS = setOf("unsafe", "policy_violation", "sensitive", "blocked", "jailbreak")
         val PROVIDER_PROTECTION_REASON_PATTERNS =
             listOf(
                 Regex("(?i)provider protection|provider safety|safe provider|no_provider_capacity"),

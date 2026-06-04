@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.domain.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import com.discordassistant.central.domain.PresetModerationRules
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
@@ -527,6 +528,5 @@ class PresetCatalogQueryService(
         const val REDACTED_PUBLIC_TEXT = "[비공개 처리됨]"
         val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val SENSITIVE_SLUG_PATTERN = Regex("""(?i)(password|passwd|token|api[-_]?key|secret|authorization|bearer)""")
-        val HIGH_RISK_SAFETY_LEVELS = setOf("high", "restricted", "dangerous")
     }
 }

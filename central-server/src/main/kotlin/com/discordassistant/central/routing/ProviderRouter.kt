@@ -1,6 +1,7 @@
 package com.discordassistant.central.routing
 
 import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.ProviderState
 import org.springframework.stereotype.Component
 
@@ -34,17 +35,9 @@ class ProviderRouter {
         if (ctx.requiredBurden == ModelBurden.LIGHT && top == ModelBurden.HEAVY) s -= 8.0
         // 수준 일치 보너스(light→light, standard→standard 우선)
         if (top == ctx.requiredBurden) s += 2.0
-        s += qualityBonus(c.qualityTier)
+        s += ModelQualityTier.fromWire(c.qualityTier).routingBonus
         return s
     }
-
-    private fun qualityBonus(tier: String): Double =
-        when (tier.lowercase()) {
-            "specialized" -> 1.5
-            "high" -> 1.0
-            "standard" -> 0.3
-            else -> 0.0
-        }
 
     /** 후보 중 최종 1인 선택. 비면 null. 동점은 (점수↓, 최근처리량↑ 적은 순, providerId↑)로 결정. */
     fun select(

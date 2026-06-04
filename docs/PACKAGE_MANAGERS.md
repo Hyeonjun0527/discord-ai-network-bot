@@ -28,9 +28,12 @@ CI(`.github/workflows/agent-build.yml`)는 릴리스마다 `provider-agent/packa
 
 **2) 사용자 설치**
 ```bash
-brew tap yeon-intergation-platform/tap
-brew install discord-ai-network-bot      # 해시 자동 검증, 관리자 불필요
-discord-ai-network-bot --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
+# 데스크톱 GUI 앱(맥 .app — winget 과 동일 앱)
+brew install --cask yeon-intergation-platform/tap/nyassistant
+# 앱을 열고 ‘디스코드 로그인’ 또는 토큰 붙여넣기로 연결
+
+# (헤드리스/CLI 가 필요하면 formula)
+brew install yeon-intergation-platform/tap/discord-ai-network-bot
 ```
 
 ## winget (Windows)

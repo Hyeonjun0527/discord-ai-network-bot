@@ -28,30 +28,31 @@ object ProviderOnboarding {
                 "\n🖼️ (선택) **이미지 생성도 제공**하려면 로컬 Stable Diffusion(A1111 등)을 켜고 " +
                 "에이전트에 `--enable-image` 를 추가하세요. 그러면 `/그림` 요청을 받을 수 있어요. " +
                 "누구나 이미지 프로바이더가 될 수 있습니다."
+        // mac/windows 는 **데스크톱 GUI 앱**(맥의 ‘냥시스턴트’ 앱과 동일)을 패키지 매니저로 설치하고,
+        // 앱을 열어 ‘디스코드 로그인’ 또는 토큰 붙여넣기로 연결한다. linux 는 GUI 빌드가 없어 CLI 사용.
         return when (os.lowercase()) {
             "mac", "macos" ->
-                "🍎 **macOS** — 먼저 터미널을 여세요: `⌘ Space` → `Terminal` 입력 → Enter / 또는 Finder → 응용 프로그램 → 유틸리티 → 터미널.\n" +
-                    "그다음 아래를 그대로 붙여넣기:\n" +
+                "🍎 **macOS** — 앱 설치(터미널: `⌘ Space` → `Terminal`):\n" +
                     "```bash\n" +
-                    "brew install ollama\n" +
-                    "brew services start ollama\n" +
-                    "ollama pull llama3.1:8b\n" +
-                    "curl -L -o discord-ai-network-bot-macos $DL/discord-ai-network-bot-macos " +
-                    "&& chmod +x discord-ai-network-bot-macos\n" +
-                    "./discord-ai-network-bot-macos --token $token --relay-url $relay\n" +
-                    "```" + note
+                    "brew install ollama && brew services start ollama && ollama pull llama3.1:8b\n" +
+                    "brew install --cask yeon-intergation-platform/tap/nyassistant\n" +
+                    "```\n" +
+                    "설치되면 **응용 프로그램 → ‘냥시스턴트’** 앱을 열고, **‘디스코드 로그인’** 으로 이 서버를 고르거나 " +
+                    "**‘고급 · 토큰 직접 입력’** 에 아래 토큰을 붙여넣어 연결하세요:\n" +
+                    "```\n$token\n```" + note
             "windows", "win" ->
-                "🪟 **Windows** — 먼저 PowerShell(관리자)을 여세요: `Win + X` → 터미널(관리자) / 또는 시작 메뉴에서 PowerShell 검색 → 우클릭 → 관리자 권한 실행.\n" +
-                    "그다음 아래를 그대로 붙여넣기:\n" +
+                "🪟 **Windows** — 앱 설치(PowerShell: `Win + X` → 터미널):\n" +
                     "```powershell\n" +
                     "winget install --id Ollama.Ollama -e --accept-source-agreements\n" +
                     "ollama pull llama3.1:8b\n" +
-                    "Invoke-WebRequest $DL/discord-ai-network-bot-windows.exe -OutFile discord-ai-network-bot-windows.exe\n" +
-                    ".\\discord-ai-network-bot-windows.exe --token $token --relay-url $relay\n" +
-                    "```" + note
+                    "winget install --id Nyassistant.DiscordAiNetworkBot -e --accept-source-agreements\n" +
+                    "```\n" +
+                    "설치되면 **‘냥시스턴트’ 앱**(시작 메뉴)을 열고, **‘디스코드 로그인’** 또는 **‘고급 · 토큰 직접 입력’** 에 " +
+                    "아래 토큰을 붙여넣어 연결하세요:\n" +
+                    "```\n$token\n```" + note
             "linux" ->
-                "🐧 **Linux** — 먼저 터미널을 여세요: `Ctrl + Alt + T` / 또는 앱 메뉴에서 Terminal(터미널) 검색.\n" +
-                    "그다음 아래를 그대로 붙여넣기:\n" +
+                "🐧 **Linux** — 터미널(`Ctrl + Alt + T` / 또는 앱 메뉴에서 Terminal 검색)에서 CLI 에이전트 설치" +
+                    "(GUI 앱은 mac/Windows 전용):\n" +
                     "```bash\n" +
                     "curl -fsSL https://ollama.com/install.sh | sh\n" +
                     "ollama pull llama3.1:8b\n" +
@@ -67,16 +68,18 @@ object ProviderOnboarding {
         token: String,
         relayUrl: String,
     ): String {
-        val relay = relayUrl.ifBlank { "wss://<관리자에게 문의>/agent" }
         val sb = StringBuilder()
         sb.append("🖥️ **프로바이더로 승인되었습니다!** 내 PC 로컬 AI 를 풀에 연결하기:\n\n")
-        sb.append("**1) 설치 가이드 열기** → $INSTALL_PAGE\n")
-        sb.append("   내 OS 탭(macOS/Windows/Linux)에서 **GitHub Release 다운로드 명령**을 그대로 복사하세요.\n\n")
-        sb.append("**2) 명령의 토큰 자리에 아래 값을 넣어 실행** (⏳ **10분·1회용**):\n")
-        sb.append("```\n--token $token --relay-url $relay\n```\n")
+        sb.append("**1) ‘냥시스턴트’ 앱 설치** → $INSTALL_PAGE\n")
+        sb.append(
+            "   macOS `brew install --cask yeon-intergation-platform/tap/nyassistant` · " +
+                "Windows `winget install Nyassistant.DiscordAiNetworkBot`.\n\n",
+        )
+        sb.append("**2) 앱을 열고** ‘디스코드 로그인’ 또는 ‘고급 · 토큰 직접 입력’에 아래 토큰을 넣어 연결 (⏳ **10분·1회용**):\n")
+        sb.append("```\n$token\n```\n")
         sb.append("연결되면 `/내상태` 로 확인. ")
         if (relayUrl.isBlank()) {
-            sb.append("⚠️ 연결 주소 미설정 시 관리자에게 `relay-url` 문의. ")
+            sb.append("⚠️ 연결 주소(`relay-url`)가 설정되지 않았어요 — 관리자에게 문의하세요. ")
         }
         sb.append("비밀번호·API 키 등 **민감정보는 절대 입력하지 마세요.**")
         return sb.toString()

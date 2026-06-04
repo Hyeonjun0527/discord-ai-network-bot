@@ -229,8 +229,12 @@
     .install-copy { flex: 0 0 auto; }
     .code-shell { border-radius: 18px; overflow: hidden; border: 1px solid rgba(152, 177, 219, .14); background: #09111d; }
     .shell-top { height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid rgba(255,255,255,.04); background: rgba(255,255,255,.02); }
-    .shell-dots { display: flex; gap: 8px; }
-    .shell-dots span { width: 11px; height: 11px; border-radius: 50%; display: block; background: #2d3c53; }
+    /* 네온 뱃지(맥 신호등 점 대체) — 테마 토큰(시안→블루→바이올렛) 그라데이션 테두리 + 좌상단 빛 번짐 */
+    .neon-badge { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 7px 15px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #eaf2ff; white-space: nowrap; border: 1.5px solid transparent;
+      background: linear-gradient(rgba(16,24,44,.72), rgba(16,24,44,.72)) padding-box, linear-gradient(120deg, var(--c-cyan), var(--c-blue), var(--c-violet)) border-box;
+      box-shadow: 0 0 14px color-mix(in srgb, var(--c-cyan) 32%, transparent), inset 0 1px 0 rgba(255,255,255,.14); }
+    .neon-badge .np { color: var(--c-cyan); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 800; }
+    .neon-badge::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: radial-gradient(60% 130% at 16% -10%, rgba(255,255,255,.4), transparent 55%); mix-blend-mode: screen; }
     .shell-name { color: #8ea0b8; font-size: 13px; }
     .copy-btn { border: 1px solid color-mix(in srgb, var(--c-accent) 22%, transparent); background: color-mix(in srgb, var(--c-accent) 9%, transparent); color: #dce5f3; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
     pre { margin: 0; padding: 18px 20px 20px; overflow-x: auto; font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #dce4ef; }
@@ -368,7 +372,7 @@
       </div>
       <div class="code-shell">
         <div class="shell-top">
-          <div class="shell-dots"><span></span><span></span><span></span></div>
+          <span class="neon-badge"><span class="np">&gt;_</span> 터미널로 설치</span>
           <div class="shell-name" id="shellName">terminal — zsh</div>
           <button class="copy-btn" id="copyBtn2">복사</button>
         </div>

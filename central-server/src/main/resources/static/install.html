@@ -42,7 +42,9 @@
     html, body { min-height: 100%; }
     body {
       margin: 0; color: var(--text);
+      /* 맨 위 노이즈 레이어 = 라디얼 글로우 밴딩 디더링(맥북 등 광색역/고품질 디스플레이의 계단 현상 제거) */
       background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E") repeat,
         radial-gradient(1100px 520px at 78% 2%, rgba(86, 78, 196, .20), transparent 60%),
         radial-gradient(900px 480px at 18% 0%, rgba(46, 86, 178, .16), transparent 55%),
         linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 100%);
@@ -144,6 +146,8 @@
     #hero3dFallback { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; transition: opacity .8s ease; filter: drop-shadow(0 30px 60px rgba(0,0,0,.5)); }
     #hero3d.ready #hero3dFallback { opacity: 0; pointer-events: none; }
     .cine-vignette { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: radial-gradient(130% 95% at 62% 45%, transparent 36%, rgba(4,8,15,.5) 76%, rgba(4,8,15,.92) 100%); }
+    /* WebGL 네온 글로우(림·헤일로) 밴딩 디더 — 캔버스 위에 그레이 노이즈를 얹어 계단 제거(맥북 등 고품질 디스플레이) */
+    .cine-noise { position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: .4; mix-blend-mode: overlay; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E") repeat; }
     .hud { position: absolute; width: 26px; height: 26px; border: 2px solid color-mix(in srgb, var(--c-accent) 50%, transparent); z-index: 4; pointer-events: none; }
     .hud.tl { left: 28px; top: 100px; border-right: 0; border-bottom: 0; }
     .hud.tr { right: 28px; top: 100px; border-left: 0; border-bottom: 0; }
@@ -304,6 +308,7 @@
         <canvas id="hero3dCanvas" aria-hidden="true"></canvas>
         <img id="hero3dFallback" src="/img/install-panel.webp" alt="냥시스턴트 설치 패널" />
         <div class="cine-vignette"></div>
+        <div class="cine-noise"></div>
         <span class="hud tl"></span><span class="hud tr"></span><span class="hud bl"></span><span class="hud br"></span>
         <div class="cine-telemetry"><span>NETWORK LINK — LIVE</span><span>CENTRAL NODE · 99.9%</span></div>
 
@@ -721,10 +726,10 @@
       face.position.z = 0.31;
 
       // 뒤쪽 네온 헤일로(가산 합성) — 패널 뒤 보라/파랑 광원
-      const halo = document.createElement('canvas'); halo.width = halo.height = 256;
-      const hc = halo.getContext('2d'); const hg = hc.createRadialGradient(128, 128, 8, 128, 128, 128);
+      const halo = document.createElement('canvas'); halo.width = halo.height = 512;
+      const hc = halo.getContext('2d'); const hg = hc.createRadialGradient(256, 256, 12, 256, 256, 256);
       hg.addColorStop(0, hexRGBA(THEME.violet, .7)); hg.addColorStop(.5, hexRGBA(THEME.blue, .3)); hg.addColorStop(1, 'rgba(0,0,0,0)');
-      hc.fillStyle = hg; hc.fillRect(0, 0, 256, 256);
+      hc.fillStyle = hg; hc.fillRect(0, 0, 512, 512);
       const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.9, H * 1.9), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(halo), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
       haloMesh.position.z = -0.35;
 

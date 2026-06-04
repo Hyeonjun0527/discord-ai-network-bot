@@ -148,4 +148,23 @@ class ProviderRegistrationServiceTest {
         assertNull(tokens.verify(token100))
         assertEquals(20L, tokens.verify(token200)!!.providerId)
     }
+
+    @Test
+    fun `joinsToConnect 는 승인된 미연결 길드에만 토큰을 발급한다`() {
+        val (svc, tokens, _) = service()
+        svc.requestJoin(77, 100, autoApprove = true) // APPROVED
+        svc.requestJoin(77, 200, autoApprove = true) // APPROVED
+        svc.requestJoin(77, 300, autoApprove = false) // PENDING → 제외
+        svc.requestJoin(88, 400, autoApprove = true) // 다른 사용자 → 제외
+
+        // 100 은 이미 연결됨으로 간주(제외) → 200 만 발급.
+        val joins = svc.joinsToConnect(77, alreadyConnected = setOf(100L))
+        assertEquals(setOf(200L), joins.map { it.guildId }.toSet())
+        // 발급된 토큰은 (77, 200) 으로 검증된다.
+        val t = joins.single().token
+        assertEquals(77L, tokens.verify(t)!!.providerId)
+
+        // PENDING(300)·타사용자(400)는 절대 포함되지 않는다.
+        assertTrue(svc.joinsToConnect(77, emptySet()).none { it.guildId == 300L || it.guildId == 400L })
+    }
 }

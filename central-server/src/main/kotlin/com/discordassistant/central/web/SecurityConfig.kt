@@ -82,6 +82,7 @@ class SecurityConfig(
                     authorize("/api/metrics/**", permitAll)
                     authorize("/agent/**", permitAll)
                     authorize("/provider/connect/**", permitAll) // 웹 ‘토큰 받기’ OAuth 온보딩
+                    authorize("/provider/agent/**", permitAll) // 에이전트 자동 동기화(durable 토큰으로 자체 인증)
                     authorize("/login/**", permitAll)
                     authorize("/oauth2/**", permitAll)
                     // 그 외(대시보드 데이터/쓰기 API)는 인증 필요.

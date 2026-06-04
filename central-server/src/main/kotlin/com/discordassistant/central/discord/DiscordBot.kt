@@ -258,16 +258,21 @@ class DiscordBot(
                     return
                 }
                 "provider-join" -> {
-                    // 먼저 설치할 컴퓨터(OS)를 버튼으로 묻는다(차수 19). 클릭 → 그 OS 복붙 설치 명령.
-                    event
-                        .reply(
-                            "🖥️ **내 컴퓨터의 AI로 함께 도와주기**\n\n" +
-                                "내 컴퓨터에 있는 AI가 커뮤니티 질문에 답하는 일을 함께 도와줘요.\n" +
-                                "복잡한 설정은 안내를 따라 하면 되고, 원할 때 언제든 멈출 수 있어요.\n\n" +
-                                "**설치할 컴퓨터**를 고르세요. 버튼을 누르면 복사해서 붙여넣을 명령을 보여드릴게요.",
-                        ).addComponents(ActionRow.of(MenuFactory.osButtons()))
-                        .setEphemeral(true)
-                        .queue()
+                    if (commands.providerLinked(ctx)) {
+                        // 이미 연동된(앱 연결된) 사용자 → 가이드 대신 실제 참여 완료(앱이 동기화로 자동 연결).
+                        event.reply(commands.providerJoin(ctx).content).setEphemeral(true).queue()
+                    } else {
+                        // 미연동 → 먼저 설치할 컴퓨터(OS)를 버튼으로 묻는다(차수 19). 클릭 → 그 OS 복붙 설치 명령.
+                        event
+                            .reply(
+                                "🖥️ **내 컴퓨터의 AI로 함께 도와주기**\n\n" +
+                                    "내 컴퓨터에 있는 AI가 커뮤니티 질문에 답하는 일을 함께 도와줘요.\n" +
+                                    "복잡한 설정은 안내를 따라 하면 되고, 원할 때 언제든 멈출 수 있어요.\n\n" +
+                                    "**설치할 컴퓨터**를 고르세요. 버튼을 누르면 복사해서 붙여넣을 명령을 보여드릴게요.",
+                            ).addComponents(ActionRow.of(MenuFactory.osButtons()))
+                            .setEphemeral(true)
+                            .queue()
+                    }
                     return
                 }
                 "help" -> {
@@ -500,16 +505,21 @@ class DiscordBot(
                     return
                 }
                 MenuFactory.PROVIDER -> {
-                    // '내 PC 기여' → 먼저 설치할 OS 를 버튼으로 묻는다(차수 19).
-                    event
-                        .reply(
-                            "🖥️ **내 컴퓨터의 AI로 함께 도와주기**\n\n" +
-                                "내 컴퓨터에 있는 AI가 커뮤니티 질문에 답하는 일을 함께 도와줘요.\n" +
-                                "복잡한 설정은 안내를 따라 하면 되고, 원할 때 언제든 멈출 수 있어요.\n\n" +
-                                "**설치할 컴퓨터**를 고르세요. 버튼을 누르면 복사해서 붙여넣을 명령을 보여드릴게요.",
-                        ).addComponents(ActionRow.of(MenuFactory.osButtons()))
-                        .setEphemeral(true)
-                        .queue()
+                    if (commands.providerLinked(ctx)) {
+                        // 이미 연동된 사용자 → 실제 참여 완료(앱이 동기화로 자동 연결).
+                        event.reply(commands.providerJoin(ctx).content).setEphemeral(true).queue()
+                    } else {
+                        // 미연동: '내 PC 기여' → 먼저 설치할 OS 를 버튼으로 묻는다(차수 19).
+                        event
+                            .reply(
+                                "🖥️ **내 컴퓨터의 AI로 함께 도와주기**\n\n" +
+                                    "내 컴퓨터에 있는 AI가 커뮤니티 질문에 답하는 일을 함께 도와줘요.\n" +
+                                    "복잡한 설정은 안내를 따라 하면 되고, 원할 때 언제든 멈출 수 있어요.\n\n" +
+                                    "**설치할 컴퓨터**를 고르세요. 버튼을 누르면 복사해서 붙여넣을 명령을 보여드릴게요.",
+                            ).addComponents(ActionRow.of(MenuFactory.osButtons()))
+                            .setEphemeral(true)
+                            .queue()
+                    }
                     return
                 }
             }

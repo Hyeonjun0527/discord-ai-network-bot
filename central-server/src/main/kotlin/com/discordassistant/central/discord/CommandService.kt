@@ -1567,6 +1567,9 @@ class CommandService(
     // 프로바이더 본인 self-service 명령은 ProviderSelfServiceCommands 로 분리(god class 축소). 시그니처 유지·위임.
     fun providerJoin(ctx: CommandContext): Reply = providerCommands.providerJoin(ctx)
 
+    /** 이 사용자가 ‘연동됨’(앱 연결됨)인가 — DiscordBot 이 가이드 vs 자동참여를 분기하는 데 사용. */
+    fun providerLinked(ctx: CommandContext): Boolean = providerCommands.providerLinked(ctx)
+
     fun providerInstallGuide(
         ctx: CommandContext,
         os: String,

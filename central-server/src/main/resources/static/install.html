@@ -276,16 +276,11 @@
 <span class="g">brew</span> services start ollama
 <span class="g">ollama</span> pull llama3.1:8b   <span class="c"># (선택) 비전·멀티모달: ollama pull gemma4</span>
 
-<span class="c"># 2) 에이전트 + 체크섬 받기 (GitHub Release)</span>
-<span class="g">curl</span> -L -o discord-ai-network-bot-macos <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-macos</span>
-<span class="g">curl</span> -L -o SHA256SUMS.txt <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt</span>
+<span class="c"># 2) 냥시스턴트 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)</span>
+<span class="g">brew</span> install --cask yeon-intergation-platform/tap/nyassistant
 
-<span class="c"># 3) 무결성 검증 — OK 가 나와야 함</span>
-<span class="g">shasum</span> -a 256 -c SHA256SUMS.txt --ignore-missing
-
-<span class="c"># 4) 실행 (sudo 불필요)</span>
-<span class="g">chmod</span> +x discord-ai-network-bot-macos
-<span class="g">./discord-ai-network-bot-macos</span> --token <span class="o">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url <span class="b">wss://discord-ai.yeon.world/agent</span>`
+<span class="c"># 3) 응용 프로그램에서 ‘냥시스턴트’ 를 열고 →</span>
+<span class="c">#    ‘디스코드 로그인’ 으로 서버 선택, 또는 ‘고급 · 토큰 직접 입력’ 에 디스코드 토큰 붙여넣기</span>`
       },
       win: {
         shell: 'PowerShell',
@@ -294,16 +289,11 @@
 <span class="g">winget</span> install --id Ollama.Ollama -e --accept-source-agreements
 <span class="g">ollama</span> pull llama3.1:8b   <span class="c"># (선택) 비전·멀티모달: ollama pull gemma4</span>
 
-<span class="c"># 2) 에이전트 + 체크섬 받기 (GitHub Release)</span>
-<span class="g">Invoke-WebRequest</span> <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-windows.exe</span> -OutFile discord-ai-network-bot-windows.exe
-<span class="g">Invoke-WebRequest</span> <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt</span> -OutFile SHA256SUMS.txt
+<span class="c"># 2) 냥시스턴트 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)</span>
+<span class="g">winget</span> install --id Nyassistant.DiscordAiNetworkBot -e --accept-source-agreements
 
-<span class="c"># 3) 무결성 검증 — 출력 해시가 SHA256SUMS.txt 의 windows 줄과 같아야 함</span>
-<span class="g">Get-FileHash</span> discord-ai-network-bot-windows.exe -Algorithm SHA256
-<span class="g">type</span> SHA256SUMS.txt
-
-<span class="c"># 4) 실행 (일반 사용자 권한)</span>
-<span class="g">.\discord-ai-network-bot-windows.exe</span> --token <span class="o">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url <span class="b">wss://discord-ai.yeon.world/agent</span>`
+<span class="c"># 3) 시작 메뉴에서 ‘냥시스턴트’ 를 열고 →</span>
+<span class="c">#    ‘디스코드 로그인’ 으로 서버 선택, 또는 ‘고급 · 토큰 직접 입력’ 에 디스코드 토큰 붙여넣기</span>`
       },
       linux: {
         shell: 'terminal — bash',

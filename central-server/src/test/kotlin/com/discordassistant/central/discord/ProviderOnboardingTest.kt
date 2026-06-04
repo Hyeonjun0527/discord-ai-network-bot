@@ -6,12 +6,14 @@ import org.junit.jupiter.api.Test
 /** 프로바이더 온보딩 안내문 — 토큰만이 아니라 단계별 가이드를 준다. */
 class ProviderOnboardingTest {
     @Test
-    fun `relay URL 있으면 토큰·주소 + 정제된 설치 페이지 안내`() {
+    fun `GUI 앱 설치(brew·winget) + 토큰 붙여넣기 안내`() {
         val m = ProviderOnboarding.message("TOK123", "wss://discord-ai.yeon.world/agent")
         assertTrue(m.contains("프로바이더로 승인되었습니다")) // DM 트리거 마커
-        assertTrue(m.contains("discord-ai.yeon.world/install")) // 원시 링크 나열 대신 정제된 가이드 페이지로 안내
-        assertTrue(m.contains("TOK123")) // 토큰
-        assertTrue(m.contains("wss://discord-ai.yeon.world/agent")) // 실제 relay
+        assertTrue(m.contains("discord-ai.yeon.world/install")) // 정제된 가이드 페이지
+        assertTrue(m.contains("TOK123")) // 토큰(앱에 붙여넣기)
+        // GUI 앱 설치는 패키지 매니저로(맥 데스크톱 앱과 동일). relay-url 은 앱에 내장돼 노출하지 않는다.
+        assertTrue(m.contains("brew install --cask")) // macOS 앱
+        assertTrue(m.contains("Nyassistant.DiscordAiNetworkBot")) // winget GUI 앱
         assertTrue(m.contains("민감정보")) // 안전 고지
         assertTrue(m.length <= 2000) // Discord 한도
     }

@@ -3,10 +3,10 @@ PackageVersion: __VERSION__
 PackageLocale: en-US
 Publisher: Nyassistant
 PublisherUrl: https://github.com/yeon-intergation-platform
-PackageName: discord-ai-network-bot
+PackageName: Nyassistant
 PackageUrl: https://github.com/Hyeonjun0527/discord-ai-network-bot
 License: MIT
-ShortDescription: Connects your local Ollama to the community AI network (provider agent).
-Moniker: discord-ai-network-bot
+ShortDescription: Nyassistant desktop app — share your local Ollama with the community AI network.
+Moniker: nyassistant
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

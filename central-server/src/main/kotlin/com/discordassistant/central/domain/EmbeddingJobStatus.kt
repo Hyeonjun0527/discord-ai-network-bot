@@ -15,18 +15,20 @@ package com.discordassistant.central.domain
  */
 enum class EmbeddingJobStatus(
     val wire: String,
+    /** Discord 슬래시 옵션 등 사용자 표시용 한글 라벨(SSOT). */
+    val label: String,
 ) {
     /** 큐에 등록되어 워커 처리 대기 중. */
-    QUEUED("queued"),
+    QUEUED("queued", "대기"),
 
     /** 색인 완료. */
-    COMPLETED("completed"),
+    COMPLETED("completed", "완료"),
 
     /** 색인 실패. */
-    FAILED("failed"),
+    FAILED("failed", "실패"),
 
     /** 색인 취소됨. */
-    CANCELLED("cancelled"),
+    CANCELLED("cancelled", "취소"),
     ;
 
     /** 더 이상 나가는 전이가 없는 종단 상태인가. */
@@ -39,6 +41,12 @@ enum class EmbeddingJobStatus(
     fun canTransitionTo(next: EmbeddingJobStatus): Boolean = next == this || next in ALLOWED[this].orEmpty()
 
     companion object {
+        /**
+         * `/ai-knowledge-job-complete` 에서 관리자가 기록하는 완료 결과의 (라벨, 와이어값) choice — SSOT.
+         * 대기 상태([QUEUED])는 결과가 아니므로 제외한 종단 상태 셋이다.
+         */
+        fun completionChoices(): List<Pair<String, String>> = listOf(COMPLETED, FAILED, CANCELLED).map { it.label to it.wire }
+
         private val ALLOWED: Map<EmbeddingJobStatus, Set<EmbeddingJobStatus>> =
             mapOf(
                 QUEUED to setOf(COMPLETED, FAILED, CANCELLED),

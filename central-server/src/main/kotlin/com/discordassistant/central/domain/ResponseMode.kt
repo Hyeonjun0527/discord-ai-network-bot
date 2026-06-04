@@ -12,14 +12,19 @@ package com.discordassistant.central.domain
  */
 enum class ResponseMode(
     val wire: String,
+    /** Discord 슬래시 옵션 등 사용자 표시용 한글 라벨(SSOT). 카탈로그가 재하드코딩하지 않게 여기서 보유. */
+    val label: String,
 ) {
-    FAST("fast"),
-    BALANCED("balanced"),
-    DEEP("deep"),
-    SAVING("saving"),
+    FAST("fast", "빠른 답변"),
+    BALANCED("balanced", "균형 모드"),
+    DEEP("deep", "깊은 답변"),
+    SAVING("saving", "절약 모드"),
     ;
 
     companion object {
+        /** 슬래시 옵션 choice 용 (라벨, 와이어값) 목록 — SSOT(표시 순서는 enum 선언 순). */
+        fun slashChoices(): List<Pair<String, String>> = entries.map { it.label to it.wire }
+
         /** 한국어/영문 별칭 포함 정규화. 인식 못 하는 값(빈 값 포함)은 null. */
         fun normalizeOrNull(value: String?): ResponseMode? =
             when (value?.trim()?.lowercase()) {

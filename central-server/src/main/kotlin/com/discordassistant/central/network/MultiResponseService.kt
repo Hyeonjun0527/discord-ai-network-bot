@@ -99,7 +99,10 @@ class MultiResponseService(
             }
         val entity = existing ?: MultiResponsePolicyEntity(guildId = guildId, channelId = channelId, createdAt = now)
         entity.channelAiId = channelAiId
-        entity.mode = mode.trim().lowercase().ifBlank { "single" }
+        entity.mode =
+            com.discordassistant.central.domain.MultiResponseMode
+                .fromWire(mode)
+                .wire
         entity.maxCandidates = maxCandidates.coerceIn(1, featureGate.multiResponseMaxFanout())
         entity.requireDistinctModels = requireDistinctModels
         entity.providerDailyLimit = providerDailyLimit.coerceAtLeast(0)
@@ -608,7 +611,10 @@ class MultiResponseService(
                 ?: MultiResponsePolicyEntity(
                     guildId = guildId,
                     channelId = channelId,
-                    mode = responseMode.trim().lowercase().ifBlank { "single" },
+                    mode =
+                        com.discordassistant.central.domain.MultiResponseMode
+                            .fromWire(responseMode)
+                            .wire,
                     maxCandidates = requestedCandidates.coerceIn(1, featureGate.multiResponseMaxFanout()),
                     createdAt = Instant.now(clock),
                     updatedAt = Instant.now(clock),

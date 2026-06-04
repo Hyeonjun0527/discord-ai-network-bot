@@ -1,5 +1,20 @@
 {
   "_generated": "GENERATED from i18n/messages.json by scripts/gen_i18n.py — DO NOT EDIT. 문구 변경은 i18n/messages.json 에서.",
+  "navHome": {
+    "ko": "홈",
+    "en": "Home",
+    "ja": "ホーム"
+  },
+  "navFeatures": {
+    "ko": "기능",
+    "en": "Features",
+    "ja": "機能"
+  },
+  "navHowto": {
+    "ko": "사용 방법",
+    "en": "How it works",
+    "ja": "使い方"
+  },
   "navPresets": {
     "ko": "프리셋",
     "en": "Presets",
@@ -15,30 +30,120 @@
     "en": "Source",
     "ja": "ソースコード"
   },
+  "ctaAddDiscord": {
+    "ko": "Discord 추가",
+    "en": "Add to Discord",
+    "ja": "Discordに追加"
+  },
   "heroEyebrow": {
-    "ko": "우리 서버만의 AI · 냥시스턴트",
-    "en": "Your server's own AI · Nyassistant",
-    "ja": "あなたのサーバーだけのAI · ニャシスタント"
+    "ko": "AI 멤버 연결의 새로운 표준",
+    "en": "A new standard for AI members",
+    "ja": "AIメンバー連携の新基準"
   },
   "heroHeadline": {
-    "ko": "당신의 디스코드 서버에<br><span class=\"accent\">AI 멤버</span>를 연결하세요.",
-    "en": "Connect an <span class=\"accent\">AI member</span><br>to your Discord server.",
-    "ja": "あなたのDiscordサーバーに<br><span class=\"accent\">AIメンバー</span>をつなげましょう。"
+    "ko": "AI 멤버를<br>당신의 디스코드 서버에<br><span class=\"accent\">연결하세요.</span>",
+    "en": "Connect an AI member<br>to your<br><span class=\"accent\">Discord server.</span>",
+    "ja": "AIメンバーを<br>あなたのDiscordサーバーに<br><span class=\"accent\">つなげましょう。</span>"
   },
   "heroBody": {
-    "ko": "멤버들의 <code>/질문</code>에 답하고, 서버 규칙과 공지를 기억하고, 채널 분위기에 맞게 대화하는 AI를 만들 수 있어요.<br><b>우리 서버 안에 언제든 부를 수 있는 AI 멤버</b>가 생깁니다.",
-    "en": "Build an AI that answers members' <code>/ask</code>, remembers your server rules and notices, and chats to fit each channel.<br><b>An AI member you can call anytime, right inside your server.</b>",
-    "ja": "メンバーの <code>/質問</code> に答え、サーバーのルールやお知らせを覚え、チャンネルの雰囲気に合わせて話すAIを作れます。<br><b>サーバーの中でいつでも呼べるAIメンバー</b>ができます。"
+    "ko": "대화하고, 명령을 수행하고, 서버를 관리하는<br>지능형 AI 멤버를 몇 분 안에 초대할 수 있습니다.",
+    "en": "Invite an intelligent AI member that chats, runs commands,<br>and helps manage your server — in just a few minutes.",
+    "ja": "会話し、コマンドを実行し、サーバーを管理する<br>インテリジェントなAIメンバーを数分で招待できます。"
   },
   "heroCtaPrimary": {
     "ko": "디스코드에 봇 추가",
     "en": "Add the bot to Discord",
     "ja": "Discordにボットを追加"
   },
-  "heroCtaPresets": {
-    "ko": "채널 AI 프리셋 보기",
-    "en": "Browse channel AI presets",
-    "ja": "チャンネルAIプリセットを見る"
+  "heroCtaSecondary": {
+    "ko": "작동 방식 알아보기",
+    "en": "See how it works",
+    "ja": "仕組みを見る"
+  },
+  "heroChip1": {
+    "ko": "설치 1분 완성",
+    "en": "1-minute setup",
+    "ja": "設置1分で完了"
+  },
+  "heroChip2": {
+    "ko": "안정적 & 안전한 연결",
+    "en": "Stable & secure",
+    "ja": "安定 & 安全な接続"
+  },
+  "heroChip3": {
+    "ko": "지속적 기능 업데이트",
+    "en": "Continuous updates",
+    "ja": "継続的な機能更新"
+  },
+  "featEyebrow": {
+    "ko": "간단한 3단계로 시작",
+    "en": "Get started in 3 steps",
+    "ja": "簡単3ステップで開始"
+  },
+  "featHeading": {
+    "ko": "빠르고 간편한 설정",
+    "en": "Fast and simple setup",
+    "ja": "速くて簡単なセットアップ"
+  },
+  "feat1Title": {
+    "ko": "봇 초대하기",
+    "en": "Invite the bot",
+    "ja": "ボットを招待"
+  },
+  "feat1Text": {
+    "ko": "Discord 서버에 봇을 초대하고 권한을 설정하세요.",
+    "en": "Invite the bot to your Discord server and set its permissions.",
+    "ja": "Discordサーバーにボットを招待し、権限を設定します。"
+  },
+  "feat2Title": {
+    "ko": "명령 실행하기",
+    "en": "Run commands",
+    "ja": "コマンドを実行"
+  },
+  "feat2Text": {
+    "ko": "다양한 명령어로 AI 멤버를 활용해 보세요.",
+    "en": "Put the AI member to work with a variety of commands.",
+    "ja": "さまざまなコマンドでAIメンバーを活用しましょう。"
+  },
+  "feat3Title": {
+    "ko": "서버 자동화",
+    "en": "Automate your server",
+    "ja": "サーバーを自動化"
+  },
+  "feat3Text": {
+    "ko": "반복적인 작업은 AI에게 맡기고, 커뮤니티에 집중하세요.",
+    "en": "Hand repetitive tasks to the AI and focus on your community.",
+    "ja": "繰り返し作業はAIに任せ、コミュニティに集中しましょう。"
+  },
+  "statUptimeLabel": {
+    "ko": "가동률 보장",
+    "en": "uptime",
+    "ja": "稼働率保証"
+  },
+  "statServersLabel": {
+    "ko": "활성 서버",
+    "en": "active servers",
+    "ja": "アクティブサーバー"
+  },
+  "statCommandsLabel": {
+    "ko": "명령 실행",
+    "en": "commands run",
+    "ja": "コマンド実行"
+  },
+  "statSecurityValue": {
+    "ko": "보안 우선",
+    "en": "Security-first",
+    "ja": "セキュリティ優先"
+  },
+  "statSecurityLabel": {
+    "ko": "데이터 보호 설계",
+    "en": "data protection by design",
+    "ja": "データ保護設計"
+  },
+  "providerLabel": {
+    "ko": "프로바이더로 참여 <span>— 내 PC의 로컬 AI를 풀에 기여 (선택)</span>",
+    "en": "Become a provider <span>— contribute your PC's local AI (optional)</span>",
+    "ja": "プロバイダーとして参加 <span>— あなたのPCのローカルAIを提供（任意）</span>"
   },
   "step1Title": {
     "ko": "토큰 받기",

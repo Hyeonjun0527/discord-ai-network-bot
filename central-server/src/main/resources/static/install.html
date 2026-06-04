@@ -3,12 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>냥시스턴트 — 당신의 디스코드 서버에 AI 멤버를 연결하세요</title>
+  <title>냥시스턴트 — AI 멤버를 당신의 디스코드 서버에 연결하세요</title>
+  <script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js" } }
+  </script>
   <style>
     :root {
-      --bg: #07101b; --panel: #0c1522; --line: rgba(157, 181, 221, .14);
-      --text: #ecf2fb; --muted: #a4b1c4; --subtle: #76849a;
-      --blue: #4d7dff; --warn: #e3a53f;
+      --bg: #060c18; --panel: #0c1424; --line: rgba(150, 168, 220, .12);
+      --text: #eef2fb; --muted: #9aa6bf; --subtle: #6f7c95;
+      --blue: #5b8cff; --purple: #9b7bff; --warn: #e3a53f;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
     }
     * { box-sizing: border-box; }
@@ -16,100 +19,145 @@
     body {
       margin: 0; color: var(--text);
       background:
-        radial-gradient(circle at 18% 0%, rgba(54, 90, 168, .17), transparent 30%),
-        radial-gradient(circle at 90% 8%, rgba(51, 89, 166, .12), transparent 24%),
-        linear-gradient(180deg, #06101a 0%, #040a12 100%);
+        radial-gradient(1100px 520px at 78% 2%, rgba(86, 78, 196, .20), transparent 60%),
+        radial-gradient(900px 480px at 18% 0%, rgba(46, 86, 178, .16), transparent 55%),
+        linear-gradient(180deg, #060c18 0%, #03070f 100%);
     }
     body::before {
-      content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .12;
+      content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .10;
       background-image:
         linear-gradient(rgba(140,164,201,.13) 1px, transparent 1px),
         linear-gradient(90deg, rgba(140,164,201,.13) 1px, transparent 1px);
-      background-size: 36px 36px;
-      mask-image: linear-gradient(to bottom, rgba(0,0,0,.95), transparent 88%);
+      background-size: 38px 38px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,.9), transparent 92%);
     }
     a { color: inherit; text-decoration: none; }
     button { font: inherit; }
-    .page { width: min(1160px, calc(100% - 40px)); margin: 22px auto 38px; }
+    .page { width: min(1280px, calc(100% - 48px)); margin: 18px auto 44px; }
+
+    /* ── Topbar ── */
     .topbar {
-      display: flex; align-items: center; justify-content: space-between; gap: 18px;
-      padding: 14px 18px; border: 1px solid var(--line); border-radius: 18px;
-      background: rgba(11, 19, 31, .86); backdrop-filter: blur(16px);
+      display: flex; align-items: center; gap: 22px;
+      padding: 14px 20px; border: 1px solid var(--line); border-radius: 20px;
+      background: rgba(10, 17, 30, .82); backdrop-filter: blur(16px);
     }
     .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
     .brand-logo {
-      width: 36px; height: 36px; border-radius: 11px; overflow: hidden;
-      border: 1px solid rgba(117, 153, 222, .35); box-shadow: 0 0 0 4px rgba(77, 125, 255, .08);
+      width: 42px; height: 42px; border-radius: 12px; overflow: hidden;
+      border: 1px solid rgba(123, 145, 230, .35); box-shadow: 0 0 0 4px rgba(91, 140, 255, .08);
       background: linear-gradient(180deg, #0d1627, #0b1321); flex: 0 0 auto;
     }
     .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
-    .brand-name { font-size: 14px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
-    .nav { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
+    .brand-name { font-size: 15px; font-weight: 800; letter-spacing: .06em; white-space: nowrap; }
+    .brand-sub { font-size: 11px; font-weight: 600; letter-spacing: .18em; color: var(--subtle); }
+    .nav { display: flex; gap: 4px; margin-left: 8px; flex: 1; flex-wrap: wrap; }
     .nav a {
-      display: inline-flex; align-items: center; gap: 8px; padding: 11px 14px; border-radius: 12px;
-      color: #d6deea; background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.04); transition: .18s ease;
+      display: inline-flex; align-items: center; padding: 9px 14px; border-radius: 11px;
+      color: #c4cee0; font-size: 14.5px; font-weight: 600; transition: .16s ease;
     }
-    .nav a:hover { border-color: rgba(117, 153, 222, .24); background: rgba(77, 125, 255, .07); }
-    .nav svg { width: 15px; height: 15px; opacity: .88; }
+    .nav a:hover { color: #fff; background: rgba(123, 140, 230, .10); }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .btn-dash {
+      display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border-radius: 12px;
+      color: #d6deea; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); font-weight: 600; transition: .16s ease;
+    }
+    .btn-dash:hover { border-color: rgba(123, 145, 230, .3); background: rgba(91, 140, 255, .08); }
+    .btn-dash svg { width: 16px; height: 16px; opacity: .9; }
+    .btn-discord {
+      display: inline-flex; align-items: center; gap: 9px; padding: 11px 18px; border-radius: 12px; font-weight: 700;
+      color: #fff; background: linear-gradient(135deg, #6f8bff, #8b5bff); border: 1px solid rgba(150, 140, 255, .5);
+      box-shadow: 0 12px 30px rgba(98, 86, 220, .28), inset 0 1px 0 rgba(255,255,255,.22); transition: .18s ease;
+    }
+    .btn-discord:hover { transform: translateY(-1px); }
+    .btn-discord svg { width: 19px; height: 19px; }
     #langSel {
-      padding: 9px 12px; border-radius: 12px; cursor: pointer;
-      color: #d6deea; background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.06);
-      font: inherit; font-size: 13px;
+      padding: 10px 11px; border-radius: 11px; cursor: pointer; color: #d6deea;
+      background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); font: inherit; font-size: 13px;
     }
-    #langSel:hover { border-color: rgba(117, 153, 222, .24); }
-    .hero { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1.08fr) 380px; gap: 22px; align-items: stretch; }
-    .hero-copy, .hero-card {
-      border: 1px solid var(--line); border-radius: 28px;
-      background: linear-gradient(180deg, rgba(14, 23, 36, .92), rgba(9, 15, 26, .96));
-      position: relative; overflow: hidden;
-    }
-    .hero-copy { padding: 34px 34px 30px; }
+    #langSel:hover { border-color: rgba(123, 145, 230, .3); }
+
+    /* ── Hero ── */
+    .hero { margin-top: 26px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.02fr); gap: 40px; align-items: center; padding: 18px 8px; }
     .eyebrow {
-      display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
-      border: 1px solid rgba(145, 170, 212, .18); color: #b6c3d8; font-size: 13px; letter-spacing: .08em;
-      background: rgba(255,255,255,.02); margin-bottom: 26px;
+      display: inline-flex; align-items: center; gap: 9px; padding: 8px 16px; border-radius: 999px;
+      border: 1px solid rgba(140, 130, 230, .26); color: #c3bdf0; font-size: 13.5px; font-weight: 600;
+      background: rgba(120, 110, 220, .08); margin-bottom: 26px;
     }
-    .hero h1 { margin: 0; font-size: clamp(44px, 5vw, 70px); line-height: .98; letter-spacing: -0.045em; font-weight: 800; }
-    .hero h1 .accent { color: #86a8ff; }
-    .hero p { margin: 22px 0 0; max-width: 560px; color: var(--muted); font-size: 17px; line-height: 1.78; letter-spacing: -.015em; }
-    .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 28px; }
+    .eyebrow::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #9b8bff; box-shadow: 0 0 10px #9b8bff; }
+    .hero h1 { margin: 0; font-size: clamp(40px, 4.6vw, 66px); line-height: 1.08; letter-spacing: -0.035em; font-weight: 800; }
+    .hero h1 .accent { background: linear-gradient(92deg, #b09bff 0%, #6f9bff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .hero p { margin: 24px 0 0; color: var(--muted); font-size: 17.5px; line-height: 1.74; letter-spacing: -.01em; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 30px; }
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-      min-height: 54px; padding: 0 22px; border-radius: 14px; border: 1px solid rgba(118, 150, 212, .22);
+      min-height: 54px; padding: 0 24px; border-radius: 14px; border: 1px solid rgba(118, 150, 212, .22);
       color: #eef3fb; background: rgba(255,255,255,.02); font-weight: 700; letter-spacing: -.01em; cursor: pointer; transition: .2s ease;
     }
     .btn:hover { transform: translateY(-1px); }
-    .btn.primary { background: linear-gradient(180deg, #4f7dff, #3c67d8); border-color: rgba(123, 155, 224, .42); box-shadow: 0 14px 34px rgba(44, 84, 179, .18), inset 0 1px 0 rgba(255,255,255,.18); }
-    .btn.ghost:hover { background: rgba(77, 125, 255, .07); }
-    .inline-link { align-self: center; color: #aab8ce; font-size: 14px; }
-    .inline-link code { color: #8db0ff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .hero-card { padding: 24px; display: flex; align-items: center; justify-content: center; min-height: 100%; }
-    .hero-card::before {
-      content: ""; position: absolute; inset: 0;
-      background:
-        radial-gradient(circle at 50% 18%, rgba(78, 116, 194, .12), transparent 35%),
-        linear-gradient(rgba(122,145,182,.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(122,145,182,.06) 1px, transparent 1px);
-      background-size: auto, 24px 24px, 24px 24px; opacity: .6;
-      mask-image: linear-gradient(180deg, rgba(0,0,0,.8), rgba(0,0,0,.15));
+    .btn.primary { background: linear-gradient(135deg, #6f8bff, #8b5bff); border-color: rgba(150, 140, 255, .5); box-shadow: 0 16px 38px rgba(98, 86, 220, .26), inset 0 1px 0 rgba(255,255,255,.2); }
+    .btn.primary svg { width: 20px; height: 20px; }
+    .btn.ghost:hover { background: rgba(123, 140, 230, .08); }
+    .btn.ghost svg { width: 18px; height: 18px; opacity: .9; }
+    .hero-chips { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 28px; }
+    .chip { display: inline-flex; align-items: center; gap: 9px; color: var(--subtle); font-size: 14px; font-weight: 600; }
+    .chip svg { width: 17px; height: 17px; color: #7e8ff0; }
+
+    .hero-art { position: relative; display: grid; place-items: center; }
+    .hero-art::before {
+      content: ""; position: absolute; inset: -6% -2%;
+      background: radial-gradient(circle at 50% 45%, rgba(110, 100, 230, .22), transparent 62%);
+      filter: blur(8px); z-index: 0;
     }
-    .hero-art { position: relative; z-index: 1; width: 100%; height: 100%; display: grid; place-items: center; }
-    .hero-art img { width: min(265px, 78%); aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 18px 28px rgba(0,0,0,.36)); }
-    .steps { margin-top: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-    .step {
-      position: relative; padding: 22px 22px 20px; border-radius: 18px; border: 1px solid var(--line);
-      background: linear-gradient(180deg, rgba(13, 22, 35, .92), rgba(10, 16, 28, .96)); min-height: 150px;
+    .hero-art img { position: relative; z-index: 1; width: min(620px, 100%); object-fit: contain; filter: drop-shadow(0 30px 60px rgba(0,0,0,.5)); }
+    /* Three.js 3D 컨트롤 패널 (WebGL 지원 시) — 미지원/모션축소 시 아래 webp 폴백 유지 */
+    #hero3d { position: relative; width: min(640px, 100%); aspect-ratio: 4 / 3; margin: 0 auto; }
+    #hero3dCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; opacity: 0; transition: opacity .7s ease; }
+    #hero3d.ready #hero3dCanvas { opacity: 1; }
+    #hero3dFallback { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1; transition: opacity .7s ease; filter: drop-shadow(0 30px 60px rgba(0,0,0,.5)); }
+    #hero3d.ready #hero3dFallback { opacity: 0; pointer-events: none; }
+
+    /* ── Feature steps ── */
+    .feat-head { text-align: center; margin: 56px 0 28px; }
+    .feat-eyebrow { color: #8e9bf2; font-size: 15px; font-weight: 700; letter-spacing: .02em; }
+    .feat-title { margin: 10px 0 0; font-size: clamp(30px, 3.4vw, 42px); font-weight: 800; letter-spacing: -.03em; }
+    .feat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+    .feat-card {
+      position: relative; overflow: hidden; padding: 28px 26px 26px; border-radius: 22px; border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(15, 22, 38, .92), rgba(10, 16, 28, .96)); min-height: 200px;
     }
-    .step-index { color: #80a3ff; font-weight: 700; font-size: 12px; letter-spacing: .12em; }
-    .step-title { margin-top: 14px; font-size: 27px; font-weight: 700; letter-spacing: -.025em; }
-    .step-text { margin-top: 12px; color: var(--muted); line-height: 1.65; font-size: 15px; }
-    .step-icon {
-      position: absolute; right: 22px; top: 26px; width: 42px; height: 42px; border-radius: 14px;
-      border: 1px solid rgba(255,255,255,.06); display: grid; place-items: center; color: #9bb5e9; background: rgba(255,255,255,.02);
+    .feat-card::after { content: ""; position: absolute; inset: 0; border-radius: 22px; pointer-events: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
+    .feat-num { color: #7e8ff0; font-weight: 800; font-size: 15px; letter-spacing: .06em; }
+    .feat-name { margin-top: 14px; font-size: 25px; font-weight: 700; letter-spacing: -.02em; }
+    .feat-text { margin-top: 12px; color: var(--muted); line-height: 1.7; font-size: 15px; max-width: 78%; }
+    .feat-text code { color: #a9bcff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .feat-ico {
+      position: absolute; right: 22px; bottom: 22px; width: 76px; height: 76px; border-radius: 20px;
+      display: grid; place-items: center; color: #fff;
+      background: linear-gradient(150deg, #7b8cff, #9a5bff); border: 1px solid rgba(170, 160, 255, .4);
+      box-shadow: 0 16px 34px rgba(98, 86, 220, .34), inset 0 1px 0 rgba(255,255,255,.25);
     }
-    .step code, .step-text code { color: #9fbcff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .section-label { margin: 28px 0 12px; color: #d2dbe7; font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
-    .section-label span { color: var(--subtle); font-weight: 500; }
+    .feat-ico svg { width: 38px; height: 38px; }
+
+    /* ── Stats bar ── */
+    .stats {
+      margin-top: 22px; display: grid; grid-template-columns: repeat(4, 1fr);
+      border: 1px solid var(--line); border-radius: 22px; overflow: hidden;
+      background: linear-gradient(180deg, rgba(13, 20, 35, .92), rgba(9, 15, 26, .96));
+    }
+    .stat { display: flex; align-items: center; gap: 16px; padding: 26px 28px; border-right: 1px solid var(--line); }
+    .stat:last-child { border-right: 0; }
+    .stat-ico {
+      width: 46px; height: 46px; border-radius: 13px; flex: 0 0 auto; display: grid; place-items: center; color: #aab6e6;
+      background: rgba(123, 140, 230, .10); border: 1px solid rgba(123, 140, 230, .22);
+    }
+    .stat-ico svg { width: 22px; height: 22px; }
+    .stat-val { font-size: 26px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+    .stat-lbl { color: var(--subtle); font-size: 13.5px; margin-top: 3px; }
+
+    /* ── Provider / install section ── */
+    .section-label { margin: 56px 0 14px; color: #d2dbe7; font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+    .section-label span { color: var(--subtle); font-weight: 500; font-size: 16px; }
     .tabs { display: grid; grid-template-columns: repeat(2, 1fr); border: 1px solid var(--line); border-radius: 18px 18px 0 0; overflow: hidden; background: rgba(13, 21, 34, .92); }
     .tab {
       display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 58px; cursor: pointer;
@@ -117,38 +165,49 @@
     }
     .tab:last-child { border-right: 0; }
     .tab svg { width: 17px; height: 17px; flex: 0 0 auto; opacity: .92; }
-    .tab.active { color: #eff3fb; background: linear-gradient(180deg, rgba(77, 125, 255, .14), rgba(77, 125, 255, .05)); box-shadow: inset 0 -2px 0 #5482ff; }
+    .tab.active { color: #eff3fb; background: linear-gradient(180deg, rgba(123, 140, 230, .16), rgba(123, 140, 230, .05)); box-shadow: inset 0 -2px 0 #7b8cff; }
     .tab.active svg { opacity: 1; }
     .install { border: 1px solid var(--line); border-top: 0; border-radius: 0 0 22px 22px; background: linear-gradient(180deg, rgba(12, 20, 33, .92), rgba(9, 16, 27, .98)); padding: 24px; }
     .install-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 18px; }
-    .install-title { font-size: 26px; font-weight: 700; letter-spacing: -.03em; margin: 0; }
+    .install-title { font-size: 25px; font-weight: 700; letter-spacing: -.03em; margin: 0; }
     .install-hint { margin-top: 8px; color: var(--muted); line-height: 1.72; font-size: 15px; }
-    .install-hint code { color: #9fbcff; font-family: ui-monospace, Menlo, monospace; }
+    .install-hint code { color: #a9bcff; font-family: ui-monospace, Menlo, monospace; }
     .install-copy { flex: 0 0 auto; }
     .code-shell { border-radius: 18px; overflow: hidden; border: 1px solid rgba(152, 177, 219, .14); background: #09111d; }
     .shell-top { height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-bottom: 1px solid rgba(255,255,255,.04); background: rgba(255,255,255,.02); }
     .shell-dots { display: flex; gap: 8px; }
     .shell-dots span { width: 11px; height: 11px; border-radius: 50%; display: block; background: #2d3c53; }
     .shell-name { color: #8ea0b8; font-size: 13px; }
-    .copy-btn { border: 1px solid rgba(120,154,220,.18); background: rgba(77,125,255,.08); color: #dce5f3; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+    .copy-btn { border: 1px solid rgba(120,154,220,.18); background: rgba(123,140,230,.08); color: #dce5f3; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
     pre { margin: 0; padding: 18px 20px 20px; overflow-x: auto; font: 14px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #dce4ef; }
     .g { color: #9cc56f; } .b { color: #8bb2ff; word-break: break-all; } .o { color: #efb161; } .c { color: #7e8ca3; }
     .alerts { margin-top: 18px; display: grid; gap: 14px; }
     .alert { display: grid; grid-template-columns: 40px 1fr; gap: 14px; align-items: start; padding: 16px 18px; border-radius: 16px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(12, 20, 31, .94), rgba(9, 16, 26, .98)); }
-    .alert-icon { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 18px; color: #ecf2fb; background: rgba(77, 125, 255, .14); border: 1px solid rgba(119, 153, 221, .28); }
+    .alert-icon { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 18px; color: #ecf2fb; background: rgba(123, 140, 230, .14); border: 1px solid rgba(123, 140, 230, .28); }
     .alert.warn .alert-icon { background: rgba(227, 165, 63, .12); border-color: rgba(227,165,63,.22); color: #ffd9a0; }
     .alert-title { font-size: 19px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 6px; }
     .alert-body { color: var(--muted); line-height: 1.72; font-size: 15px; }
-    .alert-body code { color: #a2bfff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    footer { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; color: #7d8aa0; font-size: 14px; padding: 18px 8px 0; }
+    .alert-body code { color: #a9bcff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    footer { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; color: #7d8aa0; font-size: 14px; padding: 28px 8px 0; }
     footer .warn { color: var(--warn); }
-    @media (max-width: 1024px) { .hero { grid-template-columns: 1fr; } .hero-card { min-height: 300px; } .steps { grid-template-columns: 1fr; } }
+
+    @media (max-width: 1024px) {
+      .hero { grid-template-columns: 1fr; gap: 28px; }
+      .hero-art { order: -1; }
+      .feat-grid { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat:nth-child(1), .stat:nth-child(2) { border-bottom: 1px solid var(--line); }
+    }
     @media (max-width: 720px) {
       .page { width: min(100%, calc(100% - 24px)); margin-top: 12px; }
-      .topbar { padding: 14px; align-items: flex-start; flex-direction: column; }
-      .nav { width: 100%; justify-content: flex-start; }
-      .hero-copy { padding: 26px 22px; } .hero h1 { font-size: 40px; } .hero p { font-size: 15px; }
-      .step-title { font-size: 23px; }
+      .topbar { padding: 14px; flex-wrap: wrap; }
+      .nav { order: 3; width: 100%; }
+      .hero h1 { font-size: 38px; } .hero p { font-size: 15px; }
+      .feat-text { max-width: 100%; }
+      .stats { grid-template-columns: 1fr; }
+      .stat { border-right: 0; border-bottom: 1px solid var(--line); }
+      .stat:last-child { border-bottom: 0; }
       .tabs { grid-template-columns: 1fr; border-radius: 18px; }
       .tab { border-right: 0; border-bottom: 1px solid rgba(255,255,255,.04); }
       .tab:last-child { border-bottom: 0; }
@@ -158,67 +217,114 @@
   </style>
 </head>
 <body>
-  <div class="page">
+  <div class="page" id="top">
     <header class="topbar">
       <div class="brand">
         <div class="brand-logo"><img src="/img/provider-img1.png" alt="마스코트" /></div>
-        <div class="brand-name">NYASSISTANT AI NETWORK</div>
+        <div class="brand-text">
+          <span class="brand-name">NYASSISTANT</span>
+          <span class="brand-sub">AI NETWORK</span>
+        </div>
       </div>
       <nav class="nav">
-        <a href="/presets"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span data-i18n="navPresets">프리셋</span></a>
-        <a href="/admin/dashboard"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg><span data-i18n="navDashboard">대시보드</span></a>
-        <a href="https://github.com/Hyeonjun0527/discord-ai-network-bot/tree/main/provider-agent" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18c-4.97 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77 5.44 5.44 0 0 0 3.5 8.52c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg><span data-i18n="navSource">소스 코드</span></a>
-        <a href="https://discord.com/app" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>Discord</a>
+        <a href="#top" data-i18n="navHome">홈</a>
+        <a href="#steps" data-i18n="navFeatures">기능</a>
+        <a href="#steps" data-i18n="navHowto">사용 방법</a>
+        <a href="/presets" data-i18n="navPresets">프리셋</a>
+        <a href="https://github.com/Hyeonjun0527/discord-ai-network-bot/tree/main/provider-agent" target="_blank" rel="noopener" data-i18n="navSource">소스 코드</a>
+      </nav>
+      <div class="top-actions">
+        <a class="btn-dash" href="/admin/dashboard">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
+          <span data-i18n="navDashboard">대시보드</span>
+        </a>
+        <a class="btn-discord" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>
+          <span data-i18n="ctaAddDiscord">Discord 추가</span>
+        </a>
         <select id="langSel" aria-label="Language" title="Language">
           <option value="ko">한국어</option>
           <option value="en">English</option>
           <option value="ja">日本語</option>
         </select>
-      </nav>
+      </div>
     </header>
 
     <section class="hero">
       <div class="hero-copy">
-        <div class="eyebrow" data-i18n="heroEyebrow">우리 서버만의 AI · 냥시스턴트</div>
-        <h1 data-i18n="heroHeadline">당신의 디스코드 서버에<br><span class="accent">AI 멤버</span>를 연결하세요.</h1>
+        <div class="eyebrow" data-i18n="heroEyebrow">AI 멤버 연결의 새로운 표준</div>
+        <h1 data-i18n="heroHeadline">AI 멤버를<br>당신의 디스코드 서버에<br><span class="accent">연결하세요.</span></h1>
         <p data-i18n="heroBody">
-          멤버들의 <code>/질문</code>에 답하고, 서버 규칙과 공지를 기억하고,
-          채널 분위기에 맞게 대화하는 AI를 만들 수 있어요.<br>
-          <b>우리 서버 안에 언제든 부를 수 있는 AI 멤버</b>가 생깁니다.
+          대화하고, 명령을 수행하고, 서버를 관리하는<br>
+          지능형 AI 멤버를 몇 분 안에 초대할 수 있습니다.
         </p>
         <div class="hero-actions">
-          <a class="btn primary" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener" data-i18n="heroCtaPrimary">디스코드에 봇 추가</a>
-          <a class="btn ghost" href="/presets" data-i18n="heroCtaPresets">채널 AI 프리셋 보기</a>
-          <div class="inline-link">또는 디스코드에서 <code>/프로바이더참여</code></div>
+          <a class="btn primary" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>
+            <span data-i18n="heroCtaPrimary">디스코드에 봇 추가</span>
+          </a>
+          <a class="btn ghost" href="#steps" data-i18n="heroCtaSecondary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="m10 9 5 3-5 3z" fill="currentColor"/></svg>
+            작동 방식 알아보기
+          </a>
+        </div>
+        <div class="hero-chips">
+          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span data-i18n="heroChip1">설치 1분 완성</span></span>
+          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg><span data-i18n="heroChip2">안정적 &amp; 안전한 연결</span></span>
+          <span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v4h-4"/></svg><span data-i18n="heroChip3">지속적 기능 업데이트</span></span>
         </div>
       </div>
-      <div class="hero-card">
-        <div class="hero-art"><img src="/img/provider-img2.png" alt="AI 마스코트" /></div>
+      <div class="hero-art" id="hero3d">
+        <canvas id="hero3dCanvas" aria-hidden="true"></canvas>
+        <img id="hero3dFallback" src="/img/install-panel.webp" alt="냥시스턴트 AI 컨트롤 패널" />
       </div>
     </section>
 
-    <section class="steps">
-      <article class="step">
-        <div class="step-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 10h8M8 14h5"/><rect x="3" y="4" width="18" height="14" rx="4"/><path d="m8 20 4-2 4 2"/></svg></div>
-        <div class="step-index">STEP 01</div>
-        <div class="step-title" data-i18n="step1Title">토큰 받기</div>
-        <div class="step-text" data-i18n="step1Text">디스코드에서 <code>/프로바이더참여</code> → 내 OS 선택 → 10분·1회용 토큰 발급. (재사용 토큰은 첫 연결 시 자동 저장)</div>
+    <div class="feat-head" id="steps">
+      <div class="feat-eyebrow" data-i18n="featEyebrow">간단한 3단계로 시작</div>
+      <h2 class="feat-title" data-i18n="featHeading">빠르고 간편한 설정</h2>
+    </div>
+    <section class="feat-grid">
+      <article class="feat-card">
+        <div class="feat-num">01</div>
+        <div class="feat-name" data-i18n="feat1Title">봇 초대하기</div>
+        <div class="feat-text" data-i18n="feat1Text">Discord 서버에 봇을 초대하고 권한을 설정하세요.</div>
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.4"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M15 11h6"/></svg></div>
       </article>
-      <article class="step">
-        <div class="step-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg></div>
-        <div class="step-index">STEP 02</div>
-        <div class="step-title" data-i18n="step2Title">앱 설치</div>
-        <div class="step-text" data-i18n="step2Text">아래 OS 탭에서 패키지 매니저로 데스크톱 앱(냥시스턴트)을 설치하세요. <b>해시 검증</b>이 자동으로 됩니다.</div>
+      <article class="feat-card">
+        <div class="feat-num">02</div>
+        <div class="feat-name" data-i18n="feat2Title">명령 실행하기</div>
+        <div class="feat-text" data-i18n="feat2Text">다양한 명령어로 AI 멤버를 활용해 보세요.</div>
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 10l2.5 2L7 14M12.5 14H16"/></svg></div>
       </article>
-      <article class="step">
-        <div class="step-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></div>
-        <div class="step-index">STEP 03</div>
-        <div class="step-title" data-i18n="step3Title">연결 확인</div>
-        <div class="step-text" data-i18n="step3Text">설치되면 디스코드 <code>/내상태</code> 로 온라인 상태를 확인하세요.</div>
+      <article class="feat-card">
+        <div class="feat-num">03</div>
+        <div class="feat-name" data-i18n="feat3Title">서버 자동화</div>
+        <div class="feat-text" data-i18n="feat3Text">반복적인 작업은 AI에게 맡기고, 커뮤니티에 집중하세요.</div>
+        <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m8.5 12 2.5 2.5L15.5 9"/></svg></div>
       </article>
     </section>
 
-    <div class="section-label" id="install" data-i18n="installLabel">설치 <span>— 내 컴퓨터를 고르세요</span></div>
+    <section class="stats">
+      <div class="stat">
+        <div class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+        <div><div class="stat-val">99.9%</div><div class="stat-lbl" data-i18n="statUptimeLabel">가동률 보장</div></div>
+      </div>
+      <div class="stat">
+        <div class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 7h14M5 12h14M5 17h14"/><circle cx="8" cy="7" r="1.4" fill="currentColor"/><circle cx="8" cy="17" r="1.4" fill="currentColor"/></svg></div>
+        <div><div class="stat-val">10K+</div><div class="stat-lbl" data-i18n="statServersLabel">활성 서버</div></div>
+      </div>
+      <div class="stat">
+        <div class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 8-4 4 4 4M18 8l4 4-4 4M14 4l-4 16"/></svg></div>
+        <div><div class="stat-val">1M+</div><div class="stat-lbl" data-i18n="statCommandsLabel">명령 실행</div></div>
+      </div>
+      <div class="stat">
+        <div class="stat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
+        <div><div class="stat-val" data-i18n="statSecurityValue">보안 우선</div><div class="stat-lbl" data-i18n="statSecurityLabel">데이터 보호 설계</div></div>
+      </div>
+    </section>
+
+    <div class="section-label" id="install" data-i18n="providerLabel">프로바이더로 참여 <span>— 내 PC의 로컬 AI를 풀에 기여 (선택)</span></div>
     <div class="tabs" id="tabs">
       <button class="tab active" data-os="mac" aria-label="macOS">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.464 2.338-1.282 3.714 1.345.104 2.726-.688 3.57-1.701"/></svg>
@@ -377,6 +483,265 @@
     }
     document.getElementById('copyBtn').addEventListener('click', copyCode);
     document.getElementById('copyBtn2').addEventListener('click', copyCode);
+  </script>
+
+  <script type="module">
+    // 히어로 3D 컨트롤 패널(Three.js, CDN ESM). 우리 테마(다크 네이비 + 보라/파랑 네온)에 맞춰 커스텀.
+    // WebGL 미지원·prefers-reduced-motion·CDN 실패 시 webp(#hero3dFallback) 폴백 유지. 화면 밖이면 렌더 일시정지.
+    const root = document.getElementById('hero3d');
+    const canvas = document.getElementById('hero3dCanvas');
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // 패널 안 텍스트(ko/en/ja) — 페이지 언어에 맞춰 다시 그린다.
+    const L = {
+      ko: { sub: 'INSTALL PANEL', rows: [
+        { os: 'mac', title: 'macOS 설치', desc: 'Mac에서 설치를 시작합니다.' },
+        { os: 'win', title: 'Windows 설치', desc: 'Windows에서 설치를 시작합니다.' }],
+        status: '중앙 네트워크 서버 상태', online: '온라인' },
+      en: { sub: 'INSTALL PANEL', rows: [
+        { os: 'mac', title: 'Install on macOS', desc: 'Start the install on your Mac.' },
+        { os: 'win', title: 'Install on Windows', desc: 'Start the install on Windows.' }],
+        status: 'Central network status', online: 'Online' },
+      ja: { sub: 'INSTALL PANEL', rows: [
+        { os: 'mac', title: 'macOS インストール', desc: 'Macでインストールを開始します。' },
+        { os: 'win', title: 'Windows インストール', desc: 'Windowsでインストールを開始します。' }],
+        status: '中央ネットワーク状態', online: 'オンライン' },
+    };
+    // OS 로고(설치 행용) — install.html OS 탭과 동일 SVG path.
+    const APPLE_PATH = 'M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.464 2.338-1.282 3.714 1.345.104 2.726-.688 3.57-1.701';
+    const WIN_PATH = 'M0 3.45 9.75 2.1v9.45H0zM10.95 1.93 24 0v11.4H10.95zM0 12.6h9.75v9.45L0 20.7zM10.95 12.6H24V24l-13.05-1.83z';
+    const getLang = () => { const l = document.documentElement.lang; return L[l] ? l : 'ko'; };
+
+    // ── 패널 UI 를 2D 캔버스에 그려 CanvasTexture 로 사용(텍스트 선명, 완전 커스텀) ──
+    const TW = 1024, TH = 768;
+    const ui = document.createElement('canvas'); ui.width = TW; ui.height = TH;
+    const cx = ui.getContext('2d');
+    // 헤더 프로필 마스코트(같은 오리진 → 캔버스 taint 없음). 로드되면 패널 재그리기.
+    let requestPanelRedraw = () => {};
+    const logoImg = new Image(); let logoReady = false;
+    logoImg.onload = () => { logoReady = true; requestPanelRedraw(); };
+    logoImg.src = '/img/mascot-ai.png';
+    function rr(x, y, w, h, r) { cx.beginPath(); cx.moveTo(x + r, y); cx.arcTo(x + w, y, x + w, y + h, r); cx.arcTo(x + w, y + h, x, y + h, r); cx.arcTo(x, y + h, x, y, r); cx.arcTo(x, y, x + w, y, r); cx.closePath(); }
+    function toggle(x, y, p) { // 켜짐 비율 p(0~1) — 시안→바이올렛 글로우 토글
+      const w = 96, h = 50, r = h / 2;
+      cx.save();
+      cx.fillStyle = '#27324d'; rr(x, y, w, h, r); cx.fill();
+      const on = cx.createLinearGradient(x, 0, x + w, 0); on.addColorStop(0, '#33e1ff'); on.addColorStop(1, '#9b6bff');
+      cx.globalAlpha = p; cx.shadowColor = 'rgba(100,190,255,.95)'; cx.shadowBlur = 24 * p;
+      cx.fillStyle = on; rr(x, y, w, h, r); cx.fill();
+      cx.shadowBlur = 0; cx.globalAlpha = 1;
+      const knob = x + 6 + (w - h) * p;
+      cx.shadowColor = 'rgba(255,255,255,.85)'; cx.shadowBlur = 14;
+      cx.fillStyle = '#f4f9ff'; cx.beginPath(); cx.arc(knob + r - 6, y + r, r - 6, 0, Math.PI * 2); cx.fill();
+      cx.restore();
+    }
+    const HUES = ['#33e1ff', '#9b6bff', '#ff6bd6']; // 행별 멀티컬러(시안/바이올렛/핑크)
+    function drawPanel(p, dotOn) {
+      const d = L[getLang()];
+      cx.clearRect(0, 0, TW, TH);
+      // ── 글래스 본체(반투명 블루 글라스 + 상단 글로시 하이라이트) ──
+      const bg = cx.createLinearGradient(0, 0, TW * .35, TH); bg.addColorStop(0, 'rgba(32,48,86,.97)'); bg.addColorStop(1, 'rgba(13,21,38,.97)');
+      cx.fillStyle = bg; rr(10, 10, TW - 20, TH - 20, 46); cx.fill();
+      const gloss = cx.createLinearGradient(0, 10, 0, 200); gloss.addColorStop(0, 'rgba(255,255,255,.12)'); gloss.addColorStop(1, 'rgba(255,255,255,0)');
+      cx.fillStyle = gloss; rr(10, 10, TW - 20, 190, 46); cx.fill();
+      // 내부 네온 보더(시안→바이올렛, 글로우)
+      cx.save(); cx.shadowColor = 'rgba(120,180,255,.85)'; cx.shadowBlur = 18; cx.lineWidth = 2.5;
+      const ib = cx.createLinearGradient(0, 0, TW, TH); ib.addColorStop(0, '#7fe9ff'); ib.addColorStop(.5, '#8aa0ff'); ib.addColorStop(1, '#c08bff');
+      cx.strokeStyle = ib; rr(20, 20, TW - 40, TH - 40, 40); cx.stroke(); cx.restore();
+      // 헤더 프로필(마스코트 이미지, 라운드 클립 + 글로우 + 네온 테두리)
+      const hx = 56, hy = 54, ls = 64;
+      cx.save(); cx.shadowColor = 'rgba(120,110,255,.9)'; cx.shadowBlur = 22;
+      cx.fillStyle = '#0c1424'; rr(hx, hy, ls, ls, 18); cx.fill(); cx.restore(); // 글로우 베이스
+      cx.save(); rr(hx, hy, ls, ls, 18); cx.clip();
+      if (logoReady) { cx.drawImage(logoImg, hx, hy, ls, ls); }
+      else { const lg = cx.createLinearGradient(hx, hy, hx + ls, hy + ls); lg.addColorStop(0, '#6fd0ff'); lg.addColorStop(1, '#9a5bff'); cx.fillStyle = lg; cx.fillRect(hx, hy, ls, ls); }
+      cx.restore();
+      cx.save(); cx.lineWidth = 2; cx.strokeStyle = 'rgba(150,200,255,.6)'; rr(hx, hy, ls, ls, 18); cx.stroke(); cx.restore();
+      cx.fillStyle = '#eef2fb'; cx.font = '700 40px -apple-system, "Apple SD Gothic Neo", sans-serif'; cx.textBaseline = 'alphabetic';
+      cx.fillText('NYASSISTANT', hx + 86, hy + 32);
+      cx.fillStyle = '#8aa6c8'; cx.font = '600 22px -apple-system, sans-serif'; cx.fillText(d.sub, hx + 86, hy + 60);
+      const dots = ['#33e1ff', '#5b8cff', '#9b6bff'];
+      cx.save(); cx.shadowBlur = 14;
+      dots.forEach((c, i) => { cx.shadowColor = c; cx.fillStyle = c; cx.beginPath(); cx.arc(TW - 150 + i * 42, hy + 30, 9, 0, Math.PI * 2); cx.fill(); });
+      cx.restore();
+      // ── 설치 행(macOS / Windows): 짙은 블루 글래스 카드 + 광택 + 내부 글로우 + 큰 OS 로고 + 드롭다운 ──
+      const ry0 = 172, rh = 174, gap = 22, cardX = 48, cw = TW - 96;
+      d.rows.forEach((row, i) => {
+        const ry = ry0 + i * (rh + gap);
+        const isMac = row.os === 'mac';
+        // 짙은 블루 반투명 글래스 필
+        const cardg = cx.createLinearGradient(0, ry, 0, ry + rh); cardg.addColorStop(0, 'rgba(46,78,140,.30)'); cardg.addColorStop(1, 'rgba(18,30,58,.36)');
+        cx.fillStyle = cardg; rr(cardX, ry, cw, rh, 28); cx.fill();
+        // 상단 광택 스트릭 + 하단 내부 글로우(카드 안쪽으로 클립)
+        cx.save(); rr(cardX, ry, cw, rh, 28); cx.clip();
+        const streak = cx.createLinearGradient(0, ry, 0, ry + 74); streak.addColorStop(0, 'rgba(255,255,255,.16)'); streak.addColorStop(1, 'rgba(255,255,255,0)');
+        cx.fillStyle = streak; cx.fillRect(cardX, ry, cw, 74);
+        const innerg = cx.createRadialGradient(cardX + cw * .5, ry + rh, 10, cardX + cw * .5, ry + rh, cw * .55);
+        innerg.addColorStop(0, isMac ? 'rgba(150,120,255,.13)' : 'rgba(80,170,255,.13)'); innerg.addColorStop(1, 'rgba(0,0,0,0)'); cx.fillStyle = innerg; cx.fillRect(cardX, ry, cw, rh);
+        cx.restore();
+        // 얇고 선명한 네온 외곽선(글로우)
+        cx.save(); cx.shadowColor = 'rgba(120,190,255,.6)'; cx.shadowBlur = 12; cx.lineWidth = 1.8; cx.strokeStyle = 'rgba(170,205,255,.45)'; rr(cardX, ry, cw, rh, 28); cx.stroke(); cx.restore();
+        // 큰 OS 브랜드 로고(발광)
+        const isz = 72, ix = 96, iy = ry + (rh - isz) / 2;
+        cx.save(); cx.translate(ix, iy); cx.scale(isz / 24, isz / 24);
+        cx.shadowBlur = 16; cx.shadowColor = isMac ? 'rgba(190,170,255,.95)' : 'rgba(90,180,255,.95)';
+        const og = cx.createLinearGradient(0, 0, 24, 24);
+        if (isMac) { og.addColorStop(0, '#f3f4ff'); og.addColorStop(1, '#b9a8ff'); } else { og.addColorStop(0, '#8fd2ff'); og.addColorStop(1, '#3b8cff'); }
+        cx.fillStyle = og; cx.fill(new Path2D(isMac ? APPLE_PATH : WIN_PATH)); cx.restore();
+        // 텍스트
+        cx.fillStyle = '#eef2fb'; cx.font = '700 44px -apple-system, "Apple SD Gothic Neo", sans-serif'; cx.fillText(row.title, 208, ry + rh / 2 - 8);
+        cx.fillStyle = '#9fb0cc'; cx.font = '400 26px -apple-system, "Apple SD Gothic Neo", sans-serif'; cx.fillText(row.desc, 208, ry + rh / 2 + 34);
+        // 드롭다운 버튼(라운드 글래스 + 색별 네온 외곽 + 쉐브론)
+        const bs = 72, bX = cardX + cw - 28 - bs, bY = ry + (rh - bs) / 2;
+        const glow = isMac ? 'rgba(170,120,255,.85)' : 'rgba(90,200,255,.85)';
+        cx.fillStyle = 'rgba(255,255,255,.06)'; rr(bX, bY, bs, bs, 18); cx.fill();
+        cx.save(); cx.shadowColor = glow; cx.shadowBlur = 16; cx.lineWidth = 2.2; cx.strokeStyle = isMac ? 'rgba(180,140,255,.6)' : 'rgba(120,205,255,.6)'; rr(bX, bY, bs, bs, 18); cx.stroke(); cx.restore();
+        cx.save(); cx.strokeStyle = '#eaf2ff'; cx.lineWidth = 4.5; cx.lineCap = 'round'; cx.lineJoin = 'round';
+        const ccx = bX + bs / 2, ccy = bY + bs / 2; cx.beginPath(); cx.moveTo(ccx - 13, ccy - 6); cx.lineTo(ccx, ccy + 8); cx.lineTo(ccx + 13, ccy - 6); cx.stroke(); cx.restore();
+      });
+      // ── 푸터: 중앙 네트워크 서버 상태 · 온라인 ──
+      const fy = ry0 + 2 * (rh + gap) + 8;
+      cx.fillStyle = 'rgba(255,255,255,.04)'; rr(48, fy, TW - 96, 74, 22); cx.fill();
+      cx.fillStyle = '#aeb9d4'; cx.font = '600 28px -apple-system, "Apple SD Gothic Neo", sans-serif'; cx.fillText(d.status, 80, fy + 47);
+      const sx = 80 + cx.measureText(d.status).width + 32;
+      cx.save(); cx.shadowColor = '#3ddc84'; cx.shadowBlur = dotOn ? 18 : 8; cx.fillStyle = dotOn ? '#49f29a' : '#2aa566'; cx.beginPath(); cx.arc(sx, fy + 38, 9, 0, Math.PI * 2); cx.fill(); cx.restore();
+      cx.fillStyle = '#4dea98'; cx.font = '600 28px -apple-system, "Apple SD Gothic Neo", sans-serif'; cx.fillText(d.online, sx + 22, fy + 47);
+    }
+
+    (async function init() {
+      if (reduceMotion) return; // 모션 최소화 사용자 → 정적 webp 유지
+      let THREE;
+      try { THREE = await import('three'); } catch (e) { return; } // CDN 실패 → webp 유지
+      let renderer;
+      try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); }
+      catch (e) { return; } // WebGL 미지원 → webp 유지
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      renderer.setPixelRatio(dpr);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(38, 4 / 3, 0.1, 100); // 강한 원근(subtle distortion)
+      camera.position.set(0.1, -0.45, 4.3); // 약간 낮은 카메라(살짝 올려다봄)
+      camera.lookAt(0, 0.05, 0);
+
+      // 라운드 사각형 Shape → ExtrudeGeometry(깊이 있는 본체)
+      const W = 2.4, H = 1.8, rad = 0.2;
+      const shape = new THREE.Shape();
+      shape.moveTo(-W / 2 + rad, -H / 2);
+      shape.lineTo(W / 2 - rad, -H / 2); shape.quadraticCurveTo(W / 2, -H / 2, W / 2, -H / 2 + rad);
+      shape.lineTo(W / 2, H / 2 - rad); shape.quadraticCurveTo(W / 2, H / 2, W / 2 - rad, H / 2);
+      shape.lineTo(-W / 2 + rad, H / 2); shape.quadraticCurveTo(-W / 2, H / 2, -W / 2, H / 2 - rad);
+      shape.lineTo(-W / 2, -H / 2 + rad); shape.quadraticCurveTo(-W / 2, -H / 2, -W / 2 + rad, -H / 2);
+      const bodyGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.32, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 5, curveSegments: 16 }); // 두꺼운 아크릴 프레임
+      bodyGeo.center();
+      const body = new THREE.Mesh(bodyGeo, new THREE.MeshPhysicalMaterial({ color: 0x16243f, metalness: 0.3, roughness: 0.16, clearcoat: 1.0, clearcoatRoughness: 0.22, emissive: 0x1b2a55, emissiveIntensity: 0.6 }));
+
+      // 전면 UI (CanvasTexture, unlit → 항상 선명)
+      const tex = new THREE.CanvasTexture(ui);
+      tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
+      drawPanel(0, true);
+      // depthWrite:false + 본체 앞면(z≈0.13)보다 확실히 앞(z=0.24)에 둬서 z-fighting(모자이크 깨짐) 방지.
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.985, H * 0.985), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+      face.position.z = 0.31;
+
+      // 뒤쪽 네온 헤일로(가산 합성) — 패널 뒤 보라/파랑 광원
+      const halo = document.createElement('canvas'); halo.width = halo.height = 256;
+      const hc = halo.getContext('2d'); const hg = hc.createRadialGradient(128, 128, 8, 128, 128, 128);
+      hg.addColorStop(0, 'rgba(150,115,255,.7)'); hg.addColorStop(.5, 'rgba(95,135,255,.3)'); hg.addColorStop(1, 'rgba(0,0,0,0)');
+      hc.fillStyle = hg; hc.fillRect(0, 0, 256, 256);
+      const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(W * 1.9, H * 1.9), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(halo), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      haloMesh.position.z = -0.35;
+
+      // ── 네온 글래스 프레임: 두꺼운 멀티컬러(시안→블루→바이올렛→퍼플→핑크) 글로우 + 외/내 이중 라인 + 코너 글로우 ──
+      const RW = 1360, RH = 1040;
+      const rim = document.createElement('canvas'); rim.width = RW; rim.height = RH;
+      const rc = rim.getContext('2d');
+      const bx = (RW - 1024) / 2, by = (RH - 768) / 2, bw = 1024, bh = 768;
+      const rrk = (x, y, w, h, r) => { rc.beginPath(); rc.moveTo(x + r, y); rc.arcTo(x + w, y, x + w, y + h, r); rc.arcTo(x + w, y + h, x, y + h, r); rc.arcTo(x, y + h, x, y, r); rc.arcTo(x, y, x + w, y, r); rc.closePath(); };
+      const mc = rc.createLinearGradient(bx, by, bx + bw, by + bh);
+      mc.addColorStop(0, '#5beaff'); mc.addColorStop(.28, '#5b8cff'); mc.addColorStop(.55, '#9b6bff'); mc.addColorStop(.8, '#c45bff'); mc.addColorStop(1, '#ff6bd6');
+      rc.lineJoin = 'round';
+      // 외곽 와이드 글로우(여러 패스로 두꺼운 발광)
+      [[120, 30, .42], [80, 22, .55], [46, 14, .72], [22, 8, .9]].forEach(([blur, w, a]) => {
+        rc.shadowBlur = blur; rc.shadowColor = 'rgba(150,130,255,' + a + ')';
+        rc.globalAlpha = a; rc.lineWidth = w; rc.strokeStyle = mc; rrk(bx, by, bw, bh, 80); rc.stroke();
+      });
+      // 선명한 외곽 코어(멀티컬러 + 흰 코어)
+      rc.shadowBlur = 0; rc.globalAlpha = 1; rc.lineWidth = 5; rc.strokeStyle = mc; rrk(bx, by, bw, bh, 80); rc.stroke();
+      rc.lineWidth = 2.5; rc.strokeStyle = '#f4f8ff'; rrk(bx, by, bw, bh, 80); rc.stroke();
+      // 안쪽 네온 라인 2겹(두꺼운 아크릴 프레임 두께감)
+      rc.save(); rc.shadowBlur = 14; rc.shadowColor = 'rgba(120,200,255,.9)'; rc.globalAlpha = .9; rc.lineWidth = 3; rc.strokeStyle = mc; rrk(bx + 30, by + 30, bw - 60, bh - 60, 60); rc.stroke();
+      rc.shadowBlur = 6; rc.globalAlpha = .45; rc.lineWidth = 2; rrk(bx + 58, by + 58, bw - 116, bh - 116, 46); rc.stroke(); rc.restore();
+      // 부위별 강한 색 핫스팟(균일X): 좌상 시안 · 우상 바이올렛 · 좌하 퍼플 · 우하 시안
+      const corner = (cxp, cyp, col, rad) => { const g = rc.createRadialGradient(cxp, cyp, 2, cxp, cyp, rad); g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)'); rc.fillStyle = g; rc.fillRect(cxp - rad, cyp - rad, rad * 2, rad * 2); };
+      corner(bx, by, 'rgba(90,235,255,.6)', 160); corner(bx + bw, by, 'rgba(150,110,255,.68)', 175);
+      corner(bx, by + bh, 'rgba(185,110,255,.72)', 185); corner(bx + bw, by + bh, 'rgba(90,220,255,.7)', 185);
+      const rimTex = new THREE.CanvasTexture(rim); rimTex.colorSpace = THREE.SRGBColorSpace; rimTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      const rimMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(W * (RW / 1024), H * (RH / 768)),
+        new THREE.MeshBasicMaterial({ map: rimTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }),
+      );
+      rimMesh.position.z = 0.23;
+
+      const group = new THREE.Group();
+      group.add(haloMesh); group.add(body); group.add(rimMesh); group.add(face);
+      // 각도: 우측 측면 두께 보이게(우측 앞, y-) · 뒤로 기울임(top 후퇴, x-) · 시계방향 롤(top 우하향, z-)
+      group.rotation.set(-0.12, -0.5, -0.08);
+      scene.add(group);
+
+      scene.add(new THREE.AmbientLight(0x3a4570, 1.8));
+      const p1 = new THREE.PointLight(0xb07bff, 16, 16); p1.position.set(2.6, 2.0, 2.4); scene.add(p1);   // 퍼플
+      const p2 = new THREE.PointLight(0x5b8cff, 14, 16); p2.position.set(-2.8, -1.6, 2.0); scene.add(p2); // 블루
+      const p3 = new THREE.PointLight(0x4fe0ff, 10, 16); p3.position.set(0.2, -2.4, 2.4); scene.add(p3);  // 시안 언더라이트
+      const dir = new THREE.DirectionalLight(0xcfe0ff, 0.9); dir.position.set(0, 1, 3); scene.add(dir);
+
+      function resize() {
+        const w = root.clientWidth, h = root.clientHeight;
+        renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+      }
+      resize();
+      new ResizeObserver(resize).observe(root);
+
+      // 마우스 패럴랙스(부드럽게): 패널 위에 있을 때만 기울임. 패널 기준 좌표(-1~1) → 루프에서 px,py 로 감쇠 추종.
+      let tx = 0, ty = 0, px = 0, py = 0;
+      root.addEventListener('pointermove', (e) => {
+        const r = root.getBoundingClientRect();
+        tx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 2)));
+        ty = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height / 2)));
+      }, { passive: true });
+      root.addEventListener('pointerleave', () => { tx = 0; ty = 0; }, { passive: true }); // 패널 밖이면 기본 각도로 복귀
+
+      // 가시성 기반 일시정지
+      let visible = true;
+      new IntersectionObserver((es) => { visible = es[0].isIntersecting; if (visible) loop(); }, { threshold: 0.01 }).observe(root);
+
+      // 언어 변경 시 패널 다시 그리기
+      const langSel = document.getElementById('langSel');
+      if (langSel) langSel.addEventListener('change', () => { needsRedraw = true; });
+
+      const baseY = -0.5, baseX = -0.12, baseZ = -0.08;
+      let t = 0, last = performance.now(), revealed = false, intro = 0, dotPrev = true, needsRedraw = false, raf = 0;
+      requestPanelRedraw = () => { needsRedraw = true; }; // 마스코트 로드 완료 시 즉시 재그리기
+      function loop() {
+        cancelAnimationFrame(raf);
+        const now = performance.now(); const dt = Math.min((now - last) / 1000, 0.05); last = now; t += dt;
+        if (intro < 1) { intro = Math.min(1, intro + dt / 0.7); needsRedraw = true; }
+        const dotOn = (Math.floor(t / 0.7) % 2) === 0;
+        if (dotOn !== dotPrev) { dotPrev = dotOn; needsRedraw = true; }
+        if (needsRedraw) { drawPanel(intro, dotOn); tex.needsUpdate = true; needsRedraw = false; }
+        px += (tx - px) * 0.07; py += (ty - py) * 0.07; // 포인터 감쇠 추종(자연스러운 흐름)
+        group.rotation.y = baseY - px * 0.30; // 마우스 올린 쪽이 앞으로 튀어나오게(좌우)
+        group.rotation.x = baseX - py * 0.18; // 마우스 올린 쪽이 앞으로(상하)
+        group.rotation.z = baseZ + px * 0.03;
+        group.position.x = px * 0.05;
+        group.position.y = Math.sin(t * 0.8) * 0.04;
+        renderer.render(scene, camera);
+        if (!revealed) { revealed = true; root.classList.add('ready'); }
+        if (visible) raf = requestAnimationFrame(loop);
+      }
+      loop();
+    })();
   </script>
 </body>
 </html>

@@ -6,19 +6,23 @@ on:
     paths:
       - "provider-agent/**"
       - "packaging/**"
+      - "i18n/**"
       - "docs/**"
       - "specs/**"
       - "scripts/check_links.py"
       - "scripts/check_packaging.py"
+      - "scripts/gen_i18n.py"
       - ".github/workflows/provider-agent-ci.yml"
   pull_request:
     paths:
       - "provider-agent/**"
       - "packaging/**"
+      - "i18n/**"
       - "docs/**"
       - "specs/**"
       - "scripts/check_links.py"
       - "scripts/check_packaging.py"
+      - "scripts/gen_i18n.py"
       - ".github/workflows/provider-agent-ci.yml"
   workflow_dispatch:
 
@@ -52,3 +56,5 @@ jobs:
         run: python3 scripts/check_links.py
       - name: 패키지 자산명 SSOT 드리프트 검사
         run: python3 scripts/check_packaging.py
+      - name: 문구 i18n SSOT 동기/완전성 검사(ko/en/ja)
+        run: python3 scripts/gen_i18n.py --check

@@ -23,6 +23,7 @@ from aiohttp import web
 from .config import AgentConfig, config_from_args
 from .config_file import load_config, save_config
 from .constants import AGENT_VERSION
+from .i18n import t
 from .netguard import RemoteOllamaBlocked, ensure_ollama_allowed
 
 # 공개 기본 중앙 서버(유저는 입력하지 않음). 자체호스팅만 고급에서 바꿀 수 있다.
@@ -109,18 +110,15 @@ def _start_agent() -> dict:
     """
     task = _state["task"]
     if task is not None and not task.done():
-        return {"ok": False, "error": "이미 실행 중입니다."}
+        return {"ok": False, "error": t("alreadyRunning")}
     cfg = _build_cfg_from_saved()
     if cfg is None or not cfg.token:
-        return {"ok": False, "error": "먼저 토큰을 저장하세요."}
+        return {"ok": False, "error": t("saveTokenFirst")}
     # 단일 인스턴스: 백그라운드 자동실행 서비스 등 다른 에이전트가 이미 연결돼 있으면 막는다(핑퐁 방지).
     from . import singleton
 
     if not singleton.acquire():
-        return {
-            "ok": False,
-            "error": "이미 다른 인스턴스(백그라운드 자동 실행 등)가 연결돼 있어요. 그 인스턴스를 끄거나 ‘자동 실행’을 해제한 뒤 다시 시도하세요.",
-        }
+        return {"ok": False, "error": t("otherInstanceConnected")}
     from .agent import ProviderAgent
 
     agent = ProviderAgent(cfg)

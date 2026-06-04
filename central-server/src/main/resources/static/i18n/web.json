@@ -1,0 +1,78 @@
+{
+  "_generated": "GENERATED from i18n/messages.json by scripts/gen_i18n.py — DO NOT EDIT. 문구 변경은 i18n/messages.json 에서.",
+  "navPresets": {
+    "ko": "프리셋",
+    "en": "Presets",
+    "ja": "プリセット"
+  },
+  "navDashboard": {
+    "ko": "대시보드",
+    "en": "Dashboard",
+    "ja": "ダッシュボード"
+  },
+  "navSource": {
+    "ko": "소스 코드",
+    "en": "Source",
+    "ja": "ソースコード"
+  },
+  "heroEyebrow": {
+    "ko": "우리 서버만의 AI · 냥시스턴트",
+    "en": "Your server's own AI · Nyassistant",
+    "ja": "あなたのサーバーだけのAI · ニャシスタント"
+  },
+  "heroHeadline": {
+    "ko": "당신의 디스코드 서버에<br><span class=\"accent\">AI 멤버</span>를 연결하세요.",
+    "en": "Connect an <span class=\"accent\">AI member</span><br>to your Discord server.",
+    "ja": "あなたのDiscordサーバーに<br><span class=\"accent\">AIメンバー</span>をつなげましょう。"
+  },
+  "heroBody": {
+    "ko": "멤버들의 <code>/질문</code>에 답하고, 서버 규칙과 공지를 기억하고, 채널 분위기에 맞게 대화하는 AI를 만들 수 있어요.<br><b>우리 서버 안에 언제든 부를 수 있는 AI 멤버</b>가 생깁니다.",
+    "en": "Build an AI that answers members' <code>/ask</code>, remembers your server rules and notices, and chats to fit each channel.<br><b>An AI member you can call anytime, right inside your server.</b>",
+    "ja": "メンバーの <code>/質問</code> に答え、サーバーのルールやお知らせを覚え、チャンネルの雰囲気に合わせて話すAIを作れます。<br><b>サーバーの中でいつでも呼べるAIメンバー</b>ができます。"
+  },
+  "heroCtaPrimary": {
+    "ko": "디스코드에 봇 추가",
+    "en": "Add the bot to Discord",
+    "ja": "Discordにボットを追加"
+  },
+  "heroCtaPresets": {
+    "ko": "채널 AI 프리셋 보기",
+    "en": "Browse channel AI presets",
+    "ja": "チャンネルAIプリセットを見る"
+  },
+  "step1Title": {
+    "ko": "토큰 받기",
+    "en": "Get a token",
+    "ja": "トークンを取得"
+  },
+  "step1Text": {
+    "ko": "디스코드에서 <code>/프로바이더참여</code> → 내 OS 선택 → 10분·1회용 토큰 발급. (재사용 토큰은 첫 연결 시 자동 저장)",
+    "en": "In Discord run <code>/provider-join</code> → pick your OS → get a 10-min, single-use token. (A reusable token is saved automatically on first connect.)",
+    "ja": "Discordで <code>/プロバイダー参加</code> → OSを選択 → 10分・1回限りのトークンを発行。（再利用トークンは初回接続時に自動保存）"
+  },
+  "step2Title": {
+    "ko": "앱 설치",
+    "en": "Install the app",
+    "ja": "アプリをインストール"
+  },
+  "step2Text": {
+    "ko": "아래 OS 탭에서 패키지 매니저로 데스크톱 앱(냥시스턴트)을 설치하세요. <b>해시 검증</b>이 자동으로 됩니다.",
+    "en": "Use the package manager in the OS tab below to install the desktop app (Nyassistant). <b>Hash verification</b> is automatic.",
+    "ja": "下のOSタブのパッケージマネージャーでデスクトップアプリ（ニャシスタント）をインストール。<b>ハッシュ検証</b>は自動です。"
+  },
+  "step3Title": {
+    "ko": "연결 확인",
+    "en": "Confirm connection",
+    "ja": "接続を確認"
+  },
+  "step3Text": {
+    "ko": "설치되면 디스코드 <code>/내상태</code> 로 온라인 상태를 확인하세요.",
+    "en": "Once installed, check your online status with <code>/provider-status</code> in Discord.",
+    "ja": "インストール後、Discordの <code>/自分の状態</code> でオンライン状態を確認してください。"
+  },
+  "installLabel": {
+    "ko": "설치 <span>— 내 컴퓨터를 고르세요</span>",
+    "en": "Install <span>— pick your computer</span>",
+    "ja": "インストール <span>— お使いのPCを選択</span>"
+  }
+}

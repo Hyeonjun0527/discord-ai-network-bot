@@ -33,6 +33,12 @@ contract: wire-check  ## 크로스언어 컨트랙트 테스트(양측) + 와이
 packaging-check:  ## 패키지 자산명 SSOT(packaging/assets.json) 드리프트 검사
 	python3 scripts/check_packaging.py
 
+i18n-gen:  ## 문구 SSOT(i18n/messages.json)에서 모듈별 생성본(봇/웹/앱) 재생성
+	python3 scripts/gen_i18n.py
+
+i18n-check:  ## 문구 생성본이 SSOT 와 동기 + ko/en/ja 완전한지 검증(드리프트 시 실패)
+	python3 scripts/gen_i18n.py --check
+
 e2e:  ## 로컬 E2E 실연동(mock Ollama+서버+에이전트)
 	$(PY)/python scripts/e2e_local.py
 

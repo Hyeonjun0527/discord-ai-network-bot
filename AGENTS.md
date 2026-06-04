@@ -68,11 +68,14 @@ cd provider-agent && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov
 - **패키지/릴리스 자산명 변경**: 패키지 ID·릴리스 자산 파일명·설치 명령의 SSOT 는 `packaging/assets.json`
   이다. 매니페스트(winget/scoop/brew)·릴리스 CI(`agent-build.yml`)·앱 가이드(`InstallGuide.kt`)·문서가
   모두 이 값을 써야 한다. 변경 후 `make packaging-check`(= `scripts/check_packaging.py`)로 드리프트 검증.
-- **사용자 노출 문구(i18n) 변경**: 런타임 메시지 문구의 SSOT 는 `central-server/.../resources/i18n/messages.json`
-  이고 `discord/I18n`(+ `Messages` facade)이 읽는다. 완전 지원 언어는 **ko/en/ja**(`domain/SupportedLanguage`),
-  모든 키에 세 언어가 있어야 한다(가드: `I18nMessagesDriftTest`). 슬래시 명령 이름/설명은 `discord/CommandLoc`
-  이 Discord 로컬라이제이션으로 처리(ko/en/ja 필수, 가드 `CommandLocJaCoverageTest`). 응답 언어는 요청자
-  Discord 로케일 우선 → 길드 기본 폴백.
+- **사용자 노출 문구(i18n) 변경**: 문구의 SSOT 는 **저장소 루트 `i18n/messages.json`** 이고 봇·웹·데스크톱
+  앱이 공유한다. 섹션 `bot`/`web`/`agent` 로 나뉘며 모든 키에 **ko/en/ja** 가 있어야 한다. 수정 후
+  `make i18n-gen`(= `scripts/gen_i18n.py`)으로 모듈별 생성본을 재생성한다(생성본 직접 편집 금지):
+  central `resources/i18n/messages.json`(Kotlin `discord/I18n`+`Messages`)·`static/i18n/web.json`(설치 랜딩)·
+  `provider-agent/.../i18n_messages.json`(`provider_agent/i18n.py`). 검증 `make i18n-check`(드리프트+완전성).
+  완전 지원 언어 목록 SSOT 는 `domain/SupportedLanguage`. 슬래시 명령 이름/설명은 `discord/CommandLoc`
+  (Discord 로컬라이제이션, ko/en/ja 필수, 가드 `CommandLocJaCoverageTest`). 응답 언어는 요청자 Discord 로케일
+  우선 → 길드 기본 폴백.
 - **문서 변경**: `scripts/check_links.py`(상대 링크) 통과.
 
 ## 커밋 / 브랜치 / PR

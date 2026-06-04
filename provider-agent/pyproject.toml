@@ -44,7 +44,7 @@ discord-ai-network-bot = "provider_agent.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-provider_agent = ["assets/*.png"]
+provider_agent = ["assets/*.png", "i18n_messages.json"]
 
 [tool.ruff]
 line-length = 100

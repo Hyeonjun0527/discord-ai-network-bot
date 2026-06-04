@@ -51,6 +51,12 @@
     }
     .nav a:hover { border-color: rgba(117, 153, 222, .24); background: rgba(77, 125, 255, .07); }
     .nav svg { width: 15px; height: 15px; opacity: .88; }
+    #langSel {
+      padding: 9px 12px; border-radius: 12px; cursor: pointer;
+      color: #d6deea; background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.06);
+      font: inherit; font-size: 13px;
+    }
+    #langSel:hover { border-color: rgba(117, 153, 222, .24); }
     .hero { margin-top: 18px; display: grid; grid-template-columns: minmax(0, 1.08fr) 380px; gap: 22px; align-items: stretch; }
     .hero-copy, .hero-card {
       border: 1px solid var(--line); border-radius: 28px;
@@ -159,25 +165,30 @@
         <div class="brand-name">NYASSISTANT AI NETWORK</div>
       </div>
       <nav class="nav">
-        <a href="/presets"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>프리셋</a>
-        <a href="/admin/dashboard"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>대시보드</a>
-        <a href="https://github.com/Hyeonjun0527/discord-ai-network-bot/tree/main/provider-agent" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18c-4.97 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77 5.44 5.44 0 0 0 3.5 8.52c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>소스 코드</a>
+        <a href="/presets"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span data-i18n="navPresets">프리셋</span></a>
+        <a href="/admin/dashboard"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg><span data-i18n="navDashboard">대시보드</span></a>
+        <a href="https://github.com/Hyeonjun0527/discord-ai-network-bot/tree/main/provider-agent" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18c-4.97 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77 5.44 5.44 0 0 0 3.5 8.52c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg><span data-i18n="navSource">소스 코드</span></a>
         <a href="https://discord.com/app" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>Discord</a>
+        <select id="langSel" aria-label="Language" title="Language">
+          <option value="ko">한국어</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+        </select>
       </nav>
     </header>
 
     <section class="hero">
       <div class="hero-copy">
-        <div class="eyebrow">우리 서버만의 AI · 냥시스턴트</div>
-        <h1>당신의 디스코드 서버에<br><span class="accent">AI 멤버</span>를 연결하세요.</h1>
-        <p>
+        <div class="eyebrow" data-i18n="heroEyebrow">우리 서버만의 AI · 냥시스턴트</div>
+        <h1 data-i18n="heroHeadline">당신의 디스코드 서버에<br><span class="accent">AI 멤버</span>를 연결하세요.</h1>
+        <p data-i18n="heroBody">
           멤버들의 <code>/질문</code>에 답하고, 서버 규칙과 공지를 기억하고,
           채널 분위기에 맞게 대화하는 AI를 만들 수 있어요.<br>
           <b>우리 서버 안에 언제든 부를 수 있는 AI 멤버</b>가 생깁니다.
         </p>
         <div class="hero-actions">
-          <a class="btn primary" href="#install">우리 서버 AI 켜기 ↓</a>
-          <a class="btn ghost" href="/presets">채널 AI 프리셋 보기</a>
+          <a class="btn primary" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener" data-i18n="heroCtaPrimary">디스코드에 봇 추가</a>
+          <a class="btn ghost" href="/presets" data-i18n="heroCtaPresets">채널 AI 프리셋 보기</a>
           <div class="inline-link">또는 디스코드에서 <code>/프로바이더참여</code></div>
         </div>
       </div>
@@ -190,24 +201,24 @@
       <article class="step">
         <div class="step-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 10h8M8 14h5"/><rect x="3" y="4" width="18" height="14" rx="4"/><path d="m8 20 4-2 4 2"/></svg></div>
         <div class="step-index">STEP 01</div>
-        <div class="step-title">토큰 받기</div>
-        <div class="step-text">디스코드에서 <code>/프로바이더참여</code> → 내 OS 선택 → 10분·1회용 토큰 발급. (재사용 토큰은 첫 연결 시 자동 저장)</div>
+        <div class="step-title" data-i18n="step1Title">토큰 받기</div>
+        <div class="step-text" data-i18n="step1Text">디스코드에서 <code>/프로바이더참여</code> → 내 OS 선택 → 10분·1회용 토큰 발급. (재사용 토큰은 첫 연결 시 자동 저장)</div>
       </article>
       <article class="step">
         <div class="step-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg></div>
         <div class="step-index">STEP 02</div>
-        <div class="step-title">터미널 열기</div>
-        <div class="step-text">아래 OS 탭에서 터미널 또는 PowerShell을 열고 설치 명령을 실행하세요. <b>출처·해시 검증</b> 단계가 포함됩니다.</div>
+        <div class="step-title" data-i18n="step2Title">앱 설치</div>
+        <div class="step-text" data-i18n="step2Text">아래 OS 탭에서 패키지 매니저로 데스크톱 앱(냥시스턴트)을 설치하세요. <b>해시 검증</b>이 자동으로 됩니다.</div>
       </article>
       <article class="step">
         <div class="step-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></div>
         <div class="step-index">STEP 03</div>
-        <div class="step-title">연결 확인</div>
-        <div class="step-text">설치되면 디스코드 <code>/내상태</code> 로 온라인 상태를 확인하세요.</div>
+        <div class="step-title" data-i18n="step3Title">연결 확인</div>
+        <div class="step-text" data-i18n="step3Text">설치되면 디스코드 <code>/내상태</code> 로 온라인 상태를 확인하세요.</div>
       </article>
     </section>
 
-    <div class="section-label" id="install">설치 <span>— 내 컴퓨터를 고르세요</span></div>
+    <div class="section-label" id="install" data-i18n="installLabel">설치 <span>— 내 컴퓨터를 고르세요</span></div>
     <div class="tabs" id="tabs">
       <button class="tab active" data-os="mac" aria-label="macOS">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.464 2.338-1.282 3.714 1.345.104 2.726-.688 3.57-1.701"/></svg>
@@ -274,6 +285,43 @@
   </div>
 
   <script>
+    // 문구 i18n(ko/en/ja): SSOT 는 repo i18n/messages.json(web 섹션) → 생성본 /i18n/web.json 을 가져와 적용.
+    // data-i18n="key" 요소의 innerHTML 을 교체. 언어는 저장된 선택 → 브라우저 언어 → ko 순. 데스크톱 앱·봇과 동일 SSOT.
+    (function setupI18n() {
+      const SUPPORTED = ['ko', 'en', 'ja'];
+      const pick = () => {
+        const saved = localStorage.getItem('nyaLang');
+        if (SUPPORTED.includes(saved)) return saved;
+        const nav = (navigator.language || 'ko').slice(0, 2).toLowerCase();
+        return SUPPORTED.includes(nav) ? nav : 'ko';
+      };
+      let dict = null;
+      let lang = pick();
+      const sel = document.getElementById('langSel');
+      if (sel) sel.value = lang;
+      document.documentElement.lang = lang;
+
+      function apply() {
+        if (!dict) return;
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+          const t = dict[el.dataset.i18n];
+          if (t && t[lang]) el.innerHTML = t[lang];
+        });
+        document.documentElement.lang = lang;
+      }
+      if (sel) {
+        sel.addEventListener('change', () => {
+          lang = sel.value;
+          localStorage.setItem('nyaLang', lang);
+          apply();
+        });
+      }
+      fetch('/i18n/web.json')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d) { dict = d; apply(); } })
+        .catch(() => {}); // 실패 시 기본(HTML 의 한국어) 유지
+    })();
+
     // 설치 가이드 데이터는 서버(SSOT: InstallGuide.kt)가 주입한다 — 디스코드 슬래시 안내와 동일 원천.
     // 정적으로 열리면(/install.html 직접) null 폴백. 사용자 링크는 항상 서버 렌더된 /install.
     const INSTALL_GUIDE = null; /*__INSTALL_GUIDE__*/

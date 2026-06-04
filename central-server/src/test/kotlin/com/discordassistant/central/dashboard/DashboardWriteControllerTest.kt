@@ -9,12 +9,10 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
 import org.springframework.context.annotation.Import
-import org.springframework.test.context.TestPropertySource
 
-/** 대시보드 쓰기 API(차수 14 #203/#204) — 정책 위임 검증(직접 호출). */
+/** 대시보드 쓰기 API(차수 14 #203/#204) — 정책 위임 검증(직접 호출). 컨트롤러는 항상 등록(조건 없음). */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@TestPropertySource(properties = ["central.oauth.enabled=true"]) // 쓰기 컨트롤러 조건 활성
 @Import(DashboardWriteController::class, PolicyService::class, AuditLog::class)
 class DashboardWriteControllerTest
     @Autowired

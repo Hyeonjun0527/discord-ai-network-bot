@@ -56,16 +56,17 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
 
 ## B. 어드민 대시보드 접속
 
-- URL: **`https://discord-ai.yeon.world/dashboard/`** (정적 SPA). 대시보드는 **서버(길드)별** — `/api/dashboard/{guildId}/...`.
-- **공개 읽기**(프로바이더 수·사용량·최근 상태)는 인증 불필요. **어드민**(쓰기·`?audience=admin`)은 인증 필요. 권한 없으면 403(fail-closed).
+- URL: **`https://discord-ai.yeon.world/admin/dashboard/`** (정적 SPA). 대시보드는 **서버(길드)별** — `/api/dashboard/{guildId}/...`.
 - 인증 방식 2가지:
-  - **B안 — Discord OAuth (권장)**: `CENTRAL_OAUTH_ENABLED=true` + `CENTRAL_DASHBOARD_ADMIN_USER_IDS=<userId>`. 디스코드 OAuth 앱 redirect에 **`https://discord-ai.yeon.world/login/oauth2/code/discord`** 추가 등록. → `/dashboard/` 접속 시 디스코드 로그인, 허용목록 계정만 어드민.
+  - **B안 — Discord OAuth (권장)**: `CENTRAL_OAUTH_ENABLED=true` + `CENTRAL_DASHBOARD_ADMIN_USER_IDS=<userId>`. 디스코드 OAuth 앱 redirect에 **`https://discord-ai.yeon.world/login/oauth2/code/discord`** 추가 등록.
+    - **OAuth 켜지면 `/admin/dashboard/`는 인증 필요** → 미로그인 접속 시 **디스코드 로그인으로 자동 리디렉트**(SecurityConfig가 `/admin/dashboard/**`를 authenticated로 두고, 단일 OAuth 클라이언트라 `/oauth2/authorization/discord`로 직행). 로그인 후 허용목록 계정만 어드민.
+    - 페이지 헤더에 로그인 상태/**로그아웃** 버튼(`/api/me`로 상태 조회, `/logout` POST). 수동 시작 URL: `https://discord-ai.yeon.world/oauth2/authorization/discord`.
     - 코드: `SecurityConfig`가 `central.oauth.enabled=true`일 때만 Discord OAuth2 `ClientRegistration`을 **코드로** 생성(빈 client-id로 application.yml에 두면 부팅이 깨짐). `CONNECT_DISCORD_*` 앱 재사용.
-  - **A안 — 관리자 토큰**: `CENTRAL_DASHBOARD_ADMIN_TOKEN=<비밀>` → 페이지 상단 "관리자 접근"에 입력(이후 `X-Dashboard-Admin-Token` 자동 첨부).
+  - **A안 — 관리자 토큰**: `CENTRAL_DASHBOARD_ADMIN_TOKEN=<비밀>` → 페이지 상단 "관리자 접근"에 입력(이후 `X-Dashboard-Admin-Token` 자동 첨부). OAuth OFF 환경에서 페이지는 공개(읽기), 어드민 작업만 토큰 보호.
 - **디스코드 userId 얻기**: 디스코드 설정 → 고급 → **개발자 모드 ON** → 내 프로필 우클릭 → **"사용자 ID 복사"**(18~19자리 숫자).
-- 로컬: `http://localhost:8080/dashboard/`.
+- 로컬: `http://localhost:8080/admin/dashboard/`.
 
-> ⚠️ B안을 켜면 대시보드 **데이터 API 전체가 로그인 필요**가 된다(공개 익명 읽기 → 로그인 사용자 읽기 + 어드민 허용목록).
+> ⚠️ B안을 켜면 대시보드 **페이지·데이터 API가 로그인 필요**가 된다(허용목록 계정만 어드민, 공개 익명 뷰 없음).
 
 ---
 

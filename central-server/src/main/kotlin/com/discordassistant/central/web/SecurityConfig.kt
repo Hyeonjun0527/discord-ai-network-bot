@@ -62,8 +62,10 @@ class SecurityConfig(
             csrf { disable() }
             if (oauthEnabled) {
                 authorizeHttpRequests {
-                    // 공개: 정적 대시보드, 다운로드, 읽기 메트릭/헬스, 에이전트 WS, 로그인.
-                    authorize("/dashboard/**", permitAll)
+                    // 어드민 대시보드(/admin/dashboard/**)는 **인증 필요** — 미로그인 브라우저 접근은
+                    // oauth2Login 진입점이 디스코드 OAuth 로 자동 리디렉트한다(아래 anyRequest authenticated).
+                    // 공개: 로그인 상태 조회(/api/me), 정적 다운로드, 읽기 메트릭/헬스, 에이전트 WS, 로그인.
+                    authorize("/api/me", permitAll)
                     authorize("/presets", permitAll)
                     authorize("/presets/**", permitAll)
                     authorize("/api/ai-network/features", permitAll)

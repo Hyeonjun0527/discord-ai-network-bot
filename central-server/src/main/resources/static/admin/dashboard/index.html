@@ -6,7 +6,7 @@
   <title>냥시스턴트 AI 네트워크 대시보드</title>
   <!--
     웹 대시보드 프론트엔드(차수 14). 빌드/번들 불필요한 정적 SPA(바닐라 JS).
-    central-server 가 동일 출처로 서빙(/dashboard/) → CORS 불필요. 읽기전용 모니터링.
+    central-server 가 동일 출처로 서빙(/admin/dashboard/) → CORS 불필요. 읽기전용 모니터링.
     관리자 API 는 Discord OAuth2 또는 X-Dashboard-Admin-Token 헤더로 보호한다.
   -->
   <link rel="stylesheet" href="style.css" />
@@ -15,6 +15,11 @@
   <header>
     <h1>냥시스턴트 AI 네트워크 대시보드</h1>
     <span id="status" class="badge">연결 확인 중…</span>
+    <span id="authBox" class="auth-box">
+      <a id="discordLogin" href="/oauth2/authorization/discord" style="display:none">Discord로 로그인</a>
+      <span id="authUser" class="muted" style="display:none"></span>
+      <button id="logoutBtn" class="secondary" style="display:none">로그아웃</button>
+    </span>
   </header>
 
   <section class="panel">

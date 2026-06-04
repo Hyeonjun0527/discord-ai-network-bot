@@ -21,9 +21,9 @@ class DashboardServingTest
     ) {
         @Test
         fun `정적 대시보드 자원이 서빙된다`() {
-            mvc.perform(get("/dashboard/index.html")).andExpect(status().isOk)
-            mvc.perform(get("/dashboard/app.js")).andExpect(status().isOk)
-            mvc.perform(get("/dashboard/style.css")).andExpect(status().isOk)
+            mvc.perform(get("/admin/dashboard/index.html")).andExpect(status().isOk)
+            mvc.perform(get("/admin/dashboard/app.js")).andExpect(status().isOk)
+            mvc.perform(get("/admin/dashboard/style.css")).andExpect(status().isOk)
             mvc.perform(get("/presets/index.html")).andExpect(status().isOk)
             mvc.perform(get("/presets/app.js")).andExpect(status().isOk)
             mvc.perform(get("/presets/style.css")).andExpect(status().isOk)
@@ -33,14 +33,14 @@ class DashboardServingTest
         fun `정적 대시보드가 AI 네트워크 섹션을 포함한다`() {
             val html =
                 mvc
-                    .perform(get("/dashboard/index.html"))
+                    .perform(get("/admin/dashboard/index.html"))
                     .andExpect(status().isOk)
                     .andReturn()
                     .response
                     .contentAsString
             val js =
                 mvc
-                    .perform(get("/dashboard/app.js"))
+                    .perform(get("/admin/dashboard/app.js"))
                     .andExpect(status().isOk)
                     .andReturn()
                     .response
@@ -274,8 +274,8 @@ class DashboardServingTest
         fun `디렉터리 URL 도 index 로 포워드된다`() {
             mvc.perform(get("/")).andExpect(status().isOk)
             mvc.perform(get("/install")).andExpect(status().isOk)
-            mvc.perform(get("/dashboard/")).andExpect(status().isOk)
-            mvc.perform(get("/dashboard")).andExpect(status().isOk)
+            mvc.perform(get("/admin/dashboard/")).andExpect(status().isOk)
+            mvc.perform(get("/admin/dashboard")).andExpect(status().isOk)
             mvc.perform(get("/presets/")).andExpect(status().isOk)
             mvc.perform(get("/presets")).andExpect(status().isOk)
         }
@@ -292,7 +292,7 @@ class DashboardServingTest
 
             // 정적 응답은 ASCII 로만 단언(MockMvc 가 비-UTF-8 로 디코드 → 한글 매칭 취약).
             assertTrue(html.contains("""href="/presets""""))
-            assertTrue(html.contains("""href="/dashboard""""))
+            assertTrue(html.contains("""href="/admin/dashboard""""))
             assertTrue(html.contains("""id="install"""")) // 설치 섹션 앵커(랜딩 본문)
             assertTrue(html.contains("NYASSISTANT AI NETWORK")) // 브랜드 표기
         }

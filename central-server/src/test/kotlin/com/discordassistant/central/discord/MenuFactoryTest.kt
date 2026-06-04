@@ -29,14 +29,15 @@ class MenuFactoryTest {
     }
 
     @Test
-    fun `OS 선택 버튼은 플랫폼 아이콘을 유지한다`() {
+    fun `OS 선택 버튼은 GUI 앱 배포 대상(mac·Windows)만 유지한다`() {
+        // Linux 는 GUI 데스크톱 앱이 없어 버튼/가이드를 노출하지 않는다.
         val buttons = MenuFactory.osButtons()
+        assertEquals(2, buttons.size)
         assertEquals("macOS", buttons[0].label)
         assertEquals("🍎", buttons[0].emoji?.name)
         assertEquals("Windows", buttons[1].label)
         assertEquals("🪟", buttons[1].emoji?.name)
-        assertEquals("Linux", buttons[2].label)
-        assertEquals("🐧", buttons[2].emoji?.name)
+        assertFalse(buttons.any { it.label == "Linux" })
     }
 
     @Test

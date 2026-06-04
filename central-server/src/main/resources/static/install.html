@@ -209,7 +209,6 @@
     <div class="tabs" id="tabs">
       <button class="tab active" data-os="mac">🍎 macOS</button>
       <button class="tab" data-os="win">🪟 Windows</button>
-      <button class="tab" data-os="linux">🐧 Linux</button>
     </div>
     <section class="install">
       <div class="install-head">
@@ -233,7 +232,7 @@
           <div class="alert-icon">i</div>
           <div>
             <div class="alert-title">출처 검증 · 일반 사용자 권한</div>
-            <div class="alert-body">반드시 <b>GitHub Release</b>에서 받고 <code>SHA256SUMS.txt</code> 로 무결성을 검증하세요(위 3단계). <code>sudo</code>·관리자 권한이 필요 없고, 설정·로그는 홈 디렉터리에만 저장됩니다. <code>brew</code>·<code>winget</code>·<code>scoop</code> 로 설치하면 해시가 <b>자동 검증</b>되며, 빌드 <b>attestation·SBOM</b>으로 출처를 확인할 수 있습니다.</div>
+            <div class="alert-body"><code>brew</code>·<code>winget</code> 로 설치하면 패키지 해시가 <b>자동 검증</b>되고, 빌드 <b>attestation·SBOM</b>으로 출처를 확인할 수 있습니다. <code>sudo</code>·관리자 권한이 필요 없고, 설정·로그는 홈 디렉터리에만 저장됩니다.</div>
           </div>
         </article>
         <article class="alert warn">
@@ -267,66 +266,48 @@
   </div>
 
   <script>
-    const osData = {
-      mac: {
-        shell: 'terminal — zsh',
-        hint: '단축키: <code>⌘ Space</code> → <code>Terminal</code> 입력 → Enter · 또는 Finder → 응용 프로그램 → 유틸리티 → 터미널',
-        code: `<span class="c"># 1) Ollama 설치 + 모델 (관리자 권한 불필요)</span>
-<span class="g">brew</span> install ollama
-<span class="g">brew</span> services start ollama
-<span class="g">ollama</span> pull llama3.1:8b   <span class="c"># (선택) 비전·멀티모달: ollama pull gemma4</span>
+    // 설치 가이드 데이터는 서버(SSOT: InstallGuide.kt)가 주입한다 — 디스코드 슬래시 안내와 동일 원천.
+    // 정적으로 열리면(/install.html 직접) null 폴백. 사용자 링크는 항상 서버 렌더된 /install.
+    const INSTALL_GUIDE = null; /*__INSTALL_GUIDE__*/
 
-<span class="c"># 2) 냥시스턴트 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)</span>
-<span class="g">brew</span> install --cask yeon-intergation-platform/tap/nyassistant
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    // 셸 한 줄을 색칠: 주석(#)은 회색, 그 외엔 첫 토큰(명령)을 초록, URL 은 파랑.
+    function colorLine(line) {
+      if (line.trim().startsWith('#')) return '<span class="c">' + escapeHtml(line) + '</span>';
+      const m = line.match(/^(\s*)(\S+)(.*)$/);
+      if (!m) return escapeHtml(line);
+      const rest = escapeHtml(m[3]).replace(/(https?:\/\/[^\s]+)/g, '<span class="b">$1</span>');
+      return escapeHtml(m[1]) + '<span class="g">' + escapeHtml(m[2]) + '</span>' + rest;
+    }
+    function renderCode(g) {
+      const lines = g.codeLines.slice();
+      lines.push('# 3) ' + g.connect);
+      return lines.map(colorLine).join('\n');
+    }
 
-<span class="c"># 3) 응용 프로그램에서 ‘냥시스턴트’ 를 열고 →</span>
-<span class="c">#    ‘디스코드 로그인’ 으로 서버 선택, 또는 ‘고급 · 토큰 직접 입력’ 에 디스코드 토큰 붙여넣기</span>`
-      },
-      win: {
-        shell: 'PowerShell',
-        hint: '시작 메뉴에서 <code>PowerShell</code> 검색 → Enter (관리자 권한 불필요) · 또는 <code>Win + X</code> → 터미널',
-        code: `<span class="c"># 1) Ollama 설치 + 모델 (관리자 권한 불필요)</span>
-<span class="g">winget</span> install --id Ollama.Ollama -e --accept-source-agreements
-<span class="g">ollama</span> pull llama3.1:8b   <span class="c"># (선택) 비전·멀티모달: ollama pull gemma4</span>
-
-<span class="c"># 2) 냥시스턴트 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)</span>
-<span class="g">winget</span> install --id Nyassistant.DiscordAiNetworkBot -e --accept-source-agreements
-
-<span class="c"># 3) 시작 메뉴에서 ‘냥시스턴트’ 를 열고 →</span>
-<span class="c">#    ‘디스코드 로그인’ 으로 서버 선택, 또는 ‘고급 · 토큰 직접 입력’ 에 디스코드 토큰 붙여넣기</span>`
-      },
-      linux: {
-        shell: 'terminal — bash',
-        hint: '앱 메뉴에서 Terminal 검색 → Enter · 또는 <code>Ctrl + Alt + T</code>',
-        code: `<span class="c"># 1) Ollama 설치 + 모델</span>
-<span class="g">curl</span> -fsSL <span class="b">https://ollama.com/install.sh</span> | <span class="g">sh</span>
-<span class="g">ollama</span> pull llama3.1:8b   <span class="c"># (선택) 비전·멀티모달: ollama pull gemma4</span>
-
-<span class="c"># 2) 에이전트 + 체크섬 받기 (GitHub Release)</span>
-<span class="g">curl</span> -L -o discord-ai-network-bot-linux <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/discord-ai-network-bot-linux</span>
-<span class="g">curl</span> -L -o SHA256SUMS.txt <span class="b">https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/latest/download/SHA256SUMS.txt</span>
-
-<span class="c"># 3) 무결성 검증 — OK 가 나와야 함</span>
-<span class="g">sha256sum</span> -c SHA256SUMS.txt --ignore-missing
-
-<span class="c"># 4) 실행 (sudo 불필요 · 상시구동은 systemctl --user)</span>
-<span class="g">chmod</span> +x discord-ai-network-bot-linux
-<span class="g">./discord-ai-network-bot-linux</span> --token <span class="o">&lt;디스코드에서-받은-토큰&gt;</span> --relay-url <span class="b">wss://discord-ai.yeon.world/agent</span>`
-      }
-    };
+    const osData = {};
+    (INSTALL_GUIDE || []).forEach(g => { osData[g.key] = g; });
 
     const tabs = [...document.querySelectorAll('.tab')];
     function setOS(key) {
+      const g = osData[key];
+      if (!g) return;
       tabs.forEach(t => t.classList.toggle('active', t.dataset.os === key));
-      document.getElementById('installHint').innerHTML = osData[key].hint;
-      document.getElementById('codeBlock').innerHTML = osData[key].code;
-      document.getElementById('shellName').textContent = osData[key].shell;
+      document.getElementById('installHint').textContent = g.terminalHint;
+      document.getElementById('codeBlock').innerHTML = renderCode(g);
+      document.getElementById('shellName').textContent = g.shellName;
     }
     tabs.forEach(t => t.addEventListener('click', () => setOS(t.dataset.os)));
-    const ua = navigator.userAgent;
-    if (/Windows/i.test(ua)) setOS('win');
-    else if (/Linux|X11/i.test(ua) && !/Android/i.test(ua)) setOS('linux');
-    else setOS('mac');
+    if (INSTALL_GUIDE) {
+      const ua = navigator.userAgent;
+      if (/Windows/i.test(ua) && osData.win) setOS('win');
+      else setOS('mac');
+    } else {
+      document.getElementById('codeBlock').innerHTML =
+        '<span class="c"># 최신 설치 안내는 https://discord-ai.yeon.world/install 에서 확인하세요</span>';
+    }
 
     function copyCode() {
       const text = document.getElementById('codeBlock').innerText;

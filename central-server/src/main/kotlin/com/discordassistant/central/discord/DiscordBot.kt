@@ -1470,9 +1470,10 @@ class DiscordBot(
 
         /** 길드면 길드 컨텍스트, DM(유저설치)이면 글로벌 풀(DM_SCOPE) 컨텍스트 — 관리자/역할 없음. */
         private fun ctxOf(interaction: Interaction): CommandContext {
+            val userLang = I18n.resolveOrNull(interaction.userLocale) // ko/en/ja 또는 null(미지원 → 길드 기본 폴백)
             val guild = interaction.guild
             return if (guild != null) {
-                buildCtx(guild.idLong, interaction.member, interaction.channelIdLong, interaction.user.idLong)
+                buildCtx(guild.idLong, interaction.member, interaction.channelIdLong, interaction.user.idLong, userLang)
             } else {
                 CommandContext(
                     guildId = CommandService.DM_SCOPE,
@@ -1480,6 +1481,7 @@ class DiscordBot(
                     userId = interaction.user.idLong,
                     roleIds = emptySet(),
                     isAdmin = false,
+                    userLang = userLang,
                 )
             }
         }
@@ -1489,6 +1491,7 @@ class DiscordBot(
             member: net.dv8tion.jda.api.entities.Member?,
             channelId: Long,
             userId: Long,
+            userLang: String? = null,
         ): CommandContext =
             CommandContext(
                 guildId = guildId,
@@ -1499,6 +1502,7 @@ class DiscordBot(
                     member?.let {
                         it.hasPermission(Permission.MANAGE_SERVER) || it.hasPermission(Permission.ADMINISTRATOR)
                     } ?: false,
+                userLang = userLang,
             )
 
         private fun dispatch(

@@ -41,10 +41,10 @@ class MenuFactoryTest {
     }
 
     @Test
-    fun `언어 드롭다운 — ko en 옵션`() {
+    fun `언어 드롭다운 — ko en ja 옵션`() {
         val sel = MenuFactory.languageSelect("ko")
         assertEquals(MenuFactory.LANG, sel.id)
-        assertEquals(setOf("ko", "en"), sel.options.map { it.value }.toSet())
+        assertEquals(setOf("ko", "en", "ja"), sel.options.map { it.value }.toSet()) // 완전 지원 3개 언어
         assertTrue(sel.options.first { it.value == "ko" }.isDefault)
     }
 

@@ -304,11 +304,13 @@ const ISTOP='<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="w
 async function j(u,o){o=o||{};o.headers=Object.assign({},H,o.headers||{});const r=await fetch(u,o);return r.json();}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');HAS_MODELS=d.models.length>0;
-if(!d.models.length){box.innerHTML='<div class="empty">Ollama에서 모델을 못 찾았어요. <code>ollama pull llama3.1:8b</code> 후 새로고침하세요.</div>';return;}
+if(!d.models.length){box.innerHTML='<div class="empty">아직 사용할 AI 모델이 없어요. 아래 버튼이면 Ollama 설치부터 모델 다운로드까지 자동으로 해드려요.<br><button class="btn" style="margin-top:12px" onclick="setupOllama()">Ollama 자동 설치 + 모델 받기</button><div id="osetup" style="margin-top:10px;color:var(--muted)"></div></div>';return;}
 const CMK='<span class="mcheck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>';
 box.innerHTML=d.models.map(m=>{const sel=d.selected.includes(m)||!d.selected.length;return `<article class="model${sel?' is-selected':''}" data-model="${esc(m)}" onclick="toggleModel(this)">${CMK}${MICON}<div><div class="model-name">${esc(m)}</div><span class="badge${sel?'':' neutral'}">${sel?'제공 중':'선택 안 함'}</span></div></article>`;}).join('');}
 function toggleModel(el){el.classList.toggle('is-selected');const sel=el.classList.contains('is-selected');const b=el.querySelector('.badge');b.textContent=sel?'제공 중':'선택 안 함';b.className='badge'+(sel?'':' neutral');}
 function selectedModels(){return [...document.querySelectorAll('.model.is-selected')].map(c=>c.dataset.model);}
+async function setupOllama(){const el=document.getElementById('osetup');if(el)el.textContent='시작 중…';await j('/api/ollama/setup',{method:'POST'});pollOllamaSetup();}
+async function pollOllamaSetup(){const el=document.getElementById('osetup');const p=await j('/api/ollama/setup-progress');if(!el)return;if(p.phase==='error'){el.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));return;}el.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){setTimeout(loadModels,600);return;}setTimeout(pollOllamaSetup,1500);}
 function on(id){return document.getElementById(id).classList.contains('on');}
 async function refresh(){const s=await j('/api/status');RUN=s.running;
 document.getElementById('relay').textContent=s.relayUrl;
@@ -697,6 +699,23 @@ def build_app(session_key: str) -> web.Application:
         persist_partial({"auto_update": on})  # 다른 설정 영향 없이 즉시 저장
         return web.json_response({"ok": True, "autoUpdate": on})
 
+    async def ollama_setup_start(req: web.Request) -> web.Response:
+        """앱 내 Ollama 자동 설치(감지→설치→기동→모델 pull) 시작. 진행은 폴링으로 노출."""
+        _auth(req)
+        from . import ollama_setup
+
+        if ollama_setup.is_busy():
+            return web.json_response({"ok": True, "busy": True})
+        url = load_config().get("ollama_url") or "http://localhost:11434"
+        asyncio.create_task(ollama_setup.run_setup(url))
+        return web.json_response({"ok": True})
+
+    async def ollama_setup_progress(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import ollama_setup
+
+        return web.json_response(ollama_setup.progress())
+
     async def start(req: web.Request) -> web.Response:
         _auth(req)
         return web.json_response(_start_agent())
@@ -736,6 +755,8 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/update-progress", update_progress)
     app.router.add_post("/api/update", update_apply)
     app.router.add_post("/api/auto-update", auto_update_set)
+    app.router.add_post("/api/ollama/setup", ollama_setup_start)
+    app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)

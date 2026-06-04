@@ -1,0 +1,37 @@
+{
+  "$comment": "WS 프로토콜 와이어 계약의 단일 진실 원천(SSOT). Kotlin(central-server)·Python(provider-agent) 양쪽의 공유 상수를 여기서만 정의한다. 변경 후 `python scripts/gen_wire_contract.py` 로 양쪽 코드를 재생성(드리프트 방지). 와이어 포맷은 Jackson 기본 직렬화(camelCase 키 + type 디스크리미네이터, api.md §8).",
+  "protocolVersion": "1.0",
+  "maxFrameBytes": 1000000,
+  "maxPromptChars": 100000,
+  "frameTypes": {
+    "AUTH": "auth",
+    "AUTH_OK": "auth_ok",
+    "AUTH_ERR": "auth_err",
+    "INFER": "infer",
+    "RESULT": "result",
+    "ERROR": "error",
+    "CHUNK": "chunk",
+    "PING": "ping",
+    "PONG": "pong",
+    "CANCEL": "cancel",
+    "PROVIDER_HELLO": "provider_hello",
+    "PROVIDER_STATUS": "provider_status"
+  },
+  "errorCodes": {
+    "OFFLINE": "OFFLINE",
+    "TIMEOUT": "TIMEOUT",
+    "OLLAMA_ERROR": "OLLAMA_ERROR",
+    "AUTH_FAILED": "AUTH_FAILED",
+    "BUSY": "BUSY",
+    "PROTOCOL_ERROR": "PROTOCOL_ERROR"
+  },
+  "allowedOptionKeys": [
+    "temperature",
+    "num_predict",
+    "num_ctx",
+    "top_p",
+    "top_k",
+    "stop",
+    "seed"
+  ]
+}

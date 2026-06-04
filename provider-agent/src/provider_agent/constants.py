@@ -1,16 +1,34 @@
 """WS 프로토콜 상수 — Kotlin 중앙 서버(central-server)와 동일 계약 (api.md §8).
 
-와이어 포맷은 Kotlin 의 Jackson 기본 직렬화를 따른다: **camelCase 키** + ``type`` 디스크리미네이터.
-이 상수/필드명은 중앙 서버 `relay/protocol/Frame.kt` 와 글자 그대로 일치해야 한다.
+공유 와이어 상수(PROTOCOL_VERSION·MAX_FRAME_BYTES·MAX_PROMPT_CHARS·FrameType·ErrorCode·
+ALLOWED_OPTION_KEYS)는 SSOT ``protocol/wire-contract.json`` 에서 ``scripts/gen_wire_contract.py`` 로
+생성된 ``_wire_contract_generated`` 에 있다. Kotlin ``Frame.kt`` 와 단일 생성기로 동기화돼 drift 가
+불가능하다. 여기서는 그 공유 상수를 재노출(re-export)하고, **에이전트 전용** 상수만 추가로 정의한다.
 """
 from __future__ import annotations
 
 from typing import Final
 
-PROTOCOL_VERSION: Final[str] = "1.0"
-MAX_FRAME_BYTES: Final[int] = 1_000_000
-MAX_PROMPT_CHARS: Final[int] = 100_000
+from provider_agent._wire_contract_generated import (
+    ALLOWED_OPTION_KEYS as ALLOWED_OPTION_KEYS,
+)
+from provider_agent._wire_contract_generated import (
+    MAX_FRAME_BYTES as MAX_FRAME_BYTES,
+)
+from provider_agent._wire_contract_generated import (
+    MAX_PROMPT_CHARS as MAX_PROMPT_CHARS,
+)
+from provider_agent._wire_contract_generated import (
+    PROTOCOL_VERSION as PROTOCOL_VERSION,
+)
+from provider_agent._wire_contract_generated import (
+    ErrorCode as ErrorCode,
+)
+from provider_agent._wire_contract_generated import (
+    FrameType as FrameType,
+)
 
+# ── 에이전트 전용 상수(와이어 계약 아님 — 클라이언트 측 안전 기본값) ──────────────
 # 안전 기본값(차수: 일반 사용자 배포). 0 = 무제한이지만, 무제한은 --allow-unlimited 로만 가능.
 DEFAULT_DAILY_LIMIT: Final[int] = 15
 # 단일 응답 텍스트 상한(문자). 무거운/폭주 응답이 끝없이 커지지 않게 에이전트가 자른다.
@@ -22,36 +40,16 @@ IMAGE_CHUNK_CHARS: Final[int] = 600_000
 
 AGENT_VERSION: Final[str] = "0.25.1"
 
-
-class FrameType:
-    """WS 프레임 ``type`` 값(중앙 서버 FrameType 과 동일)."""
-
-    AUTH: Final[str] = "auth"
-    AUTH_OK: Final[str] = "auth_ok"
-    AUTH_ERR: Final[str] = "auth_err"
-    INFER: Final[str] = "infer"
-    RESULT: Final[str] = "result"
-    ERROR: Final[str] = "error"
-    CHUNK: Final[str] = "chunk"
-    PING: Final[str] = "ping"
-    PONG: Final[str] = "pong"
-    CANCEL: Final[str] = "cancel"
-    PROVIDER_HELLO: Final[str] = "provider_hello"
-    PROVIDER_STATUS: Final[str] = "provider_status"
-
-
-class ErrorCode:
-    """``error`` 프레임 코드(중앙 서버 ErrorCode 와 동일)."""
-
-    OFFLINE: Final[str] = "OFFLINE"
-    TIMEOUT: Final[str] = "TIMEOUT"
-    OLLAMA_ERROR: Final[str] = "OLLAMA_ERROR"
-    AUTH_FAILED: Final[str] = "AUTH_FAILED"
-    BUSY: Final[str] = "BUSY"
-    PROTOCOL_ERROR: Final[str] = "PROTOCOL_ERROR"
-
-
-# 추론 옵션 화이트리스트(중앙 서버 ALLOWED_OPTION_KEYS 와 동일).
-ALLOWED_OPTION_KEYS: Final[frozenset[str]] = frozenset(
-    {"temperature", "num_predict", "num_ctx", "top_p", "top_k", "stop", "seed"}
-)
+__all__ = [
+    "AGENT_VERSION",
+    "ALLOWED_OPTION_KEYS",
+    "DEFAULT_DAILY_LIMIT",
+    "ErrorCode",
+    "FrameType",
+    "IMAGE_CHUNK_CHARS",
+    "MAX_FRAME_BYTES",
+    "MAX_NUM_PREDICT",
+    "MAX_PROMPT_CHARS",
+    "MAX_RESPONSE_CHARS",
+    "PROTOCOL_VERSION",
+]

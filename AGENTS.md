@@ -61,7 +61,10 @@ cd provider-agent && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov
 
 - **central-server 변경**: `gradlew build`(test+ktlint+커버리지) 통과.
 - **provider-agent 변경**: `ruff` + `mypy` + `pytest`(커버리지 ≥ 70%) 통과.
-- **프로토콜(와이어) 변경**: 양측 컨트랙트 테스트(`make contract` 또는 WireContractTest + test_contract).
+- **프로토콜(와이어) 변경**: 공유 상수(PROTOCOL_VERSION·FrameType·ErrorCode·ALLOWED_OPTION_KEYS 등)의
+  SSOT 는 `protocol/wire-contract.json` 이다. 수정 후 `make wire-gen`(= `python scripts/gen_wire_contract.py`)
+  으로 Kotlin(`WireContractGenerated.kt`)·Python(`_wire_contract_generated.py`)을 재생성한다(직접 편집 금지).
+  검증은 `make contract`(드리프트 체크 `wire-check` + 양측 컨트랙트 테스트 WireContractTest·test_contract).
 - **문서 변경**: `scripts/check_links.py`(상대 링크) 통과.
 
 ## 커밋 / 브랜치 / PR

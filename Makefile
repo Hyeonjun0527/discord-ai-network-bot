@@ -3,7 +3,7 @@ JAVA_HOME ?= /Library/Java/JavaVirtualMachines/amazon-corretto-21.jdk/Contents/H
 PY := .venv/bin
 CENTRAL := central-server/gradlew -p central-server
 
-.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract
+.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract wire-gen wire-check
 
 help:  ## 사용 가능한 타깃
 	@grep -E '^[a-zA-Z-]+:.*##' Makefile | sed 's/:.*## /\t/'
@@ -20,7 +20,13 @@ agent-test:  ## provider-agent 테스트
 agent-lint:  ## provider-agent ruff+mypy
 	cd provider-agent && ../$(PY)/ruff check src tests && ../$(PY)/mypy src/provider_agent
 
-contract:  ## 크로스언어 컨트랙트 테스트(양측)
+wire-gen:  ## 와이어 계약 SSOT(protocol/wire-contract.json)에서 Kotlin/Python 상수 재생성
+	$(PY)/python scripts/gen_wire_contract.py
+
+wire-check:  ## 와이어 생성물이 SSOT 와 동기인지 검증(드리프트 시 실패)
+	$(PY)/python scripts/gen_wire_contract.py --check
+
+contract: wire-check  ## 크로스언어 컨트랙트 테스트(양측) + 와이어 생성물 드리프트 검증
 	cd provider-agent && PYTHONPATH=src ../$(PY)/python -m pytest tests/test_contract.py -q
 	JAVA_HOME=$(JAVA_HOME) $(CENTRAL) test --no-daemon --tests '*WireContractTest*'
 

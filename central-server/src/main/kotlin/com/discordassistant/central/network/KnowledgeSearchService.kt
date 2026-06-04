@@ -2,6 +2,7 @@ package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.KnowledgeChunkStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
+import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.domain.RetrievalPolicyStatus
 import com.discordassistant.central.persistence.KnowledgeChunkEntity
 import com.discordassistant.central.persistence.KnowledgeChunkRepository
@@ -512,11 +513,9 @@ class KnowledgeSearchService(
 
         fun normalizeResponseMode(value: String): String =
             when (value.trim().lowercase()) {
+                // "off"(RAG 비활성)는 ResponseMode 에 없는 RAG 전용 모드라 여기서만 처리.
                 "off", "none", "disabled", "끄기", "비활성" -> "off"
-                "fast", "빠른", "빠른 답변" -> "fast"
-                "deep", "깊은", "깊은 답변" -> "deep"
-                "saving", "economy", "절약", "절약 모드" -> "saving"
-                else -> "balanced"
+                else -> ResponseMode.normalize(value).wire
             }
 
         fun ragBudgetFor(responseMode: String): Int =

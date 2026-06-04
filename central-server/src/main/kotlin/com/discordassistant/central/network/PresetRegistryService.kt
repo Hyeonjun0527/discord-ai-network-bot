@@ -6,6 +6,7 @@ import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
+import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiChangeProposalEntity
@@ -979,13 +980,7 @@ class PresetRegistryService(
         }
     }
 
-    private fun normalizeResponseMode(value: String): String =
-        when (value.trim().lowercase()) {
-            "fast", "빠른", "빠른 답변" -> "fast"
-            "deep", "깊은", "깊은 답변" -> "deep"
-            "saving", "economy", "절약", "절약 모드" -> "saving"
-            else -> "balanced"
-        }
+    private fun normalizeResponseMode(value: String): String = ResponseMode.normalize(value).wire
 
     private fun List<String>.normalizedCsv(): String? =
         map { it.trim() }

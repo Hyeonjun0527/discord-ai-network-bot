@@ -562,7 +562,7 @@ class AiNetworkGrowthService(
 
     private fun inferCapabilityTags(modelNames: List<String>): List<String> = ModelClassifier.capabilityTags(modelNames)
 
-    private fun inferMaxBurden(modelNames: List<String>): String = ModelClassifier.maxBurden(modelNames)
+    private fun inferMaxBurden(modelNames: List<String>): String = ModelClassifier.maxBurden(modelNames).name
 
     private fun normalizeCsv(value: String?): List<String> = normalizeList(value.orEmpty().split(","))
 

@@ -2,6 +2,7 @@ package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
+import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.persistence.AiNetworkEventEntity
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
@@ -204,17 +205,7 @@ class ProviderSafetyService(
             else -> "일반 라우팅에 포함할 수 있지만, 실패율과 응답 지연을 계속 관찰하세요."
         }
 
-    private fun String.normalizedResponseMode(): String =
-        trim().lowercase().ifBlank { "balanced" }.let {
-            when (it) {
-                "fast", "balanced", "deep", "saving" -> it
-                "빠른", "빠른 답변" -> "fast"
-                "균형", "균형 모드" -> "balanced"
-                "깊은", "깊은 답변" -> "deep"
-                "절약", "절약 모드" -> "saving"
-                else -> "balanced"
-            }
-        }
+    private fun String.normalizedResponseMode(): String = ResponseMode.normalize(this).wire
 }
 
 data class ProviderSafetyDashboard(

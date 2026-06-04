@@ -3,6 +3,7 @@ package com.discordassistant.central.network
 import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
+import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
@@ -368,13 +369,7 @@ class ChannelAiRoutingPolicyService(
             else -> null
         }
 
-    private fun normalizeResponseMode(value: String): String =
-        when (value.trim().lowercase()) {
-            "fast", "빠른", "빠른 답변" -> "fast"
-            "deep", "깊은", "깊은 답변" -> "deep"
-            "saving", "절약", "절약 모드" -> "saving"
-            else -> "balanced"
-        }
+    private fun normalizeResponseMode(value: String): String = ResponseMode.normalize(value).wire
 
     private fun List<String>.normalizedCsv(): String? =
         map { it.trim() }

@@ -93,10 +93,41 @@ async function refreshPool() {
     $("guildCount").textContent = Object.keys(pool.guildPoolSizes || {}).length;
     badge.textContent = "온라인";
     badge.className = "badge ok";
+    const ov = $("ovNetworkStatus");
+    if (ov) ov.textContent = (pool.inFlightTotal ?? 0) > 0 ? "처리 중" : "정상";
   } catch (e) {
     badge.textContent = "연결 실패";
     badge.className = "badge bad";
+    const ov = $("ovNetworkStatus");
+    if (ov) ov.textContent = "점검";
   }
+}
+
+// Overview 도넛: 참여 PC 상태 분포(정상/주의/보호)를 conic-gradient 로 그린다.
+function renderProviderDonut(providers) {
+  const list = providers || [];
+  const total = list.length;
+  let warn = 0;
+  let protectedCount = 0;
+  for (const p of list) {
+    const state = String(p.state || "").toLowerCase();
+    const risk = String(p.overloadRisk || "").toLowerCase();
+    if (state.includes("protect") || risk === "critical") protectedCount += 1;
+    else if (risk === "high" || state.includes("degrad")) warn += 1;
+  }
+  const normal = Math.max(0, total - warn - protectedCount);
+  const donut = $("providerDonut");
+  if (donut && total > 0) {
+    const p1 = Math.round((normal / total) * 100);
+    const p2 = Math.round(((normal + warn) / total) * 100);
+    donut.style.setProperty("--p1", `${p1}%`);
+    donut.style.setProperty("--p2", `${p2}%`);
+    donut.style.setProperty("--p3", "100%");
+  }
+  if ($("providerDonutTotal")) $("providerDonutTotal").textContent = String(total);
+  if ($("legendNormal")) $("legendNormal").textContent = String(normal);
+  if ($("legendWarn")) $("legendWarn").textContent = String(warn);
+  if ($("legendProtected")) $("legendProtected").textContent = String(protectedCount);
 }
 
 function renderTrend(series) {
@@ -1279,6 +1310,31 @@ function renderAiNetwork(data) {
   renderFeatureUsers(data.featureUsers);
   renderProviderHistory(data.providerHistory);
   renderLaunchChecklist(data.launchChecklist || null);
+  renderOverviewSummary(data);
+  renderProviderDonut(data.providers);
+}
+
+// Overview 페이지의 '네트워크 준비 상태'·'지금 할 일' 카드를 길드 데이터로 채운다.
+function renderOverviewSummary(data) {
+  const readiness = data.readiness?.status || data.overview?.healthStatus || "unknown";
+  const readyRows = [
+    ["준비 상태", readiness],
+    ["성장 레벨", `Lv.${data.growthPlan?.currentLevel ?? data.overview?.networkLevel ?? "–"}`],
+    ["채널 AI", `${data.channels?.length ?? 0}개`],
+    ["사용 가능 모델", `${data.modelMap?.length ?? 0}종`],
+  ];
+  renderList("ovReadiness", readyRows, "데이터 없음", ([label, value]) =>
+    `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
+  );
+  const actions = [];
+  for (const a of (data.nextActions || []).slice(0, 3)) actions.push([a.title, a.description]);
+  const pending = data.changeApproval?.pendingItems?.length ?? 0;
+  if (pending > 0) actions.push(["설정 승인 대기", `${pending}건 검토 필요`]);
+  const openReports = data.quality?.openReports ?? 0;
+  if (openReports > 0) actions.push(["열린 신고", `${openReports}건 검토 필요`]);
+  renderList("ovActions", actions, "지금 처리할 항목이 없습니다 🎉", ([label, value]) =>
+    `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
+  );
 }
 
 // 어드민 (b): 프로바이더 상태(가용시간·마지막 활동 포함). dashboard 페이로드의 providers 보강.
@@ -1599,6 +1655,48 @@ $("logoutBtn").addEventListener("click", async () => {
   } catch (e) {}
   location.href = "/admin/dashboard/";
 });
+// ── 사이드바 라우터: data-page 로 페이지 전환(해시 동기화). ────────────────
+function showPage(name) {
+  const pages = document.querySelectorAll("main .page");
+  let matched = false;
+  pages.forEach((p) => {
+    const on = p.dataset.page === name;
+    p.hidden = !on;
+    if (on) matched = true;
+  });
+  if (!matched) {
+    const first = document.querySelector('main .page[data-page="overview"]');
+    if (first) first.hidden = false;
+    name = "overview";
+  }
+  document.querySelectorAll("nav.side a").forEach((a) => {
+    a.classList.toggle("active", a.dataset.page === name);
+  });
+}
+
+document.querySelectorAll("nav.side a").forEach((a) => {
+  a.addEventListener("click", (e) => {
+    e.preventDefault();
+    const name = a.dataset.page;
+    if (history.replaceState) history.replaceState(null, "", `#${name}`);
+    showPage(name);
+  });
+});
+
+// 채널 AI 만들기 드로어(오른쪽 슬라이드 패널).
+function openChannelAiDrawer() {
+  $("channelAiDrawer")?.classList.add("open");
+  $("channelAiBackdrop")?.classList.add("open");
+}
+function closeChannelAiDrawer() {
+  $("channelAiDrawer")?.classList.remove("open");
+  $("channelAiBackdrop")?.classList.remove("open");
+}
+$("openChannelAiDrawer")?.addEventListener("click", openChannelAiDrawer);
+$("closeChannelAiDrawer")?.addEventListener("click", closeChannelAiDrawer);
+$("channelAiBackdrop")?.addEventListener("click", closeChannelAiDrawer);
+
+showPage((location.hash || "#overview").slice(1));
 loadAuth();
 loadWizardOptions();
 refreshPool();

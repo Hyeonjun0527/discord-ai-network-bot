@@ -837,8 +837,9 @@
       let tx = 0, ty = 0, px = 0, py = 0;
       const raycaster = new THREE.Raycaster();
       const ndc = new THREE.Vector2();
-      // 설치 카드 직접 다운로드(서버 /download/ 공개 자산 — 정적 미리보기에선 404, 운영에선 동작).
-      const DL = { mac: '/download/nexa-macos.dmg', win: '/download/nexa-windows.exe' };
+      // 설치 카드 직접 다운로드. package-manager 설치가 기본이고, 이 URL은 수동 다운로드 fallback이다.
+      const RELEASE_DOWNLOAD = 'https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/download/agent-v0.30.1';
+      const DL = { mac: `${RELEASE_DOWNLOAD}/nexa-macos.dmg`, win: `${RELEASE_DOWNLOAD}/nexa-windows.exe` };
       // 패널 전면 UV(0~1) → 캔버스 좌표 → "다운로드(↓) 버튼" 위인지(mac/win/null)만 판정.
       // 버튼 사각형: x 876~948, mac y 223~295 · win y 419~491 (drawPanel 기준). 클릭 편하게 약간 패딩.
       const rowFromUV = (uv) => {

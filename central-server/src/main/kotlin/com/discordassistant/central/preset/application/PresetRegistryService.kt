@@ -1,19 +1,11 @@
 package com.discordassistant.central.preset.application
 
-import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ChannelAiRoutingPolicyEntity
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
-import com.discordassistant.central.ainetwork.application.ChannelAiRoutingSnapshot
-import com.discordassistant.central.ainetwork.domain.model.AI_NETWORK_MAX_CANDIDATES
-import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
-import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
-import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
-import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
-import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetEntity
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetRepository
 import com.discordassistant.central.preset.adapter.outbound.persistence.PresetImportEntity
@@ -31,10 +23,8 @@ import com.discordassistant.central.preset.domain.model.PresetReportStatus
 import com.discordassistant.central.preset.domain.model.PresetStatus
 import com.discordassistant.central.preset.domain.model.PublishedPresetStatus
 import com.discordassistant.central.shared.ContentSafety
-import com.discordassistant.central.shared.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
 
@@ -74,6 +64,17 @@ class PresetRegistryService(
             reports = reports,
             clock = clock,
             featureGate = featureGate,
+        ),
+    // PESSIMISTIC_WRITE 채번·채널 적용·라우팅 스냅샷 비-@Transactional 헬퍼. @Transactional 인 importPreset 가
+    // 호출하면 파사드의 활성 TX 에 합류한다(새 TX 미발생) — 락·재시도·원자성이 추출 전과 동일.
+    private val channelApplier: PresetChannelApplier =
+        PresetChannelApplier(
+            channelAis = channelAis,
+            behaviorVersions = behaviorVersions,
+            proposals = proposals,
+            audits = audits,
+            routingPolicies = routingPolicies,
+            revisionFactory = revisionFactory,
         ),
 ) {
     @Transactional
@@ -396,7 +397,7 @@ class PresetRegistryService(
         val now = Instant.now(clock)
         val applied =
             targetChannelId?.let {
-                applyRevisionToChannel(
+                channelApplier.applyRevisionToChannel(
                     published = published,
                     sourceRevision = sourceRevision,
                     targetGuildId = targetGuildId,
@@ -641,130 +642,6 @@ class PresetRegistryService(
         targetChannelId: Long?,
     ): PresetImportPreview = importPreviewBuilder.buildImportPreview(published, sourceRevision, targetGuildId, targetChannelId)
 
-    private fun applyRevisionToChannel(
-        published: PublishedPresetEntity,
-        sourceRevision: PresetRevisionEntity,
-        targetGuildId: Long,
-        targetChannelId: Long,
-        importedBy: Long?,
-        now: Instant,
-    ): AppliedPresetChannelAi {
-        val channelAi =
-            channelAis.findByGuildIdAndChannelId(targetGuildId, targetChannelId)
-                ?: ChannelAiEntity(
-                    guildId = targetGuildId,
-                    channelId = targetChannelId,
-                    source = "preset_import",
-                    createdAt = now,
-                )
-        channelAi.displayName =
-            published.title
-                .trim()
-                .take(80)
-                .ifBlank { sourceRevision.name.take(80).ifBlank { "냥시스턴트" } }
-        channelAi.updatedAt = now
-        val savedChannel = channelAis.saveAndFlush(channelAi)
-        val behavior =
-            saveNextBehaviorVersion(savedChannel.id) { nextVersion ->
-                AiBehaviorVersionEntity(
-                    channelAiId = savedChannel.id,
-                    version = nextVersion,
-                    purpose = sourceRevision.purpose,
-                    tone = sourceRevision.tone,
-                    answerLength = sourceRevision.answerLength,
-                    constitution = sourceRevision.constitution,
-                    safetyLevel = sourceRevision.safetyLevel,
-                    createdBy = importedBy,
-                    createdAt = now,
-                    changeSummary = "imported from published preset #${published.id} revision #${sourceRevision.revision}",
-                )
-            }
-        val highRisk = sourceRevision.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS
-        val status = if (highRisk) PresetImportStatus.NEEDS_REVIEW else PresetImportStatus.APPLIED
-        if (highRisk) {
-            proposals.save(
-                AiChangeProposalEntity(
-                    guildId = targetGuildId,
-                    channelId = targetChannelId,
-                    channelAiId = savedChannel.id,
-                    proposedBehaviorId = behavior.id,
-                    status = ProposalStatus.PENDING,
-                    requestedBy = importedBy,
-                    reason = "preset import requires review: ${sourceRevision.safetyLevel}",
-                    payloadHash = behavior.payloadHash(),
-                    routingSnapshot = ChannelAiRoutingSnapshot.fromRevision(sourceRevision).encode(),
-                    createdAt = now,
-                ),
-            )
-        } else {
-            savedChannel.activeBehaviorVersionId = behavior.id
-            savedChannel.updatedAt = now
-            channelAis.save(savedChannel)
-            applyRoutingPolicySnapshot(sourceRevision, targetGuildId, targetChannelId, savedChannel.id, now)
-        }
-        audits.save(
-            CustomizationAuditLogEntity(
-                guildId = targetGuildId,
-                channelId = targetChannelId,
-                actorId = importedBy,
-                action = if (highRisk) "preset_import_proposed" else "preset_import_applied",
-                targetType = "ai_behavior_version",
-                targetId = behavior.id,
-                summary = "publishedPreset=${published.id} revision=${sourceRevision.revision} status=${status.wire}",
-                createdAt = now,
-            ),
-        )
-        return AppliedPresetChannelAi(savedChannel.id, behavior.id, status)
-    }
-
-    /**
-     * behavior version 채번(`MAX(version)+1`)+insert 를 동시성 안전하게 수행한다(#2와 동일 패턴).
-     * 채널 AI 행을 PESSIMISTIC_WRITE 로 잠가 같은 채널의 채번을 직렬화하고, 유니크 위반 시
-     * version 을 재조회해 최대 [MAX_VERSION_RETRIES] 회 재시도한다.
-     */
-    private fun saveNextBehaviorVersion(
-        channelAiId: Long,
-        build: (Int) -> AiBehaviorVersionEntity,
-    ): AiBehaviorVersionEntity {
-        var attempt = 0
-        while (true) {
-            channelAis.findByIdForUpdate(channelAiId)
-            val nextVersion = (behaviorVersions.findTopByChannelAiIdOrderByVersionDesc(channelAiId)?.version ?: 0) + 1
-            try {
-                return behaviorVersions.saveAndFlush(build(nextVersion))
-            } catch (ex: org.springframework.dao.DataIntegrityViolationException) {
-                attempt += 1
-                if (attempt >= MAX_VERSION_RETRIES) {
-                    throw IllegalStateException(
-                        "프리셋 적용 중 채널 AI 행동 버전 채번이 동시 변경과 계속 충돌했어요. 잠시 후 다시 시도해 주세요.",
-                        ex,
-                    )
-                }
-            }
-        }
-    }
-
-    private fun applyRoutingPolicySnapshot(
-        sourceRevision: PresetRevisionEntity,
-        targetGuildId: Long,
-        targetChannelId: Long,
-        channelAiId: Long,
-        now: Instant,
-    ) {
-        val policy =
-            routingPolicies.findByGuildIdAndChannelId(targetGuildId, targetChannelId)
-                ?: ChannelAiRoutingPolicyEntity(guildId = targetGuildId, channelId = targetChannelId, createdAt = now)
-        policy.channelAiId = channelAiId
-        policy.responseMode = normalizeResponseMode(sourceRevision.responseMode)
-        policy.preferredModel = sourceRevision.preferredModel?.trim()?.ifBlank { null }
-        policy.minQualityTier = sourceRevision.minQualityTier.trim().ifBlank { "standard" }
-        policy.maxCandidates = sourceRevision.maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES)
-        policy.providerTagFilter = sourceRevision.providerTagFilter?.trim()?.ifBlank { null }
-        policy.costGuard = sourceRevision.costGuard.trim().ifBlank { "provider_safe" }
-        policy.updatedAt = now
-        routingPolicies.save(policy)
-    }
-
     private fun requireActivePreset(preset: AiPresetEntity) {
         require(preset.status != PresetStatus.REMOVED) { "removed preset cannot be changed" }
     }
@@ -826,29 +703,6 @@ class PresetRegistryService(
         now: Instant,
     ): PresetRevisionEntity = revisionFactory.createRevision(preset, revision, behavior, createdBy, now)
 
-    private fun AiBehaviorVersionEntity.payloadHash(): String =
-        sha256(
-            listOf(
-                channelAiId.toString(),
-                version.toString(),
-                purpose,
-                tone,
-                answerLength,
-                constitution.orEmpty(),
-                safetyLevel,
-                changeSummary.orEmpty(),
-                // ChannelAiCustomizationService.payloadHash 와 동일 필드 구성을 유지해야 한다(preset import 제안도
-                // 같은 approveProposal 에서 해시 검증을 받기 때문). 자유 지침 컬럼 추가에 맞춰 같이 포함한다.
-                customInstruction.orEmpty(),
-            ).joinToString("\u001F"),
-        )
-
-    private fun sha256(value: String): String =
-        MessageDigest
-            .getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-
     private fun uniqueSlug(
         title: String,
         presetId: Long,
@@ -895,8 +749,6 @@ class PresetRegistryService(
         }
     }
 
-    private fun normalizeResponseMode(value: String): String = revisionFactory.normalizeResponseMode(value)
-
     private fun String.hasSensitiveMaterial(): Boolean = with(contentSafety) { hasSensitiveMaterial() }
 
     private fun splitCsv(value: String?): List<String> = contentSafety.splitCsv(value)
@@ -904,14 +756,7 @@ class PresetRegistryService(
     private fun splitLines(value: String?): List<String> = contentSafety.splitLines(value)
 
     private companion object {
-        const val MAX_VERSION_RETRIES = 5
         const val REPORT_REVIEW_THRESHOLD = 1
         val CONFIRM_REQUIRED_CONFLICT_SEVERITIES = setOf("warning", "blocker")
     }
 }
-
-private data class AppliedPresetChannelAi(
-    val channelAiId: Long,
-    val behaviorVersionId: Long,
-    val status: PresetImportStatus,
-)

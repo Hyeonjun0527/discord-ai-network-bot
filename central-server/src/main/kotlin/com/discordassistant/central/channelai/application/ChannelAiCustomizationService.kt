@@ -45,6 +45,8 @@ class ChannelAiCustomizationService(
         ChannelAiProposalQueryService(channelAis, versions, proposals, audits, featureGate),
     // @Transactional 미부여 협력자 — 파사드의 활성 TX 에 합류한다(새 TX 미발생). clock 은 파사드와 공유.
     private val auditRecorder: CustomizationAuditRecorder = CustomizationAuditRecorder(audits, clock),
+    // PESSIMISTIC_WRITE 채번 헬퍼(@Transactional 미부여). 파사드의 활성 TX 에 합류해 락·재시도 의미가 보존된다.
+    private val behaviorVersionWriter: BehaviorVersionWriter = BehaviorVersionWriter(channelAis, versions),
 ) {
     fun wizardOptions(): ChannelAiWizardOptions {
         featureGate.requireChannelAiEnabled()
@@ -646,41 +648,14 @@ class ChannelAiCustomizationService(
     ): ApprovalDecision = approvalPolicy.approvalDecision(requestedApproval, behavior, displayName)
 
     /**
-     * behavior version 채번(`MAX(version)+1`)과 insert 를 동시성 안전하게 수행한다.
-     *
-     * 1) 채널 AI 행을 PESSIMISTIC_WRITE 로 잠가(`findByIdForUpdate`) 같은 채널의 채번을 직렬화한다 —
-     *    동시 두 요청이 같은 version 으로 insert 하다 `uk_ai_behavior_version` 유니크를 깨고
-     *    트랜잭션 전체가 롤백되는 race(#2)를 막는다.
-     * 2) 락이 보장되지 않는 환경(테스트용 인메모리 DB 등)을 위해, 유니크 위반
-     *    ([DataIntegrityViolationException])이 나면 version 을 재조회해 최대 [MAX_VERSION_RETRIES] 회
-     *    재시도하는 낙관적 보호막을 덧댄다. 채번+behavior insert 만 재시도 범위에 두므로
-     *    호출처의 다른 부작용(channelAi.save 등)은 중복되지 않는다.
-     *
-     * @param channelAiId 채번 대상 채널 AI id (이미 저장/flush 된 행이어야 한다).
-     * @param build 확정된 version 으로 새 [AiBehaviorVersionEntity] 를 만드는 빌더.
+     * behavior version 채번(`MAX(version)+1`)+insert 를 [BehaviorVersionWriter] 에 위임한다.
+     * writer 는 @Transactional 미부여라 이 파사드의 활성 TX 에 합류한다 — 락(PESSIMISTIC_WRITE)·재시도·
+     * 예외 메시지가 추출 전과 1바이트도 다르지 않다.
      */
     private fun saveNextBehaviorVersion(
         channelAiId: Long,
         build: (Int) -> AiBehaviorVersionEntity,
-    ): AiBehaviorVersionEntity {
-        var attempt = 0
-        while (true) {
-            // 채널 AI 행 락으로 같은 채널의 채번을 직렬화한다(트랜잭션 안에서만 유효).
-            channelAis.findByIdForUpdate(channelAiId)
-            val nextVersion = (versions.findTopByChannelAiIdOrderByVersionDesc(channelAiId)?.version ?: 0) + 1
-            try {
-                return versions.saveAndFlush(build(nextVersion))
-            } catch (ex: org.springframework.dao.DataIntegrityViolationException) {
-                attempt += 1
-                if (attempt >= MAX_VERSION_RETRIES) {
-                    throw IllegalStateException(
-                        "채널 AI 행동 버전 채번이 동시 변경과 계속 충돌했어요. 잠시 후 다시 시도해 주세요.",
-                        ex,
-                    )
-                }
-            }
-        }
-    }
+    ): AiBehaviorVersionEntity = behaviorVersionWriter.saveNextBehaviorVersion(channelAiId, build)
 
     private fun aiAdminRoleIds(guildId: Long): List<Long> =
         aiAdminRoles
@@ -733,8 +708,4 @@ class ChannelAiCustomizationService(
         previous: String?,
         max: Int,
     ): String? = value?.trim()?.takeIf { it.isNotBlank() }?.take(max) ?: previous
-
-    private companion object {
-        const val MAX_VERSION_RETRIES = 5
-    }
 }

@@ -5,9 +5,9 @@ import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
-import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

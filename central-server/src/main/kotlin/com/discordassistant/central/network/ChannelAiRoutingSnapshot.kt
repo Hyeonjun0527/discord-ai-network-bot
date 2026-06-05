@@ -1,7 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
-import com.discordassistant.central.persistence.PresetRevisionEntity
+import com.discordassistant.central.preset.adapter.outbound.persistence.PresetRevisionEntity
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets

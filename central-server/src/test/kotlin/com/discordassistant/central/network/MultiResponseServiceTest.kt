@@ -1,15 +1,6 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
-import com.discordassistant.central.dashboard.AdoptCandidateRequest
-import com.discordassistant.central.dashboard.CompleteBestMultiResponseRunRequest
-import com.discordassistant.central.dashboard.MultiResponseController
-import com.discordassistant.central.dashboard.MultiResponseOperationsDashboardResponse
-import com.discordassistant.central.dashboard.PseudoStreamPlanRequest
-import com.discordassistant.central.dashboard.RecordCandidateRequest
-import com.discordassistant.central.dashboard.SaveMultiResponsePolicyRequest
-import com.discordassistant.central.dashboard.StartMultiResponseRunRequest
-import com.discordassistant.central.dashboard.SynthesizeRunRequest
 import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
@@ -18,16 +9,29 @@ import com.discordassistant.central.knowledge.adapter.outbound.persistence.Knowl
 import com.discordassistant.central.knowledge.application.KnowledgeIngestionService
 import com.discordassistant.central.knowledge.application.KnowledgeSearchService
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSourceStatus
+import com.discordassistant.central.multiresponse.adapter.inbound.web.AdoptCandidateRequest
+import com.discordassistant.central.multiresponse.adapter.inbound.web.CompleteBestMultiResponseRunRequest
+import com.discordassistant.central.multiresponse.adapter.inbound.web.MultiResponseController
+import com.discordassistant.central.multiresponse.adapter.inbound.web.MultiResponseOperationsDashboardResponse
+import com.discordassistant.central.multiresponse.adapter.inbound.web.PseudoStreamPlanRequest
+import com.discordassistant.central.multiresponse.adapter.inbound.web.RecordCandidateRequest
+import com.discordassistant.central.multiresponse.adapter.inbound.web.SaveMultiResponsePolicyRequest
+import com.discordassistant.central.multiresponse.adapter.inbound.web.StartMultiResponseRunRequest
+import com.discordassistant.central.multiresponse.adapter.inbound.web.SynthesizeRunRequest
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponsePolicyRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponseRunRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.SynthesisResultRepository
+import com.discordassistant.central.multiresponse.application.MultiResponseDecisionItem
+import com.discordassistant.central.multiresponse.application.MultiResponseOperationsSummary
+import com.discordassistant.central.multiresponse.application.MultiResponseService
+import com.discordassistant.central.multiresponse.application.PseudoStreamSnapshot
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
-import com.discordassistant.central.persistence.CandidateAnswerRepository
-import com.discordassistant.central.persistence.MultiResponsePolicyRepository
-import com.discordassistant.central.persistence.MultiResponseRunRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
-import com.discordassistant.central.persistence.SynthesisResultRepository
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
@@ -1506,7 +1510,7 @@ class MultiResponseServiceTest
             controller.synthesize(runId, SynthesizeRunRequest("answer:ops-1:final", listOf(selected.id)))
 
             val response = controller.operationsSummary(420, channelId = 520)
-            val summary = response["summary"] as com.discordassistant.central.dashboard.MultiResponseOperationsDashboardResponse
+            val summary = response["summary"] as MultiResponseOperationsDashboardResponse
 
             assertEquals("blocked", summary.status)
             assertEquals(false, summary.safeToEnableAdvanced)
@@ -1526,7 +1530,7 @@ class MultiResponseServiceTest
 
             val adminResponse = controller.operationsSummary(420, channelId = 520, audience = "admin")
             val adminSummary =
-                adminResponse["summary"] as com.discordassistant.central.dashboard.MultiResponseOperationsDashboardResponse
+                adminResponse["summary"] as MultiResponseOperationsDashboardResponse
             assertTrue(adminSummary.providerLoads.any { it.providerUserId == 182L })
         }
 

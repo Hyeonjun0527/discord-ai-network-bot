@@ -1,6 +1,9 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity
+import com.discordassistant.central.multiresponse.adapter.inbound.web.MultiResponseOperationsDashboardResponse
+import com.discordassistant.central.multiresponse.application.MultiResponseOperationsSummary
+import com.discordassistant.central.multiresponse.application.MultiResponseService
 import com.discordassistant.central.network.AiNetworkDashboardQueryService
 import com.discordassistant.central.network.AiNetworkFeatureGate
 import com.discordassistant.central.network.AiNetworkFoundationService
@@ -9,8 +12,6 @@ import com.discordassistant.central.network.AiNetworkGrowthService
 import com.discordassistant.central.network.AiNetworkReadinessService
 import com.discordassistant.central.network.AiQualityFeedbackService
 import com.discordassistant.central.network.ModelQualitySummary
-import com.discordassistant.central.network.MultiResponseOperationsSummary
-import com.discordassistant.central.network.MultiResponseService
 import com.discordassistant.central.network.NetworkGrowthEventCard
 import com.discordassistant.central.network.ProviderSafetyDashboard
 import com.discordassistant.central.network.ProviderSafetyExecutionPlan

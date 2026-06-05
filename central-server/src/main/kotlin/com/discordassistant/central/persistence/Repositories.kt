@@ -1,8 +1,6 @@
 package com.discordassistant.central.persistence
 
 import com.discordassistant.central.domain.FeedbackStatus
-import com.discordassistant.central.domain.PresetReportStatus
-import com.discordassistant.central.domain.PublishedPresetStatus
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -88,72 +86,6 @@ interface AiFeedbackRepository : JpaRepository<AiFeedbackEntity, Long> {
         guildId: Long,
         status: FeedbackStatus,
     ): List<AiFeedbackEntity>
-}
-
-interface MultiResponsePolicyRepository : JpaRepository<MultiResponsePolicyEntity, Long> {
-    fun findByGuildIdAndChannelId(
-        guildId: Long,
-        channelId: Long?,
-    ): MultiResponsePolicyEntity?
-
-    fun findByGuildIdAndChannelIdIsNull(guildId: Long): MultiResponsePolicyEntity?
-}
-
-interface MultiResponseRunRepository : JpaRepository<MultiResponseRunEntity, Long> {
-    fun findByRequestId(requestId: String): MultiResponseRunEntity?
-
-    fun findTop20ByGuildIdOrderByStartedAtDesc(guildId: Long): List<MultiResponseRunEntity>
-}
-
-interface CandidateAnswerRepository : JpaRepository<CandidateAnswerEntity, Long> {
-    fun findByRunId(runId: Long): List<CandidateAnswerEntity>
-
-    fun findByRunIdAndId(
-        runId: Long,
-        id: Long,
-    ): CandidateAnswerEntity?
-}
-
-interface SynthesisResultRepository : JpaRepository<SynthesisResultEntity, Long> {
-    fun findByRunId(runId: Long): SynthesisResultEntity?
-}
-
-interface AiPresetRepository : JpaRepository<AiPresetEntity, Long> {
-    fun findByGuildId(guildId: Long): List<AiPresetEntity>
-}
-
-interface PresetRevisionRepository : JpaRepository<PresetRevisionEntity, Long> {
-    fun findByPresetIdOrderByRevisionDesc(presetId: Long): List<PresetRevisionEntity>
-
-    fun deleteByPresetId(presetId: Long)
-}
-
-interface PublishedPresetRepository : JpaRepository<PublishedPresetEntity, Long> {
-    fun findByStatusOrderByLikeCountDescPublishedAtDesc(status: PublishedPresetStatus): List<PublishedPresetEntity>
-
-    fun findBySlug(slug: String): PublishedPresetEntity?
-}
-
-interface PresetImportRepository : JpaRepository<PresetImportEntity, Long> {
-    fun findByTargetGuildId(targetGuildId: Long): List<PresetImportEntity>
-}
-
-interface PresetReactionRepository : JpaRepository<PresetReactionEntity, Long> {
-    fun findByPublishedPresetIdAndUserIdAndReaction(
-        publishedPresetId: Long,
-        userId: Long,
-        reaction: String,
-    ): PresetReactionEntity?
-}
-
-interface PresetReportRepository : JpaRepository<PresetReportEntity, Long> {
-    fun findByStatus(status: PresetReportStatus): List<PresetReportEntity>
-
-    fun findByPublishedPresetIdAndReporterUserIdAndStatus(
-        publishedPresetId: Long,
-        reporterUserId: Long,
-        status: PresetReportStatus,
-    ): PresetReportEntity?
 }
 
 interface AiNetworkEventRepository : JpaRepository<AiNetworkEventEntity, Long> {

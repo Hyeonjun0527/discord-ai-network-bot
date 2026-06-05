@@ -1,5 +1,8 @@
 package com.discordassistant.central.domain
 
+import com.discordassistant.central.multiresponse.domain.model.CandidateStatus
+import com.discordassistant.central.multiresponse.domain.model.MultiResponseRunStatus
+import com.discordassistant.central.multiresponse.domain.model.SynthesisStatus
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue

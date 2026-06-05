@@ -16,16 +16,16 @@ import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
-import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSpaceStatus
-import com.discordassistant.central.persistence.AiPresetRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponsePolicyRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
-import com.discordassistant.central.persistence.MultiResponsePolicyRepository
-import com.discordassistant.central.persistence.PresetImportRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
-import com.discordassistant.central.persistence.PublishedPresetRepository
+import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetRepository
+import com.discordassistant.central.preset.adapter.outbound.persistence.PresetImportRepository
+import com.discordassistant.central.preset.adapter.outbound.persistence.PublishedPresetRepository
+import com.discordassistant.central.preset.domain.model.PublishedPresetStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

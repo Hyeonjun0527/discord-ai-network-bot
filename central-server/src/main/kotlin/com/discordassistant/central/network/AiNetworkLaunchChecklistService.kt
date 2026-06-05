@@ -5,6 +5,8 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.Chann
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
+import com.discordassistant.central.multiresponse.application.MultiResponseOperationsSummary
+import com.discordassistant.central.multiresponse.application.MultiResponseService
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import org.springframework.stereotype.Service
 

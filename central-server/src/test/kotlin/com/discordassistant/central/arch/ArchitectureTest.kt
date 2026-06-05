@@ -131,6 +131,8 @@ class ArchitectureTest {
                 "..central.channelai.domain..",
                 "..central.knowledge.domain..",
                 "..central.onboarding.domain..",
+                "..central.multiresponse.domain..",
+                "..central.preset.domain..",
             ).should()
             .dependOnClassesThat()
             .resideInAnyPackage(
@@ -155,6 +157,8 @@ class ArchitectureTest {
                 "..central.channelai..",
                 "..central.knowledge..",
                 "..central.onboarding..",
+                "..central.multiresponse..",
+                "..central.preset..",
             ).and()
             .areAnnotatedWith(jakarta.persistence.Entity::class.java)
             .should()

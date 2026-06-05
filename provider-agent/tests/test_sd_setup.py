@@ -151,11 +151,11 @@ def test_run_setup_installs_prereqs(monkeypatch, tmp_path):
 
     spawned: dict = {}
 
-    async def fake_spawn(cmd, env=None):
+    async def fake_spawn(cmd, env=None, log_path=None):
         spawned["env"] = env
         return object()
 
-    async def fake_wait(client, attempts=600, delay=2.0):
+    async def fake_wait(client, proc=None, attempts=600, delay=2.0):
         return True
 
     monkeypatch.setattr(sd_mod, "_run", fake_run)
@@ -196,11 +196,11 @@ def test_run_setup_full_flow(monkeypatch, tmp_path):
 
     spawned: dict = {}
 
-    async def fake_spawn(cmd, env=None):
+    async def fake_spawn(cmd, env=None, log_path=None):
         spawned["cmd"] = cmd
         return object()
 
-    async def fake_wait(client, attempts=600, delay=2.0):
+    async def fake_wait(client, proc=None, attempts=600, delay=2.0):
         return True
 
     monkeypatch.setattr(sd_mod, "_run", fake_run)
@@ -215,6 +215,48 @@ def test_run_setup_full_flow(monkeypatch, tmp_path):
     # 선택한 모델(sdxl)의 URL 로 다운로드됐다
     assert downloaded.get("url") == sd_mod.model_by_id("sdxl")["url"]
     assert spawned.get("cmd") and spawned["cmd"][0] == "bash"
+
+
+def test_wait_healthy_fast_fails_when_proc_dies():
+    """webui 프로세스가 이미 종료(returncode 세팅)됐으면, health 가 안 떠도 즉시 False(20분 폴링 금지)."""
+    class _DeadProc:
+        returncode = 1
+
+    # attempts 를 크게 줘도, 죽은 proc 을 보면 첫 폴링에서 바로 False 가 나와야 한다.
+    ok = asyncio.run(sd_mod._wait_healthy(_FakeClient(False), _DeadProc(), attempts=100000, delay=0.0))
+    assert ok is False
+
+
+def test_run_setup_reports_webui_exit_with_log(monkeypatch, tmp_path):
+    """첫 실행 webui 가 죽으면(부트스트랩 실패) error phase 로 떨어지고, 로그 꼬리를 error 에 담는다."""
+    directory = tmp_path / "sd"
+    directory.mkdir(parents=True)
+    (directory / "webui.sh").write_text("#!/bin/sh\n")  # is_installed True
+    md = directory / "models" / "Stable-diffusion"
+    md.mkdir(parents=True)
+    (md / "m.safetensors").write_text("model")  # has_model True
+    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(False))
+    monkeypatch.setattr(sd_mod, "install_dir", lambda: directory)
+    monkeypatch.setattr(sd_mod, "has_git", lambda: True)
+    monkeypatch.setattr(sd_mod, "compatible_python", lambda: "python3.11")
+
+    class _DeadProc:
+        returncode = 128  # 예: Stability-AI repo 404 로 클론 실패
+
+    async def fake_spawn(cmd, env=None, log_path=None):
+        # 실제 webui 처럼 로그 파일에 실패 원인을 남기고 죽은 프로세스를 돌려준다.
+        if log_path is not None:
+            log_path.write_text("fatal: repository 'https://github.com/Stability-AI/stablediffusion.git/' not found")
+        return _DeadProc()
+
+    monkeypatch.setattr(sd_mod, "_spawn", fake_spawn)
+
+    ok = asyncio.run(sd_mod.run_setup("http://127.0.0.1:7860"))
+    assert ok is False
+    p = sd_mod.progress()
+    assert p["phase"] == "error"
+    assert "stablediffusion" in (p["error"] or "")  # 로그 꼬리가 error 에 실림(진단 가능)
+    assert "webui-launch.log" in p["message"]  # 사용자에게 로그 경로 안내
 
 
 def test_run_setup_cancel_after_clone(monkeypatch, tmp_path):

@@ -223,8 +223,21 @@ async def _run(cmd: list[str], timeout: float) -> tuple[int, str]:
     return proc.returncode or 0, (out or b"").decode("utf-8", "replace")
 
 
-async def _spawn(cmd: list[str], env: dict[str, str] | None = None) -> asyncio.subprocess.Process:
-    """포그라운드 webui 를 백그라운드로 띄운다(await 하지 않음). 출력은 버린다."""
+def launch_log_path(directory: pathlib.Path | None = None) -> pathlib.Path:
+    """webui 첫 실행 로그 경로(부트스트랩 실패 진단용)."""
+    return (directory or install_dir()) / "webui-launch.log"
+
+
+async def _spawn(cmd: list[str], env: dict[str, str] | None = None, log_path: pathlib.Path | None = None) -> asyncio.subprocess.Process:
+    """포그라운드 webui 를 백그라운드로 띄운다(await 하지 않음).
+
+    출력은 ``log_path`` 파일로 캡처한다(없으면 버림). 첫 실행은 의존성 설치·저장소 클론에서
+    실패할 수 있는데(예: 업스트림 repo 소멸·setuptools 비호환), 그 원인을 파일에 남겨야 진단 가능하다.
+    """
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        out = open(log_path, "wb")  # noqa: SIM115 - 자식 수명 동안 열어 둔다(프로세스 종료 시 OS 가 정리)
+        return await asyncio.create_subprocess_exec(*cmd, stdout=out, stderr=out, env=env)
     return await asyncio.create_subprocess_exec(
         *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL, env=env
     )
@@ -247,11 +260,20 @@ async def _download(url: str, dest: pathlib.Path) -> None:
     part.replace(dest)
 
 
-async def _wait_healthy(client: SDClient, attempts: int = 600, delay: float = 2.0) -> bool:
-    """SD API 가 응답할 때까지 폴링(첫 실행 부트스트랩이 길어 넉넉히)."""
+async def _wait_healthy(
+    client: SDClient, proc: asyncio.subprocess.Process | None = None, attempts: int = 600, delay: float = 2.0
+) -> bool:
+    """SD API 가 응답할 때까지 폴링(첫 실행 부트스트랩이 길어 넉넉히).
+
+    ``proc`` 가 주어지면 매 폴링마다 그 프로세스가 살아 있는지 확인해, webui 가 조기 종료(부트스트랩
+    실패)하면 더 기다리지 않고 즉시 False 를 돌려준다. (과거엔 죽은 webui 를 20분 폴링한 뒤에야
+    'not-serving' 으로 떨어져, 사용자에게 70% 에서 수십 분 멈춘 것처럼 보였다.)
+    """
     for _ in range(attempts):
         if await client.health():
             return True
+        if proc is not None and proc.returncode is not None:
+            return False  # webui 가 죽었으면 health 가 영영 안 뜬다 → 즉시 실패
         await asyncio.sleep(delay)
     return False
 
@@ -329,11 +351,26 @@ async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
         #    A1111 webui 가 호환 Python(3.10/3.11)을 쓰도록 env 로 전달한다.
         _set("starting", 70, "Stable Diffusion 시작 중… (첫 실행은 수~수십 분)")
         env = {**os.environ, **launch_env(python_cmd)}
-        _proc = await _spawn(launch_command(directory=directory), env=env)
-        if not await _wait_healthy(client):
+        log_path = launch_log_path(directory)
+        _proc = await _spawn(launch_command(directory=directory), env=env, log_path=log_path)
+        if not await _wait_healthy(client, _proc):
             if _cancelled():
                 return False
-            _set("error", 70, "Stable Diffusion 이 시작되지 않았어요", error="not-serving")
+            # webui 가 죽었으면(첫 실행 의존성 설치/저장소 클론 실패 등) 원인을 로그 꼬리와 함께 표면화.
+            if _proc.returncode is not None:
+                tail = ""
+                try:
+                    tail = log_path.read_text("utf-8", "replace")[-400:]
+                except OSError:
+                    pass
+                _set(
+                    "error", 70,
+                    "Stable Diffusion 첫 실행 준비가 실패했어요(의존성 설치/저장소 클론 오류). "
+                    f"자세한 내용: {log_path}",
+                    error=(tail or f"webui-exited:{_proc.returncode}"),
+                )
+            else:
+                _set("error", 70, "Stable Diffusion 이 시작되지 않았어요", error="not-serving")
             return False
 
         _set("done", 100, "준비 완료")

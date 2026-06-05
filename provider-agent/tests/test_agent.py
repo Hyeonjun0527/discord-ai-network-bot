@@ -208,3 +208,93 @@ async def test_multi_connection_add_remove(monkeypatch, tmp_path):
     assert [s["guildId"] for s in agent.connections_status()] == [200]
     await agent.remove_connection(guild_id=200)
     assert agent.is_connected() is False
+
+
+class _FakeSD:
+    def __init__(self, healthy: bool = True) -> None:
+        self._healthy = healthy
+
+    async def health(self) -> bool:
+        return self._healthy
+
+
+@pytest.mark.asyncio
+async def test_boot_sd_noop_when_not_installed(monkeypatch):
+    """SD 가 설치 안 돼 있으면 자동기동을 시도하지 않는다(재광고도 없음)."""
+    import provider_agent.sd_setup as sd_setup
+
+    monkeypatch.setattr(sd_setup, "is_installed", lambda: False)
+    agent = ProviderAgent(
+        AgentConfig(token="T", models=("m",), enable_image=True), ollama=FakeOllama(), sd=_FakeSD(False)
+    )
+    called = {}
+
+    async def fake_readv():
+        called["re"] = True
+
+    monkeypatch.setattr(agent, "_readvertise", fake_readv)
+    await agent._boot_sd()
+    assert "re" not in called
+    assert agent.image_ready is False
+
+
+@pytest.mark.asyncio
+async def test_boot_sd_launches_and_readvertises(monkeypatch):
+    """설치됐는데 SD 가 꺼져 있으면 자동기동 → 준비되면 image capability 재광고(재연결)."""
+    import provider_agent.sd_setup as sd_setup
+
+    monkeypatch.setattr(sd_setup, "is_installed", lambda: True)
+    monkeypatch.setattr(sd_setup, "is_busy", lambda: False)
+
+    launched = {}
+
+    async def fake_launch(url):
+        launched["url"] = url
+        return True
+
+    monkeypatch.setattr(sd_setup, "launch_only", fake_launch)
+    agent = ProviderAgent(
+        AgentConfig(token="T", models=("m",), enable_image=True), ollama=FakeOllama(), sd=_FakeSD(True)
+    )
+    re_called = {}
+
+    async def fake_readv():
+        re_called["yes"] = True
+
+    monkeypatch.setattr(agent, "_readvertise", fake_readv)
+    await agent._boot_sd()
+    assert launched.get("url") == agent._cfg.sd_url
+    assert agent.image_ready is True
+    assert re_called.get("yes") is True
+
+
+@pytest.mark.asyncio
+async def test_readvertise_reconnects_all_entries(monkeypatch):
+    """capability 변경 반영: 모든 연결을 끊고 새 hello 로 재접속(SD 준비됨 등)."""
+    agent = ProviderAgent(AgentConfig(token="T", models=("m",)), ollama=FakeOllama())
+    agent._entries = [
+        {"token": "A", "guild_id": 1, "guild_name": "g1", "conn": FakeConn(), "task": None, "status_task": None},
+        {"token": "B", "guild_id": 2, "guild_name": "g2", "conn": FakeConn(), "task": None, "status_task": None},
+    ]
+    stopped: list = []
+    made: list = []
+    spawned: list = []
+
+    async def fake_stop(e):
+        stopped.append(e["token"])
+
+    def fake_make(token, gid, name):
+        made.append(token)
+        return {"token": token, "guild_id": gid, "guild_name": name, "conn": FakeConn(), "task": None, "status_task": None}
+
+    def fake_spawn(e):
+        spawned.append(e["token"])
+        agent._entries.append(e)
+
+    monkeypatch.setattr(agent, "_stop_entry", fake_stop)
+    monkeypatch.setattr(agent, "_make_entry", fake_make)
+    monkeypatch.setattr(agent, "_spawn_entry", fake_spawn)
+    await agent._readvertise()
+    assert stopped == ["A", "B"]  # 기존 연결 전부 끊김
+    assert set(made) == {"A", "B"} and set(spawned) == {"A", "B"}  # 같은 토큰으로 재접속
+    assert len(agent._entries) == 2

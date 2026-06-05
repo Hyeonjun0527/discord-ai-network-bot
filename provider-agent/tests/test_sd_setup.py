@@ -311,3 +311,56 @@ def test_run_setup_cancel_after_clone(monkeypatch, tmp_path):
     ok = asyncio.run(sd_mod.run_setup("http://127.0.0.1:7860"))
     assert ok is False
     assert sd_mod.progress()["phase"] == "cancelled"
+
+
+def test_launch_only_already_running(monkeypatch):
+    """SD 가 이미 떠 있으면 기동 없이 done."""
+    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(True))
+    ok = asyncio.run(sd_mod.launch_only("http://127.0.0.1:7860"))
+    assert ok is True
+    assert sd_mod.progress()["phase"] == "done"
+
+
+def test_launch_only_refuses_when_not_installed(monkeypatch, tmp_path):
+    """설치 안 됨 → 대용량 다운로드 없이 즉시 not-installed 에러(전체 설치 마법사로 유도)."""
+    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(False))
+    monkeypatch.setattr(sd_mod, "install_dir", lambda: tmp_path / "sd")  # 존재하지 않음
+    ok = asyncio.run(sd_mod.launch_only("http://127.0.0.1:7860"))
+    assert ok is False
+    assert sd_mod.progress()["error"] == "not-installed"
+
+
+def test_launch_only_spawns_when_installed(monkeypatch, tmp_path):
+    """설치돼 있으면 clone/다운로드 없이 webui 만 기동(재부팅 후 다시 켜기)."""
+    directory = tmp_path / "sd"
+    directory.mkdir(parents=True)
+    (directory / "webui.sh").write_text("#!/bin/sh\n")  # is_installed True
+    md = directory / "models" / "Stable-diffusion"
+    md.mkdir(parents=True)
+    (md / "m.safetensors").write_text("model")  # has_model True
+    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(False))
+    monkeypatch.setattr(sd_mod, "install_dir", lambda: directory)
+    monkeypatch.setattr(sd_mod, "compatible_python", lambda: "python3.11")
+
+    spawned: dict = {}
+    ran: list = []
+
+    async def fake_spawn(cmd, env=None, log_path=None):
+        spawned["cmd"] = cmd
+        return object()
+
+    async def fake_run(cmd, timeout):  # clone/install 이 호출되면 안 됨(기동 전용)
+        ran.append(cmd)
+        return 0, "ok"
+
+    async def fake_wait(client, proc=None, attempts=600, delay=2.0):
+        return True
+
+    monkeypatch.setattr(sd_mod, "_spawn", fake_spawn)
+    monkeypatch.setattr(sd_mod, "_run", fake_run)
+    monkeypatch.setattr(sd_mod, "_wait_healthy", fake_wait)
+    ok = asyncio.run(sd_mod.launch_only("http://127.0.0.1:7860"))
+    assert ok is True
+    assert sd_mod.progress()["phase"] == "done"
+    assert spawned["cmd"][0] == "bash"  # webui.sh 기동
+    assert ran == []  # clone/install 명령은 전혀 실행 안 됨(기동만)

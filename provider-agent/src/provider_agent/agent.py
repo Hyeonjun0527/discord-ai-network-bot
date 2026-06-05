@@ -76,6 +76,7 @@ class ProviderAgent:
         else:
             self._sd = None
         self._image_ready = False
+        self._sd_boot_task: asyncio.Task[None] | None = None  # 설치된 SD 자동기동 + 준비되면 재광고
         self._sem = asyncio.Semaphore(cfg.max_concurrency)
         self._remaining = cfg.daily_limit  # 0 = 무제한
         self._models: list[str] = list(cfg.models)
@@ -412,7 +413,7 @@ class ProviderAgent:
             if self._image_ready:
                 logger.info("이미지 생성(SD) 활성: %s", self._cfg.sd_url)
             else:
-                logger.warning("SD(%s) 에 닿지 못해 이미지 capability 비활성", self._cfg.sd_url)
+                logger.warning("SD(%s) 미연결 — 설치돼 있으면 자동 기동을 시도하고, 준비되면 이미지 capability 를 재광고합니다", self._cfg.sd_url)
 
         # 웹 UI/트레이에서 같은 루프의 태스크로 돌릴 때는 시그널 핸들러를 설치하지 않는다.
         if install_signals:
@@ -444,6 +445,11 @@ class ProviderAgent:
             for s in saved:
                 self._spawn_entry(self._make_entry(s["token"], s.get("guild_id"), s.get("guild_name")))
 
+        # 이미지 opt-in 인데 SD 가 안 떠 있으면(예: 재부팅 후) 설치돼 있을 때 자동으로 SD 를 띄운다.
+        # 텍스트 연결은 막지 않고 백그라운드로 기동 → 준비되면 image capability 를 재광고(재연결).
+        if self._sd is not None and not self._image_ready:
+            self._sd_boot_task = asyncio.create_task(self._boot_sd())
+
         # 연동된 사용자가 디스코드 /프로바이더참여 한 새 서버에 자동 연결되도록 동기화 루프를 띄운다.
         sync_task = asyncio.create_task(self._sync_loop())
         stop_task = asyncio.create_task(self._stop.wait())
@@ -451,6 +457,8 @@ class ProviderAgent:
             await stop_task
         finally:
             sync_task.cancel()
+            if self._sd_boot_task is not None:
+                self._sd_boot_task.cancel()
             async with self._entries_lock:
                 entries = list(self._entries)
                 self._entries.clear()
@@ -459,6 +467,44 @@ class ProviderAgent:
             stop_task.cancel()
         logger.info("에이전트 종료")
         return 0
+
+    async def _boot_sd(self) -> None:
+        """설치된 SD 가 꺼져 있으면 자동으로 띄우고, 준비되면 image capability 를 재광고한다.
+
+        capability 는 연결 시점 hello 로만 광고되므로, SD 가 늦게 떠도 풀에 반영되려면 재연결이
+        필요하다. 텍스트 연결을 막지 않도록 백그라운드 태스크로 돌린다(재부팅 후 무인 복구 핵심).
+        """
+        from . import sd_setup
+
+        if not sd_setup.is_installed() or sd_setup.is_busy():
+            return
+        logger.info("SD 가 꺼져 있어 자동 기동을 시도합니다(설치돼 있음)…")
+        try:
+            ok = await sd_setup.launch_only(self._cfg.sd_url)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - 자동 기동 실패는 에이전트를 멈추지 않는다
+            logger.warning("SD 자동 기동 실패: %s", exc)
+            return
+        if not ok or self._sd is None:
+            return
+        self._image_ready = await self._sd.health()
+        if self._image_ready and not self._stop.is_set():
+            logger.info("SD 준비 완료 — 이미지 capability 재광고(재연결)")
+            await self._readvertise()
+
+    async def _readvertise(self) -> None:
+        """capability 변경(예: SD 준비됨)을 라이브 세션에 반영: 모든 연결을 재접속(새 hello)."""
+        async with self._entries_lock:
+            entries = list(self._entries)
+            self._entries.clear()
+        for e in entries:
+            await self._stop_entry(e)
+        if self._stop.is_set():
+            return
+        async with self._entries_lock:
+            for e in entries:
+                self._spawn_entry(self._make_entry(e["token"], e["guild_id"], e["guild_name"]))
 
     def reload_models(self) -> list[str]:
         """SIGHUP: 저장된 설정 파일에서 models 를 다시 읽어 적용(#129 hot-reload)."""

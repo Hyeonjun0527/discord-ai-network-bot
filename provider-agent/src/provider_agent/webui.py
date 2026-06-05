@@ -224,6 +224,21 @@ section{margin-top:15px}h2{margin:0 0 9px;font-size:17px;font-weight:850;letter-
 .input{min-height:50px;display:flex;align-items:center;gap:11px;padding:0 16px;border-radius:13px;border:1px solid rgba(148,163,184,.15);background:rgba(255,255,255,.02);color:var(--muted)}
 .input svg{width:20px;height:20px;flex:0 0 auto}.input input{width:100%;background:transparent;border:0;outline:0;color:var(--text);font-size:15px}.input input::placeholder{color:#8b97aa}
 .secondary-btn{min-height:50px;border-radius:13px;border:1px solid var(--line2);background:rgba(79,125,255,.05);color:#eef4ff;font-weight:800;font-size:14px;cursor:pointer}
+.modal-back{position:fixed;inset:0;background:rgba(4,8,16,.62);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:100;padding:18px}
+.modal{width:min(520px,100%);max-height:90vh;overflow:auto;background:#0d1726;border:1px solid var(--line2);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line)}
+.modal-title{font-size:18px;font-weight:850}
+.modal-x{background:none;border:0;color:#9fb0cc;font-size:20px;cursor:pointer;line-height:1}
+.modal-body{padding:18px 20px}
+.modal-foot{display:flex;gap:10px;padding:16px 20px;border-top:1px solid var(--line)}
+.modal-foot button{flex:1}
+.prereq{margin:12px 0 16px;padding:12px 14px;border-radius:12px;background:rgba(79,125,255,.06);border:1px solid var(--line);color:var(--muted);font-size:13px;line-height:1.7}
+.mcard{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border-radius:13px;border:1px solid var(--line2);margin-top:9px;cursor:pointer;transition:.14s}
+.mcard.sel{border-color:var(--blue);background:rgba(79,125,255,.08)}
+.mcard .mradio{width:18px;height:18px;border-radius:50%;border:2px solid #5a657a;flex:0 0 auto;margin-top:2px}
+.mcard.sel .mradio{border-color:var(--blue);box-shadow:inset 0 0 0 4px var(--blue)}
+.mcard .mname{font-weight:800}.mcard .mmeta{color:var(--muted);font-size:12.5px;margin-top:2px}
+.modal-msg{margin-top:12px;color:var(--muted);font-size:13px;min-height:18px}
 .helper{margin:8px 0 0;color:var(--muted);font-size:12.5px;line-height:1.55}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .model{position:relative;min-height:76px;display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:center;padding:13px 15px;border-radius:14px;border:1px solid rgba(148,163,184,.14);background:linear-gradient(180deg,rgba(17,28,43,.68),rgba(10,17,28,.76));cursor:pointer;text-align:left;color:var(--text);opacity:.5;transition:opacity .12s,border-color .12s}
@@ -262,7 +277,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div></section>
 <section><h2>2. 설정</h2><div class="settings">
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 연결</div><div class="setting-desc">앱을 닫아도 로그인하면 백그라운드에서 자동으로 연결돼 있어요. 이 앱은 설정을 바꿀 때만 열면 됩니다.</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
-<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 이 있으면 /imagine 요청을 처리합니다. 없으면 아래 버튼이 필요한 도구(git·Python)부터 설치·모델·기동까지 한 번에 준비해드려요.<br><button class="btn" type="button" id="sdSetupBtn" style="margin-top:10px" onclick="setupSD()">Stable Diffusion 설치 + 준비</button><div class="pbar" id="sdpbar" style="margin-top:10px"><div class="pfill" id="sdpfill"></div></div><div id="sdsetup" style="margin-top:8px;color:var(--muted)"></div></div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
+<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div style="flex:1"><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 으로 <b>/imagine</b> 이미지 생성을 직접 제공합니다.</div><button class="btn" type="button" id="imgInstallBtn" style="display:none;margin-top:9px" onclick="openSD()">＋ 로컬 이미지 모델 설치</button></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
 </div>
 <button class="primary-btn" type="button" id="go" onclick="connect()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;vertical-align:-4px;margin-right:9px"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 0 1 0 10h-2"></path><path d="M8 12h8"></path></svg><span>연동하기</span></button>
 <div class="helper" style="text-align:center;margin-top:9px">처음이면 디스코드 로그인 창이 열려요. 한 번 연동하면 다음부턴 바로 연결됩니다.</div>
@@ -293,6 +308,22 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 </div></details>
 </section>
 </main></div>
+<div class="modal-back" id="sdModal">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">로컬 이미지 모델 설치</div><button class="modal-x" type="button" onclick="closeSD()" aria-label="닫기">✕</button></div>
+    <div class="modal-body">
+      <div class="setting-desc">Stable Diffusion 으로 <b>/imagine</b> 이미지 생성을 직접 제공합니다. 이 마법사가 필요한 것을 모두 준비합니다:</div>
+      <div class="prereq">① git &nbsp;②&nbsp; 이미지 엔진용 Python &nbsp;③&nbsp; Stable Diffusion(A1111) &nbsp;④&nbsp; 아래에서 고른 모델<br><span style="color:#8b97aa">없는 도구는 자동으로 설치돼요. 첫 준비는 모델 용량·엔진 설치로 시간이 걸립니다.</span></div>
+      <div id="sdModelList"></div>
+      <div class="pbar" id="sdmpbar" style="margin-top:14px"><div class="pfill" id="sdmpfill"></div></div>
+      <div class="modal-msg" id="sdmMsg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="secondary-btn" type="button" id="sdCancelBtn" onclick="cancelSD()">취소</button>
+      <button class="primary-btn" type="button" id="sdStartBtn" style="margin-top:0" onclick="startSD()">설치 시작</button>
+    </div>
+  </div>
+</div>
 <script>
 const K="__SESSION_KEY__";const H={"X-Session":K};let RUN=false;let HAS_MODELS=false;
 const MICON='<svg class="model-icon" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M27 20c0-6 7-8 11-4 4-4 11-2 11 4v18c0 10-6 18-17 18S15 48 15 38V26c0-5 4-9 9-9h3Z"></path><path d="M30 31h.1M46 31h.1M31 43c4 3 10 3 14 0"></path><path d="M20 55v10M42 55v10M52 48v14"></path></svg>';
@@ -311,8 +342,24 @@ function toggleModel(el){el.classList.toggle('is-selected');const sel=el.classLi
 function selectedModels(){return [...document.querySelectorAll('.model.is-selected')].map(c=>c.dataset.model);}
 async function setupOllama(){const b=document.getElementById('osetupBtn'),bar=document.getElementById('opbar'),el=document.getElementById('osetup');if(b){b.disabled=true;b.style.opacity=.6;b.style.cursor='default';}if(bar)bar.style.display='block';if(el)el.textContent='시작 중…';try{await j('/api/ollama/setup',{method:'POST'});}catch(e){}pollOllamaSetup();}
 async function pollOllamaSetup(){const el=document.getElementById('osetup'),fill=document.getElementById('opfill');let p;try{p=await j('/api/ollama/setup-progress');}catch(e){setTimeout(pollOllamaSetup,1500);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';if(p.phase==='error'){if(el)el.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));const b=document.getElementById('osetupBtn');if(b){b.disabled=false;b.style.opacity=1;b.style.cursor='pointer';b.textContent='다시 시도';}return;}if(el)el.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){if(fill)fill.style.width='100%';setTimeout(loadModels,800);return;}setTimeout(pollOllamaSetup,1500);}
-async function setupSD(){const b=document.getElementById('sdSetupBtn'),bar=document.getElementById('sdpbar'),el=document.getElementById('sdsetup');if(b){b.disabled=true;b.style.opacity=.6;b.style.cursor='default';}if(bar)bar.style.display='block';if(el)el.textContent='시작 중…';try{await j('/api/sd/setup',{method:'POST'});}catch(e){}pollSDSetup();}
-async function pollSDSetup(){const el=document.getElementById('sdsetup'),fill=document.getElementById('sdpfill');let p;try{p=await j('/api/sd/setup-progress');}catch(e){setTimeout(pollSDSetup,2000);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';if(p.phase==='error'){if(el)el.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));const b=document.getElementById('sdSetupBtn');if(b){b.disabled=false;b.style.opacity=1;b.style.cursor='pointer';b.textContent='다시 시도';}return;}if(el)el.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){if(fill)fill.style.width='100%';const b=document.getElementById('sdSetupBtn');if(b){b.textContent='준비 완료 ✓';}const t=document.getElementById('img');if(t&&!t.classList.contains('on'))t.classList.add('on');if(el)el.innerHTML='준비 완료 — 이미지 생성이 켜졌어요. <b>연동하기</b>를 누르면 디스코드에서 바로 쓸 수 있어요.';return;}setTimeout(pollSDSetup,2000);}
+// ── 이미지(SD) 설치 마법사 ──
+let SD_MODELS=[],SD_SEL='',SD_BUSY=false;
+async function loadSDStatus(){let s;try{s=await j('/api/sd/status');}catch(e){return;}const btn=document.getElementById('imgInstallBtn'),tog=document.getElementById('img');const ready=s.installed||s.ready;if(btn)btn.style.display=ready?'none':'inline-flex';if(tog)tog.style.display=ready?'block':'none';}
+async function openSD(){const m=document.getElementById('sdModal');m.style.display='flex';document.getElementById('sdmMsg').textContent='';document.getElementById('sdmpbar').style.display='none';document.getElementById('sdmpfill').style.width='0';try{const d=await j('/api/sd/models');SD_MODELS=d.models||[];SD_SEL=d.default||(SD_MODELS[0]&&SD_MODELS[0].id);}catch(e){SD_MODELS=[];}renderSDModels();
+const sp=await j('/api/sd/setup-progress').catch(()=>null);SD_BUSY=sp&&['installing','downloading','starting'].includes(sp.phase);if(SD_BUSY){lockSDStart();pollSDSetup();}else{unlockSDStart();}}
+function closeSD(){if(SD_BUSY){if(!confirm('설치가 진행 중입니다. 닫으면 백그라운드로 계속됩니다. 닫을까요?'))return;}document.getElementById('sdModal').style.display='none';}
+function renderSDModels(){const box=document.getElementById('sdModelList');box.innerHTML=SD_MODELS.map(m=>`<div class="mcard${m.id===SD_SEL?' sel':''}" onclick="pickSD('${m.id}')"><div class="mradio"></div><div><div class="mname">${esc(m.name)}</div><div class="mmeta">${esc(m.desc)} · ${esc(m.size)}</div></div></div>`).join('');}
+function pickSD(id){if(SD_BUSY)return;SD_SEL=id;renderSDModels();}
+function lockSDStart(){const b=document.getElementById('sdStartBtn');b.disabled=true;b.style.opacity=.6;b.textContent='설치 중…';document.getElementById('sdmpbar').style.display='block';}
+function unlockSDStart(){const b=document.getElementById('sdStartBtn');b.disabled=false;b.style.opacity=1;b.textContent='설치 시작';b.onclick=startSD;}
+async function startSD(){SD_BUSY=true;lockSDStart();document.getElementById('sdmMsg').textContent='시작 중…';try{await j('/api/sd/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:SD_SEL})});}catch(e){}pollSDSetup();}
+async function cancelSD(){if(SD_BUSY){try{await j('/api/sd/cancel',{method:'POST'});}catch(e){}}else{closeSD();}}
+async function pollSDSetup(){const msg=document.getElementById('sdmMsg'),fill=document.getElementById('sdmpfill');let p;try{p=await j('/api/sd/setup-progress');}catch(e){setTimeout(pollSDSetup,2000);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';
+if(p.phase==='error'){SD_BUSY=false;msg.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));const b=document.getElementById('sdStartBtn');b.disabled=false;b.style.opacity=1;b.textContent='다시 시도';b.onclick=startSD;return;}
+if(p.phase==='cancelled'){SD_BUSY=false;msg.textContent='설치를 취소했어요.';unlockSDStart();return;}
+msg.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');
+if(p.phase==='done'){SD_BUSY=false;if(fill)fill.style.width='100%';msg.innerHTML='✅ 준비 완료 — 이미지 생성이 켜졌어요. <b>연동하기</b>를 누르면 디스코드에서 바로 쓸 수 있어요.';const t=document.getElementById('img');if(t&&!t.classList.contains('on'))t.classList.add('on');loadSDStatus();const foot=document.getElementById('sdStartBtn');foot.disabled=false;foot.style.opacity=1;foot.textContent='완료';foot.onclick=closeSD;return;}
+setTimeout(pollSDSetup,2000);}
 function on(id){return document.getElementById(id).classList.contains('on');}
 async function refresh(){const s=await j('/api/status');RUN=s.running;
 document.getElementById('relay').textContent=s.relayUrl;
@@ -409,7 +456,7 @@ async function addServer(){const help=document.getElementById('addServerHelp');c
 if(!s.connectEnabled){help.innerHTML='<span style="color:#ffd479">디스코드 로그인 추가가 아직 활성화되지 않았어요. ‘고급’에서 다른 서버의 /provider-join 토큰을 붙여넣어 추가하세요.</span>';return;}
 const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
 help.innerHTML=r.ok?'<span style="color:#9fe0a0">🌐 브라우저에서 추가할 서버를 고르세요. 완료되면 목록에 나타납니다.</span>':('⚠️ '+esc(r.error||'브라우저 열기 실패'));}
-loadModels();refresh();loadInstall();loadUpdate();loadServers();setInterval(refresh,2000);setInterval(loadServers,2500);setInterval(pollProgress,600);
+loadModels();refresh();loadInstall();loadUpdate();loadServers();loadSDStatus();setInterval(refresh,2000);setInterval(loadServers,2500);setInterval(pollProgress,600);
 </script></body></html>"""
 
 
@@ -718,15 +765,47 @@ def build_app(session_key: str) -> web.Application:
 
         return web.json_response(ollama_setup.progress())
 
+    async def sd_models(req: web.Request) -> web.Response:
+        """설치 마법사에서 고를 수 있는 이미지 모델 목록."""
+        _auth(req)
+        from . import sd_setup
+
+        return web.json_response({"models": sd_setup.MODELS, "default": sd_setup.DEFAULT_MODEL_ID})
+
+    async def sd_status(req: web.Request) -> web.Response:
+        """SD 설치/준비 상태(설정 화면에서 토글 vs 설치 버튼 결정용)."""
+        _auth(req)
+        from . import sd_setup
+        from .sd import SDClient
+
+        url = load_config().get("sd_url") or "http://127.0.0.1:7860"
+        ready = await SDClient(url).health()
+        return web.json_response(
+            {"installed": sd_setup.is_installed(), "ready": bool(ready), "busy": sd_setup.is_busy()}
+        )
+
     async def sd_setup_start(req: web.Request) -> web.Response:
-        """앱 내 Stable Diffusion(A1111) 설치(감지→clone→모델→--api 기동) 시작. 진행은 폴링으로 노출."""
+        """설치 마법사: 선택한 모델로 SD(A1111) 설치(전제도구→clone→모델→--api 기동) 시작."""
         _auth(req)
         from . import sd_setup
 
         if sd_setup.is_busy():
             return web.json_response({"ok": True, "busy": True})
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001 — 본문 없으면 기본 모델
+            data = {}
+        model_id = (data or {}).get("model") or sd_setup.DEFAULT_MODEL_ID
         url = load_config().get("sd_url") or "http://127.0.0.1:7860"
-        asyncio.create_task(sd_setup.run_setup(url))
+        asyncio.create_task(sd_setup.run_setup(url, model_id))
+        return web.json_response({"ok": True})
+
+    async def sd_setup_cancel(req: web.Request) -> web.Response:
+        """진행 중인 SD 설치를 취소."""
+        _auth(req)
+        from . import sd_setup
+
+        sd_setup.request_cancel()
         return web.json_response({"ok": True})
 
     async def sd_setup_progress(req: web.Request) -> web.Response:
@@ -776,7 +855,10 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/auto-update", auto_update_set)
     app.router.add_post("/api/ollama/setup", ollama_setup_start)
     app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
+    app.router.add_get("/api/sd/models", sd_models)
+    app.router.add_get("/api/sd/status", sd_status)
     app.router.add_post("/api/sd/setup", sd_setup_start)
+    app.router.add_post("/api/sd/cancel", sd_setup_cancel)
     app.router.add_get("/api/sd/setup-progress", sd_setup_progress)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)

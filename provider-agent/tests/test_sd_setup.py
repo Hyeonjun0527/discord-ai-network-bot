@@ -82,6 +82,20 @@ def test_launch_env_per_platform():
     assert sd_mod.launch_env(None, "darwin") == {}
 
 
+def test_model_by_id():
+    assert sd_mod.model_by_id("sdxl")["filename"] == "sd_xl_base_1.0.safetensors"
+    assert sd_mod.model_by_id("sd15")["id"] == "sd15"
+    # 없는 id → 기본(첫 모델)
+    assert sd_mod.model_by_id("nope")["id"] == sd_mod.MODELS[0]["id"]
+
+
+def test_request_cancel_sets_cancelled():
+    sd_mod._set("installing", 20, "x")
+    sd_mod.request_cancel()
+    assert sd_mod.progress()["phase"] == "cancelled"
+    sd_mod._cancel = False  # 다른 테스트 영향 방지
+
+
 class _FakeClient:
     def __init__(self, healthy):
         self._healthy = healthy
@@ -194,9 +208,30 @@ def test_run_setup_full_flow(monkeypatch, tmp_path):
     monkeypatch.setattr(sd_mod, "_spawn", fake_spawn)
     monkeypatch.setattr(sd_mod, "_wait_healthy", fake_wait)
 
-    ok = asyncio.run(sd_mod.run_setup("http://127.0.0.1:7860"))
+    ok = asyncio.run(sd_mod.run_setup("http://127.0.0.1:7860", "sdxl"))
     assert ok is True
     assert sd_mod.progress()["phase"] == "done"
     assert cloned.get("ran") is True
-    assert downloaded.get("url") == sd_mod.DEFAULT_MODEL_URL
+    # 선택한 모델(sdxl)의 URL 로 다운로드됐다
+    assert downloaded.get("url") == sd_mod.model_by_id("sdxl")["url"]
     assert spawned.get("cmd") and spawned["cmd"][0] == "bash"
+
+
+def test_run_setup_cancel_after_clone(monkeypatch, tmp_path):
+    """clone 도중 취소 요청이 들어오면 단계 경계에서 cancelled 로 종료."""
+    directory = tmp_path / "sd"
+    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(False))
+    monkeypatch.setattr(sd_mod, "install_dir", lambda: directory)
+    monkeypatch.setattr(sd_mod, "has_git", lambda: True)
+    monkeypatch.setattr(sd_mod, "compatible_python", lambda: "python3.11")
+
+    async def fake_run(cmd, timeout):
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "webui.sh").write_text("#!/bin/sh\n")
+        sd_mod._cancel = True  # clone 진행 중 취소 요청
+        return 0, "ok"
+
+    monkeypatch.setattr(sd_mod, "_run", fake_run)
+    ok = asyncio.run(sd_mod.run_setup("http://127.0.0.1:7860"))
+    assert ok is False
+    assert sd_mod.progress()["phase"] == "cancelled"

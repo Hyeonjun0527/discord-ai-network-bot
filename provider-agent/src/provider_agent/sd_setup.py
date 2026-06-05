@@ -34,17 +34,48 @@ from .sd import SDClient
 logger = logging.getLogger("provider_agent.sd_setup")
 
 A1111_REPO = "https://github.com/AUTOMATIC1111/stable-diffusion-webui.git"
-# 기본 체크포인트(SD 1.5, pruned-emaonly ~4GB). 없으면 txt2img 가 실패하므로 같이 준비한다.
-DEFAULT_MODEL_NAME = "v1-5-pruned-emaonly.safetensors"
-DEFAULT_MODEL_URL = (
-    "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/"
-    "resolve/main/v1-5-pruned-emaonly.safetensors"
-)
 
-# phase: idle | installing | downloading | starting | done | error
+# 설치 마법사에서 고르는 로컬 이미지 모델(체크포인트). 명령어가 아니라 데이터라 여기서 SSOT.
+MODELS: list[dict[str, str]] = [
+    {
+        "id": "sd15",
+        "name": "Stable Diffusion 1.5",
+        "desc": "가볍고 빠른 범용 모델. 일반 PC 권장.",
+        "size": "약 4 GB",
+        "filename": "v1-5-pruned-emaonly.safetensors",
+        "url": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors",
+    },
+    {
+        "id": "sdxl",
+        "name": "Stable Diffusion XL 1.0",
+        "desc": "고해상도·고품질. 무겁고 VRAM 8GB+ 권장.",
+        "size": "약 6.6 GB",
+        "filename": "sd_xl_base_1.0.safetensors",
+        "url": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors",
+    },
+]
+DEFAULT_MODEL_ID = "sd15"
+# 하위 호환(테스트/기존 참조).
+DEFAULT_MODEL_NAME = MODELS[0]["filename"]
+DEFAULT_MODEL_URL = MODELS[0]["url"]
+
+
+def model_by_id(model_id: str | None) -> dict[str, str]:
+    """모델 id 로 레지스트리 항목을 찾는다(없으면 기본 모델)."""
+    for m in MODELS:
+        if m["id"] == model_id:
+            return m
+    return MODELS[0]
+
+
+# phase: idle | installing | downloading | starting | done | error | cancelled
 _progress: dict = {"phase": "idle", "percent": 0, "message": "", "error": None}
 # 기동한 webui 프로세스 참조(GC 로 죽지 않게 보관). 포그라운드라 await 하지 않는다.
 _proc: asyncio.subprocess.Process | None = None
+# 진행 중인 자식 프로세스(clone/설치) — 취소 시 종료용.
+_current_proc: asyncio.subprocess.Process | None = None
+# 취소 요청 플래그(단계 경계·다운로드 청크에서 확인).
+_cancel: bool = False
 
 
 def progress() -> dict:
@@ -63,6 +94,20 @@ def _set(phase: str | None = None, percent: int | None = None, message: str | No
 
 def is_busy() -> bool:
     return _progress["phase"] in ("installing", "downloading", "starting")
+
+
+def request_cancel() -> None:
+    """설치 취소: 플래그를 세우고 진행 중인 자식 프로세스를 종료한다."""
+    global _cancel
+    _cancel = True
+    for p in (_current_proc, _proc):
+        if p is not None and p.returncode is None:
+            try:
+                p.kill()
+            except ProcessLookupError:
+                pass
+    if is_busy():
+        _set("cancelled", _progress["percent"], "설치를 취소했어요")
 
 
 def install_dir() -> pathlib.Path:
@@ -162,15 +207,19 @@ def launch_command(platform: str | None = None, directory: pathlib.Path | None =
 
 
 async def _run(cmd: list[str], timeout: float) -> tuple[int, str]:
-    """명령을 실행하고 (exit code, 합쳐진 출력)을 반환. 타임아웃 시 예외."""
+    """명령을 실행하고 (exit code, 합쳐진 출력)을 반환. 타임아웃 시 예외. 취소 시 종료 가능하게 추적."""
+    global _current_proc
     proc = await asyncio.create_subprocess_exec(
         *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
     )
+    _current_proc = proc
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
         proc.kill()
         raise
+    finally:
+        _current_proc = None
     return proc.returncode or 0, (out or b"").decode("utf-8", "replace")
 
 
@@ -192,6 +241,8 @@ async def _download(url: str, dest: pathlib.Path) -> None:
                 raise RuntimeError(f"모델 다운로드 실패(HTTP {r.status})")
             with open(part, "wb") as f:
                 async for chunk in r.content.iter_chunked(1 << 20):
+                    if _cancel:
+                        raise asyncio.CancelledError()
                     f.write(chunk)
     part.replace(dest)
 
@@ -205,12 +256,22 @@ async def _wait_healthy(client: SDClient, attempts: int = 600, delay: float = 2.
     return False
 
 
-async def run_setup(sd_url: str) -> bool:
-    """감지 → (필요 시)설치 → 모델 → 기동 → 준비. 성공 True. 진행은 progress()로 노출.
+def _cancelled() -> bool:
+    """취소 요청이 들어왔으면 phase 를 cancelled 로 바꾸고 True."""
+    if _cancel:
+        _set("cancelled", _progress["percent"], "설치를 취소했어요")
+        return True
+    return False
 
-    이미 SD 가 떠 있으면 즉시 done. git 이 없으면 error.
+
+async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
+    """감지 → (전제 git·Python)설치 → A1111 clone → 선택 모델 → 기동 → 준비. 성공 True.
+
+    진행은 progress()로 노출. 이미 SD 가 떠 있으면 즉시 done. 단계 경계마다 취소를 확인한다.
     """
-    global _proc
+    global _proc, _cancel
+    _cancel = False
+    model = model_by_id(model_id)
     client = SDClient(sd_url)
     directory = install_dir()
     try:
@@ -230,6 +291,8 @@ async def run_setup(sd_url: str) -> bool:
             if not has_git():
                 _set("error", 5, "git 설치 실패", error="git-install-failed")
                 return False
+        if _cancelled():
+            return False
 
         python_cmd = compatible_python()
         if python_cmd is None:
@@ -241,24 +304,26 @@ async def run_setup(sd_url: str) -> bool:
             await _run(cmd, timeout=900)
             # 설치 직후 PATH 갱신이 늦을 수 있어, 못 찾으면 best-effort 명령으로 진행한다.
             python_cmd = compatible_python() or ("python" if sys.platform == "win32" else "python3.11")
+        if _cancelled():
+            return False
 
         # 2) 설치(clone)
         if not is_installed(directory):
             directory.parent.mkdir(parents=True, exist_ok=True)
             _set("installing", 15, "Stable Diffusion 내려받는 중… (git clone)")
             code, log = await _run(clone_command(directory), timeout=1800)
+            if _cancelled():
+                return False
             if code != 0 or not is_installed(directory):
                 _set("error", 15, "Stable Diffusion 설치 실패", error=log[-400:] or "clone-failed")
                 return False
 
-        # 3) 기본 모델 준비
+        # 3) 선택한 모델 준비
         if not has_model(directory):
-            _set("downloading", 35, "기본 이미지 모델 내려받는 중… (수 GB, 시간이 걸려요)")
-            try:
-                await _download(DEFAULT_MODEL_URL, model_dir(directory) / DEFAULT_MODEL_NAME)
-            except Exception as exc:  # noqa: BLE001 — 모델 실패는 표면화하되 메시지 정리
-                _set("error", 35, "이미지 모델 다운로드 실패", error=str(exc)[:400])
-                return False
+            _set("downloading", 35, f"이미지 모델 내려받는 중… ({model['name']}, {model['size']})")
+            await _download(model["url"], model_dir(directory) / model["filename"])
+        if _cancelled():
+            return False
 
         # 4) 기동(--api, 백그라운드). 첫 실행은 venv·torch 부트스트랩으로 오래 걸린다.
         #    A1111 webui 가 호환 Python(3.10/3.11)을 쓰도록 env 로 전달한다.
@@ -266,11 +331,16 @@ async def run_setup(sd_url: str) -> bool:
         env = {**os.environ, **launch_env(python_cmd)}
         _proc = await _spawn(launch_command(directory=directory), env=env)
         if not await _wait_healthy(client):
+            if _cancelled():
+                return False
             _set("error", 70, "Stable Diffusion 이 시작되지 않았어요", error="not-serving")
             return False
 
         _set("done", 100, "준비 완료")
         return True
+    except asyncio.CancelledError:
+        _set("cancelled", _progress["percent"], "설치를 취소했어요")
+        return False
     except Exception as exc:  # noqa: BLE001 — 어떤 실패든 GUI 에 표면화
         logger.warning("sd setup 실패: %s", exc)
         _set("error", _progress["percent"], "설치 중 오류", error=str(exc)[:400])

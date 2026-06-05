@@ -4,8 +4,8 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.core.annotation.Order
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
+import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer
 import org.springframework.security.config.annotation.web.invoke
 import org.springframework.security.oauth2.client.registration.ClientRegistration
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository
@@ -57,20 +57,14 @@ class SecurityConfig(
     }
 
     @Bean
-    @Order(0)
-    fun downloadSecurityFilterChain(http: HttpSecurity): SecurityFilterChain {
-        http {
-            securityMatcher("/download/**")
-            csrf { disable() }
-            authorizeHttpRequests {
-                authorize(anyRequest, permitAll)
-            }
+    fun publicDownloadWebSecurityCustomizer(): WebSecurityCustomizer =
+        WebSecurityCustomizer { web ->
+            web
+                .ignoring()
+                .requestMatchers("/download/**")
         }
-        return http.build()
-    }
 
     @Bean
-    @Order(1)
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http {
             // API/WS/액추에이터는 stateless — CSRF 비활성(토큰/세션 미사용 경로).

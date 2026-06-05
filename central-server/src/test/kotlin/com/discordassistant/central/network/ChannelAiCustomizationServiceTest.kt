@@ -2,12 +2,12 @@ package com.discordassistant.central.network
 
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.adapter.inbound.web.ChannelAiCustomizationController
-import com.discordassistant.central.channelai.adapter.inbound.web.ChannelAiPromptPreviewRequest
-import com.discordassistant.central.channelai.adapter.inbound.web.ChannelAiWizardDraftRequest
-import com.discordassistant.central.channelai.adapter.inbound.web.ChannelAiWizardRequest
-import com.discordassistant.central.channelai.adapter.inbound.web.ReplaceAiAdminRolesRequest
-import com.discordassistant.central.channelai.adapter.inbound.web.ReviewChannelAiProposalRequest
-import com.discordassistant.central.channelai.adapter.inbound.web.RollbackChannelAiVersionRequest
+import com.discordassistant.central.channelai.adapter.inbound.web.dto.ChannelAiPromptPreviewRequest
+import com.discordassistant.central.channelai.adapter.inbound.web.dto.ChannelAiWizardDraftRequest
+import com.discordassistant.central.channelai.adapter.inbound.web.dto.ChannelAiWizardRequest
+import com.discordassistant.central.channelai.adapter.inbound.web.dto.ReplaceAiAdminRolesRequest
+import com.discordassistant.central.channelai.adapter.inbound.web.dto.ReviewChannelAiProposalRequest
+import com.discordassistant.central.channelai.adapter.inbound.web.dto.RollbackChannelAiVersionRequest
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository

@@ -197,6 +197,40 @@ class ChannelAiCustomizationService(
         return ChannelAiWizardResult(savedChannel.id, behavior.id, behavior.version, proposal.id, status.wire, approvalDecision.reason)
     }
 
+    /**
+     * 신뢰된 전역 대시보드 관리자(self-hosted 단일 운영자) 전용 wizard 생성 오버로드(#1).
+     * 권한 격상 규약(per-guild AI-admin 역할 우회: `actorRoleIds=emptySet()`, `actorIsGuildAdmin=true`)과
+     * 즉시-active 우회 차단 불변식(`requireApproval=true`)을 **여기 한 곳에서** 강제한다 — 컨트롤러는
+     * 인증 주체(DashboardActor)에서 신원(userId)만 넘기고 권한 격상 로직을 갖지 않는다.
+     */
+    @Transactional
+    fun createFromWizardAsTrustedDashboardAdmin(
+        guildId: Long,
+        channelId: Long,
+        actorUserId: Long?,
+        name: String,
+        avatarUrl: String?,
+        job: String,
+        tone: String,
+        answerLength: String,
+        constitution: String?,
+    ): ChannelAiWizardResult =
+        createFromWizard(
+            guildId = guildId,
+            channelId = channelId,
+            actorUserId = actorUserId,
+            actorRoleIds = emptySet(),
+            actorIsGuildAdmin = true,
+            name = name,
+            avatarUrl = avatarUrl,
+            job = job,
+            tone = tone,
+            answerLength = answerLength,
+            constitution = constitution,
+            // 즉시 active 우회 차단(#1): 검토 강제가 기본. body 로 false 를 줘도 검토를 끌 수 없다.
+            requireApproval = true,
+        )
+
     @Transactional
     fun rollbackToVersion(
         guildId: Long,
@@ -276,6 +310,30 @@ class ChannelAiCustomizationService(
             approvalReason = approvalDecision.reason,
         )
     }
+
+    /**
+     * 신뢰된 전역 대시보드 관리자 전용 rollback 오버로드(#1). per-guild 역할 우회 규약을 한 곳에서 강제한다.
+     * `requireApproval`/`reason` 은 호출자(대시보드 요청 body)가 그대로 결정한다(동작 불변).
+     */
+    @Transactional
+    fun rollbackToVersionAsTrustedDashboardAdmin(
+        guildId: Long,
+        channelId: Long,
+        targetVersion: Int,
+        actorUserId: Long?,
+        requireApproval: Boolean,
+        reason: String?,
+    ): ChannelAiWizardResult =
+        rollbackToVersion(
+            guildId = guildId,
+            channelId = channelId,
+            targetVersion = targetVersion,
+            actorUserId = actorUserId,
+            actorRoleIds = emptySet(),
+            actorIsGuildAdmin = true,
+            requireApproval = requireApproval,
+            reason = reason,
+        )
 
     /**
      * 채널 AI 자유 지침(custom instruction)만 바꾼 **새 behavior 버전 제안**을 만든다.
@@ -467,6 +525,36 @@ class ChannelAiCustomizationService(
         return saved.toReview()
     }
 
+    /** 신뢰된 전역 대시보드 관리자 전용 approve 오버로드(#1). 검토자 권한 격상 규약을 한 곳에서 강제한다. */
+    @Transactional
+    fun approveProposalAsTrustedDashboardAdmin(
+        proposalId: Long,
+        reviewerUserId: Long?,
+        reason: String? = null,
+    ): AiChangeProposalReview =
+        approveProposal(
+            proposalId = proposalId,
+            reviewerUserId = reviewerUserId,
+            reviewerRoleIds = emptySet(),
+            reviewerIsGuildAdmin = true,
+            reason = reason,
+        )
+
+    /** 신뢰된 전역 대시보드 관리자 전용 reject 오버로드(#1). 검토자 권한 격상 규약을 한 곳에서 강제한다. */
+    @Transactional
+    fun rejectProposalAsTrustedDashboardAdmin(
+        proposalId: Long,
+        reviewerUserId: Long?,
+        reason: String?,
+    ): AiChangeProposalReview =
+        rejectProposal(
+            proposalId = proposalId,
+            reviewerUserId = reviewerUserId,
+            reviewerRoleIds = emptySet(),
+            reviewerIsGuildAdmin = true,
+            reason = reason,
+        )
+
     @Transactional
     fun replaceAiAdminRoles(
         guildId: Long,
@@ -501,6 +589,21 @@ class ChannelAiCustomizationService(
         )
         return AiAdminRolePolicy(guildId = guildId, roleIds = normalized, protectedMode = normalized.isNotEmpty())
     }
+
+    /** 신뢰된 전역 대시보드 관리자 전용 AI-admin 역할 교체 오버로드(#1). 권한 격상 규약을 한 곳에서 강제한다. */
+    @Transactional
+    fun replaceAiAdminRolesAsTrustedDashboardAdmin(
+        guildId: Long,
+        roleIds: Collection<Long>,
+        actorUserId: Long?,
+    ): AiAdminRolePolicy =
+        replaceAiAdminRoles(
+            guildId = guildId,
+            roleIds = roleIds,
+            actorUserId = actorUserId,
+            actorRoleIds = emptySet(),
+            actorIsGuildAdmin = true,
+        )
 
     fun aiAdminRolePolicy(guildId: Long): AiAdminRolePolicy {
         featureGate.requireChannelAiEnabled()

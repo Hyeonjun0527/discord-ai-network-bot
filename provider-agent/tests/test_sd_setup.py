@@ -82,6 +82,40 @@ def test_launch_env_per_platform():
     assert sd_mod.launch_env(None, "darwin") == {}
 
 
+def test_stable_diffusion_repo_default_and_override(monkeypatch):
+    monkeypatch.delenv("SD_STABLE_DIFFUSION_REPO", raising=False)
+    assert sd_mod.stable_diffusion_repo() == sd_mod.DEFAULT_STABLE_DIFFUSION_REPO
+    # 사용자 미러 지정
+    monkeypatch.setenv("SD_STABLE_DIFFUSION_REPO", "https://example.com/x/stablediffusion.git")
+    assert sd_mod.stable_diffusion_repo() == "https://example.com/x/stablediffusion.git"
+    # 빈 값 → 비활성화(원본 URL 사용)
+    monkeypatch.setenv("SD_STABLE_DIFFUSION_REPO", "")
+    assert sd_mod.stable_diffusion_repo() == ""
+
+
+def test_write_pip_constraints(tmp_path):
+    path = sd_mod.write_pip_constraints(tmp_path / "sd")
+    assert path.exists()
+    content = path.read_text("utf-8")
+    assert "setuptools<81" in content  # CLIP 빌드용 pkg_resources 보유 버전 핀
+
+
+def test_bootstrap_env_includes_constraint_and_repo(monkeypatch, tmp_path):
+    monkeypatch.delenv("SD_STABLE_DIFFUSION_REPO", raising=False)
+    env = sd_mod.bootstrap_env(tmp_path / "sd")
+    assert env["STABLE_DIFFUSION_REPO"] == sd_mod.DEFAULT_STABLE_DIFFUSION_REPO  # 업스트림 채택 fork
+    assert env["PIP_CONSTRAINT"].endswith("pip-constraints.txt")
+    from pathlib import Path
+    assert Path(env["PIP_CONSTRAINT"]).exists()
+
+
+def test_bootstrap_env_repo_disabled_when_blank(monkeypatch, tmp_path):
+    monkeypatch.setenv("SD_STABLE_DIFFUSION_REPO", "")  # 사용자가 미러 끔
+    env = sd_mod.bootstrap_env(tmp_path / "sd")
+    assert "STABLE_DIFFUSION_REPO" not in env  # A1111 기본 URL 사용(오버라이드 안 함)
+    assert "PIP_CONSTRAINT" in env  # setuptools 핀은 그대로
+
+
 def test_model_by_id():
     assert sd_mod.model_by_id("sdxl")["filename"] == "sd_xl_base_1.0.safetensors"
     assert sd_mod.model_by_id("sd15")["id"] == "sd15"

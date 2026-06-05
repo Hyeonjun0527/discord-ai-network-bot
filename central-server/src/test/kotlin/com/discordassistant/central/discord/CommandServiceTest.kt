@@ -1,29 +1,33 @@
 package com.discordassistant.central.discord
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.ModelQualityTier
-import com.discordassistant.central.domain.OverloadRisk
-import com.discordassistant.central.domain.ProviderAvailability
-import com.discordassistant.central.network.ChannelAiCustomizationService
-import com.discordassistant.central.network.ChannelAiRoutingPolicyService
-import com.discordassistant.central.network.KnowledgeIngestionService
-import com.discordassistant.central.network.PresetBehaviorInput
-import com.discordassistant.central.network.PresetRegistryService
-import com.discordassistant.central.persistence.AiAdminRoleRepository
-import com.discordassistant.central.persistence.AiFeedbackRepository
-import com.discordassistant.central.persistence.CandidateAnswerRepository
-import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
-import com.discordassistant.central.persistence.MultiResponseRunRepository
-import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
-import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
-import com.discordassistant.central.persistence.SynthesisResultRepository
+
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiFeedbackRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileRepository
+import com.discordassistant.central.ainetwork.application.ChannelAiRoutingPolicyService
+import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
+import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
+import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
+import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.EmbeddingIndexJobRepository
+import com.discordassistant.central.knowledge.application.KnowledgeIngestionService
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponseRunRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.SynthesisResultRepository
+import com.discordassistant.central.platform.discord.CommandContext
+import com.discordassistant.central.platform.discord.CommandService
+import com.discordassistant.central.platform.discord.OnboardingStartOutcome
+import com.discordassistant.central.preset.application.PresetBehaviorInput
+import com.discordassistant.central.preset.application.PresetRegistryService
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
-import com.discordassistant.central.routing.ProviderRoutingStats
-import com.discordassistant.central.usage.UsageService
+import com.discordassistant.central.requestlog.application.UsageService
+import com.discordassistant.central.routing.domain.service.ProviderRoutingStats
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.ModelQualityTier
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -66,9 +70,9 @@ class CommandServiceTest
         val embeddingJobs: EmbeddingIndexJobRepository,
         val aiFeedbacks: AiFeedbackRepository,
         val aiAdminRoles: AiAdminRoleRepository,
-        val aiLevel: com.discordassistant.central.network.AiLevelService,
-        val onboardingOptOuts: com.discordassistant.central.persistence.GuildOnboardingOptOutRepository,
-        val channelAis: com.discordassistant.central.persistence.ChannelAiRepository,
+        val aiLevel: com.discordassistant.central.ainetwork.application.AiLevelService,
+        val onboardingOptOuts: com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository,
+        val channelAis: com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository,
         val routingStats: ProviderRoutingStats,
     ) {
         private fun ctx(admin: Boolean = false) =

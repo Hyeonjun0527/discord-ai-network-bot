@@ -1,6 +1,9 @@
 package com.discordassistant.central.provider
 
-import com.discordassistant.central.persistence.ProviderScheduleRepository
+import com.discordassistant.central.global.audit.AuditLog
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderScheduleRepository
+import com.discordassistant.central.provider.application.ProviderProtectionService
+import com.discordassistant.central.provider.application.ProviderScheduleService
 import com.discordassistant.central.relay.ConnectionRegistry
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue

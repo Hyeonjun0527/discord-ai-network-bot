@@ -1,15 +1,17 @@
 package com.discordassistant.central.discord
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.policy.PolicyService
-import com.discordassistant.central.provider.ContributionPolicyService
-import com.discordassistant.central.provider.ProviderRegistrationService
-import com.discordassistant.central.provider.ProviderScheduleService
-import com.discordassistant.central.provider.TokenService
+import com.discordassistant.central.channelai.application.ChannelAiProfileService
+import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.platform.discord.ProviderPoolReconciliationService
+import com.discordassistant.central.provider.application.ContributionPolicyService
+import com.discordassistant.central.provider.application.ProviderRegistrationService
+import com.discordassistant.central.provider.application.ProviderScheduleService
+import com.discordassistant.central.provider.application.TokenService
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -59,7 +61,7 @@ class ProviderPoolReconciliationServiceTest
             assertNull(registry.byProvider(100, 77))
             assertEquals(conn200, registry.byProvider(200, 77)!!.connection)
             assertNull(registration.stateOf(77, 100))
-            assertEquals(com.discordassistant.central.domain.ProviderState.APPROVED, registration.stateOf(77, 200))
+            assertEquals(com.discordassistant.central.provider.domain.model.ProviderState.APPROVED, registration.stateOf(77, 200))
             assertNull(tokens.verify(token100))
             assertEquals(200L, tokens.verify(token200)!!.guildId)
             assertTrue(schedules.isAvailableNow(77, 100))

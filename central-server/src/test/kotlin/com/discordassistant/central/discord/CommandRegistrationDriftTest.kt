@@ -15,8 +15,8 @@ class CommandRegistrationDriftTest {
     private val source: String by lazy {
         val rels =
             listOf(
-                "discord/DiscordBot.kt",
-                "discord/SlashCommandCatalog.kt",
+                "platform/discord/DiscordBot.kt",
+                "platform/discord/SlashCommandCatalog.kt",
             )
         val roots =
             listOf(

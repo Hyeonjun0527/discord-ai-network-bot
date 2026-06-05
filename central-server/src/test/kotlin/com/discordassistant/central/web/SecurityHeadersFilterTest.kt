@@ -1,5 +1,6 @@
 package com.discordassistant.central.web
 
+import com.discordassistant.central.global.security.SecurityHeadersFilter
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.mock.web.MockHttpServletResponse

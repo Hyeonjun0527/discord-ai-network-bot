@@ -1,5 +1,6 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.platform.discord.SlashCommandCatalog
 import net.dv8tion.jda.api.interactions.commands.build.SlashCommandData
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue

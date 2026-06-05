@@ -1,5 +1,7 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.channelai.application.ChannelAiProfileService
+import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_PURPOSE
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows

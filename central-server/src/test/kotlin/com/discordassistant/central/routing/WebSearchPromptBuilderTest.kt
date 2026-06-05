@@ -1,5 +1,8 @@
 package com.discordassistant.central.routing
 
+import com.discordassistant.central.knowledge.application.NoWebSearch
+import com.discordassistant.central.knowledge.application.WebResult
+import com.discordassistant.central.knowledge.application.WebSearchPromptBuilder
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

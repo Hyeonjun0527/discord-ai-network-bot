@@ -1,8 +1,8 @@
 package com.discordassistant.central.bdd
 
-import com.discordassistant.central.discord.CommandContext
-import com.discordassistant.central.discord.CommandService
-import com.discordassistant.central.discord.Reply
+import com.discordassistant.central.platform.discord.CommandContext
+import com.discordassistant.central.platform.discord.CommandService
+import com.discordassistant.central.platform.discord.Reply
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession

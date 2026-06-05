@@ -1,5 +1,8 @@
 package com.discordassistant.central.provider
 
+import com.discordassistant.central.provider.application.DurableTokenRevocations
+import com.discordassistant.central.provider.application.DurableTokenService
+import com.discordassistant.central.provider.application.TokenService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull

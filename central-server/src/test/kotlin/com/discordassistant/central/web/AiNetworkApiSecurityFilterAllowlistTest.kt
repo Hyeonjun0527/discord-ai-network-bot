@@ -1,5 +1,6 @@
 package com.discordassistant.central.web
 
+import com.discordassistant.central.global.security.AiNetworkApiSecurityFilter
 import jakarta.servlet.FilterChain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals

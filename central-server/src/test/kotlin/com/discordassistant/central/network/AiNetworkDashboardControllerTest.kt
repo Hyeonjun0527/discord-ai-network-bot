@@ -1,47 +1,56 @@
 package com.discordassistant.central.network
-import com.discordassistant.central.dashboard.AiNetworkDashboardController
-import com.discordassistant.central.domain.CandidateStatus
-import com.discordassistant.central.domain.KnowledgeSourceStatus
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.MultiResponseRunStatus
-import com.discordassistant.central.domain.OverloadRisk
-import com.discordassistant.central.domain.ProposalStatus
-import com.discordassistant.central.domain.ProviderAvailability
-import com.discordassistant.central.persistence.AiBehaviorVersionEntity
-import com.discordassistant.central.persistence.AiBehaviorVersionRepository
-import com.discordassistant.central.persistence.AiChangeProposalEntity
-import com.discordassistant.central.persistence.AiChangeProposalRepository
-import com.discordassistant.central.persistence.AiFeedbackRepository
-import com.discordassistant.central.persistence.AiNetworkEventRepository
-import com.discordassistant.central.persistence.AiNetworkProfileRepository
-import com.discordassistant.central.persistence.AiPresetEntity
-import com.discordassistant.central.persistence.AiPresetRepository
-import com.discordassistant.central.persistence.AiRequestRepository
-import com.discordassistant.central.persistence.CandidateAnswerEntity
-import com.discordassistant.central.persistence.CandidateAnswerRepository
-import com.discordassistant.central.persistence.ChannelAiEntity
-import com.discordassistant.central.persistence.ChannelAiRepository
-import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
-import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
-import com.discordassistant.central.persistence.KnowledgeSourceEntity
-import com.discordassistant.central.persistence.KnowledgeSourceRepository
-import com.discordassistant.central.persistence.KnowledgeSpaceRepository
-import com.discordassistant.central.persistence.MultiResponsePolicyEntity
-import com.discordassistant.central.persistence.MultiResponsePolicyRepository
-import com.discordassistant.central.persistence.MultiResponseRunEntity
-import com.discordassistant.central.persistence.MultiResponseRunRepository
-import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
-import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
-import com.discordassistant.central.persistence.PresetImportEntity
-import com.discordassistant.central.persistence.PresetImportRepository
-import com.discordassistant.central.persistence.PresetRevisionEntity
-import com.discordassistant.central.persistence.PresetRevisionRepository
-import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
-import com.discordassistant.central.persistence.PublishedPresetEntity
-import com.discordassistant.central.persistence.PublishedPresetRepository
-import com.discordassistant.central.persistence.SynthesisResultRepository
-import com.discordassistant.central.persistence.UsageLogRepository
-import com.discordassistant.central.usage.AnalyticsService
+
+import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkDashboardController
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiFeedbackRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkProfileRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ChannelAiRoutingPolicyEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ChannelAiRoutingPolicyRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.NetworkOverviewProjectionEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.NetworkOverviewProjectionRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileRepository
+import com.discordassistant.central.ainetwork.application.AiLevelService
+import com.discordassistant.central.ainetwork.application.AiNetworkDashboardQueryService
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
+import com.discordassistant.central.ainetwork.application.AiNetworkFoundationService
+import com.discordassistant.central.ainetwork.application.AiNetworkGrowthService
+import com.discordassistant.central.ainetwork.application.AiQualityFeedbackService
+import com.discordassistant.central.ainetwork.application.ProviderSafetyService
+import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
+import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
+import com.discordassistant.central.channelai.domain.model.ProposalStatus
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
+import com.discordassistant.central.knowledge.domain.model.KnowledgeSourceStatus
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerEntity
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponsePolicyEntity
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponsePolicyRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponseRunEntity
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponseRunRepository
+import com.discordassistant.central.multiresponse.adapter.outbound.persistence.SynthesisResultRepository
+import com.discordassistant.central.multiresponse.application.MultiResponseService
+import com.discordassistant.central.multiresponse.domain.model.CandidateStatus
+import com.discordassistant.central.multiresponse.domain.model.MultiResponseRunStatus
+import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetEntity
+import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetRepository
+import com.discordassistant.central.preset.adapter.outbound.persistence.PresetImportEntity
+import com.discordassistant.central.preset.adapter.outbound.persistence.PresetImportRepository
+import com.discordassistant.central.preset.adapter.outbound.persistence.PresetRevisionEntity
+import com.discordassistant.central.preset.adapter.outbound.persistence.PresetRevisionRepository
+import com.discordassistant.central.preset.adapter.outbound.persistence.PublishedPresetEntity
+import com.discordassistant.central.preset.adapter.outbound.persistence.PublishedPresetRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
+import com.discordassistant.central.requestlog.application.AnalyticsService
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -132,32 +141,25 @@ class AiNetworkDashboardControllerTest
                 presets = presets,
                 publishedPresets = publishedPresets,
                 presetImports = presetImports,
-            )
-
-        private val controller =
-            AiNetworkDashboardController(
                 foundation = foundation,
                 aiLevel = aiLevel,
                 growth = growth,
                 qualityFeedback = qualityFeedback,
                 providerSafety = providerSafety,
-                query = dashboardQuery,
                 multiResponse = multiResponse,
                 analytics = analytics,
+            )
+
+        private val controller =
+            AiNetworkDashboardController(
+                query = dashboardQuery,
             )
 
         @Test
         fun `dashboard kill switch blocks read APIs before projection work`() {
             val disabledController =
                 AiNetworkDashboardController(
-                    foundation = foundation,
-                    aiLevel = aiLevel,
-                    growth = growth,
-                    qualityFeedback = qualityFeedback,
-                    providerSafety = providerSafety,
                     query = dashboardQuery,
-                    multiResponse = multiResponse,
-                    analytics = analytics,
                     featureGate = AiNetworkFeatureGate(dashboardEnabled = false),
                 )
 

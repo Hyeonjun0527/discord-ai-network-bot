@@ -1,5 +1,7 @@
 package com.discordassistant.central.routing
 
+import com.discordassistant.central.knowledge.application.WebResult
+import com.discordassistant.central.knowledge.application.WebResultReranker
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test

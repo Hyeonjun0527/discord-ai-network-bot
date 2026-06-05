@@ -1,6 +1,8 @@
 package com.discordassistant.central.provider
 
-import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.global.audit.AuditLog
+import com.discordassistant.central.provider.application.ProviderProtectionService
+import com.discordassistant.central.provider.domain.model.ProviderState
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession

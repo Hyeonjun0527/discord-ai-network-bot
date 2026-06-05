@@ -1,6 +1,8 @@
 package com.discordassistant.central.network
 
-import com.discordassistant.central.dashboard.AiNetworkFeatureController
+import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkFeatureController
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
+import com.discordassistant.central.ainetwork.domain.model.AI_NETWORK_MAX_CANDIDATES
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows

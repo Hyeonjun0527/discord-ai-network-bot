@@ -1,5 +1,6 @@
 package com.discordassistant.central.routing
 
+import com.discordassistant.central.routing.domain.service.IdempotencyGuard
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

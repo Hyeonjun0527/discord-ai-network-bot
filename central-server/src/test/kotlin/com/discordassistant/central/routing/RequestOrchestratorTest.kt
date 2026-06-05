@@ -1,7 +1,7 @@
 package com.discordassistant.central.routing
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.knowledge.application.WebAugmentation
+import com.discordassistant.central.knowledge.application.WebSearchAugmenter
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
@@ -9,6 +9,22 @@ import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.InferError
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
+import com.discordassistant.central.routing.application.RequestOrchestrator
+import com.discordassistant.central.routing.application.port.ALLOW_ALL_PROVIDER_SAFETY
+import com.discordassistant.central.routing.application.port.BlocklistChecker
+import com.discordassistant.central.routing.application.port.ProviderProfileProvider
+import com.discordassistant.central.routing.application.port.ProviderSafetyChecker
+import com.discordassistant.central.routing.application.port.QuotaChecker
+import com.discordassistant.central.routing.application.port.RoutingPolicy
+import com.discordassistant.central.routing.application.port.UsageRecorder
+import com.discordassistant.central.routing.domain.model.AiRequestInput
+import com.discordassistant.central.routing.domain.model.ProviderProfile
+import com.discordassistant.central.routing.domain.service.ProviderFilterPipeline
+import com.discordassistant.central.routing.domain.service.ProviderRouter
+import com.discordassistant.central.routing.domain.service.ProviderRoutingStats
+import com.discordassistant.central.routing.domain.service.RequestWeigher
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.RequestState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue

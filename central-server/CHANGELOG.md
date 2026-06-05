@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+### Changed (구조 리팩터 — 동작·계약 보존, 사용자 노출 변화 없음)
+- **도메인-우선 헥사고날 재편**: 기술레이어 패키지(persistence/network/dashboard/discord/web/health/
+  policy/usage/alert/domain)를 11개 비즈니스 도메인(provider·routing·quota·requestlog·guild·channelai·
+  knowledge·onboarding·multiresponse·preset·ainetwork)의 `domain/application/adapter(inbound·outbound)`
+  구조로 전면 이관. 횡단 레이어 `shared`(공유 커널)·`global`(security/i18n/health/audit)·`platform.discord`·
+  `relay`. `Entities.kt`/`Repositories.kt` god-file 해체(엔티티 도메인별 분산). ArchUnit 가드를 도메인-격리·
+  레이어방향·영속위치로 재설계.
+- **컨트롤러 10개 lean화**: 인라인 응답 조립·집계·audience redaction을 application/`adapter.inbound.web.dto`로
+  이관(JSON 계약·마스킹 1바이트 보존, 엔티티 의존 0).
+- **god-class 행위 분해**: `CommandService`(1816→481, 명령군 핸들러 10) + 대형 application 서비스 다수 +
+  `ProviderRouter`(HaloGfScoreModel 추출, 수식 불변) + `DiscordBot`(JDA 렌더러/인터랙션/settings-wizard 분리).
+  트랜잭션/동시성 불변식(@Transactional self-invocation·PESSIMISTIC_WRITE·REQUIRES_NEW·B1 온보딩) 보존.
+- 보안 정규식 SSOT(`shared.ContentSafety`) 통합(바이트 동일).
+
 ## [0.1.0] - 2026-05-30
 
 첫 정식 릴리스. ROADMAP_LAUNCH_300 의 294/300(검증 가능 항목 전부) 완료.

@@ -1,5 +1,11 @@
 package com.discordassistant.central.domain
 
+import com.discordassistant.central.knowledge.domain.model.EmbeddingJobStatus
+import com.discordassistant.central.multiresponse.domain.model.MultiResponseMode
+import com.discordassistant.central.preset.domain.model.PresetReportStatus
+import com.discordassistant.central.provider.domain.model.ProviderModelScope
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.ResponseMode
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 

@@ -16,59 +16,29 @@ import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
     importOptions = [ImportOption.DoNotIncludeTests::class],
 )
 class ArchitectureTest {
-    // 도메인(순수 값/열거)은 어떤 바깥 레이어에도 의존하지 않는다.
+    // 공유 커널(shared: ModelBurden/ModelQualityTier/RequestState/ContentSafety/SupportedLanguage/
+    // ResponseMode)은 순수 Kotlin 값/열거다 — 어떤 도메인·어댑터·애플리케이션·프레임워크에도 의존하지 않는다.
     @ArchTest
-    val domainIsIndependent: ArchRule =
+    val sharedKernelIsPure: ArchRule =
         noClasses()
             .that()
-            .resideInAPackage("..central.domain..")
+            .resideInAPackage("..central.shared..")
             .should()
             .dependOnClassesThat()
             .resideInAnyPackage(
-                "..central.web..",
-                "..central.dashboard..",
-                "..central.discord..",
-                "..central.persistence..",
-                "..central.relay..",
-                "..central.routing..",
-                "..central.policy..",
-                "..central.usage..",
-                "..central.provider..",
-                "..central.alert..",
-                "..central.health..",
-                "..central.dev..",
+                "..central.application..",
+                "..central.adapter..",
+                "..central.platform..",
+                "org.springframework..",
+                "jakarta.persistence..",
+                "net.dv8tion..",
             )
 
-    // 영속화 계층은 웹/디스코드/대시보드/dev 를 참조하지 않는다(역방향 의존 금지).
-    @ArchTest
-    val persistenceStaysLow: ArchRule =
-        noClasses()
-            .that()
-            .resideInAPackage("..central.persistence..")
-            .should()
-            .dependOnClassesThat()
-            .resideInAnyPackage(
-                "..central.web..",
-                "..central.dashboard..",
-                "..central.discord..",
-                "..central.dev..",
-            )
+    // (구) persistenceStaysLow 규칙은 제거됨 — persistence 패키지가 도메인별 adapter.outbound.persistence
+    // 로 전부 이관되어 비었다(Phase 1~7). 영속 위치는 migratedPersistenceInAdapterOutbound 가 강제한다.
 
-    // 디스코드 어댑터는 웹/대시보드/dev 컨트롤러 계층에 의존하지 않는다(서비스 경유).
-    @ArchTest
-    val discordDoesNotTouchWeb: ArchRule =
-        noClasses()
-            .that()
-            .resideInAPackage("..central.discord..")
-            .should()
-            .dependOnClassesThat()
-            .resideInAnyPackage(
-                "..central.web..",
-                "..central.dashboard..",
-                "..central.dev..",
-            )
-
-    // 컨트롤러는 웹 계층(web/dashboard/dev)에만 존재한다.
+    // 컨트롤러는 도메인-우선 헥사고날 인바운드 웹 어댑터(..adapter.inbound.web..) 또는 dev 에만 존재한다.
+    // (모든 도메인 컨트롤러가 <domain>.adapter.inbound.web 으로 이관 완료. dev 는 테스트 하네스.)
     @ArchTest
     val controllersLiveInWebLayers: ArchRule =
         classes()
@@ -76,14 +46,12 @@ class ArchitectureTest {
             .haveSimpleNameEndingWith("Controller")
             .should()
             .resideInAnyPackage(
-                "..central.web..",
-                "..central.dashboard..",
+                "..adapter.inbound.web..",
                 "..central.dev..",
             )
 
-    // 컨트롤러(web 어댑터)는 영속 계층(persistence)에 **전혀** 의존하지 않는다 — 리포지토리도, 엔티티도(감사 2026-06-03 C).
-    // 서비스가 엔티티 대신 DTO/view 를 반환하므로 web 계층에 JPA 엔티티가 새지 않는다(177곳 정리 완료).
-    // 이 규칙이 아래 controllersDoNotInjectRepositories(리포지토리 한정)를 포함·강화한다.
+    // 컨트롤러(인바운드 웹 어댑터)는 영속 어댑터(엔티티/리포지토리)에 **전혀** 의존하지 않는다 —
+    // 서비스(application)가 엔티티 대신 DTO/view 를 반환한다(감사 2026-06-03 C).
     @ArchTest
     val controllersDoNotTouchPersistence: ArchRule =
         noClasses()
@@ -91,7 +59,7 @@ class ArchitectureTest {
             .haveSimpleNameEndingWith("Controller")
             .should()
             .dependOnClassesThat()
-            .resideInAPackage("..central.persistence..")
+            .resideInAPackage("..adapter.outbound.persistence..")
 
     @ArchTest
     val controllersDoNotInjectRepositories: ArchRule =
@@ -114,4 +82,82 @@ class ArchitectureTest {
                 "..central.dashboard..",
                 "..central.dev..",
             )
+
+    // ── 도메인-우선 헥사고날 점진 전환(ADD-only) ─────────────────────────────────
+    // 이동이 끝난 도메인의 domain 레이어는 순수 Kotlin 규칙만 가진다 — application/adapter/infra 와
+    // Spring/JPA/JDA 같은 프레임워크에 의존하지 않는다. 도메인이 이동할 때마다 이 화이트리스트를 넓힌다.
+    // (provider 파일럿: ..central.provider.domain.. = ProviderState/ProviderModelScope/AvailabilityWindow)
+    @ArchTest
+    val migratedDomainsArePure: ArchRule =
+        noClasses()
+            .that()
+            .resideInAnyPackage(
+                "..central.provider.domain..",
+                "..central.guild.domain..",
+                "..central.channelai.domain..",
+                "..central.knowledge.domain..",
+                "..central.onboarding.domain..",
+                "..central.multiresponse.domain..",
+                "..central.preset.domain..",
+                "..central.ainetwork.domain..",
+            ).should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
+                "..application..",
+                "..adapter..",
+                "..infrastructure..",
+                "org.springframework..",
+                "jakarta.persistence..",
+                "net.dv8tion..",
+            )
+
+    // 영속 어댑터: 이동 완료 도메인(provider/quota/requestlog)의 @Entity 는 adapter.outbound.persistence 에만 둔다.
+    @ArchTest
+    val migratedPersistenceInAdapterOutbound: ArchRule =
+        classes()
+            .that()
+            .resideInAnyPackage(
+                "..central.provider..",
+                "..central.quota..",
+                "..central.requestlog..",
+                "..central.guild..",
+                "..central.channelai..",
+                "..central.knowledge..",
+                "..central.onboarding..",
+                "..central.multiresponse..",
+                "..central.preset..",
+                "..central.ainetwork..",
+            ).and()
+            .areAnnotatedWith(jakarta.persistence.Entity::class.java)
+            .should()
+            .resideInAPackage("..adapter.outbound.persistence..")
+
+    // routing 도메인(모델 + 계산기 도메인서비스)은 인프라(영속/웹/메시지/Discord)와 application/adapter 에
+    // 의존하지 않는다. 실용 절충: 도메인서비스는 @Component(DI)만 허용하고 인프라 결합은 금지한다
+    // (계산기 10종은 인프라 import 0 — 순수 로직 + DI). RequestOrchestrator(application)가 포트로 위임한다.
+    @ArchTest
+    val routingDomainHasNoInfrastructure: ArchRule =
+        noClasses()
+            .that()
+            .resideInAPackage("..central.routing.domain..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
+                "..central.routing.application..",
+                "..central.routing.adapter..",
+                "jakarta.persistence..",
+                "org.springframework.web..",
+                "org.springframework.data..",
+                "net.dv8tion..",
+            )
+
+    // routing application 은 adapter(아웃바운드 구현체)에 의존하지 않는다 — 포트(application.port)로만.
+    @ArchTest
+    val routingApplicationDoesNotDependOnAdapter: ArchRule =
+        noClasses()
+            .that()
+            .resideInAPackage("..central.routing.application..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAPackage("..central.routing.adapter..")
 }

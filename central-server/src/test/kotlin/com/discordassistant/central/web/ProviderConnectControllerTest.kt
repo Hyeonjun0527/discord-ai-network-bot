@@ -1,12 +1,19 @@
 package com.discordassistant.central.web
 
-import com.discordassistant.central.discord.BotChannelInfo
-import com.discordassistant.central.discord.BotGuildInfo
-import com.discordassistant.central.discord.BotGuildLister
-import com.discordassistant.central.policy.AutoApprovePolicy
-import com.discordassistant.central.provider.AuditLog
-import com.discordassistant.central.provider.ProviderRegistrationService
-import com.discordassistant.central.provider.TokenService
+import com.discordassistant.central.global.audit.AuditLog
+import com.discordassistant.central.guild.application.AutoApprovePolicy
+import com.discordassistant.central.onboarding.adapter.inbound.web.ConnectPageRenderer
+import com.discordassistant.central.onboarding.adapter.inbound.web.ProviderConnectController
+import com.discordassistant.central.onboarding.adapter.outbound.ConnectStateStore
+import com.discordassistant.central.onboarding.adapter.outbound.DiscordOAuthClient
+import com.discordassistant.central.onboarding.adapter.outbound.GuildBrief
+import com.discordassistant.central.onboarding.adapter.outbound.ProviderSelectionStore
+import com.discordassistant.central.onboarding.application.ProviderConnectOnboardingService
+import com.discordassistant.central.platform.discord.BotChannelInfo
+import com.discordassistant.central.platform.discord.BotGuildInfo
+import com.discordassistant.central.platform.discord.BotGuildLister
+import com.discordassistant.central.provider.application.ProviderRegistrationService
+import com.discordassistant.central.provider.application.TokenService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -40,23 +47,27 @@ class ProviderConnectControllerTest {
         states: ConnectStateStore = ConnectStateStore(),
         selections: ProviderSelectionStore = ProviderSelectionStore(),
     ) = ProviderConnectController(
-        clientId = clientId,
-        clientSecret = clientSecret,
-        configuredBase = "https://discord-ai.yeon.world",
-        relayPublicUrl = "wss://discord-ai.yeon.world/agent",
-        oauth = oauth,
-        registration = registration,
-        policy = AutoApprovePolicy { autoApprove },
-        botGuilds =
-            object : BotGuildLister {
-                override fun botGuildIds() = botGuildIds
+        onboarding =
+            ProviderConnectOnboardingService(
+                clientId = clientId,
+                clientSecret = clientSecret,
+                configuredBase = "https://discord-ai.yeon.world",
+                relayPublicUrl = "wss://discord-ai.yeon.world/agent",
+                oauth = oauth,
+                registration = registration,
+                policy = AutoApprovePolicy { autoApprove },
+                botGuilds =
+                    object : BotGuildLister {
+                        override fun botGuildIds() = botGuildIds
 
-                override fun botGuilds() = botGuildIds.map { BotGuildInfo(it, "Guild $it") }
+                        override fun botGuilds() = botGuildIds.map { BotGuildInfo(it, "Guild $it") }
 
-                override fun botChannels(guildId: Long) = emptyList<BotChannelInfo>()
-            },
-        states = states,
-        selections = selections,
+                        override fun botChannels(guildId: Long) = emptyList<BotChannelInfo>()
+                    },
+                states = states,
+                selections = selections,
+            ),
+        renderer = ConnectPageRenderer(),
     )
 
     private fun stateFrom(location: String): String =

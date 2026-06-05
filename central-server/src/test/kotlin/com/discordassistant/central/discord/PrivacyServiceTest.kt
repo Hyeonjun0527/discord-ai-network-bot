@@ -1,7 +1,8 @@
 package com.discordassistant.central.discord
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.PrivacyMode
+import com.discordassistant.central.guild.application.PrivacyService
+import com.discordassistant.central.guild.domain.model.PrivacyMode
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

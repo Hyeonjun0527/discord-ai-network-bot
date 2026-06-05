@@ -1,6 +1,6 @@
 package com.discordassistant.central.relay
 
-import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.provider.domain.model.ProviderState
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.ProviderHelloFrame
 import com.discordassistant.central.relay.protocol.ProviderStatusFrame

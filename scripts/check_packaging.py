@@ -52,7 +52,7 @@ EXPECT: dict[str, list[str]] = {
         A["macAppBundle"],
     ],
     # 디스코드 가이드(ProviderOnboarding)의 설치 명령 SSOT 는 InstallGuide.kt.
-    "central-server/src/main/kotlin/com/discordassistant/central/domain/InstallGuide.kt": [
+    "central-server/src/main/kotlin/com/discordassistant/central/onboarding/domain/model/InstallGuide.kt": [
         pkg["wingetId"],
         install["mac"],
     ],

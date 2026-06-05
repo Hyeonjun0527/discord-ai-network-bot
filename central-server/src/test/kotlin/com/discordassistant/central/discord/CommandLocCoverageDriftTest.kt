@@ -25,9 +25,9 @@ class CommandLocCoverageDriftTest {
             ?: error("$rel 를 찾지 못했습니다 (cwd=${File(".").absolutePath})")
     }
 
-    private val catalog by lazy { read("discord/SlashCommandCatalog.kt") }
-    private val loc by lazy { read("discord/CommandLoc.kt") }
-    private val bot by lazy { read("discord/DiscordBot.kt") }
+    private val catalog by lazy { read("platform/discord/SlashCommandCatalog.kt") }
+    private val loc by lazy { read("platform/discord/CommandLoc.kt") }
+    private val bot by lazy { read("platform/discord/DiscordBot.kt") }
 
     /** 카탈로그의 `.slash("name")` (컨텍스트 메뉴 `.message(...)` 제외). */
     private val registered: Set<String> by lazy {

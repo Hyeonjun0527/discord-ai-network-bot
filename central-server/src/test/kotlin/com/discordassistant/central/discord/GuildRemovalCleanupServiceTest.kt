@@ -1,15 +1,17 @@
 package com.discordassistant.central.discord
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.policy.PolicyService
-import com.discordassistant.central.provider.ContributionPolicyService
-import com.discordassistant.central.provider.ProviderRegistrationService
-import com.discordassistant.central.provider.ProviderScheduleService
-import com.discordassistant.central.provider.TokenService
+import com.discordassistant.central.channelai.application.ChannelAiProfileService
+import com.discordassistant.central.guild.application.GuildRemovalCleanupService
+import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.provider.application.ContributionPolicyService
+import com.discordassistant.central.provider.application.ProviderRegistrationService
+import com.discordassistant.central.provider.application.ProviderScheduleService
+import com.discordassistant.central.provider.application.TokenService
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull

@@ -1,6 +1,9 @@
 package com.discordassistant.central.provider
 
-import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.global.audit.AuditLog
+import com.discordassistant.central.provider.application.ProviderRegistrationService
+import com.discordassistant.central.provider.application.TokenService
+import com.discordassistant.central.provider.domain.model.ProviderState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull

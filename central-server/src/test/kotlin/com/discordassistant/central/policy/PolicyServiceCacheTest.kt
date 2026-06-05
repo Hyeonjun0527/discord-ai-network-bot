@@ -1,10 +1,11 @@
 package com.discordassistant.central.policy
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.persistence.AllowedChannelRepository
-import com.discordassistant.central.persistence.GuildRepository
-import com.discordassistant.central.persistence.RolePolicyRepository
-import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.global.audit.AuditLog
+import com.discordassistant.central.guild.adapter.outbound.persistence.AllowedChannelRepository
+import com.discordassistant.central.guild.adapter.outbound.persistence.GuildRepository
+import com.discordassistant.central.guild.adapter.outbound.persistence.RolePolicyRepository
+import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -72,7 +73,7 @@ class PolicyServiceCacheTest
 
             // 서비스를 우회해 DB 에 채널을 직접 추가(캐시 무효화 없이)
             channels.save(
-                com.discordassistant.central.persistence
+                com.discordassistant.central.guild.adapter.outbound.persistence
                     .AllowedChannelEntity(guildId = gid, channelId = 200),
             )
 

@@ -1,5 +1,6 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.ainetwork.adapter.inbound.web.MetricsApiController
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderCapability

@@ -1,6 +1,6 @@
 package com.discordassistant.central.relay
 
-import com.discordassistant.central.network.AiNetworkGrowthService
+import com.discordassistant.central.ainetwork.application.AiNetworkGrowthService
 import com.discordassistant.central.relay.protocol.AuthErrFrame
 import com.discordassistant.central.relay.protocol.AuthFrame
 import com.discordassistant.central.relay.protocol.AuthOkFrame
@@ -36,7 +36,7 @@ class RelayWebSocketHandler(
     @param:Value("\${central.relay.request-timeout-seconds:120}") private val requestTimeout: Long,
     @param:Value("\${central.relay.heartbeat-seconds:30}") private val heartbeatSeconds: Long,
     // durable 토큰 발급기(있으면 인증 성공 시 재사용 토큰을 auth_ok 로 내려줌). TokenService 가 구현.
-    private val durableIssuer: com.discordassistant.central.provider.DurableTokenIssuer? = null,
+    private val durableIssuer: com.discordassistant.central.provider.application.DurableTokenIssuer? = null,
 ) : TextWebSocketHandler() {
     private val log = LoggerFactory.getLogger(RelayWebSocketHandler::class.java)
 

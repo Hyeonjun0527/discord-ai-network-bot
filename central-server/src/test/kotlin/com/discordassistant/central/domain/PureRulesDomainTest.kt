@@ -1,5 +1,8 @@
 package com.discordassistant.central.domain
-import com.discordassistant.central.domain.OverloadRisk
+
+import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
+import com.discordassistant.central.multiresponse.domain.model.FanoutLoadRisk
+import com.discordassistant.central.preset.domain.model.PresetModerationRules
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue

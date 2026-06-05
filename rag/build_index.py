@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discord Assistant AI Network RAG index builder.
+"""NEXA AI Network RAG index builder.
 
 Dailyting RAG 스택을 이식하기 위한 안전한 1차 빌더다.
 기본 실행은 외부 API 없이 docs/plans/ai-network Markdown 을 meta.db + BM25 corpus 로 색인한다.

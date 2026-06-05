@@ -21,8 +21,8 @@ description: >-
    → "CENTRAL_IMAGE 없으면 배포 깨진다"는 **deprecated 워크플로(`central-server-deploy.yml`) 기준의 오해**.
    실제 운영은 `central-deploy.yml`.
 2. **서버 API를 curl/코드로 칠 땐 `User-Agent` 필수** — WAF가 기본 `Python-urllib` UA를 403으로 막는다.
-3. **릴리스 자산명은 ASCII** (`nyassistant-macos.zip`/`nyassistant-windows.exe`) — GitHub이 한글 파일명을 스트립.
-4. **싱글톤 락 포트 48569** — 로컬에 앱이 떠 있으면 provider-agent 테스트가 실패. 테스트 전 `pkill -f 냥시스턴트`.
+3. **릴리스 자산명은 ASCII** (`nexa-macos.zip`/`nexa-windows.exe`) — GitHub이 한글 파일명을 스트립.
+4. **싱글톤 락 포트 48569** — 로컬에 앱이 떠 있으면 provider-agent 테스트가 실패. 테스트 전 `pkill -f NEXA`.
 5. **워크트리 공유 위험** — 동시 에이전트의 `git checkout`이 미커밋 변경을 날린다. `origin/main` 기반 클린 브랜치로 분리.
 6. **Discord OAuth 앱 1개 공용** — provider-connect와 대시보드 로그인이 같은 `CONNECT_DISCORD_*` 앱.
    redirect URI **둘 다** 필요: `/provider/connect/callback`, `/login/oauth2/code/discord`.
@@ -49,7 +49,7 @@ curl -A x -o /dev/null -w '%{http_code}\n' https://discord-ai.yeon.world/admin/d
 ### 에이전트 릴리스
 - `provider-agent/src/**`/`pyproject.toml`를 main에 머지 → `agent-autorelease`가 SemVer bump(`feat:`=minor/`fix:`=patch) + `agent-v*` 태그 → `agent-build`(win/mac/ubuntu, GitHub 호스티드) → Release.
 - 로컬 검증: `cd provider-agent && ../.venv/bin/ruff check src tests && ../.venv/bin/mypy src && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov-fail-under=70`.
-- 정식 mac 빌드 로컬 설치: 릴리스 `nyassistant-macos.zip` 다운로드 → SHA256 검증 → `ditto -x -k` → ad-hoc 서명 → `/Applications`에 `ditto` + `xattr -dr com.apple.quarantine`.
+- 정식 mac 빌드 로컬 설치: 릴리스 `nexa-macos.zip` 다운로드 → SHA256 검증 → `ditto -x -k` → ad-hoc 서명 → `/Applications`에 `ditto` + `xattr -dr com.apple.quarantine`.
 
 ### central-server 검증 (머지 전)
 ```bash

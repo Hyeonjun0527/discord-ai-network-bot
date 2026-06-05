@@ -95,7 +95,7 @@ class PresetRegistryServiceTest
                     ChannelAiEntity(
                         guildId = 360,
                         channelId = 460,
-                        displayName = "코드냥",
+                        displayName = "코드 니아",
                         source = "wizard",
                     ),
                 )
@@ -413,7 +413,7 @@ class PresetRegistryServiceTest
                 service.createPreset(
                     guildId = 340,
                     ownerUserId = 78,
-                    name = "번역냥",
+                    name = "번역 니아",
                     summary = "한국어 영어 번역",
                     category = "translation",
                     visibility = "guild_private",
@@ -465,7 +465,7 @@ class PresetRegistryServiceTest
 
             val categoryResult = controller.publishedPresets(category = "translation", sort = "popular", limit = 10)["presets"] as List<*>
             val categoryPreset = categoryResult.single() as PublishedPresetSummary
-            assertEquals("번역냥", categoryPreset.title)
+            assertEquals("번역 니아", categoryPreset.title)
 
             val popular = controller.publishedPresets(sort = "likes", limit = 2)["presets"] as List<*>
             val topPreset = popular.first() as PublishedPresetSummary
@@ -476,7 +476,7 @@ class PresetRegistryServiceTest
 
             val recommendations = controller.recommendedPresets(limit = 4)["recommendations"] as List<*>
             val topRecommendation = recommendations.first() as PresetRecommendation
-            assertEquals("번역냥", topRecommendation.preset.title)
+            assertEquals("번역 니아", topRecommendation.preset.title)
             assertTrue(
                 recommendations.any {
                     val recommendation = it as PresetRecommendation
@@ -514,7 +514,7 @@ class PresetRegistryServiceTest
             )
             val facetsAfterDismiss = controller.catalogFacets()["facets"] as PresetCatalogFacets
             assertEquals(4, facetsAfterDismiss.totalPublished)
-            assertEquals("번역냥", facetsAfterDismiss.topPresets.first().title)
+            assertEquals("번역 니아", facetsAfterDismiss.topPresets.first().title)
         }
 
         @Test
@@ -897,7 +897,7 @@ class PresetRegistryServiceTest
                 service.createPreset(
                     guildId = 100,
                     ownerUserId = 77,
-                    name = "요약냥",
+                    name = "요약 니아",
                     summary = null,
                     category = "summary",
                     visibility = "guild_private",

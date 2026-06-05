@@ -24,7 +24,7 @@
 ## 2. P0 — 바로 잡아야 하는 UX 실패
 
 - [x] UX-001. `MESSAGE_CONTENT` intent 미허용 상태에서 봇 전체 gateway 가 죽지 않도록 설정값/4014 fallback 을 구현한다.
-- [ ] UX-002. `@냥시스턴트 질문` 사용 시 Message Content Intent 필요성을 관리자에게 안내하는 도움말/설정 패널을 추가한다.
+- [ ] UX-002. `@니아 질문` 사용 시 Message Content Intent 필요성을 관리자에게 안내하는 도움말/설정 패널을 추가한다.
 - [x] UX-003. 운영 로그에 `DISALLOWED_INTENTS 4014` 발생 시 원인과 조치를 한 줄로 남긴다.
 - [ ] UX-004. 배포 smoke test 에 “JDA WebSocket 정상 연결 유지”를 추가한다.
 - [ ] UX-005. `/메뉴`, `/질문`, `/도움말`, `/내상태`가 gateway 연결 실패 상태에서 어떤 사용자 경험을 보이는지 재현 테스트한다.
@@ -85,7 +85,7 @@
   - `/도움말`
   - `/내상태`
   - `/질문`
-  - `@냥시스턴트 질문`
+  - `@니아 질문`
 - [ ] Message Content Intent OFF 상태를 일부러 만들어도 원인과 조치가 문서/로그/관리자 UX 중 최소 하나에 명확히 드러난다.
 - [ ] Manage Webhooks OFF 상태에서도 질문 결과가 사라지지 않고 일반 봇 응답으로 폴백한다.
 

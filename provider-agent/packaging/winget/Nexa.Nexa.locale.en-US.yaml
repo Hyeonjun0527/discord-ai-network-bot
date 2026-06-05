@@ -1,12 +1,12 @@
-PackageIdentifier: Nyassistant.DiscordAiNetworkBot
+PackageIdentifier: Nexa.Nexa
 PackageVersion: __VERSION__
 PackageLocale: en-US
-Publisher: Nyassistant
+Publisher: NEXA
 PublisherUrl: https://github.com/yeon-intergation-platform
-PackageName: Nyassistant
+PackageName: NEXA
 PackageUrl: https://github.com/Hyeonjun0527/discord-ai-network-bot
 License: MIT
-ShortDescription: Nyassistant desktop app — share your local Ollama with the community AI network.
-Moniker: nyassistant
+ShortDescription: NEXA desktop app — share your local Ollama with the community AI network.
+Moniker: nexa
 ManifestType: defaultLocale
 ManifestVersion: 1.6.0

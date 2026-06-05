@@ -131,7 +131,7 @@ async def test_handle_image_sends_chunks_then_done(monkeypatch):
     agent = ProviderAgent(AgentConfig(token="T", enable_image=True), sd=FakeSD())
     agent._image_ready = True
     conn = FakeConn()
-    await agent.handle_infer(conn, InferRequest(request_id="img1", prompt="고양이", task="image"))  # type: ignore[arg-type]
+    await agent.handle_infer(conn, InferRequest(request_id="img1", prompt="이미지", task="image"))  # type: ignore[arg-type]
     chunks = [f for f in conn.sent if isinstance(f, ChunkFrame)]
     assert len(chunks) == 3  # 2 data + 1 done
     assert "".join(c.delta for c in chunks if not c.done) == big_b64

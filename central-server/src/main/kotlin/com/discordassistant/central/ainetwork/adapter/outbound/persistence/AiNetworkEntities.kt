@@ -20,7 +20,7 @@ import java.time.Instant
 class AiNetworkProfileEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
     var guildId: Long = 0,
-    var displayName: String = "냥시스턴트 네트워크",
+    var displayName: String = "NEXA 네트워크",
     var tagline: String = "함께 만드는 AI 네트워크",
     var description: String? = null,
     var defaultSafetyNotice: String? = null,

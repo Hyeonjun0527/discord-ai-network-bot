@@ -650,7 +650,7 @@ class DiscordBot(
             }
         }
 
-        /** 봇 멘션 질문: `@냥시스턴트 질문` 을 기존 /ask 와 같은 Provider Pool 흐름으로 처리한다. */
+        /** 봇 멘션 질문: `@니아 질문` 을 기존 /ask 와 같은 Provider Pool 흐름으로 처리한다. */
         override fun onMessageReceived(event: MessageReceivedEvent) {
             if (!mentionAskEnabled || !event.isFromGuild || event.author.isBot) return
             val selfId = event.jda.selfUser.idLong
@@ -661,7 +661,7 @@ class DiscordBot(
             val prompt = mentionPrompt(event.message.contentRaw, selfId)
             if (prompt.isBlank()) {
                 event.message
-                    .reply("질문 내용을 같이 적어주세요. 예: `@냥시스턴트 오늘 회의 요약해줘`")
+                    .reply("질문 내용을 같이 적어주세요. 예: `@니아 오늘 회의 요약해줘`")
                     .mentionRepliedUser(false)
                     .queue()
                 return

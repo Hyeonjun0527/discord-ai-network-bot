@@ -50,7 +50,7 @@ object MenuFactory {
 
     /**
      * 프로바이더 참여: 설치할 컴퓨터(OS) 선택 버튼. 클릭 → 그 OS 의 복붙 명령.
-     * GUI 데스크톱 앱(냥시스턴트)이 배포되는 mac/Windows 만 — Linux 가이드는 폐기.
+     * GUI 데스크톱 앱(NEXA)이 배포되는 mac/Windows 만 — Linux 가이드는 폐기.
      */
     fun osButtons(): List<Button> =
         listOf(

@@ -29,7 +29,7 @@
 **Q. 어떻게 참여하나요?**
 1. Ollama 설치 + 모델 받기(`ollama pull <model>`)
 2. Discord 에서 `/provider-join` → 관리자 승인 → 토큰 수령
-3. 에이전트 실행: `discord-ai-network-bot --token <토큰> --relay-url ws://<서버>:8080/agent`
+3. 에이전트 실행: `nexa --token <토큰> --relay-url ws://<서버>:8080/agent`
    (설치/패키징은 `provider-agent/packaging/README.md`)
 
 **Q. 포트를 열어야 하나요?** — **아니요.** 에이전트는 아웃바운드 연결만 사용합니다. inbound 포트

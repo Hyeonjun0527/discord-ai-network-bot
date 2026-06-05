@@ -51,7 +51,7 @@ class AiQualityFeedbackServiceTest
 
         @Test
         fun `feedback summary counts positive negative and reports without answer body`() {
-            val channelAi = channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드냥"))
+            val channelAi = channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드 니아"))
 
             controller.submit(
                 100,

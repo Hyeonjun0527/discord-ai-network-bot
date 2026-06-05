@@ -19,7 +19,7 @@
 ## Phase 1 — 랜딩 원클릭 다운로드 (웹)
 
 - 3D 패널의 **다운로드 버튼을 실제 클릭 가능**하게(레이캐스트 click → OS 감지 → 설치 파일 다운로드). 버튼은 이미 mac/win 2개.
-- 다운로드 타깃: GitHub `releases/latest/download/<asset>` (`nyassistant-macos.zip` / `nyassistant-windows.exe`, SSOT `packaging/assets.json`). 서버 변경 없이 가능.
+- 다운로드 타깃: GitHub `releases/latest/download/<asset>` (`nexa-macos.zip` / `nexa-windows.exe`, SSOT `packaging/assets.json`). 서버 변경 없이 가능.
 - brew/winget 은 "검증 설치(고급)" 로 접어 유지.
 - ⚠️ 서명 활성화 전에는 경고가 뜨므로, **서명 ON 이후 기본 노출**(그 전엔 고급 옵션 뒤 또는 '우클릭 열기' 안내).
 

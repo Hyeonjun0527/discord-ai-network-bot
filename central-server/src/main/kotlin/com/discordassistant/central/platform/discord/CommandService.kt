@@ -264,7 +264,7 @@ class CommandService(
         responseMode: String? = null,
     ): Reply = multiResponseCommands.multiResponseDryRun(ctx, prompt, channelId, responseMode)
 
-    /** 이 서버 냥시스턴트의 활동 레벨/경험치/진행도(public·비관리자). */
+    /** 이 서버 니아의 활동 레벨/경험치/진행도(public·비관리자). */
     fun aiLevel(ctx: CommandContext): Reply = aiNetworkCommands.aiLevel(ctx)
 
     fun aiNetworkMap(ctx: CommandContext): Reply = aiNetworkCommands.aiNetworkMap(ctx)

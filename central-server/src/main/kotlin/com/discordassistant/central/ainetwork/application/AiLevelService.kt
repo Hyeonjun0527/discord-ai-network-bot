@@ -13,7 +13,7 @@ import java.time.Clock
 import java.time.Instant
 
 /**
- * 서버(길드) AI 활동 경험치 적립 서비스(Phase 1). 길드당 1개의 냥시스턴트 AI 가 /ask 답변 성공마다
+ * 서버(길드) AI 활동 경험치 적립 서비스(Phase 1). 길드당 1개의 니아 AI 가 /ask 답변 성공마다
  * 경험치를 쌓아 레벨업한다(채널 AI별 아님 — 길드 단위, ai_network_profile 1행).
  *
  * 동시성: 적립은 원자 UPDATE(addXp), 레벨업은 조건부 UPDATE(raiseLevel, ai_level < newLevel)로
@@ -116,7 +116,7 @@ class AiLevelService(
             AiNetworkEventEntity(
                 guildId = guildId,
                 eventType = "ai_level_up",
-                title = "냥시스턴트 활동 레벨 $newLevel 달성",
+                title = "니아 활동 레벨 $newLevel 달성",
                 summary = "질문 답변이 쌓여 활동 레벨이 $newLevel 로 올랐어요.",
                 metadata = "level=$newLevel;xp=$totalXp",
                 createdAt = now,

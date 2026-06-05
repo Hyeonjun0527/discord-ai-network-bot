@@ -83,9 +83,9 @@
     },
     "step2Title": { "ko": "앱 설치", "en": "Install the app", "ja": "アプリをインストール" },
     "step2Text": {
-      "ko": "아래 OS 탭에서 패키지 매니저로 데스크톱 앱(냥시스턴트)을 설치하세요. <b>해시 검증</b>이 자동으로 됩니다.",
-      "en": "Use the package manager in the OS tab below to install the desktop app (Nyassistant). <b>Hash verification</b> is automatic.",
-      "ja": "下のOSタブのパッケージマネージャーでデスクトップアプリ（ニャシスタント）をインストール。<b>ハッシュ検証</b>は自動です。"
+      "ko": "아래 OS 탭에서 패키지 매니저로 데스크톱 앱(NEXA)을 설치하세요. <b>해시 검증</b>이 자동으로 됩니다.",
+      "en": "Use the package manager in the OS tab below to install the desktop app (NEXA). <b>Hash verification</b> is automatic.",
+      "ja": "下のOSタブのパッケージマネージャーでデスクトップアプリ（NEXA）をインストール。<b>ハッシュ検証</b>は自動です。"
     },
     "step3Title": { "ko": "연결 확인", "en": "Confirm connection", "ja": "接続を確認" },
     "step3Text": {
@@ -144,24 +144,24 @@
       "ja": "Ollama をインストール + モデル（管理者権限不要）"
     },
     "guideStep2Mac": {
-      "ko": "냥시스턴트 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)",
-      "en": "Install the Nyassistant desktop app (brew verifies sha256, no admin)",
-      "ja": "ニャシスタント デスクトップアプリをインストール（brew が sha256 を自動検証、管理者不要）"
+      "ko": "NEXA 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)",
+      "en": "Install the NEXA desktop app (brew verifies sha256, no admin)",
+      "ja": "NEXA デスクトップアプリをインストール（brew が sha256 を自動検証、管理者不要）"
     },
     "guideStep2Win": {
-      "ko": "냥시스턴트 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)",
-      "en": "Install the Nyassistant desktop app (winget verifies sha256, no admin)",
-      "ja": "ニャシスタント デスクトップアプリをインストール（winget が sha256 を自動検証、管理者不要）"
+      "ko": "NEXA 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)",
+      "en": "Install the NEXA desktop app (winget verifies sha256, no admin)",
+      "ja": "NEXA デスクトップアプリをインストール（winget が sha256 を自動検証、管理者不要）"
     },
     "guideConnectMac": {
-      "ko": "응용 프로그램에서 ‘냥시스턴트’ 앱을 열고 → ‘디스코드 로그인’ 으로 서버를 고르거나 ‘고급 · 토큰 직접 입력’ 에 토큰을 붙여넣어 연결",
-      "en": "Open the ‘Nyassistant’ app from Applications → use ‘Discord login’ to pick a server, or paste a token in ‘Advanced · enter token’",
-      "ja": "アプリケーションから「ニャシスタント」アプリを開き → 「Discord ログイン」でサーバーを選ぶか、「詳細 · トークン直接入力」にトークンを貼り付けて接続"
+      "ko": "응용 프로그램에서 ‘NEXA’ 앱을 열고 → ‘디스코드 로그인’ 으로 서버를 고르거나 ‘고급 · 토큰 직접 입력’ 에 토큰을 붙여넣어 연결",
+      "en": "Open the ‘NEXA’ app from Applications → use ‘Discord login’ to pick a server, or paste a token in ‘Advanced · enter token’",
+      "ja": "アプリケーションから「NEXA」アプリを開き → 「Discord ログイン」でサーバーを選ぶか、「詳細 · トークン直接入力」にトークンを貼り付けて接続"
     },
     "guideConnectWin": {
-      "ko": "시작 메뉴에서 ‘냥시스턴트’ 앱을 열고 → ‘디스코드 로그인’ 으로 서버를 고르거나 ‘고급 · 토큰 직접 입력’ 에 토큰을 붙여넣어 연결",
-      "en": "Open the ‘Nyassistant’ app from the Start menu → use ‘Discord login’ to pick a server, or paste a token in ‘Advanced · enter token’",
-      "ja": "スタートメニューから「ニャシスタント」アプリを開き → 「Discord ログイン」でサーバーを選ぶか、「詳細 · トークン直接入力」にトークンを貼り付けて接続"
+      "ko": "시작 메뉴에서 ‘NEXA’ 앱을 열고 → ‘디스코드 로그인’ 으로 서버를 고르거나 ‘고급 · 토큰 직접 입력’ 에 토큰을 붙여넣어 연결",
+      "en": "Open the ‘NEXA’ app from the Start menu → use ‘Discord login’ to pick a server, or paste a token in ‘Advanced · enter token’",
+      "ja": "スタートメニューから「NEXA」アプリを開き → 「Discord ログイン」でサーバーを選ぶか、「詳細 · トークン直接入力」にトークンを貼り付けて接続"
     },
     "guideHintMac": {
       "ko": "⌘ Space → Terminal 입력 → Enter (또는 응용 프로그램 → 유틸리티 → 터미널)",

@@ -85,7 +85,7 @@ class ChannelAiCustomizationService(
         val channelAi =
             channelAis.findByGuildIdAndChannelId(guildId, channelId)
                 ?: ChannelAiEntity(guildId = guildId, channelId = channelId, source = "wizard", createdAt = now)
-        channelAi.displayName = name.trim().take(80).ifBlank { "냥시스턴트" }
+        channelAi.displayName = name.trim().take(80).ifBlank { "니아" }
         channelAi.avatarUrl = avatarUrl?.trim()?.ifBlank { null }
         channelAi.updatedAt = now
         val savedChannel = channelAis.saveAndFlush(channelAi)

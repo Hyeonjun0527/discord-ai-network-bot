@@ -119,7 +119,7 @@ def request_cancel() -> None:
 def install_dir() -> pathlib.Path:
     """A1111 을 설치할 데이터 디렉터리. ``XDG_DATA_HOME`` 을 따르고 없으면 ``~/.local/share``."""
     base = os.getenv("XDG_DATA_HOME") or os.path.join(pathlib.Path.home(), ".local", "share")
-    return pathlib.Path(base) / "discord-ai-network-bot" / "stable-diffusion-webui"
+    return pathlib.Path(base) / "nexa" / "stable-diffusion-webui"
 
 
 def _has(cmd: str) -> bool:

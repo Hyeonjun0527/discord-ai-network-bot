@@ -170,7 +170,7 @@ class AiNetworkDashboardControllerTest
 
         @Test
         fun `overview returns refreshed AI network snapshot`() {
-            channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드냥"))
+            channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드 니아"))
             foundation.upsertProviderCapability(
                 guildId = 100,
                 providerUserId = 300,
@@ -221,7 +221,7 @@ class AiNetworkDashboardControllerTest
 
         @Test
         fun `dashboard lists channels providers knowledge and presets without prompt bodies`() {
-            val channelAi = channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드냥"))
+            val channelAi = channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드 니아"))
             val behavior =
                 behaviorVersions.save(
                     AiBehaviorVersionEntity(
@@ -306,7 +306,7 @@ class AiNetworkDashboardControllerTest
             val knowledge = controller.knowledgeSpaces(100)
             val guildPresets = controller.guildPresets(100)
 
-            assertEquals("코드냥", channels.single().name)
+            assertEquals("코드 니아", channels.single().name)
             assertEquals("개발 질문", channels.single().purpose)
             assertEquals("deep", channels.single().responseMode)
             assertEquals("qwen-coder", channels.single().preferredModel)
@@ -631,7 +631,7 @@ class AiNetworkDashboardControllerTest
 
         @Test
         fun `dashboard combines network status quality overload model map and customization slices`() {
-            val channelAi = channelAis.save(ChannelAiEntity(guildId = 130, channelId = 230, displayName = "요약냥"))
+            val channelAi = channelAis.save(ChannelAiEntity(guildId = 130, channelId = 230, displayName = "요약 니아"))
             behaviorVersions
                 .save(
                     AiBehaviorVersionEntity(
@@ -700,7 +700,7 @@ class AiNetworkDashboardControllerTest
             assertEquals("fresh", dashboard.metadata.freshnessStatus)
             assertEquals("warning", dashboard.overview.healthStatus)
             assertEquals(1, dashboard.channels.size)
-            assertEquals("요약냥", dashboard.channels.single().name)
+            assertEquals("요약 니아", dashboard.channels.single().name)
             assertTrue(dashboard.modelMap.any { it.modelName == "llama3.1:8b" })
             assertEquals(1, dashboard.quality.feedbackCount)
             assertEquals(1, dashboard.quality.positive)

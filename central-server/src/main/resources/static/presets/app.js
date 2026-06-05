@@ -1,6 +1,6 @@
 const $ = (id) => document.getElementById(id);
-const ADMIN_TOKEN_STORAGE_KEY = "nyassistantPresetDashboardAdminToken";
-const LIKED_PRESETS_STORAGE_KEY = "nyassistantPresetLikedPresets";
+const ADMIN_TOKEN_STORAGE_KEY = "nexaPresetDashboardAdminToken";
+const LIKED_PRESETS_STORAGE_KEY = "nexaPresetLikedPresets";
 let pendingImport = null;
 let selectedPresetId = null;
 
@@ -58,7 +58,7 @@ async function json(url, options = {}) {
 }
 
 function anonUserId() {
-  const key = "nyassistantPresetAnonUserId";
+  const key = "nexaPresetAnonUserId";
   const existing = localStorage.getItem(key);
   if (existing) return Number(existing);
   const id = Math.floor(100000000 + Math.random() * 800000000);

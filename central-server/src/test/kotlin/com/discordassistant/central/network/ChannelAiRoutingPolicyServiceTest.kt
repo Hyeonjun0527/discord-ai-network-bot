@@ -85,7 +85,7 @@ class ChannelAiRoutingPolicyServiceTest
 
         @Test
         fun `channel routing policy stores response mode and model choice`() {
-            val channelAi = channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드냥"))
+            val channelAi = channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드 니아"))
 
             val saved =
                 service.save(

@@ -51,14 +51,14 @@ object EmbedFactory {
 
     private val BLURPLE = Color(0x5865F2)
     private val DEEP_INDIGO = Color(0x2F3BFF)
-    const val MENU_HERO_IMAGE_URL = "https://discord-ai.yeon.world/assets/nyassistant-menu-hero.png"
+    const val MENU_HERO_IMAGE_URL = "https://discord-ai.yeon.world/assets/nexa-menu-hero.png"
 
     /** 시작 메뉴 Embed. 실제 Discord 버튼은 Embed 아래에 붙지만, 패널 안에도 같은 메뉴 구조를 보여준다. */
     fun mainMenuEmbed(isAdmin: Boolean): MessageEmbed {
         val b =
             EmbedBuilder()
                 .setColor(DEEP_INDIGO)
-                .setTitle("냥시스턴트 메뉴")
+                .setTitle("니아 메뉴")
                 .setDescription(
                     "AI에게 바로 질문하거나, 내 컴퓨터의 AI로 커뮤니티 답변을 함께 도울 수 있어요.\n" +
                         "아래 메뉴를 보고 원하는 버튼을 선택해주세요.",
@@ -86,7 +86,7 @@ object EmbedFactory {
         val b =
             EmbedBuilder()
                 .setColor(BLURPLE)
-                .setTitle("${MenuSymbols.ASK} 냥시스턴트 AI 네트워크")
+                .setTitle("${MenuSymbols.ASK} NEXA AI 네트워크")
                 .setDescription(
                     "커뮤니티 멤버들의 PC 로컬 LLM 을 모아 **공정하게 나눠 쓰는** 봇입니다(금전 거래 아님).\n" +
                         "${c("menu")} 로 언제든 시작 패널을 열 수 있어요.",

@@ -23,8 +23,8 @@ from pathlib import Path
 
 logger = logging.getLogger("provider_agent.service")
 
-SERVICE_LABEL = "world.yeon.discord-ai-network-bot"
-SERVICE_NAME = "discord-ai-network-bot"
+SERVICE_LABEL = "world.yeon.nexa"
+SERVICE_NAME = "nexa"
 
 
 def executable_path() -> str:
@@ -71,7 +71,7 @@ def launchd_plist(exe: str, label: str = SERVICE_LABEL) -> str:
 def systemd_unit(exe: str) -> str:
     return (
         "[Unit]\n"
-        "Description=Discord AI Network Bot Provider Agent\n"
+        "Description=NEXA Provider Agent\n"
         "After=network-online.target\n"
         "Wants=network-online.target\n\n"
         "[Service]\n"

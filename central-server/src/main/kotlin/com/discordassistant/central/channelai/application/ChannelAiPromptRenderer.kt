@@ -30,7 +30,7 @@ class ChannelAiPromptRenderer(
         val behavior =
             channelAi?.activeBehaviorVersionId?.let { versions.findByChannelAiIdAndId(channelAi.id, it) }
                 ?: channelAi?.let { versions.findTopByChannelAiIdOrderByVersionDesc(it.id) }
-        val name = channelAi?.displayName?.trim()?.takeIf { it.isNotBlank() } ?: "냥시스턴트"
+        val name = channelAi?.displayName?.trim()?.takeIf { it.isNotBlank() } ?: "니아"
         val purpose = behavior?.purpose ?: DEFAULT_CHANNEL_AI_PURPOSE
         val tone = behavior?.tone ?: DEFAULT_CHANNEL_AI_TONE
         val answerLength = behavior?.answerLength ?: DEFAULT_CHANNEL_AI_ANSWER_LENGTH

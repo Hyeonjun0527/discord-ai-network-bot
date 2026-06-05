@@ -150,7 +150,7 @@ class AiNetworkFoundationServiceTest
                 ChannelAiEntity(
                     guildId = 100,
                     channelId = 200,
-                    displayName = "코드냥",
+                    displayName = "코드 니아",
                     createdAt = Instant.now(fixedClock),
                     updatedAt = Instant.now(fixedClock),
                 ),
@@ -396,13 +396,13 @@ class AiNetworkFoundationServiceTest
 
         @Test
         fun `preset reaction is unique per user and reaction`() {
-            val preset = presets.save(AiPresetEntity(guildId = 100, name = "요약냥"))
+            val preset = presets.save(AiPresetEntity(guildId = 100, name = "요약 니아"))
             val revision =
                 presetRevisions.save(
                     PresetRevisionEntity(
                         presetId = preset.id,
                         revision = 1,
-                        name = "요약냥",
+                        name = "요약 니아",
                         purpose = "요약",
                         tone = "short",
                     ),
@@ -413,7 +413,7 @@ class AiNetworkFoundationServiceTest
                         presetId = preset.id,
                         revisionId = revision.id,
                         publisherGuildId = 100,
-                        title = "요약냥",
+                        title = "요약 니아",
                     ),
                 )
             presetReactions.saveAndFlush(PresetReactionEntity(publishedPresetId = published.id, userId = 90, reaction = "like"))

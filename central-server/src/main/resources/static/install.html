@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>냥시스턴트 — AI 멤버를 당신의 디스코드 서버에 연결하세요</title>
+  <title>NEXA — AI 멤버를 당신의 디스코드 서버에 연결하세요</title>
   <script type="importmap">
   { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js" } }
   </script>
@@ -268,9 +268,9 @@
 <body>
   <header class="topbar cine-topbar">
       <div class="brand">
-        <div class="brand-logo"><img src="/img/mascot-ai.png" alt="마스코트" /></div>
+        <div class="brand-logo"><img src="/img/nexa-logo.png" alt="NEXA 로고" /></div>
         <div class="brand-text">
-          <span class="brand-name">NYASSISTANT</span>
+          <span class="brand-name">NEXA</span>
           <span class="brand-sub">AI NETWORK</span>
         </div>
       </div>
@@ -326,7 +326,7 @@
 
         <div class="cine-bottom">
           <span id="seq">SEQ 001 / 169</span>
-          <span class="cine-mid">NYASSISTANT // NETWORK · DIAGNOSTIC</span>
+          <span class="cine-mid">NEXA // NETWORK · DIAGNOSTIC</span>
           <span id="scrollHint">SCROLL ↓</span>
         </div>
         <div class="cine-progress"><div id="cineFill"></div></div>
@@ -481,11 +481,11 @@
     const IS_LOCAL = ['localhost', '127.0.0.1', '0.0.0.0', ''].includes(location.hostname);
     const DEV_GUIDE = IS_LOCAL ? [
       { key: 'mac', terminalHint: '⌘ Space → Terminal 입력 → Enter (또는 응용 프로그램 → 유틸리티 → 터미널)', shellName: 'terminal — zsh',
-        codeLines: ['# 1) Ollama 설치 + 기본 모델 exaone3.5:7.8b (관리자 권한 불필요)', 'brew install ollama', 'brew services start ollama', 'ollama pull exaone3.5:7.8b', '# 2) 냥시스턴트 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)', 'brew install --cask yeon-intergation-platform/tap/nyassistant'],
-        connect: "응용 프로그램에서 '냥시스턴트' 앱을 열고 → '디스코드 로그인' 으로 서버를 고르거나 '고급 · 토큰 직접 입력' 에 토큰을 붙여넣어 연결 (로컬 미리보기)" },
+        codeLines: ['# 1) Ollama 설치 + 기본 모델 exaone3.5:7.8b (관리자 권한 불필요)', 'brew install ollama', 'brew services start ollama', 'ollama pull exaone3.5:7.8b', '# 2) NEXA 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)', 'brew install --cask yeon-intergation-platform/tap/nexa'],
+        connect: "응용 프로그램에서 'NEXA' 앱을 열고 → '디스코드 로그인' 으로 서버를 고르거나 '고급 · 토큰 직접 입력' 에 토큰을 붙여넣어 연결 (로컬 미리보기)" },
       { key: 'win', terminalHint: '시작 메뉴에서 PowerShell 검색 → Enter, 또는 Win + X → 터미널 (관리자 권한 불필요)', shellName: 'PowerShell',
-        codeLines: ['# 1) Ollama 설치 + 기본 모델 exaone3.5:7.8b (관리자 권한 불필요)', 'winget install --id Ollama.Ollama -e --accept-source-agreements', 'ollama pull exaone3.5:7.8b', '# 2) 냥시스턴트 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)', 'winget install --id Nyassistant.DiscordAiNetworkBot -e --accept-source-agreements'],
-        connect: "시작 메뉴에서 '냥시스턴트' 앱을 열고 → '디스코드 로그인' 으로 서버를 고르거나 '고급 · 토큰 직접 입력' 에 토큰을 붙여넣어 연결 (로컬 미리보기)" },
+        codeLines: ['# 1) Ollama 설치 + 기본 모델 exaone3.5:7.8b (관리자 권한 불필요)', 'winget install --id Ollama.Ollama -e --accept-source-agreements', 'ollama pull exaone3.5:7.8b', '# 2) NEXA 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)', 'winget install --id Nexa.Nexa -e --accept-source-agreements'],
+        connect: "시작 메뉴에서 'NEXA' 앱을 열고 → '디스코드 로그인' 으로 서버를 고르거나 '고급 · 토큰 직접 입력' 에 토큰을 붙여넣어 연결 (로컬 미리보기)" },
     ] : null;
     const GUIDE = INSTALL_GUIDE || DEV_GUIDE;
 
@@ -533,7 +533,7 @@
   <!-- 브랜드 워드마크 단일 소스. SSOT(of record): packaging/assets.json {brandName, brandTagline}.
        HTML 의 리터럴은 no-JS/SEO 폴백 겸 드리프트 가드(check_packaging) 대상이며, 여기서 한 번에 주입한다. -->
   <script>
-    window.__BRAND = { name: 'NYASSISTANT', sub: 'AI NETWORK' };
+    window.__BRAND = { name: 'NEXA', sub: 'AI NETWORK GUIDE' };
     (function applyBrand() {
       const b = window.__BRAND;
       const set = (sel, v) => document.querySelectorAll(sel).forEach(e => { e.textContent = v; });
@@ -629,11 +629,11 @@
     const TW = 1024, TH = 768;
     const ui = document.createElement('canvas'); ui.width = TW; ui.height = TH;
     const cx = ui.getContext('2d');
-    // 헤더 프로필 마스코트(같은 오리진 → 캔버스 taint 없음). 로드되면 패널 재그리기.
+    // 헤더 프로필 로고(같은 오리진 → 캔버스 taint 없음). 로드되면 패널 재그리기.
     let requestPanelRedraw = () => {};
     const logoImg = new Image(); let logoReady = false;
     logoImg.onload = () => { logoReady = true; requestPanelRedraw(); };
-    logoImg.src = '/img/mascot-ai.png';
+    logoImg.src = '/img/nexa-logo.png';
 
     // 테마 토큰을 CSS(:root)에서 읽어 WebGL/캔버스에 동일 적용 — 하드코딩 금지(단일 진실원천).
     const _css = getComputedStyle(document.documentElement);
@@ -657,7 +657,7 @@
       cx.save(); cx.shadowColor = hexRGBA(THEME.cyan, .85); cx.shadowBlur = 18; cx.lineWidth = 2.5;
       const ib = cx.createLinearGradient(0, 0, TW, TH); ib.addColorStop(0, THEME.cyan); ib.addColorStop(.5, THEME.blue); ib.addColorStop(1, THEME.violet);
       cx.strokeStyle = ib; rr(20, 20, TW - 40, TH - 40, 40); cx.stroke(); cx.restore();
-      // 헤더 프로필(마스코트 이미지, 라운드 클립 + 글로우 + 네온 테두리)
+      // 헤더 프로필(정식 로고, 라운드 클립 + 글로우 + 네온 테두리)
       const hx = 56, hy = 54, ls = 64;
       cx.save(); cx.shadowColor = hexRGBA(THEME.violet, .9); cx.shadowBlur = 22;
       cx.fillStyle = '#0c1424'; rr(hx, hy, ls, ls, 18); cx.fill(); cx.restore(); // 글로우 베이스
@@ -667,7 +667,7 @@
       cx.restore();
       cx.save(); cx.lineWidth = 2; cx.strokeStyle = hexRGBA(THEME.cyan, .6); rr(hx, hy, ls, ls, 18); cx.stroke(); cx.restore();
       cx.fillStyle = '#eef2fb'; cx.font = '700 40px -apple-system, "Apple SD Gothic Neo", sans-serif'; cx.textBaseline = 'alphabetic';
-      cx.fillText((window.__BRAND && window.__BRAND.name) || 'NYASSISTANT', hx + 86, hy + 32);
+      cx.fillText((window.__BRAND && window.__BRAND.name) || 'NEXA', hx + 86, hy + 32);
       cx.fillStyle = '#8aa6c8'; cx.font = '600 22px -apple-system, sans-serif'; cx.fillText(d.sub, hx + 86, hy + 60);
       const dots = [THEME.cyan, THEME.blue, THEME.violet];
       cx.save(); cx.shadowBlur = 14;
@@ -838,7 +838,7 @@
       const raycaster = new THREE.Raycaster();
       const ndc = new THREE.Vector2();
       // 설치 카드 직접 다운로드(서버 /download/ 공개 자산 — 정적 미리보기에선 404, 운영에선 동작).
-      const DL = { mac: '/download/nyassistant-macos.dmg', win: '/download/nyassistant-windows.exe' };
+      const DL = { mac: '/download/nexa-macos.dmg', win: '/download/nexa-windows.exe' };
       // 패널 전면 UV(0~1) → 캔버스 좌표 → "다운로드(↓) 버튼" 위인지(mac/win/null)만 판정.
       // 버튼 사각형: x 876~948, mac y 223~295 · win y 419~491 (drawPanel 기준). 클릭 편하게 약간 패딩.
       const rowFromUV = (uv) => {

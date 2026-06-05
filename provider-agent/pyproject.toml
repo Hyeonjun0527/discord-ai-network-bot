@@ -3,9 +3,9 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "discord-ai-network-bot"
+name = "nexa-agent"
 version = "0.28.1"
-description = "커뮤니티 Provider Agent — 내 PC의 로컬 Ollama 를 중앙 서버에 연결한다."
+description = "NEXA Provider Agent — 내 PC의 로컬 Ollama 를 중앙 서버에 연결한다."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -38,7 +38,7 @@ gui = [
 ]
 
 [project.scripts]
-discord-ai-network-bot = "provider_agent.__main__:main"
+nexa = "provider_agent.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -60,12 +60,12 @@ class DmScopeRoutingTest
             val mac = commands.providerInstallGuide(ctx, "mac")
             assertTrue(mac.content.contains("brew install ollama"), mac.content)
             assertTrue(mac.content.contains("brew install --cask"), mac.content) // 맥 데스크톱 GUI 앱
-            assertTrue(mac.content.contains("냥시스턴트"), mac.content)
+            assertTrue(mac.content.contains("NEXA"), mac.content)
             assertTrue(mac.ephemeral)
             // 다른 OS 재클릭도 새 토큰으로 동작(reissueToken 경로) — winget 으로 같은 GUI 앱 설치.
             val win = commands.providerInstallGuide(ctx, "windows")
             assertTrue(win.content.contains("winget install"), win.content)
-            assertTrue(win.content.contains("Nyassistant.DiscordAiNetworkBot"), win.content)
+            assertTrue(win.content.contains("Nexa.Nexa"), win.content)
         }
 
         @Test

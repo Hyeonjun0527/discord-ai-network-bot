@@ -19,31 +19,31 @@ class ChannelAiWizardPresetFactory {
                         key = "development",
                         label = "개발 질문",
                         description = "에러 분석, 코드 리뷰, 테스트 작성을 돕는 채널 AI",
-                        recommendedName = "코드냥",
+                        recommendedName = "코드 니아",
                     ),
                     ChannelAiWizardOption(
                         key = "translation",
                         label = "번역",
                         description = "한국어/영어 번역과 문장 다듬기를 돕는 채널 AI",
-                        recommendedName = "번역냥",
+                        recommendedName = "번역 니아",
                     ),
                     ChannelAiWizardOption(
                         key = "meeting",
                         label = "회의록",
                         description = "회의 요약, 결정사항, 액션아이템을 정리하는 채널 AI",
-                        recommendedName = "요약냥",
+                        recommendedName = "요약 니아",
                     ),
                     ChannelAiWizardOption(
                         key = "announcement",
                         label = "공지 작성",
                         description = "운영진 안내문과 릴리즈 노트 초안을 돕는 채널 AI",
-                        recommendedName = "공지냥",
+                        recommendedName = "공지 니아",
                     ),
                     ChannelAiWizardOption(
                         key = "custom",
                         label = "자유 설정",
                         description = "채널 목적에 맞게 직접 역할을 입력하는 채널 AI",
-                        recommendedName = "채널냥",
+                        recommendedName = "채널 니아",
                     ),
                 ),
             tones =
@@ -90,15 +90,15 @@ class ChannelAiWizardPresetFactory {
     fun jobPreset(job: String): ChannelAiJobPreset =
         when (job.trim().lowercase()) {
             "development", "dev", "개발", "개발 질문", "1" ->
-                ChannelAiJobPreset("development", "코드냥", "개발 질문, 에러 분석, 코드 리뷰, 테스트 작성을 돕습니다.", "개발 질문과 코드 문제를 도와드려요.")
+                ChannelAiJobPreset("development", "코드 니아", "개발 질문, 에러 분석, 코드 리뷰, 테스트 작성을 돕습니다.", "개발 질문과 코드 문제를 도와드려요.")
             "translation", "translate", "번역", "2" ->
-                ChannelAiJobPreset("translation", "번역냥", "한국어/영어 번역과 문장 다듬기를 돕습니다.", "번역과 문장 개선을 도와드려요.")
+                ChannelAiJobPreset("translation", "번역 니아", "한국어/영어 번역과 문장 다듬기를 돕습니다.", "번역과 문장 개선을 도와드려요.")
             "meeting", "minutes", "회의록", "3" ->
-                ChannelAiJobPreset("meeting", "요약냥", "회의록 정리, 액션아이템 추출, 요약을 돕습니다.", "회의 내용을 보기 쉽게 정리해드려요.")
+                ChannelAiJobPreset("meeting", "요약 니아", "회의록 정리, 액션아이템 추출, 요약을 돕습니다.", "회의 내용을 보기 쉽게 정리해드려요.")
             "announcement", "notice", "공지", "공지 작성", "4" ->
-                ChannelAiJobPreset("announcement", "공지냥", "공지 작성, 운영진 안내문, 릴리즈 노트 초안을 돕습니다.", "공지와 안내문 작성을 도와드려요.")
+                ChannelAiJobPreset("announcement", "공지 니아", "공지 작성, 운영진 안내문, 릴리즈 노트 초안을 돕습니다.", "공지와 안내문 작성을 도와드려요.")
             else ->
-                ChannelAiJobPreset("custom", "채널냥", job.trim().ifBlank { DEFAULT_CHANNEL_AI_PURPOSE }.take(200), "이 채널 목적에 맞춰 도와드려요.")
+                ChannelAiJobPreset("custom", "채널 니아", job.trim().ifBlank { DEFAULT_CHANNEL_AI_PURPOSE }.take(200), "이 채널 목적에 맞춰 도와드려요.")
         }
 
     fun tonePreset(tone: String): String =

@@ -539,7 +539,7 @@ class CommandServiceTest
             )
             commands.setChannelAiProfile(
                 g,
-                name = "코드냥",
+                name = "코드 니아",
                 avatarUrl = null,
                 reset = false,
                 purpose = "Kotlin 코드 리뷰",
@@ -553,13 +553,13 @@ class CommandServiceTest
             assertTrue(reply.content.contains("AI 네트워크 지도"))
             assertTrue(reply.content.contains("llama3.1:8b"))
             assertTrue(reply.content.contains("codellama:latest"))
-            assertTrue(reply.content.contains("코드냥"))
+            assertTrue(reply.content.contains("코드 니아"))
             assertTrue(reply.content.contains("Provider: 온라인 1"))
             assertTrue(reply.content.contains("능력 태그"))
         }
 
         @Test
-        fun `level — 서버 냥시스턴트의 활동 레벨과 경험치를 누구나 본다`() {
+        fun `level — 서버 니아의 활동 레벨과 경험치를 누구나 본다`() {
             val g = CommandContext(guildId = 55501, channelId = 66601, userId = 9, roleIds = setOf(1L), isAdmin = false)
             // 12회 적립(=120xp) → L2, 구간 (20, 200)
             repeat(12) { aiLevel.awardAskXp(g.guildId) }
@@ -583,15 +583,15 @@ class CommandServiceTest
         @Test
         fun `llm-channel-profile — 관리자가 채널별 AI 응답 프로필을 설정 조회 초기화한다`() {
             val admin = ctx(admin = true)
-            assertTrue(commands.setChannelAiProfile(ctx(admin = false), "냥시스턴트", null, false).content.contains("⛔"))
+            assertTrue(commands.setChannelAiProfile(ctx(admin = false), "니아", null, false).content.contains("⛔"))
 
-            val set = commands.setChannelAiProfile(admin, "냥시스턴트", null, false).content
-            assertTrue(set.contains("냥시스턴트"))
+            val set = commands.setChannelAiProfile(admin, "니아", null, false).content
+            assertTrue(set.contains("니아"))
             assertTrue(set.contains("웹후크 관리"))
 
             assertTrue(commands.setChannelAiProfile(ctx(admin = false), null, null, reset = true).content.contains("⛔"))
             assertTrue(commands.setChannelAiProfile(ctx(admin = false), null, null, reset = false, rollback = true).content.contains("⛔"))
-            assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("냥시스턴트"))
+            assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("니아"))
             assertTrue(commands.setChannelAiProfile(admin, null, null, true).content.contains("기본 봇"))
             assertTrue(commands.setChannelAiProfile(admin, null, null, false).content.contains("설정되지 않았습니다"))
         }
@@ -638,7 +638,7 @@ class CommandServiceTest
             assertTrue(outcome is OnboardingStartOutcome.Started)
             val result = (outcome as OnboardingStartOutcome.Started).result
             assertEquals("pending", result.status)
-            assertEquals("코드냥", result.name)
+            assertEquals("코드 니아", result.name)
 
             val approved = commands.approveOnboarding(admin, result.proposalId)
             assertTrue(approved.content.contains("승인"), approved.content)
@@ -687,7 +687,7 @@ class CommandServiceTest
                     guildId = 100,
                     channelId = 70401,
                     actorUserId = 5,
-                    name = "코드냥",
+                    name = "코드 니아",
                     avatarUrl = null,
                     job = "개발 질문",
                     tone = "친근하게",
@@ -898,7 +898,7 @@ class CommandServiceTest
             try {
                 commands.setChannelAiProfile(
                     ctx(admin = true),
-                    name = "코드냥",
+                    name = "코드 니아",
                     avatarUrl = null,
                     reset = false,
                     purpose = "Kotlin 개발 도우미",
@@ -910,7 +910,7 @@ class CommandServiceTest
                 val r = commands.ask(ctx(), "코드 설명")
 
                 assertTrue(r.content.contains("[우선순위 2: 채널 AI 정체성]"), r.content)
-                assertTrue(r.content.contains("이름: 코드냥"), r.content)
+                assertTrue(r.content.contains("이름: 코드 니아"), r.content)
                 assertTrue(r.content.contains("역할: Kotlin 개발 도우미"), r.content)
                 assertTrue(r.content.contains("[우선순위 3: AI 헌법]"), r.content)
                 assertTrue(r.content.contains("코드는 실행 가능한 예시 위주로 답합니다."), r.content)
@@ -932,7 +932,7 @@ class CommandServiceTest
                     guildId = 100,
                     channelId = 200,
                     actorUserId = 77,
-                    name = "코드냥",
+                    name = "코드 니아",
                     avatarUrl = null,
                     job = "개발 질문",
                     tone = "짧고 명확하게",
@@ -1002,7 +1002,7 @@ class CommandServiceTest
                     guildId = 100,
                     channelId = 200,
                     actorUserId = 77,
-                    name = "코드냥",
+                    name = "코드 니아",
                     avatarUrl = null,
                     job = "개발 질문",
                     tone = "짧고 명확하게",
@@ -1026,7 +1026,7 @@ class CommandServiceTest
                 val r = commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘", requestedResponseMode = "deep")
 
                 assertTrue(r.content.contains("[우선순위 2: 채널 AI 정체성]"), r.content)
-                assertTrue(r.content.contains("이름: 코드냥"), r.content)
+                assertTrue(r.content.contains("이름: 코드 니아"), r.content)
                 assertTrue(r.content.contains("코드는 검증 방법을 먼저 제안합니다."), r.content)
                 assertTrue(r.content.contains("[우선순위 4: 채널 지식/RAG]"), r.content)
                 assertTrue(r.content.contains("Kotlin Spring 운영 가이드"), r.content)

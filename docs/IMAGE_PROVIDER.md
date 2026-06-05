@@ -23,15 +23,15 @@ cd stable-diffusion-webui
 ## 2) 에이전트를 이미지 모드로 실행
 기존 실행 명령에 **`--enable-image`** 만 추가하면 됩니다:
 ```bash
-discord-ai-network-bot --token <토큰> --relay-url wss://discord-ai.yeon.world/agent --enable-image
+nexa --token <토큰> --relay-url wss://discord-ai.yeon.world/agent --enable-image
 ```
 - 시작 시 에이전트가 SD에 health 체크 → 도달하면 풀에 **image capability** 를 광고합니다.
-- 점검: `discord-ai-network-bot --self-test --enable-image` (Ollama + SD 1장 생성 확인).
+- 점검: `nexa --self-test --enable-image` (Ollama + SD 1장 생성 확인).
 
 ## 3) 사용
 이미지 프로바이더가 풀에 하나라도 있으면, 누구나 디스코드에서:
 ```
-/imagine prompt:푸른 밤하늘 아래 고양이, 수채화
+/imagine prompt:푸른 밤하늘 아래 네온 도시, 수채화
 ```
 → image-capable 프로바이더로 라우팅되어 생성된 이미지가 첨부로 옵니다.
 

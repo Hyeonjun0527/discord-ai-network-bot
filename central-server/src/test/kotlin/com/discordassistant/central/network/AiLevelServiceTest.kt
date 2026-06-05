@@ -58,7 +58,7 @@ class AiLevelServiceTest
 
             val levelUps = events.findByGuildIdAndEventType(1002L, "ai_level_up")
             assertEquals(1, levelUps.size)
-            assertEquals("냥시스턴트 활동 레벨 2 달성", levelUps[0].title)
+            assertEquals("니아 활동 레벨 2 달성", levelUps[0].title)
             assertEquals("level=2;xp=100", levelUps[0].metadata)
             assertEquals(2, profiles.findByGuildId(1002L)!!.aiLevel)
         }

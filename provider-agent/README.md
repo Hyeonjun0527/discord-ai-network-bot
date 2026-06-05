@@ -14,7 +14,7 @@ pip install -e ".[dev]"            # 개발
 # 또는 배포물: GitHub Release 단일 실행파일(서명·체크섬·SBOM·attestation 제공)
 
 # Discord 에서 /provider-join → 토큰 받기 → 실행(일반 사용자 권한, sudo 불필요):
-discord-ai-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent --model exaone3.5:7.8b
+nexa --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent --model exaone3.5:7.8b
 # 또는 환경변수: AGENT_TOKEN, RELAY_URL, OLLAMA_BASE_URL
 ```
 첫 실행 시 **사용량 제한·서버 주소·Ollama 주소·개인정보 안내**를 보여주고 동의를 받습니다.
@@ -25,7 +25,7 @@ discord-ai-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent 
 
 **가장 쉬운 길 — 앱 창(`--gui`)**: 터미널 명령을 외울 필요 없이 클릭으로 설정.
 ```bash
-discord-ai-network-bot --gui     # 주소창 없는 네이티브 앱 창이 열림 → 토큰 받고 시작
+nexa --gui     # 주소창 없는 네이티브 앱 창이 열림 → 토큰 받고 시작
 ```
 - **네이티브 앱 창**으로 뜬다(OS 내장 웹뷰). 웹뷰가 없는 환경이면 자동으로 브라우저 폴백,
   `AGENT_GUI_BROWSER=1` 로 브라우저를 강제할 수도 있다. 설치: `pip install '…[gui]'`.
@@ -37,7 +37,7 @@ discord-ai-network-bot --gui     # 주소창 없는 네이티브 앱 창이 열�
 
 **터미널로 한 번에(동일 결과):**
 ```bash
-discord-ai-network-bot --token <1회용토큰> --relay-url wss://discord-ai.yeon.world/agent \
+nexa --token <1회용토큰> --relay-url wss://discord-ai.yeon.world/agent \
   --save-config --install-service
 ```
 - 인증에 성공하면 서버가 **재사용 가능한 토큰**(durable)을 내려주고 에이전트가 저장합니다 →
@@ -48,12 +48,12 @@ discord-ai-network-bot --token <1회용토큰> --relay-url wss://discord-ai.yeon
   **중복 선택**(둘 다 켜기) 가능합니다.
 - `--tray` 를 더하면 **시스템 트레이(메뉴 막대) 아이콘**으로 실시간 상태(연결·처리 수)를 보고
   메뉴에서 바로 **종료**할 수 있습니다(데스크톱 전용, 헤드리스/서버에선 자동 비활성).
-  설치: `pip install 'discord-ai-network-bot[tray]'`.
+  설치: `pip install 'nexa-agent[tray]'`.
 
 ## 일반 사용자 권한으로 동작
 - **관리자/sudo 불필요.** 시스템 폴더 쓰기·서비스 등록·방화벽/레지스트리 변경을 하지 않는다.
 - 설정/로그는 사용자 홈에만 저장: Windows `%APPDATA%`(또는 `XDG_CONFIG_HOME`),
-  macOS/Linux `~/.config/discord-ai-network-bot/`(시크릿 파일 `0600`).
+  macOS/Linux `~/.config/nexa/`(시크릿 파일 `0600`).
 - 상시 구동은 사용자 단위 서비스(`systemctl --user`, launchd LaunchAgent)로 등록.
 
 ## 안전 기본값
@@ -66,7 +66,7 @@ discord-ai-network-bot --token <1회용토큰> --relay-url wss://discord-ai.yeon
 로컬 **Stable Diffusion**(AUTOMATIC1111 등, `--api`)을 켜고 `--enable-image` 를 추가하면 `/imagine`
 요청을 받는 이미지 프로바이더가 된다(텍스트와 동일한 풀, 별도 인프라 불필요).
 ```bash
-discord-ai-network-bot --token <토큰> --relay-url wss://<서버>/agent --enable-image
+nexa --token <토큰> --relay-url wss://<서버>/agent --enable-image
 # SD 주소 변경: --sd-url http://127.0.0.1:7860 (기본). 원격은 --allow-remote-sd 명시 시만.
 ```
 - SD 도 **localhost 전용**(netguard), 옵션 화이트리스트·해상도/steps 상한. GPU 권장.
@@ -84,7 +84,7 @@ discord-ai-network-bot --token <토큰> --relay-url wss://<서버>/agent --enabl
 GitHub Release 에서 받고 무결성을 검증하세요(상세: 루트 [README "안전한 설치 기준"](../README.md#안전한-설치-기준)).
 ```bash
 sha256sum -c SHA256SUMS.txt --ignore-missing        # Linux (macOS: shasum -a 256 -c)
-gh attestation verify discord-ai-network-bot-linux --repo Hyeonjun0527/discord-ai-network-bot
+gh attestation verify nexa-agent-linux --repo Hyeonjun0527/discord-ai-network-bot
 ```
 
 ## 경량 의존성

@@ -5,28 +5,28 @@
     "name": "discord-ai-network-bot"
   },
   "releaseTagPrefix": "agent-v",
-  "appDisplayName": "냥시스턴트",
-  "brandName": "NYASSISTANT",
-  "brandTagline": "AI NETWORK",
-  "macAppBundle": "냥시스턴트.app",
+  "appDisplayName": "NEXA",
+  "brandName": "NEXA",
+  "brandTagline": "AI NETWORK GUIDE",
+  "macAppBundle": "NEXA.app",
   "packages": {
-    "wingetId": "Nyassistant.DiscordAiNetworkBot",
-    "homebrewCask": "nyassistant",
+    "wingetId": "Nexa.Nexa",
+    "homebrewCask": "nexa",
     "homebrewTap": "yeon-intergation-platform/tap",
-    "homebrewFormula": "discord-ai-network-bot",
-    "scoopBin": "nyassistant.exe",
-    "command": "nyassistant"
+    "homebrewFormula": "nexa-agent",
+    "scoopBin": "nexa.exe",
+    "command": "nexa"
   },
   "assets": {
-    "guiMac": "nyassistant-macos.zip",
-    "guiMacDmg": "nyassistant-macos.dmg",
-    "guiWin": "nyassistant-windows.exe",
-    "cliLinux": "discord-ai-network-bot-linux",
-    "cliMac": "discord-ai-network-bot-macos",
-    "cliWin": "discord-ai-network-bot-windows.exe"
+    "guiMac": "nexa-macos.zip",
+    "guiMacDmg": "nexa-macos.dmg",
+    "guiWin": "nexa-windows.exe",
+    "cliLinux": "nexa-agent-linux",
+    "cliMac": "nexa-agent-macos",
+    "cliWin": "nexa-agent-windows.exe"
   },
   "installCommands": {
-    "mac": "brew install --cask yeon-intergation-platform/tap/nyassistant",
-    "win": "winget install --id Nyassistant.DiscordAiNetworkBot -e --accept-source-agreements"
+    "mac": "brew install --cask yeon-intergation-platform/tap/nexa",
+    "win": "winget install --id Nexa.Nexa -e --accept-source-agreements"
   }
 }

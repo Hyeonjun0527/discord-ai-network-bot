@@ -36,7 +36,7 @@ class InstallPageSsotTest
             val mac = ProviderOnboarding.installCommand("mac", "TOK-1", "")
             assertTrue(mac.contains(InstallGuide.MAC.appInstall), mac)
             val win = ProviderOnboarding.installCommand("windows", "TOK-2", "")
-            assertTrue(win.contains("Nyassistant.DiscordAiNetworkBot"), win)
+            assertTrue(win.contains("Nexa.Nexa"), win)
             // 폴백 메시지도 두 OS 의 SSOT 설치 명령을 노출한다.
             val msg = ProviderOnboarding.message("TOK-3", "")
             assertTrue(msg.contains(InstallGuide.MAC.appInstall), msg)
@@ -55,9 +55,9 @@ class InstallPageSsotTest
             // 자리표시가 실제 SSOT JSON 으로 치환됐다(정적 null 폴백이 아니다).
             assertFalse(html.contains("const INSTALL_GUIDE = null;"), "SSOT 주입 안 됨")
             assertTrue(html.contains(InstallGuide.MAC.appInstall), "MAC appInstall 누락")
-            assertTrue(html.contains("Nyassistant.DiscordAiNetworkBot"))
+            assertTrue(html.contains("Nexa.Nexa"))
             // Linux 탭/다운로드는 폐기.
             assertFalse(html.contains("data-os=\"linux\""))
-            assertFalse(html.contains("discord-ai-network-bot-linux"))
+            assertFalse(html.contains("nexa-agent-linux"))
         }
     }

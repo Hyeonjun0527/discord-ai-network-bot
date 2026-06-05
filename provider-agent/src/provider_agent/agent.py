@@ -55,7 +55,7 @@ def _post_agent_sync(base: str, durable_token: str) -> list[dict]:
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": f"nyassistant-agent/{AGENT_VERSION}",
+            "User-Agent": f"nexa-agent/{AGENT_VERSION}",
         },
     )
     with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정

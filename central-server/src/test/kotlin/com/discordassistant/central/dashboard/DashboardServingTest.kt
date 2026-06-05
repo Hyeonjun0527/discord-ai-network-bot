@@ -295,7 +295,7 @@ class DashboardServingTest
             // 대시보드 버튼은 헤더에서 제거됨(직접 URL /admin/dashboard 로는 계속 서빙) — 위 별도 테스트가 커버.
             assertTrue(html.contains("""id="install"""")) // 설치 섹션 앵커(랜딩 본문)
             // 브랜드 워드마크는 brand-name/brand-sub 두 요소로 표기(window.__BRAND 단일 소스 주입, HTML 리터럴 폴백).
-            assertTrue(html.contains("NYASSISTANT")) // 브랜드명
+            assertTrue(html.contains("NEXA")) // 브랜드명
             assertTrue(html.contains("AI NETWORK")) // 브랜드 서브
         }
 
@@ -316,7 +316,7 @@ class DashboardServingTest
                     .response
                     .contentAsString
 
-            assertTrue(html.contains("nyassistant") || html.contains("confirmImport"))
+            assertTrue(html.contains("nexa") || html.contains("confirmImport"))
             assertTrue(html.contains("""id="catalog""""))
             assertTrue(html.contains("""id="recommendations""""))
             assertTrue(html.contains("""id="facets""""))
@@ -355,7 +355,7 @@ class DashboardServingTest
             assertTrue(js.contains("navigator.clipboard"))
             assertTrue(js.contains("/presets?preset=${'$'}{encodeURIComponent(locator)}"))
             assertTrue(js.contains("new URLSearchParams(window.location.search).get(\"preset\")"))
-            assertTrue(js.contains("nyassistantPresetDashboardAdminToken"))
+            assertTrue(js.contains("nexaPresetDashboardAdminToken"))
             assertTrue(js.contains("X-Dashboard-Admin-Token"))
             assertTrue(js.contains("sessionStorage"))
             assertTrue(js.contains("admin: true"))

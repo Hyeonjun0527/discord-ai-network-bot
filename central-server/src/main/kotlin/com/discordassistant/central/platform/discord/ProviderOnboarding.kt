@@ -13,7 +13,7 @@ object ProviderOnboarding {
     const val INSTALL_PAGE = InstallGuide.INSTALL_PAGE
 
     /**
-     * OS 선택(버튼) 후 보여줄 **복붙용 설치 명령**. Ollama 설치 → GUI 앱(냥시스턴트) 설치 → 앱에서 연결.
+     * OS 선택(버튼) 후 보여줄 **복붙용 설치 명령**. Ollama 설치 → GUI 앱(니아) 설치 → 앱에서 연결.
      * mac/Windows 만 지원(GUI 앱 배포 대상). 알 수 없는 OS 는 전체 안내로 폴백한다. 토큰은 ⏳ 10분·1회용.
      */
     fun installCommand(

@@ -141,7 +141,7 @@ class AiNetworkGrowthServiceTest
 
         @Test
         fun `level up event advances when channel ai and providers grow`() {
-            channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드냥"))
+            channelAis.save(ChannelAiEntity(guildId = 100, channelId = 200, displayName = "코드 니아"))
             growth.recordProviderJoined(100, 77, listOf("llama3.1:8b"), listOf("coding"), "STANDARD", 1, 0)
             growth.recordProviderJoined(100, 78, listOf("qwen-coder"), listOf("coding"), "STANDARD", 1, 0)
 
@@ -159,7 +159,7 @@ class AiNetworkGrowthServiceTest
             assertEquals(2, emptyNext.level)
             assertEquals(listOf("온라인 Provider 1명 이상 연결"), emptyNext.gaps)
 
-            channelAis.save(ChannelAiEntity(guildId = 700, channelId = 701, displayName = "코드냥"))
+            channelAis.save(ChannelAiEntity(guildId = 700, channelId = 701, displayName = "코드 니아"))
             growth.recordProviderJoined(700, 77, listOf("llama3.1:8b"), listOf("coding"), "STANDARD", 1, 0)
 
             val afterProvider = controller.levels(700)
@@ -184,7 +184,7 @@ class AiNetworkGrowthServiceTest
             assertTrue(emptyPlan.recommendationPolicy.contains("자동 적용되지"))
             assertTrue(emptyPlan.actions.all { !it.autoApply })
 
-            channelAis.save(ChannelAiEntity(guildId = 812, channelId = 912, displayName = "코드냥"))
+            channelAis.save(ChannelAiEntity(guildId = 812, channelId = 912, displayName = "코드 니아"))
             growth.recordProviderJoined(812, 77, listOf("llama3.1:8b"), listOf("coding"), "STANDARD", 1, 0)
             foundation.upsertProviderCapability(
                 guildId = 812,

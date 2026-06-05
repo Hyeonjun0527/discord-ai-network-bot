@@ -58,7 +58,7 @@ class GuildRemovalCleanupServiceTest
             schedules.setSchedule(9_001L, guildId, fromHour = 9, toHour = 18)
             policy.allowChannel(guildId, channelId = 777, adminId = 1)
             policy.setWelcomeMessage(guildId, "안녕", adminId = 1)
-            channelProfiles.set(guildId, channelId = 777, displayName = "냥시스턴트", avatarUrl = null)
+            channelProfiles.set(guildId, channelId = 777, displayName = "니아", avatarUrl = null)
 
             val result = cleanup.cleanup(guildId)
 

@@ -2,7 +2,7 @@
 
 - 최신 버전: GitHub Releases `latest`(`agent-v*` 태그)에서 가져온다.
 - 적용: **빌드된 앱**에서만(소스 실행은 비활성). macOS 는 릴리스의 `.app` zip 을 받아
-  현재 위치(보통 `/Applications/냥시스턴트.app`)에 교체하고 재실행한다. Windows 는 exe 를 교체.
+  현재 위치(보통 `/Applications/NEXA.app`)에 교체하고 재실행한다. Windows 는 exe 를 교체.
 - 자동 업데이트(config.auto_update, 기본 ON): 앱 시작 시 검사·적용.
 모두 사용자 권한(관리자/sudo 불필요).
 """
@@ -28,10 +28,9 @@ REPO = "Hyeonjun0527/discord-ai-network-bot"
 # 다운로드 URL 은 규칙으로 구성한다(rate limit 회피).
 _RELEASES_LATEST = f"https://github.com/{REPO}/releases/latest"
 _DOWNLOAD_BASE = f"https://github.com/{REPO}/releases/download"
-APP_NAME = "냥시스턴트"
-# 릴리스 자산명은 ASCII 여야 한다 — GitHub 이 자산 파일명의 한글을 스트립하기 때문(예: '냥시스턴트-…'→'-…').
-MAC_ASSET = "nyassistant-macos.zip"  # agent-build.yml 이 릴리스에 올리는 .app zip
-WIN_ASSET = "nyassistant-windows.exe"  # Windows 네이티브 GUI exe(릴리스 자산)
+APP_NAME = "NEXA"
+MAC_ASSET = "nexa-macos.zip"  # agent-build.yml 이 릴리스에 올리는 .app zip
+WIN_ASSET = "nexa-windows.exe"  # Windows 네이티브 GUI exe(릴리스 자산)
 SUMS_ASSET = "SHA256SUMS.txt"
 
 
@@ -68,8 +67,8 @@ def _frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
-# HTTP 헤더는 latin-1 만 허용 → User-Agent 는 반드시 ASCII(앱 이름이 한글이라 별도 ASCII 슬러그).
-_USER_AGENT = f"nyassistant-updater/{AGENT_VERSION}"
+# HTTP 헤더는 latin-1 만 허용 → User-Agent 는 반드시 ASCII.
+_USER_AGENT = f"nexa-updater/{AGENT_VERSION}"
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -243,7 +242,7 @@ def _apply_macos(relaunch: str = "gui") -> dict:
     if not url:
         return {"ok": False, "error": "이 릴리스에 macOS 앱 패키지가 아직 없어요."}
 
-    tmp = Path(tempfile.mkdtemp(prefix="nyas-update-"))
+    tmp = Path(tempfile.mkdtemp(prefix="nexa-update-"))
     zip_path = tmp / MAC_ASSET
     try:
         _download(url, zip_path)
@@ -345,7 +344,7 @@ def _apply_windows(relaunch: str = "gui") -> dict:
     if not url:
         return {"ok": False, "error": "이 릴리스에 Windows 패키지가 아직 없어요."}
     exe = Path(sys.executable).resolve()
-    tmp = Path(tempfile.mkdtemp(prefix="nyas-update-"))
+    tmp = Path(tempfile.mkdtemp(prefix="nexa-update-"))
     new_exe = tmp / WIN_ASSET
     try:
         _download(url, new_exe)

@@ -1,23 +1,18 @@
 package com.discordassistant.central.platform.discord
 
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
-import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_CONSTITUTION
 import com.discordassistant.central.global.i18n.I18n
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
-import com.discordassistant.central.onboarding.application.GuildOnboardingResult
-import com.discordassistant.central.onboarding.application.GuildOnboardingService
 import com.discordassistant.central.shared.ModelBurden
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
-import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel
-import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.channel.ChannelDeleteEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
@@ -36,7 +31,6 @@ import net.dv8tion.jda.api.events.session.ReadyEvent
 import net.dv8tion.jda.api.events.session.ShutdownEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.Interaction
-import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.components.ActionRow
 import net.dv8tion.jda.api.interactions.components.buttons.Button
@@ -49,7 +43,6 @@ import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -244,6 +237,14 @@ class DiscordBot(
         private val onDisallowedIntents: () -> Unit,
         private val slowCommandExecutor: ExecutorService,
     ) : ListenerAdapter() {
+        // god class 분해(verbatim 이동): 응답 렌더링·채널 프로필 패널·온보딩 인터랙션을 협력자로 위임한다.
+        // 동일 의존성 인스턴스를 그대로 넘겨 동작을 구조적으로 보존한다(로직 불변).
+        private val answers = DiscordAnswerRenderer(channelProfiles)
+        private val channelProfilePanel =
+            ChannelProfilePanelRenderer(channelProfiles, ::effectiveAllowedChannelIds)
+        private val onboarding =
+            OnboardingInteractionHandler(commands, historyBackfill, onboardingOptOuts, messageContentIntentEnabled)
+
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
             // DM(유저설치, 길드 없음)이면 글로벌 풀 스코프. 길드 전용 명령이 DM 으로 오면 막는다(방어적 — 컨텍스트로도 차단됨).
@@ -302,8 +303,8 @@ class DiscordBot(
                         event.reply("⛔ 채널 AI 프로필 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
                     } else {
                         event
-                            .reply(channelProfilePanelText(ctx))
-                            .addComponents(channelProfileRows())
+                            .reply(channelProfilePanel.channelProfilePanelText(ctx))
+                            .addComponents(channelProfilePanel.channelProfileRows())
                             .setEphemeral(true)
                             .queue()
                     }
@@ -319,7 +320,7 @@ class DiscordBot(
                     event.deferReply(true).queue()
                     slowCommandExecutor.execute {
                         runCatching {
-                            replyOnboardingProposalDeferred(
+                            onboarding.replyOnboardingProposalDeferred(
                                 event = event,
                                 ctx = ctx,
                                 channelName = event.channel.name,
@@ -358,9 +359,9 @@ class DiscordBot(
                     try {
                         val reply = dispatch(event, ctx)
                         if (useWebhookProfile) {
-                            completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
+                            answers.completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
                         } else {
-                            editOriginalWithPseudoStream(event.hook, reply)
+                            answers.editOriginalWithPseudoStream(event.hook, reply)
                         }
                     } catch (e: Exception) {
                         log.warn("명령 처리 실패: {} — {}", event.name, e.message)
@@ -373,7 +374,6 @@ class DiscordBot(
 
         companion object {
             private val log = LoggerFactory.getLogger(Listener::class.java)
-            private const val DEFAULT_PSEUDO_STREAM_INTERVAL_MS = 1200L
 
             // 추론으로 오래 걸리는 명령 — 게이트웨이 스레드 밖(전용 풀)에서 처리한다.
             // ai-onboard 는 위 switch 에서 직접 defer + executor 로 처리하므로 여기 포함하지 않는다.
@@ -384,7 +384,6 @@ class DiscordBot(
 
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
             private val PUBLIC_COMMANDS = setOf("ask", "imagine", "contributions", "community-stats", "welcome", "level")
-            private const val WEBHOOK_NAME = "discord-ai-channel-profile"
             private const val CHANNEL_PROFILE_EDIT = "channel-profile:edit"
             private const val CHANNEL_PROFILE_AVATAR = "channel-profile:avatar"
             private const val CHANNEL_PROFILE_RESET = "channel-profile:reset"
@@ -395,8 +394,6 @@ class DiscordBot(
             private const val ASK_FEEDBACK_PREFIX = "ask-feedback:"
             private const val ONBOARD_PREFIX = "onboard:"
             private const val ONBOARD_ACTION_START = "start"
-            private const val ONBOARD_ACTION_APPROVE = "approve"
-            private const val ONBOARD_ACTION_REJECT = "reject"
             private val pendingSettings = ConcurrentHashMap<String, PendingGuildSettings>()
         }
 
@@ -458,13 +455,13 @@ class DiscordBot(
                 return
             }
             if (event.componentId.startsWith(ONBOARD_PREFIX)) {
-                handleOnboardingButton(event, ctx)
+                onboarding.handleOnboardingButton(event, ctx)
                 return
             }
             when (event.componentId) {
                 MenuFactory.ASK -> {
                     // 질문하기 → 모달로 질문 입력
-                    event.replyModal(askModal()).queue()
+                    event.replyModal(channelProfilePanel.askModal()).queue()
                     return
                 }
                 MenuFactory.SETTINGS -> {
@@ -487,7 +484,7 @@ class DiscordBot(
                     if (!ctx.isAdmin) {
                         event.reply("⛔ 채널 AI 프로필 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
                     } else {
-                        event.replyModal(channelProfileModal(ctx)).queue()
+                        event.replyModal(channelProfilePanel.channelProfileModal(ctx)).queue()
                     }
                     return
                 }
@@ -495,7 +492,7 @@ class DiscordBot(
                     if (!ctx.isAdmin) {
                         event.reply("⛔ 채널 AI 프로필 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
                     } else {
-                        event.replyModal(channelProfileAvatarModal(ctx)).queue()
+                        event.replyModal(channelProfilePanel.channelProfileAvatarModal(ctx)).queue()
                     }
                     return
                 }
@@ -553,7 +550,7 @@ class DiscordBot(
                         if (!ctx.isAdmin) {
                             event.reply("⛔ 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
                         } else {
-                            event.replyModal(channelBulkModal(ctx)).queue()
+                            event.replyModal(channelProfilePanel.channelBulkModal(ctx)).queue()
                         }
                         return
                     }
@@ -630,17 +627,6 @@ class DiscordBot(
                 reconciliation.cleanupChannel(event.guild.idLong, event.channel.idLong)
             }
         }
-
-        private fun askModal() =
-            Modal
-                .create("ask-long-modal", "질문 입력")
-                .addActionRow(
-                    TextInput
-                        .create("prompt", "질문", TextInputStyle.PARAGRAPH)
-                        .setRequired(true)
-                        .setMaxLength(4000)
-                        .build(),
-                ).build()
 
         /** 설정 패널 Embed(현재 상태 + 저장 대기 변경사항). */
         private fun settingsEmbed(ctx: CommandContext): MessageEmbed {
@@ -774,113 +760,6 @@ class DiscordBot(
                 ActionRow.of(MenuFactory.settingsActionButtons()),
             )
 
-        /** 채널 AI 프로필 설정 패널. 긴 옵션 입력 대신 버튼→모달→저장 흐름으로 관리한다. */
-        private fun channelProfilePanelText(ctx: CommandContext): String {
-            val current = channelProfiles.get(ctx.guildId, ctx.channelId)
-            val summary =
-                if (current == null) {
-                    "아직 이 채널 전용 AI 프로필이 없습니다."
-                } else {
-                    "현재 이름: **${current.displayName}**\n" +
-                        "역할: `${current.purpose}` · 말투: `${current.tone}` · 길이: `${current.answerLength}`\n" +
-                        "아이콘: ${if (current.avatarUrl.isNullOrBlank()) "기본 봇 아이콘" else "설정됨"}\n" +
-                        "행동 버전: v${current.version}"
-                }
-            return "❂ **채널 AI 프로필 설정**\n\n" +
-                "$summary\n\n" +
-                "아래 버튼으로 설정하세요. 긴 명령어 옵션을 직접 외울 필요가 없습니다."
-        }
-
-        private fun channelProfileRows(): List<ActionRow> =
-            listOf(
-                ActionRow.of(
-                    Button.primary(CHANNEL_PROFILE_EDIT, "프로필 편집"),
-                    Button.secondary(CHANNEL_PROFILE_AVATAR, "아이콘 URL"),
-                ),
-                ActionRow.of(
-                    Button.secondary(CHANNEL_PROFILE_ROLLBACK, "이전 버전으로 롤백"),
-                    Button.danger(CHANNEL_PROFILE_RESET, "기본값으로 초기화"),
-                ),
-            )
-
-        private fun channelProfileModal(ctx: CommandContext): Modal {
-            val current = channelProfiles.get(ctx.guildId, ctx.channelId)
-            return Modal
-                .create(CHANNEL_PROFILE_SAVE_MODAL, "채널 AI 프로필 저장")
-                .addActionRow(
-                    TextInput
-                        .create("name", "이름", TextInputStyle.SHORT)
-                        .setRequired(true)
-                        .setMaxLength(80)
-                        .setValue(current?.displayName ?: "냥시스턴트")
-                        .build(),
-                ).addActionRow(
-                    TextInput
-                        .create("purpose", "역할", TextInputStyle.SHORT)
-                        .setRequired(false)
-                        .setMaxLength(200)
-                        .setValue(current?.purpose ?: "general_assistant")
-                        .build(),
-                ).addActionRow(
-                    TextInput
-                        .create("tone", "말투", TextInputStyle.SHORT)
-                        .setRequired(false)
-                        .setMaxLength(80)
-                        .setValue(current?.tone ?: "friendly")
-                        .build(),
-                ).addActionRow(
-                    TextInput
-                        .create("answer-length", "답변 길이", TextInputStyle.SHORT)
-                        .setRequired(false)
-                        .setMaxLength(40)
-                        .setValue(current?.answerLength ?: "balanced")
-                        .build(),
-                ).addActionRow(
-                    TextInput
-                        .create("constitution", "AI 헌법/규칙", TextInputStyle.PARAGRAPH)
-                        .setRequired(false)
-                        .setMaxLength(2000)
-                        .setValue(current?.constitution ?: DEFAULT_CHANNEL_AI_CONSTITUTION)
-                        .build(),
-                ).build()
-        }
-
-        private fun channelProfileAvatarModal(ctx: CommandContext): Modal {
-            val current = channelProfiles.get(ctx.guildId, ctx.channelId)
-            val avatarInput =
-                TextInput
-                    .create("avatar-url", "이미지 URL", TextInputStyle.SHORT)
-                    .setRequired(false)
-                    .setMaxLength(1000)
-                    .setPlaceholder("비우고 저장하면 아이콘 URL을 제거합니다.")
-                    .apply {
-                        current
-                            ?.avatarUrl
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { setValue(it) }
-                    }.build()
-            return Modal
-                .create(CHANNEL_PROFILE_AVATAR_MODAL, "채널 AI 아이콘 URL 저장")
-                .addActionRow(avatarInput)
-                .build()
-        }
-
-        private fun channelBulkModal(ctx: CommandContext): Modal {
-            val current = effectiveAllowedChannelIds(ctx)
-            val currentText = if (current.isEmpty()) "" else current.joinToString(" ") { "<#$it>" }
-            return Modal
-                .create(SETTINGS_CHANNEL_BULK_MODAL, "LLM 사용 허용 채널 일괄 설정")
-                .addActionRow(
-                    TextInput
-                        .create("channels", "채널 멘션/ID 목록", TextInputStyle.PARAGRAPH)
-                        .setRequired(false)
-                        .setMaxLength(2000)
-                        .setPlaceholder("예: #질문 #개발 123456789012345678 / 비우거나 '전체' 입력 = 모든 채널 허용")
-                        .setValue(currentText.takeIf { it.isNotBlank() })
-                        .build(),
-                ).build()
-        }
-
         /** 긴 질문 모달 제출(#189). */
         override fun onModalInteraction(event: ModalInteractionEvent) {
             val ctx = ctxOf(event) // DM(유저설치)에서도 긴 질문 모달 동작
@@ -935,9 +814,9 @@ class DiscordBot(
             event.deferReply(useWebhookProfile).queue()
             val reply = commands.ask(ctx, prompt)
             if (useWebhookProfile) {
-                completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
+                answers.completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
             } else {
-                editOriginalWithPseudoStream(event.hook, reply)
+                answers.editOriginalWithPseudoStream(event.hook, reply)
             }
         }
 
@@ -950,9 +829,9 @@ class DiscordBot(
             event.deferReply(useWebhookProfile).queue()
             val reply = commands.ask(ctx, event.target.contentRaw)
             if (useWebhookProfile) {
-                completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
+                answers.completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
             } else {
-                editOriginalWithPseudoStream(event.hook, reply)
+                answers.editOriginalWithPseudoStream(event.hook, reply)
             }
         }
 
@@ -985,12 +864,12 @@ class DiscordBot(
             event.channel.sendTyping().queue({}, {})
             try {
                 val reply = commands.ask(ctx, prompt)
-                if (useWebhookProfile && sendAnswerWebhook(event.channel, ctx, reply)) {
+                if (useWebhookProfile && answers.sendAnswerWebhook(event.channel, ctx, reply)) {
                     event.message
                         .addReaction(Emoji.fromUnicode("✅"))
                         .queue({}, {})
                 } else {
-                    replyToMessageWithPseudoStream(event.message, reply)
+                    answers.replyToMessageWithPseudoStream(event.message, reply)
                 }
             } catch (e: Exception) {
                 log.warn(
@@ -1015,206 +894,6 @@ class DiscordBot(
             }
         }
 
-        private fun completePublicAnswerWithProfileFallback(
-            hook: InteractionHook,
-            channelUnion: MessageChannelUnion?,
-            ctx: CommandContext,
-            reply: Reply,
-        ) {
-            if (sendAnswerWebhook(channelUnion, ctx, reply)) {
-                editOriginalWithFeedback(
-                    hook,
-                    "✅ 답변을 채널 AI 프로필로 보냈어요.\n답변이 어땠는지 아래 버튼으로 알려주세요.",
-                    reply,
-                )
-                return
-            }
-            if (sendBotChannelAnswer(channelUnion, reply)) {
-                hook
-                    .editOriginal(
-                        "⚠️ 채널 AI 이름/아이콘으로 보내려면 봇에 `웹후크 관리` 권한이 필요해요. " +
-                            "이번 답변은 기본 봇 이름으로 보냈습니다.",
-                    ).queue()
-                return
-            }
-            editOriginalWithPseudoStream(hook, reply)
-        }
-
-        private fun sendBotChannelAnswer(
-            channelUnion: MessageChannelUnion?,
-            reply: Reply,
-        ): Boolean {
-            if (reply.ephemeral) return false
-            channelUnion ?: return false
-            return runCatching {
-                val snapshots = reply.publicPseudoStreamSnapshots()
-                val action = channelUnion.asTextChannel().sendMessage(snapshots?.first() ?: reply.content)
-                feedbackRows(reply).takeIf { it.isNotEmpty() && snapshots == null }?.let { action.setComponents(it) }
-                val sent = action.complete()
-                if (snapshots != null) scheduleMessageEdits(sent, reply, snapshots, 1)
-                true
-            }.onFailure { e ->
-                log.warn("일반 봇 메시지 폴백 전송 실패: {}", e.message)
-            }.getOrDefault(false)
-        }
-
-        private fun editOriginalWithPseudoStream(
-            hook: InteractionHook,
-            reply: Reply,
-        ) {
-            // 이미지 첨부(SD /imagine): 생성된 PNG 를 파일로 붙여 응답.
-            val image = reply.imagePng
-            if (image != null) {
-                hook
-                    .editOriginal(reply.content.ifBlank { "🖼️ 생성된 이미지" })
-                    .setFiles(
-                        net.dv8tion.jda.api.utils.FileUpload
-                            .fromData(image, "image.png"),
-                    ).queue({}, { e ->
-                        log.warn("이미지 첨부 응답 실패: {}", e.message)
-                        hook.editOriginal("⚠️ 이미지를 전송하지 못했어요.").queue({}, {})
-                    })
-                return
-            }
-            val snapshots = reply.publicPseudoStreamSnapshots()
-            if (snapshots == null) {
-                editOriginalWithFeedback(hook, reply.content, reply)
-                return
-            }
-            hook.editOriginal(snapshots.first()).queue(
-                { scheduleOriginalEdits(hook, reply, snapshots, 1) },
-                { e ->
-                    log.warn("의사 스트리밍 초기 응답 편집 실패: {}", e.message)
-                    hook.editOriginal(reply.content).queue({}, {})
-                },
-            )
-        }
-
-        private fun scheduleOriginalEdits(
-            hook: InteractionHook,
-            reply: Reply,
-            snapshots: List<String>,
-            index: Int,
-        ) {
-            if (index >= snapshots.size) return
-            val action = hook.editOriginal(snapshots[index])
-            if (index == snapshots.lastIndex) {
-                feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
-            }
-            action.queueAfter(
-                reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
-                TimeUnit.MILLISECONDS,
-                { scheduleOriginalEdits(hook, reply, snapshots, index + 1) },
-                { e ->
-                    log.warn("의사 스트리밍 응답 편집 실패(index={}): {}", index, e.message)
-                    hook.editOriginal(reply.content).queue({}, {})
-                },
-            )
-        }
-
-        private fun replyToMessageWithPseudoStream(
-            source: Message,
-            reply: Reply,
-        ) {
-            val snapshots = reply.publicPseudoStreamSnapshots()
-            if (snapshots == null) {
-                val action = source.reply(reply.content).mentionRepliedUser(false)
-                feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
-                action.queue({}, {})
-                return
-            }
-            val action =
-                source
-                    .reply(snapshots.first())
-                    .mentionRepliedUser(false)
-            action
-                .queue(
-                    { sent -> scheduleMessageEdits(sent, reply, snapshots, 1) },
-                    { e ->
-                        log.warn("멘션 의사 스트리밍 초기 답변 실패: {}", e.message)
-                        source.reply(reply.content).mentionRepliedUser(false).queue({}, {})
-                    },
-                )
-        }
-
-        private fun scheduleMessageEdits(
-            message: Message,
-            reply: Reply,
-            snapshots: List<String>,
-            index: Int,
-        ) {
-            if (index >= snapshots.size) return
-            val action = message.editMessage(snapshots[index])
-            if (index == snapshots.lastIndex) {
-                feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
-            }
-            action.queueAfter(
-                reply.pseudoStream?.editIntervalMs ?: DEFAULT_PSEUDO_STREAM_INTERVAL_MS,
-                TimeUnit.MILLISECONDS,
-                { scheduleMessageEdits(message, reply, snapshots, index + 1) },
-                { e -> log.warn("의사 스트리밍 메시지 수정 실패(index={}): {}", index, e.message) },
-            )
-        }
-
-        private fun Reply.publicPseudoStreamSnapshots(): List<String>? =
-            pseudoStream
-                ?.snapshots
-                ?.filter { it.isNotBlank() }
-                ?.takeIf { !ephemeral && it.size > 1 }
-
-        /**
-         * 채널별 AI 프로필이 설정된 경우, 답변을 Discord Webhook 으로 보내 표시 이름/아이콘을 채널 단위로 바꾼다.
-         * 실패하면 false 를 반환해 일반 인터랙션 응답으로 안전하게 폴백한다.
-         */
-        private fun sendAnswerWebhook(
-            channelUnion: MessageChannelUnion?,
-            ctx: CommandContext,
-            reply: Reply,
-        ): Boolean {
-            if (reply.ephemeral) return false
-            channelUnion ?: return false
-            val profile = channelProfiles.get(ctx.guildId, ctx.channelId) ?: return false
-            val channel = runCatching { channelUnion.asTextChannel() }.getOrNull() ?: return false
-            return runCatching {
-                val webhook =
-                    channel
-                        .retrieveWebhooks()
-                        .complete()
-                        .firstOrNull { it.name == WEBHOOK_NAME }
-                        ?: channel.createWebhook(WEBHOOK_NAME).complete()
-                val action = webhook.sendMessage(reply.content).setUsername(profile.displayName)
-                if (!profile.avatarUrl.isNullOrBlank()) {
-                    action.setAvatarUrl(profile.avatarUrl)
-                }
-                action.complete()
-                true
-            }.onFailure { e ->
-                log.warn("채널 AI 프로필 웹훅 전송 실패(channel={}): {}", ctx.channelId, e.message)
-            }.getOrDefault(false)
-        }
-
-        private fun editOriginalWithFeedback(
-            hook: InteractionHook,
-            content: String,
-            reply: Reply,
-        ) {
-            val action = hook.editOriginal(content)
-            feedbackRows(reply).takeIf { it.isNotEmpty() }?.let { action.setComponents(it) }
-            action.queue()
-        }
-
-        private fun feedbackRows(reply: Reply): List<ActionRow> {
-            val requestId = reply.feedback?.requestId?.takeIf { it.isNotBlank() } ?: return emptyList()
-            if ("$ASK_FEEDBACK_PREFIX${FeedbackAction.REPORT.id}:$requestId".length > 100) return emptyList()
-            return listOf(
-                ActionRow.of(
-                    Button.success("$ASK_FEEDBACK_PREFIX${FeedbackAction.UP.id}:$requestId", "좋았어요"),
-                    Button.secondary("$ASK_FEEDBACK_PREFIX${FeedbackAction.DOWN.id}:$requestId", "아쉬워요"),
-                    Button.danger("$ASK_FEEDBACK_PREFIX${FeedbackAction.REPORT.id}:$requestId", "문제 신고"),
-                ),
-            )
-        }
-
         private enum class FeedbackAction(
             val id: String,
             val rating: Int,
@@ -1224,229 +903,6 @@ class DiscordBot(
             DOWN("down", -1, "negative"),
             REPORT("report", -1, "report"),
         }
-
-        /**
-         * 서버 AI 자동 온보딩 버튼(Phase 1):
-         *  - `onboard:start` — 입장 배너에서 시작 → 제안 카드 + 승인/거절 버튼.
-         *  - `onboard:approve:<proposalId>` / `onboard:reject:<proposalId>` — 제안 검토.
-         */
-        private fun handleOnboardingButton(
-            event: ButtonInteractionEvent,
-            ctx: CommandContext,
-        ) {
-            val payload = event.componentId.removePrefix(ONBOARD_PREFIX)
-            val action = payload.substringBefore(':', missingDelimiterValue = payload)
-            if (action == ONBOARD_ACTION_START) {
-                replyOnboardingProposal(event, ctx, event.channel.name)
-                return
-            }
-            if (action != ONBOARD_ACTION_APPROVE && action != ONBOARD_ACTION_REJECT) {
-                event.reply("알 수 없는 온보딩 동작입니다.").setEphemeral(true).queue()
-                return
-            }
-            val proposalId = payload.substringAfter(':', missingDelimiterValue = "").trim().toLongOrNull()
-            if (proposalId == null) {
-                event.reply("제안 정보를 읽지 못했어요. `/ai-onboard` 로 다시 시작해 주세요.").setEphemeral(true).queue()
-                return
-            }
-            val reply =
-                if (action == ONBOARD_ACTION_APPROVE) {
-                    commands.approveOnboarding(ctx, proposalId)
-                } else {
-                    commands.rejectOnboarding(ctx, proposalId)
-                }
-            event.reply(reply.content).setEphemeral(true).queue()
-        }
-
-        /**
-         * 온보딩 시작 → 제안 카드 embed + 승인/거절 버튼으로 응답(ephemeral, **즉시 reply** 경로).
-         * 입장 배너 `onboard:start` 버튼용 — 현재 채널 **핀/공지만** 기본 백필한다(본문 옵션은 슬래시 `/ai-onboard` 전용).
-         */
-        private fun replyOnboardingProposal(
-            event: net.dv8tion.jda.api.events.interaction.GenericInteractionCreateEvent,
-            ctx: CommandContext,
-            channelName: String?,
-        ) {
-            val callback = event as net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
-            // 핀 기본 백필(본문 없음). 현재 채널이 GuildMessageChannel 이면 핀만 수집.
-            val pinChannel = (event as? Interaction)?.channel as? GuildMessageChannel
-            val backfill =
-                buildOnboardingBackfill(guildId = ctx.guildId, pinChannel = pinChannel, bodyChannel = null, historyLimit = 0)
-            when (
-                val outcome =
-                    commands.startAutoOnboarding(
-                        ctx = ctx,
-                        channelName = channelName,
-                        channelWhitelist = backfill.whitelist,
-                        historyLimit = 0,
-                        backfill = backfill.input,
-                    )
-            ) {
-                is OnboardingStartOutcome.Rejected ->
-                    callback.reply(outcome.reply.content).setEphemeral(true).queue()
-                is OnboardingStartOutcome.Started -> {
-                    callback
-                        .replyEmbeds(onboardingEmbed(outcome.result))
-                        .addComponents(onboardingButtons(outcome.result.proposalId))
-                        .setEphemeral(true)
-                        .queue()
-                }
-            }
-        }
-
-        /**
-         * `/ai-onboard` 슬래시 — deferReply 후 전용 풀에서 백필+색인까지 끝내고 editOriginal 로 제안 카드를 보낸다.
-         * 핀/공지는 현재 채널에서 기본 수집하고, [bodyChannel] 이 지정되면 그 채널 본문도(MESSAGE_CONTENT 활성 시) 수집한다.
-         */
-        private fun replyOnboardingProposalDeferred(
-            event: SlashCommandInteractionEvent,
-            ctx: CommandContext,
-            channelName: String?,
-            bodyChannel: GuildMessageChannel?,
-            historyLimit: Int,
-        ) {
-            val pinChannel = event.channel as? GuildMessageChannel
-            val backfill =
-                buildOnboardingBackfill(
-                    guildId = ctx.guildId,
-                    pinChannel = pinChannel,
-                    bodyChannel = bodyChannel,
-                    historyLimit = historyLimit,
-                )
-            when (
-                val outcome =
-                    commands.startAutoOnboarding(
-                        ctx = ctx,
-                        channelName = channelName,
-                        channelWhitelist = backfill.whitelist,
-                        historyLimit = historyLimit,
-                        backfill = backfill.input,
-                    )
-            ) {
-                is OnboardingStartOutcome.Rejected ->
-                    event.hook.editOriginal(outcome.reply.content).queue({}, {})
-                is OnboardingStartOutcome.Started ->
-                    event.hook
-                        .editOriginalEmbeds(onboardingEmbed(outcome.result))
-                        .setComponents(onboardingButtons(outcome.result.proposalId))
-                        .queue({}, {})
-            }
-        }
-
-        private fun onboardingEmbed(r: GuildOnboardingResult): MessageEmbed =
-            EmbedFactory.onboardingProposalEmbed(
-                name = r.name,
-                purpose = r.job,
-                tone = r.tone,
-                answerLength = r.answerLength,
-                constitution = r.constitution,
-                backfilledMessageCount = r.backfilledMessageCount,
-                scrubbedCount = r.scrubbedCount,
-                knowledgeIndexed = r.knowledgeIndexed,
-                knowledgeSpaceCreated = r.knowledgeSpaceId != null,
-                analysisSource = r.analysisSource,
-                customInstruction = r.customInstruction,
-            )
-
-        private fun onboardingButtons(proposalId: Long): ActionRow =
-            ActionRow.of(
-                Button.success("$ONBOARD_PREFIX$ONBOARD_ACTION_APPROVE:$proposalId", "✅ 승인하고 적용"),
-                Button.danger("$ONBOARD_PREFIX$ONBOARD_ACTION_REJECT:$proposalId", "🚫 거절"),
-            )
-
-        /** 백필 입력(정제된 텍스트 + 카운트)과 화이트리스트를 묶는 보조 결과. */
-        private data class OnboardingBackfill(
-            val input: GuildOnboardingService.BackfillInput?,
-            val whitelist: Set<Long>,
-        )
-
-        /**
-         * JDA 로 핀/본문을 수집(JDA I/O 어댑터 글루)해 [GuildHistoryBackfillService.sanitizeMessages] 로 정제하고
-         * [GuildOnboardingService.BackfillInput] 으로 변환한다. 핀은 [pinChannel] 에서 항상,
-         * 본문은 [bodyChannel] 이 지정되고 MESSAGE_CONTENT 활성일 때만(권한 없으면 graceful skip).
-         */
-        private fun buildOnboardingBackfill(
-            guildId: Long,
-            pinChannel: GuildMessageChannel?,
-            bodyChannel: GuildMessageChannel?,
-            historyLimit: Int,
-        ): OnboardingBackfill {
-            var collected = 0
-            var scrubbed = 0
-            val parts = mutableListOf<String>()
-            val whitelist = mutableSetOf<Long>()
-            // opt-out 사용자 조회는 discord 레이어에서(레이어 규칙 유지) — 본인 메시지를 백필 색인에서 제외.
-            val optedOut = onboardingOptOuts.findByGuildId(guildId).map { it.userId }.toSet()
-
-            // 1) 현재 채널 핀/공지(기본). MESSAGE_CONTENT 없이도 핀 본문은 읽힌다.
-            pinChannel?.let { channel ->
-                val raw = fetchPinned(channel)
-                val result = historyBackfill.sanitizeMessages(raw, optedOutUserIds = optedOut)
-                collected += result.collectedCount
-                scrubbed += result.scrubbedCount
-                if (result.indexText.isNotBlank()) parts.add(result.indexText)
-            }
-
-            // 2) 화이트리스트 채널 본문(옵션). MESSAGE_CONTENT 활성 + history-limit > 0 일 때만.
-            bodyChannel?.let { channel ->
-                whitelist.add(channel.idLong)
-                if (historyLimit > 0 && messageContentIntentEnabled) {
-                    val raw = fetchHistory(channel, historyLimit)
-                    val result = historyBackfill.sanitizeMessages(raw, optedOutUserIds = optedOut)
-                    collected += result.collectedCount
-                    scrubbed += result.scrubbedCount
-                    if (result.indexText.isNotBlank()) parts.add(result.indexText)
-                }
-            }
-
-            val text = parts.joinToString("\n\n").trim()
-            val input =
-                if (text.isBlank()) {
-                    null
-                } else {
-                    GuildOnboardingService.BackfillInput(
-                        indexText = text,
-                        backfilledMessageCount = collected,
-                        scrubbedCount = scrubbed,
-                    )
-                }
-            return OnboardingBackfill(input = input, whitelist = whitelist)
-        }
-
-        /** 핀/공지 조회(JDA I/O). MESSAGE_HISTORY 권한 없거나 실패하면 graceful 하게 빈 목록. */
-        private fun fetchPinned(channel: GuildMessageChannel): List<GuildHistoryBackfillService.RawMsg> {
-            if (!channel.guild.selfMember.hasPermission(channel, Permission.MESSAGE_HISTORY)) return emptyList()
-            return runCatching { channel.retrievePinnedMessages().complete() }
-                .getOrElse {
-                    log.warn("핀 메시지 조회 실패 channel={}: {}", channel.idLong, it.message)
-                    emptyList()
-                }.map { it.toRawMsg() }
-        }
-
-        /** 최근 메시지 본문 조회(JDA I/O). 권한 없거나 실패하면 graceful 하게 빈 목록. */
-        private fun fetchHistory(
-            channel: GuildMessageChannel,
-            limit: Int,
-        ): List<GuildHistoryBackfillService.RawMsg> {
-            if (!channel.guild.selfMember.hasPermission(channel, Permission.MESSAGE_HISTORY)) return emptyList()
-            val capped = limit.coerceAtMost(GuildHistoryBackfillService.MAX_HISTORY_PER_CALL)
-            return runCatching { channel.history.retrievePast(capped).complete() }
-                .getOrElse {
-                    log.warn("히스토리 조회 실패 channel={}: {}", channel.idLong, it.message)
-                    emptyList()
-                }.map { it.toRawMsg() }
-        }
-
-        private fun Message.toRawMsg(): GuildHistoryBackfillService.RawMsg =
-            GuildHistoryBackfillService.RawMsg(
-                authorId = author.idLong,
-                isBot = author.isBot,
-                isWebhook = isWebhookMessage,
-                isSystem = type.isSystem,
-                pinned = isPinned,
-                // contentRaw 로 받아 멘션을 `<@id>`/`<@&id>`/`<#id>` 토큰으로 유지 → sanitizeMessages 가 마스킹(표시이름 비노출).
-                content = contentRaw,
-            )
 
         private fun handleAskFeedbackButton(
             event: ButtonInteractionEvent,

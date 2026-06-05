@@ -1,5 +1,23 @@
 # central-server 도메인-우선 헥사고날 마이그레이션 계획
 
+## 진행 현황 (live)
+
+| Phase | 상태 | 커밋 | 비고 |
+|---|---|---|---|
+| 0 기반/ArchUnit 점진모드 | ✅ Phase1 에 흡수 | — | ADD-only ArchUnit 전략 채택 |
+| 1 provider 파일럿 | ✅ **완료** | `provider 도메인 헥사고날 재배치(파일럿)` | 17파일 재배치·god-file 절개·빌드 그린·Kover90 |
+| 2 routing + 6 포트 | ✅ **완료** | `routing 도메인 헥사고날 재배치 + 6 포트 추출` | RoutingPorts 추출·계산기 domain/service·Orchestrator 515→414 |
+| 3 quota + requestlog | ⏳ 대기 | — | low 위험 |
+| 4 guild + channel-ai | ⏳ 대기 | — | high(동시성 보존) |
+| 5~7 network 분해 | ⏳ 대기 | — | high(god-package, DTO 허브) |
+| 8 discord-platform + global | ⏳ 대기 | — | high(DiscordBot/CommandService 분해) |
+
+**확정된 패키지 컨벤션**: `<domain>/{domain/(model·service)·application/(port)·adapter/(inbound·outbound)}`.
+`in`/`out` 은 Kotlin 하드키워드 ↔ ktlint `package-name` 충돌이라 **`inbound`/`outbound`** 채택.
+실측 비용: import 파급이 비용의 대부분이나 스크립트로 기계화됨, 실용 절충으로 Kover 90% 유지(보일러플레이트 폭증 없음).
+
+---
+
 > 대상: `central-server/` (Kotlin/Spring Boot, `com.discordassistant.central.*`, 175 소스 파일 / 101 테스트 파일)
 > 검증 게이트: `./gradlew build` = test + ktlint(1.4.1) + Kover(minBound 90%) + ArchUnit + Cucumber BDD/추적성 + springdoc OpenAPI 계약
 > CI: `central-server-ci.yml`/`central-server-deploy.yml` 이 `central-server/**` push 에 묶임 → **모듈 디렉토리·루트 패키지 불변 유지**

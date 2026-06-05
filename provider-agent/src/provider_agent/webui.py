@@ -267,8 +267,40 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 .pbar{height:8px;border-radius:6px;background:rgba(148,163,184,.15);overflow:hidden;margin-top:10px;display:none}
 .pfill{height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--blue2));border-radius:6px;transition:width .25s ease}
 @media (max-width:560px){.hero{grid-template-columns:1fr}.card{grid-template-columns:1fr}.token-row{grid-template-columns:1fr}.grid2{grid-template-columns:1fr}}
+#onboard{position:fixed;inset:0;z-index:60;background:radial-gradient(120% 80% at 50% -10%,#0e1a30,#070d18 62%);display:none;overflow:auto;padding:22px 18px 16px}
+#onboard.show{display:block}
+.onb-wrap{max-width:560px;margin:0 auto;min-height:calc(100% - 0px);display:flex;flex-direction:column}
+.onb-top{display:flex;align-items:center;gap:13px;padding:2px 2px 0}
+.onb-top .logo{width:52px;height:52px;border-radius:14px;overflow:hidden;border:1px solid rgba(122,156,219,.34);flex:0 0 auto}.onb-top .logo img{width:100%;height:100%;object-fit:cover}
+.onb-top h1{font-size:18px;font-weight:850;letter-spacing:-.02em;margin:0}.onb-top .sub{color:var(--muted);font-size:12.5px;margin-top:2px}
+.onb-ver{margin-left:auto;align-self:flex-start;font:12px ui-monospace,Menlo,monospace;color:#8fa0b6;border:1px solid var(--line);border-radius:8px;padding:3px 9px}
+.onb-steps{display:flex;align-items:center;justify-content:center;gap:16px;margin:18px 0}
+.onb-count{font-size:13px;font-weight:800;color:#cfe0ff;border:1px solid var(--line2);border-radius:9px;padding:5px 12px}
+.onb-dots{display:flex;align-items:center;gap:9px}.onb-dots i{width:9px;height:9px;border-radius:50%;background:#33405a;display:block;transition:.2s}.onb-dots i.on{background:var(--blue);box-shadow:0 0 0 4px rgba(79,125,255,.14)}.onb-dots .bar{width:24px;height:2px;background:#2a3548}
+.onb-card{flex:1;border:1px solid var(--line2);border-radius:20px;background:linear-gradient(180deg,rgba(20,32,56,.55),rgba(11,18,32,.55));padding:26px 22px;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.onb-circ{width:54px;height:54px;border-radius:50%;border:2px solid var(--blue);display:grid;place-items:center;color:var(--blue);margin:2px auto 16px}.onb-circ svg{width:24px;height:24px}
+.onb-h{font-size:29px;font-weight:900;text-align:center;letter-spacing:-.03em;margin:0 0 12px}
+.onb-d{color:var(--muted);text-align:center;line-height:1.7;font-size:14px;margin-bottom:20px}
+.onb-row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.015);margin-top:11px}
+.onb-row .ib{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto}.onb-row .ib svg{width:21px;height:21px}
+.onb-row .rt{font-weight:800;font-size:15px}.onb-row .rd{color:var(--muted);font-size:12.5px;margin-top:2px}
+.onb-opt{cursor:pointer}.onb-opt.sel{border-color:var(--blue);background:rgba(79,125,255,.08)}
+.onb-opt .chk{width:26px;height:26px;border-radius:50%;border:2px solid #5a657a;flex:0 0 auto;display:grid;place-items:center;color:#fff;margin-left:auto}.onb-opt .chk svg{width:15px;height:15px;opacity:0}.onb-opt.sel .chk{border-color:var(--blue);background:var(--blue)}.onb-opt.sel .chk svg{opacity:1}
+.onb-info{display:flex;gap:12px;align-items:flex-start;margin-top:18px;padding:14px 15px;border-radius:13px;border:1px solid var(--line);color:var(--muted);font-size:12.5px;line-height:1.6}.onb-info b{color:#dbe5f5;font-weight:800}.onb-info svg{width:20px;height:20px;flex:0 0 auto;color:var(--blue)}
+.onb-foot{display:flex;gap:12px;margin-top:16px;padding-bottom:4px}
+.onb-foot button{flex:1;min-height:62px;border-radius:15px;cursor:pointer;font-weight:850;font-size:16px;border:1px solid var(--line2);background:rgba(79,125,255,.05);color:#eef4ff}
+.onb-foot button.pri{flex:1.25;border-color:rgba(128,160,228,.34);background:linear-gradient(180deg,var(--blue),var(--blue2));color:#fff;box-shadow:0 12px 30px rgba(47,99,214,.2)}
+.onb-foot .bsub{display:block;font-weight:600;font-size:11.5px;color:rgba(220,230,245,.55);margin-top:3px}.onb-foot button.pri .bsub{color:rgba(255,255,255,.8)}
+.onb-sum{border:1px solid var(--line);border-radius:14px;padding:2px 16px;margin-bottom:16px}.onb-sum .sr{display:flex;align-items:center;gap:13px;padding:13px 0;border-bottom:1px solid var(--line)}.onb-sum .sr:last-child{border-bottom:0}.onb-sum .sr .ib{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:0 0 auto}.onb-sum .sv{margin-left:auto;font-weight:800;color:#cfe0ff}
+.onb-redo{display:block;text-align:center;margin-top:14px;color:var(--muted);font-size:12.5px;cursor:pointer;background:none;border:0;width:100%}
 </style></head><body>
 <div class="window">
+<div id="onboard"><div class="onb-wrap">
+<div class="onb-top"><div class="logo"><img src="/mascot.png" alt=""></div><div><h1>AI 네트워크 구축 도우미 · 냥시스턴트</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div><div class="onb-ver">v__VERSION__</div></div>
+<div class="onb-steps"><div class="onb-count" id="onbCount">1 / 4</div><div class="onb-dots" id="onbDots"></div></div>
+<div class="onb-card" id="onbCard"></div>
+<div class="onb-foot" id="onbFoot"></div>
+</div></div>
 <div class="appver" title="설치된 버전">v__VERSION__</div>
 <main>
 <section class="hero"><div class="logo"><img src="/mascot.png" alt="냥시스턴트 마스코트"></div><div><h1>AI 네트워크 구축 도우미 · 냥시스턴트</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
@@ -367,6 +399,7 @@ if(p.phase==='done'){SD_BUSY=false;if(fill)fill.style.width='100%';msg.innerHTML
 setTimeout(pollSDSetup,2000);}
 function on(id){return document.getElementById(id).classList.contains('on');}
 async function refresh(){const s=await j('/api/status');RUN=s.running;
+onbVisibility(s.hasToken);
 document.getElementById('relay').textContent=s.relayUrl;
 if(s.hasToken)document.getElementById('token').placeholder='저장됨 — 바꿀 때만 입력';
 document.getElementById('img').classList.toggle('on',s.enableImage);
@@ -463,6 +496,34 @@ async function addServer(){const help=document.getElementById('addServerHelp');c
 if(!s.connectEnabled){help.innerHTML='<span style="color:#ffd479">디스코드 로그인 추가가 아직 활성화되지 않았어요. ‘고급’에서 다른 서버의 /provider-join 토큰을 붙여넣어 추가하세요.</span>';return;}
 const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
 help.innerHTML=r.ok?'<span style="color:#9fe0a0">🌐 브라우저에서 추가할 서버를 고르세요. 완료되면 목록에 나타납니다.</span>':('⚠️ '+esc(r.error||'브라우저 열기 실패'));}
+// ── 온보딩 마법사(미로그인 초기 화면) ──
+const IC={check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',mon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M12 7v6m0 0 2.5-2.5M12 13l-2.5-2.5"/></svg>',img:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>',gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 3.6 1.65 1.65 0 0 0 10 2.09V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',pow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>',link:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5"/></svg>',msg:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>',spark:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8z"/></svg>'};
+const ONB={step:1,ollama:true,image:true,none:false,autostart:true,autoconnect:true,imageRecv:false,background:true};
+let ONB_DISMISSED=false;
+function onbVisibility(hasToken){const el=document.getElementById('onboard');if(!el)return;if(hasToken){el.classList.remove('show');}else if(!ONB_DISMISSED){el.classList.add('show');}}
+function rowFeat(k,ic,col,title,badge,desc){const sel=k==='none'?ONB.none:ONB[k];return `<div class="onb-row onb-opt${sel?' sel':''}" onclick="onbPick('${k}')"><div class="ib" style="background:${col}22;color:${col}">${ic}</div><div style="flex:1"><div class="rt">${title}${badge?(' <span class="badge neutral">'+badge+'</span>'):''}</div><div class="rd">${desc}</div></div><div class="chk">${IC.check}</div></div>`;}
+function rowTog(k,ic,col,title,desc){return `<div class="onb-row"><div class="ib" style="background:${col}22;color:${col}">${ic}</div><div style="flex:1"><div class="rt">${title}</div><div class="rd">${desc}</div></div><div class="toggle${ONB[k]?' on':''}" onclick="onbTog('${k}')"></div></div>`;}
+function onbCardHtml(){
+if(ONB.step===1)return `<div class="onb-circ">${IC.check}</div><div class="onb-h">처음 사용 설정</div><div class="onb-d">앱을 사용하기 전에 필요한 기능을 먼저 준비할게요.<br>이 PC를 Discord 서버의 로컬 AI 노드로 연결하기 위한 기본 설정입니다.</div><div class="onb-row"><div class="ib" style="background:rgba(79,125,255,.12);color:#7aa0ff">${IC.mon}</div><div class="rt">Ollama 설치 여부 선택</div></div><div class="onb-row"><div class="ib" style="background:rgba(155,107,255,.12);color:#b48bff">${IC.img}</div><div class="rt">이미지 생성 기능 선택</div></div><div class="onb-row"><div class="ib" style="background:rgba(77,234,152,.12);color:#4dea98">${IC.gear}</div><div class="rt">자동 연결 및 시작 옵션 설정</div></div><div class="onb-info">${IC.info}<div><b>설정은 나중에 다시 바꿀 수 있어요.</b><br>앱 설정에서 언제든 변경할 수 있습니다.</div></div>`;
+if(ONB.step===2)return `<div class="onb-circ">${IC.list}</div><div class="onb-h">필수 구성 준비</div><div class="onb-d">이 PC에서 사용할 로컬 AI 기능을 선택하세요.<br>필요한 항목만 설치할 수 있어요.</div>`+rowFeat('ollama',IC.msg,'#7aa0ff','Ollama 설치','권장','텍스트 응답 모델을 이 PC에서 실행합니다.')+rowFeat('image',IC.img,'#b48bff','이미지 생성 기능 준비','선택','Stable Diffusion 환경이 있으면 /imagine 요청도 처리할 수 있어요.')+rowFeat('none',IC.gear,'#4dea98','지금은 설치하지 않기','','나중에 앱 설정에서 다시 준비할 수 있어요.')+`<div class="onb-info">${IC.info}<div><b>예상 준비 시간 5~10분</b><br>설치가 필요한 경우 다음 단계에서 안내합니다.</div></div>`;
+if(ONB.step===3)return `<div class="onb-circ">${IC.gear}</div><div class="onb-h">동작 방식 설정</div><div class="onb-d">앱이 언제 실행되고, 언제 자동으로 연결될지 정할 수 있어요.</div>`+rowTog('autostart',IC.pow,'#7aa0ff','시스템 로그인 시 자동 실행','PC를 켜면 앱을 자동으로 실행합니다.')+rowTog('autoconnect',IC.link,'#7aa0ff','로그인 후 자동 연결','앱이 켜지면 바로 Discord 서버와 연결합니다.')+rowTog('imageRecv',IC.img,'#b48bff','이미지 생성 요청 받기','이미지 생성 환경이 준비된 경우 /imagine 요청을 처리합니다.')+rowTog('background',IC.mon,'#4dea98','백그라운드 실행 유지','창을 닫아도 작업 표시줄에서 계속 대기합니다.')+`<div class="onb-info">${IC.info}<div>설정은 나중에 메인 화면의 설정 섹션에서 언제든 바꿀 수 있어요.</div></div>`;
+return `<div class="onb-circ">${IC.check}</div><div class="onb-h">준비가 끝났어요</div><div class="onb-d">이제 이 PC를 로컬 AI 노드로 연결할 준비가 되었습니다.<br>아래 내용을 확인하고 메인 화면으로 이동하세요.</div><div class="onb-sum"><div class="sr"><div class="ib" style="background:rgba(79,125,255,.12);color:#7aa0ff">${IC.msg}</div>텍스트 모델<div class="sv">${ONB.ollama?'Ollama 사용':'사용 안 함'}</div></div><div class="sr"><div class="ib" style="background:rgba(155,107,255,.12);color:#b48bff">${IC.img}</div>이미지 생성<div class="sv">${ONB.image?'선택됨':'사용 안 함'}</div></div><div class="sr"><div class="ib" style="background:rgba(77,234,152,.12);color:#4dea98">${IC.gear}</div>자동 연결<div class="sv" style="color:#4dea98">${ONB.autoconnect?'켜짐':'꺼짐'}</div></div></div><div class="onb-info" style="border-color:rgba(79,125,255,.3)">${IC.spark}<div><b>다음 단계</b><br>· 연동하기를 눌러 Discord 로그인 창을 엽니다.<br>· 연결이 끝나면 메인 화면에서 서버 상태를 확인할 수 있어요.</div></div><button class="onb-redo" onclick="onbGo(1)">설정 다시 보기</button>`;}
+function onbFootHtml(){
+if(ONB.step===1)return `<button onclick="onbSkip()">나중에<span class="bsub">기본 설정으로 시작</span></button><button class="pri" onclick="onbNext()">시작하기 ›<span class="bsub">다음 단계로 진행</span></button>`;
+if(ONB.step===2||ONB.step===3)return `<button onclick="onbPrev()">‹ 이전</button><button class="pri" onclick="onbNext()">다음 ›</button>`;
+return `<button onclick="onbToMain()">메인 화면으로<span class="bsub">나중에 연동</span></button><button class="pri" onclick="onbConnect()">연동하기<span class="bsub">Discord 로그인 창을 엽니다</span></button>`;}
+function onbDotsHtml(){let h='';for(let i=1;i<=4;i++){h+='<i class="'+(i<=ONB.step?'on':'')+'"></i>';if(i<4)h+='<span class="bar"></span>';}return h;}
+function renderOnb(){document.getElementById('onbCount').textContent=ONB.step+' / 4';document.getElementById('onbDots').innerHTML=onbDotsHtml();document.getElementById('onbCard').innerHTML=onbCardHtml();document.getElementById('onbFoot').innerHTML=onbFootHtml();}
+function onbGo(s){ONB.step=s;renderOnb();}
+function onbNext(){if(ONB.step<4)ONB.step++;renderOnb();}
+function onbPrev(){if(ONB.step>1)ONB.step--;renderOnb();}
+function onbPick(k){if(k==='none'){ONB.none=true;ONB.ollama=false;ONB.image=false;}else{ONB.none=false;ONB[k]=!ONB[k];if(!ONB.ollama&&!ONB.image){ONB.none=true;}}renderOnb();}
+function onbTog(k){ONB[k]=!ONB[k];renderOnb();}
+async function onbApply(){try{await j('/api/onboard-apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enableImage:ONB.imageRecv,autostart:ONB.autostart,autoConnect:ONB.autoconnect,background:ONB.background})});}catch(e){}}
+async function onbSkip(){await onbApply();ONB_DISMISSED=true;onbVisibility(false);await refresh();}
+async function onbToMain(){await onbApply();ONB_DISMISSED=true;onbVisibility(false);await refresh();}
+async function onbConnect(){await onbApply();ONB_DISMISSED=true;onbVisibility(false);connect();}
+renderOnb();
 loadModels();refresh();loadInstall();loadUpdate();loadServers();loadSDStatus();setInterval(refresh,2000);setInterval(loadServers,2500);setInterval(pollProgress,600);
 </script></body></html>"""
 
@@ -898,6 +959,25 @@ def build_app(session_key: str) -> web.Application:
             pass
         return web.json_response({"ok": True})
 
+    async def onboard_apply(req: web.Request) -> web.Response:
+        """온보딩 선택(이미지 제공·자동 실행/연결 등)을 설정에 반영(토큰·연결은 건드리지 않음)."""
+        _auth(req)
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        from .config_file import persist_partial
+
+        persist_partial(
+            {
+                "enable_image": bool(data.get("enableImage")),
+                "auto_connect": bool(data.get("autoConnect", True)),
+                "background": bool(data.get("background", True)),
+                "autostart_pref": bool(data.get("autostart", True)),
+            }
+        )
+        return web.json_response({"ok": True})
+
     app.router.add_get("/", index)
     app.router.add_get("/mascot.png", mascot)
     app.router.add_get("/api/models", models)
@@ -927,6 +1007,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/stop", stop)
     app.router.add_post("/api/logout", logout)
     app.router.add_post("/api/reset", reset_all)
+    app.router.add_post("/api/onboard-apply", onboard_apply)
     return app
 
 

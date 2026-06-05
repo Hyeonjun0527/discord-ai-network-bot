@@ -1,6 +1,7 @@
 package com.discordassistant.central.provider
 
-import com.discordassistant.central.persistence.ProviderDurableRevocationRepository
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderDurableRevocationRepository
+import com.discordassistant.central.provider.application.JpaDurableTokenRevocations
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test

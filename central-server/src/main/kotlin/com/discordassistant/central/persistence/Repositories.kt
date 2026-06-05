@@ -5,7 +5,6 @@ import com.discordassistant.central.domain.KnowledgeChunkStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.ProposalStatus
-import com.discordassistant.central.domain.ProviderState
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.domain.RetrievalPolicyStatus
@@ -56,33 +55,6 @@ interface AiAdminRoleRepository : JpaRepository<AiAdminRoleEntity, Long> {
     ): Boolean
 
     fun deleteByGuildId(guildId: Long)
-}
-
-interface ProviderRepository : JpaRepository<ProviderEntity, Long> {
-    fun findByProviderUserIdAndGuildId(
-        providerUserId: Long,
-        guildId: Long,
-    ): ProviderEntity?
-
-    fun findByGuildIdAndState(
-        guildId: Long,
-        state: ProviderState,
-    ): List<ProviderEntity>
-
-    fun deleteByProviderUserIdAndGuildId(
-        providerUserId: Long,
-        guildId: Long,
-    )
-
-    fun deleteByGuildId(guildId: Long)
-}
-
-interface ProviderContributionPolicyRepository : JpaRepository<ProviderContributionPolicyEntity, Long> {
-    fun findByProviderId(providerId: Long): List<ProviderContributionPolicyEntity>
-
-    fun findByProviderIdIn(providerIds: Collection<Long>): List<ProviderContributionPolicyEntity>
-
-    fun deleteByProviderIdIn(providerIds: Collection<Long>)
 }
 
 interface AiRequestRepository : JpaRepository<AiRequestEntity, Long> {
@@ -195,24 +167,6 @@ interface ContributionLogRepository : JpaRepository<ContributionLogEntity, Long>
 interface ProviderContributionSummary {
     val providerId: Long
     val contributionCount: Long
-}
-
-interface ProviderHealthRepository : JpaRepository<ProviderHealthEntity, Long> {
-    fun findByProviderId(providerId: Long): ProviderHealthEntity?
-}
-
-interface ProviderScheduleRepository : JpaRepository<ProviderScheduleEntity, Long> {
-    fun findByProviderIdAndGuildId(
-        providerId: Long,
-        guildId: Long,
-    ): ProviderScheduleEntity?
-
-    fun deleteByGuildId(guildId: Long)
-
-    fun deleteByProviderIdAndGuildId(
-        providerId: Long,
-        guildId: Long,
-    )
 }
 
 interface ChannelAiRepository : JpaRepository<ChannelAiEntity, Long> {
@@ -587,13 +541,6 @@ interface ChannelAiRoutingPolicyRepository : JpaRepository<ChannelAiRoutingPolic
     ): ChannelAiRoutingPolicyEntity?
 
     fun findByGuildId(guildId: Long): List<ChannelAiRoutingPolicyEntity>
-}
-
-interface ProviderDurableRevocationRepository : JpaRepository<ProviderDurableRevocationEntity, Long> {
-    fun findByProviderIdAndGuildId(
-        providerId: Long,
-        guildId: Long,
-    ): ProviderDurableRevocationEntity?
 }
 
 interface BlocklistRepository : JpaRepository<BlocklistEntity, Long> {

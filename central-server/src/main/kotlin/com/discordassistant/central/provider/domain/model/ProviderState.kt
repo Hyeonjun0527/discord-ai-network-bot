@@ -1,4 +1,4 @@
-package com.discordassistant.central.domain
+package com.discordassistant.central.provider.domain.model
 
 /**
  * 프로바이더 상태머신 (specs: `DM-S-ProviderState`, 10상태).

@@ -1,6 +1,8 @@
 package com.discordassistant.central.persistence
 
-import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderEntity
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderRepository
+import com.discordassistant.central.provider.domain.model.ProviderState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue

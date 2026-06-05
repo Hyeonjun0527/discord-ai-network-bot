@@ -1,6 +1,6 @@
 package com.discordassistant.central.discord
 
-import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.provider.domain.model.ProviderState
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.interactions.DiscordLocale
 import org.junit.jupiter.api.Assertions.assertEquals

@@ -2,6 +2,7 @@ package com.discordassistant.central
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestWeight
+import com.discordassistant.central.provider.domain.model.ProviderState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -21,10 +22,10 @@ class CentralServerApplicationTests {
 
     @Test
     fun `ProviderState 라우팅 가능 여부`() {
-        assertTrue(com.discordassistant.central.domain.ProviderState.ONLINE_IDLE.isRoutable)
-        assertFalse(com.discordassistant.central.domain.ProviderState.ONLINE_BUSY.isRoutable)
-        assertFalse(com.discordassistant.central.domain.ProviderState.OFFLINE.isRoutable)
-        assertTrue(com.discordassistant.central.domain.ProviderState.REMOVED.isTerminal)
+        assertTrue(com.discordassistant.central.provider.domain.model.ProviderState.ONLINE_IDLE.isRoutable)
+        assertFalse(com.discordassistant.central.provider.domain.model.ProviderState.ONLINE_BUSY.isRoutable)
+        assertFalse(com.discordassistant.central.provider.domain.model.ProviderState.OFFLINE.isRoutable)
+        assertTrue(com.discordassistant.central.provider.domain.model.ProviderState.REMOVED.isTerminal)
     }
 
     @Test

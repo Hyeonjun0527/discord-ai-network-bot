@@ -1,6 +1,6 @@
 package com.discordassistant.central.discord
 
-import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.provider.domain.model.ProviderState
 
 /**
  * 프로바이더 휴식 권장(차수 12 #173). 과부하/한도 임박 시 가벼운 안내 문구를 만든다.

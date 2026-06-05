@@ -1,4 +1,4 @@
-package com.discordassistant.central.provider
+package com.discordassistant.central.provider.application
 
 import com.discordassistant.central.relay.OwnerBinding
 import com.discordassistant.central.relay.TokenVerifier

@@ -1,6 +1,6 @@
-package com.discordassistant.central.persistence
+package com.discordassistant.central.provider.adapter.outbound.persistence
 
-import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.provider.domain.model.ProviderState
 import jakarta.persistence.AttributeConverter
 import jakarta.persistence.Converter
 

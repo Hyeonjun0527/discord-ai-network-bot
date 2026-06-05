@@ -68,7 +68,8 @@ class ArchitectureTest {
                 "..central.dev..",
             )
 
-    // 컨트롤러는 웹 계층(web/dashboard/dev)에만 존재한다.
+    // 컨트롤러는 웹 계층(web/dashboard/dev) 또는 도메인-우선 헥사고날 인바운드 웹 어댑터에만 존재한다.
+    // (마이그레이션: 도메인이 ..<domain>.adapter.inbound.web.. 로 옮겨가면 이 화이트리스트가 자동 커버한다.)
     @ArchTest
     val controllersLiveInWebLayers: ArchRule =
         classes()
@@ -79,6 +80,7 @@ class ArchitectureTest {
                 "..central.web..",
                 "..central.dashboard..",
                 "..central.dev..",
+                "..central..adapter.inbound.web..",
             )
 
     // 컨트롤러(web 어댑터)는 영속 계층(persistence)에 **전혀** 의존하지 않는다 — 리포지토리도, 엔티티도(감사 2026-06-03 C).
@@ -114,4 +116,36 @@ class ArchitectureTest {
                 "..central.dashboard..",
                 "..central.dev..",
             )
+
+    // ── 도메인-우선 헥사고날 점진 전환(ADD-only) ─────────────────────────────────
+    // 이동이 끝난 도메인의 domain 레이어는 순수 Kotlin 규칙만 가진다 — application/adapter/infra 와
+    // Spring/JPA/JDA 같은 프레임워크에 의존하지 않는다. 도메인이 이동할 때마다 이 화이트리스트를 넓힌다.
+    // (provider 파일럿: ..central.provider.domain.. = ProviderState/ProviderModelScope/AvailabilityWindow)
+    @ArchTest
+    val migratedDomainsArePure: ArchRule =
+        noClasses()
+            .that()
+            .resideInAnyPackage(
+                "..central.provider.domain..",
+            ).should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
+                "..central.provider.application..",
+                "..central.provider.adapter..",
+                "..central.provider.infrastructure..",
+                "org.springframework..",
+                "jakarta.persistence..",
+                "net.dv8tion..",
+            )
+
+    // 영속 어댑터: @Entity / JpaRepository 는 이동 도메인의 adapter.outbound.persistence 에만 둔다.
+    @ArchTest
+    val migratedPersistenceInAdapterOutbound: ArchRule =
+        classes()
+            .that()
+            .resideInAPackage("..central.provider..")
+            .and()
+            .areAnnotatedWith(jakarta.persistence.Entity::class.java)
+            .should()
+            .resideInAPackage("..adapter.outbound.persistence..")
 }

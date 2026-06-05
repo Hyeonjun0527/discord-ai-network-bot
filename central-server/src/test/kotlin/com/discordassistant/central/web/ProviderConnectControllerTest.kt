@@ -5,8 +5,8 @@ import com.discordassistant.central.discord.BotGuildInfo
 import com.discordassistant.central.discord.BotGuildLister
 import com.discordassistant.central.policy.AutoApprovePolicy
 import com.discordassistant.central.provider.AuditLog
-import com.discordassistant.central.provider.ProviderRegistrationService
-import com.discordassistant.central.provider.TokenService
+import com.discordassistant.central.provider.application.ProviderRegistrationService
+import com.discordassistant.central.provider.application.TokenService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

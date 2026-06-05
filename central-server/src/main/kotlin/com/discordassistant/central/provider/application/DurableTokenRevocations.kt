@@ -1,7 +1,7 @@
-package com.discordassistant.central.provider
+package com.discordassistant.central.provider.application
 
-import com.discordassistant.central.persistence.ProviderDurableRevocationEntity
-import com.discordassistant.central.persistence.ProviderDurableRevocationRepository
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderDurableRevocationEntity
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderDurableRevocationRepository
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 

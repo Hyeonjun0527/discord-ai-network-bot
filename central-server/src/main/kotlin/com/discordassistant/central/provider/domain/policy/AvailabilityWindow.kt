@@ -1,4 +1,4 @@
-package com.discordassistant.central.provider
+package com.discordassistant.central.provider.domain.policy
 
 /**
  * 프로바이더 가용 시간대 판정(차수 12 #159). UTC 시(0~23) 기준. 자정을 넘는 구간(예: 22~6)도 지원.

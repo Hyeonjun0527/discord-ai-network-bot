@@ -4,8 +4,8 @@ import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
-import com.discordassistant.central.persistence.ProviderContributionPolicyEntity
-import com.discordassistant.central.persistence.ProviderContributionPolicyRepository
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyEntity
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyRepository
 import com.discordassistant.central.routing.ProviderProfile
 import com.discordassistant.central.routing.ProviderProfileProvider
 import org.springframework.stereotype.Service

@@ -2,7 +2,7 @@ package com.discordassistant.central.routing
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.ModelQualityTier
-import com.discordassistant.central.domain.ProviderState
+import com.discordassistant.central.provider.domain.model.ProviderState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue

@@ -1,7 +1,8 @@
-package com.discordassistant.central.provider
+package com.discordassistant.central.provider.application
 
-import com.discordassistant.central.persistence.ProviderScheduleEntity
-import com.discordassistant.central.persistence.ProviderScheduleRepository
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderScheduleEntity
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderScheduleRepository
+import com.discordassistant.central.provider.domain.policy.AvailabilityWindow
 import com.discordassistant.central.relay.ConnectionRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled

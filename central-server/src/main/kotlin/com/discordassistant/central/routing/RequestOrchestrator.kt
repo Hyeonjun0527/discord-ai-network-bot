@@ -264,7 +264,7 @@ class RequestOrchestrator(
                                 (session.remainingDailyRequests - reservation.reservedQuotaUnits).coerceAtLeast(0)
                             }
                         val circuitState =
-                            if (session.state == com.discordassistant.central.domain.ProviderState.UNHEALTHY) {
+                            if (session.state == com.discordassistant.central.provider.domain.model.ProviderState.UNHEALTHY) {
                                 RoutingCircuitState.OPEN
                             } else {
                                 RoutingCircuitState.CLOSED

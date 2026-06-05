@@ -1,8 +1,8 @@
-package com.discordassistant.central.web
+package com.discordassistant.central.provider.adapter.inbound.web
 
 import com.discordassistant.central.discord.BotGuildLister
-import com.discordassistant.central.provider.ProviderRegistrationService
-import com.discordassistant.central.provider.TokenService
+import com.discordassistant.central.provider.application.ProviderRegistrationService
+import com.discordassistant.central.provider.application.TokenService
 import com.discordassistant.central.relay.ConnectionRegistry
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody

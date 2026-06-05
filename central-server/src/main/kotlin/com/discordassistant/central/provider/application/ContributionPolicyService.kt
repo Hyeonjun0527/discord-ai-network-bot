@@ -1,8 +1,9 @@
-package com.discordassistant.central.provider
+package com.discordassistant.central.provider.application
 
 import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.persistence.ProviderContributionPolicyEntity
-import com.discordassistant.central.persistence.ProviderContributionPolicyRepository
+import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyEntity
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -58,7 +59,7 @@ class ContributionPolicyService(
         allowedRole: String,
     ) {
         val scope =
-            com.discordassistant.central.domain.ProviderModelScope
+            com.discordassistant.central.provider.domain.model.ProviderModelScope
                 .fromWire(allowedRole)
                 .wire
         val p = policyFor(providerId, model)

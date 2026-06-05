@@ -16,7 +16,6 @@ import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderAvailability
-import com.discordassistant.central.domain.ProviderState
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.domain.RetrievalPolicyStatus
@@ -77,40 +76,6 @@ class AiAdminRoleEntity(
 )
 
 @Entity
-@Table(name = "provider")
-class ProviderEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var providerUserId: Long = 0,
-    var guildId: Long = 0,
-    @Convert(converter = ProviderStateConverter::class)
-    var state: ProviderState = ProviderState.PENDING,
-    var createdAt: Instant = Instant.EPOCH,
-)
-
-@Entity
-@Table(name = "provider_schedule")
-class ProviderScheduleEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var providerId: Long = 0, // = Discord providerUserId(세션 providerId 와 동일)
-    var guildId: Long = 0,
-    @Column(name = "from_hour") var fromHour: Int = 0, // UTC 시 0..23
-    @Column(name = "to_hour") var toHour: Int = 0,
-)
-
-@Entity
-@Table(name = "provider_contribution_policy")
-class ProviderContributionPolicyEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var providerId: Long = 0,
-    var model: String = "",
-    var burden: String = "STANDARD",
-    var allowedRole: String = "all",
-    var dailyLimit: Int = 0,
-    var maxConcurrency: Int = 1,
-    var maxSeconds: Int = 120,
-)
-
-@Entity
 @Table(name = "ai_request")
 class AiRequestEntity(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
@@ -145,15 +110,6 @@ class ContributionLogEntity(
     var providerId: Long = 0,
     var requestId: String = "",
     var createdAt: Instant = Instant.EPOCH,
-)
-
-@Entity
-@Table(name = "provider_health")
-class ProviderHealthEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var providerId: Long = 0,
-    var failures: Int = 0,
-    var lastFailureAt: Instant? = null,
 )
 
 @Entity
@@ -690,15 +646,6 @@ class ChannelAiRoutingPolicyEntity(
     var costGuard: String = "provider_safe",
     var createdAt: Instant = Instant.EPOCH,
     var updatedAt: Instant = Instant.EPOCH,
-)
-
-@Entity
-@Table(name = "provider_durable_revocation")
-class ProviderDurableRevocationEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var providerId: Long = 0,
-    var guildId: Long = 0,
-    var revokedAtEpoch: Long = 0,
 )
 
 @Entity

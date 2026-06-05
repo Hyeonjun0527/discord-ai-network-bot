@@ -4,8 +4,8 @@ import com.discordassistant.central.discord.CommandContext
 import com.discordassistant.central.discord.CommandService
 import com.discordassistant.central.discord.GuildRemovalCleanupService
 import com.discordassistant.central.discord.Reply
-import com.discordassistant.central.provider.ProviderRegistrationService
-import com.discordassistant.central.provider.TokenService
+import com.discordassistant.central.provider.application.ProviderRegistrationService
+import com.discordassistant.central.provider.application.TokenService
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession

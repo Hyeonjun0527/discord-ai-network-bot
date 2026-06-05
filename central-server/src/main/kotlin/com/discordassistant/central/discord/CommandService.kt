@@ -23,9 +23,9 @@ import com.discordassistant.central.network.PresetModerationSummary
 import com.discordassistant.central.network.PresetRegistryService
 import com.discordassistant.central.network.PublishedPresetSummary
 import com.discordassistant.central.policy.PolicyService
-import com.discordassistant.central.provider.ContributionPolicyService
-import com.discordassistant.central.provider.ProviderProtectionService
-import com.discordassistant.central.provider.ProviderRegistrationService
+import com.discordassistant.central.provider.application.ContributionPolicyService
+import com.discordassistant.central.provider.application.ProviderProtectionService
+import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.routing.AiRequestInput
 import com.discordassistant.central.routing.RequestOrchestrator
@@ -94,7 +94,7 @@ class CommandService(
     private val rateLimiter: RateLimiter,
     private val contributionPolicy: ContributionPolicyService,
     private val blocklist: com.discordassistant.central.provider.BlocklistService,
-    private val schedule: com.discordassistant.central.provider.ProviderScheduleService,
+    private val schedule: com.discordassistant.central.provider.application.ProviderScheduleService,
     private val channelProfiles: ChannelAiProfileService,
     private val channelAiCustomization: ChannelAiCustomizationService,
     private val channelRoutingPolicies: ChannelAiRoutingPolicyService,

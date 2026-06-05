@@ -1,4 +1,4 @@
-package com.discordassistant.central.domain
+package com.discordassistant.central.provider.domain.model
 
 /**
  * 프로바이더가 특정 모델을 **누구에게** 제공할지의 허용 범위(`/provider-scope` 의 `role` 옵션).

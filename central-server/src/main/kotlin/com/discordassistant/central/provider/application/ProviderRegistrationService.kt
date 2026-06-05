@@ -1,8 +1,9 @@
-package com.discordassistant.central.provider
+package com.discordassistant.central.provider.application
 
-import com.discordassistant.central.domain.ProviderState
-import com.discordassistant.central.persistence.ProviderEntity
-import com.discordassistant.central.persistence.ProviderRepository
+import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderEntity
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderRepository
+import com.discordassistant.central.provider.domain.model.ProviderState
 import jakarta.annotation.PostConstruct
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional

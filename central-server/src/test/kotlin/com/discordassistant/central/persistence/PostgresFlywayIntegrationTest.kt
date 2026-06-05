@@ -1,5 +1,7 @@
 package com.discordassistant.central.persistence
 
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderScheduleEntity
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderScheduleRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test

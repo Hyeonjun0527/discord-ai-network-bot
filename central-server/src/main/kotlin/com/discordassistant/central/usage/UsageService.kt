@@ -6,10 +6,10 @@ import com.discordassistant.central.persistence.AiRequestEntity
 import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.ContributionLogEntity
 import com.discordassistant.central.persistence.ContributionLogRepository
-import com.discordassistant.central.persistence.ProviderHealthEntity
-import com.discordassistant.central.persistence.ProviderHealthRepository
 import com.discordassistant.central.persistence.UsageLogEntity
 import com.discordassistant.central.persistence.UsageLogRepository
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthEntity
+import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthRepository
 import com.discordassistant.central.routing.AiRequestInput
 import com.discordassistant.central.routing.UsageRecorder
 import org.slf4j.LoggerFactory

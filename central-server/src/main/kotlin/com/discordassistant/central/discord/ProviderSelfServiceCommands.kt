@@ -2,10 +2,10 @@ package com.discordassistant.central.discord
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.policy.PolicyService
-import com.discordassistant.central.provider.ContributionPolicyService
-import com.discordassistant.central.provider.ProviderProtectionService
-import com.discordassistant.central.provider.ProviderRegistrationService
-import com.discordassistant.central.provider.ProviderScheduleService
+import com.discordassistant.central.provider.application.ContributionPolicyService
+import com.discordassistant.central.provider.application.ProviderProtectionService
+import com.discordassistant.central.provider.application.ProviderRegistrationService
+import com.discordassistant.central.provider.application.ProviderScheduleService
 import com.discordassistant.central.relay.ConnectionRegistry
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
@@ -38,7 +38,7 @@ class ProviderSelfServiceCommands(
         val r = registration.requestJoin(ctx.userId, ctx.guildId, autoApprove = auto)
         // 연동된(앱 실행 중) 사용자: 등록만 보장하면 앱이 동기화로 이 서버에 **자동 연결**한다(가이드/재설치 불필요).
         if (providerLinked(ctx)) {
-            return if (auto || r.state == com.discordassistant.central.domain.ProviderState.APPROVED) {
+            return if (auto || r.state == com.discordassistant.central.provider.domain.model.ProviderState.APPROVED) {
                 Reply("✅ 참여 등록 완료! 실행 중인 냥시스턴트 앱이 잠시 후 이 서버에 자동으로 연결됩니다.", ephemeral = true)
             } else {
                 Reply("📋 참여 신청을 접수했어요(${r.state}). 관리자 승인 후 앱이 자동으로 이 서버에 연결됩니다.", ephemeral = true)

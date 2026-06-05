@@ -1,6 +1,6 @@
 package com.discordassistant.central.dev
 
-import com.discordassistant.central.provider.ProviderRegistrationService
+import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.routing.AiRequestInput
 import com.discordassistant.central.routing.OrchestrationResult

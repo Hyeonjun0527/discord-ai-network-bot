@@ -1,4 +1,4 @@
-package com.discordassistant.central.provider
+package com.discordassistant.central.provider.application
 
 import com.discordassistant.central.relay.OwnerBinding
 import org.springframework.beans.factory.annotation.Value

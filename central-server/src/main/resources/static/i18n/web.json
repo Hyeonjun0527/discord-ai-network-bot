@@ -221,9 +221,9 @@
     "ja": "プライバシーに関する注意"
   },
   "alertPrivacyBody": {
-    "ko": "<code>/질문</code> 으로 들어온 <b>다른 사용자의 질문이 당신의 PC로 전송</b>되어 로컬 AI가 처리하고, 반대로 <b>당신의 질문도 다른 사용자의 PC로</b> 전송될 수 있습니다. <b>비밀번호·API 키·토큰·개인정보는 절대 입력하지 마세요.</b> 에이전트는 프롬프트 원문을 로그/파일에 저장하지 않습니다.",
-    "en": "Other users' questions submitted via <code>/ask</code> <b>are sent to your PC</b> and processed by your local AI, and likewise <b>your questions may be sent to other users' PCs</b>. <b>Never enter passwords, API keys, tokens, or personal data.</b> The agent does not store raw prompts in logs or files.",
-    "ja": "<code>/質問</code> で送られた<b>他のユーザーの質問があなたのPCに送信</b>されローカルAIが処理し、逆に<b>あなたの質問も他のユーザーのPCへ</b>送信される場合があります。<b>パスワード·APIキー·トークン·個人情報は絶対に入力しないでください。</b> エージェントはプロンプト原文をログ/ファイルに保存しません。"
+    "ko": "<code>/질문</code> 으로 들어온 <b>다른 사용자의 질문이 당신의 PC의 로컬 AI</b>가 처리하고, 반대로 <b>당신의 질문도 다른 사용자의 PC로</b> 전송될 수 있습니다. <b>비밀번호·API 키·토큰·개인정보는 절대 입력하지 마세요.</b> 에이전트는 프롬프트 원문을 로그/파일에 저장하지 않습니다.",
+    "en": "Other users' questions submitted via <code>/ask</code> <b>are processed by your PC's local AI</b>, and likewise <b>your questions may be sent to other users' PCs</b>. <b>Never enter passwords, API keys, tokens, or personal data.</b> The agent does not store raw prompts in logs or files.",
+    "ja": "<code>/質問</code> で送られた<b>他のユーザーの質問をあなたのPCのローカルAI</b>が処理し、逆に<b>あなたの質問も他のユーザーのPCへ</b>送信される場合があります。<b>パスワード·APIキー·トークン·個人情報は絶対に入力しないでください。</b> エージェントはプロンプト原文をログ/ファイルに保存しません。"
   },
   "alertDefaultsTitle": {
     "ko": "안전한 기본값",

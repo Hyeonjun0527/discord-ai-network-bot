@@ -33,6 +33,7 @@ class AgentConfig:
     sd_url: str = "http://127.0.0.1:7860"  # 로컬 Stable Diffusion(A1111) 주소
     allow_remote_sd: bool = False  # 기본 localhost 전용; True 면 원격 SD 허용(위험)
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
+    service: bool = False  # 헤드리스 자동시작 모드(--service): launchd·업데이터 재실행이 창 없이 무인 구동
     install_service: bool = False  # 자동 시작 서비스 등록 후 종료(--install-service, 저장 안 함)
     gui: bool = False  # 브라우저 설정 UI(--gui, 토큰 없이 가능, 저장 안 함)
     tray: bool = False  # 실행 중 시스템 트레이 아이콘(라이브 상태·중지·설정 열기, 데스크톱 전용)
@@ -78,6 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--self-test", action="store_true", help="연결 없이 Ollama 자가 점검 후 종료")
     p.add_argument("--save-config", action="store_true", help="현재 설정을 ~/.config 에 저장(시크릿 0600)")
     p.add_argument("--install-service", action="store_true", help="로그인 시 자동 실행되는 사용자 서비스 등록 후 종료(관리자 불필요)")
+    p.add_argument("--service", action="store_true", help="헤드리스 자동시작 모드로 실행(창·동의 프롬프트 없이 저장된 설정으로 연결). launchd/업데이터가 사용")
     p.add_argument("--gui", action="store_true", help="브라우저 설정 UI 를 띄운다(토큰·풀 설정·자동시작을 클릭으로)")
     p.add_argument("--tray", action="store_true", help="실행 중 시스템 트레이 아이콘 표시(라이브 상태·중지, 데스크톱 전용)")
     p.add_argument("--telemetry", action="store_true", help="익명 텔레메트리 opt-in(기본 꺼짐)")
@@ -166,7 +168,9 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         enable_image=enable_image,
         sd_url=sd_url,
         allow_remote_sd=allow_remote_sd,
-        assume_yes=bool(args.yes),
+        # --service(헤드리스 자동시작)는 동의 프롬프트를 띄울 수 없으므로 자동 승인(--yes)을 포함한다.
+        assume_yes=bool(args.yes) or bool(args.service),
+        service=bool(args.service),
         install_service=bool(args.install_service),
         gui=bool(args.gui),
         tray=bool(args.tray) or bool(saved.get("tray")),

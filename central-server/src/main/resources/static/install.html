@@ -153,7 +153,7 @@
     .hud.bl { left: 28px; bottom: 72px; border-right: 0; border-top: 0; }
     .hud.br { right: 28px; bottom: 72px; border-left: 0; border-top: 0; }
     .cine-telemetry { position: absolute; top: 100px; left: 64px; right: 64px; z-index: 4; display: flex; justify-content: space-between; color: var(--subtle); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; pointer-events: none; }
-    .beat { position: absolute; left: 64px; bottom: 13vh; max-width: 620px; z-index: 5; opacity: 0; will-change: opacity, transform; }
+    .beat { position: absolute; left: 64px; bottom: 13vh; max-width: 620px; z-index: 5; opacity: 0; will-change: opacity, transform, filter; }
     .beat .eyebrow { margin-bottom: 14px; }
     .beat h1 { margin: 0; font-size: clamp(36px, 4.8vw, 72px); line-height: 1.0; letter-spacing: -.04em; font-weight: 800; }
     .beat h2 { margin: 0; font-size: clamp(32px, 4.2vw, 60px); line-height: 1.04; letter-spacing: -.035em; font-weight: 800; }
@@ -588,14 +588,24 @@
         if (n !== lastSeq) { lastSeq = n; if (seqEl) seqEl.textContent = 'SEQ ' + String(n).padStart(3, '0') + ' / ' + TOTAL; }
         if (fillEl) fillEl.style.transform = 'scaleX(' + p + ')';
         if (hintEl) hintEl.style.opacity = p > 0.02 ? '0' : '1';
+        // step1~4(beat1~4)는 SEQ 36/72/108/144 에서 정확히 opacity 1 + blur 0(완벽 선명),
+        // 그 사이로 갈수록 흐려지며 페이드. beat0(인트로)은 최상단에서 선명 → step1 들어오며 소멸.
+        const MAXB = 11;            // 최대 blur(px)
+        const W = 36 / TOTAL;       // 마일스톤 간격(SEQ 36 → p 폭)
         beats.forEach((el, i) => {
-          const seg = 1 / N, start = i * seg, local = (p - start) / seg; let op;
-          if (i === 0) op = (local > 1) ? 0 : Math.max(0, Math.min(1, (1 - local) / 0.3)); // 첫 비트는 최상단에서 바로 보임
-          else if (i === N - 1) op = Math.max(0, Math.min(1, local / 0.3));                // 마지막 비트는 끝까지 유지
-          else if (p < start || local > 1) op = 0;
-          else op = Math.max(0, Math.min(1, Math.min(local / 0.3, (1 - local) / 0.3)));
+          let op, blur;
+          if (i === 0) {
+            const f = Math.max(0, Math.min(1, 1 - p / (W * 0.85))); // 인트로: 위에서 선명, 곧 소멸
+            op = f; blur = MAXB * (1 - f);
+          } else {
+            const T = (36 * i - 0.5) / TOTAL;       // SEQ 36·72·108·144 중심
+            const d = (p - T) / W;                   // 0=마일스톤, ±1=인접 마일스톤
+            if (i === N - 1 && d > 0) { op = 1; blur = 0; } // 마지막 step 은 끝까지 선명 유지
+            else { const ad = Math.min(1, Math.abs(d)); op = Math.max(0, 1 - ad); blur = MAXB * ad; }
+          }
           el.style.opacity = String(op);
-          el.style.transform = 'translateY(' + ((1 - op) * 26) + 'px)';
+          el.style.filter = op >= 0.999 ? 'none' : ('blur(' + blur.toFixed(2) + 'px)');
+          el.style.transform = 'translateY(' + ((1 - op) * 24) + 'px)';
           el.style.pointerEvents = op > 0.5 ? 'auto' : 'none';
         });
       }

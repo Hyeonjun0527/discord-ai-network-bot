@@ -1,15 +1,15 @@
-package com.discordassistant.central.usage
+package com.discordassistant.central.requestlog.application
 
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.network.AiLevelService
-import com.discordassistant.central.persistence.AiRequestEntity
-import com.discordassistant.central.persistence.AiRequestRepository
-import com.discordassistant.central.persistence.ContributionLogEntity
-import com.discordassistant.central.persistence.ContributionLogRepository
-import com.discordassistant.central.persistence.UsageLogEntity
-import com.discordassistant.central.persistence.UsageLogRepository
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.ContributionLogEntity
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.ContributionLogRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogEntity
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import com.discordassistant.central.routing.application.port.UsageRecorder
 import com.discordassistant.central.routing.domain.model.AiRequestInput
 import org.slf4j.LoggerFactory

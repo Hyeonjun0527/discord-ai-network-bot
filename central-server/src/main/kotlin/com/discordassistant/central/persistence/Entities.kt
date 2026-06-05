@@ -17,7 +17,6 @@ import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.domain.PublishedPresetStatus
-import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.domain.RetrievalPolicyStatus
 import com.discordassistant.central.domain.SynthesisStatus
 import jakarta.persistence.Column
@@ -72,43 +71,6 @@ class AiAdminRoleEntity(
     var guildId: Long = 0,
     var roleId: Long = 0,
     var createdBy: Long? = null,
-    var createdAt: Instant = Instant.EPOCH,
-)
-
-@Entity
-@Table(name = "ai_request")
-class AiRequestEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var requestId: String = "",
-    var guildId: Long = 0,
-    var channelId: Long = 0,
-    var userId: Long = 0,
-    var weight: String = "LIGHT",
-    var requiredBurden: String = "LIGHT",
-    var providerId: Long? = null,
-    @Convert(converter = RequestStateConverter::class)
-    var state: RequestState = RequestState.RECEIVED,
-    var failReason: String? = null,
-    var createdAt: Instant = Instant.EPOCH,
-)
-
-@Entity
-@Table(name = "usage_log")
-class UsageLogEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var guildId: Long = 0,
-    var userId: Long = 0,
-    var requestId: String = "",
-    var createdAt: Instant = Instant.EPOCH,
-)
-
-@Entity
-@Table(name = "contribution_log")
-class ContributionLogEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var guildId: Long = 0,
-    var providerId: Long = 0,
-    var requestId: String = "",
     var createdAt: Instant = Instant.EPOCH,
 )
 
@@ -646,14 +608,4 @@ class ChannelAiRoutingPolicyEntity(
     var costGuard: String = "provider_safe",
     var createdAt: Instant = Instant.EPOCH,
     var updatedAt: Instant = Instant.EPOCH,
-)
-
-@Entity
-@Table(name = "blocklist")
-class BlocklistEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var guildId: Long = 0,
-    var userId: Long = 0,
-    var blockedBy: Long? = null,
-    var createdAt: Instant = Instant.EPOCH,
 )

@@ -3,6 +3,10 @@ package com.discordassistant.central.persistence
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderRepository
 import com.discordassistant.central.provider.domain.model.ProviderState
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.ContributionLogEntity
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.ContributionLogRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogEntity
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue

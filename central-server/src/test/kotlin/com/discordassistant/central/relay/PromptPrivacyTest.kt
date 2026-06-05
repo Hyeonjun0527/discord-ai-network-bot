@@ -3,11 +3,11 @@ package com.discordassistant.central.relay
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
-import com.discordassistant.central.persistence.AiRequestEntity
 import com.discordassistant.central.relay.protocol.CancelFrame
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.BeforeEach

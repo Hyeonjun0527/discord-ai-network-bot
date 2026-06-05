@@ -5,11 +5,11 @@ import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.persistence.AiFeedbackRepository
-import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock

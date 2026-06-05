@@ -18,7 +18,7 @@ import com.discordassistant.central.network.QualityReviewSummary
 import com.discordassistant.central.network.QualitySummary
 import com.discordassistant.central.persistence.AiChangeProposalEntity
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
-import com.discordassistant.central.usage.AnalyticsService
+import com.discordassistant.central.requestlog.application.AnalyticsService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping

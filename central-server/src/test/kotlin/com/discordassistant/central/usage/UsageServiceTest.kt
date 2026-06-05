@@ -3,7 +3,8 @@ package com.discordassistant.central.usage
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.network.AiLevelService
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
-import com.discordassistant.central.persistence.AiRequestRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
+import com.discordassistant.central.requestlog.application.UsageService
 import com.discordassistant.central.routing.domain.model.AiRequestInput
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull

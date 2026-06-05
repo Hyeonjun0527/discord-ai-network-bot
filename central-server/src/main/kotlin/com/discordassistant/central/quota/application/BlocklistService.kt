@@ -1,7 +1,8 @@
-package com.discordassistant.central.provider
+package com.discordassistant.central.quota.application
 
-import com.discordassistant.central.persistence.BlocklistEntity
-import com.discordassistant.central.persistence.BlocklistRepository
+import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.quota.adapter.outbound.persistence.BlocklistEntity
+import com.discordassistant.central.quota.adapter.outbound.persistence.BlocklistRepository
 import com.discordassistant.central.routing.application.port.BlocklistChecker
 import jakarta.annotation.PostConstruct
 import org.springframework.stereotype.Service

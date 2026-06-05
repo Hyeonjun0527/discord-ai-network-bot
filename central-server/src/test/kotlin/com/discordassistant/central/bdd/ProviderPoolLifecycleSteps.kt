@@ -10,7 +10,7 @@ import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
-import com.discordassistant.central.usage.UsageService
+import com.discordassistant.central.requestlog.application.UsageService
 import io.cucumber.java.en.Given
 import io.cucumber.java.en.Then
 import io.cucumber.java.en.When

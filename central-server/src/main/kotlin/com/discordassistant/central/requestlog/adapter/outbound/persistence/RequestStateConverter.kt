@@ -1,4 +1,4 @@
-package com.discordassistant.central.persistence
+package com.discordassistant.central.requestlog.adapter.outbound.persistence
 
 import com.discordassistant.central.domain.RequestState
 import jakarta.persistence.AttributeConverter

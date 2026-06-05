@@ -1,7 +1,7 @@
 package com.discordassistant.central.network
 
-import com.discordassistant.central.persistence.UsageLogEntity
-import com.discordassistant.central.persistence.UsageLogRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogEntity
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows

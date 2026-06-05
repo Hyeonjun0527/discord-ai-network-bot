@@ -1,4 +1,4 @@
-package com.discordassistant.central.discord
+package com.discordassistant.central.quota.application
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Primary

@@ -1,9 +1,9 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.domain.RequestState
-import com.discordassistant.central.persistence.AiRequestEntity
-import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.policy.PolicyService
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

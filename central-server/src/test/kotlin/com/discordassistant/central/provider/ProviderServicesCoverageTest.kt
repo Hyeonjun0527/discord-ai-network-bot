@@ -1,6 +1,7 @@
 package com.discordassistant.central.provider
 
 import com.discordassistant.central.provider.application.ProviderScheduleService
+import com.discordassistant.central.quota.application.BlocklistService
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -19,7 +20,7 @@ class ProviderServicesCoverageTest
     constructor(
         val blocklist: BlocklistService,
         val schedule: ProviderScheduleService,
-        val blocklistRepo: com.discordassistant.central.persistence.BlocklistRepository,
+        val blocklistRepo: com.discordassistant.central.quota.adapter.outbound.persistence.BlocklistRepository,
     ) {
         private fun clockAtHour(h: Int): Clock = Clock.fixed(Instant.parse("2026-01-01T%02d:30:00Z".format(h)), ZoneOffset.UTC)
 

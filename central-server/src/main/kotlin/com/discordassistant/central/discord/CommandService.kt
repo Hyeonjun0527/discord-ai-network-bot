@@ -26,10 +26,11 @@ import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.provider.application.ContributionPolicyService
 import com.discordassistant.central.provider.application.ProviderProtectionService
 import com.discordassistant.central.provider.application.ProviderRegistrationService
+import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.relay.ConnectionRegistry
+import com.discordassistant.central.requestlog.application.UsageService
 import com.discordassistant.central.routing.application.RequestOrchestrator
 import com.discordassistant.central.routing.domain.model.AiRequestInput
-import com.discordassistant.central.usage.UsageService
 import org.springframework.stereotype.Service
 
 /** 슬래시 명령 응답(내용 + ephemeral 여부). */
@@ -93,7 +94,7 @@ class CommandService(
     private val privacy: PrivacyService,
     private val rateLimiter: RateLimiter,
     private val contributionPolicy: ContributionPolicyService,
-    private val blocklist: com.discordassistant.central.provider.BlocklistService,
+    private val blocklist: com.discordassistant.central.quota.application.BlocklistService,
     private val schedule: com.discordassistant.central.provider.application.ProviderScheduleService,
     private val channelProfiles: ChannelAiProfileService,
     private val channelAiCustomization: ChannelAiCustomizationService,

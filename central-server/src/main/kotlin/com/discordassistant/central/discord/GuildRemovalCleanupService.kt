@@ -1,10 +1,10 @@
 package com.discordassistant.central.discord
 
 import com.discordassistant.central.policy.PolicyService
-import com.discordassistant.central.provider.BlocklistService
 import com.discordassistant.central.provider.application.ContributionPolicyService
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.ProviderScheduleService
+import com.discordassistant.central.quota.application.BlocklistService
 import com.discordassistant.central.relay.ConnectionRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service

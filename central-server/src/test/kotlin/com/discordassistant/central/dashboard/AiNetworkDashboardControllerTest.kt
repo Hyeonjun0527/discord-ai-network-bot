@@ -12,8 +12,6 @@ import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventEntity
 import com.discordassistant.central.persistence.AiNetworkEventRepository
-import com.discordassistant.central.persistence.AiRequestEntity
-import com.discordassistant.central.persistence.AiRequestRepository
 import com.discordassistant.central.persistence.ChannelAiEntity
 import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
@@ -24,6 +22,8 @@ import com.discordassistant.central.persistence.KnowledgeSpaceEntity
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
 import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

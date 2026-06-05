@@ -3,11 +3,11 @@ package com.discordassistant.central.dashboard
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.persistence.AiNetworkEventEntity
 import com.discordassistant.central.persistence.AiNetworkEventRepository
-import com.discordassistant.central.persistence.AiRequestEntity
-import com.discordassistant.central.persistence.AiRequestRepository
-import com.discordassistant.central.persistence.UsageLogEntity
-import com.discordassistant.central.persistence.UsageLogRepository
-import com.discordassistant.central.usage.AnalyticsService
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogEntity
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
+import com.discordassistant.central.requestlog.application.AnalyticsService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

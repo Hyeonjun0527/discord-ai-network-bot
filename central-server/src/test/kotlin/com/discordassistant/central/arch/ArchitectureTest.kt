@@ -138,13 +138,16 @@ class ArchitectureTest {
                 "net.dv8tion..",
             )
 
-    // 영속 어댑터: @Entity / JpaRepository 는 이동 도메인의 adapter.outbound.persistence 에만 둔다.
+    // 영속 어댑터: 이동 완료 도메인(provider/quota/requestlog)의 @Entity 는 adapter.outbound.persistence 에만 둔다.
     @ArchTest
     val migratedPersistenceInAdapterOutbound: ArchRule =
         classes()
             .that()
-            .resideInAPackage("..central.provider..")
-            .and()
+            .resideInAnyPackage(
+                "..central.provider..",
+                "..central.quota..",
+                "..central.requestlog..",
+            ).and()
             .areAnnotatedWith(jakarta.persistence.Entity::class.java)
             .should()
             .resideInAPackage("..adapter.outbound.persistence..")

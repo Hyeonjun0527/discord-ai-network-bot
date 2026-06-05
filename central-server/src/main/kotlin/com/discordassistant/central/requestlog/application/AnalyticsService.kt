@@ -1,10 +1,10 @@
-package com.discordassistant.central.usage
+package com.discordassistant.central.requestlog.application
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.persistence.AiNetworkEventRepository
-import com.discordassistant.central.persistence.AiRequestRepository
-import com.discordassistant.central.persistence.UsageLogRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
+import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

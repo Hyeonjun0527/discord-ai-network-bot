@@ -19,4 +19,16 @@ object ContentSafety {
 
     /** 지식 소스를 색인/검색에 사용할 수 있는 위험 등급. */
     val USABLE_KNOWLEDGE_RISK_LEVELS = setOf("normal", "review")
+
+    /** 비밀값(키/토큰/비밀번호 등) 노출 탐지·레닥션 정규식. */
+    val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
+
+    /** 민감 프롬프트(자격증명/개인키 등) 탐지 정규식 목록. */
+    val SENSITIVE_PROMPT_PATTERNS =
+        listOf(
+            Regex("""(?i)\b(password|passwd|pwd|secret)\b"""),
+            Regex("(?i)(api[_-]?key|bot[_-]?token|discord[_-]?bot[_-]?token|private[_-]?key|access[_-]?token)"),
+            Regex("(?i)-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"),
+            Regex("(?i)sk-[A-Za-z0-9_-]{20,}"),
+        )
 }

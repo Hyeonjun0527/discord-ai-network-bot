@@ -6,6 +6,7 @@ import com.discordassistant.central.preset.adapter.outbound.persistence.PresetIm
 import com.discordassistant.central.preset.adapter.outbound.persistence.PresetReportEntity
 import com.discordassistant.central.preset.adapter.outbound.persistence.PresetRevisionEntity
 import com.discordassistant.central.preset.adapter.outbound.persistence.PublishedPresetEntity
+import com.discordassistant.central.shared.ContentSafety
 import org.springframework.stereotype.Component
 
 /**
@@ -222,7 +223,8 @@ class PresetCatalogMapper {
         return trimmed.take(120).ifBlank { "preset-$id" }
     }
 
-    fun String.hasSensitiveMaterial(): Boolean = KnowledgeSafety.containsSensitiveMaterial(this) || SECRET_PATTERN.containsMatchIn(this)
+    fun String.hasSensitiveMaterial(): Boolean =
+        KnowledgeSafety.containsSensitiveMaterial(this) || ContentSafety.SECRET_PATTERN.containsMatchIn(this)
 
     fun splitCsv(value: String?): List<String> =
         value
@@ -242,7 +244,6 @@ class PresetCatalogMapper {
     internal companion object {
         const val REDACTED_PUBLIC_TITLE = "비공개 프리셋"
         const val REDACTED_PUBLIC_TEXT = "[비공개 처리됨]"
-        val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val SENSITIVE_SLUG_PATTERN = Regex("""(?i)(password|passwd|token|api[-_]?key|secret|authorization|bearer)""")
     }
 }

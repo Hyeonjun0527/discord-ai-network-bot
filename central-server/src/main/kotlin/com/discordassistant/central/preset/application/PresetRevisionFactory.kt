@@ -4,6 +4,7 @@ import com.discordassistant.central.ainetwork.domain.model.AI_NETWORK_MAX_CANDID
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetEntity
 import com.discordassistant.central.preset.adapter.outbound.persistence.PresetRevisionEntity
 import com.discordassistant.central.preset.adapter.outbound.persistence.PresetRevisionRepository
+import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.ResponseMode
 import org.springframework.stereotype.Service
 import java.time.Instant
@@ -104,7 +105,7 @@ class PresetRevisionFactory(
     private fun String?.sanitizedKnowledgeGuide(): String? =
         this
             ?.trim()
-            ?.replace(PresetContentSafety.SECRET_PATTERN, "[redacted]")
+            ?.replace(ContentSafety.SECRET_PATTERN, "[redacted]")
             ?.take(1000)
             ?.ifBlank { null }
 

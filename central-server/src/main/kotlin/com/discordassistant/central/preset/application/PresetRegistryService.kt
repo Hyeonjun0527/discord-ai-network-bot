@@ -30,6 +30,7 @@ import com.discordassistant.central.preset.domain.model.PresetImportStatus
 import com.discordassistant.central.preset.domain.model.PresetReportStatus
 import com.discordassistant.central.preset.domain.model.PresetStatus
 import com.discordassistant.central.preset.domain.model.PublishedPresetStatus
+import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -870,7 +871,7 @@ class PresetRegistryService(
     ): String =
         value
             .trim()
-            .replace(SECRET_PATTERN, "[redacted]")
+            .replace(ContentSafety.SECRET_PATTERN, "[redacted]")
             .take(maxLength)
             .ifBlank { "no reason provided" }
 
@@ -905,7 +906,6 @@ class PresetRegistryService(
     private companion object {
         const val MAX_VERSION_RETRIES = 5
         const val REPORT_REVIEW_THRESHOLD = 1
-        val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val CONFIRM_REQUIRED_CONFLICT_SEVERITIES = setOf("warning", "blocker")
     }
 }

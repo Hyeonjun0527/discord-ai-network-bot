@@ -1,6 +1,7 @@
 package com.discordassistant.central.preset.application
 
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
+import com.discordassistant.central.shared.ContentSafety
 import org.springframework.stereotype.Service
 
 /**
@@ -10,7 +11,8 @@ import org.springframework.stereotype.Service
  */
 @Service
 class PresetContentSafety {
-    fun String.hasSensitiveMaterial(): Boolean = KnowledgeSafety.containsSensitiveMaterial(this) || SECRET_PATTERN.containsMatchIn(this)
+    fun String.hasSensitiveMaterial(): Boolean =
+        KnowledgeSafety.containsSensitiveMaterial(this) || ContentSafety.SECRET_PATTERN.containsMatchIn(this)
 
     fun String?.publicOptional(maxLength: Int): String? {
         val trimmed = this?.trim()?.ifBlank { null } ?: return null
@@ -45,6 +47,5 @@ class PresetContentSafety {
     companion object {
         const val REDACTED_PUBLIC_TITLE = "비공개 프리셋"
         const val REDACTED_PUBLIC_TEXT = "[비공개 처리됨]"
-        val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
     }
 }

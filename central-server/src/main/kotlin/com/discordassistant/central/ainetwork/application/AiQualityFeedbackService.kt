@@ -8,6 +8,7 @@ import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
+import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.ModelQualityTier
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -179,7 +180,7 @@ class AiQualityFeedbackService(
     private fun sanitizeReason(reason: String?): String? =
         reason
             ?.trim()
-            ?.replace(SECRET_PATTERN, "[redacted]")
+            ?.replace(ContentSafety.SECRET_PATTERN, "[redacted]")
             ?.take(500)
             ?.let { if (it.hasSensitiveMaterial()) "[redacted]" else it }
             ?.ifBlank { null }
@@ -204,7 +205,7 @@ class AiQualityFeedbackService(
     }
 
     private fun String.hasSensitiveMaterial(): Boolean =
-        KnowledgeSafety.containsSensitiveMaterial(this) || SECRET_PATTERN.containsMatchIn(this)
+        KnowledgeSafety.containsSensitiveMaterial(this) || ContentSafety.SECRET_PATTERN.containsMatchIn(this)
 
     private fun sha256(value: String): String =
         MessageDigest
@@ -229,13 +230,6 @@ class AiQualityFeedbackService(
                 "반복 신고가 있는 채널은 채널 AI 헌법·지식·모델 정책을 점검하세요.",
             )
         }
-
-    private companion object {
-        val SECRET_PATTERN =
-            Regex(
-                pattern = """(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""",
-            )
-    }
 }
 
 data class AiFeedbackResult(

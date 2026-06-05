@@ -2,6 +2,7 @@ package com.discordassistant.central.channelai.application
 
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
+import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import org.springframework.stereotype.Component
 
@@ -56,7 +57,7 @@ class ChannelAiApprovalPolicy {
     private fun String.looksSensitive(): Boolean {
         val text = trim()
         if (text.isBlank()) return false
-        return ChannelAiPromptRenderer.SENSITIVE_PROMPT_PATTERNS.any { it.containsMatchIn(text) }
+        return ContentSafety.SENSITIVE_PROMPT_PATTERNS.any { it.containsMatchIn(text) }
     }
 
     internal companion object {

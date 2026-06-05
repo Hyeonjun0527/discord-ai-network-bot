@@ -3,6 +3,7 @@ package com.discordassistant.central.channelai.application
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
+import com.discordassistant.central.shared.ContentSafety
 import org.springframework.stereotype.Component
 
 /**
@@ -96,18 +97,11 @@ class ChannelAiPromptRenderer(
     internal fun String.looksSensitive(): Boolean {
         val text = trim()
         if (text.isBlank()) return false
-        return SENSITIVE_PROMPT_PATTERNS.any { it.containsMatchIn(text) }
+        return ContentSafety.SENSITIVE_PROMPT_PATTERNS.any { it.containsMatchIn(text) }
     }
 
     internal companion object {
         const val PROMPT_USER_QUESTION_MAX = 4_000
         const val PROMPT_RAG_CONTEXT_MAX = 4_000
-        val SENSITIVE_PROMPT_PATTERNS =
-            listOf(
-                Regex("""(?i)\b(password|passwd|pwd|secret)\b"""),
-                Regex("(?i)(api[_-]?key|bot[_-]?token|discord[_-]?bot[_-]?token|private[_-]?key|access[_-]?token)"),
-                Regex("(?i)-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"),
-                Regex("(?i)sk-[A-Za-z0-9_-]{20,}"),
-            )
     }
 }

@@ -1,8 +1,8 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.domain.RequestState
-import com.discordassistant.central.routing.AiRequestInput
-import com.discordassistant.central.routing.RequestOrchestrator
+import com.discordassistant.central.routing.application.RequestOrchestrator
+import com.discordassistant.central.routing.domain.model.AiRequestInput
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 

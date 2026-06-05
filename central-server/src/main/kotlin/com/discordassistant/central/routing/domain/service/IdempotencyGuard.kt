@@ -1,4 +1,4 @@
-package com.discordassistant.central.routing
+package com.discordassistant.central.routing.domain.service
 
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component

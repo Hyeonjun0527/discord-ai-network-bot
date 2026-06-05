@@ -2,7 +2,7 @@ package com.discordassistant.central.usage
 
 import com.discordassistant.central.persistence.UsageLogRepository
 import com.discordassistant.central.policy.PolicyService
-import com.discordassistant.central.routing.QuotaChecker
+import com.discordassistant.central.routing.application.port.QuotaChecker
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant

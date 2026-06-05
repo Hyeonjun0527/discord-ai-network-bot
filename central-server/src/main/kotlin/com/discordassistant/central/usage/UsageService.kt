@@ -10,8 +10,8 @@ import com.discordassistant.central.persistence.UsageLogEntity
 import com.discordassistant.central.persistence.UsageLogRepository
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthRepository
-import com.discordassistant.central.routing.AiRequestInput
-import com.discordassistant.central.routing.UsageRecorder
+import com.discordassistant.central.routing.application.port.UsageRecorder
+import com.discordassistant.central.routing.domain.model.AiRequestInput
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

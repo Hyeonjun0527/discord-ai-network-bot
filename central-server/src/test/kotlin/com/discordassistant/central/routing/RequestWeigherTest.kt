@@ -2,6 +2,9 @@ package com.discordassistant.central.routing
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestWeight
+import com.discordassistant.central.routing.domain.service.RequestMeta
+import com.discordassistant.central.routing.domain.service.RequestWeigher
+import com.discordassistant.central.routing.domain.service.WeighDecision
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 

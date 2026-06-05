@@ -1,154 +1,53 @@
-package com.discordassistant.central.routing
+package com.discordassistant.central.routing.application
 
-import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.RemoteTimeoutException
+import com.discordassistant.central.routing.NoWebSearch
+import com.discordassistant.central.routing.WebAugmentation
+import com.discordassistant.central.routing.WebSearchAugmenter
+import com.discordassistant.central.routing.application.port.ALLOW_ALL_BLOCKLIST
+import com.discordassistant.central.routing.application.port.ALLOW_ALL_PROVIDER_SAFETY
+import com.discordassistant.central.routing.application.port.BlocklistChecker
+import com.discordassistant.central.routing.application.port.ProviderProfileProvider
+import com.discordassistant.central.routing.application.port.ProviderSafetyChecker
+import com.discordassistant.central.routing.application.port.QuotaChecker
+import com.discordassistant.central.routing.application.port.RoutingPolicy
+import com.discordassistant.central.routing.application.port.UNLIMITED_QUOTA
+import com.discordassistant.central.routing.application.port.UsageRecorder
+import com.discordassistant.central.routing.domain.model.AiRequestInput
+import com.discordassistant.central.routing.domain.model.AttemptFinalState
+import com.discordassistant.central.routing.domain.model.OrchestrationResult
+import com.discordassistant.central.routing.domain.model.RoutingAttemptOutcome
+import com.discordassistant.central.routing.domain.model.RoutingCircuitState
+import com.discordassistant.central.routing.domain.model.RoutingDecision
+import com.discordassistant.central.routing.domain.model.RoutingFailureType
+import com.discordassistant.central.routing.domain.model.RoutingLatencyMetrics
+import com.discordassistant.central.routing.domain.model.RoutingScoreBreakdown
+import com.discordassistant.central.routing.domain.model.defaultDeadlineMillis
+import com.discordassistant.central.routing.domain.model.estimatedMaxOutputTokens
+import com.discordassistant.central.routing.domain.service.Candidate
+import com.discordassistant.central.routing.domain.service.FilterSignal
+import com.discordassistant.central.routing.domain.service.IdempotencyGuard
+import com.discordassistant.central.routing.domain.service.ProviderFilterPipeline
+import com.discordassistant.central.routing.domain.service.ProviderRouter
+import com.discordassistant.central.routing.domain.service.ProviderRoutingStats
+import com.discordassistant.central.routing.domain.service.RequestContext
+import com.discordassistant.central.routing.domain.service.RequestMeta
+import com.discordassistant.central.routing.domain.service.RequestWeigher
+import com.discordassistant.central.routing.domain.service.ReservationResult
+import com.discordassistant.central.routing.domain.service.RoutingAttemptLifecycleManager
+import com.discordassistant.central.routing.domain.service.RoutingAuditLogger
+import com.discordassistant.central.routing.domain.service.RoutingDualVariableManager
+import com.discordassistant.central.routing.domain.service.RoutingReservationManager
+import com.discordassistant.central.routing.domain.service.WeighDecision
+import com.discordassistant.central.routing.domain.service.effectiveConcurrencyLimit
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.util.UUID
 import java.util.concurrent.CompletionException
 import kotlin.math.max
 import kotlin.math.min
-
-/** 라우팅이 필요로 하는 정책 일부(테스트 디커플용). PolicyService 가 구현. */
-interface RoutingPolicy {
-    fun isChannelAllowed(
-        guildId: Long,
-        channelId: Long,
-    ): Boolean
-
-    fun maxAllowedBurden(
-        guildId: Long,
-        memberRoleIds: Collection<Long>,
-    ): ModelBurden
-}
-
-/** 프로바이더 정책 프로필(부담수준·허용·제한). DB(contribution policy) 또는 테스트 스텁이 제공. */
-data class ProviderProfile(
-    val supportedBurdens: Set<ModelBurden>,
-    val allowedRoleIds: Set<Long>? = null,
-    val allowedChannelIds: Set<Long>? = null,
-    val maxPromptChars: Int = 100_000,
-    val failureRate: Double = 0.0,
-    val qualityTier: String = "standard",
-    val privacyCapabilities: Set<RoutingPrivacyPolicy> = setOf(RoutingPrivacyPolicy.STANDARD),
-)
-
-interface ProviderProfileProvider {
-    fun profile(providerId: Long): ProviderProfile
-
-    fun profile(
-        guildId: Long,
-        providerId: Long,
-    ): ProviderProfile = profile(providerId)
-
-    /** 여러 프로바이더 프로필을 한 번에(라우팅 핫패스의 후보당 쿼리 N+1 방지). 기본은 개별 호출. */
-    fun profilesFor(providerIds: Collection<Long>): Map<Long, ProviderProfile> = providerIds.associateWith { profile(it) }
-
-    fun profilesFor(
-        guildId: Long,
-        providerIds: Collection<Long>,
-    ): Map<Long, ProviderProfile> = providerIds.associateWith { profile(guildId, it) }
-}
-
-/** 차단 사용자 확인(차수 11). BlocklistService 가 구현. 기본은 차단 없음. */
-interface BlocklistChecker {
-    fun isBlocked(
-        guildId: Long,
-        userId: Long,
-    ): Boolean
-}
-
-internal val ALLOW_ALL_BLOCKLIST =
-    object : BlocklistChecker {
-        override fun isBlocked(
-            guildId: Long,
-            userId: Long,
-        ): Boolean = false
-    }
-
-/** 공정 사용 쿼터(차수 11). 오늘 사용량이 일일 상한을 넘었는지. 기본 무제한. */
-interface QuotaChecker {
-    fun exceededQuota(
-        guildId: Long,
-        userId: Long,
-        roleIds: Set<Long>,
-    ): Boolean
-}
-
-internal val UNLIMITED_QUOTA =
-    object : QuotaChecker {
-        override fun exceededQuota(
-            guildId: Long,
-            userId: Long,
-            roleIds: Set<Long>,
-        ): Boolean = false
-    }
-
-/** Provider 보호 상태 확인. 과부하/수신정지 Provider는 품질 라우팅보다 먼저 제외한다. */
-interface ProviderSafetyChecker {
-    fun isRoutingProtected(
-        guildId: Long,
-        providerUserId: Long,
-    ): Boolean
-}
-
-internal val ALLOW_ALL_PROVIDER_SAFETY =
-    object : ProviderSafetyChecker {
-        override fun isRoutingProtected(
-            guildId: Long,
-            providerUserId: Long,
-        ): Boolean = false
-    }
-
-/** 사용량/기여 기록 트리거. JPA 구현(UsageService) 또는 테스트 fake. */
-interface UsageRecorder {
-    fun recordSuccess(
-        guildId: Long,
-        userId: Long,
-        providerId: Long,
-        requestId: String,
-    )
-
-    /** AiRequest 종단 상태 영속화(차수 11). 기본 no-op(테스트 fake 영향 없음). */
-    fun recordRequest(
-        input: AiRequestInput,
-        state: RequestState,
-        providerId: Long?,
-        failReason: String?,
-        requestId: String? = null,
-    ) {
-    }
-
-    /** 프로바이더 실패 기록(차수 11, ProviderHealth). 기본 no-op. */
-    fun recordProviderFailure(providerId: Long) {}
-}
-
-/** 요청 입력. */
-data class AiRequestInput(
-    val guildId: Long,
-    val channelId: Long,
-    val userId: Long,
-    val prompt: String,
-    val roleIds: Set<Long>,
-    val command: String = "ask",
-    val isAdmin: Boolean = false,
-    val preferredModel: String? = null,
-    val responseMode: String = "balanced",
-    val webSearch: Boolean = false,
-)
-
-/** 오케스트레이션 결과. */
-data class OrchestrationResult(
-    val state: RequestState,
-    val text: String? = null,
-    val providerId: Long? = null,
-    val failReason: String? = null,
-    val effectiveBurden: ModelBurden? = null,
-    val requestId: String? = null,
-    val sources: List<String> = emptyList(),
-)
 
 /**
  * 요청 처리 오케스트레이터 (K-차수 11, specs §7 흐름). 정책→무게→후보→필터→선택→전송,

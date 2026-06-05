@@ -192,7 +192,7 @@ data class OnboardingAnalysis(
 )
 
 /**
- * 온보딩 분석 라우팅 컨텍스트. 프로바이더는 [com.discordassistant.central.routing.RequestOrchestrator] 에서
+ * 온보딩 분석 라우팅 컨텍스트. 프로바이더는 [com.discordassistant.central.routing.application.RequestOrchestrator] 에서
  * **길드별 풀**(`registry.byGuild(guildId)`)로 찾으므로, 분석 요청을 **실제 길드/채널/actor** 로 라우팅해야 한다(A).
  * guildId=0 같은 더미로 보내면 그 길드 풀이 비어 항상 NO_PROVIDER → 휴리스틱 폴백이 된다.
  */

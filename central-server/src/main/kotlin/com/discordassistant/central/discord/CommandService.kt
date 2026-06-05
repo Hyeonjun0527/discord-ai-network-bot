@@ -27,8 +27,8 @@ import com.discordassistant.central.provider.application.ContributionPolicyServi
 import com.discordassistant.central.provider.application.ProviderProtectionService
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.relay.ConnectionRegistry
-import com.discordassistant.central.routing.AiRequestInput
-import com.discordassistant.central.routing.RequestOrchestrator
+import com.discordassistant.central.routing.application.RequestOrchestrator
+import com.discordassistant.central.routing.domain.model.AiRequestInput
 import com.discordassistant.central.usage.UsageService
 import org.springframework.stereotype.Service
 
@@ -373,7 +373,7 @@ class CommandService(
         runId: Long,
         providerId: Long?,
         modelName: String?,
-        result: com.discordassistant.central.routing.OrchestrationResult,
+        result: com.discordassistant.central.routing.domain.model.OrchestrationResult,
         latencyMs: Int,
     ) {
         runCatching {
@@ -394,7 +394,7 @@ class CommandService(
         maxCandidates: Int,
     ): Boolean = maxCandidates > 1 || responseMode.equals("deep", ignoreCase = true)
 
-    private fun com.discordassistant.central.routing.OrchestrationResult.toRuntimeAnswerRef(): String? =
+    private fun com.discordassistant.central.routing.domain.model.OrchestrationResult.toRuntimeAnswerRef(): String? =
         if (state == RequestState.COMPLETED) {
             "discord-ask-runtime:${java.util.UUID.randomUUID()}"
         } else {

@@ -9,7 +9,7 @@ import com.discordassistant.central.persistence.GuildRepository
 import com.discordassistant.central.persistence.RolePolicyEntity
 import com.discordassistant.central.persistence.RolePolicyRepository
 import com.discordassistant.central.provider.AuditLog
-import com.discordassistant.central.routing.RoutingPolicy
+import com.discordassistant.central.routing.application.port.RoutingPolicy
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

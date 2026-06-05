@@ -148,4 +148,33 @@ class ArchitectureTest {
             .areAnnotatedWith(jakarta.persistence.Entity::class.java)
             .should()
             .resideInAPackage("..adapter.outbound.persistence..")
+
+    // routing 도메인(모델 + 계산기 도메인서비스)은 인프라(영속/웹/메시지/Discord)와 application/adapter 에
+    // 의존하지 않는다. 실용 절충: 도메인서비스는 @Component(DI)만 허용하고 인프라 결합은 금지한다
+    // (계산기 10종은 인프라 import 0 — 순수 로직 + DI). RequestOrchestrator(application)가 포트로 위임한다.
+    @ArchTest
+    val routingDomainHasNoInfrastructure: ArchRule =
+        noClasses()
+            .that()
+            .resideInAPackage("..central.routing.domain..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage(
+                "..central.routing.application..",
+                "..central.routing.adapter..",
+                "jakarta.persistence..",
+                "org.springframework.web..",
+                "org.springframework.data..",
+                "net.dv8tion..",
+            )
+
+    // routing application 은 adapter(아웃바운드 구현체)에 의존하지 않는다 — 포트(application.port)로만.
+    @ArchTest
+    val routingApplicationDoesNotDependOnAdapter: ArchRule =
+        noClasses()
+            .that()
+            .resideInAPackage("..central.routing.application..")
+            .should()
+            .dependOnClassesThat()
+            .resideInAPackage("..central.routing.adapter..")
 }

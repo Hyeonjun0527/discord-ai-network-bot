@@ -1,4 +1,4 @@
-package com.discordassistant.central.routing
+package com.discordassistant.central.routing.domain.service
 
 import org.springframework.stereotype.Component
 import java.util.concurrent.atomic.AtomicInteger

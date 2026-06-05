@@ -7,7 +7,7 @@ import com.discordassistant.central.persistence.AiNetworkEventEntity
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
-import com.discordassistant.central.routing.ProviderSafetyChecker
+import com.discordassistant.central.routing.application.port.ProviderSafetyChecker
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock

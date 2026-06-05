@@ -1,4 +1,4 @@
-package com.discordassistant.central.routing
+package com.discordassistant.central.routing.domain.service
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestWeight

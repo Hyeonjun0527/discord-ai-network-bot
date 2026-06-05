@@ -1,4 +1,4 @@
-package com.discordassistant.central.provider
+package com.discordassistant.central.routing.adapter.outbound
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.ModelQualityTier
@@ -6,8 +6,8 @@ import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyRepository
-import com.discordassistant.central.routing.ProviderProfile
-import com.discordassistant.central.routing.ProviderProfileProvider
+import com.discordassistant.central.routing.application.port.ProviderProfileProvider
+import com.discordassistant.central.routing.domain.model.ProviderProfile
 import org.springframework.stereotype.Service
 
 @Service

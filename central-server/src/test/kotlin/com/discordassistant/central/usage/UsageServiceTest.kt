@@ -4,7 +4,7 @@ import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.network.AiLevelService
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
 import com.discordassistant.central.persistence.AiRequestRepository
-import com.discordassistant.central.routing.AiRequestInput
+import com.discordassistant.central.routing.domain.model.AiRequestInput
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test

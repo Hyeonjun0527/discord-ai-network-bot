@@ -2,7 +2,7 @@ package com.discordassistant.central.provider
 
 import com.discordassistant.central.persistence.BlocklistEntity
 import com.discordassistant.central.persistence.BlocklistRepository
-import com.discordassistant.central.routing.BlocklistChecker
+import com.discordassistant.central.routing.application.port.BlocklistChecker
 import jakarta.annotation.PostConstruct
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

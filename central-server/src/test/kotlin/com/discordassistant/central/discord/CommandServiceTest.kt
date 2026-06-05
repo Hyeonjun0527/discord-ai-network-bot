@@ -22,7 +22,7 @@ import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
-import com.discordassistant.central.routing.ProviderRoutingStats
+import com.discordassistant.central.routing.domain.service.ProviderRoutingStats
 import com.discordassistant.central.usage.UsageService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse

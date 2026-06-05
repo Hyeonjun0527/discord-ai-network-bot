@@ -2,9 +2,9 @@ package com.discordassistant.central.dev
 
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.relay.ConnectionRegistry
-import com.discordassistant.central.routing.AiRequestInput
-import com.discordassistant.central.routing.OrchestrationResult
-import com.discordassistant.central.routing.RequestOrchestrator
+import com.discordassistant.central.routing.application.RequestOrchestrator
+import com.discordassistant.central.routing.domain.model.AiRequestInput
+import com.discordassistant.central.routing.domain.model.OrchestrationResult
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping

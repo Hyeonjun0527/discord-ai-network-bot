@@ -1,5 +1,8 @@
-package com.discordassistant.central.routing
+package com.discordassistant.central.routing.domain.service
 
+import com.discordassistant.central.routing.domain.model.AttemptFinalState
+import com.discordassistant.central.routing.domain.model.RoutingAttemptOutcome
+import com.discordassistant.central.routing.domain.model.RoutingScoreBreakdown
 import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
 

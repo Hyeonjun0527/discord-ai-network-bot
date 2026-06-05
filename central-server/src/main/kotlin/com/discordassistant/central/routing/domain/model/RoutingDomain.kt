@@ -1,4 +1,4 @@
-package com.discordassistant.central.routing
+package com.discordassistant.central.routing.domain.model
 
 import com.discordassistant.central.domain.ModelBurden
 import java.util.concurrent.TimeUnit

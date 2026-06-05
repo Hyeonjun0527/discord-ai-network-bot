@@ -78,11 +78,11 @@ jobs:
           security unlock-keychain -p ci build.keychain
           security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
           # 하드웨어 런타임으로 Developer ID 서명(notarization 요건).
-          codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" dist/nexa
-          codesign --verify --strict --verbose=2 dist/nexa
+          codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" dist/nexa-agent-cli
+          codesign --verify --strict --verbose=2 dist/nexa-agent-cli
           # notarization: 단일 실행파일은 zip 으로 제출(스테이플 불가 → 온라인 검증).
           if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
-            ditto -c -k --keepParent dist/nexa dist/notarize.zip
+            ditto -c -k --keepParent dist/nexa-agent-cli dist/notarize.zip
             xcrun notarytool submit dist/notarize.zip \
               --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
             rm -f dist/notarize.zip
@@ -110,8 +110,8 @@ jobs:
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
           [IO.File]::WriteAllBytes("cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
-          & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\nexa.exe
-          & signtool verify /pa dist\nexa.exe
+          & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\nexa-agent-cli.exe
+          & signtool verify /pa dist\nexa-agent-cli.exe
           # GUI exe(NEXA.exe)도 동일하게 서명(SmartScreen 평판).
           if (Test-Path dist\NEXA.exe) {
             & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\NEXA.exe
@@ -129,12 +129,12 @@ jobs:
           password: ${{ secrets.ES_PASSWORD }}
           credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}\dist\nexa.exe
+          file_path: ${{ github.workspace }}\provider-agent\dist\nexa-agent-cli.exe
           override: 'true'
           malware_block: 'false'
           environment_name: PROD
       - name: Windows eSigner sign (GUI exe)
-        if: runner.os == 'Windows' && vars.WINDOWS_SIGN_PROVIDER == 'esigner' && hashFiles('dist/NEXA.exe') != ''
+        if: runner.os == 'Windows' && vars.WINDOWS_SIGN_PROVIDER == 'esigner' && hashFiles('provider-agent/dist/NEXA.exe') != ''
         uses: sslcom/esigner-codesign@develop
         with:
           command: sign
@@ -142,7 +142,7 @@ jobs:
           password: ${{ secrets.ES_PASSWORD }}
           credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}\dist\NEXA.exe
+          file_path: ${{ github.workspace }}\provider-agent\dist\NEXA.exe
           override: 'true'
           malware_block: 'false'
           environment_name: PROD
@@ -157,9 +157,9 @@ jobs:
         run: |
           cd dist
           case "$RUNNER_OS" in
-            Linux)   mv nexa nexa-agent-linux ;;
-            macOS)   mv nexa nexa-agent-macos ;;
-            Windows) mv nexa.exe nexa-agent-windows.exe ;;
+            Linux)   mv nexa-agent-cli nexa-agent-linux ;;
+            macOS)   mv nexa-agent-cli nexa-agent-macos ;;
+            Windows) mv nexa-agent-cli.exe nexa-agent-windows.exe ;;
           esac
           # macOS GUI .app → ① 인앱 업데이터/brew 가 받는 zip(내부 피드, 사용자 비노출).
           #                  ② 사용자 웹 다운로드용 dmg(드래그 설치) — Applications 심볼릭 링크 포함.
@@ -188,7 +188,9 @@ jobs:
         with:
           name: provider-agent-${{ matrix.os }}
           path: |
-            provider-agent/dist/nexa-agent-*
+            provider-agent/dist/nexa-agent-linux
+            provider-agent/dist/nexa-agent-macos
+            provider-agent/dist/nexa-agent-windows.exe
             provider-agent/dist/nexa-macos.zip
             provider-agent/dist/nexa-macos.dmg
             provider-agent/dist/nexa-windows.exe
@@ -210,8 +212,24 @@ jobs:
           path: dist
       - name: 단일 SHA256SUMS.txt 생성
         run: |
+          set -euo pipefail
           cd dist
-          for f in nexa-agent-* nexa-macos.zip nexa-macos.dmg nexa-windows.exe; do [ -e "$f" ] && sha256sum "$f"; done > SHA256SUMS.txt
+          required_assets=(
+            nexa-agent-linux
+            nexa-agent-macos
+            nexa-agent-windows.exe
+            nexa-macos.zip
+            nexa-macos.dmg
+            nexa-windows.exe
+          )
+          for f in "${required_assets[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::릴리스 자산 파일이 없습니다: $f"
+              find . -maxdepth 2 -print
+              exit 1
+            fi
+            sha256sum "$f"
+          done > SHA256SUMS.txt
           cat SHA256SUMS.txt
       # 패키지 매니저 매니페스트 렌더링(Homebrew/winget). 매니저가 sha256 을 자동 검증하므로
       # 사용자는 수동 해시검증이 불필요해진다. 렌더 결과를 릴리스 자산으로 첨부.
@@ -377,11 +395,18 @@ jobs:
           path: agent-bins
       - name: central 다운로드 폴더에 배치
         run: |
-          set -e
+          set -euo pipefail
           DEST="$HOME/deploy/central-server/downloads"
           mkdir -p "$DEST"
-          cp -f agent-bins/nexa-agent-* "$DEST/"
+          for f in nexa-agent-linux nexa-agent-macos nexa-agent-windows.exe; do
+            if [ ! -f "agent-bins/$f" ]; then
+              echo "::error::central 배치 자산 파일이 없습니다: $f"
+              find agent-bins -maxdepth 2 -print
+              exit 1
+            fi
+            cp -f "agent-bins/$f" "$DEST/"
+          done
           # GUI 데스크톱 앱 자산도 배치 → 웹 다운로드 버튼(/download/nexa-macos.dmg·-windows.exe)이 동작.
           cp -f agent-bins/nexa-macos.dmg agent-bins/nexa-windows.exe agent-bins/nexa-macos.zip "$DEST/" 2>/dev/null || true
-          chmod +x "$DEST"/nexa-agent-* 2>/dev/null || true
+          chmod +x "$DEST"/nexa-agent-linux "$DEST"/nexa-agent-macos 2>/dev/null || true
           ls -la "$DEST"

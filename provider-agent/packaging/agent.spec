@@ -1,6 +1,6 @@
 # PyInstaller spec — CLI onefile(전 OS 공통) + 데스크톱 네이티브 GUI(macOS .app / Windows .exe).
 # 빌드: cd provider-agent && pyinstaller packaging/agent.spec   (GUI 는 pywebview 필요: pip install .[gui])
-#   결과: dist/nexa                             (플랫폼별 CLI 실행파일 — 서비스/헤드리스용)
+#   결과: dist/nexa-agent-cli                   (플랫폼별 CLI 실행파일 — 서비스/헤드리스용)
 #         dist/NEXA.app                         (macOS 에서만 — Finder/응용 프로그램용 GUI 앱)
 #         dist/NEXA.exe                         (Windows 에서만 — 네이티브 창 GUI 앱, mac .app 과 동일 UX)
 # block_cipher 미사용.
@@ -36,7 +36,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="nexa",
+    name="nexa-agent-cli",
     console=True,
     onefile=True,
     upx=True,
@@ -71,7 +71,9 @@ if IS_MAC:
         gui_a.binaries,
         gui_a.datas,
         upx=True,
-        name="NEXA",
+        # macOS 기본 파일시스템은 대소문자를 구분하지 않아 CLI `nexa-agent-cli`와
+        # GUI 번들 준비 디렉터리가 같은 이름 계열이면 release asset glob에 섞일 수 있다.
+        name="NEXA-gui",
     )
     app = BUNDLE(
         gui_coll,

@@ -93,7 +93,51 @@
       "en": "Once installed, check your online status with <code>/provider-status</code> in Discord.",
       "ja": "インストール後、Discordの <code>/自分の状態</code> でオンライン状態を確認してください。"
     },
-    "installLabel": { "ko": "설치 <span>— 내 컴퓨터를 고르세요</span>", "en": "Install <span>— pick your computer</span>", "ja": "インストール <span>— お使いのPCを選択</span>" }
+    "installLabel": { "ko": "설치 <span>— 내 컴퓨터를 고르세요</span>", "en": "Install <span>— pick your computer</span>", "ja": "インストール <span>— お使いのPCを選択</span>" },
+    "beatReadyEyebrow": { "ko": "READY · 중앙 네트워크 온라인", "en": "READY · Central network online", "ja": "READY · 中央ネットワーク オンライン" },
+    "beatConnectHeadline": {
+      "ko": "지금 <span class=\"accent\">AI 멤버</span>를<br>연결하세요",
+      "en": "Connect an <span class=\"accent\">AI member</span><br>right now",
+      "ja": "今すぐ<span class=\"accent\">AIメンバー</span>を<br>つなげましょう"
+    },
+    "installTitle": { "ko": "터미널 여는 법", "en": "How to open a terminal", "ja": "ターミナルの開き方" },
+    "btnCopy": { "ko": "복사", "en": "Copy", "ja": "コピー" },
+    "btnCopied": { "ko": "복사됨 ✓", "en": "Copied ✓", "ja": "コピー済み ✓" },
+    "badgeTerminalInstall": { "ko": "터미널로 설치", "en": "Install via terminal", "ja": "ターミナルでインストール" },
+    "alertSourceTitle": { "ko": "출처 검증 · 일반 사용자 권한", "en": "Verified source · standard privileges", "ja": "出所検証 · 一般ユーザー権限" },
+    "alertSourceBody": {
+      "ko": "<code>brew</code>·<code>winget</code> 로 설치하면 패키지 해시가 <b>자동 검증</b>되고, 빌드 <b>attestation·SBOM</b>으로 출처를 확인할 수 있습니다. <code>sudo</code>·관리자 권한이 필요 없고, 설정·로그는 홈 디렉터리에만 저장됩니다.",
+      "en": "Installing with <code>brew</code> or <code>winget</code> <b>verifies the package hash automatically</b>, and build <b>attestation · SBOM</b> let you confirm provenance. No <code>sudo</code> or admin rights needed, and settings · logs are stored only in your home directory.",
+      "ja": "<code>brew</code>·<code>winget</code> でインストールするとパッケージハッシュが<b>自動検証</b>され、ビルドの <b>attestation · SBOM</b> で出所を確認できます。<code>sudo</code>·管理者権限は不要で、設定·ログはホームディレクトリにのみ保存されます。"
+    },
+    "alertPrivacyTitle": { "ko": "개인정보 주의", "en": "Privacy notice", "ja": "プライバシーに関する注意" },
+    "alertPrivacyBody": {
+      "ko": "<code>/질문</code> 으로 들어온 <b>다른 사용자의 질문이 당신의 PC로 전송</b>되어 로컬 AI가 처리하고, 반대로 <b>당신의 질문도 다른 사용자의 PC로</b> 전송될 수 있습니다. <b>비밀번호·API 키·토큰·개인정보는 절대 입력하지 마세요.</b> 에이전트는 프롬프트 원문을 로그/파일에 저장하지 않습니다.",
+      "en": "Other users' questions submitted via <code>/ask</code> <b>are sent to your PC</b> and processed by your local AI, and likewise <b>your questions may be sent to other users' PCs</b>. <b>Never enter passwords, API keys, tokens, or personal data.</b> The agent does not store raw prompts in logs or files.",
+      "ja": "<code>/質問</code> で送られた<b>他のユーザーの質問があなたのPCに送信</b>されローカルAIが処理し、逆に<b>あなたの質問も他のユーザーのPCへ</b>送信される場合があります。<b>パスワード·APIキー·トークン·個人情報は絶対に入力しないでください。</b> エージェントはプロンプト原文をログ/ファイルに保存しません。"
+    },
+    "alertDefaultsTitle": { "ko": "안전한 기본값", "en": "Safe defaults", "ja": "安全なデフォルト" },
+    "alertDefaultsBody": {
+      "ko": "하루 처리 한도 <b>15건</b>·동시 <b>1건</b>이 기본이며, 무제한은 <code>--allow-unlimited</code> 로만 가능합니다. Ollama 는 기본 <b>localhost 전용</b>입니다.",
+      "en": "Defaults are <b>15 requests/day</b> and <b>1 concurrent</b>; unlimited is possible only with <code>--allow-unlimited</code>. Ollama is <b>localhost-only</b> by default.",
+      "ja": "1日の処理上限<b>15件</b>·同時<b>1件</b>が既定で、無制限は <code>--allow-unlimited</code> でのみ可能です。Ollama は既定で<b>localhost専用</b>です。"
+    },
+    "alertImageTitle": { "ko": "선택 — 이미지 생성도 제공", "en": "Optional — image generation too", "ja": "オプション — 画像生成も提供" },
+    "alertImageBody": {
+      "ko": "누구나 이미지 프로바이더가 될 수 있습니다. 로컬 <b>Stable Diffusion</b>(AUTOMATIC1111 등)을 켜고 에이전트에 <code>--enable-image</code> 를 추가하면 <code>/그림</code> 요청을 처리합니다(GPU 권장).",
+      "en": "Anyone can become an image provider. Turn on a local <b>Stable Diffusion</b> (e.g. AUTOMATIC1111) and add <code>--enable-image</code> to the agent to handle <code>/imagine</code> requests (GPU recommended).",
+      "ja": "誰でも画像プロバイダーになれます。ローカルの <b>Stable Diffusion</b>(AUTOMATIC1111 など)を起動し、エージェントに <code>--enable-image</code> を追加すると <code>/画像</code> リクエストを処理します(GPU推奨)。"
+    },
+    "footerMain": {
+      "ko": "커뮤니티 로컬 AI Provider Pool · 남는 컴퓨팅 파워를 유용한 응답 자원으로 (<span class=\"warn\">기여·공정성, 금전 거래 아님</span>)",
+      "en": "Community local AI Provider Pool · turn spare compute into useful answers (<span class=\"warn\">contribution · fairness, not a paid service</span>)",
+      "ja": "コミュニティ ローカルAI Provider Pool · 余ったコンピューティングを役立つ応答リソースに (<span class=\"warn\">貢献·公平性、金銭取引ではありません</span>)"
+    },
+    "footerWarn": {
+      "ko": "⚠ 비밀번호 · API 키 등 민감정보는 절대 입력하지 마세요.",
+      "en": "⚠ Never enter sensitive information such as passwords or API keys.",
+      "ja": "⚠ パスワード · APIキーなどの機密情報は絶対に入力しないでください。"
+    }
   },
   "agent": {
     "alreadyRunning": { "ko": "이미 실행 중입니다.", "en": "Already running.", "ja": "すでに実行中です。" },

@@ -331,8 +331,8 @@
         <div class="beat" data-beat="3"><div class="beat-num">STEP 03</div><h2 data-i18n="feat3Title">서버 자동화</h2><p data-i18n="feat3Text">반복적인 작업은 AI에게 맡기고, 커뮤니티에 집중하세요.</p></div>
 
         <div class="beat" data-beat="4">
-          <div class="eyebrow">READY · 중앙 네트워크 온라인</div>
-          <h2>지금 <span class="accent">AI 멤버</span>를<br>연결하세요</h2>
+          <div class="eyebrow" data-i18n="beatReadyEyebrow">READY · 중앙 네트워크 온라인</div>
+          <h2 data-i18n="beatConnectHeadline">지금 <span class="accent">AI 멤버</span>를<br>연결하세요</h2>
           <div class="hero-actions">
             <a class="btn primary" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>
@@ -365,16 +365,16 @@
     <section class="install" id="install">
       <div class="install-head">
         <div>
-          <h2 class="install-title" id="installTitle">터미널 여는 법</h2>
+          <h2 class="install-title" id="installTitle" data-i18n="installTitle">터미널 여는 법</h2>
           <div class="install-hint" id="installHint"></div>
         </div>
-        <button class="copy-btn install-copy" id="copyBtn">복사</button>
+        <button class="copy-btn install-copy" id="copyBtn" data-i18n="btnCopy">복사</button>
       </div>
       <div class="code-shell">
         <div class="shell-top">
-          <span class="neon-badge"><span class="np">&gt;_</span> 터미널로 설치</span>
+          <span class="neon-badge"><span class="np">&gt;_</span> <span data-i18n="badgeTerminalInstall">터미널로 설치</span></span>
           <div class="shell-name" id="shellName">terminal — zsh</div>
-          <button class="copy-btn" id="copyBtn2">복사</button>
+          <button class="copy-btn" id="copyBtn2" data-i18n="btnCopy">복사</button>
         </div>
         <pre id="codeBlock"></pre>
       </div>
@@ -383,37 +383,37 @@
         <article class="alert">
           <div class="alert-icon">i</div>
           <div>
-            <div class="alert-title">출처 검증 · 일반 사용자 권한</div>
-            <div class="alert-body"><code>brew</code>·<code>winget</code> 로 설치하면 패키지 해시가 <b>자동 검증</b>되고, 빌드 <b>attestation·SBOM</b>으로 출처를 확인할 수 있습니다. <code>sudo</code>·관리자 권한이 필요 없고, 설정·로그는 홈 디렉터리에만 저장됩니다.</div>
+            <div class="alert-title" data-i18n="alertSourceTitle">출처 검증 · 일반 사용자 권한</div>
+            <div class="alert-body" data-i18n="alertSourceBody"><code>brew</code>·<code>winget</code> 로 설치하면 패키지 해시가 <b>자동 검증</b>되고, 빌드 <b>attestation·SBOM</b>으로 출처를 확인할 수 있습니다. <code>sudo</code>·관리자 권한이 필요 없고, 설정·로그는 홈 디렉터리에만 저장됩니다.</div>
           </div>
         </article>
         <article class="alert warn">
           <div class="alert-icon">!</div>
           <div>
-            <div class="alert-title">개인정보 주의</div>
-            <div class="alert-body"><code>/질문</code> 으로 들어온 <b>다른 사용자의 질문이 당신의 PC로 전송</b>되어 로컬 AI가 처리하고, 반대로 <b>당신의 질문도 다른 사용자의 PC로</b> 전송될 수 있습니다. <b>비밀번호·API 키·토큰·개인정보는 절대 입력하지 마세요.</b> 에이전트는 프롬프트 원문을 로그/파일에 저장하지 않습니다.</div>
+            <div class="alert-title" data-i18n="alertPrivacyTitle">개인정보 주의</div>
+            <div class="alert-body" data-i18n="alertPrivacyBody"><code>/질문</code> 으로 들어온 <b>다른 사용자의 질문이 당신의 PC로 전송</b>되어 로컬 AI가 처리하고, 반대로 <b>당신의 질문도 다른 사용자의 PC로</b> 전송될 수 있습니다. <b>비밀번호·API 키·토큰·개인정보는 절대 입력하지 마세요.</b> 에이전트는 프롬프트 원문을 로그/파일에 저장하지 않습니다.</div>
           </div>
         </article>
         <article class="alert">
           <div class="alert-icon">⚙</div>
           <div>
-            <div class="alert-title">안전한 기본값</div>
-            <div class="alert-body">하루 처리 한도 <b>15건</b>·동시 <b>1건</b>이 기본이며, 무제한은 <code>--allow-unlimited</code> 로만 가능합니다. Ollama 는 기본 <b>localhost 전용</b>입니다.</div>
+            <div class="alert-title" data-i18n="alertDefaultsTitle">안전한 기본값</div>
+            <div class="alert-body" data-i18n="alertDefaultsBody">하루 처리 한도 <b>15건</b>·동시 <b>1건</b>이 기본이며, 무제한은 <code>--allow-unlimited</code> 로만 가능합니다. Ollama 는 기본 <b>localhost 전용</b>입니다.</div>
           </div>
         </article>
         <article class="alert">
           <div class="alert-icon">＋</div>
           <div>
-            <div class="alert-title">선택 — 이미지 생성도 제공</div>
-            <div class="alert-body">누구나 이미지 프로바이더가 될 수 있습니다. 로컬 <b>Stable Diffusion</b>(AUTOMATIC1111 등)을 켜고 에이전트에 <code>--enable-image</code> 를 추가하면 <code>/그림</code> 요청을 처리합니다(GPU 권장).</div>
+            <div class="alert-title" data-i18n="alertImageTitle">선택 — 이미지 생성도 제공</div>
+            <div class="alert-body" data-i18n="alertImageBody">누구나 이미지 프로바이더가 될 수 있습니다. 로컬 <b>Stable Diffusion</b>(AUTOMATIC1111 등)을 켜고 에이전트에 <code>--enable-image</code> 를 추가하면 <code>/그림</code> 요청을 처리합니다(GPU 권장).</div>
           </div>
         </article>
       </div>
     </section>
 
     <footer>
-      <div>커뮤니티 로컬 AI Provider Pool · 남는 컴퓨팅 파워를 유용한 응답 자원으로 (<span class="warn">기여·공정성, 금전 거래 아님</span>)</div>
-      <div class="warn">⚠ 비밀번호 · API 키 등 민감정보는 절대 입력하지 마세요.</div>
+      <div data-i18n="footerMain">커뮤니티 로컬 AI Provider Pool · 남는 컴퓨팅 파워를 유용한 응답 자원으로 (<span class="warn">기여·공정성, 금전 거래 아님</span>)</div>
+      <div class="warn" data-i18n="footerWarn">⚠ 비밀번호 · API 키 등 민감정보는 절대 입력하지 마세요.</div>
     </footer>
   </div>
 
@@ -442,6 +442,8 @@
         });
         document.documentElement.lang = lang;
       }
+      // JS 동적 문구(예: 복사 피드백)도 같은 SSOT 를 쓰도록 접근자 노출.
+      window.__t = (k) => (dict && dict[k] && dict[k][lang]) || '';
       if (sel) {
         sel.addEventListener('change', () => {
           lang = sel.value;
@@ -516,7 +518,7 @@
       navigator.clipboard.writeText(text).then(() => {
         ['copyBtn', 'copyBtn2'].forEach(id => {
           const b = document.getElementById(id); const o = b.textContent;
-          b.textContent = '복사됨 ✓';
+          b.textContent = (window.__t && window.__t('btnCopied')) || '복사됨 ✓';
           setTimeout(() => { b.textContent = o; }, 1600);
         });
       });

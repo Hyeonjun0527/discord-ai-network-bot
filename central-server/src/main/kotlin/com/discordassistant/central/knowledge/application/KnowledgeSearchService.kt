@@ -1,7 +1,6 @@
 package com.discordassistant.central.knowledge.application
 
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
-import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeChunkEntity
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeChunkRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
@@ -11,7 +10,6 @@ import com.discordassistant.central.knowledge.adapter.outbound.persistence.Retri
 import com.discordassistant.central.knowledge.domain.model.KnowledgeChunkStatus
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSourceStatus
 import com.discordassistant.central.knowledge.domain.model.RetrievalPolicyStatus
-import com.discordassistant.central.shared.ResponseMode
 import org.springframework.stereotype.Service
 import com.discordassistant.central.shared.ContentSafety.USABLE_KNOWLEDGE_RISK_LEVELS as SEARCHABLE_RISK_LEVELS
 
@@ -22,6 +20,8 @@ class KnowledgeSearchService(
     private val chunks: KnowledgeChunkRepository? = null,
     private val retrievalPolicies: RetrievalPolicyRepository? = null,
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
+    private val scorer: KnowledgeScorer = KnowledgeScorer(),
+    private val promptComposer: KnowledgePromptComposer = KnowledgePromptComposer(),
 ) {
     fun search(
         guildId: Long,
@@ -188,48 +188,21 @@ class KnowledgeSearchService(
                     searchWithScope(guildId, query, normalizedQuery, policy?.topK ?: 10, allowedSpaceIds, policy)
             }
         val budget = minOf(maxChars.coerceIn(200, 8_000), policy?.tokenBudget ?: 8_000)
-        val entries = mutableListOf<KnowledgePromptEntry>()
-        val sourceRefs = mutableListOf<KnowledgeSourceRef>()
-        val lines = mutableListOf<String>()
-        var used = 0
-        for (result in search.results) {
-            val ref = "S${entries.size + 1}"
-            val prefix = "- [$ref] "
-            val separatorChars = if (lines.isEmpty()) 0 else 1
-            val snippetBudget = budget - used - separatorChars - prefix.length
-            if (snippetBudget < MIN_CONTEXT_SNIPPET_CHARS) break
-            val text = result.toPromptSnippet().take(snippetBudget)
-            val line = "$prefix$text"
-            val nextUsed = used + separatorChars + line.length
-            if (nextUsed > budget) break
-            entries +=
-                KnowledgePromptEntry(
-                    sourceId = result.sourceId,
-                    knowledgeSpaceId = result.knowledgeSpaceId,
-                    title = result.title,
-                    sourceType = result.sourceType,
-                    sourceUri = result.sourceUri,
-                    snippet = text,
-                )
-            sourceRefs += result.toSourceRef(ref)
-            lines += line
-            used = nextUsed
-        }
-        val contextText = lines.joinToString("\n")
+        val composition = promptComposer.assemble(search.results, budget)
         return KnowledgePromptContext(
             guildId = guildId,
             channelId = channelId,
             knowledgeSpaceId = knowledgeSpaceId,
             query = query,
             maxChars = budget,
-            usedChars = used,
-            entries = entries,
-            contextText = contextText,
-            sourceRefs = sourceRefs,
+            usedChars = composition.usedChars,
+            entries = composition.entries,
+            contextText = composition.contextText,
+            sourceRefs = composition.sourceRefs,
             fallbackReason =
                 when {
                     search.fallbackReason != null -> search.fallbackReason
-                    entries.isEmpty() -> "context_budget_too_small"
+                    composition.entries.isEmpty() -> "context_budget_too_small"
                     else -> null
                 },
         )
@@ -244,8 +217,8 @@ class KnowledgeSearchService(
         knowledgeSpaceId: Long? = null,
     ): KnowledgeContextPlan {
         featureGate.requireRagEnabled()
-        val normalizedMode = normalizeResponseMode(responseMode)
-        val modeBudget = ragBudgetFor(normalizedMode)
+        val normalizedMode = promptComposer.normalizeResponseMode(responseMode)
+        val modeBudget = promptComposer.ragBudgetFor(normalizedMode)
         if (modeBudget == 0) {
             return KnowledgeContextPlan.disabled(
                 guildId = guildId,
@@ -326,29 +299,6 @@ class KnowledgeSearchService(
         }
     }
 
-    private fun KnowledgeSourceEntity.toResult(
-        query: String,
-        policy: RetrievalPolicyEntity?,
-    ): KnowledgeSearchResult? {
-        val haystack = listOf(title, sourceUri.orEmpty(), sourceType).joinToString(" ").lowercase()
-        val terms = query.split(Regex("\\s+")).filter { it.length >= 2 }
-        val rawScore = terms.sumOf { term -> haystack.windowed(term.length).count { it == term } }
-        if (rawScore <= 0) return null
-        val matchSignals = matchSignals(query, terms, title, sourceUri, sourceType, content = null, chunk = false)
-        val sourceWeight = sourceWeight(policy)
-        return KnowledgeSearchResult(
-            sourceId = id,
-            knowledgeSpaceId = knowledgeSpaceId,
-            title = title,
-            sourceType = sourceType,
-            sourceUri = sourceUri,
-            riskLevel = riskLevel,
-            score = rawScore + sourceWeight,
-            sourceWeight = sourceWeight,
-            matchSignals = matchSignals,
-        )
-    }
-
     private fun searchableSources(
         guildId: Long,
         allowedSpaceIds: Set<Long>,
@@ -366,7 +316,7 @@ class KnowledgeSearchService(
         searchableSources: List<KnowledgeSourceEntity>,
         query: String,
         policy: RetrievalPolicyEntity?,
-    ): List<KnowledgeSearchResult> = searchableSources.mapNotNull { it.toResult(query, policy) }
+    ): List<KnowledgeSearchResult> = searchableSources.mapNotNull { scorer.toResult(it, query, policy) }
 
     private fun chunkCandidates(
         guildId: Long,
@@ -383,101 +333,9 @@ class KnowledgeSearchService(
             .findByGuildIdAndKnowledgeSpaceIdInAndStatus(guildId, allowedSpaceIds, KnowledgeChunkStatus.READY)
             .mapNotNull { chunk ->
                 val source = sourceById[chunk.knowledgeSourceId] ?: return@mapNotNull null
-                chunk.toResult(source, query, policy)
+                scorer.toResult(chunk, source, query, policy)
             }
     }
-
-    private fun KnowledgeChunkEntity.toResult(
-        source: KnowledgeSourceEntity,
-        query: String,
-        policy: RetrievalPolicyEntity?,
-    ): KnowledgeSearchResult? {
-        val terms = query.split(Regex("\\s+")).filter { it.length >= 2 }
-        val haystack = listOf(title, source.sourceUri.orEmpty(), source.sourceType, contentPreview).joinToString(" ").lowercase()
-        val rawScore =
-            terms.sumOf { term ->
-                haystack.windowed(term.length).count { it == term }
-            } + terms.count { title.lowercase().contains(it) } * 2
-        if (rawScore <= 0) return null
-        val sourceWeight = source.sourceWeight(policy)
-        return KnowledgeSearchResult(
-            sourceId = source.id,
-            knowledgeSpaceId = knowledgeSpaceId,
-            title = title,
-            sourceType = source.sourceType,
-            sourceUri = source.sourceUri,
-            riskLevel = source.riskLevel,
-            score = rawScore + sourceWeight,
-            sourceWeight = sourceWeight,
-            matchSignals = matchSignals(query, terms, title, source.sourceUri, source.sourceType, contentPreview, chunk = true),
-            chunkId = id,
-            chunkIndex = chunkIndex,
-            contentPreview = contentPreview,
-        )
-    }
-
-    private fun KnowledgeSourceEntity.sourceWeight(policy: RetrievalPolicyEntity?): Int {
-        val rawLabels =
-            buildList {
-                add(sourceType.trim().lowercase())
-                if (addedBy != null) add("admin")
-                val publicText = "$title ${sourceUri.orEmpty()}".lowercase()
-                if ("help" in publicText || "faq" in publicText || "도움말" in publicText) add("help")
-                if ("summary" in publicText || "요약" in publicText) add("summary")
-            }
-        val labels = rawLabels.filter { it.isNotBlank() }.distinct()
-        val priorities =
-            policy
-                ?.sourcePriority
-                ?.split(",")
-                .orEmpty()
-                .map { it.trim().lowercase() }
-                .filter { it.isNotBlank() }
-        val priorityIndex = priorities.indexOfFirst { it in labels }
-        val policyBoost =
-            priorityIndex
-                .takeIf { index -> index >= 0 }
-                ?.let { (priorities.size - it) * SOURCE_PRIORITY_BOOST }
-                ?: 0
-        val defaultBoost = if ("admin" in labels) DEFAULT_ADMIN_SOURCE_BOOST else 0
-        return policyBoost + defaultBoost
-    }
-
-    private fun matchSignals(
-        query: String,
-        terms: List<String>,
-        title: String,
-        sourceUri: String?,
-        sourceType: String,
-        content: String?,
-        chunk: Boolean,
-    ): List<String> {
-        val normalizedQuery = query.trim().lowercase()
-        val normalizedTitle = title.lowercase()
-        val normalizedUri = sourceUri.orEmpty().lowercase()
-        val normalizedContent = content.orEmpty().lowercase()
-        return buildList {
-            if (chunk) add("chunk")
-            if (normalizedQuery.isNotBlank() && normalizedTitle.contains(normalizedQuery)) add("exact_title")
-            if (normalizedQuery.isNotBlank() && normalizedUri.contains(normalizedQuery)) add("exact_uri")
-            if (normalizedQuery.isNotBlank() && normalizedContent.contains(normalizedQuery)) add("exact_content")
-            if (terms.any { normalizedTitle.contains(it) }) add("term_title")
-            if (terms.any { normalizedUri.contains(it) }) add("term_uri")
-            if (terms.any { normalizedContent.contains(it) }) add("term_content")
-            add("source_type:${sourceType.trim().lowercase().ifBlank { "unknown" }}")
-        }.distinct()
-    }
-
-    private fun KnowledgeSearchResult.toSourceRef(ref: String): KnowledgeSourceRef =
-        KnowledgeSourceRef(
-            ref = ref,
-            sourceId = sourceId,
-            knowledgeSpaceId = knowledgeSpaceId,
-            title = title,
-            sourceType = sourceType,
-            sourceUri = sourceUri,
-            visibility = "channel_scoped",
-        )
 
     private fun activePolicy(
         guildId: Long,
@@ -496,37 +354,10 @@ class KnowledgeSearchService(
             ?: channelPolicies.firstOrNull { it.knowledgeSpaceId == null }
     }
 
-    private fun KnowledgeSearchResult.toPromptSnippet(): String =
-        listOfNotNull(
-            title.take(180),
-            contentPreview?.take(500),
-            sourceUri?.take(240),
-            "type=$sourceType",
-        ).joinToString(" · ")
-
     private companion object {
         const val MIN_HIT_AT_K = 0.8
         const val MIN_MRR = 0.7
         const val MIN_RECALL_AT_K = 0.7
-        const val MIN_CONTEXT_SNIPPET_CHARS = 40
-        const val SOURCE_PRIORITY_BOOST = 6
-        const val DEFAULT_ADMIN_SOURCE_BOOST = 2
-
-        fun normalizeResponseMode(value: String): String =
-            when (value.trim().lowercase()) {
-                // "off"(RAG 비활성)는 ResponseMode 에 없는 RAG 전용 모드라 여기서만 처리.
-                "off", "none", "disabled", "끄기", "비활성" -> "off"
-                else -> ResponseMode.normalize(value).wire
-            }
-
-        fun ragBudgetFor(responseMode: String): Int =
-            when (responseMode) {
-                "off" -> 0
-                "saving" -> 500
-                "fast" -> 800
-                "deep" -> 2_400
-                else -> 1_200
-            }
     }
 }
 

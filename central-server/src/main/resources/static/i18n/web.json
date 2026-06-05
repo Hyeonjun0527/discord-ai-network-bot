@@ -246,9 +246,9 @@
     "ja": "誰でも画像プロバイダーになれます。デスクトップアプリが提供する <b>Stable Diffusion</b> をインストールするだけで、ローカルの Stable Diffusion を AI が自動で使って <code>/画像</code> リクエストまで処理します(GPU推奨)。"
   },
   "footerMain": {
-    "ko": "커뮤니티 로컬 AI Provider Pool · 남는 컴퓨팅 파워를 유용한 응답 자원으로 (<span class=\"warn\">기여·공정성, 금전 거래 아님</span>)",
-    "en": "Community local AI Provider Pool · turn spare compute into useful answers (<span class=\"warn\">contribution · fairness, not a paid service</span>)",
-    "ja": "コミュニティ ローカルAI Provider Pool · 余ったコンピューティングを役立つ応答リソースに (<span class=\"warn\">貢献·公平性、金銭取引ではありません</span>)"
+    "ko": "커뮤니티 AI 네트워크 · 남는 컴퓨팅 파워를 유용한 응답 자원으로 (<span class=\"warn\">기여·공정성, 금전 거래 아님</span>)",
+    "en": "Community AI network · turn spare compute into useful answers (<span class=\"warn\">contribution · fairness, not a paid service</span>)",
+    "ja": "コミュニティAIネットワーク · 余ったコンピューティングを役立つ応答リソースに (<span class=\"warn\">貢献·公平性、金銭取引ではありません</span>)"
   },
   "footerWarn": {
     "ko": "⚠ 비밀번호 · API 키 등 민감정보는 절대 입력하지 마세요.",

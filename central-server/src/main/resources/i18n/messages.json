@@ -1,9 +1,9 @@
 {
   "_generated": "GENERATED from i18n/messages.json by scripts/gen_i18n.py — DO NOT EDIT. 문구 변경은 i18n/messages.json 에서.",
   "privacyNotice": {
-    "ko": "이 서버는 커뮤니티 로컬 AI Provider Pool 을 사용합니다. 질문 내용은 요청을 처리하는 커뮤니티 프로바이더의 PC 로 전송될 수 있습니다. 비밀번호·API 키·개인정보·비공개 문서 등 민감한 정보는 입력하지 마세요.",
-    "en": "This server uses a community local AI Provider Pool. Your question may be sent to a community provider's PC for processing. Do not enter sensitive information such as passwords, API keys, personal data, or private documents.",
-    "ja": "このサーバーはコミュニティのローカルAIプロバイダープールを使用します。質問内容は、リクエストを処理するコミュニティプロバイダーのPCに送信される場合があります。パスワード・APIキー・個人情報・非公開文書などの機密情報は入力しないでください。"
+    "ko": "이 서버는 커뮤니티 AI 네트워크를 사용합니다. 질문 내용은 요청을 처리하는 커뮤니티 프로바이더의 PC 로 전송될 수 있습니다. 비밀번호·API 키·개인정보·비공개 문서 등 민감한 정보는 입력하지 마세요.",
+    "en": "This server uses a community AI network. Your question may be sent to a community provider's PC for processing. Do not enter sensitive information such as passwords, API keys, personal data, or private documents.",
+    "ja": "このサーバーはコミュニティAIネットワークを使用します。質問内容は、リクエストを処理するコミュニティプロバイダーのPCに送信される場合があります。パスワード・APIキー・個人情報・非公開文書などの機密情報は入力しないでください。"
   },
   "cooldown": {
     "ko": "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.",

@@ -50,7 +50,7 @@ class EmbedFactoryTest {
     @Test
     fun `도움말 패널 embed — 관리자만 관리자 섹션`() {
         val user = EmbedFactory.helpEmbed(isAdmin = false)
-        assertEquals("${MenuSymbols.ASK} 커뮤니티 로컬 AI Provider Pool", user.title)
+        assertEquals("${MenuSymbols.ASK} 냥시스턴트 AI 네트워크", user.title)
         assertTrue(user.fields.any { it.name?.contains("유저") == true })
         assertFalse(user.fields.any { it.name?.contains("관리자") == true })
         assertTrue(EmbedFactory.helpEmbed(isAdmin = true).fields.any { it.name?.contains("관리자") == true })

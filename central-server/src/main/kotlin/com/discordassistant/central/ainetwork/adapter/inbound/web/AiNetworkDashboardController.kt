@@ -16,7 +16,7 @@ import com.discordassistant.central.ainetwork.application.ProviderSafetyService
 import com.discordassistant.central.ainetwork.application.QualityReviewSummary
 import com.discordassistant.central.ainetwork.application.QualitySummary
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity
-import com.discordassistant.central.multiresponse.adapter.inbound.web.MultiResponseOperationsDashboardResponse
+import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.MultiResponseOperationsDashboardResponse
 import com.discordassistant.central.multiresponse.application.MultiResponseOperationsSummary
 import com.discordassistant.central.multiresponse.application.MultiResponseService
 import com.discordassistant.central.requestlog.application.AnalyticsService

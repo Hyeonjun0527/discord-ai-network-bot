@@ -1,4 +1,8 @@
 package com.discordassistant.central.dashboard
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.KnowledgeSpaceStatus
@@ -6,14 +10,10 @@ import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.network.AiNetworkFoundationService
-import com.discordassistant.central.persistence.AiBehaviorVersionEntity
-import com.discordassistant.central.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventEntity
 import com.discordassistant.central.persistence.AiNetworkEventRepository
-import com.discordassistant.central.persistence.ChannelAiEntity
-import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.persistence.KnowledgeSourceEntity

@@ -1,4 +1,4 @@
-package com.discordassistant.central.domain
+package com.discordassistant.central.guild.domain.model
 
 /**
  * 프라이버시 처리 주체 표시 모드 (specs: `DM-V-PrivacyMode`). 기본 [C_ADMIN_ONLY].

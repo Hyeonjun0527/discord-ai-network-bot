@@ -1,14 +1,14 @@
-package com.discordassistant.central.discord
+package com.discordassistant.central.channelai.application
 
-import com.discordassistant.central.domain.ProposalStatus
-import com.discordassistant.central.persistence.AiBehaviorVersionEntity
-import com.discordassistant.central.persistence.AiBehaviorVersionRepository
-import com.discordassistant.central.persistence.AiChangeProposalEntity
-import com.discordassistant.central.persistence.AiChangeProposalRepository
-import com.discordassistant.central.persistence.ChannelAiEntity
-import com.discordassistant.central.persistence.ChannelAiRepository
-import com.discordassistant.central.persistence.CustomizationAuditLogEntity
-import com.discordassistant.central.persistence.CustomizationAuditLogRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
+import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant

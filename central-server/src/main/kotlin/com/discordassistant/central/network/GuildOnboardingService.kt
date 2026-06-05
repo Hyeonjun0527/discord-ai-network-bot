@@ -1,5 +1,8 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.channelai.application.AiChangeProposalReview
+import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
+import com.discordassistant.central.channelai.application.ChannelAiWizardDraft
 import com.discordassistant.central.persistence.GuildOnboardingConsentEntity
 import com.discordassistant.central.persistence.GuildOnboardingConsentRepository
 import com.discordassistant.central.persistence.GuildOnboardingRunEntity

@@ -1,6 +1,7 @@
 package com.discordassistant.central.dashboard
 
-import com.discordassistant.central.policy.PolicyService
+import com.discordassistant.central.guild.adapter.inbound.web.DashboardWriteController
+import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.provider.AuditLog
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue

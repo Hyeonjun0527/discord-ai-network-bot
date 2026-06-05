@@ -1,15 +1,15 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
-import com.discordassistant.central.network.ChannelAiCustomizationService
+import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.KnowledgeIngestionService
 import com.discordassistant.central.network.PresetBehaviorInput
 import com.discordassistant.central.network.PresetRegistryService
-import com.discordassistant.central.persistence.AiAdminRoleRepository
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
@@ -69,7 +69,7 @@ class CommandServiceTest
         val aiAdminRoles: AiAdminRoleRepository,
         val aiLevel: com.discordassistant.central.network.AiLevelService,
         val onboardingOptOuts: com.discordassistant.central.persistence.GuildOnboardingOptOutRepository,
-        val channelAis: com.discordassistant.central.persistence.ChannelAiRepository,
+        val channelAis: com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository,
         val routingStats: ProviderRoutingStats,
     ) {
         private fun ctx(admin: Boolean = false) =

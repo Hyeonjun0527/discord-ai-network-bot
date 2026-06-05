@@ -1,7 +1,7 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
-import com.discordassistant.central.policy.PolicyService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping

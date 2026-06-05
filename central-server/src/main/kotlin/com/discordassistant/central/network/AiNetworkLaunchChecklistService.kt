@@ -1,8 +1,8 @@
 package com.discordassistant.central.network
 
-import com.discordassistant.central.domain.ProposalStatus
-import com.discordassistant.central.persistence.AiChangeProposalRepository
-import com.discordassistant.central.persistence.ChannelAiRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
+import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository

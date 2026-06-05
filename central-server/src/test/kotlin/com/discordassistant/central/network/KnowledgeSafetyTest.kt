@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue

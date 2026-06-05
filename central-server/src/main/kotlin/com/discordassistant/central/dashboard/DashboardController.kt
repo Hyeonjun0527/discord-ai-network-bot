@@ -3,8 +3,8 @@ package com.discordassistant.central.dashboard
 import com.discordassistant.central.discord.BotChannelInfo
 import com.discordassistant.central.discord.BotGuildInfo
 import com.discordassistant.central.discord.BotGuildLister
+import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.network.AiNetworkFeatureGate
-import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.requestlog.application.AnalyticsService
 import org.springframework.web.bind.annotation.GetMapping

@@ -1,4 +1,6 @@
 package com.discordassistant.central.network
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.domain.CandidateStatus
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.MultiResponseRunStatus
@@ -14,8 +16,6 @@ import com.discordassistant.central.persistence.AiPresetEntity
 import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity
 import com.discordassistant.central.persistence.CandidateAnswerRepository
-import com.discordassistant.central.persistence.ChannelAiEntity
-import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.KnowledgeSourceEntity
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository

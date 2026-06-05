@@ -4,138 +4,13 @@ import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.domain.KnowledgeChunkStatus
 import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.PresetReportStatus
-import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RetrievalPolicyStatus
-import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
-import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.Instant
-
-interface GuildRepository : JpaRepository<GuildEntity, Long>
-
-interface AllowedChannelRepository : JpaRepository<AllowedChannelEntity, Long> {
-    fun findByGuildId(guildId: Long): List<AllowedChannelEntity>
-
-    fun deleteByGuildId(guildId: Long)
-
-    fun existsByGuildIdAndChannelId(
-        guildId: Long,
-        channelId: Long,
-    ): Boolean
-
-    fun deleteByGuildIdAndChannelId(
-        guildId: Long,
-        channelId: Long,
-    )
-}
-
-interface RolePolicyRepository : JpaRepository<RolePolicyEntity, Long> {
-    fun findByGuildId(guildId: Long): List<RolePolicyEntity>
-
-    fun deleteByGuildId(guildId: Long)
-
-    fun findByGuildIdAndRoleId(
-        guildId: Long,
-        roleId: Long,
-    ): RolePolicyEntity?
-}
-
-interface AiAdminRoleRepository : JpaRepository<AiAdminRoleEntity, Long> {
-    fun findByGuildId(guildId: Long): List<AiAdminRoleEntity>
-
-    fun existsByGuildIdAndRoleId(
-        guildId: Long,
-        roleId: Long,
-    ): Boolean
-
-    fun deleteByGuildId(guildId: Long)
-}
-
-interface ChannelAiRepository : JpaRepository<ChannelAiEntity, Long> {
-    fun findByGuildId(guildId: Long): List<ChannelAiEntity>
-
-    fun findByGuildIdAndChannelId(
-        guildId: Long,
-        channelId: Long,
-    ): ChannelAiEntity?
-
-    /**
-     * 채널 AI 행을 PESSIMISTIC_WRITE 로 잠근 채 조회한다(트랜잭션 필요).
-     * behavior version 채번(`MAX(version)+1`)을 같은 채널 안에서 직렬화해
-     * `uk_ai_behavior_version` 유니크 위반 race(동시 두 요청이 같은 version 으로 insert)를 막는 데 쓴다.
-     */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select c from ChannelAiEntity c where c.id = :id")
-    fun findByIdForUpdate(
-        @Param("id") id: Long,
-    ): ChannelAiEntity?
-
-    fun deleteByGuildIdAndChannelId(
-        guildId: Long,
-        channelId: Long,
-    )
-
-    fun deleteByGuildId(guildId: Long)
-}
-
-interface AiBehaviorVersionRepository : JpaRepository<AiBehaviorVersionEntity, Long> {
-    fun findTopByChannelAiIdOrderByVersionDesc(channelAiId: Long): AiBehaviorVersionEntity?
-
-    fun findByChannelAiIdAndId(
-        channelAiId: Long,
-        id: Long,
-    ): AiBehaviorVersionEntity?
-
-    fun findByChannelAiIdOrderByVersionDesc(channelAiId: Long): List<AiBehaviorVersionEntity>
-
-    fun deleteByChannelAiId(channelAiId: Long)
-}
-
-interface AiChangeProposalRepository : JpaRepository<AiChangeProposalEntity, Long> {
-    fun findByGuildIdAndStatus(
-        guildId: Long,
-        status: ProposalStatus,
-    ): List<AiChangeProposalEntity>
-
-    /**
-     * 제안 행을 PESSIMISTIC_WRITE 로 잠근 채 조회한다(트랜잭션 필요).
-     * 동시 승인/거절(`approveProposal`/`rejectProposal`)을 직렬화해 이중 APPROVED·lost update 를 막는다.
-     */
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select p from AiChangeProposalEntity p where p.id = :id")
-    fun findByIdForUpdate(
-        @Param("id") id: Long,
-    ): AiChangeProposalEntity?
-
-    fun findByGuildIdOrderByCreatedAtDesc(guildId: Long): List<AiChangeProposalEntity>
-
-    fun findByGuildIdAndChannelIdOrderByCreatedAtDesc(
-        guildId: Long,
-        channelId: Long,
-    ): List<AiChangeProposalEntity>
-
-    fun deleteByGuildId(guildId: Long)
-
-    fun deleteByChannelAiId(channelAiId: Long)
-}
-
-interface CustomizationAuditLogRepository : JpaRepository<CustomizationAuditLogEntity, Long> {
-    fun findTop10ByGuildIdAndChannelIdOrderByCreatedAtDesc(
-        guildId: Long,
-        channelId: Long,
-    ): List<CustomizationAuditLogEntity>
-
-    fun deleteByGuildId(guildId: Long)
-
-    fun deleteByGuildIdAndChannelId(
-        guildId: Long,
-        channelId: Long,
-    )
-}
 
 interface AiNetworkProfileRepository : JpaRepository<AiNetworkProfileEntity, Long> {
     fun findByGuildId(guildId: Long): AiNetworkProfileEntity?

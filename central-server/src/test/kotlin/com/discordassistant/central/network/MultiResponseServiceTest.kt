@@ -1,4 +1,5 @@
 package com.discordassistant.central.network
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.dashboard.AdoptCandidateRequest
 import com.discordassistant.central.dashboard.CompleteBestMultiResponseRunRequest
 import com.discordassistant.central.dashboard.MultiResponseController
@@ -16,7 +17,6 @@ import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
 import com.discordassistant.central.persistence.CandidateAnswerRepository
-import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.MultiResponsePolicyRepository

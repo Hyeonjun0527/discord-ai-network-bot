@@ -1,6 +1,6 @@
 package com.discordassistant.central.quota.application
 
-import com.discordassistant.central.policy.PolicyService
+import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import com.discordassistant.central.routing.application.port.QuotaChecker
 import org.springframework.stereotype.Service

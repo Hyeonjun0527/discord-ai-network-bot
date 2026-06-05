@@ -1,5 +1,9 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
+import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import com.discordassistant.central.dashboard.ChannelAiCardResponse
 import com.discordassistant.central.dashboard.ChannelAiChangeApprovalDashboardResponse
 import com.discordassistant.central.dashboard.ChannelAiChangeApprovalItemResponse
@@ -12,13 +16,9 @@ import com.discordassistant.central.domain.KnowledgeSpaceStatus
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.OverloadRisk
-import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.domain.PublishedPresetStatus
-import com.discordassistant.central.persistence.AiBehaviorVersionRepository
-import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetRepository
-import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository

@@ -1,13 +1,13 @@
-package com.discordassistant.central.policy
+package com.discordassistant.central.guild.application
 
 import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.persistence.AiAdminRoleRepository
-import com.discordassistant.central.persistence.AllowedChannelEntity
-import com.discordassistant.central.persistence.AllowedChannelRepository
-import com.discordassistant.central.persistence.GuildEntity
-import com.discordassistant.central.persistence.GuildRepository
-import com.discordassistant.central.persistence.RolePolicyEntity
-import com.discordassistant.central.persistence.RolePolicyRepository
+import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
+import com.discordassistant.central.guild.adapter.outbound.persistence.AllowedChannelEntity
+import com.discordassistant.central.guild.adapter.outbound.persistence.AllowedChannelRepository
+import com.discordassistant.central.guild.adapter.outbound.persistence.GuildEntity
+import com.discordassistant.central.guild.adapter.outbound.persistence.GuildRepository
+import com.discordassistant.central.guild.adapter.outbound.persistence.RolePolicyEntity
+import com.discordassistant.central.guild.adapter.outbound.persistence.RolePolicyRepository
 import com.discordassistant.central.provider.AuditLog
 import com.discordassistant.central.routing.application.port.RoutingPolicy
 import org.springframework.beans.factory.annotation.Value

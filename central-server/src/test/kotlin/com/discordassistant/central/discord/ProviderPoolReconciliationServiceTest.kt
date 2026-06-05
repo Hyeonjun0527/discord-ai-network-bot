@@ -1,7 +1,8 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.policy.PolicyService
+import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.provider.application.ContributionPolicyService
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.ProviderScheduleService

@@ -1,7 +1,7 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.domain.RequestState
-import com.discordassistant.central.policy.PolicyService
+import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import org.junit.jupiter.api.Assertions.assertEquals

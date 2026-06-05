@@ -3,7 +3,7 @@ package com.discordassistant.central.web
 import com.discordassistant.central.discord.BotChannelInfo
 import com.discordassistant.central.discord.BotGuildInfo
 import com.discordassistant.central.discord.BotGuildLister
-import com.discordassistant.central.policy.AutoApprovePolicy
+import com.discordassistant.central.guild.application.AutoApprovePolicy
 import com.discordassistant.central.provider.AuditLog
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.TokenService

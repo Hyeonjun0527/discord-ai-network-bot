@@ -1,6 +1,9 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.channelai.application.ChannelAiProfileService
+import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_CONSTITUTION
 import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.network.GuildOnboardingResult
 import com.discordassistant.central.network.GuildOnboardingService
 import com.discordassistant.central.persistence.GuildOnboardingOptOutRepository

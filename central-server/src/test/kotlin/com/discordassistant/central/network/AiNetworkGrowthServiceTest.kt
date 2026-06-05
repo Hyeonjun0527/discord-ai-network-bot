@@ -1,4 +1,6 @@
 package com.discordassistant.central.network
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.dashboard.AiNetworkGrowthController
 import com.discordassistant.central.dashboard.ProviderJoinedRequest
 import com.discordassistant.central.domain.ModelBurden
@@ -7,8 +9,6 @@ import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
-import com.discordassistant.central.persistence.ChannelAiEntity
-import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository

@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.dashboard.AddKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.ApproveKnowledgeSourceRequest
 import com.discordassistant.central.dashboard.CreateKnowledgeSpaceRequest
@@ -8,7 +9,6 @@ import com.discordassistant.central.dashboard.KnowledgeEvalRequest
 import com.discordassistant.central.dashboard.KnowledgeIngestionController
 import com.discordassistant.central.dashboard.MarkKnowledgeSourceIndexedRequest
 import com.discordassistant.central.dashboard.RejectKnowledgeSourceRequest
-import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import org.junit.jupiter.api.Assertions.assertEquals

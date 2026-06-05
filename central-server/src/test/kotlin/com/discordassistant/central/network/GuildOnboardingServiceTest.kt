@@ -1,10 +1,11 @@
 package com.discordassistant.central.network
 
-import com.discordassistant.central.persistence.AiAdminRoleRepository
-import com.discordassistant.central.persistence.AiBehaviorVersionRepository
-import com.discordassistant.central.persistence.AiChangeProposalRepository
-import com.discordassistant.central.persistence.ChannelAiRepository
-import com.discordassistant.central.persistence.CustomizationAuditLogRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
+import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
+import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
 import com.discordassistant.central.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.persistence.GuildOnboardingConsentRepository
 import com.discordassistant.central.persistence.GuildOnboardingRunRepository

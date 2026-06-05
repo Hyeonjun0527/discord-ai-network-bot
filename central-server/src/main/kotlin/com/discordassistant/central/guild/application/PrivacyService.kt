@@ -1,9 +1,9 @@
-package com.discordassistant.central.discord
+package com.discordassistant.central.guild.application
 
 import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.PrivacyMode
-import com.discordassistant.central.persistence.GuildEntity
-import com.discordassistant.central.persistence.GuildRepository
+import com.discordassistant.central.guild.adapter.outbound.persistence.GuildEntity
+import com.discordassistant.central.guild.adapter.outbound.persistence.GuildRepository
+import com.discordassistant.central.guild.domain.model.PrivacyMode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

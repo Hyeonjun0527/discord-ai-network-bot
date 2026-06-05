@@ -1,5 +1,13 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
+import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
+import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
+import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import com.discordassistant.central.dashboard.CreatePresetRequest
 import com.discordassistant.central.dashboard.ImportPresetRequest
 import com.discordassistant.central.dashboard.LikePresetRequest
@@ -12,17 +20,10 @@ import com.discordassistant.central.dashboard.UpdatePresetRequest
 import com.discordassistant.central.dashboard.UpdatePublishedPresetRequest
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
-import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
-import com.discordassistant.central.persistence.AiBehaviorVersionEntity
-import com.discordassistant.central.persistence.AiBehaviorVersionRepository
-import com.discordassistant.central.persistence.AiChangeProposalRepository
 import com.discordassistant.central.persistence.AiPresetRepository
-import com.discordassistant.central.persistence.ChannelAiEntity
-import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
-import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.PresetImportRepository
 import com.discordassistant.central.persistence.PresetReactionRepository
 import com.discordassistant.central.persistence.PresetReportRepository

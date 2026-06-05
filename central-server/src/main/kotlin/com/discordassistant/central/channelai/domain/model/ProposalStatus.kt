@@ -1,4 +1,4 @@
-package com.discordassistant.central.domain
+package com.discordassistant.central.channelai.domain.model
 
 /**
  * AI 설정 변경 제안(`ai_change_proposal`) 상태머신.

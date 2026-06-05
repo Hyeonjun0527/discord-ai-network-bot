@@ -14,7 +14,6 @@ import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.PresetImportStatus
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
-import com.discordassistant.central.domain.ProposalStatus
 import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.RetrievalPolicyStatus
@@ -34,109 +33,6 @@ import java.time.Instant
  *
  * 설계 원칙(ADR 0003): billing/price/seller/payout 필드는 두지 않는다(비-목표).
  */
-
-@Entity
-@Table(name = "guild")
-class GuildEntity(
-    @Id var id: Long = 0, // Discord guild_id
-    @Column(name = "privacy_mode") var privacyMode: String = "C_ADMIN_ONLY",
-    @Column(name = "auto_approve") var autoApprove: Boolean = true, // 기본 자동 승인(유입 마찰 최소화). /서버기본값·설정으로 끌 수 있음
-    @Column(name = "default_model") var defaultModel: String? = null,
-    @Column(name = "language") var language: String = "ko",
-    @Column(name = "welcome_message") var welcomeMessage: String? = null,
-)
-
-@Entity
-@Table(name = "allowed_channel")
-class AllowedChannelEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var guildId: Long = 0,
-    var channelId: Long = 0,
-)
-
-@Entity
-@Table(name = "role_policy")
-class RolePolicyEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var guildId: Long = 0,
-    var roleId: Long = 0,
-    var maxBurden: String = "LIGHT",
-    var dailyLimit: Int = 0,
-)
-
-@Entity
-@Table(name = "ai_admin_role")
-class AiAdminRoleEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var guildId: Long = 0,
-    var roleId: Long = 0,
-    var createdBy: Long? = null,
-    var createdAt: Instant = Instant.EPOCH,
-)
-
-@Entity
-@Table(name = "channel_ai")
-class ChannelAiEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var guildId: Long = 0,
-    var channelId: Long = 0,
-    @Column(name = "display_name") var displayName: String = "냥시스턴트",
-    @Column(name = "avatar_url") var avatarUrl: String? = null,
-    @Column(name = "active_behavior_version_id") var activeBehaviorVersionId: Long? = null,
-    var source: String = "manual",
-    var createdAt: Instant = Instant.EPOCH,
-    var updatedAt: Instant = Instant.EPOCH,
-)
-
-@Entity
-@Table(name = "ai_behavior_version")
-class AiBehaviorVersionEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var channelAiId: Long = 0,
-    var version: Int = 1,
-    var purpose: String = "general_assistant",
-    var tone: String = "friendly",
-    var answerLength: String = "balanced",
-    var constitution: String? = null,
-    var safetyLevel: String = "standard",
-    @Column(name = "custom_instruction") var customInstruction: String? = null,
-    var createdBy: Long? = null,
-    var createdAt: Instant = Instant.EPOCH,
-    var changeSummary: String? = null,
-)
-
-@Entity
-@Table(name = "ai_change_proposal")
-class AiChangeProposalEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var guildId: Long = 0,
-    var channelId: Long = 0,
-    var channelAiId: Long? = null,
-    var proposedBehaviorId: Long? = null,
-    @Convert(converter = ProposalStatusConverter::class)
-    var status: ProposalStatus = ProposalStatus.APPROVED,
-    var requestedBy: Long? = null,
-    var reviewedBy: Long? = null,
-    var reason: String? = null,
-    @Column(name = "payload_hash") var payloadHash: String? = null,
-    @Column(name = "routing_snapshot", length = 2000) var routingSnapshot: String? = null,
-    var createdAt: Instant = Instant.EPOCH,
-    var reviewedAt: Instant? = null,
-)
-
-@Entity
-@Table(name = "customization_audit_log")
-class CustomizationAuditLogEntity(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
-    var guildId: Long = 0,
-    var channelId: Long = 0,
-    var actorId: Long? = null,
-    var action: String = "",
-    var targetType: String = "",
-    var targetId: Long? = null,
-    var summary: String? = null,
-    var createdAt: Instant = Instant.EPOCH,
-)
 
 @Entity
 @Table(name = "guild_onboarding_consent")

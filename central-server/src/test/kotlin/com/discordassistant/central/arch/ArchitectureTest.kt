@@ -127,12 +127,14 @@ class ArchitectureTest {
             .that()
             .resideInAnyPackage(
                 "..central.provider.domain..",
+                "..central.guild.domain..",
+                "..central.channelai.domain..",
             ).should()
             .dependOnClassesThat()
             .resideInAnyPackage(
-                "..central.provider.application..",
-                "..central.provider.adapter..",
-                "..central.provider.infrastructure..",
+                "..application..",
+                "..adapter..",
+                "..infrastructure..",
                 "org.springframework..",
                 "jakarta.persistence..",
                 "net.dv8tion..",
@@ -147,6 +149,8 @@ class ArchitectureTest {
                 "..central.provider..",
                 "..central.quota..",
                 "..central.requestlog..",
+                "..central.guild..",
+                "..central.channelai..",
             ).and()
             .areAnnotatedWith(jakarta.persistence.Entity::class.java)
             .should()

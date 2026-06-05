@@ -1,13 +1,18 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
+import com.discordassistant.central.channelai.application.ChannelAiProfile
+import com.discordassistant.central.channelai.application.ChannelAiProfileService
+import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_CONSTITUTION
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.domain.ResponseMode
+import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.guild.application.PrivacyService
 import com.discordassistant.central.network.AiNetworkLaunchChecklistService
 import com.discordassistant.central.network.AiNetworkMap
 import com.discordassistant.central.network.AiNetworkMapService
 import com.discordassistant.central.network.AiQualityFeedbackService
-import com.discordassistant.central.network.ChannelAiCustomizationService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
 import com.discordassistant.central.network.GuildOnboardingResult
 import com.discordassistant.central.network.GuildOnboardingService
@@ -22,7 +27,6 @@ import com.discordassistant.central.network.PresetImportResult
 import com.discordassistant.central.network.PresetModerationSummary
 import com.discordassistant.central.network.PresetRegistryService
 import com.discordassistant.central.network.PublishedPresetSummary
-import com.discordassistant.central.policy.PolicyService
 import com.discordassistant.central.provider.application.ContributionPolicyService
 import com.discordassistant.central.provider.application.ProviderProtectionService
 import com.discordassistant.central.provider.application.ProviderRegistrationService

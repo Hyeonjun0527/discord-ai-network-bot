@@ -1,5 +1,7 @@
 package com.discordassistant.central.persistence
 
+import com.discordassistant.central.guild.adapter.outbound.persistence.AllowedChannelEntity
+import com.discordassistant.central.guild.adapter.outbound.persistence.AllowedChannelRepository
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderRepository
 import com.discordassistant.central.provider.domain.model.ProviderState

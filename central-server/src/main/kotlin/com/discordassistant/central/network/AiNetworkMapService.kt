@@ -1,7 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.domain.ProviderAvailability
-import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import org.springframework.stereotype.Service

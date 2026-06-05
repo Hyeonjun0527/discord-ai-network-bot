@@ -1,6 +1,6 @@
-package com.discordassistant.central.persistence
+package com.discordassistant.central.channelai.adapter.outbound.persistence
 
-import com.discordassistant.central.domain.ProposalStatus
+import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import jakarta.persistence.AttributeConverter
 import jakarta.persistence.Converter
 

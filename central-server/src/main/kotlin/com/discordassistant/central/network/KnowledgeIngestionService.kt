@@ -1,9 +1,9 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.KnowledgeSpaceStatus
-import com.discordassistant.central.persistence.CustomizationAuditLogEntity
-import com.discordassistant.central.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.persistence.KnowledgeSourceEntity
 import com.discordassistant.central.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.persistence.KnowledgeSpaceEntity

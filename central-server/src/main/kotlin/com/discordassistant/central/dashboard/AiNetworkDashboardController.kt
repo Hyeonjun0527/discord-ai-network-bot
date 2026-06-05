@@ -1,5 +1,6 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity
 import com.discordassistant.central.network.AiNetworkDashboardQueryService
 import com.discordassistant.central.network.AiNetworkFeatureGate
 import com.discordassistant.central.network.AiNetworkFoundationService
@@ -16,7 +17,6 @@ import com.discordassistant.central.network.ProviderSafetyExecutionPlan
 import com.discordassistant.central.network.ProviderSafetyService
 import com.discordassistant.central.network.QualityReviewSummary
 import com.discordassistant.central.network.QualitySummary
-import com.discordassistant.central.persistence.AiChangeProposalEntity
 import com.discordassistant.central.persistence.NetworkOverviewProjectionEntity
 import com.discordassistant.central.requestlog.application.AnalyticsService
 import org.springframework.web.bind.annotation.GetMapping

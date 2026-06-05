@@ -1,7 +1,7 @@
 package com.discordassistant.central.web
 
 import com.discordassistant.central.discord.BotGuildLister
-import com.discordassistant.central.policy.AutoApprovePolicy
+import com.discordassistant.central.guild.application.AutoApprovePolicy
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus

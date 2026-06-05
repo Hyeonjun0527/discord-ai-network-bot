@@ -1,4 +1,6 @@
 package com.discordassistant.central.network
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
+import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.dashboard.AiQualityFeedbackController
 import com.discordassistant.central.dashboard.ResolveAiFeedbackRequest
 import com.discordassistant.central.dashboard.SubmitAiFeedbackRequest
@@ -10,8 +12,6 @@ import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity
 import com.discordassistant.central.persistence.CandidateAnswerRepository
-import com.discordassistant.central.persistence.ChannelAiEntity
-import com.discordassistant.central.persistence.ChannelAiRepository
 import com.discordassistant.central.persistence.MultiResponseRunEntity
 import com.discordassistant.central.persistence.MultiResponseRunRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity

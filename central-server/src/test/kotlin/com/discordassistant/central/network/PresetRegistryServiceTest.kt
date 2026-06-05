@@ -1,5 +1,7 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ChannelAiRoutingPolicyEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
@@ -8,8 +10,6 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.Chann
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
-import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
-import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.preset.adapter.inbound.web.CreatePresetRequest
 import com.discordassistant.central.preset.adapter.inbound.web.ImportPresetRequest
 import com.discordassistant.central.preset.adapter.inbound.web.LikePresetRequest

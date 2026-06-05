@@ -1,8 +1,8 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventRepository
 import com.discordassistant.central.domain.RequestState
-import com.discordassistant.central.persistence.AiNetworkEventEntity
-import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogEntity

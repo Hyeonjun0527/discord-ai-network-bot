@@ -1,6 +1,6 @@
 package com.discordassistant.central.multiresponse.adapter.inbound.web
 
-import com.discordassistant.central.dashboard.DashboardAudience
+import com.discordassistant.central.ainetwork.adapter.inbound.web.DashboardAudience
 import com.discordassistant.central.multiresponse.application.MultiResponseService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable

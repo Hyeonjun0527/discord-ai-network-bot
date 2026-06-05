@@ -1,5 +1,6 @@
 package com.discordassistant.central.knowledge.application
 
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity
@@ -8,7 +9,6 @@ import com.discordassistant.central.knowledge.adapter.outbound.persistence.Knowl
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSourceStatus
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSpaceStatus
-import com.discordassistant.central.network.AiNetworkFeatureGate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.net.InetAddress

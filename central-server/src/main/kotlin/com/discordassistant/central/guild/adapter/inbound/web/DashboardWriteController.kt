@@ -2,6 +2,7 @@ package com.discordassistant.central.guild.adapter.inbound.web
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.web.AiNetworkApiSecurityFilter
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.core.user.OAuth2User
 import org.springframework.web.bind.annotation.PathVariable

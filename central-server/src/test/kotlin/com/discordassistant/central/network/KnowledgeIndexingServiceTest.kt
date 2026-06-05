@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.knowledge.adapter.inbound.web.AddKnowledgeSourceRequest
 import com.discordassistant.central.knowledge.adapter.inbound.web.CreateKnowledgeSpaceRequest
 import com.discordassistant.central.knowledge.adapter.inbound.web.DeleteKnowledgeSourceRequest

@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository

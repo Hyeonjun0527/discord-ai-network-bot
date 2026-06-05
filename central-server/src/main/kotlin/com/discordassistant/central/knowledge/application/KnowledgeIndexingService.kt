@@ -1,5 +1,6 @@
 package com.discordassistant.central.knowledge.application
 
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.EmbeddingIndexJobEntity
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeChunkEntity
@@ -17,7 +18,6 @@ import com.discordassistant.central.knowledge.domain.model.KnowledgeDocumentStat
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSourceStatus
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSpaceStatus
 import com.discordassistant.central.knowledge.domain.model.RetrievalPolicyStatus
-import com.discordassistant.central.network.AiNetworkFeatureGate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest

@@ -1,7 +1,8 @@
 package com.discordassistant.central.network
 
-import com.discordassistant.central.persistence.AiNetworkEventRepository
-import com.discordassistant.central.persistence.AiNetworkProfileRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkProfileRepository
+import com.discordassistant.central.ainetwork.application.AiLevelService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull

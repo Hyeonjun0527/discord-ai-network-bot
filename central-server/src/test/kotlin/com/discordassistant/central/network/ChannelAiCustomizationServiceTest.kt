@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.adapter.inbound.web.ChannelAiCustomizationController
 import com.discordassistant.central.channelai.adapter.inbound.web.ChannelAiPromptPreviewRequest
 import com.discordassistant.central.channelai.adapter.inbound.web.ChannelAiWizardDraftRequest

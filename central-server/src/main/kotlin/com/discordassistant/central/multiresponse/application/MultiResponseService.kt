@@ -1,10 +1,16 @@
 package com.discordassistant.central.multiresponse.application
 
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiFeedbackEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiFeedbackRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileRepository
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
+import com.discordassistant.central.ainetwork.application.ProviderSafetyService
+import com.discordassistant.central.ainetwork.domain.model.FeedbackStatus
+import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
+import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
 import com.discordassistant.central.domain.ContentSafety.BLOCKING_SAFETY_FLAGS
-import com.discordassistant.central.domain.FeedbackStatus
 import com.discordassistant.central.domain.ModelQualityTier
-import com.discordassistant.central.domain.OverloadRisk
-import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
 import com.discordassistant.central.knowledge.application.KnowledgeSearchService
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerEntity
@@ -18,12 +24,6 @@ import com.discordassistant.central.multiresponse.adapter.outbound.persistence.S
 import com.discordassistant.central.multiresponse.domain.model.CandidateStatus
 import com.discordassistant.central.multiresponse.domain.model.MultiResponseRunStatus
 import com.discordassistant.central.multiresponse.domain.model.SynthesisStatus
-import com.discordassistant.central.network.AiNetworkFeatureGate
-import com.discordassistant.central.network.ProviderSafetyService
-import com.discordassistant.central.persistence.AiFeedbackEntity
-import com.discordassistant.central.persistence.AiFeedbackRepository
-import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
-import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.relay.ConnectionRegistry
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

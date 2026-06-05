@@ -4,6 +4,7 @@ import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.provider.AuditLog
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyRepository
+import com.discordassistant.central.provider.domain.model.ProviderModelScope
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

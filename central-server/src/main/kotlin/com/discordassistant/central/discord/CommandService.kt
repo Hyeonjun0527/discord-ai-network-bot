@@ -1,5 +1,12 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.ainetwork.application.AiNetworkLaunchChecklistService
+import com.discordassistant.central.ainetwork.application.AiNetworkMap
+import com.discordassistant.central.ainetwork.application.AiNetworkMapService
+import com.discordassistant.central.ainetwork.application.AiQualityFeedbackService
+import com.discordassistant.central.ainetwork.application.ChannelAiRoutingPolicyService
+import com.discordassistant.central.ainetwork.application.ModelChoiceDecision
+import com.discordassistant.central.ainetwork.application.NetworkLaunchChecklist
 import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
 import com.discordassistant.central.channelai.application.ChannelAiProfile
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
@@ -13,13 +20,6 @@ import com.discordassistant.central.knowledge.application.KnowledgeIndexingServi
 import com.discordassistant.central.knowledge.application.KnowledgeIngestionService
 import com.discordassistant.central.knowledge.application.KnowledgeSearchService
 import com.discordassistant.central.multiresponse.application.MultiResponseService
-import com.discordassistant.central.network.AiNetworkLaunchChecklistService
-import com.discordassistant.central.network.AiNetworkMap
-import com.discordassistant.central.network.AiNetworkMapService
-import com.discordassistant.central.network.AiQualityFeedbackService
-import com.discordassistant.central.network.ChannelAiRoutingPolicyService
-import com.discordassistant.central.network.ModelChoiceDecision
-import com.discordassistant.central.network.NetworkLaunchChecklist
 import com.discordassistant.central.onboarding.application.GuildOnboardingResult
 import com.discordassistant.central.onboarding.application.GuildOnboardingService
 import com.discordassistant.central.onboarding.application.OnboardingAnalysisContext
@@ -108,7 +108,7 @@ class CommandService(
     private val knowledgeSearch: KnowledgeSearchService,
     private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
     private val aiNetworkMap: AiNetworkMapService,
-    private val aiLevel: com.discordassistant.central.network.AiLevelService,
+    private val aiLevel: com.discordassistant.central.ainetwork.application.AiLevelService,
     private val presetRegistry: PresetRegistryService,
     private val multiResponse: MultiResponseService,
     private val qualityFeedback: AiQualityFeedbackService,
@@ -1254,7 +1254,7 @@ class CommandService(
                 "활동 레벨: **${view.aiLevel}** · 누적 경험치: **${view.totalXp} XP**\n" +
                 "$bar\n" +
                 "다음 레벨까지: **${view.xpToNext} XP** (현재 구간 ${view.progressInLevel}/${view.levelSpan})\n" +
-                "_질문(/ask) 답변이 성공할 때마다 ${com.discordassistant.central.network.AiLevelFormula.XP_PER_ASK_SUCCESS} XP 가 쌓여요._",
+                "_질문(/ask) 답변이 성공할 때마다 ${com.discordassistant.central.ainetwork.domain.model.AiLevelFormula.XP_PER_ASK_SUCCESS} XP 가 쌓여요._",
             ephemeral = false,
         )
     }

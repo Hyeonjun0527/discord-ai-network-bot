@@ -1,10 +1,10 @@
 package com.discordassistant.central.onboarding.application
 
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.application.AiChangeProposalReview
 import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
 import com.discordassistant.central.channelai.application.ChannelAiWizardDraft
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
-import com.discordassistant.central.network.AiNetworkFeatureGate
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingConsentEntity
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingConsentRepository
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingRunEntity

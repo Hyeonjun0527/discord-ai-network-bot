@@ -1,5 +1,10 @@
 package com.discordassistant.central.preset.application
 
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ChannelAiRoutingPolicyEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ChannelAiRoutingPolicyRepository
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
+import com.discordassistant.central.ainetwork.application.ChannelAiRoutingSnapshot
+import com.discordassistant.central.ainetwork.domain.model.AI_NETWORK_MAX_CANDIDATES
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity
@@ -12,11 +17,6 @@ import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import com.discordassistant.central.domain.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
-import com.discordassistant.central.network.AI_NETWORK_MAX_CANDIDATES
-import com.discordassistant.central.network.AiNetworkFeatureGate
-import com.discordassistant.central.network.ChannelAiRoutingSnapshot
-import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
-import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetEntity
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetRepository
 import com.discordassistant.central.preset.adapter.outbound.persistence.PresetImportEntity

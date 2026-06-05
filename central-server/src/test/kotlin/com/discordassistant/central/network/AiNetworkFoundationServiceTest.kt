@@ -1,9 +1,17 @@
 package com.discordassistant.central.network
+
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiFeedbackEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiFeedbackRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkProfileRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.NetworkOverviewProjectionRepository
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileRepository
+import com.discordassistant.central.ainetwork.application.AiNetworkFoundationService
+import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
+import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.OverloadRisk
-import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
@@ -18,12 +26,6 @@ import com.discordassistant.central.multiresponse.adapter.outbound.persistence.S
 import com.discordassistant.central.multiresponse.domain.model.CandidateStatus
 import com.discordassistant.central.multiresponse.domain.model.MultiResponseRunStatus
 import com.discordassistant.central.multiresponse.domain.model.SynthesisStatus
-import com.discordassistant.central.persistence.AiFeedbackEntity
-import com.discordassistant.central.persistence.AiFeedbackRepository
-import com.discordassistant.central.persistence.AiNetworkProfileRepository
-import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
-import com.discordassistant.central.persistence.ProviderCapabilityProfileEntity
-import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetEntity
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetRepository
 import com.discordassistant.central.preset.adapter.outbound.persistence.PresetImportEntity

@@ -1,5 +1,6 @@
 package com.discordassistant.central.knowledge.application
 
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeChunkEntity
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeChunkRepository
@@ -11,7 +12,6 @@ import com.discordassistant.central.knowledge.adapter.outbound.persistence.Retri
 import com.discordassistant.central.knowledge.domain.model.KnowledgeChunkStatus
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSourceStatus
 import com.discordassistant.central.knowledge.domain.model.RetrievalPolicyStatus
-import com.discordassistant.central.network.AiNetworkFeatureGate
 import org.springframework.stereotype.Service
 import com.discordassistant.central.domain.ContentSafety.USABLE_KNOWLEDGE_RISK_LEVELS as SEARCHABLE_RISK_LEVELS
 

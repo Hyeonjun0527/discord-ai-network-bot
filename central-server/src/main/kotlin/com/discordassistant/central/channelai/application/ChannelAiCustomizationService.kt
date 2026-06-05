@@ -1,5 +1,9 @@
 package com.discordassistant.central.channelai.application
 
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ChannelAiRoutingPolicyEntity
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ChannelAiRoutingPolicyRepository
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
+import com.discordassistant.central.ainetwork.application.ChannelAiRoutingSnapshot
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity
@@ -18,10 +22,6 @@ import com.discordassistant.central.domain.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleEntity
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
-import com.discordassistant.central.network.AiNetworkFeatureGate
-import com.discordassistant.central.network.ChannelAiRoutingSnapshot
-import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
-import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest

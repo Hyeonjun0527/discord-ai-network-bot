@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.ainetwork.application.AiLevelService
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogEntity
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import org.junit.jupiter.api.AfterEach

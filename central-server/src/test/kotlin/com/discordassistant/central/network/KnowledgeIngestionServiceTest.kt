@@ -1,5 +1,6 @@
 package com.discordassistant.central.network
 
+import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.knowledge.adapter.inbound.web.AddKnowledgeSourceRequest
 import com.discordassistant.central.knowledge.adapter.inbound.web.ApproveKnowledgeSourceRequest

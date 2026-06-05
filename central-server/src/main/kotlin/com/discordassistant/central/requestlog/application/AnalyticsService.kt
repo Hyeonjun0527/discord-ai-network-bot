@@ -1,8 +1,8 @@
 package com.discordassistant.central.requestlog.application
 
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventRepository
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
-import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import org.springframework.data.domain.PageRequest

@@ -1,6 +1,7 @@
 package com.discordassistant.central
 
 import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.domain.RequestWeight
 import com.discordassistant.central.provider.domain.model.ProviderState
 import org.junit.jupiter.api.Assertions.assertEquals

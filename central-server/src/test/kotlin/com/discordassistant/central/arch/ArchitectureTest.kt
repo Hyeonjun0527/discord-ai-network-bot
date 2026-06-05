@@ -39,20 +39,8 @@ class ArchitectureTest {
                 "..central.dev..",
             )
 
-    // 영속화 계층은 웹/디스코드/대시보드/dev 를 참조하지 않는다(역방향 의존 금지).
-    @ArchTest
-    val persistenceStaysLow: ArchRule =
-        noClasses()
-            .that()
-            .resideInAPackage("..central.persistence..")
-            .should()
-            .dependOnClassesThat()
-            .resideInAnyPackage(
-                "..central.web..",
-                "..central.dashboard..",
-                "..central.discord..",
-                "..central.dev..",
-            )
+    // (구) persistenceStaysLow 규칙은 제거됨 — persistence 패키지가 도메인별 adapter.outbound.persistence
+    // 로 전부 이관되어 비었다(Phase 1~7). 영속 위치는 migratedPersistenceInAdapterOutbound 가 강제한다.
 
     // 디스코드 어댑터는 웹/대시보드/dev 컨트롤러 계층에 의존하지 않는다(서비스 경유).
     @ArchTest
@@ -133,6 +121,7 @@ class ArchitectureTest {
                 "..central.onboarding.domain..",
                 "..central.multiresponse.domain..",
                 "..central.preset.domain..",
+                "..central.ainetwork.domain..",
             ).should()
             .dependOnClassesThat()
             .resideInAnyPackage(
@@ -159,6 +148,7 @@ class ArchitectureTest {
                 "..central.onboarding..",
                 "..central.multiresponse..",
                 "..central.preset..",
+                "..central.ainetwork..",
             ).and()
             .areAnnotatedWith(jakarta.persistence.Entity::class.java)
             .should()

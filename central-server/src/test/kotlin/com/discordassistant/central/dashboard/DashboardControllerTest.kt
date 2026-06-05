@@ -1,5 +1,6 @@
 package com.discordassistant.central.dashboard
 
+import com.discordassistant.central.ainetwork.adapter.inbound.web.DashboardController
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity

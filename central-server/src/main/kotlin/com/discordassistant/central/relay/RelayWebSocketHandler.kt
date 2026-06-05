@@ -1,6 +1,6 @@
 package com.discordassistant.central.relay
 
-import com.discordassistant.central.network.AiNetworkGrowthService
+import com.discordassistant.central.ainetwork.application.AiNetworkGrowthService
 import com.discordassistant.central.relay.protocol.AuthErrFrame
 import com.discordassistant.central.relay.protocol.AuthFrame
 import com.discordassistant.central.relay.protocol.AuthOkFrame

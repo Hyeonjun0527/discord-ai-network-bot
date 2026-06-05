@@ -71,8 +71,58 @@ def install_dir() -> pathlib.Path:
     return pathlib.Path(base) / "discord-ai-network-bot" / "stable-diffusion-webui"
 
 
+def _has(cmd: str) -> bool:
+    return shutil.which(cmd) is not None
+
+
 def has_git() -> bool:
-    return shutil.which("git") is not None
+    return _has("git")
+
+
+def pkg_manager(platform: str | None = None) -> str | None:
+    """전제 도구(git·Python) 자동설치에 쓸 패키지 매니저(없으면 None → 사용자 안내로 폴백)."""
+    p = platform or sys.platform
+    if p == "darwin":
+        return "brew" if _has("brew") else None
+    if p == "win32":
+        return "winget" if _has("winget") else None
+    return None  # Linux 는 배포판마다 달라 전제 자동설치는 생략(안내)
+
+
+# A1111 은 Python 3.10/3.11 을 요구한다(3.12+ 비호환). 자동 설치 시 3.11 을 받는다.
+_PKG: dict[str, dict[str, list[str]]] = {
+    "brew": {"git": ["brew", "install", "git"], "python": ["brew", "install", "python@3.11"]},
+    "winget": {
+        "git": ["winget", "install", "--id", "Git.Git", "-e", "--accept-source-agreements"],
+        "python": ["winget", "install", "--id", "Python.Python.3.11", "-e", "--accept-source-agreements"],
+    },
+}
+
+
+def install_tool_command(tool: str, platform: str | None = None) -> list[str] | None:
+    """git/python 등 전제 도구를 관리자 권한 없이 설치하는 명령(없으면 None)."""
+    pm = pkg_manager(platform)
+    return _PKG.get(pm, {}).get(tool) if pm else None
+
+
+def compatible_python() -> str | None:
+    """A1111 호환(3.10/3.11) Python 실행 명령을 찾는다(없으면 None → 설치 필요)."""
+    for c in ("python3.11", "python3.10"):
+        if _has(c):
+            return c
+    return None
+
+
+def launch_env(python_cmd: str | None, platform: str | None = None) -> dict[str, str]:
+    """webui 에 호환 Python 을 알려주는 환경변수(없으면 빈 dict).
+
+    - mac/Linux: webui.sh 가 읽는 ``python_cmd``.
+    - Windows: webui.bat 가 읽는 ``PYTHON``.
+    """
+    if not python_cmd:
+        return {}
+    p = platform or sys.platform
+    return {"PYTHON": python_cmd} if p == "win32" else {"python_cmd": python_cmd}
 
 
 def is_installed(directory: pathlib.Path | None = None) -> bool:
@@ -124,10 +174,10 @@ async def _run(cmd: list[str], timeout: float) -> tuple[int, str]:
     return proc.returncode or 0, (out or b"").decode("utf-8", "replace")
 
 
-async def _spawn(cmd: list[str]) -> asyncio.subprocess.Process:
+async def _spawn(cmd: list[str], env: dict[str, str] | None = None) -> asyncio.subprocess.Process:
     """포그라운드 webui 를 백그라운드로 띄운다(await 하지 않음). 출력은 버린다."""
     return await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+        *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL, env=env
     )
 
 
@@ -169,19 +219,39 @@ async def run_setup(sd_url: str) -> bool:
             _set("done", 100, "이미 준비됨")
             return True
 
-        # 1) 설치(clone)
-        if not is_installed(directory):
-            if not has_git():
-                _set("error", 0, "git 이 필요합니다 (설치 후 다시 시도)", error="no-git")
+        # 1) 전제 도구(git·Python 3.10/3.11) — 없으면 패키지 매니저로 자동 설치(설치 마법사 역할).
+        if not has_git():
+            cmd = install_tool_command("git")
+            if cmd is None:
+                _set("error", 0, "git 이 없고 자동 설치 수단(brew/winget)도 없어요. git 설치 후 다시 시도하세요.", error="no-git")
                 return False
-            directory.parent.mkdir(parents=True, exist_ok=True)
-            _set("installing", 10, "Stable Diffusion 내려받는 중… (git clone)")
-            code, log = await _run(clone_command(directory), timeout=1800)
-            if code != 0 or not is_installed(directory):
-                _set("error", 10, "Stable Diffusion 설치 실패", error=log[-400:] or "clone-failed")
+            _set("installing", 5, "git 설치 중…")
+            await _run(cmd, timeout=600)
+            if not has_git():
+                _set("error", 5, "git 설치 실패", error="git-install-failed")
                 return False
 
-        # 2) 기본 모델 준비
+        python_cmd = compatible_python()
+        if python_cmd is None:
+            cmd = install_tool_command("python")
+            if cmd is None:
+                _set("error", 5, "A1111 에 필요한 Python 3.10/3.11 이 없고 자동 설치 수단도 없어요.", error="no-python")
+                return False
+            _set("installing", 8, "이미지 엔진용 Python(3.11) 설치 중…")
+            await _run(cmd, timeout=900)
+            # 설치 직후 PATH 갱신이 늦을 수 있어, 못 찾으면 best-effort 명령으로 진행한다.
+            python_cmd = compatible_python() or ("python" if sys.platform == "win32" else "python3.11")
+
+        # 2) 설치(clone)
+        if not is_installed(directory):
+            directory.parent.mkdir(parents=True, exist_ok=True)
+            _set("installing", 15, "Stable Diffusion 내려받는 중… (git clone)")
+            code, log = await _run(clone_command(directory), timeout=1800)
+            if code != 0 or not is_installed(directory):
+                _set("error", 15, "Stable Diffusion 설치 실패", error=log[-400:] or "clone-failed")
+                return False
+
+        # 3) 기본 모델 준비
         if not has_model(directory):
             _set("downloading", 35, "기본 이미지 모델 내려받는 중… (수 GB, 시간이 걸려요)")
             try:
@@ -190,9 +260,11 @@ async def run_setup(sd_url: str) -> bool:
                 _set("error", 35, "이미지 모델 다운로드 실패", error=str(exc)[:400])
                 return False
 
-        # 3) 기동(--api, 백그라운드). 첫 실행은 venv·torch 부트스트랩으로 오래 걸린다.
+        # 4) 기동(--api, 백그라운드). 첫 실행은 venv·torch 부트스트랩으로 오래 걸린다.
+        #    A1111 webui 가 호환 Python(3.10/3.11)을 쓰도록 env 로 전달한다.
         _set("starting", 70, "Stable Diffusion 시작 중… (첫 실행은 수~수십 분)")
-        _proc = await _spawn(launch_command(directory=directory))
+        env = {**os.environ, **launch_env(python_cmd)}
+        _proc = await _spawn(launch_command(directory=directory), env=env)
         if not await _wait_healthy(client):
             _set("error", 70, "Stable Diffusion 이 시작되지 않았어요", error="not-serving")
             return False

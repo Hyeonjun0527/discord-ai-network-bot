@@ -561,6 +561,28 @@ async def test_setup_surfaces_service_install_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_sd_start_endpoint(monkeypatch):
+    """'SD 시작' 엔드포인트: 설치된 SD 를 기동만(launch_only) 위임한다(키 필요)."""
+    started = {}
+
+    async def fake_launch(url):
+        started["url"] = url
+        return True
+
+    monkeypatch.setattr("provider_agent.sd_setup.launch_only", fake_launch)
+    monkeypatch.setattr("provider_agent.sd_setup.is_busy", lambda: False)
+    client = await _client()
+    try:
+        assert (await client.post("/api/sd/start")).status == 403  # 키 없음
+        d = await (await client.post("/api/sd/start", headers={"X-Session": KEY})).json()
+        assert d["ok"] is True
+        await asyncio.sleep(0.03)  # create_task 가 launch_only 를 호출할 시간
+        assert started.get("url")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_service_stop_endpoint(monkeypatch):
     """'백그라운드 중지' 엔드포인트: stop_service 를 위임하고 결과를 돌려준다(키 필요)."""
     monkeypatch.setattr("provider_agent.service.stop_service", lambda: True)

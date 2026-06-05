@@ -309,7 +309,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div></section>
 <section><h2>2. 설정</h2><div class="settings">
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 연결</div><div class="setting-desc">앱을 닫아도 로그인하면 백그라운드에서 자동으로 연결돼 있어요. 이 앱은 설정을 바꿀 때만 열면 됩니다.</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
-<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div style="flex:1"><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 으로 <b>/imagine</b> 이미지 생성을 직접 제공합니다.</div><button class="btn" type="button" id="imgInstallBtn" style="display:none;margin-top:9px" onclick="openSD()">＋ 로컬 이미지 모델 설치</button><div class="setting-desc" id="sdState" style="margin-top:7px"></div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
+<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div style="flex:1"><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 으로 <b>/imagine</b> 이미지 생성을 직접 제공합니다.</div><button class="btn" type="button" id="imgInstallBtn" style="display:none;margin-top:9px" onclick="openSD()">＋ 로컬 이미지 모델 설치</button><button class="secondary-btn" type="button" id="imgStartBtn" style="display:none;margin-top:9px;min-height:38px" onclick="startSDApp()">▶ Stable Diffusion 시작</button><div class="setting-desc" id="sdState" style="margin-top:7px"></div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
 </div>
 <button class="primary-btn" type="button" id="go" onclick="connect()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;vertical-align:-4px;margin-right:9px"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 0 1 0 10h-2"></path><path d="M8 12h8"></path></svg><span>연동하기</span></button>
 <div class="helper" style="text-align:center;margin-top:9px">처음이면 디스코드 로그인 창이 열려요. 한 번 연동하면 다음부턴 바로 연결됩니다.</div>
@@ -383,11 +383,21 @@ async function setupOllama(){const b=document.getElementById('osetupBtn'),bar=do
 async function pollOllamaSetup(){const el=document.getElementById('osetup'),fill=document.getElementById('opfill');let p;try{p=await j('/api/ollama/setup-progress');}catch(e){setTimeout(pollOllamaSetup,1500);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';if(p.phase==='error'){if(el)el.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));const b=document.getElementById('osetupBtn');if(b){b.disabled=false;b.style.opacity=1;b.style.cursor='pointer';b.textContent='다시 시도';}return;}if(el)el.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){if(fill)fill.style.width='100%';setTimeout(loadModels,800);return;}setTimeout(pollOllamaSetup,1500);}
 // ── 이미지(SD) 설치 마법사 ──
 let SD_MODELS=[],SD_SEL='',SD_BUSY=false;
-async function loadSDStatus(){let s;try{s=await j('/api/sd/status');}catch(e){return;}const btn=document.getElementById('imgInstallBtn'),tog=document.getElementById('img');const have=s.installed||s.ready;if(btn)btn.style.display=have?'none':'inline-flex';if(tog)tog.style.display=have?'block':'none';
+async function loadSDStatus(){let s;try{s=await j('/api/sd/status');}catch(e){return;}const ib=document.getElementById('imgInstallBtn'),sb=document.getElementById('imgStartBtn'),tog=document.getElementById('img');const have=s.installed||s.ready;
+if(ib)ib.style.display=(!s.installed&&!s.ready)?'inline-flex':'none';   // 미설치 → 설치 버튼
+if(sb)sb.style.display=(s.installed&&!s.ready&&!s.busy)?'inline-flex':'none'; // 설치됨·미실행 → 시작 버튼
+if(tog)tog.style.display=have?'block':'none';
 const st=document.getElementById('sdState');if(!st)return;
 if(s.ready)st.innerHTML='<span style="color:#9fe0a0">'+ICHECK+'Stable Diffusion 실행 중 — 이미지 생성 가능</span>';
-else if(s.installed)st.innerHTML='<span style="color:#ffd479">'+IWARN+'설치됨 · <b>미실행</b> — SD 를 켜고 <b>연동(재연결)</b>해야 이미지가 제공됩니다.</span>';
+else if(s.busy)st.innerHTML='<span style="color:var(--muted)">Stable Diffusion 준비 중…</span>';
+else if(s.installed)st.innerHTML='<span style="color:#ffd479">'+IWARN+'설치됨 · <b>미실행</b> — 아래 <b>시작</b> 을 누르세요. (연결돼 있으면 준비되는 대로 자동 반영됩니다.)</span>';
 else st.innerHTML='';}
+async function startSDApp(){const st=document.getElementById('sdState'),b=document.getElementById('imgStartBtn');if(b){b.disabled=true;b.textContent='시작 중…';}if(st)st.innerHTML='<span style="color:var(--muted)">Stable Diffusion 시작 중… (첫 실행 이후라 보통 1~2분)</span>';try{await j('/api/sd/start',{method:'POST'});}catch(e){}pollSDStart();}
+async function pollSDStart(){let p;try{p=await j('/api/sd/setup-progress');}catch(e){setTimeout(pollSDStart,2000);return;}const st=document.getElementById('sdState'),b=document.getElementById('imgStartBtn');
+if(p.phase==='error'){if(st)st.innerHTML='<span style="color:#ff8a8a">'+IWARN+'시작 실패: '+esc(String(p.error||p.message||''))+'</span>';if(b){b.disabled=false;b.textContent='▶ Stable Diffusion 시작';}return;}
+if(p.phase==='done'){if(b){b.disabled=false;b.textContent='▶ Stable Diffusion 시작';}loadSDStatus();return;}
+if(st)st.innerHTML='<span style="color:var(--muted)">'+esc(p.message||p.phase||'시작 중…')+(p.percent?(' ('+p.percent+'%)'):'')+'</span>';
+setTimeout(pollSDStart,2000);}
 async function openSD(){const m=document.getElementById('sdModal');m.style.display='flex';document.getElementById('sdmMsg').textContent='';document.getElementById('sdmpbar').style.display='none';document.getElementById('sdmpfill').style.width='0';try{const d=await j('/api/sd/models');SD_MODELS=d.models||[];SD_SEL=d.default||(SD_MODELS[0]&&SD_MODELS[0].id);}catch(e){SD_MODELS=[];}renderSDModels();
 const sp=await j('/api/sd/setup-progress').catch(()=>null);SD_BUSY=sp&&['installing','downloading','starting'].includes(sp.phase);if(SD_BUSY){lockSDStart();pollSDSetup();}else{unlockSDStart();}}
 function closeSD(){if(SD_BUSY){if(!confirm('설치가 진행 중입니다. 닫으면 백그라운드로 계속됩니다. 닫을까요?'))return;}document.getElementById('sdModal').style.display='none';}
@@ -547,7 +557,7 @@ async function onbSkip(){await onbApply();ONB_DISMISSED=true;onbVisibility(false
 async function onbToMain(){await onbApply();ONB_DISMISSED=true;onbVisibility(false);await refresh();}
 async function onbConnect(){await onbApply();ONB_DISMISSED=true;onbVisibility(false);connect();}
 renderOnb();
-loadModels();refresh();loadInstall();loadUpdate();loadServers();loadSDStatus();setInterval(refresh,2000);setInterval(loadServers,2500);setInterval(pollProgress,600);
+loadModels();refresh();loadInstall();loadUpdate();loadServers();loadSDStatus();setInterval(refresh,2000);setInterval(loadServers,2500);setInterval(pollProgress,600);setInterval(loadSDStatus,8000);
 </script></body></html>"""
 
 
@@ -902,6 +912,20 @@ def build_app(session_key: str) -> web.Application:
         asyncio.create_task(sd_setup.run_setup(url, model_id))
         return web.json_response({"ok": True})
 
+    async def sd_start(req: web.Request) -> web.Response:
+        """이미 설치된 SD(A1111)를 **기동만** 한다(재부팅·앱 종료 후 다시 켜기). clone/다운로드 없음.
+
+        진행은 설치 마법사와 같은 `/api/sd/setup-progress` 로 폴링한다.
+        """
+        _auth(req)
+        from . import sd_setup
+
+        if sd_setup.is_busy():
+            return web.json_response({"ok": True, "busy": True})
+        url = load_config().get("sd_url") or "http://127.0.0.1:7860"
+        asyncio.create_task(sd_setup.launch_only(url))
+        return web.json_response({"ok": True})
+
     async def sd_setup_cancel(req: web.Request) -> web.Response:
         """진행 중인 SD 설치를 취소."""
         _auth(req)
@@ -1070,6 +1094,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/sd/models", sd_models)
     app.router.add_get("/api/sd/status", sd_status)
     app.router.add_post("/api/sd/setup", sd_setup_start)
+    app.router.add_post("/api/sd/start", sd_start)
     app.router.add_post("/api/sd/cancel", sd_setup_cancel)
     app.router.add_get("/api/sd/setup-progress", sd_setup_progress)
     app.router.add_post("/api/setup", setup)

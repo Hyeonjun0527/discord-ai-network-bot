@@ -430,3 +430,41 @@ async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
         logger.warning("sd setup 실패: %s", exc)
         _set("error", _progress["percent"], "설치 중 오류", error=str(exc)[:400])
         return False
+
+
+async def launch_only(sd_url: str) -> bool:
+    """**이미 설치된** A1111 을 기동만 한다(clone/모델 다운로드 없이). 성공/이미떠있음 True.
+
+    재부팅·앱 종료 후 SD 가 꺼져 있을 때 다시 띄우는 경로(GUI 'SD 시작' 버튼·에이전트 자동기동).
+    설치/모델이 없으면 받아오지 않고 곧바로 False(예상치 못한 대용량 다운로드 방지) — 그 경우는
+    전체 설치 마법사(``run_setup``)를 써야 한다.
+    """
+    global _proc, _cancel
+    _cancel = False
+    client = SDClient(sd_url)
+    directory = install_dir()
+    try:
+        if await client.health():
+            _set("done", 100, "이미 준비됨")
+            return True
+        if not is_installed(directory) or not has_model(directory):
+            _set("error", 0, "아직 설치되지 않았어요. 먼저 설치하세요.", error="not-installed")
+            return False
+        python_cmd = compatible_python() or ("python" if sys.platform == "win32" else "python3.11")
+        _set("starting", 70, "Stable Diffusion 시작 중… (첫 실행 이후라 보통 1~2분)")
+        # run_setup 과 동일한 env: 부트스트랩이 미완료였을 수도 있어 PIP_CONSTRAINT·미러(repo) 우회를 함께 준다.
+        env = {**os.environ, **launch_env(python_cmd), **bootstrap_env(directory)}
+        log_path = launch_log_path(directory)
+        _proc = await _spawn(launch_command(directory=directory), env=env, log_path=log_path)
+        if await _wait_healthy(client, _proc):
+            _set("done", 100, "준비 완료")
+            return True
+        _set("error", 70, "Stable Diffusion 이 시작되지 않았어요", error="not-serving")
+        return False
+    except asyncio.CancelledError:
+        _set("cancelled", _progress["percent"], "시작을 취소했어요")
+        return False
+    except Exception as exc:  # noqa: BLE001 — 어떤 실패든 GUI 에 표면화
+        logger.warning("sd 시작 실패: %s", exc)
+        _set("error", _progress["percent"], "시작 중 오류", error=str(exc)[:400])
+        return False

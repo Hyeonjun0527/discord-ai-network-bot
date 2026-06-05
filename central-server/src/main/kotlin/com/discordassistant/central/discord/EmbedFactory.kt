@@ -86,7 +86,7 @@ object EmbedFactory {
         val b =
             EmbedBuilder()
                 .setColor(BLURPLE)
-                .setTitle("${MenuSymbols.ASK} 커뮤니티 로컬 AI Provider Pool")
+                .setTitle("${MenuSymbols.ASK} 냥시스턴트 AI 네트워크")
                 .setDescription(
                     "커뮤니티 멤버들의 PC 로컬 LLM 을 모아 **공정하게 나눠 쓰는** 봇입니다(금전 거래 아님).\n" +
                         "${c("menu")} 로 언제든 시작 패널을 열 수 있어요.",

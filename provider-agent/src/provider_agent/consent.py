@@ -10,9 +10,22 @@ from __future__ import annotations
 import os
 import pathlib
 import sys
+from urllib.parse import urlparse
 
 from .config import AgentConfig
 from .config_file import config_dir
+
+
+def terms_url(cfg: AgentConfig) -> str:
+    """약관·개인정보 안내 URL. 중앙 서버 호스트에서 ``/install`` 로 파생(self-host 대응)."""
+    try:
+        u = urlparse(cfg.relay_url)
+        if u.hostname:
+            scheme = "https" if u.scheme in {"wss", "https"} else "http"
+            return f"{scheme}://{u.hostname}/install"
+    except ValueError:
+        pass
+    return "https://discord-ai.yeon.world/install"
 
 
 def consent_marker_path() -> pathlib.Path:
@@ -54,6 +67,9 @@ def _notice(cfg: AgentConfig) -> str:
         "   - 에이전트는 프롬프트 원문을 로그/파일에 저장하지 않습니다.\n"
         "   - 내 PC의 비밀번호·API 키·개인정보가 외부로 전송되지는 않습니다.\n"
         "   - 설정/로그는 내 홈 디렉터리 아래에만 저장됩니다(시스템 폴더 미사용).\n"
+        "\n"
+        "  [약관·개인정보 자세히 보기]\n"
+        f"   {terms_url(cfg)}\n"
         "════════════════════════════════════════════════════════════\n"
     )
 
@@ -73,17 +89,18 @@ def ensure_consent(cfg: AgentConfig, *, stream=None, input_fn=input) -> bool:
     print(_notice(cfg), file=out)
     if not sys.stdin.isatty():
         print(
-            "비대화형 환경입니다. 위 내용에 동의하면 --yes 또는 AGENT_ACCEPT_TERMS=1 로 다시 실행하세요.",
+            "비대화형 환경입니다. 위 약관에 동의하면 --yes 또는 AGENT_ACCEPT_TERMS=1 로 다시 실행하세요.\n"
+            f"약관·개인정보: {terms_url(cfg)}",
             file=out,
         )
         return False
     try:
-        answer = input_fn("위 내용에 동의하면 'yes' 를 입력하세요 [yes/no]: ").strip().lower()
+        answer = input_fn("위 약관에 동의하십니까?  [Y] 예  [N] 아니오: ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         return False
-    if answer in {"y", "yes", "동의"}:
+    if answer in {"y", "yes", "예", "동의"}:
         record_consent()
-        print("동의가 기록되었습니다. 다음 실행부터는 표시되지 않습니다.", file=out)
+        print("✅ 동의가 기록되었습니다. 다음 실행부터는 표시되지 않습니다.", file=out)
         return True
-    print("동의하지 않아 종료합니다.", file=out)
+    print(f"동의하지 않아 종료합니다. (약관: {terms_url(cfg)})", file=out)
     return False

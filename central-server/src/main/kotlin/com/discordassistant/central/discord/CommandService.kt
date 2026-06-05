@@ -124,7 +124,7 @@ class CommandService(
         const val DM_SCOPE = 0L
 
         const val PRIVACY_NOTICE =
-            "이 서버는 커뮤니티 로컬 AI Provider Pool 을 사용합니다. 질문 내용은 요청을 처리하는 " +
+            "이 서버는 커뮤니티 AI 네트워크를 사용합니다. 질문 내용은 요청을 처리하는 " +
                 "커뮤니티 프로바이더의 PC 로 전송될 수 있습니다. 비밀번호·API 키·개인정보·비공개 문서 등 " +
                 "민감한 정보는 입력하지 마세요."
 
@@ -605,7 +605,7 @@ class CommandService(
     ): Reply {
         fun c(base: String) = "`/${CommandLoc.localName(base, locale)}`"
         val sb = StringBuilder()
-        sb.append("**커뮤니티 로컬 AI Provider Pool — 도움말**\n")
+        sb.append("**냥시스턴트 AI 네트워크 — 도움말**\n")
         sb.append("커뮤니티 멤버들의 PC LLM 을 모아 공정하게 분배합니다(금전 거래 아님).\n\n")
         sb.append("__유저__\n")
         sb.append("· ${c("ask")} `<질문>` — 풀의 누군가의 PC LLM 으로 답변\n")

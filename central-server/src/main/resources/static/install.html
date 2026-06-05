@@ -880,7 +880,7 @@
         group.rotation.z = -0.04 + e * 0.10 + px * 0.02;
         group.position.x = 0.90 - e * 0.25 + px * 0.05;                        // 우측 배치(스크롤 따라 살짝 중앙으로)
         const bobN = Math.sin(t * 0.7);                                        // -1..1 부유 위상
-        group.position.y = 0.18 + bobN * 0.035;                                // 바닥 위로 떠 있게(+ 미세 부유)
+        group.position.y = 0.04 + bobN * 0.035;                                // 살짝 아래로(+ 미세 부유)
         // [Stage 1] 그림자는 패널(group)을 따라 움직이되, 부유에 따라 살짝 변함: 올라가면 커지고 옅어짐.
         shadowMesh.scale.setScalar(1 + bobN * 0.06);
         shadowMesh.material.opacity = 0.9 - bobN * 0.12;

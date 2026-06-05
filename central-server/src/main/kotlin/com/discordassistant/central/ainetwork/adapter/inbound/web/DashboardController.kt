@@ -1,13 +1,13 @@
 package com.discordassistant.central.ainetwork.adapter.inbound.web
 
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
-import com.discordassistant.central.discord.BotChannelInfo
-import com.discordassistant.central.discord.BotGuildInfo
-import com.discordassistant.central.discord.BotGuildLister
+import com.discordassistant.central.global.security.AiNetworkApiSecurityFilter
 import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.platform.discord.BotChannelInfo
+import com.discordassistant.central.platform.discord.BotGuildInfo
+import com.discordassistant.central.platform.discord.BotGuildLister
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.requestlog.application.AnalyticsService
-import com.discordassistant.central.web.AiNetworkApiSecurityFilter
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping

@@ -1,6 +1,6 @@
 package com.discordassistant.central.ainetwork.adapter.outbound.persistence
 
-import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.shared.ModelBurden
 import jakarta.persistence.AttributeConverter
 import jakarta.persistence.Converter
 

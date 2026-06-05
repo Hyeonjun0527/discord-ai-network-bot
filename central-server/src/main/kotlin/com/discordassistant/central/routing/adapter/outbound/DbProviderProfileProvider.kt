@@ -2,12 +2,12 @@ package com.discordassistant.central.routing.adapter.outbound
 
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileRepository
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyRepository
 import com.discordassistant.central.routing.application.port.ProviderProfileProvider
 import com.discordassistant.central.routing.domain.model.ProviderProfile
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.ModelQualityTier
 import org.springframework.stereotype.Service
 
 @Service

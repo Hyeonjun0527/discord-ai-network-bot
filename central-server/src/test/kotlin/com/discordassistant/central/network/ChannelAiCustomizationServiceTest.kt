@@ -15,8 +15,8 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.Chann
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
+import com.discordassistant.central.global.security.DashboardActor
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
-import com.discordassistant.central.web.DashboardActor
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull

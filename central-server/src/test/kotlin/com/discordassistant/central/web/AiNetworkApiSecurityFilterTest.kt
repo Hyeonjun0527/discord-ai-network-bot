@@ -1,5 +1,6 @@
 package com.discordassistant.central.web
 
+import com.discordassistant.central.global.security.AiNetworkApiSecurityFilter
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired

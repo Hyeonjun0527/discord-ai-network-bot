@@ -16,8 +16,6 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBeh
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSpaceStatus
@@ -26,6 +24,8 @@ import com.discordassistant.central.preset.adapter.outbound.persistence.AiPreset
 import com.discordassistant.central.preset.adapter.outbound.persistence.PresetImportRepository
 import com.discordassistant.central.preset.adapter.outbound.persistence.PublishedPresetRepository
 import com.discordassistant.central.preset.domain.model.PublishedPresetStatus
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.ModelQualityTier
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

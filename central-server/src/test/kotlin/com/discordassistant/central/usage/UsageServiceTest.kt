@@ -2,10 +2,10 @@ package com.discordassistant.central.usage
 
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkProfileRepository
 import com.discordassistant.central.ainetwork.application.AiLevelService
-import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import com.discordassistant.central.requestlog.application.UsageService
 import com.discordassistant.central.routing.domain.model.AiRequestInput
+import com.discordassistant.central.shared.RequestState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test

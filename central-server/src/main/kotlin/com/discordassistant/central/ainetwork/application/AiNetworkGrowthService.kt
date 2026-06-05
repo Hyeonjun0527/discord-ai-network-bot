@@ -6,7 +6,7 @@ import com.discordassistant.central.ainetwork.adapter.outbound.persistence.Netwo
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
-import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.shared.ModelBurden
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock

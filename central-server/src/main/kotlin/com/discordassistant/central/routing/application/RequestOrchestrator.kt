@@ -1,6 +1,5 @@
 package com.discordassistant.central.routing.application
 
-import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.knowledge.application.NoWebSearch
 import com.discordassistant.central.knowledge.application.WebAugmentation
 import com.discordassistant.central.knowledge.application.WebSearchAugmenter
@@ -42,6 +41,7 @@ import com.discordassistant.central.routing.domain.service.RoutingDualVariableMa
 import com.discordassistant.central.routing.domain.service.RoutingReservationManager
 import com.discordassistant.central.routing.domain.service.WeighDecision
 import com.discordassistant.central.routing.domain.service.effectiveConcurrencyLimit
+import com.discordassistant.central.shared.RequestState
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.util.UUID

@@ -1,9 +1,9 @@
 package com.discordassistant.central
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.RequestState
-import com.discordassistant.central.domain.RequestWeight
 import com.discordassistant.central.provider.domain.model.ProviderState
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.RequestState
+import com.discordassistant.central.shared.RequestWeight
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -31,8 +31,8 @@ class CentralServerApplicationTests {
 
     @Test
     fun `RequestState 종단 상태`() {
-        assertTrue(com.discordassistant.central.domain.RequestState.COMPLETED.isTerminal)
-        assertTrue(com.discordassistant.central.domain.RequestState.REJECTED.isTerminal)
-        assertFalse(com.discordassistant.central.domain.RequestState.ROUTING.isTerminal)
+        assertTrue(com.discordassistant.central.shared.RequestState.COMPLETED.isTerminal)
+        assertTrue(com.discordassistant.central.shared.RequestState.REJECTED.isTerminal)
+        assertFalse(com.discordassistant.central.shared.RequestState.ROUTING.isTerminal)
     }
 }

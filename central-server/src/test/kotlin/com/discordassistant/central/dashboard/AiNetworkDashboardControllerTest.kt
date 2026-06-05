@@ -19,7 +19,6 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBeh
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
-import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceEntity
@@ -28,6 +27,7 @@ import com.discordassistant.central.knowledge.domain.model.KnowledgeSourceStatus
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSpaceStatus
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

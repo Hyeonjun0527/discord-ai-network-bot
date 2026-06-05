@@ -1,6 +1,6 @@
 package com.discordassistant.central.provider.application
 
-import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderRepository
 import com.discordassistant.central.provider.domain.model.ProviderState

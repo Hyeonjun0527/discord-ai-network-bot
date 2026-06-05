@@ -1,5 +1,6 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.platform.discord.RestHint
 import com.discordassistant.central.provider.domain.model.ProviderState
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull

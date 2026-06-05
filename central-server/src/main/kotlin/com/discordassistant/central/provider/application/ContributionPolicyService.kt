@@ -1,10 +1,10 @@
 package com.discordassistant.central.provider.application
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyRepository
 import com.discordassistant.central.provider.domain.model.ProviderModelScope
+import com.discordassistant.central.shared.ModelBurden
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

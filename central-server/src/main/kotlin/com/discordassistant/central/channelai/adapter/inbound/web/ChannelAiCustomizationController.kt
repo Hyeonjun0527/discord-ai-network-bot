@@ -2,8 +2,8 @@ package com.discordassistant.central.channelai.adapter.inbound.web
 
 import com.discordassistant.central.channelai.application.AiAdminRolePolicy
 import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
-import com.discordassistant.central.web.AiNetworkApiSecurityFilter
-import com.discordassistant.central.web.DashboardActor
+import com.discordassistant.central.global.security.AiNetworkApiSecurityFilter
+import com.discordassistant.central.global.security.DashboardActor
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable

@@ -1,5 +1,6 @@
 package com.discordassistant.central.health
 
+import com.discordassistant.central.global.health.PoolHealthIndicator
 import com.discordassistant.central.relay.ConnectionRegistry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test

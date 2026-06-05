@@ -1,11 +1,11 @@
 package com.discordassistant.central.routing
 
-import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.provider.domain.model.ProviderState
 import com.discordassistant.central.routing.domain.service.Candidate
 import com.discordassistant.central.routing.domain.service.ProviderFilterPipeline
 import com.discordassistant.central.routing.domain.service.ProviderRouter
 import com.discordassistant.central.routing.domain.service.RequestContext
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

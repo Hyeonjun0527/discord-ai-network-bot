@@ -1,9 +1,9 @@
 package com.discordassistant.central.routing.application.port
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.routing.domain.model.AiRequestInput
 import com.discordassistant.central.routing.domain.model.ProviderProfile
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.RequestState
 
 /*
  * routing 애플리케이션 아웃바운드 포트(헥사고날). RequestOrchestrator 가 필요로 하는 외부 협력자를

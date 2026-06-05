@@ -1,5 +1,6 @@
 package com.discordassistant.central.provider
 
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderScheduleRepository
 import com.discordassistant.central.provider.application.ProviderProtectionService
 import com.discordassistant.central.provider.application.ProviderScheduleService

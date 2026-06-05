@@ -1,6 +1,6 @@
 package com.discordassistant.central.quota.application
 
-import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.quota.adapter.outbound.persistence.BlocklistEntity
 import com.discordassistant.central.quota.adapter.outbound.persistence.BlocklistRepository
 import com.discordassistant.central.routing.application.port.BlocklistChecker

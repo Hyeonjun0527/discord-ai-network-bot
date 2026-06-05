@@ -1,7 +1,6 @@
 package com.discordassistant.central.multiresponse.application
 
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
-import com.discordassistant.central.domain.ContentSafety.BLOCKING_SAFETY_FLAGS
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerEntity
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponsePolicyRepository
@@ -11,6 +10,7 @@ import com.discordassistant.central.multiresponse.adapter.outbound.persistence.S
 import com.discordassistant.central.multiresponse.domain.model.CandidateStatus
 import com.discordassistant.central.multiresponse.domain.model.FanoutLoadRisk
 import com.discordassistant.central.multiresponse.domain.model.MultiResponseRunStatus
+import com.discordassistant.central.shared.ContentSafety.BLOCKING_SAFETY_FLAGS
 import org.springframework.stereotype.Service
 
 /**

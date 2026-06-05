@@ -1,11 +1,11 @@
 package com.discordassistant.central.policy
 
-import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.guild.adapter.outbound.persistence.AllowedChannelRepository
 import com.discordassistant.central.guild.adapter.outbound.persistence.GuildRepository
 import com.discordassistant.central.guild.adapter.outbound.persistence.RolePolicyRepository
 import com.discordassistant.central.guild.application.PolicyService
-import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue

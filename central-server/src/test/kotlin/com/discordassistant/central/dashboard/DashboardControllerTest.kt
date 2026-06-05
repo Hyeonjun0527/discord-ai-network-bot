@@ -1,10 +1,10 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.ainetwork.adapter.inbound.web.DashboardController
-import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
+import com.discordassistant.central.shared.RequestState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

@@ -1,7 +1,7 @@
 package com.discordassistant.central.onboarding.application
 
-import com.discordassistant.central.discord.DiscordBot
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
+import com.discordassistant.central.platform.discord.DiscordBot
 import org.springframework.stereotype.Service
 import java.security.MessageDigest
 

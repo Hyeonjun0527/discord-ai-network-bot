@@ -1,6 +1,6 @@
 package com.discordassistant.central.ainetwork.application
 
-import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.shared.ModelBurden
 
 /**
  * 모델 이름 기반 분류(순수 함수, 테스트 가능). 풀은 **모델 무관**이지만, 라우팅·공정성을 위해

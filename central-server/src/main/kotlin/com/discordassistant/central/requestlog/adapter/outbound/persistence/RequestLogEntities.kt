@@ -1,6 +1,6 @@
 package com.discordassistant.central.requestlog.adapter.outbound.persistence
 
-import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.shared.RequestState
 import jakarta.persistence.Convert
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue

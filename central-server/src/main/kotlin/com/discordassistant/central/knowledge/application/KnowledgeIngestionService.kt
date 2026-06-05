@@ -16,7 +16,7 @@ import java.net.URI
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
-import com.discordassistant.central.domain.ContentSafety.USABLE_KNOWLEDGE_RISK_LEVELS as INDEXABLE_RISK_LEVELS
+import com.discordassistant.central.shared.ContentSafety.USABLE_KNOWLEDGE_RISK_LEVELS as INDEXABLE_RISK_LEVELS
 
 @Service
 class KnowledgeIngestionService(

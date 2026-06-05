@@ -1,6 +1,8 @@
 package com.discordassistant.central.discord
 
-import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.platform.discord.CommandContext
+import com.discordassistant.central.platform.discord.CommandService
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

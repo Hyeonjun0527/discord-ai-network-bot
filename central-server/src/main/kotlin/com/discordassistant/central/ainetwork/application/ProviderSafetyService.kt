@@ -6,8 +6,8 @@ import com.discordassistant.central.ainetwork.adapter.outbound.persistence.Provi
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
-import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.routing.application.port.ProviderSafetyChecker
+import com.discordassistant.central.shared.ResponseMode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock

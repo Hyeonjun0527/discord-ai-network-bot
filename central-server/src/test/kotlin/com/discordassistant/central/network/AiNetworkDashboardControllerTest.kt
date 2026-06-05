@@ -25,7 +25,6 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.AiCha
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
-import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
@@ -51,6 +50,7 @@ import com.discordassistant.central.preset.adapter.outbound.persistence.Publishe
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import com.discordassistant.central.requestlog.application.AnalyticsService
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows

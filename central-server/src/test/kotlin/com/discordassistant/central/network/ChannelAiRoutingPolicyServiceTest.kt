@@ -11,9 +11,9 @@ import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
+import com.discordassistant.central.shared.ModelQualityTier
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows

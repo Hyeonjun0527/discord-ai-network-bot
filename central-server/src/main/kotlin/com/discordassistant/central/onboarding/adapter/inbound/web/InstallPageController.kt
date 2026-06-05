@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.ResponseBody
 
 /**
  * 설치 랜딩 페이지(`/`, `/install`) 서빙. 정적 `install.html` 템플릿에 **[InstallGuide]** 의 OS별 설치
- * 데이터를 주입한다 — 디스코드 슬래시 안내([com.discordassistant.central.discord.ProviderOnboarding])와
+ * 데이터를 주입한다 — 디스코드 슬래시 안내([com.discordassistant.central.platform.discord.ProviderOnboarding])와
  * **같은 SSOT** 를 읽으므로 웹·디스코드 두 화면이 드리프트하지 않는다(Linux 미노출, GUI 앱 설치).
  */
 @Controller

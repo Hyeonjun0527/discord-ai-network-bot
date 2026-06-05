@@ -7,9 +7,9 @@ import com.discordassistant.central.ainetwork.adapter.outbound.persistence.Provi
 import com.discordassistant.central.ainetwork.application.ChannelAiRoutingPolicyService
 import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
-import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.guild.application.PolicyService
-import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.shared.ModelQualityTier
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired

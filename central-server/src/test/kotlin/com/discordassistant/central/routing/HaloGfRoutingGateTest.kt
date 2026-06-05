@@ -1,7 +1,5 @@
 package com.discordassistant.central.routing
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.provider.domain.model.ProviderState
 import com.discordassistant.central.routing.domain.model.AttemptFinalState
 import com.discordassistant.central.routing.domain.model.RoutingAttemptOutcome
@@ -26,6 +24,8 @@ import com.discordassistant.central.routing.domain.service.RoutingDualVariableMa
 import com.discordassistant.central.routing.domain.service.RoutingHedgingPolicy
 import com.discordassistant.central.routing.domain.service.RoutingReservation
 import com.discordassistant.central.routing.domain.service.RoutingReservationManager
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.ModelQualityTier
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue

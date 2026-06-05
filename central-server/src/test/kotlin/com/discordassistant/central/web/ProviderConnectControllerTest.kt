@@ -1,15 +1,15 @@
 package com.discordassistant.central.web
 
-import com.discordassistant.central.discord.BotChannelInfo
-import com.discordassistant.central.discord.BotGuildInfo
-import com.discordassistant.central.discord.BotGuildLister
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.guild.application.AutoApprovePolicy
 import com.discordassistant.central.onboarding.adapter.inbound.web.ProviderConnectController
 import com.discordassistant.central.onboarding.adapter.outbound.ConnectStateStore
 import com.discordassistant.central.onboarding.adapter.outbound.DiscordOAuthClient
 import com.discordassistant.central.onboarding.adapter.outbound.GuildBrief
 import com.discordassistant.central.onboarding.adapter.outbound.ProviderSelectionStore
-import com.discordassistant.central.provider.AuditLog
+import com.discordassistant.central.platform.discord.BotChannelInfo
+import com.discordassistant.central.platform.discord.BotGuildInfo
+import com.discordassistant.central.platform.discord.BotGuildLister
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.TokenService
 import org.junit.jupiter.api.Assertions.assertEquals

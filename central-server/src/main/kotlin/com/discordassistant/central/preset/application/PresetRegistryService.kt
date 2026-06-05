@@ -14,8 +14,6 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.Chann
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
-import com.discordassistant.central.domain.ContentSafety.HIGH_RISK_SAFETY_LEVELS
-import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetEntity
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetRepository
@@ -33,6 +31,8 @@ import com.discordassistant.central.preset.domain.model.PresetImportStatus
 import com.discordassistant.central.preset.domain.model.PresetReportStatus
 import com.discordassistant.central.preset.domain.model.PresetStatus
 import com.discordassistant.central.preset.domain.model.PublishedPresetStatus
+import com.discordassistant.central.shared.ContentSafety.HIGH_RISK_SAFETY_LEVELS
+import com.discordassistant.central.shared.ResponseMode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest

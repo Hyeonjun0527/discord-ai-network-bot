@@ -1,5 +1,7 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.platform.discord.CommandContext
+import com.discordassistant.central.platform.discord.CommandService
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession

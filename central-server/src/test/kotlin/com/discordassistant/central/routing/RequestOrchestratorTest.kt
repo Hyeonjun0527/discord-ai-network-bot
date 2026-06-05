@@ -1,7 +1,5 @@
 package com.discordassistant.central.routing
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.knowledge.application.WebAugmentation
 import com.discordassistant.central.knowledge.application.WebSearchAugmenter
 import com.discordassistant.central.relay.AgentConnection
@@ -25,6 +23,8 @@ import com.discordassistant.central.routing.domain.service.ProviderFilterPipelin
 import com.discordassistant.central.routing.domain.service.ProviderRouter
 import com.discordassistant.central.routing.domain.service.ProviderRoutingStats
 import com.discordassistant.central.routing.domain.service.RequestWeigher
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.RequestState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue

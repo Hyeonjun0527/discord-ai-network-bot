@@ -12,7 +12,6 @@ import com.discordassistant.central.ainetwork.application.ProviderSafetyService
 import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.knowledge.application.KnowledgeIngestionService
@@ -40,6 +39,7 @@ import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.ProviderHelloFrame
+import com.discordassistant.central.shared.ModelQualityTier
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull

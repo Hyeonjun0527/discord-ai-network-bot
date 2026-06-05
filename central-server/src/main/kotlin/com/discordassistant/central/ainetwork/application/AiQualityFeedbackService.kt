@@ -6,9 +6,9 @@ import com.discordassistant.central.ainetwork.adapter.outbound.persistence.Provi
 import com.discordassistant.central.ainetwork.domain.model.FeedbackStatus
 import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
+import com.discordassistant.central.shared.ModelQualityTier
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest

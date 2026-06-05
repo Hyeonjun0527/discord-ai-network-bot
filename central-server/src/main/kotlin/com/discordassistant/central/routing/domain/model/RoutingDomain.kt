@@ -1,6 +1,6 @@
 package com.discordassistant.central.routing.domain.model
 
-import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.shared.ModelBurden
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 

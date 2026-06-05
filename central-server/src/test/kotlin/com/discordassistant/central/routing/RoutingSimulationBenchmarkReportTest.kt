@@ -1,13 +1,13 @@
 package com.discordassistant.central.routing
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.provider.domain.model.ProviderState
 import com.discordassistant.central.routing.domain.model.RoutingLambdas
 import com.discordassistant.central.routing.domain.service.Candidate
 import com.discordassistant.central.routing.domain.service.ProviderFilterPipeline
 import com.discordassistant.central.routing.domain.service.ProviderRouter
 import com.discordassistant.central.routing.domain.service.RequestContext
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.ModelQualityTier
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.nio.file.Files

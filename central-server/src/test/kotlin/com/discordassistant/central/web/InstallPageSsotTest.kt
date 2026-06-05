@@ -1,7 +1,7 @@
 package com.discordassistant.central.web
 
-import com.discordassistant.central.discord.ProviderOnboarding
 import com.discordassistant.central.onboarding.domain.model.InstallGuide
+import com.discordassistant.central.platform.discord.ProviderOnboarding
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull

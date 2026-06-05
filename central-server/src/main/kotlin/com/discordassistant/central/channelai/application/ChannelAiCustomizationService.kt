@@ -18,10 +18,10 @@ import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_PUR
 import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_SAFETY_LEVEL
 import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_TONE
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
-import com.discordassistant.central.domain.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleEntity
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
 import com.discordassistant.central.knowledge.application.KnowledgeSafety
+import com.discordassistant.central.shared.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest

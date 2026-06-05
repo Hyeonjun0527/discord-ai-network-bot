@@ -1,8 +1,8 @@
 package com.discordassistant.central.onboarding.application
 
-import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.routing.application.RequestOrchestrator
 import com.discordassistant.central.routing.domain.model.AiRequestInput
+import com.discordassistant.central.shared.RequestState
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 

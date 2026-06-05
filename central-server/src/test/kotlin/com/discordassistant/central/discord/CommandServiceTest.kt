@@ -7,14 +7,15 @@ import com.discordassistant.central.ainetwork.application.ChannelAiRoutingPolicy
 import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
 import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.knowledge.application.KnowledgeIngestionService
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponseRunRepository
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.SynthesisResultRepository
+import com.discordassistant.central.platform.discord.CommandContext
+import com.discordassistant.central.platform.discord.CommandService
+import com.discordassistant.central.platform.discord.OnboardingStartOutcome
 import com.discordassistant.central.preset.application.PresetBehaviorInput
 import com.discordassistant.central.preset.application.PresetRegistryService
 import com.discordassistant.central.relay.AgentConnection
@@ -25,6 +26,8 @@ import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
 import com.discordassistant.central.requestlog.application.UsageService
 import com.discordassistant.central.routing.domain.service.ProviderRoutingStats
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.ModelQualityTier
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue

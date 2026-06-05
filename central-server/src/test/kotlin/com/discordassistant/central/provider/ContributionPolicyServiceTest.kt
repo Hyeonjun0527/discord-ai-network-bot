@@ -1,7 +1,8 @@
 package com.discordassistant.central.provider
 
-import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.provider.application.ContributionPolicyService
+import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired

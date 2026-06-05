@@ -12,12 +12,12 @@ import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerEntity
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponseRunEntity
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.MultiResponseRunRepository
 import com.discordassistant.central.multiresponse.domain.model.CandidateStatus
+import com.discordassistant.central.shared.ModelQualityTier
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

@@ -1,12 +1,12 @@
 package com.discordassistant.central.routing.domain.service
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.routing.domain.model.RoutingCircuitState
 import com.discordassistant.central.routing.domain.model.RoutingDecision
 import com.discordassistant.central.routing.domain.model.RoutingLambdas
 import com.discordassistant.central.routing.domain.model.RoutingScoreBreakdown
 import com.discordassistant.central.routing.domain.model.predictedOutputQuantile
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.ModelQualityTier
 import org.springframework.stereotype.Component
 import java.util.Locale
 import kotlin.math.exp

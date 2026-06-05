@@ -1,6 +1,6 @@
 package com.discordassistant.central.ainetwork.adapter.outbound.persistence
 
-import com.discordassistant.central.domain.ModelQualityTier
+import com.discordassistant.central.shared.ModelQualityTier
 import jakarta.persistence.AttributeConverter
 import jakarta.persistence.Converter
 

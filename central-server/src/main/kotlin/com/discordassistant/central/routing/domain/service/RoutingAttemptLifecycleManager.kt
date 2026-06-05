@@ -1,8 +1,8 @@
 package com.discordassistant.central.routing.domain.service
 
-import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.routing.domain.model.AttemptFinalState
 import com.discordassistant.central.routing.domain.model.RoutingAttemptOutcome
+import com.discordassistant.central.shared.ModelBurden
 import org.springframework.stereotype.Component
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap

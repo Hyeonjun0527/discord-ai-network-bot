@@ -2,12 +2,12 @@ package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventEntity
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventRepository
-import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogEntity
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import com.discordassistant.central.requestlog.application.AnalyticsService
+import com.discordassistant.central.shared.RequestState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

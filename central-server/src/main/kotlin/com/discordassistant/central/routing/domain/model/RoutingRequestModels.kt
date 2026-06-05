@@ -1,7 +1,7 @@
 package com.discordassistant.central.routing.domain.model
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.RequestState
 
 /** 프로바이더 정책 프로필(부담수준·허용·제한). DB(contribution policy) 또는 테스트 스텁이 제공. */
 data class ProviderProfile(

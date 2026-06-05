@@ -1,7 +1,6 @@
 package com.discordassistant.central.requestlog.application
 
 import com.discordassistant.central.ainetwork.application.AiLevelService
-import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthRepository
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
@@ -12,6 +11,7 @@ import com.discordassistant.central.requestlog.adapter.outbound.persistence.Usag
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import com.discordassistant.central.routing.application.port.UsageRecorder
 import com.discordassistant.central.routing.domain.model.AiRequestInput
+import com.discordassistant.central.shared.RequestState
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

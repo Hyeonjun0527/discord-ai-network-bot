@@ -1,6 +1,6 @@
 package com.discordassistant.central.guild.application
 
-import com.discordassistant.central.domain.ModelBurden
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
 import com.discordassistant.central.guild.adapter.outbound.persistence.AllowedChannelEntity
 import com.discordassistant.central.guild.adapter.outbound.persistence.AllowedChannelRepository
@@ -8,8 +8,8 @@ import com.discordassistant.central.guild.adapter.outbound.persistence.GuildEnti
 import com.discordassistant.central.guild.adapter.outbound.persistence.GuildRepository
 import com.discordassistant.central.guild.adapter.outbound.persistence.RolePolicyEntity
 import com.discordassistant.central.guild.adapter.outbound.persistence.RolePolicyRepository
-import com.discordassistant.central.provider.AuditLog
 import com.discordassistant.central.routing.application.port.RoutingPolicy
+import com.discordassistant.central.shared.ModelBurden
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

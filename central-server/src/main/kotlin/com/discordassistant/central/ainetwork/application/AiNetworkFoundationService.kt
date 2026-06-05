@@ -10,11 +10,11 @@ import com.discordassistant.central.ainetwork.adapter.outbound.persistence.Provi
 import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceEntity
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.knowledge.domain.model.KnowledgeSpaceStatus
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.ModelQualityTier
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock

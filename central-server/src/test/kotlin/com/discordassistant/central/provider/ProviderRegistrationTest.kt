@@ -1,5 +1,6 @@
 package com.discordassistant.central.provider
 
+import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.TokenService
 import com.discordassistant.central.provider.domain.model.ProviderState

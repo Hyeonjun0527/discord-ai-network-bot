@@ -1,7 +1,7 @@
 package com.discordassistant.central.routing.domain.service
 
-import com.discordassistant.central.domain.ModelBurden
-import com.discordassistant.central.domain.RequestWeight
+import com.discordassistant.central.shared.ModelBurden
+import com.discordassistant.central.shared.RequestWeight
 import org.springframework.stereotype.Component
 
 /** 요청 메타데이터(무게 판단 입력). */

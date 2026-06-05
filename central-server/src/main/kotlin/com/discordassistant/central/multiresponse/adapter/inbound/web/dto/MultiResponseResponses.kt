@@ -1,6 +1,6 @@
 package com.discordassistant.central.multiresponse.adapter.inbound.web.dto
 
-import com.discordassistant.central.ainetwork.adapter.inbound.web.DashboardAudience
+import com.discordassistant.central.ainetwork.application.DashboardAudience
 import com.discordassistant.central.multiresponse.application.CandidateAdoptionResult
 import com.discordassistant.central.multiresponse.application.CandidateAnswerView
 import com.discordassistant.central.multiresponse.application.MultiResponseCompletion

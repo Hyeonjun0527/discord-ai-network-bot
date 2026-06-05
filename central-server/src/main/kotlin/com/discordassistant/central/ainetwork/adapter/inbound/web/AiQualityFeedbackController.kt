@@ -1,6 +1,7 @@
 package com.discordassistant.central.ainetwork.adapter.inbound.web
 
 import com.discordassistant.central.ainetwork.application.AiQualityFeedbackService
+import com.discordassistant.central.ainetwork.application.DashboardAudience
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping

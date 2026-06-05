@@ -1,6 +1,6 @@
 package com.discordassistant.central.multiresponse.adapter.inbound.web
 
-import com.discordassistant.central.ainetwork.adapter.inbound.web.DashboardAudience
+import com.discordassistant.central.ainetwork.application.DashboardAudience
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.AdoptCandidateRequest
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.AdoptCandidateResponse
 import com.discordassistant.central.multiresponse.adapter.inbound.web.dto.CompleteBestMultiResponseRunRequest

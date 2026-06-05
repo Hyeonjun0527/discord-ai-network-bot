@@ -1,6 +1,7 @@
 package com.discordassistant.central.ainetwork.adapter.inbound.web
 
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
+import com.discordassistant.central.ainetwork.application.DashboardAudience
 import com.discordassistant.central.global.security.AiNetworkApiSecurityFilter
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.platform.discord.BotChannelInfo

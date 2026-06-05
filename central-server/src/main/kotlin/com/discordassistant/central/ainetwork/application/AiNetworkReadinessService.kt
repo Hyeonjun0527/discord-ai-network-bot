@@ -1,17 +1,17 @@
 package com.discordassistant.central.ainetwork.application
 
-import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkDashboardResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkLaunchChecklistItemResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkLaunchChecklistResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkNextActionResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkOverviewResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkReadinessAreaResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkReadinessResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.ChannelAiCardResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.ChannelAiChangeApprovalDashboardResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.KnowledgeSpaceResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.ModelMapResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.ProviderCapabilityResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.AiNetworkDashboardResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.AiNetworkLaunchChecklistItemResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.AiNetworkLaunchChecklistResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.AiNetworkNextActionResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.AiNetworkOverviewResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.AiNetworkReadinessAreaResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.AiNetworkReadinessResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ChannelAiCardResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ChannelAiChangeApprovalDashboardResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.KnowledgeSpaceResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ModelMapResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ProviderCapabilityResponse
 import org.springframework.stereotype.Service
 
 /**

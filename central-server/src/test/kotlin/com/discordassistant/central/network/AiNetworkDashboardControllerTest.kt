@@ -141,32 +141,25 @@ class AiNetworkDashboardControllerTest
                 presets = presets,
                 publishedPresets = publishedPresets,
                 presetImports = presetImports,
-            )
-
-        private val controller =
-            AiNetworkDashboardController(
                 foundation = foundation,
                 aiLevel = aiLevel,
                 growth = growth,
                 qualityFeedback = qualityFeedback,
                 providerSafety = providerSafety,
-                query = dashboardQuery,
                 multiResponse = multiResponse,
                 analytics = analytics,
+            )
+
+        private val controller =
+            AiNetworkDashboardController(
+                query = dashboardQuery,
             )
 
         @Test
         fun `dashboard kill switch blocks read APIs before projection work`() {
             val disabledController =
                 AiNetworkDashboardController(
-                    foundation = foundation,
-                    aiLevel = aiLevel,
-                    growth = growth,
-                    qualityFeedback = qualityFeedback,
-                    providerSafety = providerSafety,
                     query = dashboardQuery,
-                    multiResponse = multiResponse,
-                    analytics = analytics,
                     featureGate = AiNetworkFeatureGate(dashboardEnabled = false),
                 )
 

@@ -1,5 +1,6 @@
 package com.discordassistant.central.ainetwork.adapter.inbound.web
 
+import com.discordassistant.central.ainetwork.application.DashboardAudience
 import com.discordassistant.central.relay.ConnectionRegistry
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable

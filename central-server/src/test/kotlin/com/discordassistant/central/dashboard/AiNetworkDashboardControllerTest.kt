@@ -1,8 +1,8 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkDashboardController
-import com.discordassistant.central.ainetwork.adapter.inbound.web.ChannelUsageResponse
-import com.discordassistant.central.ainetwork.adapter.inbound.web.FeatureUserResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ChannelUsageResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.FeatureUserResponse
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiFeedbackEntity
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiFeedbackRepository
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventEntity

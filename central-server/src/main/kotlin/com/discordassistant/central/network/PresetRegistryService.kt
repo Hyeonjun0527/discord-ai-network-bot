@@ -15,6 +15,7 @@ import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PresetStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.ResponseMode
+import com.discordassistant.central.knowledge.application.KnowledgeSafety
 import com.discordassistant.central.persistence.AiPresetEntity
 import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity

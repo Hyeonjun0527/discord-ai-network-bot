@@ -1,11 +1,8 @@
 package com.discordassistant.central.persistence
 
 import com.discordassistant.central.domain.FeedbackStatus
-import com.discordassistant.central.domain.KnowledgeChunkStatus
-import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.PublishedPresetStatus
-import com.discordassistant.central.domain.RetrievalPolicyStatus
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -46,37 +43,6 @@ interface AiNetworkProfileRepository : JpaRepository<AiNetworkProfileEntity, Lon
     ): Int
 }
 
-interface GuildOnboardingConsentRepository : JpaRepository<GuildOnboardingConsentEntity, Long> {
-    fun findByGuildIdOrderByCreatedAtDesc(guildId: Long): List<GuildOnboardingConsentEntity>
-
-    fun deleteByGuildId(guildId: Long)
-}
-
-interface GuildOnboardingRunRepository : JpaRepository<GuildOnboardingRunEntity, Long> {
-    fun findByGuildIdOrderByCreatedAtDesc(guildId: Long): List<GuildOnboardingRunEntity>
-
-    fun findByProposalId(proposalId: Long): GuildOnboardingRunEntity?
-
-    fun deleteByGuildId(guildId: Long)
-}
-
-interface GuildOnboardingOptOutRepository : JpaRepository<GuildOnboardingOptOutEntity, Long> {
-    fun findByGuildId(guildId: Long): List<GuildOnboardingOptOutEntity>
-
-    fun existsByGuildIdAndUserId(
-        guildId: Long,
-        userId: Long,
-    ): Boolean
-
-    @org.springframework.transaction.annotation.Transactional
-    fun deleteByGuildIdAndUserId(
-        guildId: Long,
-        userId: Long,
-    )
-
-    fun deleteByGuildId(guildId: Long)
-}
-
 interface ProviderCapabilityProfileRepository : JpaRepository<ProviderCapabilityProfileEntity, Long> {
     fun findByGuildId(guildId: Long): List<ProviderCapabilityProfileEntity>
 
@@ -89,89 +55,6 @@ interface ProviderCapabilityProfileRepository : JpaRepository<ProviderCapability
         guildId: Long,
         providerUserIds: Collection<Long>,
     ): List<ProviderCapabilityProfileEntity>
-}
-
-interface KnowledgeSpaceRepository : JpaRepository<KnowledgeSpaceEntity, Long> {
-    fun findByGuildId(guildId: Long): List<KnowledgeSpaceEntity>
-
-    fun findByGuildIdAndChannelId(
-        guildId: Long,
-        channelId: Long,
-    ): List<KnowledgeSpaceEntity>
-
-    fun findByGuildIdAndId(
-        guildId: Long,
-        id: Long,
-    ): KnowledgeSpaceEntity?
-
-    /** 온보딩 백필 지식공간 재사용용 — 같은 채널 AI + 같은 표시이름의 기존 space(가장 먼저 만든 것)를 찾는다. */
-    fun findFirstByChannelAiIdAndDisplayNameOrderByIdAsc(
-        channelAiId: Long,
-        displayName: String,
-    ): KnowledgeSpaceEntity?
-}
-
-interface KnowledgeSourceRepository : JpaRepository<KnowledgeSourceEntity, Long> {
-    fun findByGuildId(guildId: Long): List<KnowledgeSourceEntity>
-
-    fun findByGuildIdAndKnowledgeSpaceIdInAndStatusAndRiskLevelIn(
-        guildId: Long,
-        knowledgeSpaceIds: Collection<Long>,
-        status: KnowledgeSourceStatus,
-        riskLevels: Collection<String>,
-    ): List<KnowledgeSourceEntity>
-
-    fun findByKnowledgeSpaceId(knowledgeSpaceId: Long): List<KnowledgeSourceEntity>
-
-    fun findByKnowledgeSpaceIdAndId(
-        knowledgeSpaceId: Long,
-        id: Long,
-    ): KnowledgeSourceEntity?
-}
-
-interface KnowledgeDocumentRepository : JpaRepository<KnowledgeDocumentEntity, Long> {
-    fun findByKnowledgeSpaceId(knowledgeSpaceId: Long): List<KnowledgeDocumentEntity>
-
-    fun findByKnowledgeSourceId(knowledgeSourceId: Long): List<KnowledgeDocumentEntity>
-}
-
-interface KnowledgeChunkRepository : JpaRepository<KnowledgeChunkEntity, Long> {
-    fun findByKnowledgeSpaceIdAndStatus(
-        knowledgeSpaceId: Long,
-        status: KnowledgeChunkStatus,
-    ): List<KnowledgeChunkEntity>
-
-    fun findByGuildIdAndKnowledgeSpaceIdInAndStatus(
-        guildId: Long,
-        knowledgeSpaceIds: Collection<Long>,
-        status: KnowledgeChunkStatus,
-    ): List<KnowledgeChunkEntity>
-
-    fun findByKnowledgeDocumentIdOrderByChunkIndex(knowledgeDocumentId: Long): List<KnowledgeChunkEntity>
-}
-
-interface EmbeddingIndexJobRepository : JpaRepository<EmbeddingIndexJobEntity, Long> {
-    fun findTop20ByGuildIdOrderByQueuedAtDesc(guildId: Long): List<EmbeddingIndexJobEntity>
-
-    fun findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(
-        guildId: Long,
-        knowledgeSpaceId: Long,
-    ): List<EmbeddingIndexJobEntity>
-}
-
-interface RetrievalPolicyRepository : JpaRepository<RetrievalPolicyEntity, Long> {
-    fun findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(
-        guildId: Long,
-        channelId: Long?,
-        knowledgeSpaceId: Long?,
-        status: RetrievalPolicyStatus,
-    ): RetrievalPolicyEntity?
-
-    fun findByGuildIdAndChannelIdAndStatus(
-        guildId: Long,
-        channelId: Long?,
-        status: RetrievalPolicyStatus,
-    ): List<RetrievalPolicyEntity>
 }
 
 interface NetworkOverviewProjectionRepository : JpaRepository<NetworkOverviewProjectionEntity, Long> {

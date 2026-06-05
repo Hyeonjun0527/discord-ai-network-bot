@@ -1,11 +1,11 @@
 package com.discordassistant.central.discord
 
-import com.discordassistant.central.domain.EmbeddingJobStatus
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.MultiResponseMode
 import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.domain.SupportedLanguage
+import com.discordassistant.central.knowledge.domain.model.EmbeddingJobStatus
 import com.discordassistant.central.provider.domain.model.ProviderModelScope
 import net.dv8tion.jda.api.Permission
 import net.dv8tion.jda.api.interactions.commands.DefaultMemberPermissions

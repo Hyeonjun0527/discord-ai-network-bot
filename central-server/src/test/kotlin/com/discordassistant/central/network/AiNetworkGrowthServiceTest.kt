@@ -6,10 +6,10 @@ import com.discordassistant.central.dashboard.ProviderJoinedRequest
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
-import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository
 import com.discordassistant.central.persistence.ProviderCapabilityProfileRepository
 import org.junit.jupiter.api.Assertions.assertEquals

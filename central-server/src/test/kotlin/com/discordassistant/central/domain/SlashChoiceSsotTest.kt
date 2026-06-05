@@ -1,5 +1,6 @@
 package com.discordassistant.central.domain
 
+import com.discordassistant.central.knowledge.domain.model.EmbeddingJobStatus
 import com.discordassistant.central.provider.domain.model.ProviderModelScope
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test

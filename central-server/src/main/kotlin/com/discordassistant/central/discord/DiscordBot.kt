@@ -4,9 +4,10 @@ import com.discordassistant.central.channelai.application.ChannelAiProfileServic
 import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_CONSTITUTION
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
-import com.discordassistant.central.network.GuildOnboardingResult
-import com.discordassistant.central.network.GuildOnboardingService
-import com.discordassistant.central.persistence.GuildOnboardingOptOutRepository
+import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
+import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
+import com.discordassistant.central.onboarding.application.GuildOnboardingResult
+import com.discordassistant.central.onboarding.application.GuildOnboardingService
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA

@@ -8,6 +8,8 @@ import com.discordassistant.central.domain.MultiResponseRunStatus
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.domain.SynthesisStatus
+import com.discordassistant.central.knowledge.application.KnowledgeSafety
+import com.discordassistant.central.knowledge.application.KnowledgeSearchService
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity

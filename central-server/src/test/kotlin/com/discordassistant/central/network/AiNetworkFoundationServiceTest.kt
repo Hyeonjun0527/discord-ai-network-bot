@@ -9,6 +9,9 @@ import com.discordassistant.central.domain.PresetReportStatus
 import com.discordassistant.central.domain.ProviderAvailability
 import com.discordassistant.central.domain.PublishedPresetStatus
 import com.discordassistant.central.domain.SynthesisStatus
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.AiFeedbackEntity
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -16,9 +19,6 @@ import com.discordassistant.central.persistence.AiPresetEntity
 import com.discordassistant.central.persistence.AiPresetRepository
 import com.discordassistant.central.persistence.CandidateAnswerEntity
 import com.discordassistant.central.persistence.CandidateAnswerRepository
-import com.discordassistant.central.persistence.KnowledgeSourceEntity
-import com.discordassistant.central.persistence.KnowledgeSourceRepository
-import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.MultiResponsePolicyEntity
 import com.discordassistant.central.persistence.MultiResponsePolicyRepository
 import com.discordassistant.central.persistence.MultiResponseRunEntity

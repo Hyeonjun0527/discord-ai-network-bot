@@ -1,6 +1,8 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
+import com.discordassistant.central.knowledge.application.KnowledgeSafety
+import com.discordassistant.central.onboarding.application.OnboardingAnalyzer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue

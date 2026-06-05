@@ -1,4 +1,5 @@
 package com.discordassistant.central.network
+
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
 import com.discordassistant.central.dashboard.AdoptCandidateRequest
 import com.discordassistant.central.dashboard.CompleteBestMultiResponseRunRequest
@@ -9,16 +10,18 @@ import com.discordassistant.central.dashboard.RecordCandidateRequest
 import com.discordassistant.central.dashboard.SaveMultiResponsePolicyRequest
 import com.discordassistant.central.dashboard.StartMultiResponseRunRequest
 import com.discordassistant.central.dashboard.SynthesizeRunRequest
-import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.ModelQualityTier
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
+import com.discordassistant.central.knowledge.application.KnowledgeIngestionService
+import com.discordassistant.central.knowledge.application.KnowledgeSearchService
+import com.discordassistant.central.knowledge.domain.model.KnowledgeSourceStatus
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
 import com.discordassistant.central.persistence.CandidateAnswerRepository
-import com.discordassistant.central.persistence.KnowledgeSourceRepository
-import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.MultiResponsePolicyRepository
 import com.discordassistant.central.persistence.MultiResponseRunRepository
 import com.discordassistant.central.persistence.NetworkOverviewProjectionRepository

@@ -1,6 +1,6 @@
 package com.discordassistant.central.discord
 
-import com.discordassistant.central.domain.InstallGuide
+import com.discordassistant.central.onboarding.domain.model.InstallGuide
 
 /**
  * 프로바이더 온보딩 안내문(차수 12/13 UX). 승인 시 봇이 토큰만 주는 게 아니라

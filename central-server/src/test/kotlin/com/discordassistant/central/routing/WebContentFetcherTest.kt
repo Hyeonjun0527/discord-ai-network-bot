@@ -1,5 +1,7 @@
 package com.discordassistant.central.routing
 
+import com.discordassistant.central.knowledge.application.HtmlText
+import com.discordassistant.central.knowledge.application.UrlSafety
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue

@@ -9,24 +9,24 @@ import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.domain.ResponseMode
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.guild.application.PrivacyService
+import com.discordassistant.central.knowledge.application.KnowledgeIndexingService
+import com.discordassistant.central.knowledge.application.KnowledgeIngestionService
+import com.discordassistant.central.knowledge.application.KnowledgeSearchService
 import com.discordassistant.central.network.AiNetworkLaunchChecklistService
 import com.discordassistant.central.network.AiNetworkMap
 import com.discordassistant.central.network.AiNetworkMapService
 import com.discordassistant.central.network.AiQualityFeedbackService
 import com.discordassistant.central.network.ChannelAiRoutingPolicyService
-import com.discordassistant.central.network.GuildOnboardingResult
-import com.discordassistant.central.network.GuildOnboardingService
-import com.discordassistant.central.network.KnowledgeIndexingService
-import com.discordassistant.central.network.KnowledgeIngestionService
-import com.discordassistant.central.network.KnowledgeSearchService
 import com.discordassistant.central.network.ModelChoiceDecision
 import com.discordassistant.central.network.MultiResponseService
 import com.discordassistant.central.network.NetworkLaunchChecklist
-import com.discordassistant.central.network.OnboardingAnalysisContext
 import com.discordassistant.central.network.PresetImportResult
 import com.discordassistant.central.network.PresetModerationSummary
 import com.discordassistant.central.network.PresetRegistryService
 import com.discordassistant.central.network.PublishedPresetSummary
+import com.discordassistant.central.onboarding.application.GuildOnboardingResult
+import com.discordassistant.central.onboarding.application.GuildOnboardingService
+import com.discordassistant.central.onboarding.application.OnboardingAnalysisContext
 import com.discordassistant.central.provider.application.ContributionPolicyService
 import com.discordassistant.central.provider.application.ProviderProtectionService
 import com.discordassistant.central.provider.application.ProviderRegistrationService
@@ -114,12 +114,12 @@ class CommandService(
     private val qualityFeedback: AiQualityFeedbackService,
     @param:org.springframework.beans.factory.annotation.Value("\${central.relay.public-url:}")
     private val relayPublicUrl: String = "",
-    private val webSearchAugmenter: com.discordassistant.central.routing.WebSearchAugmenter =
-        com.discordassistant.central.routing.NoWebSearch,
+    private val webSearchAugmenter: com.discordassistant.central.knowledge.application.WebSearchAugmenter =
+        com.discordassistant.central.knowledge.application.NoWebSearch,
     private val providerCommands: ProviderSelfServiceCommands =
         ProviderSelfServiceCommands(registration, protection, policy, registry, contributionPolicy, schedule, ""),
     private val guildOnboarding: GuildOnboardingService,
-    private val onboardingOptOuts: com.discordassistant.central.persistence.GuildOnboardingOptOutRepository,
+    private val onboardingOptOuts: com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository,
 ) {
     companion object {
         /**
@@ -1512,7 +1512,7 @@ class CommandService(
             } else if (target) {
                 // 유니크 인덱스로 중복 방지 — 경합 시 예외는 runCatching 이 잡는다(아래 getOrElse).
                 onboardingOptOuts.save(
-                    com.discordassistant.central.persistence.GuildOnboardingOptOutEntity(
+                    com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutEntity(
                         guildId = ctx.guildId,
                         userId = ctx.userId,
                         createdAt = java.time.Instant.now(),

@@ -8,11 +8,14 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.Chann
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import com.discordassistant.central.dashboard.AiNetworkDashboardController
 import com.discordassistant.central.domain.CandidateStatus
-import com.discordassistant.central.domain.KnowledgeSourceStatus
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.MultiResponseRunStatus
 import com.discordassistant.central.domain.OverloadRisk
 import com.discordassistant.central.domain.ProviderAvailability
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
+import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
+import com.discordassistant.central.knowledge.domain.model.KnowledgeSourceStatus
 import com.discordassistant.central.persistence.AiFeedbackRepository
 import com.discordassistant.central.persistence.AiNetworkEventRepository
 import com.discordassistant.central.persistence.AiNetworkProfileRepository
@@ -22,9 +25,6 @@ import com.discordassistant.central.persistence.CandidateAnswerEntity
 import com.discordassistant.central.persistence.CandidateAnswerRepository
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
-import com.discordassistant.central.persistence.KnowledgeSourceEntity
-import com.discordassistant.central.persistence.KnowledgeSourceRepository
-import com.discordassistant.central.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.persistence.MultiResponsePolicyEntity
 import com.discordassistant.central.persistence.MultiResponsePolicyRepository
 import com.discordassistant.central.persistence.MultiResponseRunEntity

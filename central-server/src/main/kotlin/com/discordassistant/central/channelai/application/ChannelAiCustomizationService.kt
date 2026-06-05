@@ -17,9 +17,9 @@ import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import com.discordassistant.central.domain.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleEntity
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
+import com.discordassistant.central.knowledge.application.KnowledgeSafety
 import com.discordassistant.central.network.AiNetworkFeatureGate
 import com.discordassistant.central.network.ChannelAiRoutingSnapshot
-import com.discordassistant.central.network.KnowledgeSafety
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyEntity
 import com.discordassistant.central.persistence.ChannelAiRoutingPolicyRepository
 import org.springframework.stereotype.Service

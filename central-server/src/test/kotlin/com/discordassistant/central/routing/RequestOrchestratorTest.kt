@@ -2,6 +2,8 @@ package com.discordassistant.central.routing
 
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
+import com.discordassistant.central.knowledge.application.WebAugmentation
+import com.discordassistant.central.knowledge.application.WebSearchAugmenter
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession

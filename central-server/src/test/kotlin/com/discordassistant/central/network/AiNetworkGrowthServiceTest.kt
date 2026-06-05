@@ -1,7 +1,7 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.ainetwork.adapter.inbound.web.AiNetworkGrowthController
-import com.discordassistant.central.ainetwork.adapter.inbound.web.ProviderJoinedRequest
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ProviderJoinedRequest
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiFeedbackRepository
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventRepository
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkProfileRepository

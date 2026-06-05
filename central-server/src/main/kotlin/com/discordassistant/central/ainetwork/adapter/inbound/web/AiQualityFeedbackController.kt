@@ -1,6 +1,12 @@
 package com.discordassistant.central.ainetwork.adapter.inbound.web
 
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.CandidateQualityResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ResolveAiFeedbackRequest
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ResolveAiFeedbackResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.SubmitAiFeedbackRequest
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.SubmitAiFeedbackResponse
 import com.discordassistant.central.ainetwork.application.AiQualityFeedbackService
+import com.discordassistant.central.ainetwork.application.CandidateQualitySummary
 import com.discordassistant.central.ainetwork.application.DashboardAudience
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -31,7 +37,7 @@ class AiQualityFeedbackController(
                 feedbackType = request.feedbackType,
                 reason = request.reason,
             )
-        return mapOf("id" to saved.id, "status" to saved.status, "rating" to saved.rating)
+        return SubmitAiFeedbackResponse.from(saved).toMap()
     }
 
     @GetMapping("/{guildId}/summary")
@@ -58,12 +64,7 @@ class AiQualityFeedbackController(
                 reviewerUserId = request.reviewerUserId,
                 resolutionReason = request.resolutionReason,
             )
-        return mapOf(
-            "id" to saved.id,
-            "status" to saved.status,
-            "reviewedBy" to saved.reviewedBy,
-            "reviewedAt" to saved.reviewedAt,
-        )
+        return ResolveAiFeedbackResponse.from(saved).toMap()
     }
 
     @GetMapping("/{guildId}/{channelId}/summary")
@@ -81,32 +82,5 @@ class AiQualityFeedbackController(
     fun candidateQuality(
         @PathVariable runId: Long,
         @RequestParam(defaultValue = "public") audience: String = "public",
-    ): List<com.discordassistant.central.ainetwork.application.CandidateQualitySummary> {
-        val visibility = DashboardAudience.from(audience)
-        return feedback.candidateQuality(runId).mapIndexed { index, candidate ->
-            candidate.copy(
-                providerUserId = if (visibility.canSeeProviderIdentity) candidate.providerUserId else null,
-                providerLabel =
-                    if (visibility.canSeeProviderIdentity) {
-                        candidate.providerUserId?.let { "provider:$it" } ?: "provider:unknown"
-                    } else {
-                        "Provider ${index + 1}"
-                    },
-            )
-        }
-    }
+    ): List<CandidateQualitySummary> = CandidateQualityResponse.from(feedback.candidateQuality(runId), DashboardAudience.from(audience))
 }
-
-data class SubmitAiFeedbackRequest(
-    val requestId: String? = null,
-    val userId: Long? = null,
-    val rating: Int? = null,
-    val feedbackType: String = "general",
-    val reason: String? = null,
-)
-
-data class ResolveAiFeedbackRequest(
-    val status: String = "resolved",
-    val reviewerUserId: Long? = null,
-    val resolutionReason: String? = null,
-)

@@ -1,7 +1,7 @@
 package com.discordassistant.central.dashboard
 
 import com.discordassistant.central.ainetwork.adapter.inbound.web.ChannelAiRoutingPolicyController
-import com.discordassistant.central.ainetwork.adapter.inbound.web.SaveChannelAiRoutingPolicyRequest
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.SaveChannelAiRoutingPolicyRequest
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileRepository
 import com.discordassistant.central.ainetwork.application.ChannelAiRoutingPolicyService

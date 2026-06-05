@@ -1,8 +1,10 @@
 package com.discordassistant.central.ainetwork.adapter.inbound.web
 
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.DashboardOverviewResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.DashboardProviderHistoryResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.DashboardRequestLogResponse
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.ainetwork.application.DashboardAudience
-import com.discordassistant.central.global.security.AiNetworkApiSecurityFilter
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.platform.discord.BotChannelInfo
 import com.discordassistant.central.platform.discord.BotGuildInfo
@@ -14,7 +16,6 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import kotlin.math.abs
 
 /**
  * 대시보드 백엔드 API(차수 14 #195): 길드 개요·요청 로그·정책 스냅샷(읽기전용 JSON).
@@ -60,14 +61,7 @@ class DashboardController(
         @PathVariable guildId: Long,
     ): Map<String, Any?> {
         featureGate.requireDashboardEnabled()
-        return mapOf(
-            "guildId" to guildId,
-            "activeProviders" to registry.byGuild(guildId).size,
-            "defaultModel" to policy.guildDefaultModel(guildId),
-            "language" to policy.guildLanguage(guildId),
-            "autoApprove" to policy.isAutoApprove(guildId),
-            "totalRequests" to analytics.guildRequestCount(guildId),
-        )
+        return DashboardOverviewResponse.from(guildId, registry, policy, analytics).toMap()
     }
 
     /** 프로바이더 본인 처리 내역(#166): 부하 점수 + 최근 처리(프롬프트/유저 미포함). */
@@ -77,20 +71,14 @@ class DashboardController(
         @RequestParam(defaultValue = "public") audience: String = "public",
     ): Map<String, Any?> {
         featureGate.requireDashboardEnabled()
-        val visibility = DashboardAudience.from(audience)
-        return buildMap {
-            put("providerLabel", providerHistoryLabel(providerId, visibility))
-            if (visibility.canSeeProviderIdentity) put("providerId", providerId)
-            put("computeScore", analytics.providerComputeScore(providerId))
-            put("recent", analytics.providerHistory(providerId))
-        }
+        return DashboardProviderHistoryResponse.from(providerId, analytics, DashboardAudience.from(audience)).toMap()
     }
 
     /** 사용량 트렌드(#227): 최근 days 일의 일자별 요청 수. */
     @GetMapping("/{guildId}/usage-trend")
     fun usageTrend(
         @PathVariable guildId: Long,
-        @org.springframework.web.bind.annotation.RequestParam(defaultValue = "7") days: Int,
+        @RequestParam(defaultValue = "7") days: Int,
     ): List<AnalyticsService.DailyCount> {
         featureGate.requireDashboardEnabled()
         return analytics.usageTrend(guildId, days)
@@ -103,36 +91,10 @@ class DashboardController(
         @RequestParam(defaultValue = "public") audience: String = "public",
     ): List<Map<String, Any?>> {
         featureGate.requireDashboardEnabled()
-        return analytics.recentGuildRequests(guildId).mapIndexed { index, request ->
-            val visibility = DashboardAudience.from(audience)
-            buildMap {
-                val providerId = request.providerId
-                put("requestId", request.requestId)
-                put("state", request.state)
-                put("burden", request.requiredBurden)
-                put("providerLabel", providerLabel(guildId, providerId, index))
-                if (visibility.canSeeProviderIdentity) {
-                    put("providerId", providerId)
-                }
-                put("failReason", request.failReason)
-                put("createdAt", request.createdAt)
-            }
-        }
+        return DashboardRequestLogResponse.from(
+            guildId,
+            analytics.recentGuildRequests(guildId),
+            DashboardAudience.from(audience),
+        )
     }
-
-    private fun providerHistoryLabel(
-        providerId: Long,
-        audience: DashboardAudience,
-    ): String = if (audience.canSeeProviderIdentity) "provider:$providerId" else "Provider"
-
-    private fun providerLabel(
-        guildId: Long,
-        providerId: Long?,
-        fallbackIndex: Int,
-    ): String =
-        if (providerId == null) {
-            "Provider ${fallbackIndex + 1}"
-        } else {
-            "Provider " + abs("$guildId:$providerId".hashCode()).toString(36).padStart(4, '0').take(6)
-        }
 }

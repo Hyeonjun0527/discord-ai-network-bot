@@ -1,5 +1,10 @@
 package com.discordassistant.central.ainetwork.adapter.inbound.web
 
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ChannelAiRoutingPolicySummaryResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.EffectiveRoutingPolicyResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ModelChoiceDecisionResponse
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.SaveChannelAiRoutingPolicyRequest
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.SavedChannelAiRoutingPolicyResponse
 import com.discordassistant.central.ainetwork.application.ChannelAiRoutingPolicyService
 import com.discordassistant.central.guild.application.PolicyService
 import org.springframework.web.bind.annotation.GetMapping
@@ -34,13 +39,7 @@ class ChannelAiRoutingPolicyController(
                 providerTagFilter = request.providerTagFilter,
                 costGuard = request.costGuard,
             )
-        return mapOf(
-            "id" to saved.id,
-            "responseMode" to saved.responseMode,
-            "preferredModel" to saved.preferredModel,
-            "allowedModels" to saved.allowedModels,
-            "costGuard" to saved.costGuard,
-        )
+        return SavedChannelAiRoutingPolicyResponse.from(saved).toMap()
     }
 
     @GetMapping("/{guildId}/{channelId}/model-candidates")
@@ -62,20 +61,7 @@ class ChannelAiRoutingPolicyController(
                 requestedModel = requestedModel,
                 guildDefaultModel = guildPolicy.guildDefaultModel(guildId),
             )
-        return mapOf(
-            "requestedModel" to decision.requestedModel,
-            "preferredModel" to decision.preferredModel,
-            "selectedModel" to decision.selectedModel,
-            "availableModels" to decision.availableModels,
-            "fallbackReason" to decision.fallbackReason,
-            "explanation" to decision.explanation,
-            "userMessage" to decision.userMessage,
-            "nextAction" to decision.nextAction,
-            "responseMode" to decision.responseMode,
-            "costGuard" to decision.costGuard,
-            "requiresAvailableModel" to decision.requiresAvailableModel,
-            "routingBlocked" to (decision.selectedModel == null && decision.requiresAvailableModel),
-        )
+        return ModelChoiceDecisionResponse.from(decision).toMap()
     }
 
     @GetMapping("/{guildId}/{channelId}")
@@ -84,39 +70,11 @@ class ChannelAiRoutingPolicyController(
         @PathVariable channelId: Long,
     ): Map<String, Any?> {
         val effective = routingPolicies.effective(guildId, channelId, guildPolicy.guildDefaultModel(guildId))
-        return mapOf(
-            "responseMode" to effective.responseMode,
-            "preferredModel" to effective.preferredModel,
-            "allowedModels" to effective.allowedModels,
-            "minQualityTier" to effective.minQualityTier,
-            "maxCandidates" to effective.maxCandidates,
-            "providerTagFilter" to effective.providerTagFilter,
-            "costGuard" to effective.costGuard,
-        )
+        return EffectiveRoutingPolicyResponse.from(effective).toMap()
     }
 
     @GetMapping("/{guildId}")
     fun list(
         @PathVariable guildId: Long,
-    ): List<Map<String, Any?>> =
-        routingPolicies.list(guildId).map {
-            mapOf(
-                "channelId" to it.channelId,
-                "responseMode" to it.responseMode,
-                "preferredModel" to it.preferredModel,
-                "allowedModels" to it.allowedModels,
-                "minQualityTier" to it.minQualityTier,
-                "maxCandidates" to it.maxCandidates,
-            )
-        }
+    ): List<Map<String, Any?>> = ChannelAiRoutingPolicySummaryResponse.from(routingPolicies.list(guildId))
 }
-
-data class SaveChannelAiRoutingPolicyRequest(
-    val responseMode: String = "balanced",
-    val preferredModel: String? = null,
-    val allowedModels: List<String> = emptyList(),
-    val minQualityTier: String = "standard",
-    val maxCandidates: Int = 1,
-    val providerTagFilter: List<String> = emptyList(),
-    val costGuard: String = "provider_safe",
-)

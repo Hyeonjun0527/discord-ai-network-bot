@@ -1,8 +1,8 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.ainetwork.adapter.inbound.web.AiQualityFeedbackController
-import com.discordassistant.central.ainetwork.adapter.inbound.web.ResolveAiFeedbackRequest
-import com.discordassistant.central.ainetwork.adapter.inbound.web.SubmitAiFeedbackRequest
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.ResolveAiFeedbackRequest
+import com.discordassistant.central.ainetwork.adapter.inbound.web.dto.SubmitAiFeedbackRequest
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiFeedbackRepository
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileEntity
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileRepository

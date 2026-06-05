@@ -10,7 +10,6 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.AiCha
 import com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalRepository
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository
-import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_ANSWER_LENGTH
 import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_CONSTITUTION
@@ -20,8 +19,6 @@ import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_TON
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleEntity
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
-import com.discordassistant.central.knowledge.application.KnowledgeSafety
-import com.discordassistant.central.shared.ContentSafety.HIGH_RISK_SAFETY_LEVELS
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest
@@ -38,63 +35,20 @@ class ChannelAiCustomizationService(
     private val aiAdminRoles: AiAdminRoleRepository? = null,
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
+    // 순수/읽기 협력자(동작보존 분해). 기본값은 기존 의존성으로 구성해 수동 생성(테스트) 호환을 유지하고,
+    // Spring 컨텍스트에서는 동일 시그니처의 @Component 빈이 주입된다. write/TX 라이프사이클은 이 파사드에 잔존.
+    private val presetFactory: ChannelAiWizardPresetFactory = ChannelAiWizardPresetFactory(),
+    private val promptRenderer: ChannelAiPromptRenderer = ChannelAiPromptRenderer(channelAis, versions, featureGate),
+    private val onboardingPresenter: ChannelAiOnboardingPresenter = ChannelAiOnboardingPresenter(channelAis, versions, featureGate),
+    private val approvalPolicy: ChannelAiApprovalPolicy = ChannelAiApprovalPolicy(),
+    private val proposalQuery: ChannelAiProposalQueryService =
+        ChannelAiProposalQueryService(channelAis, versions, proposals, audits, featureGate),
+    // @Transactional 미부여 협력자 — 파사드의 활성 TX 에 합류한다(새 TX 미발생). clock 은 파사드와 공유.
+    private val auditRecorder: CustomizationAuditRecorder = CustomizationAuditRecorder(audits, clock),
 ) {
     fun wizardOptions(): ChannelAiWizardOptions {
         featureGate.requireChannelAiEnabled()
-        return ChannelAiWizardOptions(
-            jobs =
-                listOf(
-                    ChannelAiWizardOption(
-                        key = "development",
-                        label = "개발 질문",
-                        description = "에러 분석, 코드 리뷰, 테스트 작성을 돕는 채널 AI",
-                        recommendedName = "코드냥",
-                    ),
-                    ChannelAiWizardOption(
-                        key = "translation",
-                        label = "번역",
-                        description = "한국어/영어 번역과 문장 다듬기를 돕는 채널 AI",
-                        recommendedName = "번역냥",
-                    ),
-                    ChannelAiWizardOption(
-                        key = "meeting",
-                        label = "회의록",
-                        description = "회의 요약, 결정사항, 액션아이템을 정리하는 채널 AI",
-                        recommendedName = "요약냥",
-                    ),
-                    ChannelAiWizardOption(
-                        key = "announcement",
-                        label = "공지 작성",
-                        description = "운영진 안내문과 릴리즈 노트 초안을 돕는 채널 AI",
-                        recommendedName = "공지냥",
-                    ),
-                    ChannelAiWizardOption(
-                        key = "custom",
-                        label = "자유 설정",
-                        description = "채널 목적에 맞게 직접 역할을 입력하는 채널 AI",
-                        recommendedName = "채널냥",
-                    ),
-                ),
-            tones =
-                listOf(
-                    ChannelAiWizardOption("friendly", "친근하게", "부담 없이 설명하고 필요한 맥락을 덧붙입니다."),
-                    ChannelAiWizardOption("professional", "전문적으로", "정확하고 차분한 운영/업무 말투로 답합니다."),
-                    ChannelAiWizardOption("concise", "짧고 명확하게", "핵심과 다음 행동을 먼저 말합니다."),
-                ),
-            answerLengths =
-                listOf(
-                    ChannelAiWizardOption("short", "짧게", "빠르게 훑고 바로 실행할 수 있게 답합니다."),
-                    ChannelAiWizardOption("balanced", "균형", "설명과 예시를 적당히 섞어 답합니다."),
-                    ChannelAiWizardOption("long", "깊게", "복잡한 질문에 자세히 답하되 Provider 부하 검토가 필요할 수 있습니다."),
-                ),
-            safetyRules =
-                listOf(
-                    "민감정보(비밀번호, API 키, 토큰, 개인키, 개인정보)는 요구·저장·반복하지 않습니다.",
-                    "확실하지 않으면 추측하지 않고 확인이 필요하다고 말합니다.",
-                    "채널 목적에서 벗어난 질문은 범위를 확인한 뒤 답합니다.",
-                    "긴 답변/위험 지시/큰 헌법 변경은 승인 대기열로 보낼 수 있습니다.",
-                ),
-        )
+        return presetFactory.wizardOptions()
     }
 
     fun draftFromAnswers(
@@ -104,18 +58,7 @@ class ChannelAiCustomizationService(
         customName: String? = null,
     ): ChannelAiWizardDraft {
         featureGate.requireChannelAiEnabled()
-        val jobPreset = jobPreset(job)
-        val tonePreset = tonePreset(tone)
-        val normalizedAnswerLength = normalizeAnswerLength(answerLength)
-        val name = customName?.trim()?.takeIf { it.isNotBlank() }?.take(80) ?: jobPreset.name
-        return ChannelAiWizardDraft(
-            name = name,
-            job = jobPreset.purpose,
-            tone = tonePreset,
-            answerLength = normalizedAnswerLength,
-            constitution = constitutionFor(jobPreset.key, tonePreset, normalizedAnswerLength),
-            preview = "저는 $name 입니다. ${jobPreset.preview} 답변은 $tonePreset, 길이는 $normalizedAnswerLength 기준으로 맞출게요.",
-        )
+        return presetFactory.draftFromAnswers(job, tone, answerLength, customName)
     }
 
     @Transactional
@@ -658,214 +601,32 @@ class ChannelAiCustomizationService(
     fun proposalReviewSummary(
         guildId: Long,
         limit: Int = 20,
-    ): ChannelAiProposalReviewSummary {
-        featureGate.requireChannelAiEnabled()
-        val all = proposals.findByGuildIdOrderByCreatedAtDesc(guildId)
-        val pending = all.filter { it.status == ProposalStatus.PENDING }
-        val statusCounts = all.groupingBy { it.status.wire }.eachCount()
-        val reasonCounts =
-            all
-                .mapNotNull { it.reason?.trim()?.takeIf { reason -> reason.isNotBlank() } }
-                .groupingBy { it }
-                .eachCount()
-                .toList()
-                .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
-                .associate { it.first to it.second }
-        val staleCount = statusCounts["stale"] ?: 0
-        val rejectedCount = statusCounts["rejected"] ?: 0
-        val riskCodes =
-            buildList {
-                if (pending.isNotEmpty()) add("pending_review_required")
-                if (staleCount > 0) add("stale_payload_detected")
-                if (rejectedCount > 0) add("recent_rejections")
-                if (pending.any { it.reason?.contains("risk", ignoreCase = true) == true || it.reason?.contains("위험") == true }) {
-                    add("risky_instruction_pending")
-                }
-            }.distinct()
-        val nextActions =
-            buildList {
-                if (pending.isNotEmpty()) add("AI 관리자 역할이 pending 변경을 승인하거나 거절해야 합니다.")
-                if (staleCount > 0) add("stale 제안은 다시 생성해 검토해야 합니다.")
-                if (rejectedCount > 0) add("거절 사유를 반영해 새 버전을 제안하세요.")
-                if (isEmpty()) add("현재 검토가 필요한 AI 설정 변경은 없습니다.")
-            }.distinct()
-        return ChannelAiProposalReviewSummary(
-            guildId = guildId,
-            totalProposalCount = all.size,
-            pendingProposalCount = pending.size,
-            approvedProposalCount = statusCounts["approved"] ?: 0,
-            rejectedProposalCount = rejectedCount,
-            staleProposalCount = staleCount,
-            statusCounts = statusCounts,
-            reasonCounts = reasonCounts,
-            riskCodes = riskCodes,
-            nextActions = nextActions,
-            pendingItems = pending.take(limit.coerceIn(1, 50)).map { it.toReviewItem() },
-            recentItems = all.take(limit.coerceIn(1, 50)).map { it.toReviewItem() },
-        )
-    }
+    ): ChannelAiProposalReviewSummary = proposalQuery.proposalReviewSummary(guildId, limit)
 
-    fun pendingProposals(guildId: Long): List<PendingProposalView> {
-        featureGate.requireChannelAiEnabled()
-        return proposals.findByGuildIdAndStatus(guildId, ProposalStatus.PENDING).map { it.toPendingView() }
-    }
+    fun pendingProposals(guildId: Long): List<PendingProposalView> = proposalQuery.pendingProposals(guildId)
 
     /** 현재 활성(또는 최신) behavior 의 자유 지침을 반환한다. 채널 AI/지침이 없으면 null. */
     fun currentCustomInstruction(
         guildId: Long,
         channelId: Long,
-    ): String? {
-        featureGate.requireChannelAiEnabled()
-        val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId) ?: return null
-        val behavior =
-            channelAi.activeBehaviorVersionId?.let { versions.findByChannelAiIdAndId(channelAi.id, it) }
-                ?: versions.findTopByChannelAiIdOrderByVersionDesc(channelAi.id)
-        return behavior?.customInstruction?.trim()?.takeIf { it.isNotBlank() }
-    }
+    ): String? = proposalQuery.currentCustomInstruction(guildId, channelId)
 
     fun channelHistory(
         guildId: Long,
         channelId: Long,
-    ): ChannelAiHistory {
-        featureGate.requireChannelAiEnabled()
-        val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
-        val behaviorVersions = channelAi?.let { versions.findByChannelAiIdOrderByVersionDesc(it.id) } ?: emptyList()
-        val proposalHistory = proposals.findByGuildIdAndChannelIdOrderByCreatedAtDesc(guildId, channelId)
-        val auditHistory = audits.findTop10ByGuildIdAndChannelIdOrderByCreatedAtDesc(guildId, channelId)
-        return ChannelAiHistory(
-            channelAi = channelAi?.let { ChannelAiHistoryHeader(id = it.id, activeBehaviorVersionId = it.activeBehaviorVersionId) },
-            versions =
-                behaviorVersions.map {
-                    ChannelAiBehaviorVersionView(
-                        id = it.id,
-                        version = it.version,
-                        purpose = it.purpose,
-                        tone = it.tone,
-                        answerLength = it.answerLength,
-                        createdAt = it.createdAt.toString(),
-                    )
-                },
-            proposals =
-                proposalHistory.map {
-                    ChannelAiProposalView(
-                        id = it.id,
-                        status = it.status.wire,
-                        proposedBehaviorId = it.proposedBehaviorId,
-                        requestedBy = it.requestedBy,
-                        reviewedBy = it.reviewedBy,
-                    )
-                },
-            audits =
-                auditHistory.map {
-                    ChannelAiAuditView(action = it.action, targetType = it.targetType, targetId = it.targetId)
-                },
-        )
-    }
+    ): ChannelAiHistory = proposalQuery.channelHistory(guildId, channelId)
 
     fun promptPreview(
         guildId: Long,
         channelId: Long,
         userQuestion: String,
         ragContextText: String? = null,
-    ): ChannelAiPromptPreview {
-        featureGate.requireChannelAiEnabled()
-        val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
-        val behavior =
-            channelAi?.activeBehaviorVersionId?.let { versions.findByChannelAiIdAndId(channelAi.id, it) }
-                ?: channelAi?.let { versions.findTopByChannelAiIdOrderByVersionDesc(it.id) }
-        val name = channelAi?.displayName?.trim()?.takeIf { it.isNotBlank() } ?: "냥시스턴트"
-        val purpose = behavior?.purpose ?: DEFAULT_CHANNEL_AI_PURPOSE
-        val tone = behavior?.tone ?: DEFAULT_CHANNEL_AI_TONE
-        val answerLength = behavior?.answerLength ?: DEFAULT_CHANNEL_AI_ANSWER_LENGTH
-        val constitution = behavior?.constitution ?: DEFAULT_CHANNEL_AI_CONSTITUTION
-        val customInstruction = behavior?.customInstruction?.trim()?.takeIf { it.isNotBlank() }
-        val sensitive = userQuestion.looksSensitive()
-        val sanitizedQuestion = userQuestion.trim().take(PROMPT_USER_QUESTION_MAX)
-        val rag = ragContextText?.trim()?.take(PROMPT_RAG_CONTEXT_MAX)?.ifBlank { null }
-        val sections =
-            buildList {
-                add("safety")
-                add("identity")
-                if (customInstruction != null) add("custom_instruction")
-                add("behavior")
-                if (rag != null && !sensitive) add("rag_context")
-                add("user_question")
-            }
-        val systemPrompt =
-            buildString {
-                appendLine("[우선순위 1: 안전]")
-                appendLine("민감정보(비밀번호, API 키, 토큰, 개인키, 개인정보)는 요구·저장·반복하지 말고 즉시 경고합니다.")
-                if (sensitive) appendLine("현재 사용자 질문에 민감정보로 보이는 내용이 있으므로 RAG/도구 사용보다 경고와 안전 안내를 우선합니다.")
-                appendLine()
-                appendLine("[우선순위 2: 채널 AI 정체성]")
-                appendLine("이름: $name")
-                appendLine("역할: $purpose")
-                appendLine("말투: $tone")
-                appendLine("답변 길이: $answerLength")
-                if (customInstruction != null) {
-                    appendLine()
-                    appendLine("[우선순위 2.5: 자유 지침]")
-                    appendLine("아래 지침은 채널 AI의 색깔/페르소나입니다. 단, 위 안전 규칙과 충돌하면 안전 규칙이 우선합니다.")
-                    appendLine(customInstruction)
-                }
-                appendLine()
-                appendLine("[우선순위 3: AI 헌법]")
-                appendLine(constitution)
-                if (rag != null && !sensitive) {
-                    appendLine()
-                    appendLine("[우선순위 4: 채널 지식/RAG]")
-                    appendLine("아래 지식은 이 채널 범위에서만 참고합니다. 확실하지 않으면 추측하지 않습니다.")
-                    appendLine(rag)
-                }
-            }.trim()
-        val userPrompt =
-            buildString {
-                appendLine("[사용자 질문]")
-                appendLine(sanitizedQuestion)
-            }.trim()
-        return ChannelAiPromptPreview(
-            guildId = guildId,
-            channelId = channelId,
-            channelAiId = channelAi?.id,
-            behaviorVersionId = behavior?.id,
-            name = name,
-            sections = sections,
-            safetyWarning = if (sensitive) "sensitive_question_detected" else null,
-            ragIncluded = rag != null && !sensitive,
-            systemPrompt = systemPrompt,
-            userPrompt = userPrompt,
-        )
-    }
+    ): ChannelAiPromptPreview = promptRenderer.promptPreview(guildId, channelId, userQuestion, ragContextText)
 
     fun channelOnboarding(
         guildId: Long,
         channelId: Long,
-    ): ChannelAiOnboarding {
-        featureGate.requireChannelAiEnabled()
-        val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
-        val behavior =
-            channelAi?.activeBehaviorVersionId?.let { versions.findByChannelAiIdAndId(channelAi.id, it) }
-                ?: channelAi?.let { versions.findTopByChannelAiIdOrderByVersionDesc(it.id) }
-        val name = channelAi?.displayName?.trim()?.takeIf { it.isNotBlank() } ?: "냥시스턴트"
-        val purpose = behavior?.purpose ?: DEFAULT_CHANNEL_AI_PURPOSE
-        val tone = behavior?.tone ?: DEFAULT_CHANNEL_AI_TONE
-        val answerLength = behavior?.answerLength ?: DEFAULT_CHANNEL_AI_ANSWER_LENGTH
-        val examples = examplesForPurpose(purpose)
-        val safetyNotice = "비밀번호, API 키, 토큰, 개인정보 같은 민감정보는 보내지 마세요."
-        val description = "$purpose\n말투는 $tone, 답변 길이는 $answerLength 기준으로 맞춰드릴게요."
-        return ChannelAiOnboarding(
-            guildId = guildId,
-            channelId = channelId,
-            channelAiId = channelAi?.id,
-            name = name,
-            title = "안녕하세요. 저는 이 채널의 $name 이에요.",
-            description = description,
-            safetyNotice = safetyNotice,
-            examples = examples,
-            message = onboardingMessage(name, description, safetyNotice, examples),
-            empty = channelAi == null,
-        )
-    }
+    ): ChannelAiOnboarding = onboardingPresenter.channelOnboarding(guildId, channelId)
 
     /**
      * 제안 상태 전이(가드 적용). 도출한 전이맵([ProposalStatus])에 없는 전이는 거부한다.
@@ -876,169 +637,13 @@ class ChannelAiCustomizationService(
         status = next
     }
 
-    private fun AiChangeProposalEntity.toReview(): AiChangeProposalReview =
-        AiChangeProposalReview(id = id, status = status.wire, reviewedBy = reviewedBy, reason = reason)
-
-    private fun AiChangeProposalEntity.toPendingView(): PendingProposalView =
-        PendingProposalView(
-            id = id,
-            channelId = channelId,
-            channelAiId = channelAiId,
-            proposedBehaviorId = proposedBehaviorId,
-            requestedBy = requestedBy,
-            createdAt = createdAt.toString(),
-        )
-
-    private fun AiChangeProposalEntity.toReviewItem(): ChannelAiProposalReviewItem {
-        val behavior = proposedBehaviorId?.let { behaviorId -> channelAiId?.let { versions.findByChannelAiIdAndId(it, behaviorId) } }
-        return ChannelAiProposalReviewItem(
-            id = id,
-            channelId = channelId,
-            channelAiId = channelAiId,
-            proposedBehaviorId = proposedBehaviorId,
-            status = status.wire,
-            requestedBy = requestedBy,
-            reviewedBy = reviewedBy,
-            reason = reason,
-            behaviorVersion = behavior?.version,
-            purpose = behavior?.purpose,
-            tone = behavior?.tone,
-            answerLength = behavior?.answerLength,
-            safetyLevel = behavior?.safetyLevel,
-            changeSummary = behavior?.changeSummary,
-            createdAt = createdAt.toString(),
-            reviewedAt = reviewedAt?.toString(),
-        )
-    }
-
-    private fun String.looksSensitive(): Boolean {
-        val text = trim()
-        if (text.isBlank()) return false
-        return SENSITIVE_PROMPT_PATTERNS.any { it.containsMatchIn(text) }
-    }
-
-    private fun jobPreset(job: String): ChannelAiJobPreset =
-        when (job.trim().lowercase()) {
-            "development", "dev", "개발", "개발 질문", "1" ->
-                ChannelAiJobPreset("development", "코드냥", "개발 질문, 에러 분석, 코드 리뷰, 테스트 작성을 돕습니다.", "개발 질문과 코드 문제를 도와드려요.")
-            "translation", "translate", "번역", "2" ->
-                ChannelAiJobPreset("translation", "번역냥", "한국어/영어 번역과 문장 다듬기를 돕습니다.", "번역과 문장 개선을 도와드려요.")
-            "meeting", "minutes", "회의록", "3" ->
-                ChannelAiJobPreset("meeting", "요약냥", "회의록 정리, 액션아이템 추출, 요약을 돕습니다.", "회의 내용을 보기 쉽게 정리해드려요.")
-            "announcement", "notice", "공지", "공지 작성", "4" ->
-                ChannelAiJobPreset("announcement", "공지냥", "공지 작성, 운영진 안내문, 릴리즈 노트 초안을 돕습니다.", "공지와 안내문 작성을 도와드려요.")
-            else ->
-                ChannelAiJobPreset("custom", "채널냥", job.trim().ifBlank { DEFAULT_CHANNEL_AI_PURPOSE }.take(200), "이 채널 목적에 맞춰 도와드려요.")
-        }
-
-    private fun tonePreset(tone: String): String =
-        when (tone.trim().lowercase()) {
-            "friendly", "친근", "친근하게", "1" -> "친근하게"
-            "professional", "전문", "전문적으로", "2" -> "전문적으로"
-            "concise", "short", "짧게", "짧고 명확하게", "3" -> "짧고 명확하게"
-            else -> tone.trim().ifBlank { DEFAULT_CHANNEL_AI_TONE }.take(80)
-        }
-
-    private fun normalizeAnswerLength(answerLength: String): String =
-        when (answerLength.trim().lowercase()) {
-            "short", "짧게" -> "short"
-            "long", "deep", "길게", "깊게" -> "long"
-            else -> "balanced"
-        }
-
-    private fun constitutionFor(
-        jobKey: String,
-        tone: String,
-        answerLength: String,
-    ): String {
-        val jobRule =
-            when (jobKey) {
-                "development" -> "코드는 실행 가능한 예시와 검증 방법을 함께 제안합니다."
-                "translation" -> "원문의 의미를 보존하고, 필요한 경우 자연스러운 대안을 함께 제안합니다."
-                "meeting" -> "결정사항, 할 일, 담당자, 기한을 분리해 정리합니다."
-                "announcement" -> "사실과 일정은 명확히 쓰고, 과장되거나 확정되지 않은 표현을 피합니다."
-                else -> "채널 목적에서 벗어난 질문은 범위를 확인한 뒤 답합니다."
-            }
-        return listOf(
-            "확실하지 않으면 추측하지 말고 확인이 필요하다고 말합니다.",
-            "민감정보(비밀번호, 토큰, 개인키, 개인정보)를 요구하거나 저장하지 않습니다.",
-            "말투는 $tone 유지합니다.",
-            "답변 길이는 $answerLength 정책을 따릅니다.",
-            jobRule,
-        ).joinToString("\n")
-    }
-
-    private fun examplesForPurpose(purpose: String): List<String> {
-        val p = purpose.lowercase()
-        return when {
-            listOf("개발", "코드", "spring", "kotlin", "에러").any { it in p } ->
-                listOf("이 에러가 왜 나는지 알려줘", "이 코드 리뷰해줘", "테스트 코드 만들어줘")
-            listOf("번역", "영어", "문장").any { it in p } ->
-                listOf("이 문장을 자연스럽게 번역해줘", "더 공손한 표현으로 바꿔줘", "영어 답장을 다듬어줘")
-            listOf("회의", "요약", "회의록").any { it in p } ->
-                listOf("회의 내용을 요약해줘", "결정사항과 할 일을 분리해줘", "액션아이템만 뽑아줘")
-            listOf("공지", "안내", "릴리즈").any { it in p } ->
-                listOf("공지 초안을 써줘", "운영진 말투로 다듬어줘", "짧은 안내문으로 바꿔줘")
-            else ->
-                listOf("이 내용을 쉽게 설명해줘", "핵심만 요약해줘", "다음 행동을 추천해줘")
-        }
-    }
-
-    private fun onboardingMessage(
-        name: String,
-        description: String,
-        safetyNotice: String,
-        examples: List<String>,
-    ): String =
-        buildString {
-            appendLine("❂ **$name 채널 AI가 준비됐어요**")
-            appendLine()
-            appendLine(description)
-            appendLine()
-            appendLine("**질문 예시**")
-            examples.forEach { appendLine("- $it") }
-            appendLine()
-            appendLine("⚠️ $safetyNotice")
-        }.trim()
+    private fun AiChangeProposalEntity.toReview(): AiChangeProposalReview = proposalQuery.toReview(this)
 
     private fun approvalDecision(
         requestedApproval: Boolean,
         behavior: AiBehaviorVersionEntity,
         displayName: String,
-    ): ApprovalDecision {
-        // 위험/민감/장문/대형 헌법 분류는 requireApproval 여부와 무관하게 항상 계산한다.
-        // (#1 이후 대시보드 wizard 는 항상 requireApproval=true 로 들어오는데, 예전처럼 여기서 즉시
-        //  return 해 버리면 위험 분류가 죽고 proposal reason 이 전부 "manual approval requested" 가 돼
-        //  검토 요약의 위험 집계(risky_instruction_pending 등)가 비어 버린다. 구체 위험 사유를 우선 보존.)
-        val customInstruction = behavior.customInstruction.orEmpty()
-        val text =
-            listOf(
-                displayName,
-                behavior.purpose,
-                behavior.tone,
-                behavior.answerLength,
-                behavior.constitution.orEmpty(),
-                behavior.safetyLevel,
-                customInstruction,
-            ).joinToString("\n").lowercase()
-        val riskReason =
-            when {
-                behavior.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS -> "high risk safety level"
-                behavior.answerLength.equals("long", ignoreCase = true) -> "long answer mode can increase provider load"
-                // 위험어는 KnowledgeSafety.RISKY_INSTRUCTION_TERMS 단일 출처를 공유한다(OnboardingAnalyzer 와 동기화 — S2).
-                KnowledgeSafety.looksRiskyInstruction(text) -> "risky channel AI instruction requires review"
-                // 자유 지침에 토큰/비밀번호/개인키 같은 민감정보가 들어오면 자동 승인하지 않고 검토 큐로 보낸다.
-                customInstruction.looksSensitive() -> "custom instruction contains sensitive material requires review"
-                behavior.constitution.orEmpty().length > SAFE_CONSTITUTION_CHARS -> "large constitution requires review"
-                else -> null
-            }
-        // 명시적 승인 요청이면 항상 검토 필요(required=true). 사유는 구체 위험 분류를 우선하고,
-        // 위험 요소가 없으면 일반 "manual approval requested" 로 폴백한다.
-        if (requestedApproval) {
-            return ApprovalDecision(required = true, reason = riskReason ?: "manual approval requested")
-        }
-        return ApprovalDecision(required = riskReason != null, reason = riskReason)
-    }
+    ): ApprovalDecision = approvalPolicy.approvalDecision(requestedApproval, behavior, displayName)
 
     /**
      * behavior version 채번(`MAX(version)+1`)과 insert 를 동시성 안전하게 수행한다.
@@ -1114,20 +719,7 @@ class ChannelAiCustomizationService(
         targetType: String,
         targetId: Long?,
         summary: String,
-    ) {
-        audits.save(
-            CustomizationAuditLogEntity(
-                guildId = guildId,
-                channelId = channelId,
-                actorId = actorUserId,
-                action = action,
-                targetType = targetType,
-                targetId = targetId,
-                summary = summary.take(1000),
-                createdAt = Instant.now(clock),
-            ),
-        )
-    }
+    ) = auditRecorder.audit(guildId, channelId, actorUserId, action, targetType, targetId, summary)
 
     private fun normalize(
         value: String?,
@@ -1144,16 +736,6 @@ class ChannelAiCustomizationService(
 
     private companion object {
         const val MAX_VERSION_RETRIES = 5
-        const val SAFE_CONSTITUTION_CHARS = 1200
-        const val PROMPT_USER_QUESTION_MAX = 4_000
-        const val PROMPT_RAG_CONTEXT_MAX = 4_000
-        val SENSITIVE_PROMPT_PATTERNS =
-            listOf(
-                Regex("""(?i)\b(password|passwd|pwd|secret)\b"""),
-                Regex("(?i)(api[_-]?key|bot[_-]?token|discord[_-]?bot[_-]?token|private[_-]?key|access[_-]?token)"),
-                Regex("(?i)-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"),
-                Regex("(?i)sk-[A-Za-z0-9_-]{20,}"),
-            )
     }
 }
 
@@ -1307,12 +889,7 @@ data class ChannelAiWizardOption(
     val recommendedName: String? = null,
 )
 
-private data class ApprovalDecision(
-    val required: Boolean,
-    val reason: String?,
-)
-
-private data class ChannelAiJobPreset(
+data class ChannelAiJobPreset(
     val key: String,
     val name: String,
     val purpose: String,

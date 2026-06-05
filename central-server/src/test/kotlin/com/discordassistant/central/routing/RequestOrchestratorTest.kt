@@ -61,6 +61,7 @@ class RequestOrchestratorTest {
     private val recorder =
         object : UsageRecorder {
             var count = 0
+            val failures = mutableListOf<Long>()
 
             override fun recordSuccess(
                 guildId: Long,
@@ -69,6 +70,10 @@ class RequestOrchestratorTest {
                 requestId: String,
             ) {
                 count++
+            }
+
+            override fun recordProviderFailure(providerId: Long) {
+                failures += providerId
             }
         }
 
@@ -91,6 +96,7 @@ class RequestOrchestratorTest {
     private fun orchestrator(
         reg: ConnectionRegistry,
         providerSafety: ProviderSafetyChecker = ALLOW_ALL_PROVIDER_SAFETY,
+        routingStats: ProviderRoutingStats = ProviderRoutingStats(),
     ) = RequestOrchestrator(
         reg,
         fakePolicy,
@@ -100,6 +106,7 @@ class RequestOrchestratorTest {
         recorder,
         fakeProfiles,
         providerSafety = providerSafety,
+        routingStats = routingStats,
     )
 
     private val input = AiRequestInput(guildId = 100, channelId = 200, userId = 5, prompt = "안녕", roleIds = setOf(1))
@@ -109,10 +116,24 @@ class RequestOrchestratorTest {
         val reg = newRegistry()
         register(reg, 1, "ok")
         val r = orchestrator(reg).handle(input)
-        assertEquals(RequestState.COMPLETED, r.state)
+        assertEquals(RequestState.COMPLETED, r.state, r.failReason)
         assertNotNull(r.text)
         assertEquals(1L, r.providerId)
         assertEquals(1, recorder.count)
+    }
+
+    @Test
+    fun `성공 — 라우팅 통계 기록`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok")
+        val stats = ProviderRoutingStats()
+        val r = orchestrator(reg, routingStats = stats).handle(input)
+        val snapshot = stats.snapshot(1, ModelBurden.LIGHT)
+
+        assertEquals(RequestState.COMPLETED, r.state, r.failReason)
+        assertEquals(1, snapshot.sampleCount)
+        assertTrue(snapshot.latencyMillis >= 1)
+        assertTrue(snapshot.outputChars > 0)
     }
 
     private val fakeWebEnabled =
@@ -225,8 +246,25 @@ class RequestOrchestratorTest {
         register(reg, 1, "err") // 먼저 선택되어 실패
         register(reg, 2, "ok")
         val r = orchestrator(reg).handle(input)
-        assertEquals(RequestState.COMPLETED, r.state)
+        assertEquals(RequestState.COMPLETED, r.state, r.failReason)
         assertEquals(2L, r.providerId) // fallback 으로 처리
+    }
+
+    @Test
+    fun `모든 provider 실패 → fallback은 같은 provider를 반복하지 않고 bounded 종료`() {
+        val reg = newRegistry()
+        val first = register(reg, 1, "err")
+        val second = register(reg, 2, "err")
+        val failureStart = recorder.failures.size
+
+        val r = orchestrator(reg).handle(input)
+        val newFailures = recorder.failures.drop(failureStart)
+
+        assertEquals(RequestState.FAILED, r.state)
+        assertEquals(2, newFailures.size)
+        assertEquals(setOf(1L, 2L), newFailures.toSet())
+        assertNotNull((first.connection as EchoConnection).lastInfer)
+        assertNotNull((second.connection as EchoConnection).lastInfer)
     }
 
     @Test
@@ -329,7 +367,7 @@ class RequestOrchestratorTest {
 
         val r = orchestrator(reg).handle(input.copy(preferredModel = "qwen-coder", responseMode = "fast"))
 
-        assertEquals(RequestState.COMPLETED, r.state)
+        assertEquals(RequestState.COMPLETED, r.state, r.failReason)
         assertEquals(2L, r.providerId)
         val sent = (selected.connection as EchoConnection).lastInfer!!
         assertEquals("qwen-coder", sent.model)

@@ -3,8 +3,13 @@ package com.discordassistant.central.routing
 import com.discordassistant.central.domain.ModelBurden
 import com.discordassistant.central.domain.RequestState
 import com.discordassistant.central.relay.ConnectionRegistry
+import com.discordassistant.central.relay.RemoteTimeoutException
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import java.util.UUID
+import java.util.concurrent.CompletionException
+import kotlin.math.max
+import kotlin.math.min
 
 /** 라우팅이 필요로 하는 정책 일부(테스트 디커플용). PolicyService 가 구현. */
 interface RoutingPolicy {
@@ -26,13 +31,25 @@ data class ProviderProfile(
     val allowedChannelIds: Set<Long>? = null,
     val maxPromptChars: Int = 100_000,
     val failureRate: Double = 0.0,
+    val qualityTier: String = "standard",
+    val privacyCapabilities: Set<RoutingPrivacyPolicy> = setOf(RoutingPrivacyPolicy.STANDARD),
 )
 
 interface ProviderProfileProvider {
     fun profile(providerId: Long): ProviderProfile
 
+    fun profile(
+        guildId: Long,
+        providerId: Long,
+    ): ProviderProfile = profile(providerId)
+
     /** 여러 프로바이더 프로필을 한 번에(라우팅 핫패스의 후보당 쿼리 N+1 방지). 기본은 개별 호출. */
     fun profilesFor(providerIds: Collection<Long>): Map<Long, ProviderProfile> = providerIds.associateWith { profile(it) }
+
+    fun profilesFor(
+        guildId: Long,
+        providerIds: Collection<Long>,
+    ): Map<Long, ProviderProfile> = providerIds.associateWith { profile(guildId, it) }
 }
 
 /** 차단 사용자 확인(차수 11). BlocklistService 가 구현. 기본은 차단 없음. */
@@ -151,6 +168,12 @@ class RequestOrchestrator(
     private val idempotency: IdempotencyGuard = IdempotencyGuard(),
     private val providerSafety: ProviderSafetyChecker = ALLOW_ALL_PROVIDER_SAFETY,
     private val webSearch: WebSearchAugmenter = NoWebSearch,
+    private val routingStats: ProviderRoutingStats = ProviderRoutingStats(),
+    private val reservationManager: RoutingReservationManager = RoutingReservationManager(pipeline),
+    private val duals: RoutingDualVariableManager = RoutingDualVariableManager(),
+    private val auditLogger: RoutingAuditLogger = RoutingAuditLogger(),
+    private val lifecycle: RoutingAttemptLifecycleManager =
+        RoutingAttemptLifecycleManager(reservationManager, routingStats, duals, auditLogger),
 ) {
     private val log = LoggerFactory.getLogger(RequestOrchestrator::class.java)
 
@@ -167,6 +190,8 @@ class RequestOrchestrator(
     }
 
     private fun route(input: AiRequestInput): OrchestrationResult {
+        val routingRequestId = UUID.randomUUID().toString()
+        val arrivalAtNanos = System.nanoTime()
         // 0) 차단 사용자 / 일일 쿼터
         if (blocklist.isBlocked(input.guildId, input.userId)) {
             return OrchestrationResult(RequestState.REJECTED, failReason = "차단된 사용자입니다.")
@@ -198,12 +223,17 @@ class RequestOrchestrator(
         }
         val ctx =
             RequestContext(
-                weigh.effectiveBurden!!,
-                input.roleIds,
-                input.channelId,
-                input.prompt.length,
-                input.isAdmin,
-                input.preferredModel,
+                requiredBurden = weigh.effectiveBurden!!,
+                requesterRoleIds = input.roleIds,
+                channelId = input.channelId,
+                promptChars = input.prompt.length,
+                requesterIsAdmin = input.isAdmin,
+                preferredModel = input.preferredModel,
+                responseMode = input.responseMode,
+                requestId = routingRequestId,
+                userId = input.userId,
+                maxOutputTokens = estimatedMaxOutputTokens(input.responseMode),
+                quotaReservationUnits = 1,
             )
 
         // 2.5) 웹검색 증강(opt-in): 로컬 모델이 웹을 못 보므로 서버가 검색해 프롬프트에 주입한다.
@@ -215,26 +245,71 @@ class RequestOrchestrator(
         // 3) 후보 구성 + 필터 + 선택 + 전송(최대 2회: 원 + fallback 1회)
         val excluded = mutableSetOf<Long>()
         var lastReason = NO_PROVIDER_ACTIONABLE_REASON
-        repeat(2) { attempt ->
+        repeat(ctx.maxRetryCount + 1) { attempt ->
             val sessions = registry.byGuild(input.guildId).filter { it.providerId !in excluded }
-            val profileMap = profiles.profilesFor(sessions.map { it.providerId }) // 후보 프로필 일괄 조회(N+1 제거)
+            val profileMap = profiles.profilesFor(input.guildId, sessions.map { it.providerId }) // 후보 프로필 일괄 조회(N+1 제거)
             val candidates =
                 sessions
                     .map { session ->
-                        val p = profileMap[session.providerId] ?: profiles.profile(session.providerId)
+                        val p = profileMap[session.providerId] ?: profiles.profile(input.guildId, session.providerId)
+                        val stats = routingStats.snapshot(session.providerId, ctx.requiredBurden)
+                        val reservation = reservationManager.snapshot(session.providerId)
+                        val activeRequests = max(session.activeRequests, reservation.activeReservations)
+                        val remainingDaily =
+                            if (session.remainingDailyRequests == Int.MAX_VALUE) {
+                                Int.MAX_VALUE
+                            } else {
+                                (session.remainingDailyRequests - reservation.reservedQuotaUnits).coerceAtLeast(0)
+                            }
+                        val circuitState =
+                            if (session.state == com.discordassistant.central.domain.ProviderState.UNHEALTHY) {
+                                RoutingCircuitState.OPEN
+                            } else {
+                                RoutingCircuitState.CLOSED
+                            }
+                        val heartbeatAgeMillis = if (session.isStale(90)) Long.MAX_VALUE else 0L
+                        val lambdaSnapshot = duals.snapshot(session.providerId, input.userId, ctx.requiredBurden)
                         Candidate(
                             providerId = session.providerId,
                             state = session.state,
                             supportedBurdens = p.supportedBurdens,
                             maxConcurrency = session.capability.maxConcurrency,
-                            activeRequests = session.activeRequests,
-                            remainingDaily = session.remainingDailyRequests,
+                            activeRequests = activeRequests,
+                            remainingDaily = remainingDaily,
                             allowedRoleIds = p.allowedRoleIds,
                             allowedChannelIds = p.allowedChannelIds,
                             maxPromptChars = p.maxPromptChars,
                             failureRate = p.failureRate,
                             inCooldown = providerSafety.isRoutingProtected(input.guildId, session.providerId),
+                            recentHandled = stats.recentHandled,
                             modelNames = session.capability.models.toSet(),
+                            qualityTier = p.qualityTier,
+                            observedSuccessRate = stats.successRate,
+                            observedTimeoutRate = stats.timeoutRate,
+                            observedLatencyMillis = stats.latencyMillis,
+                            observedOutputChars = stats.outputChars,
+                            observedSampleCount = stats.sampleCount,
+                            contextLimitTokens = max(1, p.maxPromptChars / 4),
+                            supportsStreaming = "stream" in session.capability.capabilities || "text" in session.capability.capabilities,
+                            supportsTools = "tools" in session.capability.capabilities,
+                            supportsJsonMode = "json" in session.capability.capabilities,
+                            modelFamilies =
+                                session.capability.models
+                                    .map { it.substringBefore(":") }
+                                    .toSet(),
+                            privacyCapabilities = p.privacyCapabilities,
+                            heartbeatAgeMillis = heartbeatAgeMillis,
+                            circuitState = circuitState,
+                            trustedConcurrency =
+                                min(
+                                    session.capability.maxConcurrency.coerceAtLeast(1),
+                                    stats.trustedConcurrency.coerceAtLeast(1),
+                                ),
+                            centralReservedQuotaUnits = reservation.reservedQuotaUnits,
+                            estimatedPendingPrefillTokens = reservation.pendingPrefillTokens,
+                            estimatedPendingDecodeTokens = reservation.pendingDecodeTokens,
+                            estimatedPendingWorkMillis = reservation.pendingWorkMillis,
+                            lambdas = lambdaSnapshot,
                         )
                     }
             val outcome = pipeline.filter(candidates, ctx)
@@ -242,20 +317,51 @@ class RequestOrchestrator(
                 return when {
                     outcome.signal == FilterSignal.PERMISSION_DENIED ->
                         OrchestrationResult(RequestState.REJECTED, failReason = "권한 또는 정책상 처리할 수 없습니다.")
-                    outcome.dropped.isNotEmpty() && outcome.dropped.values.all { it == "cooldown" } ->
+                    outcome.dropped.isNotEmpty() && outcome.dropped.values.all { it == "COOLDOWN" } ->
                         OrchestrationResult(RequestState.FAILED, failReason = PROVIDER_PROTECTION_ACTIONABLE_REASON)
                     else -> OrchestrationResult(RequestState.FAILED, failReason = lastReason)
                 }
             }
-            val sel = router.select(outcome.eligible, ctx)!!
-            val session = registry.byProvider(input.guildId, sel.providerId)
+            val decision = router.decide(outcome.eligible, outcome.dropped, ctx.copy(retryCount = attempt))
+            val selectedProviderId =
+                when (decision) {
+                    is RoutingDecision.ImmediateDispatch -> decision.providerId
+                    is RoutingDecision.Queue -> return OrchestrationResult(RequestState.FAILED, failReason = lastReason)
+                    is RoutingDecision.Fallback -> return OrchestrationResult(RequestState.FAILED, failReason = decision.reason)
+                    is RoutingDecision.Reject -> return OrchestrationResult(RequestState.FAILED, failReason = decision.reason)
+                }
+            auditLogger.recordDecision(
+                requestId = routingRequestId,
+                selectedProviderId = selectedProviderId,
+                candidateProviderIds = candidates.map { it.providerId },
+                infeasibleProviderReasons = outcome.dropped,
+                scoreBreakdowns = decision.breakdowns,
+                fallbackReason = if (attempt > 0) "retry:$attempt" else null,
+            )
+            val selectedCandidate = outcome.eligible.single { it.providerId == selectedProviderId }
+            val reservation =
+                when (val reserve = reservationManager.tryReserve(selectedCandidate, ctx.copy(retryCount = attempt))) {
+                    is ReservationResult.Reserved -> {
+                        auditLogger.recordReservation(routingRequestId, reserve.reservation)
+                        reserve.reservation
+                    }
+                    is ReservationResult.Rejected -> {
+                        auditLogger.recordReservationRejected(routingRequestId, selectedProviderId, reserve.reason)
+                        excluded.add(selectedProviderId)
+                        lastReason = reserve.reason
+                        return@repeat
+                    }
+                }
+            val session = registry.byProvider(input.guildId, selectedProviderId)
             if (session == null) {
-                excluded.add(sel.providerId)
+                reservationManager.finalize(reservation.reservationId, AttemptFinalState.REJECTED_BY_PROVIDER)
+                excluded.add(selectedProviderId)
                 return@repeat
             }
-            if (attempt > 0) log.info("fallback 시도 → provider {}", sel.providerId)
+            if (attempt > 0) log.info("fallback 시도 → provider {}", selectedProviderId)
+            val dispatchAtNanos = System.nanoTime()
+            val routingAttempt = lifecycle.startAttempt(ctx.copy(retryCount = attempt), reservation, dispatchAtNanos)
             try {
-                // 반환 future 는 세션 orTimeout 으로 항상 시한 내 완료/실패한다 → get() 안전.
                 val result =
                     session
                         .sendInfer(
@@ -263,20 +369,76 @@ class RequestOrchestrator(
                             model = input.preferredModel,
                             options = responseModeOptions(input.responseMode),
                         ).get()
-                recorder.recordSuccess(input.guildId, input.userId, sel.providerId, requestId = result.requestId)
+                val completedAtNanos = System.nanoTime()
+                val latency =
+                    RoutingLatencyMetrics(
+                        arrivalAtNanos = arrivalAtNanos,
+                        dispatchAtNanos = dispatchAtNanos,
+                        firstTokenAtNanos = completedAtNanos,
+                        completedAtNanos = completedAtNanos,
+                        generatedTokens = max(1, result.usage.completionTokens.takeIf { it > 0 } ?: result.text.length / 4),
+                    )
+                val sloMet =
+                    latency.ttftMillis <= ctx.deadlineTtftMillis &&
+                        latency.averageTbtMillis <= ctx.deadlineTbtMillis &&
+                        latency.e2eMillis <= ctx.deadlineE2eMillis
+                val actualInputTokens = result.usage.promptTokens.takeIf { it > 0 } ?: ctx.promptTokens
+                val actualOutputTokens = result.usage.completionTokens.takeIf { it > 0 } ?: max(1, result.text.length / 4)
+                val outcomeForAttempt =
+                    RoutingAttemptOutcome(
+                        finalState = AttemptFinalState.SUCCESS,
+                        latency = latency,
+                        actualInputTokens = actualInputTokens,
+                        actualOutputTokens = actualOutputTokens,
+                        qualityMet = true,
+                        sloMet = sloMet,
+                    )
+                lifecycle.finalizeAttempt(
+                    routingAttempt,
+                    outcomeForAttempt,
+                    quotaPressure = quotaPressure(selectedCandidate),
+                    providerBurdenPressure = providerBurdenPressure(selectedCandidate),
+                )
+                recorder.recordSuccess(input.guildId, input.userId, selectedProviderId, requestId = routingRequestId)
                 return OrchestrationResult(
                     RequestState.COMPLETED,
                     result.text,
-                    sel.providerId,
+                    selectedProviderId,
                     effectiveBurden = ctx.requiredBurden,
-                    requestId = result.requestId,
+                    requestId = routingRequestId,
                     sources = augmentation.sources,
                 )
             } catch (e: Exception) {
                 lastReason = e.cause?.message ?: e.message ?: "처리 실패"
-                excluded.add(sel.providerId) // 실패 provider 일시 제외
-                recorder.recordProviderFailure(sel.providerId)
-                log.debug("provider {} 실패: {}", sel.providerId, lastReason)
+                excluded.add(selectedProviderId)
+                auditLogger.recordFallback(routingRequestId, selectedProviderId, lastReason)
+                val completedAtNanos = System.nanoTime()
+                val timeout = e.isTimeoutFailure()
+                val outcomeForAttempt =
+                    RoutingAttemptOutcome(
+                        finalState = if (timeout) AttemptFinalState.TIMEOUT else AttemptFinalState.FAILED,
+                        failureType = if (timeout) RoutingFailureType.END_TO_END_TIMEOUT else RoutingFailureType.MODEL_ERROR,
+                        latency =
+                            RoutingLatencyMetrics(
+                                arrivalAtNanos = arrivalAtNanos,
+                                dispatchAtNanos = dispatchAtNanos,
+                                firstTokenAtNanos = completedAtNanos,
+                                completedAtNanos = completedAtNanos,
+                                generatedTokens = 0,
+                            ),
+                        actualInputTokens = ctx.promptTokens,
+                        actualOutputTokens = 0,
+                        qualityMet = false,
+                        sloMet = false,
+                    )
+                lifecycle.finalizeAttempt(
+                    routingAttempt,
+                    outcomeForAttempt,
+                    quotaPressure = quotaPressure(selectedCandidate),
+                    providerBurdenPressure = providerBurdenPressure(selectedCandidate),
+                )
+                recorder.recordProviderFailure(selectedProviderId)
+                log.debug("provider {} 실패: {}", selectedProviderId, lastReason)
             }
         }
         return OrchestrationResult(RequestState.FAILED, failReason = noProviderActionableReason(lastReason))
@@ -312,5 +474,26 @@ class RequestOrchestrator(
                 "saving" -> mapOf("num_predict" to 384, "temperature" to 0.2)
                 else -> emptyMap()
             }
+
+        fun elapsedMillisSince(startedAtNanos: Long): Long = ((System.nanoTime() - startedAtNanos) / 1_000_000L).coerceAtLeast(1L)
+
+        fun Throwable.isTimeoutFailure(): Boolean {
+            var cursor: Throwable? = this
+            while (cursor != null) {
+                if (cursor is RemoteTimeoutException) return true
+                cursor = if (cursor is CompletionException) cursor.cause else cursor.cause
+            }
+            return false
+        }
+
+        fun quotaPressure(candidate: Candidate): Double =
+            if (candidate.remainingDaily == Int.MAX_VALUE) {
+                0.0
+            } else {
+                (candidate.centralReservedQuotaUnits.toDouble() / candidate.remainingDaily.coerceAtLeast(1)).coerceIn(0.0, 1.0)
+            }
+
+        fun providerBurdenPressure(candidate: Candidate): Double =
+            candidate.activeRequests.toDouble() / candidate.effectiveConcurrencyLimit().coerceAtLeast(1).toDouble()
     }
 }

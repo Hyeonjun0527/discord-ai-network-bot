@@ -22,6 +22,7 @@ import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
+import com.discordassistant.central.routing.ProviderRoutingStats
 import com.discordassistant.central.usage.UsageService
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -68,9 +69,18 @@ class CommandServiceTest
         val aiLevel: com.discordassistant.central.network.AiLevelService,
         val onboardingOptOuts: com.discordassistant.central.persistence.GuildOnboardingOptOutRepository,
         val channelAis: com.discordassistant.central.persistence.ChannelAiRepository,
+        val routingStats: ProviderRoutingStats,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
+
+        private fun markStableProvider(providerId: Long) {
+            listOf(ModelBurden.LIGHT, ModelBurden.STANDARD, ModelBurden.HEAVY).forEach { burden ->
+                repeat(4) {
+                    routingStats.recordSuccess(providerId, burden, latencyMillis = 1_500, outputChars = 240)
+                }
+            }
+        }
 
         @Test
         fun `privacy 안내`() {
@@ -353,6 +363,7 @@ class CommandServiceTest
             conn.session = session
             session.capability = session.capability.copy(models = listOf("llama3.1:8b"))
             registry.register(session)
+            markStableProvider(702)
             providerCapabilities.save(
                 ProviderCapabilityProfileEntity(
                     guildId = g.guildId,
@@ -744,6 +755,7 @@ class CommandServiceTest
             val s = ProviderSession(conn, providerId = 703, guildId = g.guildId)
             conn.session = s
             registry.register(s)
+            markStableProvider(703)
             try {
                 val longPrompt = "긴 답변이 필요한 질문입니다. ".repeat(40)
                 val reply = commands.ask(g, longPrompt, requestedResponseMode = "deep")
@@ -767,6 +779,7 @@ class CommandServiceTest
             conn.session = s
             s.capability = s.capability.copy(models = listOf("llama3.1:8b", "qwen-coder"))
             registry.register(s)
+            markStableProvider(79)
             try {
                 val r = commands.ask(ctx(admin = true), "깊게 봐줘", requestedModel = "qwen-coder", requestedResponseMode = "deep")
 
@@ -979,6 +992,7 @@ class CommandServiceTest
             val s = ProviderSession(conn, providerId = 82, guildId = 100)
             conn.session = s
             registry.register(s)
+            markStableProvider(82)
             try {
                 channelAiCustomization.createFromWizard(
                     guildId = 100,
@@ -1025,6 +1039,7 @@ class CommandServiceTest
             val s = ProviderSession(conn, providerId = 81, guildId = 100)
             conn.session = s
             registry.register(s)
+            markStableProvider(81)
             try {
                 val space = knowledge.createSpace(100, 200, null, "긴 개발 지식", 77, null, null)
                 listOf("A", "B", "C").forEach { prefix ->

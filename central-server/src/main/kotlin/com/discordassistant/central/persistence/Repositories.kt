@@ -369,6 +369,11 @@ interface ProviderCapabilityProfileRepository : JpaRepository<ProviderCapability
         guildId: Long,
         providerUserId: Long,
     ): ProviderCapabilityProfileEntity?
+
+    fun findByGuildIdAndProviderUserIdIn(
+        guildId: Long,
+        providerUserIds: Collection<Long>,
+    ): List<ProviderCapabilityProfileEntity>
 }
 
 interface KnowledgeSpaceRepository : JpaRepository<KnowledgeSpaceEntity, Long> {

@@ -133,6 +133,8 @@ kover {
                     "*.ChannelProfilePanelRenderer\$*",
                     "*.OnboardingInteractionHandler",
                     "*.OnboardingInteractionHandler\$*",
+                    "*.SettingsWizardHandler",
+                    "*.SettingsWizardHandler\$*",
                     // dev 전용 엔드포인트(운영 CENTRAL_DEV_ENABLED=false 로 차단). 핵심 흐름 아님.
                     "*.DevController",
                     "*.DevController\$*",

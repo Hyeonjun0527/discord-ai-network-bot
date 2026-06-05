@@ -11,7 +11,6 @@ import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
-import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.channel.ChannelDeleteEvent
@@ -40,7 +39,6 @@ import net.dv8tion.jda.api.interactions.modals.Modal
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -107,6 +105,8 @@ class DiscordBot(
     private val gatewayStatus: DiscordGatewayStatus,
     private val historyBackfill: GuildHistoryBackfillService,
     private val onboardingOptOuts: GuildOnboardingOptOutRepository,
+    // 설정 마법사(pendingSettings 단일 빈 소유). 모든 Listener 인스턴스가 같은 빈을 참조해 진행중 설정을 공유한다.
+    private val settingsWizard: SettingsWizardHandler,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
@@ -167,6 +167,7 @@ class DiscordBot(
                 gatewayStatus,
                 historyBackfill,
                 onboardingOptOuts,
+                settingsWizard,
                 mentionAskEnabled = messageContentIntent,
                 messageContentIntentEnabled = messageContentIntent,
                 onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
@@ -232,16 +233,18 @@ class DiscordBot(
         private val gatewayStatus: DiscordGatewayStatus,
         private val historyBackfill: GuildHistoryBackfillService,
         private val onboardingOptOuts: GuildOnboardingOptOutRepository,
+        private val settingsWizard: SettingsWizardHandler,
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
         private val slowCommandExecutor: ExecutorService,
     ) : ListenerAdapter() {
-        // god class 분해(verbatim 이동): 응답 렌더링·채널 프로필 패널·온보딩 인터랙션을 협력자로 위임한다.
+        // god class 분해(verbatim 이동): 응답 렌더링·채널 프로필 패널·온보딩 인터랙션·설정 마법사를 협력자로 위임한다.
         // 동일 의존성 인스턴스를 그대로 넘겨 동작을 구조적으로 보존한다(로직 불변).
+        // settingsWizard 는 단일 빈을 그대로 받아 모든 Listener 가 같은 pendingSettings(진행중 설정)를 공유한다.
         private val answers = DiscordAnswerRenderer(channelProfiles)
         private val channelProfilePanel =
-            ChannelProfilePanelRenderer(channelProfiles, ::effectiveAllowedChannelIds)
+            ChannelProfilePanelRenderer(channelProfiles, settingsWizard::effectiveAllowedChannelIds)
         private val onboarding =
             OnboardingInteractionHandler(commands, historyBackfill, onboardingOptOuts, messageContentIntentEnabled)
 
@@ -291,8 +294,8 @@ class DiscordBot(
                         event.reply("⛔ 관리자만 사용할 수 있습니다.").setEphemeral(true).queue()
                     } else {
                         event
-                            .replyEmbeds(settingsEmbed(ctx))
-                            .addComponents(settingsRows(ctx))
+                            .replyEmbeds(settingsWizard.settingsEmbed(ctx))
+                            .addComponents(settingsWizard.settingsRows(ctx))
                             .setEphemeral(true)
                             .queue()
                     }
@@ -390,19 +393,10 @@ class DiscordBot(
             private const val CHANNEL_PROFILE_ROLLBACK = "channel-profile:rollback"
             private const val CHANNEL_PROFILE_SAVE_MODAL = "channel-profile:save-modal"
             private const val CHANNEL_PROFILE_AVATAR_MODAL = "channel-profile:avatar-modal"
-            private const val SETTINGS_CHANNEL_BULK_MODAL = "settings:channel-bulk-modal"
             private const val ASK_FEEDBACK_PREFIX = "ask-feedback:"
             private const val ONBOARD_PREFIX = "onboard:"
             private const val ONBOARD_ACTION_START = "start"
-            private val pendingSettings = ConcurrentHashMap<String, PendingGuildSettings>()
         }
-
-        private data class PendingGuildSettings(
-            var language: String? = null,
-            var defaultModel: String? = null,
-            var allowedChannelIds: List<Long>? = null,
-            var autoApprove: Boolean? = null,
-        )
 
         override fun onReady(event: ReadyEvent) {
             gatewayStatus.markReady(mentionAskEnabled)
@@ -469,8 +463,8 @@ class DiscordBot(
                         event.reply("⛔ 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
                     } else {
                         event
-                            .replyEmbeds(settingsEmbed(ctx))
-                            .addComponents(settingsRows(ctx))
+                            .replyEmbeds(settingsWizard.settingsEmbed(ctx))
+                            .addComponents(settingsWizard.settingsRows(ctx))
                             .setEphemeral(true)
                             .queue()
                     }
@@ -531,34 +525,11 @@ class DiscordBot(
                 event.reply(commands.providerInstallGuide(ctx, os).content).setEphemeral(true).queue()
                 return
             }
+            // 설정 마법사 전용 버튼(자동승인 on/off·모든채널·채널일괄·취소·저장)은 단일 빈 핸들러로 위임.
+            if (settingsWizard.handleButton(event, ctx)) return
             val reply =
                 when (event.componentId) {
                     MenuFactory.STATUS -> commands.providerStatus(ctx)
-                    MenuFactory.AUTO_APPROVE_ON -> {
-                        pendingSettings(settingsKey(ctx)).autoApprove = true
-                        return updateSettingsPanel(event, ctx)
-                    }
-                    MenuFactory.AUTO_APPROVE_OFF -> {
-                        pendingSettings(settingsKey(ctx)).autoApprove = false
-                        return updateSettingsPanel(event, ctx)
-                    }
-                    MenuFactory.CHANNEL_ALL -> {
-                        pendingSettings(settingsKey(ctx)).allowedChannelIds = emptyList()
-                        return updateSettingsPanel(event, ctx)
-                    }
-                    MenuFactory.CHANNEL_BULK -> {
-                        if (!ctx.isAdmin) {
-                            event.reply("⛔ 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
-                        } else {
-                            event.replyModal(channelProfilePanel.channelBulkModal(ctx)).queue()
-                        }
-                        return
-                    }
-                    MenuFactory.CANCEL_SETTINGS -> {
-                        pendingSettings.remove(settingsKey(ctx))
-                        return updateSettingsPanel(event, ctx)
-                    }
-                    MenuFactory.SAVE_SETTINGS -> return savePendingSettings(event, ctx)
                     MenuFactory.AUTO_APPROVE, "settings:autoapprove" -> commands.toggleAutoApprove(ctx)
                     else -> Reply("알 수 없는 동작입니다.")
                 }
@@ -570,23 +541,9 @@ class DiscordBot(
             val guild = event.guild ?: return
             val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
             val value = event.values.firstOrNull().orEmpty()
-            val reply =
-                when (event.componentId) {
-                    MenuFactory.LANG -> {
-                        pendingSettings(settingsKey(ctx)).language = value
-                        return updateSettingsPanel(event, ctx)
-                    }
-                    MenuFactory.MODEL -> {
-                        pendingSettings(settingsKey(ctx)).defaultModel = value
-                        return updateSettingsPanel(event, ctx)
-                    }
-                    MenuFactory.AUTO_APPROVE_SELECT -> {
-                        pendingSettings(settingsKey(ctx)).autoApprove = value.toBooleanStrictOrNull() ?: false
-                        return updateSettingsPanel(event, ctx)
-                    }
-                    else -> Reply("알 수 없는 선택입니다.")
-                }
-            event.reply(reply.content).setEphemeral(true).queue()
+            // 설정 마법사 전용 드롭다운(언어/모델/자동승인)은 단일 빈 핸들러로 위임.
+            if (settingsWizard.handleStringSelect(event, ctx, value)) return
+            event.reply(Reply("알 수 없는 선택입니다.").content).setEphemeral(true).queue()
         }
 
         /** 설정 채널 허용(엔티티 선택). */
@@ -594,9 +551,7 @@ class DiscordBot(
             if (event.componentId != MenuFactory.CHANNEL) return
             val guild = event.guild ?: return
             val ctx = buildCtx(guild.idLong, event.member, event.channelIdLong, event.user.idLong)
-            val channelIds = event.values.map { it.idLong }
-            pendingSettings(settingsKey(ctx)).allowedChannelIds = channelIds
-            updateSettingsPanel(event, ctx)
+            settingsWizard.handleEntitySelect(event, ctx)
         }
 
         /** 봇이 서버에 들어오면 자동 온보딩 패널 게시. */
@@ -628,138 +583,6 @@ class DiscordBot(
             }
         }
 
-        /** 설정 패널 Embed(현재 상태 + 저장 대기 변경사항). */
-        private fun settingsEmbed(ctx: CommandContext): MessageEmbed {
-            val pending = pendingSettings[settingsKey(ctx)]
-            val effectiveDefaultModel =
-                when (pending?.defaultModel) {
-                    "__auto__" -> null
-                    null -> commands.guildDefaultModel(ctx)
-                    else -> pending.defaultModel
-                }
-            return EmbedFactory.settingsEmbed(
-                language = pending?.language ?: commands.guildLanguage(ctx),
-                defaultModel = effectiveDefaultModel,
-                poolModelCount = commands.poolModels(ctx).size,
-                allowedChannelCount = effectiveAllowedChannelIds(ctx).size,
-                allowedChannelText = allowedChannelText(ctx),
-                autoApprove = pending?.autoApprove ?: commands.isAutoApprove(ctx),
-                pendingSummary = pendingSummary(ctx),
-                currentSummary = currentSettingsSummary(ctx),
-            )
-        }
-
-        private fun settingsKey(ctx: CommandContext) = "${ctx.guildId}:${ctx.channelId}:${ctx.userId}"
-
-        private fun allowedChannelText(ctx: CommandContext): String = formatChannelPolicy(effectiveAllowedChannelIds(ctx))
-
-        private fun currentSettingsSummary(ctx: CommandContext): String {
-            val model = commands.guildDefaultModel(ctx) ?: "자동 선택"
-            val autoApprove = if (commands.isAutoApprove(ctx)) "켜짐" else "꺼짐"
-            return listOf(
-                "• 언어: `${commands.guildLanguage(ctx)}`",
-                "• 기본 모델: `$model`",
-                "• LLM 사용 채널: ${formatChannelPolicy(commands.allowedChannelIds(ctx))}",
-                "• 자동 승인: `$autoApprove`",
-            ).joinToString("\n")
-        }
-
-        private fun effectiveAllowedChannelIds(ctx: CommandContext): List<Long> =
-            pendingSettings[settingsKey(ctx)]?.allowedChannelIds ?: commands.allowedChannelIds(ctx)
-
-        private fun formatChannelPolicy(channelIds: Collection<Long>): String {
-            if (channelIds.isEmpty()) return "모든 채널 허용"
-            val distinct = channelIds.distinct()
-            val visible = distinct.take(12).joinToString(" ") { "<#$it>" }
-            val suffix = if (distinct.size > 12) " 외 ${distinct.size - 12}개" else ""
-            return "${distinct.size}개 채널: $visible$suffix"
-        }
-
-        private fun pendingSummary(ctx: CommandContext): String? {
-            val pending = pendingSettings[settingsKey(ctx)] ?: return null
-            val lines = mutableListOf<String>()
-            pending.language?.let { lines += "• 언어 → `$it`" }
-            pending.defaultModel?.let { lines += "• 기본 모델 → `${if (it == "__auto__") "자동 선택" else it}`" }
-            pending.allowedChannelIds?.let { ids ->
-                lines += "• LLM 사용 채널 → ${formatChannelPolicy(ids)}"
-            }
-            pending.autoApprove?.let { lines += "• 자동 승인 → `${if (it) "켜짐" else "꺼짐"}`" }
-            return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
-        }
-
-        private fun pendingSettings(key: String): PendingGuildSettings = pendingSettings.computeIfAbsent(key) { PendingGuildSettings() }
-
-        private fun savePendingSettings(
-            event: ButtonInteractionEvent,
-            ctx: CommandContext,
-        ) {
-            val key = settingsKey(ctx)
-            val pending = pendingSettings.remove(key)
-            if (pending == null || pending == PendingGuildSettings()) {
-                event.reply("아직 저장할 변경사항이 없습니다. 언어/모델/채널/자동 승인을 먼저 선택해주세요.").setEphemeral(true).queue()
-                return
-            }
-            val reply =
-                commands.saveGuildSettings(
-                    ctx,
-                    pending.language,
-                    pending.defaultModel,
-                    pending.allowedChannelIds,
-                    pending.autoApprove,
-                )
-            event
-                .editMessageEmbeds(settingsEmbed(ctx))
-                .setComponents(settingsRows(ctx))
-                .queue({
-                    event.hook
-                        .sendMessage(reply.content)
-                        .setEphemeral(true)
-                        .queue({}, {})
-                }, {})
-        }
-
-        private fun updateSettingsPanel(
-            event: ButtonInteractionEvent,
-            ctx: CommandContext,
-        ) {
-            event.editMessageEmbeds(settingsEmbed(ctx)).setComponents(settingsRows(ctx)).queue()
-        }
-
-        private fun updateSettingsPanel(
-            event: StringSelectInteractionEvent,
-            ctx: CommandContext,
-        ) {
-            event.editMessageEmbeds(settingsEmbed(ctx)).setComponents(settingsRows(ctx)).queue()
-        }
-
-        private fun updateSettingsPanel(
-            event: EntitySelectInteractionEvent,
-            ctx: CommandContext,
-        ) {
-            event.editMessageEmbeds(settingsEmbed(ctx)).setComponents(settingsRows(ctx)).queue()
-        }
-
-        /** 설정 패널 액션 로우(언어·모델·채널 드롭다운 + 명시 버튼). */
-        private fun settingsRows(ctx: CommandContext): List<ActionRow> =
-            listOf(
-                ActionRow.of(
-                    MenuFactory.languageSelect(current = pendingSettings[settingsKey(ctx)]?.language ?: commands.guildLanguage(ctx)),
-                ),
-                ActionRow.of(
-                    MenuFactory.modelSelect(
-                        models = commands.poolModels(ctx),
-                        current = pendingSettings[settingsKey(ctx)]?.defaultModel ?: commands.guildDefaultModel(ctx),
-                    ),
-                ),
-                ActionRow.of(MenuFactory.channelSelect(effectiveAllowedChannelIds(ctx))),
-                ActionRow.of(
-                    MenuFactory.autoApproveSelect(
-                        current = pendingSettings[settingsKey(ctx)]?.autoApprove ?: commands.isAutoApprove(ctx),
-                    ),
-                ),
-                ActionRow.of(MenuFactory.settingsActionButtons()),
-            )
-
         /** 긴 질문 모달 제출(#189). */
         override fun onModalInteraction(event: ModalInteractionEvent) {
             val ctx = ctxOf(event) // DM(유저설치)에서도 긴 질문 모달 동작
@@ -778,16 +601,8 @@ class DiscordBot(
                 event.reply(reply.content).setEphemeral(true).queue()
                 return
             }
-            if (event.modalId == SETTINGS_CHANNEL_BULK_MODAL) {
-                val ids = MenuFactory.parseChannelIdsBulk(event.getValue("channels")?.asString.orEmpty())
-                pendingSettings(settingsKey(ctx)).allowedChannelIds = ids
-                event
-                    .replyEmbeds(settingsEmbed(ctx))
-                    .addComponents(settingsRows(ctx))
-                    .setEphemeral(true)
-                    .queue()
-                return
-            }
+            // 설정 마법사 채널 일괄 모달은 단일 빈 핸들러로 위임(pending 갱신 + 패널 재렌더).
+            if (settingsWizard.handleModal(event, ctx)) return
             if (event.modalId == CHANNEL_PROFILE_AVATAR_MODAL) {
                 val current = channelProfiles.get(ctx.guildId, ctx.channelId)
                 if (current == null) {

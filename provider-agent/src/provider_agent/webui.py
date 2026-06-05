@@ -309,10 +309,12 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div></section>
 <section><h2>2. 설정</h2><div class="settings">
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 연결</div><div class="setting-desc">앱을 닫아도 로그인하면 백그라운드에서 자동으로 연결돼 있어요. 이 앱은 설정을 바꿀 때만 열면 됩니다.</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
-<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div style="flex:1"><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 으로 <b>/imagine</b> 이미지 생성을 직접 제공합니다.</div><button class="btn" type="button" id="imgInstallBtn" style="display:none;margin-top:9px" onclick="openSD()">＋ 로컬 이미지 모델 설치</button></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
+<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div style="flex:1"><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 으로 <b>/imagine</b> 이미지 생성을 직접 제공합니다.</div><button class="btn" type="button" id="imgInstallBtn" style="display:none;margin-top:9px" onclick="openSD()">＋ 로컬 이미지 모델 설치</button><div class="setting-desc" id="sdState" style="margin-top:7px"></div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
 </div>
 <button class="primary-btn" type="button" id="go" onclick="connect()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;vertical-align:-4px;margin-right:9px"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 0 1 0 10h-2"></path><path d="M8 12h8"></path></svg><span>연동하기</span></button>
 <div class="helper" style="text-align:center;margin-top:9px">처음이면 디스코드 로그인 창이 열려요. 한 번 연동하면 다음부턴 바로 연결됩니다.</div>
+<div id="bgBar" style="display:none;margin-top:11px"></div>
+<div id="applyBar" style="display:none;margin-top:11px"></div>
 <div id="msg"></div>
 <section id="serversSec" style="display:none;margin-top:16px"><h2>내 서버</h2>
 <div class="settings" id="serverList"></div>
@@ -381,7 +383,11 @@ async function setupOllama(){const b=document.getElementById('osetupBtn'),bar=do
 async function pollOllamaSetup(){const el=document.getElementById('osetup'),fill=document.getElementById('opfill');let p;try{p=await j('/api/ollama/setup-progress');}catch(e){setTimeout(pollOllamaSetup,1500);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';if(p.phase==='error'){if(el)el.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));const b=document.getElementById('osetupBtn');if(b){b.disabled=false;b.style.opacity=1;b.style.cursor='pointer';b.textContent='다시 시도';}return;}if(el)el.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){if(fill)fill.style.width='100%';setTimeout(loadModels,800);return;}setTimeout(pollOllamaSetup,1500);}
 // ── 이미지(SD) 설치 마법사 ──
 let SD_MODELS=[],SD_SEL='',SD_BUSY=false;
-async function loadSDStatus(){let s;try{s=await j('/api/sd/status');}catch(e){return;}const btn=document.getElementById('imgInstallBtn'),tog=document.getElementById('img');const ready=s.installed||s.ready;if(btn)btn.style.display=ready?'none':'inline-flex';if(tog)tog.style.display=ready?'block':'none';}
+async function loadSDStatus(){let s;try{s=await j('/api/sd/status');}catch(e){return;}const btn=document.getElementById('imgInstallBtn'),tog=document.getElementById('img');const have=s.installed||s.ready;if(btn)btn.style.display=have?'none':'inline-flex';if(tog)tog.style.display=have?'block':'none';
+const st=document.getElementById('sdState');if(!st)return;
+if(s.ready)st.innerHTML='<span style="color:#9fe0a0">'+ICHECK+'Stable Diffusion 실행 중 — 이미지 생성 가능</span>';
+else if(s.installed)st.innerHTML='<span style="color:#ffd479">'+IWARN+'설치됨 · <b>미실행</b> — SD 를 켜고 <b>연동(재연결)</b>해야 이미지가 제공됩니다.</span>';
+else st.innerHTML='';}
 async function openSD(){const m=document.getElementById('sdModal');m.style.display='flex';document.getElementById('sdmMsg').textContent='';document.getElementById('sdmpbar').style.display='none';document.getElementById('sdmpfill').style.width='0';try{const d=await j('/api/sd/models');SD_MODELS=d.models||[];SD_SEL=d.default||(SD_MODELS[0]&&SD_MODELS[0].id);}catch(e){SD_MODELS=[];}renderSDModels();
 const sp=await j('/api/sd/setup-progress').catch(()=>null);SD_BUSY=sp&&['installing','downloading','starting'].includes(sp.phase);if(SD_BUSY){lockSDStart();pollSDSetup();}else{unlockSDStart();}}
 function closeSD(){if(SD_BUSY){if(!confirm('설치가 진행 중입니다. 닫으면 백그라운드로 계속됩니다. 닫을까요?'))return;}document.getElementById('sdModal').style.display='none';}
@@ -402,25 +408,42 @@ async function refresh(){const s=await j('/api/status');RUN=s.running;
 onbVisibility(s.hasToken);
 document.getElementById('relay').textContent=s.relayUrl;
 if(s.hasToken)document.getElementById('token').placeholder='저장됨 — 바꿀 때만 입력';
-document.getElementById('img').classList.toggle('on',s.enableImage);
-const ring=document.getElementById('ring');ring.className='ring'+(s.running?(s.connected?'':' connecting'):' off');
-document.getElementById('stitle').textContent=s.running?(s.connected?'연결 완료':'연결하는 중…'):'대기 중';
-document.getElementById('ssub').textContent=s.running?(s.connected?'이 PC가 로컬 AI 노드로 등록되었습니다.':'중앙 서버에 연결하고 있습니다.'):'연결 시작을 누르면 풀에 등록됩니다.';
+// 이미지 토글: 멈춰 있을 때만 저장값으로 동기화(실행 중엔 사용자가 바꾼 의도를 보존 → '변경 적용' 감지).
+if(!s.running)document.getElementById('img').classList.toggle('on',s.enableImage);
+const bg=!s.running&&s.backgroundRunning;  // 백그라운드 자동시작 서비스가 이미 연결 중
+const ring=document.getElementById('ring');ring.className='ring'+(s.running?(s.connected?'':' connecting'):(bg?'':' off'));
+document.getElementById('stitle').textContent=s.running?(s.connected?'연결 완료':'연결하는 중…'):(bg?'백그라운드에서 실행 중':'대기 중');
+document.getElementById('ssub').textContent=s.running?(s.connected?'이 PC가 로컬 AI 노드로 등록되었습니다.':'중앙 서버에 연결하고 있습니다.'):(bg?'백그라운드 서비스가 이미 연결돼 있어요. 이 창은 설정 변경용입니다.':'연결 시작을 누르면 풀에 등록됩니다.');
 const cnt=s.running?s.models.length:selectedModels().length;
 let chips='<div class="chip"><span class="dot'+(HAS_MODELS?'':' grey')+'"></span>'+(HAS_MODELS?'Ollama 실행 중':'Ollama 확인 필요')+'</div>';
 chips+='<div class="chip">제공 모델 '+cnt+'개</div>';
-chips+='<div class="chip"><span class="dot'+(s.connected?'':' grey')+'"></span>'+(s.running?(s.connected?('처리 '+s.processed+'건'):'연결 시도 중'):'중지됨')+(s.imageReady?' · 🖼️':'')+'</div>';
+chips+='<div class="chip"><span class="dot'+((s.connected||bg)?'':' grey')+'"></span>'+(s.running?(s.connected?('처리 '+s.processed+'건'):'연결 시도 중'):(bg?'백그라운드 연결됨':'중지됨'))+(s.imageReady?' · 🖼️':'')+'</div>';
+const imgWarn=s.running&&s.enableImage&&!s.imageReady;  // 이미지 토글은 켰지만 SD 미연결 → 광고 안 됨
+if(imgWarn)chips+='<div class="chip" style="border-color:rgba(255,212,121,.4);color:#ffd479">이미지: SD 미연결 ⚠️</div>';
 document.getElementById('chips').innerHTML=chips;
+// 백그라운드 실행 중: 이 창에서 직접 연결하려면 먼저 백그라운드를 중지하도록 안내.
+const bgBar=document.getElementById('bgBar');
+if(bg){bgBar.style.display='block';bgBar.innerHTML='<div class="helper" style="margin-bottom:7px">이 PC는 <b>백그라운드 서비스</b>로 이미 연결돼 있어요. 이 창에서 직접 연결하려면 먼저 백그라운드를 중지하세요.</div><button class="secondary-btn" type="button" style="width:100%" onclick="stopBackground()">백그라운드 중지</button>';}
+else bgBar.style.display='none';
+// 변경 적용 배너: 실행 중에 선택 모델·이미지 토글이 광고된 값과 다르면 재연결로 적용하도록 안내.
+const advModels=(s.models||[]).slice().sort().join(',');const uiModels=selectedModels().slice().sort().join(',');
+const pending=s.running&&((HAS_MODELS&&uiModels!==advModels)||(on('img')!==!!s.enableImage));
+const applyBar=document.getElementById('applyBar');
+if(pending){applyBar.style.display='block';applyBar.innerHTML='<div class="helper" style="margin-bottom:7px;color:#ffd479">'+IWARN+'바꾼 모델·이미지 설정은 <b>재연결해야</b> 디스코드 풀에 반영됩니다.</div><button class="secondary-btn" type="button" style="width:100%" onclick="reapply()">변경 적용(재연결)</button>';}
+else applyBar.style.display='none';
 const go=document.getElementById('go');go.innerHTML=s.running?ISTOP+'<span>중지</span>':ILINK+'<span>연동하기</span>';go.className='primary-btn'+(s.running?' stop':'');
 const lg=await j('/api/logs');const el=document.getElementById('log');el.textContent=lg.lines.join('\n');el.scrollTop=el.scrollHeight;}
+async function stopBackground(){const m=document.getElementById('msg');m.className='';m.textContent='백그라운드 중지 중…';try{const r=await j('/api/service-stop',{method:'POST'});if(r.ok){m.className='ok';m.textContent='백그라운드를 중지했어요. 이제 이 창에서 연동할 수 있어요.';}else{m.className='err';m.textContent='⚠️ '+(r.error||'중지에 실패했어요. 잠시 후 다시 시도해 주세요.');}}catch(e){m.className='err';m.textContent='⚠️ 중지 실패';}setTimeout(refresh,900);}
+async function reapply(){const m=document.getElementById('msg');if(HAS_MODELS&&!selectedModels().length){m.className='err';m.textContent='⚠️ 제공할 모델을 1개 이상 선택하세요.';return;}m.className='';m.textContent='변경 적용 중(재연결)…';try{await j('/api/stop',{method:'POST'});const su=await j('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({models:selectedModels(),enableImage:on('img')})});if(!su.ok){m.className='err';m.textContent='⚠️ '+(su.error||'저장 실패');return;}const st=await j('/api/start',{method:'POST'});if(st.ok){m.className='ok';m.textContent='✅ 변경을 적용해 다시 연결했어요.';}else{m.className='err';m.textContent='⚠️ '+st.error;}}catch(e){m.className='err';m.textContent='⚠️ 재연결에 실패했어요.';}await refresh();}
 // 버튼 하나로 모든 걸: 실행 중이면 중지, 아니면 (설정 저장 → 토큰 있으면 바로 연결 / 없으면 브라우저 로그인 → 콜백이 자동 연결).
 async function connect(){const msg=document.getElementById('msg');if(RUN){await j('/api/stop',{method:'POST'});await refresh();return;}
 if(HAS_MODELS&&!selectedModels().length){msg.className='err';msg.textContent='⚠️ 제공할 모델을 1개 이상 선택하세요.';return;}
 msg.className='';msg.textContent='설정 저장 중…';
 const su=await j('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:document.getElementById('token').value.trim(),models:selectedModels(),enableImage:on('img'),installService:on('svc')})});
 if(!su.ok){msg.className='err';msg.textContent='⚠️ '+(su.error||'저장 실패');return;}document.getElementById('token').value='';
+const svcNote=su.serviceError?(' · ⚠️ 자동 실행 등록 실패: '+su.serviceError):(su.serviceInstalled?' · 자동 실행 등록':'');
 const s=await j('/api/status');
-if(s.hasToken){const st=await j('/api/start',{method:'POST'});if(!st.ok){msg.className='err';msg.textContent='⚠️ '+st.error;}else{msg.className='ok';msg.textContent='✅ 연결 시작'+(su.serviceInstalled?' · 자동 실행 등록':'');}await refresh();return;}
+if(s.hasToken){const st=await j('/api/start',{method:'POST'});if(!st.ok){msg.className='err';msg.textContent='⚠️ '+st.error;}else{msg.className=su.serviceError?'err':'ok';msg.textContent='✅ 연결 시작'+svcNote;}await refresh();return;}
 if(s.connectEnabled){const r=await j('/api/connect-open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin:location.origin})});
 if(r.ok){msg.className='ok';msg.textContent='🌐 브라우저에서 디스코드 로그인·승인하면 자동으로 연결됩니다.';}else{msg.className='err';msg.textContent='⚠️ '+(r.error||'브라우저 열기 실패');}return;}
 msg.className='err';msg.textContent='⚠️ 토큰이 필요합니다. ‘고급’에서 /provider-join 토큰을 붙여넣어 주세요.';}
@@ -555,6 +578,11 @@ def build_app(session_key: str) -> web.Application:
         agent = _state["agent"]
         task = _state["task"]
         running = task is not None and not task.done()
+        # 이 GUI 가 직접 연결돼 있지 않은데 락이 잡혀 있으면 = 백그라운드 자동시작 서비스가 이미 연결 중.
+        # (그 경우 GUI 가 다시 연결하려 하면 singleton 으로 막혀 헷갈리므로, 상태로 분명히 보여준다.)
+        from . import singleton
+
+        background_running = (not running) and singleton.held_by_other()
         return web.json_response(
             {
                 "running": running,
@@ -565,6 +593,8 @@ def build_app(session_key: str) -> web.Application:
                 "hasToken": bool(saved.get("token")),
                 "relayUrl": saved.get("relay_url") or _default_relay(),
                 "enableImage": bool(saved.get("enable_image")),
+                # 백그라운드 자동시작 서비스가 이미 연결 중인지(이 창은 설정용임을 알리는 데 쓴다).
+                "backgroundRunning": background_running,
                 # ‘디스코드 로그인’ OAuth 가능 여부는 **서버 설정**으로 결정된다(에이전트 env 불필요).
                 # 서버에 OAuth 앱(client-id/secret)이 설정돼 있으면 자동으로 켜진다.
                 "connectEnabled": _connect_enabled(),
@@ -598,6 +628,7 @@ def build_app(session_key: str) -> web.Application:
                 return web.json_response({"ok": False, "error": "SD 주소가 localhost 가 아닙니다."})
         save_config(cfg)
         service_installed = False
+        service_error: str | None = None
         if data.get("installService"):
             # 자동 실행 서비스를 로드하면 RunAtLoad 로 헤드리스 인스턴스가 곧바로 뜬다.
             # 그 인스턴스가 이번 세션의 프로바이더 연결을 가로채지 않도록, GUI 가 먼저 락을 쥔다
@@ -610,9 +641,12 @@ def build_app(session_key: str) -> web.Application:
             try:
                 install_service()
                 service_installed = True
-            except Exception:  # noqa: BLE001
-                pass
-        return web.json_response({"ok": True, "serviceInstalled": service_installed, "hasToken": bool(token)})
+            except Exception as exc:  # noqa: BLE001 — 실패 사유를 사용자에게 보여준다(옛날엔 조용히 삼킴)
+                service_error = str(exc)
+                logging.getLogger("provider_agent").warning("자동 시작 서비스 등록 실패: %s", exc)
+        return web.json_response(
+            {"ok": True, "serviceInstalled": service_installed, "serviceError": service_error, "hasToken": bool(token)}
+        )
 
     async def connect_open(req: web.Request) -> web.Response:
         """‘토큰 받기’: 앱 창은 그대로 두고 **시스템 기본 브라우저**에서 디스코드 OAuth 를 연다.
@@ -904,6 +938,17 @@ def build_app(session_key: str) -> web.Application:
         singleton.release()  # 다음 시작/다른 인스턴스를 위해 락 해제
         return web.json_response({"ok": True})
 
+    async def service_stop(req: web.Request) -> web.Response:
+        """백그라운드 자동시작 서비스를 중지한다(앱 안에서 직접 연결하고 싶을 때)."""
+        _auth(req)
+        from .service import stop_service
+
+        try:
+            ok = await asyncio.to_thread(stop_service)
+        except Exception as exc:  # noqa: BLE001
+            return web.json_response({"ok": False, "error": str(exc)})
+        return web.json_response({"ok": bool(ok)})
+
     async def logout(req: web.Request) -> web.Response:
         """로그아웃(연동 해제·초기화): 실행 중 에이전트 중지 + 저장된 토큰·서버 연결 제거.
 
@@ -987,6 +1032,7 @@ def build_app(session_key: str) -> web.Application:
             }
         )
         service_installed = False
+        service_error: str | None = None
         if autostart:
             # /api/setup 의 installService 와 동일 패턴: GUI 가 먼저 락을 쥐고 서비스를 등록한다.
             try:
@@ -997,9 +1043,10 @@ def build_app(session_key: str) -> web.Application:
 
                 install_service()
                 service_installed = True
-            except Exception:  # noqa: BLE001 - 자동시작 등록 실패는 온보딩을 막지 않는다
-                pass
-        return web.json_response({"ok": True, "serviceInstalled": service_installed})
+            except Exception as exc:  # noqa: BLE001 - 등록 실패는 온보딩을 막지 않되 사유는 남긴다
+                service_error = str(exc)
+                logging.getLogger("provider_agent").warning("온보딩 자동시작 서비스 등록 실패: %s", exc)
+        return web.json_response({"ok": True, "serviceInstalled": service_installed, "serviceError": service_error})
 
     app.router.add_get("/", index)
     app.router.add_get("/mascot.png", mascot)
@@ -1028,6 +1075,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)
+    app.router.add_post("/api/service-stop", service_stop)
     app.router.add_post("/api/logout", logout)
     app.router.add_post("/api/reset", reset_all)
     app.router.add_post("/api/onboard-apply", onboard_apply)
@@ -1142,6 +1190,30 @@ def _schedule_exit(delay: float = 1.2) -> None:
     threading.Timer(delay, lambda: os._exit(0)).start()
 
 
+def _handoff_to_service_on_close() -> None:
+    """창을 닫을 때, 자동시작 서비스가 등록돼 있으면 백그라운드로 연결을 **인계**한다.
+
+    GUI 가 열려 있는 동안엔 GUI 가 singleton 락을 쥐어 서비스가 비어 있다(서비스는 RunAtLoad 로
+    떴다가 락 충돌로 즉시 정상종료 → KeepAlive 미적용이라 그대로 죽어 있음). 그래서 예전엔 앱을
+    닫으면 다음 로그인 전까지 백그라운드 연결이 없었다. 이제 창을 닫는 순간 락을 풀고 서비스를
+    kickstart 해, 앱을 닫아도 끊김 없이 백그라운드에서 계속 연결되게 한다.
+    """
+    try:
+        from . import service, singleton
+        from .config_file import load_connections
+
+        if not service.is_installed():
+            return
+        saved = load_config()
+        if not saved.get("token") and not load_connections():
+            return  # 연결할 토큰이 없으면 인계할 것도 없음
+        singleton.release()  # GUI 락 해제 → 서비스가 락을 잡을 수 있게
+        if service.kickstart():
+            logging.getLogger("provider_agent").info("창 닫힘 — 백그라운드 서비스로 연결을 인계했습니다.")
+    except Exception as exc:  # noqa: BLE001 - 인계 실패는 종료를 막지 않는다
+        logging.getLogger("provider_agent").warning("백그라운드 인계 실패: %s", exc)
+
+
 def _start_auto_update_watcher() -> None:
     """auto_update(기본 ON)면 **시작 시 + 주기적으로** 새 버전을 검사·적용한다(실행 중에도).
 
@@ -1210,6 +1282,7 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
                 f"로컬 AI 제공자 설정 · {APP_DISPLAY_NAME}", url, width=600, height=800, min_size=(400, 600)
             )
             webview.start()  # 메인 스레드 점유, 창 닫으면 반환
+            _handoff_to_service_on_close()  # 닫을 때 백그라운드 서비스로 연결 인계(설치돼 있으면)
             return
         except Exception as exc:  # noqa: BLE001 - 웹뷰 실패 시 브라우저로 폴백
             logging.getLogger("provider_agent").warning(

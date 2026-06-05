@@ -523,6 +523,57 @@ async def test_autoconnect_on_startup_when_enabled(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_status_reports_background_running(monkeypatch):
+    """다른 인스턴스(백그라운드 자동시작 서비스)가 락을 잡고 있으면 status.backgroundRunning=True."""
+    from provider_agent import singleton
+
+    monkeypatch.setattr(singleton, "held_by_other", lambda: True)
+    client = await _client()
+    try:
+        st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
+        assert st["running"] is False
+        assert st["backgroundRunning"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_setup_surfaces_service_install_error(monkeypatch):
+    """서비스 등록이 실패하면 조용히 삼키지 않고 serviceError 로 사유를 돌려준다(설치 자체는 ok)."""
+    def _boom():
+        raise RuntimeError("launchctl 권한 없음")
+
+    monkeypatch.setattr("provider_agent.service.install_service", _boom)
+    monkeypatch.setattr("provider_agent.singleton.acquire", lambda: True)
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/setup",
+            headers={"X-Session": KEY},
+            json={"token": "T", "models": ["m"], "installService": True},
+        )
+        d = await r.json()
+        assert d["ok"] is True
+        assert d["serviceInstalled"] is False
+        assert "launchctl" in (d["serviceError"] or "")
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_service_stop_endpoint(monkeypatch):
+    """'백그라운드 중지' 엔드포인트: stop_service 를 위임하고 결과를 돌려준다(키 필요)."""
+    monkeypatch.setattr("provider_agent.service.stop_service", lambda: True)
+    client = await _client()
+    try:
+        assert (await client.post("/api/service-stop")).status == 403  # 키 없음
+        d = await (await client.post("/api/service-stop", headers={"X-Session": KEY})).json()
+        assert d["ok"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_no_autoconnect_when_disabled(monkeypatch):
     """auto_connect 키가 없으면(온보딩 미완료 기존 사용자) 자동 연결하지 않아야 한다(깜짝 연결 방지)."""
     monkeypatch.setattr("provider_agent.agent.ProviderAgent", FakeAgent)

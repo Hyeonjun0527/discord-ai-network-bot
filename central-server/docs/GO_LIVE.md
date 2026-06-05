@@ -49,7 +49,7 @@ DISCORD_ENABLED=true DISCORD_BOT_TOKEN='토큰' DISCORD_GUILD_ID='서버ID' CENT
 2. 그 PC 에서 Ollama 실행 + 모델:
    ```bash
    ollama serve &
-   ollama pull llama3.1:8b      # 원하는 모델
+   ollama pull exaone3.5:7.8b   # 기본 권장 모델(앱 온보딩이 자동 설치)
    ```
 3. 에이전트 실행:
    ```bash

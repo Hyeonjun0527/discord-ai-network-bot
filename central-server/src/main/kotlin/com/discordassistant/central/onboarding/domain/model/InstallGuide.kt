@@ -45,10 +45,10 @@ object InstallGuide {
             terminalHint = "⌘ Space → Terminal 입력 → Enter (또는 응용 프로그램 → 유틸리티 → 터미널)",
             codeLines =
                 listOf(
-                    "# 1) Ollama 설치 + 모델 (관리자 권한 불필요)",
+                    "# 1) Ollama 설치 + 기본 모델 exaone3.5:7.8b (관리자 권한 불필요)",
                     "brew install ollama",
                     "brew services start ollama",
-                    "ollama pull llama3.1:8b",
+                    "ollama pull exaone3.5:7.8b",
                     "# 2) 냥시스턴트 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)",
                     MAC_CASK,
                 ),
@@ -68,9 +68,9 @@ object InstallGuide {
             terminalHint = "시작 메뉴에서 PowerShell 검색 → Enter, 또는 Win + X → 터미널 (관리자 권한 불필요)",
             codeLines =
                 listOf(
-                    "# 1) Ollama 설치 + 모델 (관리자 권한 불필요)",
+                    "# 1) Ollama 설치 + 기본 모델 exaone3.5:7.8b (관리자 권한 불필요)",
                     "winget install --id Ollama.Ollama -e --accept-source-agreements",
-                    "ollama pull llama3.1:8b",
+                    "ollama pull exaone3.5:7.8b",
                     "# 2) 냥시스턴트 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)",
                     "winget install --id $WIN_PKG_ID -e --accept-source-agreements",
                 ),

@@ -14,7 +14,7 @@ pip install -e ".[dev]"            # 개발
 # 또는 배포물: GitHub Release 단일 실행파일(서명·체크섬·SBOM·attestation 제공)
 
 # Discord 에서 /provider-join → 토큰 받기 → 실행(일반 사용자 권한, sudo 불필요):
-discord-ai-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent --model llama3.1:8b
+discord-ai-network-bot --token ABC-DEF-GHI --relay-url ws://<서버>:8080/agent --model exaone3.5:7.8b
 # 또는 환경변수: AGENT_TOKEN, RELAY_URL, OLLAMA_BASE_URL
 ```
 첫 실행 시 **사용량 제한·서버 주소·Ollama 주소·개인정보 안내**를 보여주고 동의를 받습니다.

@@ -481,10 +481,10 @@
     const IS_LOCAL = ['localhost', '127.0.0.1', '0.0.0.0', ''].includes(location.hostname);
     const DEV_GUIDE = IS_LOCAL ? [
       { key: 'mac', terminalHint: '⌘ Space → Terminal 입력 → Enter (또는 응용 프로그램 → 유틸리티 → 터미널)', shellName: 'terminal — zsh',
-        codeLines: ['# 1) Ollama 설치 + 모델 (관리자 권한 불필요)', 'brew install ollama', 'brew services start ollama', 'ollama pull llama3.1:8b', '# 2) 냥시스턴트 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)', 'brew install --cask yeon-intergation-platform/tap/nyassistant'],
+        codeLines: ['# 1) Ollama 설치 + 기본 모델 exaone3.5:7.8b (관리자 권한 불필요)', 'brew install ollama', 'brew services start ollama', 'ollama pull exaone3.5:7.8b', '# 2) 냥시스턴트 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)', 'brew install --cask yeon-intergation-platform/tap/nyassistant'],
         connect: "응용 프로그램에서 '냥시스턴트' 앱을 열고 → '디스코드 로그인' 으로 서버를 고르거나 '고급 · 토큰 직접 입력' 에 토큰을 붙여넣어 연결 (로컬 미리보기)" },
       { key: 'win', terminalHint: '시작 메뉴에서 PowerShell 검색 → Enter, 또는 Win + X → 터미널 (관리자 권한 불필요)', shellName: 'PowerShell',
-        codeLines: ['# 1) Ollama 설치 + 모델 (관리자 권한 불필요)', 'winget install --id Ollama.Ollama -e --accept-source-agreements', 'ollama pull llama3.1:8b', '# 2) 냥시스턴트 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)', 'winget install --id Nyassistant.DiscordAiNetworkBot -e --accept-source-agreements'],
+        codeLines: ['# 1) Ollama 설치 + 기본 모델 exaone3.5:7.8b (관리자 권한 불필요)', 'winget install --id Ollama.Ollama -e --accept-source-agreements', 'ollama pull exaone3.5:7.8b', '# 2) 냥시스턴트 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)', 'winget install --id Nyassistant.DiscordAiNetworkBot -e --accept-source-agreements'],
         connect: "시작 메뉴에서 '냥시스턴트' 앱을 열고 → '디스코드 로그인' 으로 서버를 고르거나 '고급 · 토큰 직접 입력' 에 토큰을 붙여넣어 연결 (로컬 미리보기)" },
     ] : null;
     const GUIDE = INSTALL_GUIDE || DEV_GUIDE;

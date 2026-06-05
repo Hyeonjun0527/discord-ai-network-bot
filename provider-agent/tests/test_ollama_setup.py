@@ -91,3 +91,25 @@ def test_run_setup_full_flow(monkeypatch):
     assert ok is True
     assert os_mod.progress()["phase"] == "done"
     assert fake.pulled == "llama3.1:8b"
+
+
+def test_default_model_is_exaone(monkeypatch):
+    """온보딩 기본 설치 모델 SSOT: 모델 인자 없이 run_setup → exaone3.5:7.8b 를 pull(가이드와 동일)."""
+    assert os_mod.DEFAULT_MODEL == "exaone3.5:7.8b"
+    fake = _FakeClient(False, [])
+    monkeypatch.setattr(os_mod, "OllamaClient", lambda url: fake)
+    monkeypatch.setattr(os_mod, "is_installed", lambda: True)
+    monkeypatch.setattr(os_mod, "install_command", lambda platform=None: ["echo", "install"])
+
+    async def fake_run(cmd, timeout):
+        return 0, "ok"
+
+    async def fake_wait(client, attempts=30, delay=1.0):
+        return True
+
+    monkeypatch.setattr(os_mod, "_run", fake_run)
+    monkeypatch.setattr(os_mod, "_wait_healthy", fake_wait)
+
+    ok = asyncio.run(os_mod.run_setup("http://localhost:11434"))  # 모델 인자 생략 → DEFAULT_MODEL
+    assert ok is True
+    assert fake.pulled == "exaone3.5:7.8b"

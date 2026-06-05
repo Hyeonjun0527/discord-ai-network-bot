@@ -18,7 +18,9 @@ from .ollama import OllamaClient
 
 logger = logging.getLogger("provider_agent.ollama_setup")
 
-DEFAULT_MODEL = "llama3.1:8b"
+# 온보딩 기본 설치 모델(SSOT): 사용자는 온보딩에서 모델을 고르지 않고 항상 이 모델을 받는다.
+# 한국어 응답 품질이 좋은 EXAONE 3.5 7.8B(LG AI Research)로 고정 — 가이드(웹/디스코드 프로바이더 참여)도 동일.
+DEFAULT_MODEL = "exaone3.5:7.8b"
 
 # phase: idle | installing | starting | pulling | done | error
 _progress: dict = {"phase": "idle", "percent": 0, "message": "", "error": None}

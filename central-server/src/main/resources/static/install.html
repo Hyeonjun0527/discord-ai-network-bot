@@ -84,19 +84,6 @@
     }
     .nav a:hover { color: #fff; background: color-mix(in srgb, var(--c-accent) 12%, transparent); }
     .top-actions { display: flex; align-items: center; gap: 10px; }
-    .btn-dash {
-      display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border-radius: 12px;
-      color: #d6deea; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); font-weight: 600; transition: .16s ease;
-    }
-    .btn-dash:hover { border-color: color-mix(in srgb, var(--c-accent) 32%, transparent); background: color-mix(in srgb, var(--c-blue) 10%, transparent); }
-    .btn-dash svg { width: 16px; height: 16px; opacity: .9; }
-    .btn-discord {
-      display: inline-flex; align-items: center; gap: 9px; padding: 11px 18px; border-radius: 12px; font-weight: 700;
-      color: #fff; background: var(--grad-cta); border: 1px solid color-mix(in srgb, var(--c-purple) 50%, transparent);
-      box-shadow: 0 12px 30px color-mix(in srgb, var(--c-purple) 30%, transparent), inset 0 1px 0 rgba(255,255,255,.22); transition: .18s ease;
-    }
-    .btn-discord:hover { transform: translateY(-1px); }
-    .btn-discord svg { width: 19px; height: 19px; }
     #langSel {
       padding: 10px 11px; border-radius: 11px; cursor: pointer; color: #d6deea;
       background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08); font: inherit; font-size: 13px;
@@ -289,14 +276,6 @@
         <a href="#provider" data-i18n="navHowto">사용 방법</a>
       </nav>
       <div class="top-actions">
-        <a class="btn-dash" href="/admin/dashboard">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
-          <span data-i18n="navDashboard">대시보드</span>
-        </a>
-        <a class="btn-discord" href="https://discord.com/oauth2/authorize?client_id=1509346092850876416&permissions=3968122435926081&integration_type=0&scope=applications.commands+bot" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>
-          <span data-i18n="ctaAddDiscord">Discord 추가</span>
-        </a>
         <select id="langSel" aria-label="Language" title="Language">
           <option value="ko">한국어</option>
           <option value="en">English</option>

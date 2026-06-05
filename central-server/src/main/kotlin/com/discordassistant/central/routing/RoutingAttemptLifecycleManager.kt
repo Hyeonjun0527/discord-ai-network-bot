@@ -77,14 +77,18 @@ class RoutingAttemptLifecycleManager(
         stats.recordAttempt(attempt.providerId, attempt.requestClass, outcome)
         duals.recordOutcome(
             DualUpdateInput(
+                attemptId = attempt.attemptId,
                 providerId = attempt.providerId,
                 userId = attempt.userId,
                 requestClass = attempt.requestClass,
+                finalState = outcome.finalState,
                 sloMet = outcome.sloMet,
-                success = outcome.success,
+                qualityMet = outcome.qualityMet,
+                countsForGoodput = outcome.contributesGoodput,
                 quotaPressure = quotaPressure,
                 providerBurdenPressure = providerBurdenPressure,
                 usefulServiceCost = (outcome.actualInputTokens * 0.4 + outcome.actualOutputTokens).coerceAtLeast(0.0),
+                failureType = outcome.failureType,
             ),
         )
         attempts.remove(attempt.attemptId)

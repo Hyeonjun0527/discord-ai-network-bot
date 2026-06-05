@@ -149,6 +149,36 @@ private fun gateContext(
     hedgingAllowed = hedgingAllowed,
 )
 
+private fun dualInput(
+    attemptId: String,
+    providerId: Long = 1,
+    userId: Long = 1,
+    requestClass: ModelBurden = ModelBurden.LIGHT,
+    finalState: AttemptFinalState = AttemptFinalState.SUCCESS,
+    sloMet: Boolean = true,
+    qualityMet: Boolean = true,
+    countsForGoodput: Boolean = finalState == AttemptFinalState.SUCCESS && sloMet && qualityMet,
+    quotaPressure: Double = 0.0,
+    providerBurdenPressure: Double = 0.0,
+    usefulServiceCost: Double = 0.0,
+    failureType: RoutingFailureType = RoutingFailureType.NONE,
+    userWeight: Double = 1.0,
+) = DualUpdateInput(
+    attemptId = attemptId,
+    providerId = providerId,
+    userId = userId,
+    requestClass = requestClass,
+    finalState = finalState,
+    sloMet = sloMet,
+    qualityMet = qualityMet,
+    countsForGoodput = countsForGoodput,
+    quotaPressure = quotaPressure,
+    providerBurdenPressure = providerBurdenPressure,
+    usefulServiceCost = usefulServiceCost,
+    failureType = failureType,
+    userWeight = userWeight,
+)
+
 class HaloGfHardConstraintGateTest {
     private val filter = ProviderFilterPipeline()
     private val router = ProviderRouter()
@@ -548,21 +578,23 @@ class HaloGfLifecycleAndStateGateTest {
     }
 
     @Test
-    fun `Gate 12 and 13 - dual variables move with pressure and fairness uses service debt`() {
+    fun `Gate 12 and 13 - dual variables use windows EMA and fairness uses service debt`() {
         val duals = RoutingDualVariableManager()
         val before = duals.snapshot(providerId = 1, userId = 1, requestClass = ModelBurden.LIGHT)
-        duals.recordOutcome(
-            DualUpdateInput(
-                providerId = 1,
-                userId = 1,
-                requestClass = ModelBurden.LIGHT,
-                sloMet = false,
-                success = false,
-                quotaPressure = 0.95,
-                providerBurdenPressure = 0.95,
-                usefulServiceCost = 0.0,
-            ),
-        )
+        repeat(20) { index ->
+            duals.recordOutcome(
+                dualInput(
+                    attemptId = "pressure-$index",
+                    finalState = AttemptFinalState.TIMEOUT,
+                    sloMet = false,
+                    qualityMet = false,
+                    countsForGoodput = false,
+                    quotaPressure = 0.95,
+                    providerBurdenPressure = 0.95,
+                    failureType = RoutingFailureType.END_TO_END_TIMEOUT,
+                ),
+            )
+        }
         val after = duals.snapshot(providerId = 1, userId = 1, requestClass = ModelBurden.LIGHT)
 
         assertTrue(after.slo > before.slo)
@@ -570,34 +602,66 @@ class HaloGfLifecycleAndStateGateTest {
         assertTrue(after.burden > before.burden)
         assertTrue(after.failure > before.failure)
 
+        val neutral = RoutingDualVariableManager()
+        val neutralBefore = neutral.snapshot(providerId = 1, userId = 1, requestClass = ModelBurden.LIGHT)
+        repeat(19) { index ->
+            neutral.recordOutcome(dualInput(attemptId = "neutral-success-$index"))
+        }
+        neutral.recordOutcome(
+            dualInput(
+                attemptId = "neutral-failure",
+                finalState = AttemptFinalState.TIMEOUT,
+                sloMet = false,
+                qualityMet = false,
+                countsForGoodput = false,
+                failureType = RoutingFailureType.END_TO_END_TIMEOUT,
+            ),
+        )
+        val neutralAfter = neutral.snapshot(providerId = 1, userId = 1, requestClass = ModelBurden.LIGHT)
+        assertEquals(neutralBefore.slo, neutralAfter.slo)
+
         duals.recordOutcome(
-            DualUpdateInput(
-                providerId = 1,
+            dualInput(
+                attemptId = "served-user",
                 userId = 1,
-                requestClass = ModelBurden.LIGHT,
-                sloMet = true,
-                success = true,
-                quotaPressure = 0.0,
-                providerBurdenPressure = 0.0,
                 usefulServiceCost = 10_000.0,
             ),
         )
         duals.recordOutcome(
-            DualUpdateInput(
-                providerId = 1,
+            dualInput(
+                attemptId = "under-served-user",
                 userId = 2,
-                requestClass = ModelBurden.LIGHT,
+                finalState = AttemptFinalState.CANCELLED,
                 sloMet = false,
-                success = false,
-                quotaPressure = 0.0,
-                providerBurdenPressure = 0.0,
-                usefulServiceCost = 0.0,
+                qualityMet = false,
+                countsForGoodput = false,
+                failureType = RoutingFailureType.CENTRAL_CANCELLED,
             ),
         )
         val served = duals.snapshot(providerId = 1, userId = 1, requestClass = ModelBurden.LIGHT)
         val underServed = duals.snapshot(providerId = 1, userId = 2, requestClass = ModelBurden.LIGHT)
 
         assertTrue(underServed.fairness > served.fairness)
+
+        val invalidBefore = duals.snapshot(providerId = 9, userId = 9, requestClass = ModelBurden.LIGHT)
+        assertTrue(
+            duals.recordOutcome(
+                dualInput(
+                    attemptId = "invalid-pressure",
+                    providerId = 9,
+                    userId = 9,
+                    quotaPressure = Double.NaN,
+                    providerBurdenPressure = Double.POSITIVE_INFINITY,
+                ),
+            ),
+        )
+        val invalidAfter = duals.snapshot(providerId = 9, userId = 9, requestClass = ModelBurden.LIGHT)
+        assertEquals(invalidBefore.quota, invalidAfter.quota)
+        assertEquals(invalidBefore.burden, invalidAfter.burden)
+        assertEquals(2, duals.invalidInputs())
+
+        assertTrue(duals.recordOutcome(dualInput(attemptId = "duplicate-outcome")))
+        assertTrue(!duals.recordOutcome(dualInput(attemptId = "duplicate-outcome")))
         listOf(after, served, underServed).forEach { lambda ->
             assertTrue(lambda.slo.isFinite() && lambda.slo >= 0.0)
             assertTrue(lambda.quota.isFinite() && lambda.quota >= 0.0)

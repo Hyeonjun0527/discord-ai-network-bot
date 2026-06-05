@@ -93,6 +93,25 @@ class PresetCatalogQueryService(
         }.take(cappedLimit)
     }
 
+    /**
+     * 컨트롤러 catalog echo 와 클램프 책임을 application 으로 이관한 결과형. 서비스가 실제로 쓰는
+     * `effectiveLimit`(coerceIn(1,100))을 함께 돌려줘 컨트롤러는 위임만 한다(클램프 중복 제거).
+     */
+    @Transactional(readOnly = true)
+    fun searchPublishedPresetsResult(
+        query: String? = null,
+        category: String? = null,
+        sort: String = "popular",
+        limit: Int = 20,
+    ): PresetCatalogResult =
+        PresetCatalogResult(
+            presets = searchPublishedPresets(query = query, category = category, sort = sort, limit = limit),
+            query = query,
+            category = category,
+            sort = sort,
+            effectiveLimit = limit.coerceIn(1, 100),
+        )
+
     @Transactional(readOnly = true)
     fun recommendedPublishedPresets(
         category: String? = null,
@@ -113,6 +132,18 @@ class PresetCatalogQueryService(
                     .thenByDescending { Instant.parse(it.preset.publishedAt) },
             ).take(limit.coerceIn(1, 50))
     }
+
+    /** 추천 catalog echo + 클램프(coerceIn(1,50))를 application 으로 이관한 결과형. */
+    @Transactional(readOnly = true)
+    fun recommendedPublishedPresetsResult(
+        category: String? = null,
+        limit: Int = 10,
+    ): PresetRecommendationResult =
+        PresetRecommendationResult(
+            recommendations = recommendedPublishedPresets(category = category, limit = limit),
+            category = category,
+            effectiveLimit = limit.coerceIn(1, 50),
+        )
 
     @Transactional(readOnly = true)
     fun catalogFacets(): PresetCatalogFacets {
@@ -164,6 +195,39 @@ class PresetCatalogQueryService(
             .sortedWith(compareByDescending<PresetImportEntity> { it.importedAt }.thenByDescending { it.id })
             .map { it.toSummary() }
     }
+
+    /** 가져오기 이력 + guildId/channelId echo 를 한 결과형으로(컨트롤러 조립 제거). */
+    @Transactional(readOnly = true)
+    fun importHistoryResult(
+        targetGuildId: Long,
+        targetChannelId: Long? = null,
+    ): PresetImportHistoryResult =
+        PresetImportHistoryResult(
+            guildId = targetGuildId,
+            channelId = targetChannelId,
+            imports = importHistory(targetGuildId = targetGuildId, targetChannelId = targetChannelId),
+        )
+
+    /**
+     * 프리셋 웹 대시보드 준비 상태(capability 매트릭스·admin 토큰 헤더·다음 행동). 값/문구는 컨트롤러
+     * 인라인이던 원본과 1바이트도 다르지 않다 — 어떤 기능이 admin 토큰을 요구하는지의 정책을 application 이 소유한다.
+     */
+    fun webReadiness(): PresetWebReadiness =
+        PresetWebReadiness(
+            status = "ready",
+            capabilities =
+                listOf(
+                    PresetWebCapability("browse", "공개 프리셋 목록 확인", requiresAdminToken = false),
+                    PresetWebCapability("detail", "프리셋 상세/공유 링크 확인", requiresAdminToken = false),
+                    PresetWebCapability("recommend", "추천 프리셋과 빠른 탐색", requiresAdminToken = false),
+                    PresetWebCapability("preview_import", "서버·채널 충돌 미리보기", requiresAdminToken = true),
+                    PresetWebCapability("import", "현재 채널 AI로 가져오기", requiresAdminToken = true),
+                    PresetWebCapability("like", "따봉 추천/추천 취소", requiresAdminToken = false),
+                    PresetWebCapability("report", "부적절한 프리셋 신고", requiresAdminToken = false),
+                ),
+            adminTokenHeader = "X-Dashboard-Admin-Token",
+            nextAction = "목록은 바로 볼 수 있고, 가져오기는 관리자 토큰을 입력한 뒤 미리보기부터 진행하세요.",
+        )
 
     @Transactional(readOnly = true)
     fun listReports(status: String = "open"): List<PresetReportSummary> {

@@ -2,14 +2,14 @@ package com.discordassistant.central.network
 
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
-import com.discordassistant.central.knowledge.adapter.inbound.web.AddKnowledgeSourceRequest
-import com.discordassistant.central.knowledge.adapter.inbound.web.ApproveKnowledgeSourceRequest
-import com.discordassistant.central.knowledge.adapter.inbound.web.CreateKnowledgeSpaceRequest
-import com.discordassistant.central.knowledge.adapter.inbound.web.DeleteKnowledgeSourceRequest
-import com.discordassistant.central.knowledge.adapter.inbound.web.KnowledgeEvalRequest
 import com.discordassistant.central.knowledge.adapter.inbound.web.KnowledgeIngestionController
-import com.discordassistant.central.knowledge.adapter.inbound.web.MarkKnowledgeSourceIndexedRequest
-import com.discordassistant.central.knowledge.adapter.inbound.web.RejectKnowledgeSourceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.AddKnowledgeSourceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.ApproveKnowledgeSourceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.CreateKnowledgeSpaceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.DeleteKnowledgeSourceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.KnowledgeEvalRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.MarkKnowledgeSourceIndexedRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.RejectKnowledgeSourceRequest
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSpaceRepository
 import com.discordassistant.central.knowledge.application.KnowledgeGoldenCase

@@ -409,6 +409,49 @@ class KnowledgeIngestionService(
         return source.toMutationResult()
     }
 
+    /**
+     * addSource + 인라인 색인을 오케스트레이션한다(기존 컨트롤러 인라인 로직 이관, 동작 불변).
+     *
+     * - `addSource` 와 `indexInlineSourceIfPossible` 는 각자 `@Transactional` 경계를 유지한다. 이 메서드는
+     *   의도적으로 `@Transactional` 을 붙이지 않아 두 호출의 TX 경계를 합치지 않는다(REQUIRES_NEW 신규부여 금지).
+     * - `indexing` 이 null(미구성)이면 인라인 색인을 건너뛰고 기존과 동일하게 source.status 를 그대로 노출한다.
+     * - `effectiveStatus` 파생(인라인 색인됨 → "indexed", 아니면 source.status)을 그대로 보존한다.
+     */
+    fun addSourceWithInlineIndexing(
+        command: AddKnowledgeSourceCommand,
+        indexing: KnowledgeIndexingService?,
+    ): AddKnowledgeSourceResult {
+        val source =
+            addSource(
+                guildId = command.guildId,
+                spaceId = command.spaceId,
+                sourceType = command.sourceType,
+                title = command.title,
+                sourceUri = command.sourceUri,
+                contentPreview = command.contentPreview,
+                addedBy = command.addedBy,
+            )
+        val inlineIndexing =
+            indexing?.indexInlineSourceIfPossible(
+                guildId = command.guildId,
+                spaceId = command.spaceId,
+                sourceId = source.id,
+                documentText = command.contentPreview,
+                triggeredBy = command.addedBy,
+            )
+        val effectiveStatus = if (inlineIndexing?.indexed == true) "indexed" else source.status
+        return AddKnowledgeSourceResult(
+            id = source.id,
+            effectiveStatus = effectiveStatus,
+            riskLevel = source.riskLevel,
+            inlineIndexed = (inlineIndexing?.indexed ?: false),
+            indexSkippedReason = inlineIndexing?.skippedReason,
+            documentId = inlineIndexing?.documentId,
+            indexJobId = inlineIndexing?.jobId,
+            chunkCount = (inlineIndexing?.chunkCount ?: 0),
+        )
+    }
+
     @Transactional
     fun approveSourceForIndexing(
         guildId: Long,
@@ -510,6 +553,39 @@ class KnowledgeIngestionService(
         spaces.save(space)
         audit(guildId, space.channelId, null, "knowledge_source_delete", "knowledge_source", saved.id, reason)
         return saved.toMutationResult()
+    }
+
+    /**
+     * removeSource + 삭제 색인 tombstone 을 오케스트레이션한다(기존 컨트롤러 인라인 로직 이관, 동작 불변).
+     *
+     * - `removeSource` 와 `tombstoneDeletedSourceIndex` 는 각자 `@Transactional` 경계를 유지한다. 이 메서드는
+     *   의도적으로 `@Transactional` 을 붙이지 않아 두 호출의 TX 경계를 합치지 않는다(REQUIRES_NEW 신규부여 금지).
+     * - `indexing` 이 null(미구성)이면 tombstone 을 건너뛰고 기존과 동일하게 카운트 기본값(0/null)을 노출한다.
+     */
+    fun removeSourceAndTombstone(
+        guildId: Long,
+        spaceId: Long,
+        sourceId: Long,
+        reason: String,
+        actorUserId: Long?,
+        indexing: KnowledgeIndexingService?,
+    ): RemoveKnowledgeSourceResult {
+        val source = removeSource(guildId, spaceId, sourceId, reason)
+        val deletionIndex =
+            indexing?.tombstoneDeletedSourceIndex(
+                guildId = guildId,
+                spaceId = spaceId,
+                sourceId = source.id,
+                triggeredBy = actorUserId,
+            )
+        return RemoveKnowledgeSourceResult(
+            id = source.id,
+            status = source.status,
+            deletionIndexJobId = deletionIndex?.jobId,
+            tombstonedDocumentCount = (deletionIndex?.tombstonedDocumentCount ?: 0),
+            tombstonedChunkCount = (deletionIndex?.tombstonedChunkCount ?: 0),
+            remainingReadyChunkCount = deletionIndex?.remainingReadyChunkCount,
+        )
     }
 
     private fun audit(

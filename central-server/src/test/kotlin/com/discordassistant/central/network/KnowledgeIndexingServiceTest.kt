@@ -1,10 +1,10 @@
 package com.discordassistant.central.network
 
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
-import com.discordassistant.central.knowledge.adapter.inbound.web.AddKnowledgeSourceRequest
-import com.discordassistant.central.knowledge.adapter.inbound.web.CreateKnowledgeSpaceRequest
-import com.discordassistant.central.knowledge.adapter.inbound.web.DeleteKnowledgeSourceRequest
 import com.discordassistant.central.knowledge.adapter.inbound.web.KnowledgeIngestionController
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.AddKnowledgeSourceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.CreateKnowledgeSpaceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.DeleteKnowledgeSourceRequest
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.EmbeddingIndexJobRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeChunkRepository
 import com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeDocumentRepository

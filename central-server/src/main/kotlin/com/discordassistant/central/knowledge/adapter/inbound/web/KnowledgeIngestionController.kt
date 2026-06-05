@@ -1,6 +1,21 @@
 package com.discordassistant.central.knowledge.adapter.inbound.web
 
-import com.discordassistant.central.knowledge.application.KnowledgeGoldenCase
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.AddKnowledgeSourceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.AddKnowledgeSourceResponse
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.ApproveKnowledgeSourceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.ApproveKnowledgeSourceResponse
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.CompleteKnowledgeIndexJobRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.CreateKnowledgeSpaceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.CreateKnowledgeSpaceResponse
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.DeleteKnowledgeSourceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.KnowledgeEvalRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.MarkKnowledgeSourceIndexedRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.MarkKnowledgeSourceIndexedResponse
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.QueueKnowledgeIndexJobRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.RejectKnowledgeSourceRequest
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.RejectKnowledgeSourceResponse
+import com.discordassistant.central.knowledge.adapter.inbound.web.dto.RemoveKnowledgeSourceResponse
+import com.discordassistant.central.knowledge.application.AddKnowledgeSourceCommand
 import com.discordassistant.central.knowledge.application.KnowledgeIndexingService
 import com.discordassistant.central.knowledge.application.KnowledgeIngestionService
 import com.discordassistant.central.knowledge.application.KnowledgeSearchService
@@ -75,7 +90,7 @@ class KnowledgeIngestionController(
                 embeddingModel = request.embeddingModel,
                 indexName = request.indexName,
             )
-        return mapOf("id" to space.id, "status" to space.status, "displayName" to space.displayName)
+        return CreateKnowledgeSpaceResponse.from(space).toMap()
     }
 
     @GetMapping("/{guildId}/spaces/{spaceId}/sources")
@@ -102,37 +117,23 @@ class KnowledgeIngestionController(
         @PathVariable guildId: Long,
         @PathVariable spaceId: Long,
         @RequestBody request: AddKnowledgeSourceRequest,
-    ): Map<String, Any?> {
-        val source =
-            ingestion.addSource(
-                guildId = guildId,
-                spaceId = spaceId,
-                sourceType = request.sourceType,
-                title = request.title,
-                sourceUri = request.sourceUri,
-                contentPreview = request.contentPreview,
-                addedBy = request.actorUserId,
-            )
-        val inlineIndexing =
-            indexing?.indexInlineSourceIfPossible(
-                guildId = guildId,
-                spaceId = spaceId,
-                sourceId = source.id,
-                documentText = request.contentPreview,
-                triggeredBy = request.actorUserId,
-            )
-        val effectiveStatus = if (inlineIndexing?.indexed == true) "indexed" else source.status
-        return mapOf(
-            "id" to source.id,
-            "status" to effectiveStatus,
-            "riskLevel" to source.riskLevel,
-            "inlineIndexed" to (inlineIndexing?.indexed ?: false),
-            "indexSkippedReason" to inlineIndexing?.skippedReason,
-            "documentId" to inlineIndexing?.documentId,
-            "indexJobId" to inlineIndexing?.jobId,
-            "chunkCount" to (inlineIndexing?.chunkCount ?: 0),
-        )
-    }
+    ): Map<String, Any?> =
+        AddKnowledgeSourceResponse
+            .from(
+                ingestion.addSourceWithInlineIndexing(
+                    command =
+                        AddKnowledgeSourceCommand(
+                            guildId = guildId,
+                            spaceId = spaceId,
+                            sourceType = request.sourceType,
+                            title = request.title,
+                            sourceUri = request.sourceUri,
+                            contentPreview = request.contentPreview,
+                            addedBy = request.actorUserId,
+                        ),
+                    indexing = indexing,
+                ),
+            ).toMap()
 
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/approve")
     fun approveSource(
@@ -142,7 +143,7 @@ class KnowledgeIngestionController(
         @RequestBody request: ApproveKnowledgeSourceRequest,
     ): Map<String, Any?> {
         val source = ingestion.approveSourceForIndexing(guildId, spaceId, sourceId, request.reason)
-        return mapOf("id" to source.id, "status" to source.status, "riskLevel" to source.riskLevel)
+        return ApproveKnowledgeSourceResponse.from(source).toMap()
     }
 
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/indexed")
@@ -153,7 +154,7 @@ class KnowledgeIngestionController(
         @RequestBody request: MarkKnowledgeSourceIndexedRequest,
     ): Map<String, Any?> {
         val source = ingestion.markSourceIndexed(guildId, spaceId, sourceId, request.chunkCount)
-        return mapOf("id" to source.id, "status" to source.status, "indexedAt" to source.indexedAt?.toString())
+        return MarkKnowledgeSourceIndexedResponse.from(source).toMap()
     }
 
     @GetMapping("/{guildId}/search")
@@ -196,24 +197,18 @@ class KnowledgeIngestionController(
         @PathVariable spaceId: Long,
         @PathVariable sourceId: Long,
         @RequestBody request: DeleteKnowledgeSourceRequest,
-    ): Map<String, Any?> {
-        val source = ingestion.removeSource(guildId, spaceId, sourceId, request.reason)
-        val deletionIndex =
-            indexing?.tombstoneDeletedSourceIndex(
-                guildId = guildId,
-                spaceId = spaceId,
-                sourceId = source.id,
-                triggeredBy = request.actorUserId,
-            )
-        return mapOf(
-            "id" to source.id,
-            "status" to source.status,
-            "deletionIndexJobId" to deletionIndex?.jobId,
-            "tombstonedDocumentCount" to (deletionIndex?.tombstonedDocumentCount ?: 0),
-            "tombstonedChunkCount" to (deletionIndex?.tombstonedChunkCount ?: 0),
-            "remainingReadyChunkCount" to deletionIndex?.remainingReadyChunkCount,
-        )
-    }
+    ): Map<String, Any?> =
+        RemoveKnowledgeSourceResponse
+            .from(
+                ingestion.removeSourceAndTombstone(
+                    guildId = guildId,
+                    spaceId = spaceId,
+                    sourceId = sourceId,
+                    reason = request.reason,
+                    actorUserId = request.actorUserId,
+                    indexing = indexing,
+                ),
+            ).toMap()
 
     @PostMapping("/{guildId}/spaces/{spaceId}/sources/{sourceId}/reject")
     fun reject(
@@ -223,54 +218,6 @@ class KnowledgeIngestionController(
         @RequestBody request: RejectKnowledgeSourceRequest,
     ): Map<String, Any?> {
         val source = ingestion.rejectSource(guildId, spaceId, sourceId, request.reason)
-        return mapOf("id" to source.id, "status" to source.status)
+        return RejectKnowledgeSourceResponse.from(source).toMap()
     }
 }
-
-data class CreateKnowledgeSpaceRequest(
-    val channelId: Long? = null,
-    val channelAiId: Long? = null,
-    val displayName: String,
-    val actorUserId: Long? = null,
-    val embeddingModel: String? = null,
-    val indexName: String? = null,
-)
-
-data class AddKnowledgeSourceRequest(
-    val sourceType: String,
-    val title: String,
-    val sourceUri: String? = null,
-    val contentPreview: String? = null,
-    val actorUserId: Long? = null,
-)
-
-data class ApproveKnowledgeSourceRequest(
-    val reason: String = "manual review approved",
-)
-
-data class MarkKnowledgeSourceIndexedRequest(
-    val chunkCount: Int,
-)
-
-data class QueueKnowledgeIndexJobRequest(
-    val actorUserId: Long? = null,
-)
-
-data class CompleteKnowledgeIndexJobRequest(
-    val status: String = "completed",
-    val reason: String? = null,
-)
-
-data class RejectKnowledgeSourceRequest(
-    val reason: String,
-)
-
-data class DeleteKnowledgeSourceRequest(
-    val reason: String = "deleted",
-    val actorUserId: Long? = null,
-)
-
-data class KnowledgeEvalRequest(
-    val k: Int = 10,
-    val cases: List<KnowledgeGoldenCase>,
-)

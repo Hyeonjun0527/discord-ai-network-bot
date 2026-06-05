@@ -158,10 +158,26 @@ class PresetRegistryService(
     ): List<PublishedPresetSummary> = catalog.searchPublishedPresets(query, category, sort, limit)
 
     @Transactional(readOnly = true)
+    fun searchPublishedPresetsResult(
+        query: String? = null,
+        category: String? = null,
+        sort: String = "popular",
+        limit: Int = 20,
+    ): PresetCatalogResult = catalog.searchPublishedPresetsResult(query, category, sort, limit)
+
+    @Transactional(readOnly = true)
     fun recommendedPublishedPresets(
         category: String? = null,
         limit: Int = 10,
     ): List<PresetRecommendation> = catalog.recommendedPublishedPresets(category, limit)
+
+    @Transactional(readOnly = true)
+    fun recommendedPublishedPresetsResult(
+        category: String? = null,
+        limit: Int = 10,
+    ): PresetRecommendationResult = catalog.recommendedPublishedPresetsResult(category, limit)
+
+    fun webReadiness(): PresetWebReadiness = catalog.webReadiness()
 
     @Transactional(readOnly = true)
     fun catalogFacets(): PresetCatalogFacets = catalog.catalogFacets()
@@ -174,6 +190,12 @@ class PresetRegistryService(
         targetGuildId: Long,
         targetChannelId: Long? = null,
     ): List<PresetImportSummary> = catalog.importHistory(targetGuildId, targetChannelId)
+
+    @Transactional(readOnly = true)
+    fun importHistoryResult(
+        targetGuildId: Long,
+        targetChannelId: Long? = null,
+    ): PresetImportHistoryResult = catalog.importHistoryResult(targetGuildId, targetChannelId)
 
     @Transactional(readOnly = true)
     fun listReports(status: String = "open"): List<PresetReportSummary> = catalog.listReports(status)

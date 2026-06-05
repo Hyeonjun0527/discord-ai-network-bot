@@ -225,6 +225,47 @@ data class PublishedPresetDetail(
     val behavior: PresetBehaviorSnapshot,
 )
 
+/**
+ * 카탈로그 검색 결과. `effectiveLimit` 은 서비스가 실제로 적용한 클램프 값(coerceIn(1,100))이라
+ * 컨트롤러 echo 와 서비스 내부 limit 이 항상 일치한다(컨트롤러 클램프 중복 제거).
+ */
+data class PresetCatalogResult(
+    val presets: List<PublishedPresetSummary>,
+    val query: String?,
+    val category: String?,
+    val sort: String,
+    val effectiveLimit: Int,
+)
+
+/** 추천 결과. `effectiveLimit` 은 서비스가 실제로 적용한 클램프 값(coerceIn(1,50)). */
+data class PresetRecommendationResult(
+    val recommendations: List<PresetRecommendation>,
+    val category: String?,
+    val effectiveLimit: Int,
+)
+
+/** 가져오기 이력 결과. guildId/channelId echo 를 서비스가 그대로 담아 돌려준다. */
+data class PresetImportHistoryResult(
+    val guildId: Long,
+    val channelId: Long?,
+    val imports: List<PresetImportSummary>,
+)
+
+/** 프리셋 웹 대시보드 기능 게이트 항목(어떤 기능이 admin 토큰을 요구하는지). */
+data class PresetWebCapability(
+    val key: String,
+    val label: String,
+    val requiresAdminToken: Boolean,
+)
+
+/** web-readiness 응답. capability 매트릭스·admin 토큰 헤더·다음 행동 안내를 application 이 소유한다. */
+data class PresetWebReadiness(
+    val status: String,
+    val capabilities: List<PresetWebCapability>,
+    val adminTokenHeader: String,
+    val nextAction: String,
+)
+
 data class PresetImportConflict(
     val code: String,
     val severity: String,

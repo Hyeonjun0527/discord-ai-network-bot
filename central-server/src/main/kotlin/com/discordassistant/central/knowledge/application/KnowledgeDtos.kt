@@ -127,3 +127,40 @@ data class KnowledgeReadinessGate(
     val passed: Boolean,
     val message: String,
 )
+
+/** addSource + 인라인 색인 오케스트레이션 입력. 컨트롤러 요청 DTO 가 그대로 옮겨 담는다. */
+data class AddKnowledgeSourceCommand(
+    val guildId: Long,
+    val spaceId: Long,
+    val sourceType: String,
+    val title: String,
+    val sourceUri: String?,
+    val contentPreview: String?,
+    val addedBy: Long?,
+)
+
+/**
+ * addSource + indexInlineSourceIfPossible 결과. `effectiveStatus` 는 인라인 색인이 됐으면 "indexed",
+ * 아니면 source.status — 기존 컨트롤러 파생 분기를 그대로 application 으로 옮긴 값이다.
+ * 두 협력자는 각자 TX 경계(@Transactional)를 유지하며 순서대로 호출된다(경계 병합/REQUIRES_NEW 신규부여 금지).
+ */
+data class AddKnowledgeSourceResult(
+    val id: Long,
+    val effectiveStatus: String,
+    val riskLevel: String,
+    val inlineIndexed: Boolean,
+    val indexSkippedReason: String?,
+    val documentId: Long?,
+    val indexJobId: Long?,
+    val chunkCount: Int,
+)
+
+/** removeSource + tombstoneDeletedSourceIndex 결과. 카운트 집계를 application 으로 옮겼다. */
+data class RemoveKnowledgeSourceResult(
+    val id: Long,
+    val status: String,
+    val deletionIndexJobId: Long?,
+    val tombstonedDocumentCount: Int,
+    val tombstonedChunkCount: Int,
+    val remainingReadyChunkCount: Int?,
+)

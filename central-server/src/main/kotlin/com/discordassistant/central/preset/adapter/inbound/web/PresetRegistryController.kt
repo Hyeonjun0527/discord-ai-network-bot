@@ -1,9 +1,27 @@
 package com.discordassistant.central.preset.adapter.inbound.web
 
+import com.discordassistant.central.preset.adapter.inbound.web.dto.CreatePresetRequest
+import com.discordassistant.central.preset.adapter.inbound.web.dto.ImportPresetRequest
+import com.discordassistant.central.preset.adapter.inbound.web.dto.ImportPresetResponse
+import com.discordassistant.central.preset.adapter.inbound.web.dto.LikePresetRequest
+import com.discordassistant.central.preset.adapter.inbound.web.dto.LikePresetResponse
+import com.discordassistant.central.preset.adapter.inbound.web.dto.PresetCatalogResponse
+import com.discordassistant.central.preset.adapter.inbound.web.dto.PresetImportHistoryResponse
+import com.discordassistant.central.preset.adapter.inbound.web.dto.PresetRecommendationResponse
+import com.discordassistant.central.preset.adapter.inbound.web.dto.PresetWebReadinessResponse
+import com.discordassistant.central.preset.adapter.inbound.web.dto.PresetWriteResponse
+import com.discordassistant.central.preset.adapter.inbound.web.dto.PublishPresetRequest
+import com.discordassistant.central.preset.adapter.inbound.web.dto.PublishPresetResponse
+import com.discordassistant.central.preset.adapter.inbound.web.dto.ReportPresetRequest
+import com.discordassistant.central.preset.adapter.inbound.web.dto.ReportPresetResponse
+import com.discordassistant.central.preset.adapter.inbound.web.dto.ReviewPresetReportRequest
+import com.discordassistant.central.preset.adapter.inbound.web.dto.ReviewPresetReportResponse
+import com.discordassistant.central.preset.adapter.inbound.web.dto.SaveChannelPresetRequest
+import com.discordassistant.central.preset.adapter.inbound.web.dto.UpdatePresetRequest
+import com.discordassistant.central.preset.adapter.inbound.web.dto.UpdatePublishedPresetRequest
+import com.discordassistant.central.preset.adapter.inbound.web.dto.UpdatePublishedPresetResponse
 import com.discordassistant.central.preset.application.PresetBehaviorInput
 import com.discordassistant.central.preset.application.PresetRegistryService
-import com.discordassistant.central.preset.application.PresetWriteResult
-import com.discordassistant.central.preset.application.PublishedPresetWriteResult
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -37,45 +55,24 @@ class PresetRegistryController(
         @RequestParam(defaultValue = "popular") sort: String = "popular",
         @RequestParam(defaultValue = "20") limit: Int = 20,
     ): Map<String, Any?> =
-        mapOf(
-            "presets" to registry.searchPublishedPresets(query = query, category = category, sort = sort, limit = limit),
-            "query" to query,
-            "category" to category,
-            "sort" to sort,
-            "limit" to limit.coerceIn(1, 100),
-        )
+        PresetCatalogResponse
+            .from(registry.searchPublishedPresetsResult(query = query, category = category, sort = sort, limit = limit))
+            .toMap()
 
     @GetMapping("/catalog/recommended")
     fun recommendedPresets(
         @RequestParam(required = false) category: String? = null,
         @RequestParam(defaultValue = "10") limit: Int = 10,
     ): Map<String, Any?> =
-        mapOf(
-            "recommendations" to registry.recommendedPublishedPresets(category = category, limit = limit),
-            "category" to category,
-            "limit" to limit.coerceIn(1, 50),
-        )
+        PresetRecommendationResponse
+            .from(registry.recommendedPublishedPresetsResult(category = category, limit = limit))
+            .toMap()
 
     @GetMapping("/catalog/facets")
     fun catalogFacets(): Map<String, Any?> = mapOf("facets" to registry.catalogFacets())
 
     @GetMapping("/web-readiness")
-    fun webReadiness(): Map<String, Any?> =
-        mapOf(
-            "status" to "ready",
-            "capabilities" to
-                listOf(
-                    PresetWebCapability("browse", "공개 프리셋 목록 확인", requiresAdminToken = false),
-                    PresetWebCapability("detail", "프리셋 상세/공유 링크 확인", requiresAdminToken = false),
-                    PresetWebCapability("recommend", "추천 프리셋과 빠른 탐색", requiresAdminToken = false),
-                    PresetWebCapability("preview_import", "서버·채널 충돌 미리보기", requiresAdminToken = true),
-                    PresetWebCapability("import", "현재 채널 AI로 가져오기", requiresAdminToken = true),
-                    PresetWebCapability("like", "따봉 추천/추천 취소", requiresAdminToken = false),
-                    PresetWebCapability("report", "부적절한 프리셋 신고", requiresAdminToken = false),
-                ),
-            "adminTokenHeader" to "X-Dashboard-Admin-Token",
-            "nextAction" to "목록은 바로 볼 수 있고, 가져오기는 관리자 토큰을 입력한 뒤 미리보기부터 진행하세요.",
-        )
+    fun webReadiness(): Map<String, Any?> = PresetWebReadinessResponse.from(registry.webReadiness()).toMap()
 
     @GetMapping("/moderation/summary")
     fun moderationSummary(): Map<String, Any?> = mapOf("summary" to registry.moderationSummary())
@@ -85,11 +82,9 @@ class PresetRegistryController(
         @PathVariable guildId: Long,
         @RequestParam(required = false) channelId: Long? = null,
     ): Map<String, Any?> =
-        mapOf(
-            "guildId" to guildId,
-            "channelId" to channelId,
-            "imports" to registry.importHistory(targetGuildId = guildId, targetChannelId = channelId),
-        )
+        PresetImportHistoryResponse
+            .from(registry.importHistoryResult(targetGuildId = guildId, targetChannelId = channelId))
+            .toMap()
 
     @GetMapping("/reports")
     fun reports(): Map<String, Any?> = mapOf("reports" to registry.listReports())
@@ -124,7 +119,7 @@ class PresetRegistryController(
                 visibility = request.visibility ?: "guild_private",
                 behavior = request.behavior ?: PresetBehaviorInput(),
             )
-        return presetWriteResult(preset)
+        return PresetWriteResponse.from(preset).toMap()
     }
 
     @PostMapping("/guilds/{guildId}/channels/{channelId}/save-from-channel")
@@ -143,7 +138,7 @@ class PresetRegistryController(
                 category = request.category ?: "channel_ai",
                 visibility = request.visibility ?: "guild_private",
             )
-        return presetWriteResult(preset)
+        return PresetWriteResponse.from(preset).toMap()
     }
 
     @PutMapping("/{presetId}")
@@ -161,7 +156,7 @@ class PresetRegistryController(
                 visibility = request.visibility,
                 behavior = request.behavior,
             )
-        return presetWriteResult(preset)
+        return PresetWriteResponse.from(preset).toMap()
     }
 
     @PostMapping("/{presetId}/publish")
@@ -176,7 +171,7 @@ class PresetRegistryController(
                 title = request.title,
                 description = request.description,
             )
-        return mapOf("id" to published.id, "status" to published.status, "slug" to published.slug, "title" to published.title)
+        return PublishPresetResponse.from(published).toMap()
     }
 
     @PutMapping("/published/{publishedPresetId}")
@@ -192,13 +187,7 @@ class PresetRegistryController(
                 description = request.description,
                 behavior = request.behavior,
             )
-        return mapOf(
-            "id" to published.id,
-            "revisionId" to published.revisionId,
-            "status" to published.status,
-            "slug" to published.slug,
-            "title" to published.title,
-        )
+        return UpdatePublishedPresetResponse.from(published).toMap()
     }
 
     @PostMapping("/published/{publishedPresetId}/import-preview")
@@ -228,14 +217,7 @@ class PresetRegistryController(
                 importedBy = request.actorUserId,
                 confirmConflicts = request.confirmConflicts,
             )
-        return mapOf(
-            "id" to imported.id,
-            "importedPresetId" to imported.importedPresetId,
-            "sourceRevisionId" to imported.sourceRevisionId,
-            "createdChannelAiId" to imported.createdChannelAiId,
-            "createdBehaviorVersionId" to imported.createdBehaviorVersionId,
-            "status" to imported.status,
-        )
+        return ImportPresetResponse.from(imported).toMap()
     }
 
     @PostMapping("/published/{publishedPresetId}/like")
@@ -244,7 +226,7 @@ class PresetRegistryController(
         @RequestBody request: LikePresetRequest,
     ): Map<String, Any?> {
         val published = registry.likePreset(publishedPresetId, request.userId)
-        return likeWriteResult(published)
+        return LikePresetResponse.from(published).toMap()
     }
 
     @DeleteMapping("/published/{publishedPresetId}/like")
@@ -253,7 +235,7 @@ class PresetRegistryController(
         @RequestBody request: LikePresetRequest,
     ): Map<String, Any?> {
         val published = registry.unlikePreset(publishedPresetId, request.userId)
-        return likeWriteResult(published)
+        return LikePresetResponse.from(published).toMap()
     }
 
     @PostMapping("/published/{publishedPresetId}/report")
@@ -269,7 +251,7 @@ class PresetRegistryController(
                 reasonCode = request.reasonCode,
                 details = request.details,
             )
-        return mapOf("id" to report.id, "status" to report.status, "reasonCode" to report.reasonCode)
+        return ReportPresetResponse.from(report).toMap()
     }
 
     @PostMapping("/reports/{reportId}/review")
@@ -278,12 +260,7 @@ class PresetRegistryController(
         @RequestBody request: ReviewPresetReportRequest,
     ): Map<String, Any?> {
         val report = registry.reviewReport(reportId, request.decision, request.reviewerUserId)
-        return mapOf(
-            "id" to report.id,
-            "status" to report.status,
-            "reviewedBy" to report.reviewedBy,
-            "reviewedAt" to report.reviewedAt,
-        )
+        return ReviewPresetReportResponse.from(report).toMap()
     }
 
     @DeleteMapping("/{presetId}")
@@ -318,78 +295,3 @@ class PresetRegistryController(
         return mapOf("republished" to true, "status" to published.status)
     }
 }
-
-data class CreatePresetRequest(
-    val actorUserId: Long? = null,
-    val name: String,
-    val summary: String? = null,
-    val category: String? = null,
-    val visibility: String? = null,
-    val behavior: PresetBehaviorInput? = null,
-)
-
-data class SaveChannelPresetRequest(
-    val actorUserId: Long? = null,
-    val name: String? = null,
-    val summary: String? = null,
-    val category: String? = null,
-    val visibility: String? = null,
-)
-
-data class UpdatePresetRequest(
-    val actorUserId: Long? = null,
-    val name: String? = null,
-    val summary: String? = null,
-    val category: String? = null,
-    val visibility: String? = null,
-    val behavior: PresetBehaviorInput? = null,
-)
-
-data class PublishPresetRequest(
-    val actorUserId: Long? = null,
-    val title: String? = null,
-    val description: String? = null,
-)
-
-data class UpdatePublishedPresetRequest(
-    val actorUserId: Long? = null,
-    val title: String? = null,
-    val description: String? = null,
-    val behavior: PresetBehaviorInput? = null,
-)
-
-data class PresetWebCapability(
-    val key: String,
-    val label: String,
-    val requiresAdminToken: Boolean,
-)
-
-data class ImportPresetRequest(
-    val targetGuildId: Long,
-    val targetChannelId: Long? = null,
-    val actorUserId: Long? = null,
-    val confirmConflicts: Boolean = false,
-)
-
-data class LikePresetRequest(
-    val userId: Long,
-)
-
-data class ReportPresetRequest(
-    val reporterUserId: Long? = null,
-    val reason: String? = null,
-    val reasonCode: String? = null,
-    val details: String? = null,
-)
-
-data class ReviewPresetReportRequest(
-    val decision: String,
-    val reviewerUserId: Long? = null,
-)
-
-// 동일하게 반복되던 응답 직렬화를 한곳으로(중복 제거). 응답 키/값은 기존과 동일.
-private fun presetWriteResult(preset: PresetWriteResult): Map<String, Any?> =
-    mapOf("id" to preset.id, "currentRevisionId" to preset.currentRevisionId, "status" to preset.status)
-
-private fun likeWriteResult(published: PublishedPresetWriteResult): Map<String, Any?> =
-    mapOf("id" to published.id, "likeCount" to published.likeCount)

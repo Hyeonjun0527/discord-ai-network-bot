@@ -38,7 +38,7 @@
     "heroHeadline": {
       "ko": "당신의<br>디스코드 서버에<br>AI 멤버를 <span class=\"accent\">초대하세요.</span>",
       "en": "Connect an AI member<br>to your<br><span class=\"accent\">Discord server.</span>",
-      "ja": "AIメンバーを<br>あなたのDiscordサーバーに<br><span class=\"accent\">つなげましょう。</span>"
+      "ja": "AIメンバーを<br>あなたの<br>Discordサーバーに<br><span class=\"accent\">つなげましょう。</span>"
     },
     "heroBody": {
       "ko": "대화하고, 명령을 수행하고, 서버를 관리하는<br>지능형 AI 멤버를 몇 분 안에 초대할 수 있습니다.",
@@ -137,6 +137,41 @@
       "ko": "⚠ 비밀번호 · API 키 등 민감정보는 절대 입력하지 마세요.",
       "en": "⚠ Never enter sensitive information such as passwords or API keys.",
       "ja": "⚠ パスワード · APIキーなどの機密情報は絶対に入力しないでください。"
+    },
+    "guideStep1": {
+      "ko": "Ollama 설치 + 모델 (관리자 권한 불필요)",
+      "en": "Install Ollama + model (no admin rights needed)",
+      "ja": "Ollama をインストール + モデル（管理者権限不要）"
+    },
+    "guideStep2Mac": {
+      "ko": "냥시스턴트 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)",
+      "en": "Install the Nyassistant desktop app (brew verifies sha256, no admin)",
+      "ja": "ニャシスタント デスクトップアプリをインストール（brew が sha256 を自動検証、管理者不要）"
+    },
+    "guideStep2Win": {
+      "ko": "냥시스턴트 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)",
+      "en": "Install the Nyassistant desktop app (winget verifies sha256, no admin)",
+      "ja": "ニャシスタント デスクトップアプリをインストール（winget が sha256 を自動検証、管理者不要）"
+    },
+    "guideConnectMac": {
+      "ko": "응용 프로그램에서 ‘냥시스턴트’ 앱을 열고 → ‘디스코드 로그인’ 으로 서버를 고르거나 ‘고급 · 토큰 직접 입력’ 에 토큰을 붙여넣어 연결",
+      "en": "Open the ‘Nyassistant’ app from Applications → use ‘Discord login’ to pick a server, or paste a token in ‘Advanced · enter token’",
+      "ja": "アプリケーションから「ニャシスタント」アプリを開き → 「Discord ログイン」でサーバーを選ぶか、「詳細 · トークン直接入力」にトークンを貼り付けて接続"
+    },
+    "guideConnectWin": {
+      "ko": "시작 메뉴에서 ‘냥시스턴트’ 앱을 열고 → ‘디스코드 로그인’ 으로 서버를 고르거나 ‘고급 · 토큰 직접 입력’ 에 토큰을 붙여넣어 연결",
+      "en": "Open the ‘Nyassistant’ app from the Start menu → use ‘Discord login’ to pick a server, or paste a token in ‘Advanced · enter token’",
+      "ja": "スタートメニューから「ニャシスタント」アプリを開き → 「Discord ログイン」でサーバーを選ぶか、「詳細 · トークン直接入力」にトークンを貼り付けて接続"
+    },
+    "guideHintMac": {
+      "ko": "⌘ Space → Terminal 입력 → Enter (또는 응용 프로그램 → 유틸리티 → 터미널)",
+      "en": "⌘ Space → type Terminal → Enter (or Applications → Utilities → Terminal)",
+      "ja": "⌘ Space → Terminal と入力 → Enter（またはアプリケーション → ユーティリティ → ターミナル）"
+    },
+    "guideHintWin": {
+      "ko": "시작 메뉴에서 PowerShell 검색 → Enter, 또는 Win + X → 터미널 (관리자 권한 불필요)",
+      "en": "Search for PowerShell in the Start menu → Enter, or Win + X → Terminal (no admin rights)",
+      "ja": "スタートメニューで PowerShell を検索 → Enter、または Win + X → ターミナル（管理者権限不要）"
     }
   },
   "agent": {

@@ -441,6 +441,7 @@
           if (t && t[lang]) el.innerHTML = t[lang];
         });
         document.documentElement.lang = lang;
+        if (window.__renderGuide) window.__renderGuide(); // 설치 코드블록 주석/힌트도 현재 언어로 다시 렌더
       }
       // JS 동적 문구(예: 복사 피드백)도 같은 SSOT 를 쓰도록 접근자 노출.
       window.__t = (k) => (dict && dict[k] && dict[k][lang]) || '';
@@ -472,10 +473,24 @@
       const rest = escapeHtml(m[3]).replace(/(https?:\/\/[^\s]+)/g, '<span class="b">$1</span>');
       return escapeHtml(m[1]) + '<span class="g">' + escapeHtml(m[2]) + '</span>' + rest;
     }
+    // 코드블록 주석(# 1)/2)/3))은 언어별로 번역한다 — 명령어 줄은 그대로(언어 무관). dict 없으면 한국어 폴백.
+    // 키: step 번호 + OS. SSOT 는 i18n/messages.json(web). 번역값은 '# N) ' 접두 뒤의 텍스트만 담는다.
+    const GUIDE_COMMENT_KEYS = {
+      mac: { 1: 'guideStep1', 2: 'guideStep2Mac', 3: 'guideConnectMac' },
+      win: { 1: 'guideStep1', 2: 'guideStep2Win', 3: 'guideConnectWin' },
+    };
     function renderCode(g) {
       const lines = g.codeLines.slice();
       lines.push('# 3) ' + g.connect);
-      return lines.map(colorLine).join('\n');
+      const keys = GUIDE_COMMENT_KEYS[g.key] || {};
+      return lines.map(line => {
+        const m = line.match(/^#\s*(\d)\)\s*/); // 번호 달린 주석이면 번역(명령어 줄은 그대로)
+        if (m) {
+          const tx = (window.__t && window.__t(keys[m[1]])) || line.slice(m[0].length);
+          return colorLine('# ' + m[1] + ') ' + tx);
+        }
+        return colorLine(line);
+      }).join('\n');
     }
 
     // 로컬(정적 미리보기)에서만 쓰는 가이드 — 운영은 서버(InstallPageController)가 INSTALL_GUIDE 를 주입한다.
@@ -495,14 +510,19 @@
     (GUIDE || []).forEach(g => { osData[g.key] = g; });
 
     const tabs = [...document.querySelectorAll('.tab')];
+    const GUIDE_HINT_KEYS = { mac: 'guideHintMac', win: 'guideHintWin' };
+    let currentOS = null;
     function setOS(key) {
       const g = osData[key];
       if (!g) return;
+      currentOS = key;
       tabs.forEach(t => t.classList.toggle('active', t.dataset.os === key));
-      document.getElementById('installHint').textContent = g.terminalHint;
+      document.getElementById('installHint').textContent = (window.__t && window.__t(GUIDE_HINT_KEYS[key])) || g.terminalHint;
       document.getElementById('codeBlock').innerHTML = renderCode(g);
       document.getElementById('shellName').textContent = g.shellName;
     }
+    // 언어 변경/사전 로드 시 코드블록 주석·힌트를 현재 언어로 다시 그린다(apply 에서 호출).
+    window.__renderGuide = () => { if (currentOS) setOS(currentOS); };
     tabs.forEach(t => t.addEventListener('click', () => setOS(t.dataset.os)));
     if (GUIDE) {
       const ua = navigator.userAgent;

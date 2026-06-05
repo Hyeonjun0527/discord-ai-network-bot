@@ -262,7 +262,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div></section>
 <section><h2>2. 설정</h2><div class="settings">
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 연결</div><div class="setting-desc">앱을 닫아도 로그인하면 백그라운드에서 자동으로 연결돼 있어요. 이 앱은 설정을 바꿀 때만 열면 됩니다.</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
-<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 환경이 있으면 /imagine 요청을 처리합니다.</div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
+<div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 이 있으면 /imagine 요청을 처리합니다. 없으면 아래 버튼이 설치부터 모델까지 자동으로 준비해드려요.<br><button class="btn" type="button" id="sdSetupBtn" style="margin-top:10px" onclick="setupSD()">Stable Diffusion 설치 + 준비</button><div class="pbar" id="sdpbar" style="margin-top:10px"><div class="pfill" id="sdpfill"></div></div><div id="sdsetup" style="margin-top:8px;color:var(--muted)"></div></div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
 </div>
 <button class="primary-btn" type="button" id="go" onclick="connect()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px;vertical-align:-4px;margin-right:9px"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 0 1 0 10h-2"></path><path d="M8 12h8"></path></svg><span>연동하기</span></button>
 <div class="helper" style="text-align:center;margin-top:9px">처음이면 디스코드 로그인 창이 열려요. 한 번 연동하면 다음부턴 바로 연결됩니다.</div>
@@ -311,6 +311,8 @@ function toggleModel(el){el.classList.toggle('is-selected');const sel=el.classLi
 function selectedModels(){return [...document.querySelectorAll('.model.is-selected')].map(c=>c.dataset.model);}
 async function setupOllama(){const b=document.getElementById('osetupBtn'),bar=document.getElementById('opbar'),el=document.getElementById('osetup');if(b){b.disabled=true;b.style.opacity=.6;b.style.cursor='default';}if(bar)bar.style.display='block';if(el)el.textContent='시작 중…';try{await j('/api/ollama/setup',{method:'POST'});}catch(e){}pollOllamaSetup();}
 async function pollOllamaSetup(){const el=document.getElementById('osetup'),fill=document.getElementById('opfill');let p;try{p=await j('/api/ollama/setup-progress');}catch(e){setTimeout(pollOllamaSetup,1500);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';if(p.phase==='error'){if(el)el.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));const b=document.getElementById('osetupBtn');if(b){b.disabled=false;b.style.opacity=1;b.style.cursor='pointer';b.textContent='다시 시도';}return;}if(el)el.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){if(fill)fill.style.width='100%';setTimeout(loadModels,800);return;}setTimeout(pollOllamaSetup,1500);}
+async function setupSD(){const b=document.getElementById('sdSetupBtn'),bar=document.getElementById('sdpbar'),el=document.getElementById('sdsetup');if(b){b.disabled=true;b.style.opacity=.6;b.style.cursor='default';}if(bar)bar.style.display='block';if(el)el.textContent='시작 중…';try{await j('/api/sd/setup',{method:'POST'});}catch(e){}pollSDSetup();}
+async function pollSDSetup(){const el=document.getElementById('sdsetup'),fill=document.getElementById('sdpfill');let p;try{p=await j('/api/sd/setup-progress');}catch(e){setTimeout(pollSDSetup,2000);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';if(p.phase==='error'){if(el)el.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));const b=document.getElementById('sdSetupBtn');if(b){b.disabled=false;b.style.opacity=1;b.style.cursor='pointer';b.textContent='다시 시도';}return;}if(el)el.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){if(fill)fill.style.width='100%';const b=document.getElementById('sdSetupBtn');if(b){b.textContent='준비 완료 ✓';}return;}setTimeout(pollSDSetup,2000);}
 function on(id){return document.getElementById(id).classList.contains('on');}
 async function refresh(){const s=await j('/api/status');RUN=s.running;
 document.getElementById('relay').textContent=s.relayUrl;
@@ -716,6 +718,23 @@ def build_app(session_key: str) -> web.Application:
 
         return web.json_response(ollama_setup.progress())
 
+    async def sd_setup_start(req: web.Request) -> web.Response:
+        """앱 내 Stable Diffusion(A1111) 설치(감지→clone→모델→--api 기동) 시작. 진행은 폴링으로 노출."""
+        _auth(req)
+        from . import sd_setup
+
+        if sd_setup.is_busy():
+            return web.json_response({"ok": True, "busy": True})
+        url = load_config().get("sd_url") or "http://127.0.0.1:7860"
+        asyncio.create_task(sd_setup.run_setup(url))
+        return web.json_response({"ok": True})
+
+    async def sd_setup_progress(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import sd_setup
+
+        return web.json_response(sd_setup.progress())
+
     async def start(req: web.Request) -> web.Response:
         _auth(req)
         return web.json_response(_start_agent())
@@ -757,6 +776,8 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/auto-update", auto_update_set)
     app.router.add_post("/api/ollama/setup", ollama_setup_start)
     app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
+    app.router.add_post("/api/sd/setup", sd_setup_start)
+    app.router.add_get("/api/sd/setup-progress", sd_setup_progress)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)

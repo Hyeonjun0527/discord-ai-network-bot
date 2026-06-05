@@ -63,6 +63,10 @@ EXPECT: dict[str, list[str]] = {
         A["brandName"],
         A["brandTagline"],
     ],
+    # 관리자 콘솔(대시보드): 한국어 앱 표시명(appDisplayName) 워드마크 드리프트 검사(title + brand 표기).
+    "central-server/src/main/resources/static/admin/dashboard/index.html": [
+        A["appDisplayName"],
+    ],
     "docs/PACKAGE_MANAGERS.md": [
         pkg["wingetId"],
         f'--cask {pkg["homebrewTap"]}/{pkg["homebrewCask"]}',

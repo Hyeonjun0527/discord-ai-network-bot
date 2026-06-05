@@ -281,7 +281,7 @@ class DashboardServingTest
         }
 
         @Test
-        fun `설치 홈에서 프리셋 카탈로그와 대시보드로 이동할 수 있다`() {
+        fun `설치 홈에서 프리셋 카탈로그로 이동할 수 있고 본문 앵커·브랜드가 노출된다`() {
             val html =
                 mvc
                     .perform(get("/install.html"))
@@ -292,9 +292,11 @@ class DashboardServingTest
 
             // 정적 응답은 ASCII 로만 단언(MockMvc 가 비-UTF-8 로 디코드 → 한글 매칭 취약).
             assertTrue(html.contains("""href="/presets""""))
-            assertTrue(html.contains("""href="/admin/dashboard""""))
+            // 대시보드 버튼은 헤더에서 제거됨(직접 URL /admin/dashboard 로는 계속 서빙) — 위 별도 테스트가 커버.
             assertTrue(html.contains("""id="install"""")) // 설치 섹션 앵커(랜딩 본문)
-            assertTrue(html.contains("NYASSISTANT AI NETWORK")) // 브랜드 표기
+            // 브랜드 워드마크는 brand-name/brand-sub 두 요소로 표기(window.__BRAND 단일 소스 주입, HTML 리터럴 폴백).
+            assertTrue(html.contains("NYASSISTANT")) // 브랜드명
+            assertTrue(html.contains("AI NETWORK")) // 브랜드 서브
         }
 
         @Test

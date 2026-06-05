@@ -103,7 +103,7 @@ class InfoCommandHandler(
     ): Reply {
         fun c(base: String) = "`/${CommandLoc.localName(base, locale)}`"
         val sb = StringBuilder()
-        sb.append("**커뮤니티 로컬 AI Provider Pool — 도움말**\n")
+        sb.append("**냥시스턴트 AI 네트워크 — 도움말**\n")
         sb.append("커뮤니티 멤버들의 PC LLM 을 모아 공정하게 분배합니다(금전 거래 아님).\n\n")
         sb.append("__유저__\n")
         sb.append("· ${c("ask")} `<질문>` — 풀의 누군가의 PC LLM 으로 답변\n")

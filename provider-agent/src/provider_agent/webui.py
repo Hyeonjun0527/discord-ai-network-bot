@@ -286,15 +286,13 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <div class="settings" id="serverList"></div>
 <button class="secondary-btn" type="button" id="addServerBtn" style="width:100%;margin-top:10px" onclick="addServer()">＋ 다른 서버에 연결(디스코드 로그인)</button>
 <div class="helper" id="addServerHelp" style="margin-top:7px">여러 디스코드 서버의 프로바이더로 동시에 연결할 수 있어요.</div>
-<button class="secondary-btn" type="button" id="logoutBtn" style="width:100%;margin-top:14px;border-color:rgba(179,64,47,.4);color:#ffb3a8" onclick="logout()">로그아웃 (연동 해제 · 초기화)</button>
-<div class="helper" style="margin-top:6px">저장된 토큰·서버 연결을 모두 지우고 처음 연동 상태로 되돌립니다(다른 설정은 유지).</div>
 <details style="margin-top:10px"><summary><span>토큰으로 추가</span><span>⌄</span></summary><div class="details-body">
 <label class="input" style="margin-bottom:9px"><input type="text" id="addTokName" placeholder="서버 별명(예: 우리 동아리)"></label>
 <label class="input" style="margin-bottom:9px"><input type="password" id="addTokVal" placeholder="다른 서버의 /provider-join 토큰"></label>
 <button class="secondary-btn" type="button" style="width:100%" onclick="addByToken()">추가</button>
 <div class="helper" id="addTokHelp" style="margin-top:7px">디스코드 로그인 추가가 안 될 때, 그 서버에서 받은 토큰을 붙여넣어 추가합니다.</div></div></details></section>
 <details><summary><span>로그 보기</span><span>⌄</span></summary><div class="details-body"><div id="log"></div></div></details>
-<details><summary><span>고급 · 토큰 직접 입력</span><span>⌄</span></summary><div class="details-body">
+<details><summary><span>고급</span><span>⌄</span></summary><div class="details-body">
 <label class="input" style="margin-bottom:11px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:20px;height:20px;flex:0 0 auto"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg><input type="password" id="token" placeholder="/provider-join 토큰 붙여넣기(선택)"></label>
 중앙 서버(고정): <span class="ro" id="relay"></span>
 <div id="installRow" style="display:none;margin-top:13px">
@@ -307,6 +305,11 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <div id="verStatus" style="margin-top:10px">버전 확인 중…</div>
 <button class="secondary-btn" type="button" id="updateBtn" style="width:100%;margin-top:9px;display:none" onclick="doUpdate()"></button>
 <div class="pbar" id="pbar"><div class="pfill" id="pfill"></div></div></div>
+<div style="margin-top:14px;border-top:1px solid rgba(148,163,184,.10);padding-top:13px">
+<button class="secondary-btn" type="button" id="logoutBtn" style="width:100%" onclick="logout()">로그아웃</button>
+<div class="helper" style="margin-top:6px">저장된 토큰·서버 연결만 지우고 처음 연동 상태로 돌아갑니다(다른 설정은 유지).</div>
+<button class="secondary-btn" type="button" id="resetBtn" style="width:100%;margin-top:11px" onclick="resetAll()">초기화</button>
+<div class="helper" style="margin-top:6px">모든 설정을 기본값으로 되돌립니다(토큰·연결·Ollama·이미지 설정 전부).</div></div>
 </div></details>
 </section>
 </main></div>
@@ -447,7 +450,8 @@ return '<div style="display:flex;align-items:center;gap:10px;min-height:56px;bor
 +'<button class="secondary-btn" style="min-height:34px;padding:0 12px;font-size:13px" onclick="renameServer('+idx+')">수정</button>'
 +'<button class="secondary-btn" style="min-height:34px;padding:0 12px;font-size:13px" onclick="removeServer('+idx+')">해제</button></div>';}).join('');}
 async function removeServer(idx){await j('/api/server-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx})});loadServers();refresh();}
-async function logout(){if(!confirm('저장된 토큰과 모든 서버 연결을 지우고 처음 연동 상태로 되돌립니다. 계속할까요?'))return;const b=document.getElementById('logoutBtn');if(b){b.disabled=true;b.textContent='로그아웃 중…';}try{await j('/api/logout',{method:'POST'});}catch(e){}await refresh();loadServers();const m=document.getElementById('msg');if(m){m.className='ok';m.textContent='로그아웃됐어요. 이제 처음 연동(온보딩) 화면입니다.';}if(b){b.disabled=false;b.textContent='로그아웃 (연동 해제 · 초기화)';}}
+async function logout(){if(!confirm('저장된 토큰과 모든 서버 연결을 지우고 처음 연동 상태로 돌아갑니다. 계속할까요?'))return;const b=document.getElementById('logoutBtn');if(b){b.disabled=true;b.textContent='로그아웃 중…';}try{await j('/api/logout',{method:'POST'});}catch(e){}await refresh();loadServers();const m=document.getElementById('msg');if(m){m.className='ok';m.textContent='로그아웃됐어요. 이제 처음 연동(온보딩) 화면입니다.';}if(b){b.disabled=false;b.textContent='로그아웃';}}
+async function resetAll(){if(!confirm('모든 설정을 기본값으로 되돌립니다(토큰·연결·Ollama·이미지 설정 전부). 계속할까요?'))return;const b=document.getElementById('resetBtn');if(b){b.disabled=true;b.textContent='초기화 중…';}try{await j('/api/reset',{method:'POST'});}catch(e){}location.reload();}
 async function renameServer(idx){const name=prompt('이 서버의 표시 이름을 입력하세요');if(name==null)return;
 await j('/api/server-rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({index:idx,name:name})});loadServers();}
 async function addByToken(){const help=document.getElementById('addTokHelp');const tok=document.getElementById('addTokVal').value.trim();const nm=document.getElementById('addTokName').value.trim();
@@ -861,10 +865,37 @@ def build_app(session_key: str) -> web.Application:
 
         singleton.release()
         # 2) 토큰·서버 연결 비우기 → 온보딩 상태(다른 설정 보존)
-        from .config_file import persist_partial, save_connections
+        from .config_file import save_connections
 
-        persist_partial({"token": ""})
-        save_connections([])
+        save_connections([])  # connections·token 모두 비움(다른 설정은 그대로)
+        return web.json_response({"ok": True})
+
+    async def reset_all(req: web.Request) -> web.Response:
+        """초기화: 실행 중 에이전트 중지 + 설정 파일 전체 삭제 → 모든 설정 기본값.
+
+        로그아웃과 분리된 동작 — 토큰·연결뿐 아니라 Ollama/이미지 등 모든 설정을 비운다.
+        """
+        _auth(req)
+        agent = _state["agent"]
+        task = _state["task"]
+        if agent is not None:
+            agent.request_stop()
+        if task is not None:
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=10)
+            except (TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        _state["agent"] = None
+        _state["task"] = None
+        from . import singleton
+
+        singleton.release()
+        from .config_file import config_path
+
+        try:
+            config_path().unlink(missing_ok=True)  # 설정 파일 전체 삭제 → 기본값
+        except OSError:
+            pass
         return web.json_response({"ok": True})
 
     app.router.add_get("/", index)
@@ -895,6 +926,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)
     app.router.add_post("/api/logout", logout)
+    app.router.add_post("/api/reset", reset_all)
     return app
 
 

@@ -55,7 +55,7 @@ class RequestWeigher {
     ): WeighResult {
         val weight = weigh(meta)
         val required = weight.requiredBurden()
-        val gap = required.ordinal - memberMaxBurden.ordinal
+        val gap = required.rank - memberMaxBurden.rank
         return when {
             gap <= 0 -> WeighResult(weight, required, WeighDecision.ACCEPT, required)
             gap == 1 -> WeighResult(weight, required, WeighDecision.DOWNGRADE, memberMaxBurden)

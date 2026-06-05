@@ -233,6 +233,8 @@ class RequestOrchestrator(
                 requestId = routingRequestId,
                 userId = input.userId,
                 maxOutputTokens = estimatedMaxOutputTokens(input.responseMode),
+                deadlineTtftMillis = defaultDeadlineMillis(weigh.requiredBurden, input.responseMode) / 2,
+                deadlineE2eMillis = defaultDeadlineMillis(weigh.requiredBurden, input.responseMode),
                 quotaReservationUnits = 1,
             )
 
@@ -314,6 +316,20 @@ class RequestOrchestrator(
                     }
             val outcome = pipeline.filter(candidates, ctx)
             if (outcome.eligible.isEmpty()) {
+                auditLogger.recordDecision(
+                    requestId = routingRequestId,
+                    selectedProviderId = null,
+                    candidateProviderIds = candidates.map { it.providerId },
+                    infeasibleProviderReasons = outcome.dropped,
+                    scoreBreakdowns =
+                        outcome.dropped.map { (providerId, reason) ->
+                            RoutingScoreBreakdown(
+                                providerId = providerId,
+                                feasible = false,
+                                infeasibleReasons = listOf(reason),
+                            )
+                        },
+                )
                 return when {
                     outcome.signal == FilterSignal.PERMISSION_DENIED ->
                         OrchestrationResult(RequestState.REJECTED, failReason = "권한 또는 정책상 처리할 수 없습니다.")

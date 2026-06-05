@@ -10,16 +10,16 @@ import com.discordassistant.central.routing.ProviderProfile
 import com.discordassistant.central.routing.ProviderProfileProvider
 import org.springframework.stereotype.Service
 
-/**
- * DB(contribution policy) 기반 프로바이더 프로필 (K-차수 11). 상위 부담 지원 시 하위도 지원으로 본다.
- * 정책 미설정 프로바이더는 보수적 기본값(LIGHT/STANDARD).
- */
 @Service
 class DbProviderProfileProvider(
     private val policies: ProviderContributionPolicyRepository,
     private val capabilities: ProviderCapabilityProfileRepository,
 ) : ProviderProfileProvider {
-    override fun profile(providerId: Long): ProviderProfile = buildProfile(policies.findByProviderId(providerId))
+    override fun profile(providerId: Long): ProviderProfile =
+        buildProfile(
+            rows = policies.findByProviderId(providerId),
+            capability = null,
+        )
 
     override fun profile(
         guildId: Long,
@@ -30,11 +30,21 @@ class DbProviderProfileProvider(
             capability = capabilities.findByGuildIdAndProviderUserId(guildId, providerId),
         )
 
-    /** 후보 프로바이더 프로필을 IN 조회 1회로 일괄 산출(라우팅 핫패스의 후보당 쿼리 N+1 제거). */
     override fun profilesFor(providerIds: Collection<Long>): Map<Long, ProviderProfile> {
         if (providerIds.isEmpty()) return emptyMap()
-        val byProvider = policies.findByProviderIdIn(providerIds.toSet()).groupBy { it.providerId }
-        return providerIds.associateWith { buildProfile(byProvider[it].orEmpty()) }
+
+        val ids = providerIds.toSet()
+        val policiesByProvider =
+            policies
+                .findByProviderIdIn(ids)
+                .groupBy { it.providerId }
+
+        return ids.associateWith { providerId ->
+            buildProfile(
+                rows = policiesByProvider[providerId].orEmpty(),
+                capability = null,
+            )
+        }
     }
 
     override fun profilesFor(
@@ -42,41 +52,91 @@ class DbProviderProfileProvider(
         providerIds: Collection<Long>,
     ): Map<Long, ProviderProfile> {
         if (providerIds.isEmpty()) return emptyMap()
+
         val ids = providerIds.toSet()
-        val byProvider = policies.findByProviderIdIn(ids).groupBy { it.providerId }
+        val policiesByProvider =
+            policies
+                .findByProviderIdIn(ids)
+                .groupBy { it.providerId }
         val capabilitiesByProvider =
             capabilities
                 .findByGuildIdAndProviderUserIdIn(guildId, ids)
                 .associateBy { it.providerUserId }
-        return providerIds.associateWith { buildProfile(byProvider[it].orEmpty(), capabilitiesByProvider[it]) }
+
+        return ids.associateWith { providerId ->
+            buildProfile(
+                rows = policiesByProvider[providerId].orEmpty(),
+                capability = capabilitiesByProvider[providerId],
+            )
+        }
     }
 
     private fun buildProfile(
         rows: List<ProviderContributionPolicyEntity>,
         capability: ProviderCapabilityProfileEntity? = null,
     ): ProviderProfile {
-        if (rows.isEmpty()) {
-            val maxBurden = capability?.maxBurden ?: ModelBurden.STANDARD
-            return ProviderProfile(
-                supportedBurdens = supportedBurdens(maxBurden),
-                qualityTier = qualityTier(capability),
-            )
-        }
-        val declared = rows.map { ModelBurden.valueOf(it.burden) }.toSet()
-        val top = declared.filter { it != ModelBurden.RESTRICTED }.maxByOrNull { it.ordinal } ?: ModelBurden.LIGHT
+        val declaredBurdens =
+            rows
+                .mapNotNull { ModelBurden.fromName(it.burden) }
+                .toSet()
+
+        val policyMaxBurden =
+            declaredBurdens
+                .filter { it.isNormalBurden() }
+                .maxByOrNull { it.rank }
+
+        val capabilityMaxBurden =
+            capability
+                ?.maxBurden
+                ?.takeIf { it.isNormalBurden() }
+
+        val effectiveMaxBurden =
+            when {
+                rows.isEmpty() -> DEFAULT_MAX_BURDEN_WITHOUT_POLICY
+                policyMaxBurden == null -> DEFAULT_MAX_BURDEN_WITH_INVALID_POLICY
+                capabilityMaxBurden == null -> policyMaxBurden
+                else -> minByRank(policyMaxBurden, capabilityMaxBurden)
+            }
+
         val supported =
-            ModelBurden.entries
-                .filter { it != ModelBurden.RESTRICTED && it.ordinal <= top.ordinal }
+            supportedBurdensUpTo(effectiveMaxBurden)
                 .toMutableSet()
-        if (ModelBurden.RESTRICTED in declared) supported.add(ModelBurden.RESTRICTED)
-        return ProviderProfile(supportedBurdens = supported, qualityTier = qualityTier(capability))
+
+        if (ModelBurden.RESTRICTED in declaredBurdens) {
+            supported.add(ModelBurden.RESTRICTED)
+        }
+
+        return ProviderProfile(
+            supportedBurdens = supported,
+            qualityTier = qualityTier(capability),
+        )
     }
 
-    private fun supportedBurdens(maxBurden: ModelBurden): Set<ModelBurden> =
+    private fun supportedBurdensUpTo(maxBurden: ModelBurden): Set<ModelBurden> =
         ModelBurden.entries
-            .filter { it != ModelBurden.RESTRICTED && it.rank <= maxBurden.rank }
+            .asSequence()
+            .filter { it.isNormalBurden() }
+            .filter { it.rank <= maxBurden.rank }
             .toSet()
 
-    private fun qualityTier(capability: ProviderCapabilityProfileEntity?): String =
-        (capability?.qualityTier ?: ModelQualityTier.STANDARD).wire
+    private fun qualityTier(capability: ProviderCapabilityProfileEntity?): String {
+        val tier =
+            capability
+                ?.qualityTier
+                ?.takeUnless { it == ModelQualityTier.UNKNOWN }
+                ?: ModelQualityTier.STANDARD
+        return tier.wire
+    }
+
+    private fun ModelBurden.isNormalBurden(): Boolean = this != ModelBurden.RESTRICTED
+
+    private fun minByRank(
+        a: ModelBurden,
+        b: ModelBurden,
+    ): ModelBurden = if (a.rank <= b.rank) a else b
+
+    companion object {
+        private val DEFAULT_MAX_BURDEN_WITHOUT_POLICY = ModelBurden.STANDARD
+        private val DEFAULT_MAX_BURDEN_WITH_INVALID_POLICY = ModelBurden.LIGHT
+    }
 }

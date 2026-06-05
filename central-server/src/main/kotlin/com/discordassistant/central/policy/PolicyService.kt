@@ -200,9 +200,9 @@ class PolicyService(
         val policies = cachedRoles(guildId).filter { it.roleId in memberRoleIds }
         if (policies.isEmpty()) return ModelBurden.LIGHT // 기본(일반 멤버)
         return policies
-            .map { ModelBurden.valueOf(it.maxBurden) }
+            .mapNotNull { ModelBurden.fromName(it.maxBurden) }
             .filter { it != ModelBurden.RESTRICTED }
-            .maxByOrNull { it.ordinal } ?: ModelBurden.LIGHT
+            .maxByOrNull { it.rank } ?: ModelBurden.LIGHT
     }
 
     /** 멤버 역할들의 일일 한도(최대값). 정책 없으면 base 기본값. */
@@ -220,7 +220,7 @@ class PolicyService(
     fun isBurdenAllowed(
         memberMax: ModelBurden,
         required: ModelBurden,
-    ): Boolean = required != ModelBurden.RESTRICTED && required.ordinal <= memberMax.ordinal
+    ): Boolean = required != ModelBurden.RESTRICTED && required.rank <= memberMax.rank
 
     // ── 승인 방식 ───────────────────────────────────────────────────────
     @Transactional

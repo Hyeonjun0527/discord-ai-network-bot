@@ -241,9 +241,9 @@
     "ja": "オプション — 画像生成も提供"
   },
   "alertImageBody": {
-    "ko": "누구나 이미지 프로바이더가 될 수 있습니다. 로컬 <b>Stable Diffusion</b>(AUTOMATIC1111 등)을 켜고 에이전트에 <code>--enable-image</code> 를 추가하면 <code>/그림</code> 요청을 처리합니다(GPU 권장).",
-    "en": "Anyone can become an image provider. Turn on a local <b>Stable Diffusion</b> (e.g. AUTOMATIC1111) and add <code>--enable-image</code> to the agent to handle <code>/imagine</code> requests (GPU recommended).",
-    "ja": "誰でも画像プロバイダーになれます。ローカルの <b>Stable Diffusion</b>(AUTOMATIC1111 など)を起動し、エージェントに <code>--enable-image</code> を追加すると <code>/画像</code> リクエストを処理します(GPU推奨)。"
+    "ko": "누구나 이미지 프로바이더가 될 수 있습니다. 데스크톱 앱에서 제공하는 <b>Stable Diffusion</b> 을 설치하면, 로컬에 준비된 스테이블 디퓨전을 AI가 알아서 사용해 <code>/그림</code> 요청까지 처리합니다(GPU 권장).",
+    "en": "Anyone can become an image provider. Just install the <b>Stable Diffusion</b> offered by the desktop app, and the AI automatically uses your local Stable Diffusion to handle <code>/imagine</code> requests too (GPU recommended).",
+    "ja": "誰でも画像プロバイダーになれます。デスクトップアプリが提供する <b>Stable Diffusion</b> をインストールするだけで、ローカルの Stable Diffusion を AI が自動で使って <code>/画像</code> リクエストまで処理します(GPU推奨)。"
   },
   "footerMain": {
     "ko": "커뮤니티 로컬 AI Provider Pool · 남는 컴퓨팅 파워를 유용한 응답 자원으로 (<span class=\"warn\">기여·공정성, 금전 거래 아님</span>)",

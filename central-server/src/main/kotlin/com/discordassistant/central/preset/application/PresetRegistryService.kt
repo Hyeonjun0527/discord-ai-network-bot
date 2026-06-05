@@ -14,7 +14,6 @@ import com.discordassistant.central.channelai.adapter.outbound.persistence.Chann
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogEntity
 import com.discordassistant.central.channelai.adapter.outbound.persistence.CustomizationAuditLogRepository
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
-import com.discordassistant.central.knowledge.application.KnowledgeSafety
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetEntity
 import com.discordassistant.central.preset.adapter.outbound.persistence.AiPresetRepository
 import com.discordassistant.central.preset.adapter.outbound.persistence.PresetImportEntity
@@ -32,7 +31,6 @@ import com.discordassistant.central.preset.domain.model.PresetReportStatus
 import com.discordassistant.central.preset.domain.model.PresetStatus
 import com.discordassistant.central.preset.domain.model.PublishedPresetStatus
 import com.discordassistant.central.shared.ContentSafety.HIGH_RISK_SAFETY_LEVELS
-import com.discordassistant.central.shared.ResponseMode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest
@@ -54,6 +52,18 @@ class PresetRegistryService(
     private val audits: CustomizationAuditLogRepository,
     private val clock: Clock = Clock.systemUTC(),
     private val featureGate: AiNetworkFeatureGate = AiNetworkFeatureGate(),
+    private val contentSafety: PresetContentSafety = PresetContentSafety(),
+    private val revisionFactory: PresetRevisionFactory =
+        PresetRevisionFactory(
+            revisions = revisions,
+            safety = contentSafety,
+        ),
+    private val importPreviewBuilder: PresetImportPreviewBuilder =
+        PresetImportPreviewBuilder(
+            channelAis = channelAis,
+            routingPolicies = routingPolicies,
+            safety = contentSafety,
+        ),
     private val catalog: PresetCatalogQueryService =
         PresetCatalogQueryService(
             presets = presets,
@@ -628,88 +638,7 @@ class PresetRegistryService(
         sourceRevision: PresetRevisionEntity,
         targetGuildId: Long,
         targetChannelId: Long?,
-    ): PresetImportPreview {
-        val existingChannelAi = targetChannelId?.let { channelAis.findByGuildIdAndChannelId(targetGuildId, it) }
-        val existingRouting = targetChannelId?.let { routingPolicies.findByGuildIdAndChannelId(targetGuildId, it) }
-        val highRisk = sourceRevision.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS
-        val conflicts = mutableListOf<PresetImportConflict>()
-        if (targetChannelId == null) {
-            conflicts +=
-                PresetImportConflict(
-                    code = "no_target_channel_import_only",
-                    severity = "info",
-                    message = "대상 채널이 없어 프리셋 보관함에만 가져오고 채널 AI에는 적용하지 않습니다.",
-                )
-        }
-        if (existingChannelAi != null) {
-            conflicts +=
-                PresetImportConflict(
-                    code = "existing_channel_ai_behavior",
-                    severity = "warning",
-                    message = "대상 채널에 이미 AI 프로필/행동 버전이 있어 적용 시 새 버전으로 덮어씁니다.",
-                )
-        }
-        if (existingRouting != null) {
-            conflicts +=
-                PresetImportConflict(
-                    code = "existing_routing_policy",
-                    severity = "warning",
-                    message = "대상 채널에 이미 응답 모드/모델 라우팅 정책이 있어 프리셋 정책으로 교체됩니다.",
-                )
-        }
-        if (sourceRevision.maxCandidates > 1) {
-            conflicts +=
-                PresetImportConflict(
-                    code = "multi_candidate_fanout",
-                    severity = if (sourceRevision.maxCandidates >= 4) "warning" else "info",
-                    message = "이 프리셋은 여러 Provider 후보를 사용할 수 있어 Provider 부담이 증가할 수 있습니다.",
-                )
-        }
-        if (highRisk) {
-            conflicts +=
-                PresetImportConflict(
-                    code = "high_risk_requires_review",
-                    severity = "blocker",
-                    message = "안전 등급이 높은 프리셋이라 바로 활성화하지 않고 승인 요청으로 전환합니다.",
-                )
-        }
-        val action =
-            when {
-                targetChannelId == null -> "import_only"
-                highRisk -> "propose_review"
-                existingChannelAi != null -> "overwrite_channel_ai"
-                else -> "create_channel_ai"
-            }
-        return PresetImportPreview(
-            publishedPresetId = published.id,
-            revisionId = sourceRevision.id,
-            targetGuildId = targetGuildId,
-            targetChannelId = targetChannelId,
-            action = action,
-            conflicts = conflicts,
-            willImportPresetCopy = true,
-            willApplyToChannel = targetChannelId != null,
-            willOverwriteChannelAi = existingChannelAi != null,
-            willOverwriteRoutingPolicy = existingRouting != null,
-            willCreateApprovalProposal = highRisk && targetChannelId != null,
-            title = published.title.publicRequired(maxLength = 120, fallback = REDACTED_PUBLIC_TITLE),
-            description = published.description.publicOptional(maxLength = 500),
-            purpose = sourceRevision.purpose,
-            tone = sourceRevision.tone,
-            answerLength = sourceRevision.answerLength,
-            safetyLevel = sourceRevision.safetyLevel,
-            responseMode = sourceRevision.responseMode,
-            preferredModel = sourceRevision.preferredModel,
-            minQualityTier = sourceRevision.minQualityTier,
-            maxCandidates = sourceRevision.maxCandidates,
-            providerTagFilter = splitCsv(sourceRevision.providerTagFilter),
-            tags = splitCsv(sourceRevision.tags),
-            costGuard = sourceRevision.costGuard,
-            knowledgeSlotNames = splitCsv(sourceRevision.knowledgeSlotNames),
-            knowledgeGuide = sourceRevision.knowledgeGuide,
-            exampleQuestions = splitLines(sourceRevision.exampleQuestions),
-        )
-    }
+    ): PresetImportPreview = importPreviewBuilder.buildImportPreview(published, sourceRevision, targetGuildId, targetChannelId)
 
     private fun applyRevisionToChannel(
         published: PublishedPresetEntity,
@@ -894,48 +823,7 @@ class PresetRegistryService(
         behavior: PresetBehaviorInput,
         createdBy: Long?,
         now: Instant,
-    ): PresetRevisionEntity {
-        val preferredModel =
-            behavior.preferredModel
-                ?.trim()
-                ?.ifBlank { null }
-                ?.take(160)
-        val minQualityTier =
-            behavior.minQualityTier
-                .trim()
-                .ifBlank { "standard" }
-                .take(40)
-        val costGuard =
-            behavior.costGuard
-                .trim()
-                .ifBlank { "provider_safe" }
-                .take(80)
-        return revisions.save(
-            PresetRevisionEntity(
-                presetId = preset.id,
-                revision = revision,
-                name = preset.name,
-                purpose = behavior.purpose.trim().ifBlank { "general_assistant" },
-                tone = behavior.tone.trim().ifBlank { "friendly" },
-                answerLength = behavior.answerLength.trim().ifBlank { "balanced" },
-                constitution = behavior.constitution?.trim()?.ifBlank { null },
-                safetyLevel = behavior.safetyLevel.trim().ifBlank { "standard" },
-                responseMode = normalizeResponseMode(behavior.responseMode),
-                preferredModel = preferredModel,
-                minQualityTier = minQualityTier,
-                maxCandidates = behavior.maxCandidates.coerceIn(1, AI_NETWORK_MAX_CANDIDATES),
-                providerTagFilter = behavior.providerTagFilter.normalizedCsv(),
-                tags = behavior.tags.normalizedPresetTags(),
-                costGuard = costGuard,
-                knowledgeSlotNames = behavior.knowledgeSlotNames.normalizedKnowledgeSlots(),
-                knowledgeGuide = behavior.knowledgeGuide.sanitizedKnowledgeGuide(),
-                exampleQuestions = behavior.exampleQuestions.normalizedExampleQuestions(),
-                changeSummary = behavior.changeSummary?.trim()?.ifBlank { null },
-                createdBy = createdBy,
-                createdAt = now,
-            ),
-        )
-    }
+    ): PresetRevisionEntity = revisionFactory.createRevision(preset, revision, behavior, createdBy, now)
 
     private fun AiBehaviorVersionEntity.payloadHash(): String =
         sha256(
@@ -1006,91 +894,17 @@ class PresetRegistryService(
         }
     }
 
-    private fun normalizeResponseMode(value: String): String = ResponseMode.normalize(value).wire
+    private fun normalizeResponseMode(value: String): String = revisionFactory.normalizeResponseMode(value)
 
-    private fun List<String>.normalizedCsv(): String? =
-        map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
-            .joinToString(",")
-            .ifBlank { null }
+    private fun String.hasSensitiveMaterial(): Boolean = with(contentSafety) { hasSensitiveMaterial() }
 
-    private fun List<String>.normalizedPresetTags(): String? =
-        map { it.normalizedPresetTag() }
-            .filter { it.isNotBlank() && !it.hasSensitiveMaterial() }
-            .distinct()
-            .take(12)
-            .joinToString(",")
-            .ifBlank { null }
+    private fun splitCsv(value: String?): List<String> = contentSafety.splitCsv(value)
 
-    private fun String.normalizedPresetTag(): String =
-        trim()
-            .lowercase()
-            .replace(Regex("\\s+"), "-")
-            .take(40)
-
-    private fun List<String>.normalizedKnowledgeSlots(): String? =
-        map { it.trim() }
-            .filter { it.isNotBlank() }
-            .map { it.replace(Regex("\\s+"), " ").take(80) }
-            .distinct()
-            .take(10)
-            .joinToString(",")
-            .ifBlank { null }
-
-    private fun String?.sanitizedKnowledgeGuide(): String? =
-        this
-            ?.trim()
-            ?.replace(SECRET_PATTERN, "[redacted]")
-            ?.take(1000)
-            ?.ifBlank { null }
-
-    private fun List<String>.normalizedExampleQuestions(): String? =
-        map { it.trim().replace(Regex("\\s+"), " ").take(160) }
-            .filter { it.isNotBlank() && !it.hasSensitiveMaterial() }
-            .distinct()
-            .take(5)
-            .joinToString("\n")
-            .ifBlank { null }
-
-    private fun String?.publicOptional(maxLength: Int): String? {
-        val trimmed = this?.trim()?.ifBlank { null } ?: return null
-        if (trimmed.hasSensitiveMaterial()) return REDACTED_PUBLIC_TEXT
-        return trimmed.take(maxLength)
-    }
-
-    private fun String.publicRequired(
-        maxLength: Int,
-        fallback: String,
-    ): String {
-        val trimmed = trim().ifBlank { return fallback }
-        if (trimmed.hasSensitiveMaterial()) return fallback
-        return trimmed.take(maxLength)
-    }
-
-    private fun String.hasSensitiveMaterial(): Boolean =
-        KnowledgeSafety.containsSensitiveMaterial(this) || SECRET_PATTERN.containsMatchIn(this)
-
-    private fun splitCsv(value: String?): List<String> =
-        value
-            .orEmpty()
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-
-    private fun splitLines(value: String?): List<String> =
-        value
-            .orEmpty()
-            .lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .toList()
+    private fun splitLines(value: String?): List<String> = contentSafety.splitLines(value)
 
     private companion object {
         const val MAX_VERSION_RETRIES = 5
         const val REPORT_REVIEW_THRESHOLD = 1
-        const val REDACTED_PUBLIC_TITLE = "비공개 프리셋"
-        const val REDACTED_PUBLIC_TEXT = "[비공개 처리됨]"
         val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
         val CONFIRM_REQUIRED_CONFLICT_SEVERITIES = setOf("warning", "blocker")
     }

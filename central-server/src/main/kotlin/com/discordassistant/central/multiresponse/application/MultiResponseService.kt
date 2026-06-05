@@ -7,9 +7,6 @@ import com.discordassistant.central.ainetwork.adapter.outbound.persistence.Provi
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.ainetwork.application.ProviderSafetyService
 import com.discordassistant.central.ainetwork.domain.model.FeedbackStatus
-import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
-import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
-import com.discordassistant.central.knowledge.application.KnowledgeSafety
 import com.discordassistant.central.knowledge.application.KnowledgeSearchService
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerEntity
 import com.discordassistant.central.multiresponse.adapter.outbound.persistence.CandidateAnswerRepository
@@ -23,11 +20,8 @@ import com.discordassistant.central.multiresponse.domain.model.CandidateStatus
 import com.discordassistant.central.multiresponse.domain.model.MultiResponseRunStatus
 import com.discordassistant.central.multiresponse.domain.model.SynthesisStatus
 import com.discordassistant.central.relay.ConnectionRegistry
-import com.discordassistant.central.shared.ContentSafety.BLOCKING_SAFETY_FLAGS
-import com.discordassistant.central.shared.ModelQualityTier
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -52,6 +46,27 @@ class MultiResponseService(
             candidates = candidates,
             syntheses = syntheses,
             featureGate = featureGate,
+        ),
+    private val promptSafety: PromptSafetyScrubber = PromptSafetyScrubber(),
+    private val pseudoStreamPlanner: PseudoStreamPlanner = PseudoStreamPlanner(featureGate),
+    private val candidateSummaries: CandidateSummaries = CandidateSummaries(),
+    private val policyResolver: MultiResponsePolicyResolver = MultiResponsePolicyResolver(featureGate),
+    private val providerSelector: ProviderFanoutSelector =
+        ProviderFanoutSelector(
+            providerCapabilities = providerCapabilities,
+            featureGate = featureGate,
+            connectionRegistry = connectionRegistry,
+        ),
+    private val fanoutPlanner: MultiResponseFanoutPlanner =
+        MultiResponseFanoutPlanner(
+            policies = policies,
+            providerCapabilities = providerCapabilities,
+            clock = clock,
+            featureGate = featureGate,
+            safety = safety,
+            connectionRegistry = connectionRegistry,
+            policyResolver = policyResolver,
+            providerSelector = providerSelector,
         ),
 ) {
     @Transactional
@@ -548,48 +563,8 @@ class MultiResponseService(
     fun pseudoStreamPlan(
         answer: String,
         requestedSteps: List<Int> = emptyList(),
-        maxDiscordChars: Int = DISCORD_MESSAGE_SAFE_LIMIT,
-    ): PseudoStreamPlan {
-        featureGate.requireMultiResponseEnabled()
-        val normalized = answer.trim()
-        if (normalized.isBlank()) {
-            return PseudoStreamPlan(
-                finalLength = 0,
-                truncated = false,
-                editIntervalMs = PSEUDO_STREAM_EDIT_INTERVAL_MS,
-                snapshots = emptyList(),
-                warning = "empty_answer",
-            )
-        }
-        val limit = maxDiscordChars.coerceIn(100, DISCORD_MESSAGE_SAFE_LIMIT)
-        val visibleAnswer = normalized.take(limit)
-        val truncated = normalized.length > visibleAnswer.length
-        val steps = normalizePseudoStreamSteps(requestedSteps)
-        val snapshots =
-            steps
-                .mapIndexed { index, percent ->
-                    val length =
-                        if (index == steps.lastIndex) {
-                            visibleAnswer.length
-                        } else {
-                            ((visibleAnswer.length * percent) / 100).coerceIn(1, visibleAnswer.length)
-                        }
-                    PseudoStreamSnapshot(
-                        sequence = index + 1,
-                        percent = percent,
-                        content = visibleAnswer.take(length),
-                        charCount = length,
-                        final = index == steps.lastIndex,
-                    )
-                }.dedupeSnapshots()
-        return PseudoStreamPlan(
-            finalLength = visibleAnswer.length,
-            truncated = truncated,
-            editIntervalMs = PSEUDO_STREAM_EDIT_INTERVAL_MS,
-            snapshots = snapshots,
-            warning = if (truncated) "discord_message_truncated_to_$limit" else null,
-        )
-    }
+        maxDiscordChars: Int = PseudoStreamPlanner.DISCORD_MESSAGE_SAFE_LIMIT,
+    ): PseudoStreamPlan = pseudoStreamPlanner.pseudoStreamPlan(answer, requestedSteps, maxDiscordChars)
 
     fun dailyStats(guildId: Long): MultiResponseDailyStats = reporting.dailyStats(guildId)
 
@@ -598,125 +573,12 @@ class MultiResponseService(
         channelId: Long? = null,
         responseMode: String = "balanced",
         requestedCandidates: Int = 1,
-    ): MultiResponseFanoutRecommendation {
-        featureGate.requireMultiResponseDashboardEnabled()
-        val guildPolicy = policies.findByGuildIdAndChannelIdIsNull(guildId)
-        val channelPolicy = channelId?.let { policies.findByGuildIdAndChannelId(guildId, it) }
-        val disabledPolicy = disabledPolicy(guildPolicy, channelPolicy)
-        val policySource =
-            when {
-                channelPolicy != null -> "channel"
-                guildPolicy != null -> "guild"
-                else -> "default"
-            }
-        val policy =
-            channelPolicy
-                ?: guildPolicy
-                ?: MultiResponsePolicyEntity(
-                    guildId = guildId,
-                    channelId = channelId,
-                    mode =
-                        com.discordassistant.central.multiresponse.domain.model.MultiResponseMode
-                            .fromWire(responseMode)
-                            .wire,
-                    maxCandidates = requestedCandidates.coerceIn(1, featureGate.multiResponseMaxFanout()),
-                    createdAt = Instant.now(clock),
-                    updatedAt = Instant.now(clock),
-                )
-        if (disabledPolicy != null) {
-            return MultiResponseFanoutRecommendation.disabled(
-                guildId = guildId,
-                channelId = channelId,
-                policySource = policySource,
-                policyMode = disabledPolicy.mode,
-                reason = disabledPolicy.disabledMessage(),
-            )
-        }
-        val executionPlan = safety?.executionPlan(guildId, policy.mode, policy.maxCandidates)
-        val maxSafeCandidates = executionPlan?.maxSafeCandidates ?: policy.maxCandidates
-        if (maxSafeCandidates <= 0) {
-            return MultiResponseFanoutRecommendation(
-                guildId = guildId,
-                channelId = channelId,
-                policySource = policySource,
-                policyMode = policy.mode,
-                requestedCandidates = policy.maxCandidates,
-                maxSafeCandidates = 0,
-                recommendedCandidateCount = 0,
-                fanoutAllowed = false,
-                status = "blocked_provider_safety",
-                reasons = executionPlan?.reasons?.takeIf { it.isNotEmpty() } ?: listOf("provider_safety_blocked"),
-                providers = emptyList(),
-            )
-        }
-        val selectedProviders =
-            selectProviders(
-                guildId = guildId,
-                policy = policy,
-                maxCandidates = maxSafeCandidates,
-                fanoutAllowed = executionPlan?.fanoutAllowed ?: true,
-            )
-        val status =
-            when {
-                selectedProviders.isEmpty() -> "no_provider"
-                selectedProviders.size > 1 -> "fanout_recommended"
-                else -> "single_recommended"
-            }
-        return MultiResponseFanoutRecommendation(
-            guildId = guildId,
-            channelId = channelId,
-            policySource = policySource,
-            policyMode = policy.mode,
-            requestedCandidates = policy.maxCandidates,
-            maxSafeCandidates = maxSafeCandidates,
-            recommendedCandidateCount = selectedProviders.size,
-            fanoutAllowed = (executionPlan?.fanoutAllowed ?: true) && selectedProviders.size > 1,
-            status = status,
-            reasons = executionPlan?.reasons.orEmpty().ifEmpty { listOf(status) },
-            providers =
-                selectedProviders.map {
-                    MultiResponseRecommendedProvider(
-                        providerUserId = it.providerUserId,
-                        modelName = it.firstModel(),
-                        qualityTier = it.qualityTier.wire,
-                        overloadRisk = it.overloadRisk.wire,
-                    )
-                },
-        )
-    }
-
-    private fun normalizePseudoStreamSteps(requestedSteps: List<Int>): List<Int> {
-        val normalized =
-            requestedSteps
-                .ifEmpty { listOf(33, 66, 100) }
-                .map { it.coerceIn(1, 100) }
-                .distinct()
-                .sorted()
-                .filter { it > 0 }
-                .toMutableList()
-        if (normalized.isEmpty() || normalized.last() != 100) normalized += 100
-        return normalized
-    }
-
-    private fun List<PseudoStreamSnapshot>.dedupeSnapshots(): List<PseudoStreamSnapshot> {
-        val deduped = mutableListOf<PseudoStreamSnapshot>()
-        forEach { snapshot ->
-            if (deduped.lastOrNull()?.content == snapshot.content && !snapshot.final) return@forEach
-            deduped += snapshot.copy(sequence = deduped.size + 1)
-        }
-        val last = deduped.lastOrNull() ?: return emptyList()
-        return if (last.final) deduped else deduped.dropLast(1) + last.copy(final = true, percent = 100)
-    }
+    ): MultiResponseFanoutRecommendation = fanoutPlanner.recommendFanout(guildId, channelId, responseMode, requestedCandidates)
 
     private fun disabledPolicy(
         guildPolicy: MultiResponsePolicyEntity?,
         channelPolicy: MultiResponsePolicyEntity?,
-    ): MultiResponsePolicyEntity? =
-        when {
-            guildPolicy?.isDisabled() == true -> guildPolicy
-            channelPolicy?.isDisabled() == true -> channelPolicy
-            else -> null
-        }
+    ): MultiResponsePolicyEntity? = with(policyResolver) { disabledPolicy(guildPolicy, channelPolicy) }
 
     private fun saveDisabledRun(
         run: MultiResponseRunEntity,
@@ -730,63 +592,20 @@ class MultiResponseService(
         return runs.save(run)
     }
 
-    private fun MultiResponsePolicyEntity.isDisabled(): Boolean =
-        mode.trim().lowercase() in DISABLED_POLICY_MODES || !disabledReason.isNullOrBlank()
+    private fun MultiResponsePolicyEntity.isDisabled(): Boolean = with(policyResolver) { isDisabled() }
 
-    private fun MultiResponsePolicyEntity.disabledMessage(): String {
-        val scope = if (channelId == null) "guild" else "channel"
-        val reason = disabledReason?.trim()?.takeIf { it.isNotBlank() } ?: "policy_disabled"
-        return "multi-response disabled by $scope policy: $reason".take(500)
-    }
+    private fun MultiResponsePolicyEntity.disabledMessage(): String = with(policyResolver) { disabledMessage() }
 
-    private fun disabledReasonForMode(mode: String): String? =
-        mode.takeIf { it.trim().lowercase() in DISABLED_POLICY_MODES }?.let { "policy_disabled" }
+    private fun disabledReasonForMode(mode: String): String? = policyResolver.disabledReasonForMode(mode)
 
-    private fun sanitizeDisabledReason(reason: String?): String? = reason?.trim()?.take(500)
+    private fun sanitizeDisabledReason(reason: String?): String? = policyResolver.sanitizeDisabledReason(reason)
 
     private fun selectProviders(
         guildId: Long,
         policy: MultiResponsePolicyEntity,
         maxCandidates: Int = policy.maxCandidates,
         fanoutAllowed: Boolean = true,
-    ): List<ProviderCapabilityProfileEntity> {
-        val providers = providerCapabilities.findByGuildId(guildId)
-        if (providers.any { it.overloadRisk == OverloadRisk.CRITICAL }) return emptyList()
-        val effectiveMaxCandidates = if (fanoutAllowed) maxCandidates.coerceIn(1, featureGate.multiResponseMaxFanout()) else 1
-        val advancedFanout = effectiveMaxCandidates > 1 || policy.synthesisEnabled
-        val ranked =
-            providers
-                .filter { it.providerState == ProviderAvailability.ONLINE }
-                .filter { it.hasLiveCapacity(guildId) }
-                .filter { !it.overloadRisk.isOverload }
-                .filter { policy.providerDailyLimit <= 0 || it.dailyLimit <= 0 || it.dailyLimit >= policy.providerDailyLimit }
-                .filter { !advancedFanout || !it.hasFanoutExclusion() }
-                .filter { !advancedFanout || it.hasFanoutOptIn() }
-                .sortedWith(
-                    compareByDescending<ProviderCapabilityProfileEntity> { it.qualityTier == ModelQualityTier.SPECIALIZED }
-                        .thenByDescending { it.qualityTier == ModelQualityTier.HIGH }
-                        .thenByDescending { it.modelCount }
-                        .thenBy { it.providerUserId },
-                )
-        val selected = mutableListOf<ProviderCapabilityProfileEntity>()
-        val usedModels = mutableSetOf<String>()
-        for (provider in ranked) {
-            val model = provider.firstModel()?.lowercase().orEmpty()
-            if (policy.requireDistinctModels && model.isNotBlank() && !usedModels.add(model)) continue
-            selected += provider
-            if (selected.size >= effectiveMaxCandidates) break
-        }
-        return selected
-    }
-
-    private fun ProviderCapabilityProfileEntity.hasLiveCapacity(guildId: Long): Boolean {
-        if (maxConcurrency <= 0) return false
-        val session = connectionRegistry?.byProvider(guildId, providerUserId) ?: return true
-        if (session.remainingDailyRequests <= 0) return false
-        val liveCap = session.capability.maxConcurrency.coerceAtLeast(1)
-        val profileCap = maxConcurrency.coerceAtLeast(1)
-        return session.activeRequests < minOf(liveCap, profileCap)
-    }
+    ): List<ProviderCapabilityProfileEntity> = with(providerSelector) { selectProviders(guildId, policy, maxCandidates, fanoutAllowed) }
 
     private fun matchingRuntimeCandidate(
         runCandidates: List<CandidateAnswerEntity>,
@@ -799,14 +618,7 @@ class MultiResponseService(
     private fun runtimeObservationMode(
         responseMode: String,
         maxCandidates: Int,
-    ): String =
-        when {
-            maxCandidates > 1 -> "compare"
-            responseMode.equals("deep", ignoreCase = true) -> "deep"
-            responseMode.equals("saving", ignoreCase = true) -> "saving"
-            responseMode.equals("fast", ignoreCase = true) -> "fast"
-            else -> "single"
-        }
+    ): String = policyResolver.runtimeObservationMode(responseMode, maxCandidates)
 
     private fun applyRagContextSnapshot(
         run: MultiResponseRunEntity,
@@ -849,124 +661,35 @@ class MultiResponseService(
         run.ragContextChars = plan.usedChars
     }
 
-    private fun CandidateAnswerEntity.hasBlockingSafetyFlag(): Boolean =
-        safetyFlags
-            .orEmpty()
-            .split(",")
-            .map { it.trim().lowercase() }
-            .filter { it.isNotBlank() }
-            .any { it in BLOCKING_SAFETY_FLAGS }
+    private fun CandidateAnswerEntity.hasBlockingSafetyFlag(): Boolean = with(candidateSummaries) { hasBlockingSafetyFlag() }
 
-    private fun failureSummary(runCandidates: List<CandidateAnswerEntity>): String {
-        if (runCandidates.isEmpty()) return "multi-response failed: no candidates were planned"
-        val statuses = runCandidates.groupingBy { it.status.wire }.eachCount()
-        return "multi-response failed: no successful candidate; statuses=$statuses".take(500)
-    }
+    private fun failureSummary(runCandidates: List<CandidateAnswerEntity>): String = candidateSummaries.failureSummary(runCandidates)
 
     private fun synthesisAllowed(
         strategy: String,
         selectedCandidateIds: List<Long>,
-    ): Boolean =
-        featureGate.snapshot().multiResponseSynthesis ||
-            selectedCandidateIds.size <= 1 &&
-            strategy.trim().lowercase() in SYNTHESIS_FLAG_SAFE_SELECTION_STRATEGIES
+    ): Boolean = policyResolver.synthesisAllowed(strategy, selectedCandidateIds)
 
-    private fun ProviderCapabilityProfileEntity.hasFanoutExclusion(): Boolean {
-        val tags =
-            capabilityTags
-                .orEmpty()
-                .split(",")
-                .map { it.trim().lowercase() }
-                .filter { it.isNotBlank() }
-        return tags.any { it in FANOUT_EXCLUSION_TAGS }
-    }
+    private fun ProviderCapabilityProfileEntity.firstModel(): String? = with(providerSelector) { firstModel() }
 
-    private fun ProviderCapabilityProfileEntity.hasFanoutOptIn(): Boolean {
-        val tags =
-            capabilityTags
-                .orEmpty()
-                .split(",", " ")
-                .map { it.trim().lowercase() }
-                .filter { it.isNotBlank() }
-                .toSet()
-        return tags.any { it in FANOUT_OPT_IN_TAGS }
-    }
+    private fun summarizeSafety(runCandidates: List<CandidateAnswerEntity>): String = candidateSummaries.summarizeSafety(runCandidates)
 
-    private fun ProviderCapabilityProfileEntity.firstModel(): String? =
-        modelNames
-            .orEmpty()
-            .split(",")
-            .firstOrNull { it.isNotBlank() }
-            ?.trim()
-
-    private fun summarizeSafety(runCandidates: List<CandidateAnswerEntity>): String {
-        val flags =
-            runCandidates
-                .flatMap { it.safetyFlags.orEmpty().split(",") }
-                .map { it.trim() }
-                .filter { it.isNotBlank() && !it.equals("ok", ignoreCase = true) }
-                .distinct()
-        return if (flags.isEmpty()) "no candidate safety flags" else flags.joinToString(",")
-    }
-
-    private fun summarizeQuality(runCandidates: List<CandidateAnswerEntity>): String {
-        val scores = runCandidates.mapNotNull { it.qualityScore }
-        if (scores.isEmpty()) return "quality score unavailable"
-        val average = scores.average()
-        val best = scores.max()
-        return "avg=${"%.1f".format(average)}, best=$best, scored=${scores.size}"
-    }
+    private fun summarizeQuality(runCandidates: List<CandidateAnswerEntity>): String = candidateSummaries.summarizeQuality(runCandidates)
 
     private fun sanitizeText(
         value: String?,
         maxLength: Int,
-    ): String? =
-        value
-            ?.trim()
-            ?.replace(SECRET_PATTERN, "[redacted]")
-            ?.take(maxLength)
-            ?.ifBlank { null }
+    ): String? = promptSafety.sanitizeText(value, maxLength)
 
-    private fun String?.isSensitivePrompt(): Boolean {
-        val text = this?.trim().orEmpty()
-        if (text.isBlank()) return false
-        return SENSITIVE_PROMPT_PATTERNS.any { it.containsMatchIn(text) }
-    }
+    private fun String?.isSensitivePrompt(): Boolean = with(promptSafety) { isSensitivePrompt() }
 
-    private fun sanitizeRequestId(requestId: String): String {
-        val trimmed = requestId.trim().ifBlank { newRequestId() }
-        if (trimmed.hasSensitiveMaterial()) return "redacted-${sha256(trimmed).take(12)}"
-        return trimmed.take(160)
-    }
+    private fun sanitizeRequestId(requestId: String): String = promptSafety.sanitizeRequestId(requestId)
 
-    private fun String.hasSensitiveMaterial(): Boolean =
-        KnowledgeSafety.containsSensitiveMaterial(this) || SECRET_PATTERN.containsMatchIn(this)
-
-    private fun sha256(value: String): String =
-        MessageDigest
-            .getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-
+    // newRequestId 는 @Transactional 메서드의 기본 인자(requestId = newRequestId())로 평가된다.
+    // CGLIB 프록시는 생성자를 거치지 않아 주입 필드(promptSafety 등)가 null 이므로, 기본 인자 평가가
+    // 프록시 인스턴스에서 일어나면 NPE 가 난다. 따라서 이 메서드는 주입 필드를 절대 참조하지 않고
+    // 자기완결(UUID)로 유지한다(원본과 동일 — 동작 불변).
     private fun newRequestId(): String = UUID.randomUUID().toString().replace("-", "")
-
-    private companion object {
-        val FANOUT_OPT_IN_TAGS = setOf("multi-response", "multi_response", "fanout", "fanout-opt-in")
-        val FANOUT_EXCLUSION_TAGS = setOf("fanout-excluded", "fanout-opt-out", "no-fanout", "multi-response-excluded")
-        val DISABLED_POLICY_MODES = setOf("disabled", "off", "kill_switch", "kill-switch")
-        val SYNTHESIS_FLAG_SAFE_SELECTION_STRATEGIES =
-            setOf("single_route_runtime", "best_successful_candidate", "best_by_heuristic")
-        const val DISCORD_MESSAGE_SAFE_LIMIT = 1_900
-        const val PSEUDO_STREAM_EDIT_INTERVAL_MS = 1_200
-        val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
-        val SENSITIVE_PROMPT_PATTERNS =
-            listOf(
-                Regex("""(?i)\b(password|passwd|pwd|secret)\b"""),
-                Regex("(?i)(api[_-]?key|bot[_-]?token|discord[_-]?bot[_-]?token|private[_-]?key|access[_-]?token)"),
-                Regex("(?i)-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----"),
-                Regex("(?i)sk-[A-Za-z0-9_-]{20,}"),
-            )
-    }
 }
 
 internal fun MultiResponseRunEntity.toView(): MultiResponseRunView =

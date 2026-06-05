@@ -10,7 +10,7 @@ from provider_agent.config_file import config_path, load_config, save_config
 
 def test_config_dir_follows_xdg(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    assert config_path() == tmp_path / "discord-ai-network-bot" / "config.json"
+    assert config_path() == tmp_path / "nexa" / "config.json"
 
 
 def test_save_then_load_roundtrip(monkeypatch, tmp_path):

@@ -452,7 +452,7 @@ def test_set_macos_app_identity_is_safe_everywhere():
     from provider_agent.webui import _set_macos_app_identity
 
     # 비-macOS 는 no-op, macOS 면 dock 이름/아이콘 설정 — 어느 쪽이든 예외 없이 끝나야 한다.
-    _set_macos_app_identity("냥시스턴트")
+    _set_macos_app_identity("NEXA")
 
 
 @pytest.mark.asyncio

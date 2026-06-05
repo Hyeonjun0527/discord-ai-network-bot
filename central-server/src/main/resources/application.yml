@@ -52,7 +52,7 @@ central:
     enabled: ${DISCORD_ENABLED:false}
     # 설정 시 해당 길드(서버)에 슬래시 명령 즉시 등록(전파 지연 없음). 비우면 글로벌(최대 ~1h).
     guild-id: ${DISCORD_GUILD_ID:}
-    # @냥시스턴트 질문처럼 일반 메시지 본문을 읽는 멘션 호출. Developer Portal Bot 설정의 Message Content Intent 와 일치해야 한다.
+    # @니아 질문처럼 일반 메시지 본문을 읽는 멘션 호출. Developer Portal Bot 설정의 Message Content Intent 와 일치해야 한다.
     # false 면 MESSAGE_CONTENT 를 요청하지 않아 슬래시/버튼/모달만 안전하게 부팅한다.
     message-content-intent-enabled: ${DISCORD_MESSAGE_CONTENT_INTENT_ENABLED:true}
     # Developer Portal 에서 Message Content Intent 가 꺼져 4014 로 거부되면, @멘션 질문을 끄고 슬래시 명령만 자동 재기동한다.

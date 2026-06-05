@@ -11,7 +11,7 @@ class WebResultRerankerTest {
     fun `질의 적합한 결과를 앞으로 올린다`() {
         val results =
             listOf(
-                WebResult("무관한 페이지", "https://a", "고양이 사진 모음과 강아지 영상."),
+                WebResult("무관한 페이지", "https://a", "날씨 사진 모음과 여행 영상."),
                 WebResult("코틀린 코루틴 가이드", "https://b", "코틀린 코루틴 사용법과 suspend 함수 설명."),
                 WebResult("일반 블로그", "https://c", "오늘 점심 메뉴 추천."),
             )

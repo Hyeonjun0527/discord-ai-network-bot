@@ -81,8 +81,8 @@ class InfoCommandHandler(
     fun botPermissions(ctx: CommandContext): Reply {
         guards.adminOnly(ctx)?.let { return it }
         return Reply(
-            "**냥시스턴트 봇 권한 점검**\n" +
-                "@냥시스턴트 질문을 쓰려면 Discord Developer Portal → Bot → " +
+            "**니아 봇 권한 점검**\n" +
+                "@니아 질문을 쓰려면 Discord Developer Portal → Bot → " +
                 "Privileged Gateway Intents → **Message Content Intent** 를 켜야 합니다.\n" +
                 "채널 AI 이름/아이콘으로 답변하려면 서버 초대 권한에 **웹후크 관리(Manage Webhooks)** 가 필요합니다.\n" +
                 "기본 슬래시 명령에는 채널 보기, 메시지 보내기, 링크 임베드, 메시지 기록 보기, " +
@@ -103,7 +103,7 @@ class InfoCommandHandler(
     ): Reply {
         fun c(base: String) = "`/${CommandLoc.localName(base, locale)}`"
         val sb = StringBuilder()
-        sb.append("**냥시스턴트 AI 네트워크 — 도움말**\n")
+        sb.append("**NEXA AI 네트워크 — 도움말**\n")
         sb.append("커뮤니티 멤버들의 PC LLM 을 모아 공정하게 분배합니다(금전 거래 아님).\n\n")
         sb.append("__유저__\n")
         sb.append("· ${c("ask")} `<질문>` — 풀의 누군가의 PC LLM 으로 답변\n")

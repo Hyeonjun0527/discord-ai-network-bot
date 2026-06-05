@@ -7,11 +7,11 @@ package com.discordassistant.central.onboarding.domain.model
  * 예전엔 양쪽이 따로 하드코딩돼 드리프트했다 — 이제 설치 명령/앱 이름/연결 안내를 여기서만 바꾸면
  * 두 화면이 항상 일치한다. 도메인 계층이라 어떤 바깥 레이어에도 의존하지 않는 순수 값이다.
  *
- * 지원 OS 는 GUI 데스크톱 앱(냥시스턴트)이 배포되는 **mac/Windows 뿐**이다(Linux 가이드/다운로드 폐기).
+ * 지원 OS 는 GUI 데스크톱 앱(NEXA)이 배포되는 **mac/Windows 뿐**이다(Linux 가이드/다운로드 폐기).
  */
 object InstallGuide {
     /** 데스크톱 GUI 앱 이름(맥 `.app`·Windows 시작 메뉴에 동일하게 보이는 이름). */
-    const val APP_NAME = "냥시스턴트"
+    const val APP_NAME = "NEXA"
 
     /** 정제된 설치 랜딩 페이지(OS 탭 + 복붙 명령). 디스코드 안내에서도 이 링크로 보낸다. */
     const val INSTALL_PAGE = "https://discord-ai.yeon.world/install"
@@ -32,8 +32,8 @@ object InstallGuide {
         val connect: String,
     )
 
-    private const val MAC_CASK = "brew install --cask yeon-intergation-platform/tap/nyassistant"
-    private const val WIN_PKG_ID = "Nyassistant.DiscordAiNetworkBot"
+    private const val MAC_CASK = "brew install --cask yeon-intergation-platform/tap/nexa"
+    private const val WIN_PKG_ID = "Nexa.Nexa"
 
     val MAC =
         OsGuide(
@@ -49,7 +49,7 @@ object InstallGuide {
                     "brew install ollama",
                     "brew services start ollama",
                     "ollama pull exaone3.5:7.8b",
-                    "# 2) 냥시스턴트 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)",
+                    "# 2) NEXA 데스크톱 앱 설치 (brew 가 sha256 자동 검증, 관리자 불필요)",
                     MAC_CASK,
                 ),
             appInstall = MAC_CASK,
@@ -71,7 +71,7 @@ object InstallGuide {
                     "# 1) Ollama 설치 + 기본 모델 exaone3.5:7.8b (관리자 권한 불필요)",
                     "winget install --id Ollama.Ollama -e --accept-source-agreements",
                     "ollama pull exaone3.5:7.8b",
-                    "# 2) 냥시스턴트 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)",
+                    "# 2) NEXA 데스크톱 앱 설치 (winget 가 sha256 자동 검증, 관리자 불필요)",
                     "winget install --id $WIN_PKG_ID -e --accept-source-agreements",
                 ),
             appInstall = "winget install $WIN_PKG_ID",

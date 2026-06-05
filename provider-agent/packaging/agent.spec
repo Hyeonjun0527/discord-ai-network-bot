@@ -1,8 +1,8 @@
 # PyInstaller spec — CLI onefile(전 OS 공통) + 데스크톱 네이티브 GUI(macOS .app / Windows .exe).
 # 빌드: cd provider-agent && pyinstaller packaging/agent.spec   (GUI 는 pywebview 필요: pip install .[gui])
-#   결과: dist/discord-ai-network-bot           (플랫폼별 CLI 실행파일 — 서비스/헤드리스용)
-#         dist/냥시스턴트.app                    (macOS 에서만 — Finder/응용 프로그램용 GUI 앱)
-#         dist/냥시스턴트.exe                    (Windows 에서만 — 네이티브 창 GUI 앱, mac .app 과 동일 UX)
+#   결과: dist/nexa                             (플랫폼별 CLI 실행파일 — 서비스/헤드리스용)
+#         dist/NEXA.app                         (macOS 에서만 — Finder/응용 프로그램용 GUI 앱)
+#         dist/NEXA.exe                         (Windows 에서만 — 네이티브 창 GUI 앱, mac .app 과 동일 UX)
 # block_cipher 미사용.
 import sys
 from pathlib import Path
@@ -36,7 +36,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="discord-ai-network-bot",
+    name="nexa",
     console=True,
     onefile=True,
     upx=True,
@@ -62,7 +62,7 @@ if IS_MAC:
         gui_a.scripts,
         [],
         exclude_binaries=True,
-        name="냥시스턴트",
+        name="NEXA",
         console=False,  # windowed(터미널 없이 GUI 로 뜸)
         icon=str(icons / "app.icns"),
     )
@@ -71,16 +71,16 @@ if IS_MAC:
         gui_a.binaries,
         gui_a.datas,
         upx=True,
-        name="냥시스턴트",
+        name="NEXA",
     )
     app = BUNDLE(
         gui_coll,
-        name="냥시스턴트.app",
+        name="NEXA.app",
         icon=str(icons / "app.icns"),
-        bundle_identifier="world.yeon.nyassistant.provider-agent",
+        bundle_identifier="world.yeon.nexa.provider-agent",
         info_plist={
-            "CFBundleName": "냥시스턴트",
-            "CFBundleDisplayName": "냥시스턴트",
+            "CFBundleName": "NEXA",
+            "CFBundleDisplayName": "NEXA",
             "CFBundleShortVersionString": "1.0",
             "NSHighResolutionCapable": True,
             "LSApplicationCategoryType": "public.app-category.utilities",
@@ -90,7 +90,7 @@ if IS_MAC:
     )
 
 # ── Windows 데스크톱 GUI exe(네이티브 창 — mac .app 과 동일 UX) — Windows 에서만 ──
-#   결과: dist/냥시스턴트.exe  (windowed, WebView2 네이티브 창; gui_entry → run_gui)
+#   결과: dist/NEXA.exe  (windowed, WebView2 네이티브 창; gui_entry → run_gui)
 #   WebView2 런타임이 없으면 run_gui 가 자동으로 브라우저로 폴백한다(graceful).
 if IS_WIN:
     win_gui_a = Analysis(
@@ -125,7 +125,7 @@ if IS_WIN:
         win_gui_a.binaries,
         win_gui_a.datas,
         [],
-        name="냥시스턴트",
+        name="NEXA",
         console=False,  # windowed(콘솔 없이 네이티브 창)
         onefile=True,
         upx=True,

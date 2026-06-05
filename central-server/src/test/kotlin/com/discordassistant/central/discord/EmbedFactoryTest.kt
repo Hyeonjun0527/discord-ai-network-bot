@@ -41,7 +41,7 @@ class EmbedFactoryTest {
     @Test
     fun `시작 메뉴 embed는 브랜드 이미지와 메뉴 항목을 포함한다`() {
         val e = EmbedFactory.mainMenuEmbed(isAdmin = true)
-        assertEquals("냥시스턴트 메뉴", e.title)
+        assertEquals("니아 메뉴", e.title)
         assertTrue(e.description!!.contains("내 컴퓨터의 AI"))
         assertEquals(EmbedFactory.MENU_HERO_IMAGE_URL, e.image!!.url)
         assertTrue(e.fields.any { it.name == "${MenuSymbols.ASK} 질문하기" })
@@ -52,7 +52,7 @@ class EmbedFactoryTest {
     @Test
     fun `도움말 패널 embed — 관리자만 관리자 섹션`() {
         val user = EmbedFactory.helpEmbed(isAdmin = false)
-        assertEquals("${MenuSymbols.ASK} 냥시스턴트 AI 네트워크", user.title)
+        assertEquals("${MenuSymbols.ASK} NEXA AI 네트워크", user.title)
         assertTrue(user.fields.any { it.name?.contains("유저") == true })
         assertFalse(user.fields.any { it.name?.contains("관리자") == true })
         assertTrue(EmbedFactory.helpEmbed(isAdmin = true).fields.any { it.name?.contains("관리자") == true })

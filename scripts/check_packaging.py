@@ -23,21 +23,21 @@ install = A["installCommands"]
 
 # 소비처 파일 → 그 파일에 반드시 등장해야 하는 SSOT 토큰 목록.
 EXPECT: dict[str, list[str]] = {
-    "provider-agent/packaging/winget/Nyassistant.DiscordAiNetworkBot.installer.yaml": [
+    "provider-agent/packaging/winget/Nexa.Nexa.installer.yaml": [
         pkg["wingetId"],
         asset["guiWin"],
         pkg["command"],
     ],
-    "provider-agent/packaging/scoop/discord-ai-network-bot.json": [
+    "provider-agent/packaging/scoop/nexa.json": [
         asset["guiWin"],
         pkg["scoopBin"],
     ],
-    "provider-agent/packaging/homebrew/nyassistant.rb": [
+    "provider-agent/packaging/homebrew/nexa.rb": [
         f'cask "{pkg["homebrewCask"]}"',
         asset["guiMac"],
         A["macAppBundle"],
     ],
-    "provider-agent/packaging/homebrew/discord-ai-network-bot.rb": [
+    "provider-agent/packaging/homebrew/nexa-agent.rb": [
         pkg["homebrewFormula"],
         asset["cliMac"],
         asset["cliLinux"],

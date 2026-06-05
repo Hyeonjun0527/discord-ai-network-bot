@@ -23,9 +23,9 @@ class OnboardingAnalyzerTest {
     @Test
     fun `valid json parses into analysis`() {
         val raw =
-            """{"name":"코드냥","purpose":"개발 질문을 돕습니다","tone":"전문적으로","answerLength":"long","customInstruction":"근거를 함께 제시합니다"}"""
+            """{"name":"코드 니아","purpose":"개발 질문을 돕습니다","tone":"전문적으로","answerLength":"long","customInstruction":"근거를 함께 제시합니다"}"""
         val result = analyzer(raw).analyze("[익명1] 코드 리뷰 부탁")
-        assertEquals("코드냥", result!!.name)
+        assertEquals("코드 니아", result!!.name)
         assertEquals("개발 질문을 돕습니다", result.purpose)
         assertEquals("전문적으로", result.tone)
         assertEquals("long", result.answerLength)
@@ -38,12 +38,12 @@ class OnboardingAnalyzerTest {
             """
             네, 분석 결과입니다:
             ```json
-            {"name":"번역냥","purpose":"번역을 돕습니다","tone":"친근하게","answerLength":"balanced","customInstruction":""}
+            {"name":"번역 니아","purpose":"번역을 돕습니다","tone":"친근하게","answerLength":"balanced","customInstruction":""}
             ```
             도움이 되었길 바랍니다.
             """.trimIndent()
         val result = analyzer(raw).analyze("[익명1] 번역 부탁")
-        assertEquals("번역냥", result!!.name)
+        assertEquals("번역 니아", result!!.name)
         assertNull(result.customInstruction) // 빈 문자열 → null
     }
 

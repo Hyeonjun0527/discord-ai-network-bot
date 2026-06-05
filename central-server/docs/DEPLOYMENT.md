@@ -10,7 +10,7 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
 ## 0. 시스템 한눈에
 
 - **central-server** (Kotlin/Spring Boot + JDA) — Provider Pool 중앙 서버 + 디스코드 봇. GHCR 이미지로 원격 배포.
-- **provider-agent** ("냥시스턴트", Python) — 유저 PC의 로컬 Ollama를 풀에 연결하는 데스크톱 앱(GUI `.app`/`.exe` + CLI). GitHub Release로 배포, 인앱 자동 업데이트.
+- **provider-agent** ("NEXA", Python) — 유저 PC의 로컬 Ollama를 풀에 연결하는 데스크톱 앱(GUI `.app`/`.exe` + CLI). GitHub Release로 배포, 인앱 자동 업데이트.
 
 ---
 
@@ -86,9 +86,9 @@ central-server(서버·봇) 배포, 어드민 대시보드, OAuth, 에이전트(
 
 - `agent-autorelease`: `main`의 `provider-agent/src/**`·`pyproject.toml` 변경 → **SemVer 자동 bump**(`feat:`→minor, `fix:`→patch, BREAKING→major) → `agent-v<버전>` 태그 → `agent-build` dispatch.
 - `agent-build`: **GitHub 호스티드** win/mac/ubuntu(공개 레포라 무료). 산출물:
-  - CLI: `discord-ai-network-bot-{linux,macos,windows.exe}`
-  - GUI(네이티브 창): mac **`nyassistant-macos.zip`**(`.app`), win **`nyassistant-windows.exe`**
-- **자산명은 반드시 ASCII** (GitHub Release가 한글 파일명을 스트립 → 인앱 업데이터가 못 찾음). 빌드 산출물(`냥시스턴트.app`/`.exe`)·앱 표시이름은 한글 유지.
+  - CLI: `nexa-agent-{linux,macos,windows.exe}`
+  - GUI(네이티브 창): mac **`nexa-macos.zip`**(`.app`), win **`nexa-windows.exe`**
+- **자산명은 반드시 ASCII** (GitHub Release가 한글 파일명을 스트립 → 인앱 업데이터가 못 찾음). 빌드 산출물(`NEXA.app`/`.exe`)·앱 표시이름은 한글 유지.
 - CI는 **`pip install .[gui]`**(pywebview) 해야 네이티브 창(없으면 브라우저 폴백).
 - 인앱 업데이트: 릴리스 `latest` 리다이렉트로 버전 비교 → 다운로드(SHA256 검증)·교체·재실행. GUI 워처(기본 2h) + 헤드리스 서비스 워처(`--service`로 재실행).
 
@@ -109,7 +109,7 @@ curl -A x -o /dev/null -w '%{http_code}\n' https://discord-ai.yeon.world/dashboa
 
 - **WAF/CDN이 기본 `Python-urllib` UA를 403으로 막는다** → 서버 API를 코드/curl로 칠 때 **User-Agent 필수**. (인앱 connect-status probe 실패의 원인이었음)
 - **릴리스 자산명 ASCII 필수** (GitHub 한글 스트립).
-- **싱글톤 락 포트 48569** — 앱은 머신당 1인스턴스. 로컬에서 앱이 떠 있으면 그 락 때문에 provider-agent 테스트(에이전트 start)가 실패한다. 테스트 전 `pkill -f 냥시스턴트` + 48569 점유 PID kill.
+- **싱글톤 락 포트 48569** — 앱은 머신당 1인스턴스. 로컬에서 앱이 떠 있으면 그 락 때문에 provider-agent 테스트(에이전트 start)가 실패한다. 테스트 전 `pkill -f NEXA` + 48569 점유 PID kill.
 - **워크트리 공유 위험**: 동시 실행되는 다른 에이전트가 공유 워킹트리에서 `git checkout`으로 브랜치를 전환하면 **미커밋 변경이 유실**된다. 작업은 `origin/main` 기반 클린 브랜치로 분리하고, 오염 시 내 파일만 추출해 다시 커밋.
 - **JDK 21 필요**: `export JAVA_HOME=.../amazon-corretto-21.jdk/Contents/Home`; `central-server/gradlew -p central-server build`. ktlint(`ktlintMainSourceSetCheck`)·Kover·ArchUnit 게이트, integration은 `-PdockerTests`(Testcontainers).
 - **Discord OAuth 앱 1개를 공용**: provider-connect와 대시보드 로그인이 같은 `CONNECT_DISCORD_*` 앱을 쓴다 → redirect URI **둘 다** 등록 필요(`/provider/connect/callback`, `/login/oauth2/code/discord`).

@@ -59,7 +59,7 @@ class PresetChannelApplier(
             published.title
                 .trim()
                 .take(80)
-                .ifBlank { sourceRevision.name.take(80).ifBlank { "냥시스턴트" } }
+                .ifBlank { sourceRevision.name.take(80).ifBlank { "니아" } }
         channelAi.updatedAt = now
         val savedChannel = channelAis.saveAndFlush(channelAi)
         val behavior =

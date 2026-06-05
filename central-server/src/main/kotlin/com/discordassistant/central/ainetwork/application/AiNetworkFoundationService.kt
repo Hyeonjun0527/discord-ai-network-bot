@@ -44,7 +44,7 @@ class AiNetworkFoundationService(
             ?: networkProfiles.save(
                 AiNetworkProfileEntity(
                     guildId = guildId,
-                    displayName = "냥시스턴트 네트워크",
+                    displayName = "NEXA 네트워크",
                     tagline = "함께 만드는 AI 네트워크",
                     description = "여러 사용자의 로컬 AI를 안전하게 연결해 디스코드에서 바로 질문하고 답변받는 네트워크입니다.",
                     defaultSafetyNotice = "민감정보(비밀번호·API 키·개인정보)는 입력하지 마세요.",
@@ -61,7 +61,7 @@ class AiNetworkFoundationService(
     fun defaultNetworkProfile(guildId: Long): AiNetworkProfileEntity =
         AiNetworkProfileEntity(
             guildId = guildId,
-            displayName = "냥시스턴트 네트워크",
+            displayName = "NEXA 네트워크",
             tagline = "함께 만드는 AI 네트워크",
             description = "여러 사용자의 로컬 AI를 안전하게 연결해 디스코드에서 바로 질문하고 답변받는 네트워크입니다.",
             defaultSafetyNotice = "민감정보(비밀번호·API 키·개인정보)는 입력하지 마세요.",

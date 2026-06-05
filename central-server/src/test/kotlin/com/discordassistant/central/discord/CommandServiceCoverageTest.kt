@@ -175,7 +175,7 @@ class CommandServiceCoverageTest
                     commands.providers(u),
                     commands.allowAllChannels(u),
                     commands.setWelcome(u, "x"),
-                    commands.setChannelAiProfile(u, "냥시스턴트", null, false),
+                    commands.setChannelAiProfile(u, "니아", null, false),
                     commands.toggleAutoApprove(u),
                 )
             assertTrue(denied.all { it.content.contains("⛔") }, "모든 관리자 명령은 비관리자에게 ⛔: ${denied.map { it.content.take(8) }}")

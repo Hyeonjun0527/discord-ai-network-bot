@@ -77,7 +77,7 @@ class ChannelAiCustomizationServiceTest
         fun `wizard options expose jobs tones lengths and safety rules for panel UI`() {
             val options = controller.wizardOptions()
 
-            assertTrue(options.jobs.any { it.key == "development" && it.recommendedName == "코드냥" })
+            assertTrue(options.jobs.any { it.key == "development" && it.recommendedName == "코드 니아" })
             assertTrue(options.jobs.any { it.key == "custom" })
             assertTrue(options.tones.any { it.key == "friendly" && it.label == "친근하게" })
             assertTrue(options.answerLengths.any { it.key == "long" && it.description.contains("Provider") })
@@ -116,11 +116,11 @@ class ChannelAiCustomizationServiceTest
                     ),
                 )
 
-            assertEquals("코드냥", draft["name"])
+            assertEquals("코드 니아", draft["name"])
             assertTrue(draft["job"].toString().contains("개발 질문"))
             assertTrue(draft["constitution"].toString().contains("민감정보"))
             assertTrue(draft["constitution"].toString().contains("코드는 실행 가능한 예시"))
-            assertTrue(draft["preview"].toString().contains("코드냥"))
+            assertTrue(draft["preview"].toString().contains("코드 니아"))
         }
 
         @Test
@@ -130,7 +130,7 @@ class ChannelAiCustomizationServiceTest
                     100,
                     200,
                     ChannelAiWizardRequest(
-                        name = "코드냥",
+                        name = "코드 니아",
                         job = "Kotlin Spring Boot 개발 질문",
                         tone = "짧고 실용적으로",
                         answerLength = "balanced",
@@ -197,7 +197,7 @@ class ChannelAiCustomizationServiceTest
                     guildId = 100,
                     channelId = 201,
                     actorUserId = 77,
-                    name = "번역냥",
+                    name = "번역 니아",
                     avatarUrl = null,
                     job = "번역",
                     tone = "친근하게",
@@ -376,7 +376,7 @@ class ChannelAiCustomizationServiceTest
                 guildId = 100,
                 channelId = 208,
                 actorUserId = 77,
-                name = "코드냥",
+                name = "코드 니아",
                 avatarUrl = null,
                 job = "Kotlin Spring Boot 개발 질문",
                 tone = "짧고 명확하게",
@@ -395,7 +395,7 @@ class ChannelAiCustomizationServiceTest
                     ),
                 )
 
-            assertEquals("코드냥", preview.name)
+            assertEquals("코드 니아", preview.name)
             assertEquals(listOf("safety", "identity", "behavior", "rag_context", "user_question"), preview.sections)
             assertEquals(true, preview.ragIncluded)
             assertNull(preview.safetyWarning)
@@ -445,7 +445,7 @@ class ChannelAiCustomizationServiceTest
                 guildId = 100,
                 channelId = 203,
                 actorUserId = 77,
-                name = "코드냥",
+                name = "코드 니아",
                 avatarUrl = null,
                 job = "Kotlin Spring Boot 개발 질문",
                 tone = "짧고 명확하게",
@@ -456,7 +456,7 @@ class ChannelAiCustomizationServiceTest
 
             val onboarding = controller.onboarding(100, 203)
 
-            assertEquals("코드냥", onboarding.name)
+            assertEquals("코드 니아", onboarding.name)
             assertEquals(false, onboarding.empty)
             assertTrue(onboarding.description.contains("Kotlin Spring Boot 개발 질문"))
             assertTrue(onboarding.description.contains("짧고 명확하게"))
@@ -469,7 +469,7 @@ class ChannelAiCustomizationServiceTest
         fun `channel onboarding falls back to default when profile is missing`() {
             val onboarding = controller.onboarding(100, 404)
 
-            assertEquals("냥시스턴트", onboarding.name)
+            assertEquals("니아", onboarding.name)
             assertEquals(true, onboarding.empty)
             assertEquals(null, onboarding.channelAiId)
             assertTrue(onboarding.description.contains("general_assistant"))
@@ -484,7 +484,7 @@ class ChannelAiCustomizationServiceTest
                 guildId = 100,
                 channelId = 205,
                 actorUserId = 77,
-                name = "코드냥",
+                name = "코드 니아",
                 avatarUrl = null,
                 job = "개발 질문",
                 tone = "짧고 명확하게",
@@ -496,7 +496,7 @@ class ChannelAiCustomizationServiceTest
                 guildId = 100,
                 channelId = 205,
                 actorUserId = 77,
-                name = "코드냥",
+                name = "코드 니아",
                 avatarUrl = null,
                 job = "공지 작성",
                 tone = "전문적으로",
@@ -533,7 +533,7 @@ class ChannelAiCustomizationServiceTest
                 guildId = 100,
                 channelId = 206,
                 actorUserId = 77,
-                name = "요약냥",
+                name = "요약 니아",
                 avatarUrl = null,
                 job = "회의록",
                 tone = "친근하게",
@@ -545,7 +545,7 @@ class ChannelAiCustomizationServiceTest
                 guildId = 100,
                 channelId = 206,
                 actorUserId = 77,
-                name = "요약냥",
+                name = "요약 니아",
                 avatarUrl = null,
                 job = "공지 작성",
                 tone = "전문적으로",
@@ -633,7 +633,7 @@ class ChannelAiCustomizationServiceTest
                     guildId = 100,
                     channelId = 202,
                     actorUserId = 77,
-                    name = "공지냥",
+                    name = "공지 니아",
                     avatarUrl = null,
                     job = "공지 작성",
                     tone = "전문적으로",
@@ -698,7 +698,7 @@ class ChannelAiCustomizationServiceTest
                 guildId = 100,
                 channelId = 701,
                 actorUserId = 77,
-                name = "코드냥",
+                name = "코드 니아",
                 avatarUrl = null,
                 job = "개발 질문",
                 tone = "친근하게",
@@ -765,7 +765,7 @@ class ChannelAiCustomizationServiceTest
                     guildId = 100,
                     channelId = 704,
                     actorUserId = 77,
-                    name = "코드냥",
+                    name = "코드 니아",
                     avatarUrl = null,
                     job = "개발 질문",
                     tone = "친근하게",
@@ -792,7 +792,7 @@ class ChannelAiCustomizationServiceTest
                     guildId = 100,
                     channelId = 705,
                     actorUserId = 77,
-                    name = "코드냥",
+                    name = "코드 니아",
                     avatarUrl = null,
                     job = "Kotlin Spring 개발 질문",
                     tone = "짧고 명확하게",

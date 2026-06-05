@@ -1,12 +1,12 @@
-# 냥시스턴트 Discord 봇 권한 명세
+# NEXA Discord 봇 권한 명세
 
-이 문서는 냥시스턴트를 Discord 서버에 초대하거나 운영할 때 필요한 **서버 권한**, **OAuth2 scope**, **Privileged Gateway Intent** 를 명확히 정의한다.
+이 문서는 NEXA를 Discord 서버에 초대하거나 운영할 때 필요한 **서버 권한**, **OAuth2 scope**, **Privileged Gateway Intent** 를 명확히 정의한다.
 
 핵심 원칙:
 
 - `관리자(Administrator)` 권한은 기본 요구사항이 아니다.
 - `/질문`, `/도움말`, 버튼, 모달 같은 **슬래시/인터랙션 기능은 Message Content Intent 없이도 동작**해야 한다.
-- `@냥시스턴트 질문`처럼 **일반 메시지 본문을 읽는 멘션 호출은 Message Content Intent 가 필요**하다.
+- `@니아 질문`처럼 **일반 메시지 본문을 읽는 멘션 호출은 Message Content Intent 가 필요**하다.
 - 권한/Intent 누락은 봇 전체 장애처럼 보이면 안 된다. 가능한 한 관리자에게 무엇을 켜야 하는지 알려줘야 한다.
 
 ## 1. OAuth2 scopes
@@ -50,7 +50,7 @@ View Channel + Send Messages + Embed Links + Read Message History + Use Applicat
 
 ### 2.2 권장 권한
 
-냥시스턴트의 현재 제품 UX를 제대로 쓰기 위한 권장 권한이다.
+NEXA의 현재 제품 UX를 제대로 쓰기 위한 권장 권한이다.
 
 | Discord 권한 | 필수 여부 | 필요한 기능 |
 |---|---:|---|
@@ -78,7 +78,7 @@ Add Reactions + View Channel + Send Messages + Embed Links + Attach Files + Read
 
 ### 2.3 채널 AI 프로필 표시 권한
 
-채널별 AI가 `코드냥`, `번역냥`처럼 **그 채널만의 이름/아이콘으로 답변**하려면 다음 권한이 필요하다.
+채널별 AI가 `코드 니아`, `번역 니아`처럼 **그 채널만의 이름/아이콘으로 답변**하려면 다음 권한이 필요하다.
 
 ```text
 Manage Webhooks
@@ -97,20 +97,20 @@ Discord Developer Portal → Application → Bot → Privileged Gateway Intents 
 
 | Intent | 필수 여부 | 필요한 기능 | 꺼져 있을 때 |
 |---|---:|---|---|
-| Message Content Intent | `@냥시스턴트 질문`에 필수 | 일반 메시지 본문을 읽어 멘션 질문으로 처리한다. | JDA가 이 intent 를 요청하면 Discord가 `4014 DISALLOWED_INTENTS` 로 gateway 연결을 끊을 수 있다. |
+| Message Content Intent | `@니아 질문`에 필수 | 일반 메시지 본문을 읽어 멘션 질문으로 처리한다. | JDA가 이 intent 를 요청하면 Discord가 `4014 DISALLOWED_INTENTS` 로 gateway 연결을 끊을 수 있다. |
 | Server Members Intent | 현재 불필요 | 멤버 전체 목록/상세 동기화가 필요할 때만. | 현재 켜지 않는다. |
 | Presence Intent | 현재 불필요 | 멤버 온라인 상태 기반 기능이 필요할 때만. | 현재 켜지 않는다. |
 
 중요:
 
 - `/질문`, `/도움말`, `/메뉴`, 버튼, 모달, 컨텍스트 메뉴는 Message Content Intent 없이도 설계상 동작 가능해야 한다.
-- 하지만 `@냥시스턴트 질문`을 제품 기능으로 제공하려면 Message Content Intent 를 켜야 한다.
+- 하지만 `@니아 질문`을 제품 기능으로 제공하려면 Message Content Intent 를 켜야 한다.
 - `DISCORD_MESSAGE_CONTENT_INTENT_ENABLED=false` 로 배포하면 봇은 MESSAGE_CONTENT 를 요청하지 않고 슬래시 명령만 안전하게 부팅한다.
 - `DISCORD_FALLBACK_WITHOUT_MESSAGE_CONTENT_ON_4014=true` 이면 Developer Portal 설정이 꺼져 `4014 DISALLOWED_INTENTS` 가 발생해도 @멘션 질문을 끄고 슬래시 명령만 자동 재기동한다.
 
 ## 4. Developer Portal 설정 순서
 
-1. Discord Developer Portal → Applications → 냥시스턴트 앱 선택.
+1. Discord Developer Portal → Applications → NEXA 앱 선택.
 2. Installation 또는 OAuth2 URL Generator 에서 scope 선택:
    - `bot`
    - `applications.commands`
@@ -123,7 +123,7 @@ Discord Developer Portal → Application → Bot → Privileged Gateway Intents 
    - Manage Webhooks
    - Add Reactions
    - 필요 시 Attach Files, Use External Emojis
-4. `@냥시스턴트 질문`을 지원하려면 Bot → Privileged Gateway Intents:
+4. `@니아 질문`을 지원하려면 Bot → Privileged Gateway Intents:
    - Message Content Intent ON
 5. 변경 후 봇을 재시작/재배포한다.
 6. 운영 로그에서 아래를 확인한다.

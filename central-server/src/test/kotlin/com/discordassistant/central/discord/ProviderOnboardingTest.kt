@@ -14,7 +14,7 @@ class ProviderOnboardingTest {
         assertTrue(m.contains("TOK123")) // 토큰(앱에 붙여넣기)
         // GUI 앱 설치는 패키지 매니저로(맥 데스크톱 앱과 동일). relay-url 은 앱에 내장돼 노출하지 않는다.
         assertTrue(m.contains("brew install --cask")) // macOS 앱
-        assertTrue(m.contains("Nyassistant.DiscordAiNetworkBot")) // winget GUI 앱
+        assertTrue(m.contains("Nexa.Nexa")) // winget GUI 앱
         assertTrue(m.contains("민감정보")) // 안전 고지
         assertTrue(m.length <= 2000) // Discord 한도
     }

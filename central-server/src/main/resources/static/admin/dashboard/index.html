@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>냥시스턴트 AI 네트워크 — 관리자 콘솔</title>
+  <title>NEXA AI 네트워크 — 관리자 콘솔</title>
   <!--
     관리자 콘솔(차수 14·19, entity-first 재설계). 빌드 불필요 정적 SPA(바닐라 JS). 동일 출처 서빙.
     구조: Overview(네트워크) → 서버(드롭다운 선택) → 서버 상세[요약·채널·참여PC·프리셋·정책]
@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="/admin/dashboard/style.css" />
 </head>
 <body>
-  <div class="brand"><div class="logo">냥</div><div class="name">냥시스턴트</div></div>
+  <div class="brand"><div class="logo"><img src="/img/nexa-logo.png" alt="NEXA 로고" /></div><div class="name">NEXA</div></div>
   <header>
     <h1>함께 만드는 AI 네트워크</h1>
     <span id="status" class="badge">연결 확인 중…</span>
@@ -232,7 +232,7 @@
           <p class="muted">질문식 마법사로 채널 AI 이름·역할·말투·답변 길이·안전 규칙을 만든 뒤 저장합니다.</p>
           <input id="wizardChannelId" type="hidden" />
           <div class="form-grid">
-            <label>AI 이름<input id="wizardName" type="text" placeholder="예: 코드냥" /></label>
+            <label>AI 이름<input id="wizardName" type="text" placeholder="예: 코드 니아" /></label>
             <label>무엇을 도와야 하나요?<select id="wizardJob"></select></label>
             <label>말투<select id="wizardTone"></select></label>
             <label>답변 길이<select id="wizardLength"></select></label>

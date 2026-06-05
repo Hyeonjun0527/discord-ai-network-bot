@@ -20,12 +20,12 @@ class AiNetworkCommandHandler(
     private val aiLevel: AiLevelService,
     private val guards: SharedCommandGuards,
 ) {
-    /** 이 서버 냥시스턴트의 활동 레벨/경험치/진행도(public·비관리자). */
+    /** 이 서버 니아의 활동 레벨/경험치/진행도(public·비관리자). */
     fun aiLevel(ctx: CommandContext): Reply {
         val view = aiLevel.levelView(ctx.guildId)
         val bar = xpProgressBar(view.progressInLevel, view.levelSpan)
         return Reply(
-            "🐾 **이 서버 냥시스턴트 활동 레벨**\n" +
+            "🐾 **이 서버 니아 활동 레벨**\n" +
                 "활동 레벨: **${view.aiLevel}** · 누적 경험치: **${view.totalXp} XP**\n" +
                 "$bar\n" +
                 "다음 레벨까지: **${view.xpToNext} XP** (현재 구간 ${view.progressInLevel}/${view.levelSpan})\n" +

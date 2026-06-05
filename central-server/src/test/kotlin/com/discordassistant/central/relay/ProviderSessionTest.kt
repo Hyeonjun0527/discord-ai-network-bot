@@ -191,10 +191,10 @@ class ProviderSessionTest {
             java.util.Base64
                 .getEncoder()
                 .encodeToString(original)
-        val fut = s.sendImage("고양이")
+        val fut = s.sendImage("네온 도시")
         val req = conn.sent.filterIsInstance<InferRequest>().single()
         assertEquals("image", req.task)
-        assertEquals("고양이", req.prompt)
+        assertEquals("네온 도시", req.prompt)
         val mid = b64.length / 2
         s.handleFrame(ChunkFrame(req.requestId, b64.substring(0, mid), done = false))
         s.handleFrame(ChunkFrame(req.requestId, b64.substring(mid), done = false))

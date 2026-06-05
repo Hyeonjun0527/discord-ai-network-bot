@@ -1,11 +1,11 @@
 # systemd 유닛 — Linux 에서 Provider Agent 를 **사용자 단위** 백그라운드 서비스로 실행.
 # 관리자 권한 불필요: 시스템(/etc/systemd/system)이 아니라 --user 로 설치한다.
 # 설치:
-#   cp discord-ai-network-bot.service ~/.config/systemd/user/
-#   systemctl --user edit discord-ai-network-bot  # 환경변수 설정
-#   systemctl --user enable --now discord-ai-network-bot
+#   cp nexa.service ~/.config/systemd/user/
+#   systemctl --user edit nexa  # 환경변수 설정
+#   systemctl --user enable --now nexa
 [Unit]
-Description=Discord AI Provider Agent
+Description=NEXA Provider Agent
 After=network-online.target
 Wants=network-online.target
 
@@ -18,7 +18,7 @@ Environment=OLLAMA_BASE_URL=http://localhost:11434
 # 아래 안내(사용량 제한·서버/Ollama 주소·개인정보)를 확인했다면 주석을 해제한다.
 # Environment=AGENT_ACCEPT_TERMS=1
 # Environment=AGENT_TOKEN=...   ← systemctl --user edit 로 별도 설정 권장
-ExecStart=%h/.local/bin/discord-ai-network-bot
+ExecStart=%h/.local/bin/nexa
 Restart=on-failure
 RestartSec=5
 

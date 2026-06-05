@@ -300,7 +300,7 @@ class AiNetworkDashboardControllerTest
                     ChannelAiEntity(
                         guildId = 802,
                         channelId = 902,
-                        displayName = "코드냥",
+                        displayName = "코드 니아",
                         createdAt = Instant.EPOCH,
                         updatedAt = Instant.EPOCH,
                     ),

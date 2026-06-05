@@ -50,7 +50,7 @@ object SlashCommandCatalog {
             Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),
             Commands.slash("contributions", "커뮤니티 기여 리더보드를 봅니다"),
             Commands.slash("community-stats", "익명 커뮤니티 기여 통계를 봅니다"),
-            Commands.slash("level", "이 서버 냥시스턴트의 활동 레벨/경험치를 봅니다"),
+            Commands.slash("level", "이 서버 니아의 활동 레벨/경험치를 봅니다"),
             Commands.slash("fairness", "공정성 리포트를 봅니다(관리자)").setDefaultPermissions(adminPerm),
             Commands.slash("privacy", "이 서버의 AI 처리/프라이버시 안내"),
             Commands.slash("help", "명령 종합 도움말을 봅니다"),

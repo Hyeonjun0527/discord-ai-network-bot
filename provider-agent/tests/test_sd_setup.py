@@ -9,7 +9,7 @@ from provider_agent import sd_setup as sd_mod
 def test_install_dir_follows_xdg(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     d = sd_mod.install_dir()
-    assert d == tmp_path / "discord-ai-network-bot" / "stable-diffusion-webui"
+    assert d == tmp_path / "nexa" / "stable-diffusion-webui"
 
 
 def test_has_git(monkeypatch):

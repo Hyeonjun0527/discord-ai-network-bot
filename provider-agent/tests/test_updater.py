@@ -95,7 +95,7 @@ def test_verify_checksum_ok(monkeypatch, tmp_path):
 
 
 def test_macos_apply_downloads_swaps_and_relaunches(monkeypatch, tmp_path):
-    bundle = tmp_path / "Applications" / "냥시스턴트.app"
+    bundle = tmp_path / "Applications" / "NEXA.app"
     bundle.mkdir(parents=True)
     monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
     monkeypatch.setattr(updater.sys, "platform", "darwin")
@@ -111,7 +111,7 @@ def test_macos_apply_downloads_swaps_and_relaunches(monkeypatch, tmp_path):
     def fake_run(cmd, **kw):
         # ditto -x -k <zip> <extract> → 새 .app 흉내
         extract = Path(cmd[-1])
-        (extract / "냥시스턴트.app").mkdir(parents=True, exist_ok=True)
+        (extract / "NEXA.app").mkdir(parents=True, exist_ok=True)
 
         class R:
             returncode = 0
@@ -148,7 +148,7 @@ def test_windows_apply_downloads_and_relaunches(monkeypatch, tmp_path):
 
 
 def test_macos_apply_noop_when_already_latest(monkeypatch, tmp_path):
-    bundle = tmp_path / "냥시스턴트.app"
+    bundle = tmp_path / "NEXA.app"
     bundle.mkdir()
     monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
     monkeypatch.setattr(updater.sys, "platform", "darwin")

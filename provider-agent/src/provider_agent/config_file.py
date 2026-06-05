@@ -1,6 +1,6 @@
 """설정 파일 저장/로드 (차수 9 #113).
 
-토큰·접속 설정을 ``~/.config/discord-ai-network-bot/config.json`` 에 보관한다.
+토큰·접속 설정을 ``~/.config/nexa/config.json`` 에 보관한다.
 시크릿 보호를 위해 파일 권한은 0600. ``XDG_CONFIG_HOME`` 을 따른다.
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ SAVEABLE = (
 
 def config_dir() -> pathlib.Path:
     base = os.getenv("XDG_CONFIG_HOME") or os.path.join(pathlib.Path.home(), ".config")
-    return pathlib.Path(base) / "discord-ai-network-bot"
+    return pathlib.Path(base) / "nexa"
 
 
 def config_path() -> pathlib.Path:

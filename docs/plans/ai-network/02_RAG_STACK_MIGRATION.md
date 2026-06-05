@@ -28,13 +28,13 @@ RAG 는 **Dailyting RAG 스택을 표준 템플릿으로 가져온다.**
 
 바꿀 것:
 
-- Dailyting 의 입력은 product SSOT YAML 중심이지만, 냥시스턴트는 `guild/channel KnowledgeSpace` 중심이다.
-- Dailyting 의 collection 은 `dailyting_ssot` 이지만, 냥시스턴트는 guild/channel 스코프를 분리해야 한다.
-- Dailyting 은 repo SSOT 검색이 목적이지만, 냥시스턴트는 Discord 질문 답변에 붙는 runtime RAG 이므로 Provider 보호와 token budget 이 더 중요하다.
+- Dailyting 의 입력은 product SSOT YAML 중심이지만, NEXA는 `guild/channel KnowledgeSpace` 중심이다.
+- Dailyting 의 collection 은 `dailyting_ssot` 이지만, NEXA는 guild/channel 스코프를 분리해야 한다.
+- Dailyting 은 repo SSOT 검색이 목적이지만, NEXA는 Discord 질문 답변에 붙는 runtime RAG 이므로 Provider 보호와 token budget 이 더 중요하다.
 
 ## 2. Dailyting 에서 확인한 기준 스택
 
-| 영역 | Dailyting 기준 | 냥시스턴트 적용 |
+| 영역 | Dailyting 기준 | NEXA 적용 |
 | --- | --- | --- |
 | Runtime | `python:3.12-slim` Docker image | 동일 |
 | Wrapper | `scripts/rag.sh` | `scripts/rag.sh` 또는 `central-server/scripts/rag.sh` 로 이식 |
@@ -50,7 +50,7 @@ RAG 는 **Dailyting RAG 스택을 표준 템플릿으로 가져온다.**
 | Eval | `rag/eval/golden.json` + Hit@K/MRR/Recall | guild/channel fixture 기반 golden set 추가 |
 | Tooling | MCP server | 운영 내부 검색/검증 도구로 재사용 가능 |
 
-## 3. 냥시스턴트 RAG 목표
+## 3. NEXA RAG 목표
 
 사용자 관점:
 
@@ -91,11 +91,11 @@ scripts/rag.sh
 docker-compose.qdrant.yml 또는 central-server/docker-compose.rag.yml
 ```
 
-1차는 Dailyting 파일 구조를 거의 그대로 복사하되, chunker 와 input source 만 냥시스턴트 도메인에 맞게 바꾼다.
+1차는 Dailyting 파일 구조를 거의 그대로 복사하되, chunker 와 input source 만 NEXA 도메인에 맞게 바꾼다.
 
-## 5. 냥시스턴트 RAG 입력 모델
+## 5. NEXA RAG 입력 모델
 
-Dailyting 은 repo YAML 파일을 색인했다. 냥시스턴트는 아래 입력을 색인한다.
+Dailyting 은 repo YAML 파일을 색인했다. NEXA는 아래 입력을 색인한다.
 
 - `KnowledgeSource(type=file)`
 - `KnowledgeSource(type=link)`
@@ -121,7 +121,7 @@ Dailyting 은 repo YAML 파일을 색인했다. 냥시스턴트는 아래 입력
 
 ### A안. Qdrant collection 을 guild 별로 분리
 
-예: `nyassistant_guild_{guildId}`
+예: `nexa_guild_{guildId}`
 
 장점:
 
@@ -135,7 +135,7 @@ Dailyting 은 repo YAML 파일을 색인했다. 냥시스턴트는 아래 입력
 
 ### B안. collection 하나 + payload filter
 
-예: collection `nyassistant_knowledge`, payload `guildId`, `channelId`, `knowledgeSpaceId`
+예: collection `nexa_knowledge`, payload `guildId`, `channelId`, `knowledgeSpaceId`
 
 장점:
 
@@ -182,7 +182,7 @@ Dailyting 기준 파이프라인을 유지한다.
 
 Dailyting 의 `.github/workflows/rag-rebuild.yml` 패턴을 가져온다.
 
-냥시스턴트 workflow 초안:
+NEXA workflow 초안:
 
 ```yaml
 name: AI RAG 인덱스 재빌드
@@ -203,9 +203,9 @@ on:
 
 런너/네트워크:
 
-- self-hosted `yeon-arm` 또는 별도 `nyassistant-rag`
+- self-hosted `yeon-arm` 또는 별도 `nexa-rag`
 - Docker network: 기존 central-server compose network 와 연결
-- Qdrant 내부 URL: `http://nyassistant-qdrant:6333`
+- Qdrant 내부 URL: `http://nexa-qdrant:6333`
 - 원격 read URL 은 Cloudflare Access 로 보호 가능
 
 Secrets:
@@ -222,7 +222,7 @@ Qdrant compose 는 Dailyting 과 같은 구조로 시작한다.
 
 - image: `qdrant/qdrant:v1.13.6`
 - host port 는 `127.0.0.1` bind
-- volume: `nyassistant-qdrant-data`
+- volume: `nexa-qdrant-data`
 - restart: `unless-stopped`
 - healthcheck 포함
 - 외부 공개는 Cloudflare Access 뒤에만 허용
@@ -262,7 +262,7 @@ Dailyting 의 retrieval eval 방식을 그대로 가져온다.
 - MRR
 - Recall@10
 
-냥시스턴트 golden set 예시:
+NEXA golden set 예시:
 
 - `#개발질문` 지식에 있는 배포 절차를 찾아야 한다.
 - 서버 A 지식은 서버 B 검색에 나오면 안 된다.

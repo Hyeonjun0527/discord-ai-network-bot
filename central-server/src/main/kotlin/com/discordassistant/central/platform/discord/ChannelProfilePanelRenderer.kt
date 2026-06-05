@@ -67,7 +67,7 @@ class ChannelProfilePanelRenderer(
                     .create("name", "이름", TextInputStyle.SHORT)
                     .setRequired(true)
                     .setMaxLength(80)
-                    .setValue(current?.displayName ?: "냥시스턴트")
+                    .setValue(current?.displayName ?: "니아")
                     .build(),
             ).addActionRow(
                 TextInput

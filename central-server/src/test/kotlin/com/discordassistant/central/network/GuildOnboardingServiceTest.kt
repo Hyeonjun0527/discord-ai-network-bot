@@ -185,7 +185,7 @@ class GuildOnboardingServiceTest
 
             assertEquals("pending", result.status)
             // 채널명 dev-help → development job preset 휴리스틱
-            assertEquals("코드냥", result.name)
+            assertEquals("코드 니아", result.name)
             assertTrue(result.job.contains("개발"))
 
             // consent 기록(메시지 백필 미동의)
@@ -247,7 +247,7 @@ class GuildOnboardingServiceTest
                     channelName = "잡담",
                 )
             // 매칭되는 힌트 없으면 custom
-            assertEquals("채널냥", started.name)
+            assertEquals("채널 니아", started.name)
 
             val review =
                 service.rejectOnboarding(
@@ -493,7 +493,7 @@ class GuildOnboardingServiceTest
                 )
 
             assertEquals("llm", result.analysisSource)
-            assertEquals("스터디냥", result.name) // 채널명 휴리스틱("채널냥")이 아니라 LLM 이름
+            assertEquals("스터디냥", result.name) // 채널명 휴리스틱("채널 니아")이 아니라 LLM 이름
             assertTrue(result.job.contains("알고리즘"))
             assertEquals("long", result.answerLength)
             assertEquals("풀이 근거를 단계별로 설명합니다", result.customInstruction)
@@ -526,7 +526,7 @@ class GuildOnboardingServiceTest
                 )
 
             assertEquals("heuristic", result.analysisSource)
-            assertEquals("코드냥", result.name) // 채널명 휴리스틱(dev-help → development)
+            assertEquals("코드 니아", result.name) // 채널명 휴리스틱(dev-help → development)
             assertNull(result.customInstruction)
             assertEquals("heuristic", runs.findByProposalId(result.proposalId)!!.analysisSource)
         }
@@ -556,7 +556,7 @@ class GuildOnboardingServiceTest
                 )
 
             assertEquals("heuristic", result.analysisSource)
-            assertEquals("번역냥", result.name)
+            assertEquals("번역 니아", result.name)
         }
 
         // REQ-ONBOARD-007 — 백필 텍스트가 없으면 analyze 는 LLM 을 호출하지 않고 null(휴리스틱) 을 돌려준다.

@@ -91,7 +91,7 @@ class WebContentFetcher(
                 HttpRequest
                     .newBuilder(URI(url))
                     .timeout(Duration.ofSeconds(timeoutSeconds))
-                    .header("User-Agent", "discord-ai-network-bot/websearch")
+                    .header("User-Agent", "nexa/websearch")
                     .GET()
                     .build()
             val resp = http.send(req, HttpResponse.BodyHandlers.ofString())

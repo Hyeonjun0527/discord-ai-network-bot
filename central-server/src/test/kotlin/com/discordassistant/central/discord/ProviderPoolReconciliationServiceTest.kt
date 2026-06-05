@@ -73,7 +73,7 @@ class ProviderPoolReconciliationServiceTest
         @Test
         fun `채널 삭제 정리는 허용 채널과 채널 AI 프로필을 제거한다`() {
             policy.allowChannel(300, 400, adminId = 1)
-            channelProfiles.set(300, 400, "냥시스턴트", avatarUrl = "https://example.com/cat.png")
+            channelProfiles.set(300, 400, "니아", avatarUrl = "https://example.com/cat.png")
 
             reconciliation.cleanupChannel(300, 400)
 

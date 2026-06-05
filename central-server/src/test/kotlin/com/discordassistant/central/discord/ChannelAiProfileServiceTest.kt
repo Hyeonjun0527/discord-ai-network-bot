@@ -22,13 +22,13 @@ class ChannelAiProfileServiceTest
     ) {
         @Test
         fun `채널별 AI 프로필을 저장 조회 초기화한다`() {
-            val saved = service.set(guildId = 100, channelId = 200, displayName = " 냥시스턴트 ", avatarUrl = " ")
+            val saved = service.set(guildId = 100, channelId = 200, displayName = " 니아 ", avatarUrl = " ")
 
-            assertEquals("냥시스턴트", saved.displayName)
+            assertEquals("니아", saved.displayName)
             assertNull(saved.avatarUrl)
             assertEquals(1, saved.version)
             assertEquals(DEFAULT_CHANNEL_AI_PURPOSE, saved.purpose)
-            assertEquals("냥시스턴트", service.get(100, 200)?.displayName)
+            assertEquals("니아", service.get(100, 200)?.displayName)
 
             service.clear(100, 200)
             assertNull(service.get(100, 200))
@@ -39,7 +39,7 @@ class ChannelAiProfileServiceTest
             service.set(
                 guildId = 100,
                 channelId = 201,
-                displayName = "코드냥",
+                displayName = "코드 니아",
                 avatarUrl = null,
                 actorId = 5,
                 purpose = "Kotlin 개발 도우미",
@@ -51,7 +51,7 @@ class ChannelAiProfileServiceTest
                 service.set(
                     guildId = 100,
                     channelId = 201,
-                    displayName = "코드냥",
+                    displayName = "코드 니아",
                     avatarUrl = null,
                     actorId = 5,
                     purpose = "Kotlin/Spring Boot 리뷰어",

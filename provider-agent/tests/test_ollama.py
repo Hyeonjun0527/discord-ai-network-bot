@@ -132,7 +132,7 @@ async def test_generate_with_images_multimodal():
 
     async def gen(request: web.Request) -> web.Response:
         captured.update(await request.json())
-        return web.json_response({"response": "고양이입니다", "prompt_eval_count": 1, "eval_count": 2})
+        return web.json_response({"response": "이미지입니다", "prompt_eval_count": 1, "eval_count": 2})
 
     app.router.add_post("/api/generate", gen)
     server = TestServer(app)
@@ -140,7 +140,7 @@ async def test_generate_with_images_multimodal():
     url = f"http://{server.host}:{server.port}"
     try:
         text, _ = await OllamaClient(url).generate("이미지 설명", "llava", images=["BASE64DATA"])
-        assert text == "고양이입니다"
+        assert text == "이미지입니다"
         assert captured.get("images") == ["BASE64DATA"]
     finally:
         await server.close()

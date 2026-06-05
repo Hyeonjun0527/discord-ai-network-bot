@@ -141,7 +141,7 @@ class AiNetworkApiSecurityFilterTest
                 .perform(
                     post("/api/ai-network/channel-ai/100/200/wizard")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{"actorUserId":1,"name":"코드냥","job":"개발 질문","tone":"짧고 명확하게"}"""),
+                        .content("""{"actorUserId":1,"name":"코드 니아","job":"개발 질문","tone":"짧고 명확하게"}"""),
                 ).andExpect(status().isForbidden)
 
             mvc

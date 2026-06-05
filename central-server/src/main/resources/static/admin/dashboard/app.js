@@ -2,7 +2,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const ADMIN_TOKEN_STORAGE_KEY = "nyassistant.dashboardAdminToken";
+const ADMIN_TOKEN_STORAGE_KEY = "nexa.dashboardAdminToken";
 let pendingPresetImport = null;
 
 function esc(value) {

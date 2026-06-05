@@ -26,7 +26,7 @@ data class AgentSyncResponse(
 /**
  * 에이전트 자동 동기화(목표: 연동된 사용자의 `/프로바이더참여` 를 앱이 자동 완료).
  *
- * 실행 중인 냥시스턴트 앱이 **durable 토큰**(dv1.…, providerId=Discord userId 인코딩)으로 자신을 인증하면,
+ * 실행 중인 NEXA 앱이 **durable 토큰**(dv1.…, providerId=Discord userId 인코딩)으로 자신을 인증하면,
  * 그 사용자가 **승인됐지만 아직 연결돼 있지 않은** 서버들에 대한 일회용 토큰을 돌려준다. 앱은 이 토큰으로
  * 그 서버에 자동 연결한다 → 가이드/재설치 없이 참여 완료.
  *

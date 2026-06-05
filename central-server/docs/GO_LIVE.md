@@ -14,7 +14,7 @@
 3. **Installation**(또는 OAuth2 → URL Generator):
    - Scopes: `bot`, `applications.commands`
    - Bot Permissions: 최소/권장 권한은 [봇 권한 명세](../../docs/BOT_PERMISSIONS.md)를 따른다.
-4. `@냥시스턴트 질문` 멘션 호출을 쓰려면 좌측 **Bot → Privileged Gateway Intents → Message Content Intent** 를 켠다.
+4. `@니아 질문` 멘션 호출을 쓰려면 좌측 **Bot → Privileged Gateway Intents → Message Content Intent** 를 켠다.
 5. 생성된 초대 URL 로 **봇을 서버에 초대**.
 
 > 기존 Python 봇과 **다른 애플리케이션/토큰**을 쓰면 두 봇이 한 서버에 공존 가능.
@@ -54,7 +54,7 @@ DISCORD_ENABLED=true DISCORD_BOT_TOKEN='토큰' DISCORD_GUILD_ID='서버ID' CENT
 3. 에이전트 실행:
    ```bash
    pip install -e provider-agent            # 또는 배포물/Docker(packaging/README.md)
-discord-ai-network-bot --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
+nexa --token <토큰> --relay-url wss://discord-ai.yeon.world/agent
    ```
    → 풀에 등록되면 `/providers`(관리자)·`/catalog` 에 나타난다.
 
@@ -65,7 +65,7 @@ discord-ai-network-bot --token <토큰> --relay-url wss://discord-ai.yeon.world/
 - `⚙️설정`(관리자) → **드롭다운**으로 언어·기본모델·허용채널 + **버튼** 자동승인 토글 → 즉시 적용.
 
 명령으로도 가능(슬래시 입력창에 `/` 치면 설명 자동 표시):
-- `/ask 안녕` 또는 `@냥시스턴트 안녕` → 풀 라우팅 → 응답(끝에 프라이버시 고지). ✅ 핵심
+- `/ask 안녕` 또는 `@니아 안녕` → 풀 라우팅 → 응답(끝에 프라이버시 고지). ✅ 핵심
 - `/help` `/models` `/catalog` `/community-stats`, `/provider-join`.
 - `/ask-long` → 모달, 메시지 우클릭 → 앱 → `AI에게 질문`(컨텍스트 메뉴).
 - `/provider-approve @유저` → 대상에게 토큰 DM, `/fairness` `/provider-schedule`(관리자).
@@ -73,7 +73,7 @@ discord-ai-network-bot --token <토큰> --relay-url wss://discord-ai.yeon.world/
 ## 5. 알아둘 점
 - **리액션 만족도(#171)**: `GUILD_MESSAGE_REACTIONS` 인텐트를 코드에서 활성화해 👍/👎 수집이
   바로 동작한다. 이 인텐트는 비특권이라 Developer Portal 의 Privileged Intents 토글이 불필요하다.
-- **멘션 호출**: `@냥시스턴트 질문`은 메시지 본문을 읽어야 하므로 코드에서 `GUILD_MESSAGES` +
+- **멘션 호출**: `@니아 질문`은 메시지 본문을 읽어야 하므로 코드에서 `GUILD_MESSAGES` +
   `MESSAGE_CONTENT` 인텐트를 활성화한다. 운영 Discord 애플리케이션에서도 **Message Content Intent** 를 켜야 한다.
   자세한 권한/Intent/장애 UX 기준은 [봇 권한 명세](../../docs/BOT_PERMISSIONS.md)를 따른다.
 - 나머지 인터랙션(슬래시/버튼/모달/컨텍스트 메뉴/DM)은 추가 설정 없이 동작.

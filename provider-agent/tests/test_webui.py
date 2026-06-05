@@ -453,3 +453,87 @@ def test_set_macos_app_identity_is_safe_everywhere():
 
     # 비-macOS 는 no-op, macOS 면 dock 이름/아이콘 설정 — 어느 쪽이든 예외 없이 끝나야 한다.
     _set_macos_app_identity("냥시스턴트")
+
+
+@pytest.mark.asyncio
+async def test_onboard_apply_installs_service_and_persists(monkeypatch):
+    """온보딩 적용: autostart 면 install_service 를 실제 호출하고, 토글을 설정에 반영해야 한다.
+    (회귀: 과거엔 persist_partial 로 저장만 하고 어떤 동작도 하지 않아 토글이 무의미했다.)"""
+    installed = {}
+    monkeypatch.setattr("provider_agent.service.install_service", lambda: installed.setdefault("done", True))
+    monkeypatch.setattr("provider_agent.singleton.acquire", lambda: True)
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/onboard-apply",
+            headers={"X-Session": KEY},
+            json={"enableImage": True, "autostart": True, "autoConnect": True, "background": True},
+        )
+        d = await r.json()
+        assert d["ok"] and d["serviceInstalled"]
+        assert installed.get("done") is True  # 자동시작 서비스 실제 등록
+        saved = load_config()
+        assert saved["enable_image"] is True
+        assert saved["auto_connect"] is True
+        assert saved["tray"] is True  # background → 트레이 상주
+        assert saved["autostart_pref"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_onboard_apply_no_service_when_autostart_off(monkeypatch):
+    """autostart=false 면 install_service 를 호출하지 않아야 한다(원치 않는 자동시작 등록 방지)."""
+    monkeypatch.setattr(
+        "provider_agent.service.install_service",
+        lambda: (_ for _ in ()).throw(AssertionError("autostart off 인데 등록하면 안 됨")),
+    )
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/onboard-apply",
+            headers={"X-Session": KEY},
+            json={"enableImage": False, "autostart": False, "autoConnect": False, "background": False},
+        )
+        d = await r.json()
+        assert d["ok"] and d["serviceInstalled"] is False
+        saved = load_config()
+        assert saved["auto_connect"] is False and saved["tray"] is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_autoconnect_on_startup_when_enabled(monkeypatch):
+    """auto_connect 가 켜져 있고 저장된 서버가 있으면 GUI 기동(on_startup) 시 자동 연결돼야 한다."""
+    monkeypatch.setattr("provider_agent.agent.ProviderAgent", FakeAgent)
+    from provider_agent.config_file import persist_partial, save_connections
+
+    # 실제 OAuth 연동(save_connections)과 동일하게 token 도 미러된 상태를 만든다.
+    save_connections([{"token": "T", "guild_id": None, "guild_name": None}])
+    persist_partial({"auto_connect": True})
+    client = await _client()  # build_app + start_server → on_startup 훅 실행
+    try:
+        await asyncio.sleep(0.05)
+        st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
+        assert st["running"] is True  # 추가 클릭 없이 자동 연결
+        await client.post("/api/stop", headers={"X-Session": KEY})
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_no_autoconnect_when_disabled(monkeypatch):
+    """auto_connect 키가 없으면(온보딩 미완료 기존 사용자) 자동 연결하지 않아야 한다(깜짝 연결 방지)."""
+    monkeypatch.setattr("provider_agent.agent.ProviderAgent", FakeAgent)
+    from provider_agent.config_file import save_connections
+
+    # 토큰/연결은 있지만 auto_connect 미설정 → 자동연결 안 함(연결 가능한데도 안 하는지 확인)
+    save_connections([{"token": "T", "guild_id": None, "guild_name": None}])
+    client = await _client()
+    try:
+        await asyncio.sleep(0.05)
+        st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
+        assert st["running"] is False  # 자동 연결 안 함
+    finally:
+        await client.close()

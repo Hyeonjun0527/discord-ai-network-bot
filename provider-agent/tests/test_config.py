@@ -85,6 +85,17 @@ def test_unlimited_with_flag_ok(monkeypatch, tmp_path):
     assert cfg.daily_limit == 0
 
 
+def test_service_flag_recognized_and_implies_yes(monkeypatch, tmp_path):
+    """--service(헤드리스 자동시작)는 argparse 가 인식해야 하고(launchd/업데이터 재실행이 사용),
+    동의 프롬프트를 못 띄우므로 assume_yes 를 포함해야 한다. (회귀: 과거엔 --service 가 미정의라
+    `exe --service` 가 즉시 argparse 에러로 죽어 자동시작·헤드리스 업데이트가 작동하지 않았다.)"""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfg, _ = config_from_args(["--token", "T", "--service"])
+    assert cfg.service is True
+    assert cfg.assume_yes is True  # 무인 동의
+    assert cfg.gui is False  # 창 없이 헤드리스
+
+
 def test_remote_ollama_blocked_by_default(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     with pytest.raises(SystemExit):

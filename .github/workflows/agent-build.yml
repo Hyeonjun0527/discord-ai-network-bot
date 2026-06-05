@@ -148,6 +148,12 @@ jobs:
           environment_name: PROD
       - name: OS별 자산 이름
         shell: bash
+        env:
+          # dmg notarize/staple 용(서명 시크릿이 있을 때만 사용). 없으면 dmg 는 미공증으로 생성된다.
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           cd dist
           case "$RUNNER_OS" in
@@ -157,12 +163,21 @@ jobs:
           esac
           # macOS GUI .app → ① 인앱 업데이터/brew 가 받는 zip(내부 피드, 사용자 비노출).
           #                  ② 사용자 웹 다운로드용 dmg(드래그 설치) — Applications 심볼릭 링크 포함.
-          # (서명/staple 끝난 .app 으로 만든다. 완전 무경고 위해선 서명 활성화 시 dmg 자체도 notarize/staple 권장.)
+          # (서명/staple 끝난 .app 으로 만든다.)
           if [ "$RUNNER_OS" = "macOS" ] && [ -d "냥시스턴트.app" ]; then
             ditto -c -k --keepParent "냥시스턴트.app" "nyassistant-macos.zip"
             rm -rf dmgroot && mkdir dmgroot && cp -R "냥시스턴트.app" dmgroot/ && ln -s /Applications dmgroot/Applications
             hdiutil create -volname "냥시스턴트" -srcfolder dmgroot -ov -format UDZO "nyassistant-macos.dmg"
             rm -rf dmgroot
+            # 완전 무경고(Gatekeeper) 드래그 설치를 위해 dmg 컨테이너 자체도 notarize + staple.
+            # 서명/Apple 시크릿이 모두 있을 때만 — 없으면 미공증 dmg(체크섬/attestation 으로 검증).
+            if [ -n "${MACOS_CERT_P12:-}" ] && [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
+              xcrun notarytool submit "nyassistant-macos.dmg" \
+                --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+              xcrun stapler staple "nyassistant-macos.dmg"   # 오프라인 검증 티켓 부착
+            else
+              echo "::warning::macOS 서명/Apple 시크릿 미설정 — dmg notarize/staple 생략(미공증 dmg)"
+            fi
           fi
           # Windows GUI exe(네이티브 창) → 인앱 업데이트가 받는 배포 자산.
           if [ "$RUNNER_OS" = "Windows" ] && [ -f "냥시스턴트.exe" ]; then

@@ -26,6 +26,32 @@ def test_save_then_load_roundtrip(monkeypatch, tmp_path):
     assert mode == 0o600
 
 
+def test_save_config_preserves_non_saveable_keys(monkeypatch, tmp_path):
+    """save_config 는 SAVEABLE 만 갱신하고 그 외 키(connections·온보딩 토글)는 보존해야 한다.
+    (회귀: 과거엔 전체를 덮어써서 설정 저장 시 저장된 서버 연결·온보딩 선택이 통째로 사라졌다.)"""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from provider_agent.config_file import persist_partial
+
+    # 온보딩/연결이 먼저 비-SAVEABLE 키를 기록한 상황
+    persist_partial(
+        {
+            "auto_connect": True,
+            "tray": True,
+            "autostart_pref": True,
+            "connections": [{"token": "C1", "guild_id": 1, "guild_name": "g"}],
+        }
+    )
+    # 이후 설정 저장(예: 모델 변경)이 일어나도 비-SAVEABLE 키는 살아남아야 한다.
+    cfg, _ = config_from_args(["--token", "TOK", "--model", "x"])
+    save_config(cfg)
+    data = load_config()
+    assert data["token"] == "TOK" and data["models"] == ["x"]  # SAVEABLE 은 갱신
+    assert data["auto_connect"] is True  # 비-SAVEABLE 보존
+    assert data["tray"] is True
+    assert data["autostart_pref"] is True
+    assert data["connections"] == [{"token": "C1", "guild_id": 1, "guild_name": "g"}]
+
+
 def test_saved_token_used_when_no_cli(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     # 먼저 저장

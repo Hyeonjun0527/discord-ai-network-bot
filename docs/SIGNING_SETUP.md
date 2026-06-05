@@ -67,8 +67,9 @@
 
 1. ☁️ macOS: A 단계 시크릿 채우기 → (선택) Variables `REQUIRE_SIGNED_RELEASE = true` 로 미서명 릴리스 차단.
 2. ☁️ Windows: B4 시크릿 + `WINDOWS_SIGN_PROVIDER=esigner` 설정.
-3. 새 릴리스 태그(`agent-v*`) push → CI 가 macOS 공증/staple + Windows eSigner 서명 수행.
-4. 검증: macOS `spctl -a -vvv 냥시스턴트.app`(accepted)·`xcrun stapler validate`; Windows `signtool verify /pa nyassistant-windows.exe`. 실제 브라우저로 받아 경고 확인(mac=무경고, win=평판 쌓이는 중이면 초기 경고 가능).
+3. 새 릴리스 태그(`agent-v*`) push → CI 가 macOS 공증/staple(.app **및 배포 dmg**) + Windows eSigner 서명 수행.
+   - `.app` 서명+공증+staple → 그 `.app` 으로 만든 **dmg 컨테이너 자체도 notarize + staple**(Apple 시크릿이 모두 있을 때만; 드래그 설치 시 완전 무경고). 시크릿이 없으면 dmg 는 미공증으로 생성되고 체크섬/attestation 으로 검증한다.
+4. 검증: macOS `spctl -a -vvv 냥시스턴트.app`(accepted)·`xcrun stapler validate 냥시스턴트.app`·`xcrun stapler validate nyassistant-macos.dmg`; Windows `signtool verify /pa nyassistant-windows.exe`. 실제 브라우저로 받아 경고 확인(mac=무경고, win=평판 쌓이는 중이면 초기 경고 가능).
 
 ## 비용 요약
 - **macOS**: Apple Developer Program **$99/년** → 공증으로 **즉시 무경고**.

@@ -960,7 +960,14 @@ def build_app(session_key: str) -> web.Application:
         return web.json_response({"ok": True})
 
     async def onboard_apply(req: web.Request) -> web.Response:
-        """온보딩 선택(이미지 제공·자동 실행/연결 등)을 설정에 반영(토큰·연결은 건드리지 않음)."""
+        """온보딩 선택(이미지 제공·자동 실행/연결 등)을 **실제로** 설정·시스템에 반영(토큰·연결은 건드리지 않음).
+
+        - ``autostart`` → 로그인 시 자동 실행 서비스 등록(``install_service``). GUI 가 먼저 singleton 락을
+          쥐어, RunAtLoad 로 곧장 뜨는 헤드리스 서비스가 이번 세션 연결을 가로채지 않게 한다(/api/setup 과 동일).
+        - ``background`` → 트레이 상주(``tray``)로 저장 → 다음 실행부터 트레이에서 계속 대기.
+        - ``autoConnect`` → 저장 후 GUI 재시작 시 on_startup 훅이 저장된 서버로 자동 연결.
+        - ``enableImage`` → SD 이미지 생성 capability 광고(즉시 반영).
+        """
         _auth(req)
         try:
             data = await req.json()
@@ -968,15 +975,31 @@ def build_app(session_key: str) -> web.Application:
             data = {}
         from .config_file import persist_partial
 
+        autostart = bool(data.get("autostart", True))
         persist_partial(
             {
                 "enable_image": bool(data.get("enableImage")),
                 "auto_connect": bool(data.get("autoConnect", True)),
                 "background": bool(data.get("background", True)),
-                "autostart_pref": bool(data.get("autostart", True)),
+                # background 상주는 기존 트레이 기능으로 실현 — 서비스/에이전트 실행 모드가 읽는다.
+                "tray": bool(data.get("background", True)),
+                "autostart_pref": autostart,
             }
         )
-        return web.json_response({"ok": True})
+        service_installed = False
+        if autostart:
+            # /api/setup 의 installService 와 동일 패턴: GUI 가 먼저 락을 쥐고 서비스를 등록한다.
+            try:
+                from . import singleton
+
+                singleton.acquire()
+                from .service import install_service
+
+                install_service()
+                service_installed = True
+            except Exception:  # noqa: BLE001 - 자동시작 등록 실패는 온보딩을 막지 않는다
+                pass
+        return web.json_response({"ok": True, "serviceInstalled": service_installed})
 
     app.router.add_get("/", index)
     app.router.add_get("/mascot.png", mascot)
@@ -1008,6 +1031,22 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/logout", logout)
     app.router.add_post("/api/reset", reset_all)
     app.router.add_post("/api/onboard-apply", onboard_apply)
+
+    async def _autoconnect_on_startup(_app: web.Application) -> None:
+        """온보딩에서 '로그인 후 자동 연결'을 켰고 저장된 서버가 있으면, GUI 가 뜨자마자 자동 연결한다.
+
+        서버 이벤트 루프에서 도는 on_startup 훅이라 ``_start_agent``(asyncio.create_task)를 바로 쓸 수 있다.
+        auto_connect 키가 없으면(온보딩 미완료 기존 사용자) 아무것도 하지 않아 깜짝 자동연결을 막는다.
+        """
+        from .config_file import load_connections
+
+        saved = load_config()
+        if bool(saved.get("auto_connect")) and load_connections():
+            res = _start_agent()
+            if not res.get("ok"):
+                logging.getLogger("provider_agent").info("자동 연결 보류: %s", res.get("error"))
+
+    app.on_startup.append(_autoconnect_on_startup)
     return app
 
 

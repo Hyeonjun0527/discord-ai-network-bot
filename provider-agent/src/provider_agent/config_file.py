@@ -34,10 +34,17 @@ def config_path() -> pathlib.Path:
 
 
 def save_config(cfg, path: pathlib.Path | None = None) -> pathlib.Path:
-    """AgentConfig 의 저장 가능한 필드를 JSON 으로 기록(0600)."""
+    """AgentConfig 의 저장 가능한 필드를 JSON 으로 기록(0600).
+
+    기존 파일을 **병합** 갱신한다: SAVEABLE 필드만 cfg 값으로 덮고, SAVEABLE 에 없는 키
+    (``connections``·온보딩 토글 ``auto_connect``/``background``/``autostart_pref``·``tray`` 등)는
+    보존한다. (과거엔 전체를 덮어써서 설정 저장 시 저장된 서버 연결·온보딩 선택이 사라졌다.)
+    """
     path = path or config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {k: getattr(cfg, k) for k in SAVEABLE}
+    data = load_config(path)  # 기존 값 로드 후 SAVEABLE 만 갱신(비-SAVEABLE 키 보존)
+    for k in SAVEABLE:
+        data[k] = getattr(cfg, k)
     data["models"] = list(data["models"])  # tuple → list
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     try:

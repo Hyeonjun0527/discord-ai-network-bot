@@ -8,9 +8,22 @@
 | 1 provider 파일럿 | ✅ **완료** | `provider 도메인 헥사고날 재배치(파일럿)` | 17파일 재배치·god-file 절개·빌드 그린·Kover90 |
 | 2 routing + 6 포트 | ✅ **완료** | `routing 도메인 헥사고날 재배치 + 6 포트 추출` | RoutingPorts 추출·계산기 domain/service·Orchestrator 515→414 |
 | 3 quota + requestlog | ✅ **완료** | `quota·requestlog 도메인 헥사고날 재배치` | usage 패키지 소멸·Entities.kt 42→33 @Entity·CQRS 유지 |
-| 4 guild + channel-ai | ⏳ 대기 | — | high(동시성 보존) |
-| 5~7 network 분해 | ⏳ 대기 | — | high(god-package, DTO 허브) |
-| 8 discord-platform + global | ⏳ 대기 | — | high(DiscordBot/CommandService 분해) |
+| 4 guild + channel-ai | ✅ **완료** | `guild·channel-ai 도메인 헥사고날 재배치` | PESSIMISTIC_WRITE 동시성 보존·policy 패키지 소멸 |
+| 5 knowledge + onboarding | ✅ **완료** | `knowledge·onboarding 도메인 헥사고날 재배치` | WebSearch routing→knowledge 이관·REQUIRES_NEW 보존 |
+| 6 multiresponse + preset | ✅ **완료** | `multiresponse·preset 도메인 헥사고날 재배치` | DTO 허브 절개·CQRS |
+| 7 ai-network + alert | ✅ **완료** | `ai-network 도메인 헥사고날 재배치 + god-file 소멸` | **Entities.kt/Repositories.kt 삭제**·XP 원자갱신 보존 |
+| 8 platform/global/shared | ✅ **완료** | `횡단 레이어 정리 + 마이그레이션 완료` | discord→platform·web/health→global·domain→shared. **기술레이어 전부 소멸** |
+
+## 최종 구조 (완료)
+
+비즈니스 도메인(각 `domain/application/adapter`): `ainetwork · channelai · guild · knowledge ·
+multiresponse · onboarding · preset · provider · quota · requestlog · routing`.
+횡단 레이어: `shared`(공유 커널) · `global`(security/i18n/health/audit/web) · `platform.discord`(JDA 봇 인바운드) ·
+`relay`(WS 바운디드 컨텍스트) · `dev`(테스트 하네스). 기술레이어 패키지(persistence/network/dashboard/
+discord/web/health/policy/usage/alert/domain) 전부 소멸. 단계마다 `./gradlew build` 그린.
+
+> 비고: god-class(DiscordBot 1732줄·CommandService 1810줄)는 **동작보존**을 위해 클래스 내부 분해는
+> 하지 않고 platform.discord 로 위치만 이관했다(구조 목표 달성, 행위 리팩터는 별도 작업으로 분리).
 
 **확정된 패키지 컨벤션**: `<domain>/{domain/(model·service)·application/(port)·adapter/(inbound·outbound)}`.
 `in`/`out` 은 Kotlin 하드키워드 ↔ ktlint `package-name` 충돌이라 **`inbound`/`outbound`** 채택.

@@ -158,6 +158,25 @@ async def _run_ollama_setup_and_select_default(url: str) -> None:
         persist_partial({"models": [DEFAULT_TEXT_MODEL]})
 
 
+async def _run_ollama_install(url: str, model: str, *, select: bool) -> None:
+    """카탈로그에서 고른 임의 모델을 설치하고(진행률은 ollama_setup.progress), 성공 시 제공 대상에 추가(P3)."""
+    from . import ollama_setup
+
+    if await ollama_setup.run_setup(url, model) and select:
+        saved = [str(m).strip() for m in (load_config().get("models") or []) if str(m).strip()]
+        if model not in saved:
+            saved.append(model)
+        persist_partial({"models": saved})
+
+
+def _model_matches(catalog_id: str, detected: str) -> bool:
+    """카탈로그 모델 id 가 설치된 모델명과 같은 계열인지(정확 일치 또는 같은 base 태그)."""
+    if detected == catalog_id:
+        return True
+    base = catalog_id.split(":", 1)[0]
+    return detected == base or detected.startswith(f"{base}:")
+
+
 def _sd_installed() -> bool:
     """로컬 Stable Diffusion(A1111) 실행 환경이 설치돼 있는지(파일시스템 검사, 네트워크 없음).
 
@@ -384,7 +403,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <section class="hero"><div class="logo"><img src="/app-icon.png" alt="NEXA 로고"></div><div><h1>NEXA Provider Agent</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
 <section class="card"><div class="ring off" id="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
 <div><div class="status-title" id="stitle">대기 중</div><div class="status-body" id="ssub">연결 시작을 누르면 풀에 등록됩니다.</div><div class="chips" id="chips"></div></div></section>
-<section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div></section>
+<section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div><div id="catalog" style="margin-top:14px"></div></section>
 <section><h2>2. 설정</h2><div class="settings">
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 연결</div><div class="setting-desc">앱을 닫아도 로그인하면 백그라운드에서 자동으로 연결돼 있어요. 이 앱은 설정을 바꿀 때만 열면 됩니다.</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div style="flex:1"><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 으로 <b>/imagine</b> 이미지 생성을 직접 제공합니다.</div><button class="btn" type="button" id="imgInstallBtn" style="display:none;margin-top:9px" onclick="openSD()">＋ 로컬 이미지 모델 설치</button><button class="secondary-btn" type="button" id="imgStartBtn" style="display:none;margin-top:9px;min-height:38px" onclick="startSDApp()">▶ Stable Diffusion 시작</button><div class="setting-desc" id="sdState" style="margin-top:7px"></div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
@@ -442,7 +461,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
   </div>
 </div>
 <script>
-const K="__SESSION_KEY__";const H={"X-Session":K};let RUN=false;let HAS_MODELS=false;let OLLAMA_INSTALLED=false;let OLLAMA_READY=false;
+const K="__SESSION_KEY__";const H={"X-Session":K};let RUN=false;let HAS_MODELS=false;let OLLAMA_INSTALLED=false;let OLLAMA_READY=false;let ADVERTISED=[];
 const MICON='<svg class="model-icon" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M27 20c0-6 7-8 11-4 4-4 11-2 11 4v18c0 10-6 18-17 18S15 48 15 38V26c0-5 4-9 9-9h3Z"></path><path d="M30 31h.1M46 31h.1M31 43c4 3 10 3 14 0"></path><path d="M20 55v10M42 55v10M52 48v14"></path></svg>';
 const IINSTALL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px;vertical-align:-4px;margin-right:8px"><path d="M12 3v10"></path><path d="m8 11 4 4 4-4"></path><rect x="4" y="16.5" width="16" height="4.5" rx="1.5"></rect></svg>';
 const ICHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:6px"><path d="M20 6 9 17l-5-5"></path></svg>';
@@ -452,11 +471,17 @@ const ISTOP='<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="w
 async function j(u,o){o=o||{};o.headers=Object.assign({},H,o.headers||{});const r=await fetch(u,o);return r.json();}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');HAS_MODELS=d.models.length>0;OLLAMA_INSTALLED=!!d.ollamaInstalled;OLLAMA_READY=!!d.ollamaReady;
-if(!d.models.length){const pb='<div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div>';let head,btn;if(!d.ollamaInstalled){head='아직 Ollama 가 설치되어 있지 않아요. 아래 버튼이면 Ollama 설치부터 기본 모델 '+esc(d.default||'')+' 다운로드까지 자동으로 해드려요.';btn='Ollama 자동 설치 + 기본 모델 받기';}else if(!d.ollamaReady){head='Ollama 는 설치돼 있지만 지금 실행(daemon)되고 있지 않아요. 아래 버튼이면 Ollama 를 시작하고 기본 모델 '+esc(d.default||'')+' 까지 준비해 드려요.';btn='Ollama 시작 + 기본 모델 받기';}else{head='Ollama 는 실행 중이지만 설치된 모델이 없어요. 아래 버튼이면 기본 모델 '+esc(d.default||'')+' 을 받아 드려요.';btn='기본 모델 받기';}box.innerHTML='<div class="empty">'+head+'<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">'+btn+'</button>'+pb+'</div>';return;}
+if(!d.models.length){const pb='<div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div>';let head,btn;if(!d.ollamaInstalled){head='아직 Ollama 가 설치되어 있지 않아요. 아래 버튼이면 Ollama 설치부터 기본 모델 '+esc(d.default||'')+' 다운로드까지 자동으로 해드려요.';btn='Ollama 자동 설치 + 기본 모델 받기';}else if(!d.ollamaReady){head='Ollama 는 설치돼 있지만 지금 실행(daemon)되고 있지 않아요. 아래 버튼이면 Ollama 를 시작하고 기본 모델 '+esc(d.default||'')+' 까지 준비해 드려요.';btn='Ollama 시작 + 기본 모델 받기';}else{head='Ollama 는 실행 중이지만 설치된 모델이 없어요. 아래 버튼이면 기본 모델 '+esc(d.default||'')+' 을 받아 드려요.';btn='기본 모델 받기';}box.innerHTML='<div class="empty">'+head+'<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">'+btn+'</button>'+pb+'</div>';loadCatalog();return;}
 const CMK='<span class="mcheck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>';
 const dp=!d.defaultInstalled?'<div class="empty">기본 모델 '+esc(d.default||'')+' 이 아직 없어요.<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">기본 모델 받기</button><div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div></div>':'';
-box.innerHTML=dp+d.models.map(m=>{const sel=d.selected.includes(m);return `<article class="model${sel?' is-selected':''}" data-model="${esc(m)}" onclick="toggleModel(this)">${CMK}${MICON}<div><div class="model-name">${esc(m)}</div><span class="badge${sel?'':' neutral'}">${sel?'제공 중':'선택 안 함'}</span></div></article>`;}).join('');}
-function toggleModel(el){el.classList.toggle('is-selected');const sel=el.classList.contains('is-selected');const b=el.querySelector('.badge');b.textContent=sel?'제공 중':'선택 안 함';b.className='badge'+(sel?'':' neutral');}
+box.innerHTML=dp+d.models.map(m=>{const sel=d.selected.includes(m);const adv=ADVERTISED.includes(m);const lbl=adv?'Discord에 제공 중':(sel?'제공 대상':'선택 안 함');return `<article class="model${sel?' is-selected':''}" data-model="${esc(m)}" onclick="toggleModel(this)">${CMK}${MICON}<div><div class="model-name">${esc(m)}</div><span class="badge${sel?'':' neutral'}">${lbl}</span></div></article>`;}).join('');loadCatalog();}
+function toggleModel(el){el.classList.toggle('is-selected');const sel=el.classList.contains('is-selected');const b=el.querySelector('.badge');b.textContent=sel?'제공 대상':'선택 안 함';b.className='badge'+(sel?'':' neutral');}
+// P3: 추천 모델 카탈로그(미설치 모델) 표시 + 개별 설치(진행률) → 제공 대상 추가.
+async function loadCatalog(){let d;try{d=await j('/api/ollama/catalog');}catch(e){return;}const box=document.getElementById('catalog');if(!box)return;const avail=(d.models||[]).filter(m=>!m.installed);if(!d.ollamaReady||!avail.length){box.innerHTML='';return;}
+const cards=avail.map(m=>{const tag=m.default?'<span class="badge" style="margin-left:6px">기본</span>':(m.recommended?'<span class="badge neutral" style="margin-left:6px">추천</span>':'');return '<div class="model" style="cursor:default"><div style="flex:1;min-width:0"><div class="model-name">'+esc(m.name||m.id)+tag+'</div><div class="helper" style="margin:3px 0 0">'+esc((m.desc||'')+(m.size?(' · '+m.size):''))+'</div></div><button class="secondary-btn cat-install" type="button" data-model="'+esc(m.id)+'" style="width:auto;margin-top:0;padding:8px 15px;white-space:nowrap" onclick="installCatalogModel(this)">설치</button></div>';}).join('');
+box.innerHTML='<div class="helper" style="margin:0 0 8px">추천 모델 더 받기 — 설치하면 제공 대상으로 추가됩니다.</div><div class="grid2">'+cards+'</div><div class="pbar" id="cpbar" style="display:none;margin-top:10px"><div class="pfill" id="cpfill"></div></div><div id="cmsg" style="margin-top:6px;color:var(--muted)"></div>';}
+async function installCatalogModel(btn){const model=btn.dataset.model;const bar=document.getElementById('cpbar'),fill=document.getElementById('cpfill'),msg=document.getElementById('cmsg');document.querySelectorAll('.cat-install').forEach(b=>{b.disabled=true;b.style.opacity=.6;b.style.cursor='default';});if(bar)bar.style.display='block';if(msg)msg.textContent=model+' 설치 준비…';try{await j('/api/ollama/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:model,select:true})});}catch(e){}pollCatalogInstall();}
+async function pollCatalogInstall(){const fill=document.getElementById('cpfill'),msg=document.getElementById('cmsg');let p;try{p=await j('/api/ollama/setup-progress');}catch(e){setTimeout(pollCatalogInstall,1500);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';if(p.phase==='error'){if(msg)msg.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));document.querySelectorAll('.cat-install').forEach(b=>{b.disabled=false;b.style.opacity=1;b.style.cursor='pointer';});return;}if(msg)msg.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){if(fill)fill.style.width='100%';if(msg)msg.textContent='✅ 설치 완료 — 제공 대상에 추가했어요.';setTimeout(loadModels,800);return;}setTimeout(pollCatalogInstall,1500);}
 function selectedModels(){return [...document.querySelectorAll('.model.is-selected')].map(c=>c.dataset.model);}
 async function setupOllama(){const b=document.getElementById('osetupBtn'),bar=document.getElementById('opbar'),el=document.getElementById('osetup');if(b){b.disabled=true;b.style.opacity=.6;b.style.cursor='default';}if(bar)bar.style.display='block';if(el)el.textContent='시작 중…';try{await j('/api/ollama/setup',{method:'POST'});}catch(e){}pollOllamaSetup();}
 async function pollOllamaSetup(){const el=document.getElementById('osetup'),fill=document.getElementById('opfill');let p;try{p=await j('/api/ollama/setup-progress');}catch(e){setTimeout(pollOllamaSetup,1500);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';if(p.phase==='error'){if(el)el.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));const b=document.getElementById('osetupBtn');if(b){b.disabled=false;b.style.opacity=1;b.style.cursor='pointer';b.textContent='다시 시도';}return;}if(el)el.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){if(fill)fill.style.width='100%';setTimeout(loadModels,800);return;}setTimeout(pollOllamaSetup,1500);}
@@ -493,7 +518,7 @@ msg.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');
 if(p.phase==='done'){SD_BUSY=false;if(fill)fill.style.width='100%';msg.innerHTML='✅ 준비 완료 — 이미지 생성이 켜졌어요. <b>연동하기</b>를 누르면 디스코드에서 바로 쓸 수 있어요.';const t=document.getElementById('img');if(t&&!t.classList.contains('on'))t.classList.add('on');loadSDStatus();const foot=document.getElementById('sdStartBtn');foot.disabled=false;foot.style.opacity=1;foot.textContent='완료';foot.onclick=closeSD;return;}
 setTimeout(pollSDSetup,2000);}
 function on(id){return document.getElementById(id).classList.contains('on');}
-async function refresh(){const s=await j('/api/status');RUN=s.running;
+async function refresh(){const s=await j('/api/status');RUN=s.running;ADVERTISED=s.running?(s.models||[]):[];
 onbVisibility(s.hasToken);
 document.getElementById('relay').textContent=s.relayUrl;
 if(s.hasToken)document.getElementById('token').placeholder='저장됨 — 바꿀 때만 입력';
@@ -976,15 +1001,51 @@ def build_app(session_key: str) -> web.Application:
         persist_partial({"auto_update": on})  # 다른 설정 영향 없이 즉시 저장
         return web.json_response({"ok": True, "autoUpdate": on})
 
+    async def ollama_catalog(req: web.Request) -> web.Response:
+        """추천 텍스트 모델 카탈로그 + 각 모델의 installed/selected 상태(P3).
+
+        프런트는 미설치 모델을 '설치 가능'으로 보여주고, status.models 와 대조해 'Discord 에 광고 중'을 표시한다.
+        """
+        _auth(req)
+        from . import ollama_setup
+
+        saved = load_config()
+        oll = await _detect_ollama()
+        detected = oll["models"]
+        selected = set(_selected_text_models(detected, saved.get("models")))
+        items = []
+        for m in ollama_setup.catalog():
+            installed = any(_model_matches(m["id"], d) for d in detected)
+            items.append({**m, "installed": installed, "selected": m["id"] in selected})
+        return web.json_response(
+            {
+                "models": items,
+                "default": DEFAULT_TEXT_MODEL,
+                "ollamaInstalled": oll["installed"],
+                "ollamaReady": oll["ready"],
+            }
+        )
+
     async def ollama_setup_start(req: web.Request) -> web.Response:
-        """앱 내 Ollama 자동 설치(감지→설치→기동→모델 pull) 시작. 진행은 폴링으로 노출."""
+        """앱 내 Ollama 설치/모델 pull 시작. 본문에 ``model`` 이 있으면 그 모델을, 없으면 기본 모델을 받는다(P3).
+
+        진행은 ``/api/ollama/setup-progress`` 폴링으로 노출(한 번에 하나 — is_busy 가드).
+        """
         _auth(req)
         from . import ollama_setup
 
         if ollama_setup.is_busy():
             return web.json_response({"ok": True, "busy": True})
         url = load_config().get("ollama_url") or "http://localhost:11434"
-        asyncio.create_task(_run_ollama_setup_and_select_default(url))
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001 - 본문 없는 POST(기본 셋업)는 기본 모델 경로
+            data = {}
+        model = str(data.get("model", "")).strip()
+        if model:
+            asyncio.create_task(_run_ollama_install(url, model, select=bool(data.get("select", True))))
+        else:
+            asyncio.create_task(_run_ollama_setup_and_select_default(url))
         return web.json_response({"ok": True})
 
     async def ollama_setup_progress(req: web.Request) -> web.Response:
@@ -1206,6 +1267,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/update-progress", update_progress)
     app.router.add_post("/api/update", update_apply)
     app.router.add_post("/api/auto-update", auto_update_set)
+    app.router.add_get("/api/ollama/catalog", ollama_catalog)
     app.router.add_post("/api/ollama/setup", ollama_setup_start)
     app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
     app.router.add_get("/api/sd/models", sd_models)

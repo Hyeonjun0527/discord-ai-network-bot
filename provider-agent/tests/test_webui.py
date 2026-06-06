@@ -798,3 +798,52 @@ async def test_setup_apply_to_background_noop_without_background(monkeypatch):
         assert d["ok"] and d["serviceRestarted"] is False
     finally:
         await client.close()
+
+
+# ── P3: 추천 모델 카탈로그 + 임의 모델 설치/선택 ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_ollama_catalog_lists_recommended_with_status(monkeypatch):
+    """/api/ollama/catalog 가 exaone 을 기본/추천으로 주고, 설치됨/선택됨 상태를 모델별로 표기한다(P3)."""
+    async def fake_detect():
+        return {"installed": True, "ready": True, "models": ["llama3.1:8b"]}
+
+    monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
+    persist_partial({"models": ["llama3.1:8b"]})
+    client = await _client()
+    try:
+        d = await (await client.get("/api/ollama/catalog", headers={"X-Session": KEY})).json()
+        assert d["default"] == DEFAULT_TEXT_MODEL
+        by_id = {m["id"]: m for m in d["models"]}
+        assert by_id[DEFAULT_TEXT_MODEL]["default"] is True and by_id[DEFAULT_TEXT_MODEL]["recommended"] is True
+        assert by_id[DEFAULT_TEXT_MODEL]["installed"] is False  # exaone 미설치
+        assert by_id["llama3.1:8b"]["installed"] is True and by_id["llama3.1:8b"]["selected"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_ollama_setup_installs_and_selects_arbitrary_model(monkeypatch):
+    """본문에 model 이 있으면 그 모델을 pull 하고 제공 대상에 추가한다(P3).
+    (회귀: 과거엔 /api/ollama/setup 이 본문을 무시하고 기본 모델만 받았다.)"""
+    captured: dict = {}
+
+    async def fake_run_setup(url, model=None):
+        captured["model"] = model
+        return True
+
+    monkeypatch.setattr("provider_agent.ollama_setup.run_setup", fake_run_setup)
+    monkeypatch.setattr("provider_agent.ollama_setup.is_busy", lambda: False)
+    persist_partial({"models": ["llama3.1:8b"]})
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/ollama/setup", headers={"X-Session": KEY}, json={"model": "qwen2.5:7b", "select": True}
+        )
+        assert (await r.json())["ok"] is True
+        await asyncio.sleep(0.05)  # fire-and-forget 설치 태스크 실행 대기
+        assert captured["model"] == "qwen2.5:7b"
+        assert "qwen2.5:7b" in load_config()["models"]  # 설치 후 제공 대상 추가
+    finally:
+        await client.close()

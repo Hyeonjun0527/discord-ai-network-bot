@@ -114,3 +114,11 @@ def test_default_model_is_exaone(monkeypatch):
     ok = asyncio.run(os_mod.run_setup("http://localhost:11434"))  # 모델 인자 생략 → DEFAULT_MODEL
     assert ok is True
     assert fake.pulled == DEFAULT_TEXT_MODEL
+
+
+def test_catalog_marks_default_and_has_metadata():
+    """추천 모델 카탈로그(P3): 기본 모델에 default=True, 모든 항목에 name/size/desc 메타가 있어야 한다."""
+    cat = os_mod.catalog()
+    assert any(m["id"] == DEFAULT_TEXT_MODEL and m["default"] for m in cat)
+    assert all(m.get("name") and m.get("size") and m.get("desc") for m in cat)
+    assert sum(1 for m in cat if m["default"]) == 1  # 기본 모델은 정확히 하나

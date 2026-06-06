@@ -85,6 +85,26 @@ def _post_provider_admin(base: str, action: str, durable_token: str, guild_id: i
         return dict(json.loads(resp.read().decode("utf-8")))
 
 
+def _post_provider_admin_policy(base: str, durable_token: str, guild_id: int, auto_approve: bool) -> dict:
+    """서버 제공 정책(신규 자동 승인) 토글 — central 이 관리자 판정 후 저장."""
+    import json
+    import ssl
+    import urllib.request
+
+    import certifi
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    body = json.dumps({"durableToken": durable_token, "guildId": guild_id, "autoApprove": auto_approve}).encode("utf-8")
+    req = urllib.request.Request(
+        base + "/provider/admin/manage/policy",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+    )
+    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+        return dict(json.loads(resp.read().decode("utf-8")))
+
+
 class ProviderAgent:
     def __init__(self, cfg: AgentConfig, ollama: OllamaClient | None = None, sd=None) -> None:
         self._cfg = cfg
@@ -420,6 +440,14 @@ class ProviderAgent:
             return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
         base = _agent_sync_base(self._cfg.relay_url)
         return await asyncio.to_thread(_post_provider_admin, base, action, dt, guild_id, target_provider_id)
+
+    async def admin_set_policy(self, guild_id: int, auto_approve: bool) -> dict:
+        """서버 제공 정책 — 신규 자동 승인 토글(관리자)."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_policy, base, dt, guild_id, auto_approve)
 
     # ── 서버별 정책(데스크톱 앱 G3) ─────────────────────────────────────
     def guild_policy(self, guild_id: int) -> dict:

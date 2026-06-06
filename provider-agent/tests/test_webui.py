@@ -520,6 +520,8 @@ async def test_server_manage_requires_running_agent(monkeypatch):
         assert d["ok"] is False  # 미실행
         d2 = await (await client.post("/api/servers/100/providers/nuke", headers={"X-Session": KEY}, json={"providerUserId": 1})).json()
         assert d2["ok"] is False  # 알 수 없는 action
+        d3 = await (await client.post("/api/servers/100/manage/policy", headers={"X-Session": KEY}, json={"autoApprove": True})).json()
+        assert d3["ok"] is False  # 미실행
     finally:
         await client.close()
 

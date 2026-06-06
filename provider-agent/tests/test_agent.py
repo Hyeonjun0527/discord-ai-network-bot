@@ -175,6 +175,26 @@ async def test_admin_action_calls_central(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_admin_set_policy_calls_central(monkeypatch, tmp_path):
+    # 자동 승인 토글도 durable 토큰으로 central 관리 채널을 호출한다.
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from provider_agent.config_file import add_connection
+
+    add_connection("dv1.fakedurable", guild_id=100, guild_name="A")
+    agent = ProviderAgent(AgentConfig(token="dv1.fakedurable"))  # type: ignore[arg-type]
+    calls: list = []
+
+    def fake(base, dt, gid, auto):
+        calls.append((dt, gid, auto))
+        return {"ok": True}
+
+    monkeypatch.setattr("provider_agent.agent._post_provider_admin_policy", fake)
+    res = await agent.admin_set_policy(100, True)
+    assert res["ok"] is True
+    assert calls == [("dv1.fakedurable", 100, True)]
+
+
+@pytest.mark.asyncio
 async def test_admin_rejects_unknown_action_and_missing_durable(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     agent = ProviderAgent(AgentConfig(token="onetime"))  # type: ignore[arg-type] durable 아님

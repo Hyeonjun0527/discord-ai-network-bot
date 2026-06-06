@@ -111,6 +111,19 @@ interface ContributionLogRepository : JpaRepository<ContributionLogEntity, Long>
         """,
     )
     fun countByGuildIdGrouped(guildId: Long): List<ProviderContributionSummary>
+
+    @Query(
+        """
+        select c.providerId as providerId, count(c) as contributionCount
+        from ContributionLogEntity c
+        where c.guildId = :guildId and c.createdAt >= :since
+        group by c.providerId
+        """,
+    )
+    fun countByGuildIdSinceGrouped(
+        guildId: Long,
+        since: Instant,
+    ): List<ProviderContributionSummary>
 }
 
 interface ProviderContributionSummary {

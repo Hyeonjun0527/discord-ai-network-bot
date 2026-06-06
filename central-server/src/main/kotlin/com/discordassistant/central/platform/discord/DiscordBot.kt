@@ -95,6 +95,9 @@ interface BotGuildLister {
      * 데스크톱 앱의 관리 API 권한 게이트용. JDA 미연결·멤버 캐시 미스·권한 없음이면 false(안전 거부).
      */
     fun isGuildAdmin(guildId: Long, userId: Long): Boolean
+
+    /** 길드 멤버의 표시 이름(닉네임 우선). JDA 미연결·멤버 캐시 미스면 null(앱에서 ID 폴백). */
+    fun memberName(guildId: Long, userId: Long): String?
 }
 
 /**
@@ -148,6 +151,10 @@ class DiscordBot(
         val member = jda?.getGuildById(guildId)?.getMemberById(userId) ?: return false
         return member.hasPermission(Permission.MANAGE_SERVER) || member.hasPermission(Permission.ADMINISTRATOR)
     }
+
+    /** 길드 멤버 표시 이름(닉네임 우선). 캐시 미스/미연결이면 null. */
+    override fun memberName(guildId: Long, userId: Long): String? =
+        jda?.getGuildById(guildId)?.getMemberById(userId)?.effectiveName
 
     private val fallbackAttempted = AtomicBoolean(false)
 

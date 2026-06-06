@@ -222,9 +222,13 @@
 >   `POST /api/servers/{g}/providers/{action}` 프록시(앱 → webui → central).
 > - **role 별도 전달 불필요**: 앱은 `serverManage` 응답 ok 로 관리자 여부 판정(비관리자는 ok=false) — `AuthOkFrame`
 >   확장 회피. 와이어 무변경(HTTP body DTO).
-> - **남은 것**: ① 로스터/대기 목록의 이름·모델·today 보강(central 은 현재 providerId·state 만 — 이름/통계는
->   Discord/집계 소스 결합 후속) ② 관리 정책 토글(autoApprove)은 슬래시 명령만(관리 API 미노출). 프로토타입은
->   이상적 shape 를 mock 으로 확정해 둔다.
+> - **로스터 보강 완료**: `manage` 가 이름(JDA `memberName`)·제공 모델 수(연결 세션 capability)·오늘 건수
+>   (`UsageService.providerContributionsSince`, 자정 UTC)·자동 승인 정책(`PolicyService`)을 결합해 반환.
+>   ArchUnit(controller↛persistence) 준수 위해 `ProviderRosterInfo` 인터페이스 + 어댑터로 분리.
+> - **자동 승인 토글 완료**: `/provider/admin/manage/policy`(POST {autoApprove}) → `PolicyService.setAutoApprove`
+>   (슬래시·웹과 동일 저장·감사). 관리 화면 13 에서 켜기/끄기.
+> - **남은 관리 탭(08~12)**: 채널·역할·채널 AI·RAG·프리셋·다중응답은 프로토타입 서브탭 골격만 — central 에
+>   기능은 있으나 앱 경로는 단계적으로 추가(같은 durable-토큰+관리자-판정 패턴 재사용).
 
 ## 07 · 서버 상세 — 개요 (기부자 관점, 유일 화면)
 ```

@@ -78,7 +78,8 @@ test('13 서버 관리: Provider 승인 → 로스터 이동 / 제거(확인 모
   await expect(page.locator('#serverManage .dtitle h1')).toHaveText('서버 관리');
   await expect(page.locator('#serverManage .mtab.active')).toContainText('Provider');
   await expect(page.locator('#serverManage')).toContainText('승인 대기 (1)');
-  await expect(page.locator('#serverManage .prov-row')).toHaveCount(4); // 대기1 + 로스터3
+  await expect(page.locator('#serverManage')).toContainText('user_kim'); // 로스터 이름 보강
+  await expect(page.locator('#serverManage .prov-row')).toHaveCount(5); // 대기1 + 로스터3 + 정책1
   // 승인 → 대기 0, 로스터 4
   await page.click('#serverManage [data-approve="5001"]');
   await expect(page.locator('#serverManage')).toContainText('연결된 Provider (4)');
@@ -91,6 +92,15 @@ test('13 서버 관리: Provider 승인 → 로스터 이동 / 제거(확인 모
   // 뒤로 → 서버 상세
   await page.click('#serverManage #mBack');
   await expect(page.locator('#serverDetail')).toBeVisible();
+});
+
+test('13 서버 관리: 신규 자동 승인 토글', async ({ page }) => {
+  await page.click('.nav-item[data-view="servers"]');
+  await page.locator('#serverList .srv-item[data-guild="1001"]').click();
+  await page.click('#serverDetail #dManageBtn');
+  await expect(page.locator('#serverManage')).toContainText('꺼짐 — 관리자 승인');
+  await page.click('#serverManage [data-autotoggle="1"]'); // 켜기
+  await expect(page.locator('#serverManage')).toContainText('켜짐 — 승인 없이');
 });
 
 test('13 서버 관리: 미구현 탭은 단계적 안내(졸속 mock 금지)', async ({ page }) => {

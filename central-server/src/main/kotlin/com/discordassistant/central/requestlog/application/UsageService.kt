@@ -94,6 +94,13 @@ class UsageService(
     fun providerContributions(guildId: Long): List<Pair<Long, Long>> =
         contribution.countByGuildIdGrouped(guildId).map { it.providerId to it.contributionCount }
 
+    /** 서버의 provider 별 기여 건수(since 이후) — 관리 화면 '오늘 N건' 용. */
+    fun providerContributionsSince(
+        guildId: Long,
+        since: Instant,
+    ): Map<Long, Long> =
+        contribution.countByGuildIdSinceGrouped(guildId, since).associate { it.providerId to it.contributionCount }
+
     fun totalContributions(guildId: Long): Long = providerContributions(guildId).sumOf { it.second }
 
     fun providerFailures(providerId: Long): Int = health.findByProviderId(providerId)?.failures ?: 0

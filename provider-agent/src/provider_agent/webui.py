@@ -975,6 +975,20 @@ def build_app(session_key: str) -> web.Application:
             return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
         return web.json_response(await agent.admin_action(action, guild_id, target))  # type: ignore[attr-defined]
 
+    async def server_manage_policy(req: web.Request) -> web.Response:
+        """서버 제공 정책 — 신규 자동 승인 토글(관리자). body {autoApprove}. central 이 권한 판정."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        auto = bool(data.get("autoApprove"))
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_set_policy(guild_id, auto))  # type: ignore[attr-defined]
+
     async def server_rename(req: web.Request) -> web.Response:
         """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). index + name."""
         _auth(req)
@@ -1324,6 +1338,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/server-rename", server_rename)
     app.router.add_post("/api/servers/{guildId}/policy", server_policy)
     app.router.add_get("/api/servers/{guildId}/manage", server_manage)
+    app.router.add_post("/api/servers/{guildId}/manage/policy", server_manage_policy)
     app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
     app.router.add_post("/api/server-add-token", server_add_token)
     app.router.add_get("/api/install-info", install_info)

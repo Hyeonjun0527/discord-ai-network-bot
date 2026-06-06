@@ -51,8 +51,8 @@ export const ENDPOINTS = Object.freeze({
   providerApprove: (g) => '/api/servers/' + g + '/providers/approve', // POST {providerUserId} — /provider-approve
   providerReject: (g) => '/api/servers/' + g + '/providers/reject',  // POST {providerUserId} — /provider-reject
   providerRemove: (g) => '/api/servers/' + g + '/providers/remove',  // POST {providerUserId} — /provider-remove
-  // ⚠ 후속: 관리 정책 토글(autoApprove 등)은 아직 슬래시 명령만 — 관리 API 미노출(다음 단계).
-  serverManagePolicy: (g) => '/api/servers/' + g + '/manage/policy',
+  // ✅ 서버 정책 토글(신규 자동 승인) — central /provider/admin/manage/policy. PolicyService.setAutoApprove 재사용.
+  serverManagePolicy: (g) => '/api/servers/' + g + '/manage/policy', // POST {autoApprove}
   onboardApply: '/api/onboard-apply',
   connectOpen: '/api/connect-open',
   sdStatus: '/api/sd/status',

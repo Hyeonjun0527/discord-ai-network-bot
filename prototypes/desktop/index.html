@@ -1300,6 +1300,12 @@
           '<div class="prov-main"><div class="prov-nm">' + p.name + (p.isMe ? '<span class="me">나</span>' : '') + '</div>' +
           '<div class="prov-meta"><span class="srv-st ' + s[0] + '"><span class="d"></span>' + s[1] + '</span> · 모델 ' + p.models + ' · 오늘 ' + p.today + '건</div></div>' +
           (p.isMe ? '' : '<div class="prov-acts"><button class="btn btn--sm btn--secondary" data-remove="' + p.providerUserId + '" data-name="' + p.name + '">제거</button></div>') + '</div>'; }).join('');
+      // 서버 제공 정책 — 신규 자동 승인 토글
+      const auto = m.policy.autoApprove;
+      html += '<div class="msec-label">서버 제공 정책</div>' +
+        '<div class="prov-row"><div class="prov-main"><div class="prov-nm">신규 Provider 자동 승인</div>' +
+        '<div class="prov-meta">' + (auto ? '켜짐 — 승인 없이 바로 참여해요' : '꺼짐 — 관리자 승인이 필요해요') + '</div></div>' +
+        '<div class="prov-acts"><button class="btn btn--sm ' + (auto ? 'btn--primary' : 'btn--secondary') + '" data-autotoggle="' + (auto ? '0' : '1') + '">' + (auto ? '끄기' : '켜기') + '</button></div></div>';
       return html;
     }
 
@@ -1309,6 +1315,13 @@
       manageEl.querySelectorAll('[data-reject]').forEach(b => b.onclick = async () => { await api.rejectProvider(d.guildId, +b.dataset.reject); toast('가입 요청을 거절했어요', { type: 'info' }); refresh(); });
       // 제거는 위험 작업(디자인 정책 7) → 확인 모달 뒤로
       manageEl.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => confirmRemoveProvider(d, +b.dataset.remove, b.dataset.name, refresh));
+      const at = manageEl.querySelector('[data-autotoggle]');
+      if (at) at.onclick = async () => {
+        const on = at.dataset.autotoggle === '1';
+        await api.setManagePolicy(d.guildId, { autoApprove: on });
+        toast(on ? '신규 자동 승인을 켰어요' : '신규 자동 승인을 껐어요', { type: on ? 'ok' : 'info' });
+        refresh();
+      };
     }
 
     function confirmRemoveProvider(d, userId, name, done) {

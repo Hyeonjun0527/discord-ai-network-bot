@@ -482,11 +482,23 @@
     .dcard.dmanage .dsub { margin-bottom: 14px; }
     .dcard.dmanage .ext { font-size: 12px; opacity: .8; }
     /* 정책 변경 모달 폼 */
-    .pform { display: flex; flex-direction: column; gap: 14px; margin: 4px 0 2px; }
-    .pform label { display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; font-weight: 700; color: #d2dbe7; }
-    .pform input, .pform select { -webkit-appearance: none; appearance: none; height: 42px; padding: 0 13px; border-radius: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--text); font: inherit; font-size: 14px; }
-    .pform select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239fb0cc' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 13px center; padding-right: 38px; }
-    .pform input:focus, .pform select:focus { outline: none; border-color: color-mix(in srgb, var(--c-accent) 45%, transparent); }
+    .pform { display: flex; flex-direction: column; gap: 18px; margin: 4px 0 2px; }
+    .pfield { display: flex; flex-direction: column; gap: 9px; }
+    .pfield > label { font-size: 13.5px; font-weight: 700; color: #d2dbe7; }
+    /* 세그먼트(하루 한도·동시 처리) — 고정 선택지 */
+    .pseg { display: flex; gap: 6px; }
+    .pseg button { flex: 1; padding: 11px 0; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: #aeb9d4; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: .14s ease; }
+    .pseg button:hover { color: #fff; background: rgba(255,255,255,.05); }
+    .pseg button.active { color: #fff; background: color-mix(in srgb, var(--c-violet) 20%, transparent); border-color: color-mix(in srgb, var(--c-violet) 45%, transparent); }
+    /* 최대 시간 스테퍼(30초 단위) */
+    .pstep { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: rgba(255,255,255,.03); width: fit-content; }
+    .pstep button { width: 48px; height: 44px; border: 0; background: transparent; color: #d6deea; font-size: 21px; line-height: 1; cursor: pointer; transition: .14s ease; }
+    .pstep button:hover { background: color-mix(in srgb, var(--c-violet) 16%, transparent); color: #fff; }
+    .pstep span { min-width: 132px; text-align: center; font-size: 15px; font-weight: 700; color: #eef2fb; }
+    /* 공개 대상 셀렉트 */
+    .pform select { -webkit-appearance: none; appearance: none; height: 44px; padding: 0 38px 0 14px; border-radius: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--text); font: inherit; font-size: 14px; font-weight: 600;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239fb0cc' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 13px center; }
+    .pform select:focus { outline: none; border-color: color-mix(in srgb, var(--c-accent) 45%, transparent); }
 
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     .stat {
@@ -1113,7 +1125,7 @@
         '<div class="dpolicy">' +
           '<div><span>하루 한도</span><b>' + (d.policy.dailyLimit === 0 ? '무제한' : d.policy.dailyLimit + '건') + '</b></div>' +
           '<div><span>동시 처리</span><b>' + d.policy.maxConcurrency + '</b></div>' +
-          '<div><span>최대 시간</span><b>' + d.policy.maxSeconds + '초</b></div>' +
+          '<div><span>최대 시간</span><b>' + fmtSec(d.policy.maxSeconds) + '</b></div>' +
           '<div><span>공개 대상</span><b>' + presentScope(d.policy.scope) + '</b></div>' +
         '</div></div>';
       // PENDING 안내
@@ -1161,30 +1173,50 @@
       if (polb) polb.onclick = () => openPolicyModal(d);
     }
 
-    // 내 self-service 정책 변경 모달(/provider-limit·scope 의 GUI)
+    // 초 → "10분"·"1분 30초"·"30초" 사람친화 표기
+    const fmtSec = (s) => { const m = Math.floor(s / 60), r = s % 60; return m && r ? m + '분 ' + r + '초' : m ? m + '분' : r + '초'; };
+
+    // 내 self-service 정책 변경 모달 — 선택지 고정(자유 입력 X). 기본: 하루 50·동시 1·최대 10분·모두에게.
     function openPolicyModal(d) {
+      const DAILY = [{ v: 10, t: '10건' }, { v: 50, t: '50건' }, { v: 100, t: '100건' }, { v: 0, t: '무제한' }];
+      const CONC = [1, 2, 3, 4, 5];
+      const seg = (id, items, cur) => '<div class="pseg" id="' + id + '">' +
+        items.map(o => { const v = typeof o === 'object' ? o.v : o, t = typeof o === 'object' ? o.t : o;
+          return '<button type="button" data-v="' + v + '"' + (v === cur ? ' class="active"' : '') + '>' + t + '</button>'; }).join('') + '</div>';
       const lay = document.createElement('div');
       lay.className = 'modal-layer';
-      lay.innerHTML = '<div class="modal" style="width:min(440px,100%)">' +
+      lay.innerHTML = '<div class="modal" style="width:min(460px,100%)">' +
         '<button class="modal-x" data-x aria-label="닫기">✕</button>' +
         '<h3>내 제공 정책</h3><p class="msub">이 서버에 대한 <b>내</b> 한도·공개 대상만 바꿔요(다른 참여자엔 영향 없음).</p>' +
         '<div class="pform">' +
-          '<label>하루 한도 <span class="dim">(0 = 무제한)</span><input type="number" min="0" id="pDaily" value="' + d.policy.dailyLimit + '"></label>' +
-          '<label>동시 처리<input type="number" min="1" max="8" id="pConc" value="' + d.policy.maxConcurrency + '"></label>' +
-          '<label>최대 시간(초)<input type="number" min="5" max="120" id="pSec" value="' + d.policy.maxSeconds + '"></label>' +
-          '<label>공개 대상<select id="pScope">' +
+          '<div class="pfield"><label>하루 한도</label>' + seg('pDaily', DAILY, d.policy.dailyLimit) + '</div>' +
+          '<div class="pfield"><label>동시 처리 <span class="dim">· 한 번에 처리할 요청 수</span></label>' + seg('pConc', CONC, d.policy.maxConcurrency) + '</div>' +
+          '<div class="pfield"><label>최대 시간 <span class="dim">· 한 요청 처리 제한(30초 단위)</span></label>' +
+            '<div class="pstep"><button type="button" data-step="-1" aria-label="줄이기">−</button>' +
+            '<span id="pSecVal" data-sec="' + d.policy.maxSeconds + '">' + fmtSec(d.policy.maxSeconds) + '</span>' +
+            '<button type="button" data-step="1" aria-label="늘리기">+</button></div></div>' +
+          '<div class="pfield"><label>공개 대상</label><select id="pScope">' +
             ['ALL', 'TRUSTED', 'ADMIN'].map(s => '<option value="' + s + '"' + (d.policy.scope === s ? ' selected' : '') + '>' + presentScope(s) + '</option>').join('') +
-          '</select></label>' +
+          '</select></div>' +
         '</div>' +
         '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
         '<button class="btn btn--md btn--primary" id="pSave">저장</button></div></div>';
       document.body.appendChild(lay);
       lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
+      // 세그먼트(하루 한도·동시 처리) 단일 선택 토글
+      lay.querySelectorAll('.pseg').forEach(seg => seg.querySelectorAll('button').forEach(b =>
+        b.onclick = () => seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b))));
+      // 최대 시간 스테퍼(30초 단위, 30초~30분)
+      const secEl = lay.querySelector('#pSecVal');
+      lay.querySelectorAll('[data-step]').forEach(b => b.onclick = () => {
+        const s = Math.max(30, Math.min(1800, parseInt(secEl.dataset.sec, 10) + (+b.dataset.step) * 30));
+        secEl.dataset.sec = s; secEl.textContent = fmtSec(s);
+      });
       lay.querySelector('#pSave').onclick = async () => {
         const policy = {
-          dailyLimit: Math.max(0, parseInt(lay.querySelector('#pDaily').value || '0', 10)),
-          maxConcurrency: Math.max(1, parseInt(lay.querySelector('#pConc').value || '1', 10)),
-          maxSeconds: Math.max(5, parseInt(lay.querySelector('#pSec').value || '30', 10)),
+          dailyLimit: +lay.querySelector('#pDaily button.active').dataset.v,
+          maxConcurrency: +lay.querySelector('#pConc button.active').dataset.v,
+          maxSeconds: +secEl.dataset.sec,
           scope: lay.querySelector('#pScope').value,
         };
         await api.setServerPolicy(d.guildId, policy);

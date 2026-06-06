@@ -71,12 +71,19 @@ test('07 서버 상세: 일시중지 토글 + 내 self-service 정책 변경 모
   await page.locator('#serverList .srv-item[data-guild="1001"]').click();
   await page.click('#serverDetail #dPauseBtn');
   await expect(page.locator('#serverDetail #dPauseBtn')).toHaveText('재개');
-  // 내 정책 변경 → 하루 한도 0(무제한)
+  // 내 정책 변경 모달 — 세그먼트(자유 입력 X) + 시간 스테퍼
   await page.click('#serverDetail #dPolicyBtn');
   await expect(page.locator('.modal-layer .modal', { hasText: '내 제공 정책' })).toBeVisible();
-  await page.fill('#pDaily', '0');
+  // 하루 한도: 무제한 칩, 동시 처리: 3 칩
+  await page.click('#pDaily button[data-v="0"]');
+  await page.click('#pConc button[data-v="3"]');
+  // 최대 시간 스테퍼 +30초씩 2번(기본 10분 → 11분)
+  await page.click('.pstep button[data-step="1"]');
+  await page.click('.pstep button[data-step="1"]');
+  await expect(page.locator('#pSecVal')).toHaveText('11분');
   await page.click('#pSave');
   await expect(page.locator('#serverDetail .dpolicy')).toContainText('무제한');
+  await expect(page.locator('#serverDetail .dpolicy')).toContainText('11분');
 });
 
 test('홈: 제공 상태 전환(정상↔문제) + 진단', async ({ page }) => {

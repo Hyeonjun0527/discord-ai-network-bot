@@ -32,6 +32,15 @@ class DownloadSecurityTest
         }
 
         @Test
+        fun `brand assets stay public when oauth is enabled`() {
+            mvc
+                .perform(get("/assets/nexa-menu-hero.png"))
+                .andExpect(status().isOk)
+                .andExpect(header().string("Content-Type", containsString("image/png")))
+                .andExpect(header().doesNotExist("Location"))
+        }
+
+        @Test
         fun `dashboard still requires oauth when oauth is enabled`() {
             mvc
                 .perform(get("/admin/dashboard/"))

@@ -171,10 +171,18 @@
     .nav-spacer { flex: 1; }
     .nav-foot { padding: 10px 13px; color: var(--subtle); font-size: 11.5px; line-height: 1.6; font-family: ui-monospace, Menlo, monospace; letter-spacing: .04em; }
 
+    /* ── 전역 스크롤바(디자인 언어 SSOT) ──
+       OS 기본 스크롤바는 어두운 글래스 톤과 충돌한다. 모든 스크롤 영역을 hue-only 한 얇은
+       트랙리스 썸으로 통일. WebKit + Firefox(scrollbar-*) 둘 다 커버. */
+    * { scrollbar-width: thin; scrollbar-color: rgba(150,168,220,.22) transparent; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(150,168,220,.16); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(150,168,220,.30); border: 3px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-corner { background: transparent; }
+
     /* ── 메인 콘텐츠 ── */
     .main { grid-area: main; overflow-y: auto; overflow-x: hidden; padding: 30px 36px 48px; }
-    .main::-webkit-scrollbar { width: 10px; }
-    .main::-webkit-scrollbar-thumb { background: rgba(150,168,220,.16); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
 
     .view { display: none; }
     .view.active { display: block; animation: fade .35s ease; }

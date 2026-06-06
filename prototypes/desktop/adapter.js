@@ -47,9 +47,9 @@ const MOCK = {
     { name: 'gemma2:2b', size: '1.6GB', tags: ['가벼움'], on: false, lastUsed: '3일 전' },
   ],
   defaultModel: 'exaone3.5:7.8b',
-  // 서버 관리(관리자 전용) — 앱 내 관리. ⚠ Gap-M: provider-agent↔central 관리 채널 신설 필요
-  //   (현재 central 관리 API 는 웹 OAuth 세션용 /api/ai-network/* + 슬래시 명령. 앱 경로 없음).
-  // guildId → { policy, pending(승인 대기), roster(연결된 Provider) }.
+  // 서버 관리(관리자 전용) — 앱 내 관리. Provider 채널은 ✅ 구현(/provider/admin/*).
+  //   채널·역할/채널AI/RAG/프리셋/다중응답 탭은 프로토타입 mock(흐름 검증). 실연동은 Gap-M 채널 단계 확장.
+  // guildId → { policy, pending, roster, channels, channelAi, rag, presets, multi }.
   manage: {
     1001: {
       policy: { autoApprove: false, defaultDailyLimit: 50, scope: 'ALL' },
@@ -59,11 +59,55 @@ const MOCK = {
         { providerUserId: 5002, name: 'user_kim', isMe: false, state: ProviderState.ONLINE_IDLE, models: 1, today: 0, avgMs: 0 },
         { providerUserId: 5003, name: 'user_park', isMe: false, state: ProviderState.PAUSED, models: 2, today: 0, avgMs: 0 },
       ],
+      // 08 채널·역할 정책
+      channels: {
+        defaultModel: 'llama3.1:8b', defaultLang: '한국어',
+        list: [
+          { name: 'general', aiAllowed: true }, { name: 'ai-chat', aiAllowed: true },
+          { name: '코드리뷰', aiAllowed: true }, { name: '공지', aiAllowed: false },
+        ],
+        roles: [
+          { name: '@everyone', dailyLimit: 20, image: false }, { name: '@멤버', dailyLimit: 100, image: true },
+          { name: '@VIP', dailyLimit: 0, image: true }, { name: '@차단됨', dailyLimit: -1, image: false },
+        ],
+      },
+      // 09 채널 AI(채널별 성격)
+      channelAi: [
+        { channel: 'ai-chat', model: 'llama3.1:8b', tone: '친근', on: true },
+        { channel: '코드리뷰', model: 'qwen2.5-coder:7b', tone: '간결', on: true },
+        { channel: 'general', model: null, tone: null, on: false },
+      ],
+      // 10 RAG(지식 문서)
+      rag: {
+        docs: [
+          { name: '온보딩 가이드.pdf', status: 'indexed', chunks: 12, when: '2일 전' },
+          { name: 'FAQ.md', status: 'indexed', chunks: 8, when: '오늘' },
+          { name: 'API문서.txt', status: 'indexing', chunks: 0, when: '-' },
+        ],
+        applyChannels: ['ai-chat', '코드리뷰'],
+      },
+      // 11 프리셋(설정 묶음)
+      presets: [
+        { name: '번역봇', model: 'llama3.1:8b', tone: '친근', applied: 'general', on: true },
+        { name: '코드도우미', model: 'qwen2.5-coder:7b', tone: '간결', applied: '코드리뷰', on: true },
+        { name: '요약봇', model: 'llama3.1:8b', tone: '중립', applied: null, on: false },
+      ],
+      // 12 다중응답
+      multi: {
+        enabled: true,
+        models: [
+          { name: 'llama3.1:8b', tag: '한국어', on: true }, { name: 'qwen2.5:14b', tag: '다국어', on: true },
+          { name: 'gemma2:2b', tag: '가벼움', on: false },
+        ],
+        mode: '나란히 비교', finalize: '사용자 투표', applyChannel: 'ai-chat',
+      },
     },
     1004: {
       policy: { autoApprove: true, defaultDailyLimit: 50, scope: 'ALL' },
       pending: [],
       roster: [{ providerUserId: 0, name: '나 (이 PC)', isMe: true, state: ProviderState.PENDING, models: 0, today: 0, avgMs: 0 }],
+      channels: { defaultModel: 'exaone3.5:7.8b', defaultLang: '한국어', list: [{ name: 'general', aiAllowed: true }], roles: [{ name: '@everyone', dailyLimit: 20, image: false }] },
+      channelAi: [], rag: { docs: [], applyChannels: [] }, presets: [], multi: { enabled: false, models: [], mode: '나란히 비교', finalize: '사용자 투표', applyChannel: null },
     },
   },
   // 추천 설치 카탈로그 — webui.py /api/ollama/catalog. Ollama 가 전체 목록 API 를 안 주므로

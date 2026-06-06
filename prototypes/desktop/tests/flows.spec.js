@@ -120,12 +120,31 @@ test('서버 전환 시 관리 화면이 잔류하지 않는다(관리자 관리
   await expect(page.locator('#serverDetail #dManageBtn')).toHaveCount(0); // 기부자엔 관리 진입 버튼 없음
 });
 
-test('13 서버 관리: 미구현 탭은 단계적 안내(졸속 mock 금지)', async ({ page }) => {
-  await page.click('.nav-item[data-view="servers"]');
-  await page.locator('#serverList .srv-item[data-guild="1001"]').click();
-  await page.click('#serverDetail #dManageBtn');
+test('08~12 관리 탭: 채널·역할/채널AI/RAG/프리셋/다중응답 렌더', async ({ page }) => {
+  await page.goto('/index.html#/servers/1001/manage');
+  await page.waitForFunction(() => !!window.App);
+  await page.click('#serverManage .mtab[data-mtab="channels"]');
+  await expect(page.locator('#serverManage')).toContainText('채널 정책');
+  await expect(page.locator('#serverManage .mrow').first()).toBeVisible();
+  await page.click('#serverManage .mtab[data-mtab="channelai"]');
+  await expect(page.locator('#serverManage')).toContainText('# ai-chat');
   await page.click('#serverManage .mtab[data-mtab="rag"]');
-  await expect(page.locator('#serverManage .msoon')).toContainText('단계적으로');
+  await expect(page.locator('#serverManage')).toContainText('색인 완료');
+  await page.click('#serverManage .mtab[data-mtab="preset"]');
+  await expect(page.locator('#serverManage')).toContainText('번역봇');
+  await page.click('#serverManage .mtab[data-mtab="multi"]');
+  await expect(page.locator('#serverManage')).toContainText('다중응답 사용');
+});
+
+test('관리 탭 토글: 채널 AI on/off + URL 동기화', async ({ page }) => {
+  await page.goto('/index.html#/servers/1001/manage/channelai');
+  await page.waitForFunction(() => !!window.App);
+  await expect(page).toHaveURL(/#\/servers\/1001\/manage\/channelai$/);
+  await expect(page.locator('#serverManage .mtab.active')).toContainText('채널 AI');
+  const toggle = page.locator('#serverManage [data-cai-toggle="ai-chat"]');
+  await expect(toggle).toHaveText('AI 켜짐');
+  await toggle.click();
+  await expect(page.locator('#serverManage [data-cai-toggle="ai-chat"]')).toHaveText('AI 꺼짐');
 });
 
 test('07 서버 상세: 일시중지 토글 + 내 self-service 정책 변경 모달', async ({ page }) => {

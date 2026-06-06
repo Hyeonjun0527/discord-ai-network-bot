@@ -500,6 +500,16 @@
     .prov-acts { flex: 0 0 auto; display: flex; gap: 8px; }
     .msec-label { font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--subtle); margin: 22px 0 11px; }
     .msec-label:first-child { margin-top: 0; }
+    /* 관리 탭 공통 행·토글(채널·역할/채널AI/RAG/프리셋/다중응답) */
+    .mrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 4px; border-bottom: 1px solid var(--line); }
+    .mrow:last-child { border-bottom: 0; }
+    .mrow-nm { font-size: 14px; font-weight: 600; color: #e3e9f3; }
+    .mrow-meta { font-size: 13px; color: var(--muted); }
+    .mtoggle { flex: 0 0 auto; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; transition: .14s ease; }
+    .mtoggle.on { color: #cdebd6; background: color-mix(in srgb, var(--ok) 16%, transparent); border-color: color-mix(in srgb, var(--ok) 38%, transparent); }
+    .mtoggle:hover { filter: brightness(1.12); }
+    .mt { margin-top: 14px; }
+    .mt-s { margin-top: 11px; }
     /* 정책 변경 모달 폼 */
     .pform { display: flex; flex-direction: column; gap: 18px; margin: 4px 0 2px; }
     .pfield { display: flex; flex-direction: column; gap: 9px; }
@@ -1263,30 +1273,43 @@
     ];
     let _manageTab = 'provider';
 
-    async function openManage(d) {
+    async function openManage(d, tab) {
       // 관리는 관리자(role=ADMIN)만. 기부자/승인대기는 진입 불가(서버 관리 탭은 관리자 전용).
       if (d.role !== Role.ADMIN || d.state === ProviderState.PENDING) { openDetail(d.guildId); return; }
-      _manageTab = 'provider';
+      _manageTab = MTABS.some(t => t.k === tab) ? tab : 'provider';
       const m = await api.getServerManage(d.guildId);
       detailEl.hidden = true; manageEl.hidden = false; wrapEl.hidden = true;
       renderManage(d, m);
-      if (window.navTo) window.navTo('#/servers/' + d.guildId + '/manage');
+      if (window.navTo) window.navTo('#/servers/' + d.guildId + '/manage' + (_manageTab === 'provider' ? '' : '/' + _manageTab));
     }
     function backToDetail(d) { manageEl.hidden = true; openDetail(d.guildId); }
+
+    const TAB_RENDER = {
+      provider: (m) => renderProviderTab(m),
+      overview: (m, d) => renderOverviewTab(m, d),
+      channels: (m) => renderChannelsTab(m),
+      channelai: (m) => renderChannelAiTab(m),
+      rag: (m) => renderRagTab(m),
+      preset: (m) => renderPresetTab(m),
+      multi: (m) => renderMultiTab(m),
+    };
 
     function renderManage(d, m) {
       const tabs = MTABS.map(t => '<button class="mtab' + (t.k === _manageTab ? ' active' : '') + '" data-mtab="' + t.k + '">' + t.t +
         (t.k === 'provider' && m.pending.length ? '<span class="badge">' + m.pending.length + '</span>' : '') + '</button>').join('');
-      const body = _manageTab === 'provider' ? renderProviderTab(m)
-        : '<div class="msoon"><b>' + MTABS.find(t => t.k === _manageTab).t + ' 관리</b>이 화면은 앱으로 단계적으로 들여오는 중이에요(백엔드 관리 채널 Gap-M).</div>';
+      const body = (TAB_RENDER[_manageTab] || (() => ''))(m, d);
       manageEl.innerHTML =
         '<div class="dhead"><button class="dback" id="mBack">‹ ' + d.guildName + '</button>' +
           '<div class="dtitle"><h1>서버 관리</h1></div>' +
           '<div class="dsubhead">' + d.guildName + ' · 관리자 전용</div></div>' +
         '<div class="mtabs">' + tabs + '</div><div id="mBody">' + body + '</div>';
       manageEl.querySelector('#mBack').onclick = () => backToDetail(d);
-      manageEl.querySelectorAll('[data-mtab]').forEach(b => b.onclick = () => { _manageTab = b.dataset.mtab; renderManage(d, m); });
+      manageEl.querySelectorAll('[data-mtab]').forEach(b => b.onclick = () => {
+        _manageTab = b.dataset.mtab; renderManage(d, m);
+        if (window.navTo) window.navTo('#/servers/' + d.guildId + '/manage' + (_manageTab === 'provider' ? '' : '/' + _manageTab));
+      });
       if (_manageTab === 'provider') bindProviderActions(d);
+      else bindTabActions(d, m);
     }
 
     const ST_MAP = { [ProviderState.ONLINE_IDLE]: ['ok', '● 제공 중'], [ProviderState.ONLINE_BUSY]: ['ok', '● 응답 중'], [ProviderState.PAUSED]: ['paused', '⏸ 일시중지'], [ProviderState.PENDING]: ['pending', '⚠ 승인 대기'] };
@@ -1346,13 +1369,92 @@
       lay.querySelector('#rmYes').onclick = async () => { await api.removeProvider(d.guildId, userId); lay.remove(); toast(name + ' 을(를) 제거했어요', { type: 'info' }); done(); };
     }
 
+    // ── 관리 탭 08~12 (mock — 흐름·구조 검증. 실연동은 Gap-M 채널 단계 확장) ──
+    function renderOverviewTab(m, d) {
+      const todaySum = m.roster.reduce((a, p) => a + (p.today || 0), 0);
+      return '<div class="dcard"><div class="dlabel">서버 요약</div>' +
+        '<div class="dstats">' +
+          '<div><b>' + fmtMembers(d.members) + '</b><span>멤버</span></div>' +
+          '<div><b>' + m.roster.length + '</b><span>Provider</span></div>' +
+          '<div><b>' + todaySum + '</b><span>오늘 처리</span></div>' +
+        '</div></div>' +
+        (m.pending.length ? '<div class="dcard dwarn"><div class="dlabel">⚠ 승인 대기 ' + m.pending.length + '명</div><div class="dsub">Provider 탭에서 승인/거절할 수 있어요.</div></div>' : '') +
+        '<div class="dcard"><div class="dlabel">서버 기본값</div><div class="dsub">기본 모델 ' + m.channels.defaultModel + ' · 기본 언어 ' + m.channels.defaultLang + '</div></div>';
+    }
+
+    function renderChannelsTab(m) {
+      const c = m.channels;
+      const ch = c.list.map(x => '<div class="mrow"><span class="mrow-nm"># ' + x.name + '</span>' +
+        '<button class="mtoggle' + (x.aiAllowed ? ' on' : '') + '" data-ch-toggle="' + x.name + '">' + (x.aiAllowed ? 'AI 허용' : 'AI 금지') + '</button></div>').join('');
+      const roles = c.roles.map(r => '<div class="mrow"><span class="mrow-nm">' + r.name + '</span>' +
+        '<span class="mrow-meta">' + (r.dailyLimit < 0 ? '사용 불가' : (r.dailyLimit === 0 ? '무제한' : '하루 ' + r.dailyLimit + '건')) + ' · 이미지 ' + (r.image ? '●' : '○') + '</span></div>').join('');
+      return '<div class="dcard"><div class="dlabel">서버 기본값</div><div class="dsub">기본 모델 ' + c.defaultModel + ' · 기본 언어 ' + c.defaultLang + '</div></div>' +
+        '<div class="msec-label">채널 정책</div><div class="dcard">' + ch + '</div>' +
+        '<div class="msec-label">역할별 사용 정책</div><div class="dcard">' + roles + '</div>';
+    }
+
+    function renderChannelAiTab(m) {
+      if (!m.channelAi.length) return '<div class="msoon"><b>채널 AI 없음</b>채널마다 다른 AI 성격(모델·말투·프롬프트)을 지정할 수 있어요.</div>' +
+        '<button class="btn btn--md btn--secondary mt" data-soon="채널 AI 추가">+ 채널 AI 추가</button>';
+      const cards = m.channelAi.map(c => '<div class="dcard"><div class="drow"><div class="dlabel"># ' + c.channel + '</div>' +
+        '<button class="mtoggle' + (c.on ? ' on' : '') + '" data-cai-toggle="' + c.channel + '">' + (c.on ? 'AI 켜짐' : 'AI 꺼짐') + '</button></div>' +
+        (c.on ? '<div class="dsub">모델 ' + c.model + ' · 말투 ' + c.tone + '</div><button class="btn btn--sm btn--secondary mt-s" data-soon="시스템 프롬프트 편집">시스템 프롬프트 편집</button>'
+              : '<div class="dsub dim">이 채널은 AI 가 꺼져 있어요</div>') + '</div>').join('');
+      return cards + '<button class="btn btn--md btn--secondary mt" data-soon="채널 AI 추가">+ 채널 AI 추가</button>';
+    }
+
+    function renderRagTab(m) {
+      const docs = m.rag.docs.map(x => '<div class="mrow"><span class="mrow-nm">📄 ' + x.name + '</span>' +
+        '<span class="mrow-meta">' + (x.status === 'indexed'
+          ? '<span class="srv-st ok"><span class="d"></span>색인 완료</span> · ' + x.chunks + '청크 · ' + x.when
+          : '<span class="srv-st pending"><span class="d"></span>색인 중</span>') + '</span></div>').join('');
+      return '<div class="drow"><div class="msec-label" style="margin:0">지식 공간 <span class="dim">· AI 가 답변에 참고</span></div>' +
+        '<button class="btn btn--sm btn--secondary" data-soon="문서 추가">+ 문서 추가</button></div>' +
+        '<div class="dcard">' + (docs || '<span class="dim">아직 문서가 없어요.</span>') + '</div>' +
+        '<div class="dcard"><div class="dlabel">검색 테스트</div><div class="cm-row" style="margin-top:10px">' +
+          '<input class="cx-input" placeholder="질문을 입력해 색인을 확인"><button class="btn btn--md btn--secondary" data-soon="검색 테스트">검색</button></div>' +
+          '<div class="dsub" style="margin-top:12px">적용 채널 ' + (m.rag.applyChannels.map(c => '# ' + c).join(', ') || '없음') + '</div></div>';
+    }
+
+    function renderPresetTab(m) {
+      const cards = m.presets.map(p => '<div class="dcard"><div class="drow"><div><div class="dlabel">' + p.name + '</div>' +
+        '<div class="dsub">' + p.model + ' · ' + p.tone + ' · 적용 ' + (p.applied ? ('# ' + p.applied) : '없음') + '</div></div>' +
+        '<button class="mtoggle' + (p.on ? ' on' : '') + '" data-preset-toggle="' + p.name + '">' + (p.on ? '사용 중' : '미사용') + '</button></div></div>').join('');
+      return (cards || '<div class="msoon"><b>프리셋 없음</b>자주 쓰는 AI 설정 묶음을 만들어 보세요.</div>') +
+        '<button class="btn btn--md btn--secondary mt" data-soon="프리셋 카탈로그">카탈로그에서 가져오기</button>';
+    }
+
+    function renderMultiTab(m) {
+      const mm = m.multi;
+      const models = mm.models.map(x => '<div class="mrow"><span class="mrow-nm">' + x.name + ' <span class="dim">' + x.tag + '</span></span>' +
+        '<button class="mtoggle' + (x.on ? ' on' : '') + '" data-multi-model="' + x.name + '">' + (x.on ? '참여' : '제외') + '</button></div>').join('');
+      return '<div class="dcard"><div class="drow"><div class="dlabel">다중응답 사용</div>' +
+        '<button class="mtoggle' + (mm.enabled ? ' on' : '') + '" data-multi-toggle>' + (mm.enabled ? '켜짐' : '꺼짐') + '</button></div>' +
+        '<div class="dsub">여러 모델이 동시에 답하고 사용자가 비교·선택해요.</div></div>' +
+        (mm.enabled
+          ? '<div class="msec-label">참여 모델 (최대 3)</div><div class="dcard">' + (models || '<span class="dim">참여 모델 없음</span>') + '</div>' +
+            '<div class="dcard"><div class="dsub">방식 ' + mm.mode + ' · 최종 선택 ' + mm.finalize + ' · 적용 채널 ' + (mm.applyChannel ? ('# ' + mm.applyChannel) : '없음') + '</div></div>'
+          : '');
+    }
+
+    // 관리 탭 공통 인터랙션(mock 토글 + 미구현 액션 안내). 같은 m 을 수정해 즉시 재렌더.
+    function bindTabActions(d, m) {
+      const rerender = () => renderManage(d, m);
+      manageEl.querySelectorAll('[data-soon]').forEach(b => b.onclick = () => toast(b.dataset.soon + ' — 프로토타입에선 흐름만 보여줘요', { type: 'info' }));
+      manageEl.querySelectorAll('[data-ch-toggle]').forEach(b => b.onclick = () => { const x = m.channels.list.find(c => c.name === b.dataset.chToggle); if (x) x.aiAllowed = !x.aiAllowed; rerender(); });
+      manageEl.querySelectorAll('[data-cai-toggle]').forEach(b => b.onclick = () => { const x = m.channelAi.find(c => c.channel === b.dataset.caiToggle); if (x) x.on = !x.on; rerender(); });
+      manageEl.querySelectorAll('[data-preset-toggle]').forEach(b => b.onclick = () => { const x = m.presets.find(c => c.name === b.dataset.presetToggle); if (x) x.on = !x.on; rerender(); });
+      const mt = manageEl.querySelector('[data-multi-toggle]'); if (mt) mt.onclick = () => { m.multi.enabled = !m.multi.enabled; rerender(); };
+      manageEl.querySelectorAll('[data-multi-model]').forEach(b => b.onclick = () => { const x = m.multi.models.find(c => c.name === b.dataset.multiModel); if (x) x.on = !x.on; rerender(); });
+    }
+
     // 메인은 이미 인증된 상태 → '서버 추가'는 로그인 없이 후보 선택 + 토큰(연결 stage 가 origin=main 처리)
     document.getElementById('srvAddBtn').addEventListener('click', () => { if (window.enterServerAdd) window.enterServerAdd(); });
 
     async function reload() { render(await api.getServers()); }
     // PROTO·테스트 훅: 서버 상세 직접 점프 / 관리 진입 / 목록 복귀
     window.openServerDetail = (g) => openDetail(g);
-    window.openServerManage = async (g) => { const d = await api.getServerDetail(g); if (d) openManage(d); };
+    window.openServerManage = async (g, tab) => { const d = await api.getServerDetail(g); if (d) openManage(d, tab); };
     window.backToServerList = backToList;
 
     reload();
@@ -2453,7 +2555,7 @@
       if (VIEWS.includes(a)) {
         if (a === 'servers' && b) {
           gotoView('servers');
-          if (c === 'manage') return void window.openServerManage?.(Number(b));
+          if (c === 'manage') return void window.openServerManage?.(Number(b), parts[3]);
           return void window.openServerDetail?.(Number(b));
         }
         return gotoView(a);

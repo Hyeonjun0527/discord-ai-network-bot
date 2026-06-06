@@ -38,6 +38,7 @@ def _default_relay() -> str:
 
 
 _mascot_cache: bytes | None = None
+_app_icon_cache: bytes | None = None
 
 
 def _mascot_bytes() -> bytes:
@@ -51,6 +52,19 @@ def _mascot_bytes() -> bytes:
         except Exception:  # noqa: BLE001
             _mascot_cache = b""
     return _mascot_cache
+
+
+def _app_icon_bytes() -> bytes:
+    """패키지 에셋의 NEXA 앱 아이콘 PNG(1회 로드·캐시). 없으면 빈 바이트."""
+    global _app_icon_cache
+    if _app_icon_cache is None:
+        try:
+            from importlib import resources
+
+            _app_icon_cache = (resources.files("provider_agent") / "assets" / "app-icon.png").read_bytes()
+        except Exception:  # noqa: BLE001
+            _app_icon_cache = b""
+    return _app_icon_cache
 
 
 # 최근 로그 라인(대시보드 표시용).
@@ -575,6 +589,9 @@ def build_app(session_key: str) -> web.Application:
     async def mascot(_req: web.Request) -> web.Response:
         return web.Response(body=_mascot_bytes(), content_type="image/png")
 
+    async def app_icon(_req: web.Request) -> web.Response:
+        return web.Response(body=_app_icon_bytes(), content_type="image/png")
+
     async def models(req: web.Request) -> web.Response:
         _auth(req)
         saved = load_config()
@@ -1074,6 +1091,7 @@ def build_app(session_key: str) -> web.Application:
 
     app.router.add_get("/", index)
     app.router.add_get("/mascot.png", mascot)
+    app.router.add_get("/app-icon.png", app_icon)
     app.router.add_get("/api/models", models)
     app.router.add_get("/api/status", status)
     app.router.add_get("/api/logs", logs)

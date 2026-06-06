@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>NEXA Provider Agent — 데스크톱 프로토타입</title>
+  <title>NEXA Provider Agent — 데스크톱 프로토타입 v1</title>
   <script type="importmap">
   { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js" } }
   </script>
@@ -916,7 +916,7 @@
   <!-- ══ 프로토타입 컨트롤러(실제 화면과 분리된 오버레이) ══ -->
   <div id="proto">
     <div class="proto-panel">
-      <div class="ph"><b>PROTOTYPE</b><span class="x" id="protoClose">✕</span></div>
+      <div class="ph"><b>PROTOTYPE v1</b><span class="x" id="protoClose">✕</span></div>
       <p class="note">실제 앱에는 없는 프로토타입 전용 도구입니다. 화면 상태를 전환해 시안을 확인하세요.</p>
       <div class="proto-sec">
         <label>화면 (STAGE)</label>
@@ -1268,9 +1268,9 @@
 
     // ── 서버 관리(관리자, 앱 내 — 웹 위임 폐기). 13 Provider 관리부터 구현, 나머지 탭은 단계적. ──
     const MTABS = [
-      { k: 'overview', t: '개요' }, { k: 'channels', t: '채널·역할' }, { k: 'channelai', t: '채널 AI' },
-      { k: 'rag', t: 'RAG' }, { k: 'preset', t: '프리셋' }, { k: 'multi', t: '다중응답' }, { k: 'provider', t: 'Provider' },
-    ];
+      { k: 'overview', t: '개요' }, { k: 'channels', t: '채널' }, { k: 'channelai', t: '채널 AI' },
+      { k: 'rag', t: 'RAG' }, { k: 'preset', t: '프리셋' }, { k: 'provider', t: 'Provider' },
+    ]; // v1: 역할별 정책·다중응답(multi)은 범위 외
     let _manageTab = 'provider';
 
     async function openManage(d, tab) {
@@ -1291,7 +1291,6 @@
       channelai: (m) => renderChannelAiTab(m),
       rag: (m) => renderRagTab(m),
       preset: (m) => renderPresetTab(m),
-      multi: (m) => renderMultiTab(m),
     };
 
     function renderManage(d, m) {
@@ -1386,11 +1385,8 @@
       const c = m.channels;
       const ch = c.list.map(x => '<div class="mrow"><span class="mrow-nm"># ' + x.name + '</span>' +
         '<button class="mtoggle' + (x.aiAllowed ? ' on' : '') + '" data-ch-toggle="' + x.name + '">' + (x.aiAllowed ? 'AI 허용' : 'AI 금지') + '</button></div>').join('');
-      const roles = c.roles.map(r => '<div class="mrow"><span class="mrow-nm">' + r.name + '</span>' +
-        '<span class="mrow-meta">' + (r.dailyLimit < 0 ? '사용 불가' : (r.dailyLimit === 0 ? '무제한' : '하루 ' + r.dailyLimit + '건')) + ' · 이미지 ' + (r.image ? '●' : '○') + '</span></div>').join('');
       return '<div class="dcard"><div class="dlabel">서버 기본값</div><div class="dsub">기본 모델 ' + c.defaultModel + ' · 기본 언어 ' + c.defaultLang + '</div></div>' +
-        '<div class="msec-label">채널 정책</div><div class="dcard">' + ch + '</div>' +
-        '<div class="msec-label">역할별 사용 정책</div><div class="dcard">' + roles + '</div>';
+        '<div class="msec-label">채널별 AI 허용</div><div class="dcard">' + ch + '</div>';
     }
 
     function renderChannelAiTab(m) {
@@ -1424,19 +1420,6 @@
         '<button class="btn btn--md btn--secondary mt" data-soon="프리셋 카탈로그">카탈로그에서 가져오기</button>';
     }
 
-    function renderMultiTab(m) {
-      const mm = m.multi;
-      const models = mm.models.map(x => '<div class="mrow"><span class="mrow-nm">' + x.name + ' <span class="dim">' + x.tag + '</span></span>' +
-        '<button class="mtoggle' + (x.on ? ' on' : '') + '" data-multi-model="' + x.name + '">' + (x.on ? '참여' : '제외') + '</button></div>').join('');
-      return '<div class="dcard"><div class="drow"><div class="dlabel">다중응답 사용</div>' +
-        '<button class="mtoggle' + (mm.enabled ? ' on' : '') + '" data-multi-toggle>' + (mm.enabled ? '켜짐' : '꺼짐') + '</button></div>' +
-        '<div class="dsub">여러 모델이 동시에 답하고 사용자가 비교·선택해요.</div></div>' +
-        (mm.enabled
-          ? '<div class="msec-label">참여 모델 (최대 3)</div><div class="dcard">' + (models || '<span class="dim">참여 모델 없음</span>') + '</div>' +
-            '<div class="dcard"><div class="dsub">방식 ' + mm.mode + ' · 최종 선택 ' + mm.finalize + ' · 적용 채널 ' + (mm.applyChannel ? ('# ' + mm.applyChannel) : '없음') + '</div></div>'
-          : '');
-    }
-
     // 관리 탭 공통 인터랙션(mock 토글 + 미구현 액션 안내). 같은 m 을 수정해 즉시 재렌더.
     function bindTabActions(d, m) {
       const rerender = () => renderManage(d, m);
@@ -1444,8 +1427,6 @@
       manageEl.querySelectorAll('[data-ch-toggle]').forEach(b => b.onclick = () => { const x = m.channels.list.find(c => c.name === b.dataset.chToggle); if (x) x.aiAllowed = !x.aiAllowed; rerender(); });
       manageEl.querySelectorAll('[data-cai-toggle]').forEach(b => b.onclick = () => { const x = m.channelAi.find(c => c.channel === b.dataset.caiToggle); if (x) x.on = !x.on; rerender(); });
       manageEl.querySelectorAll('[data-preset-toggle]').forEach(b => b.onclick = () => { const x = m.presets.find(c => c.name === b.dataset.presetToggle); if (x) x.on = !x.on; rerender(); });
-      const mt = manageEl.querySelector('[data-multi-toggle]'); if (mt) mt.onclick = () => { m.multi.enabled = !m.multi.enabled; rerender(); };
-      manageEl.querySelectorAll('[data-multi-model]').forEach(b => b.onclick = () => { const x = m.multi.models.find(c => c.name === b.dataset.multiModel); if (x) x.on = !x.on; rerender(); });
     }
 
     // 메인은 이미 인증된 상태 → '서버 추가'는 로그인 없이 후보 선택 + 토큰(연결 stage 가 origin=main 처리)

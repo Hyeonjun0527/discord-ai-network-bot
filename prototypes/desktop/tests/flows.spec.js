@@ -120,20 +120,20 @@ test('서버 전환 시 관리 화면이 잔류하지 않는다(관리자 관리
   await expect(page.locator('#serverDetail #dManageBtn')).toHaveCount(0); // 기부자엔 관리 진입 버튼 없음
 });
 
-test('08~12 관리 탭: 채널·역할/채널AI/RAG/프리셋/다중응답 렌더', async ({ page }) => {
+test('v1 관리 탭: 채널/채널AI/RAG/프리셋 렌더(역할정책·다중응답 제외)', async ({ page }) => {
   await page.goto('/index.html#/servers/1001/manage');
   await page.waitForFunction(() => !!window.App);
+  // v1 범위 외 탭은 아예 없음
+  await expect(page.locator('#serverManage .mtab[data-mtab="multi"]')).toHaveCount(0);
   await page.click('#serverManage .mtab[data-mtab="channels"]');
-  await expect(page.locator('#serverManage')).toContainText('채널 정책');
-  await expect(page.locator('#serverManage .mrow').first()).toBeVisible();
+  await expect(page.locator('#serverManage')).toContainText('채널별 AI 허용');
+  await expect(page.locator('#serverManage')).not.toContainText('역할별 사용 정책');
   await page.click('#serverManage .mtab[data-mtab="channelai"]');
   await expect(page.locator('#serverManage')).toContainText('# ai-chat');
   await page.click('#serverManage .mtab[data-mtab="rag"]');
   await expect(page.locator('#serverManage')).toContainText('색인 완료');
   await page.click('#serverManage .mtab[data-mtab="preset"]');
   await expect(page.locator('#serverManage')).toContainText('번역봇');
-  await page.click('#serverManage .mtab[data-mtab="multi"]');
-  await expect(page.locator('#serverManage')).toContainText('다중응답 사용');
 });
 
 test('관리 탭 토글: 채널 AI on/off + URL 동기화', async ({ page }) => {

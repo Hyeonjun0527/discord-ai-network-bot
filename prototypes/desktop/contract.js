@@ -48,6 +48,7 @@ export const ENDPOINTS = Object.freeze({
   sdSetupProgress: '/api/sd/setup-progress',
   ollamaSetup: '/api/ollama/setup',
   ollamaSetupProgress: '/api/ollama/setup-progress',
+  ollamaCatalog: '/api/ollama/catalog',
   setup: '/api/setup',
   start: '/api/start',
   stop: '/api/stop',

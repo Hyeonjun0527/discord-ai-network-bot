@@ -11,24 +11,28 @@ const RUNTIME_LABEL = { ollama: 'Ollama', image: 'Stable Diffusion' };
 
 // ── 설치 진행 = 토스트 프로그레스바(단일 소스). 온보딩 finishOnboarding·홈 설치 버튼이 모두 이걸 쓴다. ──
 export function installRuntime(k, model) {
-  const name = RUNTIME_LABEL[k] || k;
-  const id = 'inst-' + k;
+  const name = (k === 'ollama' && model) ? model : (RUNTIME_LABEL[k] || k); // 모델 pull 이면 모델명 표시
+  const id = 'inst-' + (model || k);
   let dismissed = false; // ✕ 로 알림을 닫으면 true — 설치는 계속, 토스트만 안 띄움
-  toast(name + ' 설치 중', { type: 'run', sticky: true, id, sub: '설치 준비 중 · 0%', progress: 0, onClose: () => { dismissed = true; } });
-  api.startSetup(k, model);
-  const timer = setInterval(async () => {
-    const p = await api.getSetupProgress(k);
-    if (p.phase === 'done') {
-      clearInterval(timer);
-      if (!dismissed) toast(name + ' 설치 완료', { type: 'ok', id, sub: '사용 준비됨', progress: 100 });
-      window.dispatchEvent(new CustomEvent('runtimeinstalled', { detail: k })); // 홈 카드가 받아 '실행 중'으로
-    } else if (p.phase === 'error') {
-      clearInterval(timer);
-      if (!dismissed) toast(name + ' 설치 실패', { type: 'info', id, sub: String(p.error || p.message || '') });
-    } else if (!dismissed) {
-      toast(name + ' 설치 중', { type: 'run', sticky: true, id, sub: (p.message || '진행 중') + ' · ' + (p.percent ?? 0) + '%', progress: p.percent, onClose: () => { dismissed = true; } });
-    }
-  }, 450);
+  return new Promise((resolve) => {
+    toast(name + ' 설치 중', { type: 'run', sticky: true, id, sub: '설치 준비 중 · 0%', progress: 0, onClose: () => { dismissed = true; } });
+    api.startSetup(k, model);
+    const timer = setInterval(async () => {
+      const p = await api.getSetupProgress(k);
+      if (p.phase === 'done') {
+        clearInterval(timer);
+        if (!dismissed) toast(name + ' 설치 완료', { type: 'ok', id, sub: '사용 준비됨', progress: 100 });
+        window.dispatchEvent(new CustomEvent('runtimeinstalled', { detail: k })); // 홈 카드가 받아 '실행 중'으로
+        resolve(true);
+      } else if (p.phase === 'error') {
+        clearInterval(timer);
+        if (!dismissed) toast(name + ' 설치 실패', { type: 'info', id, sub: String(p.error || p.message || '') });
+        resolve(false);
+      } else if (!dismissed) {
+        toast(name + ' 설치 중', { type: 'run', sticky: true, id, sub: (p.message || '진행 중') + ' · ' + (p.percent ?? 0) + '%', progress: p.percent, onClose: () => { dismissed = true; } });
+      }
+    }, 450);
+  });
 }
 
 // ── SD 모델 선택 모달(진행은 안 함, 선택만). Ollama 는 모달 없이 바로 설치. ──

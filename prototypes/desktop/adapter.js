@@ -9,6 +9,12 @@ export const USE_MOCK = true;
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const _setup = {}; // mock 설치 진행 상태(runtime → { start, model })
+// mock 전용: 카탈로그/설치된 모델 외 임의 모델은 "없는 모델"로 간주해 실패시킨다(없는 모델 UX 데모).
+// 실 백엔드에선 ollama pull 의 404/에러가 곧 이 분기 — 형식이 맞아도 라이브러리에 없으면 실패.
+const _isUnknownModel = (name) => {
+  const known = new Set([...MOCK.catalog.map((m) => m.name), ...MOCK.models.map((m) => m.name)]);
+  return name !== 'image' && name !== 'ollama' && !known.has(name);
+};
 
 // SD 설치 가능 모델 — 단일 소스(온보딩 A2 모델 선택·설치 모달이 공유). webui.py /api/sd/models 미러.
 export const SD_MODELS = [
@@ -31,6 +37,40 @@ const MOCK = {
   status: { running: true, connected: true, processed: 0, imageReady: true, enableImage: true, sdInstalled: true },
   // 런타임 점검 응답시간(목)
   runtimePing: { 'Ollama': 28, 'Stable Diffusion': 400 },
+  // 로컬 모델 — webui.py /api/models { models, selected }. size·tags·lastUsed 는 ⚠ 백엔드 추가 필요.
+  models: [
+    { name: 'exaone3.5:7.8b', size: '4.8GB', tags: ['한국어', '기본'], on: true, lastUsed: '방금' },
+    { name: 'llama3.1:8b', size: '4.7GB', tags: ['한국어', '일반'], on: true, lastUsed: '2분 전' },
+    { name: 'qwen2.5-coder:7b', size: '4.7GB', tags: ['코딩'], on: true, lastUsed: '어제' },
+    { name: 'gemma2:2b', size: '1.6GB', tags: ['가벼움'], on: false, lastUsed: '3일 전' },
+  ],
+  defaultModel: 'exaone3.5:7.8b',
+  // 추천 설치 카탈로그 — webui.py /api/ollama/catalog. Ollama 가 전체 목록 API 를 안 주므로
+  // 인기 모델을 큐레이션(+ 직접 입력으로 전체 라이브러리 접근). 카테고리: 한국어/범용/코딩/경량/비전/추론/임베딩.
+  catalog: [
+    { name: 'exaone3.5:7.8b', size: '4.8GB', desc: '한국어 특화 · 기본 권장', cat: '한국어' },
+    { name: 'exaone3.5:2.4b', size: '1.6GB', desc: '한국어 경량', cat: '한국어' },
+    { name: 'llama3.3:70b', size: '40GB', desc: 'Meta 최상위(고사양)', cat: '범용' },
+    { name: 'llama3.2:3b', size: '2.0GB', desc: 'Meta 경량 범용', cat: '경량' },
+    { name: 'llama3.1:8b', size: '4.7GB', desc: 'Meta 범용 한국어·영어', cat: '범용' },
+    { name: 'qwen2.5:14b', size: '9.0GB', desc: 'Qwen 다국어 고품질', cat: '범용' },
+    { name: 'qwen2.5:7b', size: '4.7GB', desc: 'Qwen 다국어', cat: '범용' },
+    { name: 'qwen2.5-coder:7b', size: '4.7GB', desc: '코딩 특화', cat: '코딩' },
+    { name: 'deepseek-r1:7b', size: '4.7GB', desc: '추론(reasoning) 특화', cat: '추론' },
+    { name: 'deepseek-coder-v2:16b', size: '8.9GB', desc: '코딩 고품질', cat: '코딩' },
+    { name: 'codellama:7b', size: '3.8GB', desc: 'Meta 코딩', cat: '코딩' },
+    { name: 'gemma2:9b', size: '5.4GB', desc: 'Google 고품질 경량', cat: '범용' },
+    { name: 'gemma2:2b', size: '1.6GB', desc: 'Google 초경량', cat: '경량' },
+    { name: 'phi3.5:3.8b', size: '2.2GB', desc: 'Microsoft 경량', cat: '경량' },
+    { name: 'mistral:7b', size: '4.1GB', desc: 'Mistral 범용', cat: '범용' },
+    { name: 'mistral-nemo:12b', size: '7.1GB', desc: 'Mistral 고품질', cat: '범용' },
+    { name: 'llava:7b', size: '4.7GB', desc: '비전(이미지 이해)', cat: '비전' },
+    { name: 'llama3.2-vision:11b', size: '7.9GB', desc: 'Meta 비전', cat: '비전' },
+    { name: 'command-r:35b', size: '20GB', desc: 'Cohere RAG 특화', cat: '범용' },
+    { name: 'tinyllama:1.1b', size: '0.6GB', desc: '최소 사양 테스트용', cat: '경량' },
+    { name: 'nomic-embed-text', size: '0.3GB', desc: '임베딩(검색·RAG)', cat: '임베딩' },
+    { name: 'mxbai-embed-large', size: '0.7GB', desc: '임베딩 고품질', cat: '임베딩' },
+  ],
   // Discord 연결 후보(봇 있는 길드 ∩ 내 길드) — central ProviderConnectOnboardingService.candidates
   // autoApprove 로 결과 분기(APPROVED 즉시 연결 / PENDING 승인 대기) — AutoApprovePolicy
   candidates: [
@@ -79,6 +119,12 @@ export const api = {
     if (USE_MOCK) {
       const s = _setup[runtime];
       if (!s) return { phase: 'idle', percent: 0, message: '' };
+      // 없는 모델 데모: 모델명이 카탈로그·기존 목록에 없으면 잠시 후 실패(실제 ollama pull 404 대응)
+      if (s.model && _isUnknownModel(s.model)) {
+        const sec0 = (Date.now() - s.start) / 1000;
+        if (sec0 < 1.2) return { phase: 'installing', percent: Math.round(sec0 / 1.2 * 30), message: '모델 확인 중' };
+        return { phase: 'error', percent: 0, message: '', error: '모델을 찾을 수 없어요. 이름을 확인하세요(예: mistral:7b).' };
+      }
       const sec = (Date.now() - s.start) / 1000;
       const total = runtime === 'image' ? 7 : 5; // SD 가 더 오래
       const pct = Math.min(100, Math.round((sec / total) * 100));
@@ -94,6 +140,18 @@ export const api = {
   async sdModels() {
     if (USE_MOCK) { await delay(60); return SD_MODELS; }
     return (await http(ENDPOINTS.sdModels)).models || [];
+  },
+
+  /** 로컬 모델 목록 + 기본 모델 — webui.py /api/models */
+  async getModels() {
+    if (USE_MOCK) { await delay(60); return { models: structuredClone(MOCK.models), defaultModel: MOCK.defaultModel }; }
+    return http(ENDPOINTS.models);
+  },
+
+  /** 추천 설치 모델 카탈로그 — webui.py /api/ollama/catalog */
+  async ollamaCatalog() {
+    if (USE_MOCK) { await delay(60); return structuredClone(MOCK.catalog); }
+    return (await http(ENDPOINTS.ollamaCatalog)).models || [];
   },
 
   /** Discord 연결 후보 목록 — central ProviderConnectOnboardingService (OAuth 콜백이 제공) */

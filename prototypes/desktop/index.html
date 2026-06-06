@@ -694,8 +694,7 @@
 
         <div class="runtime-warn" id="runtimeWarn" hidden>
           <span class="rw-ico">⚠</span>
-          <div class="rw-tx"><b>제공할 AI 런타임이 없어요</b><p>Ollama 또는 Stable Diffusion 중 최소 하나를 설치해야 요청을 처리할 수 있어요.</p></div>
-          <button class="btn btn--sm btn--primary" id="rwInstall">설치</button>
+          <div class="rw-tx"><b>제공할 AI 런타임이 없어요</b><p>아래에서 Ollama 또는 Stable Diffusion 중 최소 하나를 설치해야 요청을 처리할 수 있어요.</p></div>
         </div>
         <div class="grid-2">
           <div class="prov-card" data-runtime="Ollama" data-state="running">
@@ -1440,9 +1439,7 @@
         });
       });
       window.setRuntime = setRuntime; // PROTO 컨트롤러용
-      // 경고 배너 [설치] → Ollama 설치(둘 다 미설치 시 우선 텍스트 런타임)
-      const rwBtn = document.getElementById('rwInstall');
-      if (rwBtn) rwBtn.addEventListener('click', () => { if (window.openInstall) window.openInstall('ollama'); });
+      // (경고 배너는 안내만 — 설치는 바로 아래 런타임 카드의 [설치] 버튼으로)
       // 빈틈 데모(PROTO): 서버 0개 / 런타임 전부 미설치 / 초기화
       window.setEmptyState = (kind) => {
         if (kind === 'servers') { if (window.setHomeServers) window.setHomeServers('empty'); }

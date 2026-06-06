@@ -59,6 +59,9 @@ test('빈틈: 런타임 전부 미설치 → 제공 불가 경고 배너', async
   await page.evaluate(() => window.setEmptyState('noruntime'));
   await expect(page.locator('#runtimeWarn')).toBeVisible();
   await expect(page.locator('#runtimeWarn')).toContainText('제공할 AI 런타임이 없어요');
+  // 배너엔 설치 버튼 없음(중복 제거) — 설치는 런타임 카드 CTA 로
+  await expect(page.locator('#runtimeWarn button')).toHaveCount(0);
+  await expect(page.locator('.prov-card[data-runtime="Ollama"] .prov-cta')).toHaveText('설치');
   await page.evaluate(() => window.setEmptyState('reset'));
   await expect(page.locator('#runtimeWarn')).toBeHidden();
 });

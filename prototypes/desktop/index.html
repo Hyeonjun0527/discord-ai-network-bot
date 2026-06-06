@@ -202,6 +202,9 @@
       width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #06281a; font-weight: 900;
       background: radial-gradient(circle at 35% 30%, #8bffce, var(--ok)); box-shadow: 0 0 18px color-mix(in srgb, var(--ok) 55%, transparent);
     }
+    .hero-info .check svg { width: 17px; height: 17px; display: block; } /* SVG 심볼 */
+    /* 삼각형은 기하중심≠광학중심(무게가 밑변 쪽) → 광학 중앙으로 미세 보정. */
+    .hero-info .check.error svg { transform: translate(0.5px, -0.5px); }
     .hero-info p { margin: 12px 0 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
     .hero-info .links { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
     .hero-actions { margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; }
@@ -291,13 +294,16 @@
 
     /* 토스트 — 액션 피드백(우상단, 타이틀바 아래) */
     #toast { position: fixed; top: 60px; right: 18px; z-index: 90; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; pointer-events: none; }
-    .toast { display: flex; align-items: center; gap: 11px; padding: 12px 16px; border-radius: 13px; border: 1px solid var(--line); background: rgba(12, 18, 32, .95); backdrop-filter: blur(16px); box-shadow: 0 14px 36px rgba(0,0,0,.45); color: #eef3fb; font-size: 14px; font-weight: 600; min-width: 230px; animation: toastIn .2s ease; }
+    .toast { display: flex; flex-wrap: wrap; align-items: center; gap: 11px; padding: 12px 16px; border-radius: 13px; border: 1px solid var(--line); background: rgba(12, 18, 32, .95); backdrop-filter: blur(16px); box-shadow: 0 14px 36px rgba(0,0,0,.45); color: #eef3fb; font-size: 14px; font-weight: 600; min-width: 248px; animation: toastIn .2s ease; }
     .toast .ti { width: 20px; height: 20px; flex: 0 0 auto; display: grid; place-items: center; font-weight: 800; }
     .toast .ti svg { width: 16px; height: 16px; }
     .toast.ok .ti { color: var(--ok); } .toast.info .ti { color: var(--c-cyan); } .toast.run .ti { color: var(--c-cyan); }
     .toast.run .ti svg { animation: spin 1s linear infinite; }
-    .toast .tm { line-height: 1.35; }
+    .toast .tm { line-height: 1.35; flex: 1; min-width: 0; }
     .toast .tm small { display: block; color: var(--muted); font-weight: 500; font-size: 12.5px; margin-top: 2px; }
+    /* 설치 진행 프로그레스바(전체 폭, 다음 줄) */
+    .toast .toast-bar { flex-basis: 100%; height: 5px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+    .toast .toast-bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--grad-accent); transition: width .45s ease; }
     @keyframes toastIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
     .prov-name { display: flex; align-items: center; gap: 9px; font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
     .prov-name .d { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 9px var(--ok); flex: 0 0 auto; }
@@ -455,6 +461,17 @@
     .wiz-opt .ob p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
     .wiz-opt .osize { margin-left: auto; color: var(--subtle); font-size: 12.5px; font-family: ui-monospace, Menlo, monospace; flex: 0 0 auto; }
 
+    /* 마법사 — SD 모델 선택: SD 카드에 통합된 확장 패널(progressive disclosure).
+       카드+패널을 .opt-group 으로 묶어 리스트 gap 이 둘 사이에 끼지 않게 한다(딱 붙음). */
+    .opt-group { display: flex; flex-direction: column; }
+    .wiz-opt.attached.sel { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; }
+    .sd-attach { padding: 14px 16px 15px 52px; border: 1px solid color-mix(in srgb, var(--c-violet) 50%, transparent); border-top: 0; border-radius: 0 0 16px 16px; background: color-mix(in srgb, var(--c-violet) 9%, transparent); }
+    .opt-mlabel { font-size: 12px; font-weight: 600; letter-spacing: .02em; color: var(--subtle); margin-bottom: 10px; }
+    .opt-seg { display: inline-flex; gap: 5px; padding: 4px; border-radius: 11px; background: rgba(255,255,255,.04); border: 1px solid var(--line); }
+    .opt-seg button { padding: 8px 14px; border-radius: 8px; border: 0; background: transparent; color: #aeb9d4; font-size: 13px; font-weight: 600; cursor: pointer; transition: .14s ease; }
+    .opt-seg button:hover { color: #fff; }
+    .opt-seg button.sel { color: #fff; background: color-mix(in srgb, var(--c-violet) 26%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-violet) 44%, transparent); }
+
     /* 마법사 — 토글 행 */
     .wiz-tog { display: flex; align-items: center; gap: 14px; padding: 13px 4px; }
     .wiz-tog .tb { flex: 1; }
@@ -475,6 +492,23 @@
 
     .wiz-foot { display: flex; align-items: center; gap: 12px; padding: 22px 28px 26px; }
     .wiz-foot .spacer { flex: 1; }
+
+    /* 런타임 설치 마법사(C) 모달 */
+    .modal-layer { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; padding: 40px 24px; background: rgba(3, 7, 15, .62); backdrop-filter: blur(4px); }
+    .modal-layer[hidden] { display: none; }
+    .modal { width: min(460px, 100%); border-radius: 24px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(16, 24, 42, .97), rgba(10, 16, 28, .98)); box-shadow: 0 40px 100px rgba(0,0,0,.6); padding: 28px; animation: fade .25s ease; }
+    .modal h3 { font-size: 21px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 7px; }
+    .modal .msub { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0 0 18px; }
+    .modal .wiz-list { margin-top: 4px; }
+    .inst-bar { height: 8px; border-radius: 5px; background: rgba(255,255,255,.08); overflow: hidden; margin: 20px 0 11px; }
+    .inst-bar i { display: block; height: 100%; width: 0; background: var(--grad-accent); border-radius: 5px; transition: width .5s ease; }
+    .inst-phase { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--muted); }
+    .inst-phase .pct { font-family: ui-monospace, Menlo, monospace; color: var(--c-cyan); }
+    .inst-result { text-align: center; padding: 8px 0 4px; }
+    .inst-big { width: 70px; height: 70px; margin: 0 auto 16px; border-radius: 50%; display: grid; place-items: center; }
+    .inst-big.ok { color: #06281a; background: radial-gradient(circle at 35% 30%, #8bffce, var(--ok)); box-shadow: 0 0 26px color-mix(in srgb, var(--ok) 50%, transparent); }
+    .inst-big svg { width: 32px; height: 32px; }
+    .modal-foot { margin-top: 22px; display: flex; justify-content: flex-end; gap: 12px; }
 
     /* 연결 stage(B) 컴포넌트 */
     .btn.cx-discord { width: 100%; } /* Discord 로그인 — 풀폭(주액션) */
@@ -648,8 +682,16 @@
     <div class="wiz" id="connectWiz"><!-- JS 렌더 --></div>
   </div>
 
+  <!-- 런타임 설치 마법사(C) 모달 -->
+  <div class="modal-layer" id="installModal" hidden>
+    <div class="modal" id="installCard"><!-- JS 렌더 --></div>
+  </div>
+
   <!-- 토스트 컨테이너 -->
   <div id="toast" aria-live="polite"></div>
+
+  <!-- 설치 마법사 모듈(window.openInstall 노출) -->
+  <script type="module" src="./install.js"></script>
 
   <!-- ══ 프로토타입 컨트롤러(실제 화면과 분리된 오버레이) ══ -->
   <div id="proto">
@@ -688,6 +730,13 @@
           <button data-state="ok" class="active">정상</button>
           <button data-state="paused">일시중지</button>
           <button data-state="error">문제</button>
+        </div>
+      </div>
+      <div class="proto-sec">
+        <label>런타임 설치(C)</label>
+        <div class="proto-seg" id="protoInstall">
+          <button data-install="ollama">Ollama</button>
+          <button data-install="image">SD</button>
         </div>
       </div>
     </div>
@@ -751,7 +800,7 @@
   <!-- ══ Stage 매니저 + 온보딩 마법사(A1~A4) + Discord 연결(B) ══ -->
   <script type="module">
     import { toast } from './toast.js';
-    import { api } from './adapter.js';
+    import { api, SD_MODELS } from './adapter.js';
     import { ProviderState } from './contract.js';
     (function stageManager() {
       const app = document.querySelector('.app');
@@ -761,7 +810,12 @@
       const connectWiz = document.getElementById('connectWiz');
 
       // 온보딩 선택 상태(webui.py ONB 와 동일 의미)
-      const ONB = { step: 1, ollama: true, image: true, none: false, autostart: true, autoconnect: true, imageRecv: true, background: true };
+      const ONB = { step: 1, ollama: true, image: true, sdModel: 'sd15', none: false, autostart: true, autoconnect: true, imageRecv: true, background: true };
+      // SD 모델 선택 — SD 카드에 통합된 확장 패널(progressive disclosure). 단일 소스 SD_MODELS.
+      const sdPick = () => '<div class="sd-attach"><div class="opt-mlabel">설치할 모델</div><div class="opt-seg">' +
+        SD_MODELS.map((m) => '<button class="' + (ONB.sdModel === m.id ? 'sel' : '') + '" data-sdm="' + m.id + '">' + m.short + ' · ' + m.size + '</button>').join('') +
+        '</div></div>';
+      const sdModelShort = () => (SD_MODELS.find((m) => m.id === ONB.sdModel) || {}).short || 'SD';
 
       const IC = {
         chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
@@ -770,7 +824,7 @@
         check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
       };
       const feat = (ic, t, d) => '<div class="wiz-feat"><span class="fi">' + ic + '</span><div><b>' + t + '</b><p>' + d + '</p></div></div>';
-      const opt = (k, name, tag, desc, size, on) => '<button class="wiz-opt ' + (on ? 'sel' : '') + '" data-opt="' + k + '">' +
+      const opt = (k, name, tag, desc, size, on, cls = '') => '<button class="wiz-opt ' + (on ? 'sel' : '') + ' ' + cls + '" data-opt="' + k + '">' +
         '<span class="ck">' + IC.check + '</span>' +
         '<span class="ob"><b>' + name + (tag ? '<span class="tag">' + tag + '</span>' : '') + '</b><p>' + desc + '</p></span>' +
         (size ? '<span class="osize">' + size + '</span>' : '') + '</button>';
@@ -798,7 +852,10 @@
             '<div class="wiz-sub">이 PC 에서 제공할 AI 를 고르세요. 나중에 바꿀 수 있어요.</div>' +
             '<div class="wiz-list">' +
             opt('ollama', 'Ollama', '권장', '텍스트 질문에 답하는 기본 엔진', '~5GB', ONB.ollama) +
-            opt('image', 'Stable Diffusion', '선택', '이미지 생성 요청 처리 (GPU 권장)', '~6.6GB', ONB.image) +
+            '<div class="opt-group">' +
+              opt('image', 'Stable Diffusion', '선택', '이미지 생성 요청 처리 (GPU 권장)', '~6.6GB', ONB.image, 'attached') +
+              (ONB.image ? sdPick() : '') +
+            '</div>' +
             opt('none', '지금은 설치 안 함', '', '메인 화면에서 나중에 설치할 수 있어요', '', ONB.none) +
             '</div>';
           foot = btn('secondary', '1', '이전') + '<span class="spacer"></span>' + btn('primary', '3', '다음');
@@ -817,7 +874,7 @@
             '<div class="wiz-sub">아래 설정으로 시작합니다. 연동하면 디스코드 로그인으로 넘어가요.</div>' +
             '<div class="wiz-list">' +
             sum('텍스트 모델', ONB.ollama ? 'Ollama 사용' : '사용 안 함', ONB.ollama) +
-            sum('이미지 생성', ONB.image ? '사용' : '사용 안 함', ONB.image) +
+            sum('이미지 생성', ONB.image ? sdModelShort() : '사용 안 함', ONB.image) +
             sum('자동 연결', ONB.autoconnect ? '켜짐' : '꺼짐', ONB.autoconnect) +
             sum('백그라운드 실행', ONB.background ? '유지' : '안 함', ONB.background) +
             '</div>';
@@ -828,26 +885,50 @@
       }
 
       const RUNTIME_NAME = { ollama: 'Ollama', image: 'Stable Diffusion' };
-      // 런타임을 새로 켜면 즉시 설치 시작 → 우상단 토스트(진행→완료). 기존 토스트 시스템 재사용.
-      async function startInstall(k) {
-        const name = RUNTIME_NAME[k];
-        toast(name + ' 설치 중…', { type: 'run', sticky: true, id: 'inst-' + k });
-        await api.startSetup(k);
-        setTimeout(() => toast(name + ' 설치 완료', { type: 'ok', sub: '사용 준비됨', replace: 'inst-' + k }), 2200);
-      }
+      // A2 는 '선택'만 한다(설치 아님). 설치는 A4 '연동하기'에서 시작.
       function togglePick(k) {
         if (k === 'none') { ONB.none = true; ONB.ollama = false; ONB.image = false; return; }
         ONB.none = false;
-        const was = ONB[k];
-        ONB[k] = !was;
-        if (!was && ONB[k]) startInstall(k); // off→on 순간 설치 시작
+        ONB[k] = !ONB[k];
+      }
+      // A4 '연동하기' → 선택한 런타임 설치를 백그라운드로 시작(토스트) → 곧바로 연결로.
+      // 상세 진행/모델 선택이 필요하면 메인·로컬 실행의 설치 모달(install.js)에서 한다.
+      function startInstall(k, model) {
+        const name = RUNTIME_NAME[k] + (model ? ' (' + (SD_MODELS.find((m) => m.id === model) || {}).short + ')' : '');
+        const id = 'inst-' + k;
+        toast(name + ' 설치 준비 중…', { type: 'run', sticky: true, id, progress: 0 });
+        api.startSetup(k, model);
+        // 진행률 폴링 → 토스트 프로그레스바 채우기. done 이면 완료 토스트(자동 사라짐).
+        const timer = setInterval(async () => {
+          const p = await api.getSetupProgress(k);
+          if (p.phase === 'done') {
+            clearInterval(timer);
+            toast(name + ' 설치 완료', { type: 'ok', sub: '사용 준비됨', id, progress: 100 });
+          } else if (p.phase === 'error') {
+            clearInterval(timer);
+            toast(name + ' 설치 실패', { type: 'info', sub: String(p.error || p.message || ''), id });
+          } else {
+            toast(name + ' · ' + (p.message || '설치 중') + '…', { type: 'run', sticky: true, id, progress: p.percent });
+          }
+        }, 450);
+      }
+      function finishOnboarding() {
+        if (ONB.ollama) startInstall('ollama');
+        if (ONB.image) startInstall('image', ONB.sdModel); // A2 에서 고른 SD 모델로 설치
+        setStage('connect');
       }
       function wireWiz() {
         wiz.querySelectorAll('[data-opt]').forEach(b => b.onclick = () => { togglePick(b.dataset.opt); renderWiz(); });
+        // 모델 선택은 전체 재렌더 대신 active 만 부분 갱신(패널 재생성·깜빡임 방지)
+        wiz.querySelectorAll('[data-sdm]').forEach(b => b.onclick = () => {
+          ONB.sdModel = b.dataset.sdm;
+          wiz.querySelectorAll('.opt-seg button').forEach(x => x.classList.toggle('sel', x.dataset.sdm === ONB.sdModel));
+        });
         wiz.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => { ONB[b.dataset.tog] = !ONB[b.dataset.tog]; renderWiz(); });
         wiz.querySelectorAll('[data-go]').forEach(b => b.onclick = () => {
           const g = b.dataset.go;
-          if (g === 'main' || g === 'connect') setStage(g);
+          if (g === 'connect') finishOnboarding();   // 연동하기 = 설치 시작 + 연결
+          else if (g === 'main') setStage('main');
           else { ONB.step = +g; renderWiz(); emit(); }
         });
       }
@@ -890,10 +971,10 @@
               '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>').join('') +
             '</div></div><div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="login">이전</button></div>';
         } else {
-          const g = connectedGuild || '이'; // 토큰/OAuth 결과의 서버명(없으면 "이 서버")
+          const where = connectedGuild || '이 서버'; // 서버명(없으면 "이 서버"). 이미 '서버'를 포함 → 중복 방지
           const R = {
-            approved: { ic: '✓', cls: 'ok', title: '연결됐어요!', sub: '이제 ' + g + ' 서버에 AI 를 제공합니다.', btns: '<button class="btn btn--md btn--primary" data-cx="main">메인 화면으로</button>' },
-            pending: { ic: '⏳', cls: 'pending', title: '관리자 승인 대기 중', sub: g + ' 서버 관리자가 승인하면 자동으로 연결돼요.<br>그동안 다른 서버를 추가할 수 있어요.', btns: '<button class="btn btn--md btn--secondary" data-cx="select">다른 서버</button><button class="btn btn--md btn--primary" data-cx="main">메인으로</button>' },
+            approved: { ic: '✓', cls: 'ok', title: '연결됐어요!', sub: '이제 ' + where + '에 AI 를 제공합니다.', btns: '<button class="btn btn--md btn--primary" data-cx="main">메인 화면으로</button>' },
+            pending: { ic: '⏳', cls: 'pending', title: '관리자 승인 대기 중', sub: where + ' 관리자가 승인하면 자동으로 연결돼요.<br>그동안 다른 서버를 추가할 수 있어요.', btns: '<button class="btn btn--md btn--secondary" data-cx="select">다른 서버</button><button class="btn btn--md btn--primary" data-cx="main">메인으로</button>' },
             none: { ic: '∅', cls: 'pending', title: '참여 가능한 서버가 없어요', sub: '봇이 있는 서버 중 내가 속한 곳이 없어요.<br>서버에 봇을 먼저 초대해 주세요.', btns: '<button class="btn btn--md btn--secondary" data-cx="login">다시 시도</button>' },
             cancelled: { ic: '✕', cls: 'error', title: '연결이 취소됐어요', sub: '디스코드 로그인이 취소됐어요. 다시 시도할 수 있어요.', btns: '<button class="btn btn--md btn--primary" data-cx="login">다시 시도</button>' },
           }[sub] || {};
@@ -1008,23 +1089,29 @@
         reconnect: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg>',
         diag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
       };
+      // 상태 배지 심볼 — 텍스트 글리프(✓⏸⚠)는 baseline 정렬이 어긋나므로 SVG 로 통일(정확한 중앙).
+      const BADGE = {
+        ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+        paused: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>',
+        error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+      };
       // 히어로 액션은 모두 같은 그룹 → size 통일(lg). 위계는 emphasis 로만 차등.
       // 그룹당 채움(primary|warn) 주액션 1개 + 부수 액션은 ghost.
       const STATES = {
         ok: {
-          badge: { sym: '✓', cls: '' }, title: 'AI 제공 준비됨',
+          badge: { sym: BADGE.ok, cls: '' }, title: 'AI 제공 준비됨',
           desc: '중앙 서버와 Discord 에 모두 연결되어, 들어오는 요청을 이 PC 에서 바로 처리할 수 있는 상태입니다.',
           pills: [{ t: '중앙 서버 연결됨' }, { t: 'Discord 연결됨' }],
           actions: [{ t: 'AI 제공 일시중지', size: 'lg', emphasis: 'neutral', icon: ICON.pause, go: 'paused' }],
         },
         paused: {
-          badge: { sym: '⏸', cls: 'paused' }, title: 'AI 제공 일시중지됨',
+          badge: { sym: BADGE.paused, cls: 'paused' }, title: 'AI 제공 일시중지됨',
           desc: '지금은 요청을 받지 않습니다. 로컬 런타임과 연결은 그대로 유지되며, 재개하면 즉시 다시 처리합니다.',
           pills: [{ t: '중앙 서버 연결됨' }, { t: 'Discord 연결됨' }],
           actions: [{ t: 'AI 제공 재개', size: 'lg', emphasis: 'primary', icon: ICON.play, go: 'ok' }],
         },
         error: {
-          badge: { sym: '⚠', cls: 'error' }, title: '제공 중단됨',
+          badge: { sym: BADGE.error, cls: 'error' }, title: '제공 중단됨',
           desc: 'Discord 연결이 끊겨 요청을 받을 수 없습니다. 네트워크를 확인하고 재연결을 시도하세요.',
           pills: [{ t: '중앙 서버 연결됨' }, { t: 'Discord 연결 끊김', bad: true }],
           actions: [{ t: '다시 연결', size: 'lg', emphasis: 'primary', icon: ICON.reconnect, go: 'ok' }, { t: '진단', size: 'lg', emphasis: 'secondary', icon: ICON.diag, diag: true }],
@@ -1111,6 +1198,10 @@
       // 연결 단계 점프
       cxSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
         if (window.setConnectSub) window.setConnectSub(b.dataset.cx);
+      }));
+      // 런타임 설치 마법사(C) 트리거
+      document.getElementById('protoInstall').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+        if (window.openInstall) window.openInstall(b.dataset.install);
       }));
       // 홈 제공 상태 전환
       heroSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {

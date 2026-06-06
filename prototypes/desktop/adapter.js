@@ -8,6 +8,13 @@ import { ProviderState, Role, ENDPOINTS } from './contract.js';
 export const USE_MOCK = true;
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+const _setup = {}; // mock 설치 진행 상태(runtime → { start, model })
+
+// SD 설치 가능 모델 — 단일 소스(온보딩 A2 모델 선택·설치 모달이 공유). webui.py /api/sd/models 미러.
+export const SD_MODELS = [
+  { id: 'sd15', name: 'Stable Diffusion 1.5', short: 'SD 1.5', size: '4GB', desc: '가볍고 빠름 · 범용' },
+  { id: 'sdxl', name: 'Stable Diffusion XL', short: 'SD XL', size: '6.6GB', desc: '고품질 · GPU 권장' },
+];
 const http = async (ep, opts) => { const r = await fetch(ep, opts); return r.json(); };
 const post = (ep, body) => http(ep, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
 
@@ -62,9 +69,31 @@ export const api = {
   },
 
   /** 런타임 설치 시작 — webui.py /api/ollama/setup · /api/sd/setup (+진행률 폴링) */
-  async startSetup(runtime) { // 'ollama' | 'image'
-    if (USE_MOCK) { await delay(50); return { ok: true, started: true }; }
-    return post(runtime === 'image' ? ENDPOINTS.sdSetup : ENDPOINTS.ollamaSetup, {});
+  async startSetup(runtime, model) { // runtime: 'ollama' | 'image', model: SD 모델 id(선택)
+    if (USE_MOCK) { _setup[runtime] = { start: Date.now(), model }; await delay(50); return { ok: true, started: true }; }
+    return post(runtime === 'image' ? ENDPOINTS.sdSetup : ENDPOINTS.ollamaSetup, model ? { model } : {});
+  },
+
+  /** 설치 진행률 폴링 — webui.py *-setup-progress. 응답: { phase, percent, message, error } */
+  async getSetupProgress(runtime) {
+    if (USE_MOCK) {
+      const s = _setup[runtime];
+      if (!s) return { phase: 'idle', percent: 0, message: '' };
+      const sec = (Date.now() - s.start) / 1000;
+      const total = runtime === 'image' ? 7 : 5; // SD 가 더 오래
+      const pct = Math.min(100, Math.round((sec / total) * 100));
+      if (pct >= 100) return { phase: 'done', percent: 100, message: '설치 완료' };
+      if (pct >= 70) return { phase: 'starting', percent: pct, message: '서비스 시작 중' };
+      if (pct >= 20) return { phase: 'downloading', percent: pct, message: runtime === 'image' ? '모델 내려받는 중' : '기본 모델 내려받는 중' };
+      return { phase: 'installing', percent: pct, message: '설치 준비 중' };
+    }
+    return http(runtime === 'image' ? ENDPOINTS.sdSetupProgress : ENDPOINTS.ollamaSetupProgress);
+  },
+
+  /** SD 설치 가능한 모델 목록 — webui.py /api/sd/models (단일 소스 SD_MODELS) */
+  async sdModels() {
+    if (USE_MOCK) { await delay(60); return SD_MODELS; }
+    return (await http(ENDPOINTS.sdModels)).models || [];
   },
 
   /** Discord 연결 후보 목록 — central ProviderConnectOnboardingService (OAuth 콜백이 제공) */
@@ -89,8 +118,8 @@ export const api = {
   async joinByToken(token) {
     if (USE_MOCK) {
       await delay(700);
-      // 목: 토큰은 항상 승인된 서버로 발급되므로 APPROVED + 대표 서버명
-      return { ok: !!token, state: ProviderState.APPROVED, guildId: 2099, guildName: '받은 토큰의 서버' };
+      // 목: 토큰은 항상 승인된 서버로 발급되므로 APPROVED + 서버명(검증 응답의 guildName)
+      return { ok: !!token, state: ProviderState.APPROVED, guildId: 2099, guildName: '코딩 스터디' };
     }
     return {}; // 실제: POST /api/server-add-token { token } → { ok, guildId, guildName }
   },

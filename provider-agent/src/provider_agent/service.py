@@ -25,11 +25,42 @@ logger = logging.getLogger("provider_agent.service")
 
 SERVICE_LABEL = "world.yeon.nexa"
 SERVICE_NAME = "nexa"
+# macOS `.app` 안에 함께 번들되는 헤드리스 서비스 helper 바이너리 이름(P2 reopen 보존).
+SERVICE_HELPER_NAME = "nexa-service"
 
 
 def executable_path() -> str:
     """설치된 실행파일 경로. PATH(brew/scoop) → 콘솔스크립트/프리즌 바이너리 순."""
     return shutil.which(SERVICE_NAME) or str(Path(sys.argv[0]).resolve())
+
+
+def _macos_bundled_helper() -> str | None:
+    """`.app` 안에 함께 번들된 헤드리스 서비스 helper(`Contents/MacOS/nexa-service`) 경로. 없으면 None.
+
+    P2: LaunchAgent 가 GUI `.app` 메인 바이너리(NEXA) 대신 이 **콘솔** helper 를 실행하면, 번들이
+    'GUI 앱 실행 중'으로 LaunchServices 에 등록되지 않는다. 그래서 응용 프로그램에서 NEXA 를 다시 열 때
+    헤드리스 프로세스가 reopen 이벤트를 흡수하지 않고 설정 창이 정상적으로 새로 열린다.
+    빌드에 helper 가 없으면(구버전/빌드 이슈) None → 호출부가 기존 실행파일로 폴백한다(앱 동작 유지).
+    """
+    if platform.system() != "Darwin":
+        return None
+    try:
+        main_exe = Path(sys.argv[0]).resolve()
+    except (OSError, ValueError):
+        return None
+    if "/Contents/MacOS/" not in str(main_exe):
+        return None  # .app 안에서 실행된 게 아니면(개발/CLI) helper 개념 없음
+    helper = main_exe.parent / SERVICE_HELPER_NAME
+    return str(helper) if helper.exists() else None
+
+
+def service_executable_path() -> str:
+    """자동 시작 서비스(plist/유닛)가 **실행할** 바이너리.
+
+    macOS 는 번들 helper 우선(reopen 보존), 없으면 일반 ``executable_path()`` 로 폴백.
+    brew/scoop CLI 설치는 PATH 의 ``nexa``(콘솔 바이너리)라 이미 GUI 앱 등록 문제가 없다.
+    """
+    return _macos_bundled_helper() or executable_path()
 
 
 def _run(cmd: list[str], *, ignore: tuple[str, ...] = ()) -> subprocess.CompletedProcess:
@@ -48,7 +79,8 @@ def _run(cmd: list[str], *, ignore: tuple[str, ...] = ()) -> subprocess.Complete
 
 def launchd_plist(exe: str, label: str = SERVICE_LABEL) -> str:
     log = f"{Path.home()}/Library/Logs/{label}.log"
-    # `--service`: .app 번들 바이너리를 **헤드리스**(창·Dock 아이콘 없음)로 실행한다.
+    # `--service`: exe 를 **헤드리스**(창·Dock 아이콘 없음)로 실행한다. macOS .app 설치는 번들된
+    # 콘솔 helper(nexa-service)를 가리켜, GUI .app 메인 바이너리를 잡지 않아 응용 프로그램 재오픈이 막히지 않는다(P2).
     # KeepAlive 는 '크래시 시에만' — 정상 종료(예: GUI 가 이미 연결돼 singleton 으로 빠지는 경우)에는
     # 재실행하지 않아 앱을 열어 둔 동안 재실행 폭주/창 깜빡임이 생기지 않는다. GUI 를 닫을 때는
     # ``kickstart()`` 로 명시적으로 서비스를 띄워 백그라운드 연결을 인계한다(run_gui).
@@ -99,7 +131,7 @@ def _mac_domain_target() -> str:
 
 def install_service() -> str:
     """현재 OS에 자동 시작 서비스를 등록하고, 등록 위치(설명)를 반환한다. 실패하면 RuntimeError."""
-    exe = executable_path()
+    exe = service_executable_path()
     system = platform.system()
     if system == "Darwin":
         target = _mac_plist_path()

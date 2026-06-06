@@ -568,7 +568,7 @@
     /* 런타임 설치 마법사(C) 모달 */
     .modal-layer { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; padding: 40px 24px; background: rgba(3, 7, 15, .62); backdrop-filter: blur(4px); }
     .modal-layer[hidden] { display: none; }
-    .modal { width: min(460px, 100%); border-radius: 24px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(16, 24, 42, .97), rgba(10, 16, 28, .98)); box-shadow: 0 40px 100px rgba(0,0,0,.6); padding: 28px; animation: fade .25s ease; }
+    .modal { width: min(460px, 100%); max-height: 86vh; overflow-y: auto; border-radius: 24px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(16, 24, 42, .97), rgba(10, 16, 28, .98)); box-shadow: 0 40px 100px rgba(0,0,0,.6); padding: 28px; animation: fade .25s ease; }
     .modal h3 { font-size: 21px; font-weight: 800; letter-spacing: -.02em; margin: 0 0 7px; }
     .modal .msub { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0 0 18px; }
     .modal .wiz-list { margin-top: 4px; }

@@ -183,6 +183,9 @@
     .page-title { font-size: 30px; font-weight: 800; letter-spacing: -.03em; margin: 0; }
     .page-sub { margin: 8px 0 0; color: var(--muted); font-size: 15.5px; }
     .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+    .head-actions { display: flex; gap: 10px; flex: 0 0 auto; }
+    .srv-summary { margin-top: 16px; color: var(--subtle); font-size: 13.5px; }
+    .srv-summary b { color: var(--muted); font-weight: 700; }
 
     /* 02 모델 화면 */
     .model-default { display: flex; align-items: center; gap: 14px; margin: 26px 0 16px; }
@@ -752,7 +755,16 @@
           <button class="btn btn--sm btn--primary" id="modelApplyBtn">변경 적용</button>
         </div>
       </section>
-      <section class="view" data-view="servers"><div class="placeholder"><div class="ico">◆</div><h2>서버 연결</h2><p>다음 단계에서 구현합니다.</p></div></section>
+      <section class="view" data-view="servers">
+        <div class="page-head">
+          <div><h1 class="page-title">서버</h1><p class="page-sub">AI 를 제공 중인 Discord 서버 목록입니다.</p></div>
+          <div class="head-actions">
+            <button class="btn btn--md btn--primary" id="srvAddBtn">+ 서버 추가</button>
+          </div>
+        </div>
+        <div class="srv-list" id="serverList" style="margin-top:24px"><!-- JS 렌더 --></div>
+        <div class="srv-summary" id="serverSummary"></div>
+      </section>
       <section class="view" data-view="local"><div class="placeholder"><div class="ico">◆</div><h2>로컬 실행</h2><p>다음 단계에서 구현합니다.</p></div></section>
       <section class="view" data-view="logs"><div class="placeholder"><div class="ico">◆</div><h2>로그</h2><p>다음 단계에서 구현합니다.</p></div></section>
       <section class="view" data-view="settings"><div class="placeholder"><div class="ico">◆</div><h2>설정</h2><p>다음 단계에서 구현합니다.</p></div></section>
@@ -911,6 +923,60 @@
   <!-- 토스트(액션 피드백) — 모듈. window.toast 도 노출(일반 script 호환) -->
   <script type="module" src="./toast.js"></script>
 
+  <!-- ══ 03 서버 화면 — 목록·권한·상태·집계, 서버 추가, 상세 진입 ══ -->
+  <script type="module">
+    import { api } from './adapter.js';
+    import { presentServerState, presentServerMeta, presentRole } from './presenter.js';
+    import { ProviderState } from './contract.js';
+
+    const TINT = ['--c-violet', '--c-blue', '--c-cyan', '--c-purple'];
+    const ROLE_ICON = {
+      admin: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.5 8.4 8 9.5 4.5-1.1 8-4.5 8-9.5V5Z"/></svg>',
+      provider: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>',
+    };
+    const initialOf = (n) => (n || '·').trim().charAt(0);
+    const fmtMembers = (n) => (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n));
+
+    const listEl = document.getElementById('serverList');
+    const sumEl = document.getElementById('serverSummary');
+
+    function render(servers) {
+      listEl.innerHTML = servers.map((s, i) => {
+        const tint = TINT[i % TINT.length];
+        const avatarStyle = 'background: color-mix(in srgb, var(' + tint + ') 22%, transparent); border-color: color-mix(in srgb, var(' + tint + ') 40%, transparent);';
+        const img = s.iconUrl ? '<img src="' + s.iconUrl + '" alt="" onerror="this.remove()">' : '';
+        const st = presentServerState(s.state);
+        const role = presentRole(s.role);
+        return '<button class="srv-item" data-guild="' + s.guildId + '">' +
+          '<span class="srv-avatar" style="' + avatarStyle + '">' + initialOf(s.guildName) + img + '</span>' +
+          '<span class="srv-main">' +
+            '<span class="srv-name"><span class="nm">' + s.guildName + '</span></span>' +
+            '<span class="srv-meta"><span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span> · 멤버 ' + fmtMembers(s.members) + ' · ' + presentServerMeta(s) + '</span>' +
+          '</span>' +
+          '<span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span>' +
+          '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>' +
+        '</button>';
+      }).join('');
+      // 집계
+      const c = { ok: 0, paused: 0, pending: 0 };
+      servers.forEach(s => {
+        if (s.state === ProviderState.PAUSED) c.paused++;
+        else if (s.state === ProviderState.PENDING) c.pending++;
+        else c.ok++;
+      });
+      sumEl.innerHTML = '연결 <b>' + c.ok + '</b> · 일시중지 <b>' + c.paused + '</b> · 승인 대기 <b>' + c.pending + '</b>';
+      // 상세 진입(서버 상세는 다음 단계)
+      listEl.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', () => {
+        if (window.toast) window.toast('서버 상세는 다음 단계에서 구현합니다', { type: 'info', sub: el.querySelector('.nm').textContent });
+      }));
+    }
+
+    // 메인은 이미 인증된 상태 → '서버 추가'는 로그인 없이 후보 선택 + 토큰(연결 stage 가 origin=main 처리)
+    document.getElementById('srvAddBtn').addEventListener('click', () => { if (window.enterServerAdd) window.enterServerAdd(); });
+
+    (async () => { render(await api.getServers()); })();
+  </script>
+
   <!-- ══ 02 모델 화면 — 목록·토글·기본 모델·추천 설치·변경 적용(D5) ══ -->
   <script type="module">
     import { api } from './adapter.js';
@@ -1001,6 +1067,7 @@
     import { api, SD_MODELS } from './adapter.js';
     import { ProviderState } from './contract.js';
     import { installRuntime } from './install.js';
+    import { App, applyStage, canEnterServerAdd } from './state.js';
     (function stageManager() {
       const app = document.querySelector('.app');
       const onbLayer = document.getElementById('onboardingLayer');
@@ -1093,6 +1160,7 @@
       function finishOnboarding() {
         if (ONB.ollama) installRuntime('ollama');
         if (ONB.image) installRuntime('image', ONB.sdModel); // A2 에서 고른 SD 모델로 설치
+        App.connectOrigin = 'onboarding'; connectSub = 'login'; // 첫 인증 — 로그인부터
         setStage('connect');
       }
       function wireWiz() {
@@ -1111,10 +1179,11 @@
         });
       }
 
-      let cur = 'main', connectSub = 'login', connectedGuild = '';
-      function emit() { window.dispatchEvent(new CustomEvent('stagechange', { detail: { stage: cur, step: ONB.step, connectSub } })); }
+      // stage/connectOrigin 은 state.js(App) 가 SSOT. connectSub·connectedGuild 는 connect 내부 상태.
+      let connectSub = 'login', connectedGuild = '';
+      function emit() { window.dispatchEvent(new CustomEvent('stagechange', { detail: { stage: App.stage, step: ONB.step, connectSub } })); }
       function setStage(name) {
-        cur = name;
+        applyStage(name); // App.stage 갱신 + authed 보정(I1: main ⟹ authed)
         app.style.display = name === 'main' ? '' : 'none';
         onbLayer.hidden = name !== 'onboarding';
         connectLayer.hidden = name !== 'connect';
@@ -1125,10 +1194,12 @@
 
       // ════ Discord 연결(B) — login → select → result(approved/pending/none/cancelled) ════
       const DISCORD_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>';
-      const cxHead = '<div class="wiz-head"><div class="wiz-logo"><img src="img/nexa-logo.png" alt=""></div><div class="wt"><b>NEXA</b><span>DISCORD 연결</span></div></div>';
+      // 진입 맥락: onboarding(첫 인증 — 로그인부터) vs main(이미 인증됨 — 서버 추가, 로그인 생략)
+      const cxHead = () => '<div class="wiz-head"><div class="wiz-logo"><img src="img/nexa-logo.png" alt=""></div><div class="wt"><b>NEXA</b><span>' + (App.connectOrigin === 'main' ? '서버 추가' : 'DISCORD 연결') + '</span></div></div>';
       async function renderConnect() {
         const sub = connectSub;
-        let html = cxHead;
+        const isMain = App.connectOrigin === 'main';
+        let html = cxHead();
         if (sub === 'login') {
           html += '<div class="wiz-body">' +
             '<div class="wiz-title">디스코드에 연결</div>' +
@@ -1141,13 +1212,17 @@
         } else if (sub === 'select') {
           const cands = await api.getConnectCandidates();
           if (!cands.length) { connectSub = 'none'; return renderConnect(); }
-          html += '<div class="wiz-body"><div class="wiz-title">어느 서버에 제공할까요?</div>' +
-            '<div class="wiz-sub">봇이 있고 내가 속한 서버예요. 하나를 골라 연결해요.</div><div class="wiz-list">' +
+          // 메인(이미 인증)에선 로그인 없이 후보 선택 + 참여 토큰 옵션. 온보딩에선 로그인 다음 단계.
+          const tokenBlock = isMain ? '<div class="cx-token"><button class="cx-tok-tgl" id="cxTokTgl">참여 토큰으로 추가</button>' +
+            '<div class="cx-tok-body" hidden><input class="cx-input" id="cxTok" placeholder="발급받은 참여 토큰을 붙여넣으세요"><button class="btn btn--md btn--secondary" id="cxTokAdd">추가</button></div></div>' : '';
+          html += '<div class="wiz-body"><div class="wiz-title">' + (isMain ? '추가할 서버를 고르세요' : '어느 서버에 제공할까요?') + '</div>' +
+            '<div class="wiz-sub">봇이 있고 내가 속한 서버 중 아직 연결 안 된 곳이에요.</div><div class="wiz-list">' +
             cands.map((c) => '<button class="wiz-opt cx-cand" data-guild="' + c.guildId + '">' +
               '<span class="cx-cav">' + c.guildName.trim().charAt(0) + '</span>' +
               '<span class="ob"><b>' + c.guildName + '</b><p>' + (c.autoApprove ? '바로 연결돼요' : '관리자 승인 후 연결') + '</p></span>' +
               '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>').join('') +
-            '</div></div><div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="login">이전</button></div>';
+            '</div>' + tokenBlock + '</div>' +
+            '<div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="' + (isMain ? 'main' : 'login') + '">' + (isMain ? '취소' : '이전') + '</button></div>';
         } else {
           const where = connectedGuild || '이 서버'; // 서버명(없으면 "이 서버"). 이미 '서버'를 포함 → 중복 방지
           const R = {
@@ -1202,6 +1277,8 @@
       window.setStage = setStage;
       window.setOnbStep = (n) => { ONB.step = n; setStage('onboarding'); };
       window.setConnectSub = (sub) => { connectSub = sub; setStage('connect'); };
+      // 메인(이미 인증)에서 서버 추가 — 로그인 없이 후보 선택부터. I3 가드.
+      window.enterServerAdd = () => { if (!canEnterServerAdd()) return; App.connectOrigin = 'main'; connectSub = 'select'; setStage('connect'); };
     })();
   </script>
 

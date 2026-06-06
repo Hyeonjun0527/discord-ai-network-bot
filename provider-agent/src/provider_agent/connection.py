@@ -52,6 +52,7 @@ class AgentConnection:
         on_server_frame: ServerFrameHandler,
         hello_provider: HelloProvider,
         on_durable_token: Callable[[str], None] | None = None,
+        on_guild_info: Callable[[int | None, str | None], None] | None = None,
     ) -> None:
         self._cfg = cfg
         # 현재 인증에 쓰는 토큰. 서버가 durable 토큰을 내려주면 그걸로 교체해 재연결·재시작에 재사용.
@@ -60,6 +61,8 @@ class AgentConnection:
         self._hello_provider = hello_provider
         # durable 토큰을 받았을 때 저장 방법(멀티-서버: 해당 연결 엔트리에 저장). 없으면 단일 token 저장.
         self._on_durable_token = on_durable_token
+        # auth_ok 가 내려준 길드(id·name)로 엔트리를 갱신(토큰-연결의 '이름 미상' 자동 해소).
+        self._on_guild_info = on_guild_info
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._stopped = False
         self._last_recv = 0.0
@@ -143,6 +146,9 @@ class AgentConnection:
     async def _dispatch(self, frame: Frame) -> None:
         if isinstance(frame, AuthOkFrame):
             self._authed.set()
+            # 서버가 길드 정보를 내려주면 엔트리(서버명) 갱신 — 토큰-연결의 수동 라벨링 불필요.
+            if self._on_guild_info is not None and (frame.guild_id is not None or frame.guild_name):
+                self._on_guild_info(frame.guild_id, frame.guild_name)
             # 서버가 durable 토큰을 내려주면, 이후 재연결·재시작에 재사용하도록 교체·저장한다.
             if frame.provider_token and frame.provider_token != self._token:
                 self._token = frame.provider_token

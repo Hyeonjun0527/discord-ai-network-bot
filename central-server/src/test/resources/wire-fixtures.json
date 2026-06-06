@@ -10,7 +10,9 @@
     "type": "auth_ok",
     "protocolVersion": "1.0",
     "sessionId": "s1",
-    "providerToken": ""
+    "providerToken": "",
+    "guildId": 123,
+    "guildName": "테스트 서버"
   },
   "auth_err": {
     "type": "auth_err",

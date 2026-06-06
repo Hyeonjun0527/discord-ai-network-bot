@@ -184,7 +184,7 @@ async def test_multi_connection_add_remove(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
     class FakeConn:
-        def __init__(self, cfg, on_frame, hello, on_durable_token=None):
+        def __init__(self, cfg, on_frame, hello, on_durable_token=None, on_guild_info=None):
             self._authed = True
 
         @property

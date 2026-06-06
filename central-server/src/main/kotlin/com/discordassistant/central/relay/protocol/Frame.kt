@@ -63,6 +63,10 @@ data class AuthOkFrame(
     val sessionId: String = "",
     // 재연결·재시작에 재사용할 durable 토큰(비면 미발급). 에이전트가 저장해 다음부터 이 토큰으로 인증.
     val providerToken: String = "",
+    // 인증된 토큰이 묶인 길드. 에이전트가 '이름 미상' 수동 라벨링 없이 서버명을 바로 표시하도록 내려준다.
+    // (토큰-연결 시 guildName 자동화. 봇이 그 길드에 있으므로 이름을 조회 가능. 비면 에이전트가 폴백 표기.)
+    val guildId: Long? = null,
+    val guildName: String? = null,
     override val type: String = FrameType.AUTH_OK,
 ) : Frame()
 

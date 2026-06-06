@@ -121,6 +121,9 @@ class AuthOkFrame:
     protocol_version: str = PROTOCOL_VERSION
     session_id: str = ""
     provider_token: str = ""  # 재연결·재시작 재사용용 durable 토큰(비면 미발급)
+    # 인증된 토큰이 묶인 길드. 토큰-연결 시 '이름 미상' 수동 라벨링 없이 서버명을 바로 표시.
+    guild_id: int | None = None
+    guild_name: str | None = None
 
     @property
     def type(self) -> str:
@@ -132,14 +135,20 @@ class AuthOkFrame:
             "protocolVersion": self.protocol_version,
             "sessionId": self.session_id,
             "providerToken": self.provider_token,
+            "guildId": self.guild_id,
+            "guildName": self.guild_name,
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "AuthOkFrame":
+        gid = d.get("guildId")
+        gname = d.get("guildName")
         return cls(
             str(d.get("protocolVersion", PROTOCOL_VERSION)),
             str(d.get("sessionId", "")),
             str(d.get("providerToken", "")),
+            int(gid) if gid is not None else None,
+            str(gname) if gname is not None else None,
         )
 
 

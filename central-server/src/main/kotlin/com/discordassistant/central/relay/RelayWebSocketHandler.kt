@@ -37,6 +37,8 @@ class RelayWebSocketHandler(
     @param:Value("\${central.relay.heartbeat-seconds:30}") private val heartbeatSeconds: Long,
     // durable 토큰 발급기(있으면 인증 성공 시 재사용 토큰을 auth_ok 로 내려줌). TokenService 가 구현.
     private val durableIssuer: com.discordassistant.central.provider.application.DurableTokenIssuer? = null,
+    // 봇이 속한 길드 목록(이름 조회). auth_ok 에 guildName 을 담아 에이전트의 '이름 미상' 수동 라벨링을 없앤다.
+    private val botGuilds: com.discordassistant.central.platform.discord.BotGuildLister? = null,
 ) : TextWebSocketHandler() {
     private val log = LoggerFactory.getLogger(RelayWebSocketHandler::class.java)
 
@@ -106,7 +108,16 @@ class RelayWebSocketHandler(
         pendingAuth.remove(session.id)
         // 재연결·재시작에 재사용할 durable 토큰 발급(시크릿 설정 시). 비면 기존 일회용 동작.
         val durable = durableIssuer?.issueDurable(binding.providerId, binding.guildId).orEmpty()
-        conn.sendFrame(AuthOkFrame(sessionId = session.id, providerToken = durable))
+        // 토큰이 묶인 길드 이름(봇이 그 길드에 있으면 조회 가능) → auth_ok 로 내려 자동 표기.
+        val guildName = botGuilds?.botGuilds()?.firstOrNull { it.id == binding.guildId }?.name
+        conn.sendFrame(
+            AuthOkFrame(
+                sessionId = session.id,
+                providerToken = durable,
+                guildId = binding.guildId,
+                guildName = guildName,
+            ),
+        )
         log.info("에이전트 인증 성공: provider={} guild={}", binding.providerId, binding.guildId)
     }
 

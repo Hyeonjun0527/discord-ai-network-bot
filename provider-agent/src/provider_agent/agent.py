@@ -255,9 +255,22 @@ class ProviderAgent:
             except Exception:  # noqa: BLE001
                 pass
 
-        conn = AgentConnection(ccfg, self._on_server_frame, self._build_hello, on_durable_token=_persist)
-        return {"conn": conn, "task": None, "status_task": None,
-                "guild_id": guild_id, "guild_name": guild_name, "token": token}
+        entry: dict = {"conn": None, "task": None, "status_task": None,
+                       "guild_id": guild_id, "guild_name": guild_name, "token": token}
+
+        def _on_guild_info(gid: int | None, gname: str | None) -> None:
+            # auth_ok 가 내려준 길드 정보로 엔트리 갱신(토큰-연결도 서버명 자동 표시).
+            if gid is not None:
+                entry["guild_id"] = gid
+            if gname:
+                entry["guild_name"] = gname
+
+        conn = AgentConnection(
+            ccfg, self._on_server_frame, self._build_hello,
+            on_durable_token=_persist, on_guild_info=_on_guild_info,
+        )
+        entry["conn"] = conn
+        return entry
 
     def _spawn_entry(self, entry: dict) -> None:
         entry["task"] = asyncio.create_task(entry["conn"].run())

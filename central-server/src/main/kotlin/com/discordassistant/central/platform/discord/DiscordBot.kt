@@ -89,6 +89,12 @@ interface BotGuildLister {
 
     /** 한 서버의 텍스트 채널을 이름과 함께 반환(미연결/없으면 빈 목록). 어드민 채널 드롭다운용. */
     fun botChannels(guildId: Long): List<BotChannelInfo>
+
+    /**
+     * 이 사용자가 해당 길드의 **관리자**(MANAGE_SERVER 또는 ADMINISTRATOR)인지.
+     * 데스크톱 앱의 관리 API 권한 게이트용. JDA 미연결·멤버 캐시 미스·권한 없음이면 false(안전 거부).
+     */
+    fun isGuildAdmin(guildId: Long, userId: Long): Boolean
 }
 
 /**
@@ -136,6 +142,12 @@ class DiscordBot(
             ?.textChannels
             ?.map { BotChannelInfo(it.idLong, it.name) }
             ?: emptyList()
+
+    /** 관리 API 권한 게이트: 사용자가 길드 관리자(MANAGE_SERVER|ADMINISTRATOR)인지. 미충족은 false(안전 거부). */
+    override fun isGuildAdmin(guildId: Long, userId: Long): Boolean {
+        val member = jda?.getGuildById(guildId)?.getMemberById(userId) ?: return false
+        return member.hasPermission(Permission.MANAGE_SERVER) || member.hasPermission(Permission.ADMINISTRATOR)
+    }
 
     private val fallbackAttempted = AtomicBoolean(false)
 

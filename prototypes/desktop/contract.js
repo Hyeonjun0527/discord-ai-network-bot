@@ -44,13 +44,15 @@ export const ENDPOINTS = Object.freeze({
   serverDetail: (g) => '/api/servers/' + g,         // GET — 서버별 내 기여 통계·myModels·policy(Gap-S/P)
   serverPause: (g) => '/api/servers/' + g + '/pause',   // POST {paused} — provider self-service(/provider-pause·resume)
   serverPolicy: (g) => '/api/servers/' + g + '/policy', // POST {dailyLimit,maxConcurrency,maxSeconds,scope} — (/provider-limit·scope)
-  // ⚠ Gap-M: 서버 관리(관리자) — 앱 내 직접 관리. central 관리 로직은 있으나(슬래시·웹 OAuth /api/ai-network/*)
-  //   provider-agent↔central 관리 채널이 없음. 아래는 그 채널을 신설할 때의 경로 제안.
-  serverManage: (g) => '/api/servers/' + g + '/manage',            // GET — 승인 대기·로스터·정책
+  // 서버 관리(관리자) — 앱 내 직접 관리. ✅ 채널 구현됨(2026-06-07): webui → central /provider/admin/*.
+  //   central 이 durable 토큰 신원 + JDA 관리자 판정(MANAGE_SERVER|ADMINISTRATOR) 후 ProviderRegistrationService 실행.
+  //   role 전달은 별도 불필요 — 앱은 serverManage 응답 ok 로 "내가 관리자인지" 판정(비관리자는 ok=false).
+  serverManage: (g) => '/api/servers/' + g + '/manage',            // GET — 승인 대기(pending)·로스터(roster)
   providerApprove: (g) => '/api/servers/' + g + '/providers/approve', // POST {providerUserId} — /provider-approve
   providerReject: (g) => '/api/servers/' + g + '/providers/reject',  // POST {providerUserId} — /provider-reject
   providerRemove: (g) => '/api/servers/' + g + '/providers/remove',  // POST {providerUserId} — /provider-remove
-  serverManagePolicy: (g) => '/api/servers/' + g + '/manage/policy', // POST {autoApprove,defaultDailyLimit,scope}
+  // ⚠ 후속: 관리 정책 토글(autoApprove 등)은 아직 슬래시 명령만 — 관리 API 미노출(다음 단계).
+  serverManagePolicy: (g) => '/api/servers/' + g + '/manage/policy',
   onboardApply: '/api/onboard-apply',
   connectOpen: '/api/connect-open',
   sdStatus: '/api/sd/status',

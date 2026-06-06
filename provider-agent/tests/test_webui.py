@@ -512,6 +512,19 @@ async def test_servers_lists_saved_when_not_running(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_server_manage_requires_running_agent(monkeypatch):
+    # 관리 채널 프록시 — 에이전트 미실행이면 안내, 잘못된 action 은 거부.
+    client = await _client()
+    try:
+        d = await (await client.get("/api/servers/100/manage", headers={"X-Session": KEY})).json()
+        assert d["ok"] is False  # 미실행
+        d2 = await (await client.post("/api/servers/100/providers/nuke", headers={"X-Session": KEY}, json={"providerUserId": 1})).json()
+        assert d2["ok"] is False  # 알 수 없는 action
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_server_policy_saves_override(monkeypatch):
     # 서버별 정책 override(G3) 저장 — camelCase 경계 → snake 저장. 실행 중 아니면 config 에 기록.
     from provider_agent.config_file import load_guild_policies

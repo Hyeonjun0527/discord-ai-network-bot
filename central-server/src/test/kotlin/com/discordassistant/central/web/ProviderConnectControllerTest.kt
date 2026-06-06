@@ -63,6 +63,8 @@ class ProviderConnectControllerTest {
                         override fun botGuilds() = botGuildIds.map { BotGuildInfo(it, "Guild $it") }
 
                         override fun botChannels(guildId: Long) = emptyList<BotChannelInfo>()
+
+                        override fun isGuildAdmin(guildId: Long, userId: Long) = false
                     },
                 states = states,
                 selections = selections,

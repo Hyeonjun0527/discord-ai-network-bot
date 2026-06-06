@@ -62,6 +62,29 @@ def _post_agent_sync(base: str, durable_token: str) -> list[dict]:
         return list(json.loads(resp.read().decode("utf-8")).get("joins") or [])
 
 
+def _post_provider_admin(base: str, action: str, durable_token: str, guild_id: int, target_id: int = 0) -> dict:
+    """중앙 서버 관리 API 호출(관리자 전용). durable 토큰으로 신원 인증 → central 이 관리자 판정 후 동작.
+
+    action: 'manage'(승인대기·로스터 조회) | 'approve' | 'reject' | 'remove'. 권한은 central 이 JDA 로 판정한다.
+    """
+    import json
+    import ssl
+    import urllib.request
+
+    import certifi
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    body = json.dumps({"durableToken": durable_token, "guildId": guild_id, "targetProviderId": target_id}).encode("utf-8")
+    req = urllib.request.Request(
+        base + "/provider/admin/" + action,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+    )
+    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+        return dict(json.loads(resp.read().decode("utf-8")))
+
+
 class ProviderAgent:
     def __init__(self, cfg: AgentConfig, ollama: OllamaClient | None = None, sd=None) -> None:
         self._cfg = cfg
@@ -372,6 +395,31 @@ class ProviderAgent:
             {"index": i, "guildId": e["guild_id"], "guildName": e["guild_name"], "connected": e["conn"].authed}
             for i, e in enumerate(self._entries)
         ]
+
+    # ── 서버 관리(관리자) — central 관리 채널 호출. durable 토큰으로 신원, 권한은 central 이 판정 ──
+    def _durable_token(self) -> str:
+        """저장된 durable(dv1.) 토큰. 관리 API 신원 인증용. 없으면 빈 문자열(미연동)."""
+        from .config_file import load_connections
+
+        return next((c.get("token") or "" for c in load_connections() if (c.get("token") or "").startswith("dv1.")), "")
+
+    async def admin_manage(self, guild_id: int) -> dict:
+        """이 서버의 승인 대기·로스터 조회(관리자). 권한 없으면 central 이 ok=False 반환."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin, base, "manage", dt, guild_id, 0)
+
+    async def admin_action(self, action: str, guild_id: int, target_provider_id: int) -> dict:
+        """Provider 승인/거절/제거(관리자). action: approve|reject|remove."""
+        if action not in ("approve", "reject", "remove"):
+            return {"ok": False, "error": "알 수 없는 작업"}
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin, base, action, dt, guild_id, target_provider_id)
 
     # ── 서버별 정책(데스크톱 앱 G3) ─────────────────────────────────────
     def guild_policy(self, guild_id: int) -> dict:

@@ -943,6 +943,38 @@ def build_app(session_key: str) -> web.Application:
 
         return web.json_response({"ok": True, "policy": load_guild_policies().get(guild_id, {})})
 
+    async def server_manage(req: web.Request) -> web.Response:
+        """서버 관리(관리자) — 승인 대기·로스터 조회. central 관리 채널로 프록시(권한은 central 이 JDA 로 판정)."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_manage(guild_id))  # type: ignore[attr-defined]
+
+    async def provider_admin(req: web.Request) -> web.Response:
+        """Provider 승인/거절/제거(관리자). {action}=approve|reject|remove, body {providerUserId}."""
+        _auth(req)
+        action = req.match_info.get("action", "")
+        if action not in ("approve", "reject", "remove"):
+            return web.json_response({"ok": False, "error": "알 수 없는 작업"})
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        try:
+            target = int(data.get("providerUserId"))
+        except (TypeError, ValueError):
+            return web.json_response({"ok": False, "error": "대상 Provider 가 필요해요"})
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_action(action, guild_id, target))  # type: ignore[attr-defined]
+
     async def server_rename(req: web.Request) -> web.Response:
         """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). index + name."""
         _auth(req)
@@ -1291,6 +1323,8 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/server-remove", server_remove)
     app.router.add_post("/api/server-rename", server_rename)
     app.router.add_post("/api/servers/{guildId}/policy", server_policy)
+    app.router.add_get("/api/servers/{guildId}/manage", server_manage)
+    app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
     app.router.add_post("/api/server-add-token", server_add_token)
     app.router.add_get("/api/install-info", install_info)
     app.router.add_post("/api/install", install)

@@ -154,6 +154,34 @@ def test_guild_policy_override_in_hello():
     assert agent._build_hello(200).remaining_daily_requests == 5  # override 없으면 전역
 
 
+@pytest.mark.asyncio
+async def test_admin_action_calls_central(monkeypatch, tmp_path):
+    # 관리 작업은 durable 토큰으로 central 관리 채널을 호출한다(권한 판정은 central).
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from provider_agent.config_file import add_connection
+
+    add_connection("dv1.fakedurable", guild_id=100, guild_name="A")
+    agent = ProviderAgent(AgentConfig(token="dv1.fakedurable"))  # type: ignore[arg-type]
+    calls: list = []
+
+    def fake_post(base, action, dt, gid, tid=0):
+        calls.append((action, dt, gid, tid))
+        return {"ok": True, "message": "승인됨"}
+
+    monkeypatch.setattr("provider_agent.agent._post_provider_admin", fake_post)
+    res = await agent.admin_action("approve", 100, 99)
+    assert res["ok"] is True
+    assert calls == [("approve", "dv1.fakedurable", 100, 99)]
+
+
+@pytest.mark.asyncio
+async def test_admin_rejects_unknown_action_and_missing_durable(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    agent = ProviderAgent(AgentConfig(token="onetime"))  # type: ignore[arg-type] durable 아님
+    assert (await agent.admin_action("nuke", 100, 1))["ok"] is False  # 알 수 없는 작업
+    assert (await agent.admin_manage(100))["ok"] is False  # durable 없음
+
+
 def test_build_hello_per_guild():
     # hello 의 remaining_daily_requests 가 길드별로 다르게 보고된다.
     agent = ProviderAgent(AgentConfig(token="T", daily_limit=5, models=("m",)))

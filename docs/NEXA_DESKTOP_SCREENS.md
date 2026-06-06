@@ -214,10 +214,17 @@
 >
 > **승인 대기(PENDING) 규칙**: 아직 승인 전이라 **기여 현황·정책·관리 모두 숨기고** 승인 대기 안내만 보인다.
 >
-> **백엔드 현실 / Gap-M**: 관리 로직은 central 에 이미 있으나(슬래시 명령 + 웹 OAuth `/api/ai-network/*`),
-> **provider-agent ↔ central 관리 채널이 없다**. 앱에서 직접 관리하려면 이 채널(또는 앱의 인증된 관리 API
-> 호출 경로)을 신설해야 한다. role 판정도 `AuthOkFrame` 에 실어야 한다(역할 기반 노출). 프로토타입은 mock
-> 으로 UI·플로우를 먼저 확정하고, 백엔드 채널은 이 화면이 요구하는 계약에 맞춰 단계적으로 뚫는다.
+> **백엔드 관리 채널 / Gap-M (2026-06-07 구현)**: provider-agent ↔ central 관리 채널을 HTTP 로 뚫었다.
+> - central `ProviderAdminController`(`/provider/admin/{approve|reject|remove|manage}`): **durable 토큰 신원**
+>   + **JDA 관리자 판정**(`BotGuildLister.isGuildAdmin` = MANAGE_SERVER|ADMINISTRATOR) 2단 게이트 →
+>   기존 `ProviderRegistrationService` 호출(슬래시·웹과 동일 서비스·감사 로그). 권한 상승 불가.
+> - provider-agent: `_post_provider_admin` + `admin_manage`/`admin_action`, webui `GET /api/servers/{g}/manage`·
+>   `POST /api/servers/{g}/providers/{action}` 프록시(앱 → webui → central).
+> - **role 별도 전달 불필요**: 앱은 `serverManage` 응답 ok 로 관리자 여부 판정(비관리자는 ok=false) — `AuthOkFrame`
+>   확장 회피. 와이어 무변경(HTTP body DTO).
+> - **남은 것**: ① 로스터/대기 목록의 이름·모델·today 보강(central 은 현재 providerId·state 만 — 이름/통계는
+>   Discord/집계 소스 결합 후속) ② 관리 정책 토글(autoApprove)은 슬래시 명령만(관리 API 미노출). 프로토타입은
+>   이상적 shape 를 mock 으로 확정해 둔다.
 
 ## 07 · 서버 상세 — 개요 (기부자 관점, 유일 화면)
 ```

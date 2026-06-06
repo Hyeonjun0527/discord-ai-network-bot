@@ -26,7 +26,8 @@ export function toast(msg, o = {}) {
   if (o.progress != null) {
     if (!bar) { bar = document.createElement('div'); bar.className = 'toast-bar'; bar.innerHTML = '<i></i>'; el.appendChild(bar); }
     bar.querySelector('i').style.width = Math.max(0, Math.min(100, o.progress)) + '%';
-  } else if (bar) { bar.remove(); }
+    el.classList.add('has-bar'); // 진행 토스트 고정 폭(문구가 바뀌어도 크기 일정)
+  } else if (bar) { bar.remove(); el.classList.remove('has-bar'); }
   clearTimeout(el._t);
   if (!o.sticky) el._t = setTimeout(() => el.remove(), o.duration || 2800);
   return el;

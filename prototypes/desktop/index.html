@@ -704,6 +704,7 @@
     .cx-input { flex: 1; min-width: 0; height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--text); font: inherit; font-size: 14px; }
     .cx-input::placeholder { color: var(--subtle); }
     .cx-input:focus { outline: none; border-color: color-mix(in srgb, var(--c-accent) 45%, transparent); }
+    textarea.pta { height: 112px; padding: 12px 14px; resize: vertical; line-height: 1.55; }
     /* 후보 서버 아바타(작은) */
     .cx-cav { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 16px; color: #eef3fb; background: color-mix(in srgb, var(--c-blue) 22%, transparent); border: 1px solid color-mix(in srgb, var(--c-blue) 40%, transparent); }
     .cx-cand .ob { flex: 1; min-width: 0; }
@@ -1268,8 +1269,8 @@
 
     // ── 서버 관리(관리자, 앱 내 — 웹 위임 폐기). 13 Provider 관리부터 구현, 나머지 탭은 단계적. ──
     const MTABS = [
-      { k: 'overview', t: '개요' }, { k: 'channels', t: '채널' }, { k: 'channelai', t: '채널 AI' },
-      { k: 'rag', t: 'RAG' }, { k: 'preset', t: '프리셋' }, { k: 'provider', t: 'Provider' },
+      { k: 'overview', t: '개요' }, { k: 'profile', t: 'AI 프로필' }, { k: 'channels', t: '채널' },
+      { k: 'channelai', t: '채널 AI' }, { k: 'rag', t: 'RAG' }, { k: 'preset', t: '프리셋' }, { k: 'provider', t: 'Provider' },
     ]; // v1: 역할별 정책·다중응답(multi)은 범위 외
     let _manageTab = 'provider';
 
@@ -1287,6 +1288,7 @@
     const TAB_RENDER = {
       provider: (m) => renderProviderTab(m),
       overview: (m, d) => renderOverviewTab(m, d),
+      profile: (m) => renderProfileTab(m),
       channels: (m) => renderChannelsTab(m),
       channelai: (m) => renderChannelAiTab(m),
       rag: (m) => renderRagTab(m),
@@ -1381,6 +1383,22 @@
         '<div class="dcard"><div class="dlabel">서버 기본값</div><div class="dsub">기본 모델 ' + m.channels.defaultModel + ' · 기본 언어 ' + m.channels.defaultLang + '</div></div>';
     }
 
+    function renderProfileTab(m) {
+      const prompts = m.prompts.map(p => '<div class="dcard"><div class="drow"><div style="min-width:0"><div class="dlabel">' + p.name +
+        (p.isDefault ? ' <span class="me">기본</span>' : '') + '</div>' +
+        '<div class="dsub">' + p.content.slice(0, 80) + (p.content.length > 80 ? '…' : '') + '</div></div>' +
+        '<div class="prov-acts">' +
+          (p.isDefault ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-default="' + p.id + '">기본으로</button>') +
+          (p.builtin ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-del="' + p.id + '" data-name="' + p.name + '">삭제</button>') +
+        '</div></div></div>').join('');
+      return '<div class="dcard"><div class="dlabel">니아 프로필 <span class="dim">· 이 서버에서</span></div>' +
+        '<div class="pfield" style="margin-top:12px"><label>서버 표시 이름</label>' +
+          '<div class="cm-row"><input class="cx-input" id="profName" value="' + m.profile.displayName + '" maxlength="32"><button class="btn btn--md btn--secondary" id="profSave">저장</button></div></div>' +
+        '<div class="dsub" style="margin-top:11px">🖼 프로필 이미지·글로벌 이름은 Discord 개발자 포털에서 바꿔요. 서버별로는 표시 이름(닉네임)만 바꿀 수 있어요.</div></div>' +
+        '<div class="drow"><div class="msec-label" style="margin:0">전역 프롬프트셋 <span class="dim">· 서버 전체 기본 성격</span></div>' +
+          '<button class="btn btn--sm btn--secondary" id="promptAdd">+ 추가</button></div>' + prompts;
+    }
+
     function renderChannelsTab(m) {
       const c = m.channels;
       const ch = c.list.map(x => '<div class="mrow"><span class="mrow-nm"># ' + x.name + '</span>' +
@@ -1427,6 +1445,52 @@
       manageEl.querySelectorAll('[data-ch-toggle]').forEach(b => b.onclick = () => { const x = m.channels.list.find(c => c.name === b.dataset.chToggle); if (x) x.aiAllowed = !x.aiAllowed; rerender(); });
       manageEl.querySelectorAll('[data-cai-toggle]').forEach(b => b.onclick = () => { const x = m.channelAi.find(c => c.channel === b.dataset.caiToggle); if (x) x.on = !x.on; rerender(); });
       manageEl.querySelectorAll('[data-preset-toggle]').forEach(b => b.onclick = () => { const x = m.presets.find(c => c.name === b.dataset.presetToggle); if (x) x.on = !x.on; rerender(); });
+      // AI 프로필 — 표시 이름 저장 · 전역 프롬프트셋 기본/삭제/추가
+      const ps = manageEl.querySelector('#profSave');
+      if (ps) ps.onclick = () => { const v = (manageEl.querySelector('#profName').value || '').trim(); if (v) m.profile.displayName = v; toast('서버 표시 이름을 저장했어요', { type: 'ok', sub: v }); };
+      manageEl.querySelectorAll('[data-prompt-default]').forEach(b => b.onclick = () => { m.prompts.forEach(p => { p.isDefault = (p.id === b.dataset.promptDefault); }); toast('기본 프롬프트셋을 변경했어요', { type: 'ok' }); rerender(); });
+      manageEl.querySelectorAll('[data-prompt-del]').forEach(b => b.onclick = () => confirmDeletePrompt(d, m, b.dataset.promptDel, b.dataset.name, rerender));
+      const pa = manageEl.querySelector('#promptAdd');
+      if (pa) pa.onclick = () => openPromptModal(m, rerender);
+    }
+
+    function confirmDeletePrompt(d, m, id, name, done) {
+      const lay = document.createElement('div');
+      lay.className = 'modal-layer';
+      lay.innerHTML = '<div class="modal" style="width:min(420px,100%)">' +
+        '<button class="modal-x" data-x aria-label="닫기">✕</button>' +
+        '<h3>' + name + ' 을(를) 삭제할까요?</h3><p class="msub">이 전역 프롬프트셋이 서버 목록에서 제거돼요.</p>' +
+        '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
+        '<button class="btn btn--md btn--warn" id="pdYes">삭제</button></div></div>';
+      document.body.appendChild(lay);
+      lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
+      lay.querySelector('#pdYes').onclick = () => {
+        const wasDefault = m.prompts.find(p => p.id === id)?.isDefault;
+        m.prompts = m.prompts.filter(p => p.id !== id);
+        if (wasDefault && m.prompts.length && !m.prompts.some(p => p.isDefault)) m.prompts[0].isDefault = true; // 기본 공백 방지
+        lay.remove(); toast(name + ' 을(를) 삭제했어요', { type: 'info' }); done();
+      };
+    }
+
+    function openPromptModal(m, done) {
+      const lay = document.createElement('div');
+      lay.className = 'modal-layer';
+      lay.innerHTML = '<div class="modal" style="width:min(480px,100%)">' +
+        '<button class="modal-x" data-x aria-label="닫기">✕</button>' +
+        '<h3>전역 프롬프트셋 추가</h3><p class="msub">서버 전체에 적용할 AI 성격(시스템 프롬프트)을 만들어요.</p>' +
+        '<div class="pform"><div class="pfield"><label>이름</label><input class="cx-input" id="npName" placeholder="예: 코드 도우미"></div>' +
+        '<div class="pfield"><label>프롬프트 내용</label><textarea class="cx-input pta" id="npBody" placeholder="당신은 ..."></textarea></div></div>' +
+        '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
+        '<button class="btn btn--md btn--primary" id="npSave">추가</button></div></div>';
+      document.body.appendChild(lay);
+      lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
+      lay.querySelector('#npSave').onclick = () => {
+        const name = (lay.querySelector('#npName').value || '').trim();
+        const body = (lay.querySelector('#npBody').value || '').trim();
+        if (!name || !body) { toast('이름과 내용을 입력하세요', { type: 'info' }); return; }
+        m.prompts.push({ id: 'p' + Date.now(), name, builtin: false, isDefault: false, content: body });
+        lay.remove(); toast('프롬프트셋을 추가했어요', { type: 'ok', sub: name }); done();
+      };
     }
 
     // 메인은 이미 인증된 상태 → '서버 추가'는 로그인 없이 후보 선택 + 토큰(연결 stage 가 origin=main 처리)

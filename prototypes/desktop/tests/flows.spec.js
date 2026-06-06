@@ -136,6 +136,26 @@ test('v1 관리 탭: 채널/채널AI/RAG/프리셋 렌더(역할정책·다중�
   await expect(page.locator('#serverManage')).toContainText('번역봇');
 });
 
+test('AI 프로필 탭: 니아 기본 프롬프트셋 + 표시 이름 + 추가/기본/삭제', async ({ page }) => {
+  await page.goto('/index.html#/servers/1001/manage/profile');
+  await page.waitForFunction(() => !!window.App);
+  await expect(page.locator('#serverManage .mtab.active')).toContainText('AI 프로필');
+  // 니아 기본 페르소나 + 기본 배지
+  await expect(page.locator('#serverManage')).toContainText('니아 (기본 페르소나)');
+  await expect(page.locator('#serverManage .me').first()).toHaveText('기본');
+  await expect(page.locator('#profName')).toHaveValue('니아');
+  // 다른 셋을 기본으로 → 니아 기본 배지 사라지고 정중한 비서가 기본
+  await page.click('#serverManage [data-prompt-default="formal"]');
+  await expect(page.locator('#serverManage [data-prompt-default="nia"]')).toBeVisible(); // 니아가 이제 '기본으로' 버튼 가짐
+  // 프롬프트셋 추가 모달
+  await page.click('#promptAdd');
+  await expect(page.locator('.modal-layer .modal', { hasText: '전역 프롬프트셋 추가' })).toBeVisible();
+  await page.fill('#npName', '테스트셋');
+  await page.fill('#npBody', '당신은 테스트 도우미입니다.');
+  await page.click('#npSave');
+  await expect(page.locator('#serverManage')).toContainText('테스트셋');
+});
+
 test('관리 탭 토글: 채널 AI on/off + URL 동기화', async ({ page }) => {
   await page.goto('/index.html#/servers/1001/manage/channelai');
   await page.waitForFunction(() => !!window.App);

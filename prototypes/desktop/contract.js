@@ -44,6 +44,13 @@ export const ENDPOINTS = Object.freeze({
   serverDetail: (g) => '/api/servers/' + g,         // GET — 서버별 내 기여 통계·myModels·policy(Gap-S/P)
   serverPause: (g) => '/api/servers/' + g + '/pause',   // POST {paused} — provider self-service(/provider-pause·resume)
   serverPolicy: (g) => '/api/servers/' + g + '/policy', // POST {dailyLimit,maxConcurrency,maxSeconds,scope} — (/provider-limit·scope)
+  // ⚠ Gap-M: 서버 관리(관리자) — 앱 내 직접 관리. central 관리 로직은 있으나(슬래시·웹 OAuth /api/ai-network/*)
+  //   provider-agent↔central 관리 채널이 없음. 아래는 그 채널을 신설할 때의 경로 제안.
+  serverManage: (g) => '/api/servers/' + g + '/manage',            // GET — 승인 대기·로스터·정책
+  providerApprove: (g) => '/api/servers/' + g + '/providers/approve', // POST {providerUserId} — /provider-approve
+  providerReject: (g) => '/api/servers/' + g + '/providers/reject',  // POST {providerUserId} — /provider-reject
+  providerRemove: (g) => '/api/servers/' + g + '/providers/remove',  // POST {providerUserId} — /provider-remove
+  serverManagePolicy: (g) => '/api/servers/' + g + '/manage/policy', // POST {autoApprove,defaultDailyLimit,scope}
   onboardApply: '/api/onboard-apply',
   connectOpen: '/api/connect-open',
   sdStatus: '/api/sd/status',

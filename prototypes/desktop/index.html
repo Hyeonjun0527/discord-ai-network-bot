@@ -481,6 +481,25 @@
     .dcard.dwarn .dlabel { color: #f0c987; }
     .dcard.dmanage .dsub { margin-bottom: 14px; }
     .dcard.dmanage .ext { font-size: 12px; opacity: .8; }
+    /* ── 서버 관리(관리자, 앱 내) ── */
+    .mtabs { display: flex; gap: 4px; margin: 18px 0 20px; padding-bottom: 2px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+    .mtab { flex: 0 0 auto; padding: 9px 14px; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: .14s ease; }
+    .mtab:hover { color: #fff; }
+    .mtab.active { color: #fff; border-bottom-color: var(--c-violet); }
+    .mtab .badge { display: inline-block; margin-left: 6px; min-width: 17px; padding: 1px 5px; border-radius: 999px; font-size: 11px; font-weight: 800; background: color-mix(in srgb, var(--warn) 24%, transparent); color: #ffdfae; }
+    .msoon { padding: 40px 20px; text-align: center; color: var(--subtle); border: 1px dashed var(--line); border-radius: 16px; }
+    .msoon b { display: block; color: var(--muted); font-size: 14.5px; margin-bottom: 6px; }
+    /* Provider 관리 카드(승인 대기·로스터) */
+    .prov-row { display: flex; align-items: center; gap: 14px; padding: 15px 18px; border-radius: 14px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(15, 22, 38, .7), rgba(10, 16, 28, .8)); margin-bottom: 10px; }
+    .prov-row.wait { border-color: color-mix(in srgb, var(--warn) 32%, transparent); background: color-mix(in srgb, var(--warn) 6%, transparent); }
+    .prov-av { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-weight: 800; font-size: 15px; color: #d8e0ee; background: rgba(255,255,255,.05); border: 1px solid var(--line); }
+    .prov-main { flex: 1; min-width: 0; }
+    .prov-nm { font-size: 14.5px; font-weight: 700; color: #eef2fb; display: flex; align-items: center; gap: 8px; }
+    .prov-nm .me { font-size: 11px; font-weight: 700; color: #c4b4ff; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--c-violet) 15%, transparent); border: 1px solid color-mix(in srgb, var(--c-violet) 38%, transparent); }
+    .prov-meta { margin-top: 4px; color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 7px; }
+    .prov-acts { flex: 0 0 auto; display: flex; gap: 8px; }
+    .msec-label { font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--subtle); margin: 22px 0 11px; }
+    .msec-label:first-child { margin-top: 0; }
     /* 정책 변경 모달 폼 */
     .pform { display: flex; flex-direction: column; gap: 18px; margin: 4px 0 2px; }
     .pfield { display: flex; flex-direction: column; gap: 9px; }
@@ -855,6 +874,7 @@
           <div class="srv-summary" id="serverSummary"></div>
         </div>
         <div id="serverDetail" hidden><!-- JS 렌더(기부자 관점 개요) --></div>
+        <div id="serverManage" hidden><!-- JS 렌더(관리자 — 앱 내 서버 관리) --></div>
       </section>
       <section class="view" data-view="local"><div class="placeholder"><div class="ico">◆</div><h2>로컬 실행</h2><p>다음 단계에서 구현합니다.</p></div></section>
       <section class="view" data-view="logs"><div class="placeholder"><div class="ico">◆</div><h2>로그</h2><p>다음 단계에서 구현합니다.</p></div></section>
@@ -969,6 +989,7 @@
           <button data-detail="1002">기부자·연결</button>
           <button data-detail="1003">기부자·일시중지</button>
           <button data-detail="1004">관리자·승인대기</button>
+          <button data-detail="manage">관리(13 Provider)</button>
           <button data-detail="back">목록으로</button>
         </div>
       </div>
@@ -1093,8 +1114,9 @@
     // ── 서버 상세(기부자 관점) — docs/NEXA_DESKTOP_SCREENS.md 07 ──
     const wrapEl = document.getElementById('serverListWrap');
     const detailEl = document.getElementById('serverDetail');
+    const manageEl = document.getElementById('serverManage');
 
-    function backToList() { detailEl.hidden = true; wrapEl.hidden = false; reload(); }
+    function backToList() { detailEl.hidden = true; manageEl.hidden = true; wrapEl.hidden = false; reload(); }
 
     async function openDetail(guildId) {
       const d = await api.getServerDetail(guildId);
@@ -1128,18 +1150,29 @@
           '<div><span>최대 시간</span><b>' + fmtSec(d.policy.maxSeconds) + '</b></div>' +
           '<div><span>공개 대상</span><b>' + presentScope(d.policy.scope) + '</b></div>' +
         '</div></div>';
-      // PENDING 안내
+      // PENDING 안내 — 승인 전이라 기여현황·관리·정책 모두 숨기고 이 안내만 노출.
       const pendingBlock = pending ?
         '<div class="dcard dwarn"><div class="dlabel">⚠ 관리자 승인을 기다리는 중</div>' +
-        '<div class="dsub">관리자가 승인하면 이 서버에 제공을 시작해요. 승인 전에는 요청을 받지 않아요.</div></div>' : '';
-      // 관리자/기부자 분기 — 관리 위임
-      const manageBlock = isAdmin ?
-        '<div class="dcard dmanage"><div class="dlabel">🛡 서버 관리</div>' +
-        '<div class="dsub">채널 AI · RAG · 프리셋 · 다중응답 · 역할 정책 · Provider 승인은 웹 대시보드에서 관리해요.</div>' +
-        '<button class="btn btn--md btn--secondary" id="dWebBtn">웹 대시보드 열기 <span class="ext">↗</span></button></div>'
+        '<div class="dsub">관리자가 승인하면 이 서버에 제공을 시작해요. 승인 전에는 요청을 받지 않고,' +
+        ' 기여 현황·정책·관리도 승인 후에 열려요.</div></div>' : '';
+      // 관리자/기부자 분기 — 관리자는 **이 앱에서 직접** 관리(웹 위임 폐기). PENDING 이면 둘 다 숨김.
+      const manageBlock = pending ? '' : (isAdmin ?
+        '<div class="dcard dmanage"><div class="drow"><div><div class="dlabel">🛡 서버 관리</div>' +
+        '<div class="dsub">채널 AI · RAG · 프리셋 · 다중응답 · 역할 정책 · Provider 승인을 이 앱에서 직접 관리해요.</div></div>' +
+        '<button class="btn btn--md btn--primary" id="dManageBtn">관리 <span class="arrow">›</span></button></div></div>'
         :
         '<div class="dcard"><div class="dlabel">🔒 서버 설정은 관리자 권한이 필요해요</div>' +
-        '<div class="dsub">이 서버의 정책은 서버 관리자가 웹 대시보드에서 설정해요. 나는 내 PC 리소스(위 정책)만 조절해요.</div></div>';
+        '<div class="dsub">이 서버의 정책은 서버 관리자가 설정해요. 나는 내 PC 리소스(위 정책)만 조절해요.</div></div>');
+      // 기여 현황 카드 — PENDING 이면 숨김(아직 기여 시작 전).
+      const contribBlock = pending ? '' :
+        '<div class="dcard"><div class="dlabel">내 기여 현황 <span class="dim">· 오늘</span></div>' +
+          '<div class="dstats">' +
+            '<div><b>' + d.today + '</b><span>요청</span></div>' +
+            '<div><b>' + d.myModels.length + '</b><span>제공 모델</span></div>' +
+            '<div><b>' + d.avgMs + 'ms</b><span>평균</span></div>' +
+          '</div>' +
+          '<div class="dmodels">' + modelChips + '</div>' +
+        '</div>';
 
       detailEl.innerHTML =
         '<div class="dhead">' +
@@ -1148,15 +1181,7 @@
             '<span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span></div>' +
           '<div class="dsubhead">멤버 ' + fmtMembers(d.members) + ' · 내 역할 <span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span></div>' +
         '</div>' +
-        '<div class="dcard"><div class="dlabel">내 기여 현황 <span class="dim">· 오늘</span></div>' +
-          '<div class="dstats">' +
-            '<div><b>' + d.today + '</b><span>요청</span></div>' +
-            '<div><b>' + d.myModels.length + '</b><span>제공 모델</span></div>' +
-            '<div><b>' + d.avgMs + 'ms</b><span>평균</span></div>' +
-          '</div>' +
-          '<div class="dmodels">' + modelChips + '</div>' +
-        '</div>' +
-        pendingBlock + provBlock + policyBlock + manageBlock;
+        pendingBlock + contribBlock + provBlock + policyBlock + manageBlock;
 
       // 액션 바인딩
       const back = detailEl.querySelector('#dBack'); if (back) back.onclick = backToList;
@@ -1167,8 +1192,8 @@
         toast(willPause ? '이 서버 제공을 일시중지했어요' : '이 서버 제공을 재개했어요', { type: willPause ? 'info' : 'ok', sub: d.guildName });
         openDetail(d.guildId); // 재렌더
       };
-      const wb = detailEl.querySelector('#dWebBtn');
-      if (wb) wb.onclick = () => toast('웹 대시보드를 브라우저에서 열어요', { type: 'info', sub: d.webUrl });
+      const mb = detailEl.querySelector('#dManageBtn');
+      if (mb) mb.onclick = () => openManage(d);
       const polb = detailEl.querySelector('#dPolicyBtn');
       if (polb) polb.onclick = () => openPolicyModal(d);
     }
@@ -1226,12 +1251,87 @@
       };
     }
 
+    // ── 서버 관리(관리자, 앱 내 — 웹 위임 폐기). 13 Provider 관리부터 구현, 나머지 탭은 단계적. ──
+    const MTABS = [
+      { k: 'overview', t: '개요' }, { k: 'channels', t: '채널·역할' }, { k: 'channelai', t: '채널 AI' },
+      { k: 'rag', t: 'RAG' }, { k: 'preset', t: '프리셋' }, { k: 'multi', t: '다중응답' }, { k: 'provider', t: 'Provider' },
+    ];
+    let _manageTab = 'provider';
+
+    async function openManage(d) {
+      _manageTab = 'provider';
+      const m = await api.getServerManage(d.guildId);
+      detailEl.hidden = true; manageEl.hidden = false;
+      renderManage(d, m);
+    }
+    function backToDetail(d) { manageEl.hidden = true; openDetail(d.guildId); }
+
+    function renderManage(d, m) {
+      const tabs = MTABS.map(t => '<button class="mtab' + (t.k === _manageTab ? ' active' : '') + '" data-mtab="' + t.k + '">' + t.t +
+        (t.k === 'provider' && m.pending.length ? '<span class="badge">' + m.pending.length + '</span>' : '') + '</button>').join('');
+      const body = _manageTab === 'provider' ? renderProviderTab(m)
+        : '<div class="msoon"><b>' + MTABS.find(t => t.k === _manageTab).t + ' 관리</b>이 화면은 앱으로 단계적으로 들여오는 중이에요(백엔드 관리 채널 Gap-M).</div>';
+      manageEl.innerHTML =
+        '<div class="dhead"><button class="dback" id="mBack">‹ ' + d.guildName + '</button>' +
+          '<div class="dtitle"><h1>서버 관리</h1></div>' +
+          '<div class="dsubhead">' + d.guildName + ' · 관리자 전용</div></div>' +
+        '<div class="mtabs">' + tabs + '</div><div id="mBody">' + body + '</div>';
+      manageEl.querySelector('#mBack').onclick = () => backToDetail(d);
+      manageEl.querySelectorAll('[data-mtab]').forEach(b => b.onclick = () => { _manageTab = b.dataset.mtab; renderManage(d, m); });
+      if (_manageTab === 'provider') bindProviderActions(d);
+    }
+
+    const ST_MAP = { [ProviderState.ONLINE_IDLE]: ['ok', '● 제공 중'], [ProviderState.ONLINE_BUSY]: ['ok', '● 응답 중'], [ProviderState.PAUSED]: ['paused', '⏸ 일시중지'], [ProviderState.PENDING]: ['pending', '⚠ 승인 대기'] };
+    const av = (n) => '<span class="prov-av">' + (n || '·').trim().charAt(0) + '</span>';
+
+    function renderProviderTab(m) {
+      let html = '';
+      if (m.pending.length) {
+        html += '<div class="msec-label">승인 대기 (' + m.pending.length + ')</div>';
+        html += m.pending.map(p => '<div class="prov-row wait">' + av(p.name) +
+          '<div class="prov-main"><div class="prov-nm">' + p.name + '</div>' +
+          '<div class="prov-meta">제공 가능 모델 ' + p.models + '개 · ' + p.since + '</div></div>' +
+          '<div class="prov-acts"><button class="btn btn--sm btn--secondary" data-reject="' + p.providerUserId + '">거절</button>' +
+          '<button class="btn btn--sm btn--primary" data-approve="' + p.providerUserId + '">승인</button></div></div>').join('');
+      }
+      html += '<div class="msec-label">연결된 Provider (' + m.roster.length + ')</div>';
+      html += m.roster.map(p => { const s = ST_MAP[p.state] || ['paused', p.state];
+        return '<div class="prov-row">' + av(p.name) +
+          '<div class="prov-main"><div class="prov-nm">' + p.name + (p.isMe ? '<span class="me">나</span>' : '') + '</div>' +
+          '<div class="prov-meta"><span class="srv-st ' + s[0] + '"><span class="d"></span>' + s[1] + '</span> · 모델 ' + p.models + ' · 오늘 ' + p.today + '건</div></div>' +
+          (p.isMe ? '' : '<div class="prov-acts"><button class="btn btn--sm btn--secondary" data-remove="' + p.providerUserId + '" data-name="' + p.name + '">제거</button></div>') + '</div>'; }).join('');
+      return html;
+    }
+
+    function bindProviderActions(d) {
+      const refresh = async () => renderManage(d, await api.getServerManage(d.guildId));
+      manageEl.querySelectorAll('[data-approve]').forEach(b => b.onclick = async () => { await api.approveProvider(d.guildId, +b.dataset.approve); toast('Provider 를 승인했어요', { type: 'ok' }); refresh(); });
+      manageEl.querySelectorAll('[data-reject]').forEach(b => b.onclick = async () => { await api.rejectProvider(d.guildId, +b.dataset.reject); toast('가입 요청을 거절했어요', { type: 'info' }); refresh(); });
+      // 제거는 위험 작업(디자인 정책 7) → 확인 모달 뒤로
+      manageEl.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => confirmRemoveProvider(d, +b.dataset.remove, b.dataset.name, refresh));
+    }
+
+    function confirmRemoveProvider(d, userId, name, done) {
+      const lay = document.createElement('div');
+      lay.className = 'modal-layer';
+      lay.innerHTML = '<div class="modal" style="width:min(420px,100%)">' +
+        '<button class="modal-x" data-x aria-label="닫기">✕</button>' +
+        '<h3>' + name + ' 을(를) 제거할까요?</h3>' +
+        '<p class="msub">이 Provider 가 이 서버에 대주던 모델이 더 이상 제공되지 않아요. 다시 가입 요청하면 재승인할 수 있어요.</p>' +
+        '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
+        '<button class="btn btn--md btn--warn" id="rmYes">제거</button></div></div>';
+      document.body.appendChild(lay);
+      lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
+      lay.querySelector('#rmYes').onclick = async () => { await api.removeProvider(d.guildId, userId); lay.remove(); toast(name + ' 을(를) 제거했어요', { type: 'info' }); done(); };
+    }
+
     // 메인은 이미 인증된 상태 → '서버 추가'는 로그인 없이 후보 선택 + 토큰(연결 stage 가 origin=main 처리)
     document.getElementById('srvAddBtn').addEventListener('click', () => { if (window.enterServerAdd) window.enterServerAdd(); });
 
     async function reload() { render(await api.getServers()); }
-    // PROTO·테스트 훅: 서버 상세 직접 점프 / 목록 복귀
+    // PROTO·테스트 훅: 서버 상세 직접 점프 / 관리 진입 / 목록 복귀
     window.openServerDetail = (g) => openDetail(g);
+    window.openServerManage = async (g) => { const d = await api.getServerDetail(g); if (d) openManage(d); };
     window.backToServerList = backToList;
 
     reload();
@@ -1901,6 +2001,7 @@
         const v = b.dataset.detail;
         if (v === 'back') { if (window.backToServerList) window.backToServerList(); return; }
         document.querySelector('.nav-item[data-view="servers"]').click();
+        if (v === 'manage') { if (window.openServerManage) window.openServerManage(1001); return; }
         if (window.openServerDetail) window.openServerDetail(Number(v));
       }));
 

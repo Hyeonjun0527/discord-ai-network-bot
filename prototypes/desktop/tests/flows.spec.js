@@ -40,30 +40,65 @@ test('03 서버: 목록·권한 배지·집계', async ({ page }) => {
   await expect(page.locator('#serverSummary')).toContainText('승인 대기');
 });
 
-test('07 서버 상세: 관리자 서버 → 기여현황·내모델·웹 대시보드 위임', async ({ page }) => {
+test('07 서버 상세: 관리자 서버 → 기여현황·내모델·앱 내 관리 진입', async ({ page }) => {
   await page.click('.nav-item[data-view="servers"]');
   await page.locator('#serverList .srv-item[data-guild="1001"]').click();
   await expect(page.locator('#serverDetail .dtitle h1')).toHaveText('한국어 개발 길드');
   await expect(page.locator('#serverDetail .dchip')).toHaveCount(3); // 내 모델 3종
-  await expect(page.locator('#serverDetail #dWebBtn')).toBeVisible(); // 관리자 → 웹 대시보드 위임
+  await expect(page.locator('#serverDetail #dManageBtn')).toBeVisible(); // 관리자 → 앱 내 관리
+  await expect(page.locator('#serverDetail')).not.toContainText('웹 대시보드'); // 웹 위임 폐기
   await expect(page.locator('#serverDetail #dPauseBtn')).toBeVisible();
   await page.click('#serverDetail #dBack');
   await expect(page.locator('#serverListWrap')).toBeVisible();
 });
 
-test('07 서버 상세: 기부자 서버 → 권한 안내(웹 버튼 없음)', async ({ page }) => {
+test('07 서버 상세: 기부자 서버 → 권한 안내(관리 버튼 없음)', async ({ page }) => {
   await page.click('.nav-item[data-view="servers"]');
   await page.locator('#serverList .srv-item[data-guild="1002"]').click();
   await expect(page.locator('#serverDetail')).toContainText('관리자 권한이 필요');
-  await expect(page.locator('#serverDetail #dWebBtn')).toHaveCount(0);
+  await expect(page.locator('#serverDetail #dManageBtn')).toHaveCount(0);
 });
 
-test('07 서버 상세: PENDING 서버 → 승인 대기, 정책·일시중지 숨김', async ({ page }) => {
+test('07 서버 상세: PENDING 서버 → 승인 대기만, 기여현황·관리·정책 전부 숨김', async ({ page }) => {
   await page.click('.nav-item[data-view="servers"]');
   await page.locator('#serverList .srv-item[data-guild="1004"]').click();
   await expect(page.locator('#serverDetail')).toContainText('관리자 승인을 기다리는 중');
+  // 승인 전엔 기여현황·관리·정책·일시중지 모두 숨김(모순 제거)
+  await expect(page.locator('#serverDetail .dstats')).toHaveCount(0);
+  await expect(page.locator('#serverDetail #dManageBtn')).toHaveCount(0);
   await expect(page.locator('#serverDetail #dPauseBtn')).toHaveCount(0);
   await expect(page.locator('#serverDetail #dPolicyBtn')).toHaveCount(0);
+});
+
+test('13 서버 관리: Provider 승인 → 로스터 이동 / 제거(확인 모달)', async ({ page }) => {
+  await page.click('.nav-item[data-view="servers"]');
+  await page.locator('#serverList .srv-item[data-guild="1001"]').click();
+  await page.click('#serverDetail #dManageBtn');
+  // 관리 화면 — Provider 탭이 기본, 승인 대기 1 + 로스터 3
+  await expect(page.locator('#serverManage .dtitle h1')).toHaveText('서버 관리');
+  await expect(page.locator('#serverManage .mtab.active')).toContainText('Provider');
+  await expect(page.locator('#serverManage')).toContainText('승인 대기 (1)');
+  await expect(page.locator('#serverManage .prov-row')).toHaveCount(4); // 대기1 + 로스터3
+  // 승인 → 대기 0, 로스터 4
+  await page.click('#serverManage [data-approve="5001"]');
+  await expect(page.locator('#serverManage')).toContainText('연결된 Provider (4)');
+  await expect(page.locator('#serverManage [data-approve]')).toHaveCount(0);
+  // 제거 → 확인 모달 → 제거
+  await page.click('#serverManage [data-remove="5002"]');
+  await expect(page.locator('.modal-layer .modal', { hasText: '제거할까요' })).toBeVisible();
+  await page.click('#rmYes');
+  await expect(page.locator('#serverManage')).toContainText('연결된 Provider (3)');
+  // 뒤로 → 서버 상세
+  await page.click('#serverManage #mBack');
+  await expect(page.locator('#serverDetail')).toBeVisible();
+});
+
+test('13 서버 관리: 미구현 탭은 단계적 안내(졸속 mock 금지)', async ({ page }) => {
+  await page.click('.nav-item[data-view="servers"]');
+  await page.locator('#serverList .srv-item[data-guild="1001"]').click();
+  await page.click('#serverDetail #dManageBtn');
+  await page.click('#serverManage .mtab[data-mtab="rag"]');
+  await expect(page.locator('#serverManage .msoon')).toContainText('단계적으로');
 });
 
 test('07 서버 상세: 일시중지 토글 + 내 self-service 정책 변경 모달', async ({ page }) => {

@@ -47,6 +47,25 @@ const MOCK = {
     { name: 'gemma2:2b', size: '1.6GB', tags: ['가벼움'], on: false, lastUsed: '3일 전' },
   ],
   defaultModel: 'exaone3.5:7.8b',
+  // 서버 관리(관리자 전용) — 앱 내 관리. ⚠ Gap-M: provider-agent↔central 관리 채널 신설 필요
+  //   (현재 central 관리 API 는 웹 OAuth 세션용 /api/ai-network/* + 슬래시 명령. 앱 경로 없음).
+  // guildId → { policy, pending(승인 대기), roster(연결된 Provider) }.
+  manage: {
+    1001: {
+      policy: { autoApprove: false, defaultDailyLimit: 50, scope: 'ALL' },
+      pending: [{ providerUserId: 5001, name: 'user_lee', models: 2, since: '5분 전' }],
+      roster: [
+        { providerUserId: 0, name: '나 (이 PC)', isMe: true, state: ProviderState.ONLINE_IDLE, models: 3, today: 0, avgMs: 0 },
+        { providerUserId: 5002, name: 'user_kim', isMe: false, state: ProviderState.ONLINE_IDLE, models: 1, today: 0, avgMs: 0 },
+        { providerUserId: 5003, name: 'user_park', isMe: false, state: ProviderState.PAUSED, models: 2, today: 0, avgMs: 0 },
+      ],
+    },
+    1004: {
+      policy: { autoApprove: true, defaultDailyLimit: 50, scope: 'ALL' },
+      pending: [],
+      roster: [{ providerUserId: 0, name: '나 (이 PC)', isMe: true, state: ProviderState.PENDING, models: 0, today: 0, avgMs: 0 }],
+    },
+  },
   // 추천 설치 카탈로그 — webui.py /api/ollama/catalog. Ollama 가 전체 목록 API 를 안 주므로
   // 대표 모델 + 사이즈 변형(경량~초대형)을 카테고리별로 큐레이션. 전체는 직접 입력(ollama.com/library).
   // 카테고리 순서: 한국어 · 범용 · 코딩 · 추론 · 비전 · 임베딩 · 경량/테스트.
@@ -116,6 +135,39 @@ export const api = {
   async getServerDetail(guildId) {
     if (USE_MOCK) { await delay(60); const s = MOCK.servers.find((x) => x.guildId === guildId); return s ? structuredClone(s) : null; }
     return http(ENDPOINTS.serverDetail(guildId));
+  },
+  /** 서버 관리(관리자) — 승인 대기·로스터·정책. ⚠ Gap-M(앱↔central 관리 채널). */
+  async getServerManage(guildId) {
+    if (USE_MOCK) { await delay(60); const m = MOCK.manage[guildId]; return m ? structuredClone(m) : { policy: { autoApprove: false, defaultDailyLimit: 50, scope: 'ALL' }, pending: [], roster: [] }; }
+    return http(ENDPOINTS.serverManage(guildId));
+  },
+  /** Provider 승인(관리자 → /provider-approve). 승인 시 로스터로 이동. */
+  async approveProvider(guildId, providerUserId) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) {
+      await delay(80);
+      if (m) { const i = m.pending.findIndex((p) => p.providerUserId === providerUserId); if (i >= 0) { const p = m.pending.splice(i, 1)[0]; m.roster.push({ providerUserId: p.providerUserId, name: p.name, isMe: false, state: ProviderState.ONLINE_IDLE, models: p.models, today: 0, avgMs: 0 }); } }
+      return { ok: true };
+    }
+    return post(ENDPOINTS.providerApprove(guildId), { providerUserId });
+  },
+  /** Provider 거절(관리자 → /provider-reject). 승인 대기에서 제거. */
+  async rejectProvider(guildId, providerUserId) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) { await delay(80); if (m) { const i = m.pending.findIndex((p) => p.providerUserId === providerUserId); if (i >= 0) m.pending.splice(i, 1); } return { ok: true }; }
+    return post(ENDPOINTS.providerReject(guildId), { providerUserId });
+  },
+  /** Provider 제거(관리자 → /provider-remove). 로스터에서 제거(나 제외). */
+  async removeProvider(guildId, providerUserId) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) { await delay(80); if (m) { const i = m.roster.findIndex((p) => p.providerUserId === providerUserId && !p.isMe); if (i >= 0) m.roster.splice(i, 1); } return { ok: true }; }
+    return post(ENDPOINTS.providerRemove(guildId), { providerUserId });
+  },
+  /** 서버 제공 정책(관리자) — 신규 자동 승인·기본 한도·공개 대상. */
+  async setManagePolicy(guildId, policy) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) { await delay(80); if (m) m.policy = { ...m.policy, ...policy }; return { ok: true, policy: m && m.policy }; }
+    return post(ENDPOINTS.serverManagePolicy(guildId), policy);
   },
   /** 이 서버에 대한 내 제공 일시중지/재개 — provider self-service(/provider-pause·resume). */
   async setServerPaused(guildId, paused) {

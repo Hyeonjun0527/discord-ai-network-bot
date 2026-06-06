@@ -50,6 +50,12 @@
        ║      대비 목적으로 허용(예외).                                            ║
        ║    · 대비 목표: 본문 ≥ 4.5:1, 큰 텍스트/보조 ≥ 3:1. 상태색(보라·시안·초록· ║
        ║      앰버)도 다크에서 충분히 밝은 톤만 사용.                               ║
+       ║                                                                          ║
+       ║ 9. 문구(COPY) = 한국어 UI 에 영문 식별자 노출 금지                        ║
+       ║    · 슬래시 명령은 영문 ID(provider-join 등)가 아니라 CommandLoc 한국어    ║
+       ║      표시명(/프로바이더참여)을 쓴다. 내부 코드 용어(API 경로·enum)를       ║
+       ║      사용자 문구에 그대로 베끼지 않는다.                                   ║
+       ║    · 문구 SSOT 는 i18n/messages.json·CommandLoc(ko/en/ja). 거기서 가져온다.║
        ╚══════════════════════════════════════════════════════════════════════╝ */
     :root {
       /* ════════════════════════════════════════════════════════════════════
@@ -329,6 +335,7 @@
     .srv-st.ok { color: var(--ok); } .srv-st.ok .d { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
     .srv-st.paused { color: var(--muted); } .srv-st.paused .d { background: var(--muted); }
     .srv-st.pending { color: var(--warn); } .srv-st.pending .d { background: var(--warn); box-shadow: 0 0 8px color-mix(in srgb, var(--warn) 70%, transparent); }
+    .srv-st.error { color: #ff8a93; } .srv-st.error .d { background: #ff5f6e; box-shadow: 0 0 8px #ff5f6e; }
     .srv-go { width: 18px; height: 18px; color: var(--subtle); flex: 0 0 auto; display: block; }
 
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -405,6 +412,90 @@
     .placeholder .ico { font-size: 46px; opacity: .5; }
     .placeholder h2 { margin: 18px 0 6px; color: var(--muted); font-weight: 700; font-size: 22px; }
     .placeholder p { margin: 0; font-size: 14.5px; }
+
+    /* ══ Stage 레이어(온보딩·연결 풀스크린 마법사) — 메인 앱 위에 덮임 ══ */
+    .stage-layer { position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; padding: 44px 24px; overflow-y: auto; }
+    .stage-layer[hidden] { display: none; }
+
+    .wiz { width: min(580px, 100%); border-radius: 28px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(16, 24, 42, .9), rgba(10, 16, 28, .94)); backdrop-filter: blur(20px); box-shadow: 0 40px 100px rgba(0,0,0,.55); overflow: hidden; animation: fade .35s ease; }
+    .wiz-head { display: flex; align-items: center; gap: 13px; padding: 26px 28px 0; }
+    .wiz-logo { width: 40px; height: 40px; border-radius: 12px; overflow: hidden; flex: 0 0 auto; border: 1px solid color-mix(in srgb, var(--c-accent) 35%, transparent); box-shadow: 0 0 18px color-mix(in srgb, var(--c-violet) 25%, transparent); }
+    .wiz-logo img { width: 100%; height: 100%; object-fit: cover; }
+    .wiz-head .wt { display: flex; flex-direction: column; line-height: 1.15; }
+    .wiz-head .wt b { font-size: 15px; font-weight: 800; letter-spacing: .04em; }
+    .wiz-head .wt span { font-size: 10px; font-weight: 600; letter-spacing: .2em; color: var(--subtle); }
+    .wiz-head .wstep { margin-left: auto; font-size: 12px; color: var(--subtle); font-family: ui-monospace, Menlo, monospace; letter-spacing: .08em; }
+    /* 진행 바(4칸) */
+    .wiz-bars { display: flex; gap: 7px; padding: 20px 28px 0; }
+    .wiz-bars .b { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,.08); transition: .25s ease; }
+    .wiz-bars .b.done { background: color-mix(in srgb, var(--c-violet) 55%, transparent); }
+    .wiz-bars .b.cur { background: var(--c-violet); box-shadow: 0 0 10px color-mix(in srgb, var(--c-violet) 60%, transparent); }
+    .wiz-body { padding: 24px 28px 6px; }
+    .wiz-title { font-size: 25px; font-weight: 800; letter-spacing: -.025em; }
+    .wiz-sub { color: var(--muted); margin-top: 9px; line-height: 1.65; font-size: 14.5px; }
+    .wiz-list { margin-top: 20px; display: flex; flex-direction: column; gap: 11px; }
+
+    /* 마법사 — 소개 feature 행 */
+    .wiz-feat { display: flex; gap: 14px; align-items: flex-start; }
+    .wiz-feat .fi { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 12px; display: grid; place-items: center; color: #cdd6ff; background: color-mix(in srgb, var(--c-violet) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c-violet) 30%, transparent); }
+    .wiz-feat .fi svg { width: 20px; height: 20px; }
+    .wiz-feat b { font-size: 15.5px; font-weight: 700; }
+    .wiz-feat p { margin: 3px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+
+    /* 마법사 — 선택 옵션 카드(체크) */
+    .wiz-opt { display: flex; gap: 14px; align-items: center; padding: 15px 16px; border-radius: 16px; border: 1px solid var(--line); background: rgba(255,255,255,.02); cursor: pointer; transition: .15s ease; text-align: left; width: 100%; }
+    .wiz-opt:hover { border-color: color-mix(in srgb, var(--c-accent) 30%, transparent); }
+    .wiz-opt.sel { border-color: color-mix(in srgb, var(--c-violet) 50%, transparent); background: color-mix(in srgb, var(--c-violet) 9%, transparent); }
+    .wiz-opt .ck { width: 22px; height: 22px; flex: 0 0 auto; border-radius: 7px; border: 1.5px solid var(--line); display: grid; place-items: center; color: #fff; }
+    .wiz-opt.sel .ck { background: var(--c-violet); border-color: var(--c-violet); }
+    .wiz-opt .ck svg { width: 14px; height: 14px; opacity: 0; }
+    .wiz-opt.sel .ck svg { opacity: 1; }
+    .wiz-opt .ob b { font-size: 15px; font-weight: 700; }
+    .wiz-opt .ob .tag { font-size: 11px; font-weight: 700; color: #c4b4ff; margin-left: 7px; }
+    .wiz-opt .ob p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+    .wiz-opt .osize { margin-left: auto; color: var(--subtle); font-size: 12.5px; font-family: ui-monospace, Menlo, monospace; flex: 0 0 auto; }
+
+    /* 마법사 — 토글 행 */
+    .wiz-tog { display: flex; align-items: center; gap: 14px; padding: 13px 4px; }
+    .wiz-tog .tb { flex: 1; }
+    .wiz-tog .tb b { font-size: 15px; font-weight: 700; }
+    .wiz-tog .tb p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+    .switch { width: 46px; height: 27px; border-radius: 999px; background: rgba(255,255,255,.1); border: 1px solid var(--line); position: relative; flex: 0 0 auto; cursor: pointer; transition: .16s ease; }
+    .switch.on { background: color-mix(in srgb, var(--c-violet) 55%, transparent); border-color: color-mix(in srgb, var(--c-violet) 60%, transparent); }
+    .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 21px; height: 21px; border-radius: 50%; background: #fff; transition: .16s ease; }
+    .switch.on::after { left: 21px; }
+
+    /* 마법사 — 요약 행 */
+    .wiz-sum { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+    .wiz-sum:last-child { border-bottom: 0; }
+    .wiz-sum .si { width: 20px; height: 20px; flex: 0 0 auto; display: grid; place-items: center; color: var(--c-cyan); }
+    .wiz-sum .sl { color: var(--muted); }
+    .wiz-sum .sv { margin-left: auto; font-weight: 700; }
+    .wiz-sum .sv.off { color: var(--subtle); font-weight: 600; }
+
+    .wiz-foot { display: flex; align-items: center; gap: 12px; padding: 22px 28px 26px; }
+    .wiz-foot .spacer { flex: 1; }
+
+    /* 연결 stage(B) 컴포넌트 */
+    .btn.cx-discord { width: 100%; } /* Discord 로그인 — 풀폭(주액션) */
+    .cx-token { margin-top: 16px; }
+    .cx-tok-tgl { background: none; border: 0; color: var(--subtle); font-size: 13px; font-weight: 600; padding: 6px 2px; cursor: pointer; }
+    .cx-tok-tgl:hover { color: #cdd6e6; }
+    .cx-tok-body { margin-top: 8px; display: flex; gap: 8px; }
+    .cx-input { flex: 1; min-width: 0; height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--text); font: inherit; font-size: 14px; }
+    .cx-input::placeholder { color: var(--subtle); }
+    .cx-input:focus { outline: none; border-color: color-mix(in srgb, var(--c-accent) 45%, transparent); }
+    /* 후보 서버 아바타(작은) */
+    .cx-cav { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 16px; color: #eef3fb; background: color-mix(in srgb, var(--c-blue) 22%, transparent); border: 1px solid color-mix(in srgb, var(--c-blue) 40%, transparent); }
+    .cx-cand .ob { flex: 1; min-width: 0; }
+    .cx-cand .srv-go { width: 18px; height: 18px; color: var(--subtle); }
+    /* 연결 결과 */
+    .cx-result { text-align: center; padding: 12px 0 6px; }
+    .cx-big { width: 76px; height: 76px; margin: 0 auto 18px; border-radius: 50%; display: grid; place-items: center; font-size: 34px; font-weight: 900; }
+    .cx-big.ok { color: #06281a; background: radial-gradient(circle at 35% 30%, #8bffce, var(--ok)); box-shadow: 0 0 28px color-mix(in srgb, var(--ok) 50%, transparent); }
+    .cx-big.pending { color: #3a2406; background: radial-gradient(circle at 35% 30%, #ffd9a0, var(--warn)); box-shadow: 0 0 28px color-mix(in srgb, var(--warn) 50%, transparent); }
+    .cx-big.error { color: #fff; background: radial-gradient(circle at 35% 30%, #ff97a0, #ff5f6e); box-shadow: 0 0 28px rgba(255,95,110,.5); }
+    .cx-result .wiz-sub { text-align: center; }
 
     /* 좁은(축소) 사이드바 — 아이콘 전용. 모든 요소를 세로축 가운데로 통일 정렬. */
     @media (max-width: 880px) {
@@ -547,6 +638,16 @@
     </main>
   </div>
 
+  <!-- ══ 온보딩 마법사 (stage: onboarding) — JS 렌더 ══ -->
+  <div class="stage-layer" id="onboardingLayer" hidden>
+    <div class="wiz" id="wiz"><!-- JS 렌더 --></div>
+  </div>
+
+  <!-- ══ Discord 연결 stage (stage: connect) — JS 렌더 ══ -->
+  <div class="stage-layer" id="connectLayer" hidden>
+    <div class="wiz" id="connectWiz"><!-- JS 렌더 --></div>
+  </div>
+
   <!-- 토스트 컨테이너 -->
   <div id="toast" aria-live="polite"></div>
 
@@ -556,6 +657,32 @@
       <div class="ph"><b>PROTOTYPE</b><span class="x" id="protoClose">✕</span></div>
       <p class="note">실제 앱에는 없는 프로토타입 전용 도구입니다. 화면 상태를 전환해 시안을 확인하세요.</p>
       <div class="proto-sec">
+        <label>화면 (STAGE)</label>
+        <div class="proto-seg" id="protoStage">
+          <button data-stage="onboarding">온보딩</button>
+          <button data-stage="connect">연결</button>
+          <button data-stage="main" class="active">메인</button>
+        </div>
+      </div>
+      <div class="proto-sec" id="protoOnbSec" hidden>
+        <label>온보딩 단계</label>
+        <div class="proto-seg" id="protoOnb">
+          <button data-step="1" class="active">1</button>
+          <button data-step="2">2</button>
+          <button data-step="3">3</button>
+          <button data-step="4">4</button>
+        </div>
+      </div>
+      <div class="proto-sec" id="protoCxSec" hidden>
+        <label>연결 단계</label>
+        <div class="proto-seg" id="protoCx">
+          <button data-cx="login" class="active">로그인</button>
+          <button data-cx="select">서버선택</button>
+          <button data-cx="approved">완료</button>
+          <button data-cx="pending">대기</button>
+        </div>
+      </div>
+      <div class="proto-sec" id="protoHeroSec">
         <label>홈 · 제공 상태</label>
         <div class="proto-seg" id="protoHero">
           <button data-state="ok" class="active">정상</button>
@@ -578,74 +705,244 @@
     }));
   </script>
 
-  <!-- 홈 · 연결된 Discord 서버 목록(목데이터) -->
-  <script>
-    (function homeServers() {
-      // 디스코드 서버 아바타 틴트(브랜드 hue 순환 — 디자인 언어: 색은 토큰에서만)
-      const TINT = ['--c-violet', '--c-blue', '--c-cyan', '--c-purple'];
-      // role: admin(서버 관리자, 정책·프로바이더 관리) / provider(AI 기여자)
-      // state: ok 연결됨 / paused 일시중지 / pending 승인 필요
-      // icon: 디스코드 길드 아이콘 URL(cdn.discordapp.com/icons/{id}/{hash}.png). null 이면 이니셜 폴백.
-      //       실제 연동 시 central-server AgentSyncJoinDto 에 iconUrl 추가 → 여기 꽂으면 동작.
-      const SERVERS = [
-        { name: '한국어 개발 길드', initial: '한', icon: null, role: 'admin', state: 'ok', models: 3, today: 0 },
-        { name: '게임 커뮤니티', initial: '게', icon: null, role: 'provider', state: 'ok', models: 2, today: 0 },
-        { name: '디자인 스튜디오', initial: '디', icon: null, role: 'provider', state: 'paused', models: 1, today: 0 },
-        { name: '신규 서버', initial: '신', icon: null, role: 'admin', state: 'pending', models: 0, today: 0 },
-      ];
-      const ROLE = {
-        admin: { label: '관리자', icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.5 8.4 8 9.5 4.5-1.1 8-4.5 8-9.5V5Z"/></svg>' },
-        provider: { label: '기부자', icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>' },
-      };
-      const TAG = { ok: '연결됨', paused: '일시중지', pending: '승인 필요' };
-      const EXTRA = {
-        ok: (s) => ' · 제공 모델 ' + s.models + ' · 오늘 ' + s.today + '건',
-        paused: (s) => ' · 제공 모델 ' + s.models,
-        pending: () => ' · 관리자 승인 대기',
-      };
-      const list = document.getElementById('srvList');
-      list.innerHTML = SERVERS.map((s, i) => {
-        const tint = TINT[i % TINT.length];
-        const avatarStyle = 'background: color-mix(in srgb, var(' + tint + ') 22%, transparent); border-color: color-mix(in srgb, var(' + tint + ') 40%, transparent);';
-        // 이니셜이 항상 깔리고, icon 있으면 img 가 덮음. 로드 실패 시 onerror 로 img 제거 → 이니셜 폴백.
-        const img = s.icon ? '<img src="' + s.icon + '" alt="" onerror="this.remove()">' : '';
-        const role = ROLE[s.role];
-        return '<button class="srv-item">' +
-          '<span class="srv-avatar" style="' + avatarStyle + '">' + s.initial + img + '</span>' +
-          '<span class="srv-main">' +
-            '<span class="srv-name"><span class="nm">' + s.name + '</span></span>' +
-            '<span class="srv-meta"><span class="srv-st ' + s.state + '"><span class="d"></span>' + TAG[s.state] + '</span>' + EXTRA[s.state](s) + '</span>' +
-          '</span>' +
-          '<span class="srv-role ' + s.role + '">' + role.icon + role.label + '</span>' +
-          '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>' +
-        '</button>';
-      }).join('');
-      // 서버 아이템·"모두 보기" → 서버 탭으로 이동
-      const goServers = () => { const b = document.querySelector('.nav-item[data-view="servers"]'); if (b) b.click(); };
-      list.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', goServers));
-      document.getElementById('srvAll').addEventListener('click', goServers);
-    })();
+  <!-- 홈 · 연결된 Discord 서버 목록 — adapter/presenter 기반(계약 SSOT) -->
+  <script type="module">
+    import { api } from './adapter.js';
+    import { presentServerState, presentServerMeta, presentRole } from './presenter.js';
+
+    // 아바타 틴트(브랜드 hue 순환 — 디자인 언어: 색은 토큰에서만)
+    const TINT = ['--c-violet', '--c-blue', '--c-cyan', '--c-purple'];
+    // 역할 아이콘(UI 표현 — 관리자 방패 / 기부자 하트)
+    const ROLE_ICON = {
+      admin: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.5 8.4 8 9.5 4.5-1.1 8-4.5 8-9.5V5Z"/></svg>',
+      provider: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>',
+    };
+    const initialOf = (name) => (name || '·').trim().charAt(0);
+
+    const list = document.getElementById('srvList');
+    const servers = await api.getServers();   // ← 도메인 데이터(ProviderState·Role·guildName)
+    list.innerHTML = servers.map((s, i) => {
+      const tint = TINT[i % TINT.length];
+      const avatarStyle = 'background: color-mix(in srgb, var(' + tint + ') 22%, transparent); border-color: color-mix(in srgb, var(' + tint + ') 40%, transparent);';
+      // 이니셜이 항상 깔리고, iconUrl 있으면 img 가 덮음. 로드 실패 시 onerror 로 img 제거 → 이니셜 폴백.
+      const img = s.iconUrl ? '<img src="' + s.iconUrl + '" alt="" onerror="this.remove()">' : '';
+      const st = presentServerState(s.state);   // ProviderState → { label, dot }
+      const role = presentRole(s.role);          // Role → { label, cls }
+      return '<button class="srv-item">' +
+        '<span class="srv-avatar" style="' + avatarStyle + '">' + initialOf(s.guildName) + img + '</span>' +
+        '<span class="srv-main">' +
+          '<span class="srv-name"><span class="nm">' + s.guildName + '</span></span>' +
+          '<span class="srv-meta"><span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span> · ' + presentServerMeta(s) + '</span>' +
+        '</span>' +
+        '<span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span>' +
+        '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>' +
+      '</button>';
+    }).join('');
+
+    // 서버 아이템·"모두 보기" → 서버 탭으로 이동
+    const goServers = () => { const b = document.querySelector('.nav-item[data-view="servers"]'); if (b) b.click(); };
+    list.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', goServers));
+    document.getElementById('srvAll').addEventListener('click', goServers);
   </script>
 
-  <!-- 토스트(액션 피드백) -->
-  <script>
-    (function toastSystem() {
-      const SPIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg>';
-      const ICO = { ok: '✓', info: 'i', run: SPIN };
-      // toast(msg, { type, sub, sticky, duration, id, replace })
-      window.toast = function (msg, o) {
-        o = o || {};
-        const c = document.getElementById('toast');
-        let el = o.replace ? c.querySelector('[data-id="' + o.replace + '"]') : null;
-        if (!el) { el = document.createElement('div'); c.appendChild(el); }
-        el.className = 'toast ' + (o.type || 'info');
-        if (o.id) el.dataset.id = o.id; else delete el.dataset.id;
-        el.innerHTML = '<span class="ti">' + (ICO[o.type] || ICO.info) + '</span>' +
-          '<span class="tm">' + msg + (o.sub ? '<small>' + o.sub + '</small>' : '') + '</span>';
-        clearTimeout(el._t);
-        if (!o.sticky) el._t = setTimeout(() => el.remove(), o.duration || 2800);
-        return el;
+  <!-- 토스트(액션 피드백) — 모듈. window.toast 도 노출(일반 script 호환) -->
+  <script type="module" src="./toast.js"></script>
+
+  <!-- ══ Stage 매니저 + 온보딩 마법사(A1~A4) + Discord 연결(B) ══ -->
+  <script type="module">
+    import { toast } from './toast.js';
+    import { api } from './adapter.js';
+    import { ProviderState } from './contract.js';
+    (function stageManager() {
+      const app = document.querySelector('.app');
+      const onbLayer = document.getElementById('onboardingLayer');
+      const connectLayer = document.getElementById('connectLayer');
+      const wiz = document.getElementById('wiz');
+      const connectWiz = document.getElementById('connectWiz');
+
+      // 온보딩 선택 상태(webui.py ONB 와 동일 의미)
+      const ONB = { step: 1, ollama: true, image: true, none: false, autostart: true, autoconnect: true, imageRecv: true, background: true };
+
+      const IC = {
+        chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+        image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>',
+        shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 5 6v5c0 4.4 3 7.4 7 8.5 4-1.1 7-4.1 7-8.5V6Z"/></svg>',
+        check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
       };
+      const feat = (ic, t, d) => '<div class="wiz-feat"><span class="fi">' + ic + '</span><div><b>' + t + '</b><p>' + d + '</p></div></div>';
+      const opt = (k, name, tag, desc, size, on) => '<button class="wiz-opt ' + (on ? 'sel' : '') + '" data-opt="' + k + '">' +
+        '<span class="ck">' + IC.check + '</span>' +
+        '<span class="ob"><b>' + name + (tag ? '<span class="tag">' + tag + '</span>' : '') + '</b><p>' + desc + '</p></span>' +
+        (size ? '<span class="osize">' + size + '</span>' : '') + '</button>';
+      const tog = (k, t, d) => '<div class="wiz-tog"><div class="tb"><b>' + t + '</b><p>' + d + '</p></div><button class="switch ' + (ONB[k] ? 'on' : '') + '" data-tog="' + k + '" role="switch" aria-checked="' + ONB[k] + '"></button></div>';
+      const sum = (l, v, on) => '<div class="wiz-sum"><span class="si">' + IC.check + '</span><span class="sl">' + l + '</span><span class="sv ' + (on ? '' : 'off') + '">' + v + '</span></div>';
+      const btn = (cls, go, label) => '<button class="btn btn--md btn--' + cls + '" data-go="' + go + '">' + label + '</button>';
+
+      function renderWiz() {
+        const s = ONB.step;
+        const head = '<div class="wiz-head"><div class="wiz-logo"><img src="img/nexa-logo.png" alt=""></div>' +
+          '<div class="wt"><b>NEXA</b><span>PROVIDER AGENT</span></div><span class="wstep">설정 ' + s + ' / 4</span></div>';
+        const bars = '<div class="wiz-bars">' + [1, 2, 3, 4].map(i => '<span class="b ' + (i < s ? 'done' : i === s ? 'cur' : '') + '"></span>').join('') + '</div>';
+        let body = '', foot = '';
+        if (s === 1) {
+          body = '<div class="wiz-title">NEXA 에 오신 걸 환영해요</div>' +
+            '<div class="wiz-sub">내 PC 의 AI 로 디스코드 커뮤니티의 질문에 응답을 기여하는 프로그램이에요.<br>몇 단계만 설정하면 바로 시작할 수 있어요.</div>' +
+            '<div class="wiz-list">' +
+            feat(IC.chat, '텍스트 AI 제공', 'Ollama 로 다른 사람의 질문에 답합니다') +
+            feat(IC.image, '이미지 생성 (선택)', 'Stable Diffusion 으로 그림 요청도 처리해요') +
+            feat(IC.shield, '안전한 기본값', '하루 한도·localhost 전용 등 보수적으로 시작해요') +
+            '</div>';
+          foot = btn('secondary', 'main', '나중에') + '<span class="spacer"></span>' + btn('primary', '2', '시작하기');
+        } else if (s === 2) {
+          body = '<div class="wiz-title">무엇을 준비할까요?</div>' +
+            '<div class="wiz-sub">이 PC 에서 제공할 AI 를 고르세요. 나중에 바꿀 수 있어요.</div>' +
+            '<div class="wiz-list">' +
+            opt('ollama', 'Ollama', '권장', '텍스트 질문에 답하는 기본 엔진', '~5GB', ONB.ollama) +
+            opt('image', 'Stable Diffusion', '선택', '이미지 생성 요청 처리 (GPU 권장)', '~6.6GB', ONB.image) +
+            opt('none', '지금은 설치 안 함', '', '메인 화면에서 나중에 설치할 수 있어요', '', ONB.none) +
+            '</div>';
+          foot = btn('secondary', '1', '이전') + '<span class="spacer"></span>' + btn('primary', '3', '다음');
+        } else if (s === 3) {
+          body = '<div class="wiz-title">동작 방식</div>' +
+            '<div class="wiz-sub">앱이 어떻게 실행될지 정하세요. 모두 나중에 설정에서 바꿀 수 있어요.</div>' +
+            '<div class="wiz-list">' +
+            tog('autostart', '로그인 시 자동 실행', 'PC 를 켜면 백그라운드로 자동 시작') +
+            tog('autoconnect', '로그인 후 자동 연결', '앱이 시작되면 바로 제공을 시작') +
+            tog('imageRecv', '이미지 요청 받기', '/그림 요청도 이 PC 에서 처리') +
+            tog('background', '백그라운드 실행 유지', '창을 닫아도 트레이에서 계속 제공') +
+            '</div>';
+          foot = btn('secondary', '2', '이전') + '<span class="spacer"></span>' + btn('primary', '4', '다음');
+        } else {
+          body = '<div class="wiz-title">준비가 끝났어요</div>' +
+            '<div class="wiz-sub">아래 설정으로 시작합니다. 연동하면 디스코드 로그인으로 넘어가요.</div>' +
+            '<div class="wiz-list">' +
+            sum('텍스트 모델', ONB.ollama ? 'Ollama 사용' : '사용 안 함', ONB.ollama) +
+            sum('이미지 생성', ONB.image ? '사용' : '사용 안 함', ONB.image) +
+            sum('자동 연결', ONB.autoconnect ? '켜짐' : '꺼짐', ONB.autoconnect) +
+            sum('백그라운드 실행', ONB.background ? '유지' : '안 함', ONB.background) +
+            '</div>';
+          foot = btn('secondary', '3', '이전') + '<span class="spacer"></span>' + btn('secondary', 'main', '메인 화면으로') + btn('primary', 'connect', '연동하기');
+        }
+        wiz.innerHTML = head + bars + '<div class="wiz-body">' + body + '</div><div class="wiz-foot">' + foot + '</div>';
+        wireWiz();
+      }
+
+      const RUNTIME_NAME = { ollama: 'Ollama', image: 'Stable Diffusion' };
+      // 런타임을 새로 켜면 즉시 설치 시작 → 우상단 토스트(진행→완료). 기존 토스트 시스템 재사용.
+      async function startInstall(k) {
+        const name = RUNTIME_NAME[k];
+        toast(name + ' 설치 중…', { type: 'run', sticky: true, id: 'inst-' + k });
+        await api.startSetup(k);
+        setTimeout(() => toast(name + ' 설치 완료', { type: 'ok', sub: '사용 준비됨', replace: 'inst-' + k }), 2200);
+      }
+      function togglePick(k) {
+        if (k === 'none') { ONB.none = true; ONB.ollama = false; ONB.image = false; return; }
+        ONB.none = false;
+        const was = ONB[k];
+        ONB[k] = !was;
+        if (!was && ONB[k]) startInstall(k); // off→on 순간 설치 시작
+      }
+      function wireWiz() {
+        wiz.querySelectorAll('[data-opt]').forEach(b => b.onclick = () => { togglePick(b.dataset.opt); renderWiz(); });
+        wiz.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => { ONB[b.dataset.tog] = !ONB[b.dataset.tog]; renderWiz(); });
+        wiz.querySelectorAll('[data-go]').forEach(b => b.onclick = () => {
+          const g = b.dataset.go;
+          if (g === 'main' || g === 'connect') setStage(g);
+          else { ONB.step = +g; renderWiz(); emit(); }
+        });
+      }
+
+      let cur = 'main', connectSub = 'login', connectedGuild = '';
+      function emit() { window.dispatchEvent(new CustomEvent('stagechange', { detail: { stage: cur, step: ONB.step, connectSub } })); }
+      function setStage(name) {
+        cur = name;
+        app.style.display = name === 'main' ? '' : 'none';
+        onbLayer.hidden = name !== 'onboarding';
+        connectLayer.hidden = name !== 'connect';
+        if (name === 'onboarding') renderWiz();
+        if (name === 'connect') renderConnect();
+        emit();
+      }
+
+      // ════ Discord 연결(B) — login → select → result(approved/pending/none/cancelled) ════
+      const DISCORD_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>';
+      const cxHead = '<div class="wiz-head"><div class="wiz-logo"><img src="img/nexa-logo.png" alt=""></div><div class="wt"><b>NEXA</b><span>DISCORD 연결</span></div></div>';
+      async function renderConnect() {
+        const sub = connectSub;
+        let html = cxHead;
+        if (sub === 'login') {
+          html += '<div class="wiz-body">' +
+            '<div class="wiz-title">디스코드에 연결</div>' +
+            '<div class="wiz-sub">로그인하면 봇이 있는 내 서버 목록에서 골라<br>AI 를 제공할 수 있어요.</div>' +
+            '<div class="wiz-list"><button class="btn btn--lg btn--primary cx-discord" id="cxLogin">' + DISCORD_ICON + ' Discord 로 로그인</button></div>' +
+            '<div class="cx-token"><button class="cx-tok-tgl" id="cxTokTgl">고급 · 토큰 직접 입력</button>' +
+              '<div class="cx-tok-body" hidden><input class="cx-input" id="cxTok" placeholder="발급받은 참여 토큰을 붙여넣으세요"><button class="btn btn--md btn--secondary" id="cxTokAdd">추가</button></div>' +
+            '</div></div>' +
+            '<div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="back-onb">취소</button></div>';
+        } else if (sub === 'select') {
+          const cands = await api.getConnectCandidates();
+          if (!cands.length) { connectSub = 'none'; return renderConnect(); }
+          html += '<div class="wiz-body"><div class="wiz-title">어느 서버에 제공할까요?</div>' +
+            '<div class="wiz-sub">봇이 있고 내가 속한 서버예요. 하나를 골라 연결해요.</div><div class="wiz-list">' +
+            cands.map((c) => '<button class="wiz-opt cx-cand" data-guild="' + c.guildId + '">' +
+              '<span class="cx-cav">' + c.guildName.trim().charAt(0) + '</span>' +
+              '<span class="ob"><b>' + c.guildName + '</b><p>' + (c.autoApprove ? '바로 연결돼요' : '관리자 승인 후 연결') + '</p></span>' +
+              '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>').join('') +
+            '</div></div><div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="login">이전</button></div>';
+        } else {
+          const g = connectedGuild || '이'; // 토큰/OAuth 결과의 서버명(없으면 "이 서버")
+          const R = {
+            approved: { ic: '✓', cls: 'ok', title: '연결됐어요!', sub: '이제 ' + g + ' 서버에 AI 를 제공합니다.', btns: '<button class="btn btn--md btn--primary" data-cx="main">메인 화면으로</button>' },
+            pending: { ic: '⏳', cls: 'pending', title: '관리자 승인 대기 중', sub: g + ' 서버 관리자가 승인하면 자동으로 연결돼요.<br>그동안 다른 서버를 추가할 수 있어요.', btns: '<button class="btn btn--md btn--secondary" data-cx="select">다른 서버</button><button class="btn btn--md btn--primary" data-cx="main">메인으로</button>' },
+            none: { ic: '∅', cls: 'pending', title: '참여 가능한 서버가 없어요', sub: '봇이 있는 서버 중 내가 속한 곳이 없어요.<br>서버에 봇을 먼저 초대해 주세요.', btns: '<button class="btn btn--md btn--secondary" data-cx="login">다시 시도</button>' },
+            cancelled: { ic: '✕', cls: 'error', title: '연결이 취소됐어요', sub: '디스코드 로그인이 취소됐어요. 다시 시도할 수 있어요.', btns: '<button class="btn btn--md btn--primary" data-cx="login">다시 시도</button>' },
+          }[sub] || {};
+          html += '<div class="wiz-body"><div class="cx-result"><div class="cx-big ' + R.cls + '">' + R.ic + '</div>' +
+            '<div class="wiz-title">' + R.title + '</div><div class="wiz-sub">' + R.sub + '</div></div></div>' +
+            '<div class="wiz-foot"><span class="spacer"></span>' + R.btns + '</div>';
+        }
+        connectWiz.innerHTML = html;
+        wireConnect();
+      }
+      function wireConnect() {
+        const q = (s) => connectWiz.querySelector(s);
+        const login = q('#cxLogin');
+        if (login) login.onclick = async () => { await api.connectOpen(); connectSub = 'select'; renderConnect(); emit(); };
+        const tgl = q('#cxTokTgl');
+        if (tgl) tgl.onclick = () => { const b = q('.cx-tok-body'); b.hidden = !b.hidden; };
+        const tokAdd = q('#cxTokAdd');
+        if (tokAdd) tokAdd.onclick = async () => {
+          const token = (q('#cxTok')?.value || '').trim();
+          toast('토큰 확인 중…', { type: 'run', sticky: true, id: 'join' });
+          const res = await api.joinByToken(token);          // 토큰 검증 → guildName 복원
+          const ok = res.state === ProviderState.APPROVED;
+          connectedGuild = res.guildName || '';
+          toast(ok ? '연결 완료' : '승인 요청을 보냈어요', { type: ok ? 'ok' : 'info', replace: 'join' });
+          connectSub = ok ? 'approved' : 'pending';
+          renderConnect(); emit();
+        };
+        connectWiz.querySelectorAll('.cx-cand').forEach((el) => el.onclick = async () => {
+          const gid = +el.dataset.guild;
+          toast('서버 연결 중…', { type: 'run', sticky: true, id: 'join' });
+          const res = await api.requestJoin(gid);
+          const ok = res.state === ProviderState.APPROVED;
+          connectedGuild = res.guildName || '';                // 결과 화면 서버명
+          toast(ok ? '연결 완료' : '승인 요청을 보냈어요', { type: ok ? 'ok' : 'info', replace: 'join' });
+          connectSub = ok ? 'approved' : 'pending';
+          renderConnect(); emit();
+        });
+        connectWiz.querySelectorAll('[data-cx]').forEach((el) => el.onclick = () => {
+          const a = el.dataset.cx;
+          if (a === 'main') setStage('main');
+          else if (a === 'back-onb') setStage('onboarding');
+          else { connectSub = a; renderConnect(); emit(); }
+        });
+      }
+
+      // 프로토타입 컨트롤러용 노출
+      window.setStage = setStage;
+      window.setOnbStep = (n) => { ONB.step = n; setStage('onboarding'); };
+      window.setConnectSub = (sub) => { connectSub = sub; setStage('connect'); };
     })();
   </script>
 
@@ -794,13 +1091,42 @@
       const fab = document.getElementById('protoFab');
       const close = document.getElementById('protoClose');
       const heroSeg = document.getElementById('protoHero');
+      const stageSeg = document.getElementById('protoStage');
+      const onbSec = document.getElementById('protoOnbSec');
+      const onbSeg = document.getElementById('protoOnb');
+      const cxSec = document.getElementById('protoCxSec');
+      const cxSeg = document.getElementById('protoCx');
+      const heroSec = document.getElementById('protoHeroSec');
       fab.addEventListener('click', () => root.classList.toggle('open'));
       close.addEventListener('click', () => root.classList.remove('open'));
-      // 홈 제공 상태 전환 → 앱의 setHeroState 호출
+
+      // STAGE 전환
+      stageSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+        if (window.setStage) window.setStage(b.dataset.stage);
+      }));
+      // 온보딩 단계 점프
+      onbSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+        if (window.setOnbStep) window.setOnbStep(+b.dataset.step);
+      }));
+      // 연결 단계 점프
+      cxSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+        if (window.setConnectSub) window.setConnectSub(b.dataset.cx);
+      }));
+      // 홈 제공 상태 전환
       heroSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
         if (window.setHeroState) window.setHeroState(b.dataset.state);
       }));
-      // 상태 변경 이벤트 수신 → 세그먼트 active 동기화(앱 내부에서 바뀌어도 반영)
+
+      // stage 변경 → 컨트롤러 UI 동기화(온보딩 단계·홈 상태 섹션 표시 토글)
+      window.addEventListener('stagechange', (e) => {
+        const { stage, step, connectSub } = e.detail;
+        stageSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.stage === stage));
+        onbSec.hidden = stage !== 'onboarding';
+        cxSec.hidden = stage !== 'connect';
+        heroSec.hidden = stage !== 'main';
+        onbSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', +b.dataset.step === step));
+        cxSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.cx === connectSub));
+      });
       window.addEventListener('herostate', (e) => {
         heroSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.state === e.detail));
       });

@@ -19,15 +19,17 @@ test('모델 토글 시 변경 적용 배너(D5)가 뜬다', async ({ page }) =>
   await expect(page.locator('#modelApply')).toBeVisible();
 });
 
-test('추천 카탈로그(카테고리 그룹·고사양 변형) + 직접 입력 형식 검증', async ({ page }) => {
+test('추천 카탈로그(분류 드롭다운·고사양 변형) + 직접 입력 형식 검증', async ({ page }) => {
   await page.click('#catalogBtn');
-  await expect(page.locator('#installCard [data-cat]')).toHaveCount(38);
-  // 카테고리 그룹 헤더로 묶여 렌더된다
-  await expect(page.locator('#installCard .cat-group')).toHaveCount(7);
-  // 고사양 변형이 포함된다(사용자 요청: exaone/qwen/deepseek 더 큰 사이즈)
-  await expect(page.locator('#installCard [data-cat="exaone3.5:32b"]')).toBeVisible();
-  await expect(page.locator('#installCard [data-cat="qwen2.5:72b"]')).toBeVisible();
-  await expect(page.locator('#installCard [data-cat="deepseek-r1:70b"]')).toBeVisible();
+  // 분류 드롭다운 7개, 기본은 첫 분류(한국어)만 표시
+  await expect(page.locator('#catSel option')).toHaveCount(7);
+  await expect(page.locator('#catList [data-cat]')).toHaveCount(3); // 한국어: exaone 3종
+  await expect(page.locator('#catList [data-cat="exaone3.5:32b"]')).toBeVisible();
+  // 분류 변경 → 범용에 고사양 변형 노출
+  await page.selectOption('#catSel', '범용');
+  await expect(page.locator('#catList [data-cat="qwen2.5:72b"]')).toBeVisible();
+  await page.selectOption('#catSel', '추론');
+  await expect(page.locator('#catList [data-cat="deepseek-r1:70b"]')).toBeVisible();
   await expect(page.locator('#catManual')).toBeVisible();
   // 형식 오류
   await page.fill('#catManual', '!! 이상한 이름');
@@ -35,8 +37,17 @@ test('추천 카탈로그(카테고리 그룹·고사양 변형) + 직접 입력
   await expect(page.locator('#toast .toast .tm')).toContainText('올바른 모델명');
 });
 
+test('모델 설치 모달은 우상단 ✕로 닫힌다(하단 닫기 버튼 없음)', async ({ page }) => {
+  await page.click('#catalogBtn');
+  await expect(page.locator('#installCard .modal-x')).toBeVisible();
+  await expect(page.locator('#installCard .modal-foot')).toHaveCount(0);
+  await page.click('#installCard .modal-x');
+  await expect(page.locator('#installModal')).toBeHidden();
+});
+
 test('12b 이상 모델은 설치 전 VRAM 확인 모달이 뜬다(취소 시 미설치)', async ({ page }) => {
   await page.click('#catalogBtn');
+  await page.selectOption('#catSel', '추론');
   // 70b → 필요 VRAM 35GB 경고
   await page.locator('#installCard [data-cat="deepseek-r1:70b"]').click();
   const warn = page.locator('.modal-layer .modal', { hasText: '큰 모델이에요' });
@@ -50,6 +61,7 @@ test('12b 이상 모델은 설치 전 VRAM 확인 모달이 뜬다(취소 시 �
 
 test('12b 미만 모델은 경고 없이 바로 설치된다', async ({ page }) => {
   await page.click('#catalogBtn');
+  await page.selectOption('#catSel', '범용');
   await page.locator('#installCard [data-cat="qwen2.5:7b"]').click();
   // 경고 모달이 뜨지 않고 설치 토스트로 직행
   await expect(page.locator('.modal-layer .modal', { hasText: '큰 모델이에요' })).toHaveCount(0);

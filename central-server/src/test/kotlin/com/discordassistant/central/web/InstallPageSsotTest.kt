@@ -35,8 +35,10 @@ class InstallPageSsotTest
         fun `디스코드 안내가 SSOT 설치 명령을 그대로 사용한다`() {
             val mac = ProviderOnboarding.installCommand("mac", "TOK-1", "")
             assertTrue(mac.contains(InstallGuide.MAC.appInstall), mac)
+            assertTrue(mac.contains(InstallGuide.DEFAULT_TEXT_MODEL), mac)
             val win = ProviderOnboarding.installCommand("windows", "TOK-2", "")
             assertTrue(win.contains("Nexa.Nexa"), win)
+            assertTrue(win.contains(InstallGuide.DEFAULT_TEXT_MODEL), win)
             // 폴백 메시지도 두 OS 의 SSOT 설치 명령을 노출한다.
             val msg = ProviderOnboarding.message("TOK-3", "")
             assertTrue(msg.contains(InstallGuide.MAC.appInstall), msg)
@@ -55,6 +57,7 @@ class InstallPageSsotTest
             // 자리표시가 실제 SSOT JSON 으로 치환됐다(정적 null 폴백이 아니다).
             assertFalse(html.contains("const INSTALL_GUIDE = null;"), "SSOT 주입 안 됨")
             assertTrue(html.contains(InstallGuide.MAC.appInstall), "MAC appInstall 누락")
+            assertTrue(html.contains(InstallGuide.DEFAULT_TEXT_MODEL), "기본 모델 누락")
             assertTrue(html.contains("Nexa.Nexa"))
             // Linux 탭/다운로드는 폐기.
             assertFalse(html.contains("data-os=\"linux\""))

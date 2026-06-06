@@ -7,7 +7,8 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from provider_agent import webui
-from provider_agent.config_file import load_config
+from provider_agent.config_file import load_config, persist_partial
+from provider_agent.constants import DEFAULT_TEXT_MODEL
 
 KEY = "test-session-key"
 
@@ -16,8 +17,20 @@ KEY = "test-session-key"
 def _reset(monkeypatch, tmp_path):
     from provider_agent import singleton
 
+    lock = {"held": False}
+
+    def fake_acquire():
+        lock["held"] = True
+        return True
+
+    def fake_release():
+        lock["held"] = False
+
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.delenv("AGENT_CONNECT_ENABLED", raising=False)
+    monkeypatch.setattr(singleton, "acquire", fake_acquire)
+    monkeypatch.setattr(singleton, "release", fake_release)
+    monkeypatch.setattr(singleton, "held_by_other", lambda: False)
     webui._state["agent"] = None
     webui._state["task"] = None
     webui._log_lines.clear()
@@ -94,13 +107,72 @@ async def test_app_icon_served():
 @pytest.mark.asyncio
 async def test_models_autodetected(monkeypatch):
     async def fake_detect():
-        return ["llama3.1:8b", "gemma4"]
+        return {"installed": True, "ready": True, "models": ["llama3.1:8b", "gemma4"]}
 
-    monkeypatch.setattr(webui, "_detect_models", fake_detect)
+    monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
     client = await _client()
     try:
         d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
         assert d["models"] == ["llama3.1:8b", "gemma4"]
+        assert d["selected"] == []
+        assert d["default"] == DEFAULT_TEXT_MODEL
+        assert d["defaultInstalled"] is False
+        assert d["ollamaInstalled"] is True and d["ollamaReady"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_models_select_default_exaone_when_detected(monkeypatch):
+    async def fake_detect():
+        return {"installed": True, "ready": True, "models": ["llama3.1:8b", DEFAULT_TEXT_MODEL, "gemma4"]}
+
+    monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
+    client = await _client()
+    try:
+        d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
+        assert d["selected"] == [DEFAULT_TEXT_MODEL]
+        assert d["defaultInstalled"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_models_preserve_saved_selection(monkeypatch):
+    async def fake_detect():
+        return {"installed": True, "ready": True, "models": ["llama3.1:8b", DEFAULT_TEXT_MODEL]}
+
+    persist_partial({"models": ["llama3.1:8b"]})
+    monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
+    client = await _client()
+    try:
+        d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
+        assert d["selected"] == ["llama3.1:8b"]
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_models_distinguishes_not_installed_from_daemon_down(monkeypatch):
+    """P1 회귀 가드: /api/models 가 '미설치'와 'daemon 꺼짐'을 ollamaInstalled/ollamaReady 로 구분해야 한다.
+    (과거엔 둘 다 OllamaError→[] 로 평탄화돼 UI 가 똑같이 '설치하세요'만 안내했다.)"""
+    client = await _client()
+    try:
+        # (a) 설치됐지만 daemon 꺼짐
+        async def fake_down():
+            return {"installed": True, "ready": False, "models": []}
+
+        monkeypatch.setattr(webui, "_detect_ollama", fake_down)
+        d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
+        assert d["models"] == [] and d["ollamaInstalled"] is True and d["ollamaReady"] is False
+
+        # (b) 실행파일 자체 미설치
+        async def fake_absent():
+            return {"installed": False, "ready": False, "models": []}
+
+        monkeypatch.setattr(webui, "_detect_ollama", fake_absent)
+        d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
+        assert d["ollamaInstalled"] is False and d["ollamaReady"] is False
     finally:
         await client.close()
 
@@ -113,7 +185,12 @@ async def test_setup_uses_fixed_relay_and_model_list(monkeypatch):
         r = await client.post(
             "/api/setup",
             headers={"X-Session": KEY},
-            json={"token": "ABCDE-FGHIJ", "models": ["llama3.1:8b", "gemma4"], "enableImage": False, "installService": True},
+            json={
+                "token": "ABCDE-FGHIJ",
+                "models": ["llama3.1:8b", "gemma4"],
+                "enableImage": False,
+                "installService": True,
+            },
         )
         d = await r.json()
         assert d["ok"] and d["serviceInstalled"]
@@ -121,6 +198,43 @@ async def test_setup_uses_fixed_relay_and_model_list(monkeypatch):
         assert saved["token"] == "ABCDE-FGHIJ"
         assert saved["relay_url"] == webui.DEFAULT_RELAY  # 유저가 안 친 고정 주소
         assert saved["models"] == ["llama3.1:8b", "gemma4"]
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_setup_defaults_empty_model_list_to_exaone_when_detected(monkeypatch):
+    async def fake_detect():
+        return ["llama3.1:8b", DEFAULT_TEXT_MODEL]
+
+    monkeypatch.setattr(webui, "_detect_models", fake_detect)
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/setup",
+            headers={"X-Session": KEY},
+            json={"token": "ABCDE-FGHIJ", "models": [], "enableImage": False},
+        )
+        d = await r.json()
+        assert d["ok"]
+        assert load_config()["models"] == [DEFAULT_TEXT_MODEL]
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_ollama_setup_persists_default_model(monkeypatch):
+    async def fake_run_setup(url):
+        return True
+
+    monkeypatch.setattr("provider_agent.ollama_setup.is_busy", lambda: False)
+    monkeypatch.setattr("provider_agent.ollama_setup.run_setup", fake_run_setup)
+    client = await _client()
+    try:
+        d = await (await client.post("/api/ollama/setup", headers={"X-Session": KEY})).json()
+        assert d["ok"]
+        await asyncio.sleep(0.03)
+        assert load_config()["models"] == [DEFAULT_TEXT_MODEL]
     finally:
         await client.close()
 
@@ -621,5 +735,115 @@ async def test_no_autoconnect_when_disabled(monkeypatch):
         await asyncio.sleep(0.05)
         st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
         assert st["running"] is False  # 자동 연결 안 함
+    finally:
+        await client.close()
+
+
+# ── P4: 이미지 토글의 라이브 전파 + SD 미설치 가시화 ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_status_exposes_sd_installed(monkeypatch):
+    """status 가 sdInstalled 를 내려줘야 한다(이미지 토글 ON·미광고 시 'SD 미설치'와 'SD 미준비' 구분 근거)."""
+    monkeypatch.setattr(webui, "_sd_installed", lambda: True)
+    client = await _client()
+    try:
+        st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
+        assert st["sdInstalled"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_setup_apply_to_background_restarts_service(monkeypatch):
+    """백그라운드 서비스가 연결을 담당 중이면(held_by_other), applyToBackground 저장이 그 서비스를
+    kickstart 로 재시작해 새 enable_image 를 라이브로 반영해야 한다.
+    (회귀: 과거엔 config 파일만 저장돼 백그라운드는 시작 시점 설정으로 영원히 image 미광고 → /imagine provider 없음.)"""
+    monkeypatch.setattr("provider_agent.singleton.held_by_other", lambda: True)
+    monkeypatch.setattr("provider_agent.service.is_installed", lambda: True)
+    kicked: dict = {}
+    monkeypatch.setattr("provider_agent.service.kickstart", lambda: kicked.setdefault("done", True))
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/setup",
+            headers={"X-Session": KEY},
+            json={"models": ["m"], "enableImage": True, "applyToBackground": True},
+        )
+        d = await r.json()
+        assert d["ok"] and d["serviceRestarted"] is True
+        assert kicked.get("done") is True  # 라이브 서비스 실제 재시작
+        assert load_config()["enable_image"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_setup_apply_to_background_noop_without_background(monkeypatch):
+    """백그라운드 서비스가 없으면(held_by_other=False) applyToBackground 라도 kickstart 하지 않는다."""
+    monkeypatch.setattr("provider_agent.singleton.held_by_other", lambda: False)
+    monkeypatch.setattr("provider_agent.service.is_installed", lambda: True)
+    monkeypatch.setattr(
+        "provider_agent.service.kickstart",
+        lambda: (_ for _ in ()).throw(AssertionError("백그라운드 없는데 kickstart 하면 안 됨")),
+    )
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/setup",
+            headers={"X-Session": KEY},
+            json={"models": ["m"], "enableImage": True, "applyToBackground": True},
+        )
+        d = await r.json()
+        assert d["ok"] and d["serviceRestarted"] is False
+    finally:
+        await client.close()
+
+
+# ── P3: 추천 모델 카탈로그 + 임의 모델 설치/선택 ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_ollama_catalog_lists_recommended_with_status(monkeypatch):
+    """/api/ollama/catalog 가 exaone 을 기본/추천으로 주고, 설치됨/선택됨 상태를 모델별로 표기한다(P3)."""
+    async def fake_detect():
+        return {"installed": True, "ready": True, "models": ["llama3.1:8b"]}
+
+    monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
+    persist_partial({"models": ["llama3.1:8b"]})
+    client = await _client()
+    try:
+        d = await (await client.get("/api/ollama/catalog", headers={"X-Session": KEY})).json()
+        assert d["default"] == DEFAULT_TEXT_MODEL
+        by_id = {m["id"]: m for m in d["models"]}
+        assert by_id[DEFAULT_TEXT_MODEL]["default"] is True and by_id[DEFAULT_TEXT_MODEL]["recommended"] is True
+        assert by_id[DEFAULT_TEXT_MODEL]["installed"] is False  # exaone 미설치
+        assert by_id["llama3.1:8b"]["installed"] is True and by_id["llama3.1:8b"]["selected"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_ollama_setup_installs_and_selects_arbitrary_model(monkeypatch):
+    """본문에 model 이 있으면 그 모델을 pull 하고 제공 대상에 추가한다(P3).
+    (회귀: 과거엔 /api/ollama/setup 이 본문을 무시하고 기본 모델만 받았다.)"""
+    captured: dict = {}
+
+    async def fake_run_setup(url, model=None):
+        captured["model"] = model
+        return True
+
+    monkeypatch.setattr("provider_agent.ollama_setup.run_setup", fake_run_setup)
+    monkeypatch.setattr("provider_agent.ollama_setup.is_busy", lambda: False)
+    persist_partial({"models": ["llama3.1:8b"]})
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/ollama/setup", headers={"X-Session": KEY}, json={"model": "qwen2.5:7b", "select": True}
+        )
+        assert (await r.json())["ok"] is True
+        await asyncio.sleep(0.05)  # fire-and-forget 설치 태스크 실행 대기
+        assert captured["model"] == "qwen2.5:7b"
+        assert "qwen2.5:7b" in load_config()["models"]  # 설치 후 제공 대상 추가
     finally:
         await client.close()

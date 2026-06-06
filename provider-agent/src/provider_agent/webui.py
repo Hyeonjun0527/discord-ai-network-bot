@@ -17,12 +17,14 @@ import logging
 import secrets
 import threading
 from collections import deque
+from collections.abc import Iterable
+from typing import TypedDict
 
 from aiohttp import web
 
 from .config import AgentConfig, config_from_args
-from .config_file import load_config, save_config
-from .constants import AGENT_VERSION
+from .config_file import load_config, persist_partial, save_config
+from .constants import AGENT_VERSION, APP_DISPLAY_NAME, DEFAULT_TEXT_MODEL
 from .i18n import t
 from .netguard import RemoteOllamaBlocked, ensure_ollama_allowed
 
@@ -96,16 +98,97 @@ def _attach_log_capture() -> None:
 _state: dict = {"agent": None, "task": None}
 
 
-async def _detect_models() -> list[str]:
-    """로컬 Ollama 의 설치 모델 목록(자동 감지). 실패하면 빈 목록."""
+class OllamaState(TypedDict):
+    installed: bool  # 실행파일(ollama) 설치 여부
+    ready: bool  # daemon 이 응답하는지(/api/tags)
+    models: list[str]  # 설치된 모델명 목록
+
+
+async def _detect_ollama() -> OllamaState:
+    """Ollama 런타임 상태를 한 번에 판정한다: installed(실행파일)·ready(daemon 응답)·models(설치 목록).
+
+    P1: '미설치(실행파일 없음)'와 '설치됐지만 daemon 꺼짐'을 구분한다. 둘 다 list_models 는
+    ECONNREFUSED → 같은 OllamaError → 모델 0개로 보여, UI 가 'daemon 만 켜면 되는' 사용자에게도
+    '설치하세요'만 안내하던 문제를 해소한다(SD 의 installed/ready 분리와 동일한 패턴).
+    """
+    from . import ollama_setup
     from .ollama import OllamaClient, OllamaError
 
     saved = load_config()
     url = saved.get("ollama_url") or "http://localhost:11434"
     try:
-        return await OllamaClient(url).list_models()
+        installed = bool(ollama_setup.is_installed())
+    except Exception:  # noqa: BLE001 - 설치 여부 판정 실패는 미설치로 보수 처리
+        installed = False
+    try:
+        models = await OllamaClient(url).list_models()
     except OllamaError:
-        return []
+        return {"installed": installed, "ready": False, "models": []}
+    # list_models 성공 = daemon 응답 = 실행 중(PATH 밖 바이너리로 떠 있어도 ready 면 installed 로 본다).
+    return {"installed": True, "ready": True, "models": models}
+
+
+async def _detect_models() -> list[str]:
+    """로컬 Ollama 의 설치 모델 목록(자동 감지). 실패하면 빈 목록(하위호환 헬퍼)."""
+    return (await _detect_ollama())["models"]
+
+
+def _is_default_text_model(model: str) -> bool:
+    base = DEFAULT_TEXT_MODEL.split(":", 1)[0]
+    return model == DEFAULT_TEXT_MODEL or model.startswith(f"{base}:")
+
+
+def _selected_text_models(available: list[str], saved_models: object | None) -> list[str]:
+    raw_saved: Iterable[object] = (
+        [] if isinstance(saved_models, str) or not isinstance(saved_models, Iterable) else saved_models
+    )
+    saved = [str(m).strip() for m in raw_saved if str(m).strip()]
+    if saved:
+        return saved
+    for model in available:
+        if _is_default_text_model(model):
+            return [model]
+    return []
+
+
+async def _run_ollama_setup_and_select_default(url: str) -> None:
+    from . import ollama_setup
+
+    if await ollama_setup.run_setup(url):
+        persist_partial({"models": [DEFAULT_TEXT_MODEL]})
+
+
+async def _run_ollama_install(url: str, model: str, *, select: bool) -> None:
+    """카탈로그에서 고른 임의 모델을 설치하고(진행률은 ollama_setup.progress), 성공 시 제공 대상에 추가(P3)."""
+    from . import ollama_setup
+
+    if await ollama_setup.run_setup(url, model) and select:
+        saved = [str(m).strip() for m in (load_config().get("models") or []) if str(m).strip()]
+        if model not in saved:
+            saved.append(model)
+        persist_partial({"models": saved})
+
+
+def _model_matches(catalog_id: str, detected: str) -> bool:
+    """카탈로그 모델 id 가 설치된 모델명과 같은 계열인지(정확 일치 또는 같은 base 태그)."""
+    if detected == catalog_id:
+        return True
+    base = catalog_id.split(":", 1)[0]
+    return detected == base or detected.startswith(f"{base}:")
+
+
+def _sd_installed() -> bool:
+    """로컬 Stable Diffusion(A1111) 실행 환경이 설치돼 있는지(파일시스템 검사, 네트워크 없음).
+
+    이미지 토글이 켜졌는데 imageReady=false 인 이유가 'SD 미설치'인지 'SD 미준비'인지
+    UI 가 구분해 안내하도록 status 로 내려준다.
+    """
+    try:
+        from . import sd_setup
+
+        return bool(sd_setup.is_installed())
+    except Exception:  # noqa: BLE001 - SD 모듈 문제로 status 전체가 깨지지 않게 보수적으로 False
+        return False
 
 
 def _build_cfg_from_saved() -> AgentConfig | None:
@@ -320,7 +403,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 <section class="hero"><div class="logo"><img src="/app-icon.png" alt="NEXA 로고"></div><div><h1>NEXA Provider Agent</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
 <section class="card"><div class="ring off" id="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
 <div><div class="status-title" id="stitle">대기 중</div><div class="status-body" id="ssub">연결 시작을 누르면 풀에 등록됩니다.</div><div class="chips" id="chips"></div></div></section>
-<section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div></section>
+<section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div><div id="catalog" style="margin-top:14px"></div></section>
 <section><h2>2. 설정</h2><div class="settings">
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg></div><div><div class="setting-title">시스템 로그인 시 자동 연결</div><div class="setting-desc">앱을 닫아도 로그인하면 백그라운드에서 자동으로 연결돼 있어요. 이 앱은 설정을 바꿀 때만 열면 됩니다.</div></div><div class="toggle" id="svc" onclick="this.classList.toggle('on')"></div></div>
 <div class="setting"><div class="iconbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="9" r="1.5"></circle><path d="m21 15-5-5L5 21"></path></svg></div><div style="flex:1"><div class="setting-title">이미지 생성 제공 <span class="badge neutral">선택</span></div><div class="setting-desc">Stable Diffusion 으로 <b>/imagine</b> 이미지 생성을 직접 제공합니다.</div><button class="btn" type="button" id="imgInstallBtn" style="display:none;margin-top:9px" onclick="openSD()">＋ 로컬 이미지 모델 설치</button><button class="secondary-btn" type="button" id="imgStartBtn" style="display:none;margin-top:9px;min-height:38px" onclick="startSDApp()">▶ Stable Diffusion 시작</button><div class="setting-desc" id="sdState" style="margin-top:7px"></div></div><div class="toggle" id="img" onclick="this.classList.toggle('on')"></div></div>
@@ -378,7 +461,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
   </div>
 </div>
 <script>
-const K="__SESSION_KEY__";const H={"X-Session":K};let RUN=false;let HAS_MODELS=false;
+const K="__SESSION_KEY__";const H={"X-Session":K};let RUN=false;let HAS_MODELS=false;let OLLAMA_INSTALLED=false;let OLLAMA_READY=false;let ADVERTISED=[];
 const MICON='<svg class="model-icon" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M27 20c0-6 7-8 11-4 4-4 11-2 11 4v18c0 10-6 18-17 18S15 48 15 38V26c0-5 4-9 9-9h3Z"></path><path d="M30 31h.1M46 31h.1M31 43c4 3 10 3 14 0"></path><path d="M20 55v10M42 55v10M52 48v14"></path></svg>';
 const IINSTALL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px;vertical-align:-4px;margin-right:8px"><path d="M12 3v10"></path><path d="m8 11 4 4 4-4"></path><rect x="4" y="16.5" width="16" height="4.5" rx="1.5"></rect></svg>';
 const ICHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:6px"><path d="M20 6 9 17l-5-5"></path></svg>';
@@ -387,11 +470,18 @@ const ILINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 const ISTOP='<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:17px;height:17px;vertical-align:-3px;margin-right:9px"><rect x="6" y="6" width="12" height="12" rx="2.5"></rect></svg>';
 async function j(u,o){o=o||{};o.headers=Object.assign({},H,o.headers||{});const r=await fetch(u,o);return r.json();}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');HAS_MODELS=d.models.length>0;
-if(!d.models.length){box.innerHTML='<div class="empty">아직 사용할 AI 모델이 없어요. 아래 버튼이면 Ollama 설치부터 모델 다운로드까지 자동으로 해드려요.<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">Ollama 자동 설치 + 모델 받기</button><div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div></div>';return;}
+async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');HAS_MODELS=d.models.length>0;OLLAMA_INSTALLED=!!d.ollamaInstalled;OLLAMA_READY=!!d.ollamaReady;
+if(!d.models.length){const pb='<div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div>';let head,btn;if(!d.ollamaInstalled){head='아직 Ollama 가 설치되어 있지 않아요. 아래 버튼이면 Ollama 설치부터 기본 모델 '+esc(d.default||'')+' 다운로드까지 자동으로 해드려요.';btn='Ollama 자동 설치 + 기본 모델 받기';}else if(!d.ollamaReady){head='Ollama 는 설치돼 있지만 지금 실행(daemon)되고 있지 않아요. 아래 버튼이면 Ollama 를 시작하고 기본 모델 '+esc(d.default||'')+' 까지 준비해 드려요.';btn='Ollama 시작 + 기본 모델 받기';}else{head='Ollama 는 실행 중이지만 설치된 모델이 없어요. 아래 버튼이면 기본 모델 '+esc(d.default||'')+' 을 받아 드려요.';btn='기본 모델 받기';}box.innerHTML='<div class="empty">'+head+'<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">'+btn+'</button>'+pb+'</div>';loadCatalog();return;}
 const CMK='<span class="mcheck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>';
-box.innerHTML=d.models.map(m=>{const sel=d.selected.includes(m)||!d.selected.length;return `<article class="model${sel?' is-selected':''}" data-model="${esc(m)}" onclick="toggleModel(this)">${CMK}${MICON}<div><div class="model-name">${esc(m)}</div><span class="badge${sel?'':' neutral'}">${sel?'제공 중':'선택 안 함'}</span></div></article>`;}).join('');}
-function toggleModel(el){el.classList.toggle('is-selected');const sel=el.classList.contains('is-selected');const b=el.querySelector('.badge');b.textContent=sel?'제공 중':'선택 안 함';b.className='badge'+(sel?'':' neutral');}
+const dp=!d.defaultInstalled?'<div class="empty">기본 모델 '+esc(d.default||'')+' 이 아직 없어요.<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">기본 모델 받기</button><div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div></div>':'';
+box.innerHTML=dp+d.models.map(m=>{const sel=d.selected.includes(m);const adv=ADVERTISED.includes(m);const lbl=adv?'Discord에 제공 중':(sel?'제공 대상':'선택 안 함');return `<article class="model${sel?' is-selected':''}" data-model="${esc(m)}" onclick="toggleModel(this)">${CMK}${MICON}<div><div class="model-name">${esc(m)}</div><span class="badge${sel?'':' neutral'}">${lbl}</span></div></article>`;}).join('');loadCatalog();}
+function toggleModel(el){el.classList.toggle('is-selected');const sel=el.classList.contains('is-selected');const b=el.querySelector('.badge');b.textContent=sel?'제공 대상':'선택 안 함';b.className='badge'+(sel?'':' neutral');}
+// P3: 추천 모델 카탈로그(미설치 모델) 표시 + 개별 설치(진행률) → 제공 대상 추가.
+async function loadCatalog(){let d;try{d=await j('/api/ollama/catalog');}catch(e){return;}const box=document.getElementById('catalog');if(!box)return;const avail=(d.models||[]).filter(m=>!m.installed);if(!d.ollamaReady||!avail.length){box.innerHTML='';return;}
+const cards=avail.map(m=>{const tag=m.default?'<span class="badge" style="margin-left:6px">기본</span>':(m.recommended?'<span class="badge neutral" style="margin-left:6px">추천</span>':'');return '<div class="model" style="cursor:default"><div style="flex:1;min-width:0"><div class="model-name">'+esc(m.name||m.id)+tag+'</div><div class="helper" style="margin:3px 0 0">'+esc((m.desc||'')+(m.size?(' · '+m.size):''))+'</div></div><button class="secondary-btn cat-install" type="button" data-model="'+esc(m.id)+'" style="width:auto;margin-top:0;padding:8px 15px;white-space:nowrap" onclick="installCatalogModel(this)">설치</button></div>';}).join('');
+box.innerHTML='<div class="helper" style="margin:0 0 8px">추천 모델 더 받기 — 설치하면 제공 대상으로 추가됩니다.</div><div class="grid2">'+cards+'</div><div class="pbar" id="cpbar" style="display:none;margin-top:10px"><div class="pfill" id="cpfill"></div></div><div id="cmsg" style="margin-top:6px;color:var(--muted)"></div>';}
+async function installCatalogModel(btn){const model=btn.dataset.model;const bar=document.getElementById('cpbar'),fill=document.getElementById('cpfill'),msg=document.getElementById('cmsg');document.querySelectorAll('.cat-install').forEach(b=>{b.disabled=true;b.style.opacity=.6;b.style.cursor='default';});if(bar)bar.style.display='block';if(msg)msg.textContent=model+' 설치 준비…';try{await j('/api/ollama/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:model,select:true})});}catch(e){}pollCatalogInstall();}
+async function pollCatalogInstall(){const fill=document.getElementById('cpfill'),msg=document.getElementById('cmsg');let p;try{p=await j('/api/ollama/setup-progress');}catch(e){setTimeout(pollCatalogInstall,1500);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';if(p.phase==='error'){if(msg)msg.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));document.querySelectorAll('.cat-install').forEach(b=>{b.disabled=false;b.style.opacity=1;b.style.cursor='pointer';});return;}if(msg)msg.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){if(fill)fill.style.width='100%';if(msg)msg.textContent='✅ 설치 완료 — 제공 대상에 추가했어요.';setTimeout(loadModels,800);return;}setTimeout(pollCatalogInstall,1500);}
 function selectedModels(){return [...document.querySelectorAll('.model.is-selected')].map(c=>c.dataset.model);}
 async function setupOllama(){const b=document.getElementById('osetupBtn'),bar=document.getElementById('opbar'),el=document.getElementById('osetup');if(b){b.disabled=true;b.style.opacity=.6;b.style.cursor='default';}if(bar)bar.style.display='block';if(el)el.textContent='시작 중…';try{await j('/api/ollama/setup',{method:'POST'});}catch(e){}pollOllamaSetup();}
 async function pollOllamaSetup(){const el=document.getElementById('osetup'),fill=document.getElementById('opfill');let p;try{p=await j('/api/ollama/setup-progress');}catch(e){setTimeout(pollOllamaSetup,1500);return;}if(fill&&p.percent!=null)fill.style.width=p.percent+'%';if(p.phase==='error'){if(el)el.innerHTML='⚠ 설치 실패: '+esc(String(p.error||p.message||''));const b=document.getElementById('osetupBtn');if(b){b.disabled=false;b.style.opacity=1;b.style.cursor='pointer';b.textContent='다시 시도';}return;}if(el)el.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');if(p.phase==='done'){if(fill)fill.style.width='100%';setTimeout(loadModels,800);return;}setTimeout(pollOllamaSetup,1500);}
@@ -428,22 +518,23 @@ msg.textContent=(p.message||p.phase||'')+(p.percent?(' ('+p.percent+'%)'):'');
 if(p.phase==='done'){SD_BUSY=false;if(fill)fill.style.width='100%';msg.innerHTML='✅ 준비 완료 — 이미지 생성이 켜졌어요. <b>연동하기</b>를 누르면 디스코드에서 바로 쓸 수 있어요.';const t=document.getElementById('img');if(t&&!t.classList.contains('on'))t.classList.add('on');loadSDStatus();const foot=document.getElementById('sdStartBtn');foot.disabled=false;foot.style.opacity=1;foot.textContent='완료';foot.onclick=closeSD;return;}
 setTimeout(pollSDSetup,2000);}
 function on(id){return document.getElementById(id).classList.contains('on');}
-async function refresh(){const s=await j('/api/status');RUN=s.running;
+async function refresh(){const s=await j('/api/status');RUN=s.running;ADVERTISED=s.running?(s.models||[]):[];
 onbVisibility(s.hasToken);
 document.getElementById('relay').textContent=s.relayUrl;
 if(s.hasToken)document.getElementById('token').placeholder='저장됨 — 바꿀 때만 입력';
 // 이미지 토글: 멈춰 있을 때만 저장값으로 동기화(실행 중엔 사용자가 바꾼 의도를 보존 → '변경 적용' 감지).
-if(!s.running)document.getElementById('img').classList.toggle('on',s.enableImage);
+if(!s.running&&!s.backgroundRunning)document.getElementById('img').classList.toggle('on',s.enableImage);
 const bg=!s.running&&s.backgroundRunning;  // 백그라운드 자동시작 서비스가 이미 연결 중
 const ring=document.getElementById('ring');ring.className='ring'+(s.running?(s.connected?'':' connecting'):(bg?'':' off'));
 document.getElementById('stitle').textContent=s.running?(s.connected?'연결 완료':'연결하는 중…'):(bg?'백그라운드에서 실행 중':'대기 중');
 document.getElementById('ssub').textContent=s.running?(s.connected?'이 PC가 로컬 AI 노드로 등록되었습니다.':'중앙 서버에 연결하고 있습니다.'):(bg?'백그라운드 서비스가 이미 연결돼 있어요. 이 창은 설정 변경용입니다.':'연결 시작을 누르면 풀에 등록됩니다.');
 const cnt=s.running?s.models.length:selectedModels().length;
-let chips='<div class="chip"><span class="dot'+(HAS_MODELS?'':' grey')+'"></span>'+(HAS_MODELS?'Ollama 실행 중':'Ollama 확인 필요')+'</div>';
+const ollLbl=OLLAMA_READY?'Ollama 실행 중':(OLLAMA_INSTALLED?'Ollama 꺼짐':'Ollama 미설치');let chips='<div class="chip"><span class="dot'+(OLLAMA_READY?'':' grey')+'"></span>'+ollLbl+'</div>';
 chips+='<div class="chip">제공 모델 '+cnt+'개</div>';
 chips+='<div class="chip"><span class="dot'+((s.connected||bg)?'':' grey')+'"></span>'+(s.running?(s.connected?('처리 '+s.processed+'건'):'연결 시도 중'):(bg?'백그라운드 연결됨':'중지됨'))+(s.imageReady?' · 🖼️':'')+'</div>';
-const imgWarn=s.running&&s.enableImage&&!s.imageReady;  // 이미지 토글은 켰지만 SD 미연결 → 광고 안 됨
-if(imgWarn)chips+='<div class="chip" style="border-color:rgba(255,212,121,.4);color:#ffd479">이미지: SD 미연결 ⚠️</div>';
+// running: agent.image_ready 로 정확 판정(미설치/미준비 구분). bg: 백그라운드 프로세스의 live 상태는 알 수 없어 SD '설치 여부'만 경고.
+if(s.running&&s.enableImage&&!s.imageReady)chips+='<div class="chip" style="border-color:rgba(255,212,121,.4);color:#ffd479">'+(s.sdInstalled?'이미지: SD 준비 안 됨 ⚠️':'이미지: SD 미설치 ⚠️')+'</div>';
+else if(bg&&s.enableImage&&!s.sdInstalled)chips+='<div class="chip" style="border-color:rgba(255,212,121,.4);color:#ffd479">이미지: SD 미설치 ⚠️</div>';
 document.getElementById('chips').innerHTML=chips;
 // 백그라운드 실행 중: 이 창에서 직접 연결하려면 먼저 백그라운드를 중지하도록 안내.
 const bgBar=document.getElementById('bgBar');
@@ -451,14 +542,16 @@ if(bg){bgBar.style.display='block';bgBar.innerHTML='<div class="helper" style="m
 else bgBar.style.display='none';
 // 변경 적용 배너: 실행 중에 선택 모델·이미지 토글이 광고된 값과 다르면 재연결로 적용하도록 안내.
 const advModels=(s.models||[]).slice().sort().join(',');const uiModels=selectedModels().slice().sort().join(',');
-const pending=s.running&&((HAS_MODELS&&uiModels!==advModels)||(on('img')!==!!s.enableImage));
+const pending=(s.running||bg)&&((HAS_MODELS&&uiModels!==advModels)||(on('img')!==!!s.enableImage));
 const applyBar=document.getElementById('applyBar');
-if(pending){applyBar.style.display='block';applyBar.innerHTML='<div class="helper" style="margin-bottom:7px;color:#ffd479">'+IWARN+'바꾼 모델·이미지 설정은 <b>재연결해야</b> 디스코드 풀에 반영됩니다.</div><button class="secondary-btn" type="button" style="width:100%" onclick="reapply()">변경 적용(재연결)</button>';}
+if(pending){const act=s.running?'reapply()':'applyBackground()';const lbl=s.running?'변경 적용(재연결)':'백그라운드에 적용(재시작)';const how=s.running?'재연결':'백그라운드 재시작';applyBar.style.display='block';applyBar.innerHTML='<div class="helper" style="margin-bottom:7px;color:#ffd479">'+IWARN+'바꾼 모델·이미지 설정은 <b>'+how+'</b>해야 디스코드 풀에 반영됩니다.</div><button class="secondary-btn" type="button" style="width:100%" onclick="'+act+'">'+lbl+'</button>';}
 else applyBar.style.display='none';
 const go=document.getElementById('go');go.innerHTML=s.running?ISTOP+'<span>중지</span>':ILINK+'<span>연동하기</span>';go.className='primary-btn'+(s.running?' stop':'');
 const lg=await j('/api/logs');const el=document.getElementById('log');el.textContent=lg.lines.join('\n');el.scrollTop=el.scrollHeight;}
 async function stopBackground(){const m=document.getElementById('msg');m.className='';m.textContent='백그라운드 중지 중…';try{const r=await j('/api/service-stop',{method:'POST'});if(r.ok){m.className='ok';m.textContent='백그라운드를 중지했어요. 이제 이 창에서 연동할 수 있어요.';}else{m.className='err';m.textContent='⚠️ '+(r.error||'중지에 실패했어요. 잠시 후 다시 시도해 주세요.');}}catch(e){m.className='err';m.textContent='⚠️ 중지 실패';}setTimeout(refresh,900);}
 async function reapply(){const m=document.getElementById('msg');if(HAS_MODELS&&!selectedModels().length){m.className='err';m.textContent='⚠️ 제공할 모델을 1개 이상 선택하세요.';return;}m.className='';m.textContent='변경 적용 중(재연결)…';try{await j('/api/stop',{method:'POST'});const su=await j('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({models:selectedModels(),enableImage:on('img')})});if(!su.ok){m.className='err';m.textContent='⚠️ '+(su.error||'저장 실패');return;}const st=await j('/api/start',{method:'POST'});if(st.ok){m.className='ok';m.textContent='✅ 변경을 적용해 다시 연결했어요.';}else{m.className='err';m.textContent='⚠️ '+st.error;}}catch(e){m.className='err';m.textContent='⚠️ 재연결에 실패했어요.';}await refresh();}
+// 백그라운드 서비스가 연결을 담당 중일 때, 바꾼 설정(이미지 토글·모델)을 그 프로세스에 적용(재시작)한다.
+async function applyBackground(){const m=document.getElementById('msg');m.className='';m.textContent='백그라운드에 적용 중(재시작)…';try{const su=await j('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({models:selectedModels(),enableImage:on('img'),applyToBackground:true})});if(!su.ok){m.className='err';m.textContent='⚠️ '+(su.error||'저장 실패');return;}m.className='ok';m.textContent=su.serviceRestarted?'✅ 백그라운드 서비스에 적용했어요(재시작). 잠시 후 디스코드 풀에 반영됩니다.':'✅ 설정을 저장했어요.';}catch(e){m.className='err';m.textContent='⚠️ 적용에 실패했어요.';}setTimeout(refresh,1200);}
 // 버튼 하나로 모든 걸: 실행 중이면 중지, 아니면 (설정 저장 → 토큰 있으면 바로 연결 / 없으면 브라우저 로그인 → 콜백이 자동 연결).
 async function connect(){const msg=document.getElementById('msg');if(RUN){await j('/api/stop',{method:'POST'});await refresh();return;}
 if(HAS_MODELS&&!selectedModels().length){msg.className='err';msg.textContent='⚠️ 제공할 모델을 1개 이상 선택하세요.';return;}
@@ -595,8 +688,18 @@ def build_app(session_key: str) -> web.Application:
     async def models(req: web.Request) -> web.Response:
         _auth(req)
         saved = load_config()
+        oll = await _detect_ollama()
+        detected = oll["models"]
         return web.json_response(
-            {"models": await _detect_models(), "selected": list(saved.get("models") or [])}
+            {
+                "models": detected,
+                "selected": _selected_text_models(detected, saved.get("models")),
+                "default": DEFAULT_TEXT_MODEL,
+                "defaultInstalled": any(_is_default_text_model(m) for m in detected),
+                # P1: 미설치 vs daemon-down vs 정상을 UI 가 구분하도록.
+                "ollamaInstalled": oll["installed"],
+                "ollamaReady": oll["ready"],
+            }
         )
 
     async def status(req: web.Request) -> web.Response:
@@ -620,6 +723,8 @@ def build_app(session_key: str) -> web.Application:
                 "hasToken": bool(saved.get("token")),
                 "relayUrl": saved.get("relay_url") or _default_relay(),
                 "enableImage": bool(saved.get("enable_image")),
+                # 이미지 토글이 켜졌는데 광고 안 될 때, 원인이 'SD 미설치'인지 'SD 미준비'인지 UI 가 구분하도록.
+                "sdInstalled": _sd_installed(),
                 # 백그라운드 자동시작 서비스가 이미 연결 중인지(이 창은 설정용임을 알리는 데 쓴다).
                 "backgroundRunning": background_running,
                 # ‘디스코드 로그인’ OAuth 가능 여부는 **서버 설정**으로 결정된다(에이전트 env 불필요).
@@ -638,7 +743,8 @@ def build_app(session_key: str) -> web.Application:
         saved = load_config()
         # 토큰은 선택: 입력이 있으면 그것, 없으면 저장값 유지(없어도 설정만 저장 가능 — 연동하기 전 단계).
         token = str(data.get("token", "")).strip() or str(saved.get("token", ""))
-        models_list = [str(m).strip() for m in (data.get("models") or []) if str(m).strip()]
+        requested_models = [str(m).strip() for m in (data.get("models") or []) if str(m).strip()]
+        models_list = _selected_text_models(await _detect_models(), requested_models)
         enable_image = bool(data.get("enableImage"))
         relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
         cfg = AgentConfig(
@@ -654,6 +760,18 @@ def build_app(session_key: str) -> web.Application:
             except RemoteOllamaBlocked:
                 return web.json_response({"ok": False, "error": "SD 주소가 localhost 가 아닙니다."})
         save_config(cfg)
+        # 라이브 반영(P4): 백그라운드 서비스가 디스코드 연결을 담당 중이면, 바뀐 설정(enable_image/models)을
+        # 그 프로세스가 즉시 반영하도록 재시작한다. 서비스는 시작 시점 config 만 읽고 파일 변경을 감시하지 않으므로,
+        # 저장만으로는 이미지 토글이 디스코드 풀에 절대 반영되지 않는다(='토글 켰는데 image provider 없음'의 원인).
+        service_restarted = False
+        if data.get("applyToBackground"):
+            from . import service as service_mod
+            from . import singleton
+
+            task = _state["task"]
+            gui_running = task is not None and not task.done()
+            if (not gui_running) and singleton.held_by_other() and service_mod.is_installed():
+                service_restarted = bool(service_mod.kickstart())
         service_installed = False
         service_error: str | None = None
         if data.get("installService"):
@@ -672,7 +790,13 @@ def build_app(session_key: str) -> web.Application:
                 service_error = str(exc)
                 logging.getLogger("provider_agent").warning("자동 시작 서비스 등록 실패: %s", exc)
         return web.json_response(
-            {"ok": True, "serviceInstalled": service_installed, "serviceError": service_error, "hasToken": bool(token)}
+            {
+                "ok": True,
+                "serviceInstalled": service_installed,
+                "serviceError": service_error,
+                "serviceRestarted": service_restarted,
+                "hasToken": bool(token),
+            }
         )
 
     async def connect_open(req: web.Request) -> web.Response:
@@ -877,15 +1001,51 @@ def build_app(session_key: str) -> web.Application:
         persist_partial({"auto_update": on})  # 다른 설정 영향 없이 즉시 저장
         return web.json_response({"ok": True, "autoUpdate": on})
 
+    async def ollama_catalog(req: web.Request) -> web.Response:
+        """추천 텍스트 모델 카탈로그 + 각 모델의 installed/selected 상태(P3).
+
+        프런트는 미설치 모델을 '설치 가능'으로 보여주고, status.models 와 대조해 'Discord 에 광고 중'을 표시한다.
+        """
+        _auth(req)
+        from . import ollama_setup
+
+        saved = load_config()
+        oll = await _detect_ollama()
+        detected = oll["models"]
+        selected = set(_selected_text_models(detected, saved.get("models")))
+        items = []
+        for m in ollama_setup.catalog():
+            installed = any(_model_matches(m["id"], d) for d in detected)
+            items.append({**m, "installed": installed, "selected": m["id"] in selected})
+        return web.json_response(
+            {
+                "models": items,
+                "default": DEFAULT_TEXT_MODEL,
+                "ollamaInstalled": oll["installed"],
+                "ollamaReady": oll["ready"],
+            }
+        )
+
     async def ollama_setup_start(req: web.Request) -> web.Response:
-        """앱 내 Ollama 자동 설치(감지→설치→기동→모델 pull) 시작. 진행은 폴링으로 노출."""
+        """앱 내 Ollama 설치/모델 pull 시작. 본문에 ``model`` 이 있으면 그 모델을, 없으면 기본 모델을 받는다(P3).
+
+        진행은 ``/api/ollama/setup-progress`` 폴링으로 노출(한 번에 하나 — is_busy 가드).
+        """
         _auth(req)
         from . import ollama_setup
 
         if ollama_setup.is_busy():
             return web.json_response({"ok": True, "busy": True})
         url = load_config().get("ollama_url") or "http://localhost:11434"
-        asyncio.create_task(ollama_setup.run_setup(url))
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001 - 본문 없는 POST(기본 셋업)는 기본 모델 경로
+            data = {}
+        model = str(data.get("model", "")).strip()
+        if model:
+            asyncio.create_task(_run_ollama_install(url, model, select=bool(data.get("select", True))))
+        else:
+            asyncio.create_task(_run_ollama_setup_and_select_default(url))
         return web.json_response({"ok": True})
 
     async def ollama_setup_progress(req: web.Request) -> web.Response:
@@ -1107,6 +1267,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/update-progress", update_progress)
     app.router.add_post("/api/update", update_apply)
     app.router.add_post("/api/auto-update", auto_update_set)
+    app.router.add_get("/api/ollama/catalog", ollama_catalog)
     app.router.add_post("/api/ollama/setup", ollama_setup_start)
     app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
     app.router.add_get("/api/sd/models", sd_models)
@@ -1176,9 +1337,6 @@ def _webview_available() -> bool:
     except ImportError:
         return False
     return True
-
-
-APP_DISPLAY_NAME = "NEXA"
 
 
 def _brand_icon_png(size: int = 512) -> bytes | None:

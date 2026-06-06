@@ -29,8 +29,15 @@ from provider_agent._wire_contract_generated import (
 )
 
 # ── 에이전트 전용 상수(와이어 계약 아님 — 클라이언트 측 안전 기본값) ──────────────
+APP_DISPLAY_NAME: Final[str] = "NEXA"
+MAC_APP_BUNDLE: Final[str] = "NEXA.app"
+GUI_MAC_ASSET: Final[str] = "nexa-macos.zip"
+GUI_WIN_ASSET: Final[str] = "nexa-windows.exe"
 # 안전 기본값(차수: 일반 사용자 배포). 0 = 무제한이지만, 무제한은 --allow-unlimited 로만 가능.
 DEFAULT_DAILY_LIMIT: Final[int] = 15
+# 배포 온보딩/GUI 제공 모델 기본값.
+# packaging/assets.json 의 defaultTextModel 과 드리프트 검사를 통과해야 한다.
+DEFAULT_TEXT_MODEL: Final[str] = "exaone3.5:7.8b"
 # 단일 응답 텍스트 상한(문자). 무거운/폭주 응답이 끝없이 커지지 않게 에이전트가 자른다.
 MAX_RESPONSE_CHARS: Final[int] = 24_000
 # 응답 토큰 상한(서버 옵션 num_predict 의 하드 캡). 서버가 더 큰 값을 줘도 이 값으로 클램프.
@@ -43,10 +50,15 @@ AGENT_VERSION: Final[str] = "0.30.3"
 __all__ = [
     "AGENT_VERSION",
     "ALLOWED_OPTION_KEYS",
+    "APP_DISPLAY_NAME",
     "DEFAULT_DAILY_LIMIT",
+    "DEFAULT_TEXT_MODEL",
     "ErrorCode",
     "FrameType",
+    "GUI_MAC_ASSET",
+    "GUI_WIN_ASSET",
     "IMAGE_CHUNK_CHARS",
+    "MAC_APP_BUNDLE",
     "MAX_FRAME_BYTES",
     "MAX_NUM_PREDICT",
     "MAX_PROMPT_CHARS",

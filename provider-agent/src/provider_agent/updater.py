@@ -20,7 +20,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote
 
-from .constants import AGENT_VERSION
+from .constants import AGENT_VERSION, APP_DISPLAY_NAME, GUI_MAC_ASSET, GUI_WIN_ASSET
 from .version_check import is_outdated
 
 REPO = "Hyeonjun0527/discord-ai-network-bot"
@@ -28,9 +28,9 @@ REPO = "Hyeonjun0527/discord-ai-network-bot"
 # 다운로드 URL 은 규칙으로 구성한다(rate limit 회피).
 _RELEASES_LATEST = f"https://github.com/{REPO}/releases/latest"
 _DOWNLOAD_BASE = f"https://github.com/{REPO}/releases/download"
-APP_NAME = "NEXA"
-MAC_ASSET = "nexa-macos.zip"  # agent-build.yml 이 릴리스에 올리는 .app zip
-WIN_ASSET = "nexa-windows.exe"  # Windows 네이티브 GUI exe(릴리스 자산)
+APP_NAME = APP_DISPLAY_NAME
+MAC_ASSET = GUI_MAC_ASSET  # agent-build.yml 이 릴리스에 올리는 .app zip
+WIN_ASSET = GUI_WIN_ASSET  # Windows 네이티브 GUI exe(릴리스 자산)
 SUMS_ASSET = "SHA256SUMS.txt"
 
 
@@ -265,13 +265,19 @@ def _apply_macos(relaunch: str = "gui") -> dict:
         return {"ok": False, "error": "패키지에서 앱을 찾지 못했어요."}
 
     # 현재 프로세스가 종료된 뒤 교체·재실행하는 헬퍼(데몬). 실행 중 번들을 자기 자신이 덮어쓰지 않도록 분리.
-    # gui → 창으로 다시 열고(open), service → 헤드리스 바이너리(--service)로 창 없이 재실행.
+    # gui → 창으로 다시 열고(open), service → 헤드리스로 창 없이 재실행.
+    # 헤드리스는 번들된 콘솔 helper(nexa-service)를 우선한다 — GUI 바이너리를 헤드리스로 띄우면
+    # 번들이 'GUI 앱 실행 중'으로 등록돼 응용 프로그램 재오픈이 막히기 때문(P2). 없으면 GUI 바이너리로 폴백.
     binname = bundle.name[:-4] if bundle.name.endswith(".app") else bundle.name
     macos_bin = f"{bundle}/Contents/MacOS/{binname}"
+    helper_bin = f"{bundle}/Contents/MacOS/nexa-service"
     relaunch_line = (
         f'open "{bundle}"\n'
         if relaunch != "service"
-        else f'nohup "{macos_bin}" --service >/dev/null 2>&1 &\n'
+        else (
+            f'SVC="{helper_bin}"; [ -x "$SVC" ] || SVC="{macos_bin}"\n'
+            'nohup "$SVC" --service >/dev/null 2>&1 &\n'
+        )
     )
     pid = os.getpid()
     helper = tmp / "swap.sh"

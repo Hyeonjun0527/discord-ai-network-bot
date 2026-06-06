@@ -14,13 +14,58 @@ import logging
 import shutil
 import sys
 
+from .constants import DEFAULT_TEXT_MODEL
 from .ollama import OllamaClient
 
 logger = logging.getLogger("provider_agent.ollama_setup")
 
-# 온보딩 기본 설치 모델(SSOT): 사용자는 온보딩에서 모델을 고르지 않고 항상 이 모델을 받는다.
-# 한국어 응답 품질이 좋은 EXAONE 3.5 7.8B(LG AI Research)로 고정 — 가이드(웹/디스코드 프로바이더 참여)도 동일.
-DEFAULT_MODEL = "exaone3.5:7.8b"
+# 하위호환 alias: 실제 SSOT 는 constants.DEFAULT_TEXT_MODEL.
+DEFAULT_MODEL = DEFAULT_TEXT_MODEL
+
+# 앱 내 '추천 텍스트 모델' 카탈로그(SSOT). 명령이 아니라 데이터라 여기서 SSOT — webui 가 참조.
+# id 는 `ollama pull` 에 그대로 쓰는 모델 태그. 기본 모델은 constants.DEFAULT_TEXT_MODEL(리터럴 중복 금지).
+RECOMMENDED_TEXT_MODELS: list[dict] = [
+    {
+        "id": DEFAULT_TEXT_MODEL,
+        "name": "EXAONE 3.5 7.8B",
+        "size": "약 4.8 GB",
+        "desc": "한국어에 강한 기본 추천 모델. 일반 PC 권장.",
+        "recommended": True,
+    },
+    {
+        "id": "llama3.1:8b",
+        "name": "Llama 3.1 8B",
+        "size": "약 4.7 GB",
+        "desc": "범용 영어 모델. 품질/속도 균형.",
+        "recommended": True,
+    },
+    {
+        "id": "qwen2.5:7b",
+        "name": "Qwen 2.5 7B",
+        "size": "약 4.7 GB",
+        "desc": "다국어·코딩에 강함.",
+        "recommended": False,
+    },
+    {
+        "id": "gemma2:9b",
+        "name": "Gemma 2 9B",
+        "size": "약 5.4 GB",
+        "desc": "구글 경량 고품질 모델.",
+        "recommended": False,
+    },
+    {
+        "id": "llama3.2:3b",
+        "name": "Llama 3.2 3B",
+        "size": "약 2.0 GB",
+        "desc": "가벼운 저사양 PC 용.",
+        "recommended": False,
+    },
+]
+
+
+def catalog() -> list[dict]:
+    """추천 모델 카탈로그(기본 모델에 ``default=True`` 표시). webui /api/ollama/catalog 가 쓴다."""
+    return [{**m, "default": m["id"] == DEFAULT_TEXT_MODEL} for m in RECOMMENDED_TEXT_MODELS]
 
 # phase: idle | installing | starting | pulling | done | error
 _progress: dict = {"phase": "idle", "percent": 0, "message": "", "error": None}

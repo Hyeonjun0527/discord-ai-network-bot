@@ -119,3 +119,49 @@ def test_stop_service_macos(monkeypatch):
     calls = _ok_run(monkeypatch)
     assert svc.stop_service() is True
     assert any("kill" in c for c in calls)
+
+
+# ── P2: macOS 자동시작 서비스는 GUI .app 메인 바이너리가 아닌 번들 헤드리스 helper 를 실행 ──────
+
+
+def _fake_app(tmp_path: Path, *, with_helper: bool) -> Path:
+    """가짜 .app 레이아웃을 만들고 메인 실행파일 경로를 반환한다."""
+    macos = tmp_path / "NEXA.app" / "Contents" / "MacOS"
+    macos.mkdir(parents=True)
+    main_exe = macos / "NEXA"
+    main_exe.write_text("x", encoding="utf-8")
+    if with_helper:
+        (macos / "nexa-service").write_text("x", encoding="utf-8")
+    return main_exe
+
+
+def test_service_exe_prefers_bundled_helper(monkeypatch, tmp_path):
+    # .app 안에 nexa-service helper 가 있으면 서비스 실행 바이너리로 그것을 쓴다(P2 reopen 보존).
+    main_exe = _fake_app(tmp_path, with_helper=True)
+    monkeypatch.setattr(svc.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(svc.sys, "argv", [str(main_exe)])
+    ep = svc.service_executable_path()
+    assert ep.endswith("/nexa-service") and "/Contents/MacOS/" in ep
+
+
+def test_service_exe_falls_back_without_helper(monkeypatch, tmp_path):
+    # helper 가 없으면(구버전/빌드 이슈) 기존 executable_path 로 폴백 — 앱 동작은 유지.
+    main_exe = _fake_app(tmp_path, with_helper=False)
+    monkeypatch.setattr(svc.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(svc.sys, "argv", [str(main_exe)])
+    monkeypatch.setattr(svc, "executable_path", lambda: "/opt/homebrew/bin/nexa")
+    assert svc.service_executable_path() == "/opt/homebrew/bin/nexa"
+
+
+def test_install_service_macos_points_plist_to_helper(monkeypatch, tmp_path):
+    # 번들 helper 가 있으면 LaunchAgent plist ProgramArguments 가 GUI 바이너리(NEXA)가 아니라
+    # nexa-service helper 를 가리켜야 한다(P2: reopen 흡수 방지).
+    main_exe = _fake_app(tmp_path, with_helper=True)
+    home = tmp_path / "home"
+    monkeypatch.setattr(svc.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(svc.sys, "argv", [str(main_exe)])
+    monkeypatch.setattr(svc.Path, "home", staticmethod(lambda: home))
+    _ok_run(monkeypatch)
+    plist_text = Path(svc.install_service()).read_text()
+    assert "/Contents/MacOS/nexa-service</string>" in plist_text
+    assert "/Contents/MacOS/NEXA</string>" not in plist_text  # GUI 바이너리를 잡지 않음

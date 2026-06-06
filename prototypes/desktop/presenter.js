@@ -36,7 +36,8 @@ const ROLE_PRESENT = {
 export const presentRole = (role) => ROLE_PRESENT[role] || ROLE_PRESENT[Role.PROVIDER];
 
 // 내 정책 공개 대상(ProviderModelScope) → 한국어 라벨
-const SCOPE_PRESENT = { ALL: '모두에게', TRUSTED: '신뢰 역할에만', ADMIN: '관리자에만' };
+// 공개 대상 — ALL 은 "모두에게"가 민감해 '서버 멤버'로 표기(기능 동일: 서버 멤버 누구나).
+const SCOPE_PRESENT = { ALL: '서버 멤버', TRUSTED: '신뢰 역할에만', ADMIN: '관리자에만' };
 export const presentScope = (scope) => SCOPE_PRESENT[scope] || scope;
 
 // 에이전트 전체 제공 상태 → 홈 히어로 표현 키(현재 heroState STATES: ok/paused/error)

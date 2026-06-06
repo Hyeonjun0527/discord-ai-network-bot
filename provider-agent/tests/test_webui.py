@@ -7,7 +7,8 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from provider_agent import webui
-from provider_agent.config_file import load_config
+from provider_agent.config_file import load_config, persist_partial
+from provider_agent.constants import DEFAULT_TEXT_MODEL
 
 KEY = "test-session-key"
 
@@ -16,8 +17,20 @@ KEY = "test-session-key"
 def _reset(monkeypatch, tmp_path):
     from provider_agent import singleton
 
+    lock = {"held": False}
+
+    def fake_acquire():
+        lock["held"] = True
+        return True
+
+    def fake_release():
+        lock["held"] = False
+
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     monkeypatch.delenv("AGENT_CONNECT_ENABLED", raising=False)
+    monkeypatch.setattr(singleton, "acquire", fake_acquire)
+    monkeypatch.setattr(singleton, "release", fake_release)
+    monkeypatch.setattr(singleton, "held_by_other", lambda: False)
     webui._state["agent"] = None
     webui._state["task"] = None
     webui._log_lines.clear()
@@ -101,6 +114,39 @@ async def test_models_autodetected(monkeypatch):
     try:
         d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
         assert d["models"] == ["llama3.1:8b", "gemma4"]
+        assert d["selected"] == []
+        assert d["default"] == DEFAULT_TEXT_MODEL
+        assert d["defaultInstalled"] is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_models_select_default_exaone_when_detected(monkeypatch):
+    async def fake_detect():
+        return ["llama3.1:8b", DEFAULT_TEXT_MODEL, "gemma4"]
+
+    monkeypatch.setattr(webui, "_detect_models", fake_detect)
+    client = await _client()
+    try:
+        d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
+        assert d["selected"] == [DEFAULT_TEXT_MODEL]
+        assert d["defaultInstalled"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_models_preserve_saved_selection(monkeypatch):
+    async def fake_detect():
+        return ["llama3.1:8b", DEFAULT_TEXT_MODEL]
+
+    persist_partial({"models": ["llama3.1:8b"]})
+    monkeypatch.setattr(webui, "_detect_models", fake_detect)
+    client = await _client()
+    try:
+        d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
+        assert d["selected"] == ["llama3.1:8b"]
     finally:
         await client.close()
 
@@ -113,7 +159,12 @@ async def test_setup_uses_fixed_relay_and_model_list(monkeypatch):
         r = await client.post(
             "/api/setup",
             headers={"X-Session": KEY},
-            json={"token": "ABCDE-FGHIJ", "models": ["llama3.1:8b", "gemma4"], "enableImage": False, "installService": True},
+            json={
+                "token": "ABCDE-FGHIJ",
+                "models": ["llama3.1:8b", "gemma4"],
+                "enableImage": False,
+                "installService": True,
+            },
         )
         d = await r.json()
         assert d["ok"] and d["serviceInstalled"]
@@ -121,6 +172,43 @@ async def test_setup_uses_fixed_relay_and_model_list(monkeypatch):
         assert saved["token"] == "ABCDE-FGHIJ"
         assert saved["relay_url"] == webui.DEFAULT_RELAY  # 유저가 안 친 고정 주소
         assert saved["models"] == ["llama3.1:8b", "gemma4"]
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_setup_defaults_empty_model_list_to_exaone_when_detected(monkeypatch):
+    async def fake_detect():
+        return ["llama3.1:8b", DEFAULT_TEXT_MODEL]
+
+    monkeypatch.setattr(webui, "_detect_models", fake_detect)
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/setup",
+            headers={"X-Session": KEY},
+            json={"token": "ABCDE-FGHIJ", "models": [], "enableImage": False},
+        )
+        d = await r.json()
+        assert d["ok"]
+        assert load_config()["models"] == [DEFAULT_TEXT_MODEL]
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_ollama_setup_persists_default_model(monkeypatch):
+    async def fake_run_setup(url):
+        return True
+
+    monkeypatch.setattr("provider_agent.ollama_setup.is_busy", lambda: False)
+    monkeypatch.setattr("provider_agent.ollama_setup.run_setup", fake_run_setup)
+    client = await _client()
+    try:
+        d = await (await client.post("/api/ollama/setup", headers={"X-Session": KEY})).json()
+        assert d["ok"]
+        await asyncio.sleep(0.03)
+        assert load_config()["models"] == [DEFAULT_TEXT_MODEL]
     finally:
         await client.close()
 

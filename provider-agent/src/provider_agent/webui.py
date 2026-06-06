@@ -17,12 +17,13 @@ import logging
 import secrets
 import threading
 from collections import deque
+from collections.abc import Iterable
 
 from aiohttp import web
 
 from .config import AgentConfig, config_from_args
-from .config_file import load_config, save_config
-from .constants import AGENT_VERSION
+from .config_file import load_config, persist_partial, save_config
+from .constants import AGENT_VERSION, APP_DISPLAY_NAME, DEFAULT_TEXT_MODEL
 from .i18n import t
 from .netguard import RemoteOllamaBlocked, ensure_ollama_allowed
 
@@ -106,6 +107,31 @@ async def _detect_models() -> list[str]:
         return await OllamaClient(url).list_models()
     except OllamaError:
         return []
+
+
+def _is_default_text_model(model: str) -> bool:
+    base = DEFAULT_TEXT_MODEL.split(":", 1)[0]
+    return model == DEFAULT_TEXT_MODEL or model.startswith(f"{base}:")
+
+
+def _selected_text_models(available: list[str], saved_models: object | None) -> list[str]:
+    raw_saved: Iterable[object] = (
+        [] if isinstance(saved_models, str) or not isinstance(saved_models, Iterable) else saved_models
+    )
+    saved = [str(m).strip() for m in raw_saved if str(m).strip()]
+    if saved:
+        return saved
+    for model in available:
+        if _is_default_text_model(model):
+            return [model]
+    return []
+
+
+async def _run_ollama_setup_and_select_default(url: str) -> None:
+    from . import ollama_setup
+
+    if await ollama_setup.run_setup(url):
+        persist_partial({"models": [DEFAULT_TEXT_MODEL]})
 
 
 def _build_cfg_from_saved() -> AgentConfig | None:
@@ -388,9 +414,10 @@ const ISTOP='<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="w
 async function j(u,o){o=o||{};o.headers=Object.assign({},H,o.headers||{});const r=await fetch(u,o);return r.json();}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');HAS_MODELS=d.models.length>0;
-if(!d.models.length){box.innerHTML='<div class="empty">아직 사용할 AI 모델이 없어요. 아래 버튼이면 Ollama 설치부터 모델 다운로드까지 자동으로 해드려요.<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">Ollama 자동 설치 + 모델 받기</button><div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div></div>';return;}
+if(!d.models.length){box.innerHTML='<div class="empty">아직 사용할 AI 모델이 없어요. 아래 버튼이면 Ollama 설치부터 기본 모델 '+esc(d.default||'')+' 다운로드까지 자동으로 해드려요.<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">Ollama 자동 설치 + 기본 모델 받기</button><div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div></div>';return;}
 const CMK='<span class="mcheck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>';
-box.innerHTML=d.models.map(m=>{const sel=d.selected.includes(m)||!d.selected.length;return `<article class="model${sel?' is-selected':''}" data-model="${esc(m)}" onclick="toggleModel(this)">${CMK}${MICON}<div><div class="model-name">${esc(m)}</div><span class="badge${sel?'':' neutral'}">${sel?'제공 중':'선택 안 함'}</span></div></article>`;}).join('');}
+const dp=!d.defaultInstalled?'<div class="empty">기본 모델 '+esc(d.default||'')+' 이 아직 없어요.<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">기본 모델 받기</button><div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div></div>':'';
+box.innerHTML=dp+d.models.map(m=>{const sel=d.selected.includes(m);return `<article class="model${sel?' is-selected':''}" data-model="${esc(m)}" onclick="toggleModel(this)">${CMK}${MICON}<div><div class="model-name">${esc(m)}</div><span class="badge${sel?'':' neutral'}">${sel?'제공 중':'선택 안 함'}</span></div></article>`;}).join('');}
 function toggleModel(el){el.classList.toggle('is-selected');const sel=el.classList.contains('is-selected');const b=el.querySelector('.badge');b.textContent=sel?'제공 중':'선택 안 함';b.className='badge'+(sel?'':' neutral');}
 function selectedModels(){return [...document.querySelectorAll('.model.is-selected')].map(c=>c.dataset.model);}
 async function setupOllama(){const b=document.getElementById('osetupBtn'),bar=document.getElementById('opbar'),el=document.getElementById('osetup');if(b){b.disabled=true;b.style.opacity=.6;b.style.cursor='default';}if(bar)bar.style.display='block';if(el)el.textContent='시작 중…';try{await j('/api/ollama/setup',{method:'POST'});}catch(e){}pollOllamaSetup();}
@@ -595,8 +622,14 @@ def build_app(session_key: str) -> web.Application:
     async def models(req: web.Request) -> web.Response:
         _auth(req)
         saved = load_config()
+        detected = await _detect_models()
         return web.json_response(
-            {"models": await _detect_models(), "selected": list(saved.get("models") or [])}
+            {
+                "models": detected,
+                "selected": _selected_text_models(detected, saved.get("models")),
+                "default": DEFAULT_TEXT_MODEL,
+                "defaultInstalled": any(_is_default_text_model(m) for m in detected),
+            }
         )
 
     async def status(req: web.Request) -> web.Response:
@@ -638,7 +671,8 @@ def build_app(session_key: str) -> web.Application:
         saved = load_config()
         # 토큰은 선택: 입력이 있으면 그것, 없으면 저장값 유지(없어도 설정만 저장 가능 — 연동하기 전 단계).
         token = str(data.get("token", "")).strip() or str(saved.get("token", ""))
-        models_list = [str(m).strip() for m in (data.get("models") or []) if str(m).strip()]
+        requested_models = [str(m).strip() for m in (data.get("models") or []) if str(m).strip()]
+        models_list = _selected_text_models(await _detect_models(), requested_models)
         enable_image = bool(data.get("enableImage"))
         relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
         cfg = AgentConfig(
@@ -885,7 +919,7 @@ def build_app(session_key: str) -> web.Application:
         if ollama_setup.is_busy():
             return web.json_response({"ok": True, "busy": True})
         url = load_config().get("ollama_url") or "http://localhost:11434"
-        asyncio.create_task(ollama_setup.run_setup(url))
+        asyncio.create_task(_run_ollama_setup_and_select_default(url))
         return web.json_response({"ok": True})
 
     async def ollama_setup_progress(req: web.Request) -> web.Response:
@@ -1176,9 +1210,6 @@ def _webview_available() -> bool:
     except ImportError:
         return False
     return True
-
-
-APP_DISPLAY_NAME = "NEXA"
 
 
 def _brand_icon_png(size: int = 512) -> bytes | None:

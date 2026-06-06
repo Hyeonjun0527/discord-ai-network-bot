@@ -20,7 +20,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote
 
-from .constants import AGENT_VERSION
+from .constants import AGENT_VERSION, APP_DISPLAY_NAME, GUI_MAC_ASSET, GUI_WIN_ASSET
 from .version_check import is_outdated
 
 REPO = "Hyeonjun0527/discord-ai-network-bot"
@@ -28,9 +28,9 @@ REPO = "Hyeonjun0527/discord-ai-network-bot"
 # 다운로드 URL 은 규칙으로 구성한다(rate limit 회피).
 _RELEASES_LATEST = f"https://github.com/{REPO}/releases/latest"
 _DOWNLOAD_BASE = f"https://github.com/{REPO}/releases/download"
-APP_NAME = "NEXA"
-MAC_ASSET = "nexa-macos.zip"  # agent-build.yml 이 릴리스에 올리는 .app zip
-WIN_ASSET = "nexa-windows.exe"  # Windows 네이티브 GUI exe(릴리스 자산)
+APP_NAME = APP_DISPLAY_NAME
+MAC_ASSET = GUI_MAC_ASSET  # agent-build.yml 이 릴리스에 올리는 .app zip
+WIN_ASSET = GUI_WIN_ASSET  # Windows 네이티브 GUI exe(릴리스 자산)
 SUMS_ASSET = "SHA256SUMS.txt"
 
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "패키지/릴리스 자산 식별자의 단일 진실 원천(SSOT). 매니페스트(winget/scoop/brew)·릴리스 CI(agent-build.yml)·앱 가이드 코드(InstallGuide.kt)·웹 랜딩(install.html)·문서가 모두 이 값을 써야 한다. scripts/check_packaging.py 가 일치를 강제하므로, 자산명/패키지 ID 를 바꾸려면 여기서 바꾸고 소비처를 함께 갱신해야 한다(드리프트 시 CI 실패).",
+  "_comment": "패키지/릴리스 자산 식별자와 배포 온보딩 기본값의 단일 진실 원천(SSOT). 매니페스트(winget/scoop/brew)·릴리스 CI(agent-build.yml)·앱 가이드 코드(InstallGuide.kt)·웹 랜딩(install.html)·문서가 모두 이 값을 써야 한다. scripts/check_packaging.py 가 일치를 강제하므로, 자산명/패키지 ID/기본 모델을 바꾸려면 여기서 바꾸고 소비처를 함께 갱신해야 한다(드리프트 시 CI 실패).",
   "repo": {
     "owner": "Hyeonjun0527",
     "name": "discord-ai-network-bot"
@@ -8,6 +8,7 @@
   "appDisplayName": "NEXA",
   "brandName": "NEXA",
   "brandTagline": "AI NETWORK GUIDE",
+  "defaultTextModel": "exaone3.5:7.8b",
   "macAppBundle": "NEXA.app",
   "packages": {
     "wingetId": "Nexa.Nexa",

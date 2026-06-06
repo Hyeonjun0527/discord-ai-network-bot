@@ -17,7 +17,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-APP_NAME = "NEXA"
+from .constants import APP_DISPLAY_NAME, MAC_APP_BUNDLE
+
+APP_NAME = APP_DISPLAY_NAME
 _LSREGISTER = (
     "/System/Library/Frameworks/CoreServices.framework/Frameworks/"
     "LaunchServices.framework/Support/lsregister"
@@ -41,7 +43,7 @@ def _macos_bundle_path() -> Path | None:
 
 
 def _macos_target() -> Path:
-    return Path("/Applications") / f"{APP_NAME}.app"
+    return Path("/Applications") / MAC_APP_BUNDLE
 
 
 def _win_start_menu_dir() -> Path:

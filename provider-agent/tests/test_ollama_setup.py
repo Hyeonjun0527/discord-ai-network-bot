@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 
 from provider_agent import ollama_setup as os_mod
+from provider_agent.constants import DEFAULT_TEXT_MODEL
 
 
 def test_install_command_per_platform(monkeypatch):
@@ -95,7 +96,7 @@ def test_run_setup_full_flow(monkeypatch):
 
 def test_default_model_is_exaone(monkeypatch):
     """온보딩 기본 설치 모델 SSOT: 모델 인자 없이 run_setup → exaone3.5:7.8b 를 pull(가이드와 동일)."""
-    assert os_mod.DEFAULT_MODEL == "exaone3.5:7.8b"
+    assert os_mod.DEFAULT_MODEL == DEFAULT_TEXT_MODEL
     fake = _FakeClient(False, [])
     monkeypatch.setattr(os_mod, "OllamaClient", lambda url: fake)
     monkeypatch.setattr(os_mod, "is_installed", lambda: True)
@@ -112,4 +113,4 @@ def test_default_model_is_exaone(monkeypatch):
 
     ok = asyncio.run(os_mod.run_setup("http://localhost:11434"))  # 모델 인자 생략 → DEFAULT_MODEL
     assert ok is True
-    assert fake.pulled == "exaone3.5:7.8b"
+    assert fake.pulled == DEFAULT_TEXT_MODEL

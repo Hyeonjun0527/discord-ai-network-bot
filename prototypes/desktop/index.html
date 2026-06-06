@@ -492,7 +492,12 @@
     /* Provider 관리 카드(승인 대기·로스터) */
     .prov-row { display: flex; align-items: center; gap: 14px; padding: 15px 18px; border-radius: 14px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(15, 22, 38, .7), rgba(10, 16, 28, .8)); margin-bottom: 10px; }
     .prov-row.wait { border-color: color-mix(in srgb, var(--warn) 32%, transparent); background: color-mix(in srgb, var(--warn) 6%, transparent); }
-    .prov-av { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-weight: 800; font-size: 15px; color: #d8e0ee; background: rgba(255,255,255,.05); border: 1px solid var(--line); }
+    .prov-av { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; font-weight: 800; font-size: 15px; color: #d8e0ee; background: rgba(255,255,255,.05); border: 1px solid var(--line); overflow: hidden; }
+    .prov-av img { width: 100%; height: 100%; object-fit: cover; }
+    /* AI 프로필 — 서버 니아 외형(아바타+이름) */
+    .prof-row { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+    .prof-av { width: 54px; height: 54px; border-radius: 15px; font-size: 21px; }
+    .dsub code { color: #a9bcff; font-family: ui-monospace, Menlo, monospace; font-size: .92em; }
     .prov-main { flex: 1; min-width: 0; }
     .prov-nm { font-size: 14.5px; font-weight: 700; color: #eef2fb; display: flex; align-items: center; gap: 8px; }
     .prov-nm .me { font-size: 11px; font-weight: 700; color: #c4b4ff; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--c-violet) 15%, transparent); border: 1px solid color-mix(in srgb, var(--c-violet) 38%, transparent); }
@@ -1391,10 +1396,15 @@
           (p.isDefault ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-default="' + p.id + '">기본으로</button>') +
           (p.builtin ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-del="' + p.id + '" data-name="' + p.name + '">삭제</button>') +
         '</div></div></div>').join('');
-      return '<div class="dcard"><div class="dlabel">니아 프로필 <span class="dim">· 이 서버에서</span></div>' +
-        '<div class="pfield" style="margin-top:12px"><label>서버 표시 이름</label>' +
+      const ava = m.profile.avatarUrl
+        ? '<img src="' + m.profile.avatarUrl + '" alt="" onerror="this.remove()">'
+        : (m.profile.displayName || '니').trim().charAt(0);
+      return '<div class="dcard"><div class="dlabel">이 서버의 니아 <span class="dim">· 외형</span></div>' +
+        '<div class="prof-row"><span class="prov-av prof-av">' + ava + '</span>' +
+          '<button class="btn btn--sm btn--secondary" data-soon="아바타 변경">이미지 변경</button></div>' +
+        '<div class="pfield" style="margin-top:14px"><label>표시 이름</label>' +
           '<div class="cm-row"><input class="cx-input" id="profName" value="' + m.profile.displayName + '" maxlength="32"><button class="btn btn--md btn--secondary" id="profSave">저장</button></div></div>' +
-        '<div class="dsub" style="margin-top:11px">🖼 프로필 이미지·글로벌 이름은 Discord 개발자 포털에서 바꿔요. 서버별로는 표시 이름(닉네임)만 바꿀 수 있어요.</div></div>' +
+        '<div class="dsub" style="margin-top:11px">서버별 니아 이름·아바타는 답변에 적용돼요(webhook). 슬래시(<code>/ask</code>) 응답엔 NEXA 기본 아바타가 보일 수 있어요. NEXA 글로벌 기본 프로필은 NEXA 가 관리해요.</div></div>' +
         '<div class="drow"><div class="msec-label" style="margin:0">전역 프롬프트셋 <span class="dim">· 서버 전체 기본 성격</span></div>' +
           '<button class="btn btn--sm btn--secondary" id="promptAdd">+ 추가</button></div>' + prompts;
     }

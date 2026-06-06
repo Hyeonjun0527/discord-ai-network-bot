@@ -54,7 +54,9 @@ export const ENDPOINTS = Object.freeze({
   // ✅ 서버 정책 토글(신규 자동 승인) — central /provider/admin/manage/policy. PolicyService.setAutoApprove 재사용.
   serverManagePolicy: (g) => '/api/servers/' + g + '/manage/policy', // POST {autoApprove}
   // ⚠ Gap-Profile: AI 프로필(v1 mock). 백엔드 매핑 —
-  //   · 서버 표시 이름 = JDA 닉네임(ManageNicknames). 아바타·글로벌 이름은 Discord 개발자 포털(서버별 불가).
+  //   · 표시 이름 = JDA 닉네임(ManageNicknames, 모든 응답).
+  //   · 아바타 = webhook(채널 webhook 답변에 적용). 슬래시 응답은 NEXA 기본 아바타. NEXA 글로벌 프로필은
+  //     NEXA 운영자 소유(개발자 포털) — 서버 관리자 권한 밖.
   //   · 전역 프롬프트셋 = 길드 기본 시스템 프롬프트(신규 — 현재 constitution 은 채널/프리셋 단위만, 전역 기본 없음).
   serverProfile: (g) => '/api/servers/' + g + '/profile',  // POST {displayName}
   serverPrompts: (g) => '/api/servers/' + g + '/prompts',  // GET·POST(추가)·DELETE·기본 설정

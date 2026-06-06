@@ -40,6 +40,16 @@
        ║                                                                          ║
        ║ 7. 위험 작업(DESTRUCTIVE) = 즉시 실행 금지                               ║
        ║    · 제거·초기화 등은 ⋯ 메뉴 + 확인 모달 뒤에 둔다(원클릭 파괴 금지).      ║
+       ║                                                                          ║
+       ║ 8. 텍스트(TEXT) = 다크 배경 위에선 밝은 글자만                            ║
+       ║    · 본문은 텍스트 토큰 위계만 쓴다: --text(제목·강조) > --muted(본문)     ║
+       ║      > --subtle(메타, 최소 가독 하한). 그보다 어두운 색은 본문에 금지.     ║
+       ║    · 검정·짙은 회색 등 어두운 글자는 배경(노이즈/글로우)에 묻혀 안 보인다.  ║
+       ║      → 다크 surface 위 텍스트로 절대 쓰지 않는다.                          ║
+       ║    · 어두운 글자는 "밝은 채움 배경"(초록 체크 배지·밝은 칩 등) 위에서만     ║
+       ║      대비 목적으로 허용(예외).                                            ║
+       ║    · 대비 목표: 본문 ≥ 4.5:1, 큰 텍스트/보조 ≥ 3:1. 상태색(보라·시안·초록· ║
+       ║      앰버)도 다크에서 충분히 밝은 톤만 사용.                               ║
        ╚══════════════════════════════════════════════════════════════════════╝ */
     :root {
       /* ════════════════════════════════════════════════════════════════════
@@ -87,7 +97,8 @@
       mask-image: radial-gradient(120% 90% at 50% 0%, rgba(0,0,0,.9), transparent 80%);
     }
     a { color: inherit; text-decoration: none; }
-    button { font: inherit; cursor: pointer; }
+    /* button 은 color 를 상속하지 않으므로 명시 — 다크 배경 위 검정 텍스트 방지(텍스트 정책 #8) */
+    button { font: inherit; color: inherit; cursor: pointer; }
 
     /* ══ 앱 셸 레이아웃 ══ */
     .app {
@@ -247,21 +258,68 @@
     /* provider 카드 2개 */
     .grid-2 { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     .prov-card {
-      position: relative; overflow: hidden; padding: 22px 24px; border-radius: 22px; border: 1px solid var(--line);
+      position: relative; padding: 22px 24px; border-radius: 22px; border: 1px solid var(--line);
       background: linear-gradient(180deg, rgba(15, 22, 38, .9), rgba(10, 16, 28, .94)); min-height: 132px;
       display: flex; gap: 18px; align-items: center;
     }
     .prov-card::after { content: ""; position: absolute; inset: 0; border-radius: 22px; pointer-events: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
     .prov-mini { width: 84px; height: 84px; flex: 0 0 auto; }
     .prov-mini canvas { width: 100%; height: 100%; display: block; }
-    .prov-body { min-width: 0; }
+    .prov-body { min-width: 0; flex: 1; }
+
+    /* 아이콘 버튼(컨텍스트 메뉴 트리거 등) — 관례상 무배경 + hover affordance */
+    .icon-btn { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: var(--subtle); border: 1px solid transparent; background: transparent; cursor: pointer; transition: .14s ease; }
+    .icon-btn:hover, .icon-btn.open { background: rgba(255,255,255,.07); color: #eef3fb; }
+    .icon-btn svg { width: 18px; height: 18px; }
+    .prov-menu-btn { position: absolute; top: 14px; right: 14px; z-index: 5; }
+
+    /* 드롭다운 메뉴 — 반투명 글래스 */
+    .menu { position: absolute; top: 50px; right: 14px; z-index: 20; min-width: 208px; padding: 6px; border-radius: 13px; border: 1px solid var(--line); background: rgba(12, 18, 32, .97); backdrop-filter: blur(16px); box-shadow: 0 18px 44px rgba(0,0,0,.5); }
+    .menu[hidden] { display: none; }
+    .menu button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 9px; border: 0; background: transparent; color: #d6deea; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .menu button:hover { background: color-mix(in srgb, var(--c-accent) 14%, transparent); color: #fff; }
+    .menu button .arrow { margin-left: auto; color: var(--subtle); }
+    .menu button.danger { color: #ffb4bb; }
+    .menu button.danger:hover { background: color-mix(in srgb, #ff5f6e 16%, transparent); color: #fff; }
+    .menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; }
     .prov-name { display: flex; align-items: center; gap: 9px; font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
     .prov-name .d { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 9px var(--ok); flex: 0 0 auto; }
     .prov-state { margin-top: 7px; color: var(--c-cyan); font-size: 13.5px; font-weight: 600; }
     .prov-meta { margin-top: 4px; color: var(--muted); font-size: 14px; }
 
-    /* 오늘 처리 통계 */
-    .stat-head { margin: 30px 0 14px; font-size: 17px; font-weight: 700; color: #d2dbe7; letter-spacing: -.02em; }
+    /* 섹션 헤더(제목 + 선택적 우측 액션) */
+    .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 30px 0 14px; }
+    .sec-head > span { font-size: 17px; font-weight: 700; color: #d2dbe7; letter-spacing: -.02em; }
+
+    /* 연결된 서버 목록 */
+    .srv-list { display: flex; flex-direction: column; gap: 10px; }
+    .srv-item {
+      display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 13px 16px;
+      border-radius: 16px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(15, 22, 38, .7), rgba(10, 16, 28, .8));
+      cursor: pointer; transition: .16s ease;
+    }
+    .srv-item:hover { border-color: color-mix(in srgb, var(--c-accent) 30%, transparent); transform: translateY(-1px); }
+    /* 아바타: 이니셜이 항상 깔리고, 길드 아이콘(img) 로드 성공 시 그 위를 덮음. 실패하면 img 가 제거되어 이니셜 노출(폴백) */
+    .srv-avatar { position: relative; overflow: hidden; width: 44px; height: 44px; border-radius: 13px; flex: 0 0 auto; display: grid; place-items: center; font-weight: 800; font-size: 17px; color: #eef3fb; border: 1px solid var(--line); }
+    .srv-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .srv-main { flex: 1; min-width: 0; }
+    .srv-name { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+    .srv-name .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    /* 내 권한 배지 — admin(관리자, 보라 강조) / provider(기부자, 중립).
+       행 우측에 고정 정렬(이름 길이와 무관). min-width 로 배지 폭 통일 → 세로 라인 정렬. */
+    .srv-role { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 84px; font-size: 11.5px; font-weight: 700; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--line); }
+    .srv-role svg { width: 12px; height: 12px; }
+    .srv-role.admin { color: #c4b4ff; background: color-mix(in srgb, var(--c-violet) 15%, transparent); border-color: color-mix(in srgb, var(--c-violet) 38%, transparent); }
+    .srv-role.provider { color: #aeb9d4; background: rgba(255,255,255,.04); border-color: var(--line); }
+    /* 상태(점 언어) — 메타 줄 맨 앞 */
+    .srv-meta { margin-top: 4px; color: var(--muted); font-size: 13.5px; }
+    .srv-st { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+    .srv-st .d { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+    .srv-st.ok { color: var(--ok); } .srv-st.ok .d { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .srv-st.paused { color: var(--muted); } .srv-st.paused .d { background: var(--muted); }
+    .srv-st.pending { color: var(--warn); } .srv-st.pending .d { background: var(--warn); box-shadow: 0 0 8px color-mix(in srgb, var(--warn) 70%, transparent); }
+    .srv-go { width: 18px; height: 18px; color: var(--subtle); flex: 0 0 auto; display: block; }
+
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     .stat {
       padding: 22px 24px; border-radius: 20px; border: 1px solid var(--line);
@@ -337,9 +395,16 @@
     .placeholder h2 { margin: 18px 0 6px; color: var(--muted); font-weight: 700; font-size: 22px; }
     .placeholder p { margin: 0; font-size: 14.5px; }
 
+    /* 좁은(축소) 사이드바 — 아이콘 전용. 모든 요소를 세로축 가운데로 통일 정렬. */
     @media (max-width: 880px) {
       .app { grid-template-columns: 72px 1fr; }
-      .side-brand .bt, .status-badge span, .nav-item span, .nav-foot { display: none; }
+      .sidebar { padding: 18px 12px; }
+      /* 텍스트 라벨만 숨김 — .dot(상태 점)은 유지해야 하므로 :not(.dot) */
+      .side-brand .bt, .status-badge span:not(.dot), .nav-item span, .nav-foot { display: none; }
+      .side-brand { justify-content: center; padding: 6px 0 16px; }
+      /* 라벨 숨길 땐 알약 대신 정사각 점 인디케이터(빈 공간 제거) */
+      .status-badge { width: 44px; height: 44px; padding: 0; margin: 0 auto 14px; justify-content: center; }
+      .status-badge .dot { width: 12px; height: 12px; }
       .nav-item { justify-content: center; }
       .grid-2 { grid-template-columns: 1fr; }
       .hero-status { grid-template-columns: 1fr; }
@@ -415,6 +480,16 @@
               <div class="prov-state">실행 중</div>
               <div class="prov-meta">모델 7개 · 텍스트 응답 제공</div>
             </div>
+            <button class="icon-btn prov-menu-btn" aria-label="Ollama 더보기" aria-haspopup="true">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+            </button>
+            <div class="menu" hidden>
+              <button data-act="check">연결 점검</button>
+              <button data-act="open">열기</button>
+              <button data-act="settings">설정</button>
+              <hr>
+              <button data-act="manage">로컬 실행에서 관리<span class="arrow">›</span></button>
+            </div>
           </div>
           <div class="prov-card">
             <div class="prov-mini"><canvas data-scene="sd" aria-hidden="true"></canvas></div>
@@ -423,10 +498,26 @@
               <div class="prov-state">실행 중</div>
               <div class="prov-meta">이미지 생성 가능</div>
             </div>
+            <button class="icon-btn prov-menu-btn" aria-label="Stable Diffusion 더보기" aria-haspopup="true">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+            </button>
+            <div class="menu" hidden>
+              <button data-act="check">연결 점검</button>
+              <button data-act="open">출력 폴더 열기</button>
+              <button data-act="settings">설정</button>
+              <hr>
+              <button data-act="manage">로컬 실행에서 관리<span class="arrow">›</span></button>
+            </div>
           </div>
         </div>
 
-        <div class="stat-head">오늘 처리</div>
+        <div class="sec-head">
+          <span>연결된 서버</span>
+          <button class="btn btn--sm btn--secondary" id="srvAll">모두 보기</button>
+        </div>
+        <div class="srv-list" id="srvList"><!-- JS 렌더 --></div>
+
+        <div class="sec-head"><span>오늘 처리</span></div>
         <div class="stats">
           <div class="stat"><div class="stat-val">0</div><div class="stat-lbl">요청</div></div>
           <div class="stat"><div class="stat-val">2</div><div class="stat-lbl">제공 모델</div></div>
@@ -469,6 +560,87 @@
       views.forEach(v => v.classList.toggle('active', v.dataset.view === b.dataset.view));
       document.getElementById('main').scrollTo({ top: 0 });
     }));
+  </script>
+
+  <!-- 홈 · 연결된 Discord 서버 목록(목데이터) -->
+  <script>
+    (function homeServers() {
+      // 디스코드 서버 아바타 틴트(브랜드 hue 순환 — 디자인 언어: 색은 토큰에서만)
+      const TINT = ['--c-violet', '--c-blue', '--c-cyan', '--c-purple'];
+      // role: admin(서버 관리자, 정책·프로바이더 관리) / provider(AI 기여자)
+      // state: ok 연결됨 / paused 일시중지 / pending 승인 필요
+      // icon: 디스코드 길드 아이콘 URL(cdn.discordapp.com/icons/{id}/{hash}.png). null 이면 이니셜 폴백.
+      //       실제 연동 시 central-server AgentSyncJoinDto 에 iconUrl 추가 → 여기 꽂으면 동작.
+      const SERVERS = [
+        { name: '한국어 개발 길드', initial: '한', icon: null, role: 'admin', state: 'ok', models: 3, today: 0 },
+        { name: '게임 커뮤니티', initial: '게', icon: null, role: 'provider', state: 'ok', models: 2, today: 0 },
+        { name: '디자인 스튜디오', initial: '디', icon: null, role: 'provider', state: 'paused', models: 1, today: 0 },
+        { name: '신규 서버', initial: '신', icon: null, role: 'admin', state: 'pending', models: 0, today: 0 },
+      ];
+      const ROLE = {
+        admin: { label: '관리자', icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 5 3.5 8.4 8 9.5 4.5-1.1 8-4.5 8-9.5V5Z"/></svg>' },
+        provider: { label: '기부자', icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>' },
+      };
+      const TAG = { ok: '연결됨', paused: '일시중지', pending: '승인 필요' };
+      const EXTRA = {
+        ok: (s) => ' · 제공 모델 ' + s.models + ' · 오늘 ' + s.today + '건',
+        paused: (s) => ' · 제공 모델 ' + s.models,
+        pending: () => ' · 관리자 승인 대기',
+      };
+      const list = document.getElementById('srvList');
+      list.innerHTML = SERVERS.map((s, i) => {
+        const tint = TINT[i % TINT.length];
+        const avatarStyle = 'background: color-mix(in srgb, var(' + tint + ') 22%, transparent); border-color: color-mix(in srgb, var(' + tint + ') 40%, transparent);';
+        // 이니셜이 항상 깔리고, icon 있으면 img 가 덮음. 로드 실패 시 onerror 로 img 제거 → 이니셜 폴백.
+        const img = s.icon ? '<img src="' + s.icon + '" alt="" onerror="this.remove()">' : '';
+        const role = ROLE[s.role];
+        return '<button class="srv-item">' +
+          '<span class="srv-avatar" style="' + avatarStyle + '">' + s.initial + img + '</span>' +
+          '<span class="srv-main">' +
+            '<span class="srv-name"><span class="nm">' + s.name + '</span></span>' +
+            '<span class="srv-meta"><span class="srv-st ' + s.state + '"><span class="d"></span>' + TAG[s.state] + '</span>' + EXTRA[s.state](s) + '</span>' +
+          '</span>' +
+          '<span class="srv-role ' + s.role + '">' + role.icon + role.label + '</span>' +
+          '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>' +
+        '</button>';
+      }).join('');
+      // 서버 아이템·"모두 보기" → 서버 탭으로 이동
+      const goServers = () => { const b = document.querySelector('.nav-item[data-view="servers"]'); if (b) b.click(); };
+      list.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', goServers));
+      document.getElementById('srvAll').addEventListener('click', goServers);
+    })();
+  </script>
+
+  <!-- 홈 · 런타임 카드 ⋯ 컨텍스트 메뉴 -->
+  <script>
+    (function runtimeMenus() {
+      const cards = [...document.querySelectorAll('.prov-card')];
+      function closeAll() {
+        cards.forEach(c => { c.querySelector('.menu').hidden = true; c.querySelector('.prov-menu-btn').classList.remove('open'); });
+      }
+      cards.forEach(card => {
+        const btn = card.querySelector('.prov-menu-btn');
+        const menu = card.querySelector('.menu');
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const willOpen = menu.hidden;
+          closeAll();
+          menu.hidden = !willOpen;
+          btn.classList.toggle('open', willOpen);
+        });
+        menu.querySelectorAll('button').forEach(item => item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          closeAll();
+          if (item.dataset.act === 'manage') {
+            const b = document.querySelector('.nav-item[data-view="local"]'); if (b) b.click();
+          }
+          // 그 외(check/open/settings)는 프로토타입에선 동작 없음(시각만)
+        }));
+      });
+      // 바깥 클릭·Esc 로 닫기
+      document.addEventListener('click', closeAll);
+      window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+    })();
   </script>
 
   <!-- 홈 히어로 상태(조건부 노출): 정상 → 일시중지만 / 문제 → 다시연결·진단 등장 -->

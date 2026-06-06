@@ -328,15 +328,6 @@
     .diag-row .dv { color: var(--subtle); font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .diag-row .di.run svg { animation: spin 1s linear infinite; }
-    /* 한도 늘리기 인라인 패널 */
-    .diag .lp-label { padding: 14px 16px 0; font-size: 13px; font-weight: 700; color: #d2dbe7; }
-    .diag .lp-chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 11px 16px 0; }
-    .diag .lp-chip { padding: 9px 15px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: #d6deea; font-size: 13.5px; font-weight: 700; cursor: pointer; transition: .14s ease; }
-    .diag .lp-chip:hover { color: #fff; border-color: color-mix(in srgb, var(--c-accent) 40%, transparent); background: color-mix(in srgb, var(--c-accent) 12%, transparent); }
-    .diag .lp-chip.warn { color: #ffd9a0; border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
-    .diag .lp-chip.warn:hover { background: color-mix(in srgb, var(--warn) 14%, transparent); }
-    .diag .lp-note { margin: 12px 16px 14px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
-    .diag .lp-note code { color: #a9bcff; font-family: ui-monospace, Menlo, monospace; }
     .conn-pill {
       display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 600;
       border: 1px solid var(--line); background: rgba(255,255,255,.03); color: #cdd6e6;
@@ -910,7 +901,6 @@
           <button data-state="paused">일시중지</button>
           <button data-state="error">문제</button>
           <button data-state="pending">승인대기</button>
-          <button data-state="limited">한도</button>
           <button data-state="resource">자원보호</button>
         </div>
       </div>
@@ -1733,14 +1723,7 @@
           pills: [{ t: '중앙 서버 연결됨' }, { t: '승인 대기', bad: true }],
           actions: [{ t: '연결 취소', size: 'lg', emphasis: 'secondary' }],
         },
-        // E1 — 오늘 처리 한도 도달(LIMITED)
-        limited: {
-          visual: 'error',
-          badge: { sym: BADGE.error, cls: 'error' }, title: '오늘 한도에 도달했어요',
-          desc: '오늘 처리 한도에 도달했습니다. 내일 자동으로 초기화되며, 지금 한도를 늘릴 수도 있어요.',
-          pills: [{ t: '중앙 서버 연결됨' }, { t: 'Discord 연결됨' }],
-          actions: [{ t: '한도 늘리기', size: 'lg', emphasis: 'primary', limit: true }],
-        },
+        // (E1 전역 한도 도달 제거 — 하루 한도는 '서버별 내 정책'(서버 상세 G3)에서만 다룬다)
         // E2 — 자원 보호 일시중지(배터리·고부하)
         resource: {
           visual: 'paused',
@@ -1767,12 +1750,11 @@
           '<div class="ready"><span class="check ' + s.badge.cls + '">' + s.badge.sym + '</span> ' + s.title + '</div>' +
           '<p>' + s.desc + '</p>' +
           '<div class="links">' + s.pills.map(p => '<span class="conn-pill ' + (p.bad ? 'bad' : '') + '"><span class="d"></span> ' + p.t + '</span>').join('') + bgPillHtml() + '</div>' +
-          '<div class="hero-actions">' + s.actions.map(a => '<button class="btn btn--' + a.size + ' btn--' + a.emphasis + '" data-go="' + (a.go || '') + '" data-diag="' + (a.diag ? '1' : '') + '" data-limit="' + (a.limit ? '1' : '') + '">' + a.t + '</button>').join('') + '</div>' +
+          '<div class="hero-actions">' + s.actions.map(a => '<button class="btn btn--' + a.size + ' btn--' + a.emphasis + '" data-go="' + (a.go || '') + '" data-diag="' + (a.diag ? '1' : '') + '">' + a.t + '</button>').join('') + '</div>' +
           '<div class="diag" id="diagPanel" hidden></div>';
         heroInfo.querySelectorAll('.hero-actions button').forEach(btn => {
           btn.addEventListener('click', () => {
             if (btn.dataset.diag) return runDiag();
-            if (btn.dataset.limit) return runLimit();
             if (btn.dataset.go) window.setHeroState(btn.dataset.go);
           });
         });
@@ -1786,21 +1768,7 @@
         };
       }
 
-      // [한도 늘리기] — 인라인 한도 설정 패널. 무제한은 안전 정책상 경고(--allow-unlimited).
-      function runLimit() {
-        const panel = document.getElementById('diagPanel');
-        if (!panel) return;
-        panel.hidden = false;
-        const presets = [{ v: 15, t: '15건' }, { v: 50, t: '50건' }, { v: 100, t: '100건' }, { v: 0, t: '무제한', warn: true }];
-        panel.innerHTML = '<div class="lp-label">하루 처리 한도</div><div class="lp-chips">' +
-          presets.map(p => '<button class="lp-chip ' + (p.warn ? 'warn' : '') + '" data-lim="' + p.v + '">' + p.t + '</button>').join('') +
-          '</div><p class="lp-note">무제한은 PC 부하가 커질 수 있어요(<code>--allow-unlimited</code>). 평소엔 일일 한도를 권장해요.</p>';
-        panel.querySelectorAll('[data-lim]').forEach(c => c.onclick = () => {
-          const n = +c.dataset.lim;
-          window.toast('하루 한도 ' + (n === 0 ? '무제한' : n + '건') + '으로 변경됐어요', { type: 'ok', sub: n === 0 ? '주의: 부하가 커질 수 있어요' : '' });
-          window.setHeroState('ok');
-        });
-      }
+      // (전역 [한도 늘리기] 제거 — 하루 한도는 서버 상세의 '내 제공 정책'(G3)에서만 변경)
 
       // [진단] — 4채널 순차 점검 애니메이션(목데이터)
       function runDiag() {

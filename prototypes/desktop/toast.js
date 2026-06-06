@@ -22,6 +22,13 @@ export function toast(msg, o = {}) {
   if (el.dataset.type !== (o.type || 'info')) { el.dataset.type = o.type || 'info'; el.querySelector('.ti').innerHTML = ICO[o.type] || ICO.info; }
   el.querySelector('.tm').innerHTML = msg + (o.sub ? '<small>' + o.sub + '</small>' : '');
   // 프로그레스바 — 같은 요소의 width 만 바꿔 트랜지션 유지
+  // 닫기 버튼(✕) — 진행(sticky) 토스트를 사용자가 직접 닫을 수 있게. onClose 로 폴링 측에 알림.
+  let x = el.querySelector('.toast-x');
+  if (o.sticky || o.closable) {
+    if (!x) { x = document.createElement('button'); x.className = 'toast-x'; x.setAttribute('aria-label', '닫기'); x.textContent = '✕'; el.appendChild(x); }
+    x.onclick = (ev) => { ev.stopPropagation(); clearTimeout(el._t); el.remove(); if (o.onClose) o.onClose(); };
+  } else if (x) { x.remove(); }
+
   let bar = el.querySelector('.toast-bar');
   if (o.progress != null) {
     if (!bar) { bar = document.createElement('div'); bar.className = 'toast-bar'; bar.innerHTML = '<i></i>'; el.appendChild(bar); }

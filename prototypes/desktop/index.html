@@ -82,6 +82,7 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
     }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; } /* .btn 등 display 지정 요소의 hidden 무시 방지 */
     html, body { height: 100%; margin: 0; }
     body {
       color: var(--text); overflow: hidden;
@@ -212,6 +213,10 @@
     /* 연결 핀 — 끊김(bad) 변형 */
     .conn-pill.bad { border-color: color-mix(in srgb, #ff5f6e 38%, transparent); color: #ffb4bb; background: color-mix(in srgb, #ff5f6e 8%, transparent); }
     .conn-pill.bad .d { background: #ff5f6e; box-shadow: 0 0 8px #ff5f6e; }
+    /* 백그라운드 제공 핀 — 클릭 토글(button) */
+    .conn-pill.bg-pill { cursor: pointer; transition: .15s ease; }
+    .conn-pill.bg-pill:hover { border-color: color-mix(in srgb, var(--c-accent) 35%, transparent); }
+    .conn-pill.bg-pill.bad:hover { border-color: color-mix(in srgb, #ff5f6e 55%, transparent); }
 
     /* 상태 배지 변형 */
     .hero-info .check.paused { background: linear-gradient(180deg, #aeb9d4, #7d8aa6); color: #1a2030; box-shadow: 0 0 14px rgba(150,168,200,.4); }
@@ -309,13 +314,16 @@
 
     /* 토스트 — 액션 피드백(우상단, 타이틀바 아래) */
     #toast { position: fixed; top: 60px; right: 18px; z-index: 90; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; pointer-events: none; }
-    .toast { display: flex; flex-wrap: wrap; align-items: center; gap: 11px; padding: 12px 16px; border-radius: 13px; border: 1px solid var(--line); background: rgba(12, 18, 32, .95); backdrop-filter: blur(16px); box-shadow: 0 14px 36px rgba(0,0,0,.45); color: #eef3fb; font-size: 14px; font-weight: 600; min-width: 248px; animation: toastIn .2s ease; }
+    .toast { display: flex; flex-wrap: wrap; align-items: center; gap: 11px; padding: 12px 16px; border-radius: 13px; border: 1px solid var(--line); background: rgba(12, 18, 32, .95); backdrop-filter: blur(16px); box-shadow: 0 14px 36px rgba(0,0,0,.45); color: #eef3fb; font-size: 14px; font-weight: 600; min-width: 248px; animation: toastIn .2s ease; pointer-events: auto; } /* 컨테이너는 none, 토스트는 클릭 가능(X 버튼) */
     .toast .ti { width: 20px; height: 20px; flex: 0 0 auto; display: grid; place-items: center; font-weight: 800; }
     .toast .ti svg { width: 16px; height: 16px; }
     .toast.ok .ti { color: var(--ok); } .toast.info .ti { color: var(--c-cyan); } .toast.run .ti { color: var(--c-cyan); }
     .toast.run .ti svg { animation: spin 1s linear infinite; }
     .toast .tm { line-height: 1.35; flex: 1; min-width: 0; }
     .toast .tm small { display: block; color: var(--muted); font-weight: 500; font-size: 12.5px; margin-top: 2px; }
+    /* 토스트 닫기 버튼(진행 알림 직접 닫기) */
+    .toast .toast-x { flex: 0 0 auto; width: 22px; height: 22px; border: 0; padding: 0; border-radius: 7px; background: transparent; color: var(--subtle); font-size: 12px; cursor: pointer; display: grid; place-items: center; }
+    .toast .toast-x:hover { color: #fff; background: rgba(255,255,255,.09); }
     /* 설치 진행 프로그레스바(전체 폭, 다음 줄) */
     .toast .toast-bar { flex-basis: 100%; height: 5px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
     .toast .toast-bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--grad-accent); transition: width .45s ease; }
@@ -334,6 +342,12 @@
     .prov-card[data-state="stopped"] .prov-state, .prov-card[data-state="absent"] .prov-state { color: var(--subtle); }
     .prov-name .d.off { background: var(--subtle); box-shadow: none; }
     .prov-cta { align-self: center; flex: 0 0 auto; }
+    /* SD 카드 — 이미지 요청 받기 토글 */
+    .prov-recv { display: flex; align-items: center; gap: 10px; margin-top: 11px; }
+    .prov-recv span { font-size: 13px; color: var(--muted); font-weight: 600; }
+    .prov-recv .switch { width: 40px; height: 23px; }
+    .prov-recv .switch::after { width: 17px; height: 17px; }
+    .prov-recv .switch.on::after { left: 19px; }
 
     /* 섹션 헤더(제목 + 선택적 우측 액션) */
     .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 30px 0 14px; }
@@ -659,6 +673,7 @@
               <div class="prov-name"><span class="d"></span> Stable Diffusion</div>
               <div class="prov-state">실행 중</div>
               <div class="prov-meta">이미지 생성 가능</div>
+              <div class="prov-recv"><span>이미지 요청 받기</span><button class="switch img-recv-switch on" role="switch" aria-checked="true" aria-label="이미지 요청 받기"></button></div>
             </div>
             <button class="btn btn--sm prov-cta" hidden></button>
             <button class="icon-btn prov-menu-btn" aria-label="Stable Diffusion 더보기" aria-haspopup="true">
@@ -760,7 +775,6 @@
           <button data-state="pending">승인대기</button>
           <button data-state="limited">한도</button>
           <button data-state="resource">자원보호</button>
-          <button data-state="background">백그라운드</button>
         </div>
       </div>
       <div class="proto-sec">
@@ -857,6 +871,7 @@
     import { toast } from './toast.js';
     import { api, SD_MODELS } from './adapter.js';
     import { ProviderState } from './contract.js';
+    import { installRuntime } from './install.js';
     (function stageManager() {
       const app = document.querySelector('.app');
       const onbLayer = document.getElementById('onboardingLayer');
@@ -939,37 +954,16 @@
         wireWiz();
       }
 
-      const RUNTIME_NAME = { ollama: 'Ollama', image: 'Stable Diffusion' };
       // A2 는 '선택'만 한다(설치 아님). 설치는 A4 '연동하기'에서 시작.
       function togglePick(k) {
         if (k === 'none') { ONB.none = true; ONB.ollama = false; ONB.image = false; return; }
         ONB.none = false;
         ONB[k] = !ONB[k];
       }
-      // A4 '연동하기' → 선택한 런타임 설치를 백그라운드로 시작(토스트) → 곧바로 연결로.
-      // 상세 진행/모델 선택이 필요하면 메인·로컬 실행의 설치 모달(install.js)에서 한다.
-      function startInstall(k, model) {
-        // 메인 텍스트는 고정(런타임명 + '설치 중'), 바뀌는 진행 메시지·%는 sub 로 → 토스트 폭 안정.
-        const name = RUNTIME_NAME[k];
-        const id = 'inst-' + k;
-        toast(name + ' 설치 중', { type: 'run', sticky: true, id, sub: '설치 준비 중 · 0%', progress: 0 });
-        api.startSetup(k, model);
-        const timer = setInterval(async () => {
-          const p = await api.getSetupProgress(k);
-          if (p.phase === 'done') {
-            clearInterval(timer);
-            toast(name + ' 설치 완료', { type: 'ok', sub: '사용 준비됨', id, progress: 100 });
-          } else if (p.phase === 'error') {
-            clearInterval(timer);
-            toast(name + ' 설치 실패', { type: 'info', sub: String(p.error || p.message || ''), id });
-          } else {
-            toast(name + ' 설치 중', { type: 'run', sticky: true, id, sub: (p.message || '진행 중') + ' · ' + (p.percent ?? 0) + '%', progress: p.percent });
-          }
-        }, 450);
-      }
+      // A4 '연동하기' → 선택한 런타임 설치(install.js installRuntime — 토스트 진행 SSOT) → 연결로.
       function finishOnboarding() {
-        if (ONB.ollama) startInstall('ollama');
-        if (ONB.image) startInstall('image', ONB.sdModel); // A2 에서 고른 SD 모델로 설치
+        if (ONB.ollama) installRuntime('ollama');
+        if (ONB.image) installRuntime('image', ONB.sdModel); // A2 에서 고른 SD 모델로 설치
         setStage('connect');
       }
       function wireWiz() {
@@ -1147,10 +1141,13 @@
           absent: { state: '미설치', meta: '이미지 요청 받기 ON · 설치 필요', warn: true },  // E4
         },
       };
+      let imageRecv = true; // 이미지 요청 받기(enable_image). 홈 SD 카드 스위치로 토글.
       function setRuntime(name, state) {
         const card = document.querySelector('.prov-card[data-runtime="' + name + '"]');
         if (!card || !RT_PRESENT[name][state]) return;
-        const p = RT_PRESENT[name][state];
+        const p = { ...RT_PRESENT[name][state] };
+        // SD 는 imageRecv 가 OFF 면 경고 없이 '꺼짐' 메타(이미지 요청을 안 받으므로 SD 상태 무관)
+        if (name === 'Stable Diffusion' && !imageRecv) { p.meta = '이미지 요청 받기 꺼짐'; p.warn = false; }
         card.dataset.state = state;
         card.querySelector('.prov-state').textContent = p.state;
         const meta = card.querySelector('.prov-meta'); meta.textContent = p.meta; meta.classList.toggle('warn', !!p.warn);
@@ -1164,7 +1161,18 @@
           cta.className = 'btn btn--sm prov-cta btn--' + (state === 'absent' ? 'primary' : 'secondary');
           cta.dataset.action = state;
         }
+        const sw = card.querySelector('.img-recv-switch');
+        if (sw) { sw.classList.toggle('on', imageRecv); sw.setAttribute('aria-checked', String(imageRecv)); }
       }
+      // 홈에서 이미지 요청 받기 토글(설정 화면 가지 않고 바로)
+      const sdSwitch = document.querySelector('.prov-card[data-runtime="Stable Diffusion"] .img-recv-switch');
+      if (sdSwitch) sdSwitch.addEventListener('click', (e) => {
+        e.stopPropagation();
+        imageRecv = !imageRecv;
+        const card = document.querySelector('.prov-card[data-runtime="Stable Diffusion"]');
+        setRuntime('Stable Diffusion', card.dataset.state);
+        window.toast('이미지 요청 받기 ' + (imageRecv ? '켜짐' : '꺼짐'), { type: imageRecv ? 'ok' : 'info', sub: imageRecv ? '/그림 요청을 이 PC 에서 처리해요' : '이미지 요청을 받지 않아요' });
+      });
       // CTA(설치/시작) 클릭
       cards.forEach(card => {
         const name = card.querySelector('.prov-name').textContent.trim();
@@ -1179,6 +1187,10 @@
         });
       });
       window.setRuntime = setRuntime; // PROTO 컨트롤러용
+      // 설치 완료(install.js installRuntime) → 해당 카드를 '실행 중'으로
+      window.addEventListener('runtimeinstalled', (e) => {
+        setRuntime(e.detail === 'image' ? 'Stable Diffusion' : 'Ollama', 'running');
+      });
     })();
   </script>
 
@@ -1243,17 +1255,12 @@
           pills: [{ t: '중앙 서버 연결됨' }, { t: 'Discord 연결됨' }],
           actions: [{ t: '지금 재개', size: 'lg', emphasis: 'primary', go: 'ok' }],
         },
-        // D6 — 백그라운드 서비스가 이미 연결됨(이 창은 설정용)
-        background: {
-          visual: 'ok',
-          badge: { sym: BADGE.ok, cls: '' }, title: '백그라운드에서 제공 중',
-          desc: '백그라운드 서비스가 이미 연결되어 제공 중이에요. 이 창은 설정 변경용이며, 닫아도 제공은 계속됩니다.',
-          pills: [{ t: '중앙 서버 연결됨' }, { t: 'Discord 연결됨' }],
-          actions: [{ t: '백그라운드 중지', size: 'lg', emphasis: 'neutral', go: 'ok' }],
-        },
       };
       const heroStatus = document.getElementById('heroStatus');
       const heroInfo = document.getElementById('heroInfo');
+      let bgOn = true; // D6 — 백그라운드 제공(창 닫아도 제공 유지). 핀 클릭으로 토글.
+
+      const bgPillHtml = () => '<button class="conn-pill bg-pill ' + (bgOn ? '' : 'bad') + '" id="bgPill"><span class="d"></span> 백그라운드 ' + (bgOn ? '제공 중' : '꺼짐') + '</button>';
 
       function render(name) {
         if (!STATES[name]) return;
@@ -1265,7 +1272,7 @@
         heroInfo.innerHTML =
           '<div class="ready"><span class="check ' + s.badge.cls + '">' + s.badge.sym + '</span> ' + s.title + '</div>' +
           '<p>' + s.desc + '</p>' +
-          '<div class="links">' + s.pills.map(p => '<span class="conn-pill ' + (p.bad ? 'bad' : '') + '"><span class="d"></span> ' + p.t + '</span>').join('') + '</div>' +
+          '<div class="links">' + s.pills.map(p => '<span class="conn-pill ' + (p.bad ? 'bad' : '') + '"><span class="d"></span> ' + p.t + '</span>').join('') + bgPillHtml() + '</div>' +
           '<div class="hero-actions">' + s.actions.map(a => '<button class="btn btn--' + a.size + ' btn--' + a.emphasis + '" data-go="' + (a.go || '') + '" data-diag="' + (a.diag ? '1' : '') + '" data-limit="' + (a.limit ? '1' : '') + '">' + a.t + '</button>').join('') + '</div>' +
           '<div class="diag" id="diagPanel" hidden></div>';
         heroInfo.querySelectorAll('.hero-actions button').forEach(btn => {
@@ -1275,6 +1282,14 @@
             if (btn.dataset.go) window.setHeroState(btn.dataset.go);
           });
         });
+        // 백그라운드 제공 핀 — 클릭 토글(꺼짐=빨강). 창을 닫아도 제공 유지 여부.
+        const bp = heroInfo.querySelector('#bgPill');
+        if (bp) bp.onclick = () => {
+          bgOn = !bgOn;
+          bp.classList.toggle('bad', !bgOn);
+          bp.innerHTML = '<span class="d"></span> 백그라운드 ' + (bgOn ? '제공 중' : '꺼짐');
+          window.toast(bgOn ? '백그라운드 제공 켜짐' : '백그라운드 제공 꺼짐', { type: bgOn ? 'ok' : 'info', sub: bgOn ? '창을 닫아도 제공이 유지돼요' : '창을 닫으면 제공이 멈춰요' });
+        };
       }
 
       // [한도 늘리기] — 인라인 한도 설정 패널. 무제한은 안전 정책상 경고(--allow-unlimited).
@@ -1282,7 +1297,7 @@
         const panel = document.getElementById('diagPanel');
         if (!panel) return;
         panel.hidden = false;
-        const presets = [{ v: 15, t: '15건' }, { v: 100, t: '100건' }, { v: 500, t: '500건' }, { v: 0, t: '무제한', warn: true }];
+        const presets = [{ v: 15, t: '15건' }, { v: 50, t: '50건' }, { v: 100, t: '100건' }, { v: 0, t: '무제한', warn: true }];
         panel.innerHTML = '<div class="lp-label">하루 처리 한도</div><div class="lp-chips">' +
           presets.map(p => '<button class="lp-chip ' + (p.warn ? 'warn' : '') + '" data-lim="' + p.v + '">' + p.t + '</button>').join('') +
           '</div><p class="lp-note">무제한은 PC 부하가 커질 수 있어요(<code>--allow-unlimited</code>). 평소엔 일일 한도를 권장해요.</p>';

@@ -201,3 +201,29 @@ def load_config(path: pathlib.Path | None = None) -> dict:
         return data if isinstance(data, dict) else {}
     except (json.JSONDecodeError, OSError):
         return {}
+
+
+def load_guild_policies(path: pathlib.Path | None = None) -> dict[int, dict]:
+    """서버(guild)별 내 제공 정책 override ``{guild_id: {daily_limit, max_concurrency, max_seconds, scope}}``.
+
+    전역 기본값(cfg.daily_limit 등)을 서버마다 덮어쓰기 위한 맵(데스크톱 앱 서버 상세 G3 가 설정).
+    JSON 키는 문자열이므로 int 로 복원한다.
+    """
+    raw = load_config(path).get("guild_policies") or {}
+    out: dict[int, dict] = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if isinstance(v, dict):
+                try:
+                    out[int(k)] = dict(v)
+                except (ValueError, TypeError):
+                    continue
+    return out
+
+
+def set_guild_policy(guild_id: int, policy: dict, path: pathlib.Path | None = None) -> None:
+    """한 서버의 정책 override 를 병합 저장(0600). 다른 서버 정책·설정은 보존."""
+    gp = {str(g): p for g, p in load_guild_policies(path).items()}
+    key = str(guild_id)
+    gp[key] = {**(gp.get(key) or {}), **policy}
+    persist_partial({"guild_policies": gp}, path)

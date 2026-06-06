@@ -42,10 +42,21 @@
 - 검증: `test_daily_limit_per_guild`·`test_build_hello_per_guild`·`test_build_hello_unlimited_reports_zero`
   (provider-agent pytest 245 통과, ruff/mypy 그린).
 
-## 4. 남은 후속 (선택)
+## 4. 서버별로 *다른* 한도 값 (2026-06-07 적용 — Gap-P)
 
-- **서버별로 *다른* 한도 값** — 현재는 한 `daily_limit` 가 모든 서버에 독립 적용(같은 값). 데스크톱 앱
-  G3(서버별 정책 변경, setServerPolicy)에서 서버마다 다른 값을 주려면 provider-agent 가 guild별
-  `daily_limit` override 를 받는 경로(webui API/config) 필요 — **Gap-P 와 연계**, 후속 과제.
-- central `ContributionPolicy.dailyLimit`(B)을 라우팅 하드캡으로 추가 적용할지는 선택(현재는 agent
-  보고값으로 충분히 서버별 게이트됨).
+데스크톱 앱 G3(서버별 정책 변경)에서 서버마다 **다른** 한도를 줄 수 있도록 provider-agent 에
+guild별 override 경로를 추가했다.
+
+- `config_file.py`: `guild_policies` 맵(`{guild_id: {daily_limit, max_concurrency, max_seconds, scope}}`)
+  저장/로드(`load_guild_policies`·`set_guild_policy`, 0600, 병합 갱신).
+- `agent.py`: `_limit_for(guild_id)` 가 **override 우선**(없으면 전역 기본). `handle_infer`·`_build_hello`
+  가 이 값을 쓴다. `set_guild_policy(guild_id, policy)` → 저장 + 잔여 리셋 + 재광고(hello 로 중앙에 새 잔여 보고).
+- `webui.py`: `POST /api/servers/{guildId}/policy`(camelCase 경계 → snake 저장). 앱 contract 와 동일 경로.
+- 검증: `test_per_guild_limit_override`·`test_guild_policy_override_in_hello`·`test_guild_policies_roundtrip`·
+  `test_server_policy_saves_override`(pytest 249 통과).
+
+### 즉시 반영 vs 저장만
+- **즉시 반영**: `daily_limit`(서버별 일일 한도 — 실제 게이트). 변경 시 hello 재광고로 중앙 라우팅에 전파.
+- **저장만(중앙 반영 후속)**: `max_concurrency`·`max_seconds`·`scope` 는 config 에 저장되지만 중앙 라우팅
+  반영은 와이어 확장(ProviderHelloFrame 필드 추가)이 필요해 후속. 동시성/시간은 PC 자원 특성상 전역
+  세마포어·타임아웃과의 정합도 함께 설계해야 한다.

@@ -915,6 +915,34 @@ def build_app(session_key: str) -> web.Application:
             remove_connection_at(index)
         return web.json_response({"ok": True})
 
+    async def server_policy(req: web.Request) -> web.Response:
+        """이 서버에 대한 내 정책 override 저장·적용(데스크톱 앱 G3 · /provider-limit 의 로컬 GUI).
+
+        body(camelCase 경계): {dailyLimit, maxConcurrency, maxSeconds, scope}. 현재 즉시 반영은
+        dailyLimit(서버별 일일 한도). 나머지는 저장만(중앙 반영은 와이어 확장 후속 — NEXA_LIMIT_POLICY.md).
+        """
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        keymap = {
+            "dailyLimit": "daily_limit", "maxConcurrency": "max_concurrency",
+            "maxSeconds": "max_seconds", "scope": "scope",
+        }
+        policy = {snake: data[camel] for camel, snake in keymap.items() if camel in data}
+        agent = _running_agent()
+        if agent is not None:
+            await agent.set_guild_policy(guild_id, policy)  # type: ignore[attr-defined]
+        else:
+            from .config_file import set_guild_policy
+
+            set_guild_policy(guild_id, policy)
+        from .config_file import load_guild_policies
+
+        return web.json_response({"ok": True, "policy": load_guild_policies().get(guild_id, {})})
+
     async def server_rename(req: web.Request) -> web.Response:
         """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). index + name."""
         _auth(req)
@@ -1262,6 +1290,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/servers", servers)
     app.router.add_post("/api/server-remove", server_remove)
     app.router.add_post("/api/server-rename", server_rename)
+    app.router.add_post("/api/servers/{guildId}/policy", server_policy)
     app.router.add_post("/api/server-add-token", server_add_token)
     app.router.add_get("/api/install-info", install_info)
     app.router.add_post("/api/install", install)

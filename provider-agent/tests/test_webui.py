@@ -512,6 +512,26 @@ async def test_servers_lists_saved_when_not_running(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_server_policy_saves_override(monkeypatch):
+    # 서버별 정책 override(G3) 저장 — camelCase 경계 → snake 저장. 실행 중 아니면 config 에 기록.
+    from provider_agent.config_file import load_guild_policies
+
+    client = await _client()
+    try:
+        assert (await client.post("/api/servers/100/policy", json={"dailyLimit": 30})).status == 403  # 키 없음
+        r = await client.post(
+            "/api/servers/100/policy", headers={"X-Session": KEY},
+            json={"dailyLimit": 30, "maxConcurrency": 2, "maxSeconds": 600, "scope": "ALL"},
+        )
+        assert (await r.json())["ok"] is True
+        pols = load_guild_policies()
+        assert pols[100]["daily_limit"] == 30 and pols[100]["scope"] == "ALL"
+        assert pols[100]["max_concurrency"] == 2 and pols[100]["max_seconds"] == 600
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_server_remove_deletes_saved(monkeypatch):
     from provider_agent.config_file import add_connection, load_connections
 

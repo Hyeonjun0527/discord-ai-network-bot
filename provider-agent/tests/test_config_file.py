@@ -127,3 +127,17 @@ def test_set_connection_token_durable_refresh(monkeypatch, tmp_path):
     set_connection_token("DURABLE", guild_id=100, old_token="ONBOARD")
     conns = load_connections()
     assert conns[0]["token"] == "DURABLE"
+
+
+def test_guild_policies_roundtrip(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from provider_agent.config_file import load_guild_policies, set_guild_policy
+
+    set_guild_policy(100, {"daily_limit": 30, "scope": "ALL"})
+    set_guild_policy(200, {"daily_limit": 50})
+    pols = load_guild_policies()
+    assert pols[100]["daily_limit"] == 30 and pols[100]["scope"] == "ALL"
+    assert pols[200]["daily_limit"] == 50
+    # 병합 갱신(기존 키 보존)
+    set_guild_policy(100, {"max_concurrency": 3})
+    assert load_guild_policies()[100] == {"daily_limit": 30, "scope": "ALL", "max_concurrency": 3}

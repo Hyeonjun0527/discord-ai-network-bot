@@ -79,9 +79,12 @@ class ProviderAgent:
         self._sd_boot_task: asyncio.Task[None] | None = None  # 설치된 SD 자동기동 + 준비되면 재광고
         self._sem = asyncio.Semaphore(cfg.max_concurrency)
         # 일일 한도는 **서버(guild)별로 독립** 적용한다. 한 에이전트가 여러 길드에 제공해도
-        # 길드마다 daily_limit 만큼 따로 카운트(전역 합산 공유 X). 0 = 무제한(dict 미사용).
-        # 키 = guild_id(None = 길드 미상 토큰 연결 폴백). lazy init: 첫 접근 시 daily_limit 으로 채움.
+        # 길드마다 한도만큼 따로 카운트(전역 합산 공유 X). 0 = 무제한(dict 미사용).
+        # 키 = guild_id(None = 길드 미상 토큰 연결 폴백). lazy init: 첫 접근 시 그 길드 한도로 채움.
         self._remaining_by_guild: dict[int | None, int] = {}
+        # 서버별 정책 override {guild_id: {daily_limit, …}} — 데스크톱 앱 G3 가 설정. run() 에서 로드.
+        # 없는 길드는 전역 기본(cfg.daily_limit)을 쓴다.
+        self._guild_policy: dict[int, dict] = {}
         self._models: list[str] = list(cfg.models)
         self._inflight = 0
         self._processed = 0  # 누적 처리 건수(로컬 요약)
@@ -97,12 +100,21 @@ class ProviderAgent:
         self._entries_lock = asyncio.Lock()
 
     # ── 일일 한도(서버별) ───────────────────────────────────────────────
+    def _limit_for(self, guild_id: int | None) -> int:
+        """이 길드에 적용할 일일 한도. 서버별 override(G3) 가 있으면 그 값, 없으면 전역 기본."""
+        if guild_id is not None:
+            pol = self._guild_policy.get(guild_id)
+            if pol is not None and pol.get("daily_limit") is not None:
+                return max(0, int(pol["daily_limit"]))
+        return self._cfg.daily_limit
+
     def _remaining_for(self, guild_id: int | None) -> int:
-        """이 길드의 남은 일일 한도. 무제한이면 0(센티넬). 첫 접근 시 daily_limit 으로 init."""
-        if self._cfg.daily_limit <= 0:
+        """이 길드의 남은 일일 한도. 무제한이면 0(센티넬). 첫 접근 시 그 길드 한도로 init."""
+        limit = self._limit_for(guild_id)
+        if limit <= 0:
             return 0  # 무제한(hello 의 remaining=0 은 '한도 없음'을 뜻함)
         if guild_id not in self._remaining_by_guild:
-            self._remaining_by_guild[guild_id] = self._cfg.daily_limit
+            self._remaining_by_guild[guild_id] = limit
         return self._remaining_by_guild[guild_id]
 
     # ── 핸드셰이크 ──────────────────────────────────────────────────────
@@ -146,8 +158,10 @@ class ProviderAgent:
         # 일일 한도·동시성은 **에이전트 내부에서 강제**한다. 서버가 더 많은 요청을 보내도
         # 이 게이트(self._cfg.daily_limit / self._sem)를 우회할 수 없다(프로바이더 주권).
         # 한도는 **이 연결의 guild 별로 독립** — 다른 서버의 소진이 이 서버에 영향 주지 않는다.
+        # 한도값도 서버별(override 우선). 0 = 그 서버 무제한.
         guild_id = conn.guild_id
-        if self._cfg.daily_limit > 0 and self._remaining_for(guild_id) <= 0:
+        limit = self._limit_for(guild_id)
+        if limit > 0 and self._remaining_for(guild_id) <= 0:
             await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message="일일 한도 초과"))
             return
         # 자원 보호: CPU 고부하·배터리 방전 중에는 자동 pause(BUSY 로 반려, 한도 소모 안 함).
@@ -161,7 +175,7 @@ class ProviderAgent:
                 self._cancelled.discard(req.request_id)
                 return
             self._inflight += 1
-            if self._cfg.daily_limit > 0:
+            if limit > 0:
                 self._remaining_by_guild[guild_id] = self._remaining_for(guild_id) - 1
             # 서버가 모델을 지정하지 않으면 내가 제공하는 첫 모델로 처리한다.
             model = req.model or (self._models[0] if self._models else None)
@@ -359,6 +373,23 @@ class ProviderAgent:
             for i, e in enumerate(self._entries)
         ]
 
+    # ── 서버별 정책(데스크톱 앱 G3) ─────────────────────────────────────
+    def guild_policy(self, guild_id: int) -> dict:
+        """현재 적용 중인 이 서버의 내 정책(전역 기본값과 병합)."""
+        pol = dict(self._guild_policy.get(guild_id, {}))
+        pol.setdefault("daily_limit", self._cfg.daily_limit)
+        return pol
+
+    async def set_guild_policy(self, guild_id: int, policy: dict) -> None:
+        """이 서버에 대한 내 정책 override 를 저장·적용(앱 G3). 한도 변경은 즉시 재광고(hello)."""
+        from .config_file import set_guild_policy as _save
+
+        _save(guild_id, policy)
+        self._guild_policy[guild_id] = {**self._guild_policy.get(guild_id, {}), **policy}
+        # 새 한도로 잔여 리셋 → 모든 연결 재광고(새 remaining 을 hello 로 중앙에 보고)
+        self._remaining_by_guild.pop(guild_id, None)
+        await self._readvertise()
+
     # ── 자동 동기화: 연동된 사용자가 디스코드 /프로바이더참여 한 새 서버에 앱이 스스로 연결 ──────
     async def _sync_joins_once(self) -> None:
         """durable 토큰(=연동 신원)으로 중앙 서버에 묻고, 승인됐지만 아직 연결 안 된 서버에 자동 연결한다."""
@@ -469,8 +500,9 @@ class ProviderAgent:
 
         # 저장된 모든 서버 연결을 동시에 띄운다(없으면 cfg.token 하나). 연결 하나가 죽어도(인증실패 등)
         # 나머지는 유지 — run 은 stop 요청까지만 대기한다.
-        from .config_file import load_connections
+        from .config_file import load_connections, load_guild_policies
 
+        self._guild_policy = load_guild_policies()  # 서버별 한도 override 적용
         saved = load_connections()
         if not saved and self._cfg.token:
             saved = [{"token": self._cfg.token, "guild_id": None, "guild_name": None}]

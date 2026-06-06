@@ -1080,7 +1080,30 @@
       const cat = await api.ollamaCatalog();
       layer.hidden = false;
       // 설치 진행: 토스트 SSOT + 성공 시에만 목록 추가. (Ollama 전체 목록 API 없음 → 추천 + 직접 입력)
+      // 모델명에서 파라미터(b)를 파싱 → 12b 이상이면 VRAM 확인 모달. 필요 VRAM ≈ 파라미터 ÷ 2(Q4).
+      const parseParamB = (mn) => {
+        const ms = mn.match(/(\d+(?:\.\d+)?)b(?![a-z0-9])/gi);
+        return ms ? parseFloat(ms[ms.length - 1]) : null;
+      };
+      const confirmVram = (mn, needGb, param) => new Promise(resolve => {
+        const lay = document.createElement('div');
+        lay.className = 'modal-layer'; lay.style.zIndex = '7';
+        lay.innerHTML = '<div class="modal" style="width:min(430px,100%)">' +
+          '<h3>큰 모델이에요</h3>' +
+          '<p class="msub"><b>' + mn + '</b> 는 약 <b>VRAM ' + needGb + 'GB 이상</b>을 권장해요(' + param + 'b ÷ 2). ' +
+          'GPU VRAM(없으면 시스템 RAM)이 이 정도 되나요? 부족하면 설치는 되지만 매우 느리거나 로딩이 실패할 수 있어요.</p>' +
+          '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-no>취소</button>' +
+          '<button class="btn btn--md btn--warn" data-yes>VRAM ' + needGb + 'GB+ 있어요 · 설치</button></div></div>';
+        document.body.appendChild(lay);
+        lay.querySelector('[data-no]').onclick = () => { lay.remove(); resolve(false); };
+        lay.querySelector('[data-yes]').onclick = () => { lay.remove(); resolve(true); };
+      });
       const startPull = async (mn) => {
+        const param = parseParamB(mn);
+        if (param && param >= 12) {
+          const need = Math.ceil(param / 2);
+          if (!await confirmVram(mn, need, param)) return; // 취소 — 카탈로그 모달 유지
+        }
         layer.hidden = true;
         if (models.some(x => x.name === mn)) { toast(mn + ' 은 이미 설치돼 있어요', { type: 'info' }); return; }
         const ok = await installRuntime('ollama', mn); // 없는 모델이면 false(실패 토스트는 installRuntime 이 띄움)

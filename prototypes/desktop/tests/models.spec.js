@@ -35,9 +35,30 @@ test('추천 카탈로그(카테고리 그룹·고사양 변형) + 직접 입력
   await expect(page.locator('#toast .toast .tm')).toContainText('올바른 모델명');
 });
 
+test('12b 이상 모델은 설치 전 VRAM 확인 모달이 뜬다(취소 시 미설치)', async ({ page }) => {
+  await page.click('#catalogBtn');
+  // 70b → 필요 VRAM 35GB 경고
+  await page.locator('#installCard [data-cat="deepseek-r1:70b"]').click();
+  const warn = page.locator('.modal-layer .modal', { hasText: '큰 모델이에요' });
+  await expect(warn).toBeVisible();
+  await expect(warn).toContainText('VRAM 35GB 이상');
+  // 취소 → 설치 안 됨, 카탈로그는 유지
+  await warn.locator('[data-no]').click();
+  await expect(page.locator('#modelList .m-name', { hasText: 'deepseek-r1:70b' })).toHaveCount(0);
+  await expect(page.locator('#installCard')).toBeVisible();
+});
+
+test('12b 미만 모델은 경고 없이 바로 설치된다', async ({ page }) => {
+  await page.click('#catalogBtn');
+  await page.locator('#installCard [data-cat="qwen2.5:7b"]').click();
+  // 경고 모달이 뜨지 않고 설치 토스트로 직행
+  await expect(page.locator('.modal-layer .modal', { hasText: '큰 모델이에요' })).toHaveCount(0);
+  await expect(page.locator('#toast .toast')).toBeVisible();
+});
+
 test('없는 모델은 설치 실패하고 목록에 추가되지 않는다', async ({ page }) => {
   await page.click('#catalogBtn');
-  await page.fill('#catManual', 'nonexist:99b');
+  await page.fill('#catManual', 'nonexist:7b'); // 12b 미만 → VRAM 경고 없이 바로 설치 시도
   await page.click('#catManualBtn');
   await expect(page.locator('#toast .toast')).toContainText('설치 실패', { timeout: 3000 });
   await expect(page.locator('#modelList .m-name', { hasText: 'nonexist' })).toHaveCount(0);

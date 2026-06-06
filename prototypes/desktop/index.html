@@ -282,6 +282,17 @@
     .menu button.danger { color: #ffb4bb; }
     .menu button.danger:hover { background: color-mix(in srgb, #ff5f6e 16%, transparent); color: #fff; }
     .menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; }
+
+    /* 토스트 — 액션 피드백(우상단, 타이틀바 아래) */
+    #toast { position: fixed; top: 60px; right: 18px; z-index: 90; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; pointer-events: none; }
+    .toast { display: flex; align-items: center; gap: 11px; padding: 12px 16px; border-radius: 13px; border: 1px solid var(--line); background: rgba(12, 18, 32, .95); backdrop-filter: blur(16px); box-shadow: 0 14px 36px rgba(0,0,0,.45); color: #eef3fb; font-size: 14px; font-weight: 600; min-width: 230px; animation: toastIn .2s ease; }
+    .toast .ti { width: 20px; height: 20px; flex: 0 0 auto; display: grid; place-items: center; font-weight: 800; }
+    .toast .ti svg { width: 16px; height: 16px; }
+    .toast.ok .ti { color: var(--ok); } .toast.info .ti { color: var(--c-cyan); } .toast.run .ti { color: var(--c-cyan); }
+    .toast.run .ti svg { animation: spin 1s linear infinite; }
+    .toast .tm { line-height: 1.35; }
+    .toast .tm small { display: block; color: var(--muted); font-weight: 500; font-size: 12.5px; margin-top: 2px; }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
     .prov-name { display: flex; align-items: center; gap: 9px; font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
     .prov-name .d { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 9px var(--ok); flex: 0 0 auto; }
     .prov-state { margin-top: 7px; color: var(--c-cyan); font-size: 13.5px; font-weight: 600; }
@@ -483,9 +494,9 @@
             <button class="icon-btn prov-menu-btn" aria-label="Ollama 더보기" aria-haspopup="true">
               <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
             </button>
+            <!-- Ollama 는 자체 웹 UI 가 없음(:11434 는 API 전용) → "열기" 없음 -->
             <div class="menu" hidden>
               <button data-act="check">연결 점검</button>
-              <button data-act="open">열기</button>
               <button data-act="settings">설정</button>
               <hr>
               <button data-act="manage">로컬 실행에서 관리<span class="arrow">›</span></button>
@@ -501,9 +512,11 @@
             <button class="icon-btn prov-menu-btn" aria-label="Stable Diffusion 더보기" aria-haspopup="true">
               <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
             </button>
+            <!-- SD(A1111/Forge)는 :7860 Gradio 웹 UI 가 있음 → WebUI 열기 + 출력 폴더 -->
             <div class="menu" hidden>
               <button data-act="check">연결 점검</button>
-              <button data-act="open">출력 폴더 열기</button>
+              <button data-act="open">WebUI 열기</button>
+              <button data-act="outputs">출력 폴더 열기</button>
               <button data-act="settings">설정</button>
               <hr>
               <button data-act="manage">로컬 실행에서 관리<span class="arrow">›</span></button>
@@ -533,6 +546,9 @@
       <section class="view" data-view="settings"><div class="placeholder"><div class="ico">◆</div><h2>설정</h2><p>다음 단계에서 구현합니다.</p></div></section>
     </main>
   </div>
+
+  <!-- 토스트 컨테이너 -->
+  <div id="toast" aria-live="polite"></div>
 
   <!-- ══ 프로토타입 컨트롤러(실제 화면과 분리된 오버레이) ══ -->
   <div id="proto">
@@ -611,16 +627,62 @@
     })();
   </script>
 
+  <!-- 토스트(액션 피드백) -->
+  <script>
+    (function toastSystem() {
+      const SPIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg>';
+      const ICO = { ok: '✓', info: 'i', run: SPIN };
+      // toast(msg, { type, sub, sticky, duration, id, replace })
+      window.toast = function (msg, o) {
+        o = o || {};
+        const c = document.getElementById('toast');
+        let el = o.replace ? c.querySelector('[data-id="' + o.replace + '"]') : null;
+        if (!el) { el = document.createElement('div'); c.appendChild(el); }
+        el.className = 'toast ' + (o.type || 'info');
+        if (o.id) el.dataset.id = o.id; else delete el.dataset.id;
+        el.innerHTML = '<span class="ti">' + (ICO[o.type] || ICO.info) + '</span>' +
+          '<span class="tm">' + msg + (o.sub ? '<small>' + o.sub + '</small>' : '') + '</span>';
+        clearTimeout(el._t);
+        if (!o.sticky) el._t = setTimeout(() => el.remove(), o.duration || 2800);
+        return el;
+      };
+    })();
+  </script>
+
   <!-- 홈 · 런타임 카드 ⋯ 컨텍스트 메뉴 -->
   <script>
     (function runtimeMenus() {
       const cards = [...document.querySelectorAll('.prov-card')];
+      const goLocal = () => { const b = document.querySelector('.nav-item[data-view="local"]'); if (b) b.click(); };
       function closeAll() {
         cards.forEach(c => { c.querySelector('.menu').hidden = true; c.querySelector('.prov-menu-btn').classList.remove('open'); });
+      }
+      // 런타임별 메타 — 실제 앱에선 에이전트가 채움.
+      // Ollama: 웹 UI 없음(:11434 API 전용) → open 항목 없음. SD: :7860 WebUI + 출력 폴더.
+      const RT = {
+        'Ollama': { ping: '28ms' },
+        'Stable Diffusion': { ping: '0.4s', open: { label: 'WebUI 를 엽니다', target: 'http://localhost:7860' }, outputs: { label: '출력 폴더를 엽니다', target: '~/NEXA/outputs' } },
+      };
+      function runAction(act, name) {
+        const rt = RT[name] || { ping: '정상' };
+        if (act === 'check') {
+          window.toast(name + ' 연결 점검 중…', { type: 'run', sticky: true, id: 'chk-' + name });
+          setTimeout(() => window.toast(name + ' 정상 응답', { type: 'ok', sub: '응답 시간 ' + rt.ping, replace: 'chk-' + name }), 1100);
+        } else if (act === 'open' && rt.open) {
+          window.open(rt.open.target, '_blank', 'noopener'); // 외부 브라우저로 전환 → 토스트 불필요
+        } else if (act === 'outputs' && rt.outputs) {
+          window.toast(name + ' · ' + rt.outputs.label, { type: 'info', sub: rt.outputs.target });
+        } else if (act === 'settings') {
+          goLocal();
+          window.toast(name + ' 설정으로 이동', { type: 'info', sub: '로컬 실행 › ' + name });
+        } else if (act === 'manage') {
+          goLocal();
+        }
       }
       cards.forEach(card => {
         const btn = card.querySelector('.prov-menu-btn');
         const menu = card.querySelector('.menu');
+        const name = card.querySelector('.prov-name').textContent.trim();
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const willOpen = menu.hidden;
@@ -631,10 +693,7 @@
         menu.querySelectorAll('button').forEach(item => item.addEventListener('click', (e) => {
           e.stopPropagation();
           closeAll();
-          if (item.dataset.act === 'manage') {
-            const b = document.querySelector('.nav-item[data-view="local"]'); if (b) b.click();
-          }
-          // 그 외(check/open/settings)는 프로토타입에선 동작 없음(시각만)
+          runAction(item.dataset.act, name);
         }));
       });
       // 바깥 클릭·Esc 로 닫기

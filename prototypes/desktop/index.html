@@ -218,6 +218,10 @@
     .model-foot { margin-top: 16px; color: var(--subtle); font-size: 13.5px; }
     .model-apply { position: sticky; bottom: 0; margin-top: 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 16px; border-radius: 14px; border: 1px solid color-mix(in srgb, var(--c-violet) 35%, transparent); background: color-mix(in srgb, var(--c-violet) 12%, transparent); backdrop-filter: blur(8px); }
     .model-apply span { font-size: 14px; font-weight: 600; color: #efeaff; }
+    /* 모델 설치 모달 — VRAM 가이드 도움말 */
+    .cat-help { margin: 4px 0 14px; padding: 12px 14px; border-radius: 13px; border: 1px solid var(--line); background: rgba(255,255,255,.025); font-size: 12.5px; line-height: 1.65; color: var(--muted); }
+    .cat-help b { color: #d2dbe7; font-weight: 700; }
+    .cat-help .em { color: var(--c-cyan); font-weight: 700; font-family: ui-monospace, Menlo, monospace; }
     /* 모델 설치 모달 — 카테고리 그룹 헤더 */
     .cat-group { margin: 14px 0 7px; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--subtle); }
     .cat-group:first-child { margin-top: 4px; }
@@ -1089,6 +1093,9 @@
         catHtml += '<button class="wiz-opt" data-cat="' + m.name + '"><span class="ob"><b>' + m.name + '</b><p>' + m.desc + '</p></span><span class="osize">' + m.size + '</span></button>';
       });
       card.innerHTML = '<h3>모델 설치</h3><p class="msub">대표 모델만 표시돼요. 원하는 변형은 모델명을 직접 입력하세요(ollama.com/library 전체).</p>' +
+        '<div class="cat-help">💡 <b>모델 크기와 메모리</b> — 모델명의 <span class="em">b</span>는 파라미터 수(억 단위)예요. ' +
+        '대략 <b>파라미터 ÷ 2 ≈ 필요 VRAM(GB)</b> — 예) <span class="em">8b</span> 모델은 <b>VRAM 4GB</b>면 감당돼요(약 2:1). ' +
+        '여유 있게 1~2GB 더 있으면 안전하고, GPU가 없으면 시스템 RAM으로도 돌지만 느려요.</div>' +
         '<div class="wiz-list">' + catHtml + '</div>' +
         '<div class="cat-manual"><div class="cm-label">모델명 직접 입력 <span>(예: mistral:7b · qwen2.5:72b)</span></div>' +
           '<div class="cm-row"><input class="cx-input" id="catManual" placeholder="모델명 입력 (예: mistral:7b)"><button class="btn btn--md btn--secondary" id="catManualBtn">설치</button></div></div>' +

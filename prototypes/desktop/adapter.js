@@ -27,11 +27,13 @@ const post = (ep, body) => http(ep, { method: 'POST', headers: { 'content-type':
 // ── Mock store — 실 백엔드 응답과 동일 필드명/enum ──
 const MOCK = {
   // webui.py /api/servers 는 현재 {guildId, guildName, connected} 만 → 확장 필드는 contract.js 의 ⚠ 표시 참고
+  // 서버 상세 추가 필드(myModels·avgMs·policy·webUrl)는 백엔드 Gap-S/P/W — contract.js ⚠ 참고.
+  // policy = 이 서버에 대한 "내" self-service 정책(/provider-limit·scope). scope: ALL|TRUSTED|ADMIN.
   servers: [
-    { guildId: 1001, guildName: '한국어 개발 길드', iconUrl: null, state: ProviderState.ONLINE_IDLE, role: Role.ADMIN, models: 3, today: 0, members: 1240 },
-    { guildId: 1002, guildName: '게임 커뮤니티', iconUrl: null, state: ProviderState.ONLINE_IDLE, role: Role.PROVIDER, models: 2, today: 0, members: 8530 },
-    { guildId: 1003, guildName: '디자인 스튜디오', iconUrl: null, state: ProviderState.PAUSED, role: Role.PROVIDER, models: 1, today: 0, members: 312 },
-    { guildId: 1004, guildName: '신규 서버', iconUrl: null, state: ProviderState.PENDING, role: Role.ADMIN, models: 0, today: 0, members: 47 },
+    { guildId: 1001, guildName: '한국어 개발 길드', iconUrl: null, state: ProviderState.ONLINE_IDLE, role: Role.ADMIN, models: 3, today: 0, members: 1240, avgMs: 0, myModels: ['llama3.1:8b', 'qwen2.5:14b', 'gemma2:2b'], policy: { dailyLimit: 500, maxConcurrency: 2, maxSeconds: 30, scope: 'ALL' }, webUrl: 'https://discord-ai.yeon.world/dashboard/1001' },
+    { guildId: 1002, guildName: '게임 커뮤니티', iconUrl: null, state: ProviderState.ONLINE_IDLE, role: Role.PROVIDER, models: 2, today: 0, members: 8530, avgMs: 0, myModels: ['llama3.1:8b', 'qwen2.5:14b'], policy: { dailyLimit: 200, maxConcurrency: 1, maxSeconds: 30, scope: 'TRUSTED' }, webUrl: 'https://discord-ai.yeon.world/dashboard/1002' },
+    { guildId: 1003, guildName: '디자인 스튜디오', iconUrl: null, state: ProviderState.PAUSED, role: Role.PROVIDER, models: 1, today: 0, members: 312, avgMs: 0, myModels: ['llama3.1:8b'], policy: { dailyLimit: 100, maxConcurrency: 1, maxSeconds: 20, scope: 'ALL' }, webUrl: 'https://discord-ai.yeon.world/dashboard/1003' },
+    { guildId: 1004, guildName: '신규 서버', iconUrl: null, state: ProviderState.PENDING, role: Role.ADMIN, models: 0, today: 0, members: 47, avgMs: 0, myModels: [], policy: { dailyLimit: 500, maxConcurrency: 2, maxSeconds: 30, scope: 'ALL' }, webUrl: 'https://discord-ai.yeon.world/dashboard/1004' },
   ],
   // webui.py /api/status
   status: { running: true, connected: true, processed: 0, imageReady: true, enableImage: true, sdInstalled: true },
@@ -109,6 +111,23 @@ export const api = {
   async getServers() {
     if (USE_MOCK) { await delay(60); return structuredClone(MOCK.servers); }
     return (await http(ENDPOINTS.servers)).servers;
+  },
+  /** 서버 상세(기부자 관점) — Gap-S/P/W. 백엔드 전환 시 GET /api/servers/{guildId}. */
+  async getServerDetail(guildId) {
+    if (USE_MOCK) { await delay(60); const s = MOCK.servers.find((x) => x.guildId === guildId); return s ? structuredClone(s) : null; }
+    return http(ENDPOINTS.serverDetail(guildId));
+  },
+  /** 이 서버에 대한 내 제공 일시중지/재개 — provider self-service(/provider-pause·resume). */
+  async setServerPaused(guildId, paused) {
+    const s = MOCK.servers.find((x) => x.guildId === guildId);
+    if (USE_MOCK) { await delay(80); if (s) s.state = paused ? ProviderState.PAUSED : ProviderState.ONLINE_IDLE; return { ok: true, state: s && s.state }; }
+    return post(ENDPOINTS.serverPause(guildId), { paused });
+  },
+  /** 이 서버에 대한 내 self-service 정책 변경(/provider-limit·scope). */
+  async setServerPolicy(guildId, policy) {
+    const s = MOCK.servers.find((x) => x.guildId === guildId);
+    if (USE_MOCK) { await delay(80); if (s) s.policy = { ...s.policy, ...policy }; return { ok: true, policy: s && s.policy }; }
+    return post(ENDPOINTS.serverPolicy(guildId), policy);
   },
   /** @returns {Promise<import('./contract.js').AgentStatus>} */
   async getStatus() {

@@ -40,6 +40,10 @@ export const ENDPOINTS = Object.freeze({
   status: '/api/status',
   models: '/api/models',
   servers: '/api/servers',
+  // ⚠ 서버 상세(기부자 관점) — Gap-S/P/W. 아래 3개는 백엔드 신설 필요.
+  serverDetail: (g) => '/api/servers/' + g,         // GET — 서버별 내 기여 통계·myModels·policy(Gap-S/P)
+  serverPause: (g) => '/api/servers/' + g + '/pause',   // POST {paused} — provider self-service(/provider-pause·resume)
+  serverPolicy: (g) => '/api/servers/' + g + '/policy', // POST {dailyLimit,maxConcurrency,maxSeconds,scope} — (/provider-limit·scope)
   onboardApply: '/api/onboard-apply',
   connectOpen: '/api/connect-open',
   sdStatus: '/api/sd/status',
@@ -68,6 +72,18 @@ export const ENDPOINTS = Object.freeze({
  * @property {string}  [role]     ⚠ 백엔드 추가 필요(Role — 서버별 내 권한)
  * @property {number}  [models]   ⚠ 백엔드 추가 필요(이 서버에 제공 중인 모델 수)
  * @property {number}  [today]    ⚠ 백엔드 추가 필요(오늘 처리 건수)
+ * @property {number}  [members]  ⚠ Gap-S: Discord 길드 멤버수(JDA Guild.memberCount)
+ * @property {number}  [avgMs]    ⚠ Gap-S: 이 서버 오늘 평균 응답 지연(ms)
+ * @property {string[]}[myModels] ⚠ Gap-S: 내가 이 서버에 제공 중인 모델명 목록
+ * @property {ProviderPolicy} [policy] ⚠ Gap-P: 이 서버에 대한 "내" self-service 정책
+ * @property {string}  [webUrl]   ⚠ Gap-W: 관리자용 웹 대시보드 서버 URL(외부 브라우저로 열기)
+ */
+/**
+ * @typedef {Object} ProviderPolicy  이 서버에 대한 "내" 정책(/provider-limit·scope 의 GUI)
+ * @property {number} dailyLimit     하루 처리 한도(건)
+ * @property {number} maxConcurrency 동시 처리 수
+ * @property {number} maxSeconds     요청 최대 처리 시간(초)
+ * @property {string} scope          공개 대상 — ALL(모두) | TRUSTED(신뢰 역할) | ADMIN(관리자만). ProviderModelScope 미러.
  */
 
 // 온보딩 적용 페이로드 — webui.py /api/onboard-apply 와 동일 키

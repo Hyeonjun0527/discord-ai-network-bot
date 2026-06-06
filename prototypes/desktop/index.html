@@ -454,6 +454,41 @@
     .srv-st.error { color: #ff8a93; } .srv-st.error .d { background: #ff5f6e; box-shadow: 0 0 8px #ff5f6e; }
     .srv-go { width: 18px; height: 18px; color: var(--subtle); flex: 0 0 auto; display: block; }
 
+    /* ── 서버 상세(기부자 관점) ── */
+    .dhead { margin-bottom: 22px; }
+    .dback { background: none; border: 0; color: var(--subtle); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; padding: 4px 0; margin-bottom: 12px; }
+    .dback:hover { color: #fff; }
+    .dtitle { display: flex; align-items: center; gap: 14px; }
+    .dtitle h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0; }
+    .dsubhead { margin-top: 9px; color: var(--muted); font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+    .dsubhead .srv-role { min-width: 0; }
+    .dcard { padding: 20px 22px; border-radius: 18px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(15, 22, 38, .7), rgba(10, 16, 28, .8)); margin-bottom: 14px; }
+    .dlabel { font-size: 14.5px; font-weight: 700; color: #d8e0ee; }
+    .dsub { margin-top: 6px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+    .dim { color: var(--subtle); font-weight: 500; }
+    .drow { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .dstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0 4px; }
+    .dstats > div { text-align: center; padding: 14px 8px; border-radius: 13px; background: rgba(255,255,255,.025); border: 1px solid var(--line); }
+    .dstats b { display: block; font-size: 24px; font-weight: 800; letter-spacing: -.02em; color: #f0f4fb; font-family: ui-monospace, Menlo, monospace; }
+    .dstats span { display: block; margin-top: 3px; font-size: 12px; color: var(--subtle); }
+    .dmodels { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .dchip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.03); font-size: 13px; font-weight: 600; color: #d2dbe7; font-family: ui-monospace, Menlo, monospace; }
+    .dchip .d { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 7px var(--ok); flex: 0 0 auto; }
+    .dpolicy { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
+    .dpolicy > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .dpolicy span { color: var(--muted); font-size: 13.5px; }
+    .dpolicy b { color: #eef2fb; font-size: 14.5px; font-weight: 700; }
+    .dcard.dwarn { border-color: color-mix(in srgb, var(--warn) 32%, transparent); background: color-mix(in srgb, var(--warn) 7%, transparent); }
+    .dcard.dwarn .dlabel { color: #f0c987; }
+    .dcard.dmanage .dsub { margin-bottom: 14px; }
+    .dcard.dmanage .ext { font-size: 12px; opacity: .8; }
+    /* 정책 변경 모달 폼 */
+    .pform { display: flex; flex-direction: column; gap: 14px; margin: 4px 0 2px; }
+    .pform label { display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; font-weight: 700; color: #d2dbe7; }
+    .pform input, .pform select { -webkit-appearance: none; appearance: none; height: 42px; padding: 0 13px; border-radius: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--text); font: inherit; font-size: 14px; }
+    .pform select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239fb0cc' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 13px center; padding-right: 38px; }
+    .pform input:focus, .pform select:focus { outline: none; border-color: color-mix(in srgb, var(--c-accent) 45%, transparent); }
+
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     .stat {
       padding: 22px 24px; border-radius: 20px; border: 1px solid var(--line);
@@ -798,14 +833,17 @@
         </div>
       </section>
       <section class="view" data-view="servers">
-        <div class="page-head">
-          <div><h1 class="page-title">서버</h1><p class="page-sub">AI 를 제공 중인 Discord 서버 목록입니다.</p></div>
-          <div class="head-actions">
-            <button class="btn btn--md btn--primary" id="srvAddBtn">+ 서버 추가</button>
+        <div id="serverListWrap">
+          <div class="page-head">
+            <div><h1 class="page-title">서버</h1><p class="page-sub">AI 를 제공 중인 Discord 서버 목록입니다.</p></div>
+            <div class="head-actions">
+              <button class="btn btn--md btn--primary" id="srvAddBtn">+ 서버 추가</button>
+            </div>
           </div>
+          <div class="srv-list" id="serverList" style="margin-top:24px"><!-- JS 렌더 --></div>
+          <div class="srv-summary" id="serverSummary"></div>
         </div>
-        <div class="srv-list" id="serverList" style="margin-top:24px"><!-- JS 렌더 --></div>
-        <div class="srv-summary" id="serverSummary"></div>
+        <div id="serverDetail" hidden><!-- JS 렌더(기부자 관점 개요) --></div>
       </section>
       <section class="view" data-view="local"><div class="placeholder"><div class="ico">◆</div><h2>로컬 실행</h2><p>다음 단계에서 구현합니다.</p></div></section>
       <section class="view" data-view="logs"><div class="placeholder"><div class="ico">◆</div><h2>로그</h2><p>다음 단계에서 구현합니다.</p></div></section>
@@ -914,6 +952,16 @@
           <button data-empty="reset" class="active">초기화</button>
         </div>
       </div>
+      <div class="proto-sec">
+        <label>서버 상세 (07 · 기부자 관점)</label>
+        <div class="proto-seg proto-seg-wrap" id="protoDetail">
+          <button data-detail="1001">관리자·연결</button>
+          <button data-detail="1002">기부자·연결</button>
+          <button data-detail="1003">기부자·일시중지</button>
+          <button data-detail="1004">관리자·승인대기</button>
+          <button data-detail="back">목록으로</button>
+        </div>
+      </div>
     </div>
     <div class="proto-fab" id="protoFab"><span class="dia"></span><span>PROTO</span></div>
   </div>
@@ -988,8 +1036,9 @@
   <!-- ══ 03 서버 화면 — 목록·권한·상태·집계, 서버 추가, 상세 진입 ══ -->
   <script type="module">
     import { api } from './adapter.js';
-    import { presentServerState, presentServerMeta, presentRole } from './presenter.js';
-    import { ProviderState } from './contract.js';
+    import { toast } from './toast.js';
+    import { presentServerState, presentServerMeta, presentRole, presentScope } from './presenter.js';
+    import { ProviderState, Role } from './contract.js';
 
     const TINT = ['--c-violet', '--c-blue', '--c-cyan', '--c-purple'];
     const ROLE_ICON = {
@@ -1027,16 +1076,135 @@
         else c.ok++;
       });
       sumEl.innerHTML = '연결 <b>' + c.ok + '</b> · 일시중지 <b>' + c.paused + '</b> · 승인 대기 <b>' + c.pending + '</b>';
-      // 상세 진입(서버 상세는 다음 단계)
-      listEl.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', () => {
-        if (window.toast) window.toast('서버 상세는 다음 단계에서 구현합니다', { type: 'info', sub: el.querySelector('.nm').textContent });
-      }));
+      // 카드 클릭 → 서버 상세(기부자 관점) 진입
+      listEl.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', () => openDetail(Number(el.dataset.guild))));
+    }
+
+    // ── 서버 상세(기부자 관점) — docs/NEXA_DESKTOP_SCREENS.md 07 ──
+    const wrapEl = document.getElementById('serverListWrap');
+    const detailEl = document.getElementById('serverDetail');
+
+    function backToList() { detailEl.hidden = true; wrapEl.hidden = false; reload(); }
+
+    async function openDetail(guildId) {
+      const d = await api.getServerDetail(guildId);
+      if (!d) return;
+      renderDetail(d);
+      wrapEl.hidden = true; detailEl.hidden = false;
+    }
+
+    function renderDetail(d) {
+      const st = presentServerState(d.state);
+      const role = presentRole(d.role);
+      const isAdmin = d.role === Role.ADMIN;
+      const pending = d.state === ProviderState.PENDING;
+      const paused = d.state === ProviderState.PAUSED;
+      // 내 모델 칩
+      const modelChips = d.myModels.length
+        ? d.myModels.map(m => '<span class="dchip"><span class="d"></span>' + m + '</span>').join('')
+        : '<span class="dim">아직 이 서버에 제공 중인 모델이 없어요.</span>';
+      // 제공 토글 버튼(PENDING 이면 숨김)
+      const provBlock = pending ? '' :
+        '<div class="dcard"><div class="drow"><div><div class="dlabel">이 서버에 대한 내 제공</div>' +
+        '<div class="dsub">' + (paused ? '⏸ 일시중지 — 이 서버에 답변을 보내지 않는 중' : '● 제공 중 — 이 서버 요청을 받고 있어요') + '</div></div>' +
+        '<button class="btn btn--md ' + (paused ? 'btn--primary' : 'btn--secondary') + '" id="dPauseBtn">' + (paused ? '재개' : '일시중지') + '</button></div></div>';
+      // 내 정책(PENDING 이면 숨김)
+      const policyBlock = pending ? '' :
+        '<div class="dcard"><div class="drow"><div class="dlabel">내 제공 정책 <span class="dim">· 나에게만 적용</span></div>' +
+        '<button class="btn btn--sm btn--secondary" id="dPolicyBtn">변경</button></div>' +
+        '<div class="dpolicy">' +
+          '<div><span>하루 한도</span><b>' + (d.policy.dailyLimit === 0 ? '무제한' : d.policy.dailyLimit + '건') + '</b></div>' +
+          '<div><span>동시 처리</span><b>' + d.policy.maxConcurrency + '</b></div>' +
+          '<div><span>최대 시간</span><b>' + d.policy.maxSeconds + '초</b></div>' +
+          '<div><span>공개 대상</span><b>' + presentScope(d.policy.scope) + '</b></div>' +
+        '</div></div>';
+      // PENDING 안내
+      const pendingBlock = pending ?
+        '<div class="dcard dwarn"><div class="dlabel">⚠ 관리자 승인을 기다리는 중</div>' +
+        '<div class="dsub">관리자가 승인하면 이 서버에 제공을 시작해요. 승인 전에는 요청을 받지 않아요.</div></div>' : '';
+      // 관리자/기부자 분기 — 관리 위임
+      const manageBlock = isAdmin ?
+        '<div class="dcard dmanage"><div class="dlabel">🛡 서버 관리</div>' +
+        '<div class="dsub">채널 AI · RAG · 프리셋 · 다중응답 · 역할 정책 · Provider 승인은 웹 대시보드에서 관리해요.</div>' +
+        '<button class="btn btn--md btn--secondary" id="dWebBtn">웹 대시보드 열기 <span class="ext">↗</span></button></div>'
+        :
+        '<div class="dcard"><div class="dlabel">🔒 서버 설정은 관리자 권한이 필요해요</div>' +
+        '<div class="dsub">이 서버의 정책은 서버 관리자가 웹 대시보드에서 설정해요. 나는 내 PC 리소스(위 정책)만 조절해요.</div></div>';
+
+      detailEl.innerHTML =
+        '<div class="dhead">' +
+          '<button class="dback" id="dBack">‹ 서버</button>' +
+          '<div class="dtitle"><h1>' + d.guildName + '</h1>' +
+            '<span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span></div>' +
+          '<div class="dsubhead">멤버 ' + fmtMembers(d.members) + ' · 내 역할 <span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span></div>' +
+        '</div>' +
+        '<div class="dcard"><div class="dlabel">내 기여 현황 <span class="dim">· 오늘</span></div>' +
+          '<div class="dstats">' +
+            '<div><b>' + d.today + '</b><span>요청</span></div>' +
+            '<div><b>' + d.myModels.length + '</b><span>제공 모델</span></div>' +
+            '<div><b>' + d.avgMs + 'ms</b><span>평균</span></div>' +
+          '</div>' +
+          '<div class="dmodels">' + modelChips + '</div>' +
+        '</div>' +
+        pendingBlock + provBlock + policyBlock + manageBlock;
+
+      // 액션 바인딩
+      const back = detailEl.querySelector('#dBack'); if (back) back.onclick = backToList;
+      const pb = detailEl.querySelector('#dPauseBtn');
+      if (pb) pb.onclick = async () => {
+        const willPause = !paused;
+        await api.setServerPaused(d.guildId, willPause);
+        toast(willPause ? '이 서버 제공을 일시중지했어요' : '이 서버 제공을 재개했어요', { type: willPause ? 'info' : 'ok', sub: d.guildName });
+        openDetail(d.guildId); // 재렌더
+      };
+      const wb = detailEl.querySelector('#dWebBtn');
+      if (wb) wb.onclick = () => toast('웹 대시보드를 브라우저에서 열어요', { type: 'info', sub: d.webUrl });
+      const polb = detailEl.querySelector('#dPolicyBtn');
+      if (polb) polb.onclick = () => openPolicyModal(d);
+    }
+
+    // 내 self-service 정책 변경 모달(/provider-limit·scope 의 GUI)
+    function openPolicyModal(d) {
+      const lay = document.createElement('div');
+      lay.className = 'modal-layer';
+      lay.innerHTML = '<div class="modal" style="width:min(440px,100%)">' +
+        '<button class="modal-x" data-x aria-label="닫기">✕</button>' +
+        '<h3>내 제공 정책</h3><p class="msub">이 서버에 대한 <b>내</b> 한도·공개 대상만 바꿔요(다른 참여자엔 영향 없음).</p>' +
+        '<div class="pform">' +
+          '<label>하루 한도 <span class="dim">(0 = 무제한)</span><input type="number" min="0" id="pDaily" value="' + d.policy.dailyLimit + '"></label>' +
+          '<label>동시 처리<input type="number" min="1" max="8" id="pConc" value="' + d.policy.maxConcurrency + '"></label>' +
+          '<label>최대 시간(초)<input type="number" min="5" max="120" id="pSec" value="' + d.policy.maxSeconds + '"></label>' +
+          '<label>공개 대상<select id="pScope">' +
+            ['ALL', 'TRUSTED', 'ADMIN'].map(s => '<option value="' + s + '"' + (d.policy.scope === s ? ' selected' : '') + '>' + presentScope(s) + '</option>').join('') +
+          '</select></label>' +
+        '</div>' +
+        '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
+        '<button class="btn btn--md btn--primary" id="pSave">저장</button></div></div>';
+      document.body.appendChild(lay);
+      lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
+      lay.querySelector('#pSave').onclick = async () => {
+        const policy = {
+          dailyLimit: Math.max(0, parseInt(lay.querySelector('#pDaily').value || '0', 10)),
+          maxConcurrency: Math.max(1, parseInt(lay.querySelector('#pConc').value || '1', 10)),
+          maxSeconds: Math.max(5, parseInt(lay.querySelector('#pSec').value || '30', 10)),
+          scope: lay.querySelector('#pScope').value,
+        };
+        await api.setServerPolicy(d.guildId, policy);
+        lay.remove();
+        toast('내 제공 정책을 저장했어요', { type: 'ok', sub: d.guildName });
+        openDetail(d.guildId);
+      };
     }
 
     // 메인은 이미 인증된 상태 → '서버 추가'는 로그인 없이 후보 선택 + 토큰(연결 stage 가 origin=main 처리)
     document.getElementById('srvAddBtn').addEventListener('click', () => { if (window.enterServerAdd) window.enterServerAdd(); });
 
-    (async () => { render(await api.getServers()); })();
+    async function reload() { render(await api.getServers()); }
+    // PROTO·테스트 훅: 서버 상세 직접 점프 / 목록 복귀
+    window.openServerDetail = (g) => openDetail(g);
+    window.backToServerList = backToList;
+
+    reload();
   </script>
 
   <!-- ══ 02 모델 화면 — 목록·토글·기본 모델·추천 설치·변경 적용(D5) ══ -->
@@ -1719,6 +1887,13 @@
       // 홈 제공 상태 전환
       heroSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
         if (window.setHeroState) window.setHeroState(b.dataset.state);
+      }));
+      // 서버 상세(07) 점프 — 서버 탭으로 전환 후 해당 서버 상세 진입
+      document.getElementById('protoDetail').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+        const v = b.dataset.detail;
+        if (v === 'back') { if (window.backToServerList) window.backToServerList(); return; }
+        document.querySelector('.nav-item[data-view="servers"]').click();
+        if (window.openServerDetail) window.openServerDetail(Number(v));
       }));
 
       // stage 변경 → 컨트롤러 UI 동기화(온보딩 단계·홈 상태 섹션 표시 토글)

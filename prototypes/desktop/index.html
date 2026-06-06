@@ -1122,7 +1122,8 @@
       const d = await api.getServerDetail(guildId);
       if (!d) return;
       renderDetail(d);
-      wrapEl.hidden = true; detailEl.hidden = false;
+      // 한 화면만 보이도록 셋 다 명시 토글(관리 화면 잔류 방지 — 기부자 상세에 관리 탭이 새던 버그).
+      wrapEl.hidden = true; detailEl.hidden = false; manageEl.hidden = true;
     }
 
     function renderDetail(d) {
@@ -1259,9 +1260,11 @@
     let _manageTab = 'provider';
 
     async function openManage(d) {
+      // 관리는 관리자(role=ADMIN)만. 기부자/승인대기는 진입 불가(서버 관리 탭은 관리자 전용).
+      if (d.role !== Role.ADMIN || d.state === ProviderState.PENDING) { openDetail(d.guildId); return; }
       _manageTab = 'provider';
       const m = await api.getServerManage(d.guildId);
-      detailEl.hidden = true; manageEl.hidden = false;
+      detailEl.hidden = true; manageEl.hidden = false; wrapEl.hidden = true;
       renderManage(d, m);
     }
     function backToDetail(d) { manageEl.hidden = true; openDetail(d.guildId); }

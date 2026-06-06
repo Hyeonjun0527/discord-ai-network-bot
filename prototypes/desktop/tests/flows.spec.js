@@ -103,6 +103,23 @@ test('13 서버 관리: 신규 자동 승인 토글', async ({ page }) => {
   await expect(page.locator('#serverManage')).toContainText('켜짐 — 승인 없이');
 });
 
+test('서버 전환 시 관리 화면이 잔류하지 않는다(관리자 관리 → 기부자 상세)', async ({ page }) => {
+  await page.click('.nav-item[data-view="servers"]');
+  // 관리자(1001) → 관리 화면 진입
+  await page.locator('#serverList .srv-item[data-guild="1001"]').click();
+  await page.click('#serverDetail #dManageBtn');
+  await expect(page.locator('#serverManage')).toBeVisible();
+  // 관리 → 상세 → 목록
+  await page.click('#serverManage #mBack');
+  await page.click('#serverDetail #dBack');
+  // 기부자(1002) 상세: 관리 화면이 남아있으면 안 됨
+  await page.locator('#serverList .srv-item[data-guild="1002"]').click();
+  await expect(page.locator('#serverDetail')).toBeVisible();
+  await expect(page.locator('#serverManage')).toBeHidden();
+  await expect(page.locator('#serverDetail')).toContainText('관리자 권한이 필요');
+  await expect(page.locator('#serverDetail #dManageBtn')).toHaveCount(0); // 기부자엔 관리 진입 버튼 없음
+});
+
 test('13 서버 관리: 미구현 탭은 단계적 안내(졸속 mock 금지)', async ({ page }) => {
   await page.click('.nav-item[data-view="servers"]');
   await page.locator('#serverList .srv-item[data-guild="1001"]').click();

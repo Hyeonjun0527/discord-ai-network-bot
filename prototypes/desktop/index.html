@@ -1,0 +1,955 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NEXA Provider Agent — 데스크톱 프로토타입</title>
+  <script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js" } }
+  </script>
+  <style>
+    /* ╔══════════════════════════════════════════════════════════════════════╗
+       ║  NEXA 데스크톱 — 디자인 언어 (SSOT)                                     ║
+       ║  모든 화면(01~13)·컴포넌트는 아래 원칙을 따른다. 새 요소는 예외 없이 준수.  ║
+       ╠══════════════════════════════════════════════════════════════════════╣
+       ║ 1. 재질(MATERIAL) = 반투명 다크 글래스                                   ║
+       ║    · 모든 surface(카드·버튼·핀·패널)는 rgba/color-mix(..,transparent)    ║
+       ║      반투명 배경 + 1px 보더 + 옅은 그림자. 배경의 노이즈/글로우가 비쳐야 함.║
+       ║    · 금지: 불투명 솔리드 채움, 장식용 그라데이션, gloss(상단 하이라이트),  ║
+       ║      네온 글로우 남발. (배경 three.js·로고 후광 등 "발광 의도" 요소는 예외)║
+       ║                                                                          ║
+       ║ 2. 색(COLOR) = 브랜드 hue 는 강조에만                                     ║
+       ║    · 보라(violet)·시안·블루는 THEME TOKENS 에서만 가져온다(하드코딩 금지). ║
+       ║    · 강조는 hue 틴트 + 보더 또렷함으로. 재질(투명도·그림자)은 동일 유지.   ║
+       ║    · 위험(되돌릴 수 없음: 제거·초기화)만 warn(앰버). 일반 토글엔 안 씀.    ║
+       ║                                                                          ║
+       ║ 3. 고도(ELEVATION) = 절제                                                ║
+       ║    · 그림자는 --btn-elev 한 종류로 통일. z축으로 둥둥 뜨는 큰 컬러 글로우 X.║
+       ║                                                                          ║
+       ║ 4. 어포던스(AFFORDANCE) = 버튼은 버튼처럼                                 ║
+       ║    · 클릭 가능한 독립 버튼은 최소 보더+미세 배경(secondary 이상)을 가진다. ║
+       ║      완전 무테·무배경(ghost)은 인라인 텍스트 액션 전용.                    ║
+       ║    · 버튼 라벨은 기하 중앙(광학) 정렬. 의미 중복 아이콘은 지양.            ║
+       ║                                                                          ║
+       ║ 5. 상태(STATE) = 점 언어로 통일                                          ║
+       ║    · ● 정상/켜짐  ○ 꺼짐/미사용  ⏸ 일시중지  ⚠ 경고/주의                 ║
+       ║                                                                          ║
+       ║ 6. 위계(HIERARCHY)                                                       ║
+       ║    · 버튼 크기(size)=맥락으로 결정(lg 히어로·md 카드·sm 조밀), 그룹 내 통일.║
+       ║    · 강조(emphasis)=primary>secondary>ghost. 한 그룹에 주액션(틴트) 1개.  ║
+       ║                                                                          ║
+       ║ 7. 위험 작업(DESTRUCTIVE) = 즉시 실행 금지                               ║
+       ║    · 제거·초기화 등은 ⋯ 메뉴 + 확인 모달 뒤에 둔다(원클릭 파괴 금지).      ║
+       ╚══════════════════════════════════════════════════════════════════════╝ */
+    :root {
+      /* ════════════════════════════════════════════════════════════════════
+         THEME TOKENS — install.html 과 동일 SSOT. 여기만 바꾸면 CSS + WebGL 색이 전부 따라옴.
+         ════════════════════════════════════════════════════════════════════ */
+      --c-cyan:   #5beaff;
+      --c-blue:   #5b8cff;
+      --c-violet: #9b6bff;
+      --c-purple: #8b5bff;
+      --c-pink:   #ff6bd6;
+      --c-accent:  var(--c-violet);
+      --c-accent2: var(--c-blue);
+
+      --grad-cta:    linear-gradient(135deg, var(--c-blue), var(--c-purple));
+      --grad-accent: linear-gradient(92deg, var(--c-violet), var(--c-blue));
+      --grad-neon:   linear-gradient(90deg, var(--c-cyan), var(--c-blue), var(--c-violet), var(--c-purple), var(--c-pink));
+
+      --bg-0: #060c18; --bg-1: #03070f; --panel: #0c1424;
+      --line: rgba(150, 168, 220, .12);
+      --text: #eef2fb; --muted: #9aa6bf; --subtle: #6f7c95; --warn: #e3a53f;
+      --ok: #4dea98;
+      --glow: var(--c-accent);
+
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      color: var(--text); overflow: hidden;
+      background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E") repeat,
+        radial-gradient(1100px 520px at 78% 2%, rgba(86, 78, 196, .20), transparent 60%),
+        radial-gradient(900px 480px at 18% 0%, rgba(46, 86, 178, .16), transparent 55%),
+        linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 100%);
+    }
+    /* 전역 three.js 네트워크 배경 — body 위, UI 아래 */
+    #bgCanvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; opacity: 1; }
+    /* 격자 그리드(install.html 차용) — 배경 캔버스 위에 은은하게 */
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .07; z-index: 1;
+      background-image:
+        linear-gradient(rgba(140,164,201,.13) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(140,164,201,.13) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: radial-gradient(120% 90% at 50% 0%, rgba(0,0,0,.9), transparent 80%);
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; }
+
+    /* ══ 앱 셸 레이아웃 ══ */
+    .app {
+      position: relative; z-index: 2; height: 100vh;
+      display: grid; grid-template-rows: 48px 1fr; grid-template-columns: 232px 1fr;
+      grid-template-areas: "title title" "side main";
+    }
+
+    /* ── 타이틀바 ── */
+    .titlebar {
+      grid-area: title; display: flex; align-items: center; gap: 16px; padding: 0 18px;
+      border-bottom: 1px solid var(--line); background: rgba(8, 14, 26, .72); backdrop-filter: blur(16px);
+      -webkit-app-region: drag;
+    }
+    .traffic { display: flex; gap: 8px; }
+    .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+    .traffic .r { background: #ff5f57; } .traffic .y { background: #febc2e; } .traffic .g { background: #28c840; }
+    .title-brand { display: flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: .04em; font-size: 14px; }
+    .title-brand .diamond {
+      width: 16px; height: 16px; border-radius: 4px; background: var(--grad-cta);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--c-violet) 55%, transparent); transform: rotate(45deg);
+    }
+    .title-ver { margin-left: auto; color: var(--subtle); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+
+    /* ── 사이드바 ── */
+    .sidebar {
+      grid-area: side; display: flex; flex-direction: column; gap: 6px; padding: 18px 14px;
+      border-right: 1px solid var(--line); background: rgba(9, 15, 27, .55); backdrop-filter: blur(10px);
+    }
+    .side-brand { display: flex; align-items: center; gap: 11px; padding: 6px 8px 14px; }
+    .side-logo {
+      width: 40px; height: 40px; border-radius: 12px; overflow: hidden; flex: 0 0 auto;
+      border: 1px solid color-mix(in srgb, var(--c-accent) 35%, transparent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-blue) 9%, transparent), 0 0 20px color-mix(in srgb, var(--c-violet) 25%, transparent);
+      background: linear-gradient(180deg, #0d1627, #0b1321);
+    }
+    .side-logo img { width: 100%; height: 100%; object-fit: cover; }
+    .side-brand .bt { display: flex; flex-direction: column; line-height: 1.15; }
+    .side-brand .bn { font-size: 16px; font-weight: 800; letter-spacing: .05em; }
+    .side-brand .bs { font-size: 10px; font-weight: 600; letter-spacing: .2em; color: var(--subtle); }
+
+    .status-badge {
+      display: flex; align-items: center; gap: 9px; margin: 0 4px 14px; padding: 10px 13px; border-radius: 12px;
+      border: 1px solid color-mix(in srgb, var(--ok) 26%, transparent);
+      background: color-mix(in srgb, var(--ok) 9%, transparent); font-size: 13px; font-weight: 700;
+    }
+    .status-badge .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(.8); } }
+
+    .nav { display: flex; flex-direction: column; gap: 3px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: 11px; position: relative;
+      color: #c0cbe0; font-size: 14.5px; font-weight: 600; background: transparent; border: 0; text-align: left; width: 100%;
+      transition: .15s ease;
+    }
+    .nav-item:hover { color: #fff; background: color-mix(in srgb, var(--c-accent) 10%, transparent); }
+    .nav-item.active { color: #fff; background: color-mix(in srgb, var(--c-accent) 14%, transparent); }
+    .nav-item.active::before {
+      content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0;
+      background: var(--grad-accent); box-shadow: 0 0 10px var(--c-accent);
+    }
+    .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; opacity: .85; }
+    .nav-spacer { flex: 1; }
+    .nav-foot { padding: 10px 13px; color: var(--subtle); font-size: 11.5px; line-height: 1.6; font-family: ui-monospace, Menlo, monospace; letter-spacing: .04em; }
+
+    /* ── 메인 콘텐츠 ── */
+    .main { grid-area: main; overflow-y: auto; overflow-x: hidden; padding: 30px 36px 48px; }
+    .main::-webkit-scrollbar { width: 10px; }
+    .main::-webkit-scrollbar-thumb { background: rgba(150,168,220,.16); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
+
+    .view { display: none; }
+    .view.active { display: block; animation: fade .35s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    .page-title { font-size: 30px; font-weight: 800; letter-spacing: -.03em; margin: 0; }
+    .page-sub { margin: 8px 0 0; color: var(--muted); font-size: 15.5px; }
+
+    /* 히어로 상태 카드 — 좌측 3D 오브 + 우측 텍스트 */
+    .hero-status {
+      margin-top: 26px; display: grid; grid-template-columns: 200px 1fr; gap: 8px; align-items: center;
+      padding: 8px 26px 8px 8px; border-radius: 24px; border: 1px solid var(--line);
+      background: linear-gradient(120deg, rgba(20, 32, 58, .72), rgba(10, 16, 28, .82));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 24px 60px rgba(0,0,0,.32);
+      position: relative; overflow: hidden;
+    }
+    .hero-status::after {
+      content: ""; position: absolute; right: -10%; top: -40%; width: 60%; height: 180%;
+      background: radial-gradient(circle, color-mix(in srgb, var(--c-violet) 16%, transparent), transparent 65%); pointer-events: none;
+    }
+    .orb-wrap { width: 200px; height: 200px; position: relative; }
+    .orb-wrap canvas { width: 100%; height: 100%; display: block; }
+    .hero-info { position: relative; z-index: 1; }
+    .hero-info .ready { display: inline-flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+    .hero-info .check {
+      width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #06281a; font-weight: 900;
+      background: radial-gradient(circle at 35% 30%, #8bffce, var(--ok)); box-shadow: 0 0 18px color-mix(in srgb, var(--ok) 55%, transparent);
+    }
+    .hero-info p { margin: 12px 0 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+    .hero-info .links { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .hero-actions { margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap; }
+
+    /* 연결 핀 — 끊김(bad) 변형 */
+    .conn-pill.bad { border-color: color-mix(in srgb, #ff5f6e 38%, transparent); color: #ffb4bb; background: color-mix(in srgb, #ff5f6e 8%, transparent); }
+    .conn-pill.bad .d { background: #ff5f6e; box-shadow: 0 0 8px #ff5f6e; }
+
+    /* 상태 배지 변형 */
+    .hero-info .check.paused { background: linear-gradient(180deg, #aeb9d4, #7d8aa6); color: #1a2030; box-shadow: 0 0 14px rgba(150,168,200,.4); }
+    .hero-info .check.error { background: radial-gradient(circle at 35% 30%, #ffd9a0, var(--warn)); color: #3a2406; box-shadow: 0 0 18px color-mix(in srgb, var(--warn) 60%, transparent); }
+    .hero-status.state-error { border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+    .hero-status.state-error::after { background: radial-gradient(circle, color-mix(in srgb, var(--warn) 14%, transparent), transparent 65%); }
+    .hero-status.state-paused::after { background: radial-gradient(circle, rgba(150,168,200,.10), transparent 65%); }
+
+    /* ══ 프로토타입 컨트롤러(화면 밖 오버레이 — 실제 UI 와 분리) ══ */
+    #proto { position: fixed; right: 18px; bottom: 18px; z-index: 100; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    #proto .proto-fab {
+      display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; cursor: pointer;
+      border: 1px dashed rgba(150,168,220,.4); background: rgba(8,14,26,.82); backdrop-filter: blur(12px); color: #aeb9d4;
+      font-size: 11px; font-weight: 700; letter-spacing: .12em; box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    }
+    #proto .proto-fab:hover { color: #fff; border-color: color-mix(in srgb, var(--c-accent) 50%, transparent); }
+    #proto .proto-fab .dia { width: 11px; height: 11px; border-radius: 3px; background: var(--grad-cta); transform: rotate(45deg); flex: 0 0 auto; }
+    #proto .proto-panel {
+      position: absolute; right: 0; bottom: calc(100% + 10px); width: 268px; padding: 16px; border-radius: 16px;
+      border: 1px dashed rgba(150,168,220,.4); background: rgba(8,14,26,.92); backdrop-filter: blur(16px);
+      box-shadow: 0 20px 50px rgba(0,0,0,.5); display: none;
+    }
+    #proto.open .proto-panel { display: block; animation: fade .2s ease; }
+    #proto.open .proto-fab { color: #fff; border-style: solid; border-color: color-mix(in srgb, var(--c-accent) 45%, transparent); }
+    .proto-panel .ph { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+    .proto-panel .ph b { font-size: 11px; letter-spacing: .14em; color: #d2dbe7; }
+    .proto-panel .ph .x { cursor: pointer; color: var(--subtle); padding: 2px 6px; border-radius: 6px; }
+    .proto-panel .ph .x:hover { color: #fff; background: rgba(255,255,255,.06); }
+    .proto-panel .note { font-size: 10.5px; color: var(--subtle); line-height: 1.55; margin: 0 0 14px; letter-spacing: 0; font-family: -apple-system, "Apple SD Gothic Neo", sans-serif; }
+    .proto-sec { margin-top: 12px; }
+    .proto-sec > label { display: block; font-size: 10px; letter-spacing: .12em; color: var(--subtle); margin-bottom: 7px; }
+    .proto-seg { display: flex; gap: 5px; padding: 4px; border-radius: 11px; background: rgba(255,255,255,.03); border: 1px solid var(--line); }
+    .proto-seg button { flex: 1; padding: 7px 0; border-radius: 8px; border: 0; background: transparent; color: #aeb9d4; font-size: 12px; font-weight: 600; cursor: pointer; transition: .14s ease; font-family: -apple-system, "Apple SD Gothic Neo", sans-serif; }
+    .proto-seg button:hover { color: #fff; background: rgba(255,255,255,.05); }
+    .proto-seg button.active { color: #fff; background: color-mix(in srgb, var(--c-accent) 24%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 42%, transparent); }
+
+    /* 진단 패널(문제 상태에서 [진단] 클릭 시) */
+    .diag { margin-top: 18px; border-radius: 14px; border: 1px solid var(--line); background: rgba(9,15,26,.6); overflow: hidden; }
+    .diag-row { display: flex; align-items: center; gap: 11px; padding: 11px 16px; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .diag-row:last-child { border-bottom: 0; }
+    .diag-row .di { width: 18px; height: 18px; flex: 0 0 auto; display: grid; place-items: center; font-size: 13px; }
+    .diag-row .di.ok { color: var(--ok); } .diag-row .di.run { color: var(--c-cyan); } .diag-row .di.wait { color: var(--subtle); } .diag-row .di.bad { color: #ff5f6e; }
+    .diag-row .dn { flex: 1; color: #d2dbe7; }
+    .diag-row .dv { color: var(--subtle); font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .diag-row .di.run svg { animation: spin 1s linear infinite; }
+    .conn-pill {
+      display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 600;
+      border: 1px solid var(--line); background: rgba(255,255,255,.03); color: #cdd6e6;
+    }
+    .conn-pill .d { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+    /* provider 카드 2개 */
+    .grid-2 { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .prov-card {
+      position: relative; overflow: hidden; padding: 22px 24px; border-radius: 22px; border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(15, 22, 38, .9), rgba(10, 16, 28, .94)); min-height: 132px;
+      display: flex; gap: 18px; align-items: center;
+    }
+    .prov-card::after { content: ""; position: absolute; inset: 0; border-radius: 22px; pointer-events: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
+    .prov-mini { width: 84px; height: 84px; flex: 0 0 auto; }
+    .prov-mini canvas { width: 100%; height: 100%; display: block; }
+    .prov-body { min-width: 0; }
+    .prov-name { display: flex; align-items: center; gap: 9px; font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+    .prov-name .d { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 9px var(--ok); flex: 0 0 auto; }
+    .prov-state { margin-top: 7px; color: var(--c-cyan); font-size: 13.5px; font-weight: 600; }
+    .prov-meta { margin-top: 4px; color: var(--muted); font-size: 14px; }
+
+    /* 오늘 처리 통계 */
+    .stat-head { margin: 30px 0 14px; font-size: 17px; font-weight: 700; color: #d2dbe7; letter-spacing: -.02em; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .stat {
+      padding: 22px 24px; border-radius: 20px; border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(13, 20, 35, .9), rgba(9, 15, 26, .94));
+    }
+    .stat-val { font-size: 34px; font-weight: 800; letter-spacing: -.03em; line-height: 1; background: var(--grad-accent); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .stat-lbl { margin-top: 10px; color: var(--subtle); font-size: 13.5px; font-weight: 600; }
+
+    /* ══════════════════════════════════════════════════════════════════════
+       버튼 디자인 시스템 (SSOT) — 크기와 위계를 분리해 정책으로 결정한다.
+
+       [1] SIZE = 맥락(컨텍스트)으로 결정. 한 액션 그룹 내에서는 size 통일(정렬 일관성).
+           · lg(52) — 히어로/주요 CTA 영역
+           · md(44) — 카드 인라인·일반 폼
+           · sm(36) — 조밀한 영역(메뉴, 행 단위 액션)
+           height·padding·radius·font·아이콘·min-width 가 size 토큰으로 한 번에 결정됨.
+           너비는 콘텐츠 기반이되 min-width 하한으로 "진단" 같은 짧은 라벨도 빈약해 보이지 않음.
+
+       [2] EMPHASIS = 위계로 결정(크기 아님). 한 그룹에 채움(filled) 주액션은 1개만.
+           · primary — 주 진행 액션(재개·다시 연결). grad-cta 채움.
+           · warn    — 주의가 필요한 주액션(일시중지). 앰버 채움.
+           · secondary — 보조(외곽선)
+           · ghost   — 3차(배경 없음). 같은 그룹의 부수 액션(진단 등).
+       ══════════════════════════════════════════════════════════════════════ */
+    :root {
+      --btn-radius: 13px;
+      --btn-h-sm: 36px;  --btn-px-sm: 14px; --btn-fs-sm: 13px; --btn-ico-sm: 15px; --btn-min-sm: 76px;
+      --btn-h-md: 44px;  --btn-px-md: 18px; --btn-fs-md: 14px; --btn-ico-md: 18px; --btn-min-md: 104px;
+      --btn-h-lg: 52px;  --btn-px-lg: 22px; --btn-fs-lg: 15px; --btn-ico-lg: 19px; --btn-min-lg: 132px;
+      /* 모든 filled 버튼이 공유하는 재질(elevation). 강조는 색으로만, 재질은 동일.
+         그라데이션·gloss 없이 솔리드 + 옅은 그림자로 절제. */
+      --btn-elev: 0 6px 16px rgba(18, 28, 52, .30);
+    }
+    /* base = md. size/emphasis modifier 로 덮어씀 */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+      height: var(--btn-h-md); padding: 0 var(--btn-px-md); min-width: var(--btn-min-md); font-size: var(--btn-fs-md);
+      border-radius: var(--btn-radius); border: 1px solid rgba(118, 150, 212, .22); color: #eef3fb;
+      background: rgba(255,255,255,.02); font-weight: 700; letter-spacing: -.01em; cursor: pointer; transition: .18s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn svg { width: var(--btn-ico-md); height: var(--btn-ico-md); flex: 0 0 auto; }
+    /* — size — */
+    .btn--sm { height: var(--btn-h-sm); padding: 0 var(--btn-px-sm); min-width: var(--btn-min-sm); font-size: var(--btn-fs-sm); }
+    .btn--sm svg { width: var(--btn-ico-sm); height: var(--btn-ico-sm); }
+    .btn--md { height: var(--btn-h-md); padding: 0 var(--btn-px-md); min-width: var(--btn-min-md); font-size: var(--btn-fs-md); }
+    .btn--md svg { width: var(--btn-ico-md); height: var(--btn-ico-md); }
+    .btn--lg { height: var(--btn-h-lg); padding: 0 var(--btn-px-lg); min-width: var(--btn-min-lg); font-size: var(--btn-fs-lg); }
+    .btn--lg svg { width: var(--btn-ico-lg); height: var(--btn-ico-lg); }
+    /* — emphasis (위계) —
+       primary/neutral 은 동일 무게의 filled "주액션". 색만 의미에 따라 다름.
+       · primary = 켜기/복구(재개·다시 연결) — 브랜드 grad
+       · neutral = 멈춤/중립 토글(일시중지) — 블루그레이. 경고색 아님
+       · warn    = 되돌릴 수 없는 위험 전용(제거·초기화 등). 일상 토글엔 쓰지 않음
+       · secondary/ghost = 보조·부수 액션 */
+    /* 모든 버튼이 동일한 반투명 글래스 재질. 강조는 hue(틴트)+보더 또렷함으로만. */
+    .btn--primary { background: color-mix(in srgb, var(--c-violet) 22%, transparent); border-color: color-mix(in srgb, var(--c-violet) 48%, transparent); color: #efeaff; box-shadow: var(--btn-elev); }
+    .btn--neutral { background: rgba(98, 116, 158, .18); border-color: rgba(150, 168, 220, .30); color: #eef3fb; box-shadow: var(--btn-elev); }
+    .btn--warn { background: color-mix(in srgb, var(--warn) 18%, transparent); border-color: color-mix(in srgb, var(--warn) 42%, transparent); color: #ffe6c2; box-shadow: var(--btn-elev); }
+    /* secondary = 보조 액션. 무채색 약한 글래스지만 보더+배경으로 "버튼임"을 명확히. */
+    .btn--secondary { background: rgba(255,255,255,.045); border-color: rgba(150, 168, 220, .26); color: #d6deea; box-shadow: var(--btn-elev); }
+    .btn--primary:hover, .btn--neutral:hover, .btn--warn:hover, .btn--secondary:hover { filter: brightness(1.1); }
+    /* ghost = 인라인 텍스트 액션 전용(예: "표시", "더보기"). 카드/폼의 독립 버튼엔 쓰지 않는다
+       (affordance 부족 — 버튼이 글자처럼 보임). 독립 버튼은 최소 secondary 이상을 쓴다. */
+    .btn--ghost { border-color: transparent; background: transparent; color: #c4cee0; box-shadow: none; min-width: 0; padding: 0 8px; }
+    .btn--ghost:hover { background: rgba(123, 140, 230, .10); color: #fff; }
+    /* icon-only(정사각, 라벨 없음) */
+    .btn--icon { min-width: 0; aspect-ratio: 1; padding: 0; }
+
+    /* placeholder 뷰 */
+    .placeholder { margin-top: 60px; text-align: center; color: var(--subtle); }
+    .placeholder .ico { font-size: 46px; opacity: .5; }
+    .placeholder h2 { margin: 18px 0 6px; color: var(--muted); font-weight: 700; font-size: 22px; }
+    .placeholder p { margin: 0; font-size: 14.5px; }
+
+    @media (max-width: 880px) {
+      .app { grid-template-columns: 72px 1fr; }
+      .side-brand .bt, .status-badge span, .nav-item span, .nav-foot { display: none; }
+      .nav-item { justify-content: center; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .hero-status { grid-template-columns: 1fr; }
+      .orb-wrap { margin: 0 auto; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="bgCanvas" aria-hidden="true"></canvas>
+
+  <div class="app">
+    <!-- 타이틀바 -->
+    <header class="titlebar">
+      <div class="traffic"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+      <div class="title-brand"><span class="diamond"></span><span>NEXA Provider Agent</span></div>
+      <span class="title-ver">v0.31.0</span>
+    </header>
+
+    <!-- 사이드바 -->
+    <aside class="sidebar">
+      <div class="side-brand">
+        <div class="side-logo"><img src="img/nexa-logo.png" alt="NEXA" /></div>
+        <div class="bt"><span class="bn">NEXA</span><span class="bs">PROVIDER AGENT</span></div>
+      </div>
+      <div class="status-badge"><span class="dot"></span><span>AI 제공 중</span></div>
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-view="home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/></svg>
+          <span>홈</span>
+        </button>
+        <button class="nav-item" data-view="models">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+          <span>모델</span>
+        </button>
+        <button class="nav-item" data-view="servers">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg>
+          <span>서버</span>
+        </button>
+        <button class="nav-item" data-view="local">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+          <span>로컬 실행</span>
+        </button>
+        <button class="nav-item" data-view="logs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+          <span>로그</span>
+        </button>
+        <button class="nav-item" data-view="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          <span>설정</span>
+        </button>
+        <div class="nav-spacer"></div>
+        <div class="nav-foot">NETWORK · LIVE<br>CENTRAL NODE · 99.9%</div>
+      </nav>
+    </aside>
+
+    <!-- 메인 -->
+    <main class="main" id="main">
+      <!-- 01 · 홈 -->
+      <section class="view active" data-view="home">
+        <h1 class="page-title">홈</h1>
+        <p class="page-sub">지금 AI를 정상적으로 제공하고 있어요.</p>
+
+        <div class="hero-status state-ok" id="heroStatus">
+          <div class="orb-wrap"><canvas data-scene="orb" aria-hidden="true"></canvas></div>
+          <div class="hero-info" id="heroInfo"><!-- JS 렌더 --></div>
+        </div>
+
+        <div class="grid-2">
+          <div class="prov-card">
+            <div class="prov-mini"><canvas data-scene="ollama" aria-hidden="true"></canvas></div>
+            <div class="prov-body">
+              <div class="prov-name"><span class="d"></span> Ollama</div>
+              <div class="prov-state">실행 중</div>
+              <div class="prov-meta">모델 7개 · 텍스트 응답 제공</div>
+            </div>
+          </div>
+          <div class="prov-card">
+            <div class="prov-mini"><canvas data-scene="sd" aria-hidden="true"></canvas></div>
+            <div class="prov-body">
+              <div class="prov-name"><span class="d"></span> Stable Diffusion</div>
+              <div class="prov-state">실행 중</div>
+              <div class="prov-meta">이미지 생성 가능</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-head">오늘 처리</div>
+        <div class="stats">
+          <div class="stat"><div class="stat-val">0</div><div class="stat-lbl">요청</div></div>
+          <div class="stat"><div class="stat-val">2</div><div class="stat-lbl">제공 모델</div></div>
+          <div class="stat"><div class="stat-val">0ms</div><div class="stat-lbl">평균 응답</div></div>
+        </div>
+      </section>
+
+      <!-- 나머지 탭은 추후 구현 -->
+      <section class="view" data-view="models"><div class="placeholder"><div class="ico">◆</div><h2>모델 관리</h2><p>다음 단계에서 구현합니다.</p></div></section>
+      <section class="view" data-view="servers"><div class="placeholder"><div class="ico">◆</div><h2>서버 연결</h2><p>다음 단계에서 구현합니다.</p></div></section>
+      <section class="view" data-view="local"><div class="placeholder"><div class="ico">◆</div><h2>로컬 실행</h2><p>다음 단계에서 구현합니다.</p></div></section>
+      <section class="view" data-view="logs"><div class="placeholder"><div class="ico">◆</div><h2>로그</h2><p>다음 단계에서 구현합니다.</p></div></section>
+      <section class="view" data-view="settings"><div class="placeholder"><div class="ico">◆</div><h2>설정</h2><p>다음 단계에서 구현합니다.</p></div></section>
+    </main>
+  </div>
+
+  <!-- ══ 프로토타입 컨트롤러(실제 화면과 분리된 오버레이) ══ -->
+  <div id="proto">
+    <div class="proto-panel">
+      <div class="ph"><b>PROTOTYPE</b><span class="x" id="protoClose">✕</span></div>
+      <p class="note">실제 앱에는 없는 프로토타입 전용 도구입니다. 화면 상태를 전환해 시안을 확인하세요.</p>
+      <div class="proto-sec">
+        <label>홈 · 제공 상태</label>
+        <div class="proto-seg" id="protoHero">
+          <button data-state="ok" class="active">정상</button>
+          <button data-state="paused">일시중지</button>
+          <button data-state="error">문제</button>
+        </div>
+      </div>
+    </div>
+    <div class="proto-fab" id="protoFab"><span class="dia"></span><span>PROTO</span></div>
+  </div>
+
+  <!-- 탭 전환 -->
+  <script>
+    const navBtns = [...document.querySelectorAll('.nav-item')];
+    const views = [...document.querySelectorAll('.view')];
+    navBtns.forEach(b => b.addEventListener('click', () => {
+      navBtns.forEach(x => x.classList.toggle('active', x === b));
+      views.forEach(v => v.classList.toggle('active', v.dataset.view === b.dataset.view));
+      document.getElementById('main').scrollTo({ top: 0 });
+    }));
+  </script>
+
+  <!-- 홈 히어로 상태(조건부 노출): 정상 → 일시중지만 / 문제 → 다시연결·진단 등장 -->
+  <script>
+    (function heroState() {
+      const ICON = {
+        pause: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+        play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7Z"/></svg>',
+        reconnect: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v5h-5"/></svg>',
+        diag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+      };
+      // 히어로 액션은 모두 같은 그룹 → size 통일(lg). 위계는 emphasis 로만 차등.
+      // 그룹당 채움(primary|warn) 주액션 1개 + 부수 액션은 ghost.
+      const STATES = {
+        ok: {
+          badge: { sym: '✓', cls: '' }, title: 'AI 제공 준비됨',
+          desc: '중앙 서버와 Discord 에 모두 연결되어, 들어오는 요청을 이 PC 에서 바로 처리할 수 있는 상태입니다.',
+          pills: [{ t: '중앙 서버 연결됨' }, { t: 'Discord 연결됨' }],
+          actions: [{ t: 'AI 제공 일시중지', size: 'lg', emphasis: 'neutral', icon: ICON.pause, go: 'paused' }],
+        },
+        paused: {
+          badge: { sym: '⏸', cls: 'paused' }, title: 'AI 제공 일시중지됨',
+          desc: '지금은 요청을 받지 않습니다. 로컬 런타임과 연결은 그대로 유지되며, 재개하면 즉시 다시 처리합니다.',
+          pills: [{ t: '중앙 서버 연결됨' }, { t: 'Discord 연결됨' }],
+          actions: [{ t: 'AI 제공 재개', size: 'lg', emphasis: 'primary', icon: ICON.play, go: 'ok' }],
+        },
+        error: {
+          badge: { sym: '⚠', cls: 'error' }, title: '제공 중단됨',
+          desc: 'Discord 연결이 끊겨 요청을 받을 수 없습니다. 네트워크를 확인하고 재연결을 시도하세요.',
+          pills: [{ t: '중앙 서버 연결됨' }, { t: 'Discord 연결 끊김', bad: true }],
+          actions: [{ t: '다시 연결', size: 'lg', emphasis: 'primary', icon: ICON.reconnect, go: 'ok' }, { t: '진단', size: 'lg', emphasis: 'secondary', icon: ICON.diag, diag: true }],
+        },
+      };
+      const heroStatus = document.getElementById('heroStatus');
+      const heroInfo = document.getElementById('heroInfo');
+
+      function render(name) {
+        if (!STATES[name]) return;
+        const s = STATES[name];
+        window.__orbState = name;   // three.js 오브 색/속도 동기화
+        window.__heroState = name;
+        heroStatus.className = 'hero-status state-' + name;
+        heroInfo.innerHTML =
+          '<div class="ready"><span class="check ' + s.badge.cls + '">' + s.badge.sym + '</span> ' + s.title + '</div>' +
+          '<p>' + s.desc + '</p>' +
+          '<div class="links">' + s.pills.map(p => '<span class="conn-pill ' + (p.bad ? 'bad' : '') + '"><span class="d"></span> ' + p.t + '</span>').join('') + '</div>' +
+          '<div class="hero-actions">' + s.actions.map(a => '<button class="btn btn--' + a.size + ' btn--' + a.emphasis + '" data-go="' + (a.go || '') + '" data-diag="' + (a.diag ? '1' : '') + '">' + a.t + '</button>').join('') + '</div>' +
+          '<div class="diag" id="diagPanel" hidden></div>';
+        heroInfo.querySelectorAll('.hero-actions button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            if (btn.dataset.diag) return runDiag();
+            if (btn.dataset.go) window.setHeroState(btn.dataset.go);
+          });
+        });
+      }
+
+      // [진단] — 4채널 순차 점검 애니메이션(목데이터)
+      function runDiag() {
+        const panel = document.getElementById('diagPanel');
+        if (!panel) return;
+        panel.hidden = false;
+        const rows = [
+          { n: '중앙 서버', v: '28ms', ok: true },
+          { n: 'Discord 게이트웨이', v: '연결 끊김', ok: false },
+          { n: 'Ollama (로컬)', v: '응답 정상', ok: true },
+          { n: 'Stable Diffusion (로컬)', v: '응답 정상', ok: true },
+        ];
+        const spinIco = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg>';
+        panel.innerHTML = rows.map(r => '<div class="diag-row"><span class="di wait">·</span><span class="dn">' + r.n + '</span><span class="dv">대기</span></div>').join('');
+        const rowEls = [...panel.querySelectorAll('.diag-row')];
+        rowEls.forEach((el, i) => {
+          setTimeout(() => { el.querySelector('.di').className = 'di run'; el.querySelector('.di').innerHTML = spinIco; el.querySelector('.dv').textContent = '확인 중'; }, i * 550 + 200);
+          setTimeout(() => {
+            const r = rows[i];
+            el.querySelector('.di').className = 'di ' + (r.ok ? 'ok' : 'bad');
+            el.querySelector('.di').innerHTML = r.ok ? '✓' : '✕';
+            el.querySelector('.dv').textContent = r.v;
+          }, i * 550 + 700);
+        });
+      }
+
+      // 프로토타입 컨트롤러가 호출할 수 있도록 노출. 상태 변경 시 이벤트 발행(컨트롤러 active 동기화).
+      window.setHeroState = (name) => { render(name); window.dispatchEvent(new CustomEvent('herostate', { detail: name })); };
+      render('ok');
+    })();
+  </script>
+
+  <!-- 프로토타입 컨트롤러 동작(앱 로직과 분리) -->
+  <script>
+    (function protoTool() {
+      const root = document.getElementById('proto');
+      const fab = document.getElementById('protoFab');
+      const close = document.getElementById('protoClose');
+      const heroSeg = document.getElementById('protoHero');
+      fab.addEventListener('click', () => root.classList.toggle('open'));
+      close.addEventListener('click', () => root.classList.remove('open'));
+      // 홈 제공 상태 전환 → 앱의 setHeroState 호출
+      heroSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+        if (window.setHeroState) window.setHeroState(b.dataset.state);
+      }));
+      // 상태 변경 이벤트 수신 → 세그먼트 active 동기화(앱 내부에서 바뀌어도 반영)
+      window.addEventListener('herostate', (e) => {
+        heroSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.state === e.detail));
+      });
+      // 단축키 P 로 패널 토글
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'p' && !/input|textarea|select/i.test(document.activeElement.tagName)) root.classList.toggle('open');
+      });
+    })();
+  </script>
+
+  <!-- ═══ 전역 배경: 포인터-리액티브 2D 데이터 플로우 네트워크 (Canvas 2D, 가산 발광) ═══ -->
+  <script>
+    (function bgNetwork() {
+      const cv = document.getElementById('bgCanvas');
+      if (!cv) return;
+      const ctx = cv.getContext('2d');
+      const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // 테마 토큰(:root) → 캔버스 색. 하드코딩 금지(install.html 과 동일 SSOT).
+      const css = getComputedStyle(document.documentElement);
+      const tk = (n, fb) => (css.getPropertyValue(n).trim() || fb);
+      const COL = { cyan: tk('--c-cyan', '#5beaff'), blue: tk('--c-blue', '#5b8cff'), violet: tk('--c-violet', '#9b6bff'), pink: tk('--c-pink', '#ff6bd6') };
+      const rgba = (hex, a) => { hex = hex.replace('#', ''); if (hex.length === 3) hex = hex.split('').map(c => c + c).join(''); const n = parseInt(hex, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; };
+
+      let W, H, DPR;
+      function resize() {
+        DPR = Math.min(window.devicePixelRatio || 1, 2);
+        W = window.innerWidth; H = window.innerHeight;
+        cv.width = W * DPR; cv.height = H * DPR;
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      }
+      resize();
+      window.addEventListener('resize', resize, { passive: true });
+
+      // 노드: 화면 면적 비례 개수(상·하한). 셋은 cyan/blue/violet 순환.
+      const palette = [COL.cyan, COL.blue, COL.violet];
+      const COUNT = Math.round(Math.min(78, Math.max(42, (W * H) / 24000)));
+      const nodes = [];
+      for (let i = 0; i < COUNT; i++) {
+        nodes.push({
+          x: Math.random() * W, y: Math.random() * H,
+          vx: (Math.random() - .5) * .22, vy: (Math.random() - .5) * .22,
+          r: 1.1 + Math.random() * 1.6, glow: 0, col: palette[i % 3],
+        });
+      }
+
+      const LINK = 168, LINK2 = LINK * LINK;     // 노드 간 연결 사거리
+      const INFL = 240;                          // 마우스 영향 반경
+      const mouse = { x: W / 2, y: H / 2, active: false };
+      window.addEventListener('pointermove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.active = true; }, { passive: true });
+      window.addEventListener('pointerleave', () => { mouse.active = false; }, { passive: true });
+
+      // 클릭 → 소나 펄스(닿는 노드 발화)
+      const pulses = [];
+      window.addEventListener('pointerdown', (e) => { pulses.push({ x: e.clientX, y: e.clientY, r: 0, life: 1 }); }, { passive: true });
+
+      // 빛 패킷: 가까운 노드 쌍 사이를 흐르는 데이터. 도착 시 노드 발화.
+      const packets = [];
+      function spawnPacket() {
+        if (packets.length > 26) return;
+        const a = nodes[(Math.random() * COUNT) | 0];
+        const cands = [];
+        for (const b of nodes) {
+          if (b === a) continue;
+          const dx = a.x - b.x, dy = a.y - b.y;
+          if (dx * dx + dy * dy < LINK2) cands.push(b);
+        }
+        if (cands.length) {
+          const b = cands[(Math.random() * cands.length) | 0];
+          packets.push({ a, b, t: 0, sp: .007 + Math.random() * .012, col: a.col });
+        }
+      }
+
+      let frame = 0, raf = 0;
+      function step() {
+        frame++;
+        ctx.clearRect(0, 0, W, H);
+        ctx.globalCompositeOperation = 'lighter';   // 가산 합성 → 겹칠수록 발광
+
+        // 노드 갱신(드리프트 + 화면 wrap + 마우스 repel + glow 감쇠)
+        for (const n of nodes) {
+          n.x += n.vx; n.y += n.vy;
+          if (n.x < -30) n.x = W + 30; else if (n.x > W + 30) n.x = -30;
+          if (n.y < -30) n.y = H + 30; else if (n.y > H + 30) n.y = -30;
+          n.glow *= 0.93;
+          if (mouse.active) {
+            const dx = n.x - mouse.x, dy = n.y - mouse.y, d = Math.hypot(dx, dy) || 1;
+            if (d < INFL) {
+              const f = (1 - d / INFL);
+              n.vx += (dx / d) * f * 0.10;          // 손으로 휘젓듯 밀어냄
+              n.vy += (dy / d) * f * 0.10;
+              n.glow = Math.max(n.glow, f * 0.8);   // 근처 노드 발광
+            }
+          }
+          // 속도 감쇠 + 최대속도 클램프(밀린 뒤 천천히 드리프트로 복귀)
+          n.vx *= 0.96; n.vy *= 0.96;
+          const sp = Math.hypot(n.vx, n.vy), MAX = 1.4;
+          if (sp > MAX) { n.vx = n.vx / sp * MAX; n.vy = n.vy / sp * MAX; }
+          if (sp < 0.05) { n.vx += (Math.random() - .5) * .04; n.vy += (Math.random() - .5) * .04; }
+        }
+
+        // 소나 펄스: 확산 + 닿는 노드 발화
+        for (let i = pulses.length - 1; i >= 0; i--) {
+          const p = pulses[i]; p.r += 6.5; p.life -= 0.012;
+          if (p.life <= 0) { pulses.splice(i, 1); continue; }
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.strokeStyle = rgba(COL.cyan, p.life * 0.5); ctx.lineWidth = 2; ctx.stroke();
+          for (const n of nodes) {
+            const d = Math.hypot(n.x - p.x, n.y - p.y);
+            if (Math.abs(d - p.r) < 26) n.glow = Math.max(n.glow, p.life);
+          }
+        }
+
+        // 노드-노드 엣지(거리 기반 발광). 양 끝 glow 가 높으면 더 밝게.
+        for (let i = 0; i < COUNT; i++) {
+          const a = nodes[i];
+          for (let j = i + 1; j < COUNT; j++) {
+            const b = nodes[j];
+            const dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
+            if (d2 < LINK2) {
+              const d = Math.sqrt(d2);
+              const base = (1 - d / LINK) * 0.16;
+              const boost = (a.glow + b.glow) * 0.18;
+              ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+              ctx.strokeStyle = rgba(COL.violet, Math.min(0.6, base + boost));
+              ctx.lineWidth = 1; ctx.stroke();
+            }
+          }
+        }
+
+        // 마우스 ↔ 근처 노드 밝은 연결선 + 마우스 발광 코어
+        if (mouse.active) {
+          for (const n of nodes) {
+            const d = Math.hypot(n.x - mouse.x, n.y - mouse.y);
+            if (d < INFL) {
+              const a = (1 - d / INFL);
+              ctx.beginPath(); ctx.moveTo(mouse.x, mouse.y); ctx.lineTo(n.x, n.y);
+              ctx.strokeStyle = rgba(COL.cyan, a * 0.5); ctx.lineWidth = 1; ctx.stroke();
+            }
+          }
+          const mg = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 80);
+          mg.addColorStop(0, rgba(COL.cyan, 0.5)); mg.addColorStop(0.4, rgba(COL.blue, 0.16)); mg.addColorStop(1, rgba(COL.blue, 0));
+          ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 80, 0, Math.PI * 2); ctx.fill();
+        }
+
+        // 빛 패킷(엣지 위를 흐르는 데이터)
+        if (frame % 9 === 0) spawnPacket();
+        for (let i = packets.length - 1; i >= 0; i--) {
+          const pk = packets[i]; pk.t += pk.sp;
+          if (pk.t >= 1) { pk.b.glow = 1; packets.splice(i, 1); continue; }
+          const x = pk.a.x + (pk.b.x - pk.a.x) * pk.t, y = pk.a.y + (pk.b.y - pk.a.y) * pk.t;
+          const pg = ctx.createRadialGradient(x, y, 0, x, y, 7);
+          pg.addColorStop(0, rgba('#ffffff', 0.95)); pg.addColorStop(0.4, rgba(pk.col, 0.8)); pg.addColorStop(1, rgba(pk.col, 0));
+          ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+        }
+
+        // 노드 본체(발광 점). glow 높을수록 크고 밝게.
+        for (const n of nodes) {
+          const rad = n.r + n.glow * 3.2;
+          const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, rad * 3);
+          g.addColorStop(0, rgba('#ffffff', 0.9));
+          g.addColorStop(0.35, rgba(n.col, 0.55 + n.glow * 0.4));
+          g.addColorStop(1, rgba(n.col, 0));
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(n.x, n.y, rad * 3, 0, Math.PI * 2); ctx.fill();
+        }
+
+        ctx.globalCompositeOperation = 'source-over';
+        raf = requestAnimationFrame(step);
+      }
+
+      if (reduce) { step(); cancelAnimationFrame(raf); }
+      else step();
+      // 탭 비활성 시 정지(배터리 절약)
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) cancelAnimationFrame(raf);
+        else if (!reduce) step();
+      });
+    })();
+  </script>
+
+  <!-- ═══ three.js 미니 위젯: 상태 오브 + provider(Ollama/SD) ═══ -->
+  <script type="module">
+    import * as THREE from 'three';
+
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // 테마 토큰을 CSS(:root)에서 읽어 WebGL 에 동일 적용 — 하드코딩 금지(단일 진실원천).
+    const css = getComputedStyle(document.documentElement);
+    const tk = (n, fb) => { const v = css.getPropertyValue(n).trim(); return (v && v[0] === '#') ? v : fb; };
+    const COL = {
+      cyan: tk('--c-cyan', '#5beaff'), blue: tk('--c-blue', '#5b8cff'),
+      violet: tk('--c-violet', '#9b6bff'), purple: tk('--c-purple', '#8b5bff'), ok: tk('--ok', '#4dea98'),
+    };
+    const C = (h) => new THREE.Color(h);
+    const rgbaHex = (hex, a) => { hex = hex.replace('#', ''); if (hex.length === 3) hex = hex.split('').map(c => c + c).join(''); const n = parseInt(hex, 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`; };
+
+    // 공유 RAF 루프: 등록된 씬 중 화면에 보이는 것만 렌더 → 가볍게 유지.
+    const scenes = [];
+    function register(canvas, fov, camZ, build) {
+      let renderer;
+      try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); }
+      catch (e) { return; }
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(fov, 1, 0.1, 100);
+      camera.position.z = camZ;
+      const api = { renderer, scene, camera, visible: true, mx: 0, my: 0 };
+      const update = build(api);
+      function resize() {
+        const w = canvas.clientWidth || 1, h = canvas.clientHeight || 1;
+        renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+      }
+      resize();
+      new ResizeObserver(resize).observe(canvas);
+      new IntersectionObserver((es) => { api.visible = es[0].isIntersecting; }, { threshold: 0.01 }).observe(canvas);
+      scenes.push({ api, update });
+    }
+
+    // 마우스 패럴랙스(전역) — 각 씬이 참조
+    let pmx = 0, pmy = 0;
+    window.addEventListener('pointermove', (e) => {
+      pmx = (e.clientX / window.innerWidth) * 2 - 1;
+      pmy = (e.clientY / window.innerHeight) * 2 - 1;
+    }, { passive: true });
+
+    // ── 전역 배경은 별도 Canvas 2D 스크립트(아래)에서 처리. three.js 는 미니 위젯 전용. ──
+
+    // ── 2) 상태 오브: 정이십면체 셸(원통) + 중앙 NEXA 로고 글래스 코인 ──
+    const orbCanvas = document.querySelector('canvas[data-scene="orb"]');
+    if (orbCanvas) register(orbCanvas, 42, 4.4, (api) => {
+      const { scene } = api;
+      // 조명(코인 본체 Physical 머티리얼용) — 로고 plane 은 unlit 이라 영향 없음
+      scene.add(new THREE.AmbientLight(0x4a5680, 1.6));
+      const lv = new THREE.PointLight(C(COL.violet), 14, 12); lv.position.set(2.4, 2.0, 3); scene.add(lv);
+      const lc = new THREE.PointLight(C(COL.cyan), 10, 12); lc.position.set(-2.2, -1.6, 2.6); scene.add(lc);
+
+      const group = new THREE.Group(); scene.add(group);
+
+      // 와이어프레임 셸 2겹 + 정점 글로우(원통/구체 인상)
+      const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(1.34, 1), new THREE.MeshBasicMaterial({ color: C(COL.violet), wireframe: true, transparent: true, opacity: 0.7 }));
+      group.add(shell);
+      const shell2 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.64, 1), new THREE.MeshBasicMaterial({ color: C(COL.blue), wireframe: true, transparent: true, opacity: 0.24 }));
+      group.add(shell2);
+      const dot = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.4, 'rgba(150,200,255,.8)'); g.addColorStop(1, 'rgba(150,200,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+      const verts = new THREE.Points(new THREE.IcosahedronGeometry(1.34, 1), new THREE.PointsMaterial({ size: 0.2, map: dot, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, color: C(COL.cyan) }));
+      group.add(verts);
+
+      // ── 중앙: NEXA 로고 글래스 코인 ──
+      const coin = new THREE.Group(); group.add(coin);
+      // 둥근 사각 본체(약간 두께 + 베벨) — 어두운 글래스
+      const W = 1.32, rad = 0.26;
+      const shape = new THREE.Shape();
+      const x0 = -W / 2, y0 = -W / 2;
+      shape.moveTo(x0 + rad, y0);
+      shape.lineTo(x0 + W - rad, y0); shape.quadraticCurveTo(x0 + W, y0, x0 + W, y0 + rad);
+      shape.lineTo(x0 + W, y0 + W - rad); shape.quadraticCurveTo(x0 + W, y0 + W, x0 + W - rad, y0 + W);
+      shape.lineTo(x0 + rad, y0 + W); shape.quadraticCurveTo(x0, y0 + W, x0, y0 + W - rad);
+      shape.lineTo(x0, y0 + rad); shape.quadraticCurveTo(x0, y0, x0 + rad, y0);
+      const bodyGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.2, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 4, curveSegments: 16 });
+      bodyGeo.center();
+      const body = new THREE.Mesh(bodyGeo, new THREE.MeshPhysicalMaterial({ color: 0x0a1120, metalness: 0.4, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.2, emissive: 0x141d38, emissiveIntensity: 0.5 }));
+      coin.add(body);
+
+      // 로고 텍스처(같은 오리진 → taint 없음). 앞/뒤 양면(back-to-back) → 회전해도 정상 로고.
+      const loader = new THREE.TextureLoader();
+      const logoTex = loader.load('img/nexa-logo.png');
+      logoTex.colorSpace = THREE.SRGBColorSpace;
+      logoTex.anisotropy = api.renderer.capabilities.getMaxAnisotropy();
+      const faceGeo = new THREE.PlaneGeometry(W * 0.92, W * 0.92);
+      const half = 0.2 / 2 + 0.05 + 0.012; // depth/2 + bevel + ε
+      const front = new THREE.Mesh(faceGeo, new THREE.MeshBasicMaterial({ map: logoTex, transparent: true }));
+      front.position.z = half;
+      const back = new THREE.Mesh(faceGeo, new THREE.MeshBasicMaterial({ map: logoTex, transparent: true }));
+      back.position.z = -half; back.rotation.y = Math.PI;
+      coin.add(front); coin.add(back);
+
+      // 코인 뒤 브랜드 후광(additive)
+      const halo = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const g = x.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, rgbaHex(COL.violet, 0.55)); g.addColorStop(.5, rgbaHex(COL.blue, 0.18)); g.addColorStop(1, rgbaHex(COL.blue, 0)); x.fillStyle = g; x.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c); })();
+      const haloMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 3.0), new THREE.MeshBasicMaterial({ map: halo, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      haloMesh.position.z = -0.35; group.add(haloMesh);
+
+      // 상태별 타깃(색·셸 색·후광 틴트·회전 속도 계수)
+      const STATE_TINT = {
+        ok:     { shell: C(COL.violet), shell2: C(COL.blue), halo: new THREE.Color(0xffffff), speed: 1.0 },
+        paused: { shell: new THREE.Color(0x8a93ad), shell2: new THREE.Color(0x6f7c95), halo: new THREE.Color(0x9aa6bf), speed: 0.25 },
+        error:  { shell: new THREE.Color(0xe3a53f), shell2: new THREE.Color(0xc77a3a), halo: new THREE.Color(0xffb86b), speed: 1.0 },
+      };
+      let mx = 0, my = 0, spd = 1;
+      return (t) => {
+        mx += (pmx - mx) * 0.05; my += (pmy - my) * 0.05;
+        const tint = STATE_TINT[window.__orbState] || STATE_TINT.ok;
+        shell.material.color.lerp(tint.shell, 0.06);
+        shell2.material.color.lerp(tint.shell2, 0.06);
+        haloMesh.material.color.lerp(tint.halo, 0.06);
+        spd += (tint.speed - spd) * 0.05;
+        // 셸은 천천히 독립 회전, 코인은 코인처럼 Y축 회전 + 미세 부유
+        shell.rotation.y = t * 0.18 * spd + mx * 0.3; shell.rotation.x = Math.sin(t * 0.25) * 0.2 + my * 0.3;
+        shell2.rotation.y = -t * 0.12 * spd; shell2.rotation.x = Math.cos(t * 0.2) * 0.18;
+        verts.rotation.copy(shell.rotation);
+        coin.rotation.y = t * 0.5 * spd + mx * 0.4;
+        coin.rotation.x = my * 0.25 + Math.sin(t * 0.6) * 0.06;
+        coin.position.y = Math.sin(t * 0.9) * 0.05;
+        haloMesh.position.y = coin.position.y;
+        // error 일 때 후광 빠르게 깜빡(경고), 그 외 부드럽게 맥동
+        const isErr = window.__orbState === 'error';
+        const pulse = isErr ? (0.5 + (Math.sin(t * 6) * 0.5 + 0.5) * 0.7) : (0.85 + (Math.sin(t * 1.6) * 0.5 + 0.5) * 0.3);
+        haloMesh.material.opacity = pulse;
+      };
+    });
+
+    // ── 3) Ollama 미니: 노드 클러스터(허브 + 위성, 네온 연결) ──
+    const ollamaCanvas = document.querySelector('canvas[data-scene="ollama"]');
+    if (ollamaCanvas) register(ollamaCanvas, 45, 5, (api) => {
+      const { scene } = api;
+      const group = new THREE.Group(); scene.add(group);
+      const hub = new THREE.Mesh(new THREE.SphereGeometry(0.34, 20, 20), new THREE.MeshBasicMaterial({ color: C(COL.cyan) }));
+      group.add(hub);
+      const halo = new THREE.Mesh(new THREE.SphereGeometry(0.5, 20, 20), new THREE.MeshBasicMaterial({ color: C(COL.cyan), transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending }));
+      group.add(halo);
+      const sats = [];
+      const M = 6;
+      const linePos = new Float32Array(M * 2 * 3);
+      const lGeo = new THREE.BufferGeometry(); lGeo.setAttribute('position', new THREE.BufferAttribute(linePos, 3));
+      const links = new THREE.LineSegments(lGeo, new THREE.LineBasicMaterial({ color: C(COL.blue), transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending }));
+      group.add(links);
+      for (let i = 0; i < M; i++) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 14, 14), new THREE.MeshBasicMaterial({ color: C(COL.violet) }));
+        const a = (i / M) * Math.PI * 2, r = 1.1, tilt = Math.sin(i * 2.1) * 0.5;
+        m.userData = { a, r, tilt, sp: 0.5 + (i % 3) * 0.18 };
+        group.add(m); sats.push(m);
+      }
+      return (t) => {
+        group.rotation.y = t * 0.5; group.rotation.x = 0.4;
+        sats.forEach((m, i) => {
+          const u = m.userData; const a = u.a + t * u.sp;
+          m.position.set(Math.cos(a) * u.r, u.tilt, Math.sin(a) * u.r);
+          linePos[i * 6] = 0; linePos[i * 6 + 1] = 0; linePos[i * 6 + 2] = 0;
+          linePos[i * 6 + 3] = m.position.x; linePos[i * 6 + 4] = m.position.y; linePos[i * 6 + 5] = m.position.z;
+        });
+        lGeo.attributes.position.needsUpdate = true;
+        halo.scale.setScalar(1 + Math.sin(t * 2) * 0.08);
+      };
+    });
+
+    // ── 4) Stable Diffusion 미니: 회전하는 네온 프리즘(옥타헤드론) ──
+    const sdCanvas = document.querySelector('canvas[data-scene="sd"]');
+    if (sdCanvas) register(sdCanvas, 45, 4.6, (api) => {
+      const { scene } = api;
+      const group = new THREE.Group(); scene.add(group);
+      const geo = new THREE.OctahedronGeometry(1.15, 0);
+      const solid = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: C(COL.purple), transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending }));
+      group.add(solid);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: C(COL.pink || COL.violet), transparent: true, opacity: 0.95 }));
+      edges.material.color = C(COL.violet);
+      group.add(edges);
+      const inner = new THREE.Mesh(new THREE.OctahedronGeometry(0.5, 0), new THREE.MeshBasicMaterial({ color: C(COL.cyan), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending }));
+      group.add(inner);
+      return (t) => {
+        group.rotation.y = t * 0.7; group.rotation.x = t * 0.35;
+        inner.rotation.y = -t * 1.1; inner.rotation.z = t * 0.6;
+        solid.material.opacity = 0.16 + (Math.sin(t * 1.8) * 0.5 + 0.5) * 0.14;
+        inner.scale.setScalar(1 + Math.sin(t * 2.4) * 0.12);
+      };
+    });
+
+    // 공유 루프
+    let t0 = performance.now();
+    function tick() {
+      const now = performance.now();
+      const t = (now - t0) / 1000;
+      for (const s of scenes) {
+        if (!s.api.visible) continue;
+        s.update(t);
+        s.api.renderer.render(s.api.scene, s.api.camera);
+      }
+      requestAnimationFrame(tick);
+    }
+    if (!reduce) tick();
+    else { for (const s of scenes) { s.update(0); s.api.renderer.render(s.api.scene, s.api.camera); } }
+  </script>
+</body>
+</html>

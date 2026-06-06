@@ -386,6 +386,18 @@
     .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 30px 0 14px; }
     .sec-head > span { font-size: 17px; font-weight: 700; color: #d2dbe7; letter-spacing: -.02em; }
 
+    /* 런타임 전부 미설치 경고 배너(빈틈) */
+    .runtime-warn { margin-top: 18px; display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 9%, transparent); }
+    .runtime-warn .rw-ico { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; font-size: 18px; color: #3a2406; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffd9a0, var(--warn)); }
+    .runtime-warn .rw-tx { flex: 1; }
+    .runtime-warn .rw-tx b { font-size: 15px; font-weight: 700; }
+    .runtime-warn .rw-tx p { margin: 3px 0 0; color: var(--muted); font-size: 13.5px; }
+
+    /* 빈 상태 카드(서버 0개 등) */
+    .empty-card { padding: 28px 22px; border-radius: 16px; border: 1px dashed color-mix(in srgb, var(--line) 200%, transparent); background: rgba(255,255,255,.015); text-align: center; }
+    .empty-card b { display: block; font-size: 15.5px; font-weight: 700; }
+    .empty-card p { margin: 7px 0 16px; color: var(--muted); font-size: 14px; }
+
     /* 연결된 서버 목록 */
     .srv-list { display: flex; flex-direction: column; gap: 10px; }
     .srv-item {
@@ -680,6 +692,11 @@
           <div class="hero-info" id="heroInfo"><!-- JS 렌더 --></div>
         </div>
 
+        <div class="runtime-warn" id="runtimeWarn" hidden>
+          <span class="rw-ico">⚠</span>
+          <div class="rw-tx"><b>제공할 AI 런타임이 없어요</b><p>Ollama 또는 Stable Diffusion 중 최소 하나를 설치해야 요청을 처리할 수 있어요.</p></div>
+          <button class="btn btn--sm btn--primary" id="rwInstall">설치</button>
+        </div>
         <div class="grid-2">
           <div class="prov-card" data-runtime="Ollama" data-state="running">
             <div class="prov-mini"><canvas data-scene="ollama" aria-hidden="true"></canvas></div>
@@ -859,10 +876,17 @@
         </div>
       </div>
       <div class="proto-sec">
-        <label>시나리오 (E3/D5)</label>
+        <label>앱 시작 시나리오 (E3)</label>
         <div class="proto-seg" id="protoScenario">
-          <button data-scn="resync">재설치 재연결</button>
-          <button data-scn="remodel">모델 변경</button>
+          <button data-scn="resync">재설치 후 첫 실행</button>
+        </div>
+      </div>
+      <div class="proto-sec">
+        <label>빈 상태</label>
+        <div class="proto-seg" id="protoEmpty">
+          <button data-empty="servers">서버 0개</button>
+          <button data-empty="noruntime">런타임 0개</button>
+          <button data-empty="reset" class="active">초기화</button>
         </div>
       </div>
     </div>
@@ -895,29 +919,42 @@
     const initialOf = (name) => (name || '·').trim().charAt(0);
 
     const list = document.getElementById('srvList');
-    const servers = await api.getServers();   // ← 도메인 데이터(ProviderState·Role·guildName)
-    list.innerHTML = servers.map((s, i) => {
-      const tint = TINT[i % TINT.length];
-      const avatarStyle = 'background: color-mix(in srgb, var(' + tint + ') 22%, transparent); border-color: color-mix(in srgb, var(' + tint + ') 40%, transparent);';
-      // 이니셜이 항상 깔리고, iconUrl 있으면 img 가 덮음. 로드 실패 시 onerror 로 img 제거 → 이니셜 폴백.
-      const img = s.iconUrl ? '<img src="' + s.iconUrl + '" alt="" onerror="this.remove()">' : '';
-      const st = presentServerState(s.state);   // ProviderState → { label, dot }
-      const role = presentRole(s.role);          // Role → { label, cls }
-      return '<button class="srv-item">' +
-        '<span class="srv-avatar" style="' + avatarStyle + '">' + initialOf(s.guildName) + img + '</span>' +
-        '<span class="srv-main">' +
-          '<span class="srv-name"><span class="nm">' + s.guildName + '</span></span>' +
-          '<span class="srv-meta"><span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span> · ' + presentServerMeta(s) + '</span>' +
-        '</span>' +
-        '<span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span>' +
-        '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>' +
-      '</button>';
-    }).join('');
-
-    // 서버 아이템·"모두 보기" → 서버 탭으로 이동
     const goServers = () => { const b = document.querySelector('.nav-item[data-view="servers"]'); if (b) b.click(); };
-    list.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', goServers));
+
+    function render(servers) {
+      if (!servers.length) {
+        // 빈틈: 연결된 서버 0개(온보딩 직후·전부 제거). 서버 추가 유도.
+        list.innerHTML = '<div class="empty-card"><b>아직 연결된 서버가 없어요</b>' +
+          '<p>AI 를 제공하려면 Discord 서버에 연결하세요.</p>' +
+          '<button class="btn btn--md btn--primary" id="srvAddEmpty">+ 서버 추가</button></div>';
+        const add = document.getElementById('srvAddEmpty');
+        if (add) add.addEventListener('click', () => { if (window.enterServerAdd) window.enterServerAdd(); });
+        return;
+      }
+      list.innerHTML = servers.map((s, i) => {
+        const tint = TINT[i % TINT.length];
+        const avatarStyle = 'background: color-mix(in srgb, var(' + tint + ') 22%, transparent); border-color: color-mix(in srgb, var(' + tint + ') 40%, transparent);';
+        const img = s.iconUrl ? '<img src="' + s.iconUrl + '" alt="" onerror="this.remove()">' : '';
+        const st = presentServerState(s.state);
+        const role = presentRole(s.role);
+        return '<button class="srv-item">' +
+          '<span class="srv-avatar" style="' + avatarStyle + '">' + initialOf(s.guildName) + img + '</span>' +
+          '<span class="srv-main">' +
+            '<span class="srv-name"><span class="nm">' + s.guildName + '</span></span>' +
+            '<span class="srv-meta"><span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span> · ' + presentServerMeta(s) + '</span>' +
+          '</span>' +
+          '<span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span>' +
+          '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>' +
+        '</button>';
+      }).join('');
+      list.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', goServers));
+    }
+
+    const servers = await api.getServers();
+    render(servers);
     document.getElementById('srvAll').addEventListener('click', goServers);
+    // 빈틈 데모: 서버 0개 ↔ 복원
+    window.setHomeServers = (mode) => render(mode === 'empty' ? [] : servers);
   </script>
 
   <!-- 토스트(액션 피드백) — 모듈. window.toast 도 노출(일반 script 호환) -->
@@ -1369,6 +1406,16 @@
         }
         const sw = card.querySelector('.img-recv-switch');
         if (sw) { sw.classList.toggle('on', imageRecv); sw.setAttribute('aria-checked', String(imageRecv)); }
+        updateRuntimeWarn();
+      }
+      // 빈틈: 런타임 전부 미설치 → 제공 불가 경고 배너
+      function updateRuntimeWarn() {
+        const allAbsent = ['Ollama', 'Stable Diffusion'].every(n => {
+          const c = document.querySelector('.prov-card[data-runtime="' + n + '"]');
+          return c && c.dataset.state === 'absent';
+        });
+        const warn = document.getElementById('runtimeWarn');
+        if (warn) warn.hidden = !allAbsent;
       }
       // 홈에서 이미지 요청 받기 토글(설정 화면 가지 않고 바로)
       const sdSwitch = document.querySelector('.prov-card[data-runtime="Stable Diffusion"] .img-recv-switch');
@@ -1393,6 +1440,18 @@
         });
       });
       window.setRuntime = setRuntime; // PROTO 컨트롤러용
+      // 경고 배너 [설치] → Ollama 설치(둘 다 미설치 시 우선 텍스트 런타임)
+      const rwBtn = document.getElementById('rwInstall');
+      if (rwBtn) rwBtn.addEventListener('click', () => { if (window.openInstall) window.openInstall('ollama'); });
+      // 빈틈 데모(PROTO): 서버 0개 / 런타임 전부 미설치 / 초기화
+      window.setEmptyState = (kind) => {
+        if (kind === 'servers') { if (window.setHomeServers) window.setHomeServers('empty'); }
+        else if (kind === 'noruntime') { setRuntime('Ollama', 'absent'); setRuntime('Stable Diffusion', 'absent'); }
+        else { // reset
+          if (window.setHomeServers) window.setHomeServers('full');
+          setRuntime('Ollama', 'running'); setRuntime('Stable Diffusion', 'running');
+        }
+      };
       // 설치 완료(install.js installRuntime) → 해당 카드를 '실행 중'으로
       window.addEventListener('runtimeinstalled', (e) => {
         setRuntime(e.detail === 'image' ? 'Stable Diffusion' : 'Ollama', 'running');
@@ -1585,15 +1644,16 @@
           if (window.setRuntime) window.setRuntime(rt, b.dataset.rtstate);
         }));
       });
-      // 시나리오(E3 재설치 자동 재연결 / D5 모델 변경 → 재연결)
+      // E3 — 앱 재설치/PC 교체 후 '첫 실행' 시 자동 재연결(사용자 액션 아님, 시작 시점 이벤트 시뮬).
+      // ※ D5(모델 변경 재연결)는 02 모델 화면의 '변경 적용'이 진짜 트리거라 여기서 제거(중복 모호성 해소).
       document.getElementById('protoScenario').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-        if (b.dataset.scn === 'resync') {
-          window.toast('자동 재연결 중…', { type: 'run', sticky: true, id: 'resync', sub: 'durable 토큰으로 승인된 서버 확인' });
-          setTimeout(() => window.toast('3개 서버에 자동 재연결됨', { type: 'ok', id: 'resync', sub: '재설치·재로그인 없이 복구' }), 1600);
-        } else {
-          window.toast('모델 변경 적용 · 재연결 중…', { type: 'run', sticky: true, id: 'remodel' });
-          setTimeout(() => window.toast('새 모델로 다시 제공 시작', { type: 'ok', id: 'remodel', sub: '서버에 새 구성을 알렸어요' }), 1400);
-        }
+        window.toast('재설치 감지 · 자동 재연결 중…', { type: 'run', sticky: true, id: 'resync', sub: 'durable 토큰으로 승인된 서버 확인' });
+        setTimeout(() => window.toast('3개 서버에 자동 재연결됐어요', { type: 'ok', id: 'resync', sub: '재로그인 없이 복구됨' }), 1600);
+      }));
+      // 빈 상태(빈틈) — 서버 0개 / 런타임 전부 미설치 / 초기화
+      document.getElementById('protoEmpty').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+        document.getElementById('protoEmpty').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+        if (window.setEmptyState) window.setEmptyState(b.dataset.empty);
       }));
       // 홈 제공 상태 전환
       heroSeg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {

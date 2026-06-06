@@ -46,3 +46,19 @@ test('홈: 제공 상태 전환(정상↔문제) + 진단', async ({ page }) => 
   await page.locator('#heroInfo .hero-actions button', { hasText: '진단' }).click();
   await expect(page.locator('#diagPanel .diag-row')).toHaveCount(4);
 });
+
+test('빈틈: 서버 0개 빈 상태 → + 서버 추가', async ({ page }) => {
+  await page.evaluate(() => window.setEmptyState('servers'));
+  await expect(page.locator('#srvList .empty-card')).toContainText('아직 연결된 서버가 없어요');
+  await page.locator('#srvAddEmpty').click();
+  await expect(page.locator('#connectWiz .wt span')).toHaveText('서버 추가');
+});
+
+test('빈틈: 런타임 전부 미설치 → 제공 불가 경고 배너', async ({ page }) => {
+  await expect(page.locator('#runtimeWarn')).toBeHidden();
+  await page.evaluate(() => window.setEmptyState('noruntime'));
+  await expect(page.locator('#runtimeWarn')).toBeVisible();
+  await expect(page.locator('#runtimeWarn')).toContainText('제공할 AI 런타임이 없어요');
+  await page.evaluate(() => window.setEmptyState('reset'));
+  await expect(page.locator('#runtimeWarn')).toBeHidden();
+});

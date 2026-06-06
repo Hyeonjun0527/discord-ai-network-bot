@@ -711,3 +711,64 @@ async def test_no_autoconnect_when_disabled(monkeypatch):
         assert st["running"] is False  # 자동 연결 안 함
     finally:
         await client.close()
+
+
+# ── P4: 이미지 토글의 라이브 전파 + SD 미설치 가시화 ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_status_exposes_sd_installed(monkeypatch):
+    """status 가 sdInstalled 를 내려줘야 한다(이미지 토글 ON·미광고 시 'SD 미설치'와 'SD 미준비' 구분 근거)."""
+    monkeypatch.setattr(webui, "_sd_installed", lambda: True)
+    client = await _client()
+    try:
+        st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
+        assert st["sdInstalled"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_setup_apply_to_background_restarts_service(monkeypatch):
+    """백그라운드 서비스가 연결을 담당 중이면(held_by_other), applyToBackground 저장이 그 서비스를
+    kickstart 로 재시작해 새 enable_image 를 라이브로 반영해야 한다.
+    (회귀: 과거엔 config 파일만 저장돼 백그라운드는 시작 시점 설정으로 영원히 image 미광고 → /imagine provider 없음.)"""
+    monkeypatch.setattr("provider_agent.singleton.held_by_other", lambda: True)
+    monkeypatch.setattr("provider_agent.service.is_installed", lambda: True)
+    kicked: dict = {}
+    monkeypatch.setattr("provider_agent.service.kickstart", lambda: kicked.setdefault("done", True))
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/setup",
+            headers={"X-Session": KEY},
+            json={"models": ["m"], "enableImage": True, "applyToBackground": True},
+        )
+        d = await r.json()
+        assert d["ok"] and d["serviceRestarted"] is True
+        assert kicked.get("done") is True  # 라이브 서비스 실제 재시작
+        assert load_config()["enable_image"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_setup_apply_to_background_noop_without_background(monkeypatch):
+    """백그라운드 서비스가 없으면(held_by_other=False) applyToBackground 라도 kickstart 하지 않는다."""
+    monkeypatch.setattr("provider_agent.singleton.held_by_other", lambda: False)
+    monkeypatch.setattr("provider_agent.service.is_installed", lambda: True)
+    monkeypatch.setattr(
+        "provider_agent.service.kickstart",
+        lambda: (_ for _ in ()).throw(AssertionError("백그라운드 없는데 kickstart 하면 안 됨")),
+    )
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/setup",
+            headers={"X-Session": KEY},
+            json={"models": ["m"], "enableImage": True, "applyToBackground": True},
+        )
+        d = await r.json()
+        assert d["ok"] and d["serviceRestarted"] is False
+    finally:
+        await client.close()

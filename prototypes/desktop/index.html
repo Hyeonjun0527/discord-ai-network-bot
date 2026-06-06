@@ -1139,7 +1139,9 @@
       // 제공 토글 버튼(PENDING 이면 숨김)
       const provBlock = pending ? '' :
         '<div class="dcard"><div class="drow"><div><div class="dlabel">이 서버에 대한 내 제공</div>' +
-        '<div class="dsub">' + (paused ? '⏸ 일시중지 — 이 서버에 답변을 보내지 않는 중' : '● 제공 중 — 이 서버 요청을 받고 있어요') + '</div></div>' +
+        '<div class="dsub">' + (paused
+          ? '<span class="srv-st paused"><span class="d"></span>일시중지</span> — 이 서버에 답변을 보내지 않는 중'
+          : '<span class="srv-st ok"><span class="d"></span>제공 중</span> — 이 서버 요청을 받고 있어요') + '</div></div>' +
         '<button class="btn btn--md ' + (paused ? 'btn--primary' : 'btn--secondary') + '" id="dPauseBtn">' + (paused ? '재개' : '일시중지') + '</button></div></div>';
       // 내 정책(PENDING 이면 숨김)
       const policyBlock = pending ? '' :

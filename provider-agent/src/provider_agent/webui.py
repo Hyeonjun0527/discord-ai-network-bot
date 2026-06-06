@@ -18,6 +18,7 @@ import secrets
 import threading
 from collections import deque
 from collections.abc import Iterable
+from typing import TypedDict
 
 from aiohttp import web
 
@@ -97,7 +98,13 @@ def _attach_log_capture() -> None:
 _state: dict = {"agent": None, "task": None}
 
 
-async def _detect_ollama() -> dict:
+class OllamaState(TypedDict):
+    installed: bool  # 실행파일(ollama) 설치 여부
+    ready: bool  # daemon 이 응답하는지(/api/tags)
+    models: list[str]  # 설치된 모델명 목록
+
+
+async def _detect_ollama() -> OllamaState:
     """Ollama 런타임 상태를 한 번에 판정한다: installed(실행파일)·ready(daemon 응답)·models(설치 목록).
 
     P1: '미설치(실행파일 없음)'와 '설치됐지만 daemon 꺼짐'을 구분한다. 둘 다 list_models 는

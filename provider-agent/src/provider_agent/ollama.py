@@ -83,6 +83,14 @@ class OllamaClient:
 
     async def list_models(self) -> list[str]:
         """설치된 모델명 목록. 오류 시 OllamaError."""
+        return [m["name"] for m in await self.list_models_detailed()]
+
+    async def list_models_detailed(self) -> list[dict]:
+        """설치된 모델 상세(name·size·modifiedAt·family·parameterSize). 오류 시 OllamaError.
+
+        Ollama /api/tags 는 모델마다 size(byte)·modified_at·details 를 준다. 이름만 버리지 말고
+        그대로 노출해 GUI 가 용량·마지막 사용을 표시하도록 한다(별도 메타 API 불필요).
+        """
         url = f"{self._base}/api/tags"
         try:
             async with aiohttp.ClientSession(timeout=self._timeout) as s:
@@ -90,8 +98,21 @@ class OllamaClient:
                     data = await r.json()
         except aiohttp.ClientError as exc:
             raise OllamaError(f"Ollama 연결 실패: {exc}") from exc
-        models = data.get("models", []) if isinstance(data, dict) else []
-        return [str(m["name"]) for m in models if isinstance(m, dict) and "name" in m]
+        raw = data.get("models", []) if isinstance(data, dict) else []
+        out: list[dict] = []
+        for m in raw:
+            if isinstance(m, dict) and "name" in m:
+                details = m.get("details") or {}
+                out.append(
+                    {
+                        "name": str(m["name"]),
+                        "size": int(m.get("size") or 0),
+                        "modifiedAt": str(m.get("modified_at") or ""),
+                        "family": str(details.get("family") or ""),
+                        "parameterSize": str(details.get("parameter_size") or ""),
+                    }
+                )
+        return out
 
     async def health(self) -> bool:
         """Ollama 가 응답하는지(차수 10 복구 감지)."""

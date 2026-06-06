@@ -101,7 +101,8 @@ _state: dict = {"agent": None, "task": None}
 class OllamaState(TypedDict):
     installed: bool  # 실행파일(ollama) 설치 여부
     ready: bool  # daemon 이 응답하는지(/api/tags)
-    models: list[str]  # 설치된 모델명 목록
+    models: list[str]  # 설치된 모델명 목록(하위호환)
+    modelsDetail: list[dict]  # 모델 상세(name·size·modifiedAt·family) — GUI 용량/마지막 사용
 
 
 async def _detect_ollama() -> OllamaState:
@@ -121,11 +122,11 @@ async def _detect_ollama() -> OllamaState:
     except Exception:  # noqa: BLE001 - 설치 여부 판정 실패는 미설치로 보수 처리
         installed = False
     try:
-        models = await OllamaClient(url).list_models()
+        detail = await OllamaClient(url).list_models_detailed()
     except OllamaError:
-        return {"installed": installed, "ready": False, "models": []}
+        return {"installed": installed, "ready": False, "models": [], "modelsDetail": []}
     # list_models 성공 = daemon 응답 = 실행 중(PATH 밖 바이너리로 떠 있어도 ready 면 installed 로 본다).
-    return {"installed": True, "ready": True, "models": models}
+    return {"installed": True, "ready": True, "models": [d["name"] for d in detail], "modelsDetail": detail}
 
 
 async def _detect_models() -> list[str]:
@@ -693,6 +694,7 @@ def build_app(session_key: str) -> web.Application:
         return web.json_response(
             {
                 "models": detected,
+                "modelsDetail": oll.get("modelsDetail", []),  # name·size·modifiedAt·family — GUI 용량/마지막 사용
                 "selected": _selected_text_models(detected, saved.get("models")),
                 "default": DEFAULT_TEXT_MODEL,
                 "defaultInstalled": any(_is_default_text_model(m) for m in detected),

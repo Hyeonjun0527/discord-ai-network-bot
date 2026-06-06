@@ -19,9 +19,15 @@ test('모델 토글 시 변경 적용 배너(D5)가 뜬다', async ({ page }) =>
   await expect(page.locator('#modelApply')).toBeVisible();
 });
 
-test('추천 카탈로그 + 직접 입력 형식 검증', async ({ page }) => {
+test('추천 카탈로그(카테고리 그룹·고사양 변형) + 직접 입력 형식 검증', async ({ page }) => {
   await page.click('#catalogBtn');
-  await expect(page.locator('#installCard [data-cat]')).toHaveCount(22);
+  await expect(page.locator('#installCard [data-cat]')).toHaveCount(38);
+  // 카테고리 그룹 헤더로 묶여 렌더된다
+  await expect(page.locator('#installCard .cat-group')).toHaveCount(7);
+  // 고사양 변형이 포함된다(사용자 요청: exaone/qwen/deepseek 더 큰 사이즈)
+  await expect(page.locator('#installCard [data-cat="exaone3.5:32b"]')).toBeVisible();
+  await expect(page.locator('#installCard [data-cat="qwen2.5:72b"]')).toBeVisible();
+  await expect(page.locator('#installCard [data-cat="deepseek-r1:70b"]')).toBeVisible();
   await expect(page.locator('#catManual')).toBeVisible();
   // 형식 오류
   await page.fill('#catManual', '!! 이상한 이름');

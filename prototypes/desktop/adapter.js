@@ -46,30 +46,54 @@ const MOCK = {
   ],
   defaultModel: 'exaone3.5:7.8b',
   // 추천 설치 카탈로그 — webui.py /api/ollama/catalog. Ollama 가 전체 목록 API 를 안 주므로
-  // 인기 모델을 큐레이션(+ 직접 입력으로 전체 라이브러리 접근). 카테고리: 한국어/범용/코딩/경량/비전/추론/임베딩.
+  // 대표 모델 + 사이즈 변형(경량~초대형)을 카테고리별로 큐레이션. 전체는 직접 입력(ollama.com/library).
+  // 카테고리 순서: 한국어 · 범용 · 코딩 · 추론 · 비전 · 임베딩 · 경량/테스트.
   catalog: [
-    { name: 'exaone3.5:7.8b', size: '4.8GB', desc: '한국어 특화 · 기본 권장', cat: '한국어' },
+    // ── 한국어 ──
     { name: 'exaone3.5:2.4b', size: '1.6GB', desc: '한국어 경량', cat: '한국어' },
-    { name: 'llama3.3:70b', size: '40GB', desc: 'Meta 최상위(고사양)', cat: '범용' },
-    { name: 'llama3.2:3b', size: '2.0GB', desc: 'Meta 경량 범용', cat: '경량' },
+    { name: 'exaone3.5:7.8b', size: '4.8GB', desc: '한국어 특화 · 기본 권장', cat: '한국어' },
+    { name: 'exaone3.5:32b', size: '19GB', desc: '한국어 고품질(고사양)', cat: '한국어' },
+    // ── 범용 ──
+    { name: 'llama3.2:3b', size: '2.0GB', desc: 'Meta 경량 범용', cat: '범용' },
     { name: 'llama3.1:8b', size: '4.7GB', desc: 'Meta 범용 한국어·영어', cat: '범용' },
-    { name: 'qwen2.5:14b', size: '9.0GB', desc: 'Qwen 다국어 고품질', cat: '범용' },
+    { name: 'llama3.3:70b', size: '43GB', desc: 'Meta 최상위(고사양)', cat: '범용' },
+    { name: 'llama3.1:405b', size: '243GB', desc: 'Meta 초대형(서버급)', cat: '범용' },
     { name: 'qwen2.5:7b', size: '4.7GB', desc: 'Qwen 다국어', cat: '범용' },
-    { name: 'qwen2.5-coder:7b', size: '4.7GB', desc: '코딩 특화', cat: '코딩' },
-    { name: 'deepseek-r1:7b', size: '4.7GB', desc: '추론(reasoning) 특화', cat: '추론' },
-    { name: 'deepseek-coder-v2:16b', size: '8.9GB', desc: '코딩 고품질', cat: '코딩' },
-    { name: 'codellama:7b', size: '3.8GB', desc: 'Meta 코딩', cat: '코딩' },
+    { name: 'qwen2.5:14b', size: '9.0GB', desc: 'Qwen 다국어 고품질', cat: '범용' },
+    { name: 'qwen2.5:32b', size: '20GB', desc: 'Qwen 고사양', cat: '범용' },
+    { name: 'qwen2.5:72b', size: '47GB', desc: 'Qwen 최상위(고사양)', cat: '범용' },
     { name: 'gemma2:9b', size: '5.4GB', desc: 'Google 고품질 경량', cat: '범용' },
-    { name: 'gemma2:2b', size: '1.6GB', desc: 'Google 초경량', cat: '경량' },
-    { name: 'phi3.5:3.8b', size: '2.2GB', desc: 'Microsoft 경량', cat: '경량' },
+    { name: 'gemma2:27b', size: '16GB', desc: 'Google 고사양', cat: '범용' },
     { name: 'mistral:7b', size: '4.1GB', desc: 'Mistral 범용', cat: '범용' },
     { name: 'mistral-nemo:12b', size: '7.1GB', desc: 'Mistral 고품질', cat: '범용' },
-    { name: 'llava:7b', size: '4.7GB', desc: '비전(이미지 이해)', cat: '비전' },
-    { name: 'llama3.2-vision:11b', size: '7.9GB', desc: 'Meta 비전', cat: '비전' },
+    { name: 'mistral-large:123b', size: '73GB', desc: 'Mistral 최상위(서버급)', cat: '범용' },
+    { name: 'phi4:14b', size: '9.1GB', desc: 'Microsoft 고품질', cat: '범용' },
     { name: 'command-r:35b', size: '20GB', desc: 'Cohere RAG 특화', cat: '범용' },
-    { name: 'tinyllama:1.1b', size: '0.6GB', desc: '최소 사양 테스트용', cat: '경량' },
+    { name: 'command-r-plus:104b', size: '59GB', desc: 'Cohere RAG 최상위', cat: '범용' },
+    // ── 코딩 ──
+    { name: 'qwen2.5-coder:7b', size: '4.7GB', desc: '코딩 특화', cat: '코딩' },
+    { name: 'qwen2.5-coder:32b', size: '20GB', desc: '코딩 고사양', cat: '코딩' },
+    { name: 'deepseek-coder-v2:16b', size: '8.9GB', desc: '코딩 고품질', cat: '코딩' },
+    { name: 'deepseek-coder-v2:236b', size: '133GB', desc: '코딩 초대형(서버급)', cat: '코딩' },
+    { name: 'codellama:7b', size: '3.8GB', desc: 'Meta 코딩', cat: '코딩' },
+    { name: 'codellama:34b', size: '19GB', desc: 'Meta 코딩 고사양', cat: '코딩' },
+    // ── 추론(reasoning) ──
+    { name: 'deepseek-r1:7b', size: '4.7GB', desc: '추론 특화', cat: '추론' },
+    { name: 'deepseek-r1:14b', size: '9.0GB', desc: '추론 고품질', cat: '추론' },
+    { name: 'deepseek-r1:32b', size: '20GB', desc: '추론 고사양', cat: '추론' },
+    { name: 'deepseek-r1:70b', size: '43GB', desc: '추론 최상위(고사양)', cat: '추론' },
+    // ── 비전 ──
+    { name: 'llava:7b', size: '4.7GB', desc: '비전(이미지 이해)', cat: '비전' },
+    { name: 'llava:34b', size: '20GB', desc: '비전 고사양', cat: '비전' },
+    { name: 'llama3.2-vision:11b', size: '7.9GB', desc: 'Meta 비전', cat: '비전' },
+    { name: 'llama3.2-vision:90b', size: '55GB', desc: 'Meta 비전 최상위', cat: '비전' },
+    // ── 임베딩(검색·RAG) ──
     { name: 'nomic-embed-text', size: '0.3GB', desc: '임베딩(검색·RAG)', cat: '임베딩' },
     { name: 'mxbai-embed-large', size: '0.7GB', desc: '임베딩 고품질', cat: '임베딩' },
+    // ── 경량/테스트 ──
+    { name: 'gemma2:2b', size: '1.6GB', desc: 'Google 초경량', cat: '경량' },
+    { name: 'llama3.2:1b', size: '1.3GB', desc: 'Meta 초경량', cat: '경량' },
+    { name: 'tinyllama:1.1b', size: '0.6GB', desc: '최소 사양 테스트용', cat: '경량' },
   ],
   // Discord 연결 후보(봇 있는 길드 ∩ 내 길드) — central ProviderConnectOnboardingService.candidates
   // autoApprove 로 결과 분기(APPROVED 즉시 연결 / PENDING 승인 대기) — AutoApprovePolicy

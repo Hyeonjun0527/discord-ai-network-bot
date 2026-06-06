@@ -78,7 +78,10 @@ class ProviderAgent:
         self._image_ready = False
         self._sd_boot_task: asyncio.Task[None] | None = None  # 설치된 SD 자동기동 + 준비되면 재광고
         self._sem = asyncio.Semaphore(cfg.max_concurrency)
-        self._remaining = cfg.daily_limit  # 0 = 무제한
+        # 일일 한도는 **서버(guild)별로 독립** 적용한다. 한 에이전트가 여러 길드에 제공해도
+        # 길드마다 daily_limit 만큼 따로 카운트(전역 합산 공유 X). 0 = 무제한(dict 미사용).
+        # 키 = guild_id(None = 길드 미상 토큰 연결 폴백). lazy init: 첫 접근 시 daily_limit 으로 채움.
+        self._remaining_by_guild: dict[int | None, int] = {}
         self._models: list[str] = list(cfg.models)
         self._inflight = 0
         self._processed = 0  # 누적 처리 건수(로컬 요약)
@@ -93,15 +96,24 @@ class ProviderAgent:
         self._entries: list[dict] = []
         self._entries_lock = asyncio.Lock()
 
+    # ── 일일 한도(서버별) ───────────────────────────────────────────────
+    def _remaining_for(self, guild_id: int | None) -> int:
+        """이 길드의 남은 일일 한도. 무제한이면 0(센티넬). 첫 접근 시 daily_limit 으로 init."""
+        if self._cfg.daily_limit <= 0:
+            return 0  # 무제한(hello 의 remaining=0 은 '한도 없음'을 뜻함)
+        if guild_id not in self._remaining_by_guild:
+            self._remaining_by_guild[guild_id] = self._cfg.daily_limit
+        return self._remaining_by_guild[guild_id]
+
     # ── 핸드셰이크 ──────────────────────────────────────────────────────
-    def _build_hello(self) -> ProviderHelloFrame:
+    def _build_hello(self, guild_id: int | None = None) -> ProviderHelloFrame:
         capabilities = ["text"]
         if self._image_ready:
             capabilities.append("image")
         return ProviderHelloFrame(
             models=self._models,
             max_concurrency=self._cfg.max_concurrency,
-            remaining_daily_requests=(self._remaining if self._cfg.daily_limit > 0 else 0),
+            remaining_daily_requests=self._remaining_for(guild_id),
             capabilities=capabilities,
         )
 
@@ -133,7 +145,9 @@ class ProviderAgent:
             return
         # 일일 한도·동시성은 **에이전트 내부에서 강제**한다. 서버가 더 많은 요청을 보내도
         # 이 게이트(self._cfg.daily_limit / self._sem)를 우회할 수 없다(프로바이더 주권).
-        if self._cfg.daily_limit > 0 and self._remaining <= 0:
+        # 한도는 **이 연결의 guild 별로 독립** — 다른 서버의 소진이 이 서버에 영향 주지 않는다.
+        guild_id = conn.guild_id
+        if self._cfg.daily_limit > 0 and self._remaining_for(guild_id) <= 0:
             await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message="일일 한도 초과"))
             return
         # 자원 보호: CPU 고부하·배터리 방전 중에는 자동 pause(BUSY 로 반려, 한도 소모 안 함).
@@ -148,7 +162,7 @@ class ProviderAgent:
                 return
             self._inflight += 1
             if self._cfg.daily_limit > 0:
-                self._remaining -= 1
+                self._remaining_by_guild[guild_id] = self._remaining_for(guild_id) - 1
             # 서버가 모델을 지정하지 않으면 내가 제공하는 첫 모델로 처리한다.
             model = req.model or (self._models[0] if self._models else None)
             try:
@@ -225,9 +239,8 @@ class ProviderAgent:
                         busy=self._inflight > 0,
                     ),
                 )
-                # 로컬 상태 콘솔(차수 10): 처리/대기/잔여 요약
-                remaining = "무제한" if self._cfg.daily_limit == 0 else str(self._remaining)
-                logger.info("상태: 처리 %d · 진행중 %d · 일일잔여 %s", self._processed, self._inflight, remaining)
+                # 로컬 상태 콘솔(차수 10): 처리/대기/잔여 요약(서버별 한도라 잔여는 길드별로 표시)
+                logger.info("상태: 처리 %d · 진행중 %d · 일일잔여 %s", self._processed, self._inflight, self._remaining_summary())
         except asyncio.CancelledError:
             return
 
@@ -389,12 +402,19 @@ class ProviderAgent:
     def models(self) -> list[str]:
         return list(self._models)
 
+    def _remaining_summary(self) -> str:
+        """서버별 일일 잔여 요약. 무제한이면 '무제한', 아니면 길드별 잔여(아직 없으면 한도값)."""
+        if self._cfg.daily_limit <= 0:
+            return "무제한"
+        if not self._remaining_by_guild:
+            return f"{self._cfg.daily_limit}/서버"
+        return " ".join(f"{g}:{n}" for g, n in self._remaining_by_guild.items())
+
     def status_line(self) -> str:
         """트레이/콘솔용 한 줄 상태 요약."""
         conn = "연결됨" if self.is_connected() else "연결 끊김"
         img = " · 이미지" if self._image_ready else ""
-        remaining = "무제한" if self._cfg.daily_limit == 0 else str(self._remaining)
-        return f"{conn} · 처리 {self._processed} · 잔여 {remaining}{img}"
+        return f"{conn} · 처리 {self._processed} · 잔여 {self._remaining_summary()}{img}"
 
     def _start_tray(self) -> None:
         """데스크톱이면 트레이 아이콘을 띄운다(라이브 상태 + 중지). 헤드리스/미설치는 no-op."""

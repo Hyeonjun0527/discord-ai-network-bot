@@ -27,9 +27,10 @@ def _no_auto_pause(monkeypatch):
 
 
 class FakeConn:
-    def __init__(self) -> None:
+    def __init__(self, guild_id: int | None = None) -> None:
         self.sent: list[Frame] = []
         self.authed = True
+        self.guild_id = guild_id  # 서버별 일일 한도의 키(연결이 속한 길드)
 
     async def send(self, frame: Frame) -> None:
         self.sent.append(frame)
@@ -112,6 +113,34 @@ async def test_daily_limit():
     await agent.handle_infer(conn, InferRequest(request_id="r2", prompt="b"))  # type: ignore[arg-type]
     assert isinstance(conn.sent[0], InferResult)
     assert isinstance(conn.sent[1], InferError) and conn.sent[1].code == ErrorCode.BUSY
+
+
+@pytest.mark.asyncio
+async def test_daily_limit_per_guild():
+    # 서버별 독립 한도: 한 서버의 소진이 다른 서버에 영향 주지 않는다(전역 합산 X).
+    agent = ProviderAgent(AgentConfig(token="T", daily_limit=1), ollama=FakeOllama())  # type: ignore[arg-type]
+    a = FakeConn(guild_id=100)
+    b = FakeConn(guild_id=200)
+    await agent.handle_infer(a, InferRequest(request_id="a1", prompt="x"))  # type: ignore[arg-type] A: 성공
+    await agent.handle_infer(a, InferRequest(request_id="a2", prompt="x"))  # type: ignore[arg-type] A: 한도초과
+    await agent.handle_infer(b, InferRequest(request_id="b1", prompt="x"))  # type: ignore[arg-type] B: 독립 성공
+    assert isinstance(a.sent[0], InferResult)
+    assert isinstance(a.sent[1], InferError) and a.sent[1].code == ErrorCode.BUSY
+    assert isinstance(b.sent[0], InferResult)  # B 는 A 소진과 무관하게 성공
+
+
+def test_build_hello_per_guild():
+    # hello 의 remaining_daily_requests 가 길드별로 다르게 보고된다.
+    agent = ProviderAgent(AgentConfig(token="T", daily_limit=5, models=("m",)))
+    agent._remaining_by_guild[100] = 3  # 길드 100 은 2건 처리해 잔여 3
+    assert agent._build_hello(100).remaining_daily_requests == 3
+    assert agent._build_hello(200).remaining_daily_requests == 5  # 200 은 첫 접근 → 한도값
+
+
+def test_build_hello_unlimited_reports_zero():
+    # 무제한(daily_limit=0)이면 hello remaining=0(=한도 없음 센티넬).
+    agent = ProviderAgent(AgentConfig(token="T", daily_limit=0, models=("m",)))
+    assert agent._build_hello(100).remaining_daily_requests == 0
 
 
 @pytest.mark.asyncio

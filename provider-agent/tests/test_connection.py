@@ -72,7 +72,7 @@ async def test_auth_and_hello():
     relay = FakeRelay("ok")
     server, url = await _start(relay)
     cfg = AgentConfig(token="T", relay_url=url, heartbeat_seconds=5)
-    conn = AgentConnection(cfg, _noop, lambda: p.ProviderHelloFrame(models=["m"], max_concurrency=2))
+    conn = AgentConnection(cfg, _noop, lambda _g=None: p.ProviderHelloFrame(models=["m"], max_concurrency=2))
     task = asyncio.create_task(conn.run())
     try:
         await asyncio.wait_for(relay.got_hello.wait(), 3)
@@ -95,7 +95,7 @@ async def test_infer_delivered_to_handler():
         await got.put(frame)
 
     cfg = AgentConfig(token="T", relay_url=url, heartbeat_seconds=5)
-    conn = AgentConnection(cfg, handler, lambda: p.ProviderHelloFrame(models=["m"]))
+    conn = AgentConnection(cfg, handler, lambda _g=None: p.ProviderHelloFrame(models=["m"]))
     task = asyncio.create_task(conn.run())
     try:
         frame = await asyncio.wait_for(got.get(), 3)
@@ -111,7 +111,7 @@ async def test_ping_pong():
     relay = FakeRelay("ping")
     server, url = await _start(relay)
     cfg = AgentConfig(token="T", relay_url=url, heartbeat_seconds=5)
-    conn = AgentConnection(cfg, _noop, lambda: p.ProviderHelloFrame())
+    conn = AgentConnection(cfg, _noop, lambda _g=None: p.ProviderHelloFrame())
     task = asyncio.create_task(conn.run())
     try:
         await asyncio.wait_for(relay.got_pong.wait(), 3)
@@ -126,7 +126,7 @@ async def test_auth_fail_stops_no_retry():
     relay = FakeRelay("authfail")
     server, url = await _start(relay)
     cfg = AgentConfig(token="BAD", relay_url=url)
-    conn = AgentConnection(cfg, _noop, lambda: p.ProviderHelloFrame())
+    conn = AgentConnection(cfg, _noop, lambda _g=None: p.ProviderHelloFrame())
     try:
         # run() 은 인증 실패 시 무한 재시도하지 않고 반환해야 한다.
         await asyncio.wait_for(conn.run(), 3)
@@ -141,7 +141,7 @@ async def test_reconnect_after_drop():
     relay = FakeRelay("dropafterhello")
     server, url = await _start(relay)
     cfg = AgentConfig(token="T", relay_url=url, heartbeat_seconds=5, reconnect_max_seconds=0.3)
-    conn = AgentConnection(cfg, _noop, lambda: p.ProviderHelloFrame())
+    conn = AgentConnection(cfg, _noop, lambda _g=None: p.ProviderHelloFrame())
     task = asyncio.create_task(conn.run())
     try:
         for _ in range(40):
@@ -164,7 +164,7 @@ async def test_durable_token_persisted_and_reused(monkeypatch, tmp_path):
     relay = FakeRelay("ok", durable_token="dv1.DURABLE.TOKEN")
     server, url = await _start(relay)
     cfg = AgentConfig(token="ONETIME", relay_url=url, heartbeat_seconds=5)
-    conn = AgentConnection(cfg, _noop, lambda: p.ProviderHelloFrame(models=["m"]))
+    conn = AgentConnection(cfg, _noop, lambda _g=None: p.ProviderHelloFrame(models=["m"]))
     task = asyncio.create_task(conn.run())
     try:
         await asyncio.wait_for(relay.got_hello.wait(), 3)

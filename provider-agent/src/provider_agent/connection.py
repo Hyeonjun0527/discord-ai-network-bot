@@ -42,7 +42,8 @@ class AuthFailedError(Exception):
 
 # (connection, frame) -> None. 서버가 보낸 infer/cancel 등을 에이전트(차수 3)가 처리.
 ServerFrameHandler = Callable[["AgentConnection", Frame], Awaitable[None]]
-HelloProvider = Callable[[], ProviderHelloFrame]
+# 이 연결이 속한 guild 의 hello 를 만든다(서버별 일일 한도 보고 — guild_id 로 분기).
+HelloProvider = Callable[[int | None], ProviderHelloFrame]
 
 
 class AgentConnection:
@@ -67,10 +68,17 @@ class AgentConnection:
         self._stopped = False
         self._last_recv = 0.0
         self._authed = asyncio.Event()
+        # 이 연결이 속한 guild — auth_ok 에서 확정. 서버별 일일 한도/차감의 키.
+        self._guild_id: int | None = None
 
     @property
     def authed(self) -> bool:
         return self._authed.is_set()
+
+    @property
+    def guild_id(self) -> int | None:
+        """이 연결이 제공 중인 Discord 길드 id(auth_ok 로 확정). 미인증이면 None."""
+        return self._guild_id
 
     async def send(self, frame: Frame) -> None:
         ws = self._ws
@@ -146,6 +154,8 @@ class AgentConnection:
     async def _dispatch(self, frame: Frame) -> None:
         if isinstance(frame, AuthOkFrame):
             self._authed.set()
+            # 이 연결의 guild 확정 — 서버별 일일 한도/차감의 키(hello 도 이 guild 로 보고).
+            self._guild_id = frame.guild_id
             # 서버가 길드 정보를 내려주면 엔트리(서버명) 갱신 — 토큰-연결의 수동 라벨링 불필요.
             if self._on_guild_info is not None and (frame.guild_id is not None or frame.guild_name):
                 self._on_guild_info(frame.guild_id, frame.guild_name)
@@ -160,7 +170,7 @@ class AgentConnection:
                     persist_token(frame.provider_token)
                 logger.info("재사용 가능한 프로바이더 토큰 저장됨 — 다음부터 자동 재연결")
             logger.info("인증 성공(session=%s) — provider_hello 전송", frame.session_id)
-            await self.send(self._hello_provider())
+            await self.send(self._hello_provider(self._guild_id))
         elif isinstance(frame, AuthErrFrame):
             raise AuthFailedError(frame.message or frame.code)
         elif isinstance(frame, PingFrame):

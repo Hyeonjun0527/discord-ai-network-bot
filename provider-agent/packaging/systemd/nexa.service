@@ -5,7 +5,7 @@
 #   systemctl --user edit nexa  # 환경변수 설정
 #   systemctl --user enable --now nexa
 [Unit]
-Description=NEXA Provider Agent
+Description=Nexa Provider Agent
 After=network-online.target
 Wants=network-online.target
 

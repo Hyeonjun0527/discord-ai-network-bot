@@ -1,6 +1,6 @@
-# NEXA Discord 봇 권한 명세
+# Nexa Discord 봇 권한 명세
 
-이 문서는 NEXA를 Discord 서버에 초대하거나 운영할 때 필요한 **서버 권한**, **OAuth2 scope**, **Privileged Gateway Intent** 를 명확히 정의한다.
+이 문서는 Nexa를 Discord 서버에 초대하거나 운영할 때 필요한 **서버 권한**, **OAuth2 scope**, **Privileged Gateway Intent** 를 명확히 정의한다.
 
 핵심 원칙:
 
@@ -50,7 +50,7 @@ View Channel + Send Messages + Embed Links + Read Message History + Use Applicat
 
 ### 2.2 권장 권한
 
-NEXA의 현재 제품 UX를 제대로 쓰기 위한 권장 권한이다.
+Nexa의 현재 제품 UX를 제대로 쓰기 위한 권장 권한이다.
 
 | Discord 권한 | 필수 여부 | 필요한 기능 |
 |---|---:|---|
@@ -110,7 +110,7 @@ Discord Developer Portal → Application → Bot → Privileged Gateway Intents 
 
 ## 4. Developer Portal 설정 순서
 
-1. Discord Developer Portal → Applications → NEXA 앱 선택.
+1. Discord Developer Portal → Applications → Nexa 앱 선택.
 2. Installation 또는 OAuth2 URL Generator 에서 scope 선택:
    - `bot`
    - `applications.commands`

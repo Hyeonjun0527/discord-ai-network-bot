@@ -27,6 +27,8 @@ def _reset(monkeypatch, tmp_path):
         lock["held"] = False
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    # 개발 머신에 실제 Nexa 앱/서비스가 떠 있어도 테스트는 별도 락 포트를 써 자동연결 검증이 흔들리지 않게 한다.
+    monkeypatch.setenv("NEXA_LOCK_PORT", "48669")
     monkeypatch.delenv("AGENT_CONNECT_ENABLED", raising=False)
     monkeypatch.setattr(singleton, "acquire", fake_acquire)
     monkeypatch.setattr(singleton, "release", fake_release)
@@ -579,7 +581,7 @@ def test_set_macos_app_identity_is_safe_everywhere():
     from provider_agent.webui import _set_macos_app_identity
 
     # 비-macOS 는 no-op, macOS 면 dock 이름/아이콘 설정 — 어느 쪽이든 예외 없이 끝나야 한다.
-    _set_macos_app_identity("NEXA")
+    _set_macos_app_identity("Nexa")
 
 
 @pytest.mark.asyncio

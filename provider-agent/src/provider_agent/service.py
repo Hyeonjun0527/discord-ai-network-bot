@@ -103,7 +103,7 @@ def launchd_plist(exe: str, label: str = SERVICE_LABEL) -> str:
 def systemd_unit(exe: str) -> str:
     return (
         "[Unit]\n"
-        "Description=NEXA Provider Agent\n"
+        "Description=Nexa Provider Agent\n"
         "After=network-online.target\n"
         "Wants=network-online.target\n\n"
         "[Service]\n"

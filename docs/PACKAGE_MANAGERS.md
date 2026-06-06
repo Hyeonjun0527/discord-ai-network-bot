@@ -40,12 +40,23 @@ brew install yeon-intergation-platform/tap/nexa-agent
 
 winget 은 매니페스트의 `InstallerSha256` 으로 자동 검증한다.
 
-**1) 한 번만: microsoft/winget-pkgs 에 제출**
+**1) 최초 1회: microsoft/winget-pkgs 에 “New package” 제출**
 - 릴리스 자산의 렌더된 `provider-agent/packaging/winget/*.yaml`(version/installer/locale)을
   `microsoft/winget-pkgs` 에 PR 제출(`wingetcreate submit` 또는 수동 PR).
 - 통과되면 `winget install --id Nexa.Nexa` 로 전 세계 배포.
 
-**2) 사용자 설치**
+**2) 이후 모든 버전: “Update Nexa.Nexa to version X.Y.Z” PR 필요**
+- winget 은 버전별 디렉터리(`manifests/n/Nexa/Nexa/<version>/`)에 `InstallerUrl` 과
+  `InstallerSha256` 을 고정 저장한다. 따라서 `agent-v*` 릴리스가 새로 나올 때마다
+  새 버전 매니페스트 PR 이 필요하다.
+- `agent-build.yml` 은 `WINGET_GH_TOKEN` 시크릿이 있으면 릴리스마다 자동으로
+  `Hyeonjun0527/winget-pkgs` fork 에 브랜치를 만들고 `microsoft/winget-pkgs` PR 을 생성/갱신한다.
+  시크릿이 없으면 릴리스 자산의 `dist/pkg/winget/*.yaml` 을 내려받아 수동 PR 해야 한다.
+- **주의:** winget 로컬라이즈 문구의 원본은 `provider-agent/packaging/winget/*.yaml` 템플릿이다.
+  여기서 `DefaultLocale: ko-KR`, `Nexa` 표기, `ko-KR/en-US/ja-JP` 설명을 유지해야 다음 릴리스
+  자동 PR 에도 같은 문구가 반영된다.
+
+**사용자 설치**
 ```powershell
 winget install --id Nexa.Nexa -e --accept-source-agreements   # 해시 자동 검증, 관리자 불필요
 ```
@@ -67,9 +78,12 @@ scoop install nexa   # 해시 자동 검증
 
 ## 요약: "사용자가 해시검증 안 하게" 하려면 (전부 $0)
 1. **패키지 매니저 등록**(위) — 가장 직접적. 매니저가 sha256 자동 검증.
-   - macOS: Homebrew tap. **brew 로 받은 파일은 격리 속성이 안 붙어 Gatekeeper 가 안 막는다**
+   - macOS: Homebrew tap. `publish-pkg-managers` 가 cask(`nexa`)와 formula(`nexa-agent`)를
+     릴리스마다 자동 커밋한다(`PKG_APP_ID`/`PKG_APP_PRIVATE_KEY` 필요).
+     **brew 로 받은 파일은 격리 속성이 안 붙어 Gatekeeper 가 안 막는다**
      → Apple Developer($99) 없이도 경고 없이 실행.
-   - Windows: Scoop bucket(가장 빠름) 또는 winget. 둘 다 해시 자동 검증.
+   - Windows: Scoop bucket(자동 커밋, 가장 빠름) 또는 winget(버전마다 PR 필요, `WINGET_GH_TOKEN`
+     이 있으면 자동 PR). 둘 다 해시 자동 검증.
 2. **무료 코드서명**([RELEASE_SIGNING.md](RELEASE_SIGNING.md)) — Windows 는 **SignPath 무료 OSS**.
 3. 결과적으로 사용자는 `brew install` / `scoop install` / `winget install` 한 줄이면 끝이고,
    유료 인증서는 **선택**이다.

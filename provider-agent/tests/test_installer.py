@@ -31,10 +31,10 @@ def test_install_app_other_os_returns_error(monkeypatch):
 
 
 def test_macos_install_copies_bundle_to_applications(monkeypatch, tmp_path):
-    bundle = tmp_path / "NEXA.app"
+    bundle = tmp_path / "Nexa.app"
     (bundle / "Contents" / "MacOS").mkdir(parents=True)
-    (bundle / "Contents" / "MacOS" / "NEXA").write_text("bin")
-    target = tmp_path / "Applications" / "NEXA.app"
+    (bundle / "Contents" / "MacOS" / "Nexa").write_text("bin")
+    target = tmp_path / "Applications" / "Nexa.app"
     target.parent.mkdir()
 
     monkeypatch.setattr(installer.sys, "platform", "darwin")
@@ -47,13 +47,13 @@ def test_macos_install_copies_bundle_to_applications(monkeypatch, tmp_path):
 
     r = installer.install_app()
     assert r["ok"] is True
-    assert (target / "Contents" / "MacOS" / "NEXA").read_text() == "bin"
+    assert (target / "Contents" / "MacOS" / "Nexa").read_text() == "bin"
     # quarantine 제거(xattr)가 호출됐는지(부수효과 best-effort)
     assert any("xattr" in str(c) for c in calls)
 
 
 def test_macos_install_noop_when_already_in_applications(monkeypatch, tmp_path):
-    bundle = tmp_path / "Applications" / "NEXA.app"
+    bundle = tmp_path / "Applications" / "Nexa.app"
     bundle.mkdir(parents=True)
     monkeypatch.setattr(installer.sys, "platform", "darwin")
     monkeypatch.setattr(installer, "_macos_bundle_path", lambda: bundle)
@@ -64,7 +64,7 @@ def test_macos_install_noop_when_already_in_applications(monkeypatch, tmp_path):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX 경로 가정")
 def test_windows_install_copies_and_makes_shortcut(monkeypatch, tmp_path):
-    exe = tmp_path / "NEXA.exe"
+    exe = tmp_path / "Nexa.exe"
     exe.write_text("exe")
     programs = tmp_path / "Programs"
     startmenu = tmp_path / "StartMenu"
@@ -78,7 +78,7 @@ def test_windows_install_copies_and_makes_shortcut(monkeypatch, tmp_path):
 
     def fake_run(cmd, **kw):
         ran["cmd"] = cmd
-        Path(startmenu / "NEXA.lnk").write_text("lnk")  # PowerShell 이 만들 .lnk 흉내
+        Path(startmenu / "Nexa.lnk").write_text("lnk")  # PowerShell 이 만들 .lnk 흉내
 
         class R:
             returncode = 0
@@ -88,9 +88,9 @@ def test_windows_install_copies_and_makes_shortcut(monkeypatch, tmp_path):
     monkeypatch.setattr(installer.subprocess, "run", fake_run)
     r = installer.install_app()
     assert r["ok"] is True
-    assert (programs / "NEXA.exe").read_text() == "exe"  # 사용자 폴더로 복사
+    assert (programs / "Nexa.exe").read_text() == "exe"  # 사용자 폴더로 복사
     assert "powershell" in ran["cmd"][0]  # 바로가기 생성에 PowerShell 사용
-    assert (startmenu / "NEXA.lnk").exists()
+    assert (startmenu / "Nexa.lnk").exists()
 
 
 def test_ps_quote_escapes_single_quotes():

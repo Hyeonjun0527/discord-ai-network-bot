@@ -194,7 +194,7 @@
 > 성공·폴백·명확한 안내·운영 알림 중 하나로 처리하는 비율을 90%까지 끌어올린다.
 >
 > SSOT TODO: [Discord UX 에러 처리율 90% 목표 TODO](UX_ERROR_HANDLING_90.md)
-> 권한 명세: [NEXA Discord 봇 권한 명세](BOT_PERMISSIONS.md)
+> 권한 명세: [Nexa Discord 봇 권한 명세](BOT_PERMISSIONS.md)
 
 - [ ] UX90-01. `MESSAGE_CONTENT` intent 미허용 시 JDA gateway `4014 DISALLOWED_INTENTS` 를 운영자가 즉시 이해할 수 있게 로그/문서/설정 UX를 연결한다.
 - [ ] UX90-02. `@니아 질문` 기능을 쓰려면 Developer Portal 의 **Message Content Intent** 가 필요하다는 안내를 관리자 UX에 노출한다.
@@ -316,9 +316,9 @@
 
 > 설계 선행 문서: [AI Network 90%급 단계형 마스터 플랜](./plans/ai-network/05_PHASED_MASTER_PLAN.md), [AI Network 도메인 모델 설계 초안](./plans/ai-network/00_DOMAIN_MODEL_DESIGN.md)
 >
-> 제품 슬로건: **NEXA는 함께 만드는 AI 네트워크입니다.**
+> 제품 슬로건: **Nexa는 함께 만드는 AI 네트워크입니다.**
 >
-> 외부 설명: NEXA는 여러 사용자의 로컬 AI들을 안전하게 연결해,
+> 외부 설명: Nexa는 여러 사용자의 로컬 AI들을 안전하게 연결해,
 > 디스코드에서 바로 질문하고 답변받을 수 있게 도와주는 함께 만드는 AI 네트워크다.
 >
 > 포지셔닝: “즉시 사용할 수 있는 AI”와 “유저들이 함께 구축해나가는 AI”를 동시에 제공한다.
@@ -381,7 +381,7 @@
 
 ### 완료 기준(Definition of Done)
 
-- [ ] 사용자는 NEXA를 “함께 만드는 AI 네트워크”로 이해한다.
+- [ ] 사용자는 Nexa를 “함께 만드는 AI 네트워크”로 이해한다.
 - [ ] 신규 사용자는 설정 없이 즉시 질문할 수 있다.
 - [ ] 참여자는 내 로컬 AI 가 네트워크에 어떻게 기여하는지 이해하고 통제할 수 있다.
 - [ ] 서버 관리자는 DB 에 저장되는 AI 프로필/말투/정책을 채널별로 커스터마이징할 수 있다.

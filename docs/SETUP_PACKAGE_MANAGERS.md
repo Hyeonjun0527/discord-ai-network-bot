@@ -1,4 +1,4 @@
-# 패키지 매니저 셋업 가이드 (Homebrew tap · Scoop bucket) — $0
+# 패키지 매니저 셋업 가이드 (Homebrew tap · Scoop bucket · winget PR) — $0
 
 > ✅ **이미 구성됨**: tap/bucket 레포는 org `yeon-intergation-platform` 아래에 있고
 > (`yeon-intergation-platform/homebrew-tap`, `.../scoop-bucket`), `agent-v0.1.2` 로 채워졌다.
@@ -7,7 +7,8 @@
 > 남은 수동 단계는 **PAT 등록(3단계)** 하나뿐. 아래는 처음부터 다시 구성할 때의 참고 절차다.
 
 이 문서는 **메인테이너가 한 번만** 수행하는 셋업이다. 끝나면 사용자는 `brew install` /
-`scoop install` 한 줄로 설치하고, 무결성(sha256)은 매니저가 자동 검증한다(수동 해시검증 불필요).
+`scoop install` / `winget install` 한 줄로 설치하고, 무결성(sha256)은 매니저가 자동 검증한다
+(수동 해시검증 불필요).
 
 전제: 저장소가 **PUBLIC**(OSS)여야 한다(릴리스 자산 URL 공개 접근). 모든 명령은 `gh`(로그인 됨)와
 `git` 로 동작한다.
@@ -45,7 +46,7 @@ tap 저장소 이름은 **반드시 `homebrew-<탭이름>`** 형식이어야 한
 
 ```bash
 # 1) tap 저장소 생성(공개)
-gh repo create yeon-intergation-platform/homebrew-tap --public -d "Homebrew tap — NEXA"
+gh repo create yeon-intergation-platform/homebrew-tap --public -d "Homebrew tap — Nexa"
 
 # 2) 릴리스에서 렌더된 formula 내려받기
 gh release download agent-v0.1.1 -R Hyeonjun0527/discord-ai-network-bot \
@@ -74,7 +75,7 @@ brew install nexa-agent      # brew 가 sha256 자동 검증, 관리자 불필�
 
 ```bash
 # 1) bucket 저장소 생성(공개)
-gh repo create yeon-intergation-platform/scoop-bucket --public -d "Scoop bucket — NEXA"
+gh repo create yeon-intergation-platform/scoop-bucket --public -d "Scoop bucket — Nexa"
 
 # 2) 릴리스에서 렌더된 manifest 내려받기
 gh release download agent-v0.1.1 -R Hyeonjun0527/discord-ai-network-bot \
@@ -98,7 +99,7 @@ scoop install nexa     # scoop 이 hash 자동 검증, 관리자 불필요
 
 ---
 
-## 3단계: 이후 릴리스 자동 갱신 — GitHub App (만료 없음)
+## 3단계: Homebrew/Scoop 이후 릴리스 자동 갱신 — GitHub App (만료 없음)
 
 org `yeon-intergation-platform` 은 장수명 PAT·deploy key 를 정책으로 막는다. 그래서 만료 없는
 **GitHub App** 으로 tap/bucket push 권한을 준다(`publish-pkg-managers` 잡이 런타임에 설치 토큰 발급).
@@ -123,12 +124,50 @@ org `yeon-intergation-platform` 은 장수명 PAT·deploy key 를 정책으로 �
    ```
 
 이후 main 에 provider-agent 코드를 push 하면 `agent-autorelease` 가 버전을 올려 태그를 끊고,
-`agent-build` 가 릴리스 + tap/bucket 갱신까지 **완전 무인**으로 수행한다. App 시크릿이 없으면
-`publish-pkg-managers` 잡은 조용히 스킵된다(수동 갱신은 1·2단계 반복).
+`agent-build` 가 릴리스 + tap/bucket 갱신까지 **완전 무인**으로 수행한다.
+
+- Homebrew 는 `publish-pkg-managers` 잡이 릴리스마다 `nexa.rb` cask(데스크톱 앱)와
+  `nexa-agent.rb` formula(CLI/헤드리스)를 둘 다 tap 에 커밋한다.
+- Scoop 은 같은 잡이 `nexa.json` 을 bucket 에 커밋한다.
+- App 시크릿이 없으면 `publish-pkg-managers` 잡은 조용히 스킵된다(수동 갱신은 1·2단계 반복).
 
 ---
 
-## 4단계: 동작 확인
+## 4단계: winget 이후 릴리스 자동 PR — GitHub PAT
+
+winget 은 Homebrew/Scoop 과 달리 Microsoft 커뮤니티 저장소(`microsoft/winget-pkgs`)가
+버전별 매니페스트를 소유한다. 그래서:
+
+1. 패키지가 아직 등록되기 전에는 **“New package: Nexa.Nexa version X.Y.Z”** PR 이 필요하다.
+2. 한 번 등록된 뒤에는 새 릴리스마다 **“Update Nexa.Nexa to version X.Y.Z”** PR 이 필요하다.
+3. `agent-build.yml` 의 `publish-winget-pr` 잡이 `WINGET_GH_TOKEN` 시크릿이 있을 때 이 PR 을 자동 생성/갱신한다.
+
+**한 번만:**
+1. `Hyeonjun0527/winget-pkgs` fork 가 있어야 한다.
+2. GitHub fine-grained PAT 또는 classic PAT 를 만든다.
+   - fork `Hyeonjun0527/winget-pkgs` 에 브랜치 push 가능
+   - `microsoft/winget-pkgs` 에 PR 생성 가능
+3. 메인 레포 시크릿에 등록:
+   ```bash
+   gh secret set WINGET_GH_TOKEN -R Hyeonjun0527/discord-ai-network-bot --body "<TOKEN>"
+   ```
+
+릴리스 때 자동화가 하는 일:
+
+```text
+agent-vX.Y.Z
+→ dist/pkg/winget/*.yaml 렌더(version/url/sha256 포함)
+→ Hyeonjun0527/winget-pkgs:nexa-nexa-X.Y.Z 브랜치 push
+→ microsoft/winget-pkgs PR 생성 또는 기존 PR 갱신
+```
+
+**주의:** winget 매니페스트 문구의 원본은 릴리스 자산이 아니라
+`provider-agent/packaging/winget/*.yaml` 템플릿이다. `DefaultLocale: ko-KR`, `Nexa` 표기,
+`ko-KR/en-US/ja-JP` 설명을 여기서 유지해야 다음 버전 PR 에도 그대로 반영된다.
+
+---
+
+## 5단계: 동작 확인
 
 - macOS: `brew update && brew install yeon-intergation-platform/tap/nexa-agent && nexa --version`
 - Windows: `scoop install nexa; nexa --version`

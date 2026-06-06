@@ -90,14 +90,14 @@ jobs:
             echo "::warning::APPLE_ID/TEAM_ID/APP_PASSWORD 미설정 — 서명만 하고 notarization 생략"
           fi
           # GUI .app 번들(인앱 업데이트 배포물)도 동일하게 서명 + 공증 + staple.
-          if [ -d "dist/NEXA.app" ]; then
-            codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "dist/NEXA.app"
-            codesign --verify --strict --verbose=2 "dist/NEXA.app"
+          if [ -d "dist/Nexa.app" ]; then
+            codesign --deep --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" "dist/Nexa.app"
+            codesign --verify --strict --verbose=2 "dist/Nexa.app"
             if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then
-              ditto -c -k --keepParent "dist/NEXA.app" dist/notarize-app.zip
+              ditto -c -k --keepParent "dist/Nexa.app" dist/notarize-app.zip
               xcrun notarytool submit dist/notarize-app.zip \
                 --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
-              xcrun stapler staple "dist/NEXA.app"   # 오프라인 검증용 티켓 부착
+              xcrun stapler staple "dist/Nexa.app"   # 오프라인 검증용 티켓 부착
               rm -f dist/notarize-app.zip
             fi
           fi
@@ -112,10 +112,10 @@ jobs:
           [IO.File]::WriteAllBytes("cert.pfx", [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
           & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\nexa-agent-cli.exe
           & signtool verify /pa dist\nexa-agent-cli.exe
-          # GUI exe(NEXA.exe)도 동일하게 서명(SmartScreen 평판).
-          if (Test-Path dist\NEXA.exe) {
-            & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\NEXA.exe
-            & signtool verify /pa dist\NEXA.exe
+          # GUI exe(Nexa.exe)도 동일하게 서명(SmartScreen 평판).
+          if (Test-Path dist\Nexa.exe) {
+            & signtool sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 dist\Nexa.exe
+            & signtool verify /pa dist\Nexa.exe
           }
       # Windows 코드서명 — SSL.com eSigner(클라우드, 토큰리스). 한국 개인은 Azure Trusted Signing 불가 →
       # SSL.com IV + eSigner 사용. Variables 에 WINDOWS_SIGN_PROVIDER=esigner 일 때만 동작(평소 비활성).
@@ -134,7 +134,7 @@ jobs:
           malware_block: 'false'
           environment_name: PROD
       - name: Windows eSigner sign (GUI exe)
-        if: runner.os == 'Windows' && vars.WINDOWS_SIGN_PROVIDER == 'esigner' && hashFiles('provider-agent/dist/NEXA.exe') != ''
+        if: runner.os == 'Windows' && vars.WINDOWS_SIGN_PROVIDER == 'esigner' && hashFiles('provider-agent/dist/Nexa.exe') != ''
         uses: sslcom/esigner-codesign@develop
         with:
           command: sign
@@ -142,7 +142,7 @@ jobs:
           password: ${{ secrets.ES_PASSWORD }}
           credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
           totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          file_path: ${{ github.workspace }}\provider-agent\dist\NEXA.exe
+          file_path: ${{ github.workspace }}\provider-agent\dist\Nexa.exe
           override: 'true'
           malware_block: 'false'
           environment_name: PROD
@@ -164,10 +164,10 @@ jobs:
           # macOS GUI .app → ① 인앱 업데이터/brew 가 받는 zip(내부 피드, 사용자 비노출).
           #                  ② 사용자 웹 다운로드용 dmg(드래그 설치) — Applications 심볼릭 링크 포함.
           # (서명/staple 끝난 .app 으로 만든다.)
-          if [ "$RUNNER_OS" = "macOS" ] && [ -d "NEXA.app" ]; then
-            ditto -c -k --keepParent "NEXA.app" "nexa-macos.zip"
-            rm -rf dmgroot && mkdir dmgroot && cp -R "NEXA.app" dmgroot/ && ln -s /Applications dmgroot/Applications
-            hdiutil create -volname "NEXA" -srcfolder dmgroot -ov -format UDZO "nexa-macos.dmg"
+          if [ "$RUNNER_OS" = "macOS" ] && [ -d "Nexa.app" ]; then
+            ditto -c -k --keepParent "Nexa.app" "nexa-macos.zip"
+            rm -rf dmgroot && mkdir dmgroot && cp -R "Nexa.app" dmgroot/ && ln -s /Applications dmgroot/Applications
+            hdiutil create -volname "Nexa" -srcfolder dmgroot -ov -format UDZO "nexa-macos.dmg"
             rm -rf dmgroot
             # 완전 무경고(Gatekeeper) 드래그 설치를 위해 dmg 컨테이너 자체도 notarize + staple.
             # 서명/Apple 시크릿이 모두 있을 때만 — 없으면 미공증 dmg(체크섬/attestation 으로 검증).
@@ -180,8 +180,8 @@ jobs:
             fi
           fi
           # Windows GUI exe(네이티브 창) → 인앱 업데이트가 받는 배포 자산.
-          if [ "$RUNNER_OS" = "Windows" ] && [ -f "NEXA.exe" ]; then
-            mv "NEXA.exe" "nexa-windows.exe"
+          if [ "$RUNNER_OS" = "Windows" ] && [ -f "Nexa.exe" ]; then
+            mv "Nexa.exe" "nexa-windows.exe"
           fi
           ls -la
       - uses: actions/upload-artifact@v4
@@ -286,7 +286,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: provider-agent ${{ github.ref_name }}
           body: |
-            NEXA Provider Agent — 내 PC 의 Ollama 를 풀에 연결하는 단일 실행파일.
+            Nexa Provider Agent — 내 로컬 AI모델을 디스코드 서버/채널에 공유하는 단일 실행파일.
             자기 OS 파일을 받아 `--token <토큰> --relay-url wss://discord-ai.yeon.world/agent` 로 실행하세요.
 
             ## 검증 방법(권장)
@@ -381,6 +381,74 @@ jobs:
       - name: 안내(App 미설정)
         if: env.HAS_APP != 'true'
         run: echo "PKG_APP_ID/PKG_APP_PRIVATE_KEY 미설정 — tap/bucket 자동 갱신을 건너뜁니다. docs/SETUP_PACKAGE_MANAGERS.md 참고."
+
+  # winget 은 Microsoft 커뮤니티 저장소가 버전별 매니페스트를 소유하므로, 릴리스마다 PR 이 필요하다.
+  # WINGET_GH_TOKEN(사용자 fork push + microsoft/winget-pkgs PR 생성 권한)이 있을 때만 자동 제출한다.
+  publish-winget-pr:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/agent-v')
+    runs-on: ubuntu-latest
+    env:
+      HAS_WINGET_TOKEN: ${{ secrets.WINGET_GH_TOKEN != '' && 'true' || 'false' }}
+      WINGET_FORK_OWNER: Hyeonjun0527
+      WINGET_FORK_REPO: winget-pkgs
+      WINGET_UPSTREAM: microsoft/winget-pkgs
+      WINGET_PACKAGE_ID: Nexa.Nexa
+      WINGET_MANIFEST_ROOT: manifests/n/Nexa/Nexa
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-manifests
+          path: pkg
+      - name: winget-pkgs PR 생성/갱신
+        if: env.HAS_WINGET_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME#agent-v}"
+          BRANCH="nexa-nexa-${VER}"
+          DEST="${WINGET_MANIFEST_ROOT}/${VER}"
+
+          test -f pkg/winget/Nexa.Nexa.yaml
+          test -f pkg/winget/Nexa.Nexa.installer.yaml
+          test -f pkg/winget/Nexa.Nexa.locale.ko-KR.yaml
+          test -f pkg/winget/Nexa.Nexa.locale.en-US.yaml
+          test -f pkg/winget/Nexa.Nexa.locale.ja-JP.yaml
+
+          git clone --filter=blob:none --no-checkout \
+            "https://x-access-token:${GH_TOKEN}@github.com/${WINGET_FORK_OWNER}/${WINGET_FORK_REPO}.git" winget-pkgs
+          cd winget-pkgs
+          git sparse-checkout init --cone
+          git sparse-checkout set "${WINGET_MANIFEST_ROOT}"
+          git fetch origin master --depth=1
+          git checkout -B "${BRANCH}" origin/master
+
+          mkdir -p "${DEST}"
+          cp ../pkg/winget/*.yaml "${DEST}/"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${DEST}"
+          git commit -m "Update ${WINGET_PACKAGE_ID} to version ${VER}" || { echo "winget 매니페스트 변경 없음"; exit 0; }
+          git push --force-with-lease origin "${BRANCH}"
+
+          if gh api "repos/${WINGET_UPSTREAM}/contents/${WINGET_MANIFEST_ROOT}?ref=master" >/dev/null 2>&1; then
+            TITLE="Update ${WINGET_PACKAGE_ID} to version ${VER}"
+          else
+            TITLE="New package: ${WINGET_PACKAGE_ID} version ${VER}"
+          fi
+          BODY="$(printf 'Automated winget manifest submission for %s %s.\n\nRendered from %s@%s release %s.\n' "${WINGET_PACKAGE_ID}" "${VER}" "${GITHUB_REPOSITORY}" "${GITHUB_SHA}" "${GITHUB_REF_NAME}")"
+          EXISTING_PR="$(gh pr list --repo "${WINGET_UPSTREAM}" --head "${WINGET_FORK_OWNER}:${BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "${EXISTING_PR}" ]; then
+            gh pr edit "${EXISTING_PR}" --repo "${WINGET_UPSTREAM}" --title "${TITLE}" --body "${BODY}"
+            echo "기존 winget PR 갱신: #${EXISTING_PR}"
+          else
+            gh pr create --repo "${WINGET_UPSTREAM}" --base master --head "${WINGET_FORK_OWNER}:${BRANCH}" --title "${TITLE}" --body "${BODY}"
+          fi
+      - name: 안내(winget 토큰 미설정)
+        if: env.HAS_WINGET_TOKEN != 'true'
+        run: echo "WINGET_GH_TOKEN 미설정 — winget-pkgs PR 자동 생성을 건너뜁니다. docs/SETUP_PACKAGE_MANAGERS.md 참고."
 
   # 빌드된 바이너리를 원격 central 의 다운로드 폴더로 배치 → central 이 /download/** 로 서빙.
   # (레포 비공개 유지: 같은 run 의 아티팩트를 받아 self-hosted 러너에서 복사 — 토큰/공개 불필요)

@@ -1,11 +1,11 @@
 PackageIdentifier: Nexa.Nexa
 PackageVersion: __VERSION__
-PackageLocale: en-US
+PackageLocale: ja-JP
 Publisher: Nexa
 PublisherUrl: https://github.com/yeon-intergation-platform
 PackageName: Nexa
 PackageUrl: https://github.com/Hyeonjun0527/discord-ai-network-bot
 License: MIT
-ShortDescription: Nexa desktop app — share your local AI models with Discord servers and channels.
+ShortDescription: Nexa デスクトップアプリ — ローカルAIモデルをDiscordサーバー/チャンネルに共有します。
 ManifestType: locale
 ManifestVersion: 1.6.0

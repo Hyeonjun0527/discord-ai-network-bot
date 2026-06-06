@@ -29,8 +29,8 @@ from provider_agent._wire_contract_generated import (
 )
 
 # ── 에이전트 전용 상수(와이어 계약 아님 — 클라이언트 측 안전 기본값) ──────────────
-APP_DISPLAY_NAME: Final[str] = "NEXA"
-MAC_APP_BUNDLE: Final[str] = "NEXA.app"
+APP_DISPLAY_NAME: Final[str] = "Nexa"
+MAC_APP_BUNDLE: Final[str] = "Nexa.app"
 GUI_MAC_ASSET: Final[str] = "nexa-macos.zip"
 GUI_WIN_ASSET: Final[str] = "nexa-windows.exe"
 # 안전 기본값(차수: 일반 사용자 배포). 0 = 무제한이지만, 무제한은 --allow-unlimited 로만 가능.

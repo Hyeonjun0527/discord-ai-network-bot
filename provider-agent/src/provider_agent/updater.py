@@ -2,7 +2,7 @@
 
 - 최신 버전: GitHub Releases `latest`(`agent-v*` 태그)에서 가져온다.
 - 적용: **빌드된 앱**에서만(소스 실행은 비활성). macOS 는 릴리스의 `.app` zip 을 받아
-  현재 위치(보통 `/Applications/NEXA.app`)에 교체하고 재실행한다. Windows 는 exe 를 교체.
+  현재 위치(보통 `/Applications/Nexa.app`)에 교체하고 재실행한다. Windows 는 exe 를 교체.
 - 자동 업데이트(config.auto_update, 기본 ON): 앱 시작 시 검사·적용.
 모두 사용자 권한(관리자/sudo 불필요).
 """

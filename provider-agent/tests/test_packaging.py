@@ -29,3 +29,26 @@ def test_runtime_uses_certifi_for_tls_verification() -> None:
 
     assert "ssl.create_default_context(cafile=certifi.where())" in connection
     assert "aiohttp.TCPConnector(ssl=ssl_context)" in connection
+
+
+def test_winget_templates_keep_korean_default_locale_and_localized_copy() -> None:
+    winget = ROOT / "packaging" / "winget"
+    version = (winget / "Nexa.Nexa.yaml").read_text(encoding="utf-8")
+    ko = (winget / "Nexa.Nexa.locale.ko-KR.yaml").read_text(encoding="utf-8")
+    en = (winget / "Nexa.Nexa.locale.en-US.yaml").read_text(encoding="utf-8")
+    ja = (winget / "Nexa.Nexa.locale.ja-JP.yaml").read_text(encoding="utf-8")
+
+    assert "DefaultLocale: ko-KR" in version
+    assert "PackageName: Nexa" in ko
+    assert "Publisher: Nexa" in ko
+    assert "ShortDescription: Nexa 데스크톱 앱 — 내 로컬 AI모델을 디스코드 서버/채널에 공유합니다." in ko
+    assert "ManifestType: defaultLocale" in ko
+    assert "Moniker: nexa" in ko
+
+    assert "ShortDescription: Nexa desktop app — share your local AI models with Discord servers and channels." in en
+    assert "ManifestType: locale" in en
+    assert "Moniker: nexa" not in en
+
+    assert "ShortDescription: Nexa デスクトップアプリ — ローカルAIモデルをDiscordサーバー/チャンネルに共有します。" in ja
+    assert "ManifestType: locale" in ja
+    assert "Moniker: nexa" not in ja

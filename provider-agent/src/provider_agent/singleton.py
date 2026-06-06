@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import socket
 
 logger = logging.getLogger("provider_agent.singleton")
@@ -17,6 +18,19 @@ _LOCK_PORT = 48569
 _sock: socket.socket | None = None
 
 
+def _lock_port() -> int:
+    """단일 인스턴스 락 포트. 테스트는 ``NEXA_LOCK_PORT`` 로 격리할 수 있다."""
+    raw = os.getenv("NEXA_LOCK_PORT")
+    if raw:
+        try:
+            port = int(raw)
+            if 0 < port < 65536:
+                return port
+        except ValueError:
+            pass
+    return _LOCK_PORT
+
+
 def acquire() -> bool:
     """단일 인스턴스 락을 잡는다. 성공하면 True, 이미 다른 인스턴스가 잡고 있으면 False."""
     global _sock
@@ -24,7 +38,7 @@ def acquire() -> bool:
         return True  # 같은 프로세스에서 이미 보유
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        s.bind(("127.0.0.1", _LOCK_PORT))
+        s.bind(("127.0.0.1", _lock_port()))
         s.listen(1)
     except OSError:
         s.close()
@@ -56,7 +70,7 @@ def is_held() -> bool:
         return True  # 같은 프로세스가 listen 소켓으로 보유 중
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        s.bind(("127.0.0.1", _LOCK_PORT))
+        s.bind(("127.0.0.1", _lock_port()))
     except OSError:
         return True  # 이미 점유됨(다른 인스턴스)
     finally:

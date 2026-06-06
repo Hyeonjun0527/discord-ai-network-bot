@@ -97,16 +97,33 @@ def _attach_log_capture() -> None:
 _state: dict = {"agent": None, "task": None}
 
 
-async def _detect_models() -> list[str]:
-    """로컬 Ollama 의 설치 모델 목록(자동 감지). 실패하면 빈 목록."""
+async def _detect_ollama() -> dict:
+    """Ollama 런타임 상태를 한 번에 판정한다: installed(실행파일)·ready(daemon 응답)·models(설치 목록).
+
+    P1: '미설치(실행파일 없음)'와 '설치됐지만 daemon 꺼짐'을 구분한다. 둘 다 list_models 는
+    ECONNREFUSED → 같은 OllamaError → 모델 0개로 보여, UI 가 'daemon 만 켜면 되는' 사용자에게도
+    '설치하세요'만 안내하던 문제를 해소한다(SD 의 installed/ready 분리와 동일한 패턴).
+    """
+    from . import ollama_setup
     from .ollama import OllamaClient, OllamaError
 
     saved = load_config()
     url = saved.get("ollama_url") or "http://localhost:11434"
     try:
-        return await OllamaClient(url).list_models()
+        installed = bool(ollama_setup.is_installed())
+    except Exception:  # noqa: BLE001 - 설치 여부 판정 실패는 미설치로 보수 처리
+        installed = False
+    try:
+        models = await OllamaClient(url).list_models()
     except OllamaError:
-        return []
+        return {"installed": installed, "ready": False, "models": []}
+    # list_models 성공 = daemon 응답 = 실행 중(PATH 밖 바이너리로 떠 있어도 ready 면 installed 로 본다).
+    return {"installed": True, "ready": True, "models": models}
+
+
+async def _detect_models() -> list[str]:
+    """로컬 Ollama 의 설치 모델 목록(자동 감지). 실패하면 빈 목록(하위호환 헬퍼)."""
+    return (await _detect_ollama())["models"]
 
 
 def _is_default_text_model(model: str) -> bool:
@@ -418,7 +435,7 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
   </div>
 </div>
 <script>
-const K="__SESSION_KEY__";const H={"X-Session":K};let RUN=false;let HAS_MODELS=false;
+const K="__SESSION_KEY__";const H={"X-Session":K};let RUN=false;let HAS_MODELS=false;let OLLAMA_INSTALLED=false;let OLLAMA_READY=false;
 const MICON='<svg class="model-icon" viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M27 20c0-6 7-8 11-4 4-4 11-2 11 4v18c0 10-6 18-17 18S15 48 15 38V26c0-5 4-9 9-9h3Z"></path><path d="M30 31h.1M46 31h.1M31 43c4 3 10 3 14 0"></path><path d="M20 55v10M42 55v10M52 48v14"></path></svg>';
 const IINSTALL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px;vertical-align:-4px;margin-right:8px"><path d="M12 3v10"></path><path d="m8 11 4 4 4-4"></path><rect x="4" y="16.5" width="16" height="4.5" rx="1.5"></rect></svg>';
 const ICHECK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;vertical-align:-2px;margin-right:6px"><path d="M20 6 9 17l-5-5"></path></svg>';
@@ -427,8 +444,8 @@ const ILINK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 const ISTOP='<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" style="width:17px;height:17px;vertical-align:-3px;margin-right:9px"><rect x="6" y="6" width="12" height="12" rx="2.5"></rect></svg>';
 async function j(u,o){o=o||{};o.headers=Object.assign({},H,o.headers||{});const r=await fetch(u,o);return r.json();}
 function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');HAS_MODELS=d.models.length>0;
-if(!d.models.length){box.innerHTML='<div class="empty">아직 사용할 AI 모델이 없어요. 아래 버튼이면 Ollama 설치부터 기본 모델 '+esc(d.default||'')+' 다운로드까지 자동으로 해드려요.<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">Ollama 자동 설치 + 기본 모델 받기</button><div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div></div>';return;}
+async function loadModels(){const d=await j('/api/models');const box=document.getElementById('models');HAS_MODELS=d.models.length>0;OLLAMA_INSTALLED=!!d.ollamaInstalled;OLLAMA_READY=!!d.ollamaReady;
+if(!d.models.length){const pb='<div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div>';let head,btn;if(!d.ollamaInstalled){head='아직 Ollama 가 설치되어 있지 않아요. 아래 버튼이면 Ollama 설치부터 기본 모델 '+esc(d.default||'')+' 다운로드까지 자동으로 해드려요.';btn='Ollama 자동 설치 + 기본 모델 받기';}else if(!d.ollamaReady){head='Ollama 는 설치돼 있지만 지금 실행(daemon)되고 있지 않아요. 아래 버튼이면 Ollama 를 시작하고 기본 모델 '+esc(d.default||'')+' 까지 준비해 드려요.';btn='Ollama 시작 + 기본 모델 받기';}else{head='Ollama 는 실행 중이지만 설치된 모델이 없어요. 아래 버튼이면 기본 모델 '+esc(d.default||'')+' 을 받아 드려요.';btn='기본 모델 받기';}box.innerHTML='<div class="empty">'+head+'<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">'+btn+'</button>'+pb+'</div>';return;}
 const CMK='<span class="mcheck"><svg viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>';
 const dp=!d.defaultInstalled?'<div class="empty">기본 모델 '+esc(d.default||'')+' 이 아직 없어요.<br><button class="btn" id="osetupBtn" style="margin-top:12px" onclick="setupOllama()">기본 모델 받기</button><div class="pbar" id="opbar" style="margin-top:12px"><div class="pfill" id="opfill"></div></div><div id="osetup" style="margin-top:8px;color:var(--muted)"></div></div>':'';
 box.innerHTML=dp+d.models.map(m=>{const sel=d.selected.includes(m);return `<article class="model${sel?' is-selected':''}" data-model="${esc(m)}" onclick="toggleModel(this)">${CMK}${MICON}<div><div class="model-name">${esc(m)}</div><span class="badge${sel?'':' neutral'}">${sel?'제공 중':'선택 안 함'}</span></div></article>`;}).join('');}
@@ -480,7 +497,7 @@ const ring=document.getElementById('ring');ring.className='ring'+(s.running?(s.c
 document.getElementById('stitle').textContent=s.running?(s.connected?'연결 완료':'연결하는 중…'):(bg?'백그라운드에서 실행 중':'대기 중');
 document.getElementById('ssub').textContent=s.running?(s.connected?'이 PC가 로컬 AI 노드로 등록되었습니다.':'중앙 서버에 연결하고 있습니다.'):(bg?'백그라운드 서비스가 이미 연결돼 있어요. 이 창은 설정 변경용입니다.':'연결 시작을 누르면 풀에 등록됩니다.');
 const cnt=s.running?s.models.length:selectedModels().length;
-let chips='<div class="chip"><span class="dot'+(HAS_MODELS?'':' grey')+'"></span>'+(HAS_MODELS?'Ollama 실행 중':'Ollama 확인 필요')+'</div>';
+const ollLbl=OLLAMA_READY?'Ollama 실행 중':(OLLAMA_INSTALLED?'Ollama 꺼짐':'Ollama 미설치');let chips='<div class="chip"><span class="dot'+(OLLAMA_READY?'':' grey')+'"></span>'+ollLbl+'</div>';
 chips+='<div class="chip">제공 모델 '+cnt+'개</div>';
 chips+='<div class="chip"><span class="dot'+((s.connected||bg)?'':' grey')+'"></span>'+(s.running?(s.connected?('처리 '+s.processed+'건'):'연결 시도 중'):(bg?'백그라운드 연결됨':'중지됨'))+(s.imageReady?' · 🖼️':'')+'</div>';
 // running: agent.image_ready 로 정확 판정(미설치/미준비 구분). bg: 백그라운드 프로세스의 live 상태는 알 수 없어 SD '설치 여부'만 경고.
@@ -639,13 +656,17 @@ def build_app(session_key: str) -> web.Application:
     async def models(req: web.Request) -> web.Response:
         _auth(req)
         saved = load_config()
-        detected = await _detect_models()
+        oll = await _detect_ollama()
+        detected = oll["models"]
         return web.json_response(
             {
                 "models": detected,
                 "selected": _selected_text_models(detected, saved.get("models")),
                 "default": DEFAULT_TEXT_MODEL,
                 "defaultInstalled": any(_is_default_text_model(m) for m in detected),
+                # P1: 미설치 vs daemon-down vs 정상을 UI 가 구분하도록.
+                "ollamaInstalled": oll["installed"],
+                "ollamaReady": oll["ready"],
             }
         )
 

@@ -107,9 +107,9 @@ async def test_app_icon_served():
 @pytest.mark.asyncio
 async def test_models_autodetected(monkeypatch):
     async def fake_detect():
-        return ["llama3.1:8b", "gemma4"]
+        return {"installed": True, "ready": True, "models": ["llama3.1:8b", "gemma4"]}
 
-    monkeypatch.setattr(webui, "_detect_models", fake_detect)
+    monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
     client = await _client()
     try:
         d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
@@ -117,6 +117,7 @@ async def test_models_autodetected(monkeypatch):
         assert d["selected"] == []
         assert d["default"] == DEFAULT_TEXT_MODEL
         assert d["defaultInstalled"] is False
+        assert d["ollamaInstalled"] is True and d["ollamaReady"] is True
     finally:
         await client.close()
 
@@ -124,9 +125,9 @@ async def test_models_autodetected(monkeypatch):
 @pytest.mark.asyncio
 async def test_models_select_default_exaone_when_detected(monkeypatch):
     async def fake_detect():
-        return ["llama3.1:8b", DEFAULT_TEXT_MODEL, "gemma4"]
+        return {"installed": True, "ready": True, "models": ["llama3.1:8b", DEFAULT_TEXT_MODEL, "gemma4"]}
 
-    monkeypatch.setattr(webui, "_detect_models", fake_detect)
+    monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
     client = await _client()
     try:
         d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
@@ -139,14 +140,39 @@ async def test_models_select_default_exaone_when_detected(monkeypatch):
 @pytest.mark.asyncio
 async def test_models_preserve_saved_selection(monkeypatch):
     async def fake_detect():
-        return ["llama3.1:8b", DEFAULT_TEXT_MODEL]
+        return {"installed": True, "ready": True, "models": ["llama3.1:8b", DEFAULT_TEXT_MODEL]}
 
     persist_partial({"models": ["llama3.1:8b"]})
-    monkeypatch.setattr(webui, "_detect_models", fake_detect)
+    monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
     client = await _client()
     try:
         d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
         assert d["selected"] == ["llama3.1:8b"]
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_models_distinguishes_not_installed_from_daemon_down(monkeypatch):
+    """P1 회귀 가드: /api/models 가 '미설치'와 'daemon 꺼짐'을 ollamaInstalled/ollamaReady 로 구분해야 한다.
+    (과거엔 둘 다 OllamaError→[] 로 평탄화돼 UI 가 똑같이 '설치하세요'만 안내했다.)"""
+    client = await _client()
+    try:
+        # (a) 설치됐지만 daemon 꺼짐
+        async def fake_down():
+            return {"installed": True, "ready": False, "models": []}
+
+        monkeypatch.setattr(webui, "_detect_ollama", fake_down)
+        d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
+        assert d["models"] == [] and d["ollamaInstalled"] is True and d["ollamaReady"] is False
+
+        # (b) 실행파일 자체 미설치
+        async def fake_absent():
+            return {"installed": False, "ready": False, "models": []}
+
+        monkeypatch.setattr(webui, "_detect_ollama", fake_absent)
+        d = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
+        assert d["ollamaInstalled"] is False and d["ollamaReady"] is False
     finally:
         await client.close()
 

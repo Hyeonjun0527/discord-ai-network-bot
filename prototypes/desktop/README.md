@@ -23,6 +23,21 @@ npm run serve     # http://127.0.0.1:8777/index.html (정적 서버)
 
 우하단 `PROTO` 패널(단축키 `P`)로 stage·상태를 점프해 모든 화면/분기를 검증할 수 있다.
 
+## URL(Hash) 라우팅 — 화면 딥링크
+
+화면마다 URL 이 있어, 주소로 직접 진입·북마크·새로고침 유지가 된다(정적 서버 호환). 화면 전환 시 URL 도
+자동 갱신되고(양방향), 브라우저 뒤로/앞으로도 동작한다. 네비게이션 흐름의 보조 SSOT.
+
+| URL | 화면 |
+|-----|------|
+| `#/home` `#/models` `#/servers` `#/local` `#/logs` `#/settings` | 메인 탭 |
+| `#/servers/:guildId` | 서버 상세(기부자 관점) |
+| `#/servers/:guildId/manage` | 서버 관리(관리자, Provider 탭) |
+| `#/onboarding[/step]` | 온보딩 마법사(단계) |
+| `#/connect[/sub]` | Discord 연결(login·select·result) |
+
+예: `http://127.0.0.1:8777/index.html#/servers/1001/manage` 로 바로 관리 화면 진입.
+
 ## 테스트 (Playwright)
 
 상태 불변식(I1~I3)과 핵심 흐름을 자동 검증한다. 시스템 Chrome 사용(브라우저 다운로드 없음).
@@ -34,6 +49,7 @@ npm run test:ui   # UI 모드(클릭별 추적)
 
 - `tests/state-machine.spec.js` — 상태 불변식(인증된 상태에서 로그인 노출 금지 등)
 - `tests/models.spec.js` — 모델 화면·설치 토스트(pointer-events 회귀 방지)
-- `tests/flows.spec.js` — 온보딩·연결·서버·제공 상태
+- `tests/flows.spec.js` — 온보딩·연결·서버·제공 상태·서버 관리
+- `tests/routing.spec.js` — URL(hash) 딥링크·화면↔URL 양방향·히스토리
 
 > 관련 문서: `docs/NEXA_USER_FLOWS.md`(플로우 인벤토리), `docs/NEXA_STATE_MACHINE.md`(상태머신), `docs/NEXA_DESKTOP_SCREENS.md`(화면정의).

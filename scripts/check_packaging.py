@@ -30,9 +30,33 @@ EXPECT: dict[str, list[str]] = {
         asset["guiWin"],
         pkg["command"],
     ],
+    "provider-agent/packaging/winget/Nexa.Nexa.yaml": [
+        pkg["wingetId"],
+        "DefaultLocale: ko-KR",
+    ],
+    "provider-agent/packaging/winget/Nexa.Nexa.locale.ko-KR.yaml": [
+        pkg["wingetId"],
+        "PackageLocale: ko-KR",
+        "PackageName: Nexa",
+        "ManifestType: defaultLocale",
+    ],
+    "provider-agent/packaging/winget/Nexa.Nexa.locale.en-US.yaml": [
+        pkg["wingetId"],
+        "PackageLocale: en-US",
+        "PackageName: Nexa",
+        "ManifestType: locale",
+    ],
+    "provider-agent/packaging/winget/Nexa.Nexa.locale.ja-JP.yaml": [
+        pkg["wingetId"],
+        "PackageLocale: ja-JP",
+        "PackageName: Nexa",
+        "ManifestType: locale",
+    ],
     "provider-agent/packaging/scoop/nexa.json": [
         asset["guiWin"],
         pkg["scoopBin"],
+        "Nexa 데스크톱 앱",
+        "[\"nexa.exe\", \"Nexa\"]",
     ],
     "provider-agent/packaging/homebrew/nexa.rb": [
         f'cask "{pkg["homebrewCask"]}"',

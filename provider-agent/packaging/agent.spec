@@ -1,8 +1,8 @@
 # PyInstaller spec — CLI onefile(전 OS 공통) + 데스크톱 네이티브 GUI(macOS .app / Windows .exe).
 # 빌드: cd provider-agent && pyinstaller packaging/agent.spec   (GUI 는 pywebview 필요: pip install .[gui])
 #   결과: dist/nexa-agent-cli                   (플랫폼별 CLI 실행파일 — 서비스/헤드리스용)
-#         dist/NEXA.app                         (macOS 에서만 — Finder/응용 프로그램용 GUI 앱)
-#         dist/NEXA.exe                         (Windows 에서만 — 네이티브 창 GUI 앱, mac .app 과 동일 UX)
+#         dist/Nexa.app                         (macOS 에서만 — Finder/응용 프로그램용 GUI 앱)
+#         dist/Nexa.exe                         (Windows 에서만 — 네이티브 창 GUI 앱, mac .app 과 동일 UX)
 # block_cipher 미사용.
 import sys
 from pathlib import Path
@@ -62,7 +62,7 @@ if IS_MAC:
         gui_a.scripts,
         [],
         exclude_binaries=True,
-        name="NEXA",
+        name="Nexa",
         console=False,  # windowed(터미널 없이 GUI 로 뜸)
         icon=str(icons / "app.icns"),
     )
@@ -99,16 +99,16 @@ if IS_MAC:
         upx=True,
         # macOS 기본 파일시스템은 대소문자를 구분하지 않아 CLI `nexa-agent-cli`와
         # GUI 번들 준비 디렉터리가 같은 이름 계열이면 release asset glob에 섞일 수 있다.
-        name="NEXA-gui",
+        name="Nexa-gui",
     )
     app = BUNDLE(
         gui_coll,
-        name="NEXA.app",
+        name="Nexa.app",
         icon=str(icons / "app.icns"),
         bundle_identifier="world.yeon.nexa.provider-agent",
         info_plist={
-            "CFBundleName": "NEXA",
-            "CFBundleDisplayName": "NEXA",
+            "CFBundleName": "Nexa",
+            "CFBundleDisplayName": "Nexa",
             "CFBundleShortVersionString": "1.0",
             "NSHighResolutionCapable": True,
             "LSApplicationCategoryType": "public.app-category.utilities",
@@ -118,7 +118,7 @@ if IS_MAC:
     )
 
 # ── Windows 데스크톱 GUI exe(네이티브 창 — mac .app 과 동일 UX) — Windows 에서만 ──
-#   결과: dist/NEXA.exe  (windowed, WebView2 네이티브 창; gui_entry → run_gui)
+#   결과: dist/Nexa.exe  (windowed, WebView2 네이티브 창; gui_entry → run_gui)
 #   WebView2 런타임이 없으면 run_gui 가 자동으로 브라우저로 폴백한다(graceful).
 if IS_WIN:
     win_gui_a = Analysis(
@@ -153,7 +153,7 @@ if IS_WIN:
         win_gui_a.binaries,
         win_gui_a.datas,
         [],
-        name="NEXA",
+        name="Nexa",
         console=False,  # windowed(콘솔 없이 네이티브 창)
         onefile=True,
         upx=True,

@@ -57,7 +57,7 @@ def _mascot_bytes() -> bytes:
 
 
 def _app_icon_bytes() -> bytes:
-    """패키지 에셋의 NEXA 앱 아이콘 PNG(1회 로드·캐시). 없으면 빈 바이트."""
+    """패키지 에셋의 Nexa 앱 아이콘 PNG(1회 로드·캐시). 없으면 빈 바이트."""
     global _app_icon_cache
     if _app_icon_cache is None:
         try:
@@ -293,7 +293,7 @@ def _page(session_key: str) -> str:
 # macOS 데스크톱 앱 카드 디자인(레퍼런스) — 정적 목업을 실제 백엔드(/api/*)에 연결.
 # 세션 키는 __SESSION_KEY__ 자리에 주입(secrets.token_urlsafe → URL-safe 문자만이라 안전).
 _PAGE_TEMPLATE = r"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>로컬 AI 제공자 설정 — NEXA</title><style>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>로컬 AI 제공자 설정 — Nexa</title><style>
 :root{color-scheme:dark;--bg:#08111d;--bg2:#040811;--line:rgba(148,163,184,.17);--line2:rgba(79,125,255,.36);--text:#edf4ff;--muted:#a7b3c5;--faint:#76849a;--blue:#4f7dff;--blue2:#2f63d6;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",sans-serif}
 *{box-sizing:border-box}html,body{min-height:100%}
 body{margin:0;color:var(--text);background:radial-gradient(circle at 18% 0%,rgba(64,96,180,.18),transparent 32%),radial-gradient(circle at 85% 16%,rgba(54,86,156,.10),transparent 28%),linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);display:block;padding:0}
@@ -393,14 +393,14 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 </style></head><body>
 <div class="window">
 <div id="onboard"><div class="onb-wrap">
-<div class="onb-top"><div class="logo"><img src="/app-icon.png" alt="NEXA 로고"></div><div><h1>NEXA Provider Agent</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div><div class="onb-ver">v__VERSION__</div></div>
+<div class="onb-top"><div class="logo"><img src="/app-icon.png" alt="Nexa 로고"></div><div><h1>Nexa Provider Agent</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div><div class="onb-ver">v__VERSION__</div></div>
 <div class="onb-steps"><div class="onb-count" id="onbCount">1 / 4</div><div class="onb-dots" id="onbDots"></div></div>
 <div class="onb-card" id="onbCard"></div>
 <div class="onb-foot" id="onbFoot"></div>
 </div></div>
 <div class="appver" title="설치된 버전">v__VERSION__</div>
 <main>
-<section class="hero"><div class="logo"><img src="/app-icon.png" alt="NEXA 로고"></div><div><h1>NEXA Provider Agent</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
+<section class="hero"><div class="logo"><img src="/app-icon.png" alt="Nexa 로고"></div><div><h1>Nexa Provider Agent</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
 <section class="card"><div class="ring off" id="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
 <div><div class="status-title" id="stitle">대기 중</div><div class="status-body" id="ssub">연결 시작을 누르면 풀에 등록됩니다.</div><div class="chips" id="chips"></div></div></section>
 <section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div><div id="catalog" style="margin-top:14px"></div></section>
@@ -573,7 +573,7 @@ btn.innerHTML=IINSTALL+'<span>'+esc(d.label)+'</span>';
 if(!d.supported){btn.disabled=true;btn.style.opacity='.55';setHelp(help,'muted',d.reason||'지원되지 않아요.');return;}
 btn.disabled=false;btn.style.opacity='';
 if(d.installed){btn.disabled=true;btn.style.opacity='.55';setHelp(help,'ok','이미 설치되어 있어요.');}
-else{setHelp(help,'muted',d.platform==='win'?'시작 메뉴에 ‘NEXA’ 바로가기를 추가합니다.':'이 앱을 응용 프로그램 폴더로 복사합니다. (관리자 권한 불필요)');}}
+else{setHelp(help,'muted',d.platform==='win'?'시작 메뉴에 ‘Nexa’ 바로가기를 추가합니다.':'이 앱을 응용 프로그램 폴더로 복사합니다. (관리자 권한 불필요)');}}
 async function install(){const btn=document.getElementById('installBtn'),help=document.getElementById('installHelp');
 const old=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span>설치 중…</span>';help.innerHTML='';
 let r;try{r=await j('/api/install',{method:'POST'});}catch(e){r={ok:false,error:'요청에 실패했어요.'};}
@@ -1339,8 +1339,9 @@ def _webview_available() -> bool:
     return True
 
 
+
 def _brand_icon_png(size: int = 512) -> bytes | None:
-    """dock 아이콘용 NEXA 로고 PNG 바이트. 번들 에셋을 우선 로드한다."""
+    """dock 아이콘용 Nexa 로고 PNG 바이트. 번들 에셋을 우선 로드한다."""
     try:
         from importlib import resources
 

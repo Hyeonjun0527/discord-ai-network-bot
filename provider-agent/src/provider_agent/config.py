@@ -59,7 +59,7 @@ def _env(name: str, default: str = "") -> str:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="nexa",
-        description="내 PC의 로컬 Ollama 를 NEXA 커뮤니티 AI 네트워크에 연결하는 프로바이더 에이전트",
+        description="내 PC의 로컬 AI모델을 디스코드 서버/채널에 공유하는 프로바이더 에이전트",
     )
     p.add_argument("--token", help="중앙 서버에서 발급받은 일회용 토큰 (또는 AGENT_TOKEN)")
     p.add_argument("--relay-url", help="중앙 서버 WS 주소 (또는 RELAY_URL)")

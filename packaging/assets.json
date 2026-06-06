@@ -5,11 +5,11 @@
     "name": "discord-ai-network-bot"
   },
   "releaseTagPrefix": "agent-v",
-  "appDisplayName": "NEXA",
-  "brandName": "NEXA",
+  "appDisplayName": "Nexa",
+  "brandName": "Nexa",
   "brandTagline": "AI NETWORK GUIDE",
   "defaultTextModel": "exaone3.5:7.8b",
-  "macAppBundle": "NEXA.app",
+  "macAppBundle": "Nexa.app",
   "packages": {
     "wingetId": "Nexa.Nexa",
     "homebrewCask": "nexa",

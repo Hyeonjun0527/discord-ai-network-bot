@@ -4,7 +4,7 @@ GUI '고급'의 '응용 프로그램에 추가하기' 버튼이 호출한다. �
 (관리자/sudo 불필요). 빌드된 앱(PyInstaller frozen)에서만 의미가 있고, 소스/스크립트
 실행 중에는 설치할 대상 번들이 없으므로 비활성으로 안내한다.
 
-- macOS: 현재 실행 중인 `.app` 번들을 `/Applications/NEXA.app` 으로 복사(ditto, 서명 보존)
+- macOS: 현재 실행 중인 `.app` 번들을 `/Applications/Nexa.app` 으로 복사(ditto, 서명 보존)
   + quarantine 제거 + Launch Services 등록(Launchpad/Spotlight 반영).
 - Windows: 실행파일을 사용자 Programs 폴더(%LOCALAPPDATA%)로 복사하고 시작 메뉴에
   바로가기(.lnk)를 만든다(현재 사용자, 관리자 불필요).
@@ -134,7 +134,7 @@ def _install_macos() -> dict:
     if Path(_LSREGISTER).exists():
         subprocess.run([_LSREGISTER, "-f", str(target)], capture_output=True)
     return {"ok": True, "target": str(target),
-            "message": "응용 프로그램에 추가했어요. Launchpad·Spotlight 에서 ‘NEXA’로 열 수 있어요."}
+            "message": "응용 프로그램에 추가했어요. Launchpad·Spotlight 에서 ‘Nexa’로 열 수 있어요."}
 
 
 def _ps_quote(value: str) -> str:
@@ -180,7 +180,7 @@ def _install_windows() -> dict:
     except OSError as exc:
         return {"ok": False, "error": f"바로가기 생성에 실패했어요: {exc}"}
     return {"ok": True, "target": str(link),
-            "message": "시작 메뉴에 ‘NEXA’를 추가했어요. 시작 메뉴에서 검색해 열 수 있어요."}
+            "message": "시작 메뉴에 ‘Nexa’를 추가했어요. 시작 메뉴에서 검색해 열 수 있어요."}
 
 
 def install_app() -> dict:

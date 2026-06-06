@@ -1,6 +1,6 @@
-# NEXA Domain Migration TODO
+# Nexa Domain Migration TODO
 
-NEXA 리브랜딩 이후에도 현재 운영 주소(`discord-ai.yeon.world`)와 GitHub repo 경로
+Nexa 리브랜딩 이후에도 현재 운영 주소(`discord-ai.yeon.world`)와 GitHub repo 경로
 (`Hyeonjun0527/discord-ai-network-bot`)는 즉시 바꾸지 않는다. 운영 연결, 릴리스 다운로드,
 OAuth redirect, attestation 검증이 모두 이 값에 묶여 있기 때문이다.
 

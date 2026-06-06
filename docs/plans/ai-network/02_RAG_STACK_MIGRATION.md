@@ -28,13 +28,13 @@ RAG 는 **Dailyting RAG 스택을 표준 템플릿으로 가져온다.**
 
 바꿀 것:
 
-- Dailyting 의 입력은 product SSOT YAML 중심이지만, NEXA는 `guild/channel KnowledgeSpace` 중심이다.
-- Dailyting 의 collection 은 `dailyting_ssot` 이지만, NEXA는 guild/channel 스코프를 분리해야 한다.
-- Dailyting 은 repo SSOT 검색이 목적이지만, NEXA는 Discord 질문 답변에 붙는 runtime RAG 이므로 Provider 보호와 token budget 이 더 중요하다.
+- Dailyting 의 입력은 product SSOT YAML 중심이지만, Nexa는 `guild/channel KnowledgeSpace` 중심이다.
+- Dailyting 의 collection 은 `dailyting_ssot` 이지만, Nexa는 guild/channel 스코프를 분리해야 한다.
+- Dailyting 은 repo SSOT 검색이 목적이지만, Nexa는 Discord 질문 답변에 붙는 runtime RAG 이므로 Provider 보호와 token budget 이 더 중요하다.
 
 ## 2. Dailyting 에서 확인한 기준 스택
 
-| 영역 | Dailyting 기준 | NEXA 적용 |
+| 영역 | Dailyting 기준 | Nexa 적용 |
 | --- | --- | --- |
 | Runtime | `python:3.12-slim` Docker image | 동일 |
 | Wrapper | `scripts/rag.sh` | `scripts/rag.sh` 또는 `central-server/scripts/rag.sh` 로 이식 |
@@ -50,7 +50,7 @@ RAG 는 **Dailyting RAG 스택을 표준 템플릿으로 가져온다.**
 | Eval | `rag/eval/golden.json` + Hit@K/MRR/Recall | guild/channel fixture 기반 golden set 추가 |
 | Tooling | MCP server | 운영 내부 검색/검증 도구로 재사용 가능 |
 
-## 3. NEXA RAG 목표
+## 3. Nexa RAG 목표
 
 사용자 관점:
 
@@ -91,11 +91,11 @@ scripts/rag.sh
 docker-compose.qdrant.yml 또는 central-server/docker-compose.rag.yml
 ```
 
-1차는 Dailyting 파일 구조를 거의 그대로 복사하되, chunker 와 input source 만 NEXA 도메인에 맞게 바꾼다.
+1차는 Dailyting 파일 구조를 거의 그대로 복사하되, chunker 와 input source 만 Nexa 도메인에 맞게 바꾼다.
 
-## 5. NEXA RAG 입력 모델
+## 5. Nexa RAG 입력 모델
 
-Dailyting 은 repo YAML 파일을 색인했다. NEXA는 아래 입력을 색인한다.
+Dailyting 은 repo YAML 파일을 색인했다. Nexa는 아래 입력을 색인한다.
 
 - `KnowledgeSource(type=file)`
 - `KnowledgeSource(type=link)`
@@ -182,7 +182,7 @@ Dailyting 기준 파이프라인을 유지한다.
 
 Dailyting 의 `.github/workflows/rag-rebuild.yml` 패턴을 가져온다.
 
-NEXA workflow 초안:
+Nexa workflow 초안:
 
 ```yaml
 name: AI RAG 인덱스 재빌드
@@ -262,7 +262,7 @@ Dailyting 의 retrieval eval 방식을 그대로 가져온다.
 - MRR
 - Recall@10
 
-NEXA golden set 예시:
+Nexa golden set 예시:
 
 - `#개발질문` 지식에 있는 배포 절차를 찾아야 한다.
 - 서버 A 지식은 서버 B 검색에 나오면 안 된다.

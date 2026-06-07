@@ -33,11 +33,31 @@
   → 브라우저로 http://127.0.0.1:8799/ (실제 설정으로 메인을 보려면 XDG_CONFIG_HOME 빼고 기동).
 
 ### B. 데스크톱 앱 완성도
-- **서버 관리 탭 실 백엔드 연동**: 채널/채널AI/RAG/프리셋 탭이 아직 **프로토타입 mock 만**. (전역 프롬프트셋·Provider 승인/거절은 이미 실연동 = Gap-M HTTP 채널 `/provider/admin/*`). 같은 패턴으로 확장.
+- **서버 관리 탭 실 백엔드 연동** (Gap-M HTTP 채널 `/provider/admin/*`, durable-token+JDA 관리자 2단 게이트):
+  - ✅ **전역 프롬프트셋**: adapter(getPromptSets/add/default/delete)+UI 실연동 완료(2026-06-07 이번 세션).
+    이전엔 백엔드만 있고 프로토타입 UI 는 메모리 mock 변경이라 드리프트였음.
+  - ✅ **Provider 승인/거절/제거/자동승인**: 기존 완료.
+  - ✅ **채널 AI 허용(channels)**: central PolicyService(좁은 포트 `GuildChannelPolicy`)→ProviderAdminController
+    `/channels`,`/channels/toggle` + agent.admin_channels/toggle + webui 라우트 + adapter(getChannels/toggleChannel)
+    + UI 실연동 완료(이번 세션). "빈 목록=전체 허용" 의미 보존, channelId 문자열(64bit). 테스트 포함.
+  - ⏳ **남은 탭(같은 패턴 확장)**: 채널AI(channelai 도메인 ChannelAiProfileService)·RAG(knowledge 도메인)·
+    프리셋(preset 도메인)·안전(ainetwork ProviderSafetyService). central 백엔드는 **이미 존재**(웹 대시보드 OAuth 경로),
+    durable-token 브리지만 추가하면 됨. 현재 실 모드에선 `MSOON_REAL` 안내(크래시 방지). 단, channelAi 는
+    ChannelAiProfileService 가 behavior version 등으로 풍부해 프로토타입 단순모델과 매핑 설계 먼저 필요.
+- 🔴 **(중요) guildId 64bit 정밀도 손실 — 실 길드 관리 흐름 전체에 영향**: 실 `/api/servers` 가 guildId 를
+  JSON number(예: 1380395592336805928)로 보내면 JS `r.json()` 이 Number 로 파싱하며 끝자리가 깨진다(>2^53).
+  → 그 guildId 로 만든 관리 API URL 이 잘못된 길드를 가리켜 prompts/provider/channels **모두 실 길드에서 실패**.
+  채널의 channelId 는 이미 String 으로 보호했으나 guildId 는 기존 패턴(Number)이라 잠재 버그. **수정 레시피**:
+  ① webui `servers`/`connections_status` 가 guildId 를 **문자열**로 emit
+  ② adapter getServers/getServerDetail 가 guildId 를 문자열로 보존(Number() 금지), 비교는 `String(a)===String(b)`
+  ③ mock 은 작은 숫자(1001 등)라 안전 — 그대로 두고 adapter/UI 가 양쪽(숫자/문자열) 모두 통과하게.
+  central 배포가 아니라 **데스크톱 앱 릴리스** 쪽 버그라 central main 머지와 무관하게 다음 앱 릴리스에서 처리.
 - SD 부트스트랩 안정화(이어받기는 됨, 메모리 `sd_bootstrap_upstream_rot` 참조 — A1111 업스트림 부패 잔존).
 
 ### C. 배포/머지
-- 이 브랜치(36+커밋) → main PR 머지. ⚠️ `central-server/**` push 는 **자동배포** 트리거. AGENTS.md Git/Release 가드 준수.
+- 이 브랜치(39커밋) → main PR 머지. ⚠️ `central-server/**` push 는 **자동배포** 트리거. AGENTS.md Git/Release 가드 준수.
+  - 이번 세션 변경에 central-server(PolicyService·ProviderAdminController) 포함 → main 머지 시 자동배포된다.
+    채널 브리지는 기존 PolicyService 재사용·신규 엔드포인트 add-only 라 기존 동작 영향 없음(빌드 그린 확인).
 
 ### D. 더 멀리 (메모리 기록)
 - 코드 서명/공증(시크릿 부재 보류), B6 CSAM 해시 스캔(변호사 검토), i18n 문구 이관.

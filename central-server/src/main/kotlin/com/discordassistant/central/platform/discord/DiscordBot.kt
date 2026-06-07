@@ -44,13 +44,15 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * DM(봇과의 1:1 DM)에서도 쓸 수 있는 명령(차수 19): 질문/조회 + 프로바이더 셀프서비스. 관리자/정책 명령은 길드 전용.
- * 이 명령들은 글로벌 + setGuildOnly(false)(봇 DM 허용)로 등록되고, DM 은 글로벌 풀(DM_SCOPE)로 라우팅된다.
+ * DM(봇과의 1:1 DM)에서 쓸 수 있는 명령: **읽기/안내 전용**(모델 조회·사용량·프라이버시·도움말 등).
+ * AI 호출(/ask)과 기여(/provider-*)·관리/정책 명령은 **길드 전용** — 그 서버 멤버만 가능(멤버십 게이트).
+ * 이 명령들은 글로벌 + setGuildOnly(false)(봇 DM 허용)로 등록된다. DM 컨텍스트의 guildId 는 DM_SCOPE sentinel.
  * (JDA 5.2.1 은 신 user-install/InteractionContextType 미지원 — 친구끼리 DM/임의 서버 사용은 JDA 업그레이드 필요.)
  */
 private val DM_COMMANDS =
-    // /ask·/ask-long 은 DM 에서 제외 — AI 호출은 **그 서버의 멤버만** 가능해야 한다(멤버십 게이트).
-    // 길드 슬래시는 디스코드가 멤버에게만 노출하므로 별도 검사 불필요. DM 은 멤버 신원이 없어 차단한다.
+    // DM 허용은 **읽기/안내 명령만**. AI 호출(/ask)도, 기여(/provider-*)도 DM 에서 제외한다 —
+    // AI 호출은 그 서버 멤버만, 기여도 서버 단위로만(멤버십 게이트). 길드 슬래시는 디스코드가
+    // 멤버에게만 노출하므로 별도 검사 불필요. DM 은 멤버 신원이 없어 이 둘을 차단한다.
     setOf(
         "models",
         "catalog",
@@ -61,11 +63,6 @@ private val DM_COMMANDS =
         "help",
         "welcome",
         "menu",
-        "provider-join",
-        "provider-pause",
-        "provider-resume",
-        "provider-leave",
-        "provider-status",
     )
 
 /** 봇이 들어가 있는 서버(길드) 한 건의 식별 정보(어드민 서버 선택 드롭다운용). */
@@ -774,7 +771,7 @@ class DiscordBot(
                 .replace(Regex("\\s+"), " ")
                 .trim()
 
-        /** 길드면 길드 컨텍스트, DM(유저설치)이면 글로벌 풀(DM_SCOPE) 컨텍스트 — 관리자/역할 없음. */
+        /** 길드면 길드 컨텍스트, DM 이면 DM_SCOPE sentinel 컨텍스트(읽기/안내 명령 전용 — 관리자/역할 없음). */
         private fun ctxOf(interaction: Interaction): CommandContext {
             val userLang = I18n.resolveOrNull(interaction.userLocale) // ko/en/ja 또는 null(미지원 → 길드 기본 폴백)
             val guild = interaction.guild

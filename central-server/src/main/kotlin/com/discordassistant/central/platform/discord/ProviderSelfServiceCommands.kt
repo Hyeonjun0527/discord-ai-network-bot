@@ -33,8 +33,8 @@ class ProviderSelfServiceCommands(
         if (registry.byProvider(ctx.guildId, ctx.userId) != null) {
             return Reply("✅ 이미 이 서버에 참여 중이에요. 앱에서 모델·한도를 조정할 수 있어요.", ephemeral = true)
         }
-        // DM 글로벌 풀은 승인할 관리자가 없으므로 자동 승인(본인 PC 를 자발적으로 기여). 길드는 기존 정책대로.
-        val auto = ctx.guildId == CommandService.DM_SCOPE || policy.isAutoApprove(ctx.guildId)
+        // 기여 참여는 서버 단위로만 — 승인 정책은 그 서버 설정대로(DM 글로벌 풀 자동승인 폐지).
+        val auto = policy.isAutoApprove(ctx.guildId)
         val r = registration.requestJoin(ctx.userId, ctx.guildId, autoApprove = auto)
         // 연동된(앱 실행 중) 사용자: 등록만 보장하면 앱이 동기화로 이 서버에 **자동 연결**한다(가이드/재설치 불필요).
         if (providerLinked(ctx)) {
@@ -60,7 +60,7 @@ class ProviderSelfServiceCommands(
         ctx: CommandContext,
         os: String,
     ): Reply {
-        val auto = ctx.guildId == CommandService.DM_SCOPE || policy.isAutoApprove(ctx.guildId)
+        val auto = policy.isAutoApprove(ctx.guildId)
         val join = registration.requestJoin(ctx.userId, ctx.guildId, autoApprove = auto)
         val token = join.token ?: registration.reissueToken(ctx.userId, ctx.guildId)
         return if (token != null) {

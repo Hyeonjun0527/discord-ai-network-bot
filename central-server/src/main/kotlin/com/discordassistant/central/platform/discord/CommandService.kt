@@ -84,8 +84,9 @@ class CommandService(
 ) {
     companion object {
         /**
-         * DM/유저설치(길드 없음)용 글로벌 풀 스코프 sentinel(차수 19). 실제 길드 ID 는 큰 snowflake 라 0 과 충돌하지 않는다.
-         * DM 에서 /provider-join 한 사람들이 이 스코프(byGuild(0))로 하나의 공용 풀을 이루고, DM /ask 는 이 풀로 라우팅된다.
+         * DM(길드 없음) 컨텍스트의 guildId sentinel. 실제 길드 ID 는 큰 snowflake 라 0 과 충돌하지 않는다.
+         * DM 은 **읽기/안내 명령 전용** — AI 호출(/ask)·기여(/provider-join)는 길드 전용(멤버십 게이트)이라
+         * 이 스코프로 라우팅되거나 풀에 등록되지 않는다(예전 DM 글로벌 풀(차수 19)은 폐지).
          */
         const val DM_SCOPE = 0L
 

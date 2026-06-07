@@ -405,6 +405,14 @@ export const api = {
     if (USE_MOCK) { await delay(80); MOCK.status.enableImage = on; return { ok: true, enableImage: on }; }
     return post(ENDPOINTS.setup, { enableImage: on });
   },
+  /** 제공할 텍스트 모델 선택 적용 — webui.py POST /api/setup {models, enableImage, applyToBackground}.
+   *  실행 중 서비스에 즉시 반영(applyToBackground=true)해 풀에 새 구성을 광고한다. enableImage 는 현재값
+   *  을 보존(부분 저장이 이미지 토글을 끄지 않도록). */
+  async applyModels(models) {
+    if (USE_MOCK) { await delay(220); MOCK.status.models = [...models]; return { ok: true }; }
+    const st = await http(ENDPOINTS.status);
+    return post(ENDPOINTS.setup, { models, enableImage: !!st.enableImage, applyToBackground: true });
+  },
   /** 통합 설정 조회 — webui.py GET /api/settings(저장 설정+상태를 camelCase 로 통합). */
   async getSettings() {
     if (USE_MOCK) {
@@ -422,6 +430,16 @@ export const api = {
   async getUpdateInfo() {
     if (USE_MOCK) { await delay(60); return { ...MOCK.updateInfo }; }
     return http(ENDPOINTS.updateInfo);
+  },
+  /** 인앱 업데이트 시작 — webui.py POST /api/update. 진행률은 getUpdateProgress 폴링. */
+  async applyUpdate() {
+    if (USE_MOCK) { await delay(120); return { ok: true, started: true }; }
+    return post(ENDPOINTS.updateApply);
+  },
+  /** 업데이트 진행률 — webui.py /api/update-progress. {phase,percent,message,error}. */
+  async getUpdateProgress() {
+    if (USE_MOCK) { await delay(60); return { phase: 'idle', percent: 0, message: '' }; }
+    return http(ENDPOINTS.updateProgress);
   },
   /** 연결 해제(로그아웃) — webui.py /api/logout. 토큰·서버 연결을 비우고 온보딩으로. */
   async logout() {

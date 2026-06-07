@@ -1353,7 +1353,16 @@
       const chk = document.getElementById('setUpdateCheck');
       if (chk) chk.onclick = async () => { _upd = await api.getUpdateInfo(); render(); toast(_upd.outdated ? '새 버전이 있어요' : '최신 버전이에요', { type: 'info' }); };
       const apply = document.getElementById('setUpdateApply');
-      if (apply) apply.onclick = () => toast('업데이트를 시작했어요(진행률은 설치 화면에서 확인)', { type: 'info' });
+      if (apply) apply.onclick = async () => {
+        apply.disabled = true;
+        toast('업데이트 시작 중…', { type: 'run', sticky: true, id: 'upd' });
+        try {
+          const r = await api.applyUpdate(); // POST /api/update
+          if (r && r.ok === false) { toast(r.error || '업데이트를 시작할 수 없어요', { type: 'error', id: 'upd' }); return; }
+          toast('업데이트를 시작했어요 — 다운로드 후 자동 적용·재시작돼요', { type: 'ok', id: 'upd' });
+        } catch (_e) { toast('업데이트 시작 실패 — 다시 시도하세요', { type: 'error', id: 'upd' }); }
+        finally { apply.disabled = false; }
+      };
       const logout = document.getElementById('setLogout');
       if (logout) logout.onclick = async () => {
         if (!confirm('연결을 해제하면 모든 서버 제공이 중단돼요. 계속할까요?')) return;
@@ -1924,10 +1933,18 @@
     function renderAll() { renderList(); renderDefaultOptions(); renderFoot(); }
 
     selEl.addEventListener('change', () => { defaultModel = selEl.value; renderList(); markDirty(); });
-    document.getElementById('modelApplyBtn').addEventListener('click', () => {
-      dirty = false; applyEl.hidden = true;
+    document.getElementById('modelApplyBtn').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const sel = models.filter(m => m.on).map(m => m.name); // 제공할 모델(켜진 것만)
+      btn.disabled = true;
       toast('모델 설정 적용 · 재연결 중…', { type: 'run', sticky: true, id: 'remodel' });
-      setTimeout(() => toast('새 모델 구성으로 다시 제공 시작', { type: 'ok', id: 'remodel', sub: '서버에 새 구성을 알렸어요' }), 1400);
+      try {
+        const r = await api.applyModels(sel); // POST /api/setup {models, enableImage 보존, applyToBackground}
+        if (r && r.ok === false) { toast(r.error || '적용 실패 — 다시 시도하세요', { type: 'error', id: 'remodel' }); return; }
+        dirty = false; applyEl.hidden = true; // 실제 적용 성공 후에만 dirty 해제·버튼 숨김
+        toast('새 모델 구성으로 다시 제공 시작', { type: 'ok', id: 'remodel', sub: '서버에 새 구성을 알렸어요' });
+      } catch (_err) { toast('적용 실패 — 다시 시도하세요', { type: 'error', id: 'remodel' }); }
+      finally { btn.disabled = false; }
     });
 
     // 추천 모델 설치 — install.js 모달 레이어 재사용(카탈로그 선택 → 토스트 설치 SSOT)
@@ -2105,19 +2122,23 @@
       }
       // 온보딩 3단계 동작 토글을 백엔드에 반영한다(autostart→자동 시작 서비스, background→트레이 상주,
       // autoConnect→자동 연결, enableImage→이미지 수신). 이게 없으면 토글이 UI 에만 켜지고 실제 적용이 안 된다.
-      function applyOnboardingSettings() {
-        api.applyOnboarding({
-          enableImage: ONB.imageRecv,
-          autostart: ONB.autostart,
-          autoConnect: ONB.autoconnect,
-          background: ONB.background,
-        });
+      async function applyOnboardingSettings() {
+        // 실제 저장을 기다린다(낙관적 전환 금지). 실패해도 흐름은 막지 않되 사용자에게 알린다(설정에서 변경 가능).
+        try {
+          const r = await api.applyOnboarding({
+            enableImage: ONB.imageRecv,
+            autostart: ONB.autostart,
+            autoConnect: ONB.autoconnect,
+            background: ONB.background,
+          });
+          if (r && r.ok === false) window.toast?.('설정 저장에 실패했어요 — 나중에 설정에서 바꿀 수 있어요', { type: 'info' });
+        } catch (_e) { window.toast?.('설정 저장에 실패했어요 — 나중에 설정에서 바꿀 수 있어요', { type: 'info' }); }
       }
-      // A4 '연동하기' → 동작 설정 반영 + 선택한 런타임 설치(install.js installRuntime — 토스트 진행 SSOT) → 연결로.
-      function finishOnboarding() {
-        applyOnboardingSettings();
+      // A4 '연동하기' → 동작 설정 반영(대기) + 선택한 런타임 설치(install.js installRuntime — 토스트 진행 SSOT) → 연결로.
+      async function finishOnboarding() {
+        await applyOnboardingSettings();
         if (ONB.ollama) installRuntime('ollama');
-        if (ONB.image) installRuntime('image', ONB.sdModel); // A2 에서 고른 SD 모델로 설치
+        if (ONB.image) installRuntime('image', ONB.sdModel); // A2 에서 고른 SD 모델로 설치(진행률은 토스트)
         App.connectOrigin = 'onboarding'; connectSub = 'login'; // 첫 인증 — 로그인부터
         setStage('connect');
       }
@@ -2129,10 +2150,10 @@
           wiz.querySelectorAll('.opt-seg button').forEach(x => x.classList.toggle('sel', x.dataset.sdm === ONB.sdModel));
         });
         wiz.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => { ONB[b.dataset.tog] = !ONB[b.dataset.tog]; renderWiz(); });
-        wiz.querySelectorAll('[data-go]').forEach(b => b.onclick = () => {
+        wiz.querySelectorAll('[data-go]').forEach(b => b.onclick = async () => {
           const g = b.dataset.go;
-          if (g === 'connect') finishOnboarding();   // 연동하기 = 설치 시작 + 연결
-          else if (g === 'main') { applyOnboardingSettings(); setStage('main'); } // 메인으로 가도 동작 설정은 반영
+          if (g === 'connect') { b.disabled = true; try { await finishOnboarding(); } finally { b.disabled = false; } }   // 연동하기 = 설정 저장 대기 + 설치 시작 + 연결
+          else if (g === 'main') { b.disabled = true; try { await applyOnboardingSettings(); } finally { b.disabled = false; } setStage('main'); } // 설정 저장 후 메인
           else { ONB.step = +g; renderWiz(); emit(); }
         });
       }
@@ -2300,6 +2321,7 @@
         setText('statAvg', '—'); // 평균 응답은 백엔드 미제공 — 가짜 0ms 대신 —
         // 런타임 카드 상태: Ollama(모델 보유·실행) / SD(설치·준비) 기준.
         if (window.setImageRecv) window.setImageRecv(!!st.enableImage); // 이미지 요청 받기 실 상태 반영(먼저)
+        if (window.setBgOn) window.setBgOn(!!st.backgroundRunning); // 백그라운드 핀 실 상태(hero 렌더 전에)
         if (window.setRuntime) {
           window.setRuntime('Ollama', (st.running && st.models && st.models.length) ? 'running' : (st.models && st.models.length ? 'stopped' : 'absent'));
           window.setRuntime('Stable Diffusion', !st.sdInstalled ? 'absent' : (st.imageReady ? 'running' : 'stopped'));
@@ -2333,6 +2355,7 @@
         window.realStartSD = async () => { await api.startSetup('image'); try { watchSetup('image'); } catch (_e) { /* 진행률 폴링 실패는 비치명적 */ } };
         window.realGetStatus = () => api.getStatus(); // 진단(hero diag)이 실제 상태로 점검
         window.realSetImageRecv = async (on) => { await api.setImageReceiving(on); await syncHomeFromStatus(); }; // 이미지 요청 받기 실 토글
+        window.realSetSetting = (k, v) => api.setSetting(k, v); // 홈 백그라운드 핀 등 단일 설정 저장
         // 새로고침/재부팅 복원: 진행 중인 런타임 설치가 있으면 어느 화면이든 진행 토스트를 무조건 복원한다.
         // phase 가 진행 상태(=done/idle/error/cancelled 가 아님)면 watchSetup 으로 폴링·토스트만 이어붙인다.
         const _ACTIVE = (p) => p && p.phase && !['done', 'idle', 'error', 'cancelled'].includes(p.phase);
@@ -2361,7 +2384,18 @@
         const rt = RT[name] || { ping: '정상' };
         if (act === 'check') {
           window.toast(name + ' 연결 점검 중…', { type: 'run', sticky: true, id: 'chk-' + name });
-          setTimeout(() => window.toast(name + ' 정상 응답', { type: 'ok', sub: '응답 시간 ' + rt.ping, replace: 'chk-' + name }), 1100);
+          if (window.__SESSION_KEY && window.realGetStatus) {
+            // 실 앱: 실제 status 로 점검(런타임이 죽어 있으면 정직하게 '점검 필요').
+            window.realGetStatus().then((st) => {
+              st = st || {};
+              let ok, sub;
+              if (name === 'Stable Diffusion') { ok = !!st.imageReady; sub = !st.sdInstalled ? '미설치' : (ok ? '이미지 생성 준비됨' : '꺼짐 — 시작 필요'); }
+              else { const n = (st.models && st.models.length) || 0; ok = n > 0; sub = ok ? (n + '개 모델 제공 중') : '모델 없음 또는 미연결'; }
+              window.toast(name + (ok ? ' 정상 응답' : ' 점검 필요'), { type: ok ? 'ok' : 'error', sub, replace: 'chk-' + name });
+            }).catch(() => window.toast(name + ' 점검 실패', { type: 'error', replace: 'chk-' + name }));
+          } else {
+            setTimeout(() => window.toast(name + ' 정상 응답', { type: 'ok', sub: '응답 시간 ' + rt.ping, replace: 'chk-' + name }), 1100);
+          }
         } else if (act === 'open' && rt.open) {
           window.open(rt.open.target, '_blank', 'noopener'); // 외부 브라우저로 전환 → 토스트 불필요
         } else if (act === 'outputs' && rt.outputs) {
@@ -2610,13 +2644,21 @@
         });
         // 백그라운드 제공 핀 — 클릭 토글(꺼짐=빨강). 창을 닫아도 제공 유지 여부.
         const bp = heroInfo.querySelector('#bgPill');
-        if (bp) bp.onclick = () => {
-          bgOn = !bgOn;
-          bp.classList.toggle('bad', !bgOn);
-          bp.innerHTML = '<span class="d"></span> 백그라운드 ' + (bgOn ? '제공 중' : '꺼짐');
+        if (bp) bp.onclick = async () => {
+          const next = !bgOn;
+          const paint = () => { bgOn = next; bp.classList.toggle('bad', !bgOn); bp.innerHTML = '<span class="d"></span> 백그라운드 ' + (bgOn ? '제공 중' : '꺼짐'); };
+          if (window.__SESSION_KEY) {
+            // 실 앱: 실제 설정 저장 성공 후에만 반영(가짜 토글 금지).
+            try { await window.realSetSetting?.('background', next); paint(); window.toast(bgOn ? '백그라운드 제공 켜짐' : '백그라운드 제공 꺼짐', { type: bgOn ? 'ok' : 'info', sub: bgOn ? '창을 닫아도 제공이 유지돼요' : '창을 닫으면 제공이 멈춰요' }); }
+            catch (_e) { window.toast('설정 저장 실패 — 다시 시도하세요', { type: 'error' }); }
+            return;
+          }
+          paint();
           window.toast(bgOn ? '백그라운드 제공 켜짐' : '백그라운드 제공 꺼짐', { type: bgOn ? 'ok' : 'info', sub: bgOn ? '창을 닫아도 제공이 유지돼요' : '창을 닫으면 제공이 멈춰요' });
         };
       }
+      // 실 status 의 backgroundRunning 으로 핀 표시 동기화(다음 hero 렌더에 반영). syncHomeFromStatus 가 호출.
+      window.setBgOn = (on) => { bgOn = !!on; };
 
       // (전역 [한도 늘리기] 제거 — 하루 한도는 서버 상세의 '내 제공 정책'(G3)에서만 변경)
 

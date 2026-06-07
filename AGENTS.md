@@ -69,7 +69,11 @@ cd provider-agent && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov
 데스크톱 앱(provider-agent webui)의 UI 는 **`prototypes/desktop` 이 단일 SSOT** 다. webui_assets 나
 인라인 HTML 을 직접 고치지 말고 `prototypes/desktop` 에서만 수정 → `make sync-desktop`
 (= `scripts/sync_desktop_app.py`)이 `provider-agent/src/provider_agent/webui_assets/` 로 복제한다
-(USE_MOCK=false 치환·세션키 주입). webui_assets 는 생성물(`.gitignore`) — CI(agent-build)·로컬 실행 전 sync 필수.
+(USE_MOCK=false 치환·세션키 주입·**`@proto-only` 구간 제거**). webui_assets 는 생성물(`.gitignore`) — CI(agent-build)·로컬 실행 전 sync 필수.
+- **mock/데모는 실 앱에 들어가면 안 된다**: 프로토타입 전용(mock 데이터·PROTO 컨트롤러·데모 분기/setTimeout
+  가짜)은 `/* @proto-only */ … /* @end-proto-only */`(JS·CSS) / `<!-- @proto-only --> … <!-- @end-proto-only -->`(HTML)
+  로 감싼다. sync 가 이 구간을 통째로 제거 → 실 앱은 실 HTTP 만, SSOT 는 테스트(mock)·디자인용으로 보존.
+  새 화면/버튼은 **실 api 호출 + 결과 대기(낙관적/가짜 전환 금지)**, 데모 표현은 반드시 `@proto-only` 로 격리.
 - **UI/UX/프론트 로직**: `prototypes/desktop` 한 곳에서만 수정 → 디자인·화면·프론트 동작이 양쪽 자동 동일.
 - **백엔드 로직**: 실구현은 Python(provider-agent), 프로토타입은 JS mock(`adapter.js`)이라 코드 공유 불가 →
   ① 계약 `prototypes/desktop/contract.js`(ENDPOINTS·응답 shape)로 묶고 ② mock 이 실 동작을 충실히 모사한다.

@@ -2162,6 +2162,15 @@
       window.setConnectSub = (sub) => { connectSub = sub; setStage('connect'); };
       // 메인(이미 인증)에서 서버 추가 — 로그인 없이 후보 선택부터. I3 가드.
       window.enterServerAdd = () => { if (!canEnterServerAdd()) return; App.connectOrigin = 'main'; connectSub = 'select'; setStage('connect'); };
+
+      // 실 앱 부팅 분기: 세션키가 주입된 실제 앱(USE_MOCK=false)에서만 토큰 유무로 온보딩/메인을 자동 결정한다.
+      // 프로토타입(세션키 없음)은 라우터 hash·PROTO 도구로 stage 를 제어하므로 자동 분기하지 않는다.
+      if (window.__SESSION_KEY) {
+        App.connectOrigin = 'onboarding';
+        api.getStatus()
+          .then((st) => setStage(st && st.hasToken ? 'main' : 'onboarding'))
+          .catch(() => setStage('onboarding'));
+      }
     })();
   </script>
 

@@ -1570,12 +1570,24 @@
     ]; // v1: 역할별 정책·다중응답(multi)은 범위 외
     let _manageTab = 'provider';
 
+    // 탭별 지연 로드 — 실 백엔드 manage 응답은 {ok,policy,pending,roster} 뿐이라 prompts 등은 탭 진입 시 별도 조회.
+    //   (mock 은 manage 객체에 모두 포함하므로 이미 정의되어 재조회하지 않음.)
+    async function ensureTabData(d, m, tab) {
+      if (tab === 'profile' && m.prompts === undefined) {
+        const r = await api.getPromptSets(d.guildId);
+        m.prompts = (r && r.sets) || [];
+      }
+    }
+
     async function openManage(d, tab) {
       // 관리는 관리자(role=ADMIN)만. 기부자/승인대기는 진입 불가(서버 관리 탭은 관리자 전용).
       if (d.role !== Role.ADMIN || d.state === ProviderState.PENDING) { openDetail(d.guildId); return; }
       _manageTab = MTABS.some(t => t.k === tab) ? tab : 'provider';
       const m = await api.getServerManage(d.guildId);
+      // 권한은 central 이 JDA 로 최종 판정 — ok=false 면 비관리자(상세에서 진입했어도 방어).
+      if (m && m.ok === false) { toast('이 서버의 관리자 권한이 필요해요', { type: 'info', sub: d.guildName }); openDetail(d.guildId); return; }
       detailEl.hidden = true; manageEl.hidden = false; wrapEl.hidden = true;
+      await ensureTabData(d, m, _manageTab);
       renderManage(d, m);
       if (window.navTo) window.navTo('#/servers/' + d.guildId + '/manage' + (_manageTab === 'provider' ? '' : '/' + _manageTab));
     }
@@ -1602,8 +1614,8 @@
           '<div class="dsubhead">' + d.guildName + ' · 관리자 전용</div></div>' +
         '<div class="mtabs">' + tabs + '</div><div id="mBody">' + body + '</div>';
       manageEl.querySelector('#mBack').onclick = () => backToDetail(d);
-      manageEl.querySelectorAll('[data-mtab]').forEach(b => b.onclick = () => {
-        _manageTab = b.dataset.mtab; renderManage(d, m);
+      manageEl.querySelectorAll('[data-mtab]').forEach(b => b.onclick = async () => {
+        _manageTab = b.dataset.mtab; await ensureTabData(d, m, _manageTab); renderManage(d, m);
         if (window.navTo) window.navTo('#/servers/' + d.guildId + '/manage' + (_manageTab === 'provider' ? '' : '/' + _manageTab));
       });
       if (_manageTab === 'provider') bindProviderActions(d);
@@ -1667,7 +1679,11 @@
       lay.querySelector('#rmYes').onclick = async () => { await api.removeProvider(d.guildId, userId); lay.remove(); toast(name + ' 을(를) 제거했어요', { type: 'info' }); done(); };
     }
 
-    // ── 관리 탭 08~12 (mock — 흐름·구조 검증. 실연동은 Gap-M 채널 단계 확장) ──
+    // 실 백엔드 미브리지(Gap-M) 탭의 정직한 안내 — 크래시 대신 안내. 채널/RAG/프리셋은 central 에 구현돼 있고
+    //   앱 직접관리 브리지는 단계적 확장 중. 그 전까지는 Discord 슬래시 명령·웹 대시보드에서 관리.
+    const MSOON_REAL = (label) => '<div class="msoon"><b>' + label + ' — 앱 직접관리 준비 중</b>이 기능은 곧 앱에서 바로 관리할 수 있어요. 지금은 Discord 슬래시 명령이나 웹 대시보드에서 설정할 수 있어요.</div>';
+
+    // ── 관리 탭 08~12 (채널/채널AI/RAG/프리셋/안전: 프로토타입 mock. 실연동은 Gap-M 채널 단계 확장) ──
     function renderOverviewTab(m, d) {
       const todaySum = m.roster.reduce((a, p) => a + (p.today || 0), 0);
       return '<div class="dcard"><div class="dlabel">서버 요약</div>' +
@@ -1677,12 +1693,12 @@
           '<div><b>' + todaySum + '</b><span>오늘 처리</span></div>' +
         '</div></div>' +
         (m.pending.length ? '<div class="dcard dwarn"><div class="dlabel">⚠ 승인 대기 ' + m.pending.length + '명</div><div class="dsub">Provider 탭에서 승인/거절할 수 있어요.</div></div>' : '') +
-        '<div class="dcard"><div class="dlabel">서버 기본값</div><div class="dsub">기본 모델 ' + m.channels.defaultModel + ' · 기본 언어 ' + m.channels.defaultLang + '</div></div>';
+        (m.channels ? '<div class="dcard"><div class="dlabel">서버 기본값</div><div class="dsub">기본 모델 ' + m.channels.defaultModel + ' · 기본 언어 ' + m.channels.defaultLang + '</div></div>' : '');
     }
 
     function renderProfileTab(m) {
       // builtin(NEXA 기본 페르소나)은 전문(content)을 클라이언트로 내리지 않는다 — preview 만 표시(전문 비공개).
-      const prompts = m.prompts.map(p => {
+      const prompts = (m.prompts || []).map(p => {
         const text = p.builtin ? (p.preview || '') : (p.content || '');
         const lock = p.builtin ? ' <span class="dim">🔒 NEXA 기본 · 전문 비공개</span>' : '';
         return '<div class="dcard"><div class="drow"><div style="min-width:0"><div class="dlabel">' + p.name +
@@ -1699,6 +1715,7 @@
     }
 
     function renderChannelsTab(m) {
+      if (!m.channels) return MSOON_REAL('채널 AI 허용');
       const c = m.channels;
       const ch = c.list.map(x => '<div class="mrow"><span class="mrow-nm"># ' + x.name + '</span>' +
         '<button class="mtoggle' + (x.aiAllowed ? ' on' : '') + '" data-ch-toggle="' + x.name + '">' + (x.aiAllowed ? 'AI 허용' : 'AI 금지') + '</button></div>').join('');
@@ -1707,6 +1724,7 @@
     }
 
     function renderChannelAiTab(m) {
+      if (!m.channelAi) return MSOON_REAL('채널 AI');
       if (!m.channelAi.length) return '<div class="msoon"><b>채널 AI 없음</b>채널마다 다른 AI 성격(모델·말투·프롬프트)을 지정할 수 있어요.</div>' +
         '<button class="btn btn--md btn--secondary mt" data-soon="채널 AI 추가">+ 채널 AI 추가</button>';
       const cards = m.channelAi.map(c => '<div class="dcard"><div class="drow"><div class="dlabel"># ' + c.channel + '</div>' +
@@ -1717,6 +1735,7 @@
     }
 
     function renderRagTab(m) {
+      if (!m.rag) return MSOON_REAL('RAG 지식 공간');
       const docs = m.rag.docs.map(x => '<div class="mrow"><span class="mrow-nm">📄 ' + x.name + '</span>' +
         '<span class="mrow-meta">' + (x.status === 'indexed'
           ? '<span class="srv-st ok"><span class="d"></span>색인 완료</span> · ' + x.chunks + '청크 · ' + x.when
@@ -1731,6 +1750,7 @@
     }
 
     function renderPresetTab(m) {
+      if (!m.presets) return MSOON_REAL('프리셋');
       const cards = m.presets.map(p => '<div class="dcard"><div class="drow"><div><div class="dlabel">' + p.name + '</div>' +
         '<div class="dsub">' + p.model + ' · ' + p.tone + ' · 적용 ' + (p.applied ? ('# ' + p.applied) : '없음') + '</div></div>' +
         '<button class="mtoggle' + (p.on ? ' on' : '') + '" data-preset-toggle="' + p.name + '">' + (p.on ? '사용 중' : '미사용') + '</button></div></div>').join('');
@@ -1739,6 +1759,7 @@
     }
 
     function renderSafetyTab(m) {
+      if (!m.safety) return MSOON_REAL('안전 · 신고');
       const open = m.safety.reports.filter(r => r.status === 'open');
       const policy = '<div class="dcard"><div class="dlabel">콘텐츠 정책</div>' +
         '<div class="dsub">이 서버 AI 콘텐츠의 책임은 <b>서버 관리자</b>에게 있어요. NEXA 는 신고를 받으면 대응해요.<br>' +
@@ -1760,11 +1781,16 @@
       manageEl.querySelectorAll('[data-ch-toggle]').forEach(b => b.onclick = () => { const x = m.channels.list.find(c => c.name === b.dataset.chToggle); if (x) x.aiAllowed = !x.aiAllowed; rerender(); });
       manageEl.querySelectorAll('[data-cai-toggle]').forEach(b => b.onclick = () => { const x = m.channelAi.find(c => c.channel === b.dataset.caiToggle); if (x) x.on = !x.on; rerender(); });
       manageEl.querySelectorAll('[data-preset-toggle]').forEach(b => b.onclick = () => { const x = m.presets.find(c => c.name === b.dataset.presetToggle); if (x) x.on = !x.on; rerender(); });
-      // 전역 프롬프트셋 — 기본/삭제/추가
-      manageEl.querySelectorAll('[data-prompt-default]').forEach(b => b.onclick = () => { m.prompts.forEach(p => { p.isDefault = (p.id === b.dataset.promptDefault); }); toast('기본 프롬프트셋을 변경했어요', { type: 'ok' }); rerender(); });
+      // 전역 프롬프트셋 — 기본/삭제/추가 (실연동: webui → central /provider/admin/prompt-sets*)
+      manageEl.querySelectorAll('[data-prompt-default]').forEach(b => b.onclick = async () => {
+        const r = await api.setDefaultPromptSet(d.guildId, b.dataset.promptDefault);
+        if (r && r.ok === false) { toast(r.message || '변경할 수 없어요', { type: 'info' }); return; }
+        if (r && r.sets) m.prompts = r.sets;
+        toast('기본 프롬프트셋을 변경했어요', { type: 'ok' }); rerender();
+      });
       manageEl.querySelectorAll('[data-prompt-del]').forEach(b => b.onclick = () => confirmDeletePrompt(d, m, b.dataset.promptDel, b.dataset.name, rerender));
       const pa = manageEl.querySelector('#promptAdd');
-      if (pa) pa.onclick = () => openPromptModal(m, rerender);
+      if (pa) pa.onclick = () => openPromptModal(d, m, rerender);
       // 안전 — 신고 처리(무시/숨김)
       manageEl.querySelectorAll('[data-report-dismiss]').forEach(b => b.onclick = () => { const r = m.safety.reports.find(x => x.id === b.dataset.reportDismiss); if (r) r.status = 'dismissed'; toast('신고를 무시했어요', { type: 'info' }); rerender(); });
       manageEl.querySelectorAll('[data-report-act]').forEach(b => b.onclick = () => { const r = m.safety.reports.find(x => x.id === b.dataset.reportAct); if (r) r.status = 'resolved'; toast('숨김 처리했어요', { type: 'ok' }); rerender(); });
@@ -1780,15 +1806,15 @@
         '<button class="btn btn--md btn--warn" id="pdYes">삭제</button></div></div>';
       document.body.appendChild(lay);
       lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
-      lay.querySelector('#pdYes').onclick = () => {
-        const wasDefault = m.prompts.find(p => p.id === id)?.isDefault;
-        m.prompts = m.prompts.filter(p => p.id !== id);
-        if (wasDefault && m.prompts.length && !m.prompts.some(p => p.isDefault)) m.prompts[0].isDefault = true; // 기본 공백 방지
+      lay.querySelector('#pdYes').onclick = async () => {
+        const r = await api.deletePromptSet(d.guildId, id);
+        if (r && r.ok === false) { lay.remove(); toast(r.message || '삭제할 수 없어요', { type: 'info' }); return; }
+        if (r && r.sets) m.prompts = r.sets; // central 이 기본 공백 방지(기본 셋 삭제 시 니아 복귀)까지 처리
         lay.remove(); toast(name + ' 을(를) 삭제했어요', { type: 'info' }); done();
       };
     }
 
-    function openPromptModal(m, done) {
+    function openPromptModal(d, m, done) {
       const lay = document.createElement('div');
       lay.className = 'modal-layer';
       lay.innerHTML = '<div class="modal" style="width:min(480px,100%)">' +
@@ -1800,11 +1826,13 @@
         '<button class="btn btn--md btn--primary" id="npSave">추가</button></div></div>';
       document.body.appendChild(lay);
       lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
-      lay.querySelector('#npSave').onclick = () => {
+      lay.querySelector('#npSave').onclick = async () => {
         const name = (lay.querySelector('#npName').value || '').trim();
         const body = (lay.querySelector('#npBody').value || '').trim();
         if (!name || !body) { toast('이름과 내용을 입력하세요', { type: 'info' }); return; }
-        m.prompts.push({ id: 'p' + Date.now(), name, builtin: false, isDefault: false, content: body });
+        const r = await api.addPromptSet(d.guildId, name, body);
+        if (r && r.ok === false) { toast(r.message || '추가할 수 없어요', { type: 'info' }); return; }
+        if (r && r.sets) m.prompts = r.sets;
         lay.remove(); toast('프롬프트셋을 추가했어요', { type: 'ok', sub: name }); done();
       };
     }

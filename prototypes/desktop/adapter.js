@@ -227,14 +227,31 @@ export const api = {
       myModels: [], policy: null, webUrl: null,
     }));
   },
-  /** 서버 상세(기부자 관점) — Gap-S/P/W. 백엔드 전환 시 GET /api/servers/{guildId}. */
+  /** 서버 상세(기부자 관점) — Gap-S/P/W. 실 백엔드엔 전용 상세 API 가 없어 목록+권한 probe 로 구성. */
   async getServerDetail(guildId) {
     if (USE_MOCK) { await delay(60); const s = MOCK.servers.find((x) => x.guildId === guildId); return s ? structuredClone(s) : null; }
-    return http(ENDPOINTS.serverDetail(guildId));
+    // 실: /api/servers/{g} 전용 라우트가 없다(Gap-S). 목록 항목으로 기본을 채우고, 관리 권한은
+    //   /manage 응답 ok 로 판정한다(contract.js: "앱은 serverManage 응답 ok 로 관리자 여부를 판정").
+    //   기여 통계(models/today/avgMs/myModels)는 앱 경로 미보강이라 안전 기본값으로 최소 표시.
+    const list = (await http(ENDPOINTS.servers)).servers || [];
+    const s = list.find((x) => Number(x.guildId) === Number(guildId));
+    if (!s) return null;
+    let isAdmin = false;
+    try { const mg = await http(ENDPOINTS.serverManage(guildId)); isAdmin = !!(mg && mg.ok); } catch { isAdmin = false; }
+    return {
+      guildId: Number(s.guildId), guildName: s.guildName, iconUrl: null,
+      connected: !!s.connected,
+      state: s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE,
+      role: isAdmin ? Role.ADMIN : Role.PROVIDER,
+      models: 0, today: 0, members: 0, avgMs: 0,
+      myModels: [],
+      policy: { dailyLimit: 0, maxConcurrency: 1, maxSeconds: 600, scope: 'ALL' },
+      webUrl: null,
+    };
   },
-  /** 서버 관리(관리자) — 승인 대기·로스터·정책. ⚠ Gap-M(앱↔central 관리 채널). */
+  /** 서버 관리(관리자) — 승인 대기·로스터·정책. ⚠ Gap-M(앱↔central 관리 채널). 비관리자는 ok=false. */
   async getServerManage(guildId) {
-    if (USE_MOCK) { await delay(60); const m = MOCK.manage[guildId]; return m ? structuredClone(m) : { policy: { autoApprove: false, defaultDailyLimit: 50, scope: 'ALL' }, pending: [], roster: [] }; }
+    if (USE_MOCK) { await delay(60); const m = MOCK.manage[guildId]; return m ? { ok: true, ...structuredClone(m) } : { ok: true, policy: { autoApprove: false, defaultDailyLimit: 50, scope: 'ALL' }, pending: [], roster: [] }; }
     return http(ENDPOINTS.serverManage(guildId));
   },
   /** Provider 승인(관리자 → /provider-approve). 승인 시 로스터로 이동. */
@@ -264,6 +281,40 @@ export const api = {
     const m = MOCK.manage[guildId];
     if (USE_MOCK) { await delay(80); if (m) m.policy = { ...m.policy, ...policy }; return { ok: true, policy: m && m.policy }; }
     return post(ENDPOINTS.serverManagePolicy(guildId), policy);
+  },
+  // ── 전역 프롬프트셋(서버 전체 기본 AI 성격) — 관리자. 응답 {ok, sets:[{id,name,builtin,isDefault,preview,content}]}.
+  //   builtin(니아)은 preview 만(전문 비공개). webui → central /provider/admin/prompt-sets{,/add,/default,/delete}.
+  /** 전역 프롬프트셋 목록 조회. */
+  async getPromptSets(guildId) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) { await delay(60); return { ok: true, sets: m ? structuredClone(m.prompts) : [] }; }
+    return http(ENDPOINTS.serverPrompts(guildId));
+  },
+  /** 전역 프롬프트셋 추가(사용자 작성). 추가만으로 기본이 되지는 않는다. */
+  async addPromptSet(guildId, name, content) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) { await delay(80); if (m) m.prompts.push({ id: 'p' + Date.now(), name, builtin: false, isDefault: false, content }); return { ok: true, sets: m ? structuredClone(m.prompts) : [] }; }
+    return post(ENDPOINTS.serverPromptAdd(guildId), { name, content });
+  },
+  /** 기본 셋 지정. id='nia' 면 NEXA 기본 정체성(니아)으로 되돌린다. */
+  async setDefaultPromptSet(guildId, id) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) { await delay(80); if (m) m.prompts.forEach((p) => { p.isDefault = (p.id === id); }); return { ok: true, sets: m ? structuredClone(m.prompts) : [] }; }
+    return post(ENDPOINTS.serverPromptDefault(guildId), { id });
+  },
+  /** 전역 프롬프트셋 삭제. 기본이던 셋을 지우면 니아로 되돌아간다. builtin(니아)은 삭제 불가. */
+  async deletePromptSet(guildId, id) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) {
+      await delay(80);
+      if (m) {
+        const wasDefault = m.prompts.find((p) => p.id === id)?.isDefault;
+        m.prompts = m.prompts.filter((p) => p.id !== id);
+        if (wasDefault && !m.prompts.some((p) => p.isDefault)) { const nia = m.prompts.find((p) => p.builtin); if (nia) nia.isDefault = true; }
+      }
+      return { ok: true, sets: m ? structuredClone(m.prompts) : [] };
+    }
+    return post(ENDPOINTS.serverPromptDelete(guildId), { id });
   },
   /** 이 서버에 대한 내 제공 일시중지/재개 — provider self-service(/provider-pause·resume). */
   async setServerPaused(guildId, paused) {

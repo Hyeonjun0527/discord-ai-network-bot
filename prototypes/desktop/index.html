@@ -336,7 +336,8 @@
     .hero-status.state-error::after { background: radial-gradient(circle, color-mix(in srgb, var(--warn) 14%, transparent), transparent 65%); }
     .hero-status.state-paused::after { background: radial-gradient(circle, rgba(150,168,200,.10), transparent 65%); }
 
-    /* ══ 프로토타입 컨트롤러(화면 밖 오버레이 — 실제 UI 와 분리) ══ */
+    /* @proto-only */
+    /* ══ 프로토타입 컨트롤러(화면 밖 오버레이 — 실제 UI 와 분리. 실 앱 sync 시 제거됨) ══ */
     #proto { position: fixed; right: 18px; bottom: 18px; z-index: 100; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     #proto .proto-fab {
       display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; cursor: pointer;
@@ -369,6 +370,7 @@
     .proto-rt .rt-name { width: 44px; flex: 0 0 auto; font-size: 11px; color: var(--subtle); }
     .proto-seg.proto-seg-sm { flex: 1; }
     .proto-seg.proto-seg-sm button { padding: 6px 6px; font-size: 11px; }
+    /* @end-proto-only */
 
     /* 진단 패널(문제 상태에서 [진단] 클릭 시) */
     .diag { margin-top: 18px; border-radius: 14px; border: 1px solid var(--line); background: rgba(9,15,26,.6); overflow: hidden; }
@@ -994,7 +996,8 @@
   <!-- 설치 마법사 모듈(window.openInstall 노출) -->
   <script type="module" src="./install.js"></script>
 
-  <!-- ══ 프로토타입 컨트롤러(실제 화면과 분리된 오버레이) ══ -->
+  <!-- @proto-only -->
+  <!-- ══ 프로토타입 컨트롤러(실제 화면과 분리된 오버레이. 실 앱 sync 시 제거됨) ══ -->
   <div id="proto">
     <div class="proto-panel">
       <div class="ph"><b>PROTOTYPE v1</b><span class="x" id="protoClose">✕</span></div>
@@ -1087,6 +1090,7 @@
     </div>
     <div class="proto-fab" id="protoFab"><span class="dia"></span><span>PROTO</span></div>
   </div>
+  <!-- @end-proto-only -->
 
   <!-- 탭 전환 -->
   <script>
@@ -1168,8 +1172,10 @@
     const servers = await api.getServers();
     render(servers);
     document.getElementById('srvAll').addEventListener('click', goServers);
+    /* @proto-only */
     // 빈틈 데모: 서버 0개 ↔ 복원
     window.setHomeServers = (mode) => render(mode === 'empty' ? [] : servers);
+    /* @end-proto-only */
   </script>
 
   <!-- 토스트(액션 피드백) — 모듈. window.toast 도 노출(일반 script 호환) -->
@@ -2254,8 +2260,10 @@
         }
         const login = q('#cxLogin');
         if (login) login.onclick = async () => {
+          /* @proto-only */
           // 프로토타입(키 없음)은 기존 mock 흐름(앱 내 후보 select) — connect-open 결과 무관.
           if (!window.__SESSION_KEY) { await api.connectOpen(); connectSub = 'select'; renderConnect(); emit(); return; }
+          /* @end-proto-only */
           // 실 앱: connect-open 이 시스템 브라우저로 OAuth 를 연다. 단 서버에 OAuth 미설정이면
           // {ok:false,error} 를 돌려주고 브라우저가 안 열린다 — 이때 'waiting' 으로 가면 영원히 폴링하므로
           // 사유를 안내하고 login 화면을 유지한다. ok 일 때만 'waiting'(완료 폴링)으로 넘어간다.
@@ -2393,9 +2401,9 @@
               else { const n = (st.models && st.models.length) || 0; ok = n > 0; sub = ok ? (n + '개 모델 제공 중') : '모델 없음 또는 미연결'; }
               window.toast(name + (ok ? ' 정상 응답' : ' 점검 필요'), { type: ok ? 'ok' : 'error', sub, replace: 'chk-' + name });
             }).catch(() => window.toast(name + ' 점검 실패', { type: 'error', replace: 'chk-' + name }));
-          } else {
+          } /* @proto-only */ else {
             setTimeout(() => window.toast(name + ' 정상 응답', { type: 'ok', sub: '응답 시간 ' + rt.ping, replace: 'chk-' + name }), 1100);
-          }
+          } /* @end-proto-only */
         } else if (act === 'open' && rt.open) {
           window.open(rt.open.target, '_blank', 'noopener'); // 외부 브라우저로 전환 → 토스트 불필요
         } else if (act === 'outputs' && rt.outputs) {
@@ -2486,10 +2494,12 @@
           catch (_e) { window.toast('설정 저장 실패 — 다시 시도하세요', { type: 'error' }); }
           return;
         }
+        /* @proto-only */
         imageRecv = next;
         const card = document.querySelector('.prov-card[data-runtime="Stable Diffusion"]');
         setRuntime('Stable Diffusion', card.dataset.state);
         window.toast('이미지 요청 받기 ' + (imageRecv ? '켜짐' : '꺼짐'), { type: imageRecv ? 'ok' : 'info', sub: imageRecv ? '/그림 요청을 이 PC 에서 처리해요' : '이미지 요청을 받지 않아요' });
+        /* @end-proto-only */
       });
       // 실 status 로 이미지 요청 받기 표시 동기화(가짜 ON 방지) — syncHomeFromStatus 가 호출.
       window.setImageRecv = (on) => {
@@ -2516,13 +2526,16 @@
             } catch (_err) { window.toast(name + ' 시작 실패 — 잠시 후 다시 시도하세요', { type: 'error', replace: 'start-' + name }); }
             return;
           }
+          /* @proto-only */
           // 프로토타입 데모(세션키 없음): 흐름 시연용 가짜 전환.
           window.toast(name + ' 시작 중…', { type: 'run', sticky: true, id: 'start-' + name });
           setTimeout(() => { window.toast(name + ' 실행 중', { type: 'ok', replace: 'start-' + name }); setRuntime(name, 'running'); }, 1200);
+          /* @end-proto-only */
         });
       });
       window.setRuntime = setRuntime; // PROTO 컨트롤러용
       // (경고 배너는 안내만 — 설치는 바로 아래 런타임 카드의 [설치] 버튼으로)
+      /* @proto-only */
       // 빈틈 데모(PROTO): 서버 0개 / 런타임 전부 미설치 / 초기화
       window.setEmptyState = (kind) => {
         if (kind === 'servers') { if (window.setHomeServers) window.setHomeServers('empty'); }
@@ -2532,6 +2545,7 @@
           setRuntime('Ollama', 'running'); setRuntime('Stable Diffusion', 'running');
         }
       };
+      /* @end-proto-only */
       // 설치 완료(install.js installRuntime) → 해당 카드를 '실행 중'으로
       window.addEventListener('runtimeinstalled', (e) => {
         setRuntime(e.detail === 'image' ? 'Stable Diffusion' : 'Ollama', 'running');
@@ -2639,7 +2653,8 @@
               } catch (_err) { window.toast('처리 실패 — 네트워크를 확인하고 다시 시도하세요', { type: 'error', replace: 'hero-act' }); }
               return;
             }
-            window.setHeroState(btn.dataset.go); // 프로토타입 데모(세션키 없음)
+            // 프로토타입 데모(세션키 없음) — 실 앱 sync 시 제거
+            /* @proto-only */ window.setHeroState(btn.dataset.go); /* @end-proto-only */
           });
         });
         // 백그라운드 제공 핀 — 클릭 토글(꺼짐=빨강). 창을 닫아도 제공 유지 여부.
@@ -2653,8 +2668,10 @@
             catch (_e) { window.toast('설정 저장 실패 — 다시 시도하세요', { type: 'error' }); }
             return;
           }
+          /* @proto-only */
           paint();
           window.toast(bgOn ? '백그라운드 제공 켜짐' : '백그라운드 제공 꺼짐', { type: bgOn ? 'ok' : 'info', sub: bgOn ? '창을 닫아도 제공이 유지돼요' : '창을 닫으면 제공이 멈춰요' });
+          /* @end-proto-only */
         };
       }
       // 실 status 의 backgroundRunning 으로 핀 표시 동기화(다음 hero 렌더에 반영). syncHomeFromStatus 가 호출.
@@ -2707,7 +2724,8 @@
     })();
   </script>
 
-  <!-- 프로토타입 컨트롤러 동작(앱 로직과 분리) -->
+  <!-- @proto-only -->
+  <!-- 프로토타입 컨트롤러 동작(앱 로직과 분리. 실 앱 sync 시 제거됨) -->
   <script>
     (function protoTool() {
       // 실 앱(세션키 주입됨)에선 데모 전용 PROTO 오버레이를 제거하고 초기화를 건너뛴다.
@@ -2793,6 +2811,7 @@
       });
     })();
   </script>
+  <!-- @end-proto-only -->
 
   <!-- ═══ 전역 배경: 포인터-리액티브 2D 데이터 플로우 네트워크 (Canvas 2D, 가산 발광) ═══ -->
   <script>

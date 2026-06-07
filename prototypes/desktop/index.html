@@ -2294,6 +2294,15 @@
       function stopConnectPoll() { if (connectPoll) { clearInterval(connectPoll); connectPoll = null; } }
       function emit() { window.dispatchEvent(new CustomEvent('stagechange', { detail: { stage: App.stage, step: ONB.step, connectSub } })); }
       function setStage(name) {
+        // 메인 노출(app-booting 해제) 전에 현재 해시의 최상위 뷰를 먼저 active 로 맞춘다 → 홈 깜빡임 방지.
+        //   라우터 모듈이 아직 평가 전이라 window.__activateRoute 가 없을 수 있어 여기서 직접 처리(의존 제거).
+        if (name === 'main') {
+          const ROUTE_VIEWS = ['home', 'models', 'servers', 'local', 'logs', 'settings'];
+          const a = (location.hash.replace(/^#\/?/, '').split('/').filter(Boolean)[0]) || 'home';
+          const v = ROUTE_VIEWS.includes(a) ? a : 'home';
+          document.querySelectorAll('.nav-item').forEach((x) => x.classList.toggle('active', x.dataset.view === v));
+          document.querySelectorAll('.view').forEach((x) => x.classList.toggle('active', x.dataset.view === v));
+        }
         document.documentElement.classList.remove('app-booting'); // 부팅 판정 끝 — 메인 숨김 해제(이후 stage 가 표시 제어)
         if (name !== 'connect') stopConnectPoll(); // connect 화면 이탈 시 'waiting' 폴링 정리(누수 방지)
         applyStage(name); // App.stage 갱신 + authed 보정(I1: main ⟹ authed)
@@ -2306,7 +2315,12 @@
         if (window.navTo) { // URL 동기화(라우터 SSOT)
           if (name === 'onboarding') window.navTo('#/onboarding/' + ONB.step);
           else if (name === 'connect') window.navTo('#/connect/' + connectSub);
-          else if (name === 'main') window.navTo('#/home');
+          // main 진입: 온보딩/연결 흐름에서 왔거나 경로가 없을 때만 홈으로. 이미 앱 경로(#/models 등)면
+          // 보존(새로고침/딥링크 시 홈으로 튕겨 깜빡이는 문제 방지).
+          else if (name === 'main') {
+            const h = location.hash;
+            if (!h || h === '#/' || h.startsWith('#/onboarding') || h.startsWith('#/connect')) window.navTo('#/home');
+          }
         }
       }
 
@@ -2474,7 +2488,12 @@
       if (window.__SESSION_KEY) {
         App.connectOrigin = 'onboarding';
         api.getStatus()
-          .then((st) => setStage(st && st.hasToken ? 'main' : 'onboarding'))
+          .then((st) => {
+            if (st && st.hasToken) {
+              setStage('main');
+              window.applyRouteNow?.(); // 메인 노출과 같은 틱에 현재 해시 뷰 적용 → 홈 플래시 방지(#/models 등 딥링크 보존)
+            } else { setStage('onboarding'); }
+          })
           .catch(() => setStage('onboarding'));
         syncHomeFromStatus(); // 홈 진입 여부와 무관하게 실제 status 로 미리 동기화(가짜값 방지)
         // 실 앱: 홈을 실제 status 로 **지속 동기화**한다. 버튼의 낙관적/가짜 전환이 아니라 항상 진짜 상태가
@@ -3373,6 +3392,7 @@
     }
 
     window.addEventListener('hashchange', applyRoute);
+    window.applyRouteNow = applyRoute; // 부팅이 딥링크(서버 상세 #/servers/:id 등)까지 완전 적용하도록(최상위 뷰는 setStage 가 노출 전 선반영)
     if (location.hash && location.hash !== '#/home') applyRoute(); // 새로고침/딥링크 초기 진입
   </script>
 </body>

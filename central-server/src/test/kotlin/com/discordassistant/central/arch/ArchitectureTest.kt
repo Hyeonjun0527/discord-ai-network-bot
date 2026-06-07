@@ -86,7 +86,7 @@ class ArchitectureTest {
     // ── 도메인-우선 헥사고날 점진 전환(ADD-only) ─────────────────────────────────
     // 이동이 끝난 도메인의 domain 레이어는 순수 Kotlin 규칙만 가진다 — application/adapter/infra 와
     // Spring/JPA/JDA 같은 프레임워크에 의존하지 않는다. 도메인이 이동할 때마다 이 화이트리스트를 넓힌다.
-    // (provider 파일럿: ..central.provider.domain.. = ProviderState/ProviderModelScope/AvailabilityWindow)
+    // (provider 파일럿: ..central.provider.domain.. = ProviderState/AvailabilityWindow)
     @ArchTest
     val migratedDomainsArePure: ArchRule =
         noClasses()

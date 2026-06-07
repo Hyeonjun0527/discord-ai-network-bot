@@ -76,11 +76,6 @@ class CommandServiceCoverageTest
         }
 
         @Test
-        fun `providerScope — 허용 범위 설정 확인`() {
-            assertTrue(commands.providerScope(user(), "llama3", "everyone").content.contains("허용 범위"))
-        }
-
-        @Test
         fun `providerSchedule — 유효 시간은 설정, 범위 밖은 경고`() {
             assertTrue(commands.providerSchedule(user(), 22, 6).content.contains("가용 시간대"))
             assertTrue(commands.providerSchedule(user(), 25, 6).content.contains("0~23"))

@@ -2,12 +2,6 @@ package com.discordassistant.central.discord
 
 import com.discordassistant.central.platform.discord.CommandContext
 import com.discordassistant.central.platform.discord.CommandService
-import com.discordassistant.central.relay.AgentConnection
-import com.discordassistant.central.relay.ConnectionRegistry
-import com.discordassistant.central.relay.ProviderSession
-import com.discordassistant.central.relay.protocol.Frame
-import com.discordassistant.central.relay.protocol.InferRequest
-import com.discordassistant.central.relay.protocol.InferResult
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -15,20 +9,9 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.transaction.annotation.Transactional
 
-private class DmEcho : AgentConnection {
-    lateinit var session: ProviderSession
-    override val remoteId = "dm-echo"
-
-    override fun sendFrame(frame: Frame) {
-        if (frame is InferRequest) session.handleFrame(InferResult(frame.requestId, "echo:${frame.prompt}"))
-    }
-
-    override fun close(reason: String) {}
-}
-
 /**
- * DM(봇과의 1:1) 글로벌 풀 라우팅(차수 19). 길드 없이 DM_SCOPE 로 provider-join 이 자동 승인되고,
- * /ask 가 DM_SCOPE 풀의 프로바이더로 라우팅되는지 검증한다.
+ * DM(봇과의 1:1) 글로벌 풀 인프라(차수 19). 길드 없이 DM_SCOPE 로 provider-join(기여)이 자동 승인되는지 검증.
+ * 단, DM /ask·/ask-long(AI 호출)은 멤버십 게이트로 비활성화됨 — 그 서버 멤버만 호출 가능(아래 NOTE).
  */
 @SpringBootTest
 @Transactional
@@ -36,7 +19,6 @@ class DmScopeRoutingTest
     @Autowired
     constructor(
         val commands: CommandService,
-        val registry: ConnectionRegistry,
     ) {
         private fun dm(userId: Long) =
             CommandContext(
@@ -68,19 +50,7 @@ class DmScopeRoutingTest
             assertTrue(win.content.contains("Nexa.Nexa"), win.content)
         }
 
-        @Test
-        fun `DM ask 는 글로벌 풀(DM_SCOPE) 프로바이더로 라우팅된다`() {
-            val conn = DmEcho()
-            val session = ProviderSession(conn, providerId = 610_002L, guildId = CommandService.DM_SCOPE)
-            conn.session = session
-            registry.register(session)
-            try {
-                val r = commands.ask(dm(610_003L), "코드 설명")
-                // DM 도 글로벌 풀로 라우팅되어 echo 가 돌아온다. 가드레일 주입 후 사용자 질문이 끝에 전달된다.
-                assertTrue(r.content.startsWith("echo:"), r.content)
-                assertTrue(r.content.endsWith("코드 설명"), r.content)
-            } finally {
-                registry.unregister(session)
-            }
-        }
+        // NOTE: DM /ask·/ask-long 은 의도적으로 비활성화됨(DiscordBot.DM_COMMANDS 에서 제외) —
+        // AI 호출은 그 서버의 멤버만 가능해야 하고, DM 은 멤버 신원이 없기 때문. 따라서 'DM ask 라우팅'
+        // 테스트는 제거. DM provider-join(기여) 자체는 글로벌 풀 인프라로 유지된다(위 테스트).
     }

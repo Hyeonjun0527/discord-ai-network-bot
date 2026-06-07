@@ -19,7 +19,7 @@ class ContributionPolicyServiceTest
         val svc: ContributionPolicyService,
     ) {
         @Test
-        fun `모델 설정·한도·범위`() {
+        fun `모델 설정·한도`() {
             svc.setModels(1, listOf("llama3.1:8b", "qwen2.5:7b"), ModelBurden.STANDARD)
             assertEquals(2, svc.policies(1).size)
 
@@ -27,9 +27,6 @@ class ContributionPolicyServiceTest
             val p = svc.policies(1).first { it.model == "llama3.1:8b" }
             assertEquals(50, p.dailyLimit)
             assertEquals(2, p.maxConcurrency)
-
-            svc.setScope(1, "llama3.1:8b", "trusted")
-            assertEquals("trusted", svc.policies(1).first { it.model == "llama3.1:8b" }.allowedRole)
         }
 
         @Test

@@ -106,15 +106,6 @@ class ProviderSelfServiceCommands(
         return Reply("✅ `$model` 한도: 하루 $daily · 동시 $concurrency · 최대 ${seconds}초")
     }
 
-    fun providerScope(
-        ctx: CommandContext,
-        model: String,
-        role: String,
-    ): Reply {
-        contributionPolicy.setScope(ctx.userId, model, role)
-        return Reply("✅ `$model` 허용 범위: $role")
-    }
-
     /** 가용 시간대 스케줄 설정(차수 12 #159). UTC 시 0~23, from==to 면 24시간. */
     fun providerSchedule(
         ctx: CommandContext,

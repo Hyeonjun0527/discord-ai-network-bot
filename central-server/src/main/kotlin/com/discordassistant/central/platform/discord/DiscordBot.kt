@@ -49,8 +49,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * (JDA 5.2.1 은 신 user-install/InteractionContextType 미지원 — 친구끼리 DM/임의 서버 사용은 JDA 업그레이드 필요.)
  */
 private val DM_COMMANDS =
+    // /ask·/ask-long 은 DM 에서 제외 — AI 호출은 **그 서버의 멤버만** 가능해야 한다(멤버십 게이트).
+    // 길드 슬래시는 디스코드가 멤버에게만 노출하므로 별도 검사 불필요. DM 은 멤버 신원이 없어 차단한다.
     setOf(
-        "ask",
         "models",
         "catalog",
         "my-usage",
@@ -60,7 +61,6 @@ private val DM_COMMANDS =
         "help",
         "welcome",
         "menu",
-        "ask-long",
         "provider-join",
         "provider-pause",
         "provider-resume",
@@ -963,12 +963,6 @@ class DiscordBot(
                         event.getOption("daily")!!.asInt,
                         event.getOption("concurrency")!!.asInt,
                         event.getOption("seconds")!!.asInt,
-                    )
-                "provider-scope" ->
-                    commands.providerScope(
-                        ctx,
-                        event.getOption("model")!!.asString,
-                        event.getOption("role")!!.asString,
                     )
                 "provider-schedule" ->
                     commands.providerSchedule(

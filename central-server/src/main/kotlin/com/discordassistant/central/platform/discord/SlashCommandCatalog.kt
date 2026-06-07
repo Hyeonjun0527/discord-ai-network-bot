@@ -3,7 +3,6 @@ package com.discordassistant.central.platform.discord
 import com.discordassistant.central.knowledge.domain.model.EmbeddingJobStatus
 import com.discordassistant.central.multiresponse.domain.model.MultiResponseMode
 import com.discordassistant.central.preset.domain.model.PresetReportStatus
-import com.discordassistant.central.provider.domain.model.ProviderModelScope
 import com.discordassistant.central.shared.ModelBurden
 import com.discordassistant.central.shared.ResponseMode
 import com.discordassistant.central.shared.SupportedLanguage
@@ -17,7 +16,7 @@ import net.dv8tion.jda.api.interactions.commands.build.OptionData
 /**
  * 슬래시/컨텍스트 명령 **정의 카탈로그**. DiscordBot(god class)에서 명령 정의 블록을 분리.
  * 선택지(choice)는 도메인 enum(ResponseMode·ModelBurden·PresetReportStatus·EmbeddingJobStatus·
- * ProviderModelScope·MultiResponseMode)의 `*Choices()` SSOT 만 사용한다 — 라벨/값을 재하드코딩하지 않는다.
+ * MultiResponseMode)의 `*Choices()` SSOT 만 사용한다 — 라벨/값을 재하드코딩하지 않는다.
  */
 object SlashCommandCatalog {
     /** (라벨, 와이어값) 쌍 목록을 옵션 choice 로 그대로 부착(도메인 enum SSOT 소비용). */
@@ -76,16 +75,6 @@ object SlashCommandCatalog {
                 ).addOption(OptionType.INTEGER, "daily", "하루 한도(0=무제한)", true)
                 .addOption(OptionType.INTEGER, "concurrency", "동시 처리 수", true)
                 .addOption(OptionType.INTEGER, "seconds", "요청당 최대 초", true),
-            Commands
-                .slash("provider-scope", "모델 허용 범위를 설정합니다")
-                .addOptions(
-                    net.dv8tion.jda.api.interactions.commands.build
-                        .OptionData(OptionType.STRING, "model", "대상 모델", true)
-                        .setAutoComplete(true),
-                    net.dv8tion.jda.api.interactions.commands.build
-                        .OptionData(OptionType.STRING, "role", "허용 범위", true)
-                        .choicePairs(ProviderModelScope.slashChoices()),
-                ),
             Commands
                 .slash("provider-schedule", "가용 시간대를 설정합니다(UTC 시, 시간 밖 자동정지)")
                 .addOption(OptionType.INTEGER, "from", "시작 시(0~23, UTC)", true)

@@ -113,7 +113,7 @@ class InfoCommandHandler(
         sb.append("__프로바이더(내 컴퓨터의 AI로 함께 도와주기)__\n")
         sb.append("· ${c("provider-join")} — 참여 신청(승인 후 토큰→에이전트 실행)\n")
         sb.append("· ${c("provider-pause")} ${c("provider-resume")} ${c("provider-leave")} — 가용성 제어\n")
-        sb.append("· ${c("provider-status")} ${c("provider-models")} ${c("provider-limit")} ${c("provider-scope")} — 내 기여 설정\n")
+        sb.append("· ${c("provider-status")} ${c("provider-models")} ${c("provider-limit")} — 내 기여 설정\n")
         sb.append("· 봇이 서버에서 제거되면 그 서버의 프로바이더 연결/등록/토큰은 자동 정리됩니다.\n")
         if (ctx.isAdmin) {
             sb.append("\n__관리자__\n")

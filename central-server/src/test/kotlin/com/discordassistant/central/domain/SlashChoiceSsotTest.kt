@@ -3,7 +3,6 @@ package com.discordassistant.central.domain
 import com.discordassistant.central.knowledge.domain.model.EmbeddingJobStatus
 import com.discordassistant.central.multiresponse.domain.model.MultiResponseMode
 import com.discordassistant.central.preset.domain.model.PresetReportStatus
-import com.discordassistant.central.provider.domain.model.ProviderModelScope
 import com.discordassistant.central.shared.ModelBurden
 import com.discordassistant.central.shared.ResponseMode
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -44,14 +43,6 @@ class SlashChoiceSsotTest {
             listOf("완료" to "completed", "실패" to "failed", "취소" to "cancelled"),
             EmbeddingJobStatus.completionChoices(),
         )
-    }
-
-    @Test
-    fun `프로바이더 허용범위 choice + 정규화`() {
-        assertEquals(listOf("모두" to "all", "신뢰 역할" to "trusted", "관리자만" to "admin"), ProviderModelScope.slashChoices())
-        assertEquals(ProviderModelScope.TRUSTED, ProviderModelScope.fromWire("trusted"))
-        assertEquals(ProviderModelScope.ALL, ProviderModelScope.fromWire("garbage")) // 견고한 폴백
-        assertEquals(ProviderModelScope.ALL, ProviderModelScope.fromWire(null))
     }
 
     @Test

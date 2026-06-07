@@ -45,7 +45,6 @@ class ProviderContributionPolicyEntity(
     var providerId: Long = 0,
     var model: String = "",
     var burden: String = "STANDARD",
-    var allowedRole: String = "all",
     var dailyLimit: Int = 0,
     var maxConcurrency: Int = 1,
     var maxSeconds: Int = 120,

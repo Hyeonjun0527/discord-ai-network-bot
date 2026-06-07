@@ -374,12 +374,6 @@ class CommandService(
         seconds: Int,
     ): Reply = providerCommands.providerLimit(ctx, model, daily, concurrency, seconds)
 
-    fun providerScope(
-        ctx: CommandContext,
-        model: String,
-        role: String,
-    ): Reply = providerCommands.providerScope(ctx, model, role)
-
     fun providerSchedule(
         ctx: CommandContext,
         fromHour: Int,

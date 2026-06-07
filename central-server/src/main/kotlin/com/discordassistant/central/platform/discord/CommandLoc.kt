@@ -92,7 +92,6 @@ object CommandLoc {
                     "Указать модели (обычно авто-определение)",
                 ),
             "provider-limit" to L("내한도설정", "上限設定", null, "Set per-model limits", "モデル別の上限を設定します", "Лимиты по модели"),
-            "provider-scope" to L("내허용범위", "許可範囲", null, "Set model access scope", "モデルの許可範囲を設定します", "Область доступа к модели"),
             "provider-schedule" to
                 L(
                     "내가용시간",

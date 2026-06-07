@@ -1,9 +1,12 @@
 package com.discordassistant.central.provider.adapter.inbound.web
 
+import com.discordassistant.central.channelai.application.GuildChannelAiQuery
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetView
 import com.discordassistant.central.guild.application.GuildChannelPolicy
+import com.discordassistant.central.knowledge.application.GuildKnowledgeQuery
 import com.discordassistant.central.platform.discord.BotGuildLister
+import com.discordassistant.central.preset.application.GuildPresetQuery
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.ProviderRosterInfo
 import com.discordassistant.central.provider.application.TokenService
@@ -100,6 +103,53 @@ data class AdminChannelsResponse(
     val channels: List<ManageChannelDto> = emptyList(),
 )
 
+// ── 읽기 전용 관리 탭(채널AI/RAG/프리셋) — durable-token 브리지. 모든 64bit id 는 문자열. ──
+
+/** 채널 AI 프로필 항목(관리 화면 09 읽기). model 은 채널 AI 가 직접 저장하지 않아 미포함(라우팅 정책 소관). */
+data class ManageChannelAiDto(
+    val channelId: String,
+    val name: String,
+    val tone: String,
+    val purpose: String,
+)
+
+data class AdminChannelAiResponse(
+    val ok: Boolean,
+    val message: String = "",
+    val items: List<ManageChannelAiDto> = emptyList(),
+)
+
+/** 지식 소스 항목(관리 화면 10 읽기). */
+data class ManageKnowledgeDocDto(
+    val id: String,
+    val title: String,
+    val status: String,
+    val riskLevel: String,
+    val addedAt: String,
+    val indexedAt: String?,
+)
+
+data class AdminKnowledgeResponse(
+    val ok: Boolean,
+    val message: String = "",
+    val docs: List<ManageKnowledgeDocDto> = emptyList(),
+)
+
+/** 프리셋 항목(관리 화면 11 읽기). */
+data class ManagePresetDto(
+    val id: String,
+    val name: String,
+    val category: String,
+    val status: String,
+    val summary: String?,
+)
+
+data class AdminPresetsResponse(
+    val ok: Boolean,
+    val message: String = "",
+    val presets: List<ManagePresetDto> = emptyList(),
+)
+
 /**
  * 데스크톱 앱(관리자)용 서버 관리 채널 — Provider 승인/거절/제거 + 목록 조회.
  *
@@ -121,6 +171,9 @@ class ProviderAdminController(
     private val roster: ProviderRosterInfo,
     private val globalPromptSets: GlobalPromptSetService,
     private val guildChannels: GuildChannelPolicy,
+    private val guildChannelAi: GuildChannelAiQuery,
+    private val guildKnowledge: GuildKnowledgeQuery,
+    private val guildPresets: GuildPresetQuery,
 ) {
     /** durable 토큰 → 요청자 providerId 복원 후 그가 guildId 관리자면 그 id 반환, 아니면 null(거부). */
     private fun authedAdmin(
@@ -301,6 +354,51 @@ class ProviderAdminController(
         return botGuilds.botChannels(guildId).map {
             ManageChannelDto(it.id.toString(), it.name, allowAll || it.id in allowedSet)
         }
+    }
+
+    /** 채널 AI 프로필 목록(관리 화면 09 읽기). 추가/편집은 아직 Discord 명령·웹 대시보드 경유(앱 UI 는 안내). */
+    @PostMapping("/channel-ai")
+    fun channelAi(
+        @RequestBody req: AdminChannelsRequest,
+    ): AdminChannelAiResponse {
+        authedAdmin(req.durableToken, req.guildId) ?: return AdminChannelAiResponse(false, "관리자 권한이 필요합니다")
+        val items =
+            guildChannelAi.listChannelAis(req.guildId).map {
+                ManageChannelAiDto(it.channelId.toString(), it.displayName, it.tone, it.purpose)
+            }
+        return AdminChannelAiResponse(true, items = items)
+    }
+
+    /** 지식 소스(RAG) 목록(관리 화면 10 읽기). RAG 비활성이면 graceful ok=false. */
+    @PostMapping("/knowledge")
+    fun knowledge(
+        @RequestBody req: AdminChannelsRequest,
+    ): AdminKnowledgeResponse {
+        authedAdmin(req.durableToken, req.guildId) ?: return AdminKnowledgeResponse(false, "관리자 권한이 필요합니다")
+        return runCatching {
+            guildKnowledge.listGuildSources(req.guildId).map {
+                ManageKnowledgeDocDto(it.id.toString(), it.title, it.status, it.riskLevel, it.addedAt, it.indexedAt)
+            }
+        }.fold(
+            onSuccess = { AdminKnowledgeResponse(true, docs = it) },
+            onFailure = { AdminKnowledgeResponse(false, "지식 공간(RAG) 기능이 꺼져 있어요") },
+        )
+    }
+
+    /** 프리셋 목록(관리 화면 11 읽기). 프리셋 기능 비활성이면 graceful ok=false. */
+    @PostMapping("/presets")
+    fun presets(
+        @RequestBody req: AdminChannelsRequest,
+    ): AdminPresetsResponse {
+        authedAdmin(req.durableToken, req.guildId) ?: return AdminPresetsResponse(false, "관리자 권한이 필요합니다")
+        return runCatching {
+            guildPresets.listGuildPresets(req.guildId).map {
+                ManagePresetDto(it.id.toString(), it.name, it.category, it.status, it.summary)
+            }
+        }.fold(
+            onSuccess = { AdminPresetsResponse(true, presets = it) },
+            onFailure = { AdminPresetsResponse(false, "프리셋 기능이 꺼져 있어요") },
+        )
     }
 
     private fun addFailureMessage(e: Throwable): String =

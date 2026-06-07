@@ -336,6 +336,38 @@ export const api = {
     }
     return post(ENDPOINTS.serverChannelToggle(guildId), { channelId: String(channelId), allow });
   },
+  // ── 읽기 전용 관리 탭(채널AI/RAG/프리셋) — 관리자. 추가·편집은 Discord 명령·웹 대시보드.
+  //   real GET, mock 은 기존 MOCK.manage 데이터를 실 응답 shape 로 매핑(드리프트 방지).
+  /** 채널 AI 프로필 목록 — {ok, items:[{channelId,name,tone,purpose}]}. */
+  async getChannelAi(guildId) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) {
+      await delay(60);
+      const list = (m && m.channelAi) || [];
+      return { ok: true, items: list.filter((c) => c.on).map((c) => ({ channelId: 'c_' + c.channel, name: c.channel, tone: c.tone || '-', purpose: 'general_assistant' })) };
+    }
+    return http(ENDPOINTS.serverChannelAi(guildId));
+  },
+  /** 지식 소스(RAG) 목록 — {ok, docs:[{id,title,status,riskLevel,addedAt,indexedAt}]}. */
+  async getKnowledge(guildId) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) {
+      await delay(60);
+      const docs = (m && m.rag && m.rag.docs) || [];
+      return { ok: true, docs: docs.map((d, i) => ({ id: 'd' + i, title: d.name, status: d.status, riskLevel: 'low', addedAt: d.when, indexedAt: d.status === 'indexed' ? d.when : null })) };
+    }
+    return http(ENDPOINTS.serverKnowledge(guildId));
+  },
+  /** 프리셋 목록 — {ok, presets:[{id,name,category,status,summary}]}. */
+  async getPresets(guildId) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) {
+      await delay(60);
+      const ps = (m && m.presets) || [];
+      return { ok: true, presets: ps.map((p, i) => ({ id: 'p' + i, name: p.name, category: 'channel_ai', status: p.on ? 'active' : 'draft', summary: p.model + ' · ' + p.tone })) };
+    }
+    return http(ENDPOINTS.serverPresets(guildId));
+  },
   /** 이 서버에 대한 내 제공 일시중지/재개 — provider self-service(/provider-pause·resume). */
   async setServerPaused(guildId, paused) {
     const s = MOCK.servers.find((x) => String(x.guildId) === String(guildId));

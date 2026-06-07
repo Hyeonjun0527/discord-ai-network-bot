@@ -14,6 +14,11 @@ import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
 
+/** 길드의 지식 소스 목록 읽기(데스크톱 앱 관리채널 브리지용 좁은 포트). [KnowledgeIngestionService] 가 구현. */
+interface GuildKnowledgeQuery {
+    fun listGuildSources(guildId: Long): List<KnowledgeSourceSummary>
+}
+
 @Service
 class KnowledgeIngestionService(
     private val spaces: KnowledgeSpaceRepository,
@@ -28,7 +33,10 @@ class KnowledgeIngestionService(
     private val indexingPlanner: KnowledgeIndexingPlanner = KnowledgeIndexingPlanner(spaces, sources, featureGate),
     // @Transactional 미부여 협력자 — 파사드의 활성 TX 에 합류한다(새 TX 미발생). clock 은 파사드와 공유.
     private val auditWriter: KnowledgeAuditWriter = KnowledgeAuditWriter(audits, clock),
-) {
+) : GuildKnowledgeQuery {
+    /** 길드 전체 지식 소스 목록(관리 화면 10 읽기). RAG 비활성이면 requireRagEnabled 가 막는다(컨트롤러가 graceful 처리). */
+    override fun listGuildSources(guildId: Long): List<KnowledgeSourceSummary> = readinessReporter.listGuildSources(guildId)
+
     @Transactional
     fun createSpace(
         guildId: Long,

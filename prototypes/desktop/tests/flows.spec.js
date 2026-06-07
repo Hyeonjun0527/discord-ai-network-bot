@@ -185,15 +185,15 @@ test('안전 탭: 콘텐츠 정책 + 신고 처리(무시/숨김)', async ({ pag
   await expect(page.locator('#serverManage')).toContainText('신고 (1)');
 });
 
-test('관리 탭 토글: 채널 AI on/off + URL 동기화', async ({ page }) => {
+test('관리 탭 채널 AI: 읽기 전용 현황(설정됨 + 안내) + URL 동기화', async ({ page }) => {
   await page.goto('/index.html#/servers/1001/manage/channelai');
   await page.waitForFunction(() => !!window.App);
   await expect(page).toHaveURL(/#\/servers\/1001\/manage\/channelai$/);
   await expect(page.locator('#serverManage .mtab.active')).toContainText('채널 AI');
-  const toggle = page.locator('#serverManage [data-cai-toggle="ai-chat"]');
-  await expect(toggle).toHaveText('AI 켜짐');
-  await toggle.click();
-  await expect(page.locator('#serverManage [data-cai-toggle="ai-chat"]')).toHaveText('AI 꺼짐');
+  // 채널 AI 는 읽기 전용 실연동 — 설정된 채널 현황 + 편집은 Discord/웹 안내(앱은 조회).
+  await expect(page.locator('#serverManage')).toContainText('# ai-chat');
+  await expect(page.locator('#serverManage')).toContainText('설정됨');
+  await expect(page.locator('#serverManage')).toContainText('Discord 슬래시 명령');
 });
 
 test('07 서버 상세: 일시중지 토글 + 내 self-service 정책 변경 모달', async ({ page }) => {

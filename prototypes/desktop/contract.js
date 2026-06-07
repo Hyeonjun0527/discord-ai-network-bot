@@ -70,6 +70,11 @@ export const ENDPOINTS = Object.freeze({
   //   빈 허용 목록 = 전체 채널 허용(제한 없음) 의미를 central 이 보존한다. channelId 는 64bit → 문자열로 다룬다.
   serverChannels: (g) => '/api/servers/' + g + '/channels',          // GET → {ok, channels:[{channelId,name,aiAllowed}]}
   serverChannelToggle: (g) => '/api/servers/' + g + '/channels/toggle', // POST {channelId, allow}
+  // ✅ 읽기 전용 관리 탭(09 채널AI·10 RAG·11 프리셋) — central 도메인 서비스(채널AI/knowledge/preset) read 브리지.
+  //   추가·편집은 Discord 명령·웹 대시보드 경유(앱은 안내). 64bit id 는 문자열.
+  serverChannelAi: (g) => '/api/servers/' + g + '/channel-ai', // GET → {ok, items:[{channelId,name,tone,purpose}]}
+  serverKnowledge: (g) => '/api/servers/' + g + '/knowledge',  // GET → {ok, docs:[{id,title,status,riskLevel,addedAt,indexedAt}]}
+  serverPresets: (g) => '/api/servers/' + g + '/presets',      // GET → {ok, presets:[{id,name,category,status,summary}]}
   serverAddToken: '/api/server-add-token',  // POST {token} → {ok} (실 앱: 토큰으로 서버 추가 + 자동 연결)
   onboardApply: '/api/onboard-apply',
   // 통합 설정 — GET → 저장 설정+상태(camelCase, {autostart,background,autoConnect,autoUpdate,enableImage,ollamaUrl,relayUrl,allowRemoteOllama,hasToken}).

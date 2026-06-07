@@ -33,6 +33,16 @@ class KnowledgeReadinessReporter(
             .map { it.toSummary() }
     }
 
+    /** 길드 전체의 지식 소스 목록(공간 무관, 삭제 제외). 데스크톱 앱 관리채널 읽기용. */
+    fun listGuildSources(guildId: Long): List<KnowledgeSourceSummary> {
+        featureGate.requireRagEnabled()
+        return sources
+            .findByGuildId(guildId)
+            .filter { !it.status.isDeleted }
+            .sortedWith(compareByDescending<KnowledgeSourceEntity> { it.addedAt }.thenBy { it.id })
+            .map { it.toSummary() }
+    }
+
     fun spaceStatus(
         guildId: Long,
         spaceId: Long,

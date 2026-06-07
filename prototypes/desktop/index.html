@@ -1582,6 +1582,19 @@
         // 실 응답은 플랫 채널 목록만(서버 기본값 별도) — 기본값은 비워두고 목록만 채운다.
         m.channels = { defaultModel: '', defaultLang: '', list: (r && r.channels) || [] };
       }
+      // 읽기 전용 탭 — null = 기능 비활성/오류(안내), 배열 = 목록.
+      if (tab === 'channelai' && m._channelAi === undefined) {
+        const r = await api.getChannelAi(d.guildId);
+        m._channelAi = (r && r.ok) ? (r.items || []) : null;
+      }
+      if (tab === 'rag' && m._rag === undefined) {
+        const r = await api.getKnowledge(d.guildId);
+        m._rag = (r && r.ok) ? (r.docs || []) : null;
+      }
+      if (tab === 'preset' && m._presets === undefined) {
+        const r = await api.getPresets(d.guildId);
+        m._presets = (r && r.ok) ? (r.presets || []) : null;
+      }
     }
 
     async function openManage(d, tab) {
@@ -1733,39 +1746,44 @@
         '<div class="msec-label">채널별 AI 허용 <span class="dim">· 허용된 채널에서만 AI 가 답해요</span></div><div class="dcard">' + ch + '</div>';
     }
 
+    // 채널 AI 성격(말투·목적) 라벨 — central 도메인 값 → 한국어 표기(읽기 표시용).
+    const CAI_TONE = { friendly: '친근', formal: '정중', concise: '간결', playful: '발랄', neutral: '중립' };
+    const CAI_PURPOSE = { general_assistant: '일반 도우미', coding: '코딩', support: '고객지원', moderation: '운영' };
+    const RAG_STATUS = { indexed: ['ok', '색인 완료'], indexing: ['pending', '색인 중'], pending: ['pending', '대기'], blocked: ['error', '차단됨'], rejected: ['error', '거부됨'] };
+    const PRESET_STATUS = { active: ['ok', '사용 중'], published: ['ok', '게시됨'], draft: ['paused', '초안'], archived: ['paused', '보관'] };
+    const MANAGE_READONLY_NOTE = (what) => '<div class="dsub" style="margin-top:12px">' + what + ' 추가·편집은 Discord 슬래시 명령이나 웹 대시보드에서 관리해요(앱은 현황 조회).</div>';
+
     function renderChannelAiTab(m) {
-      if (!m.channelAi) return MSOON_REAL('채널 AI');
-      if (!m.channelAi.length) return '<div class="msoon"><b>채널 AI 없음</b>채널마다 다른 AI 성격(모델·말투·프롬프트)을 지정할 수 있어요.</div>' +
-        '<button class="btn btn--md btn--secondary mt" data-soon="채널 AI 추가">+ 채널 AI 추가</button>';
-      const cards = m.channelAi.map(c => '<div class="dcard"><div class="drow"><div class="dlabel"># ' + c.channel + '</div>' +
-        '<button class="mtoggle' + (c.on ? ' on' : '') + '" data-cai-toggle="' + c.channel + '">' + (c.on ? 'AI 켜짐' : 'AI 꺼짐') + '</button></div>' +
-        (c.on ? '<div class="dsub">모델 ' + c.model + ' · 말투 ' + c.tone + '</div><button class="btn btn--sm btn--secondary mt-s" data-soon="시스템 프롬프트 편집">시스템 프롬프트 편집</button>'
-              : '<div class="dsub dim">이 채널은 AI 가 꺼져 있어요</div>') + '</div>').join('');
-      return cards + '<button class="btn btn--md btn--secondary mt" data-soon="채널 AI 추가">+ 채널 AI 추가</button>';
+      if (m._channelAi === null) return MSOON_REAL('채널 AI');
+      const items = m._channelAi || [];
+      if (!items.length) return '<div class="msoon"><b>채널 AI 없음</b>채널마다 다른 AI 성격(말투·목적)을 지정할 수 있어요.</div>' + MANAGE_READONLY_NOTE('채널 AI');
+      const cards = items.map(c => '<div class="dcard"><div class="drow"><div class="dlabel"># ' + c.name + '</div>' +
+        '<span class="srv-st ok"><span class="d"></span>설정됨</span></div>' +
+        '<div class="dsub">말투 ' + (CAI_TONE[c.tone] || c.tone || '-') + ' · 목적 ' + (CAI_PURPOSE[c.purpose] || c.purpose || '-') + '</div></div>').join('');
+      return cards + MANAGE_READONLY_NOTE('채널 AI');
     }
 
     function renderRagTab(m) {
-      if (!m.rag) return MSOON_REAL('RAG 지식 공간');
-      const docs = m.rag.docs.map(x => '<div class="mrow"><span class="mrow-nm">📄 ' + x.name + '</span>' +
-        '<span class="mrow-meta">' + (x.status === 'indexed'
-          ? '<span class="srv-st ok"><span class="d"></span>색인 완료</span> · ' + x.chunks + '청크 · ' + x.when
-          : '<span class="srv-st pending"><span class="d"></span>색인 중</span>') + '</span></div>').join('');
-      return '<div class="drow"><div class="msec-label" style="margin:0">지식 공간 <span class="dim">· AI 가 답변에 참고</span></div>' +
-        '<button class="btn btn--sm btn--secondary" data-soon="문서 추가">+ 문서 추가</button></div>' +
-        '<div class="dcard">' + (docs || '<span class="dim">아직 문서가 없어요.</span>') + '</div>' +
-        '<div class="dcard"><div class="dlabel">검색 테스트</div><div class="cm-row" style="margin-top:10px">' +
-          '<input class="cx-input" placeholder="질문을 입력해 색인을 확인"><button class="btn btn--md btn--secondary" data-soon="검색 테스트">검색</button></div>' +
-          '<div class="dsub" style="margin-top:12px">적용 채널 ' + (m.rag.applyChannels.map(c => '# ' + c).join(', ') || '없음') + '</div></div>' +
-        '<div class="dsub" style="margin-top:12px">📄 올린 문서의 콘텐츠 책임은 <b>서버 관리자</b>에게 있어요. 불법 콘텐츠는 무관용 차단됩니다(안전 탭).</div>';
+      if (m._rag === null) return MSOON_REAL('RAG 지식 공간');
+      const docs = m._rag || [];
+      const rows = docs.length ? docs.map(x => { const s = RAG_STATUS[x.status] || ['pending', x.status];
+        return '<div class="mrow"><span class="mrow-nm">📄 ' + x.title + '</span>' +
+          '<span class="mrow-meta"><span class="srv-st ' + s[0] + '"><span class="d"></span>' + s[1] + '</span>' + ((x.indexedAt || x.addedAt) ? ' · ' + (x.indexedAt || x.addedAt) : '') + '</span></div>'; }).join('')
+        : '<span class="dim">아직 문서가 없어요.</span>';
+      return '<div class="msec-label">지식 공간 <span class="dim">· AI 가 답변에 참고</span></div><div class="dcard">' + rows + '</div>' +
+        '<div class="dsub" style="margin-top:12px">📄 올린 문서의 콘텐츠 책임은 <b>서버 관리자</b>에게 있어요. 불법 콘텐츠는 무관용 차단됩니다(안전).</div>' +
+        MANAGE_READONLY_NOTE('지식 문서');
     }
 
     function renderPresetTab(m) {
-      if (!m.presets) return MSOON_REAL('프리셋');
-      const cards = m.presets.map(p => '<div class="dcard"><div class="drow"><div><div class="dlabel">' + p.name + '</div>' +
-        '<div class="dsub">' + p.model + ' · ' + p.tone + ' · 적용 ' + (p.applied ? ('# ' + p.applied) : '없음') + '</div></div>' +
-        '<button class="mtoggle' + (p.on ? ' on' : '') + '" data-preset-toggle="' + p.name + '">' + (p.on ? '사용 중' : '미사용') + '</button></div></div>').join('');
-      return (cards || '<div class="msoon"><b>프리셋 없음</b>자주 쓰는 AI 설정 묶음을 만들어 보세요.</div>') +
-        '<button class="btn btn--md btn--secondary mt" data-soon="프리셋 카탈로그">카탈로그에서 가져오기</button>';
+      if (m._presets === null) return MSOON_REAL('프리셋');
+      const items = m._presets || [];
+      const cards = items.length ? items.map(p => { const s = PRESET_STATUS[p.status] || ['paused', p.status];
+        return '<div class="dcard"><div class="drow"><div style="min-width:0"><div class="dlabel">' + p.name + '</div>' +
+          '<div class="dsub">' + (p.summary || p.category || '') + '</div></div>' +
+          '<span class="srv-st ' + s[0] + '"><span class="d"></span>' + s[1] + '</span></div></div>'; }).join('')
+        : '<div class="msoon"><b>프리셋 없음</b>자주 쓰는 AI 설정 묶음을 만들어 보세요.</div>';
+      return cards + MANAGE_READONLY_NOTE('프리셋');
     }
 
     function renderSafetyTab(m) {
@@ -1797,8 +1815,7 @@
         if (r && r.channels) m.channels.list = r.channels;
         rerender();
       });
-      manageEl.querySelectorAll('[data-cai-toggle]').forEach(b => b.onclick = () => { const x = m.channelAi.find(c => c.channel === b.dataset.caiToggle); if (x) x.on = !x.on; rerender(); });
-      manageEl.querySelectorAll('[data-preset-toggle]').forEach(b => b.onclick = () => { const x = m.presets.find(c => c.name === b.dataset.presetToggle); if (x) x.on = !x.on; rerender(); });
+      // 채널AI/RAG/프리셋은 읽기 전용 실연동(추가·편집은 Discord 명령·웹 대시보드) — 토글 액션 없음.
       // 전역 프롬프트셋 — 기본/삭제/추가 (실연동: webui → central /provider/admin/prompt-sets*)
       manageEl.querySelectorAll('[data-prompt-default]').forEach(b => b.onclick = async () => {
         const r = await api.setDefaultPromptSet(d.guildId, b.dataset.promptDefault);

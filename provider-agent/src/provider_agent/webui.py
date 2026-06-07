@@ -778,6 +778,30 @@ def build_app(session_key: str) -> web.Application:
             return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
         return web.json_response(await agent.admin_channel_toggle(guild_id, channel_id, allow))  # type: ignore[attr-defined]
 
+    async def _server_guild_read(req: web.Request, attr: str) -> web.Response:
+        """길드 단위 읽기 관리 탭(채널AI/RAG/프리셋) 공통 프록시 — central 이 권한 판정·기능게이트."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await getattr(agent, attr)(guild_id))
+
+    async def server_channel_ai(req: web.Request) -> web.Response:
+        """채널 AI 프로필 목록(관리자, 읽기)."""
+        return await _server_guild_read(req, "admin_channel_ai")
+
+    async def server_knowledge(req: web.Request) -> web.Response:
+        """지식 소스(RAG) 목록(관리자, 읽기)."""
+        return await _server_guild_read(req, "admin_knowledge")
+
+    async def server_presets(req: web.Request) -> web.Response:
+        """프리셋 목록(관리자, 읽기)."""
+        return await _server_guild_read(req, "admin_presets")
+
     async def server_rename(req: web.Request) -> web.Response:
         """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). index + name."""
         _auth(req)
@@ -1201,6 +1225,9 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/servers/{guildId}/prompts/delete", server_prompt_set_delete)
     app.router.add_get("/api/servers/{guildId}/channels", server_channels)
     app.router.add_post("/api/servers/{guildId}/channels/toggle", server_channel_toggle)
+    app.router.add_get("/api/servers/{guildId}/channel-ai", server_channel_ai)
+    app.router.add_get("/api/servers/{guildId}/knowledge", server_knowledge)
+    app.router.add_get("/api/servers/{guildId}/presets", server_presets)
     app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
     app.router.add_post("/api/server-add-token", server_add_token)
     app.router.add_get("/api/install-info", install_info)

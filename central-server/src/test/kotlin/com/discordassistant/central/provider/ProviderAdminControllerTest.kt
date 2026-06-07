@@ -1,12 +1,18 @@
 package com.discordassistant.central.provider
 
+import com.discordassistant.central.channelai.application.ChannelAiProfile
+import com.discordassistant.central.channelai.application.GuildChannelAiQuery
 import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.globalpromptset.adapter.outbound.persistence.GlobalPromptSetRepository
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
 import com.discordassistant.central.guild.application.GuildChannelPolicy
+import com.discordassistant.central.knowledge.application.GuildKnowledgeQuery
+import com.discordassistant.central.knowledge.application.KnowledgeSourceSummary
 import com.discordassistant.central.platform.discord.BotChannelInfo
 import com.discordassistant.central.platform.discord.BotGuildInfo
 import com.discordassistant.central.platform.discord.BotGuildLister
+import com.discordassistant.central.preset.application.GuildPresetQuery
+import com.discordassistant.central.preset.application.PresetSummary
 import com.discordassistant.central.provider.adapter.inbound.web.AdminActionRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminChannelToggleRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminChannelsRequest
@@ -124,8 +130,49 @@ class ProviderAdminControllerTest
                         channelState.clear()
                     }
                 }
+            // 읽기 전용 관리 탭(채널AI/RAG/프리셋) 포트 — 샘플 1건씩 반환하는 in-memory fake.
+            val channelAiQuery =
+                object : GuildChannelAiQuery {
+                    override fun listChannelAis(guildId: Long) =
+                        listOf(ChannelAiProfile(guildId, 20L, "ai-chat", null, tone = "friendly", purpose = "general_assistant"))
+                }
+            val knowledgeQuery =
+                object : GuildKnowledgeQuery {
+                    override fun listGuildSources(guildId: Long) =
+                        listOf(
+                            KnowledgeSourceSummary(
+                                7L,
+                                1L,
+                                guildId,
+                                "file",
+                                "FAQ.md",
+                                null,
+                                "indexed",
+                                null,
+                                "low",
+                                null,
+                                "2026-06-07",
+                                "2026-06-07",
+                            ),
+                        )
+                }
+            val presetQuery =
+                object : GuildPresetQuery {
+                    override fun listGuildPresets(guildId: Long) =
+                        listOf(PresetSummary(3L, guildId, null, "번역봇", "요약", "channel_ai", "guild_private", "active", null, "2026-06-07"))
+                }
             val ctrl =
-                ProviderAdminController(tokens, reg, fakeBot(admin), roster, GlobalPromptSetService(promptSets, clock), guildChannels)
+                ProviderAdminController(
+                    tokens,
+                    reg,
+                    fakeBot(admin),
+                    roster,
+                    GlobalPromptSetService(promptSets, clock),
+                    guildChannels,
+                    channelAiQuery,
+                    knowledgeQuery,
+                    presetQuery,
+                )
             val dtoken = durable.issueDurable(7L, 100L)!!
             return Ctx(ctrl, reg, dtoken, state, channelState)
         }
@@ -279,5 +326,32 @@ class ProviderAdminControllerTest
             assertFalse(d.ctrl.channels(AdminChannelsRequest(d.dtoken, 100L)).ok)
             assertFalse(d.ctrl.toggleChannel(AdminChannelToggleRequest(d.dtoken, 100L, channelId = 20L, allow = false)).ok)
             assertTrue(d.channelState.isEmpty()) // 변경 없음
+        }
+
+        @Test
+        fun `관리자는 채널AI·RAG·프리셋 읽기 탭을 조회한다(64bit id 문자열)`() {
+            val c = setup(admin = true)
+            val cai = c.ctrl.channelAi(AdminChannelsRequest(c.dtoken, 100L))
+            assertTrue(cai.ok)
+            assertEquals("20", cai.items.single().channelId)
+            assertEquals("ai-chat", cai.items.single().name)
+
+            val rag = c.ctrl.knowledge(AdminChannelsRequest(c.dtoken, 100L))
+            assertTrue(rag.ok)
+            assertEquals("7", rag.docs.single().id)
+            assertEquals("FAQ.md", rag.docs.single().title)
+
+            val pre = c.ctrl.presets(AdminChannelsRequest(c.dtoken, 100L))
+            assertTrue(pre.ok)
+            assertEquals("3", pre.presets.single().id)
+            assertEquals("번역봇", pre.presets.single().name)
+        }
+
+        @Test
+        fun `비관리자는 채널AI·RAG·프리셋 읽기 탭이 거부된다`() {
+            val d = setup(admin = false)
+            assertFalse(d.ctrl.channelAi(AdminChannelsRequest(d.dtoken, 100L)).ok)
+            assertFalse(d.ctrl.knowledge(AdminChannelsRequest(d.dtoken, 100L)).ok)
+            assertFalse(d.ctrl.presets(AdminChannelsRequest(d.dtoken, 100L)).ok)
         }
     }

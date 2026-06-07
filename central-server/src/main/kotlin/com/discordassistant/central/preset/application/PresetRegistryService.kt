@@ -28,6 +28,11 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Instant
 
+/** 길드의 프리셋 목록 읽기(데스크톱 앱 관리채널 브리지용 좁은 포트). [PresetRegistryService] 가 구현. */
+interface GuildPresetQuery {
+    fun listGuildPresets(guildId: Long): List<PresetSummary>
+}
+
 @Service
 class PresetRegistryService(
     private val presets: AiPresetRepository,
@@ -76,7 +81,7 @@ class PresetRegistryService(
             routingPolicies = routingPolicies,
             revisionFactory = revisionFactory,
         ),
-) {
+) : GuildPresetQuery {
     @Transactional
     fun createPreset(
         guildId: Long,
@@ -156,7 +161,7 @@ class PresetRegistryService(
     // --- read-only 카탈로그/검색/조회/moderation 표면은 PresetCatalogQueryService 에 위임 (CQRS 분리, 동작 불변) ---
 
     @Transactional(readOnly = true)
-    fun listGuildPresets(guildId: Long): List<PresetSummary> = catalog.listGuildPresets(guildId)
+    override fun listGuildPresets(guildId: Long): List<PresetSummary> = catalog.listGuildPresets(guildId)
 
     @Transactional(readOnly = true)
     fun listPublishedPresets(): List<PublishedPresetSummary> = catalog.listPublishedPresets()

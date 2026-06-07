@@ -32,13 +32,18 @@ data class ChannelAiProfile(
     val constitution: String? = DEFAULT_CHANNEL_AI_CONSTITUTION,
 )
 
+/** 길드의 채널 AI 프로필 목록 읽기(데스크톱 앱 관리채널 브리지용 좁은 포트). [ChannelAiProfileService] 가 구현. */
+interface GuildChannelAiQuery {
+    fun listChannelAis(guildId: Long): List<ChannelAiProfile>
+}
+
 @Service
 class ChannelAiProfileService(
     private val channelAis: ChannelAiRepository,
     private val behaviorVersions: AiBehaviorVersionRepository,
     private val proposals: AiChangeProposalRepository,
     private val audits: CustomizationAuditLogRepository,
-) {
+) : GuildChannelAiQuery {
     fun get(
         guildId: Long,
         channelId: Long,
@@ -46,6 +51,10 @@ class ChannelAiProfileService(
         val channelAi = channelAis.findByGuildIdAndChannelId(guildId, channelId)
         return channelAi?.toProfile()
     }
+
+    /** 이 길드에 설정된 채널 AI 프로필 전체(관리 화면 09 읽기). */
+    @Transactional(readOnly = true)
+    override fun listChannelAis(guildId: Long): List<ChannelAiProfile> = channelAis.findByGuildId(guildId).map { it.toProfile() }
 
     @Transactional
     fun set(

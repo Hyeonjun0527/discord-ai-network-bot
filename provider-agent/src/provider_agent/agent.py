@@ -140,6 +140,26 @@ def _post_provider_admin_promptset(
         return dict(json.loads(resp.read().decode("utf-8")))
 
 
+def _post_provider_admin_guild(base: str, path: str, durable_token: str, guild_id: int) -> dict:
+    """길드 단위 읽기 관리 API 호출(관리자 전용). path: channel-ai|knowledge|presets. body 는 신원+길드만."""
+    import json
+    import ssl
+    import urllib.request
+
+    import certifi
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    body = json.dumps({"durableToken": durable_token, "guildId": guild_id}).encode("utf-8")
+    req = urllib.request.Request(
+        base + "/provider/admin/" + path,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+    )
+    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+        return dict(json.loads(resp.read().decode("utf-8")))
+
+
 def _post_provider_admin_channels(
     base: str,
     path: str,
@@ -576,6 +596,31 @@ class ProviderAgent:
             return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
         base = _agent_sync_base(self._cfg.relay_url)
         return await asyncio.to_thread(_post_provider_admin_channels, base, "/toggle", dt, guild_id, channel_id=channel_id, allow=allow)
+
+    # ── 읽기 전용 관리 탭(채널AI/RAG/프리셋) — 관리자. 추가·편집은 Discord 명령·웹 대시보드 ──
+    async def admin_channel_ai(self, guild_id: int) -> dict:
+        """채널 AI 프로필 목록(관리 화면 09 읽기)."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_guild, base, "channel-ai", dt, guild_id)
+
+    async def admin_knowledge(self, guild_id: int) -> dict:
+        """지식 소스(RAG) 목록(관리 화면 10 읽기)."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_guild, base, "knowledge", dt, guild_id)
+
+    async def admin_presets(self, guild_id: int) -> dict:
+        """프리셋 목록(관리 화면 11 읽기)."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_guild, base, "presets", dt, guild_id)
 
     # ── 서버별 정책(데스크톱 앱 G3) ─────────────────────────────────────
     def guild_policy(self, guild_id: int) -> dict:

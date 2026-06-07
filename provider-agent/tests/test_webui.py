@@ -578,6 +578,19 @@ async def test_server_channels_require_running_agent(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_server_readonly_tabs_require_running_agent(monkeypatch):
+    # 읽기 전용 관리 탭(채널AI/RAG/프리셋) 프록시 — 키 없으면 403, 에이전트 미실행이면 안내.
+    client = await _client()
+    try:
+        for path in ("channel-ai", "knowledge", "presets"):
+            assert (await client.get(f"/api/servers/100/{path}")).status == 403  # 키 없음
+            d = await (await client.get(f"/api/servers/100/{path}", headers={"X-Session": KEY})).json()
+            assert d["ok"] is False  # 미실행
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_server_policy_saves_override(monkeypatch):
     # 서버별 정책 override(G3) 저장 — camelCase 경계 → snake 저장. 실행 중 아니면 config 에 기록.
     from provider_agent.config_file import load_guild_policies

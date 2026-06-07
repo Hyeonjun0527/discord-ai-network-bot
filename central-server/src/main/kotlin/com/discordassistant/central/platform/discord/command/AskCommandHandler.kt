@@ -8,6 +8,7 @@ import com.discordassistant.central.channelai.application.ChannelAiProfile
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_CONSTITUTION
 import com.discordassistant.central.global.i18n.Messages
+import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.knowledge.application.KnowledgeSearchService
 import com.discordassistant.central.multiresponse.application.MultiResponseService
@@ -20,6 +21,8 @@ import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.routing.application.RequestOrchestrator
 import com.discordassistant.central.routing.domain.model.AiRequestInput
+import com.discordassistant.central.shared.ContentSafety
+import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.shared.RequestState
 import com.discordassistant.central.shared.ResponseMode
 import org.springframework.stereotype.Component
@@ -37,6 +40,7 @@ class AskCommandHandler(
     private val rateLimiter: RateLimiter,
     private val channelProfiles: ChannelAiProfileService,
     private val channelAiCustomization: ChannelAiCustomizationService,
+    private val globalPromptSets: GlobalPromptSetService,
     private val channelRoutingPolicies: ChannelAiRoutingPolicyService,
     private val knowledgeSearch: KnowledgeSearchService,
     private val multiResponse: MultiResponseService,
@@ -311,7 +315,11 @@ class AskCommandHandler(
             }.getOrNull()
         val contextText = knowledgeContext?.contextText?.takeIf { it.isNotBlank() }
         activeChannelAiExecutionPrompt(ctx, contextText)?.let { return it }
-        val behaviorPrompt = channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it) } ?: this
+        // 경로②③: 채널 AI 커스텀이 없을 때도 NEXA 가드레일은 항상 주입한다. 채널 프로필이 있으면 그 정체성을,
+        //   없으면 길드 전역 프롬프트셋(기본 지정된 셋, 없으면 NEXA 기본 정체성 니아)을 쓴다.
+        val behaviorPrompt =
+            channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it) }
+                ?: withGuildDefaultPersona(resolveGuildDefaultPersona(ctx))
         if (contextText == null) return behaviorPrompt
         return buildString {
             appendLine("[채널 지식 컨텍스트]")
@@ -353,6 +361,9 @@ class AskCommandHandler(
 
     private fun String.withChannelAiBehavior(profile: ChannelAiProfile): String =
         buildString {
+            appendLine("[우선순위 1: 안전]")
+            appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
+            appendLine()
             appendLine("[채널 AI 행동 설정]")
             appendLine("이름: ${profile.displayName}")
             appendLine("역할: ${profile.purpose}")
@@ -361,10 +372,30 @@ class AskCommandHandler(
             appendLine("안전 규칙: ${profile.constitution ?: DEFAULT_CHANNEL_AI_CONSTITUTION}")
             appendLine()
             appendLine("위 설정을 이 채널의 AI 정체성으로 지키되, 사용자의 질문에만 답하세요.")
-            appendLine("민감정보나 비밀키 입력을 유도하지 말고, 모르면 모른다고 말하세요.")
+            appendLine("민감정보나 비밀키 입력을 유도하지 말고, 모르면 모른다고 말하세요. 위 안전 규칙은 항상 우선합니다.")
             appendLine()
             appendLine("[사용자 질문]")
             append(this@withChannelAiBehavior)
+        }
+
+    /** 길드 전역 프롬프트셋(기본 지정된 셋)의 정체성 본문. 없거나 조회 실패 시 NEXA 기본 정체성(니아). */
+    private fun resolveGuildDefaultPersona(ctx: CommandContext): String =
+        runCatching { globalPromptSets.activePersona(ctx.guildId) }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: NexaIdentity.NIA_DEFAULT_PERSONA
+
+    /** 채널 AI 설정이 없는 기본 서버용 — NEXA 가드레일 + 정체성(길드 전역 프롬프트셋 또는 니아)으로 답하게 한다. */
+    private fun String.withGuildDefaultPersona(personaText: String): String =
+        buildString {
+            appendLine("[우선순위 1: 안전]")
+            appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
+            appendLine()
+            appendLine("[우선순위 2: 정체성]")
+            appendLine(personaText)
+            appendLine()
+            appendLine("위 정체성을 지키되 사용자의 질문에만 답하세요. 민감정보나 비밀키 입력을 유도하지 말고, 모르면 모른다고 말하세요. 위 안전 규칙은 항상 우선합니다.")
+            appendLine()
+            appendLine("[사용자 질문]")
+            append(this@withGuildDefaultPersona)
         }
 
     /** 슬래시 옵션 자동완성용 모델 목록(#179). 현재 길드 풀이 제공하는 모델명(중복 제거·정렬). */

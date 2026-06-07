@@ -127,6 +127,7 @@ class AiNetworkApiSecurityFilter(
             listOf(
                 "/api/ai-network/channel-ai",
                 "/api/ai-network/channel-ai-routing",
+                "/api/ai-network/guild-prompt-set",
                 "/api/ai-network/growth",
                 "/api/ai-network/knowledge",
                 "/api/ai-network/multi-response",

@@ -16,6 +16,7 @@ import com.discordassistant.central.channelai.application.AiAdminRolePolicy
 import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
 import com.discordassistant.central.global.security.AiNetworkApiSecurityFilter
 import com.discordassistant.central.global.security.DashboardActor
+import com.discordassistant.central.shared.ContentSafety
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -167,7 +168,11 @@ class ChannelAiCustomizationController(
         @PathVariable guildId: Long,
         @PathVariable channelId: Long,
         @RequestBody request: ChannelAiPromptPreviewRequest,
-    ) = customization.promptPreview(guildId, channelId, request.userQuestion, request.ragContextText)
+    ) = // 미리보기 응답에서 NEXA 가드레일 전문은 자리표시자로 가린다(영업·안전 비공개, F12 로도 전문 확인 불가).
+        // 실제 LLM 실행 프롬프트(AskCommandHandler)는 마스킹하지 않은 전문을 그대로 사용한다.
+        customization
+            .promptPreview(guildId, channelId, request.userQuestion, request.ragContextText)
+            .let { it.copy(systemPrompt = ContentSafety.maskGuardrail(it.systemPrompt)) }
 
     @GetMapping("/{guildId}/{channelId}/onboarding")
     fun onboarding(

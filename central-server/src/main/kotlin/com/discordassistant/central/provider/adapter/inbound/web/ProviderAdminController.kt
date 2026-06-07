@@ -1,5 +1,7 @@
 package com.discordassistant.central.provider.adapter.inbound.web
 
+import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
+import com.discordassistant.central.globalpromptset.application.GlobalPromptSetView
 import com.discordassistant.central.platform.discord.BotGuildLister
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.ProviderRosterInfo
@@ -55,6 +57,21 @@ data class AdminPolicyRequest(
     val autoApprove: Boolean = false,
 )
 
+/** 전역 프롬프트셋 관리 요청. id=default/delete 대상("nia"=기본 페르소나), name/content=add 용. */
+data class AdminPromptSetRequest(
+    val durableToken: String = "",
+    val guildId: Long = 0,
+    val id: String = "",
+    val name: String = "",
+    val content: String = "",
+)
+
+data class AdminPromptSetResponse(
+    val ok: Boolean,
+    val message: String = "",
+    val sets: List<GlobalPromptSetView> = emptyList(),
+)
+
 /**
  * 데스크톱 앱(관리자)용 서버 관리 채널 — Provider 승인/거절/제거 + 목록 조회.
  *
@@ -74,6 +91,7 @@ class ProviderAdminController(
     private val registration: ProviderRegistrationService,
     private val botGuilds: BotGuildLister,
     private val roster: ProviderRosterInfo,
+    private val globalPromptSets: GlobalPromptSetService,
 ) {
     /** durable 토큰 → 요청자 providerId 복원 후 그가 guildId 관리자면 그 id 반환, 아니면 null(거부). */
     private fun authedAdmin(
@@ -159,4 +177,63 @@ class ProviderAdminController(
         roster.setAutoApprove(req.guildId, req.autoApprove, adminId)
         return AdminActionResponse(true, "정책을 저장했어요")
     }
+
+    /** 전역 프롬프트셋(서버 전체 기본 AI 성격) 목록. builtin(니아)은 preview 만(전문 비공개). 권한 없으면 ok=false. */
+    @PostMapping("/prompt-sets")
+    fun promptSets(
+        @RequestBody req: AdminPromptSetRequest,
+    ): AdminPromptSetResponse {
+        authedAdmin(req.durableToken, req.guildId) ?: return AdminPromptSetResponse(false, "관리자 권한이 필요합니다")
+        return AdminPromptSetResponse(true, sets = globalPromptSets.list(req.guildId))
+    }
+
+    /** 전역 프롬프트셋 추가(사용자 작성). 추가만으로 기본이 되지는 않는다. */
+    @PostMapping("/prompt-sets/add")
+    fun addPromptSet(
+        @RequestBody req: AdminPromptSetRequest,
+    ): AdminPromptSetResponse {
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminPromptSetResponse(false, "관리자 권한이 필요합니다")
+        return runCatching { globalPromptSets.add(req.guildId, req.name, req.content, adminId) }
+            .fold(
+                onSuccess = { AdminPromptSetResponse(true, "추가했어요", globalPromptSets.list(req.guildId)) },
+                onFailure = { AdminPromptSetResponse(false, addFailureMessage(it)) },
+            )
+    }
+
+    /** 기본 셋 지정. id="nia" 면 NEXA 기본 정체성(니아)으로 되돌린다. */
+    @PostMapping("/prompt-sets/default")
+    fun setDefaultPromptSet(
+        @RequestBody req: AdminPromptSetRequest,
+    ): AdminPromptSetResponse {
+        authedAdmin(req.durableToken, req.guildId) ?: return AdminPromptSetResponse(false, "관리자 권한이 필요합니다")
+        return runCatching { globalPromptSets.setDefault(req.guildId, req.id) }
+            .fold(
+                onSuccess = { AdminPromptSetResponse(true, "기본으로 지정했어요", globalPromptSets.list(req.guildId)) },
+                onFailure = { AdminPromptSetResponse(false, "지정할 수 없는 프롬프트셋이에요") },
+            )
+    }
+
+    /** 전역 프롬프트셋 삭제. 기본이던 셋을 지우면 니아로 되돌아간다. builtin(니아)은 삭제 불가. */
+    @PostMapping("/prompt-sets/delete")
+    fun deletePromptSet(
+        @RequestBody req: AdminPromptSetRequest,
+    ): AdminPromptSetResponse {
+        authedAdmin(req.durableToken, req.guildId) ?: return AdminPromptSetResponse(false, "관리자 권한이 필요합니다")
+        return runCatching { globalPromptSets.delete(req.guildId, req.id) }
+            .fold(
+                onSuccess = { AdminPromptSetResponse(true, "삭제했어요", globalPromptSets.list(req.guildId)) },
+                onFailure = { AdminPromptSetResponse(false, "삭제할 수 없어요(기본 페르소나는 삭제 불가)") },
+            )
+    }
+
+    private fun addFailureMessage(e: Throwable): String =
+        when (e.message) {
+            "duplicate_name" -> "같은 이름의 프롬프트셋이 이미 있어요"
+            "too_many_sets" -> "프롬프트셋이 너무 많아요(최대 개수 초과)"
+            "name_required" -> "이름을 입력해 주세요"
+            "content_required" -> "프롬프트 내용을 입력해 주세요"
+            else -> "추가할 수 없어요"
+        }
 }

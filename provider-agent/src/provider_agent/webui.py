@@ -394,14 +394,14 @@ summary{list-style:none;min-height:46px;display:flex;align-items:center;justify-
 </style></head><body>
 <div class="window">
 <div id="onboard"><div class="onb-wrap">
-<div class="onb-top"><div class="logo"><img src="/app-icon.png" alt="Nexa 로고"></div><div><h1>Nexa Provider Agent</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div><div class="onb-ver">v__VERSION__</div></div>
+<div class="onb-top"><div class="logo"><img src="/app-icon.png" alt="Nexa 로고"></div><div><h1>Nexa</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div><div class="onb-ver">v__VERSION__</div></div>
 <div class="onb-steps"><div class="onb-count" id="onbCount">1 / 4</div><div class="onb-dots" id="onbDots"></div></div>
 <div class="onb-card" id="onbCard"></div>
 <div class="onb-foot" id="onbFoot"></div>
 </div></div>
 <div class="appver" title="설치된 버전">v__VERSION__</div>
 <main>
-<section class="hero"><div class="logo"><img src="/app-icon.png" alt="Nexa 로고"></div><div><h1>Nexa Provider Agent</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
+<section class="hero"><div class="logo"><img src="/app-icon.png" alt="Nexa 로고"></div><div><h1>Nexa</h1><div class="sub">내 PC를 Discord 서버의 로컬 AI 노드로 연결합니다.</div></div></section>
 <section class="card"><div class="ring off" id="ring"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></div>
 <div><div class="status-title" id="stitle">대기 중</div><div class="status-body" id="ssub">연결 시작을 누르면 풀에 등록됩니다.</div><div class="chips" id="chips"></div></div></section>
 <section><h2>1. 제공 모델</h2><div class="grid2" id="models"></div><div id="catalog" style="margin-top:14px"></div></section>
@@ -989,6 +989,61 @@ def build_app(session_key: str) -> web.Application:
             return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
         return web.json_response(await agent.admin_set_policy(guild_id, auto))  # type: ignore[attr-defined]
 
+    async def server_prompt_sets(req: web.Request) -> web.Response:
+        """전역 프롬프트셋(서버 전체 기본 AI 성격) 목록(관리자). central 로 프록시. builtin(니아)은 preview 만."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_prompt_sets(guild_id))  # type: ignore[attr-defined]
+
+    async def server_prompt_set_add(req: web.Request) -> web.Response:
+        """전역 프롬프트셋 추가(관리자). body {name, content}. 추가만으로 기본이 되지는 않는다."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        name = str(data.get("name") or "").strip()
+        content = str(data.get("content") or "").strip()
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_prompt_set_add(guild_id, name, content))  # type: ignore[attr-defined]
+
+    async def server_prompt_set_default(req: web.Request) -> web.Response:
+        """전역 프롬프트셋 기본 지정(관리자). body {id}. id='nia' 면 NEXA 기본 정체성(니아)으로 되돌린다."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        set_id = str(data.get("id") or "").strip()
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_prompt_set_default(guild_id, set_id))  # type: ignore[attr-defined]
+
+    async def server_prompt_set_delete(req: web.Request) -> web.Response:
+        """전역 프롬프트셋 삭제(관리자). body {id}. builtin(니아)은 삭제 불가."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        set_id = str(data.get("id") or "").strip()
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_prompt_set_delete(guild_id, set_id))  # type: ignore[attr-defined]
+
     async def server_rename(req: web.Request) -> web.Response:
         """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). index + name."""
         _auth(req)
@@ -1339,6 +1394,10 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/servers/{guildId}/policy", server_policy)
     app.router.add_get("/api/servers/{guildId}/manage", server_manage)
     app.router.add_post("/api/servers/{guildId}/manage/policy", server_manage_policy)
+    app.router.add_get("/api/servers/{guildId}/prompts", server_prompt_sets)
+    app.router.add_post("/api/servers/{guildId}/prompts/add", server_prompt_set_add)
+    app.router.add_post("/api/servers/{guildId}/prompts/default", server_prompt_set_default)
+    app.router.add_post("/api/servers/{guildId}/prompts/delete", server_prompt_set_delete)
     app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
     app.router.add_post("/api/server-add-token", server_add_token)
     app.router.add_get("/api/install-info", install_info)

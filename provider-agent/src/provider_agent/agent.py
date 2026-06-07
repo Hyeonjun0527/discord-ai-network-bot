@@ -105,6 +105,41 @@ def _post_provider_admin_policy(base: str, durable_token: str, guild_id: int, au
         return dict(json.loads(resp.read().decode("utf-8")))
 
 
+def _post_provider_admin_promptset(
+    base: str,
+    path: str,
+    durable_token: str,
+    guild_id: int,
+    *,
+    name: str = "",
+    content: str = "",
+    set_id: str = "",
+) -> dict:
+    """전역 프롬프트셋(서버 전체 기본 AI 성격) 관리 API 호출(관리자 전용).
+
+    path: ''(목록) | '/add'(추가) | '/default'(기본 지정) | '/delete'(삭제). 권한은 central 이 JDA 로 판정한다.
+    builtin(니아) 셋의 전문은 central 이 응답에 담지 않는다(preview 만).
+    """
+    import json
+    import ssl
+    import urllib.request
+
+    import certifi
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    body = json.dumps(
+        {"durableToken": durable_token, "guildId": guild_id, "name": name, "content": content, "id": set_id},
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        base + "/provider/admin/prompt-sets" + path,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+    )
+    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+        return dict(json.loads(resp.read().decode("utf-8")))
+
+
 class ProviderAgent:
     def __init__(self, cfg: AgentConfig, ollama: OllamaClient | None = None, sd=None) -> None:
         self._cfg = cfg
@@ -448,6 +483,39 @@ class ProviderAgent:
             return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
         base = _agent_sync_base(self._cfg.relay_url)
         return await asyncio.to_thread(_post_provider_admin_policy, base, dt, guild_id, auto_approve)
+
+    # ── 전역 프롬프트셋(서버 전체 기본 AI 성격) — 관리자. 기본 지정 없으면 NEXA 기본 정체성(니아) ──
+    async def admin_prompt_sets(self, guild_id: int) -> dict:
+        """이 서버의 전역 프롬프트셋 목록(관리자). builtin(니아)은 preview 만(전문 비공개)."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_promptset, base, "", dt, guild_id)
+
+    async def admin_prompt_set_add(self, guild_id: int, name: str, content: str) -> dict:
+        """전역 프롬프트셋 추가(관리자). 추가만으로 기본이 되지는 않는다."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_promptset, base, "/add", dt, guild_id, name=name, content=content)
+
+    async def admin_prompt_set_default(self, guild_id: int, set_id: str) -> dict:
+        """전역 프롬프트셋 기본 지정(관리자). set_id='nia' 면 NEXA 기본 정체성(니아)으로 되돌린다."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_promptset, base, "/default", dt, guild_id, set_id=set_id)
+
+    async def admin_prompt_set_delete(self, guild_id: int, set_id: str) -> dict:
+        """전역 프롬프트셋 삭제(관리자). 기본이던 셋을 지우면 니아로 되돌아간다. builtin(니아)은 삭제 불가."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_promptset, base, "/delete", dt, guild_id, set_id=set_id)
 
     # ── 서버별 정책(데스크톱 앱 G3) ─────────────────────────────────────
     def guild_policy(self, guild_id: int) -> dict:

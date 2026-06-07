@@ -53,10 +53,18 @@ export const ENDPOINTS = Object.freeze({
   providerRemove: (g) => '/api/servers/' + g + '/providers/remove',  // POST {providerUserId} — /provider-remove
   // ✅ 서버 정책 토글(신규 자동 승인) — central /provider/admin/manage/policy. PolicyService.setAutoApprove 재사용.
   serverManagePolicy: (g) => '/api/servers/' + g + '/manage/policy', // POST {autoApprove}
-  // ⚠ Gap-Profile: 전역 프롬프트셋(v1 mock). = 길드 기본 시스템 프롬프트(신규 — 현재 constitution 은
-  //   채널/프리셋 단위만, 전역 기본 없음). 니아 외형(이름·아바타)은 v1 고정 — 디스코드 봇은 서버별 프로필
-  //   API 가 없다(닉네임만, 아바타 불가). 글로벌 프로필은 NEXA 운영자(개발자 포털) 소유.
-  serverPrompts: (g) => '/api/servers/' + g + '/prompts',  // GET·POST(추가)·DELETE·기본 설정
+  // ✅ 전역 프롬프트셋(길드 기본 AI 성격) — central + 데스크톱 앱 연동 구현됨(2026-06-07). 매 질문마다
+  //   고르는 게 아니라 "서버 전체 기본 성격"을 한 번 세팅하는 구조. 기본 지정된 셋이 없으면 NEXA 기본 정체성(니아).
+  //   · 데스크톱 앱 경로(provider-agent webui): GET serverPrompts·POST serverPromptAdd·serverPromptDefault·serverPromptDelete.
+  //   · webui 는 durable 토큰으로 central /provider/admin/prompt-sets{,/add,/default,/delete} 로 프록시(Gap-M, 관리자 판정은 central).
+  //   · 웹 대시보드 직접 경로(OAuth/admin-token): /api/ai-network/guild-prompt-set/{guildId}.
+  //   니아 외형(이름·아바타)은 v1 고정 — 디스코드 봇은 서버별 프로필 API 가 없다(닉네임만). 글로벌 프로필은 NEXA 운영자 소유.
+  // ⚠ builtin(NEXA 기본 페르소나)·가드레일 전문은 응답에 포함하지 않는다(영업·안전 비공개). preview 만 내려보내
+  //   F12 로도 전문 확인 불가. 사용자 작성 셋만 content 전체 반환. central GlobalPromptSetService 가 동일 정책 강제.
+  serverPrompts: (g) => '/api/servers/' + g + '/prompts',              // GET 목록(builtin 은 preview 만)
+  serverPromptAdd: (g) => '/api/servers/' + g + '/prompts/add',        // POST {name, content}
+  serverPromptDefault: (g) => '/api/servers/' + g + '/prompts/default', // POST {id} (id='nia'→니아 복귀)
+  serverPromptDelete: (g) => '/api/servers/' + g + '/prompts/delete',  // POST {id}
   onboardApply: '/api/onboard-apply',
   connectOpen: '/api/connect-open',
   sdStatus: '/api/sd/status',

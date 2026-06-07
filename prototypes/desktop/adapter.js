@@ -60,10 +60,11 @@ const MOCK = {
         { providerUserId: 5003, name: 'user_park', isMe: false, state: ProviderState.PAUSED, models: 2, today: 0, avgMs: 0 },
       ],
       // 전역 프롬프트셋(서버 전체 기본 시스템 프롬프트). 봇 추가 시 기본은 '니아' 페르소나.
-      // v1: 니아 이름·아바타는 NEXA 기본 고정(디스코드 봇 per-guild 프로필 API 부재 — Gap-Profile).
+      // ⚠ builtin(NEXA 기본 페르소나)·가드레일 전문은 영업·안전상 비공개 — 클라이언트엔 preview 만 내린다
+      //   (content 미전송). F12 로도 전문 확인 불가. 사용자 작성 셋(builtin:false)만 content 전체 보유.
       prompts: [
         { id: 'nia', name: '니아 (기본 페르소나)', builtin: true, isDefault: true,
-          content: '당신은 「니아」, 이 디스코드 서버의 다정하고 든든한 AI 멤버예요. 멤버의 질문에 친근하고 정확하게 답하고, 모르면 솔직하게 모른다고 말해요. 서버 분위기를 존중하며 도움 되는 것을 최우선으로 합니다.' },
+          preview: '당신은 「니아」, NEXA 네트워크의 안내자예요. 차분하고 다정하게, 사용자의 질문을 알맞은 AI에게 연결하고 모르면 솔직히 모른다고 말해요…' },
         { id: 'formal', name: '정중한 비서', builtin: false, isDefault: false,
           content: '당신은 정중하고 간결한 비서입니다. 존댓말로 핵심만 명료하게 전달합니다.' },
       ],
@@ -108,7 +109,7 @@ const MOCK = {
       policy: { autoApprove: true, defaultDailyLimit: 50, scope: 'ALL' },
       pending: [],
       roster: [{ providerUserId: 0, name: '나 (이 PC)', isMe: true, state: ProviderState.PENDING, models: 0, today: 0, avgMs: 0 }],
-      prompts: [{ id: 'nia', name: '니아 (기본 페르소나)', builtin: true, isDefault: true, content: '당신은 「니아」, 이 디스코드 서버의 다정하고 든든한 AI 멤버예요.' }],
+      prompts: [{ id: 'nia', name: '니아 (기본 페르소나)', builtin: true, isDefault: true, preview: '당신은 「니아」, NEXA 네트워크의 안내자예요. 차분하고 다정하게, 사용자의 질문을 알맞은 AI에게 연결하고 모르면 솔직히 모른다고 말해요…' }],
       channels: { defaultModel: 'exaone3.5:7.8b', defaultLang: '한국어', list: [{ name: 'general', aiAllowed: true }] },
       channelAi: [], rag: { docs: [], applyChannels: [] }, presets: [], safety: { reports: [] },
     },

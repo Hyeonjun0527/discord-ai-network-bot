@@ -17,6 +17,7 @@ import com.discordassistant.central.channelai.application.ChannelAiCustomization
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
 import com.discordassistant.central.global.security.DashboardActor
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
+import com.discordassistant.central.shared.ContentSafety
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -401,9 +402,14 @@ class ChannelAiCustomizationServiceTest
             assertNull(preview.safetyWarning)
             assertTrue(preview.systemPrompt.indexOf("[우선순위 1: 안전]") < preview.systemPrompt.indexOf("[우선순위 2: 채널 AI 정체성]"))
             assertTrue(preview.systemPrompt.indexOf("[우선순위 2: 채널 AI 정체성]") < preview.systemPrompt.indexOf("[우선순위 3: AI 헌법]"))
-            // NEXA 강제 콘텐츠 가드레일이 안전(우선순위 1) 블록에 항상 주입되고, 헌법(우선순위 3)보다 앞선다.
-            assertTrue(preview.systemPrompt.contains("무관용으로 거부"))
-            assertTrue(preview.systemPrompt.indexOf("무관용으로 거부") < preview.systemPrompt.indexOf("[우선순위 3: AI 헌법]"))
+            // NEXA 가드레일은 안전(우선순위 1) 블록에 항상 주입되지만, 클라이언트 노출 미리보기에서는
+            // 전문 대신 자리표시자로 마스킹된다(영업·안전 비공개, F12 로도 전문 확인 불가).
+            assertTrue(preview.systemPrompt.contains(ContentSafety.GUARDRAIL_PUBLIC_PLACEHOLDER), preview.systemPrompt)
+            assertTrue(!preview.systemPrompt.contains("무관용으로 거부"), "가드레일 전문이 미리보기에 노출되면 안 됨")
+            assertTrue(
+                preview.systemPrompt.indexOf(ContentSafety.GUARDRAIL_PUBLIC_PLACEHOLDER) <
+                    preview.systemPrompt.indexOf("[우선순위 3: AI 헌법]"),
+            )
             assertTrue(preview.systemPrompt.contains("Kotlin Spring Boot 개발 질문"))
             assertTrue(preview.systemPrompt.contains("코드는 검증 방법을 먼저 제안합니다."))
             assertTrue(preview.systemPrompt.contains("[S1] Kotlin 설정 가이드"))

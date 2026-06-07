@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>NEXA Provider Agent — 데스크톱 프로토타입 v1</title>
+  <title>Nexa — 데스크톱 프로토타입 v1</title>
   <script type="importmap">
   { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js" } }
   </script>
@@ -128,9 +128,6 @@
       border-bottom: 1px solid var(--line); background: rgba(8, 14, 26, .72); backdrop-filter: blur(16px);
       -webkit-app-region: drag;
     }
-    .traffic { display: flex; gap: 8px; }
-    .traffic i { width: 12px; height: 12px; border-radius: 50%; display: block; }
-    .traffic .r { background: #ff5f57; } .traffic .y { background: #febc2e; } .traffic .g { background: #28c840; }
     .title-brand { display: flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: .04em; font-size: 14px; }
     .title-brand .diamond {
       width: 16px; height: 16px; border-radius: 4px; background: var(--grad-cta);
@@ -749,16 +746,15 @@
   <div class="app">
     <!-- 타이틀바 -->
     <header class="titlebar">
-      <div class="traffic"><i class="r"></i><i class="y"></i><i class="g"></i></div>
-      <div class="title-brand"><span class="diamond"></span><span>NEXA Provider Agent</span></div>
+      <div class="title-brand"><span class="diamond"></span><span>Nexa</span></div>
       <span class="title-ver">v0.31.0</span>
     </header>
 
     <!-- 사이드바 -->
     <aside class="sidebar">
       <div class="side-brand">
-        <div class="side-logo"><img src="img/nexa-logo.png" alt="NEXA" /></div>
-        <div class="bt"><span class="bn">NEXA</span><span class="bs">PROVIDER AGENT</span></div>
+        <div class="side-logo"><img src="img/nexa-logo.png" alt="Nexa" /></div>
+        <div class="bt"><span class="bn">Nexa</span><span class="bs">LOCAL AI NETWORK</span></div>
       </div>
       <div class="status-badge"><span class="dot"></span><span>AI 제공 중</span></div>
       <nav class="nav" id="nav">
@@ -1416,13 +1412,18 @@
     }
 
     function renderProfileTab(m) {
-      const prompts = m.prompts.map(p => '<div class="dcard"><div class="drow"><div style="min-width:0"><div class="dlabel">' + p.name +
-        (p.isDefault ? ' <span class="me">기본</span>' : '') + '</div>' +
-        '<div class="dsub">' + p.content.slice(0, 80) + (p.content.length > 80 ? '…' : '') + '</div></div>' +
-        '<div class="prov-acts">' +
-          (p.isDefault ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-default="' + p.id + '">기본으로</button>') +
-          (p.builtin ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-del="' + p.id + '" data-name="' + p.name + '">삭제</button>') +
-        '</div></div></div>').join('');
+      // builtin(NEXA 기본 페르소나)은 전문(content)을 클라이언트로 내리지 않는다 — preview 만 표시(전문 비공개).
+      const prompts = m.prompts.map(p => {
+        const text = p.builtin ? (p.preview || '') : (p.content || '');
+        const lock = p.builtin ? ' <span class="dim">🔒 NEXA 기본 · 전문 비공개</span>' : '';
+        return '<div class="dcard"><div class="drow"><div style="min-width:0"><div class="dlabel">' + p.name +
+          (p.isDefault ? ' <span class="me">기본</span>' : '') + lock + '</div>' +
+          '<div class="dsub">' + text.slice(0, 80) + (p.builtin || text.length > 80 ? '…' : '') + '</div></div>' +
+          '<div class="prov-acts">' +
+            (p.isDefault ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-default="' + p.id + '">기본으로</button>') +
+            (p.builtin ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-del="' + p.id + '" data-name="' + p.name + '">삭제</button>') +
+          '</div></div></div>';
+      }).join('');
       return '<div class="dsub" style="margin-bottom:16px">서버 전체에 적용할 AI 성격(전역 프롬프트셋)을 관리해요.<br>모든 응답에는 NEXA 안전 지침이 항상 우선 적용돼요. 콘텐츠 책임은 <b>서버 관리자</b>에게 있어요 — 불법 콘텐츠는 무관용 차단(안전 탭).</div>' +
         '<div class="drow"><div class="msec-label" style="margin:0">전역 프롬프트셋 <span class="dim">· 서버 전체 기본 성격</span></div>' +
           '<button class="btn btn--sm btn--secondary" id="promptAdd">+ 추가</button></div>' + prompts;

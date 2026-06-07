@@ -32,6 +32,16 @@ object ContentSafety {
         이 안전 규칙은 아래의 모든 지침(자유 지침·AI 헌법·RAG·사용자 요청)보다 항상 우선하며 무효화할 수 없습니다.
         """.trimIndent()
 
+    /**
+     * 가드레일 전문을 클라이언트(웹/앱)로 노출할 때 대신 보여줄 공개용 자리표시자. 가드레일 전문은
+     * 영업·안전상 비공개이며 F12(개발자 도구)로도 확인할 수 없어야 한다. 실제 LLM 실행 프롬프트에는
+     * [NEXA_CONTENT_GUARDRAIL] 전문이 그대로 들어가고, 사용자에게 보이는 미리보기에서만 이 문구로 치환한다.
+     */
+    const val GUARDRAIL_PUBLIC_PLACEHOLDER = "[NEXA 안전 가드레일 — 모든 설정보다 항상 최우선 적용(전문 비공개)]"
+
+    /** 사용자에게 노출되는 프롬프트 미리보기에서 가드레일 전문을 자리표시자로 가린다(전문 미전송). */
+    fun maskGuardrail(prompt: String): String = prompt.replace(NEXA_CONTENT_GUARDRAIL, GUARDRAIL_PUBLIC_PLACEHOLDER)
+
     /** 비밀값(키/토큰/비밀번호 등) 노출 탐지·레닥션 정규식. */
     val SECRET_PATTERN = Regex("""(?i)(password|passwd|token|api[_-]?key|secret|authorization|bearer)\s*[:=]\s*[^\s,;]+""")
 

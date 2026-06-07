@@ -74,6 +74,7 @@ class CommandServiceTest
         val onboardingOptOuts: com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository,
         val channelAis: com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository,
         val routingStats: ProviderRoutingStats,
+        val globalPromptSets: com.discordassistant.central.globalpromptset.application.GlobalPromptSetService,
     ) {
         private fun ctx(admin: Boolean = false) =
             CommandContext(guildId = 100, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = admin)
@@ -718,12 +719,43 @@ class CommandServiceTest
             registry.register(s)
             try {
                 val r = commands.ask(ctx(), "코드 설명")
-                assertEquals("echo:코드 설명", r.content)
+                // 설정 없는 기본 서버도 NEXA 가드레일 + 기본 정체성(니아)이 항상 주입되고, 사용자 질문은 끝에 전달된다.
+                assertTrue(r.content.startsWith("echo:"), r.content)
+                assertTrue(r.content.endsWith("코드 설명"), r.content)
+                assertTrue(r.content.contains("[우선순위 1: 안전]"), r.content)
+                assertTrue(r.content.contains("무관용으로 거부"), r.content)
+                assertTrue(r.content.contains("니아"), r.content)
                 assertFalse(r.content.contains("커뮤니티 풀 처리"), r.content)
                 assertFalse(r.content.contains("provider #"), r.content)
                 assertTrue(r.feedback?.requestId?.isNotBlank() == true)
             } finally {
                 registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 길드 전역 프롬프트셋을 기본으로 지정하면 그 페르소나가 ask 에 주입된다`() {
+            // 다른 테스트(특히 @DataJpaTest)와 공유 H2 를 오염시키지 않도록 전용 길드로 격리한다.
+            val g = 9_100L
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 77, guildId = g)
+            conn.session = s
+            registry.register(s)
+            try {
+                // 길드 전역 프롬프트셋을 추가하고 기본으로 지정한다(쿨다운 회피 위해 ask 는 1회만 호출).
+                val added = globalPromptSets.add(g, "우리길드 봇", "당신은 우리 길드의 든든한 도우미 「토리」입니다.", 5)
+                globalPromptSets.setDefault(g, added.id)
+
+                val gctx = CommandContext(guildId = g, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = false)
+                val r = commands.ask(gctx, "코드 설명")
+                // 가드레일은 여전히 항상 주입되고, 정체성은 니아 대신 지정한 전역 프롬프트셋으로 바뀐다.
+                assertTrue(r.content.contains("[우선순위 1: 안전]"), r.content)
+                assertTrue(r.content.contains("토리"), r.content)
+                assertFalse(r.content.contains("니아"), r.content)
+                assertTrue(r.content.endsWith("코드 설명"), r.content)
+            } finally {
+                registry.unregister(s)
+                globalPromptSets.list(g).filter { !it.builtin }.forEach { globalPromptSets.delete(g, it.id) }
             }
         }
 

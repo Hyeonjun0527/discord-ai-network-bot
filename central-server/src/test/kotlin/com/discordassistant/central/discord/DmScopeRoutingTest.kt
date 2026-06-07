@@ -76,7 +76,9 @@ class DmScopeRoutingTest
             registry.register(session)
             try {
                 val r = commands.ask(dm(610_003L), "코드 설명")
-                assertTrue(r.content.contains("echo:코드 설명"), r.content)
+                // DM 도 글로벌 풀로 라우팅되어 echo 가 돌아온다. 가드레일 주입 후 사용자 질문이 끝에 전달된다.
+                assertTrue(r.content.startsWith("echo:"), r.content)
+                assertTrue(r.content.endsWith("코드 설명"), r.content)
             } finally {
                 registry.unregister(session)
             }

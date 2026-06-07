@@ -140,9 +140,11 @@ test('전역 프롬프트 탭: 니아 기본 셋 + 추가/기본/삭제(외형 �
   await page.goto('/index.html#/servers/1001/manage/profile');
   await page.waitForFunction(() => !!window.App);
   await expect(page.locator('#serverManage .mtab.active')).toContainText('전역 프롬프트');
-  // 니아 기본 페르소나 + 기본 배지
+  // 니아 기본 페르소나 + 기본 배지 + 전문 비공개(builtin)
   await expect(page.locator('#serverManage')).toContainText('니아 (기본 페르소나)');
   await expect(page.locator('#serverManage .me').first()).toHaveText('기본');
+  await expect(page.locator('#serverManage')).toContainText('전문 비공개'); // builtin 잠금
+  await expect(page.locator('#serverManage')).not.toContainText('서버 분위기를 존중'); // 전문 일부 미노출
   // v1: 이름·아바타 편집 UI 없음(외형 고정)
   await expect(page.locator('#profName')).toHaveCount(0);
   await expect(page.locator('#serverManage')).toContainText('NEXA 안전 지침');

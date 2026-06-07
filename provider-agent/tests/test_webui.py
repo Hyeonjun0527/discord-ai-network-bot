@@ -527,6 +527,32 @@ async def test_server_manage_requires_running_agent(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_server_prompt_sets_require_running_agent(monkeypatch):
+    # 전역 프롬프트셋 관리 프록시 — 키 없으면 403, 에이전트 미실행이면 안내.
+    client = await _client()
+    try:
+        assert (await client.get("/api/servers/100/prompts")).status == 403  # 키 없음
+        d = await (await client.get("/api/servers/100/prompts", headers={"X-Session": KEY})).json()
+        assert d["ok"] is False  # 미실행
+        d2 = await (
+            await client.post(
+                "/api/servers/100/prompts/add", headers={"X-Session": KEY}, json={"name": "비서", "content": "내용"},
+            )
+        ).json()
+        assert d2["ok"] is False  # 미실행
+        d3 = await (
+            await client.post("/api/servers/100/prompts/default", headers={"X-Session": KEY}, json={"id": "nia"})
+        ).json()
+        assert d3["ok"] is False  # 미실행
+        d4 = await (
+            await client.post("/api/servers/100/prompts/delete", headers={"X-Session": KEY}, json={"id": "5"})
+        ).json()
+        assert d4["ok"] is False  # 미실행
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_server_policy_saves_override(monkeypatch):
     # 서버별 정책 override(G3) 저장 — camelCase 경계 → snake 저장. 실행 중 아니면 config 에 기록.
     from provider_agent.config_file import load_guild_policies

@@ -1423,7 +1423,7 @@
           (p.isDefault ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-default="' + p.id + '">기본으로</button>') +
           (p.builtin ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-del="' + p.id + '" data-name="' + p.name + '">삭제</button>') +
         '</div></div></div>').join('');
-      return '<div class="dsub" style="margin-bottom:16px">니아의 이름·아바타는 v1 에서 NEXA 기본으로 고정돼요(디스코드 봇은 서버별 프로필을 지원하지 않아요). 여기선 서버 전체에 적용할 AI 성격(전역 프롬프트셋)을 관리해요.<br>콘텐츠 책임은 <b>서버 관리자</b>에게 있어요 — 불법 콘텐츠는 무관용 차단(안전 탭).</div>' +
+      return '<div class="dsub" style="margin-bottom:16px">서버 전체에 적용할 AI 성격(전역 프롬프트셋)을 관리해요.<br>모든 응답에는 NEXA 안전 지침이 항상 우선 적용돼요. 콘텐츠 책임은 <b>서버 관리자</b>에게 있어요 — 불법 콘텐츠는 무관용 차단(안전 탭).</div>' +
         '<div class="drow"><div class="msec-label" style="margin:0">전역 프롬프트셋 <span class="dim">· 서버 전체 기본 성격</span></div>' +
           '<button class="btn btn--sm btn--secondary" id="promptAdd">+ 추가</button></div>' + prompts;
     }

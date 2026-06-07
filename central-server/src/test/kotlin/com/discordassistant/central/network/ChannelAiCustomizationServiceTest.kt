@@ -401,6 +401,9 @@ class ChannelAiCustomizationServiceTest
             assertNull(preview.safetyWarning)
             assertTrue(preview.systemPrompt.indexOf("[우선순위 1: 안전]") < preview.systemPrompt.indexOf("[우선순위 2: 채널 AI 정체성]"))
             assertTrue(preview.systemPrompt.indexOf("[우선순위 2: 채널 AI 정체성]") < preview.systemPrompt.indexOf("[우선순위 3: AI 헌법]"))
+            // NEXA 강제 콘텐츠 가드레일이 안전(우선순위 1) 블록에 항상 주입되고, 헌법(우선순위 3)보다 앞선다.
+            assertTrue(preview.systemPrompt.contains("무관용으로 거부"))
+            assertTrue(preview.systemPrompt.indexOf("무관용으로 거부") < preview.systemPrompt.indexOf("[우선순위 3: AI 헌법]"))
             assertTrue(preview.systemPrompt.contains("Kotlin Spring Boot 개발 질문"))
             assertTrue(preview.systemPrompt.contains("코드는 검증 방법을 먼저 제안합니다."))
             assertTrue(preview.systemPrompt.contains("[S1] Kotlin 설정 가이드"))

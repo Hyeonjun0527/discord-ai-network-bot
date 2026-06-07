@@ -51,6 +51,7 @@ class ChannelAiPromptRenderer(
         val systemPrompt =
             buildString {
                 appendLine("[우선순위 1: 안전]")
+                appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
                 appendLine("민감정보(비밀번호, API 키, 토큰, 개인키, 개인정보)는 요구·저장·반복하지 말고 즉시 경고합니다.")
                 if (sensitive) appendLine("현재 사용자 질문에 민감정보로 보이는 내용이 있으므로 RAG/도구 사용보다 경고와 안전 안내를 우선합니다.")
                 appendLine()

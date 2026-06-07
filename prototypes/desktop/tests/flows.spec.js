@@ -145,7 +145,7 @@ test('전역 프롬프트 탭: 니아 기본 셋 + 추가/기본/삭제(외형 �
   await expect(page.locator('#serverManage .me').first()).toHaveText('기본');
   // v1: 이름·아바타 편집 UI 없음(외형 고정)
   await expect(page.locator('#profName')).toHaveCount(0);
-  await expect(page.locator('#serverManage')).toContainText('NEXA 기본으로 고정');
+  await expect(page.locator('#serverManage')).toContainText('NEXA 안전 지침');
   // 다른 셋을 기본으로
   await page.click('#serverManage [data-prompt-default="formal"]');
   await expect(page.locator('#serverManage [data-prompt-default="nia"]')).toBeVisible();

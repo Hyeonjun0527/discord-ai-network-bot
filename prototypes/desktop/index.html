@@ -2055,9 +2055,10 @@
       const cards = items.length ? items.map(p => { const s = PRESET_STATUS[p.status] || ['paused', p.status];
         return '<div class="dcard"><div class="drow"><div style="min-width:0"><div class="dlabel">' + p.name + '</div>' +
           '<div class="dsub">' + (p.summary || p.category || '') + '</div></div>' +
-          '<span class="srv-st ' + s[0] + '"><span class="d"></span>' + s[1] + '</span></div></div>'; }).join('')
-        : '<div class="msoon"><b>프리셋 없음</b>자주 쓰는 AI 설정 묶음을 만들어 보세요.</div>';
-      return cards + MANAGE_READONLY_NOTE('프리셋');
+          '<div style="display:flex;gap:8px;align-items:center"><span class="srv-st ' + s[0] + '"><span class="d"></span>' + s[1] + '</span>' +
+          '<button class="btn btn--sm btn--danger" data-preset-del="' + p.id + '" data-name="' + (p.name || '').replace(/"/g, '&quot;') + '">삭제</button></div></div></div>'; }).join('')
+        : '<div class="msoon"><b>프리셋 없음</b>프리셋은 디스코드 명령으로 만들 수 있어요(여기선 삭제·조회).</div>';
+      return cards + MANAGE_READONLY_NOTE('프리셋(추가·편집은 Discord/웹, 여기선 삭제 가능)');
     }
 
     function renderSafetyTab(m) {
@@ -2098,6 +2099,8 @@
         toast('기본 프롬프트셋을 변경했어요', { type: 'ok' }); rerender();
       });
       manageEl.querySelectorAll('[data-prompt-del]').forEach(b => b.onclick = () => confirmDeletePrompt(d, m, b.dataset.promptDel, b.dataset.name, rerender));
+      // 프리셋 삭제(실연동: webui → central /provider/admin/presets/delete, 길드 소유권 가드)
+      manageEl.querySelectorAll('[data-preset-del]').forEach(b => b.onclick = () => confirmDeletePreset(d, m, b.dataset.presetDel, b.dataset.name, rerender));
       const pa = manageEl.querySelector('#promptAdd');
       if (pa) pa.onclick = () => openPromptModal(d, m, rerender);
       // 안전 — 신고 처리(무시/숨김)
@@ -2120,6 +2123,26 @@
         if (r && r.ok === false) { lay.remove(); toast(r.message || '삭제할 수 없어요', { type: 'info' }); return; }
         if (r && r.sets) m.prompts = r.sets; // central 이 기본 공백 방지(기본 셋 삭제 시 니아 복귀)까지 처리
         lay.remove(); toast(name + ' 을(를) 삭제했어요', { type: 'info' }); done();
+      };
+    }
+
+    function confirmDeletePreset(d, m, id, name, done) {
+      const lay = document.createElement('div');
+      lay.className = 'modal-layer';
+      lay.innerHTML = '<div class="modal" style="width:min(420px,100%)">' +
+        '<button class="modal-x" data-x aria-label="닫기">✕</button>' +
+        '<h3>' + (name || '프리셋') + ' 을(를) 삭제할까요?</h3><p class="msub">이 서버의 프리셋이 제거돼요(되돌릴 수 없어요).</p>' +
+        '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
+        '<button class="btn btn--md btn--danger" id="prdYes">삭제</button></div></div>';
+      document.body.appendChild(lay);
+      lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
+      lay.querySelector('#prdYes').onclick = async () => {
+        try {
+          const r = await api.deletePreset(d.guildId, id);
+          if (r && r.ok === false) { lay.remove(); toast(r.message || r.error || '삭제할 수 없어요', { type: 'info' }); return; }
+          if (r && r.presets) m._presets = r.presets; else m._presets = (m._presets || []).filter(p => String(p.id) !== String(id));
+          lay.remove(); toast((name || '프리셋') + ' 을(를) 삭제했어요', { type: 'ok' }); done();
+        } catch (_e) { lay.remove(); toast('삭제 실패 — 다시 시도하세요', { type: 'error' }); }
       };
     }
 

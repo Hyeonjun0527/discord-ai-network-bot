@@ -364,6 +364,11 @@ export const api = {
     /* @end-proto-only */
     return http(ENDPOINTS.serverPresets(guildId));
   },
+  /** 프리셋 삭제(관리자) — central 이 길드 소유권 가드. 성공 시 갱신 목록 반환. */
+  async deletePreset(guildId, presetId) {
+    /* @proto-only */ if (USE_MOCK) { const m = MOCK.manage[guildId]; await delay(100); if (m && m.presets) { const i = parseInt(String(presetId).replace('p', ''), 10); if (i >= 0) m.presets.splice(i, 1); } return { ok: true }; } /* @end-proto-only */
+    return post(ENDPOINTS.serverPresetDelete(guildId), { presetId: String(presetId) });
+  },
   /** 이 서버에 대한 내 제공 일시중지/재개 — provider self-service(/provider-pause·resume). */
   async setServerPaused(guildId, paused) {
     /* @proto-only */

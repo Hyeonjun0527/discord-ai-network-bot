@@ -6,6 +6,7 @@ import com.discordassistant.central.globalpromptset.application.GlobalPromptSetV
 import com.discordassistant.central.guild.application.GuildChannelPolicy
 import com.discordassistant.central.knowledge.application.GuildKnowledgeQuery
 import com.discordassistant.central.platform.discord.BotGuildLister
+import com.discordassistant.central.preset.application.GuildPresetAdmin
 import com.discordassistant.central.preset.application.GuildPresetQuery
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.ProviderRosterInfo
@@ -150,6 +151,13 @@ data class AdminPresetsResponse(
     val presets: List<ManagePresetDto> = emptyList(),
 )
 
+/** 프리셋 삭제 요청(관리자). presetId 는 64bit 안전을 위해 문자열로 받아 Long 변환. */
+data class AdminPresetDeleteRequest(
+    val durableToken: String = "",
+    val guildId: Long = 0,
+    val presetId: String = "",
+)
+
 /**
  * 데스크톱 앱(관리자)용 서버 관리 채널 — Provider 승인/거절/제거 + 목록 조회.
  *
@@ -174,6 +182,7 @@ class ProviderAdminController(
     private val guildChannelAi: GuildChannelAiQuery,
     private val guildKnowledge: GuildKnowledgeQuery,
     private val guildPresets: GuildPresetQuery,
+    private val guildPresetAdmin: GuildPresetAdmin,
 ) {
     /** durable 토큰 → 요청자 providerId 복원 후 그가 guildId 관리자면 그 id 반환, 아니면 null(거부). */
     private fun authedAdmin(
@@ -397,6 +406,25 @@ class ProviderAdminController(
             }
         }.fold(
             onSuccess = { AdminPresetsResponse(true, presets = it) },
+            onFailure = { AdminPresetsResponse(false, "프리셋 기능이 꺼져 있어요") },
+        )
+    }
+
+    /** 프리셋 삭제(관리 화면 11 쓰기). 소유권은 길드로 가드(다른 길드 프리셋 삭제 불가). 성공 시 갱신 목록 반환. */
+    @PostMapping("/presets/delete")
+    fun deletePreset(
+        @RequestBody req: AdminPresetDeleteRequest,
+    ): AdminPresetsResponse {
+        authedAdmin(req.durableToken, req.guildId) ?: return AdminPresetsResponse(false, "관리자 권한이 필요합니다")
+        val presetId = req.presetId.toLongOrNull() ?: return AdminPresetsResponse(false, "잘못된 프리셋입니다")
+        return runCatching {
+            val ok = guildPresetAdmin.deleteGuildPreset(req.guildId, presetId)
+            if (!ok) return AdminPresetsResponse(false, "프리셋을 찾을 수 없거나 권한이 없어요")
+            guildPresets.listGuildPresets(req.guildId).map {
+                ManagePresetDto(it.id.toString(), it.name, it.category, it.status, it.summary)
+            }
+        }.fold(
+            onSuccess = { AdminPresetsResponse(true, "삭제했어요", it) },
             onFailure = { AdminPresetsResponse(false, "프리셋 기능이 꺼져 있어요") },
         )
     }

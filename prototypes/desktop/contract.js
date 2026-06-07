@@ -77,6 +77,7 @@ export const ENDPOINTS = Object.freeze({
   serverChannelAi: (g) => '/api/servers/' + g + '/channel-ai', // GET → {ok, items:[{channelId,name,tone,purpose}]}
   serverKnowledge: (g) => '/api/servers/' + g + '/knowledge',  // GET → {ok, docs:[{id,title,status,riskLevel,addedAt,indexedAt}]}
   serverPresets: (g) => '/api/servers/' + g + '/presets',      // GET → {ok, presets:[{id,name,category,status,summary}]}
+  serverPresetDelete: (g) => '/api/servers/' + g + '/presets/delete', // POST {presetId} → 삭제(central 소유권 가드)
   serverAddToken: '/api/server-add-token',  // POST {token} → {ok} (실 앱: 토큰으로 서버 추가 + 자동 연결)
   onboardApply: '/api/onboard-apply',
   // 통합 설정 — GET → 저장 설정+상태(camelCase, {autostart,background,autoConnect,autoUpdate,enableImage,ollamaUrl,relayUrl,allowRemoteOllama,hasToken}).

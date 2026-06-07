@@ -33,6 +33,15 @@ interface GuildPresetQuery {
     fun listGuildPresets(guildId: Long): List<PresetSummary>
 }
 
+/** 길드 프리셋 **삭제**(데스크톱 앱 관리채널 브리지). 소유권을 길드로 가드한다(deletePreset 은 비-guild-scoped). */
+interface GuildPresetAdmin {
+    /** presetId 가 이 길드 소유일 때만 삭제. 성공 True, 미소유/없음 False. */
+    fun deleteGuildPreset(
+        guildId: Long,
+        presetId: Long,
+    ): Boolean
+}
+
 @Service
 class PresetRegistryService(
     private val presets: AiPresetRepository,
@@ -81,7 +90,8 @@ class PresetRegistryService(
             routingPolicies = routingPolicies,
             revisionFactory = revisionFactory,
         ),
-) : GuildPresetQuery {
+) : GuildPresetQuery,
+    GuildPresetAdmin {
     @Transactional
     fun createPreset(
         guildId: Long,
@@ -162,6 +172,18 @@ class PresetRegistryService(
 
     @Transactional(readOnly = true)
     override fun listGuildPresets(guildId: Long): List<PresetSummary> = catalog.listGuildPresets(guildId)
+
+    @Transactional
+    override fun deleteGuildPreset(
+        guildId: Long,
+        presetId: Long,
+    ): Boolean {
+        // 소유권 가드: 이 길드의 프리셋 목록에 있는 id 만 삭제 허용(deletePreset 자체는 guild-scoped 아님).
+        val owned = catalog.listGuildPresets(guildId).any { it.id == presetId }
+        if (!owned) return false
+        deletePreset(presetId)
+        return true
+    }
 
     @Transactional(readOnly = true)
     fun listPublishedPresets(): List<PublishedPresetSummary> = catalog.listPublishedPresets()

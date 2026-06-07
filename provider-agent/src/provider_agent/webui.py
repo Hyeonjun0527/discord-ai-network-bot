@@ -970,6 +970,22 @@ def build_app(session_key: str) -> web.Application:
         """프리셋 목록(관리자, 읽기)."""
         return await _server_guild_read(req, "admin_presets")
 
+    async def server_preset_delete(req: web.Request) -> web.Response:
+        """프리셋 삭제(관리자, 쓰기). central 이 길드 소유권 가드. body {presetId}."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        preset_id = str(data.get("presetId") or "").strip() if isinstance(data, dict) else ""
+        if not preset_id:
+            return web.json_response({"ok": False, "error": "프리셋이 필요해요"})
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_preset_delete(guild_id, preset_id))  # type: ignore[attr-defined]
+
     async def server_rename(req: web.Request) -> web.Response:
         """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). body {guildId|index, name}."""
         _auth(req)
@@ -1453,6 +1469,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/servers/{guildId}/channel-ai", server_channel_ai)
     app.router.add_get("/api/servers/{guildId}/knowledge", server_knowledge)
     app.router.add_get("/api/servers/{guildId}/presets", server_presets)
+    app.router.add_post("/api/servers/{guildId}/presets/delete", server_preset_delete)
     app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
     app.router.add_post("/api/server-add-token", server_add_token)
     app.router.add_get("/api/install-info", install_info)

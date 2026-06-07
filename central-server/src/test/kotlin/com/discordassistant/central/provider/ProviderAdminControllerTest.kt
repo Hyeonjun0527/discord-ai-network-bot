@@ -11,12 +11,14 @@ import com.discordassistant.central.knowledge.application.KnowledgeSourceSummary
 import com.discordassistant.central.platform.discord.BotChannelInfo
 import com.discordassistant.central.platform.discord.BotGuildInfo
 import com.discordassistant.central.platform.discord.BotGuildLister
+import com.discordassistant.central.preset.application.GuildPresetAdmin
 import com.discordassistant.central.preset.application.GuildPresetQuery
 import com.discordassistant.central.preset.application.PresetSummary
 import com.discordassistant.central.provider.adapter.inbound.web.AdminActionRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminChannelToggleRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminChannelsRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPolicyRequest
+import com.discordassistant.central.provider.adapter.inbound.web.AdminPresetDeleteRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPromptSetRequest
 import com.discordassistant.central.provider.adapter.inbound.web.ProviderAdminController
 import com.discordassistant.central.provider.application.DurableTokenService
@@ -156,10 +158,31 @@ class ProviderAdminControllerTest
                             ),
                         )
                 }
+            val presetIds = mutableSetOf(3L) // 상태형 — 삭제 테스트가 관찰 가능
             val presetQuery =
                 object : GuildPresetQuery {
                     override fun listGuildPresets(guildId: Long) =
-                        listOf(PresetSummary(3L, guildId, null, "번역봇", "요약", "channel_ai", "guild_private", "active", null, "2026-06-07"))
+                        presetIds.map {
+                            PresetSummary(
+                                it,
+                                guildId,
+                                null,
+                                "번역봇",
+                                "요약",
+                                "channel_ai",
+                                "guild_private",
+                                "active",
+                                null,
+                                "2026-06-07",
+                            )
+                        }
+                }
+            val presetAdmin =
+                object : GuildPresetAdmin {
+                    override fun deleteGuildPreset(
+                        guildId: Long,
+                        presetId: Long,
+                    ): Boolean = presetIds.remove(presetId) // 소유(목록에 있음)면 삭제 성공
                 }
             val ctrl =
                 ProviderAdminController(
@@ -172,6 +195,7 @@ class ProviderAdminControllerTest
                     channelAiQuery,
                     knowledgeQuery,
                     presetQuery,
+                    presetAdmin,
                 )
             val dtoken = durable.issueDurable(7L, 100L)!!
             return Ctx(ctrl, reg, dtoken, state, channelState)
@@ -353,5 +377,16 @@ class ProviderAdminControllerTest
             assertFalse(d.ctrl.channelAi(AdminChannelsRequest(d.dtoken, 100L)).ok)
             assertFalse(d.ctrl.knowledge(AdminChannelsRequest(d.dtoken, 100L)).ok)
             assertFalse(d.ctrl.presets(AdminChannelsRequest(d.dtoken, 100L)).ok)
+        }
+
+        @Test
+        fun `관리자는 길드 프리셋을 삭제하고, 비관리자는 거부된다`() {
+            val c = setup(admin = true)
+            val del = c.ctrl.deletePreset(AdminPresetDeleteRequest(c.dtoken, 100L, "3"))
+            assertTrue(del.ok)
+            assertTrue(del.presets.isEmpty()) // 삭제 후 목록 비었음
+            // 비관리자 거부
+            val d = setup(admin = false)
+            assertFalse(d.ctrl.deletePreset(AdminPresetDeleteRequest(d.dtoken, 100L, "3")).ok)
         }
     }

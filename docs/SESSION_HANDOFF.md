@@ -40,10 +40,14 @@
   - ✅ **채널 AI 허용(channels)**: central PolicyService(좁은 포트 `GuildChannelPolicy`)→ProviderAdminController
     `/channels`,`/channels/toggle` + agent.admin_channels/toggle + webui 라우트 + adapter(getChannels/toggleChannel)
     + UI 실연동 완료(이번 세션). "빈 목록=전체 허용" 의미 보존, channelId 문자열(64bit). 테스트 포함.
-  - ⏳ **남은 탭(같은 패턴 확장)**: 채널AI(channelai 도메인 ChannelAiProfileService)·RAG(knowledge 도메인)·
-    프리셋(preset 도메인)·안전(ainetwork ProviderSafetyService). central 백엔드는 **이미 존재**(웹 대시보드 OAuth 경로),
-    durable-token 브리지만 추가하면 됨. 현재 실 모드에선 `MSOON_REAL` 안내(크래시 방지). 단, channelAi 는
-    ChannelAiProfileService 가 behavior version 등으로 풍부해 프로토타입 단순모델과 매핑 설계 먼저 필요.
+  - ✅ **채널 AI·RAG·프리셋(read 브리지)**: central 좁은 read 포트(GuildChannelAiQuery/GuildKnowledgeQuery/
+    GuildPresetQuery) → ProviderAdminController `/channel-ai`·`/knowledge`·`/presets` + agent + webui + adapter
+    + UI(read-only 현황). 추가·편집은 도메인이 풍부(behavior version·space·revision)해 Discord 명령·웹 대시보드가
+    SSOT — 앱은 조회 + 안내. 채널AI 가짜 토글 제거(실 "켜기"=프로필 위저드).
+  - 🚫 **안전(콘텐츠 신고 큐)**: central 에 해당 백엔드 **없음**(ProviderSafetyService 는 프로바이더 과부하
+    보호로 다른 개념). 가짜 연동 대신 `MSOON_REAL` 정직 유지. 신고 큐가 필요하면 신규 도메인 설계 필요.
+  - ⏳ **남은 쓰기(write) 작업**: 채널AI 편집/RAG 문서 추가/프리셋 적용을 앱에서 직접 하려면 각 도메인의
+    풍부한 입력(위저드)을 앱 UI 로 재설계해야 함(현재는 Discord/웹 위임). 읽기는 전부 실연동됨.
 - 🔴 **(중요) guildId 64bit 정밀도 손실 — 실 길드 관리 흐름 전체에 영향**: 실 `/api/servers` 가 guildId 를
   JSON number(예: 1380395592336805928)로 보내면 JS `r.json()` 이 Number 로 파싱하며 끝자리가 깨진다(>2^53).
   → 그 guildId 로 만든 관리 API URL 이 잘못된 길드를 가리켜 prompts/provider/channels **모두 실 길드에서 실패**.
@@ -55,7 +59,7 @@
 - SD 부트스트랩 안정화(이어받기는 됨, 메모리 `sd_bootstrap_upstream_rot` 참조 — A1111 업스트림 부패 잔존).
 
 ### C. 배포/머지
-- 이 브랜치(39커밋) → main PR 머지. ⚠️ `central-server/**` push 는 **자동배포** 트리거. AGENTS.md Git/Release 가드 준수.
+- 이 브랜치(42커밋) → main PR 머지. ⚠️ `central-server/**` push 는 **자동배포** 트리거. AGENTS.md Git/Release 가드 준수.
   - 이번 세션 변경에 central-server(PolicyService·ProviderAdminController) 포함 → main 머지 시 자동배포된다.
     채널 브리지는 기존 PolicyService 재사용·신규 엔드포인트 add-only 라 기존 동작 영향 없음(빌드 그린 확인).
 

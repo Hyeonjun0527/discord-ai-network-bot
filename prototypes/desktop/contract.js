@@ -66,6 +66,7 @@ export const ENDPOINTS = Object.freeze({
   serverPromptAdd: (g) => '/api/servers/' + g + '/prompts/add',        // POST {name, content}
   serverPromptDefault: (g) => '/api/servers/' + g + '/prompts/default', // POST {id} (id='nia'→니아 복귀)
   serverPromptDelete: (g) => '/api/servers/' + g + '/prompts/delete',  // POST {id}
+  serverAddToken: '/api/server-add-token',  // POST {token} → {ok} (실 앱: 토큰으로 서버 추가 + 자동 연결)
   onboardApply: '/api/onboard-apply',
   // 통합 설정 — GET → 저장 설정+상태(camelCase, {autostart,background,autoConnect,autoUpdate,enableImage,ollamaUrl,relayUrl,allowRemoteOllama,hasToken}).
   //   POST {key:value}(부분 변경, 1개 이상) → {ok, needsRestart}. setup/onboard-apply/auto-update 를 단일화.

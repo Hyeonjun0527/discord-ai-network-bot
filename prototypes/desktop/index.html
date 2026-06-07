@@ -2059,8 +2059,12 @@
 
       // stage/connectOrigin 은 state.js(App) 가 SSOT. connectSub·connectedGuild 는 connect 내부 상태.
       let connectSub = 'login', connectedGuild = '';
+      // 실 앱 'waiting' 서브의 완료 폴링 핸들(브라우저 OAuth 완료 → hasToken=true 감지). 화면 이탈/취소 시 정리.
+      let connectPoll = null;
+      function stopConnectPoll() { if (connectPoll) { clearInterval(connectPoll); connectPoll = null; } }
       function emit() { window.dispatchEvent(new CustomEvent('stagechange', { detail: { stage: App.stage, step: ONB.step, connectSub } })); }
       function setStage(name) {
+        if (name !== 'connect') stopConnectPoll(); // connect 화면 이탈 시 'waiting' 폴링 정리(누수 방지)
         applyStage(name); // App.stage 갱신 + authed 보정(I1: main ⟹ authed)
         app.style.display = name === 'main' ? '' : 'none';
         onbLayer.hidden = name !== 'onboarding';
@@ -2092,6 +2096,13 @@
               '<div class="cx-tok-body" hidden><input class="cx-input" id="cxTok" placeholder="발급받은 참여 토큰을 붙여넣으세요"><button class="btn btn--md btn--secondary" id="cxTokAdd">추가</button></div>' +
             '</div></div>' +
             '<div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="back-onb">취소</button></div>';
+        } else if (sub === 'waiting') {
+          // 실 앱 전용: OAuth 가 시스템 브라우저에서 진행 중. 완료(토큰 저장)되면 폴링이 자동으로 메인으로 보낸다.
+          html += '<div class="wiz-body">' +
+            '<div class="wiz-title">브라우저에서 로그인 중…</div>' +
+            '<div class="wiz-sub">열린 브라우저 창에서 디스코드 로그인과 서버 선택을 완료하세요.<br>끝나면 자동으로 연결됩니다.</div>' +
+            '</div>' +
+            '<div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="login">취소</button></div>';
         } else if (sub === 'select') {
           const cands = await api.getConnectCandidates();
           if (!cands.length) { connectSub = 'none'; return renderConnect(); }
@@ -2123,8 +2134,30 @@
       }
       function wireConnect() {
         const q = (s) => connectWiz.querySelector(s);
+        // 'waiting'(실 앱) 진입 시 완료 폴링 시작, 그 외 서브에선 정리(중복 방지·이탈 정리).
+        // 폴링은 window.__SESSION_KEY 가 있는 실 앱에서만(프로토타입은 mock 흐름이라 폴링 불필요).
+        if (connectSub === 'waiting' && window.__SESSION_KEY) {
+          if (!connectPoll) connectPoll = setInterval(async () => {
+            try {
+              const st = await api.getStatus();
+              if (st && st.hasToken) {
+                stopConnectPoll();
+                setStage('main');
+                toast('연결됐어요', { type: 'ok' });
+              }
+            } catch (e) { /* 일시적 실패는 다음 주기에 재시도 */ }
+          }, 2500);
+        } else {
+          stopConnectPoll();
+        }
         const login = q('#cxLogin');
-        if (login) login.onclick = async () => { await api.connectOpen(); connectSub = 'select'; renderConnect(); emit(); };
+        if (login) login.onclick = async () => {
+          await api.connectOpen();
+          // 실 앱(세션키 주입): connect-open 이 시스템 브라우저로 OAuth 를 연다. 후보 선택은 브라우저에서
+          // 끝나므로 앱은 'waiting'(완료 폴링)으로. 프로토타입(키 없음)은 기존 mock 흐름(앱 내 후보 select).
+          connectSub = window.__SESSION_KEY ? 'waiting' : 'select';
+          renderConnect(); emit();
+        };
         const tgl = q('#cxTokTgl');
         if (tgl) tgl.onclick = () => { const b = q('.cx-tok-body'); b.hidden = !b.hidden; };
         const tokAdd = q('#cxTokAdd');

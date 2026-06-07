@@ -410,7 +410,10 @@ export const api = {
   /** Discord 연결 후보 목록 — central ProviderConnectOnboardingService (OAuth 콜백이 제공) */
   async getConnectCandidates() {
     if (USE_MOCK) { await delay(140); return structuredClone(MOCK.candidates); }
-    return []; // 실제: connect-open OAuth → 콜백에서 후보 전달(프론트 단독 조회 아님)
+    // 실 앱은 후보 API 가 없다(설계상 위임): connect-open 이 시스템 브라우저로 relay OAuth 를 열고
+    // 후보 선택·승인은 브라우저에서 끝난다. relay 가 /connect/callback 으로 토큰·guild 를 리디렉트하면
+    // connect_callback 이 토큰 저장 + 자동 연결을 처리한다. 따라서 앱 내 후보 조회는 항상 빈 배열.
+    return [];
   },
 
   /** 서버 참여 요청 → 결과 — central ProviderRegistrationService.requestJoin */
@@ -432,6 +435,14 @@ export const api = {
       // 목: 토큰은 항상 승인된 서버로 발급되므로 APPROVED + 서버명(검증 응답의 guildName)
       return { ok: !!token, state: ProviderState.APPROVED, guildId: 2099, guildName: '코딩 스터디' };
     }
-    return {}; // 실제: POST /api/server-add-token { token } → { ok, guildId, guildName }
+    // 실 앱: POST /api/server-add-token {token} → {ok} (백엔드가 토큰 검증·저장·자동 연결까지 처리).
+    // ok 면 승인된 서버로 발급된 토큰이므로 APPROVED, 아니면 PENDING 으로 정규화(UI shape 통일).
+    const r = await post(ENDPOINTS.serverAddToken, { token });
+    return {
+      ok: !!r.ok,
+      state: r.ok ? ProviderState.APPROVED : ProviderState.PENDING,
+      guildId: r.guildId ?? null,
+      guildName: r.guildName || '',
+    };
   },
 };

@@ -34,6 +34,11 @@ jobs:
           python -m pip install --upgrade pip
           # .[gui] = pywebview → 데스크톱 GUI(.app/.exe)가 네이티브 창으로 동작(없으면 브라우저 폴백).
           pip install ".[gui]" pyinstaller
+      # 데스크톱 앱 자산 이식(생성물·gitignore). PyInstaller 가 webui_assets 를 번들하려면 빌드 전에 돌아야 한다.
+      # scripts/sync_desktop_app.py 는 리포 루트 기준(__file__ parents[1])이라 working-directory 를 루트로.
+      - name: 데스크톱 앱 자산 이식(sync-desktop)
+        working-directory: ${{ github.workspace }}
+        run: python scripts/sync_desktop_app.py
       - name: 빌드
         run: pyinstaller packaging/agent.spec
       # 릴리스 서명 게이트: agent-v* 태그 빌드는 미서명으로 통과시키지 않는다(조용한 미서명 금지).

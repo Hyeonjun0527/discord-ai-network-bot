@@ -1046,6 +1046,23 @@ async def test_index_serves_synced_assets_with_session_key(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_index_missing_assets_shows_guidance(tmp_path, monkeypatch):
+    """webui_assets/index.html 이 없으면(sync-desktop 미실행) 조용히 깨지지 않고 안내 HTML 을 반환한다."""
+    empty = tmp_path / "webui_assets"
+    empty.mkdir()  # index.html 없는 빈 디렉토리
+    monkeypatch.setattr(webui, "_assets_dir", lambda: empty)
+    client = await _client()
+    try:
+        r = await client.get("/")
+        assert r.status == 200  # 200(빈 화면 아님) — 무엇을 해야 하는지 안내
+        html = await r.text()
+        assert "make sync-desktop" in html  # 안내 문구
+        assert "__SESSION_KEY__" not in html  # 안내 페이지엔 세션키 자리표시 없음
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_asset_js_served_as_javascript(tmp_path, monkeypatch):
     """/adapter.js 가 200 + text/javascript 로 인증 없이 서빙된다."""
     _make_assets(tmp_path, monkeypatch)

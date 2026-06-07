@@ -524,8 +524,13 @@ def build_app(session_key: str) -> web.Application:
             from . import singleton
 
             task = _state["task"]
+            agent = _state["agent"]
             gui_running = task is not None and not task.done()
-            if (not gui_running) and singleton.held_by_other() and service_mod.is_installed():
+            if gui_running and agent is not None:
+                # GUI 인-프로세스 에이전트: 새 모델 선택을 즉시 적용·재광고(연결 유지, hello 재전송) →
+                #   status.models·홈/서버 '제공 모델'·풀 광고가 모델 화면 선택과 일치한다.
+                await agent.set_models(models_list, default_model)  # type: ignore[attr-defined]
+            elif (not gui_running) and singleton.held_by_other() and service_mod.is_installed():
                 service_restarted = bool(service_mod.kickstart())
         service_installed = False
         service_error: str | None = None

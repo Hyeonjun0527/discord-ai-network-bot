@@ -843,6 +843,14 @@ class ProviderAgent:
         self._default_model = str(saved.get("default_model") or "").strip()
         return self._models
 
+    async def set_models(self, models: list[str], default_model: str | None = None) -> None:
+        """제공 모델 선택을 라이브로 적용·재광고(앱 모델 화면 '적용'). self._models 갱신 + 모든 연결 재접속(새 hello)
+        → 중앙 풀이 새 모델 집합을 즉시 안다. status.models 도 이 값을 반영(홈/서버 '제공 모델' 일치)."""
+        self._models = list(models)
+        if default_model is not None:
+            self._default_model = (default_model or "").strip()
+        await self._readvertise()
+
     def _preferred_model(self) -> str | None:
         """모델 미지정 요청에 쓸 기본 응답 모델 — 설정된 기본이 제공 중이면 그것, 아니면 첫 모델."""
         if self._default_model and self._default_model in self._models:

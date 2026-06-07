@@ -212,3 +212,30 @@ def stop_service() -> bool:
     except (RuntimeError, OSError) as exc:
         logger.warning("백그라운드 서비스 중지 실패: %s", exc)
     return False
+
+
+def uninstall_service() -> bool:
+    """자동 시작 서비스를 **해제**한다(설정 화면 autostart 토글 OFF). 미설치/미지원이면 False.
+
+    install_service 의 역연산: launchd 언로드+plist 삭제 / systemd disable+unit 삭제 / 작업 스케줄러 삭제.
+    """
+    if not is_installed():
+        return False
+    system = platform.system()
+    try:
+        if system == "Darwin":
+            target = _mac_plist_path()
+            subprocess.run(["launchctl", "unload", str(target)], check=False, capture_output=True)
+            target.unlink(missing_ok=True)
+            return True
+        if system == "Linux":
+            _run(["systemctl", "--user", "disable", "--now", SERVICE_NAME], ignore=("not loaded", "No such file"))
+            _linux_unit_path().unlink(missing_ok=True)
+            _run(["systemctl", "--user", "daemon-reload"])
+            return True
+        if system == "Windows":
+            _run(["schtasks", "/delete", "/tn", SERVICE_NAME, "/f"], ignore=("does not exist", "cannot find"))
+            return True
+    except (RuntimeError, OSError) as exc:
+        logger.warning("백그라운드 서비스 해제 실패: %s", exc)
+    return False

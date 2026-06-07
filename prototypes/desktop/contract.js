@@ -100,6 +100,7 @@ export const ENDPOINTS = Object.freeze({
   updateProgress: '/api/update-progress',
   updateApply: '/api/update',         // POST → 업데이트 시작(진행률은 updateProgress 폴링)
   installInfo: '/api/install-info',   // GET → {platform, label, supported, installed, reason?}
+  openFolder: '/api/open-folder',     // POST {which} → OS 파일 탐색기로 로컬 폴더 열기
 });
 
 // ── 응답 shape(참고용 JSDoc) — webui.py 와 동일 필드명(camelCase) ──

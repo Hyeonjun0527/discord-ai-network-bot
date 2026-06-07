@@ -1304,7 +1304,55 @@ def build_app(session_key: str) -> web.Application:
                 needs_restart = True
         if updates:
             persist_partial(updates)
-        return web.json_response({"ok": True, "needsRestart": needs_restart})
+        # autostart 는 저장만으론 효과가 없다 — **실제로** 로그인 자동시작 서비스를 등록/해제해야 한다
+        # (과거: 설정 화면 토글이 autostart_pref 만 저장하고 서비스는 onboarding 에서만 등록되던 버그).
+        service_error: str | None = None
+        if isinstance(data, dict) and "autostart" in data:
+            from . import service as service_mod
+            from . import singleton
+
+            try:
+                if bool(data.get("autostart")):
+                    singleton.acquire()  # GUI 가 락을 쥐고 등록(헤드리스 인스턴스 충돌 방지)
+                    service_mod.install_service()
+                else:
+                    service_mod.uninstall_service()
+            except Exception as exc:  # noqa: BLE001 - 실패 사유만 표면화(저장은 유지)
+                service_error = str(exc)
+                logging.getLogger("provider_agent").warning("autostart 서비스 적용 실패: %s", exc)
+        return web.json_response({"ok": True, "needsRestart": needs_restart, "serviceError": service_error})
+
+    async def open_folder(req: web.Request) -> web.Response:
+        """로컬 폴더를 OS 파일 탐색기로 연다(데스크톱 앱 ⋯ '출력 폴더 열기'). 로컬 전용 — 같은 PC.
+
+        body {which}=sdOutputs: A1111 출력 폴더(install_dir/outputs). 없으면 설치 폴더, 그것도 없으면 에러.
+        """
+        _auth(req)
+        import subprocess
+        import sys
+
+        from . import sd_setup
+
+        try:
+            body = await req.json()
+        except Exception:  # noqa: BLE001 - 본문 없으면 기본값
+            body = {}
+        which = (body.get("which") if isinstance(body, dict) else None) or "sdOutputs"
+        base = sd_setup.install_dir()
+        candidates = [base / "outputs", base] if which == "sdOutputs" else [base]
+        target = next((p for p in candidates if p.exists()), None)
+        if target is None:
+            return web.json_response({"ok": False, "error": "폴더가 아직 없어요(설치/생성 전)"})
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", str(target)])
+            elif sys.platform.startswith("win"):
+                subprocess.Popen(["explorer", str(target)])
+            else:
+                subprocess.Popen(["xdg-open", str(target)])
+        except OSError as exc:
+            return web.json_response({"ok": False, "error": str(exc)})
+        return web.json_response({"ok": True, "path": str(target)})
 
     app.router.add_get("/", index)
     app.router.add_get("/mascot.png", mascot)
@@ -1362,6 +1410,7 @@ def build_app(session_key: str) -> web.Application:
     # 통합 설정 — 분산된 setup/onboard-apply/auto-update 를 단일 GET/POST 로 통합(데스크톱 앱 설정 화면).
     app.router.add_get("/api/settings", settings_get)
     app.router.add_post("/api/settings", settings_post)
+    app.router.add_post("/api/open-folder", open_folder)
 
     async def _autoconnect_on_startup(_app: web.Application) -> None:
         """온보딩에서 '로그인 후 자동 연결'을 켰고 저장된 서버가 있으면, GUI 가 뜨자마자 자동 연결한다.

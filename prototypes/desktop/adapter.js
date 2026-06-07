@@ -398,10 +398,11 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { await delay(200); MOCK.status.running = false; MOCK.status.connected = false; return { ok: true }; } /* @end-proto-only */
     return post(ENDPOINTS.stop);
   },
-  /** 이미지 요청 수신 토글(enableImage). ⚠ 백엔드 단일 토글 API 없음 — /api/setup 재호출로 반영(contract 참고). */
+  /** 이미지 요청 수신 토글(enableImage). ⚠ 백엔드 단일 토글 API 없음 — /api/setup 재호출로 반영(contract 참고).
+   *  applyToBackground:true 로 백그라운드 서비스가 제공 중이면 즉시 재기동해 반영(GUI 인-프로세스면 재연결 필요). */
   async setImageReceiving(on) {
     /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.status.enableImage = on; return { ok: true, enableImage: on }; } /* @end-proto-only */
-    return post(ENDPOINTS.setup, { enableImage: on });
+    return post(ENDPOINTS.setup, { enableImage: on, applyToBackground: true });
   },
   /** 제공할 텍스트 모델 선택 적용 — webui.py POST /api/setup {models, enableImage, applyToBackground}.
    *  실행 중 서비스에 즉시 반영(applyToBackground=true)해 풀에 새 구성을 광고한다. enableImage 는 현재값
@@ -445,6 +446,11 @@ export const api = {
   async logout() {
     /* @proto-only */ if (USE_MOCK) { await delay(120); MOCK.status.hasToken = false; MOCK.status.connected = false; return { ok: true }; } /* @end-proto-only */
     return post(ENDPOINTS.logout);
+  },
+  /** 로컬 폴더 열기(⋯ '출력 폴더 열기') — webui.py POST /api/open-folder?which=. 같은 PC 파일 탐색기. */
+  async openFolder(which) {
+    /* @proto-only */ if (USE_MOCK) { await delay(60); return { ok: true, path: '~/.local/share/nexa/stable-diffusion-webui/outputs' }; } /* @end-proto-only */
+    return post(ENDPOINTS.openFolder, { which });
   },
   /** 온보딩 설정 적용 — webui.py /api/onboard-apply */
   async applyOnboarding(cfg) {

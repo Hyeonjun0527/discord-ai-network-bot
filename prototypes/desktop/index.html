@@ -1303,7 +1303,11 @@
 
     async function runtimeAction(act, name) {
       if (act === 'open') { window.open('http://localhost:7860', '_blank', 'noopener'); return; }   // SD :7860 Gradio WebUI
-      if (act === 'outputs') { toast(name + ' 출력 폴더', { type: 'info', sub: '~/NEXA/outputs' }); return; }
+      if (act === 'outputs') { // 실제 OS 파일 탐색기로 출력 폴더 열기(토스트 경로 표시만 하던 no-op 수정)
+        try { const r = await api.openFolder('sdOutputs'); toast(r && r.ok ? '출력 폴더를 열었어요' : (r && r.error) || '폴더가 아직 없어요', { type: r && r.ok ? 'ok' : 'error' }); }
+        catch (_e) { toast('폴더 열기 실패', { type: 'error' }); }
+        return;
+      }
       // 연결 점검 — 실제 status 로(런타임이 죽어 있으면 정직하게 '점검 필요').
       toast(name + ' 연결 점검 중…', { type: 'run', sticky: true, id: 'lchk-' + name });
       try {
@@ -1383,10 +1387,15 @@
       const imgSw = document.getElementById('localImgSw');
       if (imgSw) imgSw.onclick = async () => {
         const on = !imgSw.classList.contains('on');
-        imgSw.classList.toggle('on', on); imgSw.setAttribute('aria-checked', String(on));
-        await api.setImageReceiving(on);
-        if (_st) _st.enableImage = on;
-        toast(on ? '이미지 요청을 받아요' : '이미지 요청을 받지 않아요', { type: 'info' });
+        imgSw.classList.toggle('on', on); imgSw.setAttribute('aria-checked', String(on)); // 일단 반영
+        try {
+          await api.setImageReceiving(on); // 결과를 기다린다(낙관적 전환 금지)
+          if (_st) _st.enableImage = on;
+          toast(on ? '이미지 요청을 받아요 — 제공 중이면 다시 연결 후 적용돼요' : '이미지 요청을 받지 않아요', { type: 'info' });
+        } catch (_e) { // 실패 시 원복(거짓 ON 방지)
+          imgSw.classList.toggle('on', !on); imgSw.setAttribute('aria-checked', String(!on));
+          toast('변경 실패 — 네트워크를 확인하세요', { type: 'error' });
+        }
       };
     }
 
@@ -1457,10 +1466,22 @@
       body.querySelectorAll('[data-toggle]').forEach((b) => {
         b.onclick = async () => {
           const key = b.dataset.toggle, on = !b.classList.contains('on');
-          b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
-          if (_s) _s[key] = on;
-          await api.setSetting(key, on);
-          toast('설정을 저장했어요', { type: 'ok' });
+          b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); // 일단 반영
+          try {
+            const r = await api.setSetting(key, on) || {};
+            if (_s) _s[key] = on;
+            if (r.serviceError) { // autostart 등 실제 적용 실패 — 정직하게 알리고 되돌림
+              b.classList.toggle('on', !on); b.setAttribute('aria-checked', String(!on)); if (_s) _s[key] = !on;
+              toast('적용 실패 — ' + r.serviceError, { type: 'error' });
+            } else if (r.needsRestart) { // 즉시 반영 안 되는 항목(이미지 수신 등) — '저장됨' 착시 금지
+              toast('저장했어요 — 다시 연결 후 적용돼요', { type: 'info' });
+            } else {
+              toast('설정을 저장했어요', { type: 'ok' });
+            }
+          } catch (_e) { // 저장 자체 실패 → 토글 원복
+            b.classList.toggle('on', !on); b.setAttribute('aria-checked', String(!on)); if (_s) _s[key] = !on;
+            toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' });
+          }
         };
       });
       const chk = document.getElementById('setUpdateCheck');
@@ -2502,6 +2523,7 @@
         window.realGetStatus = () => api.getStatus(); // 진단(hero diag)이 실제 상태로 점검
         window.realSetImageRecv = async (on) => { await api.setImageReceiving(on); await syncHomeFromStatus(); }; // 이미지 요청 받기 실 토글
         window.realSetSetting = (k, v) => api.setSetting(k, v); // 홈 백그라운드 핀 등 단일 설정 저장
+        window.realOpenFolder = (which) => api.openFolder(which); // ⋯ '출력 폴더 열기'(실제 OS 탐색기)
         // 새로고침/재부팅 복원: 진행 중인 런타임 설치가 있으면 어느 화면이든 진행 토스트를 무조건 복원한다.
         // phase 가 진행 상태(=done/idle/error/cancelled 가 아님)면 watchSetup 으로 폴링·토스트만 이어붙인다.
         const _ACTIVE = (p) => p && p.phase && !['done', 'idle', 'error', 'cancelled'].includes(p.phase);
@@ -2545,7 +2567,13 @@
         } else if (act === 'open' && rt.open) {
           window.open(rt.open.target, '_blank', 'noopener'); // 외부 브라우저로 전환 → 토스트 불필요
         } else if (act === 'outputs' && rt.outputs) {
-          window.toast(name + ' · ' + rt.outputs.label, { type: 'info', sub: rt.outputs.target });
+          if (window.__SESSION_KEY && window.realOpenFolder) { // 실 앱: OS 파일 탐색기로 실제 폴더 열기(no-op 수정)
+            window.realOpenFolder('sdOutputs')
+              .then((r) => window.toast(r && r.ok ? '출력 폴더를 열었어요' : (r && r.error) || '폴더가 아직 없어요', { type: r && r.ok ? 'ok' : 'error' }))
+              .catch(() => window.toast('폴더 열기 실패', { type: 'error' }));
+          } /* @proto-only */ else {
+            window.toast(name + ' · ' + rt.outputs.label, { type: 'info', sub: rt.outputs.target });
+          } /* @end-proto-only */
         } else if (act === 'settings') {
           goLocal();
           window.toast(name + ' 설정으로 이동', { type: 'info', sub: '로컬 실행 › ' + name });
@@ -2735,7 +2763,7 @@
           badge: { sym: BADGE.pending, cls: 'error' }, title: '관리자 승인 대기 중',
           desc: '서버 관리자가 승인하면 자동으로 제공을 시작해요. 승인 전까지는 요청을 받지 않습니다.',
           pills: [{ t: '중앙 서버 연결됨' }, { t: '승인 대기', bad: true }],
-          actions: [{ t: '연결 취소', size: 'lg', emphasis: 'secondary' }],
+          actions: [{ t: '서버 관리', size: 'lg', emphasis: 'secondary', act: 'servers' }],
         },
         // 미연결(토큰 없음) — 온보딩 '나중에' 등으로 메인에 왔지만 아직 서버에 연결 안 됨.
         // 가짜 '정상 제공'을 보이지 않게, 서버 추가를 유도한다.
@@ -2780,6 +2808,8 @@
             if (btn.dataset.diag) return runDiag();
             // 미연결 '서버 추가' → 디스코드 로그인(연결) 화면부터. 인증 후 후보 선택하는 enterServerAdd 와 다름.
             if (btn.dataset.act === 'add') return void window.enterConnectLogin?.();
+            // 승인 대기 '서버 관리' → 서버 화면으로(거기서 상태 확인·관리). no-op 버튼 수정.
+            if (btn.dataset.act === 'servers') { document.querySelector('.nav-item[data-view="servers"]')?.click(); return; }
             if (!btn.dataset.go) return;
             if (window.__SESSION_KEY) {
               // 실 앱: 다시연결/재개=에이전트 시작, 일시중지=중지. 실제 완료(status 폴링) 후 hero 가 바뀐다.

@@ -18,6 +18,7 @@ class AgentConfig:
     relay_url: str = "ws://localhost:8080/agent"
     ollama_url: str = "http://localhost:11434"
     models: tuple[str, ...] = ()
+    default_model: str = ""  # 모델 미지정 요청 시 우선 사용할 기본 응답 모델(제공 중인 모델 중 하나). 비면 첫 모델.
     max_concurrency: int = 1
     daily_limit: int = DEFAULT_DAILY_LIMIT  # 0 = 무제한(--allow-unlimited 필요)
     request_timeout: float = 120.0
@@ -109,6 +110,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
     relay_url = (args.relay_url or _env("RELAY_URL") or saved.get("relay_url") or "ws://localhost:8080/agent").rstrip("/")
     ollama_url = (args.ollama_url or _env("OLLAMA_BASE_URL") or saved.get("ollama_url") or "http://localhost:11434").rstrip("/")
     models = tuple(args.models) if args.models else tuple(saved.get("models") or ())
+    default_model = str(saved.get("default_model") or "").strip()
 
     allow_remote_ollama = bool(args.allow_remote_ollama) or bool(saved.get("allow_remote_ollama"))
     # 안전 기본값: 원격 Ollama 주소는 명시 허용이 없으면 차단(localhost 전용).
@@ -156,6 +158,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         relay_url=relay_url,
         ollama_url=ollama_url,
         models=models,
+        default_model=default_model,
         max_concurrency=max(1, args.max_concurrency if args.max_concurrency is not None else int(saved.get("max_concurrency") or 1)),
         daily_limit=daily_limit,
         request_timeout=args.request_timeout if args.request_timeout is not None else 120.0,

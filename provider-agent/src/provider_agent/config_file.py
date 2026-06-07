@@ -14,6 +14,7 @@ SAVEABLE = (
     "relay_url",
     "ollama_url",
     "models",
+    "default_model",
     "max_concurrency",
     "daily_limit",
     "allow_remote_ollama",

@@ -84,6 +84,7 @@ export const ENDPOINTS = Object.freeze({
   sdStatus: '/api/sd/status',
   sdModels: '/api/sd/models',
   sdSetup: '/api/sd/setup',
+  sdStart: '/api/sd/start',          // POST — 이미 설치된 SD 를 기동만(clone/다운로드 없음)
   sdSetupProgress: '/api/sd/setup-progress',
   ollamaSetup: '/api/ollama/setup',
   ollamaSetupProgress: '/api/ollama/setup-progress',

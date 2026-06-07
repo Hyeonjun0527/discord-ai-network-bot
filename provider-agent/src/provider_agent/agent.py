@@ -218,6 +218,7 @@ class ProviderAgent:
         # 없는 길드는 전역 기본(cfg.daily_limit)을 쓴다.
         self._guild_policy: dict[int, dict] = {}
         self._models: list[str] = list(cfg.models)
+        self._default_model: str = (cfg.default_model or "").strip()
         self._inflight = 0
         self._processed = 0  # 누적 처리 건수(로컬 요약)
         # 취소 표시. 수신된 적 없는 cancel 이 무한히 쌓이지 않게 FIFO 로 상한(가장 오래된 것부터 폐기).
@@ -309,8 +310,8 @@ class ProviderAgent:
             self._inflight += 1
             if limit > 0:
                 self._remaining_by_guild[guild_id] = self._remaining_for(guild_id) - 1
-            # 서버가 모델을 지정하지 않으면 내가 제공하는 첫 모델로 처리한다.
-            model = req.model or (self._models[0] if self._models else None)
+            # 서버가 모델을 지정하지 않으면 '기본 응답 모델'로 처리한다(설정값이 제공 중이면 그것, 아니면 첫 모델).
+            model = req.model or self._preferred_model()
             try:
                 if req.task == "image":
                     # 로컬 SD 이미지 생성(SD Phase 2). 미지원이면 에러.
@@ -826,7 +827,7 @@ class ProviderAgent:
                 self._spawn_entry(self._make_entry(e["token"], e["guild_id"], e["guild_name"]))
 
     def reload_models(self) -> list[str]:
-        """SIGHUP: 저장된 설정 파일에서 models 를 다시 읽어 적용(#129 hot-reload)."""
+        """SIGHUP: 저장된 설정 파일에서 models·기본 응답 모델을 다시 읽어 적용(#129 hot-reload)."""
         from .config_file import load_config
 
         saved = load_config()
@@ -834,7 +835,14 @@ class ProviderAgent:
         if models:
             self._models = list(models)
             logger.info("설정 hot-reload: models=%s", self._models)
+        self._default_model = str(saved.get("default_model") or "").strip()
         return self._models
+
+    def _preferred_model(self) -> str | None:
+        """모델 미지정 요청에 쓸 기본 응답 모델 — 설정된 기본이 제공 중이면 그것, 아니면 첫 모델."""
+        if self._default_model and self._default_model in self._models:
+            return self._default_model
+        return self._models[0] if self._models else None
 
     @property
     def processed(self) -> int:

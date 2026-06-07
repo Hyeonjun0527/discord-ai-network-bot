@@ -393,10 +393,10 @@ export const api = {
   /** 제공할 텍스트 모델 선택 적용 — webui.py POST /api/setup {models, enableImage, applyToBackground}.
    *  실행 중 서비스에 즉시 반영(applyToBackground=true)해 풀에 새 구성을 광고한다. enableImage 는 현재값
    *  을 보존(부분 저장이 이미지 토글을 끄지 않도록). */
-  async applyModels(models) {
-    /* @proto-only */ if (USE_MOCK) { await delay(220); MOCK.status.models = [...models]; return { ok: true }; } /* @end-proto-only */
+  async applyModels(models, defaultModel) {
+    /* @proto-only */ if (USE_MOCK) { await delay(220); MOCK.status.models = [...models]; if (defaultModel) MOCK.defaultModel = defaultModel; return { ok: true }; } /* @end-proto-only */
     const st = await http(ENDPOINTS.status);
-    return post(ENDPOINTS.setup, { models, enableImage: !!st.enableImage, applyToBackground: true });
+    return post(ENDPOINTS.setup, { models, default: defaultModel || '', enableImage: !!st.enableImage, applyToBackground: true });
   },
   /** 통합 설정 조회 — webui.py GET /api/settings(저장 설정+상태를 camelCase 로 통합). */
   async getSettings() {
@@ -450,6 +450,11 @@ export const api = {
     return { ok: !!s.connected, ms: 0 };
   },
 
+  /** 이미 설치된 SD(A1111)를 기동만 — webui.py POST /api/sd/start (clone/다운로드 없음). 진행은 sd setup-progress 폴링. */
+  async startSD() {
+    /* @proto-only */ if (USE_MOCK) { await delay(120); return { ok: true, started: true }; } /* @end-proto-only */
+    return post(ENDPOINTS.sdStart);
+  },
   /** 런타임 설치 시작 — webui.py /api/ollama/setup · /api/sd/setup (+진행률 폴링) */
   async startSetup(runtime, model) { // runtime: 'ollama' | 'image', model: SD 모델 id(선택)
     /* @proto-only */ if (USE_MOCK) { _setup[runtime] = { start: Date.now(), model }; await delay(50); return { ok: true, started: true }; } /* @end-proto-only */

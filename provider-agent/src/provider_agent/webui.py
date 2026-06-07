@@ -427,12 +427,20 @@ def build_app(session_key: str) -> web.Application:
         saved = load_config()
         oll = await _detect_ollama()
         detected = oll["models"]
+        selected = _selected_text_models(detected, saved.get("models"))
+        # 기본 응답 모델: 저장값이 제공 중이면 그것, 아니면 권장 기본(제공 중일 때)·없으면 첫 제공 모델.
+        saved_default = str(saved.get("default_model") or "")
+        default_model = (
+            saved_default if saved_default in selected
+            else DEFAULT_TEXT_MODEL if DEFAULT_TEXT_MODEL in selected
+            else selected[0] if selected else DEFAULT_TEXT_MODEL
+        )
         return web.json_response(
             {
                 "models": detected,
                 "modelsDetail": oll.get("modelsDetail", []),  # name·size·modifiedAt·family — GUI 용량/마지막 사용
-                "selected": _selected_text_models(detected, saved.get("models")),
-                "default": DEFAULT_TEXT_MODEL,
+                "selected": selected,
+                "default": default_model,
                 "defaultInstalled": any(_is_default_text_model(m) for m in detected),
                 # P1: 미설치 vs daemon-down vs 정상을 UI 가 구분하도록.
                 "ollamaInstalled": oll["installed"],
@@ -487,11 +495,17 @@ def build_app(session_key: str) -> web.Application:
         requested_models = [str(m).strip() for m in (data.get("models") or []) if str(m).strip()]
         models_list = _selected_text_models(await _detect_models(), requested_models)
         enable_image = bool(data.get("enableImage"))
+        # 기본 응답 모델(모델 미지정 요청에 쓰는 폴백) — 제공 목록 안의 모델만 유효. 없으면 저장값 유지, 그것도 없으면 빈 값(첫 모델).
+        requested_default = str(data.get("default") or data.get("defaultModel") or "").strip()
+        default_model = requested_default if requested_default in models_list else str(saved.get("default_model") or "")
+        if default_model and default_model not in models_list:
+            default_model = ""
         relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
         cfg = AgentConfig(
             token=token,
             relay_url=relay,
             models=tuple(models_list),
+            default_model=default_model,
             enable_image=enable_image,
             auto_update=bool(saved.get("auto_update", True)),  # 저장된 자동업데이트 설정 보존(초기화 방지)
         )

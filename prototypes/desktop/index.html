@@ -1389,9 +1389,11 @@
         const on = !imgSw.classList.contains('on');
         imgSw.classList.toggle('on', on); imgSw.setAttribute('aria-checked', String(on)); // 일단 반영
         try {
-          await api.setImageReceiving(on); // 결과를 기다린다(낙관적 전환 금지)
+          const r = await api.setImageReceiving(on) || {}; // 결과를 기다린다(낙관적 전환 금지)
           if (_st) _st.enableImage = on;
-          toast(on ? '이미지 요청을 받아요 — 제공 중이면 다시 연결 후 적용돼요' : '이미지 요청을 받지 않아요', { type: 'info' });
+          if (on && !r.sdInstalled) toast('이미지 받기 켜짐 — Stable Diffusion 설치가 필요해요', { type: 'info' });
+          else if (on && !r.imageReady) toast('이미지 받기 켜짐 — SD 준비 중', { type: 'info' });
+          else toast(on ? '이미지 요청을 받아요' : '이미지 요청을 받지 않아요', { type: 'info' });
         } catch (_e) { // 실패 시 원복(거짓 ON 방지)
           imgSw.classList.toggle('on', !on); imgSw.setAttribute('aria-checked', String(!on));
           toast('변경 실패 — 네트워크를 확인하세요', { type: 'error' });
@@ -1467,6 +1469,20 @@
         b.onclick = async () => {
           const key = b.dataset.toggle, on = !b.classList.contains('on');
           b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); // 일단 반영
+          // 이미지 수신은 전용 라이브 토글(/api/image)로 — 모델 미변경·즉시 적용·SD 상태 안내.
+          if (key === 'enableImage') {
+            try {
+              const r = await api.setImageReceiving(on) || {};
+              if (_s) _s[key] = on;
+              if (on && !r.sdInstalled) toast('이미지 받기 켜짐 — Stable Diffusion 설치가 필요해요', { type: 'info' });
+              else if (on && !r.imageReady) toast('이미지 받기 켜짐 — SD 준비 중', { type: 'info' });
+              else toast('설정을 저장했어요', { type: 'ok' });
+            } catch (_e) {
+              b.classList.toggle('on', !on); b.setAttribute('aria-checked', String(!on)); if (_s) _s[key] = !on;
+              toast('변경 실패 — 네트워크를 확인하세요', { type: 'error' });
+            }
+            return;
+          }
           try {
             const r = await api.setSetting(key, on) || {};
             if (_s) _s[key] = on;
@@ -2521,7 +2537,7 @@
         };
         window.realStartSD = async () => { await api.startSetup('image'); try { watchSetup('image'); } catch (_e) { /* 진행률 폴링 실패는 비치명적 */ } };
         window.realGetStatus = () => api.getStatus(); // 진단(hero diag)이 실제 상태로 점검
-        window.realSetImageRecv = async (on) => { await api.setImageReceiving(on); await syncHomeFromStatus(); }; // 이미지 요청 받기 실 토글
+        window.realSetImageRecv = async (on) => { const r = await api.setImageReceiving(on); await syncHomeFromStatus(); return r || {}; }; // 이미지 요청 받기 실 토글(응답 반환)
         window.realSetSetting = (k, v) => api.setSetting(k, v); // 홈 백그라운드 핀 등 단일 설정 저장
         window.realOpenFolder = (which) => api.openFolder(which); // ⋯ '출력 폴더 열기'(실제 OS 탐색기)
         // 새로고침/재부팅 복원: 진행 중인 런타임 설치가 있으면 어느 화면이든 진행 토스트를 무조건 복원한다.
@@ -2656,9 +2672,17 @@
         e.stopPropagation();
         const next = !imageRecv;
         if (window.__SESSION_KEY) {
-          // 실 앱: 실제 설정 저장 후 status 로 반영(가짜 토글 금지). 라이브 전파 불가 항목은 백엔드가 정직하게 응답.
-          try { await window.realSetImageRecv?.(next); window.toast('이미지 요청 받기 ' + (next ? '켜짐' : '꺼짐'), { type: next ? 'ok' : 'info' }); }
-          catch (_e) { window.toast('설정 저장 실패 — 다시 시도하세요', { type: 'error' }); }
+          // 실 앱: 실제 토글(라이브) 후 status 로 반영(가짜 토글 금지). SD 미설치/미준비를 정직하게 안내.
+          try {
+            const r = await window.realSetImageRecv?.(next) || {};
+            if (next && !r.sdInstalled) { // 이미지 켰지만 SD 미설치 → 설치 유도
+              window.toast('이미지 요청 받기 켜짐 — Stable Diffusion 설치가 필요해요', { type: 'info', sub: '아래 카드의 "설치"를 눌러 설치하면 이미지 생성이 켜져요' });
+            } else if (next && !r.imageReady) { // 설치됐지만 준비 전(기동 중)
+              window.toast('이미지 요청 받기 켜짐 — SD 준비 중', { type: 'info', sub: '잠시 후 이미지 생성이 활성화돼요' });
+            } else {
+              window.toast('이미지 요청 받기 ' + (next ? '켜짐' : '꺼짐'), { type: next ? 'ok' : 'info' });
+            }
+          } catch (_e) { window.toast('설정 저장 실패 — 다시 시도하세요', { type: 'error' }); }
           return;
         }
         /* @proto-only */

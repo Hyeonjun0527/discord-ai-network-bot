@@ -654,6 +654,27 @@ async def test_server_readonly_tabs_require_running_agent(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_image_toggle_persists_without_touching_models(monkeypatch):
+    # 전용 /api/image 토글: enable_image 만 저장(모델 선택 미변경). 에이전트 미실행 시 'saved'.
+    from provider_agent.config_file import load_config, save_config
+    from provider_agent.config import AgentConfig
+
+    save_config(AgentConfig(token="T", models=("a", "b")))  # 모델 2개 선택 상태
+    client = await _client()
+    try:
+        assert (await client.post("/api/image", json={"on": True})).status == 403  # 키 없음
+        r = await (await client.post("/api/image", headers={"X-Session": KEY}, json={"on": True})).json()
+        assert r["ok"] is True and r["on"] is True and r["applied"] == "saved"
+        cfg = load_config()
+        assert cfg.get("enable_image") is True
+        assert list(cfg.get("models") or []) == ["a", "b"]  # 모델 선택이 보존됨(클로버 없음)
+        r2 = await (await client.post("/api/image", headers={"X-Session": KEY}, json={"on": False})).json()
+        assert r2["on"] is False and load_config().get("enable_image") is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_server_policy_saves_override(monkeypatch):
     # 서버별 정책 override(G3) 저장 — camelCase 경계 → snake 저장. 실행 중 아니면 config 에 기록.
     from provider_agent.config_file import load_guild_policies

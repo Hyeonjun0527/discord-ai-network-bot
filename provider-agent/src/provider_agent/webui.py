@@ -561,6 +561,45 @@ def build_app(session_key: str) -> web.Application:
             }
         )
 
+    async def image_toggle(req: web.Request) -> web.Response:
+        """이미지 요청 받기(enableImage) **전용** 토글 — body {on}. /api/setup 의 모델 재계산을 거치지 않아
+        제공 모델 선택을 건드리지 않는다(과거: setup 경유 토글이 모델을 기본값으로 리셋시키던 위험 제거).
+
+        - 설정은 항상 persist_partial 로 저장(재시작 후에도 유지).
+        - GUI 인-프로세스 에이전트 실행 중이면 ``agent.set_image_enabled`` 로 **라이브 적용**(SD 생성·health·재광고).
+        - 백그라운드 서비스가 제공 중이면 kickstart(재기동)로 새 설정 반영.
+        - SD 미설치면 imageReady=False·sdInstalled=False 로 알려 앱이 설치를 안내하게 한다.
+        """
+        _auth(req)
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        on = bool(data.get("on")) if isinstance(data, dict) else False
+        persist_partial({"enable_image": on})
+        if on:
+            saved = load_config()
+            sd_url = saved.get("sd_url") or "http://127.0.0.1:7860"
+            try:
+                ensure_ollama_allowed(sd_url, bool(saved.get("allow_remote_sd")))
+            except RemoteOllamaBlocked:
+                return web.json_response({"ok": False, "error": "SD 주소가 localhost 가 아닙니다."})
+        image_ready = False
+        applied = "saved"
+        agent = _running_agent()
+        if agent is not None:
+            image_ready = bool(await agent.set_image_enabled(on))  # type: ignore[attr-defined]
+            applied = "live"
+        else:
+            from . import service as service_mod
+            from . import singleton
+
+            if singleton.held_by_other() and service_mod.is_installed():
+                applied = "service" if service_mod.kickstart() else "saved"
+        return web.json_response(
+            {"ok": True, "on": on, "imageReady": image_ready, "sdInstalled": _sd_installed(), "applied": applied}
+        )
+
     async def connect_open(req: web.Request) -> web.Response:
         """‘토큰 받기’: 앱 창은 그대로 두고 **시스템 기본 브라우저**에서 디스코드 OAuth 를 연다.
 
@@ -1411,6 +1450,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/settings", settings_get)
     app.router.add_post("/api/settings", settings_post)
     app.router.add_post("/api/open-folder", open_folder)
+    app.router.add_post("/api/image", image_toggle)
 
     async def _autoconnect_on_startup(_app: web.Application) -> None:
         """온보딩에서 '로그인 후 자동 연결'을 켰고 저장된 서버가 있으면, GUI 가 뜨자마자 자동 연결한다.

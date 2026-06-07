@@ -263,6 +263,23 @@ def test_build_hello_per_guild():
     assert agent._build_hello(200).remaining_daily_requests == 5  # 200 은 첫 접근 → 한도값
 
 
+@pytest.mark.asyncio
+async def test_set_image_enabled_toggles_capability():
+    """이미지 라이브 토글: set_image_enabled 가 hello capabilities 의 'image' 를 켜고 끈다(재시작 불필요)."""
+
+    class FakeSD:
+        async def health(self) -> bool:
+            return True
+
+    agent = ProviderAgent(AgentConfig(token="T", models=("m",)), ollama=FakeOllama(), sd=FakeSD())  # type: ignore[arg-type]
+    ready = await agent.set_image_enabled(True)
+    assert ready is True
+    assert "image" in agent._build_hello().capabilities
+    await agent.set_image_enabled(False)
+    assert "image" not in agent._build_hello().capabilities
+    assert agent.image_ready is False
+
+
 def test_build_hello_unlimited_reports_zero():
     # 무제한(daily_limit=0)이면 hello remaining=0(=한도 없음 센티넬).
     agent = ProviderAgent(AgentConfig(token="T", daily_limit=0, models=("m",)))

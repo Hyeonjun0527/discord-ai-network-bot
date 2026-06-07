@@ -90,6 +90,7 @@ export const ENDPOINTS = Object.freeze({
   ollamaSetupProgress: '/api/ollama/setup-progress',
   ollamaCatalog: '/api/ollama/catalog',
   setup: '/api/setup',
+  image: '/api/image',                 // POST {on} → 이미지 수신 전용 토글(라이브, 모델 미변경)
   start: '/api/start',
   stop: '/api/stop',
   logout: '/api/logout',

@@ -898,6 +898,31 @@ class ProviderAgent:
             self._default_model = (default_model or "").strip()
         await self._readvertise()
 
+    async def set_image_enabled(self, on: bool) -> bool:
+        """이미지(SD) 제공을 **라이브로** 켜고 끈다(앱 '이미지 요청 받기' 토글). enable_image=False 로 시작해
+        self._sd 가 None 이어도 여기서 SD 클라이언트를 만들어 health 확인 후 재광고한다(재시작 불필요).
+
+        반환값 = 즉시 image_ready 여부. SD 가 설치만 되고 꺼져 있으면 백그라운드 자동 기동(_boot_sd)을 걸고
+        준비되면 다시 재광고한다(이때 반환은 False — 아직 준비 전). 미설치면 image 는 광고되지 않는다(앱이 설치 안내).
+        """
+        if self._sd_boot_task is not None:
+            self._sd_boot_task.cancel()
+            self._sd_boot_task = None
+        if on:
+            if self._sd is None:
+                from .sd import SDClient
+
+                self._sd = SDClient(self._cfg.sd_url, self._cfg.request_timeout)
+            self._image_ready = await self._sd.health()
+            if not self._image_ready:
+                # 설치돼 있으면 자동 기동(준비되면 _boot_sd 가 재광고). 텍스트 제공은 막지 않는다.
+                self._sd_boot_task = asyncio.create_task(self._boot_sd())
+        else:
+            self._sd = None
+            self._image_ready = False
+        await self._readvertise()
+        return self._image_ready
+
     def _preferred_model(self) -> str | None:
         """모델 미지정 요청에 쓸 기본 응답 모델 — 설정된 기본이 제공 중이면 그것, 아니면 첫 모델."""
         if self._default_model and self._default_model in self._models:

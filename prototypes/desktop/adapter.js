@@ -398,11 +398,11 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { await delay(200); MOCK.status.running = false; MOCK.status.connected = false; return { ok: true }; } /* @end-proto-only */
     return post(ENDPOINTS.stop);
   },
-  /** 이미지 요청 수신 토글(enableImage). ⚠ 백엔드 단일 토글 API 없음 — /api/setup 재호출로 반영(contract 참고).
-   *  applyToBackground:true 로 백그라운드 서비스가 제공 중이면 즉시 재기동해 반영(GUI 인-프로세스면 재연결 필요). */
+  /** 이미지 요청 수신 토글(enableImage) — **전용** /api/image. 모델 선택을 건드리지 않고 라이브 적용
+   *  (GUI 실행 중이면 SD 생성·health·재광고, 백그라운드 서비스면 재기동). 반환 {ok,on,imageReady,sdInstalled,applied}. */
   async setImageReceiving(on) {
-    /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.status.enableImage = on; return { ok: true, enableImage: on }; } /* @end-proto-only */
-    return post(ENDPOINTS.setup, { enableImage: on, applyToBackground: true });
+    /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.status.enableImage = on; MOCK.status.imageReady = on && MOCK.status.sdInstalled; return { ok: true, on, imageReady: MOCK.status.imageReady, sdInstalled: MOCK.status.sdInstalled, applied: 'live' }; } /* @end-proto-only */
+    return post(ENDPOINTS.image, { on });
   },
   /** 제공할 텍스트 모델 선택 적용 — webui.py POST /api/setup {models, enableImage, applyToBackground}.
    *  실행 중 서비스에 즉시 반영(applyToBackground=true)해 풀에 새 구성을 광고한다. enableImage 는 현재값

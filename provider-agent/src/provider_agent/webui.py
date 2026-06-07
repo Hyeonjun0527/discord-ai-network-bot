@@ -584,9 +584,15 @@ def build_app(session_key: str) -> web.Application:
         from .config_file import load_connections
 
         saved = load_connections()
+        # guildId 는 64bit Discord ID — JS number 정밀도 손실 방지로 문자열 emit(connections_status 와 동일).
         return web.json_response(
             {"servers": [
-                {"index": i, "guildId": c.get("guild_id"), "guildName": c.get("guild_name"), "connected": False}
+                {
+                    "index": i,
+                    "guildId": (str(c.get("guild_id")) if c.get("guild_id") is not None else None),
+                    "guildName": c.get("guild_name"),
+                    "connected": False,
+                }
                 for i, c in enumerate(saved)
             ]}
         )

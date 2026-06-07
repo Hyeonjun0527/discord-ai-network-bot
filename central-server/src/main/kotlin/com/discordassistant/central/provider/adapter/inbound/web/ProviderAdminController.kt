@@ -25,18 +25,18 @@ data class AdminActionResponse(
     val token: String? = null,
 )
 
-/** 로스터 항목 — 이름·상태·제공 모델 수·오늘 처리 건수(관리 화면 13). */
+/** 로스터 항목 — 이름·상태·제공 모델 수·오늘 처리 건수(관리 화면 13). providerId 는 64bit → 문자열(JS 정밀도). */
 data class ManageProviderDto(
-    val providerId: Long,
+    val providerId: String,
     val name: String?,
     val state: String,
     val models: Int,
     val today: Long,
 )
 
-/** 승인 대기 항목 — 아직 미연결이라 이름만(모델/통계는 승인·연결 후). */
+/** 승인 대기 항목 — 아직 미연결이라 이름만(모델/통계는 승인·연결 후). providerId 는 64bit → 문자열. */
 data class ManagePendingDto(
-    val providerId: Long,
+    val providerId: String,
     val name: String?,
 )
 
@@ -184,14 +184,14 @@ class ProviderAdminController(
         val rosterList =
             registration.providersInGuild(req.guildId).map { pid ->
                 ManageProviderDto(
-                    providerId = pid,
+                    providerId = pid.toString(),
                     name = botGuilds.memberName(req.guildId, pid),
                     state = registration.stateOf(pid, req.guildId)?.name ?: "UNKNOWN",
                     models = models[pid] ?: 0,
                     today = today[pid] ?: 0L,
                 )
             }
-        val pending = registration.pending(req.guildId).map { ManagePendingDto(it, botGuilds.memberName(req.guildId, it)) }
+        val pending = registration.pending(req.guildId).map { ManagePendingDto(it.toString(), botGuilds.memberName(req.guildId, it)) }
         return ManageResponse(true, ManagePolicyDto(roster.isAutoApprove(req.guildId)), pending, rosterList)
     }
 

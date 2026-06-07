@@ -1415,7 +1415,7 @@
       });
       sumEl.innerHTML = '연결 <b>' + c.ok + '</b> · 일시중지 <b>' + c.paused + '</b> · 승인 대기 <b>' + c.pending + '</b>';
       // 카드 클릭 → 서버 상세(기부자 관점) 진입
-      listEl.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', () => openDetail(Number(el.dataset.guild))));
+      listEl.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', () => openDetail(el.dataset.guild)));
     }
 
     // ── 서버 상세(기부자 관점) — docs/NEXA_DESKTOP_SCREENS.md 07 ──
@@ -1657,10 +1657,11 @@
 
     function bindProviderActions(d) {
       const refresh = async () => renderManage(d, await api.getServerManage(d.guildId));
-      manageEl.querySelectorAll('[data-approve]').forEach(b => b.onclick = async () => { await api.approveProvider(d.guildId, +b.dataset.approve); toast('Provider 를 승인했어요', { type: 'ok' }); refresh(); });
-      manageEl.querySelectorAll('[data-reject]').forEach(b => b.onclick = async () => { await api.rejectProvider(d.guildId, +b.dataset.reject); toast('가입 요청을 거절했어요', { type: 'info' }); refresh(); });
+      // providerUserId 는 64bit Discord userId — 문자열로 그대로 전달(Number 화 금지, 정밀도 손실).
+      manageEl.querySelectorAll('[data-approve]').forEach(b => b.onclick = async () => { await api.approveProvider(d.guildId, b.dataset.approve); toast('Provider 를 승인했어요', { type: 'ok' }); refresh(); });
+      manageEl.querySelectorAll('[data-reject]').forEach(b => b.onclick = async () => { await api.rejectProvider(d.guildId, b.dataset.reject); toast('가입 요청을 거절했어요', { type: 'info' }); refresh(); });
       // 제거는 위험 작업(디자인 정책 7) → 확인 모달 뒤로
-      manageEl.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => confirmRemoveProvider(d, +b.dataset.remove, b.dataset.name, refresh));
+      manageEl.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => confirmRemoveProvider(d, b.dataset.remove, b.dataset.name, refresh));
       const at = manageEl.querySelector('[data-autotoggle]');
       if (at) at.onclick = async () => {
         const on = at.dataset.autotoggle === '1';
@@ -2242,7 +2243,7 @@
           renderConnect(); emit();
         };
         connectWiz.querySelectorAll('.cx-cand').forEach((el) => el.onclick = async () => {
-          const gid = +el.dataset.guild;
+          const gid = el.dataset.guild; // 64bit guildId — 문자열 유지(정밀도)
           toast('서버 연결 중…', { type: 'run', sticky: true, id: 'join' });
           const res = await api.requestJoin(gid);
           const ok = res.state === ProviderState.APPROVED;
@@ -2647,8 +2648,8 @@
         const v = b.dataset.detail;
         if (v === 'back') { if (window.backToServerList) window.backToServerList(); return; }
         document.querySelector('.nav-item[data-view="servers"]').click();
-        if (v === 'manage') { if (window.openServerManage) window.openServerManage(1001); return; }
-        if (window.openServerDetail) window.openServerDetail(Number(v));
+        if (v === 'manage') { if (window.openServerManage) window.openServerManage('1001'); return; }
+        if (window.openServerDetail) window.openServerDetail(v); // guildId 문자열 유지
       }));
 
       // stage 변경 → 컨트롤러 UI 동기화(온보딩 단계·홈 상태 섹션 표시 토글)
@@ -3077,8 +3078,8 @@
         if (VIEWS.includes(a)) {
           if (a === 'servers' && b) {
             gotoView('servers');
-            if (c === 'manage') return void (await window.openServerManage?.(Number(b), parts[3]));
-            return void (await window.openServerDetail?.(Number(b)));
+            if (c === 'manage') return void (await window.openServerManage?.(b, parts[3])); // guildId 문자열(64bit 정밀도)
+            return void (await window.openServerDetail?.(b));
           }
           return gotoView(a);
         }

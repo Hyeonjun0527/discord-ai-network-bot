@@ -230,17 +230,18 @@ export const api = {
   },
   /** 서버 상세(기부자 관점) — Gap-S/P/W. 실 백엔드엔 전용 상세 API 가 없어 목록+권한 probe 로 구성. */
   async getServerDetail(guildId) {
-    if (USE_MOCK) { await delay(60); const s = MOCK.servers.find((x) => x.guildId === guildId); return s ? structuredClone(s) : null; }
+    // guildId 는 64bit Discord ID — 문자열로만 비교/전달한다(Number 화 금지, 정밀도 손실).
+    if (USE_MOCK) { await delay(60); const s = MOCK.servers.find((x) => String(x.guildId) === String(guildId)); return s ? structuredClone(s) : null; }
     // 실: /api/servers/{g} 전용 라우트가 없다(Gap-S). 목록 항목으로 기본을 채우고, 관리 권한은
     //   /manage 응답 ok 로 판정한다(contract.js: "앱은 serverManage 응답 ok 로 관리자 여부를 판정").
     //   기여 통계(models/today/avgMs/myModels)는 앱 경로 미보강이라 안전 기본값으로 최소 표시.
     const list = (await http(ENDPOINTS.servers)).servers || [];
-    const s = list.find((x) => Number(x.guildId) === Number(guildId));
+    const s = list.find((x) => String(x.guildId) === String(guildId));
     if (!s) return null;
     let isAdmin = false;
     try { const mg = await http(ENDPOINTS.serverManage(guildId)); isAdmin = !!(mg && mg.ok); } catch { isAdmin = false; }
     return {
-      guildId: Number(s.guildId), guildName: s.guildName, iconUrl: null,
+      guildId: String(s.guildId), guildName: s.guildName, iconUrl: null,
       connected: !!s.connected,
       state: s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE,
       role: isAdmin ? Role.ADMIN : Role.PROVIDER,
@@ -260,7 +261,7 @@ export const api = {
     const m = MOCK.manage[guildId];
     if (USE_MOCK) {
       await delay(80);
-      if (m) { const i = m.pending.findIndex((p) => p.providerUserId === providerUserId); if (i >= 0) { const p = m.pending.splice(i, 1)[0]; m.roster.push({ providerUserId: p.providerUserId, name: p.name, isMe: false, state: ProviderState.ONLINE_IDLE, models: p.models, today: 0, avgMs: 0 }); } }
+      if (m) { const i = m.pending.findIndex((p) => String(p.providerUserId) === String(providerUserId)); if (i >= 0) { const p = m.pending.splice(i, 1)[0]; m.roster.push({ providerUserId: p.providerUserId, name: p.name, isMe: false, state: ProviderState.ONLINE_IDLE, models: p.models, today: 0, avgMs: 0 }); } }
       return { ok: true };
     }
     return post(ENDPOINTS.providerApprove(guildId), { providerUserId });
@@ -268,13 +269,13 @@ export const api = {
   /** Provider 거절(관리자 → /provider-reject). 승인 대기에서 제거. */
   async rejectProvider(guildId, providerUserId) {
     const m = MOCK.manage[guildId];
-    if (USE_MOCK) { await delay(80); if (m) { const i = m.pending.findIndex((p) => p.providerUserId === providerUserId); if (i >= 0) m.pending.splice(i, 1); } return { ok: true }; }
+    if (USE_MOCK) { await delay(80); if (m) { const i = m.pending.findIndex((p) => String(p.providerUserId) === String(providerUserId)); if (i >= 0) m.pending.splice(i, 1); } return { ok: true }; }
     return post(ENDPOINTS.providerReject(guildId), { providerUserId });
   },
   /** Provider 제거(관리자 → /provider-remove). 로스터에서 제거(나 제외). */
   async removeProvider(guildId, providerUserId) {
     const m = MOCK.manage[guildId];
-    if (USE_MOCK) { await delay(80); if (m) { const i = m.roster.findIndex((p) => p.providerUserId === providerUserId && !p.isMe); if (i >= 0) m.roster.splice(i, 1); } return { ok: true }; }
+    if (USE_MOCK) { await delay(80); if (m) { const i = m.roster.findIndex((p) => String(p.providerUserId) === String(providerUserId) && !p.isMe); if (i >= 0) m.roster.splice(i, 1); } return { ok: true }; }
     return post(ENDPOINTS.providerRemove(guildId), { providerUserId });
   },
   /** 서버 제공 정책(관리자) — 신규 자동 승인·기본 한도·공개 대상. */
@@ -337,13 +338,13 @@ export const api = {
   },
   /** 이 서버에 대한 내 제공 일시중지/재개 — provider self-service(/provider-pause·resume). */
   async setServerPaused(guildId, paused) {
-    const s = MOCK.servers.find((x) => x.guildId === guildId);
+    const s = MOCK.servers.find((x) => String(x.guildId) === String(guildId));
     if (USE_MOCK) { await delay(80); if (s) s.state = paused ? ProviderState.PAUSED : ProviderState.ONLINE_IDLE; return { ok: true, state: s && s.state }; }
     return post(ENDPOINTS.serverPause(guildId), { paused });
   },
   /** 이 서버에 대한 내 self-service 정책 변경(/provider-limit·scope). */
   async setServerPolicy(guildId, policy) {
-    const s = MOCK.servers.find((x) => x.guildId === guildId);
+    const s = MOCK.servers.find((x) => String(x.guildId) === String(guildId));
     if (USE_MOCK) { await delay(80); if (s) s.policy = { ...s.policy, ...policy }; return { ok: true, policy: s && s.policy }; }
     return post(ENDPOINTS.serverPolicy(guildId), policy);
   },
@@ -495,7 +496,7 @@ export const api = {
   async requestJoin(guildId) {
     if (USE_MOCK) {
       await delay(800);
-      const c = MOCK.candidates.find((x) => x.guildId === guildId);
+      const c = MOCK.candidates.find((x) => String(x.guildId) === String(guildId));
       return { state: c && c.autoApprove ? ProviderState.APPROVED : ProviderState.PENDING, guildId, guildName: c ? c.guildName : '' };
     }
     return {};

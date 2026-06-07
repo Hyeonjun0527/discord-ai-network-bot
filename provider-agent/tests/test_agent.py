@@ -304,10 +304,10 @@ async def test_multi_connection_add_remove(monkeypatch, tmp_path):
     await agent.add_connection("TA", guild_id=100, guild_name="A")
     await agent.add_connection("TB", guild_id=200, guild_name="B")
     st = agent.connections_status()
-    assert {s["guildId"] for s in st} == {100, 200}
+    assert {s["guildId"] for s in st} == {"100", "200"}  # guildId 는 64bit 정밀도 위해 문자열로 emit
     assert agent.is_connected() is True
     assert await agent.remove_connection(guild_id=100) is True
-    assert [s["guildId"] for s in agent.connections_status()] == [200]
+    assert [s["guildId"] for s in agent.connections_status()] == ["200"]
     await agent.remove_connection(guild_id=200)
     assert agent.is_connected() is False
 

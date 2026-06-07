@@ -165,8 +165,8 @@ class ProviderAdminControllerTest
             val res = c.ctrl.manage(AdminActionRequest(c.dtoken, 100L))
             assertTrue(res.ok)
             assertFalse(res.policy!!.autoApprove)
-            assertTrue(res.pending.any { it.providerId == 99L && it.name == "user_99" })
-            val r88 = res.roster.first { it.providerId == 88L }
+            assertTrue(res.pending.any { it.providerId == "99" && it.name == "user_99" })
+            val r88 = res.roster.first { it.providerId == "88" }
             assertEquals("user_88", r88.name)
             assertEquals(2, r88.models)
             assertEquals(5L, r88.today)

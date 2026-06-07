@@ -479,9 +479,18 @@ class ProviderAgent:
         return False
 
     def connections_status(self) -> list[dict]:
-        """GUI '내 서버 목록'용: 연결별 index/길드/연결상태(토큰은 노출하지 않음)."""
+        """GUI '내 서버 목록'용: 연결별 index/길드/연결상태(토큰은 노출하지 않음).
+
+        guildId 는 64bit Discord ID — JS number 는 2^53 초과에서 정밀도가 깨지므로 **문자열**로 내보낸다
+        (관리 API URL 이 잘못된 길드를 가리키는 버그 방지). 길드 미상(토큰만 연결)이면 None.
+        """
         return [
-            {"index": i, "guildId": e["guild_id"], "guildName": e["guild_name"], "connected": e["conn"].authed}
+            {
+                "index": i,
+                "guildId": (str(e["guild_id"]) if e["guild_id"] is not None else None),
+                "guildName": e["guild_name"],
+                "connected": e["conn"].authed,
+            }
             for i, e in enumerate(self._entries)
         ]
 

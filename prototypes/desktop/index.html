@@ -118,24 +118,11 @@
     /* ══ 앱 셸 레이아웃 ══ */
     .app {
       position: relative; z-index: 2; height: 100vh;
-      display: grid; grid-template-rows: 48px 1fr; grid-template-columns: 232px 1fr;
-      grid-template-areas: "title title" "side main";
+      display: grid; grid-template-columns: 232px 1fr;
+      grid-template-areas: "side main";
     }
     /* 실 앱 부팅: hasToken 판정 전까지 메인을 숨겨 사이드바 깜빡임(FOUC) 방지. setStage 가 판정 후 제거. */
     html.app-booting .app { display: none; }
-
-    /* ── 타이틀바 ── */
-    .titlebar {
-      grid-area: title; display: flex; align-items: center; gap: 16px; padding: 0 18px;
-      border-bottom: 1px solid var(--line); background: rgba(8, 14, 26, .72); backdrop-filter: blur(16px);
-      -webkit-app-region: drag;
-    }
-    .title-brand { display: flex; align-items: center; gap: 9px; font-weight: 800; letter-spacing: .04em; font-size: 14px; }
-    .title-brand .diamond {
-      width: 16px; height: 16px; border-radius: 4px; background: var(--grad-cta);
-      box-shadow: 0 0 12px color-mix(in srgb, var(--c-violet) 55%, transparent); transform: rotate(45deg);
-    }
-    .title-ver { margin-left: auto; color: var(--subtle); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
 
     /* ── 사이드바 ── */
     .sidebar {
@@ -176,6 +163,8 @@
     }
     .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; opacity: .85; }
     .nav-spacer { flex: 1; }
+    /* 앱 버전 — 타이틀바 제거 후 사이드바 하단에 표시(status.version 실값으로 채움). */
+    .side-ver { padding: 2px 13px 6px; color: var(--subtle); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; }
     .nav-foot { padding: 10px 13px; color: var(--subtle); font-size: 11.5px; line-height: 1.6; font-family: ui-monospace, Menlo, monospace; letter-spacing: .04em; }
     .nav-legal { margin-top: 8px; font-family: -apple-system, "Apple SD Gothic Neo", sans-serif; letter-spacing: 0; }
     .nav-legal button { background: none; border: 0; color: var(--subtle); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
@@ -781,7 +770,7 @@
       .app { grid-template-columns: 72px 1fr; }
       .sidebar { padding: 18px 12px; }
       /* 텍스트 라벨만 숨김 — .dot(상태 점)은 유지해야 하므로 :not(.dot) */
-      .side-brand .bt, .status-badge span:not(.dot), .nav-item span, .nav-foot { display: none; }
+      .side-brand .bt, .status-badge span:not(.dot), .nav-item span, .nav-foot, .side-ver { display: none; }
       .side-brand { justify-content: center; padding: 6px 0 16px; }
       /* 라벨 숨길 땐 알약 대신 정사각 점 인디케이터(빈 공간 제거) */
       .status-badge { width: 44px; height: 44px; padding: 0; margin: 0 auto 14px; justify-content: center; }
@@ -797,12 +786,6 @@
   <canvas id="bgCanvas" aria-hidden="true"></canvas>
 
   <div class="app">
-    <!-- 타이틀바 -->
-    <header class="titlebar">
-      <div class="title-brand"><span class="diamond"></span><span>Nexa</span></div>
-      <span class="title-ver">v0.31.0</span>
-    </header>
-
     <!-- 사이드바 -->
     <aside class="sidebar">
       <div class="side-brand">
@@ -836,6 +819,7 @@
           <span>설정</span>
         </button>
         <div class="nav-spacer"></div>
+        <div class="side-ver" id="sideVer">v—</div>
         <div class="nav-foot">NETWORK · LIVE<br>CENTRAL NODE · 99.9%
           <div class="nav-legal"><button data-legal="약관">약관</button> · <button data-legal="개인정보처리방침">개인정보</button> · <button data-legal="콘텐츠 정책">정책</button></div>
         </div>
@@ -2467,6 +2451,7 @@
         try { st = await api.getStatus() || {}; } catch (e) { return; }
         // 오늘 처리 통계 — 백엔드 미제공 필드는 0/— 으로(가짜값 금지).
         const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        if (st.version) setText('sideVer', 'v' + st.version); // 사이드바 앱 버전(실값)
         setText('statReq', String(st.processed || 0));
         setText('statModels', String((st.models && st.models.length) || 0));
         setText('statAvg', '—'); // 평균 응답은 백엔드 미제공 — 가짜 0ms 대신 —

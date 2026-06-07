@@ -456,12 +456,14 @@ def build_app(session_key: str) -> web.Application:
         running = task is not None and not task.done()
         # 이 GUI 가 직접 연결돼 있지 않은데 락이 잡혀 있으면 = 백그라운드 자동시작 서비스가 이미 연결 중.
         # (그 경우 GUI 가 다시 연결하려 하면 singleton 으로 막혀 헷갈리므로, 상태로 분명히 보여준다.)
-        from . import singleton
+        from . import singleton, updater
 
         background_running = (not running) and singleton.held_by_other()
         return web.json_response(
             {
                 "running": running,
+                # 앱 버전(설치 버전, cheap) — 사이드바 표시용. 최신/업데이트 판정은 /api/update-info(네트워크) 별도.
+                "version": updater.current_version(),
                 "connected": bool(agent and agent.is_connected()),
                 "processed": int(agent.processed) if agent else 0,
                 "imageReady": bool(agent and agent.image_ready),

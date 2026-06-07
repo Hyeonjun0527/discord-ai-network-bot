@@ -52,6 +52,7 @@ const MOCK = {
     running: true, connected: true, processed: 12, imageReady: true, enableImage: true, sdInstalled: true,
     models: ['exaone3.5:7.8b', 'llama3.1:8b', 'qwen2.5-coder:7b'],
     hasToken: true, relayUrl: 'wss://discord-ai.yeon.world/agent', backgroundRunning: false, background: false, connectEnabled: true,
+    version: '0.31.0',
   },
   logs: [
     '09:12:03 INFO | 에이전트 시작 (Nexa v0.31.0)',

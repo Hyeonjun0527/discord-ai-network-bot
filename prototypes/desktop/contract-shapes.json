@@ -12,7 +12,8 @@
       "processed",
       "relayUrl",
       "running",
-      "sdInstalled"
+      "sdInstalled",
+      "version"
     ],
     "/api/settings": [
       "autoConnect",

@@ -2329,7 +2329,7 @@
         setText('statAvg', '—'); // 평균 응답은 백엔드 미제공 — 가짜 0ms 대신 —
         // 런타임 카드 상태: Ollama(모델 보유·실행) / SD(설치·준비) 기준.
         if (window.setImageRecv) window.setImageRecv(!!st.enableImage); // 이미지 요청 받기 실 상태 반영(먼저)
-        if (window.setBgOn) window.setBgOn(!!st.backgroundRunning); // 백그라운드 핀 실 상태(hero 렌더 전에)
+        if (window.setBgOn) window.setBgOn(!!st.background); // 백그라운드 핀 = 상주 '설정값'(설정 화면과 동일). 런타임(backgroundRunning) 아님
         if (window.setRuntime) {
           window.setRuntime('Ollama', (st.running && st.models && st.models.length) ? 'running' : (st.models && st.models.length ? 'stopped' : 'absent'));
           window.setRuntime('Stable Diffusion', !st.sdInstalled ? 'absent' : (st.imageReady ? 'running' : 'stopped'));

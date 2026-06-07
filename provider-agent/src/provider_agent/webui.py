@@ -425,8 +425,11 @@ def build_app(session_key: str) -> web.Application:
                 "enableImage": bool(saved.get("enable_image")),
                 # 이미지 토글이 켜졌는데 광고 안 될 때, 원인이 'SD 미설치'인지 'SD 미준비'인지 UI 가 구분하도록.
                 "sdInstalled": _sd_installed(),
-                # 백그라운드 자동시작 서비스가 이미 연결 중인지(이 창은 설정용임을 알리는 데 쓴다).
+                # 백그라운드 자동시작 서비스가 이미 연결 중인지(이 창은 설정용임을 알리는 데 쓴다 — 런타임 상태).
                 "backgroundRunning": background_running,
+                # 백그라운드 상주 **설정값**(창을 닫아도 제공 유지). 홈 핀은 런타임이 아니라 이 설정을 표시해야 한다
+                # (설정 화면의 'background' 토글과 동일 출처). tray=background 로 저장되므로 둘 중 하나라도 참이면 켜짐.
+                "background": bool(saved.get("background") or saved.get("tray")),
                 # ‘디스코드 로그인’ OAuth 가능 여부는 **서버 설정**으로 결정된다(에이전트 env 불필요).
                 # 서버에 OAuth 앱(client-id/secret)이 설정돼 있으면 자동으로 켜진다.
                 "connectEnabled": _connect_enabled(),

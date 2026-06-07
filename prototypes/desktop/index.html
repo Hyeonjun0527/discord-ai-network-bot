@@ -245,6 +245,13 @@
     .log-line .lm { color: var(--text); }
     .log-line.warn .ll, .log-line.warn .lm { color: var(--warn); }
     .log-line.error .ll, .log-line.error .lm { color: #ff6b6b; }
+    /* 출처 배지(에이전트/Ollama/SD/연결) + 출처 필터 라벨 */
+    .log-flabel { font-size: 11px; color: var(--subtle); align-self: center; margin-right: 2px; letter-spacing: .04em; }
+    .log-line .lsrc { flex: 0 0 auto; align-self: center; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 5px; letter-spacing: .02em; }
+    .lsrc-agent { color: #aeb9d4; background: rgba(150,168,220,.12); }
+    .lsrc-ollama { color: #7fd1c0; background: rgba(127,209,192,.14); }
+    .lsrc-sd { color: #c79bf0; background: rgba(199,155,240,.14); }
+    .lsrc-relay { color: #8fb8ff; background: rgba(143,184,255,.14); }
     .log-empty { color: var(--subtle); text-align: center; padding: 44px; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 14px; }
 
     /* 로컬 실행 화면 */
@@ -966,6 +973,14 @@
           <button class="log-chip" data-level="warn">경고</button>
           <button class="log-chip" data-level="error">오류</button>
         </div>
+        <div class="log-filters" id="logSources">
+          <span class="log-flabel">출처</span>
+          <button class="log-chip active" data-source="all">전체</button>
+          <button class="log-chip" data-source="agent">에이전트</button>
+          <button class="log-chip" data-source="ollama">Ollama</button>
+          <button class="log-chip" data-source="sd">Stable Diffusion</button>
+          <button class="log-chip" data-source="relay">연결</button>
+        </div>
         <div class="log-view" id="logView"><!-- JS 렌더 --></div>
       </section>
       <section class="view" data-view="settings">
@@ -1188,24 +1203,52 @@
 
     const view = document.querySelector('.view[data-view="logs"]');
     const logView = document.getElementById('logView');
-    let _raw = [], _filter = 'all', _auto = true;
+    let _raw = [], _filter = 'all', _source = 'all', _auto = true;
 
     const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    // 출처 분류 — 백엔드 토큰(SD/Ollama/Relay/Agent)을 우선, 없으면(mock/구버전) 메시지 키워드로 추론.
+    const SRC_LABEL = { agent: '에이전트', ollama: 'Ollama', sd: 'SD', relay: '연결' };
+    function inferSource(msg) {
+      const m = (msg || ''), low = m.toLowerCase();
+      if (low.includes('stable diffusion') || low.includes('sd(') || low.includes('/imagine') || m.includes('이미지')) return 'sd';
+      if (low.includes('ollama') || low.includes('/ask')) return 'ollama';
+      if (m.includes('중앙 서버') || m.includes('릴레이') || low.includes('relay') || low.includes('wss')) return 'relay';
+      return 'agent';
+    }
+    function normSource(tok) {
+      const t = (tok || '').toLowerCase();
+      if (t === 'sd') return 'sd';
+      if (t === 'ollama') return 'ollama';
+      if (t === 'relay') return 'relay';
+      if (t === 'agent') return 'agent';
+      return null;
+    }
     function parse(raw) {
-      const m = raw.match(/^(\d{2}:\d{2}:\d{2})\s+(\w+)\s*\|\s*([\s\S]*)$/);
-      if (!m) return { time: '', level: 'info', msg: raw };
-      const lv = m[2].toLowerCase();
+      // 우선 'HH:MM:SS LEVEL SOURCE | msg'(실 백엔드), 실패 시 'HH:MM:SS LEVEL | msg'(mock/구버전).
+      let time = '', lvRaw = 'info', srcTok = null, msg = raw;
+      let m = raw.match(/^(\d{2}:\d{2}:\d{2})\s+(\w+)\s+(\S+)\s*\|\s*([\s\S]*)$/);
+      if (m) { time = m[1]; lvRaw = m[2]; srcTok = m[3]; msg = m[4]; }
+      else {
+        m = raw.match(/^(\d{2}:\d{2}:\d{2})\s+(\w+)\s*\|\s*([\s\S]*)$/);
+        if (m) { time = m[1]; lvRaw = m[2]; msg = m[3]; }
+      }
+      const lv = lvRaw.toLowerCase();
       const level = lv.startsWith('warn') ? 'warn'
         : (lv.startsWith('err') || lv.startsWith('crit') || lv.startsWith('fatal')) ? 'error'
           : lv.startsWith('debug') ? 'debug' : 'info';
-      return { time: m[1], level, msg: m[3] };
+      const source = normSource(srcTok) || inferSource(msg);
+      return { time, level, source, msg };
     }
     function render() {
-      const rows = _raw.map(parse).filter((l) => _filter === 'all' || l.level === _filter || (_filter === 'info' && l.level === 'debug'));
+      const rows = _raw.map(parse).filter((l) =>
+        (_filter === 'all' || l.level === _filter || (_filter === 'info' && l.level === 'debug'))
+        && (_source === 'all' || l.source === _source));
       if (!rows.length) { logView.innerHTML = '<div class="log-empty">표시할 로그가 없어요.</div>'; return; }
       const atBottom = logView.scrollHeight - logView.scrollTop - logView.clientHeight < 50;
       logView.innerHTML = rows.map((l) =>
-        '<div class="log-line ' + l.level + '"><span class="lt">' + l.time + '</span><span class="ll">' + l.level.toUpperCase() + '</span><span class="lm">' + esc(l.msg) + '</span></div>').join('');
+        '<div class="log-line ' + l.level + '"><span class="lt">' + l.time + '</span><span class="ll">' + l.level.toUpperCase() + '</span>' +
+        '<span class="lsrc lsrc-' + l.source + '">' + SRC_LABEL[l.source] + '</span>' +
+        '<span class="lm">' + esc(l.msg) + '</span></div>').join('');
       if (atBottom) logView.scrollTop = logView.scrollHeight;
     }
     async function load() { const r = await api.getLogs(); _raw = r.lines || []; render(); }
@@ -1221,6 +1264,12 @@
       const b = e.target.closest('.log-chip'); if (!b) return;
       _filter = b.dataset.level;
       document.querySelectorAll('#logFilters .log-chip').forEach((c) => c.classList.toggle('active', c === b));
+      render();
+    });
+    document.getElementById('logSources').addEventListener('click', (e) => {
+      const b = e.target.closest('.log-chip'); if (!b) return;
+      _source = b.dataset.source;
+      document.querySelectorAll('#logSources .log-chip').forEach((c) => c.classList.toggle('active', c === b));
       render();
     });
 

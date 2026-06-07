@@ -75,6 +75,37 @@ _log_lines: deque[str] = deque(maxlen=200)
 _log_attached = False
 
 
+def _log_source(name: str, msg: str) -> str:
+    """로그 한 줄의 출처를 분류한다 — 화면에서 SD/Ollama/연결을 구분·필터하기 위함.
+
+    1순위는 **로거 이름**(provider_agent.sd_setup/ollama_setup = 설치·기동 로그, 권위 있음),
+    2순위는 에이전트 코어(provider_agent)가 남기는 메시지의 키워드로 보강한다.
+    값: SD | Ollama | Relay | Agent.
+    """
+    n = name or ""
+    if n.endswith("sd_setup"):
+        return "SD"
+    if n.endswith("ollama_setup"):
+        return "Ollama"
+    m = msg or ""
+    low = m.lower()
+    if "stable diffusion" in low or "sd(" in low or "/imagine" in low or "이미지 생성" in m:
+        return "SD"
+    if "ollama" in low or "/ask" in low:
+        return "Ollama"
+    if "중앙 서버" in m or "릴레이" in m or "relay" in low or "wss" in low:
+        return "Relay"
+    return "Agent"
+
+
+class _SrcFormatter(logging.Formatter):
+    """포맷에 출처 토큰(%(src)s)을 주입한다. 와이어 형식: 'HH:MM:SS LEVEL SOURCE | message'."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        record.src = _log_source(record.name, record.getMessage())
+        return super().format(record)
+
+
 class _RingHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -88,10 +119,17 @@ def _attach_log_capture() -> None:
     if _log_attached:
         return
     h = _RingHandler()
+    h.setLevel(logging.INFO)
+    # 출처(SOURCE)를 한 토큰으로 포함 → 화면이 에이전트/Ollama/SD/연결로 필터·배지 표시.
     h.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)-5s | %(message)s", datefmt="%H:%M:%S")
+        _SrcFormatter("%(asctime)s %(levelname)-5s %(src)s | %(message)s", datefmt="%H:%M:%S")
     )
-    logging.getLogger("provider_agent").addHandler(h)
+    agent_logger = logging.getLogger("provider_agent")
+    agent_logger.addHandler(h)
+    # 로거 기본 레벨은 WARNING 이라 INFO(연결·SD/Ollama 활성·/ask 처리 등 정작 유용한 활동)가 버려진다.
+    # 화면 로그가 거의 비어 보이던 원인 → INFO 로 올려 실제 활동이 잡히게 한다(콘솔도 INFO, 에이전트 정상 수준).
+    if agent_logger.level == logging.NOTSET or agent_logger.level > logging.INFO:
+        agent_logger.setLevel(logging.INFO)
     _log_attached = True
 
 

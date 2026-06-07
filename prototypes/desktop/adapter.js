@@ -198,7 +198,7 @@ export const api = {
       guildName: s.guildName,
       iconUrl: null,
       connected: !!s.connected,
-      state: s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE,
+      state: s.paused ? ProviderState.PAUSED : (s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE),
       role: Role.PROVIDER,
       models: 0, today: 0, members: 0, avgMs: 0,
       myModels: [], policy: null, webUrl: null,
@@ -218,7 +218,7 @@ export const api = {
     return {
       guildId: String(s.guildId), guildName: s.guildName, iconUrl: null,
       connected: !!s.connected,
-      state: s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE,
+      state: s.paused ? ProviderState.PAUSED : (s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE),
       role: isAdmin ? Role.ADMIN : Role.PROVIDER,
       models: 0, today: 0, members: 0, avgMs: 0,
       myModels: [],

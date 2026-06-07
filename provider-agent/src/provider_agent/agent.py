@@ -293,6 +293,10 @@ class ProviderAgent:
         # 한도는 **이 연결의 guild 별로 독립** — 다른 서버의 소진이 이 서버에 영향 주지 않는다.
         # 한도값도 서버별(override 우선). 0 = 그 서버 무제한.
         guild_id = conn.guild_id
+        # 이 서버에 대한 내 제공 일시중지(provider 주권) — 연결은 유지하되 이 길드 요청만 반려.
+        if guild_id is not None and self._guild_policy.get(guild_id, {}).get("paused"):
+            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message="이 서버 제공 일시중지됨"))
+            return
         limit = self._limit_for(guild_id)
         if limit > 0 and self._remaining_for(guild_id) <= 0:
             await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message="일일 한도 초과"))
@@ -511,6 +515,7 @@ class ProviderAgent:
                 "guildId": (str(e["guild_id"]) if e["guild_id"] is not None else None),
                 "guildName": e["guild_name"],
                 "connected": e["conn"].authed,
+                "paused": bool(self._guild_policy.get(e["guild_id"], {}).get("paused")),
             }
             for i, e in enumerate(self._entries)
         ]

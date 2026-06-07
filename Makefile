@@ -3,7 +3,7 @@ JAVA_HOME ?= /Library/Java/JavaVirtualMachines/amazon-corretto-21.jdk/Contents/H
 PY := .venv/bin
 CENTRAL := central-server/gradlew -p central-server
 
-.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract wire-gen wire-check
+.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract wire-gen wire-check sync-desktop desktop-check i18n-gen i18n-check packaging-check
 
 help:  ## 사용 가능한 타깃
 	@grep -E '^[a-zA-Z-]+:.*##' Makefile | sed 's/:.*## /\t/'
@@ -35,6 +35,9 @@ packaging-check:  ## 패키지 자산명 SSOT(packaging/assets.json) 드리프�
 
 sync-desktop:  ## 데스크톱 앱 시안(prototypes/desktop)을 provider-agent 자산(webui_assets)으로 이식
 	python3 scripts/sync_desktop_app.py
+
+desktop-check:  ## 프로토타입↔실구현(webui) 계약 드리프트 검사(엔드포인트 일치) + 생성물 누수 검사
+	PYTHONPATH=provider-agent/src $(PY)/python scripts/check_desktop_contract.py --assets
 
 i18n-gen:  ## 문구 SSOT(i18n/messages.json)에서 모듈별 생성본(봇/웹/앱) 재생성
 	python3 scripts/gen_i18n.py

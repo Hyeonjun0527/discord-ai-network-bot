@@ -103,10 +103,21 @@ def main() -> None:
                 shutil.copy2(f, img_dst / f.name)
                 img_count += 1
 
+    # 자가 검증: 프로토타입 전용 mock/데모가 실 앱에 새지 않았는지(strip 보증). 누수면 sync 실패.
+    leaks: list[str] = []
+    bad = {"@proto-only": "마커 잔존", "const MOCK = {": "mock 데이터", "export const USE_MOCK = true": "USE_MOCK=true", 'id="proto"': "PROTO 컨트롤러"}
+    for name in ("index.html", "adapter.js"):
+        t = (DST / name).read_text(encoding="utf-8")
+        for needle, desc in bad.items():
+            if needle in t:
+                leaks.append(f"{name}: {desc} ('{needle}')")
+    if leaks:
+        raise SystemExit("[sync-desktop] ❌ 생성물에 프로토타입 전용 코드 누수:\n  " + "\n  ".join(leaks))
+
     print(f"[sync-desktop] {SRC} → {DST}")
     print(f"  files: {', '.join(written)}")
     print(f"  img/: {img_count} 개")
-    print("  adapter.js: USE_MOCK=false, index.html: 세션키 주입 완료")
+    print("  adapter.js: USE_MOCK=false, index.html: 세션키 주입, @proto-only 제거(누수 0 확인)")
 
 
 if __name__ == "__main__":

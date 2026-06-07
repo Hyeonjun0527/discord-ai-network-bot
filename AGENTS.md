@@ -79,6 +79,20 @@ cd provider-agent && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov
   ① 계약 `prototypes/desktop/contract.js`(ENDPOINTS·응답 shape)로 묶고 ② mock 이 실 동작을 충실히 모사한다.
 - **새 기능/화면은 프로토타입 + 실구현 + mock 을 동시에** 만든다(한쪽만 추가 금지 — 드리프트 유발).
 
+#### 무엇이 보장되고, 무엇을 가드로 막나 (프로토타입 ↔ 실구현 드리프트)
+- ✅ **UI(화면·CSS·플로우)**: 같은 파일을 sync 하므로 구조적으로 갈라질 수 없다.
+- ✅ **mock/데모 미누수**: `make sync-desktop` 이 산출물에 `@proto-only`·MOCK·`USE_MOCK=true`·`#proto` 가 남으면
+  **실패**(strip 보증).
+- ✅ **엔드포인트 경로 일치(가드)**: `make desktop-check`(= `scripts/check_desktop_contract.py`)가 adapter 가
+  **실제 호출**하는 모든 `ENDPOINTS.*` 경로가 webui 라우트에 존재하는지 세그먼트 패턴으로 검증(예: adapter 가
+  `/api/servers/{g}/pause` 를 부르는데 webui 라우트가 없으면 실패 → 실 앱 404 사전 차단). provider-agent
+  `tests/test_desktop_contract.py` 가 같은 검사를 CI(pytest)에서 강제한다.
+- ⚠️ **응답 shape(필드명) 일치는 정적 완전보장 불가**: 이 층은 두 가지로 보강한다 — ① provider-agent pytest
+  (webui 응답 키 검증) ② 실 앱 헤드리스 스모크(USE_MOCK=false 로 sync 후 webui 기동 → 브라우저 로드, JS 에러 0·
+  핵심 화면 렌더 확인). adapter mock 의 응답 shape 는 **반드시 webui 실 응답과 동일 필드명**으로 유지한다.
+- 규칙: 엔드포인트를 추가/변경하면 **contract.js · adapter(mock+real) · webui 라우트·핸들러**를 같은 커밋에서
+  맞추고 `make desktop-check` 를 통과시킨다.
+
 ### 로컬 E2E (실연동 검증)
 ```bash
 .venv/bin/python scripts/e2e_local.py   # mock Ollama + bootRun + agent → /dev/ask 실왕복
@@ -90,6 +104,10 @@ cd provider-agent && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov
 
 - **central-server 변경**: `gradlew build`(test+ktlint+커버리지) 통과.
 - **provider-agent 변경**: `ruff` + `mypy` + `pytest`(커버리지 ≥ 70%) 통과.
+- **데스크톱 앱(prototypes/desktop·webui) 변경**: ① `cd prototypes/desktop && npx playwright test`(시안 UI/플로우)
+  ② `make desktop-check`(프로토타입↔실구현 엔드포인트 계약 + 생성물 누수) ③ 엔드포인트/응답을 건드렸으면
+  `make sync-desktop` 후 webui 기동 → 헤드리스 로드로 JS 에러 0·핵심 화면 렌더 확인. contract.js·adapter
+  (mock+real)·webui 라우트/핸들러는 **한 커밋에서** 맞춘다.
 - **프로토콜(와이어) 변경**: 공유 상수(PROTOCOL_VERSION·FrameType·ErrorCode·ALLOWED_OPTION_KEYS 등)의
   SSOT 는 `protocol/wire-contract.json` 이다. 수정 후 `make wire-gen`(= `python scripts/gen_wire_contract.py`)
   으로 Kotlin(`WireContractGenerated.kt`)·Python(`_wire_contract_generated.py`)을 재생성한다(직접 편집 금지).

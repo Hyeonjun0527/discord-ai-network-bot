@@ -512,6 +512,25 @@ async def test_servers_lists_saved_when_not_running(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_server_pause_persists_and_reflects(monkeypatch):
+    # 이 서버 일시중지/재개 — 저장되고 /api/servers paused 로 반영(에이전트 미실행이면 config 저장).
+    from provider_agent.config_file import add_connection
+
+    add_connection("TA", guild_id=100, guild_name="서버A")
+    client = await _client()
+    try:
+        r = await (await client.post("/api/servers/100/pause", headers={"X-Session": KEY}, json={"paused": True})).json()
+        assert r["ok"] is True and r["paused"] is True
+        d = await (await client.get("/api/servers", headers={"X-Session": KEY})).json()
+        assert next(x for x in d["servers"] if x["guildName"] == "서버A")["paused"] is True
+        await client.post("/api/servers/100/pause", headers={"X-Session": KEY}, json={"paused": False})
+        d2 = await (await client.get("/api/servers", headers={"X-Session": KEY})).json()
+        assert next(x for x in d2["servers"] if x["guildName"] == "서버A")["paused"] is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_server_manage_requires_running_agent(monkeypatch):
     # 관리 채널 프록시 — 에이전트 미실행이면 안내, 잘못된 action 은 거부.
     client = await _client()

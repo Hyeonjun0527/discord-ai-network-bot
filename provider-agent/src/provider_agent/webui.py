@@ -639,6 +639,13 @@ def build_app(session_key: str) -> web.Application:
         from .config_file import load_connections
 
         saved = load_connections()
+        from .config_file import load_guild_policies
+
+        policies = load_guild_policies()
+
+        def _paused(gid: object) -> bool:
+            return bool((policies.get(gid) or {}).get("paused")) if isinstance(gid, int) else False
+
         # guildId 는 64bit Discord ID — JS number 정밀도 손실 방지로 문자열 emit(connections_status 와 동일).
         return web.json_response(
             {"servers": [
@@ -647,10 +654,29 @@ def build_app(session_key: str) -> web.Application:
                     "guildId": (str(c.get("guild_id")) if c.get("guild_id") is not None else None),
                     "guildName": c.get("guild_name"),
                     "connected": False,
+                    "paused": _paused(c.get("guild_id")),
                 }
                 for i, c in enumerate(saved)
             ]}
         )
+
+    async def server_pause(req: web.Request) -> web.Response:
+        """이 서버에 대한 내 제공 일시중지/재개(provider self-service). body {paused}. 연결은 유지, 이 길드 요청만 반려."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        paused = bool(data.get("paused"))
+        agent = _running_agent()
+        if agent is not None:
+            await agent.set_guild_policy(guild_id, {"paused": paused})  # type: ignore[attr-defined]
+        else:
+            from .config_file import set_guild_policy
+
+            set_guild_policy(guild_id, {"paused": paused})
+        return web.json_response({"ok": True, "paused": paused})
 
     def _running_agent() -> object | None:
         agent = _state["agent"]
@@ -1271,6 +1297,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/servers", servers)
     app.router.add_post("/api/server-remove", server_remove)
     app.router.add_post("/api/server-rename", server_rename)
+    app.router.add_post("/api/servers/{guildId}/pause", server_pause)
     app.router.add_post("/api/servers/{guildId}/policy", server_policy)
     app.router.add_get("/api/servers/{guildId}/manage", server_manage)
     app.router.add_post("/api/servers/{guildId}/manage/policy", server_manage_policy)

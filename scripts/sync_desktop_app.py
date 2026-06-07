@@ -43,7 +43,9 @@ def _transform_adapter(text: str) -> str:
 def _transform_index(text: str) -> str:
     """<head> 바로 다음에 세션키 주입 스크립트 한 줄을 삽입(실 앱이 __SESSION_KEY__ 치환)."""
     needle = "<head>"
-    inject = '\n  <script>window.__SESSION_KEY="__SESSION_KEY__";</script>'
+    # 세션키 주입 + 부팅 플래그(app-booting): 실 앱은 hasToken 판정 전까지 메인을 숨겨 FOUC(메인 깜빡임)를 막는다.
+    # setStage 가 stage 결정 시 app-booting 을 제거한다(index.html). 프로토타입(키 미주입)엔 클래스가 안 붙어 무해.
+    inject = '\n  <script>window.__SESSION_KEY="__SESSION_KEY__";document.documentElement.classList.add("app-booting");</script>'
     idx = text.find(needle)
     if idx < 0:
         raise SystemExit("index.html 에 <head> 가 없습니다 — 시안 변경으로 sync 불가")

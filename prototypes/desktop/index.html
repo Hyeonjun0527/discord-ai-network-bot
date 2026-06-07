@@ -121,6 +121,8 @@
       display: grid; grid-template-rows: 48px 1fr; grid-template-columns: 232px 1fr;
       grid-template-areas: "title title" "side main";
     }
+    /* 실 앱 부팅: hasToken 판정 전까지 메인을 숨겨 사이드바 깜빡임(FOUC) 방지. setStage 가 판정 후 제거. */
+    html.app-booting .app { display: none; }
 
     /* ── 타이틀바 ── */
     .titlebar {
@@ -1992,7 +1994,9 @@
             feat(IC.image, '이미지 생성 (선택)', 'Stable Diffusion 으로 그림 요청도 처리해요') +
             feat(IC.shield, '안전한 기본값', '하루 한도·localhost 전용 등 보수적으로 시작해요') +
             '</div>';
-          foot = btn('secondary', 'main', '나중에') + '<span class="spacer"></span>' + btn('primary', '2', '시작하기');
+          // 1단계 전체 skip('나중에')은 두지 않는다 — 온보딩은 첫 필수 설정이고, 런타임/연결 skip 은
+          // 각 단계(2단계 '지금 설치 안 함' · 4단계 '메인 화면으로')에서 선택할 수 있다.
+          foot = '<span class="spacer"></span>' + btn('primary', '2', '시작하기');
         } else if (s === 2) {
           body = '<div class="wiz-title">무엇을 준비할까요?</div>' +
             '<div class="wiz-sub">이 PC 에서 제공할 AI 를 고르세요. 나중에 바꿀 수 있어요.</div>' +
@@ -2077,6 +2081,7 @@
       function stopConnectPoll() { if (connectPoll) { clearInterval(connectPoll); connectPoll = null; } }
       function emit() { window.dispatchEvent(new CustomEvent('stagechange', { detail: { stage: App.stage, step: ONB.step, connectSub } })); }
       function setStage(name) {
+        document.documentElement.classList.remove('app-booting'); // 부팅 판정 끝 — 메인 숨김 해제(이후 stage 가 표시 제어)
         if (name !== 'connect') stopConnectPoll(); // connect 화면 이탈 시 'waiting' 폴링 정리(누수 방지)
         applyStage(name); // App.stage 갱신 + authed 보정(I1: main ⟹ authed)
         app.style.display = name === 'main' ? '' : 'none';

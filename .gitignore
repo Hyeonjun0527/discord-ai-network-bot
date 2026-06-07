@@ -44,3 +44,6 @@ provider-agent/build/
 
 # 데스크톱 앱 이식 자산(scripts/sync_desktop_app.py 생성물 — 시안은 prototypes/desktop 이 SSOT)
 provider-agent/src/provider_agent/webui_assets/
+
+# codegraph 코드 인덱스(로컬 산출물 — 각자 `npx @colbymchenry/codegraph init` 으로 생성)
+.codegraph/

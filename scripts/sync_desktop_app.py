@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""데스크톱 앱 시안(prototypes/desktop)을 provider-agent 가 서빙하는 실제 앱 자산으로 이식한다.
+
+prototypes/desktop 은 디자인/UX 의 SSOT(시안)로 그대로 유지하고, 이 스크립트가 멱등하게
+provider-agent/src/provider_agent/webui_assets/ 로 복사·변환한 생성물을 만든다(커밋 안 함).
+
+변환:
+- adapter.js: `export const USE_MOCK = true;` → `false`(실 HTTP fetch 로 동작).
+- index.html: <head> 바로 다음에 세션키 주입 한 줄 삽입(실 앱이 __SESSION_KEY__ 를 치환).
+
+  python3 scripts/sync_desktop_app.py
+"""
+from __future__ import annotations
+
+import pathlib
+import shutil
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SRC = ROOT / "prototypes" / "desktop"
+DST = ROOT / "provider-agent" / "src" / "provider_agent" / "webui_assets"
+
+# 복사 대상 파일(시안 자산만 — 테스트/설정/의존성 제외).
+FILES = (
+    "index.html",
+    "adapter.js",
+    "contract.js",
+    "presenter.js",
+    "state.js",
+    "toast.js",
+    "install.js",
+)
+
+
+def _transform_adapter(text: str) -> str:
+    """mock 토글을 끈다(실 백엔드 fetch). 정확히 한 줄만 치환."""
+    needle = "export const USE_MOCK = true;"
+    repl = "export const USE_MOCK = false;"
+    if needle not in text:
+        raise SystemExit(f"adapter.js 에 '{needle}' 가 없습니다 — 시안 변경으로 sync 불가")
+    return text.replace(needle, repl, 1)
+
+
+def _transform_index(text: str) -> str:
+    """<head> 바로 다음에 세션키 주입 스크립트 한 줄을 삽입(실 앱이 __SESSION_KEY__ 치환)."""
+    needle = "<head>"
+    inject = '\n  <script>window.__SESSION_KEY="__SESSION_KEY__";</script>'
+    idx = text.find(needle)
+    if idx < 0:
+        raise SystemExit("index.html 에 <head> 가 없습니다 — 시안 변경으로 sync 불가")
+    cut = idx + len(needle)
+    return text[:cut] + inject + text[cut:]
+
+
+def main() -> None:
+    if not SRC.is_dir():
+        raise SystemExit(f"시안 디렉토리가 없습니다: {SRC}")
+
+    # 멱등: 매 실행 시 깨끗이 비우고 재생성.
+    if DST.exists():
+        shutil.rmtree(DST)
+    DST.mkdir(parents=True)
+
+    written: list[str] = []
+    for name in FILES:
+        src = SRC / name
+        if not src.is_file():
+            raise SystemExit(f"시안 파일이 없습니다: {src}")
+        text = src.read_text(encoding="utf-8")
+        if name == "adapter.js":
+            text = _transform_adapter(text)
+        elif name == "index.html":
+            text = _transform_index(text)
+        (DST / name).write_text(text, encoding="utf-8")
+        written.append(name)
+
+    # img/ 디렉토리 전체 복사(이미지 자산).
+    img_src = SRC / "img"
+    img_count = 0
+    if img_src.is_dir():
+        img_dst = DST / "img"
+        img_dst.mkdir()
+        for f in sorted(img_src.iterdir()):
+            if f.is_file():
+                shutil.copy2(f, img_dst / f.name)
+                img_count += 1
+
+    print(f"[sync-desktop] {SRC} → {DST}")
+    print(f"  files: {', '.join(written)}")
+    print(f"  img/: {img_count} 개")
+    print("  adapter.js: USE_MOCK=false, index.html: 세션키 주입 완료")
+
+
+if __name__ == "__main__":
+    main()

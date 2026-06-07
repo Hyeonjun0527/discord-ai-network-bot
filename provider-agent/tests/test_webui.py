@@ -1009,3 +1009,65 @@ async def test_settings_post_ignores_unknown_keys():
         assert load_config() == {}
     finally:
         await client.close()
+
+
+def _make_assets(tmp_path, monkeypatch):
+    """임시 webui_assets 디렉토리를 만들어 _assets_dir 가 그것을 가리키게 한다(실 자산 비의존)."""
+    assets = tmp_path / "webui_assets"
+    assets.mkdir()
+    # index.html: 세션키 자리 + 프로토타입 마커(data-view="logs").
+    (assets / "index.html").write_text(
+        '<!doctype html><html><head>\n'
+        '  <script>window.__SESSION_KEY="__SESSION_KEY__";</script>\n'
+        '</head><body><section class="view" data-view="logs">로그</section></body></html>',
+        encoding="utf-8",
+    )
+    (assets / "adapter.js").write_text("export const USE_MOCK = false;\n", encoding="utf-8")
+    (assets / "img").mkdir()
+    (assets / "img" / "nexa-logo.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    monkeypatch.setattr(webui, "_assets_dir", lambda: assets)
+    return assets
+
+
+@pytest.mark.asyncio
+async def test_index_serves_synced_assets_with_session_key(tmp_path, monkeypatch):
+    """webui_assets/index.html 이 있으면 세션키가 치환되고 프로토타입 마커가 포함된다."""
+    _make_assets(tmp_path, monkeypatch)
+    client = await _client()
+    try:
+        r = await client.get("/")
+        assert r.status == 200
+        html = await r.text()
+        assert f'window.__SESSION_KEY="{KEY}"' in html  # 세션키 치환됨
+        assert "__SESSION_KEY__" not in html  # 플레이스홀더 잔여 없음
+        assert 'data-view="logs"' in html  # 이식된 시안 마커
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_asset_js_served_as_javascript(tmp_path, monkeypatch):
+    """/adapter.js 가 200 + text/javascript 로 인증 없이 서빙된다."""
+    _make_assets(tmp_path, monkeypatch)
+    client = await _client()
+    try:
+        r = await client.get("/adapter.js")  # 코드는 비민감 — 인증 불필요
+        assert r.status == 200
+        assert r.headers["Content-Type"] == "text/javascript"
+        assert "USE_MOCK = false" in (await r.text())
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_asset_img_served_and_missing_404(tmp_path, monkeypatch):
+    """/img/<name> 이 PNG 로 서빙되고, 없는 파일은 404."""
+    _make_assets(tmp_path, monkeypatch)
+    client = await _client()
+    try:
+        r = await client.get("/img/nexa-logo.png")
+        assert r.status == 200
+        assert r.headers["Content-Type"] == "image/png"
+        assert (await client.get("/img/nope.png")).status == 404
+    finally:
+        await client.close()

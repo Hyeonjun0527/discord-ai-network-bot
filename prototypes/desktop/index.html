@@ -2429,6 +2429,9 @@
   <!-- 프로토타입 컨트롤러 동작(앱 로직과 분리) -->
   <script>
     (function protoTool() {
+      // 실 앱(세션키 주입됨)에선 데모 전용 PROTO 오버레이를 제거하고 초기화를 건너뛴다.
+      // 프로토타입(키 없음)에선 기존대로 동작한다.
+      if (window.__SESSION_KEY) { document.getElementById('proto')?.remove(); return; }
       const root = document.getElementById('proto');
       const fab = document.getElementById('protoFab');
       const close = document.getElementById('protoClose');

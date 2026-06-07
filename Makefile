@@ -33,6 +33,9 @@ contract: wire-check  ## 크로스언어 컨트랙트 테스트(양측) + 와이
 packaging-check:  ## 패키지 자산명 SSOT(packaging/assets.json) 드리프트 검사
 	python3 scripts/check_packaging.py
 
+sync-desktop:  ## 데스크톱 앱 시안(prototypes/desktop)을 provider-agent 자산(webui_assets)으로 이식
+	python3 scripts/sync_desktop_app.py
+
 i18n-gen:  ## 문구 SSOT(i18n/messages.json)에서 모듈별 생성본(봇/웹/앱) 재생성
 	python3 scripts/gen_i18n.py
 

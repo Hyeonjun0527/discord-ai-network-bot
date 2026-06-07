@@ -18,6 +18,7 @@ import secrets
 import threading
 from collections import deque
 from collections.abc import Iterable
+from importlib.resources.abc import Traversable
 from typing import TypedDict
 
 from aiohttp import web
@@ -286,9 +287,32 @@ def _start_connect_status_refresher(interval_s: float = 60.0) -> None:
     threading.Thread(target=_loop, daemon=True).start()
 
 
+def _assets_dir() -> Traversable:
+    """이식된 데스크톱 앱 자산 디렉토리(webui_assets) — 패키지 안 traversable.
+
+    scripts/sync_desktop_app.py 가 prototypes/desktop 을 변환해 생성한다(생성물, 커밋 안 함).
+    PyInstaller 번들에선 collect_data_files 로 같은 위치에 포함된다.
+    """
+    from importlib import resources
+
+    return resources.files("provider_agent") / "webui_assets"
+
+
+def _assets_index() -> str | None:
+    """webui_assets/index.html 이 있으면 본문 반환, 없으면 None(폴백)."""
+    try:
+        idx = _assets_dir() / "index.html"
+        if idx.is_file():
+            return idx.read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001 - 자산 부재/읽기 실패는 폴백으로
+        pass
+    return None
+
+
 def _page(session_key: str) -> str:
-    """세션 키를 주입한 제어판 HTML. 디자인은 데스크톱 앱 카드(레퍼런스), 동작은 실제 API 연결."""
-    return _PAGE_TEMPLATE.replace("__SESSION_KEY__", session_key).replace("__VERSION__", AGENT_VERSION)
+    """세션 키를 주입한 제어판 HTML. 이식된 앱 자산(webui_assets)이 있으면 그것을, 없으면 내장 템플릿을 쓴다."""
+    template = _assets_index() or _PAGE_TEMPLATE
+    return template.replace("__SESSION_KEY__", session_key).replace("__VERSION__", AGENT_VERSION)
 
 
 # macOS 데스크톱 앱 카드 디자인(레퍼런스) — 정적 목업을 실제 백엔드(/api/*)에 연결.
@@ -685,6 +709,36 @@ def build_app(session_key: str) -> web.Application:
 
     async def app_icon(_req: web.Request) -> web.Response:
         return web.Response(body=_app_icon_bytes(), content_type="image/png")
+
+    async def asset_js(req: web.Request) -> web.Response:
+        """이식된 앱 자산(webui_assets)의 .js 파일 서빙. 코드는 비민감 — 인증 불필요(mascot 동일).
+
+        라우트 정규식이 파일명만(`[\\w\\-]+\\.js`) 허용해 경로 탈출(.. /)을 구조적으로 막는다.
+        """
+        name = req.match_info["asset"]
+        try:
+            f = _assets_dir() / name
+            if not f.is_file():
+                raise web.HTTPNotFound()
+            return web.Response(body=f.read_bytes(), content_type="text/javascript")
+        except web.HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise web.HTTPNotFound() from exc
+
+    async def asset_img(req: web.Request) -> web.Response:
+        """이식된 앱 자산(webui_assets/img)의 이미지 서빙. 정규식이 파일명만 허용(경로 탈출 방지)."""
+        name = req.match_info["name"]
+        ctype = "image/svg+xml" if name.lower().endswith(".svg") else "image/png"
+        try:
+            f = _assets_dir() / "img" / name
+            if not f.is_file():
+                raise web.HTTPNotFound()
+            return web.Response(body=f.read_bytes(), content_type=ctype)
+        except web.HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise web.HTTPNotFound() from exc
 
     async def models(req: web.Request) -> web.Response:
         _auth(req)
@@ -1446,6 +1500,10 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/", index)
     app.router.add_get("/mascot.png", mascot)
     app.router.add_get("/app-icon.png", app_icon)
+    # 이식된 앱 자산 정적 서빙(webui_assets). 정규식이 파일명만 허용 → 경로 탈출 방지 + /api/* 비충돌
+    # (`.js` 확장자/`/img/` 프리픽스로 한정되어 /api·/connect 등 기존 라우트와 겹치지 않는다).
+    app.router.add_get(r"/{asset:[\w\-]+\.js}", asset_js)
+    app.router.add_get(r"/img/{name:[\w\-.]+}", asset_img)
     app.router.add_get("/api/models", models)
     app.router.add_get("/api/status", status)
     app.router.add_get("/api/logs", logs)

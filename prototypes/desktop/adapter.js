@@ -21,7 +21,17 @@ export const SD_MODELS = [
   { id: 'sd15', name: 'Stable Diffusion 1.5', short: 'SD 1.5', size: '4GB', desc: '가볍고 빠름 · 범용' },
   { id: 'sdxl', name: 'Stable Diffusion XL', short: 'SD XL', size: '6.6GB', desc: '고품질 · GPU 권장' },
 ];
-const http = async (ep, opts) => { const r = await fetch(ep, opts); return r.json(); };
+// 실 앱(provider-agent 서빙)에선 window.__SESSION_KEY 가 주입되어 /api/* 호출에 X-Session 헤더가 붙는다.
+// 프로토타입(8777 서버)은 키가 없어 헤더 없이 기존과 동일하게 동작한다(mock·E2E 보존).
+const _sessionHeaders = () => {
+  const key = (typeof window !== 'undefined' && window.__SESSION_KEY) || '';
+  return key ? { 'X-Session': key } : {};
+};
+const http = async (ep, opts) => {
+  const o = { ...(opts || {}), headers: { ...(opts && opts.headers), ..._sessionHeaders() } };
+  const r = await fetch(ep, o);
+  return r.json();
+};
 const post = (ep, body) => http(ep, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
 
 // ── Mock store — 실 백엔드 응답과 동일 필드명/enum ──

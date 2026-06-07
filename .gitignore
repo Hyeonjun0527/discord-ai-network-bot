@@ -41,3 +41,6 @@ scripts/.e2e-logs/
 # provider-agent PyInstaller 빌드 산출물
 provider-agent/dist/
 provider-agent/build/
+
+# 데스크톱 앱 이식 자산(scripts/sync_desktop_app.py 생성물 — 시안은 prototypes/desktop 이 SSOT)
+provider-agent/src/provider_agent/webui_assets/

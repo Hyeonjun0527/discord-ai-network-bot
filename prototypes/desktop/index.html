@@ -425,8 +425,10 @@
     .toast .toast-x { flex: 0 0 auto; width: 22px; height: 22px; border: 0; padding: 0; border-radius: 7px; background: transparent; color: var(--subtle); font-size: 12px; cursor: pointer; display: grid; place-items: center; }
     .toast .toast-x:hover { color: #fff; background: rgba(255,255,255,.09); }
     /* 설치 진행 프로그레스바(전체 폭, 다음 줄) */
-    .toast .toast-bar { flex-basis: 100%; height: 5px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+    .toast .toast-bar { flex-basis: 100%; display: flex; align-items: center; gap: 9px; }
+    .toast .toast-bar .track { flex: 1 1 auto; height: 5px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
     .toast .toast-bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--grad-accent); transition: width .45s ease; }
+    .toast .toast-bar b { flex: 0 0 auto; min-width: 34px; text-align: right; font-size: 11.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
     /* 진행 토스트는 고정 폭 — flex 축소/확장 차단(width 가 content·flex 에 안 밀리게) */
     .toast.has-bar { width: 320px; min-width: 320px; max-width: 320px; flex: none; }
     .toast.has-bar .tm { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* 메인 한 줄 고정 */
@@ -836,7 +838,7 @@
       <!-- 01 · 홈 -->
       <section class="view active" data-view="home">
         <h1 class="page-title">홈</h1>
-        <p class="page-sub">지금 AI를 정상적으로 제공하고 있어요.</p>
+        <p class="page-sub" id="homeSub">지금 AI를 정상적으로 제공하고 있어요.</p>
 
         <div class="hero-status state-ok" id="heroStatus">
           <div class="orb-wrap"><canvas data-scene="orb" aria-hidden="true"></canvas></div>
@@ -899,9 +901,9 @@
 
         <div class="sec-head"><span>오늘 처리</span></div>
         <div class="stats">
-          <div class="stat"><div class="stat-val">0</div><div class="stat-lbl">요청</div></div>
-          <div class="stat"><div class="stat-val">2</div><div class="stat-lbl">제공 모델</div></div>
-          <div class="stat"><div class="stat-val">0ms</div><div class="stat-lbl">평균 응답</div></div>
+          <div class="stat"><div class="stat-val" id="statReq">0</div><div class="stat-lbl">요청</div></div>
+          <div class="stat"><div class="stat-val" id="statModels">0</div><div class="stat-lbl">제공 모델</div></div>
+          <div class="stat"><div class="stat-val" id="statAvg">0ms</div><div class="stat-lbl">평균 응답</div></div>
         </div>
       </section>
 
@@ -1944,7 +1946,7 @@
     import { toast } from './toast.js';
     import { api, SD_MODELS } from './adapter.js';
     import { ProviderState } from './contract.js';
-    import { installRuntime } from './install.js';
+    import { installRuntime, watchSetup } from './install.js';
     import { App, applyStage, canEnterServerAdd } from './state.js';
     (function stageManager() {
       const app = document.querySelector('.app');
@@ -2034,8 +2036,19 @@
         ONB.none = false;
         ONB[k] = !ONB[k];
       }
-      // A4 '연동하기' → 선택한 런타임 설치(install.js installRuntime — 토스트 진행 SSOT) → 연결로.
+      // 온보딩 3단계 동작 토글을 백엔드에 반영한다(autostart→자동 시작 서비스, background→트레이 상주,
+      // autoConnect→자동 연결, enableImage→이미지 수신). 이게 없으면 토글이 UI 에만 켜지고 실제 적용이 안 된다.
+      function applyOnboardingSettings() {
+        api.applyOnboarding({
+          enableImage: ONB.imageRecv,
+          autostart: ONB.autostart,
+          autoConnect: ONB.autoconnect,
+          background: ONB.background,
+        });
+      }
+      // A4 '연동하기' → 동작 설정 반영 + 선택한 런타임 설치(install.js installRuntime — 토스트 진행 SSOT) → 연결로.
       function finishOnboarding() {
+        applyOnboardingSettings();
         if (ONB.ollama) installRuntime('ollama');
         if (ONB.image) installRuntime('image', ONB.sdModel); // A2 에서 고른 SD 모델로 설치
         App.connectOrigin = 'onboarding'; connectSub = 'login'; // 첫 인증 — 로그인부터
@@ -2052,7 +2065,7 @@
         wiz.querySelectorAll('[data-go]').forEach(b => b.onclick = () => {
           const g = b.dataset.go;
           if (g === 'connect') finishOnboarding();   // 연동하기 = 설치 시작 + 연결
-          else if (g === 'main') setStage('main');
+          else if (g === 'main') { applyOnboardingSettings(); setStage('main'); } // 메인으로 가도 동작 설정은 반영
           else { ONB.step = +g; renderWiz(); emit(); }
         });
       }
@@ -2152,10 +2165,17 @@
         }
         const login = q('#cxLogin');
         if (login) login.onclick = async () => {
-          await api.connectOpen();
-          // 실 앱(세션키 주입): connect-open 이 시스템 브라우저로 OAuth 를 연다. 후보 선택은 브라우저에서
-          // 끝나므로 앱은 'waiting'(완료 폴링)으로. 프로토타입(키 없음)은 기존 mock 흐름(앱 내 후보 select).
-          connectSub = window.__SESSION_KEY ? 'waiting' : 'select';
+          // 프로토타입(키 없음)은 기존 mock 흐름(앱 내 후보 select) — connect-open 결과 무관.
+          if (!window.__SESSION_KEY) { await api.connectOpen(); connectSub = 'select'; renderConnect(); emit(); return; }
+          // 실 앱: connect-open 이 시스템 브라우저로 OAuth 를 연다. 단 서버에 OAuth 미설정이면
+          // {ok:false,error} 를 돌려주고 브라우저가 안 열린다 — 이때 'waiting' 으로 가면 영원히 폴링하므로
+          // 사유를 안내하고 login 화면을 유지한다. ok 일 때만 'waiting'(완료 폴링)으로 넘어간다.
+          const r = await api.connectOpen();
+          if (r && r.ok === false) {
+            toast('브라우저를 열 수 없어요', { type: 'info', sub: (r.error || '디스코드 로그인이 준비되지 않았어요') + ' 아래 ‘토큰 직접 입력’으로 추가하세요.' });
+            return;
+          }
+          connectSub = 'waiting';
           renderConnect(); emit();
         };
         const tgl = q('#cxTokTgl');
@@ -2195,14 +2215,49 @@
       window.setConnectSub = (sub) => { connectSub = sub; setStage('connect'); };
       // 메인(이미 인증)에서 서버 추가 — 로그인 없이 후보 선택부터. I3 가드.
       window.enterServerAdd = () => { if (!canEnterServerAdd()) return; App.connectOrigin = 'main'; connectSub = 'select'; setStage('connect'); };
+      // 미연결(토큰 없음)에서 홈 '서버 추가' — 디스코드 로그인부터(연결 화면). 온보딩 origin 으로 로그인 단계 진입.
+      window.enterConnectLogin = () => { App.connectOrigin = 'onboarding'; connectSub = 'login'; setStage('connect'); };
 
       // 실 앱 부팅 분기: 세션키가 주입된 실제 앱(USE_MOCK=false)에서만 토큰 유무로 온보딩/메인을 자동 결정한다.
       // 프로토타입(세션키 없음)은 라우터 hash·PROTO 도구로 stage 를 제어하므로 자동 분기하지 않는다.
+      // 실 앱 홈을 실제 status 로 동기화한다(하드코딩 가짜값 방지). 미연결(토큰 없음)이면 정상 제공처럼
+      // 보이지 않게 미연결 상태·0 통계를 보인다. 프로토타입(키 없음)은 PROTO 데모가 그대로 제어.
+      async function syncHomeFromStatus() {
+        let st = {};
+        try { st = await api.getStatus() || {}; } catch (e) { return; }
+        // 오늘 처리 통계 — 백엔드 미제공 필드는 0/— 으로(가짜값 금지).
+        const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        setText('statReq', String(st.processed || 0));
+        setText('statModels', String((st.models && st.models.length) || 0));
+        setText('statAvg', '—'); // 평균 응답은 백엔드 미제공 — 가짜 0ms 대신 —
+        // 런타임 카드 상태: Ollama(모델 보유·실행) / SD(설치·준비) 기준.
+        if (window.setRuntime) {
+          window.setRuntime('Ollama', (st.running && st.models && st.models.length) ? 'running' : (st.models && st.models.length ? 'stopped' : 'absent'));
+          window.setRuntime('Stable Diffusion', !st.sdInstalled ? 'absent' : (st.imageReady ? 'running' : 'stopped'));
+        }
+        // 히어로 상태 + 페이지 부제 — 미연결이면 미연결, 연결됐으면 실행 여부로 ok/error.
+        const sub = document.getElementById('homeSub');
+        if (!st.hasToken) {
+          if (sub) sub.textContent = '아직 서버에 연결되지 않았어요. 서버를 추가해 AI 제공을 시작하세요.';
+          window.setHeroState?.('unconnected');
+        } else {
+          if (sub) sub.textContent = st.running ? '지금 AI를 정상적으로 제공하고 있어요.' : '연결됐지만 아직 제공을 시작하지 않았어요.';
+          window.setHeroState?.(st.connected && st.running ? 'ok' : 'error');
+        }
+      }
+
       if (window.__SESSION_KEY) {
         App.connectOrigin = 'onboarding';
         api.getStatus()
           .then((st) => setStage(st && st.hasToken ? 'main' : 'onboarding'))
           .catch(() => setStage('onboarding'));
+        syncHomeFromStatus(); // 홈 진입 여부와 무관하게 실제 status 로 미리 동기화(가짜값 방지)
+        // 새로고침/재부팅 복원: 진행 중인 런타임 설치가 있으면 어느 화면이든 진행 토스트를 무조건 복원한다.
+        // phase 가 진행 상태(=done/idle/error/cancelled 가 아님)면 watchSetup 으로 폴링·토스트만 이어붙인다.
+        const _ACTIVE = (p) => p && p.phase && !['done', 'idle', 'error', 'cancelled'].includes(p.phase);
+        ['ollama', 'image'].forEach((rt) => {
+          api.getSetupProgress(rt).then((p) => { if (_ACTIVE(p)) watchSetup(rt); }).catch(() => {});
+        });
       }
     })();
   </script>
@@ -2390,6 +2445,15 @@
           pills: [{ t: '중앙 서버 연결됨' }, { t: '승인 대기', bad: true }],
           actions: [{ t: '연결 취소', size: 'lg', emphasis: 'secondary' }],
         },
+        // 미연결(토큰 없음) — 온보딩 '나중에' 등으로 메인에 왔지만 아직 서버에 연결 안 됨.
+        // 가짜 '정상 제공'을 보이지 않게, 서버 추가를 유도한다.
+        unconnected: {
+          visual: 'paused',
+          badge: { sym: BADGE.pending, cls: 'paused' }, title: '아직 서버에 연결되지 않았어요',
+          desc: 'AI 를 제공하려면 먼저 Discord 서버에 연결하세요. 연결하면 들어오는 요청을 이 PC 에서 처리할 수 있어요.',
+          pills: [{ t: 'Discord 미연결', bad: true }],
+          actions: [{ t: '서버 추가', size: 'lg', emphasis: 'primary', act: 'add' }],
+        },
         // (E1 전역 한도 도달 제거 — 하루 한도는 '서버별 내 정책'(서버 상세 G3)에서만 다룬다)
         // E2 — 자원 보호 일시중지(배터리·고부하)
         resource: {
@@ -2417,11 +2481,13 @@
           '<div class="ready"><span class="check ' + s.badge.cls + '">' + s.badge.sym + '</span> ' + s.title + '</div>' +
           '<p>' + s.desc + '</p>' +
           '<div class="links">' + s.pills.map(p => '<span class="conn-pill ' + (p.bad ? 'bad' : '') + '"><span class="d"></span> ' + p.t + '</span>').join('') + bgPillHtml() + '</div>' +
-          '<div class="hero-actions">' + s.actions.map(a => '<button class="btn btn--' + a.size + ' btn--' + a.emphasis + '" data-go="' + (a.go || '') + '" data-diag="' + (a.diag ? '1' : '') + '">' + a.t + '</button>').join('') + '</div>' +
+          '<div class="hero-actions">' + s.actions.map(a => '<button class="btn btn--' + a.size + ' btn--' + a.emphasis + '" data-go="' + (a.go || '') + '" data-diag="' + (a.diag ? '1' : '') + '" data-act="' + (a.act || '') + '">' + a.t + '</button>').join('') + '</div>' +
           '<div class="diag" id="diagPanel" hidden></div>';
         heroInfo.querySelectorAll('.hero-actions button').forEach(btn => {
           btn.addEventListener('click', () => {
             if (btn.dataset.diag) return runDiag();
+            // 미연결 '서버 추가' → 디스코드 로그인(연결) 화면부터. 인증 후 후보 선택하는 enterServerAdd 와 다름.
+            if (btn.dataset.act === 'add') return void window.enterConnectLogin?.();
             if (btn.dataset.go) window.setHeroState(btn.dataset.go);
           });
         });

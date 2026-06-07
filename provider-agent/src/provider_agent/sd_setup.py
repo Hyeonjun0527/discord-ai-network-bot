@@ -290,20 +290,74 @@ async def _spawn(cmd: list[str], env: dict[str, str] | None = None, log_path: pa
     )
 
 
-async def _download(url: str, dest: pathlib.Path) -> None:
-    """대용량 파일을 스트리밍으로 받아 dest 에 저장(부분 파일은 .part 로 받고 마지막에 rename)."""
+# 다운로드 구간을 차지하는 진행률 범위(앞단계 clone=~15%, downloading=35~95%, starting=70~).
+# downloading phase 안에서 실제 바이트 비율을 이 구간으로 매핑한다.
+_DL_START_PCT = 35
+_DL_END_PCT = 95
+# 진행률 갱신 throttle: 1% 또는 ~16MB 마다 한 번만 _set(과도한 호출 방지).
+_DL_THROTTLE_BYTES = 16 << 20
+
+
+def _dl_percent(received: int, total: int | None) -> int:
+    """받은 누적 바이트를 다운로드 구간(35~95%) 안의 진행률로 매핑."""
+    if not total or total <= 0:
+        return _DL_START_PCT
+    frac = min(1.0, received / total)
+    return _DL_START_PCT + int(frac * (_DL_END_PCT - _DL_START_PCT))
+
+
+async def _download(url: str, dest: pathlib.Path, message_prefix: str = "이미지 모델 내려받는 중…") -> None:
+    """대용량 파일을 스트리밍으로 받아 dest 에 저장 — 이어받기(HTTP Range)·실시간 진행률 지원.
+
+    - ``.part`` 가 이미 있으면 그 크기 N 으로 ``Range: bytes=N-`` 요청.
+        · 206(Partial) → append('ab')로 이어받고 진행률 시작점에 N 반영.
+        · 200(Range 미지원/전체 재전송) → ``.part`` 를 새로 절단해 처음(0)부터.
+        · 416(범위 초과) → 이미 받은 것으로 간주, rename 시도.
+    - 받은 누적 바이트를 다운로드 구간(35~95%)으로 매핑해 chunk 마다 진행률 갱신
+      (1% 또는 ~16MB throttle, message 에 "받은MB / 전체MB" 표시).
+    - 예외·취소 시 ``.part`` 를 **보존**(삭제 금지) → 다음 run_setup 이 이어받음.
+      완료 시에만 ``.part`` → dest 로 rename.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")
+    resume_from = part.stat().st_size if part.exists() else 0
+
     timeout = aiohttp.ClientTimeout(total=None, sock_read=120)
+    headers = {"Range": f"bytes={resume_from}-"} if resume_from else {}
     async with aiohttp.ClientSession(timeout=timeout) as s:
-        async with s.get(url) as r:
-            if r.status != 200:
+        async with s.get(url, headers=headers) as r:
+            # 416: 이미 다 받음(서버가 범위 초과로 판단) → 그대로 rename 시도하고 종료.
+            if r.status == 416:
+                if part.exists():
+                    part.replace(dest)
+                return
+            if r.status not in (200, 206):
                 raise RuntimeError(f"모델 다운로드 실패(HTTP {r.status})")
-            with open(part, "wb") as f:
+
+            if r.status == 206:
+                mode = "ab"          # 이어받기: 기존 .part 에 append
+                received = resume_from
+            else:
+                mode = "wb"          # 200: Range 무시·전체 재전송 → 처음부터(절단)
+                received = 0
+
+            # 전체 크기: 206 이면 Content-Length 는 남은 분량이라 시작점을 더한다.
+            content_len = r.content_length
+            total = (content_len + received) if content_len is not None else None
+            total_mb = f"{total / (1 << 20):.0f}MB" if total else "?"
+
+            last_reported = received
+            with open(part, mode) as f:
                 async for chunk in r.content.iter_chunked(1 << 20):
                     if _cancel:
+                        # 취소 시에도 .part 보존(삭제 금지) → 다음 시도가 이어받음.
                         raise asyncio.CancelledError()
                     f.write(chunk)
+                    received += len(chunk)
+                    if received - last_reported >= _DL_THROTTLE_BYTES:
+                        last_reported = received
+                        got_mb = f"{received / (1 << 20):.0f}MB"
+                        _set("downloading", _dl_percent(received, total), f"{message_prefix} ({got_mb} / {total_mb})")
     part.replace(dest)
 
 
@@ -389,8 +443,10 @@ async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
 
         # 3) 선택한 모델 준비
         if not has_model(directory):
-            _set("downloading", 35, f"이미지 모델 내려받는 중… ({model['name']}, {model['size']})")
-            await _download(model["url"], model_dir(directory) / model["filename"])
+            # 초기 진행률은 35%(다운로드 구간 시작). 이후 _download 가 받은 바이트 비율로 35~95% 를 갱신한다.
+            prefix = f"이미지 모델 내려받는 중… ({model['name']})"
+            _set("downloading", _DL_START_PCT, f"{prefix} ({model['size']})")
+            await _download(model["url"], model_dir(directory) / model["filename"], prefix)
         if _cancelled():
             return False
 

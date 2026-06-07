@@ -65,6 +65,16 @@ cd provider-agent && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov
 - Python **3.12**. 패키징: `provider-agent/packaging/`(Docker/PyInstaller/systemd).
 - CI: `provider-agent-ci`(ruff/mypy/pytest+커버리지) · `agent-build`(멀티플랫폼 바이너리+서명).
 
+### 데스크톱 앱 UI = 프로토타입 SSOT (프로토타입 ↔ 실구현 정합)
+데스크톱 앱(provider-agent webui)의 UI 는 **`prototypes/desktop` 이 단일 SSOT** 다. webui_assets 나
+인라인 HTML 을 직접 고치지 말고 `prototypes/desktop` 에서만 수정 → `make sync-desktop`
+(= `scripts/sync_desktop_app.py`)이 `provider-agent/src/provider_agent/webui_assets/` 로 복제한다
+(USE_MOCK=false 치환·세션키 주입). webui_assets 는 생성물(`.gitignore`) — CI(agent-build)·로컬 실행 전 sync 필수.
+- **UI/UX/프론트 로직**: `prototypes/desktop` 한 곳에서만 수정 → 디자인·화면·프론트 동작이 양쪽 자동 동일.
+- **백엔드 로직**: 실구현은 Python(provider-agent), 프로토타입은 JS mock(`adapter.js`)이라 코드 공유 불가 →
+  ① 계약 `prototypes/desktop/contract.js`(ENDPOINTS·응답 shape)로 묶고 ② mock 이 실 동작을 충실히 모사한다.
+- **새 기능/화면은 프로토타입 + 실구현 + mock 을 동시에** 만든다(한쪽만 추가 금지 — 드리프트 유발).
+
 ### 로컬 E2E (실연동 검증)
 ```bash
 .venv/bin/python scripts/e2e_local.py   # mock Ollama + bootRun + agent → /dev/ask 실왕복

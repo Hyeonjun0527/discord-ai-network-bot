@@ -31,8 +31,10 @@ export function toast(msg, o = {}) {
 
   let bar = el.querySelector('.toast-bar');
   if (o.progress != null) {
-    if (!bar) { bar = document.createElement('div'); bar.className = 'toast-bar'; bar.innerHTML = '<i></i>'; el.appendChild(bar); }
-    bar.querySelector('i').style.width = Math.max(0, Math.min(100, o.progress)) + '%';
+    if (!bar) { bar = document.createElement('div'); bar.className = 'toast-bar'; bar.innerHTML = '<span class="track"><i></i></span><b></b>'; el.appendChild(bar); }
+    const pct = Math.max(0, Math.min(100, Math.round(o.progress)));
+    bar.querySelector('i').style.width = pct + '%';
+    bar.querySelector('b').textContent = pct + '%';
     el.classList.add('has-bar'); // 진행 토스트 고정 폭(문구가 바뀌어도 크기 일정)
   } else if (bar) { bar.remove(); el.classList.remove('has-bar'); }
   clearTimeout(el._t);

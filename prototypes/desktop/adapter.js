@@ -348,7 +348,12 @@ export const api = {
     return post(runtime === 'image' ? ENDPOINTS.sdSetup : ENDPOINTS.ollamaSetup, model ? { model } : {});
   },
 
-  /** 설치 진행률 폴링 — webui.py *-setup-progress. 응답: { phase, percent, message, error } */
+  /**
+   * 설치 진행률 폴링 — webui.py *-setup-progress. 응답: { phase, percent, message, error }.
+   * mock 은 시간 경과로 % 를 단조 증가시켜 다운로드를 시뮬한다. 실제 백엔드(sd_setup._download)는
+   * 받은 바이트 비율을 다운로드 구간(35~95%)으로 매핑해 같은 shape 로 보고하며, 끊기면 .part 로
+   * 이어받기(HTTP Range)한다 — 끊김/이어받기 시뮬은 백엔드 책임이라 mock 에서는 재현하지 않는다.
+   */
   async getSetupProgress(runtime) {
     if (USE_MOCK) {
       const s = _setup[runtime];

@@ -179,7 +179,7 @@ def test_run_setup_installs_prereqs(monkeypatch, tmp_path):
             (directory / "webui.sh").write_text("#!/bin/sh\n")
         return 0, "ok"
 
-    async def fake_download(url, dest):
+    async def fake_download(url, dest, message_prefix="이미지 모델 내려받는 중…"):
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text("m")
 
@@ -223,7 +223,7 @@ def test_run_setup_full_flow(monkeypatch, tmp_path):
 
     downloaded: dict = {}
 
-    async def fake_download(url, dest):
+    async def fake_download(url, dest, message_prefix="이미지 모델 내려받는 중…"):
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text("model")
         downloaded["url"] = url
@@ -311,6 +311,194 @@ def test_run_setup_cancel_after_clone(monkeypatch, tmp_path):
     ok = asyncio.run(sd_mod.run_setup("http://127.0.0.1:7860"))
     assert ok is False
     assert sd_mod.progress()["phase"] == "cancelled"
+
+
+def test_dl_percent_maps_into_download_band():
+    """받은 바이트 비율을 다운로드 구간(35~95%)으로 매핑."""
+    assert sd_mod._dl_percent(0, 100) == sd_mod._DL_START_PCT
+    assert sd_mod._dl_percent(100, 100) == sd_mod._DL_END_PCT
+    mid = sd_mod._dl_percent(50, 100)
+    assert sd_mod._DL_START_PCT < mid < sd_mod._DL_END_PCT
+    # 전체 크기 미상이면 시작점만(0 나눗셈 방지).
+    assert sd_mod._dl_percent(123, None) == sd_mod._DL_START_PCT
+    assert sd_mod._dl_percent(123, 0) == sd_mod._DL_START_PCT
+
+
+class _FakeStreamResp:
+    """aiohttp 응답 스트리밍 모킹: status·content_length·청크 시퀀스를 흉내낸다."""
+
+    def __init__(self, status, body=b"", content_length=None):
+        self.status = status
+        self._body = body
+        self.content_length = content_length
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    @property
+    def content(self):
+        body = self._body
+
+        class _Content:
+            @staticmethod
+            async def iter_chunked(n):
+                for i in range(0, len(body), n):
+                    yield body[i : i + n]
+
+        return _Content()
+
+
+class _FakeSession:
+    """aiohttp.ClientSession 모킹: get(url, headers) 호출을 기록하고 미리 준비한 응답을 돌려준다."""
+
+    def __init__(self, response, captured):
+        self._response = response
+        self._captured = captured
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    def get(self, url, headers=None):
+        self._captured["url"] = url
+        self._captured["headers"] = dict(headers or {})
+        return self._response
+
+
+def _patch_session(monkeypatch, response, captured):
+    monkeypatch.setattr(
+        sd_mod.aiohttp, "ClientSession", lambda timeout=None: _FakeSession(response, captured)
+    )
+
+
+def test_download_reports_progress(monkeypatch, tmp_path):
+    """(a) 다운로드 중 진행률이 35~95% 구간에서 갱신되고 message 에 MB 가 표시된다."""
+    sd_mod._cancel = False
+    dest = tmp_path / "model.safetensors"
+    body = b"x" * (40 << 20)  # 40MB — throttle(16MB) 경계를 여러 번 넘김
+    captured: dict = {}
+    _patch_session(monkeypatch, _FakeStreamResp(200, body, content_length=len(body)), captured)
+
+    seen: list = []
+    orig_set = sd_mod._set
+
+    def spy_set(phase=None, percent=None, message=None, error=None):
+        if phase == "downloading":
+            seen.append((percent, message))
+        orig_set(phase, percent, message, error)
+
+    monkeypatch.setattr(sd_mod, "_set", spy_set)
+    asyncio.run(sd_mod._download("http://x/model", dest, "이미지 모델 내려받는 중…"))
+
+    assert dest.read_bytes() == body  # 완료 시 .part → dest rename
+    assert not dest.with_suffix(dest.suffix + ".part").exists()
+    assert seen, "다운로드 중 진행률 갱신이 일어나야 한다"
+    # 갱신된 percent 는 모두 다운로드 구간 안, 단조 증가.
+    pcts = [p for p, _ in seen]
+    assert all(sd_mod._DL_START_PCT <= p <= sd_mod._DL_END_PCT for p in pcts)
+    assert pcts == sorted(pcts)
+    assert "MB" in seen[-1][1]  # message 에 받은/전체 MB 표시
+
+
+def test_download_resumes_with_range_206(monkeypatch, tmp_path):
+    """(b) 이어받기: 기존 .part 가 있으면 Range 요청 → 206 응답을 append 로 이어붙인다."""
+    sd_mod._cancel = False
+    dest = tmp_path / "model.safetensors"
+    part = dest.with_suffix(dest.suffix + ".part")
+    part.write_bytes(b"AAAA")  # 이미 4바이트 받음
+    rest = b"BBBBBB"  # 남은 6바이트
+    captured: dict = {}
+    # 206: content_length 는 '남은 분량'(6)만.
+    _patch_session(monkeypatch, _FakeStreamResp(206, rest, content_length=len(rest)), captured)
+
+    asyncio.run(sd_mod._download("http://x/model", dest))
+
+    assert captured["headers"].get("Range") == "bytes=4-"  # 받은 크기로 Range 요청
+    assert dest.read_bytes() == b"AAAA" + rest  # 기존 + 남은 분량 = 완성
+    assert not part.exists()
+
+
+def test_download_range_unsupported_restarts_200(monkeypatch, tmp_path):
+    """(c) Range 미지원: .part 있어도 서버가 200(전체 재전송)이면 처음부터(절단)."""
+    sd_mod._cancel = False
+    dest = tmp_path / "model.safetensors"
+    part = dest.with_suffix(dest.suffix + ".part")
+    part.write_bytes(b"OLD-GARBAGE")  # 이전 부분 — 200 이면 버려야 함
+    full = b"FULLBODY12"
+    captured: dict = {}
+    _patch_session(monkeypatch, _FakeStreamResp(200, full, content_length=len(full)), captured)
+
+    asyncio.run(sd_mod._download("http://x/model", dest))
+
+    assert captured["headers"].get("Range") == "bytes=11-"  # 시도는 했으나
+    assert dest.read_bytes() == full  # 200 → 절단 후 전체 = 정확히 full(이전 garbage 없음)
+    assert not part.exists()
+
+
+def test_download_416_treats_as_complete(monkeypatch, tmp_path):
+    """416(범위 초과): 이미 다 받은 것으로 보고 .part 를 rename 한다."""
+    sd_mod._cancel = False
+    dest = tmp_path / "model.safetensors"
+    part = dest.with_suffix(dest.suffix + ".part")
+    part.write_bytes(b"COMPLETE")
+    captured: dict = {}
+    _patch_session(monkeypatch, _FakeStreamResp(416), captured)
+
+    asyncio.run(sd_mod._download("http://x/model", dest))
+    assert dest.read_bytes() == b"COMPLETE"
+    assert not part.exists()
+
+
+def test_download_preserves_part_on_error(monkeypatch, tmp_path):
+    """(d) 네트워크 끊김 등 예외 시 .part 를 보존(삭제 금지) → 다음 시도가 이어받음."""
+    sd_mod._cancel = False
+    dest = tmp_path / "model.safetensors"
+    part = dest.with_suffix(dest.suffix + ".part")
+
+    class _BoomResp(_FakeStreamResp):
+        @property
+        def content(self):
+            class _Content:
+                @staticmethod
+                async def iter_chunked(n):
+                    yield b"PARTIAL"  # 일부 받고
+                    raise ConnectionResetError("끊김")  # 도중 끊김
+            return _Content()
+
+    captured: dict = {}
+    _patch_session(monkeypatch, _BoomResp(200, content_length=100), captured)
+
+    import pytest as _pt
+
+    with _pt.raises(ConnectionResetError):
+        asyncio.run(sd_mod._download("http://x/model", dest))
+    assert part.exists() and part.read_bytes() == b"PARTIAL"  # 받은 만큼 보존
+    assert not dest.exists()
+
+
+def test_download_preserves_part_on_cancel(monkeypatch, tmp_path):
+    """취소(_cancel) 시에도 .part 를 보존한다(다음 run_setup 이 이어받음)."""
+    dest = tmp_path / "model.safetensors"
+    part = dest.with_suffix(dest.suffix + ".part")
+    body = b"y" * (4 << 20)
+    captured: dict = {}
+    _patch_session(monkeypatch, _FakeStreamResp(200, body, content_length=len(body)), captured)
+
+    sd_mod._cancel = True  # 첫 청크에서 즉시 취소
+    import pytest as _pt
+
+    try:
+        with _pt.raises(asyncio.CancelledError):
+            asyncio.run(sd_mod._download("http://x/model", dest))
+        assert part.exists()  # 취소돼도 .part 보존
+        assert not dest.exists()
+    finally:
+        sd_mod._cancel = False  # 다른 테스트 영향 방지
 
 
 def test_launch_only_already_running(monkeypatch):

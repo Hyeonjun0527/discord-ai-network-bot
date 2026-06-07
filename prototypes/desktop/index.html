@@ -1274,7 +1274,7 @@
 
     // ── 서버 관리(관리자, 앱 내 — 웹 위임 폐기). 13 Provider 관리부터 구현, 나머지 탭은 단계적. ──
     const MTABS = [
-      { k: 'overview', t: '개요' }, { k: 'profile', t: 'AI 프로필' }, { k: 'channels', t: '채널' },
+      { k: 'overview', t: '개요' }, { k: 'profile', t: '전역 프롬프트' }, { k: 'channels', t: '채널' },
       { k: 'channelai', t: '채널 AI' }, { k: 'rag', t: 'RAG' }, { k: 'preset', t: '프리셋' }, { k: 'provider', t: 'Provider' },
     ]; // v1: 역할별 정책·다중응답(multi)은 범위 외
     let _manageTab = 'provider';
@@ -1396,15 +1396,7 @@
           (p.isDefault ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-default="' + p.id + '">기본으로</button>') +
           (p.builtin ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-del="' + p.id + '" data-name="' + p.name + '">삭제</button>') +
         '</div></div></div>').join('');
-      const ava = m.profile.avatarUrl
-        ? '<img src="' + m.profile.avatarUrl + '" alt="" onerror="this.remove()">'
-        : (m.profile.displayName || '니').trim().charAt(0);
-      return '<div class="dcard"><div class="dlabel">이 서버의 니아 <span class="dim">· 외형</span></div>' +
-        '<div class="prof-row"><span class="prov-av prof-av">' + ava + '</span>' +
-          '<button class="btn btn--sm btn--secondary" data-soon="아바타 변경">이미지 변경</button></div>' +
-        '<div class="pfield" style="margin-top:14px"><label>표시 이름</label>' +
-          '<div class="cm-row"><input class="cx-input" id="profName" value="' + m.profile.displayName + '" maxlength="32"><button class="btn btn--md btn--secondary" id="profSave">저장</button></div></div>' +
-        '<div class="dsub" style="margin-top:11px">서버별 니아 이름·아바타는 답변에 적용돼요(webhook). 슬래시(<code>/ask</code>) 응답엔 NEXA 기본 아바타가 보일 수 있어요. NEXA 글로벌 기본 프로필은 NEXA 가 관리해요.</div></div>' +
+      return '<div class="dsub" style="margin-bottom:16px">니아의 이름·아바타는 v1 에서 NEXA 기본으로 고정돼요(디스코드 봇은 서버별 프로필을 지원하지 않아요). 여기선 서버 전체에 적용할 AI 성격(전역 프롬프트셋)을 관리해요.</div>' +
         '<div class="drow"><div class="msec-label" style="margin:0">전역 프롬프트셋 <span class="dim">· 서버 전체 기본 성격</span></div>' +
           '<button class="btn btn--sm btn--secondary" id="promptAdd">+ 추가</button></div>' + prompts;
     }
@@ -1455,9 +1447,7 @@
       manageEl.querySelectorAll('[data-ch-toggle]').forEach(b => b.onclick = () => { const x = m.channels.list.find(c => c.name === b.dataset.chToggle); if (x) x.aiAllowed = !x.aiAllowed; rerender(); });
       manageEl.querySelectorAll('[data-cai-toggle]').forEach(b => b.onclick = () => { const x = m.channelAi.find(c => c.channel === b.dataset.caiToggle); if (x) x.on = !x.on; rerender(); });
       manageEl.querySelectorAll('[data-preset-toggle]').forEach(b => b.onclick = () => { const x = m.presets.find(c => c.name === b.dataset.presetToggle); if (x) x.on = !x.on; rerender(); });
-      // AI 프로필 — 표시 이름 저장 · 전역 프롬프트셋 기본/삭제/추가
-      const ps = manageEl.querySelector('#profSave');
-      if (ps) ps.onclick = () => { const v = (manageEl.querySelector('#profName').value || '').trim(); if (v) m.profile.displayName = v; toast('서버 표시 이름을 저장했어요', { type: 'ok', sub: v }); };
+      // 전역 프롬프트셋 — 기본/삭제/추가
       manageEl.querySelectorAll('[data-prompt-default]').forEach(b => b.onclick = () => { m.prompts.forEach(p => { p.isDefault = (p.id === b.dataset.promptDefault); }); toast('기본 프롬프트셋을 변경했어요', { type: 'ok' }); rerender(); });
       manageEl.querySelectorAll('[data-prompt-del]').forEach(b => b.onclick = () => confirmDeletePrompt(d, m, b.dataset.promptDel, b.dataset.name, rerender));
       const pa = manageEl.querySelector('#promptAdd');

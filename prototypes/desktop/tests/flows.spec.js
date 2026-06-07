@@ -136,17 +136,19 @@ test('v1 관리 탭: 채널/채널AI/RAG/프리셋 렌더(역할정책·다중�
   await expect(page.locator('#serverManage')).toContainText('번역봇');
 });
 
-test('AI 프로필 탭: 니아 기본 프롬프트셋 + 표시 이름 + 추가/기본/삭제', async ({ page }) => {
+test('전역 프롬프트 탭: 니아 기본 셋 + 추가/기본/삭제(외형 편집 없음)', async ({ page }) => {
   await page.goto('/index.html#/servers/1001/manage/profile');
   await page.waitForFunction(() => !!window.App);
-  await expect(page.locator('#serverManage .mtab.active')).toContainText('AI 프로필');
+  await expect(page.locator('#serverManage .mtab.active')).toContainText('전역 프롬프트');
   // 니아 기본 페르소나 + 기본 배지
   await expect(page.locator('#serverManage')).toContainText('니아 (기본 페르소나)');
   await expect(page.locator('#serverManage .me').first()).toHaveText('기본');
-  await expect(page.locator('#profName')).toHaveValue('니아');
-  // 다른 셋을 기본으로 → 니아 기본 배지 사라지고 정중한 비서가 기본
+  // v1: 이름·아바타 편집 UI 없음(외형 고정)
+  await expect(page.locator('#profName')).toHaveCount(0);
+  await expect(page.locator('#serverManage')).toContainText('NEXA 기본으로 고정');
+  // 다른 셋을 기본으로
   await page.click('#serverManage [data-prompt-default="formal"]');
-  await expect(page.locator('#serverManage [data-prompt-default="nia"]')).toBeVisible(); // 니아가 이제 '기본으로' 버튼 가짐
+  await expect(page.locator('#serverManage [data-prompt-default="nia"]')).toBeVisible();
   // 프롬프트셋 추가 모달
   await page.click('#promptAdd');
   await expect(page.locator('.modal-layer .modal', { hasText: '전역 프롬프트셋 추가' })).toBeVisible();

@@ -59,10 +59,8 @@ const MOCK = {
         { providerUserId: 5002, name: 'user_kim', isMe: false, state: ProviderState.ONLINE_IDLE, models: 1, today: 0, avgMs: 0 },
         { providerUserId: 5003, name: 'user_park', isMe: false, state: ProviderState.PAUSED, models: 2, today: 0, avgMs: 0 },
       ],
-      // AI 프로필 — 봇(니아) 서버 표시 이름 + 전역 프롬프트셋(서버 전체 기본 시스템 프롬프트)
-      // 봇 추가 시 기본은 '니아' 페르소나 셋. 서버 표시 이름은 닉네임(Discord ManageNicknames),
-      // 아바타·글로벌 이름은 개발자 포털(서버별 불가) — Gap-Profile.
-      profile: { displayName: '니아', avatarUrl: null },
+      // 전역 프롬프트셋(서버 전체 기본 시스템 프롬프트). 봇 추가 시 기본은 '니아' 페르소나.
+      // v1: 니아 이름·아바타는 NEXA 기본 고정(디스코드 봇 per-guild 프로필 API 부재 — Gap-Profile).
       prompts: [
         { id: 'nia', name: '니아 (기본 페르소나)', builtin: true, isDefault: true,
           content: '당신은 「니아」, 이 디스코드 서버의 다정하고 든든한 AI 멤버예요. 멤버의 질문에 친근하고 정확하게 답하고, 모르면 솔직하게 모른다고 말해요. 서버 분위기를 존중하며 도움 되는 것을 최우선으로 합니다.' },
@@ -103,7 +101,6 @@ const MOCK = {
       policy: { autoApprove: true, defaultDailyLimit: 50, scope: 'ALL' },
       pending: [],
       roster: [{ providerUserId: 0, name: '나 (이 PC)', isMe: true, state: ProviderState.PENDING, models: 0, today: 0, avgMs: 0 }],
-      profile: { displayName: '니아', avatarUrl: null },
       prompts: [{ id: 'nia', name: '니아 (기본 페르소나)', builtin: true, isDefault: true, content: '당신은 「니아」, 이 디스코드 서버의 다정하고 든든한 AI 멤버예요.' }],
       channels: { defaultModel: 'exaone3.5:7.8b', defaultLang: '한국어', list: [{ name: 'general', aiAllowed: true }] },
       channelAi: [], rag: { docs: [], applyChannels: [] }, presets: [],

@@ -35,8 +35,34 @@ const MOCK = {
     { guildId: 1003, guildName: '디자인 스튜디오', iconUrl: null, state: ProviderState.PAUSED, role: Role.PROVIDER, models: 1, today: 0, members: 312, avgMs: 0, myModels: ['llama3.1:8b'], policy: { dailyLimit: 10, maxConcurrency: 1, maxSeconds: 300, scope: 'ALL' }, webUrl: 'https://discord-ai.yeon.world/dashboard/1003' },
     { guildId: 1004, guildName: '신규 서버', iconUrl: null, state: ProviderState.PENDING, role: Role.ADMIN, models: 0, today: 0, members: 47, avgMs: 0, myModels: [], policy: { dailyLimit: 50, maxConcurrency: 1, maxSeconds: 600, scope: 'ALL' }, webUrl: 'https://discord-ai.yeon.world/dashboard/1004' },
   ],
-  // webui.py /api/status
-  status: { running: true, connected: true, processed: 0, imageReady: true, enableImage: true, sdInstalled: true },
+  // webui.py /api/status — 실제 응답 필드 전부(camelCase).
+  status: {
+    running: true, connected: true, processed: 12, imageReady: true, enableImage: true, sdInstalled: true,
+    models: ['exaone3.5:7.8b', 'llama3.1:8b', 'qwen2.5-coder:7b'],
+    hasToken: true, relayUrl: 'wss://discord-ai.yeon.world/agent', backgroundRunning: false, connectEnabled: true,
+  },
+  // webui.py /api/logs — 최근 로그 라인(최대 200). 형식 "HH:MM:SS LEVEL | message".
+  logs: [
+    '09:12:03 INFO | 에이전트 시작 (Nexa v0.31.0)',
+    '09:12:03 INFO | 중앙 서버 연결: wss://discord-ai.yeon.world/agent',
+    '09:12:04 INFO | Ollama 연결됨 — 모델 3개 제공 (exaone3.5:7.8b, llama3.1:8b, qwen2.5-coder:7b)',
+    '09:12:04 INFO | Stable Diffusion 준비됨 — 이미지 생성 가능',
+    '09:12:05 INFO | 서버 연결: 한국어 개발 길드',
+    '09:13:21 INFO | /ask 처리 완료 (llama3.1:8b · 1.4s · 한국어 개발 길드)',
+    '09:14:08 INFO | /ask 처리 완료 (exaone3.5:7.8b · 0.9s · 게임 커뮤니티)',
+    '09:15:02 WARN | 일일 한도 근접 — 한국어 개발 길드 48/50',
+    '09:15:47 INFO | /imagine 처리 완료 (Stable Diffusion · 6.2s)',
+    '09:16:40 ERROR | Stable Diffusion 응답 지연(타임아웃) — 재시도 1/2',
+    '09:16:52 INFO | Stable Diffusion 재시도 성공',
+    '09:18:10 INFO | /ask 처리 완료 (qwen2.5-coder:7b · 2.1s · 한국어 개발 길드)',
+  ],
+  // 앱 설정(config_file.py 항목 일부). ⚠ 통합 설정 GET 은 백엔드에 없음 — status + config 조합 필요(Gap).
+  settings: {
+    autostart: false, background: false, autoConnect: true, autoUpdate: true,
+    ollamaUrl: 'http://localhost:11434',
+  },
+  // 업데이트 정보 — webui.py /api/update-info
+  updateInfo: { current: '0.31.0', latest: '0.31.0', outdated: false, supported: true },
   // 런타임 점검 응답시간(목)
   runtimePing: { 'Ollama': 28, 'Stable Diffusion': 400 },
   // 로컬 모델 — webui.py /api/models { models, selected }. size·tags·lastUsed 는 ⚠ 백엔드 추가 필요.
@@ -231,8 +257,53 @@ export const api = {
   },
   /** @returns {Promise<import('./contract.js').AgentStatus>} */
   async getStatus() {
-    if (USE_MOCK) { await delay(60); return { ...MOCK.status }; }
+    if (USE_MOCK) { await delay(60); return structuredClone(MOCK.status); }
     return http(ENDPOINTS.status);
+  },
+  /** 최근 로그 라인 — webui.py /api/logs. @returns {Promise<import('./contract.js').AgentLogs>} */
+  async getLogs() {
+    if (USE_MOCK) { await delay(60); return { lines: [...MOCK.logs] }; }
+    return http(ENDPOINTS.logs);
+  },
+  /** 에이전트 실행 시작 — webui.py /api/start (내부적으로 setup→연결). */
+  async startAgent() {
+    if (USE_MOCK) { await delay(220); MOCK.status.running = true; MOCK.status.connected = true; return { ok: true }; }
+    return post(ENDPOINTS.start);
+  },
+  /** 에이전트 중지 — webui.py /api/stop. */
+  async stopAgent() {
+    if (USE_MOCK) { await delay(200); MOCK.status.running = false; MOCK.status.connected = false; return { ok: true }; }
+    return post(ENDPOINTS.stop);
+  },
+  /** 이미지 요청 수신 토글(enableImage). ⚠ 백엔드 단일 토글 API 없음 — /api/setup 재호출로 반영(contract 참고). */
+  async setImageReceiving(on) {
+    if (USE_MOCK) { await delay(80); MOCK.status.enableImage = on; return { ok: true, enableImage: on }; }
+    return post(ENDPOINTS.setup, { enableImage: on });
+  },
+  /** 통합 설정 조회. ⚠ 백엔드 통합 설정 GET 없음 — 실 전환 시 status + config 조합(Gap). */
+  async getSettings() {
+    if (USE_MOCK) {
+      await delay(60);
+      return { ...MOCK.settings, enableImage: MOCK.status.enableImage, relayUrl: MOCK.status.relayUrl, hasToken: MOCK.status.hasToken };
+    }
+    return http(ENDPOINTS.status);
+  },
+  /** 설정 변경. 매핑: enableImage→setup, autoUpdate→auto-update, autostart·background·autoConnect→onboard-apply. */
+  async setSetting(key, value) {
+    if (USE_MOCK) { await delay(80); if (key === 'enableImage') MOCK.status.enableImage = value; else MOCK.settings[key] = value; return { ok: true }; }
+    if (key === 'enableImage') return post(ENDPOINTS.setup, { enableImage: value });
+    if (key === 'autoUpdate') return post(ENDPOINTS.autoUpdate, { autoUpdate: value });
+    return post(ENDPOINTS.onboardApply, { [key]: value });
+  },
+  /** 업데이트 정보 — webui.py /api/update-info. */
+  async getUpdateInfo() {
+    if (USE_MOCK) { await delay(60); return { ...MOCK.updateInfo }; }
+    return http(ENDPOINTS.updateInfo);
+  },
+  /** 연결 해제(로그아웃) — webui.py /api/logout. 토큰·서버 연결을 비우고 온보딩으로. */
+  async logout() {
+    if (USE_MOCK) { await delay(120); MOCK.status.hasToken = false; MOCK.status.connected = false; return { ok: true }; }
+    return post(ENDPOINTS.logout);
   },
   /** 온보딩 설정 적용 — webui.py /api/onboard-apply */
   async applyOnboarding(cfg) {

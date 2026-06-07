@@ -38,6 +38,7 @@ export const Wire = Object.freeze({
 // 로컬 에이전트 HTTP 엔드포인트 — webui.py 라우터와 1:1 (전환 시 그대로 fetch)
 export const ENDPOINTS = Object.freeze({
   status: '/api/status',
+  logs: '/api/logs',          // GET → { lines: [string] }  라인 형식 "HH:MM:SS LEVEL | message"
   models: '/api/models',
   servers: '/api/servers',
   // ⚠ 서버 상세(기부자 관점) — Gap-S/P/W. 아래 3개는 백엔드 신설 필요.
@@ -78,11 +79,33 @@ export const ENDPOINTS = Object.freeze({
   start: '/api/start',
   stop: '/api/stop',
   logout: '/api/logout',
+  // 설정/업데이트 — webui.py.  ⚠ 통합 설정 GET 은 없다(상태는 /api/status, 나머지 config 항목은 노출 API 부재).
+  //   변경 매핑: enableImage→/api/setup, autoUpdate→/api/auto-update, autostart·background·autoConnect→/api/onboard-apply.
+  //   relay_url·ollama_url 변경 API 는 아직 없음(config 파일 직접 — Gap, 고급 설정).
+  autoUpdate: '/api/auto-update',     // POST {autoUpdate} → {ok, autoUpdate}
+  updateInfo: '/api/update-info',     // GET → {current, latest, outdated, supported, autoUpdate, error?}
+  updateProgress: '/api/update-progress',
+  updateApply: '/api/update',         // POST → 업데이트 시작(진행률은 updateProgress 폴링)
+  installInfo: '/api/install-info',   // GET → {platform, label, supported, installed, reason?}
 });
 
 // ── 응답 shape(참고용 JSDoc) — webui.py 와 동일 필드명(camelCase) ──
-/** @typedef {{running:boolean, connected:boolean, processed:number, imageReady:boolean, enableImage:boolean, sdInstalled:boolean}} AgentStatus */
-//   webui.py /api/status — 실제 존재 필드.
+/**
+ * @typedef {Object} AgentStatus  webui.py /api/status 의 실제 필드(전부).
+ * @property {boolean} running            에이전트 실행 중
+ * @property {boolean} connected          중앙 서버(릴레이) 연결됨
+ * @property {number}  processed          처리한 요청 수(세션 누적)
+ * @property {boolean} imageReady         이미지(SD) 제공 가능
+ * @property {boolean} enableImage        이미지 요청 수신 토글
+ * @property {boolean} sdInstalled        Stable Diffusion 설치됨
+ * @property {string[]} models            현재 제공(advertise) 중인 모델명(실행 중일 때)
+ * @property {boolean} hasToken           연결 토큰 보유(온보딩 완료)
+ * @property {string}  relayUrl           중앙 서버 URL
+ * @property {boolean} backgroundRunning  백그라운드(트레이) 상주 중
+ * @property {boolean} connectEnabled     Discord 연결 가능 상태
+ */
+/** @typedef {{lines:string[]}} AgentLogs  webui.py /api/logs — 최근 로그 라인(최대 200). "HH:MM:SS LEVEL | message". */
+/** @typedef {{phase:string, percent:number, message:string, error?:string}} SetupProgress  런타임 설치 진행률(ollama/sd). */
 /**
  * @typedef {Object} ServerConn  서버 연결(프로토타입 확장 shape)
  * @property {number}  guildId    webui.py /api/servers 에 존재

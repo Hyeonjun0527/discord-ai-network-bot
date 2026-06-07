@@ -229,6 +229,48 @@
     /* 모델 설치 모달 — VRAM 가이드 도움말 */
     .cat-help { margin: 4px 0 14px; padding: 12px 14px; border-radius: 13px; border: 1px solid var(--line); background: rgba(255,255,255,.025); font-size: 12.5px; line-height: 1.65; color: var(--muted); }
     .cat-help b { color: #d2dbe7; font-weight: 700; }
+
+    /* 로그 화면 */
+    .log-auto { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+    .log-filters { display: flex; gap: 8px; margin: 18px 0 12px; }
+    .log-chip { border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 999px; cursor: pointer; }
+    .log-chip:hover { color: var(--text); }
+    .log-chip.active { color: var(--text); border-color: color-mix(in srgb, var(--c-accent) 50%, var(--line)); background: color-mix(in srgb, var(--c-accent) 14%, transparent); }
+    .log-view { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.75; border: 1px solid var(--line); border-radius: 14px; background: rgba(8, 14, 26, .55); padding: 14px 16px; max-height: calc(100vh - 300px); overflow-y: auto; }
+    .log-line { display: flex; gap: 10px; padding: 1px 0; white-space: pre-wrap; word-break: break-word; }
+    .log-line .lt { color: var(--subtle); flex: 0 0 auto; }
+    .log-line .ll { flex: 0 0 50px; font-weight: 700; color: var(--muted); }
+    .log-line .lm { color: var(--text); }
+    .log-line.warn .ll, .log-line.warn .lm { color: var(--warn); }
+    .log-line.error .ll, .log-line.error .lm { color: #ff6b6b; }
+    .log-empty { color: var(--subtle); text-align: center; padding: 44px; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 14px; }
+
+    /* 로컬 실행 화면 */
+    .run-card { display: flex; align-items: center; gap: 16px; padding: 18px 20px; border-radius: 16px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(15, 22, 38, .7), rgba(10, 16, 28, .8)); margin: 20px 0 28px; }
+    .run-card .rc-dot { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; background: var(--subtle); }
+    .run-card.on .rc-dot { background: #28c840; box-shadow: 0 0 10px #28c840; }
+    .run-card .rc-main { flex: 1 1 auto; min-width: 0; }
+    .run-card .rc-title { font-weight: 700; font-size: 15px; }
+    .run-card .rc-meta { margin-top: 4px; color: var(--muted); font-size: 13px; }
+    .run-card .rc-relay { margin-top: 3px; color: var(--subtle); font-size: 12px; font-family: ui-monospace, Menlo, monospace; word-break: break-all; }
+    .rt-row { display: flex; align-items: center; gap: 14px; padding: 15px 18px; border-radius: 15px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(15, 22, 38, .7), rgba(10, 16, 28, .8)); }
+    .rt-row .rt-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--subtle); }
+    .rt-row.ready .rt-dot { background: #28c840; box-shadow: 0 0 8px #28c840; }
+    .rt-row .rt-body { flex: 1 1 auto; min-width: 0; }
+    .rt-row .rt-name { font-weight: 700; }
+    .rt-row .rt-state { margin-top: 3px; color: var(--muted); font-size: 13px; }
+    .rt-recv { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); flex: 0 0 auto; }
+
+    /* 설정 화면 */
+    .set-group { margin-top: 24px; }
+    .set-group > .sg-title { font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--subtle); text-transform: uppercase; margin: 0 0 12px 2px; }
+    .set-row { display: flex; align-items: center; gap: 16px; padding: 15px 18px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.02); }
+    .set-row + .set-row { margin-top: 10px; }
+    .set-row .sr-body { flex: 1 1 auto; min-width: 0; }
+    .set-row .sr-name { font-weight: 600; font-size: 14.5px; }
+    .set-row .sr-desc { margin-top: 3px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+    .set-row .sr-val { color: var(--subtle); font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; word-break: break-all; }
+    .set-row .sr-tag { font-size: 11px; color: var(--subtle); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; flex: 0 0 auto; }
     .cat-help .em { color: var(--c-cyan); font-weight: 700; font-family: ui-monospace, Menlo, monospace; }
     /* 모달 우상단 닫기(✕) — 토스트 ✕ 컨벤션과 통일 */
     .modal { position: relative; }
@@ -894,9 +936,36 @@
         <div id="serverDetail" hidden><!-- JS 렌더(기부자 관점 개요) --></div>
         <div id="serverManage" hidden><!-- JS 렌더(관리자 — 앱 내 서버 관리) --></div>
       </section>
-      <section class="view" data-view="local"><div class="placeholder"><div class="ico">◆</div><h2>로컬 실행</h2><p>다음 단계에서 구현합니다.</p></div></section>
-      <section class="view" data-view="logs"><div class="placeholder"><div class="ico">◆</div><h2>로그</h2><p>다음 단계에서 구현합니다.</p></div></section>
-      <section class="view" data-view="settings"><div class="placeholder"><div class="ico">◆</div><h2>설정</h2><p>다음 단계에서 구현합니다.</p></div></section>
+      <section class="view" data-view="local">
+        <div class="page-head">
+          <div><h1 class="page-title">로컬 실행</h1><p class="page-sub">이 PC 에서 AI 를 제공하는 엔진을 켜고 끕니다.</p></div>
+          <div class="head-actions"><button class="btn btn--md btn--primary" id="localToggleBtn">…</button></div>
+        </div>
+        <div class="run-card" id="localRunCard"><!-- JS 렌더 --></div>
+        <div class="sec-head"><span>런타임</span></div>
+        <div class="grid-2" id="localRuntimes"><!-- JS 렌더 --></div>
+      </section>
+      <section class="view" data-view="logs">
+        <div class="page-head">
+          <div><h1 class="page-title">로그</h1><p class="page-sub">에이전트의 최근 활동 기록이에요. 문제 진단에 참고하세요.</p></div>
+          <div class="head-actions">
+            <label class="log-auto"><span>자동 새로고침</span><button class="switch on" id="logAutoSw" role="switch" aria-checked="true" aria-label="자동 새로고침"></button></label>
+            <button class="btn btn--sm btn--secondary" id="logRefresh">새로고침</button>
+            <button class="btn btn--sm btn--secondary" id="logCopy">복사</button>
+          </div>
+        </div>
+        <div class="log-filters" id="logFilters">
+          <button class="log-chip active" data-level="all">전체</button>
+          <button class="log-chip" data-level="info">정보</button>
+          <button class="log-chip" data-level="warn">경고</button>
+          <button class="log-chip" data-level="error">오류</button>
+        </div>
+        <div class="log-view" id="logView"><!-- JS 렌더 --></div>
+      </section>
+      <section class="view" data-view="settings">
+        <div class="page-head"><div><h1 class="page-title">설정</h1><p class="page-sub">앱 동작과 업데이트, 연결을 관리해요.</p></div></div>
+        <div id="settingsBody"><!-- JS 렌더 --></div>
+      </section>
     </main>
   </div>
 
@@ -1101,6 +1170,202 @@
 
   <!-- 토스트(액션 피드백) — 모듈. window.toast 도 노출(일반 script 호환) -->
   <script type="module" src="./toast.js"></script>
+
+  <!-- ══ 로그 화면 — webui.py /api/logs 폴링·레벨 파싱·필터 ══ -->
+  <script type="module">
+    import { api } from './adapter.js';
+    import { toast } from './toast.js';
+
+    const view = document.querySelector('.view[data-view="logs"]');
+    const logView = document.getElementById('logView');
+    let _raw = [], _filter = 'all', _auto = true;
+
+    const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    function parse(raw) {
+      const m = raw.match(/^(\d{2}:\d{2}:\d{2})\s+(\w+)\s*\|\s*([\s\S]*)$/);
+      if (!m) return { time: '', level: 'info', msg: raw };
+      const lv = m[2].toLowerCase();
+      const level = lv.startsWith('warn') ? 'warn'
+        : (lv.startsWith('err') || lv.startsWith('crit') || lv.startsWith('fatal')) ? 'error'
+          : lv.startsWith('debug') ? 'debug' : 'info';
+      return { time: m[1], level, msg: m[3] };
+    }
+    function render() {
+      const rows = _raw.map(parse).filter((l) => _filter === 'all' || l.level === _filter || (_filter === 'info' && l.level === 'debug'));
+      if (!rows.length) { logView.innerHTML = '<div class="log-empty">표시할 로그가 없어요.</div>'; return; }
+      const atBottom = logView.scrollHeight - logView.scrollTop - logView.clientHeight < 50;
+      logView.innerHTML = rows.map((l) =>
+        '<div class="log-line ' + l.level + '"><span class="lt">' + l.time + '</span><span class="ll">' + l.level.toUpperCase() + '</span><span class="lm">' + esc(l.msg) + '</span></div>').join('');
+      if (atBottom) logView.scrollTop = logView.scrollHeight;
+    }
+    async function load() { const r = await api.getLogs(); _raw = r.lines || []; render(); }
+
+    document.getElementById('logRefresh').addEventListener('click', load);
+    document.getElementById('logCopy').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(_raw.join('\n')); toast('로그를 복사했어요', { type: 'ok' }); }
+      catch { toast('복사에 실패했어요', { type: 'warn' }); }
+    });
+    const autoSw = document.getElementById('logAutoSw');
+    autoSw.addEventListener('click', () => { _auto = !_auto; autoSw.classList.toggle('on', _auto); autoSw.setAttribute('aria-checked', String(_auto)); });
+    document.getElementById('logFilters').addEventListener('click', (e) => {
+      const b = e.target.closest('.log-chip'); if (!b) return;
+      _filter = b.dataset.level;
+      document.querySelectorAll('#logFilters .log-chip').forEach((c) => c.classList.toggle('active', c === b));
+      render();
+    });
+
+    const isActive = () => view.classList.contains('active');
+    document.querySelector('.nav-item[data-view="logs"]').addEventListener('click', load);
+    setInterval(() => { if (isActive() && _auto) load(); }, 2500);
+    if (isActive()) load();
+  </script>
+
+  <!-- ══ 로컬 실행 화면 — /api/status·/api/models 조합, 시작/중지(/api/start·stop), 이미지 토글 ══ -->
+  <script type="module">
+    import { api } from './adapter.js';
+    import { toast } from './toast.js';
+
+    const view = document.querySelector('.view[data-view="local"]');
+    const runCard = document.getElementById('localRunCard');
+    const rtWrap = document.getElementById('localRuntimes');
+    const toggleBtn = document.getElementById('localToggleBtn');
+    let _st = null, _models = null;
+
+    function render() {
+      const s = _st || {};
+      const running = !!s.running;
+      const connTx = running ? (s.connected ? '중앙 서버 연결됨' : '연결 중…') : '중지됨';
+      const bg = s.backgroundRunning ? '백그라운드 상주 켜짐' : '백그라운드 상주 꺼짐';
+      runCard.className = 'run-card' + (running ? ' on' : '');
+      runCard.innerHTML = '<span class="rc-dot"></span><div class="rc-main">' +
+        '<div class="rc-title">' + (running ? '실행 중' : '중지됨') + ' — ' + connTx + '</div>' +
+        '<div class="rc-meta">처리 ' + (s.processed || 0) + '건 · ' + bg + '</div>' +
+        '<div class="rc-relay">' + (s.relayUrl || '') + '</div></div>';
+      toggleBtn.textContent = running ? '중지' : '시작';
+      toggleBtn.className = 'btn btn--md ' + (running ? 'btn--secondary' : 'btn--primary');
+
+      const ollamaReady = _models ? (_models.ollamaReady ?? running) : running;
+      const modelCount = running ? (s.models ? s.models.length : 0) : (_models && _models.models ? _models.models.length : 0);
+      const sdInstalled = !!s.sdInstalled, imgReady = !!s.imageReady, enableImage = !!s.enableImage;
+
+      const ollamaCard = '<div class="rt-row' + (ollamaReady ? ' ready' : '') + '">' +
+        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">Ollama <span style="font-weight:500;color:var(--subtle)">텍스트</span></div>' +
+        '<div class="rt-state">' + (ollamaReady ? ('준비됨 · 모델 ' + modelCount + '개 제공') : '미설치 또는 중지됨') + '</div></div>' +
+        (ollamaReady ? '<button class="btn btn--sm btn--secondary" data-go="models">모델 관리</button>'
+          : '<button class="btn btn--sm btn--primary" data-install="ollama">설치</button>') + '</div>';
+
+      const sdState = !sdInstalled ? '미설치' : (imgReady ? '준비됨 · 이미지 생성 가능' : '설치됨 · 준비 중');
+      const sdAction = !sdInstalled
+        ? '<button class="btn btn--sm btn--primary" data-install="image">설치</button>'
+        : '<div class="rt-recv"><span>이미지 요청 받기</span><button class="switch ' + (enableImage ? 'on' : '') + '" id="localImgSw" role="switch" aria-checked="' + enableImage + '" aria-label="이미지 요청 받기"></button></div>';
+      const sdCard = '<div class="rt-row' + (imgReady ? ' ready' : '') + '">' +
+        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">Stable Diffusion <span style="font-weight:500;color:var(--subtle)">이미지</span></div>' +
+        '<div class="rt-state">' + sdState + '</div></div>' + sdAction + '</div>';
+
+      rtWrap.innerHTML = ollamaCard + sdCard;
+
+      rtWrap.querySelectorAll('[data-go="models"]').forEach((b) => { b.onclick = () => { const n = document.querySelector('.nav-item[data-view="models"]'); if (n) n.click(); }; });
+      rtWrap.querySelectorAll('[data-install]').forEach((b) => { b.onclick = () => { if (window.openInstall) window.openInstall(b.dataset.install); }; });
+      const imgSw = document.getElementById('localImgSw');
+      if (imgSw) imgSw.onclick = async () => {
+        const on = !imgSw.classList.contains('on');
+        imgSw.classList.toggle('on', on); imgSw.setAttribute('aria-checked', String(on));
+        await api.setImageReceiving(on);
+        if (_st) _st.enableImage = on;
+        toast(on ? '이미지 요청을 받아요' : '이미지 요청을 받지 않아요', { type: 'info' });
+      };
+    }
+
+    async function load() {
+      [_st, _models] = await Promise.all([api.getStatus(), api.getModels()]);
+      render();
+    }
+
+    toggleBtn.addEventListener('click', async () => {
+      toggleBtn.disabled = true;
+      const wasRunning = _st && _st.running;
+      try {
+        if (wasRunning) { await api.stopAgent(); toast('에이전트를 중지했어요', { type: 'info' }); }
+        else { await api.startAgent(); toast('에이전트를 시작했어요', { type: 'ok' }); }
+        await load();
+      } finally { toggleBtn.disabled = false; }
+    });
+
+    const isActive = () => view.classList.contains('active');
+    document.querySelector('.nav-item[data-view="local"]').addEventListener('click', load);
+    if (isActive()) load();
+  </script>
+
+  <!-- ══ 설정 화면 — 실행 동작(onboard-apply)·업데이트(auto-update/update-info)·연결(읽기)·계정(logout) ══ -->
+  <script type="module">
+    import { api } from './adapter.js';
+    import { toast } from './toast.js';
+
+    const view = document.querySelector('.view[data-view="settings"]');
+    const body = document.getElementById('settingsBody');
+    let _s = null, _upd = null;
+
+    const TOGGLES = [
+      { key: 'autostart', name: '로그인 시 자동 시작', desc: '이 PC 에 로그인하면 Nexa 가 자동으로 켜져요.' },
+      { key: 'background', name: '백그라운드 상주', desc: '창을 닫아도 트레이에서 계속 제공해요.' },
+      { key: 'autoConnect', name: '자동 연결', desc: '시작하면 승인된 서버에 자동으로 연결해요.' },
+      { key: 'enableImage', name: '이미지 요청 받기', desc: 'Stable Diffusion 으로 이미지 생성 요청을 받아요.' },
+    ];
+    const sw = (key, on) => '<button class="switch ' + (on ? 'on' : '') + '" data-toggle="' + key + '" role="switch" aria-checked="' + !!on + '" aria-label="' + key + '"></button>';
+    const row = (name, desc, right) => '<div class="set-row"><div class="sr-body"><div class="sr-name">' + name + '</div>' +
+      (desc ? '<div class="sr-desc">' + desc + '</div>' : '') + '</div>' + right + '</div>';
+
+    function render() {
+      const s = _s || {}, u = _upd || {};
+      const exec = TOGGLES.map((t) => row(t.name, t.desc, sw(t.key, s[t.key]))).join('');
+      const verLine = u.outdated ? ('현재 v' + u.current + ' · 최신 v' + u.latest) : ('현재 v' + (u.current || '-') + ' · 최신 상태');
+      const updRight = u.outdated
+        ? '<button class="btn btn--sm btn--primary" id="setUpdateApply">업데이트</button>'
+        : '<button class="btn btn--sm btn--secondary" id="setUpdateCheck">확인</button>';
+      const updGroup = row('버전', verLine, updRight) + row('자동 업데이트', '새 버전이 나오면 자동으로 설치해요.', sw('autoUpdate', s.autoUpdate));
+      const connGroup = row('중앙 서버', '', '<span class="sr-val">' + (s.relayUrl || '-') + '</span><span class="sr-tag">고급</span>') +
+        row('Ollama 주소', '', '<span class="sr-val">' + (s.ollamaUrl || '-') + '</span><span class="sr-tag">고급</span>');
+      const acct = row(s.hasToken ? '연결됨' : '연결 안 됨',
+        s.hasToken ? '서버 연결 토큰을 보유하고 있어요.' : '온보딩에서 Discord 에 연결하세요.',
+        s.hasToken ? '<button class="btn btn--sm btn--secondary" id="setLogout">연결 해제</button>' : '');
+      body.innerHTML =
+        '<div class="set-group"><div class="sg-title">실행 동작</div>' + exec + '</div>' +
+        '<div class="set-group"><div class="sg-title">업데이트</div>' + updGroup + '</div>' +
+        '<div class="set-group"><div class="sg-title">연결</div>' + connGroup + '</div>' +
+        '<div class="set-group"><div class="sg-title">계정</div>' + acct + '</div>';
+      bind();
+    }
+
+    function bind() {
+      body.querySelectorAll('[data-toggle]').forEach((b) => {
+        b.onclick = async () => {
+          const key = b.dataset.toggle, on = !b.classList.contains('on');
+          b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
+          if (_s) _s[key] = on;
+          await api.setSetting(key, on);
+          toast('설정을 저장했어요', { type: 'ok' });
+        };
+      });
+      const chk = document.getElementById('setUpdateCheck');
+      if (chk) chk.onclick = async () => { _upd = await api.getUpdateInfo(); render(); toast(_upd.outdated ? '새 버전이 있어요' : '최신 버전이에요', { type: 'info' }); };
+      const apply = document.getElementById('setUpdateApply');
+      if (apply) apply.onclick = () => toast('업데이트를 시작했어요(진행률은 설치 화면에서 확인)', { type: 'info' });
+      const logout = document.getElementById('setLogout');
+      if (logout) logout.onclick = async () => {
+        if (!confirm('연결을 해제하면 모든 서버 제공이 중단돼요. 계속할까요?')) return;
+        await api.logout(); toast('연결을 해제했어요', { type: 'info' }); load();
+      };
+    }
+
+    async function load() {
+      [_s, _upd] = await Promise.all([api.getSettings(), api.getUpdateInfo()]);
+      render();
+    }
+
+    const isActive = () => view.classList.contains('active');
+    document.querySelector('.nav-item[data-view="settings"]').addEventListener('click', load);
+    if (isActive()) load();
+  </script>
 
   <!-- ══ 03 서버 화면 — 목록·권한·상태·집계, 서버 추가, 상세 진입 ══ -->
   <script type="module">

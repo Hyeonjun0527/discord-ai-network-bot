@@ -1205,6 +1205,11 @@
     const servers = await api.getServers();
     render(servers);
     document.getElementById('srvAll').addEventListener('click', goServers);
+    // 실 앱: 홈의 '연결된 서버'도 주기적으로 자동 갱신(연결·제공 모델 수 변화 즉시 반영).
+    if (window.__SESSION_KEY) {
+      const homeView = document.querySelector('.view[data-view="home"]');
+      setInterval(async () => { if (homeView.classList.contains('active')) { try { render(await api.getServers()); } catch (_e) { /* 일시 실패 무시 */ } } }, 3000);
+    }
     /* @proto-only */
     // 빈틈 데모: 서버 0개 ↔ 복원
     window.setHomeServers = (mode) => render(mode === 'empty' ? [] : servers);
@@ -1424,6 +1429,8 @@
     const isActive = () => view.classList.contains('active');
     document.querySelector('.nav-item[data-view="local"]').addEventListener('click', load);
     if (isActive()) load();
+    // 실 앱: 로컬 실행 화면 활성 중 주기 갱신(시작/연결/모델 변화가 한 템포 늦지 않게).
+    if (window.__SESSION_KEY) setInterval(() => { if (isActive()) load(); }, 3000);
   </script>
 
   <!-- ══ 설정 화면 — 실행 동작(onboard-apply)·업데이트(auto-update/update-info)·연결(읽기)·계정(logout) ══ -->
@@ -2019,6 +2026,11 @@
     window.backToServerList = backToList;
 
     reload();
+    // 실 앱: 목록을 주기적으로 자동 갱신(연결/제공 모델 수 변화가 한 템포 늦지 않게). 상세·관리 화면 중엔 건너뜀.
+    if (window.__SESSION_KEY) {
+      const serversView = document.querySelector('.view[data-view="servers"]');
+      setInterval(() => { if (serversView.classList.contains('active') && !wrapEl.hidden) reload(); }, 3000);
+    }
   </script>
 
   <!-- ══ 02 모델 화면 — 목록·토글·기본 모델·추천 설치·변경 적용(D5) ══ -->

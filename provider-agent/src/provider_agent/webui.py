@@ -1359,6 +1359,14 @@ def build_app(session_key: str) -> web.Application:
             except Exception as exc:  # noqa: BLE001 - 실패 사유만 표면화(저장은 유지)
                 service_error = str(exc)
                 logging.getLogger("provider_agent").warning("autostart 서비스 적용 실패: %s", exc)
+        # autoConnect 를 켜면 ≤45s 주기 동기화를 기다리지 않고 **즉시** 승인된 서버에 연결 시도(라이브).
+        if isinstance(data, dict) and data.get("autoConnect"):
+            agent = _running_agent()
+            if agent is not None:
+                try:
+                    await agent.sync_now()  # type: ignore[attr-defined]
+                except Exception as exc:  # noqa: BLE001 - 동기화 실패는 다음 주기 재시도
+                    logging.getLogger("provider_agent").warning("autoConnect 즉시 동기화 실패: %s", exc)
         return web.json_response({"ok": True, "needsRestart": needs_restart, "serviceError": service_error})
 
     async def open_folder(req: web.Request) -> web.Response:

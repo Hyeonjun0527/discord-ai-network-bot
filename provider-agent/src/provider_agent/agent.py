@@ -693,6 +693,10 @@ class ProviderAgent:
         await self._readvertise()
 
     # ── 자동 동기화: 연동된 사용자가 디스코드 /프로바이더참여 한 새 서버에 앱이 스스로 연결 ──────
+    async def sync_now(self) -> None:
+        """자동 참여 동기화를 **즉시 1회** 실행(앱에서 '자동 연결' 켤 때 ≤45s 대기 없이 바로 반영)."""
+        await self._sync_joins_once()
+
     async def _sync_joins_once(self) -> None:
         """durable 토큰(=연동 신원)으로 중앙 서버에 묻고, 승인됐지만 아직 연결 안 된 서버에 자동 연결한다."""
         from .config_file import load_connections

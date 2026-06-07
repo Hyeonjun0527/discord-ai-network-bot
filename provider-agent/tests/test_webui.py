@@ -49,6 +49,50 @@ async def _client() -> TestClient:
     return client
 
 
+def _desktop_shapes() -> dict:
+    import json
+    import pathlib
+
+    p = pathlib.Path(__file__).resolve().parents[2] / "prototypes" / "desktop" / "contract-shapes.json"
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+@pytest.mark.asyncio
+async def test_desktop_shapes_passthrough() -> None:
+    """실 webui passthrough 응답이 프로토타입 mock 이 선언한 필드를 모두 제공한다(real ⊇ mock, 필드명 드리프트 차단)."""
+    shapes = _desktop_shapes()["passthrough"]
+    client = await _client()
+    try:
+        for ep, expected in shapes.items():
+            r = await (await client.get(ep, headers={"X-Session": KEY})).json()
+            assert isinstance(r, dict), f"{ep}: 응답이 객체가 아님"
+            missing = [k for k in expected if k not in r]
+            assert not missing, f"{ep}: webui 응답에 mock 선언 필드 누락 {missing} — 프로토타입↔실구현 shape 드리프트!"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_desktop_shapes_consumed() -> None:
+    """adapter 변환이 읽는 raw 필드를 실 webui 가 제공한다(servers 항목·models 객체)."""
+    from provider_agent.config_file import add_connection
+
+    add_connection("TS", guild_id=100, guild_name="S")
+    shapes = _desktop_shapes()["consumed"]
+    client = await _client()
+    try:
+        d = await (await client.get("/api/servers", headers={"X-Session": KEY})).json()
+        assert d["servers"], "서버 목록이 비어 검증 불가"
+        item = d["servers"][0]
+        miss = [k for k in shapes["/api/servers"]["array"] if k not in item]
+        assert not miss, f"/api/servers 항목에 adapter 가 읽는 필드 누락 {miss} — shape 드리프트!"
+        m = await (await client.get("/api/models", headers={"X-Session": KEY})).json()
+        miss2 = [k for k in shapes["/api/models"]["object"] if k not in m]
+        assert not miss2, f"/api/models 에 adapter 가 읽는 필드 누락 {miss2} — shape 드리프트!"
+    finally:
+        await client.close()
+
+
 class FakeAgent:
     """실제 연결 없이 시작/중지 라이프사이클만 흉내(테스트용)."""
 

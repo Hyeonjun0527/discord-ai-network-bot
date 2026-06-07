@@ -87,11 +87,15 @@ cd provider-agent && ../.venv/bin/python -m pytest -q --cov=provider_agent --cov
   **실제 호출**하는 모든 `ENDPOINTS.*` 경로가 webui 라우트에 존재하는지 세그먼트 패턴으로 검증(예: adapter 가
   `/api/servers/{g}/pause` 를 부르는데 webui 라우트가 없으면 실패 → 실 앱 404 사전 차단). provider-agent
   `tests/test_desktop_contract.py` 가 같은 검사를 CI(pytest)에서 강제한다.
-- ⚠️ **응답 shape(필드명) 일치는 정적 완전보장 불가**: 이 층은 두 가지로 보강한다 — ① provider-agent pytest
-  (webui 응답 키 검증) ② 실 앱 헤드리스 스모크(USE_MOCK=false 로 sync 후 webui 기동 → 브라우저 로드, JS 에러 0·
-  핵심 화면 렌더 확인). adapter mock 의 응답 shape 는 **반드시 webui 실 응답과 동일 필드명**으로 유지한다.
-- 규칙: 엔드포인트를 추가/변경하면 **contract.js · adapter(mock+real) · webui 라우트·핸들러**를 같은 커밋에서
-  맞추고 `make desktop-check` 를 통과시킨다.
+- ✅ **응답 shape(필드명) 일치(가드)**: `contract-shapes.json`(= `scripts/gen_desktop_shapes.mjs` 가 adapter
+  mock 에서 자동 추출 + adapter 변환이 읽는 raw 필드 명시)을 SSOT 로, provider-agent `test_desktop_shapes`
+  가 **실 webui 응답이 mock 선언 필드를 모두 제공하는지(real ⊇ mock)** 검증한다. webui 가 필드명을 바꾸면
+  (예: processed→count) pytest 가 즉시 실패. `make desktop-check` 의 `gen --check` 가 mock↔JSON 동기까지 본다.
+  - 적용 범위: webui 가 직접 만드는 응답(status/settings/update-*/logs/servers/models 등 = 이 저장소 Python 이
+    소유한 필드). **admin/* 는 central(Kotlin) DTO 를 webui 가 그대로 패스스루**하므로 그 shape 는 central 소유 —
+    JS mock 의 admin shape 는 central DTO 와 맞춘다(central 테스트가 DTO 를 지킴, webui 는 변형 없음).
+- 규칙: 엔드포인트/응답을 추가·변경하면 **contract.js · adapter(mock+real) · webui 라우트·핸들러**를 같은 커밋에서
+  맞추고, mock shape 가 바뀌면 `make desktop-shapes` 로 재생성, `make desktop-check` 를 통과시킨다.
 
 ### 로컬 E2E (실연동 검증)
 ```bash

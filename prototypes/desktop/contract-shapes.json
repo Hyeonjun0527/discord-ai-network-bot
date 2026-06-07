@@ -1,0 +1,59 @@
+{
+  "passthrough": {
+    "/api/status": [
+      "background",
+      "backgroundRunning",
+      "connectEnabled",
+      "connected",
+      "enableImage",
+      "hasToken",
+      "imageReady",
+      "models",
+      "processed",
+      "relayUrl",
+      "running",
+      "sdInstalled"
+    ],
+    "/api/settings": [
+      "autoConnect",
+      "autoUpdate",
+      "autostart",
+      "background",
+      "enableImage",
+      "hasToken",
+      "ollamaUrl",
+      "relayUrl"
+    ],
+    "/api/update-info": [
+      "current",
+      "latest",
+      "outdated",
+      "supported"
+    ],
+    "/api/update-progress": [
+      "message",
+      "percent",
+      "phase"
+    ],
+    "/api/logs": [
+      "lines"
+    ]
+  },
+  "consumed": {
+    "/api/servers": {
+      "array": [
+        "guildId",
+        "guildName",
+        "connected",
+        "paused"
+      ]
+    },
+    "/api/models": {
+      "object": [
+        "models",
+        "selected",
+        "default"
+      ]
+    }
+  }
+}

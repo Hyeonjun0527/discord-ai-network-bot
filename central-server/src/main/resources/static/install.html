@@ -239,6 +239,9 @@
     .alert-body code { color: #a9bcff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     footer { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; color: #7d8aa0; font-size: 14px; padding: 28px 8px 0; }
     footer .warn { color: var(--warn); }
+    footer .footer-legal { flex-basis: 100%; padding-top: 10px; }
+    footer .footer-legal a { color: #9aa6bf; text-decoration: none; }
+    footer .footer-legal a:hover { color: #fff; text-decoration: underline; }
 
     @media (max-width: 1024px) {
       .hero { grid-template-columns: 1fr; gap: 28px; }
@@ -397,6 +400,9 @@
     <footer>
       <div data-i18n="footerMain">커뮤니티 AI 네트워크 · 남는 컴퓨팅 파워를 유용한 응답 자원으로 (<span class="warn">기여·공정성, 금전 거래 아님</span>)</div>
       <div class="warn" data-i18n="footerWarn">⚠ 비밀번호 · API 키 등 민감정보는 절대 입력하지 마세요.</div>
+      <div class="footer-legal">
+        <a href="/legal.html#terms">이용약관</a> · <a href="/legal.html#privacy">개인정보처리방침</a> · <a href="/legal.html#content">콘텐츠 정책</a> · <a href="/legal.html#data">데이터·보안</a>
+      </div>
     </footer>
   </div>
 

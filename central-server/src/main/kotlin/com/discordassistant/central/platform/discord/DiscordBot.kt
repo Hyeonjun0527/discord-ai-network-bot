@@ -94,10 +94,16 @@ interface BotGuildLister {
      * 이 사용자가 해당 길드의 **관리자**(MANAGE_SERVER 또는 ADMINISTRATOR)인지.
      * 데스크톱 앱의 관리 API 권한 게이트용. JDA 미연결·멤버 캐시 미스·권한 없음이면 false(안전 거부).
      */
-    fun isGuildAdmin(guildId: Long, userId: Long): Boolean
+    fun isGuildAdmin(
+        guildId: Long,
+        userId: Long,
+    ): Boolean
 
     /** 길드 멤버의 표시 이름(닉네임 우선). JDA 미연결·멤버 캐시 미스면 null(앱에서 ID 폴백). */
-    fun memberName(guildId: Long, userId: Long): String?
+    fun memberName(
+        guildId: Long,
+        userId: Long,
+    ): String?
 }
 
 /**
@@ -147,14 +153,19 @@ class DiscordBot(
             ?: emptyList()
 
     /** 관리 API 권한 게이트: 사용자가 길드 관리자(MANAGE_SERVER|ADMINISTRATOR)인지. 미충족은 false(안전 거부). */
-    override fun isGuildAdmin(guildId: Long, userId: Long): Boolean {
+    override fun isGuildAdmin(
+        guildId: Long,
+        userId: Long,
+    ): Boolean {
         val member = jda?.getGuildById(guildId)?.getMemberById(userId) ?: return false
         return member.hasPermission(Permission.MANAGE_SERVER) || member.hasPermission(Permission.ADMINISTRATOR)
     }
 
     /** 길드 멤버 표시 이름(닉네임 우선). 캐시 미스/미연결이면 null. */
-    override fun memberName(guildId: Long, userId: Long): String? =
-        jda?.getGuildById(guildId)?.getMemberById(userId)?.effectiveName
+    override fun memberName(
+        guildId: Long,
+        userId: Long,
+    ): String? = jda?.getGuildById(guildId)?.getMemberById(userId)?.effectiveName
 
     private val fallbackAttempted = AtomicBoolean(false)
 

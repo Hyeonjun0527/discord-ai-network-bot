@@ -21,7 +21,11 @@ interface ProviderRosterInfo {
 
     fun isAutoApprove(guildId: Long): Boolean
 
-    fun setAutoApprove(guildId: Long, value: Boolean, adminId: Long)
+    fun setAutoApprove(
+        guildId: Long,
+        value: Boolean,
+        adminId: Long,
+    )
 }
 
 @Component
@@ -34,13 +38,21 @@ class ProviderRosterInfoAdapter(
     override fun modelsByProvider(guildId: Long): Map<Long, Int> =
         registry.byGuild(guildId).associate { it.providerId to it.capability.models.size }
 
-    override fun todayByProvider(guildId: Long): Map<Long, Long> =
-        usage.providerContributionsSince(guildId, startOfTodayUtc())
+    override fun todayByProvider(guildId: Long): Map<Long, Long> = usage.providerContributionsSince(guildId, startOfTodayUtc())
 
     override fun isAutoApprove(guildId: Long): Boolean = policy.isAutoApprove(guildId)
 
-    override fun setAutoApprove(guildId: Long, value: Boolean, adminId: Long) = policy.setAutoApprove(guildId, value, adminId)
+    override fun setAutoApprove(
+        guildId: Long,
+        value: Boolean,
+        adminId: Long,
+    ) = policy.setAutoApprove(guildId, value, adminId)
 
     private fun startOfTodayUtc(): Instant =
-        clock.instant().atZone(ZoneOffset.UTC).toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant()
+        clock
+            .instant()
+            .atZone(ZoneOffset.UTC)
+            .toLocalDate()
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
 }

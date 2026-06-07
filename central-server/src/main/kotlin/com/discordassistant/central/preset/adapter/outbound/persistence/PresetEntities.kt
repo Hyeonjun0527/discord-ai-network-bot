@@ -1,5 +1,6 @@
 package com.discordassistant.central.preset.adapter.outbound.persistence
 
+import com.discordassistant.central.global.crypto.EncryptedStringConverter
 import com.discordassistant.central.preset.domain.model.PresetImportStatus
 import com.discordassistant.central.preset.domain.model.PresetReportStatus
 import com.discordassistant.central.preset.domain.model.PresetStatus
@@ -41,7 +42,7 @@ class PresetRevisionEntity(
     var purpose: String = "",
     var tone: String = "",
     var answerLength: String = "balanced",
-    var constitution: String? = null,
+    @Convert(converter = EncryptedStringConverter::class) var constitution: String? = null,
     var safetyLevel: String = "standard",
     var responseMode: String = "balanced",
     var preferredModel: String? = null,

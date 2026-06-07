@@ -1,5 +1,6 @@
 package com.discordassistant.central.knowledge.adapter.outbound.persistence
 
+import com.discordassistant.central.global.crypto.EncryptedStringConverter
 import com.discordassistant.central.knowledge.domain.model.EmbeddingJobStatus
 import com.discordassistant.central.knowledge.domain.model.KnowledgeChunkStatus
 import com.discordassistant.central.knowledge.domain.model.KnowledgeDocumentStatus
@@ -100,7 +101,7 @@ class KnowledgeChunkEntity(
     var channelId: Long? = null,
     var chunkIndex: Int = 0,
     var title: String = "",
-    var contentPreview: String = "",
+    @Convert(converter = EncryptedStringConverter::class) var contentPreview: String = "",
     var embeddingTextHash: String = "",
     var tokenEstimate: Int = 0,
     var qdrantPointId: String? = null,

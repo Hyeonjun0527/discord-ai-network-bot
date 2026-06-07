@@ -40,9 +40,15 @@ class ProviderAdminControllerTest {
 
             override fun botChannels(guildId: Long) = emptyList<BotChannelInfo>()
 
-            override fun isGuildAdmin(guildId: Long, userId: Long) = admin
+            override fun isGuildAdmin(
+                guildId: Long,
+                userId: Long,
+            ) = admin
 
-            override fun memberName(guildId: Long, userId: Long) = "user_$userId"
+            override fun memberName(
+                guildId: Long,
+                userId: Long,
+            ) = "user_$userId"
         }
 
     private fun setup(admin: Boolean): Ctx {
@@ -59,7 +65,11 @@ class ProviderAdminControllerTest {
 
                 override fun isAutoApprove(guildId: Long) = state["auto"]!!
 
-                override fun setAutoApprove(guildId: Long, value: Boolean, adminId: Long) {
+                override fun setAutoApprove(
+                    guildId: Long,
+                    value: Boolean,
+                    adminId: Long,
+                ) {
                     state["auto"] = value
                 }
             }

@@ -1,6 +1,7 @@
 package com.discordassistant.central.channelai.adapter.outbound.persistence
 
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
+import com.discordassistant.central.global.crypto.EncryptedStringConverter
 import jakarta.persistence.Column
 import jakarta.persistence.Convert
 import jakarta.persistence.Entity
@@ -44,9 +45,9 @@ class AiBehaviorVersionEntity(
     var purpose: String = "general_assistant",
     var tone: String = "friendly",
     var answerLength: String = "balanced",
-    var constitution: String? = null,
+    @Convert(converter = EncryptedStringConverter::class) var constitution: String? = null,
     var safetyLevel: String = "standard",
-    @Column(name = "custom_instruction") var customInstruction: String? = null,
+    @Column(name = "custom_instruction") @Convert(converter = EncryptedStringConverter::class) var customInstruction: String? = null,
     var createdBy: Long? = null,
     var createdAt: Instant = Instant.EPOCH,
     var changeSummary: String? = null,

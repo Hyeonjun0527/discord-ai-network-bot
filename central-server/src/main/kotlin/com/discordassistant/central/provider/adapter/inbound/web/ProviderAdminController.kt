@@ -76,25 +76,35 @@ class ProviderAdminController(
     private val roster: ProviderRosterInfo,
 ) {
     /** durable 토큰 → 요청자 providerId 복원 후 그가 guildId 관리자면 그 id 반환, 아니면 null(거부). */
-    private fun authedAdmin(durableToken: String, guildId: Long): Long? {
+    private fun authedAdmin(
+        durableToken: String,
+        guildId: Long,
+    ): Long? {
         if (!durableToken.startsWith("dv1.")) return null // 일회용 토큰은 verify 가 소모하므로 거부
         val binding = tokens.verify(durableToken) ?: return null
         return if (botGuilds.isGuildAdmin(guildId, binding.providerId)) binding.providerId else null
     }
 
     @PostMapping("/approve")
-    fun approve(@RequestBody req: AdminActionRequest): AdminActionResponse {
-        val adminId = authedAdmin(req.durableToken, req.guildId)
-            ?: return AdminActionResponse(false, "관리자 권한이 필요합니다")
-        val token = registration.approve(req.targetProviderId, req.guildId, adminId)
-            ?: return AdminActionResponse(false, "승인할 수 없습니다(승인 대기 상태가 아님)")
+    fun approve(
+        @RequestBody req: AdminActionRequest,
+    ): AdminActionResponse {
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminActionResponse(false, "관리자 권한이 필요합니다")
+        val token =
+            registration.approve(req.targetProviderId, req.guildId, adminId)
+                ?: return AdminActionResponse(false, "승인할 수 없습니다(승인 대기 상태가 아님)")
         return AdminActionResponse(true, "승인됨", token)
     }
 
     @PostMapping("/reject")
-    fun reject(@RequestBody req: AdminActionRequest): AdminActionResponse {
-        val adminId = authedAdmin(req.durableToken, req.guildId)
-            ?: return AdminActionResponse(false, "관리자 권한이 필요합니다")
+    fun reject(
+        @RequestBody req: AdminActionRequest,
+    ): AdminActionResponse {
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminActionResponse(false, "관리자 권한이 필요합니다")
         return if (registration.reject(req.targetProviderId, req.guildId, adminId)) {
             AdminActionResponse(true, "거절됨")
         } else {
@@ -103,9 +113,12 @@ class ProviderAdminController(
     }
 
     @PostMapping("/remove")
-    fun remove(@RequestBody req: AdminActionRequest): AdminActionResponse {
-        val adminId = authedAdmin(req.durableToken, req.guildId)
-            ?: return AdminActionResponse(false, "관리자 권한이 필요합니다")
+    fun remove(
+        @RequestBody req: AdminActionRequest,
+    ): AdminActionResponse {
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminActionResponse(false, "관리자 권한이 필요합니다")
         return if (registration.remove(req.targetProviderId, req.guildId, adminId)) {
             AdminActionResponse(true, "제거됨")
         } else {
@@ -115,28 +128,34 @@ class ProviderAdminController(
 
     /** 승인 대기·로스터(이름·모델·오늘 건수)·정책 조회(관리 화면 13). 권한 없으면 ok=false. */
     @PostMapping("/manage")
-    fun manage(@RequestBody req: AdminActionRequest): ManageResponse {
+    fun manage(
+        @RequestBody req: AdminActionRequest,
+    ): ManageResponse {
         authedAdmin(req.durableToken, req.guildId) ?: return ManageResponse(false)
         val models = roster.modelsByProvider(req.guildId)
         val today = roster.todayByProvider(req.guildId)
-        val rosterList = registration.providersInGuild(req.guildId).map { pid ->
-            ManageProviderDto(
-                providerId = pid,
-                name = botGuilds.memberName(req.guildId, pid),
-                state = registration.stateOf(pid, req.guildId)?.name ?: "UNKNOWN",
-                models = models[pid] ?: 0,
-                today = today[pid] ?: 0L,
-            )
-        }
+        val rosterList =
+            registration.providersInGuild(req.guildId).map { pid ->
+                ManageProviderDto(
+                    providerId = pid,
+                    name = botGuilds.memberName(req.guildId, pid),
+                    state = registration.stateOf(pid, req.guildId)?.name ?: "UNKNOWN",
+                    models = models[pid] ?: 0,
+                    today = today[pid] ?: 0L,
+                )
+            }
         val pending = registration.pending(req.guildId).map { ManagePendingDto(it, botGuilds.memberName(req.guildId, it)) }
         return ManageResponse(true, ManagePolicyDto(roster.isAutoApprove(req.guildId)), pending, rosterList)
     }
 
     /** 서버 제공 정책 — 신규 자동 승인 토글(관리자). 기존 PolicyService 와 동일 저장·감사. */
     @PostMapping("/manage/policy")
-    fun setPolicy(@RequestBody req: AdminPolicyRequest): AdminActionResponse {
-        val adminId = authedAdmin(req.durableToken, req.guildId)
-            ?: return AdminActionResponse(false, "관리자 권한이 필요합니다")
+    fun setPolicy(
+        @RequestBody req: AdminPolicyRequest,
+    ): AdminActionResponse {
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminActionResponse(false, "관리자 권한이 필요합니다")
         roster.setAutoApprove(req.guildId, req.autoApprove, adminId)
         return AdminActionResponse(true, "정책을 저장했어요")
     }

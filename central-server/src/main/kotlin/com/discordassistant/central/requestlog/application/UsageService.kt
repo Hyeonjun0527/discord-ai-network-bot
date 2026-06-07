@@ -98,8 +98,7 @@ class UsageService(
     fun providerContributionsSince(
         guildId: Long,
         since: Instant,
-    ): Map<Long, Long> =
-        contribution.countByGuildIdSinceGrouped(guildId, since).associate { it.providerId to it.contributionCount }
+    ): Map<Long, Long> = contribution.countByGuildIdSinceGrouped(guildId, since).associate { it.providerId to it.contributionCount }
 
     fun totalContributions(guildId: Long): Long = providerContributions(guildId).sumOf { it.second }
 

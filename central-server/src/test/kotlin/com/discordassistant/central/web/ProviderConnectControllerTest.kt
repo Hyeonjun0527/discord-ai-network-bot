@@ -64,9 +64,15 @@ class ProviderConnectControllerTest {
 
                         override fun botChannels(guildId: Long) = emptyList<BotChannelInfo>()
 
-                        override fun isGuildAdmin(guildId: Long, userId: Long) = false
+                        override fun isGuildAdmin(
+                            guildId: Long,
+                            userId: Long,
+                        ) = false
 
-                        override fun memberName(guildId: Long, userId: Long): String? = null
+                        override fun memberName(
+                            guildId: Long,
+                            userId: Long,
+                        ): String? = null
                     },
                 states = states,
                 selections = selections,

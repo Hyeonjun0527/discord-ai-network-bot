@@ -223,7 +223,7 @@ class GuildAdminCommandHandler(
         val pool = registry.byGuild(ctx.guildId)
         val fairness =
             pool.joinToString("\n") {
-                "· provider #${it.providerId}: 기여 ${usage.providerContributionCount(it.providerId)}회 · ${it.state}"
+                "· <@${it.providerId}>: 기여 ${usage.providerContributionCount(it.providerId)}회 · ${it.state}"
             }
         return Reply("승인 대기: ${pending.size} · 온라인: ${pool.size}\n$fairness\n대기 목록: $pending")
     }

@@ -67,6 +67,9 @@ export const ENDPOINTS = Object.freeze({
   serverPromptDefault: (g) => '/api/servers/' + g + '/prompts/default', // POST {id} (id='nia'→니아 복귀)
   serverPromptDelete: (g) => '/api/servers/' + g + '/prompts/delete',  // POST {id}
   onboardApply: '/api/onboard-apply',
+  // 통합 설정 — GET → 저장 설정+상태(camelCase, {autostart,background,autoConnect,autoUpdate,enableImage,ollamaUrl,relayUrl,allowRemoteOllama,hasToken}).
+  //   POST {key:value}(부분 변경, 1개 이상) → {ok, needsRestart}. setup/onboard-apply/auto-update 를 단일화.
+  settings: '/api/settings',
   connectOpen: '/api/connect-open',
   sdStatus: '/api/sd/status',
   sdModels: '/api/sd/models',
@@ -79,9 +82,8 @@ export const ENDPOINTS = Object.freeze({
   start: '/api/start',
   stop: '/api/stop',
   logout: '/api/logout',
-  // 설정/업데이트 — webui.py.  ⚠ 통합 설정 GET 은 없다(상태는 /api/status, 나머지 config 항목은 노출 API 부재).
-  //   변경 매핑: enableImage→/api/setup, autoUpdate→/api/auto-update, autostart·background·autoConnect→/api/onboard-apply.
-  //   relay_url·ollama_url 변경 API 는 아직 없음(config 파일 직접 — Gap, 고급 설정).
+  // 설정/업데이트 — webui.py.  통합 설정은 /api/settings(GET/POST) 로 단일화됨(위 settings 참조).
+  //   autoUpdate 는 통합 POST /api/settings 로도 바꿀 수 있으나, 단독 토글 호환을 위해 아래 엔드포인트도 유지.
   autoUpdate: '/api/auto-update',     // POST {autoUpdate} → {ok, autoUpdate}
   updateInfo: '/api/update-info',     // GET → {current, latest, outdated, supported, autoUpdate, error?}
   updateProgress: '/api/update-progress',

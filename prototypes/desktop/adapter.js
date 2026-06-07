@@ -280,20 +280,18 @@ export const api = {
     if (USE_MOCK) { await delay(80); MOCK.status.enableImage = on; return { ok: true, enableImage: on }; }
     return post(ENDPOINTS.setup, { enableImage: on });
   },
-  /** 통합 설정 조회. ⚠ 백엔드 통합 설정 GET 없음 — 실 전환 시 status + config 조합(Gap). */
+  /** 통합 설정 조회 — webui.py GET /api/settings(저장 설정+상태를 camelCase 로 통합). */
   async getSettings() {
     if (USE_MOCK) {
       await delay(60);
       return { ...MOCK.settings, enableImage: MOCK.status.enableImage, relayUrl: MOCK.status.relayUrl, hasToken: MOCK.status.hasToken };
     }
-    return http(ENDPOINTS.status);
+    return http(ENDPOINTS.settings);
   },
-  /** 설정 변경. 매핑: enableImage→setup, autoUpdate→auto-update, autostart·background·autoConnect→onboard-apply. */
+  /** 설정 변경 — webui.py POST /api/settings {key:value}. 단일 엔드포인트로 통합(반환 {ok, needsRestart}). */
   async setSetting(key, value) {
     if (USE_MOCK) { await delay(80); if (key === 'enableImage') MOCK.status.enableImage = value; else MOCK.settings[key] = value; return { ok: true }; }
-    if (key === 'enableImage') return post(ENDPOINTS.setup, { enableImage: value });
-    if (key === 'autoUpdate') return post(ENDPOINTS.autoUpdate, { autoUpdate: value });
-    return post(ENDPOINTS.onboardApply, { [key]: value });
+    return post(ENDPOINTS.settings, { [key]: value });
   },
   /** 업데이트 정보 — webui.py /api/update-info. */
   async getUpdateInfo() {

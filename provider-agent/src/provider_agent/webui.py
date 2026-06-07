@@ -1380,6 +1380,69 @@ def build_app(session_key: str) -> web.Application:
                 logging.getLogger("provider_agent").warning("온보딩 자동시작 서비스 등록 실패: %s", exc)
         return web.json_response({"ok": True, "serviceInstalled": service_installed, "serviceError": service_error})
 
+    # 통합 설정 키 매핑(camelCase API ↔ snake config). GET/POST 양쪽이 같은 표를 본다(드리프트 방지).
+    # 모두 SAVEABLE 또는 온보딩 토글(auto_connect/background/autostart_pref)이라 persist_partial 로 안전히 저장된다.
+    _SETTINGS_MAP = {
+        "autostart": "autostart_pref",
+        "background": "background",
+        "autoConnect": "auto_connect",
+        "autoUpdate": "auto_update",
+        "enableImage": "enable_image",
+        "ollamaUrl": "ollama_url",
+        "relayUrl": "relay_url",
+        "allowRemoteOllama": "allow_remote_ollama",
+    }
+    # 저장만으로는 실행 중 에이전트에 반영되지 않아 재연결이 필요한 항목(시작 시점 config 만 읽는다).
+    # enable_image 도 라이브 in-process 전파 경로가 없으므로(과거 함정) 재시작 대상에 포함한다 — '즉시반영' 흉내 금지.
+    _SETTINGS_NEEDS_RESTART = {"relayUrl", "ollamaUrl", "enableImage", "allowRemoteOllama"}
+
+    async def settings_get(req: web.Request) -> web.Response:
+        """분산돼 있던 설정(setup/onboard-apply/auto-update)을 한 번에 조회(camelCase).
+
+        저장 설정(load_config)을 snake→camel 로 변환해 통합 반환한다. 토큰 자체는 노출하지 않고
+        보유 여부만(hasToken) 내려 데스크톱 앱 설정 화면이 단일 GET 으로 현재 값을 그릴 수 있게 한다.
+        """
+        _auth(req)
+        saved = load_config()
+        return web.json_response(
+            {
+                "autostart": bool(saved.get("autostart_pref")),
+                "background": bool(saved.get("background")),
+                "autoConnect": bool(saved.get("auto_connect")),
+                "autoUpdate": bool(saved.get("auto_update", True)),
+                "enableImage": bool(saved.get("enable_image")),
+                "ollamaUrl": saved.get("ollama_url") or "http://localhost:11434",
+                "relayUrl": saved.get("relay_url") or _default_relay(),
+                "allowRemoteOllama": bool(saved.get("allow_remote_ollama")),
+                "hasToken": bool(saved.get("token")),
+            }
+        )
+
+    async def settings_post(req: web.Request) -> web.Response:
+        """통합 설정 부분 변경: body ``{key: value}``(한 번에 1개 이상). 허용 키만 persist_partial 로 저장.
+
+        런타임 반영: 실행 중 에이전트에 안전히 즉시 반영할 수 있는 항목은 없다(시작 시점 config 만 읽음).
+        재연결이 필요한 항목(relayUrl/ollamaUrl/enableImage/allowRemoteOllama)이 하나라도 바뀌면
+        ``needsRestart: true`` 로 알려 거짓 '즉시반영'을 피한다(과거 enable_image 라이브 전파 미작동 함정).
+        """
+        _auth(req)
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001 - 잘못된 본문은 빈 변경으로 취급
+            data = {}
+        updates: dict = {}
+        needs_restart = False
+        for key, value in (data.items() if isinstance(data, dict) else []):
+            snake = _SETTINGS_MAP.get(key)
+            if snake is None:
+                continue  # 허용되지 않은 키는 무시
+            updates[snake] = value
+            if key in _SETTINGS_NEEDS_RESTART:
+                needs_restart = True
+        if updates:
+            persist_partial(updates)
+        return web.json_response({"ok": True, "needsRestart": needs_restart})
+
     app.router.add_get("/", index)
     app.router.add_get("/mascot.png", mascot)
     app.router.add_get("/app-icon.png", app_icon)
@@ -1422,6 +1485,9 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/logout", logout)
     app.router.add_post("/api/reset", reset_all)
     app.router.add_post("/api/onboard-apply", onboard_apply)
+    # 통합 설정 — 분산된 setup/onboard-apply/auto-update 를 단일 GET/POST 로 통합(데스크톱 앱 설정 화면).
+    app.router.add_get("/api/settings", settings_get)
+    app.router.add_post("/api/settings", settings_post)
 
     async def _autoconnect_on_startup(_app: web.Application) -> None:
         """온보딩에서 '로그인 후 자동 연결'을 켰고 저장된 서버가 있으면, GUI 가 뜨자마자 자동 연결한다.

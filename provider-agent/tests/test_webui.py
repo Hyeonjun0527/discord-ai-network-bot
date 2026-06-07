@@ -910,3 +910,102 @@ async def test_ollama_setup_installs_and_selects_arbitrary_model(monkeypatch):
         assert "qwen2.5:7b" in load_config()["models"]  # 설치 후 제공 대상 추가
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_settings_requires_session_key():
+    """통합 설정 GET/POST 모두 세션 키 없으면 403(다른 라우트와 동일 게이트)."""
+    client = await _client()
+    try:
+        assert (await client.get("/api/settings")).status == 403
+        assert (await client.post("/api/settings", json={"autoUpdate": False})).status == 403
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_settings_get_returns_defaults():
+    """저장된 설정이 없을 때 합리적 기본값을 camelCase 로 통합 반환한다."""
+    client = await _client()
+    try:
+        d = await (await client.get("/api/settings", headers={"X-Session": KEY})).json()
+        assert d["autostart"] is False
+        assert d["background"] is False
+        assert d["autoConnect"] is False
+        assert d["autoUpdate"] is True  # 기본 자동업데이트 on
+        assert d["enableImage"] is False
+        assert d["ollamaUrl"] == "http://localhost:11434"
+        assert d["relayUrl"]  # 기본 중앙 서버 주소
+        assert d["allowRemoteOllama"] is False
+        assert d["hasToken"] is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_settings_post_persists_and_get_reflects():
+    """POST 로 부분 변경하면 저장되고 GET 에 반영된다(snake↔camel 매핑 검증)."""
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/settings",
+            headers={"X-Session": KEY},
+            json={"autoUpdate": False, "autoConnect": True, "background": True},
+        )
+        body = await r.json()
+        assert body["ok"] is True
+        assert body["needsRestart"] is False  # 이 키들은 재시작 불필요
+        # config 에는 snake 키로 저장된다.
+        saved = load_config()
+        assert saved["auto_update"] is False
+        assert saved["auto_connect"] is True
+        assert saved["background"] is True
+        # GET 은 camelCase 로 다시 반영해 보여준다.
+        d = await (await client.get("/api/settings", headers={"X-Session": KEY})).json()
+        assert d["autoUpdate"] is False
+        assert d["autoConnect"] is True
+        assert d["background"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_settings_post_needs_restart_for_reconnect_keys():
+    """enableImage·relayUrl·ollamaUrl·allowRemoteOllama 변경은 needsRestart=true(즉시반영 흉내 금지)."""
+    client = await _client()
+    try:
+        for key, value in (
+            ("enableImage", True),
+            ("relayUrl", "wss://example.test/agent"),
+            ("ollamaUrl", "http://localhost:22000"),
+            ("allowRemoteOllama", True),
+        ):
+            r = await client.post("/api/settings", headers={"X-Session": KEY}, json={key: value})
+            body = await r.json()
+            assert body["ok"] is True
+            assert body["needsRestart"] is True, key
+        # 저장은 그대로 됐는지 확인.
+        saved = load_config()
+        assert saved["enable_image"] is True
+        assert saved["relay_url"] == "wss://example.test/agent"
+        assert saved["ollama_url"] == "http://localhost:22000"
+        assert saved["allow_remote_ollama"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_settings_post_ignores_unknown_keys():
+    """허용되지 않은 키는 조용히 무시(저장 안 됨)하고 ok 반환."""
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/settings", headers={"X-Session": KEY}, json={"token": "leak", "bogus": 1}
+        )
+        body = await r.json()
+        assert body["ok"] is True
+        assert body["needsRestart"] is False
+        # 토큰 등 비-허용 키는 통합 설정으로 바꿀 수 없다(시크릿 보호).
+        assert load_config() == {}
+    finally:
+        await client.close()

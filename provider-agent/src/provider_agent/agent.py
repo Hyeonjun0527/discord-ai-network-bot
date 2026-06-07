@@ -210,6 +210,10 @@ class ProviderAgent:
         self._image_ready = False
         self._sd_boot_task: asyncio.Task[None] | None = None  # 설치된 SD 자동기동 + 준비되면 재광고
         self._sem = asyncio.Semaphore(cfg.max_concurrency)
+        # 동시 처리 상한도 **서버(guild)별**로 독립 적용. 길드 전용 세마포어(lazy).
+        # 전역 self._sem 은 머신 전체 보호, 여기 세마포어는 그 서버 1곳의 동시 처리 상한.
+        # 정책 변경(set_guild_policy) 시 해당 항목을 폐기 → 새 상한으로 재생성.
+        self._guild_sems: dict[int | None, asyncio.Semaphore] = {}
         # 일일 한도는 **서버(guild)별로 독립** 적용한다. 한 에이전트가 여러 길드에 제공해도
         # 길드마다 한도만큼 따로 카운트(전역 합산 공유 X). 0 = 무제한(dict 미사용).
         # 키 = guild_id(None = 길드 미상 토큰 연결 폴백). lazy init: 첫 접근 시 그 길드 한도로 채움.
@@ -250,6 +254,31 @@ class ProviderAgent:
             self._remaining_by_guild[guild_id] = limit
         return self._remaining_by_guild[guild_id]
 
+    # ── 동시 처리·최대 시간(서버별) ──────────────────────────────────────
+    def _concurrency_for(self, guild_id: int | None) -> int:
+        """이 길드에 적용할 동시 처리 상한. 서버별 override(G3) 우선, 없으면 전역."""
+        if guild_id is not None:
+            pol = self._guild_policy.get(guild_id)
+            if pol is not None and pol.get("max_concurrency") is not None:
+                return max(1, int(pol["max_concurrency"]))
+        return self._cfg.max_concurrency
+
+    def _guild_sem(self, guild_id: int | None) -> asyncio.Semaphore:
+        """이 길드 전용 동시성 세마포어(lazy). 정책 변경 시 set_guild_policy 에서 폐기→재생성."""
+        sem = self._guild_sems.get(guild_id)
+        if sem is None:
+            sem = asyncio.Semaphore(self._concurrency_for(guild_id))
+            self._guild_sems[guild_id] = sem
+        return sem
+
+    def _max_seconds_for(self, guild_id: int | None) -> float:
+        """이 길드 1건 최대 처리 시간(초). 서버별 override 만 적용(없으면 0 = 추가 상한 없음)."""
+        if guild_id is not None:
+            pol = self._guild_policy.get(guild_id)
+            if pol is not None and pol.get("max_seconds") is not None:
+                return max(0.0, float(pol["max_seconds"]))
+        return 0.0
+
     # ── 핸드셰이크 ──────────────────────────────────────────────────────
     def _build_hello(self, guild_id: int | None = None) -> ProviderHelloFrame:
         capabilities = ["text"]
@@ -257,7 +286,7 @@ class ProviderAgent:
             capabilities.append("image")
         return ProviderHelloFrame(
             models=self._models,
-            max_concurrency=self._cfg.max_concurrency,
+            max_concurrency=self._concurrency_for(guild_id),
             remaining_daily_requests=self._remaining_for(guild_id),
             capabilities=capabilities,
         )
@@ -307,7 +336,11 @@ class ProviderAgent:
             logger.info("자원 보호로 일시 중지(%s) — 요청 반려", reason)
             await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message=f"자원 보호 일시중지({reason})"))
             return
-        async with self._sem:
+        # 동시 처리 상한도 **서버별** 강제: 이 길드 전용 세마포어로 게이트(전역 self._sem 은 머신 보호).
+        # 최대 처리 시간(서버별)은 wait_for 로 1건씩 강제 — 넘으면 중단·반려(한도/자원 보호).
+        guild_sem = self._guild_sem(guild_id)
+        max_seconds = self._max_seconds_for(guild_id)
+        async with guild_sem, self._sem:
             if req.request_id in self._cancelled:
                 self._cancelled.discard(req.request_id)
                 return
@@ -317,34 +350,15 @@ class ProviderAgent:
             # 서버가 모델을 지정하지 않으면 '기본 응답 모델'로 처리한다(설정값이 제공 중이면 그것, 아니면 첫 모델).
             model = req.model or self._preferred_model()
             try:
-                if req.task == "image":
-                    # 로컬 SD 이미지 생성(SD Phase 2). 미지원이면 에러.
-                    if self._sd is None or not self._image_ready:
-                        await self._safe_send(
-                            conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message="이미지 생성을 지원하지 않는 프로바이더입니다")
-                        )
-                    else:
-                        await self._handle_image(conn, req)
-                        self._processed += 1
-                elif req.stream:
-                    # 스트리밍(#142): 부분 텍스트를 ChunkFrame 으로 점진 전송 후 done 표시.
-                    # 무거운/폭주 응답 보호: 누적 길이가 MAX_RESPONSE_CHARS 를 넘으면 조기 종료.
-                    emitted = 0
-                    async for kind, val in self._ollama.generate_stream(req.prompt, model):
-                        if kind == "chunk":
-                            if emitted >= MAX_RESPONSE_CHARS:
-                                continue
-                            piece = val[: MAX_RESPONSE_CHARS - emitted]
-                            emitted += len(piece)
-                            await self._safe_send(conn, ChunkFrame(req.request_id, delta=piece, done=False))
-                    await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
-                    self._processed += 1
+                if max_seconds > 0:
+                    await asyncio.wait_for(self._run_infer(conn, req, model), timeout=max_seconds)
                 else:
-                    text, usage = await self._ollama.generate(req.prompt, model)
-                    if len(text) > MAX_RESPONSE_CHARS:
-                        text = text[:MAX_RESPONSE_CHARS]
-                    self._processed += 1
-                    await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
+                    await self._run_infer(conn, req, model)
+            except asyncio.TimeoutError:
+                logger.info("요청 %s… 최대 처리 시간(%ss) 초과 — 중단", req.request_id[:8], int(max_seconds))
+                await self._safe_send(
+                    conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=f"최대 처리 시간({int(max_seconds)}s) 초과")
+                )
             except OllamaError as exc:
                 await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
             except asyncio.CancelledError:
@@ -352,6 +366,37 @@ class ProviderAgent:
                 raise
             finally:
                 self._inflight -= 1
+
+    async def _run_infer(self, conn: AgentConnection, req: InferRequest, model: str | None) -> None:
+        """실제 추론 처리(image/stream/text). 최대 처리 시간(max_seconds)은 호출부가 wait_for 로 강제."""
+        if req.task == "image":
+            # 로컬 SD 이미지 생성(SD Phase 2). 미지원이면 에러.
+            if self._sd is None or not self._image_ready:
+                await self._safe_send(
+                    conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message="이미지 생성을 지원하지 않는 프로바이더입니다")
+                )
+            else:
+                await self._handle_image(conn, req)
+                self._processed += 1
+        elif req.stream:
+            # 스트리밍(#142): 부분 텍스트를 ChunkFrame 으로 점진 전송 후 done 표시.
+            # 무거운/폭주 응답 보호: 누적 길이가 MAX_RESPONSE_CHARS 를 넘으면 조기 종료.
+            emitted = 0
+            async for kind, val in self._ollama.generate_stream(req.prompt, model):
+                if kind == "chunk":
+                    if emitted >= MAX_RESPONSE_CHARS:
+                        continue
+                    piece = val[: MAX_RESPONSE_CHARS - emitted]
+                    emitted += len(piece)
+                    await self._safe_send(conn, ChunkFrame(req.request_id, delta=piece, done=False))
+            await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
+            self._processed += 1
+        else:
+            text, usage = await self._ollama.generate(req.prompt, model)
+            if len(text) > MAX_RESPONSE_CHARS:
+                text = text[:MAX_RESPONSE_CHARS]
+            self._processed += 1
+            await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
 
     async def _handle_image(self, conn: AgentConnection, req: InferRequest) -> None:
         """로컬 SD 로 이미지를 생성해 base64 PNG 를 ChunkFrame 으로 분할 전송(SD Phase 2)."""
@@ -643,6 +688,8 @@ class ProviderAgent:
         self._guild_policy[guild_id] = {**self._guild_policy.get(guild_id, {}), **policy}
         # 새 한도로 잔여 리셋 → 모든 연결 재광고(새 remaining 을 hello 로 중앙에 보고)
         self._remaining_by_guild.pop(guild_id, None)
+        # 동시 처리 상한이 바뀌었을 수 있으니 길드 세마포어 폐기 → 다음 요청 때 새 상한으로 재생성.
+        self._guild_sems.pop(guild_id, None)
         await self._readvertise()
 
     # ── 자동 동기화: 연동된 사용자가 디스코드 /프로바이더참여 한 새 서버에 앱이 스스로 연결 ──────

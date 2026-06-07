@@ -708,8 +708,11 @@ def build_app(session_key: str) -> web.Application:
     async def server_policy(req: web.Request) -> web.Response:
         """이 서버에 대한 내 정책 override 저장·적용(데스크톱 앱 G3 · /provider-limit 의 로컬 GUI).
 
-        body(camelCase 경계): {dailyLimit, maxConcurrency, maxSeconds, scope}. 현재 즉시 반영은
-        dailyLimit(서버별 일일 한도). 나머지는 저장만(중앙 반영은 와이어 확장 후속 — NEXA_LIMIT_POLICY.md).
+        body(camelCase 경계): {dailyLimit, maxConcurrency, maxSeconds, scope}.
+        프로바이더 로컬에서 **실제 강제**: dailyLimit(서버별 일일 한도)·maxConcurrency(서버별
+        동시 처리 세마포어)·maxSeconds(1건 최대 처리 시간 wait_for). 셋 다 서버가 더 보내도 우회 불가.
+        scope(공개 대상)는 **인가(누가 쓸 수 있나)** 라 중앙(JDA 역할 판정) 관할 — 여기선 저장만 하고
+        에이전트가 강제하지 않는다(요청자 신원/역할이 infer 프레임에 없음). 중앙 /provider-limit 가 게이트.
         """
         _auth(req)
         try:

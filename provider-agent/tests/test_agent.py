@@ -155,6 +155,59 @@ def test_guild_policy_override_in_hello():
 
 
 @pytest.mark.asyncio
+async def test_per_guild_concurrency_enforced():
+    """동시 처리 상한이 **서버별**로 강제된다. 서버 100 은 1, 서버 200 은 2(override)."""
+    # 전역 세마포어가 병목이 되지 않게 넉넉히(10) — 길드별 상한만 관찰.
+    peak: dict[int, int] = {100: 0, 200: 0}
+    agent = ProviderAgent(AgentConfig(token="T", max_concurrency=10, daily_limit=0))  # type: ignore[arg-type]
+    agent._guild_policy = {100: {"max_concurrency": 1}, 200: {"max_concurrency": 2}}
+
+    # in-flight 피크를 길드별로 직접 측정(동시성 관찰).
+    inflight = {100: 0, 200: 0}
+
+    class P2(FakeOllama):
+        async def generate(self, prompt: str, model: str | None) -> tuple[str, Usage]:
+            gid = int(prompt)
+            inflight[gid] += 1
+            peak[gid] = max(peak[gid], inflight[gid])
+            await asyncio.sleep(0.05)
+            inflight[gid] -= 1
+            return "x", Usage()
+
+    agent._ollama = P2()  # type: ignore[assignment]
+    a, b = FakeConn(guild_id=100), FakeConn(guild_id=200)
+    await asyncio.gather(
+        agent.handle_infer(a, InferRequest(request_id="a1", prompt="100")),  # type: ignore[arg-type]
+        agent.handle_infer(a, InferRequest(request_id="a2", prompt="100")),  # type: ignore[arg-type]
+        agent.handle_infer(b, InferRequest(request_id="b1", prompt="200")),  # type: ignore[arg-type]
+        agent.handle_infer(b, InferRequest(request_id="b2", prompt="200")),  # type: ignore[arg-type]
+    )
+    assert peak[100] == 1  # 서버 100: 동시 1개만(override)
+    assert peak[200] == 2  # 서버 200: 전역 2개까지
+
+
+@pytest.mark.asyncio
+async def test_per_guild_max_seconds_enforced():
+    """1건 최대 처리 시간(서버별)을 넘기면 중단·BUSY/에러 반려(한도 소모 후에도 결과 없음)."""
+    agent = ProviderAgent(AgentConfig(token="T", daily_limit=0), ollama=FakeOllama(delay=1.0))  # type: ignore[arg-type]
+    agent._guild_policy = {100: {"max_seconds": 0.05}}  # 처리(1s) 보다 짧은 상한
+    conn = FakeConn(guild_id=100)
+    await agent.handle_infer(conn, InferRequest(request_id="t1", prompt="x"))  # type: ignore[arg-type]
+    assert not any(isinstance(f, InferResult) for f in conn.sent)  # 결과 없음(시간 초과)
+    err = conn.sent[-1]
+    assert isinstance(err, InferError) and err.code == ErrorCode.OLLAMA_ERROR
+    assert "최대 처리 시간" in err.message
+
+
+def test_guild_concurrency_in_hello():
+    # 동시 처리 override 가 hello 의 max_concurrency 에도 길드별로 반영된다.
+    agent = ProviderAgent(AgentConfig(token="T", max_concurrency=4, models=("m",)))
+    agent._guild_policy = {100: {"max_concurrency": 1}}
+    assert agent._build_hello(100).max_concurrency == 1
+    assert agent._build_hello(200).max_concurrency == 4  # override 없으면 전역
+
+
+@pytest.mark.asyncio
 async def test_admin_action_calls_central(monkeypatch, tmp_path):
     # 관리 작업은 durable 토큰으로 central 관리 채널을 호출한다(권한 판정은 central).
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))

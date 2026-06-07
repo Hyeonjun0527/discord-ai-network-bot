@@ -158,6 +158,18 @@ test('전역 프롬프트 탭: 니아 기본 셋 + 추가/기본/삭제(외형 �
   await expect(page.locator('#serverManage')).toContainText('테스트셋');
 });
 
+test('약관·개인정보 링크: 데스크톱 앱에서 항상 접근 가능', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.waitForFunction(() => !!window.App);
+  await page.locator('.nav-legal button[data-legal="개인정보처리방침"]').click();
+  const modal = page.locator('.modal-layer .modal', { hasText: '개인정보처리방침' });
+  await expect(modal).toBeVisible();
+  await expect(modal).toContainText('저장·로깅하지 않'); // 무보유 원칙
+  await expect(modal).toContainText('기부자 PC');
+  await modal.locator('.modal-x').click();
+  await expect(page.locator('.modal-layer .modal', { hasText: '개인정보처리방침' })).toHaveCount(0);
+});
+
 test('안전 탭: 콘텐츠 정책 + 신고 처리(무시/숨김)', async ({ page }) => {
   await page.goto('/index.html#/servers/1001/manage/safety');
   await page.waitForFunction(() => !!window.App);

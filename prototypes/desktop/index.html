@@ -178,6 +178,9 @@
     .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; opacity: .85; }
     .nav-spacer { flex: 1; }
     .nav-foot { padding: 10px 13px; color: var(--subtle); font-size: 11.5px; line-height: 1.6; font-family: ui-monospace, Menlo, monospace; letter-spacing: .04em; }
+    .nav-legal { margin-top: 8px; font-family: -apple-system, "Apple SD Gothic Neo", sans-serif; letter-spacing: 0; }
+    .nav-legal button { background: none; border: 0; color: var(--subtle); font: inherit; font-size: 11px; cursor: pointer; padding: 0; }
+    .nav-legal button:hover { color: #fff; text-decoration: underline; }
 
     /* ── 전역 스크롤바(디자인 언어 SSOT) ──
        OS 기본 스크롤바는 어두운 글래스 톤과 충돌한다. 모든 스크롤 영역을 hue-only 한 얇은
@@ -710,6 +713,7 @@
     .cx-input::placeholder { color: var(--subtle); }
     .cx-input:focus { outline: none; border-color: color-mix(in srgb, var(--c-accent) 45%, transparent); }
     textarea.pta { height: 112px; padding: 12px 14px; resize: vertical; line-height: 1.55; }
+    .legal-body { white-space: pre-line; color: var(--muted); font-size: 13.5px; line-height: 1.75; }
     /* 후보 서버 아바타(작은) */
     .cx-cav { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 16px; color: #eef3fb; background: color-mix(in srgb, var(--c-blue) 22%, transparent); border: 1px solid color-mix(in srgb, var(--c-blue) 40%, transparent); }
     .cx-cand .ob { flex: 1; min-width: 0; }
@@ -783,7 +787,9 @@
           <span>설정</span>
         </button>
         <div class="nav-spacer"></div>
-        <div class="nav-foot">NETWORK · LIVE<br>CENTRAL NODE · 99.9%</div>
+        <div class="nav-foot">NETWORK · LIVE<br>CENTRAL NODE · 99.9%
+          <div class="nav-legal"><button data-legal="약관">약관</button> · <button data-legal="개인정보처리방침">개인정보</button> · <button data-legal="콘텐츠 정책">정책</button></div>
+        </div>
       </nav>
     </aside>
 
@@ -1023,6 +1029,25 @@
       document.getElementById('main').scrollTo({ top: 0 });
       if (window.navTo) window.navTo('#/' + b.dataset.view); // URL 동기화(라우터 SSOT)
     }));
+
+    // 약관·개인정보·콘텐츠 정책 — 데스크톱 앱에서 항상 접근 가능(기부자도 동의 주체). 프로토타입 요약 모달.
+    const LEGAL = {
+      '약관': '· 서비스: 커뮤니티 로컬 AI 풀 중개 — NEXA 는 모델 제공자가 아니에요.\n· 콘텐츠 책임은 서버 관리자·이용자에게 있어요.\n· 불법 콘텐츠(아동 성착취물 등)는 무관용 — 차단·신고됩니다.\n· Discord 약관·커뮤니티 가이드를 따라요.\n· 기부자는 자기 PC 리소스를 풀에 제공할 때 본 약관·로그 보존 금지에 동의해요.',
+      '개인정보처리방침': '· 유저 대화(질문·답변)는 처리만 하고 저장·로깅하지 않아요(무보유).\n· 질문은 답변 생성을 위해 기부자 PC 로 전달돼요 — 기부자는 로그 보존이 금지돼요.\n· 서버 설정·RAG 문서는 기능 제공을 위해 암호화 보관해요.\n· 디스코드 메시지에는 디스코드의 처리방침도 함께 적용돼요.',
+      '콘텐츠 정책': '· 콘텐츠 책임 = 서버 관리자.\n· 불법 콘텐츠 무관용(자동 차단·신고).\n· 성인 콘텐츠는 디스코드 연령 제한 채널에서만.\n· 신고 → 관리자/NEXA 대응(숨김·차단). 관리 → 안전 탭에서 처리.',
+    };
+    function openLegal(kind) {
+      const lay = document.createElement('div');
+      lay.className = 'modal-layer';
+      lay.innerHTML = '<div class="modal" style="width:min(480px,100%)">' +
+        '<button class="modal-x" data-x aria-label="닫기">✕</button>' +
+        '<h3>' + kind + '</h3><p class="msub">프로토타입 요약이에요. 정식 전문은 출시 시 웹에 게시돼요(법률 검토 후).</p>' +
+        '<div class="legal-body">' + (LEGAL[kind] || '') + '</div>' +
+        '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>닫기</button></div></div>';
+      document.body.appendChild(lay);
+      lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
+    }
+    document.querySelectorAll('[data-legal]').forEach(b => b.addEventListener('click', () => openLegal(b.dataset.legal)));
   </script>
 
   <!-- 홈 · 연결된 Discord 서버 목록 — adapter/presenter 기반(계약 SSOT) -->

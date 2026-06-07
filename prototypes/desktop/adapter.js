@@ -213,7 +213,19 @@ export const api = {
   /** @returns {Promise<import('./contract.js').ServerConn[]>} */
   async getServers() {
     if (USE_MOCK) { await delay(60); return structuredClone(MOCK.servers); }
-    return (await http(ENDPOINTS.servers)).servers;
+    // 정규화: 실 /api/servers 는 {servers:[{index,guildId,guildName,connected}]} 만 준다(Gap-S).
+    // UI 가 읽는 state/role 과 확장 통계는 백엔드 미보강이라 안전 기본값으로 최소 표시만.
+    const real = (await http(ENDPOINTS.servers)).servers || [];
+    return real.map((s) => ({
+      guildId: s.guildId,
+      guildName: s.guildName,
+      iconUrl: null,
+      connected: !!s.connected,
+      state: s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE,
+      role: Role.PROVIDER,
+      models: 0, today: 0, members: 0, avgMs: 0,
+      myModels: [], policy: null, webUrl: null,
+    }));
   },
   /** 서버 상세(기부자 관점) — Gap-S/P/W. 백엔드 전환 시 GET /api/servers/{guildId}. */
   async getServerDetail(guildId) {
@@ -367,13 +379,32 @@ export const api = {
   /** 로컬 모델 목록 + 기본 모델 — webui.py /api/models */
   async getModels() {
     if (USE_MOCK) { await delay(60); return { models: structuredClone(MOCK.models), defaultModel: MOCK.defaultModel }; }
-    return http(ENDPOINTS.models);
+    // 정규화: 실 {models:[str], modelsDetail:[{name,size,family}], selected:[str], default}
+    //  → UI {models:[{name,size,tags,on,lastUsed}], defaultModel}.
+    const r = await http(ENDPOINTS.models);
+    const detail = new Map((r.modelsDetail || []).map((d) => [d.name, d]));
+    const selected = new Set(r.selected || []);
+    const models = (r.models || []).map((name) => {
+      const d = detail.get(name) || {};
+      return {
+        name,
+        size: d.size || '', // 용량 미상이면 빈 값(UI m-size 가 비어도 무방)
+        tags: d.family ? [d.family] : [], // family 있으면 태그로, 없으면 빈 배열
+        on: selected.has(name), // selected 면 제공 중(켜짐)
+        lastUsed: '', // 백엔드 마지막 사용 미제공 — 빈 값
+      };
+    });
+    return { models, defaultModel: r.default || '' };
   },
 
   /** 추천 설치 모델 카탈로그 — webui.py /api/ollama/catalog */
   async ollamaCatalog() {
     if (USE_MOCK) { await delay(60); return structuredClone(MOCK.catalog); }
-    return (await http(ENDPOINTS.ollamaCatalog)).models || [];
+    // 정규화: 실 {models:[{id,name,desc,size,installed,selected}]} → UI {name,size,desc,cat}.
+    //  name 은 설치(ollama pull) 대상 id 로 둔다(UI 가 data-cat=name 값을 그대로 pull 에 넘김).
+    //  cat 은 실 응답에 없어 단일 분류('추천')로(UI 가 cat 으로 드롭다운 그룹을 만들기 때문).
+    const real = (await http(ENDPOINTS.ollamaCatalog)).models || [];
+    return real.map((m) => ({ name: m.id || m.name, size: m.size || '', desc: m.desc || '', cat: '추천' }));
   },
 
   /** Discord 연결 후보 목록 — central ProviderConnectOnboardingService (OAuth 콜백이 제공) */

@@ -140,6 +140,40 @@ def _post_provider_admin_promptset(
         return dict(json.loads(resp.read().decode("utf-8")))
 
 
+def _post_provider_admin_channels(
+    base: str,
+    path: str,
+    durable_token: str,
+    guild_id: int,
+    *,
+    channel_id: int = 0,
+    allow: bool = True,
+) -> dict:
+    """채널 AI 허용 관리 API 호출(관리자 전용). path: ''(목록) | '/toggle'(허용/금지).
+
+    channel_id 는 64bit Discord ID — Python int 는 정밀도 손실이 없으므로 그대로 전송한다.
+    권한은 central 이 JDA 로 판정하고, 허용 목록 "빈 목록 = 전체 허용" 의미도 central 이 보존한다.
+    """
+    import json
+    import ssl
+    import urllib.request
+
+    import certifi
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    body = json.dumps(
+        {"durableToken": durable_token, "guildId": guild_id, "channelId": channel_id, "allow": allow},
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        base + "/provider/admin/channels" + path,
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+    )
+    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+        return dict(json.loads(resp.read().decode("utf-8")))
+
+
 class ProviderAgent:
     def __init__(self, cfg: AgentConfig, ollama: OllamaClient | None = None, sd=None) -> None:
         self._cfg = cfg
@@ -516,6 +550,23 @@ class ProviderAgent:
             return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
         base = _agent_sync_base(self._cfg.relay_url)
         return await asyncio.to_thread(_post_provider_admin_promptset, base, "/delete", dt, guild_id, set_id=set_id)
+
+    # ── 채널 AI 허용(관리 화면 08) — 관리자. 빈 허용 목록 = 전체 채널 허용 ──
+    async def admin_channels(self, guild_id: int) -> dict:
+        """이 서버의 채널 AI 허용 목록(관리자). central 이 JDA 텍스트 채널 + 허용 정책을 합쳐 반환."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_channels, base, "", dt, guild_id)
+
+    async def admin_channel_toggle(self, guild_id: int, channel_id: int, allow: bool) -> dict:
+        """채널 AI 허용/금지 토글(관리자). channel_id 는 64bit Discord ID."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_channels, base, "/toggle", dt, guild_id, channel_id=channel_id, allow=allow)
 
     # ── 서버별 정책(데스크톱 앱 G3) ─────────────────────────────────────
     def guild_policy(self, guild_id: int) -> dict:

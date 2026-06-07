@@ -105,11 +105,12 @@ const MOCK = {
           content: '당신은 정중하고 간결한 비서입니다. 존댓말로 핵심만 명료하게 전달합니다.' },
       ],
       // 08 채널 정책(v1: 채널별 AI 허용만. 역할별 사용 정책은 v1 범위 외)
+      //   channelId 는 64bit Discord ID 라 문자열(실 백엔드 ManageChannelDto 와 동일 shape).
       channels: {
         defaultModel: 'llama3.1:8b', defaultLang: '한국어',
         list: [
-          { name: 'general', aiAllowed: true }, { name: 'ai-chat', aiAllowed: true },
-          { name: '코드리뷰', aiAllowed: true }, { name: '공지', aiAllowed: false },
+          { channelId: '9001', name: 'general', aiAllowed: true }, { channelId: '9002', name: 'ai-chat', aiAllowed: true },
+          { channelId: '9003', name: '코드리뷰', aiAllowed: true }, { channelId: '9004', name: '공지', aiAllowed: false },
         ],
       },
       // 09 채널 AI(채널별 성격)
@@ -146,7 +147,7 @@ const MOCK = {
       pending: [],
       roster: [{ providerUserId: 0, name: '나 (이 PC)', isMe: true, state: ProviderState.PENDING, models: 0, today: 0, avgMs: 0 }],
       prompts: [{ id: 'nia', name: '니아 (기본 페르소나)', builtin: true, isDefault: true, preview: '당신은 「니아」, NEXA 네트워크의 안내자예요. 차분하고 다정하게, 사용자의 질문을 알맞은 AI에게 연결하고 모르면 솔직히 모른다고 말해요…' }],
-      channels: { defaultModel: 'exaone3.5:7.8b', defaultLang: '한국어', list: [{ name: 'general', aiAllowed: true }] },
+      channels: { defaultModel: 'exaone3.5:7.8b', defaultLang: '한국어', list: [{ channelId: '9101', name: 'general', aiAllowed: true }] },
       channelAi: [], rag: { docs: [], applyChannels: [] }, presets: [], safety: { reports: [] },
     },
   },
@@ -315,6 +316,24 @@ export const api = {
       return { ok: true, sets: m ? structuredClone(m.prompts) : [] };
     }
     return post(ENDPOINTS.serverPromptDelete(guildId), { id });
+  },
+  // ── 채널 AI 허용(관리 화면 08) — 관리자. 빈 허용 목록 = 전체 채널 허용. channelId 는 문자열(64bit).
+  //   webui → central /provider/admin/channels{,/toggle}. PolicyService(GuildChannelPolicy) 재사용.
+  /** 채널 AI 허용 목록 조회. 실 응답 {ok, channels:[{channelId,name,aiAllowed}]}. */
+  async getChannels(guildId) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) { await delay(60); return { ok: true, channels: m && m.channels ? structuredClone(m.channels.list) : [] }; }
+    return http(ENDPOINTS.serverChannels(guildId));
+  },
+  /** 채널 AI 허용/금지 토글. allow=원하는 새 상태. 응답에 갱신된 채널 목록 포함. */
+  async toggleChannel(guildId, channelId, allow) {
+    const m = MOCK.manage[guildId];
+    if (USE_MOCK) {
+      await delay(80);
+      if (m && m.channels) { const ch = m.channels.list.find((c) => String(c.channelId) === String(channelId)); if (ch) ch.aiAllowed = allow; }
+      return { ok: true, channels: m && m.channels ? structuredClone(m.channels.list) : [] };
+    }
+    return post(ENDPOINTS.serverChannelToggle(guildId), { channelId: String(channelId), allow });
   },
   /** 이 서버에 대한 내 제공 일시중지/재개 — provider self-service(/provider-pause·resume). */
   async setServerPaused(guildId, paused) {

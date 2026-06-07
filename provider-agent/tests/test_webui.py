@@ -553,6 +553,31 @@ async def test_server_prompt_sets_require_running_agent(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_server_channels_require_running_agent(monkeypatch):
+    # 채널 AI 허용 관리 프록시 — 키 없으면 403, 에이전트 미실행이면 안내, 잘못된 채널은 거부.
+    client = await _client()
+    try:
+        assert (await client.get("/api/servers/100/channels")).status == 403  # 키 없음
+        d = await (await client.get("/api/servers/100/channels", headers={"X-Session": KEY})).json()
+        assert d["ok"] is False  # 미실행
+        d2 = await (
+            await client.post(
+                "/api/servers/100/channels/toggle", headers={"X-Session": KEY}, json={"channelId": "9002", "allow": False},
+            )
+        ).json()
+        assert d2["ok"] is False  # 미실행
+        # 잘못된 channelId 는 라우팅 단계에서 거부(에이전트 도달 전).
+        d3 = await (
+            await client.post(
+                "/api/servers/100/channels/toggle", headers={"X-Session": KEY}, json={"channelId": "x", "allow": True},
+            )
+        ).json()
+        assert d3["ok"] is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_server_policy_saves_override(monkeypatch):
     # 서버별 정책 override(G3) 저장 — camelCase 경계 → snake 저장. 실행 중 아니면 config 에 기록.
     from provider_agent.config_file import load_guild_policies

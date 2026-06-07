@@ -66,6 +66,10 @@ export const ENDPOINTS = Object.freeze({
   serverPromptAdd: (g) => '/api/servers/' + g + '/prompts/add',        // POST {name, content}
   serverPromptDefault: (g) => '/api/servers/' + g + '/prompts/default', // POST {id} (id='nia'→니아 복귀)
   serverPromptDelete: (g) => '/api/servers/' + g + '/prompts/delete',  // POST {id}
+  // ✅ 채널 AI 허용(관리 화면 08) — central /provider/admin/channels{,/toggle}. PolicyService(GuildChannelPolicy) 재사용.
+  //   빈 허용 목록 = 전체 채널 허용(제한 없음) 의미를 central 이 보존한다. channelId 는 64bit → 문자열로 다룬다.
+  serverChannels: (g) => '/api/servers/' + g + '/channels',          // GET → {ok, channels:[{channelId,name,aiAllowed}]}
+  serverChannelToggle: (g) => '/api/servers/' + g + '/channels/toggle', // POST {channelId, allow}
   serverAddToken: '/api/server-add-token',  // POST {token} → {ok} (실 앱: 토큰으로 서버 추가 + 자동 연결)
   onboardApply: '/api/onboard-apply',
   // 통합 설정 — GET → 저장 설정+상태(camelCase, {autostart,background,autoConnect,autoUpdate,enableImage,ollamaUrl,relayUrl,allowRemoteOllama,hasToken}).

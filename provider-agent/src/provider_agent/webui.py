@@ -742,6 +742,36 @@ def build_app(session_key: str) -> web.Application:
             return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
         return web.json_response(await agent.admin_prompt_set_delete(guild_id, set_id))  # type: ignore[attr-defined]
 
+    async def server_channels(req: web.Request) -> web.Response:
+        """채널 AI 허용 목록(관리자). central 로 프록시. 빈 허용 목록 = 전체 채널 허용."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_channels(guild_id))  # type: ignore[attr-defined]
+
+    async def server_channel_toggle(req: web.Request) -> web.Response:
+        """채널 AI 허용/금지 토글(관리자). body {channelId, allow}. channelId 는 문자열(64bit)."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        try:
+            channel_id = int(str(data.get("channelId") or "0"))
+        except ValueError:
+            return web.json_response({"ok": False, "error": "잘못된 채널"})
+        allow = bool(data.get("allow"))
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_channel_toggle(guild_id, channel_id, allow))  # type: ignore[attr-defined]
+
     async def server_rename(req: web.Request) -> web.Response:
         """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). index + name."""
         _auth(req)
@@ -1163,6 +1193,8 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/servers/{guildId}/prompts/add", server_prompt_set_add)
     app.router.add_post("/api/servers/{guildId}/prompts/default", server_prompt_set_default)
     app.router.add_post("/api/servers/{guildId}/prompts/delete", server_prompt_set_delete)
+    app.router.add_get("/api/servers/{guildId}/channels", server_channels)
+    app.router.add_post("/api/servers/{guildId}/channels/toggle", server_channel_toggle)
     app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
     app.router.add_post("/api/server-add-token", server_add_token)
     app.router.add_get("/api/install-info", install_info)

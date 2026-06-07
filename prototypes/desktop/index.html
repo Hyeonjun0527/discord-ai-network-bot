@@ -1577,6 +1577,11 @@
         const r = await api.getPromptSets(d.guildId);
         m.prompts = (r && r.sets) || [];
       }
+      if (tab === 'channels' && m.channels === undefined) {
+        const r = await api.getChannels(d.guildId);
+        // 실 응답은 플랫 채널 목록만(서버 기본값 별도) — 기본값은 비워두고 목록만 채운다.
+        m.channels = { defaultModel: '', defaultLang: '', list: (r && r.channels) || [] };
+      }
     }
 
     async function openManage(d, tab) {
@@ -1717,10 +1722,14 @@
     function renderChannelsTab(m) {
       if (!m.channels) return MSOON_REAL('채널 AI 허용');
       const c = m.channels;
-      const ch = c.list.map(x => '<div class="mrow"><span class="mrow-nm"># ' + x.name + '</span>' +
-        '<button class="mtoggle' + (x.aiAllowed ? ' on' : '') + '" data-ch-toggle="' + x.name + '">' + (x.aiAllowed ? 'AI 허용' : 'AI 금지') + '</button></div>').join('');
-      return '<div class="dcard"><div class="dlabel">서버 기본값</div><div class="dsub">기본 모델 ' + c.defaultModel + ' · 기본 언어 ' + c.defaultLang + '</div></div>' +
-        '<div class="msec-label">채널별 AI 허용</div><div class="dcard">' + ch + '</div>';
+      const ch = c.list.length
+        ? c.list.map(x => '<div class="mrow"><span class="mrow-nm"># ' + x.name + '</span>' +
+            '<button class="mtoggle' + (x.aiAllowed ? ' on' : '') + '" data-ch-toggle="' + x.channelId + '">' + (x.aiAllowed ? 'AI 허용' : 'AI 금지') + '</button></div>').join('')
+        : '<span class="dim">채널이 없어요(봇이 서버에 연결돼 있어야 보여요).</span>';
+      // 서버 기본값은 실 채널 응답에 없으므로 값이 있을 때만 표시(거짓 정보 방지).
+      const defaults = c.defaultModel ? '<div class="dcard"><div class="dlabel">서버 기본값</div><div class="dsub">기본 모델 ' + c.defaultModel + ' · 기본 언어 ' + c.defaultLang + '</div></div>' : '';
+      return defaults +
+        '<div class="msec-label">채널별 AI 허용 <span class="dim">· 허용된 채널에서만 AI 가 답해요</span></div><div class="dcard">' + ch + '</div>';
     }
 
     function renderChannelAiTab(m) {
@@ -1778,7 +1787,15 @@
     function bindTabActions(d, m) {
       const rerender = () => renderManage(d, m);
       manageEl.querySelectorAll('[data-soon]').forEach(b => b.onclick = () => toast(b.dataset.soon + ' — 프로토타입에선 흐름만 보여줘요', { type: 'info' }));
-      manageEl.querySelectorAll('[data-ch-toggle]').forEach(b => b.onclick = () => { const x = m.channels.list.find(c => c.name === b.dataset.chToggle); if (x) x.aiAllowed = !x.aiAllowed; rerender(); });
+      manageEl.querySelectorAll('[data-ch-toggle]').forEach(b => b.onclick = async () => {
+        const id = b.dataset.chToggle;
+        const x = m.channels.list.find(c => String(c.channelId) === String(id));
+        if (!x) return;
+        const r = await api.toggleChannel(d.guildId, id, !x.aiAllowed);
+        if (r && r.ok === false) { toast(r.message || '변경할 수 없어요', { type: 'info' }); return; }
+        if (r && r.channels) m.channels.list = r.channels;
+        rerender();
+      });
       manageEl.querySelectorAll('[data-cai-toggle]').forEach(b => b.onclick = () => { const x = m.channelAi.find(c => c.channel === b.dataset.caiToggle); if (x) x.on = !x.on; rerender(); });
       manageEl.querySelectorAll('[data-preset-toggle]').forEach(b => b.onclick = () => { const x = m.presets.find(c => c.name === b.dataset.presetToggle); if (x) x.on = !x.on; rerender(); });
       // 전역 프롬프트셋 — 기본/삭제/추가 (실연동: webui → central /provider/admin/prompt-sets*)

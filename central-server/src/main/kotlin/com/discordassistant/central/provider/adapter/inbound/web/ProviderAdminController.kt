@@ -2,6 +2,7 @@ package com.discordassistant.central.provider.adapter.inbound.web
 
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetView
+import com.discordassistant.central.guild.application.GuildChannelPolicy
 import com.discordassistant.central.platform.discord.BotGuildLister
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.ProviderRosterInfo
@@ -72,6 +73,33 @@ data class AdminPromptSetResponse(
     val sets: List<GlobalPromptSetView> = emptyList(),
 )
 
+/** 채널 목록 조회 요청. */
+data class AdminChannelsRequest(
+    val durableToken: String = "",
+    val guildId: Long = 0,
+)
+
+/** 채널 AI 허용 토글 요청. allow=true 허용 / false 금지. */
+data class AdminChannelToggleRequest(
+    val durableToken: String = "",
+    val guildId: Long = 0,
+    val channelId: Long = 0,
+    val allow: Boolean = true,
+)
+
+/** 관리 화면 채널 항목. channelId 는 64bit Discord ID — JSON number 정밀도 손실 방지로 문자열. */
+data class ManageChannelDto(
+    val channelId: String,
+    val name: String,
+    val aiAllowed: Boolean,
+)
+
+data class AdminChannelsResponse(
+    val ok: Boolean,
+    val message: String = "",
+    val channels: List<ManageChannelDto> = emptyList(),
+)
+
 /**
  * 데스크톱 앱(관리자)용 서버 관리 채널 — Provider 승인/거절/제거 + 목록 조회.
  *
@@ -92,6 +120,7 @@ class ProviderAdminController(
     private val botGuilds: BotGuildLister,
     private val roster: ProviderRosterInfo,
     private val globalPromptSets: GlobalPromptSetService,
+    private val guildChannels: GuildChannelPolicy,
 ) {
     /** durable 토큰 → 요청자 providerId 복원 후 그가 guildId 관리자면 그 id 반환, 아니면 null(거부). */
     private fun authedAdmin(
@@ -226,6 +255,52 @@ class ProviderAdminController(
                 onSuccess = { AdminPromptSetResponse(true, "삭제했어요", globalPromptSets.list(req.guildId)) },
                 onFailure = { AdminPromptSetResponse(false, "삭제할 수 없어요(기본 페르소나는 삭제 불가)") },
             )
+    }
+
+    /**
+     * 채널 AI 허용 목록(관리 화면 08). JDA 텍스트 채널 + 허용 정책을 합쳐 채널별 aiAllowed 를 채운다.
+     * 허용 목록이 비어 있으면 도메인 의미상 전체 허용이므로 모든 채널이 aiAllowed=true.
+     */
+    @PostMapping("/channels")
+    fun channels(
+        @RequestBody req: AdminChannelsRequest,
+    ): AdminChannelsResponse {
+        authedAdmin(req.durableToken, req.guildId) ?: return AdminChannelsResponse(false, "관리자 권한이 필요합니다")
+        return AdminChannelsResponse(true, channels = channelDtos(req.guildId))
+    }
+
+    /**
+     * 채널 AI 허용 토글. "빈 목록 = 전체 허용" 의미를 보존하려고 전체 채널 집합 기준으로 계산한다:
+     * 현재 허용이 비어 있으면(전체 허용) 토글 OFF 는 "그 채널만 빼고 전부 허용"으로 교체해야 한다.
+     * 토글 결과가 전체 채널과 같아지면 다시 제한 해제(빈 목록)로 되돌린다.
+     */
+    @PostMapping("/channels/toggle")
+    fun toggleChannel(
+        @RequestBody req: AdminChannelToggleRequest,
+    ): AdminChannelsResponse {
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminChannelsResponse(false, "관리자 권한이 필요합니다")
+        val all = botGuilds.botChannels(req.guildId).map { it.id }
+        if (all.isEmpty()) return AdminChannelsResponse(false, "채널 목록을 가져올 수 없어요(봇 미연결)")
+        val current = guildChannels.allowedChannelIds(req.guildId)
+        val effective = (if (current.isEmpty()) all else current).toMutableSet()
+        if (req.allow) effective.add(req.channelId) else effective.remove(req.channelId)
+        if (effective == all.toSet()) {
+            guildChannels.allowAllChannels(req.guildId, adminId)
+        } else {
+            guildChannels.replaceAllowedChannels(req.guildId, effective, adminId)
+        }
+        return AdminChannelsResponse(true, channels = channelDtos(req.guildId))
+    }
+
+    private fun channelDtos(guildId: Long): List<ManageChannelDto> {
+        val allowed = guildChannels.allowedChannelIds(guildId)
+        val allowAll = allowed.isEmpty()
+        val allowedSet = allowed.toSet()
+        return botGuilds.botChannels(guildId).map {
+            ManageChannelDto(it.id.toString(), it.name, allowAll || it.id in allowedSet)
+        }
     }
 
     private fun addFailureMessage(e: Throwable): String =

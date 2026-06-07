@@ -22,6 +22,25 @@ fun interface AutoApprovePolicy {
 }
 
 /**
+ * 채널 AI 허용 목록 관리(데스크톱 앱 관리채널 브리지용 좁은 포트). [PolicyService] 가 구현한다.
+ * 빈 목록 = 전체 채널 허용(제한 없음)이라는 도메인 의미를 그대로 노출한다.
+ */
+interface GuildChannelPolicy {
+    fun allowedChannelIds(guildId: Long): List<Long>
+
+    fun replaceAllowedChannels(
+        guildId: Long,
+        channelIds: Collection<Long>,
+        adminId: Long,
+    )
+
+    fun allowAllChannels(
+        guildId: Long,
+        adminId: Long,
+    )
+}
+
+/**
  * 서버(길드) 정책 (K-차수 7, specs §6/§18). 허용 채널·역할별 허용 모델 수준·승인 방식.
  * 라우팅이 쓰는 부분은 [RoutingPolicy] 로 노출한다.
  *
@@ -40,7 +59,8 @@ class PolicyService(
     @param:Value("\${central.policy.cache-ttl-ms:5000}") private val cacheTtlMs: Long = 5000,
     private val clock: Clock = Clock.systemUTC(),
 ) : RoutingPolicy,
-    AutoApprovePolicy {
+    AutoApprovePolicy,
+    GuildChannelPolicy {
     // ── 읽기 캐시 ────────────────────────────────────────────────────────
     // 길드별 불변 스냅샷 + 로드시각. TTL 경과 또는 무효화 시 재조회. 스레드 안전(ConcurrentHashMap).
     private val channelCache = ConcurrentHashMap<Long, CacheEntry<List<Long>>>()
@@ -132,7 +152,7 @@ class PolicyService(
 
     /** 채널 제한 전체 해제 = 모든 채널에서 사용 허용(허용 목록 비움). */
     @Transactional
-    fun allowAllChannels(
+    override fun allowAllChannels(
         guildId: Long,
         adminId: Long,
     ) {
@@ -143,7 +163,7 @@ class PolicyService(
 
     /** 허용 채널 목록을 한 번에 교체한다. 빈 목록은 전체 채널 허용이다. */
     @Transactional
-    fun replaceAllowedChannels(
+    override fun replaceAllowedChannels(
         guildId: Long,
         channelIds: Collection<Long>,
         adminId: Long,
@@ -158,7 +178,7 @@ class PolicyService(
 
     /** 허용 채널 ID 목록(비면 전체 허용). */
     @Transactional(readOnly = true)
-    fun allowedChannelIds(guildId: Long): List<Long> = cachedChannelIds(guildId)
+    override fun allowedChannelIds(guildId: Long): List<Long> = cachedChannelIds(guildId)
 
     /** 채널이 LLM 사용 허용인가. 허용 채널이 하나도 설정 안 됐으면 제한 없음(true). */
     @Transactional(readOnly = true)

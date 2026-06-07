@@ -3,10 +3,13 @@ package com.discordassistant.central.provider
 import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.globalpromptset.adapter.outbound.persistence.GlobalPromptSetRepository
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
+import com.discordassistant.central.guild.application.GuildChannelPolicy
 import com.discordassistant.central.platform.discord.BotChannelInfo
 import com.discordassistant.central.platform.discord.BotGuildInfo
 import com.discordassistant.central.platform.discord.BotGuildLister
 import com.discordassistant.central.provider.adapter.inbound.web.AdminActionRequest
+import com.discordassistant.central.provider.adapter.inbound.web.AdminChannelToggleRequest
+import com.discordassistant.central.provider.adapter.inbound.web.AdminChannelsRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPolicyRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPromptSetRequest
 import com.discordassistant.central.provider.adapter.inbound.web.ProviderAdminController
@@ -47,7 +50,16 @@ class ProviderAdminControllerTest
             val reg: ProviderRegistrationService,
             val dtoken: String,
             val rosterState: MutableMap<String, Boolean>,
+            val channelState: MutableList<Long>,
         )
+
+        // 봇 텍스트 채널 고정 목록(채널 토글 테스트용). 다른 테스트는 botChannels 를 읽지 않는다.
+        private val botChannelList =
+            listOf(
+                BotChannelInfo(10L, "general"),
+                BotChannelInfo(20L, "ai-chat"),
+                BotChannelInfo(30L, "공지"),
+            )
 
         private fun fakeBot(admin: Boolean) =
             object : BotGuildLister {
@@ -55,7 +67,7 @@ class ProviderAdminControllerTest
 
                 override fun botGuilds() = emptyList<BotGuildInfo>()
 
-                override fun botChannels(guildId: Long) = emptyList<BotChannelInfo>()
+                override fun botChannels(guildId: Long) = botChannelList
 
                 override fun isGuildAdmin(
                     guildId: Long,
@@ -90,9 +102,32 @@ class ProviderAdminControllerTest
                         state["auto"] = value
                     }
                 }
-            val ctrl = ProviderAdminController(tokens, reg, fakeBot(admin), roster, GlobalPromptSetService(promptSets, clock))
+            // 채널 허용 목록 in-memory fake — 빈 목록 = 전체 허용 의미를 PolicyService 와 동일하게 모사.
+            val channelState = mutableListOf<Long>()
+            val guildChannels =
+                object : GuildChannelPolicy {
+                    override fun allowedChannelIds(guildId: Long) = channelState.toList()
+
+                    override fun replaceAllowedChannels(
+                        guildId: Long,
+                        channelIds: Collection<Long>,
+                        adminId: Long,
+                    ) {
+                        channelState.clear()
+                        channelState.addAll(channelIds.distinct())
+                    }
+
+                    override fun allowAllChannels(
+                        guildId: Long,
+                        adminId: Long,
+                    ) {
+                        channelState.clear()
+                    }
+                }
+            val ctrl =
+                ProviderAdminController(tokens, reg, fakeBot(admin), roster, GlobalPromptSetService(promptSets, clock), guildChannels)
             val dtoken = durable.issueDurable(7L, 100L)!!
-            return Ctx(ctrl, reg, dtoken, state)
+            return Ctx(ctrl, reg, dtoken, state, channelState)
         }
 
         @Test
@@ -213,5 +248,36 @@ class ProviderAdminControllerTest
 
             // builtin 삭제 불가
             assertFalse(c.ctrl.deletePromptSet(AdminPromptSetRequest(c.dtoken, 100L, id = "nia")).ok)
+        }
+
+        @Test
+        fun `관리자는 채널 AI 허용을 조회하고 빈목록=전체허용 의미로 토글한다`() {
+            val c = setup(admin = true)
+            // 초기: 허용 목록 비어 있음 → 모든 채널 허용. channelId 는 문자열(64bit 정밀도 보존).
+            val all = c.ctrl.channels(AdminChannelsRequest(c.dtoken, 100L))
+            assertTrue(all.ok)
+            assertEquals(3, all.channels.size)
+            assertTrue(all.channels.all { it.aiAllowed })
+            assertEquals("20", all.channels.first { it.name == "ai-chat" }.channelId)
+
+            // ai-chat(20) 끄기 → 그 채널만 빼고 전부 허용([10,30])
+            val off = c.ctrl.toggleChannel(AdminChannelToggleRequest(c.dtoken, 100L, channelId = 20L, allow = false))
+            assertTrue(off.ok)
+            assertFalse(off.channels.first { it.channelId == "20" }.aiAllowed)
+            assertTrue(off.channels.first { it.channelId == "10" }.aiAllowed)
+            assertEquals(setOf(10L, 30L), c.channelState.toSet())
+
+            // 다시 켜기 → 전체 허용 복귀(빈 목록)
+            val on = c.ctrl.toggleChannel(AdminChannelToggleRequest(c.dtoken, 100L, channelId = 20L, allow = true))
+            assertTrue(on.channels.all { it.aiAllowed })
+            assertTrue(c.channelState.isEmpty())
+        }
+
+        @Test
+        fun `비관리자는 채널 조회·토글이 거부되고 정책이 불변이다`() {
+            val d = setup(admin = false)
+            assertFalse(d.ctrl.channels(AdminChannelsRequest(d.dtoken, 100L)).ok)
+            assertFalse(d.ctrl.toggleChannel(AdminChannelToggleRequest(d.dtoken, 100L, channelId = 20L, allow = false)).ok)
+            assertTrue(d.channelState.isEmpty()) // 변경 없음
         }
     }

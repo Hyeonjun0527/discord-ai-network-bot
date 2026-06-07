@@ -192,7 +192,9 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { await delay(60); return structuredClone(MOCK.servers); } /* @end-proto-only */
     // 정규화: 실 /api/servers 는 {servers:[{index,guildId,guildName,connected}]} 만 준다(Gap-S).
     // UI 가 읽는 state/role 과 확장 통계는 백엔드 미보강이라 안전 기본값으로 최소 표시만.
-    const real = (await http(ENDPOINTS.servers)).servers || [];
+    const [list, st] = await Promise.all([http(ENDPOINTS.servers), http(ENDPOINTS.status).catch(() => ({}))]);
+    const real = list.servers || [];
+    const advertised = (st && st.models) || []; // 에이전트가 (연결된) 서버에 광고하는 모델 집합 = 실제 제공 모델
     return real.map((s) => ({
       guildId: s.guildId,
       guildName: s.guildName,
@@ -200,8 +202,10 @@ export const api = {
       connected: !!s.connected,
       state: s.paused ? ProviderState.PAUSED : (s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE),
       role: Role.PROVIDER,
-      models: 0, today: 0, members: 0, avgMs: 0,
-      myModels: [], policy: null, webUrl: null,
+      models: s.connected ? advertised.length : 0, // 실제 제공 모델 수(연결된 서버엔 광고 집합 전부)
+      today: null, members: null, avgMs: null,      // 길드별 처리/멤버수/평균지연은 미추적 — 가짜 0 금지(null=미표시)
+      myModels: s.connected ? [...advertised] : [],
+      policy: null, webUrl: null,
     }));
   },
   /** 서버 상세(기부자 관점) — Gap-S/P/W. 실 백엔드엔 전용 상세 API 가 없어 목록+권한 probe 로 구성. */
@@ -210,18 +214,21 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { await delay(60); const s = MOCK.servers.find((x) => String(x.guildId) === String(guildId)); return s ? structuredClone(s) : null; } /* @end-proto-only */
     // 실: /api/servers/{g} 전용 라우트가 없다(Gap-S). 목록 항목으로 기본을 채우고, 관리 권한은
     //   /manage 응답 ok 로 판정한다(contract.js: "앱은 serverManage 응답 ok 로 관리자 여부를 판정").
-    const list = (await http(ENDPOINTS.servers)).servers || [];
+    const [listRes, st] = await Promise.all([http(ENDPOINTS.servers), http(ENDPOINTS.status).catch(() => ({}))]);
+    const list = listRes.servers || [];
     const s = list.find((x) => String(x.guildId) === String(guildId));
     if (!s) return null;
     let isAdmin = false;
     try { const mg = await http(ENDPOINTS.serverManage(guildId)); isAdmin = !!(mg && mg.ok); } catch { isAdmin = false; }
+    const advertised = (st && st.models) || [];
     return {
       guildId: String(s.guildId), guildName: s.guildName, iconUrl: null,
       connected: !!s.connected,
       state: s.paused ? ProviderState.PAUSED : (s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE),
       role: isAdmin ? Role.ADMIN : Role.PROVIDER,
-      models: 0, today: 0, members: 0, avgMs: 0,
-      myModels: [],
+      models: s.connected ? advertised.length : 0,   // 실제 제공 모델 수
+      today: null, members: null, avgMs: null,        // 길드별 처리/멤버/평균지연 미추적 — null(미표시)
+      myModels: s.connected ? [...advertised] : [],
       policy: { dailyLimit: 0, maxConcurrency: 1, maxSeconds: 600, scope: 'ALL' },
       webUrl: null,
     };

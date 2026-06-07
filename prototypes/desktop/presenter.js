@@ -21,10 +21,12 @@ export const presentServerState = (state) => SERVER_PRESENT[state] || { label: s
 
 // 서버 메타 줄(상태별 부가정보)
 export const presentServerMeta = (srv) => {
+  // 길드별 '오늘 처리'(today)는 미추적이면 null — 가짜 0 대신 항목 자체를 생략(제공 모델 수만 표시).
+  const today = srv.today != null ? ' · 오늘 ' + srv.today + '건' : '';
   switch (srv.state) {
     case ProviderState.PENDING: return '관리자 승인 대기';
     case ProviderState.PAUSED: return '제공 모델 ' + (srv.models ?? 0);
-    default: return '제공 모델 ' + (srv.models ?? 0) + ' · 오늘 ' + (srv.today ?? 0) + '건';
+    default: return '제공 모델 ' + (srv.models ?? 0) + today;
   }
 };
 

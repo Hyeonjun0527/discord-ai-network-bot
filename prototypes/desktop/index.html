@@ -1535,7 +1535,7 @@
           '<span class="srv-avatar" style="' + avatarStyle + '">' + initialOf(s.guildName) + img + '</span>' +
           '<span class="srv-main">' +
             '<span class="srv-name"><span class="nm">' + s.guildName + '</span></span>' +
-            '<span class="srv-meta"><span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span> · 멤버 ' + fmtMembers(s.members) + ' · ' + presentServerMeta(s) + '</span>' +
+            '<span class="srv-meta"><span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span>' + (s.members != null ? ' · 멤버 ' + fmtMembers(s.members) : '') + ' · ' + presentServerMeta(s) + '</span>' +
           '</span>' +
           '<span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span>' +
           '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>' +
@@ -1610,12 +1610,14 @@
         '<div class="dcard"><div class="dlabel">🔒 서버 설정은 관리자 권한이 필요해요</div>' +
         '<div class="dsub">이 서버의 정책은 서버 관리자가 설정해요. 나는 내 PC 리소스(위 정책)만 조절해요.</div></div>');
       // 기여 현황 카드 — PENDING 이면 숨김(아직 기여 시작 전).
+      // 미추적 값(오늘 처리·평균 지연)은 가짜 0/0ms 대신 '—'. 제공 모델은 실제 광고 수.
+      const fStat = (v, suf) => (v != null ? v + (suf || '') : '—');
       const contribBlock = pending ? '' :
         '<div class="dcard"><div class="dlabel">내 기여 현황 <span class="dim">· 오늘</span></div>' +
           '<div class="dstats">' +
-            '<div><b>' + d.today + '</b><span>요청</span></div>' +
+            '<div><b>' + fStat(d.today) + '</b><span>요청</span></div>' +
             '<div><b>' + d.myModels.length + '</b><span>제공 모델</span></div>' +
-            '<div><b>' + d.avgMs + 'ms</b><span>평균</span></div>' +
+            '<div><b>' + fStat(d.avgMs, 'ms') + '</b><span>평균</span></div>' +
           '</div>' +
           '<div class="dmodels">' + modelChips + '</div>' +
         '</div>';
@@ -1625,7 +1627,7 @@
           '<button class="dback" id="dBack">‹ 서버</button>' +
           '<div class="dtitle"><h1>' + d.guildName + '</h1>' +
             '<span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span></div>' +
-          '<div class="dsubhead">멤버 ' + fmtMembers(d.members) + ' · 내 역할 <span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span></div>' +
+          '<div class="dsubhead">' + (d.members != null ? '멤버 ' + fmtMembers(d.members) + ' · ' : '') + '내 역할 <span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span></div>' +
         '</div>' +
         pendingBlock + contribBlock + provBlock + policyBlock + manageBlock;
 
@@ -1842,7 +1844,7 @@
       const todaySum = m.roster.reduce((a, p) => a + (p.today || 0), 0);
       return '<div class="dcard"><div class="dlabel">서버 요약</div>' +
         '<div class="dstats">' +
-          '<div><b>' + fmtMembers(d.members) + '</b><span>멤버</span></div>' +
+          '<div><b>' + (d.members != null ? fmtMembers(d.members) : '—') + '</b><span>멤버</span></div>' +
           '<div><b>' + m.roster.length + '</b><span>Provider</span></div>' +
           '<div><b>' + todaySum + '</b><span>오늘 처리</span></div>' +
         '</div></div>' +
@@ -2452,7 +2454,10 @@
         if (window.setImageRecv) window.setImageRecv(!!st.enableImage); // 이미지 요청 받기 실 상태 반영(먼저)
         if (window.setBgOn) window.setBgOn(!!st.background); // 백그라운드 핀 = 상주 '설정값'(설정 화면과 동일). 런타임(backgroundRunning) 아님
         if (window.setRuntime) {
-          window.setRuntime('Ollama', (st.running && st.models && st.models.length) ? 'running' : (st.models && st.models.length ? 'stopped' : 'absent'));
+          const nModels = (st.models && st.models.length) || 0;
+          const ollamaState = (st.running && nModels) ? 'running' : (nModels ? 'stopped' : 'absent');
+          // Ollama 메타는 실제 제공 모델 수로(하드코딩 '모델 7개' 금지).
+          window.setRuntime('Ollama', ollamaState, ollamaState === 'running' ? ('모델 ' + nModels + '개 · 텍스트 응답 제공') : undefined);
           window.setRuntime('Stable Diffusion', !st.sdInstalled ? 'absent' : (st.imageReady ? 'running' : 'stopped'));
         }
         // 히어로 상태 + 페이지 부제 — 미연결이면 미연결, 연결됐으면 실행 여부로 ok/error.
@@ -2574,10 +2579,11 @@
         },
       };
       let imageRecv = true; // 이미지 요청 받기(enable_image). 홈 SD 카드 스위치로 토글.
-      function setRuntime(name, state) {
+      function setRuntime(name, state, metaOverride) {
         const card = document.querySelector('.prov-card[data-runtime="' + name + '"]');
         if (!card || !RT_PRESENT[name][state]) return;
         const p = { ...RT_PRESENT[name][state] };
+        if (metaOverride) p.meta = metaOverride; // 실 앱: 실제 값(예: 모델 수)으로 메타 대체(하드코딩 방지)
         // SD 는 imageRecv 가 OFF 면 경고 없이 '꺼짐' 메타(이미지 요청을 안 받으므로 SD 상태 무관)
         if (name === 'Stable Diffusion' && !imageRecv) { p.meta = '이미지 요청 받기 꺼짐'; p.warn = false; }
         card.dataset.state = state;

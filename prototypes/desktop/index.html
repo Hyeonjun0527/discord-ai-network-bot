@@ -1080,6 +1080,22 @@
         </div>
       </div>
       <div class="proto-sec">
+        <label>로컬 실행 상태(데모 — 재연결·SD 시작 시연)</label>
+        <div class="proto-rt"><span class="rt-name">연결</span>
+          <div class="proto-seg proto-seg-sm" data-mock="conn">
+            <button data-mockval="on" class="active">연결됨</button>
+            <button data-mockval="off">끊김</button>
+          </div>
+        </div>
+        <div class="proto-rt"><span class="rt-name">SD</span>
+          <div class="proto-seg proto-seg-sm" data-mock="sd">
+            <button data-mockval="ready" class="active">준비</button>
+            <button data-mockval="notready">준비중</button>
+            <button data-mockval="absent">미설치</button>
+          </div>
+        </div>
+      </div>
+      <div class="proto-sec">
         <label>앱 시작 시나리오 (E3 · 설정 유지된 재설치)</label>
         <div class="proto-seg" id="protoScenario">
           <button data-scn="resync">앱 재설치 후 첫 실행</button>
@@ -2873,6 +2889,19 @@
         seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
           seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
           if (window.setRuntime) window.setRuntime(rt, b.dataset.rtstate);
+        }));
+      });
+      // 로컬 실행 상태(데모) — mock status 를 흔들어 조건부 UI(재연결·SD 시작)를 로컬 화면에서 시연한다.
+      document.querySelectorAll('.proto-seg[data-mock]').forEach(seg => {
+        const kind = seg.dataset.mock;
+        seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+          seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+          const v = b.dataset.mockval;
+          if (window.__mockPatch) {
+            if (kind === 'conn') window.__mockPatch({ running: true, connected: v === 'on' });
+            else if (kind === 'sd') window.__mockPatch(v === 'absent' ? { sdInstalled: false, imageReady: false } : v === 'notready' ? { sdInstalled: true, imageReady: false } : { sdInstalled: true, imageReady: true });
+          }
+          document.querySelector('.nav-item[data-view="local"]')?.click(); // 로컬 화면으로 전환 + 재렌더
         }));
       });
       // E3 — 앱 재설치/PC 교체 후 '첫 실행' 시 자동 재연결(사용자 액션 아님, 시작 시점 이벤트 시뮬).

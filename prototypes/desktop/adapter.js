@@ -182,6 +182,8 @@ const MOCK = {
     { guildId: 2003, guildName: '사이드프로젝트 모임', iconUrl: null, autoApprove: true },
   ],
 };
+// 프로토타입 데모: PROTO 컨트롤러/테스트가 mock 상태를 흔들어 조건부 UI(재연결·SD 시작 등)를 시연·검증.
+if (typeof window !== 'undefined') { window.__mockPatch = (patch) => { Object.assign(MOCK.status, patch || {}); }; }
 /* @end-proto-only */
 
 export const api = {

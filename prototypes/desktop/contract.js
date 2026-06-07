@@ -44,7 +44,7 @@ export const ENDPOINTS = Object.freeze({
   // ⚠ 서버 상세(기부자 관점) — Gap-S/P/W. 아래 3개는 백엔드 신설 필요.
   serverDetail: (g) => '/api/servers/' + g,         // GET — 서버별 내 기여 통계·myModels·policy(Gap-S/P)
   serverPause: (g) => '/api/servers/' + g + '/pause',   // POST {paused} — provider self-service(/provider-pause·resume)
-  serverPolicy: (g) => '/api/servers/' + g + '/policy', // POST {dailyLimit,maxConcurrency,maxSeconds,scope} — (/provider-limit·scope)
+  serverPolicy: (g) => '/api/servers/' + g + '/policy', // GET 저장값 readback · POST {dailyLimit,maxConcurrency,maxSeconds} 저장 (/provider-limit)
   // 서버 관리(관리자) — 앱 내 직접 관리. ✅ 채널 구현됨(2026-06-07): webui → central /provider/admin/*.
   //   central 이 durable 토큰 신원 + JDA 관리자 판정(MANAGE_SERVER|ADMINISTRATOR) 후 ProviderRegistrationService 실행.
   //   role 전달은 별도 불필요 — 앱은 serverManage 응답 ok 로 "내가 관리자인지" 판정(비관리자는 ok=false).
@@ -136,11 +136,12 @@ export const ENDPOINTS = Object.freeze({
  * @property {string}  [webUrl]   ⚠ Gap-W: 관리자용 웹 대시보드 서버 URL(외부 브라우저로 열기)
  */
 /**
- * @typedef {Object} ProviderPolicy  이 서버에 대한 "내" 정책(/provider-limit·scope 의 GUI)
+ * @typedef {Object} ProviderPolicy  이 서버에 대한 "내" 정책(/provider-limit 의 GUI)
  * @property {number} dailyLimit     하루 처리 한도(건)
  * @property {number} maxConcurrency 동시 처리 수
  * @property {number} maxSeconds     요청 최대 처리 시간(초)
- * @property {string} scope          공개 대상 — ALL(모두) | TRUSTED(신뢰 역할) | ADMIN(관리자만). ProviderModelScope 미러.
+ * 공개 대상(scope)은 제거됨 — '서버 멤버 누구나'(ALL)는 길드별 라우팅 격리로 이미 보장되고
+ * 세분화는 강제되지 않아 노출하지 않는다(가짜 컨트롤 금지).
  */
 
 // 온보딩 적용 페이로드 — webui.py /api/onboard-apply 와 동일 키

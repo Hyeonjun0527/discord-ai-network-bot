@@ -37,10 +37,9 @@ const ROLE_PRESENT = {
 };
 export const presentRole = (role) => ROLE_PRESENT[role] || ROLE_PRESENT[Role.PROVIDER];
 
-// 내 정책 공개 대상(ProviderModelScope) → 한국어 라벨
-// 공개 대상 — ALL 은 "모두에게"가 민감해 '서버 멤버'로 표기(기능 동일: 서버 멤버 누구나).
-const SCOPE_PRESENT = { ALL: '서버 멤버', TRUSTED: '신뢰 역할에만', ADMIN: '관리자에만' };
-export const presentScope = (scope) => SCOPE_PRESENT[scope] || scope;
+// 공개 대상(scope)은 UI 에서 제거됨 — '서버 멤버 누구나'(ALL)는 길드별 라우팅 격리로 이미
+// 구조적으로 보장되고(다른 서버 멤버는 호출 불가), 세분화(신뢰 역할/관리자만)는 강제되지 않아
+// 가짜 컨트롤이 되므로 노출하지 않는다. 화면엔 보장되는 사실만 고정 문구로 표시한다.
 
 // 에이전트 전체 제공 상태 → 홈 히어로 표현 키(현재 heroState STATES: ok/paused/error)
 // AgentStatus(running/connected) 또는 ProviderState 를 단일 히어로 상태로 환산.

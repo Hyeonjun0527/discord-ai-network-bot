@@ -586,10 +586,6 @@
     .pstep button { width: 48px; height: 44px; border: 0; background: transparent; color: #d6deea; font-size: 21px; line-height: 1; cursor: pointer; transition: .14s ease; }
     .pstep button:hover { background: color-mix(in srgb, var(--c-violet) 16%, transparent); color: #fff; }
     .pstep span { min-width: 132px; text-align: center; font-size: 15px; font-weight: 700; color: #eef2fb; }
-    /* 공개 대상 셀렉트 */
-    .pform select { -webkit-appearance: none; appearance: none; height: 44px; padding: 0 38px 0 14px; border-radius: 11px; border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--text); font: inherit; font-size: 14px; font-weight: 600;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239fb0cc' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 13px center; }
-    .pform select:focus { outline: none; border-color: color-mix(in srgb, var(--c-accent) 45%, transparent); }
 
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     .stat {
@@ -1517,7 +1513,7 @@
   <script type="module">
     import { api } from './adapter.js';
     import { toast } from './toast.js';
-    import { presentServerState, presentServerMeta, presentRole, presentScope } from './presenter.js';
+    import { presentServerState, presentServerMeta, presentRole } from './presenter.js';
     import { ProviderState, Role } from './contract.js';
 
     const TINT = ['--c-violet', '--c-blue', '--c-cyan', '--c-purple'];
@@ -1601,7 +1597,7 @@
           '<div><span>하루 한도</span><b>' + (d.policy.dailyLimit === 0 ? '무제한' : d.policy.dailyLimit + '건') + '</b></div>' +
           '<div><span>동시 처리</span><b>' + d.policy.maxConcurrency + '</b></div>' +
           '<div><span>최대 시간</span><b>' + fmtSec(d.policy.maxSeconds) + '</b></div>' +
-          '<div><span>공개 대상</span><b>' + presentScope(d.policy.scope) + '</b></div>' +
+          '<div><span>공개 대상</span><b>서버 멤버 누구나</b></div>' +
         '</div></div>';
       // PENDING 안내 — 승인 전이라 기여현황·관리·정책 모두 숨기고 이 안내만 노출.
       const pendingBlock = pending ?
@@ -1675,9 +1671,8 @@
             '<div class="pstep"><button type="button" data-step="-1" aria-label="줄이기">−</button>' +
             '<span id="pSecVal" data-sec="' + d.policy.maxSeconds + '">' + fmtSec(d.policy.maxSeconds) + '</span>' +
             '<button type="button" data-step="1" aria-label="늘리기">+</button></div></div>' +
-          '<div class="pfield"><label>공개 대상</label><select id="pScope">' +
-            ['ALL', 'TRUSTED', 'ADMIN'].map(s => '<option value="' + s + '"' + (d.policy.scope === s ? ' selected' : '') + '>' + presentScope(s) + '</option>').join('') +
-          '</select></div>' +
+          '<div class="pfield"><label>공개 대상</label>' +
+            '<p class="dim" style="margin:2px 0 0">이 서버 멤버 누구나 — 서버별 격리로 보장돼요. 다른 서버 멤버는 이 서버의 AI를 호출할 수 없어요.</p></div>' +
         '</div>' +
         '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
         '<button class="btn btn--md btn--primary" id="pSave">저장</button></div></div>';
@@ -1697,7 +1692,6 @@
           dailyLimit: +lay.querySelector('#pDaily button.active').dataset.v,
           maxConcurrency: +lay.querySelector('#pConc button.active').dataset.v,
           maxSeconds: +secEl.dataset.sec,
-          scope: lay.querySelector('#pScope').value,
         };
         await api.setServerPolicy(d.guildId, policy);
         lay.remove();

@@ -663,12 +663,24 @@ async def test_server_policy_saves_override(monkeypatch):
         assert (await client.post("/api/servers/100/policy", json={"dailyLimit": 30})).status == 403  # 키 없음
         r = await client.post(
             "/api/servers/100/policy", headers={"X-Session": KEY},
-            json={"dailyLimit": 30, "maxConcurrency": 2, "maxSeconds": 600, "scope": "ALL"},
+            json={"dailyLimit": 30, "maxConcurrency": 2, "maxSeconds": 600},
         )
-        assert (await r.json())["ok"] is True
+        body = await r.json()
+        assert body["ok"] is True
+        # 응답은 저장값 readback(camelCase) — 화면이 이 값을 그대로 표시한다.
+        assert body["policy"] == {"dailyLimit": 30, "maxConcurrency": 2, "maxSeconds": 600}
         pols = load_guild_policies()
-        assert pols[100]["daily_limit"] == 30 and pols[100]["scope"] == "ALL"
+        assert pols[100]["daily_limit"] == 30
         assert pols[100]["max_concurrency"] == 2 and pols[100]["max_seconds"] == 600
+        # scope 는 더 이상 저장하지 않는다(앱에서 제거 — 길드 격리로 ALL 보장).
+        assert "scope" not in pols[100]
+        # GET readback: 저장값을 camelCase 로 그대로 돌려준다(하드코딩 아님).
+        g = await (await client.get("/api/servers/100/policy", headers={"X-Session": KEY})).json()
+        assert g["ok"] is True
+        assert g["policy"] == {"dailyLimit": 30, "maxConcurrency": 2, "maxSeconds": 600}
+        # 미저장 서버는 기본값 readback.
+        g2 = await (await client.get("/api/servers/999/policy", headers={"X-Session": KEY})).json()
+        assert g2["policy"] == {"dailyLimit": 0, "maxConcurrency": 1, "maxSeconds": 0}
     finally:
         await client.close()
 

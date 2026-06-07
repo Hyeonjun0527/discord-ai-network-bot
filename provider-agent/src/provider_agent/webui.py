@@ -705,14 +705,34 @@ def build_app(session_key: str) -> web.Application:
             remove_connection_at(index)
         return web.json_response({"ok": True})
 
+    # 내 제공 정책 키 경계: camelCase(앱·와이어) ↔ snake_case(파이썬·저장).
+    _POLICY_KEYS = {"dailyLimit": "daily_limit", "maxConcurrency": "max_concurrency", "maxSeconds": "max_seconds"}
+
+    def _policy_camel(guild_id: int) -> dict:
+        """저장된 이 서버 정책을 camelCase 로 readback(미저장 키는 기본값). 앱이 화면에 그대로 표시."""
+        from .config_file import load_guild_policies
+
+        saved = load_guild_policies().get(guild_id, {})
+        defaults = {"daily_limit": 0, "max_concurrency": 1, "max_seconds": 0}
+        return {camel: saved.get(snake, defaults[snake]) for camel, snake in _POLICY_KEYS.items()}
+
+    async def server_policy_get(req: web.Request) -> web.Response:
+        """저장된 내 제공 정책 readback(앱 상세 화면). 하드코딩 대신 실제 강제값을 보여주기 위함."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        return web.json_response({"ok": True, "policy": _policy_camel(guild_id)})
+
     async def server_policy(req: web.Request) -> web.Response:
         """이 서버에 대한 내 정책 override 저장·적용(데스크톱 앱 G3 · /provider-limit 의 로컬 GUI).
 
-        body(camelCase 경계): {dailyLimit, maxConcurrency, maxSeconds, scope}.
+        body(camelCase 경계): {dailyLimit, maxConcurrency, maxSeconds}.
         프로바이더 로컬에서 **실제 강제**: dailyLimit(서버별 일일 한도)·maxConcurrency(서버별
         동시 처리 세마포어)·maxSeconds(1건 최대 처리 시간 wait_for). 셋 다 서버가 더 보내도 우회 불가.
-        scope(공개 대상)는 **인가(누가 쓸 수 있나)** 라 중앙(JDA 역할 판정) 관할 — 여기선 저장만 하고
-        에이전트가 강제하지 않는다(요청자 신원/역할이 infer 프레임에 없음). 중앙 /provider-limit 가 게이트.
+        공개 대상(scope)은 앱에서 제거됨 — '서버 멤버 누구나'(ALL)는 중앙의 길드별 라우팅 격리로
+        이미 보장되고(다른 서버 멤버는 호출 불가), 세분화는 강제되지 않아 가짜 컨트롤을 두지 않는다.
         """
         _auth(req)
         try:
@@ -720,11 +740,7 @@ def build_app(session_key: str) -> web.Application:
         except (KeyError, ValueError):
             return web.json_response({"ok": False, "error": "잘못된 서버"})
         data = await req.json()
-        keymap = {
-            "dailyLimit": "daily_limit", "maxConcurrency": "max_concurrency",
-            "maxSeconds": "max_seconds", "scope": "scope",
-        }
-        policy = {snake: data[camel] for camel, snake in keymap.items() if camel in data}
+        policy = {snake: data[camel] for camel, snake in _POLICY_KEYS.items() if camel in data}
         agent = _running_agent()
         if agent is not None:
             await agent.set_guild_policy(guild_id, policy)  # type: ignore[attr-defined]
@@ -732,9 +748,7 @@ def build_app(session_key: str) -> web.Application:
             from .config_file import set_guild_policy
 
             set_guild_policy(guild_id, policy)
-        from .config_file import load_guild_policies
-
-        return web.json_response({"ok": True, "policy": load_guild_policies().get(guild_id, {})})
+        return web.json_response({"ok": True, "policy": _policy_camel(guild_id)})
 
     async def server_manage(req: web.Request) -> web.Response:
         """서버 관리(관리자) — 승인 대기·로스터 조회. central 관리 채널로 프록시(권한은 central 이 JDA 로 판정)."""
@@ -1306,6 +1320,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/server-remove", server_remove)
     app.router.add_post("/api/server-rename", server_rename)
     app.router.add_post("/api/servers/{guildId}/pause", server_pause)
+    app.router.add_get("/api/servers/{guildId}/policy", server_policy_get)
     app.router.add_post("/api/servers/{guildId}/policy", server_policy)
     app.router.add_get("/api/servers/{guildId}/manage", server_manage)
     app.router.add_post("/api/servers/{guildId}/manage/policy", server_manage_policy)

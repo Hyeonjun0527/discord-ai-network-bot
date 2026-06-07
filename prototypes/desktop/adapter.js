@@ -220,6 +220,9 @@ export const api = {
     if (!s) return null;
     let isAdmin = false;
     try { const mg = await http(ENDPOINTS.serverManage(guildId)); isAdmin = !!(mg && mg.ok); } catch { isAdmin = false; }
+    // 내 제공 정책은 **저장값을 그대로 읽어** 표시한다(하드코딩 금지 — 백엔드 강제값과 화면 일치).
+    let policy = { dailyLimit: 0, maxConcurrency: 1, maxSeconds: 0 };
+    try { const pr = await http(ENDPOINTS.serverPolicy(guildId)); if (pr && pr.policy) policy = pr.policy; } catch { /* 미저장 → 기본 */ }
     const advertised = (st && st.models) || [];
     return {
       guildId: String(s.guildId), guildName: s.guildName, iconUrl: null,
@@ -229,7 +232,7 @@ export const api = {
       models: s.connected ? advertised.length : 0,   // 실제 제공 모델 수
       today: null, members: null, avgMs: null,        // 길드별 처리/멤버/평균지연 미추적 — null(미표시)
       myModels: s.connected ? [...advertised] : [],
-      policy: { dailyLimit: 0, maxConcurrency: 1, maxSeconds: 600, scope: 'ALL' },
+      policy,
       webUrl: null,
     };
   },

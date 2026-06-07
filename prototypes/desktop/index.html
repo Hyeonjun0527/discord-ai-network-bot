@@ -2299,6 +2299,7 @@
         setText('statModels', String((st.models && st.models.length) || 0));
         setText('statAvg', '—'); // 평균 응답은 백엔드 미제공 — 가짜 0ms 대신 —
         // 런타임 카드 상태: Ollama(모델 보유·실행) / SD(설치·준비) 기준.
+        if (window.setImageRecv) window.setImageRecv(!!st.enableImage); // 이미지 요청 받기 실 상태 반영(먼저)
         if (window.setRuntime) {
           window.setRuntime('Ollama', (st.running && st.models && st.models.length) ? 'running' : (st.models && st.models.length ? 'stopped' : 'absent'));
           window.setRuntime('Stable Diffusion', !st.sdInstalled ? 'absent' : (st.imageReady ? 'running' : 'stopped'));
@@ -2320,6 +2321,18 @@
           .then((st) => setStage(st && st.hasToken ? 'main' : 'onboarding'))
           .catch(() => setStage('onboarding'));
         syncHomeFromStatus(); // 홈 진입 여부와 무관하게 실제 status 로 미리 동기화(가짜값 방지)
+        // 실 앱: 홈을 실제 status 로 **지속 동기화**한다. 버튼의 낙관적/가짜 전환이 아니라 항상 진짜 상태가
+        //   이기게 해, "시작/다시연결" 후 실제 완료되어야 화면이 바뀐다(프로토타입 데모 setTimeout 가짜 금지).
+        window.syncHomeFromStatus = syncHomeFromStatus;
+        setInterval(() => { syncHomeFromStatus(); }, 3000);
+        // 홈 hero·런타임 카드가 호출하는 실 액션 헬퍼(완료 후 즉시 동기화). 에이전트=텍스트 제공 본체.
+        window.realProviderAction = async (action) => {
+          if (action === 'stop') await api.stopAgent(); else await api.startAgent();
+          await syncHomeFromStatus();
+        };
+        window.realStartSD = async () => { await api.startSetup('image'); try { watchSetup('image'); } catch (_e) { /* 진행률 폴링 실패는 비치명적 */ } };
+        window.realGetStatus = () => api.getStatus(); // 진단(hero diag)이 실제 상태로 점검
+        window.realSetImageRecv = async (on) => { await api.setImageReceiving(on); await syncHomeFromStatus(); }; // 이미지 요청 받기 실 토글
         // 새로고침/재부팅 복원: 진행 중인 런타임 설치가 있으면 어느 화면이든 진행 토스트를 무조건 복원한다.
         // phase 가 진행 상태(=done/idle/error/cancelled 가 아님)면 watchSetup 으로 폴링·토스트만 이어붙인다.
         const _ACTIVE = (p) => p && p.phase && !['done', 'idle', 'error', 'cancelled'].includes(p.phase);
@@ -2430,24 +2443,48 @@
       }
       // 홈에서 이미지 요청 받기 토글(설정 화면 가지 않고 바로)
       const sdSwitch = document.querySelector('.prov-card[data-runtime="Stable Diffusion"] .img-recv-switch');
-      if (sdSwitch) sdSwitch.addEventListener('click', (e) => {
+      if (sdSwitch) sdSwitch.addEventListener('click', async (e) => {
         e.stopPropagation();
-        imageRecv = !imageRecv;
+        const next = !imageRecv;
+        if (window.__SESSION_KEY) {
+          // 실 앱: 실제 설정 저장 후 status 로 반영(가짜 토글 금지). 라이브 전파 불가 항목은 백엔드가 정직하게 응답.
+          try { await window.realSetImageRecv?.(next); window.toast('이미지 요청 받기 ' + (next ? '켜짐' : '꺼짐'), { type: next ? 'ok' : 'info' }); }
+          catch (_e) { window.toast('설정 저장 실패 — 다시 시도하세요', { type: 'error' }); }
+          return;
+        }
+        imageRecv = next;
         const card = document.querySelector('.prov-card[data-runtime="Stable Diffusion"]');
         setRuntime('Stable Diffusion', card.dataset.state);
         window.toast('이미지 요청 받기 ' + (imageRecv ? '켜짐' : '꺼짐'), { type: imageRecv ? 'ok' : 'info', sub: imageRecv ? '/그림 요청을 이 PC 에서 처리해요' : '이미지 요청을 받지 않아요' });
       });
+      // 실 status 로 이미지 요청 받기 표시 동기화(가짜 ON 방지) — syncHomeFromStatus 가 호출.
+      window.setImageRecv = (on) => {
+        imageRecv = !!on;
+        const card = document.querySelector('.prov-card[data-runtime="Stable Diffusion"]');
+        if (card) setRuntime('Stable Diffusion', card.dataset.state);
+      };
       // CTA(설치/시작) 클릭
       cards.forEach(card => {
         const name = card.querySelector('.prov-name').textContent.trim();
-        card.querySelector('.prov-cta').addEventListener('click', (e) => {
+        card.querySelector('.prov-cta').addEventListener('click', async (e) => {
           e.stopPropagation();
           const st = card.dataset.state;
-          if (st === 'absent') { if (window.openInstall) window.openInstall(RT_KEY[name]); }      // 설치 모달(C)
-          else if (st === 'stopped') {
+          if (st === 'absent') { if (window.openInstall) window.openInstall(RT_KEY[name]); return; }   // 설치 모달(C)
+          if (st !== 'stopped') return;
+          if (window.__SESSION_KEY) {
+            // 실 앱: 실제 시작 호출 → 완료(status 폴링)되어야 카드가 '실행 중'으로 바뀐다(가짜 전환 없음).
             window.toast(name + ' 시작 중…', { type: 'run', sticky: true, id: 'start-' + name });
-            setTimeout(() => { window.toast(name + ' 실행 중', { type: 'ok', replace: 'start-' + name }); setRuntime(name, 'running'); }, 1200);
+            try {
+              if (name === 'Stable Diffusion') { await window.realStartSD?.(); }
+              else { await window.realProviderAction?.('start'); }   // Ollama 텍스트 제공 = 에이전트 시작
+              await window.syncHomeFromStatus?.();
+              window.toast(name + ' 시작 요청됨 — 준비되면 자동으로 실행 중으로 바뀝니다', { type: 'ok', replace: 'start-' + name });
+            } catch (_err) { window.toast(name + ' 시작 실패 — 잠시 후 다시 시도하세요', { type: 'error', replace: 'start-' + name }); }
+            return;
           }
+          // 프로토타입 데모(세션키 없음): 흐름 시연용 가짜 전환.
+          window.toast(name + ' 시작 중…', { type: 'run', sticky: true, id: 'start-' + name });
+          setTimeout(() => { window.toast(name + ' 실행 중', { type: 'ok', replace: 'start-' + name }); setRuntime(name, 'running'); }, 1200);
         });
       });
       window.setRuntime = setRuntime; // PROTO 컨트롤러용
@@ -2552,11 +2589,23 @@
           '<div class="hero-actions">' + s.actions.map(a => '<button class="btn btn--' + a.size + ' btn--' + a.emphasis + '" data-go="' + (a.go || '') + '" data-diag="' + (a.diag ? '1' : '') + '" data-act="' + (a.act || '') + '">' + a.t + '</button>').join('') + '</div>' +
           '<div class="diag" id="diagPanel" hidden></div>';
         heroInfo.querySelectorAll('.hero-actions button').forEach(btn => {
-          btn.addEventListener('click', () => {
+          btn.addEventListener('click', async () => {
             if (btn.dataset.diag) return runDiag();
             // 미연결 '서버 추가' → 디스코드 로그인(연결) 화면부터. 인증 후 후보 선택하는 enterServerAdd 와 다름.
             if (btn.dataset.act === 'add') return void window.enterConnectLogin?.();
-            if (btn.dataset.go) window.setHeroState(btn.dataset.go);
+            if (!btn.dataset.go) return;
+            if (window.__SESSION_KEY) {
+              // 실 앱: 다시연결/재개=에이전트 시작, 일시중지=중지. 실제 완료(status 폴링) 후 hero 가 바뀐다.
+              const stop = btn.dataset.go === 'paused';
+              btn.disabled = true;
+              window.toast(stop ? '일시중지 중…' : '다시 연결 중…', { type: 'run', sticky: true, id: 'hero-act' });
+              try {
+                await window.realProviderAction?.(stop ? 'stop' : 'start');
+                window.toast(stop ? '제공을 일시중지했어요' : '다시 연결했어요', { type: stop ? 'info' : 'ok', replace: 'hero-act' });
+              } catch (_err) { window.toast('처리 실패 — 네트워크를 확인하고 다시 시도하세요', { type: 'error', replace: 'hero-act' }); }
+              return;
+            }
+            window.setHeroState(btn.dataset.go); // 프로토타입 데모(세션키 없음)
           });
         });
         // 백그라운드 제공 핀 — 클릭 토글(꺼짐=빨강). 창을 닫아도 제공 유지 여부.
@@ -2572,16 +2621,30 @@
       // (전역 [한도 늘리기] 제거 — 하루 한도는 서버 상세의 '내 제공 정책'(G3)에서만 변경)
 
       // [진단] — 4채널 순차 점검 애니메이션(목데이터)
-      function runDiag() {
+      async function runDiag() {
         const panel = document.getElementById('diagPanel');
         if (!panel) return;
         panel.hidden = false;
-        const rows = [
-          { n: '중앙 서버', v: '28ms', ok: true },
-          { n: 'Discord 게이트웨이', v: '연결 끊김', ok: false },
-          { n: 'Ollama (로컬)', v: '응답 정상', ok: true },
-          { n: 'Stable Diffusion (로컬)', v: '응답 정상', ok: true },
-        ];
+        // 실 앱: 실제 status 로 점검 행을 만든다(가짜 고정값 금지). 프로토타입: 데모 고정값.
+        let rows;
+        if (window.__SESSION_KEY && window.realGetStatus) {
+          let st = {};
+          try { st = await window.realGetStatus() || {}; } catch (_e) { st = {}; }
+          const nModels = (st.models && st.models.length) || 0;
+          rows = [
+            { n: '중앙 서버', v: st.connected ? '연결됨' : '연결 끊김', ok: !!st.connected },
+            { n: '제공 상태', v: st.running ? '제공 중' : '중지됨', ok: !!st.running },
+            { n: 'Ollama (로컬)', v: nModels ? (nModels + '개 모델 제공') : '모델 없음', ok: nModels > 0 },
+            { n: 'Stable Diffusion (로컬)', v: !st.sdInstalled ? '미설치' : (st.imageReady ? '준비됨' : '꺼짐'), ok: !st.sdInstalled || st.imageReady },
+          ];
+        } else {
+          rows = [
+            { n: '중앙 서버', v: '28ms', ok: true },
+            { n: 'Discord 게이트웨이', v: '연결 끊김', ok: false },
+            { n: 'Ollama (로컬)', v: '응답 정상', ok: true },
+            { n: 'Stable Diffusion (로컬)', v: '응답 정상', ok: true },
+          ];
+        }
         const spinIco = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg>';
         panel.innerHTML = rows.map(r => '<div class="diag-row"><span class="di wait">·</span><span class="dn">' + r.n + '</span><span class="dv">대기</span></div>').join('');
         const rowEls = [...panel.querySelectorAll('.diag-row')];

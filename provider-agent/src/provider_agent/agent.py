@@ -745,7 +745,12 @@ class ProviderAgent:
                     pass
 
         if self._cfg.tray:
-            self._start_tray()
+            # 트레이는 선택적 UX — 생성 실패(pystray 백엔드/환경 문제 등)가 Provider 본체를 죽이면 안 된다.
+            # tray_available() 통과 후에도 run_tray 가 실패할 수 있어(예: 일부 환경 pystray ValueError) 방어한다.
+            try:
+                self._start_tray()
+            except Exception as exc:  # noqa: BLE001 - 트레이 실패는 비치명적, 헤드리스로 계속
+                logger.warning("트레이 시작 실패 — 헤드리스(콘솔 상태)로 계속합니다: %s", exc)
 
         # 저장된 모든 서버 연결을 동시에 띄운다(없으면 cfg.token 하나). 연결 하나가 죽어도(인증실패 등)
         # 나머지는 유지 — run 은 stop 요청까지만 대기한다.

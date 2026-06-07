@@ -90,6 +90,13 @@ const MOCK = {
         ],
         applyChannels: ['ai-chat', '코드리뷰'],
       },
+      // 안전 — 콘텐츠 신고 큐(서버 관리자 대응). 책임=서버 관리자, 불법 red-line=NEXA 무관용.
+      safety: {
+        reports: [
+          { id: 'r1', target: '#ai-chat 답변', reason: '부적절한 표현', reporter: 'user_choi', when: '10분 전', status: 'open' },
+          { id: 'r2', target: '전역 프롬프트 「정중한 비서」', reason: '스팸/광고 유도', reporter: 'user_han', when: '1시간 전', status: 'open' },
+        ],
+      },
       // 11 프리셋(설정 묶음)
       presets: [
         { name: '번역봇', model: 'llama3.1:8b', tone: '친근', applied: 'general', on: true },
@@ -103,7 +110,7 @@ const MOCK = {
       roster: [{ providerUserId: 0, name: '나 (이 PC)', isMe: true, state: ProviderState.PENDING, models: 0, today: 0, avgMs: 0 }],
       prompts: [{ id: 'nia', name: '니아 (기본 페르소나)', builtin: true, isDefault: true, content: '당신은 「니아」, 이 디스코드 서버의 다정하고 든든한 AI 멤버예요.' }],
       channels: { defaultModel: 'exaone3.5:7.8b', defaultLang: '한국어', list: [{ name: 'general', aiAllowed: true }] },
-      channelAi: [], rag: { docs: [], applyChannels: [] }, presets: [],
+      channelAi: [], rag: { docs: [], applyChannels: [] }, presets: [], safety: { reports: [] },
     },
   },
   // 추천 설치 카탈로그 — webui.py /api/ollama/catalog. Ollama 가 전체 목록 API 를 안 주므로

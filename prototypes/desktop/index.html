@@ -1275,7 +1275,8 @@
     // ── 서버 관리(관리자, 앱 내 — 웹 위임 폐기). 13 Provider 관리부터 구현, 나머지 탭은 단계적. ──
     const MTABS = [
       { k: 'overview', t: '개요' }, { k: 'profile', t: '전역 프롬프트' }, { k: 'channels', t: '채널' },
-      { k: 'channelai', t: '채널 AI' }, { k: 'rag', t: 'RAG' }, { k: 'preset', t: '프리셋' }, { k: 'provider', t: 'Provider' },
+      { k: 'channelai', t: '채널 AI' }, { k: 'rag', t: 'RAG' }, { k: 'preset', t: '프리셋' },
+      { k: 'provider', t: 'Provider' }, { k: 'safety', t: '안전' },
     ]; // v1: 역할별 정책·다중응답(multi)은 범위 외
     let _manageTab = 'provider';
 
@@ -1298,6 +1299,7 @@
       channelai: (m) => renderChannelAiTab(m),
       rag: (m) => renderRagTab(m),
       preset: (m) => renderPresetTab(m),
+      safety: (m) => renderSafetyTab(m),
     };
 
     function renderManage(d, m) {
@@ -1396,7 +1398,7 @@
           (p.isDefault ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-default="' + p.id + '">기본으로</button>') +
           (p.builtin ? '' : '<button class="btn btn--sm btn--secondary" data-prompt-del="' + p.id + '" data-name="' + p.name + '">삭제</button>') +
         '</div></div></div>').join('');
-      return '<div class="dsub" style="margin-bottom:16px">니아의 이름·아바타는 v1 에서 NEXA 기본으로 고정돼요(디스코드 봇은 서버별 프로필을 지원하지 않아요). 여기선 서버 전체에 적용할 AI 성격(전역 프롬프트셋)을 관리해요.</div>' +
+      return '<div class="dsub" style="margin-bottom:16px">니아의 이름·아바타는 v1 에서 NEXA 기본으로 고정돼요(디스코드 봇은 서버별 프로필을 지원하지 않아요). 여기선 서버 전체에 적용할 AI 성격(전역 프롬프트셋)을 관리해요.<br>콘텐츠 책임은 <b>서버 관리자</b>에게 있어요 — 불법 콘텐츠는 무관용 차단(안전 탭).</div>' +
         '<div class="drow"><div class="msec-label" style="margin:0">전역 프롬프트셋 <span class="dim">· 서버 전체 기본 성격</span></div>' +
           '<button class="btn btn--sm btn--secondary" id="promptAdd">+ 추가</button></div>' + prompts;
     }
@@ -1429,7 +1431,8 @@
         '<div class="dcard">' + (docs || '<span class="dim">아직 문서가 없어요.</span>') + '</div>' +
         '<div class="dcard"><div class="dlabel">검색 테스트</div><div class="cm-row" style="margin-top:10px">' +
           '<input class="cx-input" placeholder="질문을 입력해 색인을 확인"><button class="btn btn--md btn--secondary" data-soon="검색 테스트">검색</button></div>' +
-          '<div class="dsub" style="margin-top:12px">적용 채널 ' + (m.rag.applyChannels.map(c => '# ' + c).join(', ') || '없음') + '</div></div>';
+          '<div class="dsub" style="margin-top:12px">적용 채널 ' + (m.rag.applyChannels.map(c => '# ' + c).join(', ') || '없음') + '</div></div>' +
+        '<div class="dsub" style="margin-top:12px">📄 올린 문서의 콘텐츠 책임은 <b>서버 관리자</b>에게 있어요. 불법 콘텐츠는 무관용 차단됩니다(안전 탭).</div>';
     }
 
     function renderPresetTab(m) {
@@ -1438,6 +1441,21 @@
         '<button class="mtoggle' + (p.on ? ' on' : '') + '" data-preset-toggle="' + p.name + '">' + (p.on ? '사용 중' : '미사용') + '</button></div></div>').join('');
       return (cards || '<div class="msoon"><b>프리셋 없음</b>자주 쓰는 AI 설정 묶음을 만들어 보세요.</div>') +
         '<button class="btn btn--md btn--secondary mt" data-soon="프리셋 카탈로그">카탈로그에서 가져오기</button>';
+    }
+
+    function renderSafetyTab(m) {
+      const open = m.safety.reports.filter(r => r.status === 'open');
+      const policy = '<div class="dcard"><div class="dlabel">콘텐츠 정책</div>' +
+        '<div class="dsub">이 서버 AI 콘텐츠의 책임은 <b>서버 관리자</b>에게 있어요. NEXA 는 신고를 받으면 대응해요.<br>' +
+        '· <b>불법 콘텐츠</b>(아동 성착취물 등)는 무관용 — 자동 차단·신고됩니다.<br>' +
+        '· Discord 커뮤니티 가이드·서비스 약관을 따라요(성인물은 연령 제한 채널에서만).</div></div>';
+      const reports = open.length
+        ? open.map(r => '<div class="prov-row wait"><div class="prov-main"><div class="prov-nm">' + r.target + '</div>' +
+            '<div class="prov-meta">' + r.reason + ' · ' + r.reporter + ' · ' + r.when + '</div></div>' +
+            '<div class="prov-acts"><button class="btn btn--sm btn--secondary" data-report-dismiss="' + r.id + '">무시</button>' +
+            '<button class="btn btn--sm btn--warn" data-report-act="' + r.id + '">숨김 처리</button></div></div>').join('')
+        : '<div class="msoon"><b>처리할 신고 없음</b>멤버 신고가 들어오면 여기서 확인·조치해요.</div>';
+      return policy + '<div class="msec-label">신고 (' + open.length + ')</div>' + reports;
     }
 
     // 관리 탭 공통 인터랙션(mock 토글 + 미구현 액션 안내). 같은 m 을 수정해 즉시 재렌더.
@@ -1452,6 +1470,9 @@
       manageEl.querySelectorAll('[data-prompt-del]').forEach(b => b.onclick = () => confirmDeletePrompt(d, m, b.dataset.promptDel, b.dataset.name, rerender));
       const pa = manageEl.querySelector('#promptAdd');
       if (pa) pa.onclick = () => openPromptModal(m, rerender);
+      // 안전 — 신고 처리(무시/숨김)
+      manageEl.querySelectorAll('[data-report-dismiss]').forEach(b => b.onclick = () => { const r = m.safety.reports.find(x => x.id === b.dataset.reportDismiss); if (r) r.status = 'dismissed'; toast('신고를 무시했어요', { type: 'info' }); rerender(); });
+      manageEl.querySelectorAll('[data-report-act]').forEach(b => b.onclick = () => { const r = m.safety.reports.find(x => x.id === b.dataset.reportAct); if (r) r.status = 'resolved'; toast('숨김 처리했어요', { type: 'ok' }); rerender(); });
     }
 
     function confirmDeletePrompt(d, m, id, name, done) {

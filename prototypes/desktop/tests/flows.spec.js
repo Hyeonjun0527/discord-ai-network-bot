@@ -158,6 +158,19 @@ test('전역 프롬프트 탭: 니아 기본 셋 + 추가/기본/삭제(외형 �
   await expect(page.locator('#serverManage')).toContainText('테스트셋');
 });
 
+test('안전 탭: 콘텐츠 정책 + 신고 처리(무시/숨김)', async ({ page }) => {
+  await page.goto('/index.html#/servers/1001/manage/safety');
+  await page.waitForFunction(() => !!window.App);
+  await expect(page.locator('#serverManage .mtab.active')).toContainText('안전');
+  await expect(page.locator('#serverManage')).toContainText('콘텐츠 정책');
+  await expect(page.locator('#serverManage')).toContainText('서버 관리자');
+  await expect(page.locator('#serverManage')).toContainText('무관용');
+  // 신고 2건 → 1건 숨김 처리 → 신고(1)
+  await expect(page.locator('#serverManage')).toContainText('신고 (2)');
+  await page.locator('#serverManage [data-report-act]').first().click();
+  await expect(page.locator('#serverManage')).toContainText('신고 (1)');
+});
+
 test('관리 탭 토글: 채널 AI on/off + URL 동기화', async ({ page }) => {
   await page.goto('/index.html#/servers/1001/manage/channelai');
   await page.waitForFunction(() => !!window.App);

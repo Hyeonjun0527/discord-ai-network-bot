@@ -635,9 +635,11 @@
     .btn--primary { background: color-mix(in srgb, var(--c-violet) 22%, transparent); border-color: color-mix(in srgb, var(--c-violet) 48%, transparent); color: #efeaff; box-shadow: var(--btn-elev); }
     .btn--neutral { background: rgba(98, 116, 158, .18); border-color: rgba(150, 168, 220, .30); color: #eef3fb; box-shadow: var(--btn-elev); }
     .btn--warn { background: color-mix(in srgb, var(--warn) 18%, transparent); border-color: color-mix(in srgb, var(--warn) 42%, transparent); color: #ffe6c2; box-shadow: var(--btn-elev); }
+    /* danger = 되돌리기 어려운 파괴적 액션(제거 등). 빨강 틴트. */
+    .btn--danger { background: color-mix(in srgb, #ff5f6e 16%, transparent); border-color: color-mix(in srgb, #ff5f6e 44%, transparent); color: #ffd9d9; box-shadow: var(--btn-elev); }
     /* secondary = 보조 액션. 무채색 약한 글래스지만 보더+배경으로 "버튼임"을 명확히. */
     .btn--secondary { background: rgba(255,255,255,.045); border-color: rgba(150, 168, 220, .26); color: #d6deea; box-shadow: var(--btn-elev); }
-    .btn--primary:hover, .btn--neutral:hover, .btn--warn:hover, .btn--secondary:hover { filter: brightness(1.1); }
+    .btn--primary:hover, .btn--neutral:hover, .btn--warn:hover, .btn--danger:hover, .btn--secondary:hover { filter: brightness(1.1); }
     /* ghost = 인라인 텍스트 액션 전용(예: "표시", "더보기"). 카드/폼의 독립 버튼엔 쓰지 않는다
        (affordance 부족 — 버튼이 글자처럼 보임). 독립 버튼은 최소 secondary 이상을 쓴다. */
     .btn--ghost { border-color: transparent; background: transparent; color: #c4cee0; box-shadow: none; min-width: 0; padding: 0 8px; }
@@ -1646,6 +1648,13 @@
           '<div class="dmodels">' + modelChips + '</div>' +
         '</div>';
 
+      // 서버 설정(이름 변경·제공 그만두기) — 내 로컬 연결 관리. PENDING 이어도 이름변경/제거는 가능.
+      const settingsBlock =
+        '<div class="dcard"><div class="drow"><div><div class="dlabel">서버 설정</div>' +
+        '<div class="dsub">표시 이름을 바꾸거나, 이 서버 제공을 그만둘 수 있어요(내 연결만 정리 — 관리자 풀 등록과 별개).</div></div>' +
+        '<div style="display:flex;gap:8px"><button class="btn btn--sm btn--secondary" id="dRenameBtn">이름 변경</button>' +
+        '<button class="btn btn--sm btn--danger" id="dRemoveBtn">제공 그만두기</button></div></div></div>';
+
       detailEl.innerHTML =
         '<div class="dhead">' +
           '<button class="dback" id="dBack">‹ 서버</button>' +
@@ -1653,7 +1662,7 @@
             '<span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span></div>' +
           '<div class="dsubhead">' + (d.members != null ? '멤버 ' + fmtMembers(d.members) + ' · ' : '') + '내 역할 <span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span></div>' +
         '</div>' +
-        pendingBlock + contribBlock + provBlock + policyBlock + manageBlock;
+        pendingBlock + contribBlock + provBlock + policyBlock + manageBlock + settingsBlock;
 
       // 액션 바인딩
       const back = detailEl.querySelector('#dBack'); if (back) back.onclick = backToList;
@@ -1668,6 +1677,51 @@
       if (mb) mb.onclick = () => openManage(d);
       const polb = detailEl.querySelector('#dPolicyBtn');
       if (polb) polb.onclick = () => openPolicyModal(d);
+      const rnb = detailEl.querySelector('#dRenameBtn');
+      if (rnb) rnb.onclick = () => openRenameModal(d);
+      const rmb = detailEl.querySelector('#dRemoveBtn');
+      if (rmb) rmb.onclick = () => openRemoveModal(d);
+    }
+
+    // 서버 표시 이름 변경 모달(텍스트 입력)
+    function openRenameModal(d) {
+      const lay = document.createElement('div');
+      lay.className = 'modal-layer';
+      lay.innerHTML = '<div class="modal" style="width:min(420px,100%)">' +
+        '<button class="modal-x" data-x aria-label="닫기">✕</button>' +
+        '<h3>서버 이름 변경</h3><p class="msub">앱에서 보일 표시 이름이에요(이 PC 에만 적용).</p>' +
+        '<div class="pform"><div class="pfield"><label>표시 이름</label>' +
+        '<input id="rnInput" type="text" maxlength="60" value="' + (d.guildName || '').replace(/"/g, '&quot;') + '" ' +
+        'style="height:44px;padding:0 14px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--text);font:inherit;font-size:14px"></div></div>' +
+        '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
+        '<button class="btn btn--md btn--primary" id="rnSave">저장</button></div></div>';
+      document.body.appendChild(lay);
+      lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
+      lay.querySelector('#rnSave').onclick = async () => {
+        const name = lay.querySelector('#rnInput').value.trim();
+        if (!name) { toast('이름을 입력하세요', { type: 'error' }); return; }
+        try { await api.renameServer(d.guildId, name); lay.remove(); toast('이름을 변경했어요', { type: 'ok', sub: name }); openDetail(d.guildId); }
+        catch (_e) { toast('변경 실패 — 다시 시도하세요', { type: 'error' }); }
+      };
+    }
+
+    // 이 서버 제공 그만두기(연결 제거) 확인 모달
+    function openRemoveModal(d) {
+      const lay = document.createElement('div');
+      lay.className = 'modal-layer';
+      lay.innerHTML = '<div class="modal" style="width:min(440px,100%)">' +
+        '<button class="modal-x" data-x aria-label="닫기">✕</button>' +
+        '<h3>이 서버 제공 그만두기</h3>' +
+        '<p class="msub"><b>' + (d.guildName || '이 서버') + '</b> 에 더 이상 연결하지 않아요. 내 연결만 정리되고(관리자 풀 등록과는 별개), ' +
+        '나중에 다시 참여할 수 있어요.</p>' +
+        '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
+        '<button class="btn btn--md btn--danger" id="rmGo">그만두기</button></div></div>';
+      document.body.appendChild(lay);
+      lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
+      lay.querySelector('#rmGo').onclick = async () => {
+        try { await api.removeServer(d.guildId); lay.remove(); toast('이 서버 제공을 그만뒀어요', { type: 'ok', sub: d.guildName }); backToList(); }
+        catch (_e) { toast('실패 — 다시 시도하세요', { type: 'error' }); }
+      };
     }
 
     // 초 → "10분"·"1분 30초"·"30초" 사람친화 표기

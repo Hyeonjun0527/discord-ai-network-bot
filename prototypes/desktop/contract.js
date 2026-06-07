@@ -45,6 +45,8 @@ export const ENDPOINTS = Object.freeze({
   serverDetail: (g) => '/api/servers/' + g,         // GET — 서버별 내 기여 통계·myModels·policy(Gap-S/P)
   serverPause: (g) => '/api/servers/' + g + '/pause',   // POST {paused} — provider self-service(/provider-pause·resume)
   serverPolicy: (g) => '/api/servers/' + g + '/policy', // GET 저장값 readback · POST {dailyLimit,maxConcurrency,maxSeconds} 저장 (/provider-limit)
+  serverRemove: '/api/server-remove',  // POST {guildId} — 내 로컬 연결 정리(이 서버 제공 그만두기)
+  serverRename: '/api/server-rename',  // POST {guildId, name} — 서버 표시 이름 변경
   // 서버 관리(관리자) — 앱 내 직접 관리. ✅ 채널 구현됨(2026-06-07): webui → central /provider/admin/*.
   //   central 이 durable 토큰 신원 + JDA 관리자 판정(MANAGE_SERVER|ADMINISTRATOR) 후 ProviderRegistrationService 실행.
   //   role 전달은 별도 불필요 — 앱은 serverManage 응답 ok 로 "내가 관리자인지" 판정(비관리자는 ok=false).

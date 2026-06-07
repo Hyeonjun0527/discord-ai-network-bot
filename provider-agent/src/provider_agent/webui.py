@@ -729,13 +729,37 @@ def build_app(session_key: str) -> web.Application:
         task = _state["task"]
         return agent if (agent is not None and task is not None and not task.done()) else None
 
+    def _index_for_guild(guild_id_str: str) -> int | None:
+        """guildId(문자열) → 저장 연결 목록의 index. 데스크톱 앱은 64bit guildId 만 다루므로(정밀도)
+        webui 가 index 로 변환한다. 못 찾으면 None."""
+        from .config_file import load_connections
+
+        for i, c in enumerate(load_connections()):
+            if c.get("guild_id") is not None and str(c.get("guild_id")) == str(guild_id_str):
+                return i
+        return None
+
+    def _resolve_index(data: dict) -> int | None:
+        """body 에서 index 또는 guildId 로 대상 연결 index 해석(둘 중 하나)."""
+        if "guildId" in data and data.get("guildId") is not None:
+            return _index_for_guild(str(data["guildId"]))
+        raw = data.get("index")
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
     async def server_remove(req: web.Request) -> web.Response:
-        """서버 연결 해제(목록 index 기준 — 길드ID 없는 토큰-추가 연결도 정확히 지목)."""
+        """서버 연결 해제(내 로컬 연결만 정리 — 이 서버에 더는 붙지 않음). body {guildId} 또는 {index}.
+
+        주의: 이건 **내 연결/설정 정리**다(중앙 풀의 관리자 등록 제거와 별개). 중앙은 세션이 오프라인이 될 뿐.
+        """
         _auth(req)
         data = await req.json()
-        try:
-            index = int(data.get("index"))
-        except (TypeError, ValueError):
+        index = _resolve_index(data if isinstance(data, dict) else {})
+        if index is None:
             return web.json_response({"ok": False, "error": "잘못된 항목"})
         agent = _running_agent()
         if agent is not None:
@@ -947,12 +971,11 @@ def build_app(session_key: str) -> web.Application:
         return await _server_guild_read(req, "admin_presets")
 
     async def server_rename(req: web.Request) -> web.Response:
-        """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). index + name."""
+        """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). body {guildId|index, name}."""
         _auth(req)
         data = await req.json()
-        try:
-            index = int(data.get("index"))
-        except (TypeError, ValueError):
+        index = _resolve_index(data if isinstance(data, dict) else {})
+        if index is None:
             return web.json_response({"ok": False, "error": "잘못된 항목"})
         name = str(data.get("name") or "").strip()[:60]
         agent = _running_agent()

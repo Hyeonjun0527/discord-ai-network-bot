@@ -371,6 +371,16 @@ export const api = {
     /* @end-proto-only */
     return post(ENDPOINTS.serverPause(guildId), { paused });
   },
+  /** 이 서버 제공 그만두기(내 로컬 연결 정리). 중앙 관리자 등록 제거와 별개 — 세션이 오프라인이 됨. */
+  async removeServer(guildId) {
+    /* @proto-only */ if (USE_MOCK) { const i = MOCK.servers.findIndex((x) => String(x.guildId) === String(guildId)); await delay(120); if (i >= 0) MOCK.servers.splice(i, 1); return { ok: true }; } /* @end-proto-only */
+    return post(ENDPOINTS.serverRemove, { guildId: String(guildId) });
+  },
+  /** 서버 표시 이름 변경(로컬 라벨). */
+  async renameServer(guildId, name) {
+    /* @proto-only */ if (USE_MOCK) { const s = MOCK.servers.find((x) => String(x.guildId) === String(guildId)); await delay(80); if (s) s.guildName = name; return { ok: true }; } /* @end-proto-only */
+    return post(ENDPOINTS.serverRename, { guildId: String(guildId), name });
+  },
   /** 이 서버에 대한 내 self-service 정책 변경(/provider-limit·scope). */
   async setServerPolicy(guildId, policy) {
     /* @proto-only */

@@ -656,8 +656,8 @@ async def test_server_readonly_tabs_require_running_agent(monkeypatch):
 @pytest.mark.asyncio
 async def test_image_toggle_persists_without_touching_models(monkeypatch):
     # 전용 /api/image 토글: enable_image 만 저장(모델 선택 미변경). 에이전트 미실행 시 'saved'.
-    from provider_agent.config_file import load_config, save_config
     from provider_agent.config import AgentConfig
+    from provider_agent.config_file import load_config, save_config
 
     save_config(AgentConfig(token="T", models=("a", "b")))  # 모델 2개 선택 상태
     client = await _client()

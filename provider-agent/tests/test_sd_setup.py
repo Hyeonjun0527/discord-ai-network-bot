@@ -137,6 +137,9 @@ def test_resolution_for_checkpoint():
     # SDXL 계열 → 1024, SD1.5 계열 → 512. 체크포인트 문자열은 "name [hash]" 부분일치.
     assert sd_mod.resolution_for_checkpoint("animagine-xl-4.0-opt.safetensors [abc123]") == (1024, 1024)
     assert sd_mod.resolution_for_checkpoint("sd_xl_base_1.0.safetensors") == (1024, 1024)
+    # SD.Next 는 확장자 없이 보고한다(실증: "AnythingV5V3_v5PrtRE") → stem 매칭 필수
+    assert sd_mod.resolution_for_checkpoint("animagine-xl-4.0-opt") == (1024, 1024)
+    assert sd_mod.resolution_for_checkpoint("AnythingV5V3_v5PrtRE") == (512, 512)
     assert sd_mod.resolution_for_checkpoint("AnythingV5V3_v5PrtRE.safetensors") == (512, 512)
     assert sd_mod.resolution_for_checkpoint("v1-5-pruned-emaonly.safetensors") == (512, 512)
     # 모르는 모델/None → 안전하게 512

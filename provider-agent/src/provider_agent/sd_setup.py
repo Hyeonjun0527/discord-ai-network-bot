@@ -33,13 +33,13 @@ from .sd import SDClient
 
 logger = logging.getLogger("provider_agent.sd_setup")
 
-A1111_REPO = "https://github.com/AUTOMATIC1111/stable-diffusion-webui.git"
-
-# A1111 첫 실행 부트스트랩이 현재 깨지는 업스트림 문제 우회의 기본값.
-# stablediffusion 원본(Stability-AI)이 삭제(404)돼, A1111 메인테이너가 dev 브랜치에서 채택한
-# 컨트리뷰터(w-e-w) fork 를 기본 미러로 쓴다(HEAD == A1111 v1.10.1 요구 커밋 cf1d67a6).
-# 사용자는 SD_STABLE_DIFFUSION_REPO 환경변수로 재정의(다른 미러)하거나 직접 STABLE_DIFFUSION_REPO 를 줄 수 있다.
-DEFAULT_STABLE_DIFFUSION_REPO = "https://github.com/w-e-w/stablediffusion.git"
+# 로컬 이미지 생성 백엔드 = **SD.Next**(vladmandic/sdnext). A1111(AUTOMATIC1111)은 2025-02(v1.10.1)
+# 이후 사실상 정체돼, 활발히 유지보수되고 최신 모델(Flux/SD3.5 등)을 지원하는 SD.Next 로 전환한다.
+# SD.Next 는 A1111 의 `/sdapi/v1/*` API 를 그대로 유지(API 항상 켜짐, 기본 포트 7860) → 우리 SDClient
+# (txt2img/progress/health) 그대로 사용. MPS/정밀도(맥)도 자체 자동 처리 → A1111 의 --no-half-vae 등
+# 플래그·CLIP/setuptools/stablediffusion 우회가 불필요(자체 인스톨러가 처리).
+# self-update 가 기본이라 default 브랜치를 클론하면 최신을 유지한다.
+SDNEXT_REPO = "https://github.com/vladmandic/sdnext.git"
 
 # 설치 마법사에서 고르는 로컬 이미지 모델(체크포인트). 명령어가 아니라 데이터라 여기서 SSOT.
 MODELS: list[dict[str, str]] = [
@@ -117,9 +117,13 @@ def request_cancel() -> None:
 
 
 def install_dir() -> pathlib.Path:
-    """A1111 을 설치할 데이터 디렉터리. ``XDG_DATA_HOME`` 을 따르고 없으면 ``~/.local/share``."""
+    """SD.Next 를 설치할 데이터 디렉터리. ``XDG_DATA_HOME`` 을 따르고 없으면 ``~/.local/share``.
+
+    경로를 ``sdnext`` 로 둬 기존 A1111(stable-diffusion-webui) 설치와 **분리**한다 — 기존 유저는
+    A1111 디렉터리를 그대로 두고 SD.Next 를 새로 설치(혼선·충돌 방지). 옛 A1111 디렉터리는 방치돼도 무방.
+    """
     base = os.getenv("XDG_DATA_HOME") or os.path.join(pathlib.Path.home(), ".local", "share")
-    return pathlib.Path(base) / "nexa" / "stable-diffusion-webui"
+    return pathlib.Path(base) / "nexa" / "sdnext"
 
 
 def _has(cmd: str) -> bool:
@@ -195,69 +199,27 @@ def has_model(directory: pathlib.Path | None = None) -> bool:
 
 
 def clone_command(directory: pathlib.Path | None = None) -> list[str]:
-    """A1111 repo 를 얕게 클론하는 명령."""
-    return ["git", "clone", "--depth", "1", A1111_REPO, str(directory or install_dir())]
+    """SD.Next repo 를 얕게 클론하는 명령(default 브랜치 = 최신·self-update 라인)."""
+    return ["git", "clone", "--depth", "1", SDNEXT_REPO, str(directory or install_dir())]
 
 
 def launch_command(platform: str | None = None, directory: pathlib.Path | None = None) -> list[str]:
-    """webui 를 ``--api`` 로 기동하는 명령(첫 실행 시 venv·torch 자동 설치).
+    """SD.Next webui 를 기동하는 명령(첫 실행 시 venv·torch·deps 자동 설치).
 
-    - Windows: ``webui.bat`` (cmd 경유), 인자 전달.
-    - mac/Linux: ``bash webui.sh``. CUDA 없는 환경(맥 MPS 등)을 위해 torch CUDA 테스트 생략.
-
-    ``--no-half-vae``: half-precision VAE 가 NaN 을 내 **무지개 세로줄/검정 등 깨진(fried) 이미지**가
-    나오는 문제 방지(모든 플랫폼 안전). macOS(MPS)는 추가로 ``--upcast-sampling`` 으로 샘플링 정밀도를
-    올려 NaN/노이즈를 막는다(A1111 macOS 권장 기본값과 동일).
+    - Windows: ``webui.bat``(cmd 경유). mac/Linux: ``bash webui.sh``.
+    SD.Next 는 **API 가 항상 켜져** 있어 ``--api`` 불필요(기본 포트 7860). MPS/정밀도(맥)·CUDA 미존재
+    환경을 자체 자동 처리하므로 A1111 의 ``--skip-torch-cuda-test``/``--no-half-vae``/``--upcast-sampling``
+    같은 플래그를 넣지 않는다(미인식·에러 위험). 즉 깨진 이미지 문제도 SD.Next 가 자체적으로 막는다.
     """
     p = platform or sys.platform
     d = directory or install_dir()
     if p == "win32":
-        return ["cmd", "/c", str(d / "webui.bat"), "--api", "--skip-torch-cuda-test", "--no-half-vae"]
-    args = ["bash", str(d / "webui.sh"), "--api", "--skip-torch-cuda-test", "--no-half-vae"]
-    if p == "darwin":
-        args.append("--upcast-sampling")
-    return args
+        return ["cmd", "/c", str(d / "webui.bat")]
+    return ["bash", str(d / "webui.sh")]
 
 
-def stable_diffusion_repo() -> str:
-    """A1111 이 첫 실행에 클론하는 stablediffusion repo URL.
-
-    원본(Stability-AI/stablediffusion)이 삭제(404)됐으므로, 업스트림이 채택한 fork 를 기본값으로
-    쓴다. 사용자가 ``SD_STABLE_DIFFUSION_REPO`` 로 다른 미러를 지정하거나, 빈 값으로 비활성화(원본
-    URL 사용)할 수 있다.
-    """
-    override = os.getenv("SD_STABLE_DIFFUSION_REPO")
-    if override is not None:
-        return override.strip()
-    return DEFAULT_STABLE_DIFFUSION_REPO
-
-
-def write_pip_constraints(directory: pathlib.Path | None = None) -> pathlib.Path:
-    """A1111 의 pip 빌드에 적용할 제약 파일을 써서 경로를 돌려준다.
-
-    setuptools≥81 은 ``pkg_resources`` 를 제거했는데, A1111 이 받는 레거시 CLIP 의 setup.py 가
-    이를 import 해 wheel 빌드가 실패한다. ``PIP_CONSTRAINT`` 로 빌드 격리 환경까지 setuptools<81 로
-    핀하면(공식 패키지, 미러 불필요) 통과한다.
-    """
-    d = directory or install_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    path = d / "pip-constraints.txt"
-    path.write_text("setuptools<81\nwheel\n", encoding="utf-8")
-    return path
-
-
-def bootstrap_env(directory: pathlib.Path | None = None) -> dict[str, str]:
-    """A1111 첫 실행 부트스트랩이 현재 깨지는 두 업스트림 문제를 우회하는 환경변수.
-
-    ① ``PIP_CONSTRAINT`` → setuptools<81 (레거시 CLIP 빌드 실패 방지, 공식 패키지).
-    ② ``STABLE_DIFFUSION_REPO`` → 삭제된 원본 대신 업스트림 채택 fork(또는 사용자 지정 미러).
-    repo 가 빈 값이면(사용자가 비활성화) 오버라이드를 넣지 않는다(A1111 기본 URL 사용).
-    """
-    env = {"PIP_CONSTRAINT": str(write_pip_constraints(directory))}
-    repo = stable_diffusion_repo()
-    if repo:
-        env["STABLE_DIFFUSION_REPO"] = repo
-    return env
+# (A1111 우회 함수 stable_diffusion_repo/write_pip_constraints/bootstrap_env 는 제거됨 —
+#  SD.Next 는 자체 인스톨러가 의존성(CLIP/setuptools/stablediffusion)을 처리해 불필요.)
 
 
 async def _run(cmd: list[str], timeout: float) -> tuple[int, str]:
@@ -457,11 +419,10 @@ async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
         if _cancelled():
             return False
 
-        # 4) 기동(--api, 백그라운드). 첫 실행은 venv·torch 부트스트랩으로 오래 걸린다.
-        #    A1111 webui 가 호환 Python(3.10/3.11)을 쓰도록 env 로 전달한다.
-        _set("starting", 70, "Stable Diffusion 시작 중… (첫 실행은 수~수십 분)")
-        # launch_env: webui 에 호환 Python 전달. bootstrap_env: 업스트림 부패(CLIP/setuptools·삭제된 repo) 우회.
-        env = {**os.environ, **launch_env(python_cmd), **bootstrap_env(directory)}
+        # 4) 기동(백그라운드). 첫 실행은 venv·torch·deps 부트스트랩으로 오래 걸린다.
+        #    SD.Next webui 가 호환 Python 을 쓰도록 env(python_cmd)로 전달(SD.Next 자체 인스톨러가 의존성 처리).
+        _set("starting", 70, "Stable Diffusion(SD.Next) 시작 중… (첫 실행은 수~수십 분)")
+        env = {**os.environ, **launch_env(python_cmd)}
         log_path = launch_log_path(directory)
         _proc = await _spawn(launch_command(directory=directory), env=env, log_path=log_path)
         if not await _wait_healthy(client, _proc):
@@ -514,9 +475,8 @@ async def launch_only(sd_url: str) -> bool:
             _set("error", 0, "아직 설치되지 않았어요. 먼저 설치하세요.", error="not-installed")
             return False
         python_cmd = compatible_python() or ("python" if sys.platform == "win32" else "python3.11")
-        _set("starting", 70, "Stable Diffusion 시작 중… (첫 실행 이후라 보통 1~2분)")
-        # run_setup 과 동일한 env: 부트스트랩이 미완료였을 수도 있어 PIP_CONSTRAINT·미러(repo) 우회를 함께 준다.
-        env = {**os.environ, **launch_env(python_cmd), **bootstrap_env(directory)}
+        _set("starting", 70, "Stable Diffusion(SD.Next) 시작 중… (첫 실행 이후라 보통 1~2분)")
+        env = {**os.environ, **launch_env(python_cmd)}
         log_path = launch_log_path(directory)
         _proc = await _spawn(launch_command(directory=directory), env=env, log_path=log_path)
         if await _wait_healthy(client, _proc):

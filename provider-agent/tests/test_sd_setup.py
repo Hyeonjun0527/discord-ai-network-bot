@@ -9,7 +9,7 @@ from provider_agent import sd_setup as sd_mod
 def test_install_dir_follows_xdg(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     d = sd_mod.install_dir()
-    assert d == tmp_path / "nexa" / "stable-diffusion-webui"
+    assert d == tmp_path / "nexa" / "sdnext"
 
 
 def test_has_git(monkeypatch):
@@ -43,19 +43,26 @@ def test_has_model(tmp_path):
 def test_clone_command(tmp_path):
     cmd = sd_mod.clone_command(tmp_path)
     assert cmd[0] == "git" and cmd[1] == "clone" and "--depth" in cmd
-    assert cmd[-1] == str(tmp_path) and sd_mod.A1111_REPO in cmd
+    assert cmd[-1] == str(tmp_path) and sd_mod.SDNEXT_REPO in cmd  # SD.Next repo
+    assert "sdnext" in sd_mod.SDNEXT_REPO  # A1111 아님
 
 
 def test_launch_command_per_platform(tmp_path):
+    # SD.Next: API 항상 켜짐(--api 불필요), MPS/정밀도 자체 처리(A1111 플래그 없음).
     mac = sd_mod.launch_command("darwin", tmp_path)
-    assert mac[0] == "bash" and mac[1] == str(tmp_path / "webui.sh") and "--api" in mac
-    # NaN/fried 이미지 방지 플래그(맥 MPS): --no-half-vae + --upcast-sampling
-    assert "--no-half-vae" in mac and "--upcast-sampling" in mac
+    assert mac == ["bash", str(tmp_path / "webui.sh")]
     win = sd_mod.launch_command("win32", tmp_path)
-    assert win[0] == "cmd" and str(tmp_path / "webui.bat") in win and "--api" in win
-    assert "--no-half-vae" in win  # VAE NaN 방지(모든 플랫폼)
-    linux = sd_mod.launch_command("linux", tmp_path)
-    assert "--no-half-vae" in linux and "--upcast-sampling" not in linux  # upcast 는 맥만
+    assert win[0] == "cmd" and str(tmp_path / "webui.bat") in win
+    # A1111 전용 플래그가 섞이지 않았는지(미인식·에러 방지)
+    for cmd in (mac, win):
+        assert "--no-half-vae" not in cmd and "--skip-torch-cuda-test" not in cmd and "--upcast-sampling" not in cmd
+
+
+def test_install_dir_is_sdnext(monkeypatch, tmp_path):
+    # SD.Next 는 기존 A1111(stable-diffusion-webui)과 분리된 경로(sdnext)에 설치.
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    d = sd_mod.install_dir()
+    assert d.name == "sdnext" and "stable-diffusion-webui" not in str(d)
 
 
 def test_pkg_manager_and_install_tool(monkeypatch):
@@ -87,38 +94,8 @@ def test_launch_env_per_platform():
     assert sd_mod.launch_env(None, "darwin") == {}
 
 
-def test_stable_diffusion_repo_default_and_override(monkeypatch):
-    monkeypatch.delenv("SD_STABLE_DIFFUSION_REPO", raising=False)
-    assert sd_mod.stable_diffusion_repo() == sd_mod.DEFAULT_STABLE_DIFFUSION_REPO
-    # 사용자 미러 지정
-    monkeypatch.setenv("SD_STABLE_DIFFUSION_REPO", "https://example.com/x/stablediffusion.git")
-    assert sd_mod.stable_diffusion_repo() == "https://example.com/x/stablediffusion.git"
-    # 빈 값 → 비활성화(원본 URL 사용)
-    monkeypatch.setenv("SD_STABLE_DIFFUSION_REPO", "")
-    assert sd_mod.stable_diffusion_repo() == ""
-
-
-def test_write_pip_constraints(tmp_path):
-    path = sd_mod.write_pip_constraints(tmp_path / "sd")
-    assert path.exists()
-    content = path.read_text("utf-8")
-    assert "setuptools<81" in content  # CLIP 빌드용 pkg_resources 보유 버전 핀
-
-
-def test_bootstrap_env_includes_constraint_and_repo(monkeypatch, tmp_path):
-    monkeypatch.delenv("SD_STABLE_DIFFUSION_REPO", raising=False)
-    env = sd_mod.bootstrap_env(tmp_path / "sd")
-    assert env["STABLE_DIFFUSION_REPO"] == sd_mod.DEFAULT_STABLE_DIFFUSION_REPO  # 업스트림 채택 fork
-    assert env["PIP_CONSTRAINT"].endswith("pip-constraints.txt")
-    from pathlib import Path
-    assert Path(env["PIP_CONSTRAINT"]).exists()
-
-
-def test_bootstrap_env_repo_disabled_when_blank(monkeypatch, tmp_path):
-    monkeypatch.setenv("SD_STABLE_DIFFUSION_REPO", "")  # 사용자가 미러 끔
-    env = sd_mod.bootstrap_env(tmp_path / "sd")
-    assert "STABLE_DIFFUSION_REPO" not in env  # A1111 기본 URL 사용(오버라이드 안 함)
-    assert "PIP_CONSTRAINT" in env  # setuptools 핀은 그대로
+# (A1111 우회 함수 테스트 stable_diffusion_repo/write_pip_constraints/bootstrap_env 는 제거됨 —
+#  SD.Next 전환으로 해당 우회가 불필요해져 함수 자체를 삭제했다.)
 
 
 def test_model_by_id():

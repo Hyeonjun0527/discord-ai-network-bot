@@ -286,23 +286,18 @@ def test_run_setup_no_git(monkeypatch, tmp_path):
     assert sd_mod.progress()["error"] == "no-git"
 
 
-def test_run_setup_installs_prereqs(monkeypatch, tmp_path):
-    """설치 마법사: git·Python 이 없어도 패키지 매니저로 설치하고 전체 경로를 끝낸다."""
-    directory = tmp_path / "sd"
-    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(False))
-    monkeypatch.setattr(sd_mod, "install_dir", lambda: directory)
+def _wire_run_setup_fakes(monkeypatch, directory):
+    """run_setup 의 부작용(_run/_download/_spawn/_wait_healthy)을 가짜로 바꾸고 실행 로그를 돌려준다."""
     git_state = {"has": False}
     monkeypatch.setattr(sd_mod, "has_git", lambda: git_state["has"])
-    monkeypatch.setattr(sd_mod, "compatible_python", lambda: None)  # 설치 후에도 PATH 미갱신 가정 → best-effort
-    monkeypatch.setattr(sd_mod, "install_tool_command", lambda tool, platform=None: ["echo", tool])
-
     ran: list = []
+    spawned: dict = {}
 
     async def fake_run(cmd, timeout):
         ran.append(cmd)
         if cmd == ["echo", "git"]:
             git_state["has"] = True
-        if "clone" in cmd:
+        if "clone" in cmd or "checkout" in cmd:
             directory.mkdir(parents=True, exist_ok=True)
             (directory / "webui.sh").write_text("#!/bin/sh\n")
         return 0, "ok"
@@ -310,8 +305,6 @@ def test_run_setup_installs_prereqs(monkeypatch, tmp_path):
     async def fake_download(url, dest, message_prefix="이미지 모델 내려받는 중…"):
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text("m")
-
-    spawned: dict = {}
 
     async def fake_spawn(cmd, env=None, log_path=None, cwd=None):
         spawned["env"] = env
@@ -324,12 +317,50 @@ def test_run_setup_installs_prereqs(monkeypatch, tmp_path):
     monkeypatch.setattr(sd_mod, "_download", fake_download)
     monkeypatch.setattr(sd_mod, "_spawn", fake_spawn)
     monkeypatch.setattr(sd_mod, "_wait_healthy", fake_wait)
+    return ran, spawned
+
+
+def test_run_setup_fetches_standalone_python_when_none(monkeypatch, tmp_path):
+    """호환 Python 이 없으면 standalone CPython 을 받아 그 경로를 SD.Next 에 PYTHON 으로 넘긴다(주 폴백)."""
+    directory = tmp_path / "sd"
+    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(False))
+    monkeypatch.setattr(sd_mod, "install_dir", lambda: directory)
+    monkeypatch.setattr(sd_mod, "compatible_python", lambda: None)  # 시스템에 호환 Python 없음
+
+    async def fake_bundled():
+        return "/data/nexa/python/python/bin/python3.11"
+
+    monkeypatch.setattr(sd_mod, "ensure_bundled_python", fake_bundled)
+    # 다운로드가 성공하면 패키지 매니저는 호출되면 안 된다(실패 시 어설션으로 잡히게).
+    monkeypatch.setattr(sd_mod, "install_tool_command", lambda tool, platform=None: ["echo", tool])
+    ran, spawned = _wire_run_setup_fakes(monkeypatch, directory)
 
     ok = asyncio.run(sd_mod.run_setup("http://127.0.0.1:7860"))
     assert ok is True
     assert sd_mod.progress()["phase"] == "done"
-    assert ["echo", "git"] in ran and ["echo", "python"] in ran  # 전제 도구 설치됨
-    assert spawned["env"] and spawned["env"].get("PYTHON")     # SD.Next 에 호환 Python(PYTHON) 전달
+    assert ["echo", "git"] in ran  # git 은 패키지 매니저로 설치
+    assert ["echo", "python"] not in ran  # Python 은 standalone 다운로드 → 패키지 매니저 미호출
+    assert spawned["env"]["PYTHON"] == "/data/nexa/python/python/bin/python3.11"
+
+
+def test_run_setup_python_pkg_manager_fallback(monkeypatch, tmp_path):
+    """standalone 다운로드가 실패하면 패키지 매니저(brew/winget)로 폴백한다."""
+    directory = tmp_path / "sd"
+    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(False))
+    monkeypatch.setattr(sd_mod, "install_dir", lambda: directory)
+    monkeypatch.setattr(sd_mod, "compatible_python", lambda: None)
+
+    async def fake_bundled():
+        return None  # 다운로드 실패/미지원
+
+    monkeypatch.setattr(sd_mod, "ensure_bundled_python", fake_bundled)
+    monkeypatch.setattr(sd_mod, "install_tool_command", lambda tool, platform=None: ["echo", tool])
+    ran, spawned = _wire_run_setup_fakes(monkeypatch, directory)
+
+    ok = asyncio.run(sd_mod.run_setup("http://127.0.0.1:7860"))
+    assert ok is True
+    assert ["echo", "git"] in ran and ["echo", "python"] in ran  # 둘 다 패키지 매니저로 설치
+    assert spawned["env"] and spawned["env"].get("PYTHON")
 
 
 def test_run_setup_full_flow(monkeypatch, tmp_path):

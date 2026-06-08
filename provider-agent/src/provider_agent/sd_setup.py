@@ -332,6 +332,41 @@ def first_model_path(directory: pathlib.Path | None = None) -> pathlib.Path | No
     return None
 
 
+def installed_models(directory: pathlib.Path | None = None) -> list[dict[str, str]]:
+    """설치된 체크포인트 목록. 각 항목 {filename, name, id, base}.
+
+    카탈로그(MODELS)에 있으면 그 메타(예쁜 이름·base), 없으면 파일명 기반(유저가 직접 넣은 커스텀
+    모델도 보이게). 로컬 실행 탭의 '모델 선택'이 이 목록을 보여준다.
+    """
+    md = model_dir(directory)
+    out: list[dict[str, str]] = []
+    if not md.exists():
+        return out
+    for p in sorted(md.iterdir()):
+        if not (p.is_file() and p.suffix in (".safetensors", ".ckpt")):
+            continue
+        cat = next((m for m in MODELS if m["filename"] == p.name), None)
+        out.append({
+            "filename": p.name,
+            "name": cat["name"] if cat else p.stem,
+            "id": cat["id"] if cat else "",
+            "base": cat.get("base", "") if cat else "",
+        })
+    return out
+
+
+def selected_model_path(directory: pathlib.Path | None = None) -> pathlib.Path | None:
+    """설정(config ``sd_model``)에서 고른 체크포인트 경로(존재할 때만). 없으면 None → 첫 모델 폴백.
+    로컬 실행 탭에서 모델을 바꾸면 그 파일명이 config 에 저장돼, 다음 SD 기동(launch)에도 유지된다."""
+    from .config_file import load_config
+
+    name = load_config().get("sd_model")
+    if not name or not isinstance(name, str):
+        return None
+    p = model_dir(directory) / name
+    return p if p.is_file() else None
+
+
 def launch_command(platform: str | None = None, directory: pathlib.Path | None = None) -> list[str]:
     """SD.Next webui 를 기동하는 명령(첫 실행 시 venv·torch·deps 자동 설치).
 
@@ -346,7 +381,7 @@ def launch_command(platform: str | None = None, directory: pathlib.Path | None =
     p = platform or sys.platform
     d = directory or install_dir()
     base = ["cmd", "/c", str(d / "webui.bat")] if p == "win32" else ["bash", str(d / "webui.sh")]
-    ckpt = first_model_path(d)
+    ckpt = selected_model_path(d) or first_model_path(d)  # 유저가 고른 모델 우선(없으면 첫 모델)
     if ckpt is not None:
         base += ["--ckpt", str(ckpt)]
     return base

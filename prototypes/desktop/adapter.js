@@ -76,6 +76,14 @@ const MOCK = {
   },
   updateInfo: { current: '0.31.0', latest: '0.31.0', outdated: false, supported: true },
   runtimePing: { 'Ollama': 28, 'Stable Diffusion': 400 },
+  // 설치된 SD 모델 + 활성(로컬 실행 탭 모델 전환 시연). 실 앱은 webui /api/sd/installed.
+  sdInstalled: {
+    active: 'AnythingV5V3_v5PrtRE.safetensors',
+    models: [
+      { filename: 'AnythingV5V3_v5PrtRE.safetensors', name: 'Anything V5 (애니)', id: 'anime', base: 'sd15' },
+      { filename: 'v1-5-pruned-emaonly.safetensors', name: 'Stable Diffusion 1.5', id: 'sd15', base: 'sd15' },
+    ],
+  },
   models: [
     { name: 'exaone3.5:7.8b', size: '4.8GB', tags: ['한국어', '기본'], on: true, lastUsed: '방금' },
     { name: 'llama3.1:8b', size: '4.7GB', tags: ['한국어', '일반'], on: true, lastUsed: '2분 전' },
@@ -534,6 +542,19 @@ export const api = {
   async sdModels() {
     /* @proto-only */ if (USE_MOCK) { await delay(60); return SD_MODELS; } /* @end-proto-only */
     return (await http(ENDPOINTS.sdModels)).models || [];
+  },
+
+  /** 설치된 SD 모델 목록 + 활성 모델 — webui.py /api/sd/installed (로컬 실행 탭 모델 전환) */
+  async sdInstalledModels() {
+    /* @proto-only */ if (USE_MOCK) { await delay(60); return structuredClone(MOCK.sdInstalled); } /* @end-proto-only */
+    const r = await http(ENDPOINTS.sdInstalled);
+    return { models: r.models || [], active: r.active || '' };
+  },
+
+  /** 활성 SD 모델 전환(핫스왑 + config 저장) — webui.py /api/sd/select */
+  async selectSdModel(filename) {
+    /* @proto-only */ if (USE_MOCK) { await delay(120); MOCK.sdInstalled.active = filename; return { ok: true, active: filename, applied: 'live' }; } /* @end-proto-only */
+    return http(ENDPOINTS.sdSelect, { method: 'POST', body: JSON.stringify({ model: filename }) });
   },
 
   /** 로컬 모델 목록 + 기본 모델 — webui.py /api/models */

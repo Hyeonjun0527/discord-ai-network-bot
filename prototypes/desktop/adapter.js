@@ -54,7 +54,7 @@ const MOCK = {
     running: true, connected: true, processed: 12, imageReady: true, enableImage: true, sdInstalled: true,
     models: ['exaone3.5:7.8b', 'llama3.1:8b', 'qwen2.5-coder:7b'],
     hasToken: true, relayUrl: 'wss://discord-ai.yeon.world/agent', backgroundRunning: false, background: false, connectEnabled: true,
-    version: '0.31.0',
+    version: '0.31.0', geminiConfigured: false, comfyUrl: '',
   },
   logs: [
     '09:12:03 INFO | 에이전트 시작 (Nexa v0.31.0)',
@@ -72,7 +72,7 @@ const MOCK = {
   ],
   settings: {
     autostart: false, background: false, autoConnect: true, autoUpdate: true,
-    ollamaUrl: 'http://localhost:11434',
+    ollamaUrl: 'http://localhost:11434', geminiConfigured: false, comfyUrl: '',
   },
   updateInfo: { current: '0.31.0', latest: '0.31.0', outdated: false, supported: true },
   runtimePing: { 'Ollama': 28, 'Stable Diffusion': 400 },
@@ -246,6 +246,16 @@ export const api = {
       policy,
       webUrl: null,
     };
+  },
+  /** 이 서버에 제공할 모델 설정 readback — /api/servers/{g}/models. */
+  async getServerModels(guildId) {
+    /* @proto-only */ if (USE_MOCK) { await delay(60); return { ok: true, available: MOCK.models.map((m) => m.name), chatModels: [], imageEnabled: true, imageReady: true }; } /* @end-proto-only */
+    return http(ENDPOINTS.serverModels(guildId));
+  },
+  /** 이 서버에 제공할 채팅 모델·이미지 여부 저장·적용 — POST /api/servers/{g}/models. chatModels 빈=전체. */
+  async setServerModels(guildId, chatModels, imageEnabled) {
+    /* @proto-only */ if (USE_MOCK) { await delay(80); return { ok: true }; } /* @end-proto-only */
+    return http(ENDPOINTS.serverModels(guildId), { method: 'POST', body: JSON.stringify({ chatModels, imageEnabled }) });
   },
   /** 서버 관리(관리자) — 승인 대기·로스터·정책. ⚠ Gap-M(앱↔central 관리 채널). 비관리자는 ok=false. */
   async getServerManage(guildId) {
@@ -434,6 +444,12 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.status.enableImage = on; MOCK.status.imageReady = on && MOCK.status.sdInstalled; return { ok: true, on, imageReady: MOCK.status.imageReady, sdInstalled: MOCK.status.sdInstalled, applied: 'live' }; } /* @end-proto-only */
     return post(ENDPOINTS.image, { on });
   },
+  /** 클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. webui.py POST /api/cloud. */
+  async setCloud({ geminiApiKey, comfyUrl }) {
+    /* @proto-only */ if (USE_MOCK) { await delay(120); const o = { ok: true }; if (geminiApiKey !== undefined) { MOCK.status.geminiConfigured = !!geminiApiKey; o.geminiConfigured = !!geminiApiKey; o.geminiValid = !!geminiApiKey; } if (comfyUrl !== undefined) { MOCK.status.comfyUrl = comfyUrl; o.comfyUrl = comfyUrl; o.needsRestart = true; } return o; } /* @end-proto-only */
+    const body = {}; if (geminiApiKey !== undefined) body.geminiApiKey = geminiApiKey; if (comfyUrl !== undefined) body.comfyUrl = comfyUrl;
+    return post(ENDPOINTS.cloud, body);
+  },
   /** 제공할 텍스트 모델 선택 적용 — webui.py POST /api/setup {models, enableImage, applyToBackground}.
    *  실행 중 서비스에 즉시 반영(applyToBackground=true)해 풀에 새 구성을 광고한다. enableImage 는 현재값
    *  을 보존(부분 저장이 이미지 토글을 끄지 않도록). */
@@ -542,6 +558,12 @@ export const api = {
   async sdModels() {
     /* @proto-only */ if (USE_MOCK) { await delay(60); return SD_MODELS; } /* @end-proto-only */
     return (await http(ENDPOINTS.sdModels)).models || [];
+  },
+
+  /** 카탈로그 밖 임의 HuggingFace 모델 설치 시작 — webui.py /api/sd/install-custom. base: 'sd15'|'sdxl'(해상도). */
+  async installCustomSdModel(url, base) {
+    /* @proto-only */ if (USE_MOCK) { await delay(80); return { ok: true }; } /* @end-proto-only */
+    return http(ENDPOINTS.sdInstallCustom, { method: 'POST', body: JSON.stringify({ url, base: base || '' }) });
   },
 
   /** 설치된 SD 모델 목록 + 활성 모델 — webui.py /api/sd/installed (로컬 실행 탭 모델 전환) */

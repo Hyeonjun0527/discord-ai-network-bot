@@ -37,6 +37,15 @@ object CommandLoc {
                     "画像を生成します(コミュニティのローカルStable Diffusion)",
                     "Сгенерировать изображение",
                 ),
+            "free-ask" to
+                L(
+                    "무료질문",
+                    "無料質問",
+                    "бесплатный-вопрос",
+                    "Ask the free cloud AI (Gemini)",
+                    "無料クラウドAI(Gemini)に質問します",
+                    "Спросить бесплатный облачный ИИ (Gemini)",
+                ),
             "models" to L("모델", "モデル", "модели", "Check available model levels", "利用可能なモデル水準を確認します", "Доступные уровни моделей"),
             "catalog" to
                 L("모델목록", "モデル一覧", "каталог", "List models offered in this server", "このサーバーで提供中のモデル一覧を見ます", "Список моделей этого сервера"),

@@ -158,6 +158,23 @@ def test_installed_models_and_selection(tmp_path, monkeypatch):
     assert cmd[cmd.index("--ckpt") + 1].endswith("AnythingV5V3_v5PrtRE.safetensors")
 
 
+def test_custom_model_from_url():
+    # resolve 직접 링크 → 모델 dict
+    m = sd_mod.custom_model_from_url("https://huggingface.co/cagliostrolab/animagine-xl-4.0/resolve/main/animagine-xl-4.0-opt.safetensors")
+    assert m is not None
+    assert m["filename"] == "animagine-xl-4.0-opt.safetensors"
+    assert m["url"].endswith("animagine-xl-4.0-opt.safetensors")
+    # blob URL(페이지) → resolve 로 보정
+    blob = sd_mod.custom_model_from_url("https://huggingface.co/x/y/blob/main/foo.safetensors")
+    assert blob is not None and "/resolve/" in blob["url"] and blob["filename"] == "foo.safetensors"
+    # .ckpt 허용
+    assert sd_mod.custom_model_from_url("https://huggingface.co/a/b/resolve/main/m.ckpt") is not None
+    # HF 아님 / 확장자 안 맞음 → None(임의 호스트 차단)
+    assert sd_mod.custom_model_from_url("https://evil.com/m.safetensors") is None
+    assert sd_mod.custom_model_from_url("https://huggingface.co/a/b/resolve/main/readme.txt") is None
+    assert sd_mod.custom_model_from_url("") is None
+
+
 def test_resolution_for_checkpoint():
     # SDXL 계열 → 1024, SD1.5 계열 → 512. 체크포인트 문자열은 "name [hash]" 부분일치.
     assert sd_mod.resolution_for_checkpoint("animagine-xl-4.0-opt.safetensors [abc123]") == (1024, 1024)
@@ -607,3 +624,37 @@ def test_launch_only_spawns_when_installed(monkeypatch, tmp_path):
     assert spawned["cmd"][0] == "bash"  # webui.sh 기동
     # clone/모델 다운로드는 안 함(기동 전용). venv 의존성 보강(ensure_extra_deps)은 허용.
     assert not any("clone" in " ".join(str(x) for x in c) for c in ran)
+
+
+def test_resolution_custom_base(monkeypatch):
+    import provider_agent.config_file as cf
+    monkeypatch.setattr(cf, "load_config", lambda *a, **k: {"custom_bases": {"my-sdxl-merge.safetensors": "sdxl"}})
+    # 커스텀 SDXL → 1024(확장자 없이 보고돼도 stem 매칭)
+    assert sd_mod.resolution_for_checkpoint("my-sdxl-merge [abc]") == (1024, 1024)
+    assert sd_mod.resolution_for_checkpoint("my-sdxl-merge.safetensors") == (1024, 1024)
+    # 등록 안 된 커스텀 → 512
+    assert sd_mod.resolution_for_checkpoint("unknown-merge") == (512, 512)
+
+
+def test_download_custom_model_bad_url():
+    import asyncio as _a
+    ok = _a.run(sd_mod.download_custom_model("not-a-hf-url", "http://127.0.0.1:7860"))
+    assert ok is False
+    assert sd_mod.progress()["error"] == "bad-url"
+
+
+def test_download_custom_model_already_present(tmp_path, monkeypatch):
+    import asyncio as _a
+    md = tmp_path / "models" / "Stable-diffusion"
+    md.mkdir(parents=True)
+    (md / "foo.safetensors").write_bytes(b"x")
+    monkeypatch.setattr(sd_mod, "install_dir", lambda: tmp_path)
+    monkeypatch.setattr(sd_mod, "is_installed", lambda *a, **k: True)
+    import provider_agent.config_file as cf
+    saved = {}
+    monkeypatch.setattr(cf, "load_config", lambda *a, **k: dict(saved))
+    monkeypatch.setattr(cf, "persist_partial", lambda d, *a, **k: saved.update(d))
+    ok = _a.run(sd_mod.download_custom_model("https://huggingface.co/a/b/resolve/main/foo.safetensors", "http://127.0.0.1:7860", base="sdxl"))
+    assert ok is True
+    assert sd_mod.progress()["phase"] == "done"
+    assert saved.get("custom_bases", {}).get("foo.safetensors") == "sdxl"  # base 저장됨

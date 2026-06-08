@@ -8,6 +8,7 @@ import com.discordassistant.central.relay.protocol.InferError
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
 import com.discordassistant.central.relay.protocol.ProviderHelloFrame
+import com.discordassistant.central.relay.protocol.ProviderStatusFrame
 import com.discordassistant.central.relay.protocol.Usage
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
@@ -81,6 +82,41 @@ class ProviderSessionTest {
         }
         assertEquals(ProviderState.UNHEALTHY, s.state)
         assertTrue(s.failures >= 3)
+    }
+
+    @Test
+    fun `UNHEALTHY 는 정상 하트비트로 자동 복구된다(영구 드롭 방지)`() {
+        val conn = FakeConnection()
+        val s = session(conn)
+        // 3회 연속 타임아웃/실패 → UNHEALTHY
+        repeat(3) {
+            val fut = s.sendInfer(prompt = "x")
+            val req = conn.sent.filterIsInstance<InferRequest>().last()
+            s.handleFrame(InferError(requestId = req.requestId, code = ErrorCode.OLLAMA_ERROR, message = "boom"))
+            org.junit.jupiter.api
+                .assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
+        }
+        assertEquals(ProviderState.UNHEALTHY, s.state)
+        // 정상 하트비트(online·idle·배터리 정상) 도착 → ONLINE_IDLE 로 복구 + 실패 카운터 리셋
+        s.handleFrame(ProviderStatusFrame(load = "idle", battery = "charging", online = true, busy = false))
+        assertEquals(ProviderState.ONLINE_IDLE, s.state)
+        assertEquals(0, s.failures)
+    }
+
+    @Test
+    fun `UNHEALTHY 는 비정상 하트비트(고부하)로는 복구되지 않는다`() {
+        val conn = FakeConnection()
+        val s = session(conn)
+        repeat(3) {
+            val fut = s.sendInfer(prompt = "x")
+            val req = conn.sent.filterIsInstance<InferRequest>().last()
+            s.handleFrame(InferError(requestId = req.requestId, code = ErrorCode.OLLAMA_ERROR, message = "boom"))
+            org.junit.jupiter.api
+                .assertThrows<ExecutionException> { fut.get(2, TimeUnit.SECONDS) }
+        }
+        // 고부하 보고 → 복구 안 함(LIMITED 로 갈 뿐, 라우팅 회복은 정상 하트비트에서만)
+        s.handleFrame(ProviderStatusFrame(load = "high", battery = "charging", online = true, busy = false))
+        assertTrue(s.state != ProviderState.ONLINE_IDLE)
     }
 
     @Test

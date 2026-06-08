@@ -95,6 +95,74 @@ def model_by_id(model_id: str | None) -> dict[str, str]:
     return MODELS[0]
 
 
+def custom_model_from_url(url: str) -> dict[str, str] | None:
+    """HuggingFace .safetensors/.ckpt 직접 링크 → 모델 dict(카탈로그 밖, 유저 자율 설치). 형식 안 맞으면 None.
+
+    유저가 허깅페이스에서 받은 **어떤 체크포인트든** 설치할 수 있게 한다(카탈로그 강요 제거). blob URL 도
+    resolve 로 자동 변환. base 는 미상(""): 해상도는 512 기본(SDXL 커스텀이면 앱에서 1024 로 바꿔 쓰면 됨).
+    """
+    u = url.strip()
+    if "huggingface.co" not in u or not (u.endswith(".safetensors") or u.endswith(".ckpt")):
+        return None
+    u = u.replace("/blob/", "/resolve/")  # 페이지 URL 을 붙여도 다운로드 링크로 보정
+    filename = u.rsplit("/", 1)[-1].split("?")[0]
+    if not filename:
+        return None
+    return {
+        "id": "custom",
+        "name": filename.rsplit(".", 1)[0],
+        "desc": "직접 추가(HuggingFace)",
+        "size": "",
+        "filename": filename,
+        "url": u,
+        "base": "",
+    }
+
+
+def _save_custom_base(filename: str, base: str) -> None:
+    """커스텀 모델의 base(sd15/sdxl)를 config 에 저장 — 생성 해상도 판정(resolution_for_checkpoint)용."""
+    if base not in ("sd15", "sdxl"):
+        return
+    from .config_file import load_config, persist_partial
+
+    bases = dict(load_config().get("custom_bases") or {})
+    bases[filename] = base
+    persist_partial({"custom_bases": bases})
+
+
+async def download_custom_model(url: str, sd_url: str, base: str = "") -> bool:
+    """HuggingFace 커스텀 체크포인트를 모델 폴더로 받는다. 진행률은 progress() 로 노출.
+
+    base("sd15"|"sdxl"): 생성 해상도 판정용(SDXL 커스텀이면 1024). SD.Next 가 이미 설치돼 있으면 파일만
+    추가(설치 후 installed_models() 에 나타나고 로컬 실행 탭에서 선택·핫스왑). 미설치면 전체 설치. 형식 안 맞으면 에러.
+    """
+    global _cancel
+    _cancel = False
+    _augment_path()
+    model = custom_model_from_url(url)
+    if model is None:
+        _set("error", 0, "HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요(예: …/resolve/main/모델.safetensors).", error="bad-url")
+        return False
+    _save_custom_base(model["filename"], base)  # base 먼저 저장(다운로드 성공 전에도 해상도 매핑되게)
+    if not is_installed():
+        return await run_setup(sd_url, custom_url=url)  # SD.Next 자체가 없으면 이 모델로 전체 설치
+    dest = model_dir() / model["filename"]
+    if dest.exists():
+        _set("done", 100, f"이미 설치됨: {model['name']}")
+        return True
+    try:
+        prefix = f"이미지 모델 내려받는 중… ({model['name']})"
+        _set("downloading", _DL_START_PCT, prefix)
+        await _download(model["url"], dest, prefix)
+    except (OSError, RuntimeError) as exc:
+        _set("error", 0, f"다운로드 실패: {exc}", error="download-failed")
+        return False
+    if _cancelled():
+        return False
+    _set("done", 100, f"설치 완료: {model['name']} — 로컬 실행 탭에서 모델을 선택하세요")
+    return True
+
+
 def resolution_for_checkpoint(checkpoint: str | None) -> tuple[int, int]:
     """현재 로드된 체크포인트 이름으로 권장 생성 해상도를 정한다.
 
@@ -110,6 +178,15 @@ def resolution_for_checkpoint(checkpoint: str | None) -> tuple[int, int]:
             stem = fn.rsplit(".", 1)[0]  # SD.Next 는 확장자 없이 "AnythingV5V3_v5PrtRE" 처럼 보고한다
             if fn in checkpoint or stem in checkpoint:
                 return (1024, 1024) if m.get("base") == "sdxl" else (512, 512)
+        # 커스텀(카탈로그 밖) 모델: 설치 시 저장한 base 로 판정(SDXL 커스텀도 1024 로).
+        from .config_file import load_config
+
+        bases = load_config().get("custom_bases") or {}
+        if isinstance(bases, dict):
+            for fn, base in bases.items():
+                stem = str(fn).rsplit(".", 1)[0]
+                if str(fn) in checkpoint or (stem and stem in checkpoint):
+                    return (1024, 1024) if base == "sdxl" else (512, 512)
     return (512, 512)
 
 
@@ -535,15 +612,19 @@ def _cancelled() -> bool:
     return False
 
 
-async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
-    """감지 → (전제 git·Python)설치 → A1111 clone → 선택 모델 → 기동 → 준비. 성공 True.
+async def run_setup(sd_url: str, model_id: str | None = None, custom_url: str | None = None) -> bool:
+    """감지 → (전제 git·Python)설치 → SD.Next clone → 선택 모델 → 기동 → 준비. 성공 True.
 
+    model_id = 카탈로그 모델, custom_url = HuggingFace 직접 링크(카탈로그 밖 임의 모델). 둘 다 없으면 기본.
     진행은 progress()로 노출. 이미 SD 가 떠 있으면 즉시 done. 단계 경계마다 취소를 확인한다.
     """
     global _proc, _cancel
     _cancel = False
     _augment_path()  # macOS GUI PATH 보강 — 이후 git/brew/python·webui.sh 서브프로세스가 모두 상속.
-    model = model_by_id(model_id)
+    model = custom_model_from_url(custom_url) if custom_url else model_by_id(model_id)
+    if model is None:
+        _set("error", 0, "HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요.", error="bad-url")
+        return False
     client = SDClient(sd_url)
     directory = install_dir()
     try:
@@ -596,8 +677,8 @@ async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
         if _cancelled():
             return False
 
-        # 3) 선택한 모델 준비
-        if not has_model(directory):
+        # 3) 선택한 모델 준비 — **이 모델 파일**이 없으면 받는다(다른 모델이 있어도 추가 다운로드 가능).
+        if not (model_dir(directory) / model["filename"]).exists():
             # 초기 진행률은 35%(다운로드 구간 시작). 이후 _download 가 받은 바이트 비율로 35~95% 를 갱신한다.
             prefix = f"이미지 모델 내려받는 중… ({model['name']})"
             _set("downloading", _DL_START_PCT, f"{prefix} ({model['size']})")

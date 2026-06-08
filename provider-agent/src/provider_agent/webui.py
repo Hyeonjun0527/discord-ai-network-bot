@@ -481,6 +481,9 @@ def build_app(session_key: str) -> web.Application:
                 # ‘디스코드 로그인’ OAuth 가능 여부는 **서버 설정**으로 결정된다(에이전트 env 불필요).
                 # 서버에 OAuth 앱(client-id/secret)이 설정돼 있으면 자동으로 켜진다.
                 "connectEnabled": _connect_enabled(),
+                # 클라우드 AI(Gemini) 설정 여부(키 자체는 노출 안 함) · ComfyUI 이미지 백엔드 주소.
+                "geminiConfigured": bool(saved.get("gemini_api_key")),
+                "comfyUrl": str(saved.get("comfy_url") or ""),
             }
         )
 
@@ -599,6 +602,32 @@ def build_app(session_key: str) -> web.Application:
         return web.json_response(
             {"ok": True, "on": on, "imageReady": image_ready, "sdInstalled": _sd_installed(), "applied": applied}
         )
+
+    async def cloud_settings(req: web.Request) -> web.Response:
+        """클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. body {geminiApiKey?, comfyUrl?}.
+
+        키는 이 PC config 에만 저장(central 엔 안 올림). Gemini 는 **라이브 적용**(재시작 없이 풀에 광고),
+        comfyUrl 변경(이미지 백엔드 전환)은 다음 이미지 토글/재연결에 반영(needsRestart).
+        """
+        _auth(req)
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        out: dict = {"ok": True}
+        if "geminiApiKey" in data:
+            key = str(data.get("geminiApiKey") or "").strip()
+            persist_partial({"gemini_api_key": key})
+            agent = _running_agent()
+            if agent is not None:
+                out["geminiValid"] = bool(await agent.set_gemini_key(key))  # type: ignore[attr-defined]
+            out["geminiConfigured"] = bool(key)
+        if "comfyUrl" in data:
+            comfy = str(data.get("comfyUrl") or "").strip().rstrip("/")
+            persist_partial({"comfy_url": comfy})
+            out["comfyUrl"] = comfy
+            out["needsRestart"] = True
+        return web.json_response(out)
 
     async def connect_open(req: web.Request) -> web.Response:
         """‘토큰 받기’: 앱 창은 그대로 두고 **시스템 기본 브라우저**에서 디스코드 OAuth 를 연다.
@@ -814,6 +843,54 @@ def build_app(session_key: str) -> web.Application:
 
             set_guild_policy(guild_id, policy)
         return web.json_response({"ok": True, "policy": _policy_camel(guild_id)})
+
+    async def server_models_get(req: web.Request) -> web.Response:
+        """이 서버에 **제공할 모델** 설정 readback. available=내가 줄 수 있는 전체 모델, chatModels=이 서버 선택
+        (빈=전체), imageEnabled=이 서버 이미지 제공 여부, imageReady=SD 준비됨."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        from .config_file import load_guild_policies
+
+        agent = _running_agent()
+        saved = load_config()
+        available = list(agent.models) if agent is not None else list(saved.get("models") or [])  # type: ignore[attr-defined]
+        pol = load_guild_policies().get(guild_id, {})
+        sel = pol.get("chatModels")
+        return web.json_response(
+            {
+                "ok": True,
+                "available": available,
+                "chatModels": list(sel) if isinstance(sel, list) else [],
+                "imageEnabled": pol.get("imageEnabled") is not False,
+                "imageReady": bool(agent is not None and agent.image_ready),  # type: ignore[attr-defined]
+            }
+        )
+
+    async def server_models(req: web.Request) -> web.Response:
+        """이 서버에 제공할 채팅 모델·이미지 여부를 설정·적용(서버별 자율). body {chatModels:[..], imageEnabled:bool}.
+        chatModels 빈 배열 = 전체 제공. 적용 시 그 서버 연결을 재광고해 중앙 풀이 새 모델 집합을 즉시 안다."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        policy: dict = {}
+        if "chatModels" in data:
+            policy["chatModels"] = [str(m) for m in (data.get("chatModels") or [])]
+        if "imageEnabled" in data:
+            policy["imageEnabled"] = bool(data.get("imageEnabled"))
+        agent = _running_agent()
+        if agent is not None:
+            await agent.set_guild_policy(guild_id, policy)  # type: ignore[attr-defined]
+        else:
+            from .config_file import set_guild_policy
+
+            set_guild_policy(guild_id, policy)
+        return web.json_response({"ok": True})
 
     async def server_manage(req: web.Request) -> web.Response:
         """서버 관리(관리자) — 승인 대기·로스터 조회. central 관리 채널로 프록시(권한은 central 이 JDA 로 판정)."""
@@ -1218,6 +1295,28 @@ def build_app(session_key: str) -> web.Application:
         asyncio.create_task(sd_setup.run_setup(url, model_id))
         return web.json_response({"ok": True})
 
+    async def sd_install_custom(req: web.Request) -> web.Response:
+        """카탈로그 밖 **임의 HuggingFace 모델** 설치(body {url}). 유저 자율 — 어떤 체크포인트든.
+        진행은 다른 설치와 동일하게 /api/sd/setup-progress 로 폴링."""
+        _auth(req)
+        from . import sd_setup
+
+        if sd_setup.is_busy():
+            return web.json_response({"ok": True, "busy": True})
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        hf_url = str((data or {}).get("url") or "").strip()
+        if sd_setup.custom_model_from_url(hf_url) is None:
+            return web.json_response(
+                {"ok": False, "error": "HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요(…/resolve/main/모델.safetensors)."}
+            )
+        sd_url = load_config().get("sd_url") or "http://127.0.0.1:7860"
+        base = str((data or {}).get("base") or "")  # sd15|sdxl — SDXL 커스텀이면 1024 로 생성
+        asyncio.create_task(sd_setup.download_custom_model(hf_url, sd_url, base))
+        return web.json_response({"ok": True})
+
     async def sd_start(req: web.Request) -> web.Response:
         """이미 설치된 SD(A1111)를 **기동만** 한다(재부팅·앱 종료 후 다시 켜기). clone/다운로드 없음.
 
@@ -1412,6 +1511,8 @@ def build_app(session_key: str) -> web.Application:
                 "ollamaUrl": saved.get("ollama_url") or "http://localhost:11434",
                 "relayUrl": saved.get("relay_url") or _default_relay(),
                 "allowRemoteOllama": bool(saved.get("allow_remote_ollama")),
+                "geminiConfigured": bool(saved.get("gemini_api_key")),
+                "comfyUrl": str(saved.get("comfy_url") or ""),
                 "hasToken": bool(saved.get("token")),
             }
         )
@@ -1514,6 +1615,8 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/server-rename", server_rename)
     app.router.add_post("/api/servers/{guildId}/pause", server_pause)
     app.router.add_get("/api/servers/{guildId}/policy", server_policy_get)
+    app.router.add_get("/api/servers/{guildId}/models", server_models_get)
+    app.router.add_post("/api/servers/{guildId}/models", server_models)
     app.router.add_post("/api/servers/{guildId}/policy", server_policy)
     app.router.add_get("/api/servers/{guildId}/manage", server_manage)
     app.router.add_post("/api/servers/{guildId}/manage/policy", server_manage_policy)
@@ -1544,6 +1647,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/sd/select", sd_select)
     app.router.add_get("/api/sd/status", sd_status)
     app.router.add_post("/api/sd/setup", sd_setup_start)
+    app.router.add_post("/api/sd/install-custom", sd_install_custom)
     app.router.add_post("/api/sd/start", sd_start)
     app.router.add_post("/api/sd/cancel", sd_setup_cancel)
     app.router.add_get("/api/sd/setup-progress", sd_setup_progress)
@@ -1559,6 +1663,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/settings", settings_post)
     app.router.add_post("/api/open-folder", open_folder)
     app.router.add_post("/api/image", image_toggle)
+    app.router.add_post("/api/cloud", cloud_settings)
 
     async def _autoconnect_on_startup(_app: web.Application) -> None:
         """온보딩에서 '로그인 후 자동 연결'을 켰고 저장된 서버가 있으면, GUI 가 뜨자마자 자동 연결한다.

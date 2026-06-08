@@ -45,6 +45,7 @@ export const ENDPOINTS = Object.freeze({
   serverDetail: (g) => '/api/servers/' + g,         // GET — 서버별 내 기여 통계·myModels·policy(Gap-S/P)
   serverPause: (g) => '/api/servers/' + g + '/pause',   // POST {paused} — provider self-service(/provider-pause·resume)
   serverPolicy: (g) => '/api/servers/' + g + '/policy', // GET 저장값 readback · POST {dailyLimit,maxConcurrency,maxSeconds} 저장 (/provider-limit)
+  serverModels: (g) => '/api/servers/' + g + '/models', // GET {available,chatModels,imageEnabled,imageReady} · POST {chatModels,imageEnabled} — 서버별 제공 모델
   serverRemove: '/api/server-remove',  // POST {guildId} — 내 로컬 연결 정리(이 서버 제공 그만두기)
   serverRename: '/api/server-rename',  // POST {guildId, name} — 서버 표시 이름 변경
   // 서버 관리(관리자) — 앱 내 직접 관리. ✅ 채널 구현됨(2026-06-07): webui → central /provider/admin/*.
@@ -90,6 +91,7 @@ export const ENDPOINTS = Object.freeze({
   sdInstalled: '/api/sd/installed',   // GET — 설치된 모델 목록 + 활성 모델(로컬 실행 탭 전환용)
   sdSelect: '/api/sd/select',         // POST {model} — 활성 모델 전환(핫스왑 + config 저장)
   sdSetup: '/api/sd/setup',
+  sdInstallCustom: '/api/sd/install-custom', // POST {url} — 카탈로그 밖 임의 HuggingFace 모델 설치
   sdStart: '/api/sd/start',          // POST — 이미 설치된 SD 를 기동만(clone/다운로드 없음)
   sdSetupProgress: '/api/sd/setup-progress',
   ollamaSetup: '/api/ollama/setup',
@@ -97,6 +99,7 @@ export const ENDPOINTS = Object.freeze({
   ollamaCatalog: '/api/ollama/catalog',
   setup: '/api/setup',
   image: '/api/image',                 // POST {on} → 이미지 수신 전용 토글(라이브, 모델 미변경)
+  cloud: '/api/cloud',                  // POST {geminiApiKey?, comfyUrl?} → 클라우드 AI(Gemini 키)·ComfyUI 주소
   start: '/api/start',
   stop: '/api/stop',
   logout: '/api/logout',

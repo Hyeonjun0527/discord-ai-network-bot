@@ -117,11 +117,19 @@ class ProviderSession(
 
     fun applyStatus(status: ProviderStatusFrame) {
         liveStatus = LiveStatus(status.load, status.battery, status.online, status.busy)
+        val healthy = status.online && !status.busy && status.battery != "discharging" && status.battery != "low" && status.load != "high"
         // 자동 보호(K-차수 12): 배터리/절전 → PAUSED, 고부하 → LIMITED, 그 외 busy 반영.
         when {
             status.battery == "discharging" || status.battery == "low" -> transitionTo(ProviderState.PAUSED)
             status.load == "high" -> transitionTo(ProviderState.LIMITED)
             status.busy -> transitionTo(ProviderState.ONLINE_BUSY)
+            // UNHEALTHY 자동 복구: 하트비트가 정상을 보고하면 다시 받게 한다. 안 그러면 느린 로컬 LLM
+            // 타임아웃 3회로 UNHEALTHY 가 된 뒤 재연결 전까지 영구히 라우팅에서 빠져 "온라인 Provider 없음"
+            // 으로 오판됐다(앱은 '연결됨'으로 보임). 실패 카운터도 리셋해 즉시 재트립을 막는다.
+            state == ProviderState.UNHEALTHY && healthy -> {
+                consecutiveFailures.set(0)
+                transitionTo(ProviderState.ONLINE_IDLE)
+            }
             state == ProviderState.ONLINE_BUSY && inFlight.get() == 0 -> transitionTo(ProviderState.ONLINE_IDLE)
         }
         markSeen()

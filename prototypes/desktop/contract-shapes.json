@@ -3,9 +3,11 @@
     "/api/status": [
       "background",
       "backgroundRunning",
+      "comfyUrl",
       "connectEnabled",
       "connected",
       "enableImage",
+      "geminiConfigured",
       "hasToken",
       "imageReady",
       "models",
@@ -20,7 +22,9 @@
       "autoUpdate",
       "autostart",
       "background",
+      "comfyUrl",
       "enableImage",
+      "geminiConfigured",
       "hasToken",
       "ollamaUrl",
       "relayUrl"

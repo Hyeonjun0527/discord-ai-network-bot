@@ -321,12 +321,29 @@ class ProviderAgent:
         return 0.0
 
     # ── 핸드셰이크 ──────────────────────────────────────────────────────
+    def _models_for(self, guild_id: int | None) -> list[str]:
+        """이 길드에 광고할 채팅 모델. 길드 정책 chatModels override 가 있으면 그것(현재 제공 가능한 것만),
+        없거나 비면 전체(self._models). 서버별로 어떤 모델을 줄지 관리자가 고를 수 있게 한다."""
+        if guild_id is not None:
+            sel = self._guild_policy.get(guild_id, {}).get("chatModels")
+            if isinstance(sel, list) and sel:
+                picked = [m for m in sel if m in self._models]
+                if picked:
+                    return picked
+        return self._models
+
+    def _image_for(self, guild_id: int | None) -> bool:
+        """이 길드에 이미지(SD) capability 를 광고할지. SD 준비됨 + 길드가 명시 비활성(imageEnabled=False)이 아님."""
+        if not self._image_ready:
+            return False
+        return guild_id is None or self._guild_policy.get(guild_id, {}).get("imageEnabled") is not False
+
     def _build_hello(self, guild_id: int | None = None) -> ProviderHelloFrame:
         capabilities = ["text"]
-        if self._image_ready:
+        if self._image_for(guild_id):
             capabilities.append("image")
         return ProviderHelloFrame(
-            models=self._models,
+            models=self._models_for(guild_id),
             max_concurrency=self._concurrency_for(guild_id),
             remaining_daily_requests=self._remaining_for(guild_id),
             capabilities=capabilities,

@@ -45,6 +45,7 @@ export const ENDPOINTS = Object.freeze({
   serverDetail: (g) => '/api/servers/' + g,         // GET — 서버별 내 기여 통계·myModels·policy(Gap-S/P)
   serverPause: (g) => '/api/servers/' + g + '/pause',   // POST {paused} — provider self-service(/provider-pause·resume)
   serverPolicy: (g) => '/api/servers/' + g + '/policy', // GET 저장값 readback · POST {dailyLimit,maxConcurrency,maxSeconds} 저장 (/provider-limit)
+  serverModels: (g) => '/api/servers/' + g + '/models', // GET {available,chatModels,imageEnabled,imageReady} · POST {chatModels,imageEnabled} — 서버별 제공 모델
   serverRemove: '/api/server-remove',  // POST {guildId} — 내 로컬 연결 정리(이 서버 제공 그만두기)
   serverRename: '/api/server-rename',  // POST {guildId, name} — 서버 표시 이름 변경
   // 서버 관리(관리자) — 앱 내 직접 관리. ✅ 채널 구현됨(2026-06-07): webui → central /provider/admin/*.

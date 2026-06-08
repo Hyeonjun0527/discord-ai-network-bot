@@ -247,6 +247,16 @@ export const api = {
       webUrl: null,
     };
   },
+  /** 이 서버에 제공할 모델 설정 readback — /api/servers/{g}/models. */
+  async getServerModels(guildId) {
+    /* @proto-only */ if (USE_MOCK) { await delay(60); return { ok: true, available: MOCK.models.map((m) => m.name), chatModels: [], imageEnabled: true, imageReady: true }; } /* @end-proto-only */
+    return http(ENDPOINTS.serverModels(guildId));
+  },
+  /** 이 서버에 제공할 채팅 모델·이미지 여부 저장·적용 — POST /api/servers/{g}/models. chatModels 빈=전체. */
+  async setServerModels(guildId, chatModels, imageEnabled) {
+    /* @proto-only */ if (USE_MOCK) { await delay(80); return { ok: true }; } /* @end-proto-only */
+    return http(ENDPOINTS.serverModels(guildId), { method: 'POST', body: JSON.stringify({ chatModels, imageEnabled }) });
+  },
   /** 서버 관리(관리자) — 승인 대기·로스터·정책. ⚠ Gap-M(앱↔central 관리 채널). 비관리자는 ok=false. */
   async getServerManage(guildId) {
     /* @proto-only */ if (USE_MOCK) { await delay(60); const m = MOCK.manage[guildId]; return m ? { ok: true, ...structuredClone(m) } : { ok: true, policy: { autoApprove: false, defaultDailyLimit: 50, scope: 'ALL' }, pending: [], roster: [] }; } /* @end-proto-only */

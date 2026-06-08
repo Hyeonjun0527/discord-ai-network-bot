@@ -815,6 +815,54 @@ def build_app(session_key: str) -> web.Application:
             set_guild_policy(guild_id, policy)
         return web.json_response({"ok": True, "policy": _policy_camel(guild_id)})
 
+    async def server_models_get(req: web.Request) -> web.Response:
+        """이 서버에 **제공할 모델** 설정 readback. available=내가 줄 수 있는 전체 모델, chatModels=이 서버 선택
+        (빈=전체), imageEnabled=이 서버 이미지 제공 여부, imageReady=SD 준비됨."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        from .config_file import load_guild_policies
+
+        agent = _running_agent()
+        saved = load_config()
+        available = list(agent.models) if agent is not None else list(saved.get("models") or [])  # type: ignore[attr-defined]
+        pol = load_guild_policies().get(guild_id, {})
+        sel = pol.get("chatModels")
+        return web.json_response(
+            {
+                "ok": True,
+                "available": available,
+                "chatModels": list(sel) if isinstance(sel, list) else [],
+                "imageEnabled": pol.get("imageEnabled") is not False,
+                "imageReady": bool(agent is not None and agent.image_ready),  # type: ignore[attr-defined]
+            }
+        )
+
+    async def server_models(req: web.Request) -> web.Response:
+        """이 서버에 제공할 채팅 모델·이미지 여부를 설정·적용(서버별 자율). body {chatModels:[..], imageEnabled:bool}.
+        chatModels 빈 배열 = 전체 제공. 적용 시 그 서버 연결을 재광고해 중앙 풀이 새 모델 집합을 즉시 안다."""
+        _auth(req)
+        try:
+            guild_id = int(req.match_info["guildId"])
+        except (KeyError, ValueError):
+            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        data = await req.json()
+        policy: dict = {}
+        if "chatModels" in data:
+            policy["chatModels"] = [str(m) for m in (data.get("chatModels") or [])]
+        if "imageEnabled" in data:
+            policy["imageEnabled"] = bool(data.get("imageEnabled"))
+        agent = _running_agent()
+        if agent is not None:
+            await agent.set_guild_policy(guild_id, policy)  # type: ignore[attr-defined]
+        else:
+            from .config_file import set_guild_policy
+
+            set_guild_policy(guild_id, policy)
+        return web.json_response({"ok": True})
+
     async def server_manage(req: web.Request) -> web.Response:
         """서버 관리(관리자) — 승인 대기·로스터 조회. central 관리 채널로 프록시(권한은 central 이 JDA 로 판정)."""
         _auth(req)
@@ -1535,6 +1583,8 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/server-rename", server_rename)
     app.router.add_post("/api/servers/{guildId}/pause", server_pause)
     app.router.add_get("/api/servers/{guildId}/policy", server_policy_get)
+    app.router.add_get("/api/servers/{guildId}/models", server_models_get)
+    app.router.add_post("/api/servers/{guildId}/models", server_models)
     app.router.add_post("/api/servers/{guildId}/policy", server_policy)
     app.router.add_get("/api/servers/{guildId}/manage", server_manage)
     app.router.add_post("/api/servers/{guildId}/manage/policy", server_manage_policy)

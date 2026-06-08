@@ -161,23 +161,26 @@ def install_tool_command(tool: str, platform: str | None = None) -> list[str] | 
 
 
 def compatible_python() -> str | None:
-    """A1111 호환(3.10/3.11) Python 실행 명령을 찾는다(없으면 None → 설치 필요)."""
-    for c in ("python3.11", "python3.10"):
+    """SD.Next 호환(3.10~3.12) Python 실행 명령을 찾는다(없으면 None → 설치 필요).
+
+    시스템 기본 python3 가 너무 최신(예: 3.13/3.14 — torch 미지원)일 수 있으므로, 지원 버전을
+    명시적으로 찾아 PYTHON 으로 강제한다(실증: 강제 안 하면 SD.Next 가 3.14 로 venv 를 만들어 깨짐).
+    """
+    for c in ("python3.11", "python3.12", "python3.10"):
         if _has(c):
             return c
     return None
 
 
 def launch_env(python_cmd: str | None, platform: str | None = None) -> dict[str, str]:
-    """webui 에 호환 Python 을 알려주는 환경변수(없으면 빈 dict).
+    """SD.Next webui.sh/webui.bat 가 읽는 파이썬 실행기 지정(없으면 빈 dict).
 
-    - mac/Linux: webui.sh 가 읽는 ``python_cmd``.
-    - Windows: webui.bat 가 읽는 ``PYTHON``.
+    SD.Next 는 **모든 플랫폼에서 ``PYTHON`` 환경변수**를 사용한다(A1111 의 mac/linux ``python_cmd`` 가
+    아님 — 실증: python_cmd 는 무시돼 시스템 기본 3.14 로 venv 가 생성됐다). 지원 버전을 PYTHON 으로 강제.
     """
     if not python_cmd:
         return {}
-    p = platform or sys.platform
-    return {"PYTHON": python_cmd} if p == "win32" else {"python_cmd": python_cmd}
+    return {"PYTHON": python_cmd}
 
 
 def is_installed(directory: pathlib.Path | None = None) -> bool:

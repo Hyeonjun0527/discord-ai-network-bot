@@ -88,8 +88,10 @@ def test_compatible_python(monkeypatch):
     assert sd_mod.compatible_python() is None
 
 
-def test_launch_env_per_platform():
-    assert sd_mod.launch_env("python3.11", "darwin") == {"python_cmd": "python3.11"}
+def test_launch_env_uses_PYTHON_all_platforms():
+    # SD.Next 는 모든 플랫폼에서 PYTHON 환경변수를 읽는다(python_cmd 아님 — 실증으로 확인).
+    assert sd_mod.launch_env("python3.11", "darwin") == {"PYTHON": "python3.11"}
+    assert sd_mod.launch_env("python3.11", "linux") == {"PYTHON": "python3.11"}
     assert sd_mod.launch_env("python", "win32") == {"PYTHON": "python"}
     assert sd_mod.launch_env(None, "darwin") == {}
 
@@ -183,7 +185,7 @@ def test_run_setup_installs_prereqs(monkeypatch, tmp_path):
     assert ok is True
     assert sd_mod.progress()["phase"] == "done"
     assert ["echo", "git"] in ran and ["echo", "python"] in ran  # 전제 도구 설치됨
-    assert spawned["env"] and spawned["env"].get("python_cmd")     # webui 에 호환 Python 전달
+    assert spawned["env"] and spawned["env"].get("PYTHON")     # SD.Next 에 호환 Python(PYTHON) 전달
 
 
 def test_run_setup_full_flow(monkeypatch, tmp_path):

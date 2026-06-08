@@ -97,10 +97,18 @@ def test_pkg_manager_and_install_tool(monkeypatch):
 
 
 def test_compatible_python(monkeypatch):
+    # PATH 에 있으면 명령 그대로 반환.
     monkeypatch.setattr(sd_mod.shutil, "which", lambda c: "/x/python3.11" if c == "python3.11" else None)
     assert sd_mod.compatible_python() == "python3.11"
+    # PATH 에도 없고 절대 경로에도 없으면 None.
     monkeypatch.setattr(sd_mod.shutil, "which", lambda c: None)
+    monkeypatch.setattr(sd_mod.os.path, "isfile", lambda p: False)
     assert sd_mod.compatible_python() is None
+    # macOS GUI 앱(PATH 에 brew 경로 없음): 절대 경로에 있으면 그 경로 반환(no-python 회귀 방지).
+    monkeypatch.setattr(sd_mod.sys, "platform", "darwin")
+    monkeypatch.setattr(sd_mod.os.path, "isfile", lambda p: p == "/opt/homebrew/bin/python3.11")
+    monkeypatch.setattr(sd_mod.os, "access", lambda p, m: True)
+    assert sd_mod.compatible_python() == "/opt/homebrew/bin/python3.11"
 
 
 def test_launch_env_uses_PYTHON_all_platforms():

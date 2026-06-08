@@ -14,6 +14,12 @@ permissions:
   id-token: write # artifact attestation(Sigstore OIDC)
   attestations: write # attest-build-provenance
 
+# Windows 러너의 기본 콘솔 인코딩(cp1252)은 한글·'→' 출력 시 UnicodeEncodeError 로 스텝을 죽인다.
+# UTF-8 모드를 전역 강제해 모든 python 스크립트 출력이 Win/macOS/Linux 동일하게 동작하도록 한다.
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
 jobs:
   build:
     strategy:

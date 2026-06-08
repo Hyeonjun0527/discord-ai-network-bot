@@ -19,6 +19,15 @@ from __future__ import annotations
 import pathlib
 import re
 import shutil
+import sys
+
+# Windows 콘솔 기본 인코딩(cp1252)은 한글·'→'(U+2192) 출력 시 UnicodeEncodeError 로 죽는다.
+# stdout/stderr 를 UTF-8 로 재설정해 CI(windows-latest)·로컬 Windows 어디서나 안전하게 찍는다.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+    except (AttributeError, ValueError):
+        pass
 
 # 프로토타입 전용(mock/데모) 구간 마커. sync 시 통째로 제거한다.
 #  - 인라인/블록 모두 지원. 앞 들여쓰기와 뒤 개행까지 함께 지워 빈 줄을 남기지 않는다.

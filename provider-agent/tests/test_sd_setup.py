@@ -133,6 +133,31 @@ def test_model_by_id():
     assert sd_mod.model_by_id("nope")["id"] == sd_mod.MODELS[0]["id"]
 
 
+def test_installed_models_and_selection(tmp_path, monkeypatch):
+    md = tmp_path / "models" / "Stable-diffusion"
+    md.mkdir(parents=True)
+    (md / "AnythingV5V3_v5PrtRE.safetensors").write_bytes(b"x")  # 카탈로그 모델
+    (md / "my-custom-merge.safetensors").write_bytes(b"x")  # 커스텀(카탈로그 밖)
+    inst = sd_mod.installed_models(tmp_path)
+    by_file = {m["filename"]: m for m in inst}
+    assert by_file["AnythingV5V3_v5PrtRE.safetensors"]["name"] == "Anything V5 (애니)"
+    assert by_file["AnythingV5V3_v5PrtRE.safetensors"]["base"] == "sd15"
+    # 커스텀 모델도 보인다(파일명 stem 으로)
+    assert by_file["my-custom-merge.safetensors"]["name"] == "my-custom-merge"
+
+    # selected_model_path: config sd_model 이 가리키는 파일이 있으면 그 경로, 없으면 None
+    import provider_agent.config_file as cf
+    monkeypatch.setattr(cf, "load_config", lambda *a, **k: {"sd_model": "my-custom-merge.safetensors"})
+    assert sd_mod.selected_model_path(tmp_path) == md / "my-custom-merge.safetensors"
+    monkeypatch.setattr(cf, "load_config", lambda *a, **k: {"sd_model": "nonexistent.safetensors"})
+    assert sd_mod.selected_model_path(tmp_path) is None
+    # launch_command 가 선택 모델을 우선 --ckpt 로 쓴다
+    monkeypatch.setattr(cf, "load_config", lambda *a, **k: {"sd_model": "AnythingV5V3_v5PrtRE.safetensors"})
+    cmd = sd_mod.launch_command("darwin", tmp_path)
+    assert "--ckpt" in cmd
+    assert cmd[cmd.index("--ckpt") + 1].endswith("AnythingV5V3_v5PrtRE.safetensors")
+
+
 def test_resolution_for_checkpoint():
     # SDXL 계열 → 1024, SD1.5 계열 → 512. 체크포인트 문자열은 "name [hash]" 부분일치.
     assert sd_mod.resolution_for_checkpoint("animagine-xl-4.0-opt.safetensors [abc123]") == (1024, 1024)

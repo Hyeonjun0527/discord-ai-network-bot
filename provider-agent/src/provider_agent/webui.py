@@ -1135,11 +1135,60 @@ def build_app(session_key: str) -> web.Application:
         return web.json_response(ollama_setup.progress())
 
     async def sd_models(req: web.Request) -> web.Response:
-        """설치 마법사에서 고를 수 있는 이미지 모델 목록."""
+        """설치 마법사에서 고를 수 있는 이미지 모델 목록(카탈로그)."""
         _auth(req)
         from . import sd_setup
 
         return web.json_response({"models": sd_setup.MODELS, "default": sd_setup.DEFAULT_MODEL_ID})
+
+    async def sd_installed(req: web.Request) -> web.Response:
+        """**설치된** SD 모델 목록 + 현재 활성 모델(로컬 실행 탭의 모델 전환용).
+
+        active 는 SD 가 떠 있으면 라이브 체크포인트(확장자 없이 보고됨 → stem 매칭), 아니면 config 선택값.
+        """
+        _auth(req)
+        from . import sd_setup
+        from .sd import SDClient
+
+        models = sd_setup.installed_models()
+        active = ""
+        url = load_config().get("sd_url") or "http://127.0.0.1:7860"
+        ckpt = await SDClient(url).current_checkpoint()
+        if ckpt:  # SD.Next 는 "name" (확장자 없이) 로 보고 → 파일 stem 으로 매칭
+            active = next((m["filename"] for m in models if m["filename"].rsplit(".", 1)[0] in ckpt), "")
+        if not active:
+            saved = load_config().get("sd_model")
+            active = saved if isinstance(saved, str) else ""
+        return web.json_response({"models": models, "active": active})
+
+    async def sd_select(req: web.Request) -> web.Response:
+        """활성 SD 모델을 전환한다(로컬 실행 탭). body {model: filename}.
+
+        설정에 저장(다음 기동에도 유지) + SD 가 떠 있으면 즉시 핫스왑 + 에이전트 해상도 캐시 무효화
+        (모델별 해상도 SDXL 1024 / SD1.5 512 재판정). 생성 중이 아닐 때만 호출돼야 안전(MPS).
+        """
+        _auth(req)
+        from . import sd_setup
+        from .config_file import persist_partial
+
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        name = (data or {}).get("model")
+        valid = {m["filename"] for m in sd_setup.installed_models()}
+        if not name or name not in valid:
+            return web.json_response({"ok": False, "error": "설치되지 않은 모델입니다."})
+        persist_partial({"sd_model": name})  # 다음 SD 기동에도 유지(launch_command 가 읽음)
+        swapped = False
+        agent = _running_agent()
+        if agent is not None and getattr(agent, "_sd", None) is not None:
+            try:
+                swapped = bool(await agent._sd.set_checkpoint(name))  # type: ignore[attr-defined]
+                agent._invalidate_resolution()  # type: ignore[attr-defined]  # 새 모델 기준 해상도 재판정
+            except Exception as exc:  # noqa: BLE001 - 핫스왑 실패해도 설정은 저장됨(다음 기동 반영)
+                logging.getLogger("provider_agent").warning("SD 모델 핫스왑 실패: %s", exc)
+        return web.json_response({"ok": True, "active": name, "applied": "live" if swapped else "saved"})
 
     async def sd_status(req: web.Request) -> web.Response:
         """SD 설치/준비 상태(설정 화면에서 토글 vs 설치 버튼 결정용)."""
@@ -1491,6 +1540,8 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/ollama/setup", ollama_setup_start)
     app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
     app.router.add_get("/api/sd/models", sd_models)
+    app.router.add_get("/api/sd/installed", sd_installed)
+    app.router.add_post("/api/sd/select", sd_select)
     app.router.add_get("/api/sd/status", sd_status)
     app.router.add_post("/api/sd/setup", sd_setup_start)
     app.router.add_post("/api/sd/start", sd_start)

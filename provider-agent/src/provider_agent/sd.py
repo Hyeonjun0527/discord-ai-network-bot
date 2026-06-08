@@ -102,6 +102,17 @@ class SDClient:
         ckpt = data.get("sd_model_checkpoint") if isinstance(data, dict) else None
         return ckpt if isinstance(ckpt, str) else None
 
+    async def set_checkpoint(self, name: str) -> bool:
+        """활성 체크포인트를 **핫스왑**한다(POST /sdapi/v1/options sd_model_checkpoint). 재기동 없이 즉시 전환.
+        모델 로드는 수십 초 걸릴 수 있어 timeout 을 넉넉히. **생성 중에는 호출 금지**(MPS 동시접근 크래시)."""
+        url = f"{self._base}/sdapi/v1/options"
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=180)) as s:
+                async with s.post(url, json={"sd_model_checkpoint": name}) as r:
+                    return r.status == 200
+        except aiohttp.ClientError:
+            return False
+
     async def set_output_png(self) -> bool:
         """API 반환 이미지 포맷을 PNG 로 설정 + **라이브 프리뷰 비활성화**. SD 준비 직후 1회 호출.
 

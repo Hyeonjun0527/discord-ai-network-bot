@@ -876,10 +876,9 @@
             <button class="icon-btn prov-menu-btn" aria-label="Stable Diffusion 더보기" aria-haspopup="true">
               <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
             </button>
-            <!-- SD(A1111/Forge)는 :7860 Gradio 웹 UI 가 있음 → WebUI 열기 + 출력 폴더 -->
+            <!-- SD 의 :7860 Gradio WebUI 는 노출 안 함(우리 파이프라인은 REST API 만 사용 · gradio queue 버그로 UI 결과 미표시). 출력 폴더만 제공. -->
             <div class="menu" hidden>
               <button data-act="check">연결 점검</button>
-              <button data-act="open">WebUI 열기</button>
               <button data-act="outputs">출력 폴더 열기</button>
               <button data-act="settings">설정</button>
               <hr>
@@ -1357,15 +1356,15 @@
     let _st = null, _models = null;
     const DOTS = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
     const closeMenus = () => rtWrap.querySelectorAll('.rt-more .menu').forEach(m => { m.hidden = true; const b = m.previousElementSibling; if (b) b.classList.remove('open'); });
-    // 런타임 ⋯ 메뉴 — 홈과 동일 액션을 로컬 실행에도(여기가 더 전문 관리 화면). Ollama 는 :11434 API 전용(WebUI 없음).
+    // 런타임 ⋯ 메뉴 — 홈과 동일 액션을 로컬 실행에도(여기가 더 전문 관리 화면).
+    // SD 의 :7860 Gradio WebUI 는 노출 안 함(REST 만 사용 · gradio queue 버그로 UI 결과 미표시). SD 는 출력 폴더만.
     const rtMenu = (rt) => '<div class="rt-more">' +
       '<button class="icon-btn rt-menu-btn" aria-label="더보기" aria-haspopup="true">' + DOTS + '</button>' +
       '<div class="menu" hidden><button data-rtact="check">연결 점검</button>' +
-      (rt === 'sd' ? '<button data-rtact="open">WebUI 열기 <span class="arrow">↗</span></button><button data-rtact="outputs">출력 폴더 열기</button>' : '') +
+      (rt === 'sd' ? '<button data-rtact="outputs">출력 폴더 열기</button>' : '') +
       '</div></div>';
 
     async function runtimeAction(act, name) {
-      if (act === 'open') { window.open('http://localhost:7860', '_blank', 'noopener'); return; }   // SD :7860 Gradio WebUI
       if (act === 'outputs') { // 실제 OS 파일 탐색기로 출력 폴더 열기(토스트 경로 표시만 하던 no-op 수정)
         try { const r = await api.openFolder('sdOutputs'); toast(r && r.ok ? '출력 폴더를 열었어요' : (r && r.error) || '폴더가 아직 없어요', { type: r && r.ok ? 'ok' : 'error' }); }
         catch (_e) { toast('폴더 열기 실패', { type: 'error' }); }
@@ -2731,10 +2730,10 @@
         cards.forEach(c => { c.querySelector('.menu').hidden = true; c.querySelector('.prov-menu-btn').classList.remove('open'); });
       }
       // 런타임별 메타 — 실제 앱에선 에이전트가 채움.
-      // Ollama: 웹 UI 없음(:11434 API 전용) → open 항목 없음. SD: :7860 WebUI + 출력 폴더.
+      // Ollama·SD 모두 :7860 Gradio WebUI 는 노출 안 함(REST 만 사용). SD 는 출력 폴더만.
       const RT = {
         'Ollama': { ping: '28ms' },
-        'Stable Diffusion': { ping: '0.4s', open: { label: 'WebUI 를 엽니다', target: 'http://localhost:7860' }, outputs: { label: '출력 폴더를 엽니다', target: '~/NEXA/outputs' } },
+        'Stable Diffusion': { ping: '0.4s', outputs: { label: '출력 폴더를 엽니다', target: '~/NEXA/outputs' } },
       };
       function runAction(act, name) {
         const rt = RT[name] || { ping: '정상' };
@@ -2752,8 +2751,6 @@
           } /* @proto-only */ else {
             setTimeout(() => window.toast(name + ' 정상 응답', { type: 'ok', sub: '응답 시간 ' + rt.ping, replace: 'chk-' + name }), 1100);
           } /* @end-proto-only */
-        } else if (act === 'open' && rt.open) {
-          window.open(rt.open.target, '_blank', 'noopener'); // 외부 브라우저로 전환 → 토스트 불필요
         } else if (act === 'outputs' && rt.outputs) {
           if (window.__SESSION_KEY && window.realOpenFolder) { // 실 앱: OS 파일 탐색기로 실제 폴더 열기(no-op 수정)
             window.realOpenFolder('sdOutputs')

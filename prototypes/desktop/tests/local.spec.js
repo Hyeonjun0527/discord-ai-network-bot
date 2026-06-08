@@ -42,7 +42,7 @@ test('로컬 실행: 처리 건수는 이 PC 기준 표기', async ({ page }) =>
   await expect(page.locator('#localRunCard')).toContainText('처리 12건(이 PC)');
 });
 
-test('로컬 실행: 런타임 ⋯ 메뉴(연결 점검·WebUI·출력 폴더)', async ({ page }) => {
+test('로컬 실행: 런타임 ⋯ 메뉴(연결 점검·출력 폴더, WebUI 미노출)', async ({ page }) => {
   await page.goto('/index.html');
   await page.click('.nav-item[data-view="local"]');
   await expect(page.locator('#localRuntimes .rt-menu-btn')).toHaveCount(2); // Ollama + SD
@@ -50,8 +50,9 @@ test('로컬 실행: 런타임 ⋯ 메뉴(연결 점검·WebUI·출력 폴더)',
   await sdRow.locator('.rt-menu-btn').click();
   const menu = sdRow.locator('.rt-more .menu');
   await expect(menu).toContainText('연결 점검');
-  await expect(menu).toContainText('WebUI 열기');
   await expect(menu).toContainText('출력 폴더');
+  // SD :7860 Gradio WebUI 는 노출하지 않음(REST 만 사용 · gradio queue 버그로 UI 결과 미표시).
+  await expect(menu).not.toContainText('WebUI');
 });
 
 test('로컬 실행: 중앙서버 연결 끊김 → 재연결 버튼(데모 mock)', async ({ page }) => {

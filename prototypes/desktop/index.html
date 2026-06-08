@@ -410,6 +410,12 @@
 
     /* provider 카드 2개 */
     .grid-2 { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    /* 로컬 실행 런타임 목록 — 엔진 카드를 일관된 전폭 세로 스택으로(Ollama 만 반폭이던 들쭉날쭉 해소) */
+    #localRuntimes { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
+    #localRuntimes .rt-row { min-height: 64px; }
+    /* 권장 엔진(ComfyUI) 강조 — 은은한 보라 보더/배경 */
+    .rt-row.rt-row--rec { border-color: color-mix(in srgb, var(--c-violet) 40%, var(--line)); background: linear-gradient(180deg, color-mix(in srgb, var(--c-violet) 8%, rgba(15, 22, 38, .7)), rgba(10, 16, 28, .82)); }
+    .rt-row .rt-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     .prov-card {
       position: relative; padding: 22px 24px; border-radius: 22px; border: 1px solid var(--line);
       background: linear-gradient(180deg, rgba(15, 22, 38, .9), rgba(10, 16, 28, .94)); min-height: 132px;
@@ -1440,9 +1446,9 @@
 
       const ollamaCard = '<div class="rt-row' + (ollamaReady ? ' ready' : '') + '">' +
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">Ollama <span style="font-weight:500;color:var(--subtle)">텍스트</span></div>' +
-        '<div class="rt-state">' + (ollamaReady ? ('준비됨 · 모델 ' + modelCount + '개 제공') : '미설치 또는 중지됨') + '</div></div>' +
+        '<div class="rt-state">' + (ollamaReady ? ('준비됨 · 모델 ' + modelCount + '개 제공') : '미설치 또는 중지됨') + '</div></div><div class="rt-actions">' +
         (ollamaReady ? '<button class="btn btn--sm btn--secondary" data-go="models">모델 관리</button>' + rtMenu('ollama')
-          : '<button class="btn btn--sm btn--primary" data-install="ollama">설치</button>') + '</div>';
+          : '<button class="btn btn--sm btn--primary" data-install="ollama">설치</button>') + '</div></div>';
 
       const sdState = !sdInstalled ? '미설치' : (imgReady ? '준비됨 · 이미지 생성 가능' : '설치됨 · 준비 중');
       let sdAction;
@@ -1464,7 +1470,7 @@
       // 클라우드 연결(Gemini) — '엔진' 관심사라 로컬 실행이 소유한다. 키는 이 PC 에만 저장.
       //   연결되면 모델 탭에 '클라우드 텍스트' 모델로 등장 → 다른 모델처럼 서버별로 켜고 끈다('서버 전체 무료' 프레이밍 폐기).
       const gemOn = !!s.geminiConfigured;
-      const cloudCard = '<div class="rt-row' + (gemOn ? ' ready' : '') + '" style="grid-column:1/-1">' +
+      const cloudCard = '<div class="rt-row' + (gemOn ? ' ready' : '') + '">' +
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">클라우드 연결 <span style="font-weight:500;color:var(--subtle)">Gemini · 텍스트</span></div>' +
         '<div class="rt-state">' + (gemOn
           ? '연결됨 · 이 PC 의 키로 클라우드 모델을 제공해요(모델 탭에서 서버별로 켜고 꺼요)'
@@ -1488,11 +1494,11 @@
         comfyAction = '<button class="btn btn--sm btn--secondary" data-comfy="open">웹UI 열기</button>' +
           '<button class="btn btn--sm btn--secondary" data-comfy="stop">정지</button>';
       }
-      const comfyCard = '<div class="rt-row' + (crun ? ' ready' : '') + '" style="grid-column:1/-1">' +
+      const comfyCard = '<div class="rt-row rt-row--rec' + (crun ? ' ready' : '') + '">' +
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">ComfyUI <span style="font-weight:500;color:var(--c-violet)">이미지 · 권장</span></div>' +
-        '<div class="rt-state">' + comfyState + '</div></div>' + comfyAction + '</div>';
+        '<div class="rt-state">' + comfyState + '</div></div><div class="rt-actions">' + comfyAction + '</div></div>';
       // SD.Next 는 유지보수가 느려진 레거시 → 접이식으로 강등(가능하면 ComfyUI 사용).
-      const sdLegacy = '<details class="rt-adv" style="grid-column:1/-1">' +
+      const sdLegacy = '<details class="rt-adv">' +
         '<summary>레거시 · Stable Diffusion (SD.Next)</summary>' +
         '<div class="rt-adv-body"><div class="rt-adv-desc">SD.Next(A1111 계열)는 유지보수가 느려진 레거시예요. 가능하면 위의 ComfyUI 를 쓰세요. 기존 설치/사용을 위해 남겨둡니다.</div>' +
         sdCard +

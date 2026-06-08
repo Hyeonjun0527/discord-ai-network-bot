@@ -94,6 +94,13 @@ export const ENDPOINTS = Object.freeze({
   sdInstallCustom: '/api/sd/install-custom', // POST {url} — 카탈로그 밖 임의 HuggingFace 모델 설치
   sdStart: '/api/sd/start',          // POST — 이미 설치된 SD 를 기동만(clone/다운로드 없음)
   sdSetupProgress: '/api/sd/setup-progress',
+  // ComfyUI — 1급 이미지 엔진(앱이 설치/실행/정지/웹UI 직접 관리). SD.Next 는 레거시 폴백.
+  comfyStatus: '/api/comfy/status',          // GET → {installed, running, busy}
+  comfySetup: '/api/comfy/setup',            // POST — 설치(핀 clone→3.13 venv→torch/deps→기동)
+  comfySetupProgress: '/api/comfy/setup-progress',
+  comfyStart: '/api/comfy/start',            // POST — 설치된 ComfyUI 기동
+  comfyStop: '/api/comfy/stop',              // POST — 정지
+  comfyOpen: '/api/comfy/open',              // POST — 웹UI 를 시스템 브라우저로
   ollamaSetup: '/api/ollama/setup',
   ollamaSetupProgress: '/api/ollama/setup-progress',
   ollamaCatalog: '/api/ollama/catalog',

@@ -3,6 +3,8 @@
     "/api/status": [
       "background",
       "backgroundRunning",
+      "comfyInstalled",
+      "comfyRunning",
       "comfyUrl",
       "connectEnabled",
       "connected",

@@ -30,10 +30,23 @@ test('로컬 실행 화면: 실행 상태 + 런타임 + 시작/중지 토글', a
 test('로컬 실행 화면: 이미지 요청 받기 토글', async ({ page }) => {
   await page.goto('/index.html');
   await page.click('.nav-item[data-view="local"]');
+  // SD.Next 는 레거시로 강등(접이식) — 펼쳐서 토글 노출.
+  await page.locator('summary', { hasText: 'Stable Diffusion' }).click();
   const sw = page.locator('#localImgSw');
   await expect(sw).toHaveClass(/on/); // mock enableImage=true
   await sw.click();
   await expect(sw).not.toHaveClass(/on/);
+});
+
+test('로컬 실행: ComfyUI 가 1급(권장) 이미지 엔진으로 노출된다', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.click('.nav-item[data-view="local"]');
+  const comfy = page.locator('#localRuntimes .rt-row', { hasText: 'ComfyUI' });
+  await expect(comfy).toContainText('권장');
+  // mock: 미설치 → 설치 버튼
+  await expect(comfy.locator('[data-comfy="install"]')).toBeVisible();
+  // SD.Next 는 레거시 섹션(접이식)으로 강등
+  await expect(page.locator('summary', { hasText: 'Stable Diffusion' })).toBeVisible();
 });
 
 test('로컬 실행: 처리 건수는 이 PC 기준 표기', async ({ page }) => {
@@ -45,6 +58,7 @@ test('로컬 실행: 처리 건수는 이 PC 기준 표기', async ({ page }) =>
 test('로컬 실행: 런타임 ⋯ 메뉴(연결 점검·출력 폴더, WebUI 미노출)', async ({ page }) => {
   await page.goto('/index.html');
   await page.click('.nav-item[data-view="local"]');
+  await page.locator('summary', { hasText: 'Stable Diffusion' }).click(); // 레거시 SD 펼치기
   await expect(page.locator('#localRuntimes .rt-menu-btn')).toHaveCount(2); // Ollama + SD
   const sdRow = page.locator('#localRuntimes .rt-row', { hasText: 'Stable Diffusion' });
   await sdRow.locator('.rt-menu-btn').click();
@@ -69,6 +83,7 @@ test('로컬 실행: SD 설치됐는데 미준비 → 시작 버튼(데모 mock)
   await page.goto('/index.html');
   await page.evaluate(() => window.__mockPatch({ sdInstalled: true, imageReady: false }));
   await page.click('.nav-item[data-view="local"]');
+  await page.locator('summary', { hasText: 'Stable Diffusion' }).click(); // 레거시 SD 펼치기
   await expect(page.locator('#localSdStart')).toBeVisible();
   await expect(page.locator('#localRuntimes')).toContainText('설치됨 · 준비 중');
 });

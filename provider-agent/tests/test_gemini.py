@@ -137,3 +137,28 @@ def test_per_guild_image_toggle():
     assert agent._image_for(200) is True  # 다른 서버는 그대로
     agent._image_ready = False
     assert agent._image_for(200) is False  # SD 미준비면 어디든 False
+
+
+@pytest.mark.asyncio
+async def test_set_gemini_key_live(monkeypatch):
+    """앱 설정에서 Gemini 키 입력 → 라이브로 gemini 모델 광고, 빈 키 → 제거."""
+    from provider_agent import gemini as gmod
+    from provider_agent.agent import ProviderAgent
+    from provider_agent.config import AgentConfig
+
+    class FakeG:
+        def __init__(self, *a, **k):
+            pass
+
+        async def health(self):
+            return True
+
+    monkeypatch.setattr(gmod, "GeminiClient", FakeG)
+    agent = ProviderAgent(AgentConfig(token="T", models=("a",)), ollama=object())
+    assert not any(m.startswith("gemini-") for m in agent.models)
+    ok = await agent.set_gemini_key("AIzaXXX")
+    assert ok is True
+    assert "gemini-2.5-flash-lite" in agent.models and "a" in agent.models
+    await agent.set_gemini_key("")  # 빈 키 → 제거
+    assert not any(m.startswith("gemini-") for m in agent.models)
+    assert "a" in agent.models

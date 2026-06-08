@@ -1109,6 +1109,26 @@ class ProviderAgent:
             self._default_model = (default_model or "").strip()
         await self._readvertise()
 
+    async def set_gemini_key(self, api_key: str) -> bool:
+        """클라우드 Gemini 키를 **라이브로** 적용(앱 설정에서 키 입력). 키가 있으면 gemini-2.5-flash-lite 를
+        풀에 광고하고 gemini-* 요청을 라우팅, 비우면 제거. 재시작 없이 즉시 반영(재광고). 키 유효 여부 반환."""
+        key = (api_key or "").strip()
+        if key:
+            from .gemini import DEFAULT_GEMINI_MODEL, GeminiClient
+
+            self._gemini = GeminiClient(key, self._cfg.request_timeout)
+            self._gemini_models = [DEFAULT_GEMINI_MODEL]
+            ok = await self._gemini.health()
+        else:
+            self._gemini = None
+            self._gemini_models = []
+            ok = False
+        # 광고 모델 = 현재 로컬 선택 + gemini. (set_models 가 _gemini_models 를 항상 유지하므로 재계산)
+        base = [m for m in self._models if not m.startswith("gemini-")]
+        self._models = _merge_models(base, self._gemini_models)
+        await self._readvertise()
+        return ok
+
     async def set_image_enabled(self, on: bool) -> bool:
         """이미지(SD) 제공을 **라이브로** 켜고 끈다(앱 '이미지 요청 받기' 토글). enable_image=False 로 시작해
         self._sd 가 None 이어도 여기서 SD 클라이언트를 만들어 health 확인 후 재광고한다(재시작 불필요).

@@ -272,6 +272,8 @@
 
     /* 설정 화면 */
     .set-group { margin-top: 24px; }
+    .set-input { width: 200px; max-width: 42vw; padding: 7px 10px; border-radius: 9px; border: 1px solid var(--line); background: rgba(12,18,32,.85); color: #d6deea; font-size: 12.5px; margin-right: 8px; }
+    .set-input:focus { outline: none; border-color: color-mix(in srgb, var(--c-accent) 44%, transparent); }
     .set-group > .sg-title { font-size: 13px; font-weight: 700; letter-spacing: .04em; color: var(--subtle); text-transform: uppercase; margin: 0 0 12px 2px; }
     .set-row { display: flex; align-items: center; gap: 16px; padding: 15px 18px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.02); }
     .set-row + .set-row { margin-top: 10px; }
@@ -1568,8 +1570,16 @@
       const acct = row(s.hasToken ? '연결됨' : '연결 안 됨',
         s.hasToken ? '서버 연결 토큰을 보유하고 있어요.' : '온보딩에서 Discord 에 연결하세요.',
         s.hasToken ? '<button class="btn btn--sm btn--secondary" id="setLogout">연결 해제</button>' : '');
+      const cloudGroup =
+        row('클라우드 AI (Gemini)',
+          s.geminiConfigured ? '✅ 설정됨 — 서버 전체에 무료 제공 중. 디스코드 /무료질문 으로 사용.' : 'API 키 1개로 서버 전체에 무료 AI 제공(aistudio.google.com/apikey). 키는 이 PC 에만 저장.',
+          '<input id="setGemini" type="password" placeholder="' + (s.geminiConfigured ? '••••• 설정됨(바꾸려면 입력)' : 'AIza... 키 붙여넣기') + '" class="set-input"><button class="btn btn--sm btn--primary" id="setGeminiSave">저장</button>') +
+        row('ComfyUI 주소',
+          s.comfyUrl ? ('🎨 이미지 백엔드 = ComfyUI (' + s.comfyUrl + ')') : 'SD.Next 대신 ComfyUI 로 이미지 생성(직접 실행). 비우면 SD.Next.',
+          '<input id="setComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="http://127.0.0.1:8188" class="set-input"><button class="btn btn--sm btn--secondary" id="setComfySave">저장</button>');
       body.innerHTML =
         '<div class="set-group"><div class="sg-title">실행 동작</div>' + exec + '</div>' +
+        '<div class="set-group"><div class="sg-title">클라우드 AI · 이미지 백엔드</div>' + cloudGroup + '</div>' +
         '<div class="set-group"><div class="sg-title">업데이트</div>' + updGroup + '</div>' +
         '<div class="set-group"><div class="sg-title">연결</div>' + connGroup + '</div>' +
         '<div class="set-group"><div class="sg-title">계정</div>' + acct + '</div>';
@@ -1629,6 +1639,33 @@
       if (logout) logout.onclick = async () => {
         if (!confirm('연결을 해제하면 모든 서버 제공이 중단돼요. 계속할까요?')) return;
         await api.logout(); toast('연결을 해제했어요', { type: 'info' }); load();
+      };
+      // 클라우드 AI(Gemini 키) 저장 — 입력했을 때만 전송(빈 입력은 기존 키 유지)
+      const gSave = document.getElementById('setGeminiSave');
+      if (gSave) gSave.onclick = async () => {
+        const key = (document.getElementById('setGemini').value || '').trim();
+        if (!key) { toast('AIza... 키를 입력하세요', { type: 'info' }); return; }
+        gSave.disabled = true;
+        try {
+          const r = await api.setCloud({ geminiApiKey: key }) || {};
+          if (_s) _s.geminiConfigured = true;
+          toast(r.geminiValid === false ? 'Gemini 키 저장됨 — 다만 키 검증 실패(결제/유효성 확인)' : 'Gemini 키 저장·적용했어요 — /무료질문 으로 쓰세요', { type: r.geminiValid === false ? 'info' : 'ok' });
+          render();
+        } catch (_e) { toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' }); }
+        finally { gSave.disabled = false; }
+      };
+      // ComfyUI 주소 저장(이미지 백엔드 전환 — 재연결/재시작에 반영)
+      const cSave = document.getElementById('setComfySave');
+      if (cSave) cSave.onclick = async () => {
+        const url = (document.getElementById('setComfy').value || '').trim();
+        cSave.disabled = true;
+        try {
+          await api.setCloud({ comfyUrl: url });
+          if (_s) _s.comfyUrl = url;
+          toast(url ? 'ComfyUI 를 이미지 백엔드로 설정했어요 — 재연결 후 적용' : 'SD.Next 로 되돌렸어요 — 재연결 후 적용', { type: 'info' });
+          render();
+        } catch (_e) { toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' }); }
+        finally { cSave.disabled = false; }
       };
     }
 

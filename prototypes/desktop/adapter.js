@@ -459,7 +459,7 @@ export const api = {
   },
   /** 업데이트 정보 — webui.py /api/update-info. */
   async getUpdateInfo() {
-    /* @proto-only */ if (USE_MOCK) { await delay(60); return { ...MOCK.updateInfo }; } /* @end-proto-only */
+    /* @proto-only */ if (USE_MOCK) { if (globalThis.__HANG_UPDATE_INFO) return new Promise(() => {}); await delay(60); return { ...MOCK.updateInfo }; } /* @end-proto-only */
     return http(ENDPOINTS.updateInfo);
   },
   /** 인앱 업데이트 시작 — webui.py POST /api/update. 진행률은 getUpdateProgress 폴링. */

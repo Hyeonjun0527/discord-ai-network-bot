@@ -2063,19 +2063,30 @@
     }
 
     function renderSafetyTab(m) {
-      if (!m.safety) return MSOON_REAL('안전 · 신고');
-      const open = m.safety.reports.filter(r => r.status === 'open');
+      // 콘텐츠 정책 + 실제 신고·대응 경로(진짜 동작) — 항상 표시. 가짜 신고 목록·빈 '준비 중' 대신,
+      // 이 서비스가 실제로 어떻게 안전을 다루는지 정직하게 안내한다(per-guild 신고 큐는 미제공).
       const policy = '<div class="dcard"><div class="dlabel">콘텐츠 정책</div>' +
-        '<div class="dsub">이 서버 AI 콘텐츠의 책임은 <b>서버 관리자</b>에게 있어요. NEXA 는 신고를 받으면 대응해요.<br>' +
-        '· <b>불법 콘텐츠</b>(아동 성착취물 등)는 무관용 — 자동 차단·신고됩니다.<br>' +
+        '<div class="dsub">이 서버 AI 콘텐츠의 책임은 <b>서버 관리자</b>에게 있어요.<br>' +
+        '· <b>불법 콘텐츠</b>(아동 성착취물 등)는 무관용 — 안전 가드레일이 자동 거부·차단합니다.<br>' +
         '· Discord 커뮤니티 가이드·서비스 약관을 따라요(성인물은 연령 제한 채널에서만).</div></div>';
-      const reports = open.length
-        ? open.map(r => '<div class="prov-row wait"><div class="prov-main"><div class="prov-nm">' + r.target + '</div>' +
-            '<div class="prov-meta">' + r.reason + ' · ' + r.reporter + ' · ' + r.when + '</div></div>' +
-            '<div class="prov-acts"><button class="btn btn--sm btn--secondary" data-report-dismiss="' + r.id + '">무시</button>' +
-            '<button class="btn btn--sm btn--warn" data-report-act="' + r.id + '">숨김 처리</button></div></div>').join('')
-        : '<div class="msoon"><b>처리할 신고 없음</b>멤버 신고가 들어오면 여기서 확인·조치해요.</div>';
-      return policy + '<div class="msec-label">신고 (' + open.length + ')</div>' + reports;
+      const howto = '<div class="dcard"><div class="dlabel">신고·대응은 이렇게 동작해요</div>' +
+        '<div class="dsub">· 부적절한 답변은 <b>Discord 메시지 신고</b> 또는 서버 관리자에게 알릴 수 있어요.<br>' +
+        '· 관리자는 채널 AI 허용/차단(채널 탭)·프리셋/지식 삭제(프리셋·RAG 탭)로 즉시 조치할 수 있어요.<br>' +
+        '· 안전을 해치는 요청은 답변 생성 단계에서 거부돼요(가드레일).</div></div>';
+      let proto = '';
+      /* @proto-only */
+      if (m.safety && Array.isArray(m.safety.reports)) {
+        const open = m.safety.reports.filter(r => r.status === 'open');
+        const reports = open.length
+          ? open.map(r => '<div class="prov-row wait"><div class="prov-main"><div class="prov-nm">' + r.target + '</div>' +
+              '<div class="prov-meta">' + r.reason + ' · ' + r.reporter + ' · ' + r.when + '</div></div>' +
+              '<div class="prov-acts"><button class="btn btn--sm btn--secondary" data-report-dismiss="' + r.id + '">무시</button>' +
+              '<button class="btn btn--sm btn--warn" data-report-act="' + r.id + '">숨김 처리</button></div></div>').join('')
+          : '<div class="msoon"><b>처리할 신고 없음</b></div>';
+        proto = '<div class="msec-label">신고 (' + open.length + ')</div>' + reports;
+      }
+      /* @end-proto-only */
+      return policy + howto + proto;
     }
 
     // 관리 탭 공통 인터랙션(mock 토글 + 미구현 액션 안내). 같은 m 을 수정해 즉시 재렌더.

@@ -24,8 +24,10 @@ import asyncio
 import logging
 import os
 import pathlib
+import platform
 import shutil
 import sys
+import tarfile
 
 import aiohttp
 
@@ -310,14 +312,103 @@ def install_tool_command(tool: str, platform: str | None = None) -> list[str] | 
     return _PKG.get(pm, {}).get(tool) if pm else None
 
 
+# ── standalone CPython (호환 Python 미보유 머신용 런타임 페치) ──────────────────
+# frozen 앱(PyInstaller)은 SD.Next 를 돌릴 Python 을 번들하지 않는다. 시스템에 3.10~3.12 가 없고
+# brew/winget 도 없는 일반 머신에선 이미지 부트스트랩이 'no-python' 으로 즉사했다(신규설치 신뢰성 감사
+# #1 HIGH). 이때 검증된 venv 와 **같은 3.11.15** standalone CPython(python-build-standalone)을 받아
+# SD.Next venv 생성에 쓴다. 호환 Python 이 있으면 받지 않는다(스킵) — 받아도 ~50MB 로 모델(수 GB) 대비
+# 무시 가능. install_only 빌드는 relocatable 이라 임의 경로에서 동작하고, 프로그래매틱 다운로드라
+# macOS quarantine(Gatekeeper) 도 안 붙는다(브라우저/AirDrop 만 붙임).
+BUNDLED_PYTHON_RELEASE = "20260602"
+BUNDLED_PYTHON_VERSION = "3.11.15"
+_PBS_BASE = "https://github.com/astral-sh/python-build-standalone/releases/download"
+
+
+def _standalone_python_triple() -> str | None:
+    """현재 OS/아키텍처에 맞는 python-build-standalone 타깃 트리플(미지원이면 None)."""
+    mach = platform.machine().lower()
+    arm = mach in ("arm64", "aarch64")
+    if sys.platform == "darwin":
+        return "aarch64-apple-darwin" if arm else "x86_64-apple-darwin"
+    if sys.platform == "win32":
+        return "x86_64-pc-windows-msvc"  # arm64 Windows 는 x64 에뮬레이션으로 동작
+    if sys.platform.startswith("linux"):
+        return "aarch64-unknown-linux-gnu" if arm else "x86_64-unknown-linux-gnu"
+    return None
+
+
+def _standalone_python_url() -> str | None:
+    triple = _standalone_python_triple()
+    if triple is None:
+        return None
+    name = f"cpython-{BUNDLED_PYTHON_VERSION}+{BUNDLED_PYTHON_RELEASE}-{triple}-install_only.tar.gz"
+    return f"{_PBS_BASE}/{BUNDLED_PYTHON_RELEASE}/{name}"
+
+
+def python_runtime_dir() -> pathlib.Path:
+    """런타임에 받은 standalone CPython 설치 위치(SD 설치 디렉터리 옆: ~/Library/Nexa/python 등)."""
+    return install_dir().parent / "python"
+
+
+def bundled_python_path() -> pathlib.Path:
+    """받은 standalone CPython 실행기 경로. install_only 는 ``<dest>/python/`` 으로 풀린다."""
+    root = python_runtime_dir() / "python"
+    minor = BUNDLED_PYTHON_VERSION.rsplit(".", 1)[0]  # "3.11"
+    return (root / "python.exe") if sys.platform == "win32" else (root / "bin" / f"python{minor}")
+
+
+def _bundled_python_ready() -> str | None:
+    """이미 받아둔 standalone CPython 의 경로(실행 가능하면). 없으면 None."""
+    p = bundled_python_path()
+    return str(p) if p.is_file() and os.access(p, os.X_OK) else None
+
+
+async def ensure_bundled_python() -> str | None:
+    """호환 Python 이 없을 때 standalone CPython 3.11 을 받아 그 경로를 반환. 이미 있으면 즉시 반환.
+
+    실패(미지원 OS·네트워크·추출 오류)면 None → 호출부가 패키지 매니저 폴백으로 넘어간다.
+    """
+    ready = _bundled_python_ready()
+    if ready:
+        return ready
+    url = _standalone_python_url()
+    if url is None:
+        return None  # 미지원 OS/arch
+    dest_dir = python_runtime_dir()
+    archive = dest_dir / "cpython.tar.gz"
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        timeout = aiohttp.ClientTimeout(total=None, sock_read=120)
+        async with aiohttp.ClientSession(timeout=timeout) as s, s.get(url) as resp:
+            resp.raise_for_status()
+            with open(archive, "wb") as f:
+                async for chunk in resp.content.iter_chunked(1 << 20):
+                    f.write(chunk)
+        with tarfile.open(archive, "r:gz") as tf:  # GitHub 릴리스(신뢰) → <dest>/python/ 추출
+            try:
+                tf.extractall(dest_dir, filter="data")  # py3.12+ 안전 추출 필터
+            except TypeError:
+                tf.extractall(dest_dir)  # 구버전 폴백
+    except (aiohttp.ClientError, OSError, tarfile.TarError, asyncio.TimeoutError):
+        shutil.rmtree(dest_dir, ignore_errors=True)  # 부분 추출 잔해 정리(다음 시도 깨끗하게)
+        return None
+    finally:
+        archive.unlink(missing_ok=True)
+    return _bundled_python_ready()
+
+
 def compatible_python() -> str | None:
-    """SD.Next 호환(3.10~3.12) Python 실행 명령을 찾는다(없으면 None → 설치 필요).
+    """SD.Next 호환(3.10~3.12) Python 실행 명령을 찾는다(없으면 None → 설치/다운로드 필요).
 
     시스템 기본 python3 가 너무 최신(예: 3.13/3.14 — torch 미지원)일 수 있으므로, 지원 버전을
     명시적으로 찾아 PYTHON 으로 강제한다(실증: 강제 안 하면 SD.Next 가 3.14 로 venv 를 만들어 깨짐).
 
-    PATH 명령으로 먼저 찾고, 못 찾으면(특히 macOS GUI 앱) 잘 알려진 절대 경로로 폴백한다.
+    우선순위: ① 이미 받아둔 standalone CPython(있으면 최우선·머신 무관) → ② PATH 명령 →
+    ③ 잘 알려진 절대 경로(특히 macOS GUI 앱).
     """
+    bundled = _bundled_python_ready()  # 한 번 받아두면 이후 항상 이걸 쓴다(시스템 Python 무관)
+    if bundled:
+        return bundled
     _augment_path()  # macOS GUI PATH 보강(no-python 원인 제거)
     for c in ("python3.11", "python3.12", "python3.10"):
         found = shutil.which(c)
@@ -672,14 +763,25 @@ async def run_setup(sd_url: str, model_id: str | None = None, custom_url: str | 
 
         python_cmd = compatible_python()
         if python_cmd is None:
-            cmd = install_tool_command("python")
-            if cmd is None:
-                _set("error", 5, "이미지 엔진에 필요한 Python(3.10~3.12)이 없고 자동 설치 수단도 없어요.", error="no-python")
-                return False
-            _set("installing", 8, "이미지 엔진용 Python(3.11) 설치 중…")
-            await _run(cmd, timeout=900)
-            # 설치 직후 PATH 갱신이 늦을 수 있어, 못 찾으면 best-effort 명령으로 진행한다.
-            python_cmd = compatible_python() or ("python" if sys.platform == "win32" else "python3.11")
+            # 시스템에 호환 Python 이 없다 → standalone CPython 3.11 을 받아 쓴다(가장 견고: admin·PATH·
+            # 패키지 매니저 무관, 검증된 3.11.15 고정). frozen 앱은 Python 미번들이라 이게 핵심 폴백이다.
+            _set("installing", 8, "이미지 엔진용 Python(3.11) 준비 중… (한 번만 내려받아요)")
+            python_cmd = await ensure_bundled_python()
+            if python_cmd is None:
+                # 다운로드 실패(네트워크/미지원) → 패키지 매니저 폴백(있으면).
+                cmd = install_tool_command("python")
+                if cmd is None:
+                    _set(
+                        "error", 5,
+                        "이미지 엔진용 Python(3.11)을 준비하지 못했어요(다운로드 실패·자동 설치 수단 없음). "
+                        "인터넷 연결을 확인하거나 Python 3.11 을 설치 후 다시 시도하세요.",
+                        error="no-python",
+                    )
+                    return False
+                _set("installing", 8, "이미지 엔진용 Python(3.11) 설치 중…")
+                await _run(cmd, timeout=900)
+                # 설치 직후 PATH 갱신이 늦을 수 있어, 못 찾으면 best-effort 명령으로 진행한다.
+                python_cmd = compatible_python() or ("python" if sys.platform == "win32" else "python3.11")
         if _cancelled():
             return False
 

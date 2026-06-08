@@ -66,6 +66,51 @@ def test_clone_commands_falls_back_without_pin(monkeypatch, tmp_path):
     assert len(seq) == 1 and seq[0][1] == "clone"
 
 
+def test_standalone_python_url_per_platform(monkeypatch):
+    # 호환 Python 미보유 머신용 standalone CPython URL 이 OS/arch 별로 맞는 트리플을 가리킨다.
+    cases = {
+        ("darwin", "arm64"): "aarch64-apple-darwin",
+        ("darwin", "x86_64"): "x86_64-apple-darwin",
+        ("win32", "AMD64"): "x86_64-pc-windows-msvc",
+        ("linux", "x86_64"): "x86_64-unknown-linux-gnu",
+        ("linux", "aarch64"): "aarch64-unknown-linux-gnu",
+    }
+    for (plat, mach), triple in cases.items():
+        monkeypatch.setattr(sd_mod.sys, "platform", plat)
+        monkeypatch.setattr(sd_mod.platform, "machine", lambda m=mach: m)
+        url = sd_mod._standalone_python_url()
+        assert url and triple in url
+        assert sd_mod.BUNDLED_PYTHON_VERSION in url and sd_mod.BUNDLED_PYTHON_RELEASE in url
+        assert url.endswith("-install_only.tar.gz")
+
+
+def test_bundled_python_path_layout(monkeypatch):
+    # install_only 는 <dest>/python/ 로 풀린다 → bin/python3.11 (unix) / python.exe (win).
+    monkeypatch.setattr(sd_mod.sys, "platform", "darwin")
+    assert sd_mod.bundled_python_path().as_posix().endswith("python/bin/python3.11")
+    monkeypatch.setattr(sd_mod.sys, "platform", "win32")
+    assert sd_mod.bundled_python_path().name == "python.exe"
+
+
+def test_compatible_python_prefers_bundled(monkeypatch):
+    # 이미 받아둔 standalone 이 있으면 시스템 PATH 와 무관하게 그걸 최우선으로 쓴다.
+    monkeypatch.setattr(sd_mod, "_bundled_python_ready", lambda: "/data/nexa/python/python/bin/python3.11")
+    assert sd_mod.compatible_python() == "/data/nexa/python/python/bin/python3.11"
+
+
+async def test_ensure_bundled_python_returns_existing_without_download(monkeypatch):
+    # 이미 받아둔 게 있으면 네트워크 없이 즉시 그 경로 반환.
+    monkeypatch.setattr(sd_mod, "_bundled_python_ready", lambda: "/x/python/bin/python3.11")
+    assert await sd_mod.ensure_bundled_python() == "/x/python/bin/python3.11"
+
+
+async def test_ensure_bundled_python_none_on_unsupported_platform(monkeypatch):
+    # 미지원 OS/arch(URL None)면 다운로드 시도 없이 None → 호출부가 패키지 매니저 폴백으로.
+    monkeypatch.setattr(sd_mod, "_bundled_python_ready", lambda: None)
+    monkeypatch.setattr(sd_mod, "_standalone_python_url", lambda: None)
+    assert await sd_mod.ensure_bundled_python() is None
+
+
 def test_launch_command_per_platform(tmp_path):
     # SD.Next: API 항상 켜짐(--api 불필요), MPS/정밀도 자체 처리(A1111 플래그 없음). 모델 없으면 --ckpt 없음.
     mac = sd_mod.launch_command("darwin", tmp_path)
@@ -241,23 +286,18 @@ def test_run_setup_no_git(monkeypatch, tmp_path):
     assert sd_mod.progress()["error"] == "no-git"
 
 
-def test_run_setup_installs_prereqs(monkeypatch, tmp_path):
-    """설치 마법사: git·Python 이 없어도 패키지 매니저로 설치하고 전체 경로를 끝낸다."""
-    directory = tmp_path / "sd"
-    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(False))
-    monkeypatch.setattr(sd_mod, "install_dir", lambda: directory)
+def _wire_run_setup_fakes(monkeypatch, directory):
+    """run_setup 의 부작용(_run/_download/_spawn/_wait_healthy)을 가짜로 바꾸고 실행 로그를 돌려준다."""
     git_state = {"has": False}
     monkeypatch.setattr(sd_mod, "has_git", lambda: git_state["has"])
-    monkeypatch.setattr(sd_mod, "compatible_python", lambda: None)  # 설치 후에도 PATH 미갱신 가정 → best-effort
-    monkeypatch.setattr(sd_mod, "install_tool_command", lambda tool, platform=None: ["echo", tool])
-
     ran: list = []
+    spawned: dict = {}
 
     async def fake_run(cmd, timeout):
         ran.append(cmd)
         if cmd == ["echo", "git"]:
             git_state["has"] = True
-        if "clone" in cmd:
+        if "clone" in cmd or "checkout" in cmd:
             directory.mkdir(parents=True, exist_ok=True)
             (directory / "webui.sh").write_text("#!/bin/sh\n")
         return 0, "ok"
@@ -265,8 +305,6 @@ def test_run_setup_installs_prereqs(monkeypatch, tmp_path):
     async def fake_download(url, dest, message_prefix="이미지 모델 내려받는 중…"):
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text("m")
-
-    spawned: dict = {}
 
     async def fake_spawn(cmd, env=None, log_path=None, cwd=None):
         spawned["env"] = env
@@ -279,12 +317,50 @@ def test_run_setup_installs_prereqs(monkeypatch, tmp_path):
     monkeypatch.setattr(sd_mod, "_download", fake_download)
     monkeypatch.setattr(sd_mod, "_spawn", fake_spawn)
     monkeypatch.setattr(sd_mod, "_wait_healthy", fake_wait)
+    return ran, spawned
+
+
+def test_run_setup_fetches_standalone_python_when_none(monkeypatch, tmp_path):
+    """호환 Python 이 없으면 standalone CPython 을 받아 그 경로를 SD.Next 에 PYTHON 으로 넘긴다(주 폴백)."""
+    directory = tmp_path / "sd"
+    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(False))
+    monkeypatch.setattr(sd_mod, "install_dir", lambda: directory)
+    monkeypatch.setattr(sd_mod, "compatible_python", lambda: None)  # 시스템에 호환 Python 없음
+
+    async def fake_bundled():
+        return "/data/nexa/python/python/bin/python3.11"
+
+    monkeypatch.setattr(sd_mod, "ensure_bundled_python", fake_bundled)
+    # 다운로드가 성공하면 패키지 매니저는 호출되면 안 된다(실패 시 어설션으로 잡히게).
+    monkeypatch.setattr(sd_mod, "install_tool_command", lambda tool, platform=None: ["echo", tool])
+    ran, spawned = _wire_run_setup_fakes(monkeypatch, directory)
 
     ok = asyncio.run(sd_mod.run_setup("http://127.0.0.1:7860"))
     assert ok is True
     assert sd_mod.progress()["phase"] == "done"
-    assert ["echo", "git"] in ran and ["echo", "python"] in ran  # 전제 도구 설치됨
-    assert spawned["env"] and spawned["env"].get("PYTHON")     # SD.Next 에 호환 Python(PYTHON) 전달
+    assert ["echo", "git"] in ran  # git 은 패키지 매니저로 설치
+    assert ["echo", "python"] not in ran  # Python 은 standalone 다운로드 → 패키지 매니저 미호출
+    assert spawned["env"]["PYTHON"] == "/data/nexa/python/python/bin/python3.11"
+
+
+def test_run_setup_python_pkg_manager_fallback(monkeypatch, tmp_path):
+    """standalone 다운로드가 실패하면 패키지 매니저(brew/winget)로 폴백한다."""
+    directory = tmp_path / "sd"
+    monkeypatch.setattr(sd_mod, "SDClient", lambda url: _FakeClient(False))
+    monkeypatch.setattr(sd_mod, "install_dir", lambda: directory)
+    monkeypatch.setattr(sd_mod, "compatible_python", lambda: None)
+
+    async def fake_bundled():
+        return None  # 다운로드 실패/미지원
+
+    monkeypatch.setattr(sd_mod, "ensure_bundled_python", fake_bundled)
+    monkeypatch.setattr(sd_mod, "install_tool_command", lambda tool, platform=None: ["echo", tool])
+    ran, spawned = _wire_run_setup_fakes(monkeypatch, directory)
+
+    ok = asyncio.run(sd_mod.run_setup("http://127.0.0.1:7860"))
+    assert ok is True
+    assert ["echo", "git"] in ran and ["echo", "python"] in ran  # 둘 다 패키지 매니저로 설치
+    assert spawned["env"] and spawned["env"].get("PYTHON")
 
 
 def test_run_setup_full_flow(monkeypatch, tmp_path):

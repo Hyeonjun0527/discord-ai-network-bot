@@ -94,19 +94,33 @@ object WebResultReranker {
     private fun tokenize(text: String): List<String> = text.lowercase().split(SPLIT).filter { it.isNotBlank() }
 }
 
+/** 질의의 시간 민감도(최신/연도/뉴스 등) 판정 — true 면 검색에 최근(time_range) 필터를 건다. */
+object WebRecency {
+    private val HINTS =
+        Regex(
+            "(최신|오늘|지금|올해|현재|요즘|근래|작년|이번\\s*달|이번\\s*주|뉴스|소식|업데이트|" +
+                "20[2-9][0-9]|latest|recent|today|now|this\\s*year|current|news|update)",
+            RegexOption.IGNORE_CASE,
+        )
+
+    fun isTimeSensitive(query: String): Boolean = HINTS.containsMatchIn(query)
+}
+
 /** 순수 함수: 검색 결과로 프롬프트를 증강(테스트 가능). 결과가 없으면 원본 그대로. */
 object WebSearchPromptBuilder {
     fun build(
         query: String,
         results: List<WebResult>,
         maxResults: Int = 5,
+        today: java.time.LocalDate = java.time.LocalDate.now(),
     ): WebAugmentation {
         if (results.isEmpty()) return WebAugmentation(query, emptyList())
         val top = results.take(maxResults.coerceAtLeast(1))
         val prompt =
             buildString {
-                appendLine("다음은 웹 검색 결과입니다. 이 정보를 근거로 질문에 답하고, 사용한 출처를 [n] 형식으로 인용하세요.")
-                appendLine("검색 결과로 답할 수 없으면 모른다고 답하세요. 추측하지 마세요.")
+                appendLine("오늘 날짜는 $today 입니다. 아래는 웹 검색 결과이며, **이 결과가 질문보다 최신 정보**일 수 있습니다.")
+                appendLine("이 정보를 근거로 질문에 답하고, 사용한 출처를 [n] 형식으로 인용하세요. 검색 결과의 날짜·최신성을 고려해 가장 최근 정보를 우선하세요.")
+                appendLine("검색 결과로 답할 수 없으면 모른다고 답하세요. 추측하지 마세요. (당신의 사전 학습 지식이 오래됐어도 검색 결과를 신뢰하세요.)")
                 appendLine()
                 top.forEachIndexed { i, r ->
                     appendLine("[${i + 1}] ${r.title}")
@@ -178,7 +192,10 @@ class SearxngWebSearch(
     ): List<WebResult> {
         val base = searchUrl.trimEnd('/')
         val q = URLEncoder.encode(query, StandardCharsets.UTF_8)
-        val uri = URI.create("$base/search?format=json&safesearch=1&q=$q")
+        // 시간 민감 질의(최신/연도/뉴스 등)는 최근 1년으로 좁혀 2026 같은 최신 정보를 끌어온다(실증: 없으면
+        // SearXNG 가 오래된 권위 페이지를 위로 올려 최신 사건을 전혀 못 찾았다). 일반 질의는 필터 없음(상록 결과 유지).
+        val timeRange = if (WebRecency.isTimeSensitive(query)) "&time_range=year" else ""
+        val uri = URI.create("$base/search?format=json&safesearch=1$timeRange&q=$q")
         val req =
             HttpRequest
                 .newBuilder(uri)

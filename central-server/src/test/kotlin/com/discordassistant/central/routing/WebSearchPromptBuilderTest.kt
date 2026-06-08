@@ -1,11 +1,14 @@
 package com.discordassistant.central.routing
 
 import com.discordassistant.central.knowledge.application.NoWebSearch
+import com.discordassistant.central.knowledge.application.WebRecency
 import com.discordassistant.central.knowledge.application.WebResult
 import com.discordassistant.central.knowledge.application.WebSearchPromptBuilder
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.time.LocalDate
 
 class WebSearchPromptBuilderTest {
     private val results =
@@ -42,5 +45,22 @@ class WebSearchPromptBuilderTest {
     fun `NoWebSearch 는 비활성·원본 유지`() {
         assertEquals(false, NoWebSearch.isEnabled())
         assertEquals("그대로", NoWebSearch.augment("그대로").prompt)
+    }
+
+    @Test
+    fun `증강 프롬프트에 현재 날짜가 주입돼 모델이 최신성을 판단한다`() {
+        val aug = WebSearchPromptBuilder.build("2026년 6월 뉴스", results, today = LocalDate.of(2026, 6, 8))
+        assertTrue(aug.prompt.contains("2026-06-08"), "오늘 날짜가 프롬프트에 있어야 함")
+        assertTrue(aug.prompt.contains("최신"), "최신성 우선 지시가 있어야 함")
+    }
+
+    @Test
+    fun `시간 민감 질의는 최신 필터 대상으로 판정`() {
+        listOf("2026년 6월 무슨 일", "최신 뉴스 알려줘", "올해 업데이트", "latest news", "what happened today").forEach {
+            assertTrue(WebRecency.isTimeSensitive(it), "시간 민감으로 판정돼야: $it")
+        }
+        listOf("코틀린이 뭐야?", "1+1은?", "파이썬 정렬 방법").forEach {
+            assertFalse(WebRecency.isTimeSensitive(it), "상록 질의로 판정돼야: $it")
+        }
     }
 }

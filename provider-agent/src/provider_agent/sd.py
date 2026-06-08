@@ -90,19 +90,29 @@ class SDClient:
             return False
 
     async def set_output_png(self) -> bool:
-        """API 반환 이미지 포맷을 PNG 로 설정(SD.Next 기본은 JPEG). 우리 파이프라인의 PNG 가정과 일치시킨다.
-        실패는 비치명적(JPEG 도 디스코드는 렌더). SD 준비 직후 1회 호출."""
+        """API 반환 이미지 포맷을 PNG 로 설정 + **라이브 프리뷰 비활성화**. SD 준비 직후 1회 호출.
+
+        - samples_format=png: SD.Next 기본 JPEG → 우리 파이프라인의 PNG 가정과 일치.
+        - live_previews_enable=false: /sdapi/v1/progress 폴링이 매번 현재 latent 를 GPU 로 디코딩(프리뷰)
+          하는데, 이게 생성 중인 diffusion 과 Metal command encoder 를 동시에 점유해 Apple Silicon(MPS)
+          에서 드라이버 세그폴트(AGXMetal SIGSEGV)로 SD.Next 프로세스가 죽는다(실증: 크래시 리포트
+          relu_mps→MPSStream::commandEncoder). 프리뷰는 우리가 안 쓰므로 끈다(진행률 숫자는 그대로).
+        실패는 비치명적(JPEG 도 디스코드는 렌더). """
         url = f"{self._base}/sdapi/v1/options"
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as s:
-                async with s.post(url, json={"samples_format": "png"}) as r:
+                async with s.post(url, json={"samples_format": "png", "live_previews_enable": False}) as r:
                     return r.status == 200
         except aiohttp.ClientError:
             return False
 
     async def progress(self) -> float:
-        """현재 생성 작업의 진행률(0.0~1.0). A1111 ``/sdapi/v1/progress``. 실패/미상이면 0.0."""
-        url = f"{self._base}/sdapi/v1/progress"
+        """현재 생성 작업의 진행률(0.0~1.0). A1111 ``/sdapi/v1/progress``. 실패/미상이면 0.0.
+
+        ``skip_current_image=true``: 프리뷰 이미지를 만들지 않게 한다 — 폴링 때마다 GPU 로 latent 를
+        디코딩하면 생성과 Metal 인코더가 경합해 MPS 크래시를 유발한다(set_output_png 참고). 숫자만 받는다.
+        """
+        url = f"{self._base}/sdapi/v1/progress?skip_current_image=true"
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s:
                 async with s.get(url) as r:

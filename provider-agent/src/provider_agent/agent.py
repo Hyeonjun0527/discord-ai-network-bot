@@ -28,8 +28,11 @@ from .protocol import (
 
 logger = logging.getLogger("provider_agent.agent")
 
-# 이미지 생성 중 SD 진행률 폴링 간격(초). 디스코드 메시지 편집 레이트리밋을 고려해 너무 잦지 않게.
+# 이미지 생성 중 진행률 청크 전송 간격(초). 디스코드 메시지 편집 레이트리밋을 고려해 너무 잦지 않게.
 SD_PROGRESS_POLL_S = 1.5
+# 진행률 추정 점근 곡선의 반감기(초): pct = 95·t/(t+HALF). 이 값에서 약 47%.
+# 생성 중 SD 를 폴링하면 MPS 가 크래시하므로(아래 _handle_image 주석) 진행률은 경과시간으로만 추정한다.
+SD_PROGRESS_HALFLIFE_S = 6.0
 
 
 def _agent_sync_base(relay: str) -> str:
@@ -424,38 +427,77 @@ class ProviderAgent:
     async def _handle_image(self, conn: AgentConnection, req: InferRequest) -> None:
         """로컬 SD 로 이미지를 생성해 base64 PNG 를 ChunkFrame 으로 분할 전송(SD Phase 2).
 
-        생성 중에는 SD 진행률(/sdapi/v1/progress)을 동시 폴링해 progress 청크로 흘려보낸다 →
-        중앙이 디스코드 '생각 중' 메시지를 N% 로 편집한다. 진행률 폴링 실패는 비치명적(생성엔 영향 없음).
+        ⚠️ 생성 중에는 SD 에 **어떤 동시 요청도 보내지 않는다**. PyTorch MPS(Apple Silicon)는
+        생성 중 다른 스레드의 접근에 thread-safe 하지 않아, /sdapi/v1/progress 같은 동시 폴링이
+        Metal command encoder 경합을 일으켜 드라이버 세그폴트(AGXMetal SIGSEGV)로 SD 프로세스를
+        죽인다(실증: 폴링 시 gen#0 즉시 크래시 vs 폴링 제거 시 순차 3/3 생존). 그래서 진행률은
+        SD 를 건드리지 않는 **경과시간 기반 추정**(_emit_estimated_progress)으로만 보낸다.
+        SD 가 생성 도중 죽으면 1회 재기동·재시도한다(_generate_image_with_retry).
         """
-        from .sd import SDError
-
-        assert self._sd is not None  # 호출 전 _image_ready 로 가드됨
-        gen_task = asyncio.create_task(self._sd.txt2img(req.prompt))
-        progress_task = asyncio.create_task(self._stream_sd_progress(conn, req.request_id, gen_task))
-        try:
-            b64 = await gen_task
-        except SDError as exc:
-            progress_task.cancel()
-            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
-            return
-        finally:
-            progress_task.cancel()
+        b64 = await self._generate_image_with_retry(conn, req)
+        if b64 is None:
+            return  # 에러는 헬퍼가 이미 전송
         # 1MB 프레임 한계 때문에 base64 를 조각내어 보낸다. 마지막에 done=True(빈 delta).
         for i in range(0, len(b64), IMAGE_CHUNK_CHARS):
             await self._safe_send(conn, ChunkFrame(req.request_id, delta=b64[i : i + IMAGE_CHUNK_CHARS], done=False))
         await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
 
-    async def _stream_sd_progress(self, conn: AgentConnection, request_id: str, gen_task: "asyncio.Task[str]") -> None:
-        """이미지 생성이 끝날 때까지 ~1.5s 간격으로 SD 진행률을 progress 청크로 전송(증가분만)."""
+    async def _generate_image_with_retry(self, conn: AgentConnection, req: InferRequest) -> str | None:
+        """txt2img 를 진행률 추정과 함께 실행. SD 가 생성 중 죽으면(SDError) 1회 재기동·재시도.
+        성공 시 base64 PNG, 실패 시 InferError 송신 후 None."""
+        from .sd import SDError
+
+        for attempt in range(2):  # 원샷 + 1회 재시도(MPS 가 드물게 크래시할 때 사용자에게 이미지를 돌려준다)
+            assert self._sd is not None  # 호출 전 _image_ready 로 가드됨
+            gen_task: asyncio.Task[str] = asyncio.create_task(self._sd.txt2img(req.prompt))
+            prog_task = asyncio.create_task(self._emit_estimated_progress(conn, req.request_id, gen_task))
+            try:
+                return await gen_task
+            except SDError as exc:
+                if attempt == 0 and await self._recover_sd():
+                    logger.warning("SD 가 생성 중 종료된 듯 — 재기동 후 1회 재시도: %s", exc)
+                    continue
+                await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
+                return None
+            finally:
+                prog_task.cancel()
+        return None
+
+    async def _recover_sd(self) -> bool:
+        """SD.Next 가 죽었으면 재기동하고 준비될 때까지 기다린다(생성 재시도 직전). 성공 True."""
+        if self._sd is None:
+            return False
+        from . import sd_setup
+
+        try:
+            if await self._sd.health():
+                return True  # 이미 살아있음(일시적 네트워크 오류였음)
+            ok = await sd_setup.launch_only(self._cfg.sd_url)
+            if ok and await self._sd.health():
+                await self._sd.set_output_png()
+                return True
+            return False
+        except Exception as exc:  # noqa: BLE001 - 재기동 실패는 비치명적(원 에러를 사용자에게 전달)
+            logger.warning("SD 재기동 실패: %s", exc)
+            return False
+
+    async def _emit_estimated_progress(self, conn: AgentConnection, request_id: str, gen_task: "asyncio.Task[str]") -> None:
+        """생성이 끝날 때까지 **경과시간 기반 추정** 진행률을 progress 청크로 보낸다(SD 미조회).
+
+        SD 를 폴링하면 MPS 크래시가 나므로 절대 호출하지 않는다(_handle_image 주석 참고).
+        점근 곡선 pct=95·t/(t+HALF) 로 0→95% 까지만(완료는 done 청크가 알린다). 하드웨어마다
+        속도가 달라 정확치는 아니지만 '생성이 진행 중'임을 정직하게 보여준다.
+        """
+        loop = asyncio.get_event_loop()
+        start = loop.time()
         last = -1
         try:
             while not gen_task.done():
                 await asyncio.sleep(SD_PROGRESS_POLL_S)
                 if gen_task.done():
                     break
-                if self._sd is None:
-                    return
-                pct = int(await self._sd.progress() * 100)
+                elapsed = loop.time() - start
+                pct = int(95 * elapsed / (elapsed + SD_PROGRESS_HALFLIFE_S))
                 if pct > last and 0 < pct < 100:
                     last = pct
                     await self._safe_send(conn, ChunkFrame(request_id, delta="", done=False, progress=pct))

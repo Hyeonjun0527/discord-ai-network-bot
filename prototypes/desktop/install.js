@@ -48,12 +48,12 @@ export function watchSetup(k) { return _trackSetup(k, undefined, false); }
 
 // ── 카탈로그 밖 임의 HuggingFace 모델 설치(유저 자율). 서버에 다운로드 시작 후 동일 진행 UI 로 폴링. ──
 // _trackSetup 과 달리 startSetup 대신 installCustomSdModel 로 시작하고, 첫 'idle' 레이스를 피해 'started' 후부터 갱신.
-export function installCustomImage(url) {
+export function installCustomImage(url, base) {
   const id = 'inst-image';
   let dismissed = false;
   return new Promise((resolve) => {
     toast('이미지 모델 설치 중', { type: 'run', sticky: true, id, sub: '다운로드 준비 중', progress: 0, onClose: () => { dismissed = true; } });
-    api.installCustomSdModel(url);
+    api.installCustomSdModel(url, base);
     let started = false;
     const timer = setInterval(async () => {
       const p = await api.getSetupProgress('image');
@@ -96,7 +96,10 @@ export function openInstall(k) {
       '<div class="wiz-custom"><label>직접 추가 (HuggingFace 링크)</label>' +
       '<div class="wiz-custom-row"><input id="hfUrl" type="text" placeholder="https://huggingface.co/…/resolve/main/모델.safetensors" />' +
       '<button class="btn btn--sm btn--primary" id="hfAdd">추가</button></div>' +
-      '<p class="msub">모델 파일(.safetensors) 페이지에서 “Copy download link” 한 URL 을 붙여넣으세요.</p></div>' +
+      '<div class="wiz-base"><span>종류</span>' +
+      '<label><input type="radio" name="hfBase" value="sd15" checked> SD 1.5 (512)</label>' +
+      '<label><input type="radio" name="hfBase" value="sdxl"> SDXL (1024)</label></div>' +
+      '<p class="msub">모델 파일(.safetensors) 페이지에서 “Copy download link” 한 URL 을 붙여넣고, 모델 종류를 고르세요(SDXL 은 1024 로 생성).</p></div>' +
       '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-act="cancel">취소</button></div>';
     card.querySelectorAll('[data-model]').forEach((el) => el.onclick = () => { close(); installRuntime('image', el.dataset.model); });
     const hfAdd = card.querySelector('#hfAdd');
@@ -105,7 +108,8 @@ export function openInstall(k) {
       if (!url.includes('huggingface.co') || !(url.endsWith('.safetensors') || url.endsWith('.ckpt'))) {
         toast('HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요', { type: 'error' }); return;
       }
-      close(); installCustomImage(url);
+      const base = (card.querySelector('input[name="hfBase"]:checked') || {}).value || 'sd15';
+      close(); installCustomImage(url, base);
     };
     card.querySelectorAll('[data-act]').forEach((el) => el.onclick = close);
   });

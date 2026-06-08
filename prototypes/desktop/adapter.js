@@ -560,10 +560,10 @@ export const api = {
     return (await http(ENDPOINTS.sdModels)).models || [];
   },
 
-  /** 카탈로그 밖 임의 HuggingFace 모델 설치 시작 — webui.py /api/sd/install-custom (진행은 setup-progress 폴링) */
-  async installCustomSdModel(url) {
+  /** 카탈로그 밖 임의 HuggingFace 모델 설치 시작 — webui.py /api/sd/install-custom. base: 'sd15'|'sdxl'(해상도). */
+  async installCustomSdModel(url, base) {
     /* @proto-only */ if (USE_MOCK) { await delay(80); return { ok: true }; } /* @end-proto-only */
-    return http(ENDPOINTS.sdInstallCustom, { method: 'POST', body: JSON.stringify({ url }) });
+    return http(ENDPOINTS.sdInstallCustom, { method: 'POST', body: JSON.stringify({ url, base: base || '' }) });
   },
 
   /** 설치된 SD 모델 목록 + 활성 모델 — webui.py /api/sd/installed (로컬 실행 탭 모델 전환) */

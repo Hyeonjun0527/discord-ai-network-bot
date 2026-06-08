@@ -119,11 +119,22 @@ def custom_model_from_url(url: str) -> dict[str, str] | None:
     }
 
 
-async def download_custom_model(url: str, sd_url: str) -> bool:
+def _save_custom_base(filename: str, base: str) -> None:
+    """커스텀 모델의 base(sd15/sdxl)를 config 에 저장 — 생성 해상도 판정(resolution_for_checkpoint)용."""
+    if base not in ("sd15", "sdxl"):
+        return
+    from .config_file import load_config, persist_partial
+
+    bases = dict(load_config().get("custom_bases") or {})
+    bases[filename] = base
+    persist_partial({"custom_bases": bases})
+
+
+async def download_custom_model(url: str, sd_url: str, base: str = "") -> bool:
     """HuggingFace 커스텀 체크포인트를 모델 폴더로 받는다. 진행률은 progress() 로 노출.
 
-    SD.Next 가 이미 설치돼 있으면 파일만 추가(설치 후 installed_models() 에 나타나고 로컬 실행 탭에서
-    선택·핫스왑). 미설치면 이 모델로 전체 설치(run_setup) 를 돌린다. 형식 안 맞으면 에러.
+    base("sd15"|"sdxl"): 생성 해상도 판정용(SDXL 커스텀이면 1024). SD.Next 가 이미 설치돼 있으면 파일만
+    추가(설치 후 installed_models() 에 나타나고 로컬 실행 탭에서 선택·핫스왑). 미설치면 전체 설치. 형식 안 맞으면 에러.
     """
     global _cancel
     _cancel = False
@@ -132,6 +143,7 @@ async def download_custom_model(url: str, sd_url: str) -> bool:
     if model is None:
         _set("error", 0, "HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요(예: …/resolve/main/모델.safetensors).", error="bad-url")
         return False
+    _save_custom_base(model["filename"], base)  # base 먼저 저장(다운로드 성공 전에도 해상도 매핑되게)
     if not is_installed():
         return await run_setup(sd_url, custom_url=url)  # SD.Next 자체가 없으면 이 모델로 전체 설치
     dest = model_dir() / model["filename"]
@@ -166,6 +178,15 @@ def resolution_for_checkpoint(checkpoint: str | None) -> tuple[int, int]:
             stem = fn.rsplit(".", 1)[0]  # SD.Next 는 확장자 없이 "AnythingV5V3_v5PrtRE" 처럼 보고한다
             if fn in checkpoint or stem in checkpoint:
                 return (1024, 1024) if m.get("base") == "sdxl" else (512, 512)
+        # 커스텀(카탈로그 밖) 모델: 설치 시 저장한 base 로 판정(SDXL 커스텀도 1024 로).
+        from .config_file import load_config
+
+        bases = load_config().get("custom_bases") or {}
+        if isinstance(bases, dict):
+            for fn, base in bases.items():
+                stem = str(fn).rsplit(".", 1)[0]
+                if str(fn) in checkpoint or (stem and stem in checkpoint):
+                    return (1024, 1024) if base == "sdxl" else (512, 512)
     return (512, 512)
 
 

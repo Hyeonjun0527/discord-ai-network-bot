@@ -624,3 +624,13 @@ def test_launch_only_spawns_when_installed(monkeypatch, tmp_path):
     assert spawned["cmd"][0] == "bash"  # webui.sh 기동
     # clone/모델 다운로드는 안 함(기동 전용). venv 의존성 보강(ensure_extra_deps)은 허용.
     assert not any("clone" in " ".join(str(x) for x in c) for c in ran)
+
+
+def test_resolution_custom_base(monkeypatch):
+    import provider_agent.config_file as cf
+    monkeypatch.setattr(cf, "load_config", lambda *a, **k: {"custom_bases": {"my-sdxl-merge.safetensors": "sdxl"}})
+    # 커스텀 SDXL → 1024(확장자 없이 보고돼도 stem 매칭)
+    assert sd_mod.resolution_for_checkpoint("my-sdxl-merge [abc]") == (1024, 1024)
+    assert sd_mod.resolution_for_checkpoint("my-sdxl-merge.safetensors") == (1024, 1024)
+    # 등록 안 된 커스텀 → 512
+    assert sd_mod.resolution_for_checkpoint("unknown-merge") == (512, 512)

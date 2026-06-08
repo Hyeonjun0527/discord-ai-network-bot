@@ -1313,7 +1313,8 @@ def build_app(session_key: str) -> web.Application:
                 {"ok": False, "error": "HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요(…/resolve/main/모델.safetensors)."}
             )
         sd_url = load_config().get("sd_url") or "http://127.0.0.1:7860"
-        asyncio.create_task(sd_setup.download_custom_model(hf_url, sd_url))
+        base = str((data or {}).get("base") or "")  # sd15|sdxl — SDXL 커스텀이면 1024 로 생성
+        asyncio.create_task(sd_setup.download_custom_model(hf_url, sd_url, base))
         return web.json_response({"ok": True})
 
     async def sd_start(req: web.Request) -> web.Response:

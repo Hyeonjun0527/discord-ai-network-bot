@@ -167,26 +167,41 @@ def is_installed() -> bool:
     return False
 
 
+def _spawn_detached(cmd: list[str]) -> None:
+    """명령을 띄우고 **기다리지 않는다**(fire-and-forget, 독립 세션). 결과가 불필요하고 블로킹이
+    치명적인 경우 전용(GUI 종료 인계). ``launchctl kickstart`` 는 일부 머신에서 반환이 매우 늦거나
+    사실상 블록되는데(실증: 6s 이상 hang), 이걸 동기 대기하면 앱 종료가 hang('응답없음')한다.
+    start_new_session 으로 분리해 부모가 os._exit 해도 살아남아 인계를 마친다."""
+    subprocess.Popen(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
 def kickstart() -> bool:
-    """등록된 백그라운드 서비스를 **지금 즉시** 띄운다(GUI 종료 시 연결 인계용). 성공하면 True.
+    """등록된 백그라운드 서비스를 **지금 즉시** 띄운다(GUI 종료 시 연결 인계용). 요청을 보냈으면 True.
 
     GUI 가 열려 있는 동안엔 서비스가 singleton 으로 빠지므로(정상종료·KeepAlive 미적용) 백그라운드가
     비어 있다. 창을 닫을 때 이 함수로 서비스를 명시적으로 띄워 끊김 없이 백그라운드 연결로 넘긴다.
+    **반드시 비블로킹**(detached) — 종료 경로에서 호출되므로 대기하면 앱이 hang 한다(실증).
     """
     if not is_installed():
         return False
     system = platform.system()
     try:
         if system == "Darwin":
-            _run(["launchctl", "kickstart", "-k", _mac_domain_target()])
+            _spawn_detached(["launchctl", "kickstart", "-k", _mac_domain_target()])
             return True
         if system == "Linux":
-            _run(["systemctl", "--user", "restart", SERVICE_NAME])
+            _spawn_detached(["systemctl", "--user", "restart", SERVICE_NAME])
             return True
         if system == "Windows":
-            _run(["schtasks", "/run", "/tn", SERVICE_NAME])
+            _spawn_detached(["schtasks", "/run", "/tn", SERVICE_NAME])
             return True
-    except (RuntimeError, OSError) as exc:
+    except OSError as exc:
         logger.warning("백그라운드 서비스 kickstart 실패: %s", exc)
     return False
 

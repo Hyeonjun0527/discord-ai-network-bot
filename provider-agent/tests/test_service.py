@@ -101,10 +101,14 @@ def test_kickstart_macos(monkeypatch):
     monkeypatch.setattr(svc.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(svc, "is_installed", lambda: True)
     monkeypatch.setattr(svc.os, "getuid", lambda: 501)
-    calls = _ok_run(monkeypatch)
+    # kickstart 는 **비블로킹**(detached) 이어야 한다 — 종료 경로에서 호출되므로 동기 대기 시 앱이 hang.
+    # 따라서 _run(대기) 이 아니라 _spawn_detached(fire-and-forget) 로 띄워야 한다(실증 회귀 방지).
+    spawned: list[list[str]] = []
+    monkeypatch.setattr(svc, "_spawn_detached", lambda cmd: spawned.append(list(cmd)))
+    monkeypatch.setattr(svc, "_run", lambda *a, **k: pytest.fail("kickstart 가 블로킹 _run 을 쓰면 안 됨"))
     assert svc.kickstart() is True
-    assert any("kickstart" in c for c in calls)
-    assert any("gui/501/" + svc.SERVICE_LABEL in c for c in calls)
+    assert any("kickstart" in c for cmd in spawned for c in cmd)
+    assert any("gui/501/" + svc.SERVICE_LABEL in c for cmd in spawned for c in cmd)
 
 
 def test_kickstart_noop_when_not_installed(monkeypatch):

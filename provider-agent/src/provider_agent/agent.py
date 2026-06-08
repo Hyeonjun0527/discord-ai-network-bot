@@ -229,9 +229,15 @@ class ProviderAgent:
     def __init__(self, cfg: AgentConfig, ollama: OllamaClient | None = None, sd=None) -> None:
         self._cfg = cfg
         self._ollama = ollama or OllamaClient(cfg.ollama_url, cfg.request_timeout)
-        # 로컬 SD(이미지 생성)는 opt-in(--enable-image). 런타임 health 로 capability 확정(SD Phase 1).
+        # 로컬 이미지 백엔드(opt-in --enable-image). comfy_url 이 있으면 **ComfyUI**, 아니면 **SD.Next**.
+        # 둘 다 동일한 txt2img/health 인터페이스라 _handle_image 는 그대로(유저가 어떤 이미지 도구든 쓰게).
+        self._image_backend = "comfyui" if cfg.comfy_url else "sdnext"
         if sd is not None:
             self._sd = sd
+        elif cfg.enable_image and cfg.comfy_url:
+            from .comfy import ComfyClient
+
+            self._sd = ComfyClient(cfg.comfy_url, cfg.request_timeout)
         elif cfg.enable_image:
             from .sd import SDClient
 
@@ -498,8 +504,9 @@ class ProviderAgent:
         await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
 
     async def _generate_image_with_retry(self, conn: AgentConnection, req: InferRequest) -> str | None:
-        """txt2img 를 진행률 추정과 함께 실행. SD 가 생성 중 죽으면(SDError) 1회 재기동·재시도.
+        """txt2img 를 진행률 추정과 함께 실행. 백엔드(SD.Next/ComfyUI)가 생성 중 죽으면 1회 재기동·재시도.
         성공 시 base64 PNG, 실패 시 InferError 송신 후 None."""
+        from .comfy import ComfyError
         from .sd import SDError
 
         w, h = await self._resolution()  # 생성 직전(비동시) 1회 — SDXL 1024 vs SD1.5 512
@@ -509,7 +516,7 @@ class ProviderAgent:
             prog_task = asyncio.create_task(self._emit_estimated_progress(conn, req.request_id, gen_task))
             try:
                 return await gen_task
-            except SDError as exc:
+            except (SDError, ComfyError) as exc:
                 if attempt == 0 and await self._recover_sd():
                     logger.warning("SD 가 생성 중 종료된 듯 — 재기동 후 1회 재시도: %s", exc)
                     continue
@@ -543,7 +550,8 @@ class ProviderAgent:
         self._sd_wh = None
 
     async def _recover_sd(self) -> bool:
-        """SD.Next 가 죽었으면 재기동하고 준비될 때까지 기다린다(생성 재시도 직전). 성공 True."""
+        """이미지 백엔드가 죽었으면 재기동·재확인(생성 재시도 직전). 성공 True.
+        ComfyUI 는 유저가 직접 실행하므로 자동 기동하지 않고 health 만 재확인한다(SD.Next 만 launch_only)."""
         if self._sd is None:
             return False
         from . import sd_setup
@@ -551,6 +559,8 @@ class ProviderAgent:
         try:
             if await self._sd.health():
                 return True  # 이미 살아있음(일시적 네트워크 오류였음)
+            if self._image_backend == "comfyui":
+                return False  # ComfyUI 는 우리가 띄우지 않음 — health 만 보고 회복 못하면 포기
             ok = await sd_setup.launch_only(self._cfg.sd_url)
             if ok and await self._sd.health():
                 await self._sd.set_output_png()
@@ -1040,6 +1050,13 @@ class ProviderAgent:
         """
         from . import sd_setup
 
+        if self._image_backend == "comfyui":
+            # ComfyUI 는 유저가 직접 실행 — 자동 설치/기동 안 함. health 면 재광고, 아니면 조용히 대기.
+            if self._sd is not None and await self._sd.health():
+                self._image_ready = True
+                self._invalidate_resolution()
+                await self._readvertise()
+            return
         if not sd_setup.is_installed() or sd_setup.is_busy():
             return
         logger.info("SD 가 꺼져 있어 자동 기동을 시도합니다(설치돼 있음)…")
@@ -1104,9 +1121,14 @@ class ProviderAgent:
             self._sd_boot_task = None
         if on:
             if self._sd is None:
-                from .sd import SDClient
+                if self._image_backend == "comfyui":
+                    from .comfy import ComfyClient
 
-                self._sd = SDClient(self._cfg.sd_url, self._cfg.request_timeout)
+                    self._sd = ComfyClient(self._cfg.comfy_url, self._cfg.request_timeout)
+                else:
+                    from .sd import SDClient
+
+                    self._sd = SDClient(self._cfg.sd_url, self._cfg.request_timeout)
             self._image_ready = await self._sd.health()
             if self._image_ready:
                 await self._sd.set_output_png()  # SD.Next 기본 JPEG → PNG

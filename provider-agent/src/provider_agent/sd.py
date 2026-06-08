@@ -54,10 +54,17 @@ class SDClient:
         """프롬프트로 이미지를 생성해 **base64 PNG**(첫 장)을 반환한다. 오류 시 SDError.
 
         options 는 화이트리스트로 걸러지고 크기/steps 가 안전 상한으로 클램프된다.
+        크기 기본은 **512×512** — SD.Next 기본(1024)은 SD 1.5 에서 느리고(맥 MPS ~2분/장) 품질도 나쁘다.
+        SD 1.5 native 인 512 로 두면 ~4배 빠르고 품질도 좋다(옵션으로 width/height 주면 재정의).
         """
         payload: dict[str, object] = {"prompt": prompt}
         payload.update(filter_sd_options(options))
         payload.setdefault("steps", 20)
+        payload.setdefault("width", 512)
+        payload.setdefault("height", 512)
+        # 샘플러 기본은 DPM++ 2M — Apple Silicon(MPS) 권장(웹 리서치): SDE/Heun 대비 빠르고 품질 좋음.
+        # 실측(맥 MPS, 512, 20steps): DPM++ 2M ~14s vs 기본 ~30s vs 1024 ~121s. 옵션으로 재정의 가능.
+        payload.setdefault("sampler_name", "DPM++ 2M")
         url = f"{self._base}/sdapi/v1/txt2img"
         try:
             async with aiohttp.ClientSession(timeout=self._timeout) as s:

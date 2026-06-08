@@ -271,7 +271,11 @@ jobs:
             provider-agent/packaging/scoop/nexa.json > dist/pkg/nexa.json
           echo "렌더된 매니페스트:"; ls -R dist/pkg
       # SBOM(소프트웨어 자재명세서) — provider-agent 의존성 그래프를 SPDX 로 생성.
+      # 부가 산출물 — syft 를 GitHub 에서 받는데 CDN 504 가 잦다(실증, 반복 릴리스 실패 원인). 릴리스를
+      # 막지 않게 continue-on-error(SBOM 이 없어도 바이너리·체크섬·attestation 으로 검증 가능).
       - name: SBOM 생성(syft/SPDX)
+        id: sbom
+        continue-on-error: true
         uses: anchore/sbom-action@v0
         with:
           path: provider-agent
@@ -281,11 +285,14 @@ jobs:
       # GitHub artifact attestation — 바이너리 빌드 출처(provenance) 증명.
       - name: 빌드 출처 attestation
         if: startsWith(github.ref, 'refs/tags/agent-v')
+        continue-on-error: true
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: dist/nexa-agent-*
       - name: SBOM attestation
-        if: startsWith(github.ref, 'refs/tags/agent-v')
+        # SBOM 생성이 성공했을 때만(파일이 있을 때만) — 부가 산출물이라 릴리스를 막지 않는다.
+        if: startsWith(github.ref, 'refs/tags/agent-v') && steps.sbom.outcome == 'success'
+        continue-on-error: true
         uses: actions/attest-sbom@v2
         with:
           subject-path: dist/nexa-agent-linux

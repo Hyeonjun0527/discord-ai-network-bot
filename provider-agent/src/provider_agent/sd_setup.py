@@ -40,6 +40,12 @@ logger = logging.getLogger("provider_agent.sd_setup")
 # 플래그·CLIP/setuptools/stablediffusion 우회가 불필요(자체 인스톨러가 처리).
 # self-update 가 기본이라 default 브랜치를 클론하면 최신을 유지한다.
 SDNEXT_REPO = "https://github.com/vladmandic/sdnext.git"
+# SD.Next 를 **검증된 커밋으로 핀**한다. default(master)는 self-update 라인이라 업스트림/의존성이
+# 깨진 시점에 설치하면 첫 실행이 깨진다(업스트림 부패 전례: A1111 stablediffusion repo 404·
+# setuptools≥81 CLIP). 이 커밋은 이 개발 머신에서 실이미지 생성까지 검증된 버전(2026-05-14, master).
+# GitHub 은 reachable SHA 의 shallow fetch 를 허용하므로 init+fetch --depth1 <sha>+checkout 로 고정한다.
+# 비우면("") 옛 동작(default 브랜치 clone)으로 폴백. 갱신 시 새 커밋을 실제 검증 후 교체할 것.
+SDNEXT_PIN = "dedb130b2c15ef9d91f9593213ccffcb70d98be4"
 
 # 설치 마법사에서 고르는 로컬 이미지 모델(체크포인트). 명령어가 아니라 데이터라 여기서 SSOT.
 # base: "sd15"|"sdxl" — 생성 해상도(512 vs 1024) 결정에 쓴다(resolution_for_checkpoint).
@@ -394,8 +400,25 @@ def has_model(directory: pathlib.Path | None = None) -> bool:
 
 
 def clone_command(directory: pathlib.Path | None = None) -> list[str]:
-    """SD.Next repo 를 얕게 클론하는 명령(default 브랜치 = 최신·self-update 라인)."""
+    """[레거시/폴백] SD.Next repo 를 얕게 클론(default 브랜치). 핀이 없을 때만 쓰인다."""
     return ["git", "clone", "--depth", "1", SDNEXT_REPO, str(directory or install_dir())]
+
+
+def clone_commands(directory: pathlib.Path | None = None) -> list[list[str]]:
+    """SD.Next 를 받는 명령 **시퀀스**. SDNEXT_PIN 이 있으면 그 커밋으로 고정(shallow), 없으면 레거시 clone.
+
+    핀 고정은 단일 ``git clone`` 으로 안 된다(임의 SHA 는 --branch 불가) → init+remote+fetch --depth1 <sha>+
+    checkout 으로 정확히 그 커밋만 받는다. 업스트림 master 가 움직여도 우리는 검증된 버전만 설치한다.
+    """
+    d = str(directory or install_dir())
+    if not SDNEXT_PIN:
+        return [clone_command(directory)]
+    return [
+        ["git", "init", d],
+        ["git", "-C", d, "remote", "add", "origin", SDNEXT_REPO],
+        ["git", "-C", d, "fetch", "--depth", "1", "origin", SDNEXT_PIN],
+        ["git", "-C", d, "checkout", "FETCH_HEAD"],
+    ]
 
 
 def first_model_path(directory: pathlib.Path | None = None) -> pathlib.Path | None:
@@ -663,13 +686,28 @@ async def run_setup(sd_url: str, model_id: str | None = None, custom_url: str | 
         # 2) 설치(clone)
         if not is_installed(directory):
             directory.parent.mkdir(parents=True, exist_ok=True)
+            pinned = bool(SDNEXT_PIN)
             _set("installing", 15, "Stable Diffusion 내려받는 중… (git clone)")
-            code, log = await _run(clone_command(directory), timeout=1800)
-            if _cancelled():
-                return False
-            if code != 0 or not is_installed(directory):
-                _set("error", 15, "Stable Diffusion 설치 실패", error=log[-400:] or "clone-failed")
-                return False
+            last_log = ""
+            for step in clone_commands(directory):
+                code, log = await _run(step, timeout=1800)
+                last_log = log
+                if _cancelled():
+                    return False
+                if code != 0:
+                    break
+            if not is_installed(directory):
+                # 핀 fetch 실패(SHA 미reachable·네트워크 등) → 검증 안 된 최신이라도 받게 1회 폴백.
+                if pinned:
+                    import shutil
+
+                    shutil.rmtree(directory, ignore_errors=True)
+                    code, last_log = await _run(clone_command(directory), timeout=1800)
+                    if _cancelled():
+                        return False
+                if not is_installed(directory):
+                    _set("error", 15, "Stable Diffusion 설치 실패", error=last_log[-400:] or "clone-failed")
+                    return False
 
         # 2.5) venv 를 지원 Python 으로 만들고 자동설치 안 되는 필수 의존성(torchsde) 시드 — 첫 실행 깨짐 방지.
         _set("installing", 30, "이미지 엔진 의존성 준비 중…")

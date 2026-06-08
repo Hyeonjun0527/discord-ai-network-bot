@@ -56,6 +56,8 @@ const MOCK = {
     hasToken: true, relayUrl: 'wss://discord-ai.yeon.world/agent', backgroundRunning: false, background: false, connectEnabled: true,
     version: '0.31.0', geminiConfigured: false, comfyUrl: '',
   },
+  // ComfyUI 라이프사이클 상태는 별도 엔드포인트(/api/comfy/status)라 status shape 와 분리한다.
+  comfy: { installed: false, running: false },
   logs: [
     '09:12:03 INFO | 에이전트 시작 (Nexa v0.31.0)',
     '09:12:03 INFO | 중앙 서버 연결: wss://discord-ai.yeon.world/agent',
@@ -530,6 +532,47 @@ export const api = {
   async startSetup(runtime, model) { // runtime: 'ollama' | 'image', model: SD 모델 id(선택)
     /* @proto-only */ if (USE_MOCK) { _setup[runtime] = { start: Date.now(), model }; await delay(50); return { ok: true, started: true }; } /* @end-proto-only */
     return post(runtime === 'image' ? ENDPOINTS.sdSetup : ENDPOINTS.ollamaSetup, model ? { model } : {});
+  },
+
+  // ── ComfyUI(1급 이미지 엔진) — 앱이 설치/실행/정지/웹UI 직접 관리 ──────────────
+  /** ComfyUI 상태 — {installed, running, busy}. */
+  async comfyStatus() {
+    /* @proto-only */ if (USE_MOCK) { await delay(40); return { installed: !!MOCK.comfy.installed, running: !!MOCK.comfy.running, busy: false }; } /* @end-proto-only */
+    return http(ENDPOINTS.comfyStatus);
+  },
+  /** ComfyUI 설치 시작(핀 clone→3.13 venv→torch/deps→기동). 진행은 comfySetupProgress 폴링. */
+  async installComfy() {
+    /* @proto-only */ if (USE_MOCK) { _setup.comfy = { start: Date.now() }; await delay(50); return { ok: true }; } /* @end-proto-only */
+    return post(ENDPOINTS.comfySetup);
+  },
+  /** ComfyUI 설치 진행률 — { phase, percent, message, error }. */
+  async comfySetupProgress() {
+    /* @proto-only */
+    if (USE_MOCK) {
+      const s = _setup.comfy; if (!s) return { phase: 'idle', percent: 0, message: '' };
+      const sec = (Date.now() - s.start) / 1000, pct = Math.min(100, Math.round(sec / 8 * 100));
+      if (pct >= 100) { MOCK.comfy.installed = true; MOCK.comfy.running = true; return { phase: 'done', percent: 100, message: 'ComfyUI 준비 완료' }; }
+      if (pct >= 90) return { phase: 'starting', percent: pct, message: 'ComfyUI 시작 중' };
+      if (pct >= 45) return { phase: 'installing', percent: pct, message: 'PyTorch·의존성 설치 중' };
+      return { phase: 'installing', percent: pct, message: 'ComfyUI 내려받는 중' };
+    }
+    /* @end-proto-only */
+    return http(ENDPOINTS.comfySetupProgress);
+  },
+  /** 설치된 ComfyUI 기동. */
+  async comfyStart() {
+    /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.comfy.running = true; return { ok: true }; } /* @end-proto-only */
+    return post(ENDPOINTS.comfyStart);
+  },
+  /** ComfyUI 정지. */
+  async comfyStop() {
+    /* @proto-only */ if (USE_MOCK) { await delay(60); MOCK.comfy.running = false; return { ok: true }; } /* @end-proto-only */
+    return post(ENDPOINTS.comfyStop);
+  },
+  /** ComfyUI 웹UI 를 시스템 브라우저로 연다. */
+  async comfyOpen() {
+    /* @proto-only */ if (USE_MOCK) { await delay(40); return { ok: !!MOCK.comfy.running, error: MOCK.comfy.running ? undefined : 'ComfyUI 가 실행 중이 아니에요. 먼저 시작하세요.' }; } /* @end-proto-only */
+    return post(ENDPOINTS.comfyOpen);
   },
 
   /**

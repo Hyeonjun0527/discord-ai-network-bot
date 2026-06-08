@@ -44,6 +44,10 @@ object SlashCommandCatalog {
             Commands
                 .slash("imagine", "커뮤니티 로컬 Stable Diffusion 으로 이미지를 생성합니다")
                 .addOption(OptionType.STRING, "prompt", "만들고 싶은 이미지 설명", true),
+            // 관리자가 클라우드 AI(Gemini) 키 하나로 서버 전체에 무료 제공 — 모델 고정(gemini-2.5-flash-lite).
+            Commands
+                .slash("free-ask", "무료 클라우드 AI(Gemini)에게 질문합니다")
+                .addOption(OptionType.STRING, "prompt", "질문 내용", true),
             Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
             Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
             Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),

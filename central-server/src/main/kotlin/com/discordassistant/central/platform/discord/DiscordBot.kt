@@ -421,13 +421,16 @@ class DiscordBot(
 
             // 추론으로 오래 걸리는 명령 — 게이트웨이 스레드 밖(전용 풀)에서 처리한다.
             // ai-onboard 는 위 switch 에서 직접 defer + executor 로 처리하므로 여기 포함하지 않는다.
-            private val SLOW_COMMANDS = setOf("ask", "imagine")
+            private val SLOW_COMMANDS = setOf("ask", "free-ask", "imagine")
 
             /** /ai-onboard 본문 백필 수집 상한(JDA 레이트리밋·메모리 보호). */
             private const val MAX_ONBOARD_HISTORY_LIMIT = 200
 
+            /** /무료질문 이 고정 라우팅하는 클라우드 무료 모델(provider-agent 의 Gemini 백엔드가 광고). */
+            private const val FREE_CLOUD_MODEL = "gemini-2.5-flash-lite"
+
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
-            private val PUBLIC_COMMANDS = setOf("ask", "imagine", "contributions", "community-stats", "welcome", "level")
+            private val PUBLIC_COMMANDS = setOf("ask", "free-ask", "imagine", "contributions", "community-stats", "welcome", "level")
             private const val CHANNEL_PROFILE_EDIT = "channel-profile:edit"
             private const val CHANNEL_PROFILE_AVATAR = "channel-profile:avatar"
             private const val CHANNEL_PROFILE_RESET = "channel-profile:reset"
@@ -834,6 +837,15 @@ class DiscordBot(
                         requestedModel = event.getOption("model")?.asString,
                         requestedResponseMode = event.getOption("mode")?.asString,
                         webSearch = event.getOption("web")?.asBoolean ?: false,
+                    )
+                // 무료질문 = 관리자 클라우드 AI(Gemini) 고정. 풀에 gemini-2.5-flash-lite 가 광고돼 있으면 그리로 라우팅.
+                "free-ask" ->
+                    commands.ask(
+                        ctx,
+                        event.getOption("prompt")?.asString.orEmpty(),
+                        requestedModel = FREE_CLOUD_MODEL,
+                        requestedResponseMode = null,
+                        webSearch = false,
                     )
                 "imagine" -> commands.imagine(ctx, event.getOption("prompt")?.asString.orEmpty())
                 "models" -> commands.models(ctx)

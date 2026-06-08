@@ -634,3 +634,27 @@ def test_resolution_custom_base(monkeypatch):
     assert sd_mod.resolution_for_checkpoint("my-sdxl-merge.safetensors") == (1024, 1024)
     # 등록 안 된 커스텀 → 512
     assert sd_mod.resolution_for_checkpoint("unknown-merge") == (512, 512)
+
+
+def test_download_custom_model_bad_url():
+    import asyncio as _a
+    ok = _a.run(sd_mod.download_custom_model("not-a-hf-url", "http://127.0.0.1:7860"))
+    assert ok is False
+    assert sd_mod.progress()["error"] == "bad-url"
+
+
+def test_download_custom_model_already_present(tmp_path, monkeypatch):
+    import asyncio as _a
+    md = tmp_path / "models" / "Stable-diffusion"
+    md.mkdir(parents=True)
+    (md / "foo.safetensors").write_bytes(b"x")
+    monkeypatch.setattr(sd_mod, "install_dir", lambda: tmp_path)
+    monkeypatch.setattr(sd_mod, "is_installed", lambda *a, **k: True)
+    import provider_agent.config_file as cf
+    saved = {}
+    monkeypatch.setattr(cf, "load_config", lambda *a, **k: dict(saved))
+    monkeypatch.setattr(cf, "persist_partial", lambda d, *a, **k: saved.update(d))
+    ok = _a.run(sd_mod.download_custom_model("https://huggingface.co/a/b/resolve/main/foo.safetensors", "http://127.0.0.1:7860", base="sdxl"))
+    assert ok is True
+    assert sd_mod.progress()["phase"] == "done"
+    assert saved.get("custom_bases", {}).get("foo.safetensors") == "sdxl"  # base 저장됨

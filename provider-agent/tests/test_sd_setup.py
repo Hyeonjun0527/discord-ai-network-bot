@@ -273,6 +273,11 @@ def test_run_setup_reports_webui_exit_with_log(monkeypatch, tmp_path):
     monkeypatch.setattr(sd_mod, "has_git", lambda: True)
     monkeypatch.setattr(sd_mod, "compatible_python", lambda: "python3.11")
 
+    async def _noop_deps(*_a, **_k):  # 이 테스트는 webui-exit 에러 보고만 검증 — 실제 venv/pip 생략(CI 무관)
+        return None
+
+    monkeypatch.setattr(sd_mod, "ensure_extra_deps", _noop_deps)
+
     class _DeadProc:
         returncode = 128  # 예: Stability-AI repo 404 로 클론 실패
 

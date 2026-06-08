@@ -269,6 +269,17 @@
     .rt-model-add { padding: 6px 10px; border-radius: 9px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
     .rt-model-add:hover { color: #fff; border-color: color-mix(in srgb, var(--c-accent) 44%, transparent); }
     .rt-recv { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); flex: 0 0 auto; }
+    /* 클라우드 연결(Gemini) 입력행 + 외부 이미지 엔진(ComfyUI) 고급 disclosure */
+    .rt-cloud { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .rt-cloud .set-input { flex: 1 1 220px; margin-right: 0; }
+    .rt-adv { border: 1px solid var(--line); border-radius: 13px; background: rgba(10, 16, 28, .5); padding: 4px 14px; }
+    .rt-adv > summary { cursor: pointer; list-style: none; padding: 11px 0; font-size: 13px; font-weight: 600; color: var(--subtle); }
+    .rt-adv > summary::-webkit-details-marker { display: none; }
+    .rt-adv > summary::before { content: "▸ "; }
+    .rt-adv[open] > summary::before { content: "▾ "; }
+    .rt-adv[open] > summary { color: var(--muted); }
+    .rt-adv-body { padding: 2px 0 14px; }
+    .rt-adv-desc { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
 
     /* 설정 화면 */
     .set-group { margin-top: 24px; }
@@ -1449,7 +1460,22 @@
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">Stable Diffusion <span style="font-weight:500;color:var(--subtle)">이미지</span></div>' +
         '<div class="rt-state">' + sdState + '</div>' + sdModelSel + '</div>' + sdAction + '</div>';
 
-      rtWrap.innerHTML = ollamaCard + sdCard;
+      // 클라우드 연결(Gemini) — '엔진' 관심사라 로컬 실행이 소유한다. 키는 이 PC 에만 저장.
+      //   연결되면 모델 탭에 '클라우드 텍스트' 모델로 등장 → 다른 모델처럼 서버별로 켜고 끈다('서버 전체 무료' 프레이밍 폐기).
+      const gemOn = !!s.geminiConfigured;
+      const cloudCard = '<div class="rt-row' + (gemOn ? ' ready' : '') + '" style="grid-column:1/-1">' +
+        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">클라우드 연결 <span style="font-weight:500;color:var(--subtle)">Gemini · 텍스트</span></div>' +
+        '<div class="rt-state">' + (gemOn
+          ? '연결됨 · 이 PC 의 키로 클라우드 모델을 제공해요(모델 탭에서 서버별로 켜고 꺼요)'
+          : '이 PC 의 API 키로 클라우드 AI를 모델로 추가해요 — 다른 모델처럼 서버별로 제공돼요 (aistudio.google.com/apikey)') + '</div>' +
+        '<div class="rt-cloud"><input id="localGemini" type="password" placeholder="' + (gemOn ? '••••• 연결됨(바꾸려면 입력)' : 'AIza… 키 붙여넣기') + '" class="set-input"><button class="btn btn--sm btn--primary" id="localGeminiSave">' + (gemOn ? '변경' : '연결') + '</button></div></div></div>';
+      // 이미지 엔진 고급 — 기본은 앱이 관리하는 SD.Next. 직접 띄운 ComfyUI 가 있으면 URL 연결(고급). 비우면 SD.Next.
+      const comfyOn = !!(s.comfyUrl && s.comfyUrl.length);
+      const comfyAdv = '<details class="rt-adv" style="grid-column:1/-1"' + (comfyOn ? ' open' : '') + '>' +
+        '<summary>고급 · 외부 이미지 엔진(ComfyUI) 연결' + (comfyOn ? ' — 사용 중' : '') + '</summary>' +
+        '<div class="rt-adv-body"><div class="rt-adv-desc">기본 이미지 엔진은 앱이 관리하는 SD.Next 예요. 직접 띄운 ComfyUI 가 있으면 그 주소를 입력하세요(직접 실행·관리). 비우면 SD.Next 로 돌아가요.</div>' +
+        '<div class="rt-cloud"><input id="localComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="http://127.0.0.1:8188" class="set-input"><button class="btn btn--sm btn--secondary" id="localComfySave">저장</button></div></div></details>';
+      rtWrap.innerHTML = ollamaCard + sdCard + cloudCard + comfyAdv;
 
       // 이미지 모델 전환(핫스왑 — 고품질 SDXL 은 로딩에 수십 초)
       const sdSel = document.getElementById('sdModelSelect');
@@ -1511,6 +1537,33 @@
           imgSw.classList.toggle('on', !on); imgSw.setAttribute('aria-checked', String(!on));
           toast('변경 실패 — 네트워크를 확인하세요', { type: 'error' });
         }
+      };
+      // 클라우드 연결(Gemini) 저장 — 입력했을 때만 전송(빈 입력은 무시). 연결되면 모델 탭에 클라우드 모델로 등장.
+      const gemSave = document.getElementById('localGeminiSave');
+      if (gemSave) gemSave.onclick = async () => {
+        const key = (document.getElementById('localGemini').value || '').trim();
+        if (!key) { toast('AIza… 키를 입력하세요', { type: 'info' }); return; }
+        gemSave.disabled = true;
+        try {
+          const r = await api.setCloud({ geminiApiKey: key }) || {};
+          if (_st) _st.geminiConfigured = true;
+          toast(r.geminiValid === false ? '키 저장됨 — 다만 검증 실패(결제/유효성 확인)' : '클라우드 모델을 연결했어요 — 모델 탭에서 서버별로 켜세요', { type: r.geminiValid === false ? 'info' : 'ok' });
+          await load();
+        } catch (_e) { toast('연결 실패 — 네트워크를 확인하세요', { type: 'error' }); }
+        finally { gemSave.disabled = false; }
+      };
+      // 외부 이미지 엔진(ComfyUI) 저장 — 비우면 SD.Next 로 복귀. 재연결 후 적용.
+      const comfySave = document.getElementById('localComfySave');
+      if (comfySave) comfySave.onclick = async () => {
+        const url = (document.getElementById('localComfy').value || '').trim();
+        comfySave.disabled = true;
+        try {
+          await api.setCloud({ comfyUrl: url });
+          if (_st) _st.comfyUrl = url;
+          toast(url ? '외부 ComfyUI 를 이미지 엔진으로 설정했어요 — 재연결 후 적용' : 'SD.Next 로 되돌렸어요 — 재연결 후 적용', { type: 'info' });
+          await load();
+        } catch (_e) { toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' }); }
+        finally { comfySave.disabled = false; }
       };
     }
 
@@ -1574,16 +1627,10 @@
       const acct = row(s.hasToken ? '연결됨' : '연결 안 됨',
         s.hasToken ? '서버 연결 토큰을 보유하고 있어요.' : '온보딩에서 Discord 에 연결하세요.',
         s.hasToken ? '<button class="btn btn--sm btn--secondary" id="setLogout">연결 해제</button>' : '');
-      const cloudGroup =
-        row('클라우드 AI (Gemini)',
-          s.geminiConfigured ? '✅ 설정됨 — 서버 전체에 무료 제공 중. 디스코드 /무료질문 으로 사용.' : 'API 키 1개로 서버 전체에 무료 AI 제공(aistudio.google.com/apikey). 키는 이 PC 에만 저장.',
-          '<input id="setGemini" type="password" placeholder="' + (s.geminiConfigured ? '••••• 설정됨(바꾸려면 입력)' : 'AIza... 키 붙여넣기') + '" class="set-input"><button class="btn btn--sm btn--primary" id="setGeminiSave">저장</button>') +
-        row('ComfyUI 주소',
-          s.comfyUrl ? ('🎨 이미지 백엔드 = ComfyUI (' + s.comfyUrl + ')') : 'SD.Next 대신 ComfyUI 로 이미지 생성(직접 실행). 비우면 SD.Next.',
-          '<input id="setComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="http://127.0.0.1:8188" class="set-input"><button class="btn btn--sm btn--secondary" id="setComfySave">저장</button>');
+      // 클라우드 AI(Gemini)·이미지 엔진(ComfyUI)은 '엔진' 관심사 → 로컬 실행 탭이 소유한다(설정엔 두지 않음).
+      // 설정은 앱 동작만: 실행 동작·업데이트·연결·계정. AI 백엔드 설정은 여기 없음(IA: 엔진→모델→서버).
       body.innerHTML =
         '<div class="set-group"><div class="sg-title">실행 동작</div>' + exec + '</div>' +
-        '<div class="set-group"><div class="sg-title">클라우드 AI · 이미지 백엔드</div>' + cloudGroup + '</div>' +
         '<div class="set-group"><div class="sg-title">업데이트</div>' + updGroup + '</div>' +
         '<div class="set-group"><div class="sg-title">연결</div>' + connGroup + '</div>' +
         '<div class="set-group"><div class="sg-title">계정</div>' + acct + '</div>';
@@ -1643,33 +1690,6 @@
       if (logout) logout.onclick = async () => {
         if (!confirm('연결을 해제하면 모든 서버 제공이 중단돼요. 계속할까요?')) return;
         await api.logout(); toast('연결을 해제했어요', { type: 'info' }); load();
-      };
-      // 클라우드 AI(Gemini 키) 저장 — 입력했을 때만 전송(빈 입력은 기존 키 유지)
-      const gSave = document.getElementById('setGeminiSave');
-      if (gSave) gSave.onclick = async () => {
-        const key = (document.getElementById('setGemini').value || '').trim();
-        if (!key) { toast('AIza... 키를 입력하세요', { type: 'info' }); return; }
-        gSave.disabled = true;
-        try {
-          const r = await api.setCloud({ geminiApiKey: key }) || {};
-          if (_s) _s.geminiConfigured = true;
-          toast(r.geminiValid === false ? 'Gemini 키 저장됨 — 다만 키 검증 실패(결제/유효성 확인)' : 'Gemini 키 저장·적용했어요 — /무료질문 으로 쓰세요', { type: r.geminiValid === false ? 'info' : 'ok' });
-          render();
-        } catch (_e) { toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' }); }
-        finally { gSave.disabled = false; }
-      };
-      // ComfyUI 주소 저장(이미지 백엔드 전환 — 재연결/재시작에 반영)
-      const cSave = document.getElementById('setComfySave');
-      if (cSave) cSave.onclick = async () => {
-        const url = (document.getElementById('setComfy').value || '').trim();
-        cSave.disabled = true;
-        try {
-          await api.setCloud({ comfyUrl: url });
-          if (_s) _s.comfyUrl = url;
-          toast(url ? 'ComfyUI 를 이미지 백엔드로 설정했어요 — 재연결 후 적용' : 'SD.Next 로 되돌렸어요 — 재연결 후 적용', { type: 'info' });
-          render();
-        } catch (_e) { toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' }); }
-        finally { cSave.disabled = false; }
       };
     }
 

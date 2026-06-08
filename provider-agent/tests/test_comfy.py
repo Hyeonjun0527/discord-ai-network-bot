@@ -45,8 +45,22 @@ def test_agent_selects_comfy_backend_when_url_set():
     assert a._image_backend == "comfyui"
     assert isinstance(a._sd, ComfyClient)
 
-    b = ProviderAgent(AgentConfig(token="T", enable_image=True), ollama=object())  # comfy_url 없음 → SD.Next
+    b = ProviderAgent(AgentConfig(token="T", enable_image=True), ollama=object())  # comfy_url 없음·미설치 → SD.Next
     assert b._image_backend == "sdnext"
+
+
+def test_managed_comfyui_is_default_when_installed(monkeypatch):
+    """comfy_url 이 없어도 앱이 관리하는 ComfyUI 가 설치돼 있으면 자동으로 1급 엔진(localhost:8188)을 쓴다."""
+    from provider_agent import comfy_setup
+    from provider_agent.agent import ProviderAgent
+    from provider_agent.comfy import ComfyClient
+    from provider_agent.config import AgentConfig
+
+    monkeypatch.setattr(comfy_setup, "is_installed", lambda directory=None: True)
+    a = ProviderAgent(AgentConfig(token="T", enable_image=True), ollama=object())
+    assert a._image_backend == "comfyui"
+    assert a._comfy_url == comfy_setup.webui_url()
+    assert isinstance(a._sd, ComfyClient)
 
 
 class _Resp:

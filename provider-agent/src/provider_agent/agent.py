@@ -229,15 +229,19 @@ class ProviderAgent:
     def __init__(self, cfg: AgentConfig, ollama: OllamaClient | None = None, sd=None) -> None:
         self._cfg = cfg
         self._ollama = ollama or OllamaClient(cfg.ollama_url, cfg.request_timeout)
-        # 로컬 이미지 백엔드(opt-in --enable-image). comfy_url 이 있으면 **ComfyUI**, 아니면 **SD.Next**.
-        # 둘 다 동일한 txt2img/health 인터페이스라 _handle_image 는 그대로(유저가 어떤 이미지 도구든 쓰게).
-        self._image_backend = "comfyui" if cfg.comfy_url else "sdnext"
+        # 1급 이미지 엔진 = **ComfyUI**(SD.Next 는 레거시 폴백). 우선순위:
+        #   ① 명시적 외부 ComfyUI URL > ② 앱이 관리하는 로컬 ComfyUI(설치돼 있으면 localhost:8188) > ③ SD.Next.
+        # 셋 다 동일한 txt2img/health 인터페이스라 _handle_image 는 그대로(유저가 어떤 이미지 도구든 쓰게).
+        from . import comfy_setup
+
+        self._comfy_url = cfg.comfy_url or (comfy_setup.webui_url() if comfy_setup.is_installed() else "")
+        self._image_backend = "comfyui" if self._comfy_url else "sdnext"
         if sd is not None:
             self._sd = sd
-        elif cfg.enable_image and cfg.comfy_url:
+        elif cfg.enable_image and self._comfy_url:
             from .comfy import ComfyClient
 
-            self._sd = ComfyClient(cfg.comfy_url, cfg.request_timeout)
+            self._sd = ComfyClient(self._comfy_url, cfg.request_timeout)
         elif cfg.enable_image:
             from .sd import SDClient
 
@@ -560,7 +564,13 @@ class ProviderAgent:
             if await self._sd.health():
                 return True  # 이미 살아있음(일시적 네트워크 오류였음)
             if self._image_backend == "comfyui":
-                return False  # ComfyUI 는 우리가 띄우지 않음 — health 만 보고 회복 못하면 포기
+                # 앱이 관리하는 ComfyUI 면 재기동 시도(설치돼 있을 때). 외부 URL 이면 is_installed=False → 포기.
+                from . import comfy_setup
+
+                if comfy_setup.is_installed() and await comfy_setup.start() and await self._sd.health():
+                    self._invalidate_resolution()
+                    return True
+                return False
             ok = await sd_setup.launch_only(self._cfg.sd_url)
             if ok and await self._sd.health():
                 await self._sd.set_output_png()
@@ -1051,7 +1061,12 @@ class ProviderAgent:
         from . import sd_setup
 
         if self._image_backend == "comfyui":
-            # ComfyUI 는 유저가 직접 실행 — 자동 설치/기동 안 함. health 면 재광고, 아니면 조용히 대기.
+            # 앱이 관리하는 ComfyUI 면 꺼져 있을 때 자동 기동(설치돼 있을 때) — 1급 엔진이므로 살려둔다.
+            # 외부 URL(직접 띄운 인스턴스)이면 is_installed=False → start no-op, health 만 본다.
+            from . import comfy_setup
+
+            if comfy_setup.is_installed():
+                await comfy_setup.start()
             if self._sd is not None and await self._sd.health():
                 self._image_ready = True
                 self._invalidate_resolution()
@@ -1144,7 +1159,7 @@ class ProviderAgent:
                 if self._image_backend == "comfyui":
                     from .comfy import ComfyClient
 
-                    self._sd = ComfyClient(self._cfg.comfy_url, self._cfg.request_timeout)
+                    self._sd = ComfyClient(self._comfy_url or self._cfg.comfy_url, self._cfg.request_timeout)
                 else:
                     from .sd import SDClient
 

@@ -104,7 +104,11 @@ def resolution_for_checkpoint(checkpoint: str | None) -> tuple[int, int]:
     """
     if checkpoint:
         for m in MODELS:
-            if m["filename"] and m["filename"] in checkpoint:
+            fn = m["filename"]
+            if not fn:
+                continue
+            stem = fn.rsplit(".", 1)[0]  # SD.Next 는 확장자 없이 "AnythingV5V3_v5PrtRE" 처럼 보고한다
+            if fn in checkpoint or stem in checkpoint:
                 return (1024, 1024) if m.get("base") == "sdxl" else (512, 512)
     return (512, 512)
 

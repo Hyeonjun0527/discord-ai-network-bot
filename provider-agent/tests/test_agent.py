@@ -89,34 +89,37 @@ async def test_handle_infer_streaming_emits_chunks():
 
 @pytest.mark.asyncio
 async def test_handle_image_emits_progress_then_data():
-    """이미지 생성: SD 진행률을 progress 청크로 흘리고, 완료 시 b64 데이터 청크 + done 을 보낸다."""
+    """이미지 생성: 경과시간 기반 추정 진행률을 progress 청크로 흘리고, 완료 시 b64 청크 + done 을 보낸다.
+
+    중요: 생성 중 SD 를 폴링하면 MPS 크래시가 나므로, 진행률은 SD 를 호출하지 않고 경과시간으로 추정한다.
+    여기서 SlowSD 는 progress() 를 정의하지 않는다 — 호출되면(=회귀) AttributeError 로 테스트가 깨진다.
+    """
     from provider_agent.protocol import ChunkFrame
 
     class SlowSD:
         async def txt2img(self, prompt: str, options=None) -> str:
-            await asyncio.sleep(0.25)  # progress 폴링이 여러 번 돌도록(폴링 간격보다 충분히 김)
+            await asyncio.sleep(0.25)  # 진행률 추정이 여러 번 돌도록(간격보다 충분히 김)
             return "AAAA"
 
         async def health(self) -> bool:
             return True
 
-        async def progress(self) -> float:
-            return 0.5  # 50%
-
     agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=SlowSD())  # type: ignore[arg-type]
     agent._image_ready = True
-    # 폴링 간격만 짧게(txt2img 가속 안 함 — 레이스 방지). 진행률 청크가 데이터 전에 나오게.
     import provider_agent.agent as agent_mod
 
     monkey_poll = agent_mod.SD_PROGRESS_POLL_S
+    monkey_half = agent_mod.SD_PROGRESS_HALFLIFE_S
     agent_mod.SD_PROGRESS_POLL_S = 0.02
+    agent_mod.SD_PROGRESS_HALFLIFE_S = 0.05  # 짧은 반감기 → 짧은 생성에도 진행률이 의미있게 오른다
     conn = FakeConn()
     try:
         await agent._handle_image(conn, InferRequest(request_id="img1", prompt="고양이", task="image"))  # type: ignore[arg-type]
     finally:
         agent_mod.SD_PROGRESS_POLL_S = monkey_poll
+        agent_mod.SD_PROGRESS_HALFLIFE_S = monkey_half
     chunks = [f for f in conn.sent if isinstance(f, ChunkFrame)]
-    assert any(c.progress == 50 for c in chunks), "진행률 청크(50%)가 전송돼야 함"
+    assert any(0 < c.progress < 100 for c in chunks), "추정 진행률 청크(0<pct<100)가 전송돼야 함"
     assert any(c.delta and c.progress < 0 for c in chunks), "b64 데이터 청크가 있어야 함"
     assert chunks[-1].done is True
 

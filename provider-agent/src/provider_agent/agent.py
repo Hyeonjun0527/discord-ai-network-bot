@@ -28,6 +28,9 @@ from .protocol import (
 
 logger = logging.getLogger("provider_agent.agent")
 
+# 이미지 생성 중 SD 진행률 폴링 간격(초). 디스코드 메시지 편집 레이트리밋을 고려해 너무 잦지 않게.
+SD_PROGRESS_POLL_S = 1.5
+
 
 def _agent_sync_base(relay: str) -> str:
     """relay(wss://…/agent) → 중앙 서버 https 베이스(에이전트 동기화 엔드포인트용)."""
@@ -419,19 +422,45 @@ class ProviderAgent:
             await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
 
     async def _handle_image(self, conn: AgentConnection, req: InferRequest) -> None:
-        """로컬 SD 로 이미지를 생성해 base64 PNG 를 ChunkFrame 으로 분할 전송(SD Phase 2)."""
+        """로컬 SD 로 이미지를 생성해 base64 PNG 를 ChunkFrame 으로 분할 전송(SD Phase 2).
+
+        생성 중에는 SD 진행률(/sdapi/v1/progress)을 동시 폴링해 progress 청크로 흘려보낸다 →
+        중앙이 디스코드 '생각 중' 메시지를 N% 로 편집한다. 진행률 폴링 실패는 비치명적(생성엔 영향 없음).
+        """
         from .sd import SDError
 
         assert self._sd is not None  # 호출 전 _image_ready 로 가드됨
+        gen_task = asyncio.create_task(self._sd.txt2img(req.prompt))
+        progress_task = asyncio.create_task(self._stream_sd_progress(conn, req.request_id, gen_task))
         try:
-            b64 = await self._sd.txt2img(req.prompt)
+            b64 = await gen_task
         except SDError as exc:
+            progress_task.cancel()
             await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
             return
+        finally:
+            progress_task.cancel()
         # 1MB 프레임 한계 때문에 base64 를 조각내어 보낸다. 마지막에 done=True(빈 delta).
         for i in range(0, len(b64), IMAGE_CHUNK_CHARS):
             await self._safe_send(conn, ChunkFrame(req.request_id, delta=b64[i : i + IMAGE_CHUNK_CHARS], done=False))
         await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
+
+    async def _stream_sd_progress(self, conn: AgentConnection, request_id: str, gen_task: "asyncio.Task[str]") -> None:
+        """이미지 생성이 끝날 때까지 ~1.5s 간격으로 SD 진행률을 progress 청크로 전송(증가분만)."""
+        last = -1
+        try:
+            while not gen_task.done():
+                await asyncio.sleep(SD_PROGRESS_POLL_S)
+                if gen_task.done():
+                    break
+                if self._sd is None:
+                    return
+                pct = int(await self._sd.progress() * 100)
+                if pct > last and 0 < pct < 100:
+                    last = pct
+                    await self._safe_send(conn, ChunkFrame(request_id, delta="", done=False, progress=pct))
+        except asyncio.CancelledError:
+            return
 
     async def _safe_send(self, conn: AgentConnection, frame: Frame) -> None:
         try:

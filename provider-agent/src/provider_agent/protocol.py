@@ -271,6 +271,9 @@ class ChunkFrame:
     request_id: str
     delta: str = ""
     done: bool = False
+    # 진행률(0~100). -1 = 진행률 아님(이미지 데이터/텍스트 청크). 이미지 생성 중 SD 진행률을 중앙으로
+    # 흘려보내 디스코드 '생각 중' 메시지를 N% 로 편집하게 한다(delta="" 인 상태 전용 청크).
+    progress: int = -1
 
     @property
     def type(self) -> str:
@@ -282,6 +285,7 @@ class ChunkFrame:
             "requestId": self.request_id,
             "delta": self.delta,
             "done": self.done,
+            "progress": self.progress,
         }
 
     @classmethod
@@ -290,6 +294,7 @@ class ChunkFrame:
             request_id=str(_require(d, "requestId", FrameType.CHUNK)),
             delta=str(d.get("delta", "")),
             done=bool(d.get("done", False)),
+            progress=int(d.get("progress", -1)),
         )
 
 

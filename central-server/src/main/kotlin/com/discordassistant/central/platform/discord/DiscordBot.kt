@@ -387,7 +387,21 @@ class DiscordBot(
             val work =
                 Runnable {
                     try {
-                        val reply = dispatch(event, ctx)
+                        val reply =
+                            if (event.name == "imagine") {
+                                // 이미지 생성 진행률을 '생각 중' 메시지에 N% 로 라이브 편집(SD progress 청크 → onProgress).
+                                val lastPct =
+                                    java.util.concurrent.atomic
+                                        .AtomicInteger(-1)
+                                commands.imagine(ctx, event.getOption("prompt")?.asString.orEmpty()) { pct ->
+                                    if (pct > lastPct.get()) {
+                                        lastPct.set(pct)
+                                        event.hook.editOriginal("🖼️ 생각 중… $pct%").queue({}, {})
+                                    }
+                                }
+                            } else {
+                                dispatch(event, ctx)
+                            }
                         if (useWebhookProfile) {
                             answers.completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
                         } else {

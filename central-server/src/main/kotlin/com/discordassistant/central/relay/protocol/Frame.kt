@@ -109,11 +109,12 @@ data class InferError(
     override val type: String = FrameType.ERROR,
 ) : Frame()
 
-/** 에이전트 → 릴레이: 스트리밍 부분 텍스트. */
+/** 에이전트 → 릴레이: 스트리밍 부분 텍스트/이미지 청크. progress(0~100)≥0 이면 진행률 상태 청크(데이터 아님). */
 data class ChunkFrame(
     val requestId: String,
     val delta: String = "",
     val done: Boolean = false,
+    val progress: Int = -1,
     override val type: String = FrameType.CHUNK,
 ) : Frame()
 

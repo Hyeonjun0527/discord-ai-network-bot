@@ -109,7 +109,8 @@ class CommandService(
     fun imagine(
         ctx: CommandContext,
         prompt: String,
-    ): Reply = askCommands.imagine(ctx, prompt)
+        onProgress: (Int) -> Unit = {},
+    ): Reply = askCommands.imagine(ctx, prompt, onProgress)
 
     fun submitAskFeedback(
         ctx: CommandContext,

@@ -125,6 +125,7 @@ class AskCommandHandler(
     fun imagine(
         ctx: CommandContext,
         prompt: String,
+        onProgress: (Int) -> Unit = {},
     ): Reply {
         if (prompt.isBlank()) return Replies.warn("이미지로 만들 내용을 입력해 주세요.")
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("imagine:${ctx.guildId}:${ctx.userId}")) {
@@ -139,7 +140,7 @@ class AskCommandHandler(
         }
         val session = candidates.minByOrNull { it.activeRequests } ?: candidates.first()
         return try {
-            val bytes = session.sendImage(prompt).get()
+            val bytes = session.sendImage(prompt, onProgress).get()
             Reply("🖼️ \"${prompt.take(200)}\"", ephemeral = false, imagePng = bytes)
         } catch (e: Exception) {
             Replies.warn("이미지 생성에 실패했어요. 잠시 후 다시 시도해 주세요.")

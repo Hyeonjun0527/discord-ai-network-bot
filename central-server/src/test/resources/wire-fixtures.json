@@ -49,7 +49,8 @@
     "type": "chunk",
     "requestId": "r1",
     "delta": "부분",
-    "done": false
+    "done": false,
+    "progress": -1
   },
   "ping": {
     "type": "ping"

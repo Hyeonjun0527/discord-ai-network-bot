@@ -230,7 +230,10 @@ class ProviderSession(
      * 이미지 생성(SD Phase 2): InferRequest(task=image) 송신 후 에이전트가 보낸 base64 PNG 청크를
      * 드레인·조립해 **PNG 바이트**로 디코드한다. 이미지 생성은 느리므로 더 긴 타임아웃을 쓴다.
      */
-    fun sendImage(prompt: String): CompletableFuture<ByteArray> {
+    fun sendImage(
+        prompt: String,
+        onProgress: (Int) -> Unit = {},
+    ): CompletableFuture<ByteArray> {
         val cap = capability.maxConcurrency + maxQueue
         if (inFlight.get() >= cap) {
             return CompletableFuture.failedFuture(AgentBusyException("대기 큐가 가득 찼습니다."))
@@ -261,6 +264,10 @@ class ProviderSession(
                     }
                     val chunk = queue.poll(remaining, TimeUnit.NANOSECONDS) ?: continue
                     if (chunk.done) break
+                    if (chunk.progress >= 0) { // 진행률 상태 청크 — 데이터 아님. 콜백만(디스코드 N% 편집)
+                        runCatching { onProgress(chunk.progress) }
+                        continue
+                    }
                     sb.append(chunk.delta)
                     if (sb.length > MAX_IMAGE_B64_CHARS) {
                         safeSend(CancelFrame(requestId))

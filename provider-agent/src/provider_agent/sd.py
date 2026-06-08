@@ -81,3 +81,17 @@ class SDClient:
                     return r.status == 200
         except aiohttp.ClientError:
             return False
+
+    async def progress(self) -> float:
+        """현재 생성 작업의 진행률(0.0~1.0). A1111 ``/sdapi/v1/progress``. 실패/미상이면 0.0."""
+        url = f"{self._base}/sdapi/v1/progress"
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s:
+                async with s.get(url) as r:
+                    data = await r.json()
+        except (aiohttp.ClientError, ValueError):
+            return 0.0
+        p = data.get("progress") if isinstance(data, dict) else None
+        if isinstance(p, (int, float)):
+            return max(0.0, min(1.0, float(p)))
+        return 0.0

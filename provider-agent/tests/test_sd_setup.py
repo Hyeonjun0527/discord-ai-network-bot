@@ -58,6 +58,11 @@ def test_launch_command_per_platform(tmp_path):
         assert "--no-half-vae" not in cmd and "--skip-torch-cuda-test" not in cmd and "--upcast-sampling" not in cmd
 
 
+def test_extra_pip_deps_includes_torchsde():
+    # SD.Next 가 자동설치 안 하지만 Mac MPS startup 에 필요(실증) — 우리 setup 이 시드해야 함.
+    assert "torchsde" in sd_mod.EXTRA_PIP_DEPS
+
+
 def test_install_dir_is_sdnext(monkeypatch, tmp_path):
     # SD.Next 는 기존 A1111(stable-diffusion-webui)과 분리된 경로(sdnext)에 설치.
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
@@ -535,4 +540,5 @@ def test_launch_only_spawns_when_installed(monkeypatch, tmp_path):
     assert ok is True
     assert sd_mod.progress()["phase"] == "done"
     assert spawned["cmd"][0] == "bash"  # webui.sh 기동
-    assert ran == []  # clone/install 명령은 전혀 실행 안 됨(기동만)
+    # clone/모델 다운로드는 안 함(기동 전용). venv 의존성 보강(ensure_extra_deps)은 허용.
+    assert not any("clone" in " ".join(str(x) for x in c) for c in ran)

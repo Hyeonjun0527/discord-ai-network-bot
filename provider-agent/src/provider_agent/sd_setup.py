@@ -183,6 +183,37 @@ def launch_env(python_cmd: str | None, platform: str | None = None) -> dict[str,
     return {"PYTHON": python_cmd}
 
 
+# SD.Next 가 자동으로 설치하지 않지만 **필요한** 의존성(실증). torchsde: macOS(MPS) startup 의
+# devices_mac 가 torchsde 함수를 hard-require 하는데 SD.Next 기본 requirements 에 없어 첫 실행이
+# "ValueError: Empty module name" 으로 깨진다. 우리 setup 이 미리 venv 에 심어 전 유저 깨짐을 막는다.
+EXTRA_PIP_DEPS = ("torchsde",)
+
+
+def _venv_python(directory: pathlib.Path) -> pathlib.Path:
+    """SD.Next venv 의 python 실행기 경로."""
+    venv = directory / "venv"
+    return venv / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python")
+
+
+async def ensure_extra_deps(directory: pathlib.Path | None = None, python_cmd: str | None = None) -> None:
+    """SD.Next venv 를 (없으면) **지원 Python 으로** 만들고, 자동설치 안 되는 필수 의존성(torchsde)을 시드한다.
+
+    webui.sh 는 venv 가 이미 있으면 그대로 활성화하므로, 우리가 미리 venv+torchsde 를 깔면 첫 실행
+    startup 크래시(Mac MPS)를 막고 Python 버전도 우리가 통제한다(시스템 기본 3.14 회피). 실패는 비치명적.
+    """
+    d = directory or install_dir()
+    venv = d / "venv"
+    py = python_cmd or compatible_python() or ("python" if sys.platform == "win32" else "python3")
+    if not venv.exists():
+        code, _log = await _run([py, "-m", "venv", str(venv)], timeout=300)
+        if code != 0:
+            return  # venv 생성 실패 → webui.sh 가 다시 시도(비치명적)
+    vpy = _venv_python(d)
+    if not vpy.exists():
+        return
+    await _run([str(vpy), "-m", "pip", "install", *EXTRA_PIP_DEPS], timeout=900)
+
+
 def is_installed(directory: pathlib.Path | None = None) -> bool:
     """A1111 런처가 설치돼 있는지(webui.sh/webui.bat 존재)."""
     d = directory or install_dir()
@@ -413,6 +444,12 @@ async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
                 _set("error", 15, "Stable Diffusion 설치 실패", error=log[-400:] or "clone-failed")
                 return False
 
+        # 2.5) venv 를 지원 Python 으로 만들고 자동설치 안 되는 필수 의존성(torchsde) 시드 — 첫 실행 깨짐 방지.
+        _set("installing", 30, "이미지 엔진 의존성 준비 중…")
+        await ensure_extra_deps(directory, python_cmd)
+        if _cancelled():
+            return False
+
         # 3) 선택한 모델 준비
         if not has_model(directory):
             # 초기 진행률은 35%(다운로드 구간 시작). 이후 _download 가 받은 바이트 비율로 35~95% 를 갱신한다.
@@ -478,6 +515,8 @@ async def launch_only(sd_url: str) -> bool:
             _set("error", 0, "아직 설치되지 않았어요. 먼저 설치하세요.", error="not-installed")
             return False
         python_cmd = compatible_python() or ("python" if sys.platform == "win32" else "python3.11")
+        # 기존 설치가 torchsde 미시드 상태일 수 있으니 기동 전 보강(idempotent) — Mac startup 깨짐 self-heal.
+        await ensure_extra_deps(directory, python_cmd)
         _set("starting", 70, "Stable Diffusion(SD.Next) 시작 중… (첫 실행 이후라 보통 1~2분)")
         env = {**os.environ, **launch_env(python_cmd)}
         log_path = launch_log_path(directory)

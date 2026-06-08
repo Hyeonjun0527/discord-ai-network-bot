@@ -31,16 +31,18 @@ class GuildAdminCommandHandler(
     private val relayPublicUrl: String = "",
     private val guards: SharedCommandGuards,
 ) {
-    /** 길드 기본 모델/언어 설정(차수 11 #146). 빈 값은 변경하지 않음. */
+    /** 길드 기본 모델/언어/유저 일일 한도 설정(차수 11 #146). null 값은 변경하지 않음(dailyLimit 0=무제한). */
     fun setGuildDefaults(
         ctx: CommandContext,
         defaultModel: String?,
         language: String?,
+        userDailyLimit: Int? = null,
     ): Reply {
         guards.adminOnly(ctx)?.let { return it }
-        policy.setGuildDefaults(ctx.guildId, defaultModel, language, ctx.userId)
+        policy.setGuildDefaults(ctx.guildId, defaultModel, language, ctx.userId, userDailyLimit)
         val m = policy.guildDefaultModel(ctx.guildId) ?: "(자동 선택)"
-        return Reply("✅ 길드 기본값 — 모델: `$m` · 언어: `${policy.guildLanguage(ctx.guildId)}`")
+        val limitNote = userDailyLimit?.let { " · 유저 하루 한도: " + (if (it <= 0) "무제한" else "$it 회") } ?: ""
+        return Reply("✅ 길드 기본값 — 모델: `$m` · 언어: `${policy.guildLanguage(ctx.guildId)}`$limitNote")
     }
 
     /** 자동 승인 토글(차수 13 #147/#180, 설정 패널 버튼). */

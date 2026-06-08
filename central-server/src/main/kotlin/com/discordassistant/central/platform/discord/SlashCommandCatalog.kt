@@ -101,7 +101,7 @@ object SlashCommandCatalog {
                 ).addOption(OptionType.INTEGER, "limit", "하루 한도", true)
                 .setDefaultPermissions(adminPerm),
             Commands
-                .slash("llm-guild-defaults", "길드 기본 모델/언어를 설정합니다(관리자)")
+                .slash("llm-guild-defaults", "길드 기본 모델/언어/유저 일일 한도를 설정합니다(관리자)")
                 .addOptions(
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.STRING, "model", "기본 모델(비우면 자동 선택)", false)
@@ -109,6 +109,9 @@ object SlashCommandCatalog {
                     net.dv8tion.jda.api.interactions.commands.build
                         .OptionData(OptionType.STRING, "language", "언어", false)
                         .choicePairs(SupportedLanguage.choices()),
+                    net.dv8tion.jda.api.interactions.commands.build
+                        .OptionData(OptionType.INTEGER, "user-daily-limit", "유저별 하루 질문 한도(0=무제한, 비우면 변경 안 함)", false)
+                        .setMinValue(0),
                 ).setDefaultPermissions(adminPerm),
             Commands
                 .slash("llm-channel-profile", "이 채널의 AI 프로필 설정 패널을 엽니다(관리자)")

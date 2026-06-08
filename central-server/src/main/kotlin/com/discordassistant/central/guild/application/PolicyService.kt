@@ -85,6 +85,7 @@ class PolicyService(
         val defaultModel: String?,
         val language: String,
         val welcomeMessage: String?,
+        val defaultDailyLimit: Int?, // 유저별 일일 한도 길드 기본값. null=하드코딩 base, 0=무제한
     )
 
     private fun <T> read(
@@ -115,9 +116,11 @@ class PolicyService(
     private fun loadGuildSettings(guildId: Long): GuildSettings =
         guilds
             .findById(guildId)
-            .map { GuildSettings(it.autoApprove, it.defaultModel, it.language, it.welcomeMessage) }
+            .map { GuildSettings(it.autoApprove, it.defaultModel, it.language, it.welcomeMessage, it.defaultDailyLimit) }
             // 설정 안 한 길드의 기본값: 자동 승인 ON(유입 마찰 최소화). 관리자가 /서버기본값·설정으로 끌 수 있음.
-            .orElse(GuildSettings(autoApprove = true, defaultModel = null, language = "ko", welcomeMessage = null))
+            .orElse(
+                GuildSettings(autoApprove = true, defaultModel = null, language = "ko", welcomeMessage = null, defaultDailyLimit = null),
+            )
 
     private fun cachedChannelIds(guildId: Long): List<Long> = read(channelCache, guildId, ::loadChannelIds)
 
@@ -225,7 +228,12 @@ class PolicyService(
             .maxByOrNull { it.rank } ?: ModelBurden.LIGHT
     }
 
-    /** 멤버 역할들의 일일 한도(최대값). 정책 없으면 base 기본값. */
+    /** 멤버의 일일 한도(요청자 쿼터). 0=무제한. 우선순위: 역할정책(0=무제한 우선, 아니면 최대) → 길드 기본값 → base.
+     *
+     * 0(무제한)은 가장 관대하므로 maxOf 로 묻히지 않게 **먼저** 판정한다(예전엔 역할 0 이 다른 역할 20 에 가려 한도가
+     * 걸렸다). 역할 정책이 없으면 길드 기본값(default_daily_limit, 관리자가 /서버기본값 으로 설정, 0=무제한)을 쓰고,
+     * 그것도 없으면 하드코딩 base(20).
+     */
     @Transactional(readOnly = true)
     fun dailyLimit(
         guildId: Long,
@@ -233,7 +241,10 @@ class PolicyService(
         base: Int = 20,
     ): Int {
         val policies = cachedRoles(guildId).filter { it.roleId in memberRoleIds }
-        return policies.maxOfOrNull { it.dailyLimit } ?: base
+        if (policies.any { it.dailyLimit <= 0 }) return 0 // 무제한 역할이 하나라도 있으면 무제한
+        val fromRoles = policies.maxOfOrNull { it.dailyLimit }
+        if (fromRoles != null) return fromRoles
+        return cachedGuildSettings(guildId).defaultDailyLimit ?: base // 길드 기본값(0=무제한) 또는 하드코딩 20
     }
 
     /** 필요한 부담 수준을 이 멤버가 쓸 수 있는가(RESTRICTED 는 별도 정책 — 여기선 false). */
@@ -259,19 +270,26 @@ class PolicyService(
     @Transactional(readOnly = true)
     override fun isAutoApprove(guildId: Long): Boolean = cachedGuildSettings(guildId).autoApprove
 
-    /** 길드 기본 모델/언어 설정(차수 11 #146). null/blank 인 항목은 변경하지 않는다. */
+    /** 길드 기본 모델/언어/유저 일일 한도 설정(차수 11 #146). null 인 항목은 변경하지 않는다(dailyLimit 0=무제한). */
     @Transactional
     fun setGuildDefaults(
         guildId: Long,
         defaultModel: String?,
         language: String?,
         adminId: Long,
+        defaultDailyLimit: Int? = null,
     ) {
         val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
         defaultModel?.takeIf { it.isNotBlank() }?.let { g.defaultModel = it }
         language?.takeIf { it.isNotBlank() }?.let { g.language = it }
+        defaultDailyLimit?.let { g.defaultDailyLimit = it.coerceAtLeast(0) } // 0=무제한, 음수 방지
         guilds.save(g)
-        audit.record("set_guild_defaults", "admin:$adminId", "guild:$guildId", "model=${g.defaultModel},lang=${g.language}")
+        audit.record(
+            "set_guild_defaults",
+            "admin:$adminId",
+            "guild:$guildId",
+            "model=${g.defaultModel},lang=${g.language},dailyLimit=${g.defaultDailyLimit}",
+        )
         evict(guildId)
     }
 

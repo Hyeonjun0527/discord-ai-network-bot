@@ -384,12 +384,13 @@ class CommandService(
 
     // ── 관리자 ──────────────────────────────────────────────────────────
 
-    /** 길드 기본 모델/언어 설정(차수 11 #146). 빈 값은 변경하지 않음. */
+    /** 길드 기본 모델/언어/유저 일일 한도 설정(차수 11 #146). 빈/null 값은 변경하지 않음(dailyLimit 0=무제한). */
     fun setGuildDefaults(
         ctx: CommandContext,
         defaultModel: String?,
         language: String?,
-    ): Reply = guildAdminCommands.setGuildDefaults(ctx, defaultModel, language)
+        userDailyLimit: Int? = null,
+    ): Reply = guildAdminCommands.setGuildDefaults(ctx, defaultModel, language, userDailyLimit)
 
     /** 자동 승인 토글(차수 13 #147/#180, 설정 패널 버튼). */
     fun toggleAutoApprove(ctx: CommandContext): Reply = guildAdminCommands.toggleAutoApprove(ctx)

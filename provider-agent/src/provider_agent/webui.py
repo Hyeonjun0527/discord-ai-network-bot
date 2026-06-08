@@ -1218,6 +1218,27 @@ def build_app(session_key: str) -> web.Application:
         asyncio.create_task(sd_setup.run_setup(url, model_id))
         return web.json_response({"ok": True})
 
+    async def sd_install_custom(req: web.Request) -> web.Response:
+        """카탈로그 밖 **임의 HuggingFace 모델** 설치(body {url}). 유저 자율 — 어떤 체크포인트든.
+        진행은 다른 설치와 동일하게 /api/sd/setup-progress 로 폴링."""
+        _auth(req)
+        from . import sd_setup
+
+        if sd_setup.is_busy():
+            return web.json_response({"ok": True, "busy": True})
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        hf_url = str((data or {}).get("url") or "").strip()
+        if sd_setup.custom_model_from_url(hf_url) is None:
+            return web.json_response(
+                {"ok": False, "error": "HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요(…/resolve/main/모델.safetensors)."}
+            )
+        sd_url = load_config().get("sd_url") or "http://127.0.0.1:7860"
+        asyncio.create_task(sd_setup.download_custom_model(hf_url, sd_url))
+        return web.json_response({"ok": True})
+
     async def sd_start(req: web.Request) -> web.Response:
         """이미 설치된 SD(A1111)를 **기동만** 한다(재부팅·앱 종료 후 다시 켜기). clone/다운로드 없음.
 
@@ -1544,6 +1565,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/sd/select", sd_select)
     app.router.add_get("/api/sd/status", sd_status)
     app.router.add_post("/api/sd/setup", sd_setup_start)
+    app.router.add_post("/api/sd/install-custom", sd_install_custom)
     app.router.add_post("/api/sd/start", sd_start)
     app.router.add_post("/api/sd/cancel", sd_setup_cancel)
     app.router.add_get("/api/sd/setup-progress", sd_setup_progress)

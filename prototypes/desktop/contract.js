@@ -90,6 +90,7 @@ export const ENDPOINTS = Object.freeze({
   sdInstalled: '/api/sd/installed',   // GET — 설치된 모델 목록 + 활성 모델(로컬 실행 탭 전환용)
   sdSelect: '/api/sd/select',         // POST {model} — 활성 모델 전환(핫스왑 + config 저장)
   sdSetup: '/api/sd/setup',
+  sdInstallCustom: '/api/sd/install-custom', // POST {url} — 카탈로그 밖 임의 HuggingFace 모델 설치
   sdStart: '/api/sd/start',          // POST — 이미 설치된 SD 를 기동만(clone/다운로드 없음)
   sdSetupProgress: '/api/sd/setup-progress',
   ollamaSetup: '/api/ollama/setup',

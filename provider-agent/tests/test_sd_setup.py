@@ -158,6 +158,23 @@ def test_installed_models_and_selection(tmp_path, monkeypatch):
     assert cmd[cmd.index("--ckpt") + 1].endswith("AnythingV5V3_v5PrtRE.safetensors")
 
 
+def test_custom_model_from_url():
+    # resolve 직접 링크 → 모델 dict
+    m = sd_mod.custom_model_from_url("https://huggingface.co/cagliostrolab/animagine-xl-4.0/resolve/main/animagine-xl-4.0-opt.safetensors")
+    assert m is not None
+    assert m["filename"] == "animagine-xl-4.0-opt.safetensors"
+    assert m["url"].endswith("animagine-xl-4.0-opt.safetensors")
+    # blob URL(페이지) → resolve 로 보정
+    blob = sd_mod.custom_model_from_url("https://huggingface.co/x/y/blob/main/foo.safetensors")
+    assert blob is not None and "/resolve/" in blob["url"] and blob["filename"] == "foo.safetensors"
+    # .ckpt 허용
+    assert sd_mod.custom_model_from_url("https://huggingface.co/a/b/resolve/main/m.ckpt") is not None
+    # HF 아님 / 확장자 안 맞음 → None(임의 호스트 차단)
+    assert sd_mod.custom_model_from_url("https://evil.com/m.safetensors") is None
+    assert sd_mod.custom_model_from_url("https://huggingface.co/a/b/resolve/main/readme.txt") is None
+    assert sd_mod.custom_model_from_url("") is None
+
+
 def test_resolution_for_checkpoint():
     # SDXL 계열 → 1024, SD1.5 계열 → 512. 체크포인트 문자열은 "name [hash]" 부분일치.
     assert sd_mod.resolution_for_checkpoint("animagine-xl-4.0-opt.safetensors [abc123]") == (1024, 1024)

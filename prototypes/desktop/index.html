@@ -172,12 +172,15 @@
 
     /* ── 전역 스크롤바(디자인 언어 SSOT) ──
        OS 기본 스크롤바는 어두운 글래스 톤과 충돌한다. 모든 스크롤 영역을 hue-only 한 얇은
-       트랙리스 썸으로 통일. WebKit + Firefox(scrollbar-*) 둘 다 커버. */
-    * { scrollbar-width: thin; scrollbar-color: rgba(150,168,220,.22) transparent; }
-    ::-webkit-scrollbar { width: 10px; height: 10px; }
+       트랙리스 썸으로 통일.
+       ⚠ 표준 scrollbar-width/scrollbar-color 를 함께 주면 최신 WebKit(WKWebView=mac 데스크톱 앱)이
+       네이티브 스크롤바를 그리고 ::-webkit-scrollbar 를 무시한다 → 사용자에게 OS 기본 스크롤바가 떴음
+       (특히 '항상 스크롤바 표시' 설정). 앱 런타임엔 Firefox 가 없으므로 표준 속성은 빼고
+       ::-webkit-scrollbar 만으로 통일해 WKWebView·WebView2 어디서나 디자인 썸을 강제한다. */
+    ::-webkit-scrollbar { width: 11px; height: 11px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(150,168,220,.16); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(150,168,220,.30); border: 3px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb { background: rgba(150,168,220,.28); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(150,168,220,.44); border: 3px solid transparent; background-clip: padding-box; }
     ::-webkit-scrollbar-corner { background: transparent; }
 
     /* ── 메인 콘텐츠 ── */

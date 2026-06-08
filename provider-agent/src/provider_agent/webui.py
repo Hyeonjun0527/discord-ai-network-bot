@@ -1705,8 +1705,10 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
             import webview  # type: ignore[import-untyped]
 
             _set_macos_app_identity(APP_DISPLAY_NAME)  # dock 이름/아이콘을 'Python'/로켓 대신 브랜드로
+            # 가로로 긴(landscape) 기본 크기 — UI 가 사이드바(232px)+메인 그리드라 세로형(600x800)이면
+            # 메인이 비좁고 잘려 보였다. 16:10 비율의 가로형 기본값 + 가로형 최소 크기로 통일.
             webview.create_window(
-                f"로컬 AI 제공자 설정 · {APP_DISPLAY_NAME}", url, width=600, height=800, min_size=(400, 600)
+                f"로컬 AI 제공자 설정 · {APP_DISPLAY_NAME}", url, width=1180, height=760, min_size=(1000, 660)
             )
             webview.start()  # 메인 스레드 점유, 창 닫으면 반환
             _handoff_to_service_on_close()  # 닫을 때 백그라운드 서비스로 연결 인계(설치돼 있으면)

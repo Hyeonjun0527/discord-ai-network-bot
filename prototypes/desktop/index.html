@@ -1544,12 +1544,14 @@
       (desc ? '<div class="sr-desc">' + desc + '</div>' : '') + '</div>' + right + '</div>';
 
     function render() {
-      const s = _s || {}, u = _upd || {};
+      const s = _s || {}, u = _upd; // u=null 이면 아직 업데이트 확인 전(네트워크 진행 중)
       const exec = TOGGLES.map((t) => row(t.name, t.desc, sw(t.key, s[t.key]))).join('');
-      const verLine = u.outdated ? ('현재 v' + u.current + ' · 최신 v' + u.latest) : ('현재 v' + (u.current || '-') + ' · 최신 상태');
-      const updRight = u.outdated
-        ? '<button class="btn btn--sm btn--primary" id="setUpdateApply">업데이트</button>'
-        : '<button class="btn btn--sm btn--secondary" id="setUpdateCheck">확인</button>';
+      const verLine = !u ? '버전 확인 중…' : (u.outdated ? ('현재 v' + u.current + ' · 최신 v' + u.latest) : ('현재 v' + (u.current || '-') + ' · 최신 상태'));
+      const updRight = !u
+        ? '<button class="btn btn--sm btn--secondary" id="setUpdateCheck" disabled>확인 중…</button>'
+        : (u.outdated
+          ? '<button class="btn btn--sm btn--primary" id="setUpdateApply">업데이트</button>'
+          : '<button class="btn btn--sm btn--secondary" id="setUpdateCheck">확인</button>');
       const updGroup = row('버전', verLine, updRight) + row('자동 업데이트', '새 버전이 나오면 자동으로 설치해요.', sw('autoUpdate', s.autoUpdate));
       const connGroup = row('중앙 서버', '', '<span class="sr-val">' + (s.relayUrl || '-') + '</span><span class="sr-tag">고급</span>') +
         row('Ollama 주소', '', '<span class="sr-val">' + (s.ollamaUrl || '-') + '</span><span class="sr-tag">고급</span>');
@@ -1621,8 +1623,11 @@
     }
 
     async function load() {
-      [_s, _upd] = await Promise.all([api.getSettings(), api.getUpdateInfo()]);
+      _s = await api.getSettings();  // 로컬·빠름 → 즉시 렌더(설정 본문이 네트워크에 안 막히게)
       render();
+      // 업데이트 확인은 GitHub 새 버전 조회(네트워크) — 느리거나 rate-limit 이면 본문 전체가 안 뜨던 문제(실증).
+      // 본문은 위에서 이미 그렸고, 업데이트 줄만 도착 시 백그라운드로 채운다(_upd 는 캐시돼 재오픈 시 즉시 표시).
+      api.getUpdateInfo().then((u) => { _upd = u; if (isActive()) render(); }).catch(() => {});
     }
 
     const isActive = () => view.classList.contains('active');

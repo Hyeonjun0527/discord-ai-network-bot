@@ -2666,24 +2666,31 @@
         setText('statReq', String(st.processed || 0));
         setText('statModels', String((st.models && st.models.length) || 0));
         setText('statAvg', '—'); // 평균 응답은 백엔드 미제공 — 가짜 0ms 대신 —
-        // 런타임 카드 상태: Ollama(모델 보유·실행) / SD(설치·준비) 기준.
+        // 제공 중 판정: 이 창의 인-프로세스 에이전트(running)가 돌거나, 백그라운드 자동시작 서비스가
+        // 이미 연결 중(backgroundRunning)이면 "제공 중"이다. backgroundRunning 을 무시하면 백그라운드
+        // 서비스가 정상 제공 중인데도 홈이 '제공 중단됨/Discord 끊김 + 죽은 다시연결'을 보였다(실버그).
+        const serving = !!(st.running || st.backgroundRunning);
+        // 런타임 카드 상태: Ollama(모델 보유·제공) / SD(설치·준비) 기준.
         if (window.setImageRecv) window.setImageRecv(!!st.enableImage); // 이미지 요청 받기 실 상태 반영(먼저)
         if (window.setBgOn) window.setBgOn(!!st.background); // 백그라운드 핀 = 상주 '설정값'(설정 화면과 동일). 런타임(backgroundRunning) 아님
         if (window.setRuntime) {
           const nModels = (st.models && st.models.length) || 0;
-          const ollamaState = (st.running && nModels) ? 'running' : (nModels ? 'stopped' : 'absent');
+          const ollamaState = (serving && nModels) ? 'running' : (nModels ? 'stopped' : 'absent');
           // Ollama 메타는 실제 제공 모델 수로(하드코딩 '모델 7개' 금지).
           window.setRuntime('Ollama', ollamaState, ollamaState === 'running' ? ('모델 ' + nModels + '개 · 텍스트 응답 제공') : undefined);
-          window.setRuntime('Stable Diffusion', !st.sdInstalled ? 'absent' : (st.imageReady ? 'running' : 'stopped'));
+          // SD: 이 창에 인-프로세스 에이전트가 없으면(backgroundRunning) imageReady 를 알 수 없으므로
+          // 설치+이미지 받기 설정이면 백그라운드가 제공 중인 것으로 본다(가짜 '실행 중' 대신 설정 기반 추정).
+          const sdRunning = st.backgroundRunning ? !!(st.sdInstalled && st.enableImage) : !!st.imageReady;
+          window.setRuntime('Stable Diffusion', !st.sdInstalled ? 'absent' : (sdRunning ? 'running' : 'stopped'));
         }
-        // 히어로 상태 + 페이지 부제 — 미연결이면 미연결, 연결됐으면 실행 여부로 ok/error.
+        // 히어로 상태 + 페이지 부제 — 미연결이면 미연결, 연결됐으면 제공 여부(running 또는 backgroundRunning)로 ok/error.
         const sub = document.getElementById('homeSub');
         if (!st.hasToken) {
           if (sub) sub.textContent = '아직 서버에 연결되지 않았어요. 서버를 추가해 AI 제공을 시작하세요.';
           window.setHeroState?.('unconnected');
         } else {
-          if (sub) sub.textContent = st.running ? '지금 AI를 정상적으로 제공하고 있어요.' : '연결됐지만 아직 제공을 시작하지 않았어요.';
-          window.setHeroState?.(st.connected && st.running ? 'ok' : 'error');
+          if (sub) sub.textContent = serving ? '지금 AI를 정상적으로 제공하고 있어요.' : '연결됐지만 아직 제공을 시작하지 않았어요.';
+          window.setHeroState?.(serving ? 'ok' : 'error');
         }
       }
 
@@ -2704,10 +2711,15 @@
         setInterval(() => { syncHomeFromStatus(); }, 3000);
         // 홈 hero·런타임 카드가 호출하는 실 액션 헬퍼(완료 후 즉시 동기화). 에이전트=텍스트 제공 본체.
         window.realProviderAction = async (action) => {
-          if (action === 'stop') await api.stopAgent();
-          else if (action === 'reconnect') { await api.stopAgent(); await api.startAgent(); } // 중앙 서버 재연결
-          else await api.startAgent();
+          let r;
+          if (action === 'stop') r = await api.stopAgent();
+          else if (action === 'reconnect') { await api.stopAgent(); r = await api.startAgent(); } // 중앙 서버 재연결
+          else r = await api.startAgent();
           await syncHomeFromStatus();
+          // 시작/재연결이 거부되면(예: 백그라운드 서비스가 이미 제공 중 → otherInstanceConnected) 정직하게 실패로
+          // 알린다. 이전엔 {ok:false}를 무시하고 가짜 성공 토스트를 띄워 '눌러도 그대로'로 보였다.
+          if (r && r.ok === false) throw new Error(r.error || '요청을 처리하지 못했어요');
+          return r;
         };
         window.realStartSD = async () => { await api.startSetup('image'); try { watchSetup('image'); } catch (_e) { /* 진행률 폴링 실패는 비치명적 */ } };
         window.realGetStatus = () => api.getStatus(); // 진단(hero diag)이 실제 상태로 점검
@@ -2886,7 +2898,7 @@
               else { await window.realProviderAction?.('start'); }   // Ollama 텍스트 제공 = 에이전트 시작
               await window.syncHomeFromStatus?.();
               window.toast(name + ' 시작 요청됨 — 준비되면 자동으로 실행 중으로 바뀝니다', { type: 'ok', replace: 'start-' + name });
-            } catch (_err) { window.toast(name + ' 시작 실패 — 잠시 후 다시 시도하세요', { type: 'error', replace: 'start-' + name }); }
+            } catch (err) { window.toast(name + ' 시작 실패 — ' + (err && err.message ? err.message : '잠시 후 다시 시도하세요'), { type: 'error', replace: 'start-' + name }); }
             return;
           }
           /* @proto-only */
@@ -3015,7 +3027,7 @@
               try {
                 await window.realProviderAction?.(stop ? 'stop' : 'reconnect');
                 window.toast(stop ? '제공을 일시중지했어요' : '다시 연결했어요', { type: stop ? 'info' : 'ok', replace: 'hero-act' });
-              } catch (_err) { window.toast('처리 실패 — 네트워크를 확인하고 다시 시도하세요', { type: 'error', replace: 'hero-act' }); }
+              } catch (err) { window.toast(err && err.message ? err.message : '처리 실패 — 네트워크를 확인하고 다시 시도하세요', { type: 'error', replace: 'hero-act' }); }
               return;
             }
             // 프로토타입 데모(세션키 없음) — 실 앱 sync 시 제거

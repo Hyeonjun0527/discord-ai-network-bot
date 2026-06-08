@@ -49,6 +49,23 @@ def test_clone_command(tmp_path):
     assert "sdnext" in sd_mod.SDNEXT_REPO  # A1111 아님
 
 
+def test_clone_commands_pins_verified_commit(tmp_path):
+    # 핀이 있으면 init+fetch --depth1 <SHA>+checkout 시퀀스로 그 커밋만 받는다(업스트림 부패 격리).
+    assert sd_mod.SDNEXT_PIN, "검증된 SD.Next 커밋 핀이 비면 안 됨"
+    seq = sd_mod.clone_commands(tmp_path)
+    flat = [tok for step in seq for tok in step]
+    assert ["git", "init", str(tmp_path)] in seq
+    assert "fetch" in flat and "--depth" in flat and sd_mod.SDNEXT_PIN in flat
+    assert seq[-1][-1] == "FETCH_HEAD"  # 핀 커밋 체크아웃
+
+
+def test_clone_commands_falls_back_without_pin(monkeypatch, tmp_path):
+    # 핀을 비우면 레거시 단일 clone 으로 폴백(안전망).
+    monkeypatch.setattr(sd_mod, "SDNEXT_PIN", "")
+    seq = sd_mod.clone_commands(tmp_path)
+    assert len(seq) == 1 and seq[0][1] == "clone"
+
+
 def test_launch_command_per_platform(tmp_path):
     # SD.Next: API 항상 켜짐(--api 불필요), MPS/정밀도 자체 처리(A1111 플래그 없음). 모델 없으면 --ckpt 없음.
     mac = sd_mod.launch_command("darwin", tmp_path)

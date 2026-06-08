@@ -149,14 +149,32 @@ class DiscordBot(
             ?.map { BotChannelInfo(it.idLong, it.name) }
             ?: emptyList()
 
-    /** 관리 API 권한 게이트: 사용자가 길드 관리자(MANAGE_SERVER|ADMINISTRATOR)인지. 미충족은 false(안전 거부). */
+    /**
+     * 관리 API 권한 게이트: 사용자가 길드 관리자(소유자 또는 MANAGE_SERVER|ADMINISTRATOR)인지. 미충족은 false(안전 거부).
+     *
+     * 봇은 `createLight`(GUILD_MEMBERS 인텐트 미사용)라 멤버 캐시가 비어 있을 수 있다 → `getMemberById` 만으로는
+     * 데스크톱 관리 probe 에서 소유자조차 null 로 떨어져 "관리자 아님"이 된다(실측 버그). 그래서:
+     *   ① 서버 소유자는 항상 관리자 — `ownerIdLong` 은 GUILD_CREATE 로 캐시/인텐트 없이도 안다(가장 흔한 케이스 즉시 해결).
+     *   ② 캐시에 멤버가 있으면 캐시로 권한 판정.
+     *   ③ 캐시 미스면 REST 로 1회 조회(GUILD_MEMBERS 인텐트 불필요) 후 위임 관리자(MANAGE_SERVER)까지 판정.
+     */
     override fun isGuildAdmin(
         guildId: Long,
         userId: Long,
     ): Boolean {
-        val member = jda?.getGuildById(guildId)?.getMemberById(userId) ?: return false
-        return member.hasPermission(Permission.MANAGE_SERVER) || member.hasPermission(Permission.ADMINISTRATOR)
+        val guild = jda?.getGuildById(guildId) ?: return false
+        if (guild.ownerIdLong == userId) return true // ① 소유자 = 항상 관리자
+        guild.getMemberById(userId)?.let { return it.hasAdminPower() } // ② 캐시 적중
+        return try {
+            // ③ 캐시 미스 → REST 조회(위임 관리자 포함)
+            guild.retrieveMemberById(userId).complete()?.hasAdminPower() ?: false
+        } catch (e: Exception) {
+            false
+        }
     }
+
+    private fun net.dv8tion.jda.api.entities.Member.hasAdminPower(): Boolean =
+        hasPermission(Permission.MANAGE_SERVER) || hasPermission(Permission.ADMINISTRATOR)
 
     /** 길드 멤버 표시 이름(닉네임 우선). 캐시 미스/미연결이면 null. */
     override fun memberName(

@@ -2,6 +2,7 @@ package com.discordassistant.central.routing.application
 
 import com.discordassistant.central.knowledge.application.NoWebSearch
 import com.discordassistant.central.knowledge.application.WebAugmentation
+import com.discordassistant.central.knowledge.application.WebRecency
 import com.discordassistant.central.knowledge.application.WebSearchAugmenter
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.RemoteTimeoutException
@@ -137,10 +138,12 @@ class RequestOrchestrator(
                 quotaReservationUnits = 1,
             )
 
-        // 2.5) 웹검색 증강(opt-in): 로컬 모델이 웹을 못 보므로 서버가 검색해 프롬프트에 주입한다.
-        //      비활성/미설정/실패면 원본 그대로(루프 밖에서 1회만 — fallback 시 재검색 안 함).
+        // 2.5) 웹검색 증강: 로컬 모델이 웹을 못 보므로 서버가 검색해 프롬프트에 주입한다.
+        //      web:true 명시 OR **시간 민감 질의(최신/연도/뉴스 등)면 자동**으로 검색한다(유저가 web 옵션을
+        //      안 줘도 필요할 때 최신 정보를 끌어옴). 비활성/미설정/실패면 원본 그대로(루프 밖 1회 — fallback 시 재검색 안함).
+        val wantWeb = input.webSearch || WebRecency.isTimeSensitive(input.prompt)
         val augmentation =
-            if (input.webSearch && webSearch.isEnabled()) webSearch.augment(input.prompt) else WebAugmentation(input.prompt, emptyList())
+            if (wantWeb && webSearch.isEnabled()) webSearch.augment(input.prompt) else WebAugmentation(input.prompt, emptyList())
         val effectivePrompt = augmentation.prompt
 
         // 3) 후보 구성 + 필터 + 선택 + 전송(최대 2회: 원 + fallback 1회)

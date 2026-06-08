@@ -198,6 +198,26 @@ class RequestOrchestratorTest {
     }
 
     @Test
+    fun `시간 민감 질의는 webSearch 안 줘도 자동 증강된다`() {
+        val reg = newRegistry()
+        val s = register(reg, 1, "ok")
+        val orch =
+            RequestOrchestrator(
+                reg,
+                fakePolicy,
+                RequestWeigher(),
+                ProviderFilterPipeline(),
+                ProviderRouter(),
+                recorder,
+                fakeProfiles,
+                webSearch = fakeWebEnabled,
+            )
+        // web 옵션을 안 줬어도(false) 최신/연도 질의면 자동 검색 증강된다.
+        orch.handle(input.copy(prompt = "2026년 6월 최신 뉴스", webSearch = false))
+        assertEquals("[웹] 2026년 6월 최신 뉴스", (s.connection as EchoConnection).lastInfer?.prompt)
+    }
+
+    @Test
     fun `차단 사용자 → REJECTED`() {
         val reg = newRegistry()
         register(reg, 1, "ok")

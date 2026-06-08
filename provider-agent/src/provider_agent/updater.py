@@ -318,22 +318,31 @@ def start_service_update_watcher(interval_s: float | None = None) -> None:
     if not _frozen():
         return
     interval = interval_s if interval_s is not None else max(30.0, float(os.getenv("AGENT_UPDATE_INTERVAL_S") or 7200))
+    retry = min(300.0, interval)  # 전이 실패 시 짧게 재시도(시작 시 일시적 네트워크 실패로 2시간 스트랜드 방지)
 
     def _loop() -> None:
         from .config_file import load_config
 
         while True:
+            sleep_s = interval  # 기본(최신 확인됨)은 긴 간격
             try:
-                if bool(load_config().get("auto_update", True)) and not is_updating():
+                if not bool(load_config().get("auto_update", True)):
+                    pass  # 자동 업데이트 끔 → 긴 간격
+                elif is_updating():
+                    sleep_s = retry
+                else:
                     info = check()
-                    if info.get("outdated") and info.get("supported"):
+                    if info.get("error"):
+                        sleep_s = retry  # 네트워크 전이 실패 → 짧게 재시도
+                    elif info.get("outdated") and info.get("supported"):
                         result = apply_update(relaunch="service")
                         if result.get("ok") and result.get("restarting"):
                             time.sleep(0.5)
                             os._exit(0)  # 헬퍼가 교체·헤드리스 재실행
+                        sleep_s = retry  # 적용 실패 → 재시도
             except Exception:  # noqa: BLE001 - 자동 업데이트 실패는 서비스 동작을 막지 않는다
-                pass
-            time.sleep(interval)
+                sleep_s = retry
+            time.sleep(sleep_s)
 
     threading.Thread(target=_loop, daemon=True).start()
 

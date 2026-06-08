@@ -1705,27 +1705,35 @@ def _start_auto_update_watcher() -> None:
     import time
 
     interval = max(30.0, float(os.getenv("AGENT_UPDATE_INTERVAL_S") or 7200))
+    retry = min(300.0, interval)  # 전이 실패/미적용 시 짧게 재시도(시작 시 네트워크 전이 실패로 2시간 스트랜드 방지)
 
     def _loop() -> None:
         while True:
-            if _auto_update_once():
+            outcome = _auto_update_once()
+            if outcome == "applied":
                 return  # 적용 시작 → 곧 종료·재실행되므로 루프 종료
-            time.sleep(interval)
+            # '최신 확인됨'일 때만 긴 간격, 그 외(네트워크 전이 실패·적용 실패)는 짧게 재시도한다.
+            # (예전엔 한 번 실패하면 무조건 2시간 잤다 → 시작 시 일시적 네트워크 실패로 업데이트가 안 됐다.)
+            time.sleep(interval if outcome == "uptodate" else retry)
 
     threading.Thread(target=_loop, daemon=True).start()
 
 
-def _auto_update_once() -> bool:
-    """자동 업데이트 1회 검사. 토글 ON + 구버전 + 지원이면 받아 적용하고 종료를 예약한다.
+def _auto_update_once() -> str:
+    """자동 업데이트 1회 검사. 결과: "applied"(적용 시작) | "uptodate"(확인됨·최신/미지원) | "pending"(재시도).
 
-    적용을 시작했으면 True(다운로드는 _progress 로 프로그래스바에 반영). 실패·해당없음은 False.
+    "pending" 은 네트워크 전이 실패·확인 불가·적용 실패 등 — 호출부가 **짧게 재시도**해야 하는 경우다.
     """
     from . import updater
 
     try:
-        if not bool(load_config().get("auto_update", True)) or updater.is_updating():
-            return False
+        if not bool(load_config().get("auto_update", True)):
+            return "uptodate"  # 자동 업데이트 끔 → 자주 재시도할 이유 없음
+        if updater.is_updating():
+            return "pending"
         info = updater.check()
+        if info.get("error"):
+            return "pending"  # 네트워크 전이 실패(시작 시 흔함) → 짧게 재시도
         if info.get("outdated") and info.get("supported"):
             logging.getLogger("provider_agent").info(
                 "자동 업데이트: v%s → v%s 적용", info.get("current"), info.get("latest")
@@ -1733,10 +1741,11 @@ def _auto_update_once() -> bool:
             result = updater.apply_update()  # _progress 갱신(프로그래스바) + swap 헬퍼
             if result.get("ok") and result.get("restarting"):
                 _schedule_exit()  # 헬퍼가 교체·재실행
-                return True
+                return "applied"
+            return "pending"  # 적용 실패 → 재시도
+        return "uptodate"  # 확인됨 + 최신(또는 이 OS 미지원) → 긴 간격
     except Exception:  # noqa: BLE001 - 자동 업데이트 실패는 앱 동작을 막지 않는다
-        pass
-    return False
+        return "pending"
 
 
 def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:

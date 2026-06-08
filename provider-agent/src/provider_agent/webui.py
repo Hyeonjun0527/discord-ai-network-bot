@@ -1711,7 +1711,13 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
                 f"로컬 AI 제공자 설정 · {APP_DISPLAY_NAME}", url, width=1180, height=760, min_size=(1000, 660)
             )
             webview.start()  # 메인 스레드 점유, 창 닫으면 반환
-            _handoff_to_service_on_close()  # 닫을 때 백그라운드 서비스로 연결 인계(설치돼 있으면)
+            _handoff_to_service_on_close()  # 닫을 때 백그라운드 서비스로 연결 인계(설치돼 있으면, 비블로킹)
+            # 창을 닫았는데도 즉시 안 꺼지고 '응답없음'으로 멈추던 문제(실증) 방지: 인터프리터 finalize·
+            # 배경 데몬 스레드(asyncio 루프·SD 서브프로세스 transport)가 종료를 지연시키지 않게 즉시 강제 종료.
+            # 인계는 detached 로 이미 떠났고, webui/agent 는 데몬·별프로세스라 정리할 것이 없다.
+            import os
+
+            os._exit(0)
             return
         except Exception as exc:  # noqa: BLE001 - 웹뷰 실패 시 브라우저로 폴백
             logging.getLogger("provider_agent").warning(

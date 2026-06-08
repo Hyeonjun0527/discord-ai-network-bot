@@ -856,15 +856,9 @@ class DiscordBot(
                         requestedResponseMode = event.getOption("mode")?.asString,
                         webSearch = event.getOption("web")?.asBoolean ?: false,
                     )
-                // 무료질문 = 관리자 클라우드 AI(Gemini) 고정. 풀에 gemini-2.5-flash-lite 가 광고돼 있으면 그리로 라우팅.
+                // 무료질문 = 관리자 클라우드 AI(Gemini) 고정. 인당 rate limit(시간당 30·일 100) 적용 후 라우팅.
                 "free-ask" ->
-                    commands.ask(
-                        ctx,
-                        event.getOption("prompt")?.asString.orEmpty(),
-                        requestedModel = FREE_CLOUD_MODEL,
-                        requestedResponseMode = null,
-                        webSearch = false,
-                    )
+                    commands.freeAsk(ctx, event.getOption("prompt")?.asString.orEmpty(), FREE_CLOUD_MODEL)
                 "imagine" -> commands.imagine(ctx, event.getOption("prompt")?.asString.orEmpty())
                 "models" -> commands.models(ctx)
                 "catalog" -> commands.catalog(ctx)

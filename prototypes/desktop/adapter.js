@@ -352,6 +352,11 @@ export const api = {
     /* @end-proto-only */
     return http(ENDPOINTS.serverKnowledge(guildId));
   },
+  /** 지식 소스(RAG) 삭제(관리자) — central 이 길드 소유권 가드. 성공 시 갱신 목록 반환. */
+  async deleteKnowledge(guildId, sourceId) {
+    /* @proto-only */ if (USE_MOCK) { const m = MOCK.manage[guildId]; await delay(100); if (m && m.rag && m.rag.docs) { const i = parseInt(String(sourceId).replace('d', ''), 10); if (i >= 0) m.rag.docs.splice(i, 1); } return { ok: true }; } /* @end-proto-only */
+    return post(ENDPOINTS.serverKnowledgeDelete(guildId), { sourceId: String(sourceId) });
+  },
   /** 프리셋 목록 — {ok, presets:[{id,name,category,status,summary}]}. */
   async getPresets(guildId) {
     /* @proto-only */

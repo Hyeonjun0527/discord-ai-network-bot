@@ -19,6 +19,15 @@ interface GuildKnowledgeQuery {
     fun listGuildSources(guildId: Long): List<KnowledgeSourceSummary>
 }
 
+/** 길드 지식 소스 **삭제**(데스크톱 앱 관리채널 브리지). sourceId 로 그 길드 소스만 삭제(spaceId 는 내부 해석). */
+interface GuildKnowledgeAdmin {
+    /** sourceId 가 이 길드 소유일 때만 삭제. 성공 True, 미소유/없음 False. */
+    fun removeGuildSource(
+        guildId: Long,
+        sourceId: Long,
+    ): Boolean
+}
+
 @Service
 class KnowledgeIngestionService(
     private val spaces: KnowledgeSpaceRepository,
@@ -33,9 +42,21 @@ class KnowledgeIngestionService(
     private val indexingPlanner: KnowledgeIndexingPlanner = KnowledgeIndexingPlanner(spaces, sources, featureGate),
     // @Transactional 미부여 협력자 — 파사드의 활성 TX 에 합류한다(새 TX 미발생). clock 은 파사드와 공유.
     private val auditWriter: KnowledgeAuditWriter = KnowledgeAuditWriter(audits, clock),
-) : GuildKnowledgeQuery {
+) : GuildKnowledgeQuery,
+    GuildKnowledgeAdmin {
     /** 길드 전체 지식 소스 목록(관리 화면 10 읽기). RAG 비활성이면 requireRagEnabled 가 막는다(컨트롤러가 graceful 처리). */
     override fun listGuildSources(guildId: Long): List<KnowledgeSourceSummary> = readinessReporter.listGuildSources(guildId)
+
+    @Transactional
+    override fun removeGuildSource(
+        guildId: Long,
+        sourceId: Long,
+    ): Boolean {
+        // sourceId → spaceId 해석(이 길드 목록에서만). removeSource 가 내부에서 guild 소유권을 한 번 더 가드.
+        val summary = readinessReporter.listGuildSources(guildId).firstOrNull { it.id == sourceId } ?: return false
+        removeSource(guildId, summary.knowledgeSpaceId, sourceId, "앱에서 삭제")
+        return true
+    }
 
     @Transactional
     fun createSpace(

@@ -6,6 +6,7 @@ import com.discordassistant.central.global.audit.AuditLog
 import com.discordassistant.central.globalpromptset.adapter.outbound.persistence.GlobalPromptSetRepository
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
 import com.discordassistant.central.guild.application.GuildChannelPolicy
+import com.discordassistant.central.knowledge.application.GuildKnowledgeAdmin
 import com.discordassistant.central.knowledge.application.GuildKnowledgeQuery
 import com.discordassistant.central.knowledge.application.KnowledgeSourceSummary
 import com.discordassistant.central.platform.discord.BotChannelInfo
@@ -17,6 +18,7 @@ import com.discordassistant.central.preset.application.PresetSummary
 import com.discordassistant.central.provider.adapter.inbound.web.AdminActionRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminChannelToggleRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminChannelsRequest
+import com.discordassistant.central.provider.adapter.inbound.web.AdminKnowledgeDeleteRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPolicyRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPresetDeleteRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPromptSetRequest
@@ -138,12 +140,13 @@ class ProviderAdminControllerTest
                     override fun listChannelAis(guildId: Long) =
                         listOf(ChannelAiProfile(guildId, 20L, "ai-chat", null, tone = "friendly", purpose = "general_assistant"))
                 }
+            val sourceIds = mutableSetOf(7L) // 상태형 — RAG 삭제 테스트가 관찰 가능
             val knowledgeQuery =
                 object : GuildKnowledgeQuery {
                     override fun listGuildSources(guildId: Long) =
-                        listOf(
+                        sourceIds.map {
                             KnowledgeSourceSummary(
-                                7L,
+                                it,
                                 1L,
                                 guildId,
                                 "file",
@@ -155,8 +158,15 @@ class ProviderAdminControllerTest
                                 null,
                                 "2026-06-07",
                                 "2026-06-07",
-                            ),
-                        )
+                            )
+                        }
+                }
+            val knowledgeAdmin =
+                object : GuildKnowledgeAdmin {
+                    override fun removeGuildSource(
+                        guildId: Long,
+                        sourceId: Long,
+                    ): Boolean = sourceIds.remove(sourceId)
                 }
             val presetIds = mutableSetOf(3L) // 상태형 — 삭제 테스트가 관찰 가능
             val presetQuery =
@@ -194,6 +204,7 @@ class ProviderAdminControllerTest
                     guildChannels,
                     channelAiQuery,
                     knowledgeQuery,
+                    knowledgeAdmin,
                     presetQuery,
                     presetAdmin,
                 )
@@ -388,5 +399,15 @@ class ProviderAdminControllerTest
             // 비관리자 거부
             val d = setup(admin = false)
             assertFalse(d.ctrl.deletePreset(AdminPresetDeleteRequest(d.dtoken, 100L, "3")).ok)
+        }
+
+        @Test
+        fun `관리자는 RAG 지식 소스를 삭제하고, 비관리자는 거부된다`() {
+            val c = setup(admin = true)
+            val del = c.ctrl.deleteKnowledge(AdminKnowledgeDeleteRequest(c.dtoken, 100L, "7"))
+            assertTrue(del.ok)
+            assertTrue(del.docs.isEmpty()) // 삭제 후 목록 비었음
+            val d = setup(admin = false)
+            assertFalse(d.ctrl.deleteKnowledge(AdminKnowledgeDeleteRequest(d.dtoken, 100L, "7")).ok)
         }
     }

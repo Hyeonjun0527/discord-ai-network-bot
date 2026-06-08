@@ -76,6 +76,7 @@ export const ENDPOINTS = Object.freeze({
   //   추가·편집은 Discord 명령·웹 대시보드 경유(앱은 안내). 64bit id 는 문자열.
   serverChannelAi: (g) => '/api/servers/' + g + '/channel-ai', // GET → {ok, items:[{channelId,name,tone,purpose}]}
   serverKnowledge: (g) => '/api/servers/' + g + '/knowledge',  // GET → {ok, docs:[{id,title,status,riskLevel,addedAt,indexedAt}]}
+  serverKnowledgeDelete: (g) => '/api/servers/' + g + '/knowledge/delete', // POST {sourceId} → 삭제(central 소유권 가드)
   serverPresets: (g) => '/api/servers/' + g + '/presets',      // GET → {ok, presets:[{id,name,category,status,summary}]}
   serverPresetDelete: (g) => '/api/servers/' + g + '/presets/delete', // POST {presetId} → 삭제(central 소유권 가드)
   serverAddToken: '/api/server-add-token',  // POST {token} → {ok} (실 앱: 토큰으로 서버 추가 + 자동 연결)

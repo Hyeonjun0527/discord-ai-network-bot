@@ -160,8 +160,8 @@ def _post_provider_admin_guild(base: str, path: str, durable_token: str, guild_i
         return dict(json.loads(resp.read().decode("utf-8")))
 
 
-def _post_provider_admin_preset_delete(base: str, durable_token: str, guild_id: int, preset_id: str) -> dict:
-    """프리셋 삭제(관리자 쓰기). central 이 durable 토큰 신원 + 길드 소유권을 가드한다."""
+def _post_provider_admin_delete(base: str, path: str, durable_token: str, guild_id: int, id_key: str, id_val: str) -> dict:
+    """관리 삭제 공통(프리셋/지식 소스). central 이 durable 토큰 신원 + 길드 소유권을 가드한다."""
     import json
     import ssl
     import urllib.request
@@ -169,9 +169,9 @@ def _post_provider_admin_preset_delete(base: str, durable_token: str, guild_id: 
     import certifi
 
     ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token, "guildId": guild_id, "presetId": str(preset_id)}).encode("utf-8")
+    body = json.dumps({"durableToken": durable_token, "guildId": guild_id, id_key: str(id_val)}).encode("utf-8")
     req = urllib.request.Request(
-        base + "/provider/admin/presets/delete",
+        base + path,
         data=body,
         method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
@@ -699,7 +699,15 @@ class ProviderAgent:
         if not dt:
             return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
         base = _agent_sync_base(self._cfg.relay_url)
-        return await asyncio.to_thread(_post_provider_admin_preset_delete, base, dt, guild_id, preset_id)
+        return await asyncio.to_thread(_post_provider_admin_delete, base, "/provider/admin/presets/delete", dt, guild_id, "presetId", preset_id)
+
+    async def admin_knowledge_delete(self, guild_id: int, source_id: str) -> dict:
+        """지식 소스(RAG) 삭제(관리 화면 10 쓰기). central 이 길드 소유권 가드."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_delete, base, "/provider/admin/knowledge/delete", dt, guild_id, "sourceId", source_id)
 
     # ── 서버별 정책(데스크톱 앱 G3) ─────────────────────────────────────
     def guild_policy(self, guild_id: int) -> dict:

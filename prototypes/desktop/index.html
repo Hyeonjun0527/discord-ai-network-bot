@@ -2042,11 +2042,12 @@
       const docs = m._rag || [];
       const rows = docs.length ? docs.map(x => { const s = RAG_STATUS[x.status] || ['pending', x.status];
         return '<div class="mrow"><span class="mrow-nm">📄 ' + x.title + '</span>' +
-          '<span class="mrow-meta"><span class="srv-st ' + s[0] + '"><span class="d"></span>' + s[1] + '</span>' + ((x.indexedAt || x.addedAt) ? ' · ' + (x.indexedAt || x.addedAt) : '') + '</span></div>'; }).join('')
-        : '<span class="dim">아직 문서가 없어요.</span>';
+          '<span class="mrow-meta"><span class="srv-st ' + s[0] + '"><span class="d"></span>' + s[1] + '</span>' + ((x.indexedAt || x.addedAt) ? ' · ' + (x.indexedAt || x.addedAt) : '') +
+          ' <button class="btn btn--sm btn--danger" data-rag-del="' + x.id + '" data-name="' + (x.title || '').replace(/"/g, '&quot;') + '">삭제</button></span></div>'; }).join('')
+        : '<span class="dim">아직 문서가 없어요(추가는 Discord 명령으로).</span>';
       return '<div class="msec-label">지식 공간 <span class="dim">· AI 가 답변에 참고</span></div><div class="dcard">' + rows + '</div>' +
         '<div class="dsub" style="margin-top:12px">📄 올린 문서의 콘텐츠 책임은 <b>서버 관리자</b>에게 있어요. 불법 콘텐츠는 무관용 차단됩니다(안전).</div>' +
-        MANAGE_READONLY_NOTE('지식 문서');
+        MANAGE_READONLY_NOTE('지식 문서(추가는 Discord/웹, 여기선 삭제 가능)');
     }
 
     function renderPresetTab(m) {
@@ -2101,6 +2102,8 @@
       manageEl.querySelectorAll('[data-prompt-del]').forEach(b => b.onclick = () => confirmDeletePrompt(d, m, b.dataset.promptDel, b.dataset.name, rerender));
       // 프리셋 삭제(실연동: webui → central /provider/admin/presets/delete, 길드 소유권 가드)
       manageEl.querySelectorAll('[data-preset-del]').forEach(b => b.onclick = () => confirmDeletePreset(d, m, b.dataset.presetDel, b.dataset.name, rerender));
+      // RAG 지식 소스 삭제(실연동: webui → central /provider/admin/knowledge/delete, 길드 소유권 가드)
+      manageEl.querySelectorAll('[data-rag-del]').forEach(b => b.onclick = () => confirmDeleteSource(d, m, b.dataset.ragDel, b.dataset.name, rerender));
       const pa = manageEl.querySelector('#promptAdd');
       if (pa) pa.onclick = () => openPromptModal(d, m, rerender);
       // 안전 — 신고 처리(무시/숨김)
@@ -2142,6 +2145,26 @@
           if (r && r.ok === false) { lay.remove(); toast(r.message || r.error || '삭제할 수 없어요', { type: 'info' }); return; }
           if (r && r.presets) m._presets = r.presets; else m._presets = (m._presets || []).filter(p => String(p.id) !== String(id));
           lay.remove(); toast((name || '프리셋') + ' 을(를) 삭제했어요', { type: 'ok' }); done();
+        } catch (_e) { lay.remove(); toast('삭제 실패 — 다시 시도하세요', { type: 'error' }); }
+      };
+    }
+
+    function confirmDeleteSource(d, m, id, name, done) {
+      const lay = document.createElement('div');
+      lay.className = 'modal-layer';
+      lay.innerHTML = '<div class="modal" style="width:min(420px,100%)">' +
+        '<button class="modal-x" data-x aria-label="닫기">✕</button>' +
+        '<h3>' + (name || '문서') + ' 을(를) 삭제할까요?</h3><p class="msub">이 지식 소스가 RAG 에서 제거돼요(AI 가 더는 참고하지 않아요).</p>' +
+        '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
+        '<button class="btn btn--md btn--danger" id="rsdYes">삭제</button></div></div>';
+      document.body.appendChild(lay);
+      lay.querySelectorAll('[data-x]').forEach(b => b.onclick = () => lay.remove());
+      lay.querySelector('#rsdYes').onclick = async () => {
+        try {
+          const r = await api.deleteKnowledge(d.guildId, id);
+          if (r && r.ok === false) { lay.remove(); toast(r.message || r.error || '삭제할 수 없어요', { type: 'info' }); return; }
+          if (r && r.docs) m._rag = r.docs; else m._rag = (m._rag || []).filter(x => String(x.id) !== String(id));
+          lay.remove(); toast((name || '문서') + ' 을(를) 삭제했어요', { type: 'ok' }); done();
         } catch (_e) { lay.remove(); toast('삭제 실패 — 다시 시도하세요', { type: 'error' }); }
       };
     }

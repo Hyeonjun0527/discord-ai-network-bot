@@ -4,6 +4,7 @@ import com.discordassistant.central.channelai.application.GuildChannelAiQuery
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetView
 import com.discordassistant.central.guild.application.GuildChannelPolicy
+import com.discordassistant.central.knowledge.application.GuildKnowledgeAdmin
 import com.discordassistant.central.knowledge.application.GuildKnowledgeQuery
 import com.discordassistant.central.platform.discord.BotGuildLister
 import com.discordassistant.central.preset.application.GuildPresetAdmin
@@ -136,6 +137,13 @@ data class AdminKnowledgeResponse(
     val docs: List<ManageKnowledgeDocDto> = emptyList(),
 )
 
+/** 지식 소스 삭제 요청(관리자). sourceId 는 64bit 안전을 위해 문자열로 받아 Long 변환. */
+data class AdminKnowledgeDeleteRequest(
+    val durableToken: String = "",
+    val guildId: Long = 0,
+    val sourceId: String = "",
+)
+
 /** 프리셋 항목(관리 화면 11 읽기). */
 data class ManagePresetDto(
     val id: String,
@@ -181,6 +189,7 @@ class ProviderAdminController(
     private val guildChannels: GuildChannelPolicy,
     private val guildChannelAi: GuildChannelAiQuery,
     private val guildKnowledge: GuildKnowledgeQuery,
+    private val guildKnowledgeAdmin: GuildKnowledgeAdmin,
     private val guildPresets: GuildPresetQuery,
     private val guildPresetAdmin: GuildPresetAdmin,
 ) {
@@ -390,6 +399,25 @@ class ProviderAdminController(
             }
         }.fold(
             onSuccess = { AdminKnowledgeResponse(true, docs = it) },
+            onFailure = { AdminKnowledgeResponse(false, "지식 공간(RAG) 기능이 꺼져 있어요") },
+        )
+    }
+
+    /** 지식 소스 삭제(관리 화면 10 쓰기). 소유권은 길드로 가드. 성공 시 갱신 목록 반환. */
+    @PostMapping("/knowledge/delete")
+    fun deleteKnowledge(
+        @RequestBody req: AdminKnowledgeDeleteRequest,
+    ): AdminKnowledgeResponse {
+        authedAdmin(req.durableToken, req.guildId) ?: return AdminKnowledgeResponse(false, "관리자 권한이 필요합니다")
+        val sourceId = req.sourceId.toLongOrNull() ?: return AdminKnowledgeResponse(false, "잘못된 소스입니다")
+        return runCatching {
+            val ok = guildKnowledgeAdmin.removeGuildSource(req.guildId, sourceId)
+            if (!ok) return AdminKnowledgeResponse(false, "소스를 찾을 수 없거나 권한이 없어요")
+            guildKnowledge.listGuildSources(req.guildId).map {
+                ManageKnowledgeDocDto(it.id.toString(), it.title, it.status, it.riskLevel, it.addedAt, it.indexedAt)
+            }
+        }.fold(
+            onSuccess = { AdminKnowledgeResponse(true, "삭제했어요", it) },
             onFailure = { AdminKnowledgeResponse(false, "지식 공간(RAG) 기능이 꺼져 있어요") },
         )
     }

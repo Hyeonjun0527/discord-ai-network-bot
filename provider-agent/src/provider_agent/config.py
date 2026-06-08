@@ -31,6 +31,8 @@ class AgentConfig:
     pause_on_battery: bool = True  # 배터리(방전) 중에는 자동 pause(자원 보호)
     pause_on_high_load: bool = True  # CPU 고부하 시 자동 pause(자원 보호)
     enable_image: bool = False  # 로컬 SD 이미지 생성 capability 광고(opt-in, SD Phase 1)
+    gemini_api_key: str = ""  # 클라우드 Gemini 백엔드 키(관리자 1개로 서버 전체 무료 제공). 비면 미사용. central 엔 안 올림
+    gemini_models: tuple[str, ...] = ()  # 광고할 Gemini 모델(키 있을 때 기본 gemini-2.5-flash-lite)
     sd_url: str = "http://127.0.0.1:7860"  # 로컬 Stable Diffusion(A1111) 주소
     allow_remote_sd: bool = False  # 기본 localhost 전용; True 면 원격 SD 허용(위험)
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
@@ -55,6 +57,39 @@ class AgentConfig:
 
 def _env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
+
+
+def _load_dotenv() -> None:
+    """``.env`` 파일이 있으면 KEY=VALUE 를 os.environ 에 보강한다(이미 설정된 값은 유지).
+
+    의존성 없이 가볍게: GEMINI_API_KEY 같은 키를 ``.env`` 에 넣는 흐름 지원(관리자 편의). 후보 위치는
+    현재 작업 디렉터리와 provider-agent 패키지 루트(레포에서 `provider-agent/.env`). 따옴표/주석 처리.
+    """
+    import pathlib
+
+    here = pathlib.Path(__file__).resolve()
+    candidates = [pathlib.Path.cwd() / ".env"]
+    # provider-agent/.env · 레포 루트/.env (관리자가 흔히 둠). 경로가 짧으면(frozen) parents 가 없어 건너뜀.
+    for depth in (2, 3):
+        if len(here.parents) > depth:
+            candidates.append(here.parents[depth] / ".env")
+    seen = False
+    for cand in candidates:
+        if seen or not cand.is_file():
+            continue
+        seen = True  # 첫 발견 파일만(중복 로드 방지)
+        try:
+            for raw in cand.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                if key and key not in os.environ:  # CLI/실제 환경변수가 우선
+                    os.environ[key] = val
+        except OSError:
+            pass
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -98,6 +133,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
     from .config_file import load_config, save_config
     from .netguard import RemoteOllamaBlocked, ensure_ollama_allowed
 
+    _load_dotenv()  # .env(GEMINI_API_KEY 등) 보강 — 실제 환경변수/CLI 가 우선
     parser = build_parser()
     args = parser.parse_args(argv)
     saved = load_config()  # 저장된 설정(없으면 빈 dict)
@@ -120,6 +156,13 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         parser.error(str(exc))
 
     enable_image = bool(args.enable_image) or bool(saved.get("enable_image"))
+    # 클라우드 Gemini 백엔드(관리자 키 1개). env GEMINI_API_KEY > 저장 설정. 있으면 기본 모델 광고.
+    from .gemini import DEFAULT_GEMINI_MODEL
+
+    gemini_api_key = (_env("GEMINI_API_KEY") or str(saved.get("gemini_api_key") or "")).strip()
+    gemini_models = tuple(saved.get("gemini_models") or ())
+    if gemini_api_key and not gemini_models:
+        gemini_models = (DEFAULT_GEMINI_MODEL,)
     sd_url = (args.sd_url or _env("SD_BASE_URL") or saved.get("sd_url") or "http://127.0.0.1:7860").rstrip("/")
     allow_remote_sd = bool(args.allow_remote_sd) or bool(saved.get("allow_remote_sd"))
     if enable_image:
@@ -169,6 +212,8 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         allow_remote_ollama=allow_remote_ollama,
         pause_on_battery=not bool(args.run_on_battery),
         enable_image=enable_image,
+        gemini_api_key=gemini_api_key,
+        gemini_models=gemini_models,
         sd_url=sd_url,
         allow_remote_sd=allow_remote_sd,
         # --service(헤드리스 자동시작)는 동의 프롬프트를 띄울 수 없으므로 자동 승인(--yes)을 포함한다.

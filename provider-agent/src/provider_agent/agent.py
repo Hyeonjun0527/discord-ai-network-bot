@@ -35,6 +35,11 @@ SD_PROGRESS_POLL_S = 1.5
 SD_PROGRESS_HALFLIFE_S = 6.0
 
 
+def _merge_models(base: list[str], extra: list[str]) -> list[str]:
+    """광고 모델 목록 = 로컬(Ollama) 선택 + 클라우드(Gemini), 순서 보존·중복 제거."""
+    return list(dict.fromkeys([*base, *extra]))
+
+
 def _agent_sync_base(relay: str) -> str:
     """relay(wss://…/agent) → 중앙 서버 https 베이스(에이전트 동기화 엔드포인트용)."""
     base = relay.replace("wss://", "https://").replace("ws://", "http://")
@@ -248,7 +253,16 @@ class ProviderAgent:
         # 서버별 정책 override {guild_id: {daily_limit, …}} — 데스크톱 앱 G3 가 설정. run() 에서 로드.
         # 없는 길드는 전역 기본(cfg.daily_limit)을 쓴다.
         self._guild_policy: dict[int, dict] = {}
-        self._models: list[str] = list(cfg.models)
+        # 클라우드 Gemini 백엔드(관리자 키 1개로 서버 전체 제공). 키 있으면 gemini 모델을 풀에 광고하고
+        # gemini-* 모델 요청을 Gemini API 로 라우팅한다(Ollama 와 동일 한도·공정성). 키는 이 PC 에만.
+        self._gemini = None
+        self._gemini_models: list[str] = []
+        if cfg.gemini_api_key:
+            from .gemini import GeminiClient
+
+            self._gemini = GeminiClient(cfg.gemini_api_key, cfg.request_timeout)
+            self._gemini_models = list(cfg.gemini_models)
+        self._models: list[str] = _merge_models(list(cfg.models), self._gemini_models)
         self._default_model: str = (cfg.default_model or "").strip()
         self._inflight = 0
         self._processed = 0  # 누적 처리 건수(로컬 요약)
@@ -405,6 +419,9 @@ class ProviderAgent:
             else:
                 await self._handle_image(conn, req)
                 self._processed += 1
+        elif self._gemini is not None and (model or "").startswith("gemini-"):
+            # 클라우드 Gemini 라우팅(관리자 키). gemini-* 모델은 Gemini API 로 처리(한도·공정성은 동일).
+            await self._run_gemini(conn, req, model)
         elif req.stream:
             # 스트리밍(#142): 부분 텍스트를 ChunkFrame 으로 점진 전송 후 done 표시.
             # 무거운/폭주 응답 보호: 누적 길이가 MAX_RESPONSE_CHARS 를 넘으면 조기 종료.
@@ -423,6 +440,26 @@ class ProviderAgent:
             if len(text) > MAX_RESPONSE_CHARS:
                 text = text[:MAX_RESPONSE_CHARS]
             self._processed += 1
+            await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
+
+    async def _run_gemini(self, conn: AgentConnection, req: InferRequest, model: str | None) -> None:
+        """클라우드 Gemini 로 텍스트 추론(관리자 키). 스트림 요청도 한 번에 받아 청크로 흘려보낸다."""
+        from .gemini import GeminiError
+
+        assert self._gemini is not None
+        try:
+            text, usage = await self._gemini.generate(req.prompt, model)
+        except GeminiError as exc:
+            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
+            return
+        if len(text) > MAX_RESPONSE_CHARS:
+            text = text[:MAX_RESPONSE_CHARS]
+        self._processed += 1
+        if req.stream:
+            for i in range(0, len(text), IMAGE_CHUNK_CHARS):
+                await self._safe_send(conn, ChunkFrame(req.request_id, delta=text[i : i + IMAGE_CHUNK_CHARS], done=False))
+            await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
+        else:
             await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
 
     async def _handle_image(self, conn: AgentConnection, req: InferRequest) -> None:
@@ -1033,7 +1070,7 @@ class ProviderAgent:
     async def set_models(self, models: list[str], default_model: str | None = None) -> None:
         """제공 모델 선택을 라이브로 적용·재광고(앱 모델 화면 '적용'). self._models 갱신 + 모든 연결 재접속(새 hello)
         → 중앙 풀이 새 모델 집합을 즉시 안다. status.models 도 이 값을 반영(홈/서버 '제공 모델' 일치)."""
-        self._models = list(models)
+        self._models = _merge_models(list(models), self._gemini_models)  # Gemini 모델은 항상 유지
         if default_model is not None:
             self._default_model = (default_model or "").strip()
         await self._readvertise()

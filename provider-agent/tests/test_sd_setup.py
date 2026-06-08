@@ -6,10 +6,12 @@ import asyncio
 from provider_agent import sd_setup as sd_mod
 
 
-def test_install_dir_follows_xdg(monkeypatch, tmp_path):
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+def test_install_dir_is_dot_free(monkeypatch, tmp_path):
+    # gradio 3.43.2 는 경로에 '.'로 시작하는 컴포넌트가 있으면 /file= 정적자산을 403 으로 막는다.
+    # → install_dir 의 어떤 컴포넌트도 점으로 시작하면 안 된다(WebUI JS 로드 보장). 이름은 sdnext.
     d = sd_mod.install_dir()
-    assert d == tmp_path / "nexa" / "sdnext"
+    assert d.name == "sdnext"
+    assert not any(part.startswith(".") for part in d.parts), f"점으로 시작하는 경로 컴포넌트 금지: {d}"
 
 
 def test_has_git(monkeypatch):
@@ -72,9 +74,8 @@ def test_extra_pip_deps_includes_torchsde():
     assert "torchsde" in sd_mod.EXTRA_PIP_DEPS
 
 
-def test_install_dir_is_sdnext(monkeypatch, tmp_path):
+def test_install_dir_is_sdnext():
     # SD.Next 는 기존 A1111(stable-diffusion-webui)과 분리된 경로(sdnext)에 설치.
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     d = sd_mod.install_dir()
     assert d.name == "sdnext" and "stable-diffusion-webui" not in str(d)
 
@@ -183,7 +184,7 @@ def test_run_setup_installs_prereqs(monkeypatch, tmp_path):
 
     spawned: dict = {}
 
-    async def fake_spawn(cmd, env=None, log_path=None):
+    async def fake_spawn(cmd, env=None, log_path=None, cwd=None):
         spawned["env"] = env
         return object()
 
@@ -228,7 +229,7 @@ def test_run_setup_full_flow(monkeypatch, tmp_path):
 
     spawned: dict = {}
 
-    async def fake_spawn(cmd, env=None, log_path=None):
+    async def fake_spawn(cmd, env=None, log_path=None, cwd=None):
         spawned["cmd"] = cmd
         return object()
 
@@ -275,7 +276,7 @@ def test_run_setup_reports_webui_exit_with_log(monkeypatch, tmp_path):
     class _DeadProc:
         returncode = 128  # 예: Stability-AI repo 404 로 클론 실패
 
-    async def fake_spawn(cmd, env=None, log_path=None):
+    async def fake_spawn(cmd, env=None, log_path=None, cwd=None):
         # 실제 webui 처럼 로그 파일에 실패 원인을 남기고 죽은 프로세스를 돌려준다.
         if log_path is not None:
             log_path.write_text("fatal: repository 'https://github.com/Stability-AI/stablediffusion.git/' not found")
@@ -531,7 +532,7 @@ def test_launch_only_spawns_when_installed(monkeypatch, tmp_path):
     spawned: dict = {}
     ran: list = []
 
-    async def fake_spawn(cmd, env=None, log_path=None):
+    async def fake_spawn(cmd, env=None, log_path=None, cwd=None):
         spawned["cmd"] = cmd
         return object()
 

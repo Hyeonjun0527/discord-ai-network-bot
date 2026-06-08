@@ -117,13 +117,21 @@ def request_cancel() -> None:
 
 
 def install_dir() -> pathlib.Path:
-    """SD.Next 를 설치할 데이터 디렉터리. ``XDG_DATA_HOME`` 을 따르고 없으면 ``~/.local/share``.
+    """SD.Next 를 설치할 데이터 디렉터리. **경로에 점(.)으로 시작하는 폴더가 없어야 한다.**
 
-    경로를 ``sdnext`` 로 둬 기존 A1111(stable-diffusion-webui) 설치와 **분리**한다 — 기존 유저는
-    A1111 디렉터리를 그대로 두고 SD.Next 를 새로 설치(혼선·충돌 방지). 옛 A1111 디렉터리는 방치돼도 무방.
+    gradio 3.43.2(SD.Next 가 핀)의 정적파일 라우트는 경로 컴포넌트 중 하나라도 ``.`` 로 시작하면
+    ``is_dotfile`` 로 보고 **403(File not allowed)** 으로 막는다(실증). 그래서 표준 XDG 인 ``~/.local/share``
+    (``.local`` 포함)에 설치하면 SD.Next WebUI 의 JS/CSS 가 전부 403 으로 죽는다. 점 없는 경로를 쓴다.
+    - macOS: ``~/Library/Nexa/sdnext`` · Windows: ``%LOCALAPPDATA%/Nexa/sdnext`` · Linux: ``~/nexa/sdnext``.
     """
-    base = os.getenv("XDG_DATA_HOME") or os.path.join(pathlib.Path.home(), ".local", "share")
-    return pathlib.Path(base) / "nexa" / "sdnext"
+    home = pathlib.Path.home()
+    if sys.platform == "win32":
+        base = pathlib.Path(os.getenv("LOCALAPPDATA") or (home / "AppData" / "Local"))
+    elif sys.platform == "darwin":
+        base = home / "Library" / "Nexa"  # 점·공백 없음(Application Support 는 공백이라 회피)
+    else:
+        base = home / "nexa"  # XDG 기본(~/.local/share)은 .local 점 때문에 gradio 가 막아 회피
+    return base / "sdnext"
 
 
 def _has(cmd: str) -> bool:
@@ -294,18 +302,28 @@ def launch_log_path(directory: pathlib.Path | None = None) -> pathlib.Path:
     return (directory or install_dir()) / "webui-launch.log"
 
 
-async def _spawn(cmd: list[str], env: dict[str, str] | None = None, log_path: pathlib.Path | None = None) -> asyncio.subprocess.Process:
+async def _spawn(
+    cmd: list[str],
+    env: dict[str, str] | None = None,
+    log_path: pathlib.Path | None = None,
+    cwd: pathlib.Path | None = None,
+) -> asyncio.subprocess.Process:
     """포그라운드 webui 를 백그라운드로 띄운다(await 하지 않음).
 
     출력은 ``log_path`` 파일로 캡처한다(없으면 버림). 첫 실행은 의존성 설치·저장소 클론에서
     실패할 수 있는데(예: 업스트림 repo 소멸·setuptools 비호환), 그 원인을 파일에 남겨야 진단 가능하다.
+
+    ``cwd`` = SD.Next 설치 디렉터리. **반드시 install_dir 로 띄워야** gradio 가 자기 정적자산
+    (``/file=javascript/...``)을 서빙한다 — 다른 CWD 면 gradio 가 그 경로를 allowed 밖으로 보고
+    403 으로 막아 WebUI JS 가 안 떠 화면이 죽는다(실증).
     """
+    cwd_str = str(cwd) if cwd is not None else None
     if log_path is not None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         out = open(log_path, "wb")  # noqa: SIM115 - 자식 수명 동안 열어 둔다(프로세스 종료 시 OS 가 정리)
-        return await asyncio.create_subprocess_exec(*cmd, stdout=out, stderr=out, env=env)
+        return await asyncio.create_subprocess_exec(*cmd, stdout=out, stderr=out, env=env, cwd=cwd_str)
     return await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL, env=env
+        *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL, env=env, cwd=cwd_str
     )
 
 
@@ -480,7 +498,7 @@ async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
         _set("starting", 70, "Stable Diffusion(SD.Next) 시작 중… (첫 실행은 수~수십 분)")
         env = {**os.environ, **launch_env(python_cmd)}
         log_path = launch_log_path(directory)
-        _proc = await _spawn(launch_command(directory=directory), env=env, log_path=log_path)
+        _proc = await _spawn(launch_command(directory=directory), env=env, log_path=log_path, cwd=directory)
         if not await _wait_healthy(client, _proc):
             if _cancelled():
                 return False
@@ -536,7 +554,7 @@ async def launch_only(sd_url: str) -> bool:
         _set("starting", 70, "Stable Diffusion(SD.Next) 시작 중… (첫 실행 이후라 보통 1~2분)")
         env = {**os.environ, **launch_env(python_cmd)}
         log_path = launch_log_path(directory)
-        _proc = await _spawn(launch_command(directory=directory), env=env, log_path=log_path)
+        _proc = await _spawn(launch_command(directory=directory), env=env, log_path=log_path, cwd=directory)
         if await _wait_healthy(client, _proc):
             _set("done", 100, "준비 완료")
             return True

@@ -998,6 +998,7 @@ class DiscordBot(
                         ctx,
                         event.getOption("model")?.asString,
                         event.getOption("language")?.asString,
+                        event.getOption("user-daily-limit")?.asLong?.toInt(),
                     )
                 "llm-allow-channel" -> commands.allowChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
                 "llm-deny-channel" -> commands.denyChannel(ctx, event.getOption("channel")!!.asChannel.idLong)

@@ -23,6 +23,8 @@ class GuildEntity(
     @Column(name = "default_model") var defaultModel: String? = null,
     @Column(name = "language") var language: String = "ko",
     @Column(name = "welcome_message") var welcomeMessage: String? = null,
+    // 유저별 일일 사용 한도(요청자 쿼터). null=기본(20), 0=무제한. 역할 정책(role daily limit)과 별개의 길드 기본값.
+    @Column(name = "default_daily_limit") var defaultDailyLimit: Int? = null,
 )
 
 @Entity

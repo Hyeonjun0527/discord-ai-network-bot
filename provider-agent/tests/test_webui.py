@@ -1236,3 +1236,51 @@ async def test_asset_img_served_and_missing_404(tmp_path, monkeypatch):
         assert (await client.get("/img/nope.png")).status == 404
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_cloud_settings_endpoint(monkeypatch):
+    """POST /api/cloud — Gemini 키·ComfyUI 주소 저장(에이전트 미실행 시 persist 만)."""
+    saved: dict = {}
+    monkeypatch.setattr(webui, "persist_partial", lambda d: saved.update(d))
+    client = await _client()
+    try:
+        r = await (await client.post("/api/cloud", json={"geminiApiKey": "AIzaXXX"}, headers={"X-Session": KEY})).json()
+        assert r["ok"] is True and r["geminiConfigured"] is True
+        assert saved.get("gemini_api_key") == "AIzaXXX"
+        r2 = await (await client.post("/api/cloud", json={"comfyUrl": "http://127.0.0.1:8188/"}, headers={"X-Session": KEY})).json()
+        assert r2["comfyUrl"] == "http://127.0.0.1:8188" and r2["needsRestart"] is True
+        assert saved.get("comfy_url") == "http://127.0.0.1:8188"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_server_models_endpoints(monkeypatch):
+    """GET/POST /api/servers/{g}/models — 서버별 제공 모델 readback·저장."""
+    import provider_agent.config_file as cf
+
+    store: dict = {"models": ["a", "b"]}
+    policies: dict = {}
+    monkeypatch.setattr(webui, "load_config", lambda: dict(store))
+    monkeypatch.setattr(cf, "load_guild_policies", lambda *a, **k: dict(policies))
+    monkeypatch.setattr(cf, "set_guild_policy", lambda g, p, *a, **k: policies.setdefault(g, {}).update(p))
+    client = await _client()
+    try:
+        g = await (await client.get("/api/servers/100/models", headers={"X-Session": KEY})).json()
+        assert g["ok"] is True and set(g["available"]) == {"a", "b"} and g["chatModels"] == []
+        r = await (await client.post("/api/servers/100/models", json={"chatModels": ["a"], "imageEnabled": False}, headers={"X-Session": KEY})).json()
+        assert r["ok"] is True
+        assert policies[100]["chatModels"] == ["a"] and policies[100]["imageEnabled"] is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_install_custom_rejects_bad_url():
+    client = await _client()
+    try:
+        r = await (await client.post("/api/sd/install-custom", json={"url": "https://evil.com/m.bin"}, headers={"X-Session": KEY})).json()
+        assert r["ok"] is False
+    finally:
+        await client.close()

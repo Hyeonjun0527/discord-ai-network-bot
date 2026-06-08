@@ -159,10 +159,16 @@ def start_command(venv_py: str, directory: pathlib.Path | None = None) -> list[s
 # ── 진행 상태(SD 와 분리) ─────────────────────────────────────────────────────
 _state: dict[str, object] = {"phase": "idle", "percent": 0, "message": "", "error": None}
 _proc: asyncio.subprocess.Process | None = None
+_busy = False
 
 
 def progress() -> dict:
     return dict(_state)
+
+
+def is_busy() -> bool:
+    """설치/기동이 진행 중인지(중복 실행 방지 가드)."""
+    return _busy
 
 
 def _set(phase: str | None = None, percent: int | None = None, message: str | None = None, error: str | None = None) -> None:
@@ -219,8 +225,9 @@ async def run_setup(default_model_url: str | None = None) -> bool:
 
     실패는 _set(error) 로 표면화하고 False. 이미 떠 있으면 즉시 done.
     """
-    global _proc
+    global _proc, _busy
     directory = install_dir()
+    _busy = True
     try:
         if await health():
             _set("done", 100, "이미 준비됨")
@@ -293,3 +300,5 @@ async def run_setup(default_model_url: str | None = None) -> bool:
     except (OSError, aiohttp.ClientError) as exc:
         _set("error", None, "ComfyUI 설치 중 오류", error=str(exc)[-400:])
         return False
+    finally:
+        _busy = False

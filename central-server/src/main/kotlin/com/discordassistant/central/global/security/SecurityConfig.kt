@@ -94,6 +94,10 @@ class SecurityConfig(
                     authorize("/agent/**", permitAll)
                     authorize("/provider/connect/**", permitAll) // 웹 ‘토큰 받기’ OAuth 온보딩
                     authorize("/provider/agent/**", permitAll) // 에이전트 자동 동기화(durable 토큰으로 자체 인증)
+                    // 데스크톱 앱의 서버 관리 API(승인/제거/정책/프롬프트셋 등). 브라우저 OAuth 세션이 아니라
+                    // 바디의 durable 토큰으로 컨트롤러가 직접 신원·관리자 판정(authedAdmin)한다 → 보안 계층은 permitAll.
+                    // 빠져 있으면 anyRequest authenticated 에 걸려 302(OAuth 로그인)로 가서 앱 관리 흐름이 전부 막힌다(실측 버그).
+                    authorize("/provider/admin/**", permitAll)
                     authorize("/login/**", permitAll)
                     authorize("/oauth2/**", permitAll)
                     // 그 외(대시보드 데이터/쓰기 API)는 인증 필요.

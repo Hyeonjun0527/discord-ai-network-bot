@@ -1345,6 +1345,69 @@ def build_app(session_key: str) -> web.Application:
 
         return web.json_response(sd_setup.progress())
 
+    # ── ComfyUI 라이프사이클(1급 엔진: 앱이 직접 설치/실행/정지/웹UI 오픈) ──────────────
+    async def comfy_status(req: web.Request) -> web.Response:
+        """ComfyUI 설치/실행/바쁨 상태(데스크톱 엔진 카드 버튼 결정용)."""
+        _auth(req)
+        from . import comfy_setup
+
+        running = await comfy_setup.health()
+        return web.json_response(
+            {"installed": comfy_setup.is_installed(), "running": bool(running), "busy": comfy_setup.is_busy()}
+        )
+
+    async def comfy_setup_start(req: web.Request) -> web.Response:
+        """ComfyUI 설치(핀 clone→3.13 venv→torch/deps→기동) 시작. 진행은 /api/comfy/setup-progress 폴링."""
+        _auth(req)
+        from . import comfy_setup
+
+        if comfy_setup.is_busy():
+            return web.json_response({"ok": True, "busy": True})
+        # 기본 모델은 SD 카탈로그 첫 항목 재사용(.safetensors 는 ComfyUI 도 동일하게 로드).
+        from . import sd_setup
+
+        asyncio.create_task(comfy_setup.run_setup(sd_setup.DEFAULT_MODEL_URL))
+        return web.json_response({"ok": True})
+
+    async def comfy_setup_progress(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import comfy_setup
+
+        return web.json_response(comfy_setup.progress())
+
+    async def comfy_start(req: web.Request) -> web.Response:
+        """설치된 ComfyUI 를 기동(꺼져 있을 때)."""
+        _auth(req)
+        from . import comfy_setup
+
+        if not comfy_setup.is_installed():
+            return web.json_response({"ok": False, "error": "ComfyUI 가 아직 설치되지 않았어요."})
+        ok = await comfy_setup.start()
+        return web.json_response({"ok": bool(ok)})
+
+    async def comfy_stop(req: web.Request) -> web.Response:
+        """앱이 띄운 ComfyUI 프로세스를 정지."""
+        _auth(req)
+        from . import comfy_setup
+
+        await comfy_setup.stop()
+        return web.json_response({"ok": True})
+
+    async def comfy_open(req: web.Request) -> web.Response:
+        """ComfyUI 웹 UI 를 시스템 브라우저로 연다(같은 포트에서 ComfyUI 가 서빙)."""
+        _auth(req)
+        import webbrowser
+
+        from . import comfy_setup
+
+        if not await comfy_setup.health():
+            return web.json_response({"ok": False, "error": "ComfyUI 가 실행 중이 아니에요. 먼저 시작하세요."})
+        try:
+            webbrowser.open(comfy_setup.webui_url())
+        except Exception:  # noqa: BLE001
+            return web.json_response({"ok": False, "error": "브라우저를 열 수 없습니다."})
+        return web.json_response({"ok": True})
+
     async def start(req: web.Request) -> web.Response:
         _auth(req)
         return web.json_response(_start_agent())
@@ -1651,6 +1714,13 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/sd/start", sd_start)
     app.router.add_post("/api/sd/cancel", sd_setup_cancel)
     app.router.add_get("/api/sd/setup-progress", sd_setup_progress)
+    # ComfyUI 라이프사이클(1급 엔진)
+    app.router.add_get("/api/comfy/status", comfy_status)
+    app.router.add_post("/api/comfy/setup", comfy_setup_start)
+    app.router.add_get("/api/comfy/setup-progress", comfy_setup_progress)
+    app.router.add_post("/api/comfy/start", comfy_start)
+    app.router.add_post("/api/comfy/stop", comfy_stop)
+    app.router.add_post("/api/comfy/open", comfy_open)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)

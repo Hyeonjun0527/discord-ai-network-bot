@@ -1284,3 +1284,34 @@ async def test_install_custom_rejects_bad_url():
         assert r["ok"] is False
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_comfy_lifecycle_endpoints(monkeypatch):
+    """ComfyUI 라이프사이클 엔드포인트(상태/시작/정지/열기/진행) — 설치·실행 안 된 상태의 정직한 응답."""
+    from provider_agent import comfy_setup
+
+    monkeypatch.setattr(comfy_setup, "is_installed", lambda directory=None: False)
+
+    async def no_health(url=None):
+        return False
+
+    monkeypatch.setattr(comfy_setup, "health", no_health)
+    client = await _client()
+    try:
+        st = await (await client.get("/api/comfy/status", headers={"X-Session": KEY})).json()
+        assert st == {"installed": False, "running": False, "busy": False}
+        # 미설치 → 시작 거부(정직)
+        r = await (await client.post("/api/comfy/start", headers={"X-Session": KEY})).json()
+        assert r["ok"] is False
+        # 미실행 → 웹UI 열기 거부(정직)
+        r = await (await client.post("/api/comfy/open", headers={"X-Session": KEY})).json()
+        assert r["ok"] is False
+        # 정지는 no-op 으로 성공
+        r = await (await client.post("/api/comfy/stop", headers={"X-Session": KEY})).json()
+        assert r["ok"] is True
+        # 진행 상태는 항상 phase 를 제공
+        p = await (await client.get("/api/comfy/setup-progress", headers={"X-Session": KEY})).json()
+        assert "phase" in p
+    finally:
+        await client.close()

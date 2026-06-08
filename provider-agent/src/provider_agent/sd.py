@@ -82,6 +82,17 @@ class SDClient:
         except aiohttp.ClientError:
             return False
 
+    async def set_output_png(self) -> bool:
+        """API 반환 이미지 포맷을 PNG 로 설정(SD.Next 기본은 JPEG). 우리 파이프라인의 PNG 가정과 일치시킨다.
+        실패는 비치명적(JPEG 도 디스코드는 렌더). SD 준비 직후 1회 호출."""
+        url = f"{self._base}/sdapi/v1/options"
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as s:
+                async with s.post(url, json={"samples_format": "png"}) as r:
+                    return r.status == 200
+        except aiohttp.ClientError:
+            return False
+
     async def progress(self) -> float:
         """현재 생성 작업의 진행률(0.0~1.0). A1111 ``/sdapi/v1/progress``. 실패/미상이면 0.0."""
         url = f"{self._base}/sdapi/v1/progress"

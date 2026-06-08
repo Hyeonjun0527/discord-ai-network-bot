@@ -48,14 +48,23 @@ def test_clone_command(tmp_path):
 
 
 def test_launch_command_per_platform(tmp_path):
-    # SD.Next: API 항상 켜짐(--api 불필요), MPS/정밀도 자체 처리(A1111 플래그 없음).
+    # SD.Next: API 항상 켜짐(--api 불필요), MPS/정밀도 자체 처리(A1111 플래그 없음). 모델 없으면 --ckpt 없음.
     mac = sd_mod.launch_command("darwin", tmp_path)
     assert mac == ["bash", str(tmp_path / "webui.sh")]
     win = sd_mod.launch_command("win32", tmp_path)
     assert win[0] == "cmd" and str(tmp_path / "webui.bat") in win
-    # A1111 전용 플래그가 섞이지 않았는지(미인식·에러 방지)
     for cmd in (mac, win):
         assert "--no-half-vae" not in cmd and "--skip-torch-cuda-test" not in cmd and "--upcast-sampling" not in cmd
+
+
+def test_launch_command_adds_ckpt_when_model_present(tmp_path):
+    # 모델이 있으면 --ckpt 로 명시 로드(SD.Next 자동선택 실패 → "model not loaded" 방지).
+    md = tmp_path / "models" / "Stable-diffusion"
+    md.mkdir(parents=True)
+    ckpt = md / "v1-5-pruned-emaonly.safetensors"
+    ckpt.write_text("x")
+    cmd = sd_mod.launch_command("darwin", tmp_path)
+    assert "--ckpt" in cmd and str(ckpt) in cmd
 
 
 def test_extra_pip_deps_includes_torchsde():

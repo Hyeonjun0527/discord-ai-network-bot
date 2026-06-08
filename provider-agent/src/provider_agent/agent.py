@@ -846,6 +846,7 @@ class ProviderAgent:
         if self._sd is not None:
             self._image_ready = await self._sd.health()
             if self._image_ready:
+                await self._sd.set_output_png()  # SD.Next 기본 JPEG → PNG(파이프라인 일치)
                 logger.info("이미지 생성(SD) 활성: %s", self._cfg.sd_url)
             else:
                 logger.warning("SD(%s) 미연결 — 설치돼 있으면 자동 기동을 시도하고, 준비되면 이미지 capability 를 재광고합니다", self._cfg.sd_url)
@@ -931,6 +932,7 @@ class ProviderAgent:
             return
         self._image_ready = await self._sd.health()
         if self._image_ready and not self._stop.is_set():
+            await self._sd.set_output_png()  # SD.Next 기본 JPEG → PNG
             logger.info("SD 준비 완료 — 이미지 capability 재광고(재연결)")
             await self._readvertise()
 
@@ -983,7 +985,9 @@ class ProviderAgent:
 
                 self._sd = SDClient(self._cfg.sd_url, self._cfg.request_timeout)
             self._image_ready = await self._sd.health()
-            if not self._image_ready:
+            if self._image_ready:
+                await self._sd.set_output_png()  # SD.Next 기본 JPEG → PNG
+            else:
                 # 설치돼 있으면 자동 기동(준비되면 _boot_sd 가 재광고). 텍스트 제공은 막지 않는다.
                 self._sd_boot_task = asyncio.create_task(self._boot_sd())
         else:

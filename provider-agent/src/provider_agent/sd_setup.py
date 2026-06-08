@@ -237,19 +237,35 @@ def clone_command(directory: pathlib.Path | None = None) -> list[str]:
     return ["git", "clone", "--depth", "1", SDNEXT_REPO, str(directory or install_dir())]
 
 
+def first_model_path(directory: pathlib.Path | None = None) -> pathlib.Path | None:
+    """모델 폴더의 첫 체크포인트(.safetensors/.ckpt) 경로. 없으면 None."""
+    md = model_dir(directory)
+    if not md.exists():
+        return None
+    for p in sorted(md.iterdir()):
+        if p.is_file() and p.suffix in (".safetensors", ".ckpt"):
+            return p
+    return None
+
+
 def launch_command(platform: str | None = None, directory: pathlib.Path | None = None) -> list[str]:
     """SD.Next webui 를 기동하는 명령(첫 실행 시 venv·torch·deps 자동 설치).
 
     - Windows: ``webui.bat``(cmd 경유). mac/Linux: ``bash webui.sh``.
     SD.Next 는 **API 가 항상 켜져** 있어 ``--api`` 불필요(기본 포트 7860). MPS/정밀도(맥)·CUDA 미존재
     환경을 자체 자동 처리하므로 A1111 의 ``--skip-torch-cuda-test``/``--no-half-vae``/``--upcast-sampling``
-    같은 플래그를 넣지 않는다(미인식·에러 위험). 즉 깨진 이미지 문제도 SD.Next 가 자체적으로 막는다.
+    같은 플래그를 넣지 않는다. 즉 깨진(fried) 이미지 문제도 SD.Next 가 자체적으로 막는다.
+
+    ``--ckpt``: 다운로드한 체크포인트를 **명시 로드**한다. SD.Next 는 파일명이 기본값(model.safetensors)과
+    다르면 자동선택을 못 해 "model not loaded" 로 생성이 중단되므로(실증), 첫 모델 경로를 강제한다.
     """
     p = platform or sys.platform
     d = directory or install_dir()
-    if p == "win32":
-        return ["cmd", "/c", str(d / "webui.bat")]
-    return ["bash", str(d / "webui.sh")]
+    base = ["cmd", "/c", str(d / "webui.bat")] if p == "win32" else ["bash", str(d / "webui.sh")]
+    ckpt = first_model_path(d)
+    if ckpt is not None:
+        base += ["--ckpt", str(ckpt)]
+    return base
 
 
 # (A1111 우회 함수 stable_diffusion_repo/write_pip_constraints/bootstrap_env 는 제거됨 —

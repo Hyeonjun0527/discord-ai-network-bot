@@ -305,6 +305,9 @@ async def test_set_image_enabled_toggles_capability():
         async def health(self) -> bool:
             return True
 
+        async def set_output_png(self) -> bool:
+            return True
+
     agent = ProviderAgent(AgentConfig(token="T", models=("m",)), ollama=FakeOllama(), sd=FakeSD())  # type: ignore[arg-type]
     ready = await agent.set_image_enabled(True)
     assert ready is True
@@ -422,6 +425,9 @@ class _FakeSD:
 
     async def health(self) -> bool:
         return self._healthy
+
+    async def set_output_png(self) -> bool:
+        return True
 
 
 @pytest.mark.asyncio

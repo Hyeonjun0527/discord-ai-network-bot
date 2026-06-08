@@ -42,6 +42,7 @@ logger = logging.getLogger("provider_agent.sd_setup")
 SDNEXT_REPO = "https://github.com/vladmandic/sdnext.git"
 
 # 설치 마법사에서 고르는 로컬 이미지 모델(체크포인트). 명령어가 아니라 데이터라 여기서 SSOT.
+# base: "sd15"|"sdxl" — 생성 해상도(512 vs 1024) 결정에 쓴다(resolution_for_checkpoint).
 MODELS: list[dict[str, str]] = [
     {
         "id": "sd15",
@@ -50,14 +51,34 @@ MODELS: list[dict[str, str]] = [
         "size": "약 4 GB",
         "filename": "v1-5-pruned-emaonly.safetensors",
         "url": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors",
+        "base": "sd15",
+    },
+    {
+        "id": "anime",
+        "name": "Anything V5 (애니)",
+        "desc": "일본 애니·일러스트 특화. 가볍고 빠름(SD1.5 기반).",
+        "size": "약 2 GB",
+        "filename": "AnythingV5V3_v5PrtRE.safetensors",
+        "url": "https://huggingface.co/ckpt/anything-v5.0/resolve/main/AnythingV5V3_v5PrtRE.safetensors",
+        "base": "sd15",
+    },
+    {
+        "id": "anime-xl",
+        "name": "Animagine XL 4.0 (애니·고품질)",
+        "desc": "일본 애니 미소녀 최고 품질(SDXL). 통합메모리 12GB+ 권장, 생성은 느림.",
+        "size": "약 6.5 GB",
+        "filename": "animagine-xl-4.0-opt.safetensors",
+        "url": "https://huggingface.co/cagliostrolab/animagine-xl-4.0/resolve/main/animagine-xl-4.0-opt.safetensors",
+        "base": "sdxl",
     },
     {
         "id": "sdxl",
         "name": "Stable Diffusion XL 1.0",
-        "desc": "고해상도·고품질. 무겁고 VRAM 8GB+ 권장.",
+        "desc": "고해상도·고품질 범용. 무겁고 VRAM 8GB+ 권장.",
         "size": "약 6.6 GB",
         "filename": "sd_xl_base_1.0.safetensors",
         "url": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors",
+        "base": "sdxl",
     },
 ]
 DEFAULT_MODEL_ID = "sd15"
@@ -72,6 +93,20 @@ def model_by_id(model_id: str | None) -> dict[str, str]:
         if m["id"] == model_id:
             return m
     return MODELS[0]
+
+
+def resolution_for_checkpoint(checkpoint: str | None) -> tuple[int, int]:
+    """현재 로드된 체크포인트 이름으로 권장 생성 해상도를 정한다.
+
+    SDXL 계열(Animagine 등)은 native 1024, SD1.5 계열은 512 에서 품질이 가장 좋다(512 SDXL·1024 SD1.5
+    모두 품질 저하). 카탈로그(MODELS)의 filename 으로 base 를 찾아 매핑하고, 모르는 모델이면 안전하게 512.
+    checkpoint 는 SD.Next 가 주는 "name.safetensors [hash]" 형태일 수 있어 부분일치로 본다.
+    """
+    if checkpoint:
+        for m in MODELS:
+            if m["filename"] and m["filename"] in checkpoint:
+                return (1024, 1024) if m.get("base") == "sdxl" else (512, 512)
+    return (512, 512)
 
 
 # phase: idle | installing | downloading | starting | done | error | cancelled

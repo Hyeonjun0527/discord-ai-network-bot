@@ -234,6 +234,7 @@ class ProviderAgent:
         else:
             self._sd = None
         self._image_ready = False
+        self._sd_wh: tuple[int, int] | None = None  # 활성 체크포인트 기준 생성 해상도(lazy 캐시, 모델 변경 시 무효화)
         self._sd_boot_task: asyncio.Task[None] | None = None  # 설치된 SD 자동기동 + 준비되면 재광고
         self._sem = asyncio.Semaphore(cfg.max_concurrency)
         # 동시 처리 상한도 **서버(guild)별**로 독립 적용. 길드 전용 세마포어(lazy).
@@ -447,9 +448,10 @@ class ProviderAgent:
         성공 시 base64 PNG, 실패 시 InferError 송신 후 None."""
         from .sd import SDError
 
+        w, h = await self._resolution()  # 생성 직전(비동시) 1회 — SDXL 1024 vs SD1.5 512
         for attempt in range(2):  # 원샷 + 1회 재시도(MPS 가 드물게 크래시할 때 사용자에게 이미지를 돌려준다)
             assert self._sd is not None  # 호출 전 _image_ready 로 가드됨
-            gen_task: asyncio.Task[str] = asyncio.create_task(self._sd.txt2img(req.prompt))
+            gen_task: asyncio.Task[str] = asyncio.create_task(self._sd.txt2img(req.prompt, {"width": w, "height": h}))
             prog_task = asyncio.create_task(self._emit_estimated_progress(conn, req.request_id, gen_task))
             try:
                 return await gen_task
@@ -463,6 +465,29 @@ class ProviderAgent:
                 prog_task.cancel()
         return None
 
+    async def _resolution(self) -> tuple[int, int]:
+        """활성 체크포인트에 맞는 생성 해상도(SDXL 1024 vs SD1.5 512). 첫 조회 후 캐시.
+
+        **생성 시작 전(비동시)에만 호출**한다 — 생성 중 SD 조회는 MPS 크래시를 부른다(_handle_image 주석).
+        모델 변경 시 _invalidate_resolution() 으로 캐시를 비운다.
+        """
+        if self._sd_wh is not None:
+            return self._sd_wh
+        from . import sd_setup
+
+        wh = (512, 512)
+        try:
+            ckpt = await self._sd.current_checkpoint() if self._sd is not None else None
+            wh = sd_setup.resolution_for_checkpoint(ckpt)
+        except Exception as exc:  # noqa: BLE001 - 조회 실패는 기본 해상도로 폴백(비치명적)
+            logger.debug("활성 체크포인트 조회 실패 — 512 폴백: %s", exc)
+        self._sd_wh = wh
+        return wh
+
+    def _invalidate_resolution(self) -> None:
+        """모델이 바뀔 수 있는 시점(SD 재기동/재광고)에 해상도 캐시를 비운다."""
+        self._sd_wh = None
+
     async def _recover_sd(self) -> bool:
         """SD.Next 가 죽었으면 재기동하고 준비될 때까지 기다린다(생성 재시도 직전). 성공 True."""
         if self._sd is None:
@@ -475,6 +500,7 @@ class ProviderAgent:
             ok = await sd_setup.launch_only(self._cfg.sd_url)
             if ok and await self._sd.health():
                 await self._sd.set_output_png()
+                self._invalidate_resolution()  # 재기동 후 모델이 바뀌었을 수 있음
                 return True
             return False
         except Exception as exc:  # noqa: BLE001 - 재기동 실패는 비치명적(원 에러를 사용자에게 전달)
@@ -975,6 +1001,7 @@ class ProviderAgent:
         self._image_ready = await self._sd.health()
         if self._image_ready and not self._stop.is_set():
             await self._sd.set_output_png()  # SD.Next 기본 JPEG → PNG
+            self._invalidate_resolution()  # 새로 뜬 모델 기준으로 해상도 재판정
             logger.info("SD 준비 완료 — 이미지 capability 재광고(재연결)")
             await self._readvertise()
 

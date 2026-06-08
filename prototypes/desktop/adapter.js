@@ -25,7 +25,9 @@ const _isUnknownModel = (name) => {
 // SD 설치 가능 모델 — 단일 소스(온보딩 A2 모델 선택·설치 모달이 공유). webui.py /api/sd/models 미러.
 export const SD_MODELS = [
   { id: 'sd15', name: 'Stable Diffusion 1.5', short: 'SD 1.5', size: '4GB', desc: '가볍고 빠름 · 범용' },
-  { id: 'sdxl', name: 'Stable Diffusion XL', short: 'SD XL', size: '6.6GB', desc: '고품질 · GPU 권장' },
+  { id: 'anime', name: 'Anything V5 (애니)', short: '애니', size: '2GB', desc: '일본 애니·일러스트 · 가볍고 빠름' },
+  { id: 'anime-xl', name: 'Animagine XL 4.0 (애니·고품질)', short: '애니 XL', size: '6.5GB', desc: '애니 미소녀 최고 품질 · GPU 권장' },
+  { id: 'sdxl', name: 'Stable Diffusion XL', short: 'SD XL', size: '6.6GB', desc: '고품질 범용 · GPU 권장' },
 ];
 // 실 앱(provider-agent 서빙)에선 window.__SESSION_KEY 가 주입되어 /api/* 호출에 X-Session 헤더가 붙는다.
 const _sessionHeaders = () => {

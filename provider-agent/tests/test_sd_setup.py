@@ -126,8 +126,22 @@ def test_launch_env_uses_PYTHON_all_platforms():
 def test_model_by_id():
     assert sd_mod.model_by_id("sdxl")["filename"] == "sd_xl_base_1.0.safetensors"
     assert sd_mod.model_by_id("sd15")["id"] == "sd15"
+    # 애니 모델 카탈로그 등재 확인(서비스가 지원)
+    assert sd_mod.model_by_id("anime")["base"] == "sd15"
+    assert sd_mod.model_by_id("anime-xl")["base"] == "sdxl"
     # 없는 id → 기본(첫 모델)
     assert sd_mod.model_by_id("nope")["id"] == sd_mod.MODELS[0]["id"]
+
+
+def test_resolution_for_checkpoint():
+    # SDXL 계열 → 1024, SD1.5 계열 → 512. 체크포인트 문자열은 "name [hash]" 부분일치.
+    assert sd_mod.resolution_for_checkpoint("animagine-xl-4.0-opt.safetensors [abc123]") == (1024, 1024)
+    assert sd_mod.resolution_for_checkpoint("sd_xl_base_1.0.safetensors") == (1024, 1024)
+    assert sd_mod.resolution_for_checkpoint("AnythingV5V3_v5PrtRE.safetensors") == (512, 512)
+    assert sd_mod.resolution_for_checkpoint("v1-5-pruned-emaonly.safetensors") == (512, 512)
+    # 모르는 모델/None → 안전하게 512
+    assert sd_mod.resolution_for_checkpoint("someones-custom-merge.safetensors") == (512, 512)
+    assert sd_mod.resolution_for_checkpoint(None) == (512, 512)
 
 
 def test_request_cancel_sets_cancelled():

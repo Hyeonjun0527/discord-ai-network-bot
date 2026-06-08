@@ -9,9 +9,9 @@ test.beforeEach(async ({ page }) => {
 test('온보딩 4단계 + SD 모델 선택 → 연동(연결 stage)', async ({ page }) => {
   await page.evaluate(() => window.setOnbStep(1));
   await expect(page.locator('#wiz .wiz-title')).toContainText('환영');
-  // 2단계: SD 모델 선택 인라인
+  // 2단계: SD 모델 선택 인라인(SD_MODELS 단일 소스 — sd15·애니·애니XL·sdxl 4종)
   await page.evaluate(() => window.setOnbStep(2));
-  await expect(page.locator('#wiz .opt-seg button')).toHaveCount(2);
+  await expect(page.locator('#wiz .opt-seg button')).toHaveCount(4);
   // 4단계 → 연동하기 → connect(onboarding) 로그인
   await page.evaluate(() => window.setOnbStep(4));
   await page.locator('#wiz [data-go="connect"]').click();

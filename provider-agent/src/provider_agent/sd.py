@@ -89,6 +89,19 @@ class SDClient:
         except aiohttp.ClientError:
             return False
 
+    async def current_checkpoint(self) -> str | None:
+        """현재 로드된 체크포인트 이름(예: 'animagine-xl-4.0-opt.safetensors [hash]'). 실패 시 None.
+        생성 해상도(SDXL 1024 vs SD1.5 512)를 정하는 데 쓴다. **생성 중에는 호출 금지**(MPS 동시접근 크래시)."""
+        url = f"{self._base}/sdapi/v1/options"
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
+                async with s.get(url) as r:
+                    data = await r.json()
+        except (aiohttp.ClientError, ValueError):
+            return None
+        ckpt = data.get("sd_model_checkpoint") if isinstance(data, dict) else None
+        return ckpt if isinstance(ckpt, str) else None
+
     async def set_output_png(self) -> bool:
         """API 반환 이미지 포맷을 PNG 로 설정 + **라이브 프리뷰 비활성화**. SD 준비 직후 1회 호출.
 

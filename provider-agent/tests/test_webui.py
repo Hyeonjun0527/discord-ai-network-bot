@@ -739,7 +739,7 @@ def test_auto_update_once_applies_when_outdated(monkeypatch):
     monkeypatch.setattr("provider_agent.updater.apply_update", lambda: {"ok": True, "restarting": True})
     exited = {}
     monkeypatch.setattr(webui, "_schedule_exit", lambda *a, **k: exited.setdefault("called", True))
-    assert webui._auto_update_once() is True
+    assert webui._auto_update_once() == "applied"
     assert exited.get("called") is True
 
 
@@ -752,7 +752,7 @@ def test_auto_update_once_skips_when_latest(monkeypatch):
     )
     called = {}
     monkeypatch.setattr("provider_agent.updater.apply_update", lambda: called.setdefault("apply", True) or {})
-    assert webui._auto_update_once() is False
+    assert webui._auto_update_once() == "uptodate"  # 최신이면 긴 간격
     assert "apply" not in called  # 최신이면 교체 시도 안 함
 
 
@@ -760,8 +760,22 @@ def test_auto_update_once_skips_when_toggle_off(monkeypatch):
     monkeypatch.setattr(webui, "load_config", lambda: {"auto_update": False})
     called = {}
     monkeypatch.setattr("provider_agent.updater.check", lambda: called.setdefault("checked", True) or {})
-    assert webui._auto_update_once() is False
+    assert webui._auto_update_once() == "uptodate"  # 토글 OFF → 긴 간격(자주 재시도 안 함)
     assert "checked" not in called  # 토글 OFF 면 검사조차 안 함
+
+
+def test_auto_update_once_retries_on_check_error(monkeypatch):
+    # 네트워크 전이 실패(check error)면 "pending" → 호출부가 짧게 재시도(2시간 스트랜드 방지, 실증 원인).
+    monkeypatch.setattr(webui, "load_config", lambda: {"auto_update": True})
+    monkeypatch.setattr("provider_agent.updater.is_updating", lambda: False)
+    monkeypatch.setattr(
+        "provider_agent.updater.check",
+        lambda: {"current": "0.19.0", "latest": None, "outdated": False, "supported": True, "error": "최신 버전 확인 실패(네트워크)"},
+    )
+    called = {}
+    monkeypatch.setattr("provider_agent.updater.apply_update", lambda: called.setdefault("apply", True) or {})
+    assert webui._auto_update_once() == "pending"
+    assert "apply" not in called  # 확인 실패면 적용 시도 안 함(다음 짧은 재시도에서)
 
 
 def test_brand_icon_png_returns_png_bytes():

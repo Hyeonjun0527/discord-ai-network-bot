@@ -134,6 +134,26 @@ def install_dir() -> pathlib.Path:
     return base / "sdnext"
 
 
+def _augment_path() -> None:
+    """macOS GUI 앱(Finder/Dock 실행)은 셸 PATH 를 상속받지 않아 ``/opt/homebrew/bin`` 등이 빠진다.
+    그 결과 ``shutil.which('python3.11')`` 이 None → '설치 실패 no-python'(실증: brew python 이 있어도).
+    homebrew·python.org 표준 bin 을 PATH 앞에 보강해 python·git·brew·webui.sh 서브프로세스가 모두 동작.
+    멱등(이미 있으면 건너뜀). darwin 전용(Win/Linux 는 GUI 도 PATH 정상).
+    """
+    if sys.platform != "darwin":
+        return
+    extra = [
+        "/opt/homebrew/bin",  # Apple Silicon homebrew
+        "/usr/local/bin",  # Intel homebrew
+        "/Library/Frameworks/Python.framework/Versions/3.11/bin",  # python.org installer
+        "/Library/Frameworks/Python.framework/Versions/3.12/bin",
+    ]
+    parts = os.environ.get("PATH", "").split(os.pathsep)
+    add = [p for p in extra if p not in parts and os.path.isdir(p)]
+    if add:
+        os.environ["PATH"] = os.pathsep.join(add + parts)
+
+
 def _has(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
@@ -173,10 +193,27 @@ def compatible_python() -> str | None:
 
     시스템 기본 python3 가 너무 최신(예: 3.13/3.14 — torch 미지원)일 수 있으므로, 지원 버전을
     명시적으로 찾아 PYTHON 으로 강제한다(실증: 강제 안 하면 SD.Next 가 3.14 로 venv 를 만들어 깨짐).
+
+    PATH 명령으로 먼저 찾고, 못 찾으면(특히 macOS GUI 앱) 잘 알려진 절대 경로로 폴백한다.
     """
+    _augment_path()  # macOS GUI PATH 보강(no-python 원인 제거)
     for c in ("python3.11", "python3.12", "python3.10"):
-        if _has(c):
+        found = shutil.which(c)
+        if found:
             return c
+    # PATH 보강에도 없으면(드묾) 절대 경로·pyenv 직접 탐색.
+    if sys.platform == "darwin":
+        home = pathlib.Path.home()
+        for ver in ("3.11", "3.12", "3.10"):
+            cands = [
+                f"/opt/homebrew/bin/python{ver}",
+                f"/usr/local/bin/python{ver}",
+                f"/Library/Frameworks/Python.framework/Versions/{ver}/bin/python{ver}",
+            ]
+            cands += [str(p) for p in sorted(home.glob(f".pyenv/versions/{ver}.*/bin/python{ver}"), reverse=True)]
+            for c in cands:
+                if os.path.isfile(c) and os.access(c, os.X_OK):
+                    return c
     return None
 
 
@@ -431,6 +468,7 @@ async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
     """
     global _proc, _cancel
     _cancel = False
+    _augment_path()  # macOS GUI PATH 보강 — 이후 git/brew/python·webui.sh 서브프로세스가 모두 상속.
     model = model_by_id(model_id)
     client = SDClient(sd_url)
     directory = install_dir()
@@ -458,7 +496,7 @@ async def run_setup(sd_url: str, model_id: str | None = None) -> bool:
         if python_cmd is None:
             cmd = install_tool_command("python")
             if cmd is None:
-                _set("error", 5, "A1111 에 필요한 Python 3.10/3.11 이 없고 자동 설치 수단도 없어요.", error="no-python")
+                _set("error", 5, "이미지 엔진에 필요한 Python(3.10~3.12)이 없고 자동 설치 수단도 없어요.", error="no-python")
                 return False
             _set("installing", 8, "이미지 엔진용 Python(3.11) 설치 중…")
             await _run(cmd, timeout=900)
@@ -539,6 +577,7 @@ async def launch_only(sd_url: str) -> bool:
     """
     global _proc, _cancel
     _cancel = False
+    _augment_path()  # macOS GUI PATH 보강 — webui.sh 가 python·git 을 찾도록.
     client = SDClient(sd_url)
     directory = install_dir()
     try:

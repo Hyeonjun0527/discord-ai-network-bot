@@ -49,8 +49,13 @@ def test_clone_command(tmp_path):
 def test_launch_command_per_platform(tmp_path):
     mac = sd_mod.launch_command("darwin", tmp_path)
     assert mac[0] == "bash" and mac[1] == str(tmp_path / "webui.sh") and "--api" in mac
+    # NaN/fried 이미지 방지 플래그(맥 MPS): --no-half-vae + --upcast-sampling
+    assert "--no-half-vae" in mac and "--upcast-sampling" in mac
     win = sd_mod.launch_command("win32", tmp_path)
     assert win[0] == "cmd" and str(tmp_path / "webui.bat") in win and "--api" in win
+    assert "--no-half-vae" in win  # VAE NaN 방지(모든 플랫폼)
+    linux = sd_mod.launch_command("linux", tmp_path)
+    assert "--no-half-vae" in linux and "--upcast-sampling" not in linux  # upcast 는 맥만
 
 
 def test_pkg_manager_and_install_tool(monkeypatch):

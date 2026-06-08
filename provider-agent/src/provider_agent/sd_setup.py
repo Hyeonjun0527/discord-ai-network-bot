@@ -204,12 +204,19 @@ def launch_command(platform: str | None = None, directory: pathlib.Path | None =
 
     - Windows: ``webui.bat`` (cmd 경유), 인자 전달.
     - mac/Linux: ``bash webui.sh``. CUDA 없는 환경(맥 MPS 등)을 위해 torch CUDA 테스트 생략.
+
+    ``--no-half-vae``: half-precision VAE 가 NaN 을 내 **무지개 세로줄/검정 등 깨진(fried) 이미지**가
+    나오는 문제 방지(모든 플랫폼 안전). macOS(MPS)는 추가로 ``--upcast-sampling`` 으로 샘플링 정밀도를
+    올려 NaN/노이즈를 막는다(A1111 macOS 권장 기본값과 동일).
     """
     p = platform or sys.platform
     d = directory or install_dir()
     if p == "win32":
-        return ["cmd", "/c", str(d / "webui.bat"), "--api", "--skip-torch-cuda-test"]
-    return ["bash", str(d / "webui.sh"), "--api", "--skip-torch-cuda-test"]
+        return ["cmd", "/c", str(d / "webui.bat"), "--api", "--skip-torch-cuda-test", "--no-half-vae"]
+    args = ["bash", str(d / "webui.sh"), "--api", "--skip-torch-cuda-test", "--no-half-vae"]
+    if p == "darwin":
+        args.append("--upcast-sampling")
+    return args
 
 
 def stable_diffusion_repo() -> str:

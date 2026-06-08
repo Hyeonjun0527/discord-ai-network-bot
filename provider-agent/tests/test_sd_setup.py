@@ -66,6 +66,51 @@ def test_clone_commands_falls_back_without_pin(monkeypatch, tmp_path):
     assert len(seq) == 1 and seq[0][1] == "clone"
 
 
+def test_standalone_python_url_per_platform(monkeypatch):
+    # 호환 Python 미보유 머신용 standalone CPython URL 이 OS/arch 별로 맞는 트리플을 가리킨다.
+    cases = {
+        ("darwin", "arm64"): "aarch64-apple-darwin",
+        ("darwin", "x86_64"): "x86_64-apple-darwin",
+        ("win32", "AMD64"): "x86_64-pc-windows-msvc",
+        ("linux", "x86_64"): "x86_64-unknown-linux-gnu",
+        ("linux", "aarch64"): "aarch64-unknown-linux-gnu",
+    }
+    for (plat, mach), triple in cases.items():
+        monkeypatch.setattr(sd_mod.sys, "platform", plat)
+        monkeypatch.setattr(sd_mod.platform, "machine", lambda m=mach: m)
+        url = sd_mod._standalone_python_url()
+        assert url and triple in url
+        assert sd_mod.BUNDLED_PYTHON_VERSION in url and sd_mod.BUNDLED_PYTHON_RELEASE in url
+        assert url.endswith("-install_only.tar.gz")
+
+
+def test_bundled_python_path_layout(monkeypatch):
+    # install_only 는 <dest>/python/ 로 풀린다 → bin/python3.11 (unix) / python.exe (win).
+    monkeypatch.setattr(sd_mod.sys, "platform", "darwin")
+    assert sd_mod.bundled_python_path().as_posix().endswith("python/bin/python3.11")
+    monkeypatch.setattr(sd_mod.sys, "platform", "win32")
+    assert sd_mod.bundled_python_path().name == "python.exe"
+
+
+def test_compatible_python_prefers_bundled(monkeypatch):
+    # 이미 받아둔 standalone 이 있으면 시스템 PATH 와 무관하게 그걸 최우선으로 쓴다.
+    monkeypatch.setattr(sd_mod, "_bundled_python_ready", lambda: "/data/nexa/python/python/bin/python3.11")
+    assert sd_mod.compatible_python() == "/data/nexa/python/python/bin/python3.11"
+
+
+async def test_ensure_bundled_python_returns_existing_without_download(monkeypatch):
+    # 이미 받아둔 게 있으면 네트워크 없이 즉시 그 경로 반환.
+    monkeypatch.setattr(sd_mod, "_bundled_python_ready", lambda: "/x/python/bin/python3.11")
+    assert await sd_mod.ensure_bundled_python() == "/x/python/bin/python3.11"
+
+
+async def test_ensure_bundled_python_none_on_unsupported_platform(monkeypatch):
+    # 미지원 OS/arch(URL None)면 다운로드 시도 없이 None → 호출부가 패키지 매니저 폴백으로.
+    monkeypatch.setattr(sd_mod, "_bundled_python_ready", lambda: None)
+    monkeypatch.setattr(sd_mod, "_standalone_python_url", lambda: None)
+    assert await sd_mod.ensure_bundled_python() is None
+
+
 def test_launch_command_per_platform(tmp_path):
     # SD.Next: API 항상 켜짐(--api 불필요), MPS/정밀도 자체 처리(A1111 플래그 없음). 모델 없으면 --ckpt 없음.
     mac = sd_mod.launch_command("darwin", tmp_path)

@@ -17,12 +17,37 @@ IS_WIN = sys.platform.startswith("win")
 # EXE 아이콘은 플랫폼별 포맷(.icns/.ico). 리눅스는 아이콘 미지원이라 None.
 exe_icon = str(icons / "app.icns") if IS_MAC else (str(icons / "app.ico") if IS_WIN else None)
 
+
+# webui_assets(데스크톱 앱 UI)는 sync-desktop 이 src 트리에 생성하는 gitignore 산출물이다.
+# 비editable `pip install .[gui]` 는 이 산출물을 site-packages 로 복사하지 않으므로
+# collect_data_files("provider_agent") 가 놓친다 → 실제로 v0.31.0~v0.32.1 번들에서 webUI 가 누락돼
+# 옛 인라인/폴백 화면이 떴다. 설치 모드·CI 순서에 의존하지 않게 소스 트리에서 명시적으로 번들하고,
+# 누락이면 빌드를 즉시 실패시켜 "조용한 webUI 누락"이 재발하지 못하게 한다.
+def _webui_assets_datas():
+    src_pkg = project_root / "src" / "provider_agent"
+    assets = src_pkg / "webui_assets"
+    if not (assets / "index.html").is_file():
+        raise SystemExit(
+            "[agent.spec] webui_assets/index.html 이 없습니다 — 빌드 전에 "
+            "`python scripts/sync_desktop_app.py`(make sync-desktop) 를 실행해야 데스크톱 앱 UI 가 "
+            "번들됩니다(누락 시 옛 화면/폴백)."
+        )
+    out = []
+    for f in sorted(assets.rglob("*")):
+        if f.is_file():
+            dest = Path("provider_agent") / f.relative_to(src_pkg).parent
+            out.append((str(f), str(dest)))
+    return out
+
+
+webui_datas = _webui_assets_datas()
+
 # ── CLI onefile(서비스/헤드리스/파워유저용) — 기존 동작 유지 ───────────────────
 a = Analysis(
     [str(project_root / "packaging" / "pyinstaller_entry.py")],
     pathex=[str(project_root / "src")],
     binaries=[],
-    datas=collect_data_files("certifi") + collect_data_files("provider_agent"),
+    datas=collect_data_files("certifi") + collect_data_files("provider_agent") + webui_datas,
     hiddenimports=["provider_agent", "aiohttp", "certifi"],
     hookspath=[],
     runtime_hooks=[],
@@ -49,7 +74,7 @@ if IS_MAC:
         [str(project_root / "packaging" / "gui_entry.py")],
         pathex=[str(project_root / "src")],
         binaries=[],
-        datas=collect_data_files("certifi") + collect_data_files("provider_agent"),
+        datas=collect_data_files("certifi") + collect_data_files("provider_agent") + webui_datas,
         hiddenimports=["provider_agent", "aiohttp", "certifi", "webview"],
         hookspath=[],
         runtime_hooks=[],
@@ -74,7 +99,7 @@ if IS_MAC:
         [str(project_root / "packaging" / "pyinstaller_entry.py")],
         pathex=[str(project_root / "src")],
         binaries=[],
-        datas=collect_data_files("certifi") + collect_data_files("provider_agent"),
+        datas=collect_data_files("certifi") + collect_data_files("provider_agent") + webui_datas,
         hiddenimports=["provider_agent", "aiohttp", "certifi"],
         hookspath=[],
         runtime_hooks=[],
@@ -129,6 +154,7 @@ if IS_WIN:
             collect_data_files("certifi")
             + collect_data_files("provider_agent")
             + collect_data_files("webview")
+            + webui_datas
         ),
         # pywebview Windows 백엔드(EdgeChromium=pythonnet/clr). hooks-contrib 가 대부분 처리하지만
         # 명시해 누락을 방지한다.

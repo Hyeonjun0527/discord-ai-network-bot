@@ -202,17 +202,23 @@ export const api = {
   async getServers() {
     /* @proto-only */ if (USE_MOCK) { await delay(60); return structuredClone(MOCK.servers); } /* @end-proto-only */
     // 정규화: 실 /api/servers 는 {servers:[{index,guildId,guildName,connected}]} 만 준다(Gap-S).
-    // UI 가 읽는 state/role 과 확장 통계는 백엔드 미보강이라 안전 기본값으로 최소 표시만.
+    // UI 가 읽는 state 와 확장 통계는 백엔드 미보강이라 안전 기본값으로 최소 표시만.
     const [list, st] = await Promise.all([http(ENDPOINTS.servers), http(ENDPOINTS.status).catch(() => ({}))]);
     const real = list.servers || [];
     const advertised = (st && st.models) || []; // 에이전트가 (연결된) 서버에 광고하는 모델 집합 = 실제 제공 모델
-    return real.map((s) => ({
+    // role 배지: 서버별로 central 이 관리자 여부를 판정한다(상세 화면과 동일 기준 — manage probe ok=true 면 ADMIN).
+    //   연결 안 된 서버는 probe 불가 → PROVIDER. probe 실패도 안전하게 PROVIDER(낙관적 승격 금지).
+    const roles = await Promise.all(real.map(async (s) => {
+      if (!s.connected) return Role.PROVIDER;
+      try { const mg = await http(ENDPOINTS.serverManage(s.guildId)); return (mg && mg.ok) ? Role.ADMIN : Role.PROVIDER; } catch { return Role.PROVIDER; }
+    }));
+    return real.map((s, i) => ({
       guildId: s.guildId,
       guildName: s.guildName,
       iconUrl: null,
       connected: !!s.connected,
       state: s.paused ? ProviderState.PAUSED : (s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE),
-      role: Role.PROVIDER,
+      role: roles[i],
       models: s.connected ? advertised.length : 0, // 실제 제공 모델 수(연결된 서버엔 광고 집합 전부)
       today: null, members: null, avgMs: null,      // 길드별 처리/멤버수/평균지연은 미추적 — 가짜 0 금지(null=미표시)
       myModels: s.connected ? [...advertised] : [],

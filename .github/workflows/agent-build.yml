@@ -21,7 +21,23 @@ env:
   PYTHONIOENCODING: "utf-8"
 
 jobs:
+  # 릴리스 게이트: 온보딩 기본 이미지 모델 URL 이 살아있는지(HTTP 200) 빌드 전에 1회 검증.
+  # HF 가 모델을 옮기거나 gated/삭제하면 익명 GET 이 깨져 전 사용자 다운로드가 실패하므로,
+  # 깨진 URL 을 들고 릴리스가 나가는 걸 막는다(신규설치 신뢰성 감사 후속). 매트릭스 빌드는 이 잡에 의존.
+  model-urls:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 의존성(모델 카탈로그 import 용)
+        run: pip install ./provider-agent
+      - name: 기본 이미지 모델 URL 헬스체크
+        run: python scripts/check_model_urls.py
+
   build:
+    needs: model-urls
     strategy:
       fail-fast: false
       matrix:

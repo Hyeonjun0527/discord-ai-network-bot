@@ -80,6 +80,15 @@ MODELS: list[dict[str, str]] = [
         "base": "sdxl",
     },
     {
+        "id": "illustrious-xl",
+        "name": "Illustrious XL (애니·고품질)",
+        "desc": "Danbooru 기반 애니 일러스트 특화 SDXL. 캐릭터·태그 충실, 커뮤니티 표준 베이스. VRAM 8GB+ 권장.",
+        "size": "약 6.9 GB",
+        "filename": "Illustrious-XL-v0.1.safetensors",
+        "url": "https://huggingface.co/OnomaAIResearch/Illustrious-xl-early-release-v0/resolve/main/Illustrious-XL-v0.1.safetensors",
+        "base": "sdxl",
+    },
+    {
         "id": "sdxl",
         "name": "Stable Diffusion XL 1.0",
         "desc": "고해상도·고품질 범용. 무겁고 VRAM 8GB+ 권장.",

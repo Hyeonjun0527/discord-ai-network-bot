@@ -36,6 +36,22 @@ const http = async (ep, opts) => {
 };
 const post = (ep, body) => http(ep, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) });
 
+// ── 실 경로 공통(getServers/getServerDetail 공유) ──────────────────────────────
+// 서버 목록 항목 → ProviderState 매핑(일시중지 > 연결됨 > 오프라인).
+const _serverState = (s) =>
+  s.paused ? ProviderState.PAUSED : (s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE);
+// 관리 권한 probe: serverManage 응답 ok=true 면 ADMIN(상세 화면과 동일 기준). probe 실패·미연결은
+// PROVIDER 로(낙관적 승격 금지). 64bit guildId 는 문자열로만 다룬다.
+const _probeAdminRole = async (guildId) => {
+  try {
+    const mg = await http(ENDPOINTS.serverManage(guildId));
+    return (mg && mg.ok) ? Role.ADMIN : Role.PROVIDER;
+  } catch (e) {
+    console.warn('서버 관리 권한 probe 실패(guild ' + guildId + ') — PROVIDER 로 처리:', e);
+    return Role.PROVIDER;
+  }
+};
+
 /* @proto-only */
 // ── Mock store — 실 백엔드 응답과 동일 필드명/enum (프로토타입 전용, 실 앱 이식 시 제거됨) ──
 const MOCK = {
@@ -195,17 +211,14 @@ export const api = {
     const real = list.servers || [];
     const advertised = (st && st.models) || []; // 에이전트가 (연결된) 서버에 광고하는 모델 집합 = 실제 제공 모델
     // role 배지: 서버별로 central 이 관리자 여부를 판정한다(상세 화면과 동일 기준 — manage probe ok=true 면 ADMIN).
-    //   연결 안 된 서버는 probe 불가 → PROVIDER. probe 실패도 안전하게 PROVIDER(낙관적 승격 금지).
-    const roles = await Promise.all(real.map(async (s) => {
-      if (!s.connected) return Role.PROVIDER;
-      try { const mg = await http(ENDPOINTS.serverManage(s.guildId)); return (mg && mg.ok) ? Role.ADMIN : Role.PROVIDER; } catch (e) { console.warn('서버 관리 권한 probe 실패(guild ' + s.guildId + ') — PROVIDER 로 처리:', e); return Role.PROVIDER; }
-    }));
+    //   연결 안 된 서버는 probe 불가 → PROVIDER.
+    const roles = await Promise.all(real.map((s) => (s.connected ? _probeAdminRole(s.guildId) : Promise.resolve(Role.PROVIDER))));
     return real.map((s, i) => ({
       guildId: s.guildId,
       guildName: s.guildName,
       iconUrl: null,
       connected: !!s.connected,
-      state: s.paused ? ProviderState.PAUSED : (s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE),
+      state: _serverState(s),
       role: roles[i],
       models: s.connected ? advertised.length : 0, // 실제 제공 모델 수(연결된 서버엔 광고 집합 전부)
       today: null, members: null, avgMs: null,      // 길드별 처리/멤버수/평균지연은 미추적 — 가짜 0 금지(null=미표시)
@@ -223,8 +236,7 @@ export const api = {
     const list = listRes.servers || [];
     const s = list.find((x) => String(x.guildId) === String(guildId));
     if (!s) return null;
-    let isAdmin = false;
-    try { const mg = await http(ENDPOINTS.serverManage(guildId)); isAdmin = !!(mg && mg.ok); } catch (e) { console.warn('관리 권한 probe 실패(guild ' + guildId + ') — 비관리자로 처리:', e); isAdmin = false; }
+    const role = await _probeAdminRole(guildId);
     // 내 제공 정책은 **저장값을 그대로 읽어** 표시한다(하드코딩 금지 — 백엔드 강제값과 화면 일치).
     let policy = { dailyLimit: 0, maxConcurrency: 1, maxSeconds: 0 };
     try { const pr = await http(ENDPOINTS.serverPolicy(guildId)); if (pr && pr.policy) policy = pr.policy; } catch (e) { console.warn('서버 정책 조회 실패(guild ' + guildId + ') — 기본값 사용:', e); }
@@ -232,8 +244,8 @@ export const api = {
     return {
       guildId: String(s.guildId), guildName: s.guildName, iconUrl: null,
       connected: !!s.connected,
-      state: s.paused ? ProviderState.PAUSED : (s.connected ? ProviderState.ONLINE_IDLE : ProviderState.OFFLINE),
-      role: isAdmin ? Role.ADMIN : Role.PROVIDER,
+      state: _serverState(s),
+      role,
       models: s.connected ? advertised.length : 0,   // 실제 제공 모델 수
       today: null, members: null, avgMs: null,        // 길드별 처리/멤버/평균지연 미추적 — null(미표시)
       myModels: s.connected ? [...advertised] : [],

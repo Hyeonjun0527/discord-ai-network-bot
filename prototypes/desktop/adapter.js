@@ -27,6 +27,7 @@ export const SD_MODELS = [
   { id: 'sd15', name: 'Stable Diffusion 1.5', short: 'SD 1.5', size: '4GB', desc: '가볍고 빠름 · 범용' },
   { id: 'anime', name: 'Anything V5 (애니)', short: '애니', size: '2GB', desc: '일본 애니·일러스트 · 가볍고 빠름' },
   { id: 'anime-xl', name: 'Animagine XL 4.0 (애니·고품질)', short: '애니 XL', size: '6.5GB', desc: '애니 미소녀 최고 품질 · GPU 권장' },
+  { id: 'illustrious-xl', name: 'Illustrious XL (애니·고품질)', short: 'Illustrious', size: '6.9GB', desc: 'Danbooru 기반 애니 SDXL · 커뮤니티 표준 · GPU 권장' },
   { id: 'sdxl', name: 'Stable Diffusion XL', short: 'SD XL', size: '6.6GB', desc: '고품질 범용 · GPU 권장' },
 ];
 // 실 앱(provider-agent 서빙)에선 window.__SESSION_KEY 가 주입되어 /api/* 호출에 X-Session 헤더가 붙는다.

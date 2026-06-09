@@ -52,6 +52,23 @@ test('07 서버 상세: 관리자 서버 → 기여현황·내모델·앱 내 �
   await expect(page.locator('#serverListWrap')).toBeVisible();
 });
 
+test('07b 서버 상세: 이 서버에 제공할 AI — 채팅 칩(로컬/클라우드) + 이미지 토글', async ({ page }) => {
+  await page.click('.nav-item[data-view="servers"]');
+  await page.locator('#serverList .srv-item[data-guild="1001"]').click();
+  const card = page.locator('#dModelsCard');
+  await expect(card).toContainText('이 서버에 제공할 AI');
+  // 채팅 칩 — async 로드 후(로컬 모델 4 + 클라우드 Gemini 1)
+  await expect(card.locator('#dChatChips .dchip-tog')).toHaveCount(5);
+  await expect(card.locator('.dchip-b.cloud')).toBeVisible();      // Gemini = ☁ 클라우드
+  await expect(card.locator('.dchip-b.local').first()).toBeVisible(); // 로컬 배지
+  await expect(card.locator('#dImgTog')).toBeVisible();             // 이미지 제공 토글
+  // 정책 모달엔 더 이상 모델이 없다(분리됨)
+  await page.click('#serverDetail #dPolicyBtn');
+  const policyModal = page.locator('.modal-layer', { hasText: '내 제공 정책' });
+  await expect(policyModal).toBeVisible();
+  await expect(policyModal).not.toContainText('제공할 모델');
+});
+
 test('07 서버 상세: 기부자 서버 → 권한 안내(관리 버튼 없음)', async ({ page }) => {
   await page.click('.nav-item[data-view="servers"]');
   await page.locator('#serverList .srv-item[data-guild="1002"]').click();

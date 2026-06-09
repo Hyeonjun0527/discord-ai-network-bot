@@ -546,6 +546,19 @@
     .dstats span { display: block; margin-top: 3px; font-size: 12px; color: var(--subtle); }
     .dmodels { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
     .dchip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.03); font-size: 13px; font-weight: 600; color: #d2dbe7; font-family: ui-monospace, Menlo, monospace; }
+    /* 이 서버에 제공할 AI — 역량별 행(채팅/이미지) + 토글 칩(로컬/클라우드 배지) */
+    .dmrow { display: flex; align-items: flex-start; gap: 14px; margin-top: 16px; }
+    .dmcap { flex: 0 0 52px; padding-top: 7px; font-size: 13px; font-weight: 700; color: var(--subtle); }
+    .dchips { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .dchip-tog { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.03); font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer; transition: border-color .12s, background .12s, color .12s; }
+    .dchip-tog:hover { border-color: color-mix(in srgb, var(--c-accent) 40%, var(--line)); }
+    .dchip-tog.on { color: #eaf0fb; border-color: color-mix(in srgb, var(--c-violet) 50%, transparent); background: color-mix(in srgb, var(--c-violet) 14%, transparent); }
+    .dchip-tog .dchip-n { font-family: ui-monospace, Menlo, monospace; }
+    .dchip-b { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); }
+    .dchip-b.local { color: #9fb0cc; }
+    .dchip-b.cloud { color: #c4b4ff; border-color: color-mix(in srgb, var(--c-violet) 38%, transparent); }
+    .dchip-tog:not(.on) .dchip-b { opacity: .5; }
+    .dchip-help { flex-basis: 100%; color: var(--subtle); font-size: 12px; margin-top: 2px; }
     .dchip .d { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 7px var(--ok); flex: 0 0 auto; }
     .dpolicy { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }
     .dpolicy > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
@@ -1851,6 +1864,14 @@
           '<div><span>최대 시간</span><b>' + fmtSec(d.policy.maxSeconds) + '</b></div>' +
           '<div><span>공개 대상</span><b>서버 멤버 누구나</b></div>' +
         '</div></div>';
+      // 이 서버에 제공할 AI(채팅 모델 칩 + 이미지) — '무엇을 제공'(모델)을 '얼마나·누구에게'(정책)와 분리.
+      //   채팅: 켠 모델만 제공(전체 끄면 전체). 로컬/클라우드(Gemini)는 칩 배지로 구분 — 별도 토글 없음.
+      //   목록은 async(getServerModels)로 채운다. PENDING 이면 숨김(승인 후).
+      const modelsBlock = pending ? '' :
+        '<div class="dcard" id="dModelsCard"><div class="dlabel">이 서버에 제공할 AI <span class="dim">· 켠 것만 이 서버에 제공</span></div>' +
+        '<div class="dmrow"><span class="dmcap">채팅</span><div id="dChatChips" class="dchips"><span class="dim">불러오는 중…</span></div></div>' +
+        '<div class="dmrow"><span class="dmcap">이미지</span><div id="dImgWrap" class="dchips"><span class="dim">불러오는 중…</span></div></div>' +
+        '</div>';
       // PENDING 안내 — 승인 전이라 기여현황·관리·정책 모두 숨기고 이 안내만 노출.
       const pendingBlock = pending ?
         '<div class="dcard dwarn"><div class="dlabel">⚠ 관리자 승인을 기다리는 중</div>' +
@@ -1891,7 +1912,7 @@
             '<span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span></div>' +
           '<div class="dsubhead">' + (d.members != null ? '멤버 ' + fmtMembers(d.members) + ' · ' : '') + '내 역할 <span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span></div>' +
         '</div>' +
-        pendingBlock + contribBlock + provBlock + policyBlock + manageBlock + settingsBlock;
+        pendingBlock + contribBlock + provBlock + modelsBlock + policyBlock + manageBlock + settingsBlock;
 
       // 액션 바인딩
       const back = detailEl.querySelector('#dBack'); if (back) back.onclick = backToList;
@@ -1910,6 +1931,44 @@
       if (rnb) rnb.onclick = () => openRenameModal(d);
       const rmb = detailEl.querySelector('#dRemoveBtn');
       if (rmb) rmb.onclick = () => openRemoveModal(d);
+      if (!pending) loadDetailModels(d);
+    }
+
+    // 이 서버에 제공할 AI — 채팅 칩(로컬/클라우드 배지) + 이미지 토글. 변경 시 즉시 저장(setServerModels).
+    function loadDetailModels(d) {
+      const chatEl = document.getElementById('dChatChips');
+      const imgEl = document.getElementById('dImgWrap');
+      if (!chatEl || !imgEl) return;
+      const isCloud = (m) => /^gemini/i.test(m); // 클라우드(Gemini) vs 로컬 구분 — 이름 규칙
+      let sm = null; // {available, chatModels, imageEnabled, imageReady}
+      const save = async () => {
+        const chips = [...chatEl.querySelectorAll('.dchip-tog')];
+        const on = chips.filter(c => c.classList.contains('on')).map(c => c.dataset.m);
+        const chatModels = (on.length === chips.length) ? [] : on; // 전부 켜짐 = 전체 제공(빈 배열)
+        const imgBtn = imgEl.querySelector('#dImgTog');
+        const imageEnabled = !!(imgBtn && imgBtn.classList.contains('on'));
+        try { await api.setServerModels(d.guildId, chatModels, imageEnabled); toast('이 서버 제공 모델을 저장했어요', { type: 'ok', sub: d.guildName }); }
+        catch (_e) { toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' }); }
+      };
+      api.getServerModels(d.guildId).then((res) => {
+        sm = res || {};
+        const avail = sm.available || [];
+        const sel = new Set(sm.chatModels || []); // 빈=전체
+        const all = sel.size === 0;
+        chatEl.innerHTML = avail.length
+          ? avail.map(m => '<button class="dchip-tog' + ((all || sel.has(m)) ? ' on' : '') + '" data-m="' + m + '">' +
+              (isCloud(m) ? '<span class="dchip-b cloud">☁ 클라우드</span>' : '<span class="dchip-b local">💻 로컬</span>') +
+              '<span class="dchip-n">' + m + '</span></button>').join('') +
+              '<div class="dchip-help">켠 모델만 이 서버에 제공 · 전체 끄면 전체 제공</div>'
+          : '<span class="dim">제공 중인 모델이 없어요(로컬 실행에서 엔진·모델을 준비하세요).</span>';
+        imgEl.innerHTML = sm.imageReady
+          ? '<button class="dchip-tog' + (sm.imageEnabled ? ' on' : '') + '" id="dImgTog"><span class="dchip-n">🖼 이미지 생성 제공</span></button>' +
+            '<div class="dchip-help">이미지 엔진·모델은 로컬 실행 탭에서 관리해요(여기선 이 서버 제공 여부만).</div>'
+          : '<span class="dim">이미지 엔진이 준비되지 않았어요. 로컬 실행 탭에서 ComfyUI 를 설치·시작하세요.</span>';
+        chatEl.querySelectorAll('.dchip-tog').forEach(c => c.onclick = () => { c.classList.toggle('on'); save(); });
+        const imgTog = imgEl.querySelector('#dImgTog');
+        if (imgTog) imgTog.onclick = () => { imgTog.classList.toggle('on'); save(); };
+      }).catch(() => { chatEl.innerHTML = '<span class="dim">모델 정보를 불러오지 못했어요.</span>'; imgEl.innerHTML = ''; });
     }
 
     // 서버 표시 이름 변경 모달(텍스트 입력)
@@ -1977,8 +2036,6 @@
             '<button type="button" data-step="1" aria-label="늘리기">+</button></div></div>' +
           '<div class="pfield"><label>공개 대상</label>' +
             '<p class="dim" style="margin:2px 0 0">이 서버 멤버 누구나 — 서버별 격리로 보장돼요. 다른 서버 멤버는 이 서버의 AI를 호출할 수 없어요.</p></div>' +
-          '<div class="pfield"><label>이 서버에 제공할 모델 <span class="dim">· 체크한 모델만 이 서버에 줘요(전체 해제=전체 제공)</span></label>' +
-            '<div id="pModels" class="pmodels"><span class="dim">불러오는 중…</span></div></div>' +
         '</div>' +
         '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>취소</button>' +
         '<button class="btn btn--md btn--primary" id="pSave">저장</button></div></div>';
@@ -1987,21 +2044,7 @@
       // 세그먼트(하루 한도·동시 처리) 단일 선택 토글
       lay.querySelectorAll('.pseg').forEach(seg => seg.querySelectorAll('button').forEach(b =>
         b.onclick = () => seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b))));
-      // 이 서버에 제공할 모델(체크박스 + 이미지 토글) — 비동기 로드
-      let _sm = null; // {available, chatModels, imageEnabled, imageReady}
-      const pModels = lay.querySelector('#pModels');
-      api.getServerModels(d.guildId).then((sm) => {
-        _sm = sm || {};
-        const avail = _sm.available || [];
-        const sel = new Set(_sm.chatModels || []); // 빈=전체
-        const allChecked = sel.size === 0;
-        if (!avail.length) { pModels.innerHTML = '<span class="dim">제공 중인 모델이 없어요(에이전트 연결·모델 필요).</span>'; }
-        else {
-          pModels.innerHTML = avail.map((m) =>
-            '<label class="pmodel"><input type="checkbox" data-m="' + m + '"' + (allChecked || sel.has(m) ? ' checked' : '') + '><span>' + m + '</span></label>').join('') +
-            (_sm.imageReady ? '<label class="pmodel pmodel-img"><input type="checkbox" id="pImg"' + (_sm.imageEnabled ? ' checked' : '') + '><span>🖼 이미지 생성(Stable Diffusion)</span></label>' : '');
-        }
-      }).catch(() => { pModels.innerHTML = '<span class="dim">모델 정보를 불러오지 못했어요.</span>'; });
+      // (모델 선택은 서버 상세의 '이 서버에 제공할 AI' 카드로 분리 — 정책 모달엔 한도/동시/시간만)
       // 최대 시간 스테퍼(30초 단위, 30초~30분)
       const secEl = lay.querySelector('#pSecVal');
       lay.querySelectorAll('[data-step]').forEach(b => b.onclick = () => {
@@ -2015,16 +2058,8 @@
           maxSeconds: +secEl.dataset.sec,
         };
         await api.setServerPolicy(d.guildId, policy);
-        // 이 서버에 제공할 모델도 저장(전체 체크=전체 제공이므로 빈 배열로 보냄)
-        if (_sm && (_sm.available || []).length) {
-          const boxes = [...lay.querySelectorAll('#pModels input[data-m]')];
-          const checked = boxes.filter(b => b.checked).map(b => b.dataset.m);
-          const chatModels = (checked.length === boxes.length) ? [] : checked; // 전부 체크=전체(빈 배열)
-          const imgBox = lay.querySelector('#pImg');
-          await api.setServerModels(d.guildId, chatModels, imgBox ? imgBox.checked : true);
-        }
         lay.remove();
-        toast('내 제공 정책·모델을 저장했어요', { type: 'ok', sub: d.guildName });
+        toast('내 제공 정책을 저장했어요', { type: 'ok', sub: d.guildName });
         openDetail(d.guildId);
       };
     }

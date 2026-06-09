@@ -591,6 +591,71 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
     app.router.add_post("/api/comfy/install-model", comfy_install_model)
 
 
+def _register_ollama_routes(app: web.Application, session_key: str) -> None:
+    """Ollama(텍스트 엔진) 카탈로그/설치/진행 라우트."""
+
+    def _auth(req: web.Request) -> None:
+        if req.headers.get("X-Session") != session_key:
+            raise web.HTTPForbidden(text="세션 키 불일치")
+
+    async def ollama_catalog(req: web.Request) -> web.Response:
+        """추천 텍스트 모델 카탈로그 + 각 모델의 installed/selected 상태(P3).
+
+        프런트는 미설치 모델을 '설치 가능'으로 보여주고, status.models 와 대조해 'Discord 에 광고 중'을 표시한다.
+        """
+        _auth(req)
+        from . import ollama_setup
+
+        saved = load_config()
+        oll = await _detect_ollama()
+        detected = oll["models"]
+        selected = set(_selected_text_models(detected, saved.get("models")))
+        items = []
+        for m in ollama_setup.catalog():
+            installed = any(_model_matches(m["id"], d) for d in detected)
+            items.append({**m, "installed": installed, "selected": m["id"] in selected})
+        return web.json_response(
+            {
+                "models": items,
+                "default": DEFAULT_TEXT_MODEL,
+                "ollamaInstalled": oll["installed"],
+                "ollamaReady": oll["ready"],
+            }
+        )
+
+    async def ollama_setup_start(req: web.Request) -> web.Response:
+        """앱 내 Ollama 설치/모델 pull 시작. 본문에 ``model`` 이 있으면 그 모델을, 없으면 기본 모델을 받는다(P3).
+
+        진행은 ``/api/ollama/setup-progress`` 폴링으로 노출(한 번에 하나 — is_busy 가드).
+        """
+        _auth(req)
+        from . import ollama_setup
+
+        if ollama_setup.is_busy():
+            return web.json_response({"ok": True, "busy": True})
+        url = load_config().get("ollama_url") or "http://localhost:11434"
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001 - 본문 없는 POST(기본 셋업)는 기본 모델 경로
+            data = {}
+        model = str(data.get("model", "")).strip()
+        if model:
+            asyncio.create_task(_run_ollama_install(url, model, select=bool(data.get("select", True))))
+        else:
+            asyncio.create_task(_run_ollama_setup_and_select_default(url))
+        return web.json_response({"ok": True})
+
+    async def ollama_setup_progress(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import ollama_setup
+
+        return web.json_response(ollama_setup.progress())
+
+    app.router.add_get("/api/ollama/catalog", ollama_catalog)
+    app.router.add_post("/api/ollama/setup", ollama_setup_start)
+    app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
+
+
 def build_app(session_key: str) -> web.Application:
     _attach_log_capture()
     app = web.Application()
@@ -1282,59 +1347,6 @@ def build_app(session_key: str) -> web.Application:
         persist_partial({"auto_update": on})  # 다른 설정 영향 없이 즉시 저장
         return web.json_response({"ok": True, "autoUpdate": on})
 
-    async def ollama_catalog(req: web.Request) -> web.Response:
-        """추천 텍스트 모델 카탈로그 + 각 모델의 installed/selected 상태(P3).
-
-        프런트는 미설치 모델을 '설치 가능'으로 보여주고, status.models 와 대조해 'Discord 에 광고 중'을 표시한다.
-        """
-        _auth(req)
-        from . import ollama_setup
-
-        saved = load_config()
-        oll = await _detect_ollama()
-        detected = oll["models"]
-        selected = set(_selected_text_models(detected, saved.get("models")))
-        items = []
-        for m in ollama_setup.catalog():
-            installed = any(_model_matches(m["id"], d) for d in detected)
-            items.append({**m, "installed": installed, "selected": m["id"] in selected})
-        return web.json_response(
-            {
-                "models": items,
-                "default": DEFAULT_TEXT_MODEL,
-                "ollamaInstalled": oll["installed"],
-                "ollamaReady": oll["ready"],
-            }
-        )
-
-    async def ollama_setup_start(req: web.Request) -> web.Response:
-        """앱 내 Ollama 설치/모델 pull 시작. 본문에 ``model`` 이 있으면 그 모델을, 없으면 기본 모델을 받는다(P3).
-
-        진행은 ``/api/ollama/setup-progress`` 폴링으로 노출(한 번에 하나 — is_busy 가드).
-        """
-        _auth(req)
-        from . import ollama_setup
-
-        if ollama_setup.is_busy():
-            return web.json_response({"ok": True, "busy": True})
-        url = load_config().get("ollama_url") or "http://localhost:11434"
-        try:
-            data = await req.json()
-        except Exception:  # noqa: BLE001 - 본문 없는 POST(기본 셋업)는 기본 모델 경로
-            data = {}
-        model = str(data.get("model", "")).strip()
-        if model:
-            asyncio.create_task(_run_ollama_install(url, model, select=bool(data.get("select", True))))
-        else:
-            asyncio.create_task(_run_ollama_setup_and_select_default(url))
-        return web.json_response({"ok": True})
-
-    async def ollama_setup_progress(req: web.Request) -> web.Response:
-        _auth(req)
-        from . import ollama_setup
-
-        return web.json_response(ollama_setup.progress())
-
     async def start(req: web.Request) -> web.Response:
         _auth(req)
         return web.json_response(_start_agent())
@@ -1631,9 +1643,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/update-progress", update_progress)
     app.router.add_post("/api/update", update_apply)
     app.router.add_post("/api/auto-update", auto_update_set)
-    app.router.add_get("/api/ollama/catalog", ollama_catalog)
-    app.router.add_post("/api/ollama/setup", ollama_setup_start)
-    app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
+    _register_ollama_routes(app, session_key)
     _register_comfy_routes(app, session_key)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)

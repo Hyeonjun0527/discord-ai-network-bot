@@ -591,6 +591,73 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
     app.router.add_post("/api/comfy/install-model", comfy_install_model)
 
 
+def _register_update_routes(app: web.Application, session_key: str) -> None:
+    """앱 설치(installer) + 자동/수동 업데이트(updater) 라우트."""
+
+    def _auth(req: web.Request) -> None:
+        if req.headers.get("X-Session") != session_key:
+            raise web.HTTPForbidden(text="세션 키 불일치")
+
+    async def install_info(req: web.Request) -> web.Response:
+        _auth(req)
+        from .installer import install_info as _info
+
+        return web.json_response(_info())
+
+    async def install(req: web.Request) -> web.Response:
+        _auth(req)
+        from .installer import install_app
+
+        return web.json_response(install_app())
+
+    async def update_info(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import updater
+
+        loop = asyncio.get_event_loop()
+        info = await loop.run_in_executor(None, updater.check)  # 네트워크 → 스레드풀
+        info["autoUpdate"] = bool(load_config().get("auto_update", True))
+        return web.json_response(info)
+
+    async def update_apply(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import updater
+
+        # 백그라운드 스레드에서 다운로드·교체(프런트는 /api/update-progress 로 진행률 폴링).
+        if updater.is_updating():
+            return web.json_response({"ok": True, "started": True})
+
+        def _worker() -> None:
+            result = updater.apply_update()
+            if result.get("ok") and result.get("restarting"):
+                _schedule_exit()  # 교체 위해 종료 → 헬퍼가 swap·재실행
+
+        threading.Thread(target=_worker, daemon=True).start()
+        return web.json_response({"ok": True, "started": True})
+
+    async def update_progress(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import updater
+
+        return web.json_response(updater.update_progress())
+
+    async def auto_update_set(req: web.Request) -> web.Response:
+        _auth(req)
+        from .config_file import persist_partial
+
+        data = await req.json()
+        on = bool(data.get("autoUpdate"))
+        persist_partial({"auto_update": on})  # 다른 설정 영향 없이 즉시 저장
+        return web.json_response({"ok": True, "autoUpdate": on})
+
+    app.router.add_get("/api/install-info", install_info)
+    app.router.add_post("/api/install", install)
+    app.router.add_get("/api/update-info", update_info)
+    app.router.add_get("/api/update-progress", update_progress)
+    app.router.add_post("/api/update", update_apply)
+    app.router.add_post("/api/auto-update", auto_update_set)
+
+
 def _register_ollama_routes(app: web.Application, session_key: str) -> None:
     """Ollama(텍스트 엔진) 카탈로그/설치/진행 라우트."""
 
@@ -1295,58 +1362,6 @@ def build_app(session_key: str) -> web.Application:
             _start_agent()
         return web.json_response({"ok": True})
 
-    async def install_info(req: web.Request) -> web.Response:
-        _auth(req)
-        from .installer import install_info as _info
-
-        return web.json_response(_info())
-
-    async def install(req: web.Request) -> web.Response:
-        _auth(req)
-        from .installer import install_app
-
-        return web.json_response(install_app())
-
-    async def update_info(req: web.Request) -> web.Response:
-        _auth(req)
-        from . import updater
-
-        loop = asyncio.get_event_loop()
-        info = await loop.run_in_executor(None, updater.check)  # 네트워크 → 스레드풀
-        info["autoUpdate"] = bool(load_config().get("auto_update", True))
-        return web.json_response(info)
-
-    async def update_apply(req: web.Request) -> web.Response:
-        _auth(req)
-        from . import updater
-
-        # 백그라운드 스레드에서 다운로드·교체(프런트는 /api/update-progress 로 진행률 폴링).
-        if updater.is_updating():
-            return web.json_response({"ok": True, "started": True})
-
-        def _worker() -> None:
-            result = updater.apply_update()
-            if result.get("ok") and result.get("restarting"):
-                _schedule_exit()  # 교체 위해 종료 → 헬퍼가 swap·재실행
-
-        threading.Thread(target=_worker, daemon=True).start()
-        return web.json_response({"ok": True, "started": True})
-
-    async def update_progress(req: web.Request) -> web.Response:
-        _auth(req)
-        from . import updater
-
-        return web.json_response(updater.update_progress())
-
-    async def auto_update_set(req: web.Request) -> web.Response:
-        _auth(req)
-        from .config_file import persist_partial
-
-        data = await req.json()
-        on = bool(data.get("autoUpdate"))
-        persist_partial({"auto_update": on})  # 다른 설정 영향 없이 즉시 저장
-        return web.json_response({"ok": True, "autoUpdate": on})
-
     async def start(req: web.Request) -> web.Response:
         _auth(req)
         return web.json_response(_start_agent())
@@ -1637,12 +1652,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/servers/{guildId}/knowledge/delete", server_knowledge_delete)
     app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
     app.router.add_post("/api/server-add-token", server_add_token)
-    app.router.add_get("/api/install-info", install_info)
-    app.router.add_post("/api/install", install)
-    app.router.add_get("/api/update-info", update_info)
-    app.router.add_get("/api/update-progress", update_progress)
-    app.router.add_post("/api/update", update_apply)
-    app.router.add_post("/api/auto-update", auto_update_set)
+    _register_update_routes(app, session_key)
     _register_ollama_routes(app, session_key)
     _register_comfy_routes(app, session_key)
     app.router.add_post("/api/setup", setup)

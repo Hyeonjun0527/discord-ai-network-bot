@@ -379,6 +379,37 @@ def _page(session_key: str) -> str:
     return template.replace("__SESSION_KEY__", session_key).replace("__VERSION__", AGENT_VERSION)
 
 
+def _running_agent() -> object | None:
+    """실행 중인 에이전트(태스크가 살아 있을 때만). webui 라우트들이 공유한다."""
+    agent = _state["agent"]
+    task = _state["task"]
+    return agent if (agent is not None and task is not None and not task.done()) else None
+
+
+def _index_for_guild(guild_id_str: str) -> int | None:
+    """guildId(문자열) → 저장 연결 목록의 index. 데스크톱 앱은 64bit guildId 만 다루므로(정밀도)
+    webui 가 index 로 변환한다. 못 찾으면 None."""
+    from .config_file import load_connections
+
+    for i, c in enumerate(load_connections()):
+        if c.get("guild_id") is not None and str(c.get("guild_id")) == str(guild_id_str):
+            return i
+    return None
+
+
+def _resolve_index(data: dict) -> int | None:
+    """body 에서 index 또는 guildId 로 대상 연결 index 해석(둘 중 하나)."""
+    if "guildId" in data and data.get("guildId") is not None:
+        return _index_for_guild(str(data["guildId"]))
+    raw = data.get("index")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def _register_asset_routes(app: web.Application, session_key: str) -> None:
     """인증 불필요한 정적 자산 라우트(메인 페이지·마스코트·앱아이콘·webui_assets js/img).
 
@@ -754,33 +785,6 @@ def build_app(session_key: str) -> web.Application:
 
             set_guild_policy(guild_id, {"paused": paused})
         return web.json_response({"ok": True, "paused": paused})
-
-    def _running_agent() -> object | None:
-        agent = _state["agent"]
-        task = _state["task"]
-        return agent if (agent is not None and task is not None and not task.done()) else None
-
-    def _index_for_guild(guild_id_str: str) -> int | None:
-        """guildId(문자열) → 저장 연결 목록의 index. 데스크톱 앱은 64bit guildId 만 다루므로(정밀도)
-        webui 가 index 로 변환한다. 못 찾으면 None."""
-        from .config_file import load_connections
-
-        for i, c in enumerate(load_connections()):
-            if c.get("guild_id") is not None and str(c.get("guild_id")) == str(guild_id_str):
-                return i
-        return None
-
-    def _resolve_index(data: dict) -> int | None:
-        """body 에서 index 또는 guildId 로 대상 연결 index 해석(둘 중 하나)."""
-        if "guildId" in data and data.get("guildId") is not None:
-            return _index_for_guild(str(data["guildId"]))
-        raw = data.get("index")
-        if raw is None:
-            return None
-        try:
-            return int(raw)
-        except (TypeError, ValueError):
-            return None
 
     async def server_remove(req: web.Request) -> web.Response:
         """서버 연결 해제(내 로컬 연결만 정리 — 이 서버에 더는 붙지 않음). body {guildId} 또는 {index}.

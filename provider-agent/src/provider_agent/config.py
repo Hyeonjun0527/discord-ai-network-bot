@@ -5,11 +5,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import platform as _platform
 from dataclasses import dataclass, field
 
 from .constants import AGENT_VERSION, DEFAULT_DAILY_LIMIT
+
+logger = logging.getLogger("provider_agent.config")
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,10 +36,8 @@ class AgentConfig:
     enable_image: bool = False  # 로컬 SD 이미지 생성 capability 광고(opt-in, SD Phase 1)
     gemini_api_key: str = ""  # 클라우드 Gemini 백엔드 키(관리자 1개로 서버 전체 무료 제공). 비면 미사용. central 엔 안 올림
     gemini_models: tuple[str, ...] = ()  # 광고할 Gemini 모델(키 있을 때 기본 gemini-2.5-flash-lite)
-    sd_url: str = "http://127.0.0.1:7860"  # 로컬 Stable Diffusion(A1111) 주소
-    comfy_url: str = ""  # 로컬 ComfyUI 주소(설정 시 이미지 백엔드를 SD.Next 대신 ComfyUI 로). 비면 SD.Next
+    comfy_url: str = ""  # 로컬 ComfyUI 주소(비면 앱 관리 ComfyUI localhost:8188). 외부는 명시 입력
     hf_token: str = ""  # HuggingFace 토큰(gated/비공개 모델 다운로드용). 비면 public 모델만. 이 PC 에만 저장
-    allow_remote_sd: bool = False  # 기본 localhost 전용; True 면 원격 SD 허용(위험)
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
     service: bool = False  # 헤드리스 자동시작 모드(--service): launchd·업데이터 재실행이 창 없이 무인 구동
     install_service: bool = False  # 자동 시작 서비스 등록 후 종료(--install-service, 저장 안 함)
@@ -90,8 +91,9 @@ def _load_dotenv() -> None:
                 val = val.strip().strip('"').strip("'")
                 if key and key not in os.environ:  # CLI/실제 환경변수가 우선
                     os.environ[key] = val
-        except OSError:
-            pass
+        except OSError as exc:
+            # .env 읽기 실패는 치명적이지 않으나(보강일 뿐) 조용히 숨기지 않는다(예외 원칙 3).
+            logger.debug(".env 로드 실패(무시): %s (%s)", cand, exc)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -108,8 +110,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--allow-unlimited", action="store_true", help="일일 한도 무제한(0)을 명시적으로 허용(위험)")
     p.add_argument("--allow-remote-ollama", action="store_true", help="원격 Ollama 주소 허용(기본 localhost 전용, 위험 확인 옵션)")
     p.add_argument("--enable-image", action="store_true", help="로컬 Stable Diffusion 이미지 생성 제공(opt-in)")
-    p.add_argument("--sd-url", help="로컬 Stable Diffusion(A1111) 주소 (기본 http://127.0.0.1:7860)")
-    p.add_argument("--allow-remote-sd", action="store_true", help="원격 SD 주소 허용(기본 localhost 전용, 위험 확인 옵션)")
     p.add_argument("--run-on-battery", action="store_true", help="배터리(방전) 중에도 처리 계속(기본은 자동 pause)")
     p.add_argument("--request-timeout", type=float, help="요청당 타임아웃 초 (기본 120)")
     p.add_argument("--heartbeat", type=float, dest="heartbeat_seconds", help="heartbeat 주기 초 (기본 30)")
@@ -165,20 +165,11 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
     gemini_models = tuple(saved.get("gemini_models") or ())
     if gemini_api_key and not gemini_models:
         gemini_models = (DEFAULT_GEMINI_MODEL,)
-    sd_url = (args.sd_url or _env("SD_BASE_URL") or saved.get("sd_url") or "http://127.0.0.1:7860").rstrip("/")
-    # ComfyUI 백엔드(설정 시 이미지를 ComfyUI 로). env COMFY_URL > 저장 설정. 비면 SD.Next 사용.
-    comfy_url = (_env("COMFY_URL") or str(saved.get("comfy_url") or "")).rstrip("/")
+    # ComfyUI 백엔드(이미지 엔진). ComfyUI 는 "프로젝트 단위 단일 인스턴스"가 아니라 각 유저가 자기
+    # 로컬에서 직접 띄우는 것이므로, 주소는 오직 per-user 저장 설정(앱 UI 입력)에서만 온다. 비면 앱이
+    # 관리하는 로컬 ComfyUI(localhost:8188). 환경변수(프로젝트 env)로 외부 주소를 주입하지 않는다.
+    comfy_url = str(saved.get("comfy_url") or "").rstrip("/")
     hf_token = (_env("HF_TOKEN") or _env("HUGGING_FACE_HUB_TOKEN") or str(saved.get("hf_token") or "")).strip()
-    allow_remote_sd = bool(args.allow_remote_sd) or bool(saved.get("allow_remote_sd"))
-    if enable_image:
-        # SD 도 기본 localhost 전용(netguard 재사용). 원격은 --allow-remote-sd 에서만.
-        try:
-            ensure_ollama_allowed(sd_url, allow_remote_sd)
-        except RemoteOllamaBlocked:
-            parser.error(
-                f"원격 SD 주소가 차단되었습니다: {sd_url!r}. 기본값은 localhost 만 허용합니다. "
-                "원격 SD 를 정말 쓰려면 --allow-remote-sd 옵션을 명시하세요."
-            )
 
     # 일일 한도: 기본 DEFAULT_DAILY_LIMIT. 0(무제한)은 --allow-unlimited 가 있을 때만 허용.
     if args.daily_limit is not None:
@@ -219,10 +210,8 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         enable_image=enable_image,
         gemini_api_key=gemini_api_key,
         gemini_models=gemini_models,
-        sd_url=sd_url,
         comfy_url=comfy_url,
         hf_token=hf_token,
-        allow_remote_sd=allow_remote_sd,
         # --service(헤드리스 자동시작)는 동의 프롬프트를 띄울 수 없으므로 자동 승인(--yes)을 포함한다.
         assume_yes=bool(args.yes) or bool(args.service),
         service=bool(args.service),

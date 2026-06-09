@@ -7,7 +7,7 @@
 import { api } from './adapter.js';
 import { toast } from './toast.js';
 
-const RUNTIME_LABEL = { ollama: 'Ollama', image: 'Stable Diffusion' };
+const RUNTIME_LABEL = { ollama: 'Ollama' }; // 이미지 엔진은 ComfyUI(로컬 실행 탭에서 설치/관리)
 
 // ── 진행 폴링 공용 코어. installRuntime(설치 시작)·watchSetup(감시만)이 공유한다. ──
 // startSetup=true 면 설치를 시작하고, false 면 이미 진행 중인 설치를 폴링만 한다(새로고침 복원용).
@@ -46,74 +46,8 @@ export function installRuntime(k, model) { return _trackSetup(k, model, true); }
 // ── 이미 진행 중인 설치를 감시만(설치 시작 없이 폴링·진행 토스트 복원). 새로고침/부팅 시 복원용. ──
 export function watchSetup(k) { return _trackSetup(k, undefined, false); }
 
-// ── 카탈로그 밖 임의 HuggingFace 모델 설치(유저 자율). 서버에 다운로드 시작 후 동일 진행 UI 로 폴링. ──
-// _trackSetup 과 달리 startSetup 대신 installCustomSdModel 로 시작하고, 첫 'idle' 레이스를 피해 'started' 후부터 갱신.
-export function installCustomImage(url, base) {
-  const id = 'inst-image';
-  let dismissed = false;
-  return new Promise((resolve) => {
-    toast('이미지 모델 설치 중', { type: 'run', sticky: true, id, sub: '다운로드 준비 중', progress: 0, onClose: () => { dismissed = true; } });
-    api.installCustomSdModel(url, base);
-    let started = false;
-    const timer = setInterval(async () => {
-      const p = await api.getSetupProgress('image');
-      if (['downloading', 'installing', 'starting'].includes(p.phase)) started = true;
-      if (p.phase === 'done') {
-        clearInterval(timer);
-        if (!dismissed) toast('이미지 모델 설치 완료', { type: 'ok', id, sub: '로컬 실행 탭에서 모델을 선택하세요', progress: 100 });
-        window.dispatchEvent(new CustomEvent('runtimeinstalled', { detail: 'image' }));
-        resolve(true);
-      } else if (p.phase === 'error' || p.phase === 'cancelled') {
-        clearInterval(timer);
-        if (!dismissed) toast('이미지 모델 설치 실패', { type: 'info', id, sub: String(p.error || p.message || '') });
-        resolve(false);
-      } else if (started && !dismissed) {
-        toast('이미지 모델 설치 중', { type: 'run', sticky: true, id, sub: (p.message || '진행 중'), progress: p.percent, onClose: () => { dismissed = true; } });
-      }
-    }, 450);
-  });
-}
-
-// ── SD 모델 선택 모달(진행은 안 함, 선택만). Ollama 는 모달 없이 바로 설치. ──
-let layer, card;
-function ensureEls() { layer = document.getElementById('installModal'); card = document.getElementById('installCard'); }
-function close() { if (layer) layer.hidden = true; }
-
-export function openInstall(k) {
-  if (k !== 'image') { installRuntime(k); return; } // Ollama: 모델 선택 불필요 → 바로 토스트 설치
-  ensureEls();
-  if (!layer) { installRuntime(k); return; }
-  layer.hidden = false;
-  api.sdModels().then((models) => {
-    card.innerHTML =
-      '<h3>이미지 생성 모델 선택</h3>' +
-      '<p class="msub">추천 모델을 고르거나, HuggingFace 에서 받은 <b>아무 모델이든</b> 직접 추가할 수 있어요. 나중에 바꿀 수 있어요.</p>' +
-      '<div class="wiz-list">' +
-      models.map((m) => '<button class="wiz-opt" data-model="' + m.id + '">' +
-        '<span class="ob"><b>' + m.name + '</b><p>' + m.desc + '</p></span>' +
-        '<span class="osize">' + m.size + '</span></button>').join('') +
-      '</div>' +
-      '<div class="wiz-custom"><label>직접 추가 (HuggingFace 링크)</label>' +
-      '<div class="wiz-custom-row"><input id="hfUrl" type="text" placeholder="https://huggingface.co/…/resolve/main/모델.safetensors" />' +
-      '<button class="btn btn--sm btn--primary" id="hfAdd">추가</button></div>' +
-      '<div class="wiz-base"><span>종류</span>' +
-      '<label><input type="radio" name="hfBase" value="sd15" checked> SD 1.5 (512)</label>' +
-      '<label><input type="radio" name="hfBase" value="sdxl"> SDXL (1024)</label></div>' +
-      '<p class="msub">모델 파일(.safetensors) 페이지에서 “Copy download link” 한 URL 을 붙여넣고, 모델 종류를 고르세요(SDXL 은 1024 로 생성).</p></div>' +
-      '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-act="cancel">취소</button></div>';
-    card.querySelectorAll('[data-model]').forEach((el) => el.onclick = () => { close(); installRuntime('image', el.dataset.model); });
-    const hfAdd = card.querySelector('#hfAdd');
-    if (hfAdd) hfAdd.onclick = () => {
-      const url = (card.querySelector('#hfUrl').value || '').trim();
-      if (!url.includes('huggingface.co') || !(url.endsWith('.safetensors') || url.endsWith('.ckpt'))) {
-        toast('HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요', { type: 'error' }); return;
-      }
-      const base = (card.querySelector('input[name="hfBase"]:checked') || {}).value || 'sd15';
-      close(); installCustomImage(url, base);
-    };
-    card.querySelectorAll('[data-act]').forEach((el) => el.onclick = close);
-  });
-}
+// ── 설치 트리거(홈/온보딩). Ollama 만 — 이미지 엔진(ComfyUI)은 로컬 실행 탭에서 직접 관리. ──
+export function openInstall(k) { installRuntime(k); }
 
 window.openInstall = openInstall;     // PROTO·홈 호환
 window.installRuntime = installRuntime;

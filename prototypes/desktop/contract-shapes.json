@@ -15,7 +15,6 @@
       "processed",
       "relayUrl",
       "running",
-      "sdInstalled",
       "version"
     ],
     "/api/settings": [

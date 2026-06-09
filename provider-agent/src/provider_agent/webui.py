@@ -27,7 +27,6 @@ from .config import AgentConfig, config_from_args
 from .config_file import load_config, persist_partial, save_config
 from .constants import AGENT_VERSION, APP_DISPLAY_NAME, DEFAULT_TEXT_MODEL
 from .i18n import t
-from .netguard import RemoteOllamaBlocked, ensure_ollama_allowed
 
 # 공개 기본 중앙 서버(유저는 입력하지 않음). 자체호스팅만 고급에서 바꿀 수 있다.
 DEFAULT_RELAY = "wss://discord-ai.yeon.world/agent"
@@ -215,20 +214,6 @@ def _model_matches(catalog_id: str, detected: str) -> bool:
         return True
     base = catalog_id.split(":", 1)[0]
     return detected == base or detected.startswith(f"{base}:")
-
-
-def _sd_installed() -> bool:
-    """로컬 Stable Diffusion(A1111) 실행 환경이 설치돼 있는지(파일시스템 검사, 네트워크 없음).
-
-    이미지 토글이 켜졌는데 imageReady=false 인 이유가 'SD 미설치'인지 'SD 미준비'인지
-    UI 가 구분해 안내하도록 status 로 내려준다.
-    """
-    try:
-        from . import sd_setup
-
-        return bool(sd_setup.is_installed())
-    except Exception:  # noqa: BLE001 - SD 모듈 문제로 status 전체가 깨지지 않게 보수적으로 False
-        return False
 
 
 def _build_cfg_from_saved() -> AgentConfig | None:
@@ -471,8 +456,6 @@ def build_app(session_key: str) -> web.Application:
                 "hasToken": bool(saved.get("token")),
                 "relayUrl": saved.get("relay_url") or _default_relay(),
                 "enableImage": bool(saved.get("enable_image")),
-                # 이미지 토글이 켜졌는데 광고 안 될 때, 원인이 'SD 미설치'인지 'SD 미준비'인지 UI 가 구분하도록.
-                "sdInstalled": _sd_installed(),
                 # 백그라운드 자동시작 서비스가 이미 연결 중인지(이 창은 설정용임을 알리는 데 쓴다 — 런타임 상태).
                 "backgroundRunning": background_running,
                 # 백그라운드 상주 **설정값**(창을 닫아도 제공 유지). 홈 핀은 런타임이 아니라 이 설정을 표시해야 한다
@@ -515,11 +498,6 @@ def build_app(session_key: str) -> web.Application:
             enable_image=enable_image,
             auto_update=bool(saved.get("auto_update", True)),  # 저장된 자동업데이트 설정 보존(초기화 방지)
         )
-        if enable_image:
-            try:
-                ensure_ollama_allowed(cfg.sd_url, cfg.allow_remote_sd)
-            except RemoteOllamaBlocked:
-                return web.json_response({"ok": False, "error": "SD 주소가 localhost 가 아닙니다."})
         save_config(cfg)
         # 라이브 반영(P4): 백그라운드 서비스가 디스코드 연결을 담당 중이면, 바뀐 설정(enable_image/models)을
         # 그 프로세스가 즉시 반영하도록 재시작한다. 서비스는 시작 시점 config 만 읽고 파일 변경을 감시하지 않으므로,
@@ -570,9 +548,9 @@ def build_app(session_key: str) -> web.Application:
         제공 모델 선택을 건드리지 않는다(과거: setup 경유 토글이 모델을 기본값으로 리셋시키던 위험 제거).
 
         - 설정은 항상 persist_partial 로 저장(재시작 후에도 유지).
-        - GUI 인-프로세스 에이전트 실행 중이면 ``agent.set_image_enabled`` 로 **라이브 적용**(SD 생성·health·재광고).
+        - GUI 인-프로세스 에이전트 실행 중이면 ``agent.set_image_enabled`` 로 **라이브 적용**(ComfyUI health·재광고).
         - 백그라운드 서비스가 제공 중이면 kickstart(재기동)로 새 설정 반영.
-        - SD 미설치면 imageReady=False·sdInstalled=False 로 알려 앱이 설치를 안내하게 한다.
+        - ComfyUI 미설치/미실행이면 imageReady=False 로 알려 앱이 로컬 실행 탭의 설치를 안내하게 한다.
         """
         _auth(req)
         try:
@@ -581,13 +559,6 @@ def build_app(session_key: str) -> web.Application:
             data = {}
         on = bool(data.get("on")) if isinstance(data, dict) else False
         persist_partial({"enable_image": on})
-        if on:
-            saved = load_config()
-            sd_url = saved.get("sd_url") or "http://127.0.0.1:7860"
-            try:
-                ensure_ollama_allowed(sd_url, bool(saved.get("allow_remote_sd")))
-            except RemoteOllamaBlocked:
-                return web.json_response({"ok": False, "error": "SD 주소가 localhost 가 아닙니다."})
         image_ready = False
         applied = "saved"
         agent = _running_agent()
@@ -600,9 +571,7 @@ def build_app(session_key: str) -> web.Application:
 
             if singleton.held_by_other() and service_mod.is_installed():
                 applied = "service" if service_mod.kickstart() else "saved"
-        return web.json_response(
-            {"ok": True, "on": on, "imageReady": image_ready, "sdInstalled": _sd_installed(), "applied": applied}
-        )
+        return web.json_response({"ok": True, "on": on, "imageReady": image_ready, "applied": applied})
 
     async def cloud_settings(req: web.Request) -> web.Response:
         """클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. body {geminiApiKey?, comfyUrl?}.
@@ -1216,140 +1185,6 @@ def build_app(session_key: str) -> web.Application:
 
         return web.json_response(ollama_setup.progress())
 
-    async def sd_models(req: web.Request) -> web.Response:
-        """설치 마법사에서 고를 수 있는 이미지 모델 목록(카탈로그)."""
-        _auth(req)
-        from . import sd_setup
-
-        return web.json_response({"models": sd_setup.MODELS, "default": sd_setup.DEFAULT_MODEL_ID})
-
-    async def sd_installed(req: web.Request) -> web.Response:
-        """**설치된** SD 모델 목록 + 현재 활성 모델(로컬 실행 탭의 모델 전환용).
-
-        active 는 SD 가 떠 있으면 라이브 체크포인트(확장자 없이 보고됨 → stem 매칭), 아니면 config 선택값.
-        """
-        _auth(req)
-        from . import sd_setup
-        from .sd import SDClient
-
-        models = sd_setup.installed_models()
-        active = ""
-        url = load_config().get("sd_url") or "http://127.0.0.1:7860"
-        ckpt = await SDClient(url).current_checkpoint()
-        if ckpt:  # SD.Next 는 "name" (확장자 없이) 로 보고 → 파일 stem 으로 매칭
-            active = next((m["filename"] for m in models if m["filename"].rsplit(".", 1)[0] in ckpt), "")
-        if not active:
-            saved = load_config().get("sd_model")
-            active = saved if isinstance(saved, str) else ""
-        return web.json_response({"models": models, "active": active})
-
-    async def sd_select(req: web.Request) -> web.Response:
-        """활성 SD 모델을 전환한다(로컬 실행 탭). body {model: filename}.
-
-        설정에 저장(다음 기동에도 유지) + SD 가 떠 있으면 즉시 핫스왑 + 에이전트 해상도 캐시 무효화
-        (모델별 해상도 SDXL 1024 / SD1.5 512 재판정). 생성 중이 아닐 때만 호출돼야 안전(MPS).
-        """
-        _auth(req)
-        from . import sd_setup
-        from .config_file import persist_partial
-
-        try:
-            data = await req.json()
-        except Exception:  # noqa: BLE001
-            data = {}
-        name = (data or {}).get("model")
-        valid = {m["filename"] for m in sd_setup.installed_models()}
-        if not name or name not in valid:
-            return web.json_response({"ok": False, "error": "설치되지 않은 모델입니다."})
-        persist_partial({"sd_model": name})  # 다음 SD 기동에도 유지(launch_command 가 읽음)
-        swapped = False
-        agent = _running_agent()
-        if agent is not None and getattr(agent, "_sd", None) is not None:
-            try:
-                swapped = bool(await agent._sd.set_checkpoint(name))  # type: ignore[attr-defined]
-                agent._invalidate_resolution()  # type: ignore[attr-defined]  # 새 모델 기준 해상도 재판정
-            except Exception as exc:  # noqa: BLE001 - 핫스왑 실패해도 설정은 저장됨(다음 기동 반영)
-                logging.getLogger("provider_agent").warning("SD 모델 핫스왑 실패: %s", exc)
-        return web.json_response({"ok": True, "active": name, "applied": "live" if swapped else "saved"})
-
-    async def sd_status(req: web.Request) -> web.Response:
-        """SD 설치/준비 상태(설정 화면에서 토글 vs 설치 버튼 결정용)."""
-        _auth(req)
-        from . import sd_setup
-        from .sd import SDClient
-
-        url = load_config().get("sd_url") or "http://127.0.0.1:7860"
-        ready = await SDClient(url).health()
-        return web.json_response(
-            {"installed": sd_setup.is_installed(), "ready": bool(ready), "busy": sd_setup.is_busy()}
-        )
-
-    async def sd_setup_start(req: web.Request) -> web.Response:
-        """설치 마법사: 선택한 모델로 SD(A1111) 설치(전제도구→clone→모델→--api 기동) 시작."""
-        _auth(req)
-        from . import sd_setup
-
-        if sd_setup.is_busy():
-            return web.json_response({"ok": True, "busy": True})
-        try:
-            data = await req.json()
-        except Exception:  # noqa: BLE001 — 본문 없으면 기본 모델
-            data = {}
-        model_id = (data or {}).get("model") or sd_setup.DEFAULT_MODEL_ID
-        url = load_config().get("sd_url") or "http://127.0.0.1:7860"
-        asyncio.create_task(sd_setup.run_setup(url, model_id))
-        return web.json_response({"ok": True})
-
-    async def sd_install_custom(req: web.Request) -> web.Response:
-        """카탈로그 밖 **임의 HuggingFace 모델** 설치(body {url}). 유저 자율 — 어떤 체크포인트든.
-        진행은 다른 설치와 동일하게 /api/sd/setup-progress 로 폴링."""
-        _auth(req)
-        from . import sd_setup
-
-        if sd_setup.is_busy():
-            return web.json_response({"ok": True, "busy": True})
-        try:
-            data = await req.json()
-        except Exception:  # noqa: BLE001
-            data = {}
-        hf_url = str((data or {}).get("url") or "").strip()
-        if sd_setup.custom_model_from_url(hf_url) is None:
-            return web.json_response(
-                {"ok": False, "error": "HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요(…/resolve/main/모델.safetensors)."}
-            )
-        sd_url = load_config().get("sd_url") or "http://127.0.0.1:7860"
-        base = str((data or {}).get("base") or "")  # sd15|sdxl — SDXL 커스텀이면 1024 로 생성
-        asyncio.create_task(sd_setup.download_custom_model(hf_url, sd_url, base))
-        return web.json_response({"ok": True})
-
-    async def sd_start(req: web.Request) -> web.Response:
-        """이미 설치된 SD(A1111)를 **기동만** 한다(재부팅·앱 종료 후 다시 켜기). clone/다운로드 없음.
-
-        진행은 설치 마법사와 같은 `/api/sd/setup-progress` 로 폴링한다.
-        """
-        _auth(req)
-        from . import sd_setup
-
-        if sd_setup.is_busy():
-            return web.json_response({"ok": True, "busy": True})
-        url = load_config().get("sd_url") or "http://127.0.0.1:7860"
-        asyncio.create_task(sd_setup.launch_only(url))
-        return web.json_response({"ok": True})
-
-    async def sd_setup_cancel(req: web.Request) -> web.Response:
-        """진행 중인 SD 설치를 취소."""
-        _auth(req)
-        from . import sd_setup
-
-        sd_setup.request_cancel()
-        return web.json_response({"ok": True})
-
-    async def sd_setup_progress(req: web.Request) -> web.Response:
-        _auth(req)
-        from . import sd_setup
-
-        return web.json_response(sd_setup.progress())
-
     # ── ComfyUI 라이프사이클(1급 엔진: 앱이 직접 설치/실행/정지/웹UI 오픈) ──────────────
     async def comfy_status(req: web.Request) -> web.Response:
         """ComfyUI 설치/실행/바쁨 상태(데스크톱 엔진 카드 버튼 결정용)."""
@@ -1688,35 +1523,29 @@ def build_app(session_key: str) -> web.Application:
         return web.json_response({"ok": True, "needsRestart": needs_restart, "serviceError": service_error})
 
     async def open_folder(req: web.Request) -> web.Response:
-        """로컬 폴더를 OS 파일 탐색기로 연다(데스크톱 앱 ⋯ '출력 폴더 열기'). 로컬 전용 — 같은 PC.
+        """로컬 폴더를 OS 파일 탐색기로 연다(데스크톱 앱 ⋯ '출력/모델 폴더 열기'). 로컬 전용 — 같은 PC.
 
-        body {which}=sdOutputs: A1111 출력 폴더(install_dir/outputs). 없으면 설치 폴더, 그것도 없으면 에러.
+        body {which}=comfyModels: ComfyUI 체크포인트 폴더(.safetensors 를 넣으면 자동 인식).
+        body {which}=comfyOutputs(기본): ComfyUI 출력 폴더(생성된 이미지). 둘 다 없으면 만들어서 연다.
         """
         _auth(req)
         import subprocess
         import sys
 
-        from . import sd_setup
+        from . import comfy_setup
 
         try:
             body = await req.json()
         except Exception:  # noqa: BLE001 - 본문 없으면 기본값
             body = {}
-        which = (body.get("which") if isinstance(body, dict) else None) or "sdOutputs"
-        target = None
+        which = (body.get("which") if isinstance(body, dict) else None) or "comfyOutputs"
         if which == "comfyModels":
             # ComfyUI 체크포인트 폴더(여기에 .safetensors 를 넣으면 자동 인식). 없으면 만들어서 연다.
-            from . import comfy_setup
-
-            mdir = comfy_setup.model_dir()
-            mdir.mkdir(parents=True, exist_ok=True)
-            target = mdir
+            target = comfy_setup.model_dir()
         else:
-            base = sd_setup.install_dir()
-            candidates = [base / "outputs", base] if which == "sdOutputs" else [base]
-            target = next((p for p in candidates if p.exists()), None)
-        if target is None:
-            return web.json_response({"ok": False, "error": "폴더가 아직 없어요(설치/생성 전)"})
+            # ComfyUI 출력 폴더(생성 이미지). ComfyUI 는 install_dir/output 에 저장한다.
+            target = comfy_setup.install_dir() / "output"
+        target.mkdir(parents=True, exist_ok=True)
         try:
             if sys.platform == "darwin":
                 subprocess.Popen(["open", str(target)])
@@ -1772,16 +1601,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/ollama/catalog", ollama_catalog)
     app.router.add_post("/api/ollama/setup", ollama_setup_start)
     app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
-    app.router.add_get("/api/sd/models", sd_models)
-    app.router.add_get("/api/sd/installed", sd_installed)
-    app.router.add_post("/api/sd/select", sd_select)
-    app.router.add_get("/api/sd/status", sd_status)
-    app.router.add_post("/api/sd/setup", sd_setup_start)
-    app.router.add_post("/api/sd/install-custom", sd_install_custom)
-    app.router.add_post("/api/sd/start", sd_start)
-    app.router.add_post("/api/sd/cancel", sd_setup_cancel)
-    app.router.add_get("/api/sd/setup-progress", sd_setup_progress)
-    # ComfyUI 라이프사이클(1급 엔진)
+    # ComfyUI 라이프사이클(이미지 엔진 — 설치/시작/정지/웹UI/체크포인트. SD.Next 는 제거됨)
     app.router.add_get("/api/comfy/status", comfy_status)
     app.router.add_post("/api/comfy/setup", comfy_setup_start)
     app.router.add_get("/api/comfy/setup-progress", comfy_setup_progress)

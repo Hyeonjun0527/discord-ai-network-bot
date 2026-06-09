@@ -229,13 +229,13 @@ class ProviderAgent:
     def __init__(self, cfg: AgentConfig, ollama: OllamaClient | None = None, sd=None) -> None:
         self._cfg = cfg
         self._ollama = ollama or OllamaClient(cfg.ollama_url, cfg.request_timeout)
-        # 1급 이미지 엔진 = **ComfyUI**(SD.Next 는 레거시 폴백). 우선순위:
-        #   ① 명시적 외부 ComfyUI URL > ② 앱이 관리하는 로컬 ComfyUI(설치돼 있으면 localhost:8188) > ③ SD.Next.
-        # 셋 다 동일한 txt2img/health 인터페이스라 _handle_image 는 그대로(유저가 어떤 이미지 도구든 쓰게).
+        # 이미지 엔진 = **ComfyUI 전용**(SD.Next 는 제거됨 — 유지보수 중단된 레거시). 우선순위:
+        #   ① 유저가 직접 띄운 외부 ComfyUI(per-user 설정의 comfy_url) > ② 앱이 관리하는 로컬 ComfyUI(localhost:8188).
+        # txt2img/health 인터페이스(덕타이핑)라 _handle_image 는 백엔드와 무관하게 동일하게 동작한다.
         from . import comfy_setup
 
-        # 이미지 엔진 = **ComfyUI 전용**(SD.Next 폐기 — 유지보수 중단된 레거시). 외부 comfy_url 이 있으면 그것,
-        # 없으면 앱이 관리하는 ComfyUI(localhost:8188). 설치/실행 전이면 health=False 라 이미지 미광고(자동 기동은 _boot_sd).
+        # 외부 comfy_url 이 있으면 그것(유저 로컬에서 직접 실행), 없으면 앱이 관리하는 ComfyUI(localhost:8188).
+        # 설치/실행 전이면 health=False 라 이미지 미광고(자동 기동은 _boot_sd).
         self._comfy_url = cfg.comfy_url or comfy_setup.webui_url()
         self._image_backend = "comfyui"
         if sd is not None:
@@ -506,10 +506,9 @@ class ProviderAgent:
         await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
 
     async def _generate_image_with_retry(self, conn: AgentConnection, req: InferRequest) -> str | None:
-        """txt2img 를 진행률 추정과 함께 실행. 백엔드(SD.Next/ComfyUI)가 생성 중 죽으면 1회 재기동·재시도.
+        """txt2img 를 진행률 추정과 함께 실행. ComfyUI 가 생성 중 죽으면 1회 재기동·재시도.
         성공 시 base64 PNG, 실패 시 InferError 송신 후 None."""
         from .comfy import ComfyError
-        from .sd import SDError
 
         w, h = await self._resolution()  # 생성 직전(비동시) 1회 — SDXL 1024 vs SD1.5 512
         for attempt in range(2):  # 원샷 + 1회 재시도(MPS 가 드물게 크래시할 때 사용자에게 이미지를 돌려준다)
@@ -518,7 +517,7 @@ class ProviderAgent:
             prog_task = asyncio.create_task(self._emit_estimated_progress(conn, req.request_id, gen_task))
             try:
                 return await gen_task
-            except (SDError, ComfyError) as exc:
+            except ComfyError as exc:
                 if attempt == 0 and await self._recover_sd():
                     logger.warning("SD 가 생성 중 종료된 듯 — 재기동 후 1회 재시도: %s", exc)
                     continue
@@ -552,31 +551,21 @@ class ProviderAgent:
         self._sd_wh = None
 
     async def _recover_sd(self) -> bool:
-        """이미지 백엔드가 죽었으면 재기동·재확인(생성 재시도 직전). 성공 True.
-        ComfyUI 는 유저가 직접 실행하므로 자동 기동하지 않고 health 만 재확인한다(SD.Next 만 launch_only)."""
+        """이미지 백엔드(ComfyUI)가 죽었으면 재기동·재확인(생성 재시도 직전). 성공 True.
+        앱이 관리하는 ComfyUI 면 재기동 시도, 외부 URL(직접 띄운 인스턴스)이면 health 만 재확인."""
         if self._sd is None:
             return False
-        from . import sd_setup
-
         try:
             if await self._sd.health():
                 return True  # 이미 살아있음(일시적 네트워크 오류였음)
-            if self._image_backend == "comfyui":
-                # 앱이 관리하는 ComfyUI 면 재기동 시도(설치돼 있을 때). 외부 URL 이면 is_installed=False → 포기.
-                from . import comfy_setup
+            from . import comfy_setup
 
-                if comfy_setup.is_installed() and await comfy_setup.start() and await self._sd.health():
-                    self._invalidate_resolution()
-                    return True
-                return False
-            ok = await sd_setup.launch_only(self._cfg.sd_url)
-            if ok and await self._sd.health():
-                await self._sd.set_output_png()
-                self._invalidate_resolution()  # 재기동 후 모델이 바뀌었을 수 있음
+            if comfy_setup.is_installed() and await comfy_setup.start() and await self._sd.health():
+                self._invalidate_resolution()
                 return True
             return False
         except Exception as exc:  # noqa: BLE001 - 재기동 실패는 비치명적(원 에러를 사용자에게 전달)
-            logger.warning("SD 재기동 실패: %s", exc)
+            logger.warning("ComfyUI 재기동 실패: %s", exc)
             return False
 
     async def _emit_estimated_progress(self, conn: AgentConnection, request_id: str, gen_task: "asyncio.Task[str]") -> None:
@@ -982,14 +971,16 @@ class ProviderAgent:
                 "(앱 ‘제공 모델’에서 1개 이상 선택하세요)."
             )
 
-        # SD 이미지 capability: opt-in + 런타임 health 로 확정.
+        # ComfyUI 이미지 capability: opt-in + 런타임 health 로 확정.
         if self._sd is not None:
             self._image_ready = await self._sd.health()
             if self._image_ready:
-                await self._sd.set_output_png()  # SD.Next 기본 JPEG → PNG(파이프라인 일치)
-                logger.info("이미지 생성(SD) 활성: %s", self._cfg.sd_url)
+                logger.info("이미지 생성(ComfyUI) 활성: %s", self._comfy_url)
             else:
-                logger.warning("SD(%s) 미연결 — 설치돼 있으면 자동 기동을 시도하고, 준비되면 이미지 capability 를 재광고합니다", self._cfg.sd_url)
+                logger.warning(
+                    "ComfyUI(%s) 미연결 — 설치돼 있으면 자동 기동을 시도하고, 준비되면 이미지 capability 를 재광고합니다",
+                    self._comfy_url,
+                )
 
         # 웹 UI/트레이에서 같은 루프의 태스크로 돌릴 때는 시그널 핸들러를 설치하지 않는다.
         if install_signals:
@@ -1051,51 +1042,29 @@ class ProviderAgent:
         return 0
 
     async def _boot_sd(self) -> None:
-        """설치된 SD 가 꺼져 있으면 자동으로 띄우고, 준비되면 image capability 를 재광고한다.
+        """설치된 ComfyUI 가 꺼져 있으면 자동으로 띄우고, 준비되면 image capability 를 재광고한다.
 
-        capability 는 연결 시점 hello 로만 광고되므로, SD 가 늦게 떠도 풀에 반영되려면 재연결이
+        capability 는 연결 시점 hello 로만 광고되므로, ComfyUI 가 늦게 떠도 풀에 반영되려면 재연결이
         필요하다. 텍스트 연결을 막지 않도록 백그라운드 태스크로 돌린다(재부팅 후 무인 복구 핵심).
+        앱이 관리하는 ComfyUI 면 자동 기동(설치돼 있을 때) — 1급 엔진이므로 살려둔다.
+        외부 URL(직접 띄운 인스턴스)이면 is_installed=False → start no-op, health 만 본다.
         """
-        from . import sd_setup
+        from . import comfy_setup
 
-        if self._image_backend == "comfyui":
-            # 앱이 관리하는 ComfyUI 면 꺼져 있을 때 자동 기동(설치돼 있을 때) — 1급 엔진이므로 살려둔다.
-            # 외부 URL(직접 띄운 인스턴스)이면 is_installed=False → start no-op, health 만 본다.
-            from . import comfy_setup
+        if comfy_setup.is_installed():
+            await comfy_setup.start()
+        if self._sd is not None and await self._sd.health():
+            # 저장된 선택 체크포인트 적용(없으면 첫 모델). 재시작에도 유저 선택 유지.
+            from .config_file import load_config
 
-            if comfy_setup.is_installed():
-                await comfy_setup.start()
-            if self._sd is not None and await self._sd.health():
-                # 저장된 선택 체크포인트 적용(없으면 첫 모델). 재시작에도 유저 선택 유지.
-                from .config_file import load_config
-
-                cm = load_config().get("comfy_model")
-                if cm:
-                    try:
-                        await self._sd.set_checkpoint(cm)
-                    except Exception:  # noqa: BLE001 - 실패해도 첫 모델로 동작
-                        pass
-                self._image_ready = True
-                self._invalidate_resolution()
-                await self._readvertise()
-            return
-        if not sd_setup.is_installed() or sd_setup.is_busy():
-            return
-        logger.info("SD 가 꺼져 있어 자동 기동을 시도합니다(설치돼 있음)…")
-        try:
-            ok = await sd_setup.launch_only(self._cfg.sd_url)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 - 자동 기동 실패는 에이전트를 멈추지 않는다
-            logger.warning("SD 자동 기동 실패: %s", exc)
-            return
-        if not ok or self._sd is None:
-            return
-        self._image_ready = await self._sd.health()
-        if self._image_ready and not self._stop.is_set():
-            await self._sd.set_output_png()  # SD.Next 기본 JPEG → PNG
-            self._invalidate_resolution()  # 새로 뜬 모델 기준으로 해상도 재판정
-            logger.info("SD 준비 완료 — 이미지 capability 재광고(재연결)")
+            cm = load_config().get("comfy_model")
+            if cm:
+                try:
+                    await self._sd.set_checkpoint(cm)
+                except Exception:  # noqa: BLE001 - 실패해도 첫 모델로 동작
+                    pass
+            self._image_ready = True
+            self._invalidate_resolution()
             await self._readvertise()
 
     async def _readvertise(self) -> None:
@@ -1152,10 +1121,10 @@ class ProviderAgent:
         return ok
 
     async def set_image_enabled(self, on: bool) -> bool:
-        """이미지(SD) 제공을 **라이브로** 켜고 끈다(앱 '이미지 요청 받기' 토글). enable_image=False 로 시작해
-        self._sd 가 None 이어도 여기서 SD 클라이언트를 만들어 health 확인 후 재광고한다(재시작 불필요).
+        """이미지(ComfyUI) 제공을 **라이브로** 켜고 끈다(앱 '이미지 요청 받기' 토글). enable_image=False 로 시작해
+        self._sd 가 None 이어도 여기서 ComfyClient 를 만들어 health 확인 후 재광고한다(재시작 불필요).
 
-        반환값 = 즉시 image_ready 여부. SD 가 설치만 되고 꺼져 있으면 백그라운드 자동 기동(_boot_sd)을 걸고
+        반환값 = 즉시 image_ready 여부. ComfyUI 가 설치만 되고 꺼져 있으면 백그라운드 자동 기동(_boot_sd)을 걸고
         준비되면 다시 재광고한다(이때 반환은 False — 아직 준비 전). 미설치면 image 는 광고되지 않는다(앱이 설치 안내).
         """
         if self._sd_boot_task is not None:
@@ -1163,18 +1132,11 @@ class ProviderAgent:
             self._sd_boot_task = None
         if on:
             if self._sd is None:
-                if self._image_backend == "comfyui":
-                    from .comfy import ComfyClient
+                from .comfy import ComfyClient
 
-                    self._sd = ComfyClient(self._comfy_url or self._cfg.comfy_url, self._cfg.request_timeout)
-                else:
-                    from .sd import SDClient
-
-                    self._sd = SDClient(self._cfg.sd_url, self._cfg.request_timeout)
+                self._sd = ComfyClient(self._comfy_url or self._cfg.comfy_url, self._cfg.request_timeout)
             self._image_ready = await self._sd.health()
-            if self._image_ready:
-                await self._sd.set_output_png()  # SD.Next 기본 JPEG → PNG
-            else:
+            if not self._image_ready:
                 # 설치돼 있으면 자동 기동(준비되면 _boot_sd 가 재광고). 텍스트 제공은 막지 않는다.
                 self._sd_boot_task = asyncio.create_task(self._boot_sd())
         else:
@@ -1227,20 +1189,16 @@ async def _self_test(cfg: AgentConfig) -> int:
         except OllamaError as exc:
             logger.error("⚠️ 추론 테스트 실패: %s", exc)
             return 1
-    # 이미지(SD) opt-in 점검: 도달·1장 생성.
+    # 이미지(ComfyUI) opt-in 점검: 도달 확인(health). 설치/모델은 로컬 실행 탭에서 관리.
     if cfg.enable_image:
-        from .sd import SDClient, SDError
+        from . import comfy_setup
+        from .comfy import ComfyClient
 
-        sd = SDClient(cfg.sd_url, cfg.request_timeout)
-        if not await sd.health():
-            logger.error("❌ SD 연결 실패: %s", cfg.sd_url)
-            return 1
-        try:
-            img = await sd.txt2img("a small red circle", {"steps": 4, "width": 64, "height": 64})
-            logger.info("✅ SD 이미지 생성 OK (%s): %d bytes(base64)", cfg.sd_url, len(img))
-        except SDError as exc:
-            logger.error("⚠️ SD 생성 테스트 실패: %s", exc)
-            return 1
+        url = cfg.comfy_url or comfy_setup.webui_url()
+        if await ComfyClient(url, cfg.request_timeout).health():
+            logger.info("✅ ComfyUI OK (%s)", url)
+        else:
+            logger.warning("⚠️ ComfyUI 미연결 (%s) — 로컬 실행 탭에서 설치/시작하세요", url)
     return 0
 
 

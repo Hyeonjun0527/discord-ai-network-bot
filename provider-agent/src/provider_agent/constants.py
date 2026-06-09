@@ -45,7 +45,7 @@ MAX_NUM_PREDICT: Final[int] = 2_048
 # 이미지(base64) 전송 시 ChunkFrame 한 조각의 최대 문자 수(1MB 프레임 한계 내, SD Phase 2).
 IMAGE_CHUNK_CHARS: Final[int] = 600_000
 
-AGENT_VERSION: Final[str] = "0.47.0"
+AGENT_VERSION: Final[str] = "0.47.1"
 
 __all__ = [
     "AGENT_VERSION",

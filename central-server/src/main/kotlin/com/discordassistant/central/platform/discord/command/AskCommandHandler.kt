@@ -19,6 +19,7 @@ import com.discordassistant.central.platform.discord.ReplyFeedback
 import com.discordassistant.central.platform.discord.ReplyPseudoStream
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.relay.ConnectionRegistry
+import com.discordassistant.central.relay.RemoteTimeoutException
 import com.discordassistant.central.routing.application.RequestOrchestrator
 import com.discordassistant.central.routing.domain.model.AiRequestInput
 import com.discordassistant.central.shared.ContentSafety
@@ -146,9 +147,16 @@ class AskCommandHandler(
             Reply("🖼️ \"${prompt.take(200)}\"", ephemeral = false, imagePng = bytes)
         } catch (e: Exception) {
             // 사용자에겐 친화 메시지를, 서버엔 원인(스택 포함)을 남긴다(예외 원칙 3·4). broad catch 는
-            // 한 이미지 요청 실패가 명령 전체를 깨지 않게 하는 의도적 경계.
-            log.warn("이미지 생성 실패: {}", e.message, e)
-            Replies.warn("이미지 생성에 실패했어요. 잠시 후 다시 시도해 주세요.")
+            // 한 이미지 요청 실패가 명령 전체를 깨지 않게 하는 의도적 경계. cause 별로 사용자가 다음 행동을
+            // 알 수 있게 메시지를 구분한다(불투명한 '실패' → 진단 가능).
+            val cause = (e as? java.util.concurrent.ExecutionException)?.cause ?: e
+            log.warn("이미지 생성 실패: {}", cause.message, cause)
+            when (cause) {
+                is RemoteTimeoutException ->
+                    Replies.warn("🖼️ 이미지 생성이 시간을 초과했어요. 프로바이더의 ComfyUI 가 모델을 불러오는 중이거나 GPU 가 바쁠 수 있어요 — 잠시 후 다시 시도해 주세요.")
+                else ->
+                    Replies.warn("🖼️ 이미지 생성에 실패했어요. 프로바이더의 ComfyUI 가 실행 중인지, 체크포인트(.safetensors)가 있는지 확인하고 다시 시도해 주세요.")
+            }
         }
     }
 

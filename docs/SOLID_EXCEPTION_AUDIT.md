@@ -779,7 +779,7 @@
 - [x] **SE-110** ✓REVIEWED-CLEAN(재판정 over-eng: shouldRecordGrowth logic (lines 38-43) is already tightly cohesive — it compares 4 specifi)
   - syncProviderCapabilitiesFromHello() delegates to planner for normalization, then foundation for upsert, then records growth event. Mixes orchestration + write concerns. 75 lines.
   - **Fix:** Extract GrowthEventRecorder service to own event creation. syncProviderCapabilities() calls foundation, GrowthEventRecorder.recordIfChanged().
-- [~] **SE-111** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/ChannelAiRoutingPolicyResolver.kt:63-138` `modelCandidates` (M)
+- [x] **SE-111** ✅FIXED(modelCandidates eligibility 규칙→ineligibleReasons 메서드 추출, 동작보존·테스트 green)
   - modelCandidates() has 4 responsibilities: filter providers, build candidates, summarize, rank. Candidates flatMap + groupBy + scoring logic should be separate collaborator.
   - **Fix:** Extract ModelCandidateBuilder service with buildEligible(), buildSummaries(), rankByScore() methods.
 - [x] **SE-112** ✓REVIEWED-CLEAN(재판정 over-eng: PoolAlertMonitor.evaluate() is a cohesive 27-line edge-triggered state machine with two bo)

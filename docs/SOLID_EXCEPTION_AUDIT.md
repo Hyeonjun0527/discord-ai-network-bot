@@ -61,8 +61,8 @@
 - [x] **SE-029** ✅FIXED(scheduledEnforce top-level try-catch로 주기 실패 격리+cause 로그) `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderScheduleService.kt:73-76` `ProviderScheduleService.scheduledEnforce()` (S) — @Scheduled메서드가 enforce()를 호출하지만 예외 처리 없음. enforce() 내 registry.snapshotSessions() 또는 protection.pause/resume() 실패 시 예외가 스케줄러를 중단시킬 수 있음. 프로덕션에서 스케줄이 정지될 수 있음. **→** scheduledEnforce()에 try-catch (Throwable e) { log.error("schedule enforce failed", e); } 추가. 또는 @Scheduled에서 runCatching으로 감싸기.
 - [x] **SE-030** ✅FIXED(BlocklistService.load DB 적재 실패 무처리 → ERROR 로그(보안저하 가시화)) `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/BlocklistService.kt:28-34` `BlocklistService.load` (M) — @PostConstruct load()에서 repo.findAll()과 ConcurrentHashMap.newKeySet().add()가 예외를 던질 수 있으나, catch 블록이 없다(EXC-1). 캐시 로딩 실패 시 차단 기능이 완전히 비활성화되지만, 서버는 정상으로 시작된다(보안 결함). **→** repo.findAll()과 캐시 채우기를 try-catch로 감싸서 DataAccessException을 catch 후, 심각도에 따라 IllegalStateException throw(차단 로딩 필수) 또는 empty 캐시로 시작 + 로그 경고.
 - [x] **SE-031** ✅FIXED(RedisRateLimitStore Redis 장애 시 fail-open(가용성) + DataAccessException 좁힘) `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/RateLimitStore.kt:62-73` `RedisRateLimitStore.tryAcquire` (M) — RedisRateLimitStore.tryAcquire()에서 redis.opsForValue().increment(redisKey)와 redis.expire()가 예외를 던질 수 있으나, catch 블록 없이 직접 propagate된다(EXC-1 위반). Redis 연결 실패/타임아웃 시 rate limit 기능이 전체 요청을 실패시킨다. **→** redis 호출을 try-catch로 감싸서 Redis 예외를 도메인 예외(예: RateLimitUnavailableException)로 변환. 실패 시 failOpen(true) 또는 failClosed(false) 정책을 적용하는 FallbackRateLimitStore로 위임.
-- [ ] **SE-032** `예외1 못잡을예외` `provider-agent/src/provider_agent/agent.py:691` `remove_connection` (M) — Calls _stop_entry in loop (line 700) which swallows exceptions. If one connection fails to stop, remove_connection proceeds to remove others. Root cause lost; caller can't distinguish success from partial failure. **→** Raise StopEntryError if critical failures occur, or return result tuple (success, failed_entries). Let caller decide: retry, skip, or fail remove_connection.
-- [ ] **SE-033** `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:556-560` `image_toggle` (M) — 요청 본문 파싱 실패(JSON 형식 오류)를 catch하고 무시. 클라이언트가 잘못된 형식을 보내도 조용히 허용되어, 버그 발견 지연. 흐름제어로 예외 사용. **→** 요청 본문 파싱을 aiohttp 미들웨어(global error handler)로 일관성 있게 처리. 핸들러 내부에서는 valid data만 가정.
+- [x] **SE-032** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외1 못잡을예외` `provider-agent/src/provider_agent/agent.py:691` `remove_connection` (M) — Calls _stop_entry in loop (line 700) which swallows exceptions. If one connection fails to stop, remove_connection proceeds to remove others. Root cause lost; caller can't distinguish success from partial failure. **→** Raise StopEntryError if critical failures occur, or return result tuple (success, failed_entries). Let caller decide: retry, skip, or fail remove_connection.
+- [x] **SE-033** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:556-560` `image_toggle` (M) — 요청 본문 파싱 실패(JSON 형식 오류)를 catch하고 무시. 클라이언트가 잘못된 형식을 보내도 조용히 허용되어, 버그 발견 지연. 흐름제어로 예외 사용. **→** 요청 본문 파싱을 aiohttp 미들웨어(global error handler)로 일관성 있게 처리. 핸들러 내부에서는 valid data만 가정.
 - [x] **SE-034** ✓REVIEWED-CLEAN(DataIntegrityViolationException 좁혀 잡고 재시도(이미 정확)) `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/BehaviorVersionWriter.kt:36-57` `saveNextBehaviorVersion` (M) — Catches generic org.springframework.dao.DataIntegrityViolationException at line 47 without checking for the specific constraint (UK_ai_behavior_version). Any integrity violation (FK, unique, check) triggers retry loop, masking true errors (FK cascade failure, malformed data) as retryable conflicts. **→** Inspect exception.cause or constraint name before retry. Wrap DataIntegrityViolationException with specific handler: if unique_version_conflict, retry; else rethrow with cause preserved as EXC-7. Extract VersionConflictException(cause) to clarify intent.
 - [x] **SE-035** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/WebSearch.kt:170` `augment` (M) — catch(e: Exception)으로 모든 예외를 일괄 포착. 특정 예외(HttpTimeoutException, SocketException, MalformedURLException 등)를 구분하지 않아 디버깅이 어렵고, 복구 가능한 예외와 불가능한 예외를 구분할 수 없다. **→** 구체적 예외 타입으로 나누기: `catch(e: HttpTimeoutException)`, `catch(e: IOException)` 등 각각 처리. 회복 불가능한 경우만 null 반환하고, 타임아웃은 재시도 로직과 분리.
 - [x] **SE-036** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:385-387` `recordCandidate` (S) — candidates.findByRunIdAndId(...).let { ... } ?: throw IllegalArgumentException("candidate not found")에서 구체적 타입이 아닌 IllegalArgumentException을 던진다. 여러 도메인(run, candidate, policy)이 같은 예외를 던지므로 예외 타입만으로는 원인을 구분할 수 없다. **→** CandidateNotFoundException(runId, candidateId) 또는 DomainNotFoundException(domain="candidate", id=candidateId)로 변경하여 도메인별 예외를 분리하라.
@@ -81,21 +81,21 @@
 - [x] **SE-049** ✅FIXED `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/relay/RelayWebSocketHandler.kt:199` `RelayWebSocketHandler.maintenance` (S) — Line 199 has empty catch `catch (_: Exception)` that silently ignores heartbeat ping failures. If connection is dead, this silently fails; zombie detection never occurs. **→** Log warn-level for exceptions. Consider checking exception type: timeouts may indicate stale connections that should trigger reapStale sooner.
 - [x] **SE-050** ✅FIXED(decode catch를 JacksonException으로 좁힘(그 외 전파)) `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/relay/protocol/FrameCodec.kt:43` `FrameCodec.decode` (S) — Line 43 catches generic `Exception` instead of specific Jackson deserialization exceptions. This masks unknown error types that should fail fast, conflating parsing errors with unrelated failures. **→** Replace `catch (e: Exception)` with `catch (e: JsonMappingException)` or similar specific Jackson exceptions. Only catch what you can meaningfully handle; let unknown exceptions propagate.
 - [x] **SE-051** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:329` `route` (M) — catch(Exception) 로 모든 예외를 뭉뚱그려 잡고, 원인(cause)을 통해 타입 검사하는 구조. 구체 예외타입이 아닌 Exception 으로 catch 하면 안 됨. **→** RemoteTimeoutException 과 기타 비즈니스 예외는 sealed interface 로 분리하고, 각각을 구체 catch 블록으로 처리. isTimeoutFailure() 헬퍼 메서드 대신 instanceof 또는 sealed when 사용.
-- [ ] **SE-052** `예외2 broad catch` `provider-agent/src/provider_agent/connection.py:109` `run` (S) — Line 109: `except Exception as exc:` catches **all** exceptions (OSError, ValueError, etc.). AuthFailedError is caught separately (line 104), but unintended non-connection errors (e.g., corrupted frame data) are logged as 'reconnect' and retried infinitely. **→** Catch only aiohttp-specific exceptions: `except (aiohttp.ClientError, asyncio.TimeoutError)`. Let programming errors (ValueError, KeyError from frame parsing) propagate and fail visibly.
-- [ ] **SE-053** `예외2 broad catch` `provider-agent/src/provider_agent/comfy_setup.py:322` `run_setup` (S) — Catches '(OSError, aiohttp.ClientError)' but not 'asyncio.TimeoutError', 'tarfile.TarError' from Python extraction, or subprocess errors. Callers can't distinguish handled vs. unhandled failures. **→** Expand to 'except (OSError, aiohttp.ClientError, asyncio.TimeoutError, tarfile.TarError, Exception):' or split by category with specific logging.
-- [ ] **SE-054** `예외2 broad catch` `provider-agent/src/provider_agent/ollama_setup.py:189` `run_setup` (S) — Bare 'except Exception:' catches all exceptions including logic errors in _wait_healthy(), client.pull(), etc. User error (e.g., invalid model name) is silent; no distinction from network failures. **→** Catch 'OllamaError' specifically (raised by client methods); let asyncio/OSError propagate or log separately.
-- [ ] **SE-055** `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:177` `check` (M) — Broad 'except Exception:' masks parsing errors, network errors, and attribute errors equally. Caller can't distinguish 'unreachable' from 'malformed response'—both return generic 'error'. **→** Split into 'except (urllib.error.URLError, socket.error)' for network and 'except (ValueError, KeyError, AttributeError)' for parsing, returning distinct error messages.
-- [ ] **SE-056** `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:237` `_apply_macos` (S) — Catches 'except Exception:' without distinguishing network errors from version-check logic errors. Masks bugs in fetch_latest() that should not silently fail. **→** Catch only 'urllib.error.URLError' and network-level exceptions explicitly; let parse/logic errors propagate as bugs.
-- [ ] **SE-057** `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:354` `_apply_windows` (S) — Catches 'except Exception:' at line 354, masking all fetch_latest() errors uniformly. Parser bugs and network errors both become 'failure'. **→** Catch network exceptions explicitly; let ValueError/KeyError from malformed responses propagate or log as bugs.
-- [ ] **SE-058** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:284` `_probe_connect_status` (M) — except Exception(line 284)로 서버 통신 실패를 '활성 아님'으로 처리. 일시적 네트워크 오류(timeout), DNS 실패, SSL 실패, 서버 에러를 모두 같게 취급. 재시도 정책 불가능. **→** 구체 예외로 분리: except (urllib.error.URLError, socket.timeout, ssl.SSLError, HTTPError), 각 경우 로그 수준·메시지 차별화. 재시도 가능한 오류와 설정 오류 구분.
-- [ ] **SE-059** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:54` `_mascot_bytes` (S) — bare 'except Exception' (BLE001 noqa)로 임의 예외를 뭉뚱그림. 코드 실패 원인(import 실패, 읽기 권한 없음, 디스크 부족 등)을 구분 없이 무시하고 빈 바이트만 반환. **→** 구체 예외로 분리: except (ImportError, FileNotFoundError, OSError) as e, 각각 로깅. 또는 importlib 버전 확인 후 fallback 제공.
-- [ ] **SE-060** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1173` `ollama_setup_start` (S) — Line 1173: `except Exception:` catches overly broad exception type (bare Exception). Should catch specific aiohttp.ClientError or json.JSONDecodeError for failed request body parsing, not all exceptions which masks actual bugs. **→** Replace `except Exception:` with `except (aiohttp.ContentTypeError, ValueError):` to catch only JSON parsing errors. Append noqa comment explaining graceful fallback for empty/invalid body.
-- [ ] **SE-061** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1253` `comfy_install_model` (S) — Line 1253: `except Exception:` bare catch. Should catch specific aiohttp.ClientError or json parsing errors only. Silently swallows unrelated exceptions (network, memory, logic errors). **→** Replace with `except (aiohttp.ContentTypeError, ValueError):` to catch JSON parse errors specifically. Document fallback behavior.
-- [ ] **SE-062** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1272` `comfy_select` (S) — Line 1272: `except Exception:` bare catch. Masks bugs in JSON parsing, data processing, or config persistence. **→** Replace with `except (aiohttp.ContentTypeError, ValueError):` to catch only JSON/parsing errors.
+- [x] **SE-052** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/connection.py:109` `run` (S) — Line 109: `except Exception as exc:` catches **all** exceptions (OSError, ValueError, etc.). AuthFailedError is caught separately (line 104), but unintended non-connection errors (e.g., corrupted frame data) are logged as 'reconnect' and retried infinitely. **→** Catch only aiohttp-specific exceptions: `except (aiohttp.ClientError, asyncio.TimeoutError)`. Let programming errors (ValueError, KeyError from frame parsing) propagate and fail visibly.
+- [x] **SE-053** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/comfy_setup.py:322` `run_setup` (S) — Catches '(OSError, aiohttp.ClientError)' but not 'asyncio.TimeoutError', 'tarfile.TarError' from Python extraction, or subprocess errors. Callers can't distinguish handled vs. unhandled failures. **→** Expand to 'except (OSError, aiohttp.ClientError, asyncio.TimeoutError, tarfile.TarError, Exception):' or split by category with specific logging.
+- [x] **SE-054** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/ollama_setup.py:189` `run_setup` (S) — Bare 'except Exception:' catches all exceptions including logic errors in _wait_healthy(), client.pull(), etc. User error (e.g., invalid model name) is silent; no distinction from network failures. **→** Catch 'OllamaError' specifically (raised by client methods); let asyncio/OSError propagate or log separately.
+- [x] **SE-055** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:177` `check` (M) — Broad 'except Exception:' masks parsing errors, network errors, and attribute errors equally. Caller can't distinguish 'unreachable' from 'malformed response'—both return generic 'error'. **→** Split into 'except (urllib.error.URLError, socket.error)' for network and 'except (ValueError, KeyError, AttributeError)' for parsing, returning distinct error messages.
+- [x] **SE-056** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:237` `_apply_macos` (S) — Catches 'except Exception:' without distinguishing network errors from version-check logic errors. Masks bugs in fetch_latest() that should not silently fail. **→** Catch only 'urllib.error.URLError' and network-level exceptions explicitly; let parse/logic errors propagate as bugs.
+- [x] **SE-057** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:354` `_apply_windows` (S) — Catches 'except Exception:' at line 354, masking all fetch_latest() errors uniformly. Parser bugs and network errors both become 'failure'. **→** Catch network exceptions explicitly; let ValueError/KeyError from malformed responses propagate or log as bugs.
+- [x] **SE-058** ✅FIXED(_probe_connect_status 실패 silent → debug 로그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:284` `_probe_connect_status` (M) — except Exception(line 284)로 서버 통신 실패를 '활성 아님'으로 처리. 일시적 네트워크 오류(timeout), DNS 실패, SSL 실패, 서버 에러를 모두 같게 취급. 재시도 정책 불가능. **→** 구체 예외로 분리: except (urllib.error.URLError, socket.timeout, ssl.SSLError, HTTPError), 각 경우 로그 수준·메시지 차별화. 재시도 가능한 오류와 설정 오류 구분.
+- [x] **SE-059** ✅FIXED(_mascot_bytes 에셋 로드 실패 → debug 로그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:54` `_mascot_bytes` (S) — bare 'except Exception' (BLE001 noqa)로 임의 예외를 뭉뚱그림. 코드 실패 원인(import 실패, 읽기 권한 없음, 디스크 부족 등)을 구분 없이 무시하고 빈 바이트만 반환. **→** 구체 예외로 분리: except (ImportError, FileNotFoundError, OSError) as e, 각각 로깅. 또는 importlib 버전 확인 후 fallback 제공.
+- [x] **SE-060** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1173` `ollama_setup_start` (S) — Line 1173: `except Exception:` catches overly broad exception type (bare Exception). Should catch specific aiohttp.ClientError or json.JSONDecodeError for failed request body parsing, not all exceptions which masks actual bugs. **→** Replace `except Exception:` with `except (aiohttp.ContentTypeError, ValueError):` to catch only JSON parsing errors. Append noqa comment explaining graceful fallback for empty/invalid body.
+- [x] **SE-061** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1253` `comfy_install_model` (S) — Line 1253: `except Exception:` bare catch. Should catch specific aiohttp.ClientError or json parsing errors only. Silently swallows unrelated exceptions (network, memory, logic errors). **→** Replace with `except (aiohttp.ContentTypeError, ValueError):` to catch JSON parse errors specifically. Document fallback behavior.
+- [x] **SE-062** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1272` `comfy_select` (S) — Line 1272: `except Exception:` bare catch. Masks bugs in JSON parsing, data processing, or config persistence. **→** Replace with `except (aiohttp.ContentTypeError, ValueError):` to catch only JSON/parsing errors.
 - [x] **SE-063** ✅FIXED(stop 백그라운드 작업 정리 cancel swallow → debug 로그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1316` `stop` (S) — Line 1316: `except (TimeoutError, asyncio.CancelledError, Exception):` mixes specific exceptions with bare Exception. Exception catch is redundant & swallows bugs — why catch all exceptions from wait_for? **→** Replace with `except (TimeoutError, asyncio.CancelledError):` only. These are the only recoverable cases from wait_for. Other exceptions (task corruption) should propagate.
 - [x] **SE-064** ✅FIXED(logout 백그라운드 작업 정리 cancel swallow → debug 로그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1350` `logout` (S) — Line 1350 (also 1376): `except (TimeoutError, asyncio.CancelledError, Exception):` bare Exception catches all. Task cancellation cleanup should only recover from timeout/cancellation, not swallow logic bugs in agent.request_stop(). **→** Replace with `except (TimeoutError, asyncio.CancelledError):` only. Let actual errors propagate.
-- [ ] **SE-065** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1818` `_auto_update_once` (M) — Line 1818: `except Exception:` bare catch. Catches ALL exceptions from load_config, updater.check, updater.apply_update — could mask import errors, attribute errors, file system errors unrelated to update logic. **→** Catch specific exceptions: `except (aiohttp.ClientError, OSError, ValueError):` for network/file/parse errors. Let logic errors (AttributeError, KeyError) propagate for debugging.
-- [ ] **SE-066** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1853` `run_gui` (M) — Line 1853: `except Exception as exc:` bare catch for webview.create_window + webview.start. Swallows import errors, rendering bugs, window system errors. Should catch specific webview exceptions. **→** Catch specific exceptions: `except (ImportError, RuntimeError):` for missing library vs runtime window errors. Let other exceptions propagate to main handler.
+- [x] **SE-065** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1818` `_auto_update_once` (M) — Line 1818: `except Exception:` bare catch. Catches ALL exceptions from load_config, updater.check, updater.apply_update — could mask import errors, attribute errors, file system errors unrelated to update logic. **→** Catch specific exceptions: `except (aiohttp.ClientError, OSError, ValueError):` for network/file/parse errors. Let logic errors (AttributeError, KeyError) propagate for debugging.
+- [x] **SE-066** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1853` `run_gui` (M) — Line 1853: `except Exception as exc:` bare catch for webview.create_window + webview.start. Swallows import errors, rendering bugs, window system errors. Should catch specific webview exceptions. **→** Catch specific exceptions: `except (ImportError, RuntimeError):` for missing library vs runtime window errors. Let other exceptions propagate to main handler.
 - [x] **SE-067** ✓REVIEWED-CLEAN(웹훅 전송 실패 이미 warn 로그+문서화(알림 best-effort 경계)) `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/DiscordWebhookNotifier.kt:53` `notify` (S) — catch(Exception) at line 53 swallows the full exception—only logs e.message (which may be null/empty). Stack trace and root cause are lost, making production debugging impossible when webhook fails. **→** Log full exception: log.warn("Discord 웹훅 전송 실패", e) instead of e.message. Preserve cause chain for debugging infrastructure issues.
 - [x] **SE-068** ✅FIXED(전역 advice) `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/adapter/inbound/web/GlobalPromptSetController.kt:29-61` `GlobalPromptSetController` (M) — GlobalPromptSetController의 add/setDefault/delete 메서드에서 service 호출 후 예외 처리 없음. require() 실패(IllegalArgumentException), DB 제약 위반 등이 uncaught exception → 500 에러. 비즈니스 예외(400)와 시스템 에러(500) 구분 안 됨. **→** @ExceptionHandler 또는 @RestControllerAdvice로 GlobalPromptSetException 계열을 400으로, 기타 Throwable을 500으로 처리. 또는 각 메서드에서 try-catch (IllegalArgumentException, DataIntegrityViolationException) { ... }.
 - [x] **SE-069** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:116` `GlobalPromptSetService.setDefault` (S) — setDefault()에서 throw IllegalArgumentException("unknown_set")하지만, ProviderAdminController.setDefaultPromptSet() (314줄)는 이 예외를 잡아 "지정할 수 없는 프롬프트셋이에요"로 일반화. 원인 정보 손실, 어드민 디버깅 어려움. **→** 도메인 예외(PromptSetNotFoundException)로 변환. 메시지에 guildId, id, 근본 원인을 포함: "Guild(${guildId})에서 id=${id}인 프롬프트셋을 찾을 수 없습니다". 또는 logger.warn으로 기록.
@@ -104,7 +104,7 @@
 - [x] **SE-072** ✅FIXED(onboarding 오케스트레이션 예외 로그에 guild/channel/inputLen) `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt:34-50` `RequestOrchestratorOnboardingLlm.complete` (S) — `runCatching { orchestrator.handle(...) }.getOrElse { log.warn(...); return null }` 로 예외를 로그만 남기고 예외 정보가 부족하다. 원인이 타임아웃/메모리부족/프로바이더 거부인지 구분 불가. **→** `log.warn("onboarding analyze orchestration threw: message={} cause={}", it.message, it.cause?.message)` 또는 `log.warn(..., it)` 로 전체 스택트레이스를 포함시켜 재현 가능하게.
 - [x] **SE-073** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt:196-204` `ProviderAdminController.authedAdmin()` (M) — tokens.verify(durableToken)가 null이면 조용히 반환. 하지만 verify() 실패 원인(토큰 만료/위조/형식 오류)을 로그하지 않아 악의적 요청 vs 정상 요청의 구분이 불가. 보안 감시 부재. **→** tokens.verify() 후 null인 경우 audit.warn("auth_failure", "invalid_token", ...) 기록. 또는 verify() 메서드 자체가 실패 이유를 exception으로 명시(TokenExpiredException vs TokenMalformedException).
 - [x] **SE-074** ✅FIXED(ProviderStateConverter 동일 — 알 수 없는 enum 폴백 warn) `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/outbound/persistence/ProviderStateConverter.kt:17-18` `ProviderStateConverter.convertToEntityAttribute()` (S) — runCatching { ProviderState.valueOf(it) }.getOrNull() ?: ProviderState.OFFLINE로 깨진 enum 값을 OFFLINE으로 폴백. DB의 unknown state는 로그도 없이 OFFLINE으로 변환되어 데이터 손상 원인을 찾기 어려움. **→** 폴백 전에 logger.warn("Unknown provider state: {}, defaulting to OFFLINE", dbData)를 기록하거나, 사전에 DB 마이그레이션으로 invalid 값을 정리.
-- [ ] **SE-075** `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:597` `_safe_send` (M) — Silently logs and swallows 'except Exception' without propagating. If network write fails, infer result is lost silently. Caller never knows response failed and may timeout thinking server didn't respond. **→** Return bool indicating success, or raise TransmissionError. Let caller decide: retry, abandon, or forward to user. Logging alone is insufficient.
+- [x] **SE-075** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:597` `_safe_send` (M) — Silently logs and swallows 'except Exception' without propagating. If network write fails, infer result is lost silently. Caller never knows response failed and may timeout thinking server didn't respond. **→** Return bool indicating success, or raise TransmissionError. Let caller decide: retry, abandon, or forward to user. Logging alone is insufficient.
 - [x] **SE-076** ✅FIXED(_persist durable 토큰 저장 실패 silent → warning) `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:642` `_persist` (S) — Inner function _persist silently swallows 'except Exception: pass' without logging. If token persistence fails (file IO, permission), durable_token updates are lost silently, causing admin API auth failures later. **→** Log exception with context before silencing: 'except Exception as e: logger.warning("Failed to persist token for guild=%s: %s", gid, e)'.
 - [x] **SE-077** ✅FIXED(_stop_entry 종료 실패 silent → debug 로그) `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:670` `_stop_entry` (S) — Silently swallows 'except Exception' after conn.stop() without logging. If stop fails, exception buried. Caller can't tell if connection was cleanly closed, risking resource leaks. **→** Log exception with context before catching: 'except Exception as e: logger.warning("Failed to stop connection (guild=%s): %s", entry.get("guild_id"), e)'.
 - [x] **SE-078** ✅FIXED `예외3 삼킴` `provider-agent/src/provider_agent/config_file.py:53` `save_config` (S) — Line 53: `except OSError: pass` silently swallows chmod(0o600) failure without logging. File permissions are security-critical for token storage; silent failures mask privilege escalation risks. **→** Log the OSError with context (e.g., `logger.warning('Failed to set file permissions on %s: %s', path, exc)`) instead of bare pass. On Windows where chmod fails, at least document this in debug logs.
@@ -128,9 +128,9 @@
 - [x] **SE-096** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) `예외8 자원정리` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/adapter/inbound/web/InstallPageController.kt:32` `InstallPageController.render` (S) — `ClassPathResource(...).inputStream.use { it.readBytes().toString(...) }` 로 파일을 읽는데, 파일이 없거나 읽기 실패 시 예외가 전파되어 400/500 응답이 된다. 시작 시에만 호출되므로 구동 오류로 이어진다. **→** 시작 시 파일 존재 여부 검증(`require(ClassPathResource(...).exists())`)을 추가하고, 읽기 실패 시 초기화 예외(`IllegalStateException("install.html 읽기 실패", e)`)를 발생시켜 구동 실패 원인을 명확히.
 - [x] **SE-097** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) `예외8 자원정리` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:70-81` `ProviderRegistrationService.persist()` (S) — persist()는 파일/DB 자원을 건드리지만 트랜잭션 처리 없음. repo?.findByProviderUserIdAndGuildId()는 nullable이므로 NPE 가능성 있고, save()가 예외 발생 시 롤백 보장 안 됨. **→** @Transactional을 persist()에 추가하거나, 호출처(requestJoin/approve 등)의 @Transactional으로 확장되 try-catch 대신 선언형 트랜잭션 경계를 명확히 함.
 - [x] **SE-098** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) `예외8 자원정리` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/RateLimitStore.kt:33` `InMemoryRateLimitStore.tryAcquire` (M) — InMemoryRateLimitStore.tryAcquire()에서 @Synchronized 메서드 내부에서 발생하는 System.nanoTime() 호출 시 예외가 발생해도 아무도 잡지 않는다. 또한 ConcurrentHashMap.getOrPut()이 명시적 예외 처리 없이 실행되며, 메모리 누수 가능성(Window 객체가 제거되지 않음)이 있다. **→** 메서드를 분해하여 윈도우 조회, 리셋, 카운트 증가를 별도 함수로 분리하고, 각 단계에서 예외를 구체적으로 처리. 또는 TTL 기능이 있는 ConcurrentHashMap을 사용하거나 정기적인 정리 메커니즘 추가(예: scheduled cleanup).
-- [ ] **SE-099** `예외8 자원정리` `provider-agent/src/provider_agent/connection.py:89` `run` (M) — Lines 96-102: aiohttp.ClientSession and ws_connect are used with `async with` (proper cleanup). However, on AuthFailedError (line 104-106) or exception (line 109-112), self._ws is set to None in finally (line 114), but session may have been partially initialized if error occurs between connector creation and ws_connect. **→** Wrap session creation and ws_connect in separate try blocks, or use context manager for connector. Ensure all aiohttp resources are cleaned even on early exception.
-- [ ] **SE-100** `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:248-258` `ensure_bundled_python` (M) — Archive file cleanup 'finally: archive.unlink()' (line 257) happens before checking if extraction succeeded. If extraction fails and raises exception, partial directory remains AND archive is deleted—next attempt has no resume point. **→** Only delete archive in finally after successful completion; on exception, preserve archive for resume/retry.
-- [ ] **SE-101** `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:337-371` `_download` (M) — aiohttp.ClientSession and file handle (line 368) opened in 'async with' but on exception during chunked write (line 369), file is left open until async context exits. Large file operations risk incomplete writes. **→** Use explicit try-finally or ensure all file writes are transactional; rename to dest only after full write completes.
+- [x] **SE-099** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외8 자원정리` `provider-agent/src/provider_agent/connection.py:89` `run` (M) — Lines 96-102: aiohttp.ClientSession and ws_connect are used with `async with` (proper cleanup). However, on AuthFailedError (line 104-106) or exception (line 109-112), self._ws is set to None in finally (line 114), but session may have been partially initialized if error occurs between connector creation and ws_connect. **→** Wrap session creation and ws_connect in separate try blocks, or use context manager for connector. Ensure all aiohttp resources are cleaned even on early exception.
+- [x] **SE-100** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:248-258` `ensure_bundled_python` (M) — Archive file cleanup 'finally: archive.unlink()' (line 257) happens before checking if extraction succeeded. If extraction fails and raises exception, partial directory remains AND archive is deleted—next attempt has no resume point. **→** Only delete archive in finally after successful completion; on exception, preserve archive for resume/retry.
+- [x] **SE-101** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:337-371` `_download` (M) — aiohttp.ClientSession and file handle (line 368) opened in 'async with' but on exception during chunked write (line 369), file is left open until async context exits. Large file operations risk incomplete writes. **→** Use explicit try-finally or ensure all file writes are transactional; rename to dest only after full write completes.
 - [x] **SE-102** ✅FIXED(macOS 실패 경로 tmp 정리(_cleanup_tmp_and_fail; 성공 경로는 헬퍼 소유)) `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:245-306` `_apply_macos` (M) — Temporary directory 'tmp' (created line 245) is never cleaned up on error. If subprocess.run fails (line 260), extract fails (line 259), or new_app is not found (line 264), 'tmp' directory leaks gigabytes of downloaded files. **→** Wrap entire function in try-finally or use 'with tempfile.TemporaryDirectory() as tmp:' context manager to guarantee cleanup on all paths.
 - [x] **SE-103** ✅FIXED(Windows 실패 경로 tmp 정리) `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:362-394` `_apply_windows` (M) — Temporary directory 'tmp' (line 362) is never cleaned up. On download failure (line 365), checksum failure (line 370), or any error, directory with large EXE leaks. **→** Use 'with tempfile.TemporaryDirectory() as tmp:' or ensure finally block cleans up via shutil.rmtree().
 - [x] **SE-104** ✅FIXED(guildId 파싱 16곳 중복 → _parse_guild_id/_bad_server 헬퍼(흐름제어 제거·DRY, 200+{ok:false} 보존)) `예외9 전역처리` `provider-agent/src/provider_agent/webui.py:903-907, 918-921, 930-933, 945-948, 959-962` `server_manage_policy, server_prompt_sets, server_prompt_set_add, server_prompt_set_default, server_prompt_set_delete` (M) — Lines 903-907 (and 4 more duplicates): Each handler duplicates `try: guild_id = int(req.match_info['guildId']) except (KeyError, ValueError): return json_error()` verbatim. No centralized HTTP error handling — each endpoint must catch its own parameter errors. If format changes (e.g., guildId → guild), 20+ handlers must update individually. **→** Create an aiohttp middleware or handler wrapper that validates path parameters and returns HTTP 400 for malformed guild_id. Example: `@validate_guild_path` decorator or app.middlewares with try-except for aiohttp.web.HTTPBadRequest.
@@ -968,10 +968,10 @@
 - [ ] **SE-016** 🔴 `SRP` `provider-agent/src/provider_agent/agent.py:753` `admin_manage, admin_action, admin_set_policy, admin_prompt_sets, admin_prompt_set_add, admin_prompt_set_default, admin_prompt_set_delete, admin_channels, admin_channel_toggle, admin_channel_ai, admin_knowledge, admin_presets, admin_preset_delete, admin_knowledge_delete` (M)
   - 14 admin_* methods all follow identical pattern: (1) call _durable_token(), (2) check if empty, (3) call _agent_sync_base(), (4) call asyncio.to_thread(_post_*). Duplicates token-check boilerplate. Adding endpoint requires copy-paste. Changing token logic requires updating 14 methods.
   - **Fix:** Extract helper '_admin_api(endpoint_name, **kwargs) -> dict' handling token check, base URL, to_thread dispatch. Each method becomes 1 line.
-- [ ] **SE-032** 🔴 `예외1 못잡을예외` `provider-agent/src/provider_agent/agent.py:691` `remove_connection` (M)
+- [x] **SE-032** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외1 못잡을예외` `provider-agent/src/provider_agent/agent.py:691` `remove_connection` (M)
   - Calls _stop_entry in loop (line 700) which swallows exceptions. If one connection fails to stop, remove_connection proceeds to remove others. Root cause lost; caller can't distinguish success from partial failure.
   - **Fix:** Raise StopEntryError if critical failures occur, or return result tuple (success, failed_entries). Let caller decide: retry, skip, or fail remove_connection.
-- [ ] **SE-075** 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:597` `_safe_send` (M)
+- [x] **SE-075** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:597` `_safe_send` (M)
   - Silently logs and swallows 'except Exception' without propagating. If network write fails, infer result is lost silently. Caller never knows response failed and may timeout thinking server didn't respond.
   - **Fix:** Return bool indicating success, or raise TransmissionError. Let caller decide: retry, abandon, or forward to user. Logging alone is insufficient.
 - [x] **SE-076** ✅FIXED(_persist durable 토큰 저장 실패 silent → warning) 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:642` `_persist` (S)
@@ -992,13 +992,13 @@
 - [ ] **SE-183** 🟡 `DIP` `provider-agent/src/provider_agent/agent.py:631` `_make_entry` (M)
   - Directly creates AgentConnection passing self._on_server_frame and self._build_hello as callback methods. AgentConnection tightly coupled to ProviderAgent's concrete methods. Testing connection behavior requires mocking ProviderAgent; can't test AgentConnection in isolation.
   - **Fix:** Inject FrameHandler interface into AgentConnection, not concrete callbacks. AgentConnection depends on interface, not ProviderAgent. At construction, pass handler=ConcreteFrameHandler(agent). Decouples connection from agent.
-- [ ] **SE-225** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/agent.py:544` `_resolution` (S)
+- [x] **SE-225** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/agent.py:544` `_resolution` (S)
   - Catches bare 'Exception' instead of specific types (ComfyError, asyncio.TimeoutError). Masks unrelated bugs (AttributeError, NameError) that should fail-fast, not fall back to 512px.
   - **Fix:** Catch only ComfyError and TimeoutError: 'except (ComfyError, asyncio.TimeoutError) as exc:'. Let other exceptions propagate.
-- [ ] **SE-226** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/agent.py:567` `_recover_sd` (S)
+- [x] **SE-226** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/agent.py:567` `_recover_sd` (S)
   - Catches bare 'Exception' instead of specific types. Hides AttributeError in comfy_setup (should fail-fast) or OSError (subprocess error). Silently returns False, masking root cause.
   - **Fix:** Catch only OSError and ComfyError: 'except (OSError, ComfyError) as exc:'. Let module/method bugs propagate.
-- [ ] **SE-249** 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:1006` `run` (S)
+- [x] **SE-249** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:1006` `run` (S)
   - Catches 'except Exception' from _start_tray() and logs warning, but unclear if tray was attempted. If pystray fails (missing lib, ValueError), user gets warning without indication tray attempt failed.
   - **Fix:** Split into 'except pystray.Error' (log, continue) vs 'except Exception' (log verbosely). Or track tray_attempted flag for status feedback.
 - [x] **SE-250** ✅FIXED(_boot_sd 체크포인트 적용 실패 silent → warning) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:1064` `_boot_sd` (S)
@@ -1016,37 +1016,37 @@
 - [ ] **SE-018** 🔴 `SRP` `provider-agent/src/provider_agent/webui.py:363-1649` `build_app` (L)
   - build_app 함수가 아이콘 캐싱, 로그 핸들링, 60개+ 라우트 핸들러 정의, 앱 빌드, 스타트업 훅까지 모두 담당. 단일 함수가 웹 라우팅, 설정 저장, 에이전트 관리, OAuth, ComfyUI/Ollama 통합을 한 번에 처리.
   - **Fix:** 웹 라우트 빌더를 별도 클래스로 추출(RouteConfigurator), 캐싱은 AssetManager, 로그는 LogAttacher로 분리. build_app은 생성과 라우팅 조립만 담당하도록 축소.
-- [ ] **SE-033** 🔴 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:556-560` `image_toggle` (M)
+- [x] **SE-033** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:556-560` `image_toggle` (M)
   - 요청 본문 파싱 실패(JSON 형식 오류)를 catch하고 무시. 클라이언트가 잘못된 형식을 보내도 조용히 허용되어, 버그 발견 지연. 흐름제어로 예외 사용.
   - **Fix:** 요청 본문 파싱을 aiohttp 미들웨어(global error handler)로 일관성 있게 처리. 핸들러 내부에서는 valid data만 가정.
-- [ ] **SE-058** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:284` `_probe_connect_status` (M)
+- [x] **SE-058** ✅FIXED(_probe_connect_status 실패 silent → debug 로그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:284` `_probe_connect_status` (M)
   - except Exception(line 284)로 서버 통신 실패를 '활성 아님'으로 처리. 일시적 네트워크 오류(timeout), DNS 실패, SSL 실패, 서버 에러를 모두 같게 취급. 재시도 정책 불가능.
   - **Fix:** 구체 예외로 분리: except (urllib.error.URLError, socket.timeout, ssl.SSLError, HTTPError), 각 경우 로그 수준·메시지 차별화. 재시도 가능한 오류와 설정 오류 구분.
-- [ ] **SE-059** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:54` `_mascot_bytes` (S)
+- [x] **SE-059** ✅FIXED(_mascot_bytes 에셋 로드 실패 → debug 로그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:54` `_mascot_bytes` (S)
   - bare 'except Exception' (BLE001 noqa)로 임의 예외를 뭉뚱그림. 코드 실패 원인(import 실패, 읽기 권한 없음, 디스크 부족 등)을 구분 없이 무시하고 빈 바이트만 반환.
   - **Fix:** 구체 예외로 분리: except (ImportError, FileNotFoundError, OSError) as e, 각각 로깅. 또는 importlib 버전 확인 후 fallback 제공.
-- [ ] **SE-207** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1172-1174` `ollama_setup_start` (S)
+- [x] **SE-207** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1172-1174` `ollama_setup_start` (S)
   - 요청 본문 없는 POST를 '기본 셋업' 의도로 예외로 처리. data = {}로 폴백하는데, 이는 흐름제어로 예외 사용.
   - **Fix:** await req.json()을 try-except 없이 호출하고, 사전 검증으로 필요한 경우만 기본값 할당. 또는 aiohttp 미들웨어에서 일관성 있게 처리.
-- [ ] **SE-208** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1252-1254` `comfy_install_model` (M)
+- [x] **SE-208** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1252-1254` `comfy_install_model` (M)
   - 요청 본문 파싱 실패를 except Exception으로 catch하고 data = {}로 폴백. 흐름제어로 예외 사용.
   - **Fix:** EXC-10 적용: 본문이 없으면 바로 400 또는 필수 필드 검증. json() 실패는 aiohttp가 자동으로 400 반환하도록 미들웨어에서 처리.
-- [ ] **SE-209** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1403` `onboard_apply` (M)
+- [x] **SE-209** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1403` `onboard_apply` (M)
   - 요청 본문 파싱 실패(JSON 형식 오류)를 catch하고 data = {}로 폴백. 흐름제어로 예외 사용.
   - **Fix:** aiohttp 미들웨어로 일관성 있게 처리하거나, 필수 필드 검증으로 조기 실패.
-- [ ] **SE-210** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1486` `settings_post` (M)
+- [x] **SE-210** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1486` `settings_post` (M)
   - 요청 본문 파싱 실패를 except Exception으로 catch하고 data = {}로 폴백. 흐름제어.
   - **Fix:** aiohttp 미들웨어로 일관성 있게 처리.
-- [ ] **SE-231** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:160` `_detect_ollama` (S)
+- [x] **SE-231** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:160` `_detect_ollama` (S)
   - except Exception(line 160)로 설치 여부 판정 실패를 뭉뚱그림. PermissionError/OSError/TimeoutError 등 구분 없이 '미설치'로 가정. 실제는 권한 부족일 수 있음.
   - **Fix:** 구체 예외 처리: except (FileNotFoundError, PermissionError) → False, except (OSError, TimeoutError) → log_warning and False.
-- [ ] **SE-232** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:393` `asset_js` (M)
+- [x] **SE-232** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:393` `asset_js` (M)
   - except Exception as exc를 HTTPNotFound로 변환. 파일 읽기 실패 원인(PermissionError, OSError, UnicodeDecodeError)이 404로 노출되어 클라이언트 디버깅 불가.
   - **Fix:** 구체 예외로 분리: except FileNotFoundError → HTTPNotFound, except (PermissionError, OSError) → HTTPForbidden/500, with 원인 보존(from exc).
-- [ ] **SE-233** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:407` `asset_img` (M)
+- [x] **SE-233** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:407` `asset_img` (M)
   - asset_js와 동일: except Exception을 HTTPNotFound로 변환. 이미지 읽기 실패 원인 숨김.
   - **Fix:** asset_js와 동일 처리. 공통 헬퍼 함수로 추출(read_asset_safely)하여 DRY 원칙 준수.
-- [ ] **SE-234** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:558` `image_toggle` (S)
+- [x] **SE-234** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:558` `image_toggle` (S)
   - except Exception: data = {}로 요청 본문 파싱 실패를 무시. JSONDecodeError와 기타 예외를 구분 없이 빈 dict로 취급. 클라이언트가 보낸 잘못된 JSON 원인을 알 수 없음.
   - **Fix:** except json.JSONDecodeError을 명확히 구분. 다른 예외는 로그 후 400 Bad Request 반환.
 - [x] **SE-255** ✅FIXED(RingHandler.emit는 로그핸들러 내부라 logger 호출 시 재귀 → 의도적 무시임을 주석으로 명확화) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:112` `_RingHandler.emit` (S)
@@ -1058,22 +1058,22 @@
 - [x] **SE-257** ✅FIXED(connect 상태 갱신 루프 무로깅 → debug 로그) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:306` `_start_connect_status_refresher._loop` (S)
   - except Exception: pass로 갱신 실패를 조용히 삼킴. 무한 루프에서 시간만 낭비하고, 왜 서버 상태 갱신이 안 되는지 로그 없음.
   - **Fix:** except Exception as e를 logging으로 전파하되, pass 대신 time.sleep 전에 log_warning 추가.
-- [ ] **SE-275** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1332` `service_stop` (S)
+- [x] **SE-275** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1332` `service_stop` (S)
   - except Exception as exc에서 str(exc)만 반환. 예외 타입 정보 손실(무엇이 실패했는지 애매함). 원인 정보 불충분.
   - **Fix:** exc_info=True로 로깅하고, 클라이언트에는 친절한 요약(예: '서비스 중지 권한 부족' vs '서비스 프로세스 미발견') 반환.
-- [ ] **SE-276** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:533` `setup` (S)
+- [x] **SE-276** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:533` `setup` (S)
   - except Exception as exc에서 service_error = str(exc)로만 저장. 원래 예외 정보(traceback, cause)가 손실. exc 자체도 logging.warning에는 로깅되지만, 클라이언트로 돌아가는 문자열은 일관성 없음.
   - **Fix:** exc 자체를 로거로 exc_info=True 함께 전파하고, 클라이언트에는 친절한 요약만 보냄. 또는 cause 체인 보존(except ... as e: ... from e).
-- [ ] **SE-346** ⚪ `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1538-1540` `open_folder` (M)
+- [x] **SE-346** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1538-1540` `open_folder` (M)
   - 요청 본문 파싱 실패를 catch하고 body = {}로 폴백. 흐름제어.
   - **Fix:** aiohttp 미들웨어로 처리.
-- [ ] **SE-349** ⚪ `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1376` `reset_all` (S)
+- [x] **SE-349** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1376` `reset_all` (S)
   - logout과 동일: except (TimeoutError, asyncio.CancelledError, Exception) 혼합.
   - **Fix:** logout과 동일 처리.
-- [ ] **SE-361** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1299` `comfy_open` (S)
+- [x] **SE-361** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1299` `comfy_open` (S)
   - except Exception: pass로 브라우저 열기 실패를 조용히 삼킴. 사용자가 ComfyUI 웹 UI를 열 수 없어도 이유를 모름.
   - **Fix:** except OSError(브라우저 부재, 권한 부족)를 명확히 구분하고 사용자에게 오류 반환.
-- [ ] **SE-362** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1696` `_brand_icon_png` (S)
+- [x] **SE-362** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1696` `_brand_icon_png` (S)
   - except Exception으로 아이콘 로드 실패를 무시. 원인을 알 수 없음.
   - **Fix:** 구체 예외로 분리: except FileNotFoundError는 정상(optional), except (OSError, ImportError)는 로그.
 - [x] **SE-363** ✅FIXED(macOS 앱 이름 설정 실패 → debug 로그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1717` `_set_macos_app_identity` (S)
@@ -1082,10 +1082,10 @@
 - [x] **SE-364** ✅FIXED(macOS 앱 아이콘 설정 실패 → debug 로그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1730` `_set_macos_app_identity` (S)
   - except Exception으로 아이콘 설정 실패를 무시. 로그 없음.
   - **Fix:** logging.warning 추가.
-- [ ] **SE-365** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1762` `_handoff_to_service_on_close` (S)
+- [x] **SE-365** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1762` `_handoff_to_service_on_close` (S)
   - except Exception as exc를 로깅하지만, 메인 프로세스 종료를 막지 않음. 백그라운드 인계 실패가 조용히 넘어감.
   - **Fix:** 로깅은 있으므로 적절하나, 시스템 상태(daemon 토글) 등 추가 컨텍스트 로그.
-- [ ] **SE-366** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1818` `_auto_update_once` (S)
+- [x] **SE-366** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1818` `_auto_update_once` (S)
   - except Exception: return 'pending'로 자동 업데이트 실패를 뭉뚱그림. 무한 재시도하지만 원인을 모름.
   - **Fix:** except Exception as e를 logging.warning으로 전파. 구체 예외(NetworkError, TimeoutError) 구분.
 - [x] **SE-367** ✅FIXED(webbrowser.open 실패 → warning(수동 url 안내)) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1862` `run_gui` (S)
@@ -1094,22 +1094,22 @@
 - [x] **SE-368** ✅FIXED(_assets_index 자산 로드 실패 → debug 로그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:330` `_assets_index` (S)
   - except Exception으로 자산 부재를 무시. 실제 읽기 실패(권한, 디스크 오류)를 자산 부재처럼 취급해 분석 불가.
   - **Fix:** except FileNotFoundError로 명확히 하고, except (OSError, PermissionError)는 로그. 오류 구분으로 사용자 안내 개선.
-- [ ] **SE-375** ⚪ `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1521` `settings_post` (S)
+- [x] **SE-375** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1521` `settings_post` (S)
   - except Exception as exc에서 str(exc)만 저장. 동기화 실패 원인 불명확.
   - **Fix:** exc_info=True 로깅, 클라이언트에는 '재시도' 안내.
-- [ ] **SE-376** ⚪ `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1562` `open_folder` (S)
+- [x] **SE-376** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1562` `open_folder` (S)
   - except OSError as exc에서 str(exc)만 반환. 원인 정보 불충분(어느 OS, 어느 명령 실패인지).
   - **Fix:** logging으로 exc_info=True 전파, 사용자에게는 친절한 메시지 반환.
 
 ### webui.py (후반) — 19건
 
-- [ ] **SE-060** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1173` `ollama_setup_start` (S)
+- [x] **SE-060** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1173` `ollama_setup_start` (S)
   - Line 1173: `except Exception:` catches overly broad exception type (bare Exception). Should catch specific aiohttp.ClientError or json.JSONDecodeError for failed request body parsing, not all exceptions which masks actual bugs.
   - **Fix:** Replace `except Exception:` with `except (aiohttp.ContentTypeError, ValueError):` to catch only JSON parsing errors. Append noqa comment explaining graceful fallback for empty/invalid body.
-- [ ] **SE-061** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1253` `comfy_install_model` (S)
+- [x] **SE-061** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1253` `comfy_install_model` (S)
   - Line 1253: `except Exception:` bare catch. Should catch specific aiohttp.ClientError or json parsing errors only. Silently swallows unrelated exceptions (network, memory, logic errors).
   - **Fix:** Replace with `except (aiohttp.ContentTypeError, ValueError):` to catch JSON parse errors specifically. Document fallback behavior.
-- [ ] **SE-062** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1272` `comfy_select` (S)
+- [x] **SE-062** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1272` `comfy_select` (S)
   - Line 1272: `except Exception:` bare catch. Masks bugs in JSON parsing, data processing, or config persistence.
   - **Fix:** Replace with `except (aiohttp.ContentTypeError, ValueError):` to catch only JSON/parsing errors.
 - [x] **SE-063** ✅FIXED(stop 백그라운드 작업 정리 cancel swallow → debug 로그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1316` `stop` (S)
@@ -1118,10 +1118,10 @@
 - [x] **SE-064** ✅FIXED(logout 백그라운드 작업 정리 cancel swallow → debug 로그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1350` `logout` (S)
   - Line 1350 (also 1376): `except (TimeoutError, asyncio.CancelledError, Exception):` bare Exception catches all. Task cancellation cleanup should only recover from timeout/cancellation, not swallow logic bugs in agent.request_stop().
   - **Fix:** Replace with `except (TimeoutError, asyncio.CancelledError):` only. Let actual errors propagate.
-- [ ] **SE-065** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1818` `_auto_update_once` (M)
+- [x] **SE-065** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1818` `_auto_update_once` (M)
   - Line 1818: `except Exception:` bare catch. Catches ALL exceptions from load_config, updater.check, updater.apply_update — could mask import errors, attribute errors, file system errors unrelated to update logic.
   - **Fix:** Catch specific exceptions: `except (aiohttp.ClientError, OSError, ValueError):` for network/file/parse errors. Let logic errors (AttributeError, KeyError) propagate for debugging.
-- [ ] **SE-066** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1853` `run_gui` (M)
+- [x] **SE-066** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1853` `run_gui` (M)
   - Line 1853: `except Exception as exc:` bare catch for webview.create_window + webview.start. Swallows import errors, rendering bugs, window system errors. Should catch specific webview exceptions.
   - **Fix:** Catch specific exceptions: `except (ImportError, RuntimeError):` for missing library vs runtime window errors. Let other exceptions propagate to main handler.
 - [x] **SE-104** ✅FIXED(guildId 파싱 16곳 중복 → _parse_guild_id/_bad_server 헬퍼(흐름제어 제거·DRY, 200+{ok:false} 보존)) 🔴 `예외9 전역처리` `provider-agent/src/provider_agent/webui.py:903-907, 918-921, 930-933, 945-948, 959-962` `server_manage_policy, server_prompt_sets, server_prompt_set_add, server_prompt_set_default, server_prompt_set_delete` (M)
@@ -1133,31 +1133,31 @@
 - [x] **SE-211** ✅FIXED(reset_all 설정파일 삭제 실패 무로깅 → warning(이전 설정 잔존 경고)) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1387` `reset_all` (S)
   - Line 1387: `except OSError: pass` silently swallows file deletion errors. If config_path().unlink() fails (permissions, disk, race), user gets no feedback and may think reset succeeded when it didn't.
   - **Fix:** Log the error: `except OSError as exc: logging.getLogger(...).warning('설정 파일 삭제 실패: %s', exc)` to surface intent vs reality mismatch.
-- [ ] **SE-235** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1299` `comfy_open` (S)
+- [x] **SE-235** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1299` `comfy_open` (S)
   - Line 1299: `except Exception:` bare catch. webbrowser.open() only raises OSError/platform-specific exceptions; catching all hides logic errors elsewhere.
   - **Fix:** Replace with `except OSError:` to match actual failure mode.
-- [ ] **SE-236** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1403` `onboard_apply` (S)
+- [x] **SE-236** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1403` `onboard_apply` (S)
   - Line 1403: `except Exception:` bare catch. Should catch only aiohttp JSON parse errors, not all exceptions from persist_partial or singleton.acquire.
   - **Fix:** Replace with `except (aiohttp.ContentTypeError, ValueError):` for JSON parsing only. Let other exceptions propagate or be caught at handler level.
-- [ ] **SE-237** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1486` `settings_post` (S)
+- [x] **SE-237** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1486` `settings_post` (S)
   - Line 1486: `except Exception:` bare catch. JSON parse errors only — should not swallow logic bugs from data iteration or persist_partial calls.
   - **Fix:** Replace with `except (aiohttp.ContentTypeError, ValueError):` for JSON parse errors.
-- [ ] **SE-238** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1538` `open_folder` (S)
+- [x] **SE-238** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1538` `open_folder` (S)
   - Line 1538: `except Exception:` bare catch. Should catch aiohttp JSON parse errors only, not errors from pathlib operations.
   - **Fix:** Replace with `except (aiohttp.ContentTypeError, ValueError):` for request body parsing.
-- [ ] **SE-258** 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1284` `comfy_select` (S)
+- [x] **SE-258** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1284` `comfy_select` (S)
   - Line 1284: `except Exception as exc:` catches broad exception but logs warning with no stacktrace (`exc` only). Makes debugging checkpoint switch failures difficult — missing context (agent state, model name attempted).
   - **Fix:** Replace with `except (aiohttp.ClientError, RuntimeError) as exc:` and log with `exc_info=True` or include agent._sd state in message. Example: `'ComfyUI checkpoint switch failed for model=%s: %s', name, exc, exc_info=True`.
-- [ ] **SE-277** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1430` `onboard_apply` (M)
+- [x] **SE-277** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1430` `onboard_apply` (M)
   - Line 1430-1432: `except Exception as exc:` catches all errors from singleton.acquire() + install_service(), then logs with generic message. Unclear if failure is lock acquisition (already held) vs service setup.
   - **Fix:** Separate catch blocks: `except singleton.LockError as e:` (or RuntimeError if held) vs `except OSError as e:` (service install platform error). Log with specific context.
-- [ ] **SE-278** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1512` `settings_post` (M)
+- [x] **SE-278** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1512` `settings_post` (M)
   - Line 1512-1514: `except Exception as exc:` catches all service install/uninstall errors, logs with `str(exc)`. Should distinguish: lock held (different user), platform unsupported, missing executable.
   - **Fix:** Catch specific exceptions from service_mod (OSError, subprocess.CalledProcessError, etc) and log type+message with context: `logging.getLogger(...).exception('autostart 서비스 적용')` to include stacktrace.
-- [ ] **SE-279** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1762` `_handoff_to_service_on_close` (M)
+- [x] **SE-279** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1762` `_handoff_to_service_on_close` (M)
   - Line 1762-1763: `except Exception as exc:` catches all errors from service handoff (singleton.release, service.kickstart). Error message doesn't explain what failed — lock release vs service start vs process signal.
   - **Fix:** Separate catches: `except OSError as e:` (lock/process) vs `except RuntimeError as e:` (already released). Log type+context: `'백그라운드 인계 실패 (%s): 서비스가 자동실행될 수 없습니다 — 수동 재시작 필요. %s', type(e).__name__, e`.
-- [ ] **SE-347** ⚪ `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1862` `run_gui` (S)
+- [x] **SE-347** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1862` `run_gui` (S)
   - Line 1862: `except Exception: pass` in browser fallback. Should at least log if browser open failed, so user knows to open URL manually.
   - **Fix:** Replace with: `except Exception as e: logging.getLogger(...).warning('브라우저 자동 오픈 실패: %s — 수동으로 %s 를 열어주세요', e, url)`.
 
@@ -1166,7 +1166,7 @@
 - [ ] **SE-017** 🔴 `SRP` `provider-agent/src/provider_agent/config.py:126` `config_from_args` (L)
   - config_from_args (lines 126-222) has 97 lines doing: parse CLI → load env → load saved config → validate remote ollama → build AgentConfig → maybe save. Parsing priority logic intertwined with validation; 10+ local vars for precedence chains.
   - **Fix:** Extract ConfigResolver class taking (cli_args, env_dict, saved_config). Separate parsers: CliConfigParser, EnvConfigParser, SavedConfigParser with merge() strategy. config_from_args orchestrates only.
-- [ ] **SE-052** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/connection.py:109` `run` (S)
+- [x] **SE-052** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/connection.py:109` `run` (S)
   - Line 109: `except Exception as exc:` catches **all** exceptions (OSError, ValueError, etc.). AuthFailedError is caught separately (line 104), but unintended non-connection errors (e.g., corrupted frame data) are logged as 'reconnect' and retried infinitely.
   - **Fix:** Catch only aiohttp-specific exceptions: `except (aiohttp.ClientError, asyncio.TimeoutError)`. Let programming errors (ValueError, KeyError from frame parsing) propagate and fail visibly.
 - [x] **SE-078** ✅FIXED 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/config_file.py:53` `save_config` (S)
@@ -1178,7 +1178,7 @@
 - [x] **SE-080** ✅FIXED 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/config_file.py:94` `persist_partial` (S)
   - Line 94: `except OSError: pass` in persist_partial silently drops guild policy/toggle updates (auto_update, paused) without feedback. Caller receives no signal that write failed, leading to silent data loss.
   - **Fix:** Log with context (guild_id, update keys, error). Return bool or raise ConfigPersistError so callers can warn user or retry.
-- [ ] **SE-099** 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/connection.py:89` `run` (M)
+- [x] **SE-099** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/connection.py:89` `run` (M)
   - Lines 96-102: aiohttp.ClientSession and ws_connect are used with `async with` (proper cleanup). However, on AuthFailedError (line 104-106) or exception (line 109-112), self._ws is set to None in finally (line 114), but session may have been partially initialized if error occurs between connector creation and ws_connect.
   - **Fix:** Wrap session creation and ws_connect in separate try blocks, or use context manager for connector. Ensure all aiohttp resources are cleaned even on early exception.
 - [ ] **SE-140** 🟡 `SRP` `provider-agent/src/provider_agent/config_file.py:37` `save_config` (M)
@@ -1193,7 +1193,7 @@
 - [ ] **SE-184** 🟡 `DIP` `provider-agent/src/provider_agent/connection.py:168` `_dispatch` (M)
   - Lines 168-170: On auth_ok, AgentConnection directly imports and calls persist_token(). Tight coupling to config_file module. Hard to inject custom token storage (e.g., for testing multi-server save logic). Callback on_durable_token already exists but ignored when callback is None.
   - **Fix:** Always use on_durable_token callback if provided; only fall back to persist_token() if None (with a comment why direct import is needed). Better: make on_durable_token mandatory, never None.
-- [ ] **SE-202** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/config.py:62` `_load_dotenv` (S)
+- [x] **SE-202** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/config.py:62` `_load_dotenv` (S)
   - Lines 81-92: .env read failure is caught and passed silently. If cand.read_text() fails due to permission denied, it's treated same as 'not found'. But admin intended to set GEMINI_API_KEY via .env and may not know it failed.
   - **Fix:** If path.exists() and read fails, that's a real error → log warning. Empty pass only if path doesn't exist. Use `if path.exists(): ... else: continue`.
 - [x] **SE-227** ✅FIXED(heartbeat ping 실패 무로깅 → debug 로그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/connection.py:200` `_heartbeat` (S)
@@ -1214,34 +1214,34 @@
 - [x] **SE-302** ✅FIXED(heartbeat 태스크 cancel 후 await 로 정리 보장) 🟡 `예외8 자원정리` `provider-agent/src/provider_agent/connection.py:121` `_session` (S)
   - Lines 132-152: asyncio.create_task(self._heartbeat(ws)) is created but only cancelled in finally. If _dispatch awaits on a hung task (e.g., server sends malformed frame causing infinite loop), hb task leaks and keeps reference to ws.
   - **Fix:** Store hb task reference; in finally, use `hb.cancel()` with `try: await hb except asyncio.CancelledError: pass` to ensure cleanup completes.
-- [ ] **SE-319** 🟡 `예외10 fail-fast` `provider-agent/src/provider_agent/config.py:139` `config_from_args` (S)
+- [x] **SE-319** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외10 fail-fast` `provider-agent/src/provider_agent/config.py:139` `config_from_args` (S)
   - Line 139: Token validation is deferred to line 141-142 (if-else gate check). If token is empty and not (self_test or gui), parser.error() terminates. But earlier lines 137-138 load saved config without validating it exists, leading to cascade of `.get()` calls with error-prone defaults.
   - **Fix:** Validate token **first** (fail-fast line 139-142), then proceed with loading/merging. Use early return pattern: if not token and ...: exit; rest of function assumes token exists.
 
 ### updater/comfy/ollama setup — 17건
 
-- [ ] **SE-053** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/comfy_setup.py:322` `run_setup` (S)
+- [x] **SE-053** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/comfy_setup.py:322` `run_setup` (S)
   - Catches '(OSError, aiohttp.ClientError)' but not 'asyncio.TimeoutError', 'tarfile.TarError' from Python extraction, or subprocess errors. Callers can't distinguish handled vs. unhandled failures.
   - **Fix:** Expand to 'except (OSError, aiohttp.ClientError, asyncio.TimeoutError, tarfile.TarError, Exception):' or split by category with specific logging.
-- [ ] **SE-054** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/ollama_setup.py:189` `run_setup` (S)
+- [x] **SE-054** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/ollama_setup.py:189` `run_setup` (S)
   - Bare 'except Exception:' catches all exceptions including logic errors in _wait_healthy(), client.pull(), etc. User error (e.g., invalid model name) is silent; no distinction from network failures.
   - **Fix:** Catch 'OllamaError' specifically (raised by client methods); let asyncio/OSError propagate or log separately.
-- [ ] **SE-055** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:177` `check` (M)
+- [x] **SE-055** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:177` `check` (M)
   - Broad 'except Exception:' masks parsing errors, network errors, and attribute errors equally. Caller can't distinguish 'unreachable' from 'malformed response'—both return generic 'error'.
   - **Fix:** Split into 'except (urllib.error.URLError, socket.error)' for network and 'except (ValueError, KeyError, AttributeError)' for parsing, returning distinct error messages.
-- [ ] **SE-056** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:237` `_apply_macos` (S)
+- [x] **SE-056** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:237` `_apply_macos` (S)
   - Catches 'except Exception:' without distinguishing network errors from version-check logic errors. Masks bugs in fetch_latest() that should not silently fail.
   - **Fix:** Catch only 'urllib.error.URLError' and network-level exceptions explicitly; let parse/logic errors propagate as bugs.
-- [ ] **SE-057** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:354` `_apply_windows` (S)
+- [x] **SE-057** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:354` `_apply_windows` (S)
   - Catches 'except Exception:' at line 354, masking all fetch_latest() errors uniformly. Parser bugs and network errors both become 'failure'.
   - **Fix:** Catch network exceptions explicitly; let ValueError/KeyError from malformed responses propagate or log as bugs.
 - [x] **SE-082** ✅FIXED(압축해제 실패 메시지 정리(ditto)·다운로드 메시지에 url) 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/updater.py:249` `_apply_macos` (S)
   - Line 249: 'except Exception as exc:' logs to f-string but exc is a subprocess error (ditto, OSError). Missing context on which subprocess failed—user sees 'Extract failed: [OSError]' without knowing if it was ditto or file I/O.
   - **Fix:** Catch '(subprocess.CalledProcessError, OSError)' separately, log the command that failed, and the specific exit code or errno.
-- [ ] **SE-100** 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:248-258` `ensure_bundled_python` (M)
+- [x] **SE-100** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:248-258` `ensure_bundled_python` (M)
   - Archive file cleanup 'finally: archive.unlink()' (line 257) happens before checking if extraction succeeded. If extraction fails and raises exception, partial directory remains AND archive is deleted—next attempt has no resume point.
   - **Fix:** Only delete archive in finally after successful completion; on exception, preserve archive for resume/retry.
-- [ ] **SE-101** 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:337-371` `_download` (M)
+- [x] **SE-101** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:337-371` `_download` (M)
   - aiohttp.ClientSession and file handle (line 368) opened in 'async with' but on exception during chunked write (line 369), file is left open until async context exits. Large file operations risk incomplete writes.
   - **Fix:** Use explicit try-finally or ensure all file writes are transactional; rename to dest only after full write completes.
 - [x] **SE-102** ✅FIXED(macOS 실패 경로 tmp 정리(_cleanup_tmp_and_fail; 성공 경로는 헬퍼 소유)) 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:245-306` `_apply_macos` (M)
@@ -1262,10 +1262,10 @@
 - [x] **SE-206** ✅FIXED(서비스 워처 데몬 스레드 무로깅 삼킴 → warning) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/updater.py:343` `start_service_update_watcher` (S)
   - Bare 'except Exception:' in daemon thread (line 343) swallows all errors, including legitimate bugs in _loop logic. Service continues running silently without diagnosing why updates fail.
   - **Fix:** Log exception details before retry; catch specific exceptions (urllib errors, asyncio.TimeoutError); let genuine bugs propagate to stderr.
-- [ ] **SE-229** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:114` `_url_ok` (S)
+- [x] **SE-229** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:114` `_url_ok` (S)
   - Catches 'except Exception:' broadly, silencing network errors (urllib.error.URLError, socket.timeout, etc). Should catch specific urllib/socket exceptions to distinguish between transient and permanent failures.
   - **Fix:** Replace with 'except (urllib.error.URLError, socket.error, socket.timeout):' to handle only network-level failures.
-- [ ] **SE-230** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:80` `_ssl_context` (S)
+- [x] **SE-230** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:80` `_ssl_context` (S)
   - Broad 'except Exception' catches all exceptions including KeyboardInterrupt-related ones. Should catch only 'ModuleNotFoundError' since certifi import is the only thing that can fail.
   - **Fix:** Change 'except Exception:' to 'except ModuleNotFoundError:' to catch only the import error.
 - [x] **SE-254** ✅FIXED(다운로드 실패 메시지에 url 컨텍스트) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/updater.py:366` `_apply_windows` (S)
@@ -1280,13 +1280,13 @@
 - [ ] **SE-185** 🟡 `DIP` `provider-agent/src/provider_agent/service.py:66-77` `_run` (M)
   - OS 명령어 실행 에러를 ProcessLookupError 대신 RuntimeError로 변환하는데, 구체 OSError 타입(PermissionError, FileNotFoundError)을 모두 RuntimeError로 감싼다. 상위 호출자가 원인(권한/파일 없음)을 알 수 없음.
   - **Fix:** RuntimeError 대신 cause를 명시적으로 보존: raise RuntimeError(...) from exc. 또는 상위가 처리할 수 있도록 OSError 서브타입을 그대로 반환
-- [ ] **SE-203** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/service.py:204-205` `kickstart` (M)
+- [x] **SE-203** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/service.py:204-205` `kickstart` (M)
   - OSError를 로깅하고 False를 반환. 호출자는 "kickstart 실패했으니 백그라운드 없음"으로만 알지, 권한 문제인지 명령어 없는지 알 수 없음.
   - **Fix:** 로깅할 때 원인을 명시하거나, False 대신 결과 딕셔너리로 에러 코드/메시지 반환
-- [ ] **SE-204** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/tray.py:55-58` `open_settings_in_browser` (S)
+- [x] **SE-204** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/tray.py:55-58` `open_settings_in_browser` (S)
   - Exception 으로 브라우저 열기 실패를 잡고 로깅만 함(경고). 예외 객체를 로깅하지 않고 '브라우저 없음 등은 치명적 아님'이라 주석달았으나, URLError나 OSError 원인이 모호함.
   - **Fix:** logger.warning(..., exc)로 원인을 exc 파라미터로 기록
-- [ ] **SE-228** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/logging_setup.py:22-25` `RedactingFilter.filter` (S)
+- [x] **SE-228** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/logging_setup.py:22-25` `RedactingFilter.filter` (S)
   - Exception 으로 뭉뚱그려 잡음(except Exception). 메시지 포맷 실패 원인(문자열 vs 불가 인코딩)을 구분 불가.
   - **Fix:** ValueError, AttributeError 등 구체 타입으로 분리해 처리, 또는 예상 타입만 명시
 - [x] **SE-253** ✅FIXED 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/config_file.py:84-95` `persist_partial` (S)
@@ -1298,22 +1298,22 @@
 - [x] **SE-274** ✅FIXED(인증 실패에 code+message 보존) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/connection.py:104-106` `run` (S)
   - AuthFailedError 를 logger.error()로 로깅하지만 메시지가 "인증 실패(…)"로 원인을 알기 어려움. 토큰 문제인지 네트워크인지 서버 오류인지 구분 안 됨.
   - **Fix:** 프레임의 code/message 를 명시적으로 로깅: f"인증 실패: {exc.code}={exc.message}"
-- [ ] **SE-290** 🟡 `예외5 흐름제어` `provider-agent/src/provider_agent/webui.py:556-559` `image_toggle` (S)
+- [x] **SE-290** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외5 흐름제어` `provider-agent/src/provider_agent/webui.py:556-559` `image_toggle` (S)
   - JSON 파싱 실패(Exception)를 catch하고 빈 dict로 기본값 처리. 클라이언트가 말형식 JSON을 보냈을 때 실패를 알 수 없고, UI는 "저장되었습니다"라고 표시할 수 있음.
   - **Fix:** web.json_response({"error": "잘못된 요청"}) 반환, 또는 최소한 logger.warning() 으로 기록
-- [ ] **SE-356** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/sysinfo.py:19-22` `load_level` (S)
+- [x] **SE-356** ✅FIXED(sysinfo CPU 부하 읽기 실패 → debug 로그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/sysinfo.py:19-22` `load_level` (S)
   - psutil 호출 실패(Exception)를 로깅하지 않고 항상 'idle'로 반환. CPU 부하 감지 실패 원인(psutil 크래시, 권한)을 알 수 없음.
   - **Fix:** except Exception as exc: logger.debug(...) 로 실패 원인 기록, 또는 로깅 없이 두면 주석 개선
-- [ ] **SE-357** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/sysinfo.py:29-32` `battery_state` (S)
+- [x] **SE-357** ✅FIXED(sysinfo 배터리 읽기 실패 → debug 로그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/sysinfo.py:29-32` `battery_state` (S)
   - psutil.sensors_battery() 호출 실패를 Exception 으로 무시. 배터리 상태 감지 실패가 로깅되지 않음.
   - **Fix:** except Exception as exc: logger.debug(...) 로 실패만 기록, 또는 다시 커밋하기 전 검토
 - [x] **SE-358** ✅FIXED(RingHandler.emit 의도적 무시 주석화(재귀 방지)) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:109-113` `_RingHandler.emit` (S)
   - Exception 으로 로그 포맷 실패를 무시(pass). 로그 수집 실패가 자동으로 삼켜져 대시보드 로그가 비어버림.
   - **Fix:** 에러를 stderr 에 쓰거나, 최소한 첫 수회는 경고 로깅
-- [ ] **SE-359** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:50-56` `_mascot_bytes` (S)
+- [x] **SE-359** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:50-56` `_mascot_bytes` (S)
   - Exception 으로 모든 실패를 잡고 빈 바이트 반환. 마스코트 PNG 로드 실패(임포트 오류, 파일 없음, 권한)를 구분하지 않음.
   - **Fix:** ImportError와 OSError 로 분리, 개발 중 실제 오류를 즉시 알기 위해 ImportError 는 재발생
-- [ ] **SE-360** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:62-69` `_app_icon_bytes` (S)
+- [x] **SE-360** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:62-69` `_app_icon_bytes` (S)
   - Exception 으로 모든 실패를 무시하고 빈 바이트 반환. 아이콘 로드 실패 원인이 기록되지 않음.
   - **Fix:** 특정 예외(ImportError, OSError)로 분리하고, 로깅 추가 또는 개발 중 ImportError 재발생
 
@@ -1334,36 +1334,36 @@
 - [ ] **SE-160** 🟡 `ISP` `prototypes/desktop/adapter.js:188` `api` (M)
   - api 객체가 상태 조회(getServers, getStatus, getLogs), 제어(startAgent, stopAgent), 설정(setSetting), 설치(startSetup, installComfy) 등 5개 역할을 섞어서 67개 메서드를 노출. 클라이언트가 전체 API 를 호출할 수 있어서 권한 검증·기능 격리 불가(ISP 위반).
   - **Fix:** api 객체를 역할별로 분리: (1) statusApi = {getStatus, getLogs, getModels, ...}  (2) controlApi = {startAgent, stopAgent, ...}  (3) configApi = {setSetting, getSettings, ...}. 각 화면은 필요한 인터페이스만 주입받아 의도하지 않은 호출 방지.
-- [ ] **SE-186** 🟡 `예외1 못잡을예외` `prototypes/desktop/adapter.js:38-46` `post` (S)
+- [x] **SE-186** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외1 못잡을예외` `prototypes/desktop/adapter.js:38-46` `post` (S)
   - post(ep, body) 가 http() 를 감싸지만 에러를 잡아서 처리하지 않음. 호출부(approveProvider, rejectProvider 등)도 catch 블록이 없어서 어떤 실패도 조용히 처리되거나 uncaught 예외로 떨어짐.
   - **Fix:** post() 자체는 그대로 전파하되, 호출부에 .catch(err => { console.error('API 실패', err); return {ok:false, error:err.message}; }) 를 추가. 또는 api 메서드마다 try-catch 래퍼를 만들어 API 실패를 일관되게 {ok:false, error:string} 로 정규화.
-- [ ] **SE-187** 🟡 `예외1 못잡을예외` `prototypes/desktop/install.js:14-41` `_trackSetup` (S)
+- [x] **SE-187** ✅FIXED(install.js 폴링 콜백 try-catch(unhandled rejection 방지)) 🟡 `예외1 못잡을예외` `prototypes/desktop/install.js:14-41` `_trackSetup` (S)
   - getSetupProgress(k) 호출(line 22)의 응답 p.phase 를 trust 하는데, 백엔드가 'done'/'error'/'cancelled'/'idle' 중 다른 값을 반환하면 토스트가 갱신되지만 Promise resolve 되지 않아 무한 루프(타이머 계속 돈다). 예외 처리 없음.
   - **Fix:** const validPhases = new Set(['done', 'error', 'cancelled', 'idle', 'installing', 'downloading', 'starting']); if(!validPhases.has(p.phase)) { clearInterval(timer); toast('알 수 없는 진행 상태: ' + p.phase, {type:'info'}); resolve(false); return; } 로 unexpected phase 를 명시적으로 처리.
-- [ ] **SE-212** 🟡 `예외2 broad catch` `prototypes/desktop/adapter.js:217-243` `getServerDetail` (S)
+- [x] **SE-212** ✅FIXED(adapter.js 빈 catch 2곳 → console.warn) 🟡 `예외2 broad catch` `prototypes/desktop/adapter.js:217-243` `getServerDetail` (S)
   - Promise.all([...]) 에서 각 항목이 catch 블록 없이 진행. http(ENDPOINTS.serverManage) 나 http(ENDPOINTS.serverPolicy) 가 실패하면, isAdmin 이나 policy 가 초기값으로 남아서 UI 에 거짓 정보 표시.
   - **Fix:** 각 http 호출을 .catch(err => { console.error(...); return null; }) 로 감싸서 구체 실패를 처리. isAdmin = (mg && mg.ok) 로 null 이 false 가 되도록 이미 되어 있지만, 정책은 catch 안 돼서 기본값이 그대로 나감. 명시적 .catch 추가.
-- [ ] **SE-239** 🟡 `예외3 삼킴` `prototypes/desktop/adapter.js:262-267` `approveProvider` (S)
+- [x] **SE-239** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외3 삼킴` `prototypes/desktop/adapter.js:262-267` `approveProvider` (S)
   - mock 경로(line 262-267)에서 배열 splice 하는 데 예외 처리가 없음. 실 경로(line 269)는 post() 호출 반환값을 검증 없이 그대로 반환. 백엔드 응답이 {ok} 필드 없으면 undefined 를 반환하는데 호출부가 .ok 접근 시 오류.
   - **Fix:** mock 경로 m.pending 배열 조작 전 null 체크(m 이 null 이면 {ok:false} 반환). 실 경로는 if(!r.ok) throw new OperationError('승인 실패: ' + r.error) 로 명시적 실패 처리.
-- [ ] **SE-259** 🟡 `예외4 빈약메시지` `prototypes/desktop/adapter.js:605-620` `getModels` (S)
+- [x] **SE-259** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외4 빈약메시지` `prototypes/desktop/adapter.js:605-620` `getModels` (S)
   - r.modelsDetail 가 없으면 detail = new Map([]) 로 빈 맵이 되는데, 이후 detail.get(name) 이 undefined 를 반환해도 메시지 없이 size:'' 로 처리. 모델 데이터 오염(누락된 size/tags)이 조용히 진행.
   - **Fix:** 백엔드가 modelsDetail 을 항상 반환하도록 스펙 강제. 혹은 상단에 if(!r.modelsDetail || !Array.isArray(r.modelsDetail)) throw new DataFormatError('modelsDetail 필드 누락: ' + JSON.stringify(r)) 로 early fail. 이렇게 하면 데이터 품질 저하를 명확히 드러냄.
-- [ ] **SE-280** 🟡 `예외5 흐름제어` `prototypes/desktop/adapter.js:199-202` `getServers` (S)
+- [x] **SE-280** ✅FIXED(adapter.js role probe 빈 catch → console.warn) 🟡 `예외5 흐름제어` `prototypes/desktop/adapter.js:199-202` `getServers` (S)
   - 실 백엔드 연결 시, 권한 probe(관리자 여부 판정)를 매번 http 호출로 처리(Promise.all 로 모든 서버에 대해 /manage 조회). 404/에러가 나면 Role.PROVIDER 로 폴백하는데, 이는 흐름제어로 예외를 쓰는 구조. 실제로 'ok' 필드 확인이 예외 아닌 값 검사여야 함.
   - **Fix:** http() 가 200 응답만 반환하도록 보정하되, 권한 probe 대신 서버 목록 응답에 이미 role 이 포함되도록 백엔드 스펙 변경(Gap-S). 불가피하면 별도 프로브 함수 roleProbe(guildId) 를 만들고, 실패는 console.warn 으로 기록 후 기본값 반환(예외 아님).
-- [ ] **SE-291** 🟡 `예외6 비즈변환` `prototypes/desktop/adapter.js:32-36` `http` (S)
+- [x] **SE-291** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외6 비즈변환` `prototypes/desktop/adapter.js:32-36` `http` (S)
   - http(ep, opts) 가 fetch().json() 를 직접 반환하는데, 응답이 invalid JSON 이면 uncaught SyntaxError 를 던짐. 네트워크 에러(500/4xx)도 JSON 파싱 전에 던져지는데 업스트림에 아무 처리 없음.
   - **Fix:** http() 를 try-catch 로 감싸서 구체 에러(SyntaxError, 네트워크)를 도메인 HttpError(message, statusCode, originalError) 로 변환. 또는 r.ok 체크 후 ok=false 면 HttpError 던지기. 호출부는 HttpError 를 catch 해서 사용자 메시지 표시.
 - [ ] **SE-320** ⚪ `SRP` `prototypes/desktop/adapter.js:39-186` `MOCK` (M)
   - mock 데이터(MOCK 객체)가 adapter.js 안에 포함되어 있어서, 프로토 제거 시(/* @proto-only */ 마크업) 수동으로 지워야 함. 프로토 전용 코드를 adapter 와 분리하지 않아 유지보수 부담.
   - **Fix:** mock 데이터를 별도 파일 mock.js 로 분리하고, adapter 임포트는 조건부(if(USE_MOCK) { import mockData } else { ... }). 실 앱 이식 시 mock.js 전체 제거만 하면 됨.
-- [ ] **SE-377** ⚪ `예외5 흐름제어` `prototypes/desktop/adapter.js:19-24` `_isUnknownModel` (S)
+- [x] **SE-377** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외5 흐름제어` `prototypes/desktop/adapter.js:19-24` `_isUnknownModel` (S)
   - 모델 유효성 검사를 Set 생성으로 매번 수행. 모델명이 정확하지 않으면 try-catch 없이 실패로 판정하는데(Set 에 없으면 true), 데이터 검증이 예외가 아닌 정상 흐름처럼 처리됨(흐름제어 도용은 아니지만 아이디어가 아닌 값 검사가 맞음).
   - **Fix:** 코드는 이미 맞음. Set 생성 최적화는 MOCK.catalog/models 를 처음 한 번만 Set 으로 변환해서 캐싱: const CATALOG_SET = new Set([...MOCK.catalog.map(m => m.name), ...MOCK.models.map(m => m.name)]) 로 상수화.
-- [ ] **SE-379** ⚪ `예외7 cause보존` `prototypes/desktop/install.js:18-20` `_trackSetup` (S)
+- [x] **SE-379** ✅FIXED(install.js startSetup .catch 추가) ⚪ `예외7 cause보존` `prototypes/desktop/install.js:18-20` `_trackSetup` (S)
   - api.startSetup(k, model) 호출 후 결과를 기다리지 않음(await 안 함). 호출이 실패해도 토스트는 '설치 중'이라 표시하고, 이후 폴링이 'idle' 로 돌아올 때 무한 대기.
   - **Fix:** api.startSetup(k, model) 를 await 하거나, 호출 후 에러가 있으면 즉시 reject. 또는 폴링 첫 응답이 'idle' 인데 startSetup=true 이면 '설치 시작 실패' 로 판정하고 resolve(false).
-- [ ] **SE-381** ⚪ `예외10 fail-fast` `prototypes/desktop/adapter.js:462-469` `setSetting` (S)
+- [x] **SE-381** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외10 fail-fast` `prototypes/desktop/adapter.js:462-469` `setSetting` (S)
   - setSetting(key, value) 가 key 의 유효성을 검증하지 않음. enableImage/autostart/ollamaUrl 등 예상된 키만 backend 가 알고 있는데, 임의 key 를 POST 해도 에러가 아닌 {ok:true} 로 반환될 수 있음(backend 에서 unknown key 무시시).
   - **Fix:** 상수로 VALID_KEYS = new Set(['autostart', 'background', 'autoConnect', 'autoUpdate', 'ollamaUrl', 'enableImage']) 를 정의하고, if(!VALID_KEYS.has(key)) throw new InvalidKeyError(key) 로 early fail.

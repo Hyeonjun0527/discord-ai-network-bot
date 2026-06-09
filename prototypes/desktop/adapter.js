@@ -198,7 +198,7 @@ export const api = {
     //   연결 안 된 서버는 probe 불가 → PROVIDER. probe 실패도 안전하게 PROVIDER(낙관적 승격 금지).
     const roles = await Promise.all(real.map(async (s) => {
       if (!s.connected) return Role.PROVIDER;
-      try { const mg = await http(ENDPOINTS.serverManage(s.guildId)); return (mg && mg.ok) ? Role.ADMIN : Role.PROVIDER; } catch { return Role.PROVIDER; }
+      try { const mg = await http(ENDPOINTS.serverManage(s.guildId)); return (mg && mg.ok) ? Role.ADMIN : Role.PROVIDER; } catch (e) { console.warn('서버 관리 권한 probe 실패(guild ' + s.guildId + ') — PROVIDER 로 처리:', e); return Role.PROVIDER; }
     }));
     return real.map((s, i) => ({
       guildId: s.guildId,
@@ -224,10 +224,10 @@ export const api = {
     const s = list.find((x) => String(x.guildId) === String(guildId));
     if (!s) return null;
     let isAdmin = false;
-    try { const mg = await http(ENDPOINTS.serverManage(guildId)); isAdmin = !!(mg && mg.ok); } catch { isAdmin = false; }
+    try { const mg = await http(ENDPOINTS.serverManage(guildId)); isAdmin = !!(mg && mg.ok); } catch (e) { console.warn('관리 권한 probe 실패(guild ' + guildId + ') — 비관리자로 처리:', e); isAdmin = false; }
     // 내 제공 정책은 **저장값을 그대로 읽어** 표시한다(하드코딩 금지 — 백엔드 강제값과 화면 일치).
     let policy = { dailyLimit: 0, maxConcurrency: 1, maxSeconds: 0 };
-    try { const pr = await http(ENDPOINTS.serverPolicy(guildId)); if (pr && pr.policy) policy = pr.policy; } catch { /* 미저장 → 기본 */ }
+    try { const pr = await http(ENDPOINTS.serverPolicy(guildId)); if (pr && pr.policy) policy = pr.policy; } catch (e) { console.warn('서버 정책 조회 실패(guild ' + guildId + ') — 기본값 사용:', e); }
     const advertised = (st && st.models) || [];
     return {
       guildId: String(s.guildId), guildName: s.guildName, iconUrl: null,

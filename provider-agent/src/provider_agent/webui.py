@@ -53,7 +53,8 @@ def _mascot_bytes() -> bytes:
             from importlib import resources
 
             _mascot_cache = (resources.files("provider_agent") / "assets" / "mascot.png").read_bytes()
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("mascot 에셋 로드 실패(이미지만 비고 동작은 정상): %s", exc)
             _mascot_cache = b""
     return _mascot_cache
 
@@ -298,7 +299,8 @@ def _probe_connect_status() -> bool:
         )
         with urllib.request.urlopen(req, timeout=4, context=ctx) as resp:  # noqa: S310 - https 고정
             return bool(json.loads(resp.read().decode("utf-8")).get("enabled"))
-    except Exception:  # noqa: BLE001 - 서버 미설정/네트워크 실패는 비활성으로
+    except Exception as exc:  # noqa: BLE001 - 서버 미설정/네트워크 실패는 비활성으로
+        logger.debug("connect 상태 확인 실패(비활성으로 처리): %s", exc)
         return False
 
 

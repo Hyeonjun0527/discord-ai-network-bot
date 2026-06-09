@@ -9,6 +9,7 @@
       "enableImage",
       "geminiConfigured",
       "hasToken",
+      "hfConfigured",
       "imageReady",
       "models",
       "processed",

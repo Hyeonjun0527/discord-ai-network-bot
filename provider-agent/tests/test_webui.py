@@ -1341,3 +1341,16 @@ async def test_comfy_models_and_select(monkeypatch):
         assert saved.get("comfy_model") == "x.safetensors"
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_comfy_install_model_validates(monkeypatch):
+    """임의 모델 URL 설치 — 빈/잘못된 URL 은 정직하게 거부."""
+    client = await _client()
+    try:
+        r = await (await client.post("/api/comfy/install-model", json={}, headers={"X-Session": KEY})).json()
+        assert r["ok"] is False
+        r = await (await client.post("/api/comfy/install-model", json={"url": "https://x/readme.txt"}, headers={"X-Session": KEY})).json()
+        assert r["ok"] is False
+    finally:
+        await client.close()

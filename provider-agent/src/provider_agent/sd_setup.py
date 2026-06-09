@@ -672,6 +672,13 @@ async def _download(url: str, dest: pathlib.Path, message_prefix: str = "이미�
 
     timeout = aiohttp.ClientTimeout(total=None, sock_read=120)
     headers = {"Range": f"bytes={resume_from}-"} if resume_from else {}
+    # gated/비공개 HuggingFace 모델은 익명 GET 이 401/403 → 저장된 HF 토큰이 있으면 Authorization 주입.
+    if "huggingface.co" in url:
+        from .config_file import load_config
+
+        token = str(load_config().get("hf_token") or "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
     async with aiohttp.ClientSession(timeout=timeout) as s:
         async with s.get(url, headers=headers) as r:
             # 416: 이미 다 받음(서버가 범위 초과로 판단) → 그대로 rename 시도하고 종료.

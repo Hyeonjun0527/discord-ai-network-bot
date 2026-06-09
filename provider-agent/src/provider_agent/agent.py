@@ -48,35 +48,10 @@ def _agent_sync_base(relay: str) -> str:
     return base.rstrip("/")
 
 
-def _post_agent_sync(base: str, durable_token: str) -> list[dict]:
-    """중앙 서버에 durable 토큰으로 자동 동기화 요청 → 승인된 미연결 서버의 일회용 토큰 목록."""
-    import json
-    import ssl
-    import urllib.request
+def _central_post(url: str, payload: dict, timeout: float = 8.0) -> dict:
+    """중앙 서버에 JSON POST 후 응답 dict 반환 — SSL(certifi)·헤더·직렬화·파싱 공통(7개 admin/sync 호출 공유).
 
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token}).encode("utf-8")
-    # User-Agent 필수(WAF 가 기본 Python-urllib UA 를 403 으로 막는다).
-    req = urllib.request.Request(
-        base + "/provider/agent/sync",
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": f"nexa-agent/{AGENT_VERSION}",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return list(json.loads(resp.read().decode("utf-8")).get("joins") or [])
-
-
-def _post_provider_admin(base: str, action: str, durable_token: str, guild_id: int, target_id: int = 0) -> dict:
-    """중앙 서버 관리 API 호출(관리자 전용). durable 토큰으로 신원 인증 → central 이 관리자 판정 후 동작.
-
-    action: 'manage'(승인대기·로스터 조회) | 'approve' | 'reject' | 'remove'. 권한은 central 이 JDA 로 판정한다.
+    User-Agent 필수(WAF 가 기본 Python-urllib UA 를 403 으로 막는다). 아래 7개 래퍼는 URL·payload·timeout 만 달라진다.
     """
     import json
     import ssl
@@ -85,35 +60,40 @@ def _post_provider_admin(base: str, action: str, durable_token: str, guild_id: i
     import certifi
 
     ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token, "guildId": guild_id, "targetProviderId": target_id}).encode("utf-8")
+    body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
-        base + "/provider/admin/" + action,
+        url,
         data=body,
         method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
     )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
         return dict(json.loads(resp.read().decode("utf-8")))
+
+
+def _post_agent_sync(base: str, durable_token: str) -> list[dict]:
+    """중앙 서버에 durable 토큰으로 자동 동기화 요청 → 승인된 미연결 서버의 일회용 토큰 목록."""
+    resp = _central_post(base + "/provider/agent/sync", {"durableToken": durable_token}, timeout=6)
+    return list(resp.get("joins") or [])
+
+
+def _post_provider_admin(base: str, action: str, durable_token: str, guild_id: int, target_id: int = 0) -> dict:
+    """중앙 서버 관리 API 호출(관리자 전용). durable 토큰으로 신원 인증 → central 이 관리자 판정 후 동작.
+
+    action: 'manage'(승인대기·로스터 조회) | 'approve' | 'reject' | 'remove'. 권한은 central 이 JDA 로 판정한다.
+    """
+    return _central_post(
+        base + "/provider/admin/" + action,
+        {"durableToken": durable_token, "guildId": guild_id, "targetProviderId": target_id},
+    )
 
 
 def _post_provider_admin_policy(base: str, durable_token: str, guild_id: int, auto_approve: bool) -> dict:
     """서버 제공 정책(신규 자동 승인) 토글 — central 이 관리자 판정 후 저장."""
-    import json
-    import ssl
-    import urllib.request
-
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token, "guildId": guild_id, "autoApprove": auto_approve}).encode("utf-8")
-    req = urllib.request.Request(
+    return _central_post(
         base + "/provider/admin/manage/policy",
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+        {"durableToken": durable_token, "guildId": guild_id, "autoApprove": auto_approve},
     )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
 
 
 def _post_provider_admin_promptset(
@@ -131,64 +111,20 @@ def _post_provider_admin_promptset(
     path: ''(목록) | '/add'(추가) | '/default'(기본 지정) | '/delete'(삭제). 권한은 central 이 JDA 로 판정한다.
     builtin(니아) 셋의 전문은 central 이 응답에 담지 않는다(preview 만).
     """
-    import json
-    import ssl
-    import urllib.request
-
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps(
-        {"durableToken": durable_token, "guildId": guild_id, "name": name, "content": content, "id": set_id},
-    ).encode("utf-8")
-    req = urllib.request.Request(
+    return _central_post(
         base + "/provider/admin/prompt-sets" + path,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+        {"durableToken": durable_token, "guildId": guild_id, "name": name, "content": content, "id": set_id},
     )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
 
 
 def _post_provider_admin_guild(base: str, path: str, durable_token: str, guild_id: int) -> dict:
     """길드 단위 읽기 관리 API 호출(관리자 전용). path: channel-ai|knowledge|presets. body 는 신원+길드만."""
-    import json
-    import ssl
-    import urllib.request
-
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token, "guildId": guild_id}).encode("utf-8")
-    req = urllib.request.Request(
-        base + "/provider/admin/" + path,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
-    )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
+    return _central_post(base + "/provider/admin/" + path, {"durableToken": durable_token, "guildId": guild_id})
 
 
 def _post_provider_admin_delete(base: str, path: str, durable_token: str, guild_id: int, id_key: str, id_val: str) -> dict:
     """관리 삭제 공통(프리셋/지식 소스). central 이 durable 토큰 신원 + 길드 소유권을 가드한다."""
-    import json
-    import ssl
-    import urllib.request
-
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token, "guildId": guild_id, id_key: str(id_val)}).encode("utf-8")
-    req = urllib.request.Request(
-        base + path,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
-    )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
+    return _central_post(base + path, {"durableToken": durable_token, "guildId": guild_id, id_key: str(id_val)})
 
 
 def _post_provider_admin_channels(
@@ -205,24 +141,10 @@ def _post_provider_admin_channels(
     channel_id 는 64bit Discord ID — Python int 는 정밀도 손실이 없으므로 그대로 전송한다.
     권한은 central 이 JDA 로 판정하고, 허용 목록 "빈 목록 = 전체 허용" 의미도 central 이 보존한다.
     """
-    import json
-    import ssl
-    import urllib.request
-
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps(
-        {"durableToken": durable_token, "guildId": guild_id, "channelId": channel_id, "allow": allow},
-    ).encode("utf-8")
-    req = urllib.request.Request(
+    return _central_post(
         base + "/provider/admin/channels" + path,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+        {"durableToken": durable_token, "guildId": guild_id, "channelId": channel_id, "allow": allow},
     )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
 
 
 class ProviderAgent:

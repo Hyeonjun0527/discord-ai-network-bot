@@ -983,7 +983,7 @@
 - [x] **SE-155** ✓REVIEWED-CLEAN(직접검토 over-eng: inflight 증감은 이미 try/finally로 정확 — 컨텍스트매니저는 lateral)
   - Routes text inference to Ollama or Gemini based on model name string prefix ('gemini-'). Adding new backend (Claude API) requires modifying _run_infer with another elif. No extensible strategy; each backend requires editing ProviderAgent.
   - **Fix:** Create InferenceBackend protocol. Register backends in registry. Route via 'backend = self._backends.get_for_model(model)' then 'backend.generate()'. New backend = register, no edits.
-- [~] **SE-156** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: 1단계: CentralApiClient(protocol) 정의 — post_sync(), post_admin) 🟡 `OCP` `provider-agent/src/provider_agent/agent.py:51-226` `_post_agent_sync, _post_provider_admin, _post_provider_admin_policy, _post_provider_admin_promptset, _post_provider_admin_guild, _post_provider_admin_delete, _post_provider_admin_channels` (M)
+- [x] **SE-156** ✅FIXED(7개 _post_* HTTP boilerplate→_central_post 공통 헬퍼+7 thin 래퍼, agent 28테스트 green)
   - 7 nearly-identical HTTP POST helper functions hardcode JSON/SSL/timeout/headers. Adding new admin API requires duplicating boilerplate. When headers/timeout change, all 7 must be edited.
   - **Fix:** Create AdminAPIClient(url, timeout, version) with request(path, body, timeout) method. Each _post_* becomes 1-2 line wrapper. Headers/SSL/JSON/timeout centralized.
 - [~] **SE-182** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: 1단계: GuildPolicyRepository(protocol) 정의 — get_daily_limit(gu) 🟡 `DIP` `provider-agent/src/provider_agent/agent.py:289` `_limit_for, _remaining_for, _concurrency_for, _max_seconds_for` (M)

@@ -17,6 +17,8 @@ const _setup = {}; // mock 설치 진행 상태(runtime → { start, model })
 // mock 전용: 카탈로그/설치된 모델 외 임의 모델은 "없는 모델"로 간주해 실패시킨다(없는 모델 UX 데모).
 // 실 백엔드에선 ollama pull 의 404/에러가 곧 이 분기 — 형식이 맞아도 라이브러리에 없으면 실패.
 const _isUnknownModel = (name) => {
+  // HuggingFace GGUF(hf.co/…)는 레지스트리 밖이라도 유효 — 데모에서 실패 처리하지 않는다.
+  if (/^hf\.co\//i.test(name)) return false;
   const known = new Set([...MOCK.catalog.map((m) => m.name), ...MOCK.models.map((m) => m.name)]);
   return name !== 'image' && name !== 'ollama' && !known.has(name);
 };

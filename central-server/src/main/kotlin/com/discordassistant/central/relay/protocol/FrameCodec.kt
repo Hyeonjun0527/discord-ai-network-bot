@@ -1,5 +1,6 @@
 package com.discordassistant.central.relay.protocol
 
+import com.fasterxml.jackson.core.JacksonException
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.exc.InvalidTypeIdException
@@ -33,21 +34,23 @@ object FrameCodec {
     }
 
     fun decode(raw: String): Frame {
-        if (raw.toByteArray(Charsets.UTF_8).size > MAX_FRAME_BYTES) {
-            throw ProtocolException("프레임이 너무 큽니다")
+        val size = raw.toByteArray(Charsets.UTF_8).size
+        if (size > MAX_FRAME_BYTES) {
+            throw ProtocolException("프레임이 너무 큽니다($size > $MAX_FRAME_BYTES bytes)")
         }
         return try {
             mapper.readValue(raw, Frame::class.java)
         } catch (e: InvalidTypeIdException) {
             throw ProtocolException("알 수 없는 프레임 타입: ${e.typeId}", e)
-        } catch (e: Exception) {
+        } catch (e: JacksonException) {
+            // decode 의 예상 실패는 Jackson 파싱 오류뿐 — 그 외 예외는 버그이므로 삼키지 않고 전파한다(예외 원칙 1·2).
             throw ProtocolException("프레임 디코딩 실패: ${e.message}", e)
         }
     }
 
     fun decode(raw: ByteArray): Frame {
         if (raw.size > MAX_FRAME_BYTES) {
-            throw ProtocolException("프레임이 너무 큽니다")
+            throw ProtocolException("프레임이 너무 큽니다(${raw.size} > $MAX_FRAME_BYTES bytes)")
         }
         return decode(String(raw, Charsets.UTF_8))
     }

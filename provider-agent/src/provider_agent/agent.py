@@ -14,6 +14,7 @@ from . import sysinfo
 from .config import AgentConfig
 from .connection import AgentConnection
 from .constants import AGENT_VERSION, IMAGE_CHUNK_CHARS, MAX_RESPONSE_CHARS, ErrorCode
+from .guild_policy import GuildPolicyManager
 from .ollama import OllamaClient, OllamaError
 from .protocol import (
     CancelFrame,
@@ -48,35 +49,10 @@ def _agent_sync_base(relay: str) -> str:
     return base.rstrip("/")
 
 
-def _post_agent_sync(base: str, durable_token: str) -> list[dict]:
-    """중앙 서버에 durable 토큰으로 자동 동기화 요청 → 승인된 미연결 서버의 일회용 토큰 목록."""
-    import json
-    import ssl
-    import urllib.request
+def _central_post(url: str, payload: dict, timeout: float = 8.0) -> dict:
+    """중앙 서버에 JSON POST 후 응답 dict 반환 — SSL(certifi)·헤더·직렬화·파싱 공통(7개 admin/sync 호출 공유).
 
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token}).encode("utf-8")
-    # User-Agent 필수(WAF 가 기본 Python-urllib UA 를 403 으로 막는다).
-    req = urllib.request.Request(
-        base + "/provider/agent/sync",
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": f"nexa-agent/{AGENT_VERSION}",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=6, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return list(json.loads(resp.read().decode("utf-8")).get("joins") or [])
-
-
-def _post_provider_admin(base: str, action: str, durable_token: str, guild_id: int, target_id: int = 0) -> dict:
-    """중앙 서버 관리 API 호출(관리자 전용). durable 토큰으로 신원 인증 → central 이 관리자 판정 후 동작.
-
-    action: 'manage'(승인대기·로스터 조회) | 'approve' | 'reject' | 'remove'. 권한은 central 이 JDA 로 판정한다.
+    User-Agent 필수(WAF 가 기본 Python-urllib UA 를 403 으로 막는다). 아래 7개 래퍼는 URL·payload·timeout 만 달라진다.
     """
     import json
     import ssl
@@ -85,35 +61,40 @@ def _post_provider_admin(base: str, action: str, durable_token: str, guild_id: i
     import certifi
 
     ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token, "guildId": guild_id, "targetProviderId": target_id}).encode("utf-8")
+    body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
-        base + "/provider/admin/" + action,
+        url,
         data=body,
         method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
     )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
         return dict(json.loads(resp.read().decode("utf-8")))
+
+
+def _post_agent_sync(base: str, durable_token: str) -> list[dict]:
+    """중앙 서버에 durable 토큰으로 자동 동기화 요청 → 승인된 미연결 서버의 일회용 토큰 목록."""
+    resp = _central_post(base + "/provider/agent/sync", {"durableToken": durable_token}, timeout=6)
+    return list(resp.get("joins") or [])
+
+
+def _post_provider_admin(base: str, action: str, durable_token: str, guild_id: int, target_id: int = 0) -> dict:
+    """중앙 서버 관리 API 호출(관리자 전용). durable 토큰으로 신원 인증 → central 이 관리자 판정 후 동작.
+
+    action: 'manage'(승인대기·로스터 조회) | 'approve' | 'reject' | 'remove'. 권한은 central 이 JDA 로 판정한다.
+    """
+    return _central_post(
+        base + "/provider/admin/" + action,
+        {"durableToken": durable_token, "guildId": guild_id, "targetProviderId": target_id},
+    )
 
 
 def _post_provider_admin_policy(base: str, durable_token: str, guild_id: int, auto_approve: bool) -> dict:
     """서버 제공 정책(신규 자동 승인) 토글 — central 이 관리자 판정 후 저장."""
-    import json
-    import ssl
-    import urllib.request
-
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token, "guildId": guild_id, "autoApprove": auto_approve}).encode("utf-8")
-    req = urllib.request.Request(
+    return _central_post(
         base + "/provider/admin/manage/policy",
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+        {"durableToken": durable_token, "guildId": guild_id, "autoApprove": auto_approve},
     )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
 
 
 def _post_provider_admin_promptset(
@@ -131,64 +112,20 @@ def _post_provider_admin_promptset(
     path: ''(목록) | '/add'(추가) | '/default'(기본 지정) | '/delete'(삭제). 권한은 central 이 JDA 로 판정한다.
     builtin(니아) 셋의 전문은 central 이 응답에 담지 않는다(preview 만).
     """
-    import json
-    import ssl
-    import urllib.request
-
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps(
-        {"durableToken": durable_token, "guildId": guild_id, "name": name, "content": content, "id": set_id},
-    ).encode("utf-8")
-    req = urllib.request.Request(
+    return _central_post(
         base + "/provider/admin/prompt-sets" + path,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+        {"durableToken": durable_token, "guildId": guild_id, "name": name, "content": content, "id": set_id},
     )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
 
 
 def _post_provider_admin_guild(base: str, path: str, durable_token: str, guild_id: int) -> dict:
     """길드 단위 읽기 관리 API 호출(관리자 전용). path: channel-ai|knowledge|presets. body 는 신원+길드만."""
-    import json
-    import ssl
-    import urllib.request
-
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token, "guildId": guild_id}).encode("utf-8")
-    req = urllib.request.Request(
-        base + "/provider/admin/" + path,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
-    )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
+    return _central_post(base + "/provider/admin/" + path, {"durableToken": durable_token, "guildId": guild_id})
 
 
 def _post_provider_admin_delete(base: str, path: str, durable_token: str, guild_id: int, id_key: str, id_val: str) -> dict:
     """관리 삭제 공통(프리셋/지식 소스). central 이 durable 토큰 신원 + 길드 소유권을 가드한다."""
-    import json
-    import ssl
-    import urllib.request
-
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps({"durableToken": durable_token, "guildId": guild_id, id_key: str(id_val)}).encode("utf-8")
-    req = urllib.request.Request(
-        base + path,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
-    )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
+    return _central_post(base + path, {"durableToken": durable_token, "guildId": guild_id, id_key: str(id_val)})
 
 
 def _post_provider_admin_channels(
@@ -205,24 +142,10 @@ def _post_provider_admin_channels(
     channel_id 는 64bit Discord ID — Python int 는 정밀도 손실이 없으므로 그대로 전송한다.
     권한은 central 이 JDA 로 판정하고, 허용 목록 "빈 목록 = 전체 허용" 의미도 central 이 보존한다.
     """
-    import json
-    import ssl
-    import urllib.request
-
-    import certifi
-
-    ctx = ssl.create_default_context(cafile=certifi.where())
-    body = json.dumps(
-        {"durableToken": durable_token, "guildId": guild_id, "channelId": channel_id, "allow": allow},
-    ).encode("utf-8")
-    req = urllib.request.Request(
+    return _central_post(
         base + "/provider/admin/channels" + path,
-        data=body,
-        method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+        {"durableToken": durable_token, "guildId": guild_id, "channelId": channel_id, "allow": allow},
     )
-    with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
 
 
 class ProviderAgent:
@@ -250,17 +173,10 @@ class ProviderAgent:
         self._sd_wh: tuple[int, int] | None = None  # 활성 체크포인트 기준 생성 해상도(lazy 캐시, 모델 변경 시 무효화)
         self._sd_boot_task: asyncio.Task[None] | None = None  # 설치된 SD 자동기동 + 준비되면 재광고
         self._sem = asyncio.Semaphore(cfg.max_concurrency)
-        # 동시 처리 상한도 **서버(guild)별**로 독립 적용. 길드 전용 세마포어(lazy).
-        # 전역 self._sem 은 머신 전체 보호, 여기 세마포어는 그 서버 1곳의 동시 처리 상한.
-        # 정책 변경(set_guild_policy) 시 해당 항목을 폐기 → 새 상한으로 재생성.
-        self._guild_sems: dict[int | None, asyncio.Semaphore] = {}
-        # 일일 한도는 **서버(guild)별로 독립** 적용한다. 한 에이전트가 여러 길드에 제공해도
-        # 길드마다 한도만큼 따로 카운트(전역 합산 공유 X). 0 = 무제한(dict 미사용).
-        # 키 = guild_id(None = 길드 미상 토큰 연결 폴백). lazy init: 첫 접근 시 그 길드 한도로 채움.
-        self._remaining_by_guild: dict[int | None, int] = {}
-        # 서버별 정책 override {guild_id: {daily_limit, …}} — 데스크톱 앱 G3 가 설정. run() 에서 로드.
-        # 없는 길드는 전역 기본(cfg.daily_limit)을 쓴다.
-        self._guild_policy: dict[int, dict] = {}
+        # 서버(guild)별 정책·일일 한도·동시성 세마포어는 한 협력자(GuildPolicyManager)가 소유한다 —
+        # 셋이 얽혀 있어 일관성(원자적 정책 변경·중앙 리로드·stale 참조 방지)을 한곳에서 보장.
+        # 전역 self._sem 은 머신 전체 보호, 길드 세마포어는 그 서버 1곳의 동시 처리 상한(서로 별개).
+        self._policy_mgr = GuildPolicyManager(cfg)
         # 클라우드 Gemini 백엔드(관리자 키 1개로 서버 전체 제공). 키 있으면 gemini 모델을 풀에 광고하고
         # gemini-* 모델 요청을 Gemini API 로 라우팅한다(Ollama 와 동일 한도·공정성). 키는 이 PC 에만.
         self._gemini = None
@@ -285,66 +201,14 @@ class ProviderAgent:
         self._entries: list[dict] = []
         self._entries_lock = asyncio.Lock()
 
-    # ── 일일 한도(서버별) ───────────────────────────────────────────────
-    def _limit_for(self, guild_id: int | None) -> int:
-        """이 길드에 적용할 일일 한도. 서버별 override(G3) 가 있으면 그 값, 없으면 전역 기본."""
-        if guild_id is not None:
-            pol = self._guild_policy.get(guild_id)
-            if pol is not None and pol.get("daily_limit") is not None:
-                return max(0, int(pol["daily_limit"]))
-        return self._cfg.daily_limit
-
-    def _remaining_for(self, guild_id: int | None) -> int:
-        """이 길드의 남은 일일 한도. 무제한이면 0(센티넬). 첫 접근 시 그 길드 한도로 init."""
-        limit = self._limit_for(guild_id)
-        if limit <= 0:
-            return 0  # 무제한(hello 의 remaining=0 은 '한도 없음'을 뜻함)
-        if guild_id not in self._remaining_by_guild:
-            self._remaining_by_guild[guild_id] = limit
-        return self._remaining_by_guild[guild_id]
-
-    # ── 동시 처리·최대 시간(서버별) ──────────────────────────────────────
-    def _concurrency_for(self, guild_id: int | None) -> int:
-        """이 길드에 적용할 동시 처리 상한. 서버별 override(G3) 우선, 없으면 전역."""
-        if guild_id is not None:
-            pol = self._guild_policy.get(guild_id)
-            if pol is not None and pol.get("max_concurrency") is not None:
-                return max(1, int(pol["max_concurrency"]))
-        return self._cfg.max_concurrency
-
-    def _guild_sem(self, guild_id: int | None) -> asyncio.Semaphore:
-        """이 길드 전용 동시성 세마포어(lazy). 정책 변경 시 set_guild_policy 에서 폐기→재생성."""
-        sem = self._guild_sems.get(guild_id)
-        if sem is None:
-            sem = asyncio.Semaphore(self._concurrency_for(guild_id))
-            self._guild_sems[guild_id] = sem
-        return sem
-
-    def _max_seconds_for(self, guild_id: int | None) -> float:
-        """이 길드 1건 최대 처리 시간(초). 서버별 override 만 적용(없으면 0 = 추가 상한 없음)."""
-        if guild_id is not None:
-            pol = self._guild_policy.get(guild_id)
-            if pol is not None and pol.get("max_seconds") is not None:
-                return max(0.0, float(pol["max_seconds"]))
-        return 0.0
-
     # ── 핸드셰이크 ──────────────────────────────────────────────────────
     def _models_for(self, guild_id: int | None) -> list[str]:
-        """이 길드에 광고할 채팅 모델. 길드 정책 chatModels override 가 있으면 그것(현재 제공 가능한 것만),
-        없거나 비면 전체(self._models). 서버별로 어떤 모델을 줄지 관리자가 고를 수 있게 한다."""
-        if guild_id is not None:
-            sel = self._guild_policy.get(guild_id, {}).get("chatModels")
-            if isinstance(sel, list) and sel:
-                picked = [m for m in sel if m in self._models]
-                if picked:
-                    return picked
-        return self._models
+        """이 길드에 광고할 채팅 모델 — 정책(chatModels override)과 현재 제공 가능한 모델(self._models)을 결합."""
+        return self._policy_mgr.models_for(guild_id, self._models)
 
     def _image_for(self, guild_id: int | None) -> bool:
-        """이 길드에 이미지(SD) capability 를 광고할지. SD 준비됨 + 길드가 명시 비활성(imageEnabled=False)이 아님."""
-        if not self._image_ready:
-            return False
-        return guild_id is None or self._guild_policy.get(guild_id, {}).get("imageEnabled") is not False
+        """이 길드에 이미지(SD) capability 를 광고할지 — SD 준비됨(self._image_ready) + 정책상 비활성 아님."""
+        return self._policy_mgr.image_for(guild_id, self._image_ready)
 
     def _build_hello(self, guild_id: int | None = None) -> ProviderHelloFrame:
         capabilities = ["text"]
@@ -352,8 +216,8 @@ class ProviderAgent:
             capabilities.append("image")
         return ProviderHelloFrame(
             models=self._models_for(guild_id),
-            max_concurrency=self._concurrency_for(guild_id),
-            remaining_daily_requests=self._remaining_for(guild_id),
+            max_concurrency=self._policy_mgr.concurrency_for(guild_id),
+            remaining_daily_requests=self._policy_mgr.remaining_for(guild_id),
             capabilities=capabilities,
         )
 
@@ -379,6 +243,23 @@ class ProviderAgent:
         while len(self._cancel_order) > self._cancel_cap:
             self._cancelled.discard(self._cancel_order.popleft())
 
+    def _infer_gate(self, guild_id: int | None) -> str | None:
+        """추론 전 게이트(프로바이더 주권). 반려 사유 메시지(모두 BUSY)를 돌려주거나, 통과면 None.
+
+        순서·메시지·로깅은 handle_infer 인라인 시절과 동일: ① 서버 일시중지 → ② 일일 한도 초과 → ③ 자원 보호.
+        """
+        if self._policy_mgr.paused_for(guild_id):
+            return "이 서버 제공 일시중지됨"
+        limit = self._policy_mgr.limit_for(guild_id)
+        if limit > 0 and self._policy_mgr.remaining_for(guild_id) <= 0:
+            return "일일 한도 초과"
+        # 자원 보호: CPU 고부하·배터리 방전 중에는 자동 pause(BUSY 로 반려, 한도 소모 안 함).
+        paused, reason = sysinfo.should_pause(self._cfg.pause_on_battery, self._cfg.pause_on_high_load)
+        if paused:
+            logger.info("자원 보호로 일시 중지(%s) — 요청 반려", reason)
+            return f"자원 보호 일시중지({reason})"
+        return None
+
     async def handle_infer(self, conn: AgentConnection, req: InferRequest) -> None:
         if req.request_id in self._cancelled:
             self._cancelled.discard(req.request_id)
@@ -388,31 +269,23 @@ class ProviderAgent:
         # 한도는 **이 연결의 guild 별로 독립** — 다른 서버의 소진이 이 서버에 영향 주지 않는다.
         # 한도값도 서버별(override 우선). 0 = 그 서버 무제한.
         guild_id = conn.guild_id
-        # 이 서버에 대한 내 제공 일시중지(provider 주권) — 연결은 유지하되 이 길드 요청만 반려.
-        if guild_id is not None and self._guild_policy.get(guild_id, {}).get("paused"):
-            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message="이 서버 제공 일시중지됨"))
+        # 추론 전 게이트(프로바이더 주권): 일시중지·일일한도·자원보호. 통과 못 하면 BUSY 로 반려(우회 불가).
+        rejection = self._infer_gate(guild_id)
+        if rejection is not None:
+            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message=rejection))
             return
-        limit = self._limit_for(guild_id)
-        if limit > 0 and self._remaining_for(guild_id) <= 0:
-            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message="일일 한도 초과"))
-            return
-        # 자원 보호: CPU 고부하·배터리 방전 중에는 자동 pause(BUSY 로 반려, 한도 소모 안 함).
-        paused, reason = sysinfo.should_pause(self._cfg.pause_on_battery, self._cfg.pause_on_high_load)
-        if paused:
-            logger.info("자원 보호로 일시 중지(%s) — 요청 반려", reason)
-            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message=f"자원 보호 일시중지({reason})"))
-            return
+        limit = self._policy_mgr.limit_for(guild_id)
         # 동시 처리 상한도 **서버별** 강제: 이 길드 전용 세마포어로 게이트(전역 self._sem 은 머신 보호).
         # 최대 처리 시간(서버별)은 wait_for 로 1건씩 강제 — 넘으면 중단·반려(한도/자원 보호).
-        guild_sem = self._guild_sem(guild_id)
-        max_seconds = self._max_seconds_for(guild_id)
+        guild_sem = self._policy_mgr.guild_sem(guild_id)
+        max_seconds = self._policy_mgr.max_seconds_for(guild_id)
         async with guild_sem, self._sem:
             if req.request_id in self._cancelled:
                 self._cancelled.discard(req.request_id)
                 return
             self._inflight += 1
             if limit > 0:
-                self._remaining_by_guild[guild_id] = self._remaining_for(guild_id) - 1
+                self._policy_mgr.decrement_remaining(guild_id)
             # 서버가 모델을 지정하지 않으면 '기본 응답 모델'로 처리한다(설정값이 제공 중이면 그것, 아니면 첫 모델).
             model = req.model or self._preferred_model()
             try:
@@ -426,6 +299,8 @@ class ProviderAgent:
                     conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=f"최대 처리 시간({int(max_seconds)}s) 초과")
                 )
             except OllamaError as exc:
+                # 서버측 진단을 위해 모델·요청 맥락과 함께 남긴다(사용자에겐 InferError 로 전달, 예외 원칙 4).
+                logger.warning("Ollama 오류(model=%s, request=%s): %s", model, req.request_id[:8], exc)
                 await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
             except asyncio.CancelledError:
                 logger.info("요청 %s… 취소됨", req.request_id[:8])
@@ -595,7 +470,8 @@ class ProviderAgent:
         try:
             await conn.send(frame)
         except Exception as exc:  # noqa: BLE001
-            logger.debug("응답 송신 실패(연결 끊김?): %s", exc)
+            # 프레임 타입·길드 맥락을 남겨 어떤 응답이 유실됐는지 추적 가능하게 한다(예외 원칙 4).
+            logger.debug("응답 송신 실패(연결 끊김?) frame=%s guild=%s: %s", type(frame).__name__, conn.guild_id, exc)
 
     # ── 상태 보고 ───────────────────────────────────────────────────────
     async def _status_loop(self, conn: AgentConnection) -> None:
@@ -639,8 +515,9 @@ class ProviderAgent:
                 from .config_file import set_connection_token
 
                 set_connection_token(new_token, guild_id=gid, old_token=old)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                # 토큰 저장 실패를 삼키면 다음 재연결 인증이 조용히 깨진다 — 최소한 남긴다(예외 원칙 3·4).
+                logger.warning("durable 토큰 저장 실패(guild=%s) — 다음 재연결에 영향 가능: %s", gid, exc)
 
         entry: dict = {"conn": None, "task": None, "status_task": None,
                        "guild_id": guild_id, "guild_name": guild_name, "token": token}
@@ -667,8 +544,8 @@ class ProviderAgent:
     async def _stop_entry(self, entry: dict) -> None:
         try:
             await entry["conn"].stop()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("연결 종료 실패(guild=%s): %s", entry.get("guild_id"), exc)
         for t in (entry["task"], entry["status_task"]):
             if t is not None:
                 t.cancel()
@@ -738,7 +615,7 @@ class ProviderAgent:
                 "guildId": (str(e["guild_id"]) if e["guild_id"] is not None else None),
                 "guildName": e["guild_name"],
                 "connected": e["conn"].authed,
-                "paused": bool(self._guild_policy.get(e["guild_id"], {}).get("paused")),
+                "paused": self._policy_mgr.paused_for(e["guild_id"]),
             }
             for i, e in enumerate(self._entries)
         ]
@@ -870,20 +747,14 @@ class ProviderAgent:
     # ── 서버별 정책(데스크톱 앱 G3) ─────────────────────────────────────
     def guild_policy(self, guild_id: int) -> dict:
         """현재 적용 중인 이 서버의 내 정책(전역 기본값과 병합)."""
-        pol = dict(self._guild_policy.get(guild_id, {}))
-        pol.setdefault("daily_limit", self._cfg.daily_limit)
-        return pol
+        return self._policy_mgr.policy(guild_id)
 
     async def set_guild_policy(self, guild_id: int, policy: dict) -> None:
-        """이 서버에 대한 내 정책 override 를 저장·적용(앱 G3). 한도 변경은 즉시 재광고(hello)."""
-        from .config_file import set_guild_policy as _save
+        """이 서버에 대한 내 정책 override 를 저장·적용(앱 G3). 한도 변경은 즉시 재광고(hello).
 
-        _save(guild_id, policy)
-        self._guild_policy[guild_id] = {**self._guild_policy.get(guild_id, {}), **policy}
-        # 새 한도로 잔여 리셋 → 모든 연결 재광고(새 remaining 을 hello 로 중앙에 보고)
-        self._remaining_by_guild.pop(guild_id, None)
-        # 동시 처리 상한이 바뀌었을 수 있으니 길드 세마포어 폐기 → 다음 요청 때 새 상한으로 재생성.
-        self._guild_sems.pop(guild_id, None)
+        잔여·세마포어 폐기→재생성은 GuildPolicyManager.set_policy 가 원자적으로 처리.
+        """
+        self._policy_mgr.set_policy(guild_id, policy)
         await self._readvertise()
 
     # ── 자동 동기화: 연동된 사용자가 디스코드 /프로바이더참여 한 새 서버에 앱이 스스로 연결 ──────
@@ -904,7 +775,8 @@ class ProviderAgent:
         base = _agent_sync_base(self._cfg.relay_url)
         try:
             joins = await asyncio.to_thread(_post_agent_sync, base, durable)
-        except Exception:  # noqa: BLE001 - 네트워크/서버 실패는 다음 주기에 재시도
+        except Exception as exc:  # noqa: BLE001 - 네트워크/서버 실패는 다음 주기에 재시도
+            logger.warning("자동 서버 동기화 실패(다음 주기 재시도): %s", exc)
             return
         existing = {e["guildId"] for e in self.connections_status() if e.get("guildId") is not None}
         for jn in joins:
@@ -934,12 +806,8 @@ class ProviderAgent:
         return list(self._models)
 
     def _remaining_summary(self) -> str:
-        """서버별 일일 잔여 요약. 무제한이면 '무제한', 아니면 길드별 잔여(아직 없으면 한도값)."""
-        if self._cfg.daily_limit <= 0:
-            return "무제한"
-        if not self._remaining_by_guild:
-            return f"{self._cfg.daily_limit}/서버"
-        return " ".join(f"{g}:{n}" for g, n in self._remaining_by_guild.items())
+        """서버별 일일 잔여 요약(로깅). 무제한이면 '무제한', 아니면 길드별 잔여(아직 없으면 한도값)."""
+        return self._policy_mgr.summary()
 
     def status_line(self) -> str:
         """트레이/콘솔용 한 줄 상태 요약."""
@@ -1010,7 +878,7 @@ class ProviderAgent:
         # 나머지는 유지 — run 은 stop 요청까지만 대기한다.
         from .config_file import load_connections, load_guild_policies
 
-        self._guild_policy = load_guild_policies()  # 서버별 한도 override 적용
+        self._policy_mgr.reload(load_guild_policies())  # 서버별 한도 override 적용
         saved = load_connections()
         if not saved and self._cfg.token:
             saved = [{"token": self._cfg.token, "guild_id": None, "guild_name": None}]
@@ -1061,8 +929,9 @@ class ProviderAgent:
             if cm:
                 try:
                     await self._sd.set_checkpoint(cm)
-                except Exception:  # noqa: BLE001 - 실패해도 첫 모델로 동작
-                    pass
+                except Exception as exc:  # noqa: BLE001 - 실패해도 첫 모델로 동작
+                    # 저장된 체크포인트가 조용히 무시되면 유저는 선택한 모델 대신 기본을 보게 된다 — 남긴다(예외 원칙 3).
+                    logger.warning("저장된 체크포인트 적용 실패(%s) — 기본 모델로 진행: %s", cm, exc)
             self._image_ready = True
             self._invalidate_resolution()
             await self._readvertise()

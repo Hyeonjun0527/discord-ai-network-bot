@@ -1,12 +1,16 @@
 """자원 상태 감지 (차수 3, 선택적 psutil). 배터리/부하를 provider_status 로 보고한다."""
 from __future__ import annotations
 
+import logging
+
 try:  # psutil 은 선택 의존성(`.[monitor]`)
     import psutil  # type: ignore[import-untyped]
 
     _HAVE_PSUTIL = True
 except ImportError:  # pragma: no cover
     _HAVE_PSUTIL = False
+
+logger = logging.getLogger("provider_agent.sysinfo")
 
 # 이 사용률(%) 이상이면 고부하로 본다.
 HIGH_LOAD_PERCENT = 85.0
@@ -18,7 +22,8 @@ def load_level() -> str:
         return "idle"
     try:
         return "high" if psutil.cpu_percent(interval=None) >= HIGH_LOAD_PERCENT else "idle"
-    except Exception:  # pragma: no cover
+    except Exception as exc:  # pragma: no cover  # noqa: BLE001
+        logger.debug("CPU 부하 읽기 실패(idle 로 처리): %s", exc)
         return "idle"
 
 
@@ -28,7 +33,8 @@ def battery_state() -> str:
         return ""
     try:
         bat = psutil.sensors_battery()
-    except Exception:  # pragma: no cover
+    except Exception as exc:  # pragma: no cover  # noqa: BLE001
+        logger.debug("배터리 상태 읽기 실패(빈 값으로 처리): %s", exc)
         return ""
     if bat is None:
         return ""

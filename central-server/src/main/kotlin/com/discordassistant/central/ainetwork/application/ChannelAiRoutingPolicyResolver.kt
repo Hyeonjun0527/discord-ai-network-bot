@@ -75,22 +75,7 @@ class ChannelAiRoutingPolicyResolver {
                     val feedback = feedbackSignals[provider.providerUserId] ?: ProviderFeedbackSignal.EMPTY
                     splitCsv(provider.modelNames).map { modelName ->
                         val providerTags = splitCsv(provider.capabilityTags).toSet()
-                        val reasons =
-                            buildList {
-                                if (provider.providerState != ProviderAvailability.ONLINE) add("provider_offline")
-                                if (provider.overloadRisk ==
-                                    OverloadRisk.CRITICAL
-                                ) {
-                                    add("provider_critical_overload")
-                                }
-                                if (provider.qualityTier.rank <
-                                    ModelQualityTier.rankOf(effective.minQualityTier)
-                                ) {
-                                    add("quality_below_minimum")
-                                }
-                                if (allowedModels.isNotEmpty() && modelName !in allowedModels) add("model_not_allowed")
-                                if (tagFilter.isNotEmpty() && providerTags.intersect(tagFilter).isEmpty()) add("provider_tag_mismatch")
-                            }
+                        val reasons = ineligibleReasons(provider, modelName, providerTags, effective, allowedModels, tagFilter)
                         ModelCandidate(
                             modelName = modelName,
                             providerUserId = provider.providerUserId,
@@ -171,6 +156,23 @@ class ChannelAiRoutingPolicyResolver {
             .split(",")
             .map { it.trim() }
             .filter { it.isNotBlank() }
+
+    /** 한 (provider, model) 후보가 제외되는 사유 목록(빈 목록 = eligible). 규칙·코드·순서는 분해 전과 동일. */
+    private fun ineligibleReasons(
+        provider: ProviderCapabilityProfileEntity,
+        modelName: String,
+        providerTags: Set<String>,
+        effective: EffectiveRoutingPolicy,
+        allowedModels: Set<String>,
+        tagFilter: Set<String>,
+    ): List<String> =
+        buildList {
+            if (provider.providerState != ProviderAvailability.ONLINE) add("provider_offline")
+            if (provider.overloadRisk == OverloadRisk.CRITICAL) add("provider_critical_overload")
+            if (provider.qualityTier.rank < ModelQualityTier.rankOf(effective.minQualityTier)) add("quality_below_minimum")
+            if (allowedModels.isNotEmpty() && modelName !in allowedModels) add("model_not_allowed")
+            if (tagFilter.isNotEmpty() && providerTags.intersect(tagFilter).isEmpty()) add("provider_tag_mismatch")
+        }
 
     private fun summarizeModelCandidates(
         candidates: List<ModelCandidate>,

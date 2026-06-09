@@ -18,8 +18,8 @@ import kotlin.math.sqrt
  * 수식·상수·연산 순서는 분해 이전과 1바이트도 다르지 않게 보존한다.
  */
 @Component
-class HaloGfScoreModel {
-    fun scoreResult(
+class HaloGfScoreModel : ScoreModel {
+    override fun scoreResult(
         c: Candidate,
         ctx: RequestContext,
     ): RoutingScoreBreakdown {

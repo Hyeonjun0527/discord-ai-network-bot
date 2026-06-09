@@ -9,7 +9,9 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
+import shutil
 import ssl
 import subprocess
 import sys
@@ -22,6 +24,18 @@ from urllib.parse import quote
 
 from .constants import AGENT_VERSION, APP_DISPLAY_NAME, GUI_MAC_ASSET, GUI_WIN_ASSET
 from .version_check import is_outdated
+
+logger = logging.getLogger("provider_agent.updater")
+
+
+def _cleanup_tmp_and_fail(tmp: Path, error: str) -> dict:
+    """업데이트 실패 시 임시 디렉터리를 정리하고 에러 dict 를 돌려준다(예외 원칙 8: 자원 정리).
+
+    성공 경로의 tmp 는 분리된 교체 헬퍼(swap.sh/swap.bat)가 마지막에 직접 지우므로 건드리지 않는다 —
+    여기서는 헬퍼가 실행되지 않는 **실패 경로**의 누수(수백 MB 다운로드본)만 정리한다.
+    """
+    shutil.rmtree(tmp, ignore_errors=True)
+    return {"ok": False, "error": error}
 
 REPO = "Hyeonjun0527/discord-ai-network-bot"
 # API(api.github.com)는 미인증 60req/hr(공유 IP면 부족) → 'releases/latest' 리다이렉트로 태그만 얻고
@@ -193,7 +207,9 @@ def _verify_checksum(zip_path: Path, asset_name: str, sums_url: str | None) -> s
         return None
     try:
         sums = _http_get(sums_url, "application/octet-stream").decode("utf-8")
-    except Exception:  # noqa: BLE001 - 합계 못 받으면 베스트에포트로 진행
+    except Exception as exc:  # noqa: BLE001 - 합계 못 받으면 베스트에포트로 진행
+        # 무결성 검증을 건너뛰는 것은 보안적으로 약하므로 조용히 넘기지 않고 흔적을 남긴다(예외 원칙 3).
+        logger.warning("SHA256SUMS 수신 실패 — 무결성 검증 건너뜀(베스트에포트): %s (%s)", sums_url, exc)
         return None
     want = next((ln.split()[0] for ln in sums.splitlines() if asset_name in ln and ln.split()), None)
     if want and want.lower() != _sha256(zip_path).lower():
@@ -247,22 +263,22 @@ def _apply_macos(relaunch: str = "gui") -> dict:
     try:
         _download(url, zip_path)
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": f"다운로드 실패: {exc}"}
+        return _cleanup_tmp_and_fail(tmp, f"다운로드 실패: {url} — {exc}")
 
     _set_progress(phase="verifying", message="무결성 검증 중…")
     bad = _verify_checksum(zip_path, MAC_ASSET, latest["assets"].get(SUMS_ASSET))
     if bad:
-        return {"ok": False, "error": bad}
+        return _cleanup_tmp_and_fail(tmp, bad)
 
     _set_progress(phase="installing", message="설치 중…")
     extract = tmp / "x"
     try:
         subprocess.run(["ditto", "-x", "-k", str(zip_path), str(extract)], check=True, capture_output=True, text=True)
     except (subprocess.CalledProcessError, OSError) as exc:
-        return {"ok": False, "error": f"압축 해제 실패: {exc}"}
+        return _cleanup_tmp_and_fail(tmp, f"압축 해제 실패(ditto): {exc}")
     new_app = next(iter(extract.glob("*.app")), None)
     if new_app is None or not new_app.exists():
-        return {"ok": False, "error": "패키지에서 앱을 찾지 못했어요."}
+        return _cleanup_tmp_and_fail(tmp, "패키지에서 앱을 찾지 못했어요.")
 
     # 현재 프로세스가 종료된 뒤 교체·재실행하는 헬퍼(데몬). 실행 중 번들을 자기 자신이 덮어쓰지 않도록 분리.
     # gui → 창으로 다시 열고(open), service → 헤드리스로 창 없이 재실행.
@@ -340,7 +356,9 @@ def start_service_update_watcher(interval_s: float | None = None) -> None:
                             time.sleep(0.5)
                             os._exit(0)  # 헬퍼가 교체·헤드리스 재실행
                         sleep_s = retry  # 적용 실패 → 재시도
-            except Exception:  # noqa: BLE001 - 자동 업데이트 실패는 서비스 동작을 막지 않는다
+            except Exception as exc:  # noqa: BLE001 - 자동 업데이트 실패는 서비스 동작을 막지 않는다
+                # 데몬 스레드라 예외가 묻히기 쉽다 — 왜 업데이트가 안 되는지 추적할 수 있게 남긴다(예외 원칙 3·4).
+                logger.warning("자동 업데이트 주기 실패 — 짧게 재시도: %s", exc)
                 sleep_s = retry
             time.sleep(sleep_s)
 
@@ -364,11 +382,11 @@ def _apply_windows(relaunch: str = "gui") -> dict:
     try:
         _download(url, new_exe)
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": f"다운로드 실패: {exc}"}
+        return _cleanup_tmp_and_fail(tmp, f"다운로드 실패: {url} — {exc}")
     _set_progress(phase="verifying", message="무결성 검증 중…")
     bad = _verify_checksum(new_exe, WIN_ASSET, latest["assets"].get(SUMS_ASSET))
     if bad:
-        return {"ok": False, "error": bad}
+        return _cleanup_tmp_and_fail(tmp, bad)
     _set_progress(phase="installing", message="설치 중…")
     # 실행 중 exe 는 못 덮어쓰므로, 종료를 기다렸다가 교체·재실행하는 배치를 분리 실행.
     pid = os.getpid()

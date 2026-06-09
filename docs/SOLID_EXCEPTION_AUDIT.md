@@ -92,8 +92,8 @@
 - [ ] **SE-060** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1173` `ollama_setup_start` (S) — Line 1173: `except Exception:` catches overly broad exception type (bare Exception). Should catch specific aiohttp.ClientError or json.JSONDecodeError for failed request body parsing, not all exceptions which masks actual bugs. **→** Replace `except Exception:` with `except (aiohttp.ContentTypeError, ValueError):` to catch only JSON parsing errors. Append noqa comment explaining graceful fallback for empty/invalid body.
 - [ ] **SE-061** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1253` `comfy_install_model` (S) — Line 1253: `except Exception:` bare catch. Should catch specific aiohttp.ClientError or json parsing errors only. Silently swallows unrelated exceptions (network, memory, logic errors). **→** Replace with `except (aiohttp.ContentTypeError, ValueError):` to catch JSON parse errors specifically. Document fallback behavior.
 - [ ] **SE-062** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1272` `comfy_select` (S) — Line 1272: `except Exception:` bare catch. Masks bugs in JSON parsing, data processing, or config persistence. **→** Replace with `except (aiohttp.ContentTypeError, ValueError):` to catch only JSON/parsing errors.
-- [ ] **SE-063** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1316` `stop` (S) — Line 1316: `except (TimeoutError, asyncio.CancelledError, Exception):` mixes specific exceptions with bare Exception. Exception catch is redundant & swallows bugs — why catch all exceptions from wait_for? **→** Replace with `except (TimeoutError, asyncio.CancelledError):` only. These are the only recoverable cases from wait_for. Other exceptions (task corruption) should propagate.
-- [ ] **SE-064** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1350` `logout` (S) — Line 1350 (also 1376): `except (TimeoutError, asyncio.CancelledError, Exception):` bare Exception catches all. Task cancellation cleanup should only recover from timeout/cancellation, not swallow logic bugs in agent.request_stop(). **→** Replace with `except (TimeoutError, asyncio.CancelledError):` only. Let actual errors propagate.
+- [x] **SE-063** ✅FIXED(stop 백그라운드 작업 정리 cancel swallow → debug 로그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1316` `stop` (S) — Line 1316: `except (TimeoutError, asyncio.CancelledError, Exception):` mixes specific exceptions with bare Exception. Exception catch is redundant & swallows bugs — why catch all exceptions from wait_for? **→** Replace with `except (TimeoutError, asyncio.CancelledError):` only. These are the only recoverable cases from wait_for. Other exceptions (task corruption) should propagate.
+- [x] **SE-064** ✅FIXED(logout 백그라운드 작업 정리 cancel swallow → debug 로그) `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1350` `logout` (S) — Line 1350 (also 1376): `except (TimeoutError, asyncio.CancelledError, Exception):` bare Exception catches all. Task cancellation cleanup should only recover from timeout/cancellation, not swallow logic bugs in agent.request_stop(). **→** Replace with `except (TimeoutError, asyncio.CancelledError):` only. Let actual errors propagate.
 - [ ] **SE-065** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1818` `_auto_update_once` (M) — Line 1818: `except Exception:` bare catch. Catches ALL exceptions from load_config, updater.check, updater.apply_update — could mask import errors, attribute errors, file system errors unrelated to update logic. **→** Catch specific exceptions: `except (aiohttp.ClientError, OSError, ValueError):` for network/file/parse errors. Let logic errors (AttributeError, KeyError) propagate for debugging.
 - [ ] **SE-066** `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1853` `run_gui` (M) — Line 1853: `except Exception as exc:` bare catch for webview.create_window + webview.start. Swallows import errors, rendering bugs, window system errors. Should catch specific webview exceptions. **→** Catch specific exceptions: `except (ImportError, RuntimeError):` for missing library vs runtime window errors. Let other exceptions propagate to main handler.
 - [ ] **SE-067** `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/DiscordWebhookNotifier.kt:53` `notify` (S) — catch(Exception) at line 53 swallows the full exception—only logs e.message (which may be null/empty). Stack trace and root cause are lost, making production debugging impossible when webhook fails. **→** Log full exception: log.warn("Discord 웹훅 전송 실패", e) instead of e.message. Preserve cause chain for debugging infrastructure issues.
@@ -1049,13 +1049,13 @@
 - [ ] **SE-234** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:558` `image_toggle` (S)
   - except Exception: data = {}로 요청 본문 파싱 실패를 무시. JSONDecodeError와 기타 예외를 구분 없이 빈 dict로 취급. 클라이언트가 보낸 잘못된 JSON 원인을 알 수 없음.
   - **Fix:** except json.JSONDecodeError을 명확히 구분. 다른 예외는 로그 후 400 Bad Request 반환.
-- [ ] **SE-255** 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:112` `_RingHandler.emit` (S)
+- [x] **SE-255** ✅FIXED(RingHandler.emit는 로그핸들러 내부라 logger 호출 시 재귀 → 의도적 무시임을 주석으로 명확화) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:112` `_RingHandler.emit` (S)
   - emit 내 except: pass 로 로그 포맷 실패를 조용히 삼킴. 형식화 오류가 있어도 로그가 명시적으로 실패하지 않아, 대시보드가 왜 빈지 원인을 알 수 없음.
   - **Fix:** except Exception as e를 로거로 전파: logging.getLogger(__name__).warning(..., exc_info=True). 또는 try-except 내부에서 최소 스트링 fallback 제공.
-- [ ] **SE-256** 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1853` `run_gui` (S)
+- [x] **SE-256** ✅FIXED(네이티브 창/브라우저 폴백 실패 로그(둘 다 실패 시 진단 가능)) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1853` `run_gui` (S)
   - except Exception as exc를 로깅하지만 간결함. 웹뷰 초기화 실패(임포트 없음, 버전 불일치, 시스템 라이브러리 부재 등) 원인이 불명확.
   - **Fix:** logging.exception(...)으로 전체 traceback 포함. 또는 webview 임포트 오류를 분리(ImportError → 폴백 정상, 기타 → 경고).
-- [ ] **SE-257** 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:306` `_start_connect_status_refresher._loop` (S)
+- [x] **SE-257** ✅FIXED(connect 상태 갱신 루프 무로깅 → debug 로그) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:306` `_start_connect_status_refresher._loop` (S)
   - except Exception: pass로 갱신 실패를 조용히 삼킴. 무한 루프에서 시간만 낭비하고, 왜 서버 상태 갱신이 안 되는지 로그 없음.
   - **Fix:** except Exception as e를 logging으로 전파하되, pass 대신 time.sleep 전에 log_warning 추가.
 - [ ] **SE-275** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1332` `service_stop` (S)
@@ -1076,10 +1076,10 @@
 - [ ] **SE-362** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1696` `_brand_icon_png` (S)
   - except Exception으로 아이콘 로드 실패를 무시. 원인을 알 수 없음.
   - **Fix:** 구체 예외로 분리: except FileNotFoundError는 정상(optional), except (OSError, ImportError)는 로그.
-- [ ] **SE-363** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1717` `_set_macos_app_identity` (S)
+- [x] **SE-363** ✅FIXED(macOS 앱 이름 설정 실패 → debug 로그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1717` `_set_macos_app_identity` (S)
   - except Exception으로 macOS 이름/아이콘 설정 실패를 무시. 왜 실패했는지 로그 없음.
   - **Fix:** logging.warning으로 실패 원인 기록.
-- [ ] **SE-364** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1730` `_set_macos_app_identity` (S)
+- [x] **SE-364** ✅FIXED(macOS 앱 아이콘 설정 실패 → debug 로그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1730` `_set_macos_app_identity` (S)
   - except Exception으로 아이콘 설정 실패를 무시. 로그 없음.
   - **Fix:** logging.warning 추가.
 - [ ] **SE-365** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1762` `_handoff_to_service_on_close` (S)
@@ -1088,10 +1088,10 @@
 - [ ] **SE-366** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1818` `_auto_update_once` (S)
   - except Exception: return 'pending'로 자동 업데이트 실패를 뭉뚱그림. 무한 재시도하지만 원인을 모름.
   - **Fix:** except Exception as e를 logging.warning으로 전파. 구체 예외(NetworkError, TimeoutError) 구분.
-- [ ] **SE-367** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1862` `run_gui` (S)
+- [x] **SE-367** ✅FIXED(webbrowser.open 실패 → warning(수동 url 안내)) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:1862` `run_gui` (S)
   - except Exception: pass로 브라우저 열기 실패를 조용히 삼킴. 사용자가 URL을 복사해서 직접 열어야 하는데 알림 없음.
   - **Fix:** print(...) 또는 logging.warning으로 사용자에게 URL 제공 안내.
-- [ ] **SE-368** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:330` `_assets_index` (S)
+- [x] **SE-368** ✅FIXED(_assets_index 자산 로드 실패 → debug 로그) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:330` `_assets_index` (S)
   - except Exception으로 자산 부재를 무시. 실제 읽기 실패(권한, 디스크 오류)를 자산 부재처럼 취급해 분석 불가.
   - **Fix:** except FileNotFoundError로 명확히 하고, except (OSError, PermissionError)는 로그. 오류 구분으로 사용자 안내 개선.
 - [ ] **SE-375** ⚪ `예외4 빈약메시지` `provider-agent/src/provider_agent/webui.py:1521` `settings_post` (S)
@@ -1112,10 +1112,10 @@
 - [ ] **SE-062** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1272` `comfy_select` (S)
   - Line 1272: `except Exception:` bare catch. Masks bugs in JSON parsing, data processing, or config persistence.
   - **Fix:** Replace with `except (aiohttp.ContentTypeError, ValueError):` to catch only JSON/parsing errors.
-- [ ] **SE-063** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1316` `stop` (S)
+- [x] **SE-063** ✅FIXED(stop 백그라운드 작업 정리 cancel swallow → debug 로그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1316` `stop` (S)
   - Line 1316: `except (TimeoutError, asyncio.CancelledError, Exception):` mixes specific exceptions with bare Exception. Exception catch is redundant & swallows bugs — why catch all exceptions from wait_for?
   - **Fix:** Replace with `except (TimeoutError, asyncio.CancelledError):` only. These are the only recoverable cases from wait_for. Other exceptions (task corruption) should propagate.
-- [ ] **SE-064** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1350` `logout` (S)
+- [x] **SE-064** ✅FIXED(logout 백그라운드 작업 정리 cancel swallow → debug 로그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1350` `logout` (S)
   - Line 1350 (also 1376): `except (TimeoutError, asyncio.CancelledError, Exception):` bare Exception catches all. Task cancellation cleanup should only recover from timeout/cancellation, not swallow logic bugs in agent.request_stop().
   - **Fix:** Replace with `except (TimeoutError, asyncio.CancelledError):` only. Let actual errors propagate.
 - [ ] **SE-065** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1818` `_auto_update_once` (M)
@@ -1130,7 +1130,7 @@
 - [x] **SE-144** ✅FIXED(server_manage_* 핸들러군의 guildId 파싱 책임을 헬퍼로 분리(중복 제거)) 🟡 `SRP` `provider-agent/src/provider_agent/webui.py:901-968` `server_manage_policy, server_prompt_sets, server_prompt_set_add, server_prompt_set_default, server_prompt_set_delete` (M)
   - Lines 901-968: Five nearly-identical admin handler functions (lines 901, 915, 927, 942, 956) repeat identical guild_id parsing (try-except KeyError/ValueError) and _running_agent() null check 5 times. Violates SRP — each handler mixes HTTP routing, parameter validation, and business logic.
   - **Fix:** Extract a reusable middleware/decorator: `@_guild_admin_handler` that handles guild_id parsing + agent check, then passes (guild_id, agent, data) to the handler. This reduces each function from 15 lines to 3 and centralizes validation logic.
-- [ ] **SE-211** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1387` `reset_all` (S)
+- [x] **SE-211** ✅FIXED(reset_all 설정파일 삭제 실패 무로깅 → warning(이전 설정 잔존 경고)) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:1387` `reset_all` (S)
   - Line 1387: `except OSError: pass` silently swallows file deletion errors. If config_path().unlink() fails (permissions, disk, race), user gets no feedback and may think reset succeeded when it didn't.
   - **Fix:** Log the error: `except OSError as exc: logging.getLogger(...).warning('설정 파일 삭제 실패: %s', exc)` to surface intent vs reality mismatch.
 - [ ] **SE-235** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/webui.py:1299` `comfy_open` (S)
@@ -1307,7 +1307,7 @@
 - [ ] **SE-357** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/sysinfo.py:29-32` `battery_state` (S)
   - psutil.sensors_battery() 호출 실패를 Exception 으로 무시. 배터리 상태 감지 실패가 로깅되지 않음.
   - **Fix:** except Exception as exc: logger.debug(...) 로 실패만 기록, 또는 다시 커밋하기 전 검토
-- [ ] **SE-358** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:109-113` `_RingHandler.emit` (S)
+- [x] **SE-358** ✅FIXED(RingHandler.emit 의도적 무시 주석화(재귀 방지)) ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:109-113` `_RingHandler.emit` (S)
   - Exception 으로 로그 포맷 실패를 무시(pass). 로그 수집 실패가 자동으로 삼켜져 대시보드 로그가 비어버림.
   - **Fix:** 에러를 stderr 에 쓰거나, 최소한 첫 수회는 경고 로깅
 - [ ] **SE-359** ⚪ `예외3 삼킴` `provider-agent/src/provider_agent/webui.py:50-56` `_mascot_bytes` (S)

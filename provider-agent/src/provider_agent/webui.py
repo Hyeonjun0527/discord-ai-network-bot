@@ -28,6 +28,8 @@ from .config_file import load_config, persist_partial, save_config
 from .constants import AGENT_VERSION, APP_DISPLAY_NAME, DEFAULT_TEXT_MODEL
 from .i18n import t
 
+logger = logging.getLogger("provider_agent.webui")
+
 # 공개 기본 중앙 서버(유저는 입력하지 않음). 자체호스팅만 고급에서 바꿀 수 있다.
 DEFAULT_RELAY = "wss://discord-ai.yeon.world/agent"
 
@@ -124,7 +126,7 @@ class _RingHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             _log_lines.append(self.format(record))
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 - 로그 핸들러 내부: 여기서 logger 를 호출하면 재귀하므로 의도적으로 무시
             pass
 
 
@@ -318,8 +320,8 @@ def _start_connect_status_refresher(interval_s: float = 60.0) -> None:
         while True:
             try:
                 _connect_cache["enabled"] = _probe_connect_status()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("connect 상태 갱신 실패(다음 주기 재시도): %s", exc)
             time.sleep(interval_s)
 
     threading.Thread(target=_loop, daemon=True).start()
@@ -342,8 +344,8 @@ def _assets_index() -> str | None:
         idx = _assets_dir() / "index.html"
         if idx.is_file():
             return idx.read_text(encoding="utf-8")
-    except Exception:  # noqa: BLE001 - 자산 부재/읽기 실패는 폴백으로
-        pass
+    except Exception as exc:  # noqa: BLE001 - 자산 부재/읽기 실패는 폴백으로
+        logger.debug("webui_assets/index.html 로드 실패 — 인라인 폴백: %s", exc)
     return None
 
 
@@ -1312,8 +1314,9 @@ def build_app(session_key: str) -> web.Application:
         if task is not None:
             try:
                 await asyncio.wait_for(asyncio.shield(task), timeout=10)
-            except (TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
+            except (TimeoutError, asyncio.CancelledError, Exception) as exc:  # noqa: BLE001
+                # CancelledError(정상 취소)는 기대된 것 — 나머지 예외도 종료 경로라 전파하지 않되 흔적은 남긴다(예외 원칙 3).
+                logger.debug("백그라운드 작업 정리 중 예외(무시): %s", exc)
         _state["agent"] = None
         _state["task"] = None
         from . import singleton
@@ -1346,8 +1349,9 @@ def build_app(session_key: str) -> web.Application:
         if task is not None:
             try:
                 await asyncio.wait_for(asyncio.shield(task), timeout=10)
-            except (TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
+            except (TimeoutError, asyncio.CancelledError, Exception) as exc:  # noqa: BLE001
+                # CancelledError(정상 취소)는 기대된 것 — 나머지 예외도 종료 경로라 전파하지 않되 흔적은 남긴다(예외 원칙 3).
+                logger.debug("백그라운드 작업 정리 중 예외(무시): %s", exc)
         _state["agent"] = None
         _state["task"] = None
         from . import singleton
@@ -1372,8 +1376,9 @@ def build_app(session_key: str) -> web.Application:
         if task is not None:
             try:
                 await asyncio.wait_for(asyncio.shield(task), timeout=10)
-            except (TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
+            except (TimeoutError, asyncio.CancelledError, Exception) as exc:  # noqa: BLE001
+                # CancelledError(정상 취소)는 기대된 것 — 나머지 예외도 종료 경로라 전파하지 않되 흔적은 남긴다(예외 원칙 3).
+                logger.debug("백그라운드 작업 정리 중 예외(무시): %s", exc)
         _state["agent"] = None
         _state["task"] = None
         from . import singleton
@@ -1383,8 +1388,9 @@ def build_app(session_key: str) -> web.Application:
 
         try:
             config_path().unlink(missing_ok=True)  # 설정 파일 전체 삭제 → 기본값
-        except OSError:
-            pass
+        except OSError as exc:
+            # 삭제 실패는 다음 실행에 이전 설정(토큰 등)이 남는다는 뜻 — 조용히 넘기지 않는다(예외 원칙 3).
+            logger.warning("설정 파일 삭제 실패 — 다음 실행에 이전 설정이 남을 수 있음: %s", exc)
         return web.json_response({"ok": True})
 
     async def onboard_apply(req: web.Request) -> web.Response:
@@ -1707,8 +1713,8 @@ def _set_macos_app_identity(name: str) -> None:
         if info is not None:
             info["CFBundleName"] = name
             info["CFBundleDisplayName"] = name
-    except Exception:  # noqa: BLE001 - 이름 설정 실패는 치명적이지 않음
-        pass
+    except Exception as exc:  # noqa: BLE001 - 이름 설정 실패는 치명적이지 않음
+        logger.debug("macOS 앱 이름 설정 실패(무시): %s", exc)
     try:
         png = _brand_icon_png()
         if png is None:
@@ -1720,8 +1726,8 @@ def _set_macos_app_identity(name: str) -> None:
         image = NSImage.alloc().initWithData_(data)
         if image is not None:
             NSApplication.sharedApplication().setApplicationIconImage_(image)
-    except Exception:  # noqa: BLE001 - 아이콘 설정 실패는 치명적이지 않음
-        pass
+    except Exception as exc:  # noqa: BLE001 - 아이콘 설정 실패는 치명적이지 않음
+        logger.debug("macOS 앱 아이콘 설정 실패(무시): %s", exc)
 
 
 def _schedule_exit(delay: float = 1.2) -> None:
@@ -1852,8 +1858,9 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
 
     try:
         webbrowser.open(url)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        # 웹뷰도 브라우저도 실패하면 사용자는 창을 못 본다 — 원인을 남겨 진단 가능하게 한다(예외 원칙 3·4).
+        logger.warning("브라우저 열기 실패 — 수동으로 %s 를 열어주세요: %s", url, exc)
 
     async def _block() -> None:
         await asyncio.Event().wait()

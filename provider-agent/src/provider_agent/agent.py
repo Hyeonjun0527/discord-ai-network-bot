@@ -301,6 +301,23 @@ class ProviderAgent:
         while len(self._cancel_order) > self._cancel_cap:
             self._cancelled.discard(self._cancel_order.popleft())
 
+    def _infer_gate(self, guild_id: int | None) -> str | None:
+        """추론 전 게이트(프로바이더 주권). 반려 사유 메시지(모두 BUSY)를 돌려주거나, 통과면 None.
+
+        순서·메시지·로깅은 handle_infer 인라인 시절과 동일: ① 서버 일시중지 → ② 일일 한도 초과 → ③ 자원 보호.
+        """
+        if guild_id is not None and self._guild_policy.get(guild_id, {}).get("paused"):
+            return "이 서버 제공 일시중지됨"
+        limit = self._limit_for(guild_id)
+        if limit > 0 and self._remaining_for(guild_id) <= 0:
+            return "일일 한도 초과"
+        # 자원 보호: CPU 고부하·배터리 방전 중에는 자동 pause(BUSY 로 반려, 한도 소모 안 함).
+        paused, reason = sysinfo.should_pause(self._cfg.pause_on_battery, self._cfg.pause_on_high_load)
+        if paused:
+            logger.info("자원 보호로 일시 중지(%s) — 요청 반려", reason)
+            return f"자원 보호 일시중지({reason})"
+        return None
+
     async def handle_infer(self, conn: AgentConnection, req: InferRequest) -> None:
         if req.request_id in self._cancelled:
             self._cancelled.discard(req.request_id)
@@ -310,20 +327,12 @@ class ProviderAgent:
         # 한도는 **이 연결의 guild 별로 독립** — 다른 서버의 소진이 이 서버에 영향 주지 않는다.
         # 한도값도 서버별(override 우선). 0 = 그 서버 무제한.
         guild_id = conn.guild_id
-        # 이 서버에 대한 내 제공 일시중지(provider 주권) — 연결은 유지하되 이 길드 요청만 반려.
-        if guild_id is not None and self._guild_policy.get(guild_id, {}).get("paused"):
-            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message="이 서버 제공 일시중지됨"))
+        # 추론 전 게이트(프로바이더 주권): 일시중지·일일한도·자원보호. 통과 못 하면 BUSY 로 반려(우회 불가).
+        rejection = self._infer_gate(guild_id)
+        if rejection is not None:
+            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message=rejection))
             return
         limit = self._limit_for(guild_id)
-        if limit > 0 and self._remaining_for(guild_id) <= 0:
-            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message="일일 한도 초과"))
-            return
-        # 자원 보호: CPU 고부하·배터리 방전 중에는 자동 pause(BUSY 로 반려, 한도 소모 안 함).
-        paused, reason = sysinfo.should_pause(self._cfg.pause_on_battery, self._cfg.pause_on_high_load)
-        if paused:
-            logger.info("자원 보호로 일시 중지(%s) — 요청 반려", reason)
-            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message=f"자원 보호 일시중지({reason})"))
-            return
         # 동시 처리 상한도 **서버별** 강제: 이 길드 전용 세마포어로 게이트(전역 self._sem 은 머신 보호).
         # 최대 처리 시간(서버별)은 wait_for 로 1건씩 강제 — 넘으면 중단·반려(한도/자원 보호).
         guild_sem = self._guild_sem(guild_id)

@@ -72,6 +72,25 @@ test('로컬 실행: ComfyUI 미설치 → 설치 버튼(데모 mock)', async ({
   await expect(comfy).toContainText('미설치');
 });
 
+test('로컬 실행: 고급(외부 ComfyUI·HF) 패널을 열면 폴링 재렌더에도 닫히지 않는다(회귀)', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.click('.nav-item[data-view="local"]');
+  const adv = page.locator('#localRuntimes details.rt-adv');
+  await expect(adv).toHaveCount(1);
+  const isOpen = () => adv.evaluate((e) => e.open);
+  // mock 엔 외부 ComfyUI·HF 설정이 없어 기본은 접힘.
+  expect(await isOpen()).toBe(false);
+  // 사용자가 펼친다.
+  await adv.locator('summary').click();
+  expect(await isOpen()).toBe(true);
+  // 재렌더(폴링 load 와 동일 경로)를 강제 — 예전엔 여기서 자동으로 닫혔다(open 이 s.comfyUrl||hfOn 로만 계산돼서).
+  await page.click('.nav-item[data-view="local"]');
+  expect(await page.locator('#localRuntimes details.rt-adv').evaluate((e) => e.open)).toBe(true);
+  // 자동 폴링 주기(2.5s)를 넘겨도 펼친 상태 유지.
+  await page.waitForTimeout(2800);
+  expect(await page.locator('#localRuntimes details.rt-adv').evaluate((e) => e.open)).toBe(true);
+});
+
 test('모델: 기본 응답 모델 select + 변경 적용', async ({ page }) => {
   await page.goto('/index.html');
   await page.click('.nav-item[data-view="models"]');

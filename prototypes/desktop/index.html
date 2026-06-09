@@ -1498,7 +1498,11 @@
         '<div class="rt-state">' + comfyState + '</div>' + comfyModelSel + '</div><div class="rt-actions">' + comfyAction + '</div></div>';
       // 고급 · 직접 띄운 외부 ComfyUI 인스턴스에 연결(앱 관리 ComfyUI 대신). 비우면 앱 관리 ComfyUI 사용.
       const hfOn = !!s.hfConfigured;
-      const comfyExternal = '<details class="rt-adv"' + ((s.comfyUrl || hfOn) ? ' open' : '') + '>' +
+      // 폴링 재렌더(load 2.5~3s)가 사용자가 펼친/접은 고급 패널 상태를 덮어쓰면 '열면 자동으로 닫힘' 버그가 난다.
+      // 직전 DOM 의 open 을 읽어 사용자 의도를 보존하고, 첫 렌더(이전 없음)만 설정값(외부 ComfyUI·HF)이 있으면 펼친다.
+      const advEl = rtWrap.querySelector('.rt-adv');
+      const advOpen = advEl ? advEl.open : !!(s.comfyUrl || hfOn);
+      const comfyExternal = '<details class="rt-adv"' + (advOpen ? ' open' : '') + '>' +
         '<summary>고급 · 외부 ComfyUI · HuggingFace 토큰</summary>' +
         '<div class="rt-adv-body"><div class="rt-adv-desc">직접 띄운 ComfyUI 가 있으면 주소를 입력하세요(비우면 앱 관리 ComfyUI). gated/비공개 모델을 받으려면 HF 토큰을 넣으세요.</div>' +
         '<div class="rt-cloud"><input id="localComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="외부 ComfyUI 주소(http://127.0.0.1:8188)" class="set-input"><button class="btn btn--sm btn--secondary" id="localComfySave">외부 연결</button></div>' +

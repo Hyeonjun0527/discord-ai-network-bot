@@ -1683,7 +1683,7 @@
       { key: 'autostart', name: '로그인 시 자동 시작', desc: '이 PC 에 로그인하면 Nexa 가 자동으로 켜져요.' },
       { key: 'background', name: '백그라운드 상주', desc: '창을 닫아도 트레이에서 계속 제공해요.' },
       { key: 'autoConnect', name: '자동 연결', desc: '시작하면 승인된 서버에 자동으로 연결해요.' },
-      { key: 'enableImage', name: '이미지 요청 받기', desc: 'Stable Diffusion 으로 이미지 생성 요청을 받아요.' },
+      { key: 'enableImage', name: '이미지 요청 받기', desc: 'ComfyUI 로 이미지 생성 요청을 받아요.' },
     ];
     const sw = (key, on) => '<button class="switch ' + (on ? 'on' : '') + '" data-toggle="' + key + '" role="switch" aria-checked="' + !!on + '" aria-label="' + key + '"></button>';
     const row = (name, desc, right) => '<div class="set-row"><div class="sr-body"><div class="sr-name">' + name + '</div>' +
@@ -1699,8 +1699,12 @@
           ? '<button class="btn btn--sm btn--primary" id="setUpdateApply">업데이트</button>'
           : '<button class="btn btn--sm btn--secondary" id="setUpdateCheck">확인</button>');
       const updGroup = row('버전', verLine, updRight) + row('자동 업데이트', '새 버전이 나오면 자동으로 설치해요.', sw('autoUpdate', s.autoUpdate));
-      const connGroup = row('중앙 서버', '', '<span class="sr-val">' + (s.relayUrl || '-') + '</span><span class="sr-tag">고급</span>') +
-        row('Ollama 주소', '', '<span class="sr-val">' + (s.ollamaUrl || '-') + '</span><span class="sr-tag">고급</span>');
+      // 중앙 서버·Ollama 주소 — 편집 가능(고급). 다른 포트/호스트의 Ollama 를 쓰는 유저가 앱에서 바꾼다.
+      const connGroup =
+        row('중앙 서버', '서버 연결 주소(보통 그대로)',
+          '<input id="setRelay" type="text" value="' + (s.relayUrl || '') + '" placeholder="wss://discord-ai.yeon.world/agent" class="set-input"><button class="btn btn--sm btn--secondary" id="setRelaySave">저장</button>') +
+        row('Ollama 주소', '다른 포트/호스트의 Ollama 를 쓰면 여기서 바꿔요',
+          '<input id="setOllama" type="text" value="' + (s.ollamaUrl || '') + '" placeholder="http://localhost:11434" class="set-input"><button class="btn btn--sm btn--secondary" id="setOllamaSave">저장</button>');
       const acct = row(s.hasToken ? '연결됨' : '연결 안 됨',
         s.hasToken ? '서버 연결 토큰을 보유하고 있어요.' : '온보딩에서 Discord 에 연결하세요.',
         s.hasToken ? '<button class="btn btn--sm btn--secondary" id="setLogout">연결 해제</button>' : '');
@@ -1768,6 +1772,20 @@
         if (!confirm('연결을 해제하면 모든 서버 제공이 중단돼요. 계속할까요?')) return;
         await api.logout(); toast('연결을 해제했어요', { type: 'info' }); load();
       };
+      // 중앙 서버·Ollama 주소 저장(고급) — 다음 연결에 반영(needsRestart).
+      const saveConn = (inputId, key, label) => {
+        const b = document.getElementById(inputId + 'Save');
+        if (!b) return;
+        b.onclick = async () => {
+          const url = (document.getElementById(inputId).value || '').trim();
+          b.disabled = true;
+          try { const r = await api.setSetting(key, url) || {}; if (_s) _s[key] = url; toast(r.needsRestart ? label + ' 저장 — 다시 연결하면 적용돼요' : label + ' 를 저장했어요', { type: 'ok' }); }
+          catch (_e) { toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' }); }
+          finally { b.disabled = false; }
+        };
+      };
+      saveConn('setRelay', 'relayUrl', '중앙 서버 주소');
+      saveConn('setOllama', 'ollamaUrl', 'Ollama 주소');
     }
 
     async function load() {

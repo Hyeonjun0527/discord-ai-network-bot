@@ -19,9 +19,10 @@ test('설정 화면: 그룹·토글·버전 표시', async ({ page }) => {
   await page.click('[data-toggle="autostart"]');
   await expect(page.locator('[data-toggle="autostart"]')).toHaveClass(/on/);
 
-  // 버전 + 연결(읽기 전용) + 계정
+  // 버전 + 연결(편집 가능: 중앙서버·Ollama 주소) + 계정
   await expect(page.locator('#settingsBody')).toContainText('최신 상태');
-  await expect(page.locator('#settingsBody')).toContainText('wss://discord-ai.yeon.world/agent');
+  await expect(page.locator('#setRelay')).toHaveValue('wss://discord-ai.yeon.world/agent'); // 중앙 서버 주소 편집칸
+  await expect(page.locator('#setOllama')).toBeVisible(); // Ollama 주소 편집칸(다른 포트/호스트 가능)
   await expect(page.locator('#setLogout')).toBeVisible();
 });
 

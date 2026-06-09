@@ -69,6 +69,21 @@ def _app_icon_bytes() -> bytes:
     return _app_icon_cache
 
 
+def _parse_guild_id(req: web.Request) -> int | None:
+    """경로 변수 guildId 를 정수로 파싱한다. 없거나 숫자가 아니면 None.
+
+    예외를 흐름제어로 쓰지 않고(예외 원칙 5) 사전 검사한다. 잘못된 서버 응답([_bad_server])은 한 곳에서
+    만들어 다수 admin 핸들러의 try/except 복붙을 제거한다(DRY·예외 원칙 9 의 정신).
+    """
+    raw = req.match_info.get("guildId", "")
+    return int(raw) if raw.isdigit() else None
+
+
+def _bad_server() -> web.Response:
+    """누락/형식오류 guildId 의 표준 응답(200 + {ok:false}) — 프런트 계약 보존."""
+    return web.json_response({"ok": False, "error": "잘못된 서버"})
+
+
 # 최근 로그 라인(대시보드 표시용).
 _log_lines: deque[str] = deque(maxlen=200)
 _log_attached = False
@@ -712,10 +727,9 @@ def build_app(session_key: str) -> web.Application:
     async def server_pause(req: web.Request) -> web.Response:
         """이 서버에 대한 내 제공 일시중지/재개(provider self-service). body {paused}. 연결은 유지, 이 길드 요청만 반려."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         data = await req.json()
         paused = bool(data.get("paused"))
         agent = _running_agent()
@@ -787,10 +801,9 @@ def build_app(session_key: str) -> web.Application:
     async def server_policy_get(req: web.Request) -> web.Response:
         """저장된 내 제공 정책 readback(앱 상세 화면). 하드코딩 대신 실제 강제값을 보여주기 위함."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         return web.json_response({"ok": True, "policy": _policy_camel(guild_id)})
 
     async def server_policy(req: web.Request) -> web.Response:
@@ -803,10 +816,9 @@ def build_app(session_key: str) -> web.Application:
         이미 보장되고(다른 서버 멤버는 호출 불가), 세분화는 강제되지 않아 가짜 컨트롤을 두지 않는다.
         """
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         data = await req.json()
         policy = {snake: data[camel] for camel, snake in _POLICY_KEYS.items() if camel in data}
         agent = _running_agent()
@@ -822,10 +834,9 @@ def build_app(session_key: str) -> web.Application:
         """이 서버에 **제공할 모델** 설정 readback. available=내가 줄 수 있는 전체 모델, chatModels=이 서버 선택
         (빈=전체), imageEnabled=이 서버 이미지 제공 여부, imageReady=SD 준비됨."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         from .config_file import load_guild_policies
 
         agent = _running_agent()
@@ -847,10 +858,9 @@ def build_app(session_key: str) -> web.Application:
         """이 서버에 제공할 채팅 모델·이미지 여부를 설정·적용(서버별 자율). body {chatModels:[..], imageEnabled:bool}.
         chatModels 빈 배열 = 전체 제공. 적용 시 그 서버 연결을 재광고해 중앙 풀이 새 모델 집합을 즉시 안다."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         data = await req.json()
         policy: dict = {}
         if "chatModels" in data:
@@ -869,10 +879,9 @@ def build_app(session_key: str) -> web.Application:
     async def server_manage(req: web.Request) -> web.Response:
         """서버 관리(관리자) — 승인 대기·로스터 조회. central 관리 채널로 프록시(권한은 central 이 JDA 로 판정)."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         agent = _running_agent()
         if agent is None:
             return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
@@ -884,10 +893,9 @@ def build_app(session_key: str) -> web.Application:
         action = req.match_info.get("action", "")
         if action not in ("approve", "reject", "remove"):
             return web.json_response({"ok": False, "error": "알 수 없는 작업"})
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         data = await req.json()
         try:
             target = int(data.get("providerUserId"))
@@ -901,10 +909,9 @@ def build_app(session_key: str) -> web.Application:
     async def server_manage_policy(req: web.Request) -> web.Response:
         """서버 제공 정책 — 신규 자동 승인 토글(관리자). body {autoApprove}. central 이 권한 판정."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         data = await req.json()
         auto = bool(data.get("autoApprove"))
         agent = _running_agent()
@@ -915,10 +922,9 @@ def build_app(session_key: str) -> web.Application:
     async def server_prompt_sets(req: web.Request) -> web.Response:
         """전역 프롬프트셋(서버 전체 기본 AI 성격) 목록(관리자). central 로 프록시. builtin(니아)은 preview 만."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         agent = _running_agent()
         if agent is None:
             return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
@@ -927,10 +933,9 @@ def build_app(session_key: str) -> web.Application:
     async def server_prompt_set_add(req: web.Request) -> web.Response:
         """전역 프롬프트셋 추가(관리자). body {name, content}. 추가만으로 기본이 되지는 않는다."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         data = await req.json()
         name = str(data.get("name") or "").strip()
         content = str(data.get("content") or "").strip()
@@ -942,10 +947,9 @@ def build_app(session_key: str) -> web.Application:
     async def server_prompt_set_default(req: web.Request) -> web.Response:
         """전역 프롬프트셋 기본 지정(관리자). body {id}. id='nia' 면 NEXA 기본 정체성(니아)으로 되돌린다."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         data = await req.json()
         set_id = str(data.get("id") or "").strip()
         agent = _running_agent()
@@ -956,10 +960,9 @@ def build_app(session_key: str) -> web.Application:
     async def server_prompt_set_delete(req: web.Request) -> web.Response:
         """전역 프롬프트셋 삭제(관리자). body {id}. builtin(니아)은 삭제 불가."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         data = await req.json()
         set_id = str(data.get("id") or "").strip()
         agent = _running_agent()
@@ -970,10 +973,9 @@ def build_app(session_key: str) -> web.Application:
     async def server_channels(req: web.Request) -> web.Response:
         """채널 AI 허용 목록(관리자). central 로 프록시. 빈 허용 목록 = 전체 채널 허용."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         agent = _running_agent()
         if agent is None:
             return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
@@ -982,10 +984,9 @@ def build_app(session_key: str) -> web.Application:
     async def server_channel_toggle(req: web.Request) -> web.Response:
         """채널 AI 허용/금지 토글(관리자). body {channelId, allow}. channelId 는 문자열(64bit)."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         data = await req.json()
         try:
             channel_id = int(str(data.get("channelId") or "0"))
@@ -1000,10 +1001,9 @@ def build_app(session_key: str) -> web.Application:
     async def _server_guild_read(req: web.Request, attr: str) -> web.Response:
         """길드 단위 읽기 관리 탭(채널AI/RAG/프리셋) 공통 프록시 — central 이 권한 판정·기능게이트."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         agent = _running_agent()
         if agent is None:
             return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
@@ -1024,10 +1024,9 @@ def build_app(session_key: str) -> web.Application:
     async def _server_guild_delete(req: web.Request, attr: str, id_field: str) -> web.Response:
         """길드 관리 삭제 공통 프록시(프리셋/지식 소스). central 이 권한·소유권 가드. body {<id_field>}."""
         _auth(req)
-        try:
-            guild_id = int(req.match_info["guildId"])
-        except (KeyError, ValueError):
-            return web.json_response({"ok": False, "error": "잘못된 서버"})
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
         data = await req.json()
         item_id = str(data.get(id_field) or "").strip() if isinstance(data, dict) else ""
         if not item_id:

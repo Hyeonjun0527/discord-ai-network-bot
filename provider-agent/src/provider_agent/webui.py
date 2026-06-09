@@ -723,285 +723,12 @@ def _register_ollama_routes(app: web.Application, session_key: str) -> None:
     app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
 
 
-def build_app(session_key: str) -> web.Application:
-    _attach_log_capture()
-    app = web.Application()
-    _register_asset_routes(app, session_key)
+def _register_server_routes(app: web.Application, session_key: str) -> None:
+    """서버 관리 라우트(목록/일시중지/제거/이름변경 · 내 제공 정책/모델 · 관리자 승인·정책/프롬프트셋/채널AI/지식/프리셋). build_app(god-function)에서 추출 — 동작·경로 불변."""
 
     def _auth(req: web.Request) -> None:
         if req.headers.get("X-Session") != session_key:
             raise web.HTTPForbidden(text="세션 키 불일치")
-
-    async def models(req: web.Request) -> web.Response:
-        _auth(req)
-        saved = load_config()
-        oll = await _detect_ollama()
-        detected = oll["models"]
-        selected = _selected_text_models(detected, saved.get("models"))
-        # 기본 응답 모델: 저장값이 제공 중이면 그것, 아니면 권장 기본(제공 중일 때)·없으면 첫 제공 모델.
-        saved_default = str(saved.get("default_model") or "")
-        default_model = (
-            saved_default if saved_default in selected
-            else DEFAULT_TEXT_MODEL if DEFAULT_TEXT_MODEL in selected
-            else selected[0] if selected else DEFAULT_TEXT_MODEL
-        )
-        return web.json_response(
-            {
-                "models": detected,
-                "modelsDetail": oll.get("modelsDetail", []),  # name·size·modifiedAt·family — GUI 용량/마지막 사용
-                "selected": selected,
-                "default": default_model,
-                "defaultInstalled": any(_is_default_text_model(m) for m in detected),
-                # P1: 미설치 vs daemon-down vs 정상을 UI 가 구분하도록.
-                "ollamaInstalled": oll["installed"],
-                "ollamaReady": oll["ready"],
-            }
-        )
-
-    async def status(req: web.Request) -> web.Response:
-        _auth(req)
-        saved = load_config()
-        agent = _state["agent"]
-        task = _state["task"]
-        running = task is not None and not task.done()
-        # 이 GUI 가 직접 연결돼 있지 않은데 락이 잡혀 있으면 = 백그라운드 자동시작 서비스가 이미 연결 중.
-        # (그 경우 GUI 가 다시 연결하려 하면 singleton 으로 막혀 헷갈리므로, 상태로 분명히 보여준다.)
-        from . import singleton, updater
-
-        background_running = (not running) and singleton.held_by_other()
-        return web.json_response(
-            {
-                "running": running,
-                # 앱 버전(설치 버전, cheap) — 사이드바 표시용. 최신/업데이트 판정은 /api/update-info(네트워크) 별도.
-                "version": updater.current_version(),
-                "connected": bool(agent and agent.is_connected()),
-                "processed": int(agent.processed) if agent else 0,
-                "imageReady": bool(agent and agent.image_ready),
-                "models": list(agent.models) if agent else list(saved.get("models") or []),
-                "hasToken": bool(saved.get("token")),
-                "relayUrl": saved.get("relay_url") or _default_relay(),
-                "enableImage": bool(saved.get("enable_image")),
-                # 백그라운드 자동시작 서비스가 이미 연결 중인지(이 창은 설정용임을 알리는 데 쓴다 — 런타임 상태).
-                "backgroundRunning": background_running,
-                # 백그라운드 상주 **설정값**(창을 닫아도 제공 유지). 홈 핀은 런타임이 아니라 이 설정을 표시해야 한다
-                # (설정 화면의 'background' 토글과 동일 출처). tray=background 로 저장되므로 둘 중 하나라도 참이면 켜짐.
-                "background": bool(saved.get("background") or saved.get("tray")),
-                # ‘디스코드 로그인’ OAuth 가능 여부는 **서버 설정**으로 결정된다(에이전트 env 불필요).
-                # 서버에 OAuth 앱(client-id/secret)이 설정돼 있으면 자동으로 켜진다.
-                "connectEnabled": _connect_enabled(),
-                # 클라우드 AI(Gemini) 설정 여부(키 자체는 노출 안 함) · ComfyUI 이미지 백엔드 주소.
-                "geminiConfigured": bool(saved.get("gemini_api_key")),
-                "comfyUrl": str(saved.get("comfy_url") or ""),
-                "hfConfigured": bool(saved.get("hf_token")),
-            }
-        )
-
-    async def logs(req: web.Request) -> web.Response:
-        _auth(req)
-        return web.json_response({"lines": list(_log_lines)})
-
-    async def setup(req: web.Request) -> web.Response:
-        _auth(req)
-        data = await req.json()
-        saved = load_config()
-        # 토큰은 선택: 입력이 있으면 그것, 없으면 저장값 유지(없어도 설정만 저장 가능 — 연동하기 전 단계).
-        token = str(data.get("token", "")).strip() or str(saved.get("token", ""))
-        requested_models = [str(m).strip() for m in (data.get("models") or []) if str(m).strip()]
-        models_list = _selected_text_models(await _detect_models(), requested_models)
-        enable_image = bool(data.get("enableImage"))
-        # 기본 응답 모델(모델 미지정 요청에 쓰는 폴백) — 제공 목록 안의 모델만 유효. 없으면 저장값 유지, 그것도 없으면 빈 값(첫 모델).
-        requested_default = str(data.get("default") or data.get("defaultModel") or "").strip()
-        default_model = requested_default if requested_default in models_list else str(saved.get("default_model") or "")
-        if default_model and default_model not in models_list:
-            default_model = ""
-        relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
-        cfg = AgentConfig(
-            token=token,
-            relay_url=relay,
-            models=tuple(models_list),
-            default_model=default_model,
-            enable_image=enable_image,
-            auto_update=bool(saved.get("auto_update", True)),  # 저장된 자동업데이트 설정 보존(초기화 방지)
-        )
-        save_config(cfg)
-        # 라이브 반영(P4): 백그라운드 서비스가 디스코드 연결을 담당 중이면, 바뀐 설정(enable_image/models)을
-        # 그 프로세스가 즉시 반영하도록 재시작한다. 서비스는 시작 시점 config 만 읽고 파일 변경을 감시하지 않으므로,
-        # 저장만으로는 이미지 토글이 디스코드 풀에 절대 반영되지 않는다(='토글 켰는데 image provider 없음'의 원인).
-        service_restarted = False
-        if data.get("applyToBackground"):
-            from . import service as service_mod
-            from . import singleton
-
-            task = _state["task"]
-            agent = _state["agent"]
-            gui_running = task is not None and not task.done()
-            if gui_running and agent is not None:
-                # GUI 인-프로세스 에이전트: 새 모델 선택을 즉시 적용·재광고(연결 유지, hello 재전송) →
-                #   status.models·홈/서버 '제공 모델'·풀 광고가 모델 화면 선택과 일치한다.
-                await agent.set_models(models_list, default_model)  # type: ignore[attr-defined]
-            elif (not gui_running) and singleton.held_by_other() and service_mod.is_installed():
-                service_restarted = bool(service_mod.kickstart())
-        service_installed = False
-        service_error: str | None = None
-        if data.get("installService"):
-            # 자동 실행 서비스를 로드하면 RunAtLoad 로 헤드리스 인스턴스가 곧바로 뜬다.
-            # 그 인스턴스가 이번 세션의 프로바이더 연결을 가로채지 않도록, GUI 가 먼저 락을 쥔다
-            # (서비스 쪽은 singleton 으로 깔끔히 종료 → 중복 연결·창 2개 없음).
-            from . import singleton
-
-            singleton.acquire()
-            from .service import install_service
-
-            try:
-                install_service()
-                service_installed = True
-            except Exception as exc:  # noqa: BLE001 — 실패 사유를 사용자에게 보여준다(옛날엔 조용히 삼킴)
-                service_error = str(exc)
-                logging.getLogger("provider_agent").warning("자동 시작 서비스 등록 실패: %s", exc)
-        return web.json_response(
-            {
-                "ok": True,
-                "serviceInstalled": service_installed,
-                "serviceError": service_error,
-                "serviceRestarted": service_restarted,
-                "hasToken": bool(token),
-            }
-        )
-
-    async def image_toggle(req: web.Request) -> web.Response:
-        """이미지 요청 받기(enableImage) **전용** 토글 — body {on}. /api/setup 의 모델 재계산을 거치지 않아
-        제공 모델 선택을 건드리지 않는다(과거: setup 경유 토글이 모델을 기본값으로 리셋시키던 위험 제거).
-
-        - 설정은 항상 persist_partial 로 저장(재시작 후에도 유지).
-        - GUI 인-프로세스 에이전트 실행 중이면 ``agent.set_image_enabled`` 로 **라이브 적용**(ComfyUI health·재광고).
-        - 백그라운드 서비스가 제공 중이면 kickstart(재기동)로 새 설정 반영.
-        - ComfyUI 미설치/미실행이면 imageReady=False 로 알려 앱이 로컬 실행 탭의 설치를 안내하게 한다.
-        """
-        _auth(req)
-        try:
-            data = await req.json()
-        except Exception:  # noqa: BLE001
-            data = {}
-        on = bool(data.get("on")) if isinstance(data, dict) else False
-        persist_partial({"enable_image": on})
-        image_ready = False
-        applied = "saved"
-        agent = _running_agent()
-        if agent is not None:
-            image_ready = bool(await agent.set_image_enabled(on))  # type: ignore[attr-defined]
-            applied = "live"
-        else:
-            from . import service as service_mod
-            from . import singleton
-
-            if singleton.held_by_other() and service_mod.is_installed():
-                applied = "service" if service_mod.kickstart() else "saved"
-        return web.json_response({"ok": True, "on": on, "imageReady": image_ready, "applied": applied})
-
-    async def cloud_settings(req: web.Request) -> web.Response:
-        """클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. body {geminiApiKey?, comfyUrl?}.
-
-        키는 이 PC config 에만 저장(central 엔 안 올림). Gemini 는 **라이브 적용**(재시작 없이 풀에 광고),
-        comfyUrl 변경(이미지 백엔드 전환)은 다음 이미지 토글/재연결에 반영(needsRestart).
-        """
-        _auth(req)
-        try:
-            data = await req.json()
-        except Exception:  # noqa: BLE001
-            data = {}
-        out: dict = {"ok": True}
-        if "geminiApiKey" in data:
-            key = str(data.get("geminiApiKey") or "").strip()
-            persist_partial({"gemini_api_key": key})
-            agent = _running_agent()
-            if agent is not None:
-                out["geminiValid"] = bool(await agent.set_gemini_key(key))  # type: ignore[attr-defined]
-            out["geminiConfigured"] = bool(key)
-        if "comfyUrl" in data:
-            comfy = str(data.get("comfyUrl") or "").strip().rstrip("/")
-            persist_partial({"comfy_url": comfy})
-            out["comfyUrl"] = comfy
-            out["needsRestart"] = True
-        if "hfToken" in data:
-            tok = str(data.get("hfToken") or "").strip()
-            persist_partial({"hf_token": tok})  # gated 모델 다운로드용. 이 PC 에만.
-            out["hfConfigured"] = bool(tok)
-        return web.json_response(out)
-
-    async def connect_open(req: web.Request) -> web.Response:
-        """‘토큰 받기’: 앱 창은 그대로 두고 **시스템 기본 브라우저**에서 디스코드 OAuth 를 연다.
-
-        웹뷰 내부에서 디스코드 로그인을 열면 차단될 수 있어 호스트 브라우저로 연다. cb 는 이 로컬
-        서버의 콜백(localhost)만 허용, state 는 서버 세션키를 사용(콜백에서 검증).
-        """
-        _auth(req)
-        import re
-        import webbrowser
-        from urllib.parse import quote
-
-        if not _connect_enabled():
-            return web.json_response(
-                {"ok": False, "error": "서버에 디스코드 로그인(OAuth)이 아직 설정되지 않았어요. 토큰으로 추가하세요."}
-            )
-        data = await req.json()
-        origin = str(data.get("origin", "")).strip()
-        if not re.fullmatch(r"http://(127\.0\.0\.1|localhost)(:\d+)?", origin):
-            return web.json_response({"ok": False, "error": "로컬 주소가 아닙니다."})
-        saved = load_config()
-        base = _connect_base(saved.get("relay_url") or _default_relay())
-        cb = origin + "/connect/callback"
-        url = f"{base}/provider/connect?cb={quote(cb, safe='')}&state={quote(session_key, safe='')}"
-        try:
-            webbrowser.open(url)
-        except Exception:  # noqa: BLE001
-            return web.json_response({"ok": False, "error": "브라우저를 열 수 없습니다."})
-        return web.json_response({"ok": True})
-
-    async def connect_callback(req: web.Request) -> web.Response:
-        """‘토큰 받기’ OAuth 콜백: 중앙 서버가 디스코드 인증 후 token·state 를 붙여 리디렉트.
-
-        state==세션키로 위조 방지(이 콜백은 상위 네비게이션이라 X-Session 헤더가 없음).
-        성공하면 토큰을 저장하고 메인 화면으로 되돌린다.
-        """
-        if req.query.get("state") != session_key:
-            return web.Response(status=403, text="잘못된 요청(state 불일치)")
-        # 서버가 토큰 대신 error 를 보낼 수 있다(취소·승인대기·인증실패) — 친절히 안내.
-        err = (req.query.get("error") or "").strip()
-        token = (req.query.get("token") or "").strip()
-        if not token:
-            messages = {
-                "pending": "🕒 관리자 승인을 기다리는 중입니다. 승인되면 다시 ‘연동하기’를 눌러 주세요.",
-                "cancelled": "취소되었습니다. 다시 시도하려면 앱에서 ‘연동하기’를 눌러 주세요.",
-                "token": "디스코드 인증에 실패했어요. 다시 시도해 주세요.",
-                "identify": "디스코드 사용자 확인에 실패했어요. 다시 시도해 주세요.",
-            }
-            msg = messages.get(err, "토큰을 받지 못했습니다. 다시 시도해 주세요.")
-            return web.Response(
-                text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#e8eaed;text-align:center;padding-top:80px'>"
-                f"<div style='max-width:360px;margin:0 auto;line-height:1.6'>{msg}<br><b>이 탭을 닫고 앱으로 돌아가세요.</b></div>"
-                "<script>setTimeout(()=>window.close(),2200)</script>",
-                content_type="text/html",
-            )
-        # 멀티-서버: 서버가 함께 보내는 guild(id)·guildName 으로 '내 서버 목록'에 추가(교체 아님).
-        gid_raw = (req.query.get("guild") or "").strip()
-        guild_id = int(gid_raw) if gid_raw.isdigit() else None
-        guild_name = (req.query.get("guildName") or "").strip() or None
-        agent = _state["agent"]
-        task = _state["task"]
-        if agent is not None and task is not None and not task.done():
-            await agent.add_connection(token, guild_id, guild_name)  # 실행 중이면 즉시 새 서버 접속
-        else:
-            from .config_file import add_connection
-
-            add_connection(token, guild_id, guild_name)  # 저장 후
-            _start_agent()  # 저장된 모든 서버로 접속 시작
-        label = guild_name or "서버"
-        return web.Response(
-            text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#b8ff39;text-align:center;padding-top:80px'>"
-            f"✅ ‘{label}’ 연동 완료! 자동으로 연결했어요. <b>이 탭을 닫고 앱 창으로 돌아가세요.</b>"
-            "<script>setTimeout(()=>window.close(),1800)</script>",
-            content_type="text/html",
-        )
 
     async def servers(req: web.Request) -> web.Response:
         """'내 서버 목록': 실행 중이면 실시간 연결상태, 아니면 저장된 목록(연결 안 됨)."""
@@ -1362,6 +1089,311 @@ def build_app(session_key: str) -> web.Application:
             _start_agent()
         return web.json_response({"ok": True})
 
+    app.router.add_get("/api/servers", servers)
+    app.router.add_post("/api/server-remove", server_remove)
+    app.router.add_post("/api/server-rename", server_rename)
+    app.router.add_post("/api/servers/{guildId}/pause", server_pause)
+    app.router.add_get("/api/servers/{guildId}/policy", server_policy_get)
+    app.router.add_get("/api/servers/{guildId}/models", server_models_get)
+    app.router.add_post("/api/servers/{guildId}/models", server_models)
+    app.router.add_post("/api/servers/{guildId}/policy", server_policy)
+    app.router.add_get("/api/servers/{guildId}/manage", server_manage)
+    app.router.add_post("/api/servers/{guildId}/manage/policy", server_manage_policy)
+    app.router.add_get("/api/servers/{guildId}/prompts", server_prompt_sets)
+    app.router.add_post("/api/servers/{guildId}/prompts/add", server_prompt_set_add)
+    app.router.add_post("/api/servers/{guildId}/prompts/default", server_prompt_set_default)
+    app.router.add_post("/api/servers/{guildId}/prompts/delete", server_prompt_set_delete)
+    app.router.add_get("/api/servers/{guildId}/channels", server_channels)
+    app.router.add_post("/api/servers/{guildId}/channels/toggle", server_channel_toggle)
+    app.router.add_get("/api/servers/{guildId}/channel-ai", server_channel_ai)
+    app.router.add_get("/api/servers/{guildId}/knowledge", server_knowledge)
+    app.router.add_get("/api/servers/{guildId}/presets", server_presets)
+    app.router.add_post("/api/servers/{guildId}/presets/delete", server_preset_delete)
+    app.router.add_post("/api/servers/{guildId}/knowledge/delete", server_knowledge_delete)
+    app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
+    app.router.add_post("/api/server-add-token", server_add_token)
+
+
+def build_app(session_key: str) -> web.Application:
+    _attach_log_capture()
+    app = web.Application()
+    _register_asset_routes(app, session_key)
+
+    def _auth(req: web.Request) -> None:
+        if req.headers.get("X-Session") != session_key:
+            raise web.HTTPForbidden(text="세션 키 불일치")
+
+    async def models(req: web.Request) -> web.Response:
+        _auth(req)
+        saved = load_config()
+        oll = await _detect_ollama()
+        detected = oll["models"]
+        selected = _selected_text_models(detected, saved.get("models"))
+        # 기본 응답 모델: 저장값이 제공 중이면 그것, 아니면 권장 기본(제공 중일 때)·없으면 첫 제공 모델.
+        saved_default = str(saved.get("default_model") or "")
+        default_model = (
+            saved_default if saved_default in selected
+            else DEFAULT_TEXT_MODEL if DEFAULT_TEXT_MODEL in selected
+            else selected[0] if selected else DEFAULT_TEXT_MODEL
+        )
+        return web.json_response(
+            {
+                "models": detected,
+                "modelsDetail": oll.get("modelsDetail", []),  # name·size·modifiedAt·family — GUI 용량/마지막 사용
+                "selected": selected,
+                "default": default_model,
+                "defaultInstalled": any(_is_default_text_model(m) for m in detected),
+                # P1: 미설치 vs daemon-down vs 정상을 UI 가 구분하도록.
+                "ollamaInstalled": oll["installed"],
+                "ollamaReady": oll["ready"],
+            }
+        )
+
+    async def status(req: web.Request) -> web.Response:
+        _auth(req)
+        saved = load_config()
+        agent = _state["agent"]
+        task = _state["task"]
+        running = task is not None and not task.done()
+        # 이 GUI 가 직접 연결돼 있지 않은데 락이 잡혀 있으면 = 백그라운드 자동시작 서비스가 이미 연결 중.
+        # (그 경우 GUI 가 다시 연결하려 하면 singleton 으로 막혀 헷갈리므로, 상태로 분명히 보여준다.)
+        from . import singleton, updater
+
+        background_running = (not running) and singleton.held_by_other()
+        return web.json_response(
+            {
+                "running": running,
+                # 앱 버전(설치 버전, cheap) — 사이드바 표시용. 최신/업데이트 판정은 /api/update-info(네트워크) 별도.
+                "version": updater.current_version(),
+                "connected": bool(agent and agent.is_connected()),
+                "processed": int(agent.processed) if agent else 0,
+                "imageReady": bool(agent and agent.image_ready),
+                "models": list(agent.models) if agent else list(saved.get("models") or []),
+                "hasToken": bool(saved.get("token")),
+                "relayUrl": saved.get("relay_url") or _default_relay(),
+                "enableImage": bool(saved.get("enable_image")),
+                # 백그라운드 자동시작 서비스가 이미 연결 중인지(이 창은 설정용임을 알리는 데 쓴다 — 런타임 상태).
+                "backgroundRunning": background_running,
+                # 백그라운드 상주 **설정값**(창을 닫아도 제공 유지). 홈 핀은 런타임이 아니라 이 설정을 표시해야 한다
+                # (설정 화면의 'background' 토글과 동일 출처). tray=background 로 저장되므로 둘 중 하나라도 참이면 켜짐.
+                "background": bool(saved.get("background") or saved.get("tray")),
+                # ‘디스코드 로그인’ OAuth 가능 여부는 **서버 설정**으로 결정된다(에이전트 env 불필요).
+                # 서버에 OAuth 앱(client-id/secret)이 설정돼 있으면 자동으로 켜진다.
+                "connectEnabled": _connect_enabled(),
+                # 클라우드 AI(Gemini) 설정 여부(키 자체는 노출 안 함) · ComfyUI 이미지 백엔드 주소.
+                "geminiConfigured": bool(saved.get("gemini_api_key")),
+                "comfyUrl": str(saved.get("comfy_url") or ""),
+                "hfConfigured": bool(saved.get("hf_token")),
+            }
+        )
+
+    async def logs(req: web.Request) -> web.Response:
+        _auth(req)
+        return web.json_response({"lines": list(_log_lines)})
+
+    async def setup(req: web.Request) -> web.Response:
+        _auth(req)
+        data = await req.json()
+        saved = load_config()
+        # 토큰은 선택: 입력이 있으면 그것, 없으면 저장값 유지(없어도 설정만 저장 가능 — 연동하기 전 단계).
+        token = str(data.get("token", "")).strip() or str(saved.get("token", ""))
+        requested_models = [str(m).strip() for m in (data.get("models") or []) if str(m).strip()]
+        models_list = _selected_text_models(await _detect_models(), requested_models)
+        enable_image = bool(data.get("enableImage"))
+        # 기본 응답 모델(모델 미지정 요청에 쓰는 폴백) — 제공 목록 안의 모델만 유효. 없으면 저장값 유지, 그것도 없으면 빈 값(첫 모델).
+        requested_default = str(data.get("default") or data.get("defaultModel") or "").strip()
+        default_model = requested_default if requested_default in models_list else str(saved.get("default_model") or "")
+        if default_model and default_model not in models_list:
+            default_model = ""
+        relay = (saved.get("relay_url") or _default_relay()).rstrip("/")
+        cfg = AgentConfig(
+            token=token,
+            relay_url=relay,
+            models=tuple(models_list),
+            default_model=default_model,
+            enable_image=enable_image,
+            auto_update=bool(saved.get("auto_update", True)),  # 저장된 자동업데이트 설정 보존(초기화 방지)
+        )
+        save_config(cfg)
+        # 라이브 반영(P4): 백그라운드 서비스가 디스코드 연결을 담당 중이면, 바뀐 설정(enable_image/models)을
+        # 그 프로세스가 즉시 반영하도록 재시작한다. 서비스는 시작 시점 config 만 읽고 파일 변경을 감시하지 않으므로,
+        # 저장만으로는 이미지 토글이 디스코드 풀에 절대 반영되지 않는다(='토글 켰는데 image provider 없음'의 원인).
+        service_restarted = False
+        if data.get("applyToBackground"):
+            from . import service as service_mod
+            from . import singleton
+
+            task = _state["task"]
+            agent = _state["agent"]
+            gui_running = task is not None and not task.done()
+            if gui_running and agent is not None:
+                # GUI 인-프로세스 에이전트: 새 모델 선택을 즉시 적용·재광고(연결 유지, hello 재전송) →
+                #   status.models·홈/서버 '제공 모델'·풀 광고가 모델 화면 선택과 일치한다.
+                await agent.set_models(models_list, default_model)  # type: ignore[attr-defined]
+            elif (not gui_running) and singleton.held_by_other() and service_mod.is_installed():
+                service_restarted = bool(service_mod.kickstart())
+        service_installed = False
+        service_error: str | None = None
+        if data.get("installService"):
+            # 자동 실행 서비스를 로드하면 RunAtLoad 로 헤드리스 인스턴스가 곧바로 뜬다.
+            # 그 인스턴스가 이번 세션의 프로바이더 연결을 가로채지 않도록, GUI 가 먼저 락을 쥔다
+            # (서비스 쪽은 singleton 으로 깔끔히 종료 → 중복 연결·창 2개 없음).
+            from . import singleton
+
+            singleton.acquire()
+            from .service import install_service
+
+            try:
+                install_service()
+                service_installed = True
+            except Exception as exc:  # noqa: BLE001 — 실패 사유를 사용자에게 보여준다(옛날엔 조용히 삼킴)
+                service_error = str(exc)
+                logging.getLogger("provider_agent").warning("자동 시작 서비스 등록 실패: %s", exc)
+        return web.json_response(
+            {
+                "ok": True,
+                "serviceInstalled": service_installed,
+                "serviceError": service_error,
+                "serviceRestarted": service_restarted,
+                "hasToken": bool(token),
+            }
+        )
+
+    async def image_toggle(req: web.Request) -> web.Response:
+        """이미지 요청 받기(enableImage) **전용** 토글 — body {on}. /api/setup 의 모델 재계산을 거치지 않아
+        제공 모델 선택을 건드리지 않는다(과거: setup 경유 토글이 모델을 기본값으로 리셋시키던 위험 제거).
+
+        - 설정은 항상 persist_partial 로 저장(재시작 후에도 유지).
+        - GUI 인-프로세스 에이전트 실행 중이면 ``agent.set_image_enabled`` 로 **라이브 적용**(ComfyUI health·재광고).
+        - 백그라운드 서비스가 제공 중이면 kickstart(재기동)로 새 설정 반영.
+        - ComfyUI 미설치/미실행이면 imageReady=False 로 알려 앱이 로컬 실행 탭의 설치를 안내하게 한다.
+        """
+        _auth(req)
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        on = bool(data.get("on")) if isinstance(data, dict) else False
+        persist_partial({"enable_image": on})
+        image_ready = False
+        applied = "saved"
+        agent = _running_agent()
+        if agent is not None:
+            image_ready = bool(await agent.set_image_enabled(on))  # type: ignore[attr-defined]
+            applied = "live"
+        else:
+            from . import service as service_mod
+            from . import singleton
+
+            if singleton.held_by_other() and service_mod.is_installed():
+                applied = "service" if service_mod.kickstart() else "saved"
+        return web.json_response({"ok": True, "on": on, "imageReady": image_ready, "applied": applied})
+
+    async def cloud_settings(req: web.Request) -> web.Response:
+        """클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. body {geminiApiKey?, comfyUrl?}.
+
+        키는 이 PC config 에만 저장(central 엔 안 올림). Gemini 는 **라이브 적용**(재시작 없이 풀에 광고),
+        comfyUrl 변경(이미지 백엔드 전환)은 다음 이미지 토글/재연결에 반영(needsRestart).
+        """
+        _auth(req)
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        out: dict = {"ok": True}
+        if "geminiApiKey" in data:
+            key = str(data.get("geminiApiKey") or "").strip()
+            persist_partial({"gemini_api_key": key})
+            agent = _running_agent()
+            if agent is not None:
+                out["geminiValid"] = bool(await agent.set_gemini_key(key))  # type: ignore[attr-defined]
+            out["geminiConfigured"] = bool(key)
+        if "comfyUrl" in data:
+            comfy = str(data.get("comfyUrl") or "").strip().rstrip("/")
+            persist_partial({"comfy_url": comfy})
+            out["comfyUrl"] = comfy
+            out["needsRestart"] = True
+        if "hfToken" in data:
+            tok = str(data.get("hfToken") or "").strip()
+            persist_partial({"hf_token": tok})  # gated 모델 다운로드용. 이 PC 에만.
+            out["hfConfigured"] = bool(tok)
+        return web.json_response(out)
+
+    async def connect_open(req: web.Request) -> web.Response:
+        """‘토큰 받기’: 앱 창은 그대로 두고 **시스템 기본 브라우저**에서 디스코드 OAuth 를 연다.
+
+        웹뷰 내부에서 디스코드 로그인을 열면 차단될 수 있어 호스트 브라우저로 연다. cb 는 이 로컬
+        서버의 콜백(localhost)만 허용, state 는 서버 세션키를 사용(콜백에서 검증).
+        """
+        _auth(req)
+        import re
+        import webbrowser
+        from urllib.parse import quote
+
+        if not _connect_enabled():
+            return web.json_response(
+                {"ok": False, "error": "서버에 디스코드 로그인(OAuth)이 아직 설정되지 않았어요. 토큰으로 추가하세요."}
+            )
+        data = await req.json()
+        origin = str(data.get("origin", "")).strip()
+        if not re.fullmatch(r"http://(127\.0\.0\.1|localhost)(:\d+)?", origin):
+            return web.json_response({"ok": False, "error": "로컬 주소가 아닙니다."})
+        saved = load_config()
+        base = _connect_base(saved.get("relay_url") or _default_relay())
+        cb = origin + "/connect/callback"
+        url = f"{base}/provider/connect?cb={quote(cb, safe='')}&state={quote(session_key, safe='')}"
+        try:
+            webbrowser.open(url)
+        except Exception:  # noqa: BLE001
+            return web.json_response({"ok": False, "error": "브라우저를 열 수 없습니다."})
+        return web.json_response({"ok": True})
+
+    async def connect_callback(req: web.Request) -> web.Response:
+        """‘토큰 받기’ OAuth 콜백: 중앙 서버가 디스코드 인증 후 token·state 를 붙여 리디렉트.
+
+        state==세션키로 위조 방지(이 콜백은 상위 네비게이션이라 X-Session 헤더가 없음).
+        성공하면 토큰을 저장하고 메인 화면으로 되돌린다.
+        """
+        if req.query.get("state") != session_key:
+            return web.Response(status=403, text="잘못된 요청(state 불일치)")
+        # 서버가 토큰 대신 error 를 보낼 수 있다(취소·승인대기·인증실패) — 친절히 안내.
+        err = (req.query.get("error") or "").strip()
+        token = (req.query.get("token") or "").strip()
+        if not token:
+            messages = {
+                "pending": "🕒 관리자 승인을 기다리는 중입니다. 승인되면 다시 ‘연동하기’를 눌러 주세요.",
+                "cancelled": "취소되었습니다. 다시 시도하려면 앱에서 ‘연동하기’를 눌러 주세요.",
+                "token": "디스코드 인증에 실패했어요. 다시 시도해 주세요.",
+                "identify": "디스코드 사용자 확인에 실패했어요. 다시 시도해 주세요.",
+            }
+            msg = messages.get(err, "토큰을 받지 못했습니다. 다시 시도해 주세요.")
+            return web.Response(
+                text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#e8eaed;text-align:center;padding-top:80px'>"
+                f"<div style='max-width:360px;margin:0 auto;line-height:1.6'>{msg}<br><b>이 탭을 닫고 앱으로 돌아가세요.</b></div>"
+                "<script>setTimeout(()=>window.close(),2200)</script>",
+                content_type="text/html",
+            )
+        # 멀티-서버: 서버가 함께 보내는 guild(id)·guildName 으로 '내 서버 목록'에 추가(교체 아님).
+        gid_raw = (req.query.get("guild") or "").strip()
+        guild_id = int(gid_raw) if gid_raw.isdigit() else None
+        guild_name = (req.query.get("guildName") or "").strip() or None
+        agent = _state["agent"]
+        task = _state["task"]
+        if agent is not None and task is not None and not task.done():
+            await agent.add_connection(token, guild_id, guild_name)  # 실행 중이면 즉시 새 서버 접속
+        else:
+            from .config_file import add_connection
+
+            add_connection(token, guild_id, guild_name)  # 저장 후
+            _start_agent()  # 저장된 모든 서버로 접속 시작
+        label = guild_name or "서버"
+        return web.Response(
+            text="<!doctype html><meta charset=utf-8><body style='font-family:system-ui;background:#0d0f12;color:#b8ff39;text-align:center;padding-top:80px'>"
+            f"✅ ‘{label}’ 연동 완료! 자동으로 연결했어요. <b>이 탭을 닫고 앱 창으로 돌아가세요.</b>"
+            "<script>setTimeout(()=>window.close(),1800)</script>",
+            content_type="text/html",
+        )
+
     async def start(req: web.Request) -> web.Response:
         _auth(req)
         return web.json_response(_start_agent())
@@ -1629,29 +1661,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/logs", logs)
     app.router.add_get("/connect/callback", connect_callback)
     app.router.add_post("/api/connect-open", connect_open)
-    app.router.add_get("/api/servers", servers)
-    app.router.add_post("/api/server-remove", server_remove)
-    app.router.add_post("/api/server-rename", server_rename)
-    app.router.add_post("/api/servers/{guildId}/pause", server_pause)
-    app.router.add_get("/api/servers/{guildId}/policy", server_policy_get)
-    app.router.add_get("/api/servers/{guildId}/models", server_models_get)
-    app.router.add_post("/api/servers/{guildId}/models", server_models)
-    app.router.add_post("/api/servers/{guildId}/policy", server_policy)
-    app.router.add_get("/api/servers/{guildId}/manage", server_manage)
-    app.router.add_post("/api/servers/{guildId}/manage/policy", server_manage_policy)
-    app.router.add_get("/api/servers/{guildId}/prompts", server_prompt_sets)
-    app.router.add_post("/api/servers/{guildId}/prompts/add", server_prompt_set_add)
-    app.router.add_post("/api/servers/{guildId}/prompts/default", server_prompt_set_default)
-    app.router.add_post("/api/servers/{guildId}/prompts/delete", server_prompt_set_delete)
-    app.router.add_get("/api/servers/{guildId}/channels", server_channels)
-    app.router.add_post("/api/servers/{guildId}/channels/toggle", server_channel_toggle)
-    app.router.add_get("/api/servers/{guildId}/channel-ai", server_channel_ai)
-    app.router.add_get("/api/servers/{guildId}/knowledge", server_knowledge)
-    app.router.add_get("/api/servers/{guildId}/presets", server_presets)
-    app.router.add_post("/api/servers/{guildId}/presets/delete", server_preset_delete)
-    app.router.add_post("/api/servers/{guildId}/knowledge/delete", server_knowledge_delete)
-    app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
-    app.router.add_post("/api/server-add-token", server_add_token)
+    _register_server_routes(app, session_key)
     _register_update_routes(app, session_key)
     _register_ollama_routes(app, session_key)
     _register_comfy_routes(app, session_key)

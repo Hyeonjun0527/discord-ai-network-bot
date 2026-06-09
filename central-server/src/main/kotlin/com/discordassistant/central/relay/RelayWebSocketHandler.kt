@@ -184,7 +184,9 @@ class RelayWebSocketHandler(
             if (now - t > authTimeoutNanos) {
                 try {
                     sess.close(CloseStatus.POLICY_VIOLATION.withReason("인증 타임아웃"))
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    // 이미 끊긴 세션이면 close 가 실패할 수 있다(베스트에포트) — 숨기지 말고 debug 로 남긴다(예외 원칙 3).
+                    log.debug("인증 타임아웃 세션 close 실패(무시): session={} ({})", sess.id, e.message)
                 }
                 true
             } else {
@@ -196,7 +198,9 @@ class RelayWebSocketHandler(
         authed.values.forEach { ps ->
             try {
                 ps.connection.sendFrame(PingFrame())
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // ping 전송 실패는 곧 reapStale 이 좀비로 정리한다(베스트에포트) — 숨기지 말고 debug 로 흔적(예외 원칙 3).
+                log.debug("heartbeat ping 실패(곧 정리됨): provider={} ({})", ps.providerId, e.message)
             }
         }
         registry.reapStale(staleTimeout)

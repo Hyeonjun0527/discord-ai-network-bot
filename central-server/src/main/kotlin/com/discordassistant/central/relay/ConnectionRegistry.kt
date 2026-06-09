@@ -44,7 +44,15 @@ class ConnectionRegistry {
         try {
             session.connection.close(reason)
         } catch (e: Exception) {
-            log.debug("이전 연결 close 실패(무시): {}", e.message)
+            // 교체/정리 루프(closeGuild·reapStale)에서 호출되므로 한 세션 close 실패가 나머지 정리를 막지 않게
+            // 전파하지 않는다(broad catch 의도적). 단 자원 누수 신호일 수 있어 숨기지 않고 맥락과 함께 남긴다(예외 원칙 3·4).
+            log.warn(
+                "provider {} 이전 연결 close 실패(guild={}): {} - {}",
+                session.providerId,
+                session.guildId,
+                e.javaClass.simpleName,
+                e.message,
+            )
         }
     }
 

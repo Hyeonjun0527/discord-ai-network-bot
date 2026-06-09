@@ -160,7 +160,10 @@ class ProviderSession(
             connection.sendFrame(InferRequest(requestId, model, prompt, filterOptions(options)))
         } catch (e: Exception) {
             cleanup(requestId)
-            return CompletableFuture.failedFuture(ConnectionClosedException("전송 실패: ${e.message}"))
+            // 원래 예외를 cause 로 보존하고 요청 맥락을 메시지에 담는다(예외 원칙 4·7) — 디버깅에서 원인 추적 가능.
+            return CompletableFuture.failedFuture(
+                ConnectionClosedException("InferRequest 전송 실패(id=$requestId, model=$model): ${e.message}", e),
+            )
         }
         return fut.orTimeout(requestTimeoutSeconds, TimeUnit.SECONDS).handle { res, err ->
             cleanup(requestId)
@@ -207,7 +210,9 @@ class ProviderSession(
         } catch (e: Exception) {
             streams.remove(requestId)
             cleanup(requestId)
-            return CompletableFuture.failedFuture(ConnectionClosedException("전송 실패: ${e.message}"))
+            return CompletableFuture.failedFuture(
+                ConnectionClosedException("스트리밍 InferRequest 전송 실패(id=$requestId, model=$model): ${e.message}", e),
+            )
         }
         return CompletableFuture.supplyAsync {
             val sb = StringBuilder()
@@ -257,7 +262,9 @@ class ProviderSession(
         } catch (e: Exception) {
             streams.remove(requestId)
             cleanup(requestId)
-            return CompletableFuture.failedFuture(ConnectionClosedException("전송 실패: ${e.message}"))
+            return CompletableFuture.failedFuture(
+                ConnectionClosedException("이미지 InferRequest 전송 실패(id=$requestId): ${e.message}", e),
+            )
         }
         val imageTimeout = maxOf(requestTimeoutSeconds, IMAGE_TIMEOUT_SECONDS)
         return CompletableFuture.supplyAsync {

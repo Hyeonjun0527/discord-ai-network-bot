@@ -58,7 +58,7 @@ const MOCK = {
     version: '0.31.0', geminiConfigured: false, comfyUrl: '',
   },
   // ComfyUI 라이프사이클 상태는 별도 엔드포인트(/api/comfy/status)라 status shape 와 분리한다.
-  comfy: { installed: false, running: false },
+  comfy: { installed: false, running: false, active: null },
   logs: [
     '09:12:03 INFO | 에이전트 시작 (Nexa v0.31.0)',
     '09:12:03 INFO | 중앙 서버 연결: wss://discord-ai.yeon.world/agent',
@@ -574,6 +574,16 @@ export const api = {
   async comfyOpen() {
     /* @proto-only */ if (USE_MOCK) { await delay(40); return { ok: !!MOCK.comfy.running, error: MOCK.comfy.running ? undefined : 'ComfyUI 가 실행 중이 아니에요. 먼저 시작하세요.' }; } /* @end-proto-only */
     return post(ENDPOINTS.comfyOpen);
+  },
+  /** ComfyUI 체크포인트 목록 + 활성(폴더 스캔 = 아무 .safetensors) — {models, active}. */
+  async comfyModels() {
+    /* @proto-only */ if (USE_MOCK) { await delay(50); const models = ['Anything V5.safetensors', 'animagine-xl-4.0.safetensors', 'Illustrious-XL-v0.1.safetensors']; return { models, active: MOCK.comfy.active || models[0] }; } /* @end-proto-only */
+    return http(ENDPOINTS.comfyModels);
+  },
+  /** 활성 ComfyUI 체크포인트 전환 — POST /api/comfy/select {model}. */
+  async comfySelectModel(model) {
+    /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.comfy.active = model; return { ok: true, active: model }; } /* @end-proto-only */
+    return post(ENDPOINTS.comfySelect, { model });
   },
 
   /**

@@ -66,6 +66,7 @@ class ComfyClient:
     def __init__(self, base_url: str, timeout: float = 180.0) -> None:
         self._base = base_url.rstrip("/")
         self._timeout = aiohttp.ClientTimeout(total=timeout)
+        self._active: str | None = None  # 선택된 체크포인트(없으면 첫 모델 자동)
 
     async def health(self) -> bool:
         """ComfyUI 가 응답하는지(capability 광고 판단용). /object_info 200."""
@@ -81,27 +82,48 @@ class ComfyClient:
         return True
 
     async def current_checkpoint(self) -> str | None:
-        """SDClient 호환 — 활성 체크포인트(해상도 판정용). ComfyUI 는 첫 체크포인트를 쓴다."""
+        """SDClient 호환 — 활성 체크포인트(해상도 판정용). 선택값 있으면 그것, 없으면 첫 모델."""
+        if self._active:
+            return self._active
         return await self.first_checkpoint()
 
-    async def first_checkpoint(self) -> str | None:
-        """ComfyUI 에 설치된 첫 체크포인트 이름(유저가 어떤 모델을 넣었든 자동 선택)."""
+    async def set_checkpoint(self, name: str) -> bool:
+        """활성 체크포인트를 전환(SDClient 호환). 설치 목록에 있으면 _active 로 두고 True.
+
+        ComfyUI 는 워크플로의 ckpt_name 으로 모델을 고르므로 핫스왑이 즉시(다음 생성부터) 반영된다.
+        """
+        if not name:
+            return False
+        ckpts = await self.list_checkpoints()
+        if name in ckpts:
+            self._active = name
+            return True
+        return False
+
+    async def list_checkpoints(self) -> list[str]:
+        """ComfyUI 에 설치된 체크포인트 전체 목록(폴더 스캔 결과 — 유저가 넣은 .safetensors 다 포함)."""
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
-                async with s.get(f"{self._base}/object_info/CheckpointLoaderSimple") as r:
-                    data = await r.json()
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s, s.get(
+                f"{self._base}/object_info/CheckpointLoaderSimple"
+            ) as r:
+                data = await r.json()
         except (aiohttp.ClientError, ValueError):
-            return None
+            return []
         try:
             names = data["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
-            return names[0] if isinstance(names, list) and names else None
+            return [str(n) for n in names] if isinstance(names, list) else []
         except (KeyError, IndexError, TypeError):
-            return None
+            return []
+
+    async def first_checkpoint(self) -> str | None:
+        """ComfyUI 에 설치된 첫 체크포인트 이름(선택값 없을 때 자동 선택)."""
+        ckpts = await self.list_checkpoints()
+        return ckpts[0] if ckpts else None
 
     async def txt2img(self, prompt: str, options: dict | None = None) -> str:
         """프롬프트로 이미지를 생성해 base64 PNG(첫 장) 반환. 오류 시 ComfyError. SDClient 와 동일 인터페이스."""
         opts = options or {}
-        ckpt = await self.first_checkpoint()
+        ckpt = self._active or await self.first_checkpoint()
         if not ckpt:
             raise ComfyError("ComfyUI 에 설치된 체크포인트가 없습니다(모델 폴더에 .safetensors 를 넣어주세요)")
         workflow = build_workflow(

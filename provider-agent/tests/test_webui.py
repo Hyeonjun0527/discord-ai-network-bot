@@ -1315,3 +1315,29 @@ async def test_comfy_lifecycle_endpoints(monkeypatch):
         assert "phase" in p
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_comfy_models_and_select(monkeypatch):
+    """ComfyUI 체크포인트 목록(폴더 스캔) + 선택 저장. 미설치/미실행이면 빈 목록·정직한 응답."""
+
+    async def no_list(self):
+        return []  # ComfyUI 미실행 → 빈 목록
+
+    monkeypatch.setattr("provider_agent.comfy.ComfyClient.list_checkpoints", no_list)
+    saved = {}
+    monkeypatch.setattr(webui, "load_config", lambda: saved)
+    monkeypatch.setattr("provider_agent.config_file.persist_partial", lambda d, *a, **k: saved.update(d))
+    client = await _client()
+    try:
+        m = await (await client.get("/api/comfy/models", headers={"X-Session": KEY})).json()
+        assert m["models"] == [] and m["active"] is None
+        # 모델 미지정 → 거부
+        r = await (await client.post("/api/comfy/select", json={}, headers={"X-Session": KEY})).json()
+        assert r["ok"] is False
+        # 모델 지정 → 저장(active)
+        r = await (await client.post("/api/comfy/select", json={"model": "x.safetensors"}, headers={"X-Session": KEY})).json()
+        assert r["ok"] is True and r["active"] == "x.safetensors"
+        assert saved.get("comfy_model") == "x.safetensors"
+    finally:
+        await client.close()

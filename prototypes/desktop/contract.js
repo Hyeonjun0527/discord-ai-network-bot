@@ -101,6 +101,8 @@ export const ENDPOINTS = Object.freeze({
   comfyStart: '/api/comfy/start',            // POST — 설치된 ComfyUI 기동
   comfyStop: '/api/comfy/stop',              // POST — 정지
   comfyOpen: '/api/comfy/open',              // POST — 웹UI 를 시스템 브라우저로
+  comfyModels: '/api/comfy/models',          // GET → {models:[ckpt…], active} (폴더 스캔 = 아무 .safetensors)
+  comfySelect: '/api/comfy/select',          // POST {model} — 활성 체크포인트 전환
   ollamaSetup: '/api/ollama/setup',
   ollamaSetupProgress: '/api/ollama/setup-progress',
   ollamaCatalog: '/api/ollama/catalog',

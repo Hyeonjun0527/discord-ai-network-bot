@@ -1393,6 +1393,39 @@ def build_app(session_key: str) -> web.Application:
         await comfy_setup.stop()
         return web.json_response({"ok": True})
 
+    async def comfy_models(req: web.Request) -> web.Response:
+        """ComfyUI 에 설치된 체크포인트 목록 + 활성(폴더 스캔 = '아무 .safetensors 나' 자동 인식)."""
+        _auth(req)
+        from . import comfy_setup
+        from .comfy import ComfyClient
+
+        models = await ComfyClient(comfy_setup.webui_url()).list_checkpoints()
+        active = load_config().get("comfy_model") or (models[0] if models else None)
+        return web.json_response({"models": models, "active": active})
+
+    async def comfy_select(req: web.Request) -> web.Response:
+        """활성 ComfyUI 체크포인트 전환(저장 + 떠 있으면 에이전트에 즉시 반영). body {model}."""
+        _auth(req)
+        from .config_file import persist_partial
+
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        name = (data or {}).get("model")
+        if not name:
+            return web.json_response({"ok": False, "error": "모델을 지정하세요."})
+        persist_partial({"comfy_model": name})  # 다음 기동에도 유지
+        swapped = False
+        agent = _running_agent()
+        if agent is not None and getattr(agent, "_sd", None) is not None:
+            try:
+                swapped = bool(await agent._sd.set_checkpoint(name))  # type: ignore[attr-defined]
+                agent._invalidate_resolution()  # type: ignore[attr-defined]
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("provider_agent").warning("ComfyUI 모델 전환 실패: %s", exc)
+        return web.json_response({"ok": True, "active": name, "applied": "live" if swapped else "saved"})
+
     async def comfy_open(req: web.Request) -> web.Response:
         """ComfyUI 웹 UI 를 시스템 브라우저로 연다(같은 포트에서 ComfyUI 가 서빙)."""
         _auth(req)
@@ -1645,9 +1678,18 @@ def build_app(session_key: str) -> web.Application:
         except Exception:  # noqa: BLE001 - 본문 없으면 기본값
             body = {}
         which = (body.get("which") if isinstance(body, dict) else None) or "sdOutputs"
-        base = sd_setup.install_dir()
-        candidates = [base / "outputs", base] if which == "sdOutputs" else [base]
-        target = next((p for p in candidates if p.exists()), None)
+        target = None
+        if which == "comfyModels":
+            # ComfyUI 체크포인트 폴더(여기에 .safetensors 를 넣으면 자동 인식). 없으면 만들어서 연다.
+            from . import comfy_setup
+
+            mdir = comfy_setup.model_dir()
+            mdir.mkdir(parents=True, exist_ok=True)
+            target = mdir
+        else:
+            base = sd_setup.install_dir()
+            candidates = [base / "outputs", base] if which == "sdOutputs" else [base]
+            target = next((p for p in candidates if p.exists()), None)
         if target is None:
             return web.json_response({"ok": False, "error": "폴더가 아직 없어요(설치/생성 전)"})
         try:
@@ -1721,6 +1763,8 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/comfy/start", comfy_start)
     app.router.add_post("/api/comfy/stop", comfy_stop)
     app.router.add_post("/api/comfy/open", comfy_open)
+    app.router.add_get("/api/comfy/models", comfy_models)
+    app.router.add_post("/api/comfy/select", comfy_select)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)

@@ -111,7 +111,7 @@
 - [x] **SE-079** ✅FIXED `예외3 삼킴` `provider-agent/src/provider_agent/config_file.py:74` `persist_token` (S) — Line 74: `except OSError: pass` silently swallows all errors (file I/O, chmod, mkdir). If durable token persist fails, app silently loses durable token on restart, forcing re-auth. Caller has no signal of failure. **→** At minimum, log the exception with the path and token context (masked). Consider raising a custom `TokenPersistError` or returning a bool to signal success/failure to caller.
 - [x] **SE-080** ✅FIXED `예외3 삼킴` `provider-agent/src/provider_agent/config_file.py:94` `persist_partial` (S) — Line 94: `except OSError: pass` in persist_partial silently drops guild policy/toggle updates (auto_update, paused) without feedback. Caller receives no signal that write failed, leading to silent data loss. **→** Log with context (guild_id, update keys, error). Return bool or raise ConfigPersistError so callers can warn user or retry.
 - [ ] **SE-081** `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:640-643` `_add_connection` (M) — Exception 을 잡고 아무것도 안 함(pass). 토큰 저장 실패, DB 오류, 파일시스템 오류가 모두 무시되므로 연결 추가가 실패했는데 호출자는 성공인 줄 앎. **→** 원인을 로깅하거나 호출자에게 실패 상황을 반환하도록 변경 (bool 또는 예외 전파)
-- [ ] **SE-082** `예외3 삼킴` `provider-agent/src/provider_agent/updater.py:249` `_apply_macos` (S) — Line 249: 'except Exception as exc:' logs to f-string but exc is a subprocess error (ditto, OSError). Missing context on which subprocess failed—user sees 'Extract failed: [OSError]' without knowing if it was ditto or file I/O. **→** Catch '(subprocess.CalledProcessError, OSError)' separately, log the command that failed, and the specific exit code or errno.
+- [x] **SE-082** ✅FIXED(압축해제 실패 메시지 정리(ditto)·다운로드 메시지에 url) `예외3 삼킴` `provider-agent/src/provider_agent/updater.py:249` `_apply_macos` (S) — Line 249: 'except Exception as exc:' logs to f-string but exc is a subprocess error (ditto, OSError). Missing context on which subprocess failed—user sees 'Extract failed: [OSError]' without knowing if it was ditto or file I/O. **→** Catch '(subprocess.CalledProcessError, OSError)' separately, log the command that failed, and the specific exit code or errno.
 - [ ] **SE-083** `예외4 빈약메시지` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/GuildRemovalCleanupService.kt:26` `cleanup` (S) — cleanup() logs only a success summary at line 35 with no failure scenario. If any of the 8 deletion calls fail silently (or throw and cause partial rollback), the log statement won't execute, leaving no trace of the cleanup attempt or failure reason. Operators have no visibility into failures. **→** Log each deletion step with success/failure: log.info("Clearing blocklist for guild={}", guildId); or use try-catch around each call to log failures individually with reason.
 - [ ] **SE-084** `예외4 빈약메시지` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/adapter/outbound/DiscordOAuth.kt:86` `HttpDiscordOAuthClient.exchangeCodeForToken` (S) — 로그 메시지 `"Discord 토큰 교환 오류: {}"` 에 exception 클래스명만 남겨 실제 문제(URL 오류/응답 본문 파싱 실패/타임아웃)를 알 수 없다. **→** `log.warn("Discord 토큰 교환 오류: {}", e.message)` 또는 `log.warn("Discord 토큰 교환 오류", e)` 로 전체 스택트레이스를 포함시키고, 상태코드/응답 본문도 함께 기록.
 - [ ] **SE-085** `예외4 빈약메시지` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:428` `Listener.onSlashCommandInteraction` (S) — catch (e: Exception) 에서 e.message 만 로깅(줄 429). 스택트레이스 없이 메시지 하나로는 명령 처리 실패의 원인을 디버깅하기 어렵고, 원래 예외 정보가 충분하지 않음. **→** log.warn("명령 처리 실패: {} — {}", event.name, e.message, e) 로 세 번째 인자로 예외 객체 자체를 넘겨 스택트레이스를 로깅하거나, e.toString() 이나 더 명확한 컨텍스트(guild, user, command name) 포함.
@@ -131,8 +131,8 @@
 - [ ] **SE-099** `예외8 자원정리` `provider-agent/src/provider_agent/connection.py:89` `run` (M) — Lines 96-102: aiohttp.ClientSession and ws_connect are used with `async with` (proper cleanup). However, on AuthFailedError (line 104-106) or exception (line 109-112), self._ws is set to None in finally (line 114), but session may have been partially initialized if error occurs between connector creation and ws_connect. **→** Wrap session creation and ws_connect in separate try blocks, or use context manager for connector. Ensure all aiohttp resources are cleaned even on early exception.
 - [ ] **SE-100** `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:248-258` `ensure_bundled_python` (M) — Archive file cleanup 'finally: archive.unlink()' (line 257) happens before checking if extraction succeeded. If extraction fails and raises exception, partial directory remains AND archive is deleted—next attempt has no resume point. **→** Only delete archive in finally after successful completion; on exception, preserve archive for resume/retry.
 - [ ] **SE-101** `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:337-371` `_download` (M) — aiohttp.ClientSession and file handle (line 368) opened in 'async with' but on exception during chunked write (line 369), file is left open until async context exits. Large file operations risk incomplete writes. **→** Use explicit try-finally or ensure all file writes are transactional; rename to dest only after full write completes.
-- [ ] **SE-102** `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:245-306` `_apply_macos` (M) — Temporary directory 'tmp' (created line 245) is never cleaned up on error. If subprocess.run fails (line 260), extract fails (line 259), or new_app is not found (line 264), 'tmp' directory leaks gigabytes of downloaded files. **→** Wrap entire function in try-finally or use 'with tempfile.TemporaryDirectory() as tmp:' context manager to guarantee cleanup on all paths.
-- [ ] **SE-103** `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:362-394` `_apply_windows` (M) — Temporary directory 'tmp' (line 362) is never cleaned up. On download failure (line 365), checksum failure (line 370), or any error, directory with large EXE leaks. **→** Use 'with tempfile.TemporaryDirectory() as tmp:' or ensure finally block cleans up via shutil.rmtree().
+- [x] **SE-102** ✅FIXED(macOS 실패 경로 tmp 정리(_cleanup_tmp_and_fail; 성공 경로는 헬퍼 소유)) `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:245-306` `_apply_macos` (M) — Temporary directory 'tmp' (created line 245) is never cleaned up on error. If subprocess.run fails (line 260), extract fails (line 259), or new_app is not found (line 264), 'tmp' directory leaks gigabytes of downloaded files. **→** Wrap entire function in try-finally or use 'with tempfile.TemporaryDirectory() as tmp:' context manager to guarantee cleanup on all paths.
+- [x] **SE-103** ✅FIXED(Windows 실패 경로 tmp 정리) `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:362-394` `_apply_windows` (M) — Temporary directory 'tmp' (line 362) is never cleaned up. On download failure (line 365), checksum failure (line 370), or any error, directory with large EXE leaks. **→** Use 'with tempfile.TemporaryDirectory() as tmp:' or ensure finally block cleans up via shutil.rmtree().
 - [ ] **SE-104** `예외9 전역처리` `provider-agent/src/provider_agent/webui.py:903-907, 918-921, 930-933, 945-948, 959-962` `server_manage_policy, server_prompt_sets, server_prompt_set_add, server_prompt_set_default, server_prompt_set_delete` (M) — Lines 903-907 (and 4 more duplicates): Each handler duplicates `try: guild_id = int(req.match_info['guildId']) except (KeyError, ValueError): return json_error()` verbatim. No centralized HTTP error handling — each endpoint must catch its own parameter errors. If format changes (e.g., guildId → guild), 20+ handlers must update individually. **→** Create an aiohttp middleware or handler wrapper that validates path parameters and returns HTTP 400 for malformed guild_id. Example: `@validate_guild_path` decorator or app.middlewares with try-except for aiohttp.web.HTTPBadRequest.
 - [ ] **SE-105** `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiQualityFeedbackService.kt:103` `resolveFeedback` (M) — error("feedback_not_found") throws unchecked exception as control flow. Should validate existence before mutation, not use exception for normal not-found case. **→** Return Result type or validate before persisting: val feedback = feedbacks.findByGuildIdAndId(guildId, feedbackId) ?: return AiFeedbackReviewResult.notFound().
 - [ ] **SE-106** `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:92-99` `GlobalPromptSetService.delete` (S) — invalid id(숫자가 아닌 문자열)를 toLongOrNull()로 무시하고 return. 검증이 늦어져 잘못된 입력이 시스템 깊숙이 전파되지 않음. **→** 메서드 진입 시 require(id.matches(digitRegex)) { "invalid_id" } 또는 id.toLongOrNull()?.let { ... } ?: throw로 빨리 검증.
@@ -1196,22 +1196,22 @@
 - [ ] **SE-202** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/config.py:62` `_load_dotenv` (S)
   - Lines 81-92: .env read failure is caught and passed silently. If cand.read_text() fails due to permission denied, it's treated same as 'not found'. But admin intended to set GEMINI_API_KEY via .env and may not know it failed.
   - **Fix:** If path.exists() and read fails, that's a real error → log warning. Empty pass only if path doesn't exist. Use `if path.exists(): ... else: continue`.
-- [ ] **SE-227** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/connection.py:200` `_heartbeat` (S)
+- [x] **SE-227** ✅FIXED(heartbeat ping 실패 무로깅 → debug 로그) 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/connection.py:200` `_heartbeat` (S)
   - Line 200: `except Exception: return` in _heartbeat silently swallows all errors (frame encoding, socket closed). No logging. Heartbeat task dies silently; connection hangs without timeout.
   - **Fix:** Change to `except Exception as exc: logger.error('Heartbeat error: %s', exc); return`. Explicitly catch aiohttp.ClientError, log others.
 - [x] **SE-252** ✅FIXED 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/config.py:91` `_load_dotenv` (S)
   - Line 91: `except OSError: pass` in _load_dotenv silently ignores .env read failures (permissions, disk error). If admin puts GEMINI_API_KEY in .env and read fails silently, critical key is lost with no feedback.
   - **Fix:** Log: `logger.warning('Cannot read .env file %s: %s', cand, exc)` to at least warn in debug. Or raise ConfigLoadError if .env exists but unreadable (likely permission issue).
-- [ ] **SE-272** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/config_file.py:195` `load_config` (S)
+- [x] **SE-272** ✅FIXED(load_config 파싱/IO 실패 구분 로그) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/config_file.py:195` `load_config` (S)
   - Line 203: `except (json.JSONDecodeError, OSError): return {}` returns empty dict on **any** OSError (permission denied, disk full) indistinguishably from 'file not found'. Caller cannot distinguish parse error from I/O failure.
   - **Fix:** Separate handlers: `except json.JSONDecodeError: logger.warning('Corrupt config file...'); return {}` vs. `except OSError as e: logger.error('Cannot read config: %s', e); raise` to propagate I/O errors.
-- [ ] **SE-289** 🟡 `예외5 흐름제어` `provider-agent/src/provider_agent/config_file.py:207` `load_guild_policies` (S)
+- [x] **SE-289** ✅FIXED(load_guild_policies 흐름제어→isdigit pre-check+로그) 🟡 `예외5 흐름제어` `provider-agent/src/provider_agent/config_file.py:207` `load_guild_policies` (S)
   - Lines 218-221: `try: out[int(k)] = ... except (ValueError, TypeError): continue` uses exception for control flow. Non-integer guild_id keys silently skip instead of warn. Hard to debug config corruption.
   - **Fix:** Use `if k.isdigit()` pre-check instead of try-except. Log skipped keys: `logger.debug('Skipping non-integer guild_id key: %r', k)`.
-- [ ] **SE-301** 🟡 `예외8 자원정리` `provider-agent/src/provider_agent/config_file.py:64` `persist_token` (S)
+- [x] **SE-301** ✅FIXED(persist_token=persist_partial 위임으로 자원처리 일원화(#225)) 🟡 `예외8 자원정리` `provider-agent/src/provider_agent/config_file.py:64` `persist_token` (S)
   - Lines 64-75: path.read_text() called without error handling inside try block that catches OSError. If read succeeds but json.loads() corrupts, data dict is partially initialized (line 65 default empty dict). path.write_text() then overwrites partial data.
   - **Fix:** Separate: load phase with explicit json.JSONDecodeError handling, write phase with OSError handler. Use `data = json.loads(path.read_text(...)) if path.exists() else {}`.
-- [ ] **SE-302** 🟡 `예외8 자원정리` `provider-agent/src/provider_agent/connection.py:121` `_session` (S)
+- [x] **SE-302** ✅FIXED(heartbeat 태스크 cancel 후 await 로 정리 보장) 🟡 `예외8 자원정리` `provider-agent/src/provider_agent/connection.py:121` `_session` (S)
   - Lines 132-152: asyncio.create_task(self._heartbeat(ws)) is created but only cancelled in finally. If _dispatch awaits on a hung task (e.g., server sends malformed frame causing infinite loop), hb task leaks and keeps reference to ws.
   - **Fix:** Store hb task reference; in finally, use `hb.cancel()` with `try: await hb except asyncio.CancelledError: pass` to ensure cleanup completes.
 - [ ] **SE-319** 🟡 `예외10 fail-fast` `provider-agent/src/provider_agent/config.py:139` `config_from_args` (S)
@@ -1235,7 +1235,7 @@
 - [ ] **SE-057** 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:354` `_apply_windows` (S)
   - Catches 'except Exception:' at line 354, masking all fetch_latest() errors uniformly. Parser bugs and network errors both become 'failure'.
   - **Fix:** Catch network exceptions explicitly; let ValueError/KeyError from malformed responses propagate or log as bugs.
-- [ ] **SE-082** 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/updater.py:249` `_apply_macos` (S)
+- [x] **SE-082** ✅FIXED(압축해제 실패 메시지 정리(ditto)·다운로드 메시지에 url) 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/updater.py:249` `_apply_macos` (S)
   - Line 249: 'except Exception as exc:' logs to f-string but exc is a subprocess error (ditto, OSError). Missing context on which subprocess failed—user sees 'Extract failed: [OSError]' without knowing if it was ditto or file I/O.
   - **Fix:** Catch '(subprocess.CalledProcessError, OSError)' separately, log the command that failed, and the specific exit code or errno.
 - [ ] **SE-100** 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:248-258` `ensure_bundled_python` (M)
@@ -1244,10 +1244,10 @@
 - [ ] **SE-101** 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/sd_setup.py:337-371` `_download` (M)
   - aiohttp.ClientSession and file handle (line 368) opened in 'async with' but on exception during chunked write (line 369), file is left open until async context exits. Large file operations risk incomplete writes.
   - **Fix:** Use explicit try-finally or ensure all file writes are transactional; rename to dest only after full write completes.
-- [ ] **SE-102** 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:245-306` `_apply_macos` (M)
+- [x] **SE-102** ✅FIXED(macOS 실패 경로 tmp 정리(_cleanup_tmp_and_fail; 성공 경로는 헬퍼 소유)) 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:245-306` `_apply_macos` (M)
   - Temporary directory 'tmp' (created line 245) is never cleaned up on error. If subprocess.run fails (line 260), extract fails (line 259), or new_app is not found (line 264), 'tmp' directory leaks gigabytes of downloaded files.
   - **Fix:** Wrap entire function in try-finally or use 'with tempfile.TemporaryDirectory() as tmp:' context manager to guarantee cleanup on all paths.
-- [ ] **SE-103** 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:362-394` `_apply_windows` (M)
+- [x] **SE-103** ✅FIXED(Windows 실패 경로 tmp 정리) 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:362-394` `_apply_windows` (M)
   - Temporary directory 'tmp' (line 362) is never cleaned up. On download failure (line 365), checksum failure (line 370), or any error, directory with large EXE leaks.
   - **Fix:** Use 'with tempfile.TemporaryDirectory() as tmp:' or ensure finally block cleans up via shutil.rmtree().
 - [ ] **SE-142** 🟡 `SRP` `provider-agent/src/provider_agent/comfy_setup.py:214-227` `start` (M)
@@ -1256,10 +1256,10 @@
 - [ ] **SE-143** 🟡 `SRP` `provider-agent/src/provider_agent/updater.py:204-226` `apply_update` (L)
   - Function 'apply_update' bundles platform detection, progress updates, and delegation to _apply_macos/_apply_windows. Contains branching logic that mixes presentation (progress) with OS-specific logic.
   - **Fix:** Extract progress state machine into separate class; delegate platform-specific work to strategy objects (MacOSUpdater, WindowsUpdater) implementing common interface.
-- [ ] **SE-205** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/updater.py:196` `_verify_checksum` (S)
+- [x] **SE-205** ✅FIXED(SHA256SUMS 수신 실패 시 검증 건너뜀 warning 로그(보안 가시성)) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/updater.py:196` `_verify_checksum` (S)
   - Catches 'except Exception:' and silently returns None, treating checksum fetch failure as 'skip verification'. This allows corrupted binaries if SHA256SUMS fetch fails—should propagate or log.
   - **Fix:** Remove silent catch and let caller decide: raise specific 'OllamaError' or similar; if skipping is valid, log warning and document it explicitly.
-- [ ] **SE-206** 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/updater.py:343` `start_service_update_watcher` (S)
+- [x] **SE-206** ✅FIXED(서비스 워처 데몬 스레드 무로깅 삼킴 → warning) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/updater.py:343` `start_service_update_watcher` (S)
   - Bare 'except Exception:' in daemon thread (line 343) swallows all errors, including legitimate bugs in _loop logic. Service continues running silently without diagnosing why updates fail.
   - **Fix:** Log exception details before retry; catch specific exceptions (urllib errors, asyncio.TimeoutError); let genuine bugs propagate to stderr.
 - [ ] **SE-229** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:114` `_url_ok` (S)
@@ -1268,7 +1268,7 @@
 - [ ] **SE-230** 🟡 `예외2 broad catch` `provider-agent/src/provider_agent/updater.py:80` `_ssl_context` (S)
   - Broad 'except Exception' catches all exceptions including KeyboardInterrupt-related ones. Should catch only 'ModuleNotFoundError' since certifi import is the only thing that can fail.
   - **Fix:** Change 'except Exception:' to 'except ModuleNotFoundError:' to catch only the import error.
-- [ ] **SE-254** 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/updater.py:366` `_apply_windows` (S)
+- [x] **SE-254** ✅FIXED(다운로드 실패 메시지에 url 컨텍스트) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/updater.py:366` `_apply_windows` (S)
   - Line 366: 'except Exception as exc:' error message 'exc' is stringified without context. User sees 'download failed: [error]' but not which URL or what retry is happening.
   - **Fix:** Include URL, retry strategy, and retry count in error message: f'Download failed (attempt N): {url} — {exc}'.
 
@@ -1295,7 +1295,7 @@
 - [ ] **SE-273** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/agent.py:420-430` `_handle_text` (S)
   - OllamaError 를 logger.error("...", exc)로 로깅하지만 메시지가 "Ollama 오류"만으로 구체적이지 않음. 토큰 수, 프롬프트, 요청 ID 같은 맥락이 없어 디버깅 어려움.
   - **Fix:** 메시지에 request_id, prompt 길이, 모델명 등을 포함: f"Ollama 오류(model={model}, request={req_id}): {exc}"
-- [ ] **SE-274** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/connection.py:104-106` `run` (S)
+- [x] **SE-274** ✅FIXED(인증 실패에 code+message 보존) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/connection.py:104-106` `run` (S)
   - AuthFailedError 를 logger.error()로 로깅하지만 메시지가 "인증 실패(…)"로 원인을 알기 어려움. 토큰 문제인지 네트워크인지 서버 오류인지 구분 안 됨.
   - **Fix:** 프레임의 code/message 를 명시적으로 로깅: f"인증 실패: {exc.code}={exc.message}"
 - [ ] **SE-290** 🟡 `예외5 흐름제어` `provider-agent/src/provider_agent/webui.py:556-559` `image_toggle` (S)

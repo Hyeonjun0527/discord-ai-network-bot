@@ -49,7 +49,7 @@
 - [~] **SE-017** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) `SRP` `provider-agent/src/provider_agent/config.py:126` `config_from_args` (L) — config_from_args (lines 126-222) has 97 lines doing: parse CLI → load env → load saved config → validate remote ollama → build AgentConfig → maybe save. Parsing priority logic intertwined with validation; 10+ local vars for precedence chains. **→** Extract ConfigResolver class taking (cli_args, env_dict, saved_config). Separate parsers: CliConfigParser, EnvConfigParser, SavedConfigParser with merge() strategy. config_from_args orchestrates only.
 - [~] **SE-018** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) `SRP` `provider-agent/src/provider_agent/webui.py:363-1649` `build_app` (L) — build_app 함수가 아이콘 캐싱, 로그 핸들링, 60개+ 라우트 핸들러 정의, 앱 빌드, 스타트업 훅까지 모두 담당. 단일 함수가 웹 라우팅, 설정 저장, 에이전트 관리, OAuth, ComfyUI/Ollama 통합을 한 번에 처리. **→** 웹 라우트 빌더를 별도 클래스로 추출(RouteConfigurator), 캐싱은 AssetManager, 로그는 LogAttacher로 분리. build_app은 생성과 라우팅 조립만 담당하도록 축소.
 - [~] **SE-019** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: (1) ApiEndpoint { fetch, mock, normalize } 추상 구조 정의, (2) api) `OCP` `prototypes/desktop/adapter.js:188-670` `api` (M) — 새 엔드포인트 추가 시 adapter.js 의 api 객체에 새 메서드를 매번 수동 추가해야 함. 엔드포인트 목록(contract.js ENDPOINTS)이 있어도, 코드 생성이나 고차 함수로 자동화하지 않아 OCP 위반(확장이 수정을 요구). **→** adapter 메서드를 generateApiMethods(ENDPOINTS) 같은 고차 함수로 동적 생성. 예: Object.entries(ENDPOINTS).reduce((api, [key, path]) => ({...api, [key]: (body) => http(path, body)})). 새 엔드포인트는 contract.js ENDPOINTS 만 추가하면 자동 반영.
-- [~] **SE-020** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1. IndexingStrategy 인터페이스 정의 (indexInlineIfPossible 메서드 포함). 2. NullIn) `OCP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIngestionService.kt:217` `addSourceWithInlineIndexing` (M) — addSourceWithInlineIndexing()가 indexing 파라미터 null 체크에 따라 동작을 결정한다. 새 인덱싱 백엔드 추가 시마다 null 체크 로직을 수정해야 한다(폐쇄 원칙 위반). **→** 전략 패턴: `interface KnowledgeSourceIndexer { fun indexIfPossible(...): InlineKnowledgeIndexingResult }` 인터페이스를 정의하고, `NoKnowledgeIndexer` (아무것도 안 함), `KnowledgeIndexingService` 구현으로 분리. 조건부 호출 대신 다형성 사용.
+- [x] **SE-020** ✓REVIEWED-CLEAN(재판정 over-eng: addSourceWithInlineIndexing is a 13-line façade orchestrator with clear responsibility: de)
 - [x] **SE-021** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `OCP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:296` `Listener.onSlashCommandInteraction` (L) — 명령 dispatcher (dispatch 메서드, line 846~1065) 가 거대한 when 분기(약 200+ 줄, 50+ 명령)를 모두 직렬로 나열. 새 명령이 추가될 때마다 이 메서드를 수정해야 하고, 실행 로직이 모두 호출 싱글톤인 CommandService 에 분산됨. **→** Command 전략 인터페이스를 정의하고, 명령이름->Command 맵으로 관리. CommandRegistry 패턴 또는 @SlashCommand 애너테이션 기반 자동 등록으로 when 제거.
 - [~] **SE-022** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: (1) IDataProvider 인터페이스(getServers, getServerModels, ...) 정의) `DIP` `prototypes/desktop/adapter.js:12, 14-186` `USE_MOCK, _setup, MOCK` (M) — mock/real 전환이 boolean flag USE_MOCK = true/false 로 하드코딩되어 있음. adapter 내 모든 메서드가 if(USE_MOCK) 로 분기하므로, 구체 구현(mock 데이터)에 의존(상위 정책이 구체에 의존). **→** DataSource 인터페이스를 추상화: (1) interface DataSource { getServers(), getStatus(), ... }  (2) class MockDataSource implements DataSource { ... } (3) class RealDataSource implements DataSource { ... } (4) api 객체는 주입된 DataSource 를 사용. USE_MOCK boolean 대신 DI 컨테이너가 new MockDataSource() 또는 new RealDataSource() 를 선택.
 - [x] **SE-023** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `DIP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:39-50` `ChannelAiCustomizationService constructor` (M) — Direct concrete instantiation of 5 collaborators (presetFactory, promptRenderer, onboardingPresenter, approvalPolicy, proposalQuery, auditRecorder, behaviorVersionWriter) with hardcoded defaults inside constructor, making them un-injectable in tests without mocking the entire service. **→** Make all 7 private constructor parameters required (not optional with `= ` defaults). Remove inline initialization; require injection from Spring context. Tests can then inject mocks via constructor for focused unit tests.
@@ -152,7 +152,7 @@
 - [x] **SE-087** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외4 빈약메시지` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:330` `route` (M)
   - lastReason = e.cause?.message ?: e.message ?: "처리 실패" — 예외 메시지가 null 이면 "처리 실패" 로 손실. 원인 정보(예외 타입, 스택트레이스, 컨텍스트)가 전혀 없음.
   - **Fix:** lastReason = buildDetailedFailureMessage(e, selectedProviderId, ctx) 로 분리. 스택트레이스를 로그에만 남기고, 사용자 메시지는 별도 정책으로 생성.
-- [~] **SE-139** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1. MutableProviderReservationState의 여섯 필드를 단일 synchronized 블록으로 보호하도록 ) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/RoutingReservationManager.kt:101-173` `MutableProviderReservationState` (M)
+- [x] **SE-139** ✓REVIEWED-CLEAN(재판정 over-eng: MutableProviderReservationState already uses method-level @Synchronized, which locks the e)
   - private class MutableProviderReservationState 가 reservation/release/snapshot 을 다루는데, 동시성 제어(@Synchronized), 쿼터 관리, 토큰 계산 등 3가지 책임 혼재.
   - **Fix:** QuotaManager, TokenReserver, ConcurrencyGuard 로 분리. 각각 하나의 관심사만.
 - [~] **SE-154** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/ProviderFilterPipeline.kt:115-207` `ProviderFilterPipeline.filter` (L)
@@ -161,7 +161,7 @@
 - [x] **SE-159** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `LSP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:398-405` `isTimeoutFailure` (S)
   - isTimeoutFailure() 헬퍼는 while 루프로 cursor?.cause 를 추적하나, CompletionException 만 특별 처리. 다른 wrapper 타입(ExecutionException 등)은 누락 가능.
   - **Fix:** 예외 타입 상속 계층을 명시적으로 문서화하고, Throwable.unwrap(): Throwable 헬퍼로 분리. 예외 원인을 일관되게 추출.
-- [~] **SE-166** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1단계: SingleProviderProfileProvider, BatchProviderProfileProvider로 인터페이) 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt:33-48, 50-72` `profilesFor` (S)
+- [x] **SE-166** ✓REVIEWED-CLEAN(재판정 over-eng: The interface already follows ISP via default implementations (lines 40, 45 of RoutingPort)
   - profilesFor(Collection<Long>): Map 과 profilesFor(Long, Collection<Long>): Map 두 오버로드가 있으나, 첫 번째는 capability 를 조회하지 않음. 호출자가 guild 정보를 전달해도 일부만 사용되는 뚱뚱한 인터페이스.
   - **Fix:** guild 를 항상 필수로 받도록 통합: profilesFor(guildId, providerIds) 한 가지만. no-guild 케이스는 별도 메서드 profilesForGlobalScope() 로 분리.
 - [~] **SE-180** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: 1. Extract inline RoutingAttemptLifecycleManager constructio) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:58-77` `RequestOrchestrator` (M)
@@ -179,7 +179,7 @@
 - [x] **SE-329** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/HaloGfScoreModel.kt:22-110` `scoreResult` (M)
   - scoreResult() 메서드가 85줄로 스코어 산출, 확률 모델, 손실 함수, 보너스 계산, 검증 등을 다룸. 단일 책임 위반.
   - **Fix:** GainCalculator, SloCalculator, BurdenCalculator, BonusCalculator 로 분리하여 composition 사용.
-- [~] **SE-330** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: Extract a dedicated PressureCalculator or extract pressure computation) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/RoutingAttemptLifecycleManager.kt:43-105` `RoutingAttemptLifecycleManager` (M)
+- [x] **SE-330** ✓REVIEWED-CLEAN(재판정 over-eng: finalizeAttempt() receives quotaPressure and providerBurdenPressure as external parameters)
   - RoutingAttemptLifecycleManager 가 attempts 맵 관리, 시작/종료 상태 추적, 협력자(reservationManager, stats, duals, auditLogger) 호출 등 4가지 책임 혼재.
   - **Fix:** AttemptState 와 AttemptExecutor 로 분리. 상태 관리는 AttemptState 에, 협력자 조율은 AttemptExecutor 에.
 - [~] **SE-338** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:152-361` `route` (M)
@@ -332,7 +332,7 @@
 - [x] **SE-116** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiProfileService.kt:60-124` `ChannelAiProfileService.set` (M)
   - set() method (65 lines) mixes 4 concerns: profile validation (normalize name/avatar), entity persistence (save channelAi), version allocation (nextVersion calc + save), proposal creation (auto-approve), audit recording. No separation between profile update and version/proposal side effects.
   - **Fix:** Extract ChannelAiProfileUpdater(repository) with updateProfile(channelAi, name, avatar): ChannelAiEntity. Inject into set(). Also extract BehaviorVersionAllocator(versionRepo) with allocateNextVersion(channelAiId, previous, params): AiBehaviorVersionEntity. set() orchestrates: updater.update() → allocator.allocate() → proposals.save() → audit().
-- [~] **SE-117** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1단계: PromptSectionBuilder 클래스 추출 - 시스템·유저 프롬프트 조립만 담당. 2단계: promptPrev) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiPromptRenderer.kt:22-96` `promptPreview` (M)
+- [x] **SE-117** ✓REVIEWED-CLEAN(재판정 over-eng: promptPreview is already reasonably cohesive. The proposed PromptSectionBuilder would extr)
   - promptPreview method mixes 5 responsibilities: fetch active behavior (DB query), fill defaults, apply sensitivity detection, build system prompt sections (safety, identity, custom instruction, behavior, RAG, question), concatenate strings. 75 lines of string templating + DB logic in single method.
   - **Fix:** Extract SystemPromptBuilder with sections(purpose, tone, answerLength, constitution, customInstruction, sensitive, rag): List<Section>, then render(sections): String. Extract RagContextHandler(ragText, sensitive): String? for RAG section logic. promptPreview delegates to fetch behavior, then: promptRenderer.render(behavior).
 - [x] **SE-118** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiProposalQueryService.kt:27-75` `proposalReviewSummary` (L)
@@ -368,7 +368,7 @@
 
 ### central · knowledge — 18건
 
-- [~] **SE-020** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1. IndexingStrategy 인터페이스 정의 (indexInlineIfPossible 메서드 포함). 2. NullIn) 🔴 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIngestionService.kt:217` `addSourceWithInlineIndexing` (M)
+- [x] **SE-020** ✓REVIEWED-CLEAN(재판정 over-eng: addSourceWithInlineIndexing is a 13-line façade orchestrator with clear responsibility: de)
   - addSourceWithInlineIndexing()가 indexing 파라미터 null 체크에 따라 동작을 결정한다. 새 인덱싱 백엔드 추가 시마다 null 체크 로직을 수정해야 한다(폐쇄 원칙 위반).
   - **Fix:** 전략 패턴: `interface KnowledgeSourceIndexer { fun indexIfPossible(...): InlineKnowledgeIndexingResult }` 인터페이스를 정의하고, `NoKnowledgeIndexer` (아무것도 안 함), `KnowledgeIndexingService` 구현으로 분리. 조건부 호출 대신 다형성 사용.
 - [x] **SE-026** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/adapter/inbound/web/KnowledgeIngestionController.kt:76` `indexingService` (M)
@@ -383,10 +383,10 @@
 - [x] **SE-094** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외8 자원정리` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/WebSearch.kt:178` `enrich` (M)
   - enrich()가 병렬 CompletableFuture로 콘텐츠를 fetch한 후 `.exceptionally { r to null }`로 모든 예외를 무시한다. 풀(fetchPool)이 정리되지 않을 수 있고, 타임아웃/리소스 누수가 발생할 수 있다.
   - **Fix:** fetchPool을 shutdown 하는 finally 블록이나 try-with-resources 패턴으로 감싸기. 더 나은 방법은 Spring의 TaskExecutor를 주입받아 lifecycle 관리하기. 예외 무시 대신 로깅 추가.
-- [~] **SE-124** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: allowedSpaceIds + activePolicy 조회를 ScopeAndPolicyResolver(spaces, retr) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeSearchService.kt:33` `search` (L)
+- [x] **SE-124** ✓REVIEWED-CLEAN(재판정 over-eng: allowedSpaceIds() and activePolicy() are already extracted as private helper methods. They)
   - search() 메서드가 피처게이트 검증, 쿼리 정규화, 민감정보 필터, 범위 조회, 정책 조회, 재랭킹 로직을 모두 담당한다. 각각 다른 관심사(권한/검증/쿼리정규화/보안/DB조회/ML재랭킹)가 혼재되어 있다.
   - **Fix:** 각 관심사를 별도 메서드로 분리: `validateSearch()`, `normalizeQuery()`, `checkSensitivity()`, `resolveScope()`, `getPolicy()`, `rankResults()` 등으로 추출. search()는 이들을 조합하는 오케스트레이션만 담당하기.
-- [~] **SE-158** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1. AddSourcePolicy sealed enum 정의. 2. addSource 시그니처의 boolean screenIn) 🟡 `LSP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIngestionService.kt:159` `addSource` (M)
+- [x] **SE-158** ✓REVIEWED-CLEAN(잘 문서화된 boolean(screenInjection)+기본값 — sealed 전환은 11호출부+테스트 churn 대비 이득 적음)
   - sourceValidator.validateSource()가 SourceValidation(riskLevel, initialStatus)를 반환하지만, addSource()가 이를 해석할 때 validation.riskLevel과 validation.initialStatus 사이의 계약이 불명확하다. 예를 들어 riskLevel="review"면 항상 REVIEW status인가? 일관성 확인이 어렵다.
   - **Fix:** SourceValidation 대신 상태를 나타내는 폐쇄형 sealed class로 변경: `sealed class SourceValidationResult { data class Valid(...) : ..., data class Blocked(...) : ... }` 로 LSP를 지켜 각 상태의 계약을 명확히.
 - [x] **SE-163** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeSourceValidator.kt:32` `validateUri` (M)
@@ -596,19 +596,19 @@
 - [x] **SE-042** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetChannelApplier.kt:128-143` `saveNextBehaviorVersion` (M)
   - try-catch에서 구체적 예외 타입이 아닌 org.springframework.dao.DataIntegrityViolationException로 광범위하게 잡고 있다. 다른 integrity violation(FK, CHECK constraint 등)을 동시성 충돌로 오인하여 불필요한 재시도를 수행할 수 있다. 또한 DataIntegrityViolationException 외의 예외(SQLIntegrityConstraintViolationException 등)는 처리되지 않는다.
   - **Fix:** 데이터베이스별로 unique constraint violation의 정확한 예외 타입을 구분하여 잡아야 한다. H2/MySQL/PostgreSQL 각각의 SQLIntegrityConstraintViolationException의 cause를 확인하거나, JPA/Hibernate의 동시성 특화 예외(OptimisticLockException, PessimisticLockException)를 명확히 처리하라.
-- [~] **SE-130** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: Extract PresetModerationQueueBuilder collaborator. Move lines 255-264 ) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogQueryService.kt:249-279` `moderationSummary` (M)
+- [x] **SE-130** ✓REVIEWED-CLEAN(재판정 over-eng: Lines 255-264 (queue building) are already delegated to moderationItem() private method an)
   - moderationSummary 함수가 발행된 모든 프리셋과 모든 신고를 메모리에 로드하여(publishedPresets.findAll(), reports.findAll()) 필터링하고 있다. 프리셋/신고가 많은 경우 OOM 위험이 있고, 또한 모니터링 큐 순위 계산(riskCodes, recommendedAction)과 통계 집계(statusCounts, reportStatusCounts)라는 2개 책임을 담당하고 있다.
   - **Fix:** moderationSummary를 PresetModerationQueueBuilder(큐 생성), PresetModerationStatistics(통계 계산)로 분리하고, findAll() 대신 findByStatus() 같은 페이징/필터 쿼리를 사용하도록 수정하라. 또한 큐는 최대 50개만 필요하므로 limit(50) 조건을 DB 쿼리에 내려야 한다.
-- [~] **SE-131** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: Extract PresetSearchOrdering strategy or enum-based sorter. Lines 76-9) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogQueryService.kt:57-96` `searchPublishedPresets` (M)
+- [x] **SE-131** ✓REVIEWED-CLEAN(재판정 over-eng: Lines 76-95 are a readable 4-branch when-expression dispatching on sort string to apply di)
   - searchPublishedPresets 함수가 검색 쿼리 정규화, 필터링(query/category 기반), 정렬(4가지 sort 옵션), 페이징(limit coerce)을 모두 메모리에서 수행한다. 또한 쿼리 정규화(normalizedSearchToken)와 정렬 로직(when expression)이 섞여 있어, 새로운 정렬 옵션 추가 시 함수를 수정해야 한다.
   - **Fix:** 책임을 분리하여 PresetCatalogSearchFilter(쿼리/카테고리 필터), PresetCatalogSorter(정렬 전략 선택), PresetCatalogQueryNormalizer(쿼리 정규화) 등으로 나누고, searchPublishedPresets는 이들을 조합하는 파사드로 축소하라.
-- [~] **SE-132** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 라인 82-96(high_risk 제안 생성) → extractHighRiskProposal(), 라인 97-102(정책 적용) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetChannelApplier.kt:42-116` `applyRevisionToChannel` (M)
+- [x] **SE-132** ✅FIXED(임포트 highRisk/즉시적용 두 경로 메서드 추출 SRP, TX 불변식 green)
   - applyRevisionToChannel 함수가 채널 AI 저장, behavior version 생성, 라우팅 정책 적용, 고위험 검사 및 제안 생성, 감사 로그 저장 등 6개의 책임을 담당한다. 또한 highRisk 플래그에 따라 조건부로 상이한 동작(활성화 vs 제안)을 수행하므로 조건 분기가 복잡하다.
   - **Fix:** 책임을 분리하여 PresetChannelAiSaver(채널 AI/behavior 저장), PresetRoutingPolicyApplier(라우팅 정책), PresetReviewProposalCreator(고위험 제안 생성) 등으로 나누고, applyRevisionToChannel은 이들을 오케스트레이션하는 coordinator 역할로 축소하라.
 - [x] **SE-133** ✅FIXED(sanitizeText를 PresetContentSafety로 이동+위임, 기존 패턴 일관) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:749-777` `sanitizeText` (S)
   - sanitizeText, normalizeReportReasonCode, uniqueSlug 등의 문자열 정규화·새니타이제이션 함수들이 PresetRegistryService 메서드로 뒤섞여 있다. 이들은 순수 함수이며 다른 서비스(예: PresetImportPreviewBuilder, PresetCatalogQueryService)에서도 필요하지만, 코드 재사용을 위해 호출하기 어렵다.
   - **Fix:** 순수 문자열 유틸리티 함수(sanitizeText, normalizeReportReasonCode, uniqueSlug 등)를 PresetStringNormalizer, PresetSlugGenerator 등 전담 유틸 클래스로 추출하고, 필요시 @Component로 등록하여 재사용하도록 하라.
-- [~] **SE-134** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1. PresetBehaviorNormalizer 클래스 생성. 2. normalize(behavior: PresetBehav) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRevisionFactory.kt:24-70` `createRevision` (S)
+- [x] **SE-134** ✓REVIEWED-CLEAN(재판정 over-eng: createRevision() is already well-decomposed: 13+ field normalizations are isolated in priv)
   - createRevision 함수가 PresetBehaviorInput → PresetRevisionEntity 변환, 각 필드별 정규화(trim/ifBlank/coerceIn/take/sanitize), 및 리비전 저장(revisions.save)을 모두 담당한다. 또한 정규화 로직이 복잡하여(preferredModel, minQualityTier, costGuard, maxCandidates 각각 다른 규칙), 향후 정규화 규칙 변경 시 이 함수를 수정해야 한다.
   - **Fix:** 정규화 로직을 PresetBehaviorNormalizer(각 필드별 정규화 규칙)로 분리하고, createRevision은 정규화 후 엔티티 생성 및 저장만 담당하도록 축소하라.
 - [x] **SE-152** ✅FIXED(충돌 if-체인→listOfNotNull+takeIf(OCP))
@@ -665,7 +665,7 @@
 - [x] **SE-127** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:153-227` `startRunEntity` (S)
   - startRunEntity 메서드가 정책 조회(161-177줄), 민감 프롬프트 검사(190-195줄), RAG 적용(197줄), 안전 실행 계획(198줄), Provider 선택(206-211줄), 후보 저장(212-223줄)을 모두 처리하고 있다. 함수가 파싱/검증/IO를 한 번에 수행한다.
   - **Fix:** 순수 정책 해석은 이미 policyResolver에 위임했으므로, 민감 프롬프트 검사를 promptSafety.isSensitivePrompt() 호출 후 조기 반환으로 분리하고, RAG 적용을 별도 메서드 applyRagContextSnapshot()으로 추출하라(이미 622줄에 있음).
-- [~] **SE-128** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: Extract validateAndCoercePolicy(entity: MultiResponsePolicyEntity) hel) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:72-141` `savePolicyEntity` (M)
+- [x] **SE-128** ✓REVIEWED-CLEAN(재판정 over-eng: savePolicyEntity (35 lines, 72-141) mixes validation (111-118: feature gate + lookup) with)
   - savePolicyEntity가 정책 조회(113-118줄), 검증/정규화(121-138줄), 저장(140줄)을 모두 수행한다. 특히 mode 정규화(121-124줄), maxCandidates 제한(125줄), synthesisEnabled 조건부 설정(137-138줄)이 흩어져 있다.
   - **Fix:** PolicyNormalizer 또는 PolicyBuilder 클래스를 만들어 검증/정규화 로직을 분리하라. savePolicyEntity는 기존 정책 조회 + 정규화된 값 저장만 수행하도록 변경하라.
 - [x] **SE-149** ✅FIXED(위험코드 if-체인→RiskSignal 규칙 리스트(OCP))
@@ -674,7 +674,7 @@
 - [x] **SE-150** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:352-357` `isProviderProtectionReason` (M)
   - isProviderProtectionReason() 메서드가 PROVIDER_PROTECTION_REASON_PATTERNS라는 정적 Regex 리스트로 문자열을 검사한다. 새 패턴을 추가할 때마다 코드를 수정해야 하므로 OCP 위반이다.
   - **Fix:** ReasonClassifier 또는 ReasonMatcher 인터페이스를 만들고, 패턴 세트를 설정 파일 또는 데이터베이스에서 로드하도록 변경하라. 또는 ProviderProtectionReason enum을 만들어 패턴을 내부화하라.
-- [~] **SE-151** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: Step 1: ProviderSelectionStrategy interface 추출 (filter + sort 로직). Ste) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/ProviderFanoutSelector.kt:24-57` `selectProviders` (M)
+- [x] **SE-151** ✓REVIEWED-CLEAN(재판정 over-eng: The filter+sort logic (lines 34-47) is tightly bound to policy context and single-use: fil)
   - selectProviders가 필터 조건(36-41줄)을 하드코딩했다. Provider 선택 규칙을 변경할 때마다(예: 새 필터 조건, 정렬 기준) 메서드 본체를 수정해야 하므로 OCP를 위반한다.
   - **Fix:** ProviderFilter 인터페이스와 ProviderSortComparator 인터페이스를 정의하고, selectProviders(filters: List<ProviderFilter>, comparator: ProviderSortComparator)로 변경하라. 또는 빌더 패턴으로 필터와 정렬을 조합하라.
 - [x] **SE-175** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponsePolicyResolver.kt:26-27` `isDisabled` (M)
@@ -743,7 +743,7 @@
 - [x] **SE-313** ✓REVIEWED-CLEAN(featureUsers 이미 require(limit in 1..200) fail-fast(이미 준수)) 🟡 `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/requestlog/application/AnalyticsService.kt:103-119` `AnalyticsService.featureUsers` (S)
   - featureUsers()에서 limit in 1..200 검증(require)이 있지만, 만약 검증이 없다면 limit이 매우 크거나 음수일 수 있다. 현재는 OK이지만, 향후 다른 곳에서 aggregateUserUsageByGuild()를 직접 호출할 때 검증이 빠질 위험(EXC-10 fail-fast 정신).
   - **Fix:** Pageable 생성 전에 limit 검증을 repository 계층으로 옮기거나, PageRequest.of() 내부에서 검증 추가. 또는 separate validation object(ValidatedLimit) 생성.
-- [~] **SE-337** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: Create a separate WritableBlocklistManager interface with block/unbloc) ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/BlocklistService.kt:36-39` `BlocklistService.isBlocked` (M)
+- [x] **SE-337** ✓REVIEWED-CLEAN(재판정 over-eng: ISP is already satisfied: BlocklistService implements BlocklistChecker (read-only interfac)
   - BlocklistChecker 인터페이스가 isBlocked 메서드만 포함하지만, BlocklistService는 block(), unblock(), blockedUsers(), clearGuild()를 추가로 제공한다. 호출자가 block 기능을 사용하려면 BlocklistService에 직접 의존해야 한다(ISP 위반).
   - **Fix:** BlocklistChecker를 BlocklistReader(read-only) + BlocklistWriter(write) 인터페이스로 분리. 클라이언트는 필요한 인터페이스만 주입받음.
 - [x] **SE-348** ✓REVIEWED-CLEAN(providerHistory try-catch 없음(오태그)) ⚪ `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/requestlog/application/AnalyticsService.kt:54-59` `AnalyticsService.providerHistory` (S)
@@ -776,16 +776,16 @@
 - [x] **SE-109** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkFoundationService.kt:170-217` `refreshOverview` (M)
   - refreshOverview() method has 3 responsibilities: fetch data from 6 repos, compute derived metrics (inferNetworkLevel/quality tier), persist entity—violates SRP. 300+ lines of mixed concerns.
   - **Fix:** Split into: fetchProviderMetrics(), computeNetworkLevel(), persistProjection(). Move inferNetworkLevel() and inferQualityTier() to separate service.
-- [~] **SE-110** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1. CapabilityChangeDetector 협력자 도입. 2. shouldRecordGrowth 로직을 hasChang) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkGrowthService.kt:26-81` `syncProviderCapabilitiesFromHello` (M)
+- [x] **SE-110** ✓REVIEWED-CLEAN(재판정 over-eng: shouldRecordGrowth logic (lines 38-43) is already tightly cohesive — it compares 4 specifi)
   - syncProviderCapabilitiesFromHello() delegates to planner for normalization, then foundation for upsert, then records growth event. Mixes orchestration + write concerns. 75 lines.
   - **Fix:** Extract GrowthEventRecorder service to own event creation. syncProviderCapabilities() calls foundation, GrowthEventRecorder.recordIfChanged().
 - [~] **SE-111** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/ChannelAiRoutingPolicyResolver.kt:63-138` `modelCandidates` (M)
   - modelCandidates() has 4 responsibilities: filter providers, build candidates, summarize, rank. Candidates flatMap + groupBy + scoring logic should be separate collaborator.
   - **Fix:** Extract ModelCandidateBuilder service with buildEligible(), buildSummaries(), rankByScore() methods.
-- [~] **SE-112** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1) sealed class PoolHealthState (Empty, Low, Healthy) 정의. 2) evaluate가) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/PoolAlertMonitor.kt:23-49` `evaluate` (M)
+- [x] **SE-112** ✓REVIEWED-CLEAN(재판정 over-eng: PoolAlertMonitor.evaluate() is a cohesive 27-line edge-triggered state machine with two bo)
   - evaluate() mutates state (wasEmpty, wasLow) while computing. Mixes side-effect (notification) with state management. Hard to test deterministically.
   - **Fix:** Extract pure function computeAlerts(active, wasEmpty, wasLow) -> AlertState. evaluate() calls it, updates state, fires notifications based on state.
-- [~] **SE-145** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: SafetyDegradationRule interface(evaluate(dashboard, guard)→Degradation) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/ProviderSafetyService.kt:81-127` `executionPlan` (M)
+- [x] **SE-145** ✓REVIEWED-CLEAN(재판정 over-eng: executionPlan (47 lines, 81-127) contains three independent rule chains (mode degradation )
   - executionPlan() has when-else logic for response mode degradation (deep->balanced, deep->saving). Adding new mode requires editing this method. Should use strategy pattern.
   - **Fix:** Extract ResponseModeStrategy interface: degradeMode(requested, dashboard) -> effectiveMode. Implementations: DeepModeStrategy, BalancedModeStrategy.
 - [~] **SE-169** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: Step 1: AiNetworkOverviewProvider, AiLevelProvider 인터페이스 추출.) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkMapService.kt:22-83` `map` (M)
@@ -881,16 +881,16 @@
 - [x] **SE-093** ✓REVIEWED-CLEAN(load 가 .use{} 로 스트림 정리 이미 함(오태그)) 🔴 `예외8 자원정리` `central-server/src/main/kotlin/com/discordassistant/central/global/i18n/I18n.kt:25` `load` (M)
   - ClassPathResource(...).inputStream.use { mapper.readValue(...) }에서 파일 누락, JSON 파싱 오류 등의 예외(IOException, JsonMappingException)가 발생해도 처리되지 않는다. 부팅이 실패하거나 빈 messages 객체로 초기화될 수 있다.
   - **Fix:** try-catch로 load() 전체를 감싸고, 파일 누락/파싱 오류 시 명확한 로그를 남기고 예외를 전파하여 부팅 실패를 명시적으로 만들라. 또는 default fallback 메시지 세트를 제공하되 로그하라.
-- [~] **SE-119** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1) record() 메서드에서 로깅을 제거하고 Entry 저장만 수행. 2) LoggingAuditLog 어댑터 또는 호출자) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/global/audit/AuditLog.kt:12-34` `AuditLog` (M)
+- [x] **SE-119** ✓REVIEWED-CLEAN(재판정 over-eng: record() does two cohesive operations (store + log) that must always happen together. Sepa)
   - AuditLog가 로깅(log.info)과 인메모리 저장(entries 리스트) 두 가지 책임을 가진다. 영속화(DB)는 별도(CustomizationAuditRecorder)인데, AuditLog는 '레코딩 인터페이스'를 제공하면서 동시에 구현 저장소 역할을 한다.
   - **Fix:** AuditLog를 로깅 전용으로 축소하고(log.info만), all()과 entries 필드를 제거하거나, 별도의 AuditLogStore 인터페이스를 분리하여 구현체(InMemoryAuditLogStore, DbAuditLogStore)로 나누라.
-- [~] **SE-120** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: Step 1: AdminActorFactory 추출 - token validation(93-98) + OAuth validat) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/global/security/AiNetworkApiSecurityFilter.kt:18-23` `AiNetworkApiSecurityFilter` (S)
+- [x] **SE-120** ✓REVIEWED-CLEAN(재판정 over-eng: resolveAdminActor() is already a well-cohesive 14-line private method. Token and OAuth val)
   - adminUserIds 설정 파싱(split, trim, filter)이 AiNetworkApiSecurityFilter와 MeController에서 거의 동일하게 반복된다(lines 18-23, MeController:18-23). 설정 변경 시 두 곳을 모두 수정해야 한다.
   - **Fix:** adminUserIds 파싱 로직을 공유 유틸리티 함수 또는 별도의 Configuration 빈(예: AdminUserIdsConfig)으로 추출하여 두 클래스가 같은 인스턴스를 주입받게 하라.
 - [x] **SE-121** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/global/security/AiNetworkApiSecurityFilter.kt:92-106` `resolveAdminActor` (M)
   - resolveAdminActor가 토큰 검증, OAuth 인증 확인, 허용목록 조회, userId 변환까지 4가지 책임을 가진다. 토큰 전략과 OAuth 전략의 변경이 얽혀있다.
   - **Fix:** TokenBasedAuthenticator와 OAuthBasedAuthenticator 등 전략 인터페이스로 분리하고, resolveAdminActor는 각 전략을 순차 호출하여 첫 성공 결과를 반환하는 조합자(composer)로 단순화하라.
-- [~] **SE-170** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1단계: AdminUserIdsPa rser(interface) 정의 — parse(raw: String): Set<Strin) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/global/adapter/inbound/web/MeController.kt:18-23` `MeController` (M)
+- [x] **SE-170** ✓REVIEWED-CLEAN(한 줄 split 파싱 — 인터페이스+@Component는 과한 추상화)
   - MeController가 직접 @Value로 adminUserIdsRaw를 주입받아 파싱하고 있어, AiNetworkApiSecurityFilter와 책임(adminUserIds 해석)이 중복된다. 두 클래스 모두 concrete 설정에 의존한다.
   - **Fix:** adminUserIds 해석을 추상화한 인터페이스(예: AdminUserProvider)를 만들고, MeController와 AiNetworkApiSecurityFilter가 이를 주입받도록 변경하라. 구현체는 설정 파싱을 담당한다.
 - [x] **SE-241** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/global/security/AiNetworkApiSecurityFilter.kt:35-42` `doFilterInternal` (S)
@@ -1250,7 +1250,7 @@
 - [x] **SE-103** ✅FIXED(Windows 실패 경로 tmp 정리) 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/updater.py:362-394` `_apply_windows` (M)
   - Temporary directory 'tmp' (line 362) is never cleaned up. On download failure (line 365), checksum failure (line 370), or any error, directory with large EXE leaks.
   - **Fix:** Use 'with tempfile.TemporaryDirectory() as tmp:' or ensure finally block cleans up via shutil.rmtree().
-- [~] **SE-142** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: Create ProgressReporter(state_dict) class wrapping _set(). Replace eac) 🟡 `SRP` `provider-agent/src/provider_agent/comfy_setup.py:214-227` `start` (M)
+- [x] **SE-142** ✓REVIEWED-CLEAN(재판정 over-eng: The _set() function wraps a global state dict with selective field updates. Wrapping this )
   - Function 'start' mixes three concerns: health check, venv verification, and process spawning. Should be split into separate steps for testability.
   - **Fix:** Extract health check into separate 'is_healthy()', venv check into 'ensure_venv()', and process launch into 'spawn_process()'. Caller orchestrates sequence.
 - [~] **SE-143** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🟡 `SRP` `provider-agent/src/provider_agent/updater.py:204-226` `apply_update` (L)

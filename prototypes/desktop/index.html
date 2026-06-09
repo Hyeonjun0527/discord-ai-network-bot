@@ -1481,16 +1481,17 @@
       if (cbusy) {
         comfyState = (cprog.message || '설치 중…') + (cprog.percent ? ' · ' + cprog.percent + '%' : '');
         comfyAction = '<span class="rt-recv">설치 중…</span>';
+      } else if (crun) {
+        // 실행 중이면(앱 관리든, 유저가 직접 띄운 외부 인스턴스든 health 로 감지) 우선 표시.
+        comfyState = (cinst ? '실행 중 · 이미지 생성 준비됨' : '실행 중(직접 띄운 ComfyUI 감지됨) · 이미지 생성 준비됨');
+        comfyAction = '<button class="btn btn--sm btn--secondary" data-comfy="open">웹UI 열기</button>' +
+          (cinst ? '<button class="btn btn--sm btn--secondary" data-comfy="stop">정지</button>' : '');
       } else if (!cinst) {
         comfyState = '미설치 — 활발히 유지보수되는 최신 엔진(Python 3.13). 설치를 권장해요.';
         comfyAction = '<button class="btn btn--sm btn--primary" data-comfy="install">설치</button>';
-      } else if (!crun) {
+      } else {
         comfyState = '설치됨 · 꺼짐';
         comfyAction = '<button class="btn btn--sm btn--primary" data-comfy="start">시작</button>';
-      } else {
-        comfyState = '실행 중 · 이미지 생성 준비됨';
-        comfyAction = '<button class="btn btn--sm btn--secondary" data-comfy="open">웹UI 열기</button>' +
-          '<button class="btn btn--sm btn--secondary" data-comfy="stop">정지</button>';
       }
       // 실행 중이면 체크포인트 선택기(폴더 스캔 = 아무 .safetensors) + '모델 폴더 열기'(.safetensors 넣기).
       const cm = _comfyModels || {};
@@ -2598,8 +2599,9 @@
         '<div class="cat-pick"><label>분류</label><select id="catSel">' +
           cats.map(c => '<option value="' + c + '">' + c + '</option>').join('') + '</select></div>' +
         '<div class="wiz-list" id="catList"></div>' +
-        '<div class="cat-manual"><div class="cm-label">모델명 직접 입력 <span>(예: mistral:7b · qwen2.5:72b)</span></div>' +
-          '<div class="cm-row"><input class="cx-input" id="catManual" placeholder="모델명 입력 (예: mistral:7b)"><button class="btn btn--md btn--secondary" id="catManualBtn">설치</button></div></div>';
+        '<div class="cat-manual"><div class="cm-label">모델명 직접 입력 <span>(Ollama 레지스트리 또는 HuggingFace GGUF)</span></div>' +
+          '<div class="cm-row"><input class="cx-input" id="catManual" placeholder="예: qwen2.5:72b · hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:Q4_K_M"><button class="btn btn--md btn--secondary" id="catManualBtn">설치</button></div>' +
+          '<div class="cat-help" style="margin-top:8px">💡 <b>HuggingFace GGUF</b> — 어떤 GGUF 모델이든 <span class="em">hf.co/&lt;user&gt;/&lt;repo&gt;:&lt;양자화&gt;</span> 형식으로 받아요(예: <span class="em">hf.co/bartowski/Qwen2.5-7B-Instruct-GGUF:Q4_K_M</span>). 레지스트리 밖 모델도 OK.</div></div>';
       // 선택된 분류의 모델만 렌더(분류 변경 시 재호출)
       const listEl = card.querySelector('#catList');
       const renderList = (c) => {

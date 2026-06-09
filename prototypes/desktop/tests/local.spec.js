@@ -35,7 +35,7 @@ test('로컬 실행: ComfyUI 가 유일한 이미지 엔진(권장)으로 노출
   await expect(comfy.locator('[data-comfy="install"]')).toBeVisible(); // mock 미설치 → 설치 버튼
   // SD.Next 폐기 — 레거시 섹션 없음, 외부 ComfyUI 연결만 고급으로
   await expect(page.locator('#localRuntimes')).not.toContainText('Stable Diffusion');
-  await expect(page.locator('summary', { hasText: '외부 ComfyUI 연결' })).toBeVisible();
+  await expect(page.locator('summary', { hasText: '외부 ComfyUI' })).toBeVisible();
 });
 
 test('로컬 실행: 처리 건수는 이 PC 기준 표기', async ({ page }) => {

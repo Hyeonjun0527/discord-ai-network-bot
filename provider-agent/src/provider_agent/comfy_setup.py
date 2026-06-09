@@ -36,6 +36,71 @@ COMFY_PIN = "f49bdb655707b97952dcef40e12e5af1f08d2007"  # v0.24.0
 COMFY_PORT = 8188
 COMFY_PYTHON_VERSION = "3.13.13"  # 사용자 요구: ComfyUI 는 Python 3.13 으로. standalone 페치도 이 버전.
 
+# ── 큐레이션 모델 카탈로그 ───────────────────────────────────────────────────
+# URL 직접 입력만 가능하던 불편을 없앤다 — 인기 SDXL 체크포인트를 목록에서 골라 설치/교체.
+# URL 은 전부 **공개 HuggingFace resolve 링크**(2026-06 기준 200 확인). gated/NSFW 특정 파인튠은
+# 기존 '+ URL' + HF 토큰 경로로 추가(예: WAI). 임의 모델도 여전히 URL 로 받을 수 있다.
+# filename 은 download 후 폴더 스캔이 인식하는 실제 .safetensors 이름(활성 전환 매칭용).
+CATALOG: list[dict] = [
+    {
+        "id": "illustrious-xl-v2",
+        "name": "Illustrious XL v2.0",
+        "category": "anime",
+        "base": "SDXL",
+        "desc": "Danbooru 애니 일러스트 최신 베이스(태그·캐릭터 충실). WAI 등 인기 파인튠의 토대.",
+        "size": "6.9GB",
+        "url": "https://huggingface.co/OnomaAIResearch/Illustrious-XL-v2.0/resolve/main/Illustrious-XL-v2.0.safetensors",
+        "filename": "Illustrious-XL-v2.0.safetensors",
+    },
+    {
+        "id": "animagine-xl-4",
+        "name": "Animagine XL 4.0",
+        "category": "anime",
+        "base": "SDXL",
+        "desc": "미소녀·일본 애니 특화. 8.4M 데이터셋 학습, 깔끔한 SFW 일러스트.",
+        "size": "6.9GB",
+        "url": "https://huggingface.co/cagliostrolab/animagine-xl-4.0/resolve/main/animagine-xl-4.0.safetensors",
+        "filename": "animagine-xl-4.0.safetensors",
+    },
+    {
+        "id": "pony-v6-xl",
+        "name": "Pony Diffusion V6 XL",
+        "category": "anime",
+        "base": "SDXL",
+        "desc": "애니·만화·퍼리까지 가장 범용적인 인기 SDXL. score_9 태그 프롬프트 권장.",
+        "size": "6.9GB",
+        "url": "https://huggingface.co/LyliaEngine/Pony_Diffusion_V6_XL/resolve/main/ponyDiffusionV6XL_v6StartWithThisOne.safetensors",
+        "filename": "ponyDiffusionV6XL_v6StartWithThisOne.safetensors",
+    },
+    {
+        "id": "realvis-xl-v5",
+        "name": "RealVisXL V5.0",
+        "category": "realistic",
+        "base": "SDXL",
+        "desc": "실사 표준급 고품질. 인물·풍경 모두 안정적.",
+        "size": "6.9GB",
+        "url": "https://huggingface.co/SG161222/RealVisXL_V5.0/resolve/main/RealVisXL_V5.0_fp16.safetensors",
+        "filename": "RealVisXL_V5.0_fp16.safetensors",
+    },
+    {
+        "id": "juggernaut-xl-v9",
+        "name": "Juggernaut XL v9",
+        "category": "realistic",
+        "base": "SDXL",
+        "desc": "세계 최다 다운로드 실사 SDXL. 포토리얼리즘 강력.",
+        "size": "7.1GB",
+        "url": "https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+        "filename": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
+    },
+]
+
+
+def catalog(directory: pathlib.Path | None = None) -> list[dict]:
+    """큐레이션 카탈로그 + 각 항목의 installed 여부(폴더에 해당 .safetensors 가 있으면 True)."""
+    mdir = model_dir(directory)
+    have = {p.name for p in mdir.glob("*.safetensors")} if mdir.exists() else set()
+    return [{**m, "installed": m["filename"] in have} for m in CATALOG]
+
 
 def install_dir() -> pathlib.Path:
     """ComfyUI 설치 위치(SD 설치 디렉터리 옆: ~/Library/Nexa/comfyui 등)."""
@@ -56,12 +121,31 @@ def webui_url() -> str:
     return f"http://127.0.0.1:{COMFY_PORT}"
 
 
+async def _remote_size(url: str) -> int:
+    """다운로드 진행률 계산용 총 바이트(HEAD content-length, 리다이렉트 추적). 모르면 0."""
+    try:
+        headers: dict[str, str] = {}
+        if "huggingface.co" in url:
+            from .config_file import load_config
+
+            token = str(load_config().get("hf_token") or "").strip()
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as s, s.head(url, headers=headers, allow_redirects=True) as r:
+            return int(r.headers.get("Content-Length") or 0)
+    except (aiohttp.ClientError, ValueError, OSError):
+        return 0
+
+
 async def download_model(url: str) -> bool:
     """임의 .safetensors/.ckpt 모델 URL 을 ComfyUI 체크포인트 폴더로 받는다(폴더 스캔이 자동 인식).
 
-    gated/비공개 HF 모델은 sd_setup._download 가 저장된 HF 토큰을 Authorization 으로 주입한다.
-    실패(잘못된 URL·네트워크·확장자)면 False.
+    진행률을 _state(downloading/percent/message)로 표면화하므로 호출부는 백그라운드 태스크로 띄우고
+    ``/api/comfy/setup-progress`` 를 폴링하면 된다(install 도 fire-and-poll). gated/비공개 HF 모델은
+    sd_setup._download 가 저장된 HF 토큰을 Authorization 으로 주입한다. 실패면 False.
     """
+    global _busy
     if not url.startswith(("http://", "https://")):
         return False
     fn = url.rsplit("/", 1)[-1].split("?")[0]
@@ -70,12 +154,27 @@ async def download_model(url: str) -> bool:
     dest = model_dir() / fn
     if dest.exists():
         return True
+    _busy = True
+    _set("downloading", 0, f"{fn} 내려받는 중…")
+    part = dest.with_suffix(dest.suffix + ".part")
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        await sd_setup._download(url, dest, "이미지 모델 내려받는 중…")
-    except (aiohttp.ClientError, OSError, asyncio.TimeoutError):
+        total = await _remote_size(url)
+        dl = asyncio.ensure_future(sd_setup._download(url, dest, "이미지 모델 내려받는 중…"))
+        while not dl.done():
+            if total > 0 and part.exists():
+                pct = min(99, max(1, int(part.stat().st_size / total * 100)))
+                _set("downloading", pct, f"{fn} 내려받는 중… {pct}%")
+            await asyncio.sleep(1.0)
+        await dl  # 실패면 예외 재던짐
+    except (aiohttp.ClientError, OSError, asyncio.TimeoutError, RuntimeError) as exc:
+        _set("error", None, "이미지 모델 다운로드 실패", error=str(exc)[-300:])
         return False
-    return dest.exists()
+    finally:
+        _busy = False
+    ok = dest.exists()
+    _set("done" if ok else "error", 100 if ok else None, "이미지 모델 준비 완료" if ok else "다운로드 실패")
+    return ok
 
 
 def clone_commands(directory: pathlib.Path | None = None) -> list[list[str]]:

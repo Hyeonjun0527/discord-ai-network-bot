@@ -522,8 +522,16 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
         active = load_config().get("comfy_model") or (models[0] if models else None)
         return web.json_response({"models": models, "active": active})
 
+    async def comfy_catalog(req: web.Request) -> web.Response:
+        """큐레이션 이미지 모델 카탈로그 — 인기 SDXL 체크포인트를 목록에서 골라 설치/교체. installed 포함."""
+        _auth(req)
+        from . import comfy_setup
+
+        return web.json_response({"models": comfy_setup.catalog()})
+
     async def comfy_install_model(req: web.Request) -> web.Response:
-        """임의 모델 URL(.safetensors/.ckpt)을 ComfyUI 체크포인트 폴더로 다운로드(gated 는 HF 토큰). body {url}."""
+        """모델 URL(.safetensors/.ckpt)을 ComfyUI 체크포인트 폴더로 다운로드(카탈로그·임의 URL 공용, gated 는 HF 토큰).
+        body {url}. 대용량이라 **백그라운드로 받고 즉시 반환** — 진행률은 /api/comfy/setup-progress 폴링."""
         _auth(req)
         from . import comfy_setup
 
@@ -532,14 +540,13 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
         except Exception:  # noqa: BLE001
             data = {}
         url = str((data or {}).get("url") or "").strip()
-        if not url:
-            return web.json_response({"ok": False, "error": "모델 URL 을 입력하세요(.safetensors 직접 링크)."})
-        ok = await comfy_setup.download_model(url)
-        if not ok:
-            return web.json_response(
-                {"ok": False, "error": ".safetensors/.ckpt 직접 링크인지 확인하세요. gated 모델은 설정에서 HF 토큰을 넣으세요."}
-            )
-        return web.json_response({"ok": True})
+        fn = url.rsplit("/", 1)[-1].split("?")[0] if url else ""
+        if not url or not fn.endswith((".safetensors", ".ckpt")):
+            return web.json_response({"ok": False, "error": ".safetensors/.ckpt 직접 링크인지 확인하세요. gated 모델은 설정에서 HF 토큰을 넣으세요."})
+        if comfy_setup.is_busy():
+            return web.json_response({"ok": True, "busy": True})
+        asyncio.create_task(comfy_setup.download_model(url))
+        return web.json_response({"ok": True, "started": True})
 
     async def comfy_select(req: web.Request) -> web.Response:
         """활성 ComfyUI 체크포인트 전환(저장 + 떠 있으면 에이전트에 즉시 반영). body {model}."""
@@ -587,6 +594,7 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
     app.router.add_post("/api/comfy/stop", comfy_stop)
     app.router.add_post("/api/comfy/open", comfy_open)
     app.router.add_get("/api/comfy/models", comfy_models)
+    app.router.add_get("/api/comfy/catalog", comfy_catalog)
     app.router.add_post("/api/comfy/select", comfy_select)
     app.router.add_post("/api/comfy/install-model", comfy_install_model)
 

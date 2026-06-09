@@ -1486,7 +1486,8 @@
       }
       // 실행 중이면 체크포인트 선택기(폴더 스캔 = 아무 .safetensors) + '모델 폴더 열기'(.safetensors 넣기).
       const cm = _comfyModels || {};
-      const comfyAddBtns = '<button class="rt-model-add" id="comfyUrlBtn" title="URL 로 모델 추가 — .safetensors 직접 링크(gated 는 설정의 HF 토큰)">+ URL</button>' +
+      const comfyAddBtns = '<button class="rt-model-add" id="comfyCatalogBtn" title="인기 모델 목록에서 골라 설치 — 애니/실사 SDXL">+ 카탈로그</button>' +
+        '<button class="rt-model-add" id="comfyUrlBtn" title="URL 로 모델 추가 — .safetensors 직접 링크(gated 는 설정의 HF 토큰)">+ URL</button>' +
         '<button class="rt-model-add" id="comfyFolderBtn" title="모델 폴더 열기 — 여기에 .safetensors 를 넣으면 자동 인식돼요">📂 폴더</button>';
       const comfyModelSel = (crun && cm.models && cm.models.length) ?
         '<div class="rt-model"><label>모델</label><select id="comfyModelSelect" aria-label="ComfyUI 이미지 모델 선택">' +
@@ -1609,9 +1610,110 @@
         const url = (window.prompt('모델 URL(.safetensors 직접 링크) — 예: https://huggingface.co/…/model.safetensors') || '').trim();
         if (!url) return;
         toast('모델 내려받는 중… 용량에 따라 몇 분 걸려요', { type: 'run', sticky: true, id: 'cmdl' });
-        try { const r = await api.installComfyModel(url) || {}; if (r.ok === false) { toast(r.error || '모델 추가 실패', { type: 'error', id: 'cmdl' }); return; } toast('모델을 추가했어요 — 목록에서 선택하세요', { type: 'ok', id: 'cmdl' }); await load(); }
+        try { const r = await api.installComfyModel(url) || {}; if (r.ok === false) { toast(r.error || '모델 추가 실패', { type: 'error', id: 'cmdl' }); return; } toast('모델 내려받는 중… (목록에서 진행률 확인, 완료되면 자동 선택)', { type: 'ok', id: 'cmdl' }); await load(); }
         catch (_e) { toast('모델 추가 실패 — 네트워크를 확인하세요', { type: 'error', id: 'cmdl' }); }
       };
+      // 인기 모델 카탈로그에서 골라 설치(URL 안 외워도 됨).
+      const comfyCat = document.getElementById('comfyCatalogBtn');
+      if (comfyCat) comfyCat.onclick = () => openComfyCatalog();
+    }
+
+    // 인기 이미지 모델 카탈로그 모달 — URL 안 외워도 목록에서 골라 설치·교체. 설치는 백그라운드(진행률 폴링),
+    // 완료되면 자동으로 활성 모델로 전환. 실 api 만 사용(mock/real 은 adapter 가 처리).
+    function _ensureCatalogCss() {
+      if (document.getElementById('cat-css')) return;
+      const st = document.createElement('style');
+      st.id = 'cat-css';
+      st.textContent = `
+      .cat-back{position:fixed;inset:0;background:rgba(8,10,20,.66);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+      .cat-modal{background:var(--c-panel,#14161f);border:1px solid rgba(255,255,255,.1);border-radius:16px;max-width:720px;width:100%;max-height:84vh;overflow:auto;box-shadow:0 24px 64px rgba(0,0,0,.5)}
+      .cat-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid rgba(255,255,255,.08);position:sticky;top:0;background:var(--c-panel,#14161f)}
+      .cat-title{font-size:16px;font-weight:700}
+      .cat-x{background:none;border:none;color:var(--c-dim,#8a90a6);font-size:18px;cursor:pointer;padding:4px 8px;border-radius:8px}
+      .cat-x:hover{background:rgba(255,255,255,.08);color:#fff}
+      .cat-grid{padding:14px 20px 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+      .cat-section{grid-column:1/-1;font-size:12px;font-weight:700;color:var(--c-violet,#a78bfa);margin-top:8px;letter-spacing:.02em}
+      .cat-card{border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 14px;background:rgba(255,255,255,.02);display:flex;flex-direction:column;gap:6px}
+      .cat-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+      .cat-name{font-weight:600;font-size:14px}
+      .cat-badge{font-size:10px;font-weight:700;color:var(--c-violet,#a78bfa);border:1px solid rgba(167,139,250,.4);border-radius:6px;padding:1px 6px}
+      .cat-desc{font-size:12px;color:var(--c-dim,#9aa0b4);line-height:1.45;min-height:34px}
+      .cat-card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:2px}
+      .cat-size{font-size:11px;color:var(--c-dim,#8a90a6)}
+      .cat-installed{font-size:11px;color:#34d399;margin-left:8px}
+      .cat-prog{height:6px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:4px}
+      .cat-prog-bar{height:100%;width:2%;background:var(--c-violet,#a78bfa);transition:width .3s}
+      @media(max-width:560px){.cat-grid{grid-template-columns:1fr}}
+      `;
+      document.head.appendChild(st);
+    }
+    async function openComfyCatalog() {
+      _ensureCatalogCss();
+      let cat;
+      try { cat = (await api.comfyCatalog()).models || []; }
+      catch (_e) { toast('카탈로그를 불러오지 못했어요', { type: 'error' }); return; }
+      if (!cat.length) { toast('카탈로그가 비어 있어요', { type: 'info' }); return; }
+      const back = document.createElement('div');
+      back.className = 'cat-back';
+      back.innerHTML = '<div class="cat-modal" role="dialog" aria-label="이미지 모델 카탈로그">' +
+        '<div class="cat-head"><div class="cat-title">이미지 모델 카탈로그 <span style="font-weight:500;font-size:12px;color:var(--c-dim,#8a90a6)">— 고르면 받아서 자동 적용</span></div>' +
+        '<button class="cat-x" aria-label="닫기">✕</button></div><div class="cat-grid"></div></div>';
+      const grid = back.querySelector('.cat-grid');
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const card = (m) => '<div class="cat-card" data-id="' + esc(m.id) + '">' +
+        '<div class="cat-card-top"><span class="cat-name">' + esc(m.name) + '</span><span class="cat-badge">' + esc(m.base) + '</span></div>' +
+        '<div class="cat-desc">' + esc(m.desc) + '</div>' +
+        '<div class="cat-card-foot"><span class="cat-size">' + esc(m.size) + '</span><span class="cat-act"></span></div>' +
+        '<div class="cat-prog" hidden><div class="cat-prog-bar"></div></div></div>';
+      for (const [key, label] of [['anime', '애니'], ['realistic', '실사'], ['general', '일반'], ['artistic', '아트']]) {
+        const items = cat.filter((m) => m.category === key);
+        if (items.length) grid.insertAdjacentHTML('beforeend', '<div class="cat-section">' + label + '</div>' + items.map(card).join(''));
+      }
+      document.body.appendChild(back);
+      const close = () => back.remove();
+      back.querySelector('.cat-x').onclick = close;
+      back.onclick = (e) => { if (e.target === back) close(); };
+
+      const renderAct = (m) => {
+        const cardEl = back.querySelector('.cat-card[data-id="' + (window.CSS && CSS.escape ? CSS.escape(m.id) : m.id) + '"]');
+        if (!cardEl) return;
+        const act = cardEl.querySelector('.cat-act');
+        if (m.installed) {
+          act.innerHTML = '<button class="btn btn--sm btn--secondary">사용</button><span class="cat-installed">설치됨</span>';
+          act.querySelector('button').onclick = async () => {
+            try { await api.comfySelectModel(m.filename); toast(m.name + ' 을(를) 활성 모델로 전환했어요', { type: 'ok' }); load(); }
+            catch (_e) { toast('전환 실패', { type: 'error' }); }
+          };
+        } else {
+          act.innerHTML = '<button class="btn btn--sm btn--primary">설치</button>';
+          act.querySelector('button').onclick = () => installOne(m, cardEl);
+        }
+      };
+      const installOne = async (m, cardEl) => {
+        const act = cardEl.querySelector('.cat-act');
+        const prog = cardEl.querySelector('.cat-prog');
+        const bar = cardEl.querySelector('.cat-prog-bar');
+        act.innerHTML = '<span style="font-size:12px;color:var(--c-dim,#8a90a6)">설치 중…</span>';
+        prog.hidden = false;
+        let r;
+        try { r = await api.installComfyModel(m.url) || {}; } catch (_e) { r = { ok: false }; }
+        if (r.ok === false) { toast(r.error || (m.name + ' 설치 실패'), { type: 'error' }); prog.hidden = true; renderAct(m); return; }
+        if (r.busy) { toast('다른 다운로드가 진행 중이에요 — 끝나고 다시 시도하세요', { type: 'info' }); prog.hidden = true; renderAct(m); return; }
+        const poll = setInterval(async () => {
+          let p; try { p = await api.comfySetupProgress(); } catch (_e) { return; }
+          if (!p) return;
+          bar.style.width = Math.max(2, p.percent || 0) + '%';
+          if (p.phase === 'error') { clearInterval(poll); toast(m.name + ' 다운로드 실패 — ' + (p.error || '확인 필요'), { type: 'error' }); prog.hidden = true; renderAct(m); return; }
+          if (p.phase === 'done') {
+            clearInterval(poll);
+            try { await api.comfySelectModel(m.filename); } catch (_e) { /* 활성화 실패해도 설치는 됨 */ }
+            m.installed = true; prog.hidden = true;
+            toast(m.name + ' 설치 완료 — 활성 모델로 적용했어요', { type: 'ok' });
+            renderAct(m); load();
+          }
+        }, 1200);
+      };
+      cat.forEach(renderAct);
     }
 
     async function load() {

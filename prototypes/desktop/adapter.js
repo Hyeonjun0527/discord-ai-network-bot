@@ -69,6 +69,14 @@ const MOCK = {
   },
   // ComfyUI 라이프사이클 상태는 별도 엔드포인트(/api/comfy/status)라 status shape 와 분리한다.
   comfy: { installed: false, running: false, active: null },
+  // 큐레이션 모델 카탈로그(/api/comfy/catalog) — 실 백엔드 comfy_setup.CATALOG 와 같은 shape.
+  comfyCatalog: [
+    { id: 'illustrious-xl-v2', name: 'Illustrious XL v2.0', category: 'anime', base: 'SDXL', desc: 'Danbooru 애니 일러스트 최신 베이스. WAI 등 인기 파인튠의 토대.', size: '6.9GB', url: 'https://huggingface.co/OnomaAIResearch/Illustrious-XL-v2.0/resolve/main/Illustrious-XL-v2.0.safetensors', filename: 'Illustrious-XL-v2.0.safetensors', installed: false },
+    { id: 'animagine-xl-4', name: 'Animagine XL 4.0', category: 'anime', base: 'SDXL', desc: '미소녀·일본 애니 특화. 깔끔한 SFW 일러스트.', size: '6.9GB', url: 'https://huggingface.co/cagliostrolab/animagine-xl-4.0/resolve/main/animagine-xl-4.0.safetensors', filename: 'animagine-xl-4.0.safetensors', installed: false },
+    { id: 'pony-v6-xl', name: 'Pony Diffusion V6 XL', category: 'anime', base: 'SDXL', desc: '애니·만화까지 가장 범용적인 인기 SDXL. score_9 프롬프트 권장.', size: '6.9GB', url: 'https://huggingface.co/LyliaEngine/Pony_Diffusion_V6_XL/resolve/main/ponyDiffusionV6XL_v6StartWithThisOne.safetensors', filename: 'ponyDiffusionV6XL_v6StartWithThisOne.safetensors', installed: false },
+    { id: 'realvis-xl-v5', name: 'RealVisXL V5.0', category: 'realistic', base: 'SDXL', desc: '실사 표준급 고품질. 인물·풍경 안정적.', size: '6.9GB', url: 'https://huggingface.co/SG161222/RealVisXL_V5.0/resolve/main/RealVisXL_V5.0_fp16.safetensors', filename: 'RealVisXL_V5.0_fp16.safetensors', installed: false },
+    { id: 'juggernaut-xl-v9', name: 'Juggernaut XL v9', category: 'realistic', base: 'SDXL', desc: '세계 최다 다운로드 실사 SDXL. 포토리얼리즘 강력.', size: '7.1GB', url: 'https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', filename: 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', installed: false },
+  ],
   logs: [
     '09:12:03 INFO | 에이전트 시작 (Nexa v0.31.0)',
     '09:12:03 INFO | 중앙 서버 연결: wss://discord-ai.yeon.world/agent',
@@ -198,7 +206,7 @@ const MOCK = {
   ],
 };
 // 프로토타입 데모: PROTO 컨트롤러/테스트가 mock 상태를 흔들어 조건부 UI(재연결·SD 시작 등)를 시연·검증.
-if (typeof window !== 'undefined') { window.__mockPatch = (patch) => { Object.assign(MOCK.status, patch || {}); }; }
+if (typeof window !== 'undefined') { window.__mockPatch = (patch) => { Object.assign(MOCK.status, patch || {}); }; window.__mockComfy = (patch) => { Object.assign(MOCK.comfy, patch || {}); }; }
 /* @end-proto-only */
 
 export const api = {
@@ -543,6 +551,12 @@ export const api = {
     /* @proto-only */
     if (USE_MOCK) {
       const s = _setup.comfy; if (!s) return { phase: 'idle', percent: 0, message: '' };
+      // 모델 다운로드(s.model)와 엔진 설치를 구분 — 둘 다 동일 진행률 엔드포인트로 폴링됨(실 백엔드도 comfy_setup._state 공유).
+      if (s.model) {
+        const dsec = (Date.now() - s.start) / 1000, dpct = Math.min(100, Math.round(dsec / 4 * 100));
+        if (dpct >= 100) { const e = MOCK.comfyCatalog.find((m) => m.filename === s.model); if (e) e.installed = true; MOCK.comfy.active = s.model; _setup.comfy = null; return { phase: 'done', percent: 100, message: '이미지 모델 준비 완료' }; }
+        return { phase: 'downloading', percent: Math.max(1, dpct), message: s.model + ' 내려받는 중… ' + dpct + '%' };
+      }
       const sec = (Date.now() - s.start) / 1000, pct = Math.min(100, Math.round(sec / 8 * 100));
       if (pct >= 100) { MOCK.comfy.installed = true; MOCK.comfy.running = true; return { phase: 'done', percent: 100, message: 'ComfyUI 준비 완료' }; }
       if (pct >= 90) return { phase: 'starting', percent: pct, message: 'ComfyUI 시작 중' };
@@ -572,14 +586,20 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { await delay(50); const models = ['Anything V5.safetensors', 'animagine-xl-4.0.safetensors', 'Illustrious-XL-v0.1.safetensors']; return { models, active: MOCK.comfy.active || models[0] }; } /* @end-proto-only */
     return http(ENDPOINTS.comfyModels);
   },
+  /** 큐레이션 이미지 모델 카탈로그 — {models:[{id,name,category,base,desc,size,url,filename,installed}]}. */
+  async comfyCatalog() {
+    /* @proto-only */ if (USE_MOCK) { await delay(60); return { models: structuredClone(MOCK.comfyCatalog) }; } /* @end-proto-only */
+    return http(ENDPOINTS.comfyCatalog);
+  },
   /** 활성 ComfyUI 체크포인트 전환 — POST /api/comfy/select {model}. */
   async comfySelectModel(model) {
     /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.comfy.active = model; return { ok: true, active: model }; } /* @end-proto-only */
     return post(ENDPOINTS.comfySelect, { model });
   },
-  /** 임의 모델 URL(.safetensors)을 ComfyUI 폴더로 다운로드 — POST /api/comfy/install-model {url}. */
+  /** 모델 URL(.safetensors)을 ComfyUI 폴더로 다운로드(카탈로그·임의 URL 공용) — POST /api/comfy/install-model {url}.
+   *  대용량이라 백그라운드로 받고 즉시 반환 — 진행률은 comfySetupProgress 폴링, 완료 후 comfySelectModel 로 활성화. */
   async installComfyModel(url) {
-    /* @proto-only */ if (USE_MOCK) { await delay(120); const ok = /\.(safetensors|ckpt)(\?|$)/.test(url); if (ok) { const fn = url.split('/').pop().split('?')[0]; MOCK.comfy.active = fn; } return ok ? { ok: true } : { ok: false, error: '.safetensors/.ckpt 직접 링크인지 확인하세요.' }; } /* @end-proto-only */
+    /* @proto-only */ if (USE_MOCK) { const ok = /\.(safetensors|ckpt)(\?|$)/.test(url); if (!ok) { await delay(80); return { ok: false, error: '.safetensors/.ckpt 직접 링크인지 확인하세요.' }; } _setup.comfy = { start: Date.now(), model: url.split('/').pop().split('?')[0] }; await delay(60); return { ok: true, started: true }; } /* @end-proto-only */
     return post(ENDPOINTS.comfyInstallModel, { url });
   },
 

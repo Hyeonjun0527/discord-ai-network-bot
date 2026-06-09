@@ -72,6 +72,30 @@ test('로컬 실행: ComfyUI 미설치 → 설치 버튼(데모 mock)', async ({
   await expect(comfy).toContainText('미설치');
 });
 
+test('로컬 실행: ComfyUI 모델 카탈로그 — 목록에서 골라 설치·진행률·자동 적용(데모 mock)', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.click('.nav-item[data-view="local"]');
+  // 카탈로그 버튼은 ComfyUI 실행 중일 때 노출 — mock 을 설치·실행 상태로 패치하고 재렌더.
+  await page.evaluate(() => window.__mockComfy({ installed: true, running: true, active: null }));
+  await page.click('.nav-item[data-view="local"]');
+  await expect(page.locator('#comfyCatalogBtn')).toBeVisible();
+  await page.click('#comfyCatalogBtn');
+
+  const modal = page.locator('.cat-back .cat-modal');
+  await expect(modal).toBeVisible();
+  await expect(modal.locator('.cat-card')).toHaveCount(5); // 큐레이션 5종
+  await expect(modal).toContainText('Illustrious XL v2.0'); // 애니(유저 요청 Illustrious 계열)
+  await expect(modal).toContainText('Juggernaut XL v9');    // 실사
+  await expect(modal.locator('.cat-section', { hasText: '애니' })).toBeVisible();
+  await expect(modal.locator('.cat-section', { hasText: '실사' })).toBeVisible();
+
+  // 첫 모델 설치 → 진행률 → 완료 시 '설치됨' 배지(자동 활성화)
+  const first = modal.locator('.cat-card').first();
+  await first.locator('.cat-act button').click();
+  await expect(first.locator('.cat-prog')).toBeVisible();
+  await expect(first.locator('.cat-installed')).toBeVisible({ timeout: 9000 }); // mock 다운로드 ~4s
+});
+
 test('모델: 기본 응답 모델 select + 변경 적용', async ({ page }) => {
   await page.goto('/index.html');
   await page.click('.nav-item[data-view="models"]');

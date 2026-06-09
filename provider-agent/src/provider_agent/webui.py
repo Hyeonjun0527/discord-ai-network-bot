@@ -379,13 +379,12 @@ def _page(session_key: str) -> str:
     return template.replace("__SESSION_KEY__", session_key).replace("__VERSION__", AGENT_VERSION)
 
 
-def build_app(session_key: str) -> web.Application:
-    _attach_log_capture()
-    app = web.Application()
+def _register_asset_routes(app: web.Application, session_key: str) -> None:
+    """인증 불필요한 정적 자산 라우트(메인 페이지·마스코트·앱아이콘·webui_assets js/img).
 
-    def _auth(req: web.Request) -> None:
-        if req.headers.get("X-Session") != session_key:
-            raise web.HTTPForbidden(text="세션 키 불일치")
+    핸들러는 session_key(메인 페이지) 와 모듈 헬퍼만 의존 → build_app 의 다른 상태와 무관해 분리(SRP).
+    경로 정규식이 파일명만 허용해 경로 탈출(../)을 구조적으로 막는다(원본 동작 불변).
+    """
 
     async def index(_req: web.Request) -> web.Response:
         return web.Response(text=_page(session_key), content_type="text/html")
@@ -397,10 +396,6 @@ def build_app(session_key: str) -> web.Application:
         return web.Response(body=_app_icon_bytes(), content_type="image/png")
 
     async def asset_js(req: web.Request) -> web.Response:
-        """이식된 앱 자산(webui_assets)의 .js 파일 서빙. 코드는 비민감 — 인증 불필요(mascot 동일).
-
-        라우트 정규식이 파일명만(`[\\w\\-]+\\.js`) 허용해 경로 탈출(.. /)을 구조적으로 막는다.
-        """
         name = req.match_info["asset"]
         try:
             f = _assets_dir() / name
@@ -413,7 +408,6 @@ def build_app(session_key: str) -> web.Application:
             raise web.HTTPNotFound() from exc
 
     async def asset_img(req: web.Request) -> web.Response:
-        """이식된 앱 자산(webui_assets/img)의 이미지 서빙. 정규식이 파일명만 허용(경로 탈출 방지)."""
         name = req.match_info["name"]
         ctype = "image/svg+xml" if name.lower().endswith(".svg") else "image/png"
         try:
@@ -425,6 +419,22 @@ def build_app(session_key: str) -> web.Application:
             raise
         except Exception as exc:  # noqa: BLE001
             raise web.HTTPNotFound() from exc
+
+    app.router.add_get("/", index)
+    app.router.add_get("/mascot.png", mascot)
+    app.router.add_get("/app-icon.png", app_icon)
+    app.router.add_get(r"/{asset:[\w\-]+\.js}", asset_js)
+    app.router.add_get(r"/img/{name:[\w\-.]+}", asset_img)
+
+
+def build_app(session_key: str) -> web.Application:
+    _attach_log_capture()
+    app = web.Application()
+    _register_asset_routes(app, session_key)
+
+    def _auth(req: web.Request) -> None:
+        if req.headers.get("X-Session") != session_key:
+            raise web.HTTPForbidden(text="세션 키 불일치")
 
     async def models(req: web.Request) -> web.Response:
         _auth(req)
@@ -1564,13 +1574,7 @@ def build_app(session_key: str) -> web.Application:
             return web.json_response({"ok": False, "error": str(exc)})
         return web.json_response({"ok": True, "path": str(target)})
 
-    app.router.add_get("/", index)
-    app.router.add_get("/mascot.png", mascot)
-    app.router.add_get("/app-icon.png", app_icon)
-    # 이식된 앱 자산 정적 서빙(webui_assets). 정규식이 파일명만 허용 → 경로 탈출 방지 + /api/* 비충돌
-    # (`.js` 확장자/`/img/` 프리픽스로 한정되어 /api·/connect 등 기존 라우트와 겹치지 않는다).
-    app.router.add_get(r"/{asset:[\w\-]+\.js}", asset_js)
-    app.router.add_get(r"/img/{name:[\w\-.]+}", asset_img)
+    # 정적 자산 라우트(/, /mascot.png, /app-icon.png, /*.js, /img/*)는 _register_asset_routes 가 등록함.
     app.router.add_get("/api/models", models)
     app.router.add_get("/api/status", status)
     app.router.add_get("/api/logs", logs)

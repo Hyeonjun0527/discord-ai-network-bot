@@ -611,7 +611,7 @@
 - [~] **SE-134** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1. PresetBehaviorNormalizer 클래스 생성. 2. normalize(behavior: PresetBehav) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRevisionFactory.kt:24-70` `createRevision` (S)
   - createRevision 함수가 PresetBehaviorInput → PresetRevisionEntity 변환, 각 필드별 정규화(trim/ifBlank/coerceIn/take/sanitize), 및 리비전 저장(revisions.save)을 모두 담당한다. 또한 정규화 로직이 복잡하여(preferredModel, minQualityTier, costGuard, maxCandidates 각각 다른 규칙), 향후 정규화 규칙 변경 시 이 함수를 수정해야 한다.
   - **Fix:** 정규화 로직을 PresetBehaviorNormalizer(각 필드별 정규화 규칙)로 분리하고, createRevision은 정규화 후 엔티티 생성 및 저장만 담당하도록 축소하라.
-- [~] **SE-152** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: 1단계: ConflictDetector 인터페이스 + 5개 구현체 (각 conflict type). 2단계: buildImpo) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetImportPreviewBuilder.kt:22-111` `buildImportPreview` (M)
+- [x] **SE-152** ✅FIXED(충돌 if-체인→listOfNotNull+takeIf(OCP))
   - buildImportPreview 함수의 conflict 판정 로직이 hardcoded if-else로 늘어서 있다(targetChannelId == null, existingChannelAi != null, existingRouting != null, maxCandidates > 1, highRisk). 새로운 충돌 유형이 추가될 때마다(예: routingPolicyQuota, knowledgeSpaceLeak) 함수를 수정해야 하므로 OCP 원칙을 위반한다.
   - **Fix:** PresetImportConflictDetector 전략 인터페이스를 정의하여 각 충돌 유형마다 구현체(NoTargetChannelConflict, ExistingChannelAiConflict, HighRiskConflict 등)를 만들고, 이들을 조합하여 사용하도록 변경하라. 새 충돌 유형은 기존 코드 수정 없이 새 구현체만 추가하면 된다.
 - [x] **SE-177** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogMapper.kt:203-242` `PresetCatalogMapper` (M)
@@ -668,7 +668,7 @@
 - [~] **SE-128** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: Extract validateAndCoercePolicy(entity: MultiResponsePolicyEntity) hel) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:72-141` `savePolicyEntity` (M)
   - savePolicyEntity가 정책 조회(113-118줄), 검증/정규화(121-138줄), 저장(140줄)을 모두 수행한다. 특히 mode 정규화(121-124줄), maxCandidates 제한(125줄), synthesisEnabled 조건부 설정(137-138줄)이 흩어져 있다.
   - **Fix:** PolicyNormalizer 또는 PolicyBuilder 클래스를 만들어 검증/정규화 로직을 분리하라. savePolicyEntity는 기존 정책 조회 + 정규화된 값 저장만 수행하도록 변경하라.
-- [~] **SE-149** 🔷TRACTABLE-QUEUED(리뷰완료·plan 보유, 안전 소규모: Step 1) RiskRule 인터페이스 정의 및 TimeoutRateRule, QualityRule 등 구현체 생성. Ste) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:131-147` `decisionSummary` (M)
+- [x] **SE-149** ✅FIXED(위험코드 if-체인→RiskSignal 규칙 리스트(OCP))
   - riskCode와 nextAction을 결정하는 if 체인(131-147줄)이 매직 숫자(0.25 timeout rate, 60.0 quality score)와 하드코딩 메시지를 섞어 가지고 있다. 새로운 위험 규칙을 추가할 때마다 이 메서드를 수정해야 한다.
   - **Fix:** RiskRule 인터페이스를 정의하고, List<RiskRule>로 규칙들을 주입받아 decisionSummary에서 순회하라. 또는 RiskRuleRegistry를 설정 파일에서 로드하라.
 - [x] **SE-150** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:352-357` `isProviderProtectionReason` (M)

@@ -119,31 +119,26 @@ class MultiResponseReportingService(
         val adoptionRate = if (completedCandidates == 0) 0.0 else acceptedCandidates.toDouble() / completedCandidates
         val timeoutRate = if (runCandidates.isEmpty()) 0.0 else timeoutCandidates.toDouble() / runCandidates.size
         val averageQualityScore = qualityScores.takeIf { it.isNotEmpty() }?.average() ?: 0.0
+        // 위험 신호 규칙(OCP): 새 위험은 이 리스트에 한 줄 추가하면 된다 — 평가/누적 로직은 수정하지 않는다.
+        // 조건·코드·문구·평가 순서는 분해 이전과 1바이트도 다르지 않다.
+        val riskRules =
+            listOf(
+                RiskSignal(recent.isEmpty(), "no_recent_runs", "다중 응답 실행 이력이 쌓이면 후보 선택 품질을 분석할 수 있어요."),
+                RiskSignal(runCandidates.isEmpty() && recent.isNotEmpty(), "no_candidates", "온라인 Provider와 fan-out 참여 태그를 확인하세요."),
+                RiskSignal(timeoutRate >= 0.25, "high_timeout_rate", "응답 속도/품질 모드를 낮추거나 과부하 Provider를 보호하세요."),
+                RiskSignal(qualityScores.isNotEmpty() && averageQualityScore < 60.0, "low_quality", "채널 AI 프롬프트, 지식 베이스, 모델 정책을 점검하세요."),
+                RiskSignal(completedRuns > 0 && acceptedCandidates == 0, "no_selected_candidate", "완료된 실행에 선택 후보나 합성 결과가 기록되는지 확인하세요."),
+                RiskSignal(
+                    recent.any { it.ragContextStatus?.startsWith("fallback") == true },
+                    "rag_context_fallback",
+                    "채널 지식 베이스 색인 상태와 검색 범위를 점검하세요.",
+                ),
+            )
         val riskCodes = mutableListOf<String>()
         val nextActions = mutableListOf<String>()
-        if (recent.isEmpty()) {
-            riskCodes += "no_recent_runs"
-            nextActions += "다중 응답 실행 이력이 쌓이면 후보 선택 품질을 분석할 수 있어요."
-        }
-        if (runCandidates.isEmpty() && recent.isNotEmpty()) {
-            riskCodes += "no_candidates"
-            nextActions += "온라인 Provider와 fan-out 참여 태그를 확인하세요."
-        }
-        if (timeoutRate >= 0.25) {
-            riskCodes += "high_timeout_rate"
-            nextActions += "응답 속도/품질 모드를 낮추거나 과부하 Provider를 보호하세요."
-        }
-        if (qualityScores.isNotEmpty() && averageQualityScore < 60.0) {
-            riskCodes += "low_quality"
-            nextActions += "채널 AI 프롬프트, 지식 베이스, 모델 정책을 점검하세요."
-        }
-        if (completedRuns > 0 && acceptedCandidates == 0) {
-            riskCodes += "no_selected_candidate"
-            nextActions += "완료된 실행에 선택 후보나 합성 결과가 기록되는지 확인하세요."
-        }
-        if (recent.any { it.ragContextStatus?.startsWith("fallback") == true }) {
-            riskCodes += "rag_context_fallback"
-            nextActions += "채널 지식 베이스 색인 상태와 검색 범위를 점검하세요."
+        riskRules.filter { it.active }.forEach {
+            riskCodes += it.code
+            nextActions += it.nextAction
         }
         val decisions =
             recent
@@ -382,6 +377,13 @@ class MultiResponseReportingService(
         val best = scores.max()
         return "avg=${"%.1f".format(average)}, best=$best, scored=${scores.size}"
     }
+
+    /** 위험 신호 1건(OCP 규칙): active 면 code·nextAction 을 요약에 더한다. */
+    private data class RiskSignal(
+        val active: Boolean,
+        val code: String,
+        val nextAction: String,
+    )
 
     private companion object {
         val FALLBACK_RUN_STATUSES =

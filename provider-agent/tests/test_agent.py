@@ -455,19 +455,17 @@ async def test_boot_sd_noop_when_not_installed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_boot_sd_launches_and_readvertises(monkeypatch):
-    """설치됐는데 SD 가 꺼져 있으면 자동기동 → 준비되면 image capability 재광고(재연결)."""
-    import provider_agent.sd_setup as sd_setup
-
-    monkeypatch.setattr(sd_setup, "is_installed", lambda: True)
-    monkeypatch.setattr(sd_setup, "is_busy", lambda: False)
+    """이미지 엔진=ComfyUI: 설치돼 있으면 자동기동 → 준비(health)되면 image capability 재광고(재연결)."""
+    import provider_agent.comfy_setup as comfy_setup
 
     launched = {}
 
-    async def fake_launch(url):
-        launched["url"] = url
+    async def fake_start(directory=None):
+        launched["started"] = True
         return True
 
-    monkeypatch.setattr(sd_setup, "launch_only", fake_launch)
+    monkeypatch.setattr(comfy_setup, "is_installed", lambda directory=None: True)
+    monkeypatch.setattr(comfy_setup, "start", fake_start)
     agent = ProviderAgent(
         AgentConfig(token="T", models=("m",), enable_image=True), ollama=FakeOllama(), sd=_FakeSD(True)
     )
@@ -478,7 +476,7 @@ async def test_boot_sd_launches_and_readvertises(monkeypatch):
 
     monkeypatch.setattr(agent, "_readvertise", fake_readv)
     await agent._boot_sd()
-    assert launched.get("url") == agent._cfg.sd_url
+    assert launched.get("started") is True  # ComfyUI 자동 기동
     assert agent.image_ready is True
     assert re_called.get("yes") is True
 

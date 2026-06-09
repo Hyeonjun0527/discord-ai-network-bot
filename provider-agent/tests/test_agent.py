@@ -435,10 +435,10 @@ class _FakeSD:
 
 @pytest.mark.asyncio
 async def test_boot_sd_noop_when_not_installed(monkeypatch):
-    """SD 가 설치 안 돼 있으면 자동기동을 시도하지 않는다(재광고도 없음)."""
-    import provider_agent.sd_setup as sd_setup
+    """ComfyUI 가 설치/실행 안 돼 있으면(health False) 자동기동해도 재광고하지 않는다."""
+    import provider_agent.comfy_setup as comfy_setup
 
-    monkeypatch.setattr(sd_setup, "is_installed", lambda: False)
+    monkeypatch.setattr(comfy_setup, "is_installed", lambda directory=None: False)
     agent = ProviderAgent(
         AgentConfig(token="T", models=("m",), enable_image=True), ollama=FakeOllama(), sd=_FakeSD(False)
     )

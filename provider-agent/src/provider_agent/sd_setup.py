@@ -1,22 +1,12 @@
-"""앱 내 Stable Diffusion(AUTOMATIC1111 WebUI) 설치 — 버튼 클릭 시 감지→설치→모델→기동(--api)→준비.
+"""이미지 엔진 **공용** 모듈 — 모델 카탈로그·생성 해상도 판정·다운로드·standalone Python·공용 헬퍼.
 
-이미지 생성을 제공하려면 로컬에 SD 서버가 필요한데 대부분의 사용자는 없다. 그래서 데스크톱 앱이
-**버튼 한 번**으로 A1111 WebUI 를 직접 받아 띄운다(기존 `sd.SDClient` 가 쓰는 ``/sdapi/v1`` 백엔드).
-
-흐름(진행은 ``progress()`` 로 노출, Ollama 자동설치 `ollama_setup` 과 동일 패턴):
-
-1. **감지** — SD 가 이미 떠 있으면(``SDClient.health``) 즉시 done.
-2. **설치** — A1111 repo 를 데이터 디렉터리에 ``git clone``(얕은 클론).
-3. **모델** — 체크포인트가 없으면 기본 SD1.5 모델을 ``models/Stable-diffusion`` 으로 내려받음
-   (없으면 생성이 실패하므로 "유저가 제일 편한" 경험을 위해 같이 준비).
-4. **기동** — ``webui`` 를 ``--api`` 로 백그라운드 기동(첫 실행 시 venv·torch 자동 부트스트랩).
-5. **준비** — ``/sdapi/v1`` 가 응답할 때까지 폴링(첫 실행은 수~수십 분 걸릴 수 있음).
-
-전제: ``git`` 과 (A1111 이 요구하는) Python 3.10/3.11 이 PATH 에 있어야 한다. SD 는 localhost 전용
-(netguard) — 원격은 별도 옵션에서만. 외부 이미지 API 는 쓰지 않는다.
-
-순수 헬퍼(``install_dir``/``is_installed``/``has_git``/``clone_command``/``launch_command``/
-``has_model``)는 부수효과 없이 단위 테스트 가능하고, 실제 명령 실행은 호출부(GUI 버튼)에서만 한다.
+SD.Next(A1111)는 폐기됐고 이미지 엔진은 ComfyUI 전용이다([comfy_setup]). 이 모듈은 두 엔진이 공유하던
+범용 부분만 남는다(파일명은 하위호환을 위해 sd_setup 유지):
+- ``MODELS``/``DEFAULT_MODEL_*``/``model_by_id``/``custom_model_from_url`` — 기본 이미지 모델 카탈로그.
+- ``resolution_for_checkpoint`` — 체크포인트 이름으로 생성 해상도(SDXL 1024 / SD1.5 512) 판정(에이전트가 사용).
+- ``_download`` — 이어받기·HF 토큰 지원 스트리밍 다운로드(comfy_setup 이 모델 다운로드에 사용).
+- standalone CPython 페치(``ensure_bundled_python`` 등) + ``_run``/``_spawn``/``launch_log_path``/``_augment_path``
+  /``install_dir`` — comfy_setup 부트스트랩 공용.
 """
 from __future__ import annotations
 
@@ -31,8 +21,6 @@ import tarfile
 
 import aiohttp
 
-from .sd import SDClient
-
 logger = logging.getLogger("provider_agent.sd_setup")
 
 # 로컬 이미지 생성 백엔드 = **SD.Next**(vladmandic/sdnext). A1111(AUTOMATIC1111)은 2025-02(v1.10.1)
@@ -41,16 +29,6 @@ logger = logging.getLogger("provider_agent.sd_setup")
 # (txt2img/progress/health) 그대로 사용. MPS/정밀도(맥)도 자체 자동 처리 → A1111 의 --no-half-vae 등
 # 플래그·CLIP/setuptools/stablediffusion 우회가 불필요(자체 인스톨러가 처리).
 # self-update 가 기본이라 default 브랜치를 클론하면 최신을 유지한다.
-SDNEXT_REPO = "https://github.com/vladmandic/sdnext.git"
-# SD.Next 를 **검증된 커밋으로 핀**한다. default(master)는 self-update 라인이라 업스트림/의존성이
-# 깨진 시점에 설치하면 첫 실행이 깨진다(업스트림 부패 전례: A1111 stablediffusion repo 404·
-# setuptools≥81 CLIP). 이 커밋은 이 개발 머신에서 실이미지 생성까지 검증된 버전(2026-05-14, master).
-# GitHub 은 reachable SHA 의 shallow fetch 를 허용하므로 init+fetch --depth1 <sha>+checkout 로 고정한다.
-# 비우면("") 옛 동작(default 브랜치 clone)으로 폴백. 갱신 시 새 커밋을 실제 검증 후 교체할 것.
-SDNEXT_PIN = "dedb130b2c15ef9d91f9593213ccffcb70d98be4"
-
-# 설치 마법사에서 고르는 로컬 이미지 모델(체크포인트). 명령어가 아니라 데이터라 여기서 SSOT.
-# base: "sd15"|"sdxl" — 생성 해상도(512 vs 1024) 결정에 쓴다(resolution_for_checkpoint).
 MODELS: list[dict[str, str]] = [
     {
         "id": "sd15",
@@ -136,50 +114,6 @@ def custom_model_from_url(url: str) -> dict[str, str] | None:
     }
 
 
-def _save_custom_base(filename: str, base: str) -> None:
-    """커스텀 모델의 base(sd15/sdxl)를 config 에 저장 — 생성 해상도 판정(resolution_for_checkpoint)용."""
-    if base not in ("sd15", "sdxl"):
-        return
-    from .config_file import load_config, persist_partial
-
-    bases = dict(load_config().get("custom_bases") or {})
-    bases[filename] = base
-    persist_partial({"custom_bases": bases})
-
-
-async def download_custom_model(url: str, sd_url: str, base: str = "") -> bool:
-    """HuggingFace 커스텀 체크포인트를 모델 폴더로 받는다. 진행률은 progress() 로 노출.
-
-    base("sd15"|"sdxl"): 생성 해상도 판정용(SDXL 커스텀이면 1024). SD.Next 가 이미 설치돼 있으면 파일만
-    추가(설치 후 installed_models() 에 나타나고 로컬 실행 탭에서 선택·핫스왑). 미설치면 전체 설치. 형식 안 맞으면 에러.
-    """
-    global _cancel
-    _cancel = False
-    _augment_path()
-    model = custom_model_from_url(url)
-    if model is None:
-        _set("error", 0, "HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요(예: …/resolve/main/모델.safetensors).", error="bad-url")
-        return False
-    _save_custom_base(model["filename"], base)  # base 먼저 저장(다운로드 성공 전에도 해상도 매핑되게)
-    if not is_installed():
-        return await run_setup(sd_url, custom_url=url)  # SD.Next 자체가 없으면 이 모델로 전체 설치
-    dest = model_dir() / model["filename"]
-    if dest.exists():
-        _set("done", 100, f"이미 설치됨: {model['name']}")
-        return True
-    try:
-        prefix = f"이미지 모델 내려받는 중… ({model['name']})"
-        _set("downloading", _DL_START_PCT, prefix)
-        await _download(model["url"], dest, prefix)
-    except (OSError, RuntimeError) as exc:
-        _set("error", 0, f"다운로드 실패: {exc}", error="download-failed")
-        return False
-    if _cancelled():
-        return False
-    _set("done", 100, f"설치 완료: {model['name']} — 로컬 실행 탭에서 모델을 선택하세요")
-    return True
-
-
 def resolution_for_checkpoint(checkpoint: str | None) -> tuple[int, int]:
     """현재 로드된 체크포인트 이름으로 권장 생성 해상도를 정한다.
 
@@ -208,47 +142,6 @@ def resolution_for_checkpoint(checkpoint: str | None) -> tuple[int, int]:
 
 
 # phase: idle | installing | downloading | starting | done | error | cancelled
-_progress: dict = {"phase": "idle", "percent": 0, "message": "", "error": None}
-# 기동한 webui 프로세스 참조(GC 로 죽지 않게 보관). 포그라운드라 await 하지 않는다.
-_proc: asyncio.subprocess.Process | None = None
-# 진행 중인 자식 프로세스(clone/설치) — 취소 시 종료용.
-_current_proc: asyncio.subprocess.Process | None = None
-# 취소 요청 플래그(단계 경계·다운로드 청크에서 확인).
-_cancel: bool = False
-
-
-def progress() -> dict:
-    return dict(_progress)
-
-
-def _set(phase: str | None = None, percent: int | None = None, message: str | None = None, error: str | None = None) -> None:
-    if phase is not None:
-        _progress["phase"] = phase
-    if percent is not None:
-        _progress["percent"] = percent
-    if message is not None:
-        _progress["message"] = message
-    _progress["error"] = error
-
-
-def is_busy() -> bool:
-    return _progress["phase"] in ("installing", "downloading", "starting")
-
-
-def request_cancel() -> None:
-    """설치 취소: 플래그를 세우고 진행 중인 자식 프로세스를 종료한다."""
-    global _cancel
-    _cancel = True
-    for p in (_current_proc, _proc):
-        if p is not None and p.returncode is None:
-            try:
-                p.kill()
-            except ProcessLookupError:
-                pass
-    if is_busy():
-        _set("cancelled", _progress["percent"], "설치를 취소했어요")
-
-
 def install_dir() -> pathlib.Path:
     """SD.Next 를 설치할 데이터 디렉터리. **경로에 점(.)으로 시작하는 폴더가 없어야 한다.**
 
@@ -287,47 +180,6 @@ def _augment_path() -> None:
         os.environ["PATH"] = os.pathsep.join(add + parts)
 
 
-def _has(cmd: str) -> bool:
-    return shutil.which(cmd) is not None
-
-
-def has_git() -> bool:
-    return _has("git")
-
-
-def pkg_manager(platform: str | None = None) -> str | None:
-    """전제 도구(git·Python) 자동설치에 쓸 패키지 매니저(없으면 None → 사용자 안내로 폴백)."""
-    p = platform or sys.platform
-    if p == "darwin":
-        return "brew" if _has("brew") else None
-    if p == "win32":
-        return "winget" if _has("winget") else None
-    return None  # Linux 는 배포판마다 달라 전제 자동설치는 생략(안내)
-
-
-# A1111 은 Python 3.10/3.11 을 요구한다(3.12+ 비호환). 자동 설치 시 3.11 을 받는다.
-_PKG: dict[str, dict[str, list[str]]] = {
-    "brew": {"git": ["brew", "install", "git"], "python": ["brew", "install", "python@3.11"]},
-    "winget": {
-        "git": ["winget", "install", "--id", "Git.Git", "-e", "--accept-source-agreements"],
-        "python": ["winget", "install", "--id", "Python.Python.3.11", "-e", "--accept-source-agreements"],
-    },
-}
-
-
-def install_tool_command(tool: str, platform: str | None = None) -> list[str] | None:
-    """git/python 등 전제 도구를 관리자 권한 없이 설치하는 명령(없으면 None)."""
-    pm = pkg_manager(platform)
-    return _PKG.get(pm, {}).get(tool) if pm else None
-
-
-# ── standalone CPython (호환 Python 미보유 머신용 런타임 페치) ──────────────────
-# frozen 앱(PyInstaller)은 SD.Next 를 돌릴 Python 을 번들하지 않는다. 시스템에 3.10~3.12 가 없고
-# brew/winget 도 없는 일반 머신에선 이미지 부트스트랩이 'no-python' 으로 즉사했다(신규설치 신뢰성 감사
-# #1 HIGH). 이때 검증된 venv 와 **같은 3.11.15** standalone CPython(python-build-standalone)을 받아
-# SD.Next venv 생성에 쓴다. 호환 Python 이 있으면 받지 않는다(스킵) — 받아도 ~50MB 로 모델(수 GB) 대비
-# 무시 가능. install_only 빌드는 relocatable 이라 임의 경로에서 동작하고, 프로그래매틱 다운로드라
-# macOS quarantine(Gatekeeper) 도 안 붙는다(브라우저/AirDrop 만 붙임).
 BUNDLED_PYTHON_RELEASE = "20260602"
 BUNDLED_PYTHON_VERSION = "3.11.15"
 _PBS_BASE = "https://github.com/astral-sh/python-build-standalone/releases/download"
@@ -439,172 +291,16 @@ def compatible_python() -> str | None:
     return None
 
 
-def launch_env(python_cmd: str | None, platform: str | None = None) -> dict[str, str]:
-    """SD.Next webui.sh/webui.bat 가 읽는 파이썬 실행기 지정(없으면 빈 dict).
-
-    SD.Next 는 **모든 플랫폼에서 ``PYTHON`` 환경변수**를 사용한다(A1111 의 mac/linux ``python_cmd`` 가
-    아님 — 실증: python_cmd 는 무시돼 시스템 기본 3.14 로 venv 가 생성됐다). 지원 버전을 PYTHON 으로 강제.
-    """
-    if not python_cmd:
-        return {}
-    return {"PYTHON": python_cmd}
-
-
-# SD.Next 가 자동으로 설치하지 않지만 **필요한** 의존성(실증). torchsde: macOS(MPS) startup 의
-# devices_mac 가 torchsde 함수를 hard-require 하는데 SD.Next 기본 requirements 에 없어 첫 실행이
-# "ValueError: Empty module name" 으로 깨진다. 우리 setup 이 미리 venv 에 심어 전 유저 깨짐을 막는다.
-EXTRA_PIP_DEPS = ("torchsde",)
-
-
-def _venv_python(directory: pathlib.Path) -> pathlib.Path:
-    """SD.Next venv 의 python 실행기 경로."""
-    venv = directory / "venv"
-    return venv / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python")
-
-
-async def ensure_extra_deps(directory: pathlib.Path | None = None, python_cmd: str | None = None) -> None:
-    """SD.Next venv 를 (없으면) **지원 Python 으로** 만들고, 자동설치 안 되는 필수 의존성(torchsde)을 시드한다.
-
-    webui.sh 는 venv 가 이미 있으면 그대로 활성화하므로, 우리가 미리 venv+torchsde 를 깔면 첫 실행
-    startup 크래시(Mac MPS)를 막고 Python 버전도 우리가 통제한다(시스템 기본 3.14 회피). 실패는 비치명적.
-    """
-    d = directory or install_dir()
-    venv = d / "venv"
-    py = python_cmd or compatible_python() or ("python" if sys.platform == "win32" else "python3")
-    if not venv.exists():
-        code, _log = await _run([py, "-m", "venv", str(venv)], timeout=300)
-        if code != 0:
-            return  # venv 생성 실패 → webui.sh 가 다시 시도(비치명적)
-    vpy = _venv_python(d)
-    if not vpy.exists():
-        return
-    await _run([str(vpy), "-m", "pip", "install", *EXTRA_PIP_DEPS], timeout=900)
-
-
-def is_installed(directory: pathlib.Path | None = None) -> bool:
-    """A1111 런처가 설치돼 있는지(webui.sh/webui.bat 존재)."""
-    d = directory or install_dir()
-    return (d / "webui.sh").exists() or (d / "webui.bat").exists()
-
-
-def model_dir(directory: pathlib.Path | None = None) -> pathlib.Path:
-    return (directory or install_dir()) / "models" / "Stable-diffusion"
-
-
-def has_model(directory: pathlib.Path | None = None) -> bool:
-    """체크포인트(.safetensors/.ckpt)가 하나라도 있는지."""
-    md = model_dir(directory)
-    if not md.exists():
-        return False
-    return any(p.suffix in (".safetensors", ".ckpt") for p in md.iterdir() if p.is_file())
-
-
-def clone_command(directory: pathlib.Path | None = None) -> list[str]:
-    """[레거시/폴백] SD.Next repo 를 얕게 클론(default 브랜치). 핀이 없을 때만 쓰인다."""
-    return ["git", "clone", "--depth", "1", SDNEXT_REPO, str(directory or install_dir())]
-
-
-def clone_commands(directory: pathlib.Path | None = None) -> list[list[str]]:
-    """SD.Next 를 받는 명령 **시퀀스**. SDNEXT_PIN 이 있으면 그 커밋으로 고정(shallow), 없으면 레거시 clone.
-
-    핀 고정은 단일 ``git clone`` 으로 안 된다(임의 SHA 는 --branch 불가) → init+remote+fetch --depth1 <sha>+
-    checkout 으로 정확히 그 커밋만 받는다. 업스트림 master 가 움직여도 우리는 검증된 버전만 설치한다.
-    """
-    d = str(directory or install_dir())
-    if not SDNEXT_PIN:
-        return [clone_command(directory)]
-    return [
-        ["git", "init", d],
-        ["git", "-C", d, "remote", "add", "origin", SDNEXT_REPO],
-        ["git", "-C", d, "fetch", "--depth", "1", "origin", SDNEXT_PIN],
-        ["git", "-C", d, "checkout", "FETCH_HEAD"],
-    ]
-
-
-def first_model_path(directory: pathlib.Path | None = None) -> pathlib.Path | None:
-    """모델 폴더의 첫 체크포인트(.safetensors/.ckpt) 경로. 없으면 None."""
-    md = model_dir(directory)
-    if not md.exists():
-        return None
-    for p in sorted(md.iterdir()):
-        if p.is_file() and p.suffix in (".safetensors", ".ckpt"):
-            return p
-    return None
-
-
-def installed_models(directory: pathlib.Path | None = None) -> list[dict[str, str]]:
-    """설치된 체크포인트 목록. 각 항목 {filename, name, id, base}.
-
-    카탈로그(MODELS)에 있으면 그 메타(예쁜 이름·base), 없으면 파일명 기반(유저가 직접 넣은 커스텀
-    모델도 보이게). 로컬 실행 탭의 '모델 선택'이 이 목록을 보여준다.
-    """
-    md = model_dir(directory)
-    out: list[dict[str, str]] = []
-    if not md.exists():
-        return out
-    for p in sorted(md.iterdir()):
-        if not (p.is_file() and p.suffix in (".safetensors", ".ckpt")):
-            continue
-        cat = next((m for m in MODELS if m["filename"] == p.name), None)
-        out.append({
-            "filename": p.name,
-            "name": cat["name"] if cat else p.stem,
-            "id": cat["id"] if cat else "",
-            "base": cat.get("base", "") if cat else "",
-        })
-    return out
-
-
-def selected_model_path(directory: pathlib.Path | None = None) -> pathlib.Path | None:
-    """설정(config ``sd_model``)에서 고른 체크포인트 경로(존재할 때만). 없으면 None → 첫 모델 폴백.
-    로컬 실행 탭에서 모델을 바꾸면 그 파일명이 config 에 저장돼, 다음 SD 기동(launch)에도 유지된다."""
-    from .config_file import load_config
-
-    name = load_config().get("sd_model")
-    if not name or not isinstance(name, str):
-        return None
-    p = model_dir(directory) / name
-    return p if p.is_file() else None
-
-
-def launch_command(platform: str | None = None, directory: pathlib.Path | None = None) -> list[str]:
-    """SD.Next webui 를 기동하는 명령(첫 실행 시 venv·torch·deps 자동 설치).
-
-    - Windows: ``webui.bat``(cmd 경유). mac/Linux: ``bash webui.sh``.
-    SD.Next 는 **API 가 항상 켜져** 있어 ``--api`` 불필요(기본 포트 7860). MPS/정밀도(맥)·CUDA 미존재
-    환경을 자체 자동 처리하므로 A1111 의 ``--skip-torch-cuda-test``/``--no-half-vae``/``--upcast-sampling``
-    같은 플래그를 넣지 않는다. 즉 깨진(fried) 이미지 문제도 SD.Next 가 자체적으로 막는다.
-
-    ``--ckpt``: 다운로드한 체크포인트를 **명시 로드**한다. SD.Next 는 파일명이 기본값(model.safetensors)과
-    다르면 자동선택을 못 해 "model not loaded" 로 생성이 중단되므로(실증), 첫 모델 경로를 강제한다.
-    """
-    p = platform or sys.platform
-    d = directory or install_dir()
-    base = ["cmd", "/c", str(d / "webui.bat")] if p == "win32" else ["bash", str(d / "webui.sh")]
-    ckpt = selected_model_path(d) or first_model_path(d)  # 유저가 고른 모델 우선(없으면 첫 모델)
-    if ckpt is not None:
-        base += ["--ckpt", str(ckpt)]
-    return base
-
-
-# (A1111 우회 함수 stable_diffusion_repo/write_pip_constraints/bootstrap_env 는 제거됨 —
-#  SD.Next 는 자체 인스톨러가 의존성(CLIP/setuptools/stablediffusion)을 처리해 불필요.)
-
-
 async def _run(cmd: list[str], timeout: float) -> tuple[int, str]:
-    """명령을 실행하고 (exit code, 합쳐진 출력)을 반환. 타임아웃 시 예외. 취소 시 종료 가능하게 추적."""
-    global _current_proc
+    """명령을 실행하고 (exit code, 합쳐진 출력)을 반환. 타임아웃 시 kill 후 예외."""
     proc = await asyncio.create_subprocess_exec(
         *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
     )
-    _current_proc = proc
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
         proc.kill()
         raise
-    finally:
-        _current_proc = None
     return proc.returncode or 0, (out or b"").decode("utf-8", "replace")
 
 
@@ -638,33 +334,14 @@ async def _spawn(
     )
 
 
-# 다운로드 구간을 차지하는 진행률 범위(앞단계 clone=~15%, downloading=35~95%, starting=70~).
-# downloading phase 안에서 실제 바이트 비율을 이 구간으로 매핑한다.
-_DL_START_PCT = 35
-_DL_END_PCT = 95
-# 진행률 갱신 throttle: 1% 또는 ~16MB 마다 한 번만 _set(과도한 호출 방지).
-_DL_THROTTLE_BYTES = 16 << 20
-
-
-def _dl_percent(received: int, total: int | None) -> int:
-    """받은 누적 바이트를 다운로드 구간(35~95%) 안의 진행률로 매핑."""
-    if not total or total <= 0:
-        return _DL_START_PCT
-    frac = min(1.0, received / total)
-    return _DL_START_PCT + int(frac * (_DL_END_PCT - _DL_START_PCT))
-
-
 async def _download(url: str, dest: pathlib.Path, message_prefix: str = "이미지 모델 내려받는 중…") -> None:
-    """대용량 파일을 스트리밍으로 받아 dest 에 저장 — 이어받기(HTTP Range)·실시간 진행률 지원.
+    """대용량 파일을 스트리밍으로 받아 dest 에 저장 — 이어받기(HTTP Range) 지원.
 
     - ``.part`` 가 이미 있으면 그 크기 N 으로 ``Range: bytes=N-`` 요청.
-        · 206(Partial) → append('ab')로 이어받고 진행률 시작점에 N 반영.
-        · 200(Range 미지원/전체 재전송) → ``.part`` 를 새로 절단해 처음(0)부터.
-        · 416(범위 초과) → 이미 받은 것으로 간주, rename 시도.
-    - 받은 누적 바이트를 다운로드 구간(35~95%)으로 매핑해 chunk 마다 진행률 갱신
-      (1% 또는 ~16MB throttle, message 에 "받은MB / 전체MB" 표시).
-    - 예외·취소 시 ``.part`` 를 **보존**(삭제 금지) → 다음 run_setup 이 이어받음.
-      완료 시에만 ``.part`` → dest 로 rename.
+        · 206(Partial) → append('ab')로 이어받기. 200(Range 미지원) → 처음부터(절단). 416 → 이미 받음, rename.
+    - gated/비공개 HuggingFace 모델은 저장된 HF 토큰을 Authorization 으로 주입.
+    - 예외 시 ``.part`` 를 **보존**(삭제 금지) → 다음 시도가 이어받음. 완료 시에만 ``.part`` → dest 로 rename.
+    (진행률 표시는 호출부(comfy_setup 등)가 자체 phase 로 관리 — 이 함수는 순수 다운로드.)
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")
@@ -679,241 +356,18 @@ async def _download(url: str, dest: pathlib.Path, message_prefix: str = "이미�
         token = str(load_config().get("hf_token") or "").strip()
         if token:
             headers["Authorization"] = f"Bearer {token}"
-    async with aiohttp.ClientSession(timeout=timeout) as s:
-        async with s.get(url, headers=headers) as r:
-            # 416: 이미 다 받음(서버가 범위 초과로 판단) → 그대로 rename 시도하고 종료.
-            if r.status == 416:
-                if part.exists():
-                    part.replace(dest)
-                return
-            if r.status not in (200, 206):
-                raise RuntimeError(f"모델 다운로드 실패(HTTP {r.status})")
-
-            if r.status == 206:
-                mode = "ab"          # 이어받기: 기존 .part 에 append
-                received = resume_from
-            else:
-                mode = "wb"          # 200: Range 무시·전체 재전송 → 처음부터(절단)
-                received = 0
-
-            # 전체 크기: 206 이면 Content-Length 는 남은 분량이라 시작점을 더한다.
-            content_len = r.content_length
-            total = (content_len + received) if content_len is not None else None
-            total_mb = f"{total / (1 << 20):.0f}MB" if total else "?"
-
-            last_reported = received
-            with open(part, mode) as f:
-                async for chunk in r.content.iter_chunked(1 << 20):
-                    if _cancel:
-                        # 취소 시에도 .part 보존(삭제 금지) → 다음 시도가 이어받음.
-                        raise asyncio.CancelledError()
-                    f.write(chunk)
-                    received += len(chunk)
-                    if received - last_reported >= _DL_THROTTLE_BYTES:
-                        last_reported = received
-                        got_mb = f"{received / (1 << 20):.0f}MB"
-                        _set("downloading", _dl_percent(received, total), f"{message_prefix} ({got_mb} / {total_mb})")
+    async with aiohttp.ClientSession(timeout=timeout) as s, s.get(url, headers=headers) as r:
+        # 416: 이미 다 받음(서버가 범위 초과로 판단) → 그대로 rename 시도하고 종료.
+        if r.status == 416:
+            if part.exists():
+                part.replace(dest)
+            return
+        if r.status not in (200, 206):
+            raise RuntimeError(f"모델 다운로드 실패(HTTP {r.status})")
+        mode = "ab" if r.status == 206 else "wb"  # 206=이어받기 append, 200=처음부터 절단
+        with open(part, mode) as f:
+            async for chunk in r.content.iter_chunked(1 << 20):
+                f.write(chunk)
     part.replace(dest)
 
 
-async def _wait_healthy(
-    client: SDClient, proc: asyncio.subprocess.Process | None = None, attempts: int = 600, delay: float = 2.0
-) -> bool:
-    """SD API 가 응답할 때까지 폴링(첫 실행 부트스트랩이 길어 넉넉히).
-
-    ``proc`` 가 주어지면 매 폴링마다 그 프로세스가 살아 있는지 확인해, webui 가 조기 종료(부트스트랩
-    실패)하면 더 기다리지 않고 즉시 False 를 돌려준다. (과거엔 죽은 webui 를 20분 폴링한 뒤에야
-    'not-serving' 으로 떨어져, 사용자에게 70% 에서 수십 분 멈춘 것처럼 보였다.)
-    """
-    for _ in range(attempts):
-        if await client.health():
-            return True
-        if proc is not None and proc.returncode is not None:
-            return False  # webui 가 죽었으면 health 가 영영 안 뜬다 → 즉시 실패
-        await asyncio.sleep(delay)
-    return False
-
-
-def _cancelled() -> bool:
-    """취소 요청이 들어왔으면 phase 를 cancelled 로 바꾸고 True."""
-    if _cancel:
-        _set("cancelled", _progress["percent"], "설치를 취소했어요")
-        return True
-    return False
-
-
-async def run_setup(sd_url: str, model_id: str | None = None, custom_url: str | None = None) -> bool:
-    """감지 → (전제 git·Python)설치 → SD.Next clone → 선택 모델 → 기동 → 준비. 성공 True.
-
-    model_id = 카탈로그 모델, custom_url = HuggingFace 직접 링크(카탈로그 밖 임의 모델). 둘 다 없으면 기본.
-    진행은 progress()로 노출. 이미 SD 가 떠 있으면 즉시 done. 단계 경계마다 취소를 확인한다.
-    """
-    global _proc, _cancel
-    _cancel = False
-    _augment_path()  # macOS GUI PATH 보강 — 이후 git/brew/python·webui.sh 서브프로세스가 모두 상속.
-    model = custom_model_from_url(custom_url) if custom_url else model_by_id(model_id)
-    if model is None:
-        _set("error", 0, "HuggingFace .safetensors/.ckpt 직접 링크를 넣어주세요.", error="bad-url")
-        return False
-    client = SDClient(sd_url)
-    directory = install_dir()
-    try:
-        # 0) 이미 준비됐는지
-        if await client.health():
-            _set("done", 100, "이미 준비됨")
-            return True
-
-        # 1) 전제 도구(git·Python 3.10/3.11) — 없으면 패키지 매니저로 자동 설치(설치 마법사 역할).
-        if not has_git():
-            cmd = install_tool_command("git")
-            if cmd is None:
-                _set("error", 0, "git 이 없고 자동 설치 수단(brew/winget)도 없어요. git 설치 후 다시 시도하세요.", error="no-git")
-                return False
-            _set("installing", 5, "git 설치 중…")
-            await _run(cmd, timeout=600)
-            if not has_git():
-                _set("error", 5, "git 설치 실패", error="git-install-failed")
-                return False
-        if _cancelled():
-            return False
-
-        python_cmd = compatible_python()
-        if python_cmd is None:
-            # 시스템에 호환 Python 이 없다 → standalone CPython 3.11 을 받아 쓴다(가장 견고: admin·PATH·
-            # 패키지 매니저 무관, 검증된 3.11.15 고정). frozen 앱은 Python 미번들이라 이게 핵심 폴백이다.
-            _set("installing", 8, "이미지 엔진용 Python(3.11) 준비 중… (한 번만 내려받아요)")
-            python_cmd = await ensure_bundled_python()
-            if python_cmd is None:
-                # 다운로드 실패(네트워크/미지원) → 패키지 매니저 폴백(있으면).
-                cmd = install_tool_command("python")
-                if cmd is None:
-                    _set(
-                        "error", 5,
-                        "이미지 엔진용 Python(3.11)을 준비하지 못했어요(다운로드 실패·자동 설치 수단 없음). "
-                        "인터넷 연결을 확인하거나 Python 3.11 을 설치 후 다시 시도하세요.",
-                        error="no-python",
-                    )
-                    return False
-                _set("installing", 8, "이미지 엔진용 Python(3.11) 설치 중…")
-                await _run(cmd, timeout=900)
-                # 설치 직후 PATH 갱신이 늦을 수 있어, 못 찾으면 best-effort 명령으로 진행한다.
-                python_cmd = compatible_python() or ("python" if sys.platform == "win32" else "python3.11")
-        if _cancelled():
-            return False
-
-        # 2) 설치(clone)
-        if not is_installed(directory):
-            directory.parent.mkdir(parents=True, exist_ok=True)
-            pinned = bool(SDNEXT_PIN)
-            _set("installing", 15, "Stable Diffusion 내려받는 중… (git clone)")
-            last_log = ""
-            for step in clone_commands(directory):
-                code, log = await _run(step, timeout=1800)
-                last_log = log
-                if _cancelled():
-                    return False
-                if code != 0:
-                    break
-            if not is_installed(directory):
-                # 핀 fetch 실패(SHA 미reachable·네트워크 등) → 검증 안 된 최신이라도 받게 1회 폴백.
-                if pinned:
-                    import shutil
-
-                    shutil.rmtree(directory, ignore_errors=True)
-                    code, last_log = await _run(clone_command(directory), timeout=1800)
-                    if _cancelled():
-                        return False
-                if not is_installed(directory):
-                    _set("error", 15, "Stable Diffusion 설치 실패", error=last_log[-400:] or "clone-failed")
-                    return False
-
-        # 2.5) venv 를 지원 Python 으로 만들고 자동설치 안 되는 필수 의존성(torchsde) 시드 — 첫 실행 깨짐 방지.
-        _set("installing", 30, "이미지 엔진 의존성 준비 중…")
-        await ensure_extra_deps(directory, python_cmd)
-        if _cancelled():
-            return False
-
-        # 3) 선택한 모델 준비 — **이 모델 파일**이 없으면 받는다(다른 모델이 있어도 추가 다운로드 가능).
-        if not (model_dir(directory) / model["filename"]).exists():
-            # 초기 진행률은 35%(다운로드 구간 시작). 이후 _download 가 받은 바이트 비율로 35~95% 를 갱신한다.
-            prefix = f"이미지 모델 내려받는 중… ({model['name']})"
-            _set("downloading", _DL_START_PCT, f"{prefix} ({model['size']})")
-            await _download(model["url"], model_dir(directory) / model["filename"], prefix)
-        if _cancelled():
-            return False
-
-        # 4) 기동(백그라운드). 첫 실행은 venv·torch·deps 부트스트랩으로 오래 걸린다.
-        #    SD.Next webui 가 호환 Python 을 쓰도록 env(python_cmd)로 전달(SD.Next 자체 인스톨러가 의존성 처리).
-        _set("starting", 70, "Stable Diffusion(SD.Next) 시작 중… (첫 실행은 수~수십 분)")
-        env = {**os.environ, **launch_env(python_cmd)}
-        log_path = launch_log_path(directory)
-        _proc = await _spawn(launch_command(directory=directory), env=env, log_path=log_path, cwd=directory)
-        if not await _wait_healthy(client, _proc):
-            if _cancelled():
-                return False
-            # webui 가 죽었으면(첫 실행 의존성 설치/저장소 클론 실패 등) 원인을 로그 꼬리와 함께 표면화.
-            if _proc.returncode is not None:
-                tail = ""
-                try:
-                    tail = log_path.read_text("utf-8", "replace")[-400:]
-                except OSError:
-                    pass
-                _set(
-                    "error", 70,
-                    "Stable Diffusion 첫 실행 준비가 실패했어요(의존성 설치/저장소 클론 오류). "
-                    f"자세한 내용: {log_path}",
-                    error=(tail or f"webui-exited:{_proc.returncode}"),
-                )
-            else:
-                _set("error", 70, "Stable Diffusion 이 시작되지 않았어요", error="not-serving")
-            return False
-
-        _set("done", 100, "준비 완료")
-        return True
-    except asyncio.CancelledError:
-        _set("cancelled", _progress["percent"], "설치를 취소했어요")
-        return False
-    except Exception as exc:  # noqa: BLE001 — 어떤 실패든 GUI 에 표면화
-        logger.warning("sd setup 실패: %s", exc)
-        _set("error", _progress["percent"], "설치 중 오류", error=str(exc)[:400])
-        return False
-
-
-async def launch_only(sd_url: str) -> bool:
-    """**이미 설치된** A1111 을 기동만 한다(clone/모델 다운로드 없이). 성공/이미떠있음 True.
-
-    재부팅·앱 종료 후 SD 가 꺼져 있을 때 다시 띄우는 경로(GUI 'SD 시작' 버튼·에이전트 자동기동).
-    설치/모델이 없으면 받아오지 않고 곧바로 False(예상치 못한 대용량 다운로드 방지) — 그 경우는
-    전체 설치 마법사(``run_setup``)를 써야 한다.
-    """
-    global _proc, _cancel
-    _cancel = False
-    _augment_path()  # macOS GUI PATH 보강 — webui.sh 가 python·git 을 찾도록.
-    client = SDClient(sd_url)
-    directory = install_dir()
-    try:
-        if await client.health():
-            _set("done", 100, "이미 준비됨")
-            return True
-        if not is_installed(directory) or not has_model(directory):
-            _set("error", 0, "아직 설치되지 않았어요. 먼저 설치하세요.", error="not-installed")
-            return False
-        python_cmd = compatible_python() or ("python" if sys.platform == "win32" else "python3.11")
-        # 기존 설치가 torchsde 미시드 상태일 수 있으니 기동 전 보강(idempotent) — Mac startup 깨짐 self-heal.
-        await ensure_extra_deps(directory, python_cmd)
-        _set("starting", 70, "Stable Diffusion(SD.Next) 시작 중… (첫 실행 이후라 보통 1~2분)")
-        env = {**os.environ, **launch_env(python_cmd)}
-        log_path = launch_log_path(directory)
-        _proc = await _spawn(launch_command(directory=directory), env=env, log_path=log_path, cwd=directory)
-        if await _wait_healthy(client, _proc):
-            _set("done", 100, "준비 완료")
-            return True
-        _set("error", 70, "Stable Diffusion 이 시작되지 않았어요", error="not-serving")
-        return False
-    except asyncio.CancelledError:
-        _set("cancelled", _progress["percent"], "시작을 취소했어요")
-        return False
-    except Exception as exc:  # noqa: BLE001 — 어떤 실패든 GUI 에 표면화
-        logger.warning("sd 시작 실패: %s", exc)
-        _set("error", _progress["percent"], "시작 중 오류", error=str(exc)[:400])
-        return False

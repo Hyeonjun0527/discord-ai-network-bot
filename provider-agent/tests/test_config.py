@@ -111,23 +111,28 @@ def test_remote_ollama_allowed_with_flag(monkeypatch, tmp_path):
     assert cfg.allow_remote_ollama is True
 
 
-def test_image_sd_localhost_default(monkeypatch, tmp_path):
+def test_enable_image_flag(monkeypatch, tmp_path):
+    # 이미지 엔진은 ComfyUI 전용(sd_url 폐기). --enable-image 만 확인.
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     cfg, _ = config_from_args(["--token", "T", "--enable-image"])
     assert cfg.enable_image is True
-    assert cfg.sd_url == "http://127.0.0.1:7860"
 
 
-def test_remote_sd_blocked_by_default(monkeypatch, tmp_path):
+def test_comfy_url_from_saved_only(monkeypatch, tmp_path):
+    # ComfyUI 는 유저별 로컬 인스턴스라 주소는 per-user 저장 설정(앱 UI)에서만 온다.
+    # 프로젝트 env(COMFY_URL)로는 주입되지 않는다 — env 가 있어도 무시되어야 한다.
+    from provider_agent.config_file import persist_partial
+
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    with pytest.raises(SystemExit):
-        config_from_args(["--token", "T", "--enable-image", "--sd-url", "http://192.168.0.9:7860"])
+    monkeypatch.setenv("COMFY_URL", "http://10.0.0.9:8188")  # env 는 무시되어야 함
+    persist_partial({"comfy_url": "http://127.0.0.1:8188"})
+    cfg, _ = config_from_args(["--token", "T", "--enable-image"])
+    assert cfg.comfy_url == "http://127.0.0.1:8188"
 
 
-def test_remote_sd_allowed_with_flag(monkeypatch, tmp_path):
+def test_comfy_url_ignores_env(monkeypatch, tmp_path):
+    # 저장 설정이 없으면, env 가 있어도 빈 값(=앱 관리 로컬 ComfyUI)이어야 한다.
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    cfg, _ = config_from_args(
-        ["--token", "T", "--enable-image", "--sd-url", "http://192.168.0.9:7860", "--allow-remote-sd"]
-    )
-    assert cfg.sd_url == "http://192.168.0.9:7860"
-    assert cfg.allow_remote_sd is True
+    monkeypatch.setenv("COMFY_URL", "http://10.0.0.9:8188")
+    cfg, _ = config_from_args(["--token", "T", "--enable-image"])
+    assert cfg.comfy_url == ""

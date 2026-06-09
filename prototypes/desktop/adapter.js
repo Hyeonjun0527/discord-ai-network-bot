@@ -24,14 +24,6 @@ const _isUnknownModel = (name) => {
 };
 /* @end-proto-only */
 
-// SD 설치 가능 모델 — 단일 소스(온보딩 A2 모델 선택·설치 모달이 공유). webui.py /api/sd/models 미러.
-export const SD_MODELS = [
-  { id: 'sd15', name: 'Stable Diffusion 1.5', short: 'SD 1.5', size: '4GB', desc: '가볍고 빠름 · 범용' },
-  { id: 'anime', name: 'Anything V5 (애니)', short: '애니', size: '2GB', desc: '일본 애니·일러스트 · 가볍고 빠름' },
-  { id: 'anime-xl', name: 'Animagine XL 4.0 (애니·고품질)', short: '애니 XL', size: '6.5GB', desc: '애니 미소녀 최고 품질 · GPU 권장' },
-  { id: 'illustrious-xl', name: 'Illustrious XL (애니·고품질)', short: 'Illustrious', size: '6.9GB', desc: 'Danbooru 기반 애니 SDXL · 커뮤니티 표준 · GPU 권장' },
-  { id: 'sdxl', name: 'Stable Diffusion XL', short: 'SD XL', size: '6.6GB', desc: '고품질 범용 · GPU 권장' },
-];
 // 실 앱(provider-agent 서빙)에선 window.__SESSION_KEY 가 주입되어 /api/* 호출에 X-Session 헤더가 붙는다.
 const _sessionHeaders = () => {
   const key = (typeof window !== 'undefined' && window.__SESSION_KEY) || '';
@@ -54,7 +46,7 @@ const MOCK = {
     { guildId: 1004, guildName: '신규 서버', iconUrl: null, state: ProviderState.PENDING, role: Role.ADMIN, models: 0, today: 0, members: 47, avgMs: 0, myModels: [], policy: { dailyLimit: 50, maxConcurrency: 1, maxSeconds: 600, scope: 'ALL' }, webUrl: 'https://discord-ai.yeon.world/dashboard/1004' },
   ],
   status: {
-    running: true, connected: true, processed: 12, imageReady: true, enableImage: true, sdInstalled: true,
+    running: true, connected: true, processed: 12, imageReady: true, enableImage: true,
     models: ['exaone3.5:7.8b', 'llama3.1:8b', 'qwen2.5-coder:7b'],
     hasToken: true, relayUrl: 'wss://discord-ai.yeon.world/agent', backgroundRunning: false, background: false, connectEnabled: true,
     version: '0.31.0', geminiConfigured: false, comfyUrl: '', hfConfigured: false,
@@ -65,14 +57,13 @@ const MOCK = {
     '09:12:03 INFO | 에이전트 시작 (Nexa v0.31.0)',
     '09:12:03 INFO | 중앙 서버 연결: wss://discord-ai.yeon.world/agent',
     '09:12:04 INFO | Ollama 연결됨 — 모델 3개 제공 (exaone3.5:7.8b, llama3.1:8b, qwen2.5-coder:7b)',
-    '09:12:04 INFO | Stable Diffusion 준비됨 — 이미지 생성 가능',
+    '09:12:04 INFO | ComfyUI 준비됨 — 이미지 생성 가능',
     '09:12:05 INFO | 서버 연결: 한국어 개발 길드',
     '09:13:21 INFO | /ask 처리 완료 (llama3.1:8b · 1.4s · 한국어 개발 길드)',
     '09:14:08 INFO | /ask 처리 완료 (exaone3.5:7.8b · 0.9s · 게임 커뮤니티)',
     '09:15:02 WARN | 일일 한도 근접 — 한국어 개발 길드 48/50',
-    '09:15:47 INFO | /imagine 처리 완료 (Stable Diffusion · 6.2s)',
-    '09:16:40 ERROR | Stable Diffusion 응답 지연(타임아웃) — 재시도 1/2',
-    '09:16:52 INFO | Stable Diffusion 재시도 성공',
+    '09:15:47 INFO | /imagine 처리 완료 (ComfyUI · 6.2s)',
+    '09:16:40 ERROR | ComfyUI 응답 지연(타임아웃) — 재시도 1/2',
     '09:18:10 INFO | /ask 처리 완료 (qwen2.5-coder:7b · 2.1s · 한국어 개발 길드)',
   ],
   settings: {
@@ -80,15 +71,7 @@ const MOCK = {
     ollamaUrl: 'http://localhost:11434', geminiConfigured: false, comfyUrl: '',
   },
   updateInfo: { current: '0.31.0', latest: '0.31.0', outdated: false, supported: true },
-  runtimePing: { 'Ollama': 28, 'Stable Diffusion': 400 },
-  // 설치된 SD 모델 + 활성(로컬 실행 탭 모델 전환 시연). 실 앱은 webui /api/sd/installed.
-  sdInstalled: {
-    active: 'AnythingV5V3_v5PrtRE.safetensors',
-    models: [
-      { filename: 'AnythingV5V3_v5PrtRE.safetensors', name: 'Anything V5 (애니)', id: 'anime', base: 'sd15' },
-      { filename: 'v1-5-pruned-emaonly.safetensors', name: 'Stable Diffusion 1.5', id: 'sd15', base: 'sd15' },
-    ],
-  },
+  runtimePing: { 'Ollama': 28, 'ComfyUI': 400 },
   models: [
     { name: 'exaone3.5:7.8b', size: '4.8GB', tags: ['한국어', '기본'], on: true, lastUsed: '방금' },
     { name: 'llama3.1:8b', size: '4.7GB', tags: ['한국어', '일반'], on: true, lastUsed: '2분 전' },
@@ -450,9 +433,9 @@ export const api = {
     return post(ENDPOINTS.stop);
   },
   /** 이미지 요청 수신 토글(enableImage) — **전용** /api/image. 모델 선택을 건드리지 않고 라이브 적용
-   *  (GUI 실행 중이면 SD 생성·health·재광고, 백그라운드 서비스면 재기동). 반환 {ok,on,imageReady,sdInstalled,applied}. */
+   *  (GUI 실행 중이면 ComfyUI health·재광고, 백그라운드 서비스면 재기동). 반환 {ok,on,imageReady,applied}. */
   async setImageReceiving(on) {
-    /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.status.enableImage = on; MOCK.status.imageReady = on && MOCK.status.sdInstalled; return { ok: true, on, imageReady: MOCK.status.imageReady, sdInstalled: MOCK.status.sdInstalled, applied: 'live' }; } /* @end-proto-only */
+    /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.status.enableImage = on; MOCK.status.imageReady = on && !!MOCK.comfy.running; return { ok: true, on, imageReady: MOCK.status.imageReady, applied: 'live' }; } /* @end-proto-only */
     return post(ENDPOINTS.image, { on });
   },
   /** 클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. webui.py POST /api/cloud. */
@@ -526,15 +509,10 @@ export const api = {
     return { ok: !!s.connected, ms: 0 };
   },
 
-  /** 이미 설치된 SD(A1111)를 기동만 — webui.py POST /api/sd/start (clone/다운로드 없음). 진행은 sd setup-progress 폴링. */
-  async startSD() {
-    /* @proto-only */ if (USE_MOCK) { await delay(120); return { ok: true, started: true }; } /* @end-proto-only */
-    return post(ENDPOINTS.sdStart);
-  },
-  /** 런타임 설치 시작 — webui.py /api/ollama/setup · /api/sd/setup (+진행률 폴링) */
-  async startSetup(runtime, model) { // runtime: 'ollama' | 'image', model: SD 모델 id(선택)
+  /** Ollama 모델 설치 시작 — webui.py /api/ollama/setup (진행은 getSetupProgress 폴링). 이미지는 ComfyUI 경로. */
+  async startSetup(runtime, model) { // runtime: 'ollama' (이미지 엔진은 ComfyUI 전용 메서드)
     /* @proto-only */ if (USE_MOCK) { _setup[runtime] = { start: Date.now(), model }; await delay(50); return { ok: true, started: true }; } /* @end-proto-only */
-    return post(runtime === 'image' ? ENDPOINTS.sdSetup : ENDPOINTS.ollamaSetup, model ? { model } : {});
+    return post(ENDPOINTS.ollamaSetup, model ? { model } : {});
   },
 
   // ── ComfyUI(1급 이미지 엔진) — 앱이 설치/실행/정지/웹UI 직접 관리 ──────────────
@@ -610,40 +588,14 @@ export const api = {
         return { phase: 'error', percent: 0, message: '', error: '모델을 찾을 수 없어요. 이름을 확인하세요(예: mistral:7b).' };
       }
       const sec = (Date.now() - s.start) / 1000;
-      const total = runtime === 'image' ? 7 : 5; // SD 가 더 오래
-      const pct = Math.min(100, Math.round((sec / total) * 100));
+      const pct = Math.min(100, Math.round((sec / 5) * 100));
       if (pct >= 100) return { phase: 'done', percent: 100, message: '설치 완료' };
       if (pct >= 70) return { phase: 'starting', percent: pct, message: '서비스 시작 중' };
-      if (pct >= 20) return { phase: 'downloading', percent: pct, message: runtime === 'image' ? '모델 내려받는 중' : '기본 모델 내려받는 중' };
+      if (pct >= 20) return { phase: 'downloading', percent: pct, message: '기본 모델 내려받는 중' };
       return { phase: 'installing', percent: pct, message: '설치 준비 중' };
     }
     /* @end-proto-only */
-    return http(runtime === 'image' ? ENDPOINTS.sdSetupProgress : ENDPOINTS.ollamaSetupProgress);
-  },
-
-  /** SD 설치 가능한 모델 목록 — webui.py /api/sd/models (단일 소스 SD_MODELS) */
-  async sdModels() {
-    /* @proto-only */ if (USE_MOCK) { await delay(60); return SD_MODELS; } /* @end-proto-only */
-    return (await http(ENDPOINTS.sdModels)).models || [];
-  },
-
-  /** 카탈로그 밖 임의 HuggingFace 모델 설치 시작 — webui.py /api/sd/install-custom. base: 'sd15'|'sdxl'(해상도). */
-  async installCustomSdModel(url, base) {
-    /* @proto-only */ if (USE_MOCK) { await delay(80); return { ok: true }; } /* @end-proto-only */
-    return http(ENDPOINTS.sdInstallCustom, { method: 'POST', body: JSON.stringify({ url, base: base || '' }) });
-  },
-
-  /** 설치된 SD 모델 목록 + 활성 모델 — webui.py /api/sd/installed (로컬 실행 탭 모델 전환) */
-  async sdInstalledModels() {
-    /* @proto-only */ if (USE_MOCK) { await delay(60); return structuredClone(MOCK.sdInstalled); } /* @end-proto-only */
-    const r = await http(ENDPOINTS.sdInstalled);
-    return { models: r.models || [], active: r.active || '' };
-  },
-
-  /** 활성 SD 모델 전환(핫스왑 + config 저장) — webui.py /api/sd/select */
-  async selectSdModel(filename) {
-    /* @proto-only */ if (USE_MOCK) { await delay(120); MOCK.sdInstalled.active = filename; return { ok: true, active: filename, applied: 'live' }; } /* @end-proto-only */
-    return http(ENDPOINTS.sdSelect, { method: 'POST', body: JSON.stringify({ model: filename }) });
+    return http(ENDPOINTS.ollamaSetupProgress);
   },
 
   /** 로컬 모델 목록 + 기본 모델 — webui.py /api/models */

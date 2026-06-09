@@ -897,7 +897,7 @@
 
         <div class="runtime-warn" id="runtimeWarn" hidden>
           <span class="rw-ico">⚠</span>
-          <div class="rw-tx"><b>제공할 AI 런타임이 없어요</b><p>아래에서 Ollama 또는 Stable Diffusion 중 최소 하나를 설치해야 요청을 처리할 수 있어요.</p></div>
+          <div class="rw-tx"><b>제공할 AI 런타임이 없어요</b><p>아래에서 Ollama 또는 ComfyUI 중 최소 하나를 설치해야 요청을 처리할 수 있어요.</p></div>
         </div>
         <div class="grid-2">
           <div class="prov-card" data-runtime="Ollama" data-state="running">
@@ -919,19 +919,19 @@
               <button data-act="manage">로컬 실행에서 관리<span class="arrow">›</span></button>
             </div>
           </div>
-          <div class="prov-card" data-runtime="Stable Diffusion" data-state="running">
+          <div class="prov-card" data-runtime="ComfyUI" data-state="running">
             <div class="prov-mini"><canvas data-scene="sd" aria-hidden="true"></canvas></div>
             <div class="prov-body">
-              <div class="prov-name"><span class="d"></span> Stable Diffusion</div>
+              <div class="prov-name"><span class="d"></span> ComfyUI</div>
               <div class="prov-state">실행 중</div>
               <div class="prov-meta">이미지 생성 가능</div>
               <div class="prov-recv"><span>이미지 요청 받기</span><button class="switch img-recv-switch on" role="switch" aria-checked="true" aria-label="이미지 요청 받기"></button></div>
             </div>
             <button class="btn btn--sm prov-cta" hidden></button>
-            <button class="icon-btn prov-menu-btn" aria-label="Stable Diffusion 더보기" aria-haspopup="true">
+            <button class="icon-btn prov-menu-btn" aria-label="ComfyUI 더보기" aria-haspopup="true">
               <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
             </button>
-            <!-- SD 의 :7860 Gradio WebUI 는 노출 안 함(우리 파이프라인은 REST API 만 사용 · gradio queue 버그로 UI 결과 미표시). 출력 폴더만 제공. -->
+            <!-- ComfyUI 웹 UI(:8188)는 "로컬 실행" 탭의 "ComfyUI 열기"로 띄운다. 홈 카드는 출력 폴더만 제공. -->
             <div class="menu" hidden>
               <button data-act="check">연결 점검</button>
               <button data-act="outputs">출력 폴더 열기</button>
@@ -1016,7 +1016,7 @@
           <button class="log-chip active" data-source="all">전체</button>
           <button class="log-chip" data-source="agent">에이전트</button>
           <button class="log-chip" data-source="ollama">Ollama</button>
-          <button class="log-chip" data-source="sd">Stable Diffusion</button>
+          <button class="log-chip" data-source="sd">ComfyUI</button>
           <button class="log-chip" data-source="relay">연결</button>
         </div>
         <div class="log-view" id="logView"><!-- JS 렌더 --></div>
@@ -1108,7 +1108,7 @@
           </div>
         </div>
         <div class="proto-rt"><span class="rt-name">SD</span>
-          <div class="proto-seg proto-seg-sm" data-rt="Stable Diffusion">
+          <div class="proto-seg proto-seg-sm" data-rt="ComfyUI">
             <button data-rtstate="running" class="active">실행</button>
             <button data-rtstate="stopped">꺼짐</button>
             <button data-rtstate="absent">미설치</button>
@@ -1179,7 +1179,7 @@
         'NEXA 이용약관',
         '',
         '제1조 (목적·서비스의 성격)',
-        'NEXA(이하 "서비스")는 커뮤니티 구성원이 각자 PC 의 로컬 AI(예: Ollama·Stable Diffusion)를 풀에 기여하고, Discord 에서 다른 이용자가 이를 공정하게 나눠 쓰도록 중개하는 플랫폼입니다. 서비스는 AI 모델 자체의 제공자가 아니며, 판매·결제가 아닌 자발적 기여·동의·공정성을 원칙으로 합니다.',
+        'NEXA(이하 "서비스")는 커뮤니티 구성원이 각자 PC 의 로컬 AI(예: Ollama·ComfyUI)를 풀에 기여하고, Discord 에서 다른 이용자가 이를 공정하게 나눠 쓰도록 중개하는 플랫폼입니다. 서비스는 AI 모델 자체의 제공자가 아니며, 판매·결제가 아닌 자발적 기여·동의·공정성을 원칙으로 합니다.',
         '',
         '제2조 (이용자·기부자)',
         '· 이용자는 자신이 속한 Discord 서버 안에서만, 그 서버에 연결된 프로바이더의 AI 를 호출할 수 있습니다.',
@@ -1330,7 +1330,7 @@
     const SRC_LABEL = { agent: '에이전트', ollama: 'Ollama', sd: 'SD', relay: '연결' };
     function inferSource(msg) {
       const m = (msg || ''), low = m.toLowerCase();
-      if (low.includes('stable diffusion') || low.includes('sd(') || low.includes('/imagine') || m.includes('이미지')) return 'sd';
+      if (low.includes('comfyui') || low.includes('stable diffusion') || low.includes('sd(') || low.includes('/imagine') || m.includes('이미지')) return 'sd';
       if (low.includes('ollama') || low.includes('/ask')) return 'ollama';
       if (m.includes('중앙 서버') || m.includes('릴레이') || low.includes('relay') || low.includes('wss')) return 'relay';
       return 'agent';
@@ -1407,33 +1407,25 @@
     const view = document.querySelector('.view[data-view="local"]');
     const runCard = document.getElementById('localRunCard');
     const rtWrap = document.getElementById('localRuntimes');
-    let _sdInst = null; // 설치된 SD 모델 목록 + 활성(모델 전환용)
     let _comfy = null, _comfyProg = null, _comfyModels = null; // ComfyUI 상태·진행률·체크포인트 목록
     const toggleBtn = document.getElementById('localToggleBtn');
     let _st = null, _models = null;
     const DOTS = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
     const closeMenus = () => rtWrap.querySelectorAll('.rt-more .menu').forEach(m => { m.hidden = true; const b = m.previousElementSibling; if (b) b.classList.remove('open'); });
-    // 런타임 ⋯ 메뉴 — 홈과 동일 액션을 로컬 실행에도(여기가 더 전문 관리 화면).
-    // SD 의 :7860 Gradio WebUI 는 노출 안 함(REST 만 사용 · gradio queue 버그로 UI 결과 미표시). SD 는 출력 폴더만.
-    const rtMenu = (rt) => '<div class="rt-more">' +
+    // 런타임 ⋯ 메뉴 — 홈과 동일 액션을 로컬 실행에도(여기가 더 전문 관리 화면). 현재는 Ollama 만 이 메뉴를 쓴다
+    // (ComfyUI 는 자체 data-comfy 액션 버튼으로 설치/시작/정지/웹UI·체크포인트를 관리).
+    const rtMenu = () => '<div class="rt-more">' +
       '<button class="icon-btn rt-menu-btn" aria-label="더보기" aria-haspopup="true">' + DOTS + '</button>' +
-      '<div class="menu" hidden><button data-rtact="check">연결 점검</button>' +
-      (rt === 'sd' ? '<button data-rtact="outputs">출력 폴더 열기</button>' : '') +
-      '</div></div>';
+      '<div class="menu" hidden><button data-rtact="check">연결 점검</button></div></div>';
 
     async function runtimeAction(act, name) {
-      if (act === 'outputs') { // 실제 OS 파일 탐색기로 출력 폴더 열기(토스트 경로 표시만 하던 no-op 수정)
-        try { const r = await api.openFolder('sdOutputs'); toast(r && r.ok ? '출력 폴더를 열었어요' : (r && r.error) || '폴더가 아직 없어요', { type: r && r.ok ? 'ok' : 'error' }); }
-        catch (_e) { toast('폴더 열기 실패', { type: 'error' }); }
-        return;
-      }
-      // 연결 점검 — 실제 status 로(런타임이 죽어 있으면 정직하게 '점검 필요').
+      // 연결 점검 — 실제 status 로(런타임이 죽어 있으면 정직하게 '점검 필요'). 현재 호출자는 Ollama 뿐.
       toast(name + ' 연결 점검 중…', { type: 'run', sticky: true, id: 'lchk-' + name });
       try {
         const s = await api.getStatus();
-        let ok, sub;
-        if (name === 'Stable Diffusion') { ok = !!s.imageReady; sub = !s.sdInstalled ? '미설치' : (ok ? '이미지 생성 준비됨' : '꺼짐 — 시작 필요'); }
-        else { const n = (s.models && s.models.length) || 0; ok = n > 0; sub = ok ? (n + '개 모델 제공 중') : '모델 없음 또는 미연결'; }
+        const n = (s.models && s.models.length) || 0;
+        const ok = n > 0;
+        const sub = ok ? (n + '개 모델 제공 중') : '모델 없음 또는 미연결';
         toast(name + (ok ? ' 정상 응답' : ' 점검 필요'), { type: ok ? 'ok' : 'error', sub, replace: 'lchk-' + name });
       } catch (_e) { toast(name + ' 점검 실패', { type: 'error', replace: 'lchk-' + name }); }
     }
@@ -1455,15 +1447,14 @@
 
       const ollamaReady = _models ? (_models.ollamaReady ?? running) : running;
       const modelCount = running ? (s.models ? s.models.length : 0) : (_models && _models.models ? _models.models.length : 0);
-      const sdInstalled = !!s.sdInstalled, imgReady = !!s.imageReady, enableImage = !!s.enableImage;
 
       const ollamaCard = '<div class="rt-row' + (ollamaReady ? ' ready' : '') + '">' +
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">Ollama <span style="font-weight:500;color:var(--subtle)">텍스트</span></div>' +
         '<div class="rt-state">' + (ollamaReady ? ('준비됨 · 모델 ' + modelCount + '개 제공') : '미설치 또는 중지됨') + '</div></div><div class="rt-actions">' +
-        (ollamaReady ? '<button class="btn btn--sm btn--secondary" data-go="models">모델 관리</button>' + rtMenu('ollama')
+        (ollamaReady ? '<button class="btn btn--sm btn--secondary" data-go="models">모델 관리</button>' + rtMenu()
           : '<button class="btn btn--sm btn--primary" data-install="ollama">설치</button>') + '</div></div>';
 
-      // (SD.Next 카드 폐기 — 이미지 엔진은 ComfyUI 전용. 유지보수 중단된 레거시 SD.Next 는 제거.)
+      // (이미지 엔진은 ComfyUI 전용 — 레거시 SD.Next 는 완전히 제거됨. 카드는 아래 comfyCard 하나.)
 
       // 클라우드 연결(Gemini) — '엔진' 관심사라 로컬 실행이 소유한다. 키는 이 PC 에만 저장.
       //   연결되면 모델 탭에 '클라우드 텍스트' 모델로 등장 → 다른 모델처럼 서버별로 켜고 끈다('서버 전체 무료' 프레이밍 폐기).
@@ -1474,7 +1465,7 @@
           ? '연결됨 · 이 PC 의 키로 클라우드 모델을 제공해요(모델 탭에서 서버별로 켜고 꺼요)'
           : '이 PC 의 API 키로 클라우드 AI를 모델로 추가해요 — 다른 모델처럼 서버별로 제공돼요 (aistudio.google.com/apikey)') + '</div>' +
         '<div class="rt-cloud"><input id="localGemini" type="password" placeholder="' + (gemOn ? '••••• 연결됨(바꾸려면 입력)' : 'AIza… 키 붙여넣기') + '" class="set-input"><button class="btn btn--sm btn--primary" id="localGeminiSave">' + (gemOn ? '변경' : '연결') + '</button></div></div></div>';
-      // ComfyUI = 1급(권장) 이미지 엔진 — 앱이 직접 설치/시작/정지/웹UI 오픈. (SD.Next 는 아래 레거시로 강등)
+      // ComfyUI = 이미지 엔진 — 앱이 직접 설치/시작/정지/웹UI 오픈. 유저별 로컬 인스턴스(SD.Next 제거됨).
       const c = _comfy || {}, cprog = _comfyProg || {};
       const cbusy = !!c.busy, cinst = !!c.installed, crun = !!c.running;
       let comfyState, comfyAction;
@@ -1515,23 +1506,7 @@
         '</div></details>';
       rtWrap.innerHTML = ollamaCard + comfyCard + cloudCard + comfyExternal;
 
-      // 이미지 모델 전환(핫스왑 — 고품질 SDXL 은 로딩에 수십 초)
-      const sdSel = document.getElementById('sdModelSelect');
-      if (sdSel) sdSel.onchange = async () => {
-        const file = sdSel.value, prev = activeFile;
-        if (file === prev) return;
-        sdSel.disabled = true;
-        toast('이미지 모델 전환 중… 고품질 모델은 로딩에 시간이 걸려요', { type: 'run', sticky: true, id: 'sdsel' });
-        try {
-          const r = await api.selectSdModel(file) || {};
-          if (r.ok === false) { toast(r.error || '모델 전환 실패', { type: 'error', id: 'sdsel' }); sdSel.value = prev; }
-          else { if (_sdInst) _sdInst.active = file; toast('이미지 모델을 전환했어요', { type: 'ok', id: 'sdsel' }); }
-        } catch (_e) { toast('모델 전환 실패 — 네트워크를 확인하세요', { type: 'error', id: 'sdsel' }); sdSel.value = prev; }
-        finally { sdSel.disabled = false; }
-      };
-      const sdAdd = document.getElementById('sdModelAdd');
-      if (sdAdd) sdAdd.onclick = () => { if (window.openInstall) window.openInstall('image'); };
-
+      // (이미지 모델 전환은 ComfyUI 카드의 #comfyModelSelect 가 담당 — 아래 comfy 핸들러에서 처리. 레거시 SD 핫스왑 제거.)
       rtWrap.querySelectorAll('[data-go="models"]').forEach((b) => { b.onclick = () => { const n = document.querySelector('.nav-item[data-view="models"]'); if (n) n.click(); }; });
       rtWrap.querySelectorAll('[data-install]').forEach((b) => { b.onclick = () => { if (window.openInstall) window.openInstall(b.dataset.install); }; });
       // ⋯ 메뉴 토글 + 액션
@@ -1543,15 +1518,7 @@
         const row = b.closest('.rt-row'); const name = row.querySelector('.rt-name').childNodes[0].textContent.trim();
         await runtimeAction(b.dataset.rtact, name);
       });
-      // SD 시작(설치됐는데 미기동 — 재시도/기동)
-      const sdStart = document.getElementById('localSdStart');
-      if (sdStart) sdStart.onclick = async () => {
-        sdStart.disabled = true;
-        toast('Stable Diffusion 시작 중…', { type: 'run', sticky: true, id: 'sdstart' });
-        try { const r = await api.startSD(); if (r && r.ok === false) { toast(r.error || 'SD 시작 실패', { type: 'error', id: 'sdstart' }); return; } toast('Stable Diffusion 시작 요청됨 — 준비되면 자동 반영돼요', { type: 'ok', id: 'sdstart' }); await load(); }
-        catch (_e) { toast('SD 시작 실패 — 다시 시도하세요', { type: 'error', id: 'sdstart' }); }
-        finally { sdStart.disabled = false; }
-      };
+      // (ComfyUI 시작/정지는 ComfyUI 카드의 data-comfy="start|stop" 버튼이 담당 — 아래 comfy 핸들러. 레거시 SD 시작 제거.)
       // 중앙 서버 재연결(중지→시작)
       const rc = document.getElementById('localReconnect');
       if (rc) rc.onclick = async () => {
@@ -1561,21 +1528,7 @@
         catch (_e) { toast('재연결 실패 — 네트워크를 확인하세요', { type: 'error', id: 'recon' }); }
         finally { rc.disabled = false; }
       };
-      const imgSw = document.getElementById('localImgSw');
-      if (imgSw) imgSw.onclick = async () => {
-        const on = !imgSw.classList.contains('on');
-        imgSw.classList.toggle('on', on); imgSw.setAttribute('aria-checked', String(on)); // 일단 반영
-        try {
-          const r = await api.setImageReceiving(on) || {}; // 결과를 기다린다(낙관적 전환 금지)
-          if (_st) _st.enableImage = on;
-          if (on && !r.sdInstalled) toast('이미지 받기 켜짐 — Stable Diffusion 설치가 필요해요', { type: 'info' });
-          else if (on && !r.imageReady) toast('이미지 받기 켜짐 — SD 준비 중', { type: 'info' });
-          else toast(on ? '이미지 요청을 받아요' : '이미지 요청을 받지 않아요', { type: 'info' });
-        } catch (_e) { // 실패 시 원복(거짓 ON 방지)
-          imgSw.classList.toggle('on', !on); imgSw.setAttribute('aria-checked', String(!on));
-          toast('변경 실패 — 네트워크를 확인하세요', { type: 'error' });
-        }
-      };
+      // (로컬 탭의 이미지 받기 토글은 홈 카드 스위치로 통합 — 레거시 #localImgSw 제거. setImageReceiving 은 홈에서 호출.)
       // 클라우드 연결(Gemini) 저장 — 입력했을 때만 전송(빈 입력은 무시). 연결되면 모델 탭에 클라우드 모델로 등장.
       const gemSave = document.getElementById('localGeminiSave');
       if (gemSave) gemSave.onclick = async () => {
@@ -1663,9 +1616,7 @@
 
     async function load() {
       [_st, _models] = await Promise.all([api.getStatus(), api.getModels()]);
-      // SD 가 설치돼 있으면 설치된 이미지 모델 목록 + 활성 모델도(로컬 실행 탭 모델 전환). 실패는 비치명적.
-      if (_st && _st.sdInstalled) { try { _sdInst = await api.sdInstalledModels(); } catch (_e) { _sdInst = null; } }
-      else _sdInst = null;
+      // (레거시 SD 모델 목록 로딩 제거 — 이미지 체크포인트는 아래 ComfyUI 폴더 스캔(comfyModels)이 단일 소스.)
       // ComfyUI(1급 엔진) 상태 — 설치/실행/바쁨. 설치 중이면 진행률도(3초 폴링으로 자동 갱신). 실패는 비치명적.
       try { _comfy = await api.comfyStatus(); } catch (_e) { _comfy = null; }
       if (_comfy && _comfy.busy) { try { _comfyProg = await api.comfySetupProgress(); } catch (_e) { _comfyProg = null; } }
@@ -1747,13 +1698,12 @@
         b.onclick = async () => {
           const key = b.dataset.toggle, on = !b.classList.contains('on');
           b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); // 일단 반영
-          // 이미지 수신은 전용 라이브 토글(/api/image)로 — 모델 미변경·즉시 적용·SD 상태 안내.
+          // 이미지 수신은 전용 라이브 토글(/api/image)로 — 모델 미변경·즉시 적용·ComfyUI 준비 상태 안내.
           if (key === 'enableImage') {
             try {
               const r = await api.setImageReceiving(on) || {};
               if (_s) _s[key] = on;
-              if (on && !r.sdInstalled) toast('이미지 받기 켜짐 — Stable Diffusion 설치가 필요해요', { type: 'info' });
-              else if (on && !r.imageReady) toast('이미지 받기 켜짐 — SD 준비 중', { type: 'info' });
+              if (on && !r.imageReady) toast('이미지 받기 켜짐 — ComfyUI 준비가 필요해요', { type: 'info', sub: '로컬 실행 탭에서 ComfyUI 를 설치/시작하세요' });
               else toast('설정을 저장했어요', { type: 'ok' });
             } catch (_e) {
               b.classList.toggle('on', !on); b.setAttribute('aria-checked', String(!on)); if (_s) _s[key] = !on;
@@ -2634,7 +2584,7 @@
   <!-- ══ Stage 매니저 + 온보딩 마법사(A1~A4) + Discord 연결(B) ══ -->
   <script type="module">
     import { toast } from './toast.js';
-    import { api, SD_MODELS } from './adapter.js';
+    import { api } from './adapter.js';
     import { ProviderState } from './contract.js';
     import { installRuntime, watchSetup } from './install.js';
     import { App, applyStage, canEnterServerAdd } from './state.js';
@@ -2645,13 +2595,9 @@
       const wiz = document.getElementById('wiz');
       const connectWiz = document.getElementById('connectWiz');
 
-      // 온보딩 선택 상태(webui.py ONB 와 동일 의미)
-      const ONB = { step: 1, ollama: true, image: true, sdModel: 'sd15', none: false, autostart: true, autoconnect: true, imageRecv: true, background: true };
-      // SD 모델 선택 — SD 카드에 통합된 확장 패널(progressive disclosure). 단일 소스 SD_MODELS.
-      const sdPick = () => '<div class="sd-attach"><div class="opt-mlabel">설치할 모델</div><div class="opt-seg">' +
-        SD_MODELS.map((m) => '<button class="' + (ONB.sdModel === m.id ? 'sel' : '') + '" data-sdm="' + m.id + '">' + m.short + ' · ' + m.size + '</button>').join('') +
-        '</div></div>';
-      const sdModelShort = () => (SD_MODELS.find((m) => m.id === ONB.sdModel) || {}).short || 'SD';
+      // 온보딩 선택 상태(webui.py ONB 와 동일 의미). 이미지 엔진(ComfyUI)은 온보딩에서 설치하지 않고
+      // 로컬 실행 탭에서 관리한다 — 온보딩 2단계는 Ollama(텍스트)만.
+      const ONB = { step: 1, ollama: true, none: false, autostart: true, autoconnect: true, imageRecv: true, background: true };
 
       const IC = {
         chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
@@ -2679,7 +2625,7 @@
             '<div class="wiz-sub">내 PC 의 AI 로 디스코드 커뮤니티의 질문에 응답을 기여하는 프로그램이에요.<br>몇 단계만 설정하면 바로 시작할 수 있어요.</div>' +
             '<div class="wiz-list">' +
             feat(IC.chat, '텍스트 AI 제공', 'Ollama 로 다른 사람의 질문에 답합니다') +
-            feat(IC.image, '이미지 생성 (선택)', 'Stable Diffusion 으로 그림 요청도 처리해요') +
+            feat(IC.image, '이미지 생성 (선택)', 'ComfyUI 로 그림 요청도 처리해요(로컬 실행 탭에서 설치)') +
             feat(IC.shield, '안전한 기본값', '하루 한도·localhost 전용 등 보수적으로 시작해요') +
             '</div>';
           // 1단계 전체 skip('나중에')은 두지 않는다 — 온보딩은 첫 필수 설정이고, 런타임/연결 skip 은
@@ -2690,12 +2636,9 @@
             '<div class="wiz-sub">이 PC 에서 제공할 AI 를 고르세요. 나중에 바꿀 수 있어요.</div>' +
             '<div class="wiz-list">' +
             opt('ollama', 'Ollama', '권장', '텍스트 질문에 답하는 기본 엔진', '~5GB', ONB.ollama) +
-            '<div class="opt-group">' +
-              opt('image', 'Stable Diffusion', '선택', '이미지 생성 요청 처리 (GPU 권장)', '~6.6GB', ONB.image, 'attached') +
-              (ONB.image ? sdPick() : '') +
-            '</div>' +
             opt('none', '지금은 설치 안 함', '', '메인 화면에서 나중에 설치할 수 있어요', '', ONB.none) +
-            '</div>';
+            '</div>' +
+            '<p class="wiz-sub" style="margin-top:8px">이미지 생성(ComfyUI)은 설치 후 <b>로컬 실행</b> 탭에서 한 번에 설치·관리해요.</p>';
           foot = btn('secondary', '1', '이전') + '<span class="spacer"></span>' + btn('primary', '3', '다음');
         } else if (s === 3) {
           body = '<div class="wiz-title">동작 방식</div>' +
@@ -2712,7 +2655,7 @@
             '<div class="wiz-sub">아래 설정으로 시작합니다. 연동하면 디스코드 로그인으로 넘어가요.</div>' +
             '<div class="wiz-list">' +
             sum('텍스트 모델', ONB.ollama ? 'Ollama 사용' : '사용 안 함', ONB.ollama) +
-            sum('이미지 생성', ONB.image ? sdModelShort() : '사용 안 함', ONB.image) +
+            sum('이미지 요청 받기', ONB.imageRecv ? '켜짐(ComfyUI)' : '꺼짐', ONB.imageRecv) +
             sum('자동 연결', ONB.autoconnect ? '켜짐' : '꺼짐', ONB.autoconnect) +
             sum('백그라운드 실행', ONB.background ? '유지' : '안 함', ONB.background) +
             '</div>';
@@ -2724,7 +2667,7 @@
 
       // A2 는 '선택'만 한다(설치 아님). 설치는 A4 '연동하기'에서 시작.
       function togglePick(k) {
-        if (k === 'none') { ONB.none = true; ONB.ollama = false; ONB.image = false; return; }
+        if (k === 'none') { ONB.none = true; ONB.ollama = false; return; }
         ONB.none = false;
         ONB[k] = !ONB[k];
       }
@@ -2746,17 +2689,11 @@
       async function finishOnboarding() {
         await applyOnboardingSettings();
         if (ONB.ollama) installRuntime('ollama');
-        if (ONB.image) installRuntime('image', ONB.sdModel); // A2 에서 고른 SD 모델로 설치(진행률은 토스트)
         App.connectOrigin = 'onboarding'; connectSub = 'login'; // 첫 인증 — 로그인부터
         setStage('connect');
       }
       function wireWiz() {
         wiz.querySelectorAll('[data-opt]').forEach(b => b.onclick = () => { togglePick(b.dataset.opt); renderWiz(); });
-        // 모델 선택은 전체 재렌더 대신 active 만 부분 갱신(패널 재생성·깜빡임 방지)
-        wiz.querySelectorAll('[data-sdm]').forEach(b => b.onclick = () => {
-          ONB.sdModel = b.dataset.sdm;
-          wiz.querySelectorAll('.opt-seg button').forEach(x => x.classList.toggle('sel', x.dataset.sdm === ONB.sdModel));
-        });
         wiz.querySelectorAll('[data-tog]').forEach(b => b.onclick = () => { ONB[b.dataset.tog] = !ONB[b.dataset.tog]; renderWiz(); });
         wiz.querySelectorAll('[data-go]').forEach(b => b.onclick = async () => {
           const g = b.dataset.go;
@@ -2948,7 +2885,7 @@
         // 이미 연결 중(backgroundRunning)이면 "제공 중"이다. backgroundRunning 을 무시하면 백그라운드
         // 서비스가 정상 제공 중인데도 홈이 '제공 중단됨/Discord 끊김 + 죽은 다시연결'을 보였다(실버그).
         const serving = !!(st.running || st.backgroundRunning);
-        // 런타임 카드 상태: Ollama(모델 보유·제공) / SD(설치·준비) 기준.
+        // 런타임 카드 상태: Ollama(모델 보유·제공) / ComfyUI(이미지 준비) 기준.
         if (window.setImageRecv) window.setImageRecv(!!st.enableImage); // 이미지 요청 받기 실 상태 반영(먼저)
         if (window.setBgOn) window.setBgOn(!!st.background); // 백그라운드 핀 = 상주 '설정값'(설정 화면과 동일). 런타임(backgroundRunning) 아님
         if (window.setRuntime) {
@@ -2956,10 +2893,12 @@
           const ollamaState = (serving && nModels) ? 'running' : (nModels ? 'stopped' : 'absent');
           // Ollama 메타는 실제 제공 모델 수로(하드코딩 '모델 7개' 금지).
           window.setRuntime('Ollama', ollamaState, ollamaState === 'running' ? ('모델 ' + nModels + '개 · 텍스트 응답 제공') : undefined);
-          // SD: 이 창에 인-프로세스 에이전트가 없으면(backgroundRunning) imageReady 를 알 수 없으므로
-          // 설치+이미지 받기 설정이면 백그라운드가 제공 중인 것으로 본다(가짜 '실행 중' 대신 설정 기반 추정).
-          const sdRunning = st.backgroundRunning ? !!(st.sdInstalled && st.enableImage) : !!st.imageReady;
-          window.setRuntime('Stable Diffusion', !st.sdInstalled ? 'absent' : (sdRunning ? 'running' : 'stopped'));
+          // ComfyUI: 이 창에 인-프로세스 에이전트가 없으면(backgroundRunning) imageReady 를 알 수 없으므로
+          // 이미지 받기 설정이 켜져 있으면 백그라운드가 제공 중인 것으로 본다(가짜 '실행 중' 대신 설정 기반 추정).
+          // 상세 설치/시작은 '로컬 실행' 탭의 ComfyUI 카드가 /api/comfy/status 로 관리한다.
+          const comfyRunning = st.backgroundRunning ? !!st.enableImage : !!st.imageReady;
+          const comfyAvailable = !!(st.imageReady || st.enableImage); // 메인 status 에 설치여부는 없음 → 준비/켜짐을 'available' 로
+          window.setRuntime('ComfyUI', !comfyAvailable ? 'absent' : (comfyRunning ? 'running' : 'stopped'));
         }
         // 히어로 상태 + 페이지 부제 — 미연결이면 미연결, 연결됐으면 제공 여부(running 또는 backgroundRunning)로 ok/error.
         const sub = document.getElementById('homeSub');
@@ -2999,7 +2938,9 @@
           if (r && r.ok === false) throw new Error(r.error || '요청을 처리하지 못했어요');
           return r;
         };
-        window.realStartSD = async () => { await api.startSetup('image'); try { watchSetup('image'); } catch (_e) { /* 진행률 폴링 실패는 비치명적 */ } };
+        // ComfyUI 설치/시작은 '로컬 실행' 탭의 ComfyUI 카드가 소유한다(앱 관리 설치·웹UI 오픈·체크포인트 선택).
+        // 홈 카드에서 '시작'을 누르면 그 전문 화면으로 보낸다(홈에서 즉석 설치하던 startSetup('image') 경로 폐기).
+        window.realStartComfy = async () => { const b = document.querySelector('.nav-item[data-view="local"]'); if (b) b.click(); };
         window.realGetStatus = () => api.getStatus(); // 진단(hero diag)이 실제 상태로 점검
         window.realSetImageRecv = async (on) => { const r = await api.setImageReceiving(on); await syncHomeFromStatus(); return r || {}; }; // 이미지 요청 받기 실 토글(응답 반환)
         window.realSetSetting = (k, v) => api.setSetting(k, v); // 홈 백그라운드 핀 등 단일 설정 저장
@@ -3007,7 +2948,8 @@
         // 새로고침/재부팅 복원: 진행 중인 런타임 설치가 있으면 어느 화면이든 진행 토스트를 무조건 복원한다.
         // phase 가 진행 상태(=done/idle/error/cancelled 가 아님)면 watchSetup 으로 폴링·토스트만 이어붙인다.
         const _ACTIVE = (p) => p && p.phase && !['done', 'idle', 'error', 'cancelled'].includes(p.phase);
-        ['ollama', 'image'].forEach((rt) => {
+        // 진행 중 설치 복원은 Ollama 만(getSetupProgress 대상). ComfyUI 설치 진행 복원은 '로컬 실행' 탭이 /api/comfy/setup-progress 로 따로 관리한다.
+        ['ollama'].forEach((rt) => {
           api.getSetupProgress(rt).then((p) => { if (_ACTIVE(p)) watchSetup(rt); }).catch(() => {});
         });
       }
@@ -3023,10 +2965,10 @@
         cards.forEach(c => { c.querySelector('.menu').hidden = true; c.querySelector('.prov-menu-btn').classList.remove('open'); });
       }
       // 런타임별 메타 — 실제 앱에선 에이전트가 채움.
-      // Ollama·SD 모두 :7860 Gradio WebUI 는 노출 안 함(REST 만 사용). SD 는 출력 폴더만.
+      // Ollama 웹 UI 는 노출 안 함(:11434 API 전용). ComfyUI 웹 UI 는 '로컬 실행' 탭의 'ComfyUI 열기'로. 홈은 출력 폴더만.
       const RT = {
         'Ollama': { ping: '28ms' },
-        'Stable Diffusion': { ping: '0.4s', outputs: { label: '출력 폴더를 엽니다', target: '~/NEXA/outputs' } },
+        'ComfyUI': { ping: '0.4s', outputs: { label: '출력 폴더를 엽니다', target: 'ComfyUI output 폴더' } },
       };
       function runAction(act, name) {
         const rt = RT[name] || { ping: '정상' };
@@ -3037,7 +2979,7 @@
             window.realGetStatus().then((st) => {
               st = st || {};
               let ok, sub;
-              if (name === 'Stable Diffusion') { ok = !!st.imageReady; sub = !st.sdInstalled ? '미설치' : (ok ? '이미지 생성 준비됨' : '꺼짐 — 시작 필요'); }
+              if (name === 'ComfyUI') { ok = !!st.imageReady; sub = ok ? '이미지 생성 준비됨' : (st.enableImage ? '꺼짐 — 로컬 실행 탭에서 시작' : '이미지 받기 꺼짐'); }
               else { const n = (st.models && st.models.length) || 0; ok = n > 0; sub = ok ? (n + '개 모델 제공 중') : '모델 없음 또는 미연결'; }
               window.toast(name + (ok ? ' 정상 응답' : ' 점검 필요'), { type: ok ? 'ok' : 'error', sub, replace: 'chk-' + name });
             }).catch(() => window.toast(name + ' 점검 실패', { type: 'error', replace: 'chk-' + name }));
@@ -3046,7 +2988,7 @@
           } /* @end-proto-only */
         } else if (act === 'outputs' && rt.outputs) {
           if (window.__SESSION_KEY && window.realOpenFolder) { // 실 앱: OS 파일 탐색기로 실제 폴더 열기(no-op 수정)
-            window.realOpenFolder('sdOutputs')
+            window.realOpenFolder('comfyOutputs')
               .then((r) => window.toast(r && r.ok ? '출력 폴더를 열었어요' : (r && r.error) || '폴더가 아직 없어요', { type: r && r.ok ? 'ok' : 'error' }))
               .catch(() => window.toast('폴더 열기 실패', { type: 'error' }));
           } /* @proto-only */ else {
@@ -3081,14 +3023,14 @@
       window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
 
       // ── D3'/E4 런타임 카드 상태(실행 중/꺼짐/미설치). canvas 는 유지하고 상태부만 갱신 ──
-      const RT_KEY = { 'Ollama': 'ollama', 'Stable Diffusion': 'image' };
+      const RT_KEY = { 'Ollama': 'ollama', 'ComfyUI': 'image' };
       const RT_PRESENT = {
         'Ollama': {
           running: { state: '실행 중', meta: '모델 7개 · 텍스트 응답 제공' },
           stopped: { state: '꺼짐', meta: '시작하면 텍스트 요청을 처리해요' },
           absent: { state: '미설치', meta: '설치하면 텍스트 AI 를 제공할 수 있어요' },
         },
-        'Stable Diffusion': {
+        'ComfyUI': {
           running: { state: '실행 중', meta: '이미지 생성 가능' },
           stopped: { state: '꺼짐', meta: '이미지 요청 받기 ON · 시작 필요', warn: true },   // E4
           absent: { state: '미설치', meta: '이미지 요청 받기 ON · 설치 필요', warn: true },  // E4
@@ -3101,7 +3043,7 @@
         const p = { ...RT_PRESENT[name][state] };
         if (metaOverride) p.meta = metaOverride; // 실 앱: 실제 값(예: 모델 수)으로 메타 대체(하드코딩 방지)
         // SD 는 imageRecv 가 OFF 면 경고 없이 '꺼짐' 메타(이미지 요청을 안 받으므로 SD 상태 무관)
-        if (name === 'Stable Diffusion' && !imageRecv) { p.meta = '이미지 요청 받기 꺼짐'; p.warn = false; }
+        if (name === 'ComfyUI' && !imageRecv) { p.meta = '이미지 요청 받기 꺼짐'; p.warn = false; }
         card.dataset.state = state;
         card.querySelector('.prov-state').textContent = p.state;
         const meta = card.querySelector('.prov-meta'); meta.textContent = p.meta; meta.classList.toggle('warn', !!p.warn);
@@ -3121,7 +3063,7 @@
       }
       // 빈틈: 런타임 전부 미설치 → 제공 불가 경고 배너
       function updateRuntimeWarn() {
-        const allAbsent = ['Ollama', 'Stable Diffusion'].every(n => {
+        const allAbsent = ['Ollama', 'ComfyUI'].every(n => {
           const c = document.querySelector('.prov-card[data-runtime="' + n + '"]');
           return c && c.dataset.state === 'absent';
         });
@@ -3129,18 +3071,16 @@
         if (warn) warn.hidden = !allAbsent;
       }
       // 홈에서 이미지 요청 받기 토글(설정 화면 가지 않고 바로)
-      const sdSwitch = document.querySelector('.prov-card[data-runtime="Stable Diffusion"] .img-recv-switch');
+      const sdSwitch = document.querySelector('.prov-card[data-runtime="ComfyUI"] .img-recv-switch');
       if (sdSwitch) sdSwitch.addEventListener('click', async (e) => {
         e.stopPropagation();
         const next = !imageRecv;
         if (window.__SESSION_KEY) {
-          // 실 앱: 실제 토글(라이브) 후 status 로 반영(가짜 토글 금지). SD 미설치/미준비를 정직하게 안내.
+          // 실 앱: 실제 토글(라이브) 후 status 로 반영(가짜 토글 금지). ComfyUI 미준비를 정직하게 안내.
           try {
             const r = await window.realSetImageRecv?.(next) || {};
-            if (next && !r.sdInstalled) { // 이미지 켰지만 SD 미설치 → 설치 유도
-              window.toast('이미지 요청 받기 켜짐 — Stable Diffusion 설치가 필요해요', { type: 'info', sub: '아래 카드의 "설치"를 눌러 설치하면 이미지 생성이 켜져요' });
-            } else if (next && !r.imageReady) { // 설치됐지만 준비 전(기동 중)
-              window.toast('이미지 요청 받기 켜짐 — SD 준비 중', { type: 'info', sub: '잠시 후 이미지 생성이 활성화돼요' });
+            if (next && !r.imageReady) { // 켰지만 이미지 생성 준비 전(ComfyUI 미설치/미기동)
+              window.toast('이미지 요청 받기 켜짐 — ComfyUI 준비가 필요해요', { type: 'info', sub: '로컬 실행 탭에서 ComfyUI 를 설치/시작하면 이미지 생성이 켜져요' });
             } else {
               window.toast('이미지 요청 받기 ' + (next ? '켜짐' : '꺼짐'), { type: next ? 'ok' : 'info' });
             }
@@ -3149,16 +3089,16 @@
         }
         /* @proto-only */
         imageRecv = next;
-        const card = document.querySelector('.prov-card[data-runtime="Stable Diffusion"]');
-        setRuntime('Stable Diffusion', card.dataset.state);
+        const card = document.querySelector('.prov-card[data-runtime="ComfyUI"]');
+        setRuntime('ComfyUI', card.dataset.state);
         window.toast('이미지 요청 받기 ' + (imageRecv ? '켜짐' : '꺼짐'), { type: imageRecv ? 'ok' : 'info', sub: imageRecv ? '/그림 요청을 이 PC 에서 처리해요' : '이미지 요청을 받지 않아요' });
         /* @end-proto-only */
       });
       // 실 status 로 이미지 요청 받기 표시 동기화(가짜 ON 방지) — syncHomeFromStatus 가 호출.
       window.setImageRecv = (on) => {
         imageRecv = !!on;
-        const card = document.querySelector('.prov-card[data-runtime="Stable Diffusion"]');
-        if (card) setRuntime('Stable Diffusion', card.dataset.state);
+        const card = document.querySelector('.prov-card[data-runtime="ComfyUI"]');
+        if (card) setRuntime('ComfyUI', card.dataset.state);
       };
       // CTA(설치/시작) 클릭
       cards.forEach(card => {
@@ -3166,13 +3106,19 @@
         card.querySelector('.prov-cta').addEventListener('click', async (e) => {
           e.stopPropagation();
           const st = card.dataset.state;
-          if (st === 'absent') { if (window.openInstall) window.openInstall(RT_KEY[name]); return; }   // 설치 모달(C)
+          // ComfyUI 설치는 '로컬 실행' 탭의 ComfyUI 카드가 담당(앱 관리 설치). 홈에선 그 화면으로 보낸다.
+          // Ollama 만 홈에서 즉석 설치(openInstall) 가능.
+          if (st === 'absent') {
+            if (name === 'ComfyUI') { const b = document.querySelector('.nav-item[data-view="local"]'); if (b) b.click(); }
+            else if (window.openInstall) window.openInstall(RT_KEY[name]);
+            return;
+          }
           if (st !== 'stopped') return;
           if (window.__SESSION_KEY) {
             // 실 앱: 실제 시작 호출 → 완료(status 폴링)되어야 카드가 '실행 중'으로 바뀐다(가짜 전환 없음).
             window.toast(name + ' 시작 중…', { type: 'run', sticky: true, id: 'start-' + name });
             try {
-              if (name === 'Stable Diffusion') { await window.realStartSD?.(); }
+              if (name === 'ComfyUI') { await window.realStartComfy?.(); }
               else { await window.realProviderAction?.('start'); }   // Ollama 텍스트 제공 = 에이전트 시작
               await window.syncHomeFromStatus?.();
               window.toast(name + ' 시작 요청됨 — 준비되면 자동으로 실행 중으로 바뀝니다', { type: 'ok', replace: 'start-' + name });
@@ -3192,16 +3138,16 @@
       // 빈틈 데모(PROTO): 서버 0개 / 런타임 전부 미설치 / 초기화
       window.setEmptyState = (kind) => {
         if (kind === 'servers') { if (window.setHomeServers) window.setHomeServers('empty'); }
-        else if (kind === 'noruntime') { setRuntime('Ollama', 'absent'); setRuntime('Stable Diffusion', 'absent'); }
+        else if (kind === 'noruntime') { setRuntime('Ollama', 'absent'); setRuntime('ComfyUI', 'absent'); }
         else { // reset
           if (window.setHomeServers) window.setHomeServers('full');
-          setRuntime('Ollama', 'running'); setRuntime('Stable Diffusion', 'running');
+          setRuntime('Ollama', 'running'); setRuntime('ComfyUI', 'running');
         }
       };
       /* @end-proto-only */
       // 설치 완료(install.js installRuntime) → 해당 카드를 '실행 중'으로
       window.addEventListener('runtimeinstalled', (e) => {
-        setRuntime(e.detail === 'image' ? 'Stable Diffusion' : 'Ollama', 'running');
+        setRuntime(e.detail === 'image' ? 'ComfyUI' : 'Ollama', 'running');
       });
     })();
   </script>
@@ -3349,14 +3295,14 @@
             { n: '중앙 서버', v: st.connected ? '연결됨' : '연결 끊김', ok: !!st.connected },
             { n: '제공 상태', v: st.running ? '제공 중' : '중지됨', ok: !!st.running },
             { n: 'Ollama (로컬)', v: nModels ? (nModels + '개 모델 제공') : '모델 없음', ok: nModels > 0 },
-            { n: 'Stable Diffusion (로컬)', v: !st.sdInstalled ? '미설치' : (st.imageReady ? '준비됨' : '꺼짐'), ok: !st.sdInstalled || st.imageReady },
+            { n: 'ComfyUI (로컬)', v: st.imageReady ? '준비됨' : (st.enableImage ? '꺼짐 — 준비 필요' : '이미지 받기 꺼짐'), ok: st.imageReady || !st.enableImage },
           ];
         } else {
           rows = [
             { n: '중앙 서버', v: '28ms', ok: true },
             { n: 'Discord 게이트웨이', v: '연결 끊김', ok: false },
             { n: 'Ollama (로컬)', v: '응답 정상', ok: true },
-            { n: 'Stable Diffusion (로컬)', v: '응답 정상', ok: true },
+            { n: 'ComfyUI (로컬)', v: '응답 정상', ok: true },
           ];
         }
         const spinIco = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg>';
@@ -3423,7 +3369,7 @@
           if (window.setRuntime) window.setRuntime(rt, b.dataset.rtstate);
         }));
       });
-      // 로컬 실행 상태(데모) — mock status 를 흔들어 조건부 UI(재연결·SD 시작)를 로컬 화면에서 시연한다.
+      // 로컬 실행 상태(데모) — mock status 를 흔들어 조건부 UI(재연결·ComfyUI 준비)를 로컬 화면에서 시연한다.
       document.querySelectorAll('.proto-seg[data-mock]').forEach(seg => {
         const kind = seg.dataset.mock;
         seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
@@ -3431,7 +3377,7 @@
           const v = b.dataset.mockval;
           if (window.__mockPatch) {
             if (kind === 'conn') window.__mockPatch({ running: true, connected: v === 'on' });
-            else if (kind === 'sd') window.__mockPatch(v === 'absent' ? { sdInstalled: false, imageReady: false } : v === 'notready' ? { sdInstalled: true, imageReady: false } : { sdInstalled: true, imageReady: true });
+            else if (kind === 'sd') window.__mockPatch(v === 'absent' ? { imageReady: false, enableImage: false } : v === 'notready' ? { imageReady: false, enableImage: true } : { imageReady: true, enableImage: true });
           }
           document.querySelector('.nav-item[data-view="local"]')?.click(); // 로컬 화면으로 전환 + 재렌더
         }));
@@ -3816,7 +3762,7 @@
       };
     });
 
-    // ── 4) Stable Diffusion 미니: 회전하는 네온 프리즘(옥타헤드론) ──
+    // ── 4) ComfyUI 미니: 회전하는 네온 프리즘(옥타헤드론) ──
     const sdCanvas = document.querySelector('canvas[data-scene="sd"]');
     if (sdCanvas) register(sdCanvas, 45, 4.6, (api) => {
       const { scene } = api;

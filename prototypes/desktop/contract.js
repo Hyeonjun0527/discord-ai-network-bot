@@ -86,15 +86,7 @@ export const ENDPOINTS = Object.freeze({
   //   POST {key:value}(부분 변경, 1개 이상) → {ok, needsRestart}. setup/onboard-apply/auto-update 를 단일화.
   settings: '/api/settings',
   connectOpen: '/api/connect-open',
-  sdStatus: '/api/sd/status',
-  sdModels: '/api/sd/models',
-  sdInstalled: '/api/sd/installed',   // GET — 설치된 모델 목록 + 활성 모델(로컬 실행 탭 전환용)
-  sdSelect: '/api/sd/select',         // POST {model} — 활성 모델 전환(핫스왑 + config 저장)
-  sdSetup: '/api/sd/setup',
-  sdInstallCustom: '/api/sd/install-custom', // POST {url} — 카탈로그 밖 임의 HuggingFace 모델 설치
-  sdStart: '/api/sd/start',          // POST — 이미 설치된 SD 를 기동만(clone/다운로드 없음)
-  sdSetupProgress: '/api/sd/setup-progress',
-  // ComfyUI — 1급 이미지 엔진(앱이 설치/실행/정지/웹UI 직접 관리). SD.Next 는 레거시 폴백.
+  // ComfyUI — 이미지 엔진(앱이 설치/실행/정지/웹UI 직접 관리). 유저별 로컬 인스턴스. SD.Next 는 제거됨.
   comfyStatus: '/api/comfy/status',          // GET → {installed, running, busy}
   comfySetup: '/api/comfy/setup',            // POST — 설치(핀 clone→3.13 venv→torch/deps→기동)
   comfySetupProgress: '/api/comfy/setup-progress',

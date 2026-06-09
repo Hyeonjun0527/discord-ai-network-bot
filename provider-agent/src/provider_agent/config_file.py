@@ -6,8 +6,25 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import pathlib
+
+logger = logging.getLogger("provider_agent.config_file")
+
+
+def _chmod_600(path: pathlib.Path) -> None:
+    """설정 파일 권한을 0600 으로 강화(시크릿 보호) — 베스트에포트.
+
+    일부 파일시스템(Windows 등)은 POSIX 권한을 지원하지 않는다. 그건 정상적 한계이므로
+    조용히 무시하되, 완전히 숨기지는 않고 debug 로 흔적을 남긴다(예외 원칙 3).
+    쓰기 자체의 실패(더 심각)와 분리해, chmod 미지원이 쓰기 실패를 가리지 않게 한다(예외 원칙 2).
+    """
+    try:
+        os.chmod(path, 0o600)
+    except OSError as exc:
+        logger.debug("config 권한 0600 미지원(무시): %s (%s)", path, exc)
+
 
 SAVEABLE = (
     "token",
@@ -19,8 +36,8 @@ SAVEABLE = (
     "daily_limit",
     "allow_remote_ollama",
     "enable_image",
-    "sd_url",
-    "allow_remote_sd",
+    "comfy_url",
+    "hf_token",
     "auto_update",
 )
 
@@ -48,10 +65,7 @@ def save_config(cfg, path: pathlib.Path | None = None) -> pathlib.Path:
         data[k] = getattr(cfg, k)
     data["models"] = list(data["models"])  # tuple → list
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    try:
-        os.chmod(path, 0o600)  # 시크릿 보호(소유자만 read/write)
-    except OSError:
-        pass  # 일부 FS(Windows)에서 미지원 — 무시
+    _chmod_600(path)  # 시크릿 보호(소유자만 read/write)
     return path
 
 
@@ -60,19 +74,8 @@ def persist_token(token: str, path: pathlib.Path | None = None) -> None:
 
     인증 성공 시 서버가 내려준 durable 토큰을 저장해, 다음 실행/재연결에 같은 토큰으로 인증한다.
     """
-    path = path or config_path()
-    try:
-        data: dict = {}
-        if path.exists():
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                data = loaded
-        data["token"] = token
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    # persist_partial 과 완전히 같은 로직(load→merge→write→chmod)이었다 — 위임으로 중복 제거(SRP/DRY).
+    persist_partial({"token": token}, path)
 
 
 def persist_partial(updates: dict, path: pathlib.Path | None = None) -> None:
@@ -81,18 +84,17 @@ def persist_partial(updates: dict, path: pathlib.Path | None = None) -> None:
     토글류 단일 설정(예: auto_update)을 다른 값에 영향 없이 즉시 저장할 때 쓴다.
     """
     path = path or config_path()
+    data = load_config(path)  # 부재/손상 파일도 안전하게 {} 로(JSONDecodeError 전파 방지)
+    data.update(updates)
     try:
-        data: dict = {}
-        if path.exists():
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                data = loaded
-        data.update(updates)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+    except OSError as exc:
+        # 설정 저장 실패를 삼키면(예외 원칙 3 위반) 토큰/설정이 보존되지 않아 다음 실행이 조용히 망가진다.
+        # 호출부 계약(예외 비전파)은 유지하되, 최소한 원인을 로그로 남긴다(예외 원칙 4).
+        logger.warning("config 저장 실패: %s keys=%s (%s)", path, list(updates.keys()), exc)
+        return
+    _chmod_600(path)
 
 
 def load_connections(path: pathlib.Path | None = None) -> list[dict]:

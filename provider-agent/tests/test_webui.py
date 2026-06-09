@@ -899,28 +899,6 @@ async def test_setup_surfaces_service_install_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_sd_start_endpoint(monkeypatch):
-    """'SD 시작' 엔드포인트: 설치된 SD 를 기동만(launch_only) 위임한다(키 필요)."""
-    started = {}
-
-    async def fake_launch(url):
-        started["url"] = url
-        return True
-
-    monkeypatch.setattr("provider_agent.sd_setup.launch_only", fake_launch)
-    monkeypatch.setattr("provider_agent.sd_setup.is_busy", lambda: False)
-    client = await _client()
-    try:
-        assert (await client.post("/api/sd/start")).status == 403  # 키 없음
-        d = await (await client.post("/api/sd/start", headers={"X-Session": KEY})).json()
-        assert d["ok"] is True
-        await asyncio.sleep(0.03)  # create_task 가 launch_only 를 호출할 시간
-        assert started.get("url")
-    finally:
-        await client.close()
-
-
-@pytest.mark.asyncio
 async def test_service_stop_endpoint(monkeypatch):
     """'백그라운드 중지' 엔드포인트: stop_service 를 위임하고 결과를 돌려준다(키 필요)."""
     monkeypatch.setattr("provider_agent.service.stop_service", lambda: True)
@@ -951,18 +929,6 @@ async def test_no_autoconnect_when_disabled(monkeypatch):
 
 
 # ── P4: 이미지 토글의 라이브 전파 + SD 미설치 가시화 ─────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_status_exposes_sd_installed(monkeypatch):
-    """status 가 sdInstalled 를 내려줘야 한다(이미지 토글 ON·미광고 시 'SD 미설치'와 'SD 미준비' 구분 근거)."""
-    monkeypatch.setattr(webui, "_sd_installed", lambda: True)
-    client = await _client()
-    try:
-        st = await (await client.get("/api/status", headers={"X-Session": KEY})).json()
-        assert st["sdInstalled"] is True
-    finally:
-        await client.close()
 
 
 @pytest.mark.asyncio
@@ -1272,16 +1238,6 @@ async def test_server_models_endpoints(monkeypatch):
         r = await (await client.post("/api/servers/100/models", json={"chatModels": ["a"], "imageEnabled": False}, headers={"X-Session": KEY})).json()
         assert r["ok"] is True
         assert policies[100]["chatModels"] == ["a"] and policies[100]["imageEnabled"] is False
-    finally:
-        await client.close()
-
-
-@pytest.mark.asyncio
-async def test_install_custom_rejects_bad_url():
-    client = await _client()
-    try:
-        r = await (await client.post("/api/sd/install-custom", json={"url": "https://evil.com/m.bin"}, headers={"X-Session": KEY})).json()
-        assert r["ok"] is False
     finally:
         await client.close()
 

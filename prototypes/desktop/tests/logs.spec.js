@@ -30,18 +30,18 @@ test('로그 화면: 출처(SD/Ollama/연결) 배지 + 출처 필터', async ({ 
 
   // 'Stable Diffusion'만 필터 → SD 라인만, Ollama 연결 라인은 사라진다.
   await page.click('#logSources [data-source="sd"]');
-  await expect(page.locator('#logView')).toContainText('Stable Diffusion 준비됨');
+  await expect(page.locator('#logView')).toContainText('ComfyUI 준비됨');
   await expect(page.locator('#logView')).not.toContainText('Ollama 연결됨');
   await expect(page.locator('#logView .lsrc-ollama')).toHaveCount(0);
 
   // 'Ollama'만 필터 → Ollama 라인만, SD 준비 라인은 사라진다.
   await page.click('#logSources [data-source="ollama"]');
   await expect(page.locator('#logView')).toContainText('Ollama 연결됨');
-  await expect(page.locator('#logView')).not.toContainText('Stable Diffusion 준비됨');
+  await expect(page.locator('#logView')).not.toContainText('ComfyUI 준비됨');
   await expect(page.locator('#logView .lsrc-sd')).toHaveCount(0);
 
   // 출처 '전체'로 복귀.
   await page.click('#logSources [data-source="all"]');
-  await expect(page.locator('#logView')).toContainText('Stable Diffusion 준비됨');
+  await expect(page.locator('#logView')).toContainText('ComfyUI 준비됨');
   await expect(page.locator('#logView')).toContainText('Ollama 연결됨');
 });

@@ -30,29 +30,29 @@
 
 ## ⭐ 우선 수정 대상 — 🔴high 108건 (먼저 친다)
 
-- [ ] **SE-001** `SRP` `prototypes/desktop/adapter.js:10-671` `api` (M) — adapter.js 는 68개 심볼을 포함한 671줄 거대 파일로, 데이터 접근(HTTP/mock 전환)·정규화(실 응답 → UI shape)·비즈니스 로직(role 판정, 정책 병합) 등 3개 책임을 혼재. 단일 책임은 '데이터 접근'이어야 하나 형식 변환, 권한 검증, 정책 기본값이 섞여 있음. **→** adapter.js 를 3개 모듈로 분리: (1) adapter.js = HTTP/mock 기초만, (2) normalizer.js = 응답 정규화(getServers→shape 변환), (3) policy.js = 정책 기본값·권한 판정 로직. 각 모듈은 단일 책임을 가짐.
-- [ ] **SE-002** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkDashboardQueryService.kt:75-152` `dashboard` (L) — dashboard() orchestrates 15+ sub-calls (overview, channels, providers, quality, overload, etc.) and constructs massive response DTO. Has 3 concerns: fetching, mapping, validation. God method. **→** Extract: private fun collectDashboardData() -> DashboardData, private fun validateDashboard() -> List<Violation>. dashboard() delegates to these.
-- [ ] **SE-003** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkLaunchChecklistService.kt:30-165` `checklist` (M) — checklist() fetches from 9 repos, computes 5 derived states (featureBaseReady, advancedLimited, items), constructs response. 135 lines of mixed concerns. **→** Extract: LaunchChecklistAssembler.assemble(guildId) -> NetworkLaunchChecklist. checklist() calls foundation to fetch, passes to assembler.
+- [~] **SE-001** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) `SRP` `prototypes/desktop/adapter.js:10-671` `api` (M) — adapter.js 는 68개 심볼을 포함한 671줄 거대 파일로, 데이터 접근(HTTP/mock 전환)·정규화(실 응답 → UI shape)·비즈니스 로직(role 판정, 정책 병합) 등 3개 책임을 혼재. 단일 책임은 '데이터 접근'이어야 하나 형식 변환, 권한 검증, 정책 기본값이 섞여 있음. **→** adapter.js 를 3개 모듈로 분리: (1) adapter.js = HTTP/mock 기초만, (2) normalizer.js = 응답 정규화(getServers→shape 변환), (3) policy.js = 정책 기본값·권한 판정 로직. 각 모듈은 단일 책임을 가짐.
+- [~] **SE-002** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkDashboardQueryService.kt:75-152` `dashboard` (L) — dashboard() orchestrates 15+ sub-calls (overview, channels, providers, quality, overload, etc.) and constructs massive response DTO. Has 3 concerns: fetching, mapping, validation. God method. **→** Extract: private fun collectDashboardData() -> DashboardData, private fun validateDashboard() -> List<Violation>. dashboard() delegates to these.
+- [x] **SE-003** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkLaunchChecklistService.kt:30-165` `checklist` (M) — checklist() fetches from 9 repos, computes 5 derived states (featureBaseReady, advancedLimited, items), constructs response. 135 lines of mixed concerns. **→** Extract: LaunchChecklistAssembler.assemble(guildId) -> NetworkLaunchChecklist. checklist() calls foundation to fetch, passes to assembler.
 - [~] **SE-004** 🔧PARTIAL(ChannelAiAccessControlService 추출=4책임 중 접근제어/admin역할 1개 완료, 위저드/승인 잔여) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:28-50` `ChannelAiCustomizationService` (L) — God class with 712 lines mixing 7+ responsibilities: wizard creation, rollback, proposal approval/rejection, admin role management, audit recording, prompt preview, onboarding, custom instruction. Single class handles feature gates, permission checks, TX management, entity persistence, domain logic, and presentation mapping. **→** Extract 4 separate service classes: (1) ChannelAiWizardOrchestrator (create/rollback flows), (2) ChannelAiProposalApprovalService (approve/reject), (3) ChannelAiAdminRoleService (role management), (4) ChannelAiAccessControlService (permission logic). Keep ChannelAiCustomizationService as thin facade delegating to each.
-- [ ] **SE-005** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:52` `PolicyService` (L) — PolicyService violates SRP by implementing 3 unrelated interfaces (RoutingPolicy, AutoApprovePolicy, GuildChannelPolicy) with 31 mixed methods. The class handles channel policies, role policies, guild settings, approval logic, and caching—disparate concerns that should be separate. **→** Extract each interface into its own service: ChannelPolicyService, RolePolicyService, GuildSettingsService, AutoApprovalService. Let each manage its own cache and eviction logic independently.
-- [ ] **SE-006** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:86-202` `decisionSummary` (M) — decisionSummary 메서드가 117줄에 걸쳐 조회(92-97줄), 개수 집계(98-120줄), 위험코드 판정(122-147줄), 결정항목 매핑(148-184줄)을 모두 담당한다. 각 riskCode 판정(timeoutRate>=0.25, qualityScores.isEmpty(), ragContextStatus.startsWith())이 if-else로 흩어져 있다. **→** 위험 판정 로직을 RiskAssessment 클래스로 추출하고, decisionSummary는 조회 조합만 수행하도록 분리하라. 또는 riskCodes 계산을 computeRiskCodes(stats, runCandidates) 메서드로 추출하라.
-- [ ] **SE-007** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:29-70` `MultiResponseService` (M) — MultiResponseService 클래스가 13개의 의존성을 주입받고, 정책 저장/실행 계획/후보 선정/보안/리포팅/피드백 등 다양한 책임을 혼재하고 있다. 실제로는 MultiResponseReportingService, MultiResponsePolicyResolver, ProviderFanoutSelector, MultiResponseFanoutPlanner 등이 분리되었지만, 서비스 내부에서 이들을 조합하는 조율 로직이 복잡하다. **→** MultiResponseService를 코디네이터 역할로 축소하고, startRunEntity와 startRuntimeObservation의 중복 로직(198줄~306줄)을 공통 메서드로 추출하여 SRP 위반을 완화하라. 또는 RunStartingStrategy 전략 패턴으로 분리하라.
-- [ ] **SE-008** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:405` `Listener.onSlashCommandInteraction` (L) — Listener 클래스가 너무 많은 책임을 가짐: 이벤트 라우팅 + 명령 dispatch + 응답 렌더링 + 온보딩 + 설정 마법사 + 피드백 수집 + 채널 AI 프로필 관리. onSlashCommandInteraction 메서드 약 260줄 + 버튼/모달 핸들러 300줄+ 추가로 god class 상태. **→** CommandService 처럼 command handler 패턴으로 인터랙션 타입별(SlashCommand/Button/Modal/StringSelect 등) 전용 클래스로 분리해 각각 단일 책임 유지.
-- [ ] **SE-009** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:378-453` `importPreset` (L) — importPreset 함수가 9개의 책임을 담당한다: 피발행 프리셋 조회, 원본 리비전 조회, 미리보기 빌드, 충돌 검증, 길드 사본 생성, 채널 적용, 임포트 기록 저장, 발행 카운트 증가, 원자성 관리. 함수의 길이는 70줄을 초과하며, 조건 분기(targetChannelId?.let, applied?.status)도 복잡하다. **→** 책임을 분리하여 PresetImportValidator(충돌 검증), PresetImportCopyCreator(길드 사본 생성), PresetImportPublisher(임포트 기록·카운트 관리) 등으로 나누고, importPreset은 이들을 오케스트레이션하는 파사드로 축소하라.
-- [ ] **SE-010** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:46-94` `PresetRegistryService` (L) — PresetRegistryService 클래스가 14개의 저장소와 5개의 협력자 객체를 직접 주입받아 상태관리하며, write(createPreset, updatePreset, publishPreset, importPreset, likePreset, reportPreset, deletePreset 등), read-only 위임(catalogFacets, listPublishedPresets, searchPublishedPresets, presetDetail 등), 그리고 비즈니스 로직 제어(transitionTo, requirePublishable*, uniqueSlug 등)를 모두 담당하는 god class다. 프리셋 생성·발행·임포트·신고·보고 등 5개 이상의 독립적 책임을 하나의 클래스에서 담당하고 있다. **→** 책임을 분리하여 PresetPublishService(발행/취소), PresetImportService(임포트/미리보기), PresetReportingService(신고/검수), PresetModerationService(상태 전이) 등 단일 책임 클래스로 분리하고, PresetRegistryService는 생성/조회만 담당하게 축소하라.
-- [ ] **SE-011** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:57` `ProviderRegistrationService.providers` (M) — ConcurrentHashMap의 메모리 캐시 관리(load/persist/deleteRow)와 도메인 상태 전이 정책(requestJoin/approve/reject/remove)을 같은 클래스에 혼재. 캐시 일관성 + 트랜잭션 + 감사 로깅까지 모두 담당하여 책임 분리 위반. **→** 캐시 관리는 ProviderCache(interface) 구현체로 분리하고, ProviderRegistrationService는 상태 전이 로직만 담당. 캐시 저장/로드는 ProviderCache를 주입받아 사용.
-- [ ] **SE-012** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/RateLimitStore.kt:33-49` `InMemoryRateLimitStore.tryAcquire` (M) — InMemoryRateLimitStore 클래스는 단순 저장소 책임을 넘어 고정 윈도우 로직(시간 계산, 리셋, 카운팅)과 동시성 관리(@Synchronized)를 모두 처리한다. 저장소 역할과 윈도우 알고리즘 구현이 혼합돼 있다. **→** Window 상태 관리와 카운팅 로직을 별도 RateLimitAlgorithm 인터페이스로 추상화하고, RateLimitStore는 저장만 담당하게 분리. InMemoryRateLimitStore는 주입받은 알고리즘 위에 Window를 저장하는 책임만 수행.
-- [ ] **SE-013** `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:282-360` `route` (L) — route() 메서드가 328줄이며, 정책 확인·무게 판단·웹검색·후보 구성·필터·선택·전송·예외처리·로깅 등 8개 이상의 관심사를 다룸. god method. **→** route() 를 5개 메서드로 분해: validatePolicies()/weighRequest()/augmentPrompt()/selectAndDispatch()/handleDispatchError(). 각각 하나의 책임만.
-- [ ] **SE-014** `SRP` `provider-agent/src/provider_agent/agent.py:228` `ProviderAgent` (L) — ProviderAgent violates SRP by handling 10+ distinct responsibilities: WS connection lifecycle, image generation, text inference, daily limit tracking, concurrency control, guild policy management, connection registry, admin API routing, sync mechanism, UI/tray state. One class should not orchestrate all these concerns. **→** Extract into separate classes: InferenceOrchestrator, DailyLimitManager, ConcurrencyManager, ConnectionRegistry, AdminAPIGateway, SyncManager. ProviderAgent becomes a thin facade.
-- [ ] **SE-015** `SRP` `provider-agent/src/provider_agent/agent.py:382` `handle_infer` (L) — handle_infer mixes 4 concerns: (1) load/limit checking, (2) semaphore + resource-guarding, (3) inflight counter, (4) timeout enforcement. Then delegates to _run_infer for text/image/gemini routing. If limit changes, concurrency logic tweaks, or timeout shifts, method balloons. **→** Create RequestGate (checks limits, acquire semaphore, track inflight). Create InferenceRouter (routes text/image/gemini). handle_infer becomes: gate.acquire() -> router.route(). Enables independent testing.
-- [ ] **SE-016** `SRP` `provider-agent/src/provider_agent/agent.py:753` `admin_manage, admin_action, admin_set_policy, admin_prompt_sets, admin_prompt_set_add, admin_prompt_set_default, admin_prompt_set_delete, admin_channels, admin_channel_toggle, admin_channel_ai, admin_knowledge, admin_presets, admin_preset_delete, admin_knowledge_delete` (M) — 14 admin_* methods all follow identical pattern: (1) call _durable_token(), (2) check if empty, (3) call _agent_sync_base(), (4) call asyncio.to_thread(_post_*). Duplicates token-check boilerplate. Adding endpoint requires copy-paste. Changing token logic requires updating 14 methods. **→** Extract helper '_admin_api(endpoint_name, **kwargs) -> dict' handling token check, base URL, to_thread dispatch. Each method becomes 1 line.
-- [ ] **SE-017** `SRP` `provider-agent/src/provider_agent/config.py:126` `config_from_args` (L) — config_from_args (lines 126-222) has 97 lines doing: parse CLI → load env → load saved config → validate remote ollama → build AgentConfig → maybe save. Parsing priority logic intertwined with validation; 10+ local vars for precedence chains. **→** Extract ConfigResolver class taking (cli_args, env_dict, saved_config). Separate parsers: CliConfigParser, EnvConfigParser, SavedConfigParser with merge() strategy. config_from_args orchestrates only.
-- [ ] **SE-018** `SRP` `provider-agent/src/provider_agent/webui.py:363-1649` `build_app` (L) — build_app 함수가 아이콘 캐싱, 로그 핸들링, 60개+ 라우트 핸들러 정의, 앱 빌드, 스타트업 훅까지 모두 담당. 단일 함수가 웹 라우팅, 설정 저장, 에이전트 관리, OAuth, ComfyUI/Ollama 통합을 한 번에 처리. **→** 웹 라우트 빌더를 별도 클래스로 추출(RouteConfigurator), 캐싱은 AssetManager, 로그는 LogAttacher로 분리. build_app은 생성과 라우팅 조립만 담당하도록 축소.
+- [x] **SE-005** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:52` `PolicyService` (L) — PolicyService violates SRP by implementing 3 unrelated interfaces (RoutingPolicy, AutoApprovePolicy, GuildChannelPolicy) with 31 mixed methods. The class handles channel policies, role policies, guild settings, approval logic, and caching—disparate concerns that should be separate. **→** Extract each interface into its own service: ChannelPolicyService, RolePolicyService, GuildSettingsService, AutoApprovalService. Let each manage its own cache and eviction logic independently.
+- [x] **SE-006** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:86-202` `decisionSummary` (M) — decisionSummary 메서드가 117줄에 걸쳐 조회(92-97줄), 개수 집계(98-120줄), 위험코드 판정(122-147줄), 결정항목 매핑(148-184줄)을 모두 담당한다. 각 riskCode 판정(timeoutRate>=0.25, qualityScores.isEmpty(), ragContextStatus.startsWith())이 if-else로 흩어져 있다. **→** 위험 판정 로직을 RiskAssessment 클래스로 추출하고, decisionSummary는 조회 조합만 수행하도록 분리하라. 또는 riskCodes 계산을 computeRiskCodes(stats, runCandidates) 메서드로 추출하라.
+- [x] **SE-007** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:29-70` `MultiResponseService` (M) — MultiResponseService 클래스가 13개의 의존성을 주입받고, 정책 저장/실행 계획/후보 선정/보안/리포팅/피드백 등 다양한 책임을 혼재하고 있다. 실제로는 MultiResponseReportingService, MultiResponsePolicyResolver, ProviderFanoutSelector, MultiResponseFanoutPlanner 등이 분리되었지만, 서비스 내부에서 이들을 조합하는 조율 로직이 복잡하다. **→** MultiResponseService를 코디네이터 역할로 축소하고, startRunEntity와 startRuntimeObservation의 중복 로직(198줄~306줄)을 공통 메서드로 추출하여 SRP 위반을 완화하라. 또는 RunStartingStrategy 전략 패턴으로 분리하라.
+- [x] **SE-008** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:405` `Listener.onSlashCommandInteraction` (L) — Listener 클래스가 너무 많은 책임을 가짐: 이벤트 라우팅 + 명령 dispatch + 응답 렌더링 + 온보딩 + 설정 마법사 + 피드백 수집 + 채널 AI 프로필 관리. onSlashCommandInteraction 메서드 약 260줄 + 버튼/모달 핸들러 300줄+ 추가로 god class 상태. **→** CommandService 처럼 command handler 패턴으로 인터랙션 타입별(SlashCommand/Button/Modal/StringSelect 등) 전용 클래스로 분리해 각각 단일 책임 유지.
+- [~] **SE-009** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:378-453` `importPreset` (L) — importPreset 함수가 9개의 책임을 담당한다: 피발행 프리셋 조회, 원본 리비전 조회, 미리보기 빌드, 충돌 검증, 길드 사본 생성, 채널 적용, 임포트 기록 저장, 발행 카운트 증가, 원자성 관리. 함수의 길이는 70줄을 초과하며, 조건 분기(targetChannelId?.let, applied?.status)도 복잡하다. **→** 책임을 분리하여 PresetImportValidator(충돌 검증), PresetImportCopyCreator(길드 사본 생성), PresetImportPublisher(임포트 기록·카운트 관리) 등으로 나누고, importPreset은 이들을 오케스트레이션하는 파사드로 축소하라.
+- [x] **SE-010** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:46-94` `PresetRegistryService` (L) — PresetRegistryService 클래스가 14개의 저장소와 5개의 협력자 객체를 직접 주입받아 상태관리하며, write(createPreset, updatePreset, publishPreset, importPreset, likePreset, reportPreset, deletePreset 등), read-only 위임(catalogFacets, listPublishedPresets, searchPublishedPresets, presetDetail 등), 그리고 비즈니스 로직 제어(transitionTo, requirePublishable*, uniqueSlug 등)를 모두 담당하는 god class다. 프리셋 생성·발행·임포트·신고·보고 등 5개 이상의 독립적 책임을 하나의 클래스에서 담당하고 있다. **→** 책임을 분리하여 PresetPublishService(발행/취소), PresetImportService(임포트/미리보기), PresetReportingService(신고/검수), PresetModerationService(상태 전이) 등 단일 책임 클래스로 분리하고, PresetRegistryService는 생성/조회만 담당하게 축소하라.
+- [x] **SE-011** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:57` `ProviderRegistrationService.providers` (M) — ConcurrentHashMap의 메모리 캐시 관리(load/persist/deleteRow)와 도메인 상태 전이 정책(requestJoin/approve/reject/remove)을 같은 클래스에 혼재. 캐시 일관성 + 트랜잭션 + 감사 로깅까지 모두 담당하여 책임 분리 위반. **→** 캐시 관리는 ProviderCache(interface) 구현체로 분리하고, ProviderRegistrationService는 상태 전이 로직만 담당. 캐시 저장/로드는 ProviderCache를 주입받아 사용.
+- [x] **SE-012** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/RateLimitStore.kt:33-49` `InMemoryRateLimitStore.tryAcquire` (M) — InMemoryRateLimitStore 클래스는 단순 저장소 책임을 넘어 고정 윈도우 로직(시간 계산, 리셋, 카운팅)과 동시성 관리(@Synchronized)를 모두 처리한다. 저장소 역할과 윈도우 알고리즘 구현이 혼합돼 있다. **→** Window 상태 관리와 카운팅 로직을 별도 RateLimitAlgorithm 인터페이스로 추상화하고, RateLimitStore는 저장만 담당하게 분리. InMemoryRateLimitStore는 주입받은 알고리즘 위에 Window를 저장하는 책임만 수행.
+- [~] **SE-013** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:282-360` `route` (L) — route() 메서드가 328줄이며, 정책 확인·무게 판단·웹검색·후보 구성·필터·선택·전송·예외처리·로깅 등 8개 이상의 관심사를 다룸. god method. **→** route() 를 5개 메서드로 분해: validatePolicies()/weighRequest()/augmentPrompt()/selectAndDispatch()/handleDispatchError(). 각각 하나의 책임만.
+- [~] **SE-014** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) `SRP` `provider-agent/src/provider_agent/agent.py:228` `ProviderAgent` (L) — ProviderAgent violates SRP by handling 10+ distinct responsibilities: WS connection lifecycle, image generation, text inference, daily limit tracking, concurrency control, guild policy management, connection registry, admin API routing, sync mechanism, UI/tray state. One class should not orchestrate all these concerns. **→** Extract into separate classes: InferenceOrchestrator, DailyLimitManager, ConcurrencyManager, ConnectionRegistry, AdminAPIGateway, SyncManager. ProviderAgent becomes a thin facade.
+- [~] **SE-015** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) `SRP` `provider-agent/src/provider_agent/agent.py:382` `handle_infer` (L) — handle_infer mixes 4 concerns: (1) load/limit checking, (2) semaphore + resource-guarding, (3) inflight counter, (4) timeout enforcement. Then delegates to _run_infer for text/image/gemini routing. If limit changes, concurrency logic tweaks, or timeout shifts, method balloons. **→** Create RequestGate (checks limits, acquire semaphore, track inflight). Create InferenceRouter (routes text/image/gemini). handle_infer becomes: gate.acquire() -> router.route(). Enables independent testing.
+- [x] **SE-016** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `SRP` `provider-agent/src/provider_agent/agent.py:753` `admin_manage, admin_action, admin_set_policy, admin_prompt_sets, admin_prompt_set_add, admin_prompt_set_default, admin_prompt_set_delete, admin_channels, admin_channel_toggle, admin_channel_ai, admin_knowledge, admin_presets, admin_preset_delete, admin_knowledge_delete` (M) — 14 admin_* methods all follow identical pattern: (1) call _durable_token(), (2) check if empty, (3) call _agent_sync_base(), (4) call asyncio.to_thread(_post_*). Duplicates token-check boilerplate. Adding endpoint requires copy-paste. Changing token logic requires updating 14 methods. **→** Extract helper '_admin_api(endpoint_name, **kwargs) -> dict' handling token check, base URL, to_thread dispatch. Each method becomes 1 line.
+- [~] **SE-017** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) `SRP` `provider-agent/src/provider_agent/config.py:126` `config_from_args` (L) — config_from_args (lines 126-222) has 97 lines doing: parse CLI → load env → load saved config → validate remote ollama → build AgentConfig → maybe save. Parsing priority logic intertwined with validation; 10+ local vars for precedence chains. **→** Extract ConfigResolver class taking (cli_args, env_dict, saved_config). Separate parsers: CliConfigParser, EnvConfigParser, SavedConfigParser with merge() strategy. config_from_args orchestrates only.
+- [~] **SE-018** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) `SRP` `provider-agent/src/provider_agent/webui.py:363-1649` `build_app` (L) — build_app 함수가 아이콘 캐싱, 로그 핸들링, 60개+ 라우트 핸들러 정의, 앱 빌드, 스타트업 훅까지 모두 담당. 단일 함수가 웹 라우팅, 설정 저장, 에이전트 관리, OAuth, ComfyUI/Ollama 통합을 한 번에 처리. **→** 웹 라우트 빌더를 별도 클래스로 추출(RouteConfigurator), 캐싱은 AssetManager, 로그는 LogAttacher로 분리. build_app은 생성과 라우팅 조립만 담당하도록 축소.
 - [ ] **SE-019** `OCP` `prototypes/desktop/adapter.js:188-670` `api` (M) — 새 엔드포인트 추가 시 adapter.js 의 api 객체에 새 메서드를 매번 수동 추가해야 함. 엔드포인트 목록(contract.js ENDPOINTS)이 있어도, 코드 생성이나 고차 함수로 자동화하지 않아 OCP 위반(확장이 수정을 요구). **→** adapter 메서드를 generateApiMethods(ENDPOINTS) 같은 고차 함수로 동적 생성. 예: Object.entries(ENDPOINTS).reduce((api, [key, path]) => ({...api, [key]: (body) => http(path, body)})). 새 엔드포인트는 contract.js ENDPOINTS 만 추가하면 자동 반영.
 - [ ] **SE-020** `OCP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIngestionService.kt:217` `addSourceWithInlineIndexing` (M) — addSourceWithInlineIndexing()가 indexing 파라미터 null 체크에 따라 동작을 결정한다. 새 인덱싱 백엔드 추가 시마다 null 체크 로직을 수정해야 한다(폐쇄 원칙 위반). **→** 전략 패턴: `interface KnowledgeSourceIndexer { fun indexIfPossible(...): InlineKnowledgeIndexingResult }` 인터페이스를 정의하고, `NoKnowledgeIndexer` (아무것도 안 함), `KnowledgeIndexingService` 구현으로 분리. 조건부 호출 대신 다형성 사용.
-- [ ] **SE-021** `OCP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:296` `Listener.onSlashCommandInteraction` (L) — 명령 dispatcher (dispatch 메서드, line 846~1065) 가 거대한 when 분기(약 200+ 줄, 50+ 명령)를 모두 직렬로 나열. 새 명령이 추가될 때마다 이 메서드를 수정해야 하고, 실행 로직이 모두 호출 싱글톤인 CommandService 에 분산됨. **→** Command 전략 인터페이스를 정의하고, 명령이름->Command 맵으로 관리. CommandRegistry 패턴 또는 @SlashCommand 애너테이션 기반 자동 등록으로 when 제거.
+- [x] **SE-021** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `OCP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:296` `Listener.onSlashCommandInteraction` (L) — 명령 dispatcher (dispatch 메서드, line 846~1065) 가 거대한 when 분기(약 200+ 줄, 50+ 명령)를 모두 직렬로 나열. 새 명령이 추가될 때마다 이 메서드를 수정해야 하고, 실행 로직이 모두 호출 싱글톤인 CommandService 에 분산됨. **→** Command 전략 인터페이스를 정의하고, 명령이름->Command 맵으로 관리. CommandRegistry 패턴 또는 @SlashCommand 애너테이션 기반 자동 등록으로 when 제거.
 - [ ] **SE-022** `DIP` `prototypes/desktop/adapter.js:12, 14-186` `USE_MOCK, _setup, MOCK` (M) — mock/real 전환이 boolean flag USE_MOCK = true/false 로 하드코딩되어 있음. adapter 내 모든 메서드가 if(USE_MOCK) 로 분기하므로, 구체 구현(mock 데이터)에 의존(상위 정책이 구체에 의존). **→** DataSource 인터페이스를 추상화: (1) interface DataSource { getServers(), getStatus(), ... }  (2) class MockDataSource implements DataSource { ... } (3) class RealDataSource implements DataSource { ... } (4) api 객체는 주입된 DataSource 를 사용. USE_MOCK boolean 대신 DI 컨테이너가 new MockDataSource() 또는 new RealDataSource() 를 선택.
-- [ ] **SE-023** `DIP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:39-50` `ChannelAiCustomizationService constructor` (M) — Direct concrete instantiation of 5 collaborators (presetFactory, promptRenderer, onboardingPresenter, approvalPolicy, proposalQuery, auditRecorder, behaviorVersionWriter) with hardcoded defaults inside constructor, making them un-injectable in tests without mocking the entire service. **→** Make all 7 private constructor parameters required (not optional with `= ` defaults). Remove inline initialization; require injection from Spring context. Tests can then inject mocks via constructor for focused unit tests.
+- [x] **SE-023** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) `DIP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:39-50` `ChannelAiCustomizationService constructor` (M) — Direct concrete instantiation of 5 collaborators (presetFactory, promptRenderer, onboardingPresenter, approvalPolicy, proposalQuery, auditRecorder, behaviorVersionWriter) with hardcoded defaults inside constructor, making them un-injectable in tests without mocking the entire service. **→** Make all 7 private constructor parameters required (not optional with `= ` defaults). Remove inline initialization; require injection from Spring context. Tests can then inject mocks via constructor for focused unit tests.
 - [ ] **SE-024** `DIP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:287` `Listener` (M) — Listener 생성자에서 CommandService, CommandMetrics, ChannelAiProfileService, DiscordGatewayStatus 등 9개 의존성을 직접 받고, 내부에서 DiscordAnswerRenderer, ChannelProfilePanelRenderer, OnboardingInteractionHandler 를 직접 new 로 생성(line 290~294). 각 협력자가 또 다른 의존성을 가지므로 결합도 매우 높음. **→** 모든 협력자를 Spring @Component 로 선언하고 생성자 주입받기. 또는 Factory 패턴으로 렌더러 생성 책임 분리.
 - [x] **SE-025** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/GuildRemovalCleanupService.kt:26` `cleanup` (M) — cleanup() calls 8 delete/clear operations sequentially with no exception handling. If deleteProviders() or clearGuild() throws, the transaction rolls back partially, leaving the guild in an inconsistent state (e.g., registry closed but channel profiles not cleared). No recovery or partial rollback logic. **→** Use try-catch to attempt all deletions, collect failures, then either roll back the entire transaction or re-throw a composite exception listing which steps failed. Or use a saga pattern with compensating transactions.
 - [x] **SE-026** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/adapter/inbound/web/KnowledgeIngestionController.kt:76` `indexingService` (M) — indexingService() 메서드가 처리 불가능한 `IllegalStateException`을 throw한다. null 값 점검은 optional 필드 처리이므로 잡으면 안 되고, 빈 미구성 상황은 호출 전에 검증해야 한다. **→** Spring 컨텍스트 시작 시점에 빈 의존성 검증하거나, 호출자가 indexing 필드를 @Nullable로 문서화하고 조건부 호출하도록 변경. Exception throw 대신 설정 가능한 빈 구성으로 해결.
@@ -143,7 +143,7 @@
 
 ### central · routing — 17건
 
-- [ ] **SE-013** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:282-360` `route` (L)
+- [~] **SE-013** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:282-360` `route` (L)
   - route() 메서드가 328줄이며, 정책 확인·무게 판단·웹검색·후보 구성·필터·선택·전송·예외처리·로깅 등 8개 이상의 관심사를 다룸. god method.
   - **Fix:** route() 를 5개 메서드로 분해: validatePolicies()/weighRequest()/augmentPrompt()/selectAndDispatch()/handleDispatchError(). 각각 하나의 책임만.
 - [x] **SE-051** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:329` `route` (M)
@@ -155,10 +155,10 @@
 - [ ] **SE-139** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/RoutingReservationManager.kt:101-173` `MutableProviderReservationState` (M)
   - private class MutableProviderReservationState 가 reservation/release/snapshot 을 다루는데, 동시성 제어(@Synchronized), 쿼터 관리, 토큰 계산 등 3가지 책임 혼재.
   - **Fix:** QuotaManager, TokenReserver, ConcurrencyGuard 로 분리. 각각 하나의 관심사만.
-- [ ] **SE-154** 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/ProviderFilterPipeline.kt:115-207` `ProviderFilterPipeline.filter` (L)
+- [~] **SE-154** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/ProviderFilterPipeline.kt:115-207` `ProviderFilterPipeline.filter` (L)
   - 필터 단계(Step)가 29개 하드코딩 리스트로, 새 필터 추가마다 이 리스트를 수정해야 함. 폐쇄-개방 위반.
   - **Fix:** FilterStrategy 인터페이스로 추상화하고, 각 필터(RoleMatchFilter, QuotaFilter 등)를 구현 클래스로. 리스트 대신 composition 또는 chain of responsibility 패턴 사용.
-- [ ] **SE-159** 🟡 `LSP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:398-405` `isTimeoutFailure` (S)
+- [x] **SE-159** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `LSP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:398-405` `isTimeoutFailure` (S)
   - isTimeoutFailure() 헬퍼는 while 루프로 cursor?.cause 를 추적하나, CompletionException 만 특별 처리. 다른 wrapper 타입(ExecutionException 등)은 누락 가능.
   - **Fix:** 예외 타입 상속 계층을 명시적으로 문서화하고, Throwable.unwrap(): Throwable 헬퍼로 분리. 예외 원인을 일관되게 추출.
 - [ ] **SE-166** 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt:33-48, 50-72` `profilesFor` (S)
@@ -176,13 +176,13 @@
 - [x] **SE-314** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/RoutingDualVariableManager.kt:54-92` `recordOutcome` (S)
   - shouldUpdateSlo(input), finitePressure(), providerFailureSample() 등 검증 헬퍼를 호출하지만, 반환값이 null 이어도 계속 진행. "soft" 실패로 조용히 처리되는 문제.
   - **Fix:** validateInput(input): DualUpdateInput 타입에서 기본값이나 invariant 를 빨리 검사. 잘못된 입력은 즉시 예외 또는 early return 으로 fail-fast.
-- [ ] **SE-329** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/HaloGfScoreModel.kt:22-110` `scoreResult` (M)
+- [x] **SE-329** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/HaloGfScoreModel.kt:22-110` `scoreResult` (M)
   - scoreResult() 메서드가 85줄로 스코어 산출, 확률 모델, 손실 함수, 보너스 계산, 검증 등을 다룸. 단일 책임 위반.
   - **Fix:** GainCalculator, SloCalculator, BurdenCalculator, BonusCalculator 로 분리하여 composition 사용.
 - [ ] **SE-330** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/RoutingAttemptLifecycleManager.kt:43-105` `RoutingAttemptLifecycleManager` (M)
   - RoutingAttemptLifecycleManager 가 attempts 맵 관리, 시작/종료 상태 추적, 협력자(reservationManager, stats, duals, auditLogger) 호출 등 4가지 책임 혼재.
   - **Fix:** AttemptState 와 AttemptExecutor 로 분리. 상태 관리는 AttemptState 에, 협력자 조율은 AttemptExecutor 에.
-- [ ] **SE-338** ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:152-361` `route` (M)
+- [~] **SE-338** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:152-361` `route` (M)
   - repeat { } 루프 내 attempt 카운터가 있지만, 각 시도(attempt 0, 1)에서 서로 다른 검증/필터/선택 로직 사용 불가. maxRetryCount + 1 번 동일 로직 반복.
   - **Fix:** DispatchAttempt(attemptNumber, isRetry) sealed interface 로 분리하여, 첫 시도와 재시도 경로를 명확히 분기.
 - [ ] **SE-342** ⚪ `DIP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/ProviderRouter.kt:20-22` `ProviderRouter` (S)
@@ -221,13 +221,13 @@
 - [x] **SE-050** ✅FIXED(decode catch를 JacksonException으로 좁힘(그 외 전파)) 🔴 `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/relay/protocol/FrameCodec.kt:43` `FrameCodec.decode` (S)
   - Line 43 catches generic `Exception` instead of specific Jackson deserialization exceptions. This masks unknown error types that should fail fast, conflating parsing errors with unrelated failures.
   - **Fix:** Replace `catch (e: Exception)` with `catch (e: JsonMappingException)` or similar specific Jackson exceptions. Only catch what you can meaningfully handle; let unknown exceptions propagate.
-- [ ] **SE-136** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/relay/ConnectionRegistry.kt:18` `ConnectionRegistry` (M)
+- [x] **SE-136** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/relay/ConnectionRegistry.kt:18` `ConnectionRegistry` (M)
   - ConnectionRegistry (18-145) manages two orthogonal concerns: provider-guild session mapping (byProviderGuild, register, byProvider) and guild pool lifecycle (byGuild, closeGuild, closeProviderInGuild, evict). Mixing data structure queries with session lifecycle.
   - **Fix:** Extract GuildProviderPool (manages byGuild, handles closeGuild/closeProviderInGuild). Keep Registry thin for provider-guild lookups. Pool handles eviction/cleanup separately.
-- [ ] **SE-137** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/relay/ProviderSession.kt:47` `ProviderSession` (L)
+- [~] **SE-137** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/relay/ProviderSession.kt:47` `ProviderSession` (L)
   - ProviderSession class (47-346) conflates state machine logic (transitionTo, applyHello, applyStatus), request lifecycle (sendInfer, sendInferStream, sendImage), stream handling (streams map, queue.poll loops), and failure recovery (consecutiveFailures, FAILURE_THRESHOLD). 300+ lines doing ~5 distinct things.
   - **Fix:** Extract RequestLifecycle handler (handles pending map, timeout logic), StreamHandler (manages streams queue, chunks), HealthMonitor (tracks failures, state transitions). Keep ProviderSession as thin facade coordinating these.
-- [ ] **SE-138** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/relay/RelayWebSocketHandler.kt:31` `RelayWebSocketHandler` (M)
+- [x] **SE-138** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/relay/RelayWebSocketHandler.kt:31` `RelayWebSocketHandler` (M)
   - RelayWebSocketHandler (31-205) mixes concerns: WebSocket lifecycle (afterConnectionEstablished, afterConnectionClosed), frame routing logic (handleTextMessage, authenticate), maintenance scheduling (maintenance), and upstream integration (syncProviderHello, markProviderOffline). 200+ lines.
   - **Fix:** Extract FrameDispatcher (route frames to ProviderSession), AuthenticationHandler (verify token, send auth frames), MaintenanceScheduler (@Scheduled methods). Handler becomes thin orchestrator.
 - [x] **SE-220** ✅FIXED(evict close 실패 debug→warn+컨텍스트(루프 resilience상 broad 유지)) 🟡 `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/relay/ConnectionRegistry.kt:46` `ConnectionRegistry.evict` (S)
@@ -251,7 +251,7 @@
 
 ### central · provider — 19건
 
-- [ ] **SE-011** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:57` `ProviderRegistrationService.providers` (M)
+- [x] **SE-011** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:57` `ProviderRegistrationService.providers` (M)
   - ConcurrentHashMap의 메모리 캐시 관리(load/persist/deleteRow)와 도메인 상태 전이 정책(requestJoin/approve/reject/remove)을 같은 클래스에 혼재. 캐시 일관성 + 트랜잭션 + 감사 로깅까지 모두 담당하여 책임 분리 위반.
   - **Fix:** 캐시 관리는 ProviderCache(interface) 구현체로 분리하고, ProviderRegistrationService는 상태 전이 로직만 담당. 캐시 저장/로드는 ProviderCache를 주입받아 사용.
 - [x] **SE-029** ✅FIXED(scheduledEnforce top-level try-catch로 주기 실패 격리+cause 로그) 🔴 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderScheduleService.kt:73-76` `ProviderScheduleService.scheduledEnforce()` (S)
@@ -269,7 +269,7 @@
 - [x] **SE-097** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외8 자원정리` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:70-81` `ProviderRegistrationService.persist()` (S)
   - persist()는 파일/DB 자원을 건드리지만 트랜잭션 처리 없음. repo?.findByProviderUserIdAndGuildId()는 nullable이므로 NPE 가능성 있고, save()가 예외 발생 시 롤백 보장 안 됨.
   - **Fix:** @Transactional을 persist()에 추가하거나, 호출처(requestJoin/approve 등)의 @Transactional으로 확장되 try-catch 대신 선언형 트랜잭션 경계를 명확히 함.
-- [ ] **SE-165** 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:186-193` `ProviderRegistrationService.approve(providerId, adminId)` (M)
+- [x] **SE-165** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:186-193` `ProviderRegistrationService.approve(providerId, adminId)` (M)
   - overload approve(providerId, guildId, adminId) vs approve(providerId, adminId)로 두 개 메서드. 두 번째는 단일 등록 검증만 함. 같은 기능을 두 인터페이스로 노출하면 호출처가 둘을 구분해 선택해야 하는 복잡성 증가.
   - **Fix:** approve(providerId, adminId)를 제거하거나, 명시적 helper 메서드로 분리(예: approveSingleOrNull()). 클라이언트는 항상 (providerId, guildId, adminId) 3개 파라미터로 호출.
 - [ ] **SE-178** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/outbound/persistence/ProviderRepositories.kt:11-28` `ProviderRepository` (M)
@@ -314,34 +314,34 @@
 - [~] **SE-004** 🔧PARTIAL(ChannelAiAccessControlService 추출=4책임 중 접근제어/admin역할 1개 완료, 위저드/승인 잔여) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:28-50` `ChannelAiCustomizationService` (L)
   - God class with 712 lines mixing 7+ responsibilities: wizard creation, rollback, proposal approval/rejection, admin role management, audit recording, prompt preview, onboarding, custom instruction. Single class handles feature gates, permission checks, TX management, entity persistence, domain logic, and presentation mapping.
   - **Fix:** Extract 4 separate service classes: (1) ChannelAiWizardOrchestrator (create/rollback flows), (2) ChannelAiProposalApprovalService (approve/reject), (3) ChannelAiAdminRoleService (role management), (4) ChannelAiAccessControlService (permission logic). Keep ChannelAiCustomizationService as thin facade delegating to each.
-- [ ] **SE-023** 🔴 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:39-50` `ChannelAiCustomizationService constructor` (M)
+- [x] **SE-023** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:39-50` `ChannelAiCustomizationService constructor` (M)
   - Direct concrete instantiation of 5 collaborators (presetFactory, promptRenderer, onboardingPresenter, approvalPolicy, proposalQuery, auditRecorder, behaviorVersionWriter) with hardcoded defaults inside constructor, making them un-injectable in tests without mocking the entire service.
   - **Fix:** Make all 7 private constructor parameters required (not optional with `= ` defaults). Remove inline initialization; require injection from Spring context. Tests can then inject mocks via constructor for focused unit tests.
 - [x] **SE-034** ✓REVIEWED-CLEAN(DataIntegrityViolationException 좁혀 잡고 재시도(이미 정확)) 🔴 `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/BehaviorVersionWriter.kt:36-57` `saveNextBehaviorVersion` (M)
   - Catches generic org.springframework.dao.DataIntegrityViolationException at line 47 without checking for the specific constraint (UK_ai_behavior_version). Any integrity violation (FK, unique, check) triggers retry loop, masking true errors (FK cascade failure, malformed data) as retryable conflicts.
   - **Fix:** Inspect exception.cause or constraint name before retry. Wrap DataIntegrityViolationException with specific handler: if unique_version_conflict, retry; else rethrow with cause preserved as EXC-7. Extract VersionConflictException(cause) to clarify intent.
-- [ ] **SE-113** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiApprovalPolicy.kt:17-54` `approvalDecision` (M)
+- [x] **SE-113** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiApprovalPolicy.kt:17-54` `approvalDecision` (M)
   - approvalDecision method mixes 5 concerns: behavior risk classification (safety level, answer length, risky terms, sensitive material, constitution size), approval policy decision (requestedApproval=true always requires), and fallback logic. ~40 lines of decision logic with 6 risk checks scattered inline.
   - **Fix:** Extract RiskClassifier with riskReason(behavior): String? returning concrete risk type. Extract ApprovalPolicyEngine with apply(requestedApproval, riskReason): ApprovalDecision. Compose: approvalDecision() = engine.apply(requested, classifier.riskReason(b)).
-- [ ] **SE-114** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:689-697` `audit` (M)
+- [x] **SE-114** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:689-697` `audit` (M)
   - Audit side-effect logic (7 parameters) scattered inline as private method delegating to auditRecorder. Called 10+ times across service. Audit is a separate cross-cutting concern bloating every business method signature and body.
   - **Fix:** Extract AuditingChannelAiCustomizationServiceDecorator or use @Around aspect to intercept methods, extracting guildId/channelId/actorUserId from @Auditable annotation on methods, decoupling audit from service logic.
-- [ ] **SE-115** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:83, 191, 300, 378, 455, 512` `requireCanManageChannelAi` (M)
+- [x] **SE-115** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:83, 191, 300, 378, 455, 512` `requireCanManageChannelAi` (M)
   - Permission check logic (canManageChannelAi + requireCanManageChannelAi) inlined in business methods (createFromWizard, rollback, proposeCustomInstruction, approveProposal, rejectProposal, replaceAiAdminRoles). Same checks duplicated 6+ times across methods.
   - **Fix:** Extract a single @Transactional-aware aspect or decorator ChannelAiAccessControlService to centralize permission enforcement. Business methods should call service.requireCanManage() once, then proceed with business logic.
-- [ ] **SE-116** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiProfileService.kt:60-124` `ChannelAiProfileService.set` (M)
+- [x] **SE-116** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiProfileService.kt:60-124` `ChannelAiProfileService.set` (M)
   - set() method (65 lines) mixes 4 concerns: profile validation (normalize name/avatar), entity persistence (save channelAi), version allocation (nextVersion calc + save), proposal creation (auto-approve), audit recording. No separation between profile update and version/proposal side effects.
   - **Fix:** Extract ChannelAiProfileUpdater(repository) with updateProfile(channelAi, name, avatar): ChannelAiEntity. Inject into set(). Also extract BehaviorVersionAllocator(versionRepo) with allocateNextVersion(channelAiId, previous, params): AiBehaviorVersionEntity. set() orchestrates: updater.update() → allocator.allocate() → proposals.save() → audit().
 - [ ] **SE-117** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiPromptRenderer.kt:22-96` `promptPreview` (M)
   - promptPreview method mixes 5 responsibilities: fetch active behavior (DB query), fill defaults, apply sensitivity detection, build system prompt sections (safety, identity, custom instruction, behavior, RAG, question), concatenate strings. 75 lines of string templating + DB logic in single method.
   - **Fix:** Extract SystemPromptBuilder with sections(purpose, tone, answerLength, constitution, customInstruction, sensitive, rag): List<Section>, then render(sections): String. Extract RagContextHandler(ragText, sensitive): String? for RAG section logic. promptPreview delegates to fetch behavior, then: promptRenderer.render(behavior).
-- [ ] **SE-118** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiProposalQueryService.kt:27-75` `proposalReviewSummary` (L)
+- [x] **SE-118** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiProposalQueryService.kt:27-75` `proposalReviewSummary` (L)
   - proposalReviewSummary method performs 5+ concerns: fetch all proposals, filter by status, count statuses, map reasons, classify risk codes, generate next actions, aggregate pending/recent items. ~48 lines of imperative aggregation logic mixed with business rules (risk detection strings at lines 50-52).
   - **Fix:** Extract ProposalAggregator.aggregate(allProposals): ProposalStats (status counts, reason counts). Extract RiskCodeClassifier.classifyRisks(pending): Set<String> with tests per risk type. Extract ActionItemGenerator.generate(stats, pending): List<String>. Compose them in proposalReviewSummary().
-- [ ] **SE-146** 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiProfileService.kt:88-89` `ChannelAiProfileService.set, version allocation` (M)
+- [x] **SE-146** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiProfileService.kt:88-89` `ChannelAiProfileService.set, version allocation` (M)
   - Version allocation logic duplicated inline in ChannelAiProfileService.set (lines 88-89: nextVersion = max+1) and BehaviorVersionWriter.saveNextBehaviorVersion (line 44). Two different implementations: ProfileService uses simple query, Writer uses pessimistic lock. No consistency, no single rule for version numbering.
   - **Fix:** Inject BehaviorVersionWriter into ChannelAiProfileService. Replace lines 88-89 with behaviorVersionWriter.saveNextBehaviorVersion(channelAiId, ::buildBehavior). Both paths use same lock/retry semantics. Violates O (open for extension): new versioning strategy requires editing both classes.
-- [ ] **SE-161** 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiApprovalPolicy.kt:56-60` `String.looksSensitive` (M)
+- [x] **SE-161** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiApprovalPolicy.kt:56-60` `String.looksSensitive` (M)
   - Identical looksSensitive() extension implemented on String in both ChannelAiApprovalPolicy (lines 57-60) and ChannelAiPromptRenderer (lines 98-102). No shared interface or single utility class. Code duplication creates maintenance burden and drift risk (patterns could diverge).
   - **Fix:** Extract SensitiveContentDetector as @Component with isSensitive(text): Boolean method. Inject into both ChannelAiApprovalPolicy and ChannelAiPromptRenderer. Remove duplicate extension methods. Single source of truth for sensitivity patterns.
 - [x] **SE-240** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:432-433` `applyRoutingSnapshot` (S)
@@ -356,10 +356,10 @@
 - [x] **SE-296** ✓REVIEWED-CLEAN(throw에 ex cause 이미 전달(이미 준수)) 🟡 `예외7 cause보존` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/BehaviorVersionWriter.kt:47` `saveNextBehaviorVersion catch block` (M)
   - Exception chain broken: catch DataIntegrityViolationException(ex) at line 47, but new IllegalStateException(message, ex) at line 50 preserves 'ex' as cause. However, retry loop continues on line 41 ('while true') silently for MAX_VERSION_RETRIES=5 without logging each attempt context (version tried, timestamp, exception detail).
   - **Fix:** Log each retry attempt with attempt count, last exception class, SQL state code: logger.warn('Version retry {}; constraint: {}', attempt, ex.sqlException?.sqlState). Preserve ex as cause in final exception EXC-7 compliant.
-- [ ] **SE-321** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:683-687` `sha256` (S)
+- [x] **SE-321** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:683-687` `sha256` (S)
   - Private SHA-256 hashing method (4 lines) embedded in ChannelAiCustomizationService. Hash calculation is cross-cutting utility duplicated elsewhere (AiBehaviorVersionEntity, proposals). No reuse.
   - **Fix:** Extract HashUtility or PayloadHashCalculator object with static payloadHash(id, version, purpose, tone, ...) method. Inject where needed or call directly.
-- [ ] **SE-322** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:699-710` `normalize, normalizeOptional` (S)
+- [x] **SE-322** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiCustomizationService.kt:699-710` `normalize, normalizeOptional` (S)
   - Two private string normalization helper methods (normalize/normalizeOptional) duplicated identically in ChannelAiCustomizationService and ChannelAiProfileService (lines 699-704 here, 213-224 in ProfileService). String trimming/blank/take logic repeated across domain.
   - **Fix:** Extract shared object StringNormalizer with public static normalize() and normalizeOptional() used by both services. Single source for field length/blank handling rules.
 - [x] **SE-350** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) ⚪ `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiProposalQueryService.kt:50-51` `proposalReviewSummary risk detection` (S)
@@ -389,13 +389,13 @@
 - [ ] **SE-158** 🟡 `LSP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIngestionService.kt:159` `addSource` (M)
   - sourceValidator.validateSource()가 SourceValidation(riskLevel, initialStatus)를 반환하지만, addSource()가 이를 해석할 때 validation.riskLevel과 validation.initialStatus 사이의 계약이 불명확하다. 예를 들어 riskLevel="review"면 항상 REVIEW status인가? 일관성 확인이 어렵다.
   - **Fix:** SourceValidation 대신 상태를 나타내는 폐쇄형 sealed class로 변경: `sealed class SourceValidationResult { data class Valid(...) : ..., data class Blocked(...) : ... }` 로 LSP를 지켜 각 상태의 계약을 명확히.
-- [ ] **SE-163** 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeSourceValidator.kt:32` `validateUri` (M)
+- [x] **SE-163** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeSourceValidator.kt:32` `validateUri` (M)
   - validateUri()가 URI 검증의 일부(호스트 명 추출, 정규식 매칭, IP 파싱)를 여러 private 헬퍼 메서드로 분산하고 있다. 각 헬퍼는 역할이 다르지만(규범성 검증, 보안 검증, 형식 파싱) 하나의 메서드에서 모두 호출된다. 인터페이스 분리가 필요하다.
   - **Fix:** URI 검증을 역할별로 인터페이스로 추출: `UriValidator` (스킴/userinfo 체크), `HostBlocklistChecker` (localhost/.local 차단), `IpAddressBlocker` (CIDR/루프백 차단). 각각 주입 받아 호출하기.
-- [ ] **SE-173** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/adapter/inbound/web/KnowledgeIngestionController.kt:134` `addSource` (M)
+- [x] **SE-173** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/adapter/inbound/web/KnowledgeIngestionController.kt:134` `addSource` (M)
   - KnowledgeIngestionController가 search 필드에 KnowledgeSearchService를 직접 주입받지만, search(guildId, ...)만 호출하고 다른 메서드(promptContext, contextPlan, evaluate)는 사용하지 않는다. 인터페이스 분리 원칙 위반(ISP 유사).
   - **Fix:** KnowledgeSearchService를 두 인터페이스로 분리: `KnowledgeSearcher` (search만), `KnowledgeContextBuilder` (promptContext/contextPlan/evaluate). 컨트롤러는 필요한 것만 주입받기.
-- [ ] **SE-174** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIngestionService.kt:172` `addSource` (S)
+- [x] **SE-174** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIngestionService.kt:172` `addSource` (S)
   - KnowledgeIngestionService가 KnowledgeSourceValidator를 생성자로 주입받지만 구체 인스턴스(`KnowledgeSourceValidator()`)를 new로 만들어 초기화한다. 이는 의존성 역전 원칙 위반으로 테스트에서 Mock 주입이 어렵다.
   - **Fix:** sourceValidator를 생성자 파라미터로 주입받으면서 기본값을 제거. `private val sourceValidator: KnowledgeSourceValidator` 로 Spring이 @Component를 찾아 주입하게 하기.
 - [x] **SE-216** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/knowledge/application/KnowledgeIndexingService.kt:142` `completeIndexJob` (M)
@@ -443,10 +443,10 @@
 - [x] **SE-096** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외8 자원정리` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/adapter/inbound/web/InstallPageController.kt:32` `InstallPageController.render` (S)
   - `ClassPathResource(...).inputStream.use { it.readBytes().toString(...) }` 로 파일을 읽는데, 파일이 없거나 읽기 실패 시 예외가 전파되어 400/500 응답이 된다. 시작 시에만 호출되므로 구동 오류로 이어진다.
   - **Fix:** 시작 시 파일 존재 여부 검증(`require(ClassPathResource(...).exists())`)을 추가하고, 읽기 실패 시 초기화 예외(`IllegalStateException("install.html 읽기 실패", e)`)를 발생시켜 구동 실패 원인을 명확히.
-- [ ] **SE-129** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/GuildOnboardingService.kt:82-191` `GuildOnboardingService.startOnboarding` (M)
+- [x] **SE-129** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/GuildOnboardingService.kt:82-191` `GuildOnboardingService.startOnboarding` (M)
   - 이 메서드가 권한 검사(`requireCanManageChannelAi`), 동의 저장, draft 생성, 제안 생성, RAG 색인, run 추적을 모두 처리해 책임이 과하다(7개 관심사). 트랜잭션 경계(`@Transactional`)도 복잡하다.
   - **Fix:** 온보딩 본체(`consent`+`proposal`+`run`)와 색인(`indexBackfill`)을 분리된 서비스로 나누어, 각 메서드가 한 가지만 담당하도록 리팩터링.
-- [ ] **SE-164** 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/adapter/outbound/DiscordOAuth.kt:27-141` `DiscordOAuthClient` (M)
+- [x] **SE-164** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/adapter/outbound/DiscordOAuth.kt:27-141` `DiscordOAuthClient` (M)
   - `DiscordOAuthClient` 인터페이스는 3개 메서드를 모두 강제하는데, 일부 구현(`FakeOAuth`)이 특정 메서드만 필요할 수 있다(ISP 위반). 또한 반환 타입(nullable)이 결정되어 있어 구현 확장이 어렵다.
   - **Fix:** 인터페이스를 역할별로 분리(`TokenExchanger`, `UserFetcher`, `GuildFetcher`)하거나, 구현이 원하는 메서드만 선택적으로 제공하도록 추상화 수준을 조정.
 - [x] **SE-191** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/GuildOnboardingService.kt:242-253` `GuildOnboardingService.indexBackfillIfPresent` (M)
@@ -470,7 +470,7 @@
 - [x] **SE-310** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/GuildOnboardingService.kt:301-314` `GuildOnboardingService.markRunStatus` (S)
   - run이 없을 때 `log.warn("onboarding run not found for proposalId={}; status '{}' left untracked", ...)` 로 로그만 남기는데, 데이터 불일치가 원인(누락된 run)인지 동시성 오류인지 알 수 없다. 반환값 없어 호출부도 오류를 감지 못한다.
   - **Fix:** run 부재를 명시적 예외(`OnboardingRunNotFoundException(proposalId)`)로 던지거나, `Result<Unit>` 로 감싼 후 호출부에서 처리. 로그에도 데이터베이스 상태(proposal 존재 여부)를 함께 기록.
-- [ ] **SE-327** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/GuildHistoryBackfillService.kt:74-109` `GuildHistoryBackfillService.sanitizeMessages` (M)
+- [x] **SE-327** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/GuildHistoryBackfillService.kt:74-109` `GuildHistoryBackfillService.sanitizeMessages` (M)
   - 이 메서드가 필터링(봇/웹훅/opt-out 제외), 민감정보 스크럽, 멘션 마스킹, 익명화를 모두 처리해 책임이 여럿이다. 테스트 시 한 가지 버그를 분리하기 어렵다.
   - **Fix:** 순수 로직을 더 작은 함수로 분리(`filterBotMessages`, `scrubSensitiveMaterial`, `maskMentions`, `anonymizeAuthor`) 후 조합해 각 단계를 독립 테스트 가능하게.
 - [x] **SE-343** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) ⚪ `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/OnboardingAnalyzer.kt:50-56` `OnboardingAnalyzer.parse` (S)
@@ -479,7 +479,7 @@
 
 ### central · guild — 17건
 
-- [ ] **SE-005** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:52` `PolicyService` (L)
+- [x] **SE-005** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:52` `PolicyService` (L)
   - PolicyService violates SRP by implementing 3 unrelated interfaces (RoutingPolicy, AutoApprovePolicy, GuildChannelPolicy) with 31 mixed methods. The class handles channel policies, role policies, guild settings, approval logic, and caching—disparate concerns that should be separate.
   - **Fix:** Extract each interface into its own service: ChannelPolicyService, RolePolicyService, GuildSettingsService, AutoApprovalService. Let each manage its own cache and eviction logic independently.
 - [x] **SE-025** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/GuildRemovalCleanupService.kt:26` `cleanup` (M)
@@ -488,16 +488,16 @@
 - [x] **SE-083** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외4 빈약메시지` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/GuildRemovalCleanupService.kt:26` `cleanup` (S)
   - cleanup() logs only a success summary at line 35 with no failure scenario. If any of the 8 deletion calls fail silently (or throw and cause partial rollback), the log statement won't execute, leaving no trace of the cleanup attempt or failure reason. Operators have no visibility into failures.
   - **Fix:** Log each deletion step with success/failure: log.info("Clearing blocklist for guild={}", guildId); or use try-catch around each call to log failures individually with reason.
-- [ ] **SE-148** 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/guild/adapter/inbound/web/DashboardWriteController.kt:48` `setRolePolicy` (M)
+- [x] **SE-148** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/guild/adapter/inbound/web/DashboardWriteController.kt:48` `setRolePolicy` (M)
   - DashboardWriteController has hardcoded role-policy, welcome-message, and auto-approve endpoints. To add a new guild setting type (e.g., rate limits, feature flags), you must modify the controller and add a new setXxx() method and new PolicyService method. No open/closed for extension.
   - **Fix:** Create a generic GuildSettingHandler<T> interface with a handle(key, value) method. Use a map-based dispatcher to route incoming requests to the right handler without modifying the controller.
-- [ ] **SE-162** 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:251` `isBurdenAllowed` (S)
+- [x] **SE-162** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:251` `isBurdenAllowed` (S)
   - isBurdenAllowed is a public method of PolicyService but is not part of any interface contract (not in RoutingPolicy, AutoApprovePolicy, or GuildChannelPolicy). It's a utility method mixed into a service that exposes too broad an interface, violating ISP.
   - **Fix:** Move isBurdenAllowed to a separate ModelBurdenPolicy interface and have PolicyService implement it, or create a private static helper if it's only used internally.
-- [ ] **SE-171** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:263` `setAutoApprove` (S)
+- [x] **SE-171** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:263` `setAutoApprove` (S)
   - setAutoApprove directly creates GuildEntity instances inline (new GuildEntity(id=guildId)) instead of delegating to a factory or repository abstraction. Concrete entity creation is hardcoded, violating DIP.
   - **Fix:** Inject a GuildEntityFactory or use repository method to construct entities. Abstract entity creation away from the method logic.
-- [ ] **SE-172** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:282` `setGuildDefaults` (S)
+- [x] **SE-172** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:282` `setGuildDefaults` (S)
   - setGuildDefaults also directly instantiates GuildEntity inline (new GuildEntity(id=guildId)) without abstraction, repeating the DIP violation from setAutoApprove. Similar pattern at line 301, 323.
   - **Fix:** Create a shared method or factory pattern (e.g., getOrCreateGuild(guildId)) to centralize entity creation logic across all methods.
 - [x] **SE-214** ✅FIXED(ModelBurden 파싱 흐름제어→pre-check + 폴백 warn) 🟡 `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/guild/adapter/inbound/web/DashboardWriteController.kt:56` `setRolePolicy` (S)
@@ -515,16 +515,16 @@
 - [x] **SE-305** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:237` `dailyLimit` (S)
   - dailyLimit() has complex conditional logic (checking if any role has 0, then maxOf, then fallback to guild default, then base). The logic allows negative values to be stored and doesn't validate constraints early. Line 285 uses coerceAtLeast(0) to prevent negative storage, but dailyLimit() doesn't validate read values.
   - **Fix:** Add explicit validation at the start: require(base >= 0) { "base must be non-negative" }; and audit any negative dailyLimit values found during read with warn logging.
-- [ ] **SE-324** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:104` `evict` (S)
+- [x] **SE-324** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:104` `evict` (S)
   - evict() is called from multiple write methods (allowChannel, denyChannel, setAutoApprove, setWelcomeMessage, etc.) with repetitive cache.remove() calls for 3 separate caches. This scattered invalidation logic violates SRP—cache management should be centralized.
   - **Fix:** Create a CacheManager interface/class with a single invalidateGuild(guildId) method that coordinates all 3 cache evictions. Let PolicyService delegate to it.
-- [ ] **SE-325** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:166` `allowAllChannels` (S)
+- [x] **SE-325** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:166` `allowAllChannels` (S)
   - allowAllChannels() and replaceAllowedChannels() both delete all channels for a guild, then insert new ones. The logic for 'allow all channels = empty list' is duplicated. Both methods follow the same pattern: deleteByGuildId → iterate/save → audit → evict.
   - **Fix:** Extract a private setAllowedChannels(guildId, ids) method and call it from both methods. Or create an allowedChannelPolicy service separate from PolicyService.
-- [ ] **SE-336** ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:91` `read` (M)
+- [x] **SE-336** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PolicyService.kt:91` `read` (M)
   - The generic read() helper method is private, but PolicyService exposes all three cachedChannelIds(), cachedRoles(), cachedGuildSettings() which are thin wrappers around it. These all implement the same caching pattern, creating a fat interface. Callers can't choose a simpler read interface if they just need one type.
   - **Fix:** Create a ReadCache<T> interface for each data type separately (ChannelIdCache, RoleCache, GuildSettingsCache) and let PolicyService compose them or implement each one. Or expose a single cache() method with overloads rather than three separate methods.
-- [ ] **SE-341** ⚪ `DIP` `central-server/src/main/kotlin/com/discordassistant/central/guild/adapter/outbound/persistence/GuildPersistence.kt:19` `GuildEntity` (S)
+- [x] **SE-341** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `DIP` `central-server/src/main/kotlin/com/discordassistant/central/guild/adapter/outbound/persistence/GuildPersistence.kt:19` `GuildEntity` (S)
   - GuildEntity has a hardcoded default for privacyMode = "C_ADMIN_ONLY" as a string column. The string value is not validated at entity construction—invalid enum names can be persisted. No domain-level constraint enforces valid privacy modes.
   - **Fix:** Add a @Column(columnDefinition="VARCHAR(30) CHECK(privacy_mode IN ('A_ANONYMOUS','B_PARTIAL','C_ADMIN_ONLY'))") constraint or validate in a @PrePersist method that throws an exception if the string doesn't match an enum name.
 - [x] **SE-351** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) ⚪ `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/PrivacyService.kt:17` `mode` (S)
@@ -545,13 +545,13 @@
 - [x] **SE-106** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:92-99` `GlobalPromptSetService.delete` (S)
   - invalid id(숫자가 아닌 문자열)를 toLongOrNull()로 무시하고 return. 검증이 늦어져 잘못된 입력이 시스템 깊숙이 전파되지 않음.
   - **Fix:** 메서드 진입 시 require(id.matches(digitRegex)) { "invalid_id" } 또는 id.toLongOrNull()?.let { ... } ?: throw로 빨리 검증.
-- [ ] **SE-122** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:105-120` `GlobalPromptSetService.setDefault` (M)
+- [x] **SE-122** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:105-120` `GlobalPromptSetService.setDefault` (M)
   - setDefault()는 DB 조회(findByGuildIdOrderByIdAsc), 비즈니스 로직(builtin vs user 분기), 상태 변경(forEach isDefault=), 저장(saveAll) 등 4가지 책임을 담당. 기본 지정 단일성 보장이라는 비즈니스 규칙도 메서드 내부에 전개됨.
   - **Fix:** 전략 패턴 도입: DefaultPromptSetSetter 인터페이스로 builtin/user 처리 분리. findAndUpdate 메서드는 조회+상태변경만, 저장은 별도 메서드로. 트랜잭션 경계는 컨트롤러에서만 관리.
-- [ ] **SE-123** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:35-60` `GlobalPromptSetService.list` (M)
+- [x] **SE-123** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:35-60` `GlobalPromptSetService.list` (M)
   - list()는 DB 조회, builtin NIA 객체 생성, 사용자 셋 변환, 보안 정책(preview/content 필터링) 적용을 모두 수행. 데이터 조회와 뷰 모델 생성·보안 정책이 섞여 있음.
   - **Fix:** GlobalPromptSetViewMapper를 별도 클래스로 분리. list()는 조회만, mapper.toViewList(rows, isBuiltinDefault)가 변환 및 보안 필터링 담당. 또는 PromptSetContentPolicy를 전략으로 주입.
-- [ ] **SE-147** 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:40-48` `GlobalPromptSetService.list` (M)
+- [x] **SE-147** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:40-48` `GlobalPromptSetService.list` (M)
   - Builtin NIA를 하드코딩 (BUILTIN_NIA_ID="nia", 니아 preview/content 필터링). 새로운 builtin 페르소나 추가 시 list() 메서드 수정 필수. GlobalPromptSetView 생성도 builtin/user 분기(54-58줄) 존재.
   - **Fix:** BuiltinPromptSet 인터페이스와 NiaBuiltinPromptSet 구현. Service가 List<BuiltinPromptSet>을 주입받아 반복 처리. 새 builtin 추가는 구현 클래스 추가만으로 해결. 또는 전략 패턴으로 PromptSetViewStrategy(builtin, user) 분리.
 - [x] **SE-189** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt:298-302` `ProviderAdminController.addPromptSet` (M)
@@ -569,13 +569,13 @@
 - [x] **SE-294** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외6 비즈변환` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:72-75` `GlobalPromptSetService.add` (M)
   - add()에서 IllegalArgumentException("name_required"), ("duplicate_name"), ("too_many_sets") 등 일반 예외로 검증. 도메인 예외 없음. ProviderAdminController는 모든 예외를 catch해 "추가했어요" 또는 addFailureMessage(it)로 처리, 클라이언트 구분 불가.
   - **Fix:** 도메인 예외로 변환: PromptSetNameRequiredException, DuplicatePromptSetException, TooManyPromptSetsException 정의. ProviderAdminController에서 각각을 catch해 맞춤 메시지 반환 (예: DuplicatePromptSetException → "같은 이름의 프롬프트셋이 이미 존재합니다").
-- [ ] **SE-323** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/adapter/inbound/web/GlobalPromptSetController.kt:34-42` `GlobalPromptSetController.add` (M)
+- [x] **SE-323** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/adapter/inbound/web/GlobalPromptSetController.kt:34-42` `GlobalPromptSetController.add` (M)
   - add() 메서드가 HTTP 요청 처리, 인증(DashboardActor.from), 비즈니스 로직 호출(service.add), 목록 조회(service.list), 응답 변환 등 5가지 책임 담당.
   - **Fix:** AddPromptSetCommand(guildId, name, content, userId) 커맨드 객체로 통합. AddPromptSetHandler 또는 UseCase 패턴으로 비즈니스 로직 분리. 컨트롤러는 HTTP ↔ DTO 변환만 담당.
-- [ ] **SE-335** ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/adapter/outbound/persistence/GlobalPromptSetPersistence.kt:33-47` `GlobalPromptSetRepository` (M)
+- [x] **SE-335** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/adapter/outbound/persistence/GlobalPromptSetPersistence.kt:33-47` `GlobalPromptSetRepository` (M)
   - GlobalPromptSetRepository가 JpaRepository를 상속해 save/delete/saveAll 같은 범용 메서드를 제공하지만, 실제로는 조회 메서드(findByGuildIdOrderByIdAsc, findByGuildIdAndIsDefaultTrue, existsByGuildIdAndName)만 사용. 저장/삭제는 암묵적으로만 호출됨.
   - **Fix:** GlobalPromptSetQueryRepository(조회 전용)와 GlobalPromptSetCommandRepository(수정 전용)로 ISP 분리. 또는 최소한 명시적 save/delete 메서드를 인터페이스에 선언해 CQRS 의도 분명히.
-- [ ] **SE-340** ⚪ `DIP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:22-24` `GlobalPromptSetService` (S)
+- [x] **SE-340** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `DIP` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:22-24` `GlobalPromptSetService` (S)
   - GlobalPromptSetService 생성자에서 Clock의 기본값을 Clock.systemUTC()로 직접 생성 (24줄). 테스트 시 시간을 조정할 수 없으며, 의존성 주입이 아니라 구체 구현에 의존.
   - **Fix:** Clock을 필수 생성자 인자로 변경: private val clock: Clock (Clock.systemUTC() 제거). 테스트는 Clock.fixed()로 주입. 또는 프로덕션에서는 Spring의 @Bean으로 Clock을 등록.
 - [x] **SE-369** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) ⚪ `예외4 빈약메시지` `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/application/GlobalPromptSetService.kt:62-88` `GlobalPromptSetService.add` (S)
@@ -584,10 +584,10 @@
 
 ### central · preset — 18건
 
-- [ ] **SE-009** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:378-453` `importPreset` (L)
+- [~] **SE-009** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:378-453` `importPreset` (L)
   - importPreset 함수가 9개의 책임을 담당한다: 피발행 프리셋 조회, 원본 리비전 조회, 미리보기 빌드, 충돌 검증, 길드 사본 생성, 채널 적용, 임포트 기록 저장, 발행 카운트 증가, 원자성 관리. 함수의 길이는 70줄을 초과하며, 조건 분기(targetChannelId?.let, applied?.status)도 복잡하다.
   - **Fix:** 책임을 분리하여 PresetImportValidator(충돌 검증), PresetImportCopyCreator(길드 사본 생성), PresetImportPublisher(임포트 기록·카운트 관리) 등으로 나누고, importPreset은 이들을 오케스트레이션하는 파사드로 축소하라.
-- [ ] **SE-010** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:46-94` `PresetRegistryService` (L)
+- [x] **SE-010** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:46-94` `PresetRegistryService` (L)
   - PresetRegistryService 클래스가 14개의 저장소와 5개의 협력자 객체를 직접 주입받아 상태관리하며, write(createPreset, updatePreset, publishPreset, importPreset, likePreset, reportPreset, deletePreset 등), read-only 위임(catalogFacets, listPublishedPresets, searchPublishedPresets, presetDetail 등), 그리고 비즈니스 로직 제어(transitionTo, requirePublishable*, uniqueSlug 등)를 모두 담당하는 god class다. 프리셋 생성·발행·임포트·신고·보고 등 5개 이상의 독립적 책임을 하나의 클래스에서 담당하고 있다.
   - **Fix:** 책임을 분리하여 PresetPublishService(발행/취소), PresetImportService(임포트/미리보기), PresetReportingService(신고/검수), PresetModerationService(상태 전이) 등 단일 책임 클래스로 분리하고, PresetRegistryService는 생성/조회만 담당하게 축소하라.
 - [x] **SE-028** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:137-144` `saveChannelAsPreset` (M)
@@ -614,7 +614,7 @@
 - [ ] **SE-152** 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetImportPreviewBuilder.kt:22-111` `buildImportPreview` (M)
   - buildImportPreview 함수의 conflict 판정 로직이 hardcoded if-else로 늘어서 있다(targetChannelId == null, existingChannelAi != null, existingRouting != null, maxCandidates > 1, highRisk). 새로운 충돌 유형이 추가될 때마다(예: routingPolicyQuota, knowledgeSpaceLeak) 함수를 수정해야 하므로 OCP 원칙을 위반한다.
   - **Fix:** PresetImportConflictDetector 전략 인터페이스를 정의하여 각 충돌 유형마다 구현체(NoTargetChannelConflict, ExistingChannelAiConflict, HighRiskConflict 등)를 만들고, 이들을 조합하여 사용하도록 변경하라. 새 충돌 유형은 기존 코드 수정 없이 새 구현체만 추가하면 된다.
-- [ ] **SE-177** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogMapper.kt:203-242` `PresetCatalogMapper` (M)
+- [x] **SE-177** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogMapper.kt:203-242` `PresetCatalogMapper` (M)
   - PresetCatalogMapper에서 publicOptional, publicRequired, splitCsv, splitLines 등의 텍스트 유틸이 직접 구현되어 있으면서, 동일한 유틸이 PresetContentSafety에도 복제되어 있다(주석: '카탈로그 매퍼 자기완결 복제 유지'). 따라서 보안 정책 변경 시 두 곳을 모두 수정해야 하며, 단일 진실 공급원(SSOT) 원칙을 위반한다.
   - **Fix:** PresetStringNormalizer 또는 PresetPublicTextRenderer 같은 단일 추상화를 도메인 계층에 정의하고, PresetCatalogMapper와 PresetContentSafety 모두 이를 주입받아 사용하도록 변경하라. 복제는 제거하고, 필요시 간단한 래퍼만 제공하라.
 - [x] **SE-198** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:501-543` `reportPreset` (M)
@@ -626,7 +626,7 @@
 - [x] **SE-268** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외4 빈약메시지` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetChannelApplier.kt:136-139` `saveNextBehaviorVersion` (S)
   - IllegalStateException 메시지가 '프리셋 적용 중 채널 AI 행동 버전 채번이 동시 변경과 계속 충돌했어요'로 일반적이며, 재시도 횟수(MAX_VERSION_RETRIES=5), 현재 channelAiId, 마지막 시도 시점 등 디버깅 필요 정보가 누락되어 있다.
   - **Fix:** IllegalStateException 메시지에 'channelAiId=$channelAiId, maxRetries=$MAX_VERSION_RETRIES, attempts=$attempt'를 포함시키고, cause(원본 DataIntegrityViolationException)을 반드시 전파하라(현재는 ex를 다섯 번째 시도 후에만 전파).
-- [ ] **SE-328** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetChannelApplier.kt:168-189` `payloadHash` (S)
+- [x] **SE-328** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetChannelApplier.kt:168-189` `payloadHash` (S)
   - payloadHash 확장 함수가 특정 필드(channelAiId, version, purpose, tone 등)의 SHA-256 해시를 계산하는데, 이 필드 목록이 주석으로만 문서화되어 있고(ChannelAiCustomizationService.payloadHash와 동일 필드 구성을 유지해야 한다), 향후 필드 추가 시 두 곳을 모두 수정해야 한다.
   - **Fix:** PayloadHashBuilder 인터페이스를 정의하고, 해시 대상 필드 목록과 계산 로직을 한곳에 중앙화하여 PresetChannelApplier와 ChannelAiCustomizationService가 모두 이를 참조하도록 변경하라.
 - [x] **SE-380** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) ⚪ `예외7 cause보존` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:725-731` `createRevision` (S)
@@ -641,10 +641,10 @@
 
 ### central · multiresponse — 19건
 
-- [ ] **SE-006** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:86-202` `decisionSummary` (M)
+- [x] **SE-006** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:86-202` `decisionSummary` (M)
   - decisionSummary 메서드가 117줄에 걸쳐 조회(92-97줄), 개수 집계(98-120줄), 위험코드 판정(122-147줄), 결정항목 매핑(148-184줄)을 모두 담당한다. 각 riskCode 판정(timeoutRate>=0.25, qualityScores.isEmpty(), ragContextStatus.startsWith())이 if-else로 흩어져 있다.
   - **Fix:** 위험 판정 로직을 RiskAssessment 클래스로 추출하고, decisionSummary는 조회 조합만 수행하도록 분리하라. 또는 riskCodes 계산을 computeRiskCodes(stats, runCandidates) 메서드로 추출하라.
-- [ ] **SE-007** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:29-70` `MultiResponseService` (M)
+- [x] **SE-007** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:29-70` `MultiResponseService` (M)
   - MultiResponseService 클래스가 13개의 의존성을 주입받고, 정책 저장/실행 계획/후보 선정/보안/리포팅/피드백 등 다양한 책임을 혼재하고 있다. 실제로는 MultiResponseReportingService, MultiResponsePolicyResolver, ProviderFanoutSelector, MultiResponseFanoutPlanner 등이 분리되었지만, 서비스 내부에서 이들을 조합하는 조율 로직이 복잡하다.
   - **Fix:** MultiResponseService를 코디네이터 역할로 축소하고, startRunEntity와 startRuntimeObservation의 중복 로직(198줄~306줄)을 공통 메서드로 추출하여 SRP 위반을 완화하라. 또는 RunStartingStrategy 전략 패턴으로 분리하라.
 - [x] **SE-036** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:385-387` `recordCandidate` (S)
@@ -656,13 +656,13 @@
 - [x] **SE-095** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외8 자원정리` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:625-662` `applyRagContextSnapshot` (M)
   - applyRagContextSnapshot에서 knowledgeSearch?.contextPlan() 호출이 외부 서비스(Knowledge Search)에 의존한다. runCatching으로 예외를 무시하지만, RAG 서비스가 timeout이나 오류를 발생시킨다면 원본 예외 정보(cause/stacktrace)가 손실된다.
   - **Fix:** 예외를 로깅하고, run.ragContextStatus에 timestamp와 에러 카테고리를 기록하라. 또는 RagContextApplier 인터페이스로 래핑하여 실패 시 재시도 로직을 추가하라.
-- [ ] **SE-125** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/adapter/inbound/web/MultiResponseController.kt:44-196` `MultiResponseController` (S)
+- [x] **SE-125** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/adapter/inbound/web/MultiResponseController.kt:44-196` `MultiResponseController` (S)
   - MultiResponseController가 13개 엔드포인트를 모두 처리하면서, 각 핸들러가 Request -> Service -> Response DTO 변환만 하고 있다. 하지만 에러 처리가 없으므로, Service에서 던진 IllegalArgumentException이 500 에러가 된다.
   - **Fix:** 각 핸드러에서 try-catch를 추가하거나, @RestControllerAdvice를 만들어 IllegalArgumentException/DomainException을 처리하고 4xx 응답으로 변환하라.
-- [ ] **SE-126** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:204-304` `operationsSummary` (M)
+- [x] **SE-126** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:204-304` `operationsSummary` (M)
   - operationsSummary 메서드가 dailyStats/decisionSummary/providerFanoutLoad 호출(209-211줄), 위험코드 조합(234-245줄), 다음 액션 조합(246-262줄), 상태 판정(263-269줄)을 수행한다. 코드 재사용성이 낮고 상태 판정 로직이 하드코딩되어 있다.
   - **Fix:** OperationsSummaryBuilder 또는 OperationStatus enum으로 상태 판정 로직을 캡슐화하고, operationsSummary는 조회와 조합만 수행하도록 분리하라.
-- [ ] **SE-127** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:153-227` `startRunEntity` (S)
+- [x] **SE-127** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:153-227` `startRunEntity` (S)
   - startRunEntity 메서드가 정책 조회(161-177줄), 민감 프롬프트 검사(190-195줄), RAG 적용(197줄), 안전 실행 계획(198줄), Provider 선택(206-211줄), 후보 저장(212-223줄)을 모두 처리하고 있다. 함수가 파싱/검증/IO를 한 번에 수행한다.
   - **Fix:** 순수 정책 해석은 이미 policyResolver에 위임했으므로, 민감 프롬프트 검사를 promptSafety.isSensitivePrompt() 호출 후 조기 반환으로 분리하고, RAG 적용을 별도 메서드 applyRagContextSnapshot()으로 추출하라(이미 622줄에 있음).
 - [ ] **SE-128** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:72-141` `savePolicyEntity` (M)
@@ -671,16 +671,16 @@
 - [ ] **SE-149** 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:131-147` `decisionSummary` (M)
   - riskCode와 nextAction을 결정하는 if 체인(131-147줄)이 매직 숫자(0.25 timeout rate, 60.0 quality score)와 하드코딩 메시지를 섞어 가지고 있다. 새로운 위험 규칙을 추가할 때마다 이 메서드를 수정해야 한다.
   - **Fix:** RiskRule 인터페이스를 정의하고, List<RiskRule>로 규칙들을 주입받아 decisionSummary에서 순회하라. 또는 RiskRuleRegistry를 설정 파일에서 로드하라.
-- [ ] **SE-150** 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:352-357` `isProviderProtectionReason` (M)
+- [x] **SE-150** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:352-357` `isProviderProtectionReason` (M)
   - isProviderProtectionReason() 메서드가 PROVIDER_PROTECTION_REASON_PATTERNS라는 정적 Regex 리스트로 문자열을 검사한다. 새 패턴을 추가할 때마다 코드를 수정해야 하므로 OCP 위반이다.
   - **Fix:** ReasonClassifier 또는 ReasonMatcher 인터페이스를 만들고, 패턴 세트를 설정 파일 또는 데이터베이스에서 로드하도록 변경하라. 또는 ProviderProtectionReason enum을 만들어 패턴을 내부화하라.
 - [ ] **SE-151** 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/ProviderFanoutSelector.kt:24-57` `selectProviders` (M)
   - selectProviders가 필터 조건(36-41줄)을 하드코딩했다. Provider 선택 규칙을 변경할 때마다(예: 새 필터 조건, 정렬 기준) 메서드 본체를 수정해야 하므로 OCP를 위반한다.
   - **Fix:** ProviderFilter 인터페이스와 ProviderSortComparator 인터페이스를 정의하고, selectProviders(filters: List<ProviderFilter>, comparator: ProviderSortComparator)로 변경하라. 또는 빌더 패턴으로 필터와 정렬을 조합하라.
-- [ ] **SE-175** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponsePolicyResolver.kt:26-27` `isDisabled` (M)
+- [x] **SE-175** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponsePolicyResolver.kt:26-27` `isDisabled` (M)
   - isDisabled() 확장 함수가 MultiResponsePolicyEntity(구체 클래스)에 직접 의존한다. 정책 타입이 변경되면 이 메서드도 변경해야 한다. 또한 DISABLED_POLICY_MODES 상수가 하드코딩되어 설정 변경이 어렵다.
   - **Fix:** PolicyStatus 인터페이스를 정의하고 MultiResponsePolicyEntity가 구현하도록 변경하라. DISABLED_POLICY_MODES를 설정 주입으로 받으려면 DisabledPolicyModes 빈을 만들어 MultiResponsePolicyResolver에 주입하라.
-- [ ] **SE-176** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:603-608` `selectProviders` (S)
+- [x] **SE-176** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:603-608` `selectProviders` (S)
   - selectProviders 메서드가 providerSelector 구체 인스턴스에 직접 의존하고, 호출할 때 `with(providerSelector) { selectProviders(...) }`로 호출한다. Provider 선택 전략을 바꾸려면 MultiResponseService 내부 로직을 수정해야 한다.
   - **Fix:** ProviderSelector 인터페이스를 정의하고, MultiResponseService가 이를 주입받도록 변경하라. with() 호출을 제거하고 providerSelector.selectProviders() 형태로 단순화하라.
 - [x] **SE-190** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:642-652` `applyRagContextSnapshot` (S)
@@ -695,13 +695,13 @@
 - [x] **SE-308** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseService.kt:409-413` `synthesize` (S)
   - require(selectedCandidateIds.all { ... })에서 require 실패 시 IllegalArgumentException을 던진다. 이는 비즈니스 예외인데도 런타임 예외로 처리되므로, 호출자가 이를 컨트롤러에서 처리해야 한다.
   - **Fix:** InvalidCandidateSelectionException(runId, selectedCandidateIds) 또는 DomainException을 던지고, 컨트롤러에서 @ExceptionHandler로 처리하라.
-- [ ] **SE-326** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:359-366` `hasBlockingSafetyFlag` (S)
+- [x] **SE-326** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/application/MultiResponseReportingService.kt:359-366` `hasBlockingSafetyFlag` (S)
   - hasBlockingSafetyFlag() 메서드가 MultiResponseReportingService와 MultiResponseService(line 664)에 동일한 구현으로 중복되어 있다. BLOCKING_SAFETY_FLAGS 상수도 두 곳에서 참조하므로 유지보수가 어렵다.
   - **Fix:** hasBlockingSafetyFlag를 CandidateAnswerEntity의 확장 함수로 정의하거나, SafetyFlagChecker 유틸로 추출하여 한 곳에서만 관리하라.
 
 ### central · quota/requestlog — 18건
 
-- [ ] **SE-012** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/RateLimitStore.kt:33-49` `InMemoryRateLimitStore.tryAcquire` (M)
+- [x] **SE-012** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/RateLimitStore.kt:33-49` `InMemoryRateLimitStore.tryAcquire` (M)
   - InMemoryRateLimitStore 클래스는 단순 저장소 책임을 넘어 고정 윈도우 로직(시간 계산, 리셋, 카운팅)과 동시성 관리(@Synchronized)를 모두 처리한다. 저장소 역할과 윈도우 알고리즘 구현이 혼합돼 있다.
   - **Fix:** Window 상태 관리와 카운팅 로직을 별도 RateLimitAlgorithm 인터페이스로 추상화하고, RateLimitStore는 저장만 담당하게 분리. InMemoryRateLimitStore는 주입받은 알고리즘 위에 Window를 저장하는 책임만 수행.
 - [x] **SE-030** ✅FIXED(BlocklistService.load DB 적재 실패 무처리 → ERROR 로그(보안저하 가시화)) 🔴 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/BlocklistService.kt:28-34` `BlocklistService.load` (M)
@@ -713,10 +713,10 @@
 - [x] **SE-098** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외8 자원정리` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/RateLimitStore.kt:33` `InMemoryRateLimitStore.tryAcquire` (M)
   - InMemoryRateLimitStore.tryAcquire()에서 @Synchronized 메서드 내부에서 발생하는 System.nanoTime() 호출 시 예외가 발생해도 아무도 잡지 않는다. 또한 ConcurrentHashMap.getOrPut()이 명시적 예외 처리 없이 실행되며, 메모리 누수 가능성(Window 객체가 제거되지 않음)이 있다.
   - **Fix:** 메서드를 분해하여 윈도우 조회, 리셋, 카운트 증가를 별도 함수로 분리하고, 각 단계에서 예외를 구체적으로 처리. 또는 TTL 기능이 있는 ConcurrentHashMap을 사용하거나 정기적인 정리 메커니즘 추가(예: scheduled cleanup).
-- [ ] **SE-135** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/requestlog/adapter/outbound/persistence/RequestLogRepositories.kt:28-39` `AiRequestRepository.aggregateChannelUsageByGuild` (M)
+- [x] **SE-135** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/requestlog/adapter/outbound/persistence/RequestLogRepositories.kt:28-39` `AiRequestRepository.aggregateChannelUsageByGuild` (M)
   - @Query 메서드가 단순 집계(SELECT + GROUP BY)만 하지만, 응답으로 ChannelUsageSummary 인터페이스를 반환한다. 향후 쿼리가 복잡해져도(예: 안전 필터 추가), repository 메서드 이름과 책임이 일치하지 않을 가능성이 높다.
   - **Fix:** repository 계층과 analytics 계층을 분명히 분리. AiRequestRepository는 raw 엔티티만 반환하고, AnalyticsService가 집계 로직(GROUP BY, 필터, 변환)을 소유.
-- [ ] **SE-153** 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/RateLimiter.kt:10-16` `RateLimiter` (M)
+- [x] **SE-153** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/RateLimiter.kt:10-16` `RateLimiter` (M)
   - RateLimiter가 hardcoded로 perMinute 설정만 지원한다. 향후 다른 윈도우(초당, 일일)를 추가하려면 RateLimiter 코드를 수정해야 한다(OCP 위반). FreeAskRateLimiter는 perHour + perDay를 따로 관리하는데, 공통 추상화가 없다.
   - **Fix:** RateLimitPolicy 인터페이스 정의(limits: List<RateLimitRule>에서 rule은 { period: Duration, count: Int }). RateLimiter와 FreeAskRateLimiter는 동일 인터페이스로 다양한 정책 적용 가능.
 - [ ] **SE-179** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/quota/application/QuotaService.kt:21-31` `QuotaService.exceededQuota` (M)
@@ -758,10 +758,10 @@
 
 ### central · ainetwork — 16건
 
-- [ ] **SE-002** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkDashboardQueryService.kt:75-152` `dashboard` (L)
+- [~] **SE-002** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkDashboardQueryService.kt:75-152` `dashboard` (L)
   - dashboard() orchestrates 15+ sub-calls (overview, channels, providers, quality, overload, etc.) and constructs massive response DTO. Has 3 concerns: fetching, mapping, validation. God method.
   - **Fix:** Extract: private fun collectDashboardData() -> DashboardData, private fun validateDashboard() -> List<Violation>. dashboard() delegates to these.
-- [ ] **SE-003** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkLaunchChecklistService.kt:30-165` `checklist` (M)
+- [x] **SE-003** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkLaunchChecklistService.kt:30-165` `checklist` (M)
   - checklist() fetches from 9 repos, computes 5 derived states (featureBaseReady, advancedLimited, items), constructs response. 135 lines of mixed concerns.
   - **Fix:** Extract: LaunchChecklistAssembler.assemble(guildId) -> NetworkLaunchChecklist. checklist() calls foundation to fetch, passes to assembler.
 - [x] **SE-067** ✓REVIEWED-CLEAN(웹훅 전송 실패 이미 warn 로그+문서화(알림 best-effort 경계)) 🔴 `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/DiscordWebhookNotifier.kt:53` `notify` (S)
@@ -773,13 +773,13 @@
 - [x] **SE-105** ✅FIXED(resolveFeedback not-found 메시지에 guildId/feedbackId) 🔴 `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiQualityFeedbackService.kt:103` `resolveFeedback` (M)
   - error("feedback_not_found") throws unchecked exception as control flow. Should validate existence before mutation, not use exception for normal not-found case.
   - **Fix:** Return Result type or validate before persisting: val feedback = feedbacks.findByGuildIdAndId(guildId, feedbackId) ?: return AiFeedbackReviewResult.notFound().
-- [ ] **SE-109** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkFoundationService.kt:170-217` `refreshOverview` (M)
+- [x] **SE-109** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkFoundationService.kt:170-217` `refreshOverview` (M)
   - refreshOverview() method has 3 responsibilities: fetch data from 6 repos, compute derived metrics (inferNetworkLevel/quality tier), persist entity—violates SRP. 300+ lines of mixed concerns.
   - **Fix:** Split into: fetchProviderMetrics(), computeNetworkLevel(), persistProjection(). Move inferNetworkLevel() and inferQualityTier() to separate service.
 - [ ] **SE-110** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkGrowthService.kt:26-81` `syncProviderCapabilitiesFromHello` (M)
   - syncProviderCapabilitiesFromHello() delegates to planner for normalization, then foundation for upsert, then records growth event. Mixes orchestration + write concerns. 75 lines.
   - **Fix:** Extract GrowthEventRecorder service to own event creation. syncProviderCapabilities() calls foundation, GrowthEventRecorder.recordIfChanged().
-- [ ] **SE-111** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/ChannelAiRoutingPolicyResolver.kt:63-138` `modelCandidates` (M)
+- [~] **SE-111** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/ChannelAiRoutingPolicyResolver.kt:63-138` `modelCandidates` (M)
   - modelCandidates() has 4 responsibilities: filter providers, build candidates, summarize, rank. Candidates flatMap + groupBy + scoring logic should be separate collaborator.
   - **Fix:** Extract ModelCandidateBuilder service with buildEligible(), buildSummaries(), rankByScore() methods.
 - [ ] **SE-112** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/PoolAlertMonitor.kt:23-49` `evaluate` (M)
@@ -800,19 +800,19 @@
 - [x] **SE-303** ✅FIXED(invalid_feedback_review_status 메시지에 실제 status 값) 🟡 `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiQualityFeedbackService.kt:221` `normalizeReviewStatus` (M)
   - error("invalid_feedback_review_status") at line 221 is exception-based validation. Caller has no way to provide user-friendly error message or handle gracefully.
   - **Fix:** Return sealed class Result<FeedbackStatus> = Success(status) | InvalidStatus(input) or throw domain exception FeedbackReviewException(status) that controller catches.
-- [ ] **SE-333** ⚪ `LSP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/domain/model/FeedbackStatus.kt:44` `canTransitionTo` (S)
+- [x] **SE-333** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `LSP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/domain/model/FeedbackStatus.kt:44` `canTransitionTo` (S)
   - canTransitionTo(next) returns true if next == this (identity), BUT semantically "no transition" isn't same as "valid transition". Empty set ALLOWED[OPEN] would violate contract.
   - **Fix:** Document: true means next in {allowed states} OR next == this. OR refactor: canTransition(next) = next in allowedTransitions(this), remove identity check from callers.
-- [ ] **SE-334** ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkReadinessService.kt:30-49` `readiness` (S)
+- [x] **SE-334** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkReadinessService.kt:30-49` `readiness` (S)
   - readiness() receives 8 params (overview, channels, providers, modelMap, knowledgeSpaces, quality, overload, changeApproval) but only delegates to scorecard. Caller must collect all, even if only 3 are used by scorecard.
   - **Fix:** Create ReadinessInput data class holding all 8. readiness(input: ReadinessInput) -> scorecard.compute(input). Reduces param count, groups related data.
 
 ### central · platform/discord — 19건
 
-- [ ] **SE-008** 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:405` `Listener.onSlashCommandInteraction` (L)
+- [x] **SE-008** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:405` `Listener.onSlashCommandInteraction` (L)
   - Listener 클래스가 너무 많은 책임을 가짐: 이벤트 라우팅 + 명령 dispatch + 응답 렌더링 + 온보딩 + 설정 마법사 + 피드백 수집 + 채널 AI 프로필 관리. onSlashCommandInteraction 메서드 약 260줄 + 버튼/모달 핸들러 300줄+ 추가로 god class 상태.
   - **Fix:** CommandService 처럼 command handler 패턴으로 인터랙션 타입별(SlashCommand/Button/Modal/StringSelect 등) 전용 클래스로 분리해 각각 단일 책임 유지.
-- [ ] **SE-021** 🔴 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:296` `Listener.onSlashCommandInteraction` (L)
+- [x] **SE-021** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `OCP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:296` `Listener.onSlashCommandInteraction` (L)
   - 명령 dispatcher (dispatch 메서드, line 846~1065) 가 거대한 when 분기(약 200+ 줄, 50+ 명령)를 모두 직렬로 나열. 새 명령이 추가될 때마다 이 메서드를 수정해야 하고, 실행 로직이 모두 호출 싱글톤인 CommandService 에 분산됨.
   - **Fix:** Command 전략 인터페이스를 정의하고, 명령이름->Command 맵으로 관리. CommandRegistry 패턴 또는 @SlashCommand 애너테이션 기반 자동 등록으로 when 제거.
 - [ ] **SE-024** 🔴 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt:287` `Listener` (M)
@@ -887,7 +887,7 @@
 - [ ] **SE-120** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/global/security/AiNetworkApiSecurityFilter.kt:18-23` `AiNetworkApiSecurityFilter` (S)
   - adminUserIds 설정 파싱(split, trim, filter)이 AiNetworkApiSecurityFilter와 MeController에서 거의 동일하게 반복된다(lines 18-23, MeController:18-23). 설정 변경 시 두 곳을 모두 수정해야 한다.
   - **Fix:** adminUserIds 파싱 로직을 공유 유틸리티 함수 또는 별도의 Configuration 빈(예: AdminUserIdsConfig)으로 추출하여 두 클래스가 같은 인스턴스를 주입받게 하라.
-- [ ] **SE-121** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/global/security/AiNetworkApiSecurityFilter.kt:92-106` `resolveAdminActor` (M)
+- [x] **SE-121** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/global/security/AiNetworkApiSecurityFilter.kt:92-106` `resolveAdminActor` (M)
   - resolveAdminActor가 토큰 검증, OAuth 인증 확인, 허용목록 조회, userId 변환까지 4가지 책임을 가진다. 토큰 전략과 OAuth 전략의 변경이 얽혀있다.
   - **Fix:** TokenBasedAuthenticator와 OAuthBasedAuthenticator 등 전략 인터페이스로 분리하고, resolveAdminActor는 각 전략을 순차 호출하여 첫 성공 결과를 반환하는 조합자(composer)로 단순화하라.
 - [ ] **SE-170** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/global/adapter/inbound/web/MeController.kt:18-23` `MeController` (M)
@@ -914,10 +914,10 @@
 - [x] **SE-108** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🔴 `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/model/RoutingRequestModels.kt:18-29` `AiRequestInput` (M)
   - AiRequestInput is a data class with no validation. DevController.ask() constructs it directly with user-supplied prompt/roleIds without checking: empty prompt, negative/zero IDs, or roleIds cardinality. constructor accepts any string as prompt.
   - **Fix:** Add factory method AiRequestInput.from(req: AskReq) that validates: prompt.isNotBlank() && prompt.length <= 100_000, guildId > 0, userId > 0, roleIds.size <= MAX. Return Result<AiRequestInput> or throw ApplicationException("invalid prompt") for fail-fast.
-- [ ] **SE-167** 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:95-120` `ProviderRegistrationService.requestJoin` (M)
+- [x] **SE-167** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `ISP` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:95-120` `ProviderRegistrationService.requestJoin` (M)
   - requestJoin() has two overloads (lines 95 and 187) where 3-param version calls tokens.issue() but 2-param version filters then delegates. Callers must know which overload to use; no single interface contracts requestJoin contract for "single provider" vs "explicit guild".
   - **Fix:** Extract 2-param logic into separate method findAndJoinSingleProvider() or use builder pattern: ProviderRegistrationService.Builder().forProviderId(...).join(). Clarify contracts in method docs or split interfaces by use-case (AdminApi, SelfServiceApi).
-- [ ] **SE-181** 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/TokenService.kt:19-24` `TokenService` (S)
+- [x] **SE-181** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/TokenService.kt:19-24` `TokenService` (S)
   - TokenService depends on DurableTokenService class directly (line 22: durable = DurableTokenService(...)), not injected via constructor or interface. Also injects default empty secret/zero TTL, hiding configuration dependency.
   - **Fix:** Make durable a required @Autowired DurableTokenIssuer interface field, not optional property with defaults. Let Spring DI inject it; fail on missing bean at startup rather than silently use dummy.
 - [x] **SE-224** ✓REVIEWED-CLEAN(토큰 verify의 silent reject는 보안상 올바름(공격입력 로깅금지)) 🟡 `예외2 broad catch` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/DurableTokenService.kt:70-72` `DurableTokenService.verify` (M)
@@ -941,13 +941,13 @@
 - [x] **SE-318** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외10 fail-fast` `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ProviderRegistrationService.kt:70-81` `ProviderRegistrationService.persist` (S)
   - persist() silently no-ops if repo is null (line 71: repo ?: return). In-memory cache state is modified (line 108) but DB persistence may fail silently. Callers assume state is durable but it's not, risking restart data loss.
   - **Fix:** Either: (1) require non-null repo at construction (fail-fast), or (2) log warning at INFO level when repo is null, or (3) throw InvalidStateException if repo unavailable but persistence was requested (instead of silent no-op).
-- [ ] **SE-331** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/relay/ConnectionRegistry.kt:26-37` `ConnectionRegistry.register` (M)
+- [x] **SE-331** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/relay/ConnectionRegistry.kt:26-37` `ConnectionRegistry.register` (M)
   - register() mixes concerns: (1) session lifecycle (register, evict), (2) guild pool management (byGuild map), (3) logging. evict() is called internally during registration, making registration side-effect-heavy. Hard to test graceful close logic in isolation.
   - **Fix:** Split: registerSession() → adds to maps, gracefullyReplace() → handles eviction+re-register. Let callers decide: new caller might not want old eviction. Or extract SessionLifecycleManager interface handling register/evict/close concerns.
-- [ ] **SE-332** ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/shared/ContentSafety.kt:45-55` `ContentSafety.SENSITIVE_PROMPT_PATTERNS` (S)
+- [x] **SE-332** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `SRP` `central-server/src/main/kotlin/com/discordassistant/central/shared/ContentSafety.kt:45-55` `ContentSafety.SENSITIVE_PROMPT_PATTERNS` (S)
   - ContentSafety mixes two concerns: (1) safety level constants (HIGH_RISK_SAFETY_LEVELS, BLOCKING_SAFETY_FLAGS), (2) secret detection (SECRET_PATTERN, SENSITIVE_PROMPT_PATTERNS). Latter is security-sensitive and should be isolated from policy constants.
   - **Fix:** Extract secret detection logic into separate SecretDetector or SensitiveContentMatcher class. Keep ContentSafety as pure policy/constant SSOT. Improves testability of regex patterns in isolation.
-- [ ] **SE-339** ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/relay/TokenVerifier.kt:13-14` `TokenVerifier.verify` (M)
+- [x] **SE-339** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/relay/TokenVerifier.kt:13-14` `TokenVerifier.verify` (M)
   - TokenVerifier.verify() returns nullable OwnerBinding. Callers must null-check every time (see TokenService line 66, DurableTokenService line 65). No distinction between "invalid token" vs "expired" vs "revoked", forcing caller to guess failure reason.
   - **Fix:** Return Result<OwnerBinding> or sealed class: TokenVerificationResult.Valid(OwnerBinding), Invalid(reason: String), Expired, Revoked. Callers explicitly handle each case, improving maintainability and error reporting.
 - [x] **SE-374** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) ⚪ `예외4 빈약메시지` `central-server/src/main/kotlin/com/discordassistant/central/shared/ModelBurden.kt:41-48` `ModelBurden.fromName` (S)
@@ -959,13 +959,13 @@
 
 ### agent.py — 17건
 
-- [ ] **SE-014** 🔴 `SRP` `provider-agent/src/provider_agent/agent.py:228` `ProviderAgent` (L)
+- [~] **SE-014** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🔴 `SRP` `provider-agent/src/provider_agent/agent.py:228` `ProviderAgent` (L)
   - ProviderAgent violates SRP by handling 10+ distinct responsibilities: WS connection lifecycle, image generation, text inference, daily limit tracking, concurrency control, guild policy management, connection registry, admin API routing, sync mechanism, UI/tray state. One class should not orchestrate all these concerns.
   - **Fix:** Extract into separate classes: InferenceOrchestrator, DailyLimitManager, ConcurrencyManager, ConnectionRegistry, AdminAPIGateway, SyncManager. ProviderAgent becomes a thin facade.
-- [ ] **SE-015** 🔴 `SRP` `provider-agent/src/provider_agent/agent.py:382` `handle_infer` (L)
+- [~] **SE-015** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🔴 `SRP` `provider-agent/src/provider_agent/agent.py:382` `handle_infer` (L)
   - handle_infer mixes 4 concerns: (1) load/limit checking, (2) semaphore + resource-guarding, (3) inflight counter, (4) timeout enforcement. Then delegates to _run_infer for text/image/gemini routing. If limit changes, concurrency logic tweaks, or timeout shifts, method balloons.
   - **Fix:** Create RequestGate (checks limits, acquire semaphore, track inflight). Create InferenceRouter (routes text/image/gemini). handle_infer becomes: gate.acquire() -> router.route(). Enables independent testing.
-- [ ] **SE-016** 🔴 `SRP` `provider-agent/src/provider_agent/agent.py:753` `admin_manage, admin_action, admin_set_policy, admin_prompt_sets, admin_prompt_set_add, admin_prompt_set_default, admin_prompt_set_delete, admin_channels, admin_channel_toggle, admin_channel_ai, admin_knowledge, admin_presets, admin_preset_delete, admin_knowledge_delete` (M)
+- [x] **SE-016** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🔴 `SRP` `provider-agent/src/provider_agent/agent.py:753` `admin_manage, admin_action, admin_set_policy, admin_prompt_sets, admin_prompt_set_add, admin_prompt_set_default, admin_prompt_set_delete, admin_channels, admin_channel_toggle, admin_channel_ai, admin_knowledge, admin_presets, admin_preset_delete, admin_knowledge_delete` (M)
   - 14 admin_* methods all follow identical pattern: (1) call _durable_token(), (2) check if empty, (3) call _agent_sync_base(), (4) call asyncio.to_thread(_post_*). Duplicates token-check boilerplate. Adding endpoint requires copy-paste. Changing token logic requires updating 14 methods.
   - **Fix:** Extract helper '_admin_api(endpoint_name, **kwargs) -> dict' handling token check, base URL, to_thread dispatch. Each method becomes 1 line.
 - [x] **SE-032** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외1 못잡을예외` `provider-agent/src/provider_agent/agent.py:691` `remove_connection` (M)
@@ -1013,7 +1013,7 @@
 
 ### webui.py (전반) — 29건
 
-- [ ] **SE-018** 🔴 `SRP` `provider-agent/src/provider_agent/webui.py:363-1649` `build_app` (L)
+- [~] **SE-018** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🔴 `SRP` `provider-agent/src/provider_agent/webui.py:363-1649` `build_app` (L)
   - build_app 함수가 아이콘 캐싱, 로그 핸들링, 60개+ 라우트 핸들러 정의, 앱 빌드, 스타트업 훅까지 모두 담당. 단일 함수가 웹 라우팅, 설정 저장, 에이전트 관리, OAuth, ComfyUI/Ollama 통합을 한 번에 처리.
   - **Fix:** 웹 라우트 빌더를 별도 클래스로 추출(RouteConfigurator), 캐싱은 AssetManager, 로그는 LogAttacher로 분리. build_app은 생성과 라우팅 조립만 담당하도록 축소.
 - [x] **SE-033** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외1 못잡을예외` `provider-agent/src/provider_agent/webui.py:556-560` `image_toggle` (M)
@@ -1163,7 +1163,7 @@
 
 ### config/connection — 18건
 
-- [ ] **SE-017** 🔴 `SRP` `provider-agent/src/provider_agent/config.py:126` `config_from_args` (L)
+- [~] **SE-017** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🔴 `SRP` `provider-agent/src/provider_agent/config.py:126` `config_from_args` (L)
   - config_from_args (lines 126-222) has 97 lines doing: parse CLI → load env → load saved config → validate remote ollama → build AgentConfig → maybe save. Parsing priority logic intertwined with validation; 10+ local vars for precedence chains.
   - **Fix:** Extract ConfigResolver class taking (cli_args, env_dict, saved_config). Separate parsers: CliConfigParser, EnvConfigParser, SavedConfigParser with merge() strategy. config_from_args orchestrates only.
 - [x] **SE-052** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외2 broad catch` `provider-agent/src/provider_agent/connection.py:109` `run` (S)
@@ -1181,13 +1181,13 @@
 - [x] **SE-099** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🔴 `예외8 자원정리` `provider-agent/src/provider_agent/connection.py:89` `run` (M)
   - Lines 96-102: aiohttp.ClientSession and ws_connect are used with `async with` (proper cleanup). However, on AuthFailedError (line 104-106) or exception (line 109-112), self._ws is set to None in finally (line 114), but session may have been partially initialized if error occurs between connector creation and ws_connect.
   - **Fix:** Wrap session creation and ws_connect in separate try blocks, or use context manager for connector. Ensure all aiohttp resources are cleaned even on early exception.
-- [ ] **SE-140** 🟡 `SRP` `provider-agent/src/provider_agent/config_file.py:37` `save_config` (M)
+- [x] **SE-140** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `provider-agent/src/provider_agent/config_file.py:37` `save_config` (M)
   - save_config mixes three unrelated concerns: (1) load existing config, (2) merge SAVEABLE fields, (3) chmod security. 46 lines doing parse→filter→write→chmod. If chmod fails, write already succeeded silently.
   - **Fix:** Extract FilePermissionManager class with chmod logic; separate load-merge-write into ConfigMerger. save_config calls both in sequence with proper error propagation.
-- [ ] **SE-141** 🟡 `SRP` `provider-agent/src/provider_agent/config_file.py:98` `load_connections` (M)
+- [x] **SE-141** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `SRP` `provider-agent/src/provider_agent/config_file.py:98` `load_connections` (M)
   - load_connections handles dict/list parsing, type validation, AND legacy single-token→connections[0] migration (lines 113-116). 19 lines for one function doing 3 jobs: parse→validate→migrate.
   - **Fix:** Extract LegacyConnectionMigrator class with migration logic. load_connections calls parse+validate only, delegates migration to separate function. Testability improves.
-- [ ] **SE-168** 🟡 `ISP` `provider-agent/src/provider_agent/connection.py:50` `__init__` (M)
+- [x] **SE-168** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `ISP` `provider-agent/src/provider_agent/connection.py:50` `__init__` (M)
   - AgentConnection.__init__ accepts 5 optional parameters (cfg, on_server_frame, hello_provider, on_durable_token, on_guild_info). Callers must pass all 5 or understand defaults. No clear protocol of which are mandatory vs. optional callbacks.
   - **Fix:** Split into two classes: AgentConnectionCore (cfg, on_server_frame, hello_provider only) and AgentConnectionWithPersist (adds on_durable_token, on_guild_info). Or use dataclass for callback registration.
 - [ ] **SE-184** 🟡 `DIP` `provider-agent/src/provider_agent/connection.py:168` `_dispatch` (M)
@@ -1253,7 +1253,7 @@
 - [ ] **SE-142** 🟡 `SRP` `provider-agent/src/provider_agent/comfy_setup.py:214-227` `start` (M)
   - Function 'start' mixes three concerns: health check, venv verification, and process spawning. Should be split into separate steps for testability.
   - **Fix:** Extract health check into separate 'is_healthy()', venv check into 'ensure_venv()', and process launch into 'spawn_process()'. Caller orchestrates sequence.
-- [ ] **SE-143** 🟡 `SRP` `provider-agent/src/provider_agent/updater.py:204-226` `apply_update` (L)
+- [~] **SE-143** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🟡 `SRP` `provider-agent/src/provider_agent/updater.py:204-226` `apply_update` (L)
   - Function 'apply_update' bundles platform detection, progress updates, and delegation to _apply_macos/_apply_windows. Contains branching logic that mixes presentation (progress) with OS-specific logic.
   - **Fix:** Extract progress state machine into separate class; delegate platform-specific work to strategy objects (MacOSUpdater, WindowsUpdater) implementing common interface.
 - [x] **SE-205** ✅FIXED(SHA256SUMS 수신 실패 시 검증 건너뜀 warning 로그(보안 가시성)) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/updater.py:196` `_verify_checksum` (S)
@@ -1319,7 +1319,7 @@
 
 ### prototypes/desktop (JS) — 16건
 
-- [ ] **SE-001** 🔴 `SRP` `prototypes/desktop/adapter.js:10-671` `api` (M)
+- [~] **SE-001** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) 🔴 `SRP` `prototypes/desktop/adapter.js:10-671` `api` (M)
   - adapter.js 는 68개 심볼을 포함한 671줄 거대 파일로, 데이터 접근(HTTP/mock 전환)·정규화(실 응답 → UI shape)·비즈니스 로직(role 판정, 정책 병합) 등 3개 책임을 혼재. 단일 책임은 '데이터 접근'이어야 하나 형식 변환, 권한 검증, 정책 기본값이 섞여 있음.
   - **Fix:** adapter.js 를 3개 모듈로 분리: (1) adapter.js = HTTP/mock 기초만, (2) normalizer.js = 응답 정규화(getServers→shape 변환), (3) policy.js = 정책 기본값·권한 판정 로직. 각 모듈은 단일 책임을 가짐.
 - [ ] **SE-019** 🔴 `OCP` `prototypes/desktop/adapter.js:188-670` `api` (M)
@@ -1328,7 +1328,7 @@
 - [ ] **SE-022** 🔴 `DIP` `prototypes/desktop/adapter.js:12, 14-186` `USE_MOCK, _setup, MOCK` (M)
   - mock/real 전환이 boolean flag USE_MOCK = true/false 로 하드코딩되어 있음. adapter 내 모든 메서드가 if(USE_MOCK) 로 분기하므로, 구체 구현(mock 데이터)에 의존(상위 정책이 구체에 의존).
   - **Fix:** DataSource 인터페이스를 추상화: (1) interface DataSource { getServers(), getStatus(), ... }  (2) class MockDataSource implements DataSource { ... } (3) class RealDataSource implements DataSource { ... } (4) api 객체는 주입된 DataSource 를 사용. USE_MOCK boolean 대신 DI 컨테이너가 new MockDataSource() 또는 new RealDataSource() 를 선택.
-- [ ] **SE-157** 🟡 `LSP` `prototypes/desktop/adapter.js:199, 227, 286, 316` `api.getServers, api.getServerDetail, api.setManagePolicy, api.deletePromptSet` (S)
+- [x] **SE-157** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `LSP` `prototypes/desktop/adapter.js:199, 227, 286, 316` `api.getServers, api.getServerDetail, api.setManagePolicy, api.deletePromptSet` (S)
   - mock 경로에서 구조화 클론(structuredClone) 후 반환하지만, 실 경로에서는 캐시된 응답을 그대로 반환할 수 있음(Promise 객체도 캐싱됨). 호출부가 반환값을 수정하면 다음 호출에 영향(부모 계약 위반 — read-only 보장되지 않음).
   - **Fix:** 모든 응답을 반환 전에 structuredClone() 으로 감싸서 호출부 수정 격리. 또는 Object.freeze() 로 반환값을 불변으로 선언. Immutable.js 같은 라이브러리 도입.
 - [ ] **SE-160** 🟡 `ISP` `prototypes/desktop/adapter.js:188` `api` (M)
@@ -1355,7 +1355,7 @@
 - [x] **SE-291** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외6 비즈변환` `prototypes/desktop/adapter.js:32-36` `http` (S)
   - http(ep, opts) 가 fetch().json() 를 직접 반환하는데, 응답이 invalid JSON 이면 uncaught SyntaxError 를 던짐. 네트워크 에러(500/4xx)도 JSON 파싱 전에 던져지는데 업스트림에 아무 처리 없음.
   - **Fix:** http() 를 try-catch 로 감싸서 구체 에러(SyntaxError, 네트워크)를 도메인 HttpError(message, statusCode, originalError) 로 변환. 또는 r.ok 체크 후 ok=false 면 HttpError 던지기. 호출부는 HttpError 를 catch 해서 사용자 메시지 표시.
-- [ ] **SE-320** ⚪ `SRP` `prototypes/desktop/adapter.js:39-186` `MOCK` (M)
+- [~] **SE-320** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) ⚪ `SRP` `prototypes/desktop/adapter.js:39-186` `MOCK` (M)
   - mock 데이터(MOCK 객체)가 adapter.js 안에 포함되어 있어서, 프로토 제거 시(/* @proto-only */ 마크업) 수동으로 지워야 함. 프로토 전용 코드를 adapter 와 분리하지 않아 유지보수 부담.
   - **Fix:** mock 데이터를 별도 파일 mock.js 로 분리하고, adapter 임포트는 조건부(if(USE_MOCK) { import mockData } else { ... }). 실 앱 이식 시 mock.js 전체 제거만 하면 됨.
 - [x] **SE-377** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) ⚪ `예외5 흐름제어` `prototypes/desktop/adapter.js:19-24` `_isUnknownModel` (S)

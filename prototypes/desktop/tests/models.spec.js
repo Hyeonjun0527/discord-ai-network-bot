@@ -23,13 +23,13 @@ test('추천 카탈로그(분류 드롭다운·고사양 변형) + 직접 입력
   await page.click('#catalogBtn');
   // 분류 드롭다운 7개, 기본은 첫 분류(한국어)만 표시
   await expect(page.locator('#catSel option')).toHaveCount(7);
-  await expect(page.locator('#catList [data-cat]')).toHaveCount(3); // 한국어: exaone 3종
+  await expect(page.locator('#catList [data-cat]')).toHaveCount(2); // 한국어: exaone 2종(7.8b·32b)
   await expect(page.locator('#catList [data-cat="exaone3.5:32b"]')).toBeVisible();
   // 분류 변경 → 범용에 고사양 변형 노출
   await page.selectOption('#catSel', '범용');
-  await expect(page.locator('#catList [data-cat="qwen2.5:72b"]')).toBeVisible();
+  await expect(page.locator('#catList [data-cat="llama3.3:70b"]')).toBeVisible();
   await page.selectOption('#catSel', '추론');
-  await expect(page.locator('#catList [data-cat="deepseek-r1:70b"]')).toBeVisible();
+  await expect(page.locator('#catList [data-cat="deepseek-r1:32b"]')).toBeVisible();
   await expect(page.locator('#catManual')).toBeVisible();
   // 형식 오류
   await page.fill('#catManual', '!! 이상한 이름');
@@ -48,14 +48,14 @@ test('모델 설치 모달은 우상단 ✕로 닫힌다(하단 닫기 버튼 �
 test('12b 이상 모델은 설치 전 VRAM 확인 모달이 뜬다(취소 시 미설치)', async ({ page }) => {
   await page.click('#catalogBtn');
   await page.selectOption('#catSel', '추론');
-  // 70b → 필요 VRAM 35GB 경고
-  await page.locator('#installCard [data-cat="deepseek-r1:70b"]').click();
+  // 32b → 필요 VRAM 16GB 경고(파라미터 ÷ 2)
+  await page.locator('#installCard [data-cat="deepseek-r1:32b"]').click();
   const warn = page.locator('.modal-layer .modal', { hasText: '큰 모델이에요' });
   await expect(warn).toBeVisible();
-  await expect(warn).toContainText('VRAM 35GB 이상');
+  await expect(warn).toContainText('VRAM 16GB 이상');
   // 취소 → 설치 안 됨, 카탈로그는 유지
   await warn.locator('[data-no]').click();
-  await expect(page.locator('#modelList .m-name', { hasText: 'deepseek-r1:70b' })).toHaveCount(0);
+  await expect(page.locator('#modelList .m-name', { hasText: 'deepseek-r1:32b' })).toHaveCount(0);
   await expect(page.locator('#installCard')).toBeVisible();
 });
 

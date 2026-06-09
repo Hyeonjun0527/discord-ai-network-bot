@@ -121,34 +121,43 @@ def webui_url() -> str:
     return f"http://127.0.0.1:{COMFY_PORT}"
 
 
+def _token_header(url: str) -> dict[str, str]:
+    """이 URL 다운로드에 필요한 인증 헤더(HF/Civitai 토큰, 저장돼 있으면). 없으면 빈 dict."""
+    from .config_file import load_config
+
+    if "huggingface.co" in url:
+        token = str(load_config().get("hf_token") or "").strip()
+    elif "civitai.com" in url:
+        token = str(load_config().get("civitai_token") or "").strip()
+    else:
+        return {}
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 async def _remote_size(url: str) -> int:
     """다운로드 진행률 계산용 총 바이트(HEAD content-length, 리다이렉트 추적). 모르면 0."""
     try:
-        headers: dict[str, str] = {}
-        if "huggingface.co" in url:
-            from .config_file import load_config
-
-            token = str(load_config().get("hf_token") or "").strip()
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
         timeout = aiohttp.ClientTimeout(total=20)
-        async with aiohttp.ClientSession(timeout=timeout) as s, s.head(url, headers=headers, allow_redirects=True) as r:
+        async with aiohttp.ClientSession(timeout=timeout) as s, s.head(url, headers=_token_header(url), allow_redirects=True) as r:
             return int(r.headers.get("Content-Length") or 0)
     except (aiohttp.ClientError, ValueError, OSError):
         return 0
 
 
-async def download_model(url: str) -> bool:
-    """임의 .safetensors/.ckpt 모델 URL 을 ComfyUI 체크포인트 폴더로 받는다(폴더 스캔이 자동 인식).
+async def download_model(url: str, filename: str | None = None) -> bool:
+    """모델 URL 을 ComfyUI 체크포인트 폴더로 받는다(폴더 스캔이 자동 인식).
 
     진행률을 _state(downloading/percent/message)로 표면화하므로 호출부는 백그라운드 태스크로 띄우고
-    ``/api/comfy/setup-progress`` 를 폴링하면 된다(install 도 fire-and-poll). gated/비공개 HF 모델은
-    sd_setup._download 가 저장된 HF 토큰을 Authorization 으로 주입한다. 실패면 False.
+    ``/api/comfy/setup-progress`` 를 폴링하면 된다(install 도 fire-and-poll). gated/비공개 HF·Civitai 모델은
+    sd_setup._download 가 저장된 토큰을 Authorization 으로 주입한다. 실패면 False.
+
+    filename: 확장자 없는 다운로드 URL(예: Civitai ``/api/download/models/{id}``)은 실제 파일명을
+    명시로 받는다(없으면 URL 마지막 세그먼트). 폴더 스캔 매칭·활성 전환에 이 이름을 쓴다.
     """
     global _busy
     if not url.startswith(("http://", "https://")):
         return False
-    fn = url.rsplit("/", 1)[-1].split("?")[0]
+    fn = (filename or url.rsplit("/", 1)[-1]).split("?")[0].strip()
     if not fn.endswith((".safetensors", ".ckpt")):
         return False
     dest = model_dir() / fn
@@ -175,6 +184,69 @@ async def download_model(url: str) -> bool:
     ok = dest.exists()
     _set("done" if ok else "error", 100 if ok else None, "이미지 모델 준비 완료" if ok else "다운로드 실패")
     return ok
+
+
+# ── Civitai 둘러보기(인기 모델 즉시 다운로드) ──────────────────────────────────
+_CIVITAI_API = "https://civitai.com/api/v1/models"
+# 인기순 = 하트(thumbsUp) 많은 순. period=AllTime 로 역대 인기. (조회는 무인증, 다운로드는 키 필요)
+CIVITAI_SORTS = {"liked": "Most Liked", "downloaded": "Most Downloaded", "rated": "Highest Rated"}
+
+
+async def civitai_popular(query: str = "", sort: str = "liked", nsfw: bool = False, limit: int = 24) -> list[dict]:
+    """Civitai 인기 체크포인트 목록(하트 많은 순 기본). 조회는 무인증.
+
+    반환 각 항목: {name, base, hearts, downloads, url, filename, image, nsfw, sizeMb}.
+    url 은 ``/api/download/models/{versionId}`` (확장자 없음) — download_model(url, filename) 로 받는다.
+    실제 다운로드는 Civitai API 키 필요(대부분 모델이 로그인 요구). NSFW 기본 제외.
+    """
+    import urllib.parse
+
+    params = {
+        "types": "Checkpoint",
+        "sort": CIVITAI_SORTS.get(sort, "Most Liked"),
+        "period": "AllTime",
+        "limit": str(max(1, min(40, int(limit)))),
+        "nsfw": "true" if nsfw else "false",
+    }
+    if query.strip():
+        params["query"] = query.strip()
+    api = f"{_CIVITAI_API}?{urllib.parse.urlencode(params)}"
+    headers = {"User-Agent": "nexa-agent", **_token_header(api.replace(_CIVITAI_API, "https://civitai.com"))}
+    try:
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as s, s.get(api, headers=headers) as r:
+            data = await r.json()
+    except (aiohttp.ClientError, ValueError, OSError):
+        return []
+    out: list[dict] = []
+    for it in (data.get("items") or []) if isinstance(data, dict) else []:
+        vers = it.get("modelVersions") or []
+        if not vers:
+            continue
+        v = vers[0]
+        files = v.get("files") or []
+        f = next((x for x in files if str(x.get("name", "")).endswith((".safetensors", ".ckpt"))), None)
+        dl = str(v.get("downloadUrl") or "")
+        if f is None or not dl:
+            continue
+        fn = str(f.get("name") or "")
+        if not fn.endswith((".safetensors", ".ckpt")):
+            continue
+        stats = it.get("stats") or {}
+        imgs = v.get("images") or []
+        img = imgs[0].get("url") if imgs and isinstance(imgs[0], dict) else None
+        out.append({
+            "name": str(it.get("name") or ""),
+            "base": str(v.get("baseModel") or ""),
+            "hearts": int(stats.get("thumbsUpCount") or 0),
+            "downloads": int(stats.get("downloadCount") or 0),
+            "url": dl,
+            "filename": fn,
+            "image": img,
+            "nsfw": bool(it.get("nsfw")),
+            "sizeMb": int(int(f.get("sizeKB") or 0) / 1024),
+        })
+    return out
 
 
 def clone_commands(directory: pathlib.Path | None = None) -> list[list[str]]:

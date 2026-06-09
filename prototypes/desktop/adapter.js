@@ -65,7 +65,7 @@ const MOCK = {
     running: true, connected: true, processed: 12, imageReady: true, enableImage: true,
     models: ['exaone3.5:7.8b', 'llama3.1:8b', 'qwen2.5-coder:7b'],
     hasToken: true, relayUrl: 'wss://discord-ai.yeon.world/agent', backgroundRunning: false, background: false, connectEnabled: true,
-    version: '0.31.0', geminiConfigured: false, comfyUrl: '', hfConfigured: false,
+    version: '0.31.0', geminiConfigured: false, comfyUrl: '', hfConfigured: false, civitaiConfigured: false,
   },
   // ComfyUI 라이프사이클 상태는 별도 엔드포인트(/api/comfy/status)라 status shape 와 분리한다.
   comfy: { installed: false, running: false, active: null },
@@ -76,6 +76,12 @@ const MOCK = {
     { id: 'pony-v6-xl', name: 'Pony Diffusion V6 XL', category: 'anime', base: 'SDXL', desc: '애니·만화까지 가장 범용적인 인기 SDXL. score_9 프롬프트 권장.', size: '6.9GB', url: 'https://huggingface.co/LyliaEngine/Pony_Diffusion_V6_XL/resolve/main/ponyDiffusionV6XL_v6StartWithThisOne.safetensors', filename: 'ponyDiffusionV6XL_v6StartWithThisOne.safetensors', installed: false },
     { id: 'realvis-xl-v5', name: 'RealVisXL V5.0', category: 'realistic', base: 'SDXL', desc: '실사 표준급 고품질. 인물·풍경 안정적.', size: '6.9GB', url: 'https://huggingface.co/SG161222/RealVisXL_V5.0/resolve/main/RealVisXL_V5.0_fp16.safetensors', filename: 'RealVisXL_V5.0_fp16.safetensors', installed: false },
     { id: 'juggernaut-xl-v9', name: 'Juggernaut XL v9', category: 'realistic', base: 'SDXL', desc: '세계 최다 다운로드 실사 SDXL. 포토리얼리즘 강력.', size: '7.1GB', url: 'https://huggingface.co/RunDiffusion/Juggernaut-XL-v9/resolve/main/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', filename: 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', installed: false },
+  ],
+  // Civitai 둘러보기(/api/comfy/civitai) — 하트 많은 순 인기 체크포인트. 실 백엔드 civitai_popular 와 같은 shape.
+  civitai: [
+    { name: 'Pony Diffusion V6 XL', base: 'Pony', hearts: 75982, downloads: 991281, url: 'https://civitai.com/api/download/models/290640', filename: 'ponyDiffusionV6XL_v6StartWithThisOne.safetensors', image: null, nsfw: false, sizeMb: 6616 },
+    { name: 'DreamShaper', base: 'SD 1.5', hearts: 57946, downloads: 1625305, url: 'https://civitai.com/api/download/models/128713', filename: 'dreamshaper_8.safetensors', image: null, nsfw: false, sizeMb: 2034 },
+    { name: 'majicMIX realistic', base: 'SD 1.5', hearts: 62844, downloads: 1220175, url: 'https://civitai.com/api/download/models/176425', filename: 'majicmixRealistic_v7.safetensors', image: null, nsfw: false, sizeMb: 2034 },
   ],
   logs: [
     '09:12:03 INFO | 에이전트 시작 (Nexa v0.31.0)',
@@ -160,44 +166,27 @@ const MOCK = {
     },
   },
   catalog: [
-    { name: 'exaone3.5:2.4b', size: '1.6GB', desc: '한국어 경량', cat: '한국어' },
-    { name: 'exaone3.5:7.8b', size: '4.8GB', desc: '한국어 특화 · 기본 권장', cat: '한국어' },
-    { name: 'exaone3.5:32b', size: '19GB', desc: '한국어 고품질(고사양)', cat: '한국어' },
-    { name: 'llama3.2:3b', size: '2.0GB', desc: 'Meta 경량 범용', cat: '범용' },
-    { name: 'llama3.1:8b', size: '4.7GB', desc: 'Meta 범용 한국어·영어', cat: '범용' },
-    { name: 'llama3.3:70b', size: '43GB', desc: 'Meta 최상위(고사양)', cat: '범용' },
-    { name: 'llama3.1:405b', size: '243GB', desc: 'Meta 초대형(서버급)', cat: '범용' },
-    { name: 'qwen2.5:7b', size: '4.7GB', desc: 'Qwen 다국어', cat: '범용' },
-    { name: 'qwen2.5:14b', size: '9.0GB', desc: 'Qwen 다국어 고품질', cat: '범용' },
-    { name: 'qwen2.5:32b', size: '20GB', desc: 'Qwen 고사양', cat: '범용' },
-    { name: 'qwen2.5:72b', size: '47GB', desc: 'Qwen 최상위(고사양)', cat: '범용' },
-    { name: 'gemma2:9b', size: '5.4GB', desc: 'Google 고품질 경량', cat: '범용' },
-    { name: 'gemma2:27b', size: '16GB', desc: 'Google 고사양', cat: '범용' },
-    { name: 'mistral:7b', size: '4.1GB', desc: 'Mistral 범용', cat: '범용' },
-    { name: 'mistral-nemo:12b', size: '7.1GB', desc: 'Mistral 고품질', cat: '범용' },
-    { name: 'mistral-large:123b', size: '73GB', desc: 'Mistral 최상위(서버급)', cat: '범용' },
-    { name: 'phi4:14b', size: '9.1GB', desc: 'Microsoft 고품질', cat: '범용' },
-    { name: 'command-r:35b', size: '20GB', desc: 'Cohere RAG 특화', cat: '범용' },
-    { name: 'command-r-plus:104b', size: '59GB', desc: 'Cohere RAG 최상위', cat: '범용' },
-    { name: 'qwen2.5-coder:7b', size: '4.7GB', desc: '코딩 특화', cat: '코딩' },
-    { name: 'qwen2.5-coder:32b', size: '20GB', desc: '코딩 고사양', cat: '코딩' },
-    { name: 'deepseek-coder-v2:16b', size: '8.9GB', desc: '코딩 고품질', cat: '코딩' },
-    { name: 'deepseek-coder-v2:236b', size: '133GB', desc: '코딩 초대형(서버급)', cat: '코딩' },
-    { name: 'codellama:7b', size: '3.8GB', desc: 'Meta 코딩', cat: '코딩' },
-    { name: 'codellama:34b', size: '19GB', desc: 'Meta 코딩 고사양', cat: '코딩' },
-    { name: 'deepseek-r1:7b', size: '4.7GB', desc: '추론 특화', cat: '추론' },
-    { name: 'deepseek-r1:14b', size: '9.0GB', desc: '추론 고품질', cat: '추론' },
-    { name: 'deepseek-r1:32b', size: '20GB', desc: '추론 고사양', cat: '추론' },
-    { name: 'deepseek-r1:70b', size: '43GB', desc: '추론 최상위(고사양)', cat: '추론' },
-    { name: 'llava:7b', size: '4.7GB', desc: '비전(이미지 이해)', cat: '비전' },
-    { name: 'llava:34b', size: '20GB', desc: '비전 고사양', cat: '비전' },
-    { name: 'llama3.2-vision:11b', size: '7.9GB', desc: 'Meta 비전', cat: '비전' },
-    { name: 'llama3.2-vision:90b', size: '55GB', desc: 'Meta 비전 최상위', cat: '비전' },
-    { name: 'nomic-embed-text', size: '0.3GB', desc: '임베딩(검색·RAG)', cat: '임베딩' },
-    { name: 'mxbai-embed-large', size: '0.7GB', desc: '임베딩 고품질', cat: '임베딩' },
-    { name: 'gemma2:2b', size: '1.6GB', desc: 'Google 초경량', cat: '경량' },
-    { name: 'llama3.2:1b', size: '1.3GB', desc: 'Meta 초경량', cat: '경량' },
-    { name: 'tinyllama:1.1b', size: '0.6GB', desc: '최소 사양 테스트용', cat: '경량' },
+    // 2026-06 ollama.com/library 현행. released = 출시 시점(구형 추천 방지). 한국어 강한 것 우선.
+    { name: 'exaone3.5:7.8b', size: '4.8GB', released: '2024-12', desc: '한국어 최강 기본 권장(LG AI)', cat: '한국어' },
+    { name: 'exaone3.5:32b', size: '19GB', released: '2024-12', desc: '한국어 고품질(고사양)', cat: '한국어' },
+    { name: 'gemma3:12b', size: '8.1GB', released: '2025-03', desc: 'Google 다국어(한국어)·비전. Gemma 2 대체', cat: '범용' },
+    { name: 'gemma4:12b', size: '7.6GB', released: '2026-04', desc: 'Google 최신 멀티모달·256K', cat: '범용' },
+    { name: 'qwen2.5:7b', size: '4.7GB', released: '2024-09', desc: 'Qwen 경량 다국어(한국어)·가성비', cat: '범용' },
+    { name: 'qwen3.6:27b', size: '17GB', released: '2026-04', desc: 'Qwen 최신 고성능 다국어(고사양)', cat: '범용' },
+    { name: 'llama3.3:70b', size: '43GB', released: '2024-12', desc: 'Meta 최상위 범용(서버급)', cat: '범용' },
+    { name: 'mistral-small3.2:24b', size: '15GB', released: '2025-06', desc: 'Mistral 최신 범용', cat: '범용' },
+    { name: 'qwen2.5-coder:7b', size: '4.7GB', released: '2024-11', desc: '코딩 특화 경량', cat: '코딩' },
+    { name: 'qwen3-coder:30b', size: '19GB', released: '2025-07', desc: 'Qwen 최신 코딩(고사양)', cat: '코딩' },
+    { name: 'deepseek-r1:8b', size: '5.2GB', released: '2025-01', desc: '수학·코딩·논리 추론 특화', cat: '추론' },
+    { name: 'deepseek-r1:32b', size: '20GB', released: '2025-01', desc: '추론 고품질(고사양)', cat: '추론' },
+    { name: 'gpt-oss:20b', size: '14GB', released: '2025-08', desc: 'OpenAI 오픈웨이트 추론', cat: '추론' },
+    { name: 'gemma3:12b', size: '8.1GB', released: '2025-03', desc: 'Gemma 3 비전(이미지 이해)·다국어', cat: '비전' },
+    { name: 'llama3.2-vision:11b', size: '7.9GB', released: '2024-11', desc: 'Meta 비전(이미지 이해)', cat: '비전' },
+    { name: 'llama3.2:3b', size: '2.0GB', released: '2024-09', desc: '저사양·경량 범용', cat: '경량' },
+    { name: 'gemma3:1b', size: '0.8GB', released: '2025-03', desc: 'Google 초경량 다국어', cat: '경량' },
+    { name: 'qwen2.5:3b', size: '1.9GB', released: '2024-09', desc: 'Qwen 초경량 다국어', cat: '경량' },
+    { name: 'nomic-embed-text', size: '0.3GB', released: '2024-02', desc: '임베딩(검색·RAG)', cat: '임베딩' },
+    { name: 'mxbai-embed-large', size: '0.7GB', released: '2024-03', desc: '임베딩 고품질', cat: '임베딩' },
   ],
   candidates: [
     { guildId: 2001, guildName: '우리 동아리', iconUrl: null, autoApprove: true },
@@ -459,9 +448,9 @@ export const api = {
     return post(ENDPOINTS.image, { on });
   },
   /** 클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. webui.py POST /api/cloud. */
-  async setCloud({ geminiApiKey, comfyUrl, hfToken }) {
-    /* @proto-only */ if (USE_MOCK) { await delay(120); const o = { ok: true }; if (geminiApiKey !== undefined) { MOCK.status.geminiConfigured = !!geminiApiKey; o.geminiConfigured = !!geminiApiKey; o.geminiValid = !!geminiApiKey; } if (comfyUrl !== undefined) { MOCK.status.comfyUrl = comfyUrl; o.comfyUrl = comfyUrl; o.needsRestart = true; } if (hfToken !== undefined) { MOCK.status.hfConfigured = !!hfToken; o.hfConfigured = !!hfToken; } return o; } /* @end-proto-only */
-    const body = {}; if (geminiApiKey !== undefined) body.geminiApiKey = geminiApiKey; if (comfyUrl !== undefined) body.comfyUrl = comfyUrl; if (hfToken !== undefined) body.hfToken = hfToken;
+  async setCloud({ geminiApiKey, comfyUrl, hfToken, civitaiToken }) {
+    /* @proto-only */ if (USE_MOCK) { await delay(120); const o = { ok: true }; if (geminiApiKey !== undefined) { MOCK.status.geminiConfigured = !!geminiApiKey; o.geminiConfigured = !!geminiApiKey; o.geminiValid = !!geminiApiKey; } if (comfyUrl !== undefined) { MOCK.status.comfyUrl = comfyUrl; o.comfyUrl = comfyUrl; o.needsRestart = true; } if (hfToken !== undefined) { MOCK.status.hfConfigured = !!hfToken; o.hfConfigured = !!hfToken; } if (civitaiToken !== undefined) { MOCK.status.civitaiConfigured = !!civitaiToken; o.civitaiConfigured = !!civitaiToken; } return o; } /* @end-proto-only */
+    const body = {}; if (geminiApiKey !== undefined) body.geminiApiKey = geminiApiKey; if (comfyUrl !== undefined) body.comfyUrl = comfyUrl; if (hfToken !== undefined) body.hfToken = hfToken; if (civitaiToken !== undefined) body.civitaiToken = civitaiToken;
     return post(ENDPOINTS.cloud, body);
   },
   /** 제공할 텍스트 모델 선택 적용 — webui.py POST /api/setup {models, enableImage, applyToBackground}.
@@ -591,6 +580,12 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { await delay(60); return { models: structuredClone(MOCK.comfyCatalog) }; } /* @end-proto-only */
     return http(ENDPOINTS.comfyCatalog);
   },
+  /** Civitai 인기 체크포인트 둘러보기 — 하트 많은 순. {models:[{name,base,hearts,downloads,url,filename,image,nsfw}], needsKey}. */
+  async comfyCivitai(query = '', sort = 'liked', nsfw = false) {
+    /* @proto-only */ if (USE_MOCK) { await delay(120); return { models: structuredClone(MOCK.civitai), needsKey: !MOCK.status.civitaiConfigured }; } /* @end-proto-only */
+    const qs = '?q=' + encodeURIComponent(query) + '&sort=' + encodeURIComponent(sort) + '&nsfw=' + (nsfw ? '1' : '0');
+    return http(ENDPOINTS.comfyCivitai + qs);
+  },
   /** 활성 ComfyUI 체크포인트 전환 — POST /api/comfy/select {model}. */
   async comfySelectModel(model) {
     /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.comfy.active = model; return { ok: true, active: model }; } /* @end-proto-only */
@@ -598,9 +593,9 @@ export const api = {
   },
   /** 모델 URL(.safetensors)을 ComfyUI 폴더로 다운로드(카탈로그·임의 URL 공용) — POST /api/comfy/install-model {url}.
    *  대용량이라 백그라운드로 받고 즉시 반환 — 진행률은 comfySetupProgress 폴링, 완료 후 comfySelectModel 로 활성화. */
-  async installComfyModel(url) {
-    /* @proto-only */ if (USE_MOCK) { const ok = /\.(safetensors|ckpt)(\?|$)/.test(url); if (!ok) { await delay(80); return { ok: false, error: '.safetensors/.ckpt 직접 링크인지 확인하세요.' }; } _setup.comfy = { start: Date.now(), model: url.split('/').pop().split('?')[0] }; await delay(60); return { ok: true, started: true }; } /* @end-proto-only */
-    return post(ENDPOINTS.comfyInstallModel, { url });
+  async installComfyModel(url, filename) {
+    /* @proto-only */ if (USE_MOCK) { const fn = filename || (url.split('/').pop() || '').split('?')[0]; const ok = /\.(safetensors|ckpt)$/.test(fn); if (!ok) { await delay(80); return { ok: false, error: '.safetensors/.ckpt 모델인지 확인하세요.' }; } _setup.comfy = { start: Date.now(), model: fn }; await delay(60); return { ok: true, started: true }; } /* @end-proto-only */
+    return post(ENDPOINTS.comfyInstallModel, filename ? { url, filename } : { url });
   },
 
   /**
@@ -654,9 +649,9 @@ export const api = {
   /** 추천 설치 모델 카탈로그 — webui.py /api/ollama/catalog */
   async ollamaCatalog() {
     /* @proto-only */ if (USE_MOCK) { await delay(60); return structuredClone(MOCK.catalog); } /* @end-proto-only */
-    // 정규화: 실 {models:[{id,name,desc,size,installed,selected}]} → UI {name,size,desc,cat}.
+    // 정규화: 실 {models:[{id,name,desc,size,released,installed,selected}]} → UI {name,size,desc,cat,released}.
     const real = (await http(ENDPOINTS.ollamaCatalog)).models || [];
-    return real.map((m) => ({ name: m.id || m.name, size: m.size || '', desc: m.desc || '', cat: '추천' }));
+    return real.map((m) => ({ name: m.id || m.name, size: m.size || '', desc: m.desc || '', cat: '추천', released: m.released || '' }));
   },
 
   /** Discord 연결 후보 목록 — central ProviderConnectOnboardingService (OAuth 콜백이 제공) */

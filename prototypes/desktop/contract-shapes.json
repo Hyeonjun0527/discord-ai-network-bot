@@ -3,6 +3,7 @@
     "/api/status": [
       "background",
       "backgroundRunning",
+      "civitaiConfigured",
       "comfyUrl",
       "connectEnabled",
       "connected",

@@ -38,6 +38,7 @@ class AgentConfig:
     gemini_models: tuple[str, ...] = ()  # 광고할 Gemini 모델(키 있을 때 기본 gemini-2.5-flash-lite)
     comfy_url: str = ""  # 로컬 ComfyUI 주소(비면 앱 관리 ComfyUI localhost:8188). 외부는 명시 입력
     hf_token: str = ""  # HuggingFace 토큰(gated/비공개 모델 다운로드용). 비면 public 모델만. 이 PC 에만 저장
+    civitai_token: str = ""  # Civitai API 키(Civitai 모델 다운로드용 — 대부분 로그인 요구). 이 PC 에만 저장
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
     service: bool = False  # 헤드리스 자동시작 모드(--service): launchd·업데이터 재실행이 창 없이 무인 구동
     install_service: bool = False  # 자동 시작 서비스 등록 후 종료(--install-service, 저장 안 함)
@@ -170,6 +171,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
     # 관리하는 로컬 ComfyUI(localhost:8188). 환경변수(프로젝트 env)로 외부 주소를 주입하지 않는다.
     comfy_url = str(saved.get("comfy_url") or "").rstrip("/")
     hf_token = (_env("HF_TOKEN") or _env("HUGGING_FACE_HUB_TOKEN") or str(saved.get("hf_token") or "")).strip()
+    civitai_token = (_env("CIVITAI_API_TOKEN") or _env("CIVITAI_TOKEN") or str(saved.get("civitai_token") or "")).strip()
 
     # 일일 한도: 기본 DEFAULT_DAILY_LIMIT. 0(무제한)은 --allow-unlimited 가 있을 때만 허용.
     if args.daily_limit is not None:
@@ -212,6 +214,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         gemini_models=gemini_models,
         comfy_url=comfy_url,
         hf_token=hf_token,
+        civitai_token=civitai_token,
         # --service(헤드리스 자동시작)는 동의 프롬프트를 띄울 수 없으므로 자동 승인(--yes)을 포함한다.
         assume_yes=bool(args.yes) or bool(args.service),
         service=bool(args.service),

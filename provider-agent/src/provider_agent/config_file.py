@@ -38,6 +38,7 @@ SAVEABLE = (
     "enable_image",
     "comfy_url",
     "hf_token",
+    "civitai_token",
     "auto_update",
 )
 

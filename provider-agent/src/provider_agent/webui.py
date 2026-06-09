@@ -529,9 +529,22 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
 
         return web.json_response({"models": comfy_setup.catalog()})
 
+    async def comfy_civitai(req: web.Request) -> web.Response:
+        """Civitai 인기 체크포인트 둘러보기 — 하트(좋아요) 많은 순. 조회는 무인증, 다운로드는 Civitai 키 필요.
+        query: q(검색)·sort(liked|downloaded|rated)·nsfw(1/0). 반환 {models:[{name,base,hearts,url,filename,image,...}]}."""
+        _auth(req)
+        from . import comfy_setup
+
+        q = req.query.get("q", "")
+        sort = req.query.get("sort", "liked")
+        nsfw = req.query.get("nsfw", "0") in ("1", "true", "True")
+        models = await comfy_setup.civitai_popular(query=q, sort=sort, nsfw=nsfw, limit=24)
+        return web.json_response({"models": models, "needsKey": not bool(load_config().get("civitai_token"))})
+
     async def comfy_install_model(req: web.Request) -> web.Response:
-        """모델 URL(.safetensors/.ckpt)을 ComfyUI 체크포인트 폴더로 다운로드(카탈로그·임의 URL 공용, gated 는 HF 토큰).
-        body {url}. 대용량이라 **백그라운드로 받고 즉시 반환** — 진행률은 /api/comfy/setup-progress 폴링."""
+        """모델을 ComfyUI 체크포인트 폴더로 다운로드(카탈로그·Civitai·임의 URL 공용, gated 는 HF/Civitai 토큰).
+        body {url, filename?}. filename 은 확장자 없는 URL(Civitai)용. 대용량이라 **백그라운드로 받고 즉시 반환**
+        — 진행률은 /api/comfy/setup-progress 폴링."""
         _auth(req)
         from . import comfy_setup
 
@@ -540,12 +553,13 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
         except Exception:  # noqa: BLE001
             data = {}
         url = str((data or {}).get("url") or "").strip()
-        fn = url.rsplit("/", 1)[-1].split("?")[0] if url else ""
+        filename = str((data or {}).get("filename") or "").strip() or None
+        fn = (filename or (url.rsplit("/", 1)[-1] if url else "")).split("?")[0]
         if not url or not fn.endswith((".safetensors", ".ckpt")):
-            return web.json_response({"ok": False, "error": ".safetensors/.ckpt 직접 링크인지 확인하세요. gated 모델은 설정에서 HF 토큰을 넣으세요."})
+            return web.json_response({"ok": False, "error": ".safetensors/.ckpt 모델인지 확인하세요. gated/Civitai 모델은 설정에서 토큰을 넣으세요."})
         if comfy_setup.is_busy():
             return web.json_response({"ok": True, "busy": True})
-        asyncio.create_task(comfy_setup.download_model(url))
+        asyncio.create_task(comfy_setup.download_model(url, filename))
         return web.json_response({"ok": True, "started": True})
 
     async def comfy_select(req: web.Request) -> web.Response:
@@ -595,6 +609,7 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
     app.router.add_post("/api/comfy/open", comfy_open)
     app.router.add_get("/api/comfy/models", comfy_models)
     app.router.add_get("/api/comfy/catalog", comfy_catalog)
+    app.router.add_get("/api/comfy/civitai", comfy_civitai)
     app.router.add_post("/api/comfy/select", comfy_select)
     app.router.add_post("/api/comfy/install-model", comfy_install_model)
 
@@ -1192,6 +1207,7 @@ def build_app(session_key: str) -> web.Application:
                 "geminiConfigured": bool(saved.get("gemini_api_key")),
                 "comfyUrl": str(saved.get("comfy_url") or ""),
                 "hfConfigured": bool(saved.get("hf_token")),
+                "civitaiConfigured": bool(saved.get("civitai_token")),
             }
         )
 
@@ -1325,6 +1341,10 @@ def build_app(session_key: str) -> web.Application:
             tok = str(data.get("hfToken") or "").strip()
             persist_partial({"hf_token": tok})  # gated 모델 다운로드용. 이 PC 에만.
             out["hfConfigured"] = bool(tok)
+        if "civitaiToken" in data:
+            tok = str(data.get("civitaiToken") or "").strip()
+            persist_partial({"civitai_token": tok})  # Civitai 모델 다운로드용. 이 PC 에만.
+            out["civitaiConfigured"] = bool(tok)
         return web.json_response(out)
 
     async def connect_open(req: web.Request) -> web.Response:
@@ -1575,6 +1595,7 @@ def build_app(session_key: str) -> web.Application:
                 "geminiConfigured": bool(saved.get("gemini_api_key")),
                 "comfyUrl": str(saved.get("comfy_url") or ""),
                 "hfConfigured": bool(saved.get("hf_token")),
+                "civitaiConfigured": bool(saved.get("civitai_token")),
                 "hasToken": bool(saved.get("token")),
             }
         )

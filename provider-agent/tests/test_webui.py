@@ -984,10 +984,10 @@ async def test_setup_apply_to_background_noop_without_background(monkeypatch):
 async def test_ollama_catalog_lists_recommended_with_status(monkeypatch):
     """/api/ollama/catalog 가 exaone 을 기본/추천으로 주고, 설치됨/선택됨 상태를 모델별로 표기한다(P3)."""
     async def fake_detect():
-        return {"installed": True, "ready": True, "models": ["llama3.1:8b"]}
+        return {"installed": True, "ready": True, "models": ["qwen2.5:7b"]}
 
     monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
-    persist_partial({"models": ["llama3.1:8b"]})
+    persist_partial({"models": ["qwen2.5:7b"]})
     client = await _client()
     try:
         d = await (await client.get("/api/ollama/catalog", headers={"X-Session": KEY})).json()
@@ -995,7 +995,8 @@ async def test_ollama_catalog_lists_recommended_with_status(monkeypatch):
         by_id = {m["id"]: m for m in d["models"]}
         assert by_id[DEFAULT_TEXT_MODEL]["default"] is True and by_id[DEFAULT_TEXT_MODEL]["recommended"] is True
         assert by_id[DEFAULT_TEXT_MODEL]["installed"] is False  # exaone 미설치
-        assert by_id["llama3.1:8b"]["installed"] is True and by_id["llama3.1:8b"]["selected"] is True
+        assert by_id[DEFAULT_TEXT_MODEL].get("released")  # 출시일 표기(구형 추천 방지)
+        assert by_id["qwen2.5:7b"]["installed"] is True and by_id["qwen2.5:7b"]["selected"] is True
     finally:
         await client.close()
 

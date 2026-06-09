@@ -23,41 +23,72 @@ logger = logging.getLogger("provider_agent.ollama_setup")
 DEFAULT_MODEL = DEFAULT_TEXT_MODEL
 
 # 앱 내 '추천 텍스트 모델' 카탈로그(SSOT). 명령이 아니라 데이터라 여기서 SSOT — webui 가 참조.
-# id 는 `ollama pull` 에 그대로 쓰는 모델 태그. 기본 모델은 constants.DEFAULT_TEXT_MODEL(리터럴 중복 금지).
+# id 는 `ollama pull` 에 그대로 쓰는 모델 태그(전부 2026-06 ollama.com/library 에서 실재 확인).
+# 기본 모델은 constants.DEFAULT_TEXT_MODEL(리터럴 중복 금지). released 는 출시 시점(구형 추천 방지).
+# 한국어 커뮤니티 봇이라 한국어 강한 모델 우선(EXAONE·Qwen·Gemma). 구형(Gemma 2 등)은 더는 추천하지 않는다.
 RECOMMENDED_TEXT_MODELS: list[dict] = [
     {
-        "id": DEFAULT_TEXT_MODEL,
+        "id": DEFAULT_TEXT_MODEL,  # exaone3.5:7.8b
         "name": "EXAONE 3.5 7.8B",
         "size": "약 4.8 GB",
-        "desc": "한국어에 강한 기본 추천 모델. 일반 PC 권장.",
+        "released": "2024-12",
+        "desc": "한국어 최강 기본 추천(LG AI). 일반 PC 권장.",
         "recommended": True,
     },
     {
-        "id": "llama3.1:8b",
-        "name": "Llama 3.1 8B",
-        "size": "약 4.7 GB",
-        "desc": "범용 영어 모델. 품질/속도 균형.",
+        "id": "gemma3:12b",
+        "name": "Gemma 3 12B",
+        "size": "약 8.1 GB",
+        "released": "2025-03",
+        "desc": "구글 다국어(한국어)·비전. 구형 Gemma 2 대체.",
         "recommended": True,
     },
     {
         "id": "qwen2.5:7b",
         "name": "Qwen 2.5 7B",
         "size": "약 4.7 GB",
-        "desc": "다국어·코딩에 강함.",
+        "released": "2024-09",
+        "desc": "경량 다국어(한국어)·코딩. 가성비.",
+        "recommended": True,
+    },
+    {
+        "id": "gemma4:12b",
+        "name": "Gemma 4 12B",
+        "size": "약 7.6 GB",
+        "released": "2026-04",
+        "desc": "구글 최신 멀티모달·256K 컨텍스트. 최신 기술.",
         "recommended": False,
     },
     {
-        "id": "gemma2:9b",
-        "name": "Gemma 2 9B",
-        "size": "약 5.4 GB",
-        "desc": "구글 경량 고품질 모델.",
+        "id": "qwen3.6:27b",
+        "name": "Qwen 3.6 27B",
+        "size": "약 17 GB",
+        "released": "2026-04",
+        "desc": "최신 고성능 다국어·256K. 고사양 PC(16GB+ VRAM).",
+        "recommended": False,
+    },
+    {
+        "id": "deepseek-r1:8b",
+        "name": "DeepSeek-R1 8B",
+        "size": "약 5.2 GB",
+        "released": "2025-01",
+        "desc": "수학·코딩·논리 추론 특화(사고 과정).",
         "recommended": False,
     },
     {
         "id": "llama3.2:3b",
         "name": "Llama 3.2 3B",
         "size": "약 2.0 GB",
-        "desc": "가벼운 저사양 PC 용.",
+        "released": "2024-09",
+        "desc": "저사양·경량 PC 용. 가벼운 범용.",
+        "recommended": False,
+    },
+    {
+        "id": "llama3.3:70b",
+        "name": "Llama 3.3 70B",
+        "size": "약 43 GB",
+        "released": "2024-12",
+        "desc": "최고 성능 범용(서버급 고사양).",
         "recommended": False,
     },
 ]

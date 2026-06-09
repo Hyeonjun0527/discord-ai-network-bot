@@ -356,6 +356,13 @@ async def _download(url: str, dest: pathlib.Path, message_prefix: str = "이미�
         token = str(load_config().get("hf_token") or "").strip()
         if token:
             headers["Authorization"] = f"Bearer {token}"
+    # Civitai 다운로드는 2024 말부터 거의 항상 API 키 필요(무토큰 → presigned 403). 저장된 키를 Bearer 로.
+    elif "civitai.com" in url:
+        from .config_file import load_config
+
+        token = str(load_config().get("civitai_token") or "").strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
     async with aiohttp.ClientSession(timeout=timeout) as s, s.get(url, headers=headers) as r:
         # 416: 이미 다 받음(서버가 범위 초과로 판단) → 그대로 rename 시도하고 종료.
         if r.status == 416:

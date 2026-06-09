@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexa-agent"
-version = "0.44.1"
+version = "0.44.2"
 description = "Nexa Provider Agent — 내 로컬 AI모델을 디스코드 서버/채널에 공유한다."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -605,7 +605,7 @@
 - [ ] **SE-132** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetChannelApplier.kt:42-116` `applyRevisionToChannel` (M)
   - applyRevisionToChannel 함수가 채널 AI 저장, behavior version 생성, 라우팅 정책 적용, 고위험 검사 및 제안 생성, 감사 로그 저장 등 6개의 책임을 담당한다. 또한 highRisk 플래그에 따라 조건부로 상이한 동작(활성화 vs 제안)을 수행하므로 조건 분기가 복잡하다.
   - **Fix:** 책임을 분리하여 PresetChannelAiSaver(채널 AI/behavior 저장), PresetRoutingPolicyApplier(라우팅 정책), PresetReviewProposalCreator(고위험 제안 생성) 등으로 나누고, applyRevisionToChannel은 이들을 오케스트레이션하는 coordinator 역할로 축소하라.
-- [ ] **SE-133** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:749-777` `sanitizeText` (S)
+- [x] **SE-133** ✅FIXED(sanitizeText를 PresetContentSafety로 이동+위임, 기존 패턴 일관) 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRegistryService.kt:749-777` `sanitizeText` (S)
   - sanitizeText, normalizeReportReasonCode, uniqueSlug 등의 문자열 정규화·새니타이제이션 함수들이 PresetRegistryService 메서드로 뒤섞여 있다. 이들은 순수 함수이며 다른 서비스(예: PresetImportPreviewBuilder, PresetCatalogQueryService)에서도 필요하지만, 코드 재사용을 위해 호출하기 어렵다.
   - **Fix:** 순수 문자열 유틸리티 함수(sanitizeText, normalizeReportReasonCode, uniqueSlug 등)를 PresetStringNormalizer, PresetSlugGenerator 등 전담 유틸 클래스로 추출하고, 필요시 @Component로 등록하여 재사용하도록 하라.
 - [ ] **SE-134** 🟡 `SRP` `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetRevisionFactory.kt:24-70` `createRevision` (S)

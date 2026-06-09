@@ -44,6 +44,17 @@ class PresetContentSafety {
             .filter { it.isNotBlank() }
             .toList()
 
+    /** 비밀값 마스킹 + 길이 제한 + 공백 폴백(신고 사유 등). 로직은 원본과 1바이트도 다르지 않다. */
+    fun sanitizeText(
+        value: String,
+        maxLength: Int,
+    ): String =
+        value
+            .trim()
+            .replace(ContentSafety.SECRET_PATTERN, "[redacted]")
+            .take(maxLength)
+            .ifBlank { "no reason provided" }
+
     companion object {
         const val REDACTED_PUBLIC_TITLE = "비공개 프리셋"
         const val REDACTED_PUBLIC_TEXT = "[비공개 처리됨]"

@@ -34,6 +34,20 @@ SD_PROGRESS_POLL_S = 1.5
 # 생성 중 SD 를 폴링하면 MPS 가 크래시하므로(아래 _handle_image 주석) 진행률은 경과시간으로만 추정한다.
 SD_PROGRESS_HALFLIFE_S = 6.0
 
+# ── 이미지 프롬프트 정책 기본값(central 이 image_policy 로 덮어쓸 수 있음) ──
+# 초보자 /그림: 한국어 → 영어 자연어로 번역하되 '성인·SFW·품질 prefix' 를 강제한다. 정상적인 SFW
+# 요청이 '여자아이→little girl' 식 미성년 오탐으로 거부되지 않게 하는 핵심 가드(거부 0 목표).
+DEFAULT_TRANSLATOR_SYSTEM_PROMPT = (
+    "You convert a user's Korean image request into an English prompt for the Anima anime model.\n"
+    "- Output ONLY the final English prompt, nothing else.\n"
+    "- Start with: \"masterpiece, best quality, safe, \"\n"
+    "- Then a vivid, SFW description of at least 2 sentences.\n"
+    "- Always depict any person as a clearly of-age adult (young adult).\n"
+    "  Translate words like \"여자아이/소녀\" as \"young woman\", never \"girl/child\".\n"
+    "- Keep it strictly safe-for-work. No suggestive or revealing content."
+)
+DEFAULT_FORCED_NEGATIVE = "worst quality, low quality, score_1, score_2, score_3, artist name, loli, child, nsfw"
+
 
 def _merge_models(base: list[str], extra: list[str]) -> list[str]:
     """광고 모델 목록 = 로컬(Ollama) 선택 + 클라우드(Gemini), 순서 보존·중복 제거."""
@@ -278,6 +292,8 @@ class ProviderAgent:
         self._cancelled: set[str] = set()
         self._cancel_order: deque[str] = deque()
         self._cancel_cap = 4096
+        # 진행 중 이미지 생성 요청 id(취소 시 ComfyUI /interrupt 대상 판별).
+        self._image_inflight: set[str] = set()
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._stop = asyncio.Event()
         # 멀티-서버: 여러 디스코드 길드에 동시 접속. 각 항목 {conn, task, status_task, guild_id, guild_name, token}.
@@ -366,6 +382,10 @@ class ProviderAgent:
             task.add_done_callback(lambda _t: self._tasks.pop(req_id, None))
         elif isinstance(frame, CancelFrame):
             self._mark_cancelled(frame.request_id)
+            # 이미지 생성은 ComfyUI 서버에서 실제로 돌고 있으므로, asyncio task 취소만으론 멈추지 않는다.
+            # ComfyUI /interrupt 로 실제 생성을 중단시킨다(취소 버튼 → 즉시 중단).
+            if frame.request_id in self._image_inflight and self._sd is not None:
+                asyncio.create_task(self._sd.interrupt())
             existing = self._tasks.get(frame.request_id)
             if existing is not None:
                 existing.cancel()
@@ -505,27 +525,63 @@ class ProviderAgent:
             await self._safe_send(conn, ChunkFrame(req.request_id, delta=b64[i : i + IMAGE_CHUNK_CHARS], done=False))
         await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
 
+    async def _translate_image_prompt(self, req: InferRequest) -> str:
+        """한국어 요청을 Anima 용 영어 프롬프트로 번역(정책 적용). Gemini 없거나 실패 시 원문 폴백.
+
+        정책(번역 시스템프롬프트)은 central 의 image_policy 우선, 없으면 에이전트 기본값.
+        번역 실패는 치명적이지 않다 — 원문으로라도 생성을 진행한다(거부 0 우선).
+        """
+        policy = req.image_policy or {}
+        system_prompt = str(policy.get("translatorSystemPrompt") or DEFAULT_TRANSLATOR_SYSTEM_PROMPT)
+        if self._gemini is None:
+            return req.prompt
+        from .gemini import GeminiError
+
+        model = self._gemini_models[0] if self._gemini_models else None
+        try:
+            out = await self._gemini.translate(req.prompt, system_prompt, model=model)
+            return str(out) if out else req.prompt
+        except GeminiError as exc:
+            logger.warning("이미지 프롬프트 번역 실패 — 원문으로 진행: %s", exc)
+            return req.prompt
+
     async def _generate_image_with_retry(self, conn: AgentConnection, req: InferRequest) -> str | None:
-        """txt2img 를 진행률 추정과 함께 실행. ComfyUI 가 생성 중 죽으면 1회 재기동·재시도.
+        """번역 → 템플릿 주입 → 실시간 진행률(ComfyUI /ws)과 함께 생성. 죽으면 1회 재기동·재시도.
         성공 시 base64 PNG, 실패 시 InferError 송신 후 None."""
+        import secrets
+
         from .comfy import ComfyError
 
-        w, h = await self._resolution()  # 생성 직전(비동시) 1회 — SDXL 1024 vs SD1.5 512
-        for attempt in range(2):  # 원샷 + 1회 재시도(MPS 가 드물게 크래시할 때 사용자에게 이미지를 돌려준다)
-            assert self._sd is not None  # 호출 전 _image_ready 로 가드됨
-            gen_task: asyncio.Task[str] = asyncio.create_task(self._sd.txt2img(req.prompt, {"width": w, "height": h}))
-            prog_task = asyncio.create_task(self._emit_estimated_progress(conn, req.request_id, gen_task))
-            try:
-                return await gen_task
-            except ComfyError as exc:
-                if attempt == 0 and await self._recover_sd():
-                    logger.warning("SD 가 생성 중 종료된 듯 — 재기동 후 1회 재시도: %s", exc)
-                    continue
-                await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
-                return None
-            finally:
-                prog_task.cancel()
-        return None
+        w, h = await self._resolution()  # 생성 직전(비동시) 1회
+        positive = await self._translate_image_prompt(req)
+        policy = req.image_policy or {}
+        negative = str(policy.get("forcedNegative") or DEFAULT_FORCED_NEGATIVE)
+        # 실시간 진행률 콜백(ComfyUI /ws 패시브 푸시): 5%p 이상 변할 때만 청크 전송(레이트리밋 보호).
+        last_pct = -10
+
+        def on_progress(pct: int) -> None:
+            nonlocal last_pct
+            if pct - last_pct >= 5 or pct >= 100:
+                last_pct = pct
+                asyncio.create_task(self._safe_send(conn, ChunkFrame(req.request_id, progress=pct)))
+
+        self._image_inflight.add(req.request_id)
+        try:
+            for attempt in range(2):  # 원샷 + 1회 재시도
+                assert self._sd is not None  # 호출 전 _image_ready 로 가드됨
+                opts = {"width": w, "height": h, "negative_prompt": negative, "seed": secrets.randbelow(2**40)}
+                try:
+                    b64: str = await self._sd.txt2img(positive, opts, on_progress=on_progress)
+                    return b64
+                except ComfyError as exc:
+                    if attempt == 0 and await self._recover_sd():
+                        logger.warning("SD 가 생성 중 종료된 듯 — 재기동 후 1회 재시도: %s", exc)
+                        continue
+                    await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
+                    return None
+            return None
+        finally:
+            self._image_inflight.discard(req.request_id)
 
     async def _resolution(self) -> tuple[int, int]:
         """활성 체크포인트에 맞는 생성 해상도(SDXL 1024 vs SD1.5 512). 첫 조회 후 캐시.

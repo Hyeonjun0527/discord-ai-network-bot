@@ -411,10 +411,21 @@ class DiscordBot(
                                 val lastPct =
                                     java.util.concurrent.atomic
                                         .AtomicInteger(-1)
-                                commands.imagine(ctx, event.getOption("prompt")?.asString.orEmpty()) { pct ->
+                                commands.imagine(
+                                    ctx,
+                                    event.getOption("prompt")?.asString.orEmpty(),
+                                    onStart = { requestId ->
+                                        // 생성 시작 → '취소' 버튼을 메시지에 붙인다(클릭 시 중간 취소).
+                                        event.hook
+                                            .editOriginal("🖼️ 생성 시작… (취소하려면 아래 버튼)")
+                                            .setActionRow(Button.danger("$IMG_CANCEL_PREFIX$requestId", "🛑 취소"))
+                                            .queue({}, {})
+                                    },
+                                ) { pct ->
                                     if (pct > lastPct.get()) {
                                         lastPct.set(pct)
-                                        event.hook.editOriginal("🖼️ 생각 중… $pct%").queue({}, {})
+                                        // 내용만 편집 — 취소 버튼(컴포넌트)은 유지된다.
+                                        event.hook.editOriginal("🖼️ 그리는 중… $pct%").queue({}, {})
                                     }
                                 }
                             } else {
@@ -457,6 +468,9 @@ class DiscordBot(
             private const val CHANNEL_PROFILE_AVATAR_MODAL = "channel-profile:avatar-modal"
             private const val ASK_FEEDBACK_PREFIX = "ask-feedback:"
             private const val ONBOARD_PREFIX = "onboard:"
+
+            // 이미지 생성 취소 버튼 customId 접두사(뒤에 requestId). 누르면 ComfyUI /interrupt 유발.
+            private const val IMG_CANCEL_PREFIX = "img-cancel:"
             private const val ONBOARD_ACTION_START = "start"
         }
 
@@ -506,6 +520,13 @@ class DiscordBot(
         /** 패널 버튼: 온보딩(질문/기여/상태/도움말) + 설정. */
         override fun onButtonInteraction(event: ButtonInteractionEvent) {
             val ctx = ctxOf(event) // DM(유저설치)에서도 패널 버튼 동작(관리자 버튼은 isAdmin=false 로 거부됨)
+            if (event.componentId.startsWith(IMG_CANCEL_PREFIX)) {
+                // 이미지 생성 취소: 진행 중 요청을 중단(ComfyUI /interrupt). 최종 '취소됨' 응답은 imagine 흐름이 편집.
+                val requestId = event.componentId.removePrefix(IMG_CANCEL_PREFIX)
+                commands.cancelImage(requestId)
+                event.editButton(Button.danger(event.componentId, "🛑 취소됨").asDisabled()).queue({}, {})
+                return
+            }
             if (event.componentId.startsWith(ASK_FEEDBACK_PREFIX)) {
                 handleAskFeedbackButton(event, ctx)
                 return

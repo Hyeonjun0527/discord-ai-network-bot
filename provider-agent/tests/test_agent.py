@@ -89,16 +89,16 @@ async def test_handle_infer_streaming_emits_chunks():
 
 @pytest.mark.asyncio
 async def test_handle_image_emits_progress_then_data():
-    """이미지 생성: 경과시간 기반 추정 진행률을 progress 청크로 흘리고, 완료 시 b64 청크 + done 을 보낸다.
-
-    중요: 생성 중 SD 를 폴링하면 MPS 크래시가 나므로, 진행률은 SD 를 호출하지 않고 경과시간으로 추정한다.
-    여기서 SlowSD 는 progress() 를 정의하지 않는다 — 호출되면(=회귀) AttributeError 로 테스트가 깨진다.
-    """
+    """이미지 생성: ComfyUI /ws 실시간 진행률을 on_progress 콜백으로 받아 progress 청크로 흘리고,
+    완료 시 b64 데이터 청크 + done 을 보낸다(번역은 Gemini 없으면 원문 폴백 — 외부 호출 없음)."""
     from provider_agent.protocol import ChunkFrame
 
     class SlowSD:
-        async def txt2img(self, prompt: str, options=None) -> str:
-            await asyncio.sleep(0.25)  # 진행률 추정이 여러 번 돌도록(간격보다 충분히 김)
+        async def txt2img(self, prompt: str, options=None, on_progress=None) -> str:
+            for pct in (20, 55, 90):  # 실 ComfyUI 처럼 샘플링 진행률을 콜백으로 푸시
+                if on_progress:
+                    on_progress(pct)
+                await asyncio.sleep(0.02)
             return "AAAA"
 
         async def health(self) -> bool:
@@ -106,20 +106,11 @@ async def test_handle_image_emits_progress_then_data():
 
     agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=SlowSD())  # type: ignore[arg-type]
     agent._image_ready = True
-    import provider_agent.agent as agent_mod
-
-    monkey_poll = agent_mod.SD_PROGRESS_POLL_S
-    monkey_half = agent_mod.SD_PROGRESS_HALFLIFE_S
-    agent_mod.SD_PROGRESS_POLL_S = 0.02
-    agent_mod.SD_PROGRESS_HALFLIFE_S = 0.05  # 짧은 반감기 → 짧은 생성에도 진행률이 의미있게 오른다
     conn = FakeConn()
-    try:
-        await agent._handle_image(conn, InferRequest(request_id="img1", prompt="고양이", task="image"))  # type: ignore[arg-type]
-    finally:
-        agent_mod.SD_PROGRESS_POLL_S = monkey_poll
-        agent_mod.SD_PROGRESS_HALFLIFE_S = monkey_half
+    await agent._handle_image(conn, InferRequest(request_id="img1", prompt="고양이", task="image"))  # type: ignore[arg-type]
+    await asyncio.sleep(0.05)  # on_progress 가 create_task 한 진행률 청크 전송이 완료되도록 양보
     chunks = [f for f in conn.sent if isinstance(f, ChunkFrame)]
-    assert any(0 < c.progress < 100 for c in chunks), "추정 진행률 청크(0<pct<100)가 전송돼야 함"
+    assert any(0 < c.progress < 100 for c in chunks), "실시간 진행률 청크(0<pct<100)가 전송돼야 함"
     assert any(c.delta and c.progress < 0 for c in chunks), "b64 데이터 청크가 있어야 함"
     assert chunks[-1].done is True
 

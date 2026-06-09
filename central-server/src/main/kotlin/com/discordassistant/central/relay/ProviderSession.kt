@@ -69,6 +69,9 @@ class ProviderSession(
     private val pending = ConcurrentHashMap<String, CompletableFuture<InferResult>>()
     private val streams = ConcurrentHashMap<String, java.util.concurrent.BlockingQueue<ChunkFrame>>()
 
+    // 취소 버튼으로 취소된 이미지 요청 id. sendImage 루프가 다음 폴링에서 감지해 중단한다.
+    private val cancelledRequests = ConcurrentHashMap.newKeySet<String>()
+
     val state: ProviderState get() = stateRef.get()
     val activeRequests: Int get() = inFlight.get()
 
@@ -240,6 +243,8 @@ class ProviderSession(
      */
     fun sendImage(
         prompt: String,
+        imagePolicy: Map<String, Any?>? = null,
+        onStart: (String) -> Unit = {},
         onProgress: (Int) -> Unit = {},
     ): CompletableFuture<ByteArray> {
         val cap = capability.maxConcurrency + maxQueue
@@ -253,12 +258,14 @@ class ProviderSession(
         if (remainingDaily.get() != Int.MAX_VALUE) remainingDaily.decrementAndGet()
         transitionTo(ProviderState.ONLINE_BUSY)
         try {
-            connection.sendFrame(InferRequest(requestId, prompt = prompt, task = "image"))
+            connection.sendFrame(InferRequest(requestId, prompt = prompt, task = "image", imagePolicy = imagePolicy))
         } catch (e: Exception) {
             streams.remove(requestId)
             cleanup(requestId)
             return CompletableFuture.failedFuture(ConnectionClosedException("전송 실패: ${e.message}"))
         }
+        // 호출자(취소 버튼 부착·취소 매핑 등록)가 requestId 를 즉시 받도록 동기 콜백.
+        runCatching { onStart(requestId) }
         val imageTimeout = maxOf(requestTimeoutSeconds, IMAGE_TIMEOUT_SECONDS)
         return CompletableFuture.supplyAsync {
             val sb = StringBuilder()
@@ -271,6 +278,10 @@ class ProviderSession(
                         throw RemoteTimeoutException("이미지 생성 시간 초과(${imageTimeout}초)")
                     }
                     val chunk = queue.poll(remaining, TimeUnit.NANOSECONDS) ?: continue
+                    if (cancelledRequests.remove(requestId)) {
+                        // 취소 버튼 → cancelImage 가 이미 CancelFrame 송신(ComfyUI /interrupt 유발). 루프 종료.
+                        throw RemoteCancelledException("이미지 생성을 취소했어요.")
+                    }
                     if (chunk.done) break
                     if (chunk.progress >= 0) { // 진행률 상태 청크 — 데이터 아님. 콜백만(디스코드 N% 편집)
                         runCatching { onProgress(chunk.progress) }
@@ -296,6 +307,19 @@ class ProviderSession(
     private fun cleanup(requestId: String) {
         pending.remove(requestId)
         if (inFlight.decrementAndGet() <= 0) transitionTo(ProviderState.ONLINE_IDLE)
+    }
+
+    /**
+     * 진행 중 이미지 생성을 취소(취소 버튼). 에이전트로 CancelFrame 을 보내 ComfyUI /interrupt 를
+     * 유발하고, sendImage 폴링 루프를 깨워 RemoteCancelledException 으로 종료시킨다. 해당 요청이
+     * 이 세션에 없으면 false.
+     */
+    fun cancelImage(requestId: String): Boolean {
+        val queue = streams[requestId] ?: return false
+        cancelledRequests.add(requestId)
+        safeSend(CancelFrame(requestId))
+        queue.offer(ChunkFrame(requestId, done = true)) // 블로킹 poll 즉시 깨우기(취소 감지)
+        return true
     }
 
     private fun isTimeout(err: Throwable): Boolean =

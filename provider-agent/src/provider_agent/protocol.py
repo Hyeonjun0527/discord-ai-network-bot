@@ -177,6 +177,9 @@ class InferRequest:
     options: dict[str, Any] = field(default_factory=dict)
     stream: bool = False  # true 면 ChunkFrame 으로 점진 응답(#142)
     task: str = "text"  # "text" | "image"(로컬 SD 이미지 생성, SD Phase 2)
+    # 이미지 정책(central 소유). {"translatorSystemPrompt": str, "forcedNegative": str}. 비면 에이전트 기본값.
+    # central 이 안전·일관성 정책을 실어 보내고, 에이전트는 그대로 적용만(외부 AI 호출은 에이전트에서).
+    image_policy: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if len(self.prompt) > MAX_PROMPT_CHARS:
@@ -190,7 +193,7 @@ class InferRequest:
         return FrameType.INFER
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "type": FrameType.INFER,
             "requestId": self.request_id,
             "model": self.model,
@@ -199,9 +202,13 @@ class InferRequest:
             "stream": self.stream,
             "task": self.task,
         }
+        if self.image_policy is not None:  # 선택 필드 — 있을 때만 와이어에 포함(하위호환)
+            d["imagePolicy"] = self.image_policy
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "InferRequest":
+        ip = d.get("imagePolicy")
         return cls(
             request_id=str(_require(d, "requestId", FrameType.INFER)),
             model=(str(d["model"]) if d.get("model") is not None else None),
@@ -209,6 +216,7 @@ class InferRequest:
             options=filter_options(d.get("options")),
             stream=bool(d.get("stream", False)),
             task=str(d.get("task", "text")),
+            image_policy=ip if isinstance(ip, dict) else None,
         )
 
 

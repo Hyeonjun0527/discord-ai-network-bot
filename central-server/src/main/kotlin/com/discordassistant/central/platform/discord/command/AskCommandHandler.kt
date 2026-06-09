@@ -19,6 +19,8 @@ import com.discordassistant.central.platform.discord.ReplyFeedback
 import com.discordassistant.central.platform.discord.ReplyPseudoStream
 import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.relay.ConnectionRegistry
+import com.discordassistant.central.relay.ProviderSession
+import com.discordassistant.central.relay.RemoteCancelledException
 import com.discordassistant.central.routing.application.RequestOrchestrator
 import com.discordassistant.central.routing.domain.model.AiRequestInput
 import com.discordassistant.central.shared.ContentSafety
@@ -53,7 +55,34 @@ class AskCommandHandler(
         private const val DISCORD_REPLY_SAFE_LIMIT = 1850
         private const val PSEUDO_STREAM_MIN_CHARS = 600
         private val PSEUDO_STREAM_STEPS = listOf(33, 66, 100)
+
+        // ── 이미지 정책(central 소유, 에이전트가 적용만; 외부 AI 호출은 에이전트의 Gemini) ──
+        // 초보자 /그림: 한국어 → 영어 자연어 번역하되 '성인·SFW·품질 prefix' 강제. 정상 SFW 요청이
+        // '여자아이→little girl' 식 미성년 오탐으로 거부되지 않게 하는 핵심 가드(거부 0 목표).
+        private val IMAGE_TRANSLATOR_SYSTEM_PROMPT =
+            """
+            You convert a user's Korean image request into an English prompt for the Anima anime model.
+            - Output ONLY the final English prompt, nothing else.
+            - Start with: "masterpiece, best quality, safe, "
+            - Then a vivid, SFW description of at least 2 sentences.
+            - Always depict any person as a clearly of-age adult (young adult).
+              Translate words like "여자아이/소녀" as "young woman", never "girl/child".
+            - Keep it strictly safe-for-work. No suggestive or revealing content.
+            """.trimIndent()
+        private const val IMAGE_FORCED_NEGATIVE =
+            "worst quality, low quality, score_1, score_2, score_3, artist name, loli, child, nsfw"
+        private val IMAGE_POLICY: Map<String, Any?> =
+            mapOf(
+                "translatorSystemPrompt" to IMAGE_TRANSLATOR_SYSTEM_PROMPT,
+                "forcedNegative" to IMAGE_FORCED_NEGATIVE,
+            )
     }
+
+    // 진행 중 이미지 요청 id → 세션(취소 버튼이 이 맵으로 해당 세션을 찾아 cancelImage 호출).
+    private val inflightImages = java.util.concurrent.ConcurrentHashMap<String, ProviderSession>()
+
+    /** 취소 버튼 → 진행 중 이미지 생성을 중단(ComfyUI /interrupt 유발). 해당 요청이 없으면 false. */
+    fun cancelImage(requestId: String): Boolean = inflightImages.remove(requestId)?.cancelImage(requestId) ?: false
 
     fun ask(
         ctx: CommandContext,
@@ -121,10 +150,15 @@ class AskCommandHandler(
         }
     }
 
-    /** /imagine — 이미지 생성 가능한 프로바이더(로컬 SD)에게 이미지를 만들게 한다(SD Phase 2c). */
+    /**
+     * /그림(imagine) — 이미지 생성 가능한 프로바이더의 로컬 ComfyUI(Anima)로 이미지를 만든다.
+     * 한국어 프롬프트는 에이전트에서 Gemini 로 영어 자연어 번역(IMAGE_POLICY 적용) 후 유저 워크플로에 주입.
+     * onStart(requestId): 취소 버튼 부착·취소 매핑 등록용. onProgress: 진행률 라이브 편집용.
+     */
     fun imagine(
         ctx: CommandContext,
         prompt: String,
+        onStart: (String) -> Unit = {},
         onProgress: (Int) -> Unit = {},
     ): Reply {
         if (prompt.isBlank()) return Replies.warn("이미지로 만들 내용을 입력해 주세요.")
@@ -135,15 +169,29 @@ class AskCommandHandler(
         if (candidates.isEmpty()) {
             return Replies.warn(
                 "🖼️ 이미지 생성 가능한 프로바이더가 없습니다. " +
-                    "(프로바이더가 로컬 Stable Diffusion 을 켜고 에이전트를 `--enable-image` 로 실행해야 합니다)",
+                    "(프로바이더가 로컬 ComfyUI 를 켜고 에이전트를 `--enable-image` 로 실행해야 합니다)",
             )
         }
         val session = candidates.minByOrNull { it.activeRequests } ?: candidates.first()
+        var requestId: String? = null
         return try {
-            val bytes = session.sendImage(prompt, onProgress).get()
+            val bytes =
+                session
+                    .sendImage(prompt, IMAGE_POLICY, { id ->
+                        requestId = id
+                        inflightImages[id] = session
+                        onStart(id)
+                    }, onProgress)
+                    .get()
             Reply("🖼️ \"${prompt.take(200)}\"", ephemeral = false, imagePng = bytes)
         } catch (e: Exception) {
-            Replies.warn("이미지 생성에 실패했어요. 잠시 후 다시 시도해 주세요.")
+            if (e is RemoteCancelledException || e.cause is RemoteCancelledException) {
+                Replies.warn("🛑 이미지 생성을 취소했어요.")
+            } else {
+                Replies.warn("이미지 생성에 실패했어요. 잠시 후 다시 시도해 주세요.")
+            }
+        } finally {
+            requestId?.let { inflightImages.remove(it) }
         }
     }
 

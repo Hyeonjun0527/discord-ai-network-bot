@@ -458,6 +458,139 @@ def _register_asset_routes(app: web.Application, session_key: str) -> None:
     app.router.add_get(r"/img/{name:[\w\-.]+}", asset_img)
 
 
+def _register_comfy_routes(app: web.Application, session_key: str) -> None:
+    """ComfyUI 라이프사이클 라우트(1급 엔진: 앱이 직접 설치/실행/정지/웹UI 오픈/체크포인트). SD.Next 는 제거됨."""
+
+    def _auth(req: web.Request) -> None:
+        if req.headers.get("X-Session") != session_key:
+            raise web.HTTPForbidden(text="세션 키 불일치")
+
+    async def comfy_status(req: web.Request) -> web.Response:
+        """ComfyUI 설치/실행/바쁨 상태(데스크톱 엔진 카드 버튼 결정용)."""
+        _auth(req)
+        from . import comfy_setup
+
+        running = await comfy_setup.health()
+        return web.json_response(
+            {"installed": comfy_setup.is_installed(), "running": bool(running), "busy": comfy_setup.is_busy()}
+        )
+
+    async def comfy_setup_start(req: web.Request) -> web.Response:
+        """ComfyUI 설치(핀 clone→3.13 venv→torch/deps→기동) 시작. 진행은 /api/comfy/setup-progress 폴링."""
+        _auth(req)
+        from . import comfy_setup
+
+        if comfy_setup.is_busy():
+            return web.json_response({"ok": True, "busy": True})
+        # 기본 모델은 SD 카탈로그 첫 항목 재사용(.safetensors 는 ComfyUI 도 동일하게 로드).
+        from . import sd_setup
+
+        asyncio.create_task(comfy_setup.run_setup(sd_setup.DEFAULT_MODEL_URL))
+        return web.json_response({"ok": True})
+
+    async def comfy_setup_progress(req: web.Request) -> web.Response:
+        _auth(req)
+        from . import comfy_setup
+
+        return web.json_response(comfy_setup.progress())
+
+    async def comfy_start(req: web.Request) -> web.Response:
+        """설치된 ComfyUI 를 기동(꺼져 있을 때)."""
+        _auth(req)
+        from . import comfy_setup
+
+        if not comfy_setup.is_installed():
+            return web.json_response({"ok": False, "error": "ComfyUI 가 아직 설치되지 않았어요."})
+        ok = await comfy_setup.start()
+        return web.json_response({"ok": bool(ok)})
+
+    async def comfy_stop(req: web.Request) -> web.Response:
+        """앱이 띄운 ComfyUI 프로세스를 정지."""
+        _auth(req)
+        from . import comfy_setup
+
+        await comfy_setup.stop()
+        return web.json_response({"ok": True})
+
+    async def comfy_models(req: web.Request) -> web.Response:
+        """ComfyUI 에 설치된 체크포인트 목록 + 활성(폴더 스캔 = '아무 .safetensors 나' 자동 인식)."""
+        _auth(req)
+        from . import comfy_setup
+        from .comfy import ComfyClient
+
+        models = await ComfyClient(comfy_setup.webui_url()).list_checkpoints()
+        active = load_config().get("comfy_model") or (models[0] if models else None)
+        return web.json_response({"models": models, "active": active})
+
+    async def comfy_install_model(req: web.Request) -> web.Response:
+        """임의 모델 URL(.safetensors/.ckpt)을 ComfyUI 체크포인트 폴더로 다운로드(gated 는 HF 토큰). body {url}."""
+        _auth(req)
+        from . import comfy_setup
+
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        url = str((data or {}).get("url") or "").strip()
+        if not url:
+            return web.json_response({"ok": False, "error": "모델 URL 을 입력하세요(.safetensors 직접 링크)."})
+        ok = await comfy_setup.download_model(url)
+        if not ok:
+            return web.json_response(
+                {"ok": False, "error": ".safetensors/.ckpt 직접 링크인지 확인하세요. gated 모델은 설정에서 HF 토큰을 넣으세요."}
+            )
+        return web.json_response({"ok": True})
+
+    async def comfy_select(req: web.Request) -> web.Response:
+        """활성 ComfyUI 체크포인트 전환(저장 + 떠 있으면 에이전트에 즉시 반영). body {model}."""
+        _auth(req)
+        from .config_file import persist_partial
+
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        name = (data or {}).get("model")
+        if not name:
+            return web.json_response({"ok": False, "error": "모델을 지정하세요."})
+        persist_partial({"comfy_model": name})  # 다음 기동에도 유지
+        swapped = False
+        agent = _running_agent()
+        if agent is not None and getattr(agent, "_sd", None) is not None:
+            try:
+                swapped = bool(await agent._sd.set_checkpoint(name))  # type: ignore[attr-defined]
+                agent._invalidate_resolution()  # type: ignore[attr-defined]
+            except Exception as exc:  # noqa: BLE001
+                logging.getLogger("provider_agent").warning("ComfyUI 모델 전환 실패: %s", exc)
+        return web.json_response({"ok": True, "active": name, "applied": "live" if swapped else "saved"})
+
+    async def comfy_open(req: web.Request) -> web.Response:
+        """ComfyUI 웹 UI 를 시스템 브라우저로 연다(같은 포트에서 ComfyUI 가 서빙)."""
+        _auth(req)
+        import webbrowser
+
+        from . import comfy_setup
+
+        if not await comfy_setup.health():
+            return web.json_response({"ok": False, "error": "ComfyUI 가 실행 중이 아니에요. 먼저 시작하세요."})
+        try:
+            webbrowser.open(comfy_setup.webui_url())
+        except Exception:  # noqa: BLE001
+            return web.json_response({"ok": False, "error": "브라우저를 열 수 없습니다."})
+        return web.json_response({"ok": True})
+
+    # ComfyUI 라이프사이클(이미지 엔진 — 설치/시작/정지/웹UI/체크포인트. SD.Next 는 제거됨)
+    app.router.add_get("/api/comfy/status", comfy_status)
+    app.router.add_post("/api/comfy/setup", comfy_setup_start)
+    app.router.add_get("/api/comfy/setup-progress", comfy_setup_progress)
+    app.router.add_post("/api/comfy/start", comfy_start)
+    app.router.add_post("/api/comfy/stop", comfy_stop)
+    app.router.add_post("/api/comfy/open", comfy_open)
+    app.router.add_get("/api/comfy/models", comfy_models)
+    app.router.add_post("/api/comfy/select", comfy_select)
+    app.router.add_post("/api/comfy/install-model", comfy_install_model)
+
+
 def build_app(session_key: str) -> web.Application:
     _attach_log_capture()
     app = web.Application()
@@ -1202,121 +1335,6 @@ def build_app(session_key: str) -> web.Application:
 
         return web.json_response(ollama_setup.progress())
 
-    # ── ComfyUI 라이프사이클(1급 엔진: 앱이 직접 설치/실행/정지/웹UI 오픈) ──────────────
-    async def comfy_status(req: web.Request) -> web.Response:
-        """ComfyUI 설치/실행/바쁨 상태(데스크톱 엔진 카드 버튼 결정용)."""
-        _auth(req)
-        from . import comfy_setup
-
-        running = await comfy_setup.health()
-        return web.json_response(
-            {"installed": comfy_setup.is_installed(), "running": bool(running), "busy": comfy_setup.is_busy()}
-        )
-
-    async def comfy_setup_start(req: web.Request) -> web.Response:
-        """ComfyUI 설치(핀 clone→3.13 venv→torch/deps→기동) 시작. 진행은 /api/comfy/setup-progress 폴링."""
-        _auth(req)
-        from . import comfy_setup
-
-        if comfy_setup.is_busy():
-            return web.json_response({"ok": True, "busy": True})
-        # 기본 모델은 SD 카탈로그 첫 항목 재사용(.safetensors 는 ComfyUI 도 동일하게 로드).
-        from . import sd_setup
-
-        asyncio.create_task(comfy_setup.run_setup(sd_setup.DEFAULT_MODEL_URL))
-        return web.json_response({"ok": True})
-
-    async def comfy_setup_progress(req: web.Request) -> web.Response:
-        _auth(req)
-        from . import comfy_setup
-
-        return web.json_response(comfy_setup.progress())
-
-    async def comfy_start(req: web.Request) -> web.Response:
-        """설치된 ComfyUI 를 기동(꺼져 있을 때)."""
-        _auth(req)
-        from . import comfy_setup
-
-        if not comfy_setup.is_installed():
-            return web.json_response({"ok": False, "error": "ComfyUI 가 아직 설치되지 않았어요."})
-        ok = await comfy_setup.start()
-        return web.json_response({"ok": bool(ok)})
-
-    async def comfy_stop(req: web.Request) -> web.Response:
-        """앱이 띄운 ComfyUI 프로세스를 정지."""
-        _auth(req)
-        from . import comfy_setup
-
-        await comfy_setup.stop()
-        return web.json_response({"ok": True})
-
-    async def comfy_models(req: web.Request) -> web.Response:
-        """ComfyUI 에 설치된 체크포인트 목록 + 활성(폴더 스캔 = '아무 .safetensors 나' 자동 인식)."""
-        _auth(req)
-        from . import comfy_setup
-        from .comfy import ComfyClient
-
-        models = await ComfyClient(comfy_setup.webui_url()).list_checkpoints()
-        active = load_config().get("comfy_model") or (models[0] if models else None)
-        return web.json_response({"models": models, "active": active})
-
-    async def comfy_install_model(req: web.Request) -> web.Response:
-        """임의 모델 URL(.safetensors/.ckpt)을 ComfyUI 체크포인트 폴더로 다운로드(gated 는 HF 토큰). body {url}."""
-        _auth(req)
-        from . import comfy_setup
-
-        try:
-            data = await req.json()
-        except Exception:  # noqa: BLE001
-            data = {}
-        url = str((data or {}).get("url") or "").strip()
-        if not url:
-            return web.json_response({"ok": False, "error": "모델 URL 을 입력하세요(.safetensors 직접 링크)."})
-        ok = await comfy_setup.download_model(url)
-        if not ok:
-            return web.json_response(
-                {"ok": False, "error": ".safetensors/.ckpt 직접 링크인지 확인하세요. gated 모델은 설정에서 HF 토큰을 넣으세요."}
-            )
-        return web.json_response({"ok": True})
-
-    async def comfy_select(req: web.Request) -> web.Response:
-        """활성 ComfyUI 체크포인트 전환(저장 + 떠 있으면 에이전트에 즉시 반영). body {model}."""
-        _auth(req)
-        from .config_file import persist_partial
-
-        try:
-            data = await req.json()
-        except Exception:  # noqa: BLE001
-            data = {}
-        name = (data or {}).get("model")
-        if not name:
-            return web.json_response({"ok": False, "error": "모델을 지정하세요."})
-        persist_partial({"comfy_model": name})  # 다음 기동에도 유지
-        swapped = False
-        agent = _running_agent()
-        if agent is not None and getattr(agent, "_sd", None) is not None:
-            try:
-                swapped = bool(await agent._sd.set_checkpoint(name))  # type: ignore[attr-defined]
-                agent._invalidate_resolution()  # type: ignore[attr-defined]
-            except Exception as exc:  # noqa: BLE001
-                logging.getLogger("provider_agent").warning("ComfyUI 모델 전환 실패: %s", exc)
-        return web.json_response({"ok": True, "active": name, "applied": "live" if swapped else "saved"})
-
-    async def comfy_open(req: web.Request) -> web.Response:
-        """ComfyUI 웹 UI 를 시스템 브라우저로 연다(같은 포트에서 ComfyUI 가 서빙)."""
-        _auth(req)
-        import webbrowser
-
-        from . import comfy_setup
-
-        if not await comfy_setup.health():
-            return web.json_response({"ok": False, "error": "ComfyUI 가 실행 중이 아니에요. 먼저 시작하세요."})
-        try:
-            webbrowser.open(comfy_setup.webui_url())
-        except Exception:  # noqa: BLE001
-            return web.json_response({"ok": False, "error": "브라우저를 열 수 없습니다."})
-        return web.json_response({"ok": True})
-
     async def start(req: web.Request) -> web.Response:
         _auth(req)
         return web.json_response(_start_agent())
@@ -1616,16 +1634,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_get("/api/ollama/catalog", ollama_catalog)
     app.router.add_post("/api/ollama/setup", ollama_setup_start)
     app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
-    # ComfyUI 라이프사이클(이미지 엔진 — 설치/시작/정지/웹UI/체크포인트. SD.Next 는 제거됨)
-    app.router.add_get("/api/comfy/status", comfy_status)
-    app.router.add_post("/api/comfy/setup", comfy_setup_start)
-    app.router.add_get("/api/comfy/setup-progress", comfy_setup_progress)
-    app.router.add_post("/api/comfy/start", comfy_start)
-    app.router.add_post("/api/comfy/stop", comfy_stop)
-    app.router.add_post("/api/comfy/open", comfy_open)
-    app.router.add_get("/api/comfy/models", comfy_models)
-    app.router.add_post("/api/comfy/select", comfy_select)
-    app.router.add_post("/api/comfy/install-model", comfy_install_model)
+    _register_comfy_routes(app, session_key)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)

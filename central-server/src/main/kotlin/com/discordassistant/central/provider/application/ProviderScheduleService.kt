@@ -72,7 +72,13 @@ class ProviderScheduleService(
 
     @Scheduled(fixedDelayString = "\${central.schedule.enforce-millis:60000}")
     fun scheduledEnforce() {
-        enforce()
+        // 스케줄 top-level 경계 — 한 주기의 enforce 실패(DB/세션 오류)가 다음 주기에 영향 주지 않게 격리하고
+        // 원인을 명시적으로 남긴다(프레임워크 기본 핸들러보다 도메인 맥락이 분명, 예외 원칙 3·7).
+        try {
+            enforce()
+        } catch (e: Exception) {
+            log.warn("스케줄 enforce 실패(다음 주기 계속): {}", e.message, e)
+        }
     }
 
     @Transactional

@@ -66,6 +66,7 @@ const MOCK = {
     models: ['exaone3.5:7.8b', 'llama3.1:8b', 'qwen2.5-coder:7b'],
     hasToken: true, relayUrl: 'wss://discord-ai.yeon.world/agent', backgroundRunning: false, background: false, connectEnabled: true,
     version: '0.31.0', geminiConfigured: false, comfyUrl: '', hfConfigured: false, civitaiConfigured: false,
+    comfyPush: { enabled: false, guildId: null, channelId: null },
   },
   // ComfyUI 라이프사이클 상태는 별도 엔드포인트(/api/comfy/status)라 status shape 와 분리한다.
   comfy: { installed: false, running: false, active: null },
@@ -585,6 +586,13 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { await delay(120); return { models: structuredClone(MOCK.civitai), needsKey: !MOCK.status.civitaiConfigured }; } /* @end-proto-only */
     const qs = '?q=' + encodeURIComponent(query) + '&sort=' + encodeURIComponent(sort) + '&nsfw=' + (nsfw ? '1' : '0');
     return http(ENDPOINTS.comfyCivitai + qs);
+  },
+  /** ComfyUI 웹UI 실행 결과 자동 게시 대상 설정 — POST /api/comfy/push {enabled?,guildId?,channelId?}.
+   *  반환 {ok, enabled, guildId, channelId}. 실 게시는 에이전트 브리지가 central 로(관리자·채널소속 가드). */
+  async setComfyPush({ enabled, guildId, channelId }) {
+    /* @proto-only */ if (USE_MOCK) { await delay(80); const cp = MOCK.status.comfyPush || (MOCK.status.comfyPush = {}); if (enabled !== undefined) cp.enabled = !!enabled; if (guildId !== undefined) cp.guildId = String(guildId); if (channelId !== undefined) cp.channelId = String(channelId); return { ok: true, ...cp }; } /* @end-proto-only */
+    const body = {}; if (enabled !== undefined) body.enabled = enabled; if (guildId !== undefined) body.guildId = guildId; if (channelId !== undefined) body.channelId = channelId;
+    return post(ENDPOINTS.comfyPush, body);
   },
   /** 활성 ComfyUI 체크포인트 전환 — POST /api/comfy/select {model}. */
   async comfySelectModel(model) {

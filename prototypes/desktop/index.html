@@ -2376,16 +2376,24 @@
           '<button class="btn btn--sm btn--secondary" id="promptAdd">+ 추가</button></div>' + prompts;
     }
 
-    function renderChannelsTab(m) {
+    function renderChannelsTab(m, d) {
       if (!m.channels) return MSOON_REAL('채널 AI 허용');
       const c = m.channels;
+      // ComfyUI 웹UI 실행 결과를 이 서버 채널로 자동 전달(생성=유저 자유, 전달=우리). 관리자 전용.
+      const chOpts = c.list.map(x => '<option value="' + x.channelId + '"># ' + x.name + '</option>').join('');
+      const comfyPush = c.list.length
+        ? '<div class="dcard"><div class="dlabel">🖼️ ComfyUI 출력 → 디스코드</div>' +
+          '<div class="dsub">ComfyUI 웹UI 에서 실행(Queue)한 이미지를 고른 채널로 자동 전달해요 — 워크플로/모델은 자유롭게.</div>' +
+          '<div class="rt-cloud" style="margin-top:8px"><select id="comfyPushCh" class="set-input">' + chOpts + '</select>' +
+          '<button class="btn btn--sm btn--secondary" id="comfyPushToggle">불러오는 중…</button></div></div>'
+        : '';
       const ch = c.list.length
         ? c.list.map(x => '<div class="mrow"><span class="mrow-nm"># ' + x.name + '</span>' +
             '<button class="mtoggle' + (x.aiAllowed ? ' on' : '') + '" data-ch-toggle="' + x.channelId + '">' + (x.aiAllowed ? 'AI 허용' : 'AI 금지') + '</button></div>').join('')
         : '<span class="dim">채널이 없어요(봇이 서버에 연결돼 있어야 보여요).</span>';
       // 서버 기본값은 실 채널 응답에 없으므로 값이 있을 때만 표시(거짓 정보 방지).
       const defaults = c.defaultModel ? '<div class="dcard"><div class="dlabel">서버 기본값</div><div class="dsub">기본 모델 ' + c.defaultModel + ' · 기본 언어 ' + c.defaultLang + '</div></div>' : '';
-      return defaults +
+      return comfyPush + defaults +
         '<div class="msec-label">채널별 AI 허용 <span class="dim">· 허용된 채널에서만 AI 가 답해요</span></div><div class="dcard">' + ch + '</div>';
     }
 
@@ -2471,6 +2479,28 @@
         if (r && r.channels) m.channels.list = r.channels;
         rerender();
       });
+      // ComfyUI 출력 → 디스코드 자동 전달(이 서버 채널). 현재 상태는 status.comfyPush 로 로드, 토글/채널변경은 즉시 저장.
+      const cpSel = manageEl.querySelector('#comfyPushCh');
+      const cpBtn = manageEl.querySelector('#comfyPushToggle');
+      if (cpSel && cpBtn) {
+        let cpOn = false;
+        const paint = () => { cpBtn.textContent = cpOn ? '⏹ 이 서버로 전달 중 (끄기)' : '▶ 이 채널로 전달 켜기'; cpBtn.classList.toggle('on', cpOn); };
+        api.getStatus().then(st => {
+          const cp = (st && st.comfyPush) || {};
+          cpOn = !!cp.enabled && String(cp.guildId) === String(d.guildId);
+          if (cp.channelId && cpSel.querySelector('option[value="' + cp.channelId + '"]')) cpSel.value = cp.channelId;
+          paint();
+        }).catch(() => paint());
+        const save = async (enabled) => {
+          try {
+            const r = await api.setComfyPush({ enabled, guildId: String(d.guildId), channelId: cpSel.value }) || {};
+            cpOn = !!r.enabled && String(r.guildId) === String(d.guildId); paint();
+            toast(enabled ? 'ComfyUI 출력을 이 채널로 전달해요(웹UI에서 실행해 보세요)' : 'ComfyUI 출력 전달을 껐어요', { type: enabled ? 'ok' : 'info' });
+          } catch (_e) { toast('설정 저장 실패', { type: 'error' }); }
+        };
+        cpBtn.onclick = () => save(!cpOn);
+        cpSel.onchange = () => { if (cpOn) save(true); };
+      }
       // 채널AI/RAG/프리셋은 읽기 전용 실연동(추가·편집은 Discord 명령·웹 대시보드) — 토글 액션 없음.
       // 전역 프롬프트셋 — 기본/삭제/추가 (실연동: webui → central /provider/admin/prompt-sets*)
       manageEl.querySelectorAll('[data-prompt-default]').forEach(b => b.onclick = async () => {

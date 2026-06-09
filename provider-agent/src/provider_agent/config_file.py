@@ -39,6 +39,9 @@ SAVEABLE = (
     "comfy_url",
     "hf_token",
     "civitai_token",
+    "comfy_push_enabled",
+    "comfy_push_guild",
+    "comfy_push_channel",
     "auto_update",
 )
 

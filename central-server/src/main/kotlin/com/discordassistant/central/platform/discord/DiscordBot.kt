@@ -101,6 +101,17 @@ interface BotGuildLister {
         guildId: Long,
         userId: Long,
     ): String?
+
+    /**
+     * 한 채널에 이미지(PNG)를 게시한다(ComfyUI 웹UI 실행 결과 자동 전달용).
+     * 채널이 그 길드 소속이 아니거나(권한 상승 차단) 봇 미연결·게시 실패면 false.
+     */
+    fun postImageToChannel(
+        guildId: Long,
+        channelId: Long,
+        png: ByteArray,
+        caption: String,
+    ): Boolean
 }
 
 /**
@@ -148,6 +159,29 @@ class DiscordBot(
             ?.textChannels
             ?.map { BotChannelInfo(it.idLong, it.name) }
             ?: emptyList()
+
+    /**
+     * ComfyUI 웹UI 실행 결과 이미지를 지정 채널에 게시. 채널을 **그 길드에서** 조회하므로 길드 밖 채널엔
+     * 못 보낸다(권한 상승 차단 — 호출부의 관리자 검증과 2중 가드). 봇 권한 부족 등 실패는 false(삼키되 로깅).
+     */
+    override fun postImageToChannel(
+        guildId: Long,
+        channelId: Long,
+        png: ByteArray,
+        caption: String,
+    ): Boolean {
+        val channel = jda?.getGuildById(guildId)?.getTextChannelById(channelId) ?: return false
+        return try {
+            val upload = net.dv8tion.jda.api.utils.FileUpload.fromData(png, "nexa.png")
+            val action = channel.sendFiles(upload)
+            if (caption.isNotBlank()) action.setContent(caption.take(300))
+            action.queue()
+            true
+        } catch (e: Exception) {
+            log.warn("ComfyUI 이미지 채널 게시 실패(guild={}, channel={}): {}", guildId, channelId, e.message)
+            false
+        }
+    }
 
     /**
      * 관리 API 권한 게이트: 사용자가 길드 관리자(소유자 또는 MANAGE_SERVER|ADMINISTRATOR)인지. 미충족은 false(안전 거부).

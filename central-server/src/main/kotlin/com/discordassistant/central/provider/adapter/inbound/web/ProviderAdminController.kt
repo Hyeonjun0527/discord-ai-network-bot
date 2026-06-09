@@ -166,6 +166,15 @@ data class AdminPresetDeleteRequest(
     val presetId: String = "",
 )
 
+/** ComfyUI 웹UI 실행 결과 이미지를 디스코드 채널로 게시 요청(관리자). imageBase64=PNG, prompt=캡션(선택). */
+data class ComfyPushRequest(
+    val durableToken: String = "",
+    val guildId: Long = 0,
+    val channelId: Long = 0,
+    val imageBase64: String = "",
+    val prompt: String = "",
+)
+
 /**
  * 데스크톱 앱(관리자)용 서버 관리 채널 — Provider 승인/거절/제거 + 목록 조회.
  *
@@ -461,6 +470,31 @@ class ProviderAdminController(
             onSuccess = { AdminPresetsResponse(true, "삭제했어요", it) },
             onFailure = { AdminPresetsResponse(false, "프리셋 기능이 꺼져 있어요") },
         )
+    }
+
+    /**
+     * ComfyUI 웹UI 실행 결과 이미지를 지정 채널에 게시(생성=유저 자유, 전달=우리). 2중 가드:
+     *  ① durable 토큰 → 그 사용자가 대상 길드 **관리자**여야 함(아무 서버에나 못 올림).
+     *  ② channelId 가 **그 길드의 봇 채널**인지 확인(길드 밖 채널로 권한 상승 차단). PNG 12MB 상한.
+     */
+    @PostMapping("/comfy-push")
+    fun comfyPush(
+        @RequestBody req: ComfyPushRequest,
+    ): AdminActionResponse {
+        authedAdmin(req.durableToken, req.guildId)
+            ?: return AdminActionResponse(false, "관리자 권한이 필요합니다")
+        if (botGuilds.botChannels(req.guildId).none { it.id == req.channelId }) {
+            return AdminActionResponse(false, "그 서버의 채널이 아니에요")
+        }
+        val bytes = runCatching { java.util.Base64.getDecoder().decode(req.imageBase64) }.getOrNull()
+        if (bytes == null || bytes.isEmpty()) return AdminActionResponse(false, "이미지 데이터가 올바르지 않아요")
+        if (bytes.size > 12_000_000) return AdminActionResponse(false, "이미지가 너무 커요(12MB 초과)")
+        val caption = if (req.prompt.isBlank()) "🖼️ ComfyUI" else "🖼️ ${req.prompt.take(200)}"
+        return if (botGuilds.postImageToChannel(req.guildId, req.channelId, bytes, caption)) {
+            AdminActionResponse(true, "게시했어요")
+        } else {
+            AdminActionResponse(false, "채널에 게시하지 못했어요(봇 권한을 확인하세요)")
+        }
     }
 
     private fun addFailureMessage(e: Throwable): String =

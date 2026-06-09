@@ -39,6 +39,10 @@ class AgentConfig:
     comfy_url: str = ""  # 로컬 ComfyUI 주소(비면 앱 관리 ComfyUI localhost:8188). 외부는 명시 입력
     hf_token: str = ""  # HuggingFace 토큰(gated/비공개 모델 다운로드용). 비면 public 모델만. 이 PC 에만 저장
     civitai_token: str = ""  # Civitai API 키(Civitai 모델 다운로드용 — 대부분 로그인 요구). 이 PC 에만 저장
+    # ComfyUI 웹UI 실행 결과를 디스코드로 자동 전달(생성=유저 자유, 전달=우리). 0 = 미지정.
+    comfy_push_enabled: bool = False
+    comfy_push_guild: int = 0  # 출력 게시 대상 서버(관리자인 길드)
+    comfy_push_channel: int = 0  # 출력 게시 대상 채널
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
     service: bool = False  # 헤드리스 자동시작 모드(--service): launchd·업데이터 재실행이 창 없이 무인 구동
     install_service: bool = False  # 자동 시작 서비스 등록 후 종료(--install-service, 저장 안 함)
@@ -172,6 +176,9 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
     comfy_url = str(saved.get("comfy_url") or "").rstrip("/")
     hf_token = (_env("HF_TOKEN") or _env("HUGGING_FACE_HUB_TOKEN") or str(saved.get("hf_token") or "")).strip()
     civitai_token = (_env("CIVITAI_API_TOKEN") or _env("CIVITAI_TOKEN") or str(saved.get("civitai_token") or "")).strip()
+    comfy_push_enabled = bool(saved.get("comfy_push_enabled"))
+    comfy_push_guild = int(saved.get("comfy_push_guild") or 0)
+    comfy_push_channel = int(saved.get("comfy_push_channel") or 0)
 
     # 일일 한도: 기본 DEFAULT_DAILY_LIMIT. 0(무제한)은 --allow-unlimited 가 있을 때만 허용.
     if args.daily_limit is not None:
@@ -215,6 +222,9 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         comfy_url=comfy_url,
         hf_token=hf_token,
         civitai_token=civitai_token,
+        comfy_push_enabled=comfy_push_enabled,
+        comfy_push_guild=comfy_push_guild,
+        comfy_push_channel=comfy_push_channel,
         # --service(헤드리스 자동시작)는 동의 프롬프트를 띄울 수 없으므로 자동 승인(--yes)을 포함한다.
         assume_yes=bool(args.yes) or bool(args.service),
         service=bool(args.service),

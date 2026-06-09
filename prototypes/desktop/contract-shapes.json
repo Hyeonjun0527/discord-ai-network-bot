@@ -4,6 +4,7 @@
       "background",
       "backgroundRunning",
       "civitaiConfigured",
+      "comfyPush",
       "comfyUrl",
       "connectEnabled",
       "connected",

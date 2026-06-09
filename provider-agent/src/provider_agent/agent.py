@@ -128,6 +128,16 @@ def _post_provider_admin_delete(base: str, path: str, durable_token: str, guild_
     return _central_post(base + path, {"durableToken": durable_token, "guildId": guild_id, id_key: str(id_val)})
 
 
+def _post_comfy_push(base: str, durable_token: str, guild_id: int, channel_id: int, image_b64: str, prompt: str = "") -> dict:
+    """ComfyUI 웹UI 실행 결과 이미지를 디스코드 채널로 게시(관리자 전용). central 이 durable 신원 +
+    대상 길드 관리자 + 채널 소속을 가드한다. 이미지가 커서 timeout 여유."""
+    return _central_post(
+        base + "/provider/admin/comfy-push",
+        {"durableToken": durable_token, "guildId": guild_id, "channelId": channel_id, "imageBase64": image_b64, "prompt": prompt},
+        timeout=30,
+    )
+
+
 def _post_provider_admin_channels(
     base: str,
     path: str,
@@ -627,6 +637,39 @@ class ProviderAgent:
 
         return next((c.get("token") or "" for c in load_connections() if (c.get("token") or "").startswith("dv1.")), "")
 
+    async def _run_comfy_bridge(self) -> None:
+        """ComfyUI 웹UI 실행 결과를 디스코드 채널로 자동 전달(생성=유저 자유, 전달=우리).
+
+        앱에서 켰을 때(comfy_push_enabled)만 게시한다. 토글/대상은 매 이미지마다 실시간으로 읽어
+        앱에서 바꿔도 재시작 없이 반영. central 이 durable 신원·대상 길드 관리자·채널 소속을 가드.
+        """
+        import base64
+
+        from . import comfy_watch
+        from .config_file import load_config
+
+        async def on_image(png: bytes) -> None:
+            cfg = load_config()
+            if not cfg.get("comfy_push_enabled"):
+                return
+            gid = int(cfg.get("comfy_push_guild") or 0)
+            cid = int(cfg.get("comfy_push_channel") or 0)
+            dt = self._durable_token()
+            if not (gid and cid and dt):
+                return
+            b64 = base64.b64encode(png).decode("ascii")
+            sync_base = _agent_sync_base(self._cfg.relay_url)
+            try:
+                res = await asyncio.to_thread(_post_comfy_push, sync_base, dt, gid, cid, b64)
+                if not res.get("ok"):
+                    logger.info("ComfyUI 출력 게시 거부: %s", res.get("message"))
+                else:
+                    logger.info("ComfyUI 출력 1장을 디스코드에 게시")
+            except (OSError, ValueError) as exc:
+                logger.warning("ComfyUI 출력 게시 실패: %s", exc)
+
+        await comfy_watch.watch(self._comfy_url, on_image, stop=self._stop)
+
     async def admin_manage(self, guild_id: int) -> dict:
         """이 서버의 승인 대기·로스터 조회(관리자). 권한 없으면 central 이 ok=False 반환."""
         dt = self._durable_token()
@@ -893,11 +936,14 @@ class ProviderAgent:
 
         # 연동된 사용자가 디스코드 /프로바이더참여 한 새 서버에 자동 연결되도록 동기화 루프를 띄운다.
         sync_task = asyncio.create_task(self._sync_loop())
+        # ComfyUI 웹UI 실행 결과를 디스코드로 전달하는 브리지(켜졌을 때만 게시 — 토글은 실시간).
+        comfy_bridge_task = asyncio.create_task(self._run_comfy_bridge())
         stop_task = asyncio.create_task(self._stop.wait())
         try:
             await stop_task
         finally:
             sync_task.cancel()
+            comfy_bridge_task.cancel()
             if self._sd_boot_task is not None:
                 self._sd_boot_task.cancel()
             async with self._entries_lock:

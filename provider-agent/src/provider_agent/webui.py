@@ -541,6 +541,31 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
         models = await comfy_setup.civitai_popular(query=q, sort=sort, nsfw=nsfw, limit=24)
         return web.json_response({"models": models, "needsKey": not bool(load_config().get("civitai_token"))})
 
+    async def comfy_push_set(req: web.Request) -> web.Response:
+        """ComfyUI 웹UI 실행 결과 자동 게시 대상 설정 — body {enabled?, guildId?, channelId?}. 이 PC 에만 저장.
+        guildId/channelId 는 64bit 문자열로 받아 int 로(정밀도). 실 게시는 에이전트 브리지가 central 로 한다."""
+        _auth(req)
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        updates: dict = {}
+        if "enabled" in data:
+            updates["comfy_push_enabled"] = bool(data.get("enabled"))
+        if "guildId" in data:
+            updates["comfy_push_guild"] = int(str(data.get("guildId") or "0").strip() or "0")
+        if "channelId" in data:
+            updates["comfy_push_channel"] = int(str(data.get("channelId") or "0").strip() or "0")
+        if updates:
+            persist_partial(updates)
+        saved = load_config()
+        return web.json_response({
+            "ok": True,
+            "enabled": bool(saved.get("comfy_push_enabled")),
+            "guildId": str(saved.get("comfy_push_guild") or "") or None,
+            "channelId": str(saved.get("comfy_push_channel") or "") or None,
+        })
+
     async def comfy_install_model(req: web.Request) -> web.Response:
         """모델을 ComfyUI 체크포인트 폴더로 다운로드(카탈로그·Civitai·임의 URL 공용, gated 는 HF/Civitai 토큰).
         body {url, filename?}. filename 은 확장자 없는 URL(Civitai)용. 대용량이라 **백그라운드로 받고 즉시 반환**
@@ -610,6 +635,7 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
     app.router.add_get("/api/comfy/models", comfy_models)
     app.router.add_get("/api/comfy/catalog", comfy_catalog)
     app.router.add_get("/api/comfy/civitai", comfy_civitai)
+    app.router.add_post("/api/comfy/push", comfy_push_set)
     app.router.add_post("/api/comfy/select", comfy_select)
     app.router.add_post("/api/comfy/install-model", comfy_install_model)
 
@@ -1208,6 +1234,11 @@ def build_app(session_key: str) -> web.Application:
                 "comfyUrl": str(saved.get("comfy_url") or ""),
                 "hfConfigured": bool(saved.get("hf_token")),
                 "civitaiConfigured": bool(saved.get("civitai_token")),
+                "comfyPush": {
+                    "enabled": bool(saved.get("comfy_push_enabled")),
+                    "guildId": str(saved.get("comfy_push_guild") or "") or None,
+                    "channelId": str(saved.get("comfy_push_channel") or "") or None,
+                },
             }
         )
 
@@ -1596,6 +1627,11 @@ def build_app(session_key: str) -> web.Application:
                 "comfyUrl": str(saved.get("comfy_url") or ""),
                 "hfConfigured": bool(saved.get("hf_token")),
                 "civitaiConfigured": bool(saved.get("civitai_token")),
+                "comfyPush": {
+                    "enabled": bool(saved.get("comfy_push_enabled")),
+                    "guildId": str(saved.get("comfy_push_guild") or "") or None,
+                    "channelId": str(saved.get("comfy_push_channel") or "") or None,
+                },
                 "hasToken": bool(saved.get("token")),
             }
         )

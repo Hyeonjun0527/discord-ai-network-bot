@@ -77,7 +77,9 @@ class DiscordAnswerRenderer(
                         .fromData(image, "image.png"),
                 ).queue({}, { e ->
                     log.warn("이미지 첨부 응답 실패: {}", e.message)
-                    hook.editOriginal("⚠️ 이미지를 전송하지 못했어요.").queue({}, {})
+                    hook
+                        .editOriginal("⚠️ 이미지를 전송하지 못했어요.")
+                        .queue({}, { fe -> log.warn("이미지 실패 안내 응답도 실패: {}", fe.message) })
                 })
             return
         }
@@ -112,7 +114,9 @@ class DiscordAnswerRenderer(
             { scheduleOriginalEdits(hook, reply, snapshots, index + 1) },
             { e ->
                 log.warn("의사 스트리밍 응답 편집 실패(index={}): {}", index, e.message)
-                hook.editOriginal(reply.content).queue({}, {})
+                hook
+                    .editOriginal(reply.content)
+                    .queue({}, { fe -> log.warn("의사 스트리밍 폴백 편집도 실패(index={}): {}", index, fe.message) })
             },
         )
     }

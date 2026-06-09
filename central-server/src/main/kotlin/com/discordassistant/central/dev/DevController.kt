@@ -43,6 +43,9 @@ class DevController(
     fun token(
         @RequestBody req: TokenReq,
     ): Map<String, String> {
+        require(req.providerId > 0 && req.guildId > 0) {
+            "providerId·guildId 는 양수여야 합니다: provider=${req.providerId} guild=${req.guildId}"
+        }
         val join = registration.requestJoin(req.providerId, req.guildId, autoApprove = true)
         val token = join.token ?: registration.approve(req.providerId, req.guildId, adminId = 0)
         return mapOf("token" to (token ?: ""))
@@ -52,10 +55,13 @@ class DevController(
     @PostMapping("/ask")
     fun ask(
         @RequestBody req: AskReq,
-    ): OrchestrationResult =
-        orchestrator.handle(
+    ): OrchestrationResult {
+        require(req.guildId > 0) { "guildId 는 양수여야 합니다: ${req.guildId}" }
+        require(req.prompt.isNotBlank()) { "prompt 는 비어 있을 수 없습니다" }
+        return orchestrator.handle(
             AiRequestInput(req.guildId, req.channelId, req.userId, req.prompt, req.roleIds),
         )
+    }
 
     /** 현재 풀 스냅샷(연결된 프로바이더). */
     @GetMapping("/pool")

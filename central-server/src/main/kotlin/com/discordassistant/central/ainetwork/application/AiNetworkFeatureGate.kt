@@ -58,7 +58,10 @@ class AiNetworkFeatureGate(
         flag: Boolean,
     ) {
         if (killSwitch || !aiNetworkEnabled || !flag) {
-            throw IllegalStateException("$name is disabled by AI Network feature gate")
+            // 어떤 조건으로 막혔는지(킬스위치/네트워크 비활성/개별 플래그) 메시지에 담아 진단을 돕는다(예외 원칙 4).
+            throw IllegalStateException(
+                "$name is disabled (killSwitch=$killSwitch, aiNetworkEnabled=$aiNetworkEnabled, featureFlag=$flag)",
+            )
         }
     }
 

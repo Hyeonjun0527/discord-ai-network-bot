@@ -1408,7 +1408,7 @@
     const runCard = document.getElementById('localRunCard');
     const rtWrap = document.getElementById('localRuntimes');
     let _sdInst = null; // 설치된 SD 모델 목록 + 활성(모델 전환용)
-    let _comfy = null, _comfyProg = null; // ComfyUI 상태(installed/running/busy) + 설치 진행률
+    let _comfy = null, _comfyProg = null, _comfyModels = null; // ComfyUI 상태·진행률·체크포인트 목록
     const toggleBtn = document.getElementById('localToggleBtn');
     let _st = null, _models = null;
     const DOTS = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
@@ -1507,9 +1507,16 @@
         comfyAction = '<button class="btn btn--sm btn--secondary" data-comfy="open">웹UI 열기</button>' +
           '<button class="btn btn--sm btn--secondary" data-comfy="stop">정지</button>';
       }
+      // 실행 중이면 체크포인트 선택기(폴더 스캔 = 아무 .safetensors) + '모델 폴더 열기'(.safetensors 넣기).
+      const cm = _comfyModels || {};
+      const comfyModelSel = (crun && cm.models && cm.models.length) ?
+        '<div class="rt-model"><label>모델</label><select id="comfyModelSelect" aria-label="ComfyUI 이미지 모델 선택">' +
+          cm.models.map((m) => '<option value="' + m + '"' + (m === cm.active ? ' selected' : '') + '>' + m + '</option>').join('') +
+        '</select><button class="rt-model-add" id="comfyFolderBtn" title="모델 폴더 열기 — 여기에 .safetensors 를 넣으면 자동 인식돼요">📂 폴더</button></div>'
+        : (crun ? '<div class="rt-model"><span class="dim" style="font-size:12px">체크포인트 없음 — </span><button class="rt-model-add" id="comfyFolderBtn">📂 모델 폴더 열기(.safetensors 넣기)</button></div>' : '');
       const comfyCard = '<div class="rt-row rt-row--rec' + (crun ? ' ready' : '') + '">' +
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">ComfyUI <span style="font-weight:500;color:var(--c-violet)">이미지 · 권장</span></div>' +
-        '<div class="rt-state">' + comfyState + '</div></div><div class="rt-actions">' + comfyAction + '</div></div>';
+        '<div class="rt-state">' + comfyState + '</div>' + comfyModelSel + '</div><div class="rt-actions">' + comfyAction + '</div></div>';
       // SD.Next 는 유지보수가 느려진 레거시 → 접이식으로 강등(가능하면 ComfyUI 사용).
       const sdLegacy = '<details class="rt-adv">' +
         '<summary>레거시 · Stable Diffusion (SD.Next)</summary>' +
@@ -1629,6 +1636,21 @@
           catch (_e) { toast('웹UI 열기 실패', { type: 'error' }); }
         }
       });
+      // ComfyUI 체크포인트 전환(폴더 스캔된 모델 중 선택) — 즉시 적용.
+      const comfySel = document.getElementById('comfyModelSelect');
+      if (comfySel) comfySel.onchange = async () => {
+        const model = comfySel.value, prev = (_comfyModels && _comfyModels.active);
+        comfySel.disabled = true;
+        try { const r = await api.comfySelectModel(model) || {}; if (r.ok === false) { toast(r.error || '모델 전환 실패', { type: 'error' }); comfySel.value = prev || model; } else { if (_comfyModels) _comfyModels.active = model; toast('이미지 모델을 전환했어요', { type: 'ok' }); } }
+        catch (_e) { toast('모델 전환 실패 — 네트워크를 확인하세요', { type: 'error' }); comfySel.value = prev || model; }
+        finally { comfySel.disabled = false; }
+      };
+      // 모델 폴더 열기 — 여기에 .safetensors 를 넣으면 ComfyUI 가 자동 인식(ComfyUI 식 '아무 모델이나').
+      const comfyFolder = document.getElementById('comfyFolderBtn');
+      if (comfyFolder) comfyFolder.onclick = async () => {
+        try { const r = await api.openFolder('comfyModels'); toast(r && r.ok ? '모델 폴더를 열었어요 — .safetensors 를 넣고 새로고침하면 목록에 떠요' : (r && r.error) || '폴더를 열 수 없어요', { type: r && r.ok ? 'ok' : 'error' }); }
+        catch (_e) { toast('폴더 열기 실패', { type: 'error' }); }
+      };
     }
 
     async function load() {
@@ -1640,6 +1662,9 @@
       try { _comfy = await api.comfyStatus(); } catch (_e) { _comfy = null; }
       if (_comfy && _comfy.busy) { try { _comfyProg = await api.comfySetupProgress(); } catch (_e) { _comfyProg = null; } }
       else _comfyProg = null;
+      // ComfyUI 실행 중이면 체크포인트 목록(폴더 스캔)도 — 모델 선택기용. 실패는 비치명적.
+      if (_comfy && _comfy.running) { try { _comfyModels = await api.comfyModels(); } catch (_e) { _comfyModels = null; } }
+      else _comfyModels = null;
       render();
     }
 

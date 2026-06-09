@@ -129,6 +129,25 @@ async def test_comfy_first_checkpoint(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_comfy_list_and_set_checkpoint(monkeypatch):
+    """폴더 스캔(/object_info)으로 체크포인트 전체 목록을 주고, 선택값이 active 로 고정된다."""
+    from provider_agent.comfy import ComfyClient
+
+    info = {"CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": [["a.safetensors", "b.safetensors", "c.safetensors"]]}}}}
+    _patch_session(monkeypatch, lambda m, u, x: _Resp(200, info))
+    cl = ComfyClient("http://127.0.0.1:8188")
+    assert await cl.list_checkpoints() == ["a.safetensors", "b.safetensors", "c.safetensors"]
+    # 선택 전엔 첫 모델
+    assert await cl.current_checkpoint() == "a.safetensors"
+    # 목록에 있는 모델로 전환 → active 고정
+    assert await cl.set_checkpoint("b.safetensors") is True
+    assert await cl.current_checkpoint() == "b.safetensors"
+    # 목록에 없는 모델은 거부(active 유지)
+    assert await cl.set_checkpoint("zzz.safetensors") is False
+    assert await cl.current_checkpoint() == "b.safetensors"
+
+
+@pytest.mark.asyncio
 async def test_comfy_txt2img_full_flow(monkeypatch):
     from provider_agent.comfy import ComfyClient
 

@@ -1068,6 +1068,15 @@ class ProviderAgent:
             if comfy_setup.is_installed():
                 await comfy_setup.start()
             if self._sd is not None and await self._sd.health():
+                # 저장된 선택 체크포인트 적용(없으면 첫 모델). 재시작에도 유저 선택 유지.
+                from .config_file import load_config
+
+                cm = load_config().get("comfy_model")
+                if cm:
+                    try:
+                        await self._sd.set_checkpoint(cm)
+                    except Exception:  # noqa: BLE001 - 실패해도 첫 모델로 동작
+                        pass
                 self._image_ready = True
                 self._invalidate_resolution()
                 await self._readvertise()

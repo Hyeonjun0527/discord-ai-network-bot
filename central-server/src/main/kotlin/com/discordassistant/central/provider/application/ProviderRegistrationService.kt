@@ -98,6 +98,8 @@ class ProviderRegistrationService(
         guildId: Long,
         autoApprove: Boolean,
     ): JoinResult {
+        // 잘못된 식별자는 캐시/DB 에 들어가기 전에 빨리 터뜨린다(예외 원칙 10). 실 Discord id 는 항상 양수다.
+        require(providerId > 0 && guildId > 0) { "providerId·guildId 는 양수여야 합니다: provider=$providerId guild=$guildId" }
         val key = ProviderGuildKey(providerId, guildId)
         val existing = providers[key]
         if (isActive(existing)) {

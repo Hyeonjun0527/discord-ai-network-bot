@@ -45,7 +45,13 @@ class RequestOrchestratorOnboardingLlm(
                     ),
                 )
             }.getOrElse {
-                log.warn("onboarding analyze orchestration threw: {}", it.message)
+                log.warn(
+                    "onboarding analyze 오케스트레이션 예외 [guildId={}, channelId={}, inputLen={}]: {}",
+                    context.guildId,
+                    context.channelId,
+                    prompt.length,
+                    it.message,
+                )
                 return null
             }
         if (result.state != RequestState.COMPLETED) {

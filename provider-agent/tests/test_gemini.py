@@ -116,12 +116,12 @@ def test_per_guild_model_selection():
     # override 없으면 전체
     assert set(agent._models_for(100)) == {"a", "b", "c"}
     # 길드 100 엔 a,b 만(없는 z 는 무시)
-    agent._guild_policy[100] = {"chatModels": ["a", "b", "z"]}
+    agent._policy_mgr._policies[100] ={"chatModels": ["a", "b", "z"]}
     assert agent._models_for(100) == ["a", "b"]
     # 다른 길드(200)는 영향 없음(전체)
     assert set(agent._models_for(200)) == {"a", "b", "c"}
     # 빈 선택은 전체로(실수로 전부 차단 방지)
-    agent._guild_policy[100] = {"chatModels": []}
+    agent._policy_mgr._policies[100] ={"chatModels": []}
     assert set(agent._models_for(100)) == {"a", "b", "c"}
 
 
@@ -132,7 +132,7 @@ def test_per_guild_image_toggle():
     agent = ProviderAgent(AgentConfig(token="T"), ollama=object())
     agent._image_ready = True
     assert agent._image_for(100) is True  # 기본 허용
-    agent._guild_policy[100] = {"imageEnabled": False}
+    agent._policy_mgr._policies[100] ={"imageEnabled": False}
     assert agent._image_for(100) is False  # 이 서버만 이미지 끔
     assert agent._image_for(200) is True  # 다른 서버는 그대로
     agent._image_ready = False

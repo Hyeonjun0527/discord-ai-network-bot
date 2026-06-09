@@ -14,6 +14,7 @@ from . import sysinfo
 from .config import AgentConfig
 from .connection import AgentConnection
 from .constants import AGENT_VERSION, IMAGE_CHUNK_CHARS, MAX_RESPONSE_CHARS, ErrorCode
+from .guild_policy import GuildPolicyManager
 from .ollama import OllamaClient, OllamaError
 from .protocol import (
     CancelFrame,
@@ -172,17 +173,10 @@ class ProviderAgent:
         self._sd_wh: tuple[int, int] | None = None  # 활성 체크포인트 기준 생성 해상도(lazy 캐시, 모델 변경 시 무효화)
         self._sd_boot_task: asyncio.Task[None] | None = None  # 설치된 SD 자동기동 + 준비되면 재광고
         self._sem = asyncio.Semaphore(cfg.max_concurrency)
-        # 동시 처리 상한도 **서버(guild)별**로 독립 적용. 길드 전용 세마포어(lazy).
-        # 전역 self._sem 은 머신 전체 보호, 여기 세마포어는 그 서버 1곳의 동시 처리 상한.
-        # 정책 변경(set_guild_policy) 시 해당 항목을 폐기 → 새 상한으로 재생성.
-        self._guild_sems: dict[int | None, asyncio.Semaphore] = {}
-        # 일일 한도는 **서버(guild)별로 독립** 적용한다. 한 에이전트가 여러 길드에 제공해도
-        # 길드마다 한도만큼 따로 카운트(전역 합산 공유 X). 0 = 무제한(dict 미사용).
-        # 키 = guild_id(None = 길드 미상 토큰 연결 폴백). lazy init: 첫 접근 시 그 길드 한도로 채움.
-        self._remaining_by_guild: dict[int | None, int] = {}
-        # 서버별 정책 override {guild_id: {daily_limit, …}} — 데스크톱 앱 G3 가 설정. run() 에서 로드.
-        # 없는 길드는 전역 기본(cfg.daily_limit)을 쓴다.
-        self._guild_policy: dict[int, dict] = {}
+        # 서버(guild)별 정책·일일 한도·동시성 세마포어는 한 협력자(GuildPolicyManager)가 소유한다 —
+        # 셋이 얽혀 있어 일관성(원자적 정책 변경·중앙 리로드·stale 참조 방지)을 한곳에서 보장.
+        # 전역 self._sem 은 머신 전체 보호, 길드 세마포어는 그 서버 1곳의 동시 처리 상한(서로 별개).
+        self._policy_mgr = GuildPolicyManager(cfg)
         # 클라우드 Gemini 백엔드(관리자 키 1개로 서버 전체 제공). 키 있으면 gemini 모델을 풀에 광고하고
         # gemini-* 모델 요청을 Gemini API 로 라우팅한다(Ollama 와 동일 한도·공정성). 키는 이 PC 에만.
         self._gemini = None
@@ -207,66 +201,14 @@ class ProviderAgent:
         self._entries: list[dict] = []
         self._entries_lock = asyncio.Lock()
 
-    # ── 일일 한도(서버별) ───────────────────────────────────────────────
-    def _limit_for(self, guild_id: int | None) -> int:
-        """이 길드에 적용할 일일 한도. 서버별 override(G3) 가 있으면 그 값, 없으면 전역 기본."""
-        if guild_id is not None:
-            pol = self._guild_policy.get(guild_id)
-            if pol is not None and pol.get("daily_limit") is not None:
-                return max(0, int(pol["daily_limit"]))
-        return self._cfg.daily_limit
-
-    def _remaining_for(self, guild_id: int | None) -> int:
-        """이 길드의 남은 일일 한도. 무제한이면 0(센티넬). 첫 접근 시 그 길드 한도로 init."""
-        limit = self._limit_for(guild_id)
-        if limit <= 0:
-            return 0  # 무제한(hello 의 remaining=0 은 '한도 없음'을 뜻함)
-        if guild_id not in self._remaining_by_guild:
-            self._remaining_by_guild[guild_id] = limit
-        return self._remaining_by_guild[guild_id]
-
-    # ── 동시 처리·최대 시간(서버별) ──────────────────────────────────────
-    def _concurrency_for(self, guild_id: int | None) -> int:
-        """이 길드에 적용할 동시 처리 상한. 서버별 override(G3) 우선, 없으면 전역."""
-        if guild_id is not None:
-            pol = self._guild_policy.get(guild_id)
-            if pol is not None and pol.get("max_concurrency") is not None:
-                return max(1, int(pol["max_concurrency"]))
-        return self._cfg.max_concurrency
-
-    def _guild_sem(self, guild_id: int | None) -> asyncio.Semaphore:
-        """이 길드 전용 동시성 세마포어(lazy). 정책 변경 시 set_guild_policy 에서 폐기→재생성."""
-        sem = self._guild_sems.get(guild_id)
-        if sem is None:
-            sem = asyncio.Semaphore(self._concurrency_for(guild_id))
-            self._guild_sems[guild_id] = sem
-        return sem
-
-    def _max_seconds_for(self, guild_id: int | None) -> float:
-        """이 길드 1건 최대 처리 시간(초). 서버별 override 만 적용(없으면 0 = 추가 상한 없음)."""
-        if guild_id is not None:
-            pol = self._guild_policy.get(guild_id)
-            if pol is not None and pol.get("max_seconds") is not None:
-                return max(0.0, float(pol["max_seconds"]))
-        return 0.0
-
     # ── 핸드셰이크 ──────────────────────────────────────────────────────
     def _models_for(self, guild_id: int | None) -> list[str]:
-        """이 길드에 광고할 채팅 모델. 길드 정책 chatModels override 가 있으면 그것(현재 제공 가능한 것만),
-        없거나 비면 전체(self._models). 서버별로 어떤 모델을 줄지 관리자가 고를 수 있게 한다."""
-        if guild_id is not None:
-            sel = self._guild_policy.get(guild_id, {}).get("chatModels")
-            if isinstance(sel, list) and sel:
-                picked = [m for m in sel if m in self._models]
-                if picked:
-                    return picked
-        return self._models
+        """이 길드에 광고할 채팅 모델 — 정책(chatModels override)과 현재 제공 가능한 모델(self._models)을 결합."""
+        return self._policy_mgr.models_for(guild_id, self._models)
 
     def _image_for(self, guild_id: int | None) -> bool:
-        """이 길드에 이미지(SD) capability 를 광고할지. SD 준비됨 + 길드가 명시 비활성(imageEnabled=False)이 아님."""
-        if not self._image_ready:
-            return False
-        return guild_id is None or self._guild_policy.get(guild_id, {}).get("imageEnabled") is not False
+        """이 길드에 이미지(SD) capability 를 광고할지 — SD 준비됨(self._image_ready) + 정책상 비활성 아님."""
+        return self._policy_mgr.image_for(guild_id, self._image_ready)
 
     def _build_hello(self, guild_id: int | None = None) -> ProviderHelloFrame:
         capabilities = ["text"]
@@ -274,8 +216,8 @@ class ProviderAgent:
             capabilities.append("image")
         return ProviderHelloFrame(
             models=self._models_for(guild_id),
-            max_concurrency=self._concurrency_for(guild_id),
-            remaining_daily_requests=self._remaining_for(guild_id),
+            max_concurrency=self._policy_mgr.concurrency_for(guild_id),
+            remaining_daily_requests=self._policy_mgr.remaining_for(guild_id),
             capabilities=capabilities,
         )
 
@@ -306,10 +248,10 @@ class ProviderAgent:
 
         순서·메시지·로깅은 handle_infer 인라인 시절과 동일: ① 서버 일시중지 → ② 일일 한도 초과 → ③ 자원 보호.
         """
-        if guild_id is not None and self._guild_policy.get(guild_id, {}).get("paused"):
+        if self._policy_mgr.paused_for(guild_id):
             return "이 서버 제공 일시중지됨"
-        limit = self._limit_for(guild_id)
-        if limit > 0 and self._remaining_for(guild_id) <= 0:
+        limit = self._policy_mgr.limit_for(guild_id)
+        if limit > 0 and self._policy_mgr.remaining_for(guild_id) <= 0:
             return "일일 한도 초과"
         # 자원 보호: CPU 고부하·배터리 방전 중에는 자동 pause(BUSY 로 반려, 한도 소모 안 함).
         paused, reason = sysinfo.should_pause(self._cfg.pause_on_battery, self._cfg.pause_on_high_load)
@@ -332,18 +274,18 @@ class ProviderAgent:
         if rejection is not None:
             await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.BUSY, message=rejection))
             return
-        limit = self._limit_for(guild_id)
+        limit = self._policy_mgr.limit_for(guild_id)
         # 동시 처리 상한도 **서버별** 강제: 이 길드 전용 세마포어로 게이트(전역 self._sem 은 머신 보호).
         # 최대 처리 시간(서버별)은 wait_for 로 1건씩 강제 — 넘으면 중단·반려(한도/자원 보호).
-        guild_sem = self._guild_sem(guild_id)
-        max_seconds = self._max_seconds_for(guild_id)
+        guild_sem = self._policy_mgr.guild_sem(guild_id)
+        max_seconds = self._policy_mgr.max_seconds_for(guild_id)
         async with guild_sem, self._sem:
             if req.request_id in self._cancelled:
                 self._cancelled.discard(req.request_id)
                 return
             self._inflight += 1
             if limit > 0:
-                self._remaining_by_guild[guild_id] = self._remaining_for(guild_id) - 1
+                self._policy_mgr.decrement_remaining(guild_id)
             # 서버가 모델을 지정하지 않으면 '기본 응답 모델'로 처리한다(설정값이 제공 중이면 그것, 아니면 첫 모델).
             model = req.model or self._preferred_model()
             try:
@@ -673,7 +615,7 @@ class ProviderAgent:
                 "guildId": (str(e["guild_id"]) if e["guild_id"] is not None else None),
                 "guildName": e["guild_name"],
                 "connected": e["conn"].authed,
-                "paused": bool(self._guild_policy.get(e["guild_id"], {}).get("paused")),
+                "paused": self._policy_mgr.paused_for(e["guild_id"]),
             }
             for i, e in enumerate(self._entries)
         ]
@@ -805,20 +747,14 @@ class ProviderAgent:
     # ── 서버별 정책(데스크톱 앱 G3) ─────────────────────────────────────
     def guild_policy(self, guild_id: int) -> dict:
         """현재 적용 중인 이 서버의 내 정책(전역 기본값과 병합)."""
-        pol = dict(self._guild_policy.get(guild_id, {}))
-        pol.setdefault("daily_limit", self._cfg.daily_limit)
-        return pol
+        return self._policy_mgr.policy(guild_id)
 
     async def set_guild_policy(self, guild_id: int, policy: dict) -> None:
-        """이 서버에 대한 내 정책 override 를 저장·적용(앱 G3). 한도 변경은 즉시 재광고(hello)."""
-        from .config_file import set_guild_policy as _save
+        """이 서버에 대한 내 정책 override 를 저장·적용(앱 G3). 한도 변경은 즉시 재광고(hello).
 
-        _save(guild_id, policy)
-        self._guild_policy[guild_id] = {**self._guild_policy.get(guild_id, {}), **policy}
-        # 새 한도로 잔여 리셋 → 모든 연결 재광고(새 remaining 을 hello 로 중앙에 보고)
-        self._remaining_by_guild.pop(guild_id, None)
-        # 동시 처리 상한이 바뀌었을 수 있으니 길드 세마포어 폐기 → 다음 요청 때 새 상한으로 재생성.
-        self._guild_sems.pop(guild_id, None)
+        잔여·세마포어 폐기→재생성은 GuildPolicyManager.set_policy 가 원자적으로 처리.
+        """
+        self._policy_mgr.set_policy(guild_id, policy)
         await self._readvertise()
 
     # ── 자동 동기화: 연동된 사용자가 디스코드 /프로바이더참여 한 새 서버에 앱이 스스로 연결 ──────
@@ -870,12 +806,8 @@ class ProviderAgent:
         return list(self._models)
 
     def _remaining_summary(self) -> str:
-        """서버별 일일 잔여 요약. 무제한이면 '무제한', 아니면 길드별 잔여(아직 없으면 한도값)."""
-        if self._cfg.daily_limit <= 0:
-            return "무제한"
-        if not self._remaining_by_guild:
-            return f"{self._cfg.daily_limit}/서버"
-        return " ".join(f"{g}:{n}" for g, n in self._remaining_by_guild.items())
+        """서버별 일일 잔여 요약(로깅). 무제한이면 '무제한', 아니면 길드별 잔여(아직 없으면 한도값)."""
+        return self._policy_mgr.summary()
 
     def status_line(self) -> str:
         """트레이/콘솔용 한 줄 상태 요약."""
@@ -946,7 +878,7 @@ class ProviderAgent:
         # 나머지는 유지 — run 은 stop 요청까지만 대기한다.
         from .config_file import load_connections, load_guild_policies
 
-        self._guild_policy = load_guild_policies()  # 서버별 한도 override 적용
+        self._policy_mgr.reload(load_guild_policies())  # 서버별 한도 override 적용
         saved = load_connections()
         if not saved and self._cfg.token:
             saved = [{"token": self._cfg.token, "guild_id": None, "guild_name": None}]

@@ -182,7 +182,7 @@
 - [x] **SE-330** ✓REVIEWED-CLEAN(재판정 over-eng: finalizeAttempt() receives quotaPressure and providerBurdenPressure as external parameters)
   - RoutingAttemptLifecycleManager 가 attempts 맵 관리, 시작/종료 상태 추적, 협력자(reservationManager, stats, duals, auditLogger) 호출 등 4가지 책임 혼재.
   - **Fix:** AttemptState 와 AttemptExecutor 로 분리. 상태 관리는 AttemptState 에, 협력자 조율은 AttemptExecutor 에.
-- [~] **SE-338** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:152-361` `route` (M)
+- [x] **SE-338** ✅FIXED(route()의 Candidate 생성 64줄→buildCandidate 추출, routing 테스트 green)
   - repeat { } 루프 내 attempt 카운터가 있지만, 각 시도(attempt 0, 1)에서 서로 다른 검증/필터/선택 로직 사용 불가. maxRetryCount + 1 번 동일 로직 반복.
   - **Fix:** DispatchAttempt(attemptNumber, isRetry) sealed interface 로 분리하여, 첫 시도와 재시도 경로를 명확히 분기.
 - [x] **SE-342** ✅FIXED(ScoreModel 인터페이스 추출+주입, ProviderRouter DIP — routing/arch green) ⚪ `DIP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/ProviderRouter.kt:20-22` `ProviderRouter` (S)

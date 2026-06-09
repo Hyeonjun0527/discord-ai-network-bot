@@ -5,6 +5,7 @@ import com.discordassistant.central.knowledge.application.WebAugmentation
 import com.discordassistant.central.knowledge.application.WebRecency
 import com.discordassistant.central.knowledge.application.WebSearchAugmenter
 import com.discordassistant.central.relay.ConnectionRegistry
+import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.RemoteTimeoutException
 import com.discordassistant.central.routing.application.port.ALLOW_ALL_BLOCKLIST
 import com.discordassistant.central.routing.application.port.ALLOW_ALL_PROVIDER_SAFETY
@@ -18,6 +19,7 @@ import com.discordassistant.central.routing.application.port.UsageRecorder
 import com.discordassistant.central.routing.domain.model.AiRequestInput
 import com.discordassistant.central.routing.domain.model.AttemptFinalState
 import com.discordassistant.central.routing.domain.model.OrchestrationResult
+import com.discordassistant.central.routing.domain.model.ProviderProfile
 import com.discordassistant.central.routing.domain.model.RoutingAttemptOutcome
 import com.discordassistant.central.routing.domain.model.RoutingCircuitState
 import com.discordassistant.central.routing.domain.model.RoutingDecision
@@ -89,6 +91,74 @@ class RequestOrchestrator(
         return result
     }
 
+    /** 한 세션 + 프로필 + 런타임 신호(stats/reservation/duals)를 라우팅 [Candidate] 로 조립한다 — route() 에서 추출, 필드 매핑 동작 불변. */
+    private fun buildCandidate(
+        session: ProviderSession,
+        p: ProviderProfile,
+        ctx: RequestContext,
+        input: AiRequestInput,
+    ): Candidate {
+        val stats = routingStats.snapshot(session.providerId, ctx.requiredBurden)
+        val reservation = reservationManager.snapshot(session.providerId)
+        val activeRequests = max(session.activeRequests, reservation.activeReservations)
+        val remainingDaily =
+            if (session.remainingDailyRequests == Int.MAX_VALUE) {
+                Int.MAX_VALUE
+            } else {
+                (session.remainingDailyRequests - reservation.reservedQuotaUnits).coerceAtLeast(0)
+            }
+        val circuitState =
+            if (session.state == com.discordassistant.central.provider.domain.model.ProviderState.UNHEALTHY) {
+                RoutingCircuitState.OPEN
+            } else {
+                RoutingCircuitState.CLOSED
+            }
+        val heartbeatAgeMillis = if (session.isStale(90)) Long.MAX_VALUE else 0L
+        val lambdaSnapshot = duals.snapshot(session.providerId, input.userId, ctx.requiredBurden)
+        return Candidate(
+            providerId = session.providerId,
+            state = session.state,
+            supportedBurdens = p.supportedBurdens,
+            maxConcurrency = session.capability.maxConcurrency,
+            activeRequests = activeRequests,
+            remainingDaily = remainingDaily,
+            allowedRoleIds = p.allowedRoleIds,
+            allowedChannelIds = p.allowedChannelIds,
+            maxPromptChars = p.maxPromptChars,
+            failureRate = p.failureRate,
+            inCooldown = providerSafety.isRoutingProtected(input.guildId, session.providerId),
+            recentHandled = stats.recentHandled,
+            modelNames = session.capability.models.toSet(),
+            qualityTier = p.qualityTier,
+            observedSuccessRate = stats.successRate,
+            observedTimeoutRate = stats.timeoutRate,
+            observedLatencyMillis = stats.latencyMillis,
+            observedOutputChars = stats.outputChars,
+            observedSampleCount = stats.sampleCount,
+            contextLimitTokens = max(1, p.maxPromptChars / 4),
+            supportsStreaming = "stream" in session.capability.capabilities || "text" in session.capability.capabilities,
+            supportsTools = "tools" in session.capability.capabilities,
+            supportsJsonMode = "json" in session.capability.capabilities,
+            modelFamilies =
+                session.capability.models
+                    .map { it.substringBefore(":") }
+                    .toSet(),
+            privacyCapabilities = p.privacyCapabilities,
+            heartbeatAgeMillis = heartbeatAgeMillis,
+            circuitState = circuitState,
+            trustedConcurrency =
+                min(
+                    session.capability.maxConcurrency.coerceAtLeast(1),
+                    stats.trustedConcurrency.coerceAtLeast(1),
+                ),
+            centralReservedQuotaUnits = reservation.reservedQuotaUnits,
+            estimatedPendingPrefillTokens = reservation.pendingPrefillTokens,
+            estimatedPendingDecodeTokens = reservation.pendingDecodeTokens,
+            estimatedPendingWorkMillis = reservation.pendingWorkMillis,
+            lambdas = lambdaSnapshot,
+        )
+    }
+
     private fun route(input: AiRequestInput): OrchestrationResult {
         val routingRequestId = UUID.randomUUID().toString()
         val arrivalAtNanos = System.nanoTime()
@@ -156,65 +226,7 @@ class RequestOrchestrator(
                 sessions
                     .map { session ->
                         val p = profileMap[session.providerId] ?: profiles.profile(input.guildId, session.providerId)
-                        val stats = routingStats.snapshot(session.providerId, ctx.requiredBurden)
-                        val reservation = reservationManager.snapshot(session.providerId)
-                        val activeRequests = max(session.activeRequests, reservation.activeReservations)
-                        val remainingDaily =
-                            if (session.remainingDailyRequests == Int.MAX_VALUE) {
-                                Int.MAX_VALUE
-                            } else {
-                                (session.remainingDailyRequests - reservation.reservedQuotaUnits).coerceAtLeast(0)
-                            }
-                        val circuitState =
-                            if (session.state == com.discordassistant.central.provider.domain.model.ProviderState.UNHEALTHY) {
-                                RoutingCircuitState.OPEN
-                            } else {
-                                RoutingCircuitState.CLOSED
-                            }
-                        val heartbeatAgeMillis = if (session.isStale(90)) Long.MAX_VALUE else 0L
-                        val lambdaSnapshot = duals.snapshot(session.providerId, input.userId, ctx.requiredBurden)
-                        Candidate(
-                            providerId = session.providerId,
-                            state = session.state,
-                            supportedBurdens = p.supportedBurdens,
-                            maxConcurrency = session.capability.maxConcurrency,
-                            activeRequests = activeRequests,
-                            remainingDaily = remainingDaily,
-                            allowedRoleIds = p.allowedRoleIds,
-                            allowedChannelIds = p.allowedChannelIds,
-                            maxPromptChars = p.maxPromptChars,
-                            failureRate = p.failureRate,
-                            inCooldown = providerSafety.isRoutingProtected(input.guildId, session.providerId),
-                            recentHandled = stats.recentHandled,
-                            modelNames = session.capability.models.toSet(),
-                            qualityTier = p.qualityTier,
-                            observedSuccessRate = stats.successRate,
-                            observedTimeoutRate = stats.timeoutRate,
-                            observedLatencyMillis = stats.latencyMillis,
-                            observedOutputChars = stats.outputChars,
-                            observedSampleCount = stats.sampleCount,
-                            contextLimitTokens = max(1, p.maxPromptChars / 4),
-                            supportsStreaming = "stream" in session.capability.capabilities || "text" in session.capability.capabilities,
-                            supportsTools = "tools" in session.capability.capabilities,
-                            supportsJsonMode = "json" in session.capability.capabilities,
-                            modelFamilies =
-                                session.capability.models
-                                    .map { it.substringBefore(":") }
-                                    .toSet(),
-                            privacyCapabilities = p.privacyCapabilities,
-                            heartbeatAgeMillis = heartbeatAgeMillis,
-                            circuitState = circuitState,
-                            trustedConcurrency =
-                                min(
-                                    session.capability.maxConcurrency.coerceAtLeast(1),
-                                    stats.trustedConcurrency.coerceAtLeast(1),
-                                ),
-                            centralReservedQuotaUnits = reservation.reservedQuotaUnits,
-                            estimatedPendingPrefillTokens = reservation.pendingPrefillTokens,
-                            estimatedPendingDecodeTokens = reservation.pendingDecodeTokens,
-                            estimatedPendingWorkMillis = reservation.pendingWorkMillis,
-                            lambdas = lambdaSnapshot,
-                        )
+                        buildCandidate(session, p, ctx, input)
                     }
             val outcome = pipeline.filter(candidates, ctx)
             if (outcome.eligible.isEmpty()) {

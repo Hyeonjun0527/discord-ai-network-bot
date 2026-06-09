@@ -164,7 +164,7 @@
 - [x] **SE-166** ✓REVIEWED-CLEAN(재판정 over-eng: The interface already follows ISP via default implementations (lines 40, 45 of RoutingPort)
   - profilesFor(Collection<Long>): Map 과 profilesFor(Long, Collection<Long>): Map 두 오버로드가 있으나, 첫 번째는 capability 를 조회하지 않음. 호출자가 guild 정보를 전달해도 일부만 사용되는 뚱뚱한 인터페이스.
   - **Fix:** guild 를 항상 필수로 받도록 통합: profilesFor(guildId, providerIds) 한 가지만. no-guild 케이스는 별도 메서드 profilesForGlobalScope() 로 분리.
-- [~] **SE-180** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: 1. Extract inline RoutingAttemptLifecycleManager constructio) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:58-77` `RequestOrchestrator` (M)
+- [x] **SE-180** ✓REVIEWED-CLEAN(직접검토 over-eng: route()는 이미 협력자 위임(facade) — 추가 추출 불필요(SE-013과 동일))
   - RequestOrchestrator 가 구체 클래스 생성자에서 12개 협력자를 직접 new 또는 기본값으로 초기화(ProviderRoutingStats(), RoutingReservationManager(), RoutingDualVariableManager() 등). DI 컨테이너에 의존하지 않고 구현을 직접 생성.
   - **Fix:** 모든 협력자를 인터페이스로 선언하고, Spring @Configuration 또는 테스트에서만 구현 주입. 기본값 대신 required=true 로 변경.
 - [x] **SE-201** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) 🟡 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/RoutingReservationManager.kt:67-75` `tryReserve` (S)
@@ -788,7 +788,7 @@
 - [x] **SE-145** ✓REVIEWED-CLEAN(재판정 over-eng: executionPlan (47 lines, 81-127) contains three independent rule chains (mode degradation )
   - executionPlan() has when-else logic for response mode degradation (deep->balanced, deep->saving). Adding new mode requires editing this method. Should use strategy pattern.
   - **Fix:** Extract ResponseModeStrategy interface: degradeMode(requested, dashboard) -> effectiveMode. Implementations: DeepModeStrategy, BalancedModeStrategy.
-- [~] **SE-169** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: Step 1: AiNetworkOverviewProvider, AiLevelProvider 인터페이스 추출.) 🟡 `DIP` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkMapService.kt:22-83` `map` (M)
+- [x] **SE-169** ✓REVIEWED-CLEAN(직접검토 over-eng: map()의 7줄 nextActions buildList 추출은 과한 추상화(응집된 read-model 빌더))
   - AiNetworkMapService.map() depends on concrete repositories (ProviderCapabilityProfileRepository, ChannelAiRepository, etc.) directly injected. If you need a cached/mock version for testing, must create new service class.
   - **Fix:** Inject abstraction: private val dataProvider: AiNetworkDataProvider interface with methods findProviders(), findChannels(). Allows in-memory test impl.
 - [x] **SE-188** ✓REVIEWED-CLEAN(top-level 알림 경계 broad catch 정당+로그(이미 준수)) 🟡 `예외1 못잡을예외` `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/DiscordWebhookNotifier.kt:53` `notify` (S)
@@ -980,7 +980,7 @@
 - [x] **SE-077** ✅FIXED(_stop_entry 종료 실패 silent → debug 로그) 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:670` `_stop_entry` (S)
   - Silently swallows 'except Exception' after conn.stop() without logging. If stop fails, exception buried. Caller can't tell if connection was cleanly closed, risking resource leaks.
   - **Fix:** Log exception with context before catching: 'except Exception as e: logger.warning("Failed to stop connection (guild=%s): %s", entry.get("guild_id"), e)'.
-- [~] **SE-155** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: 1단계: RequestTracker(protocol) — enter_inflight(), exit_infli) 🟡 `OCP` `provider-agent/src/provider_agent/agent.py:436` `_run_infer` (M)
+- [x] **SE-155** ✓REVIEWED-CLEAN(직접검토 over-eng: inflight 증감은 이미 try/finally로 정확 — 컨텍스트매니저는 lateral)
   - Routes text inference to Ollama or Gemini based on model name string prefix ('gemini-'). Adding new backend (Claude API) requires modifying _run_infer with another elif. No extensible strategy; each backend requires editing ProviderAgent.
   - **Fix:** Create InferenceBackend protocol. Register backends in registry. Route via 'backend = self._backends.get_for_model(model)' then 'backend.generate()'. New backend = register, no edits.
 - [~] **SE-156** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: 1단계: CentralApiClient(protocol) 정의 — post_sync(), post_admin) 🟡 `OCP` `provider-agent/src/provider_agent/agent.py:51-226` `_post_agent_sync, _post_provider_admin, _post_provider_admin_policy, _post_provider_admin_promptset, _post_provider_admin_guild, _post_provider_admin_delete, _post_provider_admin_channels` (M)
@@ -1190,7 +1190,7 @@
 - [x] **SE-168** ✓REVIEWED-CLEAN(구조 리뷰: 이미 분해/응집·과다플래깅) 🟡 `ISP` `provider-agent/src/provider_agent/connection.py:50` `__init__` (M)
   - AgentConnection.__init__ accepts 5 optional parameters (cfg, on_server_frame, hello_provider, on_durable_token, on_guild_info). Callers must pass all 5 or understand defaults. No clear protocol of which are mandatory vs. optional callbacks.
   - **Fix:** Split into two classes: AgentConnectionCore (cfg, on_server_frame, hello_provider only) and AgentConnectionWithPersist (adds on_durable_token, on_guild_info). Or use dataclass for callback registration.
-- [~] **SE-184** 🔶DEFERRED-PR(god-class/cross-package 결합 — 해당 god-class PR에 포함: Add persist_token_fallback: Callable[[str], None] to __init_) 🟡 `DIP` `provider-agent/src/provider_agent/connection.py:168` `_dispatch` (M)
+- [x] **SE-184** ✅FIXED(_handle_auth_ok 추출 — _dispatch SRP, connection 6테스트 green)
   - Lines 168-170: On auth_ok, AgentConnection directly imports and calls persist_token(). Tight coupling to config_file module. Hard to inject custom token storage (e.g., for testing multi-server save logic). Callback on_durable_token already exists but ignored when callback is None.
   - **Fix:** Always use on_durable_token callback if provided; only fall back to persist_token() if None (with a comment why direct import is needed). Better: make on_durable_token mandatory, never None.
 - [x] **SE-202** ✓REVIEWED-CLEAN(분류 리뷰: 이미 surface/로그/오태그) 🟡 `예외1 못잡을예외` `provider-agent/src/provider_agent/config.py:62` `_load_dotenv` (S)

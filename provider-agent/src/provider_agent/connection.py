@@ -155,26 +155,30 @@ class AgentConnection:
             with contextlib.suppress(asyncio.CancelledError):
                 await hb
 
+    async def _handle_auth_ok(self, frame: AuthOkFrame) -> None:
+        """auth_ok 처리: 인증 표시·guild 확정·durable 토큰 저장·provider_hello 전송(분해 전 로직 불변)."""
+        self._authed.set()
+        # 이 연결의 guild 확정 — 서버별 일일 한도/차감의 키(hello 도 이 guild 로 보고).
+        self._guild_id = frame.guild_id
+        # 서버가 길드 정보를 내려주면 엔트리(서버명) 갱신 — 토큰-연결의 수동 라벨링 불필요.
+        if self._on_guild_info is not None and (frame.guild_id is not None or frame.guild_name):
+            self._on_guild_info(frame.guild_id, frame.guild_name)
+        # 서버가 durable 토큰을 내려주면, 이후 재연결·재시작에 재사용하도록 교체·저장한다.
+        if frame.provider_token and frame.provider_token != self._token:
+            self._token = frame.provider_token
+            if self._on_durable_token is not None:
+                self._on_durable_token(frame.provider_token)
+            else:
+                from .config_file import persist_token
+
+                persist_token(frame.provider_token)
+            logger.info("재사용 가능한 프로바이더 토큰 저장됨 — 다음부터 자동 재연결")
+        logger.info("인증 성공(session=%s) — provider_hello 전송", frame.session_id)
+        await self.send(self._hello_provider(self._guild_id))
+
     async def _dispatch(self, frame: Frame) -> None:
         if isinstance(frame, AuthOkFrame):
-            self._authed.set()
-            # 이 연결의 guild 확정 — 서버별 일일 한도/차감의 키(hello 도 이 guild 로 보고).
-            self._guild_id = frame.guild_id
-            # 서버가 길드 정보를 내려주면 엔트리(서버명) 갱신 — 토큰-연결의 수동 라벨링 불필요.
-            if self._on_guild_info is not None and (frame.guild_id is not None or frame.guild_name):
-                self._on_guild_info(frame.guild_id, frame.guild_name)
-            # 서버가 durable 토큰을 내려주면, 이후 재연결·재시작에 재사용하도록 교체·저장한다.
-            if frame.provider_token and frame.provider_token != self._token:
-                self._token = frame.provider_token
-                if self._on_durable_token is not None:
-                    self._on_durable_token(frame.provider_token)
-                else:
-                    from .config_file import persist_token
-
-                    persist_token(frame.provider_token)
-                logger.info("재사용 가능한 프로바이더 토큰 저장됨 — 다음부터 자동 재연결")
-            logger.info("인증 성공(session=%s) — provider_hello 전송", frame.session_id)
-            await self.send(self._hello_provider(self._guild_id))
+            await self._handle_auth_ok(frame)
         elif isinstance(frame, AuthErrFrame):
             # code 와 message 를 함께 보존해 인증 실패 원인(토큰 무효/만료/서버오류)을 로그에서 구분 가능하게 한다(예외 원칙 4).
             raise AuthFailedError(f"code={frame.code} message={frame.message or '(없음)'}")

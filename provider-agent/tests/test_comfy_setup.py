@@ -110,3 +110,10 @@ async def test_run_setup_full_flow_mocked(monkeypatch, tmp_path):
 
 async def _async(value):
     return value
+
+
+async def test_download_model_rejects_bad_url():
+    """비-URL·비-safetensors 는 받지 않는다(잘못된 입력 방어)."""
+    assert await cs.download_model("not-a-url") is False
+    assert await cs.download_model("https://example.com/readme.txt") is False
+    assert await cs.download_model("ftp://x/model.safetensors") is False

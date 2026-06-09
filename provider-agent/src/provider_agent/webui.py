@@ -484,6 +484,7 @@ def build_app(session_key: str) -> web.Application:
                 # 클라우드 AI(Gemini) 설정 여부(키 자체는 노출 안 함) · ComfyUI 이미지 백엔드 주소.
                 "geminiConfigured": bool(saved.get("gemini_api_key")),
                 "comfyUrl": str(saved.get("comfy_url") or ""),
+                "hfConfigured": bool(saved.get("hf_token")),
             }
         )
 
@@ -627,6 +628,10 @@ def build_app(session_key: str) -> web.Application:
             persist_partial({"comfy_url": comfy})
             out["comfyUrl"] = comfy
             out["needsRestart"] = True
+        if "hfToken" in data:
+            tok = str(data.get("hfToken") or "").strip()
+            persist_partial({"hf_token": tok})  # gated 모델 다운로드용. 이 PC 에만.
+            out["hfConfigured"] = bool(tok)
         return web.json_response(out)
 
     async def connect_open(req: web.Request) -> web.Response:
@@ -1403,6 +1408,25 @@ def build_app(session_key: str) -> web.Application:
         active = load_config().get("comfy_model") or (models[0] if models else None)
         return web.json_response({"models": models, "active": active})
 
+    async def comfy_install_model(req: web.Request) -> web.Response:
+        """임의 모델 URL(.safetensors/.ckpt)을 ComfyUI 체크포인트 폴더로 다운로드(gated 는 HF 토큰). body {url}."""
+        _auth(req)
+        from . import comfy_setup
+
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        url = str((data or {}).get("url") or "").strip()
+        if not url:
+            return web.json_response({"ok": False, "error": "모델 URL 을 입력하세요(.safetensors 직접 링크)."})
+        ok = await comfy_setup.download_model(url)
+        if not ok:
+            return web.json_response(
+                {"ok": False, "error": ".safetensors/.ckpt 직접 링크인지 확인하세요. gated 모델은 설정에서 HF 토큰을 넣으세요."}
+            )
+        return web.json_response({"ok": True})
+
     async def comfy_select(req: web.Request) -> web.Response:
         """활성 ComfyUI 체크포인트 전환(저장 + 떠 있으면 에이전트에 즉시 반영). body {model}."""
         _auth(req)
@@ -1609,6 +1633,7 @@ def build_app(session_key: str) -> web.Application:
                 "allowRemoteOllama": bool(saved.get("allow_remote_ollama")),
                 "geminiConfigured": bool(saved.get("gemini_api_key")),
                 "comfyUrl": str(saved.get("comfy_url") or ""),
+                "hfConfigured": bool(saved.get("hf_token")),
                 "hasToken": bool(saved.get("token")),
             }
         )
@@ -1765,6 +1790,7 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/comfy/open", comfy_open)
     app.router.add_get("/api/comfy/models", comfy_models)
     app.router.add_post("/api/comfy/select", comfy_select)
+    app.router.add_post("/api/comfy/install-model", comfy_install_model)
     app.router.add_post("/api/setup", setup)
     app.router.add_post("/api/start", start)
     app.router.add_post("/api/stop", stop)

@@ -35,6 +35,7 @@ class AgentConfig:
     gemini_models: tuple[str, ...] = ()  # 광고할 Gemini 모델(키 있을 때 기본 gemini-2.5-flash-lite)
     sd_url: str = "http://127.0.0.1:7860"  # 로컬 Stable Diffusion(A1111) 주소
     comfy_url: str = ""  # 로컬 ComfyUI 주소(설정 시 이미지 백엔드를 SD.Next 대신 ComfyUI 로). 비면 SD.Next
+    hf_token: str = ""  # HuggingFace 토큰(gated/비공개 모델 다운로드용). 비면 public 모델만. 이 PC 에만 저장
     allow_remote_sd: bool = False  # 기본 localhost 전용; True 면 원격 SD 허용(위험)
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
     service: bool = False  # 헤드리스 자동시작 모드(--service): launchd·업데이터 재실행이 창 없이 무인 구동
@@ -167,6 +168,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
     sd_url = (args.sd_url or _env("SD_BASE_URL") or saved.get("sd_url") or "http://127.0.0.1:7860").rstrip("/")
     # ComfyUI 백엔드(설정 시 이미지를 ComfyUI 로). env COMFY_URL > 저장 설정. 비면 SD.Next 사용.
     comfy_url = (_env("COMFY_URL") or str(saved.get("comfy_url") or "")).rstrip("/")
+    hf_token = (_env("HF_TOKEN") or _env("HUGGING_FACE_HUB_TOKEN") or str(saved.get("hf_token") or "")).strip()
     allow_remote_sd = bool(args.allow_remote_sd) or bool(saved.get("allow_remote_sd"))
     if enable_image:
         # SD 도 기본 localhost 전용(netguard 재사용). 원격은 --allow-remote-sd 에서만.
@@ -219,6 +221,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         gemini_models=gemini_models,
         sd_url=sd_url,
         comfy_url=comfy_url,
+        hf_token=hf_token,
         allow_remote_sd=allow_remote_sd,
         # --service(헤드리스 자동시작)는 동의 프롬프트를 띄울 수 없으므로 자동 승인(--yes)을 포함한다.
         assume_yes=bool(args.yes) or bool(args.service),

@@ -55,7 +55,7 @@ const MOCK = {
     running: true, connected: true, processed: 12, imageReady: true, enableImage: true, sdInstalled: true,
     models: ['exaone3.5:7.8b', 'llama3.1:8b', 'qwen2.5-coder:7b'],
     hasToken: true, relayUrl: 'wss://discord-ai.yeon.world/agent', backgroundRunning: false, background: false, connectEnabled: true,
-    version: '0.31.0', geminiConfigured: false, comfyUrl: '',
+    version: '0.31.0', geminiConfigured: false, comfyUrl: '', hfConfigured: false,
   },
   // ComfyUI 라이프사이클 상태는 별도 엔드포인트(/api/comfy/status)라 status shape 와 분리한다.
   comfy: { installed: false, running: false, active: null },
@@ -454,9 +454,9 @@ export const api = {
     return post(ENDPOINTS.image, { on });
   },
   /** 클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. webui.py POST /api/cloud. */
-  async setCloud({ geminiApiKey, comfyUrl }) {
-    /* @proto-only */ if (USE_MOCK) { await delay(120); const o = { ok: true }; if (geminiApiKey !== undefined) { MOCK.status.geminiConfigured = !!geminiApiKey; o.geminiConfigured = !!geminiApiKey; o.geminiValid = !!geminiApiKey; } if (comfyUrl !== undefined) { MOCK.status.comfyUrl = comfyUrl; o.comfyUrl = comfyUrl; o.needsRestart = true; } return o; } /* @end-proto-only */
-    const body = {}; if (geminiApiKey !== undefined) body.geminiApiKey = geminiApiKey; if (comfyUrl !== undefined) body.comfyUrl = comfyUrl;
+  async setCloud({ geminiApiKey, comfyUrl, hfToken }) {
+    /* @proto-only */ if (USE_MOCK) { await delay(120); const o = { ok: true }; if (geminiApiKey !== undefined) { MOCK.status.geminiConfigured = !!geminiApiKey; o.geminiConfigured = !!geminiApiKey; o.geminiValid = !!geminiApiKey; } if (comfyUrl !== undefined) { MOCK.status.comfyUrl = comfyUrl; o.comfyUrl = comfyUrl; o.needsRestart = true; } if (hfToken !== undefined) { MOCK.status.hfConfigured = !!hfToken; o.hfConfigured = !!hfToken; } return o; } /* @end-proto-only */
+    const body = {}; if (geminiApiKey !== undefined) body.geminiApiKey = geminiApiKey; if (comfyUrl !== undefined) body.comfyUrl = comfyUrl; if (hfToken !== undefined) body.hfToken = hfToken;
     return post(ENDPOINTS.cloud, body);
   },
   /** 제공할 텍스트 모델 선택 적용 — webui.py POST /api/setup {models, enableImage, applyToBackground}.
@@ -584,6 +584,11 @@ export const api = {
   async comfySelectModel(model) {
     /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.comfy.active = model; return { ok: true, active: model }; } /* @end-proto-only */
     return post(ENDPOINTS.comfySelect, { model });
+  },
+  /** 임의 모델 URL(.safetensors)을 ComfyUI 폴더로 다운로드 — POST /api/comfy/install-model {url}. */
+  async installComfyModel(url) {
+    /* @proto-only */ if (USE_MOCK) { await delay(120); const ok = /\.(safetensors|ckpt)(\?|$)/.test(url); if (ok) { const fn = url.split('/').pop().split('?')[0]; MOCK.comfy.active = fn; } return ok ? { ok: true } : { ok: false, error: '.safetensors/.ckpt 직접 링크인지 확인하세요.' }; } /* @end-proto-only */
+    return post(ENDPOINTS.comfyInstallModel, { url });
   },
 
   /**

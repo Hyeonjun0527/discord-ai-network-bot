@@ -56,6 +56,28 @@ def webui_url() -> str:
     return f"http://127.0.0.1:{COMFY_PORT}"
 
 
+async def download_model(url: str) -> bool:
+    """임의 .safetensors/.ckpt 모델 URL 을 ComfyUI 체크포인트 폴더로 받는다(폴더 스캔이 자동 인식).
+
+    gated/비공개 HF 모델은 sd_setup._download 가 저장된 HF 토큰을 Authorization 으로 주입한다.
+    실패(잘못된 URL·네트워크·확장자)면 False.
+    """
+    if not url.startswith(("http://", "https://")):
+        return False
+    fn = url.rsplit("/", 1)[-1].split("?")[0]
+    if not fn.endswith((".safetensors", ".ckpt")):
+        return False
+    dest = model_dir() / fn
+    if dest.exists():
+        return True
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        await sd_setup._download(url, dest, "이미지 모델 내려받는 중…")
+    except (aiohttp.ClientError, OSError, asyncio.TimeoutError):
+        return False
+    return dest.exists()
+
+
 def clone_commands(directory: pathlib.Path | None = None) -> list[list[str]]:
     """ComfyUI 를 핀 커밋으로 받는 명령 시퀀스(init+fetch --depth1 <sha>+checkout). sd_setup 과 동일 전략."""
     d = str(directory or install_dir())

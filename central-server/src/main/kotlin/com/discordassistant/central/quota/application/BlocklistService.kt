@@ -5,6 +5,8 @@ import com.discordassistant.central.quota.adapter.outbound.persistence.Blocklist
 import com.discordassistant.central.quota.adapter.outbound.persistence.BlocklistRepository
 import com.discordassistant.central.routing.application.port.BlocklistChecker
 import jakarta.annotation.PostConstruct
+import org.slf4j.LoggerFactory
+import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -24,12 +26,18 @@ class BlocklistService(
     private val clock: Clock = Clock.systemUTC(),
 ) : BlocklistChecker {
     private val blocked = ConcurrentHashMap<Long, MutableSet<Long>>()
+    private val log = LoggerFactory.getLogger(BlocklistService::class.java)
 
     @PostConstruct
     fun load() {
         // 전체 차단 목록을 캐시로 적재(차단은 소수라 부담 적음).
-        repo.findAll().forEach { e ->
-            blocked.computeIfAbsent(e.guildId) { ConcurrentHashMap.newKeySet() }.add(e.userId)
+        try {
+            repo.findAll().forEach { e ->
+                blocked.computeIfAbsent(e.guildId) { ConcurrentHashMap.newKeySet() }.add(e.userId)
+            }
+        } catch (e: DataAccessException) {
+            // 적재 실패 = 어뷰즈 차단이 빈 채로 시작될 수 있다(보안 저하) — 조용히 넘기지 않고 크게 남긴다(예외 원칙 3).
+            log.error("차단 목록 적재 실패 — 차단이 적용되지 않을 수 있습니다(운영 확인 필요)", e)
         }
     }
 

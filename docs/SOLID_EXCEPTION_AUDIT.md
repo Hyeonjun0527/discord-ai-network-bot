@@ -105,12 +105,12 @@
 - [ ] **SE-073** `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt:196-204` `ProviderAdminController.authedAdmin()` (M) — tokens.verify(durableToken)가 null이면 조용히 반환. 하지만 verify() 실패 원인(토큰 만료/위조/형식 오류)을 로그하지 않아 악의적 요청 vs 정상 요청의 구분이 불가. 보안 감시 부재. **→** tokens.verify() 후 null인 경우 audit.warn("auth_failure", "invalid_token", ...) 기록. 또는 verify() 메서드 자체가 실패 이유를 exception으로 명시(TokenExpiredException vs TokenMalformedException).
 - [ ] **SE-074** `예외3 삼킴` `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/outbound/persistence/ProviderStateConverter.kt:17-18` `ProviderStateConverter.convertToEntityAttribute()` (S) — runCatching { ProviderState.valueOf(it) }.getOrNull() ?: ProviderState.OFFLINE로 깨진 enum 값을 OFFLINE으로 폴백. DB의 unknown state는 로그도 없이 OFFLINE으로 변환되어 데이터 손상 원인을 찾기 어려움. **→** 폴백 전에 logger.warn("Unknown provider state: {}, defaulting to OFFLINE", dbData)를 기록하거나, 사전에 DB 마이그레이션으로 invalid 값을 정리.
 - [ ] **SE-075** `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:597` `_safe_send` (M) — Silently logs and swallows 'except Exception' without propagating. If network write fails, infer result is lost silently. Caller never knows response failed and may timeout thinking server didn't respond. **→** Return bool indicating success, or raise TransmissionError. Let caller decide: retry, abandon, or forward to user. Logging alone is insufficient.
-- [ ] **SE-076** `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:642` `_persist` (S) — Inner function _persist silently swallows 'except Exception: pass' without logging. If token persistence fails (file IO, permission), durable_token updates are lost silently, causing admin API auth failures later. **→** Log exception with context before silencing: 'except Exception as e: logger.warning("Failed to persist token for guild=%s: %s", gid, e)'.
-- [ ] **SE-077** `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:670` `_stop_entry` (S) — Silently swallows 'except Exception' after conn.stop() without logging. If stop fails, exception buried. Caller can't tell if connection was cleanly closed, risking resource leaks. **→** Log exception with context before catching: 'except Exception as e: logger.warning("Failed to stop connection (guild=%s): %s", entry.get("guild_id"), e)'.
+- [x] **SE-076** ✅FIXED(_persist durable 토큰 저장 실패 silent → warning) `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:642` `_persist` (S) — Inner function _persist silently swallows 'except Exception: pass' without logging. If token persistence fails (file IO, permission), durable_token updates are lost silently, causing admin API auth failures later. **→** Log exception with context before silencing: 'except Exception as e: logger.warning("Failed to persist token for guild=%s: %s", gid, e)'.
+- [x] **SE-077** ✅FIXED(_stop_entry 종료 실패 silent → debug 로그) `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:670` `_stop_entry` (S) — Silently swallows 'except Exception' after conn.stop() without logging. If stop fails, exception buried. Caller can't tell if connection was cleanly closed, risking resource leaks. **→** Log exception with context before catching: 'except Exception as e: logger.warning("Failed to stop connection (guild=%s): %s", entry.get("guild_id"), e)'.
 - [x] **SE-078** ✅FIXED `예외3 삼킴` `provider-agent/src/provider_agent/config_file.py:53` `save_config` (S) — Line 53: `except OSError: pass` silently swallows chmod(0o600) failure without logging. File permissions are security-critical for token storage; silent failures mask privilege escalation risks. **→** Log the OSError with context (e.g., `logger.warning('Failed to set file permissions on %s: %s', path, exc)`) instead of bare pass. On Windows where chmod fails, at least document this in debug logs.
 - [x] **SE-079** ✅FIXED `예외3 삼킴` `provider-agent/src/provider_agent/config_file.py:74` `persist_token` (S) — Line 74: `except OSError: pass` silently swallows all errors (file I/O, chmod, mkdir). If durable token persist fails, app silently loses durable token on restart, forcing re-auth. Caller has no signal of failure. **→** At minimum, log the exception with the path and token context (masked). Consider raising a custom `TokenPersistError` or returning a bool to signal success/failure to caller.
 - [x] **SE-080** ✅FIXED `예외3 삼킴` `provider-agent/src/provider_agent/config_file.py:94` `persist_partial` (S) — Line 94: `except OSError: pass` in persist_partial silently drops guild policy/toggle updates (auto_update, paused) without feedback. Caller receives no signal that write failed, leading to silent data loss. **→** Log with context (guild_id, update keys, error). Return bool or raise ConfigPersistError so callers can warn user or retry.
-- [ ] **SE-081** `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:640-643` `_add_connection` (M) — Exception 을 잡고 아무것도 안 함(pass). 토큰 저장 실패, DB 오류, 파일시스템 오류가 모두 무시되므로 연결 추가가 실패했는데 호출자는 성공인 줄 앎. **→** 원인을 로깅하거나 호출자에게 실패 상황을 반환하도록 변경 (bool 또는 예외 전파)
+- [x] **SE-081** ✅FIXED(_make_entry 토큰저장 swallow → warning(연결추가 실패 가시화)) `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:640-643` `_add_connection` (M) — Exception 을 잡고 아무것도 안 함(pass). 토큰 저장 실패, DB 오류, 파일시스템 오류가 모두 무시되므로 연결 추가가 실패했는데 호출자는 성공인 줄 앎. **→** 원인을 로깅하거나 호출자에게 실패 상황을 반환하도록 변경 (bool 또는 예외 전파)
 - [x] **SE-082** ✅FIXED(압축해제 실패 메시지 정리(ditto)·다운로드 메시지에 url) `예외3 삼킴` `provider-agent/src/provider_agent/updater.py:249` `_apply_macos` (S) — Line 249: 'except Exception as exc:' logs to f-string but exc is a subprocess error (ditto, OSError). Missing context on which subprocess failed—user sees 'Extract failed: [OSError]' without knowing if it was ditto or file I/O. **→** Catch '(subprocess.CalledProcessError, OSError)' separately, log the command that failed, and the specific exit code or errno.
 - [ ] **SE-083** `예외4 빈약메시지` `central-server/src/main/kotlin/com/discordassistant/central/guild/application/GuildRemovalCleanupService.kt:26` `cleanup` (S) — cleanup() logs only a success summary at line 35 with no failure scenario. If any of the 8 deletion calls fail silently (or throw and cause partial rollback), the log statement won't execute, leaving no trace of the cleanup attempt or failure reason. Operators have no visibility into failures. **→** Log each deletion step with success/failure: log.info("Clearing blocklist for guild={}", guildId); or use try-catch around each call to log failures individually with reason.
 - [ ] **SE-084** `예외4 빈약메시지` `central-server/src/main/kotlin/com/discordassistant/central/onboarding/adapter/outbound/DiscordOAuth.kt:86` `HttpDiscordOAuthClient.exchangeCodeForToken` (S) — 로그 메시지 `"Discord 토큰 교환 오류: {}"` 에 exception 클래스명만 남겨 실제 문제(URL 오류/응답 본문 파싱 실패/타임아웃)를 알 수 없다. **→** `log.warn("Discord 토큰 교환 오류: {}", e.message)` 또는 `log.warn("Discord 토큰 교환 오류", e)` 로 전체 스택트레이스를 포함시키고, 상태코드/응답 본문도 함께 기록.
@@ -974,10 +974,10 @@
 - [ ] **SE-075** 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:597` `_safe_send` (M)
   - Silently logs and swallows 'except Exception' without propagating. If network write fails, infer result is lost silently. Caller never knows response failed and may timeout thinking server didn't respond.
   - **Fix:** Return bool indicating success, or raise TransmissionError. Let caller decide: retry, abandon, or forward to user. Logging alone is insufficient.
-- [ ] **SE-076** 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:642` `_persist` (S)
+- [x] **SE-076** ✅FIXED(_persist durable 토큰 저장 실패 silent → warning) 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:642` `_persist` (S)
   - Inner function _persist silently swallows 'except Exception: pass' without logging. If token persistence fails (file IO, permission), durable_token updates are lost silently, causing admin API auth failures later.
   - **Fix:** Log exception with context before silencing: 'except Exception as e: logger.warning("Failed to persist token for guild=%s: %s", gid, e)'.
-- [ ] **SE-077** 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:670` `_stop_entry` (S)
+- [x] **SE-077** ✅FIXED(_stop_entry 종료 실패 silent → debug 로그) 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:670` `_stop_entry` (S)
   - Silently swallows 'except Exception' after conn.stop() without logging. If stop fails, exception buried. Caller can't tell if connection was cleanly closed, risking resource leaks.
   - **Fix:** Log exception with context before catching: 'except Exception as e: logger.warning("Failed to stop connection (guild=%s): %s", entry.get("guild_id"), e)'.
 - [ ] **SE-155** 🟡 `OCP` `provider-agent/src/provider_agent/agent.py:436` `_run_infer` (M)
@@ -1001,13 +1001,13 @@
 - [ ] **SE-249** 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:1006` `run` (S)
   - Catches 'except Exception' from _start_tray() and logs warning, but unclear if tray was attempted. If pystray fails (missing lib, ValueError), user gets warning without indication tray attempt failed.
   - **Fix:** Split into 'except pystray.Error' (log, continue) vs 'except Exception' (log verbosely). Or track tray_attempted flag for status feedback.
-- [ ] **SE-250** 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:1064` `_boot_sd` (S)
+- [x] **SE-250** ✅FIXED(_boot_sd 체크포인트 적용 실패 silent → warning) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:1064` `_boot_sd` (S)
   - Silently catches 'except Exception' from _sd.set_checkpoint(cm) without logging. If set_checkpoint fails, boot proceeds silently. User expects saved checkpoint to apply but it doesn't—no diagnostic warning.
   - **Fix:** Log at warning level before silencing: 'except Exception as e: logger.warning("Failed to restore checkpoint %s: %s", cm, e)'.
-- [ ] **SE-251** 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:907` `_sync_joins_once` (S)
+- [x] **SE-251** ✅FIXED(_sync_joins_once 동기화 실패 silent → warning) 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:907` `_sync_joins_once` (S)
   - Silently swallows 'except Exception' from _post_agent_sync without logging. If central server is down or JSON parse fails, no diagnostic info. Users can't debug why auto-sync isn't working.
   - **Fix:** Log at warning level with exception context: 'except Exception as e: logger.warning("Sync failed (will retry): %s", e)'.
-- [ ] **SE-271** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/agent.py:594` `_safe_send` (S)
+- [x] **SE-271** ✅FIXED(_safe_send 송신실패에 frame 타입·guild 컨텍스트) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/agent.py:594` `_safe_send` (S)
   - Exception logged as str(exc) generically. If send() fails with connection error, log shows generic message. No context about guild, request ID, or frame type. Debugging requires cross-referencing logs.
   - **Fix:** Log with structured context: 'logger.debug("Failed to send %s frame (request_id=%s, guild=%s): %s", type(frame).__name__, getattr(frame, "request_id", "?"), conn.guild_id, exc)'.
 
@@ -1274,7 +1274,7 @@
 
 ### provider-agent 기타 — 14건
 
-- [ ] **SE-081** 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:640-643` `_add_connection` (M)
+- [x] **SE-081** ✅FIXED(_make_entry 토큰저장 swallow → warning(연결추가 실패 가시화)) 🔴 `예외3 삼킴` `provider-agent/src/provider_agent/agent.py:640-643` `_add_connection` (M)
   - Exception 을 잡고 아무것도 안 함(pass). 토큰 저장 실패, DB 오류, 파일시스템 오류가 모두 무시되므로 연결 추가가 실패했는데 호출자는 성공인 줄 앎.
   - **Fix:** 원인을 로깅하거나 호출자에게 실패 상황을 반환하도록 변경 (bool 또는 예외 전파)
 - [ ] **SE-185** 🟡 `DIP` `provider-agent/src/provider_agent/service.py:66-77` `_run` (M)
@@ -1292,7 +1292,7 @@
 - [x] **SE-253** ✅FIXED 🟡 `예외3 삼킴` `provider-agent/src/provider_agent/config_file.py:84-95` `persist_partial` (S)
   - OSError 예외를 잡고 무시하는 패턴(except OSError: pass)이 반복. 설정 저장 실패가 로깅되지 않아 사용자가 왜 설정이 안 먹혔는지 알 수 없음.
   - **Fix:** except OSError as exc: logger.warning("설정 저장 실패: %s", exc)로 변경해 실패 원인 기록
-- [ ] **SE-273** 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/agent.py:420-430` `_handle_text` (S)
+- [x] **SE-273** ✅FIXED(_handle_text OllamaError에 model·request 컨텍스트 로그) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/agent.py:420-430` `_handle_text` (S)
   - OllamaError 를 logger.error("...", exc)로 로깅하지만 메시지가 "Ollama 오류"만으로 구체적이지 않음. 토큰 수, 프롬프트, 요청 ID 같은 맥락이 없어 디버깅 어려움.
   - **Fix:** 메시지에 request_id, prompt 길이, 모델명 등을 포함: f"Ollama 오류(model={model}, request={req_id}): {exc}"
 - [x] **SE-274** ✅FIXED(인증 실패에 code+message 보존) 🟡 `예외4 빈약메시지` `provider-agent/src/provider_agent/connection.py:104-106` `run` (S)

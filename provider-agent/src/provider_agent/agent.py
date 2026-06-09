@@ -426,6 +426,8 @@ class ProviderAgent:
                     conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=f"최대 처리 시간({int(max_seconds)}s) 초과")
                 )
             except OllamaError as exc:
+                # 서버측 진단을 위해 모델·요청 맥락과 함께 남긴다(사용자에겐 InferError 로 전달, 예외 원칙 4).
+                logger.warning("Ollama 오류(model=%s, request=%s): %s", model, req.request_id[:8], exc)
                 await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
             except asyncio.CancelledError:
                 logger.info("요청 %s… 취소됨", req.request_id[:8])
@@ -595,7 +597,8 @@ class ProviderAgent:
         try:
             await conn.send(frame)
         except Exception as exc:  # noqa: BLE001
-            logger.debug("응답 송신 실패(연결 끊김?): %s", exc)
+            # 프레임 타입·길드 맥락을 남겨 어떤 응답이 유실됐는지 추적 가능하게 한다(예외 원칙 4).
+            logger.debug("응답 송신 실패(연결 끊김?) frame=%s guild=%s: %s", type(frame).__name__, conn.guild_id, exc)
 
     # ── 상태 보고 ───────────────────────────────────────────────────────
     async def _status_loop(self, conn: AgentConnection) -> None:
@@ -639,8 +642,9 @@ class ProviderAgent:
                 from .config_file import set_connection_token
 
                 set_connection_token(new_token, guild_id=gid, old_token=old)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                # 토큰 저장 실패를 삼키면 다음 재연결 인증이 조용히 깨진다 — 최소한 남긴다(예외 원칙 3·4).
+                logger.warning("durable 토큰 저장 실패(guild=%s) — 다음 재연결에 영향 가능: %s", gid, exc)
 
         entry: dict = {"conn": None, "task": None, "status_task": None,
                        "guild_id": guild_id, "guild_name": guild_name, "token": token}
@@ -667,8 +671,8 @@ class ProviderAgent:
     async def _stop_entry(self, entry: dict) -> None:
         try:
             await entry["conn"].stop()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("연결 종료 실패(guild=%s): %s", entry.get("guild_id"), exc)
         for t in (entry["task"], entry["status_task"]):
             if t is not None:
                 t.cancel()
@@ -904,7 +908,8 @@ class ProviderAgent:
         base = _agent_sync_base(self._cfg.relay_url)
         try:
             joins = await asyncio.to_thread(_post_agent_sync, base, durable)
-        except Exception:  # noqa: BLE001 - 네트워크/서버 실패는 다음 주기에 재시도
+        except Exception as exc:  # noqa: BLE001 - 네트워크/서버 실패는 다음 주기에 재시도
+            logger.warning("자동 서버 동기화 실패(다음 주기 재시도): %s", exc)
             return
         existing = {e["guildId"] for e in self.connections_status() if e.get("guildId") is not None}
         for jn in joins:
@@ -1061,8 +1066,9 @@ class ProviderAgent:
             if cm:
                 try:
                     await self._sd.set_checkpoint(cm)
-                except Exception:  # noqa: BLE001 - 실패해도 첫 모델로 동작
-                    pass
+                except Exception as exc:  # noqa: BLE001 - 실패해도 첫 모델로 동작
+                    # 저장된 체크포인트가 조용히 무시되면 유저는 선택한 모델 대신 기본을 보게 된다 — 남긴다(예외 원칙 3).
+                    logger.warning("저장된 체크포인트 적용 실패(%s) — 기본 모델로 진행: %s", cm, exc)
             self._image_ready = True
             self._invalidate_resolution()
             await self._readvertise()

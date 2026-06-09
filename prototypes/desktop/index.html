@@ -1463,22 +1463,7 @@
         (ollamaReady ? '<button class="btn btn--sm btn--secondary" data-go="models">모델 관리</button>' + rtMenu('ollama')
           : '<button class="btn btn--sm btn--primary" data-install="ollama">설치</button>') + '</div></div>';
 
-      const sdState = !sdInstalled ? '미설치' : (imgReady ? '준비됨 · 이미지 생성 가능' : '설치됨 · 준비 중');
-      let sdAction;
-      if (!sdInstalled) sdAction = '<button class="btn btn--sm btn--primary" data-install="image">설치</button>';
-      else if (!imgReady) sdAction = '<button class="btn btn--sm btn--primary" id="localSdStart">시작</button>' + rtMenu('sd'); // 설치됐는데 미기동 → 기동(재시도)
-      else sdAction = '<div class="rt-recv"><span>이미지 요청 받기</span><button class="switch ' + (enableImage ? 'on' : '') + '" id="localImgSw" role="switch" aria-checked="' + enableImage + '" aria-label="이미지 요청 받기"></button></div>' + rtMenu('sd');
-      // 설치된 이미지 모델 선택기(SD 설치됨 + 모델 ≥1) — 활성 모델 전환(핫스왑). 메인화면에서 모델 선택 가능.
-      const inst = (_sdInst && _sdInst.models) || [];
-      const activeFile = (_sdInst && _sdInst.active) || '';
-      const sdModelSel = (sdInstalled && inst.length) ?
-        '<div class="rt-model"><label>모델</label><select id="sdModelSelect" aria-label="이미지 모델 선택">' +
-          inst.map((m) => '<option value="' + m.filename + '"' + (m.filename === activeFile ? ' selected' : '') + '>' +
-            m.name + (m.base === 'sdxl' ? ' · 고품질' : '') + '</option>').join('') +
-        '</select><button class="rt-model-add" id="sdModelAdd" title="모델 추가">+ 추가</button></div>' : '';
-      const sdCard = '<div class="rt-row' + (imgReady ? ' ready' : '') + '">' +
-        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">Stable Diffusion <span style="font-weight:500;color:var(--subtle)">이미지</span></div>' +
-        '<div class="rt-state">' + sdState + '</div>' + sdModelSel + '</div>' + sdAction + '</div>';
+      // (SD.Next 카드 폐기 — 이미지 엔진은 ComfyUI 전용. 유지보수 중단된 레거시 SD.Next 는 제거.)
 
       // 클라우드 연결(Gemini) — '엔진' 관심사라 로컬 실행이 소유한다. 키는 이 PC 에만 저장.
       //   연결되면 모델 탭에 '클라우드 텍스트' 모델로 등장 → 다른 모델처럼 서버별로 켜고 끈다('서버 전체 무료' 프레이밍 폐기).
@@ -1517,14 +1502,13 @@
       const comfyCard = '<div class="rt-row rt-row--rec' + (crun ? ' ready' : '') + '">' +
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">ComfyUI <span style="font-weight:500;color:var(--c-violet)">이미지 · 권장</span></div>' +
         '<div class="rt-state">' + comfyState + '</div>' + comfyModelSel + '</div><div class="rt-actions">' + comfyAction + '</div></div>';
-      // SD.Next 는 유지보수가 느려진 레거시 → 접이식으로 강등(가능하면 ComfyUI 사용).
-      const sdLegacy = '<details class="rt-adv">' +
-        '<summary>레거시 · Stable Diffusion (SD.Next)</summary>' +
-        '<div class="rt-adv-body"><div class="rt-adv-desc">SD.Next(A1111 계열)는 유지보수가 느려진 레거시예요. 가능하면 위의 ComfyUI 를 쓰세요. 기존 설치/사용을 위해 남겨둡니다.</div>' +
-        sdCard +
-        '<div class="rt-cloud" style="margin-top:10px"><input id="localComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="직접 띄운 외부 ComfyUI 주소(예: http://127.0.0.1:8188)" class="set-input"><button class="btn btn--sm btn--secondary" id="localComfySave">외부 연결</button></div>' +
+      // 고급 · 직접 띄운 외부 ComfyUI 인스턴스에 연결(앱 관리 ComfyUI 대신). 비우면 앱 관리 ComfyUI 사용.
+      const comfyExternal = '<details class="rt-adv"' + (s.comfyUrl ? ' open' : '') + '>' +
+        '<summary>고급 · 외부 ComfyUI 연결' + (s.comfyUrl ? ' — 사용 중' : '') + '</summary>' +
+        '<div class="rt-adv-body"><div class="rt-adv-desc">직접 띄운 ComfyUI 가 있으면 그 주소를 입력하세요. 비우면 위의 앱 관리 ComfyUI 를 씁니다.</div>' +
+        '<div class="rt-cloud"><input id="localComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="http://127.0.0.1:8188" class="set-input"><button class="btn btn--sm btn--secondary" id="localComfySave">외부 연결</button></div>' +
         '</div></details>';
-      rtWrap.innerHTML = ollamaCard + comfyCard + cloudCard + sdLegacy;
+      rtWrap.innerHTML = ollamaCard + comfyCard + cloudCard + comfyExternal;
 
       // 이미지 모델 전환(핫스왑 — 고품질 SDXL 은 로딩에 수십 초)
       const sdSel = document.getElementById('sdModelSelect');

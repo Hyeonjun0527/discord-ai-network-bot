@@ -234,18 +234,16 @@ class ProviderAgent:
         # 셋 다 동일한 txt2img/health 인터페이스라 _handle_image 는 그대로(유저가 어떤 이미지 도구든 쓰게).
         from . import comfy_setup
 
-        self._comfy_url = cfg.comfy_url or (comfy_setup.webui_url() if comfy_setup.is_installed() else "")
-        self._image_backend = "comfyui" if self._comfy_url else "sdnext"
+        # 이미지 엔진 = **ComfyUI 전용**(SD.Next 폐기 — 유지보수 중단된 레거시). 외부 comfy_url 이 있으면 그것,
+        # 없으면 앱이 관리하는 ComfyUI(localhost:8188). 설치/실행 전이면 health=False 라 이미지 미광고(자동 기동은 _boot_sd).
+        self._comfy_url = cfg.comfy_url or comfy_setup.webui_url()
+        self._image_backend = "comfyui"
         if sd is not None:
             self._sd = sd
-        elif cfg.enable_image and self._comfy_url:
+        elif cfg.enable_image:
             from .comfy import ComfyClient
 
             self._sd = ComfyClient(self._comfy_url, cfg.request_timeout)
-        elif cfg.enable_image:
-            from .sd import SDClient
-
-            self._sd = SDClient(cfg.sd_url, cfg.request_timeout)
         else:
             self._sd = None
         self._image_ready = False

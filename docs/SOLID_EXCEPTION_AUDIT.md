@@ -185,7 +185,7 @@
 - [~] **SE-338** 🔶DEFERRED-PR(genuine god-class 분해 — 전용 PR 필요, 분류기 plan 보유) ⚪ `ISP` `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt:152-361` `route` (M)
   - repeat { } 루프 내 attempt 카운터가 있지만, 각 시도(attempt 0, 1)에서 서로 다른 검증/필터/선택 로직 사용 불가. maxRetryCount + 1 번 동일 로직 반복.
   - **Fix:** DispatchAttempt(attemptNumber, isRetry) sealed interface 로 분리하여, 첫 시도와 재시도 경로를 명확히 분기.
-- [ ] **SE-342** ⚪ `DIP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/ProviderRouter.kt:20-22` `ProviderRouter` (S)
+- [x] **SE-342** ✅FIXED(ScoreModel 인터페이스 추출+주입, ProviderRouter DIP — routing/arch green) ⚪ `DIP` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/ProviderRouter.kt:20-22` `ProviderRouter` (S)
   - ProviderRouter 가 HaloGfScoreModel 을 생성자에서 new HaloGfScoreModel() 로 직접 생성. 다른 스코어 모델 전략 주입 불가.
   - **Fix:** HaloGfScoreModel 을 ScoreStrategy 인터페이스로 추상화하고 주입 가능하게. private val scoreModel: HaloGfScoreModel 에서 private val scoreModel: ScoreStrategy 로 변경.
 - [x] **SE-378** ✓REVIEWED-CLEAN(분류 리뷰: 이미준수/오태그) ⚪ `예외6 비즈변환` `central-server/src/main/kotlin/com/discordassistant/central/routing/domain/service/ProviderFilterPipeline.kt:215-240` `filter` (M)

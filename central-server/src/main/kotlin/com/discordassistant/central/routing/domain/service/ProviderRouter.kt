@@ -19,7 +19,8 @@ data class Selection(
  */
 @Component
 class ProviderRouter(
-    private val scoreModel: HaloGfScoreModel = HaloGfScoreModel(),
+    // 구체 모델 대신 포트에 의존(DIP). 기본은 HaloGfScoreModel, 테스트/대체 모델 주입 가능.
+    private val scoreModel: ScoreModel = HaloGfScoreModel(),
 ) {
     fun scoreResult(
         c: Candidate,

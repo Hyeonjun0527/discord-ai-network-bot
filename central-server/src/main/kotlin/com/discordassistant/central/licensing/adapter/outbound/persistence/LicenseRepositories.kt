@@ -11,6 +11,9 @@ interface LicenseRepository : JpaRepository<LicenseEntity, Long> {
     fun findByUserId(userId: Long): LicenseEntity?
 
     fun countByGrantType(grantType: String): Long
+
+    /** Paddle customer 로 역조회(환불 webhook 에 custom_data 가 없을 때 매칭). */
+    fun findByPaddleCustomerId(paddleCustomerId: String): List<LicenseEntity>
 }
 
 interface BillingEventRepository : JpaRepository<BillingEventEntity, Long> {

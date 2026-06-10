@@ -39,12 +39,13 @@ ADR 0003 은 "판매자/구매자/가격표/수수료/정산" 을 비-목표로 
 
 ### 검증 아키텍처
 
-- **판정은 central 단일 함수**: `EntitlementService(userId) → REVOKED > EVENT_FREE > LICENSED > TRIAL > EXPIRED > FREE`.
+- **판정은 central 단일 함수**: `LicenseService.resolve(userId) → REVOKED > EVENT_FREE > LICENSED > TRIAL > EXPIRED > FREE`.
 - **유료 기능 강제는 central**: 서버 관리 프리미엄 API 경로에 선언적 feature-flag 매핑
   (`기능키 → FREE|LICENSED`) 1곳으로 게이트. 실시간 판정이라 환불 회수 지연 0, 구버전/개조 앱 우회 불가.
-- **앱 UI 는 이중 게이트(UX 용)**: 서명 entitlement 토큰 `lv1.<payload>.<hmac>`(dv1 패턴 재사용,
-  **TTL 7일, UI 표시 전용**)을 `/provider/agent/sync` 응답에 동봉 — 와이어 프로토콜 무변경(신규 필드 optional).
-  만료 시 '확인 불가' 표시(판정 권위는 항상 central).
+- **앱 UI 는 이중 게이트(UX 용)**: `/provider/agent/sync` 응답에 **평문 entitlement**(status·trialEndsAt·hasPaidAccess)를
+  동봉 — 와이어 프로토콜 무변경(신규 필드 optional, 구버전 무시). 앱은 이를 캐시해 D-day 배너·잠금 UI 를 그린다.
+  서명/암호화는 두지 않는다(KISS/YAGNI): 판정 권위가 항상 central 실시간이라 앱이 캐시를 위변조해도
+  유료 기능은 central 이 막으므로 보안 가치가 없다. 오프라인 시 마지막 캐시를 표시하되 '확인 불가'로 강등.
 - **결제**: 앱 내 구매만. checkout `custom_data.discordUserId` 는 **문자열**(64bit JS 정밀도 함정).
   webhook 은 Paddle-Signature HMAC 검증 + `billing_event.event_id` UNIQUE 멱등.
 - **데이터 모델**: `user_license`(user_id UNIQUE, status, source PADDLE|EVENT_GRANT|ADMIN_GRANT,

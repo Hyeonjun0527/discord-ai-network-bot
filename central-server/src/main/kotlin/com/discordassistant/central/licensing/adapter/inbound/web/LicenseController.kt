@@ -1,9 +1,13 @@
 package com.discordassistant.central.licensing.adapter.inbound.web
 
 import com.discordassistant.central.licensing.application.EntitlementView
+import com.discordassistant.central.licensing.application.EventClaimService
+import com.discordassistant.central.licensing.application.EventStatus
 import com.discordassistant.central.licensing.application.LicenseService
+import com.discordassistant.central.licensing.application.port.CheckoutPort
 import com.discordassistant.central.provider.application.TokenService
 import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -12,6 +16,15 @@ import org.springframework.web.server.ResponseStatusException
 
 data class LicenseMeRequest(
     val durableToken: String = "",
+)
+
+data class CheckoutResponse(
+    val url: String,
+)
+
+data class ClaimResponse(
+    val outcome: String,
+    val entitlement: EntitlementView,
 )
 
 /**
@@ -26,17 +39,46 @@ data class LicenseMeRequest(
 class LicenseController(
     private val tokens: TokenService,
     private val licenses: LicenseService,
+    private val checkout: CheckoutPort,
+    private val events: EventClaimService,
 ) {
     @PostMapping("/me")
     fun me(
         @RequestBody req: LicenseMeRequest,
-    ): EntitlementView {
-        if (!req.durableToken.startsWith("dv1.")) {
+    ): EntitlementView = licenses.view(authedUserId(req.durableToken))
+
+    /** 런칭 이벤트 현황(공개 — 열림 여부·부여 수). */
+    @GetMapping("/event/status")
+    fun eventStatus(): EventStatus = events.status()
+
+    /** 런칭 이벤트 평생 무료 신청(본인 인증). 자격 미달은 outcome 으로 사유 반환. */
+    @PostMapping("/event/claim")
+    fun eventClaim(
+        @RequestBody req: LicenseMeRequest,
+    ): ClaimResponse {
+        val userId = authedUserId(req.durableToken)
+        val outcome = events.claim(userId)
+        return ClaimResponse(outcome.name, licenses.view(userId))
+    }
+
+    /** 앱 내 구매: $10 라이선스 checkout URL 생성(custom_data 에 본인 userId 귀속). 결제 비활성이면 503. */
+    @PostMapping("/checkout")
+    fun checkout(
+        @RequestBody req: LicenseMeRequest,
+    ): CheckoutResponse {
+        val userId = authedUserId(req.durableToken)
+        val url =
+            checkout.createCheckoutUrl(userId)
+                ?: throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "결제가 현재 비활성 상태입니다")
+        return CheckoutResponse(url)
+    }
+
+    /** durable 토큰(dv1.)으로 본인 신원 확인 후 userId 반환. 일회용 토큰·위조는 401. */
+    private fun authedUserId(durableToken: String): Long {
+        if (!durableToken.startsWith("dv1.")) {
             throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "durable 토큰이 필요합니다")
         }
-        val binding =
-            tokens.verify(req.durableToken)
-                ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰")
-        return licenses.view(binding.providerId)
+        return tokens.verify(durableToken)?.providerId
+            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰")
     }
 }

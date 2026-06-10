@@ -71,6 +71,35 @@ class GeminiClient:
         )
         return text.strip(), usage
 
+    async def translate(self, user_text: str, system_prompt: str, model: str | None = None) -> str:
+        """system_prompt 규칙에 따라 user_text 를 변환(이미지 프롬프트 번역용). 오류 시 GeminiError.
+
+        systemInstruction 으로 '성인·SFW·품질 prefix' 정책을 강제해, 정상적인 SFW 요청이
+        미성년 오탐으로 거부되지 않게 한다(거부는 central 정책 소유, 실행만 여기서).
+        """
+        m = (model or DEFAULT_GEMINI_MODEL).strip()
+        url = f"{GEMINI_API_BASE}/models/{m}:generateContent"
+        payload: dict[str, object] = {
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": "user", "parts": [{"text": user_text}]}],
+            "generationConfig": {"temperature": 0.7},
+        }
+        headers = {"x-goog-api-key": self._key, "Content-Type": "application/json"}
+        try:
+            async with aiohttp.ClientSession(timeout=self._timeout) as s:
+                async with s.post(url, json=payload, headers=headers) as r:
+                    data = await r.json()
+        except aiohttp.ClientError as exc:
+            raise GeminiError(f"Gemini 연결 실패: {exc}") from exc
+        if isinstance(data, dict) and data.get("error"):
+            err = data["error"]
+            msg = err.get("message") if isinstance(err, dict) else str(err)
+            raise GeminiError(f"Gemini: {msg}")
+        text = _extract_text(data)
+        if text is None:
+            raise GeminiError("Gemini 응답에 텍스트가 없습니다(안전 필터 차단 또는 빈 응답)")
+        return text.strip()
+
     async def health(self) -> bool:
         """키가 유효한지 가벼운 호출(모델 목록)로 확인 — capability 광고 판단용."""
         url = f"{GEMINI_API_BASE}/models"

@@ -25,6 +25,7 @@ object FrameType {
     const val CANCEL = "cancel"
     const val PROVIDER_HELLO = "provider_hello"
     const val PROVIDER_STATUS = "provider_status"
+    const val IMAGE_BROADCAST = "image_broadcast"
 }
 
 /** error 프레임 코드. */

@@ -37,6 +37,15 @@ object CommandLoc {
                     "画像を生成します(コミュニティのローカルStable Diffusion)",
                     "Сгенерировать изображение",
                 ),
+            "forward-channel" to
+                L(
+                    "그림채널",
+                    "画像チャンネル",
+                    "канал-изображений",
+                    "Set the channel for ComfyUI web-generated images (admin)",
+                    "ComfyUIウェブで生成した画像を転送するチャンネルを設定します(管理者)",
+                    "Установить канал для изображений из ComfyUI (админ)",
+                ),
             "free-ask" to
                 L(
                     "무료질문",

@@ -23,6 +23,7 @@ class FrameType:
     CANCEL: Final[str] = "cancel"
     PROVIDER_HELLO: Final[str] = "provider_hello"
     PROVIDER_STATUS: Final[str] = "provider_status"
+    IMAGE_BROADCAST: Final[str] = "image_broadcast"
 
 
 class ErrorCode:

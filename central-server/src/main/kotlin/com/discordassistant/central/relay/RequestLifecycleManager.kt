@@ -62,6 +62,9 @@ class RequestLifecycleManager {
         streams[requestId]?.offer(chunk)
     }
 
+    /** 진행 중인 스트림(이미지 생성 등)이 있는가 — 취소 버튼이 대상 존재를 판별할 때 사용. */
+    fun hasStream(requestId: String): Boolean = streams.containsKey(requestId)
+
     /** 비스트리밍 요청 표에서 제거(정리). inFlight·상태 조정은 호출자(ProviderSession)가 수행. */
     fun removePending(requestId: String) {
         pending.remove(requestId)

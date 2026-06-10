@@ -79,5 +79,12 @@
     "battery": "charging",
     "online": true,
     "busy": false
+  },
+  "image_broadcast": {
+    "type": "image_broadcast",
+    "broadcastId": "b1",
+    "delta": "aGVsbG8=",
+    "done": true,
+    "prompt": "고양이"
   }
 }

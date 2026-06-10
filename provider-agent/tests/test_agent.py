@@ -88,17 +88,101 @@ async def test_handle_infer_streaming_emits_chunks():
 
 
 @pytest.mark.asyncio
-async def test_handle_image_emits_progress_then_data():
-    """이미지 생성: 경과시간 기반 추정 진행률을 progress 청크로 흘리고, 완료 시 b64 청크 + done 을 보낸다.
+async def test_translate_image_prompt_paths():
+    """이미지 프롬프트 번역: Gemini 없으면 원문, 있으면 번역, 실패하면 원문 폴백."""
+    from provider_agent.gemini import GeminiError
+    from provider_agent.protocol import InferRequest
 
-    중요: 생성 중 SD 를 폴링하면 MPS 크래시가 나므로, 진행률은 SD 를 호출하지 않고 경과시간으로 추정한다.
-    여기서 SlowSD 는 progress() 를 정의하지 않는다 — 호출되면(=회귀) AttributeError 로 테스트가 깨진다.
-    """
+    req = InferRequest(request_id="r", prompt="귀여운 고양이", task="image")
+
+    # ① Gemini 없음 → 원문
+    a = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
+    assert await a._translate_image_prompt(req) == "귀여운 고양이"
+
+    # ② Gemini 번역 성공 → 영어
+    class OkGemini:
+        async def translate(self, text, system_prompt, model=None):
+            return "a cute cat, safe"
+
+    a._gemini = OkGemini()  # type: ignore[assignment]
+    a._gemini_models = ["gemini-2.5-flash-lite"]
+    assert await a._translate_image_prompt(req) == "a cute cat, safe"
+
+    # ③ Gemini 실패 → 원문 폴백(거부 0)
+    class BadGemini:
+        async def translate(self, text, system_prompt, model=None):
+            raise GeminiError("blocked")
+
+    a._gemini = BadGemini()  # type: ignore[assignment]
+    assert await a._translate_image_prompt(req) == "귀여운 고양이"
+
+
+@pytest.mark.asyncio
+async def test_cancel_image_triggers_interrupt():
+    """진행 중 이미지 요청에 CancelFrame 이 오면 ComfyUI interrupt() 를 호출한다(취소 버튼 백엔드)."""
+    from provider_agent.protocol import CancelFrame
+
+    interrupted = asyncio.Event()
+
+    class FakeSD:
+        async def health(self) -> bool:
+            return True
+
+        async def interrupt(self) -> bool:
+            interrupted.set()
+            return True
+
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=FakeSD())  # type: ignore[arg-type]
+    agent._image_inflight.add("imgX")
+    conn = FakeConn()
+    await agent._on_server_frame(conn, CancelFrame(request_id="imgX"))
+    await asyncio.wait_for(interrupted.wait(), timeout=1.0)  # interrupt 가 호출됨
+    assert "imgX" in agent._cancelled
+
+
+def test_is_local_comfy():
+    """전문가 포워드는 로컬 ComfyUI 에서만 — loopback/빈값=로컬, 외부 호스트=비로컬."""
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
+    for url in ("", "http://127.0.0.1:8188", "http://localhost:8188", "http://[::1]:8188"):
+        agent._comfy_url = url
+        assert agent._is_local_comfy() is True
+    for url in ("http://192.168.0.5:8188", "https://comfy.example.com", "http://10.0.0.2:8188"):
+        agent._comfy_url = url
+        assert agent._is_local_comfy() is False
+
+
+@pytest.mark.asyncio
+async def test_broadcast_image_chunks_to_authed_conns():
+    """전문가 층: 유저 직접 생성 이미지를 인증 연결에 청크 분할 ImageBroadcastFrame 으로 보낸다."""
+    from provider_agent.protocol import ImageBroadcastFrame
+
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
+    conn = FakeConn(guild_id=111)
+    async with agent._entries_lock:
+        agent._entries.append({"conn": conn, "guild_name": "g"})
+    b64 = "A" * 2_500_000  # IMAGE_CHUNK_CHARS 보다 커서 여러 청크
+    await agent._broadcast_image(b64)
+    frames = [f for f in conn.sent if isinstance(f, ImageBroadcastFrame)]
+    assert len(frames) >= 2  # 최소 1개 데이터 청크 + done
+    assert frames[-1].done is True and frames[-1].delta == ""
+    # 모든 청크가 같은 broadcast_id 로 묶임
+    assert len({f.broadcast_id for f in frames}) == 1
+    # 데이터 청크를 합치면 원본 base64
+    assert "".join(f.delta for f in frames) == b64
+
+
+@pytest.mark.asyncio
+async def test_handle_image_emits_progress_then_data():
+    """이미지 생성: ComfyUI /ws 실시간 진행률을 on_progress 콜백으로 받아 progress 청크로 흘리고,
+    완료 시 b64 데이터 청크 + done 을 보낸다(번역은 Gemini 없으면 원문 폴백 — 외부 호출 없음)."""
     from provider_agent.protocol import ChunkFrame
 
     class SlowSD:
-        async def txt2img(self, prompt: str, options=None) -> str:
-            await asyncio.sleep(0.25)  # 진행률 추정이 여러 번 돌도록(간격보다 충분히 김)
+        async def txt2img(self, prompt: str, options=None, on_progress=None) -> str:
+            for pct in (20, 55, 90):  # 실 ComfyUI 처럼 샘플링 진행률을 콜백으로 푸시
+                if on_progress:
+                    on_progress(pct)
+                await asyncio.sleep(0.02)
             return "AAAA"
 
         async def health(self) -> bool:
@@ -106,20 +190,11 @@ async def test_handle_image_emits_progress_then_data():
 
     agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=SlowSD())  # type: ignore[arg-type]
     agent._image_ready = True
-    import provider_agent.agent as agent_mod
-
-    monkey_poll = agent_mod.SD_PROGRESS_POLL_S
-    monkey_half = agent_mod.SD_PROGRESS_HALFLIFE_S
-    agent_mod.SD_PROGRESS_POLL_S = 0.02
-    agent_mod.SD_PROGRESS_HALFLIFE_S = 0.05  # 짧은 반감기 → 짧은 생성에도 진행률이 의미있게 오른다
     conn = FakeConn()
-    try:
-        await agent._handle_image(conn, InferRequest(request_id="img1", prompt="고양이", task="image"))  # type: ignore[arg-type]
-    finally:
-        agent_mod.SD_PROGRESS_POLL_S = monkey_poll
-        agent_mod.SD_PROGRESS_HALFLIFE_S = monkey_half
+    await agent._handle_image(conn, InferRequest(request_id="img1", prompt="고양이", task="image"))  # type: ignore[arg-type]
+    await asyncio.sleep(0.05)  # on_progress 가 create_task 한 진행률 청크 전송이 완료되도록 양보
     chunks = [f for f in conn.sent if isinstance(f, ChunkFrame)]
-    assert any(0 < c.progress < 100 for c in chunks), "추정 진행률 청크(0<pct<100)가 전송돼야 함"
+    assert any(0 < c.progress < 100 for c in chunks), "실시간 진행률 청크(0<pct<100)가 전송돼야 함"
     assert any(c.delta and c.progress < 0 for c in chunks), "b64 데이터 청크가 있어야 함"
     assert chunks[-1].done is True
 

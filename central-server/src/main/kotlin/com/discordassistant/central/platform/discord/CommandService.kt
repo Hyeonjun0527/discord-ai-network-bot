@@ -119,12 +119,16 @@ class CommandService(
         return ask(ctx, prompt, requestedModel = model)
     }
 
-    /** /imagine — 이미지 생성 가능한 프로바이더(로컬 SD)에게 이미지를 만들게 한다(SD Phase 2c). */
+    /** /그림(imagine) — 이미지 생성 가능한 프로바이더의 로컬 ComfyUI(Anima)로 이미지를 만든다. */
     fun imagine(
         ctx: CommandContext,
         prompt: String,
+        onStart: (String) -> Unit = {},
         onProgress: (Int) -> Unit = {},
-    ): Reply = askCommands.imagine(ctx, prompt, onProgress)
+    ): Reply = askCommands.imagine(ctx, prompt, onStart, onProgress)
+
+    /** 취소 버튼 → 진행 중 이미지 생성 중단. */
+    fun cancelImage(requestId: String): Boolean = askCommands.cancelImage(requestId)
 
     fun submitAskFeedback(
         ctx: CommandContext,
@@ -460,6 +464,12 @@ class CommandService(
         ctx: CommandContext,
         channelId: Long,
     ): Reply = guildAdminCommands.denyChannel(ctx, channelId)
+
+    /** /그림채널 — ComfyUI 웹 생성 이미지를 전송할 채널 설정(전문가 층). */
+    fun setForwardChannel(
+        ctx: CommandContext,
+        channelId: Long,
+    ): Reply = guildAdminCommands.setForwardChannel(ctx, channelId)
 
     fun setRolePolicy(
         ctx: CommandContext,

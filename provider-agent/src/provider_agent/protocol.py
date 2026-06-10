@@ -34,6 +34,7 @@ __all__ = [
     "CancelFrame",
     "ProviderHelloFrame",
     "ProviderStatusFrame",
+    "ImageBroadcastFrame",
     "Frame",
     "new_request_id",
     "filter_options",
@@ -177,6 +178,9 @@ class InferRequest:
     options: dict[str, Any] = field(default_factory=dict)
     stream: bool = False  # true 면 ChunkFrame 으로 점진 응답(#142)
     task: str = "text"  # "text" | "image"(로컬 SD 이미지 생성, SD Phase 2)
+    # 이미지 정책(central 소유). {"translatorSystemPrompt": str, "forcedNegative": str}. 비면 에이전트 기본값.
+    # central 이 안전·일관성 정책을 실어 보내고, 에이전트는 그대로 적용만(외부 AI 호출은 에이전트에서).
+    image_policy: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if len(self.prompt) > MAX_PROMPT_CHARS:
@@ -190,7 +194,7 @@ class InferRequest:
         return FrameType.INFER
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "type": FrameType.INFER,
             "requestId": self.request_id,
             "model": self.model,
@@ -199,9 +203,13 @@ class InferRequest:
             "stream": self.stream,
             "task": self.task,
         }
+        if self.image_policy is not None:  # 선택 필드 — 있을 때만 와이어에 포함(하위호환)
+            d["imagePolicy"] = self.image_policy
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "InferRequest":
+        ip = d.get("imagePolicy")
         return cls(
             request_id=str(_require(d, "requestId", FrameType.INFER)),
             model=(str(d["model"]) if d.get("model") is not None else None),
@@ -209,6 +217,7 @@ class InferRequest:
             options=filter_options(d.get("options")),
             stream=bool(d.get("stream", False)),
             task=str(d.get("task", "text")),
+            image_policy=ip if isinstance(ip, dict) else None,
         )
 
 
@@ -404,6 +413,42 @@ class ProviderStatusFrame:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ImageBroadcastFrame:
+    """에이전트 → 릴레이: 유저가 ComfyUI 에서 직접 생성한 이미지를 지정 채널로 포워드(전문가 층).
+
+    base64 PNG 는 1MB 프레임 한계를 넘으므로 delta 로 청크 분할 전송하고, done=True 가 마지막이다
+    (ChunkFrame 과 동일 패턴). broadcast_id 로 한 이미지를 묶는다. prompt 는 캡션(있으면).
+    """
+
+    broadcast_id: str
+    delta: str = ""
+    done: bool = False
+    prompt: str = ""
+
+    @property
+    def type(self) -> str:
+        return FrameType.IMAGE_BROADCAST
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": FrameType.IMAGE_BROADCAST,
+            "broadcastId": self.broadcast_id,
+            "delta": self.delta,
+            "done": self.done,
+            "prompt": self.prompt,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "ImageBroadcastFrame":
+        return cls(
+            broadcast_id=str(_require(d, "broadcastId", FrameType.IMAGE_BROADCAST)),
+            delta=str(d.get("delta", "")),
+            done=bool(d.get("done", False)),
+            prompt=str(d.get("prompt", "")),
+        )
+
+
 Frame = (
     AuthFrame
     | AuthOkFrame
@@ -417,6 +462,7 @@ Frame = (
     | CancelFrame
     | ProviderHelloFrame
     | ProviderStatusFrame
+    | ImageBroadcastFrame
 )
 
 _FROM_DICT: Final[dict[str, Any]] = {
@@ -432,6 +478,7 @@ _FROM_DICT: Final[dict[str, Any]] = {
     FrameType.CANCEL: CancelFrame.from_dict,
     FrameType.PROVIDER_HELLO: ProviderHelloFrame.from_dict,
     FrameType.PROVIDER_STATUS: ProviderStatusFrame.from_dict,
+    FrameType.IMAGE_BROADCAST: ImageBroadcastFrame.from_dict,
 }
 
 

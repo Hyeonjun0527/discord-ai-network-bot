@@ -1,6 +1,7 @@
 """ComfyUI 이미지 백엔드 — 워크플로 빌드 + 응답 파싱(순수 함수) + HTTP 흐름(mock)."""
 from __future__ import annotations
 
+import asyncio
 import base64
 
 import pytest
@@ -148,18 +149,28 @@ async def test_comfy_list_and_set_checkpoint(monkeypatch):
     assert await cl.current_checkpoint() == "b.safetensors"
 
 
+# Anima 정합 object_info(UNET/CLIP/VAE 파일 존재) — default.json 없을 때 번들 폴백 구성용.
+_ANIMA_INFO = {
+    "UNETLoader": {"input": {"required": {"unet_name": [["waiANIMA_v10Base10.safetensors"]]}}},
+    "CLIPLoader": {"input": {"required": {"clip_name": [["qwen_3_06b_base.safetensors"]], "type": [["stable_diffusion", "anima"]]}}},
+    "VAELoader": {"input": {"required": {"vae_name": [["qwen_image_vae.safetensors"]]}}},
+}
+
+
 @pytest.mark.asyncio
-async def test_comfy_txt2img_full_flow(monkeypatch):
+async def test_comfy_txt2img_template_then_fallback(monkeypatch, tmp_path):
+    """default.json 이 없으면 Anima 번들 폴백으로 그래프를 만들어 제출→완성 PNG 를 받는다."""
     from provider_agent.comfy import ComfyClient
 
     png = b"\x89PNG\r\n\x1a\nfake"
-    info = {"CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": [["m.safetensors"]]}}}}
     hist = {"PID1": {"outputs": {"9": {"images": [{"filename": "nexa_0001.png", "subfolder": "", "type": "output"}]}}}}
 
     def router(method, url, x):
-        if url.endswith("/object_info/CheckpointLoaderSimple"):
-            return _Resp(200, info)
+        if url.endswith("/object_info"):
+            return _Resp(200, _ANIMA_INFO)
         if url.endswith("/prompt"):
+            # 폴백이 UNET/CLIP/VAE 기반 그래프를 보냈는지 확인
+            assert x and "44" in x["prompt"] and x["prompt"]["44"]["class_type"] == "UNETLoader"
             return _Resp(200, {"prompt_id": "PID1"})
         if "/history/" in url:
             return _Resp(200, hist)
@@ -168,14 +179,254 @@ async def test_comfy_txt2img_full_flow(monkeypatch):
         return _Resp(404, {})
 
     _patch_session(monkeypatch, router)
-    out = await ComfyClient("http://127.0.0.1:8188").txt2img("고양이", {"width": 1024, "height": 1024})
+    cl = ComfyClient("http://127.0.0.1:8188", workflows_dir=tmp_path)  # 빈 디렉터리 → default.json 없음
+    out = await cl.txt2img("a cute cat", {"negative_prompt": "lowres", "width": 1024, "height": 1024})
     assert out == base64.b64encode(png).decode("ascii")
 
 
 @pytest.mark.asyncio
-async def test_comfy_txt2img_no_checkpoint(monkeypatch):
+async def test_comfy_txt2img_uses_default_template(monkeypatch, tmp_path):
+    """유저 default.json(UI 그래프)이 있으면 그걸 변환·주입해 제출한다(번들 폴백 아님)."""
+    import json as _json
+
+    from provider_agent.comfy import ComfyClient
+
+    # 최소 UI 그래프: CLIPTextEncode(긍/부) → KSampler → 출력. object_info 로 위젯 매핑.
+    graph = {
+        "nodes": [
+            {"id": 11, "type": "CLIPTextEncode", "inputs": [{"name": "clip", "link": None}], "widgets_values": [""]},
+            {"id": 12, "type": "CLIPTextEncode", "inputs": [{"name": "clip", "link": None}], "widgets_values": ["old neg"]},
+            {
+                "id": 19, "type": "KSampler",
+                "inputs": [
+                    {"name": "model", "link": None}, {"name": "positive", "link": 39},
+                    {"name": "negative", "link": 40}, {"name": "latent_image", "link": None},
+                ],
+                "widgets_values": [111, "randomize", 30, 4, "er_sde", "simple", 1],
+            },
+        ],
+        "links": [[39, 11, 0, 19, 1, "COND"], [40, 12, 0, 19, 2, "COND"]],
+    }
+    (tmp_path / "default.json").write_text(_json.dumps(graph), encoding="utf-8")
+    oinfo = {
+        "CLIPTextEncode": {"input": {"required": {"text": ["STRING", {}]}}},
+        "KSampler": {"input": {"required": {
+            "seed": ["INT", {"control_after_generate": True}], "steps": ["INT", {}], "cfg": ["FLOAT", {}],
+            "sampler_name": [["er_sde"]], "scheduler": [["simple"]], "denoise": ["FLOAT", {}],
+        }}},
+    }
+    png = b"\x89PNG"
+    hist = {"PID1": {"outputs": {"x": {"images": [{"filename": "f.png", "subfolder": "", "type": "output"}]}}}}
+    captured = {}
+
+    def router(method, url, x):
+        if url.endswith("/object_info"):
+            return _Resp(200, oinfo)
+        if url.endswith("/prompt"):
+            captured["graph"] = x["prompt"]
+            return _Resp(200, {"prompt_id": "PID1"})
+        if "/history/" in url:
+            return _Resp(200, hist)
+        if url.endswith("/view"):
+            return _Resp(200, raw=png)
+        return _Resp(404, {})
+
+    _patch_session(monkeypatch, router)
+    cl = ComfyClient("http://127.0.0.1:8188", workflows_dir=tmp_path)
+    await cl.txt2img("POS", {"negative_prompt": "NEG", "seed": 777})
+    g = captured["graph"]
+    assert g["11"]["inputs"]["text"] == "POS"  # 긍정 주입
+    assert g["12"]["inputs"]["text"] == "NEG"  # 부정 가드 주입(템플릿 'old neg' 대체)
+    assert g["19"]["inputs"]["seed"] == 777  # 시드 주입
+    # control_after_generate 오프셋: steps/cfg/sampler 가 밀리지 않고 정확히 매핑
+    assert g["19"]["inputs"]["steps"] == 30 and g["19"]["inputs"]["cfg"] == 4 and g["19"]["inputs"]["sampler_name"] == "er_sde"
+
+
+@pytest.mark.asyncio
+async def test_comfy_txt2img_no_model_files(monkeypatch, tmp_path):
+    """default.json 도 없고 설치된 UNET/CLIP/VAE 도 없으면 ComfyError(폴백 구성 불가)."""
     from provider_agent.comfy import ComfyClient, ComfyError
 
-    _patch_session(monkeypatch, lambda m, u, x: _Resp(200, {"CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": [[]]}}}}))
+    _patch_session(monkeypatch, lambda m, u, x: _Resp(200, {}))
     with pytest.raises(ComfyError):
-        await ComfyClient("http://127.0.0.1:8188").txt2img("x")
+        await ComfyClient("http://127.0.0.1:8188", workflows_dir=tmp_path).txt2img("x")
+
+
+def test_all_image_refs_multi_and_temp_filter():
+    """_all_image_refs: 모든 SaveImage 출력 수집, temp(미저장 프리뷰)는 제외."""
+    from provider_agent.comfy import _all_image_refs
+
+    entry = {
+        "outputs": {
+            "9": {"images": [{"filename": "a.png", "subfolder": "", "type": "output"}, {"filename": "b.png", "subfolder": "s", "type": "output"}]},
+            "10": {"images": [{"filename": "prev.png", "subfolder": "", "type": "temp"}]},  # 프리뷰 → 제외
+            "11": {"images": [{"filename": "c.png", "subfolder": "", "type": "output"}]},
+        }
+    }
+    refs = _all_image_refs(entry)
+    assert ("a.png", "", "output") in refs and ("b.png", "s", "output") in refs and ("c.png", "", "output") in refs
+    assert all(typ != "temp" for _, _, typ in refs)  # temp 제외
+    assert _all_image_refs({}) == [] and _all_image_refs({"outputs": {}}) == []
+
+
+@pytest.mark.asyncio
+async def test_forward_refs_failure_returns_false(monkeypatch):
+    """_forward_refs: /view 실패 시 False(재시도 대상)."""
+    from provider_agent.comfy import ComfyClient
+
+    class _BadResp:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def read(self):
+            raise OSError("view boom")
+
+    class _Sess:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def get(self, url, params=None):
+            return _BadResp()
+
+    cl = ComfyClient("http://127.0.0.1:8188")
+    async with _Sess() as s:
+        ok = await cl._forward_refs(s, [("a.png", "", "output")], lambda raw: None)
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_interrupt_calls_endpoints(monkeypatch):
+    """interrupt(): /interrupt POST 200 → True, 큐 삭제도 시도."""
+    from provider_agent import comfy as cmod
+    from provider_agent.comfy import ComfyClient
+
+    posted = []
+
+    class _Resp:
+        def __init__(self, status):
+            self.status = status
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _Sess:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def post(self, url, json=None):
+            posted.append(url)
+            return _Resp(200)
+
+    monkeypatch.setattr(cmod.aiohttp, "ClientSession", lambda *a, **k: _Sess())
+    cl = ComfyClient("http://127.0.0.1:8188")
+    cl._cur_prompt_id = "PID1"
+    assert await cl.interrupt() is True
+    assert any(u.endswith("/interrupt") for u in posted)
+    assert any(u.endswith("/queue") for u in posted)
+
+
+def test_mark_submitted_fifo_cap():
+    """앱 제출 prompt_id 추적은 상한 FIFO(무한 누적 방지)."""
+    from provider_agent.comfy import ComfyClient
+
+    cl = ComfyClient("http://127.0.0.1:8188")
+    for i in range(600):
+        cl._mark_submitted(f"p{i}")
+    assert len(cl._submitted_ids) <= 512
+    assert "p599" in cl._submitted_ids  # 최신은 남음
+    assert "p0" not in cl._submitted_ids  # 가장 오래된 것은 폐기
+
+
+@pytest.mark.asyncio
+async def test_listen_user_images_forwards_non_app(monkeypatch):
+    """/history 폴링: 시작 baseline 은 무시하고, 이후 앱(/그림) 외 새 완료 이미지만 on_image 로 넘긴다."""
+    from provider_agent import comfy as cmod
+    from provider_agent.comfy import ComfyClient
+
+    png = b"\x89PNGuser"
+
+    def img_entry(name):
+        return {"outputs": {"9": {"images": [{"filename": name, "subfolder": "", "type": "output"}]}}}
+
+    # 1차(baseline): OLD 만 존재 → 무시. 2차+: MINE(앱) + USER(웹) 추가 → USER 만 포워드.
+    states = [
+        {"OLD": img_entry("old.png")},
+        {"OLD": img_entry("old.png"), "MINE": img_entry("mine.png"), "USER": img_entry("user.png")},
+    ]
+    calls = {"n": 0}
+
+    class _Resp:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def json(self):
+            i = min(calls["n"], len(states) - 1)
+            calls["n"] += 1
+            return states[i]
+
+        async def read(self):
+            return png
+
+    class _Sess:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def get(self, url, params=None):
+            return _Resp()
+
+    monkeypatch.setattr(cmod.aiohttp, "ClientSession", lambda *a, **k: _Sess())
+    cl = ComfyClient("http://127.0.0.1:8188")
+    cl._mark_submitted("MINE")  # 앱 제출로 표시 → 제외
+    got: list[bytes] = []
+    task = asyncio.create_task(cl.listen_user_images(lambda raw: got.append(raw), poll_interval=0.01))
+    for _ in range(200):
+        if got:
+            break
+        await asyncio.sleep(0.01)
+    task.cancel()
+    assert got == [png]  # USER 만 포워드(OLD=baseline 제외, MINE=앱 제외)
+
+
+def test_ui_graph_to_api_and_inject():
+    """검증된 변환기: UI 그래프→API + 긍정/부정/시드 주입(순수 함수)."""
+    from provider_agent.comfy import inject_prompt, ui_graph_to_api
+
+    graph = {
+        "nodes": [
+            {"id": 11, "type": "CLIPTextEncode", "inputs": [{"name": "clip", "link": None}], "widgets_values": [""]},
+            {"id": 12, "type": "CLIPTextEncode", "inputs": [{"name": "clip", "link": None}], "widgets_values": ["neg"]},
+            {"id": 19, "type": "KSampler",
+             "inputs": [{"name": "positive", "link": 39}, {"name": "negative", "link": 40}],
+             "widgets_values": [5, "fixed", 28]},
+        ],
+        "links": [[39, 11, 0, 19, 0, "C"], [40, 12, 0, 19, 1, "C"]],
+    }
+    oinfo = {
+        "CLIPTextEncode": {"input": {"required": {"text": ["STRING", {}]}}},
+        "KSampler": {"input": {"required": {"seed": ["INT", {"control_after_generate": True}], "steps": ["INT", {}]}}},
+    }
+    api = ui_graph_to_api(graph, oinfo)
+    assert api["19"]["inputs"]["positive"] == ["11", 0]
+    assert api["19"]["inputs"]["seed"] == 5 and api["19"]["inputs"]["steps"] == 28  # control 오프셋
+    inject_prompt(api, "POS", "NEGGUARD", 999)
+    assert api["11"]["inputs"]["text"] == "POS"
+    assert api["12"]["inputs"]["text"] == "NEGGUARD"
+    assert api["19"]["inputs"]["seed"] == 999

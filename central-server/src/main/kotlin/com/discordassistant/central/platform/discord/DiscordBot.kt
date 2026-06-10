@@ -104,6 +104,18 @@ interface BotGuildLister {
 }
 
 /**
+ * 좁은 아웃바운드 포트(전문가 층): 채널 ID 로 이미지를 게시한다. relay(ProviderSession)→central→이 포트로
+ * 위임해 ComfyUI 웹 생성물을 길드 지정 채널에 올린다. JDA 미연결이면 false(무시).
+ */
+interface DiscordImagePoster {
+    fun postImage(
+        channelId: Long,
+        png: ByteArray,
+        caption: String,
+    ): Boolean
+}
+
+/**
  * Discord(JDA) 부트스트랩 + 슬래시 명령 등록/디스패치 (K-차수 13).
  * central.discord.enabled=true 이고 토큰이 있을 때만 연결한다(테스트/CI 는 비활성).
  */
@@ -126,9 +138,31 @@ class DiscordBot(
     @param:Value("\${central.discord.message-content-intent-enabled:true}") private val messageContentIntentEnabled: Boolean,
     @param:Value("\${central.discord.fallback-without-message-content-on-4014:true}") private val fallbackWithoutMessageContentOn4014:
         Boolean,
-) : BotGuildLister {
+) : BotGuildLister,
+    DiscordImagePoster {
     private val log = LoggerFactory.getLogger(DiscordBot::class.java)
     private var jda: JDA? = null
+
+    /** 전문가 층: 채널 ID 로 PNG 를 게시(비-이벤트 컨텍스트). JDA 미연결/채널 없음이면 false. */
+    override fun postImage(
+        channelId: Long,
+        png: ByteArray,
+        caption: String,
+    ): Boolean {
+        val channel = jda?.getTextChannelById(channelId) ?: return false
+        return try {
+            channel
+                .sendMessage(caption.take(2000))
+                .setFiles(
+                    net.dv8tion.jda.api.utils.FileUpload
+                        .fromData(png, "comfyui.png"),
+                ).queue({}, { e -> log.warn("전문가 이미지 게시 실패: channel={} {}", channelId, e.message) })
+            true
+        } catch (e: Exception) {
+            log.warn("전문가 이미지 게시 예외: channel={} {}", channelId, e.message)
+            false
+        }
+    }
 
     /** 봇이 들어가 있는 길드 id 집합(JDA 미연결/비활성이면 빈 집합). */
     override fun botGuildIds(): Set<Long> = jda?.guilds?.map { it.idLong }?.toSet() ?: emptySet()
@@ -413,10 +447,21 @@ class DiscordBot(
                                 val lastPct =
                                     java.util.concurrent.atomic
                                         .AtomicInteger(-1)
-                                commands.imagine(ctx, event.getOption("prompt")?.asString.orEmpty()) { pct ->
+                                commands.imagine(
+                                    ctx,
+                                    event.getOption("prompt")?.asString.orEmpty(),
+                                    onStart = { requestId ->
+                                        // 생성 시작 → '취소' 버튼을 메시지에 붙인다(클릭 시 중간 취소).
+                                        event.hook
+                                            .editOriginal("🖼️ 생성 시작… (취소하려면 아래 버튼)")
+                                            .setActionRow(Button.danger("$IMG_CANCEL_PREFIX$requestId", "🛑 취소"))
+                                            .queue({}, {})
+                                    },
+                                ) { pct ->
                                     if (pct > lastPct.get()) {
                                         lastPct.set(pct)
-                                        event.hook.editOriginal("🖼️ 생각 중… $pct%").queue({}, {})
+                                        // 내용만 편집 — 취소 버튼(컴포넌트)은 유지된다.
+                                        event.hook.editOriginal("🖼️ 그리는 중… $pct%").queue({}, {})
                                     }
                                 }
                             } else {
@@ -460,6 +505,9 @@ class DiscordBot(
             private const val CHANNEL_PROFILE_AVATAR_MODAL = "channel-profile:avatar-modal"
             private const val ASK_FEEDBACK_PREFIX = "ask-feedback:"
             private const val ONBOARD_PREFIX = "onboard:"
+
+            // 이미지 생성 취소 버튼 customId 접두사(뒤에 requestId). 누르면 ComfyUI /interrupt 유발.
+            private const val IMG_CANCEL_PREFIX = "img-cancel:"
             private const val ONBOARD_ACTION_START = "start"
         }
 
@@ -509,6 +557,13 @@ class DiscordBot(
         /** 패널 버튼: 온보딩(질문/기여/상태/도움말) + 설정. */
         override fun onButtonInteraction(event: ButtonInteractionEvent) {
             val ctx = ctxOf(event) // DM(유저설치)에서도 패널 버튼 동작(관리자 버튼은 isAdmin=false 로 거부됨)
+            if (event.componentId.startsWith(IMG_CANCEL_PREFIX)) {
+                // 이미지 생성 취소: 진행 중 요청을 중단(ComfyUI /interrupt). 최종 '취소됨' 응답은 imagine 흐름이 편집.
+                val requestId = event.componentId.removePrefix(IMG_CANCEL_PREFIX)
+                commands.cancelImage(requestId)
+                event.editButton(Button.danger(event.componentId, "🛑 취소됨").asDisabled()).queue({}, {})
+                return
+            }
             if (event.componentId.startsWith(ASK_FEEDBACK_PREFIX)) {
                 handleAskFeedbackButton(event, ctx)
                 return
@@ -1017,6 +1072,7 @@ class DiscordBot(
                     )
                 "llm-allow-channel" -> commands.allowChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
                 "llm-deny-channel" -> commands.denyChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
+                "forward-channel" -> commands.setForwardChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
                 "llm-role-policy" ->
                     commands.setRolePolicy(
                         ctx,

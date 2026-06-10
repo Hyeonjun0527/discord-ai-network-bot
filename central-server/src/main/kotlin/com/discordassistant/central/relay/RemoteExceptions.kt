@@ -37,3 +37,10 @@ class ConnectionClosedException(
 ) : RemoteException(message, cause) {
     override val code = ErrorCode.OFFLINE
 }
+
+/** 사용자가 취소 버튼으로 생성을 중단함(이미지 등). */
+class RemoteCancelledException(
+    message: String = "사용자가 취소했습니다",
+) : RemoteException(message) {
+    override val code = ErrorCode.BUSY
+}

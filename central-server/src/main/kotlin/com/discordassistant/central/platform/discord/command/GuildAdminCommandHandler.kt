@@ -156,6 +156,19 @@ class GuildAdminCommandHandler(
         return Reply("✅ 채널 <#$channelId> 에서 LLM 사용을 허용했습니다.")
     }
 
+    /** 전문가 층: ComfyUI 웹에서 직접 만든 이미지를 자동 전송할 채널 설정(관리자). */
+    fun setForwardChannel(
+        ctx: CommandContext,
+        channelId: Long,
+    ): Reply {
+        guards.adminOnly(ctx)?.let { return it }
+        policy.setExpertForwardChannel(ctx.guildId, channelId, ctx.userId)
+        return Reply(
+            "✅ ComfyUI 웹에서 만든 이미지를 <#$channelId> 채널로 전송합니다.\n" +
+                "(프로바이더가 에이전트를 `--comfy-broadcast` 로 실행해야 전송됩니다.)",
+        )
+    }
+
     fun denyChannel(
         ctx: CommandContext,
         channelId: Long,

@@ -4,6 +4,7 @@ import com.discordassistant.central.provider.domain.model.ProviderState
 import com.discordassistant.central.relay.protocol.CancelFrame
 import com.discordassistant.central.relay.protocol.ChunkFrame
 import com.discordassistant.central.relay.protocol.Frame
+import com.discordassistant.central.relay.protocol.ImageBroadcastFrame
 import com.discordassistant.central.relay.protocol.InferError
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
@@ -14,6 +15,7 @@ import org.slf4j.LoggerFactory
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
@@ -51,6 +53,8 @@ class ProviderSession(
     private val requestTimeoutSeconds: Long = 120,
     private val maxQueue: Int = 16,
     private val onHello: (ProviderSession, ProviderHelloFrame) -> Unit = { _, _ -> },
+    // 전문가 층: 조립된 ComfyUI 웹 생성 이미지를 (guildId, png, 캡션) 으로 넘긴다. central 이 길드 지정 채널에 게시.
+    private val onImageBroadcast: (Long?, ByteArray, String) -> Unit = { _, _, _ -> },
 ) {
     private val log = LoggerFactory.getLogger(ProviderSession::class.java)
 
@@ -68,6 +72,12 @@ class ProviderSession(
 
     // 진행 중 요청 상관관계 표(requestId→완료 핸들)는 협력자가 소유 — 세션은 상태머신·전송·inFlight 에 집중(SE-137).
     private val lifecycle = RequestLifecycleManager()
+
+    // 취소 버튼으로 취소된 이미지 요청 id. sendImage 루프가 다음 폴링에서 감지해 중단한다.
+    private val cancelledRequests = ConcurrentHashMap.newKeySet<String>()
+
+    // 전문가 층: broadcastId → 조립 중인 base64 PNG(청크). done 프레임에서 디코드·포워드 후 제거.
+    private val imageBroadcasts = ConcurrentHashMap<String, StringBuilder>()
 
     val state: ProviderState get() = stateRef.get()
     val activeRequests: Int get() = inFlight.get()
@@ -245,6 +255,8 @@ class ProviderSession(
      */
     fun sendImage(
         prompt: String,
+        imagePolicy: Map<String, Any?>? = null,
+        onStart: (String) -> Unit = {},
         onProgress: (Int) -> Unit = {},
     ): CompletableFuture<ByteArray> {
         val cap = capability.maxConcurrency + maxQueue
@@ -258,7 +270,7 @@ class ProviderSession(
         if (remainingDaily.get() != Int.MAX_VALUE) remainingDaily.decrementAndGet()
         transitionTo(ProviderState.ONLINE_BUSY)
         try {
-            connection.sendFrame(InferRequest(requestId, prompt = prompt, task = "image"))
+            connection.sendFrame(InferRequest(requestId, prompt = prompt, task = "image", imagePolicy = imagePolicy))
         } catch (e: Exception) {
             lifecycle.removeStream(requestId)
             cleanup(requestId)
@@ -266,6 +278,8 @@ class ProviderSession(
                 ConnectionClosedException("이미지 InferRequest 전송 실패(id=$requestId): ${e.message}", e),
             )
         }
+        // 호출자(취소 버튼 부착·취소 매핑 등록)가 requestId 를 즉시 받도록 동기 콜백.
+        runCatching { onStart(requestId) }
         val imageTimeout = maxOf(requestTimeoutSeconds, IMAGE_TIMEOUT_SECONDS)
         return CompletableFuture.supplyAsync {
             val sb = StringBuilder()
@@ -278,6 +292,10 @@ class ProviderSession(
                         throw RemoteTimeoutException("이미지 생성 시간 초과(${imageTimeout}초)")
                     }
                     val chunk = queue.poll(remaining, TimeUnit.NANOSECONDS) ?: continue
+                    if (cancelledRequests.remove(requestId)) {
+                        // 취소 버튼 → cancelImage 가 이미 CancelFrame 송신(ComfyUI /interrupt 유발). 루프 종료.
+                        throw RemoteCancelledException("이미지 생성을 취소했어요.")
+                    }
                     if (chunk.done) break
                     if (chunk.progress >= 0) { // 진행률 상태 청크 — 데이터 아님. 콜백만(디스코드 N% 편집)
                         runCatching { onProgress(chunk.progress) }
@@ -305,6 +323,19 @@ class ProviderSession(
         if (inFlight.decrementAndGet() <= 0) transitionTo(ProviderState.ONLINE_IDLE)
     }
 
+    /**
+     * 진행 중 이미지 생성을 취소(취소 버튼). 에이전트로 CancelFrame 을 보내 ComfyUI /interrupt 를
+     * 유발하고, sendImage 폴링 루프를 깨워 RemoteCancelledException 으로 종료시킨다. 해당 요청이
+     * 이 세션에 없으면 false.
+     */
+    fun cancelImage(requestId: String): Boolean {
+        if (!lifecycle.hasStream(requestId)) return false
+        cancelledRequests.add(requestId)
+        safeSend(CancelFrame(requestId))
+        lifecycle.offer(requestId, ChunkFrame(requestId, done = true)) // 블로킹 poll 즉시 깨우기(취소 감지)
+        return true
+    }
+
     private fun isTimeout(err: Throwable): Boolean =
         err is TimeoutException || (err is CompletionException && err.cause is TimeoutException)
 
@@ -328,14 +359,44 @@ class ProviderSession(
             is ChunkFrame -> lifecycle.offer(frame.requestId, frame)
             is ProviderHelloFrame -> applyHello(frame)
             is ProviderStatusFrame -> applyStatus(frame)
+            is ImageBroadcastFrame -> handleImageBroadcast(frame)
             else -> { /* pong: markSeen 으로 충분 */ }
         }
+    }
+
+    /**
+     * 전문가 층: 에이전트가 청크 분할로 보낸 ComfyUI 웹 생성 이미지를 조립해 포워드 콜백에 넘긴다.
+     * 채널은 콜백(central) 이 길드 설정으로 결정한다 — 에이전트는 채널을 지정하지 않는다(보안).
+     */
+    private fun handleImageBroadcast(frame: ImageBroadcastFrame) {
+        val sb = imageBroadcasts.getOrPut(frame.broadcastId) { StringBuilder() }
+        if (frame.delta.isNotEmpty()) sb.append(frame.delta)
+        if (sb.length > MAX_BROADCAST_B64_CHARS) { // 폭주 방지
+            imageBroadcasts.remove(frame.broadcastId)
+            log.warn("이미지 브로드캐스트가 너무 큼 — 폐기: guild={}", guildId)
+            return
+        }
+        if (!frame.done) return
+        imageBroadcasts.remove(frame.broadcastId)
+        val png =
+            try {
+                java.util.Base64
+                    .getDecoder()
+                    .decode(sb.toString())
+            } catch (e: IllegalArgumentException) {
+                log.warn("이미지 브로드캐스트 base64 디코드 실패: {}", e.message)
+                return
+            }
+        runCatching { onImageBroadcast(guildId, png, frame.prompt) }
+            .onFailure { log.warn("이미지 포워드 실패: {}", it.message) }
     }
 
     /** 연결 종료: 대기 중 요청을 모두 실패 처리. */
     fun closeAndFailPending(reason: String) {
         transitionTo(ProviderState.OFFLINE)
         lifecycle.failAll(reason)
+        // done 프레임 못 받고 끊긴 미완성 브로드캐스트 버퍼 정리(메모리 누수 방지).
+        imageBroadcasts.clear()
     }
 
     companion object {
@@ -347,5 +408,8 @@ class ProviderSession(
 
         /** 조립된 이미지 base64 의 최대 문자 수(폭주/메모리 보호, 약 6MB 바이너리). */
         private const val MAX_IMAGE_B64_CHARS = 8_000_000
+
+        /** 전문가 층 브로드캐스트 이미지 base64 최대 문자 수(폭주 방지, 약 12MB 바이너리). */
+        private const val MAX_BROADCAST_B64_CHARS = 16_000_000
     }
 }

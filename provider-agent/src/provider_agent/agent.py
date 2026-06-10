@@ -20,6 +20,7 @@ from .protocol import (
     CancelFrame,
     ChunkFrame,
     Frame,
+    ImageBroadcastFrame,
     InferError,
     InferRequest,
     InferResult,
@@ -34,6 +35,20 @@ SD_PROGRESS_POLL_S = 1.5
 # 진행률 추정 점근 곡선의 반감기(초): pct = 95·t/(t+HALF). 이 값에서 약 47%.
 # 생성 중 SD 를 폴링하면 MPS 가 크래시하므로(아래 _handle_image 주석) 진행률은 경과시간으로만 추정한다.
 SD_PROGRESS_HALFLIFE_S = 6.0
+
+# ── 이미지 프롬프트 정책 기본값(central 이 image_policy 로 덮어쓸 수 있음) ──
+# 초보자 /그림: 한국어 → 영어 자연어로 번역하되 '성인·SFW·품질 prefix' 를 강제한다. 정상적인 SFW
+# 요청이 '여자아이→little girl' 식 미성년 오탐으로 거부되지 않게 하는 핵심 가드(거부 0 목표).
+DEFAULT_TRANSLATOR_SYSTEM_PROMPT = (
+    "You convert a user's Korean image request into an English prompt for the Anima anime model.\n"
+    "- Output ONLY the final English prompt, nothing else.\n"
+    "- Start with: \"masterpiece, best quality, safe, \"\n"
+    "- Then a vivid, SFW description of at least 2 sentences.\n"
+    "- Always depict any person as a clearly of-age adult (young adult).\n"
+    "  Translate words like \"여자아이/소녀\" as \"young woman\", never \"girl/child\".\n"
+    "- Keep it strictly safe-for-work. No suggestive or revealing content."
+)
+DEFAULT_FORCED_NEGATIVE = "worst quality, low quality, score_1, score_2, score_3, artist name, loli, child, nsfw"
 
 
 def _merge_models(base: list[str], extra: list[str]) -> list[str]:
@@ -172,6 +187,7 @@ class ProviderAgent:
         self._image_ready = False
         self._sd_wh: tuple[int, int] | None = None  # 활성 체크포인트 기준 생성 해상도(lazy 캐시, 모델 변경 시 무효화)
         self._sd_boot_task: asyncio.Task[None] | None = None  # 설치된 SD 자동기동 + 준비되면 재광고
+        self._broadcast_task: asyncio.Task[None] | None = None  # 전문가 층: ComfyUI 웹 생성물 포워드 리스너
         self._sem = asyncio.Semaphore(cfg.max_concurrency)
         # 서버(guild)별 정책·일일 한도·동시성 세마포어는 한 협력자(GuildPolicyManager)가 소유한다 —
         # 셋이 얽혀 있어 일관성(원자적 정책 변경·중앙 리로드·stale 참조 방지)을 한곳에서 보장.
@@ -194,6 +210,8 @@ class ProviderAgent:
         self._cancelled: set[str] = set()
         self._cancel_order: deque[str] = deque()
         self._cancel_cap = 4096
+        # 진행 중 이미지 생성 요청 id(취소 시 ComfyUI /interrupt 대상 판별).
+        self._image_inflight: set[str] = set()
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._stop = asyncio.Event()
         # 멀티-서버: 여러 디스코드 길드에 동시 접속. 각 항목 {conn, task, status_task, guild_id, guild_name, token}.
@@ -230,6 +248,10 @@ class ProviderAgent:
             task.add_done_callback(lambda _t: self._tasks.pop(req_id, None))
         elif isinstance(frame, CancelFrame):
             self._mark_cancelled(frame.request_id)
+            # 이미지 생성은 ComfyUI 서버에서 실제로 돌고 있으므로, asyncio task 취소만으론 멈추지 않는다.
+            # ComfyUI /interrupt 로 실제 생성을 중단시킨다(취소 버튼 → 즉시 중단).
+            if frame.request_id in self._image_inflight and self._sd is not None:
+                asyncio.create_task(self._sd.interrupt())
             existing = self._tasks.get(frame.request_id)
             if existing is not None:
                 existing.cancel()
@@ -380,27 +402,120 @@ class ProviderAgent:
             await self._safe_send(conn, ChunkFrame(req.request_id, delta=b64[i : i + IMAGE_CHUNK_CHARS], done=False))
         await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
 
+    async def _run_image_broadcast_listener(self) -> None:
+        """전문가 층 감독 루프: ComfyUI /ws 가 끊기면 재연결하며 유저 직접 생성 이미지를 포워드한다.
+
+        ComfyUI 가 건강할 때만 구독한다. on_image(raw PNG) → 모든 인증 연결에 청크 분할 ImageBroadcast 전송.
+        """
+        import base64
+
+        async def on_image(raw: bytes) -> None:
+            b64 = base64.b64encode(raw).decode("ascii")
+            await self._broadcast_image(b64)
+
+        backoff = 2.0
+        while not self._stop.is_set():
+            try:
+                if self._sd is None or not await self._sd.health():
+                    await asyncio.sleep(5.0)
+                    continue
+                await self._sd.listen_user_images(on_image)  # 끊길 때까지 블록
+                backoff = 2.0
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - 리스너는 best-effort, 끊기면 재시도
+                logger.debug("전문가 이미지 리스너 재연결(%.0fs 후): %s", backoff, exc)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60.0)
+
+    def _is_local_comfy(self) -> bool:
+        """ComfyUI 가 로컬(앱 관리/loopback)인가 — 전문가 포워드는 로컬에서만 허용(타인 작업 노출 방지)."""
+        url = (self._comfy_url or "").lower()
+        if not url:
+            return True  # 빈값 = 앱 관리 로컬(localhost:8188)
+        try:
+            from urllib.parse import urlparse
+
+            host = urlparse(url).hostname or ""
+        except ValueError:
+            return False
+        return host in ("127.0.0.1", "localhost", "::1", "0.0.0.0")
+
+    async def _broadcast_image(self, b64: str) -> None:
+        """유저 직접 생성 이미지(base64 PNG)를 모든 인증 연결에 청크 분할로 보낸다(채널은 central 이 결정).
+
+        연결별로 병렬 전송하되, 한 연결 내 청크는 순서를 보존한다(조립 정확성).
+        """
+        import uuid as _uuid
+
+        broadcast_id = _uuid.uuid4().hex
+        async with self._entries_lock:
+            conns = [e["conn"] for e in self._entries if e["conn"].authed]
+
+        async def _send_all(conn: AgentConnection) -> None:
+            for i in range(0, len(b64), IMAGE_CHUNK_CHARS):
+                await self._safe_send(conn, ImageBroadcastFrame(broadcast_id, delta=b64[i : i + IMAGE_CHUNK_CHARS], done=False))
+            await self._safe_send(conn, ImageBroadcastFrame(broadcast_id, delta="", done=True))
+
+        await asyncio.gather(*(_send_all(c) for c in conns), return_exceptions=True)
+
+    async def _translate_image_prompt(self, req: InferRequest) -> str:
+        """한국어 요청을 Anima 용 영어 프롬프트로 번역(정책 적용). Gemini 없거나 실패 시 원문 폴백.
+
+        정책(번역 시스템프롬프트)은 central 의 image_policy 우선, 없으면 에이전트 기본값.
+        번역 실패는 치명적이지 않다 — 원문으로라도 생성을 진행한다(거부 0 우선).
+        """
+        policy = req.image_policy or {}
+        system_prompt = str(policy.get("translatorSystemPrompt") or DEFAULT_TRANSLATOR_SYSTEM_PROMPT)
+        if self._gemini is None:
+            return req.prompt
+        from .gemini import GeminiError
+
+        model = self._gemini_models[0] if self._gemini_models else None
+        try:
+            out = await self._gemini.translate(req.prompt, system_prompt, model=model)
+            return str(out) if out else req.prompt
+        except GeminiError as exc:
+            logger.warning("이미지 프롬프트 번역 실패 — 원문으로 진행: %s", exc)
+            return req.prompt
+
     async def _generate_image_with_retry(self, conn: AgentConnection, req: InferRequest) -> str | None:
-        """txt2img 를 진행률 추정과 함께 실행. ComfyUI 가 생성 중 죽으면 1회 재기동·재시도.
+        """번역 → 템플릿 주입 → 실시간 진행률(ComfyUI /ws)과 함께 생성. 죽으면 1회 재기동·재시도.
         성공 시 base64 PNG, 실패 시 InferError 송신 후 None."""
+        import secrets
+
         from .comfy import ComfyError
 
-        w, h = await self._resolution()  # 생성 직전(비동시) 1회 — SDXL 1024 vs SD1.5 512
-        for attempt in range(2):  # 원샷 + 1회 재시도(MPS 가 드물게 크래시할 때 사용자에게 이미지를 돌려준다)
-            assert self._sd is not None  # 호출 전 _image_ready 로 가드됨
-            gen_task: asyncio.Task[str] = asyncio.create_task(self._sd.txt2img(req.prompt, {"width": w, "height": h}))
-            prog_task = asyncio.create_task(self._emit_estimated_progress(conn, req.request_id, gen_task))
-            try:
-                return await gen_task
-            except ComfyError as exc:
-                if attempt == 0 and await self._recover_sd():
-                    logger.warning("SD 가 생성 중 종료된 듯 — 재기동 후 1회 재시도: %s", exc)
-                    continue
-                await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
-                return None
-            finally:
-                prog_task.cancel()
-        return None
+        w, h = await self._resolution()  # 생성 직전(비동시) 1회
+        positive = await self._translate_image_prompt(req)
+        policy = req.image_policy or {}
+        negative = str(policy.get("forcedNegative") or DEFAULT_FORCED_NEGATIVE)
+        # 실시간 진행률 콜백(ComfyUI /ws 패시브 푸시): 5%p 이상 변할 때만 청크 전송(레이트리밋 보호).
+        last_pct = -10
+
+        def on_progress(pct: int) -> None:
+            nonlocal last_pct
+            if pct - last_pct >= 5 or pct >= 100:
+                last_pct = pct
+                asyncio.create_task(self._safe_send(conn, ChunkFrame(req.request_id, progress=pct)))
+
+        self._image_inflight.add(req.request_id)
+        try:
+            for attempt in range(2):  # 원샷 + 1회 재시도
+                assert self._sd is not None  # 호출 전 _image_ready 로 가드됨
+                opts = {"width": w, "height": h, "negative_prompt": negative, "seed": secrets.randbelow(2**40)}
+                try:
+                    b64: str = await self._sd.txt2img(positive, opts, on_progress=on_progress)
+                    return b64
+                except ComfyError as exc:
+                    if attempt == 0 and await self._recover_sd():
+                        logger.warning("SD 가 생성 중 종료된 듯 — 재기동 후 1회 재시도: %s", exc)
+                        continue
+                    await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
+                    return None
+            return None
+        finally:
+            self._image_inflight.discard(req.request_id)
 
     async def _resolution(self) -> tuple[int, int]:
         """활성 체크포인트에 맞는 생성 해상도(SDXL 1024 vs SD1.5 512). 첫 조회 후 캐시.
@@ -891,6 +1006,15 @@ class ProviderAgent:
         if self._sd is not None and not self._image_ready:
             self._sd_boot_task = asyncio.create_task(self._boot_sd())
 
+        # 전문가 층(opt-in): ComfyUI 웹에서 직접 생성한 이미지를 길드 지정 채널로 자동 포워드.
+        # **로컬(앱 관리/127.0.0.1) ComfyUI 에서만** 동작 — 외부/공유 ComfyUI 는 /history 가 타인 작업도
+        # 노출하므로 남의 이미지를 포워드할 위험이 있어 비활성(프라이버시·보안).
+        if self._sd is not None and getattr(self._cfg, "comfy_broadcast", False):
+            if self._is_local_comfy():
+                self._broadcast_task = asyncio.create_task(self._run_image_broadcast_listener())
+            else:
+                logger.warning("comfy_broadcast 는 로컬 ComfyUI 에서만 동작합니다(외부 주소 %s 는 비활성).", self._comfy_url)
+
         # 연동된 사용자가 디스코드 /프로바이더참여 한 새 서버에 자동 연결되도록 동기화 루프를 띄운다.
         sync_task = asyncio.create_task(self._sync_loop())
         stop_task = asyncio.create_task(self._stop.wait())
@@ -900,6 +1024,8 @@ class ProviderAgent:
             sync_task.cancel()
             if self._sd_boot_task is not None:
                 self._sd_boot_task.cancel()
+            if self._broadcast_task is not None:
+                self._broadcast_task.cancel()
             async with self._entries_lock:
                 entries = list(self._entries)
                 self._entries.clear()

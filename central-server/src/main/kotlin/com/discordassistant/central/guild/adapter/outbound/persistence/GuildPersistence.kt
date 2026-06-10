@@ -25,6 +25,8 @@ class GuildEntity(
     @Column(name = "welcome_message") var welcomeMessage: String? = null,
     // 유저별 일일 사용 한도(요청자 쿼터). null=기본(20), 0=무제한. 역할 정책(role daily limit)과 별개의 길드 기본값.
     @Column(name = "default_daily_limit") var defaultDailyLimit: Int? = null,
+    // 전문가 층: ComfyUI 웹에서 직접 생성한 이미지를 포워드할 채널(Discord channel_id). null=미설정(포워드 안 함).
+    @Column(name = "expert_forward_channel_id") var expertForwardChannelId: Long? = null,
 )
 
 @Entity

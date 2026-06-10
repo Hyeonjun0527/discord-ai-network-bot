@@ -438,6 +438,18 @@ def _register_asset_routes(app: web.Application, session_key: str) -> None:
         except Exception as exc:  # noqa: BLE001
             raise web.HTTPNotFound() from exc
 
+    async def asset_css(req: web.Request) -> web.Response:
+        name = req.match_info["asset"]
+        try:
+            f = _assets_dir() / name
+            if not f.is_file():
+                raise web.HTTPNotFound()
+            return web.Response(body=f.read_bytes(), content_type="text/css")
+        except web.HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise web.HTTPNotFound() from exc
+
     async def asset_img(req: web.Request) -> web.Response:
         name = req.match_info["name"]
         ctype = "image/svg+xml" if name.lower().endswith(".svg") else "image/png"
@@ -455,6 +467,7 @@ def _register_asset_routes(app: web.Application, session_key: str) -> None:
     app.router.add_get("/mascot.png", mascot)
     app.router.add_get("/app-icon.png", app_icon)
     app.router.add_get(r"/{asset:[\w\-]+\.js}", asset_js)
+    app.router.add_get(r"/{asset:[\w\-]+\.css}", asset_css)
     app.router.add_get(r"/img/{name:[\w\-.]+}", asset_img)
 
 

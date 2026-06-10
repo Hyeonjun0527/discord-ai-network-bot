@@ -192,6 +192,7 @@ class ProviderAdminController(
     private val guildKnowledgeAdmin: GuildKnowledgeAdmin,
     private val guildPresets: GuildPresetQuery,
     private val guildPresetAdmin: GuildPresetAdmin,
+    private val licenseGate: com.discordassistant.central.licensing.application.LicenseGate,
 ) {
     private val log = org.slf4j.LoggerFactory.getLogger(ProviderAdminController::class.java)
 
@@ -297,6 +298,7 @@ class ProviderAdminController(
         val adminId =
             authedAdmin(req.durableToken, req.guildId)
                 ?: return AdminPromptSetResponse(false, "관리자 권한이 필요합니다")
+        licenseGate.denyReason(adminId)?.let { return AdminPromptSetResponse(false, it) } // 프리미엄: 페르소나 작성
         return runCatching { globalPromptSets.add(req.guildId, req.name, req.content, adminId) }
             .fold(
                 onSuccess = { AdminPromptSetResponse(true, "추가했어요", globalPromptSets.list(req.guildId)) },
@@ -309,7 +311,10 @@ class ProviderAdminController(
     fun setDefaultPromptSet(
         @RequestBody req: AdminPromptSetRequest,
     ): AdminPromptSetResponse {
-        authedAdmin(req.durableToken, req.guildId) ?: return AdminPromptSetResponse(false, "관리자 권한이 필요합니다")
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminPromptSetResponse(false, "관리자 권한이 필요합니다")
+        licenseGate.denyReason(adminId)?.let { return AdminPromptSetResponse(false, it) } // 프리미엄: 페르소나 기본 지정
         return runCatching { globalPromptSets.setDefault(req.guildId, req.id) }
             .fold(
                 onSuccess = { AdminPromptSetResponse(true, "기본으로 지정했어요", globalPromptSets.list(req.guildId)) },
@@ -326,7 +331,10 @@ class ProviderAdminController(
     fun deletePromptSet(
         @RequestBody req: AdminPromptSetRequest,
     ): AdminPromptSetResponse {
-        authedAdmin(req.durableToken, req.guildId) ?: return AdminPromptSetResponse(false, "관리자 권한이 필요합니다")
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminPromptSetResponse(false, "관리자 권한이 필요합니다")
+        licenseGate.denyReason(adminId)?.let { return AdminPromptSetResponse(false, it) } // 프리미엄: 페르소나 삭제
         return runCatching { globalPromptSets.delete(req.guildId, req.id) }
             .fold(
                 onSuccess = { AdminPromptSetResponse(true, "삭제했어요", globalPromptSets.list(req.guildId)) },
@@ -414,7 +422,10 @@ class ProviderAdminController(
     fun deleteKnowledge(
         @RequestBody req: AdminKnowledgeDeleteRequest,
     ): AdminKnowledgeResponse {
-        authedAdmin(req.durableToken, req.guildId) ?: return AdminKnowledgeResponse(false, "관리자 권한이 필요합니다")
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminKnowledgeResponse(false, "관리자 권한이 필요합니다")
+        licenseGate.denyReason(adminId)?.let { return AdminKnowledgeResponse(false, it) } // 프리미엄: RAG 지식 삭제
         val sourceId = req.sourceId.toLongOrNull() ?: return AdminKnowledgeResponse(false, "잘못된 소스입니다")
         return runCatching {
             val ok = guildKnowledgeAdmin.removeGuildSource(req.guildId, sourceId)
@@ -449,7 +460,10 @@ class ProviderAdminController(
     fun deletePreset(
         @RequestBody req: AdminPresetDeleteRequest,
     ): AdminPresetsResponse {
-        authedAdmin(req.durableToken, req.guildId) ?: return AdminPresetsResponse(false, "관리자 권한이 필요합니다")
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminPresetsResponse(false, "관리자 권한이 필요합니다")
+        licenseGate.denyReason(adminId)?.let { return AdminPresetsResponse(false, it) } // 프리미엄: 프리셋 삭제
         val presetId = req.presetId.toLongOrNull() ?: return AdminPresetsResponse(false, "잘못된 프리셋입니다")
         return runCatching {
             val ok = guildPresetAdmin.deleteGuildPreset(req.guildId, presetId)

@@ -6,6 +6,7 @@
 // ════════════════════════════════════════════════════════════════════════
 import { api } from './adapter.js';
 import { toast } from './toast.js';
+import { t } from './i18n.js';
 
 const RUNTIME_LABEL = { ollama: 'Ollama' }; // 이미지 엔진은 ComfyUI(로컬 실행 탭에서 설치/관리)
 
@@ -16,7 +17,7 @@ function _trackSetup(k, model, startSetup) {
   const id = 'inst-' + (model || k);
   let dismissed = false; // ✕ 로 알림을 닫으면 true — 설치는 계속, 토스트만 안 띄움
   return new Promise((resolve) => {
-    toast(name + ' 설치 중', { type: 'run', sticky: true, id, sub: '설치 준비 중', progress: 0, onClose: () => { dismissed = true; } });
+    toast(t('installInstalling').replace('{name}', name), { type: 'run', sticky: true, id, sub: t('installPreparing'), progress: 0, onClose: () => { dismissed = true; } });
     // 설치 시작 호출이 reject 돼도 폴링이 진행 상태(error phase)로 잡으므로, unhandled rejection 만 방지한다.
     if (startSetup) { const started = api.startSetup(k, model); if (started && typeof started.catch === 'function') started.catch((e) => console.error('설치 시작 호출 실패:', e)); }
     const timer = setInterval(async () => {
@@ -30,19 +31,19 @@ function _trackSetup(k, model, startSetup) {
       }
       if (p.phase === 'done') {
         clearInterval(timer);
-        if (!dismissed) toast(name + ' 설치 완료', { type: 'ok', id, sub: '사용 준비됨', progress: 100 });
+        if (!dismissed) toast(t('installComplete').replace('{name}', name), { type: 'ok', id, sub: t('installReady'), progress: 100 });
         window.dispatchEvent(new CustomEvent('runtimeinstalled', { detail: k })); // 홈 카드가 받아 '실행 중'으로
         resolve(true);
       } else if (p.phase === 'error' || p.phase === 'cancelled') {
         clearInterval(timer);
-        if (!dismissed) toast(name + ' 설치 ' + (p.phase === 'cancelled' ? '취소됨' : '실패'), { type: 'info', id, sub: String(p.error || p.message || '') });
+        if (!dismissed) toast((p.phase === 'cancelled' ? t('installCancelled') : t('installFailed')).replace('{name}', name), { type: 'info', id, sub: String(p.error || p.message || '') });
         resolve(false);
       } else if (p.phase === 'idle' && !startSetup) {
         // 감시 모드인데 진행 상태가 아니면(이미 끝났거나 시작 안 됨) 토스트를 띄우지 않고 종료.
         clearInterval(timer);
         resolve(false);
       } else if (!dismissed) {
-        toast(name + ' 설치 중', { type: 'run', sticky: true, id, sub: (p.message || '진행 중'), progress: p.percent, onClose: () => { dismissed = true; } });
+        toast(t('installInstalling').replace('{name}', name), { type: 'run', sticky: true, id, sub: (p.message || t('installInProgress')), progress: p.percent, onClose: () => { dismissed = true; } });
       }
     }, 450);
   });

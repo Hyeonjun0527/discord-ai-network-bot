@@ -69,11 +69,11 @@
             try {
               const r = await api.setImageReceiving(on) || {};
               if (_s) _s[key] = on;
-              if (on && !r.imageReady) toast('이미지 받기 켜짐 — ComfyUI 준비가 필요해요', { type: 'info', sub: '로컬 실행 탭에서 ComfyUI 를 설치/시작하세요' });
-              else toast('설정을 저장했어요', { type: 'ok' });
+              if (on && !r.imageReady) toast(t('setImageOnNeedsComfyToast'), { type: 'info', sub: t('setImageOnNeedsComfySub') });
+              else toast(t('setSavedToast'), { type: 'ok' });
             } catch (_e) {
               b.classList.toggle('on', !on); b.setAttribute('aria-checked', String(!on)); if (_s) _s[key] = !on;
-              toast('변경 실패 — 네트워크를 확인하세요', { type: 'error' });
+              toast(t('setChangeFailedToast'), { type: 'error' });
             }
             return;
           }
@@ -82,35 +82,35 @@
             if (_s) _s[key] = on;
             if (r.serviceError) { // autostart 등 실제 적용 실패 — 정직하게 알리고 되돌림
               b.classList.toggle('on', !on); b.setAttribute('aria-checked', String(!on)); if (_s) _s[key] = !on;
-              toast('적용 실패 — ' + r.serviceError, { type: 'error' });
+              toast(t('setApplyFailedToast').replace('{error}', r.serviceError), { type: 'error' });
             } else if (r.needsRestart) { // 즉시 반영 안 되는 항목(이미지 수신 등) — '저장됨' 착시 금지
-              toast('저장했어요 — 다시 연결 후 적용돼요', { type: 'info' });
+              toast(t('setSavedNeedsReconnectToast'), { type: 'info' });
             } else {
-              toast('설정을 저장했어요', { type: 'ok' });
+              toast(t('setSavedToast'), { type: 'ok' });
             }
           } catch (_e) { // 저장 자체 실패 → 토글 원복
             b.classList.toggle('on', !on); b.setAttribute('aria-checked', String(!on)); if (_s) _s[key] = !on;
-            toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' });
+            toast(t('setSaveFailedToast'), { type: 'error' });
           }
         };
       });
       const chk = document.getElementById('setUpdateCheck');
-      if (chk) chk.onclick = async () => { _upd = await api.getUpdateInfo(); render(); toast(_upd.outdated ? '새 버전이 있어요' : '최신 버전이에요', { type: 'info' }); };
+      if (chk) chk.onclick = async () => { _upd = await api.getUpdateInfo(); render(); toast(_upd.outdated ? t('setUpdateAvailableToast') : t('setUpToDateToast'), { type: 'info' }); };
       const apply = document.getElementById('setUpdateApply');
       if (apply) apply.onclick = async () => {
         apply.disabled = true;
-        toast('업데이트 시작 중…', { type: 'run', sticky: true, id: 'upd' });
+        toast(t('setUpdateStartingToast'), { type: 'run', sticky: true, id: 'upd' });
         try {
           const r = await api.applyUpdate(); // POST /api/update
-          if (r && r.ok === false) { toast(r.error || '업데이트를 시작할 수 없어요', { type: 'error', id: 'upd' }); return; }
-          toast('업데이트를 시작했어요 — 다운로드 후 자동 적용·재시작돼요', { type: 'ok', id: 'upd' });
-        } catch (_e) { toast('업데이트 시작 실패 — 다시 시도하세요', { type: 'error', id: 'upd' }); }
+          if (r && r.ok === false) { toast(r.error || t('setUpdateStartFailedToast'), { type: 'error', id: 'upd' }); return; }
+          toast(t('setUpdateStartedToast'), { type: 'ok', id: 'upd' });
+        } catch (_e) { toast(t('setUpdateStartRetryToast'), { type: 'error', id: 'upd' }); }
         finally { apply.disabled = false; }
       };
       const logout = document.getElementById('setLogout');
       if (logout) logout.onclick = async () => {
-        if (!confirm('연결을 해제하면 모든 서버 제공이 중단돼요. 계속할까요?')) return;
-        await api.logout(); toast('연결을 해제했어요', { type: 'info' }); load();
+        if (!confirm(t('setLogoutConfirm'))) return;
+        await api.logout(); toast(t('setLogoutDoneToast'), { type: 'info' }); load();
       };
       // 중앙 서버·Ollama 주소 저장(고급) — 다음 연결에 반영(needsRestart).
       const saveConn = (inputId, key, label) => {
@@ -119,13 +119,13 @@
         b.onclick = async () => {
           const url = (document.getElementById(inputId).value || '').trim();
           b.disabled = true;
-          try { const r = await api.setSetting(key, url) || {}; if (_s) _s[key] = url; toast(r.needsRestart ? label + ' 저장 — 다시 연결하면 적용돼요' : label + ' 를 저장했어요', { type: 'ok' }); }
-          catch (_e) { toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' }); }
+          try { const r = await api.setSetting(key, url) || {}; if (_s) _s[key] = url; toast(r.needsRestart ? t('setConnSavedNeedsReconnectToast').replace('{label}', label) : t('setConnSavedToast').replace('{label}', label), { type: 'ok' }); }
+          catch (_e) { toast(t('setSaveFailedToast'), { type: 'error' }); }
           finally { b.disabled = false; }
         };
       };
-      saveConn('setRelay', 'relayUrl', '중앙 서버 주소');
-      saveConn('setOllama', 'ollamaUrl', 'Ollama 주소');
+      saveConn('setRelay', 'relayUrl', t('setRelaySaveLabel'));
+      saveConn('setOllama', 'ollamaUrl', t('setOllamaAddr'));
       // 언어 전환: setLang 이 UI(정적 라벨)+이 화면 재렌더를 처리하고, 서버에도 저장(재시작 후 유지).
       const ls = document.getElementById('langSel');
       if (ls) ls.onchange = () => { const v = ls.value; setLang(v); api.setSetting('lang', v).catch(() => {}); };

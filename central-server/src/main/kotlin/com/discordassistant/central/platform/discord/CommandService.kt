@@ -465,6 +465,12 @@ class CommandService(
         channelId: Long,
     ): Reply = guildAdminCommands.denyChannel(ctx, channelId)
 
+    /** /그림채널 — ComfyUI 웹 생성 이미지를 전송할 채널 설정(전문가 층). */
+    fun setForwardChannel(
+        ctx: CommandContext,
+        channelId: Long,
+    ): Reply = guildAdminCommands.setForwardChannel(ctx, channelId)
+
     fun setRolePolicy(
         ctx: CommandContext,
         roleId: Long,

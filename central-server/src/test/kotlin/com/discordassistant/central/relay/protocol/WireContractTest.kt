@@ -19,7 +19,7 @@ class WireContractTest {
                 json,
                 mapper.typeFactory.constructMapType(LinkedHashMap::class.java, String::class.java, Map::class.java),
             )
-        assertEquals(12, fixtures.size, "픽스처 개수")
+        assertEquals(13, fixtures.size, "픽스처 개수")
         for ((name, expected) in fixtures) {
             // 1) 픽스처(JSON)를 디코드할 수 있어야 한다.
             val frame = FrameCodec.decode(mapper.writeValueAsString(expected))

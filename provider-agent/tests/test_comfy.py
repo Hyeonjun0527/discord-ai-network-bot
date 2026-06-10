@@ -1,6 +1,7 @@
 """ComfyUI 이미지 백엔드 — 워크플로 빌드 + 응답 파싱(순수 함수) + HTTP 흐름(mock)."""
 from __future__ import annotations
 
+import asyncio
 import base64
 
 import pytest
@@ -249,6 +250,74 @@ async def test_comfy_txt2img_no_model_files(monkeypatch, tmp_path):
     _patch_session(monkeypatch, lambda m, u, x: _Resp(200, {}))
     with pytest.raises(ComfyError):
         await ComfyClient("http://127.0.0.1:8188", workflows_dir=tmp_path).txt2img("x")
+
+
+def test_mark_submitted_fifo_cap():
+    """앱 제출 prompt_id 추적은 상한 FIFO(무한 누적 방지)."""
+    from provider_agent.comfy import ComfyClient
+
+    cl = ComfyClient("http://127.0.0.1:8188")
+    for i in range(600):
+        cl._mark_submitted(f"p{i}")
+    assert len(cl._submitted_ids) <= 512
+    assert "p599" in cl._submitted_ids  # 최신은 남음
+    assert "p0" not in cl._submitted_ids  # 가장 오래된 것은 폐기
+
+
+@pytest.mark.asyncio
+async def test_listen_user_images_forwards_non_app(monkeypatch):
+    """/history 폴링: 시작 baseline 은 무시하고, 이후 앱(/그림) 외 새 완료 이미지만 on_image 로 넘긴다."""
+    from provider_agent import comfy as cmod
+    from provider_agent.comfy import ComfyClient
+
+    png = b"\x89PNGuser"
+
+    def img_entry(name):
+        return {"outputs": {"9": {"images": [{"filename": name, "subfolder": "", "type": "output"}]}}}
+
+    # 1차(baseline): OLD 만 존재 → 무시. 2차+: MINE(앱) + USER(웹) 추가 → USER 만 포워드.
+    states = [
+        {"OLD": img_entry("old.png")},
+        {"OLD": img_entry("old.png"), "MINE": img_entry("mine.png"), "USER": img_entry("user.png")},
+    ]
+    calls = {"n": 0}
+
+    class _Resp:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def json(self):
+            i = min(calls["n"], len(states) - 1)
+            calls["n"] += 1
+            return states[i]
+
+        async def read(self):
+            return png
+
+    class _Sess:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def get(self, url, params=None):
+            return _Resp()
+
+    monkeypatch.setattr(cmod.aiohttp, "ClientSession", lambda *a, **k: _Sess())
+    cl = ComfyClient("http://127.0.0.1:8188")
+    cl._mark_submitted("MINE")  # 앱 제출로 표시 → 제외
+    got: list[bytes] = []
+    task = asyncio.create_task(cl.listen_user_images(lambda raw: got.append(raw), poll_interval=0.01))
+    for _ in range(200):
+        if got:
+            break
+        await asyncio.sleep(0.01)
+    task.cancel()
+    assert got == [png]  # USER 만 포워드(OLD=baseline 제외, MINE=앱 제외)
 
 
 def test_ui_graph_to_api_and_inject():

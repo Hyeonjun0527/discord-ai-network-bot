@@ -214,6 +214,9 @@ class ComfyClient:
         self._cur_prompt_id: str | None = None  # 진행 중 작업(취소 대상)
         # 유저 워크플로 디렉터리(앱 관리 ComfyUI). 비면 comfy_setup 기본 경로를 지연 조회.
         self._workflows_dir = workflows_dir
+        # 앱(/그림)이 제출한 prompt_id — 전문가 리스너가 '유저 직접 생성'과 구분하려고 추적(상한 FIFO).
+        self._submitted_ids: set[str] = set()
+        self._submitted_order: list[str] = []
 
     async def health(self) -> bool:
         """ComfyUI 가 응답하는지(capability 광고 판단용). /object_info 200."""
@@ -330,6 +333,7 @@ class ComfyClient:
                 if not prompt_id:
                     raise ComfyError(f"ComfyUI 작업 제출 실패: {sub}")
                 self._cur_prompt_id = str(prompt_id)
+                self._mark_submitted(str(prompt_id))  # 전문가 리스너가 내 작업을 제외하도록
                 prog_task = (
                     asyncio.create_task(self._stream_progress(str(prompt_id), on_progress)) if on_progress else None
                 )
@@ -396,6 +400,80 @@ class ComfyClient:
             return False
         return ok
 
+    def _mark_submitted(self, prompt_id: str) -> None:
+        """앱(/그림) 제출 prompt_id 기록(상한 FIFO — 무한 누적 방지)."""
+        if prompt_id in self._submitted_ids:
+            return
+        self._submitted_ids.add(prompt_id)
+        self._submitted_order.append(prompt_id)
+        while len(self._submitted_order) > 512:
+            self._submitted_ids.discard(self._submitted_order.pop(0))
+
+    async def listen_user_images(self, on_image: "Callable[[bytes], Any]", poll_interval: float = 3.0) -> None:
+        """ComfyUI /history 를 폴링해 **유저가 웹에서 직접 생성한** 이미지를 감지(전문가 층).
+
+        ComfyUI 는 executed/progress 를 **제출한 client_id 의 ws 로만** 보내므로(브로드캐스트 아님),
+        브라우저로 생성한 작업은 에이전트 ws 에 안 온다. 그래서 /history 를 폴링한다(P1 에서 history
+        폴링은 MPS 안전 입증). 앱(/그림) 제출 prompt_id(self._submitted_ids)는 제외하고, **시작 시점의
+        기존 history 는 baseline 으로 무시**(과거 이미지 폭주 방지). 새로 완료된 것만 on_image(png) 호출.
+        """
+        seen: set[str] = set()
+        seen_order: list[str] = []
+
+        def _mark_seen(pid: str) -> None:
+            if pid in seen:
+                return
+            seen.add(pid)
+            seen_order.append(pid)
+            while len(seen_order) > 1024:
+                seen.discard(seen_order.pop(0))
+
+        baseline = True
+        async with aiohttp.ClientSession() as s:
+            while True:
+                try:
+                    async with s.get(f"{self._base}/history", params={"max_items": 64}) as r:
+                        hist = await r.json()
+                except (aiohttp.ClientError, ValueError) as exc:
+                    logger.debug("history 폴링 실패: %s", exc)
+                    await asyncio.sleep(poll_interval)
+                    continue
+                if isinstance(hist, dict):
+                    for pid, entry in hist.items():
+                        if pid in seen or pid in self._submitted_ids or not isinstance(entry, dict):
+                            continue
+                        refs = _all_image_refs(entry)  # 워크플로의 모든 출력 이미지(다중 SaveImage 지원)
+                        if not refs:
+                            _mark_seen(pid)  # 종료-무이미지(실패/취소) → 재확인 방지
+                            continue
+                        if baseline:
+                            _mark_seen(pid)  # 시작 시점 기존 이미지는 포워드하지 않음
+                            continue
+                        ok = await self._forward_refs(s, refs, on_image)
+                        if ok:
+                            _mark_seen(pid)  # **성공 시에만** seen — 실패는 다음 폴링에서 재시도(max_items 창 내 자연 만료)
+                baseline = False
+                await asyncio.sleep(poll_interval)
+
+    async def _forward_refs(
+        self,
+        s: aiohttp.ClientSession,
+        refs: list[tuple[str, str, str]],
+        on_image: "Callable[[bytes], Any]",
+    ) -> bool:
+        """이미지 ref 들을 받아 on_image 로 넘긴다. 하나라도 실패하면 False(재시도 대상)."""
+        for fn, sub, typ in refs:
+            try:
+                async with s.get(f"{self._base}/view", params={"filename": fn, "subfolder": sub, "type": typ}) as ir:
+                    raw = await ir.read()
+                res = on_image(raw)
+                if asyncio.iscoroutine(res):
+                    await res
+            except (aiohttp.ClientError, OSError) as exc:
+                logger.warning("유저 생성 이미지 포워드 실패(다음 폴링에서 재시도): %s", exc)
+                return False
+        return True
+
     async def _await_image(self, s: aiohttp.ClientSession, prompt_id: str) -> str:
         """history 를 폴링해 완료된 이미지(첫 장)를 받아 base64 PNG 로 반환."""
         deadline = self._timeout.total or 180.0
@@ -433,3 +511,22 @@ def _first_image_ref(entry: dict) -> tuple[str, str, str] | None:
             i = imgs[0]
             return (str(i.get("filename", "")), str(i.get("subfolder", "")), str(i.get("type", "output")))
     return None
+
+
+def _all_image_refs(entry: dict) -> list[tuple[str, str, str]]:
+    """history 항목의 **모든** 출력 이미지 (filename, subfolder, type). 다중 SaveImage 노드 지원."""
+    outputs = entry.get("outputs") if isinstance(entry, dict) else None
+    if not isinstance(outputs, dict):
+        return []
+    refs: list[tuple[str, str, str]] = []
+    for node in outputs.values():
+        imgs = node.get("images") if isinstance(node, dict) else None
+        if not isinstance(imgs, list):
+            continue
+        for i in imgs:
+            if isinstance(i, dict) and i.get("filename"):
+                # temp(미저장 프리뷰)는 제외하고 저장된 출력만 포워드.
+                if str(i.get("type", "output")) == "temp":
+                    continue
+                refs.append((str(i.get("filename", "")), str(i.get("subfolder", "")), str(i.get("type", "output"))))
+    return refs

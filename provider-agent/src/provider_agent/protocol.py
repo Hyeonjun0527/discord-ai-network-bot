@@ -34,6 +34,7 @@ __all__ = [
     "CancelFrame",
     "ProviderHelloFrame",
     "ProviderStatusFrame",
+    "ImageBroadcastFrame",
     "Frame",
     "new_request_id",
     "filter_options",
@@ -412,6 +413,42 @@ class ProviderStatusFrame:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ImageBroadcastFrame:
+    """에이전트 → 릴레이: 유저가 ComfyUI 에서 직접 생성한 이미지를 지정 채널로 포워드(전문가 층).
+
+    base64 PNG 는 1MB 프레임 한계를 넘으므로 delta 로 청크 분할 전송하고, done=True 가 마지막이다
+    (ChunkFrame 과 동일 패턴). broadcast_id 로 한 이미지를 묶는다. prompt 는 캡션(있으면).
+    """
+
+    broadcast_id: str
+    delta: str = ""
+    done: bool = False
+    prompt: str = ""
+
+    @property
+    def type(self) -> str:
+        return FrameType.IMAGE_BROADCAST
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": FrameType.IMAGE_BROADCAST,
+            "broadcastId": self.broadcast_id,
+            "delta": self.delta,
+            "done": self.done,
+            "prompt": self.prompt,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "ImageBroadcastFrame":
+        return cls(
+            broadcast_id=str(_require(d, "broadcastId", FrameType.IMAGE_BROADCAST)),
+            delta=str(d.get("delta", "")),
+            done=bool(d.get("done", False)),
+            prompt=str(d.get("prompt", "")),
+        )
+
+
 Frame = (
     AuthFrame
     | AuthOkFrame
@@ -425,6 +462,7 @@ Frame = (
     | CancelFrame
     | ProviderHelloFrame
     | ProviderStatusFrame
+    | ImageBroadcastFrame
 )
 
 _FROM_DICT: Final[dict[str, Any]] = {
@@ -440,6 +478,7 @@ _FROM_DICT: Final[dict[str, Any]] = {
     FrameType.CANCEL: CancelFrame.from_dict,
     FrameType.PROVIDER_HELLO: ProviderHelloFrame.from_dict,
     FrameType.PROVIDER_STATUS: ProviderStatusFrame.from_dict,
+    FrameType.IMAGE_BROADCAST: ImageBroadcastFrame.from_dict,
 }
 
 

@@ -15,7 +15,8 @@
     "PONG": "pong",
     "CANCEL": "cancel",
     "PROVIDER_HELLO": "provider_hello",
-    "PROVIDER_STATUS": "provider_status"
+    "PROVIDER_STATUS": "provider_status",
+    "IMAGE_BROADCAST": "image_broadcast"
   },
   "errorCodes": {
     "OFFLINE": "OFFLINE",

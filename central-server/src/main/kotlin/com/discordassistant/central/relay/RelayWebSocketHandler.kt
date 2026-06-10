@@ -39,6 +39,9 @@ class RelayWebSocketHandler(
     private val durableIssuer: com.discordassistant.central.provider.application.DurableTokenIssuer? = null,
     // 봇이 속한 길드 목록(이름 조회). auth_ok 에 guildName 을 담아 에이전트의 '이름 미상' 수동 라벨링을 없앤다.
     private val botGuilds: com.discordassistant.central.platform.discord.BotGuildLister? = null,
+    // 전문가 층: 길드별 포워드 채널 조회(정책 소유) + 채널 게시(JDA). 둘 다 있을 때만 ComfyUI 웹 생성물을 포워드.
+    private val forwardPolicy: com.discordassistant.central.guild.application.PolicyService? = null,
+    private val imagePoster: com.discordassistant.central.platform.discord.DiscordImagePoster? = null,
 ) : TextWebSocketHandler() {
     private val log = LoggerFactory.getLogger(RelayWebSocketHandler::class.java)
 
@@ -102,6 +105,7 @@ class RelayWebSocketHandler(
                 guildId = binding.guildId,
                 requestTimeoutSeconds = requestTimeout,
                 onHello = ::syncProviderHello,
+                onImageBroadcast = ::forwardExpertImage,
             )
         registry.register(ps)
         authed[session.id] = ps
@@ -145,6 +149,28 @@ class RelayWebSocketHandler(
             markProviderOffline(it)
             registry.unregister(it)
         }
+    }
+
+    /**
+     * 전문가 층: 에이전트가 보낸 ComfyUI 웹 생성 이미지를 **길드 지정 채널**에 포워드한다.
+     * 채널은 정책(expertForwardChannelId)으로 결정하므로 에이전트가 임의 채널을 지정할 수 없다(보안 화이트리스트).
+     * 채널 미설정이거나 봇 미연결이면 조용히 무시(이중 옵트인 — 에이전트 broadcast ON + 관리자 채널 설정).
+     *
+     * 콘텐츠 안전(이미지 NSFW/미성년) 스크리닝은 여기서 하지 않는다 — 이미지 분류기가 없고(/imagine 등
+     * 모든 이미지 경로가 동일), 이 흐름은 **프로바이더 소유자가 자기 ComfyUI 에서 만든 이미지를 자기 서버의
+     * 관리자가 지정한 채널로** 보내는 것이라(이중 옵트인) 소유자/관리자 책임 영역이다. 텍스트와 달리 이미지
+     * 바이트 검사는 별도 모더레이션 서비스가 필요하므로, 여기에 무력한 가짜 체크를 넣지 않는다(후속: 이미지
+     * 모더레이션 도입 시 이 지점에 적용).
+     */
+    private fun forwardExpertImage(
+        guildId: Long?,
+        png: ByteArray,
+        caption: String,
+    ) {
+        val gid = guildId ?: return
+        val channelId = forwardPolicy?.expertForwardChannelId(gid) ?: return
+        val text = caption.ifBlank { "🖼️ ComfyUI 에서 생성된 이미지" }
+        imagePoster?.postImage(channelId, png, text)
     }
 
     private fun syncProviderHello(

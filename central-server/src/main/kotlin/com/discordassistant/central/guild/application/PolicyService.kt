@@ -86,6 +86,7 @@ class PolicyService(
         val language: String,
         val welcomeMessage: String?,
         val defaultDailyLimit: Int?, // 유저별 일일 한도 길드 기본값. null=하드코딩 base, 0=무제한
+        val expertForwardChannelId: Long?, // 전문가 층: ComfyUI 웹 생성물 포워드 채널. null=미설정(포워드 안 함)
     )
 
     private fun <T> read(
@@ -116,10 +117,26 @@ class PolicyService(
     private fun loadGuildSettings(guildId: Long): GuildSettings =
         guilds
             .findById(guildId)
-            .map { GuildSettings(it.autoApprove, it.defaultModel, it.language, it.welcomeMessage, it.defaultDailyLimit) }
+            .map {
+                GuildSettings(
+                    it.autoApprove,
+                    it.defaultModel,
+                    it.language,
+                    it.welcomeMessage,
+                    it.defaultDailyLimit,
+                    it.expertForwardChannelId,
+                )
+            }
             // 설정 안 한 길드의 기본값: 자동 승인 ON(유입 마찰 최소화). 관리자가 /서버기본값·설정으로 끌 수 있음.
             .orElse(
-                GuildSettings(autoApprove = true, defaultModel = null, language = "ko", welcomeMessage = null, defaultDailyLimit = null),
+                GuildSettings(
+                    autoApprove = true,
+                    defaultModel = null,
+                    language = "ko",
+                    welcomeMessage = null,
+                    defaultDailyLimit = null,
+                    expertForwardChannelId = null,
+                ),
             )
 
     private fun cachedChannelIds(guildId: Long): List<Long> = read(channelCache, guildId, ::loadChannelIds)
@@ -330,6 +347,24 @@ class PolicyService(
     /** 길드 환영 메시지(미설정 시 null). */
     @Transactional(readOnly = true)
     fun guildWelcomeMessage(guildId: Long): String? = cachedGuildSettings(guildId).welcomeMessage
+
+    /** 전문가 층: ComfyUI 웹 생성물을 포워드할 채널 설정(null=해제). */
+    @Transactional
+    fun setExpertForwardChannel(
+        guildId: Long,
+        channelId: Long?,
+        adminId: Long,
+    ) {
+        val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
+        g.expertForwardChannelId = channelId
+        guilds.save(g)
+        audit.record("set_expert_forward_channel", "admin:$adminId", "guild:$guildId", "channel:${channelId ?: "none"}")
+        evict(guildId)
+    }
+
+    /** 전문가 층 포워드 채널(미설정 시 null → 포워드 안 함). */
+    @Transactional(readOnly = true)
+    fun expertForwardChannelId(guildId: Long): Long? = cachedGuildSettings(guildId).expertForwardChannelId
 
     @Transactional
     fun cleanupChannel(

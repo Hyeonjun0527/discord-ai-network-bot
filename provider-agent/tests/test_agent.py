@@ -88,6 +88,26 @@ async def test_handle_infer_streaming_emits_chunks():
 
 
 @pytest.mark.asyncio
+async def test_broadcast_image_chunks_to_authed_conns():
+    """전문가 층: 유저 직접 생성 이미지를 인증 연결에 청크 분할 ImageBroadcastFrame 으로 보낸다."""
+    from provider_agent.protocol import ImageBroadcastFrame
+
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
+    conn = FakeConn(guild_id=111)
+    async with agent._entries_lock:
+        agent._entries.append({"conn": conn, "guild_name": "g"})
+    b64 = "A" * 2_500_000  # IMAGE_CHUNK_CHARS 보다 커서 여러 청크
+    await agent._broadcast_image(b64)
+    frames = [f for f in conn.sent if isinstance(f, ImageBroadcastFrame)]
+    assert len(frames) >= 2  # 최소 1개 데이터 청크 + done
+    assert frames[-1].done is True and frames[-1].delta == ""
+    # 모든 청크가 같은 broadcast_id 로 묶임
+    assert len({f.broadcast_id for f in frames}) == 1
+    # 데이터 청크를 합치면 원본 base64
+    assert "".join(f.delta for f in frames) == b64
+
+
+@pytest.mark.asyncio
 async def test_handle_image_emits_progress_then_data():
     """이미지 생성: ComfyUI /ws 실시간 진행률을 on_progress 콜백으로 받아 progress 청크로 흘리고,
     완료 시 b64 데이터 청크 + done 을 보낸다(번역은 Gemini 없으면 원문 폴백 — 외부 호출 없음)."""

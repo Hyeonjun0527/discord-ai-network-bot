@@ -38,6 +38,16 @@ def test_camelcase_wire_keys_match_kotlin():
         "busy": True,
     }
     assert json.loads(p.dumps_frame(p.PongFrame())) == {"type": "pong"}
+    # 전문가 층 이미지 브로드캐스트(camelCase + round-trip)
+    f = p.ImageBroadcastFrame("b1", delta="aGk=", done=True, prompt="고양이")
+    assert json.loads(p.dumps_frame(f)) == {
+        "type": "image_broadcast",
+        "broadcastId": "b1",
+        "delta": "aGk=",
+        "done": True,
+        "prompt": "고양이",
+    }
+    assert p.loads_frame(p.dumps_frame(f)) == f  # round-trip 동치
 
 
 def test_parse_server_frames():
@@ -69,6 +79,7 @@ def test_round_trip_all_frames():
         p.CancelFrame(request_id="r"),
         p.ProviderHelloFrame(models=["m"], max_concurrency=1, remaining_daily_requests=5),
         p.ProviderStatusFrame(load="idle"),
+        p.ImageBroadcastFrame("b1", delta="aGk=", done=True, prompt="고양이"),
     ]
     for f in frames:
         assert p.loads_frame(p.dumps_frame(f)) == f

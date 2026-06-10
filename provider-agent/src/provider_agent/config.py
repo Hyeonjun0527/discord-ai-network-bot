@@ -37,6 +37,7 @@ class AgentConfig:
     gemini_api_key: str = ""  # 클라우드 Gemini 백엔드 키(관리자 1개로 서버 전체 무료 제공). 비면 미사용. central 엔 안 올림
     gemini_models: tuple[str, ...] = ()  # 광고할 Gemini 모델(키 있을 때 기본 gemini-2.5-flash-lite)
     comfy_url: str = ""  # 로컬 ComfyUI 주소(비면 앱 관리 ComfyUI localhost:8188). 외부는 명시 입력
+    comfy_broadcast: bool = False  # 전문가 층: ComfyUI 웹에서 직접 생성한 이미지를 길드 지정 채널로 자동 포워드(opt-in)
     hf_token: str = ""  # HuggingFace 토큰(gated/비공개 모델 다운로드용). 비면 public 모델만. 이 PC 에만 저장
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
     service: bool = False  # 헤드리스 자동시작 모드(--service): launchd·업데이터 재실행이 창 없이 무인 구동
@@ -110,6 +111,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--allow-unlimited", action="store_true", help="일일 한도 무제한(0)을 명시적으로 허용(위험)")
     p.add_argument("--allow-remote-ollama", action="store_true", help="원격 Ollama 주소 허용(기본 localhost 전용, 위험 확인 옵션)")
     p.add_argument("--enable-image", action="store_true", help="로컬 Stable Diffusion 이미지 생성 제공(opt-in)")
+    p.add_argument(
+        "--comfy-broadcast",
+        action="store_true",
+        help="전문가 층: ComfyUI 웹에서 직접 생성한 이미지를 길드 지정 채널로 자동 포워드(opt-in)",
+    )
     p.add_argument("--run-on-battery", action="store_true", help="배터리(방전) 중에도 처리 계속(기본은 자동 pause)")
     p.add_argument("--request-timeout", type=float, help="요청당 타임아웃 초 (기본 120)")
     p.add_argument("--heartbeat", type=float, dest="heartbeat_seconds", help="heartbeat 주기 초 (기본 30)")
@@ -169,6 +175,8 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
     # 로컬에서 직접 띄우는 것이므로, 주소는 오직 per-user 저장 설정(앱 UI 입력)에서만 온다. 비면 앱이
     # 관리하는 로컬 ComfyUI(localhost:8188). 환경변수(프로젝트 env)로 외부 주소를 주입하지 않는다.
     comfy_url = str(saved.get("comfy_url") or "").rstrip("/")
+    # 전문가 층 opt-in: 소유자가 ComfyUI 웹 생성물을 길드 지정 채널로 자동 포워드하도록 켠다(기본 꺼짐 — 프라이버시).
+    comfy_broadcast = bool(getattr(args, "comfy_broadcast", False)) or bool(saved.get("comfy_broadcast"))
     hf_token = (_env("HF_TOKEN") or _env("HUGGING_FACE_HUB_TOKEN") or str(saved.get("hf_token") or "")).strip()
 
     # 일일 한도: 기본 DEFAULT_DAILY_LIMIT. 0(무제한)은 --allow-unlimited 가 있을 때만 허용.
@@ -211,6 +219,7 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         gemini_api_key=gemini_api_key,
         gemini_models=gemini_models,
         comfy_url=comfy_url,
+        comfy_broadcast=comfy_broadcast,
         hf_token=hf_token,
         # --service(헤드리스 자동시작)는 동의 프롬프트를 띄울 수 없으므로 자동 승인(--yes)을 포함한다.
         assume_yes=bool(args.yes) or bool(args.service),

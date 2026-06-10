@@ -104,6 +104,18 @@ interface BotGuildLister {
 }
 
 /**
+ * 좁은 아웃바운드 포트(전문가 층): 채널 ID 로 이미지를 게시한다. relay(ProviderSession)→central→이 포트로
+ * 위임해 ComfyUI 웹 생성물을 길드 지정 채널에 올린다. JDA 미연결이면 false(무시).
+ */
+interface DiscordImagePoster {
+    fun postImage(
+        channelId: Long,
+        png: ByteArray,
+        caption: String,
+    ): Boolean
+}
+
+/**
  * Discord(JDA) 부트스트랩 + 슬래시 명령 등록/디스패치 (K-차수 13).
  * central.discord.enabled=true 이고 토큰이 있을 때만 연결한다(테스트/CI 는 비활성).
  */
@@ -126,9 +138,31 @@ class DiscordBot(
     @param:Value("\${central.discord.message-content-intent-enabled:true}") private val messageContentIntentEnabled: Boolean,
     @param:Value("\${central.discord.fallback-without-message-content-on-4014:true}") private val fallbackWithoutMessageContentOn4014:
         Boolean,
-) : BotGuildLister {
+) : BotGuildLister,
+    DiscordImagePoster {
     private val log = LoggerFactory.getLogger(DiscordBot::class.java)
     private var jda: JDA? = null
+
+    /** 전문가 층: 채널 ID 로 PNG 를 게시(비-이벤트 컨텍스트). JDA 미연결/채널 없음이면 false. */
+    override fun postImage(
+        channelId: Long,
+        png: ByteArray,
+        caption: String,
+    ): Boolean {
+        val channel = jda?.getTextChannelById(channelId) ?: return false
+        return try {
+            channel
+                .sendMessage(caption.take(2000))
+                .setFiles(
+                    net.dv8tion.jda.api.utils.FileUpload
+                        .fromData(png, "comfyui.png"),
+                ).queue({}, { e -> log.warn("전문가 이미지 게시 실패: channel={} {}", channelId, e.message) })
+            true
+        } catch (e: Exception) {
+            log.warn("전문가 이미지 게시 예외: channel={} {}", channelId, e.message)
+            false
+        }
+    }
 
     /** 봇이 들어가 있는 길드 id 집합(JDA 미연결/비활성이면 빈 집합). */
     override fun botGuildIds(): Set<Long> = jda?.guilds?.map { it.idLong }?.toSet() ?: emptySet()
@@ -1035,6 +1069,7 @@ class DiscordBot(
                     )
                 "llm-allow-channel" -> commands.allowChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
                 "llm-deny-channel" -> commands.denyChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
+                "forward-channel" -> commands.setForwardChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
                 "llm-role-policy" ->
                     commands.setRolePolicy(
                         ctx,

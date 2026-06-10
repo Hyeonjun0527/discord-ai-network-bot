@@ -22,6 +22,7 @@
       "autoUpdate",
       "autostart",
       "background",
+      "comfyBroadcast",
       "comfyUrl",
       "enableImage",
       "geminiConfigured",

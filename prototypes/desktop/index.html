@@ -1659,6 +1659,7 @@
       { key: 'background', name: '백그라운드 상주', desc: '창을 닫아도 트레이에서 계속 제공해요.' },
       { key: 'autoConnect', name: '자동 연결', desc: '시작하면 승인된 서버에 자동으로 연결해요.' },
       { key: 'enableImage', name: '이미지 요청 받기', desc: 'ComfyUI 로 이미지 생성 요청을 받아요.' },
+      { key: 'comfyBroadcast', name: 'ComfyUI 웹 생성물 자동 전송', desc: 'ComfyUI 웹에서 직접 만든 이미지를 서버 관리자가 지정한 채널(/그림채널)로 자동 전송해요. 로컬 ComfyUI 전용.' },
     ];
     const sw = (key, on) => '<button class="switch ' + (on ? 'on' : '') + '" data-toggle="' + key + '" role="switch" aria-checked="' + !!on + '" aria-label="' + key + '"></button>';
     const row = (name, desc, right) => '<div class="set-row"><div class="sr-body"><div class="sr-name">' + name + '</div>' +

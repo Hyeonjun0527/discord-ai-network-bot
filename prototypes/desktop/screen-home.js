@@ -1,6 +1,7 @@
 // NEXA 데스크톱 — screen-home.js (index.html 에서 분리, SoC/SRP). 동작 보존 verbatim.
     import { api } from './adapter.js';
     import { presentServerState, presentServerMeta, presentRole } from './presenter.js';
+    import { t, onLangChange } from './i18n.js';
 
     // 아바타 틴트(브랜드 hue 순환 — 디자인 언어: 색은 토큰에서만)
     const TINT = ['--c-violet', '--c-blue', '--c-cyan', '--c-purple'];
@@ -14,12 +15,14 @@
     const list = document.getElementById('srvList');
     const goServers = () => { const b = document.querySelector('.nav-item[data-view="servers"]'); if (b) b.click(); };
 
+    let _servers = [];
     function render(servers) {
+      _servers = servers;
       if (!servers.length) {
         // 빈틈: 연결된 서버 0개(온보딩 직후·전부 제거). 서버 추가 유도.
-        list.innerHTML = '<div class="empty-card"><b>아직 연결된 서버가 없어요</b>' +
-          '<p>AI 를 제공하려면 Discord 서버에 연결하세요.</p>' +
-          '<button class="btn btn--md btn--primary" id="srvAddEmpty">+ 서버 추가</button></div>';
+        list.innerHTML = '<div class="empty-card"><b>' + t('homeEmptyTitle') + '</b>' +
+          '<p>' + t('homeEmptyDescription') + '</p>' +
+          '<button class="btn btn--md btn--primary" id="srvAddEmpty">' + t('homeAddServerButton') + '</button></div>';
         const add = document.getElementById('srvAddEmpty');
         if (add) add.addEventListener('click', () => { if (window.enterServerAdd) window.enterServerAdd(); });
         return;
@@ -45,6 +48,7 @@
 
     const servers = await api.getServers();
     render(servers);
+    onLangChange(() => render(_servers));
     document.getElementById('srvAll').addEventListener('click', goServers);
     // 실 앱: 홈의 '연결된 서버'도 주기적으로 자동 갱신(연결·제공 모델 수 변화 즉시 반영).
     if (window.__SESSION_KEY) {

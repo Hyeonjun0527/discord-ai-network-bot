@@ -1,6 +1,7 @@
 // NEXA 데스크톱 — screen-logs.js (index.html 에서 분리, SoC/SRP). 동작 보존 verbatim.
     import { api } from './adapter.js';
     import { toast } from './toast.js';
+    import { t, onLangChange } from './i18n.js';
 
     const view = document.querySelector('.view[data-view="logs"]');
     const logView = document.getElementById('logView');
@@ -8,7 +9,7 @@
 
     const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
     // 출처 분류 — 백엔드 토큰(SD/Ollama/Relay/Agent)을 우선, 없으면(mock/구버전) 메시지 키워드로 추론.
-    const SRC_LABEL = { agent: '에이전트', ollama: 'Ollama', sd: 'SD', relay: '연결' };
+    const srcLabel = (src) => ({ agent: t('logsSourceAgent'), ollama: 'Ollama', sd: 'SD', relay: t('logsSourceRelay') }[src] || src);
     function inferSource(msg) {
       const m = (msg || ''), low = m.toLowerCase();
       if (low.includes('comfyui') || low.includes('stable diffusion') || low.includes('sd(') || low.includes('/imagine') || m.includes('이미지')) return 'sd';
@@ -44,11 +45,11 @@
       const rows = _raw.map(parse).filter((l) =>
         (_filter === 'all' || l.level === _filter || (_filter === 'info' && l.level === 'debug'))
         && (_source === 'all' || l.source === _source));
-      if (!rows.length) { logView.innerHTML = '<div class="log-empty">표시할 로그가 없어요.</div>'; return; }
+      if (!rows.length) { logView.innerHTML = '<div class="log-empty">' + t('logsEmpty') + '</div>'; return; }
       const atBottom = logView.scrollHeight - logView.scrollTop - logView.clientHeight < 50;
       logView.innerHTML = rows.map((l) =>
         '<div class="log-line ' + l.level + '"><span class="lt">' + l.time + '</span><span class="ll">' + l.level.toUpperCase() + '</span>' +
-        '<span class="lsrc lsrc-' + l.source + '">' + SRC_LABEL[l.source] + '</span>' +
+        '<span class="lsrc lsrc-' + l.source + '">' + srcLabel(l.source) + '</span>' +
         '<span class="lm">' + esc(l.msg) + '</span></div>').join('');
       if (atBottom) logView.scrollTop = logView.scrollHeight;
     }
@@ -56,8 +57,8 @@
 
     document.getElementById('logRefresh').addEventListener('click', load);
     document.getElementById('logCopy').addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(_raw.join('\n')); toast('로그를 복사했어요', { type: 'ok' }); }
-      catch { toast('복사에 실패했어요', { type: 'warn' }); }
+      try { await navigator.clipboard.writeText(_raw.join('\n')); toast(t('logsCopiedSuccess'), { type: 'ok' }); }
+      catch { toast(t('logsCopyFailed'), { type: 'warn' }); }
     });
     const autoSw = document.getElementById('logAutoSw');
     autoSw.addEventListener('click', () => { _auto = !_auto; autoSw.classList.toggle('on', _auto); autoSw.setAttribute('aria-checked', String(_auto)); });
@@ -77,4 +78,5 @@
     const isActive = () => view.classList.contains('active');
     document.querySelector('.nav-item[data-view="logs"]').addEventListener('click', load);
     setInterval(() => { if (isActive() && _auto) load(); }, 2500);
+    onLangChange(() => render());
     if (isActive()) load();

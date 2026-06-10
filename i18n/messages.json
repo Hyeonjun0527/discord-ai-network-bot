@@ -1,7 +1,11 @@
 {
   "_meta": {
     "note": "문구(copy) i18n 의 단일 진실 원천(SSOT) — central-server(봇)·웹·데스크톱 앱이 공유한다. scripts/gen_i18n.py 가 이 파일에서 모듈별 생성본을 만든다(생성본은 직접 편집 금지). 섹션: bot(런타임 메시지)·web(설치 랜딩)·agent(데스크톱 앱). 키마다 ko/en/ja 가 모두 있어야 한다(가드: scripts/check_i18n.py / gen_i18n.py --check). 변경 후 `make i18n-gen` 으로 생성본 갱신.",
-    "locales": ["ko", "en", "ja"],
+    "locales": [
+      "ko",
+      "en",
+      "ja"
+    ],
     "default": "ko"
   },
   "bot": {
@@ -27,14 +31,46 @@
     }
   },
   "web": {
-    "navHome": { "ko": "홈", "en": "Home", "ja": "ホーム" },
-    "navFeatures": { "ko": "기능", "en": "Features", "ja": "機能" },
-    "navHowto": { "ko": "사용 방법", "en": "How it works", "ja": "使い方" },
-    "navPresets": { "ko": "프리셋", "en": "Presets", "ja": "プリセット" },
-    "navDashboard": { "ko": "대시보드", "en": "Dashboard", "ja": "ダッシュボード" },
-    "navSource": { "ko": "소스 코드", "en": "Source", "ja": "ソースコード" },
-    "ctaAddDiscord": { "ko": "Discord 추가", "en": "Add to Discord", "ja": "Discordに追加" },
-    "heroEyebrow": { "ko": "AI 멤버 연결의 새로운 표준", "en": "A new standard for AI members", "ja": "AIメンバー連携の新基準" },
+    "navHome": {
+      "ko": "홈",
+      "en": "Home",
+      "ja": "ホーム"
+    },
+    "navFeatures": {
+      "ko": "기능",
+      "en": "Features",
+      "ja": "機能"
+    },
+    "navHowto": {
+      "ko": "사용 방법",
+      "en": "How it works",
+      "ja": "使い方"
+    },
+    "navPresets": {
+      "ko": "프리셋",
+      "en": "Presets",
+      "ja": "プリセット"
+    },
+    "navDashboard": {
+      "ko": "대시보드",
+      "en": "Dashboard",
+      "ja": "ダッシュボード"
+    },
+    "navSource": {
+      "ko": "소스 코드",
+      "en": "Source",
+      "ja": "ソースコード"
+    },
+    "ctaAddDiscord": {
+      "ko": "Discord 추가",
+      "en": "Add to Discord",
+      "ja": "Discordに追加"
+    },
+    "heroEyebrow": {
+      "ko": "AI 멤버 연결의 새로운 표준",
+      "en": "A new standard for AI members",
+      "ja": "AIメンバー連携の新基準"
+    },
     "heroHeadline": {
       "ko": "당신의<br>디스코드 서버에<br>AI 멤버를 <span class=\"accent\">초대하세요.</span>",
       "en": "Connect an AI member<br>to your<br><span class=\"accent\">Discord server.</span>",
@@ -45,84 +81,196 @@
       "en": "Invite an intelligent AI member that chats, runs commands,<br>and helps manage your server — in just a few minutes.",
       "ja": "会話し、コマンドを実行し、サーバーを管理する<br>インテリジェントなAIメンバーを数分で招待できます。"
     },
-    "heroCtaPrimary": { "ko": "디스코드에 봇 추가", "en": "Add the bot to Discord", "ja": "Discordにボットを追加" },
-    "heroCtaSecondary": { "ko": "작동 방식 알아보기", "en": "See how it works", "ja": "仕組みを見る" },
-    "heroChip1": { "ko": "설치 1분 완성", "en": "1-minute setup", "ja": "設置1分で完了" },
-    "heroChip2": { "ko": "안정적 & 안전한 연결", "en": "Stable & secure", "ja": "安定 & 安全な接続" },
-    "heroChip3": { "ko": "지속적 기능 업데이트", "en": "Continuous updates", "ja": "継続的な機能更新" },
-    "featEyebrow": { "ko": "간단한 3단계로 시작", "en": "Get started in 3 steps", "ja": "簡単3ステップで開始" },
-    "featHeading": { "ko": "빠르고 간편한 설정", "en": "Fast and simple setup", "ja": "速くて簡単なセットアップ" },
-    "feat1Title": { "ko": "봇 초대하기", "en": "Invite the bot", "ja": "ボットを招待" },
+    "heroCtaPrimary": {
+      "ko": "디스코드에 봇 추가",
+      "en": "Add the bot to Discord",
+      "ja": "Discordにボットを追加"
+    },
+    "heroCtaSecondary": {
+      "ko": "작동 방식 알아보기",
+      "en": "See how it works",
+      "ja": "仕組みを見る"
+    },
+    "heroChip1": {
+      "ko": "설치 1분 완성",
+      "en": "1-minute setup",
+      "ja": "設置1分で完了"
+    },
+    "heroChip2": {
+      "ko": "안정적 & 안전한 연결",
+      "en": "Stable & secure",
+      "ja": "安定 & 安全な接続"
+    },
+    "heroChip3": {
+      "ko": "지속적 기능 업데이트",
+      "en": "Continuous updates",
+      "ja": "継続的な機能更新"
+    },
+    "featEyebrow": {
+      "ko": "간단한 3단계로 시작",
+      "en": "Get started in 3 steps",
+      "ja": "簡単3ステップで開始"
+    },
+    "featHeading": {
+      "ko": "빠르고 간편한 설정",
+      "en": "Fast and simple setup",
+      "ja": "速くて簡単なセットアップ"
+    },
+    "feat1Title": {
+      "ko": "봇 초대하기",
+      "en": "Invite the bot",
+      "ja": "ボットを招待"
+    },
     "feat1Text": {
       "ko": "Discord 서버에 봇을 초대하고 권한을 설정하세요.",
       "en": "Invite the bot to your Discord server and set its permissions.",
       "ja": "Discordサーバーにボットを招待し、権限を設定します。"
     },
-    "feat2Title": { "ko": "명령 실행하기", "en": "Run commands", "ja": "コマンドを実行" },
+    "feat2Title": {
+      "ko": "명령 실행하기",
+      "en": "Run commands",
+      "ja": "コマンドを実行"
+    },
     "feat2Text": {
       "ko": "다양한 명령어로 AI 멤버를 활용해 보세요.",
       "en": "Put the AI member to work with a variety of commands.",
       "ja": "さまざまなコマンドでAIメンバーを活用しましょう。"
     },
-    "feat3Title": { "ko": "서버 자동화", "en": "Automate your server", "ja": "サーバーを自動化" },
+    "feat3Title": {
+      "ko": "서버 자동화",
+      "en": "Automate your server",
+      "ja": "サーバーを自動化"
+    },
     "feat3Text": {
       "ko": "반복적인 작업은 AI에게 맡기고, 커뮤니티에 집중하세요.",
       "en": "Hand repetitive tasks to the AI and focus on your community.",
       "ja": "繰り返し作業はAIに任せ、コミュニティに集中しましょう。"
     },
-    "statUptimeLabel": { "ko": "가동률 보장", "en": "uptime", "ja": "稼働率保証" },
-    "statServersLabel": { "ko": "활성 서버", "en": "active servers", "ja": "アクティブサーバー" },
-    "statCommandsLabel": { "ko": "명령 실행", "en": "commands run", "ja": "コマンド実行" },
-    "statSecurityValue": { "ko": "보안 우선", "en": "Security-first", "ja": "セキュリティ優先" },
-    "statSecurityLabel": { "ko": "데이터 보호 설계", "en": "data protection by design", "ja": "データ保護設計" },
-    "step1Title": { "ko": "토큰 받기", "en": "Get a token", "ja": "トークンを取得" },
+    "statUptimeLabel": {
+      "ko": "가동률 보장",
+      "en": "uptime",
+      "ja": "稼働率保証"
+    },
+    "statServersLabel": {
+      "ko": "활성 서버",
+      "en": "active servers",
+      "ja": "アクティブサーバー"
+    },
+    "statCommandsLabel": {
+      "ko": "명령 실행",
+      "en": "commands run",
+      "ja": "コマンド実行"
+    },
+    "statSecurityValue": {
+      "ko": "보안 우선",
+      "en": "Security-first",
+      "ja": "セキュリティ優先"
+    },
+    "statSecurityLabel": {
+      "ko": "데이터 보호 설계",
+      "en": "data protection by design",
+      "ja": "データ保護設計"
+    },
+    "step1Title": {
+      "ko": "토큰 받기",
+      "en": "Get a token",
+      "ja": "トークンを取得"
+    },
     "step1Text": {
       "ko": "디스코드에서 <code>/프로바이더참여</code> → 내 OS 선택 → 10분·1회용 토큰 발급. (재사용 토큰은 첫 연결 시 자동 저장)",
       "en": "In Discord run <code>/provider-join</code> → pick your OS → get a 10-min, single-use token. (A reusable token is saved automatically on first connect.)",
       "ja": "Discordで <code>/プロバイダー参加</code> → OSを選択 → 10分・1回限りのトークンを発行。（再利用トークンは初回接続時に自動保存）"
     },
-    "step2Title": { "ko": "앱 설치", "en": "Install the app", "ja": "アプリをインストール" },
+    "step2Title": {
+      "ko": "앱 설치",
+      "en": "Install the app",
+      "ja": "アプリをインストール"
+    },
     "step2Text": {
       "ko": "아래 OS 탭에서 패키지 매니저로 데스크톱 앱(NEXA)을 설치하세요. <b>해시 검증</b>이 자동으로 됩니다.",
       "en": "Use the package manager in the OS tab below to install the desktop app (NEXA). <b>Hash verification</b> is automatic.",
       "ja": "下のOSタブのパッケージマネージャーでデスクトップアプリ（NEXA）をインストール。<b>ハッシュ検証</b>は自動です。"
     },
-    "step3Title": { "ko": "연결 확인", "en": "Confirm connection", "ja": "接続を確認" },
+    "step3Title": {
+      "ko": "연결 확인",
+      "en": "Confirm connection",
+      "ja": "接続を確認"
+    },
     "step3Text": {
       "ko": "설치되면 디스코드 <code>/내상태</code> 로 온라인 상태를 확인하세요.",
       "en": "Once installed, check your online status with <code>/provider-status</code> in Discord.",
       "ja": "インストール後、Discordの <code>/自分の状態</code> でオンライン状態を確認してください。"
     },
-    "installLabel": { "ko": "설치 <span>— 내 컴퓨터를 고르세요</span>", "en": "Install <span>— pick your computer</span>", "ja": "インストール <span>— お使いのPCを選択</span>" },
-    "beatReadyEyebrow": { "ko": "READY · 중앙 네트워크 온라인", "en": "READY · Central network online", "ja": "READY · 中央ネットワーク オンライン" },
+    "installLabel": {
+      "ko": "설치 <span>— 내 컴퓨터를 고르세요</span>",
+      "en": "Install <span>— pick your computer</span>",
+      "ja": "インストール <span>— お使いのPCを選択</span>"
+    },
+    "beatReadyEyebrow": {
+      "ko": "READY · 중앙 네트워크 온라인",
+      "en": "READY · Central network online",
+      "ja": "READY · 中央ネットワーク オンライン"
+    },
     "beatConnectHeadline": {
       "ko": "지금 <span class=\"accent\">AI 멤버</span>를<br>연결하세요",
       "en": "Connect an <span class=\"accent\">AI member</span><br>right now",
       "ja": "今すぐ<span class=\"accent\">AIメンバー</span>を<br>つなげましょう"
     },
-    "installTitle": { "ko": "터미널 여는 법", "en": "How to open a terminal", "ja": "ターミナルの開き方" },
-    "btnCopy": { "ko": "복사", "en": "Copy", "ja": "コピー" },
-    "btnCopied": { "ko": "복사됨 ✓", "en": "Copied ✓", "ja": "コピー済み ✓" },
-    "badgeTerminalInstall": { "ko": "터미널로 설치", "en": "Install via terminal", "ja": "ターミナルでインストール" },
-    "alertSourceTitle": { "ko": "출처 검증 · 일반 사용자 권한", "en": "Verified source · standard privileges", "ja": "出所検証 · 一般ユーザー権限" },
+    "installTitle": {
+      "ko": "터미널 여는 법",
+      "en": "How to open a terminal",
+      "ja": "ターミナルの開き方"
+    },
+    "btnCopy": {
+      "ko": "복사",
+      "en": "Copy",
+      "ja": "コピー"
+    },
+    "btnCopied": {
+      "ko": "복사됨 ✓",
+      "en": "Copied ✓",
+      "ja": "コピー済み ✓"
+    },
+    "badgeTerminalInstall": {
+      "ko": "터미널로 설치",
+      "en": "Install via terminal",
+      "ja": "ターミナルでインストール"
+    },
+    "alertSourceTitle": {
+      "ko": "출처 검증 · 일반 사용자 권한",
+      "en": "Verified source · standard privileges",
+      "ja": "出所検証 · 一般ユーザー権限"
+    },
     "alertSourceBody": {
       "ko": "<code>brew</code>·<code>winget</code> 로 설치하면 패키지 해시가 <b>자동 검증</b>되고, 빌드 <b>attestation·SBOM</b>으로 출처를 확인할 수 있습니다. <code>sudo</code>·관리자 권한이 필요 없고, 설정·로그는 홈 디렉터리에만 저장됩니다.",
       "en": "Installing with <code>brew</code> or <code>winget</code> <b>verifies the package hash automatically</b>, and build <b>attestation · SBOM</b> let you confirm provenance. No <code>sudo</code> or admin rights needed, and settings · logs are stored only in your home directory.",
       "ja": "<code>brew</code>·<code>winget</code> でインストールするとパッケージハッシュが<b>自動検証</b>され、ビルドの <b>attestation · SBOM</b> で出所を確認できます。<code>sudo</code>·管理者権限は不要で、設定·ログはホームディレクトリにのみ保存されます。"
     },
-    "alertPrivacyTitle": { "ko": "개인정보 주의", "en": "Privacy notice", "ja": "プライバシーに関する注意" },
+    "alertPrivacyTitle": {
+      "ko": "개인정보 주의",
+      "en": "Privacy notice",
+      "ja": "プライバシーに関する注意"
+    },
     "alertPrivacyBody": {
       "ko": "<code>/질문</code> 으로 들어온 <b>다른 사용자의 질문이 당신의 PC의 로컬 AI</b>가 처리하고, 반대로 <b>당신의 질문도 다른 사용자의 PC로</b> 전송될 수 있습니다. <b>비밀번호·API 키·토큰·개인정보는 절대 입력하지 마세요.</b> 에이전트는 프롬프트 원문을 로그/파일에 저장하지 않습니다.",
       "en": "Other users' questions submitted via <code>/ask</code> <b>are processed by your PC's local AI</b>, and likewise <b>your questions may be sent to other users' PCs</b>. <b>Never enter passwords, API keys, tokens, or personal data.</b> The agent does not store raw prompts in logs or files.",
       "ja": "<code>/質問</code> で送られた<b>他のユーザーの質問をあなたのPCのローカルAI</b>が処理し、逆に<b>あなたの質問も他のユーザーのPCへ</b>送信される場合があります。<b>パスワード·APIキー·トークン·個人情報は絶対に入力しないでください。</b> エージェントはプロンプト原文をログ/ファイルに保存しません。"
     },
-    "alertDefaultsTitle": { "ko": "안전한 기본값", "en": "Safe defaults", "ja": "安全なデフォルト" },
+    "alertDefaultsTitle": {
+      "ko": "안전한 기본값",
+      "en": "Safe defaults",
+      "ja": "安全なデフォルト"
+    },
     "alertDefaultsBody": {
       "ko": "하루 처리 한도 <b>15건</b>·동시 <b>1건</b>이 기본이며, 무제한은 <code>--allow-unlimited</code> 로만 가능합니다. Ollama 는 기본 <b>localhost 전용</b>입니다.",
       "en": "Defaults are <b>15 requests/day</b> and <b>1 concurrent</b>; unlimited is possible only with <code>--allow-unlimited</code>. Ollama is <b>localhost-only</b> by default.",
       "ja": "1日の処理上限<b>15件</b>·同時<b>1件</b>が既定で、無制限は <code>--allow-unlimited</code> でのみ可能です。Ollama は既定で<b>localhost専用</b>です。"
     },
-    "alertImageTitle": { "ko": "선택 — 이미지 생성도 제공", "en": "Optional — image generation too", "ja": "オプション — 画像生成も提供" },
+    "alertImageTitle": {
+      "ko": "선택 — 이미지 생성도 제공",
+      "en": "Optional — image generation too",
+      "ja": "オプション — 画像生成も提供"
+    },
     "alertImageBody": {
       "ko": "누구나 이미지 프로바이더가 될 수 있습니다. 데스크톱 앱에서 제공하는 <b>Stable Diffusion</b> 을 설치하면, 로컬에 준비된 스테이블 디퓨전을 AI가 알아서 사용해 <code>/그림</code> 요청까지 처리합니다(GPU 권장).",
       "en": "Anyone can become an image provider. Just install the <b>Stable Diffusion</b> offered by the desktop app, and the AI automatically uses your local Stable Diffusion to handle <code>/imagine</code> requests too (GPU recommended).",
@@ -175,8 +323,16 @@
     }
   },
   "agent": {
-    "alreadyRunning": { "ko": "이미 실행 중입니다.", "en": "Already running.", "ja": "すでに実行中です。" },
-    "saveTokenFirst": { "ko": "먼저 토큰을 저장하세요.", "en": "Please save a token first.", "ja": "先にトークンを保存してください。" },
+    "alreadyRunning": {
+      "ko": "이미 실행 중입니다.",
+      "en": "Already running.",
+      "ja": "すでに実行中です。"
+    },
+    "saveTokenFirst": {
+      "ko": "먼저 토큰을 저장하세요.",
+      "en": "Please save a token first.",
+      "ja": "先にトークンを保存してください。"
+    },
     "otherInstanceConnected": {
       "ko": "이미 다른 인스턴스(백그라운드 자동 실행 등)가 연결돼 있어요. 그 인스턴스를 끄거나 ‘자동 실행’을 해제한 뒤 다시 시도하세요.",
       "en": "Another instance (e.g. background auto-run) is already connected. Stop it or turn off ‘auto-run’, then try again.",
@@ -184,52 +340,2355 @@
     }
   },
   "desktop": {
-    "navHome": { "ko": "홈", "en": "Home", "ja": "ホーム" },
-    "navModels": { "ko": "모델", "en": "Models", "ja": "モデル" },
-    "navServers": { "ko": "서버", "en": "Servers", "ja": "サーバー" },
-    "navLocal": { "ko": "로컬 실행", "en": "Local", "ja": "ローカル実行" },
-    "navLogs": { "ko": "로그", "en": "Logs", "ja": "ログ" },
-    "navSettings": { "ko": "설정", "en": "Settings", "ja": "設定" },
-    "statusProviding": { "ko": "AI 제공 중", "en": "Serving AI", "ja": "AI提供中" },
-    "legalTerms": { "ko": "약관", "en": "Terms", "ja": "利用規約" },
-    "legalPrivacy": { "ko": "개인정보", "en": "Privacy", "ja": "プライバシー" },
-    "legalPolicy": { "ko": "정책", "en": "Policy", "ja": "ポリシー" },
-    "setGroupLang": { "ko": "언어", "en": "Language", "ja": "言語" },
-    "setLangLabel": { "ko": "표시 언어", "en": "Display language", "ja": "表示言語" },
-    "setLangDesc": { "ko": "앱 화면 언어를 선택해요.", "en": "Choose the app's display language.", "ja": "アプリの表示言語を選びます。" },
-    "setGroupUpdate": { "ko": "업데이트", "en": "Updates", "ja": "アップデート" },
-    "setGroupConn": { "ko": "연결", "en": "Connection", "ja": "接続" },
-    "setVersion": { "ko": "버전", "en": "Version", "ja": "バージョン" },
-    "setAutoUpdate": { "ko": "자동 업데이트", "en": "Auto-update", "ja": "自動アップデート" },
-    "setAutoUpdateDesc": { "ko": "새 버전이 나오면 자동으로 설치해요.", "en": "Install new versions automatically.", "ja": "新しいバージョンが出たら自動でインストールします。" },
-    "toggleAutostart": { "ko": "로그인 시 자동 시작", "en": "Start on login", "ja": "ログイン時に自動起動" },
-    "toggleAutostartDesc": { "ko": "이 PC 에 로그인하면 Nexa 가 자동으로 켜져요.", "en": "Nexa starts automatically when you log in to this PC.", "ja": "このPCにログインするとNexaが自動的に起動します。" },
-    "toggleBackground": { "ko": "백그라운드 상주", "en": "Run in background", "ja": "バックグラウンド常駐" },
-    "toggleBackgroundDesc": { "ko": "창을 닫아도 트레이에서 계속 제공해요.", "en": "Keeps serving from the tray even when the window is closed.", "ja": "ウィンドウを閉じてもトレイで提供を続けます。" },
-    "toggleAutoConnect": { "ko": "자동 연결", "en": "Auto-connect", "ja": "自動接続" },
-    "toggleAutoConnectDesc": { "ko": "시작하면 승인된 서버에 자동으로 연결해요.", "en": "Connects to approved servers when it starts.", "ja": "起動時に承認済みサーバーへ自動接続します。" },
-    "toggleEnableImage": { "ko": "이미지 요청 받기", "en": "Accept image requests", "ja": "画像リクエストを受ける" },
-    "toggleEnableImageDesc": { "ko": "ComfyUI 로 이미지 생성 요청을 받아요.", "en": "Accept image generation requests via ComfyUI.", "ja": "ComfyUIで画像生成リクエストを受けます。" },
-    "toggleComfyBroadcast": { "ko": "ComfyUI 웹 생성물 자동 전송", "en": "Auto-send ComfyUI web images", "ja": "ComfyUI Web生成物の自動送信" },
-    "toggleComfyBroadcastDesc": { "ko": "ComfyUI 웹에서 직접 만든 이미지를 서버 관리자가 지정한 채널(/그림채널)로 자동 전송해요. 로컬 ComfyUI 전용.", "en": "Auto-sends images you make in the ComfyUI web UI to the channel set by the server admin (/그림채널). Local ComfyUI only.", "ja": "ComfyUI WebUIで作成した画像を、サーバー管理者が指定したチャンネル(/그림채널)へ自動送信します。ローカルComfyUI専用。" },
-    "setGroupExec": { "ko": "실행 동작", "en": "App behavior", "ja": "アプリの動作" },
-    "setGroupAccount": { "ko": "계정", "en": "Account", "ja": "アカウント" },
-    "setCentralServer": { "ko": "중앙 서버", "en": "Central server", "ja": "中央サーバー" },
-    "setCentralServerDesc": { "ko": "서버 연결 주소(보통 그대로)", "en": "Server connection URL (usually leave as is)", "ja": "サーバー接続アドレス（通常はそのまま）" },
-    "setOllamaAddr": { "ko": "Ollama 주소", "en": "Ollama URL", "ja": "Ollamaアドレス" },
-    "setOllamaAddrDesc": { "ko": "다른 포트/호스트의 Ollama 를 쓰면 여기서 바꿔요", "en": "Change this if your Ollama runs on another port/host", "ja": "別のポート/ホストのOllamaを使う場合はここで変更します" },
-    "setConnected": { "ko": "연결됨", "en": "Connected", "ja": "接続済み" },
-    "setConnectedDesc": { "ko": "서버 연결 토큰을 보유하고 있어요.", "en": "You have a server connection token.", "ja": "サーバー接続トークンを保持しています。" },
-    "setNotConnected": { "ko": "연결 안 됨", "en": "Not connected", "ja": "未接続" },
-    "setNotConnectedDesc": { "ko": "온보딩에서 Discord 에 연결하세요.", "en": "Connect to Discord in onboarding.", "ja": "オンボーディングでDiscordに接続してください。" },
-    "setLogout": { "ko": "연결 해제", "en": "Disconnect", "ja": "接続解除" },
-    "setSave": { "ko": "저장", "en": "Save", "ja": "保存" },
-    "setUpdateCheck": { "ko": "확인", "en": "Check", "ja": "確認" },
-    "setUpdateChecking": { "ko": "확인 중…", "en": "Checking…", "ja": "確認中…" },
-    "setUpdateApply": { "ko": "업데이트", "en": "Update", "ja": "アップデート" },
-    "setVerChecking": { "ko": "버전 확인 중…", "en": "Checking version…", "ja": "バージョン確認中…" },
-    "setVerCurrent": { "ko": "현재", "en": "Current", "ja": "現在" },
-    "setVerLatest": { "ko": "최신", "en": "latest", "ja": "最新" },
-    "setVerUpToDate": { "ko": "최신 상태", "en": "Up to date", "ja": "最新の状態" }
+    "navHome": {
+      "ko": "홈",
+      "en": "Home",
+      "ja": "ホーム"
+    },
+    "navModels": {
+      "ko": "모델",
+      "en": "Models",
+      "ja": "モデル"
+    },
+    "navServers": {
+      "ko": "서버",
+      "en": "Servers",
+      "ja": "サーバー"
+    },
+    "navLocal": {
+      "ko": "로컬 실행",
+      "en": "Local",
+      "ja": "ローカル実行"
+    },
+    "navLogs": {
+      "ko": "로그",
+      "en": "Logs",
+      "ja": "ログ"
+    },
+    "navSettings": {
+      "ko": "설정",
+      "en": "Settings",
+      "ja": "設定"
+    },
+    "statusProviding": {
+      "ko": "AI 제공 중",
+      "en": "Serving AI",
+      "ja": "AI提供中"
+    },
+    "legalTerms": {
+      "ko": "약관",
+      "en": "Terms",
+      "ja": "利用規約"
+    },
+    "legalPrivacy": {
+      "ko": "개인정보",
+      "en": "Privacy",
+      "ja": "プライバシー"
+    },
+    "legalPolicy": {
+      "ko": "정책",
+      "en": "Policy",
+      "ja": "ポリシー"
+    },
+    "setGroupLang": {
+      "ko": "언어",
+      "en": "Language",
+      "ja": "言語"
+    },
+    "setLangLabel": {
+      "ko": "표시 언어",
+      "en": "Display language",
+      "ja": "表示言語"
+    },
+    "setLangDesc": {
+      "ko": "앱 화면 언어를 선택해요.",
+      "en": "Choose the app's display language.",
+      "ja": "アプリの表示言語を選びます。"
+    },
+    "setGroupUpdate": {
+      "ko": "업데이트",
+      "en": "Updates",
+      "ja": "アップデート"
+    },
+    "setGroupConn": {
+      "ko": "연결",
+      "en": "Connection",
+      "ja": "接続"
+    },
+    "setVersion": {
+      "ko": "버전",
+      "en": "Version",
+      "ja": "バージョン"
+    },
+    "setAutoUpdate": {
+      "ko": "자동 업데이트",
+      "en": "Auto-update",
+      "ja": "自動アップデート"
+    },
+    "setAutoUpdateDesc": {
+      "ko": "새 버전이 나오면 자동으로 설치해요.",
+      "en": "Install new versions automatically.",
+      "ja": "新しいバージョンが出たら自動でインストールします。"
+    },
+    "toggleAutostart": {
+      "ko": "로그인 시 자동 시작",
+      "en": "Start on login",
+      "ja": "ログイン時に自動起動"
+    },
+    "toggleAutostartDesc": {
+      "ko": "이 PC 에 로그인하면 Nexa 가 자동으로 켜져요.",
+      "en": "Nexa starts automatically when you log in to this PC.",
+      "ja": "このPCにログインするとNexaが自動的に起動します。"
+    },
+    "toggleBackground": {
+      "ko": "백그라운드 상주",
+      "en": "Run in background",
+      "ja": "バックグラウンド常駐"
+    },
+    "toggleBackgroundDesc": {
+      "ko": "창을 닫아도 트레이에서 계속 제공해요.",
+      "en": "Keeps serving from the tray even when the window is closed.",
+      "ja": "ウィンドウを閉じてもトレイで提供を続けます。"
+    },
+    "toggleAutoConnect": {
+      "ko": "자동 연결",
+      "en": "Auto-connect",
+      "ja": "自動接続"
+    },
+    "toggleAutoConnectDesc": {
+      "ko": "시작하면 승인된 서버에 자동으로 연결해요.",
+      "en": "Connects to approved servers when it starts.",
+      "ja": "起動時に承認済みサーバーへ自動接続します。"
+    },
+    "toggleEnableImage": {
+      "ko": "이미지 요청 받기",
+      "en": "Accept image requests",
+      "ja": "画像リクエストを受ける"
+    },
+    "toggleEnableImageDesc": {
+      "ko": "ComfyUI 로 이미지 생성 요청을 받아요.",
+      "en": "Accept image generation requests via ComfyUI.",
+      "ja": "ComfyUIで画像生成リクエストを受けます。"
+    },
+    "toggleComfyBroadcast": {
+      "ko": "ComfyUI 웹 생성물 자동 전송",
+      "en": "Auto-send ComfyUI web images",
+      "ja": "ComfyUI Web生成物の自動送信"
+    },
+    "toggleComfyBroadcastDesc": {
+      "ko": "ComfyUI 웹에서 직접 만든 이미지를 서버 관리자가 지정한 채널(/그림채널)로 자동 전송해요. 로컬 ComfyUI 전용.",
+      "en": "Auto-sends images you make in the ComfyUI web UI to the channel set by the server admin (/그림채널). Local ComfyUI only.",
+      "ja": "ComfyUI WebUIで作成した画像を、サーバー管理者が指定したチャンネル(/그림채널)へ自動送信します。ローカルComfyUI専用。"
+    },
+    "setGroupExec": {
+      "ko": "실행 동작",
+      "en": "App behavior",
+      "ja": "アプリの動作"
+    },
+    "setGroupAccount": {
+      "ko": "계정",
+      "en": "Account",
+      "ja": "アカウント"
+    },
+    "setCentralServer": {
+      "ko": "중앙 서버",
+      "en": "Central server",
+      "ja": "中央サーバー"
+    },
+    "setCentralServerDesc": {
+      "ko": "서버 연결 주소(보통 그대로)",
+      "en": "Server connection URL (usually leave as is)",
+      "ja": "サーバー接続アドレス（通常はそのまま）"
+    },
+    "setOllamaAddr": {
+      "ko": "Ollama 주소",
+      "en": "Ollama URL",
+      "ja": "Ollamaアドレス"
+    },
+    "setOllamaAddrDesc": {
+      "ko": "다른 포트/호스트의 Ollama 를 쓰면 여기서 바꿔요",
+      "en": "Change this if your Ollama runs on another port/host",
+      "ja": "別のポート/ホストのOllamaを使う場合はここで変更します"
+    },
+    "setConnected": {
+      "ko": "연결됨",
+      "en": "Connected",
+      "ja": "接続済み"
+    },
+    "setConnectedDesc": {
+      "ko": "서버 연결 토큰을 보유하고 있어요.",
+      "en": "You have a server connection token.",
+      "ja": "サーバー接続トークンを保持しています。"
+    },
+    "setNotConnected": {
+      "ko": "연결 안 됨",
+      "en": "Not connected",
+      "ja": "未接続"
+    },
+    "setNotConnectedDesc": {
+      "ko": "온보딩에서 Discord 에 연결하세요.",
+      "en": "Connect to Discord in onboarding.",
+      "ja": "オンボーディングでDiscordに接続してください。"
+    },
+    "setLogout": {
+      "ko": "연결 해제",
+      "en": "Disconnect",
+      "ja": "接続解除"
+    },
+    "setSave": {
+      "ko": "저장",
+      "en": "Save",
+      "ja": "保存"
+    },
+    "setUpdateCheck": {
+      "ko": "확인",
+      "en": "Check",
+      "ja": "確認"
+    },
+    "setUpdateChecking": {
+      "ko": "확인 중…",
+      "en": "Checking…",
+      "ja": "確認中…"
+    },
+    "setUpdateApply": {
+      "ko": "업데이트",
+      "en": "Update",
+      "ja": "アップデート"
+    },
+    "setVerChecking": {
+      "ko": "버전 확인 중…",
+      "en": "Checking version…",
+      "ja": "バージョン確認中…"
+    },
+    "setVerCurrent": {
+      "ko": "현재",
+      "en": "Current",
+      "ja": "現在"
+    },
+    "setVerLatest": {
+      "ko": "최신",
+      "en": "latest",
+      "ja": "最新"
+    },
+    "setVerUpToDate": {
+      "ko": "최신 상태",
+      "en": "Up to date",
+      "ja": "最新の状態"
+    },
+    "homeEmptyTitle": {
+      "ko": "아직 연결된 서버가 없어요",
+      "en": "No servers connected yet",
+      "ja": "まだ接続されたサーバーがありません"
+    },
+    "homeEmptyDescription": {
+      "ko": "AI 를 제공하려면 Discord 서버에 연결하세요.",
+      "en": "Connect to a Discord server to provide AI.",
+      "ja": "AI を提供するには Discord サーバーに接続してください。"
+    },
+    "homeAddServerButton": {
+      "ko": "+ 서버 추가",
+      "en": "+ Add Server",
+      "ja": "+ サーバーを追加"
+    },
+    "logsEmpty": {
+      "ko": "표시할 로그가 없어요.",
+      "en": "No logs to display.",
+      "ja": "表示するログがありません。"
+    },
+    "logsCopiedSuccess": {
+      "ko": "로그를 복사했어요",
+      "en": "Logs copied.",
+      "ja": "ログをコピーしました"
+    },
+    "logsCopyFailed": {
+      "ko": "복사에 실패했어요",
+      "en": "Failed to copy logs.",
+      "ja": "ログのコピーに失敗しました"
+    },
+    "logsSourceAgent": {
+      "ko": "에이전트",
+      "en": "Agent",
+      "ja": "エージェント"
+    },
+    "logsSourceRelay": {
+      "ko": "연결",
+      "en": "Relay",
+      "ja": "リレー"
+    },
+    "modelsFooterCount": {
+      "ko": "로컬 모델 {count}개 · 제공 중 {active}개",
+      "en": "Local models: {count} · Active: {active}",
+      "ja": "ローカルモデル: {count}個 · 配信中: {active}個"
+    },
+    "modelsDefaultBadge": {
+      "ko": "기본",
+      "en": "Default",
+      "ja": "デフォルト"
+    },
+    "modelsLastUsed": {
+      "ko": "마지막 사용 {lastUsed}",
+      "en": "Last used: {lastUsed}",
+      "ja": "最後に使用: {lastUsed}"
+    },
+    "modelsApplyingToast": {
+      "ko": "모델 설정 적용 · 재연결 중…",
+      "en": "Applying model settings · reconnecting…",
+      "ja": "モデル設定を適用 · 再接続中…"
+    },
+    "modelsApplyErrorToast": {
+      "ko": "적용 실패 — 다시 시도하세요",
+      "en": "Failed to apply — please try again",
+      "ja": "適用に失敗しました — もう一度お試しください"
+    },
+    "modelsApplySuccessToast": {
+      "ko": "새 모델 구성으로 다시 제공 시작",
+      "en": "Restarting with new model configuration",
+      "ja": "新しいモデル構成で再起動しています"
+    },
+    "modelsApplySuccessSub": {
+      "ko": "서버에 새 구성을 알렸어요",
+      "en": "Server notified of new configuration",
+      "ja": "サーバーに新しい構成を通知しました"
+    },
+    "modelsInstallTitle": {
+      "ko": "모델 설치",
+      "en": "Install Model",
+      "ja": "モデルをインストール"
+    },
+    "modelsInstallDescription": {
+      "ko": "분류를 골라 대표 모델을 설치하거나, 원하는 변형을 직접 입력하세요(ollama.com/library 전체).",
+      "en": "Choose a category to install a representative model, or enter your desired variant directly (entire ollama.com/library).",
+      "ja": "カテゴリを選択して代表的なモデルをインストールするか、希望するバリエーションを直接入力してください(ollama.com/library全体)。"
+    },
+    "modelsInstallHelpTitle": {
+      "ko": "모델 크기와 메모리",
+      "en": "Model Size and Memory",
+      "ja": "モデルサイズとメモリ"
+    },
+    "modelsInstallHelpContent": {
+      "ko": "모델명의 b는 파라미터 수(억 단위)예요. 대략 파라미터 ÷ 2 ≈ 필요 VRAM(GB) — 예) 8b 모델은 VRAM 4GB면 감당돼요(약 2:1). 여유 있게 1~2GB 더 있으면 안전하고, GPU가 없으면 시스템 RAM으로도 돌지만 느려요.",
+      "en": "The 'b' in model names represents parameters (in hundreds of millions). Roughly: parameters ÷ 2 ≈ required VRAM (GB) — e.g., an 8b model needs about 4GB VRAM (roughly 2:1). Having an extra 1~2GB is safer, and models can run on system RAM without a GPU but will be slower.",
+      "ja": "モデル名の'b'はパラメータ数(億単位)です。大まかに:パラメータ ÷ 2 ≈ 必要VRAM(GB) — 例)8bモデルは約4GB VRAM(約2:1)で対応できます。余裕を持って追加1~2GBがあると安全で、GPUがなくてもシステムRAMで実行できますが遅くなります。"
+    },
+    "modelsInstallCategoryLabel": {
+      "ko": "분류",
+      "en": "Category",
+      "ja": "カテゴリ"
+    },
+    "modelsInstallManualLabel": {
+      "ko": "모델명 직접 입력",
+      "en": "Enter model name directly",
+      "ja": "モデル名を直接入力"
+    },
+    "modelsInstallManualSubtext": {
+      "ko": "(Ollama 레지스트리 또는 HuggingFace GGUF)",
+      "en": "(Ollama registry or HuggingFace GGUF)",
+      "ja": "(OllamaレジストリまたはHuggingFace GGUF)"
+    },
+    "modelsInstallManualPlaceholder": {
+      "ko": "예: qwen2.5:72b · hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:Q4_K_M",
+      "en": "Example: qwen2.5:72b · hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:Q4_K_M",
+      "ja": "例: qwen2.5:72b · hf.co/bartowski/Llama-3.2-3B-Instruct-GGUF:Q4_K_M"
+    },
+    "modelsInstallManualButton": {
+      "ko": "설치",
+      "en": "Install",
+      "ja": "インストール"
+    },
+    "modelsInstallHuggingfaceTitle": {
+      "ko": "HuggingFace GGUF",
+      "en": "HuggingFace GGUF",
+      "ja": "HuggingFace GGUF"
+    },
+    "modelsInstallHuggingfaceContent": {
+      "ko": "어떤 GGUF 모델이든 hf.co/<user>/<repo>:<양자화> 형식으로 받아요(예: hf.co/bartowski/Qwen2.5-7B-Instruct-GGUF:Q4_K_M). 레지스트리 밖 모델도 OK.",
+      "en": "Any GGUF model can be installed using the hf.co/<user>/<repo>:<quantization> format (e.g., hf.co/bartowski/Qwen2.5-7B-Instruct-GGUF:Q4_K_M). Models outside the registry are also supported.",
+      "ja": "任意のGGUFモデルはhf.co/<user>/<repo>:<quantization>形式で対応できます(例: hf.co/bartowski/Qwen2.5-7B-Instruct-GGUF:Q4_K_M)。レジストリ外のモデルもサポートされています。"
+    },
+    "modelsLargeModelTitle": {
+      "ko": "큰 모델이에요",
+      "en": "Large Model",
+      "ja": "大規模モデル"
+    },
+    "modelsLargeModelPrompt": {
+      "ko": "{modelName} 는 약 VRAM {needGb}GB 이상을 권장해요({param}b ÷ 2). GPU VRAM(없으면 시스템 RAM)이 이 정도 되나요? 부족하면 설치는 되지만 매우 느리거나 로딩이 실패할 수 있어요.",
+      "en": "{modelName} requires about {needGb}GB VRAM or more ({param}b ÷ 2). Do you have this much GPU VRAM (or system RAM if no GPU)? If insufficient, installation may be very slow or fail to load.",
+      "ja": "{modelName}は約{needGb}GB VRAM以上が必要です({param}b ÷ 2)。GPUメモリ(またはGPUがない場合はシステムRAM)がこの程度ありますか? 不足している場合、インストールは可能ですが非常に遅くなるか、読み込みに失敗する可能性があります。"
+    },
+    "modelsLargeModelCancel": {
+      "ko": "취소",
+      "en": "Cancel",
+      "ja": "キャンセル"
+    },
+    "modelsLargeModelConfirm": {
+      "ko": "VRAM {needGb}GB+ 있어요 · 설치",
+      "en": "I have {needGb}GB+ VRAM · Install",
+      "ja": "{needGb}GB以上のVRAMがあります · インストール"
+    },
+    "modelsAlreadyInstalledToast": {
+      "ko": "{modelName} 은 이미 설치돼 있어요",
+      "en": "{modelName} is already installed",
+      "ja": "{modelName}は既にインストールされています"
+    },
+    "modelsEmptyModelNameToast": {
+      "ko": "모델명을 입력하세요",
+      "en": "Please enter a model name",
+      "ja": "モデル名を入力してください"
+    },
+    "modelsInvalidModelNameToast": {
+      "ko": "올바른 모델명을 입력하세요",
+      "en": "Please enter a valid model name",
+      "ja": "有効なモデル名を入力してください"
+    },
+    "modelsInvalidModelNameSub": {
+      "ko": "예: mistral:7b · qwen2.5-coder:7b",
+      "en": "Example: mistral:7b · qwen2.5-coder:7b",
+      "ja": "例: mistral:7b · qwen2.5-coder:7b"
+    },
+    "modelsCloseButton": {
+      "ko": "닫기",
+      "en": "Close",
+      "ja": "閉じる"
+    },
+    "localRuntimeCheckMenuBtn": {
+      "ko": "더보기",
+      "en": "More",
+      "ja": "その他"
+    },
+    "localRuntimeCheckAction": {
+      "ko": "연결 점검",
+      "en": "Check Connection",
+      "ja": "接続確認"
+    },
+    "localRuntimeCheckingToast": {
+      "ko": "{name} 연결 점검 중…",
+      "en": "Checking {name} connection...",
+      "ja": "{name} の接続を確認中…"
+    },
+    "localRuntimeModelProvidingStatus": {
+      "ko": "{n}개 모델 제공 중",
+      "en": "{n} models available",
+      "ja": "{n}個のモデルを提供中"
+    },
+    "localRuntimeNoModelsStatus": {
+      "ko": "모델 없음 또는 미연결",
+      "en": "No models or not connected",
+      "ja": "モデルがないか接続されていません"
+    },
+    "localRuntimeCheckOkStatus": {
+      "ko": " 정상 응답",
+      "en": " Normal response",
+      "ja": " 正常応答"
+    },
+    "localRuntimeCheckFailedStatus": {
+      "ko": " 점검 필요",
+      "en": " Check needed",
+      "ja": " 確認が必要です"
+    },
+    "localRuntimeCheckFailureToast": {
+      "ko": "{name} 점검 실패",
+      "en": "{name} check failed",
+      "ja": "{name} の確認に失敗しました"
+    },
+    "localRunningConnectionConnected": {
+      "ko": "중앙 서버 연결됨",
+      "en": "Central server connected",
+      "ja": "中央サーバーに接続しました"
+    },
+    "localRunningConnectionConnecting": {
+      "ko": "연결 중…",
+      "en": "Connecting...",
+      "ja": "接続中…"
+    },
+    "localRuntimeStopped": {
+      "ko": "중지됨",
+      "en": "Stopped",
+      "ja": "停止中"
+    },
+    "localBackgroundResidenceOn": {
+      "ko": "백그라운드 상주 켜짐",
+      "en": "Background residence on",
+      "ja": "バックグラウンド実行オン"
+    },
+    "localBackgroundResidenceOff": {
+      "ko": "백그라운드 상주 꺼짐",
+      "en": "Background residence off",
+      "ja": "バックグラウンド実行オフ"
+    },
+    "localRunCardRunning": {
+      "ko": "실행 중",
+      "en": "Running",
+      "ja": "実行中"
+    },
+    "localRunCardMetaProcessed": {
+      "ko": "처리 {n}건(이 PC)",
+      "en": "Processed {n} (this PC)",
+      "ja": "処理 {n}件(このPC)"
+    },
+    "localToggleStart": {
+      "ko": "시작",
+      "en": "Start",
+      "ja": "開始"
+    },
+    "localToggleStop": {
+      "ko": "중지",
+      "en": "Stop",
+      "ja": "停止"
+    },
+    "localReconnectBtn": {
+      "ko": "재연결",
+      "en": "Reconnect",
+      "ja": "再接続"
+    },
+    "localOllamaTextType": {
+      "ko": "텍스트",
+      "en": "Text",
+      "ja": "テキスト"
+    },
+    "localOllamaReadyStatus": {
+      "ko": "준비됨 · 모델 {n}개 제공",
+      "en": "Ready · {n} models available",
+      "ja": "準備完了 · {n}個のモデルを提供"
+    },
+    "localOllamaNotReadyStatus": {
+      "ko": "미설치 또는 중지됨",
+      "en": "Not installed or stopped",
+      "ja": "インストールされていないか停止中"
+    },
+    "localOllamaModelsBtn": {
+      "ko": "모델 관리",
+      "en": "Manage Models",
+      "ja": "モデル管理"
+    },
+    "localOllamaInstallBtn": {
+      "ko": "설치",
+      "en": "Install",
+      "ja": "インストール"
+    },
+    "localCloudConnectionLabel": {
+      "ko": "클라우드 연결",
+      "en": "Cloud Connection",
+      "ja": "クラウド接続"
+    },
+    "localCloudConnectionType": {
+      "ko": "Gemini · 텍스트",
+      "en": "Gemini · Text",
+      "ja": "Gemini · テキスト"
+    },
+    "localCloudConnectedStatus": {
+      "ko": "연결됨 · 이 PC 의 키로 클라우드 모델을 제공해요(모델 탭에서 서버별로 켜고 꺼요)",
+      "en": "Connected · Using this PC's key to provide cloud models (turn on/off by server in Models tab)",
+      "ja": "接続完了 · このPCのキーでクラウドモデルを提供します(モデルタブでサーバーごとにオン/オフ)"
+    },
+    "localCloudNotConnectedStatus": {
+      "ko": "이 PC 의 API 키로 클라우드 AI를 모델로 추가해요 — 다른 모델처럼 서버별로 제공돼요 (aistudio.google.com/apikey)",
+      "en": "Add cloud AI as a model using this PC's API key — available by server like other models (aistudio.google.com/apikey)",
+      "ja": "このPCのAPIキーでクラウドAIをモデルとして追加 — 他のモデルと同じようにサーバーごとに利用可能 (aistudio.google.com/apikey)"
+    },
+    "localGeminiPlaceholderConnected": {
+      "ko": "••••• 연결됨(바꾸려면 입력)",
+      "en": "••••• Connected (enter to change)",
+      "ja": "••••• 接続済み(変更するには入力)"
+    },
+    "localGeminiPlaceholderDisconnected": {
+      "ko": "AIza… 키 붙여넣기",
+      "en": "Paste AIza… key",
+      "ja": "AIza… キーを貼り付け"
+    },
+    "localGeminiSaveChangeBtn": {
+      "ko": "변경",
+      "en": "Change",
+      "ja": "変更"
+    },
+    "localGeminiSaveConnectBtn": {
+      "ko": "연결",
+      "en": "Connect",
+      "ja": "接続"
+    },
+    "localComfyUIImageType": {
+      "ko": "이미지 · 권장",
+      "en": "Image · Recommended",
+      "ja": "画像 · 推奨"
+    },
+    "localComfyInstallingStatus": {
+      "ko": "설치 중…",
+      "en": "Installing...",
+      "ja": "インストール中…"
+    },
+    "localComfyProgressPercent": {
+      "ko": " · {percent}%",
+      "en": " · {percent}%",
+      "ja": " · {percent}%"
+    },
+    "localComfyRunningStatus": {
+      "ko": "실행 중 · 이미지 생성 준비됨",
+      "en": "Running · Image generation ready",
+      "ja": "実行中 · 画像生成準備完了"
+    },
+    "localComfyRunningDetectedStatus": {
+      "ko": "실행 중(직접 띄운 ComfyUI 감지됨) · 이미지 생성 준비됨",
+      "en": "Running (external ComfyUI detected) · Image generation ready",
+      "ja": "実行中(外部ComfyUI検出) · 画像生成準備完了"
+    },
+    "localComfyOpenWebUIBtn": {
+      "ko": "웹UI 열기",
+      "en": "Open Web UI",
+      "ja": "Web UIを開く"
+    },
+    "localComfyStopBtn": {
+      "ko": "정지",
+      "en": "Stop",
+      "ja": "停止"
+    },
+    "localComfyNotInstalledStatus": {
+      "ko": "미설치 — 활발히 유지보수되는 최신 엔진(Python 3.13). 설치를 권장해요.",
+      "en": "Not installed — actively maintained latest engine (Python 3.13). Installation recommended.",
+      "ja": "未インストール — 積極的にメンテナンスされている最新エンジン(Python 3.13)。インストールをお勧めします。"
+    },
+    "localComfyInstallBtn": {
+      "ko": "설치",
+      "en": "Install",
+      "ja": "インストール"
+    },
+    "localComfyInstalledOffStatus": {
+      "ko": "설치됨 · 꺼짐",
+      "en": "Installed · Off",
+      "ja": "インストール済み · オフ"
+    },
+    "localComfyStartBtn": {
+      "ko": "시작",
+      "en": "Start",
+      "ja": "開始"
+    },
+    "localComfyNoCheckpointStatus": {
+      "ko": "체크포인트 없음 — ",
+      "en": "No checkpoint — ",
+      "ja": "チェックポイントなし — "
+    },
+    "localComfyModelAddURLBtn": {
+      "ko": "+ URL",
+      "en": "+ URL",
+      "ja": "+ URL"
+    },
+    "localComfyModelAddURLTitle": {
+      "ko": "URL 로 모델 추가 — .safetensors 직접 링크(gated 는 설정의 HF 토큰)",
+      "en": "Add model by URL — direct .safetensors link (gated requires HF token in settings)",
+      "ja": "URLでモデルを追加 — .safetensors 直接リンク(gateedは設定のHFトークンが必要)"
+    },
+    "localComfyModelAddFolderBtn": {
+      "ko": "📂 폴더",
+      "en": "📂 Folder",
+      "ja": "📂 フォルダ"
+    },
+    "localComfyModelAddFolderTitle": {
+      "ko": "모델 폴더 열기 — 여기에 .safetensors 를 넣으면 자동 인식돼요",
+      "en": "Open model folder — .safetensors files are auto-recognized",
+      "ja": "モデルフォルダを開く — ここに .safetensors を入れると自動認識されます"
+    },
+    "localComfyModelLabel": {
+      "ko": "모델",
+      "en": "Model",
+      "ja": "モデル"
+    },
+    "localComfyModelSelectAriaLabel": {
+      "ko": "ComfyUI 이미지 모델 선택",
+      "en": "Select ComfyUI image model",
+      "ja": "ComfyUI 画像モデルを選択"
+    },
+    "localComfyAdvancedSummary": {
+      "ko": "고급 · 외부 ComfyUI · HuggingFace 토큰",
+      "en": "Advanced · External ComfyUI · HuggingFace Token",
+      "ja": "詳細 · 外部ComfyUI · HuggingFaceトークン"
+    },
+    "localComfyAdvancedDescription": {
+      "ko": "직접 띄운 ComfyUI 가 있으면 주소를 입력하세요(비우면 앱 관리 ComfyUI). gated/비공개 모델을 받으려면 HF 토큰을 넣으세요.",
+      "en": "If you have an external ComfyUI instance, enter its address (leave blank to use app-managed ComfyUI). Add HF token to access gated/private models.",
+      "ja": "外部ComfyUIインスタンスがある場合はアドレスを入力してください(空白でアプリ管理ComfyUI)。gated/プライベートモデルにアクセスするにはHFトークンを追加してください。"
+    },
+    "localComfyExternalURLPlaceholder": {
+      "ko": "외부 ComfyUI 주소(http://127.0.0.1:8188)",
+      "en": "External ComfyUI address (http://127.0.0.1:8188)",
+      "ja": "外部ComfyUIアドレス (http://127.0.0.1:8188)"
+    },
+    "localComfyExternalConnectBtn": {
+      "ko": "외부 연결",
+      "en": "External Connection",
+      "ja": "外部接続"
+    },
+    "localHFTokenPlaceholderSet": {
+      "ko": "••••• 설정됨(바꾸려면 입력)",
+      "en": "••••• Set (enter to change)",
+      "ja": "••••• 設定済み(変更するには入力)"
+    },
+    "localHFTokenPlaceholderNotSet": {
+      "ko": "HuggingFace 토큰(gated 모델용, hf_…)",
+      "en": "HuggingFace token (for gated models, hf_…)",
+      "ja": "HuggingFace トークン(gateedモデル用, hf_…)"
+    },
+    "localHFTokenSaveBtn": {
+      "ko": "토큰 저장",
+      "en": "Save Token",
+      "ja": "トークン保存"
+    },
+    "localReconnectingToast": {
+      "ko": "중앙 서버 재연결 중…",
+      "en": "Reconnecting to central server...",
+      "ja": "中央サーバーに再接続中…"
+    },
+    "localReconnectSuccessToast": {
+      "ko": "재연결했어요",
+      "en": "Reconnected",
+      "ja": "再接続しました"
+    },
+    "localReconnectFailureToast": {
+      "ko": "재연결 실패 — 네트워크를 확인하세요",
+      "en": "Reconnection failed — check your network",
+      "ja": "再接続に失敗しました — ネットワークを確認してください"
+    },
+    "localGeminiKeyRequiredToast": {
+      "ko": "AIza… 키를 입력하세요",
+      "en": "Enter AIza… key",
+      "ja": "AIza… キーを入力してください"
+    },
+    "localGeminiValidationFailedToast": {
+      "ko": "키 저장됨 — 다만 검증 실패(결제/유효성 확인)",
+      "en": "Key saved — but validation failed (billing/validity)",
+      "ja": "キーが保存されました — ただし検証に失敗しました(請求/有効性)"
+    },
+    "localGeminiConnectedToast": {
+      "ko": "클라우드 모델을 연결했어요 — 모델 탭에서 서버별로 켜세요",
+      "en": "Connected cloud model — turn on by server in Models tab",
+      "ja": "クラウドモデルを接続しました — モデルタブでサーバーごとにオンにしてください"
+    },
+    "localGeminiConnectionFailureToast": {
+      "ko": "연결 실패 — 네트워크를 확인하세요",
+      "en": "Connection failed — check your network",
+      "ja": "接続に失敗しました — ネットワークを確認してください"
+    },
+    "localComfyExternalSetToast": {
+      "ko": "외부 ComfyUI 를 이미지 엔진으로 설정했어요 — 재연결 후 적용",
+      "en": "Set external ComfyUI as image engine — apply after reconnect",
+      "ja": "外部ComfyUIを画像エンジンとして設定しました — 再接続後に適用"
+    },
+    "localComfyAppManagedResetToast": {
+      "ko": "앱 관리 ComfyUI 로 되돌렸어요 — 재연결 후 적용",
+      "en": "Reset to app-managed ComfyUI — apply after reconnect",
+      "ja": "アプリ管理ComfyUIにリセットしました — 再接続後に適用"
+    },
+    "localComfyExternalSaveFailureToast": {
+      "ko": "저장 실패 — 네트워크를 확인하세요",
+      "en": "Save failed — check your network",
+      "ja": "保存に失敗しました — ネットワークを確認してください"
+    },
+    "localHFTokenRequiredToast": {
+      "ko": "HuggingFace 토큰을 입력하세요(hf_…)",
+      "en": "Enter HuggingFace token (hf_…)",
+      "ja": "HuggingFace トークンを入力してください(hf_…)"
+    },
+    "localHFTokenSavedToast": {
+      "ko": "HF 토큰을 저장했어요 — 이제 gated 모델도 받을 수 있어요",
+      "en": "HF token saved — you can now access gated models",
+      "ja": "HFトークンを保存しました — gatedモデルにアクセスできるようになります"
+    },
+    "localComfyInstallStartedToast": {
+      "ko": "ComfyUI 설치 시작 — 첫 설치는 수 분 걸려요(자동 진행돼요)",
+      "en": "ComfyUI installation started — first install takes a few minutes (auto-progresses)",
+      "ja": "ComfyUIインストール開始 — 最初のインストールは数分かかります(自動進行)"
+    },
+    "localComfyInstallFailureToast": {
+      "ko": "설치 시작 실패",
+      "en": "Installation start failed",
+      "ja": "インストール開始に失敗しました"
+    },
+    "localComfyInstallingProgressToast": {
+      "ko": "ComfyUI 설치 중… 진행 상황이 카드에 표시돼요",
+      "en": "ComfyUI installing… progress shown on card",
+      "ja": "ComfyUIインストール中… 進行状況がカードに表示されます"
+    },
+    "localComfyInstallNetworkFailureToast": {
+      "ko": "설치 시작 실패 — 네트워크를 확인하세요",
+      "en": "Installation start failed — check your network",
+      "ja": "インストール開始に失敗しました — ネットワークを確認してください"
+    },
+    "localComfyStartingToast": {
+      "ko": "ComfyUI 시작 중…",
+      "en": "ComfyUI starting...",
+      "ja": "ComfyUI起動中…"
+    },
+    "localComfyStartedToast": {
+      "ko": "ComfyUI 시작됨",
+      "en": "ComfyUI started",
+      "ja": "ComfyUI起動しました"
+    },
+    "localComfyStartFailureToast": {
+      "ko": "시작 실패",
+      "en": "Start failed",
+      "ja": "起動に失敗しました"
+    },
+    "localComfyStartNetworkFailureToast": {
+      "ko": "시작 실패 — 네트워크를 확인하세요",
+      "en": "Start failed — check your network",
+      "ja": "起動に失敗しました — ネットワークを確認してください"
+    },
+    "localComfyStoppedToast": {
+      "ko": "ComfyUI 를 정지했어요",
+      "en": "ComfyUI stopped",
+      "ja": "ComfyUIを停止しました"
+    },
+    "localComfyStopNetworkFailureToast": {
+      "ko": "정지 실패 — 네트워크를 확인하세요",
+      "en": "Stop failed — check your network",
+      "ja": "停止に失敗しました — ネットワークを確認してください"
+    },
+    "localComfyWebUIOpenedToast": {
+      "ko": "브라우저에서 ComfyUI 를 열었어요",
+      "en": "ComfyUI opened in browser",
+      "ja": "ブラウザでComfyUIを開きました"
+    },
+    "localComfyWebUIOpenFailureToast": {
+      "ko": "웹UI 를 열 수 없어요",
+      "en": "Cannot open Web UI",
+      "ja": "Web UIを開けません"
+    },
+    "localComfyWebUIOpenNetworkFailureToast": {
+      "ko": "웹UI 열기 실패",
+      "en": "Web UI open failed",
+      "ja": "Web UI開くに失敗しました"
+    },
+    "localComfyModelSelectPrompt": {
+      "ko": "모델 URL(.safetensors 직접 링크) — 예: https://huggingface.co/…/model.safetensors",
+      "en": "Model URL (.safetensors direct link) — e.g., https://huggingface.co/…/model.safetensors",
+      "ja": "モデルURL(.safetensors 直接リンク) — 例: https://huggingface.co/…/model.safetensors"
+    },
+    "localComfyModelDownloadingToast": {
+      "ko": "모델 내려받는 중… 용량에 따라 몇 분 걸려요",
+      "en": "Downloading model… may take a few minutes depending on size",
+      "ja": "モデルをダウンロード中… サイズに応じて数分かかる場合があります"
+    },
+    "localComfyModelAddFailureToast": {
+      "ko": "모델 추가 실패",
+      "en": "Failed to add model",
+      "ja": "モデル追加に失敗しました"
+    },
+    "localComfyModelAddedToast": {
+      "ko": "모델을 추가했어요 — 목록에서 선택하세요",
+      "en": "Model added — select from list",
+      "ja": "モデルを追加しました — リストから選択してください"
+    },
+    "localComfyModelAddNetworkFailureToast": {
+      "ko": "모델 추가 실패 — 네트워크를 확인하세요",
+      "en": "Failed to add model — check your network",
+      "ja": "モデル追加に失敗しました — ネットワークを確認してください"
+    },
+    "localComfyModelChangedToast": {
+      "ko": "이미지 모델을 전환했어요",
+      "en": "Image model switched",
+      "ja": "画像モデルを切り替えました"
+    },
+    "localComfyModelChangeFailureToast": {
+      "ko": "모델 전환 실패",
+      "en": "Model switch failed",
+      "ja": "モデル切り替えに失敗しました"
+    },
+    "localComfyModelChangeNetworkFailureToast": {
+      "ko": "모델 전환 실패 — 네트워크를 확인하세요",
+      "en": "Model switch failed — check your network",
+      "ja": "モデル切り替えに失敗しました — ネットワークを確認してください"
+    },
+    "localComfyFolderOpenedToast": {
+      "ko": "모델 폴더를 열었어요 — .safetensors 를 넣고 새로고침하면 목록에 떠요",
+      "en": "Model folder opened — add .safetensors and refresh to see in list",
+      "ja": "モデルフォルダを開きました — .safetensorsを入れて更新するとリストに表示されます"
+    },
+    "localComfyFolderOpenFailureToast": {
+      "ko": "폴더를 열 수 없어요",
+      "en": "Cannot open folder",
+      "ja": "フォルダを開けません"
+    },
+    "localComfyFolderOpenNetworkFailureToast": {
+      "ko": "폴더 열기 실패",
+      "en": "Folder open failed",
+      "ja": "フォルダ開くに失敗しました"
+    },
+    "localAgentStoppedToast": {
+      "ko": "에이전트를 중지했어요",
+      "en": "Agent stopped",
+      "ja": "エージェントを停止しました"
+    },
+    "localAgentStartedToast": {
+      "ko": "에이전트를 시작했어요",
+      "en": "Agent started",
+      "ja": "エージェントを開始しました"
+    },
+    "serversMemberLabel": {
+      "ko": "멤버",
+      "en": "Members",
+      "ja": "メンバー"
+    },
+    "serversConnected": {
+      "ko": "연결",
+      "en": "Connected",
+      "ja": "接続済み"
+    },
+    "serversPaused": {
+      "ko": "일시중지",
+      "en": "Paused",
+      "ja": "一時停止"
+    },
+    "serversPendingApproval": {
+      "ko": "승인 대기",
+      "en": "Pending Approval",
+      "ja": "承認待ち"
+    },
+    "serversProviding": {
+      "ko": "제공 중",
+      "en": "Providing",
+      "ja": "提供中"
+    },
+    "serversResponding": {
+      "ko": "응답 중",
+      "en": "Responding",
+      "ja": "応答中"
+    },
+    "serversDetailBackButton": {
+      "ko": "서버",
+      "en": "Servers",
+      "ja": "サーバー"
+    },
+    "serversDetailMyRole": {
+      "ko": "내 역할",
+      "en": "My Role",
+      "ja": "私のロール"
+    },
+    "serversDetailWaitingApproval": {
+      "ko": "관리자 승인을 기다리는 중",
+      "en": "Waiting for admin approval",
+      "ja": "管理者の承認を待中"
+    },
+    "serversDetailApprovalDesc": {
+      "ko": "관리자가 승인하면 이 서버에 제공을 시작해요. 승인 전에는 요청을 받지 않고, 기여 현황·정책·관리도 승인 후에 열려요.",
+      "en": "Once approved, I'll start providing to this server. Until then, I won't receive requests, and contribution stats, policies, and management are only available after approval.",
+      "ja": "管理者が承認すると、このサーバーへの提供を開始します。承認前は要求を受け取らず、貢献履歴、ポリシー、管理も承認後に利用可能です。"
+    },
+    "serversDetailMyContribution": {
+      "ko": "내 제공",
+      "en": "My Contribution",
+      "ja": "私の提供"
+    },
+    "serversDetailProvidingDesc": {
+      "ko": "이 서버 요청을 받고 있어요",
+      "en": "I'm receiving requests from this server",
+      "ja": "このサーバーからのリクエストを受け取っています"
+    },
+    "serversDetailNotProvidingDesc": {
+      "ko": "이 서버에 답변을 보내지 않는 중",
+      "en": "I'm not sending responses to this server",
+      "ja": "このサーバーへの応答を送信していません"
+    },
+    "serversDetailPauseButton": {
+      "ko": "일시중지",
+      "en": "Pause",
+      "ja": "一時停止"
+    },
+    "serversDetailResumeButton": {
+      "ko": "재개",
+      "en": "Resume",
+      "ja": "再開"
+    },
+    "serversDetailPolicyLabel": {
+      "ko": "내 제공 정책",
+      "en": "My Policy",
+      "ja": "私のポリシー"
+    },
+    "serversDetailPolicyNote": {
+      "ko": "나에게만 적용",
+      "en": "Applies to me only",
+      "ja": "私にのみ適用"
+    },
+    "serversDetailChangePolicy": {
+      "ko": "변경",
+      "en": "Change",
+      "ja": "変更"
+    },
+    "serversDetailDailyLimit": {
+      "ko": "하루 한도",
+      "en": "Daily Limit",
+      "ja": "1日の制限"
+    },
+    "serversDetailUnlimited": {
+      "ko": "무제한",
+      "en": "Unlimited",
+      "ja": "無制限"
+    },
+    "serversDetailDailyCount": {
+      "ko": "{n}건",
+      "en": "{n} requests",
+      "ja": "{n}件"
+    },
+    "serversDetailConcurrency": {
+      "ko": "동시 처리",
+      "en": "Concurrent Processing",
+      "ja": "並行処理"
+    },
+    "serversDetailMaxTime": {
+      "ko": "최대 시간",
+      "en": "Max Duration",
+      "ja": "最大時間"
+    },
+    "serversDetailVisibility": {
+      "ko": "공개 대상",
+      "en": "Visible to",
+      "ja": "公開対象"
+    },
+    "serversDetailVisibilityValue": {
+      "ko": "서버 멤버 누구나",
+      "en": "All server members",
+      "ja": "すべてのサーバーメンバー"
+    },
+    "serversDetailModelsLabel": {
+      "ko": "이 서버에 제공할 AI",
+      "en": "AI to provide to this server",
+      "ja": "このサーバーに提供するAI"
+    },
+    "serversDetailModelsNote": {
+      "ko": "켠 것만 이 서버에 제공",
+      "en": "Only enabled models are provided",
+      "ja": "有効なモデルのみ提供"
+    },
+    "serversDetailChat": {
+      "ko": "채팅",
+      "en": "Chat",
+      "ja": "チャット"
+    },
+    "serversDetailImage": {
+      "ko": "이미지",
+      "en": "Image",
+      "ja": "画像"
+    },
+    "serversDetailLoading": {
+      "ko": "불러오는 중…",
+      "en": "Loading…",
+      "ja": "読み込み中…"
+    },
+    "serversDetailNoModels": {
+      "ko": "아직 이 서버에 제공 중인 모델이 없어요.",
+      "en": "No models are currently being provided to this server.",
+      "ja": "このサーバーに提供されているモデルはまだありません。"
+    },
+    "serversDetailContribution": {
+      "ko": "내 기여 현황",
+      "en": "My Contribution",
+      "ja": "私の貢献"
+    },
+    "serversDetailToday": {
+      "ko": "오늘",
+      "en": "Today",
+      "ja": "今日"
+    },
+    "serversDetailRequests": {
+      "ko": "요청",
+      "en": "Requests",
+      "ja": "リクエスト"
+    },
+    "serversDetailProvidedModels": {
+      "ko": "제공 모델",
+      "en": "Provided Models",
+      "ja": "提供モデル"
+    },
+    "serversDetailAverage": {
+      "ko": "평균",
+      "en": "Average",
+      "ja": "平均"
+    },
+    "serversDetailSettings": {
+      "ko": "서버 설정",
+      "en": "Server Settings",
+      "ja": "サーバー設定"
+    },
+    "serversDetailSettingsDesc": {
+      "ko": "표시 이름을 바꾸거나, 이 서버 제공을 그만둘 수 있어요(내 연결만 정리 — 관리자 풀 등록과 별개).",
+      "en": "Change the display name or stop providing to this server (only clears my connection — separate from admin roster).",
+      "ja": "表示名を変更するか、このサーバーへの提供を停止できます（私の接続のみクリア — 管理者登録とは別）。"
+    },
+    "serversDetailRenameButton": {
+      "ko": "이름 변경",
+      "en": "Rename",
+      "ja": "名前を変更"
+    },
+    "serversDetailRemoveButton": {
+      "ko": "제공 그만두기",
+      "en": "Stop Providing",
+      "ja": "提供を停止"
+    },
+    "serversDetailManageLabel": {
+      "ko": "서버 관리",
+      "en": "Server Management",
+      "ja": "サーバー管理"
+    },
+    "serversDetailManageDesc": {
+      "ko": "채널 AI · RAG · 프리셋 · 다중응답 · 역할 정책 · Provider 승인을 이 앱에서 직접 관리해요.",
+      "en": "Manage channel AI, RAG, presets, multi-response, role policies, and provider approvals directly in this app.",
+      "ja": "チャネルAI、RAG、プリセット、マルチレスポンス、ロールポリシー、プロバイダー承認をこのアプリで直接管理します。"
+    },
+    "serversDetailManageButton": {
+      "ko": "관리",
+      "en": "Manage",
+      "ja": "管理"
+    },
+    "serversDetailNoPermission": {
+      "ko": "서버 설정은 관리자 권한이 필요해요",
+      "en": "Server settings require admin permission",
+      "ja": "サーバー設定には管理者権限が必要です"
+    },
+    "serversDetailNoPermissionDesc": {
+      "ko": "이 서버의 정책은 서버 관리자가 설정해요. 나는 내 PC 리소스(위 정책)만 조절해요.",
+      "en": "Server policies are set by the server admin. I only control my PC resources (policy above).",
+      "ja": "サーバーポリシーはサーバー管理者によって設定されます。私はPCリソース（上のポリシー）のみを制御します。"
+    },
+    "serversDetailCloudBadge": {
+      "ko": "☁ 클라우드",
+      "en": "☁ Cloud",
+      "ja": "☁ クラウド"
+    },
+    "serversDetailLocalBadge": {
+      "ko": "💻 로컬",
+      "en": "💻 Local",
+      "ja": "💻 ローカル"
+    },
+    "serversDetailChipHelp": {
+      "ko": "켠 모델만 이 서버에 제공 · 전체 끄면 전체 제공",
+      "en": "Only enabled models are provided; disable all to provide all",
+      "ja": "有効なモデルのみ提供；すべて無効にするとすべて提供"
+    },
+    "serversDetailNoAvailableModels": {
+      "ko": "제공 중인 모델이 없어요(로컬 실행에서 엔진·모델을 준비하세요).",
+      "en": "No available models (set up engines and models in local execution).",
+      "ja": "利用可能なモデルがありません（ローカル実行でエンジン・モデルをセットアップしてください）。"
+    },
+    "serversDetailImageGeneration": {
+      "ko": "🖼 이미지 생성 제공",
+      "en": "🖼 Provide Image Generation",
+      "ja": "🖼 画像生成提供"
+    },
+    "serversDetailImageHelp": {
+      "ko": "이미지 엔진·모델은 로컬 실행 탭에서 관리해요(여기선 이 서버 제공 여부만).",
+      "en": "Image engines and models are managed in the local execution tab (here only toggle for this server).",
+      "ja": "画像エンジン・モデルはローカル実行タブで管理します（ここではこのサーバーへの提供切り替えのみ）。"
+    },
+    "serversDetailNoImageEngine": {
+      "ko": "이미지 엔진이 준비되지 않았어요. 로컬 실행 탭에서 ComfyUI 를 설치·시작하세요.",
+      "en": "Image engine is not ready. Install and start ComfyUI in the local execution tab.",
+      "ja": "画像エンジンが準備されていません。ローカル実行タブでComfyUIをインストール・開始してください。"
+    },
+    "serversDetailModelInfoFailed": {
+      "ko": "모델 정보를 불러오지 못했어요.",
+      "en": "Failed to load model information.",
+      "ja": "モデル情報の読み込みに失敗しました。"
+    },
+    "serversDetailRenameTitle": {
+      "ko": "서버 이름 변경",
+      "en": "Rename Server",
+      "ja": "サーバー名を変更"
+    },
+    "serversDetailRenameNote": {
+      "ko": "앱에서 보일 표시 이름이에요(이 PC 에만 적용).",
+      "en": "This is the display name shown in the app (applies to this PC only).",
+      "ja": "これはアプリに表示される名前です（このPCにのみ適用）。"
+    },
+    "serversDetailDisplayName": {
+      "ko": "표시 이름",
+      "en": "Display Name",
+      "ja": "表示名"
+    },
+    "serversDetailCancelButton": {
+      "ko": "취소",
+      "en": "Cancel",
+      "ja": "キャンセル"
+    },
+    "serversDetailSaveButton": {
+      "ko": "저장",
+      "en": "Save",
+      "ja": "保存"
+    },
+    "serversDetailEnterName": {
+      "ko": "이름을 입력하세요",
+      "en": "Please enter a name",
+      "ja": "名前を入力してください"
+    },
+    "serversDetailRenameSuccess": {
+      "ko": "이름을 변경했어요",
+      "en": "Name changed",
+      "ja": "名前を変更しました"
+    },
+    "serversDetailRenameFailed": {
+      "ko": "변경 실패 — 다시 시도하세요",
+      "en": "Change failed — please try again",
+      "ja": "変更に失敗しました — もう一度お試しください"
+    },
+    "serversDetailRemoveTitle": {
+      "ko": "이 서버 제공 그만두기",
+      "en": "Stop Providing to This Server",
+      "ja": "このサーバーへの提供を停止"
+    },
+    "serversDetailRemoveDesc": {
+      "ko": "{name} 에 더 이상 연결하지 않아요. 내 연결만 정리되고(관리자 풀 등록과는 별개), 나중에 다시 참여할 수 있어요.",
+      "en": "I will no longer connect to {name}. Only my connection is cleared (separate from admin roster), and I can rejoin later.",
+      "ja": "{name}にはもう接続しません。私の接続のみクリアされ（管理者登録とは別）、後で再参加できます。"
+    },
+    "serversDetailRemoveConfirm": {
+      "ko": "그만두기",
+      "en": "Stop",
+      "ja": "停止"
+    },
+    "serversDetailRemoveSuccess": {
+      "ko": "이 서버 제공을 그만뒀어요",
+      "en": "Stopped providing to this server",
+      "ja": "このサーバーへの提供を停止しました"
+    },
+    "serversDetailRemoveFailed": {
+      "ko": "실패 — 다시 시도하세요",
+      "en": "Failed — please try again",
+      "ja": "失敗しました — もう一度お試しください"
+    },
+    "serversPausedSuccess": {
+      "ko": "이 서버 제공을 일시중지했어요",
+      "en": "Paused providing to this server",
+      "ja": "このサーバーへの提供を一時停止しました"
+    },
+    "serversResumedSuccess": {
+      "ko": "이 서버 제공을 재개했어요",
+      "en": "Resumed providing to this server",
+      "ja": "このサーバーへの提供を再開しました"
+    },
+    "serversDetailSaveModels": {
+      "ko": "이 서버 제공 모델을 저장했어요",
+      "en": "Saved models for this server",
+      "ja": "このサーバーのモデルを保存しました"
+    },
+    "serversDetailSaveModelsFailed": {
+      "ko": "저장 실패 — 네트워크를 확인하세요",
+      "en": "Save failed — check your network",
+      "ja": "保存に失敗しました — ネットワークを確認してください"
+    },
+    "serversPolicyTitle": {
+      "ko": "내 제공 정책",
+      "en": "My Policy",
+      "ja": "私のポリシー"
+    },
+    "serversPolicyDesc": {
+      "ko": "이 서버에 대한 {name} 한도·공개 대상만 바꿔요(다른 참여자엔 영향 없음).",
+      "en": "Only change {name}'s limits and visibility (doesn't affect other participants).",
+      "ja": "{name}の制限と可視性のみを変更します（他の参加者には影響しません）。"
+    },
+    "serversPolicyDailyLimitLabel": {
+      "ko": "하루 한도",
+      "en": "Daily Limit",
+      "ja": "1日の制限"
+    },
+    "serversPolicyConcurrencyLabel": {
+      "ko": "동시 처리",
+      "en": "Concurrent Processing",
+      "ja": "並行処理"
+    },
+    "serversPolicyConcurrencyNote": {
+      "ko": "한 번에 처리할 요청 수",
+      "en": "Number of requests to process at once",
+      "ja": "一度に処理するリクエスト数"
+    },
+    "serversPolicyMaxTimeLabel": {
+      "ko": "최대 시간",
+      "en": "Max Duration",
+      "ja": "最大時間"
+    },
+    "serversPolicyMaxTimeNote": {
+      "ko": "한 요청 처리 제한(30초 단위)",
+      "en": "Request processing limit (30-second increments)",
+      "ja": "リクエスト処理の制限（30秒単位）"
+    },
+    "serversPolicyReduceButton": {
+      "ko": "줄이기",
+      "en": "Decrease",
+      "ja": "減らす"
+    },
+    "serversPolicyIncreaseButton": {
+      "ko": "늘리기",
+      "en": "Increase",
+      "ja": "増やす"
+    },
+    "serversPolicyVisibilityLabel": {
+      "ko": "공개 대상",
+      "en": "Visible to",
+      "ja": "公開対象"
+    },
+    "serversPolicyVisibilityNote": {
+      "ko": "이 서버 멤버 누구나 — 서버별 격리로 보장돼요. 다른 서버 멤버는 이 서버의 AI를 호출할 수 없어요.",
+      "en": "Any server member — isolation per server guarantees it. Members from other servers can't call this server's AI.",
+      "ja": "すべてのサーバーメンバー — サーバーごとの隔離で保証されます。他のサーバーのメンバーはこのサーバーのAIを呼び出せません。"
+    },
+    "serversPolicySaveButton": {
+      "ko": "저장",
+      "en": "Save",
+      "ja": "保存"
+    },
+    "serversPolicySaveSuccess": {
+      "ko": "내 제공 정책을 저장했어요",
+      "en": "Policy saved",
+      "ja": "ポリシーを保存しました"
+    },
+    "serversManageTitle": {
+      "ko": "서버 관리",
+      "en": "Server Management",
+      "ja": "サーバー管理"
+    },
+    "serversManageAdminOnly": {
+      "ko": "관리자 전용",
+      "en": "Admin only",
+      "ja": "管理者のみ"
+    },
+    "serversManageBackButton": {
+      "ko": "서버",
+      "en": "Server",
+      "ja": "サーバー"
+    },
+    "serversManageTabOverview": {
+      "ko": "개요",
+      "en": "Overview",
+      "ja": "概要"
+    },
+    "serversManageTabProfile": {
+      "ko": "전역 프롬프트",
+      "en": "Global Prompts",
+      "ja": "グローバルプロンプト"
+    },
+    "serversManageTabChannels": {
+      "ko": "채널",
+      "en": "Channels",
+      "ja": "チャネル"
+    },
+    "serversManageTabChannelAI": {
+      "ko": "채널 AI",
+      "en": "Channel AI",
+      "ja": "チャネルAI"
+    },
+    "serversManageTabRAG": {
+      "ko": "RAG",
+      "en": "RAG",
+      "ja": "RAG"
+    },
+    "serversManageTabPreset": {
+      "ko": "프리셋",
+      "en": "Presets",
+      "ja": "プリセット"
+    },
+    "serversManageTabProvider": {
+      "ko": "Provider",
+      "en": "Provider",
+      "ja": "プロバイダー"
+    },
+    "serversManageTabSafety": {
+      "ko": "안전",
+      "en": "Safety",
+      "ja": "安全"
+    },
+    "serversProviderWaitingApproval": {
+      "ko": "승인 대기",
+      "en": "Waiting for Approval",
+      "ja": "承認待ち"
+    },
+    "serversProviderAvailableModels": {
+      "ko": "제공 가능 모델",
+      "en": "Available Models",
+      "ja": "利用可能なモデル"
+    },
+    "serversProviderModelsCount": {
+      "ko": "{n}개",
+      "en": "{n}",
+      "ja": "{n}個"
+    },
+    "serversProviderRejectButton": {
+      "ko": "거절",
+      "en": "Reject",
+      "ja": "拒否"
+    },
+    "serversProviderApproveButton": {
+      "ko": "승인",
+      "en": "Approve",
+      "ja": "承認"
+    },
+    "serversProviderConnected": {
+      "ko": "연결된 Provider",
+      "en": "Connected Providers",
+      "ja": "接続済みプロバイダー"
+    },
+    "serversProviderMe": {
+      "ko": "나",
+      "en": "Me",
+      "ja": "私"
+    },
+    "serversProviderModels": {
+      "ko": "모델",
+      "en": "Models",
+      "ja": "モデル"
+    },
+    "serversProviderToday": {
+      "ko": "오늘",
+      "en": "Today",
+      "ja": "今日"
+    },
+    "serversProviderTodayCount": {
+      "ko": "{n}건",
+      "en": "{n} requests",
+      "ja": "{n}件"
+    },
+    "serversProviderRemoveButton": {
+      "ko": "제거",
+      "en": "Remove",
+      "ja": "削除"
+    },
+    "serversProviderPolicy": {
+      "ko": "서버 제공 정책",
+      "en": "Server Policy",
+      "ja": "サーバーポリシー"
+    },
+    "serversProviderAutoApprove": {
+      "ko": "신규 Provider 자동 승인",
+      "en": "Auto-approve new providers",
+      "ja": "新しいプロバイダーを自動承認"
+    },
+    "serversProviderAutoApproveEnabled": {
+      "ko": "켜짐 — 승인 없이 바로 참여해요",
+      "en": "Enabled — providers join immediately",
+      "ja": "有効 — プロバイダーはすぐに参加"
+    },
+    "serversProviderAutoApproveDisabled": {
+      "ko": "꺼짐 — 관리자 승인이 필요해요",
+      "en": "Disabled — admin approval required",
+      "ja": "無効 — 管理者の承認が必要"
+    },
+    "serversProviderAutoApproveDisableButton": {
+      "ko": "끄기",
+      "en": "Turn Off",
+      "ja": "オフにする"
+    },
+    "serversProviderAutoApproveEnableButton": {
+      "ko": "켜기",
+      "en": "Turn On",
+      "ja": "オンにする"
+    },
+    "serversProviderApproveSuccess": {
+      "ko": "Provider 를 승인했어요",
+      "en": "Provider approved",
+      "ja": "プロバイダーを承認しました"
+    },
+    "serversProviderRejectSuccess": {
+      "ko": "가입 요청을 거절했어요",
+      "en": "Join request rejected",
+      "ja": "参加リクエストを拒否しました"
+    },
+    "serversProviderRemoveConfirmTitle": {
+      "ko": "{name} 을(를) 제거할까요?",
+      "en": "Remove {name}?",
+      "ja": "{name}を削除しますか？"
+    },
+    "serversProviderRemoveConfirmDesc": {
+      "ko": "이 Provider 가 이 서버에 대주던 모델이 더 이상 제공되지 않아요. 다시 가입 요청하면 재승인할 수 있어요.",
+      "en": "Models provided by this provider won't be available. They can rejoin and be re-approved later.",
+      "ja": "このプロバイダーが提供していたモデルは利用できなくなります。後で再参加して再度承認を受けることができます。"
+    },
+    "serversProviderRemoveConfirm": {
+      "ko": "제거",
+      "en": "Remove",
+      "ja": "削除"
+    },
+    "serversProviderRemoveSuccess": {
+      "ko": "{name} 을(를) 제거했어요",
+      "en": "Removed {name}",
+      "ja": "{name}を削除しました"
+    },
+    "serversProviderAutoApproveEnabledSuccess": {
+      "ko": "신규 자동 승인을 켰어요",
+      "en": "Auto-approval enabled",
+      "ja": "自動承認を有効にしました"
+    },
+    "serversProviderAutoApproveDisabledSuccess": {
+      "ko": "신규 자동 승인을 껐어요",
+      "en": "Auto-approval disabled",
+      "ja": "自動承認を無効にしました"
+    },
+    "serversOverviewLabel": {
+      "ko": "서버 요약",
+      "en": "Server Summary",
+      "ja": "サーバー概要"
+    },
+    "serversOverviewProvider": {
+      "ko": "Provider",
+      "en": "Providers",
+      "ja": "プロバイダー"
+    },
+    "serversOverviewProcessed": {
+      "ko": "오늘 처리",
+      "en": "Processed Today",
+      "ja": "本日処理"
+    },
+    "serversOverviewPendingApproval": {
+      "ko": "승인 대기",
+      "en": "Pending Approval",
+      "ja": "承認待ち"
+    },
+    "serversOverviewPendingCount": {
+      "ko": "{n}명",
+      "en": "{n}",
+      "ja": "{n}人"
+    },
+    "serversOverviewPendingNote": {
+      "ko": "Provider 탭에서 승인/거절할 수 있어요.",
+      "en": "Approve or reject in the Provider tab.",
+      "ja": "プロバイダータブで承認または拒否できます。"
+    },
+    "serversOverviewServerDefaults": {
+      "ko": "서버 기본값",
+      "en": "Server Defaults",
+      "ja": "サーバーのデフォルト"
+    },
+    "serversOverviewDefaultModel": {
+      "ko": "기본 모델",
+      "en": "Default Model",
+      "ja": "デフォルトモデル"
+    },
+    "serversOverviewDefaultLanguage": {
+      "ko": "기본 언어",
+      "en": "Default Language",
+      "ja": "デフォルト言語"
+    },
+    "serversProfileDescription": {
+      "ko": "서버 전체에 적용할 AI 성격(전역 프롬프트셋)을 관리해요. 모든 응답에는 NEXA 안전 지침이 항상 우선 적용돼요. 콘텐츠 책임은 서버 관리자에게 있어요 — 불법 콘텐츠는 무관용 차단(안전 탭).",
+      "en": "Manage AI personalities for the entire server (global prompt sets). All responses prioritize NEXA safety guidelines. Content responsibility rests with the server admin — illegal content is blocked (Safety tab).",
+      "ja": "サーバー全体に適用するAIパーソナリティを管理します（グローバルプロンプトセット）。すべての応答はNEXAセーフティガイドラインを優先します。コンテンツの責任はサーバー管理者にあります — 違法コンテンツは除外されます（安全タブ）。"
+    },
+    "serversProfileGlobalPrompts": {
+      "ko": "전역 프롬프트셋",
+      "en": "Global Prompt Sets",
+      "ja": "グローバルプロンプトセット"
+    },
+    "serversProfileGlobalPromptsNote": {
+      "ko": "서버 전체 기본 성격",
+      "en": "Default personality for entire server",
+      "ja": "サーバー全体のデフォルトパーソナリティ"
+    },
+    "serversProfileAddButton": {
+      "ko": "+ 추가",
+      "en": "+ Add",
+      "ja": "+ 追加"
+    },
+    "serversProfileBuiltinLock": {
+      "ko": "🔒 NEXA 기본 · 전문 비공개",
+      "en": "🔒 NEXA default · Full text private",
+      "ja": "🔒 NEXAデフォルト · 全文非公開"
+    },
+    "serversProfileDefault": {
+      "ko": "기본",
+      "en": "Default",
+      "ja": "デフォルト"
+    },
+    "serversProfileSetDefaultButton": {
+      "ko": "기본으로",
+      "en": "Set as Default",
+      "ja": "デフォルトに設定"
+    },
+    "serversProfileDeleteButton": {
+      "ko": "삭제",
+      "en": "Delete",
+      "ja": "削除"
+    },
+    "serversProfileSetDefaultSuccess": {
+      "ko": "기본 프롬프트셋을 변경했어요",
+      "en": "Default prompt set changed",
+      "ja": "デフォルトプロンプトセットを変更しました"
+    },
+    "serversProfileDeleteConfirmTitle": {
+      "ko": "{name} 을(를) 삭제할까요?",
+      "en": "Delete {name}?",
+      "ja": "{name}を削除しますか？"
+    },
+    "serversProfileDeleteConfirmDesc": {
+      "ko": "이 전역 프롬프트셋이 서버 목록에서 제거돼요.",
+      "en": "This global prompt set will be removed from the server.",
+      "ja": "このグローバルプロンプトセットはサーバーから削除されます。"
+    },
+    "serversProfileDeleteConfirm": {
+      "ko": "삭제",
+      "en": "Delete",
+      "ja": "削除"
+    },
+    "serversProfileDeleteSuccess": {
+      "ko": "{name} 을(를) 삭제했어요",
+      "en": "Deleted {name}",
+      "ja": "{name}を削除しました"
+    },
+    "serversProfileDeleteFailed": {
+      "ko": "삭제할 수 없어요",
+      "en": "Cannot delete",
+      "ja": "削除できません"
+    },
+    "serversProfileAddTitle": {
+      "ko": "전역 프롬프트셋 추가",
+      "en": "Add Global Prompt Set",
+      "ja": "グローバルプロンプトセットを追加"
+    },
+    "serversProfileAddDescription": {
+      "ko": "서버 전체에 적용할 AI 성격(시스템 프롬프트)을 만들어요.",
+      "en": "Create an AI personality (system prompt) to apply to the entire server.",
+      "ja": "サーバー全体に適用するAIパーソナリティ（システムプロンプト）を作成します。"
+    },
+    "serversProfileAddNameLabel": {
+      "ko": "이름",
+      "en": "Name",
+      "ja": "名前"
+    },
+    "serversProfileAddNamePlaceholder": {
+      "ko": "예: 코드 도우미",
+      "en": "Example: Code Assistant",
+      "ja": "例：コードアシスタント"
+    },
+    "serversProfileAddContentLabel": {
+      "ko": "프롬프트 내용",
+      "en": "Prompt Content",
+      "ja": "プロンプト内容"
+    },
+    "serversProfileAddContentPlaceholder": {
+      "ko": "당신은 ...",
+      "en": "You are ...",
+      "ja": "あなたは..."
+    },
+    "serversProfileAddFailed": {
+      "ko": "이름과 내용을 입력하세요",
+      "en": "Enter name and content",
+      "ja": "名前と内容を入力してください"
+    },
+    "serversProfileAddSuccess": {
+      "ko": "프롬프트셋을 추가했어요",
+      "en": "Prompt set added",
+      "ja": "プロンプトセットを追加しました"
+    },
+    "serversChannelsTitle": {
+      "ko": "채널별 AI 허용",
+      "en": "Per-Channel AI",
+      "ja": "チャネルごとのAI"
+    },
+    "serversChannelsNote": {
+      "ko": "허용된 채널에서만 AI 가 답해요",
+      "en": "AI only responds in enabled channels",
+      "ja": "AIは有効なチャネルでのみ応答します"
+    },
+    "serversChannelsAIAllowed": {
+      "ko": "AI 허용",
+      "en": "AI Allowed",
+      "ja": "AI許可"
+    },
+    "serversChannelsAIDisabled": {
+      "ko": "AI 금지",
+      "en": "AI Disabled",
+      "ja": "AI禁止"
+    },
+    "serversChannelsNone": {
+      "ko": "채널이 없어요(봇이 서버에 연결돼 있어야 보여요).",
+      "en": "No channels (bot must be connected to server).",
+      "ja": "チャネルがありません（ボットがサーバーに接続する必要があります）。"
+    },
+    "serversChannelAIDescription": {
+      "ko": "채널마다 다른 AI 성격(말투·목적)을 지정할 수 있어요.",
+      "en": "Assign different AI personalities (tone·purpose) per channel.",
+      "ja": "チャネルごとに異なるAIパーソナリティ（トーン・目的）を指定できます。"
+    },
+    "serversChannelAIConfigured": {
+      "ko": "설정됨",
+      "en": "Configured",
+      "ja": "設定済み"
+    },
+    "serversChannelAITone": {
+      "ko": "말투",
+      "en": "Tone",
+      "ja": "トーン"
+    },
+    "serversChannelAIPurpose": {
+      "ko": "목적",
+      "en": "Purpose",
+      "ja": "目的"
+    },
+    "serversRagLabel": {
+      "ko": "지식 공간",
+      "en": "Knowledge Space",
+      "ja": "知識空間"
+    },
+    "serversRagDescription": {
+      "ko": "AI 가 답변에 참고",
+      "en": "AI uses for reference in answers",
+      "ja": "AIが回答で参考にする"
+    },
+    "serversRagDocDeleteButton": {
+      "ko": "삭제",
+      "en": "Delete",
+      "ja": "削除"
+    },
+    "serversRagNoDocuments": {
+      "ko": "아직 문서가 없어요(추가는 Discord 명령으로).",
+      "en": "No documents yet (add via Discord command).",
+      "ja": "まだドキュメントがありません（Discordコマンドで追加）。"
+    },
+    "serversRagContentResponsibility": {
+      "ko": "📄 올린 문서의 콘텐츠 책임은 서버 관리자에게 있어요. 불법 콘텐츠는 무관용 차단됩니다(안전).",
+      "en": "📄 Content responsibility for uploaded documents rests with the server admin. Illegal content is blocked (Safety).",
+      "ja": "📄 アップロードされたドキュメントのコンテンツの責任はサーバー管理者にあります。違法コンテンツはブロックされます（安全）。"
+    },
+    "serversRagManageNote": {
+      "ko": "지식 문서(추가는 Discord/웹, 여기선 삭제 가능)",
+      "en": "Knowledge documents (add via Discord/web, delete here)",
+      "ja": "知識文書（Discord/ウェブで追加、ここで削除）"
+    },
+    "serversRagDeleteConfirmTitle": {
+      "ko": "{name} 을(를) 삭제할까요?",
+      "en": "Delete {name}?",
+      "ja": "{name}を削除しますか？"
+    },
+    "serversRagDeleteConfirmDesc": {
+      "ko": "이 지식 소스가 RAG 에서 제거돼요(AI 가 더는 참고하지 않아요).",
+      "en": "This knowledge source will be removed from RAG (AI won't reference it).",
+      "ja": "この知識ソースはRAGから削除されます（AIは参考にしません）。"
+    },
+    "serversRagDeleteConfirm": {
+      "ko": "삭제",
+      "en": "Delete",
+      "ja": "削除"
+    },
+    "serversRagDeleteSuccess": {
+      "ko": "{name} 을(를) 삭제했어요",
+      "en": "Deleted {name}",
+      "ja": "{name}を削除しました"
+    },
+    "serversRagDeleteFailed": {
+      "ko": "삭제할 수 없어요",
+      "en": "Cannot delete",
+      "ja": "削除できません"
+    },
+    "serversPresetTitle": {
+      "ko": "프리셋",
+      "en": "Presets",
+      "ja": "プリセット"
+    },
+    "serversPresetEmpty": {
+      "ko": "프리셋은 디스코드 명령으로 만들 수 있어요(여기선 삭제·조회).",
+      "en": "Presets are created via Discord commands (delete/view here).",
+      "ja": "プリセットはDiscordコマンドで作成します（ここで削除・表示）。"
+    },
+    "serversPresetDeleteButton": {
+      "ko": "삭제",
+      "en": "Delete",
+      "ja": "削除"
+    },
+    "serversPresetDeleteConfirmTitle": {
+      "ko": "{name} 을(를) 삭제할까요?",
+      "en": "Delete {name}?",
+      "ja": "{name}を削除しますか？"
+    },
+    "serversPresetDeleteConfirmDesc": {
+      "ko": "이 서버의 프리셋이 제거돼요(되돌릴 수 없어요).",
+      "en": "This server's preset will be removed (irreversible).",
+      "ja": "このサーバーのプリセットは削除されます（戻せません）。"
+    },
+    "serversPresetDeleteConfirm": {
+      "ko": "삭제",
+      "en": "Delete",
+      "ja": "削除"
+    },
+    "serversPresetDeleteSuccess": {
+      "ko": "{name} 을(를) 삭제했어요",
+      "en": "Deleted {name}",
+      "ja": "{name}を削除しました"
+    },
+    "serversPresetDeleteFailed": {
+      "ko": "삭제 실패 — 다시 시도하세요",
+      "en": "Delete failed — try again",
+      "ja": "削除に失敗しました — もう一度お試しください"
+    },
+    "serversPresetManageNote": {
+      "ko": "프리셋(추가·편집은 Discord/웹, 여기선 삭제 가능)",
+      "en": "Presets (add/edit via Discord/web, delete here)",
+      "ja": "プリセット（Discord/ウェブで追加・編集、ここで削除）"
+    },
+    "serversSafetyPolicy": {
+      "ko": "콘텐츠 정책",
+      "en": "Content Policy",
+      "ja": "コンテンツポリシー"
+    },
+    "serversSafetyPolicyDescription": {
+      "ko": "이 서버 AI 콘텐츠의 책임은 서버 관리자에게 있어요. · 불법 콘텐츠(아동 성착취물 등)는 무관용 — 안전 가드레일이 자동 거부·차단합니다. · Discord 커뮤니티 가이드·서비스 약관을 따라요(성인물은 연령 제한 채널에서만).",
+      "en": "Server admin is responsible for AI content. · Illegal content (e.g., child exploitation) is zero-tolerance — safety guardrails auto-reject/block. · Follows Discord community guidelines and ToS (adult content only in age-restricted channels).",
+      "ja": "サーバー管理者はAIコンテンツの責任があります。違法コンテンツ（児童搾取など）はゼロトレランス — セーフティガードレールが自動拒否・ブロック。Discordコミュニティガイドライン・ToSに従います（成人向けコンテンツは年齢制限チャネルのみ）。"
+    },
+    "serversSafetyReport": {
+      "ko": "신고·대응은 이렇게 동작해요",
+      "en": "Reports and actions work like this",
+      "ja": "報告と対応はこのように機能します"
+    },
+    "serversSafetyReportDescription": {
+      "ko": "· 부적절한 답변은 Discord 메시지 신고 또는 서버 관리자에게 알릴 수 있어요. · 관리자는 채널 AI 허용/차단(채널 탭)·프리셋/지식 삭제(프리셋·RAG 탭)로 즉시 조치할 수 있어요. · 안전을 해치는 요청은 답변 생성 단계에서 거부돼요(가드레일).",
+      "en": "· Inappropriate responses can be reported via Discord or to the server admin. · Admins can immediately act by enabling/disabling channels (Channels tab) or deleting presets/knowledge (Preset/RAG tabs). · Safety-violating requests are rejected during response generation (guardrails).",
+      "ja": "不適切な応答はDiscordまたはサーバー管理者に報告できます。管理者はチャネル有効/無効（チャネルタブ）またはプリセット・知識削除（プリセット・RAGタブ）で直ちに対応できます。安全性を侵害するリクエストは応答生成段階で拒否されます（ガードレール）。"
+    },
+    "serversSafetyNoReports": {
+      "ko": "처리할 신고 없음",
+      "en": "No reports to handle",
+      "ja": "処理する報告はありません"
+    },
+    "serversSafetyReportDismiss": {
+      "ko": "무시",
+      "en": "Dismiss",
+      "ja": "無視"
+    },
+    "serversSafetyReportAction": {
+      "ko": "숨김 처리",
+      "en": "Hide",
+      "ja": "非表示"
+    },
+    "serversSafetyDismissSuccess": {
+      "ko": "신고를 무시했어요",
+      "en": "Report dismissed",
+      "ja": "報告を無視しました"
+    },
+    "serversSafetyActionSuccess": {
+      "ko": "숨김 처리했어요",
+      "en": "Report hidden",
+      "ja": "報告を非表示にしました"
+    },
+    "serversChannelsDefaultModel": {
+      "ko": "기본 모델",
+      "en": "Default Model",
+      "ja": "デフォルトモデル"
+    },
+    "serversChannelsDefaultLanguage": {
+      "ko": "기본 언어",
+      "en": "Default Language",
+      "ja": "デフォルト言語"
+    },
+    "serversManagedFeaturesSoon": {
+      "ko": "앱 직접관리 준비 중",
+      "en": "App management coming soon",
+      "ja": "アプリ管理準備中"
+    },
+    "serversManagedFeaturesSoonDesc": {
+      "ko": "이 기능은 곧 앱에서 바로 관리할 수 있어요. 지금은 Discord 슬래시 명령이나 웹 대시보드에서 설정할 수 있어요.",
+      "en": "This feature will soon be available in-app. For now, use Discord slash commands or the web dashboard.",
+      "ja": "この機能はまもなくアプリで管理できるようになります。現在はDiscordスラッシュコマンドまたはウェブダッシュボードを使用してください。"
+    },
+    "serversManageReadonlyNote": {
+      "ko": "추가·편집은 Discord 슬래시 명령이나 웹 대시보드에서 관리해요(앱은 현황 조회).",
+      "en": "Add/edit via Discord slash commands or web dashboard (app shows status only).",
+      "ja": "Discord スラッシュコマンドまたはウェブダッシュボードで追加・編集（アプリは状況のみ表示）。"
+    },
+    "stageWizStep": {
+      "ko": "설정 {n} / 4",
+      "en": "Setup {n} / 4",
+      "ja": "設定 {n} / 4"
+    },
+    "stageWelcomeTitle": {
+      "ko": "NEXA 에 오신 걸 환영해요",
+      "en": "Welcome to NEXA",
+      "ja": "NEXA へようこそ"
+    },
+    "stageWelcomeSub": {
+      "ko": "내 PC 의 AI 로 디스코드 커뮤니티의 질문에 응답을 기여하는 프로그램이에요.<br>몇 단계만 설정하면 바로 시작할 수 있어요.",
+      "en": "Contribute AI-powered answers to Discord community questions from your PC. Just a few steps to get started.",
+      "ja": "あなたのPCのAIでDiscordコミュニティの質問に回答を提供するプログラムです。いくつかのステップを設定するだけですぐに始められます。"
+    },
+    "stageFeatureTextTitle": {
+      "ko": "텍스트 AI 제공",
+      "en": "Text AI Provider",
+      "ja": "テキストAI提供"
+    },
+    "stageFeatureTextDesc": {
+      "ko": "Ollama 로 다른 사람의 질문에 답합니다",
+      "en": "Answer questions with Ollama",
+      "ja": "Ollamaで他の人の質問に答えます"
+    },
+    "stageFeatureImageTitle": {
+      "ko": "이미지 생성 (선택)",
+      "en": "Image Generation (Optional)",
+      "ja": "画像生成（オプション）"
+    },
+    "stageFeatureImageDesc": {
+      "ko": "ComfyUI 로 그림 요청도 처리해요(로컬 실행 탭에서 설치)",
+      "en": "Handle image requests with ComfyUI (install from Local tab)",
+      "ja": "ComfyUIで画像リクエストも処理します（ローカル実行タブからインストール）"
+    },
+    "stageFeatureSecurityTitle": {
+      "ko": "안전한 기본값",
+      "en": "Safe Defaults",
+      "ja": "安全なデフォルト設定"
+    },
+    "stageFeatureSecurityDesc": {
+      "ko": "하루 한도·localhost 전용 등 보수적으로 시작해요",
+      "en": "Start conservatively with daily limits and localhost-only access",
+      "ja": "1日の制限・localhost専用など、慎重に開始します"
+    },
+    "stageStep1Start": {
+      "ko": "시작하기",
+      "en": "Get Started",
+      "ja": "はじめる"
+    },
+    "stageStep2Title": {
+      "ko": "무엇을 준비할까요?",
+      "en": "What would you like to set up?",
+      "ja": "何を準備しますか？"
+    },
+    "stageStep2Sub": {
+      "ko": "이 PC 에서 제공할 AI 를 고르세요. 나중에 바꿀 수 있어요.",
+      "en": "Choose the AI to provide from this PC. You can change it later.",
+      "ja": "このPCで提供するAIを選択してください。後で変更できます。"
+    },
+    "stageOllamaLabel": {
+      "ko": "Ollama",
+      "en": "Ollama",
+      "ja": "Ollama"
+    },
+    "stageOllamaTag": {
+      "ko": "권장",
+      "en": "Recommended",
+      "ja": "推奨"
+    },
+    "stageOllamaDesc": {
+      "ko": "텍스트 질문에 답하는 기본 엔진",
+      "en": "Default engine for text questions",
+      "ja": "テキスト質問に答えるデフォルトエンジン"
+    },
+    "stageOllamaSize": {
+      "ko": "~5GB",
+      "en": "~5GB",
+      "ja": "~5GB"
+    },
+    "stageSkipInstall": {
+      "ko": "지금은 설치 안 함",
+      "en": "Skip for now",
+      "ja": "今はインストールしない"
+    },
+    "stageSkipInstallDesc": {
+      "ko": "메인 화면에서 나중에 설치할 수 있어요",
+      "en": "You can install later from the main screen",
+      "ja": "メイン画面から後でインストールできます"
+    },
+    "stageStep2ComfyNote": {
+      "ko": "이미지 생성(ComfyUI)은 설치 후 <b>로컬 실행</b> 탭에서 한 번에 설치·관리해요.",
+      "en": "Image generation (ComfyUI) can be installed and managed from the <b>Local</b> tab after setup.",
+      "ja": "画像生成（ComfyUI）は設定後、<b>ローカル実行</b>タブから一括でインストール・管理できます。"
+    },
+    "stageButtonPrevious": {
+      "ko": "이전",
+      "en": "Previous",
+      "ja": "前へ"
+    },
+    "stageButtonNext": {
+      "ko": "다음",
+      "en": "Next",
+      "ja": "次へ"
+    },
+    "stageStep3Title": {
+      "ko": "동작 방식",
+      "en": "Behavior",
+      "ja": "動作方法"
+    },
+    "stageStep3Sub": {
+      "ko": "앱이 어떻게 실행될지 정하세요. 모두 나중에 설정에서 바꿀 수 있어요.",
+      "en": "Configure how the app runs. You can change all settings later.",
+      "ja": "アプリの実行方法を設定してください。後で設定から変更できます。"
+    },
+    "stageAutoStartLabel": {
+      "ko": "로그인 시 자동 실행",
+      "en": "Auto-start on login",
+      "ja": "ログイン時に自動実行"
+    },
+    "stageAutoStartDesc": {
+      "ko": "PC 를 켜면 백그라운드로 자동 시작",
+      "en": "Automatically starts in the background when you turn on your PC",
+      "ja": "PCを起動するとバックグラウンドで自動開始"
+    },
+    "stageAutoConnectLabel": {
+      "ko": "로그인 후 자동 연결",
+      "en": "Auto-connect after login",
+      "ja": "ログイン後に自動接続"
+    },
+    "stageAutoConnectDesc": {
+      "ko": "앱이 시작되면 바로 제공을 시작",
+      "en": "Start providing immediately when the app starts",
+      "ja": "アプリが起動すると提供を開始"
+    },
+    "stageImageRecvLabel": {
+      "ko": "이미지 요청 받기",
+      "en": "Receive image requests",
+      "ja": "画像リクエストを受け取る"
+    },
+    "stageImageRecvDesc": {
+      "ko": "/그림 요청도 이 PC 에서 처리",
+      "en": "Handle /image requests from this PC",
+      "ja": "/画像リクエストもこのPCで処理"
+    },
+    "stageBackgroundLabel": {
+      "ko": "백그라운드 실행 유지",
+      "en": "Keep running in background",
+      "ja": "バックグラウンドで実行を継続"
+    },
+    "stageBackgroundDesc": {
+      "ko": "창을 닫아도 트레이에서 계속 제공",
+      "en": "Continue providing from the tray even after closing the window",
+      "ja": "ウィンドウを閉じてもトレイから提供を継続"
+    },
+    "stageStep4Title": {
+      "ko": "준비가 끝났어요",
+      "en": "All set!",
+      "ja": "準備完了です"
+    },
+    "stageStep4Sub": {
+      "ko": "아래 설정으로 시작합니다. 연동하면 디스코드 로그인으로 넘어가요.",
+      "en": "Starting with the settings below. After connecting, you'll proceed to Discord login.",
+      "ja": "以下の設定で開始します。接続後、Discordログインに進みます。"
+    },
+    "stageSummaryTextModel": {
+      "ko": "텍스트 모델",
+      "en": "Text model",
+      "ja": "テキストモデル"
+    },
+    "stageSummaryTextModelOn": {
+      "ko": "Ollama 사용",
+      "en": "Ollama enabled",
+      "ja": "Ollama使用中"
+    },
+    "stageSummaryTextModelOff": {
+      "ko": "사용 안 함",
+      "en": "Not enabled",
+      "ja": "無効"
+    },
+    "stageSummaryImageRecv": {
+      "ko": "이미지 요청 받기",
+      "en": "Receive images",
+      "ja": "画像リクエスト受取"
+    },
+    "stageSummaryImageRecvOn": {
+      "ko": "켜짐(ComfyUI)",
+      "en": "Enabled (ComfyUI)",
+      "ja": "有効（ComfyUI）"
+    },
+    "stageSummaryImageRecvOff": {
+      "ko": "꺼짐",
+      "en": "Disabled",
+      "ja": "無効"
+    },
+    "stageSummaryAutoConnect": {
+      "ko": "자동 연결",
+      "en": "Auto-connect",
+      "ja": "自動接続"
+    },
+    "stageSummaryAutoConnectOn": {
+      "ko": "켜짐",
+      "en": "Enabled",
+      "ja": "有効"
+    },
+    "stageSummaryAutoConnectOff": {
+      "ko": "꺼짐",
+      "en": "Disabled",
+      "ja": "無効"
+    },
+    "stageSummaryBackground": {
+      "ko": "백그라운드 실행",
+      "en": "Background running",
+      "ja": "バックグラウンド実行"
+    },
+    "stageSummaryBackgroundOn": {
+      "ko": "유지",
+      "en": "Maintained",
+      "ja": "維持"
+    },
+    "stageSummaryBackgroundOff": {
+      "ko": "안 함",
+      "en": "Not maintained",
+      "ja": "なし"
+    },
+    "stageButtonMainScreen": {
+      "ko": "메인 화면으로",
+      "en": "Go to main screen",
+      "ja": "メイン画面へ"
+    },
+    "stageButtonConnect": {
+      "ko": "연동하기",
+      "en": "Connect",
+      "ja": "接続する"
+    },
+    "stageConnectTitle": {
+      "ko": "DISCORD 연결",
+      "en": "DISCORD CONNECTION",
+      "ja": "DISCORD接続"
+    },
+    "stageServerAdd": {
+      "ko": "서버 추가",
+      "en": "Add server",
+      "ja": "サーバー追加"
+    },
+    "stageLoginTitle": {
+      "ko": "디스코드에 연결",
+      "en": "Connect to Discord",
+      "ja": "Discordに接続"
+    },
+    "stageLoginSub": {
+      "ko": "로그인하면 봇이 있는 내 서버 목록에서 골라<br>AI 를 제공할 수 있어요.",
+      "en": "Log in to select your servers with the bot and start providing AI.",
+      "ja": "ログインするとボットがあるサーバーを選択してAIを提供できます。"
+    },
+    "stageLoginButton": {
+      "ko": "Discord 로 로그인",
+      "en": "Sign in with Discord",
+      "ja": "Discordでサインイン"
+    },
+    "stageTokenAdvanced": {
+      "ko": "고급 · 토큰 직접 입력",
+      "en": "Advanced · Enter token directly",
+      "ja": "高度な設定 · トークンを直接入力"
+    },
+    "stageTokenPlaceholder": {
+      "ko": "발급받은 참여 토큰을 붙여넣으세요",
+      "en": "Paste your token here",
+      "ja": "発行されたトークンを貼り付けてください"
+    },
+    "stageTokenAdd": {
+      "ko": "추가",
+      "en": "Add",
+      "ja": "追加"
+    },
+    "stageLoginCancel": {
+      "ko": "취소",
+      "en": "Cancel",
+      "ja": "キャンセル"
+    },
+    "stageWaitingTitle": {
+      "ko": "브라우저에서 로그인 중…",
+      "en": "Signing in from browser…",
+      "ja": "ブラウザでサインイン中…"
+    },
+    "stageWaitingSub": {
+      "ko": "열린 브라우저 창에서 디스코드 로그인과 서버 선택을 완료하세요.<br>끝나면 자동으로 연결됩니다.",
+      "en": "Complete Discord login and server selection in the browser window.<br>You'll automatically connect when done.",
+      "ja": "開いているブラウザウィンドウでDiscordログインとサーバー選択を完了してください。<br>完了すると自動的に接続されます。"
+    },
+    "stageSelectTitle": {
+      "ko": "추가할 서버를 고르세요",
+      "en": "Choose a server to add",
+      "ja": "追加するサーバーを選択してください"
+    },
+    "stageSelectTitleOnboarding": {
+      "ko": "어느 서버에 제공할까요?",
+      "en": "Which server to provide?",
+      "ja": "どのサーバーで提供しますか？"
+    },
+    "stageSelectSub": {
+      "ko": "봇이 있고 내가 속한 서버 중 아직 연결 안 된 곳이에요.",
+      "en": "These are servers where the bot exists, you are a member, and not yet connected.",
+      "ja": "ボットがあり、あなたがメンバーで、まだ接続されていないサーバーです。"
+    },
+    "stageServerApprovalAuto": {
+      "ko": "바로 연결돼요",
+      "en": "Connects immediately",
+      "ja": "すぐに接続されます"
+    },
+    "stageServerApprovalWait": {
+      "ko": "관리자 승인 후 연결",
+      "en": "After admin approval",
+      "ja": "管理者承認後に接続"
+    },
+    "stageSelectTokenBlock": {
+      "ko": "참여 토큰으로 추가",
+      "en": "Add with token",
+      "ja": "トークンで追加"
+    },
+    "stageSelectBack": {
+      "ko": "이전",
+      "en": "Back",
+      "ja": "戻る"
+    },
+    "stageSelectCancel": {
+      "ko": "취소",
+      "en": "Cancel",
+      "ja": "キャンセル"
+    },
+    "stageResultApprovedTitle": {
+      "ko": "연결됐어요!",
+      "en": "Connected!",
+      "ja": "接続されました！"
+    },
+    "stageResultApprovedSub": {
+      "ko": "이제 {n}에 AI 를 제공합니다.",
+      "en": "Now providing AI to {n}.",
+      "ja": "これで{n}にAIを提供します。"
+    },
+    "stageResultPendingTitle": {
+      "ko": "관리자 승인 대기 중",
+      "en": "Awaiting admin approval",
+      "ja": "管理者の承認待ちです"
+    },
+    "stageResultPendingSub": {
+      "ko": "{n} 관리자가 승인하면 자동으로 연결돼요.<br>그동안 다른 서버를 추가할 수 있어요.",
+      "en": "Admin will auto-connect when approved. You can add other servers in the meantime.",
+      "ja": "{n}の管理者が承認すると自動的に接続されます。その間に別のサーバーを追加できます。"
+    },
+    "stageResultPendingOtherServer": {
+      "ko": "다른 서버",
+      "en": "Other servers",
+      "ja": "他のサーバー"
+    },
+    "stageResultNoneTitle": {
+      "ko": "참여 가능한 서버가 없어요",
+      "en": "No available servers",
+      "ja": "参加可能なサーバーがありません"
+    },
+    "stageResultNoneSub": {
+      "ko": "봇이 있는 서버 중 내가 속한 곳이 없어요.<br>서버에 봇을 먼저 초대해 주세요.",
+      "en": "You're not a member of any server with the bot. Please add the bot to a server first.",
+      "ja": "ボットがあるサーバーのメンバーではありません。まずサーバーにボットを招待してください。"
+    },
+    "stageResultCancelledTitle": {
+      "ko": "연결이 취소됐어요",
+      "en": "Connection cancelled",
+      "ja": "接続がキャンセルされました"
+    },
+    "stageResultCancelledSub": {
+      "ko": "디스코드 로그인이 취소됐어요. 다시 시도할 수 있어요.",
+      "en": "Discord login was cancelled. You can try again.",
+      "ja": "Discordログインがキャンセルされました。もう一度試してください。"
+    },
+    "stageResultRetry": {
+      "ko": "다시 시도",
+      "en": "Try again",
+      "ja": "もう一度試す"
+    },
+    "stageSaveSettingsFailed": {
+      "ko": "설정 저장에 실패했어요 — 나중에 설정에서 바꿀 수 있어요",
+      "en": "Failed to save settings. You can change them later in settings.",
+      "ja": "設定の保存に失敗しました。後で設定から変更できます。"
+    },
+    "stageBrowserOpenFailed": {
+      "ko": "브라우저를 열 수 없어요",
+      "en": "Cannot open browser",
+      "ja": "ブラウザを開けません"
+    },
+    "stageBrowserOpenFailedHint": {
+      "ko": "디스코드 로그인이 준비되지 않았어요 아래 '토큰 직접 입력'으로 추가하세요.",
+      "en": "Discord login is not configured. Use 'Enter token directly' below to add.",
+      "ja": "Discordログインが設定されていません。下の「トークンを直接入力」を使用して追加してください。"
+    },
+    "stageTokenCheckingIn": {
+      "ko": "토큰 확인 중…",
+      "en": "Checking token…",
+      "ja": "トークンを確認中…"
+    },
+    "stageTokenComplete": {
+      "ko": "연결 완료",
+      "en": "Connected",
+      "ja": "接続完了"
+    },
+    "stageApprovalRequested": {
+      "ko": "승인 요청을 보냈어요",
+      "en": "Approval request sent",
+      "ja": "承認リクエストを送信しました"
+    },
+    "stageServerJoiningIn": {
+      "ko": "서버 연결 중…",
+      "en": "Connecting to server…",
+      "ja": "サーバーに接続中…"
+    },
+    "stageConnectToast": {
+      "ko": "연결됐어요",
+      "en": "Connected",
+      "ja": "接続されました"
+    },
+    "stageHomeUnconnected": {
+      "ko": "아직 서버에 연결되지 않았어요. 서버를 추가해 AI 제공을 시작하세요.",
+      "en": "Not yet connected to any server. Add a server to start providing AI.",
+      "ja": "まだサーバーに接続されていません。サーバーを追加してAI提供を開始してください。"
+    },
+    "stageHomeProvidingOk": {
+      "ko": "지금 AI를 정상적으로 제공하고 있어요.",
+      "en": "Now providing AI normally.",
+      "ja": "現在、AIを正常に提供しています。"
+    },
+    "stageHomeProvidingError": {
+      "ko": "연결됐지만 아직 제공을 시작하지 않았어요.",
+      "en": "Connected but not yet providing.",
+      "ja": "接続されていますが、まだ提供を開始していません。"
+    },
+    "stageOllamaModelCount": {
+      "ko": "모델 {n}개 · 텍스트 응답 제공",
+      "en": "{n} models · Providing text responses",
+      "ja": "{n}個のモデル・テキスト応答提供"
+    },
+    "presenterServerStateConnected": {
+      "ko": "연결됨",
+      "en": "Connected",
+      "ja": "接続済み"
+    },
+    "presenterServerStateResponding": {
+      "ko": "응답 중",
+      "en": "Responding",
+      "ja": "応答中"
+    },
+    "presenterServerStatePaused": {
+      "ko": "일시중지",
+      "en": "Paused",
+      "ja": "一時停止中"
+    },
+    "presenterServerStateLimitReached": {
+      "ko": "한도 도달",
+      "en": "Limit Reached",
+      "ja": "制限に達しました"
+    },
+    "presenterServerStateApprovalNeeded": {
+      "ko": "승인 필요",
+      "en": "Approval Needed",
+      "ja": "承認が必要です"
+    },
+    "presenterServerStateOffline": {
+      "ko": "연결 끊김",
+      "en": "Offline",
+      "ja": "オフライン"
+    },
+    "presenterServerStateMaintenance": {
+      "ko": "점검 필요",
+      "en": "Maintenance Needed",
+      "ja": "メンテナンスが必要です"
+    },
+    "presenterServerStateRemoved": {
+      "ko": "제거됨",
+      "en": "Removed",
+      "ja": "削除されました"
+    },
+    "presenterServerMetaAdminApprovalPending": {
+      "ko": "관리자 승인 대기",
+      "en": "Awaiting Admin Approval",
+      "ja": "管理者の承認を待機中"
+    },
+    "presenterServerMetaAvailableModels": {
+      "ko": "제공 모델 {n}",
+      "en": "Available Models {n}",
+      "ja": "利用可能なモデル {n}"
+    },
+    "presenterServerMetaToday": {
+      "ko": " · 오늘 {n}건",
+      "en": " · {n} Today",
+      "ja": " · 本日 {n}件"
+    },
+    "presenterRoleAdmin": {
+      "ko": "관리자",
+      "en": "Admin",
+      "ja": "管理者"
+    },
+    "presenterRoleDonor": {
+      "ko": "기부자",
+      "en": "Donor",
+      "ja": "寄付者"
+    }
   }
 }

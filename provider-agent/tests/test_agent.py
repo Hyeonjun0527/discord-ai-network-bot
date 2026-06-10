@@ -88,6 +88,70 @@ async def test_handle_infer_streaming_emits_chunks():
 
 
 @pytest.mark.asyncio
+async def test_translate_image_prompt_paths():
+    """이미지 프롬프트 번역: Gemini 없으면 원문, 있으면 번역, 실패하면 원문 폴백."""
+    from provider_agent.gemini import GeminiError
+    from provider_agent.protocol import InferRequest
+
+    req = InferRequest(request_id="r", prompt="귀여운 고양이", task="image")
+
+    # ① Gemini 없음 → 원문
+    a = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
+    assert await a._translate_image_prompt(req) == "귀여운 고양이"
+
+    # ② Gemini 번역 성공 → 영어
+    class OkGemini:
+        async def translate(self, text, system_prompt, model=None):
+            return "a cute cat, safe"
+
+    a._gemini = OkGemini()  # type: ignore[assignment]
+    a._gemini_models = ["gemini-2.5-flash-lite"]
+    assert await a._translate_image_prompt(req) == "a cute cat, safe"
+
+    # ③ Gemini 실패 → 원문 폴백(거부 0)
+    class BadGemini:
+        async def translate(self, text, system_prompt, model=None):
+            raise GeminiError("blocked")
+
+    a._gemini = BadGemini()  # type: ignore[assignment]
+    assert await a._translate_image_prompt(req) == "귀여운 고양이"
+
+
+@pytest.mark.asyncio
+async def test_cancel_image_triggers_interrupt():
+    """진행 중 이미지 요청에 CancelFrame 이 오면 ComfyUI interrupt() 를 호출한다(취소 버튼 백엔드)."""
+    from provider_agent.protocol import CancelFrame
+
+    interrupted = asyncio.Event()
+
+    class FakeSD:
+        async def health(self) -> bool:
+            return True
+
+        async def interrupt(self) -> bool:
+            interrupted.set()
+            return True
+
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=FakeSD())  # type: ignore[arg-type]
+    agent._image_inflight.add("imgX")
+    conn = FakeConn()
+    await agent._on_server_frame(conn, CancelFrame(request_id="imgX"))
+    await asyncio.wait_for(interrupted.wait(), timeout=1.0)  # interrupt 가 호출됨
+    assert "imgX" in agent._cancelled
+
+
+def test_is_local_comfy():
+    """전문가 포워드는 로컬 ComfyUI 에서만 — loopback/빈값=로컬, 외부 호스트=비로컬."""
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
+    for url in ("", "http://127.0.0.1:8188", "http://localhost:8188", "http://[::1]:8188"):
+        agent._comfy_url = url
+        assert agent._is_local_comfy() is True
+    for url in ("http://192.168.0.5:8188", "https://comfy.example.com", "http://10.0.0.2:8188"):
+        agent._comfy_url = url
+        assert agent._is_local_comfy() is False
+
+
+@pytest.mark.asyncio
 async def test_broadcast_image_chunks_to_authed_conns():
     """전문가 층: 유저 직접 생성 이미지를 인증 연결에 청크 분할 ImageBroadcastFrame 으로 보낸다."""
     from provider_agent.protocol import ImageBroadcastFrame

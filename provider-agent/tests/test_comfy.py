@@ -252,6 +252,91 @@ async def test_comfy_txt2img_no_model_files(monkeypatch, tmp_path):
         await ComfyClient("http://127.0.0.1:8188", workflows_dir=tmp_path).txt2img("x")
 
 
+def test_all_image_refs_multi_and_temp_filter():
+    """_all_image_refs: 모든 SaveImage 출력 수집, temp(미저장 프리뷰)는 제외."""
+    from provider_agent.comfy import _all_image_refs
+
+    entry = {
+        "outputs": {
+            "9": {"images": [{"filename": "a.png", "subfolder": "", "type": "output"}, {"filename": "b.png", "subfolder": "s", "type": "output"}]},
+            "10": {"images": [{"filename": "prev.png", "subfolder": "", "type": "temp"}]},  # 프리뷰 → 제외
+            "11": {"images": [{"filename": "c.png", "subfolder": "", "type": "output"}]},
+        }
+    }
+    refs = _all_image_refs(entry)
+    assert ("a.png", "", "output") in refs and ("b.png", "s", "output") in refs and ("c.png", "", "output") in refs
+    assert all(typ != "temp" for _, _, typ in refs)  # temp 제외
+    assert _all_image_refs({}) == [] and _all_image_refs({"outputs": {}}) == []
+
+
+@pytest.mark.asyncio
+async def test_forward_refs_failure_returns_false(monkeypatch):
+    """_forward_refs: /view 실패 시 False(재시도 대상)."""
+    from provider_agent.comfy import ComfyClient
+
+    class _BadResp:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def read(self):
+            raise OSError("view boom")
+
+    class _Sess:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def get(self, url, params=None):
+            return _BadResp()
+
+    cl = ComfyClient("http://127.0.0.1:8188")
+    async with _Sess() as s:
+        ok = await cl._forward_refs(s, [("a.png", "", "output")], lambda raw: None)
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_interrupt_calls_endpoints(monkeypatch):
+    """interrupt(): /interrupt POST 200 → True, 큐 삭제도 시도."""
+    from provider_agent import comfy as cmod
+    from provider_agent.comfy import ComfyClient
+
+    posted = []
+
+    class _Resp:
+        def __init__(self, status):
+            self.status = status
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class _Sess:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def post(self, url, json=None):
+            posted.append(url)
+            return _Resp(200)
+
+    monkeypatch.setattr(cmod.aiohttp, "ClientSession", lambda *a, **k: _Sess())
+    cl = ComfyClient("http://127.0.0.1:8188")
+    cl._cur_prompt_id = "PID1"
+    assert await cl.interrupt() is True
+    assert any(u.endswith("/interrupt") for u in posted)
+    assert any(u.endswith("/queue") for u in posted)
+
+
 def test_mark_submitted_fifo_cap():
     """앱 제출 prompt_id 추적은 상한 FIFO(무한 누적 방지)."""
     from provider_agent.comfy import ComfyClient

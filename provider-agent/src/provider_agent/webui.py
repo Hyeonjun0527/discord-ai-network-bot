@@ -376,7 +376,13 @@ def _page(session_key: str) -> str:
     template = _assets_index()
     if template is None:
         return _MISSING_ASSETS_PAGE
-    return template.replace("__SESSION_KEY__", session_key).replace("__VERSION__", AGENT_VERSION)
+    # 저장된 표시 언어를 window.__LANG 로 주입(서버가 선호 언어의 권위 — 재시작 후에도 유지). 비면 클라이언트 기본.
+    lang = str(load_config().get("lang") or "")
+    return (
+        template.replace("__SESSION_KEY__", session_key)
+        .replace("__LANG__", lang)
+        .replace("__VERSION__", AGENT_VERSION)
+    )
 
 
 def _running_agent() -> object | None:
@@ -1552,6 +1558,7 @@ def build_app(session_key: str) -> web.Application:
         "autoUpdate": "auto_update",
         "enableImage": "enable_image",
         "comfyBroadcast": "comfy_broadcast",
+        "lang": "lang",  # 데스크톱 표시 언어(ko/en/ja) — 프론트가 라이브 적용, 서버는 저장만(재시작 후 window.__LANG 주입)
         "ollamaUrl": "ollama_url",
         "relayUrl": "relay_url",
         "allowRemoteOllama": "allow_remote_ollama",

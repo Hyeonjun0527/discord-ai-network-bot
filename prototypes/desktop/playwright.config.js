@@ -10,6 +10,7 @@ module.exports = defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:8777',
     channel: 'chrome', // 시스템 Chrome 사용
+    locale: 'ko-KR', // i18n 기본 언어를 한국어로 고정(결정성) — 앱은 OS 로케일 자동감지라 미설정 시 러너 로케일에 좌우됨
     trace: 'on-first-retry',
   },
   projects: [{ name: 'chrome', use: { ...devices['Desktop Chrome'], channel: 'chrome' } }],

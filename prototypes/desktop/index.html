@@ -8,6 +8,9 @@
   { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.min.js" } }
   </script>
   <link rel="stylesheet" href="./styles.css" />
+  <!-- 다국어(i18n): window.__I18N 동기 주입(생성본) → i18n.js 가 정적 라벨 적용. 화면 모듈보다 먼저. -->
+  <script src="./i18n-agent.js"></script>
+  <script type="module" src="./i18n.js"></script>
 </head>
 <body>
   <canvas id="bgCanvas" aria-hidden="true"></canvas>
@@ -19,36 +22,36 @@
         <div class="side-logo"><img src="img/nexa-logo.png" alt="Nexa" /></div>
         <div class="bt"><span class="bn">Nexa</span><span class="bs">LOCAL AI NETWORK</span></div>
       </div>
-      <div class="status-badge"><span class="dot"></span><span>AI 제공 중</span></div>
+      <div class="status-badge"><span class="dot"></span><span data-i18n="statusProviding">AI 제공 중</span></div>
       <nav class="nav" id="nav">
         <button class="nav-item active" data-view="home">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/></svg>
-          <span>홈</span>
+          <span data-i18n="navHome">홈</span>
         </button>
         <button class="nav-item" data-view="models">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
-          <span>모델</span>
+          <span data-i18n="navModels">모델</span>
         </button>
         <button class="nav-item" data-view="servers">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></svg>
-          <span>서버</span>
+          <span data-i18n="navServers">서버</span>
         </button>
         <button class="nav-item" data-view="local">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
-          <span>로컬 실행</span>
+          <span data-i18n="navLocal">로컬 실행</span>
         </button>
         <button class="nav-item" data-view="logs">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
-          <span>로그</span>
+          <span data-i18n="navLogs">로그</span>
         </button>
         <button class="nav-item" data-view="settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
-          <span>설정</span>
+          <span data-i18n="navSettings">설정</span>
         </button>
         <div class="nav-spacer"></div>
         <div class="side-ver" id="sideVer">v—</div>
         <div class="nav-foot">
-          <div class="nav-legal"><button data-legal="약관">약관</button> · <button data-legal="개인정보처리방침">개인정보</button> · <button data-legal="콘텐츠 정책">정책</button></div>
+          <div class="nav-legal"><button data-legal="약관" data-i18n="legalTerms">약관</button> · <button data-legal="개인정보처리방침" data-i18n="legalPrivacy">개인정보</button> · <button data-legal="콘텐츠 정책" data-i18n="legalPolicy">정책</button></div>
         </div>
       </nav>
     </aside>

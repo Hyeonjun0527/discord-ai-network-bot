@@ -98,6 +98,10 @@ class SecurityConfig(
                     // 바디의 durable 토큰으로 컨트롤러가 직접 신원·관리자 판정(authedAdmin)한다 → 보안 계층은 permitAll.
                     // 빠져 있으면 anyRequest authenticated 에 걸려 302(OAuth 로그인)로 가서 앱 관리 흐름이 전부 막힌다(실측 버그).
                     authorize("/provider/admin/**", permitAll)
+                    // 라이선스 조회/구매·이벤트 신청: 바디의 durable 토큰으로 컨트롤러가 본인 인증(권한 상승 없음).
+                    authorize("/provider/license/**", permitAll)
+                    // Paddle webhook: 컨트롤러가 Paddle-Signature HMAC 로 검증(서명 없으면 거부) → permitAll.
+                    authorize("/billing/webhook/**", permitAll)
                     authorize("/login/**", permitAll)
                     authorize("/oauth2/**", permitAll)
                     // 그 외(대시보드 데이터/쓰기 API)는 인증 필요.

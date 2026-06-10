@@ -100,6 +100,7 @@ class ArchitectureTest {
                 "..central.multiresponse.domain..",
                 "..central.preset.domain..",
                 "..central.ainetwork.domain..",
+                "..central.licensing.domain..",
             ).should()
             .dependOnClassesThat()
             .resideInAnyPackage(
@@ -127,6 +128,7 @@ class ArchitectureTest {
                 "..central.multiresponse..",
                 "..central.preset..",
                 "..central.ainetwork..",
+                "..central.licensing..",
             ).and()
             .areAnnotatedWith(jakarta.persistence.Entity::class.java)
             .should()

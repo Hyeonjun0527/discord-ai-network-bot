@@ -1,5 +1,7 @@
 package com.discordassistant.central.provider.adapter.inbound.web
 
+import com.discordassistant.central.licensing.application.EntitlementView
+import com.discordassistant.central.licensing.application.LicenseService
 import com.discordassistant.central.platform.discord.BotGuildLister
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.TokenService
@@ -21,6 +23,8 @@ data class AgentSyncJoinDto(
 
 data class AgentSyncResponse(
     val joins: List<AgentSyncJoinDto>,
+    // 라이선스 entitlement 동봉(ADR 0005, 차수 4). 신규 필드라 구버전 에이전트는 무시(하위호환).
+    val entitlement: EntitlementView? = null,
 )
 
 /**
@@ -40,6 +44,7 @@ class ProviderAgentSyncController(
     private val registration: ProviderRegistrationService,
     private val registry: ConnectionRegistry,
     private val botGuilds: BotGuildLister,
+    private val licenses: LicenseService,
 ) {
     @PostMapping("/sync")
     fun sync(
@@ -49,10 +54,14 @@ class ProviderAgentSyncController(
         if (!req.durableToken.startsWith("dv1.")) return AgentSyncResponse(emptyList())
         val binding = tokens.verify(req.durableToken) ?: return AgentSyncResponse(emptyList())
         val providerId = binding.providerId
+        // 라이선스 entitlement 동봉(앱 UI 표시·잠금용). 판정 권위는 central, 앱은 표시만.
+        val entitlement = licenses.view(providerId)
         val connected = registry.providerGuilds(providerId)
         val joins = registration.joinsToConnect(providerId, connected)
-        if (joins.isEmpty()) return AgentSyncResponse(emptyList())
         val names = botGuilds.botGuilds().associate { it.id to it.name }
-        return AgentSyncResponse(joins.map { AgentSyncJoinDto(it.guildId, names[it.guildId], it.token) })
+        return AgentSyncResponse(
+            joins.map { AgentSyncJoinDto(it.guildId, names[it.guildId], it.token) },
+            entitlement,
+        )
     }
 }

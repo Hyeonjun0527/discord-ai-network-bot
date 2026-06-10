@@ -1,6 +1,7 @@
 // NEXA 데스크톱 — screen-local.js (index.html 에서 분리, SoC/SRP). 동작 보존 verbatim.
     import { api } from './adapter.js';
     import { toast } from './toast.js';
+    import { t, onLangChange } from './i18n.js';
 
     const view = document.querySelector('.view[data-view="local"]');
     const runCard = document.getElementById('localRunCard');
@@ -13,44 +14,44 @@
     // 런타임 ⋯ 메뉴 — 홈과 동일 액션을 로컬 실행에도(여기가 더 전문 관리 화면). 현재는 Ollama 만 이 메뉴를 쓴다
     // (ComfyUI 는 자체 data-comfy 액션 버튼으로 설치/시작/정지/웹UI·체크포인트를 관리).
     const rtMenu = () => '<div class="rt-more">' +
-      '<button class="icon-btn rt-menu-btn" aria-label="더보기" aria-haspopup="true">' + DOTS + '</button>' +
-      '<div class="menu" hidden><button data-rtact="check">연결 점검</button></div></div>';
+      '<button class="icon-btn rt-menu-btn" aria-label="' + t('localRuntimeCheckMenuBtn') + '" aria-haspopup="true">' + DOTS + '</button>' +
+      '<div class="menu" hidden><button data-rtact="check">' + t('localRuntimeCheckAction') + '</button></div></div>';
 
     async function runtimeAction(act, name) {
       // 연결 점검 — 실제 status 로(런타임이 죽어 있으면 정직하게 '점검 필요'). 현재 호출자는 Ollama 뿐.
-      toast(name + ' 연결 점검 중…', { type: 'run', sticky: true, id: 'lchk-' + name });
+      toast(t('localRuntimeCheckingToast').replace('{name}', name), { type: 'run', sticky: true, id: 'lchk-' + name });
       try {
         const s = await api.getStatus();
         const n = (s.models && s.models.length) || 0;
         const ok = n > 0;
-        const sub = ok ? (n + '개 모델 제공 중') : '모델 없음 또는 미연결';
-        toast(name + (ok ? ' 정상 응답' : ' 점검 필요'), { type: ok ? 'ok' : 'error', sub, replace: 'lchk-' + name });
-      } catch (_e) { toast(name + ' 점검 실패', { type: 'error', replace: 'lchk-' + name }); }
+        const sub = ok ? t('localRuntimeModelProvidingStatus').replace('{n}', n) : t('localRuntimeNoModelsStatus');
+        toast(name + (ok ? t('localRuntimeCheckOkStatus') : t('localRuntimeCheckFailedStatus')), { type: ok ? 'ok' : 'error', sub, replace: 'lchk-' + name });
+      } catch (_e) { toast(t('localRuntimeCheckFailureToast').replace('{name}', name), { type: 'error', replace: 'lchk-' + name }); }
     }
 
     function render() {
       const s = _st || {};
       const running = !!s.running;
-      const connTx = running ? (s.connected ? '중앙 서버 연결됨' : '연결 중…') : '중지됨';
-      const bg = s.background ? '백그라운드 상주 켜짐' : '백그라운드 상주 꺼짐'; // 설정값(홈 핀과 동일 출처), 런타임 아님
+      const connTx = running ? (s.connected ? t('localRunningConnectionConnected') : t('localRunningConnectionConnecting')) : t('localRuntimeStopped');
+      const bg = s.background ? t('localBackgroundResidenceOn') : t('localBackgroundResidenceOff'); // 설정값(홈 핀과 동일 출처), 런타임 아님
       const needReconnect = running && !s.connected; // 중앙 서버 연결 끊김/실패 → 재연결 제공
       runCard.className = 'run-card' + (running ? ' on' : '');
       runCard.innerHTML = '<span class="rc-dot"></span><div class="rc-main">' +
-        '<div class="rc-title">' + (running ? '실행 중' : '중지됨') + ' — ' + connTx + '</div>' +
-        '<div class="rc-meta">처리 ' + (s.processed || 0) + '건(이 PC) · ' + bg + '</div>' +
+        '<div class="rc-title">' + (running ? t('localRunCardRunning') : t('localRuntimeStopped')) + ' — ' + connTx + '</div>' +
+        '<div class="rc-meta">' + t('localRunCardMetaProcessed').replace('{n}', s.processed || 0) + ' · ' + bg + '</div>' +
         '<div class="rc-relay">' + (s.relayUrl || '') + '</div></div>' +
-        (needReconnect ? '<button class="btn btn--sm btn--primary" id="localReconnect">재연결</button>' : '');
-      toggleBtn.textContent = running ? '중지' : '시작';
+        (needReconnect ? '<button class="btn btn--sm btn--primary" id="localReconnect">' + t('localReconnectBtn') + '</button>' : '');
+      toggleBtn.textContent = running ? t('localToggleStop') : t('localToggleStart');
       toggleBtn.className = 'btn btn--md ' + (running ? 'btn--secondary' : 'btn--primary');
 
       const ollamaReady = _models ? (_models.ollamaReady ?? running) : running;
       const modelCount = running ? (s.models ? s.models.length : 0) : (_models && _models.models ? _models.models.length : 0);
 
       const ollamaCard = '<div class="rt-row' + (ollamaReady ? ' ready' : '') + '">' +
-        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">Ollama <span style="font-weight:500;color:var(--subtle)">텍스트</span></div>' +
-        '<div class="rt-state">' + (ollamaReady ? ('준비됨 · 모델 ' + modelCount + '개 제공') : '미설치 또는 중지됨') + '</div></div><div class="rt-actions">' +
-        (ollamaReady ? '<button class="btn btn--sm btn--secondary" data-go="models">모델 관리</button>' + rtMenu()
-          : '<button class="btn btn--sm btn--primary" data-install="ollama">설치</button>') + '</div></div>';
+        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">Ollama <span style="font-weight:500;color:var(--subtle)">' + t('localOllamaTextType') + '</span></div>' +
+        '<div class="rt-state">' + (ollamaReady ? (t('localOllamaReadyStatus').replace('{n}', modelCount)) : t('localOllamaNotReadyStatus')) + '</div></div><div class="rt-actions">' +
+        (ollamaReady ? '<button class="btn btn--sm btn--secondary" data-go="models">' + t('localOllamaModelsBtn') + '</button>' + rtMenu()
+          : '<button class="btn btn--sm btn--primary" data-install="ollama">' + t('localOllamaInstallBtn') + '</button>') + '</div></div>';
 
       // (이미지 엔진은 ComfyUI 전용 — 레거시 SD.Next 는 완전히 제거됨. 카드는 아래 comfyCard 하나.)
 
@@ -58,49 +59,49 @@
       //   연결되면 모델 탭에 '클라우드 텍스트' 모델로 등장 → 다른 모델처럼 서버별로 켜고 끈다('서버 전체 무료' 프레이밍 폐기).
       const gemOn = !!s.geminiConfigured;
       const cloudCard = '<div class="rt-row' + (gemOn ? ' ready' : '') + '">' +
-        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">클라우드 연결 <span style="font-weight:500;color:var(--subtle)">Gemini · 텍스트</span></div>' +
+        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">' + t('localCloudConnectionLabel') + ' <span style="font-weight:500;color:var(--subtle)">' + t('localCloudConnectionType') + '</span></div>' +
         '<div class="rt-state">' + (gemOn
-          ? '연결됨 · 이 PC 의 키로 클라우드 모델을 제공해요(모델 탭에서 서버별로 켜고 꺼요)'
-          : '이 PC 의 API 키로 클라우드 AI를 모델로 추가해요 — 다른 모델처럼 서버별로 제공돼요 (aistudio.google.com/apikey)') + '</div>' +
-        '<div class="rt-cloud"><input id="localGemini" type="password" placeholder="' + (gemOn ? '••••• 연결됨(바꾸려면 입력)' : 'AIza… 키 붙여넣기') + '" class="set-input"><button class="btn btn--sm btn--primary" id="localGeminiSave">' + (gemOn ? '변경' : '연결') + '</button></div></div></div>';
+          ? t('localCloudConnectedStatus')
+          : t('localCloudNotConnectedStatus')) + '</div>' +
+        '<div class="rt-cloud"><input id="localGemini" type="password" placeholder="' + (gemOn ? t('localGeminiPlaceholderConnected') : t('localGeminiPlaceholderDisconnected')) + '" class="set-input"><button class="btn btn--sm btn--primary" id="localGeminiSave">' + (gemOn ? t('localGeminiSaveChangeBtn') : t('localGeminiSaveConnectBtn')) + '</button></div></div></div>';
       // ComfyUI = 이미지 엔진 — 앱이 직접 설치/시작/정지/웹UI 오픈. 유저별 로컬 인스턴스(SD.Next 제거됨).
       const c = _comfy || {}, cprog = _comfyProg || {};
       const cbusy = !!c.busy, cinst = !!c.installed, crun = !!c.running;
       let comfyState, comfyAction;
       if (cbusy) {
-        comfyState = (cprog.message || '설치 중…') + (cprog.percent ? ' · ' + cprog.percent + '%' : '');
-        comfyAction = '<span class="rt-recv">설치 중…</span>';
+        comfyState = (cprog.message || t('localComfyInstallingStatus')) + (cprog.percent ? t('localComfyProgressPercent').replace('{percent}', cprog.percent) : '');
+        comfyAction = '<span class="rt-recv">' + t('localComfyInstallingStatus') + '</span>';
       } else if (crun) {
         // 실행 중이면(앱 관리든, 유저가 직접 띄운 외부 인스턴스든 health 로 감지) 우선 표시.
-        comfyState = (cinst ? '실행 중 · 이미지 생성 준비됨' : '실행 중(직접 띄운 ComfyUI 감지됨) · 이미지 생성 준비됨');
-        comfyAction = '<button class="btn btn--sm btn--secondary" data-comfy="open">웹UI 열기</button>' +
-          (cinst ? '<button class="btn btn--sm btn--secondary" data-comfy="stop">정지</button>' : '');
+        comfyState = (cinst ? t('localComfyRunningStatus') : t('localComfyRunningDetectedStatus'));
+        comfyAction = '<button class="btn btn--sm btn--secondary" data-comfy="open">' + t('localComfyOpenWebUIBtn') + '</button>' +
+          (cinst ? '<button class="btn btn--sm btn--secondary" data-comfy="stop">' + t('localComfyStopBtn') + '</button>' : '');
       } else if (!cinst) {
-        comfyState = '미설치 — 활발히 유지보수되는 최신 엔진(Python 3.13). 설치를 권장해요.';
-        comfyAction = '<button class="btn btn--sm btn--primary" data-comfy="install">설치</button>';
+        comfyState = t('localComfyNotInstalledStatus');
+        comfyAction = '<button class="btn btn--sm btn--primary" data-comfy="install">' + t('localComfyInstallBtn') + '</button>';
       } else {
-        comfyState = '설치됨 · 꺼짐';
-        comfyAction = '<button class="btn btn--sm btn--primary" data-comfy="start">시작</button>';
+        comfyState = t('localComfyInstalledOffStatus');
+        comfyAction = '<button class="btn btn--sm btn--primary" data-comfy="start">' + t('localComfyStartBtn') + '</button>';
       }
       // 실행 중이면 체크포인트 선택기(폴더 스캔 = 아무 .safetensors) + '모델 폴더 열기'(.safetensors 넣기).
       const cm = _comfyModels || {};
-      const comfyAddBtns = '<button class="rt-model-add" id="comfyUrlBtn" title="URL 로 모델 추가 — .safetensors 직접 링크(gated 는 설정의 HF 토큰)">+ URL</button>' +
-        '<button class="rt-model-add" id="comfyFolderBtn" title="모델 폴더 열기 — 여기에 .safetensors 를 넣으면 자동 인식돼요">📂 폴더</button>';
+      const comfyAddBtns = '<button class="rt-model-add" id="comfyUrlBtn" title="' + t('localComfyModelAddURLTitle') + '">+ URL</button>' +
+        '<button class="rt-model-add" id="comfyFolderBtn" title="' + t('localComfyModelAddFolderTitle') + '">' + t('localComfyModelAddFolderBtn') + '</button>';
       const comfyModelSel = (crun && cm.models && cm.models.length) ?
-        '<div class="rt-model"><label>모델</label><select id="comfyModelSelect" aria-label="ComfyUI 이미지 모델 선택">' +
+        '<div class="rt-model"><label>' + t('localComfyModelLabel') + '</label><select id="comfyModelSelect" aria-label="' + t('localComfyModelSelectAriaLabel') + '">' +
           cm.models.map((m) => '<option value="' + m + '"' + (m === cm.active ? ' selected' : '') + '>' + m + '</option>').join('') +
         '</select>' + comfyAddBtns + '</div>'
-        : (crun ? '<div class="rt-model"><span class="dim" style="font-size:12px">체크포인트 없음 — </span>' + comfyAddBtns + '</div>' : '');
+        : (crun ? '<div class="rt-model"><span class="dim" style="font-size:12px">' + t('localComfyNoCheckpointStatus') + '</span>' + comfyAddBtns + '</div>' : '');
       const comfyCard = '<div class="rt-row rt-row--rec' + (crun ? ' ready' : '') + '">' +
-        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">ComfyUI <span style="font-weight:500;color:var(--c-violet)">이미지 · 권장</span></div>' +
+        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">ComfyUI <span style="font-weight:500;color:var(--c-violet)">' + t('localComfyUIImageType') + '</span></div>' +
         '<div class="rt-state">' + comfyState + '</div>' + comfyModelSel + '</div><div class="rt-actions">' + comfyAction + '</div></div>';
       // 고급 · 직접 띄운 외부 ComfyUI 인스턴스에 연결(앱 관리 ComfyUI 대신). 비우면 앱 관리 ComfyUI 사용.
       const hfOn = !!s.hfConfigured;
       const comfyExternal = '<details class="rt-adv"' + ((s.comfyUrl || hfOn) ? ' open' : '') + '>' +
-        '<summary>고급 · 외부 ComfyUI · HuggingFace 토큰</summary>' +
-        '<div class="rt-adv-body"><div class="rt-adv-desc">직접 띄운 ComfyUI 가 있으면 주소를 입력하세요(비우면 앱 관리 ComfyUI). gated/비공개 모델을 받으려면 HF 토큰을 넣으세요.</div>' +
-        '<div class="rt-cloud"><input id="localComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="외부 ComfyUI 주소(http://127.0.0.1:8188)" class="set-input"><button class="btn btn--sm btn--secondary" id="localComfySave">외부 연결</button></div>' +
-        '<div class="rt-cloud" style="margin-top:8px"><input id="localHfToken" type="password" placeholder="' + (hfOn ? '••••• 설정됨(바꾸려면 입력)' : 'HuggingFace 토큰(gated 모델용, hf_…)') + '" class="set-input"><button class="btn btn--sm btn--secondary" id="localHfSave">토큰 저장</button></div>' +
+        '<summary>' + t('localComfyAdvancedSummary') + '</summary>' +
+        '<div class="rt-adv-body"><div class="rt-adv-desc">' + t('localComfyAdvancedDescription') + '</div>' +
+        '<div class="rt-cloud"><input id="localComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="' + t('localComfyExternalURLPlaceholder') + '" class="set-input"><button class="btn btn--sm btn--secondary" id="localComfySave">' + t('localComfyExternalConnectBtn') + '</button></div>' +
+        '<div class="rt-cloud" style="margin-top:8px"><input id="localHfToken" type="password" placeholder="' + (hfOn ? t('localHFTokenPlaceholderSet') : t('localHFTokenPlaceholderNotSet')) + '" class="set-input"><button class="btn btn--sm btn--secondary" id="localHfSave">' + t('localHFTokenSaveBtn') + '</button></div>' +
         '</div></details>';
       rtWrap.innerHTML = ollamaCard + comfyCard + cloudCard + comfyExternal;
 
@@ -121,9 +122,9 @@
       const rc = document.getElementById('localReconnect');
       if (rc) rc.onclick = async () => {
         rc.disabled = true;
-        toast('중앙 서버 재연결 중…', { type: 'run', sticky: true, id: 'recon' });
-        try { await api.stopAgent(); await api.startAgent(); await load(); toast('재연결했어요', { type: 'ok', id: 'recon' }); }
-        catch (_e) { toast('재연결 실패 — 네트워크를 확인하세요', { type: 'error', id: 'recon' }); }
+        toast(t('localReconnectingToast'), { type: 'run', sticky: true, id: 'recon' });
+        try { await api.stopAgent(); await api.startAgent(); await load(); toast(t('localReconnectSuccessToast'), { type: 'ok', id: 'recon' }); }
+        catch (_e) { toast(t('localReconnectFailureToast'), { type: 'error', id: 'recon' }); }
         finally { rc.disabled = false; }
       };
       // (로컬 탭의 이미지 받기 토글은 홈 카드 스위치로 통합 — 레거시 #localImgSw 제거. setImageReceiving 은 홈에서 호출.)
@@ -131,14 +132,14 @@
       const gemSave = document.getElementById('localGeminiSave');
       if (gemSave) gemSave.onclick = async () => {
         const key = (document.getElementById('localGemini').value || '').trim();
-        if (!key) { toast('AIza… 키를 입력하세요', { type: 'info' }); return; }
+        if (!key) { toast(t('localGeminiKeyRequiredToast'), { type: 'info' }); return; }
         gemSave.disabled = true;
         try {
           const r = await api.setCloud({ geminiApiKey: key }) || {};
           if (_st) _st.geminiConfigured = true;
-          toast(r.geminiValid === false ? '키 저장됨 — 다만 검증 실패(결제/유효성 확인)' : '클라우드 모델을 연결했어요 — 모델 탭에서 서버별로 켜세요', { type: r.geminiValid === false ? 'info' : 'ok' });
+          toast(r.geminiValid === false ? t('localGeminiValidationFailedToast') : t('localGeminiConnectedToast'), { type: r.geminiValid === false ? 'info' : 'ok' });
           await load();
-        } catch (_e) { toast('연결 실패 — 네트워크를 확인하세요', { type: 'error' }); }
+        } catch (_e) { toast(t('localGeminiConnectionFailureToast'), { type: 'error' }); }
         finally { gemSave.disabled = false; }
       };
       // 외부 ComfyUI 주소 저장 — 비우면 앱 관리 ComfyUI. 재연결 후 적용.
@@ -149,19 +150,19 @@
         try {
           await api.setCloud({ comfyUrl: url });
           if (_st) _st.comfyUrl = url;
-          toast(url ? '외부 ComfyUI 를 이미지 엔진으로 설정했어요 — 재연결 후 적용' : '앱 관리 ComfyUI 로 되돌렸어요 — 재연결 후 적용', { type: 'info' });
+          toast(url ? t('localComfyExternalSetToast') : t('localComfyAppManagedResetToast'), { type: 'info' });
           await load();
-        } catch (_e) { toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' }); }
+        } catch (_e) { toast(t('localComfyExternalSaveFailureToast'), { type: 'error' }); }
         finally { comfySave.disabled = false; }
       };
       // HuggingFace 토큰 저장(gated 모델 다운로드용) — 입력했을 때만 전송.
       const hfSave = document.getElementById('localHfSave');
       if (hfSave) hfSave.onclick = async () => {
         const tok = (document.getElementById('localHfToken').value || '').trim();
-        if (!tok) { toast('HuggingFace 토큰을 입력하세요(hf_…)', { type: 'info' }); return; }
+        if (!tok) { toast(t('localHFTokenRequiredToast'), { type: 'info' }); return; }
         hfSave.disabled = true;
-        try { await api.setCloud({ hfToken: tok }); if (_st) _st.hfConfigured = true; toast('HF 토큰을 저장했어요 — 이제 gated 모델도 받을 수 있어요', { type: 'ok' }); await load(); }
-        catch (_e) { toast('저장 실패 — 네트워크를 확인하세요', { type: 'error' }); }
+        try { await api.setCloud({ hfToken: tok }); if (_st) _st.hfConfigured = true; toast(t('localHFTokenSavedToast'), { type: 'ok' }); await load(); }
+        catch (_e) { toast(t('localHFTokenSaveFailureToast'), { type: 'error' }); }
         finally { hfSave.disabled = false; }
       };
       // ComfyUI(1급 엔진) 라이프사이클 버튼 — 설치/시작/정지/웹UI 열기.
@@ -169,21 +170,21 @@
         const act = b.dataset.comfy;
         if (act === 'install') {
           b.disabled = true;
-          toast('ComfyUI 설치 시작 — 첫 설치는 수 분 걸려요(자동 진행돼요)', { type: 'run', sticky: true, id: 'comfy' });
-          try { const r = await api.installComfy(); if (r && r.ok === false) { toast(r.error || '설치 시작 실패', { type: 'error', id: 'comfy' }); return; } toast('ComfyUI 설치 중… 진행 상황이 카드에 표시돼요', { type: 'info', id: 'comfy' }); await load(); }
-          catch (_e) { toast('설치 시작 실패 — 네트워크를 확인하세요', { type: 'error', id: 'comfy' }); }
+          toast(t('localComfyInstallStartedToast'), { type: 'run', sticky: true, id: 'comfy' });
+          try { const r = await api.installComfy(); if (r && r.ok === false) { toast(r.error || t('localComfyInstallFailureToast'), { type: 'error', id: 'comfy' }); return; } toast(t('localComfyInstallingProgressToast'), { type: 'info', id: 'comfy' }); await load(); }
+          catch (_e) { toast(t('localComfyInstallNetworkFailureToast'), { type: 'error', id: 'comfy' }); }
           finally { b.disabled = false; }
         } else if (act === 'start') {
-          b.disabled = true; toast('ComfyUI 시작 중…', { type: 'run', sticky: true, id: 'comfy' });
-          try { const r = await api.comfyStart(); toast(r && r.ok ? 'ComfyUI 시작됨' : ((r && r.error) || '시작 실패'), { type: r && r.ok ? 'ok' : 'error', id: 'comfy' }); await load(); }
-          catch (_e) { toast('시작 실패 — 네트워크를 확인하세요', { type: 'error', id: 'comfy' }); } finally { b.disabled = false; }
+          b.disabled = true; toast(t('localComfyStartingToast'), { type: 'run', sticky: true, id: 'comfy' });
+          try { const r = await api.comfyStart(); toast(r && r.ok ? t('localComfyStartedToast') : ((r && r.error) || t('localComfyStartFailureToast')), { type: r && r.ok ? 'ok' : 'error', id: 'comfy' }); await load(); }
+          catch (_e) { toast(t('localComfyStartNetworkFailureToast'), { type: 'error', id: 'comfy' }); } finally { b.disabled = false; }
         } else if (act === 'stop') {
           b.disabled = true;
-          try { await api.comfyStop(); toast('ComfyUI 를 정지했어요', { type: 'info', id: 'comfy' }); await load(); }
-          catch (_e) { toast('정지 실패 — 네트워크를 확인하세요', { type: 'error', id: 'comfy' }); } finally { b.disabled = false; }
+          try { await api.comfyStop(); toast(t('localComfyStoppedToast'), { type: 'info', id: 'comfy' }); await load(); }
+          catch (_e) { toast(t('localComfyStopNetworkFailureToast'), { type: 'error', id: 'comfy' }); } finally { b.disabled = false; }
         } else if (act === 'open') {
-          try { const r = await api.comfyOpen(); if (r && r.ok === false) toast(r.error || '웹UI 를 열 수 없어요', { type: 'error' }); else toast('브라우저에서 ComfyUI 를 열었어요', { type: 'ok' }); }
-          catch (_e) { toast('웹UI 열기 실패', { type: 'error' }); }
+          try { const r = await api.comfyOpen(); if (r && r.ok === false) toast(r.error || t('localComfyWebUIOpenFailureToast'), { type: 'error' }); else toast(t('localComfyWebUIOpenedToast'), { type: 'ok' }); }
+          catch (_e) { toast(t('localComfyWebUIOpenNetworkFailureToast'), { type: 'error' }); }
         }
       });
       // ComfyUI 체크포인트 전환(폴더 스캔된 모델 중 선택) — 즉시 적용.
@@ -191,24 +192,24 @@
       if (comfySel) comfySel.onchange = async () => {
         const model = comfySel.value, prev = (_comfyModels && _comfyModels.active);
         comfySel.disabled = true;
-        try { const r = await api.comfySelectModel(model) || {}; if (r.ok === false) { toast(r.error || '모델 전환 실패', { type: 'error' }); comfySel.value = prev || model; } else { if (_comfyModels) _comfyModels.active = model; toast('이미지 모델을 전환했어요', { type: 'ok' }); } }
-        catch (_e) { toast('모델 전환 실패 — 네트워크를 확인하세요', { type: 'error' }); comfySel.value = prev || model; }
+        try { const r = await api.comfySelectModel(model) || {}; if (r.ok === false) { toast(r.error || t('localComfyModelChangeFailureToast'), { type: 'error' }); comfySel.value = prev || model; } else { if (_comfyModels) _comfyModels.active = model; toast(t('localComfyModelChangedToast'), { type: 'ok' }); } }
+        catch (_e) { toast(t('localComfyModelChangeNetworkFailureToast'), { type: 'error' }); comfySel.value = prev || model; }
         finally { comfySel.disabled = false; }
       };
       // 모델 폴더 열기 — 여기에 .safetensors 를 넣으면 ComfyUI 가 자동 인식(ComfyUI 식 '아무 모델이나').
       const comfyFolder = document.getElementById('comfyFolderBtn');
       if (comfyFolder) comfyFolder.onclick = async () => {
-        try { const r = await api.openFolder('comfyModels'); toast(r && r.ok ? '모델 폴더를 열었어요 — .safetensors 를 넣고 새로고침하면 목록에 떠요' : (r && r.error) || '폴더를 열 수 없어요', { type: r && r.ok ? 'ok' : 'error' }); }
-        catch (_e) { toast('폴더 열기 실패', { type: 'error' }); }
+        try { const r = await api.openFolder('comfyModels'); toast(r && r.ok ? t('localComfyFolderOpenedToast') : (r && r.error) || t('localComfyFolderOpenFailureToast'), { type: r && r.ok ? 'ok' : 'error' }); }
+        catch (_e) { toast(t('localComfyFolderOpenNetworkFailureToast'), { type: 'error' }); }
       };
       // URL 로 임의 모델 추가 — HuggingFace .safetensors 직접 링크(gated 는 설정 HF 토큰).
       const comfyUrl = document.getElementById('comfyUrlBtn');
       if (comfyUrl) comfyUrl.onclick = async () => {
-        const url = (window.prompt('모델 URL(.safetensors 직접 링크) — 예: https://huggingface.co/…/model.safetensors') || '').trim();
+        const url = (window.prompt(t('localComfyModelSelectPrompt')) || '').trim();
         if (!url) return;
-        toast('모델 내려받는 중… 용량에 따라 몇 분 걸려요', { type: 'run', sticky: true, id: 'cmdl' });
-        try { const r = await api.installComfyModel(url) || {}; if (r.ok === false) { toast(r.error || '모델 추가 실패', { type: 'error', id: 'cmdl' }); return; } toast('모델을 추가했어요 — 목록에서 선택하세요', { type: 'ok', id: 'cmdl' }); await load(); }
-        catch (_e) { toast('모델 추가 실패 — 네트워크를 확인하세요', { type: 'error', id: 'cmdl' }); }
+        toast(t('localComfyModelDownloadingToast'), { type: 'run', sticky: true, id: 'cmdl' });
+        try { const r = await api.installComfyModel(url) || {}; if (r.ok === false) { toast(r.error || t('localComfyModelAddFailureToast'), { type: 'error', id: 'cmdl' }); return; } toast(t('localComfyModelAddedToast'), { type: 'ok', id: 'cmdl' }); await load(); }
+        catch (_e) { toast(t('localComfyModelAddNetworkFailureToast'), { type: 'error', id: 'cmdl' }); }
       };
     }
 
@@ -229,8 +230,8 @@
       toggleBtn.disabled = true;
       const wasRunning = _st && _st.running;
       try {
-        if (wasRunning) { await api.stopAgent(); toast('에이전트를 중지했어요', { type: 'info' }); }
-        else { await api.startAgent(); toast('에이전트를 시작했어요', { type: 'ok' }); }
+        if (wasRunning) { await api.stopAgent(); toast(t('localAgentStoppedToast'), { type: 'info' }); }
+        else { await api.startAgent(); toast(t('localAgentStartedToast'), { type: 'ok' }); }
         await load();
       } finally { toggleBtn.disabled = false; }
     });
@@ -238,6 +239,8 @@
     document.addEventListener('click', closeMenus); // 바깥 클릭 시 ⋯ 메뉴 닫기
     const isActive = () => view.classList.contains('active');
     document.querySelector('.nav-item[data-view="local"]').addEventListener('click', load);
+    // 언어가 바뀌면 로컬 실행 화면을 다시 그린다(JS 렌더 문구 갱신). render 밖에 한 번만 등록(리스너 누적 방지).
+    onLangChange(() => { if (_st) render(); });
     if (isActive()) load();
     // 실 앱: 로컬 실행 화면 활성 중 주기 갱신(시작/연결/모델 변화가 한 템포 늦지 않게).
     if (window.__SESSION_KEY) setInterval(() => { if (isActive()) load(); }, 3000);

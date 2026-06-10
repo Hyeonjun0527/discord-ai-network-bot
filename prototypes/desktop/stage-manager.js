@@ -4,6 +4,7 @@
     import { ProviderState } from './contract.js';
     import { installRuntime, watchSetup } from './install.js';
     import { App, applyStage, canEnterServerAdd } from './state.js';
+    import { t, onLangChange } from './i18n.js';
     (function stageManager() {
       const app = document.querySelector('.app');
       const onbLayer = document.getElementById('onboardingLayer');
@@ -33,49 +34,49 @@
       function renderWiz() {
         const s = ONB.step;
         const head = '<div class="wiz-head"><div class="wiz-logo"><img src="img/nexa-logo.png" alt=""></div>' +
-          '<div class="wt"><b>NEXA</b><span>PROVIDER AGENT</span></div><span class="wstep">설정 ' + s + ' / 4</span></div>';
+          '<div class="wt"><b>NEXA</b><span>PROVIDER AGENT</span></div><span class="wstep">' + t('stageWizStep').replace('{n}', s) + '</span></div>';
         const bars = '<div class="wiz-bars">' + [1, 2, 3, 4].map(i => '<span class="b ' + (i < s ? 'done' : i === s ? 'cur' : '') + '"></span>').join('') + '</div>';
         let body = '', foot = '';
         if (s === 1) {
-          body = '<div class="wiz-title">NEXA 에 오신 걸 환영해요</div>' +
-            '<div class="wiz-sub">내 PC 의 AI 로 디스코드 커뮤니티의 질문에 응답을 기여하는 프로그램이에요.<br>몇 단계만 설정하면 바로 시작할 수 있어요.</div>' +
+          body = '<div class="wiz-title">' + t('stageWelcomeTitle') + '</div>' +
+            '<div class="wiz-sub">' + t('stageWelcomeSub') + '</div>' +
             '<div class="wiz-list">' +
-            feat(IC.chat, '텍스트 AI 제공', 'Ollama 로 다른 사람의 질문에 답합니다') +
-            feat(IC.image, '이미지 생성 (선택)', 'ComfyUI 로 그림 요청도 처리해요(로컬 실행 탭에서 설치)') +
-            feat(IC.shield, '안전한 기본값', '하루 한도·localhost 전용 등 보수적으로 시작해요') +
+            feat(IC.chat, t('stageFeatureTextTitle'), t('stageFeatureTextDesc')) +
+            feat(IC.image, t('stageFeatureImageTitle'), t('stageFeatureImageDesc')) +
+            feat(IC.shield, t('stageFeatureSecurityTitle'), t('stageFeatureSecurityDesc')) +
             '</div>';
           // 1단계 전체 skip('나중에')은 두지 않는다 — 온보딩은 첫 필수 설정이고, 런타임/연결 skip 은
           // 각 단계(2단계 '지금 설치 안 함' · 4단계 '메인 화면으로')에서 선택할 수 있다.
-          foot = '<span class="spacer"></span>' + btn('primary', '2', '시작하기');
+          foot = '<span class="spacer"></span>' + btn('primary', '2', t('stageStep1Start'));
         } else if (s === 2) {
-          body = '<div class="wiz-title">무엇을 준비할까요?</div>' +
-            '<div class="wiz-sub">이 PC 에서 제공할 AI 를 고르세요. 나중에 바꿀 수 있어요.</div>' +
+          body = '<div class="wiz-title">' + t('stageStep2Title') + '</div>' +
+            '<div class="wiz-sub">' + t('stageStep2Sub') + '</div>' +
             '<div class="wiz-list">' +
-            opt('ollama', 'Ollama', '권장', '텍스트 질문에 답하는 기본 엔진', '~5GB', ONB.ollama) +
-            opt('none', '지금은 설치 안 함', '', '메인 화면에서 나중에 설치할 수 있어요', '', ONB.none) +
+            opt('ollama', t('stageOllamaLabel'), t('stageOllamaTag'), t('stageOllamaDesc'), t('stageOllamaSize'), ONB.ollama) +
+            opt('none', t('stageSkipInstall'), '', t('stageSkipInstallDesc'), '', ONB.none) +
             '</div>' +
-            '<p class="wiz-sub" style="margin-top:8px">이미지 생성(ComfyUI)은 설치 후 <b>로컬 실행</b> 탭에서 한 번에 설치·관리해요.</p>';
-          foot = btn('secondary', '1', '이전') + '<span class="spacer"></span>' + btn('primary', '3', '다음');
+            '<p class="wiz-sub" style="margin-top:8px">' + t('stageStep2ComfyNote') + '</p>';
+          foot = btn('secondary', '1', t('stageButtonPrevious')) + '<span class="spacer"></span>' + btn('primary', '3', t('stageButtonNext'));
         } else if (s === 3) {
-          body = '<div class="wiz-title">동작 방식</div>' +
-            '<div class="wiz-sub">앱이 어떻게 실행될지 정하세요. 모두 나중에 설정에서 바꿀 수 있어요.</div>' +
+          body = '<div class="wiz-title">' + t('stageStep3Title') + '</div>' +
+            '<div class="wiz-sub">' + t('stageStep3Sub') + '</div>' +
             '<div class="wiz-list">' +
-            tog('autostart', '로그인 시 자동 실행', 'PC 를 켜면 백그라운드로 자동 시작') +
-            tog('autoconnect', '로그인 후 자동 연결', '앱이 시작되면 바로 제공을 시작') +
-            tog('imageRecv', '이미지 요청 받기', '/그림 요청도 이 PC 에서 처리') +
-            tog('background', '백그라운드 실행 유지', '창을 닫아도 트레이에서 계속 제공') +
+            tog('autostart', t('stageAutoStartLabel'), t('stageAutoStartDesc')) +
+            tog('autoconnect', t('stageAutoConnectLabel'), t('stageAutoConnectDesc')) +
+            tog('imageRecv', t('stageImageRecvLabel'), t('stageImageRecvDesc')) +
+            tog('background', t('stageBackgroundLabel'), t('stageBackgroundDesc')) +
             '</div>';
-          foot = btn('secondary', '2', '이전') + '<span class="spacer"></span>' + btn('primary', '4', '다음');
+          foot = btn('secondary', '2', t('stageButtonPrevious')) + '<span class="spacer"></span>' + btn('primary', '4', t('stageButtonNext'));
         } else {
-          body = '<div class="wiz-title">준비가 끝났어요</div>' +
-            '<div class="wiz-sub">아래 설정으로 시작합니다. 연동하면 디스코드 로그인으로 넘어가요.</div>' +
+          body = '<div class="wiz-title">' + t('stageStep4Title') + '</div>' +
+            '<div class="wiz-sub">' + t('stageStep4Sub') + '</div>' +
             '<div class="wiz-list">' +
-            sum('텍스트 모델', ONB.ollama ? 'Ollama 사용' : '사용 안 함', ONB.ollama) +
-            sum('이미지 요청 받기', ONB.imageRecv ? '켜짐(ComfyUI)' : '꺼짐', ONB.imageRecv) +
-            sum('자동 연결', ONB.autoconnect ? '켜짐' : '꺼짐', ONB.autoconnect) +
-            sum('백그라운드 실행', ONB.background ? '유지' : '안 함', ONB.background) +
+            sum(t('stageSummaryTextModel'), ONB.ollama ? t('stageSummaryTextModelOn') : t('stageSummaryTextModelOff'), ONB.ollama) +
+            sum(t('stageSummaryImageRecv'), ONB.imageRecv ? t('stageSummaryImageRecvOn') : t('stageSummaryImageRecvOff'), ONB.imageRecv) +
+            sum(t('stageSummaryAutoConnect'), ONB.autoconnect ? t('stageSummaryAutoConnectOn') : t('stageSummaryAutoConnectOff'), ONB.autoconnect) +
+            sum(t('stageSummaryBackground'), ONB.background ? t('stageSummaryBackgroundOn') : t('stageSummaryBackgroundOff'), ONB.background) +
             '</div>';
-          foot = btn('secondary', '3', '이전') + '<span class="spacer"></span>' + btn('secondary', 'main', '메인 화면으로') + btn('primary', 'connect', '연동하기');
+          foot = btn('secondary', '3', t('stageButtonPrevious')) + '<span class="spacer"></span>' + btn('secondary', 'main', t('stageButtonMainScreen')) + btn('primary', 'connect', t('stageButtonConnect'));
         }
         wiz.innerHTML = head + bars + '<div class="wiz-body">' + body + '</div><div class="wiz-foot">' + foot + '</div>';
         wireWiz();
@@ -98,8 +99,8 @@
             autoConnect: ONB.autoconnect,
             background: ONB.background,
           });
-          if (r && r.ok === false) window.toast?.('설정 저장에 실패했어요 — 나중에 설정에서 바꿀 수 있어요', { type: 'info' });
-        } catch (_e) { window.toast?.('설정 저장에 실패했어요 — 나중에 설정에서 바꿀 수 있어요', { type: 'info' }); }
+          if (r && r.ok === false) window.toast?.(t('stageSaveSettingsFailed'), { type: 'info' });
+        } catch (_e) { window.toast?.(t('stageSaveSettingsFailed'), { type: 'info' }); }
       }
       // A4 '연동하기' → 동작 설정 반영(대기) + 선택한 런타임 설치(install.js installRuntime — 토스트 진행 SSOT) → 연결로.
       async function finishOnboarding() {
@@ -125,6 +126,8 @@
       let connectPoll = null;
       function stopConnectPoll() { if (connectPoll) { clearInterval(connectPoll); connectPoll = null; } }
       function emit() { window.dispatchEvent(new CustomEvent('stagechange', { detail: { stage: App.stage, step: ONB.step, connectSub } })); }
+      // 언어가 바뀌면 현재 활성 stage(온보딩/연동) 마법사를 다시 그린다(JS 렌더 문구 갱신). IIFE 1회 등록(리스너 누적 없음).
+      onLangChange(() => { if (App.stage === 'onboarding') renderWiz(); else if (App.stage === 'connect') renderConnect(); });
       function setStage(name) {
         // 메인 노출(app-booting 해제) 전에 현재 해시의 최상위 뷰를 먼저 active 로 맞춘다 → 홈 깜빡임 방지.
         //   라우터 모듈이 아직 평가 전이라 window.__activateRoute 가 없을 수 있어 여기서 직접 처리(의존 제거).
@@ -159,48 +162,48 @@
       // ════ Discord 연결(B) — login → select → result(approved/pending/none/cancelled) ════
       const DISCORD_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.4 3a13.9 13.9 0 0 0-.63 1.31 18.27 18.27 0 0 0-5.54 0A13.9 13.9 0 0 0 8.6 3a19.79 19.79 0 0 0-4.92 1.37C.56 9.05-.26 13.6.15 18.08a19.93 19.93 0 0 0 6.04 3.05c.49-.67.93-1.38 1.3-2.12-.72-.27-1.41-.61-2.07-1 .17-.13.34-.27.5-.41a14.15 14.15 0 0 0 12.16 0c.17.14.34.28.5.41-.66.39-1.35.73-2.07 1 .37.74.81 1.45 1.3 2.12a19.93 19.93 0 0 0 6.04-3.05c.48-5.19-.82-9.69-3.53-13.71ZM8.02 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Zm7.96 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44 1.2 0 2.17 1.1 2.15 2.44 0 1.34-.96 2.44-2.15 2.44Z"/></svg>';
       // 진입 맥락: onboarding(첫 인증 — 로그인부터) vs main(이미 인증됨 — 서버 추가, 로그인 생략)
-      const cxHead = () => '<div class="wiz-head"><div class="wiz-logo"><img src="img/nexa-logo.png" alt=""></div><div class="wt"><b>NEXA</b><span>' + (App.connectOrigin === 'main' ? '서버 추가' : 'DISCORD 연결') + '</span></div></div>';
+      const cxHead = () => '<div class="wiz-head"><div class="wiz-logo"><img src="img/nexa-logo.png" alt=""></div><div class="wt"><b>NEXA</b><span>' + (App.connectOrigin === 'main' ? t('stageServerAdd') : t('stageConnectTitle')) + '</span></div></div>';
       async function renderConnect() {
         const sub = connectSub;
         const isMain = App.connectOrigin === 'main';
         let html = cxHead();
         if (sub === 'login') {
           html += '<div class="wiz-body">' +
-            '<div class="wiz-title">디스코드에 연결</div>' +
-            '<div class="wiz-sub">로그인하면 봇이 있는 내 서버 목록에서 골라<br>AI 를 제공할 수 있어요.</div>' +
-            '<div class="wiz-list"><button class="btn btn--lg btn--primary cx-discord" id="cxLogin">' + DISCORD_ICON + ' Discord 로 로그인</button></div>' +
-            '<div class="cx-token"><button class="cx-tok-tgl" id="cxTokTgl">고급 · 토큰 직접 입력</button>' +
-              '<div class="cx-tok-body" hidden><input class="cx-input" id="cxTok" placeholder="발급받은 참여 토큰을 붙여넣으세요"><button class="btn btn--md btn--secondary" id="cxTokAdd">추가</button></div>' +
+            '<div class="wiz-title">' + t('stageLoginTitle') + '</div>' +
+            '<div class="wiz-sub">' + t('stageLoginSub') + '</div>' +
+            '<div class="wiz-list"><button class="btn btn--lg btn--primary cx-discord" id="cxLogin">' + DISCORD_ICON + ' ' + t('stageLoginButton') + '</button></div>' +
+            '<div class="cx-token"><button class="cx-tok-tgl" id="cxTokTgl">' + t('stageTokenAdvanced') + '</button>' +
+              '<div class="cx-tok-body" hidden><input class="cx-input" id="cxTok" placeholder="' + t('stageTokenPlaceholder') + '"><button class="btn btn--md btn--secondary" id="cxTokAdd">' + t('stageTokenAdd') + '</button></div>' +
             '</div></div>' +
-            '<div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="back-onb">취소</button></div>';
+            '<div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="back-onb">' + t('stageLoginCancel') + '</button></div>';
         } else if (sub === 'waiting') {
           // 실 앱 전용: OAuth 가 시스템 브라우저에서 진행 중. 완료(토큰 저장)되면 폴링이 자동으로 메인으로 보낸다.
           html += '<div class="wiz-body">' +
-            '<div class="wiz-title">브라우저에서 로그인 중…</div>' +
-            '<div class="wiz-sub">열린 브라우저 창에서 디스코드 로그인과 서버 선택을 완료하세요.<br>끝나면 자동으로 연결됩니다.</div>' +
+            '<div class="wiz-title">' + t('stageWaitingTitle') + '</div>' +
+            '<div class="wiz-sub">' + t('stageWaitingSub') + '</div>' +
             '</div>' +
-            '<div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="login">취소</button></div>';
+            '<div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="login">' + t('stageLoginCancel') + '</button></div>';
         } else if (sub === 'select') {
           const cands = await api.getConnectCandidates();
           if (!cands.length) { connectSub = 'none'; return renderConnect(); }
           // 메인(이미 인증)에선 로그인 없이 후보 선택 + 참여 토큰 옵션. 온보딩에선 로그인 다음 단계.
-          const tokenBlock = isMain ? '<div class="cx-token"><button class="cx-tok-tgl" id="cxTokTgl">참여 토큰으로 추가</button>' +
-            '<div class="cx-tok-body" hidden><input class="cx-input" id="cxTok" placeholder="발급받은 참여 토큰을 붙여넣으세요"><button class="btn btn--md btn--secondary" id="cxTokAdd">추가</button></div></div>' : '';
-          html += '<div class="wiz-body"><div class="wiz-title">' + (isMain ? '추가할 서버를 고르세요' : '어느 서버에 제공할까요?') + '</div>' +
-            '<div class="wiz-sub">봇이 있고 내가 속한 서버 중 아직 연결 안 된 곳이에요.</div><div class="wiz-list">' +
+          const tokenBlock = isMain ? '<div class="cx-token"><button class="cx-tok-tgl" id="cxTokTgl">' + t('stageSelectTokenBlock') + '</button>' +
+            '<div class="cx-tok-body" hidden><input class="cx-input" id="cxTok" placeholder="' + t('stageTokenPlaceholder') + '"><button class="btn btn--md btn--secondary" id="cxTokAdd">' + t('stageTokenAdd') + '</button></div></div>' : '';
+          html += '<div class="wiz-body"><div class="wiz-title">' + (isMain ? t('stageSelectTitle') : t('stageSelectTitleOnboarding')) + '</div>' +
+            '<div class="wiz-sub">' + t('stageSelectSub') + '</div><div class="wiz-list">' +
             cands.map((c) => '<button class="wiz-opt cx-cand" data-guild="' + c.guildId + '">' +
               '<span class="cx-cav">' + c.guildName.trim().charAt(0) + '</span>' +
-              '<span class="ob"><b>' + c.guildName + '</b><p>' + (c.autoApprove ? '바로 연결돼요' : '관리자 승인 후 연결') + '</p></span>' +
+              '<span class="ob"><b>' + c.guildName + '</b><p>' + (c.autoApprove ? t('stageServerApprovalAuto') : t('stageServerApprovalWait')) + '</p></span>' +
               '<svg class="srv-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg></button>').join('') +
             '</div>' + tokenBlock + '</div>' +
-            '<div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="' + (isMain ? 'main' : 'login') + '">' + (isMain ? '취소' : '이전') + '</button></div>';
+            '<div class="wiz-foot"><button class="btn btn--md btn--secondary" data-cx="' + (isMain ? 'main' : 'login') + '">' + (isMain ? t('stageSelectCancel') : t('stageSelectBack')) + '</button></div>';
         } else {
-          const where = connectedGuild || '이 서버'; // 서버명(없으면 "이 서버"). 이미 '서버'를 포함 → 중복 방지
+          const where = connectedGuild; // 서버명. 이미 '서버'를 포함 → 중복 방지
           const R = {
-            approved: { ic: '✓', cls: 'ok', title: '연결됐어요!', sub: '이제 ' + where + '에 AI 를 제공합니다.', btns: '<button class="btn btn--md btn--primary" data-cx="main">메인 화면으로</button>' },
-            pending: { ic: '⏳', cls: 'pending', title: '관리자 승인 대기 중', sub: where + ' 관리자가 승인하면 자동으로 연결돼요.<br>그동안 다른 서버를 추가할 수 있어요.', btns: '<button class="btn btn--md btn--secondary" data-cx="select">다른 서버</button><button class="btn btn--md btn--primary" data-cx="main">메인으로</button>' },
-            none: { ic: '∅', cls: 'pending', title: '참여 가능한 서버가 없어요', sub: '봇이 있는 서버 중 내가 속한 곳이 없어요.<br>서버에 봇을 먼저 초대해 주세요.', btns: '<button class="btn btn--md btn--secondary" data-cx="login">다시 시도</button>' },
-            cancelled: { ic: '✕', cls: 'error', title: '연결이 취소됐어요', sub: '디스코드 로그인이 취소됐어요. 다시 시도할 수 있어요.', btns: '<button class="btn btn--md btn--primary" data-cx="login">다시 시도</button>' },
+            approved: { ic: '✓', cls: 'ok', title: t('stageResultApprovedTitle'), sub: t('stageResultApprovedSub').replace('{n}', where || t('stageThisServerFallback')), btns: '<button class="btn btn--md btn--primary" data-cx="main">' + t('stageButtonMainScreen') + '</button>' },
+            pending: { ic: '⏳', cls: 'pending', title: t('stageResultPendingTitle'), sub: t('stageResultPendingSub').replace('{n}', where || t('stageThisServerFallback')), btns: '<button class="btn btn--md btn--secondary" data-cx="select">' + t('stageResultPendingOtherServer') + '</button><button class="btn btn--md btn--primary" data-cx="main">' + t('stageButtonMainScreen') + '</button>' },
+            none: { ic: '∅', cls: 'pending', title: t('stageResultNoneTitle'), sub: t('stageResultNoneSub'), btns: '<button class="btn btn--md btn--secondary" data-cx="login">' + t('stageResultRetry') + '</button>' },
+            cancelled: { ic: '✕', cls: 'error', title: t('stageResultCancelledTitle'), sub: t('stageResultCancelledSub'), btns: '<button class="btn btn--md btn--primary" data-cx="login">' + t('stageResultRetry') + '</button>' },
           }[sub] || {};
           html += '<div class="wiz-body"><div class="cx-result"><div class="cx-big ' + R.cls + '">' + R.ic + '</div>' +
             '<div class="wiz-title">' + R.title + '</div><div class="wiz-sub">' + R.sub + '</div></div></div>' +
@@ -220,7 +223,7 @@
               if (st && st.hasToken) {
                 stopConnectPoll();
                 setStage('main');
-                toast('연결됐어요', { type: 'ok' });
+                toast(t('stageConnectToast'), { type: 'ok' });
               }
             } catch (e) { /* 일시적 실패는 다음 주기에 재시도 */ }
           }, 2500);
@@ -238,7 +241,7 @@
           // 사유를 안내하고 login 화면을 유지한다. ok 일 때만 'waiting'(완료 폴링)으로 넘어간다.
           const r = await api.connectOpen();
           if (r && r.ok === false) {
-            toast('브라우저를 열 수 없어요', { type: 'info', sub: (r.error || '디스코드 로그인이 준비되지 않았어요') + ' 아래 ‘토큰 직접 입력’으로 추가하세요.' });
+            toast(t('stageBrowserOpenFailed'), { type: 'info', sub: r.error ? (r.error + t('stageBrowserOpenFailedHintSuffix')) : t('stageBrowserOpenFailedHint') });
             return;
           }
           connectSub = 'waiting';
@@ -249,21 +252,21 @@
         const tokAdd = q('#cxTokAdd');
         if (tokAdd) tokAdd.onclick = async () => {
           const token = (q('#cxTok')?.value || '').trim();
-          toast('토큰 확인 중…', { type: 'run', sticky: true, id: 'join' });
+          toast(t('stageTokenCheckingIn'), { type: 'run', sticky: true, id: 'join' });
           const res = await api.joinByToken(token);          // 토큰 검증 → guildName 복원
           const ok = res.state === ProviderState.APPROVED;
           connectedGuild = res.guildName || '';
-          toast(ok ? '연결 완료' : '승인 요청을 보냈어요', { type: ok ? 'ok' : 'info', replace: 'join' });
+          toast(ok ? t('stageTokenComplete') : t('stageApprovalRequested'), { type: ok ? 'ok' : 'info', replace: 'join' });
           connectSub = ok ? 'approved' : 'pending';
           renderConnect(); emit();
         };
         connectWiz.querySelectorAll('.cx-cand').forEach((el) => el.onclick = async () => {
           const gid = el.dataset.guild; // 64bit guildId — 문자열 유지(정밀도)
-          toast('서버 연결 중…', { type: 'run', sticky: true, id: 'join' });
+          toast(t('stageServerJoiningIn'), { type: 'run', sticky: true, id: 'join' });
           const res = await api.requestJoin(gid);
           const ok = res.state === ProviderState.APPROVED;
           connectedGuild = res.guildName || '';                // 결과 화면 서버명
-          toast(ok ? '연결 완료' : '승인 요청을 보냈어요', { type: ok ? 'ok' : 'info', replace: 'join' });
+          toast(ok ? t('stageTokenComplete') : t('stageApprovalRequested'), { type: ok ? 'ok' : 'info', replace: 'join' });
           connectSub = ok ? 'approved' : 'pending';
           renderConnect(); emit();
         });
@@ -308,7 +311,7 @@
           const nModels = (st.models && st.models.length) || 0;
           const ollamaState = (serving && nModels) ? 'running' : (nModels ? 'stopped' : 'absent');
           // Ollama 메타는 실제 제공 모델 수로(하드코딩 '모델 7개' 금지).
-          window.setRuntime('Ollama', ollamaState, ollamaState === 'running' ? ('모델 ' + nModels + '개 · 텍스트 응답 제공') : undefined);
+          window.setRuntime('Ollama', ollamaState, ollamaState === 'running' ? t('stageOllamaModelCount').replace('{n}', nModels) : undefined);
           // ComfyUI: 이 창에 인-프로세스 에이전트가 없으면(backgroundRunning) imageReady 를 알 수 없으므로
           // 이미지 받기 설정이 켜져 있으면 백그라운드가 제공 중인 것으로 본다(가짜 '실행 중' 대신 설정 기반 추정).
           // 상세 설치/시작은 '로컬 실행' 탭의 ComfyUI 카드가 /api/comfy/status 로 관리한다.
@@ -319,10 +322,10 @@
         // 히어로 상태 + 페이지 부제 — 미연결이면 미연결, 연결됐으면 제공 여부(running 또는 backgroundRunning)로 ok/error.
         const sub = document.getElementById('homeSub');
         if (!st.hasToken) {
-          if (sub) sub.textContent = '아직 서버에 연결되지 않았어요. 서버를 추가해 AI 제공을 시작하세요.';
+          if (sub) sub.textContent = t('stageHomeUnconnected');
           window.setHeroState?.('unconnected');
         } else {
-          if (sub) sub.textContent = serving ? '지금 AI를 정상적으로 제공하고 있어요.' : '연결됐지만 아직 제공을 시작하지 않았어요.';
+          if (sub) sub.textContent = serving ? t('stageHomeProvidingOk') : t('stageHomeProvidingError');
           window.setHeroState?.(serving ? 'ok' : 'error');
         }
       }
@@ -351,7 +354,7 @@
           await syncHomeFromStatus();
           // 시작/재연결이 거부되면(예: 백그라운드 서비스가 이미 제공 중 → otherInstanceConnected) 정직하게 실패로
           // 알린다. 이전엔 {ok:false}를 무시하고 가짜 성공 토스트를 띄워 '눌러도 그대로'로 보였다.
-          if (r && r.ok === false) throw new Error(r.error || '요청을 처리하지 못했어요');
+          if (r && r.ok === false) throw new Error(r.error || t('stageRequestFailed'));
           return r;
         };
         // ComfyUI 설치/시작은 '로컬 실행' 탭의 ComfyUI 카드가 소유한다(앱 관리 설치·웹UI 오픈·체크포인트 선택).

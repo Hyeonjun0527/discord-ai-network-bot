@@ -83,7 +83,7 @@ const MOCK = {
     '09:18:10 INFO | /ask 처리 완료 (qwen2.5-coder:7b · 2.1s · 한국어 개발 길드)',
   ],
   settings: {
-    autostart: false, background: false, autoConnect: true, autoUpdate: true,
+    autostart: false, background: false, autoConnect: true, autoUpdate: true, comfyBroadcast: false,
     ollamaUrl: 'http://localhost:11434', geminiConfigured: false, comfyUrl: '',
   },
   updateInfo: { current: '0.31.0', latest: '0.31.0', outdated: false, supported: true },

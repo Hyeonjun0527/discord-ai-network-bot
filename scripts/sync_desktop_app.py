@@ -47,12 +47,23 @@ DST = ROOT / "provider-agent" / "src" / "provider_agent" / "webui_assets"
 # 복사 대상 파일(시안 자산만 — 테스트/설정/의존성 제외).
 FILES = (
     "index.html",
+    "styles.css",
     "adapter.js",
     "contract.js",
     "presenter.js",
     "state.js",
     "toast.js",
     "install.js",
+    # index.html 에서 분리한 화면/인프라 모듈(SoC/SRP). 각자 단일 책임.
+    "screen-home.js",
+    "screen-logs.js",
+    "screen-local.js",
+    "screen-settings.js",
+    "screen-servers.js",
+    "screen-models.js",
+    "stage-manager.js",
+    "orb.js",
+    "router.js",
 )
 
 
@@ -115,7 +126,7 @@ def main() -> None:
     # 자가 검증: 프로토타입 전용 mock/데모가 실 앱에 새지 않았는지(strip 보증). 누수면 sync 실패.
     leaks: list[str] = []
     bad = {"@proto-only": "마커 잔존", "const MOCK = {": "mock 데이터", "export const USE_MOCK = true": "USE_MOCK=true", 'id="proto"': "PROTO 컨트롤러"}
-    for name in ("index.html", "adapter.js"):
+    for name in ("index.html", "adapter.js", "styles.css"):
         t = (DST / name).read_text(encoding="utf-8")
         for needle, desc in bad.items():
             if needle in t:

@@ -74,4 +74,15 @@ class LicenseServiceTest
             service.grantAdmin(700_007L, adminId = 1L)
             assertTrue(service.hasPaidAccess(700_007L)) // ADMIN → LICENSED
         }
+
+        @Test
+        fun `funnel 집계 — 상태별 카운트`() {
+            service.grantPaddle(700_010L, "c", "t") // LICENSED
+            service.grantEvent(700_011L) // EVENT_FREE
+            service.view(700_012L) // TRIAL(lazy)
+            val f = service.funnel()
+            assertTrue(f.licensed >= 1, "licensed=${f.licensed}")
+            assertTrue(f.eventFree >= 1, "eventFree=${f.eventFree}")
+            assertTrue(f.trial >= 1, "trial=${f.trial}")
+        }
     }

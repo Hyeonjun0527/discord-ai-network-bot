@@ -147,6 +147,32 @@ class LicenseService(
     /** 상태별 라이선스 수(퍼널/운영 집계). */
     fun countByGrant(grant: LicenseGrant): Long = repo.countByGrantType(grant.name)
 
+    /**
+     * 전환 퍼널 집계(P9, central 집계만 — 앱 텔레메트리 무확장). status 는 시간 의존이라 전체 스캔 후 resolve.
+     * 어드민 전용·저빈도 호출.
+     */
+    fun funnel(): LicenseFunnel {
+        val now = clock.instant()
+        var trial = 0L
+        var expired = 0L
+        var licensed = 0L
+        var eventFree = 0L
+        var revoked = 0L
+        var refunded = 0L
+        for (e in repo.findAll()) {
+            if (e.refundFlag) refunded++
+            when (e.toDomain().resolve(now, trialMonths).status) {
+                com.discordassistant.central.licensing.domain.model.LicenseStatus.TRIAL -> trial++
+                com.discordassistant.central.licensing.domain.model.LicenseStatus.EXPIRED -> expired++
+                com.discordassistant.central.licensing.domain.model.LicenseStatus.LICENSED -> licensed++
+                com.discordassistant.central.licensing.domain.model.LicenseStatus.EVENT_FREE -> eventFree++
+                com.discordassistant.central.licensing.domain.model.LicenseStatus.REVOKED -> revoked++
+                com.discordassistant.central.licensing.domain.model.LicenseStatus.FREE -> {}
+            }
+        }
+        return LicenseFunnel(trial, expired, licensed, eventFree, revoked, refunded)
+    }
+
     private fun audit(
         userId: Long,
         action: String,

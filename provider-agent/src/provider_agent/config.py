@@ -35,7 +35,7 @@ class AgentConfig:
     pause_on_high_load: bool = True  # CPU 고부하 시 자동 pause(자원 보호)
     enable_image: bool = False  # 로컬 SD 이미지 생성 capability 광고(opt-in, SD Phase 1)
     gemini_api_key: str = ""  # 클라우드 Gemini 백엔드 키(관리자 1개로 서버 전체 무료 제공). 비면 미사용. central 엔 안 올림
-    gemini_models: tuple[str, ...] = ()  # 광고할 Gemini 모델(키 있을 때 기본 gemini-2.5-flash-lite)
+    gemini_models: tuple[str, ...] = ()  # 광고할 Gemini 모델(키 있을 때 기본 gemini-3.1-flash-lite)
     comfy_url: str = ""  # 로컬 ComfyUI 주소(비면 앱 관리 ComfyUI localhost:8188). 외부는 명시 입력
     comfy_broadcast: bool = False  # 전문가 층: ComfyUI 웹에서 직접 생성한 이미지를 길드 지정 채널로 자동 포워드(opt-in)
     hf_token: str = ""  # HuggingFace 토큰(gated/비공개 모델 다운로드용). 비면 public 모델만. 이 PC 에만 저장

@@ -255,7 +255,7 @@ export const api = {
   },
   /** 이 서버에 제공할 모델 설정 readback — /api/servers/{g}/models. */
   async getServerModels(guildId) {
-    /* @proto-only */ if (USE_MOCK) { await delay(60); return { ok: true, available: [...MOCK.models.map((m) => m.name), 'gemini-2.5-flash-lite'], chatModels: [], imageEnabled: true, imageReady: true }; } /* @end-proto-only */
+    /* @proto-only */ if (USE_MOCK) { await delay(60); return { ok: true, available: [...MOCK.models.map((m) => m.name), 'gemini-3.1-flash-lite'], chatModels: [], imageEnabled: true, imageReady: true }; } /* @end-proto-only */
     return http(ENDPOINTS.serverModels(guildId));
   },
   /** 이 서버에 제공할 채팅 모델·이미지 여부 저장·적용 — POST /api/servers/{g}/models. chatModels 빈=전체. */

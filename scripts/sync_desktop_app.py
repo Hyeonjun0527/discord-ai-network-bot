@@ -64,6 +64,9 @@ FILES = (
     "stage-manager.js",
     "orb.js",
     "router.js",
+    # 다국어(i18n): 생성본 표(window.__I18N) + 적용 모듈.
+    "i18n-agent.js",
+    "i18n.js",
 )
 
 
@@ -81,7 +84,7 @@ def _transform_index(text: str) -> str:
     needle = "<head>"
     # 세션키 주입 + 부팅 플래그(app-booting): 실 앱은 hasToken 판정 전까지 메인을 숨겨 FOUC(메인 깜빡임)를 막는다.
     # setStage 가 stage 결정 시 app-booting 을 제거한다(index.html). 프로토타입(키 미주입)엔 클래스가 안 붙어 무해.
-    inject = '\n  <script>window.__SESSION_KEY="__SESSION_KEY__";document.documentElement.classList.add("app-booting");</script>'
+    inject = '\n  <script>window.__SESSION_KEY="__SESSION_KEY__";window.__LANG="__LANG__";document.documentElement.classList.add("app-booting");</script>'
     idx = text.find(needle)
     if idx < 0:
         raise SystemExit("index.html 에 <head> 가 없습니다 — 시안 변경으로 sync 불가")

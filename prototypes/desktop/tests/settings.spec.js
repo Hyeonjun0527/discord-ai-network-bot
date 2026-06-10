@@ -26,6 +26,18 @@ test('설정 화면: 그룹·토글·버전 표시', async ({ page }) => {
   await expect(page.locator('#setLogout')).toBeVisible();
 });
 
+test('언어 전환(i18n): 설정에서 ko→en 바꾸면 네비(정적)와 설정(재렌더)이 영어로 바뀐다', async ({ page }) => {
+  await page.goto('/index.html');
+  await expect(page.locator('.nav-item[data-view="home"]')).toContainText('홈'); // ko-KR 로케일 기본
+  await page.click('.nav-item[data-view="settings"]');
+  await expect(page.locator('#settingsBody')).toContainText('실행 동작');
+  await page.selectOption('#langSel', 'en');
+  await expect(page.locator('.nav-item[data-view="home"]')).toContainText('Home'); // 정적 라벨(data-i18n) 전환
+  await expect(page.locator('#settingsBody')).toContainText('App behavior'); // JS 렌더 화면 재렌더
+  await page.selectOption('#langSel', 'ja');
+  await expect(page.locator('.nav-item[data-view="settings"]')).toContainText('設定'); // 일본어 전환
+});
+
 test('설정 본문은 업데이트 확인(GitHub 네트워크)이 느려도 즉시 렌더된다(회귀: 빈 설정창)', async ({ page }) => {
   // getUpdateInfo 를 영원히 pending 으로(느린/막힌 GitHub 네트워크 재현) → 본문 렌더가 막히면 안 된다.
   await page.addInitScript(() => { globalThis.__HANG_UPDATE_INFO = true; });

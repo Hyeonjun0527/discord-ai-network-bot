@@ -1,48 +1,61 @@
 // NEXA 데스크톱 — screen-settings.js (index.html 에서 분리, SoC/SRP). 동작 보존 verbatim.
     import { api } from './adapter.js';
     import { toast } from './toast.js';
+    import { t, setLang, currentLang, supportedLangs, onLangChange } from './i18n.js';
 
     const view = document.querySelector('.view[data-view="settings"]');
     const body = document.getElementById('settingsBody');
     let _s = null, _upd = null;
 
+    // 토글 키(서버 설정 키 = data-toggle, 불변) → i18n 라벨 키.
     const TOGGLES = [
-      { key: 'autostart', name: '로그인 시 자동 시작', desc: '이 PC 에 로그인하면 Nexa 가 자동으로 켜져요.' },
-      { key: 'background', name: '백그라운드 상주', desc: '창을 닫아도 트레이에서 계속 제공해요.' },
-      { key: 'autoConnect', name: '자동 연결', desc: '시작하면 승인된 서버에 자동으로 연결해요.' },
-      { key: 'enableImage', name: '이미지 요청 받기', desc: 'ComfyUI 로 이미지 생성 요청을 받아요.' },
-      { key: 'comfyBroadcast', name: 'ComfyUI 웹 생성물 자동 전송', desc: 'ComfyUI 웹에서 직접 만든 이미지를 서버 관리자가 지정한 채널(/그림채널)로 자동 전송해요. 로컬 ComfyUI 전용.' },
+      { key: 'autostart', nameKey: 'toggleAutostart', descKey: 'toggleAutostartDesc' },
+      { key: 'background', nameKey: 'toggleBackground', descKey: 'toggleBackgroundDesc' },
+      { key: 'autoConnect', nameKey: 'toggleAutoConnect', descKey: 'toggleAutoConnectDesc' },
+      { key: 'enableImage', nameKey: 'toggleEnableImage', descKey: 'toggleEnableImageDesc' },
+      { key: 'comfyBroadcast', nameKey: 'toggleComfyBroadcast', descKey: 'toggleComfyBroadcastDesc' },
     ];
     const sw = (key, on) => '<button class="switch ' + (on ? 'on' : '') + '" data-toggle="' + key + '" role="switch" aria-checked="' + !!on + '" aria-label="' + key + '"></button>';
     const row = (name, desc, right) => '<div class="set-row"><div class="sr-body"><div class="sr-name">' + name + '</div>' +
       (desc ? '<div class="sr-desc">' + desc + '</div>' : '') + '</div>' + right + '</div>';
+    const group = (titleKey, inner) => '<div class="set-group"><div class="sg-title">' + t(titleKey) + '</div>' + inner + '</div>';
+
+    // 언어 선택기 — 현재 언어 선택 상태로 ko/en/ja 드롭다운. 변경 시 setLang(UI)+서버 저장.
+    function langSelect() {
+      const cur = currentLang();
+      const NATIVE = { ko: '한국어', en: 'English', ja: '日本語' };
+      const opts = supportedLangs().map((l) => '<option value="' + l + '"' + (l === cur ? ' selected' : '') + '>' + NATIVE[l] + '</option>').join('');
+      return '<select id="langSel" class="set-input" aria-label="' + t('setLangLabel') + '">' + opts + '</select>';
+    }
 
     function render() {
       const s = _s || {}, u = _upd; // u=null 이면 아직 업데이트 확인 전(네트워크 진행 중)
-      const exec = TOGGLES.map((t) => row(t.name, t.desc, sw(t.key, s[t.key]))).join('');
-      const verLine = !u ? '버전 확인 중…' : (u.outdated ? ('현재 v' + u.current + ' · 최신 v' + u.latest) : ('현재 v' + (u.current || '-') + ' · 최신 상태'));
+      const exec = TOGGLES.map((g) => row(t(g.nameKey), t(g.descKey), sw(g.key, s[g.key]))).join('');
+      const verLine = !u ? t('setVerChecking') : (u.outdated ? (t('setVerCurrent') + ' v' + u.current + ' · ' + t('setVerLatest') + ' v' + u.latest) : (t('setVerCurrent') + ' v' + (u.current || '-') + ' · ' + t('setVerUpToDate')));
       const updRight = !u
-        ? '<button class="btn btn--sm btn--secondary" id="setUpdateCheck" disabled>확인 중…</button>'
+        ? '<button class="btn btn--sm btn--secondary" id="setUpdateCheck" disabled>' + t('setUpdateChecking') + '</button>'
         : (u.outdated
-          ? '<button class="btn btn--sm btn--primary" id="setUpdateApply">업데이트</button>'
-          : '<button class="btn btn--sm btn--secondary" id="setUpdateCheck">확인</button>');
-      const updGroup = row('버전', verLine, updRight) + row('자동 업데이트', '새 버전이 나오면 자동으로 설치해요.', sw('autoUpdate', s.autoUpdate));
+          ? '<button class="btn btn--sm btn--primary" id="setUpdateApply">' + t('setUpdateApply') + '</button>'
+          : '<button class="btn btn--sm btn--secondary" id="setUpdateCheck">' + t('setUpdateCheck') + '</button>');
+      const langGroup = row(t('setLangLabel'), t('setLangDesc'), langSelect());
+      const updGroup = row(t('setVersion'), verLine, updRight) + row(t('setAutoUpdate'), t('setAutoUpdateDesc'), sw('autoUpdate', s.autoUpdate));
       // 중앙 서버·Ollama 주소 — 편집 가능(고급). 다른 포트/호스트의 Ollama 를 쓰는 유저가 앱에서 바꾼다.
       const connGroup =
-        row('중앙 서버', '서버 연결 주소(보통 그대로)',
-          '<input id="setRelay" type="text" value="' + (s.relayUrl || '') + '" placeholder="wss://discord-ai.yeon.world/agent" class="set-input"><button class="btn btn--sm btn--secondary" id="setRelaySave">저장</button>') +
-        row('Ollama 주소', '다른 포트/호스트의 Ollama 를 쓰면 여기서 바꿔요',
-          '<input id="setOllama" type="text" value="' + (s.ollamaUrl || '') + '" placeholder="http://localhost:11434" class="set-input"><button class="btn btn--sm btn--secondary" id="setOllamaSave">저장</button>');
-      const acct = row(s.hasToken ? '연결됨' : '연결 안 됨',
-        s.hasToken ? '서버 연결 토큰을 보유하고 있어요.' : '온보딩에서 Discord 에 연결하세요.',
-        s.hasToken ? '<button class="btn btn--sm btn--secondary" id="setLogout">연결 해제</button>' : '');
+        row(t('setCentralServer'), t('setCentralServerDesc'),
+          '<input id="setRelay" type="text" value="' + (s.relayUrl || '') + '" placeholder="wss://discord-ai.yeon.world/agent" class="set-input"><button class="btn btn--sm btn--secondary" id="setRelaySave">' + t('setSave') + '</button>') +
+        row(t('setOllamaAddr'), t('setOllamaAddrDesc'),
+          '<input id="setOllama" type="text" value="' + (s.ollamaUrl || '') + '" placeholder="http://localhost:11434" class="set-input"><button class="btn btn--sm btn--secondary" id="setOllamaSave">' + t('setSave') + '</button>');
+      const acct = row(s.hasToken ? t('setConnected') : t('setNotConnected'),
+        s.hasToken ? t('setConnectedDesc') : t('setNotConnectedDesc'),
+        s.hasToken ? '<button class="btn btn--sm btn--secondary" id="setLogout">' + t('setLogout') + '</button>' : '');
       // 클라우드 AI(Gemini)·이미지 엔진(ComfyUI)은 '엔진' 관심사 → 로컬 실행 탭이 소유한다(설정엔 두지 않음).
-      // 설정은 앱 동작만: 실행 동작·업데이트·연결·계정. AI 백엔드 설정은 여기 없음(IA: 엔진→모델→서버).
+      // 설정은 앱 동작만: 언어·실행 동작·업데이트·연결·계정. AI 백엔드 설정은 여기 없음(IA: 엔진→모델→서버).
       body.innerHTML =
-        '<div class="set-group"><div class="sg-title">실행 동작</div>' + exec + '</div>' +
-        '<div class="set-group"><div class="sg-title">업데이트</div>' + updGroup + '</div>' +
-        '<div class="set-group"><div class="sg-title">연결</div>' + connGroup + '</div>' +
-        '<div class="set-group"><div class="sg-title">계정</div>' + acct + '</div>';
+        group('setGroupLang', langGroup) +
+        group('setGroupExec', exec) +
+        group('setGroupUpdate', updGroup) +
+        group('setGroupConn', connGroup) +
+        group('setGroupAccount', acct);
       bind();
     }
 
@@ -113,7 +126,13 @@
       };
       saveConn('setRelay', 'relayUrl', '중앙 서버 주소');
       saveConn('setOllama', 'ollamaUrl', 'Ollama 주소');
+      // 언어 전환: setLang 이 UI(정적 라벨)+이 화면 재렌더를 처리하고, 서버에도 저장(재시작 후 유지).
+      const ls = document.getElementById('langSel');
+      if (ls) ls.onchange = () => { const v = ls.value; setLang(v); api.setSetting('lang', v).catch(() => {}); };
     }
+
+    // 언어가 바뀌면 설정 화면을 다시 그린다(JS 렌더 문구 갱신). 네비 등 정적 라벨은 i18n.applyStatic 이 처리.
+    onLangChange(() => { if (_s) render(); });
 
     async function load() {
       _s = await api.getSettings();  // 로컬·빠름 → 즉시 렌더(설정 본문이 네트워크에 안 막히게)

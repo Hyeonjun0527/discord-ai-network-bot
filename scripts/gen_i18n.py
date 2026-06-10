@@ -21,12 +21,15 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SRC = ROOT / "i18n" / "messages.json"
 REQUIRED = ("ko", "en", "ja")
 
-# 섹션 → 생성본 경로.
+# 섹션 → JSON 생성본 경로(봇·웹·데스크톱 Python 백엔드가 로드).
 TARGETS = {
     "bot": ROOT / "central-server/src/main/resources/i18n/messages.json",
     "web": ROOT / "central-server/src/main/resources/static/i18n/web.json",
     "agent": ROOT / "provider-agent/src/provider_agent/i18n_messages.json",
 }
+
+# desktop 섹션 → 데스크톱 UI 가 동기 사용할 JS 표(window.__I18N). 기존 .js 자산 라우트로 서빙된다(새 라우트 불필요).
+DESKTOP_JS = ROOT / "prototypes/desktop/i18n-agent.js"
 
 GEN_NOTE = "GENERATED from i18n/messages.json by scripts/gen_i18n.py — DO NOT EDIT. 문구 변경은 i18n/messages.json 에서."
 
@@ -55,6 +58,12 @@ def rendered(section: str, src: dict) -> str:
     return json.dumps(body, ensure_ascii=False, indent=2) + "\n"
 
 
+def rendered_desktop_js(src: dict) -> str:
+    """데스크톱 UI 다국어 표를 동기 주입할 JS(window.__I18N). i18n.js 가 이걸 읽는다."""
+    table = json.dumps(src["desktop"], ensure_ascii=False, indent=2)
+    return f"// {GEN_NOTE}\nwindow.__I18N = {table};\n"
+
+
 def main(check: bool) -> int:
     if not SRC.exists():
         print(f"❌ SSOT 없음: {SRC}")
@@ -81,6 +90,18 @@ def main(check: bool) -> int:
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
+
+    # 데스크톱 UI 표(window.__I18N) — desktop 섹션을 JS 로 생성.
+    if "desktop" not in src:
+        print("❌ SSOT 에 섹션 없음: desktop")
+        return 1
+    desktop_js = rendered_desktop_js(src)
+    if check:
+        cur = DESKTOP_JS.read_text(encoding="utf-8") if DESKTOP_JS.exists() else ""
+        if cur != desktop_js:
+            drift.append(str(DESKTOP_JS.relative_to(ROOT)))
+    else:
+        DESKTOP_JS.write_text(desktop_js, encoding="utf-8")
 
     if check:
         if drift:

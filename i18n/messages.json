@@ -1090,6 +1090,11 @@
       "en": "HF token saved — you can now access gated models",
       "ja": "HFトークンを保存しました — gatedモデルにアクセスできるようになります"
     },
+    "localHFTokenSaveFailureToast": {
+      "ko": "저장 실패 — 네트워크를 확인하세요",
+      "en": "Save failed — check your network",
+      "ja": "保存に失敗しました — ネットワークを確認してください"
+    },
     "localComfyInstallStartedToast": {
       "ko": "ComfyUI 설치 시작 — 첫 설치는 수 분 걸려요(자동 진행돼요)",
       "en": "ComfyUI installation started — first install takes a few minutes (auto-progresses)",
@@ -2036,9 +2041,9 @@
       "ja": "まだドキュメントがありません（Discordコマンドで追加）。"
     },
     "serversRagContentResponsibility": {
-      "ko": "📄 올린 문서의 콘텐츠 책임은 서버 관리자에게 있어요. 불법 콘텐츠는 무관용 차단됩니다(안전).",
-      "en": "📄 Content responsibility for uploaded documents rests with the server admin. Illegal content is blocked (Safety).",
-      "ja": "📄 アップロードされたドキュメントのコンテンツの責任はサーバー管理者にあります。違法コンテンツはブロックされます（安全）。"
+      "ko": "📄 올린 문서의 콘텐츠 책임은 <b>서버 관리자</b>에게 있어요. 불법 콘텐츠는 무관용 차단됩니다(안전).",
+      "en": "📄 Content responsibility for uploaded documents rests with the <b>server admin</b>. Illegal content is blocked under zero tolerance (Safety).",
+      "ja": "📄 アップロードされたドキュメントのコンテンツの責任は<b>サーバー管理者</b>にあります。違法コンテンツはゼロトレランスでブロックされます（安全）。"
     },
     "serversRagManageNote": {
       "ko": "지식 문서(추가는 Discord/웹, 여기선 삭제 가능)",
@@ -2121,9 +2126,9 @@
       "ja": "コンテンツポリシー"
     },
     "serversSafetyPolicyDescription": {
-      "ko": "이 서버 AI 콘텐츠의 책임은 서버 관리자에게 있어요. · 불법 콘텐츠(아동 성착취물 등)는 무관용 — 안전 가드레일이 자동 거부·차단합니다. · Discord 커뮤니티 가이드·서비스 약관을 따라요(성인물은 연령 제한 채널에서만).",
-      "en": "Server admin is responsible for AI content. · Illegal content (e.g., child exploitation) is zero-tolerance — safety guardrails auto-reject/block. · Follows Discord community guidelines and ToS (adult content only in age-restricted channels).",
-      "ja": "サーバー管理者はAIコンテンツの責任があります。違法コンテンツ（児童搾取など）はゼロトレランス — セーフティガードレールが自動拒否・ブロック。Discordコミュニティガイドライン・ToSに従います（成人向けコンテンツは年齢制限チャネルのみ）。"
+      "ko": "이 서버 AI 콘텐츠의 책임은 <b>서버 관리자</b>에게 있어요.<br>· <b>불법 콘텐츠</b>(아동 성착취물 등)는 무관용 — 안전 가드레일이 자동 거부·차단합니다.<br>· Discord 커뮤니티 가이드·서비스 약관을 따라요(성인물은 연령 제한 채널에서만).",
+      "en": "The <b>server admin</b> is responsible for this server's AI content.<br>· <b>Illegal content</b> (e.g., child exploitation) is zero-tolerance — safety guardrails auto-reject/block.<br>· Follows Discord community guidelines and ToS (adult content only in age-restricted channels).",
+      "ja": "このサーバーのAIコンテンツの責任は<b>サーバー管理者</b>にあります。<br>· <b>違法コンテンツ</b>（児童搾取など）はゼロトレランス — セーフティガードレールが自動拒否・ブロック。<br>· Discordコミュニティガイドライン・ToSに従います（成人向けは年齢制限チャネルのみ）。"
     },
     "serversSafetyReport": {
       "ko": "신고·대응은 이렇게 동작해요",
@@ -2131,9 +2136,9 @@
       "ja": "報告と対応はこのように機能します"
     },
     "serversSafetyReportDescription": {
-      "ko": "· 부적절한 답변은 Discord 메시지 신고 또는 서버 관리자에게 알릴 수 있어요. · 관리자는 채널 AI 허용/차단(채널 탭)·프리셋/지식 삭제(프리셋·RAG 탭)로 즉시 조치할 수 있어요. · 안전을 해치는 요청은 답변 생성 단계에서 거부돼요(가드레일).",
-      "en": "· Inappropriate responses can be reported via Discord or to the server admin. · Admins can immediately act by enabling/disabling channels (Channels tab) or deleting presets/knowledge (Preset/RAG tabs). · Safety-violating requests are rejected during response generation (guardrails).",
-      "ja": "不適切な応答はDiscordまたはサーバー管理者に報告できます。管理者はチャネル有効/無効（チャネルタブ）またはプリセット・知識削除（プリセット・RAGタブ）で直ちに対応できます。安全性を侵害するリクエストは応答生成段階で拒否されます（ガードレール）。"
+      "ko": "· 부적절한 답변은 <b>Discord 메시지 신고</b> 또는 서버 관리자에게 알릴 수 있어요.<br>· 관리자는 채널 AI 허용/차단(채널 탭)·프리셋/지식 삭제(프리셋·RAG 탭)로 즉시 조치할 수 있어요.<br>· 안전을 해치는 요청은 답변 생성 단계에서 거부돼요(가드레일).",
+      "en": "· Inappropriate responses can be reported via <b>Discord message report</b> or to the server admin.<br>· Admins can act immediately by allowing/blocking channel AI (Channels tab) or deleting presets/knowledge (Preset/RAG tabs).<br>· Safety-violating requests are rejected during response generation (guardrails).",
+      "ja": "· 不適切な応答は<b>Discordメッセージ報告</b>またはサーバー管理者に報告できます。<br>· 管理者はチャネルAIの許可/ブロック（チャネルタブ）・プリセット/知識の削除（プリセット・RAGタブ）で直ちに対応できます。<br>· 安全性を侵害するリクエストは応答生成段階で拒否されます（ガードレール）。"
     },
     "serversSafetyNoReports": {
       "ko": "처리할 신고 없음",
@@ -2184,6 +2189,166 @@
       "ko": "추가·편집은 Discord 슬래시 명령이나 웹 대시보드에서 관리해요(앱은 현황 조회).",
       "en": "Add/edit via Discord slash commands or web dashboard (app shows status only).",
       "ja": "Discord スラッシュコマンドまたはウェブダッシュボードで追加・編集（アプリは状況のみ表示）。"
+    },
+    "serversSafetyReportsHeader": {
+      "ko": "신고",
+      "en": "Reports",
+      "ja": "報告"
+    },
+    "serversCloseButton": {
+      "ko": "닫기",
+      "en": "Close",
+      "ja": "閉じる"
+    },
+    "serversDetailMyProvisionForServer": {
+      "ko": "이 서버에 대한 내 제공",
+      "en": "My provision for this server",
+      "ja": "このサーバーへの私の提供"
+    },
+    "serversManageAdminRequiredToast": {
+      "ko": "이 서버의 관리자 권한이 필요해요",
+      "en": "You need admin permission for this server",
+      "ja": "このサーバーの管理者権限が必要です"
+    },
+    "serversChangeFailedToast": {
+      "ko": "변경할 수 없어요",
+      "en": "Couldn't change it",
+      "ja": "変更できません"
+    },
+    "serversAddFailedToast": {
+      "ko": "추가할 수 없어요",
+      "en": "Couldn't add it",
+      "ja": "追加できません"
+    },
+    "serversThisServerFallback": {
+      "ko": "이 서버",
+      "en": "this server",
+      "ja": "このサーバー"
+    },
+    "serversDocumentFallback": {
+      "ko": "문서",
+      "en": "document",
+      "ja": "ドキュメント"
+    },
+    "serversPolicyDescSelf": {
+      "ko": "내",
+      "en": "your",
+      "ja": "あなたの"
+    },
+    "serversPresetEmptyTitle": {
+      "ko": "프리셋 없음",
+      "en": "No presets",
+      "ja": "プリセットなし"
+    },
+    "serversManagedSoonToastSuffix": {
+      "ko": " — 프로토타입에선 흐름만 보여줘요",
+      "en": " — prototype shows the flow only",
+      "ja": " — プロトタイプではフローのみ表示"
+    },
+    "serversFmtMinSec": {
+      "ko": "{m}분 {r}초",
+      "en": "{m}m {r}s",
+      "ja": "{m}分{r}秒"
+    },
+    "serversFmtMin": {
+      "ko": "{m}분",
+      "en": "{m}m",
+      "ja": "{m}分"
+    },
+    "serversFmtSec": {
+      "ko": "{s}초",
+      "en": "{s}s",
+      "ja": "{s}秒"
+    },
+    "serversCaiToneFriendly": {
+      "ko": "친근",
+      "en": "Friendly",
+      "ja": "フレンドリー"
+    },
+    "serversCaiToneFormal": {
+      "ko": "정중",
+      "en": "Formal",
+      "ja": "丁寧"
+    },
+    "serversCaiToneConcise": {
+      "ko": "간결",
+      "en": "Concise",
+      "ja": "簡潔"
+    },
+    "serversCaiTonePlayful": {
+      "ko": "발랄",
+      "en": "Playful",
+      "ja": "元気"
+    },
+    "serversCaiToneNeutral": {
+      "ko": "중립",
+      "en": "Neutral",
+      "ja": "中立"
+    },
+    "serversCaiPurposeGeneral": {
+      "ko": "일반 도우미",
+      "en": "General assistant",
+      "ja": "一般アシスタント"
+    },
+    "serversCaiPurposeCoding": {
+      "ko": "코딩",
+      "en": "Coding",
+      "ja": "コーディング"
+    },
+    "serversCaiPurposeSupport": {
+      "ko": "고객지원",
+      "en": "Support",
+      "ja": "カスタマーサポート"
+    },
+    "serversCaiPurposeModeration": {
+      "ko": "운영",
+      "en": "Moderation",
+      "ja": "モデレーション"
+    },
+    "serversRagStatusIndexed": {
+      "ko": "색인 완료",
+      "en": "Indexed",
+      "ja": "インデックス完了"
+    },
+    "serversRagStatusIndexing": {
+      "ko": "색인 중",
+      "en": "Indexing",
+      "ja": "インデックス中"
+    },
+    "serversRagStatusPending": {
+      "ko": "대기",
+      "en": "Pending",
+      "ja": "待機中"
+    },
+    "serversRagStatusBlocked": {
+      "ko": "차단됨",
+      "en": "Blocked",
+      "ja": "ブロック済み"
+    },
+    "serversRagStatusRejected": {
+      "ko": "거부됨",
+      "en": "Rejected",
+      "ja": "拒否済み"
+    },
+    "serversPresetStatusActive": {
+      "ko": "사용 중",
+      "en": "Active",
+      "ja": "使用中"
+    },
+    "serversPresetStatusPublished": {
+      "ko": "게시됨",
+      "en": "Published",
+      "ja": "公開済み"
+    },
+    "serversPresetStatusDraft": {
+      "ko": "초안",
+      "en": "Draft",
+      "ja": "下書き"
+    },
+    "serversPresetStatusArchived": {
+      "ko": "보관",
+      "en": "Archived",
+      "ja": "アーカイブ"
     },
     "stageWizStep": {
       "ko": "설정 {n} / 4",
@@ -2580,6 +2745,11 @@
       "en": "Discord login is not configured. Use 'Enter token directly' below to add.",
       "ja": "Discordログインが設定されていません。下の「トークンを直接入力」を使用して追加してください。"
     },
+    "stageBrowserOpenFailedHintSuffix": {
+      "ko": " 아래 '토큰 직접 입력'으로 추가하세요.",
+      "en": " Use 'Enter token directly' below to add.",
+      "ja": "下の「トークンを直接入力」を使用して追加してください。"
+    },
     "stageTokenCheckingIn": {
       "ko": "토큰 확인 중…",
       "en": "Checking token…",
@@ -2689,6 +2859,16 @@
       "ko": "기부자",
       "en": "Donor",
       "ja": "寄付者"
+    },
+    "stageThisServerFallback": {
+      "ko": "이 서버",
+      "en": "this server",
+      "ja": "このサーバー"
+    },
+    "stageRequestFailed": {
+      "ko": "요청을 처리하지 못했어요",
+      "en": "Couldn't process the request",
+      "ja": "リクエストを処理できませんでした"
     }
   }
 }

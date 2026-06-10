@@ -4,6 +4,8 @@
 //   toast(msg, { type:'ok'|'info'|'run', sub, sticky, duration, id, replace })
 //   · sticky: 자동 사라짐 없음(진행 중). · replace: 같은 id 토스트를 갱신(run→ok).
 // ════════════════════════════════════════════════════════════════════════
+import { t } from './i18n.js';
+
 const SPIN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg>';
 const ICO = { ok: '✓', info: 'i', run: SPIN };
 
@@ -25,7 +27,7 @@ export function toast(msg, o = {}) {
   // 닫기 버튼(✕) — 진행(sticky) 토스트를 사용자가 직접 닫을 수 있게. onClose 로 폴링 측에 알림.
   let x = el.querySelector('.toast-x');
   if (o.sticky || o.closable) {
-    if (!x) { x = document.createElement('button'); x.className = 'toast-x'; x.setAttribute('aria-label', '닫기'); x.textContent = '✕'; el.appendChild(x); }
+    if (!x) { x = document.createElement('button'); x.className = 'toast-x'; x.setAttribute('aria-label', t('toastCloseLabel')); x.textContent = '✕'; el.appendChild(x); }
     x.onclick = (ev) => { ev.stopPropagation(); clearTimeout(el._t); el.remove(); if (o.onClose) o.onClose(); };
   } else if (x) { x.remove(); }
 

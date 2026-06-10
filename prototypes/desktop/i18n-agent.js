@@ -170,6 +170,96 @@ window.__I18N = {
     "en": "Change this if your Ollama runs on another port/host",
     "ja": "別のポート/ホストのOllamaを使う場合はここで変更します"
   },
+  "setImageOnNeedsComfyToast": {
+    "ko": "이미지 받기 켜짐 — ComfyUI 준비가 필요해요",
+    "en": "Image receiving on — ComfyUI needs to be ready",
+    "ja": "画像受信オン — ComfyUIの準備が必要です"
+  },
+  "setImageOnNeedsComfySub": {
+    "ko": "로컬 실행 탭에서 ComfyUI 를 설치/시작하세요",
+    "en": "Install/start ComfyUI in the Local tab",
+    "ja": "ローカル実行タブでComfyUIをインストール/起動してください"
+  },
+  "setSavedToast": {
+    "ko": "설정을 저장했어요",
+    "en": "Settings saved",
+    "ja": "設定を保存しました"
+  },
+  "setChangeFailedToast": {
+    "ko": "변경 실패 — 네트워크를 확인하세요",
+    "en": "Change failed — check your network",
+    "ja": "変更に失敗しました — ネットワークを確認してください"
+  },
+  "setApplyFailedToast": {
+    "ko": "적용 실패 — {error}",
+    "en": "Apply failed — {error}",
+    "ja": "適用に失敗しました — {error}"
+  },
+  "setSavedNeedsReconnectToast": {
+    "ko": "저장했어요 — 다시 연결 후 적용돼요",
+    "en": "Saved — applies after reconnecting",
+    "ja": "保存しました — 再接続後に適用されます"
+  },
+  "setSaveFailedToast": {
+    "ko": "저장 실패 — 네트워크를 확인하세요",
+    "en": "Save failed — check your network",
+    "ja": "保存に失敗しました — ネットワークを確認してください"
+  },
+  "setUpdateAvailableToast": {
+    "ko": "새 버전이 있어요",
+    "en": "A new version is available",
+    "ja": "新しいバージョンがあります"
+  },
+  "setUpToDateToast": {
+    "ko": "최신 버전이에요",
+    "en": "You're on the latest version",
+    "ja": "最新バージョンです"
+  },
+  "setUpdateStartingToast": {
+    "ko": "업데이트 시작 중…",
+    "en": "Starting update…",
+    "ja": "アップデート開始中…"
+  },
+  "setUpdateStartFailedToast": {
+    "ko": "업데이트를 시작할 수 없어요",
+    "en": "Couldn't start the update",
+    "ja": "アップデートを開始できませんでした"
+  },
+  "setUpdateStartedToast": {
+    "ko": "업데이트를 시작했어요 — 다운로드 후 자동 적용·재시작돼요",
+    "en": "Update started — downloads, then auto-applies and restarts",
+    "ja": "アップデートを開始しました — ダウンロード後、自動適用・再起動します"
+  },
+  "setUpdateStartRetryToast": {
+    "ko": "업데이트 시작 실패 — 다시 시도하세요",
+    "en": "Update failed to start — try again",
+    "ja": "アップデートの開始に失敗しました — 再試行してください"
+  },
+  "setLogoutConfirm": {
+    "ko": "연결을 해제하면 모든 서버 제공이 중단돼요. 계속할까요?",
+    "en": "Disconnecting stops all server provisioning. Continue?",
+    "ja": "接続を解除するとすべてのサーバー提供が停止します。続けますか？"
+  },
+  "setLogoutDoneToast": {
+    "ko": "연결을 해제했어요",
+    "en": "Disconnected",
+    "ja": "接続を解除しました"
+  },
+  "setConnSavedNeedsReconnectToast": {
+    "ko": "{label} 저장 — 다시 연결하면 적용돼요",
+    "en": "{label} saved — applies after reconnecting",
+    "ja": "{label}を保存しました — 再接続後に適用されます"
+  },
+  "setConnSavedToast": {
+    "ko": "{label} 를 저장했어요",
+    "en": "{label} saved",
+    "ja": "{label}を保存しました"
+  },
+  "setRelaySaveLabel": {
+    "ko": "중앙 서버 주소",
+    "en": "Central server address",
+    "ja": "中央サーバーアドレス"
+  },
   "setConnected": {
     "ko": "연결됨",
     "en": "Connected",
@@ -289,6 +379,16 @@ window.__I18N = {
     "ko": "마지막 사용 {lastUsed}",
     "en": "Last used: {lastUsed}",
     "ja": "最後に使用: {lastUsed}"
+  },
+  "modelsNewTag": {
+    "ko": "신규",
+    "en": "New",
+    "ja": "新規"
+  },
+  "modelsJustNow": {
+    "ko": "방금",
+    "en": "Just now",
+    "ja": "たった今"
   },
   "modelsApplyingToast": {
     "ko": "모델 설정 적용 · 재연결 중…",
@@ -2529,5 +2629,45 @@ window.__I18N = {
     "ko": "요청을 처리하지 못했어요",
     "en": "Couldn't process the request",
     "ja": "リクエストを処理できませんでした"
+  },
+  "installInstalling": {
+    "ko": "{name} 설치 중",
+    "en": "Installing {name}",
+    "ja": "{name} インストール中"
+  },
+  "installPreparing": {
+    "ko": "설치 준비 중",
+    "en": "Preparing install",
+    "ja": "インストール準備中"
+  },
+  "installComplete": {
+    "ko": "{name} 설치 완료",
+    "en": "{name} installed",
+    "ja": "{name} インストール完了"
+  },
+  "installReady": {
+    "ko": "사용 준비됨",
+    "en": "Ready to use",
+    "ja": "使用準備完了"
+  },
+  "installCancelled": {
+    "ko": "{name} 설치 취소됨",
+    "en": "{name} install cancelled",
+    "ja": "{name} インストール中止"
+  },
+  "installFailed": {
+    "ko": "{name} 설치 실패",
+    "en": "{name} install failed",
+    "ja": "{name} インストール失敗"
+  },
+  "installInProgress": {
+    "ko": "진행 중",
+    "en": "In progress",
+    "ja": "進行中"
+  },
+  "toastCloseLabel": {
+    "ko": "닫기",
+    "en": "Close",
+    "ja": "閉じる"
   }
 };

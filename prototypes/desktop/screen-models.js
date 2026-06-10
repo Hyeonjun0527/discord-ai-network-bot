@@ -85,7 +85,7 @@
         layer.hidden = true;
         if (models.some(x => x.name === mn)) { toast(t('modelsAlreadyInstalledToast').replace('{modelName}', mn), { type: 'info' }); return; }
         const ok = await installRuntime('ollama', mn); // 없는 모델이면 false(실패 토스트는 installRuntime 이 띄움)
-        if (ok) { models.push({ name: mn, size: '—', tags: ['신규'], on: true, lastUsed: '방금' }); renderAll(); markDirty(); }
+        if (ok) { models.push({ name: mn, size: '—', tags: [t('modelsNewTag')], on: true, lastUsed: t('modelsJustNow') }); renderAll(); markDirty(); }
       };
       // 카테고리 드롭다운으로 한 분류씩만 표시(전체를 펼치면 너무 길다). 전체 변형은 직접 입력으로.
       const cats = [...new Set(cat.map(m => m.cat))];

@@ -83,7 +83,9 @@ class HttpDiscordOAuthClient(
                     ?.takeIf { it.isNotBlank() }
             }
         } catch (e: Exception) {
-            log.warn("Discord 토큰 교환 오류: {}", e.javaClass.simpleName)
+            // 클래스명만으론 원인 파악이 안 된다(예외 원칙 4) — 메시지(타임아웃/연결거부 등)도 남기고 스택은 debug 로.
+            log.warn("Discord 토큰 교환 오류: {} - {}", e.javaClass.simpleName, e.message)
+            log.debug("Discord 토큰 교환 예외 상세", e)
             null
         }
     }
@@ -99,6 +101,8 @@ class HttpDiscordOAuthClient(
         return try {
             val resp = http.send(req, HttpResponse.BodyHandlers.ofString())
             if (resp.statusCode() !in 200..299) {
+                // 401/403(토큰 만료·권한 부족) 등을 조용히 삼키지 않는다(예외 원칙 3) — 디버깅 추적성.
+                log.warn("Discord 사용자 조회 실패: status={}", resp.statusCode())
                 null
             } else {
                 mapper
@@ -108,7 +112,8 @@ class HttpDiscordOAuthClient(
                     ?.toLongOrNull()
             }
         } catch (e: Exception) {
-            log.warn("Discord 사용자 조회 오류: {}", e.javaClass.simpleName)
+            log.warn("Discord 사용자 조회 오류: {} - {}", e.javaClass.simpleName, e.message)
+            log.debug("Discord 사용자 조회 예외 상세", e)
             null
         }
     }
@@ -124,6 +129,8 @@ class HttpDiscordOAuthClient(
         return try {
             val resp = http.send(req, HttpResponse.BodyHandlers.ofString())
             if (resp.statusCode() !in 200..299) {
+                // 빈 목록이 '가입 서버 없음'인지 '토큰/권한 오류'인지 로그로 구분 가능하게(예외 원칙 3).
+                log.warn("Discord 길드 조회 실패: status={}", resp.statusCode())
                 emptyList()
             } else {
                 mapper.readTree(resp.body()).mapNotNull { node ->
@@ -132,7 +139,8 @@ class HttpDiscordOAuthClient(
                 }
             }
         } catch (e: Exception) {
-            log.warn("Discord 길드 조회 오류: {}", e.javaClass.simpleName)
+            log.warn("Discord 길드 조회 오류: {} - {}", e.javaClass.simpleName, e.message)
+            log.debug("Discord 길드 조회 예외 상세", e)
             emptyList()
         }
     }

@@ -40,6 +40,33 @@ class ProviderSessionTest {
     ) = ProviderSession(conn, providerId = 1, guildId = 100, requestTimeoutSeconds = timeout, maxQueue = maxQueue)
 
     @Test
+    fun `전문가 이미지 브로드캐스트 — 청크 조립 후 콜백에 guildId·png·캡션 전달`() {
+        val conn = FakeConnection()
+        var got: Triple<Long?, ByteArray, String>? = null
+        val s =
+            ProviderSession(
+                conn,
+                providerId = 1,
+                guildId = 100,
+                onImageBroadcast = { gid, png, cap -> got = Triple(gid, png, cap) },
+            )
+        // base64("hello") = "aGVsbG8=" 를 두 청크로 나눠 보낸다.
+        s.handleFrame(
+            com.discordassistant.central.relay.protocol
+                .ImageBroadcastFrame("b1", delta = "aGVs", done = false),
+        )
+        assertEquals(null, got) // done 전엔 콜백 없음
+        s.handleFrame(
+            com.discordassistant.central.relay.protocol
+                .ImageBroadcastFrame("b1", delta = "bG8=", done = true, prompt = "고양이"),
+        )
+        val (gid, png, cap) = got!!
+        assertEquals(100L, gid)
+        assertEquals("hello", String(png))
+        assertEquals("고양이", cap)
+    }
+
+    @Test
     fun `sendInfer 성공 — handleFrame 으로 future 완료`() {
         val conn = FakeConnection()
         val s = session(conn)

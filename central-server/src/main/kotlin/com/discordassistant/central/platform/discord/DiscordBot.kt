@@ -203,6 +203,8 @@ class DiscordBot(
             // ③ 캐시 미스 → REST 조회(위임 관리자 포함)
             guild.retrieveMemberById(userId).complete()?.hasAdminPower() ?: false
         } catch (e: Exception) {
+            // 멤버 조회 실패는 '관리자 아님'으로 보수 처리(broad 유지) — 단 소유자↔권한 진단을 위해 남긴다(예외 원칙 3).
+            log.debug("멤버 조회 실패(guild={}, user={}) — 관리자 아님으로 처리: {}", guildId, userId, e.message)
             false
         }
     }
@@ -471,7 +473,8 @@ class DiscordBot(
                             answers.editOriginalWithPseudoStream(event.hook, reply)
                         }
                     } catch (e: Exception) {
-                        log.warn("명령 처리 실패: {} — {}", event.name, e.message)
+                        // 명령 처리 실패는 사용자에겐 일반 안내, 서버엔 명령·채널 맥락과 스택을 남긴다(예외 원칙 4).
+                        log.warn("명령 처리 실패: {} (channel={}) — {}", event.name, event.channel.idLong, e.message, e)
                         event.hook.editOriginal("⚠️ 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.").queue({}, {})
                     }
                 }

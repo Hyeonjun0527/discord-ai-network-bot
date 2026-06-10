@@ -17,7 +17,6 @@ import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_PUR
 import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_SAFETY_LEVEL
 import com.discordassistant.central.channelai.application.DEFAULT_CHANNEL_AI_TONE
 import com.discordassistant.central.channelai.domain.model.ProposalStatus
-import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleEntity
 import com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -47,6 +46,9 @@ class ChannelAiCustomizationService(
     private val auditRecorder: CustomizationAuditRecorder = CustomizationAuditRecorder(audits, clock),
     // PESSIMISTIC_WRITE 채번 헬퍼(@Transactional 미부여). 파사드의 활성 TX 에 합류해 락·재시도 의미가 보존된다.
     private val behaviorVersionWriter: BehaviorVersionWriter = BehaviorVersionWriter(channelAis, versions),
+    // 접근 제어 + AI-admin 역할(@Transactional 미부여). 파사드 write 의 활성 TX 에 합류한다(거부 감사·역할 교체).
+    private val accessControl: ChannelAiAccessControlService =
+        ChannelAiAccessControlService(auditRecorder, aiAdminRoles, featureGate, clock),
 ) {
     fun wizardOptions(): ChannelAiWizardOptions {
         featureGate.requireChannelAiEnabled()
@@ -500,6 +502,7 @@ class ChannelAiCustomizationService(
             reason = reason,
         )
 
+    // 파사드는 @Transactional 경계만 연다 — 실제 삭제+삽입·거부 감사는 accessControl 이 이 활성 TX 에 합류해 수행한다.
     @Transactional
     fun replaceAiAdminRoles(
         guildId: Long,
@@ -507,33 +510,7 @@ class ChannelAiCustomizationService(
         actorUserId: Long?,
         actorRoleIds: Collection<Long> = emptyList(),
         actorIsGuildAdmin: Boolean = true,
-    ): AiAdminRolePolicy {
-        featureGate.requireChannelAiEnabled()
-        requireCanManageChannelAi(guildId, 0, actorUserId, actorRoleIds, actorIsGuildAdmin, "replace_ai_admin_roles")
-        val now = Instant.now(clock)
-        val normalized = roleIds.filter { it > 0 }.distinct().sorted()
-        aiAdminRoles?.deleteByGuildId(guildId)
-        normalized.forEach { roleId ->
-            aiAdminRoles?.save(
-                AiAdminRoleEntity(
-                    guildId = guildId,
-                    roleId = roleId,
-                    createdBy = actorUserId,
-                    createdAt = now,
-                ),
-            )
-        }
-        audit(
-            guildId = guildId,
-            channelId = 0,
-            actorUserId = actorUserId,
-            action = "replace_ai_admin_roles",
-            targetType = "ai_admin_role",
-            targetId = null,
-            summary = "roles=${normalized.joinToString(",").ifBlank { "fallback_to_discord_admin" }}",
-        )
-        return AiAdminRolePolicy(guildId = guildId, roleIds = normalized, protectedMode = normalized.isNotEmpty())
-    }
+    ): AiAdminRolePolicy = accessControl.replaceAiAdminRoles(guildId, roleIds, actorUserId, actorRoleIds, actorIsGuildAdmin)
 
     /** 신뢰된 전역 대시보드 관리자 전용 AI-admin 역할 교체 오버로드(#1). 권한 격상 규약을 한 곳에서 강제한다. */
     @Transactional
@@ -550,33 +527,13 @@ class ChannelAiCustomizationService(
             actorIsGuildAdmin = true,
         )
 
-    fun aiAdminRolePolicy(guildId: Long): AiAdminRolePolicy {
-        featureGate.requireChannelAiEnabled()
-        val roles = aiAdminRoleIds(guildId)
-        return AiAdminRolePolicy(guildId = guildId, roleIds = roles, protectedMode = roles.isNotEmpty())
-    }
+    fun aiAdminRolePolicy(guildId: Long): AiAdminRolePolicy = accessControl.aiAdminRolePolicy(guildId)
 
     fun canManageChannelAi(
         guildId: Long,
         actorRoleIds: Collection<Long>,
         actorIsGuildAdmin: Boolean,
-    ): AiAdminAccessDecision {
-        val requiredRoles = aiAdminRoleIds(guildId)
-        if (requiredRoles.isEmpty()) {
-            return if (actorIsGuildAdmin) {
-                AiAdminAccessDecision(true, "discord_admin_fallback", emptyList())
-            } else {
-                AiAdminAccessDecision(false, "discord_admin_required", emptyList())
-            }
-        }
-        val actorRoles = actorRoleIds.toSet()
-        val matched = requiredRoles.filter { it in actorRoles }
-        return if (matched.isNotEmpty()) {
-            AiAdminAccessDecision(true, "ai_admin_role_matched", requiredRoles, matched)
-        } else {
-            AiAdminAccessDecision(false, "ai_admin_role_required", requiredRoles)
-        }
-    }
+    ): AiAdminAccessDecision = accessControl.canManageChannelAi(guildId, actorRoleIds, actorIsGuildAdmin)
 
     fun requireCanManageChannelAi(
         guildId: Long,
@@ -585,20 +542,8 @@ class ChannelAiCustomizationService(
         actorRoleIds: Collection<Long>,
         actorIsGuildAdmin: Boolean,
         action: String,
-    ): AiAdminAccessDecision {
-        val decision = canManageChannelAi(guildId, actorRoleIds, actorIsGuildAdmin)
-        if (decision.allowed) return decision
-        audit(
-            guildId = guildId,
-            channelId = channelId,
-            actorUserId = actorUserId,
-            action = "ai_admin_denied",
-            targetType = "channel_ai_permission",
-            targetId = null,
-            summary = "$action denied: ${decision.reason}",
-        )
-        throw IllegalStateException(decision.userMessage())
-    }
+    ): AiAdminAccessDecision =
+        accessControl.requireCanManageChannelAi(guildId, channelId, actorUserId, actorRoleIds, actorIsGuildAdmin, action)
 
     fun proposalReviewSummary(
         guildId: Long,
@@ -656,14 +601,6 @@ class ChannelAiCustomizationService(
         channelAiId: Long,
         build: (Int) -> AiBehaviorVersionEntity,
     ): AiBehaviorVersionEntity = behaviorVersionWriter.saveNextBehaviorVersion(channelAiId, build)
-
-    private fun aiAdminRoleIds(guildId: Long): List<Long> =
-        aiAdminRoles
-            ?.findByGuildId(guildId)
-            ?.map { it.roleId }
-            ?.distinct()
-            ?.sorted()
-            ?: emptyList()
 
     private fun AiBehaviorVersionEntity.payloadHash(): String =
         sha256(

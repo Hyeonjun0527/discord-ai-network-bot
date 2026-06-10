@@ -28,47 +28,35 @@ class PresetImportPreviewBuilder(
         val existingChannelAi = targetChannelId?.let { channelAis.findByGuildIdAndChannelId(targetGuildId, it) }
         val existingRouting = targetChannelId?.let { routingPolicies.findByGuildIdAndChannelId(targetGuildId, it) }
         val highRisk = sourceRevision.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS
-        val conflicts = mutableListOf<PresetImportConflict>()
-        if (targetChannelId == null) {
-            conflicts +=
+        // 충돌은 서로 독립적인 검사다(OCP): 새 충돌은 항목 한 줄 추가로 끝난다. 조건·코드·문구·순서는 불변.
+        val conflicts =
+            listOfNotNull(
                 PresetImportConflict(
                     code = "no_target_channel_import_only",
                     severity = "info",
                     message = "대상 채널이 없어 프리셋 보관함에만 가져오고 채널 AI에는 적용하지 않습니다.",
-                )
-        }
-        if (existingChannelAi != null) {
-            conflicts +=
+                ).takeIf { targetChannelId == null },
                 PresetImportConflict(
                     code = "existing_channel_ai_behavior",
                     severity = "warning",
                     message = "대상 채널에 이미 AI 프로필/행동 버전이 있어 적용 시 새 버전으로 덮어씁니다.",
-                )
-        }
-        if (existingRouting != null) {
-            conflicts +=
+                ).takeIf { existingChannelAi != null },
                 PresetImportConflict(
                     code = "existing_routing_policy",
                     severity = "warning",
                     message = "대상 채널에 이미 응답 모드/모델 라우팅 정책이 있어 프리셋 정책으로 교체됩니다.",
-                )
-        }
-        if (sourceRevision.maxCandidates > 1) {
-            conflicts +=
+                ).takeIf { existingRouting != null },
                 PresetImportConflict(
                     code = "multi_candidate_fanout",
                     severity = if (sourceRevision.maxCandidates >= 4) "warning" else "info",
                     message = "이 프리셋은 여러 Provider 후보를 사용할 수 있어 Provider 부담이 증가할 수 있습니다.",
-                )
-        }
-        if (highRisk) {
-            conflicts +=
+                ).takeIf { sourceRevision.maxCandidates > 1 },
                 PresetImportConflict(
                     code = "high_risk_requires_review",
                     severity = "blocker",
                     message = "안전 등급이 높은 프리셋이라 바로 활성화하지 않고 승인 요청으로 전환합니다.",
-                )
-        }
+                ).takeIf { highRisk },
+            )
         val action =
             when {
                 targetChannelId == null -> "import_only"

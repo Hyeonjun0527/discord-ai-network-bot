@@ -46,8 +46,9 @@ class KnowledgeIndexingService(
     ): KnowledgeDocumentEntity {
         featureGate.requireRagEnabled()
         val now = Instant.now(clock)
-        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
-        val source = sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId) ?: error("knowledge source not found")
+        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found: guild=$guildId space=$spaceId")
+        val source =
+            sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId) ?: error("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "cross-guild knowledge source is not allowed" }
         require(!source.status.isDeleted) { "deleted knowledge source cannot be parsed" }
         val clean = documentText.trim()
@@ -112,7 +113,7 @@ class KnowledgeIndexingService(
         jobType: String = "rebuild",
     ): EmbeddingIndexJobEntity {
         featureGate.requireRagEnabled()
-        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
+        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found: guild=$guildId space=$spaceId")
         val sourceCount = sources.findByKnowledgeSpaceId(space.id).count { !it.status.isDeleted }
         val chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, KnowledgeChunkStatus.READY).size
         return jobs.save(
@@ -139,7 +140,7 @@ class KnowledgeIndexingService(
         failureReason: String? = null,
     ): EmbeddingIndexJobEntity {
         featureGate.requireRagEnabled()
-        val job = jobs.findById(jobId).orElseThrow { IllegalArgumentException("index job not found") }
+        val job = jobs.findById(jobId).orElseThrow { IllegalArgumentException("index job not found: jobId=$jobId guild=$guildId") }
         require(job.guildId == guildId) { "cross-guild index job update is not allowed" }
         val now = Instant.now(clock)
         if (job.startedAt == null) job.startedAt = job.queuedAt
@@ -160,7 +161,7 @@ class KnowledgeIndexingService(
         sourcePriority: List<String>,
     ): RetrievalPolicyEntity {
         featureGate.requireRagEnabled()
-        knowledgeSpaceId?.let { spaces.findByGuildIdAndId(guildId, it) ?: error("knowledge space not found") }
+        knowledgeSpaceId?.let { spaces.findByGuildIdAndId(guildId, it) ?: error("knowledge space not found: guild=$guildId space=$it") }
         val now = Instant.now(clock)
         val existing =
             retrievalPolicies.findByGuildIdAndChannelIdAndKnowledgeSpaceIdAndStatus(
@@ -191,7 +192,7 @@ class KnowledgeIndexingService(
         spaceId: Long,
     ): List<KnowledgeChunkEntity> {
         featureGate.requireRagEnabled()
-        spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
+        spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found: guild=$guildId space=$spaceId")
         return chunks.findByKnowledgeSpaceIdAndStatus(spaceId, KnowledgeChunkStatus.READY).filter { it.guildId == guildId }
     }
 
@@ -205,7 +206,7 @@ class KnowledgeIndexingService(
             if (spaceId == null) {
                 jobs.findTop20ByGuildIdOrderByQueuedAtDesc(guildId)
             } else {
-                spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
+                spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found: guild=$guildId space=$spaceId")
                 jobs.findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(guildId, spaceId)
             }
         return rows
@@ -228,7 +229,7 @@ class KnowledgeIndexingService(
         }
         val source =
             sources.findByKnowledgeSpaceIdAndId(spaceId, sourceId)
-                ?: throw IllegalArgumentException("knowledge source not found")
+                ?: throw IllegalArgumentException("knowledge source not found: space=$spaceId source=$sourceId")
         require(source.guildId == guildId) { "cross-guild knowledge source is not allowed" }
         if (source.sourceType !in INLINE_INDEXABLE_SOURCE_TYPES) {
             return InlineKnowledgeIndexingResult(sourceId = source.id, indexed = false, skippedReason = "source_type_not_inline")
@@ -249,7 +250,7 @@ class KnowledgeIndexingService(
         indexedSource.transitionTo(KnowledgeSourceStatus.INDEXED)
         indexedSource.indexedAt = now
         sources.save(indexedSource)
-        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
+        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found: guild=$guildId space=$spaceId")
         val chunkCount = chunks.findByKnowledgeSpaceIdAndStatus(space.id, KnowledgeChunkStatus.READY).size
         space.sourceCount = sources.findByKnowledgeSpaceId(space.id).count { !it.status.isDeleted }
         space.chunkCount = chunkCount
@@ -274,7 +275,7 @@ class KnowledgeIndexingService(
         triggeredBy: Long?,
     ): KnowledgeIndexJobSummary {
         featureGate.requireRagEnabled()
-        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
+        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found: guild=$guildId space=$spaceId")
         val collection = space.indexName?.trim()?.ifBlank { null } ?: "discord_ai__guild_${guildId}__space_${space.id}"
         val embeddingModel = space.embeddingModel?.trim()?.ifBlank { null } ?: "text-embedding-3-large"
         return queueIndexJob(
@@ -294,8 +295,10 @@ class KnowledgeIndexingService(
         triggeredBy: Long?,
     ): KnowledgeSourceDeletionIndexResult {
         featureGate.requireRagEnabled()
-        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found")
-        val source = sources.findByKnowledgeSpaceIdAndId(space.id, sourceId) ?: error("knowledge source not found")
+        val space = spaces.findByGuildIdAndId(guildId, spaceId) ?: error("knowledge space not found: guild=$guildId space=$spaceId")
+        val source =
+            sources.findByKnowledgeSpaceIdAndId(space.id, sourceId)
+                ?: error("knowledge source not found: space=${space.id} source=$sourceId")
         require(source.guildId == guildId) { "cross-guild knowledge source is not allowed" }
         require(source.status.isDeleted) { "source must be deleted before index tombstone: ${source.status.wire}" }
         val docs = documents.findByKnowledgeSourceId(source.id)

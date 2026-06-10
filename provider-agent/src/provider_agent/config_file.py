@@ -202,7 +202,12 @@ def load_config(path: pathlib.Path | None = None) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError as exc:
+        # 손상(파싱 실패)과 IO 실패를 구분해 로그한다(예외 원칙 4) — 호출부 계약(비-raising)은 유지.
+        logger.warning("config 파일 손상(JSON 파싱 실패) — 빈 설정으로 진행: %s (%s)", path, exc)
+        return {}
+    except OSError as exc:
+        logger.warning("config 파일 읽기 실패 — 빈 설정으로 진행: %s (%s)", path, exc)
         return {}
 
 
@@ -216,11 +221,13 @@ def load_guild_policies(path: pathlib.Path | None = None) -> dict[int, dict]:
     out: dict[int, dict] = {}
     if isinstance(raw, dict):
         for k, v in raw.items():
-            if isinstance(v, dict):
-                try:
-                    out[int(k)] = dict(v)
-                except (ValueError, TypeError):
-                    continue
+            if not isinstance(v, dict):
+                continue
+            # 예외를 흐름제어로 쓰지 않고(예외 원칙 5) 먼저 검사한다. 잘못된 키는 조용히 건너뛰지 않고 남긴다.
+            if not (isinstance(k, str) and k.isdigit()):
+                logger.debug("guild_policies 의 비정수 키 건너뜀: %r", k)
+                continue
+            out[int(k)] = dict(v)
     return out
 
 

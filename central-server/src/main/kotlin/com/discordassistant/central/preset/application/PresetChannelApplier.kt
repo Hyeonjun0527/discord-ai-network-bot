@@ -79,26 +79,11 @@ class PresetChannelApplier(
             }
         val highRisk = sourceRevision.safetyLevel.lowercase() in HIGH_RISK_SAFETY_LEVELS
         val status = if (highRisk) PresetImportStatus.NEEDS_REVIEW else PresetImportStatus.APPLIED
+        // 안전등급에 따라 갈리는 두 결과 경로를 각각의 메서드로 분리(SRP) — TX/동작은 분리 전과 동일.
         if (highRisk) {
-            proposals.save(
-                AiChangeProposalEntity(
-                    guildId = targetGuildId,
-                    channelId = targetChannelId,
-                    channelAiId = savedChannel.id,
-                    proposedBehaviorId = behavior.id,
-                    status = ProposalStatus.PENDING,
-                    requestedBy = importedBy,
-                    reason = "preset import requires review: ${sourceRevision.safetyLevel}",
-                    payloadHash = behavior.payloadHash(),
-                    routingSnapshot = ChannelAiRoutingSnapshot.fromRevision(sourceRevision).encode(),
-                    createdAt = now,
-                ),
-            )
+            saveHighRiskImportProposal(savedChannel, behavior, sourceRevision, targetGuildId, targetChannelId, importedBy, now)
         } else {
-            savedChannel.activeBehaviorVersionId = behavior.id
-            savedChannel.updatedAt = now
-            channelAis.save(savedChannel)
-            applyRoutingPolicySnapshot(sourceRevision, targetGuildId, targetChannelId, savedChannel.id, now)
+            applyImportedBehaviorImmediately(savedChannel, behavior, sourceRevision, targetGuildId, targetChannelId, now)
         }
         audits.save(
             CustomizationAuditLogEntity(
@@ -113,6 +98,47 @@ class PresetChannelApplier(
             ),
         )
         return AppliedPresetChannelAi(savedChannel.id, behavior.id, status)
+    }
+
+    /** 안전등급이 높은 임포트: 즉시 활성화하지 않고 검토 대기 제안을 만든다. */
+    private fun saveHighRiskImportProposal(
+        savedChannel: ChannelAiEntity,
+        behavior: AiBehaviorVersionEntity,
+        sourceRevision: PresetRevisionEntity,
+        targetGuildId: Long,
+        targetChannelId: Long,
+        importedBy: Long?,
+        now: Instant,
+    ) {
+        proposals.save(
+            AiChangeProposalEntity(
+                guildId = targetGuildId,
+                channelId = targetChannelId,
+                channelAiId = savedChannel.id,
+                proposedBehaviorId = behavior.id,
+                status = ProposalStatus.PENDING,
+                requestedBy = importedBy,
+                reason = "preset import requires review: ${sourceRevision.safetyLevel}",
+                payloadHash = behavior.payloadHash(),
+                routingSnapshot = ChannelAiRoutingSnapshot.fromRevision(sourceRevision).encode(),
+                createdAt = now,
+            ),
+        )
+    }
+
+    /** 안전등급이 보통인 임포트: behavior 를 즉시 활성화하고 라우팅 스냅샷을 적용한다. */
+    private fun applyImportedBehaviorImmediately(
+        savedChannel: ChannelAiEntity,
+        behavior: AiBehaviorVersionEntity,
+        sourceRevision: PresetRevisionEntity,
+        targetGuildId: Long,
+        targetChannelId: Long,
+        now: Instant,
+    ) {
+        savedChannel.activeBehaviorVersionId = behavior.id
+        savedChannel.updatedAt = now
+        channelAis.save(savedChannel)
+        applyRoutingPolicySnapshot(sourceRevision, targetGuildId, targetChannelId, savedChannel.id, now)
     }
 
     /**

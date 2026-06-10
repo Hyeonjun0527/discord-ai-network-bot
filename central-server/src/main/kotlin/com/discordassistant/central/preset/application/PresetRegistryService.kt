@@ -22,7 +22,6 @@ import com.discordassistant.central.preset.domain.model.PresetImportStatus
 import com.discordassistant.central.preset.domain.model.PresetReportStatus
 import com.discordassistant.central.preset.domain.model.PresetStatus
 import com.discordassistant.central.preset.domain.model.PublishedPresetStatus
-import com.discordassistant.central.shared.ContentSafety
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -749,12 +748,7 @@ class PresetRegistryService(
     private fun sanitizeText(
         value: String,
         maxLength: Int,
-    ): String =
-        value
-            .trim()
-            .replace(ContentSafety.SECRET_PATTERN, "[redacted]")
-            .take(maxLength)
-            .ifBlank { "no reason provided" }
+    ): String = contentSafety.sanitizeText(value, maxLength)
 
     private fun normalizeReportReasonCode(value: String): String {
         val normalized =

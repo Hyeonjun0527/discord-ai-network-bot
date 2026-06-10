@@ -245,7 +245,7 @@ async def test_daily_limit_per_guild():
 async def test_per_guild_limit_override():
     # 서버별로 *다른* 한도값(G3 override): 서버 100 은 2건, 서버 200 은 전역 기본 1건.
     agent = ProviderAgent(AgentConfig(token="T", daily_limit=1), ollama=FakeOllama())  # type: ignore[arg-type]
-    agent._guild_policy = {100: {"daily_limit": 2}}
+    agent._policy_mgr.reload({100: {"daily_limit": 2}})
     a = FakeConn(guild_id=100)
     b = FakeConn(guild_id=200)
     for rid in ("a1", "a2", "a3"):
@@ -261,7 +261,7 @@ async def test_per_guild_limit_override():
 def test_guild_policy_override_in_hello():
     # override 한도가 hello 의 remaining 에도 반영된다(중앙 라우팅이 이 값을 본다).
     agent = ProviderAgent(AgentConfig(token="T", daily_limit=5, models=("m",)))
-    agent._guild_policy = {100: {"daily_limit": 99}}
+    agent._policy_mgr.reload({100: {"daily_limit": 99}})
     assert agent._build_hello(100).remaining_daily_requests == 99
     assert agent._build_hello(200).remaining_daily_requests == 5  # override 없으면 전역
 
@@ -272,7 +272,7 @@ async def test_per_guild_concurrency_enforced():
     # 전역 세마포어가 병목이 되지 않게 넉넉히(10) — 길드별 상한만 관찰.
     peak: dict[int, int] = {100: 0, 200: 0}
     agent = ProviderAgent(AgentConfig(token="T", max_concurrency=10, daily_limit=0))  # type: ignore[arg-type]
-    agent._guild_policy = {100: {"max_concurrency": 1}, 200: {"max_concurrency": 2}}
+    agent._policy_mgr.reload({100: {"max_concurrency": 1}, 200: {"max_concurrency": 2}})
 
     # in-flight 피크를 길드별로 직접 측정(동시성 관찰).
     inflight = {100: 0, 200: 0}
@@ -302,7 +302,7 @@ async def test_per_guild_concurrency_enforced():
 async def test_per_guild_max_seconds_enforced():
     """1건 최대 처리 시간(서버별)을 넘기면 중단·BUSY/에러 반려(한도 소모 후에도 결과 없음)."""
     agent = ProviderAgent(AgentConfig(token="T", daily_limit=0), ollama=FakeOllama(delay=1.0))  # type: ignore[arg-type]
-    agent._guild_policy = {100: {"max_seconds": 0.05}}  # 처리(1s) 보다 짧은 상한
+    agent._policy_mgr.reload({100: {"max_seconds": 0.05}})  # 처리(1s) 보다 짧은 상한
     conn = FakeConn(guild_id=100)
     await agent.handle_infer(conn, InferRequest(request_id="t1", prompt="x"))  # type: ignore[arg-type]
     assert not any(isinstance(f, InferResult) for f in conn.sent)  # 결과 없음(시간 초과)
@@ -314,7 +314,7 @@ async def test_per_guild_max_seconds_enforced():
 def test_guild_concurrency_in_hello():
     # 동시 처리 override 가 hello 의 max_concurrency 에도 길드별로 반영된다.
     agent = ProviderAgent(AgentConfig(token="T", max_concurrency=4, models=("m",)))
-    agent._guild_policy = {100: {"max_concurrency": 1}}
+    agent._policy_mgr.reload({100: {"max_concurrency": 1}})
     assert agent._build_hello(100).max_concurrency == 1
     assert agent._build_hello(200).max_concurrency == 4  # override 없으면 전역
 
@@ -370,7 +370,7 @@ async def test_admin_rejects_unknown_action_and_missing_durable(monkeypatch, tmp
 def test_build_hello_per_guild():
     # hello 의 remaining_daily_requests 가 길드별로 다르게 보고된다.
     agent = ProviderAgent(AgentConfig(token="T", daily_limit=5, models=("m",)))
-    agent._remaining_by_guild[100] = 3  # 길드 100 은 2건 처리해 잔여 3
+    agent._policy_mgr._remaining[100] = 3  # 길드 100 은 2건 처리해 잔여 3
     assert agent._build_hello(100).remaining_daily_requests == 3
     assert agent._build_hello(200).remaining_daily_requests == 5  # 200 은 첫 접근 → 한도값
 

@@ -17,9 +17,17 @@ function _trackSetup(k, model, startSetup) {
   let dismissed = false; // ✕ 로 알림을 닫으면 true — 설치는 계속, 토스트만 안 띄움
   return new Promise((resolve) => {
     toast(name + ' 설치 중', { type: 'run', sticky: true, id, sub: '설치 준비 중', progress: 0, onClose: () => { dismissed = true; } });
-    if (startSetup) api.startSetup(k, model);
+    // 설치 시작 호출이 reject 돼도 폴링이 진행 상태(error phase)로 잡으므로, unhandled rejection 만 방지한다.
+    if (startSetup) { const started = api.startSetup(k, model); if (started && typeof started.catch === 'function') started.catch((e) => console.error('설치 시작 호출 실패:', e)); }
     const timer = setInterval(async () => {
-      const p = await api.getSetupProgress(k);
+      // 폴링 콜백을 감싸 한 번의 진행 조회 실패가 unhandled rejection 이 되거나 폴링을 멈추지 않게 한다(예외 원칙 3).
+      let p;
+      try {
+        p = await api.getSetupProgress(k);
+      } catch (e) {
+        console.warn('설치 진행 조회 실패(다음 폴링에서 재시도):', e);
+        return;
+      }
       if (p.phase === 'done') {
         clearInterval(timer);
         if (!dismissed) toast(name + ' 설치 완료', { type: 'ok', id, sub: '사용 준비됨', progress: 100 });

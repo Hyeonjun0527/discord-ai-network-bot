@@ -3,6 +3,7 @@ package com.discordassistant.central.guild.adapter.inbound.web
 import com.discordassistant.central.global.security.AiNetworkApiSecurityFilter
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.shared.ModelBurden
+import org.slf4j.LoggerFactory
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.core.user.OAuth2User
 import org.springframework.web.bind.annotation.PathVariable
@@ -23,6 +24,8 @@ import org.springframework.web.bind.annotation.RestController
 class DashboardWriteController(
     private val policy: PolicyService,
 ) {
+    private val log = LoggerFactory.getLogger(DashboardWriteController::class.java)
+
     private fun adminId(user: OAuth2User?): Long = (user?.getAttribute<String>("id"))?.toLongOrNull() ?: 0L
 
     @PostMapping("/{guildId}/auto-approve")
@@ -53,8 +56,11 @@ class DashboardWriteController(
         @RequestParam dailyLimit: Int,
         @AuthenticationPrincipal user: OAuth2User?,
     ): Map<String, Any> {
-        val burden = runCatching { ModelBurden.valueOf(level.uppercase()) }.getOrDefault(ModelBurden.LIGHT)
-        policy.setRolePolicy(guildId, roleId, burden, dailyLimit, adminId(user))
-        return mapOf("guildId" to guildId, "roleId" to roleId, "level" to burden.name)
+        // 예외를 흐름제어로 쓰지 않고(예외 원칙 5) enum 을 사전 매칭한다. 잘못된 값은 조용히 LIGHT 로 떨어뜨리지 않고 남긴다.
+        val burden = ModelBurden.entries.firstOrNull { it.name == level.uppercase() }
+        if (burden == null) log.warn("잘못된 ModelBurden level='{}' → LIGHT 로 폴백", level)
+        val resolved = burden ?: ModelBurden.LIGHT
+        policy.setRolePolicy(guildId, roleId, resolved, dailyLimit, adminId(user))
+        return mapOf("guildId" to guildId, "roleId" to roleId, "level" to resolved.name)
     }
 }

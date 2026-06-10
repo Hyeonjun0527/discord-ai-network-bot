@@ -39,7 +39,7 @@ class OnboardingAnalyzer(
         val raw =
             runCatching { llm.complete(prompt, context) }
                 .getOrElse {
-                    log.warn("onboarding LLM call failed: {}", it.message)
+                    log.warn("onboarding LLM 호출 실패 [guildId={}, channelId={}]: {}", context.guildId, context.channelId, it.message)
                     null
                 }
         if (raw.isNullOrBlank()) return null

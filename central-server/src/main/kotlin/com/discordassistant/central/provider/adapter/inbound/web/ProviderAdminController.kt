@@ -193,6 +193,8 @@ class ProviderAdminController(
     private val guildPresets: GuildPresetQuery,
     private val guildPresetAdmin: GuildPresetAdmin,
 ) {
+    private val log = org.slf4j.LoggerFactory.getLogger(ProviderAdminController::class.java)
+
     /** durable 토큰 → 요청자 providerId 복원 후 그가 guildId 관리자면 그 id 반환, 아니면 null(거부). */
     private fun authedAdmin(
         durableToken: String,
@@ -311,7 +313,11 @@ class ProviderAdminController(
         return runCatching { globalPromptSets.setDefault(req.guildId, req.id) }
             .fold(
                 onSuccess = { AdminPromptSetResponse(true, "기본으로 지정했어요", globalPromptSets.list(req.guildId)) },
-                onFailure = { AdminPromptSetResponse(false, "지정할 수 없는 프롬프트셋이에요") },
+                onFailure = {
+                    // 실패 사유를 통째로 버리지 않고 남긴다(예외 원칙 3) — 어떤 셋/길드에서 왜 실패했는지 추적.
+                    log.warn("프롬프트셋 기본 지정 실패(guild={}, id={}): {}", req.guildId, req.id, it.message)
+                    AdminPromptSetResponse(false, "지정할 수 없는 프롬프트셋이에요")
+                },
             )
     }
 

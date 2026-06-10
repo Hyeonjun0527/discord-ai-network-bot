@@ -2,10 +2,11 @@ package com.discordassistant.central.relay
 
 import com.discordassistant.central.relay.protocol.ErrorCode
 
-/** 원격 추론 경로의 기본 예외. */
+/** 원격 추론 경로의 기본 예외. cause 를 받아 원래 예외 정보(스택트레이스)를 보존한다(예외 원칙 7). */
 sealed class RemoteException(
     message: String,
-) : RuntimeException(message) {
+    cause: Throwable? = null,
+) : RuntimeException(message, cause) {
     abstract val code: String
 }
 
@@ -29,10 +30,11 @@ class RemoteInferException(
     message: String,
 ) : RemoteException(message)
 
-/** 대기 중 연결이 끊김. */
+/** 대기 중 연결이 끊김. 프레임 송신 실패 등 하위 IO 예외를 cause 로 감싼다(예외 원칙 6·7). */
 class ConnectionClosedException(
     message: String = "연결이 끊겼습니다",
-) : RemoteException(message) {
+    cause: Throwable? = null,
+) : RemoteException(message, cause) {
     override val code = ErrorCode.OFFLINE
 }
 

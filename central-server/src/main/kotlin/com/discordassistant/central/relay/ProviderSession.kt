@@ -69,8 +69,9 @@ class ProviderSession(
         private set
 
     val failures: Int get() = consecutiveFailures.get()
-    private val pending = ConcurrentHashMap<String, CompletableFuture<InferResult>>()
-    private val streams = ConcurrentHashMap<String, java.util.concurrent.BlockingQueue<ChunkFrame>>()
+
+    // 진행 중 요청 상관관계 표(requestId→완료 핸들)는 협력자가 소유 — 세션은 상태머신·전송·inFlight 에 집중(SE-137).
+    private val lifecycle = RequestLifecycleManager()
 
     // 취소 버튼으로 취소된 이미지 요청 id. sendImage 루프가 다음 폴링에서 감지해 중단한다.
     private val cancelledRequests = ConcurrentHashMap.newKeySet<String>()
@@ -161,7 +162,7 @@ class ProviderSession(
         }
         val requestId = UUID.randomUUID().toString().replace("-", "")
         val fut = CompletableFuture<InferResult>()
-        pending[requestId] = fut
+        lifecycle.registerPending(requestId, fut)
         inFlight.incrementAndGet()
         if (remainingDaily.get() != Int.MAX_VALUE) remainingDaily.decrementAndGet()
         transitionTo(ProviderState.ONLINE_BUSY)
@@ -169,7 +170,10 @@ class ProviderSession(
             connection.sendFrame(InferRequest(requestId, model, prompt, filterOptions(options)))
         } catch (e: Exception) {
             cleanup(requestId)
-            return CompletableFuture.failedFuture(ConnectionClosedException("전송 실패: ${e.message}"))
+            // 원래 예외를 cause 로 보존하고 요청 맥락을 메시지에 담는다(예외 원칙 4·7) — 디버깅에서 원인 추적 가능.
+            return CompletableFuture.failedFuture(
+                ConnectionClosedException("InferRequest 전송 실패(id=$requestId, model=$model): ${e.message}", e),
+            )
         }
         return fut.orTimeout(requestTimeoutSeconds, TimeUnit.SECONDS).handle { res, err ->
             cleanup(requestId)
@@ -207,16 +211,18 @@ class ProviderSession(
         }
         val requestId = UUID.randomUUID().toString().replace("-", "")
         val queue: java.util.concurrent.BlockingQueue<ChunkFrame> = java.util.concurrent.LinkedBlockingQueue()
-        streams[requestId] = queue // 청크 도착 전에 큐를 먼저 등록(유실 방지)
+        lifecycle.registerStream(requestId, queue) // 청크 도착 전에 큐를 먼저 등록(유실 방지)
         inFlight.incrementAndGet()
         if (remainingDaily.get() != Int.MAX_VALUE) remainingDaily.decrementAndGet()
         transitionTo(ProviderState.ONLINE_BUSY)
         try {
             connection.sendFrame(InferRequest(requestId, model, prompt, filterOptions(options), stream = true))
         } catch (e: Exception) {
-            streams.remove(requestId)
+            lifecycle.removeStream(requestId)
             cleanup(requestId)
-            return CompletableFuture.failedFuture(ConnectionClosedException("전송 실패: ${e.message}"))
+            return CompletableFuture.failedFuture(
+                ConnectionClosedException("스트리밍 InferRequest 전송 실패(id=$requestId, model=$model): ${e.message}", e),
+            )
         }
         return CompletableFuture.supplyAsync {
             val sb = StringBuilder()
@@ -237,7 +243,7 @@ class ProviderSession(
                 consecutiveFailures.set(0)
                 InferResult(requestId, sb.toString())
             } finally {
-                streams.remove(requestId)
+                lifecycle.removeStream(requestId)
                 cleanup(requestId)
             }
         }
@@ -259,16 +265,18 @@ class ProviderSession(
         }
         val requestId = UUID.randomUUID().toString().replace("-", "")
         val queue: java.util.concurrent.BlockingQueue<ChunkFrame> = java.util.concurrent.LinkedBlockingQueue()
-        streams[requestId] = queue
+        lifecycle.registerStream(requestId, queue)
         inFlight.incrementAndGet()
         if (remainingDaily.get() != Int.MAX_VALUE) remainingDaily.decrementAndGet()
         transitionTo(ProviderState.ONLINE_BUSY)
         try {
             connection.sendFrame(InferRequest(requestId, prompt = prompt, task = "image", imagePolicy = imagePolicy))
         } catch (e: Exception) {
-            streams.remove(requestId)
+            lifecycle.removeStream(requestId)
             cleanup(requestId)
-            return CompletableFuture.failedFuture(ConnectionClosedException("전송 실패: ${e.message}"))
+            return CompletableFuture.failedFuture(
+                ConnectionClosedException("이미지 InferRequest 전송 실패(id=$requestId): ${e.message}", e),
+            )
         }
         // 호출자(취소 버튼 부착·취소 매핑 등록)가 requestId 를 즉시 받도록 동기 콜백.
         runCatching { onStart(requestId) }
@@ -304,14 +312,14 @@ class ProviderSession(
                     .getDecoder()
                     .decode(sb.toString())
             } finally {
-                streams.remove(requestId)
+                lifecycle.removeStream(requestId)
                 cleanup(requestId)
             }
         }
     }
 
     private fun cleanup(requestId: String) {
-        pending.remove(requestId)
+        lifecycle.removePending(requestId)
         if (inFlight.decrementAndGet() <= 0) transitionTo(ProviderState.ONLINE_IDLE)
     }
 
@@ -321,10 +329,10 @@ class ProviderSession(
      * 이 세션에 없으면 false.
      */
     fun cancelImage(requestId: String): Boolean {
-        val queue = streams[requestId] ?: return false
+        if (!lifecycle.hasStream(requestId)) return false
         cancelledRequests.add(requestId)
         safeSend(CancelFrame(requestId))
-        queue.offer(ChunkFrame(requestId, done = true)) // 블로킹 poll 즉시 깨우기(취소 감지)
+        lifecycle.offer(requestId, ChunkFrame(requestId, done = true)) // 블로킹 poll 즉시 깨우기(취소 감지)
         return true
     }
 
@@ -345,11 +353,10 @@ class ProviderSession(
     fun handleFrame(frame: Frame) {
         markSeen()
         when (frame) {
-            is InferResult -> pending[frame.requestId]?.complete(frame)
+            is InferResult -> lifecycle.complete(frame.requestId, frame)
             is InferError ->
-                pending[frame.requestId]
-                    ?.completeExceptionally(RemoteInferException(frame.code, frame.message))
-            is ChunkFrame -> streams[frame.requestId]?.offer(frame)
+                lifecycle.failPending(frame.requestId, RemoteInferException(frame.code, frame.message))
+            is ChunkFrame -> lifecycle.offer(frame.requestId, frame)
             is ProviderHelloFrame -> applyHello(frame)
             is ProviderStatusFrame -> applyStatus(frame)
             is ImageBroadcastFrame -> handleImageBroadcast(frame)
@@ -387,11 +394,9 @@ class ProviderSession(
     /** 연결 종료: 대기 중 요청을 모두 실패 처리. */
     fun closeAndFailPending(reason: String) {
         transitionTo(ProviderState.OFFLINE)
-        pending.values.forEach { it.completeExceptionally(ConnectionClosedException(reason)) }
-        pending.clear()
+        lifecycle.failAll(reason)
         // done 프레임 못 받고 끊긴 미완성 브로드캐스트 버퍼 정리(메모리 누수 방지).
         imageBroadcasts.clear()
-        streams.clear()
     }
 
     companion object {

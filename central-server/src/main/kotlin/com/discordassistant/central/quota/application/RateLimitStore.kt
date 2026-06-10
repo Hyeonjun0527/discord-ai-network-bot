@@ -1,7 +1,9 @@
 package com.discordassistant.central.quota.application
 
+import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Primary
+import org.springframework.dao.DataAccessException
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
@@ -59,16 +61,25 @@ class InMemoryRateLimitStore : RateLimitStore {
 class RedisRateLimitStore(
     private val redis: StringRedisTemplate,
 ) : RateLimitStore {
+    private val log = LoggerFactory.getLogger(RedisRateLimitStore::class.java)
+
     override fun tryAcquire(
         key: String,
         limit: Int,
         windowSeconds: Long,
     ): Boolean {
         val redisKey = "rl:$key"
-        val count = redis.opsForValue().increment(redisKey) ?: 1L
-        if (count == 1L) {
-            redis.expire(redisKey, windowSeconds, TimeUnit.SECONDS)
+        return try {
+            val count = redis.opsForValue().increment(redisKey) ?: 1L
+            if (count == 1L) {
+                redis.expire(redisKey, windowSeconds, TimeUnit.SECONDS)
+            }
+            count <= limit
+        } catch (e: DataAccessException) {
+            // Redis 장애(연결 실패/타임아웃)가 모든 요청을 500 으로 떨구지 않도록 fail-open(허용)한다 —
+            // rate limit 은 가용성 우선의 소프트 보호다(구체 예외만 잡고 숨기지 않는다, 예외 원칙 2·3).
+            log.warn("Redis rate limit 조회 실패 — fail-open(요청 허용): key={} ({})", key, e.message)
+            true
         }
-        return count <= limit
     }
 }

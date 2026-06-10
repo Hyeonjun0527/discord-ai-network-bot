@@ -100,7 +100,9 @@ class AiQualityFeedbackService(
         reviewerUserId: Long?,
         resolutionReason: String?,
     ): AiFeedbackReviewResult {
-        val feedback = feedbacks.findByGuildIdAndId(guildId, feedbackId) ?: error("feedback_not_found")
+        val feedback =
+            feedbacks.findByGuildIdAndId(guildId, feedbackId)
+                ?: error("feedback_not_found: guildId=$guildId feedbackId=$feedbackId")
         feedback.status = normalizeReviewStatus(status)
         feedback.reviewedBy = reviewerUserId
         feedback.reviewedAt = Instant.now(clock)
@@ -218,7 +220,7 @@ class AiQualityFeedbackService(
             "resolve", "resolved", "done" -> FeedbackStatus.RESOLVED
             "dismiss", "dismissed", "ignore", "ignored" -> FeedbackStatus.DISMISSED
             "needs_review", "reopen", "open" -> FeedbackStatus.NEEDS_REVIEW
-            else -> error("invalid_feedback_review_status")
+            else -> error("invalid_feedback_review_status: status='$status'")
         }
 
     private fun reviewNextActions(openReportCount: Int): List<String> =

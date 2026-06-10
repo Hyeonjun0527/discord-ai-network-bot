@@ -27,6 +27,7 @@ import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.shared.RequestState
 import com.discordassistant.central.shared.ResponseMode
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 /**
@@ -55,6 +56,7 @@ class AskCommandHandler(
         private const val DISCORD_REPLY_SAFE_LIMIT = 1850
         private const val PSEUDO_STREAM_MIN_CHARS = 600
         private val PSEUDO_STREAM_STEPS = listOf(33, 66, 100)
+        private val log = LoggerFactory.getLogger(AskCommandHandler::class.java)
 
         // ── 이미지 정책(central 소유, 에이전트가 적용만; 외부 AI 호출은 에이전트의 Gemini) ──
         // 초보자 /그림: 한국어 → 영어 자연어 번역하되 '성인·SFW·품질 prefix' 강제. 정상 SFW 요청이
@@ -188,6 +190,9 @@ class AskCommandHandler(
             if (e is RemoteCancelledException || e.cause is RemoteCancelledException) {
                 Replies.warn("🛑 이미지 생성을 취소했어요.")
             } else {
+                // 사용자에겐 친화 메시지를, 서버엔 원인(스택 포함)을 남긴다(예외 원칙 3·4). broad catch 는
+                // 한 이미지 요청 실패가 명령 전체를 깨지 않게 하는 의도적 경계.
+                log.warn("이미지 생성 실패: {}", e.message, e)
                 Replies.warn("이미지 생성에 실패했어요. 잠시 후 다시 시도해 주세요.")
             }
         } finally {
@@ -223,7 +228,8 @@ class AskCommandHandler(
                 } else {
                     null
                 }
-            }.getOrNull()
+            }.onFailure { log.warn("의사 스트리밍 계획 실패(요청 길이={}): {}", fullContent.length, it.message) }
+                .getOrNull()
         val rawSnapshots = plan?.snapshots?.map { it.content }.orEmpty()
         val finalContent =
             rawSnapshots.lastOrNull()?.withDiscordLengthNotice(plan?.warning)
@@ -284,7 +290,8 @@ class AskCommandHandler(
                 responseMode = responseMode,
                 maxCandidates = maxCandidates,
             )
-        }.getOrNull()
+        }.onFailure { log.warn("멀티응답 관측 시작 실패(guild={}): {}", ctx.guildId, it.message) }
+            .getOrNull()
     } else {
         null
     }
@@ -306,7 +313,7 @@ class AskCommandHandler(
                 latencyMs = latencyMs,
                 failureReason = result.failReason,
             )
-        }
+        }.onFailure { log.warn("멀티응답 결과 기록 실패(runId={}): {}", runId, it.message) }
     }
 
     private fun shouldObserveMultiResponse(
@@ -361,7 +368,8 @@ class AskCommandHandler(
                     responseMode = responseMode,
                     channelId = ctx.channelId,
                 )
-            }.getOrNull()
+            }.onFailure { log.warn("지식 컨텍스트 조회 실패(guild={}, channel={}): {}", ctx.guildId, ctx.channelId, it.message) }
+                .getOrNull()
         val contextText = knowledgeContext?.contextText?.takeIf { it.isNotBlank() }
         activeChannelAiExecutionPrompt(ctx, contextText)?.let { return it }
         // 경로②③: 채널 AI 커스텀이 없을 때도 NEXA 가드레일은 항상 주입한다. 채널 프로필이 있으면 그 정체성을,
@@ -389,7 +397,8 @@ class AskCommandHandler(
         val history =
             runCatching {
                 channelAiCustomization.channelHistory(ctx.guildId, ctx.channelId)
-            }.getOrNull() ?: return null
+            }.onFailure { log.warn("채널 이력 조회 실패(guild={}, channel={}): {}", ctx.guildId, ctx.channelId, it.message) }
+                .getOrNull() ?: return null
         val activeBehaviorId = history.channelAi?.activeBehaviorVersionId ?: return null
         val preview =
             runCatching {

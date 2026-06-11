@@ -1,7 +1,7 @@
 """클라우드 Gemini 호출 — 관리자 클라우드 백엔드(Google Generative Language API).
 
 관리자가 Gemini API 키 하나(AI Studio: https://aistudio.google.com/apikey)를 넣으면
-``gemini-2.5-flash-lite`` 같은 모델이 풀에 공급 모델로 광고된다. Ollama(로컬)와 **동일한
+``gemini-3.1-flash-lite`` 같은 모델이 풀에 공급 모델로 광고된다. Ollama(로컬)와 **동일한
 (text, Usage) 인터페이스**라 에이전트가 같은 라우팅·한도·공정성으로 처리한다.
 
 키는 프로바이더(관리자) PC 에만 저장하고 central 엔 절대 올리지 않는다(Ollama 토큰과 동일 원칙).
@@ -18,7 +18,7 @@ from .protocol import Usage
 logger = logging.getLogger("provider_agent.gemini")
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite"
+DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 
 class GeminiError(Exception):

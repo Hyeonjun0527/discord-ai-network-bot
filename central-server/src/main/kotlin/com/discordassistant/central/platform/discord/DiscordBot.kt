@@ -493,7 +493,7 @@ class DiscordBot(
             private const val MAX_ONBOARD_HISTORY_LIMIT = 200
 
             /** /무료질문 이 고정 라우팅하는 클라우드 무료 모델(provider-agent 의 Gemini 백엔드가 광고). */
-            private const val FREE_CLOUD_MODEL = "gemini-2.5-flash-lite"
+            private const val FREE_CLOUD_MODEL = "gemini-3.1-flash-lite"
 
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
             private val PUBLIC_COMMANDS = setOf("ask", "free-ask", "imagine", "contributions", "community-stats", "welcome", "level")

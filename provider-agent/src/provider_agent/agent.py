@@ -1096,7 +1096,7 @@ class ProviderAgent:
         await self._readvertise()
 
     async def set_gemini_key(self, api_key: str) -> bool:
-        """클라우드 Gemini 키를 **라이브로** 적용(앱 설정에서 키 입력). 키가 있으면 gemini-2.5-flash-lite 를
+        """클라우드 Gemini 키를 **라이브로** 적용(앱 설정에서 키 입력). 키가 있으면 gemini-3.1-flash-lite 를
         풀에 광고하고 gemini-* 요청을 라우팅, 비우면 제거. 재시작 없이 즉시 반영(재광고). 키 유효 여부 반환."""
         key = (api_key or "").strip()
         if key:

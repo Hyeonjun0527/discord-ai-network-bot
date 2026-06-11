@@ -46,7 +46,7 @@ def test_config_advertises_gemini_when_key_present():
     cfg = AgentConfig(token="T", gemini_api_key="AIzaXXXX")
     agent = ProviderAgent(cfg, ollama=object())  # ollama 미사용(gemini 경로만)
     # 키가 있으면 기본 모델이 풀에 광고되고, 라우팅용 집합에도 들어간다.
-    # (config_from_args 가 기본 gemini-2.5-flash-lite 를 채우지만, 여기선 직접 cfg 라 gemini_models 비어도
+    # (config_from_args 가 기본 gemini-3.1-flash-lite 를 채우지만, 여기선 직접 cfg 라 gemini_models 비어도
     #  키만으로 클라이언트는 만들어진다 — 광고는 set 으로 확인)
     assert agent._gemini is not None
 
@@ -158,7 +158,7 @@ async def test_set_gemini_key_live(monkeypatch):
     assert not any(m.startswith("gemini-") for m in agent.models)
     ok = await agent.set_gemini_key("AIzaXXX")
     assert ok is True
-    assert "gemini-2.5-flash-lite" in agent.models and "a" in agent.models
+    assert "gemini-3.1-flash-lite" in agent.models and "a" in agent.models
     await agent.set_gemini_key("")  # 빈 키 → 제거
     assert not any(m.startswith("gemini-") for m in agent.models)
     assert "a" in agent.models

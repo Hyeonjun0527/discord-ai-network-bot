@@ -86,6 +86,11 @@ const MOCK = {
     autostart: false, background: false, autoConnect: true, autoUpdate: true, comfyBroadcast: false,
     ollamaUrl: 'http://localhost:11434', geminiConfigured: false, comfyUrl: '',
   },
+  license: {
+    ok: true,
+    entitlement: { userId: '5001', status: 'TRIAL', trialEndsAt: '2026-09-01T00:00:00Z', hasPaidAccess: true },
+    event: { open: true, granted: 128 },
+  },
   updateInfo: { current: '0.31.0', latest: '0.31.0', outdated: false, supported: true },
   runtimePing: { 'Ollama': 28, 'ComfyUI': 400 },
   models: [
@@ -478,6 +483,28 @@ export const api = {
   async setSetting(key, value) {
     /* @proto-only */ if (USE_MOCK) { await delay(80); if (key === 'enableImage') MOCK.status.enableImage = value; else MOCK.settings[key] = value; return { ok: true }; } /* @end-proto-only */
     return post(ENDPOINTS.settings, { [key]: value });
+  },
+  /** 라이선스 entitlement + 런칭 이벤트 현황 — webui.py GET /api/license. */
+  async getLicense() {
+    /* @proto-only */ if (USE_MOCK) { await delay(80); return structuredClone(MOCK.license); } /* @end-proto-only */
+    return http(ENDPOINTS.license);
+  },
+  /** 앱 내 구매 checkout URL 생성 — 실제 결제 확정은 central webhook 이후 반영. */
+  async checkoutLicense() {
+    /* @proto-only */ if (USE_MOCK) { await delay(120); return { ok: true, url: 'https://checkout.paddle.com/mock-nexa' }; } /* @end-proto-only */
+    return post(ENDPOINTS.licenseCheckout);
+  },
+  /** 런칭 이벤트 평생 무료 신청 — 응답 outcome 을 그대로 표시한다. */
+  async claimLicenseEvent() {
+    /* @proto-only */
+    if (USE_MOCK) {
+      await delay(160);
+      MOCK.license.entitlement = { ...MOCK.license.entitlement, status: 'EVENT_FREE', trialEndsAt: null, hasPaidAccess: true };
+      MOCK.license.event.granted += 1;
+      return { ok: true, outcome: 'GRANTED', entitlement: structuredClone(MOCK.license.entitlement) };
+    }
+    /* @end-proto-only */
+    return post(ENDPOINTS.licenseEventClaim);
   },
   /** 업데이트 정보 — webui.py /api/update-info. */
   async getUpdateInfo() {

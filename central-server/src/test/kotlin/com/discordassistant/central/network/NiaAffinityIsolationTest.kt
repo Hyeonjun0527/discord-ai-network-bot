@@ -1,6 +1,6 @@
 package com.discordassistant.central.network
 
-import com.discordassistant.central.ainetwork.application.AiLevelService
+import com.discordassistant.central.ainetwork.application.NiaAffinityService
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogEntity
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.UsageLogRepository
 import org.junit.jupiter.api.AfterEach
@@ -18,8 +18,8 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 /**
- * B1/B2 가드: best-effort XP 격리는 awardAskXp 의 REQUIRES_NEW 독립 트랜잭션에 의존한다.
- * - 구조: 실제 AiLevelService.awardAskXp 가 REQUIRES_NEW 로 선언됐는지(어노테이션) 검증.
+ * B1/B2 가드: best-effort 호감도 적립은 awardInteraction 의 REQUIRES_NEW 독립 트랜잭션에 의존한다.
+ * - 구조: 실제 NiaAffinityService.awardInteraction 이 REQUIRES_NEW 로 선언됐는지(어노테이션) 검증.
  * - 기능: 같은 Spring 컨테이너(앱과 동일 프록시/트랜잭션 매니저)에서, REQUIRES_NEW 내부 트랜잭션의
  *   롤백이 커밋되는 외부(REQUIRED) 트랜잭션을 globally rollback-only 로 전염시키지 **않음**을 실증.
  *   (이전 가짜 테스트는 프록시 미경유 override + @DataJpaTest 단일 미커밋 트랜잭션이라 이 경로를 못 잡았다.)
@@ -28,8 +28,8 @@ import java.time.Instant
  * rollback-only 전염 여부를 관측할 수 있기 때문이다. 대신 @AfterEach 로 삽입 행을 정리한다.
  */
 @SpringBootTest
-@Import(AiLevelXpIsolationTest.IsolationTxBeans::class)
-class AiLevelXpIsolationTest
+@Import(NiaAffinityIsolationTest.IsolationTxBeans::class)
+class NiaAffinityIsolationTest
     @Autowired
     constructor(
         private val outer: OuterRequiredTxBean,
@@ -41,14 +41,19 @@ class AiLevelXpIsolationTest
         }
 
         @Test
-        fun `awardAskXp 는 REQUIRES_NEW 로 선언되어 독립 트랜잭션에서 동작한다`() {
-            val method = AiLevelService::class.java.getDeclaredMethod("awardAskXp", Long::class.javaPrimitiveType)
+        fun `awardInteraction 은 REQUIRES_NEW 로 선언되어 독립 트랜잭션에서 동작한다`() {
+            val method =
+                NiaAffinityService::class.java.getDeclaredMethod(
+                    "awardInteraction",
+                    Long::class.javaPrimitiveType,
+                    Long::class.javaPrimitiveType,
+                )
             val tx = method.getAnnotation(Transactional::class.java)
-            requireNotNull(tx) { "awardAskXp 에 @Transactional 이 없습니다 — best-effort 격리 불가" }
+            requireNotNull(tx) { "awardInteraction 에 @Transactional 이 없습니다 — best-effort 격리 불가" }
             assertEquals(
                 Propagation.REQUIRES_NEW,
                 tx.propagation,
-                "awardAskXp 는 REQUIRES_NEW 여야 호출자 트랜잭션으로 rollback-only 가 전염되지 않는다(B1)",
+                "awardInteraction 은 REQUIRES_NEW 여야 호출자 트랜잭션으로 rollback-only 가 전염되지 않는다(B1)",
             )
         }
 

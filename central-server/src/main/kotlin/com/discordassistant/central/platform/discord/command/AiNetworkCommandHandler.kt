@@ -1,45 +1,52 @@
 package com.discordassistant.central.platform.discord.command
 
-import com.discordassistant.central.ainetwork.application.AiLevelService
 import com.discordassistant.central.ainetwork.application.AiNetworkLaunchChecklistService
 import com.discordassistant.central.ainetwork.application.AiNetworkMap
 import com.discordassistant.central.ainetwork.application.AiNetworkMapService
 import com.discordassistant.central.ainetwork.application.NetworkLaunchChecklist
+import com.discordassistant.central.ainetwork.application.NiaAffinityService
 import com.discordassistant.central.platform.discord.CommandContext
 import com.discordassistant.central.platform.discord.Reply
 import org.springframework.stereotype.Component
 
 /**
- * AI 네트워크/활동 레벨 명령군(aiLevel, aiNetworkMap, aiNetworkCheck).
+ * AI 네트워크/니아 호감도 명령군(niaAffinity, aiNetworkMap, aiNetworkCheck).
  * CommandService 에서 응집 단위로 분리 — 포매터/문구/진행바 출력 불변, 시그니처 유지·위임.
  */
 @Component
 class AiNetworkCommandHandler(
     private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
     private val aiNetworkMap: AiNetworkMapService,
-    private val aiLevel: AiLevelService,
+    private val niaAffinity: NiaAffinityService,
     private val guards: SharedCommandGuards,
 ) {
-    /** 이 서버 니아의 활동 레벨/경험치/진행도(public·비관리자). */
-    fun aiLevel(ctx: CommandContext): Reply {
-        val view = aiLevel.levelView(ctx.guildId)
-        val bar = xpProgressBar(view.progressInLevel, view.levelSpan)
+    /** 요청자와 니아의 개인 호감도(public·비관리자). */
+    fun niaAffinity(ctx: CommandContext): Reply {
+        val view = niaAffinity.view(ctx.userId)
+        val bar = affinityProgressBar(view.score, view.stage.threshold, view.nextStage?.threshold)
+        val nextLine =
+            view.nextStage?.let { next ->
+                "다음 단계 **${next.displayName}**까지: **${view.scoreToNext}**\n"
+            } ?: "이미 최고 단계예요. 계속 같이 이야기해 주세요.\n"
         return Reply(
-            "🐾 **이 서버 니아 활동 레벨**\n" +
-                "활동 레벨: **${view.aiLevel}** · 누적 경험치: **${view.totalXp} XP**\n" +
+            "🐾 **니아 호감도**\n" +
+                "현재 단계: **${view.stage.displayName}** · 호감도: **${view.score}**\n" +
                 "$bar\n" +
-                "다음 레벨까지: **${view.xpToNext} XP** (현재 구간 ${view.progressInLevel}/${view.levelSpan})\n" +
-                "_질문(/ask) 답변이 성공할 때마다 ${com.discordassistant.central.ainetwork.domain.model.AiLevelFormula.XP_PER_ASK_SUCCESS} XP 가 쌓여요._",
+                nextLine +
+                "_질문(/ask)이나 그림 생성이 성공할 때마다 니아와 조금 더 가까워져요. 순위 비교는 없습니다._",
             ephemeral = false,
         )
     }
 
-    private fun xpProgressBar(
-        gained: Long,
-        needed: Long,
+    private fun affinityProgressBar(
+        score: Long,
+        stageThreshold: Long,
+        nextThreshold: Long?,
     ): String {
-        if (needed <= 0L) return "▰▰▰▰▰▰▰▰▰▰ 100%"
-        val ratio = (gained.toDouble() / needed.toDouble()).coerceIn(0.0, 1.0)
+        if (nextThreshold == null) return "▰▰▰▰▰▰▰▰▰▰ 100%"
+        val span = (nextThreshold - stageThreshold).coerceAtLeast(1L)
+        val gained = (score - stageThreshold).coerceIn(0L, span)
+        val ratio = gained.toDouble() / span.toDouble()
         val filled = (ratio * 10).toInt().coerceIn(0, 10)
         val pct = (ratio * 100).toInt()
         return "${"▰".repeat(filled)}${"▱".repeat(10 - filled)} $pct%"
@@ -72,7 +79,7 @@ class AiNetworkCommandHandler(
             "Provider: 온라인 ${map.onlineProviderCount} / 승인 ${map.approvedProviderCount} · " +
                 "모델 ${map.modelCount}종 · 채널 AI ${map.channelAiCount}개 · 지식공간 ${map.knowledgeSpaceCount}개"
         return "🗺️ **AI 네트워크 지도**\n\n" +
-            "구성 단계: `${map.networkLevel}` · 활동 레벨: `${map.aiLevel}` (XP ${map.totalXp}, 다음까지 ${map.xpToNext})\n" +
+            "구성 단계: `${map.networkLevel}`\n" +
             "상태: `${map.healthStatus}` · 과부하 경고: `${map.overloadAlertCount}`\n" +
             "$providerSummary\n" +
             "능력 태그: $tags\n\n" +

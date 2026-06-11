@@ -70,7 +70,7 @@ class CommandServiceTest
         val embeddingJobs: EmbeddingIndexJobRepository,
         val aiFeedbacks: AiFeedbackRepository,
         val aiAdminRoles: AiAdminRoleRepository,
-        val aiLevel: com.discordassistant.central.ainetwork.application.AiLevelService,
+        val niaAffinity: com.discordassistant.central.ainetwork.application.NiaAffinityService,
         val onboardingOptOuts: com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository,
         val channelAis: com.discordassistant.central.channelai.adapter.outbound.persistence.ChannelAiRepository,
         val routingStats: ProviderRoutingStats,
@@ -173,6 +173,7 @@ class CommandServiceTest
             // 민감/개인: ephemeral=true
             assertTrue(commands.privacy(ctx()).ephemeral)
             assertTrue(commands.myUsage(ctx()).ephemeral)
+            assertTrue(commands.license(ctx()).ephemeral)
             assertTrue(commands.help(ctx()).ephemeral)
             assertTrue(commands.models(ctx()).ephemeral)
             // 공개 통계: ephemeral=false
@@ -188,6 +189,14 @@ class CommandServiceTest
         }
 
         @Test
+        fun `license — 내 Nexa 라이선스 상태`() {
+            val r = commands.license(ctx())
+            assertTrue(r.content.contains("Nexa 라이선스"))
+            assertTrue(r.content.contains("프리미엄 기능"))
+            assertTrue(r.ephemeral)
+        }
+
+        @Test
         fun `contributions — 오프라인이어도 한 번 기여한 사람은 영구 표시`() {
             val c = CommandContext(guildId = 9900, channelId = 200, userId = 5, roleIds = setOf(1L), isAdmin = false)
             usage.recordSuccess(guildId = c.guildId, userId = 1, providerId = 101, requestId = "pc1")
@@ -195,9 +204,10 @@ class CommandServiceTest
             usage.recordSuccess(guildId = c.guildId, userId = 3, providerId = 202, requestId = "pc3")
 
             val reply = commands.contributions(c)
-            assertTrue(reply.content.contains("<@101> — 2건"))
-            assertTrue(reply.content.contains("<@202> — 1건"))
-            assertTrue(reply.content.contains("오프라인이어도 계속 기록"))
+            assertTrue(reply.content.contains("누적 처리: **3건**"))
+            assertTrue(reply.content.contains("기여한 멤버: **2명**"))
+            assertTrue(reply.content.contains("내 기여: **0건**"))
+            assertTrue(reply.content.contains("순위 비교 없이"))
             assertFalse(reply.ephemeral)
         }
 
@@ -560,15 +570,14 @@ class CommandServiceTest
         }
 
         @Test
-        fun `level — 서버 니아의 활동 레벨과 경험치를 누구나 본다`() {
+        fun `nia — 요청자의 니아 호감도를 누구나 본다`() {
             val g = CommandContext(guildId = 55501, channelId = 66601, userId = 9, roleIds = setOf(1L), isAdmin = false)
-            // 12회 적립(=120xp) → L2, 구간 (20, 200)
-            repeat(12) { aiLevel.awardAskXp(g.guildId) }
+            repeat(12) { niaAffinity.awardInteraction(g.guildId, g.userId) }
 
-            val reply = commands.aiLevel(g)
-            assertTrue(reply.content.contains("활동 레벨"))
-            assertTrue(reply.content.contains("**2**"), "레벨 2 표시: ${reply.content}")
-            assertTrue(reply.content.contains("120 XP"), "누적 XP 표시: ${reply.content}")
+            val reply = commands.niaAffinity(g)
+            assertTrue(reply.content.contains("니아 호감도"))
+            assertTrue(reply.content.contains("알아가는중"), "단계 표시: ${reply.content}")
+            assertTrue(reply.content.contains("호감도: **12**"), "점수 표시: ${reply.content}")
             assertFalse(reply.ephemeral, "공개(public) 응답이어야 함")
         }
 

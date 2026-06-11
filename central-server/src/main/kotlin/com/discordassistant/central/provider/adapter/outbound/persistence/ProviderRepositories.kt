@@ -14,6 +14,9 @@ interface ProviderRepository : JpaRepository<ProviderEntity, Long> {
         guildId: Long,
     ): ProviderEntity?
 
+    /** 한 유저의 모든 길드 등록(가입 시각 집계용 — licensing 체험 시계 시작점). */
+    fun findByProviderUserId(providerUserId: Long): List<ProviderEntity>
+
     fun findByGuildIdAndState(
         guildId: Long,
         state: ProviderState,

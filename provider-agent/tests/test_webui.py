@@ -1125,6 +1125,66 @@ async def test_settings_post_ignores_unknown_keys():
         await client.close()
 
 
+@pytest.mark.asyncio
+async def test_license_requires_session_key_and_durable_token():
+    """라이선스 로컬 API 는 세션키 + durable 토큰이 있어야 central 로 프록시한다."""
+    client = await _client()
+    try:
+        assert (await client.get("/api/license")).status == 403
+        d = await (await client.get("/api/license", headers={"X-Session": KEY})).json()
+        assert d["ok"] is False
+        assert "연동" in d["error"]
+        c = await (await client.post("/api/license/checkout", headers={"X-Session": KEY}, json={})).json()
+        assert c["ok"] is False
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_license_routes_proxy_to_central(monkeypatch):
+    """durable 토큰 보유 시 라이선스 조회/구매/이벤트 신청을 central 라이선스 API 로 위임한다."""
+    from provider_agent.config_file import add_connection
+
+    add_connection("dv1.fake", guild_id=100, guild_name="S")
+    calls: list = []
+    monkeypatch.setattr(
+        "provider_agent.agent._post_license_me",
+        lambda base, token: calls.append(("me", base, token))
+        or {"userId": "1", "status": "TRIAL", "trialEndsAt": "2026-09-01T00:00:00Z", "hasPaidAccess": True},
+    )
+    monkeypatch.setattr(
+        "provider_agent.agent._get_license_event_status",
+        lambda base: calls.append(("event", base)) or {"open": True, "granted": 3},
+    )
+    monkeypatch.setattr(
+        "provider_agent.agent._post_license_checkout",
+        lambda base, token: calls.append(("checkout", base, token)) or {"url": "https://checkout.example/1"},
+    )
+    monkeypatch.setattr(
+        "provider_agent.agent._post_license_event_claim",
+        lambda base, token: calls.append(("claim", base, token))
+        or {
+            "outcome": "GRANTED",
+            "entitlement": {"userId": "1", "status": "EVENT_FREE", "trialEndsAt": None, "hasPaidAccess": True},
+        },
+    )
+    client = await _client()
+    try:
+        s = await (await client.get("/api/license", headers={"X-Session": KEY})).json()
+        assert s["ok"] is True
+        assert s["entitlement"]["status"] == "TRIAL"
+        assert s["event"]["granted"] == 3
+        checkout = await (await client.post("/api/license/checkout", headers={"X-Session": KEY}, json={})).json()
+        assert checkout == {"ok": True, "url": "https://checkout.example/1"}
+        claim = await (await client.post("/api/license/event-claim", headers={"X-Session": KEY}, json={})).json()
+        assert claim["ok"] is True
+        assert claim["outcome"] == "GRANTED"
+        assert ("checkout", "https://discord-ai.yeon.world", "dv1.fake") in calls
+        assert ("claim", "https://discord-ai.yeon.world", "dv1.fake") in calls
+    finally:
+        await client.close()
+
+
 def _make_assets(tmp_path, monkeypatch):
     """임시 webui_assets 디렉토리를 만들어 _assets_dir 가 그것을 가리키게 한다(실 자산 비의존)."""
     assets = tmp_path / "webui_assets"

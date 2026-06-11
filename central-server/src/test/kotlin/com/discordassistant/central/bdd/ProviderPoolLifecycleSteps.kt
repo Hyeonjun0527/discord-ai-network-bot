@@ -110,7 +110,7 @@ class ProviderPoolLifecycleSteps {
         }
     }
 
-    @When("사용자가 길드 {long} 에서 기여순위를 확인한다")
+    @When("사용자가 길드 {long} 에서 기여 현황을 확인한다")
     fun userChecksContributions(guildId: Long) {
         lastReply =
             commands.contributions(
@@ -124,17 +124,15 @@ class ProviderPoolLifecycleSteps {
             )
     }
 
-    @Then("기여순위에는 프로바이더 {long} 의 {int} 회와 프로바이더 {long} 의 {int} 회가 표시된다")
-    fun contributionLeaderboardContains(
-        providerA: Long,
-        countA: Int,
-        providerB: Long,
-        countB: Int,
+    @Then("기여 현황에는 누적 {int} 건과 기여 멤버 {int} 명이 순위 없이 표시된다")
+    fun contributionSummaryContains(
+        totalCount: Int,
+        providerCount: Int,
     ) {
         val content = lastReply?.content.orEmpty()
-        assertTrue(content.contains("<@$providerA> — ${countA}건"), content)
-        assertTrue(content.contains("<@$providerB> — ${countB}건"), content)
-        assertTrue(content.contains("오프라인이어도 계속 기록"), content)
+        assertTrue(content.contains("누적 처리: **${totalCount}건**"), content)
+        assertTrue(content.contains("기여한 멤버: **${providerCount}명**"), content)
+        assertTrue(content.contains("순위 비교 없이"), content)
     }
 
     @Given("프로바이더 {long} 이 길드 {long} 용 토큰을 발급받았다")

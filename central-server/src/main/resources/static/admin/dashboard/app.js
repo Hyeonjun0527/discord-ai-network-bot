@@ -103,6 +103,22 @@ async function refreshPool() {
   }
 }
 
+async function refreshLicenseFunnel() {
+  try {
+    const f = await getJson("/api/ai-network/license/funnel?audience=admin");
+    renderList("licenseFunnel", [
+      ["체험 중", f.trial ?? 0],
+      ["체험 만료", f.expired ?? 0],
+      ["구매 완료", f.licensed ?? 0],
+      ["이벤트 무료", f.eventFree ?? 0],
+      ["정지됨", f.revoked ?? 0],
+      ["환불 이력", f.refunded ?? 0],
+    ], "라이선스 지표 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}명</span></li>`);
+  } catch (e) {
+    renderList("licenseFunnel", [], "라이선스 지표를 보려면 관리자 토큰 또는 OAuth 로그인이 필요합니다.");
+  }
+}
+
 // Overview 도넛: 참여 PC 상태 분포(정상/주의/보호)를 conic-gradient 로 그린다.
 function renderProviderDonut(providers) {
   const list = providers || [];
@@ -1522,13 +1538,9 @@ async function loadGuild() {
         getJson(`/api/ai-network/${gid}/provider-history`),
       ]);
 
-    const level = aiNetwork.overview || {};
     $("guildOverview").innerHTML = [
       ["활성 프로바이더", overview.activeProviders],
       ["총 요청", overview.totalRequests],
-      ["AI 레벨", `Lv.${level.aiLevel ?? 1}`],
-      ["누적 경험치", level.totalXp ?? 0],
-      ["다음 레벨까지", level.xpToNext ?? 0],
       ["기본 모델", overview.defaultModel || "(자동)"],
       ["언어", overview.language],
       ["자동승인", overview.autoApprove ? "예" : "아니오"],
@@ -1618,6 +1630,7 @@ $("pseudoStreamPlan").addEventListener("click", planPseudoStream);
 $("dashboardProjectionRefresh").addEventListener("click", refreshDashboardProjection);
 $("launchChecklistRefresh").addEventListener("click", refreshLaunchChecklist);
 $("providerHistoryRefresh").addEventListener("click", refreshProviderHistory);
+$("licenseFunnelRefresh").addEventListener("click", refreshLicenseFunnel);
 document.addEventListener("click", (event) => {
   const selectButton = event.target.closest(".select-published-preset");
   if (selectButton) $("publishedPresetId").value = selectButton.dataset.presetId || "";
@@ -1838,4 +1851,5 @@ loadAuth();
 loadWizardOptions();
 loadGuildPicker();
 refreshPool();
+refreshLicenseFunnel();
 setInterval(refreshPool, 5000);

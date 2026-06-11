@@ -235,6 +235,16 @@
     "en": "Defaults are <b>15 requests/day</b> and <b>1 concurrent</b>; unlimited is possible only with <code>--allow-unlimited</code>. Ollama is <b>localhost-only</b> by default.",
     "ja": "1日の処理上限<b>15件</b>·同時<b>1件</b>が既定で、無制限は <code>--allow-unlimited</code> でのみ可能です。Ollama は既定で<b>localhost専用</b>です。"
   },
+  "alertLicenseTitle": {
+    "ko": "서버 관리 프리미엄은 3개월 무료",
+    "en": "Server-admin premium starts with 3 free months",
+    "ja": "サーバー管理プレミアムは3か月無料"
+  },
+  "alertLicenseBody": {
+    "ko": "채널 AI·기본 질문·Provider 참여는 계속 무료입니다. 서버별 페르소나, RAG 문서, 프리셋 쓰기 같은 <b>관리자 프리미엄 기능</b>만 3개월 체험 후 <b>$10 영구 라이선스</b>로 잠금 해제됩니다.",
+    "en": "Channel AI, basic questions, and Provider participation stay free. Only <b>admin premium features</b> such as per-server personas, RAG documents, and preset writes unlock after a 3-month trial with a <b>$10 lifetime license</b>.",
+    "ja": "チャンネルAI・基本質問・Provider参加は引き続き無料です。サーバー別ペルソナ、RAG文書、プリセット書き込みなどの<b>管理者向けプレミアム機能</b>だけが、3か月体験後に<b>10ドルの永続ライセンス</b>で解除されます。"
+  },
   "alertImageTitle": {
     "ko": "선택 — 이미지 생성도 제공",
     "en": "Optional — image generation too",

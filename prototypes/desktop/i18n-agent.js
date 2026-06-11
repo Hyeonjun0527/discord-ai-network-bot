@@ -150,6 +150,131 @@ window.__I18N = {
     "en": "Account",
     "ja": "アカウント"
   },
+  "setGroupLicense": {
+    "ko": "라이선스",
+    "en": "License",
+    "ja": "ライセンス"
+  },
+  "licenseTitle": {
+    "ko": "Nexa 라이선스",
+    "en": "Nexa license",
+    "ja": "Nexaライセンス"
+  },
+  "licenseChecking": {
+    "ko": "라이선스 상태를 확인하고 있어요.",
+    "en": "Checking your license status.",
+    "ja": "ライセンス状態を確認しています。"
+  },
+  "licenseCheckingShort": {
+    "ko": "확인 중…",
+    "en": "Checking…",
+    "ja": "確認中…"
+  },
+  "licenseConnectRequiredDesc": {
+    "ko": "Discord 연동 후 라이선스를 확인할 수 있어요.",
+    "en": "Connect Discord to check your license.",
+    "ja": "Discord連携後にライセンスを確認できます。"
+  },
+  "licenseAccessOn": {
+    "ko": "프리미엄 기능 사용 가능",
+    "en": "Premium features available",
+    "ja": "プレミアム機能を利用できます"
+  },
+  "licenseAccessOff": {
+    "ko": "프리미엄 기능 잠김",
+    "en": "Premium features locked",
+    "ja": "プレミアム機能はロックされています"
+  },
+  "licenseTrialEndsAt": {
+    "ko": "체험 종료 {date}",
+    "en": "Trial ends {date}",
+    "ja": "トライアル終了 {date}"
+  },
+  "licenseEventOpen": {
+    "ko": "런칭 이벤트 진행 중({count}명 수령)",
+    "en": "Launch event open ({count} claimed)",
+    "ja": "ローンチイベント開催中（{count}人が受け取り済み）"
+  },
+  "licenseEventClosed": {
+    "ko": "런칭 이벤트 종료",
+    "en": "Launch event closed",
+    "ja": "ローンチイベント終了"
+  },
+  "licenseBuy": {
+    "ko": "$10 구매",
+    "en": "Buy for $10",
+    "ja": "$10で購入"
+  },
+  "licenseClaim": {
+    "ko": "이벤트 무료 신청",
+    "en": "Claim event free",
+    "ja": "イベント無料申請"
+  },
+  "licenseRefresh": {
+    "ko": "새로고침",
+    "en": "Refresh",
+    "ja": "更新"
+  },
+  "licenseReloadedToast": {
+    "ko": "라이선스 상태를 다시 확인했어요",
+    "en": "License status refreshed",
+    "ja": "ライセンス状態を更新しました"
+  },
+  "licenseCheckoutOpenedToast": {
+    "ko": "결제 창을 열었어요",
+    "en": "Checkout opened",
+    "ja": "決済画面を開きました"
+  },
+  "licenseCheckoutFailedToast": {
+    "ko": "결제 창을 열 수 없어요",
+    "en": "Could not open checkout",
+    "ja": "決済画面を開けません"
+  },
+  "licenseClaimDoneToast": {
+    "ko": "이벤트 신청 결과: {outcome}",
+    "en": "Event claim result: {outcome}",
+    "ja": "イベント申請結果: {outcome}"
+  },
+  "licenseClaimFailedToast": {
+    "ko": "이벤트 신청 실패",
+    "en": "Event claim failed",
+    "ja": "イベント申請に失敗しました"
+  },
+  "licenseLoadFailed": {
+    "ko": "라이선스 상태를 불러오지 못했어요.",
+    "en": "Could not load license status.",
+    "ja": "ライセンス状態を読み込めませんでした。"
+  },
+  "licenseStatusTRIAL": {
+    "ko": "체험 중",
+    "en": "Trial",
+    "ja": "トライアル中"
+  },
+  "licenseStatusEXPIRED": {
+    "ko": "체험 만료",
+    "en": "Trial expired",
+    "ja": "トライアル期限切れ"
+  },
+  "licenseStatusLICENSED": {
+    "ko": "구매 완료",
+    "en": "Licensed",
+    "ja": "購入済み"
+  },
+  "licenseStatusEVENT_FREE": {
+    "ko": "이벤트 무료",
+    "en": "Event free",
+    "ja": "イベント無料"
+  },
+  "licenseStatusREVOKED": {
+    "ko": "정지됨",
+    "en": "Revoked",
+    "ja": "停止中"
+  },
+  "licenseStatusFREE": {
+    "ko": "무료",
+    "en": "Free",
+    "ja": "無料"
+  },
   "setCentralServer": {
     "ko": "중앙 서버",
     "en": "Central server",

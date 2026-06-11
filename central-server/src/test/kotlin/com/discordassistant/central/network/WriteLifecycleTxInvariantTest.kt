@@ -31,7 +31,7 @@ import org.springframework.context.annotation.Primary
 /**
  * write-lifecycle(@Transactional 라이프사이클) TX 불변식 안전망.
  *
- * 선례 [AiLevelXpIsolationTest] 와 동일한 전략: **실제 Spring 컨테이너에서 @Service 프록시를 거쳐**
+ * 선례 [NiaAffinityIsolationTest] 와 동일한 전략: **실제 Spring 컨테이너에서 @Service 프록시를 거쳐**
  * 라이프사이클 메서드를 호출해 TX 의미(채번 단조성·원자성·롤백)를 관측한다. 단위 [DataJpaTest] 와 달리
  * 여기서는 서비스를 수동 생성하지 않고 **autowire 된 빈**을 쓰므로, @Transactional 프록시·트랜잭션
  * 매니저가 실제 앱과 동일하게 적용된다.

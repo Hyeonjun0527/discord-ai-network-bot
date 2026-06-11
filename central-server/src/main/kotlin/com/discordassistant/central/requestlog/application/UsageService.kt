@@ -1,6 +1,6 @@
 package com.discordassistant.central.requestlog.application
 
-import com.discordassistant.central.ainetwork.application.AiLevelService
+import com.discordassistant.central.ainetwork.application.NiaAffinityService
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthEntity
 import com.discordassistant.central.provider.adapter.outbound.persistence.ProviderHealthRepository
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestEntity
@@ -28,7 +28,7 @@ class UsageService(
     private val contribution: ContributionLogRepository,
     private val requests: AiRequestRepository,
     private val health: ProviderHealthRepository,
-    private val aiLevel: AiLevelService,
+    private val niaAffinity: NiaAffinityService,
 ) : UsageRecorder {
     private val log = LoggerFactory.getLogger(UsageService::class.java)
 
@@ -42,9 +42,9 @@ class UsageService(
         val now = Instant.now()
         usage.save(UsageLogEntity(guildId = guildId, userId = userId, requestId = requestId, createdAt = now))
         contribution.save(ContributionLogEntity(guildId = guildId, providerId = providerId, requestId = requestId, createdAt = now))
-        // 게이미피케이션 경험치 적립은 비핵심 — 실패가 답변/usage 기록을 롤백/실패시키지 않도록 best-effort 격리.
-        runCatching { aiLevel.awardAskXp(guildId) }
-            .onFailure { e -> log.warn("AI 경험치 적립 실패(guildId={}): {}", guildId, e.message) }
+        // 호감도 적립은 비핵심 UX라 답변/usage/contribution 기록과 실패 격리를 유지한다.
+        runCatching { niaAffinity.awardInteraction(guildId, userId) }
+            .onFailure { e -> log.warn("니아 호감도 적립 실패(userId={}): {}", userId, e.message) }
     }
 
     fun recordRequest(

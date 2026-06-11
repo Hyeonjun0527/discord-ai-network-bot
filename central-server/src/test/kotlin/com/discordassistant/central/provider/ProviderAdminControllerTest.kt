@@ -9,6 +9,7 @@ import com.discordassistant.central.guild.application.GuildChannelPolicy
 import com.discordassistant.central.knowledge.application.GuildKnowledgeAdmin
 import com.discordassistant.central.knowledge.application.GuildKnowledgeQuery
 import com.discordassistant.central.knowledge.application.KnowledgeSourceSummary
+import com.discordassistant.central.licensing.application.PremiumFeatureGate
 import com.discordassistant.central.platform.discord.BotChannelInfo
 import com.discordassistant.central.platform.discord.BotGuildInfo
 import com.discordassistant.central.platform.discord.BotGuildLister
@@ -207,6 +208,7 @@ class ProviderAdminControllerTest
                     knowledgeAdmin,
                     presetQuery,
                     presetAdmin,
+                    PremiumFeatureGate { null },
                 )
             val dtoken = durable.issueDurable(7L, 100L)!!
             return Ctx(ctrl, reg, dtoken, state, channelState)

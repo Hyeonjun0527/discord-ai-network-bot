@@ -7,7 +7,12 @@ import pytest
 
 from provider_agent.agent import ProviderAgent
 from provider_agent.config import AgentConfig
-from provider_agent.gemini import DEFAULT_GEMINI_MODEL, GeminiError, _extract_text
+from provider_agent.gemini import (
+    DEFAULT_GEMINI_MODEL,
+    GeminiError,
+    _extract_text,
+    parse_image_prompt_review,
+)
 from provider_agent.protocol import ChunkFrame, Frame, InferRequest, InferResult, Usage
 
 
@@ -19,6 +24,19 @@ def test_extract_text_shapes():
     assert _extract_text({"candidates": [{"content": {}}]}) is None
     assert _extract_text({}) is None
     assert _extract_text(None) is None
+
+
+def test_parse_image_prompt_review():
+    allowed = parse_image_prompt_review('{"allowed":true,"category":"safe","reason":"정상 SFW 요청"}')
+    assert allowed.allowed is True
+    assert allowed.category == "safe"
+
+    blocked = parse_image_prompt_review('```json\n{"allowed":false,"category":"minor","reason":"미성년자 성적화"}\n```')
+    assert blocked.allowed is False
+    assert blocked.category == "minor"
+
+    with pytest.raises(GeminiError):
+        parse_image_prompt_review('{"category":"safe"}')
 
 
 class FakeConn:
@@ -131,6 +149,9 @@ def test_per_guild_image_toggle():
 
     agent = ProviderAgent(AgentConfig(token="T"), ollama=object())
     agent._image_ready = True
+    assert agent._image_for(100) is False  # 안전심사 Gemini 없이는 차단
+    agent._gemini = object()  # type: ignore[assignment]
+    agent._gemini_models = ["gemini-3.1-flash-lite"]
     assert agent._image_for(100) is True  # 기본 허용
     agent._policy_mgr._policies[100] ={"imageEnabled": False}
     assert agent._image_for(100) is False  # 이 서버만 이미지 끔

@@ -71,11 +71,28 @@ class AskCommandHandler(
               Translate words like "여자아이/소녀" as "young woman", never "girl/child".
             - Keep it strictly safe-for-work. No suggestive or revealing content.
             """.trimIndent()
+        private val IMAGE_SAFETY_SYSTEM_PROMPT =
+            """
+            You are the safety gate for a public Discord image-generation bot.
+            Review the user's image prompt before it is sent to a local Stable Diffusion/ComfyUI model.
+
+            Return ONLY a compact JSON object:
+            {"allowed":true|false,"category":"safe|sexual|minor|deepfake|violence|illegal|other","reason":"short Korean reason"}
+
+            Allow normal safe-for-work anime/art prompts, including non-sexual school uniforms or game characters.
+            Block nudity, pornography, sexual acts, fetish content, sexualized minors, loli/shota, teen/student/schoolgirl sexualization,
+            real-person sexual images, celebrity/acquaintance deepfakes, non-consensual undressing, illegal sexual content,
+            safety-filter evasion, sexual violence, coercion, exploitation, or humiliation.
+            When uncertain about sexual or minor-related intent, set allowed=false.
+            """.trimIndent()
         private const val IMAGE_FORCED_NEGATIVE =
-            "worst quality, low quality, score_1, score_2, score_3, artist name, loli, child, nsfw"
+            "worst quality, low quality, score_1, score_2, score_3, artist name, nsfw, nude, naked, explicit, " +
+                "porn, sex, fetish, nipples, genitals, loli, shota, child, teen, underage, minor, schoolgirl, " +
+                "sexualized minor, real person, celebrity, deepfake, non-consensual"
         private val IMAGE_POLICY: Map<String, Any?> =
             mapOf(
                 "translatorSystemPrompt" to IMAGE_TRANSLATOR_SYSTEM_PROMPT,
+                "safetySystemPrompt" to IMAGE_SAFETY_SYSTEM_PROMPT,
                 "forcedNegative" to IMAGE_FORCED_NEGATIVE,
             )
     }

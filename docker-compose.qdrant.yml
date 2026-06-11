@@ -2,7 +2,8 @@ services:
   discord-ai-qdrant:
     image: ${DISCORD_AI_QDRANT_IMAGE:-qdrant/qdrant:v1.13.6}
     container_name: discord-ai-qdrant
-    restart: unless-stopped
+    # 기본값은 재시작 루프 방지용 no. 장기 운영이 필요할 때만 unless-stopped로 명시한다.
+    restart: "${DISCORD_AI_QDRANT_RESTART_POLICY:-no}"
     ports:
       - "127.0.0.1:${DISCORD_AI_QDRANT_HTTP_PORT:-6333}:6333"
     environment:

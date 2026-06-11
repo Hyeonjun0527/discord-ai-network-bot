@@ -44,7 +44,7 @@ requirements:
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/discord/GuildRemovalCleanupServiceTest.kt
   - id: REQ-PPOOL-003
-    title: 한 번이라도 기여한 프로바이더는 오프라인이어도 기여순위에 영구 표시된다
+    title: 한 번이라도 기여한 프로바이더는 오프라인이어도 순위 없는 기여 현황에 영구 집계된다
     priority: P0
     tests:
       - type: cucumber

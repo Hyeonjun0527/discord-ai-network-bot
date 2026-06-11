@@ -416,10 +416,9 @@ class ProviderStatusFrame:
 
 @dataclass(frozen=True, slots=True)
 class ImageBroadcastFrame:
-    """에이전트 → 릴레이: 유저가 ComfyUI 에서 직접 생성한 이미지를 지정 채널로 포워드(전문가 층).
+    """Deprecated: 과거 ComfyUI 웹 생성물 자동 포워드 프레임.
 
-    base64 PNG 는 1MB 프레임 한계를 넘으므로 delta 로 청크 분할 전송하고, done=True 가 마지막이다
-    (ChunkFrame 과 동일 패턴). broadcast_id 로 한 이미지를 묶는다. prompt 는 캡션(있으면).
+    현재 에이전트는 이 프레임을 보내지 않고, central 도 수신 시 폐기한다. 하위호환 파싱만 유지한다.
     """
 
     broadcast_id: str

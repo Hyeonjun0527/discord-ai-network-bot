@@ -136,3 +136,15 @@ def test_comfy_url_ignores_env(monkeypatch, tmp_path):
     monkeypatch.setenv("COMFY_URL", "http://10.0.0.9:8188")
     cfg, _ = config_from_args(["--token", "T", "--enable-image"])
     assert cfg.comfy_url == ""
+
+
+def test_comfy_broadcast_flag_is_ignored(monkeypatch, tmp_path):
+    """레거시 ComfyUI 자동 포워드 플래그는 CLI·저장값 모두 무시한다."""
+    from provider_agent.config_file import persist_partial
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    persist_partial({"comfy_broadcast": True})
+
+    cfg, _ = config_from_args(["--token", "T", "--comfy-broadcast"])
+
+    assert cfg.comfy_broadcast is False

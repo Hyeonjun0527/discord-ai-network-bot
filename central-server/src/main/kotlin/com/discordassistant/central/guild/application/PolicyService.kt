@@ -86,7 +86,8 @@ class PolicyService(
         val language: String,
         val welcomeMessage: String?,
         val defaultDailyLimit: Int?, // 유저별 일일 한도 길드 기본값. null=하드코딩 base, 0=무제한
-        val expertForwardChannelId: Long?, // 전문가 층: ComfyUI 웹 생성물 포워드 채널. null=미설정(포워드 안 함)
+        // 레거시: ComfyUI 웹 생성물 자동 전송 채널. 현재 central 에서 사용하지 않음.
+        val expertForwardChannelId: Long?,
     )
 
     private fun <T> read(
@@ -348,21 +349,22 @@ class PolicyService(
     @Transactional(readOnly = true)
     fun guildWelcomeMessage(guildId: Long): String? = cachedGuildSettings(guildId).welcomeMessage
 
-    /** 전문가 층: ComfyUI 웹 생성물을 포워드할 채널 설정(null=해제). */
+    /** Deprecated: ComfyUI 웹 생성물 자동 전송은 안전 정책상 저장하지 않는다. */
     @Transactional
     fun setExpertForwardChannel(
         guildId: Long,
         channelId: Long?,
         adminId: Long,
     ) {
-        val g = guilds.findById(guildId).orElseGet { GuildEntity(id = guildId) }
-        g.expertForwardChannelId = channelId
-        guilds.save(g)
-        audit.record("set_expert_forward_channel", "admin:$adminId", "guild:$guildId", "channel:${channelId ?: "none"}")
-        evict(guildId)
+        audit.record(
+            "set_expert_forward_channel_blocked",
+            "admin:$adminId",
+            "guild:$guildId",
+            "channel:${channelId ?: "none"}",
+        )
     }
 
-    /** 전문가 층 포워드 채널(미설정 시 null → 포워드 안 함). */
+    /** Deprecated: 레거시 설정 조회 전용. 자동 전송 경로는 central 에서 폐기된다. */
     @Transactional(readOnly = true)
     fun expertForwardChannelId(guildId: Long): Long? = cachedGuildSettings(guildId).expertForwardChannelId
 

@@ -466,7 +466,7 @@ class CommandService(
         channelId: Long,
     ): Reply = guildAdminCommands.denyChannel(ctx, channelId)
 
-    /** /그림채널 — ComfyUI 웹 생성 이미지를 전송할 채널 설정(전문가 층). */
+    /** /그림채널 — 레거시 ComfyUI 자동 전송 설정. 현재는 비활성화 안내만 반환. */
     fun setForwardChannel(
         ctx: CommandContext,
         channelId: Long,

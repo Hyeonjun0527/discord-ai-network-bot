@@ -95,6 +95,10 @@
       const comfyCard = '<div class="rt-row rt-row--rec' + (crun ? ' ready' : '') + '">' +
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">ComfyUI <span style="font-weight:500;color:var(--c-violet)">' + t('localComfyUIImageType') + '</span></div>' +
         '<div class="rt-state">' + comfyState + '</div>' + comfyModelSel + '</div><div class="rt-actions">' + comfyAction + '</div></div>';
+      const comfyNsfwGuide = '<details class="rt-adv rt-adv--guide">' +
+        '<summary>' + t('localComfyNsfwGuideSummary') + '</summary>' +
+        '<div class="rt-adv-body"><div class="rt-adv-desc">' + t('localComfyNsfwGuideBody') + '</div></div>' +
+        '</details>';
       // 고급 · 직접 띄운 외부 ComfyUI 인스턴스에 연결(앱 관리 ComfyUI 대신). 비우면 앱 관리 ComfyUI 사용.
       const hfOn = !!s.hfConfigured;
       const comfyExternal = '<details class="rt-adv"' + ((s.comfyUrl || hfOn) ? ' open' : '') + '>' +
@@ -103,7 +107,7 @@
         '<div class="rt-cloud"><input id="localComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="' + t('localComfyExternalURLPlaceholder') + '" class="set-input"><button class="btn btn--sm btn--secondary" id="localComfySave">' + t('localComfyExternalConnectBtn') + '</button></div>' +
         '<div class="rt-cloud" style="margin-top:8px"><input id="localHfToken" type="password" placeholder="' + (hfOn ? t('localHFTokenPlaceholderSet') : t('localHFTokenPlaceholderNotSet')) + '" class="set-input"><button class="btn btn--sm btn--secondary" id="localHfSave">' + t('localHFTokenSaveBtn') + '</button></div>' +
         '</div></details>';
-      rtWrap.innerHTML = ollamaCard + comfyCard + cloudCard + comfyExternal;
+      rtWrap.innerHTML = ollamaCard + comfyCard + comfyNsfwGuide + cloudCard + comfyExternal;
 
       // (이미지 모델 전환은 ComfyUI 카드의 #comfyModelSelect 가 담당 — 아래 comfy 핸들러에서 처리. 레거시 SD 핫스왑 제거.)
       rtWrap.querySelectorAll('[data-go="models"]').forEach((b) => { b.onclick = () => { const n = document.querySelector('.nav-item[data-view="models"]'); if (n) n.click(); }; });

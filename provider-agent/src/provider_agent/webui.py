@@ -1557,15 +1557,14 @@ def build_app(session_key: str) -> web.Application:
         "autoConnect": "auto_connect",
         "autoUpdate": "auto_update",
         "enableImage": "enable_image",
-        "comfyBroadcast": "comfy_broadcast",
         "lang": "lang",  # 데스크톱 표시 언어(ko/en/ja) — 프론트가 라이브 적용, 서버는 저장만(재시작 후 window.__LANG 주입)
         "ollamaUrl": "ollama_url",
         "relayUrl": "relay_url",
         "allowRemoteOllama": "allow_remote_ollama",
     }
     # 저장만으로는 실행 중 에이전트에 반영되지 않아 재연결이 필요한 항목(시작 시점 config 만 읽는다).
-    # enable_image·comfy_broadcast 도 라이브 in-process 전파 경로가 없으므로(과거 함정) 재시작 대상 — '즉시반영' 흉내 금지.
-    _SETTINGS_NEEDS_RESTART = {"relayUrl", "ollamaUrl", "enableImage", "comfyBroadcast", "allowRemoteOllama"}
+    # enable_image 도 라이브 in-process 전파 경로가 없으므로(과거 함정) 재시작 대상 — '즉시반영' 흉내 금지.
+    _SETTINGS_NEEDS_RESTART = {"relayUrl", "ollamaUrl", "enableImage", "allowRemoteOllama"}
 
     async def settings_get(req: web.Request) -> web.Response:
         """분산돼 있던 설정(setup/onboard-apply/auto-update)을 한 번에 조회(camelCase).
@@ -1582,7 +1581,7 @@ def build_app(session_key: str) -> web.Application:
                 "autoConnect": bool(saved.get("auto_connect")),
                 "autoUpdate": bool(saved.get("auto_update", True)),
                 "enableImage": bool(saved.get("enable_image")),
-                "comfyBroadcast": bool(saved.get("comfy_broadcast")),
+                "comfyBroadcast": False,
                 "ollamaUrl": saved.get("ollama_url") or "http://localhost:11434",
                 "relayUrl": saved.get("relay_url") or _default_relay(),
                 "allowRemoteOllama": bool(saved.get("allow_remote_ollama")),

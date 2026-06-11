@@ -236,36 +236,6 @@ async def test_cancel_image_triggers_interrupt():
     assert "imgX" in agent._cancelled
 
 
-def test_is_local_comfy():
-    """전문가 포워드는 로컬 ComfyUI 에서만 — loopback/빈값=로컬, 외부 호스트=비로컬."""
-    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
-    for url in ("", "http://127.0.0.1:8188", "http://localhost:8188", "http://[::1]:8188"):
-        agent._comfy_url = url
-        assert agent._is_local_comfy() is True
-    for url in ("http://192.168.0.5:8188", "https://comfy.example.com", "http://10.0.0.2:8188"):
-        agent._comfy_url = url
-        assert agent._is_local_comfy() is False
-
-
-@pytest.mark.asyncio
-async def test_broadcast_image_chunks_to_authed_conns():
-    """전문가 층: 유저 직접 생성 이미지를 인증 연결에 청크 분할 ImageBroadcastFrame 으로 보낸다."""
-    from provider_agent.protocol import ImageBroadcastFrame
-
-    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
-    conn = FakeConn(guild_id=111)
-    async with agent._entries_lock:
-        agent._entries.append({"conn": conn, "guild_name": "g"})
-    b64 = "A" * 2_500_000  # IMAGE_CHUNK_CHARS 보다 커서 여러 청크
-    await agent._broadcast_image(b64)
-    frames = [f for f in conn.sent if isinstance(f, ImageBroadcastFrame)]
-    assert len(frames) >= 2  # 최소 1개 데이터 청크 + done
-    assert frames[-1].done is True and frames[-1].delta == ""
-    # 모든 청크가 같은 broadcast_id 로 묶임
-    assert len({f.broadcast_id for f in frames}) == 1
-    # 데이터 청크를 합치면 원본 base64
-    assert "".join(f.delta for f in frames) == b64
-
 
 @pytest.mark.asyncio
 async def test_handle_image_emits_progress_then_data():

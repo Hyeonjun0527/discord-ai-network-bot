@@ -59,6 +59,27 @@ class FakeOllama:
         yield ("done", self.usage)
 
 
+class SafeGemini:
+    def __init__(self, allowed: bool = True, reason: str = "허용됨", error: Exception | None = None) -> None:
+        self.allowed = allowed
+        self.reason = reason
+        self.error = error
+        self.reviewed: list[str] = []
+        self.translated: list[str] = []
+
+    async def review_image_prompt(self, text: str, system_prompt: str, model=None):
+        from provider_agent.gemini import ImagePromptReview
+
+        self.reviewed.append(text)
+        if self.error is not None:
+            raise self.error
+        return ImagePromptReview(allowed=self.allowed, category="safe" if self.allowed else "sexual", reason=self.reason)
+
+    async def translate(self, text: str, system_prompt: str, model=None) -> str:
+        self.translated.append(text)
+        return "masterpiece, best quality, safe, a cute cat"
+
+
 def test_hello_advertises_only_selected_models():
     """서버에 광고(provider_hello)되는 모델 = 사용자가 고른 목록 그대로. 서버는 이 목록만 라우팅한다."""
     agent = ProviderAgent(AgentConfig(token="T", models=("llama3.1:8b", "gemma2")), ollama=FakeOllama())  # type: ignore[arg-type]
@@ -115,6 +136,81 @@ async def test_translate_image_prompt_paths():
 
     a._gemini = BadGemini()  # type: ignore[assignment]
     assert await a._translate_image_prompt(req) == "귀여운 고양이"
+
+
+def test_image_capability_requires_gemini_safety_gate():
+    """이미지 provider 광고는 SD 준비 + Gemini 안전 심사 가능 상태에서만 켜진다."""
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=object())  # type: ignore[arg-type]
+    agent._image_ready = True
+    assert "image" not in agent._build_hello().capabilities
+
+    agent._gemini = SafeGemini()  # type: ignore[assignment]
+    agent._gemini_models = ["gemini-3.1-flash-lite"]
+    assert "image" in agent._build_hello().capabilities
+
+
+@pytest.mark.asyncio
+async def test_image_without_gemini_key_is_blocked_before_sd():
+    """직접 image frame 이 들어와도 Gemini 안전 심사 키가 없으면 fail-closed."""
+    class CountingSD:
+        calls = 0
+        checkpoint_calls = 0
+
+        async def txt2img(self, prompt: str, options=None, on_progress=None) -> str:
+            self.calls += 1
+            return "AAAA"
+
+        async def current_checkpoint(self):
+            self.checkpoint_calls += 1
+            return "sd_xl_base"
+
+        async def health(self) -> bool:
+            return True
+
+    sd = CountingSD()
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=sd)  # type: ignore[arg-type]
+    agent._image_ready = True
+    conn = FakeConn()
+    await agent._run_infer(conn, InferRequest(request_id="img-no-key", prompt="고양이", task="image"), model=None)
+
+    assert sd.calls == 0
+    assert isinstance(conn.sent[0], InferError)
+    assert "Gemini API 키" in conn.sent[0].message
+
+
+@pytest.mark.asyncio
+async def test_image_prompt_rejected_before_sd_call():
+    """Gemini 안전 심사가 차단하면 ComfyUI 호출 전에 멈춘다."""
+    class CountingSD:
+        calls = 0
+        checkpoint_calls = 0
+
+        async def txt2img(self, prompt: str, options=None, on_progress=None) -> str:
+            self.calls += 1
+            return "AAAA"
+
+        async def current_checkpoint(self):
+            self.checkpoint_calls += 1
+            return "sd_xl_base"
+
+        async def health(self) -> bool:
+            return True
+
+    sd = CountingSD()
+    gemini = SafeGemini(allowed=False, reason="성적 이미지 요청")
+    agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=sd)  # type: ignore[arg-type]
+    agent._image_ready = True
+    agent._gemini = gemini  # type: ignore[assignment]
+    agent._gemini_models = ["gemini-3.1-flash-lite"]
+    conn = FakeConn()
+    await agent._handle_image(conn, InferRequest(request_id="img-block", prompt="야한 사진", task="image"))  # type: ignore[arg-type]
+
+    assert gemini.reviewed == ["야한 사진"]
+    assert gemini.translated == []
+    assert sd.calls == 0
+    assert sd.checkpoint_calls == 0
+    assert isinstance(conn.sent[0], InferError)
+    assert "이미지 안전 정책상" in conn.sent[0].message
 
 
 @pytest.mark.asyncio
@@ -190,6 +286,8 @@ async def test_handle_image_emits_progress_then_data():
 
     agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=SlowSD())  # type: ignore[arg-type]
     agent._image_ready = True
+    agent._gemini = SafeGemini()  # type: ignore[assignment]
+    agent._gemini_models = ["gemini-3.1-flash-lite"]
     conn = FakeConn()
     await agent._handle_image(conn, InferRequest(request_id="img1", prompt="고양이", task="image"))  # type: ignore[arg-type]
     await asyncio.sleep(0.05)  # on_progress 가 create_task 한 진행률 청크 전송이 완료되도록 양보
@@ -377,7 +475,7 @@ def test_build_hello_per_guild():
 
 @pytest.mark.asyncio
 async def test_set_image_enabled_toggles_capability():
-    """이미지 라이브 토글: set_image_enabled 가 hello capabilities 의 'image' 를 켜고 끈다(재시작 불필요)."""
+    """이미지 capability 는 SD 준비와 Gemini 안전심사 게이트가 모두 있어야 켜진다."""
 
     class FakeSD:
         async def health(self) -> bool:
@@ -389,6 +487,9 @@ async def test_set_image_enabled_toggles_capability():
     agent = ProviderAgent(AgentConfig(token="T", models=("m",)), ollama=FakeOllama(), sd=FakeSD())  # type: ignore[arg-type]
     ready = await agent.set_image_enabled(True)
     assert ready is True
+    assert "image" not in agent._build_hello().capabilities
+    agent._gemini = SafeGemini()  # type: ignore[assignment]
+    agent._gemini_models = ["gemini-3.1-flash-lite"]
     assert "image" in agent._build_hello().capabilities
     await agent.set_image_enabled(False)
     assert "image" not in agent._build_hello().capabilities

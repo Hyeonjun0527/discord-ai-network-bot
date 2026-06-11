@@ -86,7 +86,7 @@ data class InferRequest(
     val options: Map<String, Any?> = emptyMap(),
     val stream: Boolean = false, // true 면 에이전트가 ChunkFrame 으로 점진 응답(차수 11 #142)
     val task: String = "text", // "text" | "image"(로컬 SD 이미지 생성, SD Phase 2)
-    // 이미지 정책(central 소유, 에이전트가 적용만). {"translatorSystemPrompt","forcedNegative"}.
+    // 이미지 정책(central 소유, 에이전트가 적용만). {"translatorSystemPrompt","safetySystemPrompt","forcedNegative"}.
     // null 이면 와이어에서 생략(하위호환) — 에이전트가 기본 정책 사용.
     @get:JsonInclude(JsonInclude.Include.NON_NULL)
     val imagePolicy: Map<String, Any?>? = null,

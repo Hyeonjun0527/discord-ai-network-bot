@@ -14,6 +14,7 @@ from . import sysinfo
 from .config import AgentConfig
 from .connection import AgentConnection
 from .constants import AGENT_VERSION, IMAGE_CHUNK_CHARS, MAX_RESPONSE_CHARS, ErrorCode
+from .gemini import IMAGE_PROMPT_REVIEW_SYSTEM_PROMPT, ImagePromptReview
 from .guild_policy import GuildPolicyManager
 from .ollama import OllamaClient, OllamaError
 from .protocol import (
@@ -48,7 +49,15 @@ DEFAULT_TRANSLATOR_SYSTEM_PROMPT = (
     "  Translate words like \"여자아이/소녀\" as \"young woman\", never \"girl/child\".\n"
     "- Keep it strictly safe-for-work. No suggestive or revealing content."
 )
-DEFAULT_FORCED_NEGATIVE = "worst quality, low quality, score_1, score_2, score_3, artist name, loli, child, nsfw"
+DEFAULT_FORCED_NEGATIVE = (
+    "worst quality, low quality, score_1, score_2, score_3, artist name, nsfw, nude, naked, explicit, "
+    "porn, sex, fetish, nipples, genitals, loli, shota, child, teen, underage, minor, schoolgirl, sexualized minor, "
+    "real person, celebrity, deepfake, non-consensual"
+)
+
+
+class ImagePromptRejected(Exception):
+    """이미지 생성 전 Gemini 안전 심사에서 fail-closed 로 차단된 요청."""
 
 
 def _merge_models(base: list[str], extra: list[str]) -> list[str]:
@@ -264,7 +273,7 @@ class ProviderAgent:
 
     def _image_for(self, guild_id: int | None) -> bool:
         """이 길드에 이미지(SD) capability 를 광고할지 — SD 준비됨(self._image_ready) + 정책상 비활성 아님."""
-        return self._policy_mgr.image_for(guild_id, self._image_ready)
+        return self._policy_mgr.image_for(guild_id, self._image_ready and self._gemini is not None)
 
     def _build_hello(self, guild_id: int | None = None) -> ProviderHelloFrame:
         capabilities = ["text"]
@@ -375,6 +384,15 @@ class ProviderAgent:
             if self._sd is None or not self._image_ready:
                 await self._safe_send(
                     conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message="이미지 생성을 지원하지 않는 프로바이더입니다")
+                )
+            elif self._gemini is None:
+                await self._safe_send(
+                    conn,
+                    InferError(
+                        req.request_id,
+                        code=ErrorCode.OLLAMA_ERROR,
+                        message="이미지 안전 심사용 Gemini API 키가 없어 생성을 차단했습니다",
+                    ),
                 )
             else:
                 await self._handle_image(conn, req)
@@ -517,6 +535,26 @@ class ProviderAgent:
             logger.warning("이미지 프롬프트 번역 실패 — 원문으로 진행: %s", exc)
             return req.prompt
 
+    async def _review_image_prompt(self, req: InferRequest) -> ImagePromptReview:
+        """이미지 생성 직전 Gemini Flash Lite 로 원문 프롬프트를 심사한다. 실패도 차단이다."""
+        if self._gemini is None:
+            raise ImagePromptRejected("이미지 안전 심사용 Gemini API 키가 없어 생성을 차단했습니다")
+        from .gemini import GeminiError
+
+        policy = req.image_policy or {}
+        system_prompt = str(policy.get("safetySystemPrompt") or IMAGE_PROMPT_REVIEW_SYSTEM_PROMPT)
+        model = self._gemini_models[0] if self._gemini_models else None
+        try:
+            review = await self._gemini.review_image_prompt(req.prompt, system_prompt=system_prompt, model=model)
+        except GeminiError as exc:
+            logger.warning("이미지 프롬프트 안전 심사 실패 — 생성 차단: %s", exc)
+            raise ImagePromptRejected("이미지 안전 심사를 완료하지 못해 생성을 차단했습니다") from exc
+        if not review.allowed:
+            reason = review.reason or "안전 정책상 허용되지 않는 이미지 요청입니다"
+            logger.info("이미지 프롬프트 차단(category=%s): %s", review.category, reason)
+            raise ImagePromptRejected(f"이미지 안전 정책상 생성할 수 없습니다: {reason}") from None
+        return review
+
     async def _generate_image_with_retry(self, conn: AgentConnection, req: InferRequest) -> str | None:
         """번역 → 템플릿 주입 → 실시간 진행률(ComfyUI /ws)과 함께 생성. 죽으면 1회 재기동·재시도.
         성공 시 base64 PNG, 실패 시 InferError 송신 후 None."""
@@ -524,7 +562,12 @@ class ProviderAgent:
 
         from .comfy import ComfyError
 
-        w, h = await self._resolution()  # 생성 직전(비동시) 1회
+        try:
+            await self._review_image_prompt(req)
+        except ImagePromptRejected as exc:
+            await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
+            return None
+        w, h = await self._resolution()  # 안전 심사 통과 후 생성 직전(비동시) 1회
         positive = await self._translate_image_prompt(req)
         policy = req.image_policy or {}
         negative = str(policy.get("forcedNegative") or DEFAULT_FORCED_NEGATIVE)

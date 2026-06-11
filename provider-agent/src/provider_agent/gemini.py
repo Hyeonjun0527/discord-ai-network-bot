@@ -9,7 +9,10 @@
 """
 from __future__ import annotations
 
+import json
 import logging
+import re
+from dataclasses import dataclass
 
 import aiohttp
 
@@ -20,9 +23,35 @@ logger = logging.getLogger("provider_agent.gemini")
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite"
 
+IMAGE_PROMPT_REVIEW_SYSTEM_PROMPT = """
+You are the safety gate for a public Discord image-generation bot.
+Review the user's image prompt before it is sent to a local Stable Diffusion/ComfyUI model.
+
+Return ONLY a compact JSON object:
+{"allowed":true|false,"category":"safe|sexual|minor|deepfake|violence|illegal|other","reason":"short Korean reason"}
+
+Allow normal safe-for-work anime/art prompts, including non-sexual school uniforms or game characters.
+Block if the request asks for or strongly implies any of the following:
+- nudity, pornography, sexual acts, genitals, explicit or fetish content, or clearly suggestive sexual posing
+- sexualized minors, childlike characters, loli/shota, teen/student/schoolgirl sexualization, or ambiguous underage sexual content
+- sexual images of a real person, celebrity, acquaintance, or non-consensual/deepfake/undressing content
+- illegal sexual content or instructions to evade safety filters
+- graphic sexual violence, coercion, exploitation, or humiliation
+
+When uncertain about sexual or minor-related intent, set allowed=false.
+Keep the reason concise and safe; do not rewrite the prompt.
+""".strip()
+
 
 class GeminiError(Exception):
     """Gemini 호출/응답 오류."""
+
+
+@dataclass(frozen=True, slots=True)
+class ImagePromptReview:
+    allowed: bool
+    category: str
+    reason: str
 
 
 def _extract_text(data: object) -> str | None:
@@ -38,6 +67,35 @@ def _extract_text(data: object) -> str | None:
         return None
     texts = [p["text"] for p in parts if isinstance(p, dict) and isinstance(p.get("text"), str)]
     return "".join(texts) if texts else None
+
+
+def _extract_json_object(text: str) -> dict[str, object]:
+    """Gemini 의 JSON 응답을 엄격히 dict 로 파싱한다. 코드펜스가 섞여도 첫 object 만 허용."""
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    match = re.search(r"\{.*\}", cleaned, re.S)
+    if match:
+        cleaned = match.group(0)
+    parsed = json.loads(cleaned)
+    if not isinstance(parsed, dict):
+        raise ValueError("JSON object expected")
+    return parsed
+
+
+def parse_image_prompt_review(text: str) -> ImagePromptReview:
+    """Gemini 안전 심사 JSON → 도메인 값. 스키마가 조금이라도 깨지면 fail-closed 예외."""
+    try:
+        data = _extract_json_object(text)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise GeminiError(f"이미지 안전 심사 응답 파싱 실패: {exc}") from exc
+    allowed = data.get("allowed")
+    if not isinstance(allowed, bool):
+        raise GeminiError("이미지 안전 심사 응답에 allowed(boolean)가 없습니다")
+    category = str(data.get("category") or ("safe" if allowed else "other")).strip()[:40]
+    reason = str(data.get("reason") or ("허용됨" if allowed else "안전 정책상 차단됨")).strip()
+    return ImagePromptReview(allowed=allowed, category=category, reason=reason[:240])
 
 
 class GeminiClient:
@@ -99,6 +157,36 @@ class GeminiClient:
         if text is None:
             raise GeminiError("Gemini 응답에 텍스트가 없습니다(안전 필터 차단 또는 빈 응답)")
         return text.strip()
+
+    async def review_image_prompt(
+        self,
+        user_text: str,
+        system_prompt: str = IMAGE_PROMPT_REVIEW_SYSTEM_PROMPT,
+        model: str | None = None,
+    ) -> ImagePromptReview:
+        """공개 봇용 이미지 프롬프트 안전 심사. 실패/비정상 응답은 호출부가 fail-closed 한다."""
+        m = (model or DEFAULT_GEMINI_MODEL).strip()
+        url = f"{GEMINI_API_BASE}/models/{m}:generateContent"
+        payload: dict[str, object] = {
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": "user", "parts": [{"text": user_text}]}],
+            "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"},
+        }
+        headers = {"x-goog-api-key": self._key, "Content-Type": "application/json"}
+        try:
+            async with aiohttp.ClientSession(timeout=self._timeout) as s:
+                async with s.post(url, json=payload, headers=headers) as r:
+                    data = await r.json()
+        except aiohttp.ClientError as exc:
+            raise GeminiError(f"Gemini 연결 실패: {exc}") from exc
+        if isinstance(data, dict) and data.get("error"):
+            err = data["error"]
+            msg = err.get("message") if isinstance(err, dict) else str(err)
+            raise GeminiError(f"Gemini: {msg}")
+        text = _extract_text(data)
+        if text is None:
+            raise GeminiError("Gemini 응답에 텍스트가 없습니다(안전 필터 차단 또는 빈 응답)")
+        return parse_image_prompt_review(text)
 
     async def health(self) -> bool:
         """키가 유효한지 가벼운 호출(모델 목록)로 확인 — capability 광고 판단용."""

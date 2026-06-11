@@ -53,8 +53,6 @@ class ProviderSession(
     private val requestTimeoutSeconds: Long = 120,
     private val maxQueue: Int = 16,
     private val onHello: (ProviderSession, ProviderHelloFrame) -> Unit = { _, _ -> },
-    // 전문가 층: 조립된 ComfyUI 웹 생성 이미지를 (guildId, png, 캡션) 으로 넘긴다. central 이 길드 지정 채널에 게시.
-    private val onImageBroadcast: (Long?, ByteArray, String) -> Unit = { _, _, _ -> },
 ) {
     private val log = LoggerFactory.getLogger(ProviderSession::class.java)
 
@@ -75,9 +73,6 @@ class ProviderSession(
 
     // 취소 버튼으로 취소된 이미지 요청 id. sendImage 루프가 다음 폴링에서 감지해 중단한다.
     private val cancelledRequests = ConcurrentHashMap.newKeySet<String>()
-
-    // 전문가 층: broadcastId → 조립 중인 base64 PNG(청크). done 프레임에서 디코드·포워드 후 제거.
-    private val imageBroadcasts = ConcurrentHashMap<String, StringBuilder>()
 
     val state: ProviderState get() = stateRef.get()
     val activeRequests: Int get() = inFlight.get()
@@ -359,44 +354,15 @@ class ProviderSession(
             is ChunkFrame -> lifecycle.offer(frame.requestId, frame)
             is ProviderHelloFrame -> applyHello(frame)
             is ProviderStatusFrame -> applyStatus(frame)
-            is ImageBroadcastFrame -> handleImageBroadcast(frame)
+            is ImageBroadcastFrame -> log.debug("이미지 브로드캐스트 프레임 폐기: provider={} guild={}", providerId, guildId)
             else -> { /* pong: markSeen 으로 충분 */ }
         }
-    }
-
-    /**
-     * 전문가 층: 에이전트가 청크 분할로 보낸 ComfyUI 웹 생성 이미지를 조립해 포워드 콜백에 넘긴다.
-     * 채널은 콜백(central) 이 길드 설정으로 결정한다 — 에이전트는 채널을 지정하지 않는다(보안).
-     */
-    private fun handleImageBroadcast(frame: ImageBroadcastFrame) {
-        val sb = imageBroadcasts.getOrPut(frame.broadcastId) { StringBuilder() }
-        if (frame.delta.isNotEmpty()) sb.append(frame.delta)
-        if (sb.length > MAX_BROADCAST_B64_CHARS) { // 폭주 방지
-            imageBroadcasts.remove(frame.broadcastId)
-            log.warn("이미지 브로드캐스트가 너무 큼 — 폐기: guild={}", guildId)
-            return
-        }
-        if (!frame.done) return
-        imageBroadcasts.remove(frame.broadcastId)
-        val png =
-            try {
-                java.util.Base64
-                    .getDecoder()
-                    .decode(sb.toString())
-            } catch (e: IllegalArgumentException) {
-                log.warn("이미지 브로드캐스트 base64 디코드 실패: {}", e.message)
-                return
-            }
-        runCatching { onImageBroadcast(guildId, png, frame.prompt) }
-            .onFailure { log.warn("이미지 포워드 실패: {}", it.message) }
     }
 
     /** 연결 종료: 대기 중 요청을 모두 실패 처리. */
     fun closeAndFailPending(reason: String) {
         transitionTo(ProviderState.OFFLINE)
         lifecycle.failAll(reason)
-        // done 프레임 못 받고 끊긴 미완성 브로드캐스트 버퍼 정리(메모리 누수 방지).
-        imageBroadcasts.clear()
     }
 
     companion object {
@@ -408,8 +374,5 @@ class ProviderSession(
 
         /** 조립된 이미지 base64 의 최대 문자 수(폭주/메모리 보호, 약 6MB 바이너리). */
         private const val MAX_IMAGE_B64_CHARS = 8_000_000
-
-        /** 전문가 층 브로드캐스트 이미지 base64 최대 문자 수(폭주 방지, 약 12MB 바이너리). */
-        private const val MAX_BROADCAST_B64_CHARS = 16_000_000
     }
 }

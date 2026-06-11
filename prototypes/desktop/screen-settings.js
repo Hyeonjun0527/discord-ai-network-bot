@@ -13,7 +13,6 @@
       { key: 'background', nameKey: 'toggleBackground', descKey: 'toggleBackgroundDesc' },
       { key: 'autoConnect', nameKey: 'toggleAutoConnect', descKey: 'toggleAutoConnectDesc' },
       { key: 'enableImage', nameKey: 'toggleEnableImage', descKey: 'toggleEnableImageDesc' },
-      { key: 'comfyBroadcast', nameKey: 'toggleComfyBroadcast', descKey: 'toggleComfyBroadcastDesc' },
     ];
     const sw = (key, on) => '<button class="switch ' + (on ? 'on' : '') + '" data-toggle="' + key + '" role="switch" aria-checked="' + !!on + '" aria-label="' + key + '"></button>';
     const row = (name, desc, right) => '<div class="set-row"><div class="sr-body"><div class="sr-name">' + name + '</div>' +

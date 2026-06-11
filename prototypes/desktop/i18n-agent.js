@@ -890,6 +890,16 @@ window.__I18N = {
     "en": "If you have an external ComfyUI instance, enter its address (leave blank to use app-managed ComfyUI). Add HF token to access gated/private models.",
     "ja": "外部ComfyUIインスタンスがある場合はアドレスを入力してください(空白でアプリ管理ComfyUI)。gated/プライベートモデルにアクセスするにはHFトークンを追加してください。"
   },
+  "localComfyNsfwGuideSummary": {
+    "ko": "NSFW는 로컬 ComfyUI에서만",
+    "en": "NSFW stays in local ComfyUI",
+    "ja": "NSFWはローカルComfyUIのみ"
+  },
+  "localComfyNsfwGuideBody": {
+    "ko": "NEXA/Discord의 /그림 경로는 SFW 안전심사를 거칩니다. 성인용 이미지를 만들려면 ComfyUI를 시작한 뒤 “웹UI 열기”로 http://127.0.0.1:8188 을 브라우저에서 열고, Workflow → Open에서 user/default/workflows/default.json(또는 본인 워크플로우)을 불러와 ComfyUI 안에서 직접 생성하세요. 결과는 내 PC output 폴더에만 저장되며 NEXA가 Discord나 다른 유저에게 전송하지 않습니다. 실존 인물 성적 합성, 비동의 이미지, 아동·청소년 표현은 로컬에서도 금지입니다.",
+    "en": "The NEXA/Discord /image path is SFW-reviewed. For adult-only local work, start ComfyUI, click “Open Web UI” to open http://127.0.0.1:8188 in your browser, then use Workflow → Open with user/default/workflows/default.json (or your own workflow) and generate inside ComfyUI. Outputs stay in your PC's output folder; NEXA does not send them to Discord or other users. Real-person sexual deepfakes, non-consensual images, and child/teen sexual content remain prohibited even locally.",
+    "ja": "NEXA/Discord の /image 経路は SFW 安全審査を通ります。成人向けのローカル作業は、ComfyUI を起動し「Web UIを開く」で http://127.0.0.1:8188 をブラウザで開き、Workflow → Open から user/default/workflows/default.json（または自分のワークフロー）を読み込んで ComfyUI 内で直接生成してください。出力は自分のPCの output フォルダにのみ保存され、NEXA は Discord や他ユーザーへ送信しません。実在人物の性的合成、非同意画像、児童・青少年表現はローカルでも禁止です。"
+  },
   "localComfyExternalURLPlaceholder": {
     "ko": "외부 ComfyUI 주소(http://127.0.0.1:8188)",
     "en": "External ComfyUI address (http://127.0.0.1:8188)",

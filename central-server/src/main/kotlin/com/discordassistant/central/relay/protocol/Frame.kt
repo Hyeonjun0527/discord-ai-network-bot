@@ -149,9 +149,8 @@ data class ProviderHelloFrame(
 ) : Frame()
 
 /**
- * 에이전트 → 릴레이: 유저가 ComfyUI 에서 직접 생성한 이미지를 길드 지정 채널로 포워드(전문가 층).
- * base64 PNG 는 1MB 프레임 한계를 넘으므로 delta 로 청크 분할(done=True 가 마지막). broadcastId 로 한 이미지를 묶는다.
- * 채널은 **에이전트가 정하지 않는다** — central 이 길드 설정(expertForwardChannelId)으로 결정한다(보안: 임의 채널 금지).
+ * Deprecated: 과거 ComfyUI 웹 생성물 자동 포워드 프레임.
+ * 현재 central 은 안전 정책상 이 프레임을 폐기한다. 하위호환 파싱을 위해 타입만 유지한다.
  */
 data class ImageBroadcastFrame(
     val broadcastId: String,

@@ -42,9 +42,9 @@ object CommandLoc {
                     "그림채널",
                     "画像チャンネル",
                     "канал-изображений",
-                    "Set the channel for ComfyUI web-generated images (admin)",
-                    "ComfyUIウェブで生成した画像を転送するチャンネルを設定します(管理者)",
-                    "Установить канал для изображений из ComfyUI (админ)",
+                    "Legacy ComfyUI auto-forward setting; currently disabled (admin)",
+                    "旧ComfyUI自動転送設定です。現在は無効です(管理者)",
+                    "Устаревшая настройка автоотправки ComfyUI; сейчас отключена (админ)",
                 ),
             "free-ask" to
                 L(

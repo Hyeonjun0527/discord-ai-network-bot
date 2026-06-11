@@ -94,7 +94,7 @@ object EmbedFactory {
                     "${MenuSymbols.ASK} 유저",
                     "${c("ask")} `<질문>` — 풀의 누군가의 PC AI 로 답변\n" +
                         "${c("models")} ${c("catalog")} — 사용 가능한 모델 수준·목록\n" +
-                        "${c("my-usage")} ${c("contributions")} — 내 사용량 · 기여 리더보드",
+                        "${c("my-usage")} ${c("nia")} ${c("contributions")} — 내 사용량 · 니아 호감도 · 기여 현황",
                     false,
                 ).addField(
                     "${MenuSymbols.PROVIDER} 프로바이더 (내 컴퓨터의 AI로 함께 도와주기)",

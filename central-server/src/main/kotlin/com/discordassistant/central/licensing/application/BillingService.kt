@@ -95,7 +95,11 @@ class BillingService(
     }
 
     private fun extractUserId(data: JsonNode): Long? =
-        data.path("custom_data").path("discordUserId").asTextOrNull()?.toLongOrNull()
+        data
+            .path("custom_data")
+            .path("discordUserId")
+            .asTextOrNull()
+            ?.toLongOrNull()
 
     private fun findByCustomer(data: JsonNode): Long? {
         val customerId = data.path("customer_id").asTextOrNull() ?: return null

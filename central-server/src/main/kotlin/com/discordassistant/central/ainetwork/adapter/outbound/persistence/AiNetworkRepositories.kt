@@ -7,39 +7,44 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.Instant
 
-/** ai-network Spring Data JPA 리포지토리(adapter/out). XP 원자 갱신(addXp/raiseLevel) 보존. */
+/** ai-network Spring Data JPA 리포지토리(adapter/out). 길드 구성 프로필과 유저 호감도 원자 갱신을 보존. */
 
 interface AiNetworkProfileRepository : JpaRepository<AiNetworkProfileEntity, Long> {
     fun findByGuildId(guildId: Long): AiNetworkProfileEntity?
+}
+
+interface UserAffinityRepository : JpaRepository<UserAffinityEntity, Long> {
+    fun findByUserId(userId: Long): UserAffinityEntity?
 
     /**
-     * 활동 경험치를 원자적으로 증가시킨다(read-modify-write 없음, 동시 적립 안전).
-     * @return 갱신된 행 수(프로필이 없으면 0).
+     * 호감도를 원자적으로 증가시킨다(read-modify-write 없음, 동시 적립 안전).
+     * @return 갱신된 행 수(행이 없으면 0).
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
-        "UPDATE AiNetworkProfileEntity p SET p.totalXp = p.totalXp + :amount, p.lastXpAt = :at " +
-            "WHERE p.guildId = :guildId",
+        "UPDATE UserAffinityEntity a SET a.score = a.score + :amount, " +
+            "a.lastInteractionAt = :at, a.updatedAt = :at WHERE a.userId = :userId",
     )
-    fun addXp(
-        @Param("guildId") guildId: Long,
+    fun addScore(
+        @Param("userId") userId: Long,
         @Param("amount") amount: Long,
         @Param("at") at: Instant,
     ): Int
 
     /**
-     * 활동 레벨을 조건부로 상향한다 — 현재 레벨이 newLevel 보다 낮을 때만 1행에 영향.
-     * 동시 요청 중 레벨을 실제로 올린 트랜잭션만 1행을 반환하므로 ai_level_up 이벤트 중복을 막는다.
+     * 단계를 조건부로 상향한다 — 현재 단계 ordinal 이 newOrdinal 보다 낮을 때만 1행에 영향.
+     * 동시 적립 중 단계를 실제로 올린 트랜잭션만 1행을 반환하므로 멱등하다.
      * @return 갱신된 행 수(올라간 경우 1, 아니면 0).
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
-        "UPDATE AiNetworkProfileEntity p SET p.aiLevel = :newLevel " +
-            "WHERE p.guildId = :guildId AND p.aiLevel < :newLevel",
+        "UPDATE UserAffinityEntity a SET a.stage = :stage, a.stageOrdinal = :newOrdinal " +
+            "WHERE a.userId = :userId AND a.stageOrdinal < :newOrdinal",
     )
-    fun raiseLevel(
-        @Param("guildId") guildId: Long,
-        @Param("newLevel") newLevel: Int,
+    fun raiseStage(
+        @Param("userId") userId: Long,
+        @Param("stage") stage: String,
+        @Param("newOrdinal") newOrdinal: Int,
     ): Int
 }
 

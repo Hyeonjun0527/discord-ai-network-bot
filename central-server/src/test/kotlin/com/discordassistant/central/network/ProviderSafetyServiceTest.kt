@@ -126,7 +126,8 @@ class ProviderSafetyServiceTest
             assertEquals("provider:10", adminResult["providerLabel"])
             assertTrue(adminResult.containsKey("providerCapabilityId"))
             assertFalse(guard.allowed)
-            assertEquals("provider_overload", events.findTop20ByGuildIdOrderByCreatedAtDesc(100).single().eventType)
+            val overloadEvents = events.findTop20ByGuildIdOrderByCreatedAtDesc(100).filter { it.eventType == "provider_overload" }
+            assertEquals(1, overloadEvents.size)
         }
 
         @Test

@@ -57,8 +57,10 @@ private val DM_COMMANDS =
         "models",
         "catalog",
         "my-usage",
+        "license",
         "contributions",
         "community-stats",
+        "nia",
         "privacy",
         "help",
         "welcome",
@@ -496,7 +498,7 @@ class DiscordBot(
             private const val FREE_CLOUD_MODEL = "gemini-3.1-flash-lite"
 
             /** 공개(비-ephemeral) 응답 명령. 나머지는 본인만 보이게(ephemeral). */
-            private val PUBLIC_COMMANDS = setOf("ask", "free-ask", "imagine", "contributions", "community-stats", "welcome", "level")
+            private val PUBLIC_COMMANDS = setOf("ask", "free-ask", "imagine", "contributions", "community-stats", "welcome", "nia")
             private const val CHANNEL_PROFILE_EDIT = "channel-profile:edit"
             private const val CHANNEL_PROFILE_AVATAR = "channel-profile:avatar"
             private const val CHANNEL_PROFILE_RESET = "channel-profile:reset"
@@ -921,9 +923,10 @@ class DiscordBot(
                 "models" -> commands.models(ctx)
                 "catalog" -> commands.catalog(ctx)
                 "my-usage" -> commands.myUsage(ctx)
+                "license" -> commands.license(ctx)
                 "contributions" -> commands.contributions(ctx)
                 "community-stats" -> commands.communityStats(ctx)
-                "level" -> commands.aiLevel(ctx)
+                "nia" -> commands.niaAffinity(ctx)
                 "fairness" -> commands.fairness(ctx)
                 "privacy" -> commands.privacy(ctx)
                 "help" -> commands.help(ctx, event.userLocale)

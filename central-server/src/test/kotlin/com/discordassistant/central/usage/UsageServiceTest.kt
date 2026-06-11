@@ -1,7 +1,7 @@
 package com.discordassistant.central.usage
 
-import com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkProfileRepository
-import com.discordassistant.central.ainetwork.application.AiLevelService
+import com.discordassistant.central.ainetwork.adapter.outbound.persistence.UserAffinityRepository
+import com.discordassistant.central.ainetwork.application.NiaAffinityService
 import com.discordassistant.central.requestlog.adapter.outbound.persistence.AiRequestRepository
 import com.discordassistant.central.requestlog.application.UsageService
 import com.discordassistant.central.routing.domain.model.AiRequestInput
@@ -16,13 +16,13 @@ import org.springframework.context.annotation.Import
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(UsageService::class, AiLevelService::class)
+@Import(UsageService::class, NiaAffinityService::class)
 class UsageServiceTest
     @Autowired
     constructor(
         val svc: UsageService,
         val requests: AiRequestRepository,
-        val networkProfiles: AiNetworkProfileRepository,
+        val affinities: UserAffinityRepository,
     ) {
         @Test
         fun `AiRequest 영속화`() {
@@ -54,13 +54,13 @@ class UsageServiceTest
         }
 
         @Test
-        fun `recordSuccess 는 길드 AI 경험치를 적립한다`() {
-            svc.recordSuccess(guildId = 300, userId = 5, providerId = 10, requestId = "x1")
-            val profile = networkProfiles.findByGuildId(300)
-            assertNotNull(profile)
-            assertEquals(10L, profile!!.totalXp) // XP_PER_ASK_SUCCESS = 10
+        fun `recordSuccess 는 요청자 니아 호감도를 적립한다`() {
+            val requesterId = 505_505L
+            svc.recordSuccess(guildId = 300, userId = requesterId, providerId = 10, requestId = "x1")
+            val affinity = affinities.findByUserId(requesterId)
+            assertNotNull(affinity)
+            assertEquals(1L, affinity!!.score)
         }
-        // 주의: XP 실패 격리(REQUIRES_NEW rollback-only 비전염)는 @DataJpaTest(커밋 없는 단일
-        // 테스트 트랜잭션 + 프록시 미경유)로는 재현 불가하다. 실제 커밋 경계/프록시 propagation
-        // 검증은 AiLevelXpIsolationTest(@SpringBootTest)에서 한다.
+        // 주의: 호감도 실패 격리(REQUIRES_NEW rollback-only 비전염)는 @DataJpaTest 의 테스트
+        // 트랜잭션만으로는 재현이 약하다. 실제 프록시 propagation 검증은 별도 SpringBootTest에서 한다.
     }

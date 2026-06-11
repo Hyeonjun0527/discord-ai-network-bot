@@ -43,7 +43,12 @@ class PaddleCheckoutAdapter(
                     .body(body)
                     .retrieve()
                     .body(JsonNode::class.java)
-            resp?.path("data")?.path("checkout")?.path("url")?.takeIf { !it.isMissingNode && !it.isNull }?.asText()
+            resp
+                ?.path("data")
+                ?.path("checkout")
+                ?.path("url")
+                ?.takeIf { !it.isMissingNode && !it.isNull }
+                ?.asText()
         } catch (ex: RestClientException) {
             log.error("Paddle checkout 생성 실패: user={}", userId, ex)
             null

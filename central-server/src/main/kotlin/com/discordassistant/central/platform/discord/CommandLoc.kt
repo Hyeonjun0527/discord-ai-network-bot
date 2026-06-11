@@ -60,18 +60,27 @@ object CommandLoc {
                 L("모델목록", "モデル一覧", "каталог", "List models offered in this server", "このサーバーで提供中のモデル一覧を見ます", "Список моделей этого сервера"),
             "my-usage" to
                 L("내사용량", "使用量", "моё-использование", "Check your usage today", "今日の自分の使用量を確認します", "Ваше использование за сегодня"),
+            "license" to
+                L(
+                    "라이선스",
+                    "ライセンス",
+                    "лицензия",
+                    "Check your Nexa license status",
+                    "自分のNexaライセンス状態を確認します",
+                    "Проверить статус лицензии Nexa",
+                ),
             "contributions" to
-                L("기여순위", "貢献ランキング", "вклад", "Community contribution leaderboard", "コミュニティ貢献ランキングを見ます", "Таблица вклада сообщества"),
+                L("기여현황", "貢献状況", "вклад", "Contribution status", "コミュニティ貢献状況を見ます", "Статус вклада сообщества"),
             "community-stats" to
                 L("커뮤니티통계", "統計", "статистика", "Anonymous community stats", "匿名のコミュニティ統計を見ます", "Анонимная статистика сообщества"),
-            "level" to
+            "nia" to
                 L(
-                    "레벨",
-                    "レベル",
-                    "уровень",
-                    "Show this server AI's activity level/XP",
-                    "このサーバーAIの活動レベル/経験値を見ます",
-                    "Уровень активности ИИ сервера",
+                    "니아",
+                    "ニア",
+                    "ния",
+                    "Show your affinity with Nia",
+                    "ニアとの親密度を見ます",
+                    "Показать близость с Нией",
                 ),
             "fairness" to L("공정성", "公正性", null, "Fairness report (admin)", "公平性レポートを見ます(管理者)", "Отчёт о справедливости (админ)"),
             "privacy" to

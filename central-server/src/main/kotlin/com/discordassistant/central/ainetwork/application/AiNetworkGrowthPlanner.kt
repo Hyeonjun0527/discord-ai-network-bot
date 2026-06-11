@@ -6,11 +6,11 @@ import com.discordassistant.central.shared.ModelBurden
 import org.springframework.stereotype.Component
 
 /**
- * 순수/읽기 협력자(god-class 분해): [AiNetworkGrowthService] 에서 레벨 마일스톤 평가·성장 플랜 산출·
+ * 순수/읽기 협력자(god-class 분해): [AiNetworkGrowthService] 에서 구성 마일스톤 평가·성장 플랜 산출·
  * 모델 능력 정규화·entity→DTO 매핑을 추출한다. **저장소·@Transactional 이 없는 순수 함수만** 모았다 —
- * write/원장 기록/XP 라이프사이클은 파사드([AiNetworkGrowthService])에 그대로 잔존한다.
+ * write/원장 기록 라이프사이클은 파사드([AiNetworkGrowthService])에 그대로 잔존한다.
  *
- * 레벨 공식·임계값·사용자 노출 문구·메타데이터 포맷은 추출 전과 1바이트도 다르지 않다(동작보존).
+ * 구성 마일스톤 공식·임계값·사용자 노출 문구·메타데이터 포맷은 추출 전과 동일하게 유지한다.
  */
 @Component
 class AiNetworkGrowthPlanner {

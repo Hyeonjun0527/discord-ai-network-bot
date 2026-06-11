@@ -22,6 +22,7 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'prototypes', 'd
 const PASSTHROUGH = [
   ['/api/status', () => api.getStatus()],
   ['/api/settings', () => api.getSettings()],
+  ['/api/license', () => api.getLicense()],
   ['/api/update-info', () => api.getUpdateInfo()],
   ['/api/update-progress', () => api.getUpdateProgress()],
   ['/api/logs', () => api.getLogs()],

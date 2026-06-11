@@ -67,8 +67,7 @@ data class License(
     val banned: Boolean,
 ) {
     /** 체험 종료 시각 = 시작 + 달력 [trialMonths]개월(UTC 기준, 말일 보정은 java.time 규칙). */
-    fun trialEndsAt(trialMonths: Long): Instant =
-        trialStartedAt.atZone(ZoneOffset.UTC).plusMonths(trialMonths).toInstant()
+    fun trialEndsAt(trialMonths: Long): Instant = trialStartedAt.atZone(ZoneOffset.UTC).plusMonths(trialMonths).toInstant()
 
     /**
      * 우선순위대로 entitlement 를 판정한다. 시간 의존(TRIAL↔EXPIRED)은 [now] 로 계산하므로

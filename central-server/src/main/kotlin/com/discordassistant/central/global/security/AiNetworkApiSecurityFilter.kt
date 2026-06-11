@@ -130,6 +130,7 @@ class AiNetworkApiSecurityFilter(
                 "/api/ai-network/guild-prompt-set",
                 "/api/ai-network/growth",
                 "/api/ai-network/knowledge",
+                "/api/ai-network/license",
                 "/api/ai-network/multi-response",
                 "/api/ai-network/quality",
                 "/api/ai-network/safety",

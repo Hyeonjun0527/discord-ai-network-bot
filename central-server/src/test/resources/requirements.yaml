@@ -91,20 +91,20 @@ requirements:
     tests:
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/relay/ProviderSessionTest.kt
-  - id: REQ-XP-001
-    title: 질문 답변이 성공하면 서버(길드) AI 경험치를 획득한다
+  - id: REQ-AFF-001
+    title: 질문 답변이 성공하면 요청자와 니아의 호감도가 증가한다
     priority: P1
     tests:
       - type: unit
-        path: src/test/kotlin/com/discordassistant/central/network/AiLevelServiceTest.kt
+        path: src/test/kotlin/com/discordassistant/central/network/NiaAffinityServiceTest.kt
       - type: unit
         path: src/test/kotlin/com/discordassistant/central/usage/UsageServiceTest.kt
-  - id: REQ-XP-002
-    title: 경험치 임계 통과 시 레벨업 이벤트(ai_level_up)를 1건 기록한다
+  - id: REQ-AFF-002
+    title: 호감도 임계 통과 시 단계 상승 이벤트를 1건 기록한다
     priority: P1
     tests:
       - type: unit
-        path: src/test/kotlin/com/discordassistant/central/network/AiLevelServiceTest.kt
+        path: src/test/kotlin/com/discordassistant/central/network/NiaAffinityServiceTest.kt
   - id: REQ-ADMIN-001
     title: 어드민 대시보드는 채널별 요청수·고유유저수·마지막사용시각을 집계로 보여준다(프롬프트 본문 미노출)
     priority: P1

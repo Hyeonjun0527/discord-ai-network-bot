@@ -62,7 +62,6 @@ class AiNetworkDashboardQueryService(
     private val publishedPresets: PublishedPresetRepository,
     private val presetImports: PresetImportRepository,
     private val foundation: AiNetworkFoundationService,
-    private val aiLevel: AiLevelService,
     private val growth: AiNetworkGrowthService,
     private val qualityFeedback: AiQualityFeedbackService,
     private val providerSafety: ProviderSafetyService,
@@ -170,15 +169,11 @@ class AiNetworkDashboardQueryService(
             } else {
                 foundation.currentOverview(guildId) ?: foundation.emptyOverviewProjection(guildId)
             }
-        val level = aiLevel.levelView(guildId)
         return mapper.overviewResponse(
             guildId = profile.guildId,
             displayName = profile.displayName,
             tagline = profile.tagline,
             overview = overview,
-            aiLevel = level.aiLevel,
-            totalXp = level.totalXp,
-            xpToNext = level.xpToNext,
             freshnessStatus = foundation.overviewFreshnessStatus(overview),
             degradedReason = foundation.overviewDegradedReason(overview),
         )

@@ -2,6 +2,7 @@ package com.discordassistant.central.platform.discord.command
 
 import com.discordassistant.central.global.i18n.Messages
 import com.discordassistant.central.guild.application.PolicyService
+import com.discordassistant.central.licensing.application.LicenseService
 import com.discordassistant.central.platform.discord.CommandContext
 import com.discordassistant.central.platform.discord.CommandLoc
 import com.discordassistant.central.platform.discord.Reply
@@ -19,6 +20,7 @@ class InfoCommandHandler(
     private val policy: PolicyService,
     private val usage: UsageService,
     private val registry: ConnectionRegistry,
+    private val licenses: LicenseService,
     private val guards: SharedCommandGuards,
 ) {
     fun models(ctx: CommandContext): Reply {
@@ -44,12 +46,17 @@ class InfoCommandHandler(
     }
 
     fun contributions(ctx: CommandContext): Reply {
-        val ranked = usage.providerContributions(ctx.guildId)
-        if (ranked.isEmpty()) return Reply("아직 누적 기여가 없습니다.")
-        val lines = ranked.mapIndexed { i, (pid, c) -> "${i + 1}. <@$pid> — ${c}건" }.joinToString("\n")
+        val contributions = usage.providerContributions(ctx.guildId)
+        if (contributions.isEmpty()) return Reply("아직 누적 기여가 없습니다.")
+        val providerCount = contributions.size
+        val totalCount = contributions.sumOf { it.second }
+        val ownCount = contributions.firstOrNull { it.first == ctx.userId }?.second ?: 0L
         return Reply(
-            "🏆 커뮤니티 기여 리더보드\n$lines\n\n" +
-                "_한 번이라도 기여한 사람은 오프라인이어도 계속 기록됩니다. 기여는 비금전 인정입니다. 고마워요!_",
+            "🤝 **커뮤니티 기여 현황**\n" +
+                "· 이 서버 누적 처리: **${totalCount}건**\n" +
+                "· 기여한 멤버: **${providerCount}명**\n" +
+                "· 내 기여: **${ownCount}건**\n\n" +
+                "_순위 비교 없이 기여 여부와 누적만 기록합니다. 기여는 비금전 인정입니다. 고마워요!_",
             ephemeral = false,
         )
     }
@@ -74,6 +81,27 @@ class InfoCommandHandler(
         val used = usage.userDailyCount(ctx.guildId, ctx.userId)
         val limit = policy.dailyLimit(ctx.guildId, ctx.roleIds)
         return Reply("오늘 사용량: $used / $limit")
+    }
+
+    fun license(ctx: CommandContext): Reply {
+        val e = licenses.view(ctx.userId)
+        val status =
+            when (e.status) {
+                "TRIAL" -> "체험 중"
+                "EXPIRED" -> "체험 만료"
+                "LICENSED" -> "구매 완료"
+                "EVENT_FREE" -> "이벤트 무료"
+                "REVOKED" -> "정지됨"
+                else -> "무료"
+            }
+        val trialLine = e.trialEndsAt?.let { "\n· 체험 종료: `$it`" }.orEmpty()
+        val access = if (e.hasPaidAccess) "사용 가능" else "잠김"
+        return Reply(
+            "💳 **Nexa 라이선스**\n" +
+                "· 상태: **$status**\n" +
+                "· 프리미엄 기능: **$access**$trialLine\n\n" +
+                "구매·이벤트 무료 신청은 데스크톱 앱 **설정 → 라이선스**에서 진행하세요.",
+        )
     }
 
     fun privacy(ctx: CommandContext): Reply = Reply(Messages.get(Messages.Key.PRIVACY_NOTICE, guards.lang(ctx)))
@@ -110,7 +138,8 @@ class InfoCommandHandler(
         sb.append("· ${c("free-ask")} `<질문>` — 관리자가 제공하는 무료 클라우드 AI(Gemini)로 답변\n")
         sb.append("· ${c("models")} ${c("catalog")} — 사용 가능한 모델 수준·목록\n")
         sb.append("· ${c("my-usage")} ${c("privacy")} — 내 사용량 / 프라이버시 고지\n")
-        sb.append("· ${c("contributions")} — 기여 리더보드(비금전 인정)\n\n")
+        sb.append("· ${c("license")} — 내 Nexa 라이선스 상태\n")
+        sb.append("· ${c("nia")} ${c("contributions")} — 니아 호감도 / 기여 현황(비금전 인정)\n\n")
         sb.append("__프로바이더(내 컴퓨터의 AI로 함께 도와주기)__\n")
         sb.append("· ${c("provider-join")} — 참여 신청(승인 후 토큰→에이전트 실행)\n")
         sb.append("· ${c("provider-pause")} ${c("provider-resume")} ${c("provider-leave")} — 가용성 제어\n")

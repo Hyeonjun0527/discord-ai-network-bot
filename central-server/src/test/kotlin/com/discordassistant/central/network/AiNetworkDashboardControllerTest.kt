@@ -9,7 +9,6 @@ import com.discordassistant.central.ainetwork.adapter.outbound.persistence.Chann
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.NetworkOverviewProjectionEntity
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.NetworkOverviewProjectionRepository
 import com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileRepository
-import com.discordassistant.central.ainetwork.application.AiLevelService
 import com.discordassistant.central.ainetwork.application.AiNetworkDashboardQueryService
 import com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate
 import com.discordassistant.central.ainetwork.application.AiNetworkFoundationService
@@ -115,7 +114,6 @@ class AiNetworkDashboardControllerTest
             )
 
         private val providerSafety = ProviderSafetyService(providerCapabilities, events, foundation, fixedClock)
-        private val aiLevel = AiLevelService(networkProfiles, events, fixedClock)
         private val growth = AiNetworkGrowthService(foundation, events, providerCapabilities, fixedClock)
         private val multiResponse =
             MultiResponseService(
@@ -142,7 +140,6 @@ class AiNetworkDashboardControllerTest
                 publishedPresets = publishedPresets,
                 presetImports = presetImports,
                 foundation = foundation,
-                aiLevel = aiLevel,
                 growth = growth,
                 qualityFeedback = qualityFeedback,
                 providerSafety = providerSafety,

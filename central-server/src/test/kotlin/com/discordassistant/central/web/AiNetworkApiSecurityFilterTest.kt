@@ -89,6 +89,10 @@ class AiNetworkApiSecurityFilterTest
             mvc
                 .perform(get("/api/ai-network/100/provider-history"))
                 .andExpect(status().isForbidden)
+
+            mvc
+                .perform(get("/api/ai-network/license/funnel"))
+                .andExpect(status().isForbidden)
         }
 
         @Test
@@ -108,6 +112,12 @@ class AiNetworkApiSecurityFilterTest
             mvc
                 .perform(
                     get("/api/ai-network/100/provider-history")
+                        .header(AiNetworkApiSecurityFilter.ADMIN_TOKEN_HEADER, "test-token"),
+                ).andExpect(status().isOk)
+
+            mvc
+                .perform(
+                    get("/api/ai-network/license/funnel")
                         .header(AiNetworkApiSecurityFilter.ADMIN_TOKEN_HEADER, "test-token"),
                 ).andExpect(status().isOk)
         }

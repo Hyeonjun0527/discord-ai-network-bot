@@ -30,6 +30,11 @@
       "ollamaUrl",
       "relayUrl"
     ],
+    "/api/license": [
+      "entitlement",
+      "event",
+      "ok"
+    ],
     "/api/update-info": [
       "current",
       "latest",

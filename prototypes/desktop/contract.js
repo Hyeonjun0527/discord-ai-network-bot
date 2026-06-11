@@ -85,6 +85,9 @@ export const ENDPOINTS = Object.freeze({
   // 통합 설정 — GET → 저장 설정+상태(camelCase, {autostart,background,autoConnect,autoUpdate,enableImage,ollamaUrl,relayUrl,allowRemoteOllama,hasToken}).
   //   POST {key:value}(부분 변경, 1개 이상) → {ok, needsRestart}. setup/onboard-apply/auto-update 를 단일화.
   settings: '/api/settings',
+  license: '/api/license',                    // GET → {ok, entitlement, event, error?}
+  licenseCheckout: '/api/license/checkout',   // POST → {ok, url}
+  licenseEventClaim: '/api/license/event-claim', // POST → {ok, outcome, entitlement}
   connectOpen: '/api/connect-open',
   // ComfyUI — 이미지 엔진(앱이 설치/실행/정지/웹UI 직접 관리). 유저별 로컬 인스턴스. SD.Next 는 제거됨.
   comfyStatus: '/api/comfy/status',          // GET → {installed, running, busy}

@@ -4,10 +4,11 @@ test('설정 화면: 그룹·토글·버전 표시', async ({ page }) => {
   await page.goto('/index.html');
   await page.click('.nav-item[data-view="settings"]');
 
-  // 그룹 4개
+  // 설정 그룹
   await expect(page.locator('#settingsBody')).toContainText('실행 동작');
   await expect(page.locator('#settingsBody')).toContainText('업데이트');
   await expect(page.locator('#settingsBody')).toContainText('연결');
+  await expect(page.locator('#settingsBody')).toContainText('라이선스');
   await expect(page.locator('#settingsBody')).toContainText('계정');
 
   // 실행 동작 토글들
@@ -23,6 +24,8 @@ test('설정 화면: 그룹·토글·버전 표시', async ({ page }) => {
   await expect(page.locator('#settingsBody')).toContainText('최신 상태');
   await expect(page.locator('#setRelay')).toHaveValue('wss://discord-ai.yeon.world/agent'); // 중앙 서버 주소 편집칸
   await expect(page.locator('#setOllama')).toBeVisible(); // Ollama 주소 편집칸(다른 포트/호스트 가능)
+  await expect(page.locator('#settingsBody')).toContainText('Nexa 라이선스 · 체험 중');
+  await expect(page.locator('#setLicenseRefresh')).toBeVisible();
   await expect(page.locator('#setLogout')).toBeVisible();
 });
 

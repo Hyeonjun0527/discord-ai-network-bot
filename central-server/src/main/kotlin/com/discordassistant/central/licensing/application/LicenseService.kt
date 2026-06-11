@@ -13,7 +13,6 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
-import java.time.Instant
 
 /**
  * 라이선스 판정·전이 서비스(ADR 0005). 신원=Discord userId.

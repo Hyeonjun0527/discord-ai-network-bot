@@ -5,7 +5,7 @@
 
     const view = document.querySelector('.view[data-view="settings"]');
     const body = document.getElementById('settingsBody');
-    let _s = null, _upd = null;
+    let _s = null, _upd = null, _lic = null;
 
     // 토글 키(서버 설정 키 = data-toggle, 불변) → i18n 라벨 키.
     const TOGGLES = [
@@ -28,6 +28,32 @@
       return '<select id="langSel" class="set-input" aria-label="' + t('setLangLabel') + '">' + opts + '</select>';
     }
 
+    function licenseStatusLabel(status) {
+      return t('licenseStatus' + (status || 'FREE'), status || '-');
+    }
+
+    function licenseDescription(lic) {
+      if (!lic) return t('licenseChecking');
+      if (!lic.ok) return (lic.error || t('licenseConnectRequiredDesc'));
+      const ent = lic.entitlement || {};
+      const event = lic.event || {};
+      const access = ent.hasPaidAccess ? t('licenseAccessOn') : t('licenseAccessOff');
+      const trial = ent.trialEndsAt ? ' · ' + t('licenseTrialEndsAt').replace('{date}', ent.trialEndsAt.slice(0, 10)) : '';
+      const eventLine = event.open ? t('licenseEventOpen').replace('{count}', event.granted ?? 0) : t('licenseEventClosed');
+      return access + trial + ' · ' + eventLine;
+    }
+
+    function licenseButtons(lic) {
+      if (!lic) return '<button class="btn btn--sm btn--secondary" disabled>' + t('licenseCheckingShort') + '</button>';
+      if (!lic.ok) return '<button class="btn btn--sm btn--secondary" id="setLicenseRefresh">' + t('licenseRefresh') + '</button>';
+      const ent = lic.entitlement || {};
+      const event = lic.event || {};
+      const buy = ent.hasPaidAccess ? '' : '<button class="btn btn--sm btn--primary" id="setLicenseBuy">' + t('licenseBuy') + '</button>';
+      const claim = (!ent.hasPaidAccess && event.open) ? '<button class="btn btn--sm btn--secondary" id="setLicenseClaim">' + t('licenseClaim') + '</button>' : '';
+      const refresh = '<button class="btn btn--sm btn--secondary" id="setLicenseRefresh">' + t('licenseRefresh') + '</button>';
+      return [buy, claim, refresh].filter(Boolean).join('');
+    }
+
     function render() {
       const s = _s || {}, u = _upd; // u=null 이면 아직 업데이트 확인 전(네트워크 진행 중)
       const exec = TOGGLES.map((g) => row(t(g.nameKey), t(g.descKey), sw(g.key, s[g.key]))).join('');
@@ -48,6 +74,8 @@
       const acct = row(s.hasToken ? t('setConnected') : t('setNotConnected'),
         s.hasToken ? t('setConnectedDesc') : t('setNotConnectedDesc'),
         s.hasToken ? '<button class="btn btn--sm btn--secondary" id="setLogout">' + t('setLogout') + '</button>' : '');
+      const licTitle = _lic && _lic.ok ? t('licenseTitle') + ' · ' + licenseStatusLabel(_lic.entitlement && _lic.entitlement.status) : t('licenseTitle');
+      const licGroup = row(licTitle, licenseDescription(_lic), licenseButtons(_lic));
       // 클라우드 AI(Gemini)·이미지 엔진(ComfyUI)은 '엔진' 관심사 → 로컬 실행 탭이 소유한다(설정엔 두지 않음).
       // 설정은 앱 동작만: 언어·실행 동작·업데이트·연결·계정. AI 백엔드 설정은 여기 없음(IA: 엔진→모델→서버).
       body.innerHTML =
@@ -55,6 +83,7 @@
         group('setGroupExec', exec) +
         group('setGroupUpdate', updGroup) +
         group('setGroupConn', connGroup) +
+        group('setGroupLicense', licGroup) +
         group('setGroupAccount', acct);
       bind();
     }
@@ -112,6 +141,28 @@
         if (!confirm(t('setLogoutConfirm'))) return;
         await api.logout(); toast(t('setLogoutDoneToast'), { type: 'info' }); load();
       };
+      const licenseRefresh = document.getElementById('setLicenseRefresh');
+      if (licenseRefresh) licenseRefresh.onclick = async () => { await loadLicense(); toast(t('licenseReloadedToast'), { type: 'info' }); };
+      const licenseBuy = document.getElementById('setLicenseBuy');
+      if (licenseBuy) licenseBuy.onclick = async () => {
+        licenseBuy.disabled = true;
+        try {
+          const r = await api.checkoutLicense();
+          if (r && r.ok && r.url) { window.open(r.url, '_blank', 'noopener'); toast(t('licenseCheckoutOpenedToast'), { type: 'ok' }); }
+          else toast((r && r.error) || t('licenseCheckoutFailedToast'), { type: 'error' });
+        } catch (_e) { toast(t('licenseCheckoutFailedToast'), { type: 'error' }); }
+        finally { licenseBuy.disabled = false; }
+      };
+      const licenseClaim = document.getElementById('setLicenseClaim');
+      if (licenseClaim) licenseClaim.onclick = async () => {
+        licenseClaim.disabled = true;
+        try {
+          const r = await api.claimLicenseEvent();
+          if (r && r.ok) { toast(t('licenseClaimDoneToast').replace('{outcome}', r.outcome || 'OK'), { type: 'ok' }); await loadLicense(); }
+          else toast((r && r.error) || t('licenseClaimFailedToast'), { type: 'error' });
+        } catch (_e) { toast(t('licenseClaimFailedToast'), { type: 'error' }); }
+        finally { licenseClaim.disabled = false; }
+      };
       // 중앙 서버·Ollama 주소 저장(고급) — 다음 연결에 반영(needsRestart).
       const saveConn = (inputId, key, label) => {
         const b = document.getElementById(inputId + 'Save');
@@ -134,9 +185,17 @@
     // 언어가 바뀌면 설정 화면을 다시 그린다(JS 렌더 문구 갱신). 네비 등 정적 라벨은 i18n.applyStatic 이 처리.
     onLangChange(() => { if (_s) render(); });
 
+    async function loadLicense() {
+      try { _lic = await api.getLicense(); }
+      catch (_e) { _lic = { ok: false, error: t('licenseLoadFailed') }; }
+      if (isActive()) render();
+    }
+
     async function load() {
       _s = await api.getSettings();  // 로컬·빠름 → 즉시 렌더(설정 본문이 네트워크에 안 막히게)
+      _lic = null;
       render();
+      loadLicense();
       // 업데이트 확인은 GitHub 새 버전 조회(네트워크) — 느리거나 rate-limit 이면 본문 전체가 안 뜨던 문제(실증).
       // 본문은 위에서 이미 그렸고, 업데이트 줄만 도착 시 백그라운드로 채운다(_upd 는 캐시돼 재오픈 시 즉시 표시).
       api.getUpdateInfo().then((u) => { _upd = u; if (isActive()) render(); }).catch(() => {});

@@ -1642,6 +1642,66 @@ def build_app(session_key: str) -> web.Application:
                     logging.getLogger("provider_agent").warning("autoConnect 즉시 동기화 실패: %s", exc)
         return web.json_response({"ok": True, "needsRestart": needs_restart, "serviceError": service_error})
 
+    def _durable_token() -> str:
+        from .config_file import load_connections
+
+        return next((c.get("token") or "" for c in load_connections() if (c.get("token") or "").startswith("dv1.")), "")
+
+    def _license_base() -> str:
+        from .agent import _agent_sync_base
+
+        saved = load_config()
+        return _agent_sync_base(saved.get("relay_url") or _default_relay())
+
+    async def license_status(req: web.Request) -> web.Response:
+        """내 라이선스 entitlement + 이벤트 현황. durable 토큰 신원 인증은 central 이 수행한다."""
+        _auth(req)
+        durable = _durable_token()
+        if not durable:
+            return web.json_response({"ok": False, "error": "디스코드 연동이 필요해요.", "entitlement": None, "event": None})
+        from .agent import _get_license_event_status, _post_license_me
+
+        base = _license_base()
+        try:
+            entitlement, event = await asyncio.gather(
+                asyncio.to_thread(_post_license_me, base, durable),
+                asyncio.to_thread(_get_license_event_status, base),
+            )
+            return web.json_response({"ok": True, "entitlement": entitlement, "event": event})
+        except Exception as exc:  # noqa: BLE001 - 중앙 서버/결제 설정 오류를 화면에 노출
+            logger.warning("라이선스 조회 실패: %s", exc)
+            return web.json_response({"ok": False, "error": str(exc), "entitlement": None, "event": None})
+
+    async def license_checkout(req: web.Request) -> web.Response:
+        """앱 내 구매 checkout URL 생성. 실제 결제/권한 확정은 central/Paddle webhook 소유."""
+        _auth(req)
+        durable = _durable_token()
+        if not durable:
+            return web.json_response({"ok": False, "error": "디스코드 연동이 필요해요."})
+        from .agent import _post_license_checkout
+
+        try:
+            result = await asyncio.to_thread(_post_license_checkout, _license_base(), durable)
+            return web.json_response({"ok": True, **result})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("라이선스 checkout 생성 실패: %s", exc)
+            return web.json_response({"ok": False, "error": str(exc)})
+
+    async def license_event_claim(req: web.Request) -> web.Response:
+        """런칭 이벤트 평생 무료 신청. 자격 미달도 central outcome 으로 그대로 보여준다."""
+        _auth(req)
+        durable = _durable_token()
+        if not durable:
+            return web.json_response({"ok": False, "error": "디스코드 연동이 필요해요."})
+        from .agent import _post_license_event_claim
+
+        try:
+            result = await asyncio.to_thread(_post_license_event_claim, _license_base(), durable)
+            return web.json_response({"ok": True, **result})
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("이벤트 무료 신청 실패: %s", exc)
+            return web.json_response({"ok": False, "error": str(exc)})
+
     async def open_folder(req: web.Request) -> web.Response:
         """로컬 폴더를 OS 파일 탐색기로 연다(데스크톱 앱 ⋯ '출력/모델 폴더 열기'). 로컬 전용 — 같은 PC.
 
@@ -1697,6 +1757,9 @@ def build_app(session_key: str) -> web.Application:
     # 통합 설정 — 분산된 setup/onboard-apply/auto-update 를 단일 GET/POST 로 통합(데스크톱 앱 설정 화면).
     app.router.add_get("/api/settings", settings_get)
     app.router.add_post("/api/settings", settings_post)
+    app.router.add_get("/api/license", license_status)
+    app.router.add_post("/api/license/checkout", license_checkout)
+    app.router.add_post("/api/license/event-claim", license_event_claim)
     app.router.add_post("/api/open-folder", open_folder)
     app.router.add_post("/api/image", image_toggle)
     app.router.add_post("/api/cloud", cloud_settings)

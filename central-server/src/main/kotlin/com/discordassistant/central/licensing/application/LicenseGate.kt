@@ -11,12 +11,16 @@ import org.springframework.stereotype.Component
 @Component
 class LicenseGate(
     private val licenses: LicenseService,
-) {
+) : PremiumFeatureGate {
     /** 유료 접근 가능하면 null, 아니면 사용자에게 보여줄 거부 사유. */
-    fun denyReason(userId: Long): String? =
+    override fun denyReason(userId: Long): String? =
         if (licenses.hasPaidAccess(userId)) {
             null
         } else {
             "이 기능은 라이선스가 필요해요(무료 체험이 끝났어요). 앱에서 구매하거나 이벤트로 평생 무료를 받을 수 있어요."
         }
+}
+
+fun interface PremiumFeatureGate {
+    fun denyReason(userId: Long): String?
 }

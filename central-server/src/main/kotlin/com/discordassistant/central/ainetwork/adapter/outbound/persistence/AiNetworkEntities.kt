@@ -5,6 +5,7 @@ import com.discordassistant.central.ainetwork.domain.model.OverloadRisk
 import com.discordassistant.central.ainetwork.domain.model.ProviderAvailability
 import com.discordassistant.central.shared.ModelBurden
 import com.discordassistant.central.shared.ModelQualityTier
+import jakarta.persistence.Column
 import jakarta.persistence.Convert
 import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
@@ -13,7 +14,7 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.time.Instant
 
-/** ai-network 도메인 JPA(adapter/out): 네트워크 프로필/능력/개요/피드백/이벤트/채널라우팅정책. */
+/** ai-network 도메인 JPA(adapter/out): 네트워크 프로필/능력/개요/피드백/이벤트/채널라우팅정책/유저 호감도. */
 
 @Entity
 @Table(name = "ai_network_profile")
@@ -25,10 +26,23 @@ class AiNetworkProfileEntity(
     var description: String? = null,
     var defaultSafetyNotice: String? = null,
     var networkLevel: Int = 1,
-    // 활동 경험치/레벨(V34, Phase 1). networkLevel(milestone 기반 "구성 단계")과 별개 — 사용량 기반 단조 증가.
-    var totalXp: Long = 0,
-    var aiLevel: Int = 1,
-    var lastXpAt: Instant? = null,
+    var createdAt: Instant = Instant.EPOCH,
+    var updatedAt: Instant = Instant.EPOCH,
+)
+
+/**
+ * 유저-니아 호감도(P16, V47). 유저당 1행(user_id UNIQUE) — 사용할수록 score 가 단조 증가하고 stage 가 오른다.
+ * 길드 무관(니아는 한 정체성) — 점수/단계는 user_id 로만 식별한다. 순위/비교 없는 개인 진척도.
+ */
+@Entity
+@Table(name = "user_affinity")
+class UserAffinityEntity(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) var id: Long = 0,
+    @Column(unique = true) var userId: Long = 0,
+    var score: Long = 0,
+    var stage: String = "STRANGER",
+    var stageOrdinal: Int = 0,
+    var lastInteractionAt: Instant? = null,
     var createdAt: Instant = Instant.EPOCH,
     var updatedAt: Instant = Instant.EPOCH,
 )

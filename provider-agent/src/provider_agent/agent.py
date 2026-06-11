@@ -87,6 +87,24 @@ def _central_post(url: str, payload: dict, timeout: float = 8.0) -> dict:
         return dict(json.loads(resp.read().decode("utf-8")))
 
 
+def _central_get(url: str, timeout: float = 8.0) -> dict:
+    """중앙 서버 JSON GET 공통. 라이선스 이벤트 현황처럼 공개 조회에 쓴다."""
+    import json
+    import ssl
+    import urllib.request
+
+    import certifi
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers={"Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+        return dict(json.loads(resp.read().decode("utf-8")))
+
+
 def _post_agent_sync(base: str, durable_token: str) -> list[dict]:
     """중앙 서버에 durable 토큰으로 자동 동기화 요청 → 승인된 미연결 서버의 일회용 토큰 목록."""
     resp = _central_post(base + "/provider/agent/sync", {"durableToken": durable_token}, timeout=6)
@@ -161,6 +179,26 @@ def _post_provider_admin_channels(
         base + "/provider/admin/channels" + path,
         {"durableToken": durable_token, "guildId": guild_id, "channelId": channel_id, "allow": allow},
     )
+
+
+def _post_license_me(base: str, durable_token: str) -> dict:
+    """내 라이선스 entitlement 조회 — 본인 durable 토큰으로 central 이 userId 를 판정한다."""
+    return _central_post(base + "/provider/license/me", {"durableToken": durable_token}, timeout=6)
+
+
+def _get_license_event_status(base: str) -> dict:
+    """런칭 이벤트 공개 현황 조회."""
+    return _central_get(base + "/provider/license/event/status", timeout=6)
+
+
+def _post_license_checkout(base: str, durable_token: str) -> dict:
+    """Paddle checkout URL 생성."""
+    return _central_post(base + "/provider/license/checkout", {"durableToken": durable_token}, timeout=8)
+
+
+def _post_license_event_claim(base: str, durable_token: str) -> dict:
+    """런칭 이벤트 평생 무료 신청."""
+    return _central_post(base + "/provider/license/event/claim", {"durableToken": durable_token}, timeout=8)
 
 
 class ProviderAgent:

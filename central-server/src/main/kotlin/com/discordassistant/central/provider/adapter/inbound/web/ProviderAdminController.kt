@@ -6,6 +6,7 @@ import com.discordassistant.central.globalpromptset.application.GlobalPromptSetV
 import com.discordassistant.central.guild.application.GuildChannelPolicy
 import com.discordassistant.central.knowledge.application.GuildKnowledgeAdmin
 import com.discordassistant.central.knowledge.application.GuildKnowledgeQuery
+import com.discordassistant.central.licensing.application.PremiumFeatureGate
 import com.discordassistant.central.platform.discord.BotGuildLister
 import com.discordassistant.central.preset.application.GuildPresetAdmin
 import com.discordassistant.central.preset.application.GuildPresetQuery
@@ -192,7 +193,7 @@ class ProviderAdminController(
     private val guildKnowledgeAdmin: GuildKnowledgeAdmin,
     private val guildPresets: GuildPresetQuery,
     private val guildPresetAdmin: GuildPresetAdmin,
-    private val licenseGate: com.discordassistant.central.licensing.application.LicenseGate,
+    private val licenseGate: PremiumFeatureGate,
 ) {
     private val log = org.slf4j.LoggerFactory.getLogger(ProviderAdminController::class.java)
 

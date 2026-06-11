@@ -29,10 +29,12 @@ class PaddleSignatureVerifier(
     ): Boolean {
         if (secret.isBlank() || signatureHeader.isNullOrBlank()) return false
         val parts =
-            signatureHeader.split(";").mapNotNull {
-                val kv = it.split("=", limit = 2)
-                if (kv.size == 2) kv[0].trim() to kv[1].trim() else null
-            }.toMap()
+            signatureHeader
+                .split(";")
+                .mapNotNull {
+                    val kv = it.split("=", limit = 2)
+                    if (kv.size == 2) kv[0].trim() to kv[1].trim() else null
+                }.toMap()
         val ts = parts["ts"]?.toLongOrNull() ?: return false
         val h1 = parts["h1"] ?: return false
         // 리플레이 방어: 타임스탬프가 허용 윈도를 벗어나면 거부.

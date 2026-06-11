@@ -105,7 +105,7 @@ async def test_translate_image_prompt_paths():
             return "a cute cat, safe"
 
     a._gemini = OkGemini()  # type: ignore[assignment]
-    a._gemini_models = ["gemini-2.5-flash-lite"]
+    a._gemini_models = ["gemini-3.1-flash-lite"]
     assert await a._translate_image_prompt(req) == "a cute cat, safe"
 
     # ③ Gemini 실패 → 원문 폴백(거부 0)

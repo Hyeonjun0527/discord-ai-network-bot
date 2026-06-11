@@ -49,7 +49,7 @@ object SlashCommandCatalog {
                 .slash("forward-channel", "ComfyUI 웹에서 만든 이미지를 자동 전송할 채널을 설정합니다(관리자)")
                 .addOption(OptionType.CHANNEL, "channel", "이미지를 받을 채널", true)
                 .setDefaultPermissions(adminPerm),
-            // 관리자가 클라우드 AI(Gemini) 키 하나로 서버 전체에 무료 제공 — 모델 고정(gemini-2.5-flash-lite).
+            // 관리자가 클라우드 AI(Gemini) 키 하나로 서버 전체에 무료 제공 — 모델 고정(gemini-3.1-flash-lite).
             Commands
                 .slash("free-ask", "무료 클라우드 AI(Gemini)에게 질문합니다")
                 .addOption(OptionType.STRING, "prompt", "질문 내용", true),

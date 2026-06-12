@@ -1577,7 +1577,7 @@ def build_app(session_key: str) -> web.Application:
         return web.json_response(
             {
                 "autostart": bool(saved.get("autostart_pref")),
-                "background": bool(saved.get("background")),
+                "background": bool(saved.get("background") or saved.get("tray")),
                 "autoConnect": bool(saved.get("auto_connect")),
                 "autoUpdate": bool(saved.get("auto_update", True)),
                 "enableImage": bool(saved.get("enable_image")),
@@ -1611,6 +1611,8 @@ def build_app(session_key: str) -> web.Application:
             if snake is None:
                 continue  # 허용되지 않은 키는 무시
             updates[snake] = value
+            if key == "background":
+                updates["tray"] = bool(value)  # AgentConfig.tray 와 같은 의미 — 설정 드리프트 방지
             if key in _SETTINGS_NEEDS_RESTART:
                 needs_restart = True
         if updates:
@@ -1871,7 +1873,24 @@ def _schedule_exit(delay: float = 1.2) -> None:
     threading.Timer(delay, lambda: os._exit(0)).start()
 
 
-def _handoff_to_service_on_close() -> None:
+def _background_enabled_on_close() -> bool:
+    """창 닫기 시 제공을 계속할지에 대한 저장 설정값.
+
+    ``background`` 는 현재 UI 설정의 권위값이고, ``tray`` 는 이전 버전/CLI 호환값이다.
+    둘 중 하나라도 켜져 있으면 사용자는 "창을 닫아도 계속 제공"을 기대한다.
+    """
+    saved = load_config()
+    return bool(saved.get("background") or saved.get("tray"))
+
+
+def _has_saved_provider_connection() -> bool:
+    """백그라운드로 인계/상주할 실제 연결 정보가 있는지."""
+    from .config_file import load_connections
+
+    return bool(load_config().get("token") or load_connections())
+
+
+def _handoff_to_service_on_close() -> bool:
     """창을 닫을 때, 자동시작 서비스가 등록돼 있으면 백그라운드로 연결을 **인계**한다.
 
     GUI 가 열려 있는 동안엔 GUI 가 singleton 락을 쥐어 서비스가 비어 있다(서비스는 RunAtLoad 로
@@ -1881,18 +1900,45 @@ def _handoff_to_service_on_close() -> None:
     """
     try:
         from . import service, singleton
-        from .config_file import load_connections
 
+        if not _background_enabled_on_close():
+            return False
         if not service.is_installed():
-            return
-        saved = load_config()
-        if not saved.get("token") and not load_connections():
-            return  # 연결할 토큰이 없으면 인계할 것도 없음
+            return False
+        if not _has_saved_provider_connection():
+            return False  # 연결할 토큰이 없으면 인계할 것도 없음
         singleton.release()  # GUI 락 해제 → 서비스가 락을 잡을 수 있게
         if service.kickstart():
             logging.getLogger("provider_agent").info("창 닫힘 — 백그라운드 서비스로 연결을 인계했습니다.")
+            return True
     except Exception as exc:  # noqa: BLE001 - 인계 실패는 종료를 막지 않는다
         logging.getLogger("provider_agent").warning("백그라운드 인계 실패: %s", exc)
+    return False
+
+
+def _handle_webview_closing(window: object) -> bool | None:
+    """네이티브 창의 닫기 버튼 처리.
+
+    pywebview ``closing`` 이벤트는 콜백이 ``False`` 를 반환하면 닫기를 취소한다. 백그라운드
+    상주가 켜져 있고 이 GUI 프로세스가 실제 에이전트를 돌리고 있으면 프로세스를 죽이지 말고 창만
+    숨긴다. 상주가 꺼져 있거나, 이 창이 설정 전용이고 실제 제공은 별도 서비스가 담당 중이면 기존처럼
+    닫히게 둔다.
+    """
+    if not _background_enabled_on_close():
+        return None
+    if _running_agent() is None:
+        # 이 GUI 가 직접 제공 중이 아니면 숨겨 둘 이유가 없다. 서비스가 설치돼 있으면 종료 후
+        # run_gui 의 후처리(_handoff_to_service_on_close)가 인계하고, 없으면 그냥 설정 창만 닫힌다.
+        return None
+    try:
+        hide = getattr(window, "hide")
+        hide()
+        logging.getLogger("provider_agent").info("창 닫힘 — 백그라운드 상주 설정으로 창만 숨깁니다.")
+        return False
+    except Exception as exc:  # noqa: BLE001 - 숨김 실패 시 서비스 인계를 시도하고 닫기는 허용
+        logging.getLogger("provider_agent").warning("창 숨김 실패 — 백그라운드 서비스 인계로 폴백: %s", exc)
+        _handoff_to_service_on_close()
+        return None
 
 
 def _start_auto_update_watcher() -> None:
@@ -1970,9 +2016,11 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
             _set_macos_app_identity(APP_DISPLAY_NAME)  # dock 이름/아이콘을 'Python'/로켓 대신 브랜드로
             # 가로로 긴(landscape) 기본 크기 — UI 가 사이드바(232px)+메인 그리드라 세로형(600x800)이면
             # 메인이 비좁고 잘려 보였다. 16:10 비율의 가로형 기본값 + 가로형 최소 크기로 통일.
-            webview.create_window(
+            window = webview.create_window(
                 f"로컬 AI 제공자 설정 · {APP_DISPLAY_NAME}", url, width=1180, height=760, min_size=(1000, 660)
             )
+            if window is not None:
+                window.events.closing += _handle_webview_closing
             webview.start()  # 메인 스레드 점유, 창 닫으면 반환
             _handoff_to_service_on_close()  # 닫을 때 백그라운드 서비스로 연결 인계(설치돼 있으면, 비블로킹)
             # 창을 닫았는데도 즉시 안 꺼지고 '응답없음'으로 멈추던 문제(실증) 방지: 인터프리터 finalize·

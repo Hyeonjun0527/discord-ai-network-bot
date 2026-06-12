@@ -793,6 +793,62 @@ def test_set_macos_app_identity_is_safe_everywhere():
     _set_macos_app_identity("Nexa")
 
 
+class _AliveTask:
+    def done(self) -> bool:
+        return False
+
+
+class _FakeWindow:
+    def __init__(self) -> None:
+        self.hidden = False
+
+    def hide(self) -> None:
+        self.hidden = True
+
+
+def test_webview_close_hides_window_when_background_running() -> None:
+    """백그라운드 상주 ON + GUI 인프로세스 에이전트 실행 중이면 빨간 닫기 버튼은 종료가 아니라 숨김이어야 한다."""
+    persist_partial({"background": True, "tray": True, "token": "T"})
+    webui._state["agent"] = object()
+    webui._state["task"] = _AliveTask()
+    window = _FakeWindow()
+
+    assert webui._handle_webview_closing(window) is False
+    assert window.hidden is True
+
+
+def test_webview_close_allows_exit_when_background_off() -> None:
+    """백그라운드 상주 OFF면 닫기 버튼은 기존처럼 실제 종료를 허용한다."""
+    persist_partial({"background": False, "tray": False, "token": "T"})
+    webui._state["agent"] = object()
+    webui._state["task"] = _AliveTask()
+    window = _FakeWindow()
+
+    assert webui._handle_webview_closing(window) is None
+    assert window.hidden is False
+
+
+def test_webview_close_does_not_hide_settings_only_window() -> None:
+    """제공 중인 에이전트가 없는 설정 전용 창은 상주 ON이어도 숨겨 둬 봐야 의미가 없으므로 닫기를 허용한다."""
+    persist_partial({"background": True, "tray": True, "token": "T"})
+    window = _FakeWindow()
+
+    assert webui._handle_webview_closing(window) is None
+    assert window.hidden is False
+
+
+def test_close_handoff_respects_background_toggle(monkeypatch) -> None:
+    """상주 OFF면 서비스가 설치돼 있어도 창 닫기 후 백그라운드 kickstart 를 하지 않는다."""
+    persist_partial({"background": False, "tray": False, "token": "T"})
+    monkeypatch.setattr("provider_agent.service.is_installed", lambda: True)
+    monkeypatch.setattr(
+        "provider_agent.service.kickstart",
+        lambda: (_ for _ in ()).throw(AssertionError("background off 인데 kickstart 하면 안 됨")),
+    )
+
+    assert webui._handoff_to_service_on_close() is False
+
+
 @pytest.mark.asyncio
 async def test_onboard_apply_installs_service_and_persists(monkeypatch):
     """온보딩 적용: autostart 면 install_service 를 실제 호출하고, 토글을 설정에 반영해야 한다.
@@ -1074,6 +1130,7 @@ async def test_settings_post_persists_and_get_reflects():
         assert saved["auto_update"] is False
         assert saved["auto_connect"] is True
         assert saved["background"] is True
+        assert saved["tray"] is True  # background 상주는 실제 에이전트가 읽는 tray 와 동기화
         # GET 은 camelCase 로 다시 반영해 보여준다.
         d = await (await client.get("/api/settings", headers={"X-Session": KEY})).json()
         assert d["autoUpdate"] is False

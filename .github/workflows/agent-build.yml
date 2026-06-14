@@ -580,10 +580,10 @@ jobs:
             "version": "${VER}",
             "tag": "${GITHUB_REF_NAME}",
             "assets": {
-              "nexa-macos.zip": "https://discord-ai.yeon.world/download/nexa-macos.zip",
-              "nexa-macos.dmg": "https://discord-ai.yeon.world/download/nexa-macos.dmg",
-              "nexa-windows.exe": "https://discord-ai.yeon.world/download/nexa-windows.exe",
-              "SHA256SUMS.txt": "https://discord-ai.yeon.world/download/SHA256SUMS.txt"
+              "nexa-macos.zip": "https://discord-ai.yeon.world/download/nexa-macos.zip?v=${VER}",
+              "nexa-macos.dmg": "https://discord-ai.yeon.world/download/nexa-macos.dmg?v=${VER}",
+              "nexa-windows.exe": "https://discord-ai.yeon.world/download/nexa-windows.exe?v=${VER}",
+              "SHA256SUMS.txt": "https://discord-ai.yeon.world/download/SHA256SUMS.txt?v=${VER}"
             }
           }
           JSON

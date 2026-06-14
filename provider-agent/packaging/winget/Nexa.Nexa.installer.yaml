@@ -9,7 +9,7 @@ Commands:
   - nexa
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/download/agent-v__VERSION__/nexa-windows.exe
+    InstallerUrl: https://github.com/yeon-intergation-platform/nexa-releases/releases/download/agent-v__VERSION__/nexa-windows.exe
     InstallerSha256: __WINDOWS_SHA256__
 ManifestType: installer
 ManifestVersion: 1.6.0

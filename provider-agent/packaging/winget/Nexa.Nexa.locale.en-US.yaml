@@ -4,7 +4,7 @@ PackageLocale: en-US
 Publisher: Nexa
 PublisherUrl: https://github.com/yeon-intergation-platform
 PackageName: Nexa
-PackageUrl: https://github.com/Hyeonjun0527/discord-ai-network-bot
+PackageUrl: https://github.com/yeon-intergation-platform/nexa-releases
 License: MIT
 ShortDescription: Nexa desktop app — share your local AI models with Discord servers and channels.
 ManifestType: locale

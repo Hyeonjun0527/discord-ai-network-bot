@@ -10,10 +10,10 @@ cask "nexa" do
   version "__VERSION__"
   sha256 "__MACOS_APP_SHA256__"
 
-  url "https://github.com/Hyeonjun0527/discord-ai-network-bot/releases/download/agent-v#{version}/nexa-macos.zip"
+  url "https://github.com/yeon-intergation-platform/nexa-releases/releases/download/agent-v#{version}/nexa-macos.zip"
   name "Nexa"
   desc "Nexa 데스크톱 앱 — 내 로컬 AI모델을 디스코드 서버/채널에 공유"
-  homepage "https://github.com/Hyeonjun0527/discord-ai-network-bot"
+  homepage "https://github.com/yeon-intergation-platform/nexa-releases"
 
   app "Nexa.app"
 

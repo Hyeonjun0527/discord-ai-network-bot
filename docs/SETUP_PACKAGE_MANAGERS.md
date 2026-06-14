@@ -10,8 +10,29 @@
 `scoop install` / `winget install` 한 줄로 설치하고, 무결성(sha256)은 매니저가 자동 검증한다
 (수동 해시검증 불필요).
 
-전제: 저장소가 **PUBLIC**(OSS)여야 한다(릴리스 자산 URL 공개 접근). 모든 명령은 `gh`(로그인 됨)와
-`git` 로 동작한다.
+전제: brew/scoop/winget·인앱 업데이터는 **공개로 다운로드되는 릴리스 자산 URL** 이 필요하다.
+소스 빌드 레포(`Hyeonjun0527/discord-ai-network-bot`)는 **private 이어도 된다** — `agent-build.yml`
+의 `release` 잡이 사용자용 자산을 **공개 미러 레포 `yeon-intergation-platform/nexa-releases`** 의
+Release 로 같은 `agent-v*` 태그로 복제하고, 모든 매니페스트(`nexa.rb`/`nexa-agent.rb`/winget/scoop)
+와 `updater.py` 의 다운로드 URL 이 이 공개 레포를 가리킨다. (빌드 출처/attestation 은 private 빌드
+레포 기준으로 남는다.) 아래 **전제 0단계** 에서 이 미러 레포를 한 번 만들고 **3단계 App 에 권한을 준다.**
+모든 명령은 `gh`(로그인 됨)와 `git` 로 동작한다.
+
+---
+
+## 전제 0단계: 공개 미러 레포 만들기 (소스 private 유지의 핵심 — 한 번만)
+
+```bash
+# 공개 미러 레포 생성(첫 커밋/기본 브랜치 필요 → README 로 초기화)
+gh repo create yeon-intergation-platform/nexa-releases --public \
+  --description "Nexa 공개 다운로드 미러 — brew/winget/scoop·인앱 업데이트 자산" \
+  --add-readme
+```
+
+이 레포에는 코드가 없다(릴리스 자산만). 빌드는 private 소스 레포에서 돌고, `agent-build.yml` 의
+`release` 잡이 이 레포의 Release 로 자산을 복제한다. 복제 권한은 **3단계의 GitHub App** 에
+`nexa-releases` 를 추가해 부여한다(App 미부여 시 미러 발행은 스킵되고 brew/winget/scoop·인앱
+업데이트가 동작하지 않는다).
 
 ---
 
@@ -116,7 +137,7 @@ org `yeon-intergation-platform` 은 장수명 PAT·deploy key 를 정책으로 �
 2. **Private key 발급**: 같은 App 설정 하단 → *Generate a private key* → `.pem` 다운로드 →
    `~/keys/github-app.pem` 로 저장
 3. **설치**: App 설정 → *Install App* → org 선택 → *Only select repositories* →
-   `homebrew-tap`, `scoop-bucket` 선택 → Install
+   `homebrew-tap`, `scoop-bucket`, **`nexa-releases`**(전제 0단계 공개 미러) 선택 → Install
 4. **시크릿 등록**(메인 레포):
    ```bash
    gh secret set PKG_APP_ID -R Hyeonjun0527/discord-ai-network-bot --body "<APP_ID>"

@@ -136,3 +136,8 @@ jobs:
             echo "❌ 헬스 실패 — 로그:"; docker compose -f compose.yml logs --tail=80 central-server; exit 1
           fi
           echo "✅ 배포 완료 + 헬스 UP (image ${IMAGE}:${GIT_SHA})"
+          echo "▶ 오래된 미사용 Docker 이미지 정리(활성 컨테이너 이미지와 최근 7일 이미지는 보존)"
+          if ! docker image prune -af --filter "until=168h"; then
+            echo "::warning::Docker 이미지 자동 정리에 실패했습니다. 배포는 완료됐지만 서버 디스크 상태를 확인하세요."
+          fi
+          docker system df || true

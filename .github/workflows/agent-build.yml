@@ -34,7 +34,19 @@ jobs:
       - name: 의존성(모델 카탈로그 import 용)
         run: pip install ./provider-agent
       - name: 기본 이미지 모델 URL 헬스체크
-        run: python scripts/check_model_urls.py
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "▶ 모델 URL 헬스체크 ${attempt}/3"
+            if python scripts/check_model_urls.py; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "❌ 모델 URL 헬스체크가 3회 모두 실패했습니다." >&2
+              exit 1
+            fi
+            sleep $((attempt * 60))
+          done
 
   build:
     needs: model-urls

@@ -4,6 +4,11 @@
     "owner": "Hyeonjun0527",
     "name": "discord-ai-network-bot"
   },
+  "_releaseRepoComment": "사용자 다운로드(brew/winget/scoop·인앱 업데이터)는 이 공개 미러 레포의 Release 에서 받는다. 소스 빌드 레포(repo)는 private 이라 익명 다운로드가 404 → agent-build.yml 이 사용자용 자산을 같은 agent-v* 태그로 여기에 미러링한다. 빌드 출처(attestation)는 여전히 private 빌드 레포 기준.",
+  "releaseRepo": {
+    "owner": "yeon-intergation-platform",
+    "name": "nexa-releases"
+  },
   "releaseTagPrefix": "agent-v",
   "appDisplayName": "Nexa",
   "brandName": "Nexa",

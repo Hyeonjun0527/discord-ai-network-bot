@@ -38,7 +38,10 @@ def _cleanup_tmp_and_fail(tmp: Path, error: str) -> dict:
     shutil.rmtree(tmp, ignore_errors=True)
     return {"ok": False, "error": error}
 
-REPO = "Hyeonjun0527/discord-ai-network-bot"
+# 인앱 업데이트는 **공개 릴리스 미러 레포**에서 받는다(소스 레포는 private 이라 익명 다운로드 404).
+# 빌드/attestation 은 private 빌드 레포에서 나오고, agent-build.yml 이 사용자용 자산을 이 공개
+# 레포의 Release 로 미러링한다(같은 agent-v* 태그). brew/winget/scoop 매니페스트와 동일 출처.
+REPO = "yeon-intergation-platform/nexa-releases"
 # API(api.github.com)는 미인증 60req/hr(공유 IP면 부족) → 'releases/latest' 리다이렉트로 태그만 얻고
 # 다운로드 URL 은 규칙으로 구성한다(rate limit 회피).
 _RELEASES_LATEST = f"https://github.com/{REPO}/releases/latest"

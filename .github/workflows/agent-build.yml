@@ -283,6 +283,9 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+    env:
+      # PKG App(org 소유)이 설정되어 있고 공개 미러 레포에 접근 권한이 있을 때만 미러 발행.
+      HAS_APP: ${{ secrets.PKG_APP_ID != '' && secrets.PKG_APP_PRIVATE_KEY != '' && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -394,6 +397,44 @@ jobs:
             dist/pkg/nexa.rb
             dist/pkg/nexa.json
             dist/pkg/winget/*.yaml
+      # ── 공개 릴리스 미러 ──────────────────────────────────────────────────────
+      # 소스 빌드 레포가 private 이라 위 Release 의 자산은 익명 다운로드가 404 → brew/winget/scoop·
+      # 인앱 업데이터가 깨진다. 빌드/attestation 은 private 에 남기고, **사용자용 자산만** 공개 미러
+      # 레포(yeon-intergation-platform/nexa-releases)의 Release 로 같은 agent-v* 태그로 복제한다.
+      # 매니페스트/updater 의 다운로드 URL 은 모두 이 공개 레포를 가리킨다.
+      # PKG App(org 소유)에 nexa-releases 접근(Contents:write)을 부여해야 동작 — 없으면 스킵.
+      - name: 공개 미러 App 토큰 발급(nexa-releases)
+        id: mirrortoken
+        if: startsWith(github.ref, 'refs/tags/agent-v') && env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.PKG_APP_ID }}
+          private-key: ${{ secrets.PKG_APP_PRIVATE_KEY }}
+          owner: yeon-intergation-platform
+          repositories: nexa-releases
+      - name: 공개 미러 레포에 Release 발행
+        if: startsWith(github.ref, 'refs/tags/agent-v') && env.HAS_APP == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: yeon-intergation-platform/nexa-releases
+          token: ${{ steps.mirrortoken.outputs.token }}
+          tag_name: ${{ github.ref_name }}
+          name: Nexa ${{ github.ref_name }}
+          body: |
+            Nexa 데스크톱 앱 / Provider Agent 공개 다운로드 미러.
+            brew/winget/scoop·인앱 업데이터가 이 Release 의 자산을 받습니다.
+            무결성은 SHA256SUMS.txt 로 대조하세요(macOS/Linux: `shasum -a 256 -c`).
+          files: |
+            dist/nexa-agent-linux
+            dist/nexa-agent-macos
+            dist/nexa-agent-windows.exe
+            dist/nexa-macos.zip
+            dist/nexa-macos.dmg
+            dist/nexa-windows.exe
+            dist/SHA256SUMS.txt
+      - name: 안내(공개 미러 App 미설정)
+        if: startsWith(github.ref, 'refs/tags/agent-v') && env.HAS_APP != 'true'
+        run: echo "::warning::PKG_APP 미설정 또는 nexa-releases 미부여 — 공개 미러 발행을 건너뜁니다. brew/winget/scoop·인앱 업데이트는 공개 자산이 없어 동작하지 않습니다. docs/SETUP_PACKAGE_MANAGERS.md 참고."
       # 다음 잡(tap/bucket 자동 갱신)에서 쓰도록 렌더된 매니페스트를 아티팩트로 올린다.
       - name: 매니페스트 아티팩트 업로드
         if: startsWith(github.ref, 'refs/tags/agent-v')

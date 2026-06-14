@@ -728,19 +728,19 @@ async def test_server_remove_deletes_saved(monkeypatch):
         await client.close()
 
 
-def test_auto_update_once_applies_when_outdated(monkeypatch):
-    # 실행 중 주기 검사: 토글 ON + 구버전 + 지원이면 받아 적용하고 종료 예약(껐다 켜지 않아도 적용).
+def test_auto_update_once_reports_available_without_applying(monkeypatch):
+    # 실행 중 주기 검사: 토글 ON + 구버전 + 지원이어도 곧바로 종료·교체하지 않고 UI 승인 대기로 둔다.
     monkeypatch.setattr(webui, "load_config", lambda: {"auto_update": True})
     monkeypatch.setattr("provider_agent.updater.is_updating", lambda: False)
     monkeypatch.setattr(
         "provider_agent.updater.check",
         lambda: {"current": "0.19.0", "latest": "0.20.0", "outdated": True, "supported": True, "error": None},
     )
-    monkeypatch.setattr("provider_agent.updater.apply_update", lambda: {"ok": True, "restarting": True})
-    exited = {}
-    monkeypatch.setattr(webui, "_schedule_exit", lambda *a, **k: exited.setdefault("called", True))
-    assert webui._auto_update_once() == "applied"
-    assert exited.get("called") is True
+    called = {}
+    monkeypatch.setattr("provider_agent.updater.apply_update", lambda: called.setdefault("apply", True) or {})
+    monkeypatch.setattr(webui, "_schedule_exit", lambda *a, **k: called.setdefault("exit", True))
+    assert webui._auto_update_once() == "available"
+    assert called == {}
 
 
 def test_auto_update_once_skips_when_latest(monkeypatch):

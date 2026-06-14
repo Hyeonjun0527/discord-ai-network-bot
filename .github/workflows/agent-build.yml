@@ -500,7 +500,15 @@ jobs:
           set -euo pipefail
           DEST="$HOME/deploy/central-server/downloads"
           mkdir -p "$DEST"
-          for f in nexa-agent-linux nexa-agent-macos nexa-agent-windows.exe; do
+          required_assets=(
+            nexa-agent-linux
+            nexa-agent-macos
+            nexa-agent-windows.exe
+            nexa-macos.zip
+            nexa-macos.dmg
+            nexa-windows.exe
+          )
+          for f in "${required_assets[@]}"; do
             if [ ! -f "agent-bins/$f" ]; then
               echo "::error::central 배치 자산 파일이 없습니다: $f"
               find agent-bins -maxdepth 2 -print
@@ -508,7 +516,25 @@ jobs:
             fi
             cp -f "agent-bins/$f" "$DEST/"
           done
-          # GUI 데스크톱 앱 자산도 배치 → 웹 다운로드 버튼(/download/nexa-macos.dmg·-windows.exe)이 동작.
-          cp -f agent-bins/nexa-macos.dmg agent-bins/nexa-windows.exe agent-bins/nexa-macos.zip "$DEST/" 2>/dev/null || true
+          # 공개 업데이트 채널: 앱은 비공개 GitHub 릴리스에 인증 없이 접근할 수 없으므로 central /download 를 SSOT 로 쓴다.
+          (
+            cd "$DEST"
+            sha256sum "${required_assets[@]}" > SHA256SUMS.txt
+            if [[ "${GITHUB_REF_NAME:-}" == agent-v* ]]; then
+              VER="${GITHUB_REF_NAME#agent-v}"
+              cat > latest.json <<JSON
+          {
+            "version": "${VER}",
+            "tag": "${GITHUB_REF_NAME}",
+            "assets": {
+              "nexa-macos.zip": "https://discord-ai.yeon.world/download/nexa-macos.zip",
+              "nexa-macos.dmg": "https://discord-ai.yeon.world/download/nexa-macos.dmg",
+              "nexa-windows.exe": "https://discord-ai.yeon.world/download/nexa-windows.exe",
+              "SHA256SUMS.txt": "https://discord-ai.yeon.world/download/SHA256SUMS.txt"
+            }
+          }
+          JSON
+            fi
+          )
           chmod +x "$DEST"/nexa-agent-linux "$DEST"/nexa-agent-macos 2>/dev/null || true
           ls -la "$DEST"

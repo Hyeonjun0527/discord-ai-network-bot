@@ -18,6 +18,71 @@
     const row = (name, desc, right) => '<div class="set-row"><div class="sr-body"><div class="sr-name">' + name + '</div>' +
       (desc ? '<div class="sr-desc">' + desc + '</div>' : '') + '</div>' + right + '</div>';
     const group = (titleKey, inner) => '<div class="set-group"><div class="sg-title">' + t(titleKey) + '</div>' + inner + '</div>';
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    let _promptedVersion = null;
+
+    function versionLine(u) {
+      if (!u) return t('setVerChecking');
+      if (u.error) return '<span class="txt-error">' + t('setVerCheckFailed') + '</span> — ' + esc(u.error);
+      if (u.outdated) return t('setVerCurrent') + ' v' + esc(u.current || '-') + ' · ' + t('setVerLatest') + ' v' + esc(u.latest || '-');
+      return t('setVerCurrent') + ' v' + esc(u.current || '-') + ' · ' + t('setVerUpToDate');
+    }
+
+    function updateRight(u) {
+      if (!u) return '<button class="btn btn--sm btn--secondary" id="setUpdateCheck" disabled>' + t('setUpdateChecking') + '</button>';
+      if (u.outdated && u.supported && !u.error) return '<button class="btn btn--sm btn--primary" id="setUpdateApply">' + t('setUpdateApply') + '</button>';
+      return '<button class="btn btn--sm btn--secondary" id="setUpdateCheck">' + t('setUpdateCheck') + '</button>';
+    }
+
+    function maybePromptUpdate(u, force) {
+      if (!u || !u.outdated || u.error) return;
+      if (!u.supported) {
+        if (force) toast(t('setUpdatePromptUnsupported'), { type: 'error' });
+        return;
+      }
+      const latest = String(u.latest || '');
+      if (!force && latest && _promptedVersion === latest) return;
+      if (latest) _promptedVersion = latest;
+      openUpdatePrompt(u);
+    }
+
+    function openUpdatePrompt(u) {
+      if (!u || !u.outdated || !u.supported || u.error) return;
+      const old = document.getElementById('updateModal');
+      if (old) old.remove();
+      const lay = document.createElement('div');
+      lay.className = 'modal-layer';
+      lay.id = 'updateModal';
+      lay.setAttribute('role', 'dialog');
+      lay.setAttribute('aria-modal', 'true');
+      lay.innerHTML = '<div class="modal">' +
+        '<button class="modal-x" data-update-close aria-label="닫기">✕</button>' +
+        '<h3>' + t('setUpdatePromptTitle') + '</h3>' +
+        '<p class="msub">' + esc(t('setUpdatePromptDesc').replace('{latest}', u.latest || '-').replace('{current}', u.current || '-')) + '</p>' +
+        '<div class="wiz-sum"><span class="si">↗</span><span class="sl">' + esc(t('setUpdatePromptRestart')) + '</span></div>' +
+        '<div class="modal-foot">' +
+          '<button class="btn btn--md btn--secondary" data-update-close>' + t('setUpdatePromptLater') + '</button>' +
+          '<button class="btn btn--md btn--primary" data-update-confirm>' + t('setUpdatePromptConfirm') + '</button>' +
+        '</div>' +
+      '</div>';
+      document.body.appendChild(lay);
+      const close = () => lay.remove();
+      lay.querySelectorAll('[data-update-close]').forEach((b) => { b.onclick = close; });
+      lay.addEventListener('click', (e) => { if (e.target === lay) close(); });
+      const confirm = lay.querySelector('[data-update-confirm]');
+      confirm.onclick = async () => {
+        confirm.disabled = true;
+        toast(t('setUpdateStartingToast'), { type: 'run', sticky: true, id: 'upd' });
+        try {
+          const r = await api.applyUpdate(); // POST /api/update
+          if (r && r.ok === false) { toast(r.error || t('setUpdateStartFailedToast'), { type: 'error', id: 'upd' }); return; }
+          toast(t('setUpdateStartedToast'), { type: 'ok', id: 'upd' });
+          close();
+        } catch (_e) { toast(t('setUpdateStartRetryToast'), { type: 'error', id: 'upd' }); }
+        finally { confirm.disabled = false; }
+      };
+      confirm.focus();
+    }
 
     // 언어 선택기 — 현재 언어 선택 상태로 ko/en/ja 드롭다운. 변경 시 setLang(UI)+서버 저장.
     function langSelect() {
@@ -56,12 +121,8 @@
     function render() {
       const s = _s || {}, u = _upd; // u=null 이면 아직 업데이트 확인 전(네트워크 진행 중)
       const exec = TOGGLES.map((g) => row(t(g.nameKey), t(g.descKey), sw(g.key, s[g.key]))).join('');
-      const verLine = !u ? t('setVerChecking') : (u.outdated ? (t('setVerCurrent') + ' v' + u.current + ' · ' + t('setVerLatest') + ' v' + u.latest) : (t('setVerCurrent') + ' v' + (u.current || '-') + ' · ' + t('setVerUpToDate')));
-      const updRight = !u
-        ? '<button class="btn btn--sm btn--secondary" id="setUpdateCheck" disabled>' + t('setUpdateChecking') + '</button>'
-        : (u.outdated
-          ? '<button class="btn btn--sm btn--primary" id="setUpdateApply">' + t('setUpdateApply') + '</button>'
-          : '<button class="btn btn--sm btn--secondary" id="setUpdateCheck">' + t('setUpdateCheck') + '</button>');
+      const verLine = versionLine(u);
+      const updRight = updateRight(u);
       const langGroup = row(t('setLangLabel'), t('setLangDesc'), langSelect());
       const updGroup = row(t('setVersion'), verLine, updRight) + row(t('setAutoUpdate'), t('setAutoUpdateDesc'), sw('autoUpdate', s.autoUpdate));
       // 중앙 서버·Ollama 주소 — 편집 가능(고급). 다른 포트/호스트의 Ollama 를 쓰는 유저가 앱에서 바꾼다.
@@ -123,18 +184,16 @@
         };
       });
       const chk = document.getElementById('setUpdateCheck');
-      if (chk) chk.onclick = async () => { _upd = await api.getUpdateInfo(); render(); toast(_upd.outdated ? t('setUpdateAvailableToast') : t('setUpToDateToast'), { type: 'info' }); };
-      const apply = document.getElementById('setUpdateApply');
-      if (apply) apply.onclick = async () => {
-        apply.disabled = true;
-        toast(t('setUpdateStartingToast'), { type: 'run', sticky: true, id: 'upd' });
-        try {
-          const r = await api.applyUpdate(); // POST /api/update
-          if (r && r.ok === false) { toast(r.error || t('setUpdateStartFailedToast'), { type: 'error', id: 'upd' }); return; }
-          toast(t('setUpdateStartedToast'), { type: 'ok', id: 'upd' });
-        } catch (_e) { toast(t('setUpdateStartRetryToast'), { type: 'error', id: 'upd' }); }
-        finally { apply.disabled = false; }
+      if (chk) chk.onclick = async () => {
+        _upd = await api.getUpdateInfo();
+        render();
+        if (_upd.error) toast(t('setUpdateCheckFailedToast').replace('{error}', _upd.error), { type: 'error' });
+        else if (_upd.outdated && !_upd.supported) toast(t('setUpdatePromptUnsupported'), { type: 'error' });
+        else if (_upd.outdated) { toast(t('setUpdateAvailableToast'), { type: 'info' }); maybePromptUpdate(_upd, true); }
+        else toast(t('setUpToDateToast'), { type: 'info' });
       };
+      const apply = document.getElementById('setUpdateApply');
+      if (apply) apply.onclick = () => maybePromptUpdate(_upd, true);
       const logout = document.getElementById('setLogout');
       if (logout) logout.onclick = async () => {
         if (!confirm(t('setLogoutConfirm'))) return;
@@ -190,16 +249,25 @@
       if (isActive()) render();
     }
 
+    async function refreshUpdateInfo(prompt) {
+      const u = await api.getUpdateInfo();
+      _upd = u;
+      if (isActive()) render();
+      if (prompt && u && u.autoUpdate) maybePromptUpdate(u, false);
+      return u;
+    }
+
     async function load() {
       _s = await api.getSettings();  // 로컬·빠름 → 즉시 렌더(설정 본문이 네트워크에 안 막히게)
       _lic = null;
       render();
       loadLicense();
-      // 업데이트 확인은 GitHub 새 버전 조회(네트워크) — 느리거나 rate-limit 이면 본문 전체가 안 뜨던 문제(실증).
+      // 업데이트 확인은 공개 업데이트 채널 조회(네트워크) — 느리거나 실패해도 본문 전체가 막히면 안 된다.
       // 본문은 위에서 이미 그렸고, 업데이트 줄만 도착 시 백그라운드로 채운다(_upd 는 캐시돼 재오픈 시 즉시 표시).
-      api.getUpdateInfo().then((u) => { _upd = u; if (isActive()) render(); }).catch(() => {});
+      refreshUpdateInfo(true).catch(() => {});
     }
 
     const isActive = () => view.classList.contains('active');
     document.querySelector('.nav-item[data-view="settings"]').addEventListener('click', load);
     if (isActive()) load();
+    setTimeout(() => { refreshUpdateInfo(true).catch(() => {}); }, 1200);

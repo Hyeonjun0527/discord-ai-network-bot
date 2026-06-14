@@ -1,14 +1,15 @@
-"""앱 업데이트 — 현재 버전 확인·최신 비교·다운로드/교체(자동 또는 고급에서 수동).
+"""앱 업데이트 — 현재 버전 확인·최신 비교·다운로드/교체(사용자 승인 후 수동 적용).
 
-- 최신 버전: GitHub Releases `latest`(`agent-v*` 태그)에서 가져온다.
+- 최신 버전: central 의 공개 `/download/latest.json` 에서 가져온다(비공개 GitHub 릴리스 의존 제거).
 - 적용: **빌드된 앱**에서만(소스 실행은 비활성). macOS 는 릴리스의 `.app` zip 을 받아
   현재 위치(보통 `/Applications/Nexa.app`)에 교체하고 재실행한다. Windows 는 exe 를 교체.
-- 자동 업데이트(config.auto_update, 기본 ON): 앱 시작 시 검사·적용.
+- 자동 업데이트(config.auto_update, 기본 ON): 앱 시작 시 검사·알림만. 적용은 UI 확인 모달에서 사용자가 승인한 뒤 한다.
 모두 사용자 권한(관리자/sudo 불필요).
 """
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import shutil
@@ -42,6 +43,8 @@ REPO = "Hyeonjun0527/discord-ai-network-bot"
 # 다운로드 URL 은 규칙으로 구성한다(rate limit 회피).
 _RELEASES_LATEST = f"https://github.com/{REPO}/releases/latest"
 _DOWNLOAD_BASE = f"https://github.com/{REPO}/releases/download"
+_PUBLIC_DOWNLOAD_BASE = (os.getenv("NEXA_UPDATE_BASE_URL") or "https://discord-ai.yeon.world/download").rstrip("/")
+_LATEST_MANIFEST = os.getenv("NEXA_UPDATE_MANIFEST_URL") or f"{_PUBLIC_DOWNLOAD_BASE}/latest.json"
 APP_NAME = APP_DISPLAY_NAME
 MAC_ASSET = GUI_MAC_ASSET  # agent-build.yml 이 릴리스에 올리는 .app zip
 WIN_ASSET = GUI_WIN_ASSET  # Windows 네이티브 GUI exe(릴리스 자산)
@@ -140,6 +143,16 @@ def _asset_url(tag: str, name: str) -> str:
     return f"{_DOWNLOAD_BASE}/{tag}/{quote(name)}"
 
 
+def _public_asset_url(name: str) -> str:
+    return f"{_PUBLIC_DOWNLOAD_BASE}/{quote(name)}"
+
+
+def _absolute_manifest_url(url: str) -> str:
+    if url.startswith(("https://", "http://")):
+        return url
+    return f"{_PUBLIC_DOWNLOAD_BASE}/{quote(url.lstrip('/'))}"
+
+
 def _latest_tag() -> str:
     """최신 릴리스 태그. 'releases/latest' 가 리다이렉트하는 최종 URL 의 끝(tag 명)을 읽는다.
 
@@ -151,14 +164,51 @@ def _latest_tag() -> str:
     return final.rstrip("/").rsplit("/", 1)[-1]
 
 
+def _latest_from_public_manifest() -> dict:
+    """central 공개 다운로드 채널의 latest.json 을 읽는다.
+
+    레포가 비공개여도 앱은 인증 토큰 없이 업데이트를 확인해야 한다. 그래서 실제 사용자가 받는
+    `/download/**` 를 업데이트 채널로 삼고, GitHub 릴리스는 CI 내부 산출물/백업으로만 둔다.
+    """
+    raw = json.loads(_http_get(_LATEST_MANIFEST, "application/json").decode("utf-8"))
+    tag = str(raw.get("tag") or "").strip()
+    version = str(raw.get("version") or _tag_to_version(tag)).strip()
+    if not version:
+        raise ValueError("latest.json 에 version 이 없습니다")
+    if not tag:
+        tag = f"agent-v{version}"
+    assets = {n: _public_asset_url(n) for n in (MAC_ASSET, WIN_ASSET, SUMS_ASSET)}
+    raw_assets = raw.get("assets") or {}
+    if isinstance(raw_assets, dict):
+        for name, url in raw_assets.items():
+            if isinstance(name, str) and isinstance(url, str) and name:
+                assets[name] = _absolute_manifest_url(url)
+    return {"version": version, "tag": tag, "assets": assets}
+
+
 def fetch_latest() -> dict:
     """최신 릴리스 메타. {version, tag, assets:{name:url}}. 네트워크 실패 시 예외.
 
-    자산 URL 은 태그+이름으로 구성한다(GitHub 다운로드 URL 규칙). 실제 존재는 download 시 확인.
+    1순위는 central 공개 latest.json 이다. GitHub 리다이렉트는 레거시 백업이지만, 이 레포가
+    비공개인 환경에서는 404 가 날 수 있으므로 UI 는 그 실패를 "최신"으로 오판하면 안 된다.
     """
+    try:
+        return _latest_from_public_manifest()
+    except Exception as exc:  # noqa: BLE001 - public 채널 전이 실패 시 레거시 GitHub 경로 1회 백업
+        logger.info("공개 업데이트 매니페스트 확인 실패 — GitHub 릴리스 백업 시도: %s", exc)
     tag = _latest_tag()
     assets = {n: _asset_url(tag, n) for n in (MAC_ASSET, WIN_ASSET, SUMS_ASSET)}
     return {"version": _tag_to_version(tag), "tag": tag, "assets": assets}
+
+
+def _check_error_message(exc: Exception) -> str:
+    if isinstance(exc, urllib.error.HTTPError):
+        if exc.code == 404:
+            return "업데이트 채널을 찾을 수 없어요(404)"
+        return f"업데이트 확인 실패(HTTP {exc.code})"
+    if isinstance(exc, urllib.error.URLError):
+        return "업데이트 확인 실패(네트워크 연결)"
+    return "최신 버전 확인 실패(네트워크)"
 
 
 def _update_asset_name() -> str | None:
@@ -188,8 +238,8 @@ def check() -> dict:
             if not _url_ok(latest["assets"][asset]):
                 info["supported"] = False
                 info["error"] = "이 릴리스에 설치형 패키지가 아직 없어요."
-    except Exception:  # noqa: BLE001 - 네트워크/파싱 실패는 UI 에 '확인 실패'로만
-        info["error"] = "최신 버전 확인 실패(네트워크)"
+    except Exception as exc:  # noqa: BLE001 - 네트워크/파싱 실패는 UI 에 '확인 실패'로만
+        info["error"] = _check_error_message(exc)
     return info
 
 
@@ -323,10 +373,10 @@ def _apply_macos(relaunch: str = "gui") -> dict:
 
 
 def start_service_update_watcher(interval_s: float | None = None) -> None:
-    """헤드리스 자동실행 서비스용 주기 자동 업데이트 워처(데몬 스레드).
+    """헤드리스 자동실행 서비스용 주기 업데이트 **확인** 워처(데몬 스레드).
 
-    창 없이 도는 서비스도 새 버전을 주기적으로 받아 **헤드리스로** 교체·재실행한다(껐다 켜야만
-    적용되던 문제 해소). 빌드된 앱에서만 동작하고, auto_update 가 꺼져 있으면 적용하지 않는다.
+    서비스에는 사용자 확인 모달이 없으므로 절대 자동 교체·재실행하지 않는다. 새 버전이 있으면
+    로그만 남기고, 실제 적용은 GUI 의 중앙 확인 모달 또는 설정 화면 버튼에서 승인받은 뒤 진행한다.
     """
     import threading
     import time
@@ -351,14 +401,14 @@ def start_service_update_watcher(interval_s: float | None = None) -> None:
                     if info.get("error"):
                         sleep_s = retry  # 네트워크 전이 실패 → 짧게 재시도
                     elif info.get("outdated") and info.get("supported"):
-                        result = apply_update(relaunch="service")
-                        if result.get("ok") and result.get("restarting"):
-                            time.sleep(0.5)
-                            os._exit(0)  # 헬퍼가 교체·헤드리스 재실행
-                        sleep_s = retry  # 적용 실패 → 재시도
+                        logger.info(
+                            "업데이트 사용 가능: v%s → v%s (GUI 확인 모달에서 승인 후 적용)",
+                            info.get("current"),
+                            info.get("latest"),
+                        )
             except Exception as exc:  # noqa: BLE001 - 자동 업데이트 실패는 서비스 동작을 막지 않는다
-                # 데몬 스레드라 예외가 묻히기 쉽다 — 왜 업데이트가 안 되는지 추적할 수 있게 남긴다(예외 원칙 3·4).
-                logger.warning("자동 업데이트 주기 실패 — 짧게 재시도: %s", exc)
+                # 데몬 스레드라 예외가 묻히기 쉽다 — 왜 업데이트 확인이 안 되는지 추적할 수 있게 남긴다(예외 원칙 3·4).
+                logger.warning("업데이트 확인 주기 실패 — 짧게 재시도: %s", exc)
                 sleep_s = retry
             time.sleep(sleep_s)
 

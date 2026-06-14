@@ -12,6 +12,23 @@ def test_tag_to_version():
     assert updater._tag_to_version("1.2.3") == "1.2.3"
 
 
+def test_fetch_latest_uses_public_manifest(monkeypatch):
+    monkeypatch.setattr(updater, "_PUBLIC_DOWNLOAD_BASE", "https://central.example/download")
+    monkeypatch.setattr(updater, "_LATEST_MANIFEST", "https://central.example/download/latest.json")
+    monkeypatch.setattr(
+        updater,
+        "_http_get",
+        lambda url, accept, timeout=20.0: (
+            b'{"version":"0.52.4","tag":"agent-v0.52.4",'
+            b'"assets":{"nexa-macos.zip":"nexa-macos.zip"}}'
+        ),
+    )
+    latest = updater.fetch_latest()
+    assert latest["version"] == "0.52.4"
+    assert latest["assets"][updater.MAC_ASSET] == "https://central.example/download/nexa-macos.zip"
+    assert latest["assets"][updater.SUMS_ASSET] == "https://central.example/download/SHA256SUMS.txt"
+
+
 def test_check_reports_outdated(monkeypatch):
     monkeypatch.setattr(updater, "current_version", lambda: "0.19.0")
     monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
@@ -48,6 +65,22 @@ def test_check_network_error_is_soft(monkeypatch):
     monkeypatch.setattr(updater, "fetch_latest", boom)
     info = updater.check()
     assert info["error"] is not None and info["outdated"] is False  # 예외 없이 상태 반환
+
+
+def test_check_404_is_visible_error(monkeypatch):
+    import urllib.error
+
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "platform", "darwin")
+
+    def missing():
+        raise urllib.error.HTTPError("https://central/download/latest.json", 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(updater, "fetch_latest", missing)
+    info = updater.check()
+    assert info["outdated"] is False
+    assert "404" in str(info["error"])
+
 
 
 def test_check_unsupported_when_not_frozen(monkeypatch):

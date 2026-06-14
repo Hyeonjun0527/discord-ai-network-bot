@@ -36,6 +36,9 @@ def _hide_dock_icon() -> None:
 
 
 if __name__ == "__main__":  # pragma: no cover
+    if os.getenv("NEXA_GUI_ENTRY_SMOKE") == "1":
+        print("nexa gui entry ok")
+        raise SystemExit(0)
     if _is_service_invocation():
         _hide_dock_icon()
         from provider_agent.__main__ import main

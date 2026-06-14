@@ -91,34 +91,13 @@ if IS_MAC:
         console=False,  # windowed(터미널 없이 GUI 로 뜸)
         icon=str(icons / "app.icns"),
     )
-    # 헤드리스 서비스 helper — `.app` 안(Contents/MacOS/nexa-service)에 함께 넣는다.
-    # LaunchAgent 가 GUI 바이너리(NEXA) 대신 이 **콘솔** 바이너리를 실행하면 번들이 'GUI 앱 실행 중'으로
-    # 등록되지 않아, 응용 프로그램에서 NEXA 를 다시 열 때 설정 창이 정상적으로 열린다(P2 reopen 보존).
-    # service.py service_executable_path() 가 이 helper 를 우선 사용한다(없으면 폴백).
-    svc_a = Analysis(
-        [str(project_root / "packaging" / "pyinstaller_entry.py")],
-        pathex=[str(project_root / "src")],
-        binaries=[],
-        datas=collect_data_files("certifi") + collect_data_files("provider_agent") + webui_datas,
-        hiddenimports=["provider_agent", "aiohttp", "certifi"],
-        hookspath=[],
-        runtime_hooks=[],
-        excludes=[],
-        noarchive=False,
-    )
-    svc_pyz = PYZ(svc_a.pure)
-    svc_exe = EXE(
-        svc_pyz,
-        svc_a.scripts,
-        [],
-        exclude_binaries=True,
-        name="nexa-service",
-        console=True,  # 콘솔(AppKit 미초기화) — 번들이 GUI 앱으로 등록되지 않게 하는 핵심
-        icon=str(icons / "app.icns"),
-    )
+    # 헤드리스 서비스 helper 는 BUNDLE 에 직접 섞지 않는다.
+    # PyInstaller 가 콘솔 helper 를 같은 macOS BUNDLE 입력으로 받으면 Info.plist 에
+    # LSBackgroundOnly=true 를 넣어 Finder 더블클릭 시 창 없는 백그라운드 앱이 된다.
+    # CI 패키징 단계가 이미 만든 CLI onefile(dist/nexa-agent-cli)을
+    # Contents/MacOS/nexa-service 로 복사해 서비스 helper 로 사용한다.
     gui_coll = COLLECT(
         gui_exe,
-        svc_exe,  # 헤드리스 helper 를 같은 번들에 포함(Contents/MacOS/nexa-service)
         gui_a.binaries,
         gui_a.datas,
         upx=True,
@@ -135,6 +114,8 @@ if IS_MAC:
             "CFBundleName": "Nexa",
             "CFBundleDisplayName": "Nexa",
             "CFBundleShortVersionString": "1.0",
+            "LSBackgroundOnly": False,
+            "LSUIElement": False,
             "NSHighResolutionCapable": True,
             "LSApplicationCategoryType": "public.app-category.utilities",
             # 네트워크 사용 안내(로컬 서버/풀 연결). App Transport Security 는 기본 유지.

@@ -75,6 +75,27 @@ jobs:
         run: python scripts/sync_desktop_app.py
       - name: 빌드
         run: pyinstaller packaging/agent.spec
+      - name: macOS 앱 번들 검증
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          APP="dist/Nexa.app"
+          test -d "$APP"
+          test -x "$APP/Contents/MacOS/Nexa"
+          cp -f dist/nexa-agent-cli "$APP/Contents/MacOS/nexa-service"
+          chmod +x "$APP/Contents/MacOS/nexa-service"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info.plist")" = "Nexa"
+          if /usr/libexec/PlistBuddy -c 'Print :LSBackgroundOnly' "$APP/Contents/Info.plist" 2>/dev/null | grep -qi '^true$'; then
+            echo "::error::Nexa.app 이 LSBackgroundOnly=true 로 빌드됐습니다. Finder 더블클릭 시 창이 뜨지 않습니다."
+            exit 1
+          fi
+          if ! NEXA_GUI_ENTRY_SMOKE=1 "$APP/Contents/MacOS/Nexa" | grep -q 'nexa gui entry ok'; then
+            echo "::error::Nexa.app 메인 실행파일이 GUI 엔트리포인트가 아닙니다."
+            exit 1
+          fi
+          "$APP/Contents/MacOS/nexa-service" --version
       # 릴리스 서명 게이트: agent-v* 태그 빌드는 미서명으로 통과시키지 않는다(조용한 미서명 금지).
       # 서명 강제는 **opt-in**: 레포 변수 REQUIRE_SIGNED_RELEASE=true 일 때만 미서명 릴리스를 막는다.
       # 기본(미설정)은 무료($0) 경로 — 미서명 + 체크섬/attestation/패키지매니저로 검증. 유료 인증서를

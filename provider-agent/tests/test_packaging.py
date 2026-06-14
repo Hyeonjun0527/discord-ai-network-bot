@@ -52,3 +52,19 @@ def test_winget_templates_keep_korean_default_locale_and_localized_copy() -> Non
     assert "ShortDescription: Nexa デスクトップアプリ — ローカルAIモデルをDiscordサーバー/チャンネルに共有します。" in ja
     assert "ManifestType: locale" in ja
     assert "Moniker: nexa" not in ja
+
+
+def test_macos_app_bundle_keeps_gui_foreground_entrypoint() -> None:
+    spec = (ROOT / "packaging" / "agent.spec").read_text(encoding="utf-8")
+
+    assert 'project_root / "packaging" / "gui_entry.py"' in spec
+    assert '"LSBackgroundOnly": False' in spec
+    assert '"LSUIElement": False' in spec
+    assert 'svc_exe,  # 헤드리스 helper 를 같은 번들에 포함' not in spec
+
+
+def test_gui_entry_has_ci_smoke_mode() -> None:
+    entry = (ROOT / "packaging" / "gui_entry.py").read_text(encoding="utf-8")
+
+    assert "NEXA_GUI_ENTRY_SMOKE" in entry
+    assert "nexa gui entry ok" in entry

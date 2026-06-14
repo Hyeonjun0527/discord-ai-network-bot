@@ -93,7 +93,7 @@ export const ENDPOINTS = Object.freeze({
   comfyStatus: '/api/comfy/status',          // GET → {installed, running, busy}
   comfySetup: '/api/comfy/setup',            // POST — 설치(핀 clone→3.13 venv→torch/deps→기동)
   comfySetupProgress: '/api/comfy/setup-progress',
-  comfyStart: '/api/comfy/start',            // POST — 설치된 ComfyUI 기동
+  comfyStart: '/api/comfy/start',            // POST — 설치된 ComfyUI 기동 + 이미지 수신 활성
   comfyStop: '/api/comfy/stop',              // POST — 정지
   comfyOpen: '/api/comfy/open',              // POST — 웹UI 를 시스템 브라우저로
   comfyModels: '/api/comfy/models',          // GET → {models:[ckpt…], active} (폴더 스캔 = 아무 .safetensors)

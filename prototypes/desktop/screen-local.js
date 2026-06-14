@@ -180,7 +180,7 @@
           finally { b.disabled = false; }
         } else if (act === 'start') {
           b.disabled = true; toast(t('localComfyStartingToast'), { type: 'run', sticky: true, id: 'comfy' });
-          try { const r = await api.comfyStart(); toast(r && r.ok ? t('localComfyStartedToast') : ((r && r.error) || t('localComfyStartFailureToast')), { type: r && r.ok ? 'ok' : 'error', id: 'comfy' }); await load(); }
+          try { const r = await api.comfyStart(); if (r && r.ok && _st) { _st.enableImage = true; _st.imageReady = !!r.imageReady; } toast(r && r.ok ? t('localComfyStartedToast') : ((r && r.error) || t('localComfyStartFailureToast')), { type: r && r.ok ? 'ok' : 'error', id: 'comfy' }); await load(); }
           catch (_e) { toast(t('localComfyStartNetworkFailureToast'), { type: 'error', id: 'comfy' }); } finally { b.disabled = false; }
         } else if (act === 'stop') {
           b.disabled = true;

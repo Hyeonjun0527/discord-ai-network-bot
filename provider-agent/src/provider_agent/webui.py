@@ -392,6 +392,27 @@ def _running_agent() -> object | None:
     return agent if (agent is not None and task is not None and not task.done()) else None
 
 
+async def _apply_image_receiving(on: bool) -> dict[str, object]:
+    """이미지 수신 설정을 저장하고 현재 제공 경로에 반영한다.
+
+    /api/image 토글과 ComfyUI 설치/시작 버튼이 같은 적용 경로를 써야 Discord 라우팅 상태가 갈라지지 않는다.
+    """
+    persist_partial({"enable_image": on})
+    image_ready = False
+    applied = "saved"
+    agent = _running_agent()
+    if agent is not None:
+        image_ready = bool(await agent.set_image_enabled(on))  # type: ignore[attr-defined]
+        applied = "live"
+    else:
+        from . import service as service_mod
+        from . import singleton
+
+        if singleton.held_by_other() and service_mod.is_installed():
+            applied = "service" if service_mod.kickstart() else "saved"
+    return {"ok": True, "on": on, "imageReady": image_ready, "applied": applied}
+
+
 def _index_for_guild(guild_id_str: str) -> int | None:
     """guildId(문자열) → 저장 연결 목록의 index. 데스크톱 앱은 64bit guildId 만 다루므로(정밀도)
     webui 가 index 로 변환한다. 못 찾으면 None."""
@@ -499,13 +520,18 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
         _auth(req)
         from . import comfy_setup
 
+        persist_partial({"enable_image": True})
         if comfy_setup.is_busy():
-            return web.json_response({"ok": True, "busy": True})
+            return web.json_response({"ok": True, "busy": True, "on": True})
         # 기본 모델은 SD 카탈로그 첫 항목 재사용(.safetensors 는 ComfyUI 도 동일하게 로드).
         from . import sd_setup
 
-        asyncio.create_task(comfy_setup.run_setup(sd_setup.DEFAULT_MODEL_URL))
-        return web.json_response({"ok": True})
+        async def run_setup_and_enable_image() -> None:
+            if await comfy_setup.run_setup(sd_setup.DEFAULT_MODEL_URL):
+                await _apply_image_receiving(True)
+
+        asyncio.create_task(run_setup_and_enable_image())
+        return web.json_response({"ok": True, "on": True})
 
     async def comfy_setup_progress(req: web.Request) -> web.Response:
         _auth(req)
@@ -514,14 +540,16 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
         return web.json_response(comfy_setup.progress())
 
     async def comfy_start(req: web.Request) -> web.Response:
-        """설치된 ComfyUI 를 기동(꺼져 있을 때)."""
+        """설치된 ComfyUI 를 기동하고 이미지 요청 수신을 활성화한다."""
         _auth(req)
         from . import comfy_setup
 
         if not comfy_setup.is_installed():
             return web.json_response({"ok": False, "error": "ComfyUI 가 아직 설치되지 않았어요."})
         ok = await comfy_setup.start()
-        return web.json_response({"ok": bool(ok)})
+        if not ok:
+            return web.json_response({"ok": False})
+        return web.json_response(await _apply_image_receiving(True))
 
     async def comfy_stop(req: web.Request) -> web.Response:
         """앱이 띄운 ComfyUI 프로세스를 정지."""
@@ -1293,20 +1321,7 @@ def build_app(session_key: str) -> web.Application:
         except Exception:  # noqa: BLE001
             data = {}
         on = bool(data.get("on")) if isinstance(data, dict) else False
-        persist_partial({"enable_image": on})
-        image_ready = False
-        applied = "saved"
-        agent = _running_agent()
-        if agent is not None:
-            image_ready = bool(await agent.set_image_enabled(on))  # type: ignore[attr-defined]
-            applied = "live"
-        else:
-            from . import service as service_mod
-            from . import singleton
-
-            if singleton.held_by_other() and service_mod.is_installed():
-                applied = "service" if service_mod.kickstart() else "saved"
-        return web.json_response({"ok": True, "on": on, "imageReady": image_ready, "applied": applied})
+        return web.json_response(await _apply_image_receiving(on))
 
     async def cloud_settings(req: web.Request) -> web.Response:
         """클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. body {geminiApiKey?, comfyUrl?}.

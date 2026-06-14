@@ -562,7 +562,7 @@ export const api = {
   },
   /** ComfyUI 설치 시작(핀 clone→3.13 venv→torch/deps→기동). 진행은 comfySetupProgress 폴링. */
   async installComfy() {
-    /* @proto-only */ if (USE_MOCK) { _setup.comfy = { start: Date.now() }; await delay(50); return { ok: true }; } /* @end-proto-only */
+    /* @proto-only */ if (USE_MOCK) { _setup.comfy = { start: Date.now() }; MOCK.status.enableImage = true; await delay(50); return { ok: true, on: true }; } /* @end-proto-only */
     return post(ENDPOINTS.comfySetup);
   },
   /** ComfyUI 설치 진행률 — { phase, percent, message, error }. */
@@ -571,7 +571,7 @@ export const api = {
     if (USE_MOCK) {
       const s = _setup.comfy; if (!s) return { phase: 'idle', percent: 0, message: '' };
       const sec = (Date.now() - s.start) / 1000, pct = Math.min(100, Math.round(sec / 8 * 100));
-      if (pct >= 100) { MOCK.comfy.installed = true; MOCK.comfy.running = true; return { phase: 'done', percent: 100, message: 'ComfyUI 준비 완료' }; }
+      if (pct >= 100) { MOCK.comfy.installed = true; MOCK.comfy.running = true; MOCK.status.enableImage = true; MOCK.status.imageReady = true; return { phase: 'done', percent: 100, message: 'ComfyUI 준비 완료' }; }
       if (pct >= 90) return { phase: 'starting', percent: pct, message: 'ComfyUI 시작 중' };
       if (pct >= 45) return { phase: 'installing', percent: pct, message: 'PyTorch·의존성 설치 중' };
       return { phase: 'installing', percent: pct, message: 'ComfyUI 내려받는 중' };
@@ -579,9 +579,9 @@ export const api = {
     /* @end-proto-only */
     return http(ENDPOINTS.comfySetupProgress);
   },
-  /** 설치된 ComfyUI 기동. */
+  /** 설치된 ComfyUI 기동 + 이미지 요청 수신 활성화. */
   async comfyStart() {
-    /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.comfy.running = true; return { ok: true }; } /* @end-proto-only */
+    /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.comfy.running = true; MOCK.status.enableImage = true; MOCK.status.imageReady = true; return { ok: true, on: true, imageReady: true, applied: 'live' }; } /* @end-proto-only */
     return post(ENDPOINTS.comfyStart);
   },
   /** ComfyUI 정지. */

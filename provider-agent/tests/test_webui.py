@@ -1391,6 +1391,98 @@ async def test_comfy_lifecycle_endpoints(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_comfy_start_enables_image_on_running_agent(monkeypatch):
+    """로컬 실행 탭의 ComfyUI 시작 버튼은 --enable-image 와 같은 효과로 라이브 적용한다."""
+    from provider_agent import comfy_setup
+    from provider_agent.config import AgentConfig
+    from provider_agent.config_file import load_config, save_config
+
+    class Agent:
+        image_ready = False
+
+        async def set_image_enabled(self, on: bool) -> bool:
+            self.enabled = on
+            self.image_ready = on
+            return self.image_ready
+
+    async def start() -> bool:
+        return True
+
+    save_config(AgentConfig(token="T", enable_image=False))
+    agent = Agent()
+    monkeypatch.setattr(comfy_setup, "is_installed", lambda directory=None: True)
+    monkeypatch.setattr(comfy_setup, "start", start)
+    webui._state["agent"] = agent
+    webui._state["task"] = _AliveTask()
+
+    client = await _client()
+    try:
+        r = await (await client.post("/api/comfy/start", headers={"X-Session": KEY})).json()
+        assert r == {"ok": True, "on": True, "imageReady": True, "applied": "live"}
+        assert agent.enabled is True
+        assert load_config()["enable_image"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_comfy_start_enables_image_for_background_service(monkeypatch):
+    """이미 백그라운드 서비스가 제공 중이면 ComfyUI 시작 후 서비스를 재기동해 이미지 설정을 반영한다."""
+    from provider_agent import comfy_setup, service, singleton
+    from provider_agent.config import AgentConfig
+    from provider_agent.config_file import load_config, save_config
+
+    kicked = {"called": False}
+
+    async def start() -> bool:
+        return True
+
+    def kickstart() -> bool:
+        kicked["called"] = True
+        return True
+
+    save_config(AgentConfig(token="T", enable_image=False))
+    monkeypatch.setattr(comfy_setup, "is_installed", lambda directory=None: True)
+    monkeypatch.setattr(comfy_setup, "start", start)
+    monkeypatch.setattr(singleton, "held_by_other", lambda: True)
+    monkeypatch.setattr(service, "is_installed", lambda: True)
+    monkeypatch.setattr(service, "kickstart", kickstart)
+
+    client = await _client()
+    try:
+        r = await (await client.post("/api/comfy/start", headers={"X-Session": KEY})).json()
+        assert r == {"ok": True, "on": True, "imageReady": False, "applied": "service"}
+        assert kicked["called"] is True
+        assert load_config()["enable_image"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_comfy_setup_start_persists_enable_image(monkeypatch):
+    """설치 버튼도 긴 설치가 끝나기 전부터 다음 에이전트 시작값을 --enable-image 로 저장한다."""
+    from provider_agent import comfy_setup
+    from provider_agent.config import AgentConfig
+    from provider_agent.config_file import load_config, save_config
+
+    async def run_setup(_url=None) -> bool:
+        return False
+
+    save_config(AgentConfig(token="T", enable_image=False))
+    monkeypatch.setattr(comfy_setup, "is_busy", lambda: False)
+    monkeypatch.setattr(comfy_setup, "run_setup", run_setup)
+
+    client = await _client()
+    try:
+        r = await (await client.post("/api/comfy/setup", headers={"X-Session": KEY})).json()
+        await asyncio.sleep(0)
+        assert r == {"ok": True, "on": True}
+        assert load_config()["enable_image"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_comfy_models_and_select(monkeypatch):
     """ComfyUI 체크포인트 목록(폴더 스캔) + 선택 저장. 미설치/미실행이면 빈 목록·정직한 응답."""
 

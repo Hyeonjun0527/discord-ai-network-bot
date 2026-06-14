@@ -1957,11 +1957,11 @@ def _handle_webview_closing(window: object) -> bool | None:
 
 
 def _start_auto_update_watcher() -> None:
-    """auto_update(기본 ON)면 **시작 시 + 주기적으로** 새 버전을 검사·적용한다(실행 중에도).
+    """auto_update(기본 ON)면 **시작 시 + 주기적으로** 새 버전을 검사만 한다(적용은 사용자 승인 후).
 
-    앱을 켜 둔 채 새 버전이 나와도 다음 주기에 자동으로 받아 교체·재실행한다(껐다 켜야만
-    적용되는 문제 해소). 다운로드 진행률은 _progress 에 반영되어 열려 있는 GUI 에 프로그래스바로
-    보인다. 빌드된 앱·구버전·지원 OS 일 때만 실제 교체. 실패·미설정은 조용히 무시한다.
+    예전에는 새 버전이 감지되면 백그라운드에서 곧바로 받아 앱을 종료·교체했다. 사용자는 "갑자기
+    꺼짐"으로 느꼈고, 실패도 보이지 않았다. 이제 워처는 업데이트 가능 상태를 로그로만 남기며,
+    실제 적용은 프런트엔드 중앙 확인 모달에서 사용자가 승인한 `/api/update` 호출만 허용한다.
     간격은 기본 2시간(AGENT_UPDATE_INTERVAL_S 로 조정, 테스트용).
     """
     import os
@@ -1974,19 +1974,18 @@ def _start_auto_update_watcher() -> None:
     def _loop() -> None:
         while True:
             outcome = _auto_update_once()
-            if outcome == "applied":
-                return  # 적용 시작 → 곧 종료·재실행되므로 루프 종료
             # '최신 확인됨'일 때만 긴 간격, 그 외(네트워크 전이 실패·적용 실패)는 짧게 재시도한다.
             # (예전엔 한 번 실패하면 무조건 2시간 잤다 → 시작 시 일시적 네트워크 실패로 업데이트가 안 됐다.)
-            time.sleep(interval if outcome == "uptodate" else retry)
+            time.sleep(interval if outcome in {"uptodate", "available"} else retry)
 
     threading.Thread(target=_loop, daemon=True).start()
 
 
 def _auto_update_once() -> str:
-    """자동 업데이트 1회 검사. 결과: "applied"(적용 시작) | "uptodate"(확인됨·최신/미지원) | "pending"(재시도).
+    """자동 업데이트 1회 검사. 결과: "available"(승인 대기) | "uptodate"(확인됨·최신/미지원) | "pending"(재시도).
 
     "pending" 은 네트워크 전이 실패·확인 불가·적용 실패 등 — 호출부가 **짧게 재시도**해야 하는 경우다.
+    실제 업데이트 적용은 UX 확인 모달 뒤의 /api/update 에서만 한다.
     """
     from . import updater
 
@@ -2000,13 +1999,9 @@ def _auto_update_once() -> str:
             return "pending"  # 네트워크 전이 실패(시작 시 흔함) → 짧게 재시도
         if info.get("outdated") and info.get("supported"):
             logging.getLogger("provider_agent").info(
-                "자동 업데이트: v%s → v%s 적용", info.get("current"), info.get("latest")
+                "업데이트 사용 가능: v%s → v%s (사용자 확인 모달 승인 대기)", info.get("current"), info.get("latest")
             )
-            result = updater.apply_update()  # _progress 갱신(프로그래스바) + swap 헬퍼
-            if result.get("ok") and result.get("restarting"):
-                _schedule_exit()  # 헬퍼가 교체·재실행
-                return "applied"
-            return "pending"  # 적용 실패 → 재시도
+            return "available"
         return "uptodate"  # 확인됨 + 최신(또는 이 OS 미지원) → 긴 간격
     except Exception:  # noqa: BLE001 - 자동 업데이트 실패는 앱 동작을 막지 않는다
         return "pending"
@@ -2021,7 +2016,7 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
         f"\n제어판: {url}\n(창이 안 보이면 위 주소를 브라우저에서 여세요. AGENT_GUI_BROWSER=1 로 브라우저 강제.)\n",
         flush=True,
     )
-    _start_auto_update_watcher()  # 자동 업데이트 ON 이면 시작 시+주기적으로 검사·적용(실행 중에도)
+    _start_auto_update_watcher()  # 자동 업데이트 ON 이면 시작 시+주기적으로 검사, 적용은 사용자 확인 후
     _start_connect_status_refresher()  # 서버의 디스코드 로그인(OAuth) 활성 여부 주기 갱신
 
     if _webview_available():

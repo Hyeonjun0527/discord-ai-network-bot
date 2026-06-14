@@ -1170,8 +1170,8 @@ def run_agent(cfg: AgentConfig) -> int:
     if not singleton.acquire():
         logger.warning("다른 에이전트 인스턴스가 이미 실행 중입니다 — 이 인스턴스는 종료합니다(중복 연결 방지).")
         return 0
-    # 헤드리스(자동실행 서비스 등)도 주기적으로 새 버전을 받아 헤드리스로 교체·재실행한다
-    # (GUI 워처와 별개 — 창 없이 도는 서비스가 껐다 켜야만 업데이트되던 문제 해소).
+    # 헤드리스(자동실행 서비스 등)는 주기적으로 새 버전만 확인한다. 창 없는 서비스는 사용자 확인
+    # 모달을 띄울 수 없으므로 자동 교체·재실행하지 않는다.
     if cfg.auto_update:
         from . import updater
 

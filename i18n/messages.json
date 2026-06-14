@@ -431,14 +431,14 @@
       "ja": "バージョン"
     },
     "setAutoUpdate": {
-      "ko": "자동 업데이트",
-      "en": "Auto-update",
-      "ja": "自動アップデート"
+      "ko": "업데이트 알림",
+      "en": "Update alerts",
+      "ja": "アップデート通知"
     },
     "setAutoUpdateDesc": {
-      "ko": "새 버전이 나오면 자동으로 설치해요.",
-      "en": "Install new versions automatically.",
-      "ja": "新しいバージョンが出たら自動でインストールします。"
+      "ko": "새 버전이 나오면 자동 설치하지 않고 확인 모달을 띄워요.",
+      "en": "When a new version is available, show a confirmation modal instead of installing automatically.",
+      "ja": "新しいバージョンがある場合、自動インストールせず確認モーダルを表示します。"
     },
     "toggleAutostart": {
       "ko": "로그인 시 자동 시작",
@@ -701,9 +701,9 @@
       "ja": "アップデートを開始できませんでした"
     },
     "setUpdateStartedToast": {
-      "ko": "업데이트를 시작했어요 — 다운로드 후 자동 적용·재시작돼요",
-      "en": "Update started — downloads, then auto-applies and restarts",
-      "ja": "アップデートを開始しました — ダウンロード後、自動適用・再起動します"
+      "ko": "업데이트를 시작했어요 — 다운로드 후 Nexa가 다시 열려요",
+      "en": "Update started — Nexa will reopen after downloading",
+      "ja": "アップデートを開始しました — ダウンロード後にNexaが再起動します"
     },
     "setUpdateStartRetryToast": {
       "ko": "업데이트 시작 실패 — 다시 시도하세요",
@@ -779,6 +779,46 @@
       "ko": "업데이트",
       "en": "Update",
       "ja": "アップデート"
+    },
+    "setVerCheckFailed": {
+      "ko": "업데이트 확인 실패",
+      "en": "Update check failed",
+      "ja": "アップデート確認に失敗しました"
+    },
+    "setUpdateCheckFailedToast": {
+      "ko": "업데이트 확인 실패 — {error}",
+      "en": "Update check failed — {error}",
+      "ja": "アップデート確認に失敗しました — {error}"
+    },
+    "setUpdatePromptTitle": {
+      "ko": "업데이트하시겠습니까?",
+      "en": "Update Nexa?",
+      "ja": "Nexaをアップデートしますか？"
+    },
+    "setUpdatePromptDesc": {
+      "ko": "새 버전 v{latest}가 있어요. 현재 버전은 v{current}입니다.",
+      "en": "Version v{latest} is available. You are on v{current}.",
+      "ja": "新しいバージョン v{latest} があります。現在は v{current} です。"
+    },
+    "setUpdatePromptRestart": {
+      "ko": "진행하면 다운로드 후 Nexa가 잠시 종료되고 새 버전으로 다시 열려요.",
+      "en": "If you continue, Nexa will download the update, briefly close, then reopen on the new version.",
+      "ja": "続行すると、ダウンロード後にNexaが一度終了し、新しいバージョンで再起動します。"
+    },
+    "setUpdatePromptLater": {
+      "ko": "나중에",
+      "en": "Later",
+      "ja": "後で"
+    },
+    "setUpdatePromptConfirm": {
+      "ko": "업데이트",
+      "en": "Update",
+      "ja": "アップデート"
+    },
+    "setUpdatePromptUnsupported": {
+      "ko": "이 환경에서는 인앱 업데이트를 지원하지 않아요.",
+      "en": "In-app update is not supported in this environment.",
+      "ja": "この環境ではアプリ内アップデートに対応していません。"
     },
     "setVerChecking": {
       "ko": "버전 확인 중…",

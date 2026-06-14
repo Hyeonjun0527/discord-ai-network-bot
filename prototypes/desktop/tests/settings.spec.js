@@ -41,8 +41,8 @@ test('언어 전환(i18n): 설정에서 ko→en 바꾸면 네비(정적)와 설�
   await expect(page.locator('.nav-item[data-view="settings"]')).toContainText('設定'); // 일본어 전환
 });
 
-test('설정 본문은 업데이트 확인(GitHub 네트워크)이 느려도 즉시 렌더된다(회귀: 빈 설정창)', async ({ page }) => {
-  // getUpdateInfo 를 영원히 pending 으로(느린/막힌 GitHub 네트워크 재현) → 본문 렌더가 막히면 안 된다.
+test('설정 본문은 업데이트 확인 네트워크가 느려도 즉시 렌더된다(회귀: 빈 설정창)', async ({ page }) => {
+  // getUpdateInfo 를 영원히 pending 으로(느린/막힌 업데이트 채널 재현) → 본문 렌더가 막히면 안 된다.
   await page.addInitScript(() => { globalThis.__HANG_UPDATE_INFO = true; });
   await page.goto('/index.html');
   await page.click('.nav-item[data-view="settings"]');
@@ -51,4 +51,44 @@ test('설정 본문은 업데이트 확인(GitHub 네트워크)이 느려도 즉
   await expect(page.locator('#settingsBody')).toContainText('실행 동작');
   await expect(page.locator('#settingsBody')).toContainText('계정');
   await expect(page.locator('#settingsBody')).toContainText('확인 중');
+});
+
+test('업데이트 확인 실패는 최신 상태로 오판하지 않고 유저에게 보인다', async ({ page }) => {
+  await page.addInitScript(() => {
+    globalThis.__MOCK_UPDATE_INFO = {
+      current: '0.52.3',
+      latest: null,
+      outdated: false,
+      supported: true,
+      autoUpdate: true,
+      error: '업데이트 채널을 찾을 수 없어요(404)',
+    };
+  });
+  await page.goto('/index.html');
+  await page.click('.nav-item[data-view="settings"]');
+  await expect(page.locator('#settingsBody')).toContainText('업데이트 확인 실패');
+  await expect(page.locator('#settingsBody')).not.toContainText('최신 상태');
+  await page.click('#setUpdateCheck');
+  await expect(page.locator('#toast')).toContainText('업데이트 확인 실패');
+});
+
+test('새 버전은 자동 적용하지 않고 중앙 확인 모달에서 승인받는다', async ({ page }) => {
+  await page.addInitScript(() => {
+    globalThis.__MOCK_UPDATE_INFO = {
+      current: '0.52.3',
+      latest: '0.52.4',
+      outdated: true,
+      supported: true,
+      autoUpdate: true,
+      error: null,
+    };
+  });
+  await page.goto('/index.html');
+  const modal = page.locator('#updateModal');
+  await expect(modal).toBeVisible();
+  await expect(modal).toContainText('업데이트하시겠습니까?');
+  await expect(modal).toContainText('v0.52.4');
+  await expect(modal).toContainText('잠시 종료');
+  await modal.getByText('나중에').click();
+  await expect(modal).toHaveCount(0);
 });

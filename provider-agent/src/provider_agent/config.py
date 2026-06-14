@@ -38,6 +38,11 @@ class AgentConfig:
     gemini_models: tuple[str, ...] = ()  # 광고할 Gemini 모델(키 있을 때 기본 gemini-3.1-flash-lite)
     comfy_url: str = ""  # 로컬 ComfyUI 주소(비면 앱 관리 ComfyUI localhost:8188). 외부는 명시 입력
     comfy_broadcast: bool = False  # deprecated: ComfyUI 웹 생성물 자동 포워드는 안전 정책상 비활성.
+    image_backend: str = "comfyui"  # 이미지 엔진: comfyui(로컬) | stability | runpod. 클라우드 키가 있으면 자동 선택
+    stability_api_key: str = ""  # 클라우드 Stability 이미지 백엔드 키(관리자 1개로 서버 전체 무료). central 엔 안 올림
+    stability_model: str = "core"  # Stability 모델: core(저렴·안정) | ultra(고품질) | sd3
+    runpod_api_key: str = ""  # 클라우드 RunPod Serverless 이미지 백엔드 키. central 엔 안 올림
+    runpod_endpoint_id: str = ""  # RunPod Serverless 엔드포인트 ID(직접 배포한 diffusers 워커)
     hf_token: str = ""  # HuggingFace 토큰(gated/비공개 모델 다운로드용). 비면 public 모델만. 이 PC 에만 저장
     assume_yes: bool = False  # 첫 실행 동의 자동 승인(--yes, 저장하지 않음)
     service: bool = False  # 헤드리스 자동시작 모드(--service): launchd·업데이터 재실행이 창 없이 무인 구동
@@ -175,6 +180,22 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
     # 로컬에서 직접 띄우는 것이므로, 주소는 오직 per-user 저장 설정(앱 UI 입력)에서만 온다. 비면 앱이
     # 관리하는 로컬 ComfyUI(localhost:8188). 환경변수(프로젝트 env)로 외부 주소를 주입하지 않는다.
     comfy_url = str(saved.get("comfy_url") or "").rstrip("/")
+    # 클라우드 이미지 백엔드(관리자 키 1개로 서버 전체 무료 이미지 — 클라우드 Gemini 텍스트와 같은 모델).
+    # env > 저장 설정. 키는 이 PC 에만 저장하고 central 엔 올리지 않는다(Ollama 토큰·Gemini 키와 동일 원칙).
+    stability_api_key = (_env("STABILITY_API_KEY") or str(saved.get("stability_api_key") or "")).strip()
+    stability_model = (str(saved.get("stability_model") or "").strip() or "core")
+    runpod_api_key = (_env("RUNPOD_API_KEY") or str(saved.get("runpod_api_key") or "")).strip()
+    runpod_endpoint_id = (_env("RUNPOD_ENDPOINT_ID") or str(saved.get("runpod_endpoint_id") or "")).strip()
+    # 백엔드 선택: 명시값(env IMAGE_BACKEND/저장) 우선, 없으면 키 존재로 자동 판단('모두에게 무료'
+    # 목적이라 클라우드 우선). 셋 다 없으면 로컬 ComfyUI(기존 동작).
+    image_backend = (_env("IMAGE_BACKEND") or str(saved.get("image_backend") or "")).strip().lower()
+    if image_backend not in ("comfyui", "stability", "runpod"):
+        if stability_api_key:
+            image_backend = "stability"
+        elif runpod_api_key and runpod_endpoint_id:
+            image_backend = "runpod"
+        else:
+            image_backend = "comfyui"
     # 안전 정책: ComfyUI 웹 생성물을 central/Discord 로 자동 포워드하는 레거시 경로는 비활성.
     # 과거 CLI/저장값이 남아 있어도 무시한다. NSFW 포함 직접 생성은 localhost ComfyUI 안에서만 수행한다.
     if bool(getattr(args, "comfy_broadcast", False)) or bool(saved.get("comfy_broadcast")):
@@ -223,6 +244,11 @@ def config_from_args(argv: list[str] | None = None) -> tuple[AgentConfig, bool]:
         gemini_models=gemini_models,
         comfy_url=comfy_url,
         comfy_broadcast=comfy_broadcast,
+        image_backend=image_backend,
+        stability_api_key=stability_api_key,
+        stability_model=stability_model,
+        runpod_api_key=runpod_api_key,
+        runpod_endpoint_id=runpod_endpoint_id,
         hf_token=hf_token,
         # --service(헤드리스 자동시작)는 동의 프롬프트를 띄울 수 없으므로 자동 승인(--yes)을 포함한다.
         assume_yes=bool(args.yes) or bool(args.service),

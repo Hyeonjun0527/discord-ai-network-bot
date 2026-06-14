@@ -213,17 +213,26 @@ class ProviderAgent:
     def __init__(self, cfg: AgentConfig, ollama: OllamaClient | None = None, sd=None) -> None:
         self._cfg = cfg
         self._ollama = ollama or OllamaClient(cfg.ollama_url, cfg.request_timeout)
-        # 이미지 엔진 = **ComfyUI 전용**(SD.Next 는 제거됨 — 유지보수 중단된 레거시). 우선순위:
-        #   ① 유저가 직접 띄운 외부 ComfyUI(per-user 설정의 comfy_url) > ② 앱이 관리하는 로컬 ComfyUI(localhost:8188).
-        # txt2img/health 인터페이스(덕타이핑)라 _handle_image 는 백엔드와 무관하게 동일하게 동작한다.
+        # 이미지 엔진 = 3택1(덕타이핑 인터페이스 txt2img/health 라 _handle_image 는 백엔드 무관 동일):
+        #   ① comfyui — 로컬 ComfyUI(유저 per-user comfy_url > 앱 관리 localhost:8188). 비용 0·커스텀↑.
+        #   ② stability — 클라우드 Stability API(관리자 키 1개로 서버 전체 무료). 평균 품질 안정↑.
+        #   ③ runpod — 클라우드 RunPod Serverless diffusers 워커(관리자 키 1개). 비용/커스텀↑.
+        # 백엔드/키는 config(env > 저장 설정)에서 결정된다(클라우드 Gemini 텍스트 백엔드와 같은 모델).
         from . import comfy_setup
 
-        # 외부 comfy_url 이 있으면 그것(유저 로컬에서 직접 실행), 없으면 앱이 관리하는 ComfyUI(localhost:8188).
-        # 설치/실행 전이면 health=False 라 이미지 미광고(자동 기동은 _boot_sd).
+        # 설치/실행 전이면 health=False 라 이미지 미광고(자동 기동은 _boot_sd, comfyui 한정).
         self._comfy_url = cfg.comfy_url or comfy_setup.webui_url()
-        self._image_backend = "comfyui"
+        self._image_backend = cfg.image_backend
         if sd is not None:
             self._sd = sd
+        elif cfg.image_backend == "stability" and cfg.stability_api_key:
+            from .stability import StabilityClient
+
+            self._sd = StabilityClient(cfg.stability_api_key, cfg.request_timeout, model=cfg.stability_model)
+        elif cfg.image_backend == "runpod" and cfg.runpod_api_key and cfg.runpod_endpoint_id:
+            from .runpod import RunPodClient
+
+            self._sd = RunPodClient(cfg.runpod_api_key, cfg.runpod_endpoint_id, cfg.request_timeout)
         elif cfg.enable_image:
             from .comfy import ComfyClient
 
@@ -501,7 +510,7 @@ class ProviderAgent:
         성공 시 base64 PNG, 실패 시 InferError 송신 후 None."""
         import secrets
 
-        from .comfy import ComfyError
+        from .image_backend import ImageBackendError
 
         try:
             await self._review_image_prompt(req)
@@ -529,9 +538,10 @@ class ProviderAgent:
                 try:
                     b64: str = await self._sd.txt2img(positive, opts, on_progress=on_progress)
                     return b64
-                except ComfyError as exc:
+                except ImageBackendError as exc:
+                    # comfyui 면 재기동 후 1회 재시도, 클라우드면 _recover_sd 가 False → 즉시 에러 전달.
                     if attempt == 0 and await self._recover_sd():
-                        logger.warning("SD 가 생성 중 종료된 듯 — 재기동 후 1회 재시도: %s", exc)
+                        logger.warning("이미지 백엔드가 생성 중 종료된 듯 — 재기동 후 1회 재시도: %s", exc)
                         continue
                     await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
                     return None
@@ -547,6 +557,13 @@ class ProviderAgent:
         """
         if self._sd_wh is not None:
             return self._sd_wh
+        # 클라우드 백엔드는 자기 기본 해상도를 직접 선언한다(ComfyUI 체크포인트 추정 우회) — 덕타이핑.
+        dr = getattr(self._sd, "default_resolution", None) if self._sd is not None else None
+        if callable(dr):
+            cloud_wh: tuple[int, int] | None = dr()
+            if cloud_wh:
+                self._sd_wh = cloud_wh
+                return cloud_wh
         from . import sd_setup
 
         wh = (512, 512)
@@ -570,6 +587,9 @@ class ProviderAgent:
         try:
             if await self._sd.health():
                 return True  # 이미 살아있음(일시적 네트워크 오류였음)
+            # 클라우드 백엔드는 로컬 프로세스가 없어 재기동 개념이 없다 — health 재확인으로 끝(위에서 처리).
+            if self._image_backend != "comfyui":
+                return False
             from . import comfy_setup
 
             if comfy_setup.is_installed() and await comfy_setup.start() and await self._sd.health():
@@ -577,7 +597,7 @@ class ProviderAgent:
                 return True
             return False
         except Exception as exc:  # noqa: BLE001 - 재기동 실패는 비치명적(원 에러를 사용자에게 전달)
-            logger.warning("ComfyUI 재기동 실패: %s", exc)
+            logger.warning("이미지 백엔드 재기동 실패: %s", exc)
             return False
 
     async def _emit_estimated_progress(self, conn: AgentConnection, request_id: str, gen_task: "asyncio.Task[str]") -> None:
@@ -976,15 +996,16 @@ class ProviderAgent:
                 "(앱 ‘제공 모델’에서 1개 이상 선택하세요)."
             )
 
-        # ComfyUI 이미지 capability: opt-in + 런타임 health 로 확정.
+        # 이미지 capability: 백엔드(comfyui/stability/runpod) opt-in + 런타임 health 로 확정.
         if self._sd is not None:
             self._image_ready = await self._sd.health()
+            target = self._comfy_url if self._image_backend == "comfyui" else self._image_backend
             if self._image_ready:
-                logger.info("이미지 생성(ComfyUI) 활성: %s", self._comfy_url)
+                logger.info("이미지 생성(%s) 활성: %s", self._image_backend, target)
             else:
                 logger.warning(
-                    "ComfyUI(%s) 미연결 — 설치돼 있으면 자동 기동을 시도하고, 준비되면 이미지 capability 를 재광고합니다",
-                    self._comfy_url,
+                    "이미지 백엔드(%s) 미연결 — 준비되면 이미지 capability 를 재광고합니다(comfyui 면 자동 기동 시도)",
+                    self._image_backend,
                 )
 
         # 웹 UI/트레이에서 같은 루프의 태스크로 돌릴 때는 시그널 핸들러를 설치하지 않는다.
@@ -1047,22 +1068,23 @@ class ProviderAgent:
         return 0
 
     async def _boot_sd(self) -> None:
-        """설치된 ComfyUI 가 꺼져 있으면 자동으로 띄우고, 준비되면 image capability 를 재광고한다.
+        """이미지 백엔드가 준비되면 image capability 를 재광고한다(필요 시 로컬 ComfyUI 자동 기동).
 
-        capability 는 연결 시점 hello 로만 광고되므로, ComfyUI 가 늦게 떠도 풀에 반영되려면 재연결이
+        capability 는 연결 시점 hello 로만 광고되므로, 백엔드가 늦게 준비돼도 풀에 반영되려면 재연결이
         필요하다. 텍스트 연결을 막지 않도록 백그라운드 태스크로 돌린다(재부팅 후 무인 복구 핵심).
-        앱이 관리하는 ComfyUI 면 자동 기동(설치돼 있을 때) — 1급 엔진이므로 살려둔다.
-        외부 URL(직접 띄운 인스턴스)이면 is_installed=False → start no-op, health 만 본다.
+        - comfyui: 앱 관리 ComfyUI 면 자동 기동(설치돼 있을 때). 외부 URL 이면 health 만 본다.
+        - stability/runpod(클라우드): 로컬 기동 없음 — health(API 키 확인)만으로 준비 판단.
         """
-        from . import comfy_setup
+        if self._image_backend == "comfyui":
+            from . import comfy_setup
 
-        if comfy_setup.is_installed():
-            await comfy_setup.start()
+            if comfy_setup.is_installed():
+                await comfy_setup.start()
         if self._sd is not None and await self._sd.health():
-            # 저장된 선택 체크포인트 적용(없으면 첫 모델). 재시작에도 유저 선택 유지.
+            # 저장된 선택 체크포인트 적용(comfyui 한정 — 클라우드는 모델이 config/엔드포인트로 고정).
             from .config_file import load_config
 
-            cm = load_config().get("comfy_model")
+            cm = load_config().get("comfy_model") if self._image_backend == "comfyui" else None
             if cm:
                 try:
                     await self._sd.set_checkpoint(cm)

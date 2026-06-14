@@ -29,9 +29,10 @@ class DownloadCacheControlTest
         }
 
         companion object {
-            private val downloadDir = Files.createTempDirectory("nexa-download-cache-test").also { dir ->
-                Files.writeString(dir.resolve("latest.json"), "{}")
-            }
+            private val downloadDir =
+                Files.createTempDirectory("nexa-download-cache-test").also { dir ->
+                    Files.writeString(dir.resolve("latest.json"), "{}")
+                }
 
             @JvmStatic
             @DynamicPropertySource

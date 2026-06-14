@@ -352,15 +352,17 @@ jobs:
           artifact-name: provider-agent-sbom.spdx.json
           output-file: dist/provider-agent-sbom.spdx.json
       # GitHub artifact attestation — 바이너리 빌드 출처(provenance) 증명.
+      # GitHub Free/Pro/Team 의 개인 private 저장소에서는 attestation 저장이 지원되지 않는다.
+      # public 전환 전까지는 체크섬/SBOM/릴리스 자산으로 검증하고, public 릴리스에서만 attestation 을 발행한다.
       - name: 빌드 출처 attestation
-        if: startsWith(github.ref, 'refs/tags/agent-v')
+        if: startsWith(github.ref, 'refs/tags/agent-v') && github.event.repository.visibility == 'public'
         continue-on-error: true
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: dist/nexa-agent-*
       - name: SBOM attestation
         # SBOM 생성이 성공했을 때만(파일이 있을 때만) — 부가 산출물이라 릴리스를 막지 않는다.
-        if: startsWith(github.ref, 'refs/tags/agent-v') && steps.sbom.outcome == 'success'
+        if: startsWith(github.ref, 'refs/tags/agent-v') && github.event.repository.visibility == 'public' && steps.sbom.outcome == 'success'
         continue-on-error: true
         uses: actions/attest-sbom@v2
         with:
@@ -380,7 +382,7 @@ jobs:
             1. `SHA256SUMS.txt` 를 함께 받아 해시를 대조하세요.
                - macOS/Linux: `sha256sum -c SHA256SUMS.txt --ignore-missing` (macOS 는 `shasum -a 256 -c`)
                - Windows: `Get-FileHash <파일> -Algorithm SHA256` 출력과 비교
-            2. 빌드 출처(provenance)·SBOM attestation 확인:
+            2. 공개 저장소 릴리스라면 빌드 출처(provenance)·SBOM attestation 확인:
                `gh attestation verify nexa-agent-<os> --repo Hyeonjun0527/discord-ai-network-bot`
             3. 일반 사용자 권한으로 실행하세요(관리자/sudo 불필요).
           files: |

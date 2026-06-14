@@ -193,9 +193,29 @@ jobs:
           # (서명/staple 끝난 .app 으로 만든다.)
           if [ "$RUNNER_OS" = "macOS" ] && [ -d "Nexa.app" ]; then
             ditto -c -k --keepParent "Nexa.app" "nexa-macos.zip"
-            rm -rf dmgroot && mkdir dmgroot && cp -R "Nexa.app" dmgroot/ && ln -s /Applications dmgroot/Applications
-            hdiutil create -volname "Nexa" -srcfolder dmgroot -ov -format UDZO "nexa-macos.dmg"
-            rm -rf dmgroot
+            dmgroot="$(mktemp -d)"
+            cp -R "Nexa.app" "$dmgroot/"
+            ln -s /Applications "$dmgroot/Applications"
+            # macOS runner 에서 hdiutil 이 가끔 기존 /Volumes/Nexa 또는 직전 partial dmg 를 물고
+            # "Resource busy" 를 반환한다. 릴리스 전체를 깨지 않게 stale mount/output 을 정리하고 재시도한다.
+            rm -f "nexa-macos.dmg"
+            hdiutil detach "/Volumes/Nexa" -force 2>/dev/null || true
+            created=false
+            for attempt in 1 2 3; do
+              if hdiutil create -volname "Nexa" -srcfolder "$dmgroot" -ov -format UDZO "nexa-macos.dmg"; then
+                created=true
+                break
+              fi
+              echo "::warning::hdiutil create failed (attempt ${attempt}/3); detaching stale Nexa volume and retrying"
+              hdiutil detach "/Volumes/Nexa" -force 2>/dev/null || true
+              rm -f "nexa-macos.dmg"
+              sleep $((attempt * 5))
+            done
+            rm -rf "$dmgroot"
+            if [ "$created" != "true" ]; then
+              echo "::error::nexa-macos.dmg 생성 실패"
+              exit 1
+            fi
             # 완전 무경고(Gatekeeper) 드래그 설치를 위해 dmg 컨테이너 자체도 notarize + staple.
             # 서명/Apple 시크릿이 모두 있을 때만 — 없으면 미공증 dmg(체크섬/attestation 으로 검증).
             if [ -n "${MACOS_CERT_P12:-}" ] && [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ]; then

@@ -14,7 +14,7 @@ from . import sysinfo
 from .config import AgentConfig
 from .connection import AgentConnection
 from .constants import AGENT_VERSION, IMAGE_CHUNK_CHARS, MAX_RESPONSE_CHARS, ErrorCode
-from .gemini import IMAGE_PROMPT_REVIEW_SYSTEM_PROMPT, ImagePromptReview
+from .glm import IMAGE_PROMPT_REVIEW_SYSTEM_PROMPT, ImagePromptReview
 from .guild_policy import GuildPolicyManager
 from .ollama import OllamaClient, OllamaError
 from .protocol import (
@@ -56,11 +56,11 @@ DEFAULT_FORCED_NEGATIVE = (
 
 
 class ImagePromptRejected(Exception):
-    """이미지 생성 전 Gemini 안전 심사에서 fail-closed 로 차단된 요청."""
+    """이미지 생성 전 GLM 안전 심사에서 fail-closed 로 차단된 요청."""
 
 
 def _merge_models(base: list[str], extra: list[str]) -> list[str]:
-    """광고 모델 목록 = 로컬(Ollama) 선택 + 클라우드(Gemini), 순서 보존·중복 제거."""
+    """광고 모델 목록 = 로컬(Ollama) 선택 + 클라우드(GLM), 순서 보존·중복 제거."""
     return list(dict.fromkeys([*base, *extra]))
 
 
@@ -217,7 +217,7 @@ class ProviderAgent:
         #   ① comfyui — 로컬 ComfyUI(유저 per-user comfy_url > 앱 관리 localhost:8188). 비용 0·커스텀↑.
         #   ② stability — 클라우드 Stability API(관리자 키 1개로 서버 전체 무료). 평균 품질 안정↑.
         #   ③ runpod — 클라우드 RunPod Serverless diffusers 워커(관리자 키 1개). 비용/커스텀↑.
-        # 백엔드/키는 config(env > 저장 설정)에서 결정된다(클라우드 Gemini 텍스트 백엔드와 같은 모델).
+        # 백엔드/키는 config(env > 저장 설정)에서 결정된다(클라우드 GLM 텍스트 백엔드와 같은 '관리자 키 1개' 모델).
         from . import comfy_setup
 
         # 설치/실행 전이면 health=False 라 이미지 미광고(자동 기동은 _boot_sd, comfyui 한정).
@@ -247,16 +247,16 @@ class ProviderAgent:
         # 셋이 얽혀 있어 일관성(원자적 정책 변경·중앙 리로드·stale 참조 방지)을 한곳에서 보장.
         # 전역 self._sem 은 머신 전체 보호, 길드 세마포어는 그 서버 1곳의 동시 처리 상한(서로 별개).
         self._policy_mgr = GuildPolicyManager(cfg)
-        # 클라우드 Gemini 백엔드(관리자 키 1개로 서버 전체 제공). 키 있으면 gemini 모델을 풀에 광고하고
-        # gemini-* 모델 요청을 Gemini API 로 라우팅한다(Ollama 와 동일 한도·공정성). 키는 이 PC 에만.
-        self._gemini = None
-        self._gemini_models: list[str] = []
-        if cfg.gemini_api_key:
-            from .gemini import GeminiClient
+        # 클라우드 GLM(z.ai) 백엔드(관리자 키 1개로 서버 전체 제공). 키 있으면 glm 모델을 풀에 광고하고
+        # glm-* 모델 요청을 z.ai API 로 라우팅한다(Ollama 와 동일 한도·공정성). 키는 이 PC 에만.
+        self._glm = None
+        self._glm_models: list[str] = []
+        if cfg.glm_api_key:
+            from .glm import GlmClient
 
-            self._gemini = GeminiClient(cfg.gemini_api_key, cfg.request_timeout)
-            self._gemini_models = list(cfg.gemini_models)
-        self._models: list[str] = _merge_models(list(cfg.models), self._gemini_models)
+            self._glm = GlmClient(cfg.glm_api_key, cfg.request_timeout)
+            self._glm_models = list(cfg.glm_models)
+        self._models: list[str] = _merge_models(list(cfg.models), self._glm_models)
         self._default_model: str = (cfg.default_model or "").strip()
         self._inflight = 0
         self._processed = 0  # 누적 처리 건수(로컬 요약)
@@ -280,7 +280,7 @@ class ProviderAgent:
 
     def _image_for(self, guild_id: int | None) -> bool:
         """이 길드에 이미지(SD) capability 를 광고할지 — SD 준비됨(self._image_ready) + 정책상 비활성 아님."""
-        return self._policy_mgr.image_for(guild_id, self._image_ready and self._gemini is not None)
+        return self._policy_mgr.image_for(guild_id, self._image_ready and self._glm is not None)
 
     def _build_hello(self, guild_id: int | None = None) -> ProviderHelloFrame:
         capabilities = ["text"]
@@ -392,21 +392,21 @@ class ProviderAgent:
                 await self._safe_send(
                     conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message="이미지 생성을 지원하지 않는 프로바이더입니다")
                 )
-            elif self._gemini is None:
+            elif self._glm is None:
                 await self._safe_send(
                     conn,
                     InferError(
                         req.request_id,
                         code=ErrorCode.OLLAMA_ERROR,
-                        message="이미지 안전 심사용 Gemini API 키가 없어 생성을 차단했습니다",
+                        message="이미지 안전 심사용 GLM API 키가 없어 생성을 차단했습니다",
                     ),
                 )
             else:
                 await self._handle_image(conn, req)
                 self._processed += 1
-        elif self._gemini is not None and (model or "").startswith("gemini-"):
-            # 클라우드 Gemini 라우팅(관리자 키). gemini-* 모델은 Gemini API 로 처리(한도·공정성은 동일).
-            await self._run_gemini(conn, req, model)
+        elif self._glm is not None and (model or "").startswith("glm-"):
+            # 클라우드 GLM 라우팅(관리자 키). glm-* 모델은 z.ai API 로 처리(한도·공정성은 동일).
+            await self._run_glm(conn, req, model)
         elif req.stream:
             # 스트리밍(#142): 부분 텍스트를 ChunkFrame 으로 점진 전송 후 done 표시.
             # 무거운/폭주 응답 보호: 누적 길이가 MAX_RESPONSE_CHARS 를 넘으면 조기 종료.
@@ -427,14 +427,14 @@ class ProviderAgent:
             self._processed += 1
             await self._safe_send(conn, InferResult(req.request_id, text=text, usage=usage))
 
-    async def _run_gemini(self, conn: AgentConnection, req: InferRequest, model: str | None) -> None:
-        """클라우드 Gemini 로 텍스트 추론(관리자 키). 스트림 요청도 한 번에 받아 청크로 흘려보낸다."""
-        from .gemini import GeminiError
+    async def _run_glm(self, conn: AgentConnection, req: InferRequest, model: str | None) -> None:
+        """클라우드 GLM(z.ai) 로 텍스트 추론(관리자 키). 스트림 요청도 한 번에 받아 청크로 흘려보낸다."""
+        from .glm import GlmError
 
-        assert self._gemini is not None
+        assert self._glm is not None
         try:
-            text, usage = await self._gemini.generate(req.prompt, model)
-        except GeminiError as exc:
+            text, usage = await self._glm.generate(req.prompt, model)
+        except GlmError as exc:
             await self._safe_send(conn, InferError(req.request_id, code=ErrorCode.OLLAMA_ERROR, message=str(exc)))
             return
         if len(text) > MAX_RESPONSE_CHARS:
@@ -466,37 +466,37 @@ class ProviderAgent:
         await self._safe_send(conn, ChunkFrame(req.request_id, delta="", done=True))
 
     async def _translate_image_prompt(self, req: InferRequest) -> str:
-        """한국어 요청을 Anima 용 영어 프롬프트로 번역(정책 적용). Gemini 없거나 실패 시 원문 폴백.
+        """한국어 요청을 Anima 용 영어 프롬프트로 번역(정책 적용). GLM 없거나 실패 시 원문 폴백.
 
         정책(번역 시스템프롬프트)은 central 의 image_policy 우선, 없으면 에이전트 기본값.
         번역 실패는 치명적이지 않다 — 원문으로라도 생성을 진행한다(거부 0 우선).
         """
         policy = req.image_policy or {}
         system_prompt = str(policy.get("translatorSystemPrompt") or DEFAULT_TRANSLATOR_SYSTEM_PROMPT)
-        if self._gemini is None:
+        if self._glm is None:
             return req.prompt
-        from .gemini import GeminiError
+        from .glm import GlmError
 
-        model = self._gemini_models[0] if self._gemini_models else None
+        model = self._glm_models[0] if self._glm_models else None
         try:
-            out = await self._gemini.translate(req.prompt, system_prompt, model=model)
+            out = await self._glm.translate(req.prompt, system_prompt, model=model)
             return str(out) if out else req.prompt
-        except GeminiError as exc:
+        except GlmError as exc:
             logger.warning("이미지 프롬프트 번역 실패 — 원문으로 진행: %s", exc)
             return req.prompt
 
     async def _review_image_prompt(self, req: InferRequest) -> ImagePromptReview:
-        """이미지 생성 직전 Gemini Flash Lite 로 원문 프롬프트를 심사한다. 실패도 차단이다."""
-        if self._gemini is None:
-            raise ImagePromptRejected("이미지 안전 심사용 Gemini API 키가 없어 생성을 차단했습니다")
-        from .gemini import GeminiError
+        """이미지 생성 직전 GLM 으로 원문 프롬프트를 심사한다. 실패도 차단이다."""
+        if self._glm is None:
+            raise ImagePromptRejected("이미지 안전 심사용 GLM API 키가 없어 생성을 차단했습니다")
+        from .glm import GlmError
 
         policy = req.image_policy or {}
         system_prompt = str(policy.get("safetySystemPrompt") or IMAGE_PROMPT_REVIEW_SYSTEM_PROMPT)
-        model = self._gemini_models[0] if self._gemini_models else None
+        model = self._glm_models[0] if self._glm_models else None
         try:
-            review = await self._gemini.review_image_prompt(req.prompt, system_prompt=system_prompt, model=model)
-        except GeminiError as exc:
+            review = await self._glm.review_image_prompt(req.prompt, system_prompt=system_prompt, model=model)
+        except GlmError as exc:
             logger.warning("이미지 프롬프트 안전 심사 실패 — 생성 차단: %s", exc)
             raise ImagePromptRejected("이미지 안전 심사를 완료하지 못해 생성을 차단했습니다") from exc
         if not review.allowed:
@@ -1123,28 +1123,28 @@ class ProviderAgent:
     async def set_models(self, models: list[str], default_model: str | None = None) -> None:
         """제공 모델 선택을 라이브로 적용·재광고(앱 모델 화면 '적용'). self._models 갱신 + 모든 연결 재접속(새 hello)
         → 중앙 풀이 새 모델 집합을 즉시 안다. status.models 도 이 값을 반영(홈/서버 '제공 모델' 일치)."""
-        self._models = _merge_models(list(models), self._gemini_models)  # Gemini 모델은 항상 유지
+        self._models = _merge_models(list(models), self._glm_models)  # GLM 모델은 항상 유지
         if default_model is not None:
             self._default_model = (default_model or "").strip()
         await self._readvertise()
 
-    async def set_gemini_key(self, api_key: str) -> bool:
-        """클라우드 Gemini 키를 **라이브로** 적용(앱 설정에서 키 입력). 키가 있으면 gemini-3.1-flash-lite 를
-        풀에 광고하고 gemini-* 요청을 라우팅, 비우면 제거. 재시작 없이 즉시 반영(재광고). 키 유효 여부 반환."""
+    async def set_glm_key(self, api_key: str) -> bool:
+        """클라우드 GLM(z.ai) 키를 **라이브로** 적용(앱 설정에서 키 입력). 키가 있으면 glm-5.1 을
+        풀에 광고하고 glm-* 요청을 라우팅, 비우면 제거. 재시작 없이 즉시 반영(재광고). 키 유효 여부 반환."""
         key = (api_key or "").strip()
         if key:
-            from .gemini import DEFAULT_GEMINI_MODEL, GeminiClient
+            from .glm import DEFAULT_GLM_MODEL, GlmClient
 
-            self._gemini = GeminiClient(key, self._cfg.request_timeout)
-            self._gemini_models = [DEFAULT_GEMINI_MODEL]
-            ok = await self._gemini.health()
+            self._glm = GlmClient(key, self._cfg.request_timeout)
+            self._glm_models = [DEFAULT_GLM_MODEL]
+            ok = await self._glm.health()
         else:
-            self._gemini = None
-            self._gemini_models = []
+            self._glm = None
+            self._glm_models = []
             ok = False
-        # 광고 모델 = 현재 로컬 선택 + gemini. (set_models 가 _gemini_models 를 항상 유지하므로 재계산)
-        base = [m for m in self._models if not m.startswith("gemini-")]
-        self._models = _merge_models(base, self._gemini_models)
+        # 광고 모델 = 현재 로컬 선택 + glm. (set_models 가 _glm_models 를 항상 유지하므로 재계산)
+        base = [m for m in self._models if not m.startswith("glm-")]
+        self._models = _merge_models(base, self._glm_models)
         await self._readvertise()
         return ok
 

@@ -1,5 +1,6 @@
 package com.discordassistant.central.platform.discord
 
+import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.guild.application.PolicyService
@@ -17,6 +18,7 @@ class ProviderPoolReconciliationService(
     private val schedules: ProviderScheduleService,
     private val policy: PolicyService,
     private val channelProfiles: ChannelAiProfileService,
+    private val autoRespondChannels: AutoRespondChannelRegistry,
     private val guildCleanup: GuildRemovalCleanupService,
 ) {
     private val log = LoggerFactory.getLogger(ProviderPoolReconciliationService::class.java)
@@ -41,6 +43,7 @@ class ProviderPoolReconciliationService(
     ) {
         policy.cleanupChannel(guildId, channelId)
         channelProfiles.clear(guildId, channelId)
+        autoRespondChannels.invalidateChannel(guildId, channelId) // 자동응답 캐시 무효화(삭제된 채널 stale 방지)
         log.info("채널 설정 정리(guild={}, channel={})", guildId, channelId)
     }
 

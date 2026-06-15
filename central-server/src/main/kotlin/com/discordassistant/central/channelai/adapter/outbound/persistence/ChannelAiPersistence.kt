@@ -31,6 +31,7 @@ class ChannelAiEntity(
     @Column(name = "display_name") var displayName: String = "니아",
     @Column(name = "avatar_url") var avatarUrl: String? = null,
     @Column(name = "active_behavior_version_id") var activeBehaviorVersionId: Long? = null,
+    @Column(name = "auto_respond") var autoRespond: Boolean = false,
     var source: String = "manual",
     var createdAt: Instant = Instant.EPOCH,
     var updatedAt: Instant = Instant.EPOCH,
@@ -88,6 +89,9 @@ class CustomizationAuditLogEntity(
 
 interface ChannelAiRepository : JpaRepository<ChannelAiEntity, Long> {
     fun findByGuildId(guildId: Long): List<ChannelAiEntity>
+
+    /** 자동응답이 켜진 채널 id 목록(인메모리 캐시 로드용 — 한 길드당 1회 조회로 핫패스 DB 조회 회피). */
+    fun findByGuildIdAndAutoRespondTrue(guildId: Long): List<ChannelAiEntity>
 
     fun findByGuildIdAndChannelId(
         guildId: Long,

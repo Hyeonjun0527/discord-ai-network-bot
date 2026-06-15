@@ -1,5 +1,6 @@
 package com.discordassistant.central.platform.discord
 
+import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.global.i18n.I18n
 import net.dv8tion.jda.api.Permission
@@ -17,14 +18,15 @@ import org.slf4j.LoggerFactory
  * 순수 결정(권한 분기·멱등·이름·가이드 문구)은 [NiaChannelSetup] 이 SSOT 로 소유하고(단위 테스트),
  * 이 클래스는 JDA I/O(권한 조회·채널 생성·핀·응답)만 글루한다([OnboardingInteractionHandler] 스타일).
  *
- * **ai채팅에서 니아가 실제로 응답하는 메커니즘**: ai채팅 채널에 [ChannelAiProfileService.set] 으로
- * 니아 채널 AI 프로필을 부여한다. 그러면 그 채널에서 봇을 멘션(@니아)하거나 봇 메시지에 답장하면
- * `DiscordBot.Listener.onMessageReceived`(mentionAsk)가 `/ask` 와 동일한 Provider Pool 흐름으로 처리하고,
- * 프로필이 있으므로 니아 페르소나(웹훅 표시이름/아바타)로 응답한다. (mentionAsk 는 allow-list 게이트가 없다 —
- * 멘션만으로 동작. 프로필은 페르소나/일관성을 위해 부여한다.)
+ * **ai채팅에서 니아가 실제로 응답하는 메커니즘**: ai채팅 채널에 ① [ChannelAiProfileService.set] 으로 니아
+ * 채널 AI 프로필(페르소나)을 부여하고 ② [AutoRespondChannelRegistry.setAutoRespond] 로 자동응답을 켠다.
+ * 그러면 그 채널의 **모든 텍스트 메시지에 멘션 없이** 니아가 자동 응답한다(`DiscordBot.Listener.onMessageReceived`
+ * 가 자동응답 캐시로 판정 → `/ask` 와 동일 흐름, 프로필이 있으므로 니아 페르소나 웹훅으로 응답).
+ * `.` 로 시작하는 메시지는 제외(카미봇 컨벤션). 캐시 무효화로 생성 즉시 반영된다.
  */
 class NiaChannelSetupHandler(
     private val channelProfiles: ChannelAiProfileService,
+    private val autoRespondChannels: AutoRespondChannelRegistry,
 ) {
     private val log = LoggerFactory.getLogger(NiaChannelSetupHandler::class.java)
 
@@ -78,12 +80,19 @@ class NiaChannelSetupHandler(
         callback.deferReply(true).queue()
         try {
             val created = createNiaChannels(guild, language)
-            // ai채팅에 니아 채널 AI 프로필 부여 → 그 채널의 멘션/답장이 니아 페르소나로 응답(메커니즘은 클래스 KDoc).
+            // ai채팅에 니아 채널 AI 프로필 부여(페르소나) → 응답이 니아 웹훅으로 나간다(메커니즘은 클래스 KDoc).
             channelProfiles.set(
                 guildId = guild.idLong,
                 channelId = created.chat.idLong,
                 displayName = NiaChannelSetup.NIA_PROFILE_NAME,
                 avatarUrl = null,
+                actorId = ctx.userId,
+            )
+            // 자동응답 켜기 → 생성 즉시 그 채널의 모든 메시지에 멘션 없이 니아가 답한다(캐시 무효화로 즉시 반영).
+            autoRespondChannels.setAutoRespond(
+                guildId = guild.idLong,
+                channelId = created.chat.idLong,
+                on = true,
                 actorId = ctx.userId,
             )
             callback.hook

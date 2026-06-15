@@ -67,10 +67,10 @@ class NiaChannelSetupTest {
     }
 
     @Test
-    fun `ai채팅 가이드는 멘션·답장 메커니즘과 예시 질문을 담는다`() {
+    fun `ai채팅 가이드는 자동응답 메커니즘과 예시 질문을 담는다`() {
         val ko = NiaChannelSetup.chatGuide("ko")
-        assertTrue(ko.contains("멘션"), ko) // 실제 응답 트리거(멘션) 안내
-        assertTrue(ko.contains("답장"), ko) // 대화 기억(답장) 안내
+        assertTrue(ko.contains("멘션 없이"), ko) // 멘션 없이 자동응답하는 채널임을 안내
+        assertTrue(ko.contains("`.`"), ko) // `.` 으로 시작하면 답하지 않는다는 안내(카미봇 컨벤션)
         // 예시 질문이 여러 개(불릿) 있어야 가이드 가치가 있다.
         assertTrue(ko.count { it == '•' } >= 5, "예시 질문 5개 이상이어야: $ko")
     }

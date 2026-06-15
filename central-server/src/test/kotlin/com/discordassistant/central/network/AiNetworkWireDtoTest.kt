@@ -78,8 +78,8 @@ class AiNetworkWireDtoTest {
                 .from(
                     EffectiveRoutingPolicy(
                         responseMode = "single",
-                        preferredModel = "gemini-3.1-flash-lite",
-                        allowedModels = listOf("gemini-3.1-flash-lite"),
+                        preferredModel = "glm-5.1",
+                        allowedModels = listOf("glm-5.1"),
                         minQualityTier = "standard",
                         maxCandidates = 1,
                         providerTagFilter = listOf("cloud"),
@@ -92,8 +92,8 @@ class AiNetworkWireDtoTest {
                     ChannelAiRoutingPolicySummary(
                         channelId = 9001L,
                         responseMode = "single",
-                        preferredModel = "gemini-3.1-flash-lite",
-                        allowedModels = "gemini-3.1-flash-lite",
+                        preferredModel = "glm-5.1",
+                        allowedModels = "glm-5.1",
                         minQualityTier = "standard",
                         maxCandidates = 1,
                     ),
@@ -103,6 +103,6 @@ class AiNetworkWireDtoTest {
         assertEquals("single", effective["responseMode"])
         assertEquals(listOf("cloud"), effective["providerTagFilter"])
         assertEquals(9001L, summaries.single()["channelId"])
-        assertEquals("gemini-3.1-flash-lite", summaries.single()["allowedModels"])
+        assertEquals("glm-5.1", summaries.single()["allowedModels"])
     }
 }

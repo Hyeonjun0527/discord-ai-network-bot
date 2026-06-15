@@ -355,15 +355,20 @@ jobs:
           artifact-name: provider-agent-sbom.spdx.json
           output-file: dist/provider-agent-sbom.spdx.json
       # GitHub artifact attestation — 바이너리 빌드 출처(provenance) 증명.
+      # ⚠️ GitHub attestation 은 **개인(user) 소유 private 레포에선 지원되지 않는다**
+      # ("Failed to persist attestation: Feature not available for user-owned private repositories").
+      # 이 레포는 개인 소유 private 이라 항상 실패(빨간 annotation)했다 — continue-on-error 라
+      # 빌드는 안 막았지만 노이즈였다. 그래서 **opt-in**(레포 변수 ENABLE_ATTESTATION=true)으로 둔다.
+      # public 으로 전환하거나 org 소유 레포로 옮기면 변수를 켜서 활성화한다(그땐 attestation 동작).
       - name: 빌드 출처 attestation
-        if: startsWith(github.ref, 'refs/tags/agent-v')
+        if: startsWith(github.ref, 'refs/tags/agent-v') && vars.ENABLE_ATTESTATION == 'true'
         continue-on-error: true
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: dist/nexa-agent-*
       - name: SBOM attestation
         # SBOM 생성이 성공했을 때만(파일이 있을 때만) — 부가 산출물이라 릴리스를 막지 않는다.
-        if: startsWith(github.ref, 'refs/tags/agent-v') && steps.sbom.outcome == 'success'
+        if: startsWith(github.ref, 'refs/tags/agent-v') && vars.ENABLE_ATTESTATION == 'true' && steps.sbom.outcome == 'success'
         continue-on-error: true
         uses: actions/attest-sbom@v2
         with:

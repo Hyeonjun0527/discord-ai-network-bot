@@ -1227,8 +1227,9 @@ def build_app(session_key: str) -> web.Application:
                 # ‘디스코드 로그인’ OAuth 가능 여부는 **서버 설정**으로 결정된다(에이전트 env 불필요).
                 # 서버에 OAuth 앱(client-id/secret)이 설정돼 있으면 자동으로 켜진다.
                 "connectEnabled": _connect_enabled(),
-                # 클라우드 AI(Gemini) 설정 여부(키 자체는 노출 안 함) · ComfyUI 이미지 백엔드 주소.
-                "geminiConfigured": bool(saved.get("gemini_api_key")),
+                # 클라우드 AI(GLM/z.ai) 설정 여부(키 자체는 노출 안 함) · ComfyUI 이미지 백엔드 주소.
+                # 데스크톱 계약 호환을 위해 status 필드명은 geminiConfigured 로 유지(내부는 glm_api_key).
+                "geminiConfigured": bool(saved.get("glm_api_key")),
                 "comfyUrl": str(saved.get("comfy_url") or ""),
                 "hfConfigured": bool(saved.get("hf_token")),
             }
@@ -1324,10 +1325,11 @@ def build_app(session_key: str) -> web.Application:
         return web.json_response(await _apply_image_receiving(on))
 
     async def cloud_settings(req: web.Request) -> web.Response:
-        """클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. body {geminiApiKey?, comfyUrl?}.
+        """클라우드 AI 설정 — GLM(z.ai) 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. body {geminiApiKey?, comfyUrl?}.
 
-        키는 이 PC config 에만 저장(central 엔 안 올림). Gemini 는 **라이브 적용**(재시작 없이 풀에 광고),
+        키는 이 PC config 에만 저장(central 엔 안 올림). GLM 은 **라이브 적용**(재시작 없이 풀에 광고),
         comfyUrl 변경(이미지 백엔드 전환)은 다음 이미지 토글/재연결에 반영(needsRestart).
+        데스크톱 계약 호환을 위해 wire 키명은 geminiApiKey/geminiValid/geminiConfigured 로 유지(내부는 glm).
         """
         _auth(req)
         try:
@@ -1337,10 +1339,10 @@ def build_app(session_key: str) -> web.Application:
         out: dict = {"ok": True}
         if "geminiApiKey" in data:
             key = str(data.get("geminiApiKey") or "").strip()
-            persist_partial({"gemini_api_key": key})
+            persist_partial({"glm_api_key": key})
             agent = _running_agent()
             if agent is not None:
-                out["geminiValid"] = bool(await agent.set_gemini_key(key))  # type: ignore[attr-defined]
+                out["geminiValid"] = bool(await agent.set_glm_key(key))  # type: ignore[attr-defined]
             out["geminiConfigured"] = bool(key)
         if "comfyUrl" in data:
             comfy = str(data.get("comfyUrl") or "").strip().rstrip("/")
@@ -1600,7 +1602,7 @@ def build_app(session_key: str) -> web.Application:
                 "ollamaUrl": saved.get("ollama_url") or "http://localhost:11434",
                 "relayUrl": saved.get("relay_url") or _default_relay(),
                 "allowRemoteOllama": bool(saved.get("allow_remote_ollama")),
-                "geminiConfigured": bool(saved.get("gemini_api_key")),
+                "geminiConfigured": bool(saved.get("glm_api_key")),
                 "comfyUrl": str(saved.get("comfy_url") or ""),
                 "hfConfigured": bool(saved.get("hf_token")),
                 "hasToken": bool(saved.get("token")),

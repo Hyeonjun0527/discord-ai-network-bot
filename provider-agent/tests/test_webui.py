@@ -1327,14 +1327,17 @@ async def test_asset_img_served_and_missing_404(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_cloud_settings_endpoint(monkeypatch):
-    """POST /api/cloud — Gemini 키·ComfyUI 주소 저장(에이전트 미실행 시 persist 만)."""
+    """POST /api/cloud — GLM(z.ai) 키·ComfyUI 주소 저장(에이전트 미실행 시 persist 만).
+
+    wire 키명(geminiApiKey/geminiConfigured)은 데스크톱 계약 호환으로 유지, 내부 저장은 glm_api_key.
+    """
     saved: dict = {}
     monkeypatch.setattr(webui, "persist_partial", lambda d: saved.update(d))
     client = await _client()
     try:
-        r = await (await client.post("/api/cloud", json={"geminiApiKey": "AIzaXXX"}, headers={"X-Session": KEY})).json()
+        r = await (await client.post("/api/cloud", json={"geminiApiKey": "zai-XXX"}, headers={"X-Session": KEY})).json()
         assert r["ok"] is True and r["geminiConfigured"] is True
-        assert saved.get("gemini_api_key") == "AIzaXXX"
+        assert saved.get("glm_api_key") == "zai-XXX"
         r2 = await (await client.post("/api/cloud", json={"comfyUrl": "http://127.0.0.1:8188/"}, headers={"X-Session": KEY})).json()
         assert r2["comfyUrl"] == "http://127.0.0.1:8188" and r2["needsRestart"] is True
         assert saved.get("comfy_url") == "http://127.0.0.1:8188"

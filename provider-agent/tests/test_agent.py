@@ -59,7 +59,7 @@ class FakeOllama:
         yield ("done", self.usage)
 
 
-class SafeGemini:
+class SafeGlm:
     def __init__(self, allowed: bool = True, reason: str = "허용됨", error: Exception | None = None) -> None:
         self.allowed = allowed
         self.reason = reason
@@ -68,7 +68,7 @@ class SafeGemini:
         self.translated: list[str] = []
 
     async def review_image_prompt(self, text: str, system_prompt: str, model=None):
-        from provider_agent.gemini import ImagePromptReview
+        from provider_agent.glm import ImagePromptReview
 
         self.reviewed.append(text)
         if self.error is not None:
@@ -110,48 +110,48 @@ async def test_handle_infer_streaming_emits_chunks():
 
 @pytest.mark.asyncio
 async def test_translate_image_prompt_paths():
-    """이미지 프롬프트 번역: Gemini 없으면 원문, 있으면 번역, 실패하면 원문 폴백."""
-    from provider_agent.gemini import GeminiError
+    """이미지 프롬프트 번역: GLM 없으면 원문, 있으면 번역, 실패하면 원문 폴백."""
+    from provider_agent.glm import GlmError
     from provider_agent.protocol import InferRequest
 
     req = InferRequest(request_id="r", prompt="귀여운 고양이", task="image")
 
-    # ① Gemini 없음 → 원문
+    # ① GLM 없음 → 원문
     a = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama())  # type: ignore[arg-type]
     assert await a._translate_image_prompt(req) == "귀여운 고양이"
 
-    # ② Gemini 번역 성공 → 영어
-    class OkGemini:
+    # ② GLM 번역 성공 → 영어
+    class OkGlm:
         async def translate(self, text, system_prompt, model=None):
             return "a cute cat, safe"
 
-    a._gemini = OkGemini()  # type: ignore[assignment]
-    a._gemini_models = ["gemini-3.1-flash-lite"]
+    a._glm = OkGlm()  # type: ignore[assignment]
+    a._glm_models = ["glm-5.1"]
     assert await a._translate_image_prompt(req) == "a cute cat, safe"
 
-    # ③ Gemini 실패 → 원문 폴백(거부 0)
-    class BadGemini:
+    # ③ GLM 실패 → 원문 폴백(거부 0)
+    class BadGlm:
         async def translate(self, text, system_prompt, model=None):
-            raise GeminiError("blocked")
+            raise GlmError("blocked")
 
-    a._gemini = BadGemini()  # type: ignore[assignment]
+    a._glm = BadGlm()  # type: ignore[assignment]
     assert await a._translate_image_prompt(req) == "귀여운 고양이"
 
 
-def test_image_capability_requires_gemini_safety_gate():
-    """이미지 provider 광고는 SD 준비 + Gemini 안전 심사 가능 상태에서만 켜진다."""
+def test_image_capability_requires_glm_safety_gate():
+    """이미지 provider 광고는 SD 준비 + GLM 안전 심사 가능 상태에서만 켜진다."""
     agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=object())  # type: ignore[arg-type]
     agent._image_ready = True
     assert "image" not in agent._build_hello().capabilities
 
-    agent._gemini = SafeGemini()  # type: ignore[assignment]
-    agent._gemini_models = ["gemini-3.1-flash-lite"]
+    agent._glm = SafeGlm()  # type: ignore[assignment]
+    agent._glm_models = ["glm-5.1"]
     assert "image" in agent._build_hello().capabilities
 
 
 @pytest.mark.asyncio
-async def test_image_without_gemini_key_is_blocked_before_sd():
-    """직접 image frame 이 들어와도 Gemini 안전 심사 키가 없으면 fail-closed."""
+async def test_image_without_glm_key_is_blocked_before_sd():
+    """직접 image frame 이 들어와도 GLM 안전 심사 키가 없으면 fail-closed."""
     class CountingSD:
         calls = 0
         checkpoint_calls = 0
@@ -175,12 +175,12 @@ async def test_image_without_gemini_key_is_blocked_before_sd():
 
     assert sd.calls == 0
     assert isinstance(conn.sent[0], InferError)
-    assert "Gemini API 키" in conn.sent[0].message
+    assert "GLM API 키" in conn.sent[0].message
 
 
 @pytest.mark.asyncio
 async def test_image_prompt_rejected_before_sd_call():
-    """Gemini 안전 심사가 차단하면 ComfyUI 호출 전에 멈춘다."""
+    """GLM 안전 심사가 차단하면 ComfyUI 호출 전에 멈춘다."""
     class CountingSD:
         calls = 0
         checkpoint_calls = 0
@@ -197,16 +197,16 @@ async def test_image_prompt_rejected_before_sd_call():
             return True
 
     sd = CountingSD()
-    gemini = SafeGemini(allowed=False, reason="성적 이미지 요청")
+    glm = SafeGlm(allowed=False, reason="성적 이미지 요청")
     agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=sd)  # type: ignore[arg-type]
     agent._image_ready = True
-    agent._gemini = gemini  # type: ignore[assignment]
-    agent._gemini_models = ["gemini-3.1-flash-lite"]
+    agent._glm = glm  # type: ignore[assignment]
+    agent._glm_models = ["glm-5.1"]
     conn = FakeConn()
     await agent._handle_image(conn, InferRequest(request_id="img-block", prompt="야한 사진", task="image"))  # type: ignore[arg-type]
 
-    assert gemini.reviewed == ["야한 사진"]
-    assert gemini.translated == []
+    assert glm.reviewed == ["야한 사진"]
+    assert glm.translated == []
     assert sd.calls == 0
     assert sd.checkpoint_calls == 0
     assert isinstance(conn.sent[0], InferError)
@@ -240,7 +240,7 @@ async def test_cancel_image_triggers_interrupt():
 @pytest.mark.asyncio
 async def test_handle_image_emits_progress_then_data():
     """이미지 생성: ComfyUI /ws 실시간 진행률을 on_progress 콜백으로 받아 progress 청크로 흘리고,
-    완료 시 b64 데이터 청크 + done 을 보낸다(번역은 Gemini 없으면 원문 폴백 — 외부 호출 없음)."""
+    완료 시 b64 데이터 청크 + done 을 보낸다(번역은 GLM 없으면 원문 폴백 — 외부 호출 없음)."""
     from provider_agent.protocol import ChunkFrame
 
     class SlowSD:
@@ -256,8 +256,8 @@ async def test_handle_image_emits_progress_then_data():
 
     agent = ProviderAgent(AgentConfig(token="T"), ollama=FakeOllama(), sd=SlowSD())  # type: ignore[arg-type]
     agent._image_ready = True
-    agent._gemini = SafeGemini()  # type: ignore[assignment]
-    agent._gemini_models = ["gemini-3.1-flash-lite"]
+    agent._glm = SafeGlm()  # type: ignore[assignment]
+    agent._glm_models = ["glm-5.1"]
     conn = FakeConn()
     await agent._handle_image(conn, InferRequest(request_id="img1", prompt="고양이", task="image"))  # type: ignore[arg-type]
     await asyncio.sleep(0.05)  # on_progress 가 create_task 한 진행률 청크 전송이 완료되도록 양보
@@ -445,7 +445,7 @@ def test_build_hello_per_guild():
 
 @pytest.mark.asyncio
 async def test_set_image_enabled_toggles_capability():
-    """이미지 capability 는 SD 준비와 Gemini 안전심사 게이트가 모두 있어야 켜진다."""
+    """이미지 capability 는 SD 준비와 GLM 안전심사 게이트가 모두 있어야 켜진다."""
 
     class FakeSD:
         async def health(self) -> bool:
@@ -458,8 +458,8 @@ async def test_set_image_enabled_toggles_capability():
     ready = await agent.set_image_enabled(True)
     assert ready is True
     assert "image" not in agent._build_hello().capabilities
-    agent._gemini = SafeGemini()  # type: ignore[assignment]
-    agent._gemini_models = ["gemini-3.1-flash-lite"]
+    agent._glm = SafeGlm()  # type: ignore[assignment]
+    agent._glm_models = ["glm-5.1"]
     assert "image" in agent._build_hello().capabilities
     await agent.set_image_enabled(False)
     assert "image" not in agent._build_hello().capabilities

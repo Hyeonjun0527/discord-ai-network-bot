@@ -54,16 +54,7 @@
           : '<button class="btn btn--sm btn--primary" data-install="ollama">' + t('localOllamaInstallBtn') + '</button>') + '</div></div>';
 
       // (이미지 엔진은 ComfyUI 전용 — 레거시 SD.Next 는 완전히 제거됨. 카드는 아래 comfyCard 하나.)
-
-      // 클라우드 연결(Gemini) — '엔진' 관심사라 로컬 실행이 소유한다. 키는 이 PC 에만 저장.
-      //   연결되면 모델 탭에 '클라우드 텍스트' 모델로 등장 → 다른 모델처럼 서버별로 켜고 끈다('서버 전체 무료' 프레이밍 폐기).
-      const gemOn = !!s.geminiConfigured;
-      const cloudCard = '<div class="rt-row' + (gemOn ? ' ready' : '') + '">' +
-        '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">' + t('localCloudConnectionLabel') + ' <span style="font-weight:500;color:var(--subtle)">' + t('localCloudConnectionType') + '</span></div>' +
-        '<div class="rt-state">' + (gemOn
-          ? t('localCloudConnectedStatus')
-          : t('localCloudNotConnectedStatus')) + '</div>' +
-        '<div class="rt-cloud"><input id="localGemini" type="password" placeholder="' + (gemOn ? t('localGeminiPlaceholderConnected') : t('localGeminiPlaceholderDisconnected')) + '" class="set-input"><button class="btn btn--sm btn--primary" id="localGeminiSave">' + (gemOn ? t('localGeminiSaveChangeBtn') : t('localGeminiSaveConnectBtn')) + '</button></div></div></div>';
+      // (클라우드 텍스트 모델은 관리자 키로 무상 제공되므로 유저 PC 의 Gemini 키 입력 카드는 제거됨 — 키 입력 UI 불필요.)
       // ComfyUI = 이미지 엔진 — 앱이 직접 설치/시작/정지/웹UI 오픈. 유저별 로컬 인스턴스(SD.Next 제거됨).
       const c = _comfy || {}, cprog = _comfyProg || {};
       const cbusy = !!c.busy, cinst = !!c.installed, crun = !!c.running;
@@ -107,7 +98,7 @@
         '<div class="rt-cloud"><input id="localComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="' + t('localComfyExternalURLPlaceholder') + '" class="set-input"><button class="btn btn--sm btn--secondary" id="localComfySave">' + t('localComfyExternalConnectBtn') + '</button></div>' +
         '<div class="rt-cloud" style="margin-top:8px"><input id="localHfToken" type="password" placeholder="' + (hfOn ? t('localHFTokenPlaceholderSet') : t('localHFTokenPlaceholderNotSet')) + '" class="set-input"><button class="btn btn--sm btn--secondary" id="localHfSave">' + t('localHFTokenSaveBtn') + '</button></div>' +
         '</div></details>';
-      rtWrap.innerHTML = ollamaCard + comfyCard + comfyNsfwGuide + cloudCard + comfyExternal;
+      rtWrap.innerHTML = ollamaCard + comfyCard + comfyNsfwGuide + comfyExternal;
 
       // (이미지 모델 전환은 ComfyUI 카드의 #comfyModelSelect 가 담당 — 아래 comfy 핸들러에서 처리. 레거시 SD 핫스왑 제거.)
       rtWrap.querySelectorAll('[data-go="models"]').forEach((b) => { b.onclick = () => { const n = document.querySelector('.nav-item[data-view="models"]'); if (n) n.click(); }; });
@@ -132,20 +123,7 @@
         finally { rc.disabled = false; }
       };
       // (로컬 탭의 이미지 받기 토글은 홈 카드 스위치로 통합 — 레거시 #localImgSw 제거. setImageReceiving 은 홈에서 호출.)
-      // 클라우드 연결(Gemini) 저장 — 입력했을 때만 전송(빈 입력은 무시). 연결되면 모델 탭에 클라우드 모델로 등장.
-      const gemSave = document.getElementById('localGeminiSave');
-      if (gemSave) gemSave.onclick = async () => {
-        const key = (document.getElementById('localGemini').value || '').trim();
-        if (!key) { toast(t('localGeminiKeyRequiredToast'), { type: 'info' }); return; }
-        gemSave.disabled = true;
-        try {
-          const r = await api.setCloud({ geminiApiKey: key }) || {};
-          if (_st) _st.geminiConfigured = true;
-          toast(r.geminiValid === false ? t('localGeminiValidationFailedToast') : t('localGeminiConnectedToast'), { type: r.geminiValid === false ? 'info' : 'ok' });
-          await load();
-        } catch (_e) { toast(t('localGeminiConnectionFailureToast'), { type: 'error' }); }
-        finally { gemSave.disabled = false; }
-      };
+      // (클라우드 텍스트 모델은 관리자 키로 무상 제공 — 유저 PC Gemini 키 입력/저장 UI 제거됨.)
       // 외부 ComfyUI 주소 저장 — 비우면 앱 관리 ComfyUI. 재연결 후 적용.
       const comfySave = document.getElementById('localComfySave');
       if (comfySave) comfySave.onclick = async () => {

@@ -825,46 +825,6 @@ window.__I18N = {
     "en": "Install",
     "ja": "インストール"
   },
-  "localCloudConnectionLabel": {
-    "ko": "클라우드 연결",
-    "en": "Cloud Connection",
-    "ja": "クラウド接続"
-  },
-  "localCloudConnectionType": {
-    "ko": "Gemini · 텍스트",
-    "en": "Gemini · Text",
-    "ja": "Gemini · テキスト"
-  },
-  "localCloudConnectedStatus": {
-    "ko": "연결됨 · 이 PC 의 키로 클라우드 모델을 제공해요(모델 탭에서 서버별로 켜고 꺼요)",
-    "en": "Connected · Using this PC's key to provide cloud models (turn on/off by server in Models tab)",
-    "ja": "接続完了 · このPCのキーでクラウドモデルを提供します(モデルタブでサーバーごとにオン/オフ)"
-  },
-  "localCloudNotConnectedStatus": {
-    "ko": "이 PC 의 API 키로 클라우드 AI를 모델로 추가해요 — 다른 모델처럼 서버별로 제공돼요 (aistudio.google.com/apikey)",
-    "en": "Add cloud AI as a model using this PC's API key — available by server like other models (aistudio.google.com/apikey)",
-    "ja": "このPCのAPIキーでクラウドAIをモデルとして追加 — 他のモデルと同じようにサーバーごとに利用可能 (aistudio.google.com/apikey)"
-  },
-  "localGeminiPlaceholderConnected": {
-    "ko": "••••• 연결됨(바꾸려면 입력)",
-    "en": "••••• Connected (enter to change)",
-    "ja": "••••• 接続済み(変更するには入力)"
-  },
-  "localGeminiPlaceholderDisconnected": {
-    "ko": "AIza… 키 붙여넣기",
-    "en": "Paste AIza… key",
-    "ja": "AIza… キーを貼り付け"
-  },
-  "localGeminiSaveChangeBtn": {
-    "ko": "변경",
-    "en": "Change",
-    "ja": "変更"
-  },
-  "localGeminiSaveConnectBtn": {
-    "ko": "연결",
-    "en": "Connect",
-    "ja": "接続"
-  },
   "localComfyUIImageType": {
     "ko": "이미지 · 권장",
     "en": "Image · Recommended",
@@ -1014,26 +974,6 @@ window.__I18N = {
     "ko": "재연결 실패 — 네트워크를 확인하세요",
     "en": "Reconnection failed — check your network",
     "ja": "再接続に失敗しました — ネットワークを確認してください"
-  },
-  "localGeminiKeyRequiredToast": {
-    "ko": "AIza… 키를 입력하세요",
-    "en": "Enter AIza… key",
-    "ja": "AIza… キーを入力してください"
-  },
-  "localGeminiValidationFailedToast": {
-    "ko": "키 저장됨 — 다만 검증 실패(결제/유효성 확인)",
-    "en": "Key saved — but validation failed (billing/validity)",
-    "ja": "キーが保存されました — ただし検証に失敗しました(請求/有効性)"
-  },
-  "localGeminiConnectedToast": {
-    "ko": "클라우드 모델을 연결했어요 — 모델 탭에서 서버별로 켜세요",
-    "en": "Connected cloud model — turn on by server in Models tab",
-    "ja": "クラウドモデルを接続しました — モデルタブでサーバーごとにオンにしてください"
-  },
-  "localGeminiConnectionFailureToast": {
-    "ko": "연결 실패 — 네트워크를 확인하세요",
-    "en": "Connection failed — check your network",
-    "ja": "接続に失敗しました — ネットワークを確認してください"
   },
   "localComfyExternalSetToast": {
     "ko": "외부 ComfyUI 를 이미지 엔진으로 설정했어요 — 재연결 후 적용",

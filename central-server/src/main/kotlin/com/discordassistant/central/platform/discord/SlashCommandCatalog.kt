@@ -60,9 +60,6 @@ object SlashCommandCatalog {
             Commands.slash("contributions", "내 서버의 기여 현황을 봅니다"),
             Commands.slash("community-stats", "익명 커뮤니티 기여 통계를 봅니다"),
             Commands.slash("nia", "니아와의 호감도를 봅니다"),
-            // 전체 페르소나 열람 — 핸들러에서 프로젝트 관리자 allow-list(admin-user-ids)로 게이트하고 응답은 ephemeral.
-            // MANAGE_SERVER 권한은 아무 서버 관리자에게 열리므로 setDefaultPermissions 를 쓰지 않는다(콘텐츠 게이트=allow-list SSOT).
-            Commands.slash("nia-persona", "니아의 전체 페르소나를 봅니다(프로젝트 관리자 전용)"),
             Commands.slash("fairness", "공정성 리포트를 봅니다(관리자)").setDefaultPermissions(adminPerm),
             Commands.slash("privacy", "이 서버의 AI 처리/프라이버시 안내"),
             Commands.slash("help", "명령 종합 도움말을 봅니다"),

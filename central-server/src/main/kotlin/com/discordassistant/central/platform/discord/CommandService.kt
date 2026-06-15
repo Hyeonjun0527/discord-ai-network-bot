@@ -288,8 +288,6 @@ class CommandService(
 
     fun niaAffinity(ctx: CommandContext): Reply = aiNetworkCommands.niaAffinity(ctx)
 
-    fun niaPersona(ctx: CommandContext): Reply = aiNetworkCommands.niaPersona(ctx)
-
     fun aiNetworkMap(ctx: CommandContext): Reply = aiNetworkCommands.aiNetworkMap(ctx)
 
     fun aiNetworkCheck(ctx: CommandContext): Reply = aiNetworkCommands.aiNetworkCheck(ctx)

@@ -893,7 +893,6 @@ class DiscordBot(
                 "contributions" -> commands.contributions(ctx)
                 "community-stats" -> commands.communityStats(ctx)
                 "nia" -> commands.niaAffinity(ctx)
-                "nia-persona" -> commands.niaPersona(ctx)
                 "fairness" -> commands.fairness(ctx)
                 "privacy" -> commands.privacy(ctx)
                 "help" -> commands.help(ctx, event.userLocale)

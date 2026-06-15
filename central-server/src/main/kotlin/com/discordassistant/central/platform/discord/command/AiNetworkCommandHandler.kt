@@ -7,7 +7,6 @@ import com.discordassistant.central.ainetwork.application.NetworkLaunchChecklist
 import com.discordassistant.central.ainetwork.application.NiaAffinityService
 import com.discordassistant.central.platform.discord.CommandContext
 import com.discordassistant.central.platform.discord.Reply
-import com.discordassistant.central.shared.NexaIdentity
 import org.springframework.stereotype.Component
 
 /**
@@ -19,21 +18,8 @@ class AiNetworkCommandHandler(
     private val aiNetworkLaunchChecklist: AiNetworkLaunchChecklistService,
     private val aiNetworkMap: AiNetworkMapService,
     private val niaAffinity: NiaAffinityService,
-    private val projectAdmins: ProjectAdmins,
     private val guards: SharedCommandGuards,
 ) {
-    /**
-     * 니아의 전체 페르소나(전문 + few-shot)를 보여 준다 — 프로젝트 관리자(admin-user-ids) allow-list 전용.
-     * 비관리자는 거부하고, 응답은 항상 ephemeral(요청자만 보임)로 보내 비공개 원칙(전문 비공개)을 지킨다.
-     */
-    fun niaPersona(ctx: CommandContext): Reply {
-        if (!projectAdmins.isAdmin(ctx.userId)) {
-            return Reply("이 명령은 프로젝트 관리자만 사용할 수 있어요.", ephemeral = true)
-        }
-        val full = NexaIdentity.NIA_DEFAULT_PERSONA + "\n\n" + NexaIdentity.NIA_FEWSHOT
-        return Reply("🔒 **니아 전체 페르소나(비공개)**\n\n$full", ephemeral = true)
-    }
-
     /** 요청자와 니아의 개인 호감도(public·비관리자). */
     fun niaAffinity(ctx: CommandContext): Reply {
         val view = niaAffinity.view(ctx.userId)

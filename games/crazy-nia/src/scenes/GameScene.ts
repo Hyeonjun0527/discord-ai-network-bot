@@ -31,7 +31,19 @@ export class GameScene extends Phaser.Scene {
     super('game');
   }
 
+  preload(): void {
+    // Kenney Sokoban CC0 — floor, wall, destructible block, players.
+    // PNG 원본 64×64, 게임 TILE 48px — render 시 setDisplaySize(TILE,TILE) 로 맞춤.
+    const S = 'assets/sokoban';
+    this.load.image(TEX.floor,   `${S}/Ground/ground_01.png`);
+    this.load.image(TEX.wall,    `${S}/Blocks/block_01.png`);
+    this.load.image(TEX.block,   `${S}/Crates/crate_42.png`);  // 나무상자 (밝은 갈색)
+    this.load.image(TEX.player1, `${S}/Player/player_01.png`); // 파란 캐릭터
+    this.load.image(TEX.player2, `${S}/Player/player_05.png`); // 빨간 캐릭터
+  }
+
   create(): void {
+    // bomb / flame / 아이템은 Sokoban 팩에 없으므로 코드 생성 유지.
     generateTextures(this);
 
     this.grid = new Grid(this);

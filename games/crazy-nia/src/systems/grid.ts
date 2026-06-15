@@ -102,12 +102,13 @@ export class Grid {
       for (let col = 0; col < COLS; col++) {
         const x = Grid.cellToX(col);
         const y = Grid.cellToY(row);
-        this.scene.add.image(x, y, texFloor).setDepth(0);
+        // PNG 원본(64×64)을 TILE(48px) 격자에 맞게 스케일.
+        this.scene.add.image(x, y, texFloor).setDisplaySize(TILE, TILE).setDepth(0);
         const cell = this.cells[row][col];
         if (cell === Cell.SolidWall) {
-          this.scene.add.image(x, y, texWall).setDepth(2);
+          this.scene.add.image(x, y, texWall).setDisplaySize(TILE, TILE).setDepth(2);
         } else if (cell === Cell.Block) {
-          const img = this.scene.add.image(x, y, texBlock).setDepth(2);
+          const img = this.scene.add.image(x, y, texBlock).setDisplaySize(TILE, TILE).setDepth(2);
           this.blockSprites.set(Grid.key(col, row), img);
         }
       }

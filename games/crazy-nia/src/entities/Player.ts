@@ -9,6 +9,7 @@ import {
   MAX_BOMBS,
   MAX_RANGE,
   ItemKind,
+  TILE,
 } from '../config';
 import { Grid } from '../systems/grid';
 
@@ -40,6 +41,7 @@ export class Player {
     this.row = spec.spawn.row;
     this.sprite = scene.add
       .image(Grid.cellToX(this.col), Grid.cellToY(this.row), texture)
+      .setDisplaySize(TILE, TILE)
       .setDepth(5);
   }
 

@@ -1,11 +1,9 @@
 import Phaser from 'phaser';
-import { TILE, PLAYERS } from '../config';
+import { TILE } from '../config';
 
-// TODO: Kenney 에셋 교체 — 전체가 코드 생성 플레이스홀더(단색/도형) 스프라이트다.
-// Kenney "Sokoban"(CC0) 팩 다운로드가 막혀 있어, 게임 로직을 우선 동작시키기 위해
-// 런타임에 Phaser Graphics 로 타일/엔티티 텍스처를 그려 캐시에 등록한다.
-// 실제 PNG 타일시트로 교체하려면 이 모듈 대신 scene.load.spritesheet() 를 쓰면 된다.
-
+// TEX keys are the single source of truth for texture names used across all modules.
+// floor / wall / block / player1 / player2 → Kenney Sokoban CC0 PNG (loaded in GameScene.preload)
+// bomb / flame / item* → code-generated (no equivalent in Sokoban pack)
 export const TEX = {
   floor: 'tex-floor',
   wall: 'tex-wall',
@@ -23,41 +21,13 @@ function rrect(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, 
   g.fillRoundedRect(x, y, w, h, r);
 }
 
-/** Draws every placeholder texture and stores it in the texture manager. */
+/**
+ * Generates code-drawn textures for game elements that have no Sokoban sprite:
+ * bomb, flame, and the three power-up items.
+ * floor / wall / block / players are loaded from Kenney Sokoban PNG in GameScene.preload().
+ */
 export function generateTextures(scene: Phaser.Scene): void {
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
-
-  // Floor: checker-ish flat tile with a subtle border.
-  g.clear();
-  g.fillStyle(0x2a2d3e, 1);
-  g.fillRect(0, 0, TILE, TILE);
-  g.lineStyle(1, 0x343852, 1);
-  g.strokeRect(0.5, 0.5, TILE - 1, TILE - 1);
-  g.generateTexture(TEX.floor, TILE, TILE);
-
-  // Solid wall: dark slab with a beveled highlight.
-  g.clear();
-  g.fillStyle(0x4b4f6b, 1);
-  g.fillRect(0, 0, TILE, TILE);
-  g.fillStyle(0x5d6188, 1);
-  g.fillRect(2, 2, TILE - 4, 6);
-  g.fillStyle(0x363a52, 1);
-  g.fillRect(2, TILE - 8, TILE - 4, 6);
-  g.generateTexture(TEX.wall, TILE, TILE);
-
-  // Destructible block: crate look.
-  g.clear();
-  g.fillStyle(0xb5763a, 1);
-  rrect(g, 3, 3, TILE - 6, TILE - 6, 6);
-  g.lineStyle(3, 0x7d4f24, 1);
-  g.strokeRoundedRect(3, 3, TILE - 6, TILE - 6, 6);
-  g.beginPath();
-  g.moveTo(3, 3);
-  g.lineTo(TILE - 3, TILE - 3);
-  g.moveTo(TILE - 3, 3);
-  g.lineTo(3, TILE - 3);
-  g.strokePath();
-  g.generateTexture(TEX.block, TILE, TILE);
 
   // Bomb: black sphere + fuse spark.
   g.clear();
@@ -79,7 +49,7 @@ export function generateTextures(scene: Phaser.Scene): void {
   g.fillCircle(TILE / 2, TILE / 2, TILE * 0.14);
   g.generateTexture(TEX.flame, TILE, TILE);
 
-  // Power-ups: rounded badge with a glyph color.
+  // Power-ups: rounded badge with a distinct color per kind.
   const drawItem = (key: string, base: number, glyph: number) => {
     g.clear();
     g.fillStyle(0x101220, 0.85);
@@ -90,25 +60,9 @@ export function generateTextures(scene: Phaser.Scene): void {
     g.fillCircle(TILE / 2, TILE / 2, TILE * 0.12);
     g.generateTexture(key, TILE, TILE);
   };
-  drawItem(TEX.itemBomb, 0x2d6cdf, 0xffffff); // bomb +1
-  drawItem(TEX.itemRange, 0xdf4d2d, 0xfff0a0); // range +1
-  drawItem(TEX.itemSpeed, 0x2dbf6c, 0xffffff); // speed +1
-
-  // Players: colored rounded body with eyes, per spec color.
-  for (const p of PLAYERS) {
-    g.clear();
-    g.fillStyle(0x000000, 0.25);
-    g.fillEllipse(TILE / 2, TILE - 8, TILE * 0.6, TILE * 0.2); // shadow
-    g.fillStyle(p.color, 1);
-    rrect(g, 8, 6, TILE - 16, TILE - 14, 10);
-    g.fillStyle(0xffffff, 1);
-    g.fillCircle(TILE / 2 - 6, TILE / 2 - 2, 4);
-    g.fillCircle(TILE / 2 + 6, TILE / 2 - 2, 4);
-    g.fillStyle(0x14151f, 1);
-    g.fillCircle(TILE / 2 - 6, TILE / 2 - 2, 2);
-    g.fillCircle(TILE / 2 + 6, TILE / 2 - 2, 2);
-    g.generateTexture(p.id === 1 ? TEX.player1 : TEX.player2, TILE, TILE);
-  }
+  drawItem(TEX.itemBomb, 0x2d6cdf, 0xffffff);  // bomb +1  (blue)
+  drawItem(TEX.itemRange, 0xdf4d2d, 0xfff0a0); // range +1 (red)
+  drawItem(TEX.itemSpeed, 0x2dbf6c, 0xffffff); // speed +1 (green)
 
   g.destroy();
 }

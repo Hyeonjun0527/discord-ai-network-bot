@@ -26,6 +26,12 @@ data class AiRequestInput(
     val preferredModel: String? = null,
     val responseMode: String = "balanced",
     val webSearch: Boolean = false,
+    /**
+     * 요청 무게(부담 수준) 판단에 쓰는 길이. 비우면 [prompt] 길이를 쓴다. /ask 는 사용자의 실제 질문 길이를
+     * 넘겨, 항상 주입되는 시스템 프롬프트(안전 가드레일·정체성·few-shot)가 부담 수준을 부풀려 정상 질문이
+     * 상위 등급으로 거부되지 않게 한다.
+     */
+    val weighChars: Int? = null,
 )
 
 /** 오케스트레이션 결과. */

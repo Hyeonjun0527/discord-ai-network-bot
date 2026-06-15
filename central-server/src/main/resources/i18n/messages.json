@@ -20,6 +20,31 @@
     "en": "This command is for administrators only.",
     "ja": "このコマンドは管理者のみが使用できます。"
   },
+  "settingsLinkTitle": {
+    "ko": "니아 설정",
+    "en": "Nia settings",
+    "ja": "ニア設定"
+  },
+  "settingsLinkDescription": {
+    "ko": "모든 설정은 대시보드에 있어요.",
+    "en": "All settings live in the dashboard.",
+    "ja": "すべての設定はダッシュボードにあります。"
+  },
+  "settingsLinkHomeButton": {
+    "ko": "⚙️ 설정 홈",
+    "en": "⚙️ Settings home",
+    "ja": "⚙️ 設定ホーム"
+  },
+  "settingsLinkChannelButton": {
+    "ko": "이 채널 설정",
+    "en": "This channel's settings",
+    "ja": "このチャンネルの設定"
+  },
+  "settingsLinkNoBaseUrl": {
+    "ko": "관리자에게 대시보드 주소를 문의하세요.",
+    "en": "Ask an administrator for the dashboard URL.",
+    "ja": "ダッシュボードのURLは管理者にお問い合わせください。"
+  },
   "niaSetupChannelsButton": {
     "ko": "🏗️ 니아 채널 자동 만들기",
     "en": "🏗️ Auto-create Nia channels",

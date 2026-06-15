@@ -6,6 +6,7 @@ import com.discordassistant.central.global.i18n.I18n
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
+import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
 import com.discordassistant.central.shared.ModelBurden
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
@@ -66,6 +67,7 @@ private val DM_COMMANDS =
         "help",
         "welcome",
         "menu",
+        "settings",
     )
 
 /** 봇이 들어가 있는 서버(길드) 한 건의 식별 정보(어드민 서버 선택 드롭다운용). */
@@ -318,6 +320,23 @@ class DiscordBot(
                         .addComponents(ActionRow.of(MenuFactory.mainButtons(ctx.isAdmin)))
                         .setEphemeral(true)
                         .queue()
+                    return
+                }
+                "settings" -> {
+                    // 공개 명령: 누구나 ephemeral 안내 + 웹 대시보드로 가는 링크 버튼. 베이스 URL 이 없으면 안내 폴백(빈 link 버튼 금지).
+                    when (val links = commands.settings(ctx)) {
+                        is SettingsCommandHandler.SettingsLinks.WithLinks ->
+                            event
+                                .replyEmbeds(EmbedFactory.settingsLinkEmbed(links.title, links.description))
+                                .addComponents(ActionRow.of(links.buttons.map { Button.link(it.url, it.label) }))
+                                .setEphemeral(true)
+                                .queue()
+                        is SettingsCommandHandler.SettingsLinks.Unavailable ->
+                            event
+                                .replyEmbeds(EmbedFactory.settingsLinkEmbed(links.title, links.description))
+                                .setEphemeral(true)
+                                .queue()
+                    }
                     return
                 }
                 "provider-join" -> {

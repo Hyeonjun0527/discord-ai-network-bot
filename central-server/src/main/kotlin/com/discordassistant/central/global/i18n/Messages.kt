@@ -14,6 +14,11 @@ object Messages {
         COOLDOWN("cooldown"),
         NO_PROVIDER("noProvider"),
         ADMIN_DENIED("adminDenied"),
+        SETTINGS_LINK_TITLE("settingsLinkTitle"),
+        SETTINGS_LINK_DESCRIPTION("settingsLinkDescription"),
+        SETTINGS_LINK_HOME_BUTTON("settingsLinkHomeButton"),
+        SETTINGS_LINK_CHANNEL_BUTTON("settingsLinkChannelButton"),
+        SETTINGS_LINK_NO_BASE_URL("settingsLinkNoBaseUrl"),
     }
 
     fun get(

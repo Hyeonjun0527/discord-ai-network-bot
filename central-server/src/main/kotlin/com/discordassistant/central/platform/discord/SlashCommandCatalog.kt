@@ -159,6 +159,8 @@ object SlashCommandCatalog {
                 .setDefaultPermissions(adminPerm),
             // 인터랙티브(차수 13): 설정 패널(버튼/Select #147/180), 모달 입력(#189)
             Commands.slash("menu", "시작 패널을 엽니다(질문·기여·설정·도움말 한 곳에서)"),
+            // 공개 명령: 누구나 쓸 수 있는 설정 안내. 실제 설정은 웹 대시보드로 가는 링크 버튼으로 연결한다(관리자 잠금 없음).
+            Commands.slash("settings", "설정 대시보드로 가는 링크를 봅니다"),
             Commands.slash("llm-settings", "설정 패널을 엽니다(관리자)").setDefaultPermissions(adminPerm),
             Commands.slash("ai-network-map", "AI 네트워크 지도와 채널 AI 구성을 봅니다(관리자)").setDefaultPermissions(adminPerm),
             Commands.slash("ai-network-check", "AI 네트워크 출시/운영 체크리스트를 봅니다(관리자)").setDefaultPermissions(adminPerm),

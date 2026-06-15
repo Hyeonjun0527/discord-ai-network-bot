@@ -206,6 +206,15 @@ object CommandLoc {
                     "スタートパネルを開きます(質問・貢献・設定・ヘルプ)",
                     "Открыть стартовую панель",
                 ),
+            "settings" to
+                L(
+                    "니아설정",
+                    "ニア設定",
+                    "ниа-настройки",
+                    "Get a link to the settings dashboard",
+                    "設定ダッシュボードへのリンクを表示します",
+                    "Ссылка на панель настроек",
+                ),
             "llm-settings" to
                 L("설정", "設定", "настройки", "Open the settings panel (admin)", "設定パネルを開きます(管理者)", "Открыть панель настроек (админ)"),
             "ai-network-map" to

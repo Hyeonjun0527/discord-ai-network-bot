@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 import aiohttp
 
+from . import sslutil
 from .image_backend import CloudImageBackendMixin, ImageBackendError
 
 logger = logging.getLogger("provider_agent.runpod")
@@ -78,7 +79,9 @@ class RunPodClient(CloudImageBackendMixin):
         if on_progress:
             self._safe_progress(on_progress, 5)
         try:
-            async with aiohttp.ClientSession(timeout=self._timeout) as s:
+            async with aiohttp.ClientSession(
+                timeout=self._timeout, connector=aiohttp.TCPConnector(ssl=sslutil.ssl_context())
+            ) as s:
                 async with s.post(f"{RUNPOD_API_BASE}/{self._endpoint}/runsync", json=payload, headers=self._headers()) as r:
                     data = await self._json_or_error(r, "runsync")
                 result = await self._resolve(s, data, on_progress)
@@ -172,7 +175,9 @@ class RunPodClient(CloudImageBackendMixin):
         if not (self._key and self._endpoint):
             return False
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10), connector=aiohttp.TCPConnector(ssl=sslutil.ssl_context())
+            ) as s:
                 async with s.get(f"{RUNPOD_API_BASE}/{self._endpoint}/health", headers=self._headers()) as r:
                     return r.status == 200
         except aiohttp.ClientError:

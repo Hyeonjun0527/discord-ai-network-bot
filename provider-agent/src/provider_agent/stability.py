@@ -16,6 +16,7 @@ from typing import Callable
 
 import aiohttp
 
+from . import sslutil
 from .image_backend import CloudImageBackendMixin, ImageBackendError
 
 logger = logging.getLogger("provider_agent.stability")
@@ -71,7 +72,9 @@ class StabilityClient(CloudImageBackendMixin):
         headers = {"Authorization": f"Bearer {self._key}", "Accept": "image/*"}
 
         try:
-            async with aiohttp.ClientSession(timeout=self._timeout) as s:
+            async with aiohttp.ClientSession(
+                timeout=self._timeout, connector=aiohttp.TCPConnector(ssl=sslutil.ssl_context())
+            ) as s:
                 async with s.post(self._generate_url(), data=form, headers=headers) as r:
                     if r.status == 200 and (r.content_type or "").startswith("image/"):
                         raw = await r.read()
@@ -112,7 +115,9 @@ class StabilityClient(CloudImageBackendMixin):
         """키가 유효한지 가벼운 호출(계정 조회)로 확인 — capability 광고 판단용."""
         url = f"{STABILITY_API_BASE}/v1/user/account"
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10), connector=aiohttp.TCPConnector(ssl=sslutil.ssl_context())
+            ) as s:
                 async with s.get(url, headers={"Authorization": f"Bearer {self._key}"}) as r:
                     return r.status == 200
         except aiohttp.ClientError:

@@ -806,15 +806,19 @@ class _FakeWindow:
         self.hidden = True
 
 
-def test_webview_close_hides_window_when_background_running() -> None:
-    """백그라운드 상주 ON + GUI 인프로세스 에이전트 실행 중이면 빨간 닫기 버튼은 종료가 아니라 숨김이어야 한다."""
+def test_webview_close_always_quits_even_with_background_running() -> None:
+    """백그라운드 상주 ON + GUI 인프로세스 에이전트 실행 중이어도 닫기/Cmd+Q 는 종료를 허용해야 한다.
+
+    (이전엔 창을 숨기고 닫기를 취소(return False)해 Cmd+Q·빨간 닫기 버튼으로도 앱이 안 꺼지는
+    '좀비처럼 안 꺼짐' 버그가 있었다. 백그라운드 기여는 닫힌 뒤 헤드리스 서비스 인계로만 유지한다.)
+    """
     persist_partial({"background": True, "tray": True, "token": "T"})
     webui._state["agent"] = object()
     webui._state["task"] = _AliveTask()
     window = _FakeWindow()
 
-    assert webui._handle_webview_closing(window) is False
-    assert window.hidden is True
+    assert webui._handle_webview_closing(window) is None  # 닫기 허용(취소 안 함)
+    assert window.hidden is False  # 더 이상 숨기지 않는다 → 실제 종료
 
 
 def test_webview_close_allows_exit_when_background_off() -> None:

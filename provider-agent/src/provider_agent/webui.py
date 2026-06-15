@@ -1931,29 +1931,20 @@ def _handoff_to_service_on_close() -> bool:
     return False
 
 
-def _handle_webview_closing(window: object) -> bool | None:
-    """네이티브 창의 닫기 버튼 처리.
+def _handle_webview_closing(window: object) -> bool | None:  # noqa: ARG001 - pywebview 콜백 시그니처(window 미사용)
+    """네이티브 창 닫기 / Cmd+Q 처리 — **항상 종료를 허용한다**(None 반환).
 
-    pywebview ``closing`` 이벤트는 콜백이 ``False`` 를 반환하면 닫기를 취소한다. 백그라운드
-    상주가 켜져 있고 이 GUI 프로세스가 실제 에이전트를 돌리고 있으면 프로세스를 죽이지 말고 창만
-    숨긴다. 상주가 꺼져 있거나, 이 창이 설정 전용이고 실제 제공은 별도 서비스가 담당 중이면 기존처럼
-    닫히게 둔다.
+    이전에는 백그라운드 상주(``background``/``tray``)가 켜져 있고 이 GUI 가 직접 에이전트를 돌리면
+    ``window.hide()`` + ``return False`` 로 닫기를 **취소**하고 창만 숨겼다. 그 결과 빨간 닫기 버튼은
+    물론 **Cmd+Q 로도 앱이 종료되지 않고** 프로세스가 포트를 점유한 채 남아 "좀비처럼 안 꺼짐"
+    문제가 생겼다(다른 앱과 다른, 사용자가 기대하지 않는 동작).
+
+    이제 닫기/Cmd+Q 는 항상 허용한다 → ``webview.start()`` 가 반환되고 ``run_gui`` 의 후처리
+    ``_handoff_to_service_on_close()`` 가 **설치된 헤드리스 서비스가 있으면** 백그라운드 기여를 인계한
+    뒤 ``os._exit(0)`` 로 깔끔히 종료한다. 서비스가 없으면 그대로 종료(사용자 기대대로). 창을 닫아도
+    계속 기여하려면 설정에서 자동 시작(헤드리스 서비스)을 설치한다.
     """
-    if not _background_enabled_on_close():
-        return None
-    if _running_agent() is None:
-        # 이 GUI 가 직접 제공 중이 아니면 숨겨 둘 이유가 없다. 서비스가 설치돼 있으면 종료 후
-        # run_gui 의 후처리(_handoff_to_service_on_close)가 인계하고, 없으면 그냥 설정 창만 닫힌다.
-        return None
-    try:
-        hide = getattr(window, "hide")
-        hide()
-        logging.getLogger("provider_agent").info("창 닫힘 — 백그라운드 상주 설정으로 창만 숨깁니다.")
-        return False
-    except Exception as exc:  # noqa: BLE001 - 숨김 실패 시 서비스 인계를 시도하고 닫기는 허용
-        logging.getLogger("provider_agent").warning("창 숨김 실패 — 백그라운드 서비스 인계로 폴백: %s", exc)
-        _handoff_to_service_on_close()
-        return None
+    return None
 
 
 def _start_auto_update_watcher() -> None:

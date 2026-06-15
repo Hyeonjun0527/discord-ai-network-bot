@@ -806,19 +806,19 @@ class _FakeWindow:
         self.hidden = True
 
 
-def test_webview_close_always_quits_even_with_background_running() -> None:
-    """백그라운드 상주 ON + GUI 인프로세스 에이전트 실행 중이어도 닫기/Cmd+Q 는 종료를 허용해야 한다.
+def test_webview_close_hides_window_when_background_running() -> None:
+    """macOS 표준: 백그라운드 상주 ON + 에이전트 실행 중이면 **빨간X 는 창만 숨기고 앱은 살린다**.
 
-    (이전엔 창을 숨기고 닫기를 취소(return False)해 Cmd+Q·빨간 닫기 버튼으로도 앱이 안 꺼지는
-    '좀비처럼 안 꺼짐' 버그가 있었다. 백그라운드 기여는 닫힌 뒤 헤드리스 서비스 인계로만 유지한다.)
+    (Cmd+Q/Dock-종료의 완전 종료는 _install_macos_app_delegate 의 applicationShouldTerminate 가
+    별도로 보장한다 — events.closing veto 와 무관하게 항상 종료. 여기 veto 는 빨간X 에만 적용.)
     """
     persist_partial({"background": True, "tray": True, "token": "T"})
     webui._state["agent"] = object()
     webui._state["task"] = _AliveTask()
     window = _FakeWindow()
 
-    assert webui._handle_webview_closing(window) is None  # 닫기 허용(취소 안 함)
-    assert window.hidden is False  # 더 이상 숨기지 않는다 → 실제 종료
+    assert webui._handle_webview_closing(window) is False  # 닫기 취소(창만 숨김)
+    assert window.hidden is True  # 창은 숨고 프로세스는 살아서 계속 기여
 
 
 def test_webview_close_allows_exit_when_background_off() -> None:

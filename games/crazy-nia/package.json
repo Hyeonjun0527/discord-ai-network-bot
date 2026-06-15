@@ -1,0 +1,22 @@
+{
+  "name": "crazy-nia",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Crazy Arcade / Bomberman style 2D game prototype (P0) — local 2-player, browser, Phaser 3.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node smoke.mjs"
+  },
+  "dependencies": {
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.0"
+  }
+}

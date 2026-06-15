@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crazy Nia — Bomberman Prototype</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2314151f'/%3E%3Ccircle cx='8' cy='9' r='4.5' fill='%2316181f' stroke='%234f8cff' stroke-width='1'/%3E%3Ccircle cx='11' cy='3' r='1.5' fill='%23ffb648'/%3E%3C/svg%3E"
+    />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #14151f;
+        color: #e7e9f3;
+        font-family: system-ui, -apple-system, sans-serif;
+        height: 100%;
+      }
+      #app {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        gap: 12px;
+      }
+      #game {
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .hint {
+        font-size: 13px;
+        opacity: 0.7;
+        max-width: 720px;
+        text-align: center;
+        line-height: 1.5;
+      }
+      .hint b { color: #8fd0ff; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="game"></div>
+      <div class="hint">
+        <b>P1</b> 이동 방향키 · 폭탄 Space &nbsp;|&nbsp;
+        <b>P2</b> 이동 WASD · 폭탄 Shift &nbsp;|&nbsp;
+        라운드 재시작 <b>R</b>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

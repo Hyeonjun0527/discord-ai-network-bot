@@ -1931,20 +1931,33 @@ def _handoff_to_service_on_close() -> bool:
     return False
 
 
-def _handle_webview_closing(window: object) -> bool | None:  # noqa: ARG001 - pywebview 콜백 시그니처(window 미사용)
-    """네이티브 창 닫기 / Cmd+Q 처리 — **항상 종료를 허용한다**(None 반환).
+def _handle_webview_closing(window: object) -> bool | None:
+    """빨간 닫기(X) 버튼 처리 — macOS 표준: **창만 닫고 앱은 살려 둔다**.
 
-    이전에는 백그라운드 상주(``background``/``tray``)가 켜져 있고 이 GUI 가 직접 에이전트를 돌리면
-    ``window.hide()`` + ``return False`` 로 닫기를 **취소**하고 창만 숨겼다. 그 결과 빨간 닫기 버튼은
-    물론 **Cmd+Q 로도 앱이 종료되지 않고** 프로세스가 포트를 점유한 채 남아 "좀비처럼 안 꺼짐"
-    문제가 생겼다(다른 앱과 다른, 사용자가 기대하지 않는 동작).
+    백그라운드 상주(``background``/``tray``)가 켜져 있고 이 GUI 가 직접 에이전트를 돌리는 중이면,
+    창을 닫아도 **같은 프로세스가 그대로 살아서 풀에 계속 기여**한다(별도 헤드리스 프로세스 없음).
+    `window.hide()` + `return False` 로 닫기를 취소하고 창만 숨긴다. Dock 아이콘을 다시 누르면
+    `_install_macos_app_delegate` 의 reopen 핸들러가 이 창을 복원한다.
 
-    이제 닫기/Cmd+Q 는 항상 허용한다 → ``webview.start()`` 가 반환되고 ``run_gui`` 의 후처리
-    ``_handoff_to_service_on_close()`` 가 **설치된 헤드리스 서비스가 있으면** 백그라운드 기여를 인계한
-    뒤 ``os._exit(0)`` 로 깔끔히 종료한다. 서비스가 없으면 그대로 종료(사용자 기대대로). 창을 닫아도
-    계속 기여하려면 설정에서 자동 시작(헤드리스 서비스)을 설치한다.
+    중요: 이 veto 는 **빨간X(windowShouldClose)에만** 적용되어야 한다. pywebview 는 기본적으로
+    Cmd+Q/Dock-종료(applicationShouldTerminate)에도 같은 events.closing 을 적용해 **앱 종료까지
+    막아버리는데**(실증 버그: "좀비처럼 안 꺼짐"), 이를 막기 위해 `_install_macos_app_delegate` 가
+    NSApp 델리게이트의 applicationShouldTerminate 를 덮어써서 Cmd+Q/Dock-종료는 **항상 완전 종료**되게
+    한다. 즉 여기 veto 와 그 델리게이트가 짝을 이뤄 "빨간X=숨김 / Cmd+Q=완전종료" 를 구현한다.
+
+    상주 OFF 또는 제공 중인 에이전트가 없으면(설정 전용 창) 닫기를 그대로 허용한다(앱 종료).
     """
-    return None
+    if not _background_enabled_on_close():
+        return None  # 상주 OFF → 닫기 = 종료
+    if _running_agent() is None:
+        return None  # 제공 중이 아닌 설정 전용 창 → 숨겨 둘 이유 없음, 닫기 허용
+    try:
+        window.hide()  # type: ignore[attr-defined]
+        logging.getLogger("provider_agent").info("창 닫힘(빨간X) — 백그라운드 상주: 창만 숨기고 계속 기여합니다.")
+        return False  # 닫기 취소(창만 숨김, 앱·에이전트 유지)
+    except Exception as exc:  # noqa: BLE001 - 숨김 실패 시 닫기를 허용(앱이 멈추는 것보다 낫다)
+        logging.getLogger("provider_agent").warning("창 숨김 실패 — 닫기를 허용합니다: %s", exc)
+        return None
 
 
 def _start_auto_update_watcher() -> None:
@@ -2014,6 +2027,8 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
         try:
             import webview  # type: ignore[import-untyped]
 
+            from . import macos_app
+
             _set_macos_app_identity(APP_DISPLAY_NAME)  # dock 이름/아이콘을 'Python'/로켓 대신 브랜드로
             # 가로로 긴(landscape) 기본 크기 — UI 가 사이드바(232px)+메인 그리드라 세로형(600x800)이면
             # 메인이 비좁고 잘려 보였다. 16:10 비율의 가로형 기본값 + 가로형 최소 크기로 통일.
@@ -2021,8 +2036,30 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
                 f"로컬 AI 제공자 설정 · {APP_DISPLAY_NAME}", url, width=1180, height=760, min_size=(1000, 660)
             )
             if window is not None:
-                window.events.closing += _handle_webview_closing
-            webview.start()  # 메인 스레드 점유, 창 닫으면 반환
+                window.events.closing += _handle_webview_closing  # 빨간X → 창 숨김(앱 생존)
+
+            # macOS 표준 생명주기 설치(Cmd+Q·Dock-종료=완전 종료 / Dock 재클릭=창 복원 / 메뉴바 종료).
+            # **메인 런루프에 NSTimer 를 직접 예약**한다 — webview.start() 가 NSApp.run() 으로 돌리는 바로
+            # 그 메인 런루프에서 1초 뒤 타이머가 발화하므로(메인 스레드 보장), pywebview 가 자기 NSApp
+            # 델리게이트를 건 뒤 우리 것으로 최종 교체된다. (start(func) 스레드/AppHelper.callAfter 와
+            # events.shown 경로는 이 환경에서 발화가 불안정했음 — NSTimer 가 NSApp.run 루프와 직접 묶여
+            # 가장 견고. macOS 아니거나 pyobjc 없으면 install 이 알아서 no-op.)
+            # macOS 표준 생명주기 설치(Cmd+Q·Dock-종료=완전 종료 / Dock 재클릭=창 복원 / 메뉴바 종료).
+            # **메인 런루프에 NSTimer 를 예약**한다 — webview.start() 가 NSApp.run() 으로 돌리는 바로 그
+            # 메인 런루프에서 1초 뒤 **메인 스레드**에서 발화하므로, pywebview 가 자기 NSApp 델리게이트를
+            # 건 뒤 우리 것으로 안전히 교체되고 NSStatusBar(메뉴바)도 메인 스레드 요건을 만족한다.
+            # (events.loaded/shown 은 비-메인 스레드에서 발화해 NSWindow/NSStatusBar 가 'main thread only'
+            #  예외를 내고, start(func)+AppHelper 경로도 이 환경에선 불안정했음 — NSTimer 가 가장 견고. 실증.)
+            try:
+                from Foundation import NSTimer  # type: ignore[import-not-found]
+
+                NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
+                    1.0, False, lambda _timer: macos_app.install(window)
+                )
+            except Exception as exc:  # noqa: BLE001 - 예약 실패 시 기존 pywebview 동작으로 폴백
+                logging.getLogger("provider_agent").warning("macOS 생명주기 타이머 예약 실패(무시): %s", exc)
+
+            webview.start()  # 메인 스레드 점유(NSApp.run), 창 닫으면 반환
             _handoff_to_service_on_close()  # 닫을 때 백그라운드 서비스로 연결 인계(설치돼 있으면, 비블로킹)
             # 창을 닫았는데도 즉시 안 꺼지고 '응답없음'으로 멈추던 문제(실증) 방지: 인터프리터 finalize·
             # 배경 데몬 스레드(asyncio 루프·SD 서브프로세스 transport)가 종료를 지연시키지 않게 즉시 강제 종료.

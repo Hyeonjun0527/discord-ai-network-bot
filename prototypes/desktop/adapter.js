@@ -14,6 +14,7 @@ export const USE_MOCK = true;
 /* @proto-only */
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const _setup = {}; // mock 설치 진행 상태(runtime → { start, model })
+let _updTick = 0; // mock 업데이트 진행률 틱(applyUpdate 시작 시 0, getUpdateProgress 호출마다 전진)
 // mock 전용: 카탈로그/설치된 모델 외 임의 모델은 "없는 모델"로 간주해 실패시킨다(없는 모델 UX 데모).
 // 실 백엔드에선 ollama pull 의 404/에러가 곧 이 분기 — 형식이 맞아도 라이브러리에 없으면 실패.
 const _isUnknownModel = (name) => {
@@ -513,12 +514,12 @@ export const api = {
   },
   /** 인앱 업데이트 시작 — webui.py POST /api/update. 진행률은 getUpdateProgress 폴링. */
   async applyUpdate() {
-    /* @proto-only */ if (USE_MOCK) { await delay(120); return { ok: true, started: true }; } /* @end-proto-only */
+    /* @proto-only */ if (USE_MOCK) { await delay(120); _updTick = 0; return { ok: true, started: true }; } /* @end-proto-only */
     return post(ENDPOINTS.updateApply);
   },
   /** 업데이트 진행률 — webui.py /api/update-progress. {phase,percent,message,error}. */
   async getUpdateProgress() {
-    /* @proto-only */ if (USE_MOCK) { await delay(60); return { phase: 'idle', percent: 0, message: '' }; } /* @end-proto-only */
+    /* @proto-only */ if (USE_MOCK) { await delay(60); if (globalThis.__UPDATE_MOCK_ERROR) return { phase: 'error', percent: 0, error: '무결성 검증 실패(체크섬 불일치)' }; _updTick += 1; if (_updTick <= 1) return { phase: 'downloading', percent: 35, message: '' }; if (_updTick === 2) return { phase: 'downloading', percent: 80, message: '' }; return { phase: 'restarting', percent: 100, message: '' }; } /* @end-proto-only */
     return http(ENDPOINTS.updateProgress);
   },
   /** 연결 해제(로그아웃) — webui.py /api/logout. 토큰·서버 연결을 비우고 온보딩으로. */

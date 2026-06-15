@@ -470,6 +470,41 @@ window.__I18N = {
     "en": "In-app update is not supported in this environment.",
     "ja": "この環境ではアプリ内アップデートに対応していません。"
   },
+  "setUpdatePhaseStarting": {
+    "ko": "업데이트 준비 중…",
+    "en": "Preparing update…",
+    "ja": "アップデート準備中…"
+  },
+  "setUpdatePhaseDownloading": {
+    "ko": "내려받는 중",
+    "en": "Downloading",
+    "ja": "ダウンロード中"
+  },
+  "setUpdatePhaseVerifying": {
+    "ko": "무결성 검증 중…",
+    "en": "Verifying…",
+    "ja": "整合性を検証中…"
+  },
+  "setUpdatePhaseInstalling": {
+    "ko": "설치 중…",
+    "en": "Installing…",
+    "ja": "インストール中…"
+  },
+  "setUpdatePhaseRestarting": {
+    "ko": "거의 다 됐어요 — 새 버전으로 다시 열려요…",
+    "en": "Almost done — reopening on the new version…",
+    "ja": "まもなく完了 — 新しいバージョンで再起動します…"
+  },
+  "setUpdateFailedStatus": {
+    "ko": "업데이트 실패",
+    "en": "Update failed",
+    "ja": "アップデートに失敗しました"
+  },
+  "setUpdateRetryBtn": {
+    "ko": "다시 시도",
+    "en": "Retry",
+    "ja": "再試行"
+  },
   "setVerChecking": {
     "ko": "버전 확인 중…",
     "en": "Checking version…",

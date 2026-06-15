@@ -66,21 +66,79 @@
         '</div>' +
       '</div>';
       document.body.appendChild(lay);
-      const close = () => lay.remove();
+      let pollTimer = null;
+      let restarting = false;
+      const close = () => { if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; } lay.remove(); };
       lay.querySelectorAll('[data-update-close]').forEach((b) => { b.onclick = close; });
       lay.addEventListener('click', (e) => { if (e.target === lay) close(); });
       const confirm = lay.querySelector('[data-update-confirm]');
-      confirm.onclick = async () => {
-        confirm.disabled = true;
-        toast(t('setUpdateStartingToast'), { type: 'run', sticky: true, id: 'upd' });
-        try {
-          const r = await api.applyUpdate(); // POST /api/update
-          if (r && r.ok === false) { toast(r.error || t('setUpdateStartFailedToast'), { type: 'error', id: 'upd' }); return; }
-          toast(t('setUpdateStartedToast'), { type: 'ok', id: 'upd' });
-          close();
-        } catch (_e) { toast(t('setUpdateStartRetryToast'), { type: 'error', id: 'upd' }); }
-        finally { confirm.disabled = false; }
+
+      // 진행률 폴링 → 모달 내 진행바(/api/update-progress: phase/percent/message/error).
+      // 이전엔 시작 토스트만 띄우고 폴링하지 않아 ① 진행바가 없고 ② 백그라운드 다운로드/교체 실패가
+      // 사용자에게 전혀 안 보였다(“업데이트 눌러도 안 됨”의 정체). 이제 끝까지 진행/실패를 표시한다.
+      const phaseLabel = (p) => ({
+        downloading: t('setUpdatePhaseDownloading'),
+        verifying: t('setUpdatePhaseVerifying'),
+        installing: t('setUpdatePhaseInstalling'),
+        restarting: t('setUpdatePhaseRestarting'),
+      }[p] || t('setUpdatePhaseStarting'));
+
+      const showProgress = () => {
+        const modal = lay.querySelector('.modal');
+        modal.innerHTML = '<h3>' + t('setUpdatePromptTitle') + '</h3>' +
+          '<div class="inst-bar"><i data-upd-fill style="width:6%"></i></div>' +
+          '<p class="msub" data-upd-status>' + esc(t('setUpdatePhaseStarting')) + '</p>';
+        return { fill: modal.querySelector('[data-upd-fill]'), status: modal.querySelector('[data-upd-status]') };
       };
+
+      const showError = (msg) => {
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+        const modal = lay.querySelector('.modal');
+        modal.innerHTML = '<button class="modal-x" data-update-close aria-label="닫기">✕</button>' +
+          '<h3>' + t('setUpdateFailedStatus') + '</h3>' +
+          '<p class="msub">' + esc(msg || t('setUpdateFailedStatus')) + '</p>' +
+          '<div class="modal-foot">' +
+            '<button class="btn btn--md btn--secondary" data-update-close>' + t('setUpdatePromptLater') + '</button>' +
+            '<button class="btn btn--md btn--primary" data-update-confirm>' + t('setUpdateRetryBtn') + '</button>' +
+          '</div>';
+        modal.querySelectorAll('[data-update-close]').forEach((b) => { b.onclick = close; });
+        const retry = modal.querySelector('[data-update-confirm]');
+        retry.onclick = startUpdate;
+        retry.focus();
+      };
+
+      const poll = (ui) => {
+        pollTimer = setTimeout(async () => {
+          let pr;
+          try { pr = await api.getUpdateProgress(); }
+          catch (_e) {
+            // 폴링 실패: 재시작 단계였다면 교체로 서버가 사라진 것 → 성공(곧 새 버전으로 열림).
+            if (restarting) { ui.status.textContent = t('setUpdatePhaseRestarting'); return; }
+            poll(ui); return;
+          }
+          if (pr && pr.phase === 'error') { showError(pr.error); return; }
+          const pct = Math.max(0, Math.min(100, parseInt(pr && pr.percent, 10) || 0));
+          if (pr && (pr.phase === 'restarting' || pr.phase === 'done')) {
+            restarting = true; ui.fill.style.width = '100%'; ui.status.textContent = t('setUpdatePhaseRestarting'); poll(ui); return;
+          }
+          if (pct) ui.fill.style.width = pct + '%';
+          ui.status.textContent = phaseLabel(pr && pr.phase) + (pct ? '  ' + pct + '%' : '');
+          poll(ui);
+        }, 700);
+      };
+
+      async function startUpdate() {
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+        restarting = false;
+        const ui = showProgress();
+        let r;
+        try { r = await api.applyUpdate(); } // POST /api/update (백그라운드 시작)
+        catch (_e) { showError(t('setUpdateStartRetryToast')); return; }
+        if (r && r.ok === false) { showError(r.error || t('setUpdateStartFailedToast')); return; }
+        poll(ui);
+      }
+
+      confirm.onclick = startUpdate;
       confirm.focus();
     }
 

@@ -92,3 +92,31 @@ test('새 버전은 자동 적용하지 않고 중앙 확인 모달에서 승인
   await modal.getByText('나중에').click();
   await expect(modal).toHaveCount(0);
 });
+
+test('업데이트를 누르면 진행바가 뜨고 진행률이 표시된다', async ({ page }) => {
+  await page.addInitScript(() => {
+    globalThis.__MOCK_UPDATE_INFO = { current: '0.52.3', latest: '0.52.4', outdated: true, supported: true, autoUpdate: true, error: null };
+  });
+  await page.goto('/index.html');
+  const modal = page.locator('#updateModal');
+  await expect(modal).toBeVisible();
+  await modal.getByText('업데이트', { exact: true }).click();
+  // 진행바(.inst-bar)가 나타나고, 진행률(%)·단계가 표시된 뒤 재시작 단계까지 진행한다.
+  await expect(modal.locator('.inst-bar')).toBeVisible();
+  await expect(modal).toContainText('%');
+  await expect(modal).toContainText('새 버전으로 다시 열려요', { timeout: 8000 });
+});
+
+test('업데이트 백그라운드 실패는 진행바 대신 에러+다시 시도로 표시된다', async ({ page }) => {
+  await page.addInitScript(() => {
+    globalThis.__MOCK_UPDATE_INFO = { current: '0.52.3', latest: '0.52.4', outdated: true, supported: true, autoUpdate: true, error: null };
+    globalThis.__UPDATE_MOCK_ERROR = true; // getUpdateProgress 가 phase:error 를 돌려줌
+  });
+  await page.goto('/index.html');
+  const modal = page.locator('#updateModal');
+  await expect(modal).toBeVisible();
+  await modal.getByText('업데이트', { exact: true }).click();
+  await expect(modal).toContainText('업데이트 실패');
+  await expect(modal).toContainText('체크섬');
+  await expect(modal.getByText('다시 시도')).toBeVisible();
+});

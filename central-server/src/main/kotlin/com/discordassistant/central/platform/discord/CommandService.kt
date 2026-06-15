@@ -81,6 +81,7 @@ class CommandService(
     private val channelAiIdentityCommands: com.discordassistant.central.platform.discord.command.ChannelAiIdentityCommandHandler,
     private val guildOnboardingCommands: com.discordassistant.central.platform.discord.command.GuildOnboardingCommandHandler,
     private val guildAdminCommands: com.discordassistant.central.platform.discord.command.GuildAdminCommandHandler,
+    private val settingsCommands: com.discordassistant.central.platform.discord.command.SettingsCommandHandler,
     private val freeAskRateLimiter: com.discordassistant.central.quota.application.FreeAskRateLimiter,
 ) {
     companion object {
@@ -159,6 +160,13 @@ class CommandService(
     fun privacy(ctx: CommandContext): Reply = infoCommands.privacy(ctx)
 
     fun botPermissions(ctx: CommandContext): Reply = infoCommands.botPermissions(ctx)
+
+    /**
+     * 공개 `/설정` — ephemeral 안내 + 웹 대시보드 링크 버튼용 데이터. 모든 유저가 사용(관리자 잠금 없음).
+     * JDA 컴포넌트(Button)는 DiscordBot 어댑터가 결과로부터 만든다. baseUrl 미설정이면 안내 폴백을 반환한다.
+     */
+    fun settings(ctx: CommandContext): com.discordassistant.central.platform.discord.command.SettingsCommandHandler.SettingsLinks =
+        settingsCommands.settings(ctx)
 
     /**
      * 종합 도움말(차수 13 #183). 권한별 섹션 노출(#186).

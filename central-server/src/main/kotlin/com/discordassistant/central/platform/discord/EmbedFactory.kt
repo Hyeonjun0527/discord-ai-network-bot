@@ -53,6 +53,17 @@ object EmbedFactory {
     private val DEEP_INDIGO = Color(0x2F3BFF)
     const val MENU_HERO_IMAGE_URL = "https://discord-ai.yeon.world/assets/nexa-menu-hero.png"
 
+    /** 공개 `/설정` ephemeral 임베드. 본문은 핸들러가 i18n 으로 만든 제목/설명, 링크 버튼은 메시지에 함께 첨부. */
+    fun settingsLinkEmbed(
+        title: String,
+        description: String,
+    ): MessageEmbed =
+        EmbedBuilder()
+            .setColor(BLURPLE)
+            .setTitle(title)
+            .setDescription(description)
+            .build()
+
     /** 시작 메뉴 Embed. 실제 Discord 버튼은 Embed 아래에 붙지만, 패널 안에도 같은 메뉴 구조를 보여준다. */
     fun mainMenuEmbed(isAdmin: Boolean): MessageEmbed {
         val b =

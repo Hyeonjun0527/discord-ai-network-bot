@@ -616,20 +616,31 @@ jobs:
             cp -f "agent-bins/$f" "$DEST/"
           done
           # 공개 업데이트 채널: 앱은 비공개 GitHub 릴리스에 인증 없이 접근할 수 없으므로 central /download 를 SSOT 로 쓴다.
+          # ⚠️ Cloudflare 가 바이너리(.zip/.dmg/.exe)는 max-age 로 캐시하지만 SHA256SUMS/latest.json 은
+          #   DYNAMIC(미캐시)으로 서빙한다 → 릴리스 직후 'SHA256SUMS 는 새 것 + zip 은 옛 캐시' 스큐로
+          #   인앱 업데이트가 '무결성 검증 실패(체크섬 불일치)' 가 난다(최대 max-age 동안). 막기 위해
+          #   업데이터가 쓰는 자산은 **버전별 불변 경로** /download/<tag>/ 에도 배치하고 latest.json 이
+          #   그 경로를 가리킨다(새 릴리스=새 경로=새 캐시키 → 항상 신선, zip↔SHA256SUMS 원자적 일치).
+          #   flat 경로(/download/*)는 웹 설치 버튼 호환용으로 유지한다.
           (
             cd "$DEST"
             sha256sum "${required_assets[@]}" > SHA256SUMS.txt
             if [[ "${GITHUB_REF_NAME:-}" == agent-v* ]]; then
               VER="${GITHUB_REF_NAME#agent-v}"
+              VDIR="${DEST}/${GITHUB_REF_NAME}"
+              mkdir -p "$VDIR"
+              for f in "${required_assets[@]}"; do cp -f "$f" "$VDIR/"; done
+              ( cd "$VDIR" && sha256sum "${required_assets[@]}" > SHA256SUMS.txt )
+              BASE="https://discord-ai.yeon.world/download/${GITHUB_REF_NAME}"
               cat > latest.json <<JSON
           {
             "version": "${VER}",
             "tag": "${GITHUB_REF_NAME}",
             "assets": {
-              "nexa-macos.zip": "https://discord-ai.yeon.world/download/nexa-macos.zip",
-              "nexa-macos.dmg": "https://discord-ai.yeon.world/download/nexa-macos.dmg",
-              "nexa-windows.exe": "https://discord-ai.yeon.world/download/nexa-windows.exe",
-              "SHA256SUMS.txt": "https://discord-ai.yeon.world/download/SHA256SUMS.txt"
+              "nexa-macos.zip": "${BASE}/nexa-macos.zip",
+              "nexa-macos.dmg": "${BASE}/nexa-macos.dmg",
+              "nexa-windows.exe": "${BASE}/nexa-windows.exe",
+              "SHA256SUMS.txt": "${BASE}/SHA256SUMS.txt"
             }
           }
           JSON

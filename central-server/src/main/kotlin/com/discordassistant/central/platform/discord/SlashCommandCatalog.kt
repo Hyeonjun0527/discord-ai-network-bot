@@ -127,6 +127,11 @@ object SlashCommandCatalog {
                 .addOption(OptionType.CHANNEL, "backfill-channel", "본문까지 학습할 채널(생략 시 핀/공지만)", false)
                 .addOption(OptionType.INTEGER, "history-limit", "수집할 최근 메시지 수(최대 100)", false)
                 .setDefaultPermissions(adminPerm),
+            // 입장 배너 "🏗️ 니아 채널 자동 만들기" 버튼의 폴백 슬래시(systemChannel 없거나 버튼이 사라졌을 때).
+            // 이름은 NiaChannelSetup.COMMAND_NAME 과 동일("setup-channels") — 드리프트 가드(CommandLocCoverageDriftTest)가 리터럴을 파싱한다.
+            Commands
+                .slash("setup-channels", "니아 기능 채널(ai채팅·ai그림)과 음성 채널을 자동으로 만듭니다(관리자)")
+                .setDefaultPermissions(adminPerm),
             // 누구나 본인에 한해 사용(관리자 권한 불필요) — 본인 메시지를 자동 온보딩 백필 RAG 색인에서 제외.
             Commands
                 .slash("ai-onboard-optout", "내 메시지를 서버 AI 자동 학습(백필 색인)에서 제외/해제합니다")

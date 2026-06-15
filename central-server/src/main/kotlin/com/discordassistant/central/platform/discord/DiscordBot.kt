@@ -296,6 +296,7 @@ class DiscordBot(
             ChannelProfilePanelRenderer(channelProfiles, settingsWizard::effectiveAllowedChannelIds)
         private val onboarding =
             OnboardingInteractionHandler(commands, historyBackfill, onboardingOptOuts, messageContentIntentEnabled)
+        private val setupChannels = NiaChannelSetupHandler(channelProfiles)
 
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
@@ -398,6 +399,12 @@ class DiscordBot(
                                     .build(),
                             ).build()
                     event.replyModal(modal).queue()
+                    return
+                }
+                "setup-channels" -> {
+                    // 폴백 슬래시(systemChannel 없거나 입장 배너 버튼이 사라졌을 때). 핸들러가 권한/멱등/생성을 자체 처리.
+                    // 이름 리터럴 = NiaChannelSetup.COMMAND_NAME — 등록↔디스패치 드리프트 가드가 리터럴을 파싱한다.
+                    setupChannels.handle(event, ctx, ctx.userLang ?: commands.guildLanguage(ctx))
                     return
                 }
             }
@@ -540,6 +547,11 @@ class DiscordBot(
                 onboarding.handleOnboardingButton(event, ctx)
                 return
             }
+            if (event.componentId == NiaChannelSetup.COMPONENT_ID) {
+                // "🏗️ 니아 채널 자동 만들기" — 권한/멱등/생성은 핸들러가 자체 처리(RAG 온보딩과는 별개 기능).
+                setupChannels.handle(event, ctx, ctx.userLang ?: commands.guildLanguage(ctx))
+                return
+            }
             when (event.componentId) {
                 MenuFactory.ASK -> {
                     // 질문하기 → 모달로 질문 입력
@@ -650,7 +662,11 @@ class DiscordBot(
                 .sendMessageEmbeds(EmbedFactory.mainMenuEmbed(isAdmin = true))
                 .setComponents(
                     ActionRow.of(MenuFactory.mainButtons(isAdmin = true)),
-                    ActionRow.of(Button.primary("$ONBOARD_PREFIX$ONBOARD_ACTION_START", "🐾 AI 자동 설정하기")),
+                    // 🐾 = RAG 자동 온보딩(별개), 🏗️ = 니아 채널 자동 만들기(카테고리/채널/가이드 생성). 둘 다 노출.
+                    ActionRow.of(
+                        Button.primary("$ONBOARD_PREFIX$ONBOARD_ACTION_START", "🐾 AI 자동 설정하기"),
+                        Button.primary(NiaChannelSetup.COMPONENT_ID, I18n.get("niaSetupChannelsButton", I18n.DEFAULT)),
+                    ),
                 ).queue({}, {})
         }
 

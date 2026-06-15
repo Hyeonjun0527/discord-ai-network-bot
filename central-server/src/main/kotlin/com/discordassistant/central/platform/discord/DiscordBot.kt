@@ -1,5 +1,6 @@
 package com.discordassistant.central.platform.discord
 
+import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.global.i18n.I18n
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
@@ -114,6 +115,7 @@ class DiscordBot(
     private val commands: CommandService,
     private val metrics: CommandMetrics,
     private val channelProfiles: ChannelAiProfileService,
+    private val autoRespondChannels: AutoRespondChannelRegistry,
     private val guildCleanup: GuildRemovalCleanupService,
     private val reconciliation: ProviderPoolReconciliationService,
     private val gatewayStatus: DiscordGatewayStatus,
@@ -211,6 +213,7 @@ class DiscordBot(
                 commands,
                 metrics,
                 channelProfiles,
+                autoRespondChannels,
                 guildCleanup,
                 reconciliation,
                 gatewayStatus,
@@ -277,6 +280,7 @@ class DiscordBot(
         private val commands: CommandService,
         private val metrics: CommandMetrics,
         private val channelProfiles: ChannelAiProfileService,
+        private val autoRespondChannels: AutoRespondChannelRegistry,
         private val guildCleanup: GuildRemovalCleanupService,
         private val reconciliation: ProviderPoolReconciliationService,
         private val gatewayStatus: DiscordGatewayStatus,
@@ -296,7 +300,7 @@ class DiscordBot(
             ChannelProfilePanelRenderer(channelProfiles, settingsWizard::effectiveAllowedChannelIds)
         private val onboarding =
             OnboardingInteractionHandler(commands, historyBackfill, onboardingOptOuts, messageContentIntentEnabled)
-        private val setupChannels = NiaChannelSetupHandler(channelProfiles)
+        private val setupChannels = NiaChannelSetupHandler(channelProfiles, autoRespondChannels)
 
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
@@ -754,14 +758,31 @@ class DiscordBot(
             }
         }
 
-        /** 봇 멘션 질문: `@니아 질문` 을 기존 /ask 와 같은 Provider Pool 흐름으로 처리한다. */
+        /**
+         * 메시지 자동 처리(콘텐츠 인텐트 필요):
+         *  ① 봇 멘션(@니아) → 멘션 텍스트로 /ask 흐름.
+         *  ② "AI 채팅 채널"(자동응답 켜진 채널) → 멘션 없이 모든 텍스트 메시지에 자동 응답.
+         * 자동응답은 카미봇처럼 `.` 로 시작하는 메시지·빈 내용·봇/웹훅 메시지는 제외한다.
+         * 자동응답 채널 판정은 [autoRespondChannels] 인메모리 캐시(O(1))로 — 메시지당 DB 조회를 하지 않는다.
+         */
         override fun onMessageReceived(event: MessageReceivedEvent) {
             if (!mentionAskEnabled || !event.isFromGuild || event.author.isBot) return
             val selfId = event.jda.selfUser.idLong
-            val mentionedUsers = event.message.mentions.users
-            val mentioned = mentionedUsers.any { it.idLong == selfId }
-            if (!mentioned) return
+            val mentioned =
+                event.message.mentions.users
+                    .any { it.idLong == selfId }
+            if (mentioned) {
+                handleMentionAsk(event, selfId)
+                return
+            }
+            handleAutoRespond(event)
+        }
 
+        /** 봇 멘션 질문: `@니아 질문` 을 기존 /ask 와 같은 Provider Pool 흐름으로 처리한다. */
+        private fun handleMentionAsk(
+            event: MessageReceivedEvent,
+            selfId: Long,
+        ) {
             val prompt = mentionPrompt(event.message.contentRaw, selfId)
             if (prompt.isBlank()) {
                 event.message
@@ -770,8 +791,27 @@ class DiscordBot(
                     .queue()
                 return
             }
-
             metrics.record("mention-ask")
+            respondInChannel(event, prompt)
+        }
+
+        /**
+         * AI 채팅 채널 자동응답: 자동응답이 켜진 채널의 모든 텍스트 메시지에 멘션 없이 응답한다.
+         * `.` 로 시작하는 메시지(카미봇 컨벤션)·빈 내용은 무시한다(스킵). 캐시 조회가 O(1) 라 비-AI채팅 채널은 즉시 return.
+         */
+        private fun handleAutoRespond(event: MessageReceivedEvent) {
+            if (!autoRespondChannels.isAutoRespond(event.guild.idLong, event.channel.idLong)) return
+            val content = event.message.contentRaw
+            if (!AutoRespondChannelRegistry.shouldRespond(content)) return // `.` 시작·빈 내용 제외
+            metrics.record("auto-respond")
+            respondInChannel(event, content.trim())
+        }
+
+        /** 멘션/자동응답 공통: typing → /ask → (프로필 있으면 웹훅 페르소나, 없으면 답장 스트림). 에러는 동일 처리. */
+        private fun respondInChannel(
+            event: MessageReceivedEvent,
+            prompt: String,
+        ) {
             val ctx =
                 buildCtx(
                     event.guild.idLong,
@@ -792,7 +832,7 @@ class DiscordBot(
                 }
             } catch (e: Exception) {
                 log.warn(
-                    "멘션 질문 처리 실패(channel={}, user={}): {}",
+                    "메시지 자동 처리 실패(channel={}, user={}): {}",
                     event.channel.idLong,
                     event.author.idLong,
                     e.message,

@@ -18,6 +18,8 @@ from typing import Any, Callable
 
 import aiohttp
 
+from .image_backend import ImageBackendError
+
 logger = logging.getLogger("provider_agent.comfy")
 
 # KSampler seed 위젯 뒤에 따라오는 control_after_generate 의사 위젯 값(노드 입력엔 없고 widgets_values 에만 존재).
@@ -26,8 +28,8 @@ _CONTROL_VALUES = {"fixed", "increment", "decrement", "randomize"}
 _SKIP_NODE_TYPES = {"Note", "MarkdownNote", "Reroute", "PrimitiveNode", "PrimitiveString"}
 
 
-class ComfyError(Exception):
-    """ComfyUI 호출/응답 오류."""
+class ComfyError(ImageBackendError):
+    """ComfyUI 호출/응답 오류(이미지 백엔드 공통 베이스 [ImageBackendError] 상속)."""
 
 
 def build_workflow(

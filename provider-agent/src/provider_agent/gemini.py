@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 import aiohttp
 
+from . import sslutil
 from .protocol import Usage
 
 logger = logging.getLogger("provider_agent.gemini")
@@ -110,7 +111,9 @@ class GeminiClient:
         payload: dict[str, object] = {"contents": [{"role": "user", "parts": [{"text": prompt}]}]}
         headers = {"x-goog-api-key": self._key, "Content-Type": "application/json"}
         try:
-            async with aiohttp.ClientSession(timeout=self._timeout) as s:
+            async with aiohttp.ClientSession(
+                timeout=self._timeout, connector=aiohttp.TCPConnector(ssl=sslutil.ssl_context())
+            ) as s:
                 async with s.post(url, json=payload, headers=headers) as r:
                     data = await r.json()
         except aiohttp.ClientError as exc:
@@ -144,7 +147,9 @@ class GeminiClient:
         }
         headers = {"x-goog-api-key": self._key, "Content-Type": "application/json"}
         try:
-            async with aiohttp.ClientSession(timeout=self._timeout) as s:
+            async with aiohttp.ClientSession(
+                timeout=self._timeout, connector=aiohttp.TCPConnector(ssl=sslutil.ssl_context())
+            ) as s:
                 async with s.post(url, json=payload, headers=headers) as r:
                     data = await r.json()
         except aiohttp.ClientError as exc:
@@ -174,7 +179,9 @@ class GeminiClient:
         }
         headers = {"x-goog-api-key": self._key, "Content-Type": "application/json"}
         try:
-            async with aiohttp.ClientSession(timeout=self._timeout) as s:
+            async with aiohttp.ClientSession(
+                timeout=self._timeout, connector=aiohttp.TCPConnector(ssl=sslutil.ssl_context())
+            ) as s:
                 async with s.post(url, json=payload, headers=headers) as r:
                     data = await r.json()
         except aiohttp.ClientError as exc:
@@ -192,7 +199,9 @@ class GeminiClient:
         """키가 유효한지 가벼운 호출(모델 목록)로 확인 — capability 광고 판단용."""
         url = f"{GEMINI_API_BASE}/models"
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10), connector=aiohttp.TCPConnector(ssl=sslutil.ssl_context())
+            ) as s:
                 async with s.get(url, headers={"x-goog-api-key": self._key}) as r:
                     return r.status == 200
         except aiohttp.ClientError:

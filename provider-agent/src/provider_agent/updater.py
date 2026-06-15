@@ -23,6 +23,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote
 
+from . import sslutil
 from .constants import AGENT_VERSION, APP_DISPLAY_NAME, GUI_MAC_ASSET, GUI_WIN_ASSET
 from .version_check import is_outdated
 
@@ -93,12 +94,7 @@ _USER_AGENT = f"nexa-updater/{AGENT_VERSION}"
 
 def _ssl_context() -> ssl.SSLContext:
     """frozen 번들에서도 CA 를 찾도록 certifi 번들을 우선 사용(없으면 시스템 기본)."""
-    try:
-        import certifi
-
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:  # noqa: BLE001 - certifi 없으면 시스템 기본 CA
-        return ssl.create_default_context()
+    return sslutil.ssl_context()
 
 
 def _http_get(url: str, accept: str, timeout: float = 20.0) -> bytes:

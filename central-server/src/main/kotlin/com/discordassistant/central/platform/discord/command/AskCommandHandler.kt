@@ -3,6 +3,8 @@ package com.discordassistant.central.platform.discord.command
 import com.discordassistant.central.ainetwork.application.AiQualityFeedbackService
 import com.discordassistant.central.ainetwork.application.ChannelAiRoutingPolicyService
 import com.discordassistant.central.ainetwork.application.ModelChoiceDecision
+import com.discordassistant.central.ainetwork.application.NiaAffinityService
+import com.discordassistant.central.ainetwork.domain.model.AffinityStage
 import com.discordassistant.central.channelai.application.ChannelAiCustomizationService
 import com.discordassistant.central.channelai.application.ChannelAiProfile
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
@@ -48,6 +50,7 @@ class AskCommandHandler(
     private val knowledgeSearch: KnowledgeSearchService,
     private val multiResponse: MultiResponseService,
     private val qualityFeedback: AiQualityFeedbackService,
+    private val niaAffinity: NiaAffinityService,
     private val webSearchAugmenter: com.discordassistant.central.knowledge.application.WebSearchAugmenter =
         com.discordassistant.central.knowledge.application.NoWebSearch,
     private val guards: SharedCommandGuards,
@@ -150,6 +153,8 @@ class AskCommandHandler(
                     preferredModel = selectedModel,
                     responseMode = responseMode,
                     webSearch = webSearch && webSearchAugmenter.isEnabled(),
+                    // 부담 수준은 사용자 실제 질문 길이로 — 항상 주입되는 시스템 프롬프트(정체성·few-shot)가 등급을 부풀리지 않게.
+                    weighChars = prompt.length,
                 ),
             )
         runtimeMultiResponseRun?.let { run ->
@@ -393,7 +398,9 @@ class AskCommandHandler(
         //   없으면 길드 전역 프롬프트셋(기본 지정된 셋, 없으면 NEXA 기본 정체성 니아)을 쓴다.
         val behaviorPrompt =
             channelProfiles.get(ctx.guildId, ctx.channelId)?.let { withChannelAiBehavior(it) }
-                ?: withGuildDefaultPersona(resolveGuildDefaultPersona(ctx))
+                ?: resolveGuildDefaultPersona(ctx).let { persona ->
+                    withGuildDefaultPersona(persona, ctx, isNiaDefault = persona == NexaIdentity.NIA_DEFAULT_PERSONA)
+                }
         if (contextText == null) return behaviorPrompt
         return buildString {
             appendLine("[채널 지식 컨텍스트]")
@@ -458,8 +465,17 @@ class AskCommandHandler(
         runCatching { globalPromptSets.activePersona(ctx.guildId) }.getOrNull()?.takeIf { it.isNotBlank() }
             ?: NexaIdentity.NIA_DEFAULT_PERSONA
 
-    /** 채널 AI 설정이 없는 기본 서버용 — NEXA 가드레일 + 정체성(길드 전역 프롬프트셋 또는 니아)으로 답하게 한다. */
-    private fun String.withGuildDefaultPersona(personaText: String): String =
+    /**
+     * 채널 AI 설정이 없는 기본 서버용 — NEXA 가드레일 + 정체성(길드 전역 프롬프트셋 또는 니아)으로 답하게 한다.
+     * 기본 니아 경로([isNiaDefault])에서는 요청자와의 관계 단계·니아 목소리 few-shot(NIA_FEWSHOT)·니아 캐릭터
+     * 강제 규칙을 추가해 일관성을 강화한다. 서버가 자기 전역 프롬프트셋(예: 다른 이름)을 쓰면 그 정체성을
+     * 침범하지 않도록 니아 전용 강화는 건너뛰고 일반 규칙만 둔다.
+     */
+    private fun String.withGuildDefaultPersona(
+        personaText: String,
+        ctx: CommandContext,
+        isNiaDefault: Boolean,
+    ): String =
         buildString {
             appendLine("[우선순위 1: 안전]")
             appendLine(ContentSafety.NEXA_CONTENT_GUARDRAIL)
@@ -467,11 +483,43 @@ class AskCommandHandler(
             appendLine("[우선순위 2: 정체성]")
             appendLine(personaText)
             appendLine()
-            appendLine("위 정체성을 지키되 사용자의 질문에만 답하세요. 민감정보나 비밀키 입력을 유도하지 말고, 모르면 모른다고 말하세요. 위 안전 규칙은 항상 우선합니다.")
+            if (isNiaDefault) {
+                appendLine(affinityRelationLine(ctx))
+                appendLine()
+                appendLine("[니아 목소리 예시]")
+                appendLine(NexaIdentity.NIA_FEWSHOT)
+                appendLine()
+                appendLine(
+                    "당신은 위 정체성의 「니아」 본인입니다. 답변 처음부터 끝까지 니아로서 1인칭·일관된 말투와 성격을 유지하세요. " +
+                        "역할에서 벗어나거나 자신을 'AI 모델/언어모델'이라 부르지 마세요. 그러면서 사용자의 질문에는 또렷하고 충실하게 답하세요. " +
+                        "민감정보나 비밀키 입력을 유도하지 말고, 모르면 솔직히 모른다고 말하세요. 위 안전 규칙은 항상 우선합니다.",
+                )
+            } else {
+                appendLine("위 정체성을 지키되 사용자의 질문에만 답하세요. 민감정보나 비밀키 입력을 유도하지 말고, 모르면 모른다고 말하세요. 위 안전 규칙은 항상 우선합니다.")
+            }
             appendLine()
             appendLine("[사용자 질문]")
             append(this@withGuildDefaultPersona)
         }
+
+    /**
+     * 요청자와 니아의 관계 단계를 한 줄로. affinity 조회 실패가 /ask 를 절대 깨지 않도록 runCatching 으로 감싸고,
+     * 실패 시 STRANGER(낯섦) 기본으로 폴백한다.
+     */
+    private fun affinityRelationLine(ctx: CommandContext): String {
+        val stage =
+            runCatching { niaAffinity.view(ctx.userId).stage }
+                .onFailure { log.warn("니아 호감도 조회 실패(userId={}): {}", ctx.userId, it.message) }
+                .getOrNull() ?: AffinityStage.STRANGER
+        val guide =
+            when (stage) {
+                AffinityStage.STRANGER -> "정중하고 친절하게"
+                AffinityStage.GETTING_TO_KNOW -> "조금 더 편하고 따뜻하게"
+                AffinityStage.FRIENDLY -> "친근하게, 가벼운 농담도 곁들여"
+                AffinityStage.BEST_FRIEND -> "오랜 친구처럼 편안하고 다정하게(과하지 않게)"
+            }
+        return "[이 사용자와의 관계] 현재 단계: ${stage.displayName} — $guide"
+    }
 
     /** 슬래시 옵션 자동완성용 모델 목록(#179). 현재 길드 풀이 제공하는 모델명(중복 제거·정렬). */
     fun autocompleteModels(ctx: CommandContext): List<String> =

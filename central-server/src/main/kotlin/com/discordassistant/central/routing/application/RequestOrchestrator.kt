@@ -173,12 +173,14 @@ class RequestOrchestrator(
         if (!policy.isChannelAllowed(input.guildId, input.channelId)) {
             return OrchestrationResult(RequestState.REJECTED, failReason = "이 채널에서는 LLM 을 사용할 수 없습니다.")
         }
-        // 2) 무게 판단 & 필요 수준(권한 상한 반영)
+        // 2) 무게 판단 & 필요 수준(권한 상한 반영). 무게 길이는 사용자 실제 입력(weighChars) 우선 —
+        //    항상 주입되는 시스템 프롬프트(가드레일·정체성·few-shot)가 부담 수준을 부풀리지 않게 한다.
+        val weighChars = input.weighChars ?: input.prompt.length
         val memberMax = policy.maxAllowedBurden(input.guildId, input.roleIds)
         val weigh =
             weigher.resolve(
                 RequestMeta(
-                    promptChars = input.prompt.length,
+                    promptChars = weighChars,
                     attachments = 0,
                     command = input.command,
                     responseMode = input.responseMode,
@@ -196,7 +198,7 @@ class RequestOrchestrator(
                 requiredBurden = weigh.effectiveBurden!!,
                 requesterRoleIds = input.roleIds,
                 channelId = input.channelId,
-                promptChars = input.prompt.length,
+                promptChars = weighChars,
                 requesterIsAdmin = input.isAdmin,
                 preferredModel = input.preferredModel,
                 responseMode = input.responseMode,

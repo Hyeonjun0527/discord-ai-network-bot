@@ -82,6 +82,15 @@ object CommandLoc {
                     "ニアとの親密度を見ます",
                     "Показать близость с Нией",
                 ),
+            "nia-persona" to
+                L(
+                    "니아페르소나",
+                    "ニアペルソナ",
+                    null,
+                    "View Nia's full persona (project admins only)",
+                    "ニアの全ペルソナを見ます(プロジェクト管理者専用)",
+                    "Полная персона Нии (только админ проекта)",
+                ),
             "fairness" to L("공정성", "公正性", null, "Fairness report (admin)", "公平性レポートを見ます(管理者)", "Отчёт о справедливости (админ)"),
             "privacy" to
                 L(

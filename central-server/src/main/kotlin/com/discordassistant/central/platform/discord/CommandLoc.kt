@@ -51,9 +51,9 @@ object CommandLoc {
                     "무료질문",
                     "無料質問",
                     "бесплатный-вопрос",
-                    "Ask the free cloud AI (Gemini)",
-                    "無料クラウドAI(Gemini)に質問します",
-                    "Спросить бесплатный облачный ИИ (Gemini)",
+                    "Ask the free cloud AI",
+                    "無料クラウドAIに質問します",
+                    "Спросить бесплатный облачный ИИ",
                 ),
             "models" to L("모델", "モデル", "модели", "Check available model levels", "利用可能なモデル水準を確認します", "Доступные уровни моделей"),
             "catalog" to

@@ -58,7 +58,7 @@ class AskCommandHandler(
         private val PSEUDO_STREAM_STEPS = listOf(33, 66, 100)
         private val log = LoggerFactory.getLogger(AskCommandHandler::class.java)
 
-        // ── 이미지 정책(central 소유, 에이전트가 적용만; 외부 AI 호출은 에이전트의 Gemini) ──
+        // ── 이미지 정책(central 소유, 에이전트가 적용만; 외부 AI 호출은 에이전트의 클라우드 백엔드) ──
         // 초보자 /그림: 한국어 → 영어 자연어 번역하되 '성인·SFW·품질 prefix' 강제. 정상 SFW 요청이
         // '여자아이→little girl' 식 미성년 오탐으로 거부되지 않게 하는 핵심 가드(거부 0 목표).
         private val IMAGE_TRANSLATOR_SYSTEM_PROMPT =
@@ -171,7 +171,7 @@ class AskCommandHandler(
 
     /**
      * /그림(imagine) — 이미지 생성 가능한 프로바이더의 로컬 ComfyUI(Anima)로 이미지를 만든다.
-     * 한국어 프롬프트는 에이전트에서 Gemini 로 영어 자연어 번역(IMAGE_POLICY 적용) 후 유저 워크플로에 주입.
+     * 한국어 프롬프트는 에이전트의 클라우드 백엔드로 영어 자연어 번역(IMAGE_POLICY 적용) 후 유저 워크플로에 주입.
      * onStart(requestId): 취소 버튼 부착·취소 매핑 등록용. onProgress: 진행률 라이브 편집용.
      */
     fun imagine(

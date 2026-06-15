@@ -49,9 +49,9 @@ object SlashCommandCatalog {
                 .slash("forward-channel", "레거시 ComfyUI 자동 전송 설정입니다. 현재는 비활성화되어 안내만 표시합니다(관리자)")
                 .addOption(OptionType.CHANNEL, "channel", "이미지를 받을 채널", true)
                 .setDefaultPermissions(adminPerm),
-            // 관리자가 클라우드 AI(Gemini) 키 하나로 서버 전체에 무료 제공 — 모델 고정(gemini-3.1-flash-lite).
+            // 관리자가 클라우드 AI 키 하나로 서버 전체에 무료 제공 — 모델 고정(glm-5.1).
             Commands
-                .slash("free-ask", "무료 클라우드 AI(Gemini)에게 질문합니다")
+                .slash("free-ask", "무료 클라우드 AI에게 질문합니다")
                 .addOption(OptionType.STRING, "prompt", "질문 내용", true),
             Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
             Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),

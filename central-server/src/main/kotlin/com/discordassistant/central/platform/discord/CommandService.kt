@@ -107,7 +107,7 @@ class CommandService(
     ): Reply = askCommands.ask(ctx, prompt, requestedModel, requestedResponseMode, webSearch)
 
     /**
-     * /무료질문(free-ask) — 관리자 클라우드 AI(Gemini) 고정 모델로 라우팅하되, **인당 rate limit**(시간당·일일)을
+     * /무료질문(free-ask) — 관리자 클라우드 AI 고정 모델로 라우팅하되, **인당 rate limit**(시간당·일일)을
      * 먼저 적용한다(무료 자원 남용 방지). 한도 초과면 거부 문구, 통과면 일반 ask 경로.
      */
     fun freeAsk(

@@ -135,7 +135,7 @@ class InfoCommandHandler(
         sb.append("커뮤니티 멤버들의 PC LLM 을 모아 공정하게 분배합니다(금전 거래 아님).\n\n")
         sb.append("__유저__\n")
         sb.append("· ${c("ask")} `<질문>` — 풀의 누군가의 PC LLM 으로 답변\n")
-        sb.append("· ${c("free-ask")} `<질문>` — 관리자가 제공하는 무료 클라우드 AI(Gemini)로 답변\n")
+        sb.append("· ${c("free-ask")} `<질문>` — 관리자가 제공하는 무료 클라우드 AI로 답변\n")
         sb.append("· ${c("models")} ${c("catalog")} — 사용 가능한 모델 수준·목록\n")
         sb.append("· ${c("my-usage")} ${c("privacy")} — 내 사용량 / 프라이버시 고지\n")
         sb.append("· ${c("license")} — 내 Nexa 라이선스 상태\n")

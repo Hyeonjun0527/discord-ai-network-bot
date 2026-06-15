@@ -155,6 +155,41 @@ window.__I18N = {
     "en": "License",
     "ja": "ライセンス"
   },
+  "niaPersonaTitle": {
+    "ko": "🔒 니아 페르소나 (관리자 전용)",
+    "en": "🔒 Nia Persona (admins only)",
+    "ja": "🔒 ニアのペルソナ（管理者専用）"
+  },
+  "niaPersonaDesc": {
+    "ko": "프로젝트 관리자만 볼 수 있는 니아 기본 페르소나 전문이에요 (읽기 전용).",
+    "en": "The full default Nia persona, visible to project admins only (read-only).",
+    "ja": "プロジェクト管理者のみが閲覧できるニアの既定ペルソナ全文です（読み取り専用）。"
+  },
+  "niaPersonaPersona": {
+    "ko": "페르소나",
+    "en": "Persona",
+    "ja": "ペルソナ"
+  },
+  "niaPersonaFewshot": {
+    "ko": "few-shot 예시",
+    "en": "Few-shot examples",
+    "ja": "few-shot 例"
+  },
+  "niaPersonaCopy": {
+    "ko": "복사",
+    "en": "Copy",
+    "ja": "コピー"
+  },
+  "niaPersonaCopiedToast": {
+    "ko": "복사했어요",
+    "en": "Copied",
+    "ja": "コピーしました"
+  },
+  "niaPersonaCopyFailedToast": {
+    "ko": "복사하지 못했어요",
+    "en": "Couldn't copy",
+    "ja": "コピーできませんでした"
+  },
   "licenseTitle": {
     "ko": "Nexa 라이선스",
     "en": "Nexa license",

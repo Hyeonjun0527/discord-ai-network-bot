@@ -81,6 +81,10 @@ export const ENDPOINTS = Object.freeze({
   serverPresets: (g) => '/api/servers/' + g + '/presets',      // GET → {ok, presets:[{id,name,category,status,summary}]}
   serverPresetDelete: (g) => '/api/servers/' + g + '/presets/delete', // POST {presetId} → 삭제(central 소유권 가드)
   serverAddToken: '/api/server-add-token',  // POST {token} → {ok} (실 앱: 토큰으로 서버 추가 + 자동 연결)
+  // 니아 전체 페르소나(전문) 비공개 열람 — 프로젝트 관리자(central admin-user-ids)만. 길드 무관(전역 정체성).
+  //   webui → central GET /provider/admin/nia-persona (durable 토큰). 비관리자/다른 프로바이더는 central 이 403 → {ok:false}.
+  //   전문은 central 에서만 내려오고 앱(클라이언트)엔 절대 번들되지 않는다.
+  niaPersona: '/api/admin/nia-persona',  // GET → {ok, persona, fewshot} | {ok:false, status:403, error}
   onboardApply: '/api/onboard-apply',
   // 통합 설정 — GET → 저장 설정+상태(camelCase, {autostart,background,autoConnect,autoUpdate,enableImage,ollamaUrl,relayUrl,allowRemoteOllama,hasToken}).
   //   POST {key:value}(부분 변경, 1개 이상) → {ok, needsRestart}. setup/onboard-apply/auto-update 를 단일화.

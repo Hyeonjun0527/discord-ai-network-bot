@@ -113,6 +113,43 @@ def _central_get(url: str, timeout: float = 8.0) -> dict:
         return dict(json.loads(resp.read().decode("utf-8")))
 
 
+def _get_provider_admin_nia_persona(base: str, durable_token: str) -> dict:
+    """니아 전체 페르소나(전문) 비공개 열람 — central GET /provider/admin/nia-persona.
+
+    durable 토큰으로 신원만 복원하고, central 이 providerId ∈ admin-user-ids(프로젝트 관리자) 면 전문을 내려준다.
+    비관리자는 central 이 403(JSON) → 그 상태/메시지를 그대로 표면화한다(전문은 절대 클라이언트에 번들하지 않음).
+    """
+    import json
+    import ssl
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    import certifi
+
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    qs = urllib.parse.urlencode({"durableToken": durable_token})
+    url = base + "/provider/admin/nia-persona?" + qs
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers={"Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - https 고정
+            data = dict(json.loads(resp.read().decode("utf-8")))
+        return {"ok": True, "persona": data.get("persona", ""), "fewshot": data.get("fewshot", "")}
+    except urllib.error.HTTPError as e:
+        # 403(비관리자) 등 — central 의 JSON 에러 메시지를 그대로 전달(전문은 응답에 없음).
+        message = "프로젝트 관리자만 볼 수 있어요"
+        try:
+            body = json.loads(e.read().decode("utf-8"))
+            message = str(body.get("message") or message)
+        except Exception:  # noqa: BLE001 - 에러 본문 파싱 실패는 기본 메시지로 폴백
+            pass
+        return {"ok": False, "status": e.code, "error": message}
+
+
 def _post_agent_sync(base: str, durable_token: str) -> list[dict]:
     """중앙 서버에 durable 토큰으로 자동 동기화 요청 → 승인된 미연결 서버의 일회용 토큰 목록."""
     resp = _central_post(base + "/provider/agent/sync", {"durableToken": durable_token}, timeout=6)
@@ -809,6 +846,17 @@ class ProviderAgent:
             return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
         base = _agent_sync_base(self._cfg.relay_url)
         return await asyncio.to_thread(_post_provider_admin_policy, base, dt, guild_id, auto_approve)
+
+    async def admin_nia_persona(self) -> dict:
+        """니아 전체 페르소나(전문) 비공개 열람 — 프로젝트 관리자(admin-user-ids)만. 비관리자는 central 이 403.
+
+        길드와 무관(전역 정체성)하므로 guildId 를 보내지 않는다. 전문은 central 에서만 내려오고 클라이언트엔 번들되지 않는다.
+        """
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_get_provider_admin_nia_persona, base, dt)
 
     # ── 전역 프롬프트셋(서버 전체 기본 AI 성격) — 관리자. 기본 지정 없으면 NEXA 기본 정체성(니아) ──
     async def admin_prompt_sets(self, guild_id: int) -> dict:

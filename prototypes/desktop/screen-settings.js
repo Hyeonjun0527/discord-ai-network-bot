@@ -6,6 +6,8 @@
     const view = document.querySelector('.view[data-view="settings"]');
     const body = document.getElementById('settingsBody');
     let _s = null, _upd = null, _lic = null;
+    // 니아 전체 페르소나(전문) — 프로젝트 관리자만. null=미조회, {ok:false}=비관리자(카드 숨김), {ok:true,...}=열람.
+    let _nia = null;
 
     // 토글 키(서버 설정 키 = data-toggle, 불변) → i18n 라벨 키.
     const TOGGLES = [
@@ -176,6 +178,22 @@
       return [buy, claim, refresh].filter(Boolean).join('');
     }
 
+    // 니아 전체 페르소나 카드 HTML. 비관리자(_nia.ok=false)·미조회(null)면 빈 문자열(카드 자체를 숨긴다 — 전문 노출 금지).
+    // 성공이면 persona·fewshot 을 읽기 전용 <pre> 로 보여 주고 복사 버튼만 제공(편집 불가).
+    function niaPersonaGroup() {
+      if (!_nia || !_nia.ok) return '';
+      const block = (label, text, copyId) =>
+        '<div class="sr-body" style="width:100%"><div class="sr-name">' + label +
+        '<button class="btn btn--sm btn--secondary" id="' + copyId + '" style="float:right">' + t('niaPersonaCopy', '복사') + '</button></div>' +
+        '<pre class="set-input" style="white-space:pre-wrap;max-height:200px;overflow:auto;user-select:text">' + esc(text) + '</pre></div>';
+      const inner = '<div class="set-row" style="flex-direction:column;align-items:stretch;gap:10px">' +
+        '<div class="sr-desc">' + t('niaPersonaDesc', '프로젝트 관리자만 볼 수 있는 니아 기본 페르소나 전문이에요(읽기 전용).') + '</div>' +
+        block(t('niaPersonaPersona', '페르소나'), _nia.persona || '', 'niaCopyPersona') +
+        block(t('niaPersonaFewshot', 'few-shot 예시'), _nia.fewshot || '', 'niaCopyFewshot') +
+        '</div>';
+      return group('niaPersonaTitle', inner);
+    }
+
     function render() {
       const s = _s || {}, u = _upd; // u=null 이면 아직 업데이트 확인 전(네트워크 진행 중)
       const exec = TOGGLES.map((g) => row(t(g.nameKey), t(g.descKey), sw(g.key, s[g.key]))).join('');
@@ -202,6 +220,7 @@
         group('setGroupUpdate', updGroup) +
         group('setGroupConn', connGroup) +
         group('setGroupLicense', licGroup) +
+        niaPersonaGroup() +
         group('setGroupAccount', acct);
       bind();
     }
@@ -296,6 +315,15 @@
       // 언어 전환: setLang 이 UI(정적 라벨)+이 화면 재렌더를 처리하고, 서버에도 저장(재시작 후 유지).
       const ls = document.getElementById('langSel');
       if (ls) ls.onchange = () => { const v = ls.value; setLang(v); api.setSetting('lang', v).catch(() => {}); };
+      // 니아 페르소나 복사(읽기 전용 카드) — 전문을 클립보드로. 카드가 없으면(비관리자) 버튼도 없다.
+      const copyTo = async (text) => {
+        try { await navigator.clipboard.writeText(text || ''); toast(t('niaPersonaCopiedToast', '복사했어요'), { type: 'ok' }); }
+        catch (_e) { toast(t('niaPersonaCopyFailedToast', '복사하지 못했어요'), { type: 'error' }); }
+      };
+      const cp = document.getElementById('niaCopyPersona');
+      if (cp) cp.onclick = () => copyTo(_nia && _nia.persona);
+      const cf = document.getElementById('niaCopyFewshot');
+      if (cf) cf.onclick = () => copyTo(_nia && _nia.fewshot);
     }
 
     // 언어가 바뀌면 설정 화면을 다시 그린다(JS 렌더 문구 갱신). 네비 등 정적 라벨은 i18n.applyStatic 이 처리.
@@ -304,6 +332,14 @@
     async function loadLicense() {
       try { _lic = await api.getLicense(); }
       catch (_e) { _lic = { ok: false, error: t('licenseLoadFailed') }; }
+      if (isActive()) render();
+    }
+
+    // 니아 전체 페르소나 — 프로젝트 관리자만 성공. 비관리자(403)·실패면 _nia.ok=false 로 두어 카드를 숨긴다.
+    // 전문은 응답 ok=true 일 때만 들어 있고, 비관리자에겐 절대 표시·번들되지 않는다.
+    async function loadNiaPersona() {
+      try { _nia = await api.getNiaPersona(); }
+      catch (_e) { _nia = { ok: false }; }
       if (isActive()) render();
     }
 
@@ -318,8 +354,10 @@
     async function load() {
       _s = await api.getSettings();  // 로컬·빠름 → 즉시 렌더(설정 본문이 네트워크에 안 막히게)
       _lic = null;
+      _nia = null;  // 매 진입 시 재조회(권한은 매번 central 이 판정 — 캐시로 노출 금지)
       render();
       loadLicense();
+      loadNiaPersona();
       // 업데이트 확인은 공개 업데이트 채널 조회(네트워크) — 느리거나 실패해도 본문 전체가 막히면 안 된다.
       // 본문은 위에서 이미 그렸고, 업데이트 줄만 도착 시 백그라운드로 채운다(_upd 는 캐시돼 재오픈 시 즉시 표시).
       refreshUpdateInfo(true).catch(() => {});

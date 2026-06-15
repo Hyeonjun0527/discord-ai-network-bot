@@ -1118,6 +1118,17 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
             rename_connection(index, name)
         return web.json_response({"ok": True})
 
+    async def admin_nia_persona(req: web.Request) -> web.Response:
+        """니아 전체 페르소나(전문) 비공개 열람(프로젝트 관리자 전용). central 로 프록시 — 비관리자면 central 이 403.
+
+        길드와 무관(전역 정체성)하므로 guildId 가 없다. 전문은 central 에서만 내려오고 앱에 번들되지 않는다.
+        """
+        _auth(req)
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_nia_persona())  # type: ignore[attr-defined]
+
     async def server_add_token(req: web.Request) -> web.Response:
         """토큰으로 서버 추가(+ 직접 입력한 별명). 다른 서버의 /provider-join 토큰을 붙여넣을 때."""
         _auth(req)
@@ -1158,6 +1169,7 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
     app.router.add_post("/api/servers/{guildId}/presets/delete", server_preset_delete)
     app.router.add_post("/api/servers/{guildId}/knowledge/delete", server_knowledge_delete)
     app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
+    app.router.add_get("/api/admin/nia-persona", admin_nia_persona)
     app.router.add_post("/api/server-add-token", server_add_token)
 
 

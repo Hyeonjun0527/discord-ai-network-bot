@@ -161,6 +161,15 @@ object CommandLoc {
                     "このチャンネルのAIを自動設定します(管理者)",
                     "Авто-настройка ИИ канала (админ)",
                 ),
+            "setup-channels" to
+                L(
+                    "니아채널설정",
+                    "ニアチャンネル設定",
+                    null,
+                    "Auto-create Nia channels (AI chat/image + voice) (admin)",
+                    "ニアのチャンネル(AIチャット/画像+ボイス)を自動作成します(管理者)",
+                    "Авто-создание каналов Nia (админ)",
+                ),
             "ai-onboard-optout" to
                 L(
                     "학습제외",

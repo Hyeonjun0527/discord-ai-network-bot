@@ -23,6 +23,8 @@ import com.discordassistant.central.provider.adapter.inbound.web.AdminKnowledgeD
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPolicyRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPresetDeleteRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPromptSetRequest
+import com.discordassistant.central.provider.adapter.inbound.web.NiaPersonaResponse
+import com.discordassistant.central.provider.adapter.inbound.web.ProjectAdmins
 import com.discordassistant.central.provider.adapter.inbound.web.ProviderAdminController
 import com.discordassistant.central.provider.application.DurableTokenService
 import com.discordassistant.central.provider.application.ProviderRegistrationService
@@ -91,7 +93,10 @@ class ProviderAdminControllerTest
                 ) = "user_$userId"
             }
 
-        private fun setup(admin: Boolean): Ctx {
+        private fun setup(
+            admin: Boolean,
+            projectAdminIds: String = "",
+        ): Ctx {
             val clock = Clock.fixed(Instant.ofEpochSecond(1_000_000), ZoneOffset.UTC)
             val durable = DurableTokenService("admin-test-secret-key", 86_400, clock)
             val tokens = TokenService(ttlSeconds = 600, durable = durable)
@@ -209,6 +214,7 @@ class ProviderAdminControllerTest
                     presetQuery,
                     presetAdmin,
                     PremiumFeatureGate { null },
+                    ProjectAdmins(projectAdminIds),
                 )
             val dtoken = durable.issueDurable(7L, 100L)!!
             return Ctx(ctrl, reg, dtoken, state, channelState)
@@ -411,5 +417,42 @@ class ProviderAdminControllerTest
             assertTrue(del.docs.isEmpty()) // 삭제 후 목록 비었음
             val d = setup(admin = false)
             assertFalse(d.ctrl.deleteKnowledge(AdminKnowledgeDeleteRequest(d.dtoken, 100L, "7")).ok)
+        }
+
+        @Test
+        fun `프로젝트 관리자는 니아 전체 페르소나(전문)를 열람한다`() {
+            // 토큰 providerId=7 가 admin-user-ids 에 있음 → 전문 반환. isGuildAdmin 과 무관(admin=false 여도 통과).
+            val c = setup(admin = false, projectAdminIds = "7")
+            val res = c.ctrl.niaPersona(c.dtoken)
+            assertEquals(200, res.statusCode.value())
+            val body = res.body as NiaPersonaResponse
+            assertEquals(NexaIdentity.NIA_DEFAULT_PERSONA, body.persona)
+            assertEquals(NexaIdentity.NIA_FEWSHOT, body.fewshot)
+        }
+
+        @Test
+        fun `길드 관리자라도 프로젝트 관리자가 아니면 니아 페르소나는 403`() {
+            // admin=true(길드 관리자)지만 admin-user-ids 비어 있음 → 다른 서버 관리자/프로바이더 차단.
+            val c = setup(admin = true, projectAdminIds = "")
+            val res = c.ctrl.niaPersona(c.dtoken)
+            assertEquals(403, res.statusCode.value())
+            @Suppress("UNCHECKED_CAST")
+            val body = res.body as Map<String, String>
+            assertEquals("forbidden", body["error"])
+        }
+
+        @Test
+        fun `다른 프로바이더(허용목록 밖)는 니아 페르소나가 403`() {
+            // 허용목록에 다른 id(999)만 있음 → 토큰 주인(7)은 전문 못 봄.
+            val c = setup(admin = false, projectAdminIds = "999")
+            val res = c.ctrl.niaPersona(c.dtoken)
+            assertEquals(403, res.statusCode.value())
+        }
+
+        @Test
+        fun `durable 이 아닌 토큰은 니아 페르소나가 403`() {
+            val c = setup(admin = true, projectAdminIds = "7")
+            val res = c.ctrl.niaPersona("not-a-durable-token")
+            assertEquals(403, res.statusCode.value())
         }
     }

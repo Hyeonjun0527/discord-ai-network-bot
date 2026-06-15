@@ -92,6 +92,9 @@ const MOCK = {
     entitlement: { userId: '5001', status: 'TRIAL', trialEndsAt: '2026-09-01T00:00:00Z', hasPaidAccess: true },
     event: { open: true, granted: 128 },
   },
+  // 니아 전체 페르소나(전문) — 프로토타입 시연용 **가짜** 데이터(실 전문 아님). 실 앱은 @proto-only 제거 후
+  // central(프로젝트 관리자 전용)에서만 받는다. 비관리자 시연은 USE_MOCK=true 에선 항상 ok=true(관리자 가정).
+  niaPersona: { ok: true, persona: '[시연용 가짜] 당신은 「니아」예요 — NEXA 네트워크의 안내자. 차분하고 다정하게 답해요. (실제 전문은 서버에서만 내려옵니다)', fewshot: '[시연용 가짜] 사용자: 안녕?\n니아: 안녕하세요, 저는 니아예요. 오늘은 어떤 걸 도와드릴까요?' },
   updateInfo: { current: '0.31.0', latest: '0.31.0', outdated: false, supported: true },
   runtimePing: { 'Ollama': 28, 'ComfyUI': 400 },
   models: [
@@ -489,6 +492,14 @@ export const api = {
   async getLicense() {
     /* @proto-only */ if (USE_MOCK) { await delay(80); return structuredClone(MOCK.license); } /* @end-proto-only */
     return http(ENDPOINTS.license);
+  },
+  /**
+   * 니아 전체 페르소나(전문) 비공개 열람 — webui GET /api/admin/nia-persona → central(프로젝트 관리자 전용).
+   * 비관리자/다른 프로바이더는 central 이 403 → {ok:false} (전문 미포함). 전문은 절대 클라이언트에 번들되지 않는다.
+   */
+  async getNiaPersona() {
+    /* @proto-only */ if (USE_MOCK) { await delay(80); if (globalThis.__NIA_FORBIDDEN) return { ok: false, status: 403, error: '프로젝트 관리자만 볼 수 있어요' }; return structuredClone(MOCK.niaPersona); } /* @end-proto-only */
+    return http(ENDPOINTS.niaPersona);
   },
   /** 앱 내 구매 checkout URL 생성 — 실제 결제 확정은 central webhook 이후 반영. */
   async checkoutLicense() {

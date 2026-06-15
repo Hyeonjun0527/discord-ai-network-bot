@@ -654,6 +654,59 @@ async def test_server_readonly_tabs_require_running_agent(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_nia_persona_requires_key_and_running_agent():
+    # 니아 페르소나(프로젝트 관리자 전용) 프록시 — 키 없으면 403, 에이전트 미실행이면 안내(전문 미포함).
+    client = await _client()
+    try:
+        assert (await client.get("/api/admin/nia-persona")).status == 403  # 세션 키 없음
+        d = await (await client.get("/api/admin/nia-persona", headers={"X-Session": KEY})).json()
+        assert d["ok"] is False  # 미실행
+        assert "persona" not in d  # 전문은 절대 새어 나오지 않는다
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_nia_persona_passes_through_central_403(monkeypatch):
+    # 비관리자(central 403)면 webui 가 그 상태/메시지를 그대로 전달하고 전문은 응답에 없다.
+    class _Agent:
+        async def admin_nia_persona(self):
+            return {"ok": False, "status": 403, "error": "프로젝트 관리자만 볼 수 있어요"}
+
+    webui._state["agent"] = _Agent()
+    webui._state["task"] = _AliveTask()
+    client = await _client()
+    try:
+        d = await (await client.get("/api/admin/nia-persona", headers={"X-Session": KEY})).json()
+        assert d["ok"] is False
+        assert d["status"] == 403
+        assert "persona" not in d  # 전문 미노출
+    finally:
+        await client.close()
+        webui._state["agent"] = None
+
+
+@pytest.mark.asyncio
+async def test_nia_persona_admin_returns_full_persona(monkeypatch):
+    # 프로젝트 관리자(central ok)면 전문(persona·fewshot)을 그대로 전달한다.
+    class _Agent:
+        async def admin_nia_persona(self):
+            return {"ok": True, "persona": "니아 전문", "fewshot": "예시"}
+
+    webui._state["agent"] = _Agent()
+    webui._state["task"] = _AliveTask()
+    client = await _client()
+    try:
+        d = await (await client.get("/api/admin/nia-persona", headers={"X-Session": KEY})).json()
+        assert d["ok"] is True
+        assert d["persona"] == "니아 전문"
+        assert d["fewshot"] == "예시"
+    finally:
+        await client.close()
+        webui._state["agent"] = None
+
+
+@pytest.mark.asyncio
 async def test_image_toggle_persists_without_touching_models(monkeypatch):
     # 전용 /api/image 토글: enable_image 만 저장(모델 선택 미변경). 에이전트 미실행 시 'saved'.
     from provider_agent.config import AgentConfig

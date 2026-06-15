@@ -435,6 +435,56 @@ async def test_admin_rejects_unknown_action_and_missing_durable(monkeypatch, tmp
     assert (await agent.admin_manage(100))["ok"] is False  # durable 없음
 
 
+@pytest.mark.asyncio
+async def test_admin_nia_persona_calls_central_without_guild(monkeypatch, tmp_path):
+    # 니아 페르소나는 전역 정체성이라 guildId 없이 durable 토큰만으로 central GET 을 호출한다.
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    from provider_agent.config_file import add_connection
+
+    add_connection("dv1.fakedurable", guild_id=100, guild_name="A")
+    agent = ProviderAgent(AgentConfig(token="dv1.fakedurable"))  # type: ignore[arg-type]
+    calls: list = []
+
+    def fake(base, dt):
+        calls.append(dt)
+        return {"ok": True, "persona": "전문", "fewshot": "예시"}
+
+    monkeypatch.setattr("provider_agent.agent._get_provider_admin_nia_persona", fake)
+    res = await agent.admin_nia_persona()
+    assert res == {"ok": True, "persona": "전문", "fewshot": "예시"}
+    assert calls == ["dv1.fakedurable"]
+
+
+@pytest.mark.asyncio
+async def test_admin_nia_persona_requires_durable(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    agent = ProviderAgent(AgentConfig(token="onetime"))  # type: ignore[arg-type] durable 아님
+    res = await agent.admin_nia_persona()
+    assert res["ok"] is False  # durable 없음
+    assert "persona" not in res  # 전문 미노출
+
+
+def test_get_provider_admin_nia_persona_passes_through_403(monkeypatch):
+    # central 403(비관리자) → HTTPError 를 잡아 {ok:false, status, error} 로 표면화하고 전문은 응답에 없다.
+    import io
+    import urllib.error
+
+    from provider_agent import agent as agent_mod
+
+    def fake_urlopen(req, timeout=8, context=None):
+        raise urllib.error.HTTPError(
+            req.full_url, 403, "Forbidden", {},
+            io.BytesIO(b'{"error":"forbidden","message":"\xed\x94\x84\xeb\xa1\x9c\xec\xa0\x9d\xed\x8a\xb8 \xea\xb4\x80\xeb\xa6\xac\xec\x9e\x90\xeb\xa7\x8c \xeb\xb3\xbc \xec\x88\x98 \xec\x9e\x88\xec\x96\xb4\xec\x9a\x94"}'),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    res = agent_mod._get_provider_admin_nia_persona("https://central.example", "dv1.tok")
+    assert res["ok"] is False
+    assert res["status"] == 403
+    assert "관리자" in res["error"]
+    assert "persona" not in res  # 전문은 절대 새어 나오지 않는다
+
+
 def test_build_hello_per_guild():
     # hello 의 remaining_daily_requests 가 길드별로 다르게 보고된다.
     agent = ProviderAgent(AgentConfig(token="T", daily_limit=5, models=("m",)))

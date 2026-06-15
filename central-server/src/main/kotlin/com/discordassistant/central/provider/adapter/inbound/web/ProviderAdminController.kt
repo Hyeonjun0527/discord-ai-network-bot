@@ -13,9 +13,16 @@ import com.discordassistant.central.preset.application.GuildPresetQuery
 import com.discordassistant.central.provider.application.ProviderRegistrationService
 import com.discordassistant.central.provider.application.ProviderRosterInfo
 import com.discordassistant.central.provider.application.TokenService
+import com.discordassistant.central.shared.NexaIdentity
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
+import org.springframework.stereotype.Component
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 /** 관리 작업 요청. durableToken=요청자(관리자) 신원, guildId=대상 서버, targetProviderId=대상 프로바이더(목록 조회 땐 무시). */
@@ -167,6 +174,32 @@ data class AdminPresetDeleteRequest(
     val presetId: String = "",
 )
 
+/** 니아 전체 페르소나(전문) 응답 — 프로젝트 관리자 전용 비공개 열람. 전문은 절대 클라이언트에 번들하지 않고 여기서만 내려준다. */
+data class NiaPersonaResponse(
+    val persona: String,
+    val fewshot: String,
+)
+
+/**
+ * 프로젝트 관리자(운영자 본인) 허용목록. `central.dashboard.admin-user-ids` 의 Discord userId 집합.
+ *
+ * 길드 관리자(isGuildAdmin)와 **다른 권한 축**이다 — 다른 서버 관리자/프로바이더가 아니라 이 프로젝트를
+ * 운영하는 사람만 통과한다. (AiNetworkApiSecurityFilter·MeController 가 쓰는 것과 같은 설정값.)
+ */
+@Component
+class ProjectAdmins(
+    @param:Value("\${central.dashboard.admin-user-ids:}") adminUserIdsRaw: String,
+) {
+    private val adminUserIds: Set<String> =
+        adminUserIdsRaw
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+
+    fun isProjectAdmin(providerId: Long): Boolean = providerId.toString() in adminUserIds
+}
+
 /**
  * 데스크톱 앱(관리자)용 서버 관리 채널 — Provider 승인/거절/제거 + 목록 조회.
  *
@@ -194,8 +227,31 @@ class ProviderAdminController(
     private val guildPresets: GuildPresetQuery,
     private val guildPresetAdmin: GuildPresetAdmin,
     private val licenseGate: PremiumFeatureGate,
+    private val projectAdmins: ProjectAdmins,
 ) {
     private val log = org.slf4j.LoggerFactory.getLogger(ProviderAdminController::class.java)
+
+    /**
+     * 니아 전체 페르소나(전문) 비공개 열람 — **프로젝트 관리자(운영자 본인)만**.
+     *
+     * isGuildAdmin 이 아니라 [ProjectAdmins.isProjectAdmin](=admin-user-ids)로 판정한다. durable 토큰으로 신원만
+     * 복원하고(소모하지 않음), 그 providerId 가 프로젝트 관리자가 아니면 **403**(다른 서버 관리자·프로바이더 차단).
+     * 전문은 central(서버) 메모리의 [NexaIdentity] 에서만 내려가고 클라이언트에는 번들되지 않는다.
+     */
+    @GetMapping("/nia-persona")
+    fun niaPersona(
+        @RequestParam(name = "durableToken", required = false, defaultValue = "") durableToken: String,
+    ): ResponseEntity<*> {
+        if (!durableToken.startsWith("dv1.")) return forbidNiaPersona()
+        val binding = tokens.verify(durableToken) ?: return forbidNiaPersona()
+        if (!projectAdmins.isProjectAdmin(binding.providerId)) return forbidNiaPersona()
+        return ResponseEntity.ok(NiaPersonaResponse(NexaIdentity.NIA_DEFAULT_PERSONA, NexaIdentity.NIA_FEWSHOT))
+    }
+
+    private fun forbidNiaPersona(): ResponseEntity<Map<String, String>> =
+        ResponseEntity
+            .status(HttpStatus.FORBIDDEN)
+            .body(mapOf("error" to "forbidden", "message" to "프로젝트 관리자만 볼 수 있어요"))
 
     /** durable 토큰 → 요청자 providerId 복원 후 그가 guildId 관리자면 그 id 반환, 아니면 null(거부). */
     private fun authedAdmin(

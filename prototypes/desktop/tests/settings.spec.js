@@ -29,6 +29,26 @@ test('설정 화면: 그룹·토글·버전 표시', async ({ page }) => {
   await expect(page.locator('#setLogout')).toBeVisible();
 });
 
+test('설정 화면: 니아 페르소나 카드(관리자 전용) — 전문·복사 버튼 표시', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.click('.nav-item[data-view="settings"]');
+  // mock(USE_MOCK) = 관리자 가정(ok:true) → 카드가 보이고 전문(시연용 가짜)이 읽기 전용으로 표시된다.
+  await expect(page.locator('#settingsBody')).toContainText('니아 페르소나 (관리자 전용)');
+  await expect(page.locator('#settingsBody')).toContainText('시연용 가짜');
+  await expect(page.locator('#niaCopyPersona')).toBeVisible();
+  await expect(page.locator('#niaCopyFewshot')).toBeVisible();
+});
+
+test('설정 화면: 니아 페르소나 카드는 비관리자(403)면 숨겨지고 전문이 노출되지 않는다', async ({ page }) => {
+  // getNiaPersona 가 ok:false(비관리자) 를 돌려주도록 mock 패치 → 카드 자체가 없어야 한다.
+  await page.addInitScript(() => { globalThis.__NIA_FORBIDDEN = true; });
+  await page.goto('/index.html');
+  await page.click('.nav-item[data-view="settings"]');
+  await expect(page.locator('#settingsBody')).toContainText('계정'); // 본문은 정상 렌더
+  await expect(page.locator('#settingsBody')).not.toContainText('니아 페르소나 (관리자 전용)');
+  await expect(page.locator('#niaCopyPersona')).toHaveCount(0);
+});
+
 test('언어 전환(i18n): 설정에서 ko→en 바꾸면 네비(정적)와 설정(재렌더)이 영어로 바뀐다', async ({ page }) => {
   await page.goto('/index.html');
   await expect(page.locator('.nav-item[data-view="home"]')).toContainText('홈'); // ko-KR 로케일 기본

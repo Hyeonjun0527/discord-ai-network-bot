@@ -2038,26 +2038,11 @@ def run_gui(host: str = "127.0.0.1", port: int = 0) -> None:
             if window is not None:
                 window.events.closing += _handle_webview_closing  # 빨간X → 창 숨김(앱 생존)
 
-            # macOS 표준 생명주기 설치(Cmd+Q·Dock-종료=완전 종료 / Dock 재클릭=창 복원 / 메뉴바 종료).
-            # **메인 런루프에 NSTimer 를 직접 예약**한다 — webview.start() 가 NSApp.run() 으로 돌리는 바로
-            # 그 메인 런루프에서 1초 뒤 타이머가 발화하므로(메인 스레드 보장), pywebview 가 자기 NSApp
-            # 델리게이트를 건 뒤 우리 것으로 최종 교체된다. (start(func) 스레드/AppHelper.callAfter 와
-            # events.shown 경로는 이 환경에서 발화가 불안정했음 — NSTimer 가 NSApp.run 루프와 직접 묶여
-            # 가장 견고. macOS 아니거나 pyobjc 없으면 install 이 알아서 no-op.)
-            # macOS 표준 생명주기 설치(Cmd+Q·Dock-종료=완전 종료 / Dock 재클릭=창 복원 / 메뉴바 종료).
-            # **메인 런루프에 NSTimer 를 예약**한다 — webview.start() 가 NSApp.run() 으로 돌리는 바로 그
-            # 메인 런루프에서 1초 뒤 **메인 스레드**에서 발화하므로, pywebview 가 자기 NSApp 델리게이트를
-            # 건 뒤 우리 것으로 안전히 교체되고 NSStatusBar(메뉴바)도 메인 스레드 요건을 만족한다.
-            # (events.loaded/shown 은 비-메인 스레드에서 발화해 NSWindow/NSStatusBar 가 'main thread only'
-            #  예외를 내고, start(func)+AppHelper 경로도 이 환경에선 불안정했음 — NSTimer 가 가장 견고. 실증.)
-            try:
-                from Foundation import NSTimer  # type: ignore[import-not-found]
-
-                NSTimer.scheduledTimerWithTimeInterval_repeats_block_(
-                    1.0, False, lambda _timer: macos_app.install(window)
-                )
-            except Exception as exc:  # noqa: BLE001 - 예약 실패 시 기존 pywebview 동작으로 폴백
-                logging.getLogger("provider_agent").warning("macOS 생명주기 타이머 예약 실패(무시): %s", exc)
+            # macOS 표준 생명주기 설치(빨간X=창 숨김·앱 생존 / Cmd+Q·Dock-종료=완전 종료 / Dock 재클릭=
+            # 창 복원 / 메뉴바 종료). 모든 PyObjC·타이머 로직은 macos_app 모듈이 소유(SRP). schedule_install
+            # 은 메인 런루프(NSApp.run)에 반복 타이머를 걸어 pywebview 가 자기 델리게이트를 건 '뒤' 우리
+            # 것으로 **안정될 때까지** 재확인한다 → 고정 지연 가정 없음(머신 속도 무관). 메인 스레드에서 호출.
+            macos_app.schedule_install(window)
 
             webview.start()  # 메인 스레드 점유(NSApp.run), 창 닫으면 반환
             _handoff_to_service_on_close()  # 닫을 때 백그라운드 서비스로 연결 인계(설치돼 있으면, 비블로킹)

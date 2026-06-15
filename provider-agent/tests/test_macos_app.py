@@ -17,7 +17,6 @@ def test_install_noop_on_non_macos(monkeypatch) -> None:
 def test_install_noop_when_pyobjc_missing(monkeypatch) -> None:
     """darwin 이라도 AppKit(pyobjc) 임포트가 실패하면 False(폴백)."""
     monkeypatch.setattr(macos_app.sys, "platform", "darwin")
-    monkeypatch.setattr(macos_app, "_installed", False)
     import builtins
 
     real_import = builtins.__import__
@@ -29,6 +28,12 @@ def test_install_noop_when_pyobjc_missing(monkeypatch) -> None:
 
     monkeypatch.setattr(builtins, "__import__", _no_appkit)
     assert macos_app.install(object()) is False
+
+
+def test_schedule_install_noop_on_non_macos(monkeypatch) -> None:
+    """비-macOS 면 schedule_install 도 부작용 없이 no-op(타이머 미예약)."""
+    monkeypatch.setattr(macos_app.sys, "platform", "linux")
+    macos_app.schedule_install(object())  # 예외 없이 그냥 반환
 
 
 def test_show_window_safe_when_none(monkeypatch) -> None:

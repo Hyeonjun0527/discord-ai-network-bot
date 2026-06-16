@@ -12,6 +12,8 @@
     };
     const initialOf = (n) => (n || '·').trim().charAt(0);
     const fmtMembers = (n) => (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n));
+    // 디스코드 서버명에 <>& 가 흔해 마크업 주입/렌더 깨짐 방지(다른 입력과 동일하게 escape).
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
     const listEl = document.getElementById('serverList');
     const sumEl = document.getElementById('serverSummary');
@@ -24,9 +26,9 @@
         const st = presentServerState(s.state);
         const role = presentRole(s.role);
         return '<button class="srv-item" data-guild="' + s.guildId + '">' +
-          '<span class="srv-avatar" style="' + avatarStyle + '">' + initialOf(s.guildName) + img + '</span>' +
+          '<span class="srv-avatar" style="' + avatarStyle + '">' + esc(initialOf(s.guildName)) + img + '</span>' +
           '<span class="srv-main">' +
-            '<span class="srv-name"><span class="nm">' + s.guildName + '</span></span>' +
+            '<span class="srv-name"><span class="nm">' + esc(s.guildName) + '</span></span>' +
             '<span class="srv-meta"><span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span>' + (s.members != null ? ' · ' + t('serversMemberLabel') + ' ' + fmtMembers(s.members) : '') + ' · ' + presentServerMeta(s) + '</span>' +
           '</span>' +
           '<span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span>' +
@@ -134,7 +136,7 @@
       detailEl.innerHTML =
         '<div class="dhead">' +
           '<button class="dback" id="dBack">‹ ' + t('serversDetailBackButton') + '</button>' +
-          '<div class="dtitle"><h1>' + d.guildName + '</h1>' +
+          '<div class="dtitle"><h1>' + esc(d.guildName) + '</h1>' +
             '<span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span></div>' +
           '<div class="dsubhead">' + (d.members != null ? t('serversMemberLabel') + ' ' + fmtMembers(d.members) + ' · ' : '') + t('serversDetailMyRole') + ' <span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span></div>' +
         '</div>' +
@@ -205,7 +207,7 @@
         '<button class="modal-x" data-x aria-label="' + t('serversCloseButton') + '">✕</button>' +
         '<h3>' + t('serversDetailRenameTitle') + '</h3><p class="msub">' + t('serversDetailRenameNote') + '</p>' +
         '<div class="pform"><div class="pfield"><label>' + t('serversDetailDisplayName') + '</label>' +
-        '<input id="rnInput" type="text" maxlength="60" value="' + (d.guildName || '').replace(/"/g, '&quot;') + '" ' +
+        '<input id="rnInput" type="text" maxlength="60" value="' + esc(d.guildName) + '" ' +
         'style="height:44px;padding:0 14px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--text);font:inherit;font-size:14px"></div></div>' +
         '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>' + t('serversDetailCancelButton') + '</button>' +
         '<button class="btn btn--md btn--primary" id="rnSave">' + t('serversDetailSaveButton') + '</button></div></div>';
@@ -226,7 +228,7 @@
       lay.innerHTML = '<div class="modal" style="width:min(440px,100%)">' +
         '<button class="modal-x" data-x aria-label="' + t('serversCloseButton') + '">✕</button>' +
         '<h3>' + t('serversDetailRemoveTitle') + '</h3>' +
-        '<p class="msub">' + t('serversDetailRemoveDesc').replace('{name}', '<b>' + (d.guildName || t('serversThisServerFallback')) + '</b>') + '</p>' +
+        '<p class="msub">' + t('serversDetailRemoveDesc').replace('{name}', '<b>' + esc(d.guildName || t('serversThisServerFallback')) + '</b>') + '</p>' +
         '<div class="modal-foot"><button class="btn btn--md btn--secondary" data-x>' + t('serversDetailCancelButton') + '</button>' +
         '<button class="btn btn--md btn--danger" id="rmGo">' + t('serversDetailRemoveConfirm') + '</button></div></div>';
       document.body.appendChild(lay);
@@ -356,9 +358,9 @@
         (tab.k === 'provider' && m.pending.length ? '<span class="badge">' + m.pending.length + '</span>' : '') + '</button>').join('');
       const body = (TAB_RENDER[_manageTab] || (() => ''))(m, d);
       manageEl.innerHTML =
-        '<div class="dhead"><button class="dback" id="mBack">‹ ' + d.guildName + '</button>' +
+        '<div class="dhead"><button class="dback" id="mBack">‹ ' + esc(d.guildName) + '</button>' +
           '<div class="dtitle"><h1>' + t('serversManageTitle') + '</h1></div>' +
-          '<div class="dsubhead">' + d.guildName + ' · ' + t('serversManageAdminOnly') + '</div></div>' +
+          '<div class="dsubhead">' + esc(d.guildName) + ' · ' + t('serversManageAdminOnly') + '</div></div>' +
         '<div class="mtabs">' + tabs + '</div><div id="mBody">' + body + '</div>';
       manageEl.querySelector('#mBack').onclick = () => backToDetail(d);
       manageEl.querySelectorAll('[data-mtab]').forEach(b => b.onclick = async () => {
@@ -659,7 +661,12 @@
     // 메인은 이미 인증된 상태 → '서버 추가'는 로그인 없이 후보 선택 + 토큰(연결 stage 가 origin=main 처리)
     document.getElementById('srvAddBtn').addEventListener('click', () => { if (window.enterServerAdd) window.enterServerAdd(); });
 
-    async function reload() { render(await api.getServers()); }
+    let _firstLoad = true;
+    async function reload() {
+      // 최초 로드만 스켈레톤 — '비었음'과 '불러오는 중'을 구분(폴링 갱신 시엔 깜빡임 방지로 생략).
+      if (_firstLoad) { listEl.innerHTML = '<div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div>'; _firstLoad = false; }
+      render(await api.getServers());
+    }
     // 언어가 바뀌면 현재 보이는 서브뷰를 그 자리서 다시 그린다(목록=재조회, 상세/관리=캐시 데이터로 재렌더). render 밖 1회 등록.
     onLangChange(() => {
       if (!manageEl.hidden && _lastManageD && _lastManageM) renderManage(_lastManageD, _lastManageM);

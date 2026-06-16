@@ -1480,6 +1480,11 @@
       "en": "No checkpoint — ",
       "ja": "チェックポイントなし — "
     },
+    "localComfyNoCheckpointHint": {
+      "ko": "추천: Anything V5(애니·가벼움) 또는 SDXL 1.0 base. + URL 로 .safetensors 직접 링크를 붙여넣거나, 모델 폴더에 파일을 넣으세요.",
+      "en": "Recommended: Anything V5 (anime, lightweight) or SDXL 1.0 base. Paste a .safetensors direct link via + URL, or drop a file into the model folder.",
+      "ja": "おすすめ: Anything V5(アニメ・軽量)または SDXL 1.0 base。+ URL で .safetensors 直接リンクを貼り付けるか、モデルフォルダにファイルを入れてください。"
+    },
     "localComfyModelAddURLBtn": {
       "ko": "+ URL",
       "en": "+ URL",

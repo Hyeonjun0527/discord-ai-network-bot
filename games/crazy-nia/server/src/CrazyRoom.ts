@@ -26,13 +26,13 @@ import {
   TURN_TOLERANCE,
   cellToX,
   cellToY,
-  generateGrid,
   inBounds,
   speedForLevel,
   xToCol,
   yToRow,
   type ItemKind,
 } from '../../shared/constants';
+import { generateRandomMap } from '../../shared/maps';
 import {
   MSG_INPUT,
   MSG_PLACE_BOMB,
@@ -424,7 +424,7 @@ export class CrazyRoom extends Room<GameState> {
     this.state.bombs.clear();
     this.state.explosions.clear();
     this.state.items.clear();
-    const grid = generateGrid();
+    const grid = generateRandomMap();
     this.state.grid.clear();
     this.state.grid.push(...grid);
   }

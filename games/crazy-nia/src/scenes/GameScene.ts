@@ -14,6 +14,8 @@ import {
 } from '../config';
 import { generateTextures, TEX } from '../systems/textures';
 import { NetClient } from '../net/NetClient';
+import { AudioManager } from '../systems/AudioManager';
+import { diffSfx, emptySnapshot, type SfxSnapshot } from '../systems/sfxDiff';
 import { Hud, type HudPlayer } from '../ui/Hud';
 import type { Direction } from '../../shared/messages';
 import type { DiscordSession } from '../discord/bootstrap';
@@ -38,6 +40,9 @@ export class GameScene extends Phaser.Scene {
   private room: Room | null = null;
 
   private hud!: Hud;
+  private audio = new AudioManager();
+  private muteKey?: Phaser.Input.Keyboard.Key;
+  private prevSfx: SfxSnapshot = emptySnapshot();
   private keys!: Record<keyof typeof LOCAL_KEYS, Phaser.Input.Keyboard.Key[]>;
   private lastDir: Direction | null = null;
 
@@ -126,6 +131,13 @@ export class GameScene extends Phaser.Scene {
       right: make(LOCAL_KEYS.right),
       bomb: make(LOCAL_KEYS.bomb),
     };
+    this.muteKey = kb.addKey('M');
+
+    // Browsers block audio until a user gesture — unlock the AudioContext on the first
+    // key press or pointer tap, then let the per-frame SFX play.
+    const unlock = () => this.audio.unlock();
+    kb.once('keydown', unlock);
+    this.input.once('pointerdown', unlock);
   }
 
   update(_time: number, delta: number): void {
@@ -137,6 +149,7 @@ export class GameScene extends Phaser.Scene {
   // --- Input ----------------------------------------------------------------
 
   private pollInput(): void {
+    if (this.muteKey && Phaser.Input.Keyboard.JustDown(this.muteKey)) this.audio.toggleMute();
     if (!this.room || !this.stateReady) return;
     const me = (this.room.state as any).players?.get(this.room.sessionId);
     const held = (keys: Phaser.Input.Keyboard.Key[]) => keys.some((k) => k.isDown);
@@ -173,6 +186,31 @@ export class GameScene extends Phaser.Scene {
       (e: any) => `${e.col},${e.row}`,
     );
     this.renderItems(state.items);
+    this.playSfx(state);
+  }
+
+  // Diff the synced state vs last frame and fire the matching sound effects. Pure
+  // detection lives in sfxDiff; this just builds the snapshot and forwards events.
+  private playSfx(state: any): void {
+    const bombKeys: string[] = [];
+    state.bombs.forEach((b: any) => bombKeys.push(`${b.col},${b.row}`));
+    const itemCells: string[] = [];
+    state.items.forEach((it: any) => itemCells.push(`${it.col},${it.row}`));
+    const playerCells: string[] = [];
+    let deadCount = 0;
+    state.players.forEach((p: any) => {
+      if (p.alive) playerCells.push(`${p.col},${p.row}`);
+      else deadCount++;
+    });
+    const snap: SfxSnapshot = {
+      bombKeys,
+      itemCells,
+      playerCells,
+      deadCount,
+      roundOver: !!state.roundOver,
+    };
+    for (const event of diffSfx(this.prevSfx, snap)) this.audio.play(event);
+    this.prevSfx = snap;
   }
 
   // Draw walls + crates from the synced grid. Walls never change but are server-owned
@@ -335,7 +373,8 @@ export class GameScene extends Phaser.Scene {
         color: p.color,
       });
     });
-    this.hud.update(players, state.status ?? '');
+    const mute = this.audio.isMuted ? '  🔇 음소거(M)' : '  🔊 M';
+    this.hud.update(players, `${state.status ?? ''}${mute}`);
   }
 
   /** Observable snapshot for the headless smoke test (no gameplay effect). */

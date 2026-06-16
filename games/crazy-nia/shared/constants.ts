@@ -5,8 +5,10 @@
 export const TILE = 48; // pixel size of one grid cell
 
 // Grid dimensions (odd numbers keep the classic Bomberman pillar lattice symmetric).
-export const COLS = 13;
-export const ROWS = 11;
+// Wider than the classic 13x11 for roomier Crazy-Arcade-style arenas; the client
+// canvas uses Phaser Scale.FIT so the larger board is letterboxed to fit any viewport.
+export const COLS = 17;
+export const ROWS = 13;
 
 export const HUD_HEIGHT = 56;
 
@@ -24,7 +26,7 @@ export const BOMB_FUSE_MS = 2200; // time from placement to explosion
 export const EXPLOSION_MS = 420; // how long the flame stays lethal/visible
 
 export const BLOCK_FILL_CHANCE = 0.78; // chance a free interior cell becomes a destructible block
-export const ITEM_DROP_CHANCE = 0.32; // chance a destroyed block drops a power-up
+export const ITEM_DROP_CHANCE = 0.4; // chance a destroyed block drops a power-up
 
 // Per-player starting stats and caps.
 export const START_BOMBS = 1;
@@ -98,7 +100,9 @@ export function yToRow(py: number): number {
 }
 
 // Spawn corner plus its two adjacent cells stay open so players aren't boxed in.
-function reservedCells(): Set<string> {
+// Exported so the map generator (shared/maps.ts) keeps these cells walkable on every
+// template, regardless of where a template would otherwise place a pillar/crate.
+export function reservedCells(): Set<string> {
   const set = new Set<string>();
   for (const s of SPAWNS) {
     const dc = s.col === 1 ? 1 : -1;
@@ -108,31 +112,4 @@ function reservedCells(): Set<string> {
     set.add(cellKey(s.col, s.row + dr));
   }
   return set;
-}
-
-/**
- * Generates the classic lattice as a flat row-major array of CellKind:
- * solid border, even-grid pillars, random crates, clear corners.
- * `rng` defaults to Math.random; the server passes its own so the map is
- * reproducible/owned server-side. Index = row * COLS + col.
- */
-export function generateGrid(rng: () => number = Math.random): CellKind[] {
-  const reserved = reservedCells();
-  const cells: CellKind[] = new Array(COLS * ROWS);
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLS; col++) {
-      let cell: CellKind;
-      if (col === 0 || row === 0 || col === COLS - 1 || row === ROWS - 1) {
-        cell = CELL_SOLID; // outer border
-      } else if (col % 2 === 0 && row % 2 === 0) {
-        cell = CELL_SOLID; // interior pillars
-      } else if (reserved.has(cellKey(col, row))) {
-        cell = CELL_FLOOR; // keep spawns + their elbows clear
-      } else {
-        cell = rng() < BLOCK_FILL_CHANCE ? CELL_BLOCK : CELL_FLOOR;
-      }
-      cells[row * COLS + col] = cell;
-    }
-  }
-  return cells;
 }

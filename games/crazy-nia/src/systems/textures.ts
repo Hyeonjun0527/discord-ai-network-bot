@@ -49,20 +49,42 @@ export function generateTextures(scene: Phaser.Scene): void {
   g.fillCircle(TILE / 2, TILE / 2, TILE * 0.14);
   g.generateTexture(TEX.flame, TILE, TILE);
 
-  // Power-ups: rounded badge with a distinct color per kind.
-  const drawItem = (key: string, base: number, glyph: number) => {
+  // Power-ups: rounded badge with a distinct color AND a distinct glyph per kind, so
+  // they're tellable apart at a glance (not just by colour).
+  const c = TILE / 2;
+  const badge = (base: number) => {
     g.clear();
     g.fillStyle(0x101220, 0.85);
     rrect(g, 6, 6, TILE - 12, TILE - 12, 8);
     g.fillStyle(base, 1);
     rrect(g, 10, 10, TILE - 20, TILE - 20, 6);
-    g.fillStyle(glyph, 1);
-    g.fillCircle(TILE / 2, TILE / 2, TILE * 0.12);
-    g.generateTexture(key, TILE, TILE);
   };
-  drawItem(TEX.itemBomb, 0x2d6cdf, 0xffffff);  // bomb +1  (blue)
-  drawItem(TEX.itemRange, 0xdf4d2d, 0xfff0a0); // range +1 (red)
-  drawItem(TEX.itemSpeed, 0x2dbf6c, 0xffffff); // speed +1 (green)
+
+  // bomb +1 (blue): a small bomb dot to signal "extra bomb".
+  badge(0x2d6cdf);
+  g.fillStyle(0x0e1330, 1);
+  g.fillCircle(c, c + 2, TILE * 0.16);
+  g.fillStyle(0xffd23f, 1);
+  g.fillCircle(c + TILE * 0.14, c - TILE * 0.13, 3);
+  g.generateTexture(TEX.itemBomb, TILE, TILE);
+
+  // range +1 (red): a four-way arrow cross to signal "longer blast".
+  badge(0xdf4d2d);
+  g.fillStyle(0xfff0a0, 1);
+  g.fillRect(c - 2, 14, 4, TILE - 28); // vertical bar
+  g.fillRect(14, c - 2, TILE - 28, 4); // horizontal bar
+  g.fillTriangle(c, 10, c - 6, 18, c + 6, 18); // up arrowhead
+  g.fillTriangle(c, TILE - 10, c - 6, TILE - 18, c + 6, TILE - 18); // down
+  g.fillTriangle(10, c, 18, c - 6, 18, c + 6); // left
+  g.fillTriangle(TILE - 10, c, TILE - 18, c - 6, TILE - 18, c + 6); // right
+  g.generateTexture(TEX.itemRange, TILE, TILE);
+
+  // speed +1 (green): double chevron (>>) to signal "faster".
+  badge(0x2dbf6c);
+  g.fillStyle(0xffffff, 1);
+  g.fillTriangle(c - 12, 14, c - 12, TILE - 14, c + 2, c); // left chevron
+  g.fillTriangle(c, 14, c, TILE - 14, c + 14, c); // right chevron
+  g.generateTexture(TEX.itemSpeed, TILE, TILE);
 
   g.destroy();
 }

@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test src/**/*.test.ts shared/**/*.test.ts",
     "smoke": "node smoke.mjs",
     "server": "npm --prefix server run start",
     "server:dev": "npm --prefix server run dev",

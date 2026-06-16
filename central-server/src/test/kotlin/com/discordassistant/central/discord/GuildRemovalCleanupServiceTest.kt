@@ -1,5 +1,6 @@
 package com.discordassistant.central.discord
 
+import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.guild.application.PolicyService
@@ -13,6 +14,7 @@ import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.shared.ModelBurden
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -45,6 +47,7 @@ class GuildRemovalCleanupServiceTest
         val schedules: ProviderScheduleService,
         val policy: PolicyService,
         val channelProfiles: ChannelAiProfileService,
+        val autoRespondChannels: AutoRespondChannelRegistry,
     ) {
         @Test
         fun `길드 제거 정리는 프로바이더 세션 등록 토큰과 서버 설정을 제거한다`() {
@@ -75,5 +78,18 @@ class GuildRemovalCleanupServiceTest
             assertTrue(policy.allowedChannelIds(guildId).isEmpty())
             assertNull(policy.guildWelcomeMessage(guildId))
             assertNull(channelProfiles.get(guildId, 777))
+        }
+
+        @Test
+        fun `길드 제거 정리는 자동응답 채널 캐시를 무효화한다`() {
+            val guildId = 555_002L
+            val channelId = 888L
+            autoRespondChannels.setAutoRespond(guildId, channelId, on = true, actorId = 1L)
+            assertTrue(autoRespondChannels.isAutoRespond(guildId, channelId)) // 캐시 적재(이후 stale 가능)
+
+            cleanup.cleanup(guildId)
+
+            // invalidateGuild 가 호출되지 않으면 캐시가 stale 한 true 를 계속 답해 미세 누수가 된다.
+            assertFalse(autoRespondChannels.isAutoRespond(guildId, channelId))
         }
     }

@@ -7,6 +7,7 @@ import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
+import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.shared.ModelBurden
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
@@ -125,6 +126,8 @@ class DiscordBot(
     private val onboardingOptOuts: GuildOnboardingOptOutRepository,
     // 설정 마법사(pendingSettings 단일 빈 소유). 모든 Listener 인스턴스가 같은 빈을 참조해 진행중 설정을 공유한다.
     private val settingsWizard: SettingsWizardHandler,
+    // 자동응답 채널 단위 비용 캡(분당 상한)에 재사용 — per-user ask 쿨다운과 같은 빈.
+    private val rateLimiter: RateLimiter,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
@@ -222,6 +225,7 @@ class DiscordBot(
                 historyBackfill,
                 onboardingOptOuts,
                 settingsWizard,
+                rateLimiter,
                 mentionAskEnabled = messageContentIntent,
                 messageContentIntentEnabled = messageContentIntent,
                 onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
@@ -289,6 +293,7 @@ class DiscordBot(
         private val historyBackfill: GuildHistoryBackfillService,
         private val onboardingOptOuts: GuildOnboardingOptOutRepository,
         private val settingsWizard: SettingsWizardHandler,
+        private val rateLimiter: RateLimiter,
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
@@ -817,11 +822,22 @@ class DiscordBot(
         /**
          * AI 채팅 채널 자동응답: 자동응답이 켜진 채널의 모든 텍스트 메시지에 멘션 없이 응답한다.
          * `.` 로 시작하는 메시지(카미봇 컨벤션)·빈 내용은 무시한다(스킵). 캐시 조회가 O(1) 라 비-AI채팅 채널은 즉시 return.
+         *
+         * **비용 캡**: 자동응답 채널은 N명이 떠들면 N배의 LLM 추론이 일어나 관리자 클라우드 키 비용이 폭주한다.
+         * per-user ask 쿨다운은 관리자가 우회하지만, 이 **채널 단위 분당 상한은 누구도(관리자 포함) 우회하지 못한다**.
+         * 한도를 넘으면 채널에 안내를 도배하지 않고 조용히 드롭(⏳ 리액션만) — 일반 /ask 의 쿨다운 안내는 그대로 유지된다.
          */
         private fun handleAutoRespond(event: MessageReceivedEvent) {
-            if (!autoRespondChannels.isAutoRespond(event.guild.idLong, event.channel.idLong)) return
+            val guildId = event.guild.idLong
+            val channelId = event.channel.idLong
+            if (!autoRespondChannels.isAutoRespond(guildId, channelId)) return
             val content = event.message.contentRaw
             if (!AutoRespondChannelRegistry.shouldRespond(content)) return // `.` 시작·빈 내용 제외
+            if (!rateLimiter.tryAcquire("autorespond:$guildId:$channelId")) {
+                metrics.record("auto-respond-throttled")
+                event.message.addReaction(Emoji.fromUnicode("⏳")).queue({}, {}) // 조용히 드롭(도배 금지)
+                return
+            }
             metrics.record("auto-respond")
             respondInChannel(event, content.trim())
         }

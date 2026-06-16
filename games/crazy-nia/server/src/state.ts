@@ -7,6 +7,7 @@ import { Schema, MapSchema, ArraySchema, type } from '@colyseus/schema';
 
 export class PlayerState extends Schema {
   @type('string') id = '';
+  @type('string') name = ''; // Discord display name when launched as an Activity; else ''
   @type('uint8') slot = 0; // 0..3 -> spawn corner + color
   @type('uint32') color = 0xffffff;
   @type('int8') col = 0;

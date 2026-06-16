@@ -56,6 +56,15 @@ interface ExplosionRuntime {
   ttlMs: number;
 }
 
+// Join options a client may send. `instanceId` (set by the Discord Activity bootstrap)
+// is used by the matchmaker (filterBy) to co-locate everyone from the same Activity
+// instance; `name` is the player's Discord display name. Both optional — the plain
+// local/web build sends none.
+interface JoinOptions {
+  instanceId?: string;
+  name?: string;
+}
+
 const DIR_VECTORS: Record<Direction, { dc: number; dr: number }> = {
   up: { dc: 0, dr: -1 },
   down: { dc: 0, dr: 1 },
@@ -89,11 +98,12 @@ export class CrazyRoom extends Room<GameState> {
     this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);
   }
 
-  onJoin(client: Client): void {
+  onJoin(client: Client, options?: JoinOptions): void {
     const slot = this.firstFreeSlot();
     const spawn = SPAWNS[slot];
     const p = new PlayerState();
     p.id = client.sessionId;
+    p.name = (options?.name ?? '').slice(0, 32); // cap to keep the HUD label sane
     p.slot = slot;
     p.color = spawn.color;
     p.col = spawn.col;
@@ -385,6 +395,6 @@ export class CrazyRoom extends Room<GameState> {
   }
 
   private label(p: PlayerState): string {
-    return `P${p.slot + 1}`;
+    return p.name.length > 0 ? p.name : `P${p.slot + 1}`;
   }
 }

@@ -113,5 +113,9 @@ node smoke-mp.mjs  # 터미널 3: 두 세션 접속 → A 이동/폭탄 → B �
 ## 로드맵
 
 - **P0**: 로컬 2인 봄버맨 코어 — 브라우저 단독 플레이. ✅
-- **P1 (현재)**: 멀티플레이어 — Colyseus 권위 서버 상태 동기화. ✅
-- **P2**: Discord Activity (Embedded App SDK) 로 디스코드 보이스 채널 내 실행.
+- **P1**: 멀티플레이어 — Colyseus 권위 서버 상태 동기화. ✅
+- **P2 (현재)**: Discord Activity (Embedded App SDK) 로 디스코드 보이스 채널 내 실행. ✅
+  - `@discord/embedded-app-sdk` 부트스트랩(Discord 밖이면 no-op), 서버 `/api/token` OAuth
+    토큰 교환(client_secret 서버 전용), `/.proxy/...` 프록시 경로 분기, Activity 인스턴스 =
+    Colyseus 룸 매핑(`filterBy(['instanceId'])`). 포털/호스팅/시크릿 설정은
+    **[`docs/DISCORD_ACTIVITY.md`](docs/DISCORD_ACTIVITY.md)** 참조.

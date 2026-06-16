@@ -53,6 +53,7 @@ FILES = (
     "presenter.js",
     "state.js",
     "toast.js",
+    "modal.js",
     "install.js",
     # index.html 에서 분리한 화면/인프라 모듈(SoC/SRP). 각자 단일 책임.
     "screen-home.js",

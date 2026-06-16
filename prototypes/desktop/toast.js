@@ -25,8 +25,11 @@ export function toast(msg, o = {}) {
   el.querySelector('.tm').innerHTML = msg + (o.sub ? '<small>' + o.sub + '</small>' : '');
   // 프로그레스바 — 같은 요소의 width 만 바꿔 트랜지션 유지
   // 닫기 버튼(✕) — 진행(sticky) 토스트를 사용자가 직접 닫을 수 있게. onClose 로 폴링 측에 알림.
+  // 에러는 원인을 읽을 시간이 필요 → 기본 닫기 버튼(2800ms 면 못 읽고 사라짐).
+  const isError = (o.type === 'error');
+  const closable = o.closable || (isError && !o.sticky);
   let x = el.querySelector('.toast-x');
-  if (o.sticky || o.closable) {
+  if (o.sticky || closable) {
     if (!x) { x = document.createElement('button'); x.className = 'toast-x'; x.setAttribute('aria-label', t('toastCloseLabel')); x.textContent = '✕'; el.appendChild(x); }
     x.onclick = (ev) => { ev.stopPropagation(); clearTimeout(el._t); el.remove(); if (o.onClose) o.onClose(); };
   } else if (x) { x.remove(); }
@@ -40,7 +43,8 @@ export function toast(msg, o = {}) {
     el.classList.add('has-bar'); // 진행 토스트 고정 폭(문구가 바뀌어도 크기 일정)
   } else if (bar) { bar.remove(); el.classList.remove('has-bar'); }
   clearTimeout(el._t);
-  if (!o.sticky) el._t = setTimeout(() => el.remove(), o.duration || 2800);
+  // 에러는 더 오래 표시(닫기 버튼이 있어도 자동 닫힘 시간은 넉넉히) — 명시 duration 우선.
+  if (!o.sticky) el._t = setTimeout(() => el.remove(), o.duration || (isError ? 8000 : 2800));
   return el;
 }
 

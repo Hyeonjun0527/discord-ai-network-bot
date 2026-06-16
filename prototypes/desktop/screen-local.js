@@ -1,6 +1,7 @@
 // NEXA 데스크톱 — screen-local.js (index.html 에서 분리, SoC/SRP). 동작 보존 verbatim.
     import { api } from './adapter.js';
     import { toast } from './toast.js';
+    import { promptModal } from './modal.js';
     import { t, onLangChange } from './i18n.js';
 
     const view = document.querySelector('.view[data-view="local"]');
@@ -82,7 +83,8 @@
         '<div class="rt-model"><label>' + t('localComfyModelLabel') + '</label><select id="comfyModelSelect" aria-label="' + t('localComfyModelSelectAriaLabel') + '">' +
           cm.models.map((m) => '<option value="' + m + '"' + (m === cm.active ? ' selected' : '') + '>' + m + '</option>').join('') +
         '</select>' + comfyAddBtns + '</div>'
-        : (crun ? '<div class="rt-model"><span class="dim" style="font-size:12px">' + t('localComfyNoCheckpointStatus') + '</span>' + comfyAddBtns + '</div>' : '');
+        : (crun ? '<div class="rt-model"><span class="dim" style="font-size:12px">' + t('localComfyNoCheckpointStatus') + '</span>' + comfyAddBtns +
+            '<div class="rt-model-hint">💡 ' + t('localComfyNoCheckpointHint') + '</div></div>' : '');
       const comfyCard = '<div class="rt-row rt-row--rec' + (crun ? ' ready' : '') + '">' +
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">ComfyUI <span style="font-weight:500;color:var(--c-violet)">' + t('localComfyUIImageType') + '</span></div>' +
         '<div class="rt-state">' + comfyState + '</div>' + comfyModelSel + '</div><div class="rt-actions">' + comfyAction + '</div></div>';
@@ -187,7 +189,8 @@
       // URL 로 임의 모델 추가 — HuggingFace .safetensors 직접 링크(gated 는 설정 HF 토큰).
       const comfyUrl = document.getElementById('comfyUrlBtn');
       if (comfyUrl) comfyUrl.onclick = async () => {
-        const url = (window.prompt(t('localComfyModelSelectPrompt')) || '').trim();
+        // OS 기본 prompt 대신 앱 모달(pywebview 이질감 해소·디자인 일관성).
+        const url = (await promptModal({ title: t('localComfyModelAddURLTitle'), desc: t('localComfyModelSelectPrompt'), placeholder: 'https://huggingface.co/…/model.safetensors' }) || '').trim();
         if (!url) return;
         toast(t('localComfyModelDownloadingToast'), { type: 'run', sticky: true, id: 'cmdl' });
         try { const r = await api.installComfyModel(url) || {}; if (r.ok === false) { toast(r.error || t('localComfyModelAddFailureToast'), { type: 'error', id: 'cmdl' }); return; } toast(t('localComfyModelAddedToast'), { type: 'ok', id: 'cmdl' }); await load(); }

@@ -11,6 +11,8 @@
       provider: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>',
     };
     const initialOf = (name) => (name || '·').trim().charAt(0);
+    // 디스코드 서버명에 <>& 가 흔해 마크업 주입/렌더 깨짐 방지(다른 입력과 동일하게 escape).
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
     const list = document.getElementById('srvList');
     const goServers = () => { const b = document.querySelector('.nav-item[data-view="servers"]'); if (b) b.click(); };
@@ -33,10 +35,13 @@
         const img = s.iconUrl ? '<img src="' + s.iconUrl + '" alt="" onerror="this.remove()">' : '';
         const st = presentServerState(s.state);
         const role = presentRole(s.role);
-        return '<button class="srv-item">' +
-          '<span class="srv-avatar" style="' + avatarStyle + '">' + initialOf(s.guildName) + img + '</span>' +
+        const nm = esc(s.guildName);
+        // 스크린리더용: 서버명 + 상태 + 역할(시각 배지를 음성으로 전달).
+        const aria = esc(s.guildName + ', ' + st.label + ', ' + role.label);
+        return '<button class="srv-item" aria-label="' + aria + '">' +
+          '<span class="srv-avatar" style="' + avatarStyle + '">' + esc(initialOf(s.guildName)) + img + '</span>' +
           '<span class="srv-main">' +
-            '<span class="srv-name"><span class="nm">' + s.guildName + '</span></span>' +
+            '<span class="srv-name"><span class="nm">' + nm + '</span></span>' +
             '<span class="srv-meta"><span class="srv-st ' + st.dot + '"><span class="d"></span>' + st.label + '</span> · ' + presentServerMeta(s) + '</span>' +
           '</span>' +
           '<span class="srv-role ' + role.cls + '">' + ROLE_ICON[role.cls] + role.label + '</span>' +
@@ -46,6 +51,8 @@
       list.querySelectorAll('.srv-item').forEach(el => el.addEventListener('click', goServers));
     }
 
+    // 최초 로드 중에는 스켈레톤 — '비었음(서버 0개)'과 '불러오는 중'을 구분(빈 화면 착시 방지).
+    list.innerHTML = '<div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div>';
     const servers = await api.getServers();
     render(servers);
     onLangChange(() => render(_servers));

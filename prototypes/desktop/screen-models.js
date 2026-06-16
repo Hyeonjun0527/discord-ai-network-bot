@@ -122,6 +122,8 @@
     // 진입 시 로드
     onLangChange(() => renderAll());
     (async () => {
+      // 최초 로드 중 스켈레톤 — '모델 0개'와 '불러오는 중'을 구분(빈 화면 착시 방지).
+      listEl.innerHTML = '<div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div>';
       const d = await api.getModels();
       models = d.models; defaultModel = d.defaultModel;
       renderAll();

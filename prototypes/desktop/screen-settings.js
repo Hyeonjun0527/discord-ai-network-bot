@@ -1,6 +1,7 @@
 // NEXA 데스크톱 — screen-settings.js (index.html 에서 분리, SoC/SRP). 동작 보존 verbatim.
     import { api } from './adapter.js';
     import { toast } from './toast.js';
+    import { confirmModal } from './modal.js';
     import { t, setLang, currentLang, supportedLangs, onLangChange } from './i18n.js';
 
     const view = document.querySelector('.view[data-view="settings"]');
@@ -272,9 +273,11 @@
       const apply = document.getElementById('setUpdateApply');
       if (apply) apply.onclick = () => maybePromptUpdate(_upd, true);
       const logout = document.getElementById('setLogout');
-      if (logout) logout.onclick = async () => {
-        if (!confirm(t('setLogoutConfirm'))) return;
-        await api.logout(); toast(t('setLogoutDoneToast'), { type: 'info' }); load();
+      if (logout) logout.onclick = () => {
+        // OS 기본 confirm 대신 앱 모달(pywebview 이질감 해소·디자인 일관성).
+        confirmModal({ title: t('setLogout'), desc: t('setLogoutConfirm'), confirmLabel: t('setLogout'), danger: true }, async () => {
+          await api.logout(); toast(t('setLogoutDoneToast'), { type: 'info' }); load();
+        });
       };
       const licenseRefresh = document.getElementById('setLicenseRefresh');
       if (licenseRefresh) licenseRefresh.onclick = async () => { await loadLicense(); toast(t('licenseReloadedToast'), { type: 'info' }); };

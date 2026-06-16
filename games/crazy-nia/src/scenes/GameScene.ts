@@ -16,6 +16,7 @@ import { generateTextures, TEX } from '../systems/textures';
 import { NetClient } from '../net/NetClient';
 import { Hud, type HudPlayer } from '../ui/Hud';
 import type { Direction } from '../../shared/messages';
+import type { DiscordSession } from '../discord/bootstrap';
 
 const ITEM_TEX: Record<ItemKind, string> = {
   bomb: TEX.itemBomb,
@@ -67,9 +68,17 @@ export class GameScene extends Phaser.Scene {
     this.hud = new Hud(this);
     this.bindKeys();
 
-    this.net = new NetClient();
+    // Discord Activity session from the bootstrap (registry). Outside Discord this is
+    // a no-op session: no roomId/name, so connect() uses default matchmaking.
+    const session = this.registry.get('discordSession') as DiscordSession | undefined;
+
+    this.net = new NetClient(session?.serverUrl);
     this.net
-      .connect()
+      .connect({
+        instanceId: session?.roomId ?? undefined,
+        name: session?.displayName ?? undefined,
+        avatarUrl: session?.avatarUrl ?? undefined,
+      })
       .then((room) => {
         this.room = room;
         this.connecting = false;
@@ -198,8 +207,9 @@ export class GameScene extends Phaser.Scene {
         sprite = this.add.image(p.px, p.py, tex).setDisplaySize(TILE, TILE).setDepth(5);
         sprite.setTint(p.color);
         this.playerSprites.set(id, sprite);
+        const baseName = p.name && p.name.length > 0 ? p.name : `P${p.slot + 1}`;
         const label = this.add
-          .text(p.px, p.py - TILE * 0.55, `P${p.slot + 1}${id === this.room!.sessionId ? ' (나)' : ''}`, {
+          .text(p.px, p.py - TILE * 0.55, `${baseName}${id === this.room!.sessionId ? ' (나)' : ''}`, {
             fontFamily: 'system-ui, sans-serif',
             fontSize: '11px',
             color: '#ffffff',
@@ -297,7 +307,7 @@ export class GameScene extends Phaser.Scene {
     const players: HudPlayer[] = [];
     state.players.forEach((p: any) => {
       players.push({
-        name: `P${p.slot + 1}`,
+        name: p.name && p.name.length > 0 ? p.name : `P${p.slot + 1}`,
         maxBombs: p.maxBombs,
         range: p.range,
         alive: p.alive,

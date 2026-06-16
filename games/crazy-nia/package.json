@@ -9,18 +9,21 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/**/*.test.ts",
     "smoke": "node smoke.mjs",
     "server": "npm --prefix server run start",
     "server:dev": "npm --prefix server run dev",
     "dev:all": "concurrently -n server,client -c green,cyan \"npm run server:dev\" \"npm run dev\""
   },
   "dependencies": {
+    "@discord/embedded-app-sdk": "^2.5.0",
     "colyseus.js": "^0.16.22",
     "phaser": "^3.80.1"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
     "playwright": "^1.61.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.4.5",
     "vite": "^5.2.0"
   }

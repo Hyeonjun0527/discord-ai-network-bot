@@ -125,11 +125,18 @@ async def test_generate_defaults_model_when_none(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_generate_http_error_raises(monkeypatch):
+async def test_generate_http_error_generalizes_message_and_logs_detail(monkeypatch, caplog):
     _patch(monkeypatch, _Resp(401, text='{"error":"unauthorized"}'))
-    with pytest.raises(GlmError) as ei:
-        await GlmClient("bad").generate("hi", None)
-    assert "401" in str(ei.value)
+    with caplog.at_level("WARNING", logger="provider_agent.glm"):
+        with pytest.raises(GlmError) as ei:
+            await GlmClient("bad").generate("hi", None)
+    # 사용자 노출 메시지는 일반화(업스트림 status·body 미노출)
+    assert str(ei.value) == "클라우드 AI 일시 오류"
+    assert "401" not in str(ei.value)
+    assert "unauthorized" not in str(ei.value)
+    # 상세(status·body)는 로그로만 남는다
+    assert "401" in caplog.text
+    assert "unauthorized" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -140,16 +147,20 @@ async def test_generate_empty_content_raises(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_generate_client_error_becomes_glm_error(monkeypatch):
+async def test_generate_client_error_becomes_glm_error(monkeypatch, caplog):
     import aiohttp
 
     def boom(*a, **k):
         raise aiohttp.ClientError("connection reset")
 
     monkeypatch.setattr(gmod.aiohttp, "ClientSession", boom)
-    with pytest.raises(GlmError) as ei:
-        await GlmClient("k").generate("hi", None)
-    assert "연결 실패" in str(ei.value)
+    with caplog.at_level("WARNING", logger="provider_agent.glm"):
+        with pytest.raises(GlmError) as ei:
+            await GlmClient("k").generate("hi", None)
+    # 사용자 노출은 일반화, 원인(connection reset)은 로그로만
+    assert str(ei.value) == "클라우드 AI 일시 오류"
+    assert "connection reset" not in str(ei.value)
+    assert "connection reset" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -268,6 +279,23 @@ async def test_non_glm_model_not_routed_to_glm():
     with pytest.raises(Exception):  # noqa: B017 - ollama=object() 라 generate 없음 → 라우팅이 glm 아님을 증명
         await agent._run_infer(conn, InferRequest(request_id="l1", prompt="hi", task="text"), "llama3.1:8b")
     assert fake.calls == []  # GLM 은 호출되지 않았다
+
+
+@pytest.mark.asyncio
+async def test_glm_model_without_key_sends_clear_error_not_ollama():
+    """키가 라이브로 제거됐는데 central 이 캐시된 glm-* 를 요청하면 Ollama 로 떨어지지 않고
+    명확한 InferError 를 보낸다(혼란스러운 모델 404 방지)."""
+    from provider_agent.protocol import InferError
+
+    cfg = AgentConfig(token="T", models=("a",))
+    agent = ProviderAgent(cfg, ollama=object())  # glm 키 없음 → _glm is None, ollama=object()
+    assert agent._glm is None
+    conn = FakeConn()
+    await agent._run_infer(conn, InferRequest(request_id="g0", prompt="hi", task="text"), DEFAULT_GLM_MODEL)
+    errors = [f for f in conn.sent if isinstance(f, InferError)]
+    assert errors and "GLM" in errors[0].message and "키" in errors[0].message
+    # Ollama(object())는 호출되지 않았다 → AttributeError 가 새어나오지 않음
+    assert not any(isinstance(f, InferResult) for f in conn.sent)
 
 
 def test_run_infer_glm_smoke():

@@ -27,6 +27,9 @@ logger = logging.getLogger("provider_agent.glm")
 GLM_API_BASE = "https://api.z.ai/api/paas/v4"
 DEFAULT_GLM_MODEL = "glm-5.1"
 
+# 사용자(디스코드)에게 노출되는 일반화 메시지. 업스트림 status·body 등 상세는 로그로만 남긴다.
+_USER_ERROR_MESSAGE = "클라우드 AI 일시 오류"
+
 IMAGE_PROMPT_REVIEW_SYSTEM_PROMPT = """
 You are the safety gate for a public Discord image-generation bot.
 Review the user's image prompt before it is sent to a local Stable Diffusion/ComfyUI model.
@@ -129,16 +132,22 @@ class GlmClient:
                 async with s.post(url, json=payload, headers=headers) as r:
                     if r.status >= 400:
                         body = await r.text()
-                        raise GlmError(f"GLM HTTP {r.status}: {body[:200]}")
+                        # 업스트림 원문(status·body)은 정보 노출 소지가 있어 로그로만 남기고,
+                        # 사용자에겐 일반화된 메시지만 전달한다(예외 원칙 — 내부 상세 미노출).
+                        logger.warning("GLM HTTP %s: %s", r.status, body[:500])
+                        raise GlmError(_USER_ERROR_MESSAGE)
                     data = await r.json()
         except aiohttp.ClientError as exc:
-            raise GlmError(f"GLM 연결 실패: {exc}") from exc
+            logger.warning("GLM 연결 실패: %s", exc)
+            raise GlmError(_USER_ERROR_MESSAGE) from exc
         if not isinstance(data, dict):
             raise GlmError("GLM 응답 형식이 올바르지 않습니다")
         if data.get("error"):
             err = data["error"]
             msg = err.get("message") if isinstance(err, dict) else str(err)
-            raise GlmError(f"GLM: {msg}")
+            # 업스트림 에러 메시지도 원문 노출하지 않고 로그로만 남긴다.
+            logger.warning("GLM 업스트림 오류: %s", msg)
+            raise GlmError(_USER_ERROR_MESSAGE)
         return data
 
     async def generate(self, prompt: str, model: str | None) -> tuple[str, Usage]:

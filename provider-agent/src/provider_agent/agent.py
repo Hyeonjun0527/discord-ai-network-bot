@@ -441,9 +441,21 @@ class ProviderAgent:
             else:
                 await self._handle_image(conn, req)
                 self._processed += 1
-        elif self._glm is not None and (model or "").startswith("glm-"):
+        elif (model or "").startswith("glm-"):
             # 클라우드 GLM 라우팅(관리자 키). glm-* 모델은 z.ai API 로 처리(한도·공정성은 동일).
-            await self._run_glm(conn, req, model)
+            if self._glm is None:
+                # 키가 라이브로 제거됐는데 central 이 캐시된 glm-* 모델을 아직 요청하는 경우.
+                # Ollama 로 떨어뜨리면 알 수 없는 모델 404(혼란스러운 OllamaError)라 명확한 에러로 차단한다.
+                await self._safe_send(
+                    conn,
+                    InferError(
+                        req.request_id,
+                        code=ErrorCode.OLLAMA_ERROR,
+                        message="클라우드 GLM API 키가 설정되어 있지 않습니다",
+                    ),
+                )
+            else:
+                await self._run_glm(conn, req, model)
         elif req.stream:
             # 스트리밍(#142): 부분 텍스트를 ChunkFrame 으로 점진 전송 후 done 표시.
             # 무거운/폭주 응답 보호: 누적 길이가 MAX_RESPONSE_CHARS 를 넘으면 조기 종료.

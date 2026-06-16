@@ -5,6 +5,7 @@ import com.discordassistant.central.channelai.application.AutoRespondChannelRegi
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -70,5 +71,27 @@ class AutoRespondChannelRegistryTest
 
             assertTrue(registry.isAutoRespond(100, 300))
             assertFalse(registry.isAutoRespond(200, 300))
+        }
+
+        @Test
+        fun `setAutoRespond off 는 프로필이 없으면 아무것도 만들지 않고 조용히 반환한다`() {
+            // 프로필도 없는 채널에 off 요청 → 프로필 생성 없이 종료, 여전히 false
+            registry.setAutoRespond(guildId = 100, channelId = 999, on = false)
+
+            assertFalse(registry.isAutoRespond(100, 999))
+            assertNull(profiles.get(100, 999))
+        }
+
+        @Test
+        fun `invalidateGuild 는 길드 캐시를 무효화해 DB 변경을 다음 조회에 반영한다`() {
+            registry.setAutoRespond(100, 400, on = true)
+            assertTrue(registry.isAutoRespond(100, 400)) // 캐시 로드
+
+            // DB 에서 직접 삭제 후 invalidateGuild 로 길드 전체 캐시를 비운다.
+            channelAis.findByGuildIdAndChannelId(100, 400)?.let { channelAis.delete(it) }
+            channelAis.flush()
+            registry.invalidateGuild(100)
+
+            assertFalse(registry.isAutoRespond(100, 400)) // 재로드하면 없음
         }
     }

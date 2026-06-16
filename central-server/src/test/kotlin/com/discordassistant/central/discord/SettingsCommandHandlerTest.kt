@@ -70,4 +70,22 @@ class SettingsCommandHandlerTest {
 
         assertTrue(links is SettingsCommandHandler.SettingsLinks.Unavailable)
     }
+
+    @Test
+    fun `relay public-url ws 도 http 로 변환된다`() {
+        val handler = SettingsCommandHandler(guards, configuredBase = "", relayPublicUrl = "ws://discord-ai.yeon.world/agent")
+
+        val links = handler.settings(ctx(guildId = 1L)) as SettingsCommandHandler.SettingsLinks.WithLinks
+
+        assertEquals("http://discord-ai.yeon.world/admin/dashboard/", links.buttons[0].url)
+    }
+
+    @Test
+    fun `configured base 끝 슬래시는 중복 없이 정규화된다`() {
+        val handler = SettingsCommandHandler(guards, configuredBase = "https://discord-ai.yeon.world///", relayPublicUrl = "")
+
+        val links = handler.settings(ctx(guildId = 1L)) as SettingsCommandHandler.SettingsLinks.WithLinks
+
+        assertEquals("https://discord-ai.yeon.world/admin/dashboard/", links.buttons[0].url)
+    }
 }

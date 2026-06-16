@@ -91,6 +91,12 @@ def test_extract_usage_maps_openai_fields():
     assert _extract_usage({}) == Usage(prompt_tokens=0, completion_tokens=0)
 
 
+def test_extract_usage_ignores_non_dict_usage():
+    # usage 가 dict 가 아니면(예: null/문자열) 0 으로 폴백한다.
+    assert _extract_usage({"usage": None}) == Usage(prompt_tokens=0, completion_tokens=0)
+    assert _extract_usage({"usage": "weird"}) == Usage(prompt_tokens=0, completion_tokens=0)
+
+
 def test_parse_image_prompt_review():
     allowed = parse_image_prompt_review('{"allowed":true,"category":"safe","reason":"정상 SFW 요청"}')
     assert allowed.allowed is True
@@ -102,6 +108,28 @@ def test_parse_image_prompt_review():
 
     with pytest.raises(GlmError):
         parse_image_prompt_review('{"category":"safe"}')
+
+
+def test_parse_image_prompt_review_defaults_category_and_reason():
+    # category/reason 누락 시 allowed 값에 맞는 안전한 기본값으로 채운다(스키마 일부 누락 허용).
+    blocked = parse_image_prompt_review('{"allowed":false}')
+    assert blocked.allowed is False
+    assert blocked.category == "other"
+    assert blocked.reason == "안전 정책상 차단됨"
+
+
+def test_parse_image_prompt_review_non_bool_allowed_blocks():
+    # allowed 가 문자열("true") 등 비-bool 이면 fail-closed(예외 → 호출부가 차단).
+    with pytest.raises(GlmError):
+        parse_image_prompt_review('{"allowed":"true","category":"safe"}')
+
+
+def test_parse_image_prompt_review_invalid_json_fails_closed():
+    # 깨진/비-object JSON 은 파싱 실패 → GlmError(fail-closed).
+    with pytest.raises(GlmError):
+        parse_image_prompt_review("not json at all")
+    with pytest.raises(GlmError):
+        parse_image_prompt_review("[1, 2, 3]")
 
 
 @pytest.mark.asyncio
@@ -161,6 +189,70 @@ async def test_generate_client_error_becomes_glm_error(monkeypatch, caplog):
     assert str(ei.value) == "클라우드 AI 일시 오류"
     assert "connection reset" not in str(ei.value)
     assert "connection reset" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_generate_timeout_generalizes_message_and_logs(monkeypatch, caplog):
+    # aiohttp 타임아웃은 ClientError 의 하위(ServerTimeoutError)라 일반화 메시지로 변환된다.
+    import aiohttp
+
+    def boom(*a, **k):
+        raise aiohttp.ServerTimeoutError("timed out after 120s")
+
+    monkeypatch.setattr(gmod.aiohttp, "ClientSession", boom)
+    with caplog.at_level("WARNING", logger="provider_agent.glm"):
+        with pytest.raises(GlmError) as ei:
+            await GlmClient("k").generate("hi", None)
+    assert str(ei.value) == "클라우드 AI 일시 오류"
+    assert "timed out" not in str(ei.value)
+    assert "timed out" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_generate_non_dict_response_raises(monkeypatch):
+    # 200 인데 JSON 이 dict 가 아니면(예: 리스트) 형식 오류로 거른다.
+    _patch(monkeypatch, _Resp(200, data=[1, 2, 3]))
+    with pytest.raises(GlmError):
+        await GlmClient("k").generate("hi", None)
+
+
+@pytest.mark.asyncio
+async def test_generate_error_in_200_body_generalizes(monkeypatch, caplog):
+    # status 200 이어도 본문에 error 가 있으면 일반화 메시지로 차단하고 원문은 로그로만 남긴다.
+    body = {"error": {"message": "rate limit exceeded for project"}}
+    _patch(monkeypatch, _Resp(200, data=body))
+    with caplog.at_level("WARNING", logger="provider_agent.glm"):
+        with pytest.raises(GlmError) as ei:
+            await GlmClient("k").generate("hi", None)
+    assert str(ei.value) == "클라우드 AI 일시 오류"
+    assert "rate limit" not in str(ei.value)
+    assert "rate limit exceeded" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_translate_empty_content_raises(monkeypatch):
+    _patch(monkeypatch, _Resp(200, data={"choices": [{"message": {"content": ""}}]}))
+    with pytest.raises(GlmError):
+        await GlmClient("k").translate("hi", "be safe")
+
+
+@pytest.mark.asyncio
+async def test_review_image_prompt_empty_content_fails_closed(monkeypatch):
+    # 안전 심사 응답이 비면(빈/필터 차단) GlmError → 호출부가 fail-closed.
+    _patch(monkeypatch, _Resp(200, data={"choices": [{"message": {"content": ""}}]}))
+    with pytest.raises(GlmError):
+        await GlmClient("k").review_image_prompt("야한 사진")
+
+
+@pytest.mark.asyncio
+async def test_health_client_error_returns_false(monkeypatch):
+    import aiohttp
+
+    def boom(*a, **k):
+        raise aiohttp.ClientError("dns failure")
+
+    monkeypatch.setattr(gmod.aiohttp, "ClientSession", boom)
+    assert await GlmClient("k").health() is False
 
 
 @pytest.mark.asyncio

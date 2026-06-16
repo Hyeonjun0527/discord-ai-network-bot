@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 
@@ -204,8 +203,3 @@ class GlmClient:
                     return r.status == 200
         except aiohttp.ClientError:
             return False
-
-
-def _env_base_url() -> str:
-    """``ZAI_BASE_URL`` 오버라이드(없으면 기본 z.ai). 자가호스팅/프록시 대응."""
-    return (os.getenv("ZAI_BASE_URL") or "").strip() or GLM_API_BASE

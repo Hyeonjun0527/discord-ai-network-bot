@@ -25,6 +25,7 @@ click the arena to lock the cursor).
 | `npm run preview` | Preview the production client build |
 | `npm run lint` | ESLint |
 | `npm run format` | Prettier |
+| `npm run test` | Unit tests for the pure Discord helpers (`src/discord/*.test.ts`) |
 
 ## Stack
 
@@ -41,13 +42,22 @@ on a local Node SSR server.
 
 ```
 src/
-  routes/        file-based routes (index = landing, play = game)
-  lib/game/      three.js FPS engine
-  components/ui/ shadcn/ui primitives
-  server.ts      Worker fetch entry + SSR error normalization
-  start.ts       request middleware
-public/          GLB models, textures, SFX, key art
+  routes/          file-based routes (index = landing, play = game)
+  routes/api/      server routes (token = Discord OAuth exchange, POST /api/token)
+  discord/         Discord Activity integration (bootstrap, proxy, token)
+  lib/game/        three.js FPS engine
+  components/ui/   shadcn/ui primitives
+  server.ts        Worker fetch entry + SSR error normalization
+  start.ts         request middleware
+public/            GLB models, textures, SFX, key art
 ```
+
+## Discord Activity
+
+Runs as a **Discord Activity** (embedded iframe in a voice channel) under the same
+NEXA bot application. Bootstrap is a **no-op outside Discord** — normal browser play
+is unchanged. Full setup (portal URL mappings, env, tunnels): see
+[`docs/DISCORD_ACTIVITY.md`](docs/DISCORD_ACTIVITY.md).
 
 ## Notes / Provenance
 

@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 
+import { bootstrapDiscord } from "../discord/bootstrap";
+
 export const Route = createFileRoute("/play")({
   component: Play,
   validateSearch: (s: Record<string, unknown>): { room?: string } =>
@@ -74,6 +76,33 @@ function Play() {
     }
     if (!roomFromUrl) setRoom(randomRoom());
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Discord Activity bootstrap. No-op outside Discord (no `frame_id`) — the standalone
+  // browser build is untouched. Inside Discord it authenticates the embedded session
+  // and prefills the callsign with the player's Discord display name.
+  useEffect(() => {
+    let cancelled = false;
+    bootstrapDiscord()
+      .then((session) => {
+        if (cancelled || !session.inDiscord || !session.displayName) return;
+        const callsign = session.displayName.toUpperCase().slice(0, 12);
+        setName(callsign);
+        try {
+          localStorage.setItem("sp-name", callsign);
+        } catch {
+          /* private mode */
+        }
+      })
+      .catch((err) => {
+        // Surface but never block: outside Discord this never throws; inside Discord a
+        // failed auth still lets the player use the menu (multiplayer just won't carry
+        // their Discord identity).
+        console.error("[strike-protocol] discord bootstrap failed", err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const setCfgK = <K extends keyof Settings>(k: K, v: Settings[K]) => {

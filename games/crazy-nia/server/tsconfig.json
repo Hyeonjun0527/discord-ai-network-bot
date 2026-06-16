@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2021",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -10,8 +10,11 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true,
-    "types": []
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "outDir": "dist",
+    "rootDir": "..",
+    "types": ["node"]
   },
-  "include": ["src", "shared"]
+  "include": ["src", "../shared"]
 }

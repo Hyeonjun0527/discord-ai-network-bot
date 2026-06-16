@@ -1,0 +1,25 @@
+{
+  "name": "crazy-nia-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Crazy Nia (Bomberman) P1 authoritative multiplayer server — Colyseus.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@colyseus/core": "^0.16.24",
+    "@colyseus/schema": "^3.0.76",
+    "@colyseus/ws-transport": "^0.16.5",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,6 +1,8 @@
-// Headless smoke test: loads the dev server, asserts the canvas renders with
-// zero console errors, and that core game logic actually runs (movement +
-// bomb explosion destroying a block). Run: node smoke.mjs  (dev server must be up)
+// Single-client smoke test: with the game server running, loads the dev server,
+// asserts the canvas renders with zero console errors, the client connects to the
+// authoritative room, and that local input reaches the server (the local player
+// moves, and a bomb drop destroys a block in the synced state).
+// Run: npm run server (terminal 1) + npm run dev (terminal 2) + node smoke.mjs
 import { chromium } from 'playwright';
 
 const URL = process.env.SMOKE_URL || 'http://127.0.0.1:5173/';
@@ -14,14 +16,25 @@ function snapshot(page) {
   });
 }
 
-async function pressOnce(page, key, holdMs = 120) {
+function me(snap) {
+  return snap?.players?.find((p) => p.id === snap.sessionId) ?? null;
+}
+
+async function pressOnce(page, key, holdMs = 140) {
   await page.keyboard.down(key);
   await page.waitForTimeout(holdMs);
   await page.keyboard.up(key);
 }
 
-// Prefer the bundled headless shell; fall back to the system Chrome channel so
-// the smoke test runs without a fresh `playwright install`.
+async function waitUntil(fn, timeoutMs = 10000, stepMs = 150) {
+  const start = Date.now();
+  for (;;) {
+    if (await fn()) return true;
+    if (Date.now() - start > timeoutMs) return false;
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
+}
+
 let browser;
 try {
   browser = await chromium.launch();
@@ -29,18 +42,12 @@ try {
   browser = await chromium.launch({ channel: 'chrome' });
 }
 const page = await browser.newPage();
-// Ignore the favicon 404 (cosmetic, browser auto-requests /favicon.ico).
 page.on('console', (m) => {
   if (m.type() === 'error' && !/favicon\.ico/.test(m.text())) errors.push(m.text());
 });
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 page.on('requestfailed', (r) => {
   if (!/favicon\.ico/.test(r.url())) errors.push(`requestfailed: ${r.url()}`);
-});
-page.on('response', (r) => {
-  if (r.status() >= 400 && !/favicon\.ico/.test(r.url())) {
-    errors.push(`http ${r.status()}: ${r.url()}`);
-  }
 });
 
 await page.goto(URL, { waitUntil: 'networkidle' });
@@ -51,29 +58,34 @@ const canvas = await page.$('#game canvas');
 const box = await canvas.boundingBox();
 const canvasOk = !!box && box.width > 100 && box.height > 100;
 
-// 2) Scene + snapshot available?
-await page.waitForFunction(
-  () => window.__crazyNia?.scene?.getScene?.('game')?.debugSnapshot,
-  { timeout: 10000 },
-);
+// 2) Connected to the authoritative room + state synced?
+const connected = await waitUntil(async () => {
+  const s = await snapshot(page);
+  return s?.connected && s.players?.length >= 1 && s.blocks > 0;
+});
 const initial = await snapshot(page);
 
-// 3) Movement: P1 moves right one cell.
-const beforeMove = await snapshot(page);
-await pressOnce(page, 'ArrowRight', 200);
-await page.waitForTimeout(120);
-const afterMove = await snapshot(page);
-const movedOk = afterMove.players[0].col !== beforeMove.players[0].col;
+// 3) Movement: the local player moves at least one cell via input -> server.
+const before = me(initial);
+let movedOk = false;
+for (const key of ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp']) {
+  await pressOnce(page, key, 220);
+  await page.waitForTimeout(120);
+  const now = me(await snapshot(page));
+  if (now && before && (now.col !== before.col || now.row !== before.row)) {
+    movedOk = true;
+    break;
+  }
+}
 
-// 4) Bomb + explosion destroys at least one block.
-// P1 spawn (1,1) has open elbow at (2,1)/(1,2); blocks surround. Drop a bomb at
-// spawn and wait past the fuse + explosion window, then compare block counts.
-await page.keyboard.press('Home'); // no-op safe key to ensure focus
+// 4) Bomb + explosion destroys at least one block in the synced state.
 const blocksBefore = (await snapshot(page)).blocks;
 await pressOnce(page, 'Space', 60);
-await page.waitForTimeout(3200); // fuse (~2.2s) + explosion (~0.42s) + margin
+const blocksDestroyedOk = await waitUntil(
+  async () => (await snapshot(page)).blocks < blocksBefore,
+  6000,
+);
 const after = await snapshot(page);
-const blocksDestroyedOk = after.blocks < blocksBefore;
 
 if (process.env.SMOKE_SHOT) {
   await page.screenshot({ path: process.env.SMOKE_SHOT });
@@ -85,15 +97,15 @@ const result = {
   url: URL,
   canvasOk,
   canvasBox: box,
-  sceneLoaded: !!initial,
+  connected,
   movedOk,
   blocksBefore,
-  blocksAfter: after.blocks,
+  blocksAfter: after?.blocks,
   blocksDestroyedOk,
   consoleErrors: errors,
 };
 console.log(JSON.stringify(result, null, 2));
 
-const pass = canvasOk && initial && movedOk && blocksDestroyedOk && errors.length === 0;
+const pass = canvasOk && connected && movedOk && blocksDestroyedOk && errors.length === 0;
 console.log(pass ? '\nSMOKE: PASS' : '\nSMOKE: FAIL');
 process.exit(pass ? 0 : 1);

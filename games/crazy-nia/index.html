@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Crazy Nia — Bomberman Prototype</title>
+    <title>Crazy Nia — Bomberman Multiplayer</title>
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2314151f'/%3E%3Ccircle cx='8' cy='9' r='4.5' fill='%2316181f' stroke='%234f8cff' stroke-width='1'/%3E%3Ccircle cx='11' cy='3' r='1.5' fill='%23ffb648'/%3E%3C/svg%3E"
@@ -44,9 +44,10 @@
     <div id="app">
       <div id="game"></div>
       <div class="hint">
-        <b>P1</b> 이동 방향키 · 폭탄 Space &nbsp;|&nbsp;
-        <b>P2</b> 이동 WASD · 폭탄 Shift &nbsp;|&nbsp;
-        라운드 재시작 <b>R</b>
+        <b>이동</b> 방향키 또는 WASD &nbsp;·&nbsp; <b>폭탄</b> Space 또는 Shift
+        <br />
+        멀티플레이: 게임 서버(<b>npm run server</b>)를 켠 뒤 이 페이지를 두 탭/기기에서 열면
+        같은 방에 접속해 함께 플레이합니다. 라운드는 마지막 생존자 승리 후 자동 리셋.
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

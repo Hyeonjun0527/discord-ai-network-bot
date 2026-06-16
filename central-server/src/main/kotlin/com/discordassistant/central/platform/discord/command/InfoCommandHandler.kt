@@ -1,5 +1,6 @@
 package com.discordassistant.central.platform.discord.command
 
+import com.discordassistant.central.global.i18n.I18n
 import com.discordassistant.central.global.i18n.Messages
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.licensing.application.LicenseService
@@ -130,23 +131,27 @@ class InfoCommandHandler(
         locale: net.dv8tion.jda.api.interactions.DiscordLocale = net.dv8tion.jda.api.interactions.DiscordLocale.KOREAN,
     ): Reply {
         fun c(base: String) = "`/${CommandLoc.localName(base, locale)}`"
+        // 헤더/인트로/푸터는 보는 사람 로케일로 i18n(명령명은 이미 c() 로 로케일화). 미지원 로케일이면 기본어 폴백.
+        val lang = I18n.resolveOrNull(locale) ?: I18n.DEFAULT
+
+        fun m(key: Messages.Key) = Messages.get(key, lang)
         val sb = StringBuilder()
-        sb.append("**NEXA AI 네트워크 — 도움말**\n")
-        sb.append("커뮤니티 멤버들의 PC LLM 을 모아 공정하게 분배합니다(금전 거래 아님).\n\n")
-        sb.append("__유저__\n")
+        sb.append("${m(Messages.Key.HELP_TITLE)}\n")
+        sb.append("${m(Messages.Key.HELP_INTRO)}\n\n")
+        sb.append("${m(Messages.Key.HELP_SECTION_USER)}\n")
         sb.append("· ${c("ask")} `<질문>` — 풀의 누군가의 PC LLM 으로 답변\n")
         sb.append("· ${c("free-ask")} `<질문>` — 관리자가 제공하는 무료 클라우드 AI로 답변\n")
         sb.append("· ${c("models")} ${c("catalog")} — 사용 가능한 모델 수준·목록\n")
         sb.append("· ${c("my-usage")} ${c("privacy")} — 내 사용량 / 프라이버시 고지\n")
         sb.append("· ${c("license")} — 내 Nexa 라이선스 상태\n")
         sb.append("· ${c("nia")} ${c("contributions")} — 니아 호감도 / 기여 현황(비금전 인정)\n\n")
-        sb.append("__프로바이더(내 컴퓨터의 AI로 함께 도와주기)__\n")
+        sb.append("${m(Messages.Key.HELP_SECTION_PROVIDER)}\n")
         sb.append("· ${c("provider-join")} — 참여 신청(승인 후 토큰→에이전트 실행)\n")
         sb.append("· ${c("provider-pause")} ${c("provider-resume")} ${c("provider-leave")} — 가용성 제어\n")
         sb.append("· ${c("provider-status")} ${c("provider-models")} ${c("provider-limit")} — 내 기여 설정\n")
         sb.append("· 봇이 서버에서 제거되면 그 서버의 프로바이더 연결/등록/토큰은 자동 정리됩니다.\n")
         if (ctx.isAdmin) {
-            sb.append("\n__관리자__\n")
+            sb.append("\n${m(Messages.Key.HELP_SECTION_ADMIN)}\n")
             sb.append("· ${c("fairness")} ${c("providers")} — 공정성 리포트·프로바이더 목록\n")
             sb.append("· ${c("provider-approve")} ${c("provider-remove")} — 승인/제거\n")
             sb.append("· ${c("llm-allow-channel")} ${c("llm-deny-channel")} ${c("llm-role-policy")} — 채널·역할 정책\n")
@@ -166,7 +171,7 @@ class InfoCommandHandler(
             sb.append("· ${c("ai-network-check")} — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
             sb.append("· ${c("llm-block")} ${c("llm-unblock")} — 사용자 차단/해제\n")
         }
-        sb.append("\n_민감정보(비밀번호·API 키 등)는 입력하지 마세요._")
+        sb.append("\n${m(Messages.Key.HELP_SENSITIVE_NOTICE)}")
         return Reply(sb.toString())
     }
 }

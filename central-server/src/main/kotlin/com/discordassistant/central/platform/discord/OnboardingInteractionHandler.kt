@@ -1,5 +1,6 @@
 package com.discordassistant.central.platform.discord
 
+import com.discordassistant.central.global.i18n.I18n
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
 import com.discordassistant.central.onboarding.application.GuildOnboardingResult
@@ -41,11 +42,18 @@ class OnboardingInteractionHandler(
         val payload = event.componentId.removePrefix(ONBOARD_PREFIX)
         val action = payload.substringBefore(':', missingDelimiterValue = payload)
         if (action == ONBOARD_ACTION_START) {
+            // 배너 버튼은 전 멤버에게 보이므로 비관리자가 눌러 막히는 헛클릭이 잦다. 먼저 Nia 톤으로 친절히 안내.
+            if (!ctx.isAdmin) {
+                val language = ctx.userLang ?: commands.guildLanguage(ctx)
+                event.reply(I18n.get("onboardingAdminOnly", language)).setEphemeral(true).queue()
+                return
+            }
             replyOnboardingProposal(event, ctx, event.channel.name)
             return
         }
         if (action != ONBOARD_ACTION_APPROVE && action != ONBOARD_ACTION_REJECT) {
-            event.reply("알 수 없는 온보딩 동작입니다.").setEphemeral(true).queue()
+            val language = ctx.userLang ?: commands.guildLanguage(ctx)
+            event.reply(I18n.get("unknownOnboardingAction", language)).setEphemeral(true).queue()
             return
         }
         val proposalId = payload.substringAfter(':', missingDelimiterValue = "").trim().toLongOrNull()

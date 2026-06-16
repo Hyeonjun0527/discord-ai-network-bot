@@ -319,6 +319,8 @@ class RequestOrchestratorTest {
         assertEquals(RequestState.FAILED, r.state)
         assertTrue(r.failReason!!.contains("/프로바이더참여"))
         assertTrue(r.failReason!!.contains("/내상태"))
+        // 풀이 비었을 때 관리자 무료 AI 폴백(/무료질문)도 안내한다(UX 폴리시).
+        assertTrue(r.failReason!!.contains("/무료질문"))
         assertTrue(r.failReason!!.contains("Provider가 연결되면 다시 질문해주세요"))
     }
 

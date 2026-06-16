@@ -54,6 +54,16 @@
       "en": "Ask an administrator for the dashboard URL.",
       "ja": "ダッシュボードのURLは管理者にお問い合わせください。"
     },
+    "settingsLinkUserTitle": {
+      "ko": "내 설정",
+      "en": "Your settings",
+      "ja": "あなたの設定"
+    },
+    "settingsLinkUserDescription": {
+      "ko": "서버 설정 대시보드는 서버 관리자만 열 수 있어요. 관리자라면 서버 관리자에게 요청해 주세요.\n대신 이런 명령으로 직접 확인할 수 있어요:\n· `/내사용량` — 오늘 내 사용량\n· `/프라이버시` — AI 처리·프라이버시 안내\n· `/라이선스` — 내 Nexa 라이선스 상태\n· `/무료질문` — 관리자가 무료 AI를 제공 중이면 바로 질문",
+      "en": "The server settings dashboard is for server admins only. Ask a server admin if you need a change there.\nYou can check these yourself instead:\n· `/my-usage` — your usage today\n· `/privacy` — AI processing & privacy notice\n· `/license` — your Nexa license status\n· `/free-ask` — ask right away if an admin offers free AI",
+      "ja": "サーバー設定ダッシュボードはサーバー管理者のみ開けます。変更が必要なら管理者にお願いしてください。\n代わりに次のコマンドで自分で確認できます:\n· `/使用量` — 今日の使用量\n· `/プライバシー` — AI処理・プライバシー案内\n· `/ライセンス` — 自分のNexaライセンス状態\n· `/無料質問` — 管理者が無料AIを提供していればすぐ質問"
+    },
     "niaSetupChannelsButton": {
       "ko": "🏗️ 니아 채널 자동 만들기",
       "en": "🏗️ Auto-create Nia channels",
@@ -63,6 +73,66 @@
       "ko": "서버 관리자만 사용할 수 있어요.",
       "en": "Only server admins can use this.",
       "ja": "サーバー管理者のみ使用できます。"
+    },
+    "onboardingAdminOnly": {
+      "ko": "AI 자동 설정은 서버 관리자만 시작할 수 있어요. 서버 관리자에게 요청해 주세요!",
+      "en": "Only a server admin can start the AI auto-setup. Please ask a server admin!",
+      "ja": "AI自動設定はサーバー管理者のみ開始できます。サーバー管理者にお願いしてください！"
+    },
+    "adminOnlyShort": {
+      "ko": "관리자만 사용할 수 있어요.",
+      "en": "Only admins can use this.",
+      "ja": "管理者のみ使用できます。"
+    },
+    "channelProfileAdminOnly": {
+      "ko": "채널 AI 프로필 설정은 관리자만 할 수 있어요.",
+      "en": "Only admins can set the channel AI profile.",
+      "ja": "チャンネルAIプロフィールの設定は管理者のみ可能です。"
+    },
+    "unknownAction": {
+      "ko": "알 수 없는 동작이에요.",
+      "en": "Unknown action.",
+      "ja": "不明な操作です。"
+    },
+    "unknownSelection": {
+      "ko": "알 수 없는 선택이에요.",
+      "en": "Unknown selection.",
+      "ja": "不明な選択です。"
+    },
+    "unknownOnboardingAction": {
+      "ko": "알 수 없는 온보딩 동작이에요.",
+      "en": "Unknown onboarding action.",
+      "ja": "不明なオンボーディング操作です。"
+    },
+    "askRejected": {
+      "ko": "요청을 처리할 수 없었어요.",
+      "en": "Sorry, your request couldn't be processed.",
+      "ja": "リクエストを処理できませんでした。"
+    },
+    "askFailed": {
+      "ko": "요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.",
+      "en": "Couldn't complete your request. Please try again in a moment.",
+      "ja": "リクエストを処理できませんでした。しばらくしてから再試行してください。"
+    },
+    "providerPaused": {
+      "ko": "⏸️ 수신을 잠시 멈췄어요.",
+      "en": "⏸️ Paused receiving requests.",
+      "ja": "⏸️ 受信を一時停止しました。"
+    },
+    "providerResumed": {
+      "ko": "▶️ 수신을 다시 시작했어요.",
+      "en": "▶️ Resumed receiving requests.",
+      "ja": "▶️ 受信を再開しました。"
+    },
+    "providerLeft": {
+      "ko": "👋 풀에서 나갔어요. 언제든 다시 참여할 수 있어요.",
+      "en": "👋 You left the pool. You can rejoin anytime.",
+      "ja": "👋 プールから退出しました。いつでも再参加できます。"
+    },
+    "providerNoAgent": {
+      "ko": "연결된 에이전트가 없어요. 에이전트를 실행한 뒤 다시 시도해 주세요.",
+      "en": "No connected agent. Start your agent and try again.",
+      "ja": "接続中のエージェントがありません。エージェントを起動して再試行してください。"
     },
     "niaSetupBotMissingPermission": {
       "ko": "봇에 '채널 관리' 권한이 필요해요. 서버 설정에서 권한을 준 뒤 다시 시도해 주세요.",
@@ -118,6 +188,56 @@
       "ko": "🎨 **그림을 만드는 곳이에요!**\n\n`/그림`(imagine) 명령에 만들고 싶은 장면을 적으면 니아가 이미지를 만들어 줘요.\n\n**좋은 프롬프트 팁**\n• 무엇을: 주제를 구체적으로 (예: 빨간 우산을 든 소녀)\n• 어디서: 배경/장소 (예: 비 오는 도쿄 거리, 밤)\n• 분위기: 따뜻한, 몽환적인, 시네마틱한\n• 스타일: 수채화, 픽셀아트, 애니메이션풍, 사진처럼\n• 디테일: 조명·색감·구도 (예: 부드러운 역광, 클로즈업)\n\n예) `/그림 비 오는 밤 도쿄 골목에서 빨간 우산을 든 소녀, 시네마틱, 애니메이션풍, 부드러운 네온 조명`",
       "en": "🎨 **This is where you create images!**\n\nUse the `/imagine` command and describe the scene you want — Nia will generate it.\n\n**Good prompt tips**\n• What: be specific about the subject (e.g. a girl holding a red umbrella)\n• Where: background/place (e.g. a rainy Tokyo street at night)\n• Mood: warm, dreamy, cinematic\n• Style: watercolor, pixel art, anime, photorealistic\n• Details: lighting/color/composition (e.g. soft backlight, close-up)\n\ne.g. `/imagine a girl with a red umbrella in a rainy Tokyo alley at night, cinematic, anime style, soft neon lighting`",
       "ja": "🎨 **ここは画像を作る場所です！**\n\n`/画像`（imagine）コマンドに作りたいシーンを書くと、ニアが画像を作ってくれます。\n\n**良いプロンプトのコツ**\n• 何を: 主題を具体的に（例: 赤い傘を持った少女）\n• どこで: 背景/場所（例: 雨の東京の通り、夜）\n• 雰囲気: 温かい、幻想的、シネマティック\n• スタイル: 水彩、ピクセルアート、アニメ風、写真のように\n• ディテール: 照明・色・構図（例: 柔らかい逆光、クローズアップ）\n\n例) `/画像 雨の夜の東京の路地で赤い傘を持つ少女、シネマティック、アニメ風、柔らかいネオンの照明`"
+    },
+    "helpTitle": {
+      "ko": "**NEXA AI 네트워크 — 도움말**",
+      "en": "**NEXA AI Network — Help**",
+      "ja": "**NEXA AIネットワーク — ヘルプ**"
+    },
+    "helpIntro": {
+      "ko": "커뮤니티 멤버들의 PC LLM 을 모아 공정하게 분배합니다(금전 거래 아님).",
+      "en": "We pool community members' PC LLMs and share them fairly (no money involved).",
+      "ja": "コミュニティメンバーのPC LLMを集めて公平に分配します（金銭取引ではありません）。"
+    },
+    "helpSectionUser": {
+      "ko": "__유저__",
+      "en": "__Users__",
+      "ja": "__ユーザー__"
+    },
+    "helpSectionProvider": {
+      "ko": "__프로바이더(내 컴퓨터의 AI로 함께 도와주기)__",
+      "en": "__Providers (help out with your PC's AI)__",
+      "ja": "__プロバイダー（自分のPCのAIで一緒に手伝う）__"
+    },
+    "helpSectionAdmin": {
+      "ko": "__관리자__",
+      "en": "__Admins__",
+      "ja": "__管理者__"
+    },
+    "helpSensitiveNotice": {
+      "ko": "_민감정보(비밀번호·API 키 등)는 입력하지 마세요._",
+      "en": "_Do not enter sensitive info (passwords, API keys, etc.)._",
+      "ja": "_機密情報（パスワード・APIキーなど）は入力しないでください。_"
+    },
+    "helpLabelUser": {
+      "ko": "유저",
+      "en": "Users",
+      "ja": "ユーザー"
+    },
+    "helpLabelProvider": {
+      "ko": "프로바이더 (내 컴퓨터의 AI로 함께 도와주기)",
+      "en": "Providers (help out with your PC's AI)",
+      "ja": "プロバイダー（自分のPCのAIで一緒に手伝う）"
+    },
+    "helpLabelAdmin": {
+      "ko": "관리자",
+      "en": "Admins",
+      "ja": "管理者"
+    },
+    "helpFooterSensitive": {
+      "ko": "민감정보(비밀번호·API 키 등)는 절대 입력하지 마세요.",
+      "en": "Never enter sensitive info (passwords, API keys, etc.).",
+      "ja": "機密情報（パスワード・APIキーなど）は絶対に入力しないでください。"
     }
   },
   "web": {

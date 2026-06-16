@@ -1,5 +1,8 @@
 package com.discordassistant.central.platform.discord
 
+import com.discordassistant.central.global.i18n.I18n
+import com.discordassistant.central.global.i18n.Messages
+
 /**
  * 표준 응답 팩토리(차수 13 #184). 아이콘/어조를 한 곳에서 통일해 명령 전반의 에러/성공 메시지를
  * 일관되게 만든다.
@@ -21,5 +24,5 @@ object Replies {
 
     fun cooldown(message: String): Reply = Reply("⏳ $message")
 
-    fun adminDenied(): Reply = reject("이 명령은 관리자만 사용할 수 있습니다.")
+    fun adminDenied(language: String = I18n.DEFAULT): Reply = reject(Messages.get(Messages.Key.ADMIN_DENIED, language))
 }

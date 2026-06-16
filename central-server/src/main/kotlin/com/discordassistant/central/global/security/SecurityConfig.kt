@@ -86,6 +86,11 @@ class SecurityConfig(
                     authorize("/", permitAll) // 설치 랜딩(차수 19)
                     authorize("/install", permitAll)
                     authorize("/install.html", permitAll)
+                    // 법적 페이지(이용약관·개인정보처리방침) — Discord 개발자포털 공개 URL. 인증 없이 열려야 한다.
+                    authorize("/legal", permitAll)
+                    authorize("/legal.html", permitAll)
+                    authorize("/privacy", permitAll)
+                    authorize("/terms", permitAll)
                     authorize("/img/**", permitAll) // 랜딩 이미지(마스코트 등)
                     authorize("/assets/**", permitAll) // Discord 임베드/브랜드 정적 이미지
                     authorize("/i18n/**", permitAll) // 웹 문구 i18n(공개 정적, 설치 랜딩 다국어)

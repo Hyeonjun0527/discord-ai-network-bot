@@ -1,5 +1,6 @@
 package com.discordassistant.central.guild.application
 
+import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.provider.application.ContributionPolicyService
@@ -19,6 +20,7 @@ class GuildRemovalCleanupService(
     private val schedules: ProviderScheduleService,
     private val policy: PolicyService,
     private val channelProfiles: ChannelAiProfileService,
+    private val autoRespondChannels: AutoRespondChannelRegistry,
     private val blocklist: BlocklistService,
 ) {
     private val log = LoggerFactory.getLogger(GuildRemovalCleanupService::class.java)
@@ -29,6 +31,7 @@ class GuildRemovalCleanupService(
         contributionPolicies.deleteProviders(removedProviders)
         schedules.deleteGuild(guildId)
         channelProfiles.clearGuild(guildId)
+        autoRespondChannels.invalidateGuild(guildId) // 자동응답 채널 캐시(Set)도 비워 미세 누수 방지
         blocklist.clearGuild(guildId)
         policy.cleanupGuild(guildId)
         val result = GuildCleanupResult(guildId, closedSessions, removedProviders.size)

@@ -32,15 +32,32 @@ export const START_RANGE = 1;
 export const MAX_RANGE = 6;
 export const MAX_BOMBS = 6;
 
-// Movement: server steps a player one cell every STEP_MS while a direction is held.
-// Speed power-ups reduce the interval (down to MIN_STEP_MS).
-export const BASE_STEP_MS = 150;
-export const MIN_STEP_MS = 70;
-export const STEP_SPEEDUP_MS = 18; // subtracted per speed power-up
+// Movement: the server slides each player at a constant pixel velocity in the held
+// direction (no per-cell stepping/cooldown), so motion is smooth and continuous like
+// Crazy Arcade. Speed power-ups add a flat amount to the velocity (capped).
+export const BASE_SPEED = 3.2 * TILE; // px/sec at speed level 0 (~one cell per 0.31s)
+export const SPEED_PER_LEVEL = 0.55 * TILE; // px/sec added per speed power-up
+export const MAX_SPEED = 6.5 * TILE; // px/sec cap
+
+// When moving along one axis, allow turning onto the perpendicular axis (and entering
+// the next cell) only while within this many px of the lane center — keeps players on
+// the grid but makes cornering forgiving instead of pixel-perfect.
+export const TURN_TOLERANCE = TILE * 0.34;
+
+// Speed (px/sec) for a given number of speed power-ups collected.
+export function speedForLevel(level: number): number {
+  return Math.min(MAX_SPEED, BASE_SPEED + level * SPEED_PER_LEVEL);
+}
 
 // Authoritative simulation tick rate.
 export const TICK_HZ = 30;
 export const TICK_MS = 1000 / TICK_HZ;
+
+// How often the server flushes synced state deltas to clients. Bumped above the
+// Colyseus default (50ms / 20Hz) to 30Hz so continuous px/py updates arrive densely
+// enough for smooth client-side interpolation.
+export const PATCH_HZ = 30;
+export const PATCH_MS = 1000 / PATCH_HZ;
 
 export const MAX_PLAYERS = 4;
 
@@ -69,6 +86,15 @@ export function cellToX(col: number): number {
 }
 export function cellToY(row: number): number {
   return HUD_HEIGHT + row * TILE + TILE / 2;
+}
+
+// Inverse of cellToX/cellToY: derive the grid cell a pixel position sits on. The server
+// drives players by continuous px/py and rounds to a cell for bomb/item/blast logic.
+export function xToCol(px: number): number {
+  return Math.round((px - TILE / 2) / TILE);
+}
+export function yToRow(py: number): number {
+  return Math.round((py - HUD_HEIGHT - TILE / 2) / TILE);
 }
 
 // Spawn corner plus its two adjacent cells stay open so players aren't boxed in.

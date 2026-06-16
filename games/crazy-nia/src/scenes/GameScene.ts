@@ -24,6 +24,11 @@ const ITEM_TEX: Record<ItemKind, string> = {
   speed: TEX.itemSpeed,
 };
 
+// Interpolation smoothing rate (1/sec) for sprite -> server px/py. Higher = snappier.
+const SMOOTH_K = 22;
+// Beyond this px delta we snap instead of interpolate (respawn / round reset teleport).
+const SNAP_DIST = TILE;
+
 // Pure renderer scene. It owns NO gameplay logic: it connects to the authoritative
 // Colyseus room, forwards local keyboard input, and draws whatever the synced server
 // state says. Player pixel positions are interpolated toward the server's px/py target
@@ -123,9 +128,9 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
-  update(): void {
+  update(_time: number, delta: number): void {
     this.pollInput();
-    if (this.room && this.stateReady) this.render();
+    if (this.room && this.stateReady) this.render(delta);
     this.renderHud();
   }
 
@@ -155,10 +160,10 @@ export class GameScene extends Phaser.Scene {
 
   // --- Rendering (state -> sprites) -----------------------------------------
 
-  private render(): void {
+  private render(delta: number): void {
     const state = this.room!.state as any;
     this.renderGrid(state.grid);
-    this.renderPlayers(state.players);
+    this.renderPlayers(state.players, delta);
     this.renderCollection(state.bombs, this.bombSprites, TEX.bomb, 4, (b: any) => `${b.col},${b.row}`);
     this.renderCollection(
       state.explosions,
@@ -197,7 +202,17 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private renderPlayers(players: { forEach: (cb: (p: any, id: string) => void) => void }): void {
+  private renderPlayers(
+    players: { forEach: (cb: (p: any, id: string) => void) => void },
+    delta: number,
+  ): void {
+    // Frame-rate-independent smoothing toward the server's px/py. The server now sends a
+    // continuous, constant-velocity stream at 30Hz, so a light exponential smoothing is
+    // enough; t = 1 - e^(-dt*K) makes the lerp factor independent of the frame rate.
+    // Big jumps (respawn / round reset) are snapped instead of slid.
+    const dtSec = delta / 1000;
+    const smooth = 1 - Math.exp(-dtSec * SMOOTH_K);
+
     const seen = new Set<string>();
     players.forEach((p: any, id: string) => {
       seen.add(id);
@@ -219,9 +234,15 @@ export class GameScene extends Phaser.Scene {
         this.playerLabels.set(id, label);
       }
 
-      // Interpolate toward the server's pixel target for smooth movement.
-      sprite.x = Phaser.Math.Linear(sprite.x, p.px, 0.35);
-      sprite.y = Phaser.Math.Linear(sprite.y, p.py, 0.35);
+      // Frame-rate-independent interpolation toward the server position; snap on jumps
+      // larger than one tile (respawn / round reset) so we don't slide across the map.
+      if (Math.abs(sprite.x - p.px) > SNAP_DIST || Math.abs(sprite.y - p.py) > SNAP_DIST) {
+        sprite.x = p.px;
+        sprite.y = p.py;
+      } else {
+        sprite.x = Phaser.Math.Linear(sprite.x, p.px, smooth);
+        sprite.y = Phaser.Math.Linear(sprite.y, p.py, smooth);
+      }
       sprite.setAlpha(p.alive ? 1 : 0.25);
       const label = this.playerLabels.get(id);
       if (label) {

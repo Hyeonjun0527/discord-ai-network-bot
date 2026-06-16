@@ -7,7 +7,6 @@ import {
   PlayerState,
 } from './state';
 import {
-  BASE_STEP_MS,
   BOMB_FUSE_MS,
   CELL_BLOCK,
   CELL_FLOOR,
@@ -18,16 +17,20 @@ import {
   MAX_BOMBS,
   MAX_PLAYERS,
   MAX_RANGE,
-  MIN_STEP_MS,
+  PATCH_MS,
+  ROWS,
   SPAWNS,
   START_BOMBS,
   START_RANGE,
-  STEP_SPEEDUP_MS,
   TICK_MS,
+  TURN_TOLERANCE,
   cellToX,
   cellToY,
   generateGrid,
   inBounds,
+  speedForLevel,
+  xToCol,
+  yToRow,
   type ItemKind,
 } from '../../shared/constants';
 import {
@@ -40,8 +43,7 @@ import {
 // Per-connection runtime input + movement bookkeeping (not synced — server-internal).
 interface PlayerRuntime {
   dir: Direction | null; // currently held direction, or null
-  speedLevel: number; // speed power-ups collected (shortens step interval)
-  moveCooldownMs: number; // time until the next grid step is allowed
+  speedLevel: number; // speed power-ups collected (raises continuous velocity)
 }
 
 // A live bomb's fuse, tracked server-side (the synced BombState only carries position).
@@ -86,6 +88,10 @@ export class CrazyRoom extends Room<GameState> {
     this.state = new GameState();
     this.resetMap();
 
+    // Flush synced deltas at 30Hz (default is 20Hz) so the continuous px/py stream is
+    // dense enough for smooth client interpolation.
+    this.setPatchRate(PATCH_MS);
+
     this.onMessage<InputMessage>(MSG_INPUT, (client, msg) => {
       const rt = this.runtimes.get(client.sessionId);
       if (!rt) return;
@@ -115,7 +121,7 @@ export class CrazyRoom extends Room<GameState> {
     p.range = START_RANGE;
     p.activeBombs = 0;
     this.state.players.set(client.sessionId, p);
-    this.runtimes.set(client.sessionId, { dir: null, speedLevel: 0, moveCooldownMs: 0 });
+    this.runtimes.set(client.sessionId, { dir: null, speedLevel: 0 });
 
     if (!this.state.roundOver) {
       this.state.status = this.state.players.size < 2 ? '상대를 기다리는 중…' : '대결 시작!';
@@ -147,32 +153,85 @@ export class CrazyRoom extends Room<GameState> {
     this.checkWinCondition();
   }
 
+  // Continuous constant-velocity movement (no per-cell stepping / cooldown / lerp).
+  // px/py are the authoritative position; we slide them at a fixed px/sec in the held
+  // direction, snapping to the lane and stopping at the cell center when the next cell
+  // is blocked. col/row are derived from px/py (round) for bomb/item/blast logic.
   private advancePlayers(dt: number): void {
+    const dtSec = dt / 1000;
     this.state.players.forEach((p, id) => {
       const rt = this.runtimes.get(id);
       if (!rt || !p.alive) return;
 
-      // Smoothly slide the synced pixel position toward the player's current cell so
-      // clients can render movement; the cell itself is the authoritative position.
-      const targetX = cellToX(p.col);
-      const targetY = cellToY(p.row);
-      const stepMs = Math.max(MIN_STEP_MS, BASE_STEP_MS - rt.speedLevel * STEP_SPEEDUP_MS);
-      const lerp = Math.min(1, dt / stepMs);
-      p.px += (targetX - p.px) * lerp;
-      p.py += (targetY - p.py) * lerp;
+      // Keep the synced cell in sync with the current pixel position every tick.
+      p.col = this.clampCol(xToCol(p.px));
+      p.row = this.clampRow(yToRow(p.py));
 
-      rt.moveCooldownMs = Math.max(0, rt.moveCooldownMs - dt);
-      if (!rt.dir || rt.moveCooldownMs > 0) return;
-
+      if (!rt.dir) return;
       const v = DIR_VECTORS[rt.dir];
-      const nc = p.col + v.dc;
-      const nr = p.row + v.dr;
-      if (!this.isWalkable(nc, nr) || this.bombAt(nc, nr)) return;
+      const speed = speedForLevel(rt.speedLevel);
+      const dist = speed * dtSec;
 
-      p.col = nc;
-      p.row = nr;
-      rt.moveCooldownMs = stepMs;
+      if (v.dc !== 0) this.moveHorizontal(p, v.dc, dist);
+      else this.moveVertical(p, v.dr, dist);
+
+      // Re-derive the cell after moving so placeBomb/pickups use the up-to-date cell.
+      p.col = this.clampCol(xToCol(p.px));
+      p.row = this.clampRow(yToRow(p.py));
     });
+  }
+
+  // Slide horizontally by `dist` px in direction `dc` (-1/+1). Snaps onto the row lane
+  // (with cornering tolerance) and stops at the current cell center if the next cell is
+  // blocked.
+  private moveHorizontal(p: PlayerState, dc: number, dist: number): void {
+    const row = this.clampRow(yToRow(p.py));
+    const laneY = cellToY(row);
+    // Pull toward the lane center so a near-aligned player corners smoothly; bail if too
+    // far off-lane to turn onto (shouldn't happen in normal axis-locked play).
+    if (Math.abs(p.py - laneY) > TURN_TOLERANCE) return;
+    p.py = laneY;
+
+    const col = this.clampCol(xToCol(p.px));
+    const nextCol = col + dc;
+    const centerX = cellToX(col);
+    if (!this.cellOpen(nextCol, row)) {
+      // Next cell blocked: advance only up to this cell's center, then stop.
+      if (dc > 0) p.px = Math.min(centerX, p.px + dist);
+      else p.px = Math.max(centerX, p.px - dist);
+      return;
+    }
+    p.px += dc * dist;
+  }
+
+  // Vertical mirror of moveHorizontal.
+  private moveVertical(p: PlayerState, dr: number, dist: number): void {
+    const col = this.clampCol(xToCol(p.px));
+    const laneX = cellToX(col);
+    if (Math.abs(p.px - laneX) > TURN_TOLERANCE) return;
+    p.px = laneX;
+
+    const row = this.clampRow(yToRow(p.py));
+    const nextRow = row + dr;
+    const centerY = cellToY(row);
+    if (!this.cellOpen(col, nextRow)) {
+      if (dr > 0) p.py = Math.min(centerY, p.py + dist);
+      else p.py = Math.max(centerY, p.py - dist);
+      return;
+    }
+    p.py += dr * dist;
+  }
+
+  private cellOpen(col: number, row: number): boolean {
+    return this.isWalkable(col, row) && !this.bombAt(col, row);
+  }
+
+  private clampCol(col: number): number {
+    return col < 0 ? 0 : col > COLS - 1 ? COLS - 1 : col;
+  }
+
+  private clampRow(row: number): number {
+    return row < 0 ? 0 : row > ROWS - 1 ? ROWS - 1 : row;
   }
 
   private advanceBombs(dt: number): void {
@@ -349,7 +408,6 @@ export class CrazyRoom extends Room<GameState> {
       if (rt) {
         rt.dir = null;
         rt.speedLevel = 0;
-        rt.moveCooldownMs = 0;
       }
     });
     this.state.roundOver = false;

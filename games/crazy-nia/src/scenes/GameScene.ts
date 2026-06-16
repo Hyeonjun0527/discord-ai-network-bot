@@ -350,6 +350,23 @@ export class GameScene extends Phaser.Scene {
     state.players.forEach((p: any) =>
       players.push({ id: p.id, slot: p.slot, col: p.col, row: p.row, alive: p.alive, bombs: p.maxBombs, range: p.range }),
     );
+    // Expose local player col/row and whether each neighbour holds a destructible block —
+    // used by the smoke test to navigate toward a crate before dropping a bomb.
+    const me = state.players.get(this.room.sessionId);
+    const cellKind = (col: number, row: number): number => {
+      if (col < 0 || row < 0 || col >= COLS || row >= ROWS) return 1; // treat OOB as solid
+      return state.grid[row * COLS + col] ?? 1;
+    };
+    const mePos = me
+      ? {
+          col: me.col,
+          row: me.row,
+          blockUp: cellKind(me.col, me.row - 1) === CELL_BLOCK,
+          blockDown: cellKind(me.col, me.row + 1) === CELL_BLOCK,
+          blockLeft: cellKind(me.col - 1, me.row) === CELL_BLOCK,
+          blockRight: cellKind(me.col + 1, me.row) === CELL_BLOCK,
+        }
+      : null;
     return {
       connected: true,
       sessionId: this.room.sessionId,
@@ -358,6 +375,7 @@ export class GameScene extends Phaser.Scene {
       explosions: state.explosions.length,
       items: state.items.length,
       status: state.status,
+      me: mePos,
       roundOver: state.roundOver,
       players,
     };

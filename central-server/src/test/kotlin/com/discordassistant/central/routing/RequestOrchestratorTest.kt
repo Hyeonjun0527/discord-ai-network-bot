@@ -409,4 +409,19 @@ class RequestOrchestratorTest {
         assertEquals("qwen-coder", sent.model)
         assertEquals(512, sent.options["num_predict"])
     }
+
+    @Test
+    fun `weighChars 가 있으면 시스템프롬프트 길이가 아닌 사용자 입력 길이로 부담 수준을 판단한다`() {
+        // prompt 는 가드레일·페르소나를 포함해 5000자(HEAVY 기준 충족)지만,
+        // 실제 사용자 입력(weighChars=50)은 LIGHT — weighChars 우선이면 LIGHT provider 도 처리 가능.
+        val reg = newRegistry()
+        fakeProfiles.supported = setOf(ModelBurden.LIGHT) // LIGHT 전용 provider
+        register(reg, 1, "ok")
+
+        val bigSystemPrompt = "x".repeat(5000)
+        val r = orchestrator(reg).handle(input.copy(prompt = bigSystemPrompt, weighChars = 50))
+
+        assertEquals(RequestState.COMPLETED, r.state, r.failReason)
+        fakeProfiles.supported = setOf(ModelBurden.LIGHT, ModelBurden.STANDARD, ModelBurden.HEAVY)
+    }
 }

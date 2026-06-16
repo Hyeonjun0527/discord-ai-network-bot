@@ -169,8 +169,8 @@ class AskCommandHandler(
         return when (result.state) {
             RequestState.COMPLETED ->
                 completedAskReply(result.text.orEmpty().withWebSources(result.sources), modelChoice, result.requestId)
-            RequestState.REJECTED -> Replies.reject(result.failReason ?: "요청이 거부되었습니다.")
-            else -> Replies.warn(result.failReason ?: "요청을 처리하지 못했습니다.")
+            RequestState.REJECTED -> Replies.reject(result.failReason ?: Messages.get(Messages.Key.ASK_REJECTED, guards.lang(ctx)))
+            else -> Replies.warn(result.failReason ?: Messages.get(Messages.Key.ASK_FAILED, guards.lang(ctx)))
         }
     }
 

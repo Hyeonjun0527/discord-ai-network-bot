@@ -54,13 +54,23 @@ class SettingsCommandHandler(
     }
 
     /**
-     * `/설정` 응답을 만든다. DM(길드/채널 sentinel)에서는 "설정 홈" 버튼만 노출한다.
-     * 베이스 URL 이 비어 있으면 빈 link 버튼을 만들 수 없으므로 안내 폴백을 반환한다.
+     * `/설정` 응답을 만든다. 공개 명령이라 누구나 부르지만, 대시보드는 **관리자 전용**(OAuth)이라
+     * 비관리자에게 그 링크를 주면 막혀 헛걸음한다 → 비관리자는 버튼 없이 친절 안내 + 유저 자기-서비스 명령을
+     * 제시한다([SettingsLinks.Unavailable]). 관리자는 기존처럼 설정 홈/이 채널 설정 링크 버튼을 받는다.
+     * DM(길드/채널 sentinel)에서는 "설정 홈" 버튼만 노출하고, 베이스 URL 이 비면 안내 폴백을 반환한다.
      */
     fun settings(ctx: CommandContext): SettingsLinks {
         val language = guards.lang(ctx)
         val title = Messages.get(Messages.Key.SETTINGS_LINK_TITLE, language)
         val description = Messages.get(Messages.Key.SETTINGS_LINK_DESCRIPTION, language)
+        if (!ctx.isAdmin) {
+            // 비관리자: 관리자 전용 대시보드 대신 본인이 바로 쓸 수 있는 명령을 친절히 안내(버튼 없음).
+            return SettingsLinks.Unavailable(
+                title = Messages.get(Messages.Key.SETTINGS_LINK_USER_TITLE, language),
+                description = Messages.get(Messages.Key.SETTINGS_LINK_USER_DESCRIPTION, language),
+                language = language,
+            )
+        }
         val base = publicBase()
         if (base.isBlank()) {
             return SettingsLinks.Unavailable(

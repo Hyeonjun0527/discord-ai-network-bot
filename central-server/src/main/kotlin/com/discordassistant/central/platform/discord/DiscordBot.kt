@@ -3,6 +3,7 @@ package com.discordassistant.central.platform.discord
 import com.discordassistant.central.channelai.application.AutoRespondChannelRegistry
 import com.discordassistant.central.channelai.application.ChannelAiProfileService
 import com.discordassistant.central.global.i18n.I18n
+import com.discordassistant.central.global.i18n.Messages
 import com.discordassistant.central.guild.application.GuildRemovalCleanupService
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingOptOutRepository
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
@@ -369,7 +370,7 @@ class DiscordBot(
                 }
                 "llm-settings" -> {
                     if (!ctx.isAdmin) {
-                        event.reply("⛔ 관리자만 사용할 수 있습니다.").setEphemeral(true).queue()
+                        event.reply(Replies.adminDenied(langOf(ctx)).content).setEphemeral(true).queue()
                     } else {
                         event
                             .replyEmbeds(settingsWizard.settingsEmbed(ctx))
@@ -381,7 +382,10 @@ class DiscordBot(
                 }
                 "llm-channel-profile" -> {
                     if (!ctx.isAdmin) {
-                        event.reply("⛔ 채널 AI 프로필 설정은 관리자만 가능합니다.").setEphemeral(true).queue()
+                        event
+                            .reply("⛔ ${Messages.get(Messages.Key.CHANNEL_PROFILE_ADMIN_ONLY, langOf(ctx))}")
+                            .setEphemeral(true)
+                            .queue()
                     } else {
                         event
                             .reply(channelProfilePanel.channelProfilePanelText(ctx))
@@ -512,6 +516,15 @@ class DiscordBot(
             // 이미지 생성 취소 버튼 customId 접두사(뒤에 requestId). 누르면 ComfyUI /interrupt 유발.
             private const val IMG_CANCEL_PREFIX = "img-cancel:"
             private const val ONBOARD_ACTION_START = "start"
+
+            /**
+             * 온보딩 배너를 보낼 채널 선택(순수 로직 — 단위 테스트 가능). 봇이 쓸 수 있는 시스템 채널을 우선하고,
+             * 없으면(시스템 채널 미설정/권한 없음) 쓰기 가능한 첫 텍스트 채널로 폴백한다. 둘 다 없으면 null(graceful 무시).
+             */
+            fun <T> selectOnboardingChannel(
+                systemChannel: T?,
+                writableChannels: List<T>,
+            ): T? = systemChannel ?: writableChannels.firstOrNull()
         }
 
         override fun onReady(event: ReadyEvent) {
@@ -659,7 +672,7 @@ class DiscordBot(
                 when (event.componentId) {
                     MenuFactory.STATUS -> commands.providerStatus(ctx)
                     MenuFactory.AUTO_APPROVE, "settings:autoapprove" -> commands.toggleAutoApprove(ctx)
-                    else -> Reply("알 수 없는 동작입니다.")
+                    else -> Replies.reject(Messages.get(Messages.Key.UNKNOWN_ACTION, langOf(ctx)))
                 }
             event.reply(reply.content).setEphemeral(true).queue()
         }
@@ -671,7 +684,7 @@ class DiscordBot(
             val value = event.values.firstOrNull().orEmpty()
             // 설정 마법사 전용 드롭다운(언어/모델/자동승인)은 단일 빈 핸들러로 위임.
             if (settingsWizard.handleStringSelect(event, ctx, value)) return
-            event.reply(Reply("알 수 없는 선택입니다.").content).setEphemeral(true).queue()
+            event.reply(Replies.reject(Messages.get(Messages.Key.UNKNOWN_SELECTION, langOf(ctx))).content).setEphemeral(true).queue()
         }
 
         /** 설정 채널 허용(엔티티 선택). */
@@ -684,7 +697,11 @@ class DiscordBot(
 
         /** 봇이 서버에 들어오면 자동 온보딩 패널 게시. */
         override fun onGuildJoin(event: GuildJoinEvent) {
-            val channel = event.guild.systemChannel ?: return // 시스템 채널 없으면 스킵
+            // 시스템 채널이 꺼져 있어도 안내 0 이 되지 않게, 봇이 쓸 수 있는 첫 텍스트 채널로 폴백한다.
+            // 시스템 채널이 있어도 봇이 못 쓰면(권한 없음) 다른 쓰기 가능한 채널을 고른다. 없으면 graceful 무시.
+            val systemChannel = event.guild.systemChannel?.takeIf { it.canTalk() }
+            val writableChannels = event.guild.textChannels.filter { it.canTalk() }
+            val channel = selectOnboardingChannel(systemChannel, writableChannels) ?: return
             // 입장 즉시 자동 실행 금지 — consent-first. 관리자가 "AI 자동 설정하기" 버튼을 눌러야 시작된다.
             channel
                 .sendMessageEmbeds(EmbedFactory.mainMenuEmbed(isAdmin = true))
@@ -940,6 +957,9 @@ class DiscordBot(
                 )
             }
         }
+
+        /** 응답 언어 코드(ko/en/ja): 요청자 로케일 우선 → 길드 기본. 어댑터에서 i18n 문구 직접 조회용. */
+        private fun langOf(ctx: CommandContext): String = ctx.userLang ?: commands.guildLanguage(ctx)
 
         private fun buildCtx(
             guildId: Long,

@@ -1,5 +1,6 @@
 package com.discordassistant.central.platform.discord
 
+import com.discordassistant.central.global.i18n.Messages
 import com.discordassistant.central.guild.application.PolicyService
 import com.discordassistant.central.provider.application.ContributionPolicyService
 import com.discordassistant.central.provider.application.ProviderProtectionService
@@ -25,6 +26,9 @@ class ProviderSelfServiceCommands(
     private val schedule: ProviderScheduleService,
     @param:Value("\${central.relay.public-url:}") private val relayPublicUrl: String,
 ) {
+    /** 응답 언어(ko/en/ja): 요청자 로케일 우선 → 길드 기본. */
+    private fun langOf(ctx: CommandContext): String = ctx.userLang ?: policy.guildLanguage(ctx.guildId)
+
     /** 이 사용자가 ‘연동됨’(앱이 어느 서버든 연결돼 있음)인가 — 가이드 대신 자동 참여로 분기하는 기준. */
     fun providerLinked(ctx: CommandContext): Boolean = registry.isProviderLinked(ctx.userId)
 
@@ -71,13 +75,25 @@ class ProviderSelfServiceCommands(
     }
 
     fun providerPause(ctx: CommandContext): Reply =
-        if (protection.pause(ctx.userId, ctx.guildId)) Reply("⏸️ 일시정지했습니다.") else Reply("연결된 에이전트가 없습니다.")
+        if (protection.pause(ctx.userId, ctx.guildId)) {
+            Reply(Messages.get(Messages.Key.PROVIDER_PAUSED, langOf(ctx)))
+        } else {
+            Reply(Messages.get(Messages.Key.PROVIDER_NO_AGENT, langOf(ctx)))
+        }
 
     fun providerResume(ctx: CommandContext): Reply =
-        if (protection.resume(ctx.userId, ctx.guildId)) Reply("▶️ 재개했습니다.") else Reply("연결된 에이전트가 없습니다.")
+        if (protection.resume(ctx.userId, ctx.guildId)) {
+            Reply(Messages.get(Messages.Key.PROVIDER_RESUMED, langOf(ctx)))
+        } else {
+            Reply(Messages.get(Messages.Key.PROVIDER_NO_AGENT, langOf(ctx)))
+        }
 
     fun providerLeave(ctx: CommandContext): Reply =
-        if (protection.leave(ctx.userId, ctx.guildId)) Reply("👋 풀에서 나갔습니다.") else Reply("연결된 에이전트가 없습니다.")
+        if (protection.leave(ctx.userId, ctx.guildId)) {
+            Reply(Messages.get(Messages.Key.PROVIDER_LEFT, langOf(ctx)))
+        } else {
+            Reply(Messages.get(Messages.Key.PROVIDER_NO_AGENT, langOf(ctx)))
+        }
 
     fun providerStatus(ctx: CommandContext): Reply {
         val s = registry.byProvider(ctx.guildId, ctx.userId) ?: return Reply("연결 상태: 오프라인")

@@ -55,9 +55,9 @@ class CommandServiceCoverageTest
         @Test
         fun `provider pause·resume·leave — 미연결이면 에이전트 없음 안내`() {
             val c = user()
-            assertTrue(commands.providerPause(c).content.contains("연결된 에이전트가 없습니다"))
-            assertTrue(commands.providerResume(c).content.contains("연결된 에이전트가 없습니다"))
-            assertTrue(commands.providerLeave(c).content.contains("연결된 에이전트가 없습니다"))
+            assertTrue(commands.providerPause(c).content.contains("연결된 에이전트가 없어요"))
+            assertTrue(commands.providerResume(c).content.contains("연결된 에이전트가 없어요"))
+            assertTrue(commands.providerLeave(c).content.contains("연결된 에이전트가 없어요"))
         }
 
         @Test

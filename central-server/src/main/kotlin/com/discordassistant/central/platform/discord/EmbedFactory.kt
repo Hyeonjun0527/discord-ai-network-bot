@@ -1,5 +1,7 @@
 package com.discordassistant.central.platform.discord
 
+import com.discordassistant.central.global.i18n.I18n
+import com.discordassistant.central.global.i18n.Messages
 import com.discordassistant.central.provider.domain.model.ProviderState
 import net.dv8tion.jda.api.EmbedBuilder
 import net.dv8tion.jda.api.entities.MessageEmbed
@@ -94,6 +96,10 @@ object EmbedFactory {
         locale: DiscordLocale = DiscordLocale.KOREAN,
     ): MessageEmbed {
         fun c(base: String) = "`/${CommandLoc.localName(base, locale)}`"
+        // 섹션 헤더는 보는 사람 로케일로 i18n(명령명은 c() 로 로케일화). 미지원 로케일이면 기본어 폴백.
+        val lang = I18n.resolveOrNull(locale) ?: I18n.DEFAULT
+
+        fun m(key: Messages.Key) = Messages.get(key, lang)
         val b =
             EmbedBuilder()
                 .setColor(BLURPLE)
@@ -102,13 +108,13 @@ object EmbedFactory {
                     "커뮤니티 멤버들의 PC 로컬 LLM 을 모아 **공정하게 나눠 쓰는** 봇입니다(금전 거래 아님).\n" +
                         "${c("menu")} 로 언제든 시작 패널을 열 수 있어요.",
                 ).addField(
-                    "${MenuSymbols.ASK} 유저",
+                    "${MenuSymbols.ASK} ${m(Messages.Key.HELP_LABEL_USER)}",
                     "${c("ask")} `<질문>` — 풀의 누군가의 PC AI 로 답변\n" +
                         "${c("models")} ${c("catalog")} — 사용 가능한 모델 수준·목록\n" +
                         "${c("my-usage")} ${c("nia")} ${c("contributions")} — 내 사용량 · 니아 호감도 · 기여 현황",
                     false,
                 ).addField(
-                    "${MenuSymbols.PROVIDER} 프로바이더 (내 컴퓨터의 AI로 함께 도와주기)",
+                    "${MenuSymbols.PROVIDER} ${m(Messages.Key.HELP_LABEL_PROVIDER)}",
                     "${c("provider-join")} — 참여 신청(승인 후 토큰→에이전트 실행)\n" +
                         "${c("provider-status")} ${c("provider-pause")} ${c("provider-resume")} — 상태·가용성\n" +
                         "${c("provider-schedule")} — 가용 시간대 설정",
@@ -116,7 +122,7 @@ object EmbedFactory {
                 )
         if (isAdmin) {
             b.addField(
-                "${MenuSymbols.SETTINGS} 관리자",
+                "${MenuSymbols.SETTINGS} ${m(Messages.Key.HELP_LABEL_ADMIN)}",
                 "${c("llm-settings")} — 설정 패널(언어·모델·채널·자동승인)\n" +
                     "${c("provider-approve")} ${c("providers")} ${c("fairness")} — 승인·현황·공정성\n" +
                     "${c("llm-channel-profile")} — 이 채널 AI 이름·아이콘·말투 설정\n" +
@@ -124,7 +130,7 @@ object EmbedFactory {
                 false,
             )
         }
-        b.setFooter("민감정보(비밀번호·API 키 등)는 절대 입력하지 마세요.")
+        b.setFooter(m(Messages.Key.HELP_FOOTER_SENSITIVE))
         return b.build()
     }
 

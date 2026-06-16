@@ -2,19 +2,24 @@
   "name": "crazy-nia",
   "version": "0.1.0",
   "private": true,
-  "description": "Crazy Arcade / Bomberman style 2D game prototype (P0) — local 2-player, browser, Phaser 3.",
+  "description": "Crazy Arcade / Bomberman style 2D game (P1) — Colyseus authoritative multiplayer, browser, Phaser 3.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "smoke": "node smoke.mjs"
+    "smoke": "node smoke.mjs",
+    "server": "npm --prefix server run start",
+    "server:dev": "npm --prefix server run dev",
+    "dev:all": "concurrently -n server,client -c green,cyan \"npm run server:dev\" \"npm run dev\""
   },
   "dependencies": {
+    "colyseus.js": "^0.16.22",
     "phaser": "^3.80.1"
   },
   "devDependencies": {
+    "concurrently": "^9.1.0",
     "playwright": "^1.61.0",
     "typescript": "^5.4.5",
     "vite": "^5.2.0"

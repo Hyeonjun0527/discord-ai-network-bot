@@ -372,13 +372,26 @@ export class CrazyRoom extends Room<GameState> {
 
   private checkWinCondition(): void {
     if (this.state.roundOver) return;
-    // A round only "ends" once at least two players have joined the battle.
-    if (this.state.players.size < 2) return;
+    if (this.state.players.size === 0) return;
 
     const alive: PlayerState[] = [];
     this.state.players.forEach((p) => {
       if (p.alive) alive.push(p);
     });
+
+    // Solo player (still waiting for an opponent): there's no win/lose, but dying to
+    // your own bomb must NOT permanently lock the player out. Schedule a respawn so
+    // the round recovers instead of leaving them dead forever.
+    if (this.state.players.size < 2) {
+      if (alive.length === 0) {
+        this.state.roundOver = true;
+        this.state.status = '쓰러졌습니다…  —  잠시 후 부활';
+        this.restartTimer = setTimeout(() => this.resetRound(), 2000);
+      }
+      return;
+    }
+
+    // Two or more players: the round ends once at most one is left standing.
     if (alive.length > 1) return;
 
     this.state.roundOver = true;

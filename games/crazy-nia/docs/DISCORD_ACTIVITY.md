@@ -10,6 +10,10 @@ iframe 으로 실행되는 임베드 앱)로 띄우는 **실전 단계별 방법
 > - **코드 = 완료됨** (이 저장소).
 > - **포털 설정 · HTTPS 호스팅 · 시크릿 입력 = 유저(너)** — 아래 체크리스트.
 
+> **앱**: 이 Activity 는 **NEXA 봇과 같은 Discord 애플리케이션**에 등록한다(새 앱 X).
+> `VITE_DISCORD_CLIENT_ID` = NEXA client_id (= central 의 `CONNECT_DISCORD_CLIENT_ID`),
+> 서버 `DISCORD_CLIENT_ID`/`DISCORD_CLIENT_SECRET` = NEXA 앱 자격(= `CONNECT_DISCORD_CLIENT_*`).
+
 ---
 
 ## 0. 동작 개요 (왜 이렇게 하나)

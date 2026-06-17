@@ -160,18 +160,47 @@
     #provider { padding-top: 96px; }
     html.lenis, html.lenis body { height: auto; }
     .lenis.lenis-smooth { scroll-behavior: auto !important; }
-    @media (max-width: 720px) {
-      /* 모바일: 데스크톱 전용 시네마틱 스크롤-스크럽(3D 패널 + beat 오버레이)을 끄고
-         정적 히어로(beat 0: 헤드라인+CTA)만 깔끔히 세로 노출 — 패널/텍스트 겹침·가로 잘림 제거. */
+    /* ── 모바일/단소(短) 뷰포트: 시네마틱 강등 ──
+       데스크톱 전용 시네마틱(560vh sticky pin + 3D 패널 스크럽 + 스크롤 페이드)을 일반
+       세로 스택으로 강등한다. 모든 beat(히어로 + STEP 3종 + 최종 CTA)를 정상 흐름에 노출
+       → 콘텐츠/다운로드 CTA 손실 0, 패널·텍스트 겹침/가로 잘림 0.
+       조건이 OR 인 이유: 세로 폰은 max-width 로, 가로 폰(폭>720·높이 낮음)은 max-height 로
+       잡아 가로/세로 양쪽 모두 커버. JS 가드도 동일 조건이라 Lenis/Three.js 를 함께 끔. */
+    @media (max-width: 720px), (max-height: 600px) {
+      /* topbar: position:fixed 해제 → 흐름에 포함(relative). 고정 헤더가 히어로를 덮던
+         겹침(스샷의 헤드라인 잘림)과 투명 하단 배경 비침을 동시에 제거. */
+      .cine-topbar { position: relative; inset: auto; top: auto; }
+
       #cine { height: auto; }
-      .cine-stage { position: relative; height: auto; min-height: auto; overflow: visible; padding: 92px 0 20px; }
-      #hero3dCanvas, .cine-vignette, .cine-noise, .cine-telemetry, .cine-bottom, .cine-progress, .hud { display: none !important; }
-      .beat { display: none; }
-      .beat[data-beat="0"] { display: block; position: relative; left: auto; right: auto; bottom: auto; max-width: 100%; padding: 0 22px; opacity: 1 !important; filter: none !important; transform: none !important; }
-      .beat h1 { font-size: clamp(30px, 8.5vw, 40px); line-height: 1.08; }
+      .cine-stage {
+        position: relative; height: auto; min-height: 0; overflow: visible;
+        display: flex; flex-direction: column; align-items: center;
+        gap: 34px; padding: 24px 0 4px;
+      }
+      #hero3dCanvas, .cine-vignette, .cine-noise, .cine-telemetry,
+      .cine-bottom, .cine-progress, .hud { display: none !important; }
+      /* 모든 beat 를 정적으로 표시 — 절대배치/페이드/블러/변형 해제. 가로 단말에서
+         폭이 넓어도 텍스트가 끝까지 늘어나지 않도록 max-width 로 가운데 정렬. */
+      .beat {
+        position: relative; left: auto; right: auto; bottom: auto; top: auto;
+        width: 100%; max-width: 640px; padding: 0 22px; will-change: auto;
+        opacity: 1 !important; filter: none !important; transform: none !important;
+      }
+      .beat h1 { font-size: clamp(30px, 8.2vw, 44px); line-height: 1.1; }
+      .beat h2 { font-size: clamp(24px, 6.4vw, 36px); line-height: 1.14; }
       .beat p { font-size: 15px; }
-      .cine-telemetry { left: 24px; right: 24px; }
-      .cine-topbar { padding: 12px 16px; }
+      .beat .hero-actions { margin-top: 22px; }
+      .beat .hero-actions .btn { width: 100%; }
+    }
+    @media (max-width: 720px) {
+      /* 좁은 폭(세로 폰) 전용 헤더 정리 — 가로 폰(폭>720)은 기본 가로 nav 가 그대로 들어맞음 */
+      .topbar { padding: 10px 14px; gap: 8px 12px; row-gap: 8px; flex-wrap: wrap; }
+      .brand-logo { width: 36px; height: 36px; }
+      .brand-name { font-size: 14px; } .brand-sub { font-size: 10px; }
+      .top-actions { margin-left: auto; }
+      #langSel { padding: 8px 30px 8px 11px; }
+      .nav { order: 3; width: 100%; margin-left: 0; gap: 2px; }
+      .nav a { padding: 7px 10px; font-size: 13.5px; }
     }
 
     /* ── Feature steps ── */
@@ -265,8 +294,6 @@
     }
     @media (max-width: 720px) {
       .page { width: min(100%, calc(100% - 24px)); margin-top: 12px; }
-      .topbar { padding: 14px; flex-wrap: wrap; }
-      .nav { order: 3; width: 100%; }
       .hero h1 { font-size: 38px; } .hero p { font-size: 15px; }
       .feat-text { max-width: 100%; }
       .stats { grid-template-columns: 1fr; }
@@ -574,8 +601,8 @@
     // 시네마틱 스크롤 진행도(0~1) → SEQ 카운터·진행바·텍스트 비트 페이드. window.__cineP 로 Three.js 패널 스크럽과 공유.
     (function cinematic() {
       const cine = document.getElementById('cine'); if (!cine) return;
-      // 모바일: 정적 히어로(CSS @media 720)로 대체 — 스크롤 스크럽/Lenis/beat 페이드 비활성.
-      if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) return;
+      // 모바일/가로 폰/단소 뷰포트: 정적 스택(CSS @media)으로 대체 — 스크럽/Lenis/beat 페이드 비활성. (CSS 와 동일 OR 조건)
+      if (window.matchMedia && window.matchMedia('(max-width: 720px), (max-height: 600px)').matches) return;
       const seqEl = document.getElementById('seq'), fillEl = document.getElementById('cineFill'), hintEl = document.getElementById('scrollHint');
       const beats = [...document.querySelectorAll('.beat')];
       const TOTAL = 169, N = beats.length || 1;
@@ -752,8 +779,8 @@
     (async function init() {
       // WebGL 미지원·CDN 실패·모션축소 시 → 그냥 패널 없이(빈 채로). webp 폴백 안 띄움.
       if (reduceMotion) return;
-      // 모바일: 정적 히어로 — 3D 패널 비활성(성능·겹침 방지).
-      if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) return;
+      // 모바일/가로 폰/단소 뷰포트: 3D 패널 비활성(성능·겹침 방지). (CSS 와 동일 OR 조건)
+      if (window.matchMedia && window.matchMedia('(max-width: 720px), (max-height: 600px)').matches) return;
       let THREE;
       try { THREE = await import('three'); } catch (e) { return; }
       let renderer;

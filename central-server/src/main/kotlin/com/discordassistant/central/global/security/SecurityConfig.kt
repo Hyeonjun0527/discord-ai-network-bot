@@ -91,6 +91,8 @@ class SecurityConfig(
                     authorize("/legal.html", permitAll)
                     authorize("/privacy", permitAll)
                     authorize("/terms", permitAll)
+                    authorize("/sitemap.xml", permitAll)
+                    authorize("/robots.txt", permitAll)
                     authorize("/img/**", permitAll) // 랜딩 이미지(마스코트 등)
                     authorize("/assets/**", permitAll) // Discord 임베드/브랜드 정적 이미지
                     authorize("/i18n/**", permitAll) // 웹 문구 i18n(공개 정적, 설치 랜딩 다국어)

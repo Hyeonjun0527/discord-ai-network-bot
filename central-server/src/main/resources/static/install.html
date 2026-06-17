@@ -160,7 +160,19 @@
     #provider { padding-top: 96px; }
     html.lenis, html.lenis body { height: auto; }
     .lenis.lenis-smooth { scroll-behavior: auto !important; }
-    @media (max-width: 720px) { .beat { left: 22px; right: 22px; bottom: 15vh; } .cine-telemetry { left: 24px; right: 24px; } .cine-topbar { padding: 12px 16px; } }
+    @media (max-width: 720px) {
+      /* 모바일: 데스크톱 전용 시네마틱 스크롤-스크럽(3D 패널 + beat 오버레이)을 끄고
+         정적 히어로(beat 0: 헤드라인+CTA)만 깔끔히 세로 노출 — 패널/텍스트 겹침·가로 잘림 제거. */
+      #cine { height: auto; }
+      .cine-stage { position: relative; height: auto; min-height: auto; overflow: visible; padding: 92px 0 20px; }
+      #hero3dCanvas, .cine-vignette, .cine-noise, .cine-telemetry, .cine-bottom, .cine-progress, .hud { display: none !important; }
+      .beat { display: none; }
+      .beat[data-beat="0"] { display: block; position: relative; left: auto; right: auto; bottom: auto; max-width: 100%; padding: 0 22px; opacity: 1 !important; filter: none !important; transform: none !important; }
+      .beat h1 { font-size: clamp(30px, 8.5vw, 40px); line-height: 1.08; }
+      .beat p { font-size: 15px; }
+      .cine-telemetry { left: 24px; right: 24px; }
+      .cine-topbar { padding: 12px 16px; }
+    }
 
     /* ── Feature steps ── */
     .feat-head { text-align: center; margin: 56px 0 28px; }
@@ -562,6 +574,8 @@
     // 시네마틱 스크롤 진행도(0~1) → SEQ 카운터·진행바·텍스트 비트 페이드. window.__cineP 로 Three.js 패널 스크럽과 공유.
     (function cinematic() {
       const cine = document.getElementById('cine'); if (!cine) return;
+      // 모바일: 정적 히어로(CSS @media 720)로 대체 — 스크롤 스크럽/Lenis/beat 페이드 비활성.
+      if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) return;
       const seqEl = document.getElementById('seq'), fillEl = document.getElementById('cineFill'), hintEl = document.getElementById('scrollHint');
       const beats = [...document.querySelectorAll('.beat')];
       const TOTAL = 169, N = beats.length || 1;
@@ -738,6 +752,8 @@
     (async function init() {
       // WebGL 미지원·CDN 실패·모션축소 시 → 그냥 패널 없이(빈 채로). webp 폴백 안 띄움.
       if (reduceMotion) return;
+      // 모바일: 정적 히어로 — 3D 패널 비활성(성능·겹침 방지).
+      if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) return;
       let THREE;
       try { THREE = await import('three'); } catch (e) { return; }
       let renderer;

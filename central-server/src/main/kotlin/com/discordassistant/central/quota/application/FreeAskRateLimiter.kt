@@ -4,12 +4,12 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
 /**
- * /무료질문(free-ask, 관리자 클라우드 AI 키로 서버 전체 무료 제공)의 **인당 rate limit**.
- * 무료 자원 남용을 막기 위해 사용자별로 시간당·일일 횟수를 제한한다(기본: 1시간 30회, 하루 100회).
+ * /질문 의 **무료 클라우드 폴백**(로컬 프로바이더 부재 시 관리자 클라우드 AI 키로 서버 전체 무료 제공)의
+ * **인당 rate limit**. 무료 자원 남용을 막기 위해 사용자별로 시간당·일일 횟수를 제한한다(기본: 1시간 30회, 하루 100회).
  *
- * 일반 요청자 일일 쿼터([QuotaService], 길드 단위 기본 20/일)와는 **별개**다 — 무료질문은 외부 클라우드
+ * 일반 요청자 일일 쿼터([QuotaService], 길드 단위 기본 20/일)와는 **별개**다 — 클라우드 폴백은 외부 클라우드
  * 비용/할당을 쓰므로 더 촘촘한 시간당 제한까지 둔다. 카운터는 [RateLimitStore](기본 인메모리, Redis 분산
- * 가능)에 위임 — 기존 [RateLimiter] 와 동일 인프라.
+ * 가능)에 위임 — 기존 [RateLimiter] 와 동일 인프라. (설정 키는 호환을 위해 central.freeask.* 유지)
  */
 @Component
 class FreeAskRateLimiter(

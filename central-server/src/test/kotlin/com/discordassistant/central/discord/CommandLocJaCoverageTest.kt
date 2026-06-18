@@ -24,7 +24,10 @@ class CommandLocJaCoverageTest {
         val cmd = Commands.slash("ask", "커뮤니티 로컬 AI 에게 질문합니다")
         CommandLoc.localize(cmd)
         assertEquals("質問", cmd.nameLocalizations.toMap()[DiscordLocale.JAPANESE])
-        assertEquals("コミュニティのローカルAIに質問します", cmd.descriptionLocalizations.toMap()[DiscordLocale.JAPANESE])
+        assertEquals(
+            "AIに質問します(既定は無料クラウド・ローカル接続時はローカル)",
+            cmd.descriptionLocalizations.toMap()[DiscordLocale.JAPANESE],
+        )
         // 일본어 클라이언트가 보는 명령 이름과 localName 일치(도움말 내 `/명령` 표기용)
         assertEquals("質問", CommandLoc.localName("ask", DiscordLocale.JAPANESE))
     }

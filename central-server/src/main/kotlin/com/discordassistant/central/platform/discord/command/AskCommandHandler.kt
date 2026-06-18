@@ -51,11 +51,15 @@ class AskCommandHandler(
     private val multiResponse: MultiResponseService,
     private val qualityFeedback: AiQualityFeedbackService,
     private val niaAffinity: NiaAffinityService,
+    // 무료 클라우드 폴백(로컬 프로바이더 부재 시 glm-5.1)의 인당 rate limit — 무료 자원 남용 방지.
+    private val freeCloudRateLimiter: com.discordassistant.central.quota.application.FreeAskRateLimiter,
     private val webSearchAugmenter: com.discordassistant.central.knowledge.application.WebSearchAugmenter =
         com.discordassistant.central.knowledge.application.NoWebSearch,
     private val guards: SharedCommandGuards,
 ) {
     companion object {
+        // 무료 클라우드 기본 모델(z.ai/GLM). 로컬 프로바이더가 없거나 처리 불가일 때 /질문 이 자동으로 이 모델로 답한다.
+        const val FREE_CLOUD_MODEL = "glm-5.1"
         private const val DISCORD_REPLY_SAFE_LIMIT = 1850
         private const val PSEUDO_STREAM_MIN_CHARS = 600
         private val PSEUDO_STREAM_STEPS = listOf(33, 66, 100)
@@ -137,8 +141,56 @@ class AskCommandHandler(
                 ?: requestedModel?.trim()?.ifBlank { null }
                 ?: routingPolicy.preferredModel
         val responseMode = normalizeAskResponseMode(requestedResponseMode) ?: routingPolicy.responseMode
-        val runtimeMultiResponseRun =
-            startRuntimeMultiResponseObservation(ctx, prompt, responseMode, routingPolicy.maxCandidates)
+
+        // 기본은 무료 클라우드(☁️). 단 커뮤니티 로컬 프로바이더가 있고 클라우드 모델을 명시적으로 고르지
+        // 않았다면 로컬을 우선(🖥️) 시도하고, 로컬이 처리 못하면(FAILED) 무료 클라우드로 폴백한다.
+        val preferLocal = !isCloudModel(selectedModel) && hasLocalProvider(ctx.guildId)
+        if (preferLocal) {
+            val local = runOrchestrator(ctx, prompt, selectedModel, responseMode, webSearch, routingPolicy.maxCandidates)
+            when (local.state) {
+                RequestState.COMPLETED ->
+                    return completedAskReply(
+                        local.text.orEmpty().withWebSources(local.sources),
+                        modelChoice,
+                        local.requestId,
+                        usedCloud = false,
+                    )
+                // 차단/한도/채널금지/권한 등 정책 거부는 클라우드로 우회하지 않는다(폴백해도 동일하게 거부됨).
+                RequestState.REJECTED ->
+                    return Replies.reject(local.failReason ?: Messages.get(Messages.Key.ASK_REJECTED, guards.lang(ctx)))
+                else -> Unit // FAILED(로컬 프로바이더 처리 불가) → 무료 클라우드 폴백
+            }
+        }
+
+        // 무료 클라우드 z.ai(glm-5.1) — 기본 경로이자 로컬 폴백. 무료 자원 인당 상한 적용.
+        freeCloudRateLimiter.check(ctx.userId)?.let { return Replies.reject(it) }
+        val cloud = runOrchestrator(ctx, prompt, FREE_CLOUD_MODEL, responseMode, webSearch, routingPolicy.maxCandidates)
+        return when (cloud.state) {
+            RequestState.COMPLETED ->
+                completedAskReply(cloud.text.orEmpty().withWebSources(cloud.sources), modelChoice, cloud.requestId, usedCloud = true)
+            RequestState.REJECTED -> Replies.reject(cloud.failReason ?: Messages.get(Messages.Key.ASK_REJECTED, guards.lang(ctx)))
+            else -> Replies.warn(cloud.failReason ?: Messages.get(Messages.Key.ASK_FAILED, guards.lang(ctx)))
+        }
+    }
+
+    /**
+     * 길드 풀에 로컬(비-클라우드) 프로바이더가 있는지 — /질문 의 로컬 우선 판단(없으면 무료 클라우드 기본).
+     * "클라우드 전용"은 광고 모델이 있고 그게 전부 클라우드(glm-*)인 경우만. 모델 미광고(빈 목록)·
+     * 비-클라우드 모델 보유 프로바이더는 로컬로 본다.
+     */
+    private fun hasLocalProvider(guildId: Long): Boolean =
+        registry.byGuild(guildId).any { session -> session.capability.models.none { isCloudModel(it) } }
+
+    /** 한 번의 오케스트레이터 호출(+멀티응답 런타임 관측). /질문 의 로컬 1차·클라우드 2차에서 재사용. */
+    private fun runOrchestrator(
+        ctx: CommandContext,
+        prompt: String,
+        model: String?,
+        responseMode: String,
+        webSearch: Boolean,
+        maxCandidates: Int,
+    ): com.discordassistant.central.routing.domain.model.OrchestrationResult {
+        val run = startRuntimeMultiResponseObservation(ctx, prompt, responseMode, maxCandidates)
         val effectivePrompt = prompt.composeExecutionPrompt(ctx, responseMode)
         val startedAtNanos = System.nanoTime()
         val result =
@@ -150,29 +202,27 @@ class AskCommandHandler(
                     effectivePrompt,
                     ctx.roleIds,
                     isAdmin = ctx.isAdmin,
-                    preferredModel = selectedModel,
+                    preferredModel = model,
                     responseMode = responseMode,
                     webSearch = webSearch && webSearchAugmenter.isEnabled(),
                     // 부담 수준은 사용자 실제 질문 길이로 — 항상 주입되는 시스템 프롬프트(정체성·few-shot)가 등급을 부풀리지 않게.
                     weighChars = prompt.length,
                 ),
             )
-        runtimeMultiResponseRun?.let { run ->
+        run?.let {
             recordRuntimeMultiResponseResult(
-                runId = run.id,
+                runId = it.id,
                 providerId = result.providerId,
-                modelName = selectedModel,
+                modelName = model,
                 result = result,
                 latencyMs = elapsedMillis(startedAtNanos),
             )
         }
-        return when (result.state) {
-            RequestState.COMPLETED ->
-                completedAskReply(result.text.orEmpty().withWebSources(result.sources), modelChoice, result.requestId)
-            RequestState.REJECTED -> Replies.reject(result.failReason ?: Messages.get(Messages.Key.ASK_REJECTED, guards.lang(ctx)))
-            else -> Replies.warn(result.failReason ?: Messages.get(Messages.Key.ASK_FAILED, guards.lang(ctx)))
-        }
+        return result
     }
+
+    /** 클라우드(무료 z.ai/GLM) 모델인지. 출처 아이콘(☁️/🖥️)·폴백 재시도 판단에 쓴다. */
+    private fun isCloudModel(model: String?): Boolean = model?.trim()?.lowercase()?.startsWith("glm") == true
 
     /**
      * /그림(imagine) — 이미지 생성 가능한 프로바이더의 로컬 ComfyUI(Anima)로 이미지를 만든다.
@@ -237,8 +287,13 @@ class AskCommandHandler(
         answer: String,
         modelChoice: ModelChoiceDecision,
         requestId: String?,
+        usedCloud: Boolean,
     ): Reply {
-        val fullContent = answer.withModelFallbackNotice(modelChoice)
+        // 출처 아이콘 하나만 앞에 붙인다(문구 안내 없이): ☁️=무료 클라우드, 🖥️=커뮤니티 로컬 프로바이더.
+        // 클라우드 폴백 답변엔 "모델 대체" 문구를 더하지 않는다(아이콘이 출처를 대신 알려줌).
+        val sourceIcon = if (usedCloud) "☁️" else "🖥️"
+        val body = if (usedCloud) answer else answer.withModelFallbackNotice(modelChoice)
+        val fullContent = "$sourceIcon $body"
         val plan =
             runCatching {
                 if (fullContent.length >= PSEUDO_STREAM_MIN_CHARS) {

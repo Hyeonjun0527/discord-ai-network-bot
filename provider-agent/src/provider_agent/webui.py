@@ -1869,6 +1869,13 @@ def _set_macos_app_identity(name: str) -> None:
 
     if sys.platform != "darwin":
         return
+    # 번들 .app 으로 실행되면 Contents/Resources/app.icns(둥근 모서리 + Apple 여백)가 dock·
+    # Cmd+Tab 아이콘과 앱 이름을 이미 올바르게 제공한다. 런타임 setApplicationIconImage 로 덮어쓰면
+    # 여백 없는 정사각 app-icon.png 로 바뀌어 "실행 전엔 둥근데 실행하면 각진 사각형" 회귀가 난다.
+    # 그래서 frozen(.app)에서는 아이덴티티를 번들에 맡기고 손대지 않는다. 비번들(dev python)
+    # 프로세스만 'Python'/로켓 아이콘으로 떠서 교정이 필요하다.
+    if getattr(sys, "frozen", False):
+        return
     try:
         from Foundation import NSBundle  # type: ignore[import-not-found]
 

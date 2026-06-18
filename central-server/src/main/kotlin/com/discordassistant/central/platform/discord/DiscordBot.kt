@@ -32,6 +32,7 @@ import net.dv8tion.jda.api.events.session.ReadyEvent
 import net.dv8tion.jda.api.events.session.ShutdownEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.Interaction
+import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.components.ActionRow
 import net.dv8tion.jda.api.interactions.components.buttons.Button
@@ -118,6 +119,9 @@ class DiscordBot(
     private val settingsWizard: SettingsWizardHandler,
     // 자동응답 채널 단위 비용 캡(분당 상한)에 재사용 — per-user ask 쿨다운과 같은 빈.
     private val rateLimiter: RateLimiter,
+    // /그림 결과를 공개 채널에 올리기 전 본인 확인 게이트(설정 영속 + 완성 이미지 임시 보관).
+    private val imaginePostConfirm: ImaginePostConfirmService,
+    private val pendingImagePosts: PendingImagePostStore,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
@@ -216,6 +220,8 @@ class DiscordBot(
                 onboardingOptOuts,
                 settingsWizard,
                 rateLimiter,
+                imaginePostConfirm,
+                pendingImagePosts,
                 mentionAskEnabled = messageContentIntent,
                 messageContentIntentEnabled = messageContentIntent,
                 onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
@@ -284,6 +290,8 @@ class DiscordBot(
         private val onboardingOptOuts: GuildOnboardingOptOutRepository,
         private val settingsWizard: SettingsWizardHandler,
         private val rateLimiter: RateLimiter,
+        private val imaginePostConfirm: ImaginePostConfirmService,
+        private val pendingImagePosts: PendingImagePostStore,
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
@@ -364,7 +372,16 @@ class DiscordBot(
             // 공개 명령만 비-ephemeral, 나머지는 ephemeral. defer 시점에 결정.
             val useWebhookProfile = event.name == "ask" && channelProfiles.get(ctx.guildId, ctx.channelId) != null
             val isPublic = event.name in PUBLIC_COMMANDS
-            event.deferReply(if (useWebhookProfile) true else !isPublic).queue()
+            // /그림 게시 확인 게이트: confirm 옵션이 주어지면 먼저 유저 설정을 갱신한 뒤, 그 설정대로 이번 요청을 처리한다.
+            // 게이트 ON 이면 전 과정을 본인만 보이게(ephemeral) 진행하고 완성 후 게시 확인 버튼을 띄운다(아래 work 에서 분기).
+            val imagineGateOn =
+                if (event.name == "imagine") {
+                    event.getOption("confirm")?.asBoolean?.let { imaginePostConfirm.setEnabled(ctx.userId, it) }
+                    imaginePostConfirm.isEnabled(ctx.userId)
+                } else {
+                    false
+                }
+            event.deferReply(if (useWebhookProfile || imagineGateOn) true else !isPublic).queue()
             val work =
                 Runnable {
                     try {
@@ -394,9 +411,14 @@ class DiscordBot(
                             } else {
                                 dispatch(event, ctx)
                             }
-                        if (useWebhookProfile) {
+                        if (imagineGateOn && reply.imagePng != null) {
+                            // 게이트 ON: 채널에 바로 붙이지 않고 본인만 보이는 미리보기 + 게시/버리기/안묻기 버튼을 띄운다.
+                            renderImaginePostConfirm(event, ctx, reply)
+                        } else if (useWebhookProfile) {
                             answers.completePublicAnswerWithProfileFallback(event.hook, event.channel, ctx, reply)
                         } else {
+                            // 게이트 OFF(기존 동작) 또는 게이트 ON 이라도 imagePng==null(실패/취소) → 그대로 편집.
+                            // 게이트 ON 폴백은 hook 이 ephemeral 이라 본인만 본다.
                             answers.editOriginalWithPseudoStream(event.hook, reply)
                         }
                     } catch (e: Exception) {
@@ -407,6 +429,117 @@ class DiscordBot(
                 }
             // 추론(ask/imagine)은 길어서 게이트웨이 스레드 밖에서. 나머지 빠른 명령은 그대로 실행.
             if (event.name in SLOW_COMMANDS) slowCommandExecutor.execute(work) else work.run()
+        }
+
+        /**
+         * /그림 게시 확인 게이트 ON 경로: 완성 이미지를 본인만 보이는(ephemeral) 미리보기로 보여주고,
+         * 채널 게시에 필요한 PNG/캡션/대상 채널을 토큰으로 잠깐 보관한 뒤 버튼 3개(게시/버리기/안묻기)를 단다.
+         * 토큰은 PendingImagePostStore 가 소유·TTL 관리하며, 버튼 클릭 시 onButtonInteraction 에서 꺼내 처리한다.
+         */
+        private fun renderImaginePostConfirm(
+            event: SlashCommandInteractionEvent,
+            ctx: CommandContext,
+            reply: Reply,
+        ) {
+            val bytes = reply.imagePng ?: return // 호출부에서 null 아님을 보장하지만 방어적으로.
+            val token =
+                pendingImagePosts.put(
+                    pngBytes = bytes,
+                    caption = reply.content,
+                    guildId = ctx.guildId,
+                    channelId = event.channel.idLong,
+                    userId = ctx.userId,
+                )
+            event.hook
+                .editOriginal("🖼️ 그림이 완성됐어요! 본인만 보이는 미리보기예요.\n채널에 올릴지 선택해 주세요.")
+                .setFiles(
+                    net.dv8tion.jda.api.utils.FileUpload
+                        .fromData(bytes, "image.png"),
+                ).setActionRow(
+                    Button.success("$IMG_POST_PREFIX$token", "✅ 채널에 게시"),
+                    Button.danger("$IMG_DISCARD_PREFIX$token", "🗑️ 버리기"),
+                    Button.secondary("$IMG_MUTE_PREFIX$token", "🔕 게시하고 다음부터 안 묻기"),
+                ).queue({}, { e ->
+                    log.warn("이미지 게시 확인 미리보기 응답 실패: {}", e.message)
+                    event.hook.editOriginal("⚠️ 이미지를 전송하지 못했어요.").queue({}, {})
+                })
+        }
+
+        /** /그림 게시 확인 버튼(게시/버리기/안묻기) 처리. 토큰 소유자 검증·TTL 은 PendingImagePostStore 가 한다. */
+        private fun handleImaginePostButton(event: ButtonInteractionEvent) {
+            val userId = event.user.idLong
+            // 채널 게시(complete, 블로킹)는 큰 이미지에서 수백 ms~수 초 걸릴 수 있다. 먼저 deferEdit 로 ack 해
+            // 버튼 인터랙션 3초 타임아웃("상호작용 실패")을 없앤 뒤, 결과는 hook 으로 편집한다.
+            event.deferEdit().queue({}, {})
+            val hook = event.hook
+            when {
+                event.componentId.startsWith(IMG_POST_PREFIX) -> {
+                    val token = event.componentId.removePrefix(IMG_POST_PREFIX)
+                    val pending = pendingImagePosts.take(token, userId)
+                    if (pending == null) {
+                        editExpired(hook)
+                        return
+                    }
+                    val msg =
+                        if (postPendingToChannel(event, pending)) {
+                            "✅ 채널에 게시했어요."
+                        } else {
+                            "⚠️ 채널에 게시하지 못했어요. 권한을 확인하고 다시 시도해 주세요."
+                        }
+                    hook.editOriginal(msg).setReplace(true).queue({}, {})
+                }
+                event.componentId.startsWith(IMG_DISCARD_PREFIX) -> {
+                    val token = event.componentId.removePrefix(IMG_DISCARD_PREFIX)
+                    pendingImagePosts.discard(token, userId)
+                    hook
+                        .editOriginal("🗑️ 버렸어요. 채널엔 아무것도 올라가지 않았어요.")
+                        .setReplace(true)
+                        .queue({}, {})
+                }
+                event.componentId.startsWith(IMG_MUTE_PREFIX) -> {
+                    val token = event.componentId.removePrefix(IMG_MUTE_PREFIX)
+                    val pending = pendingImagePosts.take(token, userId)
+                    if (pending == null) {
+                        editExpired(hook)
+                        return
+                    }
+                    // 이번 이미지는 채널 게시 + 다음부터 확인 안 묻도록 설정 OFF 저장.
+                    imaginePostConfirm.setEnabled(userId, false)
+                    val msg =
+                        if (postPendingToChannel(event, pending)) {
+                            "✅ 게시했어요. 다음부터는 확인 없이 바로 올라가요. (`/그림 confirm:켜기` 로 다시 켤 수 있어요)"
+                        } else {
+                            "⚠️ 채널 게시는 실패했지만 다음부터 확인은 끄도록 했어요. (`/그림 confirm:켜기` 로 다시 켤 수 있어요)"
+                        }
+                    hook.editOriginal(msg).setReplace(true).queue({}, {})
+                }
+            }
+        }
+
+        /** 보관 항목을 원본 채널에 공개 메시지로 전송(요청자가 만든 그림임을 캡션에 표시). 성공 시 true. */
+        private fun postPendingToChannel(
+            event: ButtonInteractionEvent,
+            pending: PendingImagePostStore.Pending,
+        ): Boolean =
+            runCatching {
+                val channel = event.guild?.getTextChannelById(pending.channelId) ?: event.channel.asTextChannel()
+                channel
+                    .sendMessage("${pending.caption}\n— <@${pending.userId}> 님이 만든 그림")
+                    .setFiles(
+                        net.dv8tion.jda.api.utils.FileUpload
+                            .fromData(pending.pngBytes, "image.png"),
+                    ).complete()
+                true
+            }.onFailure { e ->
+                log.warn("이미지 채널 게시 실패(channel={}): {}", pending.channelId, e.message)
+            }.getOrDefault(false)
+
+        private fun editExpired(hook: InteractionHook) {
+            // 토큰 만료/부재/타인 → 안전 안내(미리보기는 본인 ephemeral 이라 보통 본인 클릭).
+            hook
+                .editOriginal("⌛ 이 미리보기는 만료됐어요. 다시 `/그림` 으로 만들어 주세요.")
+                .setReplace(true)
+                .queue({}, {})
         }
 
         companion object {
@@ -432,6 +565,11 @@ class DiscordBot(
 
             // 이미지 생성 취소 버튼 customId 접두사(뒤에 requestId). 누르면 ComfyUI /interrupt 유발.
             private const val IMG_CANCEL_PREFIX = "img-cancel:"
+
+            // /그림 게시 확인 게이트 버튼 customId 접두사(뒤에 PendingImagePostStore 토큰).
+            private const val IMG_POST_PREFIX = "img-post:" // ✅ 채널에 게시
+            private const val IMG_DISCARD_PREFIX = "img-discard:" // 🗑️ 버리기
+            private const val IMG_MUTE_PREFIX = "img-mute:" // 🔕 게시하고 다음부터 안 묻기
             private const val ONBOARD_ACTION_START = "start"
 
             /**
@@ -495,6 +633,14 @@ class DiscordBot(
                 val requestId = event.componentId.removePrefix(IMG_CANCEL_PREFIX)
                 commands.cancelImage(requestId)
                 event.editButton(Button.danger(event.componentId, "🛑 취소됨").asDisabled()).queue({}, {})
+                return
+            }
+            if (event.componentId.startsWith(IMG_POST_PREFIX) ||
+                event.componentId.startsWith(IMG_DISCARD_PREFIX) ||
+                event.componentId.startsWith(IMG_MUTE_PREFIX)
+            ) {
+                // /그림 게시 확인 게이트: 본인만 보이는 미리보기에서 채널 게시/버리기/안묻기 선택.
+                handleImaginePostButton(event)
                 return
             }
             if (event.componentId.startsWith(ASK_FEEDBACK_PREFIX)) {

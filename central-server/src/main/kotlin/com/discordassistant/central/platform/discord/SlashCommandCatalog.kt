@@ -38,7 +38,8 @@ object SlashCommandCatalog {
                 ),
             Commands
                 .slash("imagine", "이미지를 생성합니다 (무료 클라우드 Stable Diffusion 기본 · 로컬 연결 시 로컬)")
-                .addOption(OptionType.STRING, "prompt", "만들고 싶은 이미지 설명", true),
+                .addOption(OptionType.STRING, "prompt", "만들고 싶은 이미지 설명", true)
+                .addOption(OptionType.BOOLEAN, "confirm", "결과를 채널에 올리기 전 본인 확인 단계(끄면 바로 게시)", false),
             // ── 시작/도움/설정 ──────────────────────────────────────────────
             Commands.slash("menu", "시작 패널을 엽니다(질문·기여·설정·도움말 한 곳에서)"),
             Commands.slash("help", "명령 종합 도움말을 봅니다"),

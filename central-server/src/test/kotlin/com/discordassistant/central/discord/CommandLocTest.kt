@@ -15,8 +15,10 @@ class CommandLocTest {
         CommandLoc.localize(cmd)
         assertEquals("질문", cmd.nameLocalizations.toMap()[DiscordLocale.KOREAN])
         assertEquals("спросить", cmd.nameLocalizations.toMap()[DiscordLocale.RUSSIAN])
-        assertEquals("Ask the community local AI", cmd.descriptionLocalizations.toMap()[DiscordLocale.ENGLISH_US])
-        assertEquals("커뮤니티 로컬 AI 에게 질문합니다", cmd.descriptionLocalizations.toMap()[DiscordLocale.KOREAN])
+        assertEquals(
+            "Ask AI (free cloud by default, local when a community provider is connected)",
+            cmd.descriptionLocalizations.toMap()[DiscordLocale.ENGLISH_US],
+        )
         // 기본 이름은 영어(ascii) 유지 — dispatch 안정
         assertEquals("ask", cmd.name)
     }

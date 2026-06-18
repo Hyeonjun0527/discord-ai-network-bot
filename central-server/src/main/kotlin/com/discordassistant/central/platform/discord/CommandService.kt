@@ -82,7 +82,6 @@ class CommandService(
     private val guildOnboardingCommands: com.discordassistant.central.platform.discord.command.GuildOnboardingCommandHandler,
     private val guildAdminCommands: com.discordassistant.central.platform.discord.command.GuildAdminCommandHandler,
     private val settingsCommands: com.discordassistant.central.platform.discord.command.SettingsCommandHandler,
-    private val freeAskRateLimiter: com.discordassistant.central.quota.application.FreeAskRateLimiter,
 ) {
     companion object {
         /**
@@ -106,19 +105,6 @@ class CommandService(
         requestedResponseMode: String? = null,
         webSearch: Boolean = false,
     ): Reply = askCommands.ask(ctx, prompt, requestedModel, requestedResponseMode, webSearch)
-
-    /**
-     * /무료질문(free-ask) — 관리자 클라우드 AI 고정 모델로 라우팅하되, **인당 rate limit**(시간당·일일)을
-     * 먼저 적용한다(무료 자원 남용 방지). 한도 초과면 거부 문구, 통과면 일반 ask 경로.
-     */
-    fun freeAsk(
-        ctx: CommandContext,
-        prompt: String,
-        model: String,
-    ): Reply {
-        freeAskRateLimiter.check(ctx.userId)?.let { return Replies.reject(it) }
-        return ask(ctx, prompt, requestedModel = model)
-    }
 
     /** /그림(imagine) — 이미지 생성 가능한 프로바이더의 로컬 ComfyUI(Anima)로 이미지를 만든다. */
     fun imagine(

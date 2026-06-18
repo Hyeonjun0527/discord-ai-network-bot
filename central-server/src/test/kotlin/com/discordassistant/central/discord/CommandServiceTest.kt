@@ -406,7 +406,7 @@ class CommandServiceTest
             try {
                 val reply = commands.ask(g, "Kotlin 설정 비교해줘", requestedResponseMode = "deep")
 
-                assertTrue(reply.content.startsWith("echo:"), reply.content)
+                assertTrue(reply.content.startsWith("🖥️ echo:"), reply.content)
                 val run = multiResponseRuns.findTop20ByGuildIdOrderByStartedAtDesc(g.guildId).single()
                 assertEquals("completed", run.status.wire)
                 assertEquals(1, run.candidateCount)
@@ -729,7 +729,7 @@ class CommandServiceTest
             try {
                 val r = commands.ask(ctx(), "코드 설명")
                 // 설정 없는 기본 서버도 NEXA 가드레일 + 기본 정체성(니아)이 항상 주입되고, 사용자 질문은 끝에 전달된다.
-                assertTrue(r.content.startsWith("echo:"), r.content)
+                assertTrue(r.content.startsWith("🖥️ echo:"), r.content)
                 assertTrue(r.content.endsWith("코드 설명"), r.content)
                 assertTrue(r.content.contains("[우선순위 1: 안전]"), r.content)
                 assertTrue(r.content.contains("무관용으로 거부"), r.content)
@@ -737,6 +737,23 @@ class CommandServiceTest
                 assertFalse(r.content.contains("커뮤니티 풀 처리"), r.content)
                 assertFalse(r.content.contains("provider #"), r.content)
                 assertTrue(r.feedback?.requestId?.isNotBlank() == true)
+            } finally {
+                registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 로컬 없이 클라우드 전용 프로바이더면 무료 클라우드(☁️)로 답한다`() {
+            val conn = EchoConn()
+            val s = ProviderSession(conn, providerId = 88, guildId = 100)
+            conn.session = s
+            s.capability = s.capability.copy(models = listOf("glm-5.1")) // 클라우드 전용(로컬 모델 없음)
+            registry.register(s)
+            try {
+                val cctx = CommandContext(guildId = 100, channelId = 200, userId = 880088, roleIds = setOf(1L), isAdmin = false)
+                val r = commands.ask(cctx, "코드 설명")
+                assertTrue(r.content.startsWith("☁️ echo:"), r.content) // 무료 클라우드 출처 아이콘
+                assertEquals("glm-5.1", conn.lastInfer!!.model) // 무료 클라우드 모델로 라우팅
             } finally {
                 registry.unregister(s)
             }
@@ -806,7 +823,7 @@ class CommandServiceTest
                 val reply = commands.ask(g, longPrompt, requestedResponseMode = "deep")
 
                 assertFalse(reply.ephemeral)
-                assertTrue(reply.content.startsWith("echo:"), reply.content)
+                assertTrue(reply.content.startsWith("🖥️ echo:"), reply.content)
                 val stream = reply.pseudoStream
                 assertTrue(stream != null, "긴 공개 답변에는 의사 스트리밍 계획이 있어야 함")
                 assertEquals(3, stream!!.snapshots.size)
@@ -828,7 +845,7 @@ class CommandServiceTest
             try {
                 val r = commands.ask(ctx(admin = true), "깊게 봐줘", requestedModel = "qwen-coder", requestedResponseMode = "deep")
 
-                assertTrue(r.content.startsWith("echo:"))
+                assertTrue(r.content.startsWith("🖥️ echo:"))
                 val sent = conn.lastInfer!!
                 assertEquals("qwen-coder", sent.model)
                 assertEquals(2048, sent.options["num_predict"])
@@ -991,7 +1008,7 @@ class CommandServiceTest
                 val reply = commands.ask(ctx(admin = true), "Kotlin Spring 설정 알려줘")
 
                 assertEquals(
-                    "echo:${preview.systemPrompt}\n\n${preview.userPrompt}",
+                    "🖥️ echo:${preview.systemPrompt}\n\n${preview.userPrompt}", // 🖥️=로컬 출처 아이콘
                     reply.content,
                     "Discord ask runtime must reuse the same Channel AI prompt renderer as preview",
                 )

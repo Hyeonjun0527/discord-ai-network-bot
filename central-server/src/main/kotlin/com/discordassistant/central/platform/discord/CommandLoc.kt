@@ -27,7 +27,15 @@ object CommandLoc {
     // 명령 기본이름 → (한국어 이름, 일본어 이름, 러시아어 이름, 영어 설명, 일본어 설명, 러시아어 설명)
     private val TABLE: Map<String, L> =
         mapOf(
-            "ask" to L("질문", "質問", "спросить", "Ask the community local AI", "コミュニティのローカルAIに質問します", "Спросить локальный ИИ сообщества"),
+            "ask" to
+                L(
+                    "질문",
+                    "質問",
+                    "спросить",
+                    "Ask AI (free cloud by default, local when a community provider is connected)",
+                    "AIに質問します(既定は無料クラウド・ローカル接続時はローカル)",
+                    "Спросить ИИ (по умолчанию бесплатное облако, локально при подключении)",
+                ),
             "imagine" to
                 L(
                     "그림",
@@ -45,15 +53,6 @@ object CommandLoc {
                     "Legacy ComfyUI auto-forward setting; currently disabled (admin)",
                     "旧ComfyUI自動転送設定です。現在は無効です(管理者)",
                     "Устаревшая настройка автоотправки ComfyUI; сейчас отключена (админ)",
-                ),
-            "free-ask" to
-                L(
-                    "무료질문",
-                    "無料質問",
-                    "бесплатный-вопрос",
-                    "Ask the free cloud AI",
-                    "無料クラウドAIに質問します",
-                    "Спросить бесплатный облачный ИИ",
                 ),
             "models" to L("모델", "モデル", "модели", "Check available model levels", "利用可能なモデル水準を確認します", "Доступные уровни моделей"),
             "catalog" to

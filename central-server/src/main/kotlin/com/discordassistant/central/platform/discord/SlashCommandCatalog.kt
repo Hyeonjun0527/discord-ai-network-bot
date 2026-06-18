@@ -29,7 +29,7 @@ object SlashCommandCatalog {
         val adminPerm = DefaultMemberPermissions.enabledFor(Permission.MANAGE_SERVER)
         return listOf<net.dv8tion.jda.api.interactions.commands.build.CommandData>(
             Commands
-                .slash("ask", "커뮤니티 로컬 AI 에게 질문합니다")
+                .slash("ask", "AI에게 질문합니다 (무료 클라우드 기본 · 커뮤니티 로컬 연결 시 로컬)")
                 .addOption(OptionType.STRING, "prompt", "질문 내용", true)
                 .addOptions(
                     net.dv8tion.jda.api.interactions.commands.build
@@ -49,10 +49,6 @@ object SlashCommandCatalog {
                 .slash("forward-channel", "레거시 ComfyUI 자동 전송 설정입니다. 현재는 비활성화되어 안내만 표시합니다(관리자)")
                 .addOption(OptionType.CHANNEL, "channel", "이미지를 받을 채널", true)
                 .setDefaultPermissions(adminPerm),
-            // 관리자가 클라우드 AI 키 하나로 서버 전체에 무료 제공 — 모델 고정(glm-5.1).
-            Commands
-                .slash("free-ask", "무료 클라우드 AI에게 질문합니다")
-                .addOption(OptionType.STRING, "prompt", "질문 내용", true),
             Commands.slash("models", "사용 가능한 모델 수준을 확인합니다"),
             Commands.slash("catalog", "이 서버에서 제공 중인 모델 목록을 봅니다"),
             Commands.slash("my-usage", "내 오늘 사용량을 확인합니다"),

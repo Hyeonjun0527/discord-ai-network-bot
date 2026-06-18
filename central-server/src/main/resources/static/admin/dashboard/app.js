@@ -172,6 +172,27 @@ function renderList(id, items, emptyText, renderer) {
   box.innerHTML = items.map(renderer).join("");
 }
 
+function setText(id, value) {
+  const el = $(id);
+  if (el) el.textContent = String(value ?? "");
+}
+
+function openFoldFor(target) {
+  const fold = target?.closest?.(".ops-fold");
+  if (fold) fold.open = true;
+}
+
+function focusInside(selector) {
+  const target = document.querySelector(selector);
+  if (!target) return;
+  openFoldFor(target);
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  const focusTarget = target.matches("input, select, textarea, button")
+    ? target
+    : target.querySelector("input, select, textarea, button");
+  if (focusTarget) focusTarget.focus({ preventScroll: true });
+}
+
 function fillSelect(id, options) {
   const select = $(id);
   select.innerHTML = (options || []).map((o) =>
@@ -423,9 +444,73 @@ function renderKnowledgeReadiness(readiness, quality) {
   ].join("\n");
 }
 
+function normalizeKnowledgeJobs(jobs) {
+  if (Array.isArray(jobs)) return jobs;
+  return jobs?.jobs || jobs?.items || [];
+}
+
+function selectKnowledgeSpace(spaceId, label = "") {
+  $("knowledgeSpaceId").value = spaceId || "";
+  const select = $("knowledgeSpaceQuickSelect");
+  if (select) select.value = spaceId || "";
+  setText("knowledgeSelectedSpaceName", label || (spaceId ? `space #${spaceId}` : "선택 안 됨"));
+}
+
+function renderKnowledgeSpaces(spaces = []) {
+  const selectedId = $("knowledgeSpaceId").value.trim();
+  const select = $("knowledgeSpaceQuickSelect");
+  if (select) {
+    select.innerHTML = [
+      '<option value="">지식공간 선택…</option>',
+      ...spaces.map((space) =>
+        `<option value="${esc(space.knowledgeSpaceId)}">${esc(space.displayName)} · ${esc(space.readiness || "unknown")}</option>`,
+      ),
+    ].join("");
+    select.value = selectedId;
+  }
+  renderList("knowledgeSpaceList", spaces, "아직 지식공간이 없습니다. 먼저 공간을 만들거나 상태를 새로고침하세요.", (space) => {
+    const id = String(space.knowledgeSpaceId || "");
+    const active = selectedId && selectedId === id ? " active" : "";
+    return `<li class="knowledge-space-row${active}"><strong>${esc(space.displayName)} <small>#${esc(id)}</small></strong><span>${esc(space.readiness || "unknown")} · sources ${esc(space.sourceCount ?? 0)} · channel ${esc(space.channelId || "-")}</span><div class="row-actions"><button class="mini select-knowledge-space" data-space-id="${esc(id)}" data-space-name="${esc(space.displayName)}">이 공간 사용</button></div></li>`;
+  });
+  if (!selectedId && spaces.length === 1) {
+    selectKnowledgeSpace(String(spaces[0].knowledgeSpaceId || ""), spaces[0].displayName || "");
+  } else if (selectedId) {
+    const selected = spaces.find((space) => String(space.knowledgeSpaceId || "") === selectedId);
+    setText("knowledgeSelectedSpaceName", selected ? selected.displayName : `space #${selectedId}`);
+  }
+}
+
+function updateKnowledgeExperience(readiness = {}, quality = {}, ops = {}, jobsResponse = []) {
+  const spaces = readiness.spaces || [];
+  const jobs = normalizeKnowledgeJobs(jobsResponse);
+  const actions = readiness.nextActions || quality.recommendations || ops.nextActions || [];
+  const latest = jobs[0];
+  renderKnowledgeSpaces(spaces);
+  renderList("knowledgeActionList", actions.slice(0, 5), "지금 필요한 다음 액션이 없습니다.", (action) =>
+    `<li><strong>다음</strong><span>${esc(action)}</span></li>`,
+  );
+  setText("knowledgeSpaceCount", readiness.spaceCount ?? spaces.length ?? 0);
+  setText("knowledgeSourceProgress", `${readiness.indexedSourceCount ?? 0}/${readiness.sourceCount ?? 0}`);
+  setText("knowledgeBlockedCount", readiness.blockedSourceCount ?? ops.blockedSourceCount ?? 0);
+  setText("knowledgeQualityBand", quality.qualityBand || "unknown");
+  setText("knowledgeNextAction", actions[0] || "검색 테스트로 확인");
+  setText("knowledgeLatestJob", latest ? `job #${latest.id} · ${latest.status}` : "최근 작업 없음");
+}
+
+function focusRagTask(task) {
+  const targets = {
+    space: "#knowledgeSpaceName",
+    source: "#knowledgeSourceTitle",
+    index: "#knowledgeJobId",
+    search: "#knowledgeSearchQuery",
+  };
+  focusInside(targets[task] || "#knowledgeSpaceName");
+}
+
 function renderKnowledgeIndexing(ops, jobs = []) {
   const commands = ops.commands || [];
-  const latest = jobs[0];
+  const latest = normalizeKnowledgeJobs(jobs)[0];
   renderList("knowledgeIndexing", [
     ["상태", ops.status || "unknown"],
     ["색인 가능 소스", `${ops.indexableSourceCount ?? 0}개`],
@@ -452,6 +537,7 @@ async function refreshKnowledge() {
     ]);
     renderKnowledgeReadiness(readiness, quality);
     renderKnowledgeIndexing(ops, jobs);
+    updateKnowledgeExperience(readiness, quality, ops, jobs);
   } catch (e) {
     $("knowledgeResult").textContent = `RAG 상태 로딩 실패: ${e.message}`;
   }
@@ -836,12 +922,29 @@ function publishedPresetPayload() {
   };
 }
 
+function updatePresetExperience(local = {}, published = {}) {
+  const localCount = local.presets?.length ?? 0;
+  const catalogCount = published.presets?.length ?? 0;
+  setText("presetLocalCount", localCount);
+  setText("presetCatalogCount", catalogCount);
+}
+
+function focusPresetTask(task) {
+  const targets = {
+    create: "#presetName",
+    catalog: "#presetCatalogQuery",
+    publish: "#publishedPresetId",
+    moderation: "#presetReportId",
+  };
+  focusInside(targets[task] || "#presetName");
+}
+
 function renderPresetLists(local, published) {
   renderList("localPresetList", local?.presets?.slice(0, 8), "서버 프리셋 없음", (p) =>
-    `<li class="pick-local-preset channel-item" data-local-preset-id="${esc(p.id)}"><strong>${esc(p.id)} · ${esc(p.name)}</strong><span>${esc(p.category)} · ${esc(p.status)} · ${esc(p.visibility)} · 클릭하여 선택</span></li>`,
+    `<li class="pick-local-preset preset-row channel-item" data-local-preset-id="${esc(p.id)}"><strong>${esc(p.name)} <small>#${esc(p.id)}</small></strong><span>${esc(p.category)} · ${esc(p.status)} · ${esc(p.visibility)} · 클릭하면 편집 대상으로 선택</span><div class="row-actions"><button class="mini pick-local-preset" data-local-preset-id="${esc(p.id)}">편집에 넣기</button></div></li>`,
   );
   renderList("publishedPresetList", published?.presets?.slice(0, 8), "게시 프리셋 없음", (p) =>
-    `<li><strong>${esc(p.id)} · ${esc(p.title)}</strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · 신고 ${esc(p.reportCount)} · ${esc(p.category || "general")} · ${(p.tags || []).map(esc).join(", ") || "태그 없음"}</span><button class="mini select-published-preset" data-preset-id="${esc(p.id)}">선택</button><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button><button class="mini report-preset" data-preset-id="${esc(p.id)}">신고</button><button class="mini unlist-published-preset" data-preset-id="${esc(p.id)}">비공개</button><button class="mini remove-published-preset" data-preset-id="${esc(p.id)}">숨김</button></li>`,
+    `<li class="preset-row"><strong>${esc(p.title)} <small>#${esc(p.id)}</small></strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · 신고 ${esc(p.reportCount)} · ${esc(p.category || "general")} · ${(p.tags || []).map(esc).join(", ") || "태그 없음"}</span><div class="row-actions"><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button><button class="mini select-published-preset" data-preset-id="${esc(p.id)}">관리 선택</button><button class="mini report-preset" data-preset-id="${esc(p.id)}">신고</button><button class="mini unlist-published-preset" data-preset-id="${esc(p.id)}">비공개</button><button class="mini remove-published-preset" data-preset-id="${esc(p.id)}">숨김</button></div></li>`,
   );
 }
 
@@ -854,6 +957,7 @@ async function refreshPresets() {
   try {
     pendingPresetImport = null;
     $("presetConfirmImport").disabled = true;
+    setText("presetImportState", "미리보기 전");
     $("presetImportPreview").textContent =
       "가져올 프리셋의 [미리보기]를 먼저 누르면, 덮어쓰기/승인 필요 여부를 확인한 뒤 가져올 수 있습니다.";
     const [local, published] = await Promise.all([
@@ -861,6 +965,7 @@ async function refreshPresets() {
       getJson(presetCatalogUrl()),
     ]);
     renderPresetLists(local, published);
+    updatePresetExperience(local, published);
     $("presetManageResult").textContent =
       `서버 프리셋 ${local.presets?.length || 0}개 · 웹 카탈로그 ${published.presets?.length || 0}개`;
   } catch (e) {
@@ -1060,6 +1165,7 @@ async function refreshPresetModeration() {
     renderPresetModeration(summary.summary);
     const firstReport = reports.reports?.[0];
     if (firstReport && !$("presetReportId").value.trim()) $("presetReportId").value = firstReport.id;
+    setText("presetModerationCount", summary.summary?.openReportCount ?? reports.reports?.length ?? 0);
     $("presetManageResult").textContent =
       `신고 큐: 열린 신고 ${summary.summary?.openReportCount || 0}건 · 검토중 ${summary.summary?.underReviewCount || 0}개`;
   } catch (e) {
@@ -1487,6 +1593,7 @@ async function previewPresetImport(publishedPresetId) {
     };
     renderPresetImportPreview(preview);
     $("presetConfirmImport").disabled = false;
+    setText("presetImportState", `미리보기 완료 · 충돌 ${pendingPresetImport.conflictCount}`);
     $("presetImportResult").textContent =
       `미리보기 완료: 충돌 ${pendingPresetImport.conflictCount}건 · 가져오려면 확인 버튼을 누르세요.`;
   } catch (e) {
@@ -1511,6 +1618,7 @@ async function importPreset() {
       `충돌 ${pendingPresetImport.conflictCount}건 확인`;
     pendingPresetImport = null;
     $("presetConfirmImport").disabled = true;
+    setText("presetImportState", "가져오기 완료");
     await loadGuild();
   } catch (e) {
     $("presetImportResult").textContent = `프리셋 가져오기 실패: ${e.message}`;
@@ -1624,6 +1732,10 @@ $("publishedPresetReport").addEventListener("click", () => reportPublishedPreset
 $("presetModerationRefresh").addEventListener("click", refreshPresetModeration);
 $("presetReportReview").addEventListener("click", reviewPresetReport);
 $("presetConfirmImport").addEventListener("click", importPreset);
+$("knowledgeSpaceQuickSelect").addEventListener("change", (event) => {
+  const option = event.target.options[event.target.selectedIndex];
+  selectKnowledgeSpace(event.target.value, option?.textContent?.split(" · ")[0] || "");
+});
 $("multiSavePolicy").addEventListener("click", saveMultiPolicy);
 $("multiRefreshOps").addEventListener("click", refreshMultiOps);
 $("pseudoStreamPlan").addEventListener("click", planPseudoStream);
@@ -1632,6 +1744,14 @@ $("launchChecklistRefresh").addEventListener("click", refreshLaunchChecklist);
 $("providerHistoryRefresh").addEventListener("click", refreshProviderHistory);
 $("licenseFunnelRefresh").addEventListener("click", refreshLicenseFunnel);
 document.addEventListener("click", (event) => {
+  const presetFocus = event.target.closest("[data-preset-focus]");
+  if (presetFocus) focusPresetTask(presetFocus.dataset.presetFocus);
+  const ragFocus = event.target.closest("[data-rag-focus]");
+  if (ragFocus) focusRagTask(ragFocus.dataset.ragFocus);
+  const knowledgeSpaceButton = event.target.closest(".select-knowledge-space");
+  if (knowledgeSpaceButton) {
+    selectKnowledgeSpace(knowledgeSpaceButton.dataset.spaceId || "", knowledgeSpaceButton.dataset.spaceName || "");
+  }
   const selectButton = event.target.closest(".select-published-preset");
   if (selectButton) $("publishedPresetId").value = selectButton.dataset.presetId || "";
   const qualityButton = event.target.closest(".select-quality-feedback");

@@ -193,6 +193,26 @@
 
       <!-- ── 프리셋 (작업 단위 카드로 정돈) ── -->
       <div class="tabpane" data-stab="presets" hidden>
+        <div id="presetExperienceBoard" class="experience-board preset-experience">
+          <div class="experience-lead">
+            <span class="eyebrow">Preset cockpit</span>
+            <h3>프리셋은 “만들기 → 가져오기 → 공유 → 검수” 순서로 처리합니다</h3>
+            <p>숫자 ID를 외우지 말고 목록에서 선택하세요. 필요한 조치 폼은 아래 버튼을 누를 때만 펼쳐집니다.</p>
+          </div>
+          <div class="experience-steps" aria-label="프리셋 작업 흐름">
+            <button class="journey-card" data-preset-focus="create"><strong>1. 내 서버용 만들기</strong><span>역할·말투·규칙을 묶어 채널 AI에 재사용</span></button>
+            <button class="journey-card" data-preset-focus="catalog"><strong>2. 좋은 프리셋 가져오기</strong><span>웹 카탈로그 미리보기 후 현재 채널에 적용</span></button>
+            <button class="journey-card" data-preset-focus="publish"><strong>3. 검증된 프리셋 공유</strong><span>서버에서 안정적인 구성을 공개 카탈로그로 게시</span></button>
+            <button class="journey-card" data-preset-focus="moderation"><strong>4. 신고·위험 관리</strong><span>문제 프리셋은 숨김·비공개·검수로 정리</span></button>
+          </div>
+          <div class="signal-grid">
+            <div class="signal-card"><strong id="presetLocalCount">–</strong><span>내 서버 프리셋</span></div>
+            <div class="signal-card"><strong id="presetCatalogCount">–</strong><span>웹 카탈로그 후보</span></div>
+            <div class="signal-card"><strong id="presetImportState">미리보기 전</strong><span>가져오기 상태</span></div>
+            <div class="signal-card warn"><strong id="presetModerationCount">–</strong><span>열린 신고</span></div>
+          </div>
+        </div>
+
         <!-- 1) 만들기·수정 -->
         <div class="section-title">내 서버 프리셋</div>
         <div class="action-card">
@@ -364,6 +384,34 @@
       <!-- 지식/RAG -->
       <div class="tabpane" data-ctab="rag" hidden>
         <input id="knowledgeChannelId" type="hidden" />
+        <div id="ragExperienceBoard" class="experience-board rag-experience">
+          <div class="experience-lead">
+            <span class="eyebrow">RAG pipeline</span>
+            <h3>RAG는 “공간 → 소스 → 색인 → 검색 확인” 네 단계만 보세요</h3>
+            <p>지식공간을 목록에서 고르면 ID가 자동으로 채워집니다. 다음 액션을 따라가면 검색 가능한 상태까지 이어집니다.</p>
+            <label class="inline-picker">현재 지식공간
+              <select id="knowledgeSpaceQuickSelect"><option value="">지식공간 선택…</option></select>
+            </label>
+          </div>
+          <div class="experience-steps rag-steps" aria-label="RAG 작업 흐름">
+            <button class="journey-card" data-rag-focus="space"><strong>1. 지식공간</strong><span id="knowledgeSelectedSpaceName">선택 안 됨</span></button>
+            <button class="journey-card" data-rag-focus="source"><strong>2. 소스 추가</strong><span>링크·텍스트·FAQ를 안전하게 등록</span></button>
+            <button class="journey-card" data-rag-focus="index"><strong>3. 색인</strong><span id="knowledgeLatestJob">최근 작업 없음</span></button>
+            <button class="journey-card" data-rag-focus="search"><strong>4. 검색 검증</strong><span id="knowledgeNextAction">상태 새로고침 필요</span></button>
+          </div>
+          <div class="signal-grid">
+            <div class="signal-card"><strong id="knowledgeSpaceCount">–</strong><span>지식공간</span></div>
+            <div class="signal-card"><strong id="knowledgeSourceProgress">–</strong><span>색인된 소스</span></div>
+            <div class="signal-card warn"><strong id="knowledgeBlockedCount">–</strong><span>차단/검토</span></div>
+            <div class="signal-card"><strong id="knowledgeQualityBand">–</strong><span>품질 밴드</span></div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <article class="card"><h3>지식공간 선택</h3><ul id="knowledgeSpaceList" class="list"><li class="empty">‘상태 새로고침’을 누르면 공간 목록이 표시됩니다.</li></ul></article>
+          <article class="card"><h3>RAG 다음 액션</h3><ul id="knowledgeActionList" class="list"><li class="empty">준비 상태를 불러오면 다음 액션이 표시됩니다.</li></ul></article>
+        </div>
+
         <div class="section-title">지식공간</div>
         <div class="action-card">
           <h3>📚 지식공간 만들기</h3>

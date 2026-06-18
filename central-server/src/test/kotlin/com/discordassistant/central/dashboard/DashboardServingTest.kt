@@ -314,6 +314,45 @@ class DashboardServingTest
         }
 
         @Test
+        fun `정적 대시보드가 프리셋과 RAG 작업 흐름 보드를 포함한다`() {
+            val html =
+                mvc
+                    .perform(get("/admin/dashboard/index.html"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+            val css =
+                mvc
+                    .perform(get("/admin/dashboard/style.css"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+            val js =
+                mvc
+                    .perform(get("/admin/dashboard/app.js"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+
+            assertTrue(html.contains("""id="presetExperienceBoard""""))
+            assertTrue(html.contains("""data-preset-focus="catalog""""))
+            assertTrue(html.contains("""id="ragExperienceBoard""""))
+            assertTrue(html.contains("""id="knowledgeSpaceQuickSelect""""))
+            assertTrue(html.contains("""data-rag-focus="search""""))
+            assertTrue(css.contains(".experience-board"))
+            assertTrue(css.contains(".journey-card"))
+            assertTrue(css.contains(".signal-card"))
+            assertTrue(js.contains("updatePresetExperience"))
+            assertTrue(js.contains("focusPresetTask"))
+            assertTrue(js.contains("renderKnowledgeSpaces"))
+            assertTrue(js.contains("updateKnowledgeExperience"))
+            assertTrue(js.contains("selectKnowledgeSpace"))
+        }
+
+        @Test
         fun `디렉터리 URL 도 index 로 포워드된다`() {
             mvc.perform(get("/")).andExpect(status().isOk)
             mvc.perform(get("/install")).andExpect(status().isOk)

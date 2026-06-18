@@ -146,7 +146,23 @@ def test_image_capability_requires_glm_safety_gate():
 
     agent._glm = SafeGlm()  # type: ignore[assignment]
     agent._glm_models = ["glm-5.1"]
-    assert "image" in agent._build_hello().capabilities
+    caps = agent._build_hello().capabilities
+    assert "image" in caps
+    # 기본 백엔드 comfyui → 로컬 서브타입. central 이 /그림 을 "로컬 우선, 없으면 무료 클라우드" 로 라우팅하는 신호.
+    assert "image-local" in caps
+    assert "image-cloud" not in caps
+
+
+def test_image_capability_advertises_cloud_subtype_for_stability():
+    """클라우드 백엔드(stability/runpod)는 image-cloud 서브타입을 광고 → central 이 무료 클라우드 SD 기본으로 라우팅."""
+    agent = ProviderAgent(AgentConfig(token="T", image_backend="stability"), ollama=FakeOllama(), sd=object())  # type: ignore[arg-type]
+    agent._image_ready = True
+    agent._glm = SafeGlm()  # type: ignore[assignment]
+    agent._glm_models = ["glm-5.1"]
+    caps = agent._build_hello().capabilities
+    assert "image" in caps
+    assert "image-cloud" in caps
+    assert "image-local" not in caps
 
 
 @pytest.mark.asyncio

@@ -226,8 +226,9 @@ class AskCommandHandler(
     private fun isCloudModel(model: String?): Boolean = model?.trim()?.lowercase()?.startsWith("glm") == true
 
     /**
-     * /그림(imagine) — 이미지 생성 가능한 프로바이더의 로컬 ComfyUI(Anima)로 이미지를 만든다.
-     * 한국어 프롬프트는 에이전트의 클라우드 백엔드로 영어 자연어 번역(IMAGE_POLICY 적용) 후 유저 워크플로에 주입.
+     * /그림(imagine) — 기본은 **무료 클라우드 Stable Diffusion**(관리자 유료 SD API 키 1개로 전원 무료, ☁️).
+     * 서버가 **로컬 ComfyUI 를 따로 연결**해 두면 그 서버만 로컬로 처리(🖥️). 텍스트 /질문 의 클라우드 기본과 동일 패턴.
+     * 한국어 프롬프트는 에이전트 백엔드에서 영어 자연어 번역(IMAGE_POLICY 적용·성인/SFW 가드) 후 생성.
      * onStart(requestId): 취소 버튼 부착·취소 매핑 등록용. onProgress: 진행률 라이브 편집용.
      */
     fun imagine(
@@ -240,14 +241,21 @@ class AskCommandHandler(
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("imagine:${ctx.guildId}:${ctx.userId}")) {
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, guards.lang(ctx)))
         }
-        val candidates = registry.byGuild(ctx.guildId).filter { "image" in it.capability.capabilities }
-        if (candidates.isEmpty()) {
+        val imageProviders = registry.byGuild(ctx.guildId).filter { "image" in it.capability.capabilities }
+        // 로컬 ComfyUI(따로 설정)가 있으면 로컬 우선, 없으면 무료 클라우드 SD 기본. 서브타입 미광고(구버전)는 그대로 사용.
+        val local = imageProviders.filter { "image-local" in it.capability.capabilities }
+        val cloud = imageProviders.filter { "image-cloud" in it.capability.capabilities }
+        val pool = local.ifEmpty { cloud }.ifEmpty { imageProviders }
+        if (pool.isEmpty()) {
             return Replies.warn(
-                "🖼️ 이미지 생성 가능한 프로바이더가 없습니다. " +
-                    "(프로바이더가 로컬 ComfyUI 를 켜고 에이전트를 `--enable-image` 로 실행해야 합니다)",
+                "🖼️ 지금은 이미지를 만들 수 있는 곳이 없어요.\n" +
+                    "관리자가 무료 클라우드 Stable Diffusion(유료 SD API 키)을 연결하면 전원이 바로 쓸 수 있고, " +
+                    "직접 돌리려면 로컬 ComfyUI 를 켜고 에이전트를 `--enable-image` 로 실행하세요.",
             )
         }
-        val session = candidates.minByOrNull { it.activeRequests } ?: candidates.first()
+        val usedCloud = local.isEmpty() && cloud.isNotEmpty()
+        val sourceIcon = if (usedCloud) "☁️" else "🖥️"
+        val session = pool.minByOrNull { it.activeRequests } ?: pool.first()
         var requestId: String? = null
         return try {
             val bytes =
@@ -258,7 +266,7 @@ class AskCommandHandler(
                         onStart(id)
                     }, onProgress)
                     .get()
-            Reply("🖼️ \"${prompt.take(200)}\"", ephemeral = false, imagePng = bytes)
+            Reply("🖼️ $sourceIcon \"${prompt.take(200)}\"", ephemeral = false, imagePng = bytes)
         } catch (e: Exception) {
             if (e is RemoteCancelledException || e.cause is RemoteCancelledException) {
                 Replies.warn("🛑 이미지 생성을 취소했어요.")

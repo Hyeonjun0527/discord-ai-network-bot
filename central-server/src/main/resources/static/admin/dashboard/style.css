@@ -234,6 +234,19 @@ tbody tr:hover { background: rgba(148, 163, 184, 0.04); }
 .list .empty, .list li.empty { color: var(--muted); background: transparent; border-style: dashed; }
 
 .preview { background: #07101c; border: 1px solid var(--line); border-radius: 11px; padding: 12px; font: 12px/1.55 ui-monospace, Menlo, monospace; color: #8fa6bd; white-space: pre-wrap; overflow: auto; max-height: 280px; }
+.result-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin: 12px 0; }
+.result-card {
+  border: 1px solid rgba(157, 174, 198, 0.15);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(18, 29, 45, 0.92), rgba(9, 15, 25, 0.96));
+  padding: 13px 14px;
+}
+.result-card.good { border-color: rgba(70, 211, 154, 0.34); }
+.result-card.warn { border-color: rgba(248, 217, 138, 0.36); }
+.result-card.bad { border-color: rgba(251, 113, 133, 0.36); }
+.result-card strong { display: block; font-size: 13px; letter-spacing: -0.02em; }
+.result-card span { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.result-card code { display: inline-block; margin-top: 6px; }
 code { background: rgba(148, 163, 184, 0.12); padding: 1px 6px; border-radius: 5px; font-size: 11.5px; }
 
 /* 차트 */

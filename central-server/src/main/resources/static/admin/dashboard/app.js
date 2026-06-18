@@ -177,6 +177,15 @@ function setText(id, value) {
   if (el) el.textContent = String(value ?? "");
 }
 
+function setHtml(id, html) {
+  const el = $(id);
+  if (el) el.innerHTML = html || "";
+}
+
+function resultCard(title, body, kind = "") {
+  return `<article class="result-card ${esc(kind)}"><strong>${esc(title)}</strong><span>${body}</span></article>`;
+}
+
 function openFoldFor(target) {
   const fold = target?.closest?.(".ops-fold");
   if (fold) fold.open = true;
@@ -233,6 +242,12 @@ function numericValue(id) {
 
 function csvInput(id) {
   return $(id).value.split(",").map((v) => v.trim()).filter(Boolean);
+}
+
+const CHANNEL_ID_FIELDS = ["wizardChannelId", "routingChannelId", "knowledgeChannelId", "qualityChannelId", "multiChannelId"];
+
+function currentChannelIdValue() {
+  return CHANNEL_ID_FIELDS.map((id) => $(id)?.value?.trim() || "").find((value) => /^\d+$/.test(value)) || "";
 }
 
 function presetCatalogUrl() {
@@ -473,8 +488,10 @@ function renderKnowledgeSpaces(spaces = []) {
     const active = selectedId && selectedId === id ? " active" : "";
     return `<li class="knowledge-space-row${active}"><strong>${esc(space.displayName)} <small>#${esc(id)}</small></strong><span>${esc(space.readiness || "unknown")} · sources ${esc(space.sourceCount ?? 0)} · channel ${esc(space.channelId || "-")}</span><div class="row-actions"><button class="mini select-knowledge-space" data-space-id="${esc(id)}" data-space-name="${esc(space.displayName)}">이 공간 사용</button></div></li>`;
   });
-  if (!selectedId && spaces.length === 1) {
-    selectKnowledgeSpace(String(spaces[0].knowledgeSpaceId || ""), spaces[0].displayName || "");
+  if (!selectedId && spaces.length) {
+    const channelId = $("knowledgeChannelId").value.trim();
+    const preferred = spaces.find((space) => channelId && String(space.channelId || "") === channelId) || spaces[0];
+    selectKnowledgeSpace(String(preferred.knowledgeSpaceId || ""), preferred.displayName || "");
   } else if (selectedId) {
     const selected = spaces.find((space) => String(space.knowledgeSpaceId || "") === selectedId);
     setText("knowledgeSelectedSpaceName", selected ? selected.displayName : `space #${selectedId}`);
@@ -510,14 +527,26 @@ function focusRagTask(task) {
 
 function renderKnowledgeIndexing(ops, jobs = []) {
   const commands = ops.commands || [];
-  const latest = normalizeKnowledgeJobs(jobs)[0];
-  renderList("knowledgeIndexing", [
+  const jobRows = normalizeKnowledgeJobs(jobs).slice(0, 5);
+  const latest = jobRows[0];
+  const stats = [
     ["상태", ops.status || "unknown"],
     ["색인 가능 소스", `${ops.indexableSourceCount ?? 0}개`],
     ["차단 소스", `${ops.blockedSourceCount ?? 0}개`],
     ["최근 작업", latest ? `#${latest.id} · ${latest.status} · chunks ${latest.chunkCount}` : "없음"],
     ["실행 명령", commands[0] || ops.nextActions?.[0] || "색인할 작업 없음"],
-  ], "색인 작업 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
+  ];
+  const items = [
+    ...stats.map(([label, value]) => ({ kind: "stat", label, value })),
+    ...jobRows.map((job) => ({ kind: "job", job })),
+  ];
+  renderList("knowledgeIndexing", items, "색인 작업 없음", (item) => {
+    if (item.kind === "job") {
+      const job = item.job;
+      return `<li><strong>작업 #${esc(job.id)} · ${esc(job.status)}</strong><span>chunks ${esc(job.chunkCount ?? 0)} · space ${esc(job.knowledgeSpaceId || "-")} · 완료 처리 대상이면 아래 버튼을 누르세요.</span><button class="mini select-knowledge-job" data-job-id="${esc(job.id)}">완료 폼에 넣기</button></li>`;
+    }
+    return `<li><strong>${esc(item.label)}</strong><span>${esc(item.value)}</span></li>`;
+  });
 }
 
 async function refreshKnowledge() {
@@ -539,6 +568,7 @@ async function refreshKnowledge() {
     renderKnowledgeIndexing(ops, jobs);
     updateKnowledgeExperience(readiness, quality, ops, jobs);
   } catch (e) {
+    setHtml("knowledgeResultCards", resultCard("RAG 상태 로딩 실패", esc(e.message), "bad"));
     $("knowledgeResult").textContent = `RAG 상태 로딩 실패: ${e.message}`;
   }
 }
@@ -628,20 +658,66 @@ function knowledgeSearchUrl(gid) {
   return `/api/ai-network/knowledge/${gid}/search?${params.toString()}`;
 }
 
+function renderKnowledgeSearchCards(result, rows) {
+  if (!rows.length) {
+    setHtml("knowledgeResultCards", resultCard("검색 결과 없음", "지식공간, 색인 상태, 질문 키워드를 확인하세요.", "warn"));
+    return;
+  }
+  setHtml("knowledgeResultCards", rows.slice(0, 6).map((row, index) =>
+    resultCard(
+      `#${index + 1} ${row.title || `source ${row.sourceId}`}`,
+      [
+        `score ${row.score ?? "-"} · risk ${row.riskLevel || "-"}`,
+        `source ${row.sourceId} · chunk ${row.chunkId || "-"} · space ${row.knowledgeSpaceId || "-"}`,
+        (row.matchSignals || []).length ? `signals ${(row.matchSignals || []).join(", ")}` : null,
+        row.contentPreview ? `preview ${row.contentPreview}` : null,
+      ].filter(Boolean).map(esc).join("<br />"),
+      index === 0 ? "good" : "",
+    ),
+  ).join(""));
+}
+
+function renderKnowledgeEvalCards(result, rows) {
+  const summaryKind = result.passed ? "good" : "warn";
+  const summary = resultCard(
+    result.passed ? "RAG 평가 PASS" : "RAG 평가 확인 필요",
+    [
+      `cases ${result.caseCount ?? rows.length} · k ${result.k}`,
+      `hitAtK ${Number(result.hitAtK || 0).toFixed(2)} · mrr ${Number(result.mrr || 0).toFixed(2)} · recall ${Number(result.recallAtK || 0).toFixed(2)}`,
+    ].map(esc).join("<br />"),
+    summaryKind,
+  );
+  const caseCards = rows.slice(0, 6).map((row) =>
+    resultCard(
+      `${row.hit ? "✓" : "✕"} ${row.name || row.query || "case"}`,
+      [
+        `rank ${row.firstHitRank || "-"} · recall ${Number(row.recall || 0).toFixed(2)}`,
+        `expected ${(row.expectedSourceIds || []).join(", ") || "-"}`,
+        `returned ${(row.returnedSourceIds || []).join(", ") || "-"}`,
+      ].map(esc).join("<br />"),
+      row.hit ? "good" : "warn",
+    ),
+  );
+  setHtml("knowledgeResultCards", [summary, ...caseCards].join(""));
+}
+
 async function searchKnowledge() {
   const gid = $("guildId").value.trim();
   const query = $("knowledgeSearchQuery").value.trim();
   if (!/^\d+$/.test(gid)) {
+    setHtml("knowledgeResultCards", resultCard("검색 불가", "서버 ID를 숫자로 입력하세요.", "bad"));
     $("knowledgeResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
   if (!query) {
+    setHtml("knowledgeResultCards", resultCard("검색 질문 필요", "실제 사용자가 물어볼 질문을 입력하세요.", "warn"));
     $("knowledgeResult").textContent = "검색 테스트 질문을 입력하세요.";
     return;
   }
   try {
     const result = await getJson(knowledgeSearchUrl(gid));
     const rows = result.results || [];
+    renderKnowledgeSearchCards(result, rows);
     $("knowledgeResult").textContent = [
       `RAG 검색 결과: ${rows.length}개 · query="${result.query || query}"`,
       result.fallbackReason ? `fallback=${result.fallbackReason}` : "fallback=none",
@@ -656,6 +732,7 @@ async function searchKnowledge() {
         : ["검색 결과가 없습니다. 지식공간/색인/질문 키워드를 확인하세요."]),
     ].join("\n\n");
   } catch (e) {
+    setHtml("knowledgeResultCards", resultCard("RAG 검색 실패", esc(e.message), "bad"));
     $("knowledgeResult").textContent = `RAG 검색 실패: ${e.message}`;
   }
 }
@@ -673,6 +750,7 @@ function knowledgeEvalPayload() {
 async function evaluateKnowledge() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
+    setHtml("knowledgeResultCards", resultCard("평가 불가", "서버 ID를 숫자로 입력하세요.", "bad"));
     $("knowledgeResult").textContent = "서버 ID를 숫자로 입력하세요.";
     return;
   }
@@ -680,16 +758,19 @@ async function evaluateKnowledge() {
   try {
     payload = knowledgeEvalPayload();
   } catch (e) {
+    setHtml("knowledgeResultCards", resultCard("JSON 파싱 실패", esc(e.message), "bad"));
     $("knowledgeResult").textContent = `골든 케이스 JSON 파싱 실패: ${e.message}`;
     return;
   }
   if (!payload.cases.length) {
+    setHtml("knowledgeResultCards", resultCard("평가 케이스 필요", "골든 케이스 JSON을 1개 이상 입력하세요.", "warn"));
     $("knowledgeResult").textContent = "골든 케이스 JSON을 1개 이상 입력하세요.";
     return;
   }
   try {
     const result = await postJson(`/api/ai-network/knowledge/${gid}/eval`, payload);
     const rows = result.cases || [];
+    renderKnowledgeEvalCards(result, rows);
     $("knowledgeResult").textContent = [
       `RAG 평가: ${result.passed ? "PASS" : "FAIL"} · cases=${result.caseCount} · k=${result.k}`,
       `hitAtK=${Number(result.hitAtK || 0).toFixed(2)} · mrr=${Number(result.mrr || 0).toFixed(2)} · recallAtK=${Number(result.recallAtK || 0).toFixed(2)}`,
@@ -704,6 +785,7 @@ async function evaluateKnowledge() {
         : ["평가 결과가 없습니다."]),
     ].join("\n\n");
   } catch (e) {
+    setHtml("knowledgeResultCards", resultCard("RAG 평가 실패", esc(e.message), "bad"));
     $("knowledgeResult").textContent = `RAG 평가 실패: ${e.message}`;
   }
 }
@@ -939,12 +1021,27 @@ function focusPresetTask(task) {
   focusInside(targets[task] || "#presetName");
 }
 
+function selectLocalPresetFromElement(el) {
+  $("presetId").value = el.dataset.localPresetId || "";
+  if (el.dataset.presetName) $("presetName").value = el.dataset.presetName;
+  if (el.dataset.presetCategory) $("presetCategory").value = el.dataset.presetCategory;
+  if (el.dataset.presetSummary) $("presetSummary").value = el.dataset.presetSummary;
+  focusPresetTask("create");
+}
+
+function selectPublishedPresetFromElement(el) {
+  $("publishedPresetId").value = el.dataset.presetId || "";
+  if (el.dataset.presetTitle) $("presetName").value = el.dataset.presetTitle;
+  if (el.dataset.presetDescription) $("presetSummary").value = el.dataset.presetDescription;
+  focusPresetTask("publish");
+}
+
 function renderPresetLists(local, published) {
   renderList("localPresetList", local?.presets?.slice(0, 8), "서버 프리셋 없음", (p) =>
-    `<li class="pick-local-preset preset-row channel-item" data-local-preset-id="${esc(p.id)}"><strong>${esc(p.name)} <small>#${esc(p.id)}</small></strong><span>${esc(p.category)} · ${esc(p.status)} · ${esc(p.visibility)} · 클릭하면 편집 대상으로 선택</span><div class="row-actions"><button class="mini pick-local-preset" data-local-preset-id="${esc(p.id)}">편집에 넣기</button></div></li>`,
+    `<li class="pick-local-preset preset-row channel-item" data-local-preset-id="${esc(p.id)}" data-preset-name="${esc(p.name)}" data-preset-category="${esc(p.category || "general")}" data-preset-summary="${esc(p.summary || "")}"><strong>${esc(p.name)} <small>#${esc(p.id)}</small></strong><span>${esc(p.category)} · ${esc(p.status)} · ${esc(p.visibility)} · 클릭하면 편집 폼에 채워짐</span><div class="row-actions"><button class="mini pick-local-preset" data-local-preset-id="${esc(p.id)}" data-preset-name="${esc(p.name)}" data-preset-category="${esc(p.category || "general")}" data-preset-summary="${esc(p.summary || "")}">편집에 넣기</button></div></li>`,
   );
   renderList("publishedPresetList", published?.presets?.slice(0, 8), "게시 프리셋 없음", (p) =>
-    `<li class="preset-row"><strong>${esc(p.title)} <small>#${esc(p.id)}</small></strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · 신고 ${esc(p.reportCount)} · ${esc(p.category || "general")} · ${(p.tags || []).map(esc).join(", ") || "태그 없음"}</span><div class="row-actions"><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button><button class="mini select-published-preset" data-preset-id="${esc(p.id)}">관리 선택</button><button class="mini report-preset" data-preset-id="${esc(p.id)}">신고</button><button class="mini unlist-published-preset" data-preset-id="${esc(p.id)}">비공개</button><button class="mini remove-published-preset" data-preset-id="${esc(p.id)}">숨김</button></div></li>`,
+    `<li class="preset-row"><strong>${esc(p.title)} <small>#${esc(p.id)}</small></strong><span>좋아요 ${esc(p.likeCount)} · 가져오기 ${esc(p.importCount)} · 신고 ${esc(p.reportCount)} · ${esc(p.category || "general")} · ${(p.tags || []).map(esc).join(", ") || "태그 없음"}</span><div class="row-actions"><button class="mini preview-preset" data-preset-id="${esc(p.id)}">미리보기</button><button class="mini select-published-preset" data-preset-id="${esc(p.id)}" data-preset-title="${esc(p.title)}" data-preset-description="${esc(p.description || "")}">관리 선택</button><button class="mini report-preset" data-preset-id="${esc(p.id)}">신고</button><button class="mini unlist-published-preset" data-preset-id="${esc(p.id)}">비공개</button><button class="mini remove-published-preset" data-preset-id="${esc(p.id)}">숨김</button></div></li>`,
   );
 }
 
@@ -958,6 +1055,7 @@ async function refreshPresets() {
     pendingPresetImport = null;
     $("presetConfirmImport").disabled = true;
     setText("presetImportState", "미리보기 전");
+    setHtml("presetImportPreviewCards", "");
     $("presetImportPreview").textContent =
       "가져올 프리셋의 [미리보기]를 먼저 누르면, 덮어쓰기/승인 필요 여부를 확인한 뒤 가져올 수 있습니다.";
     const [local, published] = await Promise.all([
@@ -1568,12 +1666,47 @@ function renderPresetImportPreview(preview) {
     "",
     "문제가 없으면 [미리보기한 프리셋 가져오기]를 누르세요.",
   ].filter(Boolean).join("\n");
+  setHtml("presetImportPreviewCards", [
+    resultCard(
+      `${preview.title || "프리셋"} #${preview.publishedPresetId}`,
+      [
+        preview.description ? esc(preview.description) : "설명 없음",
+        `<code>${esc(preview.category || "general")}</code>`,
+      ].join("<br />"),
+      "good",
+    ),
+    resultCard(
+      "가져오면 바뀌는 것",
+      [
+        preview.willApplyToChannel ? "현재 채널 AI에 적용" : "서버 프리셋 복사본만 생성",
+        preview.willOverwriteChannelAi ? "기존 채널 AI 덮어쓰기 가능" : "기존 채널 AI 덮어쓰기 없음",
+        preview.willCreateApprovalProposal ? "승인 제안으로 생성" : "즉시 적용 가능",
+      ].map(esc).join("<br />"),
+      preview.willOverwriteChannelAi || preview.willCreateApprovalProposal ? "warn" : "good",
+    ),
+    resultCard(
+      "동작 요약",
+      [
+        `말투 ${preview.tone || "-"} · 길이 ${preview.answerLength || "-"}`,
+        `모드 ${preview.responseMode || "-"} · 후보 ${preview.maxCandidates ?? "-"}`,
+        `태그 ${(preview.tags || []).join(", ") || "없음"}`,
+      ].map(esc).join("<br />"),
+    ),
+    resultCard(
+      conflicts.length ? `충돌 ${conflicts.length}건` : "충돌 없음",
+      conflicts.length
+        ? conflicts.map((c) => `${esc(c.severity)} · ${esc(c.code)} · ${esc(c.message)}`).join("<br />")
+        : "바로 가져올 수 있습니다.",
+      conflicts.length ? "warn" : "good",
+    ),
+  ].join(""));
 }
 
 async function previewPresetImport(publishedPresetId) {
   const gid = $("guildId").value.trim();
-  const channelId = $("wizardChannelId").value.trim();
+  const channelId = currentChannelIdValue();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(channelId)) {
+    setHtml("presetImportPreviewCards", resultCard("채널 선택 필요", "프리셋을 가져오려면 먼저 서버의 채널을 선택하세요.", "warn"));
     $("presetImportResult").textContent = "프리셋을 가져오려면 서버 ID와 채널 ID를 먼저 입력하세요.";
     return;
   }
@@ -1597,6 +1730,7 @@ async function previewPresetImport(publishedPresetId) {
     $("presetImportResult").textContent =
       `미리보기 완료: 충돌 ${pendingPresetImport.conflictCount}건 · 가져오려면 확인 버튼을 누르세요.`;
   } catch (e) {
+    setHtml("presetImportPreviewCards", resultCard("미리보기 실패", esc(e.message), "bad"));
     $("presetImportResult").textContent = `프리셋 미리보기 실패: ${e.message}`;
   }
 }
@@ -1752,8 +1886,13 @@ document.addEventListener("click", (event) => {
   if (knowledgeSpaceButton) {
     selectKnowledgeSpace(knowledgeSpaceButton.dataset.spaceId || "", knowledgeSpaceButton.dataset.spaceName || "");
   }
+  const knowledgeJobButton = event.target.closest(".select-knowledge-job");
+  if (knowledgeJobButton) {
+    $("knowledgeJobId").value = knowledgeJobButton.dataset.jobId || "";
+    focusRagTask("index");
+  }
   const selectButton = event.target.closest(".select-published-preset");
-  if (selectButton) $("publishedPresetId").value = selectButton.dataset.presetId || "";
+  if (selectButton) selectPublishedPresetFromElement(selectButton);
   const qualityButton = event.target.closest(".select-quality-feedback");
   if (qualityButton) $("qualityFeedbackId").value = qualityButton.dataset.feedbackId || "";
   const previewButton = event.target.closest(".preview-preset, .import-preset");
@@ -1766,7 +1905,7 @@ document.addEventListener("click", (event) => {
   if (removeButton) deletePublishedPreset(removeButton.dataset.presetId);
   // 행 전체 클릭으로 프리셋 ID 선택(직접 입력 제거).
   const localPick = event.target.closest(".pick-local-preset");
-  if (localPick) $("presetId").value = localPick.dataset.localPresetId || "";
+  if (localPick) selectLocalPresetFromElement(localPick);
 });
 // 로그인 상태(Discord OAuth): 로그인 버튼 / 로그아웃 / 유저 표시.
 async function loadAuth() {
@@ -1852,7 +1991,6 @@ document.querySelectorAll("#channelTabs .tab").forEach((b) => {
 });
 
 // 채널 선택 = 클릭/입력 한 번으로 모든 채널-스코프 설정의 channelId 를 동기화(직접 입력 제거).
-const CHANNEL_ID_FIELDS = ["wizardChannelId", "routingChannelId", "knowledgeChannelId", "qualityChannelId", "multiChannelId"];
 function openChannel(channelId, name) {
   const cid = String(channelId || "").trim();
   if (!/^\d+$/.test(cid)) {

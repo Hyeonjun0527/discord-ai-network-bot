@@ -4,7 +4,6 @@ import com.discordassistant.central.platform.discord.CommandLoc
 import net.dv8tion.jda.api.interactions.DiscordLocale
 import net.dv8tion.jda.api.interactions.commands.build.Commands
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
 /** 슬래시 명령 로컬라이제이션(클라이언트 언어별 이름/설명). */
@@ -21,15 +20,6 @@ class CommandLocTest {
         )
         // 기본 이름은 영어(ascii) 유지 — dispatch 안정
         assertEquals("ask", cmd.name)
-    }
-
-    @Test
-    fun `러시아어 이름 없는 명령은 ko 이름·en·ru 설명만`() {
-        val cmd = Commands.slash("fairness", "공정성 리포트를 봅니다(관리자)")
-        CommandLoc.localize(cmd)
-        assertEquals("공정성", cmd.nameLocalizations.toMap()[DiscordLocale.KOREAN])
-        assertNull(cmd.nameLocalizations.toMap()[DiscordLocale.RUSSIAN]) // ru 이름 미지정
-        assertEquals("Fairness report (admin)", cmd.descriptionLocalizations.toMap()[DiscordLocale.ENGLISH_US])
     }
 
     @Test

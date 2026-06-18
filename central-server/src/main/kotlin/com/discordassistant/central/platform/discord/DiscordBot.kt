@@ -9,13 +9,11 @@ import com.discordassistant.central.onboarding.adapter.outbound.persistence.Guil
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
 import com.discordassistant.central.quota.application.RateLimiter
-import com.discordassistant.central.shared.ModelBurden
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.Permission
-import net.dv8tion.jda.api.entities.channel.middleman.GuildMessageChannel
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.events.channel.ChannelDeleteEvent
 import net.dv8tion.jda.api.events.guild.GuildJoinEvent
@@ -37,9 +35,6 @@ import net.dv8tion.jda.api.interactions.Interaction
 import net.dv8tion.jda.api.interactions.commands.Command
 import net.dv8tion.jda.api.interactions.components.ActionRow
 import net.dv8tion.jda.api.interactions.components.buttons.Button
-import net.dv8tion.jda.api.interactions.components.text.TextInput
-import net.dv8tion.jda.api.interactions.components.text.TextInputStyle
-import net.dv8tion.jda.api.interactions.modals.Modal
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
@@ -58,16 +53,10 @@ private val DM_COMMANDS =
     // AI 호출은 그 서버 멤버만, 기여도 서버 단위로만(멤버십 게이트). 길드 슬래시는 디스코드가
     // 멤버에게만 노출하므로 별도 검사 불필요. DM 은 멤버 신원이 없어 이 둘을 차단한다.
     setOf(
-        "models",
-        "catalog",
         "my-usage",
-        "license",
-        "contributions",
-        "community-stats",
         "nia",
         "privacy",
         "help",
-        "welcome",
         "menu",
         "settings",
     )
@@ -368,77 +357,8 @@ class DiscordBot(
                     event.replyEmbeds(EmbedFactory.helpEmbed(ctx.isAdmin, event.userLocale)).setEphemeral(true).queue()
                     return
                 }
-                "llm-settings" -> {
-                    if (!ctx.isAdmin) {
-                        event.reply(Replies.adminDenied(langOf(ctx)).content).setEphemeral(true).queue()
-                    } else {
-                        event
-                            .replyEmbeds(settingsWizard.settingsEmbed(ctx))
-                            .addComponents(settingsWizard.settingsRows(ctx))
-                            .setEphemeral(true)
-                            .queue()
-                    }
-                    return
-                }
-                "llm-channel-profile" -> {
-                    if (!ctx.isAdmin) {
-                        event
-                            .reply("⛔ ${Messages.get(Messages.Key.CHANNEL_PROFILE_ADMIN_ONLY, langOf(ctx))}")
-                            .setEphemeral(true)
-                            .queue()
-                    } else {
-                        event
-                            .reply(channelProfilePanel.channelProfilePanelText(ctx))
-                            .addComponents(channelProfilePanel.channelProfileRows())
-                            .setEphemeral(true)
-                            .queue()
-                    }
-                    return
-                }
-                "ai-onboard" -> {
-                    // 백필은 JDA 히스토리 조회로 느릴 수 있어 deferReply 후 전용 풀에서 처리(게이트웨이 스레드 비점유).
-                    val bodyChannel = event.getOption("backfill-channel")?.asChannel as? GuildMessageChannel
-                    val historyLimit =
-                        (event.getOption("history-limit")?.asLong ?: 0L)
-                            .coerceIn(0, MAX_ONBOARD_HISTORY_LIMIT.toLong())
-                            .toInt()
-                    event.deferReply(true).queue()
-                    slowCommandExecutor.execute {
-                        runCatching {
-                            onboarding.replyOnboardingProposalDeferred(
-                                event = event,
-                                ctx = ctx,
-                                channelName = event.channel.name,
-                                bodyChannel = bodyChannel,
-                                historyLimit = historyLimit,
-                            )
-                        }.onFailure {
-                            log.warn("ai-onboard 처리 실패: {}", it.message)
-                            event.hook.editOriginal("⚠️ AI 자동 설정 처리 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.").queue({}, {})
-                        }
-                    }
-                    return
-                }
-                "ask-long" -> {
-                    val modal =
-                        Modal
-                            .create("ask-long-modal", "긴 질문 입력")
-                            .addActionRow(
-                                TextInput
-                                    .create("prompt", "질문", TextInputStyle.PARAGRAPH)
-                                    .setRequired(true)
-                                    .setMaxLength(4000)
-                                    .build(),
-                            ).build()
-                    event.replyModal(modal).queue()
-                    return
-                }
-                "setup-channels" -> {
-                    // 폴백 슬래시(systemChannel 없거나 입장 배너 버튼이 사라졌을 때). 핸들러가 권한/멱등/생성을 자체 처리.
-                    // 이름 리터럴 = NiaChannelSetup.COMMAND_NAME — 등록↔디스패치 드리프트 가드가 리터럴을 파싱한다.
-                    setupChannels.handle(event, ctx, ctx.userLang ?: commands.guildLanguage(ctx))
-                    return
-                }
+                // 관리/운영 명령(설정·채널 AI·온보딩·지식·프리셋·다중응답 등)은 슬래시에서 제거되고 웹 대시보드로
+                // 이관됐다(/설정 → 웹). 채널 AI 자동 만들기는 입장 배너 버튼/웹에서, 긴 질문은 메시지 컨텍스트 메뉴로.
             }
             // 모든 명령을 defer 로 먼저 ack(3초 제한 회피) 후 결과 편집. 공유/원격 서버의 지연에도 안전.
             // 공개 명령만 비-ephemeral, 나머지는 ephemeral. defer 시점에 결정.
@@ -991,209 +911,12 @@ class DiscordBot(
                         webSearch = event.getOption("web")?.asBoolean ?: false,
                     )
                 "imagine" -> commands.imagine(ctx, event.getOption("prompt")?.asString.orEmpty())
-                "models" -> commands.models(ctx)
-                "catalog" -> commands.catalog(ctx)
                 "my-usage" -> commands.myUsage(ctx)
-                "license" -> commands.license(ctx)
-                "contributions" -> commands.contributions(ctx)
-                "community-stats" -> commands.communityStats(ctx)
                 "nia" -> commands.niaAffinity(ctx)
-                "fairness" -> commands.fairness(ctx)
                 "privacy" -> commands.privacy(ctx)
                 "help" -> commands.help(ctx, event.userLocale)
-                "bot-permissions" -> commands.botPermissions(ctx)
-                "ai-network-map" -> commands.aiNetworkMap(ctx)
-                "ai-network-check" -> commands.aiNetworkCheck(ctx)
-                "ai-knowledge-list" ->
-                    commands.knowledgeList(
-                        ctx,
-                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
-                    )
-                "ai-knowledge-add" ->
-                    commands.addKnowledge(
-                        ctx,
-                        title = event.getOption("title")!!.asString,
-                        sourceType = event.getOption("source-type")?.asString,
-                        sourceUri = event.getOption("url")?.asString,
-                        contentPreview = event.getOption("text")?.asString,
-                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
-                    )
-                "ai-knowledge-search" ->
-                    commands.searchKnowledge(
-                        ctx,
-                        query = event.getOption("query")!!.asString,
-                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
-                        limit = event.getOption("limit")?.asInt ?: 5,
-                    )
-                "ai-knowledge-index-plan" ->
-                    commands.knowledgeIndexPlan(
-                        ctx,
-                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
-                        force = event.getOption("force")?.asBoolean ?: false,
-                    )
-                "ai-knowledge-jobs" ->
-                    commands.knowledgeIndexJobs(
-                        ctx,
-                        spaceId = event.getOption("space-id")?.asString?.toLongOrNull(),
-                        limit = event.getOption("limit")?.asInt ?: 10,
-                    )
-                "ai-knowledge-job-complete" ->
-                    commands.completeKnowledgeIndexJob(
-                        ctx,
-                        jobId = event.getOption("job-id")!!.asString.toLongOrNull() ?: -1L,
-                        status = event.getOption("status")?.asString ?: "completed",
-                        reason = event.getOption("reason")?.asString,
-                    )
-                "ai-knowledge-approve" ->
-                    commands.approveKnowledge(
-                        ctx,
-                        spaceId = event.getOption("space-id")!!.asString.toLongOrNull() ?: -1L,
-                        sourceId = event.getOption("source-id")!!.asString.toLongOrNull() ?: -1L,
-                        reason = event.getOption("reason")?.asString ?: "approved from Discord",
-                    )
-                "ai-knowledge-delete" ->
-                    commands.deleteKnowledge(
-                        ctx,
-                        spaceId = event.getOption("space-id")!!.asString.toLongOrNull() ?: -1L,
-                        sourceId = event.getOption("source-id")!!.asString.toLongOrNull() ?: -1L,
-                        reason = event.getOption("reason")?.asString ?: "deleted from Discord",
-                    )
-                "ai-preset-catalog" ->
-                    commands.presetCatalog(
-                        ctx,
-                        query = event.getOption("query")?.asString,
-                        category = event.getOption("category")?.asString,
-                    )
-                "ai-preset-import" ->
-                    commands.importPresetToCurrentChannel(
-                        ctx,
-                        publishedPresetId = event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L,
-                        confirmConflicts = event.getOption("confirm-conflicts")?.asBoolean ?: false,
-                    )
-                "ai-preset-like" -> commands.likePreset(ctx, event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L)
-                "ai-preset-report" ->
-                    commands.reportPreset(
-                        ctx,
-                        publishedPresetId = event.getOption("published-id")!!.asString.toLongOrNull() ?: -1L,
-                        reason = event.getOption("reason")!!.asString,
-                    )
-                "ai-preset-moderation" -> commands.presetModeration(ctx)
-                "ai-preset-report-review" ->
-                    commands.reviewPresetReport(
-                        ctx,
-                        reportId = event.getOption("report-id")!!.asString.toLongOrNull() ?: -1L,
-                        decision = event.getOption("decision")!!.asString,
-                    )
-                "ai-multi-response-status" ->
-                    commands.multiResponseStatus(
-                        ctx,
-                        channelId = event.getOption("channel")?.asChannel?.idLong,
-                    )
-                "ai-multi-response-set" ->
-                    commands.setMultiResponsePolicy(
-                        ctx,
-                        channelId = event.getOption("channel")?.asChannel?.idLong,
-                        mode = event.getOption("mode")!!.asString,
-                        maxCandidates = event.getOption("candidates")!!.asInt,
-                        synthesisEnabled = event.getOption("synthesis")?.asBoolean ?: false,
-                        requireDistinctModels = event.getOption("distinct-models")?.asBoolean ?: false,
-                        timeoutSeconds = event.getOption("timeout")?.asInt ?: 120,
-                    )
-                "ai-multi-response-dry-run" ->
-                    commands.multiResponseDryRun(
-                        ctx,
-                        prompt = event.getOption("prompt")!!.asString,
-                        channelId = event.getOption("channel")?.asChannel?.idLong,
-                        responseMode = event.getOption("mode")?.asString,
-                    )
-                "welcome" -> commands.welcome(ctx)
-                "llm-welcome-set" -> commands.setWelcome(ctx, event.getOption("message")!!.asString)
                 "provider-join" -> commands.providerJoin(ctx)
-                "provider-pause" -> commands.providerPause(ctx)
-                "provider-resume" -> commands.providerResume(ctx)
-                "provider-leave" -> commands.providerLeave(ctx)
                 "provider-status" -> commands.providerStatus(ctx)
-                "provider-models" ->
-                    commands.providerModels(
-                        ctx,
-                        event
-                            .getOption("models")!!
-                            .asString
-                            .split(",")
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() },
-                    )
-                "provider-limit" ->
-                    commands.providerLimit(
-                        ctx,
-                        event.getOption("model")!!.asString,
-                        event.getOption("daily")!!.asInt,
-                        event.getOption("concurrency")!!.asInt,
-                        event.getOption("seconds")!!.asInt,
-                    )
-                "provider-schedule" ->
-                    commands.providerSchedule(
-                        ctx,
-                        event.getOption("from")!!.asInt,
-                        event.getOption("to")!!.asInt,
-                    )
-                "llm-guild-defaults" ->
-                    commands.setGuildDefaults(
-                        ctx,
-                        event.getOption("model")?.asString,
-                        event.getOption("language")?.asString,
-                        event.getOption("user-daily-limit")?.asLong?.toInt(),
-                    )
-                "llm-allow-channel" -> commands.allowChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
-                "llm-deny-channel" -> commands.denyChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
-                "forward-channel" -> commands.setForwardChannel(ctx, event.getOption("channel")!!.asChannel.idLong)
-                "llm-role-policy" ->
-                    commands.setRolePolicy(
-                        ctx,
-                        event.getOption("role")!!.asRole.idLong,
-                        runCatching {
-                            ModelBurden.valueOf(
-                                event.getOption("level")!!.asString.uppercase(),
-                            )
-                        }.getOrDefault(ModelBurden.LIGHT),
-                        event.getOption("limit")!!.asInt,
-                    )
-                "llm-channel-profile" -> {
-                    val avatar = event.getOption("avatar")?.asAttachment
-                    if (avatar != null && !avatar.isImage) {
-                        Reply("⚠️ 아이콘에는 PNG/JPG/GIF/WEBP 같은 이미지 파일만 올려주세요.")
-                    } else {
-                        commands.setChannelAiProfile(
-                            ctx,
-                            event.getOption("name")?.asString,
-                            avatar?.url ?: event.getOption("avatar-url")?.asString,
-                            event.getOption("reset")?.asBoolean ?: false,
-                            rollback = event.getOption("rollback")?.asBoolean ?: false,
-                            purpose = event.getOption("purpose")?.asString,
-                            tone = event.getOption("tone")?.asString,
-                            answerLength = event.getOption("answer-length")?.asString,
-                            constitution = event.getOption("constitution")?.asString,
-                        )
-                    }
-                }
-                "ai-instruction" -> commands.setChannelAiInstruction(ctx, event.getOption("text")?.asString)
-                "ai-onboard-optout" -> commands.setOnboardingOptOut(ctx, event.getOption("enable")?.asBoolean)
-                "providers" -> commands.providers(ctx)
-                "provider-approve" -> {
-                    val target = event.getOption("user")!!.asUser
-                    val reply = commands.approveProvider(ctx, target.idLong)
-                    // 승인 성공(온보딩 안내) 시 대상에게 그대로 DM(#162). 실패 메시지는 DM 안 함.
-                    if (reply.content.contains("프로바이더로 승인되었습니다")) {
-                        target.openPrivateChannel().queue(
-                            { ch -> ch.sendMessage(reply.content).queue({}, {}) },
-                            {},
-                        )
-                    }
-                    reply
-                }
-                "provider-remove" -> commands.removeProvider(ctx, event.getOption("user")!!.asUser.idLong)
-                "llm-block" -> commands.blockUser(ctx, event.getOption("user")!!.asUser.idLong)
-                "llm-unblock" -> commands.unblockUser(ctx, event.getOption("user")!!.asUser.idLong)
                 else -> Reply("알 수 없는 명령입니다.")
             }
     }

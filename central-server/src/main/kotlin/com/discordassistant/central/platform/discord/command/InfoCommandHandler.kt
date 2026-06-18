@@ -140,35 +140,19 @@ class InfoCommandHandler(
         sb.append("${m(Messages.Key.HELP_INTRO)}\n\n")
         sb.append("${m(Messages.Key.HELP_SECTION_USER)}\n")
         sb.append("· ${c("ask")} `<질문>` — 무료 클라우드 AI(☁️)로 답변, 풀에 로컬 프로바이더가 있으면 로컬(🖥️)로\n")
-        sb.append("· ${c("models")} ${c("catalog")} — 사용 가능한 모델 수준·목록\n")
-        sb.append("· ${c("my-usage")} ${c("privacy")} — 내 사용량 / 프라이버시 고지\n")
-        sb.append("· ${c("license")} — 내 Nexa 라이선스 상태\n")
-        sb.append("· ${c("nia")} ${c("contributions")} — 니아 호감도 / 기여 현황(비금전 인정)\n\n")
+        sb.append("· ${c("imagine")} `<설명>` — 이미지 생성(무료 클라우드 Stable Diffusion 기본, 로컬 연결 시 로컬)\n")
+        sb.append("· ${c("menu")} ${c("my-usage")} ${c("nia")} ${c("privacy")} — 시작 패널 · 내 사용량 · 니아 호감도 · 프라이버시\n\n")
         sb.append("${m(Messages.Key.HELP_SECTION_PROVIDER)}\n")
-        sb.append("· ${c("provider-join")} — 참여 신청(승인 후 토큰→에이전트 실행)\n")
-        sb.append("· ${c("provider-pause")} ${c("provider-resume")} ${c("provider-leave")} — 가용성 제어\n")
-        sb.append("· ${c("provider-status")} ${c("provider-models")} ${c("provider-limit")} — 내 기여 설정\n")
+        sb.append("· ${c("provider-join")} — 내 컴퓨터의 AI로 함께 도와주기(참여 후 운영은 데스크톱 앱에서)\n")
+        sb.append("· ${c("provider-status")} — 내 프로바이더 상태 확인\n")
         sb.append("· 봇이 서버에서 제거되면 그 서버의 프로바이더 연결/등록/토큰은 자동 정리됩니다.\n")
         if (ctx.isAdmin) {
             sb.append("\n${m(Messages.Key.HELP_SECTION_ADMIN)}\n")
-            sb.append("· ${c("fairness")} ${c("providers")} — 공정성 리포트·프로바이더 목록\n")
-            sb.append("· ${c("provider-approve")} ${c("provider-remove")} — 승인/제거\n")
-            sb.append("· ${c("llm-allow-channel")} ${c("llm-deny-channel")} ${c("llm-role-policy")} — 채널·역할 정책\n")
-            sb.append("· ${c("llm-channel-profile")} — 이 채널에서 보일 AI 답변 이름/아이콘 설정\n")
-            sb.append("· ${c("ai-onboard")} — 이 채널 AI를 자동으로 설정(휴리스틱 draft → 승인 카드)\n")
-            sb.append("· ${c("ai-instruction")} — 이 채널 AI에 자연어 자유 지침(페르소나/말투 색깔) 추가·수정\n")
-            sb.append("· ${c("ai-network-map")} — Provider·모델·채널AI·RAG 구성을 한눈에 보기\n")
-            sb.append("· ${c("ai-knowledge-list")} ${c("ai-knowledge-add")} ${c("ai-knowledge-search")} — 채널 지식공간/RAG 소스 관리\n")
-            sb.append("· ${c("ai-knowledge-index-plan")} ${c("ai-knowledge-approve")} ${c("ai-knowledge-delete")} — 색인계획·검토·삭제\n")
-            sb.append("· ${c("ai-knowledge-jobs")} ${c("ai-knowledge-job-complete")} — RAG 색인 작업 큐 조회·완료 처리\n")
-            sb.append("· ${c("ai-preset-catalog")} ${c("ai-preset-import")} — 프리셋 공유 목록 보기·현재 채널에 가져오기\n")
-            sb.append("· ${c("ai-preset-moderation")} ${c("ai-preset-report-review")} — 프리셋 신고 큐 확인·검수 처리\n")
             sb.append(
-                "· ${c("ai-multi-response-status")} ${c("ai-multi-response-set")} ${c("ai-multi-response-dry-run")} " +
-                    "— 다중응답 정책·상태·안전 드라이런\n",
+                "· ${c("settings")} → 서버 관리·운영은 모두 **웹 대시보드**에서 합니다: 채널 AI 프로필·지식(RAG)·" +
+                    "프리셋·다중응답·역할/채널 정책·프로바이더 승인/제거·사용자 차단·온보딩 등.\n",
             )
-            sb.append("· ${c("ai-network-check")} — Provider·채널AI·RAG·프리셋·다중응답 운영 체크리스트\n")
-            sb.append("· ${c("llm-block")} ${c("llm-unblock")} — 사용자 차단/해제\n")
+            sb.append("· 내 컴퓨터로 직접 AI를 돌리려면 ${c("provider-join")} → 데스크톱 앱을 설치해 운영하세요.\n")
         }
         sb.append("\n${m(Messages.Key.HELP_SENSITIVE_NOTICE)}")
         return Reply(sb.toString())

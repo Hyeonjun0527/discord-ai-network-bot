@@ -79,9 +79,17 @@ class RequestOrchestrator(
 ) {
     private val log = LoggerFactory.getLogger(RequestOrchestrator::class.java)
 
-    fun handle(input: AiRequestInput): OrchestrationResult {
-        // 멱등성: 짧은 윈도우 내 동일 요청 중복은 라우팅 없이 막는다(#243).
-        if (!idempotency.tryBegin(input.guildId, input.userId, input.prompt)) {
+    /**
+     * @param dedup 멱등성 중복 차단 적용 여부. 기본 true(유저 요청). /질문 의 무료 클라우드 폴백처럼 같은
+     *   프롬프트로 **내부 재시도**할 때는 false 로 호출한다 — 첫 시도에서 이미 중복 검사를 통과했으므로
+     *   2차(폴백)를 "동일 요청 중복"으로 막으면 폴백이 영구 실패한다.
+     */
+    fun handle(
+        input: AiRequestInput,
+        dedup: Boolean = true,
+    ): OrchestrationResult {
+        // 멱등성: 짧은 윈도우 내 동일 요청 중복은 라우팅 없이 막는다(#243). 내부 폴백 재시도는 제외(dedup=false).
+        if (dedup && !idempotency.tryBegin(input.guildId, input.userId, input.prompt)) {
             val dup = OrchestrationResult(RequestState.REJECTED, failReason = "동일한 요청이 방금 접수되었습니다. 잠시 후 다시 시도해 주세요.")
             recorder.recordRequest(input, dup.state, dup.providerId, dup.failReason, dup.requestId)
             return dup

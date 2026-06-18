@@ -45,10 +45,12 @@ class CommandRegistrationDriftTest {
                 .map { it.groupValues[1] }
                 .toSet()
 
-        // 인터랙티브 명령은 dispatch() when 이 아니라 컴포넌트/모달 흐름에서 처리(#147/180/189).
-        val interactiveHandled = setOf("llm-settings", "ask-long")
+        // 인터랙티브 명령(menu/settings/provider-join/help)은 onSlashCommandInteraction 의 컴포넌트/모달
+        // 흐름에서 처리되며, 그 분기도 `"name" -> {` 형태라 dispatched 정규식에 함께 잡힌다(별도 예외 불필요).
+        val interactiveHandled = emptySet<String>()
 
-        assertTrue(registered.size >= 20, "등록 명령이 너무 적음(파싱 오류 의심): ${registered.size}")
+        // 슬래시 명령은 단순 유저 명령 ≤10 으로 압축(관리는 웹 대시보드). 파싱 오류만 가드.
+        assertTrue(registered.size >= 8, "등록 명령이 너무 적음(파싱 오류 의심): ${registered.size}")
         val registeredNoHandler = registered - dispatched - interactiveHandled
         val handlerNoRegister = dispatched - registered
         assertEquals(emptySet<String>(), registeredNoHandler, "등록되었으나 디스패치 없음")

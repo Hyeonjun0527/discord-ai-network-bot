@@ -16,12 +16,12 @@ import com.discordassistant.central.multiresponse.adapter.outbound.persistence.S
 import com.discordassistant.central.platform.discord.CommandContext
 import com.discordassistant.central.platform.discord.CommandService
 import com.discordassistant.central.platform.discord.OnboardingStartOutcome
-import com.discordassistant.central.preset.application.PresetBehaviorInput
 import com.discordassistant.central.preset.application.PresetRegistryService
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.protocol.Frame
+import com.discordassistant.central.relay.protocol.InferError
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
 import com.discordassistant.central.requestlog.application.UsageService
@@ -46,6 +46,18 @@ private class EchoConn : AgentConnection {
             lastInfer = frame
             session.handleFrame(InferResult(frame.requestId, "echo:${frame.prompt}"))
         }
+    }
+
+    override fun close(reason: String) {}
+}
+
+/** 추론 요청에 항상 에러를 반환하는 연결 — /질문 로컬 실패 → 무료 클라우드 폴백 경로 검증용. */
+private class FailingConn : AgentConnection {
+    lateinit var session: ProviderSession
+    override val remoteId = "fail"
+
+    override fun sendFrame(frame: Frame) {
+        if (frame is InferRequest) session.handleFrame(InferError(frame.requestId, "OLLAMA_ERROR", "boom"))
     }
 
     override fun close(reason: String) {}
@@ -100,24 +112,13 @@ class CommandServiceTest
             assertTrue(!user.contains("__관리자__"))
             val admin = commands.help(ctx(admin = true)).content
             assertTrue(admin.contains("__관리자__"))
-            assertTrue(admin.contains("/채널프로필"))
-            assertTrue(admin.contains("/네트워크지도"))
-            assertTrue(admin.contains("/지식목록"))
-            assertTrue(admin.contains("/지식추가"))
-            assertTrue(admin.contains("/지식검색"))
-            assertTrue(admin.contains("/지식색인계획"))
-            assertTrue(admin.contains("/지식승인"))
-            assertTrue(admin.contains("/지식삭제"))
-            assertTrue(admin.contains("/지식색인작업"))
-            assertTrue(admin.contains("/지식색인완료"))
-            assertTrue(admin.contains("/프리셋목록"))
-            assertTrue(admin.contains("/프리셋가져오기"))
-            assertTrue(admin.contains("/프리셋검수"))
-            assertTrue(admin.contains("/프리셋신고처리"))
-            assertTrue(admin.contains("/다중응답상태"))
-            assertTrue(admin.contains("/다중응답설정"))
-            assertTrue(admin.contains("/다중응답실험"))
-            assertTrue(admin.contains("/네트워크점검"))
+            // 관리 기능은 슬래시에서 제거되고 웹 대시보드로 이관 → 관리자 섹션은 /설정(웹)로 안내한다.
+            assertTrue(admin.contains("/설정"))
+            assertTrue(admin.contains("웹 대시보드"))
+            // 옛 관리 슬래시는 더 이상 도움말에 나열되지 않는다(웹 이관).
+            assertFalse(admin.contains("/지식목록"))
+            assertFalse(admin.contains("/다중응답설정"))
+            assertFalse(admin.contains("/채널프로필"))
         }
 
         @Test
@@ -272,58 +273,6 @@ class CommandServiceTest
         }
 
         @Test
-        fun `preset catalog import like — Discord에서 공유 프리셋을 현재 채널에 적용한다`() {
-            val g = CommandContext(guildId = 77992, channelId = 88992, userId = 5, roleIds = setOf(1L), isAdmin = true)
-            val preset =
-                presetRegistry.createPreset(
-                    guildId = g.guildId,
-                    ownerUserId = g.userId,
-                    name = "코딩 튜터",
-                    summary = "개발 질문과 코드 리뷰를 도와주는 프리셋",
-                    category = "coding",
-                    visibility = "guild_private",
-                    behavior =
-                        PresetBehaviorInput(
-                            purpose = "Kotlin/Spring Boot 개발 질문을 돕습니다.",
-                            tone = "정확하고 실용적으로",
-                            answerLength = "balanced",
-                            constitution = "모르면 모른다고 말하고 실행 가능한 예시를 먼저 제시하기",
-                            responseMode = "balanced",
-                            maxCandidates = 1,
-                        ),
-                )
-            val published = presetRegistry.publishPreset(preset.id, g.userId, title = null, description = null)
-
-            val catalog = commands.presetCatalog(g, query = "코딩", category = "coding")
-            assertTrue(catalog.content.contains("AI 프리셋 공유 목록"))
-            assertTrue(catalog.content.contains("코딩 튜터"))
-            assertTrue(catalog.content.contains("`${published.id}`"))
-            assertTrue(catalog.content.contains("https://discord-ai.yeon.world/presets"))
-            val encodedSlug = java.net.URLEncoder.encode(published.slug, Charsets.UTF_8)
-            assertTrue(catalog.content.contains("preset=$encodedSlug"))
-            assertTrue(catalog.content.contains("웹에서 검색·미리보기·가져오기"))
-
-            val liked = commands.likePreset(g.copy(isAdmin = false), published.id)
-            assertTrue(liked.content.contains("좋아요"))
-
-            val imported = commands.importPresetToCurrentChannel(g, published.id)
-            assertTrue(imported.content.contains("프리셋을 현재 채널에 가져왔습니다"))
-            assertTrue(imported.content.contains("상태: `applied`"))
-            assertTrue(imported.content.contains("채널 AI:"))
-
-            val reported = commands.reportPreset(g.copy(isAdmin = false), published.id, "프롬프트가 위험해 보여요 token=hidden")
-            assertTrue(reported.content.contains("신고를 접수"))
-            val moderation = commands.presetModeration(g).content
-            assertTrue(moderation.contains("프리셋 신고/검수 큐"))
-            assertTrue(moderation.contains("코딩 튜터"))
-            assertTrue(moderation.contains("열린 신고 1"))
-            assertTrue(moderation.contains("유형"))
-            val report = presetRegistry.listReports().single()
-            val reviewed = commands.reviewPresetReport(g, report.id, "dismiss")
-            assertTrue(reviewed.content.contains("신고를 처리"))
-        }
-
-        @Test
         fun `multi response commands — Discord에서 정책 상태 드라이런을 관리한다`() {
             val g = CommandContext(guildId = 77995, channelId = 88995, userId = 5, roleIds = setOf(1L), isAdmin = true)
             providerCapabilities.save(
@@ -420,116 +369,6 @@ class CommandServiceTest
             } finally {
                 registry.unregister(session)
             }
-        }
-
-        @Test
-        fun `knowledge commands — Discord에서 채널 RAG 지식을 추가 목록 검색한다`() {
-            val g = CommandContext(guildId = 77993, channelId = 88993, userId = 5, roleIds = setOf(1L), isAdmin = true)
-
-            val added =
-                commands.addKnowledge(
-                    g,
-                    title = "운영 규칙 README",
-                    sourceType = "link",
-                    sourceUri = "https://example.com/rules",
-                    contentPreview = null,
-                )
-            assertTrue(added.content.contains("지식 소스를 추가했습니다"))
-            assertTrue(added.content.contains("status: `pending`"))
-
-            val readiness = knowledge.guildReadiness(g.guildId)
-            val spaceId = readiness.spaces.single().knowledgeSpaceId
-            val source = knowledge.listSources(g.guildId, spaceId).single()
-            val list = commands.knowledgeList(g, spaceId)
-            assertTrue(list.content.contains("채널 지식공간 상세"))
-            assertTrue(list.content.contains("운영 규칙 README"))
-
-            knowledge.markSourceIndexed(g.guildId, spaceId, source.id, chunkCount = 1)
-            val search = commands.searchKnowledge(g, query = "운영 규칙", limit = 3)
-            assertTrue(search.content.contains("채널 지식 검색"))
-            assertTrue(search.content.contains("운영 규칙 README"))
-
-            val plan = commands.knowledgeIndexPlan(g, spaceId, force = true)
-            assertTrue(plan.content.contains("RAG 색인 계획"))
-            assertTrue(plan.content.contains("scripts/rag.sh"))
-
-            val deleted = commands.deleteKnowledge(g, spaceId, source.id, reason = "테스트 삭제")
-            assertTrue(deleted.content.contains("지식 소스를 삭제했습니다"))
-            assertTrue(deleted.content.contains("재색인 작업"))
-            val latestJob =
-                embeddingJobs
-                    .findTop10ByGuildIdAndKnowledgeSpaceIdOrderByQueuedAtDesc(g.guildId, spaceId)
-                    .first()
-            assertEquals("delete_source", latestJob.jobType)
-        }
-
-        @Test
-        fun `knowledge add — 텍스트 지식은 즉시 색인되어 검색 가능하다`() {
-            val g = CommandContext(guildId = 77997, channelId = 88997, userId = 5, roleIds = setOf(1L), isAdmin = true)
-
-            val added =
-                commands.addKnowledge(
-                    g,
-                    title = "Kotlin Spring 운영 규칙",
-                    sourceType = "text",
-                    sourceUri = null,
-                    contentPreview = "Kotlin Spring 운영은 actuator health 확인 후 rollback plan을 점검합니다.",
-                )
-
-            assertTrue(added.content.contains("status: `indexed`"), added.content)
-            assertTrue(added.content.contains("즉시 검색 가능"), added.content)
-            val search = commands.searchKnowledge(g, query = "actuator", limit = 3)
-            assertTrue(search.content.contains("Kotlin Spring 운영 규칙"), search.content)
-            assertTrue(search.content.contains("actuator health"), search.content)
-        }
-
-        @Test
-        fun `knowledge jobs — Discord에서 색인 작업을 조회하고 완료 처리한다`() {
-            val g = CommandContext(guildId = 77998, channelId = 88998, userId = 5, roleIds = setOf(1L), isAdmin = true)
-            commands.addKnowledge(
-                g,
-                title = "FAQ",
-                sourceType = "text",
-                sourceUri = null,
-                contentPreview = "자주 묻는 질문과 답변입니다.",
-            )
-            val job = embeddingJobs.findTop20ByGuildIdOrderByQueuedAtDesc(g.guildId).single()
-
-            val listed = commands.knowledgeIndexJobs(g, limit = 5)
-            assertTrue(listed.content.contains("RAG 색인 작업 큐"))
-            assertTrue(listed.content.contains("`${job.id}`"))
-            assertTrue(listed.content.contains("queued"))
-
-            val completed = commands.completeKnowledgeIndexJob(g, job.id, status = "completed", reason = "qdrant rebuild ok")
-            assertTrue(completed.content.contains("status: `completed`"), completed.content)
-            val relisted = commands.knowledgeIndexJobs(g, spaceId = job.knowledgeSpaceId, limit = 5)
-            assertTrue(relisted.content.contains("completed"), relisted.content)
-        }
-
-        @Test
-        fun `knowledge approve — 검토 소스를 승인해 색인 대기로 전환한다`() {
-            val g = CommandContext(guildId = 77994, channelId = 88994, userId = 5, roleIds = setOf(1L), isAdmin = true)
-
-            val added =
-                commands.addKnowledge(
-                    g,
-                    title = "검토 필요한 HTTP 문서",
-                    sourceType = "link",
-                    sourceUri = "http://example.com/manual",
-                    contentPreview = null,
-                )
-            assertTrue(added.content.contains("risk: `review`"))
-
-            val spaceId =
-                knowledge
-                    .guildReadiness(g.guildId)
-                    .spaces
-                    .single()
-                    .knowledgeSpaceId
-            val source = knowledge.listSources(g.guildId, spaceId).single()
-            val approved = commands.approveKnowledge(g, spaceId, source.id, reason = "공개 문서 확인")
-            assertTrue(approved.content.contains("색인 대기 상태로 승인"))
-            assertTrue(approved.content.contains("status: `pending`"))
         }
 
         @Test
@@ -756,6 +595,33 @@ class CommandServiceTest
                 assertEquals("glm-5.1", conn.lastInfer!!.model) // 무료 클라우드 모델로 라우팅
             } finally {
                 registry.unregister(s)
+            }
+        }
+
+        @Test
+        fun `ask — 로컬 우선 시도가 실패하면 무료 클라우드(☁️)로 폴백해 답한다`() {
+            // 로컬(비-클라우드 exaone) 프로바이더가 추론 실패(InferError) + 클라우드(glm-5.1) 프로바이더 공존.
+            // 모델을 exaone 으로 지정 → 1차는 exaone(실패) → 무료 클라우드 glm-5.1 폴백 → 성공(☁️).
+            val failing = FailingConn()
+            val local = ProviderSession(failing, providerId = 93, guildId = 100)
+            failing.session = local
+            local.capability = local.capability.copy(models = listOf("exaone3.5:7.8b")) // 로컬
+            val cloudConn = EchoConn()
+            val cloud = ProviderSession(cloudConn, providerId = 94, guildId = 100)
+            cloudConn.session = cloud
+            cloud.capability = cloud.capability.copy(models = listOf("glm-5.1")) // 무료 클라우드
+            registry.register(local)
+            registry.register(cloud)
+            try {
+                val cctx = CommandContext(guildId = 100, channelId = 200, userId = 930093, roleIds = setOf(1L), isAdmin = false)
+                val r = commands.ask(cctx, "코드 설명", requestedModel = "exaone3.5:7.8b")
+                // 로컬 실패 → 같은 프롬프트로 클라우드 2차 호출. 멱등성 가드가 "동일한 요청"으로 막으면 폴백이 영구 실패한다.
+                assertFalse(r.content.contains("동일한 요청"), "멱등성 가드가 클라우드 폴백을 막으면 안 됨: ${r.content}")
+                assertTrue(r.content.startsWith("☁️ echo:"), "로컬 실패 → 무료 클라우드 폴백(☁️): ${r.content}")
+                assertEquals("glm-5.1", cloudConn.lastInfer!!.model)
+            } finally {
+                registry.unregister(local)
+                registry.unregister(cloud)
             }
         }
 

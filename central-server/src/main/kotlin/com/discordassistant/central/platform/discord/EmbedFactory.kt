@@ -109,24 +109,22 @@ object EmbedFactory {
                         "${c("menu")} 로 언제든 시작 패널을 열 수 있어요.",
                 ).addField(
                     "${MenuSymbols.ASK} ${m(Messages.Key.HELP_LABEL_USER)}",
-                    "${c("ask")} `<질문>` — 풀의 누군가의 PC AI 로 답변\n" +
-                        "${c("models")} ${c("catalog")} — 사용 가능한 모델 수준·목록\n" +
-                        "${c("my-usage")} ${c("nia")} ${c("contributions")} — 내 사용량 · 니아 호감도 · 기여 현황",
+                    "${c("ask")} `<질문>` — 무료 클라우드(☁️) 기본 · 로컬 연결 시 로컬(🖥️)\n" +
+                        "${c("imagine")} `<설명>` — 이미지 생성(무료 클라우드 SD 기본)\n" +
+                        "${c("my-usage")} ${c("nia")} ${c("privacy")} — 내 사용량 · 니아 호감도 · 프라이버시",
                     false,
                 ).addField(
                     "${MenuSymbols.PROVIDER} ${m(Messages.Key.HELP_LABEL_PROVIDER)}",
-                    "${c("provider-join")} — 참여 신청(승인 후 토큰→에이전트 실행)\n" +
-                        "${c("provider-status")} ${c("provider-pause")} ${c("provider-resume")} — 상태·가용성\n" +
-                        "${c("provider-schedule")} — 가용 시간대 설정",
+                    "${c("provider-join")} — 내 컴퓨터의 AI로 함께 도와주기(이후 운영은 데스크톱 앱)\n" +
+                        "${c("provider-status")} — 내 프로바이더 상태",
                     false,
                 )
         if (isAdmin) {
             b.addField(
                 "${MenuSymbols.SETTINGS} ${m(Messages.Key.HELP_LABEL_ADMIN)}",
-                "${c("llm-settings")} — 설정 패널(언어·모델·채널·자동승인)\n" +
-                    "${c("provider-approve")} ${c("providers")} ${c("fairness")} — 승인·현황·공정성\n" +
-                    "${c("llm-channel-profile")} — 이 채널 AI 이름·아이콘·말투 설정\n" +
-                    "${c("llm-allow-channel")} ${c("llm-block")} — 채널·차단 정책",
+                "${c("settings")} → 서버 관리·운영은 모두 **웹 대시보드**에서:\n" +
+                    "채널 AI·지식(RAG)·프리셋·다중응답·역할/채널 정책·프로바이더 승인·사용자 차단 등.\n" +
+                    "내 컴퓨터로 직접 AI를 돌리려면 ${c("provider-join")} → 데스크톱 앱.",
                 false,
             )
         }

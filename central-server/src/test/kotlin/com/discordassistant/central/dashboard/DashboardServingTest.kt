@@ -350,6 +350,8 @@ class DashboardServingTest
             assertTrue(js.contains("renderKnowledgeSpaces"))
             assertTrue(js.contains("updateKnowledgeExperience"))
             assertTrue(js.contains("selectKnowledgeSpace"))
+            assertTrue(js.contains("""if (name === "presets") refreshPresets();"""))
+            assertTrue(js.contains("""if (name === "rag") refreshKnowledge();"""))
         }
 
         @Test

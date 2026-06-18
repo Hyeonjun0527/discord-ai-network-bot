@@ -1831,6 +1831,7 @@ function showServerTab(name) {
   });
   if (name === "providers") loadProviderPicker();
   if (name === "channels") loadChannelPicker();
+  if (name === "presets") refreshPresets();
 }
 document.querySelectorAll("#serverTabs .tab").forEach((b) => {
   b.addEventListener("click", () => showServerTab(b.dataset.stab));
@@ -1844,6 +1845,7 @@ function showChannelTab(name) {
   document.querySelectorAll("#channelTabs .tab").forEach((b) => {
     b.classList.toggle("active", b.dataset.ctab === name);
   });
+  if (name === "rag") refreshKnowledge();
 }
 document.querySelectorAll("#channelTabs .tab").forEach((b) => {
   b.addEventListener("click", () => showChannelTab(b.dataset.ctab));

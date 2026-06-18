@@ -41,7 +41,7 @@ class CommandLocCoverageDriftTest {
 
     @Test
     fun `등록된 모든 슬래시 명령은 CommandLoc 한국어화 항목을 가진다`() {
-        assertTrue(registered.size >= 40, "등록 명령 파싱 오류 의심: ${registered.size}")
+        assertTrue(registered.size >= 8, "등록 명령 파싱 오류 의심: ${registered.size}")
         assertEquals(emptySet<String>(), registered - localized, "등록됐으나 CommandLoc 한국어화 누락")
         assertEquals(emptySet<String>(), localized - registered, "CommandLoc 에 있으나 등록 없음(stale)")
     }
@@ -51,7 +51,7 @@ class CommandLocCoverageDriftTest {
         val dmBlock =
             bot.substringAfter("DM_COMMANDS =").substringAfter("setOf(").substringBefore(")")
         val dm = Regex(""""([a-z0-9-]+)"""").findAll(dmBlock).map { it.groupValues[1] }.toSet()
-        assertTrue(dm.size >= 8, "DM_COMMANDS 파싱 오류 의심: ${dm.size}")
+        assertTrue(dm.size >= 5, "DM_COMMANDS 파싱 오류 의심: ${dm.size}")
         assertEquals(emptySet<String>(), dm - registered, "DM 허용 목록에 등록되지 않은 명령(오타?)")
     }
 }

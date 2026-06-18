@@ -14,7 +14,8 @@ class SlashCommandCatalogTest {
     @Test
     fun `카탈로그는 중복 없는 명령들을 빌드한다`() {
         val cmds = SlashCommandCatalog.all()
-        assertTrue(cmds.size >= 30, "명령 개수가 너무 적음(빌더 손상 의심): ${cmds.size}")
+        // 슬래시 명령은 단순 유저 명령 ≤10 으로 압축(관리는 웹 대시보드). 빌더 손상만 가드.
+        assertTrue(cmds.size >= 8, "명령 개수가 너무 적음(빌더 손상 의심): ${cmds.size}")
 
         val names = cmds.map { it.name }
         assertEquals(names.size, names.toSet().size, "명령 이름 중복: ${names.groupingBy { it }.eachCount().filter { it.value > 1 }}")

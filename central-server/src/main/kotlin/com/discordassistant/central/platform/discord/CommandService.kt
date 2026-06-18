@@ -75,8 +75,6 @@ class CommandService(
     private val infoCommands: com.discordassistant.central.platform.discord.command.InfoCommandHandler,
     private val aiNetworkCommands: com.discordassistant.central.platform.discord.command.AiNetworkCommandHandler,
     private val multiResponseCommands: com.discordassistant.central.platform.discord.command.MultiResponseCommandHandler,
-    private val knowledgeCommands: com.discordassistant.central.platform.discord.command.KnowledgeCommandHandler,
-    private val presetCommands: com.discordassistant.central.platform.discord.command.PresetCommandHandler,
     private val askCommands: com.discordassistant.central.platform.discord.command.AskCommandHandler,
     private val channelAiIdentityCommands: com.discordassistant.central.platform.discord.command.ChannelAiIdentityCommandHandler,
     private val guildOnboardingCommands: com.discordassistant.central.platform.discord.command.GuildOnboardingCommandHandler,
@@ -163,91 +161,6 @@ class CommandService(
         ctx: CommandContext,
         locale: net.dv8tion.jda.api.interactions.DiscordLocale = net.dv8tion.jda.api.interactions.DiscordLocale.KOREAN,
     ): Reply = infoCommands.help(ctx, locale)
-
-    fun knowledgeList(
-        ctx: CommandContext,
-        spaceId: Long? = null,
-    ): Reply = knowledgeCommands.knowledgeList(ctx, spaceId)
-
-    fun addKnowledge(
-        ctx: CommandContext,
-        title: String,
-        sourceType: String?,
-        sourceUri: String?,
-        contentPreview: String?,
-        spaceId: Long? = null,
-    ): Reply = knowledgeCommands.addKnowledge(ctx, title, sourceType, sourceUri, contentPreview, spaceId)
-
-    fun searchKnowledge(
-        ctx: CommandContext,
-        query: String,
-        spaceId: Long? = null,
-        limit: Int = 5,
-    ): Reply = knowledgeCommands.searchKnowledge(ctx, query, spaceId, limit)
-
-    fun knowledgeIndexPlan(
-        ctx: CommandContext,
-        spaceId: Long? = null,
-        force: Boolean = false,
-    ): Reply = knowledgeCommands.knowledgeIndexPlan(ctx, spaceId, force)
-
-    fun knowledgeIndexJobs(
-        ctx: CommandContext,
-        spaceId: Long? = null,
-        limit: Int = 10,
-    ): Reply = knowledgeCommands.knowledgeIndexJobs(ctx, spaceId, limit)
-
-    fun completeKnowledgeIndexJob(
-        ctx: CommandContext,
-        jobId: Long,
-        status: String = "completed",
-        reason: String? = null,
-    ): Reply = knowledgeCommands.completeKnowledgeIndexJob(ctx, jobId, status, reason)
-
-    fun approveKnowledge(
-        ctx: CommandContext,
-        spaceId: Long,
-        sourceId: Long,
-        reason: String = "approved from Discord",
-    ): Reply = knowledgeCommands.approveKnowledge(ctx, spaceId, sourceId, reason)
-
-    fun deleteKnowledge(
-        ctx: CommandContext,
-        spaceId: Long,
-        sourceId: Long,
-        reason: String = "deleted from Discord",
-    ): Reply = knowledgeCommands.deleteKnowledge(ctx, spaceId, sourceId, reason)
-
-    fun presetCatalog(
-        ctx: CommandContext,
-        query: String? = null,
-        category: String? = null,
-    ): Reply = presetCommands.presetCatalog(ctx, query, category)
-
-    fun importPresetToCurrentChannel(
-        ctx: CommandContext,
-        publishedPresetId: Long,
-        confirmConflicts: Boolean = false,
-    ): Reply = presetCommands.importPresetToCurrentChannel(ctx, publishedPresetId, confirmConflicts)
-
-    fun likePreset(
-        ctx: CommandContext,
-        publishedPresetId: Long,
-    ): Reply = presetCommands.likePreset(ctx, publishedPresetId)
-
-    fun reportPreset(
-        ctx: CommandContext,
-        publishedPresetId: Long,
-        reason: String,
-    ): Reply = presetCommands.reportPreset(ctx, publishedPresetId, reason)
-
-    fun presetModeration(ctx: CommandContext): Reply = presetCommands.presetModeration(ctx)
-
-    fun reviewPresetReport(
-        ctx: CommandContext,
-        reportId: Long,
-        decision: String,
-    ): Reply = presetCommands.reviewPresetReport(ctx, reportId, decision)
 
     fun multiResponseStatus(
         ctx: CommandContext,

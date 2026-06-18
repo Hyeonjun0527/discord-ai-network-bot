@@ -147,24 +147,22 @@ class AskCommandHandler(
         val preferLocal = !isCloudModel(selectedModel) && hasLocalProvider(ctx.guildId)
         if (preferLocal) {
             val local = runOrchestrator(ctx, prompt, selectedModel, responseMode, webSearch, routingPolicy.maxCandidates)
-            when (local.state) {
-                RequestState.COMPLETED ->
-                    return completedAskReply(
-                        local.text.orEmpty().withWebSources(local.sources),
-                        modelChoice,
-                        local.requestId,
-                        usedCloud = false,
-                    )
-                // 차단/한도/채널금지/권한 등 정책 거부는 클라우드로 우회하지 않는다(폴백해도 동일하게 거부됨).
-                RequestState.REJECTED ->
-                    return Replies.reject(local.failReason ?: Messages.get(Messages.Key.ASK_REJECTED, guards.lang(ctx)))
-                else -> Unit // FAILED(로컬 프로바이더 처리 불가) → 무료 클라우드 폴백
+            if (local.state == RequestState.COMPLETED) {
+                return completedAskReply(
+                    local.text.orEmpty().withWebSources(local.sources),
+                    modelChoice,
+                    local.requestId,
+                    usedCloud = false,
+                )
             }
+            // 로컬이 완료가 아니면(무프로바이더·프로바이더 실패·정책 거부) 무료 클라우드로 폴백한다.
+            // 유저 정책 거부(차단·일일 한도·채널 금지·부담 권한)는 클라우드 호출에서도 동일하게 재검사되어
+            // 같은 결과를 내므로 우회가 되지 않는다(오케스트레이터가 모델과 무관하게 정책을 재적용).
         }
 
         // 무료 클라우드 z.ai(glm-5.1) — 기본 경로이자 로컬 폴백. 무료 자원 인당 상한 적용.
         freeCloudRateLimiter.check(ctx.userId)?.let { return Replies.reject(it) }
-        val cloud = runOrchestrator(ctx, prompt, FREE_CLOUD_MODEL, responseMode, webSearch, routingPolicy.maxCandidates)
+        val cloud = runOrchestrator(ctx, prompt, FREE_CLOUD_MODEL, responseMode, webSearch, routingPolicy.maxCandidates, dedup = false)
         return when (cloud.state) {
             RequestState.COMPLETED ->
                 completedAskReply(cloud.text.orEmpty().withWebSources(cloud.sources), modelChoice, cloud.requestId, usedCloud = true)
@@ -189,6 +187,7 @@ class AskCommandHandler(
         responseMode: String,
         webSearch: Boolean,
         maxCandidates: Int,
+        dedup: Boolean = true,
     ): com.discordassistant.central.routing.domain.model.OrchestrationResult {
         val run = startRuntimeMultiResponseObservation(ctx, prompt, responseMode, maxCandidates)
         val effectivePrompt = prompt.composeExecutionPrompt(ctx, responseMode)
@@ -208,6 +207,8 @@ class AskCommandHandler(
                     // 부담 수준은 사용자 실제 질문 길이로 — 항상 주입되는 시스템 프롬프트(정체성·few-shot)가 등급을 부풀리지 않게.
                     weighChars = prompt.length,
                 ),
+                // 클라우드 폴백(2차)은 dedup=false — 1차에서 이미 멱등성 통과했고, 같은 프롬프트라 중복으로 막히면 폴백이 영구 실패한다.
+                dedup = dedup,
             )
         run?.let {
             recordRuntimeMultiResponseResult(

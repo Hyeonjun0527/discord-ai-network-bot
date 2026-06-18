@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test
 class CommandLocJaCoverageTest {
     @Test
     fun `모든 명령이 일본어 이름·설명을 가진다`() {
-        assertTrue(CommandLoc.commands.size >= 50, "명령 표 로드 실패: ${CommandLoc.commands.size}")
+        assertTrue(CommandLoc.commands.size >= 8, "명령 표 로드 실패: ${CommandLoc.commands.size}")
         val missing = CommandLoc.commands.filterNot { CommandLoc.hasFullJa(it) }
         assertEquals(emptyList<String>(), missing, "일본어 이름/설명 누락")
     }

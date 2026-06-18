@@ -20,6 +20,7 @@ import com.discordassistant.central.preset.application.PresetRegistryService
 import com.discordassistant.central.relay.AgentConnection
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
+import com.discordassistant.central.relay.protocol.ChunkFrame
 import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.InferError
 import com.discordassistant.central.relay.protocol.InferRequest
@@ -45,6 +46,25 @@ private class EchoConn : AgentConnection {
         if (frame is InferRequest) {
             lastInfer = frame
             session.handleFrame(InferResult(frame.requestId, "echo:${frame.prompt}"))
+        }
+    }
+
+    override fun close(reason: String) {}
+}
+
+/** task=image 요청을 받으면 즉시 PNG 청크로 응답하는 연결 — /그림 라우팅(로컬/클라우드) 검증용. */
+private class ImageEchoConn : AgentConnection {
+    lateinit var session: ProviderSession
+    override val remoteId = "img"
+
+    override fun sendFrame(frame: Frame) {
+        if (frame is InferRequest && frame.task == "image") {
+            val b64 =
+                java.util.Base64
+                    .getEncoder()
+                    .encodeToString(byteArrayOf(1, 2, 3))
+            session.handleFrame(ChunkFrame(frame.requestId, b64, done = false))
+            session.handleFrame(ChunkFrame(frame.requestId, "", done = true))
         }
     }
 
@@ -649,6 +669,45 @@ class CommandServiceTest
                 registry.unregister(s)
                 globalPromptSets.list(g).filter { !it.builtin }.forEach { globalPromptSets.delete(g, it.id) }
             }
+        }
+
+        @Test
+        fun `imagine — 로컬 ComfyUI 없으면 무료 클라우드 SD(☁️), 로컬 연결되면 로컬(🖥️)`() {
+            // 클라우드 SD 전용 프로바이더(관리자 유료 API)만 있을 때 → ☁️ 로 처리.
+            val cloudConn = ImageEchoConn()
+            val cloud = ProviderSession(cloudConn, providerId = 60, guildId = 100)
+            cloudConn.session = cloud
+            cloud.capability = cloud.capability.copy(capabilities = listOf("text", "image", "image-cloud"))
+            registry.register(cloud)
+            try {
+                val cctx = CommandContext(guildId = 100, channelId = 200, userId = 600600, roleIds = setOf(1L), isAdmin = true)
+                val r1 = commands.imagine(cctx, "고양이")
+                assertTrue(r1.content.startsWith("🖼️ ☁️"), r1.content) // 클라우드만 → ☁️
+                assertTrue(r1.imagePng != null)
+                // 로컬 ComfyUI 를 따로 연결하면 그 서버는 로컬 우선 → 🖥️.
+                val localConn = ImageEchoConn()
+                val local = ProviderSession(localConn, providerId = 61, guildId = 100)
+                localConn.session = local
+                local.capability = local.capability.copy(capabilities = listOf("text", "image", "image-local"))
+                registry.register(local)
+                try {
+                    val r2 = commands.imagine(cctx, "강아지")
+                    assertTrue(r2.content.startsWith("🖼️ 🖥️"), r2.content) // 로컬 있으면 🖥️
+                } finally {
+                    registry.unregister(local)
+                }
+            } finally {
+                registry.unregister(cloud)
+            }
+        }
+
+        @Test
+        fun `imagine — 이미지 프로바이더가 없으면 클라우드 연결 안내`() {
+            val cctx = CommandContext(guildId = 100, channelId = 200, userId = 600601, roleIds = setOf(1L), isAdmin = true)
+            val r = commands.imagine(cctx, "고양이")
+            assertTrue(r.content.contains("이미지를 만들 수 있는 곳이 없"), r.content)
+            assertTrue(r.content.contains("무료 클라우드 Stable Diffusion"), r.content)
+            assertTrue(r.imagePng == null)
         }
 
         @Test

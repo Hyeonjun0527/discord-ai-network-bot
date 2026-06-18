@@ -323,6 +323,9 @@ class ProviderAgent:
         capabilities = ["text"]
         if self._image_for(guild_id):
             capabilities.append("image")
+            # 클라우드(관리자 유료 SD API: stability/runpod) vs 로컬(comfyui) 구분 — central 이 /그림 라우팅에
+            # "로컬 따로 설정돼 있으면 로컬, 아니면 무료 클라우드 SD 기본"을 적용한다(텍스트 /질문 과 동일 패턴).
+            capabilities.append("image-cloud" if self._image_backend in ("stability", "runpod") else "image-local")
         return ProviderHelloFrame(
             models=self._models_for(guild_id),
             max_concurrency=self._policy_mgr.concurrency_for(guild_id),

@@ -4,6 +4,8 @@
 #         dist/Nexa.app                         (macOS 에서만 — Finder/응용 프로그램용 GUI 앱)
 #         dist/Nexa.exe                         (Windows 에서만 — 네이티브 창 GUI 앱, mac .app 과 동일 UX)
 # block_cipher 미사용.
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -13,6 +15,27 @@ project_root = Path(SPECPATH).parent
 icons = project_root / "packaging" / "icons"
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform.startswith("win")
+
+
+# 번들 버전 SSOT = pyproject.toml(릴리스마다 bump). plist 에 실제 버전을 박아야 새 버전
+# 설치 시 macOS 가 아이콘/메타데이터 캐시를 자동 무효화한다 — "1.0" 고정이면 같은 앱으로
+# 보고 캐시를 재사용해 옛 아이콘(각진 사각형 등)이 Dock/Cmd+Tab 에 잔존한다.
+# CI 는 NEXA_VERSION 으로 덮어쓸 수 있고, 없으면 pyproject 에서 읽는다(tag↔pyproject 동기).
+def _agent_version() -> str:
+    env = os.environ.get("NEXA_VERSION")
+    if env and env.strip():
+        return env.strip().lstrip("v")
+    try:
+        text = (project_root / "pyproject.toml").read_text(encoding="utf-8")
+        m = re.search(r'(?m)^version\s*=\s*"([^"]+)"', text)
+        if m:
+            return m.group(1)
+    except OSError:
+        pass
+    return "0.0.0"
+
+
+APP_VERSION = _agent_version()
 
 # EXE 아이콘은 플랫폼별 포맷(.icns/.ico). 리눅스는 아이콘 미지원이라 None.
 exe_icon = str(icons / "app.icns") if IS_MAC else (str(icons / "app.ico") if IS_WIN else None)
@@ -113,7 +136,8 @@ if IS_MAC:
         info_plist={
             "CFBundleName": "Nexa",
             "CFBundleDisplayName": "Nexa",
-            "CFBundleShortVersionString": "1.0",
+            "CFBundleShortVersionString": APP_VERSION,
+            "CFBundleVersion": APP_VERSION,
             "LSBackgroundOnly": False,
             "LSUIElement": False,
             "NSHighResolutionCapable": True,

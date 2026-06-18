@@ -355,6 +355,24 @@
       <!-- 모델 정책 -->
       <div class="tabpane" data-ctab="model" hidden>
         <input id="routingChannelId" type="hidden" />
+        <div id="routingExperienceBoard" class="experience-board routing-experience">
+          <div class="experience-lead">
+            <span class="eyebrow">Model routing</span>
+            <h3>모델 라우팅은 “정책 → 후보 → 실제 선택”만 보면 됩니다</h3>
+            <p>채널을 열면 현재 정책과 후보를 자동으로 불러옵니다. 후보에서 모델을 고르면 정책·테스트 입력이 같이 채워집니다.</p>
+          </div>
+          <div class="experience-steps" aria-label="모델 라우팅 작업 흐름">
+            <button class="journey-card" data-routing-focus="policy"><strong>1. 정책 확인</strong><span id="routingPolicyState">현재 정책 로딩 필요</span></button>
+            <button class="journey-card" data-routing-focus="candidates"><strong>2. 후보 고르기</strong><span id="routingCandidateCount">후보 미확인</span></button>
+            <button class="journey-card" data-routing-focus="choice"><strong>3. 선택 검증</strong><span id="routingChoiceState">아직 검증 안 함</span></button>
+          </div>
+          <div class="signal-grid">
+            <div class="signal-card"><strong id="routingSelectedModel">–</strong><span>선택/추천 모델</span></div>
+            <div class="signal-card"><strong id="routingAvailableCount">–</strong><span>사용 가능 후보</span></div>
+            <div class="signal-card warn"><strong id="routingBlockedCount">–</strong><span>차단/불가 모델</span></div>
+            <div class="signal-card"><strong id="routingProviderFit">–</strong><span>Provider 적합도</span></div>
+          </div>
+        </div>
         <div class="action-card">
           <h3>🧭 모델 라우팅 정책</h3>
           <p class="ac-desc">이 채널의 질문이 어떤 모델로 라우팅될지 정합니다. 비워두면 서버 기본값을 따릅니다.</p>
@@ -379,6 +397,7 @@
           <article class="card"><h3>모델 후보</h3><ul id="routingModelCandidates" class="list"><li class="empty">‘모델 후보 보기’를 누르면 표시됩니다.</li></ul></article>
           <article class="card"><h3>선택 결과</h3><ul id="routingModelChoice" class="list"><li class="empty">‘선택 결과 확인’을 누르면 표시됩니다.</li></ul></article>
         </div>
+        <div id="routingResultCards" class="result-cards"></div>
         <pre id="routingResult" class="preview">채널을 선택한 뒤 ‘현재 정책 불러오기’를 누르세요.</pre>
       </div>
 
@@ -482,6 +501,24 @@
       <!-- 품질·신고 -->
       <div class="tabpane" data-ctab="quality" hidden>
         <input id="qualityChannelId" type="hidden" />
+        <div id="qualityExperienceBoard" class="experience-board quality-experience">
+          <div class="experience-lead">
+            <span class="eyebrow">Quality control</span>
+            <h3>품질 관리는 “현황 → 신고 선택 → 처리”로만 흐릅니다</h3>
+            <p>탭을 열면 신고 큐와 모델 신호를 자동으로 가져옵니다. 큐 항목의 선택 버튼을 누르면 검토 폼까지 바로 이동합니다.</p>
+          </div>
+          <div class="experience-steps" aria-label="품질·신고 작업 흐름">
+            <button class="journey-card" data-quality-focus="feedback"><strong>1. 피드백 기록</strong><span>답변 품질을 남겨 추적</span></button>
+            <button class="journey-card" data-quality-focus="review"><strong>2. 신고 검토</strong><span id="qualityOpenReports">열린 신고 미확인</span></button>
+            <button class="journey-card" data-quality-focus="models"><strong>3. 모델 신호</strong><span id="qualityModelCount">모델 신호 미확인</span></button>
+          </div>
+          <div class="signal-grid">
+            <div class="signal-card"><strong id="qualityFeedbackCount">–</strong><span>총 피드백</span></div>
+            <div class="signal-card warn"><strong id="qualityReviewCount">–</strong><span>검토 대기</span></div>
+            <div class="signal-card"><strong id="qualityChannelScore">–</strong><span>채널 품질</span></div>
+            <div class="signal-card"><strong id="qualityRecentReason">–</strong><span>최근 사유</span></div>
+          </div>
+        </div>
         <div class="section-title">피드백 기록</div>
         <div class="action-card">
           <h3>📝 품질 피드백 저장</h3>
@@ -517,12 +554,31 @@
           <article class="card"><h3>신고 검토 큐</h3><ul id="qualityReviewQueue" class="list"><li class="empty">검토할 신고가 여기 표시됩니다.</li></ul></article>
           <article class="card"><h3>모델 품질 신호</h3><ul id="qualityModelSignals" class="list"><li class="empty">모델별 품질 지표가 여기 표시됩니다.</li></ul></article>
         </div>
+        <div id="qualityResultCards" class="result-cards"></div>
         <pre id="qualityResult" class="preview">채널을 선택한 뒤 ‘품질 현황 새로고침’을 누르세요.</pre>
       </div>
 
       <!-- 고급 응답 -->
       <div class="tabpane" data-ctab="advanced" hidden>
         <input id="multiChannelId" type="hidden" />
+        <div id="advancedExperienceBoard" class="experience-board advanced-experience">
+          <div class="experience-lead">
+            <span class="eyebrow">Advanced responses</span>
+            <h3>다중응답은 “안전 여부 → fanout → 최근 실행”만 먼저 보세요</h3>
+            <p>운영 상태를 자동 로딩해 고급 모드를 켜도 되는지 먼저 보여줍니다. 필요할 때만 정책 폼을 펼치면 됩니다.</p>
+          </div>
+          <div class="experience-steps" aria-label="고급 응답 작업 흐름">
+            <button class="journey-card" data-advanced-focus="policy"><strong>1. 정책 조정</strong><span id="multiModeState">운영 상태 미확인</span></button>
+            <button class="journey-card" data-advanced-focus="fanout"><strong>2. fanout 추천</strong><span id="multiFanoutState">추천 미확인</span></button>
+            <button class="journey-card" data-advanced-focus="pseudo"><strong>3. 긴 답변 미리보기</strong><span>Discord 수정 스냅샷 계산</span></button>
+          </div>
+          <div class="signal-grid">
+            <div class="signal-card"><strong id="multiRunCount">–</strong><span>최근 실행</span></div>
+            <div class="signal-card"><strong id="multiLoadState">–</strong><span>Provider 부하</span></div>
+            <div class="signal-card warn"><strong id="multiProtectionCount">–</strong><span>보호 차단</span></div>
+            <div class="signal-card"><strong id="multiAdoptionRate">–</strong><span>채택률</span></div>
+          </div>
+        </div>
         <div class="section-title">다중응답 정책</div>
         <div class="action-card">
           <h3>🧠 다중응답(여러 후보) 정책</h3>
@@ -559,6 +615,7 @@
           <article class="card"><h3>Provider 부하</h3><ul id="multiProviderLoad" class="list"><li class="empty">–</li></ul></article>
           <article class="card"><h3>최근 실행</h3><ul id="multiRecentRuns" class="list"><li class="empty">–</li></ul></article>
         </div>
+        <div id="multiResultCards" class="result-cards"></div>
         <pre id="multiResult" class="preview">채널을 선택한 뒤 ‘운영 상태 새로고침’을 누르세요.</pre>
       </div>
     </section>

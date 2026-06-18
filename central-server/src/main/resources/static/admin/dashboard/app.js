@@ -298,7 +298,7 @@ async function createChannelAi() {
 
 function routingIds() {
   const gid = $("guildId").value.trim();
-  const channelId = $("routingChannelId").value.trim() || $("wizardChannelId").value.trim() || $("multiChannelId").value.trim();
+  const channelId = currentChannelIdValue();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(channelId)) return null;
   $("routingChannelId").value = channelId;
   return { gid, channelId };
@@ -317,9 +317,24 @@ function routingPolicyPayload() {
   };
 }
 
-function renderRoutingCandidates(catalog) {
-  renderList("routingModelCandidates", catalog.modelSummaries?.slice(0, 12), "사용 가능한 모델 후보가 없습니다", (m) =>
-    `<li><strong>${esc(m.modelName)}${m.recommended ? " · 추천" : ""}${m.preferred ? " · 선호" : ""}</strong><span>${esc(m.available ? "사용 가능" : "불가")} · eligible ${esc(m.eligibleProviderCount)}/${esc(m.totalProviderCount)} · 보호 ${esc(m.protectedProviderCount)} · 품질 ${esc(m.bestQualityTier)} · shadow ${esc(m.shadowQualityScore ?? 0)} · 👍 ${esc(m.feedbackPositive ?? 0)} 👎 ${esc(m.feedbackNegative ?? 0)} 🚩 ${esc(m.feedbackReports ?? 0)} · ${(m.tags || []).map(esc).join(", ") || "태그 없음"} · ${(m.blockingReasons || []).map(esc).join(", ") || "차단 없음"}</span></li>`,
+function renderRoutingCandidates(catalog = {}) {
+  const models = catalog.modelSummaries || [];
+  const availableModels = catalog.availableModels || models.filter((m) => m.available).map((m) => m.modelName);
+  const blockedCount = (catalog.unavailableAllowedModels || []).length + models.filter((m) => m.available === false).length;
+  const bestProviderFit = models.reduce((best, model) => Math.max(best, Number(model.eligibleProviderCount || 0)), 0);
+  const recommendedModel = catalog.recommendedModel || models.find((m) => m.recommended)?.modelName || availableModels[0] || "";
+  setText("routingCandidateCount", `${models.length}개 후보 · ${availableModels.length}개 사용 가능`);
+  setText("routingAvailableCount", availableModels.length);
+  setText("routingBlockedCount", blockedCount);
+  setText("routingSelectedModel", recommendedModel || "–");
+  setText("routingProviderFit", bestProviderFit ? `최대 ${bestProviderFit}명` : "적합 Provider 없음");
+  setHtml("routingResultCards", [
+    resultCard("추천 모델", esc(recommendedModel || "추천 없음"), recommendedModel ? "good" : "warn"),
+    resultCard("사용 가능 후보", esc(availableModels.join(", ") || "없음"), availableModels.length ? "good" : "bad"),
+    resultCard("보호/차단", esc(catalog.safetySummary || `${blockedCount}개 차단/불가`), blockedCount ? "warn" : "good"),
+  ].join(""));
+  renderList("routingModelCandidates", models.slice(0, 12), "사용 가능한 모델 후보가 없습니다", (m) =>
+    `<li><strong>${esc(m.modelName)}${m.recommended ? " · 추천" : ""}${m.preferred ? " · 선호" : ""}</strong><span>${esc(m.available ? "사용 가능" : "불가")} · eligible ${esc(m.eligibleProviderCount)}/${esc(m.totalProviderCount)} · 보호 ${esc(m.protectedProviderCount)} · 품질 ${esc(m.bestQualityTier)} · shadow ${esc(m.shadowQualityScore ?? 0)} · 👍 ${esc(m.feedbackPositive ?? 0)} 👎 ${esc(m.feedbackNegative ?? 0)} 🚩 ${esc(m.feedbackReports ?? 0)} · ${(m.tags || []).map(esc).join(", ") || "태그 없음"} · ${(m.blockingReasons || []).map(esc).join(", ") || "차단 없음"}</span><button class="mini select-routing-model" data-model-name="${esc(m.modelName)}">이 모델로 정책 채우기</button></li>`,
   );
 }
 
@@ -337,12 +352,38 @@ function renderRoutingChoice(choice) {
   renderList("routingModelChoice", rows, "선택 결과 없음", ([label, value]) =>
     `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`,
   );
+  setText("routingChoiceState", choice.routingBlocked ? "라우팅 차단" : `선택 ${choice.selectedModel || "없음"}`);
+  setText("routingSelectedModel", choice.selectedModel || choice.preferredModel || choice.requestedModel || "–");
+  setHtml("routingResultCards", [
+    resultCard("실제 선택", esc(choice.selectedModel || "선택 실패"), choice.routingBlocked ? "bad" : "good"),
+    resultCard("Fallback", esc(choice.fallbackReason || "없음"), choice.fallbackReason ? "warn" : "good"),
+    resultCard("사용자 안내", esc(choice.userMessage || "바로 질문 가능"), choice.routingBlocked ? "warn" : ""),
+  ].join(""));
+}
+
+function selectRoutingModel(modelName) {
+  if (!modelName) return;
+  $("routingPreferredModel").value = modelName;
+  $("routingRequestedModel").value = modelName;
+  setText("routingSelectedModel", modelName);
+  setText("routingChoiceState", "선택 결과 확인 필요");
+  focusRoutingTask("policy");
+}
+
+function focusRoutingTask(task) {
+  const targets = {
+    policy: "#routingPreferredModel",
+    candidates: "#routingLoadCandidates",
+    choice: "#routingRequestedModel",
+  };
+  focusInside(targets[task] || "#routingPreferredModel");
 }
 
 async function loadEffectiveRoutingPolicy() {
   const ids = routingIds();
   if (!ids) {
     $("routingResult").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
+    setHtml("routingResultCards", resultCard("채널 선택 필요", "서버의 채널을 먼저 열어야 라우팅 정책을 볼 수 있습니다.", "warn"));
     return;
   }
   try {
@@ -354,8 +395,17 @@ async function loadEffectiveRoutingPolicy() {
     $("routingMaxCandidates").value = policy.maxCandidates || 1;
     $("routingProviderTags").value = (policy.providerTagFilter || []).join(", ");
     $("routingCostGuard").value = policy.costGuard || "provider_safe";
+    setText("routingPolicyState", `${policy.responseMode || "balanced"} · ${policy.preferredModel || "기본 모델"}`);
+    setText("routingSelectedModel", policy.preferredModel || "서버 기본값");
+    setText("routingChoiceState", "선택 결과 확인 필요");
+    setHtml("routingResultCards", [
+      resultCard("현재 정책", esc(`${policy.responseMode || "balanced"} · ${policy.costGuard || "provider_safe"}`), "good"),
+      resultCard("선호 모델", esc(policy.preferredModel || "서버 기본값 사용"), policy.preferredModel ? "good" : ""),
+      resultCard("허용 모델", esc((policy.allowedModels || []).join(", ") || "전체 허용"), ""),
+    ].join(""));
     $("routingResult").textContent = `현재 정책을 불러왔습니다: mode=${policy.responseMode} · preferred=${policy.preferredModel || "-"} · allowed=${(policy.allowedModels || []).join(", ") || "전체"}`;
   } catch (e) {
+    setHtml("routingResultCards", resultCard("현재 정책 로딩 실패", esc(e.message), "bad"));
     $("routingResult").textContent = `현재 정책 로딩 실패: ${e.message}`;
   }
 }
@@ -364,6 +414,7 @@ async function saveRoutingPolicy() {
   const ids = routingIds();
   if (!ids) {
     $("routingResult").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
+    setHtml("routingResultCards", resultCard("채널 선택 필요", "서버의 채널을 먼저 열어야 라우팅 정책을 저장할 수 있습니다.", "warn"));
     return;
   }
   try {
@@ -372,6 +423,7 @@ async function saveRoutingPolicy() {
       `라우팅 정책 저장 완료: policy=${saved.id} · mode=${saved.responseMode} · preferred=${saved.preferredModel || "-"} · allowed=${(saved.allowedModels || []).join(", ") || "전체"}`;
     await loadModelCandidates();
   } catch (e) {
+    setHtml("routingResultCards", resultCard("라우팅 정책 저장 실패", esc(e.message), "bad"));
     $("routingResult").textContent = `라우팅 정책 저장 실패: ${e.message}`;
   }
 }
@@ -380,6 +432,7 @@ async function loadModelCandidates() {
   const ids = routingIds();
   if (!ids) {
     $("routingResult").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
+    setHtml("routingResultCards", resultCard("채널 선택 필요", "서버의 채널을 먼저 열어야 모델 후보를 볼 수 있습니다.", "warn"));
     return;
   }
   try {
@@ -392,6 +445,7 @@ async function loadModelCandidates() {
       `허용됐지만 현재 불가: ${(catalog.unavailableAllowedModels || []).join(", ") || "없음"}`,
     ].join("\n");
   } catch (e) {
+    setHtml("routingResultCards", resultCard("모델 후보 로딩 실패", esc(e.message), "bad"));
     $("routingResult").textContent = `모델 후보 로딩 실패: ${e.message}`;
   }
 }
@@ -400,6 +454,7 @@ async function checkModelChoice() {
   const ids = routingIds();
   if (!ids) {
     $("routingResult").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
+    setHtml("routingResultCards", resultCard("채널 선택 필요", "서버의 채널을 먼저 열어야 실제 선택 결과를 확인할 수 있습니다.", "warn"));
     return;
   }
   try {
@@ -416,6 +471,7 @@ async function checkModelChoice() {
       choice.routingBlocked ? "상태: 라우팅 차단됨" : "상태: 라우팅 가능",
     ].join("\n");
   } catch (e) {
+    setHtml("routingResultCards", resultCard("모델 선택 확인 실패", esc(e.message), "bad"));
     $("routingResult").textContent = `모델 선택 확인 실패: ${e.message}`;
   }
 }
@@ -825,18 +881,48 @@ function renderQualityReviewQueue(review) {
 }
 
 function renderQualityModels(models) {
-  renderList("qualityModelSignals", models?.slice(0, 12), "모델 품질 신호 없음", (model) =>
+  const modelRows = Array.isArray(models) ? models : [];
+  renderList("qualityModelSignals", modelRows.slice(0, 12), "모델 품질 신호 없음", (model) =>
     `<li><strong>${esc(model.modelName)}</strong><span>providers ${esc(model.providerCount)} · quality ${esc(model.qualityTier)} · overload ${esc(model.overloadRiskCount)}</span></li>`,
   );
 }
 
+function renderQualityExperience(summary = {}, review = {}, models = [], channelSummary = null) {
+  const queue = review.queue || [];
+  const openReports = review.openReportCount ?? summary.openReports ?? queue.length ?? 0;
+  const reasons = channelSummary?.recentReasons || summary.recentReasons || [];
+  const channelFeedbackCount = channelSummary?.feedbackCount ?? 0;
+  setText("qualityFeedbackCount", summary.feedbackCount ?? 0);
+  setText("qualityOpenReports", `${openReports}건 열린 신고`);
+  setText("qualityReviewCount", queue.length);
+  setText("qualityModelCount", `${models.length}개 모델 신호`);
+  setText("qualityChannelScore", channelSummary ? `${channelFeedbackCount}건` : "채널 미선택");
+  setText("qualityRecentReason", reasons[0] || "없음");
+  setHtml("qualityResultCards", [
+    resultCard("품질 현황", esc(`피드백 ${summary.feedbackCount ?? 0}건 · 열린 신고 ${openReports}건`), openReports ? "warn" : "good"),
+    resultCard("검토 큐", esc(queue[0] ? `다음 신고 #${queue[0].id} · ${queue[0].feedbackType}` : "검토할 신고 없음"), queue.length ? "warn" : "good"),
+    resultCard("모델 신호", esc(models.length ? `${models.length}개 모델 추적 중` : "모델 품질 신호 없음"), models.length ? "" : "warn"),
+  ].join(""));
+}
+
+function focusQualityTask(task) {
+  const targets = {
+    feedback: "#qualityReason",
+    review: "#qualityFeedbackId",
+    models: "#qualityModelSignals",
+  };
+  focusInside(targets[task] || "#qualityReason");
+}
+
 async function refreshQualityDashboard() {
   const gid = $("guildId").value.trim();
-  const channelId = $("qualityChannelId").value.trim();
+  const channelId = currentChannelIdValue();
   if (!/^\d+$/.test(gid)) {
     $("qualityResult").textContent = "서버 ID를 숫자로 입력하세요.";
+    setHtml("qualityResultCards", resultCard("서버 선택 필요", "서버 ID를 먼저 선택해야 품질 현황을 볼 수 있습니다.", "warn"));
     return;
   }
+  if (/^\d+$/.test(channelId)) $("qualityChannelId").value = channelId;
   try {
     const [summary, review, models, channelSummary] = await Promise.all([
       getJson(`/api/ai-network/quality/${gid}/summary`),
@@ -848,30 +934,37 @@ async function refreshQualityDashboard() {
     ]);
     renderQualitySummary(summary, channelSummary);
     renderQualityReviewQueue(review);
-    renderQualityModels(models);
+    const modelRows = Array.isArray(models) ? models : [];
+    renderQualityModels(modelRows);
+    renderQualityExperience(summary, review, modelRows, channelSummary);
     const first = review.queue?.[0];
     if (first && !$("qualityFeedbackId").value.trim()) $("qualityFeedbackId").value = first.id;
     $("qualityResult").textContent =
-      `품질 현황: 피드백 ${summary.feedbackCount ?? 0}건 · 열린 신고 ${review.openReportCount ?? 0}건 · 모델 ${models.length ?? 0}개`;
+      `품질 현황: 피드백 ${summary.feedbackCount ?? 0}건 · 열린 신고 ${review.openReportCount ?? 0}건 · 모델 ${modelRows.length}개`;
   } catch (e) {
+    setHtml("qualityResultCards", resultCard("품질 현황 로딩 실패", esc(e.message), "bad"));
     $("qualityResult").textContent = `품질 현황 로딩 실패: ${e.message}`;
   }
 }
 
 async function submitQualityFeedback() {
   const gid = $("guildId").value.trim();
-  const channelId = $("qualityChannelId").value.trim();
+  const channelId = currentChannelIdValue();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(channelId)) {
     $("qualityResult").textContent = "서버 ID와 채널 ID를 숫자로 입력하세요.";
+    setHtml("qualityResultCards", resultCard("채널 선택 필요", "품질 피드백을 저장할 채널을 먼저 여세요.", "warn"));
     return;
   }
+  $("qualityChannelId").value = channelId;
   try {
     const result = await postJson(`/api/ai-network/quality/${gid}/${channelId}/feedback`, qualityFeedbackPayload());
     $("qualityFeedbackId").value = result.id || "";
+    setHtml("qualityResultCards", resultCard("피드백 저장 완료", esc(`feedback=${result.id} · status=${result.status}`), "good"));
     $("qualityResult").textContent =
       `피드백 저장 완료: feedback=${result.id} · status=${result.status} · rating=${result.rating}`;
     await refreshQualityDashboard();
   } catch (e) {
+    setHtml("qualityResultCards", resultCard("피드백 저장 실패", esc(e.message), "bad"));
     $("qualityResult").textContent = `피드백 저장 실패: ${e.message}`;
   }
 }
@@ -881,6 +974,7 @@ async function resolveQualityFeedback() {
   const feedbackId = $("qualityFeedbackId").value.trim();
   if (!/^\d+$/.test(gid) || !/^\d+$/.test(feedbackId)) {
     $("qualityResult").textContent = "서버 ID와 피드백 ID를 숫자로 입력하세요.";
+    setHtml("qualityResultCards", resultCard("신고 선택 필요", "검토 큐에서 신고를 선택하거나 피드백 ID를 입력하세요.", "warn"));
     return;
   }
   try {
@@ -889,10 +983,12 @@ async function resolveQualityFeedback() {
       reviewerUserId: numericValue("qualityReviewerUserId"),
       resolutionReason: $("qualityResolutionReason").value.trim() || null,
     });
+    setHtml("qualityResultCards", resultCard("신고 검토 완료", esc(`feedback=${result.id} · ${result.status}`), "good"));
     $("qualityResult").textContent =
       `신고 검토 완료: feedback=${result.id} · status=${result.status} · reviewer=${result.reviewedBy || "-"}`;
     await refreshQualityDashboard();
   } catch (e) {
+    setHtml("qualityResultCards", resultCard("신고 검토 실패", esc(e.message), "bad"));
     $("qualityResult").textContent = `신고 검토 실패: ${e.message}`;
   }
 }
@@ -1337,6 +1433,42 @@ function renderMultiFeatureFlags(features = {}) {
   ], "기능 플래그 데이터 없음", ([label, value]) => `<li><strong>${esc(label)}</strong><span>${esc(value)}</span></li>`);
 }
 
+function formatRate(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return "0%";
+  return number <= 1 ? `${Math.round(number * 100)}%` : `${Math.round(number)}%`;
+}
+
+function renderMultiExperience(summary = {}, runs = [], decision = {}, recommendation = {}) {
+  const loads = summary.providerLoads || [];
+  const riskyLoads = loads.filter((load) => ["high", "critical"].includes(String(load.loadRisk || "").toLowerCase()));
+  const safeToEnable = summary.safeToEnableAdvanced === true;
+  setText("multiModeState", `${summary.status || "unknown"} · ${safeToEnable ? "고급 가능" : "주의 필요"}`);
+  setText(
+    "multiFanoutState",
+    `${recommendation.fanoutAllowed ? "가능" : "차단/단일"} · ${recommendation.recommendedCandidateCount ?? 0}/${recommendation.maxSafeCandidates ?? 0}`,
+  );
+  setText("multiRunCount", runs.length || summary.recentRunCount || 0);
+  setText("multiLoadState", riskyLoads.length ? `${riskyLoads.length}명 위험` : "안정");
+  setText("multiProtectionCount", summary.providerProtectionBlockedCount ?? 0);
+  setText("multiAdoptionRate", formatRate(decision.adoptionRate ?? summary.decisionSummary?.adoptionRate ?? 0));
+  setHtml("multiResultCards", [
+    resultCard("고급 모드 안전", esc(safeToEnable ? "켜도 되는 상태입니다." : "부하/품질 신호를 먼저 확인하세요."), safeToEnable ? "good" : "warn"),
+    resultCard("추천 fanout", esc(`${recommendation.recommendedCandidateCount ?? 0}/${recommendation.maxSafeCandidates ?? 0} · ${recommendation.status || "unknown"}`), recommendation.fanoutAllowed ? "good" : "warn"),
+    resultCard("Provider 부하", esc(riskyLoads.length ? `${riskyLoads.length}명 high/critical` : "위험 부하 없음"), riskyLoads.length ? "warn" : "good"),
+    resultCard("최근 실행", esc(`${runs.length || summary.recentRunCount || 0}건 · 채택률 ${formatRate(decision.adoptionRate ?? summary.decisionSummary?.adoptionRate ?? 0)}`), ""),
+  ].join(""));
+}
+
+function focusAdvancedTask(task) {
+  const targets = {
+    policy: "#multiMode",
+    fanout: "#multiRefreshOps",
+    pseudo: "#pseudoStreamAnswer",
+  };
+  focusInside(targets[task] || "#multiMode");
+}
+
 function renderMultiOps(summary, runs = [], decision = {}, features = {}, recommendation = {}) {
   renderList("multiOps", [
     ["상태", summary.status || "unknown"],
@@ -1366,15 +1498,18 @@ function renderMultiOps(summary, runs = [], decision = {}, features = {}, recomm
   renderList("multiRecentRuns", runs?.slice(0, 8), "최근 다중응답 실행 없음", (run) =>
     `<li><strong>#${esc(run.id)} · ${esc(run.status)}</strong><span>#${esc(run.channelId)} · 후보 ${esc(run.candidateCount)} · ${esc(run.requestId || "request")}</span></li>`,
   );
+  renderMultiExperience(summary, runs || [], decision || {}, recommendation || {});
 }
 
 async function refreshMultiOps() {
   const gid = $("guildId").value.trim();
-  const channelId = $("multiChannelId").value.trim();
+  const channelId = currentChannelIdValue();
   if (!/^\d+$/.test(gid)) {
     $("multiResult").textContent = "서버 ID를 숫자로 입력하세요.";
+    setHtml("multiResultCards", resultCard("서버 선택 필요", "서버 ID를 먼저 선택해야 고급 응답 현황을 볼 수 있습니다.", "warn"));
     return;
   }
+  if (/^\d+$/.test(channelId)) $("multiChannelId").value = channelId;
   const qs = /^\d+$/.test(channelId) ? `?channelId=${channelId}` : "";
   const recommendationQs = new URLSearchParams({
     responseMode: $("multiMode").value,
@@ -1404,6 +1539,7 @@ async function refreshMultiOps() {
       ...((summary.nextActions || []).length ? summary.nextActions.map((a) => `- ${a}`) : ["- 없음"]),
     ].join("\n");
   } catch (e) {
+    setHtml("multiResultCards", resultCard("다중응답 운영 상태 로딩 실패", esc(e.message), "bad"));
     $("multiResult").textContent = `다중응답 운영 상태 로딩 실패: ${e.message}`;
   }
 }
@@ -1412,15 +1548,18 @@ async function saveMultiPolicy() {
   const gid = $("guildId").value.trim();
   if (!/^\d+$/.test(gid)) {
     $("multiResult").textContent = "서버 ID를 숫자로 입력하세요.";
+    setHtml("multiResultCards", resultCard("서버 선택 필요", "서버 ID를 먼저 선택해야 다중응답 정책을 저장할 수 있습니다.", "warn"));
     return;
   }
   try {
     const result = await postJson(`/api/ai-network/multi-response/${gid}/policy`, multiPolicyPayload());
+    setHtml("multiResultCards", resultCard("다중응답 정책 저장 완료", esc(`policy=${result.id} · ${result.mode} · candidates=${result.maxCandidates}`), "good"));
     $("multiResult").textContent =
       `다중응답 정책 저장 완료: policy=${result.id} · ${result.mode} · candidates=${result.maxCandidates}` +
       (result.disabledReason ? ` · disabled=${result.disabledReason}` : "");
     await refreshMultiOps();
   } catch (e) {
+    setHtml("multiResultCards", resultCard("다중응답 정책 저장 실패", esc(e.message), "bad"));
     $("multiResult").textContent = `다중응답 정책 저장 실패: ${e.message}`;
   }
 }
@@ -1429,6 +1568,7 @@ async function planPseudoStream() {
   const answer = $("pseudoStreamAnswer").value.trim();
   if (!answer) {
     $("multiResult").textContent = "미리보기할 긴 답변을 입력하세요.";
+    setHtml("multiResultCards", resultCard("답변 텍스트 필요", "긴 답변을 붙여넣으면 Discord 수정 스냅샷을 계산합니다.", "warn"));
     return;
   }
   try {
@@ -1443,7 +1583,13 @@ async function planPseudoStream() {
       "",
       ...(result.snapshots || []).map((s, i) => `[${i + 1}] ${s.percent}% · ${s.charCount}자\n${s.content}`),
     ].filter(Boolean).join("\n\n");
+    setHtml("multiResultCards", [
+      resultCard("스냅샷 계산 완료", esc(`최종 ${result.finalLength}자 · ${result.truncated ? "잘림 있음" : "잘림 없음"}`), result.truncated ? "warn" : "good"),
+      resultCard("수정 단계", esc(`${(result.snapshots || []).length}단계 · 33%/66%/100%`), ""),
+      result.warning ? resultCard("경고", esc(result.warning), "warn") : "",
+    ].join(""));
   } catch (e) {
+    setHtml("multiResultCards", resultCard("수정 스냅샷 계산 실패", esc(e.message), "bad"));
     $("multiResult").textContent = `수정 스냅샷 계산 실패: ${e.message}`;
   }
 }
@@ -1882,6 +2028,14 @@ document.addEventListener("click", (event) => {
   if (presetFocus) focusPresetTask(presetFocus.dataset.presetFocus);
   const ragFocus = event.target.closest("[data-rag-focus]");
   if (ragFocus) focusRagTask(ragFocus.dataset.ragFocus);
+  const routingFocus = event.target.closest("[data-routing-focus]");
+  if (routingFocus) focusRoutingTask(routingFocus.dataset.routingFocus);
+  const qualityFocus = event.target.closest("[data-quality-focus]");
+  if (qualityFocus) focusQualityTask(qualityFocus.dataset.qualityFocus);
+  const advancedFocus = event.target.closest("[data-advanced-focus]");
+  if (advancedFocus) focusAdvancedTask(advancedFocus.dataset.advancedFocus);
+  const routingButton = event.target.closest(".select-routing-model");
+  if (routingButton) selectRoutingModel(routingButton.dataset.modelName || "");
   const knowledgeSpaceButton = event.target.closest(".select-knowledge-space");
   if (knowledgeSpaceButton) {
     selectKnowledgeSpace(knowledgeSpaceButton.dataset.spaceId || "", knowledgeSpaceButton.dataset.spaceName || "");
@@ -1894,7 +2048,10 @@ document.addEventListener("click", (event) => {
   const selectButton = event.target.closest(".select-published-preset");
   if (selectButton) selectPublishedPresetFromElement(selectButton);
   const qualityButton = event.target.closest(".select-quality-feedback");
-  if (qualityButton) $("qualityFeedbackId").value = qualityButton.dataset.feedbackId || "";
+  if (qualityButton) {
+    $("qualityFeedbackId").value = qualityButton.dataset.feedbackId || "";
+    focusQualityTask("review");
+  }
   const previewButton = event.target.closest(".preview-preset, .import-preset");
   if (previewButton) previewPresetImport(previewButton.dataset.presetId);
   const reportButton = event.target.closest(".report-preset");
@@ -1984,7 +2141,12 @@ function showChannelTab(name) {
   document.querySelectorAll("#channelTabs .tab").forEach((b) => {
     b.classList.toggle("active", b.dataset.ctab === name);
   });
+  if (name === "model") {
+    loadEffectiveRoutingPolicy().then(() => loadModelCandidates());
+  }
   if (name === "rag") refreshKnowledge();
+  if (name === "quality") refreshQualityDashboard();
+  if (name === "advanced") refreshMultiOps();
 }
 document.querySelectorAll("#channelTabs .tab").forEach((b) => {
   b.addEventListener("click", () => showChannelTab(b.dataset.ctab));

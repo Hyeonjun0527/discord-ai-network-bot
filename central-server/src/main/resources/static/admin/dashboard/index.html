@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Nexa AI 네트워크 — 관리자 콘솔</title>
+  <title>Nexa AI 네트워크 — 운영자 관찰 콘솔</title>
   <!--
-    관리자 콘솔(차수 14·19, entity-first 재설계). 빌드 불필요 정적 SPA(바닐라 JS). 동일 출처 서빙.
+    운영자 관찰 콘솔(차수 14·19, entity-first 재설계). 빌드 불필요 정적 SPA(바닐라 JS). 동일 출처 서빙.
     구조: Overview(네트워크) → 서버(드롭다운 선택) → 서버 상세[요약·채널·참여PC·프리셋·정책]
           → 채널 클릭 → 채널 상세[채널AI·모델·지식·품질·고급]. 채널 ID 는 클릭으로 선택(직접 입력 X).
     관리자 API 는 Discord OAuth2 또는 X-Dashboard-Admin-Token 헤더로 보호.
@@ -15,7 +15,7 @@
 <body>
   <div class="brand"><div class="logo"><img src="/img/nexa-logo.png" alt="Nexa 로고" /></div><div class="name">Nexa</div></div>
   <header>
-    <h1>함께 만드는 AI 네트워크</h1>
+    <h1>운영자용 AI 네트워크 관찰 콘솔</h1>
     <span id="status" class="badge">연결 확인 중…</span>
     <span id="authBox" class="auth-box">
       <a id="discordLogin" href="/oauth2/authorization/discord" style="display:none">Discord로 로그인</a>
@@ -25,8 +25,8 @@
   </header>
 
   <nav class="side">
-    <a data-page="overview" class="active"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</a>
-    <a data-page="server"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/></svg>서버</a>
+    <a data-page="overview" class="active"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>관찰 요약</a>
+    <a data-page="server"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/></svg>서버 관찰</a>
     <div class="navhint">선택한 서버</div>
     <a id="channelCrumb" data-page="channel" hidden><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span id="channelCrumbName">채널 상세</span></a>
   </nav>
@@ -34,8 +34,8 @@
   <main>
     <!-- 모바일 상단 네비(사이드바 숨김 시) -->
     <nav class="mobile-nav" id="mobileNav">
-      <a data-page="overview" class="active">Overview</a>
-      <a data-page="server">서버</a>
+      <a data-page="overview" class="active">관찰 요약</a>
+      <a data-page="server">서버 관찰</a>
       <a data-page="channel" id="mobileChannelCrumb" hidden>채널 상세</a>
     </nav>
     <!-- 현재 보고 있는 서버/채널 컨텍스트(JS 가 채움) -->
@@ -45,12 +45,15 @@
       <span class="ctx-sep" id="ctxSep" hidden>›</span>
       <span class="ctx-val" id="ctxChannel" hidden></span>
     </div>
+    <div id="ownerOnlyNotice" class="owner-only-notice" hidden>
+      이 콘솔은 프로젝트 운영자 허용목록 전용입니다. 디스코드 서버장 고객용 설정 화면이 아니며, 운영자 권한이 없으면 상태 API가 차단됩니다.
+    </div>
 
     <!-- ════ Overview ════ -->
     <section class="page" data-page="overview">
       <div class="page-head">
-        <h2>AI 네트워크 상태</h2>
-        <p>서버별 채널 AI·참여 PC·모델 라우팅·지식공간·품질 신고를 한곳에서 관리합니다. 프롬프트 원문은 저장하지 않고, 운영에 필요한 집계 정보만 표시합니다.</p>
+        <h2>AI 네트워크 관찰 보드</h2>
+        <p>프로젝트 운영자인 내가 전체 네트워크 흐름을 먼저 읽는 화면입니다. 수정 버튼보다 상태·위험·추세를 앞에 두고, 프롬프트 원문 없이 운영 집계만 표시합니다.</p>
       </div>
       <div class="kpi-grid">
         <div class="kpi ok"><div class="num" id="activeProviders">–</div><div class="lbl">활성 참여 PC</div></div>
@@ -64,7 +67,7 @@
           <ul class="list" id="ovReadiness"><li class="empty">'서버'에서 서버를 선택하면 준비 상태가 표시됩니다.</li></ul>
         </article>
         <article class="card">
-          <h3>지금 할 일</h3>
+          <h3>주의 깊게 볼 항목</h3>
           <ul class="list" id="ovActions"><li class="empty">승인 대기·신고 검토·과부하·색인 실패 등 처리할 항목이 여기 모입니다.</li></ul>
         </article>
       </div>
@@ -91,15 +94,25 @@
         <button id="licenseFunnelRefresh" class="mini">라이선스 새로고침</button>
       </article>
       <article class="card">
-        <h3>최근 요청 로그</h3>
+        <h3>최근 요청 흐름</h3>
         <table id="requests"><thead><tr><th>requestId</th><th>상태</th><th>부담</th><th>provider</th><th>시각</th></tr></thead><tbody></tbody></table>
-        <p class="muted">서버별 상세는 좌측 <b>서버</b>에서 서버를 선택하면 채워집니다.</p>
+        <p class="muted">서버별 상세는 좌측 <b>서버 관찰</b>에서 서버를 선택하면 채워집니다.</p>
       </article>
     </section>
 
     <!-- ════ 서버 (선택 + 상세 탭) ════ -->
     <section class="page" data-page="server" hidden>
-      <div class="page-head"><h2>서버 상세</h2><p>서버를 선택하면 그 서버의 채널·참여 PC·프리셋·정책을 한곳에서 관리합니다. 채널 단위 설정은 ‘채널’ 탭에서 채널을 클릭해 들어갑니다.</p></div>
+      <div class="page-head"><h2>서버 관찰</h2><p>디스코드 서버장 고객용 셀프서비스가 아니라, 프로젝트 운영자가 서버 상태를 먼저 읽는 화면입니다. 수정 도구는 필요한 순간에만 펼쳐서 사용합니다.</p></div>
+      <div id="ownerConsoleHero" class="owner-hero">
+        <div>
+          <span class="eyebrow">Owner view · read first</span>
+          <h3>상태를 먼저 보고, 조치는 접어둡니다</h3>
+          <p>활성 Provider, 요청 흐름, 채널 AI 준비도, 신고·과부하 신호를 한눈에 확인한 뒤 운영 도구를 펼치세요.</p>
+        </div>
+        <div class="owner-hero-metrics" aria-label="운영자 관찰 포인트">
+          <span>상태</span><span>위험</span><span>추세</span><span>조치</span>
+        </div>
+      </div>
       <div class="toolbar">
         <select id="guildPicker" style="max-width:340px"><option value="">서버 선택…</option></select>
         <input id="guildId" type="text" inputmode="numeric" placeholder="또는 서버 ID 직접 입력" style="max-width:220px" />
@@ -107,11 +120,11 @@
       </div>
 
       <div class="tabs" id="serverTabs">
-        <button class="tab active" data-stab="summary">요약</button>
-        <button class="tab" data-stab="channels">채널</button>
-        <button class="tab" data-stab="providers">참여 PC</button>
-        <button class="tab" data-stab="presets">프리셋</button>
-        <button class="tab" data-stab="policy">정책</button>
+        <button class="tab active" data-stab="summary">스냅샷</button>
+        <button class="tab" data-stab="channels">채널 현황</button>
+        <button class="tab" data-stab="providers">참여 PC 현황</button>
+        <button class="tab" data-stab="presets">프리셋 현황</button>
+        <button class="tab" data-stab="policy">운영 도구</button>
       </div>
 
       <!-- ── 요약 ── -->
@@ -293,11 +306,11 @@
       </div>
 
       <div class="tabs" id="channelTabs">
-        <button class="tab active" data-ctab="channel-ai">채널 AI</button>
-        <button class="tab" data-ctab="model">모델 정책</button>
-        <button class="tab" data-ctab="rag">지식/RAG</button>
-        <button class="tab" data-ctab="quality">품질·신고</button>
-        <button class="tab" data-ctab="advanced">고급 응답</button>
+        <button class="tab active" data-ctab="channel-ai">채널 AI 상태</button>
+        <button class="tab" data-ctab="model">모델 라우팅</button>
+        <button class="tab" data-ctab="rag">지식/RAG 상태</button>
+        <button class="tab" data-ctab="quality">품질·신고 현황</button>
+        <button class="tab" data-ctab="advanced">고급 응답 현황</button>
       </div>
 
       <!-- 채널 AI -->
@@ -510,7 +523,7 @@
     <option value="general"></option><option value="coding"></option><option value="translation"></option><option value="writing"></option><option value="research"></option><option value="support"></option>
   </datalist>
 
-  <footer>읽기 5초 폴링 · 관리자 작업은 OAuth 또는 X-Dashboard-Admin-Token 필요 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
+  <footer>운영자 관찰 우선 · 읽기 5초 폴링 · 조치 도구는 접힌 상태로 시작 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
   <div id="toastWrap" aria-live="polite"></div>
   <script src="/admin/dashboard/app.js"></script>
   <script src="/admin/dashboard/ux.js"></script>

@@ -4,6 +4,7 @@
  *  - 모바일 상단 네비 → 사이드바 클릭 위임 + active 동기화.
  *  - 컨텍스트 바: 지금 보고 있는 서버/채널을 항상 표시.
  *  - 위험 작업(삭제/제거/비공개) 확인 다이얼로그.
+ *  - 운영 도구 접기: 첫 화면은 관찰 정보가 먼저 보이고, 수정 폼은 필요할 때 펼친다.
  */
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -88,6 +89,25 @@
   document.addEventListener("click", () => setTimeout(() => { syncMobileActive(); updateCtx(); }, 40), true);
   syncMobileActive();
   updateCtx();
+
+  // ── 보기 우선 운영 도구 접기 ──
+  function foldOperationalControls() {
+    const targets = document.querySelectorAll(
+      'main .page[data-page="server"] .action-card, main .page[data-page="channel"] .action-card, main .page[data-page="server"] .panel',
+    );
+    targets.forEach((card) => {
+      if (card.closest(".ops-fold")) return;
+      const title = card.querySelector("h2, h3")?.textContent?.trim() || "운영 도구";
+      const details = document.createElement("details");
+      details.className = "ops-fold";
+      const summary = document.createElement("summary");
+      summary.textContent = title;
+      card.parentNode.insertBefore(details, card);
+      details.appendChild(summary);
+      details.appendChild(card);
+    });
+  }
+  foldOperationalControls();
 
   // ── 위험 작업 확인 ──
   document.addEventListener(

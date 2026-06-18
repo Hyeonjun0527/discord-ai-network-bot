@@ -1659,16 +1659,19 @@ async function loadAuth() {
   const loginLink = $("discordLogin");
   const userSpan = $("authUser");
   const logoutBtn = $("logoutBtn");
+  const ownerOnlyNotice = $("ownerOnlyNotice");
   if (me.authenticated) {
-    userSpan.textContent = (me.admin ? "관리자 " : "로그인 ") + (me.userId || "");
+    userSpan.textContent = (me.admin ? "운영자 " : "운영자 권한 없음 ") + (me.userId || "");
     userSpan.style.display = "";
     logoutBtn.style.display = "";
     loginLink.style.display = "none";
+    if (ownerOnlyNotice) ownerOnlyNotice.hidden = me.admin;
   } else if (me.oauthEnabled) {
     // OAuth 활성인데 미로그인(엣지) — 로그인 버튼 노출. 보통은 보호 경로라 자동 리디렉트됨.
     loginLink.style.display = "";
     userSpan.style.display = "none";
     logoutBtn.style.display = "none";
+    if (ownerOnlyNotice) ownerOnlyNotice.hidden = true;
   }
 }
 $("logoutBtn").addEventListener("click", async () => {

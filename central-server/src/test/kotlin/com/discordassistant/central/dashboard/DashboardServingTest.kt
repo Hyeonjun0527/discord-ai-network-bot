@@ -271,6 +271,49 @@ class DashboardServingTest
         }
 
         @Test
+        fun `정적 대시보드가 운영자 관찰 우선 UI를 포함한다`() {
+            val html =
+                mvc
+                    .perform(get("/admin/dashboard/index.html"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+            val css =
+                mvc
+                    .perform(get("/admin/dashboard/style.css"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+            val js =
+                mvc
+                    .perform(get("/admin/dashboard/app.js"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+            val ux =
+                mvc
+                    .perform(get("/admin/dashboard/ux.js"))
+                    .andExpect(status().isOk)
+                    .andReturn()
+                    .response
+                    .contentAsString
+
+            assertTrue(html.contains("""id="ownerConsoleHero""""))
+            assertTrue(html.contains("""id="ownerOnlyNotice""""))
+            assertTrue(html.contains("Owner view"))
+            assertTrue(html.contains("read first"))
+            assertTrue(css.contains(".owner-hero"))
+            assertTrue(css.contains(".owner-only-notice"))
+            assertTrue(css.contains(".ops-fold"))
+            assertTrue(js.contains("ownerOnlyNotice"))
+            assertTrue(ux.contains("foldOperationalControls"))
+            assertTrue(ux.contains("ops-fold"))
+        }
+
+        @Test
         fun `디렉터리 URL 도 index 로 포워드된다`() {
             mvc.perform(get("/")).andExpect(status().isOk)
             mvc.perform(get("/install")).andExpect(status().isOk)

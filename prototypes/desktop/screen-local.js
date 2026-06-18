@@ -88,13 +88,20 @@
       const comfyCard = '<div class="rt-row rt-row--rec' + (crun ? ' ready' : '') + '">' +
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">ComfyUI <span style="font-weight:500;color:var(--c-violet)">' + t('localComfyUIImageType') + '</span></div>' +
         '<div class="rt-state">' + comfyState + '</div>' + comfyModelSel + '</div><div class="rt-actions">' + comfyAction + '</div></div>';
-      const comfyNsfwGuide = '<details class="rt-adv rt-adv--guide">' +
+      // 폴링 재렌더(load 2.5~3s 주기)가 사용자가 펼친/접은 고급 패널 상태를 덮어쓰면 '열면 자동으로 닫힘'
+      // 버그가 난다(#233). 직전 DOM 의 open 을 읽어 사용자 의도를 보존하고, 첫 렌더(이전 없음)에서만
+      // 기본값(가이드=접힘, 외부=설정값 있으면 펼침)을 쓴다.
+      const hfOn = !!s.hfConfigured;
+      const prevGuide = rtWrap.querySelector('.rt-adv--guide');
+      const prevExternal = rtWrap.querySelector('.rt-adv:not(.rt-adv--guide)');
+      const guideOpen = prevGuide ? prevGuide.open : false;
+      const externalOpen = prevExternal ? prevExternal.open : !!(s.comfyUrl || hfOn);
+      const comfyNsfwGuide = '<details class="rt-adv rt-adv--guide"' + (guideOpen ? ' open' : '') + '>' +
         '<summary>' + t('localComfyNsfwGuideSummary') + '</summary>' +
         '<div class="rt-adv-body"><div class="rt-adv-desc">' + t('localComfyNsfwGuideBody') + '</div></div>' +
         '</details>';
       // 고급 · 직접 띄운 외부 ComfyUI 인스턴스에 연결(앱 관리 ComfyUI 대신). 비우면 앱 관리 ComfyUI 사용.
-      const hfOn = !!s.hfConfigured;
-      const comfyExternal = '<details class="rt-adv"' + ((s.comfyUrl || hfOn) ? ' open' : '') + '>' +
+      const comfyExternal = '<details class="rt-adv"' + (externalOpen ? ' open' : '') + '>' +
         '<summary>' + t('localComfyAdvancedSummary') + '</summary>' +
         '<div class="rt-adv-body"><div class="rt-adv-desc">' + t('localComfyAdvancedDescription') + '</div>' +
         '<div class="rt-cloud"><input id="localComfy" type="text" value="' + (s.comfyUrl || '') + '" placeholder="' + t('localComfyExternalURLPlaceholder') + '" class="set-input"><button class="btn btn--sm btn--secondary" id="localComfySave">' + t('localComfyExternalConnectBtn') + '</button></div>' +

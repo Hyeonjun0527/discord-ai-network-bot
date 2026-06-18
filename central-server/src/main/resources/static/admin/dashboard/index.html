@@ -32,6 +32,20 @@
   </nav>
 
   <main>
+    <!-- 모바일 상단 네비(사이드바 숨김 시) -->
+    <nav class="mobile-nav" id="mobileNav">
+      <a data-page="overview" class="active">Overview</a>
+      <a data-page="server">서버</a>
+      <a data-page="channel" id="mobileChannelCrumb" hidden>채널 상세</a>
+    </nav>
+    <!-- 현재 보고 있는 서버/채널 컨텍스트(JS 가 채움) -->
+    <div class="context-bar empty" id="ctxBar">
+      <span class="ctx-label">현재 선택</span>
+      <span class="ctx-val" id="ctxServer">서버 미선택</span>
+      <span class="ctx-sep" id="ctxSep" hidden>›</span>
+      <span class="ctx-val" id="ctxChannel" hidden></span>
+    </div>
+
     <!-- ════ Overview ════ -->
     <section class="page" data-page="overview">
       <div class="page-head">
@@ -133,69 +147,124 @@
 
       <!-- ── 참여 PC ── -->
       <div class="tabpane" data-stab="providers" hidden>
-        <div class="panel">
+        <div class="section-title">과부하 보호</div>
+        <div class="action-card">
+          <h3>🛡️ 참여 PC 보호 상태 설정</h3>
+          <p class="ac-desc">과열·실패율 급증 등으로 특정 참여 PC를 보호(요청 제외)하거나 해제합니다.</p>
           <div class="form-grid">
             <label>참여 PC 선택<select id="safetyProviderPicker"><option value="">서버를 불러오면 참여 PC 목록…</option></select></label>
             <label>Provider 사용자 ID<input id="safetyProviderId" type="text" inputmode="numeric" placeholder="위에서 선택 또는 직접 입력" /></label>
             <label>위험도<select id="safetyRisk"><option value="normal">normal · 보호 해제</option><option value="high">high · 고급 요청 제외</option><option value="critical">critical · 즉시 보호</option></select></label>
             <label>응답 모드<select id="safetyResponseMode"><option value="fast">빠른 답변</option><option value="balanced" selected>균형</option><option value="deep">깊은 답변</option><option value="saving">절약</option></select></label>
             <label>요청 후보 수<input id="safetyRequestedCandidates" type="number" min="1" max="5" value="2" /></label>
+            <label>보호 사유<input id="safetyReason" type="text" placeholder="예: CPU 과열, 실패율 급증" /></label>
           </div>
-          <label>보호 사유<input id="safetyReason" type="text" placeholder="예: CPU 과열, 실패율 급증, Provider 요청" /></label>
-          <div class="row"><button id="safetyRefresh" class="primary">과부하 현황 새로고침</button><button id="safetyMarkOverload">Provider 보호 상태 저장</button></div>
-          <div class="network-grid">
-            <article class="card"><h3>보호 요약</h3><ul id="safetyOverloadSummary" class="list"></ul></article>
-            <article class="card"><h3>알림 목록</h3><ul id="safetyOverloadAlerts" class="list"></ul></article>
-            <article class="card"><h3>실행 계획</h3><ul id="safetyExecutionPlan" class="list"></ul></article>
+          <div class="actions">
+            <button id="safetyRefresh" class="ghost">과부하 현황 새로고침</button>
+            <button id="safetyMarkOverload" class="primary">보호 상태 저장</button>
           </div>
-          <article class="card"><h3>참여 PC 상세</h3>
-            <table id="providers"><thead><tr><th>provider</th><th>상태</th><th>처리중</th><th>대기</th><th>실패</th><th>모델수</th></tr></thead><tbody></tbody></table>
-          </article>
-          <article class="card"><h3>참여 PC 상태(가용시간 포함)</h3><ul id="providerStatus" class="list"></ul></article>
-          <article class="card"><h3>참여 PC 이력</h3><div class="row"><input id="providerHistoryUserId" type="text" inputmode="numeric" placeholder="provider user id(선택)" /><button id="providerHistoryRefresh" class="mini">이력 조회</button></div><ul id="providerHistory" class="list"></ul></article>
-          <pre id="safetyResult" class="preview">서버를 선택한 뒤 과부하 현황을 새로고침하세요.</pre>
         </div>
+        <div class="network-grid">
+          <article class="card"><h3>보호 요약</h3><ul id="safetyOverloadSummary" class="list"><li class="empty">‘과부하 현황 새로고침’ 후 표시됩니다.</li></ul></article>
+          <article class="card"><h3>알림 목록</h3><ul id="safetyOverloadAlerts" class="list"><li class="empty">–</li></ul></article>
+          <article class="card"><h3>실행 계획</h3><ul id="safetyExecutionPlan" class="list"><li class="empty">–</li></ul></article>
+        </div>
+        <div class="section-title">참여 PC 현황</div>
+        <article class="card"><h3>참여 PC 상세</h3>
+          <table id="providers"><thead><tr><th>provider</th><th>상태</th><th>처리중</th><th>대기</th><th>실패</th><th>모델수</th></tr></thead><tbody></tbody></table>
+        </article>
+        <article class="card"><h3>참여 PC 상태(가용시간 포함)</h3><ul id="providerStatus" class="list"><li class="empty">–</li></ul></article>
+        <article class="card"><h3>참여 PC 이력</h3><div class="row"><input id="providerHistoryUserId" type="text" inputmode="numeric" placeholder="provider user id(선택)" style="max-width:240px" /><button id="providerHistoryRefresh" class="mini">이력 조회</button></div><ul id="providerHistory" class="list"><li class="empty">–</li></ul></article>
+        <pre id="safetyResult" class="preview">서버를 선택한 뒤 ‘과부하 현황 새로고침’을 누르세요.</pre>
       </div>
 
-      <!-- ── 프리셋 ── -->
+      <!-- ── 프리셋 (작업 단위 카드로 정돈) ── -->
       <div class="tabpane" data-stab="presets" hidden>
-        <div class="panel">
+        <!-- 1) 만들기·수정 -->
+        <div class="section-title">내 서버 프리셋</div>
+        <div class="action-card">
+          <h3>✏️ 프리셋 만들기 · 수정</h3>
+          <p class="ac-desc">채널 AI에 바로 적용할 수 있는 프리셋(역할·말투·규칙 묶음)을 만듭니다. 수정·삭제는 아래 목록에서 항목을 고르거나 ID를 입력하세요.</p>
           <div class="form-grid">
-            <label>프리셋 ID<input id="presetId" type="text" inputmode="numeric" placeholder="수정/게시/삭제할 ID" /></label>
-            <label>게시 프리셋 ID<input id="publishedPresetId" type="text" inputmode="numeric" placeholder="좋아요/가져오기 ID" /></label>
             <label>프리셋 이름<input id="presetName" type="text" placeholder="예: 코딩 튜터" /></label>
             <label>카테고리<input id="presetCategory" type="text" list="categoryOptions" placeholder="목록에서 선택 또는 입력" /></label>
             <label>말투<select id="presetTone"></select></label>
-            <label>태그<input id="presetTags" type="text" list="tagOptions" placeholder="쉼표: coding, kotlin, review" /></label>
             <label>응답 모드<select id="presetResponseMode"><option value="balanced">균형</option><option value="fast">빠른 답변</option><option value="deep">깊은 답변</option><option value="saving">절약</option></select></label>
-            <label>선호 모델<input id="presetPreferredModel" type="text" list="serverModelOptions" placeholder="서버 모델에서 선택" /></label>
+            <label>선호 모델<input id="presetPreferredModel" type="text" list="serverModelOptions" placeholder="서버 모델에서 선택(선택)" /></label>
             <label>후보 수<input id="presetMaxCandidates" type="number" min="1" max="5" value="1" /></label>
+            <label>태그<input id="presetTags" type="text" list="tagOptions" placeholder="쉼표: coding, kotlin, review" /></label>
+            <label>수정·삭제할 프리셋 ID<input id="presetId" type="text" inputmode="numeric" placeholder="새로 만들 땐 비워두세요" /><span class="field-help">목록의 항목을 클릭하면 자동 입력됩니다.</span></label>
           </div>
-          <label>요약<input id="presetSummary" type="text" placeholder="프리셋 설명" /></label>
+          <label>한 줄 요약<input id="presetSummary" type="text" placeholder="프리셋 설명(목록에 표시)" /></label>
           <label>역할/목적<textarea id="presetPurpose" rows="3" placeholder="이 프리셋 AI가 무엇을 도와야 하는지 적으세요."></textarea></label>
           <label>AI 헌법/규칙<textarea id="presetConstitution" rows="3" placeholder="금지 주제, 답변 원칙, 말투 규칙 등."></textarea></label>
-          <label>질문 예시<textarea id="presetExampleQuestions" rows="3" placeholder="한 줄에 하나씩 예시 질문."></textarea></label>
+          <label>질문 예시<textarea id="presetExampleQuestions" rows="2" placeholder="한 줄에 하나씩 예시 질문."></textarea></label>
+          <div class="actions">
+            <button id="presetRefresh" class="ghost">목록 새로고침</button>
+            <button id="presetCreate" class="primary">만들기</button>
+            <button id="presetUpdate">선택 항목 수정</button>
+            <button id="presetDelete" class="danger">삭제</button>
+          </div>
+        </div>
+        <article class="card"><h3>이 서버의 프리셋</h3><ul id="localPresetList" class="list"><li class="empty">‘목록 새로고침’을 누르면 이 서버의 프리셋이 표시됩니다.</li></ul></article>
+
+        <!-- 2) 웹 공유 -->
+        <div class="section-title">웹 카탈로그에 공유</div>
+        <div class="action-card">
+          <h3>🌐 게시 · 공개 상태 관리</h3>
+          <p class="ac-desc">위에서 만든 프리셋을 웹 카탈로그에 공개하거나, 이미 게시한 프리셋의 공개 상태를 바꿉니다.</p>
+          <div class="form-grid">
+            <label>게시 관리할 프리셋 ID<input id="publishedPresetId" type="text" inputmode="numeric" placeholder="좋아요·게시 수정·비공개·삭제 대상" /><span class="field-help">웹 카탈로그 목록에서 클릭하면 자동 입력됩니다.</span></label>
+          </div>
+          <div class="actions">
+            <span class="spacer">위 폼의 프리셋을 게시하거나, 게시 ID로 관리</span>
+            <button id="presetPublish" class="primary">웹에 게시</button>
+            <button id="publishedPresetUpdate">게시 내용 수정</button>
+            <button id="presetLike" class="ghost">👍 좋아요</button>
+            <button id="publishedPresetUnlist">비공개로</button>
+            <button id="publishedPresetRepublish">다시 공개</button>
+            <button id="publishedPresetReport" class="ghost">신고</button>
+            <button id="publishedPresetDelete" class="danger">게시 삭제</button>
+          </div>
+        </div>
+
+        <!-- 3) 카탈로그 둘러보기/가져오기 -->
+        <div class="section-title">웹 카탈로그 둘러보기 · 가져오기</div>
+        <div class="action-card">
+          <h3>🔍 카탈로그 검색 · 가져오기</h3>
+          <p class="ac-desc">다른 서버가 공유한 프리셋을 검색해 이 서버 채널 AI로 가져옵니다. 목록의 <b>미리보기</b>를 먼저 누르면 덮어쓰기 여부를 확인한 뒤 가져올 수 있습니다.</p>
           <div class="form-grid catalog-controls">
-            <label>웹 카탈로그 검색<input id="presetCatalogQuery" type="search" placeholder="예: 코딩, 번역, 회의록" /></label>
+            <label>검색어<input id="presetCatalogQuery" type="search" placeholder="예: 코딩, 번역, 회의록" /></label>
             <label>카테고리<input id="presetCatalogCategory" type="text" placeholder="예: coding" /></label>
             <label>정렬<select id="presetCatalogSort"><option value="popular">인기순</option><option value="imports">가져오기순</option><option value="new">최신순</option></select></label>
             <label>목록 수<input id="presetCatalogLimit" type="number" min="1" max="100" value="20" /></label>
           </div>
-          <div class="row"><button id="presetRefresh">새로고침</button><button id="presetCreate" class="primary">프리셋 만들기</button><button id="presetUpdate">수정</button><button id="presetPublish">웹에 게시</button><button id="presetDelete">삭제</button><button id="presetLike">따봉</button><button id="publishedPresetUpdate">게시 수정</button><button id="publishedPresetUnlist">게시 비공개</button><button id="publishedPresetRepublish">게시 재공개</button><button id="publishedPresetDelete">게시 숨김</button><button id="publishedPresetReport">신고</button><button id="presetConfirmImport" class="secondary" disabled>미리보기한 프리셋 가져오기</button></div>
+          <div class="actions">
+            <span class="spacer">목록의 ‘미리보기’ 후 가져오기가 활성화됩니다</span>
+            <button id="presetConfirmImport" class="primary" disabled>미리보기한 프리셋 가져오기</button>
+          </div>
+        </div>
+        <article class="card"><h3>웹 카탈로그</h3><ul id="publishedPresetList" class="list"><li class="empty">검색하거나 ‘목록 새로고침’을 누르면 공개 프리셋이 표시됩니다.</li></ul></article>
+        <pre id="presetImportPreview" class="preview">가져올 프리셋의 [미리보기]를 먼저 누르면, 덮어쓰기/승인 필요 여부를 확인한 뒤 가져올 수 있습니다.</pre>
+
+        <!-- 4) 신고/검수 -->
+        <div class="section-title">신고 · 검수</div>
+        <div class="action-card">
+          <h3>🚩 신고 검수 처리</h3>
+          <p class="ac-desc">부적절한 공개 프리셋 신고를 확인하고 처리합니다(기각·일시 중단·제거).</p>
           <div class="form-grid">
-            <label>신고 ID<input id="presetReportId" type="text" inputmode="numeric" placeholder="검수 처리할 신고 ID" /></label>
-            <label>신고 사유<input id="presetReportReason" type="text" placeholder="예: 위험한 프롬프트, 민감정보 포함" /></label>
+            <label>신고 ID<input id="presetReportId" type="text" inputmode="numeric" placeholder="큐에서 클릭하면 자동 입력" /></label>
+            <label>처리 메모<input id="presetReportReason" type="text" placeholder="예: 오탐, 위험한 프롬프트 확인" /></label>
             <label>검수 결정<select id="presetReportDecision"><option value="dismiss">기각</option><option value="suspend">일시 중단</option><option value="remove">제거</option></select></label>
           </div>
-          <div class="row"><button id="presetModerationRefresh">신고 큐 새로고침</button><button id="presetReportReview">신고 처리</button></div>
-          <div class="network-grid">
-            <article class="card"><h3>서버 프리셋</h3><ul id="localPresetList" class="list"></ul></article>
-            <article class="card"><h3>웹 카탈로그</h3><ul id="publishedPresetList" class="list"></ul></article>
-            <article class="card"><h3>신고/검수 큐</h3><ul id="presetModerationList" class="list"></ul></article>
+          <div class="actions">
+            <button id="presetModerationRefresh" class="ghost">신고 큐 새로고침</button>
+            <button id="presetReportReview" class="primary">신고 처리</button>
           </div>
-          <pre id="presetImportPreview" class="preview">가져올 프리셋의 [미리보기]를 먼저 누르면, 덮어쓰기/승인 필요 여부를 확인한 뒤 가져올 수 있습니다.</pre>
-          <pre id="presetManageResult" class="preview">서버를 선택한 뒤 프리셋을 새로고침하세요.</pre>
         </div>
+        <article class="card"><h3>신고/검수 큐</h3><ul id="presetModerationList" class="list"><li class="empty">‘신고 큐 새로고침’을 누르면 검토할 신고가 표시됩니다.</li></ul></article>
+
+        <pre id="presetManageResult" class="preview">서버를 선택한 뒤 ‘목록 새로고침’을 누르세요.</pre>
       </div>
 
       <!-- ── 정책 ── -->
@@ -233,9 +302,10 @@
 
       <!-- 채널 AI -->
       <div class="tabpane" data-ctab="channel-ai">
-        <div class="panel">
-          <p class="muted">질문식 마법사로 채널 AI 이름·역할·말투·답변 길이·안전 규칙을 만든 뒤 저장합니다.</p>
-          <input id="wizardChannelId" type="hidden" />
+        <input id="wizardChannelId" type="hidden" />
+        <div class="action-card">
+          <h3>🐣 채널 AI 만들기 (마법사)</h3>
+          <p class="ac-desc">이름·역할·말투·답변 길이를 고르면 안전 규칙이 포함된 채널 AI 설정이 만들어집니다. [미리보기]로 결과를 확인한 뒤 저장하세요.</p>
           <div class="form-grid">
             <label>AI 이름<input id="wizardName" type="text" placeholder="예: 코드 니아" /></label>
             <label>무엇을 도와야 하나요?<select id="wizardJob"></select></label>
@@ -243,114 +313,190 @@
             <label>답변 길이<select id="wizardLength"></select></label>
           </div>
           <label class="check"><input id="wizardApproval" type="checkbox" /> 저장 전 승인 대기열로 보내기</label>
-          <div class="row"><button id="wizardDraft">미리보기</button><button id="wizardCreate" class="primary">저장</button></div>
-          <pre id="wizardPreview" class="preview">마법사 옵션을 불러오는 중…</pre>
+          <div class="actions"><button id="wizardDraft" class="ghost">미리보기</button><button id="wizardCreate" class="primary">저장</button></div>
         </div>
+        <pre id="wizardPreview" class="preview">마법사 옵션을 불러오는 중…</pre>
       </div>
 
       <!-- 모델 정책 -->
       <div class="tabpane" data-ctab="model" hidden>
-        <div class="panel">
-          <input id="routingChannelId" type="hidden" />
+        <input id="routingChannelId" type="hidden" />
+        <div class="action-card">
+          <h3>🧭 모델 라우팅 정책</h3>
+          <p class="ac-desc">이 채널의 질문이 어떤 모델로 라우팅될지 정합니다. 비워두면 서버 기본값을 따릅니다.</p>
           <div class="form-grid">
-            <label>요청 모델<input id="routingRequestedModel" type="text" list="serverModelOptions" placeholder="서버 모델에서 선택" /></label>
             <label>선호 모델<input id="routingPreferredModel" type="text" list="serverModelOptions" placeholder="정책 기본 모델" /></label>
             <label>허용 모델 목록<input id="routingAllowedModels" type="text" list="serverModelOptions" placeholder="쉼표: llama3.1:8b, qwen2.5:14b" /></label>
-            <label>Provider 태그 필터<input id="routingProviderTags" type="text" placeholder="쉼표: coding, long-context" /></label>
             <label>응답 모드<select id="routingResponseMode"><option value="fast">빠른 답변</option><option value="balanced" selected>균형</option><option value="deep">깊은 답변</option><option value="saving">절약</option></select></label>
             <label>최소 품질<select id="routingMinQualityTier"><option value="standard" selected>standard</option><option value="high">high</option><option value="specialized">specialized</option></select></label>
             <label>후보 수<input id="routingMaxCandidates" type="number" min="1" max="5" value="1" /></label>
+            <label>Provider 태그 필터<input id="routingProviderTags" type="text" placeholder="쉼표: coding, long-context" /></label>
             <label>보호 정책<select id="routingCostGuard"><option value="provider_safe" selected>Provider 보호 우선</option><option value="balanced">균형</option><option value="quality_first">품질 우선</option></select></label>
+            <label>테스트용 요청 모델<input id="routingRequestedModel" type="text" list="serverModelOptions" placeholder="‘선택 결과 확인’용(선택)" /></label>
           </div>
-          <div class="row"><button id="routingLoadEffective">현재 정책 불러오기</button><button id="routingSavePolicy" class="primary">라우팅 정책 저장</button><button id="routingLoadCandidates">모델 후보 보기</button><button id="routingCheckChoice">선택 결과 확인</button></div>
-          <div class="grid2">
-            <article class="card"><h3>모델 후보</h3><ul id="routingModelCandidates" class="list"></ul></article>
-            <article class="card"><h3>선택 결과</h3><ul id="routingModelChoice" class="list"></ul></article>
+          <div class="actions">
+            <button id="routingLoadEffective" class="ghost">현재 정책 불러오기</button>
+            <button id="routingLoadCandidates" class="ghost">모델 후보 보기</button>
+            <button id="routingCheckChoice" class="ghost">선택 결과 확인</button>
+            <button id="routingSavePolicy" class="primary">라우팅 정책 저장</button>
           </div>
-          <pre id="routingResult" class="preview">채널을 선택한 뒤 모델 후보를 확인하세요.</pre>
         </div>
+        <div class="grid2">
+          <article class="card"><h3>모델 후보</h3><ul id="routingModelCandidates" class="list"><li class="empty">‘모델 후보 보기’를 누르면 표시됩니다.</li></ul></article>
+          <article class="card"><h3>선택 결과</h3><ul id="routingModelChoice" class="list"><li class="empty">‘선택 결과 확인’을 누르면 표시됩니다.</li></ul></article>
+        </div>
+        <pre id="routingResult" class="preview">채널을 선택한 뒤 ‘현재 정책 불러오기’를 누르세요.</pre>
       </div>
 
       <!-- 지식/RAG -->
       <div class="tabpane" data-ctab="rag" hidden>
-        <div class="panel">
-          <input id="knowledgeChannelId" type="hidden" />
+        <input id="knowledgeChannelId" type="hidden" />
+        <div class="section-title">지식공간</div>
+        <div class="action-card">
+          <h3>📚 지식공간 만들기</h3>
+          <p class="ac-desc">이 채널 AI가 참고할 RAG 지식공간을 만듭니다. 만든 뒤 아래에서 소스를 추가하세요.</p>
           <div class="form-grid">
-            <label>지식공간 ID<input id="knowledgeSpaceId" type="text" inputmode="numeric" placeholder="생성 후 자동 입력" /></label>
             <label>지식공간 이름<input id="knowledgeSpaceName" type="text" placeholder="예: #개발질문 지식 베이스" /></label>
+            <label>지식공간 ID<input id="knowledgeSpaceId" type="text" inputmode="numeric" placeholder="생성하면 자동 입력" /><span class="field-help">소스 추가·검색의 대상</span></label>
+          </div>
+          <div class="actions">
+            <button id="knowledgeRefresh" class="ghost">상태 새로고침</button>
+            <button id="knowledgeCreateSpace" class="primary">지식공간 만들기</button>
+          </div>
+        </div>
+
+        <div class="section-title">지식 소스 추가</div>
+        <div class="action-card">
+          <h3>➕ 소스 추가</h3>
+          <p class="ac-desc">링크·텍스트·FAQ 등을 지식공간에 추가합니다. 비밀번호·API 키 등 민감정보는 넣지 마세요.</p>
+          <div class="form-grid">
             <label>소스 종류<select id="knowledgeSourceType"><option value="link">링크</option><option value="text">텍스트</option><option value="faq">FAQ</option><option value="file">파일 메타데이터</option><option value="constitution">AI 헌법</option></select></label>
             <label>소스 제목<input id="knowledgeSourceTitle" type="text" placeholder="예: 운영 규칙 README" /></label>
-            <label>링크/파일 URL<input id="knowledgeSourceUri" type="url" placeholder="https://..." /></label>
-            <label>색인 작업 ID<input id="knowledgeJobId" type="text" inputmode="numeric" placeholder="완료 처리할 job ID" /></label>
-            <label>색인 작업 상태<select id="knowledgeJobStatus"><option value="completed">완료</option><option value="failed">실패</option><option value="cancelled">취소</option></select></label>
+            <label>링크/파일 URL<input id="knowledgeSourceUri" type="url" placeholder="https://… (링크일 때)" /></label>
           </div>
-          <label>텍스트 미리보기/본문<textarea id="knowledgeContentPreview" rows="4" placeholder="텍스트/FAQ/규칙을 붙여넣으세요. 비밀번호·API 키 등 민감정보는 넣지 마세요."></textarea></label>
-          <label>색인 작업 사유<input id="knowledgeJobReason" type="text" placeholder="실패/취소 사유 또는 완료 메모" /></label>
+          <label>텍스트 본문<textarea id="knowledgeContentPreview" rows="3" placeholder="텍스트/FAQ/규칙을 붙여넣으세요(텍스트 종류일 때)."></textarea></label>
+          <div class="actions"><button id="knowledgeAddSource" class="primary">지식 소스 추가</button></div>
+        </div>
+
+        <div class="section-title">색인 작업</div>
+        <div class="action-card">
+          <h3>⚙️ 색인 작업 큐잉 · 완료</h3>
+          <p class="ac-desc">추가한 소스를 임베딩 색인 큐에 넣고, 외부 색인 완료/실패를 기록합니다.</p>
+          <div class="form-grid">
+            <label>색인 작업 ID<input id="knowledgeJobId" type="text" inputmode="numeric" placeholder="완료 처리할 job ID" /></label>
+            <label>작업 상태<select id="knowledgeJobStatus"><option value="completed">완료</option><option value="failed">실패</option><option value="cancelled">취소</option></select></label>
+            <label>작업 메모/사유<input id="knowledgeJobReason" type="text" placeholder="실패/취소 사유 또는 완료 메모" /></label>
+          </div>
+          <div class="actions">
+            <button id="knowledgeQueueJob">색인 작업 큐잉</button>
+            <button id="knowledgeCompleteJob" class="primary">색인 완료 처리</button>
+          </div>
+        </div>
+
+        <div class="section-title">검색 · 평가</div>
+        <div class="action-card">
+          <h3>🔎 검색 테스트 · RAG 평가</h3>
+          <p class="ac-desc">색인된 지식이 실제 질문에 잘 매칭되는지 확인합니다. 골든 케이스로 정확도(Recall@K)도 평가할 수 있습니다.</p>
           <div class="form-grid">
             <label>검색 테스트 질문<input id="knowledgeSearchQuery" type="search" placeholder="예: 배포 실패 시 롤백 방법" /></label>
             <label>검색 결과 수<input id="knowledgeSearchLimit" type="number" min="1" max="20" value="5" /></label>
             <label>평가 K<input id="knowledgeEvalK" type="number" min="1" max="20" value="10" /></label>
           </div>
-          <label>골든 케이스 JSON<textarea id="knowledgeEvalCases" rows="4" placeholder='[{"name":"운영 규칙","query":"롤백 방법","expectedSourceIds":[1],"channelId":123}]'></textarea></label>
-          <div class="row"><button id="knowledgeCreateSpace" class="primary">지식공간 만들기</button><button id="knowledgeAddSource">지식 소스 추가</button><button id="knowledgeQueueJob">색인 작업 큐잉</button><button id="knowledgeCompleteJob">색인 완료 처리</button><button id="knowledgeSearch">검색 테스트</button><button id="knowledgeEvaluate">RAG 평가</button><button id="knowledgeRefresh">상태 새로고침</button></div>
-          <div class="grid2">
-            <article class="card"><h3>RAG 준비 상태</h3><ul id="knowledgeReadiness" class="list"></ul></article>
-            <article class="card"><h3>색인 작업</h3><ul id="knowledgeIndexing" class="list"></ul></article>
+          <label>골든 케이스 JSON(평가용·선택)<textarea id="knowledgeEvalCases" rows="3" placeholder='[{"name":"운영 규칙","query":"롤백 방법","expectedSourceIds":[1],"channelId":123}]'></textarea></label>
+          <div class="actions">
+            <button id="knowledgeSearch" class="primary">검색 테스트</button>
+            <button id="knowledgeEvaluate">RAG 평가</button>
           </div>
-          <pre id="knowledgeResult" class="preview">채널을 선택한 뒤 RAG 상태를 새로고침하세요.</pre>
         </div>
+
+        <div class="grid2">
+          <article class="card"><h3>RAG 준비 상태</h3><ul id="knowledgeReadiness" class="list"><li class="empty">‘상태 새로고침’을 누르면 표시됩니다.</li></ul></article>
+          <article class="card"><h3>색인 작업</h3><ul id="knowledgeIndexing" class="list"><li class="empty">색인 작업이 여기 표시됩니다.</li></ul></article>
+        </div>
+        <pre id="knowledgeResult" class="preview">채널을 선택한 뒤 ‘상태 새로고침’을 누르세요.</pre>
       </div>
 
       <!-- 품질·신고 -->
       <div class="tabpane" data-ctab="quality" hidden>
-        <div class="panel">
-          <input id="qualityChannelId" type="hidden" />
+        <input id="qualityChannelId" type="hidden" />
+        <div class="section-title">피드백 기록</div>
+        <div class="action-card">
+          <h3>📝 품질 피드백 저장</h3>
+          <p class="ac-desc">특정 답변의 품질을 기록하거나 신고합니다. 민감정보·프롬프트 원문은 넣지 마세요(토큰/API 키 패턴은 자동 마스킹).</p>
           <div class="form-grid">
-            <label>요청 ID<input id="qualityRequestId" type="text" placeholder="선택: request id" /></label>
-            <label>사용자 ID<input id="qualityUserId" type="text" inputmode="numeric" placeholder="중복 방지용, 선택" /></label>
             <label>평점<select id="qualityRating"><option value="1">👍 도움됨</option><option value="0">보통</option><option value="-1">👎 별로</option></select></label>
             <label>피드백 종류<select id="qualityType"><option value="helpful">helpful</option><option value="not_helpful">not_helpful</option><option value="report">report · 검토 필요</option><option value="unsafe_report">unsafe_report · 안전 신고</option></select></label>
-            <label>검토할 피드백 ID<input id="qualityFeedbackId" type="text" inputmode="numeric" placeholder="신고 큐에서 선택" /></label>
-            <label>검토 상태<select id="qualityReviewStatus"><option value="resolved">resolved</option><option value="dismissed">dismissed</option><option value="needs_review">needs_review</option></select></label>
-            <label>검토자 ID<input id="qualityReviewerUserId" type="text" inputmode="numeric" placeholder="선택" /></label>
+            <label>요청 ID(선택)<input id="qualityRequestId" type="text" placeholder="대상 답변의 request id" /></label>
+            <label>사용자 ID(선택)<input id="qualityUserId" type="text" inputmode="numeric" placeholder="중복 방지용" /></label>
           </div>
-          <label>피드백/신고 사유<textarea id="qualityReason" rows="3" placeholder="민감정보·프롬프트 원문은 넣지 마세요. 토큰/API 키 패턴은 자동 redaction."></textarea></label>
-          <label>검토 메모<input id="qualityResolutionReason" type="text" placeholder="예: 모델 정책 조정 완료, 오탐 신고" /></label>
-          <div class="row"><button id="qualitySubmitFeedback" class="primary">피드백 저장</button><button id="qualityRefresh">품질 현황 새로고침</button><button id="qualityReviewResolve">신고 검토 처리</button></div>
-          <div class="network-grid">
-            <article class="card"><h3>품질 요약</h3><ul id="qualitySummary" class="list"></ul></article>
-            <article class="card"><h3>신고 검토 큐</h3><ul id="qualityReviewQueue" class="list"></ul></article>
-            <article class="card"><h3>모델 품질 신호</h3><ul id="qualityModelSignals" class="list"></ul></article>
+          <label>사유/메모<textarea id="qualityReason" rows="2" placeholder="예: 답변이 오래된 정보 / 안전 규칙 위반 의심"></textarea></label>
+          <div class="actions">
+            <button id="qualityRefresh" class="ghost">품질 현황 새로고침</button>
+            <button id="qualitySubmitFeedback" class="primary">피드백 저장</button>
           </div>
-          <pre id="qualityResult" class="preview">채널을 선택한 뒤 품질 현황을 새로고침하세요.</pre>
         </div>
+
+        <div class="section-title">신고 검토</div>
+        <div class="action-card">
+          <h3>🚩 신고 검토 처리</h3>
+          <p class="ac-desc">신고 큐의 항목을 확인하고 처리 상태를 기록합니다.</p>
+          <div class="form-grid">
+            <label>검토할 피드백 ID<input id="qualityFeedbackId" type="text" inputmode="numeric" placeholder="신고 큐에서 클릭" /></label>
+            <label>검토 상태<select id="qualityReviewStatus"><option value="resolved">resolved</option><option value="dismissed">dismissed</option><option value="needs_review">needs_review</option></select></label>
+            <label>검토자 ID(선택)<input id="qualityReviewerUserId" type="text" inputmode="numeric" placeholder="처리자" /></label>
+            <label>검토 메모<input id="qualityResolutionReason" type="text" placeholder="예: 모델 정책 조정 완료, 오탐 신고" /></label>
+          </div>
+          <div class="actions"><button id="qualityReviewResolve" class="primary">신고 검토 처리</button></div>
+        </div>
+
+        <div class="network-grid">
+          <article class="card"><h3>품질 요약</h3><ul id="qualitySummary" class="list"><li class="empty">‘품질 현황 새로고침’ 후 표시됩니다.</li></ul></article>
+          <article class="card"><h3>신고 검토 큐</h3><ul id="qualityReviewQueue" class="list"><li class="empty">검토할 신고가 여기 표시됩니다.</li></ul></article>
+          <article class="card"><h3>모델 품질 신호</h3><ul id="qualityModelSignals" class="list"><li class="empty">모델별 품질 지표가 여기 표시됩니다.</li></ul></article>
+        </div>
+        <pre id="qualityResult" class="preview">채널을 선택한 뒤 ‘품질 현황 새로고침’을 누르세요.</pre>
       </div>
 
       <!-- 고급 응답 -->
       <div class="tabpane" data-ctab="advanced" hidden>
-        <div class="panel">
-          <input id="multiChannelId" type="hidden" />
+        <input id="multiChannelId" type="hidden" />
+        <div class="section-title">다중응답 정책</div>
+        <div class="action-card">
+          <h3>🧠 다중응답(여러 후보) 정책</h3>
+          <p class="ac-desc">한 질문에 여러 후보 답변을 만들어 비교/합성할지 설정합니다. 후보 수가 많을수록 참여 PC 부하가 커집니다.</p>
           <div class="form-grid">
             <label>모드<select id="multiMode"><option value="single">single · 단일 답변</option><option value="compare">compare · 후보 비교</option><option value="debate">debate · 관점 비교</option><option value="disabled">disabled · 중지</option></select></label>
-            <label>비활성 사유<input id="multiDisabledReason" type="text" maxlength="500" placeholder="예: 야간 과부하로 일시 중지" /></label>
             <label>후보 수<input id="multiMaxCandidates" type="number" min="1" max="5" value="1" /></label>
             <label>타임아웃(초)<input id="multiTimeoutSeconds" type="number" min="10" max="300" value="120" /></label>
-            <label>Provider 일일 한도<input id="multiProviderDailyLimit" type="number" min="0" value="0" /></label>
+            <label>Provider 일일 한도<input id="multiProviderDailyLimit" type="number" min="0" value="0" /><span class="field-help">0 = 무제한</span></label>
+            <label>비활성 사유(중지 시)<input id="multiDisabledReason" type="text" maxlength="500" placeholder="예: 야간 과부하로 일시 중지" /></label>
+          </div>
+          <div class="row">
             <label class="check"><input id="multiDistinctModels" type="checkbox" /> 서로 다른 모델 우선</label>
             <label class="check"><input id="multiSynthesis" type="checkbox" /> 후보 답변 합성</label>
           </div>
-          <div class="row"><button id="multiSavePolicy" class="primary">다중응답 정책 저장</button><button id="multiRefreshOps">운영 상태 새로고침</button></div>
-          <label>긴 답변 의사 스트리밍 미리보기<textarea id="pseudoStreamAnswer" rows="4" placeholder="긴 답변을 붙여넣으면 30%→66%→100% 메시지 수정 스냅샷을 계산합니다."></textarea></label>
-          <div class="row"><button id="pseudoStreamPlan">수정 스냅샷 계산</button></div>
-          <div class="network-grid">
-            <article class="card"><h3>다중응답 운영 상태</h3><ul id="multiOps" class="list"></ul></article>
-            <article class="card"><h3>기능 플래그/제한</h3><ul id="multiFeatureFlags" class="list"></ul></article>
-            <article class="card"><h3>추천 fanout 미리보기</h3><ul id="multiRecommendation" class="list"></ul></article>
-            <article class="card"><h3>Provider 부하</h3><ul id="multiProviderLoad" class="list"></ul></article>
-            <article class="card"><h3>최근 실행</h3><ul id="multiRecentRuns" class="list"></ul></article>
+          <div class="actions">
+            <button id="multiRefreshOps" class="ghost">운영 상태 새로고침</button>
+            <button id="multiSavePolicy" class="primary">다중응답 정책 저장</button>
           </div>
-          <pre id="multiResult" class="preview">채널을 선택한 뒤 운영 상태를 새로고침하세요.</pre>
         </div>
+
+        <div class="section-title">스트리밍 미리보기(도구)</div>
+        <div class="action-card">
+          <h3>📡 긴 답변 의사 스트리밍 계산</h3>
+          <p class="ac-desc">긴 답변을 붙여넣으면 Discord 메시지 수정으로 30%→66%→100% 보여주는 스냅샷을 계산합니다(디버깅용).</p>
+          <label>답변 텍스트<textarea id="pseudoStreamAnswer" rows="3" placeholder="긴 답변을 붙여넣으세요."></textarea></label>
+          <div class="actions"><button id="pseudoStreamPlan">수정 스냅샷 계산</button></div>
+        </div>
+
+        <div class="network-grid">
+          <article class="card"><h3>다중응답 운영 상태</h3><ul id="multiOps" class="list"><li class="empty">‘운영 상태 새로고침’ 후 표시됩니다.</li></ul></article>
+          <article class="card"><h3>기능 플래그/제한</h3><ul id="multiFeatureFlags" class="list"><li class="empty">–</li></ul></article>
+          <article class="card"><h3>추천 fanout 미리보기</h3><ul id="multiRecommendation" class="list"><li class="empty">–</li></ul></article>
+          <article class="card"><h3>Provider 부하</h3><ul id="multiProviderLoad" class="list"><li class="empty">–</li></ul></article>
+          <article class="card"><h3>최근 실행</h3><ul id="multiRecentRuns" class="list"><li class="empty">–</li></ul></article>
+        </div>
+        <pre id="multiResult" class="preview">채널을 선택한 뒤 ‘운영 상태 새로고침’을 누르세요.</pre>
       </div>
     </section>
   </main>
@@ -365,6 +511,8 @@
   </datalist>
 
   <footer>읽기 5초 폴링 · 관리자 작업은 OAuth 또는 X-Dashboard-Admin-Token 필요 · API: <code>/api/metrics</code>, <code>/api/dashboard</code></footer>
+  <div id="toastWrap" aria-live="polite"></div>
   <script src="/admin/dashboard/app.js"></script>
+  <script src="/admin/dashboard/ux.js"></script>
 </body>
 </html>

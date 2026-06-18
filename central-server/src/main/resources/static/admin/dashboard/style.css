@@ -166,4 +166,65 @@ footer { color: var(--faint); font-size: 11.5px; padding: 18px 26px; grid-column
   body { grid-template-columns: 1fr; grid-template-areas: "topbar" "main"; }
   .brand, nav.side { display: none; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  main { padding: 16px 14px 60px; }
+  .mobile-nav { display: flex !important; }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   재설계 컴포넌트 (UX 정돈): 작업 단위 액션카드 · 버튼 위계 · 토스트 · 컨텍스트 바
+   - 기존 폼+버튼나열(button soup)을 "한 카드 = 한 작업 + 한 기본 액션" 으로 묶는다.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* 모바일 상단 네비(사이드바 대체). 데스크톱에선 숨김. */
+.mobile-nav { display: none; gap: 6px; overflow-x: auto; padding: 8px 0 4px; margin-bottom: 8px; }
+.mobile-nav a { white-space: nowrap; padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line);
+  color: var(--muted); font-weight: 700; font-size: 13px; background: rgba(148,163,184,.05); }
+.mobile-nav a.active { color: var(--text); border-color: var(--line2); background: rgba(94,230,196,.12); }
+
+/* 선택된 서버/채널 컨텍스트 바 — "지금 어디를 보고 있는지" 항상 표시 */
+.context-bar { position: sticky; top: 0; z-index: 15; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 16px; padding: 10px 14px; border: 1px solid var(--line2); border-radius: 12px;
+  background: linear-gradient(180deg, rgba(94,230,196,.06), rgba(74,168,255,.03)); }
+.context-bar .ctx-label { color: var(--faint); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.context-bar .ctx-val { font-size: 13.5px; font-weight: 800; }
+.context-bar .ctx-sep { color: var(--faint); }
+.context-bar.empty { border-color: var(--line); border-style: dashed; background: transparent; }
+
+/* 작업 단위 액션 카드: 제목 + 설명 + 폼 + (우측 정렬) 액션 버튼 영역 */
+.action-card { border: 1px solid var(--line); border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--panel), var(--panel2)); padding: 16px 18px; margin-bottom: 14px; }
+.action-card > h3 { margin: 0 0 3px; font-size: 14.5px; font-weight: 850; letter-spacing: -0.02em; display: flex; align-items: center; gap: 8px; }
+.action-card > .ac-desc { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.action-card .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line); justify-content: flex-end; align-items: center; }
+.action-card .actions .spacer { margin-right: auto; color: var(--faint); font-size: 12px; }
+
+/* 작업 그룹 묶음 헤더(탭 안에서 섹션 구분) */
+.section-title { display: flex; align-items: center; gap: 9px; margin: 22px 0 10px; font-size: 12px;
+  font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); }
+.section-title::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.section-title:first-child { margin-top: 4px; }
+
+/* 필드 보조 설명 */
+.field-help { color: var(--faint); font-size: 11px; font-weight: 500; margin-top: 3px; }
+
+/* 버튼 위계 강화: 위험(삭제/제거)·차분(보조 조회) */
+button.danger { background: rgba(251,113,133,.1); border-color: rgba(251,113,133,.32); color: #ffb4c0; }
+button.danger:hover { background: rgba(251,113,133,.2); }
+button.ghost { background: transparent; border-color: var(--line); color: var(--muted); }
+.actions .group { display: inline-flex; gap: 6px; align-items: center; }
+
+/* 토스트 알림(작업 성공·실패 즉시 피드백) */
+#toastWrap { position: fixed; right: 18px; bottom: 18px; z-index: 90; display: flex; flex-direction: column; gap: 8px; max-width: min(380px, 92vw); }
+.toast { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line2);
+  background: linear-gradient(180deg, var(--raise), var(--panel2)); box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  font-size: 13px; line-height: 1.45; animation: toastIn .18s ease; }
+.toast.ok { border-color: rgba(70,211,154,.45); } .toast.ok .tdot { background: var(--ok); }
+.toast.bad { border-color: rgba(251,113,133,.5); } .toast.bad .tdot { background: var(--bad); }
+.toast .tdot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); margin-top: 5px; flex: 0 0 auto; }
+.toast .tmsg { flex: 1; word-break: break-word; }
+.toast .tx { background: none; border: 0; color: var(--faint); cursor: pointer; font-size: 16px; padding: 0 2px; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* 접근성: 포커스 가시화 */
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .tab:focus-visible {
+  outline: 2px solid var(--accent2); outline-offset: 2px; }

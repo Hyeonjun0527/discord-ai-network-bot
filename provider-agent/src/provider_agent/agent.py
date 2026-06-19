@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import uuid
 from collections import deque
 
 from . import sysinfo
@@ -29,6 +30,7 @@ from .protocol import (
 )
 
 logger = logging.getLogger("provider_agent.agent")
+REQUEST_ID_HEADER = "X-Request-Id"
 
 # 이미지 생성 중 진행률 청크 전송 간격(초). 디스코드 메시지 편집 레이트리밋을 고려해 너무 잦지 않게.
 SD_PROGRESS_POLL_S = 1.5
@@ -72,6 +74,48 @@ def _agent_sync_base(relay: str) -> str:
     return base.rstrip("/")
 
 
+def _new_request_id() -> str:
+    return uuid.uuid4().hex
+
+
+def _central_endpoint(url: str) -> str:
+    import urllib.parse
+
+    parts = urllib.parse.urlsplit(url)
+    return parts.path or "/"
+
+
+def _central_server_base(url: str) -> str:
+    import urllib.parse
+
+    parts = urllib.parse.urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}" if parts.scheme and parts.netloc else ""
+
+
+def _central_headers(request_id: str, extra: dict[str, str] | None = None) -> dict[str, str]:
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": f"nexa-agent/{AGENT_VERSION}",
+        REQUEST_ID_HEADER: request_id,
+    }
+    if extra:
+        headers.update(extra)
+    return headers
+
+
+def _capture_central_api_error(error: BaseException, *, url: str, method: str, request_id: str) -> None:
+    from .bugsink import capture_api_error
+
+    capture_api_error(
+        error,
+        request_id=request_id,
+        method=method,
+        api_endpoint=_central_endpoint(url),
+        server_base_url=_central_server_base(url),
+        http_status=getattr(error, "code", None),
+    )
+
+
 def _central_post(url: str, payload: dict, timeout: float = 8.0) -> dict:
     """중앙 서버에 JSON POST 후 응답 dict 반환 — SSL(certifi)·헤더·직렬화·파싱 공통(7개 admin/sync 호출 공유).
 
@@ -85,14 +129,19 @@ def _central_post(url: str, payload: dict, timeout: float = 8.0) -> dict:
 
     ctx = ssl.create_default_context(cafile=certifi.where())
     body = json.dumps(payload).encode("utf-8")
+    request_id = _new_request_id()
     req = urllib.request.Request(
         url,
         data=body,
         method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+        headers=_central_headers(request_id, {"Content-Type": "application/json"}),
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+            return dict(json.loads(resp.read().decode("utf-8")))
+    except Exception as exc:  # noqa: BLE001 - 중앙 API 호출 실패를 Bugsink로 태깅하고 원인 보존 재전파
+        _capture_central_api_error(exc, url=url, method="POST", request_id=request_id)
+        raise
 
 
 def _central_get(url: str, timeout: float = 8.0) -> dict:
@@ -104,13 +153,18 @@ def _central_get(url: str, timeout: float = 8.0) -> dict:
     import certifi
 
     ctx = ssl.create_default_context(cafile=certifi.where())
+    request_id = _new_request_id()
     req = urllib.request.Request(
         url,
         method="GET",
-        headers={"Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+        headers=_central_headers(request_id),
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
-        return dict(json.loads(resp.read().decode("utf-8")))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:  # noqa: S310 - http(로컬)/https 고정
+            return dict(json.loads(resp.read().decode("utf-8")))
+    except Exception as exc:  # noqa: BLE001 - 중앙 API 호출 실패를 Bugsink로 태깅하고 원인 보존 재전파
+        _capture_central_api_error(exc, url=url, method="GET", request_id=request_id)
+        raise
 
 
 def _get_provider_admin_nia_persona(base: str, durable_token: str) -> dict:
@@ -130,16 +184,19 @@ def _get_provider_admin_nia_persona(base: str, durable_token: str) -> dict:
     ctx = ssl.create_default_context(cafile=certifi.where())
     qs = urllib.parse.urlencode({"durableToken": durable_token})
     url = base + "/provider/admin/nia-persona?" + qs
+    request_id = _new_request_id()
     req = urllib.request.Request(
         url,
         method="GET",
-        headers={"Accept": "application/json", "User-Agent": f"nexa-agent/{AGENT_VERSION}"},
+        headers=_central_headers(request_id),
     )
     try:
         with urllib.request.urlopen(req, timeout=8, context=ctx) as resp:  # noqa: S310 - https 고정
             data = dict(json.loads(resp.read().decode("utf-8")))
         return {"ok": True, "persona": data.get("persona", ""), "fewshot": data.get("fewshot", "")}
     except urllib.error.HTTPError as e:
+        if e.code >= 500:
+            _capture_central_api_error(e, url=url, method="GET", request_id=request_id)
         # 403(비관리자) 등 — central 의 JSON 에러 메시지를 그대로 전달(전문은 응답에 없음).
         message = "프로젝트 관리자만 볼 수 있어요"
         try:

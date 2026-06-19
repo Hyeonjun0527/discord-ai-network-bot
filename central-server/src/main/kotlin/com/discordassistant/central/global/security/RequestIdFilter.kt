@@ -1,5 +1,7 @@
 package com.discordassistant.central.global.security
 
+import com.discordassistant.central.global.observability.BugsinkScope
+import io.sentry.Sentry
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -26,9 +28,14 @@ class RequestIdFilter : OncePerRequestFilter() {
         val requestId = incoming ?: UUID.randomUUID().toString()
         MDC.put(MDC_KEY, requestId)
         response.setHeader(HEADER, requestId)
+        Sentry.pushScope()
         try {
+            Sentry.configureScope { scope ->
+                BugsinkScope.tagRequest(scope, requestId, request.method, request.requestURI)
+            }
             filterChain.doFilter(request, response)
         } finally {
+            Sentry.popScope()
             MDC.remove(MDC_KEY)
         }
     }

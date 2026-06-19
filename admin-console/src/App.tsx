@@ -1,7 +1,7 @@
 import { Activity, Bot, CheckCircle2, RefreshCw, ServerCog, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { captureConsoleError } from "./bugsink";
+import { captureConsoleError, wasBugsinkReported } from "./bugsink";
 import { DashboardState, loadDashboard } from "./api";
 
 const API_BASE_STORAGE_KEY = "nexa-console-api-base";
@@ -83,7 +83,9 @@ function App() {
     try {
       setState(await loadDashboard(guildId.trim(), { baseUrl: apiBase, adminToken }));
     } catch (err) {
-      captureConsoleError(err);
+      if (!wasBugsinkReported(err)) {
+        captureConsoleError(err);
+      }
       setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
     } finally {
       setLoading(false);

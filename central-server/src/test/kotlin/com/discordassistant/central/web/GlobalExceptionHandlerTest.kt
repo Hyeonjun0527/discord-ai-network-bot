@@ -2,6 +2,7 @@ package com.discordassistant.central.web
 
 import com.discordassistant.central.global.adapter.inbound.web.GlobalExceptionHandler
 import com.discordassistant.central.global.error.ConflictException
+import com.discordassistant.central.global.error.DomainException
 import com.discordassistant.central.global.error.InvalidStateTransitionException
 import com.discordassistant.central.global.error.NotFoundException
 import com.discordassistant.central.global.error.PreconditionFailedException
@@ -22,6 +23,13 @@ import org.springframework.web.bind.annotation.RestController
  * 상태 전이/선행 조건 에러에서만 해당 필드가 채워진다.
  */
 class GlobalExceptionHandlerTest {
+    class ServerFailureException :
+        DomainException(
+            httpStatus = 503,
+            errorCode = "CENTRAL_UPSTREAM_FAILED",
+            message = "central upstream failed",
+        )
+
     @RestController
     class ThrowingController {
         @GetMapping("/test/not-found")
@@ -55,6 +63,9 @@ class GlobalExceptionHandlerTest {
                 actionGuide = "JPEG 또는 PNG 이미지를 올려 주세요.",
                 errorCode = "PROFILE_IMAGE_MIME_NOT_ALLOWED",
             )
+
+        @GetMapping("/test/server-failure")
+        fun serverFailure(): Nothing = throw ServerFailureException()
     }
 
     private val mvc =
@@ -125,5 +136,15 @@ class GlobalExceptionHandlerTest {
             // 선행 조건 에러는 상태 전이가 아니다.
             .andExpect(jsonPath("$.error.currentState").doesNotExist())
             .andExpect(jsonPath("$.error.requiredState").doesNotExist())
+    }
+
+    @Test
+    fun `5xx domain error maps response and enters server capture path`() {
+        mvc
+            .perform(get("/test/server-failure"))
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.status").value(503))
+            .andExpect(jsonPath("$.error.code").value("CENTRAL_UPSTREAM_FAILED"))
+            .andExpect(jsonPath("$.error.message").value("central upstream failed"))
     }
 }

@@ -94,6 +94,17 @@ central:
     zai-api-key: ${ZAI_API_KEY:}
     zai-base-url: ${ZAI_BASE_URL:https://api.z.ai/api/paas/v4}
     timeout-seconds: ${ZAI_TIMEOUT_SECONDS:120}
+    # 이미지 픽셀까지 중앙 서버가 직접 만드는 클라우드 SD(ADR 0006 단계4 — 완전 앱리스 이미지).
+    # 키가 있으면 에이전트(provider-agent) 풀이 비어도 /그림 이 동작한다. 비우면 기존 에이전트(ComfyUI/
+    # 에이전트 클라우드SD) 경로로 폴백한다(하위호환). fail-closed — central 픽셀 생성은 zai-api-key 심사가 활성일 때만.
+    # Stability 우선, 없으면 RunPod. 모델 라벨: core(빠름·저렴)/ultra(고품질)/sd3(SD3.5).
+    stability-api-key: ${STABILITY_API_KEY:}
+    stability-model: ${STABILITY_MODEL:core}
+    stability-base-url: ${STABILITY_BASE_URL:https://api.stability.ai}
+    runpod-api-key: ${RUNPOD_API_KEY:}
+    runpod-endpoint-id: ${RUNPOD_ENDPOINT_ID:}
+    runpod-timeout-seconds: ${RUNPOD_TIMEOUT_SECONDS:300}
+    runpod-base-url: ${RUNPOD_BASE_URL:https://api.runpod.ai/v2}
   ai-network:
     enabled: ${AI_NETWORK_ENABLED:true}
     dashboard-enabled: ${AI_NETWORK_DASHBOARD_ENABLED:true}

@@ -53,6 +53,8 @@ class AskCommandHandler(
     private val niaAffinity: NiaAffinityService,
     // 이미지 안전 심사·번역을 central 이 직접 z.ai(GLM)로 처리하는 백엔드(ADR 0006 단계2). 키 있으면 isEnabled().
     private val cloudLlm: com.discordassistant.central.routing.application.CloudLlm,
+    // 이미지 픽셀까지 central 이 직접 만드는 클라우드 SD 백엔드(ADR 0006 단계4 — 완전 앱리스). 키 있으면 isEnabled().
+    private val cloudImageBackend: com.discordassistant.central.routing.application.CloudImageBackend,
     // 무료 클라우드 폴백(로컬 프로바이더 부재 시 glm-5.1)의 인당 rate limit — 무료 자원 남용 방지.
     private val freeCloudRateLimiter: com.discordassistant.central.quota.application.FreeAskRateLimiter,
     private val webSearchAugmenter: com.discordassistant.central.knowledge.application.WebSearchAugmenter =
@@ -248,6 +250,14 @@ class AskCommandHandler(
         val local = imageProviders.filter { "image-local" in it.capability.capabilities }
         val cloud = imageProviders.filter { "image-cloud" in it.capability.capabilities }
         val pool = local.ifEmpty { cloud }.ifEmpty { imageProviders }
+
+        // ADR 0006 단계4: central 이 클라우드 SD(Stability/RunPod) 키를 가지면 **에이전트 풀 없이도** 픽셀까지
+        // 직접 만든다(완전 앱리스). fail-closed — 심사(cloudLlm)도 활성일 때만 직접 경로를 쓴다(심사 보장).
+        // central 직접 키가 없으면 기존 에이전트 풀 경로(아래)로 폴백한다.
+        if (cloudImageBackend.isEnabled() && cloudLlm.isEnabled()) {
+            return imagineViaCentral(ctx, prompt)
+        }
+
         if (pool.isEmpty()) {
             return Replies.warn(
                 "🖼️ 지금은 이미지를 만들 수 있는 곳이 없어요.\n" +
@@ -264,32 +274,62 @@ class AskCommandHandler(
         if (cloudLlm.isEnabled()) {
             // central 안전 심사(fail-closed) — 심사 자체가 실패하면 안전하지 않은 이미지가 새지 않게 차단한다.
             val review =
-                runCatching { cloudLlm.reviewImagePrompt(prompt, IMAGE_SAFETY_SYSTEM_PROMPT) }
-                    .getOrElse {
-                        log.warn("이미지 안전 심사 실패(차단): {}", it.message)
-                        return Replies.warn("이미지 안전 심사를 완료하지 못해 만들 수 없어요.")
-                    }
+                reviewOrBlock(prompt) ?: return Replies.warn("이미지 안전 심사를 완료하지 못해 만들 수 없어요.")
             if (!review.allowed) {
                 return Replies.warn("안전 정책상 만들 수 없어요${review.reason?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""}")
             }
-            // central 번역(실패=원문 폴백, 로깅) — 번역 실패는 차단 사유가 아니다(원문으로 생성 시도).
-            val positive =
-                runCatching { cloudLlm.translateImagePrompt(prompt, IMAGE_TRANSLATOR_SYSTEM_PROMPT) }
-                    .getOrElse {
-                        log.warn("이미지 번역 실패(원문 폴백): {}", it.message)
-                        prompt
-                    }
             // 픽셀 생성만 에이전트로 위임: 정제된 영어 프롬프트 + forcedNegative + preTranslated=true.
             // 구버전 에이전트는 preTranslated 를 모르고 자기 GLM 으로 영→영 재번역·이중 재심사하나(무해) 하위호환.
             // 단계3에서 에이전트가 preTranslated 를 인식해 심사/번역을 스킵하도록 바꾼다.
             val centralPolicy: Map<String, Any?> =
                 mapOf("forcedNegative" to IMAGE_FORCED_NEGATIVE, "preTranslated" to true)
-            return runImage(session, positive, sourceIcon, prompt, centralPolicy, onStart, onProgress)
+            return runImage(session, translateOrFallback(prompt), sourceIcon, prompt, centralPolicy, onStart, onProgress)
         }
 
         // central 키 없음 → 기존 동작 그대로: 시스템 프롬프트 포함 IMAGE_POLICY 로 에이전트가 심사/번역(하위호환·롤백 안전).
         return runImage(session, prompt, sourceIcon, prompt, IMAGE_POLICY, onStart, onProgress)
     }
+
+    /**
+     * ADR 0006 단계4 — central 이 심사→번역→**픽셀 생성**까지 직접(에이전트/onStart/onProgress 없음, 단발 API).
+     * fail-closed: 호출 전제로 cloudLlm·cloudImageBackend 가 모두 활성. 심사 실패/거부 시 픽셀을 만들지 않는다.
+     * 캡션·Reply 형식은 에이전트 경로(☁️)와 동일 — 게시확인 게이트가 imagePng 를 그대로 받는다.
+     */
+    private fun imagineViaCentral(
+        ctx: CommandContext,
+        prompt: String,
+    ): Reply {
+        val review = reviewOrBlock(prompt) ?: return Replies.warn("이미지 안전 심사를 완료하지 못해 만들 수 없어요.")
+        if (!review.allowed) {
+            return Replies.warn("안전 정책상 만들 수 없어요${review.reason?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""}")
+        }
+        val positive = translateOrFallback(prompt)
+        val (w, h) = cloudImageBackend.defaultResolution()
+        return try {
+            val bytes = cloudImageBackend.txt2img(positive, w, h, IMAGE_FORCED_NEGATIVE)
+            Reply("🖼️ ☁️ \"${prompt.take(200)}\"", ephemeral = false, imagePng = bytes)
+        } catch (e: Exception) {
+            // 사용자에겐 친화 메시지, 서버엔 원인을 남긴다(예외 원칙). central 직접 생성 실패는 명령을 깨지 않는다.
+            log.warn("central 클라우드 이미지 생성 실패: {}", e.message, e)
+            Replies.warn("이미지 생성에 실패했어요. 잠시 후 다시 시도해 주세요.")
+        }
+    }
+
+    /** central 안전 심사(fail-closed). 통과/거부 결과를 반환하고, 심사 호출 자체가 실패하면 null(상위가 차단). */
+    private fun reviewOrBlock(prompt: String): com.discordassistant.central.routing.application.ImageReview? =
+        runCatching { cloudLlm.reviewImagePrompt(prompt, IMAGE_SAFETY_SYSTEM_PROMPT) }
+            .getOrElse {
+                log.warn("이미지 안전 심사 실패(차단): {}", it.message)
+                null
+            }
+
+    /** central 번역(실패=원문 폴백, 로깅) — 번역 실패는 차단 사유가 아니다(원문으로 생성 시도). */
+    private fun translateOrFallback(prompt: String): String =
+        runCatching { cloudLlm.translateImagePrompt(prompt, IMAGE_TRANSLATOR_SYSTEM_PROMPT) }
+            .getOrElse {
+                log.warn("이미지 번역 실패(원문 폴백): {}", it.message)
+                prompt
+            }
 
     /**
      * 한 이미지 요청을 에이전트로 보내 PNG 를 받아 Reply 로 감싼다. [generationPrompt] 는 픽셀 생성에 보낼

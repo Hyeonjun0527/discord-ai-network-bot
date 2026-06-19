@@ -5,6 +5,8 @@ import com.discordassistant.central.global.error.ConflictException
 import com.discordassistant.central.global.error.InvalidStateTransitionException
 import com.discordassistant.central.global.error.NotFoundException
 import com.discordassistant.central.global.error.PreconditionFailedException
+import com.discordassistant.central.global.error.ServiceUnavailableException
+import com.discordassistant.central.global.error.UnauthorizedException
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -44,6 +46,12 @@ class GlobalExceptionHandlerTest {
                 blockedAction = "USE_PREMIUM_FEATURE",
                 actionGuide = "앱에서 \$10 라이선스를 구매하거나 이벤트 무료를 신청해 주세요.",
             )
+
+        @GetMapping("/test/unauthorized")
+        fun unauthorized(): Nothing = throw UnauthorizedException("durable 토큰이 필요합니다")
+
+        @GetMapping("/test/service-unavailable")
+        fun serviceUnavailable(): Nothing = throw ServiceUnavailableException("결제가 현재 비활성 상태입니다")
 
         @GetMapping("/test/precondition")
         fun precondition(): Nothing =
@@ -110,6 +118,27 @@ class GlobalExceptionHandlerTest {
             .andExpect(jsonPath("$.error.actionGuide").exists())
             // 상태 전이 에러엔 조건 필드가 없다.
             .andExpect(jsonPath("$.error.failedCondition").doesNotExist())
+    }
+
+    @Test
+    fun `UnauthorizedException maps to 401 with plain code+message`() {
+        mvc
+            .perform(get("/test/unauthorized"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.status").value(401))
+            .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
+            .andExpect(jsonPath("$.error.message").value("durable 토큰이 필요합니다"))
+            .andExpect(jsonPath("$.error.failedCondition").doesNotExist())
+    }
+
+    @Test
+    fun `ServiceUnavailableException maps to 503 with plain code+message`() {
+        mvc
+            .perform(get("/test/service-unavailable"))
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.error.code").value("SERVICE_UNAVAILABLE"))
+            .andExpect(jsonPath("$.error.message").value("결제가 현재 비활성 상태입니다"))
+            .andExpect(jsonPath("$.error.actionGuide").doesNotExist())
     }
 
     @Test

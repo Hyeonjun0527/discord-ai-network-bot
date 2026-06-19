@@ -60,6 +60,18 @@ class ForbiddenException(
     cause: Throwable? = null,
 ) : DomainException(httpStatus = 403, errorCode = "FORBIDDEN", message = message, cause = cause)
 
+/** 인증 실패/누락(신원을 확인할 수 없음 — 토큰 없음·위조·만료) → 401. 권한 부족(403)과 구분한다. */
+class UnauthorizedException(
+    message: String,
+    cause: Throwable? = null,
+) : DomainException(httpStatus = 401, errorCode = "UNAUTHORIZED", message = message, cause = cause)
+
+/** 기능이 일시적으로 비활성/이용 불가(서버측 설정·의존성 부재 등, 클라이언트 잘못 아님) → 503. */
+class ServiceUnavailableException(
+    message: String,
+    cause: Throwable? = null,
+) : DomainException(httpStatus = 503, errorCode = "SERVICE_UNAVAILABLE", message = message, cause = cause)
+
 /**
  * 상태 머신이 있는 도메인에서 **현재 상태에서는 할 수 없는 전이**를 시도했을 때 → 409.
  * (예: 라이선스 `EXPIRED` 에서 프리미엄 동작, 프로바이더 `offline` 을 pause, 이미 처리된 요청 재처리.)

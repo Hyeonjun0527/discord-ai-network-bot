@@ -1,18 +1,18 @@
 package com.discordassistant.central.licensing.adapter.inbound.web
 
+import com.discordassistant.central.global.error.ServiceUnavailableException
+import com.discordassistant.central.global.error.UnauthorizedException
 import com.discordassistant.central.licensing.application.EntitlementView
 import com.discordassistant.central.licensing.application.EventClaimService
 import com.discordassistant.central.licensing.application.EventStatus
 import com.discordassistant.central.licensing.application.LicenseService
 import com.discordassistant.central.licensing.application.port.CheckoutPort
 import com.discordassistant.central.provider.application.TokenService
-import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 
 data class LicenseMeRequest(
     val durableToken: String = "",
@@ -69,16 +69,16 @@ class LicenseController(
         val userId = authedUserId(req.durableToken)
         val url =
             checkout.createCheckoutUrl(userId)
-                ?: throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "결제가 현재 비활성 상태입니다")
+                ?: throw ServiceUnavailableException("결제가 현재 비활성 상태입니다")
         return CheckoutResponse(url)
     }
 
     /** durable 토큰(dv1.)으로 본인 신원 확인 후 userId 반환. 일회용 토큰·위조는 401. */
     private fun authedUserId(durableToken: String): Long {
         if (!durableToken.startsWith("dv1.")) {
-            throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "durable 토큰이 필요합니다")
+            throw UnauthorizedException("durable 토큰이 필요합니다")
         }
         return tokens.verify(durableToken)?.providerId
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "유효하지 않은 토큰")
+            ?: throw UnauthorizedException("유효하지 않은 토큰")
     }
 }

@@ -487,7 +487,10 @@ def test_get_provider_admin_nia_persona_passes_through_403(monkeypatch):
 
     from provider_agent import agent as agent_mod
 
+    monkeypatch.setattr(agent_mod, "_new_request_id", lambda: "req-nia-403")
+
     def fake_urlopen(req, timeout=8, context=None):
+        assert req.get_header("X-request-id") == "req-nia-403"
         raise urllib.error.HTTPError(
             req.full_url, 403, "Forbidden", {},
             io.BytesIO(b'{"error":"forbidden","message":"\xed\x94\x84\xeb\xa1\x9c\xec\xa0\x9d\xed\x8a\xb8 \xea\xb4\x80\xeb\xa6\xac\xec\x9e\x90\xeb\xa7\x8c \xeb\xb3\xbc \xec\x88\x98 \xec\x9e\x88\xec\x96\xb4\xec\x9a\x94"}'),
@@ -499,6 +502,66 @@ def test_get_provider_admin_nia_persona_passes_through_403(monkeypatch):
     assert res["status"] == 403
     assert "관리자" in res["error"]
     assert "persona" not in res  # 전문은 절대 새어 나오지 않는다
+
+
+def test_central_post_sends_request_id_header(monkeypatch):
+    from provider_agent import agent as agent_mod
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"ok": true}'
+
+    seen: dict[str, str | None] = {}
+
+    def fake_urlopen(req, timeout=8.0, context=None):
+        seen["request_id"] = req.get_header("X-request-id")
+        seen["user_agent"] = req.get_header("User-agent")
+        return Response()
+
+    monkeypatch.setattr(agent_mod, "_new_request_id", lambda: "req-post-1")
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    assert agent_mod._central_post("https://central.example/provider/admin/action", {"ok": True}) == {"ok": True}
+    assert seen == {"request_id": "req-post-1", "user_agent": f"nexa-agent/{agent_mod.AGENT_VERSION}"}
+
+
+def test_central_get_captures_bugsink_context_on_5xx(monkeypatch):
+    import io
+    import urllib.error
+
+    from provider_agent import agent as agent_mod
+    from provider_agent import bugsink
+
+    captured: list[dict[str, object]] = []
+
+    def fake_capture(error, **kwargs):
+        captured.append(kwargs)
+
+    def fake_urlopen(req, timeout=8.0, context=None):
+        raise urllib.error.HTTPError(req.full_url, 503, "Service Unavailable", {}, io.BytesIO(b""))
+
+    monkeypatch.setattr(agent_mod, "_new_request_id", lambda: "req-get-5xx")
+    monkeypatch.setattr(bugsink, "capture_api_error", fake_capture)
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    with pytest.raises(urllib.error.HTTPError):
+        agent_mod._central_get("https://central.example/provider/status?guildId=1")
+
+    assert captured == [
+        {
+            "request_id": "req-get-5xx",
+            "method": "GET",
+            "api_endpoint": "/provider/status",
+            "server_base_url": "https://central.example",
+            "http_status": 503,
+        },
+    ]
 
 
 def test_build_hello_per_guild():

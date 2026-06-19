@@ -1,7 +1,10 @@
 package com.discordassistant.central.global.adapter.inbound.web
 
 import com.discordassistant.central.global.error.DomainException
+import com.discordassistant.central.global.observability.BugsinkScope
 import com.discordassistant.central.global.security.RequestIdFilter
+import io.sentry.Sentry
+import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.slf4j.MDC
 import org.springframework.http.ResponseEntity
@@ -28,10 +31,14 @@ class GlobalExceptionHandler {
 
     /** 도메인 예외 → 예외가 지정한 상태코드. 4xx 는 클라이언트 잘못이므로 WARN, 5xx 는 서버 결함이므로 ERROR. */
     @ExceptionHandler(DomainException::class)
-    fun handleDomain(ex: DomainException): ResponseEntity<ApiErrorResponse> {
+    fun handleDomain(
+        ex: DomainException,
+        request: HttpServletRequest,
+    ): ResponseEntity<ApiErrorResponse> {
         val requestId = MDC.get(RequestIdFilter.MDC_KEY)
         if (ex.httpStatus >= 500) {
             log.error("도메인 예외(5xx) code={} requestId={}: {}", ex.errorCode, requestId, ex.message, ex)
+            captureServerException(ex, request, ex.httpStatus, requestId)
         } else {
             // 4xx 라도 원인(cause)이 있으면 디버깅을 위해 남긴다 — 숨기지 않는다(예외 원칙 3).
             log.warn("도메인 예외({}) code={} requestId={}: {}", ex.httpStatus, ex.errorCode, requestId, ex.message, ex)
@@ -54,6 +61,17 @@ class GlobalExceptionHandler {
                 requestId = requestId,
             ),
         )
+    }
+
+    private fun captureServerException(
+        ex: Throwable,
+        request: HttpServletRequest,
+        status: Int,
+        requestId: String?,
+    ) {
+        Sentry.captureException(ex) { scope ->
+            BugsinkScope.tagApiError(scope, request.requestURI, request.method, status, requestId)
+        }
     }
 
     /**

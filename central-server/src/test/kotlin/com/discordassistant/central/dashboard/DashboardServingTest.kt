@@ -493,9 +493,13 @@ class DashboardServingTest
 
         @Test
         fun `API 응답에 보안 헤더가 붙는다`() {
-            val res = mvc.perform(get("/api/metrics/pool")).andExpect(status().isOk).andReturn()
+            val res =
+                mvc
+                    .perform(get("/api/metrics/pool").header("X-Request-Id", "console-req-1"))
+                    .andExpect(status().isOk)
+                    .andReturn()
             assertTrue(res.response.getHeader("X-Content-Type-Options") == "nosniff")
             assertTrue(res.response.getHeader("X-Frame-Options") == "DENY")
-            assertTrue(res.response.getHeader("X-Request-Id") != null)
+            assertTrue(res.response.getHeader("X-Request-Id") == "console-req-1")
         }
     }

@@ -28,3 +28,14 @@ VITE_BUGSINK_DSN=https://...
 
 Bugsink는 error event 중심 도구라 traces/metrics를 보내지 않는다. 모든 SDK 설정은
 `tracesSampleRate=0` 또는 `traces_sample_rate=0.0`을 기본으로 둔다.
+
+## requestId 상관관계
+
+데스크톱 앱(provider-agent)과 관리자 콘솔은 central-server HTTP 요청마다 `X-Request-Id`를 생성해 보낸다.
+central-server는 같은 헤더를 응답에 되돌리고 MDC 로그와 Bugsink scope에 넣는다.
+
+- 데스크톱/콘솔 오류 태그: `app`, `platform` 또는 `environment`, `appVersion`, `apiEndpoint`, `httpStatus`, `requestId`, `serverBaseUrl`
+- API 오류 태그: `app=api`, `service=nexa-api`, `endpoint`, `method`, `httpStatus`, `requestId`
+
+같은 장애를 볼 때는 Bugsink에서 `requestId`로 검색한다. 데스크톱/콘솔의 API 실패 이벤트와
+central-server의 5xx 예외 이벤트가 같은 `requestId`를 가지면 한 요청에서 이어진 문제다.

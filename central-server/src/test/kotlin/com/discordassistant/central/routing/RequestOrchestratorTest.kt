@@ -9,6 +9,8 @@ import com.discordassistant.central.relay.protocol.Frame
 import com.discordassistant.central.relay.protocol.InferError
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
+import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.RequestOrchestrator
 import com.discordassistant.central.routing.application.port.ALLOW_ALL_PROVIDER_SAFETY
 import com.discordassistant.central.routing.application.port.BlocklistChecker
@@ -27,6 +29,7 @@ import com.discordassistant.central.shared.ModelBurden
 import com.discordassistant.central.shared.RequestState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -410,6 +413,175 @@ class RequestOrchestratorTest {
         val sent = (selected.connection as EchoConnection).lastInfer!!
         assertEquals("qwen-coder", sent.model)
         assertEquals(512, sent.options["num_predict"])
+    }
+
+    // ── ADR 0006: 무료질문 클라우드 직결(CloudLlm) ─────────────────────────────────
+
+    /** 호출 여부와 인자를 기록하는 fake — 실제 z.ai 호출 없이 라우팅 분기를 검증한다. */
+    private class FakeCloudLlm(
+        private val enabled: Boolean,
+    ) : CloudLlm {
+        var generateCalls = 0
+        var lastPrompt: String? = null
+        var lastModel: String? = null
+
+        override fun isEnabled() = enabled
+
+        override fun generate(
+            prompt: String,
+            model: String,
+        ): CloudLlmResult {
+            generateCalls++
+            lastPrompt = prompt
+            lastModel = model
+            return CloudLlmResult("클라우드 답변")
+        }
+    }
+
+    private fun orchestratorWithCloud(
+        reg: ConnectionRegistry,
+        cloud: CloudLlm,
+        blocklist: BlocklistChecker =
+            object : BlocklistChecker {
+                override fun isBlocked(
+                    guildId: Long,
+                    userId: Long,
+                ) = false
+            },
+        quota: QuotaChecker =
+            object : QuotaChecker {
+                override fun exceededQuota(
+                    guildId: Long,
+                    userId: Long,
+                    roleIds: Set<Long>,
+                ) = false
+            },
+    ) = RequestOrchestrator(
+        reg,
+        fakePolicy,
+        RequestWeigher(),
+        ProviderFilterPipeline(),
+        ProviderRouter(),
+        recorder,
+        fakeProfiles,
+        blocklist,
+        quota,
+        cloudLlm = cloud,
+    )
+
+    @Test
+    fun `정상 + glm + 키 있음 → cloudLlm 직결(sendInfer 미사용, providerId null)`() {
+        val reg = newRegistry()
+        val session = register(reg, 1, "ok") // 풀에 provider 가 있어도 클라우드 직결이 우선
+        val cloud = FakeCloudLlm(enabled = true)
+        val r = orchestratorWithCloud(reg, cloud).handle(input.copy(preferredModel = "glm-5.1"))
+
+        assertEquals(RequestState.COMPLETED, r.state, r.failReason)
+        assertEquals("클라우드 답변", r.text)
+        assertNull(r.providerId) // 풀 프로바이더가 아니라 central 직결
+        assertEquals(1, cloud.generateCalls)
+        assertEquals("glm-5.1", cloud.lastModel)
+        // sendInfer 경로(에이전트)는 타지 않았다 — 세션에 추론 요청이 전달되지 않음.
+        assertNull((session.connection as EchoConnection).lastInfer)
+    }
+
+    @Test
+    fun `정상 + glm + 키 없음 → 기존 에이전트 경로(sendInfer) 폴백`() {
+        val reg = newRegistry()
+        val session = register(reg, 1, "ok", models = listOf("glm-5.1"))
+        val cloud = FakeCloudLlm(enabled = false)
+        val r = orchestratorWithCloud(reg, cloud).handle(input.copy(preferredModel = "glm-5.1", responseMode = "fast"))
+
+        assertEquals(RequestState.COMPLETED, r.state, r.failReason)
+        assertEquals(0, cloud.generateCalls) // 클라우드는 호출되지 않음
+        assertEquals(1L, r.providerId) // 풀 프로바이더(에이전트)가 처리
+        assertNotNull((session.connection as EchoConnection).lastInfer)
+    }
+
+    @Test
+    fun `비-glm 모델 → 클라우드 미사용, 항상 sendInfer 경로(변경 없음)`() {
+        val reg = newRegistry()
+        val session = register(reg, 1, "ok", models = listOf("llama3.1:8b"))
+        val cloud = FakeCloudLlm(enabled = true) // 키 있어도
+        val r = orchestratorWithCloud(reg, cloud).handle(input.copy(preferredModel = "llama3.1:8b", responseMode = "fast"))
+
+        assertEquals(RequestState.COMPLETED, r.state, r.failReason)
+        assertEquals(0, cloud.generateCalls)
+        assertEquals(1L, r.providerId)
+        assertNotNull((session.connection as EchoConnection).lastInfer)
+    }
+
+    @Test
+    fun `차단 사용자 + glm + 키 있음 → 거부(클라우드 호출 안 일어남) — 정책 우회 0`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok")
+        val cloud = FakeCloudLlm(enabled = true)
+        val blocking =
+            object : BlocklistChecker {
+                override fun isBlocked(
+                    guildId: Long,
+                    userId: Long,
+                ) = userId == 5L
+            }
+        val r = orchestratorWithCloud(reg, cloud, blocklist = blocking).handle(input.copy(preferredModel = "glm-5.1"))
+
+        assertEquals(RequestState.REJECTED, r.state)
+        assertEquals(0, cloud.generateCalls)
+    }
+
+    @Test
+    fun `일일한도 초과 + glm + 키 있음 → 거부(클라우드 호출 안 일어남) — 정책 우회 0`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok")
+        val cloud = FakeCloudLlm(enabled = true)
+        val overQuota =
+            object : QuotaChecker {
+                override fun exceededQuota(
+                    guildId: Long,
+                    userId: Long,
+                    roleIds: Set<Long>,
+                ) = true
+            }
+        val r = orchestratorWithCloud(reg, cloud, quota = overQuota).handle(input.copy(preferredModel = "glm-5.1"))
+
+        assertEquals(RequestState.REJECTED, r.state)
+        assertEquals(0, cloud.generateCalls)
+    }
+
+    @Test
+    fun `금지 채널 + glm + 키 있음 → 거부(클라우드 호출 안 일어남) — 정책 우회 0`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok")
+        val cloud = FakeCloudLlm(enabled = true)
+        fakePolicy.channelAllowed = false
+        try {
+            val r = orchestratorWithCloud(reg, cloud).handle(input.copy(preferredModel = "glm-5.1"))
+            assertEquals(RequestState.REJECTED, r.state)
+            assertEquals(0, cloud.generateCalls)
+        } finally {
+            fakePolicy.channelAllowed = true
+        }
+    }
+
+    @Test
+    fun `클라우드 직결 실패면 FAILED 로 일반화 메시지 반환`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok")
+        val failing =
+            object : CloudLlm {
+                override fun isEnabled() = true
+
+                override fun generate(
+                    prompt: String,
+                    model: String,
+                ): CloudLlmResult =
+                    throw com.discordassistant.central.routing.application
+                        .CloudLlmException("클라우드 AI 일시 오류")
+            }
+        val r = orchestratorWithCloud(reg, failing).handle(input.copy(preferredModel = "glm-5.1"))
+
+        assertEquals(RequestState.FAILED, r.state)
+        assertEquals("클라우드 AI 일시 오류", r.failReason)
     }
 
     @Test

@@ -70,6 +70,7 @@ class RequestOrchestrator(
     private val idempotency: IdempotencyGuard = IdempotencyGuard(),
     private val providerSafety: ProviderSafetyChecker = ALLOW_ALL_PROVIDER_SAFETY,
     private val webSearch: WebSearchAugmenter = NoWebSearch,
+    private val cloudLlm: CloudLlm = NoCloudLlm,
     private val routingStats: ProviderRoutingStats = ProviderRoutingStats(),
     private val reservationManager: RoutingReservationManager = RoutingReservationManager(pipeline),
     private val duals: RoutingDualVariableManager = RoutingDualVariableManager(),
@@ -225,6 +226,29 @@ class RequestOrchestrator(
         val augmentation =
             if (wantWeb && webSearch.isEnabled()) webSearch.augment(input.prompt) else WebAugmentation(input.prompt, emptyList())
         val effectivePrompt = augmentation.prompt
+
+        // 2.7) 무료질문 클라우드 직결(ADR 0006): 정책(차단·일일한도·채널·부담) 검사를 **모두 통과한 뒤**에만
+        //       분기하므로 차단 사용자·한도 초과·금지 채널은 클라우드 경로에서도 동일하게 거부된다(정책 우회 0).
+        //       클라우드 모델(glm-*) 요청이고 관리자 키가 연결돼 있으면, 풀 후보 선택/sendInfer 를 건너뛰고
+        //       central 이 직접 z.ai 로 추론한다(앱 미설치 유저도 무료질문 사용). 키가 없으면(isEnabled=false)
+        //       기존 동작 그대로 — 에이전트 경유 glm-* 폴백(하위호환·롤백 안전).
+        if (input.preferredModel?.lowercase()?.startsWith("glm") == true && cloudLlm.isEnabled()) {
+            return try {
+                val cloud = cloudLlm.generate(effectivePrompt, input.preferredModel)
+                recorder.recordSuccess(input.guildId, input.userId, CLOUD_PROVIDER_ID, requestId = routingRequestId)
+                OrchestrationResult(
+                    RequestState.COMPLETED,
+                    cloud.text,
+                    providerId = null,
+                    effectiveBurden = ctx.requiredBurden,
+                    requestId = routingRequestId,
+                    sources = augmentation.sources,
+                )
+            } catch (e: CloudLlmException) {
+                log.warn("클라우드 LLM 처리 실패: {}", e.message)
+                OrchestrationResult(RequestState.FAILED, failReason = e.message ?: "클라우드 AI 처리 실패")
+            }
+        }
 
         // 3) 후보 구성 + 필터 + 선택 + 전송(최대 2회: 원 + fallback 1회)
         val excluded = mutableSetOf<Long>()
@@ -385,6 +409,10 @@ class RequestOrchestrator(
     }
 
     companion object {
+        // 무료질문 클라우드 직결(ADR 0006)의 사용량 기록용 합성 providerId. 실제 풀 프로바이더(Discord
+        // user id, 양수)와 절대 겹치지 않게 음수 sentinel 을 쓴다 — 통계상 "central 직결"을 구분.
+        const val CLOUD_PROVIDER_ID = -1L
+
         const val PROVIDER_PROTECTION_ACTIONABLE_REASON =
             "지금은 참여 PC를 보호하기 위해 답변 요청을 줄이고 있어요.\n\n" +
                 "과부하 또는 보호 상태인 Provider는 자동으로 제외됩니다.\n" +

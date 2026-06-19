@@ -86,6 +86,12 @@ central:
     # 관리자 Discord user id 허용목록(콤마 구분). OAuth 로그인 사용자는 이 목록에 있을 때만 관리자.
     # 비면 OAuth 만으로는 관리자 작업 불가(admin-token 헤더로만) — fail-closed.
     admin-user-ids: ${CENTRAL_DASHBOARD_ADMIN_USER_IDS:}
+  cloud:
+    # 무료질문(glm-*)을 중앙 서버가 관리자 키 1개로 직접 처리하는 클라우드 백엔드(ADR 0006).
+    # 비우면 비활성 — /질문 은 기존대로 에이전트(provider-agent) 경유 glm-* 폴백으로 동작한다(하위호환).
+    zai-api-key: ${ZAI_API_KEY:}
+    zai-base-url: ${ZAI_BASE_URL:https://api.z.ai/api/paas/v4}
+    timeout-seconds: ${ZAI_TIMEOUT_SECONDS:120}
   ai-network:
     enabled: ${AI_NETWORK_ENABLED:true}
     dashboard-enabled: ${AI_NETWORK_DASHBOARD_ENABLED:true}

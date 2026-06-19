@@ -56,4 +56,67 @@ class CloudLlmResponseParserTest {
     fun `깨진 JSON 이면 파싱 실패 예외`() {
         assertThrows(CloudLlmException::class.java) { CloudLlmResponseParser.parse("not json", mapper) }
     }
+
+    // ── 이미지 안전 심사 파서(ADR 0006 단계2, glm.py parse_image_prompt_review 포팅) ──
+
+    /** chat/completions 봉투 안에 심사 JSON 이 content 로 담겨온다. 코드펜스/잡텍스트는 첫 object 만 허용. */
+    private fun reviewBody(content: String): String =
+        mapper.writeValueAsString(
+            mapper.createObjectNode().apply {
+                putArray("choices")
+                    .addObject()
+                    .putObject("message")
+                    .put("role", "assistant")
+                    .put("content", content)
+            },
+        )
+
+    @Test
+    fun `심사 allowed=true → 통과(category·reason 추출)`() {
+        val r = CloudLlmResponseParser.parseImageReview(reviewBody("""{"allowed":true,"category":"safe","reason":"정상"}"""), mapper)
+        assertEquals(true, r.allowed)
+        assertEquals("safe", r.category)
+        assertEquals("정상", r.reason)
+    }
+
+    @Test
+    fun `심사 allowed=false → 차단(reason 보존)`() {
+        val r =
+            CloudLlmResponseParser.parseImageReview(
+                reviewBody("""{"allowed":false,"category":"minor","reason":"미성년 성적 묘사"}"""),
+                mapper,
+            )
+        assertEquals(false, r.allowed)
+        assertEquals("minor", r.category)
+        assertEquals("미성년 성적 묘사", r.reason)
+    }
+
+    @Test
+    fun `심사 코드펜스로 감싼 JSON 도 파싱`() {
+        val r = CloudLlmResponseParser.parseImageReview(reviewBody("```json\n{\"allowed\":true}\n```"), mapper)
+        assertEquals(true, r.allowed)
+        assertEquals("safe", r.category) // category 누락 시 allowed 에 따라 기본
+        assertEquals("허용됨", r.reason)
+    }
+
+    @Test
+    fun `심사 allowed 누락이면 fail-closed 예외(차단)`() {
+        assertThrows(CloudLlmException::class.java) {
+            CloudLlmResponseParser.parseImageReview(reviewBody("""{"category":"safe"}"""), mapper)
+        }
+    }
+
+    @Test
+    fun `심사 allowed 가 boolean 이 아니면 fail-closed 예외(차단)`() {
+        assertThrows(CloudLlmException::class.java) {
+            CloudLlmResponseParser.parseImageReview(reviewBody("""{"allowed":"yes"}"""), mapper)
+        }
+    }
+
+    @Test
+    fun `심사 content 가 JSON 이 아니면 fail-closed 예외(차단)`() {
+        assertThrows(CloudLlmException::class.java) {
+            CloudLlmResponseParser.parseImageReview(reviewBody("이건 JSON 이 아니에요"), mapper)
+        }
+    }
 }

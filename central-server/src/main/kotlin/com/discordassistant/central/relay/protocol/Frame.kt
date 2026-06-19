@@ -86,7 +86,10 @@ data class InferRequest(
     val options: Map<String, Any?> = emptyMap(),
     val stream: Boolean = false, // true 면 에이전트가 ChunkFrame 으로 점진 응답(차수 11 #142)
     val task: String = "text", // "text" | "image"(로컬 SD 이미지 생성, SD Phase 2)
-    // 이미지 정책(central 소유, 에이전트가 적용만). {"translatorSystemPrompt","safetySystemPrompt","forcedNegative"}.
+    // 이미지 정책(central 소유, 에이전트가 적용만). 자유형 맵이라 키 추가는 와이어상 무해(하위호환).
+    //  - central 미심사: {"translatorSystemPrompt","safetySystemPrompt","forcedNegative"} → 에이전트가 심사·번역.
+    //  - central 심사(ADR 0006 단계2): {"forcedNegative","preTranslated":true} → 이미 심사·번역됨. 구버전
+    //    에이전트는 preTranslated 를 무시하고 영→영 재번역·이중 재심사(무해), 단계3에서 스킵하도록 인식.
     // null 이면 와이어에서 생략(하위호환) — 에이전트가 기본 정책 사용.
     @get:JsonInclude(JsonInclude.Include.NON_NULL)
     val imagePolicy: Map<String, Any?>? = null,

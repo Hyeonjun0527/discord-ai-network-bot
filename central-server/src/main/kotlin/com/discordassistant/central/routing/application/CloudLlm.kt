@@ -29,6 +29,16 @@ class CloudLlmException(
 ) : RuntimeException(message, cause)
 
 /**
+ * 이미지 프롬프트 안전 심사 결과(central 직접 심사, ADR 0006 단계2). `allowed=false` 면 생성 차단.
+ * 파싱/호출 실패는 상위가 fail-closed 로 차단한다(이 값으로 통과시키지 않는다).
+ */
+data class ImageReview(
+    val allowed: Boolean,
+    val reason: String? = null,
+    val category: String? = null,
+)
+
+/**
  * 무료질문(glm-*)을 **중앙 서버가 관리자 키 1개로 직접** 처리하는 백엔드 포트(ADR 0006).
  * 유저가 앱(provider-agent)을 설치하지 않아도 /질문 을 쓸 수 있게, 풀 라우팅 대신 central 이
  * 직접 클라우드(z.ai)에 추론을 요청한다. 외부 HTTP 는 **중앙 서버**에서만 일어나며(에이전트
@@ -41,6 +51,24 @@ interface CloudLlm {
         prompt: String,
         model: String,
     ): CloudLlmResult
+
+    /**
+     * 이미지 프롬프트 안전 심사(ADR 0006 단계2). [systemPrompt] 는 central 소유 안전 정책(IMAGE_SAFETY).
+     * 호출/파싱 실패는 [CloudLlmException] 으로 던져 상위가 fail-closed 차단하게 한다.
+     */
+    fun reviewImagePrompt(
+        prompt: String,
+        systemPrompt: String,
+    ): ImageReview
+
+    /**
+     * 이미지 프롬프트 한국어→영어 번역(성인·SFW·품질 prefix 강제). [systemPrompt] 는 central 소유 번역 정책.
+     * 실패 시 [CloudLlmException] — 상위는 원문 폴백한다(번역 실패는 차단 사유가 아니다).
+     */
+    fun translateImagePrompt(
+        prompt: String,
+        systemPrompt: String,
+    ): String
 }
 
 /** 기본(비활성) — 클라우드 키 미설정 시. 호출되면 예외(라우팅은 isEnabled() 로 먼저 분기). */
@@ -51,6 +79,16 @@ object NoCloudLlm : CloudLlm {
         prompt: String,
         model: String,
     ): CloudLlmResult = throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
+
+    override fun reviewImagePrompt(
+        prompt: String,
+        systemPrompt: String,
+    ): ImageReview = throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
+
+    override fun translateImagePrompt(
+        prompt: String,
+        systemPrompt: String,
+    ): String = throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
 }
 
 /**
@@ -98,6 +136,65 @@ object CloudLlmResponseParser {
 
     /** 사용자(디스코드)에게 노출되는 일반화 메시지. 업스트림 status·body 등 상세는 로그로만 남긴다. */
     const val USER_ERROR_MESSAGE = "클라우드 AI 일시 오류"
+
+    /**
+     * 이미지 안전 심사 응답(chat/completions)에서 GLM 이 돌려준 JSON 심사 결과를 추출한다(provider-agent
+     * glm.py `parse_image_prompt_review` 포팅). 코드펜스가 섞여도 첫 JSON object 만 허용하고,
+     * `allowed`(boolean)가 없으면 fail-closed 예외 — 스키마가 조금이라도 깨지면 차단한다.
+     */
+    fun parseImageReview(
+        body: String,
+        mapper: ObjectMapper,
+    ): ImageReview {
+        // chat/completions 봉투에서 content 추출(error·빈 응답은 parse 가 일반화 예외로 던짐).
+        val content = parse(body, mapper).text
+        val json =
+            try {
+                mapper.readTree(extractFirstJsonObject(content))
+            } catch (e: Exception) {
+                throw CloudLlmException("이미지 안전 심사 응답 파싱 실패", e)
+            }
+        val allowedNode = json.get("allowed")
+        if (allowedNode == null || !allowedNode.isBoolean) {
+            throw CloudLlmException("이미지 안전 심사 응답에 allowed(boolean)가 없습니다")
+        }
+        val allowed = allowedNode.asBoolean()
+        val category =
+            json
+                .get("category")
+                ?.takeIf { it.isTextual }
+                ?.asText()
+                ?.trim()
+                ?.take(40)
+                ?: if (allowed) "safe" else "other"
+        val reason =
+            json
+                .get("reason")
+                ?.takeIf { it.isTextual }
+                ?.asText()
+                ?.trim()
+                ?.take(240)
+                ?: if (allowed) "허용됨" else "안전 정책상 차단됨"
+        return ImageReview(allowed = allowed, reason = reason, category = category)
+    }
+
+    /** 코드펜스(```json … ```)를 벗기고 첫 `{ … }` object 만 남긴다(glm.py `_extract_json_object` 포팅). */
+    private fun extractFirstJsonObject(text: String): String {
+        var cleaned = text.trim()
+        if (cleaned.startsWith("```")) {
+            cleaned =
+                cleaned
+                    .removePrefix("```")
+                    .removePrefix("json")
+                    .trim()
+                    .removeSuffix("```")
+                    .trim()
+        }
+        val start = cleaned.indexOf('{')
+        val end = cleaned.lastIndexOf('}')
+        if (start in 0 until end) cleaned = cleaned.substring(start, end + 1)
+        return cleaned
+    }
 }
 
 /**
@@ -121,7 +218,32 @@ class ZaiCloudLlm(
     override fun generate(
         prompt: String,
         model: String,
-    ): CloudLlmResult {
+    ): CloudLlmResult = CloudLlmResponseParser.parse(postChat(listOf("user" to prompt), model), mapper)
+
+    override fun reviewImagePrompt(
+        prompt: String,
+        systemPrompt: String,
+    ): ImageReview =
+        CloudLlmResponseParser.parseImageReview(
+            postChat(listOf("system" to systemPrompt, "user" to prompt), DEFAULT_MODEL),
+            mapper,
+        )
+
+    override fun translateImagePrompt(
+        prompt: String,
+        systemPrompt: String,
+    ): String =
+        CloudLlmResponseParser
+            .parse(
+                postChat(listOf("system" to systemPrompt, "user" to prompt), DEFAULT_MODEL),
+                mapper,
+            ).text
+
+    /** chat/completions 한 번 호출 → 원시 응답 body. 연결/HTTP 오류는 일반화 [CloudLlmException]. */
+    private fun postChat(
+        messages: List<Pair<String, String>>,
+        model: String,
+    ): String {
         if (!isEnabled()) throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
         val base = baseUrl.trimEnd('/')
         val payload =
@@ -129,7 +251,8 @@ class ZaiCloudLlm(
                 .createObjectNode()
                 .put("model", model.ifBlank { DEFAULT_MODEL })
                 .apply {
-                    putArray("messages").addObject().put("role", "user").put("content", prompt)
+                    val arr = putArray("messages")
+                    messages.forEach { (role, content) -> arr.addObject().put("role", role).put("content", content) }
                 }
         val req =
             HttpRequest
@@ -152,7 +275,7 @@ class ZaiCloudLlm(
             log.warn("클라우드 LLM HTTP {}: {}", resp.statusCode(), resp.body().take(500))
             throw CloudLlmException(CloudLlmResponseParser.USER_ERROR_MESSAGE)
         }
-        return CloudLlmResponseParser.parse(resp.body(), mapper)
+        return resp.body()
     }
 
     companion object {

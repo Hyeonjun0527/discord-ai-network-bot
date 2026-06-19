@@ -10,6 +10,7 @@ import com.discordassistant.central.relay.protocol.InferError
 import com.discordassistant.central.relay.protocol.InferRequest
 import com.discordassistant.central.relay.protocol.InferResult
 import com.discordassistant.central.routing.application.CloudLlm
+import com.discordassistant.central.routing.application.CloudLlmException
 import com.discordassistant.central.routing.application.CloudLlmResult
 import com.discordassistant.central.routing.application.RequestOrchestrator
 import com.discordassistant.central.routing.application.port.ALLOW_ALL_PROVIDER_SAFETY
@@ -436,6 +437,17 @@ class RequestOrchestratorTest {
             lastModel = model
             return CloudLlmResult("클라우드 답변")
         }
+
+        // 이미지 심사/번역은 이 테스트가 다루지 않는다(텍스트 라우팅 전용) — 호출되면 예외.
+        override fun reviewImagePrompt(
+            prompt: String,
+            systemPrompt: String,
+        ) = throw CloudLlmException("미사용")
+
+        override fun translateImagePrompt(
+            prompt: String,
+            systemPrompt: String,
+        ) = throw CloudLlmException("미사용")
     }
 
     private fun orchestratorWithCloud(
@@ -574,9 +586,17 @@ class RequestOrchestratorTest {
                 override fun generate(
                     prompt: String,
                     model: String,
-                ): CloudLlmResult =
-                    throw com.discordassistant.central.routing.application
-                        .CloudLlmException("클라우드 AI 일시 오류")
+                ): CloudLlmResult = throw CloudLlmException("클라우드 AI 일시 오류")
+
+                override fun reviewImagePrompt(
+                    prompt: String,
+                    systemPrompt: String,
+                ) = throw CloudLlmException("미사용")
+
+                override fun translateImagePrompt(
+                    prompt: String,
+                    systemPrompt: String,
+                ) = throw CloudLlmException("미사용")
             }
         val r = orchestratorWithCloud(reg, failing).handle(input.copy(preferredModel = "glm-5.1"))
 

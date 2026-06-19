@@ -178,8 +178,12 @@ class InferRequest:
     options: dict[str, Any] = field(default_factory=dict)
     stream: bool = False  # true 면 ChunkFrame 으로 점진 응답(#142)
     task: str = "text"  # "text" | "image"(로컬 SD 이미지 생성, SD Phase 2)
-    # 이미지 정책(central 소유). {"translatorSystemPrompt": str, "safetySystemPrompt": str, "forcedNegative": str}.
-    # 비면 에이전트 기본값.
+    # 이미지 정책(central 소유, 자유형 dict 라 키 추가는 와이어상 무해·하위호환).
+    #  - central 미심사: {"translatorSystemPrompt": str, "safetySystemPrompt": str, "forcedNegative": str}
+    #    → 에이전트가 심사·번역. 비면 에이전트 기본값.
+    #  - central 심사(ADR 0006 단계2): {"forcedNegative": str, "preTranslated": True} → 이미 심사·번역됨.
+    #    현재 에이전트는 preTranslated 를 모르고 기본 시스템프롬프트로 영→영 재번역·이중 재심사(무해).
+    #    단계3에서 에이전트가 preTranslated 를 인식해 심사/번역을 스킵하도록 바꾼다(이 파일은 단계2 미변경).
     # central 이 안전·일관성 정책을 실어 보내고, 에이전트는 그대로 적용만(외부 AI 호출은 에이전트에서).
     image_policy: dict[str, Any] | None = None
 

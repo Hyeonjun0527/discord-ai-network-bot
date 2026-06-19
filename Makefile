@@ -3,7 +3,7 @@ JAVA_HOME ?= /Library/Java/JavaVirtualMachines/amazon-corretto-21.jdk/Contents/H
 PY := .venv/bin
 CENTRAL := central-server/gradlew -p central-server
 
-.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract wire-gen wire-check sync-desktop desktop-check desktop-shapes i18n-gen i18n-check packaging-check
+.PHONY: help central-build central-test agent-test agent-lint e2e compose-up compose-down contract wire-gen wire-check sync-desktop desktop-check desktop-shapes ssot-viewer ssot-viewer-check i18n-gen i18n-check packaging-check
 
 help:  ## 사용 가능한 타깃
 	@grep -E '^[a-zA-Z-]+:.*##' Makefile | sed 's/:.*## /\t/'
@@ -42,6 +42,12 @@ desktop-shapes:  ## 응답 shape 계약(contract-shapes.json) 을 프로토타�
 desktop-check:  ## 프로토타입↔실구현(webui) 계약 검사: 엔드포인트 일치 + shape 동기 + 생성물 누수
 	PYTHONPATH=provider-agent/src $(PY)/python scripts/check_desktop_contract.py --assets
 	node scripts/gen_desktop_shapes.mjs --check
+
+ssot-viewer:  ## ai-context JSON SSOT에서 사람용 요구사항/API/네비게이션 HTML 생성
+	python3 scripts/gen_ssot_viewer.py
+
+ssot-viewer-check:  ## 생성 HTML이 ai-context JSON과 동기인지 검증
+	python3 scripts/gen_ssot_viewer.py --check
 
 i18n-gen:  ## 문구 SSOT(i18n/messages.json)에서 모듈별 생성본(봇/웹/앱) 재생성
 	python3 scripts/gen_i18n.py

@@ -1,0 +1,867 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-06-19",
+  "canonicalVocabulary": {
+    "modelBurdenLevels": [
+      "light",
+      "standard",
+      "heavy",
+      "restricted"
+    ],
+    "providerStates": [
+      "unregistered",
+      "pending",
+      "approved",
+      "online_idle",
+      "online_busy",
+      "paused",
+      "limited",
+      "offline",
+      "unhealthy",
+      "removed"
+    ],
+    "requestStates": [
+      "received",
+      "policy_checked",
+      "routing",
+      "queued",
+      "sent_to_provider",
+      "running",
+      "completed",
+      "failed",
+      "fallback_running",
+      "rejected"
+    ],
+    "entities": [
+      "Guild",
+      "GuildPolicy",
+      "AllowedChannel",
+      "RolePolicy",
+      "Provider",
+      "ProviderSession",
+      "ProviderCapability",
+      "ProviderContributionPolicy",
+      "ModelProfile",
+      "AiRequest",
+      "RoutingCandidate",
+      "RoutingDecision",
+      "RequestExecution",
+      "UsageLog",
+      "ProviderHealth"
+    ]
+  },
+  "invariants": [
+    {
+      "id": "DOM-GUILD-ISOLATION",
+      "rule": "다른 서버의 온라인 Provider는 이 서버 질문을 처리할 수 없다. 라우팅 후보는 질문 guild의 세션으로 제한한다.",
+      "appliesTo": [
+        "routing",
+        "token",
+        "websocket",
+        "guild-removal"
+      ],
+      "sourceRefs": [
+        "docs/EDGE_CASE_POLICY.md:16",
+        "docs/EDGE_CASE_POLICY.md:52"
+      ]
+    },
+    {
+      "id": "DOM-TOKEN-GUILD-BOUND",
+      "rule": "Provider 토큰은 발급 guild에 묶인 일회용 토큰이다. 서버 A 토큰으로 서버 B 세션을 만들 수 없다.",
+      "appliesTo": [
+        "provider-join",
+        "websocket-auth",
+        "agent-sync"
+      ],
+      "sourceRefs": [
+        "docs/EDGE_CASE_POLICY.md:19",
+        "docs/EDGE_CASE_POLICY.md:34"
+      ]
+    },
+    {
+      "id": "DOM-CONTRIBUTION-PERSISTENCE",
+      "rule": "한 번이라도 기여한 Provider는 오프라인이어도 기여순위에 영구 표시된다. 봇 제거/멤버 이탈은 등록을 정리하되 기여 로그는 삭제하지 않는다.",
+      "appliesTo": [
+        "guild-removal",
+        "ranking",
+        "usage-log"
+      ],
+      "sourceRefs": [
+        "docs/EDGE_CASE_POLICY.md:18",
+        "docs/EDGE_CASE_POLICY.md:33",
+        "docs/EDGE_CASE_POLICY.md:59"
+      ]
+    },
+    {
+      "id": "DOM-LOCAL-FIRST-CLOUD-FALLBACK",
+      "rule": "/질문는 로컬 Provider가 있으면 먼저 로컬을 시도하고, 완료되지 않으면 무료 클라우드 모델로 폴백한다. 단 정책 거부는 폴백으로 우회하지 않는다.",
+      "appliesTo": [
+        "ask",
+        "routing",
+        "cloud-fallback"
+      ],
+      "sourceRefs": [
+        "AskCommandHandler.kt:145-170"
+      ]
+    },
+    {
+      "id": "DOM-WIRE-SSOT",
+      "rule": "central-server와 provider-agent의 WebSocket frame type, protocol version, option key는 protocol/wire-contract.json에서 생성한다. 생성본 직접 편집 금지.",
+      "appliesTo": [
+        "wire",
+        "central-server",
+        "provider-agent"
+      ],
+      "sourceRefs": [
+        "protocol/wire-contract.json",
+        "AGENTS.md"
+      ]
+    }
+  ],
+  "routingDecision": {
+    "inputs": [
+      "guildId",
+      "channelId",
+      "userId",
+      "roleIds",
+      "prompt",
+      "preferredModel",
+      "responseMode",
+      "webSearch",
+      "weighChars"
+    ],
+    "gatesInOrder": [
+      "guild/channel/role policy",
+      "model burden",
+      "online session",
+      "idle/busy state",
+      "remaining daily limit",
+      "concurrency",
+      "request size",
+      "failure health",
+      "fairness score"
+    ],
+    "fallback": "Provider 실패는 제한적 fallback만 허용한다. 사용자 입력/권한/정책 실패는 fallback하지 않는다."
+  },
+  "sourceRefs": [
+    "specs/product-v2/README.md",
+    "docs/adr/0003-community-provider-pool.md",
+    "docs/EDGE_CASE_POLICY.md",
+    "protocol/wire-contract.json"
+  ],
+  "domainGroups": [
+    {
+      "id": "guild-onboarding",
+      "title": "서버 온보딩 · 봇 설치",
+      "range": "Domain 01",
+      "summary": "서버 관리자가 NEXA 봇을 Discord 서버에 추가하고, AI를 사용할 채널과 기본 운영 정책을 정하는 진입 도메인이다. 사용자는 이 도메인을 지나야 /질문와 Provider Pool을 서버 단위로 쓸 수 있다.",
+      "primaryActors": [
+        "서버 관리자",
+        "NEXA 봇",
+        "central-server"
+      ],
+      "userFlow": [
+        "Discord 서버에 봇 초대",
+        "봇 권한과 채널 접근 확인",
+        "AI 네트워크 대시보드 진입",
+        "채널별 AI 사용 여부와 기본 프리셋 설정"
+      ],
+      "states": [
+        {
+          "name": "not_installed",
+          "meaning": "서버에 봇이 없어서 어떤 AI 기능도 시작할 수 없다."
+        },
+        {
+          "name": "installed_unconfigured",
+          "meaning": "봇은 있지만 채널/역할/프리셋 정책이 아직 비어 있다."
+        },
+        {
+          "name": "ready",
+          "meaning": "AI 사용 채널과 기본 정책이 있어 /질문를 받을 수 있다."
+        }
+      ],
+      "apis": [
+        {
+          "when": "대시보드 진입",
+          "owner": "Client → central-server",
+          "surface": "/api/ai-network/{guildId}/dashboard",
+          "purpose": "서버 AI 운영 상태를 한 번에 조회한다."
+        },
+        {
+          "when": "채널 AI 설정",
+          "owner": "Client → central-server",
+          "surface": "ChannelAiCustomizationController",
+          "purpose": "채널별 말투, 모델, 지식공간, 안전 설정을 저장한다."
+        }
+      ],
+      "exceptions": [
+        {
+          "situation": "봇 권한 부족",
+          "condition": "Discord 권한/채널 접근 누락",
+          "userResult": "관리자가 설정을 완료할 수 없다.",
+          "systemHandling": "권한 안내와 재초대/권한 수정 경로를 보여준다."
+        },
+        {
+          "situation": "운영 dev 기능 노출",
+          "condition": "CENTRAL_DEV_ENABLED=true",
+          "userResult": "운영 안전 위험",
+          "systemHandling": "운영에서는 반드시 false로 차단한다."
+        }
+      ],
+      "policies": [
+        "POL-CONTENT-001",
+        "POL-PRIVACY-001"
+      ],
+      "contracts": [
+        "CON-I18N"
+      ],
+      "checkpoints": [
+        "봇 초대 후 서버 단위 설정 화면이 보여야 한다.",
+        "채널 AI 설정은 NEXA 강제 안전 가드레일을 우회하면 안 된다.",
+        "사용자 노출 문구는 i18n SSOT에서 생성한다."
+      ],
+      "sourceRefs": [
+        "README.md:39-48",
+        "central-server/docs/GO_LIVE.md",
+        "ChannelAiCustomizationController.kt"
+      ]
+    },
+    {
+      "id": "ask-routing",
+      "title": "/질문 질문 · 응답 라우팅",
+      "range": "Domain 02",
+      "summary": "일반 유저가 Discord에서 /질문를 입력했을 때, 중앙 서버가 쿨다운·채널 정책·역할·모델 부담·Provider 후보·무료 폴백을 판단해 답변을 돌려주는 핵심 사용자 도메인이다.",
+      "primaryActors": [
+        "일반 유저",
+        "central-server",
+        "Provider Agent",
+        "무료 클라우드 모델"
+      ],
+      "userFlow": [
+        "유저가 /질문 입력",
+        "중앙 서버가 정책과 쿨다운 검사",
+        "로컬 Provider 후보를 필터링",
+        "가능하면 Provider PC로 전송",
+        "실패/부재 시 glm-5.1 무료 폴백",
+        "Discord 채널에 답변과 피드백 UI 표시"
+      ],
+      "states": [
+        {
+          "name": "received",
+          "meaning": "Discord 명령이 중앙 서버에 들어왔다."
+        },
+        {
+          "name": "routing",
+          "meaning": "정책과 후보 Provider를 계산 중이다."
+        },
+        {
+          "name": "sent_to_provider",
+          "meaning": "선택된 Provider PC에 요청을 보냈다."
+        },
+        {
+          "name": "fallback_running",
+          "meaning": "로컬 실패/부재 후 무료 클라우드 모델을 시도 중이다."
+        },
+        {
+          "name": "rejected",
+          "meaning": "권한/정책/안전 문제라 실행하지 않는다."
+        }
+      ],
+      "apis": [
+        {
+          "when": "Discord 명령",
+          "owner": "Discord → central-server",
+          "surface": "AskCommandHandler",
+          "purpose": "/질문 옵션을 받고 라우팅을 시작한다."
+        },
+        {
+          "when": "Provider 실행",
+          "owner": "central-server → provider-agent",
+          "surface": "wire frame: infer/result/error",
+          "purpose": "선택된 Provider PC에 추론 요청을 보내고 결과를 받는다."
+        },
+        {
+          "when": "피드백",
+          "owner": "Client → central-server",
+          "surface": "/api/ai-network/quality/*",
+          "purpose": "답변 품질 피드백을 운영 루프에 남긴다."
+        }
+      ],
+      "exceptions": [
+        {
+          "situation": "정책 거부",
+          "condition": "채널/역할/안전 정책 실패",
+          "userResult": "요청이 실행되지 않는다.",
+          "systemHandling": "Provider나 클라우드 폴백으로 우회하지 않는다."
+        },
+        {
+          "situation": "Provider 실패",
+          "condition": "timeout/error/unhealthy",
+          "userResult": "가능하면 무료 폴백 답변을 받는다.",
+          "systemHandling": "fallback 기본 1회, 실패 Provider health 반영."
+        }
+      ],
+      "policies": [
+        "POL-PROVIDER-002",
+        "POL-CONTENT-001",
+        "POL-PRIVACY-001"
+      ],
+      "contracts": [
+        "CON-WIRE",
+        "CON-I18N"
+      ],
+      "checkpoints": [
+        "정책 실패는 클라우드로 우회하지 않는다.",
+        "기본 질문은 Provider 1명에게만 보낸다.",
+        "답변 후 피드백 경로가 품질 루프와 연결된다."
+      ],
+      "sourceRefs": [
+        "AskCommandHandler.kt:113-171",
+        "docs/PROVIDER_SAFETY_POLICY.md:58-80",
+        "protocol/wire-contract.json"
+      ]
+    },
+    {
+      "id": "provider-agent",
+      "title": "Provider 연결 · 로컬 실행",
+      "range": "Domain 03",
+      "summary": "커뮤니티 멤버가 자기 PC에 Provider Agent를 설치하고, 승인된 Discord 서버의 AI 풀에 로컬 Ollama/ComfyUI 자원을 기여하는 도메인이다. 핵심은 포트 개방 없는 outbound 연결과 Provider 보호다.",
+      "primaryActors": [
+        "프로바이더",
+        "provider-agent",
+        "central-server",
+        "Ollama/ComfyUI"
+      ],
+      "userFlow": [
+        "Provider Agent 설치",
+        "durable token 등록",
+        "/provider/agent/sync로 승인 서버 목록 동기화",
+        "WebSocket 인증",
+        "로컬 모델 상태 확인",
+        "요청 처리 또는 일시정지"
+      ],
+      "states": [
+        {
+          "name": "unregistered",
+          "meaning": "로컬 앱이 아직 서버 토큰을 갖고 있지 않다."
+        },
+        {
+          "name": "approved",
+          "meaning": "서버가 Provider를 승인했고 연결 가능하다."
+        },
+        {
+          "name": "online_idle",
+          "meaning": "요청을 받을 수 있다."
+        },
+        {
+          "name": "online_busy",
+          "meaning": "현재 요청 처리 중이다."
+        },
+        {
+          "name": "paused/limited",
+          "meaning": "Provider 의사 또는 한도 때문에 새 요청을 받지 않는다."
+        }
+      ],
+      "apis": [
+        {
+          "when": "서버 동기화",
+          "owner": "provider-agent → central-server",
+          "surface": "/provider/agent/sync",
+          "purpose": "승인된 guild, join token, license entitlement를 받는다."
+        },
+        {
+          "when": "로컬 UI 상태",
+          "owner": "desktop UI → provider-agent",
+          "surface": "/api/status, /api/servers/*, /api/models",
+          "purpose": "Provider 본인의 연결/모델/한도를 조작한다."
+        },
+        {
+          "when": "모델 실행",
+          "owner": "provider-agent → Ollama/ComfyUI",
+          "surface": "local model HTTP",
+          "purpose": "실제 추론/이미지 작업을 로컬에서 수행한다."
+        }
+      ],
+      "exceptions": [
+        {
+          "situation": "다른 서버 토큰 사용",
+          "condition": "guild-bound token 불일치",
+          "userResult": "연결 실패",
+          "systemHandling": "서버 A 토큰으로 서버 B 세션 생성을 거부한다."
+        },
+        {
+          "situation": "Provider 일시정지",
+          "condition": "paused 또는 daily limit 초과",
+          "userResult": "새 요청을 받지 않는다.",
+          "systemHandling": "라우팅 후보에서 제외한다."
+        }
+      ],
+      "policies": [
+        "POL-PROVIDER-001",
+        "POL-LIMIT-001",
+        "POL-PRIVACY-001"
+      ],
+      "contracts": [
+        "CON-WIRE",
+        "CON-DESKTOP-UI",
+        "CON-DESKTOP-SHAPES",
+        "CON-PACKAGING"
+      ],
+      "checkpoints": [
+        "webui_assets를 직접 편집하지 않는다.",
+        "desktop prototype, mock, real handler를 같은 변경에서 맞춘다.",
+        "Provider 로그에 프롬프트 원문을 남기지 않는다."
+      ],
+      "sourceRefs": [
+        "provider-agent/",
+        "ProviderAgentSyncController.kt:30-65",
+        "prototypes/desktop/contract.js"
+      ]
+    },
+    {
+      "id": "admin-operations",
+      "title": "서버 운영 · 대시보드",
+      "range": "Domain 04",
+      "summary": "서버 관리자가 Provider, 채널, 모델, 사용량, readiness, launch checklist를 보고 운영 조치를 하는 도메인이다. 일반 사용자 경험 뒤에서 서버 AI 풀의 건강 상태를 유지한다.",
+      "primaryActors": [
+        "서버 관리자",
+        "central-server",
+        "Provider"
+      ],
+      "userFlow": [
+        "대시보드 조회",
+        "Provider 상태/사용량 확인",
+        "채널별 정책 조정",
+        "Provider 승인/차단/리뷰",
+        "launch readiness와 운영 체크리스트 확인"
+      ],
+      "states": [
+        {
+          "name": "healthy",
+          "meaning": "Provider와 정책이 정상이며 /질문 처리 가능하다."
+        },
+        {
+          "name": "degraded",
+          "meaning": "Provider 부족/실패율/한도 문제로 품질이 낮다."
+        },
+        {
+          "name": "blocked",
+          "meaning": "정책 또는 안전 이슈로 운영 조치가 필요하다."
+        }
+      ],
+      "apis": [
+        {
+          "when": "운영 조회",
+          "owner": "Client → central-server",
+          "surface": "/api/ai-network/{guildId}/dashboard, /overview, /providers",
+          "purpose": "AI 풀 상태를 요약 조회한다."
+        },
+        {
+          "when": "운영 변경",
+          "owner": "Client → central-server",
+          "surface": "ProviderAdminController, DashboardWriteController",
+          "purpose": "Provider 승인/차단과 대시보드 쓰기 조치를 처리한다."
+        }
+      ],
+      "exceptions": [
+        {
+          "situation": "관리자 권한 없음",
+          "condition": "Discord role/admin policy 실패",
+          "userResult": "운영 화면 접근/변경 불가",
+          "systemHandling": "권한 오류를 반환하고 쓰기 작업을 차단한다."
+        },
+        {
+          "situation": "Provider 부족",
+          "condition": "online_idle 후보 없음",
+          "userResult": "품질 저하 또는 무료 폴백",
+          "systemHandling": "readiness/overview에 부족 상태를 노출한다."
+        }
+      ],
+      "policies": [
+        "POL-PROVIDER-001",
+        "POL-EDGE-001"
+      ],
+      "contracts": [
+        "CON-I18N"
+      ],
+      "checkpoints": [
+        "운영 화면은 Provider 보호 정책을 우회하는 버튼을 제공하면 안 된다.",
+        "readiness와 launch checklist는 실제 상태 기반이어야 한다.",
+        "권한 없는 쓰기 API는 차단한다."
+      ],
+      "sourceRefs": [
+        "AiNetworkDashboardController.kt",
+        "DashboardController.kt",
+        "ProviderAdminController.kt"
+      ]
+    },
+    {
+      "id": "presets-knowledge",
+      "title": "프리셋 · 지식공간",
+      "range": "Domain 05",
+      "summary": "서버/채널별 AI 성격, 프롬프트 세트, 지식 자료를 운영자가 구성하고 재사용하는 도메인이다. 마켓이 아니라 서버 운영 설정과 컨텍스트를 안전하게 재사용하는 영역이다.",
+      "primaryActors": [
+        "서버 관리자",
+        "central-server",
+        "NEXA 봇"
+      ],
+      "userFlow": [
+        "프리셋 탐색",
+        "import-preview로 적용 차이 확인",
+        "채널 AI에 프리셋 적용",
+        "지식공간 source 등록",
+        "검색/context/eval로 답변 컨텍스트 품질 확인"
+      ],
+      "states": [
+        {
+          "name": "draft",
+          "meaning": "프리셋 또는 지식 source가 아직 적용 전이다."
+        },
+        {
+          "name": "active",
+          "meaning": "채널 AI 답변에 실제로 사용된다."
+        },
+        {
+          "name": "reported/review",
+          "meaning": "신고 또는 품질 검토 대상이다."
+        }
+      ],
+      "apis": [
+        {
+          "when": "프리셋 탐색",
+          "owner": "Client → central-server",
+          "surface": "/api/ai-network/presets/*",
+          "purpose": "catalog, recommended, facets, import-preview를 제공한다."
+        },
+        {
+          "when": "지식공간 운영",
+          "owner": "Client → central-server",
+          "surface": "/api/ai-network/knowledge/*",
+          "purpose": "space/source/index-job/search/context/eval을 관리한다."
+        }
+      ],
+      "exceptions": [
+        {
+          "situation": "강제 가드레일 노출",
+          "condition": "builtin prompt 전문을 클라이언트로 전달",
+          "userResult": "안전 정책 노출 위험",
+          "systemHandling": "preview 또는 자리표시자만 내려보낸다."
+        },
+        {
+          "situation": "부적절 프리셋 신고",
+          "condition": "report 발생",
+          "userResult": "운영 검토 대상",
+          "systemHandling": "review 흐름으로 넘기고 필요 시 숨김/차단한다."
+        }
+      ],
+      "policies": [
+        "POL-CONTENT-001",
+        "POL-CONTENT-002"
+      ],
+      "contracts": [
+        "CON-I18N"
+      ],
+      "checkpoints": [
+        "프리셋은 판매 상품이 아니라 운영 설정 재사용이다.",
+        "builtin 가드레일 전문을 클라이언트에 내려보내지 않는다.",
+        "지식공간 답변은 출처와 품질 검토 루프를 가져야 한다."
+      ],
+      "sourceRefs": [
+        "PresetRegistryController.kt",
+        "KnowledgeIngestionController.kt",
+        "docs/NEXA_SAFETY_POLICY.md:36-47"
+      ]
+    },
+    {
+      "id": "safety-limits",
+      "title": "안전 · 한도 · 신고 정책",
+      "range": "Domain 06",
+      "summary": "Provider 보호, 콘텐츠 안전, 개인정보 최소화, 서버별 한도, 신고 대응을 다른 모든 기능보다 먼저 적용하는 정책 도메인이다. 기능 품질보다 생존과 신뢰가 우선이다.",
+      "primaryActors": [
+        "일반 유저",
+        "서버 관리자",
+        "Provider",
+        "시스템 관리자"
+      ],
+      "userFlow": [
+        "질문/프리셋/지식 요청이 들어옴",
+        "red-line 및 Discord ToS 검사",
+        "Provider 동의/한도/가용성 검사",
+        "개인정보/로그 최소화 확인",
+        "허용 시 실행, 실패 시 거부/신고/운영 조치"
+      ],
+      "states": [
+        {
+          "name": "allowed",
+          "meaning": "안전·한도·권한 검사를 통과했다."
+        },
+        {
+          "name": "rate_limited",
+          "meaning": "사용자 또는 Provider 한도를 넘었다."
+        },
+        {
+          "name": "safety_rejected",
+          "meaning": "콘텐츠/Discord/법적 red-line으로 실행하지 않는다."
+        },
+        {
+          "name": "reported",
+          "meaning": "운영자 검토가 필요한 신고 상태다."
+        }
+      ],
+      "apis": [
+        {
+          "when": "정책 검사",
+          "owner": "central-server",
+          "surface": "ProviderFilterPipeline / safety policy",
+          "purpose": "라우팅 전 안전과 Provider 보호 조건을 적용한다."
+        },
+        {
+          "when": "신고/품질",
+          "owner": "Client → central-server",
+          "surface": "report/review/quality APIs",
+          "purpose": "안전 이슈와 품질 이슈를 운영자가 처리하게 한다."
+        }
+      ],
+      "exceptions": [
+        {
+          "situation": "개인정보 포함 질문",
+          "condition": "다른 사람 PC로 전송될 수 있는 민감 정보",
+          "userResult": "고지/제한/거부 가능",
+          "systemHandling": "전송 고지와 로그 최소화 원칙을 적용한다."
+        },
+        {
+          "situation": "한도 초과",
+          "condition": "Provider daily limit 또는 사용자 무료 한도 초과",
+          "userResult": "대기/거부/폴백 제한",
+          "systemHandling": "서버별 카운터와 정책 우선순위에 따라 처리한다."
+        }
+      ],
+      "policies": [
+        "POL-PROVIDER-001",
+        "POL-PRIVACY-001",
+        "POL-CONTENT-001",
+        "POL-LIMIT-001"
+      ],
+      "contracts": [
+        "CON-WIRE",
+        "CON-I18N"
+      ],
+      "checkpoints": [
+        "Provider 동의·한도·일시정지는 어떤 품질 개선보다 우선한다.",
+        "정책 거부는 fallback으로 우회하지 않는다.",
+        "사용자 질문 원문은 Provider 로컬 로그에 저장하지 않는다."
+      ],
+      "sourceRefs": [
+        "docs/PROVIDER_SAFETY_POLICY.md",
+        "docs/NEXA_SAFETY_POLICY.md",
+        "docs/NEXA_LIMIT_POLICY.md"
+      ]
+    },
+    {
+      "id": "nia-identity",
+      "title": "니아 정체성 · 호감도",
+      "range": "Domain 07",
+      "summary": "NEXA의 기본 AI 정체성 '니아'와 사용자별 호감도다. 서버가 별도 채널 AI 페르소나를 만들지 않으면 /질문 답변자는 니아 정체성으로 말하고, 안전 가드레일은 어떤 페르소나에서도 항상 정체성보다 먼저 주입된다. 상호작용마다 호감도가 쌓여 관계 표현이 달라진다(XP·리더보드·과금 아님).",
+      "primaryActors": [
+        "일반 유저",
+        "서버 관리자"
+      ],
+      "userFlow": [
+        "유저가 채널에서 /질문 입력",
+        "서버가 커스텀 채널 AI 페르소나를 설정하지 않았으면 니아 기본 정체성(NexaIdentity) 주입",
+        "안전 가드레일(ContentSafety)을 정체성보다 먼저 주입",
+        "응답 성공 시 요청자-니아 호감도 +1, 임계값 도달 시 단계 상승",
+        "유저가 /nia 로 자신의 호감도 단계·점수·다음 단계까지 진행도를 확인"
+      ],
+      "states": [
+        {
+          "name": "낯섦",
+          "meaning": "호감도 0~9. 니아와 처음 만난 관계."
+        },
+        {
+          "name": "알아가는중",
+          "meaning": "호감도 10~49."
+        },
+        {
+          "name": "친근",
+          "meaning": "호감도 50~149."
+        },
+        {
+          "name": "단짝",
+          "meaning": "호감도 150 이상. 최고 단계."
+        }
+      ],
+      "apis": [
+        {
+          "when": "/질문 기본 경로(커스텀 페르소나 없음)",
+          "owner": "central-server",
+          "surface": "NexaIdentity / AskCommandHandler",
+          "purpose": "니아 기본 페르소나·few-shot·호감도 관계 문장을 시스템 프롬프트에 주입한다(전문 비공개)."
+        },
+        {
+          "when": "응답 성공 시",
+          "owner": "central-server",
+          "surface": "NiaAffinityService",
+          "purpose": "요청자별 호감도 점수를 누적하고 단계를 판정·영속한다(상호작용당 +1)."
+        },
+        {
+          "when": "유저가 호감도 확인",
+          "owner": "Discord → central-server",
+          "surface": "/nia (AiNetworkCommandHandler)",
+          "purpose": "요청자의 호감도 단계·점수·진행바를 ephemeral 로 보여준다."
+        },
+        {
+          "when": "서버 기본 성격 미설정",
+          "owner": "central-server",
+          "surface": "GlobalPromptSetService",
+          "purpose": "서버 전역 기본 페르소나가 없으면 니아를 기본값으로 사용한다."
+        }
+      ],
+      "exceptions": [
+        {
+          "situation": "서버가 자체 채널 AI 페르소나를 설정",
+          "condition": "채널/서버에 커스텀 페르소나 존재",
+          "userResult": "답변자가 니아가 아닌 그 페르소나로 말한다.",
+          "systemHandling": "정체성은 대체하되 안전 가드레일은 여전히 최우선 주입."
+        },
+        {
+          "situation": "페르소나 전문 열람 시도",
+          "condition": "클라이언트/비관리자",
+          "userResult": "미리보기만 보이고 전문은 노출되지 않는다.",
+          "systemHandling": "NIA_DEFAULT_PERSONA·few-shot 전문은 비공개, preview 만 제공."
+        }
+      ],
+      "policies": [
+        "POL-CONTENT-001",
+        "POL-CONTENT-002"
+      ],
+      "contracts": [
+        "CON-I18N",
+        "CON-DESKTOP-UI"
+      ],
+      "checkpoints": [
+        "안전 가드레일(ContentSafety)이 어떤 페르소나에서도 정체성보다 먼저 주입되는지 확인",
+        "커스텀 채널 AI 페르소나가 있으면 니아 정체성을 대체하는지 확인",
+        "페르소나 전문은 비공개·preview 만 노출되는지 확인",
+        "호감도 임계값(0/10/50/150)과 상호작용당 +1 누적이 맞는지 확인"
+      ],
+      "sourceRefs": [
+        "central-server/src/main/kotlin/com/discordassistant/central/shared/NexaIdentity.kt",
+        "central-server/src/main/kotlin/com/discordassistant/central/ainetwork/domain/model/AffinityStage.kt",
+        "central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/NiaAffinityService.kt",
+        "central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt"
+      ]
+    },
+    {
+      "id": "licensing-monetization",
+      "title": "라이선스 · 수익화",
+      "range": "Domain 08",
+      "summary": "데스크톱 앱 트라이얼웨어 라이선스(ADR 0005). 기본 질문·채널 AI·풀 기여는 영구 무료이고, 서버별 페르소나·RAG·프리셋 쓰기 같은 앱 관리 프리미엄만 3개월 체험 후 $10 영구 라이선스(Paddle MoR)로 잠금 해제된다. 풀 기여는 여전히 무보상·무과금이며 프로바이더는 판매자가 아니다.",
+      "primaryActors": [
+        "서버 관리자",
+        "시스템 관리자",
+        "프로바이더"
+      ],
+      "userFlow": [
+        "앱이 durable 토큰으로 /provider/license/me 호출 → 현재 entitlement 확인",
+        "체험(TRIAL) 동안 프리미엄 기능 사용 가능",
+        "체험 만료(EXPIRED) 시 프리미엄 잠금 → 앱에서 /checkout 으로 $10 Paddle 결제",
+        "Paddle 결제 완료 webhook → LICENSED 반영(앱 재조회 시 잠금 해제)",
+        "런칭 이벤트 기간엔 풀 기여 ≥1건 자격으로 /event/claim → EVENT_FREE(평생 무료, $10와 동일 권리)"
+      ],
+      "states": [
+        {
+          "name": "TRIAL",
+          "meaning": "3개월 체험 중. 프리미엄 통과."
+        },
+        {
+          "name": "LICENSED",
+          "meaning": "$10 결제 완료. 영구 프리미엄."
+        },
+        {
+          "name": "EVENT_FREE",
+          "meaning": "런칭 이벤트 평생 무료. $10와 동일 권리."
+        },
+        {
+          "name": "EXPIRED",
+          "meaning": "체험 만료·미결제. 프리미엄 거부."
+        },
+        {
+          "name": "REVOKED",
+          "meaning": "환불/폐기. 최우선 거부(우선순위 REVOKED>EVENT_FREE>LICENSED>TRIAL>EXPIRED>FREE)."
+        }
+      ],
+      "apis": [
+        {
+          "when": "앱이 권리 확인",
+          "owner": "provider-agent → central-server",
+          "surface": "POST /provider/license/me",
+          "purpose": "durable 토큰으로 본인 entitlement(상태·권리)를 조회한다."
+        },
+        {
+          "when": "앱 내 구매",
+          "owner": "provider-agent → central-server",
+          "surface": "POST /provider/license/checkout",
+          "purpose": "$10 라이선스 Paddle checkout URL 생성(결제 비활성이면 503)."
+        },
+        {
+          "when": "결제 확정",
+          "owner": "Paddle → central-server",
+          "surface": "POST /billing/webhook/paddle",
+          "purpose": "결제 완료 webhook 으로 LICENSED 반영(custom_data 의 userId 귀속)."
+        },
+        {
+          "when": "이벤트 현황/신청",
+          "owner": "provider-agent → central-server",
+          "surface": "/provider/license/event/status · /event/claim",
+          "purpose": "런칭 이벤트 현황 조회와 평생 무료 신청(자격 미달은 outcome 사유)."
+        },
+        {
+          "when": "데스크톱 표시",
+          "owner": "desktop UI → provider-agent",
+          "surface": "GET /api/license",
+          "purpose": "앱이 entitlement·이벤트 현황을 받아 라이선스 카드에 표시한다."
+        }
+      ],
+      "exceptions": [
+        {
+          "situation": "결제 비활성",
+          "condition": "CheckoutPort 미구성",
+          "userResult": "\"결제가 현재 비활성 상태입니다\"",
+          "systemHandling": "checkout 503 반환."
+        },
+        {
+          "situation": "durable 토큰 위조/일회용",
+          "condition": "dv1. 미접두 또는 검증 실패",
+          "userResult": "라이선스 조회/구매 불가(401).",
+          "systemHandling": "401 UNAUTHORIZED."
+        },
+        {
+          "situation": "이벤트 자격 미달",
+          "condition": "이벤트 닫힘·환불 이력·풀 기여 0건",
+          "userResult": "평생 무료 신청 거부(사유 표시).",
+          "systemHandling": "claim outcome 으로 사유 반환, 부여 안 함(멱등: 이미 EVENT_FREE 면 ALREADY)."
+        }
+      ],
+      "policies": [
+        "POL-MONETIZATION-001"
+      ],
+      "contracts": [
+        "CON-I18N",
+        "CON-DESKTOP-SHAPES"
+      ],
+      "checkpoints": [
+        "기본 질문·채널 AI·풀 기여가 무료로 유지되는지(유료는 앱 관리 프리미엄만) 확인",
+        "체험 만료 후 프리미엄이 잠기고 $10 결제·이벤트로 해제되는지 확인",
+        "권리 우선순위 REVOKED>EVENT_FREE>LICENSED>TRIAL>EXPIRED>FREE 가 지켜지는지 확인",
+        "결제 비활성 시 503, 토큰 위조 시 401 로 fail-closed 되는지 확인"
+      ],
+      "sourceRefs": [
+        "docs/adr/0005-app-license-monetization.md",
+        "docs/ROADMAP_MONETIZATION_300.md",
+        "central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/LicenseController.kt",
+        "central-server/src/main/kotlin/com/discordassistant/central/licensing/domain/model/License.kt"
+      ]
+    }
+  ]
+}

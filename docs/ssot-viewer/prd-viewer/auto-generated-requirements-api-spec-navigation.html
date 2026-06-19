@@ -1,0 +1,2499 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>요구사항/API/네비게이션 뷰어</title>
+<meta name="generator" content="python3 scripts/gen_ssot_viewer.py">
+<meta name="x-updated" content="2026-06-19">
+
+<style>
+:root{
+  color-scheme:dark;
+  /* surfaces — one neutral hue, separated by elevation */
+  --bg:#0b0d12;--surface:#12151c;--surface-raised:#171b24;--inset:#0d1015;
+  /* ink — one neutral ramp, separated by lightness (title>body>secondary>hint) */
+  --ink-strong:#f4f7fc;--ink:#c8d1de;--ink-soft:#98a2b2;--ink-faint:#6a7383;
+  /* lines — subtle by default, stronger only when a group needs an edge */
+  --line:#232934;--line-strong:#333b48;
+  /* accent — single hue, varied by lightness + tint, used sparingly */
+  --accent:#8ea7ff;--accent-bright:#b7c6ff;--accent-deep:#6f86e6;
+  --accent-tint:rgba(142,167,255,.12);--accent-line:rgba(142,167,255,.40);
+  /* type scale */
+  --fs-hero:clamp(32px,4.4vw,58px);--fs-h2:26px;--fs-h3:17px;--fs-body:15px;--fs-sm:13px;--fs-xs:11px;
+  /* weight — bold for top titles, semi for cards/buttons, medium for labels, reg for body */
+  --w-bold:700;--w-semi:600;--w-medium:500;--w-reg:400;
+  /* spacing — tight inside a group, large between sections */
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;
+  --r-sm:8px;--r-md:12px;--r-lg:16px;
+  --shadow:0 18px 60px rgba(0,0,0,.34);
+  --font:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Segoe UI",sans-serif;
+  --mono:"SFMono-Regular","Cascadia Code","Menlo",monospace;
+}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:var(--fs-body);font-weight:var(--w-reg);line-height:1.6}
+a{color:inherit}
+
+/* top bar */
+.topbar{position:sticky;top:0;z-index:50;display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;padding:12px 24px;background:rgba(11,13,18,.92);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+.topbar-title{display:flex;gap:12px;align-items:center}
+.mark{width:34px;height:34px;border-radius:var(--r-sm);display:grid;place-items:center;border:1px solid var(--accent-line);color:var(--accent);font-weight:var(--w-bold);letter-spacing:-.06em;background:var(--inset)}
+.topbar strong{display:block;font-size:14px;font-weight:var(--w-semi);color:var(--ink-strong)}
+.topbar small{display:block;font-size:var(--fs-xs);color:var(--ink-faint)}
+.topbar-links{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.topbar-links a{font-size:12px;font-weight:var(--w-medium);color:var(--ink-soft);text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:6px 11px}
+.topbar-links a:hover{border-color:var(--accent-line);color:var(--ink-strong);background:var(--accent-tint)}
+.pill-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+
+/* chips & pills — neutral and receding by default; accent only where it earns it */
+.chip,.mini-chip,.source-chip,.status-chip,.callout-chip,.stack-chip,.count-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;border:1px solid var(--line);background:transparent;padding:4px 10px;color:var(--ink-soft);font-size:var(--fs-xs);font-weight:var(--w-medium);line-height:1.4}
+.count-pill{color:var(--accent);border-color:var(--accent-line);background:var(--accent-tint);font-variant-numeric:tabular-nums}
+.source-chip{font-family:var(--mono);font-size:10px;border-radius:7px;color:var(--ink-faint)}
+.mini-chip{font-size:10px}
+.stack-chip{color:var(--ink-soft)}
+.callout-chip{border-color:var(--accent-line);background:var(--accent-tint);color:var(--ink-strong)}
+/* status — distinguished by a leading mark + lightness, not by extra colors */
+.status-chip{margin:2px;color:var(--ink)}
+.status-chip::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ink-soft);flex:none}
+.status-chip.alt::before{background:transparent;border:1px solid var(--ink-soft)}
+.status-chip.warn{color:var(--accent-bright);border-color:var(--accent-line)}
+.status-chip.warn::before{background:var(--accent)}
+
+/* layout shells */
+.hero,.nav-section,.footer{width:min(1440px,calc(100vw - 48px));margin:var(--s6) auto}
+.hero{padding:36px;border:1px solid var(--line);background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow)}
+.nav-section{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:28px;box-shadow:0 14px 44px rgba(0,0,0,.22)}
+
+/* labels recede: muted, medium weight, tracked — they sit under the title, not over it */
+.section-kicker,.eyebrow{display:inline-block;letter-spacing:.14em;text-transform:uppercase;font-size:var(--fs-xs);font-weight:var(--w-medium);color:var(--ink-faint)}
+.eyebrow{margin:18px 0 var(--s2)}
+.generated-note{display:inline-block;letter-spacing:.12em;text-transform:uppercase;font-size:10px;font-weight:var(--w-medium);color:var(--ink-faint);background:var(--inset);border:1px solid var(--line);border-radius:999px;padding:4px 11px}
+.hero h1{max-width:980px;margin:14px 0 0;font-size:var(--fs-hero);font-weight:var(--w-bold);line-height:1.04;letter-spacing:-.055em;color:var(--ink-strong)}
+.hero-lead{max-width:960px;margin:var(--s4) 0 0;color:var(--ink-soft);font-size:18px}
+.hero-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:var(--s3);margin-top:var(--s5)}
+.hero-card,.panel,.flow-panel,.wide-details,.generated-list{border:1px solid var(--line);background:var(--surface-raised);border-radius:var(--r-md);padding:18px}
+.hero-card p{margin:var(--s2) 0;color:var(--ink)}
+.hero-card ul{margin:var(--s2) 0 0;padding-left:18px;color:var(--ink)}
+.mission{font-size:16px;font-weight:var(--w-medium);color:var(--ink-strong)!important}
+/* the "what it is NOT" card reads as negative space via a stronger edge + dashed markers, no red */
+.hero-card.danger{border-color:var(--line-strong)}
+.hero-card.danger ul{list-style:none;padding-left:0}
+.hero-card.danger li{position:relative;padding-left:18px;color:var(--ink-soft);margin:6px 0}
+.hero-card.danger li::before{content:"\2715";position:absolute;left:0;color:var(--ink-faint);font-size:11px;top:2px}
+
+/* toolbar — primary action is filled, the rest recede to outline/text */
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:var(--s5)}
+.search-box{flex:1;min-width:280px;display:flex;gap:10px;align-items:center;border:1px solid var(--line);background:var(--inset);border-radius:var(--r-md);padding:10px 14px;color:var(--ink-faint);font-size:var(--fs-xs);font-weight:var(--w-medium);text-transform:uppercase;letter-spacing:.08em}
+.search-box input{flex:1;min-width:120px;border:0;outline:0;background:transparent;color:var(--ink-strong);font:inherit;text-transform:none;letter-spacing:0;font-weight:var(--w-reg)}
+button{border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:var(--r-sm);padding:9px 14px;font-size:var(--fs-sm);font-weight:var(--w-medium);cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+button:hover{border-color:var(--line-strong);color:var(--ink-strong)}
+#expandAll{background:var(--accent);border-color:var(--accent);color:#0b0d12;font-weight:var(--w-semi)}
+#expandAll:hover{background:var(--accent-deep);border-color:var(--accent-deep);color:#0b0d12}
+
+/* section heads — title is the only loud element; supporting copy is muted */
+.section-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;margin-bottom:var(--s5)}
+.section-head h2{font-size:var(--fs-h2);font-weight:var(--w-bold);letter-spacing:-.04em;color:var(--ink-strong);margin:var(--s1) 0}
+.section-head p{margin:0;color:var(--ink-soft);max-width:860px}
+
+/* cards share one surface; the title carries weight, the body sits lighter */
+.story-strip{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:var(--s3)}
+.story-card,.screen-card,.policy-card,.mis-card,.component-card,.domain-summary-card,.domain-detail-card{border:1px solid var(--line);background:var(--surface-raised);border-radius:var(--r-md);padding:16px;min-width:0}
+.story-card{display:flex;flex-direction:column;gap:var(--s3)}
+.story-visual{height:112px;border-radius:var(--r-md);background:var(--inset);border:1px solid var(--line);display:grid;place-items:center;position:relative}
+.story-number{position:absolute;left:12px;top:10px;font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:var(--w-bold)}
+.story-icon{font-size:30px;color:var(--ink-faint)}
+.story-connector{display:none}
+.meta-line{display:flex;justify-content:space-between;gap:8px;color:var(--ink-faint);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.07em;font-weight:var(--w-medium)}
+.story-card h3,.screen-card h3,.policy-card h3,.mis-card h3,.component-card h3{margin:var(--s2) 0;font-size:var(--fs-h3);font-weight:var(--w-semi);letter-spacing:-.02em;color:var(--ink-strong)}
+.story-card p,.screen-card p,.policy-card p,.mis-card p,.component-card p{color:var(--ink);margin:0 0 var(--s3)}
+.source-details{margin-top:var(--s3)}
+.source-details summary,.wide-details summary{cursor:pointer;color:var(--ink);font-weight:var(--w-semi)}
+.source-details summary:hover,.wide-details summary:hover{color:var(--ink-strong)}
+.source-details .source-chip{margin:var(--s2) 4px 0 0}
+
+/* flow steps — a row of equal cards, the arrow is a faint connector */
+.flow-panel{margin-top:var(--s4)}
+.flow-steps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:var(--s2);counter-reset:flow;margin:var(--s3) 0 0;padding:0;list-style:none}
+.flow-steps li{border:1px solid var(--line);background:var(--inset);border-radius:var(--r-md);padding:14px;position:relative}
+.flow-steps li:after{content:"\2192";position:absolute;right:-12px;top:50%;transform:translateY(-50%);color:var(--ink-faint);font-weight:var(--w-bold)}
+.flow-steps li:last-child:after{display:none}
+.flow-steps strong{display:block;font-weight:var(--w-semi);color:var(--ink-strong)}
+.flow-steps span{display:block;color:var(--ink-soft);font-size:var(--fs-sm);margin-top:var(--s1)}
+
+/* domain panels */
+.domain-grid{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:var(--s3)}
+.panel h3{margin:0 0 var(--s3);font-size:var(--fs-h3);font-weight:var(--w-semi);color:var(--ink-strong)}
+.panel h4,.screen-card h4,.domain-summary-card h3,.domain-detail-card h3{margin:var(--s4) 0 var(--s1);color:var(--ink-soft);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.07em;font-weight:var(--w-medium)}
+.state-map{font-family:var(--mono);display:grid;gap:var(--s2);place-items:center}
+.state-node,.state-row span{border:1px solid var(--line);background:var(--inset);border-radius:var(--r-sm);padding:9px 13px;color:var(--ink);text-align:center}
+.state-node.done{border-color:var(--accent-line);color:var(--accent-bright);background:var(--accent-tint)}
+.state-row{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s2);width:100%}
+.arrow{color:var(--ink-faint);font-weight:var(--w-bold)}
+.gate-list{columns:2;margin:0;padding-left:20px;color:var(--ink)}
+.note-line{border-left:3px solid var(--accent);padding-left:var(--s3);color:var(--ink)!important}
+
+/* tables */
+.nav-table{width:100%;border-collapse:collapse;margin-top:var(--s4);font-size:var(--fs-sm)}
+.nav-table th,.nav-table td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:11px 10px}
+.nav-table th{position:sticky;top:65px;background:var(--inset);color:var(--ink-faint);text-transform:uppercase;letter-spacing:.07em;font-size:var(--fs-xs);font-weight:var(--w-medium);z-index:2}
+.nav-table td{color:var(--ink)}
+.nav-table code,.generated-list code,.screen-card code,.command-stack code{font-family:var(--mono);color:var(--accent);font-size:11px;background:var(--inset);border:1px solid var(--line);border-radius:6px;padding:2px 6px;display:inline-block;margin:2px 0}
+.muted{color:var(--ink-faint);font-size:var(--fs-sm)}
+.wide-details{margin-top:var(--s4)}
+.inline-screen-link{text-decoration:none;font-weight:var(--w-semi);color:var(--ink-strong)}
+.inline-screen-link:hover{text-decoration:underline;text-decoration-color:var(--accent)}
+
+/* screen groups */
+.screen-group{margin:var(--s5) 0}
+.group-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding:12px 0 10px;margin:0 0 var(--s3)}
+.group-head h2{margin:0;font-size:21px;font-weight:var(--w-bold);letter-spacing:-.03em;color:var(--ink-strong)}
+.group-count{font-family:var(--mono);font-size:12px;color:var(--ink-soft);font-weight:var(--w-medium)}
+.group-description{margin:0 0 var(--s3);color:var(--ink-soft)}
+.screen-num{width:1%;white-space:nowrap}
+.screen-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s3);margin-top:var(--s4)}
+.state-list{display:grid;gap:6px}
+.state-list span{display:grid;gap:3px;color:var(--ink);border:1px solid var(--line);background:var(--inset);border-radius:var(--r-sm);padding:8px}
+.compact-list{margin:var(--s2) 0 0;padding-left:18px;color:var(--ink)}
+
+/* components / contracts */
+.job-grid,.component-grid,.policy-grid,.mis-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s3)}
+.component-grid{margin-bottom:18px}
+.stack-chip{margin-bottom:var(--s2)}
+.block-title{margin:var(--s6) 0 var(--s1);font-size:var(--fs-h3);font-weight:var(--w-semi);color:var(--ink-strong)}
+.block-note{margin:0;color:var(--ink-soft);font-size:var(--fs-sm)}
+.contract-table td:nth-child(3){max-width:320px}
+.command-stack{display:grid;gap:var(--s1)}
+
+/* domain groups — the summary spine is the one place a left accent earns its keep */
+.domain-groups-section{background:var(--surface)}
+.domain-group{margin:var(--s5) 0 0}
+.domain-row{display:grid;grid-template-columns:340px minmax(0,1fr);gap:var(--s3)}
+.domain-summary-card{position:sticky;top:86px;align-self:start;border-left:3px solid var(--accent)}
+.domain-summary-card p,.domain-detail-card p{margin:0;color:var(--ink)}
+.chip-block{display:flex;gap:6px;flex-wrap:wrap}
+.domain-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2);counter-reset:domain-flow;margin:var(--s2) 0 18px;padding:0;list-style:none}
+.domain-flow li{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--inset);padding:10px 12px;color:var(--ink)}
+.domain-flow li:before{counter-increment:domain-flow;content:counter(domain-flow,decimal-leading-zero);display:block;font-family:var(--mono);font-size:10px;color:var(--accent);font-weight:var(--w-bold);margin-bottom:3px}
+.domain-tables{display:grid;gap:var(--s3)}
+.compact-table{font-size:12px}
+.checkpoint-list li{margin-bottom:6px}
+
+/* policies — severity reads through the strength of one left edge, not through hue */
+.policy-layout{display:grid;grid-template-columns:320px 1fr;gap:var(--s3)}
+.order-panel ol{margin:0;padding-left:22px;color:var(--ink)}
+.policy-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.policy-card{border-left:3px solid var(--line-strong)}
+.policy-card.severity-blocker{border-left-color:var(--accent)}
+.policy-card.severity-high{border-left-color:var(--ink-soft)}
+.policy-card .meta-line span:last-child{color:var(--ink-soft)}
+.policy-card.severity-blocker .meta-line span:last-child{color:var(--accent-bright)}
+.mis-grid{margin-top:var(--s4);grid-template-columns:repeat(3,minmax(0,1fr))}
+
+/* agent context */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
+.generated-list ul{display:grid;gap:var(--s3);margin:0;padding-left:18px}
+.generated-list li{color:var(--ink)}
+.generated-list span{display:block;color:var(--ink-soft);font-size:var(--fs-sm);margin:var(--s1) 0}
+
+.footer{color:var(--ink-faint);display:flex;justify-content:space-between;gap:16px;align-items:center;border-top:1px solid var(--line);padding:22px 0 46px}
+.footer strong{color:var(--ink)}
+.footer code{color:var(--accent);font-family:var(--mono)}
+[hidden]{display:none!important}
+
+@media (max-width:1180px){.topbar{grid-template-columns:1fr}.topbar-links,.pill-row{justify-content:flex-start}.hero-grid,.domain-grid,.policy-layout,.two-col,.domain-row{grid-template-columns:1fr}.domain-summary-card{position:static}.story-strip,.flow-steps,.job-grid,.component-grid,.policy-grid,.mis-grid,.domain-flow,.screen-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.flow-steps li:after{display:none}}
+@media (max-width:720px){.hero,.nav-section,.footer{width:calc(100vw - 24px);padding:20px}.story-strip,.flow-steps,.job-grid,.component-grid,.policy-grid,.mis-grid,.domain-flow,.screen-card-grid{grid-template-columns:1fr}.topbar{padding:10px 12px}.topbar-links{display:none}.hero h1{font-size:34px}.nav-table{display:block;overflow-x:auto}.state-row{grid-template-columns:1fr}.group-head{display:block}.footer{display:block}}
+</style>
+
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-title">
+    <span class="mark">NX</span>
+    <div>
+      <strong>요구사항/API/네비게이션 뷰어</strong>
+      <small>Generated from ai-context/*.json</small>
+    </div>
+  </div>
+  <nav class="topbar-links" aria-label="문서 섹션">
+    <a href="#story">사용자 흐름</a>
+    <a href="#domain">도메인</a>
+    <a href="#navigation">네비게이션</a>
+    <a href="#contracts">API/계약</a>
+    <a href="#domain-groups">도메인별</a>
+    <a href="#policies">정책</a>
+  </nav>
+  <div class="pill-row">
+    <span class="count-pill">Actors 4</span>
+    <span class="count-pill">Screens 22</span>
+    <span class="count-pill">Transitions 20</span>
+    <span class="count-pill">Domains 8</span>
+    <span class="count-pill">Invariants 5</span>
+    <span class="count-pill">Policies 8</span>
+    <span class="count-pill">Contracts 6</span>
+  </div>
+</header>
+<section class="hero" data-search="1 2026-06-19 nexa / discord assistant provider pool 디스코드 서버 운영자가 채널별 ai 도우미를 붙이고, 중앙 서버가 정책·지식·프리셋·라우팅을 관리하며, 로컬 provider는 품질 주력이 아니라 저비용/배경/커뮤니티 용량 티어로 보태는 시스템. nexa의 핵심은 “로컬 ai가 최고 답변을 한다”가 아니다. 핵심은 디스코드 서버에 ai 운영 레이어를 붙여 채널 정책, 지식공간, 프리셋, 안전 제한, 품질 피드백을 관리하고, 로컬 ai는 낮은 위험의 보조 작업이나 커뮤니티 기여 용량이 필요할 때만 활용하는 것이다. 일반 유저는 provider pc나 모델 서버를 몰라도 discord /질문와 채널 ai로 질문한다. 서버 관리자는 채널·역할·프리셋·지식공간·안전 리포트·provider 승인 정책을 운영한다. 중앙 서버는 정책, 지식 컨텍스트, 라우팅, 세션, 관측성, discord 응답을 책임진다. 로컬 provider는 고품질 답변 보장이 아니라 저비용/배경/낮은 위험 작업을 보태는 선택적 용량 티어다. provider는 자기 pc 자원을 명시적으로 기여하며 언제든 중지할 수 있다. 로컬 llm만으로 상용 frontier 모델 수준의 답변 품질을 보장하는 것 판매자/구매자/가격표/수수료/정산/프로바이더 수익 모델 여러 pc의 gpu/cpu를 합쳐 하나의 거대한 모델을 실행하는 분산 추론 provider의 동의·한도·가용성을 우회하는 품질 향상 사용자가 provider pc에 직접 접속하거나 임의 파일/쉘/url을 실행하는 기능 user 일반 유저 /질문로 질문하고 답변을 받는다. provider pc를 직접 선택하거나 접속할 수 없다. 정책 거부를 클라우드 폴백으로 우회할 수 없다. admin 서버 관리자 서버의 ai 정책, 채널 ai, provider 승인, 프리셋, 지식공간, 안전 조치를 관리한다. nexa 강제 안전 가드레일을 제거할 수 없다. provider 개인 한도와 중지 의사를 우회할 수 없다. provider 프로바이더 자기 pc의 ollama/comfyui 자원을 커뮤니티에 기여한다. 토큰이 묶이지 않은 다른 서버 질문을 처리할 수 없다. 자기 로컬 로그에 사용자 프롬프트 원문을 저장하면 안 된다. operator 시스템 관리자 central-server, 배포, discord 봇, 결제/라이선스, 운영 보안과 장애 대응을 관리한다. 운영에서 central_dev_enabled를 켜면 안 된다. 토큰/api 키를 커밋하면 안 된다. central-server central-server kotlin/spring boot/jda discord 명령, provider pool, 정책, 라우팅, 세션, 대시보드, 관측성, 라이선스, 배포 단위를 담당한다. provider-agent provider-agent python/aiohttp provider pc에서 로컬 ui를 제공하고, 중앙 서버와 outbound 연결로 ollama/comfyui 요청을 처리한다. desktop-prototype prototypes/desktop html/css/js prototype provider agent 데스크톱 ui의 ssot다. 실 webui_assets는 여기서 sync된다. readme.md:1-28 docs/adr/0003-community-provider-pool.md:16-47 docs/adr/0004-kotlin-spring-central-server.md:28-35 agents.md discord assistant / nexa nexa는 디스코드 서버에 ai 운영 레이어를 붙이는 서비스다 서버 관리자가 봇을 추가하고 채널별 ai 성격·지식·정책을 정한다. 멤버는 discord에서 /질문로 질문하고, 로컬 provider는 품질 주력이 아니라 저비용/배경/커뮤니티 용량이 필요할 때 보조한다. 근거: readme, adr 0003, adr 0004, ai-context/product.json 사용자가 실제로 겪는 흐름 api 이름 말고, 화면과 행동으로 보면 이렇게 움직인다. add-bot 01 디코 서버에 봇 추가 서버 관리자 discord-install 관리자가 nexa 봇을 자기 discord 서버에 초대한다. 이 순간 서버에는 ai 풀을 운영할 입구가 생긴다. 서버 단위로 정책을 관리한다 봇 권한과 채널 접근이 필요하다 readme.md:39-48 central-server/docs/go_live.md setup-channel 02 ai를 쓸 채널과 성격을 정한다 서버 관리자 channel-policy 관리자는 어느 채널에서 ai를 쓸지, 어떤 말투/프리셋/지식공간을 붙일지 정한다. 서버마다 다른 ai 캐릭터와 운영 규칙을 가질 수 있다. 채널 ai 프리셋 지식공간 안전 정책 channelaicustomizationcontroller.kt presetregistrycontroller.kt knowledgeingestioncontroller.kt provider-join 03 멤버가 남는 pc 자원을 보조 용량으로 기여한다 프로바이더 provider-laptop 멤버는 provider agent를 설치하고, 자기 pc의 ollama/comfyui를 서버 ai 풀에 연결한다. 이 용량은 고품질 주력 모델이 아니라 낮은 위험 작업, 배경 처리, 커뮤니티 실험, 무료/저비용 fallback을 보태는 역할이다. 보조 용량 낮은 위험 작업 일일 한도 언제든 중지 readme.md:16-19 provideragentsynccontroller.kt:30-65 docs/adr/0003-community-provider-pool.md:48-55 ask-discord 04 유저는 discord에서 /질문만 친다 일반 유저 ask-chat 일반 유저는 모델 서버나 api를 몰라도 된다. discord 채널에서 /질문 질문을 입력하면 nexa가 뒤의 복잡한 라우팅을 처리한다. /질문 모델 선택 웹검색 옵션 응답 모드 askcommandhandler.kt:113-171 readme.md:10-18 route-safely 05 nexa가 작업 성격에 맞는 실행 경로를 고른다 central-server router 중앙 서버는 채널 정책, 역할, 지식공간, 작업 위험도, 모델 요구 수준, provider 온라인 상태와 남은 한도를 보고 실행 경로를 고른다. 품질이 중요한 질문은 로컬 ai를 무리하게 쓰지 않고, 로컬은 적합한 작업에만 제한적으로 시도한다. 작업 적합도 정책 검사 provider 보호 fallback docs/adr/0003-community-provider-pool.md:38-47 docs/provider_safety_policy.md:58-80 answer-back 06 답변은 다시 discord로 온다 nexa 봇 answer-chat 선택된 실행 경로가 답을 만들고, nexa 봇이 discord 채널에 답변을 돌려준다. 사용자는 어떤 모델이 뒤에서 돌았는지 몰라도 되지만, 운영자는 품질 피드백과 실패 기록으로 라우팅을 개선한다. 품질 피드백 출처 표시 실패 기록 라우팅 개선 askcommandhandler.kt:145-170 readme.md:97-101 가장 중요한 흐름: /질문 한 번 유저 discord에서 질문 중앙 서버 쿨다운·채널 정책·모델 선택 라우터 작업 위험도·품질 요구·provider 한도 기준으로 경로 선택 로컬 provider 적합한 저위험/저비용 작업만 제한 시도 폴백 품질/가용성 필요 시 클라우드 또는 거부/재시도 discord 답변·출처·피드백 버튼 이 서비스가 아닌 것 로컬 ai 품질을 주력으로 파는 서비스가 아님 로컬 모델은 대부분 상용 frontier 모델보다 약하다. 그래서 nexa는 로컬 ai 자체가 아니라 discord 서버용 ai 운영, 정책, 지식, 프리셋, 품질 피드백을 제품 중심으로 둔다. ai 판매 마켓이 아님 provider는 판매자가 아니라 커뮤니티에 감당 가능한 만큼 기여하는 사람이다. 여러 pc를 합쳐 큰 모델을 돌리는 게 아님 성능을 합치는 분산 추론이 아니라, 가능한 provider 중 안전하게 하나를 고르는 라우팅이다. 남의 pc에 직접 접속하는 앱이 아님 agent는 outbound 연결만 쓰고, 중앙 서버 요청 외 임의 파일/쉘/url 실행을 허용하지 않는다. 니아가 유료·별도 계정 캐릭터가 아님 니아는 nexa의 기본 ai 정체성이다. 호감도는 관계 표현 장치일 뿐 xp·리더보드·과금이 아니고, 서버가 자기 채널 ai 페르소나를 만들면 그 성격으로 대체된다(안전 가드레일은 항상 우선). 유료 구독 서비스가 아님 기본 질문·채널 ai·provider 풀 기여는 영구 무료다. 서버별 페르소나·rag·프리셋 쓰기 같은 앱 관리 프리미엄만 3개월 체험 후 $10 영구 라이선스로 열린다(구독 아님, adr 0005). discord assistant / nexa nexa는 디스코드 서버에 ai 운영 레이어를 붙이는 서비스다 서버 관리자가 봇을 추가하고 채널별 ai 성격·지식·정책을 정한다. 멤버는 discord에서 /질문로 질문하고, 로컬 provider는 품질 주력이 아니라 저비용/배경/커뮤니티 용량이 필요할 때 보조한다. 근거: readme, adr 0003, adr 0004, ai-context/product.json">
+  <div class="generated-note">AUTO-GENERATED · 직접 수정 금지 · 수정은 ai-context JSON에서</div>
+  <p class="eyebrow">Discord Assistant / NEXA</p>
+  <h1>NEXA는 디스코드 서버에 AI 운영 레이어를 붙이는 서비스다</h1>
+  <p class="hero-lead">서버 관리자가 봇을 추가하고 채널별 AI 성격·지식·정책을 정한다. 멤버는 Discord에서 /질문로 질문하고, 로컬 Provider는 품질 주력이 아니라 저비용/배경/커뮤니티 용량이 필요할 때 보조한다.</p>
+  <div class="hero-grid">
+    <article class="hero-card story-card-main">
+      <span class="section-kicker">1. 이 서비스는 무엇인가</span>
+      <p>NEXA의 핵심은 “로컬 AI가 최고 답변을 한다”가 아니다. 핵심은 디스코드 서버에 AI 운영 레이어를 붙여 채널 정책, 지식공간, 프리셋, 안전 제한, 품질 피드백을 관리하고, 로컬 AI는 낮은 위험의 보조 작업이나 커뮤니티 기여 용량이 필요할 때만 활용하는 것이다.</p>
+      <p class="mission">디스코드 서버 운영자가 채널별 AI 도우미를 붙이고, 중앙 서버가 정책·지식·프리셋·라우팅을 관리하며, 로컬 Provider는 품질 주력이 아니라 저비용/배경/커뮤니티 용량 티어로 보태는 시스템.</p>
+    </article>
+    <article class="hero-card">
+      <span class="section-kicker">사용자가 체감하는 약속</span>
+      <ul><li>일반 유저는 Provider PC나 모델 서버를 몰라도 Discord /질문와 채널 AI로 질문한다.</li><li>서버 관리자는 채널·역할·프리셋·지식공간·안전 리포트·Provider 승인 정책을 운영한다.</li><li>중앙 서버는 정책, 지식 컨텍스트, 라우팅, 세션, 관측성, Discord 응답을 책임진다.</li><li>로컬 Provider는 고품질 답변 보장이 아니라 저비용/배경/낮은 위험 작업을 보태는 선택적 용량 티어다.</li><li>Provider는 자기 PC 자원을 명시적으로 기여하며 언제든 중지할 수 있다.</li></ul>
+    </article>
+    <article class="hero-card danger">
+      <span class="section-kicker">이 서비스가 아닌 것</span>
+      <ul><li>로컬 LLM만으로 상용 frontier 모델 수준의 답변 품질을 보장하는 것</li><li>판매자/구매자/가격표/수수료/정산/프로바이더 수익 모델</li><li>여러 PC의 GPU/CPU를 합쳐 하나의 거대한 모델을 실행하는 분산 추론</li><li>Provider의 동의·한도·가용성을 우회하는 품질 향상</li><li>사용자가 Provider PC에 직접 접속하거나 임의 파일/쉘/URL을 실행하는 기능</li></ul>
+    </article>
+  </div>
+  <div class="toolbar">
+    <label class="search-box">검색 <input id="search" type="search" placeholder="예: /질문, Provider 보호, wire, 디코 서버에 봇 추가" /></label>
+    <button id="expandAll" type="button">모두 펼치기</button>
+    <button id="collapseAll" type="button">모두 접기</button>
+  </div>
+</section>
+
+
+<section id="story" class="nav-section">
+  <div class="section-head">
+    <div>
+      <span class="section-kicker">2. 사용자는 어떤 흐름을 겪는가</span>
+      <h2>사용자가 실제로 겪는 흐름</h2>
+      <p>API 이름 말고, 화면과 행동으로 보면 이렇게 움직인다.</p>
+    </div>
+  </div>
+  <div class="story-strip">
+<article class="story-card" data-search="add-bot 01 디코 서버에 봇 추가 서버 관리자 discord-install 관리자가 nexa 봇을 자기 discord 서버에 초대한다. 이 순간 서버에는 ai 풀을 운영할 입구가 생긴다. 서버 단위로 정책을 관리한다 봇 권한과 채널 접근이 필요하다 readme.md:39-48 central-server/docs/go_live.md">
+  <div class="story-visual" aria-hidden="true">
+    <span class="story-number">01</span>
+    <span class="story-icon">◆</span>
+    <span class="story-connector"></span>
+  </div>
+  <div class="story-body">
+    <div class="meta-line"><span>서버 관리자</span><span>discord-install</span></div>
+    <h3>디코 서버에 봇 추가</h3>
+    <p>관리자가 NEXA 봇을 자기 Discord 서버에 초대한다. 이 순간 서버에는 AI 풀을 운영할 입구가 생긴다.</p>
+    <div class="callouts"><span class="callout-chip">서버 단위로 정책을 관리한다</span><span class="callout-chip">봇 권한과 채널 접근이 필요하다</span></div>
+    <details class="source-details"><summary>근거 보기</summary><span class="source-chip">README.md:39-48</span><span class="source-chip">central-server/docs/GO_LIVE.md</span></details>
+  </div>
+</article>
+
+<article class="story-card" data-search="setup-channel 02 ai를 쓸 채널과 성격을 정한다 서버 관리자 channel-policy 관리자는 어느 채널에서 ai를 쓸지, 어떤 말투/프리셋/지식공간을 붙일지 정한다. 서버마다 다른 ai 캐릭터와 운영 규칙을 가질 수 있다. 채널 ai 프리셋 지식공간 안전 정책 channelaicustomizationcontroller.kt presetregistrycontroller.kt knowledgeingestioncontroller.kt">
+  <div class="story-visual" aria-hidden="true">
+    <span class="story-number">02</span>
+    <span class="story-icon">◆</span>
+    <span class="story-connector"></span>
+  </div>
+  <div class="story-body">
+    <div class="meta-line"><span>서버 관리자</span><span>channel-policy</span></div>
+    <h3>AI를 쓸 채널과 성격을 정한다</h3>
+    <p>관리자는 어느 채널에서 AI를 쓸지, 어떤 말투/프리셋/지식공간을 붙일지 정한다. 서버마다 다른 AI 캐릭터와 운영 규칙을 가질 수 있다.</p>
+    <div class="callouts"><span class="callout-chip">채널 AI</span><span class="callout-chip">프리셋</span><span class="callout-chip">지식공간</span><span class="callout-chip">안전 정책</span></div>
+    <details class="source-details"><summary>근거 보기</summary><span class="source-chip">ChannelAiCustomizationController.kt</span><span class="source-chip">PresetRegistryController.kt</span><span class="source-chip">KnowledgeIngestionController.kt</span></details>
+  </div>
+</article>
+
+<article class="story-card" data-search="provider-join 03 멤버가 남는 pc 자원을 보조 용량으로 기여한다 프로바이더 provider-laptop 멤버는 provider agent를 설치하고, 자기 pc의 ollama/comfyui를 서버 ai 풀에 연결한다. 이 용량은 고품질 주력 모델이 아니라 낮은 위험 작업, 배경 처리, 커뮤니티 실험, 무료/저비용 fallback을 보태는 역할이다. 보조 용량 낮은 위험 작업 일일 한도 언제든 중지 readme.md:16-19 provideragentsynccontroller.kt:30-65 docs/adr/0003-community-provider-pool.md:48-55">
+  <div class="story-visual" aria-hidden="true">
+    <span class="story-number">03</span>
+    <span class="story-icon">◆</span>
+    <span class="story-connector"></span>
+  </div>
+  <div class="story-body">
+    <div class="meta-line"><span>프로바이더</span><span>provider-laptop</span></div>
+    <h3>멤버가 남는 PC 자원을 보조 용량으로 기여한다</h3>
+    <p>멤버는 Provider Agent를 설치하고, 자기 PC의 Ollama/ComfyUI를 서버 AI 풀에 연결한다. 이 용량은 고품질 주력 모델이 아니라 낮은 위험 작업, 배경 처리, 커뮤니티 실험, 무료/저비용 fallback을 보태는 역할이다.</p>
+    <div class="callouts"><span class="callout-chip">보조 용량</span><span class="callout-chip">낮은 위험 작업</span><span class="callout-chip">일일 한도</span><span class="callout-chip">언제든 중지</span></div>
+    <details class="source-details"><summary>근거 보기</summary><span class="source-chip">README.md:16-19</span><span class="source-chip">ProviderAgentSyncController.kt:30-65</span><span class="source-chip">docs/adr/0003-community-provider-pool.md:48-55</span></details>
+  </div>
+</article>
+
+<article class="story-card" data-search="ask-discord 04 유저는 discord에서 /질문만 친다 일반 유저 ask-chat 일반 유저는 모델 서버나 api를 몰라도 된다. discord 채널에서 /질문 질문을 입력하면 nexa가 뒤의 복잡한 라우팅을 처리한다. /질문 모델 선택 웹검색 옵션 응답 모드 askcommandhandler.kt:113-171 readme.md:10-18">
+  <div class="story-visual" aria-hidden="true">
+    <span class="story-number">04</span>
+    <span class="story-icon">◆</span>
+    <span class="story-connector"></span>
+  </div>
+  <div class="story-body">
+    <div class="meta-line"><span>일반 유저</span><span>ask-chat</span></div>
+    <h3>유저는 Discord에서 /질문만 친다</h3>
+    <p>일반 유저는 모델 서버나 API를 몰라도 된다. Discord 채널에서 /질문 질문을 입력하면 NEXA가 뒤의 복잡한 라우팅을 처리한다.</p>
+    <div class="callouts"><span class="callout-chip">/질문</span><span class="callout-chip">모델 선택</span><span class="callout-chip">웹검색 옵션</span><span class="callout-chip">응답 모드</span></div>
+    <details class="source-details"><summary>근거 보기</summary><span class="source-chip">AskCommandHandler.kt:113-171</span><span class="source-chip">README.md:10-18</span></details>
+  </div>
+</article>
+
+<article class="story-card" data-search="route-safely 05 nexa가 작업 성격에 맞는 실행 경로를 고른다 central-server router 중앙 서버는 채널 정책, 역할, 지식공간, 작업 위험도, 모델 요구 수준, provider 온라인 상태와 남은 한도를 보고 실행 경로를 고른다. 품질이 중요한 질문은 로컬 ai를 무리하게 쓰지 않고, 로컬은 적합한 작업에만 제한적으로 시도한다. 작업 적합도 정책 검사 provider 보호 fallback docs/adr/0003-community-provider-pool.md:38-47 docs/provider_safety_policy.md:58-80">
+  <div class="story-visual" aria-hidden="true">
+    <span class="story-number">05</span>
+    <span class="story-icon">◆</span>
+    <span class="story-connector"></span>
+  </div>
+  <div class="story-body">
+    <div class="meta-line"><span>central-server</span><span>router</span></div>
+    <h3>NEXA가 작업 성격에 맞는 실행 경로를 고른다</h3>
+    <p>중앙 서버는 채널 정책, 역할, 지식공간, 작업 위험도, 모델 요구 수준, Provider 온라인 상태와 남은 한도를 보고 실행 경로를 고른다. 품질이 중요한 질문은 로컬 AI를 무리하게 쓰지 않고, 로컬은 적합한 작업에만 제한적으로 시도한다.</p>
+    <div class="callouts"><span class="callout-chip">작업 적합도</span><span class="callout-chip">정책 검사</span><span class="callout-chip">Provider 보호</span><span class="callout-chip">fallback</span></div>
+    <details class="source-details"><summary>근거 보기</summary><span class="source-chip">docs/adr/0003-community-provider-pool.md:38-47</span><span class="source-chip">docs/PROVIDER_SAFETY_POLICY.md:58-80</span></details>
+  </div>
+</article>
+
+<article class="story-card" data-search="answer-back 06 답변은 다시 discord로 온다 nexa 봇 answer-chat 선택된 실행 경로가 답을 만들고, nexa 봇이 discord 채널에 답변을 돌려준다. 사용자는 어떤 모델이 뒤에서 돌았는지 몰라도 되지만, 운영자는 품질 피드백과 실패 기록으로 라우팅을 개선한다. 품질 피드백 출처 표시 실패 기록 라우팅 개선 askcommandhandler.kt:145-170 readme.md:97-101">
+  <div class="story-visual" aria-hidden="true">
+    <span class="story-number">06</span>
+    <span class="story-icon">◆</span>
+    <span class="story-connector"></span>
+  </div>
+  <div class="story-body">
+    <div class="meta-line"><span>NEXA 봇</span><span>answer-chat</span></div>
+    <h3>답변은 다시 Discord로 온다</h3>
+    <p>선택된 실행 경로가 답을 만들고, NEXA 봇이 Discord 채널에 답변을 돌려준다. 사용자는 어떤 모델이 뒤에서 돌았는지 몰라도 되지만, 운영자는 품질 피드백과 실패 기록으로 라우팅을 개선한다.</p>
+    <div class="callouts"><span class="callout-chip">품질 피드백</span><span class="callout-chip">출처 표시</span><span class="callout-chip">실패 기록</span><span class="callout-chip">라우팅 개선</span></div>
+    <details class="source-details"><summary>근거 보기</summary><span class="source-chip">AskCommandHandler.kt:145-170</span><span class="source-chip">README.md:97-101</span></details>
+  </div>
+</article>
+</div>
+  <div class="flow-panel" data-search="유저 discord에서 질문 중앙 서버 쿨다운·채널 정책·모델 선택 라우터 작업 위험도·품질 요구·provider 한도 기준으로 경로 선택 로컬 provider 적합한 저위험/저비용 작업만 제한 시도 폴백 품질/가용성 필요 시 클라우드 또는 거부/재시도 discord 답변·출처·피드백 버튼">
+    <h3>한 줄 흐름: /질문 한 번이 실제로 지나가는 길</h3>
+    <ol class="flow-steps"><li><strong>유저</strong><span>Discord에서 질문</span></li><li><strong>중앙 서버</strong><span>쿨다운·채널 정책·모델 선택</span></li><li><strong>라우터</strong><span>작업 위험도·품질 요구·Provider 한도 기준으로 경로 선택</span></li><li><strong>로컬 Provider</strong><span>적합한 저위험/저비용 작업만 제한 시도</span></li><li><strong>폴백</strong><span>품질/가용성 필요 시 클라우드 또는 거부/재시도</span></li><li><strong>Discord</strong><span>답변·출처·피드백 버튼</span></li></ol>
+  </div>
+</section>
+
+
+<section id="domain" class="nav-section">
+  <div class="section-head">
+    <div>
+      <span class="section-kicker">3. 화면/서비스 상태 지도</span>
+      <h2>도메인 모델</h2>
+      <p>서비스를 이해할 때 먼저 봐야 하는 상태, 엔티티, 불변식이다. URL 목록보다 이 지도가 먼저다.</p>
+    </div>
+  </div>
+  <div class="domain-grid">
+    <article class="panel" data-search="light standard heavy restricted unregistered pending approved online_idle online_busy paused limited offline unhealthy removed received policy_checked routing queued sent_to_provider running completed failed fallback_running rejected guild guildpolicy allowedchannel rolepolicy provider providersession providercapability providercontributionpolicy modelprofile airequest routingcandidate routingdecision requestexecution usagelog providerhealth">
+      <h3>핵심 상태</h3>
+      <h4>Provider states</h4><span class="status-chip">unregistered</span><span class="status-chip">pending</span><span class="status-chip">approved</span><span class="status-chip">online_idle</span><span class="status-chip">online_busy</span><span class="status-chip">paused</span><span class="status-chip">limited</span><span class="status-chip">offline</span><span class="status-chip">unhealthy</span><span class="status-chip">removed</span>
+      <h4>Request states</h4><span class="status-chip alt">received</span><span class="status-chip alt">policy_checked</span><span class="status-chip alt">routing</span><span class="status-chip alt">queued</span><span class="status-chip alt">sent_to_provider</span><span class="status-chip alt">running</span><span class="status-chip alt">completed</span><span class="status-chip alt">failed</span><span class="status-chip alt">fallback_running</span><span class="status-chip alt">rejected</span>
+      <h4>Model burden</h4><span class="status-chip warn">light</span><span class="status-chip warn">standard</span><span class="status-chip warn">heavy</span><span class="status-chip warn">restricted</span>
+    </article>
+    <article class="panel visual-panel" data-search="ask policy provider fallback rejected">
+      <h3>서비스 상태 지도</h3>
+      
+<div class="state-map" aria-label="서비스 상태 지도">
+  <div class="state-node">[Discord /질문]</div>
+  <div class="arrow">↓</div>
+  <div class="state-node">[정책 검사]</div>
+  <div class="arrow">↓</div>
+  <div class="state-node">[Provider 후보 필터]</div>
+  <div class="arrow split">↙ ↓ ↘</div>
+  <div class="state-row"><span>[로컬 실행]</span><span>[무료 폴백]</span><span>[정책 거부]</span></div>
+  <div class="arrow">↓</div>
+  <div class="state-node done">[Discord 답변]</div>
+</div>
+
+    </article>
+    <article class="panel" data-search="guildid channelid userid roleids prompt preferredmodel responsemode websearch weighchars guild/channel/role policy model burden online session idle/busy state remaining daily limit concurrency request size failure health fairness score provider 실패는 제한적 fallback만 허용한다. 사용자 입력/권한/정책 실패는 fallback하지 않는다.">
+      <h3>라우팅 결정 순서</h3>
+      <ol class="gate-list"><li>guild/channel/role policy</li><li>model burden</li><li>online session</li><li>idle/busy state</li><li>remaining daily limit</li><li>concurrency</li><li>request size</li><li>failure health</li><li>fairness score</li></ol>
+      <p class="note-line">Provider 실패는 제한적 fallback만 허용한다. 사용자 입력/권한/정책 실패는 fallback하지 않는다.</p>
+    </article>
+  </div>
+  <details class="wide-details" open>
+    <summary>도메인 불변식 표</summary>
+    <table class="nav-table">
+      <thead><tr><th>ID</th><th>규칙</th><th>적용</th><th>근거</th></tr></thead>
+      <tbody>
+<tr data-search="dom-guild-isolation 다른 서버의 온라인 provider는 이 서버 질문을 처리할 수 없다. 라우팅 후보는 질문 guild의 세션으로 제한한다. routing token websocket guild-removal docs/edge_case_policy.md:16 docs/edge_case_policy.md:52">
+  <td><code>DOM-GUILD-ISOLATION</code></td>
+  <td>다른 서버의 온라인 Provider는 이 서버 질문을 처리할 수 없다. 라우팅 후보는 질문 guild의 세션으로 제한한다.</td>
+  <td><span class="mini-chip">routing</span><span class="mini-chip">token</span><span class="mini-chip">websocket</span><span class="mini-chip">guild-removal</span></td>
+  <td><span class="source-chip">docs/EDGE_CASE_POLICY.md:16</span><span class="source-chip">docs/EDGE_CASE_POLICY.md:52</span></td>
+</tr>
+
+<tr data-search="dom-token-guild-bound provider 토큰은 발급 guild에 묶인 일회용 토큰이다. 서버 a 토큰으로 서버 b 세션을 만들 수 없다. provider-join websocket-auth agent-sync docs/edge_case_policy.md:19 docs/edge_case_policy.md:34">
+  <td><code>DOM-TOKEN-GUILD-BOUND</code></td>
+  <td>Provider 토큰은 발급 guild에 묶인 일회용 토큰이다. 서버 A 토큰으로 서버 B 세션을 만들 수 없다.</td>
+  <td><span class="mini-chip">provider-join</span><span class="mini-chip">websocket-auth</span><span class="mini-chip">agent-sync</span></td>
+  <td><span class="source-chip">docs/EDGE_CASE_POLICY.md:19</span><span class="source-chip">docs/EDGE_CASE_POLICY.md:34</span></td>
+</tr>
+
+<tr data-search="dom-contribution-persistence 한 번이라도 기여한 provider는 오프라인이어도 기여순위에 영구 표시된다. 봇 제거/멤버 이탈은 등록을 정리하되 기여 로그는 삭제하지 않는다. guild-removal ranking usage-log docs/edge_case_policy.md:18 docs/edge_case_policy.md:33 docs/edge_case_policy.md:59">
+  <td><code>DOM-CONTRIBUTION-PERSISTENCE</code></td>
+  <td>한 번이라도 기여한 Provider는 오프라인이어도 기여순위에 영구 표시된다. 봇 제거/멤버 이탈은 등록을 정리하되 기여 로그는 삭제하지 않는다.</td>
+  <td><span class="mini-chip">guild-removal</span><span class="mini-chip">ranking</span><span class="mini-chip">usage-log</span></td>
+  <td><span class="source-chip">docs/EDGE_CASE_POLICY.md:18</span><span class="source-chip">docs/EDGE_CASE_POLICY.md:33</span><span class="source-chip">docs/EDGE_CASE_POLICY.md:59</span></td>
+</tr>
+
+<tr data-search="dom-local-first-cloud-fallback /질문는 로컬 provider가 있으면 먼저 로컬을 시도하고, 완료되지 않으면 무료 클라우드 모델로 폴백한다. 단 정책 거부는 폴백으로 우회하지 않는다. ask routing cloud-fallback askcommandhandler.kt:145-170">
+  <td><code>DOM-LOCAL-FIRST-CLOUD-FALLBACK</code></td>
+  <td>/질문는 로컬 Provider가 있으면 먼저 로컬을 시도하고, 완료되지 않으면 무료 클라우드 모델로 폴백한다. 단 정책 거부는 폴백으로 우회하지 않는다.</td>
+  <td><span class="mini-chip">ask</span><span class="mini-chip">routing</span><span class="mini-chip">cloud-fallback</span></td>
+  <td><span class="source-chip">AskCommandHandler.kt:145-170</span></td>
+</tr>
+
+<tr data-search="dom-wire-ssot central-server와 provider-agent의 websocket frame type, protocol version, option key는 protocol/wire-contract.json에서 생성한다. 생성본 직접 편집 금지. wire central-server provider-agent protocol/wire-contract.json agents.md">
+  <td><code>DOM-WIRE-SSOT</code></td>
+  <td>central-server와 provider-agent의 WebSocket frame type, protocol version, option key는 protocol/wire-contract.json에서 생성한다. 생성본 직접 편집 금지.</td>
+  <td><span class="mini-chip">wire</span><span class="mini-chip">central-server</span><span class="mini-chip">provider-agent</span></td>
+  <td><span class="source-chip">protocol/wire-contract.json</span><span class="source-chip">AGENTS.md</span></td>
+</tr>
+</tbody>
+    </table>
+  </details>
+</section>
+
+
+<section id="navigation" class="nav-section">
+  <div class="section-head">
+    <div>
+      <span class="section-kicker">앱 네비게이션</span>
+      <h2>화면 기준 네비게이션</h2>
+      <p>네비게이션 SSOT는 surfaceGroups, screens, transitions 세 가지만 소유한다. 화면에서 화면으로 이어지는 조건을 표로 본다.</p>
+    </div>
+  </div>
+  
+<section class="screen-group" data-search="discord discord 사용자 화면 01-09 서버 관리자와 일반 유저가 discord 안에서 보는 봇 초대, /질문, 답변, 거부, 피드백 표면이다. discord-install ask-command request-pending answer-message rejection-message feedback-action nia-affinity">
+  <div class="group-head"><h2>Discord 사용자 화면</h2><span class="group-count">screens 01-09</span></div>
+  <p class="group-description">서버 관리자와 일반 유저가 Discord 안에서 보는 봇 초대, /질문, 답변, 거부, 피드백 표면이다.</p>
+  <table class="nav-table screen-table">
+    <thead><tr><th>No</th><th>화면</th><th>Entry/API</th><th>목적</th><th>상태</th><th>정책</th></tr></thead>
+    <tbody>
+<tr data-search="discord discord 사용자 화면 01-09 서버 관리자와 일반 유저가 discord 안에서 보는 봇 초대, /질문, 답변, 거부, 피드백 표면이다. discord-install ask-command request-pending answer-message rejection-message feedback-action nia-affinity discord-install 01 봇 초대 / 설치 discord discord oauth / 서버 설정 discord bot invite url guild-onboarding 서버 관리자가 nexa 봇을 discord 서버에 추가하고 권한/채널 접근을 부여한다. not_installed 서버에 봇이 없어 ai 기능이 시작되지 않는다. permission_review 초대 권한과 채널 접근을 확인한다. installed 서버에 봇이 추가되어 대시보드 설정으로 넘어갈 수 있다. 봇 초대 링크 열기 서버 선택 권한 승인 discord oauth central-server docs/go_live pol-content-001 pol-privacy-001 readme.md:39-48 central-server/docs/go_live.md">
+  <td class="screen-num"><code>01</code></td>
+  <td><a class="inline-screen-link" href="#screen-discord-install"><strong>봇 초대 / 설치</strong></a><br><span class="muted">Discord OAuth / 서버 설정</span></td>
+  <td><code>Discord bot invite URL</code></td>
+  <td>서버 관리자가 NEXA 봇을 Discord 서버에 추가하고 권한/채널 접근을 부여한다.</td>
+  <td><span class="status-chip">not_installed</span><span class="status-chip">permission_review</span><span class="status-chip">installed</span></td>
+  <td><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-PRIVACY-001</span></td>
+</tr>
+
+<tr data-search="discord discord 사용자 화면 01-09 서버 관리자와 일반 유저가 discord 안에서 보는 봇 초대, /질문, 답변, 거부, 피드백 표면이다. discord-install ask-command request-pending answer-message rejection-message feedback-action nia-affinity ask-command 02 /질문 명령 입력 discord discord slash command /질문 ask-routing 일반 유저가 질문, 모델 선호, 응답 모드, 웹검색 옵션을 입력하는 시작 화면이다. ready 채널에서 /질문 입력이 가능하다. cooldown 비관리자 쿨다운 때문에 제출이 제한된다. policy_blocked 채널/역할/안전 정책 때문에 제출할 수 없다. 질문 입력 옵션 선택 명령 제출 askcommandhandler pol-provider-002 pol-content-001 pol-privacy-001 askcommandhandler.kt:113-171">
+  <td class="screen-num"><code>02</code></td>
+  <td><a class="inline-screen-link" href="#screen-ask-command"><strong>/질문 명령 입력</strong></a><br><span class="muted">Discord slash command</span></td>
+  <td><code>/질문</code></td>
+  <td>일반 유저가 질문, 모델 선호, 응답 모드, 웹검색 옵션을 입력하는 시작 화면이다.</td>
+  <td><span class="status-chip">ready</span><span class="status-chip">cooldown</span><span class="status-chip">policy_blocked</span></td>
+  <td><span class="mini-chip">POL-PROVIDER-002</span><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-PRIVACY-001</span></td>
+</tr>
+
+<tr data-search="discord discord 사용자 화면 01-09 서버 관리자와 일반 유저가 discord 안에서 보는 봇 초대, /질문, 답변, 거부, 피드백 표면이다. discord-install ask-command request-pending answer-message rejection-message feedback-action nia-affinity request-pending 03 요청 처리 중 메시지 discord discord bot response deferred reply ask-routing 중앙 서버가 정책 검사와 provider/무료 폴백 라우팅을 진행 중임을 보여준다. routing provider 후보를 계산 중이다. sent_to_provider 선택된 provider pc에 요청을 보냈다. fallback_running 로컬 실패/부재로 무료 클라우드 폴백을 실행 중이다. 기다리기 requestorchestrator providerfilterpipeline wire infer/result pol-provider-001 pol-provider-002 pol-limit-001 providerfilterpipeline protocol/wire-contract.json">
+  <td class="screen-num"><code>03</code></td>
+  <td><a class="inline-screen-link" href="#screen-request-pending"><strong>요청 처리 중 메시지</strong></a><br><span class="muted">Discord bot response</span></td>
+  <td><code>deferred reply</code></td>
+  <td>중앙 서버가 정책 검사와 Provider/무료 폴백 라우팅을 진행 중임을 보여준다.</td>
+  <td><span class="status-chip">routing</span><span class="status-chip">sent_to_provider</span><span class="status-chip">fallback_running</span></td>
+  <td><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-PROVIDER-002</span><span class="mini-chip">POL-LIMIT-001</span></td>
+</tr>
+
+<tr data-search="discord discord 사용자 화면 01-09 서버 관리자와 일반 유저가 discord 안에서 보는 봇 초대, /질문, 답변, 거부, 피드백 표면이다. discord-install ask-command request-pending answer-message rejection-message feedback-action nia-affinity answer-message 04 답변 메시지 discord discord bot response channel reply ask-routing provider 또는 무료 클라우드가 만든 답변, 출처, 사용량/품질 피드백 진입점을 discord에 표시한다. local_answer 로컬 provider가 답변했다. cloud_fallback_answer 무료 클라우드 폴백이 답변했다. partial_or_failed 실행 일부 실패 또는 최종 실패 상태다. 답변 읽기 출처 확인 피드백 누르기 askcommandhandler /api/ai-network/quality/* pol-privacy-001 pol-content-001 askcommandhandler.kt:145-170">
+  <td class="screen-num"><code>04</code></td>
+  <td><a class="inline-screen-link" href="#screen-answer-message"><strong>답변 메시지</strong></a><br><span class="muted">Discord bot response</span></td>
+  <td><code>channel reply</code></td>
+  <td>Provider 또는 무료 클라우드가 만든 답변, 출처, 사용량/품질 피드백 진입점을 Discord에 표시한다.</td>
+  <td><span class="status-chip">local_answer</span><span class="status-chip">cloud_fallback_answer</span><span class="status-chip">partial_or_failed</span></td>
+  <td><span class="mini-chip">POL-PRIVACY-001</span><span class="mini-chip">POL-CONTENT-001</span></td>
+</tr>
+
+<tr data-search="discord discord 사용자 화면 01-09 서버 관리자와 일반 유저가 discord 안에서 보는 봇 초대, /질문, 답변, 거부, 피드백 표면이다. discord-install ask-command request-pending answer-message rejection-message feedback-action nia-affinity rejection-message 05 정책 / 한도 거부 메시지 discord discord bot response policy rejection reply safety-limits 안전, 권한, 한도, provider 보호 정책 때문에 요청을 실행하지 않을 때 이유와 다음 행동을 알려준다. safety_rejected 콘텐츠/discord/법적 red-line으로 거부한다. rate_limited 사용자 또는 provider 한도 초과다. no_provider provider 후보가 없어 제한적으로 폴백하거나 실패한다. 거부 이유 확인 나중에 재시도 관리자에게 문의 safety policy providerfilterpipeline pol-content-001 pol-provider-001 pol-limit-001 docs/nexa_safety_policy.md docs/nexa_limit_policy.md">
+  <td class="screen-num"><code>05</code></td>
+  <td><a class="inline-screen-link" href="#screen-rejection-message"><strong>정책 / 한도 거부 메시지</strong></a><br><span class="muted">Discord bot response</span></td>
+  <td><code>policy rejection reply</code></td>
+  <td>안전, 권한, 한도, Provider 보호 정책 때문에 요청을 실행하지 않을 때 이유와 다음 행동을 알려준다.</td>
+  <td><span class="status-chip">safety_rejected</span><span class="status-chip">rate_limited</span><span class="status-chip">no_provider</span></td>
+  <td><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-LIMIT-001</span></td>
+</tr>
+
+<tr data-search="discord discord 사용자 화면 01-09 서버 관리자와 일반 유저가 discord 안에서 보는 봇 초대, /질문, 답변, 거부, 피드백 표면이다. discord-install ask-command request-pending answer-message rejection-message feedback-action nia-affinity feedback-action 06 피드백 버튼 / 품질 루프 discord discord component answer feedback button ask-routing 일반 유저의 품질 피드백을 운영 대시보드와 모델 품질 리뷰로 연결한다. idle 답변 아래 피드백 액션이 보인다. submitted 피드백이 접수됐다. reviewed 운영자가 품질 피드백을 검토했다. 좋아요/싫어요 사유 입력 제출 /api/ai-network/quality/* aiqualityfeedbackcontroller pol-edge-001 aiqualityfeedbackcontroller.kt">
+  <td class="screen-num"><code>06</code></td>
+  <td><a class="inline-screen-link" href="#screen-feedback-action"><strong>피드백 버튼 / 품질 루프</strong></a><br><span class="muted">Discord component</span></td>
+  <td><code>answer feedback button</code></td>
+  <td>일반 유저의 품질 피드백을 운영 대시보드와 모델 품질 리뷰로 연결한다.</td>
+  <td><span class="status-chip">idle</span><span class="status-chip">submitted</span><span class="status-chip">reviewed</span></td>
+  <td><span class="mini-chip">POL-EDGE-001</span></td>
+</tr>
+
+<tr data-search="discord discord 사용자 화면 01-09 서버 관리자와 일반 유저가 discord 안에서 보는 봇 초대, /질문, 답변, 거부, 피드백 표면이다. discord-install ask-command request-pending answer-message rejection-message feedback-action nia-affinity nia-affinity 07 니아 호감도 discord discord bot response (ephemeral) /nia nia-identity 요청자와 니아의 개인 호감도 단계·점수·다음 단계까지 진행도를 보여준다. affinity-view 단계(낯섦/알아가는중/친근/단짝)와 점수·진행바를 ephemeral 로 표시. 내 호감도 단계·점수 확인 다음 단계까지 진행도 확인 niaaffinityservice affinitystage pol-content-001 central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/ainetworkcommandhandler.kt central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/niaaffinityservice.kt">
+  <td class="screen-num"><code>07</code></td>
+  <td><a class="inline-screen-link" href="#screen-nia-affinity"><strong>니아 호감도</strong></a><br><span class="muted">Discord bot response (ephemeral)</span></td>
+  <td><code>/nia</code></td>
+  <td>요청자와 니아의 개인 호감도 단계·점수·다음 단계까지 진행도를 보여준다.</td>
+  <td><span class="status-chip">affinity-view</span></td>
+  <td><span class="mini-chip">POL-CONTENT-001</span></td>
+</tr>
+</tbody>
+  </table>
+</section>
+
+<section class="screen-group" data-search="admin-dashboard 관리 대시보드 10-19 서버 관리자가 provider pool, 채널 ai, 프리셋, 지식공간, 품질/신고, 출시 readiness를 운영하는 웹 화면이다. dashboard-overview provider-admin channel-ai-settings preset-catalog knowledge-space quality-reports launch-readiness">
+  <div class="group-head"><h2>관리 대시보드</h2><span class="group-count">screens 10-19</span></div>
+  <p class="group-description">서버 관리자가 Provider Pool, 채널 AI, 프리셋, 지식공간, 품질/신고, 출시 readiness를 운영하는 웹 화면이다.</p>
+  <table class="nav-table screen-table">
+    <thead><tr><th>No</th><th>화면</th><th>Entry/API</th><th>목적</th><th>상태</th><th>정책</th></tr></thead>
+    <tbody>
+<tr data-search="admin-dashboard 관리 대시보드 10-19 서버 관리자가 provider pool, 채널 ai, 프리셋, 지식공간, 품질/신고, 출시 readiness를 운영하는 웹 화면이다. dashboard-overview provider-admin channel-ai-settings preset-catalog knowledge-space quality-reports launch-readiness dashboard-overview 10 ai network overview admin-dashboard web dashboard /api/ai-network/{guildid}/dashboard admin-operations 서버 ai 풀의 provider, 채널, 모델, 사용량, readiness를 요약한다. healthy ai 풀 상태가 정상이다. degraded provider 부족/실패/한도 문제가 있다. empty 아직 provider나 채널 정책이 없다. 상태 확인 provider/채널 설정으로 이동 readiness 확인 ainetworkdashboardcontroller dashboardcontroller pol-provider-001 pol-edge-001 ainetworkdashboardcontroller.kt dashboardcontroller.kt">
+  <td class="screen-num"><code>10</code></td>
+  <td><a class="inline-screen-link" href="#screen-dashboard-overview"><strong>AI Network Overview</strong></a><br><span class="muted">Web dashboard</span></td>
+  <td><code>/api/ai-network/{guildId}/dashboard</code></td>
+  <td>서버 AI 풀의 Provider, 채널, 모델, 사용량, readiness를 요약한다.</td>
+  <td><span class="status-chip">healthy</span><span class="status-chip">degraded</span><span class="status-chip">empty</span></td>
+  <td><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-EDGE-001</span></td>
+</tr>
+
+<tr data-search="admin-dashboard 관리 대시보드 10-19 서버 관리자가 provider pool, 채널 ai, 프리셋, 지식공간, 품질/신고, 출시 readiness를 운영하는 웹 화면이다. dashboard-overview provider-admin channel-ai-settings preset-catalog knowledge-space quality-reports launch-readiness provider-admin 11 provider 관리 admin-dashboard web dashboard /api/ai-network/{guildid}/providers admin-operations 서버 관리자가 provider 승인, 차단, 상태, 기여량, 한도를 확인한다. pending 승인 대기 provider가 있다. approved_online 승인 후 온라인 상태다. blocked_or_unhealthy 차단 또는 unhealthy 상태다. 승인 차단 상태 확인 기여량 확인 provideradmincontroller pol-provider-001 pol-limit-001 provideradmincontroller.kt">
+  <td class="screen-num"><code>11</code></td>
+  <td><a class="inline-screen-link" href="#screen-provider-admin"><strong>Provider 관리</strong></a><br><span class="muted">Web dashboard</span></td>
+  <td><code>/api/ai-network/{guildId}/providers</code></td>
+  <td>서버 관리자가 Provider 승인, 차단, 상태, 기여량, 한도를 확인한다.</td>
+  <td><span class="status-chip">pending</span><span class="status-chip">approved_online</span><span class="status-chip">blocked_or_unhealthy</span></td>
+  <td><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-LIMIT-001</span></td>
+</tr>
+
+<tr data-search="admin-dashboard 관리 대시보드 10-19 서버 관리자가 provider pool, 채널 ai, 프리셋, 지식공간, 품질/신고, 출시 readiness를 운영하는 웹 화면이다. dashboard-overview provider-admin channel-ai-settings preset-catalog knowledge-space quality-reports launch-readiness channel-ai-settings 12 channel ai 설정 admin-dashboard web dashboard channel-ai settings guild-onboarding 채널별 ai 사용 여부, 기본 모델, 말투, 지식공간, 안전 정책을 설정한다. disabled 채널 ai가 꺼져 있다. draft 설정 작성 중이다. active 채널 ai 정책이 적용 중이다. 채널 선택 프리셋 적용 저장 channelaicustomizationcontroller pol-content-001 pol-content-002 channelaicustomizationcontroller.kt">
+  <td class="screen-num"><code>12</code></td>
+  <td><a class="inline-screen-link" href="#screen-channel-ai-settings"><strong>Channel AI 설정</strong></a><br><span class="muted">Web dashboard</span></td>
+  <td><code>channel-ai settings</code></td>
+  <td>채널별 AI 사용 여부, 기본 모델, 말투, 지식공간, 안전 정책을 설정한다.</td>
+  <td><span class="status-chip">disabled</span><span class="status-chip">draft</span><span class="status-chip">active</span></td>
+  <td><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-CONTENT-002</span></td>
+</tr>
+
+<tr data-search="admin-dashboard 관리 대시보드 10-19 서버 관리자가 provider pool, 채널 ai, 프리셋, 지식공간, 품질/신고, 출시 readiness를 운영하는 웹 화면이다. dashboard-overview provider-admin channel-ai-settings preset-catalog knowledge-space quality-reports launch-readiness preset-catalog 13 preset catalog admin-dashboard web dashboard /api/ai-network/presets/* presets-knowledge 서버 운영 설정 프리셋을 탐색, 미리보기, 가져오기, 신고/리뷰한다. catalog 프리셋 목록을 탐색한다. import_preview 적용 전 변경점을 확인한다. reported 신고/리뷰 대상이다. 검색 미리보기 import 신고 presetregistrycontroller pol-content-001 pol-content-002 pol-monetization-001 presetregistrycontroller.kt">
+  <td class="screen-num"><code>13</code></td>
+  <td><a class="inline-screen-link" href="#screen-preset-catalog"><strong>Preset Catalog</strong></a><br><span class="muted">Web dashboard</span></td>
+  <td><code>/api/ai-network/presets/*</code></td>
+  <td>서버 운영 설정 프리셋을 탐색, 미리보기, 가져오기, 신고/리뷰한다.</td>
+  <td><span class="status-chip">catalog</span><span class="status-chip">import_preview</span><span class="status-chip">reported</span></td>
+  <td><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-CONTENT-002</span><span class="mini-chip">POL-MONETIZATION-001</span></td>
+</tr>
+
+<tr data-search="admin-dashboard 관리 대시보드 10-19 서버 관리자가 provider pool, 채널 ai, 프리셋, 지식공간, 품질/신고, 출시 readiness를 운영하는 웹 화면이다. dashboard-overview provider-admin channel-ai-settings preset-catalog knowledge-space quality-reports launch-readiness knowledge-space 14 knowledge space admin-dashboard web dashboard /api/ai-network/knowledge/* presets-knowledge 서버/채널 지식 자료를 source, index-job, search/context/eval 단위로 관리한다. empty 등록된 source가 없다. indexing 인덱싱 작업 중이다. ready 검색과 답변 컨텍스트에 사용할 수 있다. source 추가 인덱싱 검색 테스트 eval knowledgeingestioncontroller pol-privacy-001 pol-content-001 knowledgeingestioncontroller.kt">
+  <td class="screen-num"><code>14</code></td>
+  <td><a class="inline-screen-link" href="#screen-knowledge-space"><strong>Knowledge Space</strong></a><br><span class="muted">Web dashboard</span></td>
+  <td><code>/api/ai-network/knowledge/*</code></td>
+  <td>서버/채널 지식 자료를 source, index-job, search/context/eval 단위로 관리한다.</td>
+  <td><span class="status-chip">empty</span><span class="status-chip">indexing</span><span class="status-chip">ready</span></td>
+  <td><span class="mini-chip">POL-PRIVACY-001</span><span class="mini-chip">POL-CONTENT-001</span></td>
+</tr>
+
+<tr data-search="admin-dashboard 관리 대시보드 10-19 서버 관리자가 provider pool, 채널 ai, 프리셋, 지식공간, 품질/신고, 출시 readiness를 운영하는 웹 화면이다. dashboard-overview provider-admin channel-ai-settings preset-catalog knowledge-space quality-reports launch-readiness quality-reports 15 quality / reports admin-dashboard web dashboard quality/report review safety-limits 답변 품질 피드백, 신고, 안전 이슈를 운영자가 검토한다. queue 검토 대기 항목이 있다. reviewing 운영자가 처리 중이다. resolved 조치가 완료됐다. 리뷰 숨김/차단 해결 처리 aiqualityfeedbackcontroller report/review apis pol-content-001 pol-edge-001 aiqualityfeedbackcontroller.kt docs/nexa_safety_policy.md">
+  <td class="screen-num"><code>15</code></td>
+  <td><a class="inline-screen-link" href="#screen-quality-reports"><strong>Quality / Reports</strong></a><br><span class="muted">Web dashboard</span></td>
+  <td><code>quality/report review</code></td>
+  <td>답변 품질 피드백, 신고, 안전 이슈를 운영자가 검토한다.</td>
+  <td><span class="status-chip">queue</span><span class="status-chip">reviewing</span><span class="status-chip">resolved</span></td>
+  <td><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-EDGE-001</span></td>
+</tr>
+
+<tr data-search="admin-dashboard 관리 대시보드 10-19 서버 관리자가 provider pool, 채널 ai, 프리셋, 지식공간, 품질/신고, 출시 readiness를 운영하는 웹 화면이다. dashboard-overview provider-admin channel-ai-settings preset-catalog knowledge-space quality-reports launch-readiness launch-readiness 16 launch readiness admin-dashboard web dashboard launch checklist admin-operations 서버 ai 풀을 실제로 열기 전 필요한 설정, provider, 안전, 한도 체크를 확인한다. not_ready 필수 조건이 부족하다. warning 운영 위험이 남아 있다. ready 라이브 운영 가능 상태다. 체크리스트 확인 부족 항목 이동 운영 시작 dashboardcontroller pol-provider-001 pol-content-001 pol-limit-001 dashboardcontroller.kt">
+  <td class="screen-num"><code>16</code></td>
+  <td><a class="inline-screen-link" href="#screen-launch-readiness"><strong>Launch Readiness</strong></a><br><span class="muted">Web dashboard</span></td>
+  <td><code>launch checklist</code></td>
+  <td>서버 AI 풀을 실제로 열기 전 필요한 설정, Provider, 안전, 한도 체크를 확인한다.</td>
+  <td><span class="status-chip">not_ready</span><span class="status-chip">warning</span><span class="status-chip">ready</span></td>
+  <td><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-LIMIT-001</span></td>
+</tr>
+</tbody>
+  </table>
+</section>
+
+<section class="screen-group" data-search="provider-desktop provider 데스크톱 앱 20-29 프로바이더가 자기 pc에서 서버 연결, 모델, 한도, 로그, 업데이트, ollama/comfyui 상태를 보는 로컬 ui다. agent-start server-list server-detail model-list agent-logs agent-settings local-runtime-status license-premium">
+  <div class="group-head"><h2>Provider 데스크톱 앱</h2><span class="group-count">screens 20-29</span></div>
+  <p class="group-description">프로바이더가 자기 PC에서 서버 연결, 모델, 한도, 로그, 업데이트, Ollama/ComfyUI 상태를 보는 로컬 UI다.</p>
+  <table class="nav-table screen-table">
+    <thead><tr><th>No</th><th>화면</th><th>Entry/API</th><th>목적</th><th>상태</th><th>정책</th></tr></thead>
+    <tbody>
+<tr data-search="provider-desktop provider 데스크톱 앱 20-29 프로바이더가 자기 pc에서 서버 연결, 모델, 한도, 로그, 업데이트, ollama/comfyui 상태를 보는 로컬 ui다. agent-start server-list server-detail model-list agent-logs agent-settings local-runtime-status license-premium agent-start 20 provider agent 시작 / 설치 provider-desktop desktop web ui localhost app start provider-agent provider가 로컬 앱을 설치/실행하고 중앙 서버 연결 준비 상태를 본다. first_run 첫 실행과 온보딩 상태다. needs_setup ollama/토큰/서버 연결이 필요하다. ready 서버 연결 화면으로 이동 가능하다. 설치 확인 시작 토큰 등록 provider-agent webui packaging assets pol-provider-001 provider-agent/packaging/ provider-agent/src/provider_agent/webui.py">
+  <td class="screen-num"><code>20</code></td>
+  <td><a class="inline-screen-link" href="#screen-agent-start"><strong>Provider Agent 시작 / 설치</strong></a><br><span class="muted">Desktop web UI</span></td>
+  <td><code>localhost app start</code></td>
+  <td>Provider가 로컬 앱을 설치/실행하고 중앙 서버 연결 준비 상태를 본다.</td>
+  <td><span class="status-chip">first_run</span><span class="status-chip">needs_setup</span><span class="status-chip">ready</span></td>
+  <td><span class="mini-chip">POL-PROVIDER-001</span></td>
+</tr>
+
+<tr data-search="provider-desktop provider 데스크톱 앱 20-29 프로바이더가 자기 pc에서 서버 연결, 모델, 한도, 로그, 업데이트, ollama/comfyui 상태를 보는 로컬 ui다. agent-start server-list server-detail model-list agent-logs agent-settings local-runtime-status license-premium server-list 21 서버 연결 목록 provider-desktop desktop web ui /api/servers provider-agent provider가 승인된 discord 서버 목록과 연결 상태를 본다. empty 연결된 서버가 없다. syncing 중앙 서버와 durable token sync 중이다. connected 하나 이상의 서버와 연결됐다. sync 서버 선택 연결 시작 /provider/agent/sync /api/servers pol-limit-001 pol-privacy-001 provideragentsynccontroller.kt:30-65 provider-agent/src/provider_agent/webui.py">
+  <td class="screen-num"><code>21</code></td>
+  <td><a class="inline-screen-link" href="#screen-server-list"><strong>서버 연결 목록</strong></a><br><span class="muted">Desktop web UI</span></td>
+  <td><code>/api/servers</code></td>
+  <td>Provider가 승인된 Discord 서버 목록과 연결 상태를 본다.</td>
+  <td><span class="status-chip">empty</span><span class="status-chip">syncing</span><span class="status-chip">connected</span></td>
+  <td><span class="mini-chip">POL-LIMIT-001</span><span class="mini-chip">POL-PRIVACY-001</span></td>
+</tr>
+
+<tr data-search="provider-desktop provider 데스크톱 앱 20-29 프로바이더가 자기 pc에서 서버 연결, 모델, 한도, 로그, 업데이트, ollama/comfyui 상태를 보는 로컬 ui다. agent-start server-list server-detail model-list agent-logs agent-settings local-runtime-status license-premium server-detail 22 서버 상세 / 일시정지 provider-desktop desktop web ui /api/servers/{guildid} provider-agent 서버별 provider 상태, 한도, pause/resume, join token 상태를 조작한다. online_idle 요청 수신 가능하다. online_busy 현재 처리 중이다. paused_or_limited provider 의사 또는 한도 때문에 제외된다. pause resume 한도 확인 서버 제거 /api/servers/* pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py docs/nexa_limit_policy.md">
+  <td class="screen-num"><code>22</code></td>
+  <td><a class="inline-screen-link" href="#screen-server-detail"><strong>서버 상세 / 일시정지</strong></a><br><span class="muted">Desktop web UI</span></td>
+  <td><code>/api/servers/{guildId}</code></td>
+  <td>서버별 Provider 상태, 한도, pause/resume, join token 상태를 조작한다.</td>
+  <td><span class="status-chip">online_idle</span><span class="status-chip">online_busy</span><span class="status-chip">paused_or_limited</span></td>
+  <td><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-LIMIT-001</span></td>
+</tr>
+
+<tr data-search="provider-desktop provider 데스크톱 앱 20-29 프로바이더가 자기 pc에서 서버 연결, 모델, 한도, 로그, 업데이트, ollama/comfyui 상태를 보는 로컬 ui다. agent-start server-list server-detail model-list agent-logs agent-settings local-runtime-status license-premium model-list 23 모델 목록 provider-desktop desktop web ui /api/models provider-agent 로컬 ollama/comfyui 모델 상태와 부담 수준을 확인한다. no_runtime ollama/comfyui 연결이 안 됐다. available 사용 가능한 모델이 있다. restricted 무거운 모델이라 정책상 제한된다. 모델 새로고침 기본 모델 확인 runtime 설정 이동 /api/models ollama local api pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py">
+  <td class="screen-num"><code>23</code></td>
+  <td><a class="inline-screen-link" href="#screen-model-list"><strong>모델 목록</strong></a><br><span class="muted">Desktop web UI</span></td>
+  <td><code>/api/models</code></td>
+  <td>로컬 Ollama/ComfyUI 모델 상태와 부담 수준을 확인한다.</td>
+  <td><span class="status-chip">no_runtime</span><span class="status-chip">available</span><span class="status-chip">restricted</span></td>
+  <td><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-LIMIT-001</span></td>
+</tr>
+
+<tr data-search="provider-desktop provider 데스크톱 앱 20-29 프로바이더가 자기 pc에서 서버 연결, 모델, 한도, 로그, 업데이트, ollama/comfyui 상태를 보는 로컬 ui다. agent-start server-list server-detail model-list agent-logs agent-settings local-runtime-status license-premium agent-logs 24 로컬 로그 provider-desktop desktop web ui /api/logs provider-agent provider가 연결/실행/오류 로그를 보되 사용자 프롬프트 원문은 저장하지 않는다. empty 로그가 없다. streaming 새 로그가 들어온다. error 연결 또는 runtime 오류가 있다. 로그 보기 필터 복사 /api/logs pol-privacy-001 provider-agent/src/provider_agent/webui.py docs/provider_safety_policy.md:56">
+  <td class="screen-num"><code>24</code></td>
+  <td><a class="inline-screen-link" href="#screen-agent-logs"><strong>로컬 로그</strong></a><br><span class="muted">Desktop web UI</span></td>
+  <td><code>/api/logs</code></td>
+  <td>Provider가 연결/실행/오류 로그를 보되 사용자 프롬프트 원문은 저장하지 않는다.</td>
+  <td><span class="status-chip">empty</span><span class="status-chip">streaming</span><span class="status-chip">error</span></td>
+  <td><span class="mini-chip">POL-PRIVACY-001</span></td>
+</tr>
+
+<tr data-search="provider-desktop provider 데스크톱 앱 20-29 프로바이더가 자기 pc에서 서버 연결, 모델, 한도, 로그, 업데이트, ollama/comfyui 상태를 보는 로컬 ui다. agent-start server-list server-detail model-list agent-logs agent-settings local-runtime-status license-premium agent-settings 25 설정 / 업데이트 provider-desktop desktop web ui /api/settings, /api/update-* provider-agent provider 앱 설정, 업데이트, 패키징/릴리스 자산과 관련된 사용자 설정을 관리한다. current 최신 버전이다. update_available 업데이트가 있다. updating 업데이트 진행 중이다. 설정 저장 업데이트 확인 업데이트 실행 /api/settings /api/update-* packaging/assets.json pol-provider-001 packaging/assets.json provider-agent/src/provider_agent/webui.py">
+  <td class="screen-num"><code>25</code></td>
+  <td><a class="inline-screen-link" href="#screen-agent-settings"><strong>설정 / 업데이트</strong></a><br><span class="muted">Desktop web UI</span></td>
+  <td><code>/api/settings, /api/update-*</code></td>
+  <td>Provider 앱 설정, 업데이트, 패키징/릴리스 자산과 관련된 사용자 설정을 관리한다.</td>
+  <td><span class="status-chip">current</span><span class="status-chip">update_available</span><span class="status-chip">updating</span></td>
+  <td><span class="mini-chip">POL-PROVIDER-001</span></td>
+</tr>
+
+<tr data-search="provider-desktop provider 데스크톱 앱 20-29 프로바이더가 자기 pc에서 서버 연결, 모델, 한도, 로그, 업데이트, ollama/comfyui 상태를 보는 로컬 ui다. agent-start server-list server-detail model-list agent-logs agent-settings local-runtime-status license-premium local-runtime-status 26 ollama / comfyui 상태 provider-desktop desktop web ui runtime status provider-agent 로컬 ai runtime 연결 상태, 설치 안내, 실행 가능 여부를 보여준다. missing runtime이 설치되지 않았다. offline 설치됐지만 실행 중이 아니다. online provider 요청을 실행할 수 있다. 상태 확인 설치 가이드 열기 재시도 ollama local api comfyui local api pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py">
+  <td class="screen-num"><code>26</code></td>
+  <td><a class="inline-screen-link" href="#screen-local-runtime-status"><strong>Ollama / ComfyUI 상태</strong></a><br><span class="muted">Desktop web UI</span></td>
+  <td><code>runtime status</code></td>
+  <td>로컬 AI runtime 연결 상태, 설치 안내, 실행 가능 여부를 보여준다.</td>
+  <td><span class="status-chip">missing</span><span class="status-chip">offline</span><span class="status-chip">online</span></td>
+  <td><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-LIMIT-001</span></td>
+</tr>
+
+<tr data-search="provider-desktop provider 데스크톱 앱 20-29 프로바이더가 자기 pc에서 서버 연결, 모델, 한도, 로그, 업데이트, ollama/comfyui 상태를 보는 로컬 ui다. agent-start server-list server-detail model-list agent-logs agent-settings local-runtime-status license-premium license-premium 27 라이선스 · 프리미엄 provider-desktop provider 데스크톱 앱 화면 /api/license licensing-monetization 앱이 현재 라이선스 상태(체험/유료/이벤트)와 $10 구매·이벤트 신청을 보여준다. trial 체험 중 — 프리미엄 사용 가능, 남은 기간 표시. locked 체험 만료 — 프리미엄 잠금, 구매/이벤트 유도. licensed 결제·이벤트 완료 — 영구 프리미엄. 라이선스 상태 확인 $10 영구 라이선스 구매(paddle) 런칭 이벤트 평생 무료 신청 /provider/license/me /provider/license/checkout /provider/license/event/claim pol-monetization-001 docs/adr/0005-app-license-monetization.md central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/licensecontroller.kt">
+  <td class="screen-num"><code>27</code></td>
+  <td><a class="inline-screen-link" href="#screen-license-premium"><strong>라이선스 · 프리미엄</strong></a><br><span class="muted">Provider 데스크톱 앱 화면</span></td>
+  <td><code>/api/license</code></td>
+  <td>앱이 현재 라이선스 상태(체험/유료/이벤트)와 $10 구매·이벤트 신청을 보여준다.</td>
+  <td><span class="status-chip">trial</span><span class="status-chip">locked</span><span class="status-chip">licensed</span></td>
+  <td><span class="mini-chip">POL-MONETIZATION-001</span></td>
+</tr>
+</tbody>
+  </table>
+</section>
+
+  <details class="wide-details" open>
+    <summary>화면 전이 표</summary>
+    <table class="nav-table transition-table">
+      <thead><tr><th>#</th><th>From 화면/상태</th><th>Trigger</th><th>조건</th><th>To 화면/상태</th><th>시스템 처리</th></tr></thead>
+      <tbody>
+<tr data-search="install-to-overview discord-install installed 관리자가 대시보드 열기 봇 권한과 guild context 확인 dashboard-overview empty central-server가 guild ai overview를 조회한다. discord-install 01 봇 초대 / 설치 discord discord oauth / 서버 설정 discord bot invite url guild-onboarding 서버 관리자가 nexa 봇을 discord 서버에 추가하고 권한/채널 접근을 부여한다. not_installed 서버에 봇이 없어 ai 기능이 시작되지 않는다. permission_review 초대 권한과 채널 접근을 확인한다. installed 서버에 봇이 추가되어 대시보드 설정으로 넘어갈 수 있다. 봇 초대 링크 열기 서버 선택 권한 승인 discord oauth central-server docs/go_live pol-content-001 pol-privacy-001 readme.md:39-48 central-server/docs/go_live.md dashboard-overview 10 ai network overview admin-dashboard web dashboard /api/ai-network/{guildid}/dashboard admin-operations 서버 ai 풀의 provider, 채널, 모델, 사용량, readiness를 요약한다. healthy ai 풀 상태가 정상이다. degraded provider 부족/실패/한도 문제가 있다. empty 아직 provider나 채널 정책이 없다. 상태 확인 provider/채널 설정으로 이동 readiness 확인 ainetworkdashboardcontroller dashboardcontroller pol-provider-001 pol-edge-001 ainetworkdashboardcontroller.kt dashboardcontroller.kt">
+  <td><code>01</code></td>
+  <td><a class="inline-screen-link" href="#screen-discord-install">01 봇 초대 / 설치</a><br><span class="muted">installed</span></td>
+  <td>관리자가 대시보드 열기</td>
+  <td>봇 권한과 guild context 확인</td>
+  <td><a class="inline-screen-link" href="#screen-dashboard-overview">10 AI Network Overview</a><br><span class="muted">empty</span></td>
+  <td>central-server가 guild AI overview를 조회한다.</td>
+</tr>
+
+<tr data-search="overview-to-channel-ai dashboard-overview empty 채널 ai 설정 클릭 관리자 권한 있음 channel-ai-settings draft 채널 설정 폼을 연다. dashboard-overview 10 ai network overview admin-dashboard web dashboard /api/ai-network/{guildid}/dashboard admin-operations 서버 ai 풀의 provider, 채널, 모델, 사용량, readiness를 요약한다. healthy ai 풀 상태가 정상이다. degraded provider 부족/실패/한도 문제가 있다. empty 아직 provider나 채널 정책이 없다. 상태 확인 provider/채널 설정으로 이동 readiness 확인 ainetworkdashboardcontroller dashboardcontroller pol-provider-001 pol-edge-001 ainetworkdashboardcontroller.kt dashboardcontroller.kt channel-ai-settings 12 channel ai 설정 admin-dashboard web dashboard channel-ai settings guild-onboarding 채널별 ai 사용 여부, 기본 모델, 말투, 지식공간, 안전 정책을 설정한다. disabled 채널 ai가 꺼져 있다. draft 설정 작성 중이다. active 채널 ai 정책이 적용 중이다. 채널 선택 프리셋 적용 저장 channelaicustomizationcontroller pol-content-001 pol-content-002 channelaicustomizationcontroller.kt">
+  <td><code>02</code></td>
+  <td><a class="inline-screen-link" href="#screen-dashboard-overview">10 AI Network Overview</a><br><span class="muted">empty</span></td>
+  <td>채널 AI 설정 클릭</td>
+  <td>관리자 권한 있음</td>
+  <td><a class="inline-screen-link" href="#screen-channel-ai-settings">12 Channel AI 설정</a><br><span class="muted">draft</span></td>
+  <td>채널 설정 폼을 연다.</td>
+</tr>
+
+<tr data-search="channel-ai-to-ask channel-ai-settings active 유저가 설정된 채널에서 /질문 입력 채널 ai enabled ask-command ready discord slash command가 central-server로 전달된다. channel-ai-settings 12 channel ai 설정 admin-dashboard web dashboard channel-ai settings guild-onboarding 채널별 ai 사용 여부, 기본 모델, 말투, 지식공간, 안전 정책을 설정한다. disabled 채널 ai가 꺼져 있다. draft 설정 작성 중이다. active 채널 ai 정책이 적용 중이다. 채널 선택 프리셋 적용 저장 channelaicustomizationcontroller pol-content-001 pol-content-002 channelaicustomizationcontroller.kt ask-command 02 /질문 명령 입력 discord discord slash command /질문 ask-routing 일반 유저가 질문, 모델 선호, 응답 모드, 웹검색 옵션을 입력하는 시작 화면이다. ready 채널에서 /질문 입력이 가능하다. cooldown 비관리자 쿨다운 때문에 제출이 제한된다. policy_blocked 채널/역할/안전 정책 때문에 제출할 수 없다. 질문 입력 옵션 선택 명령 제출 askcommandhandler pol-provider-002 pol-content-001 pol-privacy-001 askcommandhandler.kt:113-171">
+  <td><code>03</code></td>
+  <td><a class="inline-screen-link" href="#screen-channel-ai-settings">12 Channel AI 설정</a><br><span class="muted">active</span></td>
+  <td>유저가 설정된 채널에서 /질문 입력</td>
+  <td>채널 AI enabled</td>
+  <td><a class="inline-screen-link" href="#screen-ask-command">02 /질문 명령 입력</a><br><span class="muted">ready</span></td>
+  <td>Discord slash command가 central-server로 전달된다.</td>
+</tr>
+
+<tr data-search="ask-to-pending ask-command ready /질문 제출 쿨다운/채널/역할/안전 1차 통과 request-pending routing requestorchestrator가 라우팅을 시작한다. ask-command 02 /질문 명령 입력 discord discord slash command /질문 ask-routing 일반 유저가 질문, 모델 선호, 응답 모드, 웹검색 옵션을 입력하는 시작 화면이다. ready 채널에서 /질문 입력이 가능하다. cooldown 비관리자 쿨다운 때문에 제출이 제한된다. policy_blocked 채널/역할/안전 정책 때문에 제출할 수 없다. 질문 입력 옵션 선택 명령 제출 askcommandhandler pol-provider-002 pol-content-001 pol-privacy-001 askcommandhandler.kt:113-171 request-pending 03 요청 처리 중 메시지 discord discord bot response deferred reply ask-routing 중앙 서버가 정책 검사와 provider/무료 폴백 라우팅을 진행 중임을 보여준다. routing provider 후보를 계산 중이다. sent_to_provider 선택된 provider pc에 요청을 보냈다. fallback_running 로컬 실패/부재로 무료 클라우드 폴백을 실행 중이다. 기다리기 requestorchestrator providerfilterpipeline wire infer/result pol-provider-001 pol-provider-002 pol-limit-001 providerfilterpipeline protocol/wire-contract.json">
+  <td><code>04</code></td>
+  <td><a class="inline-screen-link" href="#screen-ask-command">02 /질문 명령 입력</a><br><span class="muted">ready</span></td>
+  <td>/질문 제출</td>
+  <td>쿨다운/채널/역할/안전 1차 통과</td>
+  <td><a class="inline-screen-link" href="#screen-request-pending">03 요청 처리 중 메시지</a><br><span class="muted">routing</span></td>
+  <td>RequestOrchestrator가 라우팅을 시작한다.</td>
+</tr>
+
+<tr data-search="ask-to-rejection ask-command policy_blocked /질문 제출 정책 또는 권한 실패 rejection-message safety_rejected provider/cloud 폴백 없이 거부한다. ask-command 02 /질문 명령 입력 discord discord slash command /질문 ask-routing 일반 유저가 질문, 모델 선호, 응답 모드, 웹검색 옵션을 입력하는 시작 화면이다. ready 채널에서 /질문 입력이 가능하다. cooldown 비관리자 쿨다운 때문에 제출이 제한된다. policy_blocked 채널/역할/안전 정책 때문에 제출할 수 없다. 질문 입력 옵션 선택 명령 제출 askcommandhandler pol-provider-002 pol-content-001 pol-privacy-001 askcommandhandler.kt:113-171 rejection-message 05 정책 / 한도 거부 메시지 discord discord bot response policy rejection reply safety-limits 안전, 권한, 한도, provider 보호 정책 때문에 요청을 실행하지 않을 때 이유와 다음 행동을 알려준다. safety_rejected 콘텐츠/discord/법적 red-line으로 거부한다. rate_limited 사용자 또는 provider 한도 초과다. no_provider provider 후보가 없어 제한적으로 폴백하거나 실패한다. 거부 이유 확인 나중에 재시도 관리자에게 문의 safety policy providerfilterpipeline pol-content-001 pol-provider-001 pol-limit-001 docs/nexa_safety_policy.md docs/nexa_limit_policy.md">
+  <td><code>05</code></td>
+  <td><a class="inline-screen-link" href="#screen-ask-command">02 /질문 명령 입력</a><br><span class="muted">policy_blocked</span></td>
+  <td>/질문 제출</td>
+  <td>정책 또는 권한 실패</td>
+  <td><a class="inline-screen-link" href="#screen-rejection-message">05 정책 / 한도 거부 메시지</a><br><span class="muted">safety_rejected</span></td>
+  <td>Provider/Cloud 폴백 없이 거부한다.</td>
+</tr>
+
+<tr data-search="pending-to-answer request-pending sent_to_provider provider result 수신 wire result 정상 answer-message local_answer discord 답변 메시지를 갱신한다. request-pending 03 요청 처리 중 메시지 discord discord bot response deferred reply ask-routing 중앙 서버가 정책 검사와 provider/무료 폴백 라우팅을 진행 중임을 보여준다. routing provider 후보를 계산 중이다. sent_to_provider 선택된 provider pc에 요청을 보냈다. fallback_running 로컬 실패/부재로 무료 클라우드 폴백을 실행 중이다. 기다리기 requestorchestrator providerfilterpipeline wire infer/result pol-provider-001 pol-provider-002 pol-limit-001 providerfilterpipeline protocol/wire-contract.json answer-message 04 답변 메시지 discord discord bot response channel reply ask-routing provider 또는 무료 클라우드가 만든 답변, 출처, 사용량/품질 피드백 진입점을 discord에 표시한다. local_answer 로컬 provider가 답변했다. cloud_fallback_answer 무료 클라우드 폴백이 답변했다. partial_or_failed 실행 일부 실패 또는 최종 실패 상태다. 답변 읽기 출처 확인 피드백 누르기 askcommandhandler /api/ai-network/quality/* pol-privacy-001 pol-content-001 askcommandhandler.kt:145-170">
+  <td><code>06</code></td>
+  <td><a class="inline-screen-link" href="#screen-request-pending">03 요청 처리 중 메시지</a><br><span class="muted">sent_to_provider</span></td>
+  <td>Provider result 수신</td>
+  <td>wire result 정상</td>
+  <td><a class="inline-screen-link" href="#screen-answer-message">04 답변 메시지</a><br><span class="muted">local_answer</span></td>
+  <td>Discord 답변 메시지를 갱신한다.</td>
+</tr>
+
+<tr data-search="pending-to-fallback-answer request-pending fallback_running 무료 클라우드 결과 수신 provider 실패/부재 후 fallback 허용 answer-message cloud_fallback_answer glm-5.1 답변을 discord에 표시한다. request-pending 03 요청 처리 중 메시지 discord discord bot response deferred reply ask-routing 중앙 서버가 정책 검사와 provider/무료 폴백 라우팅을 진행 중임을 보여준다. routing provider 후보를 계산 중이다. sent_to_provider 선택된 provider pc에 요청을 보냈다. fallback_running 로컬 실패/부재로 무료 클라우드 폴백을 실행 중이다. 기다리기 requestorchestrator providerfilterpipeline wire infer/result pol-provider-001 pol-provider-002 pol-limit-001 providerfilterpipeline protocol/wire-contract.json answer-message 04 답변 메시지 discord discord bot response channel reply ask-routing provider 또는 무료 클라우드가 만든 답변, 출처, 사용량/품질 피드백 진입점을 discord에 표시한다. local_answer 로컬 provider가 답변했다. cloud_fallback_answer 무료 클라우드 폴백이 답변했다. partial_or_failed 실행 일부 실패 또는 최종 실패 상태다. 답변 읽기 출처 확인 피드백 누르기 askcommandhandler /api/ai-network/quality/* pol-privacy-001 pol-content-001 askcommandhandler.kt:145-170">
+  <td><code>07</code></td>
+  <td><a class="inline-screen-link" href="#screen-request-pending">03 요청 처리 중 메시지</a><br><span class="muted">fallback_running</span></td>
+  <td>무료 클라우드 결과 수신</td>
+  <td>Provider 실패/부재 후 fallback 허용</td>
+  <td><a class="inline-screen-link" href="#screen-answer-message">04 답변 메시지</a><br><span class="muted">cloud_fallback_answer</span></td>
+  <td>glm-5.1 답변을 Discord에 표시한다.</td>
+</tr>
+
+<tr data-search="pending-to-rejection request-pending routing 후보 없음 또는 한도 초과 fallback 불가 또는 한도 실패 rejection-message rate_limited 한도/후보 부족 메시지를 표시한다. request-pending 03 요청 처리 중 메시지 discord discord bot response deferred reply ask-routing 중앙 서버가 정책 검사와 provider/무료 폴백 라우팅을 진행 중임을 보여준다. routing provider 후보를 계산 중이다. sent_to_provider 선택된 provider pc에 요청을 보냈다. fallback_running 로컬 실패/부재로 무료 클라우드 폴백을 실행 중이다. 기다리기 requestorchestrator providerfilterpipeline wire infer/result pol-provider-001 pol-provider-002 pol-limit-001 providerfilterpipeline protocol/wire-contract.json rejection-message 05 정책 / 한도 거부 메시지 discord discord bot response policy rejection reply safety-limits 안전, 권한, 한도, provider 보호 정책 때문에 요청을 실행하지 않을 때 이유와 다음 행동을 알려준다. safety_rejected 콘텐츠/discord/법적 red-line으로 거부한다. rate_limited 사용자 또는 provider 한도 초과다. no_provider provider 후보가 없어 제한적으로 폴백하거나 실패한다. 거부 이유 확인 나중에 재시도 관리자에게 문의 safety policy providerfilterpipeline pol-content-001 pol-provider-001 pol-limit-001 docs/nexa_safety_policy.md docs/nexa_limit_policy.md">
+  <td><code>08</code></td>
+  <td><a class="inline-screen-link" href="#screen-request-pending">03 요청 처리 중 메시지</a><br><span class="muted">routing</span></td>
+  <td>후보 없음 또는 한도 초과</td>
+  <td>fallback 불가 또는 한도 실패</td>
+  <td><a class="inline-screen-link" href="#screen-rejection-message">05 정책 / 한도 거부 메시지</a><br><span class="muted">rate_limited</span></td>
+  <td>한도/후보 부족 메시지를 표시한다.</td>
+</tr>
+
+<tr data-search="answer-to-feedback answer-message local_answer 피드백 버튼 클릭 답변 메시지에 component 있음 feedback-action idle 품질 피드백 입력을 연다. answer-message 04 답변 메시지 discord discord bot response channel reply ask-routing provider 또는 무료 클라우드가 만든 답변, 출처, 사용량/품질 피드백 진입점을 discord에 표시한다. local_answer 로컬 provider가 답변했다. cloud_fallback_answer 무료 클라우드 폴백이 답변했다. partial_or_failed 실행 일부 실패 또는 최종 실패 상태다. 답변 읽기 출처 확인 피드백 누르기 askcommandhandler /api/ai-network/quality/* pol-privacy-001 pol-content-001 askcommandhandler.kt:145-170 feedback-action 06 피드백 버튼 / 품질 루프 discord discord component answer feedback button ask-routing 일반 유저의 품질 피드백을 운영 대시보드와 모델 품질 리뷰로 연결한다. idle 답변 아래 피드백 액션이 보인다. submitted 피드백이 접수됐다. reviewed 운영자가 품질 피드백을 검토했다. 좋아요/싫어요 사유 입력 제출 /api/ai-network/quality/* aiqualityfeedbackcontroller pol-edge-001 aiqualityfeedbackcontroller.kt">
+  <td><code>09</code></td>
+  <td><a class="inline-screen-link" href="#screen-answer-message">04 답변 메시지</a><br><span class="muted">local_answer</span></td>
+  <td>피드백 버튼 클릭</td>
+  <td>답변 메시지에 component 있음</td>
+  <td><a class="inline-screen-link" href="#screen-feedback-action">06 피드백 버튼 / 품질 루프</a><br><span class="muted">idle</span></td>
+  <td>품질 피드백 입력을 연다.</td>
+</tr>
+
+<tr data-search="feedback-to-quality feedback-action submitted 운영자가 품질 대시보드 열기 피드백 저장됨 quality-reports queue quality/reports 목록에 피드백을 노출한다. feedback-action 06 피드백 버튼 / 품질 루프 discord discord component answer feedback button ask-routing 일반 유저의 품질 피드백을 운영 대시보드와 모델 품질 리뷰로 연결한다. idle 답변 아래 피드백 액션이 보인다. submitted 피드백이 접수됐다. reviewed 운영자가 품질 피드백을 검토했다. 좋아요/싫어요 사유 입력 제출 /api/ai-network/quality/* aiqualityfeedbackcontroller pol-edge-001 aiqualityfeedbackcontroller.kt quality-reports 15 quality / reports admin-dashboard web dashboard quality/report review safety-limits 답변 품질 피드백, 신고, 안전 이슈를 운영자가 검토한다. queue 검토 대기 항목이 있다. reviewing 운영자가 처리 중이다. resolved 조치가 완료됐다. 리뷰 숨김/차단 해결 처리 aiqualityfeedbackcontroller report/review apis pol-content-001 pol-edge-001 aiqualityfeedbackcontroller.kt docs/nexa_safety_policy.md">
+  <td><code>10</code></td>
+  <td><a class="inline-screen-link" href="#screen-feedback-action">06 피드백 버튼 / 품질 루프</a><br><span class="muted">submitted</span></td>
+  <td>운영자가 품질 대시보드 열기</td>
+  <td>피드백 저장됨</td>
+  <td><a class="inline-screen-link" href="#screen-quality-reports">15 Quality / Reports</a><br><span class="muted">queue</span></td>
+  <td>quality/reports 목록에 피드백을 노출한다.</td>
+</tr>
+
+<tr data-search="agent-start-to-server-list agent-start ready 서버 연결 보기 durable token 있음 server-list syncing /provider/agent/sync를 호출한다. agent-start 20 provider agent 시작 / 설치 provider-desktop desktop web ui localhost app start provider-agent provider가 로컬 앱을 설치/실행하고 중앙 서버 연결 준비 상태를 본다. first_run 첫 실행과 온보딩 상태다. needs_setup ollama/토큰/서버 연결이 필요하다. ready 서버 연결 화면으로 이동 가능하다. 설치 확인 시작 토큰 등록 provider-agent webui packaging assets pol-provider-001 provider-agent/packaging/ provider-agent/src/provider_agent/webui.py server-list 21 서버 연결 목록 provider-desktop desktop web ui /api/servers provider-agent provider가 승인된 discord 서버 목록과 연결 상태를 본다. empty 연결된 서버가 없다. syncing 중앙 서버와 durable token sync 중이다. connected 하나 이상의 서버와 연결됐다. sync 서버 선택 연결 시작 /provider/agent/sync /api/servers pol-limit-001 pol-privacy-001 provideragentsynccontroller.kt:30-65 provider-agent/src/provider_agent/webui.py">
+  <td><code>11</code></td>
+  <td><a class="inline-screen-link" href="#screen-agent-start">20 Provider Agent 시작 / 설치</a><br><span class="muted">ready</span></td>
+  <td>서버 연결 보기</td>
+  <td>durable token 있음</td>
+  <td><a class="inline-screen-link" href="#screen-server-list">21 서버 연결 목록</a><br><span class="muted">syncing</span></td>
+  <td>/provider/agent/sync를 호출한다.</td>
+</tr>
+
+<tr data-search="server-list-to-detail server-list connected 서버 카드 클릭 승인된 guild server-detail online_idle guild별 provider 상태와 한도를 표시한다. server-list 21 서버 연결 목록 provider-desktop desktop web ui /api/servers provider-agent provider가 승인된 discord 서버 목록과 연결 상태를 본다. empty 연결된 서버가 없다. syncing 중앙 서버와 durable token sync 중이다. connected 하나 이상의 서버와 연결됐다. sync 서버 선택 연결 시작 /provider/agent/sync /api/servers pol-limit-001 pol-privacy-001 provideragentsynccontroller.kt:30-65 provider-agent/src/provider_agent/webui.py server-detail 22 서버 상세 / 일시정지 provider-desktop desktop web ui /api/servers/{guildid} provider-agent 서버별 provider 상태, 한도, pause/resume, join token 상태를 조작한다. online_idle 요청 수신 가능하다. online_busy 현재 처리 중이다. paused_or_limited provider 의사 또는 한도 때문에 제외된다. pause resume 한도 확인 서버 제거 /api/servers/* pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py docs/nexa_limit_policy.md">
+  <td><code>12</code></td>
+  <td><a class="inline-screen-link" href="#screen-server-list">21 서버 연결 목록</a><br><span class="muted">connected</span></td>
+  <td>서버 카드 클릭</td>
+  <td>승인된 guild</td>
+  <td><a class="inline-screen-link" href="#screen-server-detail">22 서버 상세 / 일시정지</a><br><span class="muted">online_idle</span></td>
+  <td>guild별 Provider 상태와 한도를 표시한다.</td>
+</tr>
+
+<tr data-search="server-detail-to-models server-detail online_idle 모델 탭 클릭 로컬 runtime 접근 가능 model-list available /api/models로 모델 목록을 조회한다. server-detail 22 서버 상세 / 일시정지 provider-desktop desktop web ui /api/servers/{guildid} provider-agent 서버별 provider 상태, 한도, pause/resume, join token 상태를 조작한다. online_idle 요청 수신 가능하다. online_busy 현재 처리 중이다. paused_or_limited provider 의사 또는 한도 때문에 제외된다. pause resume 한도 확인 서버 제거 /api/servers/* pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py docs/nexa_limit_policy.md model-list 23 모델 목록 provider-desktop desktop web ui /api/models provider-agent 로컬 ollama/comfyui 모델 상태와 부담 수준을 확인한다. no_runtime ollama/comfyui 연결이 안 됐다. available 사용 가능한 모델이 있다. restricted 무거운 모델이라 정책상 제한된다. 모델 새로고침 기본 모델 확인 runtime 설정 이동 /api/models ollama local api pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py">
+  <td><code>13</code></td>
+  <td><a class="inline-screen-link" href="#screen-server-detail">22 서버 상세 / 일시정지</a><br><span class="muted">online_idle</span></td>
+  <td>모델 탭 클릭</td>
+  <td>로컬 runtime 접근 가능</td>
+  <td><a class="inline-screen-link" href="#screen-model-list">23 모델 목록</a><br><span class="muted">available</span></td>
+  <td>/api/models로 모델 목록을 조회한다.</td>
+</tr>
+
+<tr data-search="server-detail-to-logs server-detail online_busy 로그 보기 처리 중 또는 오류 추적 필요 agent-logs streaming 프롬프트 원문 없이 실행 로그를 보여준다. server-detail 22 서버 상세 / 일시정지 provider-desktop desktop web ui /api/servers/{guildid} provider-agent 서버별 provider 상태, 한도, pause/resume, join token 상태를 조작한다. online_idle 요청 수신 가능하다. online_busy 현재 처리 중이다. paused_or_limited provider 의사 또는 한도 때문에 제외된다. pause resume 한도 확인 서버 제거 /api/servers/* pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py docs/nexa_limit_policy.md agent-logs 24 로컬 로그 provider-desktop desktop web ui /api/logs provider-agent provider가 연결/실행/오류 로그를 보되 사용자 프롬프트 원문은 저장하지 않는다. empty 로그가 없다. streaming 새 로그가 들어온다. error 연결 또는 runtime 오류가 있다. 로그 보기 필터 복사 /api/logs pol-privacy-001 provider-agent/src/provider_agent/webui.py docs/provider_safety_policy.md:56">
+  <td><code>14</code></td>
+  <td><a class="inline-screen-link" href="#screen-server-detail">22 서버 상세 / 일시정지</a><br><span class="muted">online_busy</span></td>
+  <td>로그 보기</td>
+  <td>처리 중 또는 오류 추적 필요</td>
+  <td><a class="inline-screen-link" href="#screen-agent-logs">24 로컬 로그</a><br><span class="muted">streaming</span></td>
+  <td>프롬프트 원문 없이 실행 로그를 보여준다.</td>
+</tr>
+
+<tr data-search="settings-to-runtime agent-settings current ollama/comfyui 상태 확인 runtime 설정 변경 또는 진단 local-runtime-status online local runtime health를 확인한다. agent-settings 25 설정 / 업데이트 provider-desktop desktop web ui /api/settings, /api/update-* provider-agent provider 앱 설정, 업데이트, 패키징/릴리스 자산과 관련된 사용자 설정을 관리한다. current 최신 버전이다. update_available 업데이트가 있다. updating 업데이트 진행 중이다. 설정 저장 업데이트 확인 업데이트 실행 /api/settings /api/update-* packaging/assets.json pol-provider-001 packaging/assets.json provider-agent/src/provider_agent/webui.py local-runtime-status 26 ollama / comfyui 상태 provider-desktop desktop web ui runtime status provider-agent 로컬 ai runtime 연결 상태, 설치 안내, 실행 가능 여부를 보여준다. missing runtime이 설치되지 않았다. offline 설치됐지만 실행 중이 아니다. online provider 요청을 실행할 수 있다. 상태 확인 설치 가이드 열기 재시도 ollama local api comfyui local api pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py">
+  <td><code>15</code></td>
+  <td><a class="inline-screen-link" href="#screen-agent-settings">25 설정 / 업데이트</a><br><span class="muted">current</span></td>
+  <td>Ollama/ComfyUI 상태 확인</td>
+  <td>runtime 설정 변경 또는 진단</td>
+  <td><a class="inline-screen-link" href="#screen-local-runtime-status">26 Ollama / ComfyUI 상태</a><br><span class="muted">online</span></td>
+  <td>local runtime health를 확인한다.</td>
+</tr>
+
+<tr data-search="overview-to-provider-admin dashboard-overview degraded provider 관리 클릭 provider 부족/실패 상태 provider-admin pending provider 목록과 승인 대기를 보여준다. dashboard-overview 10 ai network overview admin-dashboard web dashboard /api/ai-network/{guildid}/dashboard admin-operations 서버 ai 풀의 provider, 채널, 모델, 사용량, readiness를 요약한다. healthy ai 풀 상태가 정상이다. degraded provider 부족/실패/한도 문제가 있다. empty 아직 provider나 채널 정책이 없다. 상태 확인 provider/채널 설정으로 이동 readiness 확인 ainetworkdashboardcontroller dashboardcontroller pol-provider-001 pol-edge-001 ainetworkdashboardcontroller.kt dashboardcontroller.kt provider-admin 11 provider 관리 admin-dashboard web dashboard /api/ai-network/{guildid}/providers admin-operations 서버 관리자가 provider 승인, 차단, 상태, 기여량, 한도를 확인한다. pending 승인 대기 provider가 있다. approved_online 승인 후 온라인 상태다. blocked_or_unhealthy 차단 또는 unhealthy 상태다. 승인 차단 상태 확인 기여량 확인 provideradmincontroller pol-provider-001 pol-limit-001 provideradmincontroller.kt">
+  <td><code>16</code></td>
+  <td><a class="inline-screen-link" href="#screen-dashboard-overview">10 AI Network Overview</a><br><span class="muted">degraded</span></td>
+  <td>Provider 관리 클릭</td>
+  <td>Provider 부족/실패 상태</td>
+  <td><a class="inline-screen-link" href="#screen-provider-admin">11 Provider 관리</a><br><span class="muted">pending</span></td>
+  <td>Provider 목록과 승인 대기를 보여준다.</td>
+</tr>
+
+<tr data-search="overview-to-preset dashboard-overview healthy 프리셋 탐색 채널 성격 재사용 필요 preset-catalog catalog preset catalog를 조회한다. dashboard-overview 10 ai network overview admin-dashboard web dashboard /api/ai-network/{guildid}/dashboard admin-operations 서버 ai 풀의 provider, 채널, 모델, 사용량, readiness를 요약한다. healthy ai 풀 상태가 정상이다. degraded provider 부족/실패/한도 문제가 있다. empty 아직 provider나 채널 정책이 없다. 상태 확인 provider/채널 설정으로 이동 readiness 확인 ainetworkdashboardcontroller dashboardcontroller pol-provider-001 pol-edge-001 ainetworkdashboardcontroller.kt dashboardcontroller.kt preset-catalog 13 preset catalog admin-dashboard web dashboard /api/ai-network/presets/* presets-knowledge 서버 운영 설정 프리셋을 탐색, 미리보기, 가져오기, 신고/리뷰한다. catalog 프리셋 목록을 탐색한다. import_preview 적용 전 변경점을 확인한다. reported 신고/리뷰 대상이다. 검색 미리보기 import 신고 presetregistrycontroller pol-content-001 pol-content-002 pol-monetization-001 presetregistrycontroller.kt">
+  <td><code>17</code></td>
+  <td><a class="inline-screen-link" href="#screen-dashboard-overview">10 AI Network Overview</a><br><span class="muted">healthy</span></td>
+  <td>프리셋 탐색</td>
+  <td>채널 성격 재사용 필요</td>
+  <td><a class="inline-screen-link" href="#screen-preset-catalog">13 Preset Catalog</a><br><span class="muted">catalog</span></td>
+  <td>Preset catalog를 조회한다.</td>
+</tr>
+
+<tr data-search="preset-to-channel-ai preset-catalog import_preview 프리셋 적용 관리자 확인 channel-ai-settings draft 프리셋 값을 채널 ai 폼에 반영한다. preset-catalog 13 preset catalog admin-dashboard web dashboard /api/ai-network/presets/* presets-knowledge 서버 운영 설정 프리셋을 탐색, 미리보기, 가져오기, 신고/리뷰한다. catalog 프리셋 목록을 탐색한다. import_preview 적용 전 변경점을 확인한다. reported 신고/리뷰 대상이다. 검색 미리보기 import 신고 presetregistrycontroller pol-content-001 pol-content-002 pol-monetization-001 presetregistrycontroller.kt channel-ai-settings 12 channel ai 설정 admin-dashboard web dashboard channel-ai settings guild-onboarding 채널별 ai 사용 여부, 기본 모델, 말투, 지식공간, 안전 정책을 설정한다. disabled 채널 ai가 꺼져 있다. draft 설정 작성 중이다. active 채널 ai 정책이 적용 중이다. 채널 선택 프리셋 적용 저장 channelaicustomizationcontroller pol-content-001 pol-content-002 channelaicustomizationcontroller.kt">
+  <td><code>18</code></td>
+  <td><a class="inline-screen-link" href="#screen-preset-catalog">13 Preset Catalog</a><br><span class="muted">import_preview</span></td>
+  <td>프리셋 적용</td>
+  <td>관리자 확인</td>
+  <td><a class="inline-screen-link" href="#screen-channel-ai-settings">12 Channel AI 설정</a><br><span class="muted">draft</span></td>
+  <td>프리셋 값을 채널 AI 폼에 반영한다.</td>
+</tr>
+
+<tr data-search="channel-ai-to-knowledge channel-ai-settings draft 지식공간 연결 채널 답변에 rag 컨텍스트 필요 knowledge-space ready knowledge space 목록을 보여준다. channel-ai-settings 12 channel ai 설정 admin-dashboard web dashboard channel-ai settings guild-onboarding 채널별 ai 사용 여부, 기본 모델, 말투, 지식공간, 안전 정책을 설정한다. disabled 채널 ai가 꺼져 있다. draft 설정 작성 중이다. active 채널 ai 정책이 적용 중이다. 채널 선택 프리셋 적용 저장 channelaicustomizationcontroller pol-content-001 pol-content-002 channelaicustomizationcontroller.kt knowledge-space 14 knowledge space admin-dashboard web dashboard /api/ai-network/knowledge/* presets-knowledge 서버/채널 지식 자료를 source, index-job, search/context/eval 단위로 관리한다. empty 등록된 source가 없다. indexing 인덱싱 작업 중이다. ready 검색과 답변 컨텍스트에 사용할 수 있다. source 추가 인덱싱 검색 테스트 eval knowledgeingestioncontroller pol-privacy-001 pol-content-001 knowledgeingestioncontroller.kt">
+  <td><code>19</code></td>
+  <td><a class="inline-screen-link" href="#screen-channel-ai-settings">12 Channel AI 설정</a><br><span class="muted">draft</span></td>
+  <td>지식공간 연결</td>
+  <td>채널 답변에 RAG 컨텍스트 필요</td>
+  <td><a class="inline-screen-link" href="#screen-knowledge-space">14 Knowledge Space</a><br><span class="muted">ready</span></td>
+  <td>knowledge space 목록을 보여준다.</td>
+</tr>
+
+<tr data-search="overview-to-readiness dashboard-overview healthy launch readiness 클릭 운영 시작 전 점검 launch-readiness ready 체크리스트와 위험 항목을 표시한다. dashboard-overview 10 ai network overview admin-dashboard web dashboard /api/ai-network/{guildid}/dashboard admin-operations 서버 ai 풀의 provider, 채널, 모델, 사용량, readiness를 요약한다. healthy ai 풀 상태가 정상이다. degraded provider 부족/실패/한도 문제가 있다. empty 아직 provider나 채널 정책이 없다. 상태 확인 provider/채널 설정으로 이동 readiness 확인 ainetworkdashboardcontroller dashboardcontroller pol-provider-001 pol-edge-001 ainetworkdashboardcontroller.kt dashboardcontroller.kt launch-readiness 16 launch readiness admin-dashboard web dashboard launch checklist admin-operations 서버 ai 풀을 실제로 열기 전 필요한 설정, provider, 안전, 한도 체크를 확인한다. not_ready 필수 조건이 부족하다. warning 운영 위험이 남아 있다. ready 라이브 운영 가능 상태다. 체크리스트 확인 부족 항목 이동 운영 시작 dashboardcontroller pol-provider-001 pol-content-001 pol-limit-001 dashboardcontroller.kt">
+  <td><code>20</code></td>
+  <td><a class="inline-screen-link" href="#screen-dashboard-overview">10 AI Network Overview</a><br><span class="muted">healthy</span></td>
+  <td>Launch readiness 클릭</td>
+  <td>운영 시작 전 점검</td>
+  <td><a class="inline-screen-link" href="#screen-launch-readiness">16 Launch Readiness</a><br><span class="muted">ready</span></td>
+  <td>체크리스트와 위험 항목을 표시한다.</td>
+</tr>
+</tbody>
+    </table>
+  </details>
+  <details class="wide-details">
+    <summary>화면별 상세 카드</summary>
+    <div class="screen-card-grid">
+<article class="screen-card" id="screen-discord-install" data-search="discord-install 01 봇 초대 / 설치 discord discord oauth / 서버 설정 discord bot invite url guild-onboarding 서버 관리자가 nexa 봇을 discord 서버에 추가하고 권한/채널 접근을 부여한다. not_installed 서버에 봇이 없어 ai 기능이 시작되지 않는다. permission_review 초대 권한과 채널 접근을 확인한다. installed 서버에 봇이 추가되어 대시보드 설정으로 넘어갈 수 있다. 봇 초대 링크 열기 서버 선택 권한 승인 discord oauth central-server docs/go_live pol-content-001 pol-privacy-001 readme.md:39-48 central-server/docs/go_live.md">
+  <div class="meta-line"><span>01 · discord</span><span>guild-onboarding</span></div>
+  <h3>봇 초대 / 설치</h3>
+  <p>서버 관리자가 NEXA 봇을 Discord 서버에 추가하고 권한/채널 접근을 부여한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>not_installed</code>서버에 봇이 없어 AI 기능이 시작되지 않는다.</span><span><code>permission_review</code>초대 권한과 채널 접근을 확인한다.</span><span><code>installed</code>서버에 봇이 추가되어 대시보드 설정으로 넘어갈 수 있다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>봇 초대 링크 열기</li><li>서버 선택</li><li>권한 승인</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">Discord OAuth</span><span class="source-chip">central-server docs/GO_LIVE</span><span class="source-chip">README.md:39-48</span><span class="source-chip">central-server/docs/GO_LIVE.md</span></div>
+</article>
+
+<article class="screen-card" id="screen-ask-command" data-search="ask-command 02 /질문 명령 입력 discord discord slash command /질문 ask-routing 일반 유저가 질문, 모델 선호, 응답 모드, 웹검색 옵션을 입력하는 시작 화면이다. ready 채널에서 /질문 입력이 가능하다. cooldown 비관리자 쿨다운 때문에 제출이 제한된다. policy_blocked 채널/역할/안전 정책 때문에 제출할 수 없다. 질문 입력 옵션 선택 명령 제출 askcommandhandler pol-provider-002 pol-content-001 pol-privacy-001 askcommandhandler.kt:113-171">
+  <div class="meta-line"><span>02 · discord</span><span>ask-routing</span></div>
+  <h3>/질문 명령 입력</h3>
+  <p>일반 유저가 질문, 모델 선호, 응답 모드, 웹검색 옵션을 입력하는 시작 화면이다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>ready</code>채널에서 /질문 입력이 가능하다.</span><span><code>cooldown</code>비관리자 쿨다운 때문에 제출이 제한된다.</span><span><code>policy_blocked</code>채널/역할/안전 정책 때문에 제출할 수 없다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>질문 입력</li><li>옵션 선택</li><li>명령 제출</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">AskCommandHandler</span><span class="source-chip">AskCommandHandler.kt:113-171</span></div>
+</article>
+
+<article class="screen-card" id="screen-request-pending" data-search="request-pending 03 요청 처리 중 메시지 discord discord bot response deferred reply ask-routing 중앙 서버가 정책 검사와 provider/무료 폴백 라우팅을 진행 중임을 보여준다. routing provider 후보를 계산 중이다. sent_to_provider 선택된 provider pc에 요청을 보냈다. fallback_running 로컬 실패/부재로 무료 클라우드 폴백을 실행 중이다. 기다리기 requestorchestrator providerfilterpipeline wire infer/result pol-provider-001 pol-provider-002 pol-limit-001 providerfilterpipeline protocol/wire-contract.json">
+  <div class="meta-line"><span>03 · discord</span><span>ask-routing</span></div>
+  <h3>요청 처리 중 메시지</h3>
+  <p>중앙 서버가 정책 검사와 Provider/무료 폴백 라우팅을 진행 중임을 보여준다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>routing</code>Provider 후보를 계산 중이다.</span><span><code>sent_to_provider</code>선택된 Provider PC에 요청을 보냈다.</span><span><code>fallback_running</code>로컬 실패/부재로 무료 클라우드 폴백을 실행 중이다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>기다리기</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">RequestOrchestrator</span><span class="source-chip">ProviderFilterPipeline</span><span class="source-chip">wire infer/result</span><span class="source-chip">ProviderFilterPipeline</span><span class="source-chip">protocol/wire-contract.json</span></div>
+</article>
+
+<article class="screen-card" id="screen-answer-message" data-search="answer-message 04 답변 메시지 discord discord bot response channel reply ask-routing provider 또는 무료 클라우드가 만든 답변, 출처, 사용량/품질 피드백 진입점을 discord에 표시한다. local_answer 로컬 provider가 답변했다. cloud_fallback_answer 무료 클라우드 폴백이 답변했다. partial_or_failed 실행 일부 실패 또는 최종 실패 상태다. 답변 읽기 출처 확인 피드백 누르기 askcommandhandler /api/ai-network/quality/* pol-privacy-001 pol-content-001 askcommandhandler.kt:145-170">
+  <div class="meta-line"><span>04 · discord</span><span>ask-routing</span></div>
+  <h3>답변 메시지</h3>
+  <p>Provider 또는 무료 클라우드가 만든 답변, 출처, 사용량/품질 피드백 진입점을 Discord에 표시한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>local_answer</code>로컬 Provider가 답변했다.</span><span><code>cloud_fallback_answer</code>무료 클라우드 폴백이 답변했다.</span><span><code>partial_or_failed</code>실행 일부 실패 또는 최종 실패 상태다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>답변 읽기</li><li>출처 확인</li><li>피드백 누르기</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">AskCommandHandler</span><span class="source-chip">/api/ai-network/quality/*</span><span class="source-chip">AskCommandHandler.kt:145-170</span></div>
+</article>
+
+<article class="screen-card" id="screen-rejection-message" data-search="rejection-message 05 정책 / 한도 거부 메시지 discord discord bot response policy rejection reply safety-limits 안전, 권한, 한도, provider 보호 정책 때문에 요청을 실행하지 않을 때 이유와 다음 행동을 알려준다. safety_rejected 콘텐츠/discord/법적 red-line으로 거부한다. rate_limited 사용자 또는 provider 한도 초과다. no_provider provider 후보가 없어 제한적으로 폴백하거나 실패한다. 거부 이유 확인 나중에 재시도 관리자에게 문의 safety policy providerfilterpipeline pol-content-001 pol-provider-001 pol-limit-001 docs/nexa_safety_policy.md docs/nexa_limit_policy.md">
+  <div class="meta-line"><span>05 · discord</span><span>safety-limits</span></div>
+  <h3>정책 / 한도 거부 메시지</h3>
+  <p>안전, 권한, 한도, Provider 보호 정책 때문에 요청을 실행하지 않을 때 이유와 다음 행동을 알려준다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>safety_rejected</code>콘텐츠/Discord/법적 red-line으로 거부한다.</span><span><code>rate_limited</code>사용자 또는 Provider 한도 초과다.</span><span><code>no_provider</code>Provider 후보가 없어 제한적으로 폴백하거나 실패한다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>거부 이유 확인</li><li>나중에 재시도</li><li>관리자에게 문의</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">safety policy</span><span class="source-chip">ProviderFilterPipeline</span><span class="source-chip">docs/NEXA_SAFETY_POLICY.md</span><span class="source-chip">docs/NEXA_LIMIT_POLICY.md</span></div>
+</article>
+
+<article class="screen-card" id="screen-feedback-action" data-search="feedback-action 06 피드백 버튼 / 품질 루프 discord discord component answer feedback button ask-routing 일반 유저의 품질 피드백을 운영 대시보드와 모델 품질 리뷰로 연결한다. idle 답변 아래 피드백 액션이 보인다. submitted 피드백이 접수됐다. reviewed 운영자가 품질 피드백을 검토했다. 좋아요/싫어요 사유 입력 제출 /api/ai-network/quality/* aiqualityfeedbackcontroller pol-edge-001 aiqualityfeedbackcontroller.kt">
+  <div class="meta-line"><span>06 · discord</span><span>ask-routing</span></div>
+  <h3>피드백 버튼 / 품질 루프</h3>
+  <p>일반 유저의 품질 피드백을 운영 대시보드와 모델 품질 리뷰로 연결한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>idle</code>답변 아래 피드백 액션이 보인다.</span><span><code>submitted</code>피드백이 접수됐다.</span><span><code>reviewed</code>운영자가 품질 피드백을 검토했다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>좋아요/싫어요</li><li>사유 입력</li><li>제출</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">/api/ai-network/quality/*</span><span class="source-chip">AiQualityFeedbackController</span><span class="source-chip">AiQualityFeedbackController.kt</span></div>
+</article>
+
+<article class="screen-card" id="screen-dashboard-overview" data-search="dashboard-overview 10 ai network overview admin-dashboard web dashboard /api/ai-network/{guildid}/dashboard admin-operations 서버 ai 풀의 provider, 채널, 모델, 사용량, readiness를 요약한다. healthy ai 풀 상태가 정상이다. degraded provider 부족/실패/한도 문제가 있다. empty 아직 provider나 채널 정책이 없다. 상태 확인 provider/채널 설정으로 이동 readiness 확인 ainetworkdashboardcontroller dashboardcontroller pol-provider-001 pol-edge-001 ainetworkdashboardcontroller.kt dashboardcontroller.kt">
+  <div class="meta-line"><span>10 · admin-dashboard</span><span>admin-operations</span></div>
+  <h3>AI Network Overview</h3>
+  <p>서버 AI 풀의 Provider, 채널, 모델, 사용량, readiness를 요약한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>healthy</code>AI 풀 상태가 정상이다.</span><span><code>degraded</code>Provider 부족/실패/한도 문제가 있다.</span><span><code>empty</code>아직 Provider나 채널 정책이 없다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>상태 확인</li><li>Provider/채널 설정으로 이동</li><li>readiness 확인</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">AiNetworkDashboardController</span><span class="source-chip">DashboardController</span><span class="source-chip">AiNetworkDashboardController.kt</span><span class="source-chip">DashboardController.kt</span></div>
+</article>
+
+<article class="screen-card" id="screen-provider-admin" data-search="provider-admin 11 provider 관리 admin-dashboard web dashboard /api/ai-network/{guildid}/providers admin-operations 서버 관리자가 provider 승인, 차단, 상태, 기여량, 한도를 확인한다. pending 승인 대기 provider가 있다. approved_online 승인 후 온라인 상태다. blocked_or_unhealthy 차단 또는 unhealthy 상태다. 승인 차단 상태 확인 기여량 확인 provideradmincontroller pol-provider-001 pol-limit-001 provideradmincontroller.kt">
+  <div class="meta-line"><span>11 · admin-dashboard</span><span>admin-operations</span></div>
+  <h3>Provider 관리</h3>
+  <p>서버 관리자가 Provider 승인, 차단, 상태, 기여량, 한도를 확인한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>pending</code>승인 대기 Provider가 있다.</span><span><code>approved_online</code>승인 후 온라인 상태다.</span><span><code>blocked_or_unhealthy</code>차단 또는 unhealthy 상태다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>승인</li><li>차단</li><li>상태 확인</li><li>기여량 확인</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">ProviderAdminController</span><span class="source-chip">ProviderAdminController.kt</span></div>
+</article>
+
+<article class="screen-card" id="screen-channel-ai-settings" data-search="channel-ai-settings 12 channel ai 설정 admin-dashboard web dashboard channel-ai settings guild-onboarding 채널별 ai 사용 여부, 기본 모델, 말투, 지식공간, 안전 정책을 설정한다. disabled 채널 ai가 꺼져 있다. draft 설정 작성 중이다. active 채널 ai 정책이 적용 중이다. 채널 선택 프리셋 적용 저장 channelaicustomizationcontroller pol-content-001 pol-content-002 channelaicustomizationcontroller.kt">
+  <div class="meta-line"><span>12 · admin-dashboard</span><span>guild-onboarding</span></div>
+  <h3>Channel AI 설정</h3>
+  <p>채널별 AI 사용 여부, 기본 모델, 말투, 지식공간, 안전 정책을 설정한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>disabled</code>채널 AI가 꺼져 있다.</span><span><code>draft</code>설정 작성 중이다.</span><span><code>active</code>채널 AI 정책이 적용 중이다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>채널 선택</li><li>프리셋 적용</li><li>저장</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">ChannelAiCustomizationController</span><span class="source-chip">ChannelAiCustomizationController.kt</span></div>
+</article>
+
+<article class="screen-card" id="screen-preset-catalog" data-search="preset-catalog 13 preset catalog admin-dashboard web dashboard /api/ai-network/presets/* presets-knowledge 서버 운영 설정 프리셋을 탐색, 미리보기, 가져오기, 신고/리뷰한다. catalog 프리셋 목록을 탐색한다. import_preview 적용 전 변경점을 확인한다. reported 신고/리뷰 대상이다. 검색 미리보기 import 신고 presetregistrycontroller pol-content-001 pol-content-002 pol-monetization-001 presetregistrycontroller.kt">
+  <div class="meta-line"><span>13 · admin-dashboard</span><span>presets-knowledge</span></div>
+  <h3>Preset Catalog</h3>
+  <p>서버 운영 설정 프리셋을 탐색, 미리보기, 가져오기, 신고/리뷰한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>catalog</code>프리셋 목록을 탐색한다.</span><span><code>import_preview</code>적용 전 변경점을 확인한다.</span><span><code>reported</code>신고/리뷰 대상이다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>검색</li><li>미리보기</li><li>import</li><li>신고</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">PresetRegistryController</span><span class="source-chip">PresetRegistryController.kt</span></div>
+</article>
+
+<article class="screen-card" id="screen-knowledge-space" data-search="knowledge-space 14 knowledge space admin-dashboard web dashboard /api/ai-network/knowledge/* presets-knowledge 서버/채널 지식 자료를 source, index-job, search/context/eval 단위로 관리한다. empty 등록된 source가 없다. indexing 인덱싱 작업 중이다. ready 검색과 답변 컨텍스트에 사용할 수 있다. source 추가 인덱싱 검색 테스트 eval knowledgeingestioncontroller pol-privacy-001 pol-content-001 knowledgeingestioncontroller.kt">
+  <div class="meta-line"><span>14 · admin-dashboard</span><span>presets-knowledge</span></div>
+  <h3>Knowledge Space</h3>
+  <p>서버/채널 지식 자료를 source, index-job, search/context/eval 단위로 관리한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>empty</code>등록된 source가 없다.</span><span><code>indexing</code>인덱싱 작업 중이다.</span><span><code>ready</code>검색과 답변 컨텍스트에 사용할 수 있다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>source 추가</li><li>인덱싱</li><li>검색 테스트</li><li>eval</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">KnowledgeIngestionController</span><span class="source-chip">KnowledgeIngestionController.kt</span></div>
+</article>
+
+<article class="screen-card" id="screen-quality-reports" data-search="quality-reports 15 quality / reports admin-dashboard web dashboard quality/report review safety-limits 답변 품질 피드백, 신고, 안전 이슈를 운영자가 검토한다. queue 검토 대기 항목이 있다. reviewing 운영자가 처리 중이다. resolved 조치가 완료됐다. 리뷰 숨김/차단 해결 처리 aiqualityfeedbackcontroller report/review apis pol-content-001 pol-edge-001 aiqualityfeedbackcontroller.kt docs/nexa_safety_policy.md">
+  <div class="meta-line"><span>15 · admin-dashboard</span><span>safety-limits</span></div>
+  <h3>Quality / Reports</h3>
+  <p>답변 품질 피드백, 신고, 안전 이슈를 운영자가 검토한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>queue</code>검토 대기 항목이 있다.</span><span><code>reviewing</code>운영자가 처리 중이다.</span><span><code>resolved</code>조치가 완료됐다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>리뷰</li><li>숨김/차단</li><li>해결 처리</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">AiQualityFeedbackController</span><span class="source-chip">report/review APIs</span><span class="source-chip">AiQualityFeedbackController.kt</span><span class="source-chip">docs/NEXA_SAFETY_POLICY.md</span></div>
+</article>
+
+<article class="screen-card" id="screen-launch-readiness" data-search="launch-readiness 16 launch readiness admin-dashboard web dashboard launch checklist admin-operations 서버 ai 풀을 실제로 열기 전 필요한 설정, provider, 안전, 한도 체크를 확인한다. not_ready 필수 조건이 부족하다. warning 운영 위험이 남아 있다. ready 라이브 운영 가능 상태다. 체크리스트 확인 부족 항목 이동 운영 시작 dashboardcontroller pol-provider-001 pol-content-001 pol-limit-001 dashboardcontroller.kt">
+  <div class="meta-line"><span>16 · admin-dashboard</span><span>admin-operations</span></div>
+  <h3>Launch Readiness</h3>
+  <p>서버 AI 풀을 실제로 열기 전 필요한 설정, Provider, 안전, 한도 체크를 확인한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>not_ready</code>필수 조건이 부족하다.</span><span><code>warning</code>운영 위험이 남아 있다.</span><span><code>ready</code>라이브 운영 가능 상태다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>체크리스트 확인</li><li>부족 항목 이동</li><li>운영 시작</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">DashboardController</span><span class="source-chip">DashboardController.kt</span></div>
+</article>
+
+<article class="screen-card" id="screen-agent-start" data-search="agent-start 20 provider agent 시작 / 설치 provider-desktop desktop web ui localhost app start provider-agent provider가 로컬 앱을 설치/실행하고 중앙 서버 연결 준비 상태를 본다. first_run 첫 실행과 온보딩 상태다. needs_setup ollama/토큰/서버 연결이 필요하다. ready 서버 연결 화면으로 이동 가능하다. 설치 확인 시작 토큰 등록 provider-agent webui packaging assets pol-provider-001 provider-agent/packaging/ provider-agent/src/provider_agent/webui.py">
+  <div class="meta-line"><span>20 · provider-desktop</span><span>provider-agent</span></div>
+  <h3>Provider Agent 시작 / 설치</h3>
+  <p>Provider가 로컬 앱을 설치/실행하고 중앙 서버 연결 준비 상태를 본다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>first_run</code>첫 실행과 온보딩 상태다.</span><span><code>needs_setup</code>Ollama/토큰/서버 연결이 필요하다.</span><span><code>ready</code>서버 연결 화면으로 이동 가능하다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>설치 확인</li><li>시작</li><li>토큰 등록</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">provider-agent webui</span><span class="source-chip">packaging assets</span><span class="source-chip">provider-agent/packaging/</span><span class="source-chip">provider-agent/src/provider_agent/webui.py</span></div>
+</article>
+
+<article class="screen-card" id="screen-server-list" data-search="server-list 21 서버 연결 목록 provider-desktop desktop web ui /api/servers provider-agent provider가 승인된 discord 서버 목록과 연결 상태를 본다. empty 연결된 서버가 없다. syncing 중앙 서버와 durable token sync 중이다. connected 하나 이상의 서버와 연결됐다. sync 서버 선택 연결 시작 /provider/agent/sync /api/servers pol-limit-001 pol-privacy-001 provideragentsynccontroller.kt:30-65 provider-agent/src/provider_agent/webui.py">
+  <div class="meta-line"><span>21 · provider-desktop</span><span>provider-agent</span></div>
+  <h3>서버 연결 목록</h3>
+  <p>Provider가 승인된 Discord 서버 목록과 연결 상태를 본다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>empty</code>연결된 서버가 없다.</span><span><code>syncing</code>중앙 서버와 durable token sync 중이다.</span><span><code>connected</code>하나 이상의 서버와 연결됐다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>sync</li><li>서버 선택</li><li>연결 시작</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">/provider/agent/sync</span><span class="source-chip">/api/servers</span><span class="source-chip">ProviderAgentSyncController.kt:30-65</span><span class="source-chip">provider-agent/src/provider_agent/webui.py</span></div>
+</article>
+
+<article class="screen-card" id="screen-server-detail" data-search="server-detail 22 서버 상세 / 일시정지 provider-desktop desktop web ui /api/servers/{guildid} provider-agent 서버별 provider 상태, 한도, pause/resume, join token 상태를 조작한다. online_idle 요청 수신 가능하다. online_busy 현재 처리 중이다. paused_or_limited provider 의사 또는 한도 때문에 제외된다. pause resume 한도 확인 서버 제거 /api/servers/* pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py docs/nexa_limit_policy.md">
+  <div class="meta-line"><span>22 · provider-desktop</span><span>provider-agent</span></div>
+  <h3>서버 상세 / 일시정지</h3>
+  <p>서버별 Provider 상태, 한도, pause/resume, join token 상태를 조작한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>online_idle</code>요청 수신 가능하다.</span><span><code>online_busy</code>현재 처리 중이다.</span><span><code>paused_or_limited</code>Provider 의사 또는 한도 때문에 제외된다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>pause</li><li>resume</li><li>한도 확인</li><li>서버 제거</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">/api/servers/*</span><span class="source-chip">provider-agent/src/provider_agent/webui.py</span><span class="source-chip">docs/NEXA_LIMIT_POLICY.md</span></div>
+</article>
+
+<article class="screen-card" id="screen-model-list" data-search="model-list 23 모델 목록 provider-desktop desktop web ui /api/models provider-agent 로컬 ollama/comfyui 모델 상태와 부담 수준을 확인한다. no_runtime ollama/comfyui 연결이 안 됐다. available 사용 가능한 모델이 있다. restricted 무거운 모델이라 정책상 제한된다. 모델 새로고침 기본 모델 확인 runtime 설정 이동 /api/models ollama local api pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py">
+  <div class="meta-line"><span>23 · provider-desktop</span><span>provider-agent</span></div>
+  <h3>모델 목록</h3>
+  <p>로컬 Ollama/ComfyUI 모델 상태와 부담 수준을 확인한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>no_runtime</code>Ollama/ComfyUI 연결이 안 됐다.</span><span><code>available</code>사용 가능한 모델이 있다.</span><span><code>restricted</code>무거운 모델이라 정책상 제한된다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>모델 새로고침</li><li>기본 모델 확인</li><li>runtime 설정 이동</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">/api/models</span><span class="source-chip">Ollama local API</span><span class="source-chip">provider-agent/src/provider_agent/webui.py</span></div>
+</article>
+
+<article class="screen-card" id="screen-agent-logs" data-search="agent-logs 24 로컬 로그 provider-desktop desktop web ui /api/logs provider-agent provider가 연결/실행/오류 로그를 보되 사용자 프롬프트 원문은 저장하지 않는다. empty 로그가 없다. streaming 새 로그가 들어온다. error 연결 또는 runtime 오류가 있다. 로그 보기 필터 복사 /api/logs pol-privacy-001 provider-agent/src/provider_agent/webui.py docs/provider_safety_policy.md:56">
+  <div class="meta-line"><span>24 · provider-desktop</span><span>provider-agent</span></div>
+  <h3>로컬 로그</h3>
+  <p>Provider가 연결/실행/오류 로그를 보되 사용자 프롬프트 원문은 저장하지 않는다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>empty</code>로그가 없다.</span><span><code>streaming</code>새 로그가 들어온다.</span><span><code>error</code>연결 또는 runtime 오류가 있다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>로그 보기</li><li>필터</li><li>복사</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">/api/logs</span><span class="source-chip">provider-agent/src/provider_agent/webui.py</span><span class="source-chip">docs/PROVIDER_SAFETY_POLICY.md:56</span></div>
+</article>
+
+<article class="screen-card" id="screen-agent-settings" data-search="agent-settings 25 설정 / 업데이트 provider-desktop desktop web ui /api/settings, /api/update-* provider-agent provider 앱 설정, 업데이트, 패키징/릴리스 자산과 관련된 사용자 설정을 관리한다. current 최신 버전이다. update_available 업데이트가 있다. updating 업데이트 진행 중이다. 설정 저장 업데이트 확인 업데이트 실행 /api/settings /api/update-* packaging/assets.json pol-provider-001 packaging/assets.json provider-agent/src/provider_agent/webui.py">
+  <div class="meta-line"><span>25 · provider-desktop</span><span>provider-agent</span></div>
+  <h3>설정 / 업데이트</h3>
+  <p>Provider 앱 설정, 업데이트, 패키징/릴리스 자산과 관련된 사용자 설정을 관리한다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>current</code>최신 버전이다.</span><span><code>update_available</code>업데이트가 있다.</span><span><code>updating</code>업데이트 진행 중이다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>설정 저장</li><li>업데이트 확인</li><li>업데이트 실행</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">/api/settings</span><span class="source-chip">/api/update-*</span><span class="source-chip">packaging/assets.json</span><span class="source-chip">packaging/assets.json</span><span class="source-chip">provider-agent/src/provider_agent/webui.py</span></div>
+</article>
+
+<article class="screen-card" id="screen-local-runtime-status" data-search="local-runtime-status 26 ollama / comfyui 상태 provider-desktop desktop web ui runtime status provider-agent 로컬 ai runtime 연결 상태, 설치 안내, 실행 가능 여부를 보여준다. missing runtime이 설치되지 않았다. offline 설치됐지만 실행 중이 아니다. online provider 요청을 실행할 수 있다. 상태 확인 설치 가이드 열기 재시도 ollama local api comfyui local api pol-provider-001 pol-limit-001 provider-agent/src/provider_agent/webui.py">
+  <div class="meta-line"><span>26 · provider-desktop</span><span>provider-agent</span></div>
+  <h3>Ollama / ComfyUI 상태</h3>
+  <p>로컬 AI runtime 연결 상태, 설치 안내, 실행 가능 여부를 보여준다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>missing</code>runtime이 설치되지 않았다.</span><span><code>offline</code>설치됐지만 실행 중이 아니다.</span><span><code>online</code>Provider 요청을 실행할 수 있다.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>상태 확인</li><li>설치 가이드 열기</li><li>재시도</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">Ollama local API</span><span class="source-chip">ComfyUI local API</span><span class="source-chip">provider-agent/src/provider_agent/webui.py</span></div>
+</article>
+
+<article class="screen-card" id="screen-nia-affinity" data-search="nia-affinity 07 니아 호감도 discord discord bot response (ephemeral) /nia nia-identity 요청자와 니아의 개인 호감도 단계·점수·다음 단계까지 진행도를 보여준다. affinity-view 단계(낯섦/알아가는중/친근/단짝)와 점수·진행바를 ephemeral 로 표시. 내 호감도 단계·점수 확인 다음 단계까지 진행도 확인 niaaffinityservice affinitystage pol-content-001 central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/ainetworkcommandhandler.kt central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/niaaffinityservice.kt">
+  <div class="meta-line"><span>07 · discord</span><span>nia-identity</span></div>
+  <h3>니아 호감도</h3>
+  <p>요청자와 니아의 개인 호감도 단계·점수·다음 단계까지 진행도를 보여준다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>affinity-view</code>단계(낯섦/알아가는중/친근/단짝)와 점수·진행바를 ephemeral 로 표시.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>내 호감도 단계·점수 확인</li><li>다음 단계까지 진행도 확인</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">NiaAffinityService</span><span class="source-chip">AffinityStage</span><span class="source-chip">central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AiNetworkCommandHandler.kt</span><span class="source-chip">central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/NiaAffinityService.kt</span></div>
+</article>
+
+<article class="screen-card" id="screen-license-premium" data-search="license-premium 27 라이선스 · 프리미엄 provider-desktop provider 데스크톱 앱 화면 /api/license licensing-monetization 앱이 현재 라이선스 상태(체험/유료/이벤트)와 $10 구매·이벤트 신청을 보여준다. trial 체험 중 — 프리미엄 사용 가능, 남은 기간 표시. locked 체험 만료 — 프리미엄 잠금, 구매/이벤트 유도. licensed 결제·이벤트 완료 — 영구 프리미엄. 라이선스 상태 확인 $10 영구 라이선스 구매(paddle) 런칭 이벤트 평생 무료 신청 /provider/license/me /provider/license/checkout /provider/license/event/claim pol-monetization-001 docs/adr/0005-app-license-monetization.md central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/licensecontroller.kt">
+  <div class="meta-line"><span>27 · provider-desktop</span><span>licensing-monetization</span></div>
+  <h3>라이선스 · 프리미엄</h3>
+  <p>앱이 현재 라이선스 상태(체험/유료/이벤트)와 $10 구매·이벤트 신청을 보여준다.</p>
+  <h4>상태</h4>
+  <div class="state-list"><span><code>trial</code>체험 중 — 프리미엄 사용 가능, 남은 기간 표시.</span><span><code>locked</code>체험 만료 — 프리미엄 잠금, 구매/이벤트 유도.</span><span><code>licensed</code>결제·이벤트 완료 — 영구 프리미엄.</span></div>
+  <h4>주요 행동</h4>
+  <ul class="compact-list"><li>라이선스 상태 확인</li><li>$10 영구 라이선스 구매(Paddle)</li><li>런칭 이벤트 평생 무료 신청</li></ul>
+  <h4>관련 API / 근거</h4>
+  <div class="chip-block"><span class="source-chip">/provider/license/me</span><span class="source-chip">/provider/license/checkout</span><span class="source-chip">/provider/license/event/claim</span><span class="source-chip">docs/adr/0005-app-license-monetization.md</span><span class="source-chip">central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/LicenseController.kt</span></div>
+</article>
+</div>
+  </details>
+</section>
+
+
+<section id="contracts" class="nav-section">
+  <div class="section-head">
+    <div>
+      <span class="section-kicker">5. 시스템 내부 흐름 + 7. 관련 API</span>
+      <h2>API / 계약 명세</h2>
+      <p>API가 없는 게 아니라 도메인별로 흩어져 있었다. 먼저 Discord·웹·로컬 표면에 걸친 도메인별 대표 API 23개를 한곳에 모으고, 그 아래에 바뀌면 같이 검증해야 하는 SSOT 계약을 둔다. (엔드포인트 전수 목록이 아니라 도메인 이해용 대표 표면이다.)</p>
+    </div>
+  </div>
+  <div class="component-grid">
+<article class="component-card" data-search="central-server central-server kotlin/spring boot/jda discord 명령, provider pool, 정책, 라우팅, 세션, 대시보드, 관측성, 라이선스, 배포 단위를 담당한다.">
+  <h3>central-server</h3>
+  <span class="stack-chip">Kotlin/Spring Boot/JDA</span>
+  <p>Discord 명령, Provider Pool, 정책, 라우팅, 세션, 대시보드, 관측성, 라이선스, 배포 단위를 담당한다.</p>
+</article>
+
+<article class="component-card" data-search="provider-agent provider-agent python/aiohttp provider pc에서 로컬 ui를 제공하고, 중앙 서버와 outbound 연결로 ollama/comfyui 요청을 처리한다.">
+  <h3>provider-agent</h3>
+  <span class="stack-chip">Python/aiohttp</span>
+  <p>Provider PC에서 로컬 UI를 제공하고, 중앙 서버와 outbound 연결로 Ollama/ComfyUI 요청을 처리한다.</p>
+</article>
+
+<article class="component-card" data-search="desktop-prototype prototypes/desktop html/css/js prototype provider agent 데스크톱 ui의 ssot다. 실 webui_assets는 여기서 sync된다.">
+  <h3>prototypes/desktop</h3>
+  <span class="stack-chip">HTML/CSS/JS prototype</span>
+  <p>Provider Agent 데스크톱 UI의 SSOT다. 실 webui_assets는 여기서 sync된다.</p>
+</article>
+</div>
+  <h3 class="block-title">API 표면 한눈에 보기 · 23개</h3>
+  <p class="block-note">도메인 그룹마다 정의된 실제 API/Surface를 모은 표다. 도메인 열을 누르면 그 도메인의 상세 흐름으로 이동한다.</p>
+  <table class="nav-table api-table">
+    <thead><tr><th>API / Surface</th><th>주체</th><th>시점</th><th>목적</th><th>도메인</th></tr></thead>
+    <tbody>
+<tr data-search="서버 온보딩 · 봇 설치 대시보드 진입 client → central-server /api/ai-network/{guildid}/dashboard 서버 ai 운영 상태를 한 번에 조회한다.">
+  <td><code>/api/ai-network/{guildId}/dashboard</code></td>
+  <td>Client → central-server</td>
+  <td>대시보드 진입</td>
+  <td>서버 AI 운영 상태를 한 번에 조회한다.</td>
+  <td><a class="inline-screen-link" href="#domain-guild-onboarding">서버 온보딩 · 봇 설치</a></td>
+</tr>
+
+<tr data-search="서버 온보딩 · 봇 설치 채널 ai 설정 client → central-server channelaicustomizationcontroller 채널별 말투, 모델, 지식공간, 안전 설정을 저장한다.">
+  <td><code>ChannelAiCustomizationController</code></td>
+  <td>Client → central-server</td>
+  <td>채널 AI 설정</td>
+  <td>채널별 말투, 모델, 지식공간, 안전 설정을 저장한다.</td>
+  <td><a class="inline-screen-link" href="#domain-guild-onboarding">서버 온보딩 · 봇 설치</a></td>
+</tr>
+
+<tr data-search="/질문 질문 · 응답 라우팅 discord 명령 discord → central-server askcommandhandler /질문 옵션을 받고 라우팅을 시작한다.">
+  <td><code>AskCommandHandler</code></td>
+  <td>Discord → central-server</td>
+  <td>Discord 명령</td>
+  <td>/질문 옵션을 받고 라우팅을 시작한다.</td>
+  <td><a class="inline-screen-link" href="#domain-ask-routing">/질문 질문 · 응답 라우팅</a></td>
+</tr>
+
+<tr data-search="/질문 질문 · 응답 라우팅 provider 실행 central-server → provider-agent wire frame: infer/result/error 선택된 provider pc에 추론 요청을 보내고 결과를 받는다.">
+  <td><code>wire frame: infer/result/error</code></td>
+  <td>central-server → provider-agent</td>
+  <td>Provider 실행</td>
+  <td>선택된 Provider PC에 추론 요청을 보내고 결과를 받는다.</td>
+  <td><a class="inline-screen-link" href="#domain-ask-routing">/질문 질문 · 응답 라우팅</a></td>
+</tr>
+
+<tr data-search="/질문 질문 · 응답 라우팅 피드백 client → central-server /api/ai-network/quality/* 답변 품질 피드백을 운영 루프에 남긴다.">
+  <td><code>/api/ai-network/quality/*</code></td>
+  <td>Client → central-server</td>
+  <td>피드백</td>
+  <td>답변 품질 피드백을 운영 루프에 남긴다.</td>
+  <td><a class="inline-screen-link" href="#domain-ask-routing">/질문 질문 · 응답 라우팅</a></td>
+</tr>
+
+<tr data-search="provider 연결 · 로컬 실행 서버 동기화 provider-agent → central-server /provider/agent/sync 승인된 guild, join token, license entitlement를 받는다.">
+  <td><code>/provider/agent/sync</code></td>
+  <td>provider-agent → central-server</td>
+  <td>서버 동기화</td>
+  <td>승인된 guild, join token, license entitlement를 받는다.</td>
+  <td><a class="inline-screen-link" href="#domain-provider-agent">Provider 연결 · 로컬 실행</a></td>
+</tr>
+
+<tr data-search="provider 연결 · 로컬 실행 로컬 ui 상태 desktop ui → provider-agent /api/status, /api/servers/*, /api/models provider 본인의 연결/모델/한도를 조작한다.">
+  <td><code>/api/status, /api/servers/*, /api/models</code></td>
+  <td>desktop UI → provider-agent</td>
+  <td>로컬 UI 상태</td>
+  <td>Provider 본인의 연결/모델/한도를 조작한다.</td>
+  <td><a class="inline-screen-link" href="#domain-provider-agent">Provider 연결 · 로컬 실행</a></td>
+</tr>
+
+<tr data-search="provider 연결 · 로컬 실행 모델 실행 provider-agent → ollama/comfyui local model http 실제 추론/이미지 작업을 로컬에서 수행한다.">
+  <td><code>local model HTTP</code></td>
+  <td>provider-agent → Ollama/ComfyUI</td>
+  <td>모델 실행</td>
+  <td>실제 추론/이미지 작업을 로컬에서 수행한다.</td>
+  <td><a class="inline-screen-link" href="#domain-provider-agent">Provider 연결 · 로컬 실행</a></td>
+</tr>
+
+<tr data-search="서버 운영 · 대시보드 운영 조회 client → central-server /api/ai-network/{guildid}/dashboard, /overview, /providers ai 풀 상태를 요약 조회한다.">
+  <td><code>/api/ai-network/{guildId}/dashboard, /overview, /providers</code></td>
+  <td>Client → central-server</td>
+  <td>운영 조회</td>
+  <td>AI 풀 상태를 요약 조회한다.</td>
+  <td><a class="inline-screen-link" href="#domain-admin-operations">서버 운영 · 대시보드</a></td>
+</tr>
+
+<tr data-search="서버 운영 · 대시보드 운영 변경 client → central-server provideradmincontroller, dashboardwritecontroller provider 승인/차단과 대시보드 쓰기 조치를 처리한다.">
+  <td><code>ProviderAdminController, DashboardWriteController</code></td>
+  <td>Client → central-server</td>
+  <td>운영 변경</td>
+  <td>Provider 승인/차단과 대시보드 쓰기 조치를 처리한다.</td>
+  <td><a class="inline-screen-link" href="#domain-admin-operations">서버 운영 · 대시보드</a></td>
+</tr>
+
+<tr data-search="프리셋 · 지식공간 프리셋 탐색 client → central-server /api/ai-network/presets/* catalog, recommended, facets, import-preview를 제공한다.">
+  <td><code>/api/ai-network/presets/*</code></td>
+  <td>Client → central-server</td>
+  <td>프리셋 탐색</td>
+  <td>catalog, recommended, facets, import-preview를 제공한다.</td>
+  <td><a class="inline-screen-link" href="#domain-presets-knowledge">프리셋 · 지식공간</a></td>
+</tr>
+
+<tr data-search="프리셋 · 지식공간 지식공간 운영 client → central-server /api/ai-network/knowledge/* space/source/index-job/search/context/eval을 관리한다.">
+  <td><code>/api/ai-network/knowledge/*</code></td>
+  <td>Client → central-server</td>
+  <td>지식공간 운영</td>
+  <td>space/source/index-job/search/context/eval을 관리한다.</td>
+  <td><a class="inline-screen-link" href="#domain-presets-knowledge">프리셋 · 지식공간</a></td>
+</tr>
+
+<tr data-search="안전 · 한도 · 신고 정책 정책 검사 central-server providerfilterpipeline / safety policy 라우팅 전 안전과 provider 보호 조건을 적용한다.">
+  <td><code>ProviderFilterPipeline / safety policy</code></td>
+  <td>central-server</td>
+  <td>정책 검사</td>
+  <td>라우팅 전 안전과 Provider 보호 조건을 적용한다.</td>
+  <td><a class="inline-screen-link" href="#domain-safety-limits">안전 · 한도 · 신고 정책</a></td>
+</tr>
+
+<tr data-search="안전 · 한도 · 신고 정책 신고/품질 client → central-server report/review/quality apis 안전 이슈와 품질 이슈를 운영자가 처리하게 한다.">
+  <td><code>report/review/quality APIs</code></td>
+  <td>Client → central-server</td>
+  <td>신고/품질</td>
+  <td>안전 이슈와 품질 이슈를 운영자가 처리하게 한다.</td>
+  <td><a class="inline-screen-link" href="#domain-safety-limits">안전 · 한도 · 신고 정책</a></td>
+</tr>
+
+<tr data-search="니아 정체성 · 호감도 /질문 기본 경로(커스텀 페르소나 없음) central-server nexaidentity / askcommandhandler 니아 기본 페르소나·few-shot·호감도 관계 문장을 시스템 프롬프트에 주입한다(전문 비공개).">
+  <td><code>NexaIdentity / AskCommandHandler</code></td>
+  <td>central-server</td>
+  <td>/질문 기본 경로(커스텀 페르소나 없음)</td>
+  <td>니아 기본 페르소나·few-shot·호감도 관계 문장을 시스템 프롬프트에 주입한다(전문 비공개).</td>
+  <td><a class="inline-screen-link" href="#domain-nia-identity">니아 정체성 · 호감도</a></td>
+</tr>
+
+<tr data-search="니아 정체성 · 호감도 응답 성공 시 central-server niaaffinityservice 요청자별 호감도 점수를 누적하고 단계를 판정·영속한다(상호작용당 +1).">
+  <td><code>NiaAffinityService</code></td>
+  <td>central-server</td>
+  <td>응답 성공 시</td>
+  <td>요청자별 호감도 점수를 누적하고 단계를 판정·영속한다(상호작용당 +1).</td>
+  <td><a class="inline-screen-link" href="#domain-nia-identity">니아 정체성 · 호감도</a></td>
+</tr>
+
+<tr data-search="니아 정체성 · 호감도 유저가 호감도 확인 discord → central-server /nia (ainetworkcommandhandler) 요청자의 호감도 단계·점수·진행바를 ephemeral 로 보여준다.">
+  <td><code>/nia (AiNetworkCommandHandler)</code></td>
+  <td>Discord → central-server</td>
+  <td>유저가 호감도 확인</td>
+  <td>요청자의 호감도 단계·점수·진행바를 ephemeral 로 보여준다.</td>
+  <td><a class="inline-screen-link" href="#domain-nia-identity">니아 정체성 · 호감도</a></td>
+</tr>
+
+<tr data-search="니아 정체성 · 호감도 서버 기본 성격 미설정 central-server globalpromptsetservice 서버 전역 기본 페르소나가 없으면 니아를 기본값으로 사용한다.">
+  <td><code>GlobalPromptSetService</code></td>
+  <td>central-server</td>
+  <td>서버 기본 성격 미설정</td>
+  <td>서버 전역 기본 페르소나가 없으면 니아를 기본값으로 사용한다.</td>
+  <td><a class="inline-screen-link" href="#domain-nia-identity">니아 정체성 · 호감도</a></td>
+</tr>
+
+<tr data-search="라이선스 · 수익화 앱이 권리 확인 provider-agent → central-server post /provider/license/me durable 토큰으로 본인 entitlement(상태·권리)를 조회한다.">
+  <td><code>POST /provider/license/me</code></td>
+  <td>provider-agent → central-server</td>
+  <td>앱이 권리 확인</td>
+  <td>durable 토큰으로 본인 entitlement(상태·권리)를 조회한다.</td>
+  <td><a class="inline-screen-link" href="#domain-licensing-monetization">라이선스 · 수익화</a></td>
+</tr>
+
+<tr data-search="라이선스 · 수익화 앱 내 구매 provider-agent → central-server post /provider/license/checkout $10 라이선스 paddle checkout url 생성(결제 비활성이면 503).">
+  <td><code>POST /provider/license/checkout</code></td>
+  <td>provider-agent → central-server</td>
+  <td>앱 내 구매</td>
+  <td>$10 라이선스 Paddle checkout URL 생성(결제 비활성이면 503).</td>
+  <td><a class="inline-screen-link" href="#domain-licensing-monetization">라이선스 · 수익화</a></td>
+</tr>
+
+<tr data-search="라이선스 · 수익화 결제 확정 paddle → central-server post /billing/webhook/paddle 결제 완료 webhook 으로 licensed 반영(custom_data 의 userid 귀속).">
+  <td><code>POST /billing/webhook/paddle</code></td>
+  <td>Paddle → central-server</td>
+  <td>결제 확정</td>
+  <td>결제 완료 webhook 으로 LICENSED 반영(custom_data 의 userId 귀속).</td>
+  <td><a class="inline-screen-link" href="#domain-licensing-monetization">라이선스 · 수익화</a></td>
+</tr>
+
+<tr data-search="라이선스 · 수익화 이벤트 현황/신청 provider-agent → central-server /provider/license/event/status · /event/claim 런칭 이벤트 현황 조회와 평생 무료 신청(자격 미달은 outcome 사유).">
+  <td><code>/provider/license/event/status · /event/claim</code></td>
+  <td>provider-agent → central-server</td>
+  <td>이벤트 현황/신청</td>
+  <td>런칭 이벤트 현황 조회와 평생 무료 신청(자격 미달은 outcome 사유).</td>
+  <td><a class="inline-screen-link" href="#domain-licensing-monetization">라이선스 · 수익화</a></td>
+</tr>
+
+<tr data-search="라이선스 · 수익화 데스크톱 표시 desktop ui → provider-agent get /api/license 앱이 entitlement·이벤트 현황을 받아 라이선스 카드에 표시한다.">
+  <td><code>GET /api/license</code></td>
+  <td>desktop UI → provider-agent</td>
+  <td>데스크톱 표시</td>
+  <td>앱이 entitlement·이벤트 현황을 받아 라이선스 카드에 표시한다.</td>
+  <td><a class="inline-screen-link" href="#domain-licensing-monetization">라이선스 · 수익화</a></td>
+</tr>
+</tbody>
+  </table>
+  <h3 class="block-title">SSOT 계약 · 바뀌면 같이 검증</h3>
+  <p class="block-note">엔드포인트 나열과 달리, 한쪽을 바꾸면 생성물·반대편을 같은 커밋에서 맞춰야 하는 계약이다.</p>
+  <table class="nav-table contract-table">
+    <thead><tr><th>계약</th><th>SSOT</th><th>생성물</th><th>명령</th><th>규칙</th></tr></thead>
+    <tbody>
+<tr data-search="con-wire provider wire protocol protocol/wire-contract.json central-server/src/main/kotlin/com/discordassistant/central/relay/wirecontractgenerated.kt provider-agent/src/provider_agent/_wire_contract_generated.py make wire-gen make contract frame type, protocol version, allowed option key 변경은 ssot 수정 후 생성·양측 테스트를 같이 통과해야 한다.">
+  <td><code>CON-WIRE</code><br><strong>Provider wire protocol</strong></td>
+  <td><code>protocol/wire-contract.json</code></td>
+  <td><span class="source-chip">central-server/src/main/kotlin/com/discordassistant/central/relay/WireContractGenerated.kt</span><span class="source-chip">provider-agent/src/provider_agent/_wire_contract_generated.py</span></td>
+  <td><div class="command-stack"><code>generate: make wire-gen</code><code>check: make contract</code></div></td>
+  <td>frame type, protocol version, allowed option key 변경은 SSOT 수정 후 생성·양측 테스트를 같이 통과해야 한다.</td>
+</tr>
+
+<tr data-search="con-desktop-ui provider agent desktop ui prototypes/desktop provider-agent/src/provider_agent/webui_assets/ make sync-desktop make desktop-check webui_assets는 생성물이다. 새 화면/버튼은 prototype + real adapter + mock + webui handler를 같은 변경에서 맞춘다.">
+  <td><code>CON-DESKTOP-UI</code><br><strong>Provider Agent desktop UI</strong></td>
+  <td><code>prototypes/desktop</code></td>
+  <td><span class="source-chip">provider-agent/src/provider_agent/webui_assets/</span></td>
+  <td><div class="command-stack"><code>generate: make sync-desktop</code><code>check: make desktop-check</code></div></td>
+  <td>webui_assets는 생성물이다. 새 화면/버튼은 prototype + real adapter + mock + webui handler를 같은 변경에서 맞춘다.</td>
+</tr>
+
+<tr data-search="con-desktop-shapes desktop api response shape prototypes/desktop/contract-shapes.json prototypes/desktop/contract-shapes.json make desktop-shapes make desktop-check mock shape 변경은 생성본을 갱신하고 real webui 응답이 mock 필드를 포함하는지 검증한다.">
+  <td><code>CON-DESKTOP-SHAPES</code><br><strong>Desktop API response shape</strong></td>
+  <td><code>prototypes/desktop/contract-shapes.json</code></td>
+  <td><span class="source-chip">prototypes/desktop/contract-shapes.json</span></td>
+  <td><div class="command-stack"><code>generate: make desktop-shapes</code><code>check: make desktop-check</code></div></td>
+  <td>mock shape 변경은 생성본을 갱신하고 real webui 응답이 mock 필드를 포함하는지 검증한다.</td>
+</tr>
+
+<tr data-search="con-i18n user visible copy i18n/messages.json central-server/src/main/resources/i18n/messages.json central-server/src/main/resources/static/i18n/web.json provider-agent/src/provider_agent/i18n_messages.json make i18n-gen make i18n-check 사용자 노출 문구는 ko/en/ja를 모두 갖춰야 하며 생성본 직접 편집 금지.">
+  <td><code>CON-I18N</code><br><strong>User visible copy</strong></td>
+  <td><code>i18n/messages.json</code></td>
+  <td><span class="source-chip">central-server/src/main/resources/i18n/messages.json</span><span class="source-chip">central-server/src/main/resources/static/i18n/web.json</span><span class="source-chip">provider-agent/src/provider_agent/i18n_messages.json</span></td>
+  <td><div class="command-stack"><code>generate: make i18n-gen</code><code>check: make i18n-check</code></div></td>
+  <td>사용자 노출 문구는 ko/en/ja를 모두 갖춰야 하며 생성본 직접 편집 금지.</td>
+</tr>
+
+<tr data-search="con-packaging release asset and package manager names packaging/assets.json provider-agent/packaging/ .github/workflows/agent-build.yml 문서 설치 명령 make packaging-check 패키지 id, 릴리스 자산명, 설치 명령은 packaging/assets.json을 기준으로 맞춘다.">
+  <td><code>CON-PACKAGING</code><br><strong>Release asset and package manager names</strong></td>
+  <td><code>packaging/assets.json</code></td>
+  <td><span class="source-chip">provider-agent/packaging/</span><span class="source-chip">.github/workflows/agent-build.yml</span><span class="source-chip">문서 설치 명령</span></td>
+  <td><div class="command-stack"><code>check: make packaging-check</code></div></td>
+  <td>패키지 ID, 릴리스 자산명, 설치 명령은 packaging/assets.json을 기준으로 맞춘다.</td>
+</tr>
+
+<tr data-search="con-ssot-viewer human ssot viewer ai-context/*.json docs/ssot-viewer/prd-viewer/auto-generated-requirements-api-spec-navigation.html python3 scripts/gen_ssot_viewer.py python3 scripts/gen_ssot_viewer.py --check 사람용 요구사항/api/네비게이션 html은 ai-context json에서 생성한다. html 직접 편집 금지.">
+  <td><code>CON-SSOT-VIEWER</code><br><strong>Human SSOT viewer</strong></td>
+  <td><code>ai-context/*.json</code></td>
+  <td><span class="source-chip">docs/ssot-viewer/prd-viewer/auto-generated-requirements-api-spec-navigation.html</span></td>
+  <td><div class="command-stack"><code>generate: python3 scripts/gen_ssot_viewer.py</code><code>check: python3 scripts/gen_ssot_viewer.py --check</code></div></td>
+  <td>사람용 요구사항/API/네비게이션 HTML은 ai-context JSON에서 생성한다. HTML 직접 편집 금지.</td>
+</tr>
+</tbody>
+  </table>
+</section>
+
+
+<section id="domain-groups" class="nav-section domain-groups-section">
+  <div class="section-head">
+    <div>
+      <span class="section-kicker">도메인별 요구사항</span>
+      <h2>사람이 읽는 단위는 기능 목록이 아니라 도메인 흐름이다</h2>
+      <p>Dailyting 뷰어처럼 전역 모델/네비게이션/API를 먼저 보여준 뒤, 실제 이해와 구현 점검은 도메인 그룹별로 끊는다.</p>
+    </div>
+  </div>
+  
+<section class="domain-group" id="domain-guild-onboarding" data-search="guild-onboarding 서버 온보딩 · 봇 설치 domain 01 서버 관리자가 nexa 봇을 discord 서버에 추가하고, ai를 사용할 채널과 기본 운영 정책을 정하는 진입 도메인이다. 사용자는 이 도메인을 지나야 /질문와 provider pool을 서버 단위로 쓸 수 있다. 서버 관리자 nexa 봇 central-server discord 서버에 봇 초대 봇 권한과 채널 접근 확인 ai 네트워크 대시보드 진입 채널별 ai 사용 여부와 기본 프리셋 설정 not_installed 서버에 봇이 없어서 어떤 ai 기능도 시작할 수 없다. installed_unconfigured 봇은 있지만 채널/역할/프리셋 정책이 아직 비어 있다. ready ai 사용 채널과 기본 정책이 있어 /질문를 받을 수 있다. 대시보드 진입 client → central-server /api/ai-network/{guildid}/dashboard 서버 ai 운영 상태를 한 번에 조회한다. 채널 ai 설정 client → central-server channelaicustomizationcontroller 채널별 말투, 모델, 지식공간, 안전 설정을 저장한다. 봇 권한 부족 discord 권한/채널 접근 누락 관리자가 설정을 완료할 수 없다. 권한 안내와 재초대/권한 수정 경로를 보여준다. 운영 dev 기능 노출 central_dev_enabled=true 운영 안전 위험 운영에서는 반드시 false로 차단한다. pol-content-001 pol-privacy-001 con-i18n 봇 초대 후 서버 단위 설정 화면이 보여야 한다. 채널 ai 설정은 nexa 강제 안전 가드레일을 우회하면 안 된다. 사용자 노출 문구는 i18n ssot에서 생성한다. readme.md:39-48 central-server/docs/go_live.md channelaicustomizationcontroller.kt">
+  <div class="group-head">
+    <h2>서버 온보딩 · 봇 설치</h2>
+    <span class="group-count">Domain 01</span>
+  </div>
+  <div class="domain-row">
+    <aside class="domain-summary-card">
+      <div class="meta-line"><span>도메인</span><span>Domain 01</span></div>
+      <p>서버 관리자가 NEXA 봇을 Discord 서버에 추가하고, AI를 사용할 채널과 기본 운영 정책을 정하는 진입 도메인이다. 사용자는 이 도메인을 지나야 /질문와 Provider Pool을 서버 단위로 쓸 수 있다.</p>
+      <h3>주요 actor</h3>
+      <div><span class="callout-chip">서버 관리자</span><span class="callout-chip">NEXA 봇</span><span class="callout-chip">central-server</span></div>
+      <h3>정책 / 계약</h3>
+      <div class="chip-block"><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-PRIVACY-001</span><span class="mini-chip">CON-I18N</span></div>
+      <details class="source-details"><summary>근거</summary><span class="source-chip">README.md:39-48</span><span class="source-chip">central-server/docs/GO_LIVE.md</span><span class="source-chip">ChannelAiCustomizationController.kt</span></details>
+    </aside>
+    <article class="domain-detail-card">
+      <h3>1. 이 도메인은 무엇인가</h3>
+      <p>서버 관리자가 NEXA 봇을 Discord 서버에 추가하고, AI를 사용할 채널과 기본 운영 정책을 정하는 진입 도메인이다. 사용자는 이 도메인을 지나야 /질문와 Provider Pool을 서버 단위로 쓸 수 있다.</p>
+      <h3>2. 사용자는 어떤 흐름을 겪는가</h3>
+      <ol class="domain-flow"><li>Discord 서버에 봇 초대</li><li>봇 권한과 채널 접근 확인</li><li>AI 네트워크 대시보드 진입</li><li>채널별 AI 사용 여부와 기본 프리셋 설정</li></ol>
+      <div class="domain-tables">
+        <details open>
+          <summary>3. 상태 지도</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상태</th><th>의미</th></tr></thead>
+            <tbody>
+<tr>
+  <td><code>not_installed</code></td>
+  <td>서버에 봇이 없어서 어떤 AI 기능도 시작할 수 없다.</td>
+</tr>
+
+<tr>
+  <td><code>installed_unconfigured</code></td>
+  <td>봇은 있지만 채널/역할/프리셋 정책이 아직 비어 있다.</td>
+</tr>
+
+<tr>
+  <td><code>ready</code></td>
+  <td>AI 사용 채널과 기본 정책이 있어 /질문를 받을 수 있다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>7. 관련 API / 계약</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>시점</th><th>주체</th><th>API/Surface</th><th>목적</th></tr></thead>
+            <tbody>
+<tr>
+  <td>대시보드 진입</td>
+  <td>Client → central-server</td>
+  <td><code>/api/ai-network/{guildId}/dashboard</code></td>
+  <td>서버 AI 운영 상태를 한 번에 조회한다.</td>
+</tr>
+
+<tr>
+  <td>채널 AI 설정</td>
+  <td>Client → central-server</td>
+  <td><code>ChannelAiCustomizationController</code></td>
+  <td>채널별 말투, 모델, 지식공간, 안전 설정을 저장한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>8. 예외 처리</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상황</th><th>조건</th><th>사용자에게 보이는 결과</th><th>시스템 처리</th></tr></thead>
+            <tbody>
+<tr>
+  <td>봇 권한 부족</td>
+  <td>Discord 권한/채널 접근 누락</td>
+  <td>관리자가 설정을 완료할 수 없다.</td>
+  <td>권한 안내와 재초대/권한 수정 경로를 보여준다.</td>
+</tr>
+
+<tr>
+  <td>운영 dev 기능 노출</td>
+  <td>CENTRAL_DEV_ENABLED=true</td>
+  <td>운영 안전 위험</td>
+  <td>운영에서는 반드시 false로 차단한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+      </div>
+      <h3>9. 구현 체크포인트</h3>
+      <ul class="compact-list checkpoint-list"><li>봇 초대 후 서버 단위 설정 화면이 보여야 한다.</li><li>채널 AI 설정은 NEXA 강제 안전 가드레일을 우회하면 안 된다.</li><li>사용자 노출 문구는 i18n SSOT에서 생성한다.</li></ul>
+    </article>
+  </div>
+</section>
+
+<section class="domain-group" id="domain-ask-routing" data-search="ask-routing /질문 질문 · 응답 라우팅 domain 02 일반 유저가 discord에서 /질문를 입력했을 때, 중앙 서버가 쿨다운·채널 정책·역할·모델 부담·provider 후보·무료 폴백을 판단해 답변을 돌려주는 핵심 사용자 도메인이다. 일반 유저 central-server provider agent 무료 클라우드 모델 유저가 /질문 입력 중앙 서버가 정책과 쿨다운 검사 로컬 provider 후보를 필터링 가능하면 provider pc로 전송 실패/부재 시 glm-5.1 무료 폴백 discord 채널에 답변과 피드백 ui 표시 received discord 명령이 중앙 서버에 들어왔다. routing 정책과 후보 provider를 계산 중이다. sent_to_provider 선택된 provider pc에 요청을 보냈다. fallback_running 로컬 실패/부재 후 무료 클라우드 모델을 시도 중이다. rejected 권한/정책/안전 문제라 실행하지 않는다. discord 명령 discord → central-server askcommandhandler /질문 옵션을 받고 라우팅을 시작한다. provider 실행 central-server → provider-agent wire frame: infer/result/error 선택된 provider pc에 추론 요청을 보내고 결과를 받는다. 피드백 client → central-server /api/ai-network/quality/* 답변 품질 피드백을 운영 루프에 남긴다. 정책 거부 채널/역할/안전 정책 실패 요청이 실행되지 않는다. provider나 클라우드 폴백으로 우회하지 않는다. provider 실패 timeout/error/unhealthy 가능하면 무료 폴백 답변을 받는다. fallback 기본 1회, 실패 provider health 반영. pol-provider-002 pol-content-001 pol-privacy-001 con-wire con-i18n 정책 실패는 클라우드로 우회하지 않는다. 기본 질문은 provider 1명에게만 보낸다. 답변 후 피드백 경로가 품질 루프와 연결된다. askcommandhandler.kt:113-171 docs/provider_safety_policy.md:58-80 protocol/wire-contract.json">
+  <div class="group-head">
+    <h2>/질문 질문 · 응답 라우팅</h2>
+    <span class="group-count">Domain 02</span>
+  </div>
+  <div class="domain-row">
+    <aside class="domain-summary-card">
+      <div class="meta-line"><span>도메인</span><span>Domain 02</span></div>
+      <p>일반 유저가 Discord에서 /질문를 입력했을 때, 중앙 서버가 쿨다운·채널 정책·역할·모델 부담·Provider 후보·무료 폴백을 판단해 답변을 돌려주는 핵심 사용자 도메인이다.</p>
+      <h3>주요 actor</h3>
+      <div><span class="callout-chip">일반 유저</span><span class="callout-chip">central-server</span><span class="callout-chip">Provider Agent</span><span class="callout-chip">무료 클라우드 모델</span></div>
+      <h3>정책 / 계약</h3>
+      <div class="chip-block"><span class="mini-chip">POL-PROVIDER-002</span><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-PRIVACY-001</span><span class="mini-chip">CON-WIRE</span><span class="mini-chip">CON-I18N</span></div>
+      <details class="source-details"><summary>근거</summary><span class="source-chip">AskCommandHandler.kt:113-171</span><span class="source-chip">docs/PROVIDER_SAFETY_POLICY.md:58-80</span><span class="source-chip">protocol/wire-contract.json</span></details>
+    </aside>
+    <article class="domain-detail-card">
+      <h3>1. 이 도메인은 무엇인가</h3>
+      <p>일반 유저가 Discord에서 /질문를 입력했을 때, 중앙 서버가 쿨다운·채널 정책·역할·모델 부담·Provider 후보·무료 폴백을 판단해 답변을 돌려주는 핵심 사용자 도메인이다.</p>
+      <h3>2. 사용자는 어떤 흐름을 겪는가</h3>
+      <ol class="domain-flow"><li>유저가 /질문 입력</li><li>중앙 서버가 정책과 쿨다운 검사</li><li>로컬 Provider 후보를 필터링</li><li>가능하면 Provider PC로 전송</li><li>실패/부재 시 glm-5.1 무료 폴백</li><li>Discord 채널에 답변과 피드백 UI 표시</li></ol>
+      <div class="domain-tables">
+        <details open>
+          <summary>3. 상태 지도</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상태</th><th>의미</th></tr></thead>
+            <tbody>
+<tr>
+  <td><code>received</code></td>
+  <td>Discord 명령이 중앙 서버에 들어왔다.</td>
+</tr>
+
+<tr>
+  <td><code>routing</code></td>
+  <td>정책과 후보 Provider를 계산 중이다.</td>
+</tr>
+
+<tr>
+  <td><code>sent_to_provider</code></td>
+  <td>선택된 Provider PC에 요청을 보냈다.</td>
+</tr>
+
+<tr>
+  <td><code>fallback_running</code></td>
+  <td>로컬 실패/부재 후 무료 클라우드 모델을 시도 중이다.</td>
+</tr>
+
+<tr>
+  <td><code>rejected</code></td>
+  <td>권한/정책/안전 문제라 실행하지 않는다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>7. 관련 API / 계약</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>시점</th><th>주체</th><th>API/Surface</th><th>목적</th></tr></thead>
+            <tbody>
+<tr>
+  <td>Discord 명령</td>
+  <td>Discord → central-server</td>
+  <td><code>AskCommandHandler</code></td>
+  <td>/질문 옵션을 받고 라우팅을 시작한다.</td>
+</tr>
+
+<tr>
+  <td>Provider 실행</td>
+  <td>central-server → provider-agent</td>
+  <td><code>wire frame: infer/result/error</code></td>
+  <td>선택된 Provider PC에 추론 요청을 보내고 결과를 받는다.</td>
+</tr>
+
+<tr>
+  <td>피드백</td>
+  <td>Client → central-server</td>
+  <td><code>/api/ai-network/quality/*</code></td>
+  <td>답변 품질 피드백을 운영 루프에 남긴다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>8. 예외 처리</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상황</th><th>조건</th><th>사용자에게 보이는 결과</th><th>시스템 처리</th></tr></thead>
+            <tbody>
+<tr>
+  <td>정책 거부</td>
+  <td>채널/역할/안전 정책 실패</td>
+  <td>요청이 실행되지 않는다.</td>
+  <td>Provider나 클라우드 폴백으로 우회하지 않는다.</td>
+</tr>
+
+<tr>
+  <td>Provider 실패</td>
+  <td>timeout/error/unhealthy</td>
+  <td>가능하면 무료 폴백 답변을 받는다.</td>
+  <td>fallback 기본 1회, 실패 Provider health 반영.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+      </div>
+      <h3>9. 구현 체크포인트</h3>
+      <ul class="compact-list checkpoint-list"><li>정책 실패는 클라우드로 우회하지 않는다.</li><li>기본 질문은 Provider 1명에게만 보낸다.</li><li>답변 후 피드백 경로가 품질 루프와 연결된다.</li></ul>
+    </article>
+  </div>
+</section>
+
+<section class="domain-group" id="domain-provider-agent" data-search="provider-agent provider 연결 · 로컬 실행 domain 03 커뮤니티 멤버가 자기 pc에 provider agent를 설치하고, 승인된 discord 서버의 ai 풀에 로컬 ollama/comfyui 자원을 기여하는 도메인이다. 핵심은 포트 개방 없는 outbound 연결과 provider 보호다. 프로바이더 provider-agent central-server ollama/comfyui provider agent 설치 durable token 등록 /provider/agent/sync로 승인 서버 목록 동기화 websocket 인증 로컬 모델 상태 확인 요청 처리 또는 일시정지 unregistered 로컬 앱이 아직 서버 토큰을 갖고 있지 않다. approved 서버가 provider를 승인했고 연결 가능하다. online_idle 요청을 받을 수 있다. online_busy 현재 요청 처리 중이다. paused/limited provider 의사 또는 한도 때문에 새 요청을 받지 않는다. 서버 동기화 provider-agent → central-server /provider/agent/sync 승인된 guild, join token, license entitlement를 받는다. 로컬 ui 상태 desktop ui → provider-agent /api/status, /api/servers/*, /api/models provider 본인의 연결/모델/한도를 조작한다. 모델 실행 provider-agent → ollama/comfyui local model http 실제 추론/이미지 작업을 로컬에서 수행한다. 다른 서버 토큰 사용 guild-bound token 불일치 연결 실패 서버 a 토큰으로 서버 b 세션 생성을 거부한다. provider 일시정지 paused 또는 daily limit 초과 새 요청을 받지 않는다. 라우팅 후보에서 제외한다. pol-provider-001 pol-limit-001 pol-privacy-001 con-wire con-desktop-ui con-desktop-shapes con-packaging webui_assets를 직접 편집하지 않는다. desktop prototype, mock, real handler를 같은 변경에서 맞춘다. provider 로그에 프롬프트 원문을 남기지 않는다. provider-agent/ provideragentsynccontroller.kt:30-65 prototypes/desktop/contract.js">
+  <div class="group-head">
+    <h2>Provider 연결 · 로컬 실행</h2>
+    <span class="group-count">Domain 03</span>
+  </div>
+  <div class="domain-row">
+    <aside class="domain-summary-card">
+      <div class="meta-line"><span>도메인</span><span>Domain 03</span></div>
+      <p>커뮤니티 멤버가 자기 PC에 Provider Agent를 설치하고, 승인된 Discord 서버의 AI 풀에 로컬 Ollama/ComfyUI 자원을 기여하는 도메인이다. 핵심은 포트 개방 없는 outbound 연결과 Provider 보호다.</p>
+      <h3>주요 actor</h3>
+      <div><span class="callout-chip">프로바이더</span><span class="callout-chip">provider-agent</span><span class="callout-chip">central-server</span><span class="callout-chip">Ollama/ComfyUI</span></div>
+      <h3>정책 / 계약</h3>
+      <div class="chip-block"><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-LIMIT-001</span><span class="mini-chip">POL-PRIVACY-001</span><span class="mini-chip">CON-WIRE</span><span class="mini-chip">CON-DESKTOP-UI</span><span class="mini-chip">CON-DESKTOP-SHAPES</span><span class="mini-chip">CON-PACKAGING</span></div>
+      <details class="source-details"><summary>근거</summary><span class="source-chip">provider-agent/</span><span class="source-chip">ProviderAgentSyncController.kt:30-65</span><span class="source-chip">prototypes/desktop/contract.js</span></details>
+    </aside>
+    <article class="domain-detail-card">
+      <h3>1. 이 도메인은 무엇인가</h3>
+      <p>커뮤니티 멤버가 자기 PC에 Provider Agent를 설치하고, 승인된 Discord 서버의 AI 풀에 로컬 Ollama/ComfyUI 자원을 기여하는 도메인이다. 핵심은 포트 개방 없는 outbound 연결과 Provider 보호다.</p>
+      <h3>2. 사용자는 어떤 흐름을 겪는가</h3>
+      <ol class="domain-flow"><li>Provider Agent 설치</li><li>durable token 등록</li><li>/provider/agent/sync로 승인 서버 목록 동기화</li><li>WebSocket 인증</li><li>로컬 모델 상태 확인</li><li>요청 처리 또는 일시정지</li></ol>
+      <div class="domain-tables">
+        <details open>
+          <summary>3. 상태 지도</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상태</th><th>의미</th></tr></thead>
+            <tbody>
+<tr>
+  <td><code>unregistered</code></td>
+  <td>로컬 앱이 아직 서버 토큰을 갖고 있지 않다.</td>
+</tr>
+
+<tr>
+  <td><code>approved</code></td>
+  <td>서버가 Provider를 승인했고 연결 가능하다.</td>
+</tr>
+
+<tr>
+  <td><code>online_idle</code></td>
+  <td>요청을 받을 수 있다.</td>
+</tr>
+
+<tr>
+  <td><code>online_busy</code></td>
+  <td>현재 요청 처리 중이다.</td>
+</tr>
+
+<tr>
+  <td><code>paused/limited</code></td>
+  <td>Provider 의사 또는 한도 때문에 새 요청을 받지 않는다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>7. 관련 API / 계약</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>시점</th><th>주체</th><th>API/Surface</th><th>목적</th></tr></thead>
+            <tbody>
+<tr>
+  <td>서버 동기화</td>
+  <td>provider-agent → central-server</td>
+  <td><code>/provider/agent/sync</code></td>
+  <td>승인된 guild, join token, license entitlement를 받는다.</td>
+</tr>
+
+<tr>
+  <td>로컬 UI 상태</td>
+  <td>desktop UI → provider-agent</td>
+  <td><code>/api/status, /api/servers/*, /api/models</code></td>
+  <td>Provider 본인의 연결/모델/한도를 조작한다.</td>
+</tr>
+
+<tr>
+  <td>모델 실행</td>
+  <td>provider-agent → Ollama/ComfyUI</td>
+  <td><code>local model HTTP</code></td>
+  <td>실제 추론/이미지 작업을 로컬에서 수행한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>8. 예외 처리</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상황</th><th>조건</th><th>사용자에게 보이는 결과</th><th>시스템 처리</th></tr></thead>
+            <tbody>
+<tr>
+  <td>다른 서버 토큰 사용</td>
+  <td>guild-bound token 불일치</td>
+  <td>연결 실패</td>
+  <td>서버 A 토큰으로 서버 B 세션 생성을 거부한다.</td>
+</tr>
+
+<tr>
+  <td>Provider 일시정지</td>
+  <td>paused 또는 daily limit 초과</td>
+  <td>새 요청을 받지 않는다.</td>
+  <td>라우팅 후보에서 제외한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+      </div>
+      <h3>9. 구현 체크포인트</h3>
+      <ul class="compact-list checkpoint-list"><li>webui_assets를 직접 편집하지 않는다.</li><li>desktop prototype, mock, real handler를 같은 변경에서 맞춘다.</li><li>Provider 로그에 프롬프트 원문을 남기지 않는다.</li></ul>
+    </article>
+  </div>
+</section>
+
+<section class="domain-group" id="domain-admin-operations" data-search="admin-operations 서버 운영 · 대시보드 domain 04 서버 관리자가 provider, 채널, 모델, 사용량, readiness, launch checklist를 보고 운영 조치를 하는 도메인이다. 일반 사용자 경험 뒤에서 서버 ai 풀의 건강 상태를 유지한다. 서버 관리자 central-server provider 대시보드 조회 provider 상태/사용량 확인 채널별 정책 조정 provider 승인/차단/리뷰 launch readiness와 운영 체크리스트 확인 healthy provider와 정책이 정상이며 /질문 처리 가능하다. degraded provider 부족/실패율/한도 문제로 품질이 낮다. blocked 정책 또는 안전 이슈로 운영 조치가 필요하다. 운영 조회 client → central-server /api/ai-network/{guildid}/dashboard, /overview, /providers ai 풀 상태를 요약 조회한다. 운영 변경 client → central-server provideradmincontroller, dashboardwritecontroller provider 승인/차단과 대시보드 쓰기 조치를 처리한다. 관리자 권한 없음 discord role/admin policy 실패 운영 화면 접근/변경 불가 권한 오류를 반환하고 쓰기 작업을 차단한다. provider 부족 online_idle 후보 없음 품질 저하 또는 무료 폴백 readiness/overview에 부족 상태를 노출한다. pol-provider-001 pol-edge-001 con-i18n 운영 화면은 provider 보호 정책을 우회하는 버튼을 제공하면 안 된다. readiness와 launch checklist는 실제 상태 기반이어야 한다. 권한 없는 쓰기 api는 차단한다. ainetworkdashboardcontroller.kt dashboardcontroller.kt provideradmincontroller.kt">
+  <div class="group-head">
+    <h2>서버 운영 · 대시보드</h2>
+    <span class="group-count">Domain 04</span>
+  </div>
+  <div class="domain-row">
+    <aside class="domain-summary-card">
+      <div class="meta-line"><span>도메인</span><span>Domain 04</span></div>
+      <p>서버 관리자가 Provider, 채널, 모델, 사용량, readiness, launch checklist를 보고 운영 조치를 하는 도메인이다. 일반 사용자 경험 뒤에서 서버 AI 풀의 건강 상태를 유지한다.</p>
+      <h3>주요 actor</h3>
+      <div><span class="callout-chip">서버 관리자</span><span class="callout-chip">central-server</span><span class="callout-chip">Provider</span></div>
+      <h3>정책 / 계약</h3>
+      <div class="chip-block"><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-EDGE-001</span><span class="mini-chip">CON-I18N</span></div>
+      <details class="source-details"><summary>근거</summary><span class="source-chip">AiNetworkDashboardController.kt</span><span class="source-chip">DashboardController.kt</span><span class="source-chip">ProviderAdminController.kt</span></details>
+    </aside>
+    <article class="domain-detail-card">
+      <h3>1. 이 도메인은 무엇인가</h3>
+      <p>서버 관리자가 Provider, 채널, 모델, 사용량, readiness, launch checklist를 보고 운영 조치를 하는 도메인이다. 일반 사용자 경험 뒤에서 서버 AI 풀의 건강 상태를 유지한다.</p>
+      <h3>2. 사용자는 어떤 흐름을 겪는가</h3>
+      <ol class="domain-flow"><li>대시보드 조회</li><li>Provider 상태/사용량 확인</li><li>채널별 정책 조정</li><li>Provider 승인/차단/리뷰</li><li>launch readiness와 운영 체크리스트 확인</li></ol>
+      <div class="domain-tables">
+        <details open>
+          <summary>3. 상태 지도</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상태</th><th>의미</th></tr></thead>
+            <tbody>
+<tr>
+  <td><code>healthy</code></td>
+  <td>Provider와 정책이 정상이며 /질문 처리 가능하다.</td>
+</tr>
+
+<tr>
+  <td><code>degraded</code></td>
+  <td>Provider 부족/실패율/한도 문제로 품질이 낮다.</td>
+</tr>
+
+<tr>
+  <td><code>blocked</code></td>
+  <td>정책 또는 안전 이슈로 운영 조치가 필요하다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>7. 관련 API / 계약</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>시점</th><th>주체</th><th>API/Surface</th><th>목적</th></tr></thead>
+            <tbody>
+<tr>
+  <td>운영 조회</td>
+  <td>Client → central-server</td>
+  <td><code>/api/ai-network/{guildId}/dashboard, /overview, /providers</code></td>
+  <td>AI 풀 상태를 요약 조회한다.</td>
+</tr>
+
+<tr>
+  <td>운영 변경</td>
+  <td>Client → central-server</td>
+  <td><code>ProviderAdminController, DashboardWriteController</code></td>
+  <td>Provider 승인/차단과 대시보드 쓰기 조치를 처리한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>8. 예외 처리</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상황</th><th>조건</th><th>사용자에게 보이는 결과</th><th>시스템 처리</th></tr></thead>
+            <tbody>
+<tr>
+  <td>관리자 권한 없음</td>
+  <td>Discord role/admin policy 실패</td>
+  <td>운영 화면 접근/변경 불가</td>
+  <td>권한 오류를 반환하고 쓰기 작업을 차단한다.</td>
+</tr>
+
+<tr>
+  <td>Provider 부족</td>
+  <td>online_idle 후보 없음</td>
+  <td>품질 저하 또는 무료 폴백</td>
+  <td>readiness/overview에 부족 상태를 노출한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+      </div>
+      <h3>9. 구현 체크포인트</h3>
+      <ul class="compact-list checkpoint-list"><li>운영 화면은 Provider 보호 정책을 우회하는 버튼을 제공하면 안 된다.</li><li>readiness와 launch checklist는 실제 상태 기반이어야 한다.</li><li>권한 없는 쓰기 API는 차단한다.</li></ul>
+    </article>
+  </div>
+</section>
+
+<section class="domain-group" id="domain-presets-knowledge" data-search="presets-knowledge 프리셋 · 지식공간 domain 05 서버/채널별 ai 성격, 프롬프트 세트, 지식 자료를 운영자가 구성하고 재사용하는 도메인이다. 마켓이 아니라 서버 운영 설정과 컨텍스트를 안전하게 재사용하는 영역이다. 서버 관리자 central-server nexa 봇 프리셋 탐색 import-preview로 적용 차이 확인 채널 ai에 프리셋 적용 지식공간 source 등록 검색/context/eval로 답변 컨텍스트 품질 확인 draft 프리셋 또는 지식 source가 아직 적용 전이다. active 채널 ai 답변에 실제로 사용된다. reported/review 신고 또는 품질 검토 대상이다. 프리셋 탐색 client → central-server /api/ai-network/presets/* catalog, recommended, facets, import-preview를 제공한다. 지식공간 운영 client → central-server /api/ai-network/knowledge/* space/source/index-job/search/context/eval을 관리한다. 강제 가드레일 노출 builtin prompt 전문을 클라이언트로 전달 안전 정책 노출 위험 preview 또는 자리표시자만 내려보낸다. 부적절 프리셋 신고 report 발생 운영 검토 대상 review 흐름으로 넘기고 필요 시 숨김/차단한다. pol-content-001 pol-content-002 con-i18n 프리셋은 판매 상품이 아니라 운영 설정 재사용이다. builtin 가드레일 전문을 클라이언트에 내려보내지 않는다. 지식공간 답변은 출처와 품질 검토 루프를 가져야 한다. presetregistrycontroller.kt knowledgeingestioncontroller.kt docs/nexa_safety_policy.md:36-47">
+  <div class="group-head">
+    <h2>프리셋 · 지식공간</h2>
+    <span class="group-count">Domain 05</span>
+  </div>
+  <div class="domain-row">
+    <aside class="domain-summary-card">
+      <div class="meta-line"><span>도메인</span><span>Domain 05</span></div>
+      <p>서버/채널별 AI 성격, 프롬프트 세트, 지식 자료를 운영자가 구성하고 재사용하는 도메인이다. 마켓이 아니라 서버 운영 설정과 컨텍스트를 안전하게 재사용하는 영역이다.</p>
+      <h3>주요 actor</h3>
+      <div><span class="callout-chip">서버 관리자</span><span class="callout-chip">central-server</span><span class="callout-chip">NEXA 봇</span></div>
+      <h3>정책 / 계약</h3>
+      <div class="chip-block"><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-CONTENT-002</span><span class="mini-chip">CON-I18N</span></div>
+      <details class="source-details"><summary>근거</summary><span class="source-chip">PresetRegistryController.kt</span><span class="source-chip">KnowledgeIngestionController.kt</span><span class="source-chip">docs/NEXA_SAFETY_POLICY.md:36-47</span></details>
+    </aside>
+    <article class="domain-detail-card">
+      <h3>1. 이 도메인은 무엇인가</h3>
+      <p>서버/채널별 AI 성격, 프롬프트 세트, 지식 자료를 운영자가 구성하고 재사용하는 도메인이다. 마켓이 아니라 서버 운영 설정과 컨텍스트를 안전하게 재사용하는 영역이다.</p>
+      <h3>2. 사용자는 어떤 흐름을 겪는가</h3>
+      <ol class="domain-flow"><li>프리셋 탐색</li><li>import-preview로 적용 차이 확인</li><li>채널 AI에 프리셋 적용</li><li>지식공간 source 등록</li><li>검색/context/eval로 답변 컨텍스트 품질 확인</li></ol>
+      <div class="domain-tables">
+        <details open>
+          <summary>3. 상태 지도</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상태</th><th>의미</th></tr></thead>
+            <tbody>
+<tr>
+  <td><code>draft</code></td>
+  <td>프리셋 또는 지식 source가 아직 적용 전이다.</td>
+</tr>
+
+<tr>
+  <td><code>active</code></td>
+  <td>채널 AI 답변에 실제로 사용된다.</td>
+</tr>
+
+<tr>
+  <td><code>reported/review</code></td>
+  <td>신고 또는 품질 검토 대상이다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>7. 관련 API / 계약</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>시점</th><th>주체</th><th>API/Surface</th><th>목적</th></tr></thead>
+            <tbody>
+<tr>
+  <td>프리셋 탐색</td>
+  <td>Client → central-server</td>
+  <td><code>/api/ai-network/presets/*</code></td>
+  <td>catalog, recommended, facets, import-preview를 제공한다.</td>
+</tr>
+
+<tr>
+  <td>지식공간 운영</td>
+  <td>Client → central-server</td>
+  <td><code>/api/ai-network/knowledge/*</code></td>
+  <td>space/source/index-job/search/context/eval을 관리한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>8. 예외 처리</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상황</th><th>조건</th><th>사용자에게 보이는 결과</th><th>시스템 처리</th></tr></thead>
+            <tbody>
+<tr>
+  <td>강제 가드레일 노출</td>
+  <td>builtin prompt 전문을 클라이언트로 전달</td>
+  <td>안전 정책 노출 위험</td>
+  <td>preview 또는 자리표시자만 내려보낸다.</td>
+</tr>
+
+<tr>
+  <td>부적절 프리셋 신고</td>
+  <td>report 발생</td>
+  <td>운영 검토 대상</td>
+  <td>review 흐름으로 넘기고 필요 시 숨김/차단한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+      </div>
+      <h3>9. 구현 체크포인트</h3>
+      <ul class="compact-list checkpoint-list"><li>프리셋은 판매 상품이 아니라 운영 설정 재사용이다.</li><li>builtin 가드레일 전문을 클라이언트에 내려보내지 않는다.</li><li>지식공간 답변은 출처와 품질 검토 루프를 가져야 한다.</li></ul>
+    </article>
+  </div>
+</section>
+
+<section class="domain-group" id="domain-safety-limits" data-search="safety-limits 안전 · 한도 · 신고 정책 domain 06 provider 보호, 콘텐츠 안전, 개인정보 최소화, 서버별 한도, 신고 대응을 다른 모든 기능보다 먼저 적용하는 정책 도메인이다. 기능 품질보다 생존과 신뢰가 우선이다. 일반 유저 서버 관리자 provider 시스템 관리자 질문/프리셋/지식 요청이 들어옴 red-line 및 discord tos 검사 provider 동의/한도/가용성 검사 개인정보/로그 최소화 확인 허용 시 실행, 실패 시 거부/신고/운영 조치 allowed 안전·한도·권한 검사를 통과했다. rate_limited 사용자 또는 provider 한도를 넘었다. safety_rejected 콘텐츠/discord/법적 red-line으로 실행하지 않는다. reported 운영자 검토가 필요한 신고 상태다. 정책 검사 central-server providerfilterpipeline / safety policy 라우팅 전 안전과 provider 보호 조건을 적용한다. 신고/품질 client → central-server report/review/quality apis 안전 이슈와 품질 이슈를 운영자가 처리하게 한다. 개인정보 포함 질문 다른 사람 pc로 전송될 수 있는 민감 정보 고지/제한/거부 가능 전송 고지와 로그 최소화 원칙을 적용한다. 한도 초과 provider daily limit 또는 사용자 무료 한도 초과 대기/거부/폴백 제한 서버별 카운터와 정책 우선순위에 따라 처리한다. pol-provider-001 pol-privacy-001 pol-content-001 pol-limit-001 con-wire con-i18n provider 동의·한도·일시정지는 어떤 품질 개선보다 우선한다. 정책 거부는 fallback으로 우회하지 않는다. 사용자 질문 원문은 provider 로컬 로그에 저장하지 않는다. docs/provider_safety_policy.md docs/nexa_safety_policy.md docs/nexa_limit_policy.md">
+  <div class="group-head">
+    <h2>안전 · 한도 · 신고 정책</h2>
+    <span class="group-count">Domain 06</span>
+  </div>
+  <div class="domain-row">
+    <aside class="domain-summary-card">
+      <div class="meta-line"><span>도메인</span><span>Domain 06</span></div>
+      <p>Provider 보호, 콘텐츠 안전, 개인정보 최소화, 서버별 한도, 신고 대응을 다른 모든 기능보다 먼저 적용하는 정책 도메인이다. 기능 품질보다 생존과 신뢰가 우선이다.</p>
+      <h3>주요 actor</h3>
+      <div><span class="callout-chip">일반 유저</span><span class="callout-chip">서버 관리자</span><span class="callout-chip">Provider</span><span class="callout-chip">시스템 관리자</span></div>
+      <h3>정책 / 계약</h3>
+      <div class="chip-block"><span class="mini-chip">POL-PROVIDER-001</span><span class="mini-chip">POL-PRIVACY-001</span><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-LIMIT-001</span><span class="mini-chip">CON-WIRE</span><span class="mini-chip">CON-I18N</span></div>
+      <details class="source-details"><summary>근거</summary><span class="source-chip">docs/PROVIDER_SAFETY_POLICY.md</span><span class="source-chip">docs/NEXA_SAFETY_POLICY.md</span><span class="source-chip">docs/NEXA_LIMIT_POLICY.md</span></details>
+    </aside>
+    <article class="domain-detail-card">
+      <h3>1. 이 도메인은 무엇인가</h3>
+      <p>Provider 보호, 콘텐츠 안전, 개인정보 최소화, 서버별 한도, 신고 대응을 다른 모든 기능보다 먼저 적용하는 정책 도메인이다. 기능 품질보다 생존과 신뢰가 우선이다.</p>
+      <h3>2. 사용자는 어떤 흐름을 겪는가</h3>
+      <ol class="domain-flow"><li>질문/프리셋/지식 요청이 들어옴</li><li>red-line 및 Discord ToS 검사</li><li>Provider 동의/한도/가용성 검사</li><li>개인정보/로그 최소화 확인</li><li>허용 시 실행, 실패 시 거부/신고/운영 조치</li></ol>
+      <div class="domain-tables">
+        <details open>
+          <summary>3. 상태 지도</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상태</th><th>의미</th></tr></thead>
+            <tbody>
+<tr>
+  <td><code>allowed</code></td>
+  <td>안전·한도·권한 검사를 통과했다.</td>
+</tr>
+
+<tr>
+  <td><code>rate_limited</code></td>
+  <td>사용자 또는 Provider 한도를 넘었다.</td>
+</tr>
+
+<tr>
+  <td><code>safety_rejected</code></td>
+  <td>콘텐츠/Discord/법적 red-line으로 실행하지 않는다.</td>
+</tr>
+
+<tr>
+  <td><code>reported</code></td>
+  <td>운영자 검토가 필요한 신고 상태다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>7. 관련 API / 계약</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>시점</th><th>주체</th><th>API/Surface</th><th>목적</th></tr></thead>
+            <tbody>
+<tr>
+  <td>정책 검사</td>
+  <td>central-server</td>
+  <td><code>ProviderFilterPipeline / safety policy</code></td>
+  <td>라우팅 전 안전과 Provider 보호 조건을 적용한다.</td>
+</tr>
+
+<tr>
+  <td>신고/품질</td>
+  <td>Client → central-server</td>
+  <td><code>report/review/quality APIs</code></td>
+  <td>안전 이슈와 품질 이슈를 운영자가 처리하게 한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>8. 예외 처리</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상황</th><th>조건</th><th>사용자에게 보이는 결과</th><th>시스템 처리</th></tr></thead>
+            <tbody>
+<tr>
+  <td>개인정보 포함 질문</td>
+  <td>다른 사람 PC로 전송될 수 있는 민감 정보</td>
+  <td>고지/제한/거부 가능</td>
+  <td>전송 고지와 로그 최소화 원칙을 적용한다.</td>
+</tr>
+
+<tr>
+  <td>한도 초과</td>
+  <td>Provider daily limit 또는 사용자 무료 한도 초과</td>
+  <td>대기/거부/폴백 제한</td>
+  <td>서버별 카운터와 정책 우선순위에 따라 처리한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+      </div>
+      <h3>9. 구현 체크포인트</h3>
+      <ul class="compact-list checkpoint-list"><li>Provider 동의·한도·일시정지는 어떤 품질 개선보다 우선한다.</li><li>정책 거부는 fallback으로 우회하지 않는다.</li><li>사용자 질문 원문은 Provider 로컬 로그에 저장하지 않는다.</li></ul>
+    </article>
+  </div>
+</section>
+
+<section class="domain-group" id="domain-nia-identity" data-search="nia-identity 니아 정체성 · 호감도 domain 07 nexa의 기본 ai 정체성 &#x27;니아&#x27;와 사용자별 호감도다. 서버가 별도 채널 ai 페르소나를 만들지 않으면 /질문 답변자는 니아 정체성으로 말하고, 안전 가드레일은 어떤 페르소나에서도 항상 정체성보다 먼저 주입된다. 상호작용마다 호감도가 쌓여 관계 표현이 달라진다(xp·리더보드·과금 아님). 일반 유저 서버 관리자 유저가 채널에서 /질문 입력 서버가 커스텀 채널 ai 페르소나를 설정하지 않았으면 니아 기본 정체성(nexaidentity) 주입 안전 가드레일(contentsafety)을 정체성보다 먼저 주입 응답 성공 시 요청자-니아 호감도 +1, 임계값 도달 시 단계 상승 유저가 /nia 로 자신의 호감도 단계·점수·다음 단계까지 진행도를 확인 낯섦 호감도 0~9. 니아와 처음 만난 관계. 알아가는중 호감도 10~49. 친근 호감도 50~149. 단짝 호감도 150 이상. 최고 단계. /질문 기본 경로(커스텀 페르소나 없음) central-server nexaidentity / askcommandhandler 니아 기본 페르소나·few-shot·호감도 관계 문장을 시스템 프롬프트에 주입한다(전문 비공개). 응답 성공 시 central-server niaaffinityservice 요청자별 호감도 점수를 누적하고 단계를 판정·영속한다(상호작용당 +1). 유저가 호감도 확인 discord → central-server /nia (ainetworkcommandhandler) 요청자의 호감도 단계·점수·진행바를 ephemeral 로 보여준다. 서버 기본 성격 미설정 central-server globalpromptsetservice 서버 전역 기본 페르소나가 없으면 니아를 기본값으로 사용한다. 서버가 자체 채널 ai 페르소나를 설정 채널/서버에 커스텀 페르소나 존재 답변자가 니아가 아닌 그 페르소나로 말한다. 정체성은 대체하되 안전 가드레일은 여전히 최우선 주입. 페르소나 전문 열람 시도 클라이언트/비관리자 미리보기만 보이고 전문은 노출되지 않는다. nia_default_persona·few-shot 전문은 비공개, preview 만 제공. pol-content-001 pol-content-002 con-i18n con-desktop-ui 안전 가드레일(contentsafety)이 어떤 페르소나에서도 정체성보다 먼저 주입되는지 확인 커스텀 채널 ai 페르소나가 있으면 니아 정체성을 대체하는지 확인 페르소나 전문은 비공개·preview 만 노출되는지 확인 호감도 임계값(0/10/50/150)과 상호작용당 +1 누적이 맞는지 확인 central-server/src/main/kotlin/com/discordassistant/central/shared/nexaidentity.kt central-server/src/main/kotlin/com/discordassistant/central/ainetwork/domain/model/affinitystage.kt central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/niaaffinityservice.kt central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/askcommandhandler.kt">
+  <div class="group-head">
+    <h2>니아 정체성 · 호감도</h2>
+    <span class="group-count">Domain 07</span>
+  </div>
+  <div class="domain-row">
+    <aside class="domain-summary-card">
+      <div class="meta-line"><span>도메인</span><span>Domain 07</span></div>
+      <p>NEXA의 기본 AI 정체성 &#x27;니아&#x27;와 사용자별 호감도다. 서버가 별도 채널 AI 페르소나를 만들지 않으면 /질문 답변자는 니아 정체성으로 말하고, 안전 가드레일은 어떤 페르소나에서도 항상 정체성보다 먼저 주입된다. 상호작용마다 호감도가 쌓여 관계 표현이 달라진다(XP·리더보드·과금 아님).</p>
+      <h3>주요 actor</h3>
+      <div><span class="callout-chip">일반 유저</span><span class="callout-chip">서버 관리자</span></div>
+      <h3>정책 / 계약</h3>
+      <div class="chip-block"><span class="mini-chip">POL-CONTENT-001</span><span class="mini-chip">POL-CONTENT-002</span><span class="mini-chip">CON-I18N</span><span class="mini-chip">CON-DESKTOP-UI</span></div>
+      <details class="source-details"><summary>근거</summary><span class="source-chip">central-server/src/main/kotlin/com/discordassistant/central/shared/NexaIdentity.kt</span><span class="source-chip">central-server/src/main/kotlin/com/discordassistant/central/ainetwork/domain/model/AffinityStage.kt</span><span class="source-chip">central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/NiaAffinityService.kt</span><span class="source-chip">central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt</span></details>
+    </aside>
+    <article class="domain-detail-card">
+      <h3>1. 이 도메인은 무엇인가</h3>
+      <p>NEXA의 기본 AI 정체성 &#x27;니아&#x27;와 사용자별 호감도다. 서버가 별도 채널 AI 페르소나를 만들지 않으면 /질문 답변자는 니아 정체성으로 말하고, 안전 가드레일은 어떤 페르소나에서도 항상 정체성보다 먼저 주입된다. 상호작용마다 호감도가 쌓여 관계 표현이 달라진다(XP·리더보드·과금 아님).</p>
+      <h3>2. 사용자는 어떤 흐름을 겪는가</h3>
+      <ol class="domain-flow"><li>유저가 채널에서 /질문 입력</li><li>서버가 커스텀 채널 AI 페르소나를 설정하지 않았으면 니아 기본 정체성(NexaIdentity) 주입</li><li>안전 가드레일(ContentSafety)을 정체성보다 먼저 주입</li><li>응답 성공 시 요청자-니아 호감도 +1, 임계값 도달 시 단계 상승</li><li>유저가 /nia 로 자신의 호감도 단계·점수·다음 단계까지 진행도를 확인</li></ol>
+      <div class="domain-tables">
+        <details open>
+          <summary>3. 상태 지도</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상태</th><th>의미</th></tr></thead>
+            <tbody>
+<tr>
+  <td><code>낯섦</code></td>
+  <td>호감도 0~9. 니아와 처음 만난 관계.</td>
+</tr>
+
+<tr>
+  <td><code>알아가는중</code></td>
+  <td>호감도 10~49.</td>
+</tr>
+
+<tr>
+  <td><code>친근</code></td>
+  <td>호감도 50~149.</td>
+</tr>
+
+<tr>
+  <td><code>단짝</code></td>
+  <td>호감도 150 이상. 최고 단계.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>7. 관련 API / 계약</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>시점</th><th>주체</th><th>API/Surface</th><th>목적</th></tr></thead>
+            <tbody>
+<tr>
+  <td>/질문 기본 경로(커스텀 페르소나 없음)</td>
+  <td>central-server</td>
+  <td><code>NexaIdentity / AskCommandHandler</code></td>
+  <td>니아 기본 페르소나·few-shot·호감도 관계 문장을 시스템 프롬프트에 주입한다(전문 비공개).</td>
+</tr>
+
+<tr>
+  <td>응답 성공 시</td>
+  <td>central-server</td>
+  <td><code>NiaAffinityService</code></td>
+  <td>요청자별 호감도 점수를 누적하고 단계를 판정·영속한다(상호작용당 +1).</td>
+</tr>
+
+<tr>
+  <td>유저가 호감도 확인</td>
+  <td>Discord → central-server</td>
+  <td><code>/nia (AiNetworkCommandHandler)</code></td>
+  <td>요청자의 호감도 단계·점수·진행바를 ephemeral 로 보여준다.</td>
+</tr>
+
+<tr>
+  <td>서버 기본 성격 미설정</td>
+  <td>central-server</td>
+  <td><code>GlobalPromptSetService</code></td>
+  <td>서버 전역 기본 페르소나가 없으면 니아를 기본값으로 사용한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>8. 예외 처리</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상황</th><th>조건</th><th>사용자에게 보이는 결과</th><th>시스템 처리</th></tr></thead>
+            <tbody>
+<tr>
+  <td>서버가 자체 채널 AI 페르소나를 설정</td>
+  <td>채널/서버에 커스텀 페르소나 존재</td>
+  <td>답변자가 니아가 아닌 그 페르소나로 말한다.</td>
+  <td>정체성은 대체하되 안전 가드레일은 여전히 최우선 주입.</td>
+</tr>
+
+<tr>
+  <td>페르소나 전문 열람 시도</td>
+  <td>클라이언트/비관리자</td>
+  <td>미리보기만 보이고 전문은 노출되지 않는다.</td>
+  <td>NIA_DEFAULT_PERSONA·few-shot 전문은 비공개, preview 만 제공.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+      </div>
+      <h3>9. 구현 체크포인트</h3>
+      <ul class="compact-list checkpoint-list"><li>안전 가드레일(ContentSafety)이 어떤 페르소나에서도 정체성보다 먼저 주입되는지 확인</li><li>커스텀 채널 AI 페르소나가 있으면 니아 정체성을 대체하는지 확인</li><li>페르소나 전문은 비공개·preview 만 노출되는지 확인</li><li>호감도 임계값(0/10/50/150)과 상호작용당 +1 누적이 맞는지 확인</li></ul>
+    </article>
+  </div>
+</section>
+
+<section class="domain-group" id="domain-licensing-monetization" data-search="licensing-monetization 라이선스 · 수익화 domain 08 데스크톱 앱 트라이얼웨어 라이선스(adr 0005). 기본 질문·채널 ai·풀 기여는 영구 무료이고, 서버별 페르소나·rag·프리셋 쓰기 같은 앱 관리 프리미엄만 3개월 체험 후 $10 영구 라이선스(paddle mor)로 잠금 해제된다. 풀 기여는 여전히 무보상·무과금이며 프로바이더는 판매자가 아니다. 서버 관리자 시스템 관리자 프로바이더 앱이 durable 토큰으로 /provider/license/me 호출 → 현재 entitlement 확인 체험(trial) 동안 프리미엄 기능 사용 가능 체험 만료(expired) 시 프리미엄 잠금 → 앱에서 /checkout 으로 $10 paddle 결제 paddle 결제 완료 webhook → licensed 반영(앱 재조회 시 잠금 해제) 런칭 이벤트 기간엔 풀 기여 ≥1건 자격으로 /event/claim → event_free(평생 무료, $10와 동일 권리) trial 3개월 체험 중. 프리미엄 통과. licensed $10 결제 완료. 영구 프리미엄. event_free 런칭 이벤트 평생 무료. $10와 동일 권리. expired 체험 만료·미결제. 프리미엄 거부. revoked 환불/폐기. 최우선 거부(우선순위 revoked&gt;event_free&gt;licensed&gt;trial&gt;expired&gt;free). 앱이 권리 확인 provider-agent → central-server post /provider/license/me durable 토큰으로 본인 entitlement(상태·권리)를 조회한다. 앱 내 구매 provider-agent → central-server post /provider/license/checkout $10 라이선스 paddle checkout url 생성(결제 비활성이면 503). 결제 확정 paddle → central-server post /billing/webhook/paddle 결제 완료 webhook 으로 licensed 반영(custom_data 의 userid 귀속). 이벤트 현황/신청 provider-agent → central-server /provider/license/event/status · /event/claim 런칭 이벤트 현황 조회와 평생 무료 신청(자격 미달은 outcome 사유). 데스크톱 표시 desktop ui → provider-agent get /api/license 앱이 entitlement·이벤트 현황을 받아 라이선스 카드에 표시한다. 결제 비활성 checkoutport 미구성 &quot;결제가 현재 비활성 상태입니다&quot; checkout 503 반환. durable 토큰 위조/일회용 dv1. 미접두 또는 검증 실패 라이선스 조회/구매 불가(401). 401 unauthorized. 이벤트 자격 미달 이벤트 닫힘·환불 이력·풀 기여 0건 평생 무료 신청 거부(사유 표시). claim outcome 으로 사유 반환, 부여 안 함(멱등: 이미 event_free 면 already). pol-monetization-001 con-i18n con-desktop-shapes 기본 질문·채널 ai·풀 기여가 무료로 유지되는지(유료는 앱 관리 프리미엄만) 확인 체험 만료 후 프리미엄이 잠기고 $10 결제·이벤트로 해제되는지 확인 권리 우선순위 revoked&gt;event_free&gt;licensed&gt;trial&gt;expired&gt;free 가 지켜지는지 확인 결제 비활성 시 503, 토큰 위조 시 401 로 fail-closed 되는지 확인 docs/adr/0005-app-license-monetization.md docs/roadmap_monetization_300.md central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/licensecontroller.kt central-server/src/main/kotlin/com/discordassistant/central/licensing/domain/model/license.kt">
+  <div class="group-head">
+    <h2>라이선스 · 수익화</h2>
+    <span class="group-count">Domain 08</span>
+  </div>
+  <div class="domain-row">
+    <aside class="domain-summary-card">
+      <div class="meta-line"><span>도메인</span><span>Domain 08</span></div>
+      <p>데스크톱 앱 트라이얼웨어 라이선스(ADR 0005). 기본 질문·채널 AI·풀 기여는 영구 무료이고, 서버별 페르소나·RAG·프리셋 쓰기 같은 앱 관리 프리미엄만 3개월 체험 후 $10 영구 라이선스(Paddle MoR)로 잠금 해제된다. 풀 기여는 여전히 무보상·무과금이며 프로바이더는 판매자가 아니다.</p>
+      <h3>주요 actor</h3>
+      <div><span class="callout-chip">서버 관리자</span><span class="callout-chip">시스템 관리자</span><span class="callout-chip">프로바이더</span></div>
+      <h3>정책 / 계약</h3>
+      <div class="chip-block"><span class="mini-chip">POL-MONETIZATION-001</span><span class="mini-chip">CON-I18N</span><span class="mini-chip">CON-DESKTOP-SHAPES</span></div>
+      <details class="source-details"><summary>근거</summary><span class="source-chip">docs/adr/0005-app-license-monetization.md</span><span class="source-chip">docs/ROADMAP_MONETIZATION_300.md</span><span class="source-chip">central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/LicenseController.kt</span><span class="source-chip">central-server/src/main/kotlin/com/discordassistant/central/licensing/domain/model/License.kt</span></details>
+    </aside>
+    <article class="domain-detail-card">
+      <h3>1. 이 도메인은 무엇인가</h3>
+      <p>데스크톱 앱 트라이얼웨어 라이선스(ADR 0005). 기본 질문·채널 AI·풀 기여는 영구 무료이고, 서버별 페르소나·RAG·프리셋 쓰기 같은 앱 관리 프리미엄만 3개월 체험 후 $10 영구 라이선스(Paddle MoR)로 잠금 해제된다. 풀 기여는 여전히 무보상·무과금이며 프로바이더는 판매자가 아니다.</p>
+      <h3>2. 사용자는 어떤 흐름을 겪는가</h3>
+      <ol class="domain-flow"><li>앱이 durable 토큰으로 /provider/license/me 호출 → 현재 entitlement 확인</li><li>체험(TRIAL) 동안 프리미엄 기능 사용 가능</li><li>체험 만료(EXPIRED) 시 프리미엄 잠금 → 앱에서 /checkout 으로 $10 Paddle 결제</li><li>Paddle 결제 완료 webhook → LICENSED 반영(앱 재조회 시 잠금 해제)</li><li>런칭 이벤트 기간엔 풀 기여 ≥1건 자격으로 /event/claim → EVENT_FREE(평생 무료, $10와 동일 권리)</li></ol>
+      <div class="domain-tables">
+        <details open>
+          <summary>3. 상태 지도</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상태</th><th>의미</th></tr></thead>
+            <tbody>
+<tr>
+  <td><code>TRIAL</code></td>
+  <td>3개월 체험 중. 프리미엄 통과.</td>
+</tr>
+
+<tr>
+  <td><code>LICENSED</code></td>
+  <td>$10 결제 완료. 영구 프리미엄.</td>
+</tr>
+
+<tr>
+  <td><code>EVENT_FREE</code></td>
+  <td>런칭 이벤트 평생 무료. $10와 동일 권리.</td>
+</tr>
+
+<tr>
+  <td><code>EXPIRED</code></td>
+  <td>체험 만료·미결제. 프리미엄 거부.</td>
+</tr>
+
+<tr>
+  <td><code>REVOKED</code></td>
+  <td>환불/폐기. 최우선 거부(우선순위 REVOKED&gt;EVENT_FREE&gt;LICENSED&gt;TRIAL&gt;EXPIRED&gt;FREE).</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>7. 관련 API / 계약</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>시점</th><th>주체</th><th>API/Surface</th><th>목적</th></tr></thead>
+            <tbody>
+<tr>
+  <td>앱이 권리 확인</td>
+  <td>provider-agent → central-server</td>
+  <td><code>POST /provider/license/me</code></td>
+  <td>durable 토큰으로 본인 entitlement(상태·권리)를 조회한다.</td>
+</tr>
+
+<tr>
+  <td>앱 내 구매</td>
+  <td>provider-agent → central-server</td>
+  <td><code>POST /provider/license/checkout</code></td>
+  <td>$10 라이선스 Paddle checkout URL 생성(결제 비활성이면 503).</td>
+</tr>
+
+<tr>
+  <td>결제 확정</td>
+  <td>Paddle → central-server</td>
+  <td><code>POST /billing/webhook/paddle</code></td>
+  <td>결제 완료 webhook 으로 LICENSED 반영(custom_data 의 userId 귀속).</td>
+</tr>
+
+<tr>
+  <td>이벤트 현황/신청</td>
+  <td>provider-agent → central-server</td>
+  <td><code>/provider/license/event/status · /event/claim</code></td>
+  <td>런칭 이벤트 현황 조회와 평생 무료 신청(자격 미달은 outcome 사유).</td>
+</tr>
+
+<tr>
+  <td>데스크톱 표시</td>
+  <td>desktop UI → provider-agent</td>
+  <td><code>GET /api/license</code></td>
+  <td>앱이 entitlement·이벤트 현황을 받아 라이선스 카드에 표시한다.</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+        <details open>
+          <summary>8. 예외 처리</summary>
+          <table class="nav-table compact-table">
+            <thead><tr><th>상황</th><th>조건</th><th>사용자에게 보이는 결과</th><th>시스템 처리</th></tr></thead>
+            <tbody>
+<tr>
+  <td>결제 비활성</td>
+  <td>CheckoutPort 미구성</td>
+  <td>&quot;결제가 현재 비활성 상태입니다&quot;</td>
+  <td>checkout 503 반환.</td>
+</tr>
+
+<tr>
+  <td>durable 토큰 위조/일회용</td>
+  <td>dv1. 미접두 또는 검증 실패</td>
+  <td>라이선스 조회/구매 불가(401).</td>
+  <td>401 UNAUTHORIZED.</td>
+</tr>
+
+<tr>
+  <td>이벤트 자격 미달</td>
+  <td>이벤트 닫힘·환불 이력·풀 기여 0건</td>
+  <td>평생 무료 신청 거부(사유 표시).</td>
+  <td>claim outcome 으로 사유 반환, 부여 안 함(멱등: 이미 EVENT_FREE 면 ALREADY).</td>
+</tr>
+</tbody>
+          </table>
+        </details>
+      </div>
+      <h3>9. 구현 체크포인트</h3>
+      <ul class="compact-list checkpoint-list"><li>기본 질문·채널 AI·풀 기여가 무료로 유지되는지(유료는 앱 관리 프리미엄만) 확인</li><li>체험 만료 후 프리미엄이 잠기고 $10 결제·이벤트로 해제되는지 확인</li><li>권리 우선순위 REVOKED&gt;EVENT_FREE&gt;LICENSED&gt;TRIAL&gt;EXPIRED&gt;FREE 가 지켜지는지 확인</li><li>결제 비활성 시 503, 토큰 위조 시 401 로 fail-closed 되는지 확인</li></ul>
+    </article>
+  </div>
+</section>
+
+</section>
+
+
+<section id="policies" class="nav-section">
+  <div class="section-head">
+    <div>
+      <span class="section-kicker">6. 다음 분기 + 8. 예외 처리</span>
+      <h2>정책 / 예외 / 충돌 우선순위</h2>
+      <p>정책 충돌은 사람 감으로 풀지 않는다. 아래 우선순위와 blocker 규칙이 라우팅·UX·운영보다 먼저다.</p>
+    </div>
+  </div>
+  <div class="policy-layout">
+    <article class="panel order-panel" data-search="legalanddiscordsurvival contentsafetyredlines providerprotection privacyandsecretminimization domaininvariants routingquality adminux monetization">
+      <h3>충돌 우선순위</h3>
+      <ol><li>legalAndDiscordSurvival</li><li>contentSafetyRedLines</li><li>providerProtection</li><li>privacyAndSecretMinimization</li><li>domainInvariants</li><li>routingQuality</li><li>adminUx</li><li>monetization</li></ol>
+      <p class="note-line">코드 변경 중 정책 충돌이 있으면 conflictOrder 앞쪽 규칙을 우선한다. JSON 규칙이 부족하면 sourceRefs의 원문을 읽고, 새 결정은 먼저 ai-context JSON에 반영한다.</p>
+    </article>
+    <div class="policy-grid">
+<article class="policy-card severity-blocker" data-search="pol-provider-001 providerprotection blocker 어떤 품질 개선도 provider의 명시적 동의, 한도, 가용성, 휴식, 일시정지, 보호 정책을 우회할 수 없다. routing fallback multi-response quality-score dashboard-admin docs/provider_safety_policy.md:9-15 docs/provider_safety_policy.md:48-57">
+  <div class="meta-line"><span>POL-PROVIDER-001</span><span>blocker</span></div>
+  <h3>providerProtection</h3>
+  <p>어떤 품질 개선도 Provider의 명시적 동의, 한도, 가용성, 휴식, 일시정지, 보호 정책을 우회할 수 없다.</p>
+  <div><span class="mini-chip">routing</span><span class="mini-chip">fallback</span><span class="mini-chip">multi-response</span><span class="mini-chip">quality-score</span><span class="mini-chip">dashboard-admin</span></div>
+  <details class="source-details"><summary>근거</summary><span class="source-chip">docs/PROVIDER_SAFETY_POLICY.md:9-15</span><span class="source-chip">docs/PROVIDER_SAFETY_POLICY.md:48-57</span></details>
+</article>
+
+<article class="policy-card severity-blocker" data-search="pol-provider-002 providerprotection blocker 기본 질문은 provider 1명에게만 보낸다. fallback은 기본 1회로 제한하고, 다중 응답은 기본 off이며 정책 허용 채널/역할에서만 제한적으로 켠다. ask fallback multi-response docs/provider_safety_policy.md:58-80">
+  <div class="meta-line"><span>POL-PROVIDER-002</span><span>blocker</span></div>
+  <h3>providerProtection</h3>
+  <p>기본 질문은 Provider 1명에게만 보낸다. fallback은 기본 1회로 제한하고, 다중 응답은 기본 off이며 정책 허용 채널/역할에서만 제한적으로 켠다.</p>
+  <div><span class="mini-chip">ask</span><span class="mini-chip">fallback</span><span class="mini-chip">multi-response</span></div>
+  <details class="source-details"><summary>근거</summary><span class="source-chip">docs/PROVIDER_SAFETY_POLICY.md:58-80</span></details>
+</article>
+
+<article class="policy-card severity-blocker" data-search="pol-privacy-001 privacyandsecretminimization blocker 사용자 질문이 다른 사람의 provider pc로 전송될 수 있음을 고지해야 하며, provider 로그에는 프롬프트 원문을 저장하지 않는다. ask provider-agent logging onboarding legal-copy readme.md:97-101 docs/provider_safety_policy.md:56 docs/adr/0003-community-provider-pool.md:54-55">
+  <div class="meta-line"><span>POL-PRIVACY-001</span><span>blocker</span></div>
+  <h3>privacyAndSecretMinimization</h3>
+  <p>사용자 질문이 다른 사람의 Provider PC로 전송될 수 있음을 고지해야 하며, Provider 로그에는 프롬프트 원문을 저장하지 않는다.</p>
+  <div><span class="mini-chip">ask</span><span class="mini-chip">provider-agent</span><span class="mini-chip">logging</span><span class="mini-chip">onboarding</span><span class="mini-chip">legal-copy</span></div>
+  <details class="source-details"><summary>근거</summary><span class="source-chip">README.md:97-101</span><span class="source-chip">docs/PROVIDER_SAFETY_POLICY.md:56</span><span class="source-chip">docs/adr/0003-community-provider-pool.md:54-55</span></details>
+</article>
+
+<article class="policy-card severity-blocker" data-search="pol-content-001 contentsafetyredlines blocker nexa는 중개 플랫폼이지만 무통제 플랫폼이 아니다. 불법 red-line, discord tos, 신고 대응은 관리자 설정보다 우선한다. ask image rag prompt-set channel-ai reports docs/nexa_safety_policy.md:1-14 docs/nexa_safety_policy.md:49-63">
+  <div class="meta-line"><span>POL-CONTENT-001</span><span>blocker</span></div>
+  <h3>contentSafetyRedLines</h3>
+  <p>NEXA는 중개 플랫폼이지만 무통제 플랫폼이 아니다. 불법 red-line, Discord ToS, 신고 대응은 관리자 설정보다 우선한다.</p>
+  <div><span class="mini-chip">ask</span><span class="mini-chip">image</span><span class="mini-chip">rag</span><span class="mini-chip">prompt-set</span><span class="mini-chip">channel-ai</span><span class="mini-chip">reports</span></div>
+  <details class="source-details"><summary>근거</summary><span class="source-chip">docs/NEXA_SAFETY_POLICY.md:1-14</span><span class="source-chip">docs/NEXA_SAFETY_POLICY.md:49-63</span></details>
+</article>
+
+<article class="policy-card severity-blocker" data-search="pol-content-002 contentsafetyredlines blocker nexa 강제 가드레일과 builtin 기본 페르소나 전문은 클라이언트로 내려보내지 않는다. 클라이언트에는 preview 또는 자리표시자만 노출한다. prompt-preview global-prompt-set channel-ai desktop-ui docs/nexa_safety_policy.md:36-47">
+  <div class="meta-line"><span>POL-CONTENT-002</span><span>blocker</span></div>
+  <h3>contentSafetyRedLines</h3>
+  <p>NEXA 강제 가드레일과 builtin 기본 페르소나 전문은 클라이언트로 내려보내지 않는다. 클라이언트에는 preview 또는 자리표시자만 노출한다.</p>
+  <div><span class="mini-chip">prompt-preview</span><span class="mini-chip">global-prompt-set</span><span class="mini-chip">channel-ai</span><span class="mini-chip">desktop-ui</span></div>
+  <details class="source-details"><summary>근거</summary><span class="source-chip">docs/NEXA_SAFETY_POLICY.md:36-47</span></details>
+</article>
+
+<article class="policy-card severity-high" data-search="pol-limit-001 providerprotection high provider daily limit은 서버별 단위로 노출·관리한다. 같은 daily_limit 기본값도 guild별 잔여 카운터로 독립 적용한다. provider-agent webui routing desktop-ui docs/nexa_limit_policy.md:1-15 docs/nexa_limit_policy.md:25-43">
+  <div class="meta-line"><span>POL-LIMIT-001</span><span>high</span></div>
+  <h3>providerProtection</h3>
+  <p>Provider daily limit은 서버별 단위로 노출·관리한다. 같은 daily_limit 기본값도 guild별 잔여 카운터로 독립 적용한다.</p>
+  <div><span class="mini-chip">provider-agent</span><span class="mini-chip">webui</span><span class="mini-chip">routing</span><span class="mini-chip">desktop-ui</span></div>
+  <details class="source-details"><summary>근거</summary><span class="source-chip">docs/NEXA_LIMIT_POLICY.md:1-15</span><span class="source-chip">docs/NEXA_LIMIT_POLICY.md:25-43</span></details>
+</article>
+
+<article class="policy-card severity-high" data-search="pol-edge-001 domaininvariants high p0/p1 핵심 사용자 계약만 cucumber로 추적하고, 모든 에지케이스를 cucumber로 만들지는 않는다. 문서/단위/통합/운영 문서가 역할을 나눈다. tests bdd traceability docs/edge_case_policy.md:5-20">
+  <div class="meta-line"><span>POL-EDGE-001</span><span>high</span></div>
+  <h3>domainInvariants</h3>
+  <p>P0/P1 핵심 사용자 계약만 Cucumber로 추적하고, 모든 에지케이스를 Cucumber로 만들지는 않는다. 문서/단위/통합/운영 문서가 역할을 나눈다.</p>
+  <div><span class="mini-chip">tests</span><span class="mini-chip">bdd</span><span class="mini-chip">traceability</span></div>
+  <details class="source-details"><summary>근거</summary><span class="source-chip">docs/EDGE_CASE_POLICY.md:5-20</span></details>
+</article>
+
+<article class="policy-card severity-high" data-search="pol-monetization-001 monetization high 유료 기능은 서버 관리 프리미엄이다. provider pool의 기여·동의·공정성 원칙을 판매자/구매자/정산 모델로 바꾸지 않는다. license pricing premium-admin copy docs/adr/0005-app-license-monetization.md docs/roadmap_monetization_300.md:18-43">
+  <div class="meta-line"><span>POL-MONETIZATION-001</span><span>high</span></div>
+  <h3>monetization</h3>
+  <p>유료 기능은 서버 관리 프리미엄이다. Provider Pool의 기여·동의·공정성 원칙을 판매자/구매자/정산 모델로 바꾸지 않는다.</p>
+  <div><span class="mini-chip">license</span><span class="mini-chip">pricing</span><span class="mini-chip">premium-admin</span><span class="mini-chip">copy</span></div>
+  <details class="source-details"><summary>근거</summary><span class="source-chip">docs/adr/0005-app-license-monetization.md</span><span class="source-chip">docs/ROADMAP_MONETIZATION_300.md:18-43</span></details>
+</article>
+</div>
+  </div>
+  <details class="wide-details" open>
+    <summary>이 서비스가 아닌 것</summary>
+    <div class="mis-grid">
+<article class="mis-card" data-search="로컬 ai 품질을 주력으로 파는 서비스가 아님 로컬 모델은 대부분 상용 frontier 모델보다 약하다. 그래서 nexa는 로컬 ai 자체가 아니라 discord 서버용 ai 운영, 정책, 지식, 프리셋, 품질 피드백을 제품 중심으로 둔다.">
+  <h3>로컬 AI 품질을 주력으로 파는 서비스가 아님</h3>
+  <p>로컬 모델은 대부분 상용 frontier 모델보다 약하다. 그래서 NEXA는 로컬 AI 자체가 아니라 Discord 서버용 AI 운영, 정책, 지식, 프리셋, 품질 피드백을 제품 중심으로 둔다.</p>
+</article>
+
+<article class="mis-card" data-search="ai 판매 마켓이 아님 provider는 판매자가 아니라 커뮤니티에 감당 가능한 만큼 기여하는 사람이다.">
+  <h3>AI 판매 마켓이 아님</h3>
+  <p>Provider는 판매자가 아니라 커뮤니티에 감당 가능한 만큼 기여하는 사람이다.</p>
+</article>
+
+<article class="mis-card" data-search="여러 pc를 합쳐 큰 모델을 돌리는 게 아님 성능을 합치는 분산 추론이 아니라, 가능한 provider 중 안전하게 하나를 고르는 라우팅이다.">
+  <h3>여러 PC를 합쳐 큰 모델을 돌리는 게 아님</h3>
+  <p>성능을 합치는 분산 추론이 아니라, 가능한 Provider 중 안전하게 하나를 고르는 라우팅이다.</p>
+</article>
+
+<article class="mis-card" data-search="남의 pc에 직접 접속하는 앱이 아님 agent는 outbound 연결만 쓰고, 중앙 서버 요청 외 임의 파일/쉘/url 실행을 허용하지 않는다.">
+  <h3>남의 PC에 직접 접속하는 앱이 아님</h3>
+  <p>Agent는 outbound 연결만 쓰고, 중앙 서버 요청 외 임의 파일/쉘/URL 실행을 허용하지 않는다.</p>
+</article>
+
+<article class="mis-card" data-search="니아가 유료·별도 계정 캐릭터가 아님 니아는 nexa의 기본 ai 정체성이다. 호감도는 관계 표현 장치일 뿐 xp·리더보드·과금이 아니고, 서버가 자기 채널 ai 페르소나를 만들면 그 성격으로 대체된다(안전 가드레일은 항상 우선).">
+  <h3>니아가 유료·별도 계정 캐릭터가 아님</h3>
+  <p>니아는 NEXA의 기본 AI 정체성이다. 호감도는 관계 표현 장치일 뿐 XP·리더보드·과금이 아니고, 서버가 자기 채널 AI 페르소나를 만들면 그 성격으로 대체된다(안전 가드레일은 항상 우선).</p>
+</article>
+
+<article class="mis-card" data-search="유료 구독 서비스가 아님 기본 질문·채널 ai·provider 풀 기여는 영구 무료다. 서버별 페르소나·rag·프리셋 쓰기 같은 앱 관리 프리미엄만 3개월 체험 후 $10 영구 라이선스로 열린다(구독 아님, adr 0005).">
+  <h3>유료 구독 서비스가 아님</h3>
+  <p>기본 질문·채널 AI·Provider 풀 기여는 영구 무료다. 서버별 페르소나·RAG·프리셋 쓰기 같은 앱 관리 프리미엄만 3개월 체험 후 $10 영구 라이선스로 열린다(구독 아님, ADR 0005).</p>
+</article>
+</div>
+  </details>
+</section>
+
+
+<section id="agent-context" class="nav-section">
+  <div class="section-head">
+    <div>
+      <span class="section-kicker">9. 구현 체크포인트</span>
+      <h2>에이전트 컨텍스트 네비게이션</h2>
+      <p>작업할 때 어떤 JSON을 읽어야 하는지, 어떤 생성물을 직접 고치면 안 되는지 확인한다.</p>
+    </div>
+  </div>
+  <div class="two-col">
+    <details class="wide-details" open>
+      <summary>JSON 파일별 소유 범위</summary>
+      <table class="nav-table"><thead><tr><th>키</th><th>파일</th><th>소유</th></tr></thead><tbody>
+<tr data-search="product ai-context/product.json 서비스 한 줄 정의 사용자 유형 비목표 컴포넌트 역할 사람용 첫 이해 스토리">
+  <td><code>product</code></td>
+  <td><code>ai-context/product.json</code></td>
+  <td><span class="mini-chip">서비스 한 줄 정의</span><span class="mini-chip">사용자 유형</span><span class="mini-chip">비목표</span><span class="mini-chip">컴포넌트 역할</span><span class="mini-chip">사람용 첫 이해 스토리</span></td>
+</tr>
+
+<tr data-search="navigation ai-context/navigation.json surfacegroups screens transitions">
+  <td><code>navigation</code></td>
+  <td><code>ai-context/navigation.json</code></td>
+  <td><span class="mini-chip">surfaceGroups</span><span class="mini-chip">screens</span><span class="mini-chip">transitions</span></td>
+</tr>
+
+<tr data-search="domain ai-context/domain.json 핵심 엔티티 상태 도메인 불변식 라우팅 결정 구조 도메인별 요구사항 그룹">
+  <td><code>domain</code></td>
+  <td><code>ai-context/domain.json</code></td>
+  <td><span class="mini-chip">핵심 엔티티</span><span class="mini-chip">상태</span><span class="mini-chip">도메인 불변식</span><span class="mini-chip">라우팅 결정 구조</span><span class="mini-chip">도메인별 요구사항 그룹</span></td>
+</tr>
+
+<tr data-search="policies ai-context/policies.json provider 보호 콘텐츠 안전 프라이버시 한도 에지케이스 처리 우선순위">
+  <td><code>policies</code></td>
+  <td><code>ai-context/policies.json</code></td>
+  <td><span class="mini-chip">Provider 보호</span><span class="mini-chip">콘텐츠 안전</span><span class="mini-chip">프라이버시</span><span class="mini-chip">한도</span><span class="mini-chip">에지케이스 처리 우선순위</span></td>
+</tr>
+
+<tr data-search="contracts ai-context/contracts.json wire/i18n/desktop/packaging 계약 위치 검증 명령 생성물 규칙">
+  <td><code>contracts</code></td>
+  <td><code>ai-context/contracts.json</code></td>
+  <td><span class="mini-chip">wire/i18n/desktop/packaging 계약 위치</span><span class="mini-chip">검증 명령</span><span class="mini-chip">생성물 규칙</span></td>
+</tr>
+</tbody></table>
+    </details>
+    <details class="wide-details" open>
+      <summary>변경 유형별 로드 순서</summary>
+      <table class="nav-table"><thead><tr><th>변경</th><th>먼저 읽을 JSON</th></tr></thead><tbody>
+<tr data-search="discordcommandoraskflow product navigation domain policies contracts">
+  <td><code>discordCommandOrAskFlow</code></td>
+  <td><span class="mini-chip">product</span><span class="mini-chip">navigation</span><span class="mini-chip">domain</span><span class="mini-chip">policies</span><span class="mini-chip">contracts</span></td>
+</tr>
+
+<tr data-search="provideragentorlocalui product navigation domain policies contracts">
+  <td><code>providerAgentOrLocalUi</code></td>
+  <td><span class="mini-chip">product</span><span class="mini-chip">navigation</span><span class="mini-chip">domain</span><span class="mini-chip">policies</span><span class="mini-chip">contracts</span></td>
+</tr>
+
+<tr data-search="dashboardoradminui product navigation policies contracts">
+  <td><code>dashboardOrAdminUi</code></td>
+  <td><span class="mini-chip">product</span><span class="mini-chip">navigation</span><span class="mini-chip">policies</span><span class="mini-chip">contracts</span></td>
+</tr>
+
+<tr data-search="wireprotocol domain policies contracts">
+  <td><code>wireProtocol</code></td>
+  <td><span class="mini-chip">domain</span><span class="mini-chip">policies</span><span class="mini-chip">contracts</span></td>
+</tr>
+
+<tr data-search="copyori18n product policies contracts">
+  <td><code>copyOrI18n</code></td>
+  <td><span class="mini-chip">product</span><span class="mini-chip">policies</span><span class="mini-chip">contracts</span></td>
+</tr>
+
+<tr data-search="packagingorreleaseasset contracts">
+  <td><code>packagingOrReleaseAsset</code></td>
+  <td><span class="mini-chip">contracts</span></td>
+</tr>
+</tbody></table>
+    </details>
+  </div>
+  <div class="generated-list">
+    <h3>생성 뷰</h3>
+    <ul>
+<li data-search="docs/ssot-viewer/prd-viewer/auto-generated-requirements-api-spec-navigation.html ai-context/index.json + product/navigation/domain/policies/contracts.json python3 scripts/gen_ssot_viewer.py python3 scripts/gen_ssot_viewer.py --check">
+  <code>docs/ssot-viewer/prd-viewer/auto-generated-requirements-api-spec-navigation.html</code>
+  <span>ai-context/index.json + product/navigation/domain/policies/contracts.json</span>
+  <code>python3 scripts/gen_ssot_viewer.py</code>
+  <code>python3 scripts/gen_ssot_viewer.py --check</code>
+</li>
+</ul>
+  </div>
+</section>
+
+
+<footer class="footer">
+  <strong>Do not edit this HTML directly.</strong>
+  <span>Source: ai-context/*.json · Generate: <code>python3 scripts/gen_ssot_viewer.py</code> · Check: <code>python3 scripts/gen_ssot_viewer.py --check</code></span>
+</footer>
+
+
+<script>
+(() => {
+  const search = document.querySelector('#search');
+  const searchable = Array.from(document.querySelectorAll('[data-search]'));
+  function applySearch() {
+    const query = (search.value || '').trim().toLowerCase();
+    searchable.forEach((element) => {
+      const matches = !query || element.dataset.search.includes(query);
+      element.hidden = !matches;
+    });
+  }
+  search?.addEventListener('input', applySearch);
+  document.querySelector('#expandAll')?.addEventListener('click', () => {
+    document.querySelectorAll('details').forEach((details) => { details.open = true; });
+  });
+  document.querySelector('#collapseAll')?.addEventListener('click', () => {
+    document.querySelectorAll('details').forEach((details) => { details.open = false; });
+  });
+})();
+</script>
+
+</body>
+</html>

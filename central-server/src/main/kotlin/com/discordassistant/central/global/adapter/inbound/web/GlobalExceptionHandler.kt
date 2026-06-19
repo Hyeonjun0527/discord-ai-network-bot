@@ -38,9 +38,19 @@ class GlobalExceptionHandler {
         }
         return ResponseEntity.status(ex.httpStatus).body(
             ApiErrorResponse(
+                error =
+                    ApiError(
+                        code = ex.errorCode,
+                        message = ex.message ?: ex.errorCode,
+                        // 선택 컨텍스트는 예외가 채운 것만 흘려보낸다 — null 은 NON_NULL 로 직렬화에서 빠진다.
+                        details = ex.details,
+                        currentState = ex.currentState,
+                        requiredState = ex.requiredState,
+                        failedCondition = ex.failedCondition,
+                        blockedAction = ex.blockedAction,
+                        actionGuide = ex.actionGuide,
+                    ),
                 status = ex.httpStatus,
-                error = ex.errorCode,
-                message = ex.message ?: ex.errorCode,
                 requestId = requestId,
             ),
         )
@@ -56,9 +66,9 @@ class GlobalExceptionHandler {
         log.warn("잘못된 요청(400) requestId={}: {}", requestId, ex.message, ex)
         return ResponseEntity.status(400).body(
             ApiErrorResponse(
+                // 단순 입력 오류 — code+message 만으로 충분(상태·조건 필드 억지로 넣지 않음).
+                error = ApiError(code = "INVALID_REQUEST", message = ex.message ?: "잘못된 요청입니다"),
                 status = 400,
-                error = "INVALID_REQUEST",
-                message = ex.message ?: "잘못된 요청입니다",
                 requestId = requestId,
             ),
         )

@@ -13,6 +13,7 @@ license = { text = "MIT" }
 dependencies = [
   "aiohttp>=3.9,<4.0",
   "certifi>=2024.8.30",
+  "sentry-sdk>=2.45,<3.0",
 ]
 
 [project.optional-dependencies]

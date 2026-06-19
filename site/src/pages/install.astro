@@ -1,0 +1,62 @@
+---
+import installAssets from "../../../packaging/assets.json";
+import SiteLayout from "../layouts/SiteLayout.astro";
+
+const assets = installAssets as {
+  brandName: string;
+  defaultTextModel: string;
+  installCommands: { mac: string; win: string };
+  assets: { guiMacDmg: string; guiWin: string };
+};
+---
+
+<SiteLayout
+  title={`${assets.brandName} 설치`}
+  description="Nexa 데스크톱 앱을 macOS와 Windows에 설치하고 Discord 서버에 연결합니다."
+>
+  <header class="simple-header">
+    <a class="brand" href="/">
+      <img src="/img/nexa-logo.png" alt="" />
+      <span>
+        <strong>{assets.brandName}</strong>
+        <small>INSTALL</small>
+      </span>
+    </a>
+    <a class="nav-cta" href="/">홈</a>
+  </header>
+  <main class="install-page">
+    <section class="install-hero">
+      <div>
+        <p class="eyebrow">Provider Agent</p>
+        <h1>내 PC의 AI 모델을 Discord 서버에 연결합니다.</h1>
+        <p class="lede">
+          앱은 일반 사용자 권한으로 실행되고, 기본 모델은 {assets.defaultTextModel}입니다.
+          토큰은 앱 안에서 Discord 로그인 또는 직접 입력으로 연결합니다.
+        </p>
+      </div>
+      <img src="/img/mascot-ai.png" alt="Nexa assistant mascot" />
+    </section>
+
+    <section class="install-steps" aria-label="설치 명령">
+      <article>
+        <span>macOS</span>
+        <h2>Homebrew</h2>
+        <pre><code>{assets.installCommands.mac}</code></pre>
+      </article>
+      <article>
+        <span>Windows</span>
+        <h2>winget</h2>
+        <pre><code>{assets.installCommands.win}</code></pre>
+      </article>
+    </section>
+
+    <section class="release-note">
+      <h2>릴리즈 호환성</h2>
+      <p>
+        기존 `agent-v*` 태그와 공개 릴리즈 자산명은 유지합니다.
+        macOS 직접 다운로드는 <code>{assets.assets.guiMacDmg}</code>,
+        Windows 직접 다운로드는 <code>{assets.assets.guiWin}</code>입니다.
+      </p>
+    </section>
+  </main>
+</SiteLayout>

@@ -24,6 +24,8 @@
 |---|---|
 | [`central-server/`](central-server/) | Provider Pool 중앙 서버 + Discord 봇 (Kotlin/Spring Boot, JDA). 라우팅·정책·관측성·웹 대시보드 |
 | [`provider-agent/`](provider-agent/) | 유저 PC용 경량 에이전트 (Python/aiohttp). 로컬 Ollama 를 풀에 연결 |
+| [`site/`](site/) | 공개 사이트 (Astro static). 설치·SEO·약관·릴리즈 안내 |
+| [`admin-console/`](admin-console/) | 관리자 콘솔 (Vite React SPA). 서버·채널·프리셋·지식 운영 화면 |
 | [`specs/product-v2/`](specs/product-v2/) | Provider Pool 제품 명세(요구사항/도메인/화면/API/추적성) |
 | [`docs/`](docs/) | ADR·로드맵·운영/베타 문서 |
 

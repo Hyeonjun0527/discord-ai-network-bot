@@ -23,6 +23,9 @@ def _warn_risky_config(cfg, log: logging.Logger) -> None:
 def main(argv: list[str] | None = None) -> int:
     cfg, verbose = config_from_args(argv)
     setup_logging(verbose, cfg.log_file)
+    from .bugsink import init_bugsink
+
+    init_bugsink()
     log = logging.getLogger("provider_agent")
     log.info("Provider Agent %s", cfg.agent_version)
     _warn_risky_config(cfg, log)

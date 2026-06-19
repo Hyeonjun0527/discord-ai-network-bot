@@ -1,0 +1,20 @@
+{
+  "name": "@nexa/public-site",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@11.5.2",
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1",
+    "build": "astro build",
+    "preview": "astro preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.6.0",
+    "@sentry/browser": "^10.48.0",
+    "astro": "^5.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}

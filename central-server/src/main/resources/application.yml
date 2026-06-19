@@ -83,6 +83,8 @@ central:
     # Discord OAuth 를 켜기 전에도 운영 AI Network 관리자 API 를 막기 위한 임시 운영 토큰.
     # 설정하면 X-Dashboard-Admin-Token 헤더가 일치할 때만 admin audience/쓰기 API 를 허용한다.
     admin-token: ${CENTRAL_DASHBOARD_ADMIN_TOKEN:}
+    # Vite React 관리자 콘솔을 별도 origin 에 배포할 때 허용할 origin 목록(콤마 구분).
+    cors-origins: ${CENTRAL_DASHBOARD_CORS_ORIGINS:}
     # 관리자 Discord user id 허용목록(콤마 구분). OAuth 로그인 사용자는 이 목록에 있을 때만 관리자.
     # 비면 OAuth 만으로는 관리자 작업 불가(admin-token 헤더로만) — fail-closed.
     admin-user-ids: ${CENTRAL_DASHBOARD_ADMIN_USER_IDS:}
@@ -106,9 +108,10 @@ central:
     # 운영 긴급 차단. true 면 AI Network 신규 기능 API/고급 워크플로가 즉시 멈춘다.
     kill-switch: ${AI_NETWORK_KILL_SWITCH:false}
 
-# 에러 트래킹(#223). DSN 미설정(기본)이면 완전 no-op. 운영에서 SENTRY_DSN 주입 시 활성.
+# Bugsink 오류 수집. Bugsink는 Sentry SDK 호환이므로 Sentry Java SDK를 사용한다.
+# DSN 미설정(기본)이면 완전 no-op. BUGSINK_DSN 또는 SENTRY_DSN 주입 시 활성.
 sentry:
-  dsn: ${SENTRY_DSN:}
+  dsn: ${BUGSINK_DSN:${SENTRY_DSN:}}
   environment: ${SENTRY_ENV:dev}
   traces-sample-rate: ${SENTRY_TRACES_RATE:0.0}
   # 프롬프트 등 민감 데이터 전송 방지(기본 끔).

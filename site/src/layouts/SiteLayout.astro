@@ -1,0 +1,42 @@
+---
+import "../styles/site.css";
+
+type Props = {
+  title: string;
+  description: string;
+};
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://discord-ai.yeon.world/" />
+    <meta property="og:image" content="https://discord-ai.yeon.world/img/install-panel.webp" />
+    <link rel="icon" href="/img/nexa-logo.png" />
+  </head>
+  <body>
+    <slot />
+    <script>
+      import * as Sentry from "@sentry/browser";
+
+      const dsn = import.meta.env.PUBLIC_BUGSINK_DSN || import.meta.env.PUBLIC_SENTRY_DSN;
+      if (import.meta.env.PROD && dsn) {
+        Sentry.init({
+          dsn,
+          environment: "production",
+          tracesSampleRate: 0,
+          sendDefaultPii: false,
+        });
+      }
+    </script>
+  </body>
+</html>

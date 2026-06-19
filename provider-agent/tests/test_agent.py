@@ -564,6 +564,18 @@ def test_central_get_captures_bugsink_context_on_5xx(monkeypatch):
     ]
 
 
+def test_central_error_message_reads_nested_then_top_then_fallback():
+    """central 통일 에러 바디(중첩)·옛/스프링 기본(top-level)·문자열 error 를 모두 읽고, 실패 시 fallback."""
+    from provider_agent.agent import _central_error_message
+
+    assert _central_error_message('{"error":{"code":"FORBIDDEN","message":"권한 없음"}}', "fb") == "권한 없음"
+    assert _central_error_message('{"error":{"code":"NOT_FOUND"}}', "fb") == "NOT_FOUND"  # message 없으면 code
+    assert _central_error_message('{"message":"잘못된 요청"}', "fb") == "잘못된 요청"  # 옛/스프링 기본
+    assert _central_error_message('{"error":"dashboard_admin_required"}', "fb") == "dashboard_admin_required"
+    assert _central_error_message("{not json", "fb") == "fb"  # 깨진 JSON → fallback
+    assert _central_error_message("{}", "fb") == "fb"  # 메시지 부재 → fallback
+
+
 def test_build_hello_per_guild():
     # hello 의 remaining_daily_requests 가 길드별로 다르게 보고된다.
     agent = ProviderAgent(AgentConfig(token="T", daily_limit=5, models=("m",)))

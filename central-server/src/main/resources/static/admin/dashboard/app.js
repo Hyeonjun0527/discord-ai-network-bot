@@ -51,9 +51,27 @@ function clearDashboardAdminToken() {
   updateDashboardAdminTokenStatus();
 }
 
+// 통일 에러 모델 {success,status,error:{code,message},requestId} 와 옛/스프링 기본 바디를 모두 읽어
+// 사람이 읽을 메시지를 뽑는다. 백엔드가 보낸 code/message/requestId 를 버리지 않는 것이 프론트의 역할.
+async function apiErrorMessage(res, fallback) {
+  try {
+    const body = await res.json();
+    const e = body && body.error;
+    let msg;
+    if (e && typeof e === "object") msg = e.message || e.code; // 통일 모델(중첩)
+    else if (typeof e === "string") msg = body.message || e; // 옛/스프링 기본(top-level)
+    else if (body && body.message) msg = body.message;
+    msg = msg || fallback;
+    const rid = body && body.requestId;
+    return rid ? `${msg} (요청 ID: ${rid})` : msg;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 async function getJson(url) {
   const res = await fetch(url, { headers: apiHeaders() });
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  if (!res.ok) throw new Error(await apiErrorMessage(res, `${res.status} ${url}`));
   return res.json();
 }
 
@@ -63,7 +81,7 @@ async function postJson(url, body) {
     headers: apiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  if (!res.ok) throw new Error(await apiErrorMessage(res, `${res.status} ${url}`));
   return res.json();
 }
 
@@ -73,13 +91,13 @@ async function putJson(url, body) {
     headers: apiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  if (!res.ok) throw new Error(await apiErrorMessage(res, `${res.status} ${url}`));
   return res.json();
 }
 
 async function deleteJson(url) {
   const res = await fetch(url, { method: "DELETE", headers: apiHeaders() });
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  if (!res.ok) throw new Error(await apiErrorMessage(res, `${res.status} ${url}`));
   return res.json();
 }
 

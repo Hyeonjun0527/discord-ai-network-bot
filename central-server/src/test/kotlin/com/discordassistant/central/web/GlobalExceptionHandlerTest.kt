@@ -7,12 +7,18 @@ import com.discordassistant.central.global.error.InvalidStateTransitionException
 import com.discordassistant.central.global.error.NotFoundException
 import com.discordassistant.central.global.error.PreconditionFailedException
 import org.junit.jupiter.api.Test
+import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 
 /**
  * 전역 예외 처리 검증(예외 원칙 9). 더미 컨트롤러가 도메인/검증 예외를 던지면
@@ -66,6 +72,14 @@ class GlobalExceptionHandlerTest {
 
         @GetMapping("/test/server-failure")
         fun serverFailure(): Nothing = throw ServerFailureException()
+
+        @GetMapping("/test/framework-status")
+        fun frameworkStatus(): Nothing = throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "결제 비활성")
+
+        @PostMapping("/test/body")
+        fun body(
+            @RequestBody dto: Map<String, Any>,
+        ): Map<String, Any> = dto
     }
 
     private val mvc =
@@ -146,5 +160,26 @@ class GlobalExceptionHandlerTest {
             .andExpect(jsonPath("$.status").value(503))
             .andExpect(jsonPath("$.error.code").value("CENTRAL_UPSTREAM_FAILED"))
             .andExpect(jsonPath("$.error.message").value("central upstream failed"))
+    }
+
+    @Test
+    fun `ResponseStatusException is reshaped to unified body preserving status and status-name code`() {
+        // 컨트롤러가 도메인 예외 대신 Spring RSE 를 던져도(예: License 503) 같은 모양으로 통일된다.
+        mvc
+            .perform(get("/test/framework-status"))
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.success").value(false))
+            .andExpect(jsonPath("$.status").value(503))
+            .andExpect(jsonPath("$.error.code").value("SERVICE_UNAVAILABLE"))
+            .andExpect(jsonPath("$.error.message").value("결제 비활성"))
+    }
+
+    @Test
+    fun `malformed JSON body maps to 400 unified body without leaking parser internals`() {
+        mvc
+            .perform(post("/test/body").contentType(MediaType.APPLICATION_JSON).content("{not json"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"))
+            .andExpect(jsonPath("$.error.message").value("요청 본문을 해석할 수 없습니다"))
     }
 }

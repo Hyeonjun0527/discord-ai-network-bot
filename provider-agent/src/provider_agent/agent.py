@@ -167,6 +167,27 @@ def _central_get(url: str, timeout: float = 8.0) -> dict:
         raise
 
 
+def _central_error_message(raw_body: str, fallback: str) -> str:
+    """central 통일 에러 바디(``{error:{message}}``)·옛/스프링 기본(``{message}``)에서 사람 메시지를 뽑는다.
+
+    백엔드가 보낸 message 를 무시하지 않되, 파싱 실패·부재 시 fallback 으로 안전 폴백한다.
+    """
+    import json
+
+    try:
+        body = json.loads(raw_body)
+    except (ValueError, TypeError):
+        return fallback
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict):  # 통일 모델(중첩)
+            return str(err.get("message") or err.get("code") or fallback)
+        top = body.get("message") or (err if isinstance(err, str) else None)  # 옛/스프링 기본
+        if top:
+            return str(top)
+    return fallback
+
+
 def _get_provider_admin_nia_persona(base: str, durable_token: str) -> dict:
     """니아 전체 페르소나(전문) 비공개 열람 — central GET /provider/admin/nia-persona.
 
@@ -197,13 +218,8 @@ def _get_provider_admin_nia_persona(base: str, durable_token: str) -> dict:
     except urllib.error.HTTPError as e:
         if e.code >= 500:
             _capture_central_api_error(e, url=url, method="GET", request_id=request_id)
-        # 403(비관리자) 등 — central 의 JSON 에러 메시지를 그대로 전달(전문은 응답에 없음).
-        message = "프로젝트 관리자만 볼 수 있어요"
-        try:
-            body = json.loads(e.read().decode("utf-8"))
-            message = str(body.get("message") or message)
-        except Exception:  # noqa: BLE001 - 에러 본문 파싱 실패는 기본 메시지로 폴백
-            pass
+        # 403(비관리자) 등 — central 의 통일 에러 바디({error:{message}})에서 메시지를 그대로 전달(전문은 응답에 없음).
+        message = _central_error_message(e.read().decode("utf-8"), "프로젝트 관리자만 볼 수 있어요")
         return {"ok": False, "status": e.code, "error": message}
 
 

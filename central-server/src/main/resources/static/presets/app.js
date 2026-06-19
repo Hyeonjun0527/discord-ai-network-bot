@@ -38,6 +38,24 @@ function requireAdminTokenMessage() {
   return "가져오기 미리보기에는 관리자 토큰이 필요합니다. 토큰을 입력하고 [토큰 저장]을 누른 뒤 다시 미리보기하세요.";
 }
 
+// 통일 에러 모델 {success,status,error:{code,message},requestId} 와 옛/스프링 기본 바디를 모두 읽어
+// 사람이 읽을 메시지를 뽑는다. 백엔드가 보낸 code/message/requestId 를 무시하지 않는 것이 프론트의 역할.
+async function apiErrorMessage(res, fallback) {
+  try {
+    const body = await res.json();
+    const e = body && body.error;
+    let msg;
+    if (e && typeof e === "object") msg = e.message || e.code; // 통일 모델(중첩)
+    else if (typeof e === "string") msg = body.message || e; // 옛/스프링 기본(top-level)
+    else if (body && body.message) msg = body.message;
+    msg = msg || fallback;
+    const rid = body && body.requestId;
+    return rid ? `${msg} (요청 ID: ${rid})` : msg;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 async function json(url, options = {}) {
   const { admin = false, headers = {}, ...fetchOptions } = options;
   const res = await fetch(url, {
@@ -45,14 +63,7 @@ async function json(url, options = {}) {
     ...fetchOptions,
   });
   if (!res.ok) {
-    let message = `${res.status} ${url}`;
-    try {
-      const body = await res.json();
-      message = body.message || body.error || message;
-    } catch (_) {
-      message = `${res.status} ${url}`;
-    }
-    throw new Error(message);
+    throw new Error(await apiErrorMessage(res, `${res.status} ${url}`));
   }
   return res.json();
 }

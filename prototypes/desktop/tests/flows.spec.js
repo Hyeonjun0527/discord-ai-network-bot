@@ -78,6 +78,23 @@ test('07 서버 상세: 기부자 서버 → 권한 안내(관리 버튼 없음)
   await expect(page.locator('#serverDetail #dManageBtn')).toHaveCount(0);
 });
 
+test('07 서버 상세: 이름 변경 + 이 서버 제공 그만두기', async ({ page }) => {
+  await page.click('.nav-item[data-view="servers"]');
+  await page.locator('#serverList .srv-item[data-guild="1002"]').click();
+
+  await page.click('#serverDetail #dRenameBtn');
+  await page.locator('.modal-layer #rnInput').fill('새 서버 이름');
+  await page.click('.modal-layer #rnSave');
+  await expect(page.locator('#serverDetail .dtitle h1')).toHaveText('새 서버 이름');
+
+  await page.click('#serverDetail #dRemoveBtn');
+  await expect(page.locator('.modal-layer #rmGo')).toBeVisible();
+  await page.click('.modal-layer #rmGo');
+  await expect(page.locator('#serverListWrap')).toBeVisible();
+  await expect(page.locator('#serverList .srv-item')).toHaveCount(3);
+  await expect(page.locator('#serverList .srv-item[data-guild="1002"]')).toHaveCount(0);
+});
+
 test('07 서버 상세: PENDING 서버 → 승인 대기만, 기여현황·관리·정책 전부 숨김', async ({ page }) => {
   await page.click('.nav-item[data-view="servers"]');
   await page.locator('#serverList .srv-item[data-guild="1004"]').click();

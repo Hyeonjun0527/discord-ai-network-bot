@@ -645,12 +645,47 @@ async def test_server_readonly_tabs_require_running_agent(monkeypatch):
     # 읽기 전용 관리 탭(채널AI/RAG/프리셋) 프록시 — 키 없으면 403, 에이전트 미실행이면 안내.
     client = await _client()
     try:
-        for path in ("channel-ai", "knowledge", "presets"):
+        for path in ("channel-ai", "knowledge", "presets", "safety/reports"):
             assert (await client.get(f"/api/servers/100/{path}")).status == 403  # 키 없음
             d = await (await client.get(f"/api/servers/100/{path}", headers={"X-Session": KEY})).json()
             assert d["ok"] is False  # 미실행
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_server_safety_reports_proxy_and_review(monkeypatch):
+    # 안전 탭 신고 큐: webui 는 session/auth 와 running-agent 만 보고 central durable-token 브리지로 위임한다.
+    calls: list[tuple] = []
+
+    class _Agent:
+        async def admin_safety_reports(self, guild_id):
+            calls.append(("list", guild_id))
+            return {"ok": True, "openReportCount": 1, "reports": [{"id": "51", "channelId": "20"}]}
+
+        async def admin_safety_review(self, guild_id, report_id, decision, reason):
+            calls.append(("review", guild_id, report_id, decision, reason))
+            return {"ok": True, "openReportCount": 0, "reports": []}
+
+    webui._state["agent"] = _Agent()
+    webui._state["task"] = _AliveTask()
+    client = await _client()
+    try:
+        listed = await (await client.get("/api/servers/100/safety/reports", headers={"X-Session": KEY})).json()
+        assert listed["ok"] is True and listed["reports"][0]["id"] == "51"
+        reviewed = await (
+            await client.post(
+                "/api/servers/100/safety/reports/review",
+                headers={"X-Session": KEY},
+                json={"reportId": "51", "decision": "dismissed", "reason": "확인"},
+            )
+        ).json()
+        assert reviewed["ok"] is True and reviewed["openReportCount"] == 0
+        assert calls == [("list", 100), ("review", 100, "51", "dismissed", "확인")]
+    finally:
+        await client.close()
+        webui._state["agent"] = None
+        webui._state["task"] = None
 
 
 @pytest.mark.asyncio
@@ -777,6 +812,39 @@ async def test_server_remove_deletes_saved(monkeypatch):
         # 토큰으로 서버 추가(별명)
         await client.post("/api/server-add-token", headers={"X-Session": KEY}, json={"token": "TC", "name": "토큰서버"})
         assert any(c["guild_name"] == "토큰서버" for c in load_connections())
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_server_remove_and_rename_accept_64bit_guild_id_string(monkeypatch):
+    """데스크톱 UI 는 Discord 64bit guildId 를 문자열로 보낸다. Number 정밀도 손실 없이 대상 연결을 찾아야 한다."""
+    from provider_agent.config_file import add_connection, load_connections
+
+    big_gid = 1380395592336805928
+    add_connection("TA", guild_id=big_gid, guild_name="큰서버")
+    add_connection("TB", guild_id=200, guild_name="서버B")
+    client = await _client()
+    try:
+        renamed = await (
+            await client.post(
+                "/api/server-rename",
+                headers={"X-Session": KEY},
+                json={"guildId": str(big_gid), "name": "정밀도보존"},
+            )
+        ).json()
+        assert renamed["ok"] is True
+        conns = load_connections()
+        assert conns[0]["guild_id"] == big_gid
+        assert conns[0]["guild_name"] == "정밀도보존"
+
+        removed = await (
+            await client.post("/api/server-remove", headers={"X-Session": KEY}, json={"guildId": str(big_gid)})
+        ).json()
+        assert removed["ok"] is True
+        left = load_connections()
+        assert [c["guild_id"] for c in left] == [200]
+        assert left[0]["guild_name"] == "서버B"
     finally:
         await client.close()
 
@@ -1135,6 +1203,162 @@ async def test_ollama_setup_installs_and_selects_arbitrary_model(monkeypatch):
         await asyncio.sleep(0.05)  # fire-and-forget 설치 태스크 실행 대기
         assert captured["model"] == "qwen2.5:7b"
         assert "qwen2.5:7b" in load_config()["models"]  # 설치 후 제공 대상 추가
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_health_contract_reports_runtimes(monkeypatch):
+    """계획서 endpoint: provider 연결 상태와 Ollama/이미지 런타임 health 를 분리해서 반환한다."""
+    async def fake_detect():
+        return {"installed": True, "ready": True, "models": [DEFAULT_TEXT_MODEL], "modelsDetail": []}
+
+    async def fake_comfy():
+        return {
+            "enabled": True,
+            "installed": True,
+            "ready": True,
+            "advertised": False,
+            "installedModels": ["sdxl.safetensors"],
+            "selectedModel": "sdxl.safetensors",
+            "busy": False,
+            "error": None,
+            "needsReconnect": True,
+        }
+
+    monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
+    monkeypatch.setattr(webui, "_detect_comfy_runtime", fake_comfy)
+    client = await _client()
+    try:
+        d = await (await client.get("/api/runtime-health", headers={"X-Session": KEY})).json()
+        assert d["ollama"]["defaultModel"] == DEFAULT_TEXT_MODEL
+        assert d["ollama"]["defaultInstalled"] is True
+        assert d["ollama"]["recommendedModels"]
+        assert d["stableDiffusion"]["installedModels"] == ["sdxl.safetensors"]
+        assert d["stableDiffusion"]["needsReconnect"] is True
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_runtime_health_tolerates_probe_errors(monkeypatch):
+    """런타임 probe 하나가 예외를 내도 health endpoint 전체가 500 으로 번지면 안 된다."""
+    async def fail_ollama():
+        raise RuntimeError("ollama probe exploded")
+
+    async def fail_comfy():
+        raise RuntimeError("comfy probe exploded")
+
+    persist_partial({"enable_image": True, "comfy_model": "sdxl.safetensors"})
+    monkeypatch.setattr(webui, "_detect_ollama", fail_ollama)
+    monkeypatch.setattr(webui, "_detect_comfy_runtime", fail_comfy)
+    client = await _client()
+    try:
+        r = await client.get("/api/runtime-health", headers={"X-Session": KEY})
+        assert r.status == 200
+        d = await r.json()
+        assert d["ollama"]["ready"] is False
+        assert d["ollama"]["installedModels"] == []
+        assert d["stableDiffusion"]["enabled"] is True
+        assert d["stableDiffusion"]["selectedModel"] == "sdxl.safetensors"
+        assert d["stableDiffusion"]["error"] == "probe-failed"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_plan_aliases_install_progress_and_model_select(monkeypatch):
+    """계획서 route 명칭도 기존 /api/ollama/setup 구현과 같은 동작을 제공한다."""
+    captured: dict = {}
+
+    async def fake_run_setup(url, model=None):
+        captured["model"] = model
+        return True
+
+    async def fake_detect():
+        return {"installed": True, "ready": True, "models": ["qwen2.5:7b"], "modelsDetail": []}
+
+    monkeypatch.setattr("provider_agent.ollama_setup.run_setup", fake_run_setup)
+    monkeypatch.setattr("provider_agent.ollama_setup.is_busy", lambda: False)
+    monkeypatch.setattr(webui, "_detect_ollama", fake_detect)
+    client = await _client()
+    try:
+        r = await client.post(
+            "/api/ollama/model-install",
+            headers={"X-Session": KEY},
+            json={"model": "qwen2.5:7b", "select": True},
+        )
+        assert (await r.json())["ok"] is True
+        await asyncio.sleep(0.05)
+        assert captured["model"] == "qwen2.5:7b"
+
+        progress = await (await client.get("/api/ollama/model-install-progress", headers={"X-Session": KEY})).json()
+        assert "phase" in progress and "percent" in progress
+
+        selected = await (
+            await client.post(
+                "/api/models/select",
+                headers={"X-Session": KEY},
+                json={"models": ["qwen2.5:7b"], "defaultModel": "qwen2.5:7b"},
+            )
+        ).json()
+        assert selected["ok"] is True
+        assert selected["models"] == ["qwen2.5:7b"]
+        assert load_config()["models"] == ["qwen2.5:7b"]
+        assert load_config()["default_model"] == "qwen2.5:7b"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_sd_and_image_provider_plan_aliases(monkeypatch):
+    """문서의 sd/image-provider route 명칭은 현재 ComfyUI 기반 구현으로 응답한다."""
+    async def fake_comfy():
+        return {
+            "enabled": False,
+            "installed": True,
+            "ready": False,
+            "advertised": False,
+            "installedModels": ["realistic.safetensors"],
+            "selectedModel": "realistic.safetensors",
+            "busy": False,
+            "error": None,
+            "needsReconnect": False,
+        }
+
+    called: dict = {}
+
+    async def fake_apply(on: bool):
+        called["on"] = on
+        return {"ok": True, "on": on, "imageReady": False, "applied": "saved"}
+
+    async def fake_download(url: str):
+        called["url"] = url
+        return True
+
+    monkeypatch.setattr(webui, "_detect_comfy_runtime", fake_comfy)
+    monkeypatch.setattr(webui, "_apply_image_receiving", fake_apply)
+    monkeypatch.setattr("provider_agent.comfy_setup.download_model", fake_download)
+    client = await _client()
+    try:
+        status = await (await client.get("/api/sd/status", headers={"X-Session": KEY})).json()
+        assert status["installed"] is True and status["installedModels"] == ["realistic.safetensors"]
+        models = await (await client.get("/api/sd/models/installed", headers={"X-Session": KEY})).json()
+        assert models == {"models": ["realistic.safetensors"], "active": "realistic.safetensors"}
+
+        installed = await (
+            await client.post(
+                "/api/sd/model-install",
+                headers={"X-Session": KEY},
+                json={"url": "https://example.com/realistic.safetensors"},
+            )
+        ).json()
+        assert installed["ok"] is True and called["url"] == "https://example.com/realistic.safetensors"
+
+        toggled = await (
+            await client.post("/api/image-provider", headers={"X-Session": KEY}, json={"enabled": True})
+        ).json()
+        assert toggled["ok"] is True and called["on"] is True
     finally:
         await client.close()
 

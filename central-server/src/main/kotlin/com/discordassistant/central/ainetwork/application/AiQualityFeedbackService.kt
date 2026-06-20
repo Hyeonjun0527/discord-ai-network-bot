@@ -23,7 +23,7 @@ class AiQualityFeedbackService(
     private val candidateAnswers: CandidateAnswerRepository,
     private val providerCapabilities: ProviderCapabilityProfileRepository,
     private val clock: Clock = Clock.systemUTC(),
-) {
+) : GuildQualityReports {
     @Transactional
     fun submit(
         guildId: Long,
@@ -73,7 +73,7 @@ class AiQualityFeedbackService(
         return summarize(guildId, null, recent)
     }
 
-    fun reviewSummary(guildId: Long): QualityReviewSummary {
+    override fun reviewSummary(guildId: Long): QualityReviewSummary {
         val queue = feedbacks.findTop50ByGuildIdAndStatusOrderByCreatedAtDesc(guildId, FeedbackStatus.NEEDS_REVIEW)
         val channelCounts = queue.groupingBy { it.channelId }.eachCount()
         val topChannels =
@@ -93,7 +93,7 @@ class AiQualityFeedbackService(
     }
 
     @Transactional
-    fun resolveFeedback(
+    override fun resolveFeedback(
         guildId: Long,
         feedbackId: Long,
         status: String,
@@ -232,6 +232,19 @@ class AiQualityFeedbackService(
                 "반복 신고가 있는 채널은 채널 AI 헌법·지식·모델 정책을 점검하세요.",
             )
         }
+}
+
+/** 길드 관리자 앱에서 신고 큐를 읽고 처리하기 위한 좁은 포트. 권한 판정은 호출자(ProviderAdminController)가 맡는다. */
+interface GuildQualityReports {
+    fun reviewSummary(guildId: Long): QualityReviewSummary
+
+    fun resolveFeedback(
+        guildId: Long,
+        feedbackId: Long,
+        status: String,
+        reviewerUserId: Long?,
+        resolutionReason: String?,
+    ): AiFeedbackReviewResult
 }
 
 data class AiFeedbackResult(

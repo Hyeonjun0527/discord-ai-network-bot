@@ -1,3 +1,121 @@
+# 작업 핸드오프 — 2026-06-20
+
+## 현재 세션 WIP: NEXA runtime plan compatibility + L3 server management + L4 safety reports bridge
+
+다음 Codex 세션은 먼저 루트 `AGENTS.md` 와 `.omx/notepad.md` 를 읽을 것.
+
+### 요청/상태
+- 사용자 목표: `git pull` 후 `docs/nexa` 폴더의 자료와 "NEXA 500 step master plan"을 읽고 전부 수행.
+- 현재 증거: `git pull --ff-only` 는 두 번 시도됨. sandbox 에서는 `.git/FETCH_HEAD` read-only 로 실패했고, 승인 후에는 GitHub HTTPS 인증 부재로 `fatal: could not read Username for 'https://github.com': No such device or address` 실패. `gh auth status` 도 미로그인.
+- 따라서 이 세션에서는 새로 생길 `docs/nexa` 자료를 아직 받지 못함. 로컬에는 `docs/nexa` 디렉터리가 없고, 사용 가능한 NEXA 문서는 `docs/NEXA_*.md`, `docs/plans/NEXA_DESKTOP_RUNTIME_HEALTH_AND_REOPEN_PLAN.md`, `docs/plans/NEXA_DESKTOP_FIXES_FINAL_VERIFICATION.md`.
+
+### 이번 변경
+- `provider-agent/src/provider_agent/webui.py`
+  - 문서화된 `GET /api/runtime-health` 추가.
+  - runtime health probe 예외가 endpoint 전체 500 으로 번지지 않도록 Ollama/ComfyUI 조회 실패를 fallback 상태로 반환.
+  - 현재 ComfyUI 이미지 엔진 상태를 generic SD 계약으로 보여주는 `GET /api/sd/status`, `GET /api/sd/models/installed` 추가.
+  - 계획서 명칭 alias 추가: `POST /api/sd/model-install` → 기존 ComfyUI model download 경로 재사용.
+  - 계획서 명칭 alias 추가: `POST /api/ollama/model-install`, `GET /api/ollama/model-install-progress`, `POST /api/image-provider`.
+  - 모델 선택 전용 `POST /api/models/select` 추가. `/api/setup` 처럼 토큰/이미지 설정을 건드리지 않고 텍스트 모델 선택만 저장·라이브 재광고.
+- `provider-agent/tests/test_webui.py`
+  - 위 endpoint 계약 회귀 테스트 추가.
+  - runtime health probe 실패 시 200 fallback 응답 회귀 테스트 추가.
+  - L3 서버 관리 회귀 테스트 보강: 64bit Discord guildId 를 문자열로 받은 상태에서 서버 이름 변경과 제거가
+    정확한 connection 을 대상으로 동작하는지 검증.
+- `prototypes/desktop/contract.js`
+  - 계획서 endpoint 명칭을 SSOT 계약에 추가: `runtimeHealth`, `sdStatus`, `sdModelsInstalled`, `sdModelInstall`,
+    `ollamaModelInstall`, `ollamaModelInstallProgress`, `modelsSelect`, `imageProvider`.
+- `prototypes/desktop/adapter.js`
+  - 실 앱 호출을 계획서 alias 로 연결: 이미지 토글은 `/api/image-provider`, 텍스트 모델 선택은 `/api/models/select`,
+    Ollama 설치/진행률은 `/api/ollama/model-install*`, ComfyUI 모델 설치는 `/api/sd/model-install`.
+  - 프로토타입 mock 에 `getRuntimeHealth()` 응답을 추가해 실 UI 와 mock UI 가 같은 health shape 를 쓴다.
+- `prototypes/desktop/stage-manager.js`, `prototypes/desktop/screen-local.js`
+  - 홈/로컬 실행 화면이 `runtime-health` 를 우선 사용해 설치됨/ready/광고됨/선택 모델을 분리해서 표시한다.
+  - `runtime-health` 가 실패하면 기존 `/api/status`, `/api/models`, `/api/comfy/*` 기반 동작으로 fallback 한다.
+- `prototypes/desktop/tests/flows.spec.js`
+  - L3 서버 상세 회귀 테스트 추가: 서버 이름 변경 후 상세 제목 갱신, "이 서버 제공 그만두기" 확인 후 목록에서
+    해당 서버가 제거되는지 검증.
+- `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiQualityFeedbackService.kt`
+  - 기존 AI 품질 피드백 리뷰 기능을 Provider Admin HTTP 경로에서 재사용할 수 있도록 `GuildQualityReports`
+    좁은 포트를 추가.
+- `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt`
+  - durable token + Discord 관리자 게이트를 그대로 쓰는 안전 신고 큐 브리지 추가:
+    `POST /provider/admin/quality/reports`, `POST /provider/admin/quality/reports/review`.
+  - 데스크톱에서 64bit ID 정밀도 손실이 나지 않도록 report/channel/request ID 를 문자열로 반환.
+- `central-server/src/test/kotlin/com/discordassistant/central/provider/ProviderAdminControllerTest.kt`
+  - 안전 신고 큐 조회/처리와 비관리자 거부 회귀 테스트 추가.
+- `provider-agent/src/provider_agent/agent.py`, `provider-agent/src/provider_agent/webui.py`
+  - central Provider Admin endpoint 를 데스크톱 로컬 API 로 프록시:
+    `GET /api/servers/{guildId}/safety/reports`,
+    `POST /api/servers/{guildId}/safety/reports/review`.
+- `prototypes/desktop/contract.js`, `prototypes/desktop/adapter.js`, `prototypes/desktop/screen-servers.js`
+  - 안전 탭의 mock-only 신고 큐를 제거하고 실 API shape 로 조회/처리하도록 연결.
+  - 실 앱은 API 응답을 기다린 뒤 큐를 갱신하고, 프로토타입 mock 도 같은 계약을 모사.
+
+### 검증 완료
+```bash
+cd /root/workspaces/discord-assitant/prototypes/desktop
+npm install
+npx playwright test
+# 61 passed
+
+npx playwright test tests/flows.spec.js --grep '안전 탭'
+# 1 passed
+
+cd provider-agent
+PYTHONPATH=/tmp/nexa-pydeps:src python3 -m pytest tests/test_webui.py -q
+# 90 passed, 3 warnings
+
+PYTHONPATH=/tmp/nexa-pydeps python3 -m ruff check src tests
+# All checks passed
+
+PYTHONPATH=/tmp/nexa-pydeps python3 -m mypy src
+# Success: no issues found in 34 source files
+
+PYTHONPATH=/tmp/nexa-pydeps:src python3 -m pytest -q --cov=provider_agent --cov-fail-under=70
+# 380 passed, 3 warnings, total coverage 72.57%
+
+cd /root/workspaces/discord-assitant
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 central-server/gradlew -p central-server test --tests 'com.discordassistant.central.provider.ProviderAdminControllerTest'
+# BUILD SUCCESSFUL
+
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 central-server/gradlew -p central-server build
+# BUILD SUCCESSFUL in 3m 59s
+
+cd /root/workspaces/discord-assitant
+node --check prototypes/desktop/adapter.js
+node --check prototypes/desktop/contract.js
+node --check prototypes/desktop/stage-manager.js
+node --check prototypes/desktop/screen-local.js
+node --check prototypes/desktop/screen-servers.js
+# no output
+
+python3 scripts/check_packaging.py
+# ✅ 패키지 자산 SSOT 일치 — 22개 소비처 검증 완료
+
+make sync-desktop
+# webui_assets 생성, @proto-only 누수 0 확인
+
+make desktop-check
+# ✅ 데스크톱 계약 일치 — adapter 가 호출하는 모든 엔드포인트가 webui 에 존재 · 생성물 누수 없음
+# ✅ contract-shapes.json 동기(드리프트 없음)
+
+git diff --check
+# no output
+```
+
+pytest 경고는 기존 async teardown warning 이며 테스트/coverage 게이트는 통과. `make desktop-check` 의 Node 경고는
+`package.json` 에 `"type": "module"` 이 없어 ES module 로 재파싱했다는 성능 경고이고 검사는 통과했다.
+
+### 남은 검증/후속
+- 로컬 검증 환경 보정: Node/npm, `python3-aiohttp`, 시스템 Chrome 을 설치했고, 루트 `.venv/pyvenv.cfg` 는
+  `include-system-site-packages = true` 로 바꿔 `make desktop-check` 가 `.venv/bin/python` 으로도 `aiohttp` 를 import 하게 했다.
+  이 변경은 로컬 환경 파일이며 git tracked 변경은 아니다.
+- Playwright 첫 실행은 시스템 Chrome 부재로 전부 launch 전 실패했다. `npx playwright install chrome` 후 재실행해서 61개 통과.
+- 원래 목표의 `docs/nexa` master plan 은 GitHub 인증이 풀린 뒤 다시 `git pull --ff-only` 하고 읽어야 한다.
+
+---
+
 # 작업 핸드오프 — 2026-06-07
 
 다음 세션(Codex/Claude)이 이어받기 위한 인수인계. 세션 시작 전 루트 `AGENTS.md` 먼저 읽을 것.

@@ -40,6 +40,7 @@ export const ENDPOINTS = Object.freeze({
   status: '/api/status',
   logs: '/api/logs',          // GET → { lines: [string] }  라인 형식 "HH:MM:SS LEVEL | message"
   models: '/api/models',
+  runtimeHealth: '/api/runtime-health', // GET → {ollama, stableDiffusion} provider 연결과 로컬 런타임 health 분리
   servers: '/api/servers',
   // ⚠ 서버 상세(기부자 관점) — Gap-S/P/W. 아래 3개는 백엔드 신설 필요.
   serverDetail: (g) => '/api/servers/' + g,         // GET — 서버별 내 기여 통계·myModels·policy(Gap-S/P)
@@ -80,6 +81,8 @@ export const ENDPOINTS = Object.freeze({
   serverKnowledgeDelete: (g) => '/api/servers/' + g + '/knowledge/delete', // POST {sourceId} → 삭제(central 소유권 가드)
   serverPresets: (g) => '/api/servers/' + g + '/presets',      // GET → {ok, presets:[{id,name,category,status,summary}]}
   serverPresetDelete: (g) => '/api/servers/' + g + '/presets/delete', // POST {presetId} → 삭제(central 소유권 가드)
+  serverSafetyReports: (g) => '/api/servers/' + g + '/safety/reports', // GET → {ok,reports:[...]} 안전 신고 큐
+  serverSafetyReview: (g) => '/api/servers/' + g + '/safety/reports/review', // POST {reportId,decision,reason}
   serverAddToken: '/api/server-add-token',  // POST {token} → {ok} (실 앱: 토큰으로 서버 추가 + 자동 연결)
   // 니아 전체 페르소나(전문) 비공개 열람 — 프로젝트 관리자(central admin-user-ids)만. 길드 무관(전역 정체성).
   //   webui → central GET /provider/admin/nia-persona (durable 토큰). 비관리자/다른 프로바이더는 central 이 403 → {ok:false}.
@@ -103,11 +106,18 @@ export const ENDPOINTS = Object.freeze({
   comfyModels: '/api/comfy/models',          // GET → {models:[ckpt…], active} (폴더 스캔 = 아무 .safetensors)
   comfySelect: '/api/comfy/select',          // POST {model} — 활성 체크포인트 전환
   comfyInstallModel: '/api/comfy/install-model', // POST {url} — 임의 .safetensors URL 을 ComfyUI 폴더로(gated=HF토큰)
+  sdStatus: '/api/sd/status',                // GET → generic SD/ComfyUI 상태 alias
+  sdModelsInstalled: '/api/sd/models/installed', // GET → {models, active}
+  sdModelInstall: '/api/sd/model-install',   // POST {url} — generic SD 모델 설치 alias
   ollamaSetup: '/api/ollama/setup',
   ollamaSetupProgress: '/api/ollama/setup-progress',
+  ollamaModelInstall: '/api/ollama/model-install',
+  ollamaModelInstallProgress: '/api/ollama/model-install-progress',
   ollamaCatalog: '/api/ollama/catalog',
+  modelsSelect: '/api/models/select',  // POST {models, defaultModel} → 텍스트 제공 모델만 저장·재광고
   setup: '/api/setup',
   image: '/api/image',                 // POST {on} → 이미지 수신 전용 토글(라이브, 모델 미변경)
+  imageProvider: '/api/image-provider', // POST {enabled|on} → 이미지 제공 토글 alias
   cloud: '/api/cloud',                  // POST {geminiApiKey?, comfyUrl?} → 클라우드 AI(Gemini 키)·ComfyUI 주소
   start: '/api/start',
   stop: '/api/stop',

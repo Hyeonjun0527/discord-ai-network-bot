@@ -7,7 +7,7 @@
     const view = document.querySelector('.view[data-view="local"]');
     const runCard = document.getElementById('localRunCard');
     const rtWrap = document.getElementById('localRuntimes');
-    let _comfy = null, _comfyProg = null, _comfyModels = null; // ComfyUI 상태·진행률·체크포인트 목록
+    let _comfy = null, _comfyProg = null, _comfyModels = null, _health = null; // 런타임 health·ComfyUI 상태·진행률·체크포인트 목록
     const toggleBtn = document.getElementById('localToggleBtn');
     let _st = null, _models = null;
     const DOTS = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
@@ -45,8 +45,11 @@
       toggleBtn.textContent = running ? t('localToggleStop') : t('localToggleStart');
       toggleBtn.className = 'btn btn--md ' + (running ? 'btn--secondary' : 'btn--primary');
 
-      const ollamaReady = _models ? (_models.ollamaReady ?? running) : running;
-      const modelCount = running ? (s.models ? s.models.length : 0) : (_models && _models.models ? _models.models.length : 0);
+      const oh = (_health && _health.ollama) || {};
+      const advertisedModels = Array.isArray(oh.advertisedModels) ? oh.advertisedModels : (s.models || []);
+      const installedTextModels = Array.isArray(oh.installedModels) ? oh.installedModels : ((_models && _models.models) ? _models.models.map((m) => m.name) : []);
+      const ollamaReady = (oh.ready !== undefined) ? !!oh.ready : (_models ? (_models.ollamaReady ?? running) : running);
+      const modelCount = running ? advertisedModels.length : installedTextModels.length;
 
       const ollamaCard = '<div class="rt-row' + (ollamaReady ? ' ready' : '') + '">' +
         '<span class="rt-dot"></span><div class="rt-body"><div class="rt-name">Ollama <span style="font-weight:500;color:var(--subtle)">' + t('localOllamaTextType') + '</span></div>' +
@@ -206,14 +209,29 @@
     }
 
     async function load() {
-      [_st, _models] = await Promise.all([api.getStatus(), api.getModels()]);
+      [_st, _models, _health] = await Promise.all([api.getStatus(), api.getModels(), api.getRuntimeHealth().catch(() => null)]);
       // (레거시 SD 모델 목록 로딩 제거 — 이미지 체크포인트는 아래 ComfyUI 폴더 스캔(comfyModels)이 단일 소스.)
       // ComfyUI(1급 엔진) 상태 — 설치/실행/바쁨. 설치 중이면 진행률도(3초 폴링으로 자동 갱신). 실패는 비치명적.
-      try { _comfy = await api.comfyStatus(); } catch (_e) { _comfy = null; }
+      const sd = (_health && _health.stableDiffusion) || null;
+      if (sd) {
+        _comfy = {
+          installed: !!sd.installed,
+          running: !!sd.ready,
+          busy: !!sd.busy,
+          enabled: !!sd.enabled,
+          advertised: !!sd.advertised,
+          needsReconnect: !!sd.needsReconnect,
+        };
+      } else {
+        try { _comfy = await api.comfyStatus(); } catch (_e) { _comfy = null; }
+      }
       if (_comfy && _comfy.busy) { try { _comfyProg = await api.comfySetupProgress(); } catch (_e) { _comfyProg = null; } }
       else _comfyProg = null;
       // ComfyUI 실행 중이면 체크포인트 목록(폴더 스캔)도 — 모델 선택기용. 실패는 비치명적.
-      if (_comfy && _comfy.running) { try { _comfyModels = await api.comfyModels(); } catch (_e) { _comfyModels = null; } }
+      if (_comfy && _comfy.running) {
+        if (sd && Array.isArray(sd.installedModels)) _comfyModels = { models: sd.installedModels, active: sd.selectedModel || sd.installedModels[0] || null };
+        else { try { _comfyModels = await api.comfyModels(); } catch (_e) { _comfyModels = null; } }
+      }
       else _comfyModels = null;
       render();
     }

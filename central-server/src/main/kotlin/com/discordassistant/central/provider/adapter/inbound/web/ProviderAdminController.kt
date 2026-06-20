@@ -1,5 +1,7 @@
 package com.discordassistant.central.provider.adapter.inbound.web
 
+import com.discordassistant.central.ainetwork.application.GuildQualityReports
+import com.discordassistant.central.ainetwork.application.QualityReviewSummary
 import com.discordassistant.central.channelai.application.GuildChannelAiQuery
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetService
 import com.discordassistant.central.globalpromptset.application.GlobalPromptSetView
@@ -174,6 +176,41 @@ data class AdminPresetDeleteRequest(
     val presetId: String = "",
 )
 
+/** 안전 신고 큐 조회 요청(관리자). */
+data class AdminQualityReportsRequest(
+    val durableToken: String = "",
+    val guildId: Long = 0,
+)
+
+/** 안전 신고 큐 처리 요청(관리자). decision: resolve|dismiss|reopen 계열. reportId 는 JS 정밀도 보호를 위해 문자열. */
+data class AdminQualityReviewRequest(
+    val durableToken: String = "",
+    val guildId: Long = 0,
+    val reportId: String = "",
+    val decision: String = "resolved",
+    val reason: String = "",
+)
+
+/** 안전 신고 큐 항목. 질문/답변 본문은 저장하지 않으므로 requestId/reason 같은 안전한 메타데이터만 노출한다. */
+data class ManageQualityReportDto(
+    val id: String,
+    val channelId: String,
+    val requestId: String?,
+    val rating: Int?,
+    val feedbackType: String,
+    val reason: String?,
+    val createdAt: String,
+)
+
+data class AdminQualityReportsResponse(
+    val ok: Boolean,
+    val message: String = "",
+    val openReportCount: Int = 0,
+    val affectedChannelCount: Int = 0,
+    val reports: List<ManageQualityReportDto> = emptyList(),
+    val nextActions: List<String> = emptyList(),
+)
+
 /** 니아 전체 페르소나(전문) 응답 — 프로젝트 관리자 전용 비공개 열람. 전문은 절대 클라이언트에 번들하지 않고 여기서만 내려준다. */
 data class NiaPersonaResponse(
     val persona: String,
@@ -226,6 +263,7 @@ class ProviderAdminController(
     private val guildKnowledgeAdmin: GuildKnowledgeAdmin,
     private val guildPresets: GuildPresetQuery,
     private val guildPresetAdmin: GuildPresetAdmin,
+    private val qualityFeedback: GuildQualityReports,
     private val licenseGate: PremiumFeatureGate,
     private val projectAdmins: ProjectAdmins,
 ) {
@@ -533,6 +571,73 @@ class ProviderAdminController(
             onFailure = { AdminPresetsResponse(false, "프리셋 기능이 꺼져 있어요") },
         )
     }
+
+    /** 안전 신고 큐(품질 피드백 report) 조회. 관리자 권한은 durable-token + JDA 로 판정한다. */
+    @PostMapping("/quality/reports")
+    fun qualityReports(
+        @RequestBody req: AdminQualityReportsRequest,
+    ): AdminQualityReportsResponse {
+        authedAdmin(req.durableToken, req.guildId) ?: return AdminQualityReportsResponse(false, "관리자 권한이 필요합니다")
+        return runCatching { qualityFeedback.reviewSummary(req.guildId) }
+            .fold(
+                onSuccess = { it.toAdminQualityReportsResponse() },
+                onFailure = { AdminQualityReportsResponse(false, "신고 큐를 불러올 수 없어요") },
+            )
+    }
+
+    /** 안전 신고 처리. 질문/답변 본문 없이 feedback row 의 상태만 resolved/dismissed/needs_review 로 바꾼다. */
+    @PostMapping("/quality/reports/review")
+    fun reviewQualityReport(
+        @RequestBody req: AdminQualityReviewRequest,
+    ): AdminQualityReportsResponse {
+        val adminId =
+            authedAdmin(req.durableToken, req.guildId)
+                ?: return AdminQualityReportsResponse(false, "관리자 권한이 필요합니다")
+        val reportId = req.reportId.toLongOrNull() ?: return AdminQualityReportsResponse(false, "잘못된 신고입니다")
+        val status = reviewStatus(req.decision) ?: return AdminQualityReportsResponse(false, "알 수 없는 처리입니다")
+        return runCatching {
+            qualityFeedback.resolveFeedback(
+                guildId = req.guildId,
+                feedbackId = reportId,
+                status = status,
+                reviewerUserId = adminId,
+                resolutionReason = req.reason.ifBlank { null },
+            )
+            qualityFeedback.reviewSummary(req.guildId)
+        }.fold(
+            onSuccess = { it.toAdminQualityReportsResponse("처리했어요") },
+            onFailure = { AdminQualityReportsResponse(false, "신고를 처리할 수 없어요") },
+        )
+    }
+
+    private fun QualityReviewSummary.toAdminQualityReportsResponse(message: String = ""): AdminQualityReportsResponse =
+        AdminQualityReportsResponse(
+            ok = true,
+            message = message,
+            openReportCount = openReportCount,
+            affectedChannelCount = affectedChannelCount,
+            reports =
+                queue.map {
+                    ManageQualityReportDto(
+                        id = it.id.toString(),
+                        channelId = it.channelId.toString(),
+                        requestId = it.requestId,
+                        rating = it.rating,
+                        feedbackType = it.feedbackType,
+                        reason = it.reason,
+                        createdAt = it.createdAt,
+                    )
+                },
+            nextActions = nextActions,
+        )
+
+    private fun reviewStatus(decision: String): String? =
+        when (decision.trim().lowercase()) {
+            "resolve", "resolved", "done", "action", "hide", "hidden" -> "resolved"
+            "dismiss", "dismissed", "ignore", "ignored" -> "dismissed"
+            "needs_review", "reopen", "open" -> "needs_review"
+            else -> null
+        }
 
     private fun addFailureMessage(e: Throwable): String =
         when (e.message) {

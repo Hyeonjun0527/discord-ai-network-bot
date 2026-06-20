@@ -206,6 +206,32 @@ def _post_provider_admin_delete(base: str, path: str, durable_token: str, guild_
     return _central_post(base + path, {"durableToken": durable_token, "guildId": guild_id, id_key: str(id_val)})
 
 
+def _post_provider_admin_quality_reports(base: str, durable_token: str, guild_id: int) -> dict:
+    """안전 신고 큐 조회(관리자). central 이 durable 토큰 신원 + 길드 관리자 권한을 가드한다."""
+    return _central_post(base + "/provider/admin/quality/reports", {"durableToken": durable_token, "guildId": guild_id})
+
+
+def _post_provider_admin_quality_review(
+    base: str,
+    durable_token: str,
+    guild_id: int,
+    report_id: str,
+    decision: str,
+    reason: str,
+) -> dict:
+    """안전 신고 처리(관리자). 질문/답변 본문 없이 report 상태만 갱신한다."""
+    return _central_post(
+        base + "/provider/admin/quality/reports/review",
+        {
+            "durableToken": durable_token,
+            "guildId": guild_id,
+            "reportId": str(report_id),
+            "decision": decision,
+            "reason": reason,
+        },
+    )
+
+
 def _post_provider_admin_channels(
     base: str,
     path: str,
@@ -963,6 +989,22 @@ class ProviderAgent:
             return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
         base = _agent_sync_base(self._cfg.relay_url)
         return await asyncio.to_thread(_post_provider_admin_delete, base, "/provider/admin/knowledge/delete", dt, guild_id, "sourceId", source_id)
+
+    async def admin_safety_reports(self, guild_id: int) -> dict:
+        """안전 신고 큐 조회(관리 화면 안전 탭). central 이 길드 관리자 권한을 가드."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_quality_reports, base, dt, guild_id)
+
+    async def admin_safety_review(self, guild_id: int, report_id: str, decision: str, reason: str = "") -> dict:
+        """안전 신고 처리(무시/해결/재오픈). central 이 길드 관리자 권한을 가드."""
+        dt = self._durable_token()
+        if not dt:
+            return {"ok": False, "error": "연동된 신원이 없어요(durable 토큰 없음)"}
+        base = _agent_sync_base(self._cfg.relay_url)
+        return await asyncio.to_thread(_post_provider_admin_quality_review, base, dt, guild_id, report_id, decision, reason)
 
     # ── 서버별 정책(데스크톱 앱 G3) ─────────────────────────────────────
     def guild_policy(self, guild_id: int) -> dict:

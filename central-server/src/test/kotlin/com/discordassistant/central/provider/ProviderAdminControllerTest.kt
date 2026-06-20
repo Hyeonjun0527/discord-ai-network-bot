@@ -1,5 +1,10 @@
 package com.discordassistant.central.provider
 
+import com.discordassistant.central.ainetwork.application.AiFeedbackReviewResult
+import com.discordassistant.central.ainetwork.application.GuildQualityReports
+import com.discordassistant.central.ainetwork.application.QualityReviewChannelSummary
+import com.discordassistant.central.ainetwork.application.QualityReviewItem
+import com.discordassistant.central.ainetwork.application.QualityReviewSummary
 import com.discordassistant.central.channelai.application.ChannelAiProfile
 import com.discordassistant.central.channelai.application.GuildChannelAiQuery
 import com.discordassistant.central.global.audit.AuditLog
@@ -23,6 +28,8 @@ import com.discordassistant.central.provider.adapter.inbound.web.AdminKnowledgeD
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPolicyRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPresetDeleteRequest
 import com.discordassistant.central.provider.adapter.inbound.web.AdminPromptSetRequest
+import com.discordassistant.central.provider.adapter.inbound.web.AdminQualityReportsRequest
+import com.discordassistant.central.provider.adapter.inbound.web.AdminQualityReviewRequest
 import com.discordassistant.central.provider.adapter.inbound.web.NiaPersonaResponse
 import com.discordassistant.central.provider.adapter.inbound.web.ProjectAdmins
 import com.discordassistant.central.provider.adapter.inbound.web.ProviderAdminController
@@ -64,6 +71,7 @@ class ProviderAdminControllerTest
             val dtoken: String,
             val rosterState: MutableMap<String, Boolean>,
             val channelState: MutableList<Long>,
+            val reportQueue: MutableList<QualityReviewItem>,
         )
 
         // 봇 텍스트 채널 고정 목록(채널 토글 테스트용). 다른 테스트는 botChannels 를 읽지 않는다.
@@ -200,6 +208,50 @@ class ProviderAdminControllerTest
                         presetId: Long,
                     ): Boolean = presetIds.remove(presetId) // 소유(목록에 있음)면 삭제 성공
                 }
+            val reportQueue =
+                mutableListOf(
+                    QualityReviewItem(
+                        id = 51L,
+                        channelId = 20L,
+                        requestId = "req-1",
+                        rating = -1,
+                        feedbackType = "report",
+                        reason = "부적절한 응답",
+                        createdAt = "2026-06-20T00:00:00Z",
+                    ),
+                )
+            val qualityReports =
+                object : GuildQualityReports {
+                    override fun reviewSummary(guildId: Long): QualityReviewSummary =
+                        QualityReviewSummary(
+                            guildId = guildId,
+                            openReportCount = reportQueue.size,
+                            affectedChannelCount = reportQueue.map { it.channelId }.distinct().size,
+                            topChannels =
+                                reportQueue
+                                    .groupingBy { it.channelId }
+                                    .eachCount()
+                                    .map { QualityReviewChannelSummary(it.key, it.value) },
+                            queue = reportQueue.toList(),
+                            nextActions = if (reportQueue.isEmpty()) listOf("열린 신고가 없습니다.") else listOf("신고를 검토하세요."),
+                        )
+
+                    override fun resolveFeedback(
+                        guildId: Long,
+                        feedbackId: Long,
+                        status: String,
+                        reviewerUserId: Long?,
+                        resolutionReason: String?,
+                    ): AiFeedbackReviewResult {
+                        reportQueue.removeIf { it.id == feedbackId }
+                        return AiFeedbackReviewResult(
+                            id = feedbackId,
+                            status = status,
+                            reviewedBy = reviewerUserId,
+                            reviewedAt = "2026-06-20T00:00:01Z",
+                        )
+                    }
+                }
             val ctrl =
                 ProviderAdminController(
                     tokens,
@@ -213,11 +265,12 @@ class ProviderAdminControllerTest
                     knowledgeAdmin,
                     presetQuery,
                     presetAdmin,
+                    qualityReports,
                     PremiumFeatureGate { null },
                     ProjectAdmins(projectAdminIds),
                 )
             val dtoken = durable.issueDurable(7L, 100L)!!
-            return Ctx(ctrl, reg, dtoken, state, channelState)
+            return Ctx(ctrl, reg, dtoken, state, channelState, reportQueue)
         }
 
         @Test
@@ -417,6 +470,33 @@ class ProviderAdminControllerTest
             assertTrue(del.docs.isEmpty()) // 삭제 후 목록 비었음
             val d = setup(admin = false)
             assertFalse(d.ctrl.deleteKnowledge(AdminKnowledgeDeleteRequest(d.dtoken, 100L, "7")).ok)
+        }
+
+        @Test
+        fun `관리자는 안전 신고 큐를 조회하고 처리하며 비관리자는 거부된다`() {
+            val c = setup(admin = true)
+            val reports = c.ctrl.qualityReports(AdminQualityReportsRequest(c.dtoken, 100L))
+            assertTrue(reports.ok)
+            assertEquals(1, reports.openReportCount)
+            assertEquals("51", reports.reports.single().id)
+            assertEquals("20", reports.reports.single().channelId)
+
+            val reviewed =
+                c.ctrl.reviewQualityReport(
+                    AdminQualityReviewRequest(c.dtoken, 100L, reportId = "51", decision = "dismiss", reason = "검토 완료"),
+                )
+            assertTrue(reviewed.ok)
+            assertEquals(0, reviewed.openReportCount)
+            assertTrue(c.reportQueue.isEmpty())
+
+            val d = setup(admin = false)
+            assertFalse(d.ctrl.qualityReports(AdminQualityReportsRequest(d.dtoken, 100L)).ok)
+            assertFalse(
+                d.ctrl
+                    .reviewQualityReport(AdminQualityReviewRequest(d.dtoken, 100L, reportId = "51", decision = "resolve"))
+                    .ok,
+            )
+            assertEquals(1, d.reportQueue.size)
         }
 
         @Test

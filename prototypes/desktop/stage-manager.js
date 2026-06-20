@@ -292,8 +292,12 @@
       // 실 앱 홈을 실제 status 로 동기화한다(하드코딩 가짜값 방지). 미연결(토큰 없음)이면 정상 제공처럼
       // 보이지 않게 미연결 상태·0 통계를 보인다. 프로토타입(키 없음)은 PROTO 데모가 그대로 제어.
       async function syncHomeFromStatus() {
-        let st = {};
-        try { st = await api.getStatus() || {}; } catch (e) { return; }
+        let st = {}, rh = {};
+        try {
+          const pair = await Promise.all([api.getStatus(), api.getRuntimeHealth().catch(() => ({}))]);
+          st = pair[0] || {};
+          rh = pair[1] || {};
+        } catch (e) { return; }
         // 오늘 처리 통계 — 백엔드 미제공 필드는 0/— 으로(가짜값 금지).
         const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
         if (st.version) setText('sideVer', 'v' + st.version); // 사이드바 앱 버전(실값)
@@ -308,16 +312,23 @@
         if (window.setImageRecv) window.setImageRecv(!!st.enableImage); // 이미지 요청 받기 실 상태 반영(먼저)
         if (window.setBgOn) window.setBgOn(!!st.background); // 백그라운드 핀 = 상주 '설정값'(설정 화면과 동일). 런타임(backgroundRunning) 아님
         if (window.setRuntime) {
-          const nModels = (st.models && st.models.length) || 0;
-          const ollamaState = (serving && nModels) ? 'running' : (nModels ? 'stopped' : 'absent');
+          const oh = rh.ollama || {};
+          const advertisedModels = Array.isArray(oh.advertisedModels) ? oh.advertisedModels : (st.models || []);
+          const installedModels = Array.isArray(oh.installedModels) ? oh.installedModels : (st.models || []);
+          const nModels = advertisedModels.length;
+          const ollamaInstalled = (oh.installed !== undefined) ? !!oh.installed : !!installedModels.length;
+          const ollamaReady = (oh.ready !== undefined) ? !!oh.ready : !!nModels;
+          const ollamaState = !ollamaInstalled ? 'absent' : ((serving && ollamaReady && nModels) ? 'running' : 'stopped');
           // Ollama 메타는 실제 제공 모델 수로(하드코딩 '모델 7개' 금지).
           window.setRuntime('Ollama', ollamaState, ollamaState === 'running' ? t('stageOllamaModelCount').replace('{n}', nModels) : undefined);
-          // ComfyUI: 이 창에 인-프로세스 에이전트가 없으면(backgroundRunning) imageReady 를 알 수 없으므로
-          // 이미지 받기 설정이 켜져 있으면 백그라운드가 제공 중인 것으로 본다(가짜 '실행 중' 대신 설정 기반 추정).
-          // 상세 설치/시작은 '로컬 실행' 탭의 ComfyUI 카드가 /api/comfy/status 로 관리한다.
-          const comfyRunning = st.backgroundRunning ? !!st.enableImage : !!st.imageReady;
-          const comfyAvailable = !!(st.imageReady || st.enableImage); // 메인 status 에 설치여부는 없음 → 준비/켜짐을 'available' 로
-          window.setRuntime('ComfyUI', !comfyAvailable ? 'absent' : (comfyRunning ? 'running' : 'stopped'));
+          // runtime-health 는 설치됨/ready/advertised 를 분리한다. 없으면 기존 status 기반으로 폴백.
+          const sd = rh.stableDiffusion || {};
+          const sdEnabled = (sd.enabled !== undefined) ? !!sd.enabled : !!st.enableImage;
+          if (window.setImageRecv) window.setImageRecv(sdEnabled);
+          const sdInstalled = (sd.installed !== undefined) ? !!sd.installed : !!(st.imageReady || st.enableImage);
+          const sdReady = (sd.ready !== undefined) ? !!sd.ready : !!st.imageReady;
+          const sdAdvertised = (sd.advertised !== undefined) ? !!sd.advertised : !!st.imageReady;
+          window.setRuntime('ComfyUI', !sdInstalled ? 'absent' : (sdReady && sdAdvertised ? 'running' : 'stopped'));
         }
         // 히어로 상태 + 페이지 부제 — 미연결이면 미연결, 연결됐으면 제공 여부(running 또는 backgroundRunning)로 ok/error.
         const sub = document.getElementById('homeSub');

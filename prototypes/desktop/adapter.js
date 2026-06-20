@@ -208,6 +208,46 @@ const MOCK = {
 };
 // 프로토타입 데모: PROTO 컨트롤러/테스트가 mock 상태를 흔들어 조건부 UI(재연결·SD 시작 등)를 시연·검증.
 if (typeof window !== 'undefined') { window.__mockPatch = (patch) => { Object.assign(MOCK.status, patch || {}); }; }
+const _mockRuntimeHealth = () => {
+  const installed = MOCK.models.map((m) => m.name);
+  const selected = new Set(MOCK.status.models || []);
+  return {
+    ollama: {
+      installed: true,
+      ready: true,
+      modelCount: installed.length,
+      defaultModel: MOCK.defaultModel,
+      defaultInstalled: installed.includes(MOCK.defaultModel),
+      installedModels: installed,
+      advertisedModels: [...selected],
+      recommendedModels: MOCK.catalog.map((m) => ({
+        id: m.name,
+        name: m.name,
+        displayName: m.name,
+        size: m.size,
+        desc: m.desc,
+        category: m.cat,
+        installed: installed.includes(m.name),
+        selected: selected.has(m.name),
+        advertised: selected.has(m.name),
+        recommended: m.name === MOCK.defaultModel,
+        default: m.name === MOCK.defaultModel,
+      })),
+      error: null,
+    },
+    stableDiffusion: {
+      enabled: !!MOCK.status.enableImage,
+      installed: !!MOCK.comfy.installed,
+      ready: !!MOCK.comfy.running,
+      advertised: !!MOCK.status.imageReady,
+      installedModels: MOCK.comfy.active ? [MOCK.comfy.active] : [],
+      selectedModel: MOCK.comfy.active || null,
+      busy: !!_setup.comfy,
+      error: null,
+      needsReconnect: !!(MOCK.status.enableImage && MOCK.comfy.running && !MOCK.status.imageReady),
+    },
+  };
+};
 /* @end-proto-only */
 
 export const api = {
@@ -409,6 +449,47 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { const m = MOCK.manage[guildId]; await delay(100); if (m && m.presets) { const i = parseInt(String(presetId).replace('p', ''), 10); if (i >= 0) m.presets.splice(i, 1); } return { ok: true }; } /* @end-proto-only */
     return post(ENDPOINTS.serverPresetDelete(guildId), { presetId: String(presetId) });
   },
+  /** 안전 신고 큐 — central 품질 피드백 report 큐를 durable-token 관리 브리지로 조회. */
+  async getSafetyReports(guildId) {
+    /* @proto-only */
+    if (USE_MOCK) {
+      const m = MOCK.manage[guildId];
+      await delay(60);
+      const open = ((m && m.safety && m.safety.reports) || []).filter((r) => r.status === 'open');
+      return {
+        ok: true,
+        openReportCount: open.length,
+        affectedChannelCount: open.length,
+        reports: open.map((r) => ({
+          id: r.id,
+          channelId: r.channelId || '',
+          target: r.target,
+          requestId: r.target,
+          rating: -1,
+          feedbackType: 'report',
+          reason: r.reason,
+          reporter: r.reporter,
+          createdAt: r.when,
+        })),
+        nextActions: open.length ? ['신고 내용을 검토하세요.'] : ['열린 신고가 없습니다.'],
+      };
+    }
+    /* @end-proto-only */
+    return http(ENDPOINTS.serverSafetyReports(guildId));
+  },
+  /** 안전 신고 처리 — decision=resolved|dismissed|needs_review. 성공 시 갱신된 큐를 반환. */
+  async reviewSafetyReport(guildId, reportId, decision, reason = '') {
+    /* @proto-only */
+    if (USE_MOCK) {
+      const m = MOCK.manage[guildId];
+      await delay(100);
+      const item = m && m.safety && m.safety.reports.find((r) => String(r.id) === String(reportId));
+      if (item) item.status = decision === 'dismissed' ? 'dismissed' : 'resolved';
+      return this.getSafetyReports(guildId);
+    }
+    /* @end-proto-only */
+    return post(ENDPOINTS.serverSafetyReview(guildId), { reportId: String(reportId), decision, reason });
+  },
   /** 이 서버에 대한 내 제공 일시중지/재개 — provider self-service(/provider-pause·resume). */
   async setServerPaused(guildId, paused) {
     /* @proto-only */
@@ -438,6 +519,11 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { await delay(60); return structuredClone(MOCK.status); } /* @end-proto-only */
     return http(ENDPOINTS.status);
   },
+  /** 로컬 런타임 health — /api/status 와 분리된 Ollama/ComfyUI 상태. */
+  async getRuntimeHealth() {
+    /* @proto-only */ if (USE_MOCK) { await delay(60); return structuredClone(_mockRuntimeHealth()); } /* @end-proto-only */
+    return http(ENDPOINTS.runtimeHealth);
+  },
   /** 최근 로그 라인 — webui.py /api/logs. @returns {Promise<import('./contract.js').AgentLogs>} */
   async getLogs() {
     /* @proto-only */ if (USE_MOCK) { await delay(60); return { lines: [...MOCK.logs] }; } /* @end-proto-only */
@@ -457,7 +543,7 @@ export const api = {
    *  (GUI 실행 중이면 ComfyUI health·재광고, 백그라운드 서비스면 재기동). 반환 {ok,on,imageReady,applied}. */
   async setImageReceiving(on) {
     /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.status.enableImage = on; MOCK.status.imageReady = on && !!MOCK.comfy.running; return { ok: true, on, imageReady: MOCK.status.imageReady, applied: 'live' }; } /* @end-proto-only */
-    return post(ENDPOINTS.image, { on });
+    return post(ENDPOINTS.imageProvider, { enabled: on });
   },
   /** 클라우드 AI 설정 — Gemini 키(관리자 1개로 서버 무료 제공)·ComfyUI 주소. webui.py POST /api/cloud. */
   async setCloud({ geminiApiKey, comfyUrl, hfToken }) {
@@ -470,8 +556,7 @@ export const api = {
    *  을 보존(부분 저장이 이미지 토글을 끄지 않도록). */
   async applyModels(models, defaultModel) {
     /* @proto-only */ if (USE_MOCK) { await delay(220); MOCK.status.models = [...models]; if (defaultModel) MOCK.defaultModel = defaultModel; return { ok: true }; } /* @end-proto-only */
-    const st = await http(ENDPOINTS.status);
-    return post(ENDPOINTS.setup, { models, default: defaultModel || '', enableImage: !!st.enableImage, applyToBackground: true });
+    return post(ENDPOINTS.modelsSelect, { models, defaultModel: defaultModel || '' });
   },
   /** 통합 설정 조회 — webui.py GET /api/settings(저장 설정+상태를 camelCase 로 통합). */
   async getSettings() {
@@ -560,10 +645,10 @@ export const api = {
     return { ok: !!s.connected, ms: 0 };
   },
 
-  /** Ollama 모델 설치 시작 — webui.py /api/ollama/setup (진행은 getSetupProgress 폴링). 이미지는 ComfyUI 경로. */
+  /** Ollama 모델 설치 시작 — webui.py /api/ollama/model-install (진행은 getSetupProgress 폴링). 이미지는 ComfyUI 경로. */
   async startSetup(runtime, model) { // runtime: 'ollama' (이미지 엔진은 ComfyUI 전용 메서드)
     /* @proto-only */ if (USE_MOCK) { _setup[runtime] = { start: Date.now(), model }; await delay(50); return { ok: true, started: true }; } /* @end-proto-only */
-    return post(ENDPOINTS.ollamaSetup, model ? { model } : {});
+    return post(ENDPOINTS.ollamaModelInstall, model ? { model, select: true } : {});
   },
 
   // ── ComfyUI(1급 이미지 엔진) — 앱이 설치/실행/정지/웹UI 직접 관리 ──────────────
@@ -616,10 +701,10 @@ export const api = {
     /* @proto-only */ if (USE_MOCK) { await delay(80); MOCK.comfy.active = model; return { ok: true, active: model }; } /* @end-proto-only */
     return post(ENDPOINTS.comfySelect, { model });
   },
-  /** 임의 모델 URL(.safetensors)을 ComfyUI 폴더로 다운로드 — POST /api/comfy/install-model {url}. */
+  /** 임의 모델 URL(.safetensors)을 ComfyUI 폴더로 다운로드 — POST /api/sd/model-install {url}. */
   async installComfyModel(url) {
     /* @proto-only */ if (USE_MOCK) { await delay(120); const ok = /\.(safetensors|ckpt)(\?|$)/.test(url); if (ok) { const fn = url.split('/').pop().split('?')[0]; MOCK.comfy.active = fn; } return ok ? { ok: true } : { ok: false, error: '.safetensors/.ckpt 직접 링크인지 확인하세요.' }; } /* @end-proto-only */
-    return post(ENDPOINTS.comfyInstallModel, { url });
+    return post(ENDPOINTS.sdModelInstall, { url });
   },
 
   /**
@@ -646,7 +731,7 @@ export const api = {
       return { phase: 'installing', percent: pct, message: '설치 준비 중' };
     }
     /* @end-proto-only */
-    return http(ENDPOINTS.ollamaSetupProgress);
+    return http(ENDPOINTS.ollamaModelInstallProgress);
   },
 
   /** 로컬 모델 목록 + 기본 모델 — webui.py /api/models */

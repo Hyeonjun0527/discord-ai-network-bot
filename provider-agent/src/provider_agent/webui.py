@@ -19,7 +19,7 @@ import threading
 from collections import deque
 from collections.abc import Iterable
 from importlib.resources.abc import Traversable
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from aiohttp import web
 
@@ -180,6 +180,9 @@ async def _detect_ollama() -> OllamaState:
     try:
         detail = await OllamaClient(url).list_models_detailed()
     except OllamaError:
+        return {"installed": installed, "ready": False, "models": [], "modelsDetail": []}
+    except Exception as exc:  # noqa: BLE001 - health endpoint must not fail because one probe crashed
+        logger.debug("Ollama 상태 조회 실패: %s", exc)
         return {"installed": installed, "ready": False, "models": [], "modelsDetail": []}
     # list_models 성공 = daemon 응답 = 실행 중(PATH 밖 바이너리로 떠 있어도 ready 면 installed 로 본다).
     return {"installed": True, "ready": True, "models": [d["name"] for d in detail], "modelsDetail": detail}
@@ -413,6 +416,120 @@ async def _apply_image_receiving(on: bool) -> dict[str, object]:
     return {"ok": True, "on": on, "imageReady": image_ready, "applied": applied}
 
 
+async def _detect_comfy_runtime() -> dict[str, object]:
+    """현재 이미지 엔진(ComfyUI)의 설치·실행·모델·광고 상태를 plan contract 형태로 정리한다."""
+    from . import comfy_setup
+    from .comfy import ComfyClient
+
+    saved = load_config()
+    enabled = bool(saved.get("enable_image"))
+    try:
+        installed = comfy_setup.is_installed()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("ComfyUI 설치 여부 조회 실패: %s", exc)
+        installed = False
+    ready = False
+    if installed:
+        try:
+            ready = bool(await comfy_setup.health())
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ComfyUI health 조회 실패: %s", exc)
+    models: list[str] = []
+    if ready:
+        try:
+            models = await ComfyClient(comfy_setup.webui_url()).list_checkpoints()
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ComfyUI checkpoint 조회 실패: %s", exc)
+    elif installed:
+        try:
+            model_dir = comfy_setup.model_dir()
+            if model_dir.exists():
+                models = sorted(p.name for p in model_dir.iterdir() if p.suffix.lower() in {".safetensors", ".ckpt"})
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("ComfyUI checkpoint 폴더 조회 실패: %s", exc)
+    selected = str(saved.get("comfy_model") or "")
+    if not selected and models:
+        selected = models[0]
+    agent = _running_agent()
+    advertised = bool(agent is not None and getattr(agent, "image_ready", False))
+    try:
+        busy = comfy_setup.is_busy()
+        progress = comfy_setup.progress()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("ComfyUI 진행 상태 조회 실패: %s", exc)
+        busy = False
+        progress = {"phase": "error", "error": "probe-failed"}
+    error = progress.get("error") if progress.get("phase") == "error" else None
+    return {
+        "enabled": enabled,
+        "installed": installed,
+        "ready": ready,
+        "advertised": advertised,
+        "installedModels": models,
+        "selectedModel": selected or None,
+        "busy": busy,
+        "error": error,
+        "needsReconnect": bool(enabled and ready and not advertised),
+    }
+
+
+async def _runtime_health_payload() -> dict[str, object]:
+    """문서화된 `/api/runtime-health` 응답. provider 연결과 로컬 런타임 health 를 분리한다."""
+    from . import ollama_setup
+
+    saved = load_config()
+    oll_result, comfy_result = await asyncio.gather(_detect_ollama(), _detect_comfy_runtime(), return_exceptions=True)
+    if isinstance(oll_result, Exception):
+        logger.debug("Ollama runtime health probe failed: %s", oll_result)
+        oll: OllamaState = {"installed": False, "ready": False, "models": [], "modelsDetail": []}
+    else:
+        oll = cast(OllamaState, oll_result)
+    if isinstance(comfy_result, Exception):
+        logger.debug("ComfyUI runtime health probe failed: %s", comfy_result)
+        comfy: dict[str, object] = {
+            "enabled": bool(saved.get("enable_image")),
+            "installed": False,
+            "ready": False,
+            "advertised": False,
+            "installedModels": [],
+            "selectedModel": saved.get("comfy_model") or None,
+            "busy": False,
+            "error": "probe-failed",
+            "needsReconnect": False,
+        }
+    else:
+        comfy = cast(dict[str, object], comfy_result)
+    installed = list(oll["models"])
+    selected = set(_selected_text_models(installed, saved.get("models")))
+    agent = _running_agent()
+    advertised = set(list(getattr(agent, "models", [])) if agent is not None else [])
+    recommended = []
+    for model in ollama_setup.catalog():
+        model_id = str(model["id"])
+        recommended.append(
+            {
+                **model,
+                "installed": any(_model_matches(model_id, detected) for detected in installed),
+                "selected": model_id in selected,
+                "advertised": model_id in advertised,
+            }
+        )
+    return {
+        "ollama": {
+            "installed": bool(oll["installed"]),
+            "ready": bool(oll["ready"]),
+            "modelCount": len(installed),
+            "defaultModel": DEFAULT_TEXT_MODEL,
+            "defaultInstalled": any(_is_default_text_model(m) for m in installed),
+            "installedModels": installed,
+            "advertisedModels": sorted(advertised),
+            "recommendedModels": recommended,
+            "error": None if oll["ready"] or oll["installed"] else "not-installed",
+        },
+        "stableDiffusion": comfy,
+    }
+
+
 def _index_for_guild(guild_id_str: str) -> int | None:
     """guildId(문자열) → 저장 연결 목록의 index. 데스크톱 앱은 64bit guildId 만 다루므로(정밀도)
     webui 가 index 로 변환한다. 못 찾으면 None."""
@@ -569,6 +686,16 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
         active = load_config().get("comfy_model") or (models[0] if models else None)
         return web.json_response({"models": models, "active": active})
 
+    async def sd_status(req: web.Request) -> web.Response:
+        """문서화된 SD 상태 alias. 실제 v1 이미지 엔진은 ComfyUI 이므로 같은 상태를 generic 이름으로 노출한다."""
+        _auth(req)
+        return web.json_response(await _detect_comfy_runtime())
+
+    async def sd_models_installed(req: web.Request) -> web.Response:
+        _auth(req)
+        state = await _detect_comfy_runtime()
+        return web.json_response({"models": state["installedModels"], "active": state["selectedModel"]})
+
     async def comfy_install_model(req: web.Request) -> web.Response:
         """임의 모델 URL(.safetensors/.ckpt)을 ComfyUI 체크포인트 폴더로 다운로드(gated 는 HF 토큰). body {url}."""
         _auth(req)
@@ -636,6 +763,9 @@ def _register_comfy_routes(app: web.Application, session_key: str) -> None:
     app.router.add_get("/api/comfy/models", comfy_models)
     app.router.add_post("/api/comfy/select", comfy_select)
     app.router.add_post("/api/comfy/install-model", comfy_install_model)
+    app.router.add_get("/api/sd/status", sd_status)
+    app.router.add_get("/api/sd/models/installed", sd_models_installed)
+    app.router.add_post("/api/sd/model-install", comfy_install_model)
 
 
 def _register_update_routes(app: web.Application, session_key: str) -> None:
@@ -767,7 +897,9 @@ def _register_ollama_routes(app: web.Application, session_key: str) -> None:
 
     app.router.add_get("/api/ollama/catalog", ollama_catalog)
     app.router.add_post("/api/ollama/setup", ollama_setup_start)
+    app.router.add_post("/api/ollama/model-install", ollama_setup_start)
     app.router.add_get("/api/ollama/setup-progress", ollama_setup_progress)
+    app.router.add_get("/api/ollama/model-install-progress", ollama_setup_progress)
 
 
 def _register_server_routes(app: web.Application, session_key: str) -> None:
@@ -1101,6 +1233,27 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
         """지식 소스(RAG) 삭제(관리자, 쓰기). central 이 길드 소유권 가드. body {sourceId}."""
         return await _server_guild_delete(req, "admin_knowledge_delete", "sourceId")
 
+    async def server_safety_reports(req: web.Request) -> web.Response:
+        """안전 신고 큐 조회(관리자). central 품질 피드백 신고 큐로 프록시."""
+        return await _server_guild_read(req, "admin_safety_reports")
+
+    async def server_safety_review(req: web.Request) -> web.Response:
+        """안전 신고 처리(관리자). body {reportId, decision, reason?}."""
+        _auth(req)
+        guild_id = _parse_guild_id(req)
+        if guild_id is None:
+            return _bad_server()
+        data = await req.json()
+        report_id = str(data.get("reportId") or "").strip() if isinstance(data, dict) else ""
+        decision = str(data.get("decision") or "").strip() if isinstance(data, dict) else ""
+        reason = str(data.get("reason") or "").strip() if isinstance(data, dict) else ""
+        if not report_id or not decision:
+            return web.json_response({"ok": False, "error": "신고와 처리 방식이 필요해요"})
+        agent = _running_agent()
+        if agent is None:
+            return web.json_response({"ok": False, "error": "에이전트가 실행 중이 아니에요"})
+        return web.json_response(await agent.admin_safety_review(guild_id, report_id, decision, reason))  # type: ignore[attr-defined]
+
     async def server_rename(req: web.Request) -> web.Response:
         """서버 표시 이름 바꾸기(토큰-추가 '이름 미상' 라벨링). body {guildId|index, name}."""
         _auth(req)
@@ -1168,6 +1321,8 @@ def _register_server_routes(app: web.Application, session_key: str) -> None:
     app.router.add_get("/api/servers/{guildId}/presets", server_presets)
     app.router.add_post("/api/servers/{guildId}/presets/delete", server_preset_delete)
     app.router.add_post("/api/servers/{guildId}/knowledge/delete", server_knowledge_delete)
+    app.router.add_get("/api/servers/{guildId}/safety/reports", server_safety_reports)
+    app.router.add_post("/api/servers/{guildId}/safety/reports/review", server_safety_review)
     app.router.add_post("/api/servers/{guildId}/providers/{action}", provider_admin)
     app.router.add_get("/api/admin/nia-persona", admin_nia_persona)
     app.router.add_post("/api/server-add-token", server_add_token)
@@ -1207,6 +1362,10 @@ def build_app(session_key: str) -> web.Application:
                 "ollamaReady": oll["ready"],
             }
         )
+
+    async def runtime_health(req: web.Request) -> web.Response:
+        _auth(req)
+        return web.json_response(await _runtime_health_payload())
 
     async def status(req: web.Request) -> web.Response:
         _auth(req)
@@ -1319,6 +1478,47 @@ def build_app(session_key: str) -> web.Application:
             }
         )
 
+    async def models_select(req: web.Request) -> web.Response:
+        """제공 텍스트 모델만 저장·라이브 재광고한다. /api/setup 처럼 이미지/토큰 설정을 건드리지 않는다."""
+        _auth(req)
+        try:
+            data = await req.json()
+        except Exception:  # noqa: BLE001
+            data = {}
+        raw_models = data.get("models") or data.get("selected") or []
+        if isinstance(raw_models, str):
+            requested = [raw_models.strip()] if raw_models.strip() else []
+        else:
+            requested = [str(m).strip() for m in raw_models if str(m).strip()]
+        if not requested and data.get("model"):
+            requested = [str(data.get("model")).strip()]
+        available = (await _detect_ollama())["models"]
+        installed = [m for m in requested if any(_model_matches(m, detected) for detected in available)]
+        default_model = str(data.get("default") or data.get("defaultModel") or "").strip()
+        if default_model and default_model not in installed:
+            default_model = installed[0] if installed else ""
+        persist_partial({"models": installed, "default_model": default_model})
+        applied = "saved"
+        agent = _running_agent()
+        if agent is not None:
+            await agent.set_models(installed, default_model)  # type: ignore[attr-defined]
+            applied = "live"
+        else:
+            from . import service as service_mod
+            from . import singleton
+
+            if singleton.held_by_other() and service_mod.is_installed():
+                applied = "service" if service_mod.kickstart() else "saved"
+        return web.json_response(
+            {
+                "ok": True,
+                "models": installed,
+                "default": default_model,
+                "applied": applied,
+                "needsReconnect": bool(installed and applied == "saved"),
+            }
+        )
+
     async def image_toggle(req: web.Request) -> web.Response:
         """이미지 요청 받기(enableImage) **전용** 토글 — body {on}. /api/setup 의 모델 재계산을 거치지 않아
         제공 모델 선택을 건드리지 않는다(과거: setup 경유 토글이 모델을 기본값으로 리셋시키던 위험 제거).
@@ -1333,7 +1533,7 @@ def build_app(session_key: str) -> web.Application:
             data = await req.json()
         except Exception:  # noqa: BLE001
             data = {}
-        on = bool(data.get("on")) if isinstance(data, dict) else False
+        on = bool(data.get("on", data.get("enabled", data.get("enableImage", False)))) if isinstance(data, dict) else False
         return web.json_response(await _apply_image_receiving(on))
 
     async def cloud_settings(req: web.Request) -> web.Response:
@@ -1769,6 +1969,7 @@ def build_app(session_key: str) -> web.Application:
 
     # 정적 자산 라우트(/, /mascot.png, /app-icon.png, /*.js, /img/*)는 _register_asset_routes 가 등록함.
     app.router.add_get("/api/models", models)
+    app.router.add_get("/api/runtime-health", runtime_health)
     app.router.add_get("/api/status", status)
     app.router.add_get("/api/logs", logs)
     app.router.add_get("/connect/callback", connect_callback)
@@ -1791,7 +1992,9 @@ def build_app(session_key: str) -> web.Application:
     app.router.add_post("/api/license/checkout", license_checkout)
     app.router.add_post("/api/license/event-claim", license_event_claim)
     app.router.add_post("/api/open-folder", open_folder)
+    app.router.add_post("/api/models/select", models_select)
     app.router.add_post("/api/image", image_toggle)
+    app.router.add_post("/api/image-provider", image_toggle)
     app.router.add_post("/api/cloud", cloud_settings)
 
     async def _autoconnect_on_startup(_app: web.Application) -> None:

@@ -325,6 +325,10 @@
         const r = await api.getPresets(d.guildId);
         m._presets = (r && r.ok) ? (r.presets || []) : null;
       }
+      if (tab === 'safety' && m._safetyReports === undefined) {
+        const r = await api.getSafetyReports(d.guildId);
+        m._safetyReports = (r && r.ok) ? r : null;
+      }
     }
 
     async function openManage(d, tab) {
@@ -522,26 +526,27 @@
     }
 
     function renderSafetyTab(m) {
-      // 콘텐츠 정책 + 실제 신고·대응 경로(진짜 동작) — 항상 표시. 가짜 신고 목록·빈 '준비 중' 대신,
-      // 이 서비스가 실제로 어떻게 안전을 다루는지 정직하게 안내한다(per-guild 신고 큐는 미제공).
+      // 콘텐츠 정책 + 실제 신고 큐. 신고 본문/답변은 저장하지 않으므로 안전한 메타데이터만 표시한다.
       const policy = '<div class="dcard"><div class="dlabel">' + t('serversSafetyPolicy') + '</div>' +
         '<div class="dsub">' + t('serversSafetyPolicyDescription') + '</div></div>';
       const howto = '<div class="dcard"><div class="dlabel">' + t('serversSafetyReport') + '</div>' +
         '<div class="dsub">' + t('serversSafetyReportDescription') + '</div></div>';
-      let proto = '';
-      /* @proto-only */
-      if (m.safety && Array.isArray(m.safety.reports)) {
-        const open = m.safety.reports.filter(r => r.status === 'open');
-        const reports = open.length
-          ? open.map(r => '<div class="prov-row wait"><div class="prov-main"><div class="prov-nm">' + r.target + '</div>' +
-              '<div class="prov-meta">' + r.reason + ' · ' + r.reporter + ' · ' + r.when + '</div></div>' +
-              '<div class="prov-acts"><button class="btn btn--sm btn--secondary" data-report-dismiss="' + r.id + '">' + t('serversSafetyReportDismiss') + '</button>' +
-              '<button class="btn btn--sm btn--warn" data-report-act="' + r.id + '">' + t('serversSafetyReportAction') + '</button></div></div>').join('')
-          : '<div class="msoon"><b>' + t('serversSafetyNoReports') + '</b></div>';
-        proto = '<div class="msec-label">' + t('serversSafetyReportsHeader') + ' (' + open.length + ')</div>' + reports;
+      const safe = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      if (m._safetyReports === null) {
+        return policy + howto + '<div class="msec-label">' + t('serversSafetyReportsHeader') + '</div><div class="msoon"><b>' + t('serversChangeFailedToast') + '</b></div>';
       }
-      /* @end-proto-only */
-      return policy + howto + proto;
+      const open = (m._safetyReports && Array.isArray(m._safetyReports.reports)) ? m._safetyReports.reports : [];
+      const reports = open.length
+        ? open.map(r => {
+            const target = r.target || (r.channelId ? '# ' + r.channelId : (r.requestId || r.feedbackType || 'report'));
+            const meta = [r.reason, r.reporter, r.createdAt].filter(Boolean).join(' · ');
+            return '<div class="prov-row wait"><div class="prov-main"><div class="prov-nm">' + safe(target) + '</div>' +
+              '<div class="prov-meta">' + safe(meta) + '</div></div>' +
+              '<div class="prov-acts"><button class="btn btn--sm btn--secondary" data-report-dismiss="' + safe(r.id) + '">' + t('serversSafetyReportDismiss') + '</button>' +
+              '<button class="btn btn--sm btn--warn" data-report-act="' + safe(r.id) + '">' + t('serversSafetyReportAction') + '</button></div></div>';
+          }).join('')
+        : '<div class="msoon"><b>' + t('serversSafetyNoReports') + '</b></div>';
+      return policy + howto + '<div class="msec-label">' + t('serversSafetyReportsHeader') + ' (' + open.length + ')</div>' + reports;
     }
 
     // 관리 탭 공통 인터랙션(mock 토글 + 미구현 액션 안내). 같은 m 을 수정해 즉시 재렌더.
@@ -572,9 +577,19 @@
       manageEl.querySelectorAll('[data-rag-del]').forEach(b => b.onclick = () => confirmDeleteSource(d, m, b.dataset.ragDel, b.dataset.name, rerender));
       const pa = manageEl.querySelector('#promptAdd');
       if (pa) pa.onclick = () => openPromptModal(d, m, rerender);
-      // 안전 — 신고 처리(무시/숨김)
-      manageEl.querySelectorAll('[data-report-dismiss]').forEach(b => b.onclick = () => { const r = m.safety.reports.find(x => x.id === b.dataset.reportDismiss); if (r) r.status = 'dismissed'; toast(t('serversSafetyDismissSuccess'), { type: 'info' }); rerender(); });
-      manageEl.querySelectorAll('[data-report-act]').forEach(b => b.onclick = () => { const r = m.safety.reports.find(x => x.id === b.dataset.reportAct); if (r) r.status = 'resolved'; toast(t('serversSafetyActionSuccess'), { type: 'ok' }); rerender(); });
+      // 안전 — 신고 처리(무시/숨김). 실 앱은 central 품질 피드백 큐 상태를 바꾼 뒤 갱신 목록을 다시 그린다.
+      manageEl.querySelectorAll('[data-report-dismiss]').forEach(b => b.onclick = async () => {
+        const r = await api.reviewSafetyReport(d.guildId, b.dataset.reportDismiss, 'dismissed');
+        if (r && r.ok === false) { toast(r.message || r.error || t('serversChangeFailedToast'), { type: 'info' }); return; }
+        m._safetyReports = r;
+        toast(t('serversSafetyDismissSuccess'), { type: 'info' }); rerender();
+      });
+      manageEl.querySelectorAll('[data-report-act]').forEach(b => b.onclick = async () => {
+        const r = await api.reviewSafetyReport(d.guildId, b.dataset.reportAct, 'resolved');
+        if (r && r.ok === false) { toast(r.message || r.error || t('serversChangeFailedToast'), { type: 'info' }); return; }
+        m._safetyReports = r;
+        toast(t('serversSafetyActionSuccess'), { type: 'ok' }); rerender();
+      });
     }
 
     function confirmDeletePrompt(d, m, id, name, done) {

@@ -1,0 +1,1143 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-06-19",
+  "purpose": "화면/surface 기준 앱 네비게이션 SSOT다. 이 파일은 surfaceGroups, screens, transitions 세 가지만 소유한다.",
+  "surfaceGroups": [
+    {
+      "id": "discord",
+      "title": "Discord 사용자 화면",
+      "range": "01-09",
+      "description": "서버 관리자와 일반 유저가 Discord 안에서 보는 봇 초대, /질문, 답변, 거부, 피드백 표면이다.",
+      "screens": [
+        "discord-install",
+        "ask-command",
+        "request-pending",
+        "answer-message",
+        "rejection-message",
+        "feedback-action",
+        "nia-affinity"
+      ]
+    },
+    {
+      "id": "admin-dashboard",
+      "title": "관리 대시보드",
+      "range": "10-19",
+      "description": "서버 관리자가 Provider Pool, 채널 AI, 프리셋, 지식공간, 품질/신고, 출시 readiness를 운영하는 웹 화면이다.",
+      "screens": [
+        "dashboard-overview",
+        "provider-admin",
+        "channel-ai-settings",
+        "preset-catalog",
+        "knowledge-space",
+        "quality-reports",
+        "launch-readiness"
+      ]
+    },
+    {
+      "id": "provider-desktop",
+      "title": "Provider 데스크톱 앱",
+      "range": "20-29",
+      "description": "프로바이더가 자기 PC에서 서버 연결, 모델, 한도, 로그, 업데이트, Ollama/ComfyUI 상태를 보는 로컬 UI다.",
+      "screens": [
+        "agent-start",
+        "server-list",
+        "server-detail",
+        "model-list",
+        "agent-logs",
+        "agent-settings",
+        "local-runtime-status",
+        "license-premium"
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "discord-install",
+      "number": "01",
+      "title": "봇 초대 / 설치",
+      "surfaceGroup": "discord",
+      "surface": "Discord OAuth / 서버 설정",
+      "routeOrEntry": "Discord bot invite URL",
+      "domainGroup": "guild-onboarding",
+      "purpose": "서버 관리자가 NEXA 봇을 Discord 서버에 추가하고 권한/채널 접근을 부여한다.",
+      "states": [
+        {
+          "name": "not_installed",
+          "description": "서버에 봇이 없어 AI 기능이 시작되지 않는다."
+        },
+        {
+          "name": "permission_review",
+          "description": "초대 권한과 채널 접근을 확인한다."
+        },
+        {
+          "name": "installed",
+          "description": "서버에 봇이 추가되어 대시보드 설정으로 넘어갈 수 있다."
+        }
+      ],
+      "primaryActions": [
+        "봇 초대 링크 열기",
+        "서버 선택",
+        "권한 승인"
+      ],
+      "relatedApis": [
+        "Discord OAuth",
+        "central-server docs/GO_LIVE"
+      ],
+      "policies": [
+        "POL-CONTENT-001",
+        "POL-PRIVACY-001"
+      ],
+      "sourceRefs": [
+        "README.md:39-48",
+        "central-server/docs/GO_LIVE.md"
+      ]
+    },
+    {
+      "id": "ask-command",
+      "number": "02",
+      "title": "/질문 명령 입력",
+      "surfaceGroup": "discord",
+      "surface": "Discord slash command",
+      "routeOrEntry": "/질문",
+      "domainGroup": "ask-routing",
+      "purpose": "일반 유저가 질문, 모델 선호, 응답 모드, 웹검색 옵션을 입력하는 시작 화면이다.",
+      "states": [
+        {
+          "name": "ready",
+          "description": "채널에서 /질문 입력이 가능하다."
+        },
+        {
+          "name": "cooldown",
+          "description": "비관리자 쿨다운 때문에 제출이 제한된다."
+        },
+        {
+          "name": "policy_blocked",
+          "description": "채널/역할/안전 정책 때문에 제출할 수 없다."
+        }
+      ],
+      "primaryActions": [
+        "질문 입력",
+        "옵션 선택",
+        "명령 제출"
+      ],
+      "relatedApis": [
+        "AskCommandHandler"
+      ],
+      "policies": [
+        "POL-PROVIDER-002",
+        "POL-CONTENT-001",
+        "POL-PRIVACY-001"
+      ],
+      "sourceRefs": [
+        "AskCommandHandler.kt:113-171"
+      ]
+    },
+    {
+      "id": "request-pending",
+      "number": "03",
+      "title": "요청 처리 중 메시지",
+      "surfaceGroup": "discord",
+      "surface": "Discord bot response",
+      "routeOrEntry": "deferred reply",
+      "domainGroup": "ask-routing",
+      "purpose": "중앙 서버가 정책 검사와 Provider/무료 폴백 라우팅을 진행 중임을 보여준다.",
+      "states": [
+        {
+          "name": "routing",
+          "description": "Provider 후보를 계산 중이다."
+        },
+        {
+          "name": "sent_to_provider",
+          "description": "선택된 Provider PC에 요청을 보냈다."
+        },
+        {
+          "name": "fallback_running",
+          "description": "로컬 실패/부재로 무료 클라우드 폴백을 실행 중이다."
+        }
+      ],
+      "primaryActions": [
+        "기다리기"
+      ],
+      "relatedApis": [
+        "RequestOrchestrator",
+        "ProviderFilterPipeline",
+        "wire infer/result"
+      ],
+      "policies": [
+        "POL-PROVIDER-001",
+        "POL-PROVIDER-002",
+        "POL-LIMIT-001"
+      ],
+      "sourceRefs": [
+        "ProviderFilterPipeline",
+        "protocol/wire-contract.json"
+      ]
+    },
+    {
+      "id": "answer-message",
+      "number": "04",
+      "title": "답변 메시지",
+      "surfaceGroup": "discord",
+      "surface": "Discord bot response",
+      "routeOrEntry": "channel reply",
+      "domainGroup": "ask-routing",
+      "purpose": "Provider 또는 무료 클라우드가 만든 답변, 출처, 사용량/품질 피드백 진입점을 Discord에 표시한다.",
+      "states": [
+        {
+          "name": "local_answer",
+          "description": "로컬 Provider가 답변했다."
+        },
+        {
+          "name": "cloud_fallback_answer",
+          "description": "무료 클라우드 폴백이 답변했다."
+        },
+        {
+          "name": "partial_or_failed",
+          "description": "실행 일부 실패 또는 최종 실패 상태다."
+        }
+      ],
+      "primaryActions": [
+        "답변 읽기",
+        "출처 확인",
+        "피드백 누르기"
+      ],
+      "relatedApis": [
+        "AskCommandHandler",
+        "/api/ai-network/quality/*"
+      ],
+      "policies": [
+        "POL-PRIVACY-001",
+        "POL-CONTENT-001"
+      ],
+      "sourceRefs": [
+        "AskCommandHandler.kt:145-170"
+      ]
+    },
+    {
+      "id": "rejection-message",
+      "number": "05",
+      "title": "정책 / 한도 거부 메시지",
+      "surfaceGroup": "discord",
+      "surface": "Discord bot response",
+      "routeOrEntry": "policy rejection reply",
+      "domainGroup": "safety-limits",
+      "purpose": "안전, 권한, 한도, Provider 보호 정책 때문에 요청을 실행하지 않을 때 이유와 다음 행동을 알려준다.",
+      "states": [
+        {
+          "name": "safety_rejected",
+          "description": "콘텐츠/Discord/법적 red-line으로 거부한다."
+        },
+        {
+          "name": "rate_limited",
+          "description": "사용자 또는 Provider 한도 초과다."
+        },
+        {
+          "name": "no_provider",
+          "description": "Provider 후보가 없어 제한적으로 폴백하거나 실패한다."
+        }
+      ],
+      "primaryActions": [
+        "거부 이유 확인",
+        "나중에 재시도",
+        "관리자에게 문의"
+      ],
+      "relatedApis": [
+        "safety policy",
+        "ProviderFilterPipeline"
+      ],
+      "policies": [
+        "POL-CONTENT-001",
+        "POL-PROVIDER-001",
+        "POL-LIMIT-001"
+      ],
+      "sourceRefs": [
+        "docs/NEXA_SAFETY_POLICY.md",
+        "docs/NEXA_LIMIT_POLICY.md"
+      ]
+    },
+    {
+      "id": "feedback-action",
+      "number": "06",
+      "title": "피드백 버튼 / 품질 루프",
+      "surfaceGroup": "discord",
+      "surface": "Discord component",
+      "routeOrEntry": "answer feedback button",
+      "domainGroup": "ask-routing",
+      "purpose": "일반 유저의 품질 피드백을 운영 대시보드와 모델 품질 리뷰로 연결한다.",
+      "states": [
+        {
+          "name": "idle",
+          "description": "답변 아래 피드백 액션이 보인다."
+        },
+        {
+          "name": "submitted",
+          "description": "피드백이 접수됐다."
+        },
+        {
+          "name": "reviewed",
+          "description": "운영자가 품질 피드백을 검토했다."
+        }
+      ],
+      "primaryActions": [
+        "좋아요/싫어요",
+        "사유 입력",
+        "제출"
+      ],
+      "relatedApis": [
+        "/api/ai-network/quality/*",
+        "AiQualityFeedbackController"
+      ],
+      "policies": [
+        "POL-EDGE-001"
+      ],
+      "sourceRefs": [
+        "AiQualityFeedbackController.kt"
+      ]
+    },
+    {
+      "id": "dashboard-overview",
+      "number": "10",
+      "title": "AI Network Overview",
+      "surfaceGroup": "admin-dashboard",
+      "surface": "Web dashboard",
+      "routeOrEntry": "/api/ai-network/{guildId}/dashboard",
+      "domainGroup": "admin-operations",
+      "purpose": "서버 AI 풀의 Provider, 채널, 모델, 사용량, readiness를 요약한다.",
+      "states": [
+        {
+          "name": "healthy",
+          "description": "AI 풀 상태가 정상이다."
+        },
+        {
+          "name": "degraded",
+          "description": "Provider 부족/실패/한도 문제가 있다."
+        },
+        {
+          "name": "empty",
+          "description": "아직 Provider나 채널 정책이 없다."
+        }
+      ],
+      "primaryActions": [
+        "상태 확인",
+        "Provider/채널 설정으로 이동",
+        "readiness 확인"
+      ],
+      "relatedApis": [
+        "AiNetworkDashboardController",
+        "DashboardController"
+      ],
+      "policies": [
+        "POL-PROVIDER-001",
+        "POL-EDGE-001"
+      ],
+      "sourceRefs": [
+        "AiNetworkDashboardController.kt",
+        "DashboardController.kt"
+      ]
+    },
+    {
+      "id": "provider-admin",
+      "number": "11",
+      "title": "Provider 관리",
+      "surfaceGroup": "admin-dashboard",
+      "surface": "Web dashboard",
+      "routeOrEntry": "/api/ai-network/{guildId}/providers",
+      "domainGroup": "admin-operations",
+      "purpose": "서버 관리자가 Provider 승인, 차단, 상태, 기여량, 한도를 확인한다.",
+      "states": [
+        {
+          "name": "pending",
+          "description": "승인 대기 Provider가 있다."
+        },
+        {
+          "name": "approved_online",
+          "description": "승인 후 온라인 상태다."
+        },
+        {
+          "name": "blocked_or_unhealthy",
+          "description": "차단 또는 unhealthy 상태다."
+        }
+      ],
+      "primaryActions": [
+        "승인",
+        "차단",
+        "상태 확인",
+        "기여량 확인"
+      ],
+      "relatedApis": [
+        "ProviderAdminController"
+      ],
+      "policies": [
+        "POL-PROVIDER-001",
+        "POL-LIMIT-001"
+      ],
+      "sourceRefs": [
+        "ProviderAdminController.kt"
+      ]
+    },
+    {
+      "id": "channel-ai-settings",
+      "number": "12",
+      "title": "Channel AI 설정",
+      "surfaceGroup": "admin-dashboard",
+      "surface": "Web dashboard",
+      "routeOrEntry": "channel-ai settings",
+      "domainGroup": "guild-onboarding",
+      "purpose": "채널별 AI 사용 여부, 기본 모델, 말투, 지식공간, 안전 정책을 설정한다.",
+      "states": [
+        {
+          "name": "disabled",
+          "description": "채널 AI가 꺼져 있다."
+        },
+        {
+          "name": "draft",
+          "description": "설정 작성 중이다."
+        },
+        {
+          "name": "active",
+          "description": "채널 AI 정책이 적용 중이다."
+        }
+      ],
+      "primaryActions": [
+        "채널 선택",
+        "프리셋 적용",
+        "저장"
+      ],
+      "relatedApis": [
+        "ChannelAiCustomizationController"
+      ],
+      "policies": [
+        "POL-CONTENT-001",
+        "POL-CONTENT-002"
+      ],
+      "sourceRefs": [
+        "ChannelAiCustomizationController.kt"
+      ]
+    },
+    {
+      "id": "preset-catalog",
+      "number": "13",
+      "title": "Preset Catalog",
+      "surfaceGroup": "admin-dashboard",
+      "surface": "Web dashboard",
+      "routeOrEntry": "/api/ai-network/presets/*",
+      "domainGroup": "presets-knowledge",
+      "purpose": "서버 운영 설정 프리셋을 탐색, 미리보기, 가져오기, 신고/리뷰한다.",
+      "states": [
+        {
+          "name": "catalog",
+          "description": "프리셋 목록을 탐색한다."
+        },
+        {
+          "name": "import_preview",
+          "description": "적용 전 변경점을 확인한다."
+        },
+        {
+          "name": "reported",
+          "description": "신고/리뷰 대상이다."
+        }
+      ],
+      "primaryActions": [
+        "검색",
+        "미리보기",
+        "import",
+        "신고"
+      ],
+      "relatedApis": [
+        "PresetRegistryController"
+      ],
+      "policies": [
+        "POL-CONTENT-001",
+        "POL-CONTENT-002",
+        "POL-MONETIZATION-001"
+      ],
+      "sourceRefs": [
+        "PresetRegistryController.kt"
+      ]
+    },
+    {
+      "id": "knowledge-space",
+      "number": "14",
+      "title": "Knowledge Space",
+      "surfaceGroup": "admin-dashboard",
+      "surface": "Web dashboard",
+      "routeOrEntry": "/api/ai-network/knowledge/*",
+      "domainGroup": "presets-knowledge",
+      "purpose": "서버/채널 지식 자료를 source, index-job, search/context/eval 단위로 관리한다.",
+      "states": [
+        {
+          "name": "empty",
+          "description": "등록된 source가 없다."
+        },
+        {
+          "name": "indexing",
+          "description": "인덱싱 작업 중이다."
+        },
+        {
+          "name": "ready",
+          "description": "검색과 답변 컨텍스트에 사용할 수 있다."
+        }
+      ],
+      "primaryActions": [
+        "source 추가",
+        "인덱싱",
+        "검색 테스트",
+        "eval"
+      ],
+      "relatedApis": [
+        "KnowledgeIngestionController"
+      ],
+      "policies": [
+        "POL-PRIVACY-001",
+        "POL-CONTENT-001"
+      ],
+      "sourceRefs": [
+        "KnowledgeIngestionController.kt"
+      ]
+    },
+    {
+      "id": "quality-reports",
+      "number": "15",
+      "title": "Quality / Reports",
+      "surfaceGroup": "admin-dashboard",
+      "surface": "Web dashboard",
+      "routeOrEntry": "quality/report review",
+      "domainGroup": "safety-limits",
+      "purpose": "답변 품질 피드백, 신고, 안전 이슈를 운영자가 검토한다.",
+      "states": [
+        {
+          "name": "queue",
+          "description": "검토 대기 항목이 있다."
+        },
+        {
+          "name": "reviewing",
+          "description": "운영자가 처리 중이다."
+        },
+        {
+          "name": "resolved",
+          "description": "조치가 완료됐다."
+        }
+      ],
+      "primaryActions": [
+        "리뷰",
+        "숨김/차단",
+        "해결 처리"
+      ],
+      "relatedApis": [
+        "AiQualityFeedbackController",
+        "report/review APIs"
+      ],
+      "policies": [
+        "POL-CONTENT-001",
+        "POL-EDGE-001"
+      ],
+      "sourceRefs": [
+        "AiQualityFeedbackController.kt",
+        "docs/NEXA_SAFETY_POLICY.md"
+      ]
+    },
+    {
+      "id": "launch-readiness",
+      "number": "16",
+      "title": "Launch Readiness",
+      "surfaceGroup": "admin-dashboard",
+      "surface": "Web dashboard",
+      "routeOrEntry": "launch checklist",
+      "domainGroup": "admin-operations",
+      "purpose": "서버 AI 풀을 실제로 열기 전 필요한 설정, Provider, 안전, 한도 체크를 확인한다.",
+      "states": [
+        {
+          "name": "not_ready",
+          "description": "필수 조건이 부족하다."
+        },
+        {
+          "name": "warning",
+          "description": "운영 위험이 남아 있다."
+        },
+        {
+          "name": "ready",
+          "description": "라이브 운영 가능 상태다."
+        }
+      ],
+      "primaryActions": [
+        "체크리스트 확인",
+        "부족 항목 이동",
+        "운영 시작"
+      ],
+      "relatedApis": [
+        "DashboardController"
+      ],
+      "policies": [
+        "POL-PROVIDER-001",
+        "POL-CONTENT-001",
+        "POL-LIMIT-001"
+      ],
+      "sourceRefs": [
+        "DashboardController.kt"
+      ]
+    },
+    {
+      "id": "agent-start",
+      "number": "20",
+      "title": "Provider Agent 시작 / 설치",
+      "surfaceGroup": "provider-desktop",
+      "surface": "Desktop web UI",
+      "routeOrEntry": "localhost app start",
+      "domainGroup": "provider-agent",
+      "purpose": "Provider가 로컬 앱을 설치/실행하고 중앙 서버 연결 준비 상태를 본다.",
+      "states": [
+        {
+          "name": "first_run",
+          "description": "첫 실행과 온보딩 상태다."
+        },
+        {
+          "name": "needs_setup",
+          "description": "Ollama/토큰/서버 연결이 필요하다."
+        },
+        {
+          "name": "ready",
+          "description": "서버 연결 화면으로 이동 가능하다."
+        }
+      ],
+      "primaryActions": [
+        "설치 확인",
+        "시작",
+        "토큰 등록"
+      ],
+      "relatedApis": [
+        "provider-agent webui",
+        "packaging assets"
+      ],
+      "policies": [
+        "POL-PROVIDER-001"
+      ],
+      "sourceRefs": [
+        "provider-agent/packaging/",
+        "provider-agent/src/provider_agent/webui.py"
+      ]
+    },
+    {
+      "id": "server-list",
+      "number": "21",
+      "title": "서버 연결 목록",
+      "surfaceGroup": "provider-desktop",
+      "surface": "Desktop web UI",
+      "routeOrEntry": "/api/servers",
+      "domainGroup": "provider-agent",
+      "purpose": "Provider가 승인된 Discord 서버 목록과 연결 상태를 본다.",
+      "states": [
+        {
+          "name": "empty",
+          "description": "연결된 서버가 없다."
+        },
+        {
+          "name": "syncing",
+          "description": "중앙 서버와 durable token sync 중이다."
+        },
+        {
+          "name": "connected",
+          "description": "하나 이상의 서버와 연결됐다."
+        }
+      ],
+      "primaryActions": [
+        "sync",
+        "서버 선택",
+        "연결 시작"
+      ],
+      "relatedApis": [
+        "/provider/agent/sync",
+        "/api/servers"
+      ],
+      "policies": [
+        "POL-LIMIT-001",
+        "POL-PRIVACY-001"
+      ],
+      "sourceRefs": [
+        "ProviderAgentSyncController.kt:30-65",
+        "provider-agent/src/provider_agent/webui.py"
+      ]
+    },
+    {
+      "id": "server-detail",
+      "number": "22",
+      "title": "서버 상세 / 일시정지",
+      "surfaceGroup": "provider-desktop",
+      "surface": "Desktop web UI",
+      "routeOrEntry": "/api/servers/{guildId}",
+      "domainGroup": "provider-agent",
+      "purpose": "서버별 Provider 상태, 한도, pause/resume, join token 상태를 조작한다.",
+      "states": [
+        {
+          "name": "online_idle",
+          "description": "요청 수신 가능하다."
+        },
+        {
+          "name": "online_busy",
+          "description": "현재 처리 중이다."
+        },
+        {
+          "name": "paused_or_limited",
+          "description": "Provider 의사 또는 한도 때문에 제외된다."
+        }
+      ],
+      "primaryActions": [
+        "pause",
+        "resume",
+        "한도 확인",
+        "서버 제거"
+      ],
+      "relatedApis": [
+        "/api/servers/*"
+      ],
+      "policies": [
+        "POL-PROVIDER-001",
+        "POL-LIMIT-001"
+      ],
+      "sourceRefs": [
+        "provider-agent/src/provider_agent/webui.py",
+        "docs/NEXA_LIMIT_POLICY.md"
+      ]
+    },
+    {
+      "id": "model-list",
+      "number": "23",
+      "title": "모델 목록",
+      "surfaceGroup": "provider-desktop",
+      "surface": "Desktop web UI",
+      "routeOrEntry": "/api/models",
+      "domainGroup": "provider-agent",
+      "purpose": "로컬 Ollama/ComfyUI 모델 상태와 부담 수준을 확인한다.",
+      "states": [
+        {
+          "name": "no_runtime",
+          "description": "Ollama/ComfyUI 연결이 안 됐다."
+        },
+        {
+          "name": "available",
+          "description": "사용 가능한 모델이 있다."
+        },
+        {
+          "name": "restricted",
+          "description": "무거운 모델이라 정책상 제한된다."
+        }
+      ],
+      "primaryActions": [
+        "모델 새로고침",
+        "기본 모델 확인",
+        "runtime 설정 이동"
+      ],
+      "relatedApis": [
+        "/api/models",
+        "Ollama local API"
+      ],
+      "policies": [
+        "POL-PROVIDER-001",
+        "POL-LIMIT-001"
+      ],
+      "sourceRefs": [
+        "provider-agent/src/provider_agent/webui.py"
+      ]
+    },
+    {
+      "id": "agent-logs",
+      "number": "24",
+      "title": "로컬 로그",
+      "surfaceGroup": "provider-desktop",
+      "surface": "Desktop web UI",
+      "routeOrEntry": "/api/logs",
+      "domainGroup": "provider-agent",
+      "purpose": "Provider가 연결/실행/오류 로그를 보되 사용자 프롬프트 원문은 저장하지 않는다.",
+      "states": [
+        {
+          "name": "empty",
+          "description": "로그가 없다."
+        },
+        {
+          "name": "streaming",
+          "description": "새 로그가 들어온다."
+        },
+        {
+          "name": "error",
+          "description": "연결 또는 runtime 오류가 있다."
+        }
+      ],
+      "primaryActions": [
+        "로그 보기",
+        "필터",
+        "복사"
+      ],
+      "relatedApis": [
+        "/api/logs"
+      ],
+      "policies": [
+        "POL-PRIVACY-001"
+      ],
+      "sourceRefs": [
+        "provider-agent/src/provider_agent/webui.py",
+        "docs/PROVIDER_SAFETY_POLICY.md:56"
+      ]
+    },
+    {
+      "id": "agent-settings",
+      "number": "25",
+      "title": "설정 / 업데이트",
+      "surfaceGroup": "provider-desktop",
+      "surface": "Desktop web UI",
+      "routeOrEntry": "/api/settings, /api/update-*",
+      "domainGroup": "provider-agent",
+      "purpose": "Provider 앱 설정, 업데이트, 패키징/릴리스 자산과 관련된 사용자 설정을 관리한다.",
+      "states": [
+        {
+          "name": "current",
+          "description": "최신 버전이다."
+        },
+        {
+          "name": "update_available",
+          "description": "업데이트가 있다."
+        },
+        {
+          "name": "updating",
+          "description": "업데이트 진행 중이다."
+        }
+      ],
+      "primaryActions": [
+        "설정 저장",
+        "업데이트 확인",
+        "업데이트 실행"
+      ],
+      "relatedApis": [
+        "/api/settings",
+        "/api/update-*",
+        "packaging/assets.json"
+      ],
+      "policies": [
+        "POL-PROVIDER-001"
+      ],
+      "sourceRefs": [
+        "packaging/assets.json",
+        "provider-agent/src/provider_agent/webui.py"
+      ]
+    },
+    {
+      "id": "local-runtime-status",
+      "number": "26",
+      "title": "Ollama / ComfyUI 상태",
+      "surfaceGroup": "provider-desktop",
+      "surface": "Desktop web UI",
+      "routeOrEntry": "runtime status",
+      "domainGroup": "provider-agent",
+      "purpose": "로컬 AI runtime 연결 상태, 설치 안내, 실행 가능 여부를 보여준다.",
+      "states": [
+        {
+          "name": "missing",
+          "description": "runtime이 설치되지 않았다."
+        },
+        {
+          "name": "offline",
+          "description": "설치됐지만 실행 중이 아니다."
+        },
+        {
+          "name": "online",
+          "description": "Provider 요청을 실행할 수 있다."
+        }
+      ],
+      "primaryActions": [
+        "상태 확인",
+        "설치 가이드 열기",
+        "재시도"
+      ],
+      "relatedApis": [
+        "Ollama local API",
+        "ComfyUI local API"
+      ],
+      "policies": [
+        "POL-PROVIDER-001",
+        "POL-LIMIT-001"
+      ],
+      "sourceRefs": [
+        "provider-agent/src/provider_agent/webui.py"
+      ]
+    },
+    {
+      "id": "nia-affinity",
+      "number": "07",
+      "title": "니아 호감도",
+      "surfaceGroup": "discord",
+      "surface": "Discord bot response (ephemeral)",
+      "routeOrEntry": "/nia",
+      "domainGroup": "nia-identity",
+      "purpose": "요청자와 니아의 개인 호감도 단계·점수·다음 단계까지 진행도를 보여준다.",
+      "states": [
+        {
+          "name": "affinity-view",
+          "description": "단계(낯섦/알아가는중/친근/단짝)와 점수·진행바를 ephemeral 로 표시."
+        }
+      ],
+      "primaryActions": [
+        "내 호감도 단계·점수 확인",
+        "다음 단계까지 진행도 확인"
+      ],
+      "relatedApis": [
+        "NiaAffinityService",
+        "AffinityStage"
+      ],
+      "policies": [
+        "POL-CONTENT-001"
+      ],
+      "sourceRefs": [
+        "central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AiNetworkCommandHandler.kt",
+        "central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/NiaAffinityService.kt"
+      ]
+    },
+    {
+      "id": "license-premium",
+      "number": "27",
+      "title": "라이선스 · 프리미엄",
+      "surfaceGroup": "provider-desktop",
+      "surface": "Provider 데스크톱 앱 화면",
+      "routeOrEntry": "/api/license",
+      "domainGroup": "licensing-monetization",
+      "purpose": "앱이 현재 라이선스 상태(체험/유료/이벤트)와 $10 구매·이벤트 신청을 보여준다.",
+      "states": [
+        {
+          "name": "trial",
+          "description": "체험 중 — 프리미엄 사용 가능, 남은 기간 표시."
+        },
+        {
+          "name": "locked",
+          "description": "체험 만료 — 프리미엄 잠금, 구매/이벤트 유도."
+        },
+        {
+          "name": "licensed",
+          "description": "결제·이벤트 완료 — 영구 프리미엄."
+        }
+      ],
+      "primaryActions": [
+        "라이선스 상태 확인",
+        "$10 영구 라이선스 구매(Paddle)",
+        "런칭 이벤트 평생 무료 신청"
+      ],
+      "relatedApis": [
+        "/provider/license/me",
+        "/provider/license/checkout",
+        "/provider/license/event/claim"
+      ],
+      "policies": [
+        "POL-MONETIZATION-001"
+      ],
+      "sourceRefs": [
+        "docs/adr/0005-app-license-monetization.md",
+        "central-server/src/main/kotlin/com/discordassistant/central/licensing/adapter/inbound/web/LicenseController.kt"
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "install-to-overview",
+      "from": "discord-install",
+      "fromState": "installed",
+      "trigger": "관리자가 대시보드 열기",
+      "condition": "봇 권한과 guild context 확인",
+      "to": "dashboard-overview",
+      "toState": "empty",
+      "system": "central-server가 guild AI overview를 조회한다."
+    },
+    {
+      "id": "overview-to-channel-ai",
+      "from": "dashboard-overview",
+      "fromState": "empty",
+      "trigger": "채널 AI 설정 클릭",
+      "condition": "관리자 권한 있음",
+      "to": "channel-ai-settings",
+      "toState": "draft",
+      "system": "채널 설정 폼을 연다."
+    },
+    {
+      "id": "channel-ai-to-ask",
+      "from": "channel-ai-settings",
+      "fromState": "active",
+      "trigger": "유저가 설정된 채널에서 /질문 입력",
+      "condition": "채널 AI enabled",
+      "to": "ask-command",
+      "toState": "ready",
+      "system": "Discord slash command가 central-server로 전달된다."
+    },
+    {
+      "id": "ask-to-pending",
+      "from": "ask-command",
+      "fromState": "ready",
+      "trigger": "/질문 제출",
+      "condition": "쿨다운/채널/역할/안전 1차 통과",
+      "to": "request-pending",
+      "toState": "routing",
+      "system": "RequestOrchestrator가 라우팅을 시작한다."
+    },
+    {
+      "id": "ask-to-rejection",
+      "from": "ask-command",
+      "fromState": "policy_blocked",
+      "trigger": "/질문 제출",
+      "condition": "정책 또는 권한 실패",
+      "to": "rejection-message",
+      "toState": "safety_rejected",
+      "system": "Provider/Cloud 폴백 없이 거부한다."
+    },
+    {
+      "id": "pending-to-answer",
+      "from": "request-pending",
+      "fromState": "sent_to_provider",
+      "trigger": "Provider result 수신",
+      "condition": "wire result 정상",
+      "to": "answer-message",
+      "toState": "local_answer",
+      "system": "Discord 답변 메시지를 갱신한다."
+    },
+    {
+      "id": "pending-to-fallback-answer",
+      "from": "request-pending",
+      "fromState": "fallback_running",
+      "trigger": "무료 클라우드 결과 수신",
+      "condition": "Provider 실패/부재 후 fallback 허용",
+      "to": "answer-message",
+      "toState": "cloud_fallback_answer",
+      "system": "glm-5.1 답변을 Discord에 표시한다."
+    },
+    {
+      "id": "pending-to-rejection",
+      "from": "request-pending",
+      "fromState": "routing",
+      "trigger": "후보 없음 또는 한도 초과",
+      "condition": "fallback 불가 또는 한도 실패",
+      "to": "rejection-message",
+      "toState": "rate_limited",
+      "system": "한도/후보 부족 메시지를 표시한다."
+    },
+    {
+      "id": "answer-to-feedback",
+      "from": "answer-message",
+      "fromState": "local_answer",
+      "trigger": "피드백 버튼 클릭",
+      "condition": "답변 메시지에 component 있음",
+      "to": "feedback-action",
+      "toState": "idle",
+      "system": "품질 피드백 입력을 연다."
+    },
+    {
+      "id": "feedback-to-quality",
+      "from": "feedback-action",
+      "fromState": "submitted",
+      "trigger": "운영자가 품질 대시보드 열기",
+      "condition": "피드백 저장됨",
+      "to": "quality-reports",
+      "toState": "queue",
+      "system": "quality/reports 목록에 피드백을 노출한다."
+    },
+    {
+      "id": "agent-start-to-server-list",
+      "from": "agent-start",
+      "fromState": "ready",
+      "trigger": "서버 연결 보기",
+      "condition": "durable token 있음",
+      "to": "server-list",
+      "toState": "syncing",
+      "system": "/provider/agent/sync를 호출한다."
+    },
+    {
+      "id": "server-list-to-detail",
+      "from": "server-list",
+      "fromState": "connected",
+      "trigger": "서버 카드 클릭",
+      "condition": "승인된 guild",
+      "to": "server-detail",
+      "toState": "online_idle",
+      "system": "guild별 Provider 상태와 한도를 표시한다."
+    },
+    {
+      "id": "server-detail-to-models",
+      "from": "server-detail",
+      "fromState": "online_idle",
+      "trigger": "모델 탭 클릭",
+      "condition": "로컬 runtime 접근 가능",
+      "to": "model-list",
+      "toState": "available",
+      "system": "/api/models로 모델 목록을 조회한다."
+    },
+    {
+      "id": "server-detail-to-logs",
+      "from": "server-detail",
+      "fromState": "online_busy",
+      "trigger": "로그 보기",
+      "condition": "처리 중 또는 오류 추적 필요",
+      "to": "agent-logs",
+      "toState": "streaming",
+      "system": "프롬프트 원문 없이 실행 로그를 보여준다."
+    },
+    {
+      "id": "settings-to-runtime",
+      "from": "agent-settings",
+      "fromState": "current",
+      "trigger": "Ollama/ComfyUI 상태 확인",
+      "condition": "runtime 설정 변경 또는 진단",
+      "to": "local-runtime-status",
+      "toState": "online",
+      "system": "local runtime health를 확인한다."
+    },
+    {
+      "id": "overview-to-provider-admin",
+      "from": "dashboard-overview",
+      "fromState": "degraded",
+      "trigger": "Provider 관리 클릭",
+      "condition": "Provider 부족/실패 상태",
+      "to": "provider-admin",
+      "toState": "pending",
+      "system": "Provider 목록과 승인 대기를 보여준다."
+    },
+    {
+      "id": "overview-to-preset",
+      "from": "dashboard-overview",
+      "fromState": "healthy",
+      "trigger": "프리셋 탐색",
+      "condition": "채널 성격 재사용 필요",
+      "to": "preset-catalog",
+      "toState": "catalog",
+      "system": "Preset catalog를 조회한다."
+    },
+    {
+      "id": "preset-to-channel-ai",
+      "from": "preset-catalog",
+      "fromState": "import_preview",
+      "trigger": "프리셋 적용",
+      "condition": "관리자 확인",
+      "to": "channel-ai-settings",
+      "toState": "draft",
+      "system": "프리셋 값을 채널 AI 폼에 반영한다."
+    },
+    {
+      "id": "channel-ai-to-knowledge",
+      "from": "channel-ai-settings",
+      "fromState": "draft",
+      "trigger": "지식공간 연결",
+      "condition": "채널 답변에 RAG 컨텍스트 필요",
+      "to": "knowledge-space",
+      "toState": "ready",
+      "system": "knowledge space 목록을 보여준다."
+    },
+    {
+      "id": "overview-to-readiness",
+      "from": "dashboard-overview",
+      "fromState": "healthy",
+      "trigger": "Launch readiness 클릭",
+      "condition": "운영 시작 전 점검",
+      "to": "launch-readiness",
+      "toState": "ready",
+      "system": "체크리스트와 위험 항목을 표시한다."
+    }
+  ],
+  "sourceRefs": [
+    "docs/ssot/네비게이션.yaml in Dailyting pattern",
+    "AskCommandHandler.kt",
+    "ProviderAgentSyncController.kt",
+    "provider-agent/src/provider_agent/webui.py",
+    "central-server/src/main/kotlin"
+  ]
+}

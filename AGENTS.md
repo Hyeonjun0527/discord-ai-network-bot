@@ -38,6 +38,18 @@
 - **`provider-agent/`** — 유저 PC용 Provider Agent(Python, 경량 aiohttp). 로컬 Ollama 를 풀에 연결.
 - `specs/product-v2/` — Provider Pool 명세, `docs/` — ADR/로드맵/운영 문서, `scripts/` — E2E·운영 스크립트.
 
+### AI context / 서비스 이해 지도 SSOT
+사람이 제품·도메인·정책을 이해할 때는 **생성 HTML 뷰어**
+`docs/ssot-viewer/prd-viewer/auto-generated-requirements-api-spec-navigation.html` 을 본다.
+에이전트가 작업 전 읽는 현재 운용 진실은 **JSON SSOT** `ai-context/` 다.
+
+- JSON 은 6개만 유지한다: `index.json`, `product.json`, `navigation.json`, `domain.json`, `policies.json`, `contracts.json`.
+- 사람용 요구사항/API/네비게이션 HTML은 생성물이다. 직접 편집하지 말고
+  `make ssot-viewer` / `make ssot-viewer-check` 로 `ai-context/*.json` 과 동기화한다.
+- HTML 은 Dailyting식으로 전역 도메인 모델·화면 네비게이션·API/계약을 먼저 보여준 뒤, `domain.json`의 `domainGroups`를 도메인별 요구사항/상태/API/예외/체크포인트 섹션으로 나눠 보여준다. `navigation.json`은 `surfaceGroups`, `screens`, `transitions` 세 가지만 소유한다.
+- ADR·docs·specs 는 출처와 역사/상세 설명이다. 현재 작업 판단(비목표, actors, 도메인 불변식, 정책 충돌 우선순위,
+  검증 명령)은 먼저 `ai-context/index.json` 의 `loadByChange` 에 따라 필요한 JSON 을 읽는다.
+
 ### central-server (Kotlin) 빌드/검증/배포
 JDK 21 필요(Gradle 8.12 wrapper 는 JDK 26 미지원 — `JAVA_HOME` 을 21 로).
 ```bash

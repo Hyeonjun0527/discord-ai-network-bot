@@ -1,0 +1,5762 @@
+# NEXA: 사람처럼 침묵하고 장기간 관계를 유지하는 Discord AI 멤버 — 500단계 구축 계획
+
+> 이 문서는 사용자가 제공한 저장소 인벤토리를 기준으로 작성됐다. 실제 파일을 직접 읽은 결과가 아니므로 P00에서 경로·명령·기존 책임을 먼저 검증한다.
+
+## 실행 원칙
+
+- 정확히 500개의 구체 작업이며, 20개 프로그램 × 25개 작업으로 구성된다.
+- 각 프로그램의 25번째 작업은 **중단 가능한 게이트**다. 게이트가 실패하면 다음 프로그램으로 넘어가지 않는다.
+- 이후 작업도 구체적으로 적었지만 무조건 실행하는 고정 명령이 아니다. 앞선 실험이 가정을 반증하면 ADR과 task graph를 갱신한다.
+- Codex 한 스레드·브랜치·ExecPlan에는 작업 하나만 준다.
+- `LIVE` Discord 발화는 P18 게이트 이전에 금지한다.
+- GLM-5.1은 언어 생성기이며, 침묵·대상·타이밍을 결정하는 정책 본체가 아니다.
+
+## 기존 구조를 고려한 권장 패키지 배치
+
+```text
+central-server/src/main/kotlin/com/discordassistant/central/
+├── conversation/     # 이벤트·버스트·스레드·대상·장면
+├── participation/    # IGNORE/WAIT/REACT/SPEAK/CANCEL 정책
+├── socialmemory/     # 시간 유효 기억·관계 projection·pending intent
+├── actionruntime/    # 영속 예약·재평가·취소·전송 상태 머신
+└── speech/           # SPEAK 뒤 GLM 후보·critic·버스트 계획
+```
+
+### 기존 도메인의 유지 역할
+
+| 기존 도메인 | NEXA에서의 역할 | 금지할 결합 |
+|---|---|---|
+| `platform/discord` | JDA 수신 정규화와 Discord 실행 adapter | JDA 객체를 신규 domain에 전달 |
+| `channelai` | 채널 프로필·OFF/SHADOW/CANARY/LIVE·말 많음 설정 | 자체적으로 응답 시점 결정 |
+| `routing` | GLM-5.1을 포함한 provider-neutral 모델 호출 | 침묵/발화 정책 결정 |
+| `ainetwork` | 기존 니아 정체성·호감도 데이터의 승인된 bridge | socialmemory와 동일 개념 이중 쓰기 |
+| `globalpromptset` | 안정적인 identity kernel SSOT | 런타임 관계 상태 저장 |
+| `knowledge` | SPEAK 이후 필요한 경우에만 RAG | 모든 메시지에서 선제 검색 |
+| `multiresponse` | 승인된 BurstPlan 전송 | 메시지 수·정책을 재결정 |
+| `quota` | 실제 generation 호출에만 quota 적용 | IGNORE/WAIT/REACT 과금 |
+| `requestlog` | 외부 모델 요청 감사 | 사회행동 결정 로그 대체 |
+| `provider-agent`·`relay` | 기존 provider 경로 유지 | NEXA social policy를 유저 PC agent에 숨겨 구현 |
+
+## 프로그램 요약
+
+| 프로그램 | 이름 | 작업 | 종료 조건 |
+|---|---|---:|---|
+| P00 | 저장소 기준선과 Codex 작업 운영체제 | 25 | 깨끗한 체크아웃에서 기준선 검증 명령이 재현되고, 기존 실패와 신규 실패가 구분되며, Codex가 단일 작업만 수행하도록 강제하는 문서·검증기가 준비되어야 한다. |
+| P01 | NEXA 경계와 기존 19개 도메인 통합 계약 | 25 | conversation·participation·socialmemory·actionruntime·speech의 책임과 기존 도메인 연결이 ADR·모듈 계약·ArchUnit 테스트로 일치해야 한다. |
+| P02 | 개인정보·동의·정규화 이벤트 계약 | 25 | 동의되지 않은 메시지가 저장·외부 전송·학습 데이터로 진입하지 못하고, 모든 정규화 이벤트가 출처·보존·삭제 추적 정보를 가져야 한다. |
+| P03 | Discord 이벤트 수집과 append-only event store | 25 | 수신 이벤트가 동의 경계를 통과한 뒤 append-only로 저장되고, 중복·역순·재연결·프로세스 재시작에도 동일한 projection 입력 스트림을 재생할 수 있어야 한다. |
+| P04 | 인간 발화 버스트 구성 | 25 | 네가 제시한 짧은 연속 메시지 사례를 한 버스트로 묶고, 다른 화자의 개입·reply·thread·수정·삭제를 정확히 반영하며 replay 결과가 동일해야 한다. |
+| P05 | 대화 스레드·대상·장면 projection | 25 | reply·mention·시간 인접성·주제 전환으로 스레드와 대상 확률을 만들고, 매 장면에 contextVersion을 부여해 예약 행동의 stale 여부를 판단할 수 있어야 한다. |
+| P06 | 관찰 가능한 사회 상태와 관계 projection | 25 | 관계 상태가 출처·감쇠·삭제 가능성을 가지며 ainetwork와 중복되지 않고, replay로 동일하게 재구축되어야 한다. |
+| P07 | 시간 유효성이 있는 사회적 기억 | 25 | 현재 유효한 기억만 speech와 participation에 제공되고, 닉네임 변경·농담·삭제·모순 사례에서 stale memory 사용이 차단되어야 한다. |
+| P08 | 사회행동 정책 계약과 feature 파이프라인 | 25 | IGNORE가 정식 행동으로 존재하고, 같은 scene/state/model/seed가 같은 결정을 재생하며, 안전 제약과 학습 정책이 분리되어야 한다. |
+| P09 | 규칙 기반 기준선과 완전 무발화 Shadow Mode | 25 | 모든 정책이 같은 replay/eval 경로를 사용하고 shadow mode에서는 JDA outbound가 구조적으로 차단되며 최소 7일 기준선 데이터가 준비되어야 한다. |
+| P10 | 옵트인 데이터셋·Masked Member·재생 실험실 | 25 | 데이터셋의 모든 row가 동의·출처·변환 버전·split을 가지며, 특정 길드가 train/test에 동시에 나타나지 않고 삭제 요청을 반영할 수 있어야 한다. |
+| P11 | 학습된 Social Policy v1 | 25 | 학습 모델이 최소 두 개의 단순 기준선을 여러 길드 holdout에서 일관되게 넘고, ONNX/JVM 결과가 Python과 수치 허용오차 내 일치해야 한다. |
+| P12 | 연속시간 참여·지연·취소 정책 | 25 | delay/never 예측이 검열 데이터를 올바르게 다루고, multiplier가 행동 분포를 망가뜨리지 않으며, 실시간 추론 지연이 shadow 요구를 충족해야 한다. |
+| P13 | 취소 가능한 Action Runtime과 Discord 실행기 | 25 | 프로세스 재시작과 문맥 변경 중에도 stale 메시지가 전송되지 않고, 첫 버블 이후 나머지 버블 취소까지 결정론적으로 검증되어야 한다. |
+| P14 | GLM-5.1 기반 발화 후보·스타일·버스트 생성 | 25 | IGNORE/WAIT/REACT에서 GLM 호출이 0이고, SPEAK 후보가 정책 socialAct·burstProfile을 따르며 외부 전송 최소화·timeout·fallback·비용 관측이 검증되어야 한다. |
+| P15 | 기존 central-server 도메인과 점진 통합 | 25 | 기존 자동응답과 NEXA 경로를 길드별로 독립 전환할 수 있고, 모듈 순환·중복 설정·이중 과금·이중 전송 없이 E2E 테스트가 통과해야 한다. |
+| P16 | 행동 평가·시뮬레이션·적대적 시나리오 | 25 | 각 모델·정책·런타임 버전을 같은 시나리오에서 비교할 수 있고, 사람다움·침묵·안전·장기 기억 실패가 단일 종합점수에 숨지 않아야 한다. |
+| P17 | 보안·안전·데이터 오염 방어 | 25 | 대화 원문이 시스템 권한을 획득하지 못하고, 삭제·동의 철회·키 회전·artifact 검증·incident rollback이 실제 테스트와 runbook으로 입증되어야 한다. |
+| P18 | 관측성·운영·Canary 롤아웃 | 25 | 한 길드에서 시작해 즉시 중단·rollback할 수 있고, action 분포·점유율·오류·비용·stale memory를 실시간 탐지하며 운영자가 원문 없이 원인을 추적할 수 있어야 한다. |
+| P19 | 장기 적응·오프라인 강화학습·v1 출시 판단 | 25 | 30/90일 데이터로 일관성·침묵·관계·기억·불쾌감·차단률을 평가하고, 명시적 인간 승인 없이는 온라인 학습이나 다길드 LIVE 출시를 하지 않는다. |
+
+## 500개 작업 상세
+
+## P00 — 저장소 기준선과 Codex 작업 운영체제
+
+**목표:** 기존 모노레포를 변경하기 전에 빌드·테스트·생성물·아키텍처·보안 기준선을 고정하고, 이후 499개 작업을 원자적으로 실행할 수 있는 저장소 내 운영 규칙을 만든다.
+
+**주요 경로:** `AGENTS.md, PLANS.md, docs/nexa/**, ai-context/**, scripts/**, .github/workflows/**`
+
+**종료 게이트:** 깨끗한 체크아웃에서 기준선 검증 명령이 재현되고, 기존 실패와 신규 실패가 구분되며, Codex가 단일 작업만 수행하도록 강제하는 문서·검증기가 준비되어야 한다.
+
+### NEXA-P00-T001 — 현재 브랜치와 작업 트리 기준선 기록
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** 없음
+- **권장 변경 위치:** `docs/nexa/baseline/repository-state.md`
+- **구체 산출물:** 현재 커밋, 브랜치, 미추적 파일, 서브모듈, 대용량 파일을 기록하는 기준선 문서를 만든다.
+- **완료 조건:** 다른 개발자가 같은 커밋에서 문서의 명령을 실행해 동일한 저장소 상태를 확인할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T002 — 루트 빌드 진입점과 실제 명령 조사
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T001
+- **권장 변경 위치:** `Makefile`, `central-server/**`, `provider-agent/**`, `docs/nexa/baseline/build-commands.md`
+- **구체 산출물:** 루트·central-server·provider-agent·games의 빌드/테스트/린트 명령을 실제 실행해 성공 여부와 소요 단계를 문서화한다.
+- **완료 조건:** 추측 명령이 없고 각 명령의 종료 코드와 사전 조건이 기록된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh agent`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T003 — Kotlin·Spring·JDA·Python 버전 인벤토리 고정
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T002
+- **권장 변경 위치:** `central-server/build.gradle*`, `central-server/gradle/**`, `provider-agent/pyproject.toml`, `docs/nexa/baseline/dependency-versions.md`
+- **구체 산출물:** 핵심 런타임과 플러그인 버전, Java/Kotlin/Python 요구 버전을 표로 정리한다.
+- **완료 조건:** CI와 로컬에서 실제 사용되는 버전이 일치하는지 차이를 명시한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh agent`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T004 — 루트 AGENTS.md 최소 헌법 작성
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P00-T003
+- **권장 변경 위치:** `AGENTS.md`
+- **구체 산출물:** 모노레포 구조, 공통 금지사항, 검증 명령, SSOT 규칙, 인간 승인 게이트만 담은 짧은 AGENTS.md를 만든다.
+- **완료 조건:** 세부 설계를 중복하지 않고 하위 문서 링크가 모두 유효하다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T005 — central-server 전용 AGENTS.md 작성
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P00-T004
+- **권장 변경 위치:** `central-server/AGENTS.md`
+- **구체 산출물:** 헥사고날 계층, ArchUnit, Flyway, JDA 격리, Clock/Random 주입, 테스트 기준을 central-server 전용 지침으로 기록한다.
+- **완료 조건:** 도메인에서 Spring/JPA/JDA 타입을 금지하는 기존 원칙과 충돌하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T006 — provider-agent 변경 제한 지침 작성
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P00-T005
+- **권장 변경 위치:** `provider-agent/AGENTS.md`
+- **구체 산출물:** NEXA 사회행동 구현 중 provider-agent를 임의 수정하지 않고 protocol 계약 변경 시에만 건드리도록 범위를 고정한다.
+- **완료 조건:** central-server 작업이 provider-agent 추론 경로를 우회 수정하지 못하도록 금지사항이 명확하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh agent`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T007 — 장기 작업용 PLANS.md 템플릿 작성
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P00-T006
+- **권장 변경 위치:** `PLANS.md`, `docs/nexa/exec-plans/README.md`
+- **구체 산출물:** 목표·비목표·결정·진행·검증·롤백·발견사항을 포함하는 self-contained 실행 계획 형식을 만든다.
+- **완료 조건:** 새 세션이 ExecPlan 하나만 읽고도 작업을 재개할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T008 — 통합 검증 스크립트 골격 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P00-T007
+- **권장 변경 위치:** `scripts/nexa-verify.sh`, `scripts/nexa-verify.ps1`
+- **구체 산출물:** docs, central, agent, protocol, all 범위를 선택해 기존 명령을 실행하는 래퍼를 만든다.
+- **완료 조건:** 존재하지 않는 명령을 숨기지 않고 실패 종료 코드를 그대로 전달한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T009 — 500단계 작업 그래프 스키마 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P00-T008
+- **권장 변경 위치:** `docs/nexa/roadmap/task-schema.json`, `docs/nexa/roadmap/README.md`
+- **구체 산출물:** 작업 ID, 의존성, 상태, 경로, 산출물, 완료 기준, 인간 게이트 필드를 JSON Schema로 정의한다.
+- **완료 조건:** 잘못된 상태값·누락 필드·중복 ID가 검증에서 실패한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T010 — 작업 그래프 DAG 검증기 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P00-T009
+- **권장 변경 위치:** `scripts/validate-nexa-task-graph.py`
+- **구체 산출물:** 정확히 500개 작업, ID 형식, 존재하지 않는 의존성, 사이클, 게이트 누락을 검사하는 스크립트를 만든다.
+- **완료 조건:** 의도적으로 만든 사이클 fixture가 실패하고 정상 그래프가 통과한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T011 — 작업 상태 전이 규칙 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P00-T010
+- **권장 변경 위치:** `docs/nexa/roadmap/task-lifecycle.md`
+- **구체 산출물:** DRAFT→READY→IN_PROGRESS→REVIEW→VERIFIED와 BLOCKED/ABANDONED 전이 조건을 정의한다.
+- **완료 조건:** 검증 없이 VERIFIED로 변경할 수 없다는 규칙과 증거 필드가 명시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T012 — 기존 ArchUnit 규칙 기준선 스냅샷
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T011
+- **권장 변경 위치:** `central-server/src/test/**`, `docs/nexa/baseline/archunit-rules.md`
+- **구체 산출물:** 현재 아키텍처 테스트 목록과 실제 통과/실패 상태를 기록한다.
+- **완료 조건:** 신규 NEXA 규칙이 기존 위반을 신규 회귀로 오인하지 않도록 기준선이 분리된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T013 — 현재 패키지 의존 그래프 생성
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T012
+- **권장 변경 위치:** `scripts/**`, `docs/nexa/baseline/central-package-graph.md`
+- **구체 산출물:** 19개 기존 도메인의 compile-time 의존을 추출해 방향성과 순환을 문서화한다.
+- **완료 조건:** routing·channelai·ainetwork·platform/discord의 실제 의존 경로가 표시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T014 — CI 워크플로 기준선 정리
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T013
+- **권장 변경 위치:** `.github/workflows/**`, `docs/nexa/baseline/ci-matrix.md`
+- **구체 산출물:** 10개 CI 워크플로의 트리거, 비밀, 빌드 대상, 캐시, 배포 권한을 표로 정리한다.
+- **완료 조건:** NEXA 작업이 수정해야 할 최소 워크플로와 건드리면 안 되는 배포 워크플로가 구분된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T015 — 결정론적 테스트 규약 작성
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P00-T014
+- **권장 변경 위치:** `docs/nexa/testing/determinism.md`, `central-server/src/test/**`
+- **구체 산출물:** Clock, 난수, UUID, 스케줄러, sleep을 테스트에서 통제하는 공통 규약을 작성한다.
+- **완료 조건:** 실제 Thread.sleep과 시스템 시각 직접 참조를 신규 NEXA 코드에서 금지한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T016 — Discord 대화 fixture 형식 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P00-T015
+- **권장 변경 위치:** `test-fixtures/nexa/**`, `docs/nexa/testing/conversation-fixtures.md`
+- **구체 산출물:** 메시지·수정·삭제·타이핑·리액션·시간 간격을 표현하는 재생 가능한 fixture 포맷을 정의한다.
+- **완료 조건:** 네가 제공한 닉네임 대화 예시를 손실 없이 표현할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T017 — 비밀·로그 노출 기준선 감사
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P00-T016
+- **권장 변경 위치:** `central-server/**`, `provider-agent/**`, `docs/nexa/security/logging-baseline.md`
+- **구체 산출물:** API 키, Discord 원문, 사용자 ID, 토큰이 로그로 노출되는 경로를 검색하고 분류한다.
+- **완료 조건:** 발견 항목마다 위치·심각도·수정 예정 작업 ID가 연결된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh agent`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T018 — Flyway 49개 마이그레이션 기준선 검증
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T017
+- **권장 변경 위치:** `central-server/src/main/resources/db/migration/**`, `docs/nexa/baseline/database.md`
+- **구체 산출물:** 마이그레이션 순서, checksum, 테스트 DB 적용 여부와 롤백 정책을 기록한다.
+- **완료 조건:** 깨끗한 DB에 V1~현재가 적용되고 기존 운영 스키마와 차이가 설명된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T019 — protocol 코드 생성 드리프트 검사
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T018
+- **권장 변경 위치:** `protocol/wire-contract.json`, `scripts/**`, `docs/nexa/baseline/protocol-generation.md`
+- **구체 산출물:** make wire-gen 전후 diff를 확인하고 생성물 위치와 수정 금지 규칙을 문서화한다.
+- **완료 조건:** 수동 편집된 생성물이 있으면 기준선에서 명시적으로 드러난다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh contracts`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T020 — i18n SSOT 생성 드리프트 검사
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T019
+- **권장 변경 위치:** `i18n/messages.json`, `central-server/src/main/resources/i18n/**`, `docs/nexa/baseline/i18n-generation.md`
+- **구체 산출물:** ko/en/ja 생성 절차와 누락 키 검사를 실행한다.
+- **완료 조건:** NEXA 신규 문구가 반드시 SSOT를 거치도록 검증 경로가 정의된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T021 — 관리자 대시보드 구조 기준선 캡처
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T020
+- **권장 변경 위치:** `central-server/src/main/resources/static/admin/dashboard/**`, `docs/nexa/baseline/admin-dashboard.md`
+- **구체 산출물:** 현재 정적 대시보드의 라우팅·API 의존·빌드 방식·테스트 가능 범위를 기록한다.
+- **완료 조건:** 향후 shadow/정책 화면 추가 시 기존 UX 파일을 SSOT 없이 복제하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T022 — 현재 자동응답 호출 경로 추적
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T021
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/channelai/**`, `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/**`, `docs/nexa/baseline/current-autoresponse-flow.md`
+- **구체 산출물:** Discord 이벤트부터 channelai, routing, 전송까지의 실제 호출 시퀀스를 코드 위치와 함께 그린다.
+- **완료 조건:** 멘션·자동응답·명령 처리 경로가 각각 구분되고 숨은 side effect가 표시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T023 — 현재 CloudLlm·GLM 호출 경로 추적
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T022
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/routing/**`, `provider-agent/src/provider_agent/glm.py`, `docs/nexa/baseline/current-llm-flow.md`
+- **구체 산출물:** central CloudLlm과 provider-agent GLM 경로, quota/requestlog 연동, 제거 예정 경로를 구분한다.
+- **완료 조건:** NEXA speech가 central routing을 통해야 한다는 전제가 실제 코드로 검증되거나 반증된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh agent`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T024 — ainetwork·channelai 데이터 모델 충돌 감사
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P00-T023
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/**`, `central-server/src/main/kotlin/com/discordassistant/central/channelai/**`, `docs/nexa/baseline/social-model-overlap.md`
+- **구체 산출물:** 호감도·AI 프로필·자동응답 설정 중 새 socialmemory와 중복될 항목을 식별한다.
+- **완료 조건:** 각 항목이 재사용·브리지·마이그레이션·폐기 중 하나로 분류된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P00-T025 — P00 기준선 재현 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P00-T024
+- **권장 변경 위치:** `docs/nexa/baseline/**`, `scripts/**`, `AGENTS.md`, `PLANS.md`
+- **구체 산출물:** 깨끗한 체크아웃에서 모든 기준선 명령을 재실행하고 차이를 최종 보고서에 기록한다.
+- **완료 조건:** 작업 그래프 검증, 문서 링크, central 테스트 기준선이 재현되며 미해결 실패는 명시적 BLOCKER로 등록된다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P01 — NEXA 경계와 기존 19개 도메인 통합 계약
+
+**목표:** 기존 헥사고날 구조를 유지하면서 NEXA 사회행동 기능의 새 경계와 기존 도메인의 책임을 확정하고, 코드로 강제 가능한 의존 DAG를 만든다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/**, central-server/src/test/**, docs/nexa/architecture/**, docs/adr/**`
+
+**종료 게이트:** conversation·participation·socialmemory·actionruntime·speech의 책임과 기존 도메인 연결이 ADR·모듈 계약·ArchUnit 테스트로 일치해야 한다.
+
+### NEXA-P01-T001 — NEXA 시스템 컨텍스트 ADR 작성
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P00-T025
+- **권장 변경 위치:** `docs/adr/0007-nexa-social-member-context.md`
+- **구체 산출물:** NEXA를 요청-응답 봇이 아니라 이벤트를 관찰하고 행동을 선택하는 사회적 행위자로 정의한다.
+- **완료 조건:** 결정의 범위·대안·위험·되돌림 가능성과 인간 승인 상태가 기록된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T002 — Spring Modulith 도입 여부 검토 ADR
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P01-T001
+- **권장 변경 위치:** `docs/adr/0008-spring-modulith-evaluation.md`
+- **구체 산출물:** 기존 ArchUnit을 유지할지 Spring Modulith 검증을 보조로 도입할지 실제 빌드 영향과 중복을 평가한다.
+- **완료 조건:** 근거 없이 새 프레임워크를 추가하지 않고 결론이 ACCEPTED 또는 REJECTED로 명확하다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T003 — conversation 바운디드 컨텍스트 계약 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T002
+- **권장 변경 위치:** `docs/nexa/architecture/conversation-context.md`, `central-server/src/main/kotlin/com/discordassistant/central/conversation/package-info.*`
+- **구체 산출물:** 정규화 이벤트, 버스트, 스레드, 장면 projection만 소유하고 AI 행동 결정을 금지하는 경계를 정의한다.
+- **완료 조건:** JDA·Spring·JPA 타입이 conversation/domain에 노출되지 않는 규칙이 명시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T004 — participation 바운디드 컨텍스트 계약 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T003
+- **권장 변경 위치:** `docs/nexa/architecture/participation-context.md`, `central-server/src/main/kotlin/com/discordassistant/central/participation/package-info.*`
+- **구체 산출물:** IGNORE/WAIT/REACT/SPEAK/CANCEL 정책, feature, decision log만 소유하도록 정의한다.
+- **완료 조건:** 실제 문장 생성과 Discord 전송이 participation 책임에서 제외된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T005 — socialmemory 바운디드 컨텍스트 계약 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T004
+- **권장 변경 위치:** `docs/nexa/architecture/socialmemory-context.md`, `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/package-info.*`
+- **구체 산출물:** 시간 유효성이 있는 일화·사실·관계·보류 의도를 소유하도록 정의한다.
+- **완료 조건:** knowledge RAG와 ainetwork 호감도 모델의 차이와 연결 포트가 명시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T006 — actionruntime 바운디드 컨텍스트 계약 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T005
+- **권장 변경 위치:** `docs/nexa/architecture/actionruntime-context.md`, `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/package-info.*`
+- **구체 산출물:** 예약·재평가·취소·재시도·전송 상태 머신과 실행 감사만 소유하도록 정의한다.
+- **완료 조건:** 정책 점수 계산과 문장 생성이 actionruntime에 들어가지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T007 — speech 바운디드 컨텍스트 계약 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T006
+- **권장 변경 위치:** `docs/nexa/architecture/speech-context.md`, `central-server/src/main/kotlin/com/discordassistant/central/speech/package-info.*`
+- **구체 산출물:** 정책이 SPEAK를 선택한 뒤 장면·기억·정체성을 사용해 후보 문구와 버스트 계획을 만드는 책임을 정의한다.
+- **완료 조건:** speech가 직접 JDA를 호출하거나 말할지 여부를 결정하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T008 — channelai 책임 재정의 ADR
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P01-T007
+- **권장 변경 위치:** `docs/adr/0009-channelai-responsibility.md`
+- **구체 산출물:** channelai를 채널별 AI 프로필·설정·모드 SSOT로 남기고 기존 자동응답 트리거를 단계적으로 participation으로 옮기는 결정을 기록한다.
+- **완료 조건:** 기존 API 호환 기간과 제거 순서가 명시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T009 — ainetwork 책임 재정의 ADR
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P01-T008
+- **권장 변경 위치:** `docs/adr/0010-ainetwork-socialmemory-boundary.md`
+- **구체 산출물:** ainetwork의 니아 정체성·호감도와 socialmemory의 관찰 가능한 관계 상태를 중복 저장하지 않는 경계를 정한다.
+- **완료 조건:** 각 필드의 소유자와 마이그레이션/브리지 전략이 표로 확정된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T010 — routing 연동 포트 계약 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T009
+- **권장 변경 위치:** `docs/nexa/architecture/routing-integration.md`, `central-server/src/main/kotlin/com/discordassistant/central/speech/application/port/out/**`
+- **구체 산출물:** speech가 기존 routing의 provider-neutral CloudLlm 유스케이스만 호출하도록 anti-corruption port를 정의한다.
+- **완료 조건:** provider-agent glm.py 또는 특정 Z.AI SDK 타입이 speech domain에 노출되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T011 — platform/discord 정규화 이벤트 경계 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T010
+- **권장 변경 위치:** `docs/nexa/architecture/discord-adapter-boundary.md`, `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/**`
+- **구체 산출물:** JDA 이벤트를 내부 DiscordEventEnvelope로 변환하고 이후 도메인이 JDA 객체를 보지 않게 하는 경계를 설계한다.
+- **완료 조건:** 수신과 전송 양방향 port가 분리되고 테스트 대역으로 교체 가능하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T012 — requestlog와 정책 결정 로그 경계 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T011
+- **권장 변경 위치:** `docs/nexa/architecture/logging-boundary.md`
+- **구체 산출물:** 외부 모델 요청은 requestlog, 사회행동 결정은 participation decision log가 소유하도록 구분한다.
+- **완료 조건:** 원문 Discord 내용 없이 두 로그를 correlation ID로 연결할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T013 — quota 적용 시점 계약 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T012
+- **권장 변경 위치:** `docs/nexa/architecture/quota-boundary.md`
+- **구체 산출물:** IGNORE/WAIT/REACT에는 LLM quota를 쓰지 않고 실제 generation 호출 직전에만 차감하는 계약을 정한다.
+- **완료 조건:** 취소된 예약과 실패한 모델 호출의 과금/복구 정책이 명시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T014 — multiresponse와 버스트 계획 경계 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T013
+- **권장 변경 위치:** `docs/nexa/architecture/multiresponse-boundary.md`
+- **구체 산출물:** speech의 BurstPlan을 기존 multiresponse가 어떻게 전달할지, 스트리밍과 인간식 다중 버블을 구분한다.
+- **완료 조건:** multiresponse가 정책을 재판단하거나 무제한 메시지를 생성하지 못한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T015 — globalpromptset 정체성 커널 포트 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T014
+- **권장 변경 위치:** `docs/nexa/architecture/identity-kernel-boundary.md`
+- **구체 산출물:** 서버 기본 성격을 speech에 제공하되 런타임 관계·기억과 분리하는 조회 포트를 정의한다.
+- **완료 조건:** 정체성 프롬프트 원문이 여러 모듈에 복제되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T016 — knowledge RAG 호출 순서 계약 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T015
+- **권장 변경 위치:** `docs/nexa/architecture/knowledge-boundary.md`
+- **구체 산출물:** 정책이 SPEAK를 선택하고 factual retrieval 필요성이 있을 때만 knowledge를 호출하도록 순서를 고정한다.
+- **완료 조건:** 침묵 판단을 위해 웹검색이나 RAG를 무조건 호출하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T017 — guild 정책 소유권 정의
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P01-T016
+- **권장 변경 위치:** `docs/nexa/architecture/guild-policy-boundary.md`
+- **구체 산출물:** 길드별 활성화, 채널 제외, 말 많음 배수, shadow/live 모드를 guild 또는 channelai 중 어디가 소유하는지 확정한다.
+- **완료 조건:** 중복 설정 테이블이 생기지 않고 읽기 우선순위가 하나다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T018 — licensing 기능 게이트 정의
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P01-T017
+- **권장 변경 위치:** `docs/nexa/architecture/licensing-boundary.md`
+- **구체 산출물:** 무료·유료 기능 차이가 사회행동 품질을 위험하게 바꾸지 않도록 허용 게이트를 정의한다.
+- **완료 조건:** 안전·개인정보·무응답 기능은 결제 여부와 무관하게 유지된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T019 — onboarding 동의·설정 경계 정의
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P01-T018
+- **권장 변경 위치:** `docs/nexa/architecture/onboarding-boundary.md`
+- **구체 산출물:** 서버 관리자가 데이터 처리, 외부 모델 전송, shadow/live, 학습 옵트인을 명시적으로 선택하는 흐름을 설계한다.
+- **완료 조건:** 기본값이 자동 학습 또는 자동 발화가 아니며 되돌릴 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T020 — 도메인 간 이벤트 카탈로그 작성
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T019
+- **권장 변경 위치:** `docs/nexa/architecture/domain-events.md`
+- **구체 산출물:** EventIngested, BurstFinalized, SceneUpdated, ParticipationDecided, ActionScheduled, MemorySuperseded 등 이벤트를 정의한다.
+- **완료 조건:** 각 이벤트의 발행자·소비자·멱등성 키·개인정보 등급이 명시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T021 — NEXA 모듈 의존 DAG 확정
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P01-T020
+- **권장 변경 위치:** `docs/nexa/architecture/module-dag.md`
+- **구체 산출물:** platform→conversation→participation→actionruntime과 speech·socialmemory·routing 연결을 순환 없이 도식화한다.
+- **완료 조건:** 기존 19개 도메인을 포함한 전체 DAG에서 금지 의존이 식별된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T022 — 신규 패키지 ArchUnit 규칙 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P01-T021
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/NexaArchitectureTest.kt`
+- **구체 산출물:** 신규 domain이 Spring/JPA/JDA/routing 구현에 의존하지 않도록 규칙을 추가한다.
+- **완료 조건:** 의도적 위반 fixture 또는 샘플 클래스가 테스트에서 실패한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T023 — 기존 도메인 역의존 금지 규칙 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P01-T022
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/NexaArchitectureTest.kt`
+- **구체 산출물:** routing·platform·channelai가 신규 도메인의 adapter 내부 구현을 직접 참조하지 못하도록 규칙을 추가한다.
+- **완료 조건:** 공개 application port/API를 우회한 import가 탐지된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T024 — 아키텍처 문서와 ai-context SSOT 동기화
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P01-T023
+- **권장 변경 위치:** `ai-context/**`, `docs/nexa/architecture/**`
+- **구체 산출물:** 기존 ai-context JSON 구조를 조사해 NEXA 모듈 경계와 금지 의존을 중복 없이 반영한다.
+- **완료 조건:** 문서와 JSON의 모듈 목록·책임이 자동 검사로 동일하다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P01-T025 — P01 모듈 경계 검증 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P01-T024
+- **권장 변경 위치:** `docs/nexa/architecture/**`, `docs/adr/**`, `central-server/src/test/**`
+- **구체 산출물:** ADR 승인 상태, ArchUnit, 의존 그래프, 기존 도메인 브리지를 독립 리뷰한다.
+- **완료 조건:** 순환 의존이 없고 모든 신규 책임이 정확히 한 컨텍스트에 소유되며 미승인 결정은 이후 구현을 BLOCK한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P02 — 개인정보·동의·정규화 이벤트 계약
+
+**목표:** Discord 원문을 관찰하는 기능을 구현하기 전에 데이터 범주, 동의, 보존, 삭제, 외부 전송 경계를 확정하고 프레임워크 독립적인 이벤트 계약을 만든다.
+
+**주요 경로:** `specs/product-v2/nexa/**, central-server/src/main/kotlin/com/discordassistant/central/guild/**, central-server/src/main/kotlin/com/discordassistant/central/global/**, central-server/src/main/kotlin/com/discordassistant/central/conversation/**, central-server/src/main/resources/db/migration/**`
+
+**종료 게이트:** 동의되지 않은 메시지가 저장·외부 전송·학습 데이터로 진입하지 못하고, 모든 정규화 이벤트가 출처·보존·삭제 추적 정보를 가져야 한다.
+
+### NEXA-P02-T001 — NEXA 데이터 범주표 작성
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P01-T025
+- **권장 변경 위치:** `specs/product-v2/nexa/data-categories.md`
+- **구체 산출물:** 메시지 원문, 임베딩, 작성자 식별자, 관계 상태, 정책 결정, 생성 응답, 학습 산출물을 개인정보 등급별로 분류한다.
+- **완료 조건:** 각 범주에 수집 목적·보존 기간·외부 전송 여부·삭제 방법이 하나씩 연결된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T002 — 길드 관리자 동의 모델 결정
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P02-T001
+- **권장 변경 위치:** `specs/product-v2/nexa/consent-model.md`, `docs/adr/0011-nexa-consent.md`
+- **구체 산출물:** 서버 단위 활성화와 채널 단위 범위, 관리자의 권한 증명을 정의한다.
+- **완료 조건:** 동의 전에는 shadow 관찰조차 시작하지 않는 기본값이 확정된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T003 — 개별 사용자 옵트아웃 모델 결정
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P02-T002
+- **권장 변경 위치:** `specs/product-v2/nexa/user-opt-out.md`
+- **구체 산출물:** 특정 사용자의 메시지를 관찰·기억·학습에서 제외하는 식별 및 UX 흐름을 정한다.
+- **완료 조건:** 옵트아웃 후 신규 파생 데이터가 생성되지 않고 기존 파생 데이터 삭제가 추적된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T004 — 채널 제외 정책 정의
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P02-T003
+- **권장 변경 위치:** `specs/product-v2/nexa/channel-scope.md`
+- **구체 산출물:** 관리자가 카테고리·채널·스레드 단위로 NEXA 관찰과 발화를 분리 설정하도록 정책을 정의한다.
+- **완료 조건:** 관찰 금지 채널에서는 메타데이터도 최소화되며 발화 금지와 관찰 금지가 구분된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T005 — DM 처리 정책 확정
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P02-T004
+- **권장 변경 위치:** `specs/product-v2/nexa/dm-policy.md`
+- **구체 산출물:** DM을 완전 제외할지 별도 명시 동의를 요구할지 결정하고 공개 서버 맥락과 섞지 않도록 정의한다.
+- **완료 조건:** DM 정보가 길드 관계 상태나 학습 데이터로 묵시적으로 합쳐지지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T006 — 외부 GLM 전송 최소화 계약 작성
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P02-T005
+- **권장 변경 위치:** `specs/product-v2/nexa/external-model-data.md`
+- **구체 산출물:** GLM-5.1에 보낼 원문 범위, 가명화, 첨부 처리, 기억 요약, 금지 필드를 정의한다.
+- **완료 조건:** speech 요청 payload를 필드 단위로 감사할 수 있고 API 키·내부 ID는 포함되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T007 — 학습 데이터 적격성 규칙 작성
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P02-T006
+- **권장 변경 위치:** `specs/product-v2/nexa/training-eligibility.md`
+- **구체 산출물:** 명시적 옵트인, 연령/법적 제한, 삭제 상태, 채널 범위, 라이선스를 데이터셋 적격 조건으로 정의한다.
+- **완료 조건:** 단일 불충족 조건만 있어도 데이터셋 export에서 제외되는 규칙이 테스트 가능하다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T008 — 보존 등급과 TTL 결정
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P02-T007
+- **권장 변경 위치:** `specs/product-v2/nexa/retention-policy.md`
+- **구체 산출물:** 원본 이벤트, projection, 기억, 로그, 모델 산출물별 TTL과 영구 보존 금지 항목을 정한다.
+- **완료 조건:** TTL 종료 시 파생 데이터까지 삭제/무효화되는 책임자가 명시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T009 — 삭제 전파 요구사항 정의
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P02-T008
+- **권장 변경 위치:** `specs/product-v2/nexa/deletion-propagation.md`
+- **구체 산출물:** Discord 삭제, 사용자 요청, 길드 탈퇴, 동의 철회가 event store·memory·dataset에 미치는 효과를 정의한다.
+- **완료 조건:** 삭제된 원문의 hash/provenance만 남길지 여부가 법적 검토 상태와 함께 명확하다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T010 — 가명 식별자 규칙 정의
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P02-T009
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/global/crypto/**`, `specs/product-v2/nexa/pseudonymization.md`
+- **구체 산출물:** Discord snowflake를 용도별 scoped pseudonym으로 변환하고 키 회전 방식을 설계한다.
+- **완료 조건:** 서로 다른 길드 데이터가 기본적으로 같은 사용자로 연결되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T011 — 원문 저장 암호화 전략 ADR
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P02-T010
+- **권장 변경 위치:** `docs/adr/0012-message-content-encryption.md`
+- **구체 산출물:** DB 컬럼 암호화, 애플리케이션 암호화, 별도 blob 중 현재 운영환경에 맞는 방식을 선택한다.
+- **완료 조건:** 검색 요구와 삭제·키 회전·백업 복원 위험이 비교되고 평문 저장은 명시적 거절 또는 승인된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T012 — 애플리케이션 로그 redaction 계약 구현 계획
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P02-T011
+- **권장 변경 위치:** `docs/nexa/security/redaction-contract.md`
+- **구체 산출물:** 메시지 원문, 프롬프트, 응답, 사용자 ID를 로그 구조에서 금지하고 hash/correlation만 허용한다.
+- **완료 조건:** 금지 필드 목록이 정적 검사 또는 테스트에 연결된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T013 — 데이터 계보 레코드 계약 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P02-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/global/audit/**`, `specs/product-v2/nexa/data-lineage.md`
+- **구체 산출물:** 파생 기억·feature·학습 row가 source event ID와 transformation version을 가지도록 계약을 만든다.
+- **완료 조건:** 한 이벤트 삭제 시 영향을 받는 파생 레코드를 역추적할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T014 — 동의 상태 조회 포트 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P02-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/port/out/ConsentPolicyPort.kt`
+- **구체 산출물:** conversation 수집 경계가 guild/user/channel 동의 상태를 단일 포트로 조회하도록 만든다.
+- **완료 조건:** 도메인 모델은 guild adapter 또는 JPA entity를 직접 참조하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T015 — NormalizedDiscordEvent 공통 봉투 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P02-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/event/**`
+- **구체 산출물:** eventId, guildId, channelId, occurredAt, receivedAt, sourceSequence, privacyClass를 가진 sealed event envelope를 만든다.
+- **완료 조건:** 직렬화·동등성·순서 비교가 결정론적으로 테스트된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T016 — MessageCreated 정규화 이벤트 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P02-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/event/MessageCreated.kt`
+- **구체 산출물:** 작성자, content reference, reply, mentions, attachments metadata, thread 정보를 프레임워크 독립 타입으로 정의한다.
+- **완료 조건:** MESSAGE_CONTENT 미허용 상태와 content unavailable 상태를 null 하나로 뭉개지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T017 — MessageUpdated 정규화 이벤트 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P02-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/event/MessageUpdated.kt`
+- **구체 산출물:** 부분 업데이트와 이전 버전 부재를 표현하고 revision을 유지한다.
+- **완료 조건:** 동일 revision 중복과 역순 revision 처리 규칙이 테스트된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T018 — MessageDeleted 정규화 이벤트 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P02-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/event/MessageDeleted.kt`
+- **구체 산출물:** 삭제 시 원문이 없어도 provenance를 무효화할 수 있는 최소 키를 정의한다.
+- **완료 조건:** 삭제 이벤트가 content를 요구하지 않고 idempotent하게 적용된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T019 — Reaction 이벤트 계약 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P02-T018
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/event/ReactionChanged.kt`
+- **구체 산출물:** 추가·삭제·emoji identity·actor·target message를 정규화한다.
+- **완료 조건:** 일반/버스트 리액션 차이를 보존하고 중복 변경이 안전하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T020 — TypingStarted 이벤트 계약 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P02-T019
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/event/TypingStarted.kt`
+- **구체 산출물:** 작성자, 채널, 시작 시각, 만료 시각을 추론 가능한 신호로만 정의한다.
+- **완료 조건:** typing을 실제 메시지 내용이나 응답 의무로 오해하지 않는 주석과 테스트가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T021 — MemberIdentityChanged 이벤트 계약 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P02-T020
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/event/MemberIdentityChanged.kt`
+- **구체 산출물:** 닉네임·표시명 변경을 시간 유효 기억의 출처로 사용하도록 old/new 값을 정의한다.
+- **완료 조건:** 네가 준 코알라/닉네임 사례를 표현하고 순서가 뒤집혀도 현재값을 판정할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T022 — 동의 거부 이벤트 계약 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P02-T021
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/event/ConsentRevoked.kt`
+- **구체 산출물:** 옵트아웃·길드 비활성화·채널 제외를 내부 이벤트로 전달해 projection과 예약 행동을 중단하게 한다.
+- **완료 조건:** 동의 철회가 일반 메시지 이벤트보다 우선 적용되는 규칙이 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T023 — 동의·보존용 Flyway 스키마 설계
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P02-T022
+- **권장 변경 위치:** `central-server/src/main/resources/db/migration/V*_nexa_consent_and_lineage.sql`
+- **구체 산출물:** guild/channel/user consent, retention class, deletion request, lineage의 최소 테이블을 추가한다.
+- **완료 조건:** 새 DB와 기존 V49 DB 모두 마이그레이션되고 기본값이 비활성/비학습이다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T024 — 동의 경계 통합 테스트 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P02-T023
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/NexaConsentBoundaryTest.kt`
+- **구체 산출물:** 미동의·옵트아웃·제외 채널 이벤트가 저장/외부 전송 후보로 가지 않는 테스트를 작성한다.
+- **완료 조건:** 각 차단 이유가 감사 코드로 남고 원문은 로그에 나타나지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P02-T025 — P02 개인정보 설계 승인 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P02-T024
+- **권장 변경 위치:** `specs/product-v2/nexa/**`, `docs/adr/0011-nexa-consent.md`, `docs/adr/0012-message-content-encryption.md`, `central-server/src/test/**`
+- **구체 산출물:** 제품·법무·보안 관점에서 동의, 보존, 삭제, GLM 전송, 학습 적격성을 승인한다.
+- **완료 조건:** 미승인 항목이 하나라도 있으면 P03 실제 수집 구현을 시작하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P03 — Discord 이벤트 수집과 append-only event store
+
+**목표:** JDA 이벤트를 정규화해 순서·중복·재시작에 안전하게 저장하고, 이후 모든 사회행동 projection을 재생할 수 있는 기반을 만든다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/**, central-server/src/main/kotlin/com/discordassistant/central/conversation/**, central-server/src/main/resources/db/migration/**, central-server/src/test/**`
+
+**종료 게이트:** 수신 이벤트가 동의 경계를 통과한 뒤 append-only로 저장되고, 중복·역순·재연결·프로세스 재시작에도 동일한 projection 입력 스트림을 재생할 수 있어야 한다.
+
+### NEXA-P03-T001 — 기존 JDA 리스너와 샤딩 동작 조사
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P02-T025
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/**`, `docs/nexa/discord/jda-ingestion.md`
+- **구체 산출물:** 현재 MessageReceived, reaction, typing, member update 리스너와 스레드 모델을 조사한다.
+- **완료 조건:** 이벤트별 실행 스레드·순서 보장·예외 처리·재연결 동작이 코드 위치와 함께 기록된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T002 — DiscordEventMapper 포트 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/**`
+- **구체 산출물:** JDA 객체를 P02 정규화 이벤트로 변환하는 mapper 인터페이스와 구현 위치를 만든다.
+- **완료 조건:** 도메인 이벤트 생성 이후 JDA 객체 참조가 남지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T003 — MessageCreated JDA 매핑 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/JdaMessageEventMapper.kt`
+- **구체 산출물:** guild/channel/thread/reply/mention/attachment/content availability를 정확히 매핑한다.
+- **완료 조건:** 봇 메시지·웹훅·시스템 메시지의 source type이 구분된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T004 — 수정·삭제 JDA 매핑 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/**`
+- **구체 산출물:** message update/delete 이벤트를 revision-aware 정규화 이벤트로 매핑한다.
+- **완료 조건:** 캐시 미스 상태에서도 최소 키로 이벤트가 생성되고 예외로 유실되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T005 — reaction·typing·member update 매핑 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/**`
+- **구체 산출물:** reaction add/remove, typing start, nickname/display change를 정규화한다.
+- **완료 조건:** 지원되지 않는 필드는 explicit unavailable 상태로 기록된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T006 — 이벤트 ID 생성 규칙 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/event/EventIdentity.kt`
+- **구체 산출물:** Discord 고유 ID와 event type/revision을 조합한 안정적 idempotency key를 만든다.
+- **완료 조건:** 동일 Gateway 이벤트 재수신 시 같은 ID가 생성되고 다른 revision은 충돌하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T007 — 수신 envelope 메타데이터 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/ingest/**`
+- **구체 산출물:** receivedAt, shardId, sessionId, gatewaySequence, mapperVersion, consentSnapshot을 봉투에 추가한다.
+- **완료 조건:** Clock과 mapper version이 주입돼 재생 시 원인을 추적할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T008 — event store 도메인 포트 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/port/out/EventStorePort.kt`
+- **구체 산출물:** append, exists, streamByChannel, streamByRange, markRedacted 기능을 정의한다.
+- **완료 조건:** append-only 원칙을 깨는 update/delete 메서드가 노출되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T009 — event store JPA 엔티티 설계
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/**`
+- **구체 산출물:** 암호화 content payload와 검색 가능한 최소 메타데이터를 분리한 엔티티를 만든다.
+- **완료 조건:** domain model과 JPA entity가 분리되고 원문 toString이 금지된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T010 — event store Flyway 마이그레이션 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T009
+- **권장 변경 위치:** `central-server/src/main/resources/db/migration/V*_nexa_event_store.sql`
+- **구체 산출물:** event ID unique, channel ordering, occurred/received indexes, redaction 상태를 가진 테이블을 추가한다.
+- **완료 조건:** 중복 insert가 데이터 중복 없이 명시적 결과를 반환한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T011 — 이벤트 append 유스케이스 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T010
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/ingest/IngestDiscordEventService.kt`
+- **구체 산출물:** 동의 확인→정규화 검증→append→outbox 기록을 하나의 트랜잭션 경계로 구현한다.
+- **완료 조건:** outbox 없이 event만 저장되거나 반대 상태가 발생하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T012 — conversation outbox 스키마와 publisher 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/**`, `central-server/src/main/resources/db/migration/V*_nexa_conversation_outbox.sql`
+- **구체 산출물:** 저장된 이벤트를 projection worker에 전달하는 transactional outbox를 구현한다.
+- **완료 조건:** 재시도 시 같은 outbox record가 중복 side effect를 만들지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T013 — channelId 파티션 키 규칙 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/dispatch/**`
+- **구체 산출물:** 동일 채널 이벤트가 한 순서 스트림으로 처리되도록 partition key를 정의한다.
+- **완료 조건:** 스레드 채널과 부모 채널을 합칠지 분리할지 ADR 결정과 일치한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T014 — 채널 순서 번호 projector 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/dispatch/**`
+- **구체 산출물:** gateway sequence와 receivedAt을 이용해 내부 monotonically increasing context sequence를 부여한다.
+- **완료 조건:** 재시작 후에도 sequence가 역행하지 않고 충돌 시 결정 규칙이 테스트된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T015 — out-of-order 이벤트 버퍼 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/dispatch/OutOfOrderBuffer.kt`
+- **구체 산출물:** 짧은 허용 창 안의 역순 이벤트를 재정렬하고 만료 후 late event로 처리한다.
+- **완료 조건:** 고정 Clock fixture로 경계 시각과 최대 버퍼 크기가 테스트된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T016 — 중복 이벤트 dedup 처리 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/dispatch/**`
+- **구체 산출물:** event ID 기준으로 projection 적용 여부를 기록한다.
+- **완료 조건:** 동일 fixture를 10회 재생해도 projection input 수가 한 번과 같다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T017 — projection worker 재시도 정책 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/dispatch/**`
+- **구체 산출물:** 일시 오류와 영구 오류를 분류하고 bounded retry/backoff를 적용한다.
+- **완료 조건:** Clock 기반 테스트에서 retry 횟수와 간격이 정확하며 무한 루프가 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T018 — dead-letter와 운영 재처리 도구 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/dev/**`, `central-server/src/main/kotlin/com/discordassistant/central/conversation/**`
+- **구체 산출물:** 영구 실패 이벤트를 격리하고 관리자가 원인 확인 후 재처리할 내부 도구를 만든다.
+- **완료 조건:** 원문을 로그에 출력하지 않고 event ID로만 조사할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T019 — 내부 replay API 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T018
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/replay/**`
+- **구체 산출물:** guild/channel/time range와 projection version을 지정해 새 projection으로 재생하는 유스케이스를 만든다.
+- **완료 조건:** 운영 Discord 전송 side effect가 replay 중 절대 실행되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T020 — 재연결·세션 경계 이벤트 기록
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T019
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/**`
+- **구체 산출물:** Gateway disconnect/resume/new session을 메타 이벤트로 기록해 sequence gap을 추적한다.
+- **완료 조건:** 세션 변경 후 sequence 재사용이 내부 순서를 깨지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T021 — Discord intent 설정 검증 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T020
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/**`, `central-server/src/test/**`
+- **구체 산출물:** MESSAGE_CONTENT, typing, reaction 관련 intent와 권한을 시작 시 진단한다.
+- **완료 조건:** 필수 intent 부재 시 조용히 오작동하지 않고 기능 상태가 DEGRADED로 노출된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T022 — event store redaction 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T021
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/privacy/**`
+- **구체 산출물:** 삭제/옵트아웃 시 암호화 payload를 무효화하고 provenance와 처리 증거만 남기는 유스케이스를 만든다.
+- **완료 조건:** redacted 이벤트는 replay에서 content unavailable로 일관되게 보인다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T023 — JDA fake 기반 ingestion 통합 테스트
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T022
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/DiscordEventIngestionIntegrationTest.kt`, `test-fixtures/nexa/**`
+- **구체 산출물:** 메시지 조각, 수정, 삭제, 리액션, typing, 재연결 fixture를 end-to-end 저장한다.
+- **완료 조건:** 중복·역순·미동의 케이스가 DB 상태와 outbox 결과로 검증된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T024 — event store 부하·보존 크기 측정
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P03-T023
+- **권장 변경 위치:** `scripts/**`, `docs/nexa/experiments/EXP-event-store-capacity.md`
+- **구체 산출물:** 현실적인 채팅률로 24시간 이벤트를 생성해 DB 크기, index 비용, 처리 지연을 측정한다.
+- **완료 조건:** 용량 추정과 TTL/파티셔닝 필요 시점이 수치로 기록된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P03-T025 — P03 24시간 shadow 수집 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P03-T024
+- **권장 변경 위치:** `docs/nexa/experiments/**`, `central-server/src/test/**`, `central-server/src/main/kotlin/**`
+- **구체 산출물:** 허가된 테스트 서버에서 발화 없이 24시간 수집·재생하고 유실·중복·순서·삭제를 감사한다.
+- **완료 조건:** 유실률과 중복 side effect가 0이며 privacy 승인 범위 밖 데이터가 하나도 없을 때만 통과한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P04 — 인간 발화 버스트 구성
+
+**목표:** Discord 메시지 한 줄을 대화 턴으로 취급하지 않고, 동일 사용자의 연속 조각을 하나의 발화 버스트로 결정론적으로 구성한다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/**, central-server/src/test/**, test-fixtures/nexa/bursts/**, docs/nexa/conversation/**`
+
+**종료 게이트:** 네가 제시한 짧은 연속 메시지 사례를 한 버스트로 묶고, 다른 화자의 개입·reply·thread·수정·삭제를 정확히 반영하며 replay 결과가 동일해야 한다.
+
+### NEXA-P04-T001 — MessageFragment 도메인 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P03-T025
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/burst/MessageFragment.kt`
+- **구체 산출물:** 버스트 입력에 필요한 message ID, author, content state, timestamps, reply/attachment/type을 불변 모델로 만든다.
+- **완료 조건:** JDA/JPA 의존 없이 동등성·정렬 규칙이 테스트된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T002 — UtteranceBurst 식별자와 aggregate 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/burst/**`
+- **구체 산출물:** 여러 fragment, 시작/종료, author, channel, thread, status를 가진 aggregate를 만든다.
+- **완료 조건:** OPEN/FINALIZED/CORRECTED 상태 전이가 불법 순서를 거부한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T003 — 작성자별 BurstSession 상태 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/burst/BurstSession.kt`
+- **구체 산출물:** 채널 내 작성자별 진행 중 버스트와 마지막 fragment 시각을 추적한다.
+- **완료 조건:** 서로 다른 채널·thread의 세션이 섞이지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T004 — 고정 간격 baseline segmenter 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/burst/FixedGapBurstSegmenter.kt`
+- **구체 산출물:** 설정된 시간 간격 이내 동일 작성자 메시지를 묶는 단순 기준선을 만든다.
+- **완료 조건:** 경계 직전/직후 fixture가 예상대로 분리된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T005 — 채널별 burst gap 설정 모델 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/channelai/**`, `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/port/out/**`
+- **구체 산출물:** 서버 문화 학습 전 사용할 최소/최대 gap과 기본값을 설정 포트로 제공한다.
+- **완료 조건:** 설정 부재 시 안전한 기본값이 적용되고 런타임 중 변경은 새 fragment부터 반영된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T006 — 동적 gap feature 계산기 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/burst/**`
+- **구체 산출물:** 작성자 최근 간격, 채널 tempo, typing 신호를 feature로 계산하되 결정은 baseline 규칙으로 유지한다.
+- **완료 조건:** feature 값이 미래 이벤트를 참조하지 않고 replay에서 동일하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T007 — 다른 작성자 개입 종료 규칙 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/burst/**`
+- **구체 산출물:** 다른 사람이 실제 메시지를 보내면 기존 작성자의 OPEN 버스트를 종료 또는 보류하는 규칙을 구현한다.
+- **완료 조건:** 이모지/시스템 메시지는 설정된 type 규칙에 따라 종료 여부가 다르다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T008 — reply 대상 변경 경계 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/burst/**`
+- **구체 산출물:** 같은 작성자라도 reply target이 바뀌면 별도 버스트로 분리한다.
+- **완료 조건:** 동일 reply target의 짧은 연속 메시지는 유지된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T009 — thread 경계와 부모 채널 경계 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/burst/**`
+- **구체 산출물:** 스레드 메시지와 부모 채널 메시지를 같은 버스트로 합치지 않는다.
+- **완료 조건:** thread 이동 fixture에서 잘못된 병합이 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T010 — typing 신호 기반 종료 연장 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T009
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/burst/**`
+- **구체 산출물:** 작성자가 계속 typing 중이면 제한된 범위에서 finalize를 연기한다.
+- **완료 조건:** typing 이벤트 유실 시 무한 연기되지 않고 hard deadline이 작동한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T011 — 한국어 짧은 조각 특징 추출
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T010
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/burst/KoreanFragmentFeatures.kt`
+- **구체 산출물:** 종결어미 부재, 자음축약, ㅃㄹ, ㅋㅋ, 문장부호를 버스트 feature로 추출한다.
+- **완료 조건:** 언어 규칙이 final 결정을 단독으로 강제하지 않고 테스트 corpus에서 값만 검증된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T012 — emoji·스티커·attachment-only fragment 처리
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/burst/**`
+- **구체 산출물:** 텍스트 없는 반응성 메시지를 버스트의 일부 또는 독립 행동으로 분류한다.
+- **완료 조건:** attachment metadata만으로 원문 파일을 다운로드하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T013 — 봇·웹훅 메시지 분류 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/burst/**`
+- **구체 산출물:** NEXA, 다른 봇, webhook 메시지를 인간 버스트 학습 통계에서 분리한다.
+- **완료 조건:** 봇 메시지가 인간 평균 버스트 길이를 오염시키지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T014 — MessageUpdated 버스트 교정 처리
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/burst/**`
+- **구체 산출물:** finalize 전 수정은 fragment를 갱신하고 finalize 후 수정은 CORRECTED projection event를 만든다.
+- **완료 조건:** 과거 burst ID가 바뀌지 않고 revision provenance가 남는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T015 — MessageDeleted 버스트 교정 처리
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/burst/**`
+- **구체 산출물:** fragment 삭제가 빈 버스트·부분 버스트·이미 학습 export된 버스트에 미치는 효과를 구현한다.
+- **완료 조건:** 삭제된 content가 combined text에 남지 않고 lineage 삭제가 발생한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T016 — late fragment 처리 정책 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/burst/**`
+- **구체 산출물:** 허용 창 뒤 도착한 과거 메시지를 기존 버스트 교정 또는 독립 late burst로 처리한다.
+- **완료 조건:** 결정이 occurredAt/receivedAt 규칙에 따라 결정론적이다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T017 — BurstFinalized 도메인 이벤트 발행
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/event/BurstFinalized.kt`
+- **구체 산출물:** 최종 버스트, fragment IDs, segmentation version, 종료 이유를 다음 projection에 전달한다.
+- **완료 조건:** 동일 버스트에 finalize 이벤트가 한 번만 발행된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T018 — 버스트 projection persistence 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/burst/**`, `central-server/src/main/resources/db/migration/V*_nexa_bursts.sql`
+- **구체 산출물:** 버스트와 fragment 연결, revision, segmentation version을 저장한다.
+- **완료 조건:** event store를 재생해 projection을 삭제·재구축할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T019 — 버스트 finalize 스케줄러 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T018
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/application/burst/**`
+- **구체 산출물:** Clock 기반 deadline queue로 OPEN 버스트를 finalize한다.
+- **완료 조건:** 실제 sleep 없이 시간 이동 테스트가 가능하고 재시작 후 deadline을 복구한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T020 — 닉네임 대화 golden fixture 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T019
+- **권장 변경 위치:** `test-fixtures/nexa/bursts/nickname-fragments.yaml`
+- **구체 산출물:** 사용자가 제시한 닉네임/코알라 대화를 타임스탬프와 화자별 버스트 정답으로 기록한다.
+- **완료 조건:** 첫 네 줄이 한 버스트이며 후속 화자 메시지는 별도 버스트로 정확히 재생된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T021 — 버스트 property-based 테스트 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T020
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/BurstSegmenterPropertyTest.kt`
+- **구체 산출물:** 중복, 순서 교란, 임의 gap, 수정/삭제 조합에서 불변식을 검사한다.
+- **완료 조건:** 같은 이벤트 multiset과 정렬 규칙으로 항상 동일 projection이 나온다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T022 — 버스트 평가 데이터셋 형식 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P04-T021
+- **권장 변경 위치:** `docs/nexa/conversation/burst-evaluation.md`, `test-fixtures/nexa/bursts/labels/**`
+- **구체 산출물:** human-labeled fragment→burst boundary 형식과 annotator 지침을 만든다.
+- **완료 조건:** 경계 정답과 애매함 라벨을 분리할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T023 — baseline 버스트 정밀도·재현율 측정
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P04-T022
+- **권장 변경 위치:** `scripts/evaluate-burst-segmentation.py`, `docs/nexa/experiments/EXP-burst-baseline.md`
+- **구체 산출물:** 고정 gap과 동적 feature 규칙을 라벨 데이터에서 비교한다.
+- **완료 조건:** boundary F1, over-merge, over-split, 언어/채널별 오류가 보고된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T024 — 버스트 관측 메트릭 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T023
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/global/observability/**`
+- **구체 산출물:** 평균 fragment 수, gap, finalize reason, correction rate를 원문 없이 기록한다.
+- **완료 조건:** guild/channel 고카디널리티 ID를 metric label로 직접 노출하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P04-T025 — P04 버스트 정확도 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P04-T024
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-burst-baseline.md`, `central-server/src/test/**`, `test-fixtures/nexa/bursts/**`
+- **구체 산출물:** 네 사례와 옵트인 실제 샘플에서 over-split/over-merge를 독립 검토한다.
+- **완료 조건:** 합의한 F1 기준과 critical fixture 100%를 충족하지 못하면 P05에서 message 단위 판단을 금지한 채 개선 작업을 추가한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P05 — 대화 스레드·대상·장면 projection
+
+**목표:** 발화 버스트를 누가 누구에게 어떤 흐름에서 말했는지 연결하고, 정책이 원문 전체를 매번 재해석하지 않아도 되는 버전된 대화 장면을 만든다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/**, central-server/src/test/**, test-fixtures/nexa/scenes/**, docs/nexa/conversation/**`
+
+**종료 게이트:** reply·mention·시간 인접성·주제 전환으로 스레드와 대상 확률을 만들고, 매 장면에 contextVersion을 부여해 예약 행동의 stale 여부를 판단할 수 있어야 한다.
+
+### NEXA-P05-T001 — ConversationThreadId 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P04-T025
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/thread/**`
+- **구체 산출물:** Discord thread ID와 논리적 대화 스레드 ID를 구분하는 타입을 만든다.
+- **완료 조건:** 부모 채널 내 여러 논리 대화가 같은 Discord channel ID를 공유할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T002 — Burst reply 그래프 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/thread/ReplyGraph.kt`
+- **구체 산출물:** message reply를 burst 간 directed edge로 승격한다.
+- **완료 조건:** 삭제된 target도 tombstone node로 유지해 그래프 연결이 깨지지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T003 — mention 그래프 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/thread/MentionGraph.kt`
+- **구체 산출물:** 직접 mention, 역할 mention, everyone mention을 서로 다른 edge로 표현한다.
+- **완료 조건:** 직접 addressee 후보와 단순 알림 mention을 구분할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T004 — 시간 인접성 edge 계산 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/thread/**`
+- **구체 산출물:** 발화 간 시간·화자 교대·채널 tempo로 약한 연결 점수를 계산한다.
+- **완료 조건:** 미래 burst를 참조하지 않고 설정된 최대 창 밖 edge를 만들지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T005 — 직접 reply 대상 resolver 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/addressee/**`
+- **구체 산출물:** Discord reply가 있으면 target member/message에 높은 확률을 부여한다.
+- **완료 조건:** self-reply와 삭제된 target의 fallback이 명시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T006 — 직접 mention 대상 resolver 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/addressee/**`
+- **구체 산출물:** 본문 mention과 nickname 문자열 호출을 별도 feature로 처리한다.
+- **완료 조건:** 문자열 이름 일치만으로 확정 target을 만들지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T007 — 인접 턴 대상 resolver 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/addressee/**`
+- **구체 산출물:** reply/mention이 없을 때 최근 화자·질문 형태·교대 패턴으로 target distribution을 계산한다.
+- **완료 조건:** 단일 정답 대신 none 포함 확률분포를 반환한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T008 — 그룹 전체 발화 판정 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/addressee/**`
+- **구체 산출물:** 공지·일반 질문·다중 mention을 group-addressed로 판정하는 feature를 추가한다.
+- **완료 조건:** 모호한 경우 특정 사용자에게 과도하게 귀속하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T009 — AddresseeDistribution 값 객체 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/addressee/**`
+- **구체 산출물:** 후보 member/message와 확률, resolver version, evidence codes를 담는 객체를 만든다.
+- **완료 조건:** 확률 합과 최소/최대 값이 검증되고 evidence에 원문이 저장되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T010 — 논리 스레드 생성 baseline 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T009
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/thread/**`
+- **구체 산출물:** reply edge 우선, mention/adjacency 보조로 burst를 논리 스레드에 배치한다.
+- **완료 조건:** 동시에 진행되는 두 대화 fixture가 하나로 합쳐지지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T011 — 스레드 merge 규칙 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T010
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/thread/**`
+- **구체 산출물:** 명시적 reply로 두 논리 스레드가 연결될 때 merge event를 만든다.
+- **완료 조건:** 기존 ID와 과거 decision provenance가 보존된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T012 — 스레드 split 교정 규칙 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/thread/**`
+- **구체 산출물:** 잘못 합쳐진 스레드를 새 projection version에서 분리할 수 있게 한다.
+- **완료 조건:** event store 재생 없이 임의 mutation하지 않고 correction event가 남는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T013 — 주제 구간 baseline 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/topic/**`
+- **구체 산출물:** 임베딩 없이 reply graph, 시간 gap, 키워드 변화로 topic segment 후보를 만든다.
+- **완료 조건:** 이 단계에서 GLM 호출이 발생하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T014 — SceneParticipant 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/scene/**`
+- **구체 산출물:** 최근 참여자, 마지막 발화, open burst, mention 상태를 요약한다.
+- **완료 조건:** 옵트아웃 사용자의 content-derived feature는 포함되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T015 — ConversationTempo 계산 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/scene/**`
+- **구체 산출물:** 최근 burst rate, median gap, active speaker count, overlap을 계산한다.
+- **완료 조건:** 조용한 채널과 빠른 난장판 fixture의 값이 구분된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T016 — 현재 대화 초점 계산 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/service/scene/**`
+- **구체 산출물:** 활성 thread, 최근 target, pending burst를 바탕으로 focus thread distribution을 만든다.
+- **완료 조건:** 활성 스레드가 없음을 정상 상태로 표현한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T017 — ConversationScene aggregate 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/scene/ConversationScene.kt`
+- **구체 산출물:** 최근 burst 요약, graph refs, participants, tempo, focus, contextVersion을 가진 aggregate를 만든다.
+- **완료 조건:** 원문 전체를 복제하지 않고 event/burst ID로 provenance를 유지한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T018 — contextVersion 증가 규칙 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/model/scene/ContextVersion.kt`
+- **구체 산출물:** 정책 판단을 무효화할 변화와 단순 메타 변화의 version 증가 규칙을 정의한다.
+- **완료 조건:** 사람이 답함·주제 전환·삭제는 version을 올리고 metric 갱신만으로는 올리지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T019 — SceneUpdated 이벤트 발행 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T018
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/domain/event/SceneUpdated.kt`
+- **구체 산출물:** 변경 유형, 이전/새 contextVersion, 영향 thread를 전달한다.
+- **완료 조건:** 동일 입력 재생에서 이벤트 순서와 version이 동일하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T020 — scene projection persistence 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T019
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/scene/**`, `central-server/src/main/resources/db/migration/V*_nexa_scenes.sql`
+- **구체 산출물:** 현재 snapshot과 version history의 최소 메타데이터를 저장한다.
+- **완료 조건:** snapshot 삭제 후 event store로 재구축할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T021 — addressee 라벨 fixture 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T020
+- **권장 변경 위치:** `test-fixtures/nexa/scenes/addressee-labels.yaml`
+- **구체 산출물:** 직접 reply, nickname 호출, 그룹 질문, 모호한 잡담, self-talk 사례를 라벨링한다.
+- **완료 조건:** none/group/특정 사용자 정답과 ambiguity를 함께 표현한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T022 — 동시 대화 scene fixture 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T021
+- **권장 변경 위치:** `test-fixtures/nexa/scenes/concurrent-threads.yaml`
+- **구체 산출물:** 한 채널에서 두 쌍이 다른 주제로 대화하는 시나리오를 작성한다.
+- **완료 조건:** 정책 context가 대상 스레드만 선택할 수 있도록 두 thread가 분리된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T023 — thread·addressee 평가 스크립트 작성
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P05-T022
+- **권장 변경 위치:** `scripts/evaluate-conversation-scene.py`, `docs/nexa/experiments/EXP-scene-baseline.md`
+- **구체 산출물:** edge F1, target top-k accuracy, thread clustering score, correction rate를 측정한다.
+- **완료 조건:** 전체 평균뿐 아니라 reply/mention/무표식 상황별 오류가 나온다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T024 — scene replay 결정론 테스트 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P05-T023
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/ConversationSceneReplayTest.kt`
+- **구체 산출물:** 중복·역순·수정·삭제 이벤트를 여러 순서로 넣어 canonical replay 결과를 비교한다.
+- **완료 조건:** 같은 canonical event stream은 byte-equivalent snapshot을 만든다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P05-T025 — P05 장면 품질 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P05-T024
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-scene-baseline.md`, `test-fixtures/nexa/scenes/**`, `central-server/src/test/**`
+- **구체 산출물:** 실제 옵트인 샘플과 adversarial 동시 대화에서 target/thread 오류를 검토한다.
+- **완료 조건:** 예약 취소에 사용할 contextVersion 신뢰도가 합의 기준을 충족하고 치명적 cross-thread 오답이 없을 때 통과한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P06 — 관찰 가능한 사회 상태와 관계 projection
+
+**목표:** 사람의 내면을 단정하지 않고 Discord에서 관찰 가능한 상호작용만으로 NEXA 자체 상태, 채널 문화, 사용자별 관계 상태를 지속적으로 갱신한다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/participation/**, central-server/src/main/kotlin/com/discordassistant/central/socialmemory/**, central-server/src/main/kotlin/com/discordassistant/central/ainetwork/**, central-server/src/main/resources/db/migration/**, central-server/src/test/**`
+
+**종료 게이트:** 관계 상태가 출처·감쇠·삭제 가능성을 가지며 ainetwork와 중복되지 않고, replay로 동일하게 재구축되어야 한다.
+
+### NEXA-P06-T001 — 사회 상태의 관찰 가능성 원칙 문서화
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P05-T025
+- **권장 변경 위치:** `docs/nexa/social-state/observable-state-policy.md`
+- **구체 산출물:** 기분·성격·정치성향 같은 민감 추론을 금지하고 응답률·상호작용 빈도처럼 관찰 가능한 feature만 허용한다.
+- **완료 조건:** 허용/금지 feature 예시와 코드 리뷰 체크리스트가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T002 — AgentParticipationState 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/state/**`
+- **구체 산출물:** 최근 발화 포화도, 마지막 행동, pending action 수, 채널별 참여 기록을 가진다.
+- **완료 조건:** 감정이라고 사용자에게 표현되지 않고 Clock 기반 갱신이 가능하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T003 — ChannelCultureState 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/state/**`
+- **구체 산출물:** human burst rate, burst size, reply delay, reaction ratio, mention response ratio를 저장한다.
+- **완료 조건:** 봇 발화와 옵트아웃 데이터가 통계에서 제외된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T004 — MemberInteractionState 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/model/relationship/**`
+- **구체 산출물:** NEXA와 특정 사용자 사이의 관찰된 발화·리액션·응답 지연 통계를 가진다.
+- **완료 조건:** 전역 사용자 프로필이 아니라 guild-scoped key를 사용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T005 — familiarity 지표 정의·구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/service/relationship/**`
+- **구체 산출물:** 서로 교환한 버스트 수와 최근성을 기반으로 bounded familiarity를 계산한다.
+- **완료 조건:** 단순 서버 체류 기간만으로 친밀함을 높이지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T006 — interaction reciprocity 지표 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/service/relationship/**`
+- **구체 산출물:** NEXA가 말한 뒤 상대가 반응한 비율과 상대 호출에 NEXA가 반응한 비율을 분리한다.
+- **완료 조건:** 분모가 작은 초기 상태에 smoothing이 적용된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T007 — observed banter acceptance 지표 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P06-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/service/relationship/**`
+- **구체 산출물:** 장난성 social act 후 긍정적 reply/reaction 또는 중단 신호를 관찰값으로 누적한다.
+- **완료 조건:** 이를 사용자의 성격으로 명명하지 않고 낮은 표본에서는 정책에 강하게 쓰지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T008 — response expectation 지표 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/service/relationship/**`
+- **구체 산출물:** 직접 호출·질문 후 해당 사용자가 통상 기다리는 시간과 재호출 패턴을 측정한다.
+- **완료 조건:** NEXA 응답 의무가 아니라 timing feature로만 사용된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T009 — topic affinity 지표 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P06-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/service/relationship/**`
+- **구체 산출물:** 명시적 주제 tag와 상호작용 빈도로 guild-scoped 관심도를 계산한다.
+- **완료 조건:** 민감 주제 자동 추론과 원문 장기 저장을 금지한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T010 — 최근 상호작용 결과 코드 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T009
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/model/relationship/InteractionOutcome.kt`
+- **구체 산출물:** continued, ignored, reacted, corrected, complained, deleted 같은 관찰 결과를 enum/값 객체로 정의한다.
+- **완료 조건:** 자유 텍스트 심리 판정 없이 source event IDs를 가진다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T011 — speaking saturation 계산 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T010
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/service/state/**`
+- **구체 산출물:** 최근 시간 창의 NEXA burst 수와 인간 burst 대비 점유율로 포화도를 계산한다.
+- **완료 조건:** 사람 평균 메시지 수가 아니라 burst 수를 사용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T012 — social energy 잠재 상태 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/state/SocialEnergy.kt`
+- **구체 산출물:** 정책 다양성을 위한 bounded latent state와 시간 감쇠를 구현한다.
+- **완료 조건:** 실제 감정이라고 저장·노출하지 않고 seed로 replay 가능하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T013 — current interest 상태 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/state/TopicInterest.kt`
+- **구체 산출물:** identity kernel의 관심 tag와 현재 scene 주제 적합도를 결합한다.
+- **완료 조건:** GLM의 자유 텍스트 자기설명을 상태로 저장하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T014 — response confidence 상태 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/state/ResponseConfidence.kt`
+- **구체 산출물:** 대화 대상 해석, 사실성, 기억 신뢰도의 결합 feature를 만든다.
+- **완료 조건:** 낮은 confidence가 반드시 침묵은 아니며 정책 입력으로만 제공된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T015 — unresolved interaction 상태 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/model/relationship/UnresolvedInteraction.kt`
+- **구체 산출물:** NEXA가 말하다 취소했거나 상대 질문이 열린 상태를 expiry와 함께 보존한다.
+- **완료 조건:** 영구 미해결 상태가 쌓이지 않고 만료/해결 이벤트가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T016 — 사회 상태 update event 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/event/**`, `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/event/**`
+- **구체 산출물:** SceneUpdated, NEXA action, human outcome으로 상태를 갱신하는 이벤트를 정의한다.
+- **완료 조건:** 각 update가 idempotency key와 projection version을 가진다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T017 — Clock 기반 감쇠 함수 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/shared/**`, `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/**`
+- **구체 산출물:** familiarity/topic/outcome 지표의 반감기와 최소값을 타입 안전하게 구현한다.
+- **완료 조건:** 시스템 시각 직접 접근 없이 시간 이동 테스트가 가능하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T018 — 사회 상태 persistence 스키마 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T017
+- **권장 변경 위치:** `central-server/src/main/resources/db/migration/V*_nexa_social_state.sql`, `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/persistence/**`
+- **구체 산출물:** agent/channel/member state snapshot과 version을 저장한다.
+- **완료 조건:** 원본 content 없이 재생용 source watermark를 보존한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T019 — 상태 snapshot 재구축 유스케이스 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T018
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/application/rebuild/**`
+- **구체 산출물:** event stream에서 특정 guild의 관계·문화 상태를 다시 계산한다.
+- **완료 조건:** 현재 snapshot 삭제 후 같은 hash의 상태를 얻는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T020 — ainetwork 조회 브리지 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T019
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/ainetwork/**`
+- **구체 산출물:** ADR에서 허용한 니아 identity/기존 affinity를 port를 통해 읽고 명시적 mapping을 한다.
+- **완료 조건:** socialmemory domain이 ainetwork entity를 import하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T021 — ainetwork 중복 쓰기 방지 테스트
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T020
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/AiNetworkSocialMemoryBoundaryTest.kt`
+- **구체 산출물:** 같은 개념을 두 컨텍스트가 동시에 업데이트하지 않는지 아키텍처·통합 테스트를 작성한다.
+- **완료 조건:** 한 이벤트가 호감도/관계 상태에 중복 side effect를 만들지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T022 — 관리자용 상태 설명 DTO 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T021
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/**`
+- **구체 산출물:** 원문·민감 추론 없이 채널 문화와 NEXA 포화도를 설명하는 read-only DTO를 만든다.
+- **완료 조건:** 숫자의 의미와 표본 부족 상태가 UI에 드러난다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T023 — 사용자 삭제·reset 처리 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T022
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/application/privacy/**`
+- **구체 산출물:** 옵트아웃/삭제 시 member state와 source links를 제거 또는 익명화한다.
+- **완료 조건:** 삭제 후 정책 feature builder가 해당 사용자의 과거 상태를 읽지 못한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T024 — 사회 상태 replay·감쇠 테스트 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P06-T023
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/SocialStateReplayTest.kt`
+- **구체 산출물:** 같은 이벤트와 Clock progression이 같은 상태를 만들고 restart 후 감쇠가 연속적인지 검증한다.
+- **완료 조건:** seed·Clock·projection version이 기록돼 flakiness가 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P06-T025 — P06 사회 상태 윤리·정확성 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P06-T024
+- **권장 변경 위치:** `docs/nexa/social-state/**`, `central-server/src/test/**`, `docs/adr/0010-ainetwork-socialmemory-boundary.md`
+- **구체 산출물:** 민감 추론, 중복 소유권, 작은 표본 과신, 삭제 누락을 독립 감사한다.
+- **완료 조건:** 금지 feature가 없고 ainetwork 경계와 replay가 검증돼야 통과한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P07 — 시간 유효성이 있는 사회적 기억
+
+**목표:** 벡터 검색 하나로 과거를 덮어쓰지 않고, 출처·유효 기간·충돌·삭제를 보존하는 append-only 사회적 기억을 구축한다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/**, central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/**, central-server/src/main/resources/db/migration/**, central-server/src/test/**, docs/nexa/memory/**`
+
+**종료 게이트:** 현재 유효한 기억만 speech와 participation에 제공되고, 닉네임 변경·농담·삭제·모순 사례에서 stale memory 사용이 차단되어야 한다.
+
+### NEXA-P07-T001 — 기억 유형 taxonomy 확정
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P06-T025
+- **권장 변경 위치:** `docs/nexa/memory/taxonomy.md`
+- **구체 산출물:** episodic, temporal fact, relationship, pending intent, identity kernel을 구분한다.
+- **완료 조건:** knowledge RAG 문서와 사회적 기억의 소유권이 겹치지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T002 — MemorySource provenance 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/model/source/**`
+- **구체 산출물:** source event IDs, extraction version, consent snapshot, createdAt을 가진다.
+- **완료 조건:** 출처 없는 기억 저장을 생성자 수준에서 거부한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T003 — EpisodicMemory aggregate 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/model/episodic/**`
+- **구체 산출물:** 특정 시점 사건 요약, 참여자 scope, source bursts, expiry를 보존한다.
+- **완료 조건:** 원문 복사 대신 구조화 요약과 provenance를 사용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T004 — TemporalFact aggregate 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/model/fact/**`
+- **구체 산출물:** subject/predicate/object, validFrom, validTo, confidence, status를 가진다.
+- **완료 조건:** validTo가 없는 현재 사실과 종료된 과거 사실을 동시에 보존한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T005 — RelationshipMemory aggregate 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/model/relationshipmemory/**`
+- **구체 산출물:** 특정 상호작용 사건과 관찰 결과를 관계 상태와 분리해 저장한다.
+- **완료 조건:** 성격 단정 대신 사건 기반 문장만 허용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T006 — PendingIntent aggregate 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/model/intent/**`
+- **구체 산출물:** topic, target, socialAct, activation, urgency, source, expiry를 가진다.
+- **완료 조건:** 자연어 chain-of-thought를 저장하지 않고 구조화 필드만 가진다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T007 — IdentityKernel 조회 브리지 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/globalpromptset/**`
+- **구체 산출물:** globalpromptset의 승인된 정체성·관심 tag를 immutable snapshot으로 조회한다.
+- **완료 조건:** 런타임 대화가 identity kernel을 자동 덮어쓰지 못한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T008 — 기억 supersession 규칙 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/service/fact/**`
+- **구체 산출물:** 새 temporal fact가 이전 fact를 대체할 때 validTo와 supersedes edge를 설정한다.
+- **완료 조건:** 이전 fact를 물리 삭제하지 않고 현재 조회에서 제외한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T009 — 모순 기억 판정 규칙 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/service/fact/**`
+- **구체 산출물:** 동일 subject/predicate의 상충 object를 감지해 CONFLICTED 상태로 둔다.
+- **완료 조건:** 근거가 부족한 경우 임의로 한쪽을 현재 사실로 승격하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T010 — 기억 confidence 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T009
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/model/Confidence.kt`
+- **구체 산출물:** 명시적 Discord 이벤트, 반복 언급, GLM 추출 등 출처별 기본 신뢰와 감쇠를 표현한다.
+- **완료 조건:** GLM 한 번의 추출이 확정 사실이 되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T011 — 기억 visibility scope 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T010
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/model/VisibilityScope.kt`
+- **구체 산출물:** guild, channel, thread, private scope를 타입으로 정의한다.
+- **완료 조건:** 한 서버 기억이 다른 서버 prompt에 노출되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T012 — 기억 retention·expiry 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/service/retention/**`
+- **구체 산출물:** 기억 유형별 TTL과 만료 event를 Clock 기반으로 적용한다.
+- **완료 조건:** 만료된 기억이 retrieval에 포함되지 않고 lineage는 정책대로 처리된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T013 — 삭제 cascade 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/application/privacy/**`
+- **구체 산출물:** source event redaction이 관련 기억의 INVALIDATED 또는 삭제로 이어지게 한다.
+- **완료 조건:** 부분 출처가 남은 기억의 confidence 재계산 규칙이 테스트된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T014 — 비동기 기억 후보 추출 요청 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/application/extraction/**`
+- **구체 산출물:** finalized scene에서 어떤 기억 후보를 추출할지 요청하고 speech 경로와 분리한다.
+- **완료 조건:** 추출 실패가 Discord 응답 시간을 막지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T015 — GLM 기반 기억 후보 추출 adapter 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/extraction/**`
+- **구체 산출물:** routing을 통해 구조화 후보를 생성하되 사실 확정 권한은 갖지 않는다.
+- **완료 조건:** payload 최소화·timeout·schema validation이 적용된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T016 — 기억 후보 검증·승격 서비스 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/application/consolidation/**`
+- **구체 산출물:** 후보를 provenance, confidence, conflict, consent로 검증해 저장/보류/폐기한다.
+- **완료 조건:** 모든 승격 결과에 reason code가 남는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T017 — 주기적 memory consolidation job 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/application/consolidation/**`
+- **구체 산출물:** 작은 batch로 후보를 처리하고 lease와 retry를 적용한다.
+- **완료 조건:** 재시작·중복 실행에도 같은 기억이 중복 생성되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T018 — 현재 유효 기억 조회 포트 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/application/port/in/**`
+- **구체 산출물:** asOf, scope, subject, type, confidence threshold를 받는 조회 API를 만든다.
+- **완료 조건:** 현재 조회와 과거 시점 조회가 서로 다른 결과를 낼 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T019 — 기억 retrieval ranking 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T018
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/service/retrieval/**`
+- **구체 산출물:** validity, confidence, recency, relation, topic relevance를 결합해 점수를 계산한다.
+- **완료 조건:** expired/conflicted/deleted 기억은 점수와 무관하게 필터링된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T020 — retrieval 다양성·중복 억제 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T019
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/service/retrieval/**`
+- **구체 산출물:** 같은 사건의 유사 기억이 prompt를 점령하지 않도록 source cluster별 제한을 둔다.
+- **완료 조건:** top-k가 하나의 오래된 사건 복제본으로 채워지지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T021 — 닉네임 변경 temporal fact 처리 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T020
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/NicknameTemporalMemoryTest.kt`, `test-fixtures/nexa/memory/nickname-change.yaml`
+- **구체 산출물:** 코알라→다른 닉네임 변경에서 현재/과거 질의와 supersession을 검증한다.
+- **완료 조건:** 현재 prompt에는 최신 닉네임만 기본 제공되고 과거 회상 시 이전 닉네임을 사용할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T022 — 농담과 사실 구분 fixture·규칙 추가
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P07-T021
+- **권장 변경 위치:** `test-fixtures/nexa/memory/joke-vs-fact.yaml`, `central-server/src/test/kotlin/**/JokeFactMemoryTest.kt`
+- **구체 산출물:** “나 일베아님” 같은 맥락성 발화를 민감 사실로 영구 저장하지 않는 사례를 만든다.
+- **완료 조건:** 농담/부정/인용을 단일 사실로 승격하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T023 — pgvector 보조 인덱스 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T022
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/persistence/vector/**`, `central-server/src/main/resources/db/migration/V*_nexa_memory_vector.sql`
+- **구체 산출물:** 정형 필터 후 의미 유사도를 보조로 사용하는 pgvector 인덱스를 추가한다.
+- **완료 조건:** vector top-k가 validity 필터를 우회하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T024 — stale memory 평가 스위트 작성
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P07-T023
+- **권장 변경 위치:** `scripts/evaluate-social-memory.py`, `docs/nexa/experiments/EXP-memory-validity.md`, `test-fixtures/nexa/memory/**`
+- **구체 산출물:** 변경·삭제·모순·농담·scope 누출에서 stale usage rate를 측정한다.
+- **완료 조건:** 각 실패가 source와 retrieval decision으로 재현 가능하다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P07-T025 — P07 기억 신뢰성 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P07-T024
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-memory-validity.md`, `central-server/src/test/**`, `docs/nexa/memory/**`
+- **구체 산출물:** 삭제·scope·현재성·민감 추론을 독립 감사한다.
+- **완료 조건:** critical stale-memory fixture가 모두 통과하고 raw chain-of-thought 저장이 없을 때만 통과한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P08 — 사회행동 정책 계약과 feature 파이프라인
+
+**목표:** 말할지 여부를 GLM 문장 생성에서 분리하고, 행동·대상·시간·버스트를 확률분포로 반환하는 버전된 정책 계약을 만든다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/participation/**, contracts/policy/**, central-server/src/test/**, docs/nexa/policy/**`
+
+**종료 게이트:** IGNORE가 정식 행동으로 존재하고, 같은 scene/state/model/seed가 같은 결정을 재생하며, 안전 제약과 학습 정책이 분리되어야 한다.
+
+### NEXA-P08-T001 — SocialAction taxonomy 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P07-T025
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/action/**`
+- **구체 산출물:** IGNORE, WAIT, REACT, SPEAK, CANCEL_PENDING을 sealed hierarchy로 정의한다.
+- **완료 조건:** 각 행동이 필요한 payload만 가지며 SPEAK 없이 문장 필드가 존재하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T002 — SocialAct taxonomy 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/action/SocialAct.kt`
+- **구체 산출물:** ACKNOWLEDGE, AGREE, DISAGREE, TEASE, ASK, CORRECT, SELF_DISCLOSE, CHANGE_TOPIC 등을 버전한다.
+- **완료 조건:** 자유 텍스트 라벨이 아닌 안정적 코드와 unknown 처리 규칙이 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T003 — ActionTarget 분포 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/decision/ActionTargetDistribution.kt`
+- **구체 산출물:** message, member, thread, none 후보와 확률을 표현한다.
+- **완료 조건:** 대상 확률 합과 존재하지 않는 ID 검증이 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T004 — DelayDistribution 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/decision/DelayDistribution.kt`
+- **구체 산출물:** 즉시·3~10초·10~30초·30~120초·never 구간을 초기 계약으로 정의한다.
+- **완료 조건:** never가 IGNORE와 어떤 차이가 있는지 문서화된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T005 — BurstProfile 모델 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/decision/BurstProfile.kt`
+- **구체 산출물:** 메시지 수 분포, 최대 길이, 간격 범위, reaction-only 가능성을 표현한다.
+- **완료 조건:** 정책이 실제 문구를 생성하지 않고 형태만 정한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T006 — PolicyDecisionRequest 계약 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T005
+- **권장 변경 위치:** `contracts/policy/policy-decision-request.schema.json`, `central-server/src/main/kotlin/com/discordassistant/central/participation/application/port/out/**`
+- **구체 산출물:** scene snapshot ref, social state, valid memory features, config, model version, seed를 정의한다.
+- **완료 조건:** Discord 원문과 JPA entity가 계약에 직접 포함되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh contracts`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T007 — PolicyDecisionResponse 계약 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T006
+- **권장 변경 위치:** `contracts/policy/policy-decision-response.schema.json`, `central-server/src/main/kotlin/com/discordassistant/central/participation/application/port/out/**`
+- **구체 산출물:** 행동·대상·delay·socialAct·burst 확률과 uncertainty를 정의한다.
+- **완료 조건:** 단일 최종 답만 강제하지 않고 확률분포가 schema validation을 통과한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh contracts`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T008 — 정책 계약 버전 협상 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/policy/**`
+- **구체 산출물:** JVM/ONNX/gRPC adapter가 지원 schema/model version을 확인하게 한다.
+- **완료 조건:** 호환되지 않는 모델은 안전하게 shadow-only 또는 fallback으로 전환된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T009 — FeatureVector schema 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T008
+- **권장 변경 위치:** `contracts/policy/feature-vector.schema.json`, `docs/nexa/policy/features.md`
+- **구체 산출물:** feature 이름, type, 범위, missing semantics, provenance, privacy class를 SSOT로 정의한다.
+- **완료 조건:** 코드와 ML 데이터셋이 같은 feature ID/version을 사용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh contracts`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T010 — burst feature builder 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T009
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/feature/BurstFeatures.kt`
+- **구체 산출물:** fragment count, length, gap, question/mention/reply, source type을 계산한다.
+- **완료 조건:** content unavailable에서도 missing flag를 보존한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T011 — thread·addressee feature builder 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T010
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/feature/ThreadFeatures.kt`
+- **구체 산출물:** focus thread, target entropy, active speakers, topic age를 계산한다.
+- **완료 조건:** 특정 member ID 자체를 모델 feature로 직접 사용하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T012 — channel tempo feature builder 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/feature/TempoFeatures.kt`
+- **구체 산출물:** human burst rate, median gap, overlap, NEXA share를 계산한다.
+- **완료 조건:** 봇/옵트아웃 제외 규칙이 P06과 동일하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T013 — relationship feature builder 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/feature/RelationshipFeatures.kt`
+- **구체 산출물:** familiarity, reciprocity, observed banter acceptance, sample size를 가져온다.
+- **완료 조건:** 작은 표본 confidence가 별도 feature로 포함된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T014 — memory feature builder 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/feature/MemoryFeatures.kt`
+- **구체 산출물:** 관련 기억 존재 여부, confidence, age, pending intent activation을 숫자로 요약한다.
+- **완료 조건:** 기억 원문이나 민감 object가 정책 모델 입력에 불필요하게 포함되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T015 — agent saturation feature builder 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/feature/AgentStateFeatures.kt`
+- **구체 산출물:** 최근 NEXA burst 수, 점유율, 마지막 발화 시간, pending action을 계산한다.
+- **완료 조건:** 메시지 수와 burst 수를 혼동하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T016 — consent·safety mask feature 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/feature/EligibilityFeatures.kt`
+- **구체 산출물:** 관찰/반응/발화/외부 전송 가능 여부를 별도 mask로 만든다.
+- **완료 조건:** 모델 확률이 높아도 금지 행동은 후처리에서 제거된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T017 — talkativeness multiplier 계약 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P08-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/config/TalkativenessMultiplier.kt`
+- **구체 산출물:** 0.0~2.0 허용 범위와 1.5 기본 후보를 타입으로 구현하되 최종 기본값은 인간 승인으로 둔다.
+- **완료 조건:** 단순 메시지 개수 곱이 아니라 speak hazard/logit 보정에만 쓰이도록 문서화된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T018 — SocialPolicyPort 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/port/out/SocialPolicyPort.kt`
+- **구체 산출물:** predict(request): distribution 형태의 비동기 포트를 정의한다.
+- **완료 조건:** 정책 port가 routing/GLM API를 요구하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T019 — 결정론적 SeededSampler 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T018
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/service/SeededPolicySampler.kt`
+- **구체 산출물:** 분포에서 action/target/delay/socialAct/burst를 seed 기반 샘플링한다.
+- **완료 조건:** 같은 입력과 seed로 같은 결과가 나오고 분포 밖 값이 나오지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T020 — calibration modifier 인터페이스 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T019
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/service/PolicyCalibration.kt`
+- **구체 산출물:** 서버별 multiplier와 model calibration을 분리해 적용한다.
+- **완료 조건:** 하드 규칙이 모델 raw probability를 덮어쓴 사실이 decision log에 남는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T021 — PolicySafetyConstraint 후처리 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T020
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/service/PolicySafetyConstraint.kt`
+- **구체 산출물:** 동의, 채널 mute, 점유율 cap, permission, kill switch를 적용한다.
+- **완료 조건:** 사회적 판단 휴리스틱은 이 클래스에 들어가지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T022 — ParticipationDecision aggregate 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T021
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/decision/ParticipationDecision.kt`
+- **구체 산출물:** raw distribution, sampled action, applied constraints, contextVersion, model/feature/seed를 저장한다.
+- **완료 조건:** 모든 live 행동을 사후 재현할 정보가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T023 — decision log persistence 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T022
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/persistence/**`, `central-server/src/main/resources/db/migration/V*_nexa_policy_decisions.sql`
+- **구체 산출물:** 원문 없이 feature hash와 결정 provenance를 저장한다.
+- **완료 조건:** IGNORE도 저장되며 보존/삭제 정책이 적용된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T024 — 정책 계약 golden test 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T023
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/PolicyContractGoldenTest.kt`, `contracts/policy/fixtures/**`
+- **구체 산출물:** Kotlin serialization과 Python loader가 같은 JSON fixture를 읽도록 준비한다.
+- **완료 조건:** schema version 변경 시 golden diff가 명시적으로 실패한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh contracts`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P08-T025 — P08 정책 계약 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P08-T024
+- **권장 변경 위치:** `contracts/policy/**`, `docs/nexa/policy/**`, `central-server/src/test/**`
+- **구체 산출물:** 행동 공간, 확률 보정, 안전 후처리, replay 가능성을 독립 검토한다.
+- **완료 조건:** IGNORE가 정상 경로이고 GLM 결합이 없으며 계약 golden test가 통과해야 한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P09 — 규칙 기반 기준선과 완전 무발화 Shadow Mode
+
+**목표:** 학습 모델 전에 단순 기준선들을 동일한 계약으로 구현하고, 실제 Discord에서는 한 글자도 보내지 않은 채 인간 행동 예측 품질을 측정한다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/participation/**, central-server/src/main/kotlin/com/discordassistant/central/channelai/**, central-server/src/main/resources/static/admin/dashboard/**, central-server/src/test/**, docs/nexa/experiments/**`
+
+**종료 게이트:** 모든 정책이 같은 replay/eval 경로를 사용하고 shadow mode에서는 JDA outbound가 구조적으로 차단되며 최소 7일 기준선 데이터가 준비되어야 한다.
+
+### NEXA-P09-T001 — AlwaysSilentPolicy 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P08-T025
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/baseline/**`
+- **구체 산출물:** 항상 IGNORE를 반환하는 하한 기준선을 구현한다.
+- **완료 조건:** 정책 계약·decision log·replay 경로를 다른 모델과 동일하게 통과한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T002 — MentionAlwaysSpeakPolicy 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/baseline/**`
+- **구체 산출물:** 직접 mention이면 즉시 SPEAK, 아니면 IGNORE하는 나쁜 기준선을 의도적으로 구현한다.
+- **완료 조건:** 왜 제품 정책으로 쓰면 안 되는지 이름과 문서에 명확하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T003 — FixedProbabilityPolicy 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/baseline/**`
+- **구체 산출물:** 고정 확률로 IGNORE/REACT/SPEAK를 샘플링하는 기준선을 구현한다.
+- **완료 조건:** seed 재현과 확률 calibration sanity test가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T004 — CooldownHeuristicPolicy 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/baseline/**`
+- **구체 산출물:** 최근 NEXA 발화량과 mention 여부만 사용하는 단순 cooldown 기준선을 만든다.
+- **완료 조건:** 사회 상태·기억을 쓰지 않는 제한이 문서화된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T005 — BurstAwareHeuristicPolicy 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/baseline/**`
+- **구체 산출물:** 버스트 종료, 다른 인간 응답, 채널 tempo, 직접 대상 여부를 가중합으로 사용하는 기준선을 만든다.
+- **완료 조건:** 가중치가 설정 파일에 숨지 않고 versioned config로 저장된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T006 — 기존 channelai 자동응답 정책 adapter 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/legacy/**`
+- **구체 산출물:** 현재 자동응답 로직을 수정 없이 policy contract 뒤에서 측정 가능한 adapter로 감싼다.
+- **완료 조건:** legacy 결과와 기존 운영 동작 차이를 golden test로 기록한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T007 — ShadowMode 설정 모델 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P09-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/channelai/**`, `central-server/src/main/kotlin/com/discordassistant/central/guild/**`
+- **구체 산출물:** OFF, OBSERVE_ONLY, SHADOW_PREDICT, CANARY, LIVE 상태를 정의한다.
+- **완료 조건:** 기본값은 OFF이며 상태 전이는 승인 권한과 audit를 요구한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T008 — shadow outbound hard block 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/**`, `central-server/src/test/**`
+- **구체 산출물:** SHADOW_PREDICT 결정이 actionruntime으로 넘어가도 Discord executor가 호출되지 않게 구조적 차단을 둔다.
+- **완료 조건:** mock 호출 0회가 통합 테스트로 검증된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T009 — ShadowPrediction persistence 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/persistence/**`, `central-server/src/main/resources/db/migration/V*_nexa_shadow_predictions.sql`
+- **구체 산출물:** 정책별 분포·샘플·예상 실행 시점·contextVersion을 저장한다.
+- **완료 조건:** 동일 scene에서 여러 baseline 결과를 비교할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T010 — 관리자 shadow 상태 API 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T009
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/**`
+- **구체 산출물:** 길드별 모드, 수집 기간, 예측 수, 오류율을 read-only API로 제공한다.
+- **완료 조건:** 원문과 개별 사용자 행동은 기본 응답에 노출되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T011 — 관리자 dashboard shadow 화면 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T010
+- **권장 변경 위치:** `central-server/src/main/resources/static/admin/dashboard/**`, `i18n/messages.json`
+- **구체 산출물:** 정책별 발화율·침묵률·delay 분포·데이터 적격 상태를 시각화한다.
+- **완료 조건:** OBSERVE_ONLY와 LIVE를 혼동할 수 없는 명확한 배지가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T012 — 인간 실제 다음 행동 matcher 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/**`
+- **구체 산출물:** shadow 예측 시점 후 정해진 창에서 인간 reply/react/silence를 관찰해 outcome 후보를 만든다.
+- **완료 조건:** 특정 인간 하나를 NEXA 정답으로 단정하지 않고 matching ambiguity를 기록한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T013 — counterfactual observation window 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/**`
+- **구체 산출물:** 3초/10초/30초/120초 window별 실제 행동을 기록한다.
+- **완료 조건:** late action과 never를 구분하고 미래 feature leakage가 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T014 — 자동 SPEAK/SILENT 약지도 라벨러 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/**`
+- **구체 산출물:** 비슷한 역할의 활성 인간이 반응했는지로 약한 label을 생성한다.
+- **완료 조건:** weak label임을 명시하고 학습 정답과 바로 동일시하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T015 — False Interruption proxy 정의·구현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P09-T014
+- **권장 변경 위치:** `docs/nexa/evals/false-interruption.md`, `central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/**`
+- **구체 산출물:** 예측 SPEAK 뒤 짧은 시간 내 인간 대화가 이미 이어진 경우 등 proxy를 정의한다.
+- **완료 조건:** proxy의 오탐 가능성과 human review sample이 포함된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T016 — Missed Intervention proxy 정의·구현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P09-T015
+- **권장 변경 위치:** `docs/nexa/evals/missed-intervention.md`, `central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/**`
+- **구체 산출물:** 예측 IGNORE인데 직접 질문이 반복되거나 유사 인간이 답한 경우 proxy를 정의한다.
+- **완료 조건:** 도움이 필요했다는 심리 추론 대신 관찰 신호만 사용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T017 — Brier score와 calibration 계산 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/CalibrationMetrics.kt`
+- **구체 산출물:** SPEAK probability와 관찰 label의 Brier/ECE를 계산한다.
+- **완료 조건:** 표본 수와 bin confidence interval이 함께 나온다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T018 — 길드·채널별 분포 비교 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/**`
+- **구체 산출물:** 정책 발화율, delay, action mix를 길드/채널 문화 기준선과 비교한다.
+- **완료 조건:** 고카디널리티 원본 ID를 외부 metric label로 내보내지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T019 — 직접 mention 무응답률 보고 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T018
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/**`
+- **구체 산출물:** 인간 활성 멤버가 직접 호출에 응답하지 않는 실제 비율과 정책 예측을 비교한다.
+- **완료 조건:** “멘션=응답” 가정을 검증 가능한 수치로 반박하거나 확인한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T020 — talkativeness multiplier offline simulation 구현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P09-T019
+- **권장 변경 위치:** `scripts/simulate-talkativeness.py`, `docs/nexa/experiments/EXP-talkativeness.md`
+- **구체 산출물:** 0.5/1.0/1.5/2.0에서 hazard/logit 조정 후 action 분포 변화를 재생한다.
+- **완료 조건:** 낮은 기본 확률을 무리하게 높은 확률로 만드는지 saturation curve가 나온다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T021 — shadow 일일 리포트 job 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T020
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/reporting/**`
+- **구체 산출물:** 정책별 예측량, 발화 share, FIR/MIR proxy, 오류, 데이터 누락을 일 단위 집계한다.
+- **완료 조건:** 리포트 생성 실패가 Discord ingestion을 막지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T022 — 기준선 비교 리포트 템플릿 작성
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P09-T021
+- **권장 변경 위치:** `docs/nexa/experiments/baseline-report-template.md`
+- **구체 산출물:** 항상 침묵·멘션 응답·고정확률·burst-aware·legacy를 같은 표로 비교한다.
+- **완료 조건:** 한 지표만으로 승자를 정하지 않고 calibration·분포·안전 지표를 포함한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T023 — shadow feature leakage 감사
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P09-T022
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-shadow-leakage-audit.md`, `central-server/src/test/**`
+- **구체 산출물:** 예측 이후 발생한 인간 응답이나 미래 기억이 feature에 들어가는지 검사한다.
+- **완료 조건:** 각 feature의 cutoff timestamp와 source watermark가 검증된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T024 — 7일 shadow 관찰 실행
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P09-T023
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-shadow-7day.md`
+- **구체 산출물:** 허가된 테스트 길드에서 최소 7일간 baseline 예측과 인간 행동을 수집한다.
+- **완료 조건:** 중단·데이터 누락·정책 버전 변경 구간을 별도 표시하고 충분한 표본을 기록한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P09-T025 — P09 기준선 선택 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P09-T024
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-shadow-7day.md`, `docs/nexa/experiments/EXP-talkativeness.md`, `central-server/src/test/**`
+- **구체 산출물:** 학습 모델이 넘어야 할 기준선과 목표 지표를 승인한다.
+- **완료 조건:** shadow outbound 0회가 감사되고 baseline·데이터 한계가 합의될 때만 P10으로 이동한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P10 — 옵트인 데이터셋·Masked Member·재생 실험실
+
+**목표:** 동의된 이벤트를 한 인간 멤버의 행동 궤적 예측 문제로 변환하고, 서버 간 누출 없이 재현 가능한 학습·평가 데이터셋을 만든다.
+
+**주요 경로:** `ml/social-policy/**, contracts/policy/**, scripts/**, docs/nexa/datasets/**, central-server/src/main/kotlin/com/discordassistant/central/participation/**`
+
+**종료 게이트:** 데이터셋의 모든 row가 동의·출처·변환 버전·split을 가지며, 특정 길드가 train/test에 동시에 나타나지 않고 삭제 요청을 반영할 수 있어야 한다.
+
+### NEXA-P10-T001 — ml/social-policy 프로젝트 골격 생성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P09-T025
+- **권장 변경 위치:** `ml/social-policy/pyproject.toml`, `ml/social-policy/src/**`, `ml/social-policy/tests/**`
+- **구체 산출물:** provider-agent와 분리된 Python 3.12 학습 프로젝트와 lockfile을 만든다.
+- **완료 조건:** central-server 런타임 의존을 설치하지 않고 독립 테스트가 실행된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T002 — 데이터 export 보안 경계 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P10-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/dataset/**`
+- **구체 산출물:** training eligibility를 통과한 event/burst/scene/decision만 export manifest에 포함한다.
+- **완료 조건:** 운영 DB 직접 dump가 아니라 승인된 projection 조회만 사용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T003 — Parquet 이벤트 시퀀스 schema 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T002
+- **권장 변경 위치:** `ml/social-policy/contracts/event_sequence.schema.json`, `docs/nexa/datasets/event-sequence.md`
+- **구체 산출물:** event time, burst, scene, actor pseudonym, features, masks를 columnar schema로 정의한다.
+- **완료 조건:** 원문 포함 여부가 명시되고 schema version이 고정된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T004 — Masked Member 샘플 단위 정의
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P10-T003
+- **권장 변경 위치:** `docs/nexa/datasets/masked-member-modeling.md`
+- **구체 산출물:** 특정 인간의 다음 행동을 가리고 이전 이벤트만 입력으로 제공하는 학습 예제를 정의한다.
+- **완료 조건:** 정답이 문장 하나가 아니라 action/target/time/burst 분포임이 명확하다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T005 — 행동 label 생성기 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T004
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/labels/action.py`
+- **구체 산출물:** IGNORE/WAIT/REACT/SPEAK 후보를 관찰 창에서 생성한다.
+- **완료 조건:** 관찰 불확실한 샘플을 강제로 한 클래스에 넣지 않고 UNKNOWN mask를 둔다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T006 — target label 생성기 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T005
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/labels/target.py`
+- **구체 산출물:** reply/mention/adjacency와 실제 행동으로 message/member/thread target label을 만든다.
+- **완료 조건:** 복수 타당 target과 none을 표현한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T007 — delay label 생성기 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T006
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/labels/delay.py`
+- **구체 산출물:** 기준 시점부터 실제 행동까지 delay와 right-censoring을 계산한다.
+- **완료 조건:** 세션 종료와 진짜 never를 동일시하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T008 — burst shape label 생성기 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T007
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/labels/burst.py`
+- **구체 산출물:** 응답 메시지 수, 길이, 간격, reaction 여부를 label로 만든다.
+- **완료 조건:** 한 인간의 연속 메시지가 P04 버스트 기준으로 묶인다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T009 — social act 약지도 라벨러 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T008
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/labels/social_act.py`
+- **구체 산출물:** reply/reaction/lexical signal과 제한된 GLM 보조로 social act 후보를 만든다.
+- **완료 조건:** 약지도 confidence와 모델 version을 저장하고 gold label로 오인하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T010 — negative opportunity window 생성기 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T009
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/windows/negative.py`
+- **구체 산출물:** 누군가 말할 기회가 있었지만 대상 인간이 침묵한 구간을 sampling한다.
+- **완료 조건:** 모든 millisecond를 negative로 만들어 class imbalance를 폭발시키지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T011 — 대화 세션 경계 생성기 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T010
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/sessionize.py`
+- **구체 산출물:** 긴 inactivity, channel/thread 이동, consent change로 session을 나눈다.
+- **완료 조건:** split 이후 미래 세션 정보가 이전 샘플 feature에 들어가지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T012 — guild-level train/validation/test split 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T011
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/split.py`
+- **구체 산출물:** 길드 ID hash를 기준으로 완전 분리 split을 만든다.
+- **완료 조건:** 동일 길드와 파생 샘플이 둘 이상의 split에 나타나지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T013 — 시간 기반 holdout split 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T012
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/split.py`
+- **구체 산출물:** 길드 분리와 별도로 최신 기간 holdout을 구성한다.
+- **완료 조건:** cutoff 이후 이벤트가 train feature/label에 들어가지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T014 — 사용자 pseudonym 변환 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P10-T013
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/privacy.py`
+- **구체 산출물:** export 시 용도별 salt로 actor를 재가명화한다.
+- **완료 조건:** 운영 DB pseudonym과 학습 artifact pseudonym이 직접 연결되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T015 — 원문 redaction·minimization 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P10-T014
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/privacy.py`
+- **구체 산출물:** 정책 모델에 불필요한 raw text를 제거하고 필요한 경우 짧은 local feature 또는 승인된 embedding만 남긴다.
+- **완료 조건:** GLM prompt 원문·첨부 URL·Discord snowflake가 Parquet에 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T016 — 데이터셋 version hash 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T015
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/versioning.py`
+- **구체 산출물:** source watermark, schema, code commit, consent snapshot으로 immutable dataset ID를 만든다.
+- **완료 조건:** 같은 입력과 코드에서 같은 ID가 생성된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T017 — dataset manifest 생성기 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T016
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/manifest.py`
+- **구체 산출물:** row 수, 길드 수, 기간, class 분포, exclusions, hashes를 기록한다.
+- **완료 조건:** 모델 run이 manifest ID 없이 시작되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T018 — 재현 가능한 dataset builder CLI 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T017
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/cli/build_dataset.py`
+- **구체 산출물:** config 파일 하나로 export→transform→split→manifest를 실행한다.
+- **완료 조건:** 중간 산출물이 content-addressed 경로에 저장되고 실패 지점부터 재개 가능하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T019 — 소형 공개 불가 fixture dataset 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T018
+- **권장 변경 위치:** `ml/social-policy/tests/fixtures/**`
+- **구체 산출물:** 가상 사용자·합성 문구로 모든 action/target/time 케이스를 포함한 테스트 데이터를 만든다.
+- **완료 조건:** 실제 사용자 원문이 저장소에 커밋되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T020 — human annotation 지침 작성
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P10-T019
+- **권장 변경 위치:** `docs/nexa/datasets/annotation-guidelines.md`
+- **구체 산출물:** 말해야 했는지, 대상, timing, ambiguity, social act를 평가하는 지침을 만든다.
+- **완료 조건:** 정답 강요 대신 복수 annotator 분포와 불확실성을 허용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T021 — 라벨 검수 export/import 도구 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P10-T020
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/annotation/**`
+- **구체 산출물:** 가명화된 context packet을 export하고 annotation을 schema validation 후 import한다.
+- **완료 조건:** annotator가 불필요한 사용자 식별자나 전체 서버 로그를 보지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T022 — inter-annotator agreement 계산 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T021
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/eval/agreement.py`
+- **구체 산출물:** action, target, delay bin별 agreement와 disagreement matrix를 계산한다.
+- **완료 조건:** 낮은 합의 항목은 gold에서 제외하거나 soft label로 유지된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T023 — 데이터 누출 자동 검사 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P10-T022
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/leakage.py`, `ml/social-policy/tests/**`
+- **구체 산출물:** guild/user/event/source/time 중복과 label-derived feature를 검사한다.
+- **완료 조건:** 의도적 leakage fixture가 CI에서 실패한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T024 — Dataset Card 작성·자동 생성
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P10-T023
+- **권장 변경 위치:** `docs/nexa/datasets/dataset-card.md`, `ml/social-policy/src/nexa_policy/reporting/dataset_card.py`
+- **구체 산출물:** 목적, 동의, 구성, 편향, 제한, 삭제, 재현 정보를 작성한다.
+- **완료 조건:** 실제 manifest 수치가 자동 삽입되고 수동 수치 드리프트가 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P10-T025 — P10 데이터셋 승인 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P10-T024
+- **권장 변경 위치:** `docs/nexa/datasets/**`, `ml/social-policy/**`, `central-server/src/main/kotlin/**/dataset/**`
+- **구체 산출물:** 법무·보안·ML 리뷰로 consent, leakage, split, deletion, annotation을 승인한다.
+- **완료 조건:** 승인된 dataset ID가 없으면 어떤 학습도 시작하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P11 — 학습된 Social Policy v1
+
+**목표:** 규칙을 대체할 목적이 아니라 비교 가능한 학습 모델들을 만들고, 행동·대상·시간·버스트의 확률 보정을 shadow 환경에서 검증한다.
+
+**주요 경로:** `ml/social-policy/**, contracts/policy/**, central-server/src/main/kotlin/com/discordassistant/central/participation/**, docs/nexa/experiments/**`
+
+**종료 게이트:** 학습 모델이 최소 두 개의 단순 기준선을 여러 길드 holdout에서 일관되게 넘고, ONNX/JVM 결과가 Python과 수치 허용오차 내 일치해야 한다.
+
+### NEXA-P11-T001 — ML 환경과 재현 seed 고정
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P10-T025
+- **권장 변경 위치:** `ml/social-policy/pyproject.toml`, `ml/social-policy/src/nexa_policy/reproducibility.py`
+- **구체 산출물:** Python, PyTorch, ONNX, seed, deterministic 설정과 환경 캡처를 구현한다.
+- **완료 조건:** 동일 dataset/config에서 핵심 metric 변동이 허용 범위 안이다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T002 — FeatureVector Python loader 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T001
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/features/schema.py`
+- **구체 산출물:** P08 schema를 읽어 dtype, missing, range를 검증한다.
+- **완료 조건:** 알 수 없는 feature version을 조용히 무시하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T003 — Always-silent·fixed-probability 평가 재현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P11-T002
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/baselines/**`
+- **구체 산출물:** P09 기준선 점수를 동일 dataset split에서 재계산한다.
+- **완료 조건:** Kotlin shadow 리포트와 차이가 있으면 원인을 문서화한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T004 — Logistic SPEAK/SILENT baseline 학습
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P11-T003
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/logistic.py`, `docs/nexa/experiments/EXP-policy-logistic.md`
+- **구체 산출물:** 해석 가능한 logistic 모델과 class weight를 학습한다.
+- **완료 조건:** validation/test balanced accuracy, FIR, MIR, Brier가 저장된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T005 — Gradient-boosted tree baseline 학습
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P11-T004
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/tree.py`, `docs/nexa/experiments/EXP-policy-tree.md`
+- **구체 산출물:** 비선형 tabular baseline을 학습하고 feature importance를 분석한다.
+- **완료 조건:** 길드 holdout 성능과 과적합 차이가 보고된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T006 — 소형 MLP action model 학습
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P11-T005
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/mlp.py`, `docs/nexa/experiments/EXP-policy-mlp.md`
+- **구체 산출물:** feature vector에서 action distribution을 예측하는 MLP를 만든다.
+- **완료 조건:** parameter 수·latency·성능이 baseline과 비교된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T007 — Temporal encoder baseline 설계
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P11-T006
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/temporal_encoder.py`, `docs/nexa/experiments/EXP-policy-temporal.md`
+- **구체 산출물:** 최근 burst sequence와 time gap을 인코딩하는 작은 Transformer/GRU 중 하나를 비교한다.
+- **완료 조건:** 모델 선택 근거와 sequence truncation 영향이 보고된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T008 — 멀티클래스 action head 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T007
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/heads.py`
+- **구체 산출물:** IGNORE/WAIT/REACT/SPEAK/CANCEL 확률을 예측한다.
+- **완료 조건:** 지원 데이터가 없는 action은 mask되고 확률 합이 1이다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T009 — target ranking head 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T008
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/heads.py`
+- **구체 산출물:** candidate message/member/thread에 대한 점수를 예측한다.
+- **완료 조건:** padding candidate와 privacy-excluded target이 선택되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T010 — delay-bin head 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T009
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/heads.py`
+- **구체 산출물:** P08 delay bins와 never 확률을 예측한다.
+- **완료 조건:** censored label이 loss에서 올바르게 mask된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T011 — burst-shape head 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T010
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/heads.py`
+- **구체 산출물:** message count, length bucket, reaction-only를 예측한다.
+- **완료 조건:** 실제 문장 token을 생성하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T012 — social-act 보조 head 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T011
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/heads.py`
+- **구체 산출물:** confidence 있는 weak/gold label에서 social act 분포를 학습한다.
+- **완료 조건:** 낮은 confidence label은 loss weight가 낮거나 제외된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T013 — 멀티태스크 loss와 mask 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T012
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/training/losses.py`
+- **구체 산출물:** action, target, delay, burst, act loss를 configurable weight로 결합한다.
+- **완료 조건:** label이 없는 head가 gradient를 만들지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T014 — class imbalance 처리 실험
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P11-T013
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/training/imbalance.py`, `docs/nexa/experiments/EXP-policy-imbalance.md`
+- **구체 산출물:** class weight, focal loss, under-sampling을 비교한다.
+- **완료 조건:** accuracy만 높고 모두 IGNORE하는 모델을 탈락시킨다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T015 — probability calibration 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T014
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/calibration/**`
+- **구체 산출물:** temperature scaling 또는 isotonic calibration을 validation set에서 학습한다.
+- **완료 조건:** test Brier/ECE가 악화되면 적용하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T016 — 실험 config·artifact 추적 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T015
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/experiments/**`, `ml/social-policy/configs/**`
+- **구체 산출물:** dataset ID, git commit, model config, metrics, plots, artifact hash를 한 run에 묶는다.
+- **완료 조건:** 결과 파일만으로 학습 명령을 재구성할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T017 — 정책 모델 ONNX export 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T016
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/export/onnx.py`
+- **구체 산출물:** 선정 후보를 opset과 dynamic axes가 고정된 ONNX로 내보낸다.
+- **완료 조건:** export 전후 fixture 출력 차이가 허용오차 안이다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T018 — ONNX Runtime JVM adapter 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/onnx/**`
+- **구체 산출물:** PolicyDecisionRequest feature를 tensor로 변환하고 response 분포를 복원한다.
+- **완료 조건:** 모델 파일·schema·calibration version 검증 실패 시 fallback한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T019 — Python-JVM golden parity 테스트
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T018
+- **권장 변경 위치:** `contracts/policy/fixtures/**`, `central-server/src/test/kotlin/**/OnnxPolicyParityTest.kt`, `ml/social-policy/tests/**`
+- **구체 산출물:** 동일 fixture에 대한 각 head output을 비교한다.
+- **완료 조건:** 수치 허용오차와 category ordering이 명시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh contracts`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T020 — shadow model registry 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P11-T019
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/model/**`
+- **구체 산출물:** 모델 ID, hash, feature schema, calibration, status를 등록한다.
+- **완료 조건:** 승인되지 않은 artifact는 LIVE 상태로 선택할 수 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T021 — 학습 모델 7일 shadow 비교
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P11-T020
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-policy-v1-shadow.md`
+- **구체 산출물:** 선정 모델과 P09 baseline들을 같은 scene에 병렬 예측한다.
+- **완료 조건:** 모델별 latency, action rate, calibration, FIR/MIR proxy가 비교된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T022 — 서버 간 일반화 분석
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P11-T021
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/eval/generalization.py`, `docs/nexa/experiments/EXP-policy-generalization.md`
+- **구체 산출물:** 길드 규모·tempo·언어별 성능과 최악 길드를 분석한다.
+- **완료 조건:** 평균만 좋아지고 특정 문화에서 붕괴하는 모델을 식별한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T023 — feature ablation 분석
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P11-T022
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/eval/ablation.py`, `docs/nexa/experiments/EXP-policy-ablation.md`
+- **구체 산출물:** burst, scene, relationship, memory, saturation feature군을 제거해 기여를 측정한다.
+- **완료 조건:** 민감하거나 비용 높은 feature가 실질 기여 없으면 제거한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T024 — Policy v1 Model Card 작성
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P11-T023
+- **권장 변경 위치:** `docs/nexa/models/social-policy-v1.md`
+- **구체 산출물:** 학습 데이터, 지표, calibration, 실패 유형, 사용 금지, artifact hash를 기록한다.
+- **완료 조건:** LIVE 승인 전제와 known limitations가 구체적이다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P11-T025 — P11 모델 후보 승인 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P11-T024
+- **권장 변경 위치:** `docs/nexa/models/social-policy-v1.md`, `docs/nexa/experiments/EXP-policy-v1-shadow.md`, `ml/social-policy/**`, `central-server/src/test/**`
+- **구체 산출물:** baseline 대비 개선, 일반화, calibration, JVM parity를 독립 리뷰한다.
+- **완료 조건:** 기준 미달이면 규칙 baseline을 유지하고 timing/데이터 작업만 진행한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P12 — 연속시간 참여·지연·취소 정책
+
+**목표:** 메시지마다 즉시 이진 판단하는 구조를 넘어, 다음 행동 종류와 발생 시간을 함께 모델링하고 1.5배 설정을 발화 위험도 보정으로 구현한다.
+
+**주요 경로:** `ml/social-policy/**, contracts/policy/**, central-server/src/main/kotlin/com/discordassistant/central/participation/**, docs/nexa/experiments/**`
+
+**종료 게이트:** delay/never 예측이 검열 데이터를 올바르게 다루고, multiplier가 행동 분포를 망가뜨리지 않으며, 실시간 추론 지연이 shadow 요구를 충족해야 한다.
+
+### NEXA-P12-T001 — 이벤트 시간 원점 계약 정의
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P11-T025
+- **권장 변경 위치:** `docs/nexa/policy/time-origin.md`
+- **구체 산출물:** 버스트 finalize, scene update, 직접 호출 등 어떤 시점을 정책 opportunity로 삼는지 정의한다.
+- **완료 조건:** 학습·Kotlin runtime·평가가 같은 원점을 사용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T002 — right-censoring 데이터 처리 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P12-T001
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/time/censoring.py`
+- **구체 산출물:** 세션 종료·관찰 창 종료·동의 철회를 검열 상태로 처리한다.
+- **완료 조건:** 검열 샘플을 never 정답으로 잘못 학습하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T003 — discrete hazard baseline 구현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P12-T002
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/discrete_hazard.py`, `docs/nexa/experiments/EXP-discrete-hazard.md`
+- **구체 산출물:** 시간 bin별 조건부 action hazard를 예측한다.
+- **완료 조건:** survival probability가 단조 감소하고 합계가 수학적으로 유효하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T004 — 생존 분석 metric 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P12-T003
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/eval/survival.py`
+- **구체 산출물:** NLL, concordance, integrated Brier, time calibration을 계산한다.
+- **완료 조건:** censoring을 지원하고 단순 delay accuracy와 함께 보고한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T005 — Cox/parametric baseline 비교
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P12-T004
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/survival_baselines.py`, `docs/nexa/experiments/EXP-survival-baselines.md`
+- **구체 산출물:** 해석 가능한 survival baseline과 discrete hazard를 비교한다.
+- **완료 조건:** 복잡한 모델이 단순 baseline을 못 넘으면 채택하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T006 — neural survival model 구현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P12-T005
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/neural_survival.py`, `docs/nexa/experiments/EXP-neural-survival.md`
+- **구체 산출물:** temporal encoder 상태에서 action-specific hazard를 예측한다.
+- **완료 조건:** action head와 time head의 불일치가 정량화된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T007 — marked temporal point process PoC
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P12-T006
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/marked_point_process.py`, `docs/nexa/experiments/EXP-mtpp-poc.md`
+- **구체 산출물:** IGNORE를 사건 없음으로 보고 REACT/SPEAK/CANCEL mark intensity를 실험한다.
+- **완료 조건:** PoC는 production 통합 없이 likelihood와 calibration 이득만 평가한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T008 — action-time joint sampler 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P12-T007
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/inference/sampler.py`
+- **구체 산출물:** action mark와 delay를 일관된 joint distribution에서 샘플링한다.
+- **완료 조건:** SPEAK 확률 0인데 SPEAK delay가 선택되는 불일치가 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T009 — talkativeness hazard scaling 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P12-T008
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/inference/talkativeness.py`, `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/service/**`
+- **구체 산출물:** 서버 multiplier를 speak/react hazard 또는 calibrated logit에만 적용한다.
+- **완료 조건:** 0.5/1.0/1.5/2.0에서 순서 보존과 cap이 테스트된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T010 — multiplier saturation·fairness 분석
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P12-T009
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-hazard-multiplier.md`
+- **구체 산출물:** 채널 tempo와 관계 상태별로 multiplier가 실제 발화율에 미치는 영향을 시뮬레이션한다.
+- **완료 조건:** 빠른 대화에서 1.5x가 과도한 끼어들기로 변하지 않는지 worst-case를 보고한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T011 — time calibration layer 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P12-T010
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/calibration/time.py`
+- **구체 산출물:** 예측 시간 quantile을 validation 데이터로 보정한다.
+- **완료 조건:** 보정 후 integrated Brier와 delay distribution distance가 악화되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T012 — 버스트 내부 메시지 간격 모델 구현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P12-T011
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/burst_timing.py`
+- **구체 산출물:** 한 행동 안에서 1~N개 버블의 inter-message delay 분포를 학습한다.
+- **완료 조건:** 실제 타이핑 흉내를 위해 긴 랜덤 sleep을 사용하지 않고 scheduler 계획으로 출력한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T013 — 예약 취소 확률 head 구현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P12-T012
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/heads.py`
+- **구체 산출물:** 예정 시간 전 새 event가 오면 취소/재평가할 확률을 예측하는 보조 head를 실험한다.
+- **완료 조건:** 하드 contextVersion invalidation은 학습 head보다 우선한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T014 — typing indicator timing 정책 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P12-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/model/decision/**`
+- **구체 산출물:** 정책이 typing 시작 시점과 최대 지속 시간을 출력할 수 있게 계약을 확장한다.
+- **완료 조건:** 실제 답변이 취소되면 typing도 종료되고 무한 typing이 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T015 — 채널 tempo 조건부 시간 모델 평가
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P12-T014
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/eval/tempo_slices.py`, `docs/nexa/experiments/EXP-timing-by-tempo.md`
+- **구체 산출물:** 조용함/보통/빠름 slice별 timing error를 비교한다.
+- **완료 조건:** 평균 성능이 빠른 채널 오류를 숨기지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T016 — 시간 feature 미래 누출 감사
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P12-T015
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/leakage.py`, `docs/nexa/experiments/EXP-time-leakage-audit.md`
+- **구체 산출물:** reply가 온 뒤 계산된 tempo·finalize reason이 예측 시점 feature에 들어가는지 검사한다.
+- **완료 조건:** 각 tensor row에 feature cutoff timestamp가 검증된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T017 — 추론 latency benchmark 구현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P12-T016
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/benchmarks/inference_latency.py`, `docs/nexa/experiments/EXP-policy-latency.md`
+- **구체 산출물:** CPU ONNX, GPU/Python, batch size별 p50/p95/p99를 측정한다.
+- **완료 조건:** 정책 판단이 GLM 호출보다 먼저 충분히 빠르게 완료되는 목표가 정해진다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T018 — ONNX 대 gRPC serving ADR 작성
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P12-T017
+- **권장 변경 위치:** `docs/adr/0013-policy-serving-boundary.md`
+- **구체 산출물:** 현재 모델의 연산·배포·관측 요구에 따라 JVM ONNX 유지 또는 Python gRPC 분리를 결정한다.
+- **완료 조건:** 운영 복잡도와 rollback을 포함하고 성능 수치에 근거한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T019 — Policy serving protobuf 계약 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P12-T018
+- **권장 변경 위치:** `contracts/protobuf/social_policy.proto`
+- **구체 산출물:** 선택 시 request/response, version, deadline, trace, error를 protobuf로 정의한다.
+- **완료 조건:** JSON 정책 계약과 의미가 일치하고 raw Discord content를 요구하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh contracts`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T020 — Kotlin gRPC policy adapter 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P12-T019
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/outbound/policy/grpc/**`
+- **구체 산출물:** deadline, circuit breaker, schema validation을 가진 adapter를 구현한다.
+- **완료 조건:** 서비스 부재 시 configured fallback이 작동하고 live action을 멈출 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T021 — 정책 fallback 체인 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P12-T020
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/policy/PolicyFallbackChain.kt`
+- **구체 산출물:** learned→safe baseline→always silent 순서를 환경별로 구성한다.
+- **완료 조건:** 오류 시 mention-always로 떨어지지 않고 이유가 decision log에 남는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T022 — timing shadow A/B 실행
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P12-T021
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-timing-shadow-ab.md`
+- **구체 산출물:** delay-bin v1과 survival/point-process 후보를 같은 기회에 비교한다.
+- **완료 조건:** 행동률을 고정한 상태에서도 timing calibration 이득을 평가한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T023 — 연속시간 모델 연구 보고서 작성
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P12-T022
+- **권장 변경 위치:** `docs/nexa/research/continuous-time-policy.md`
+- **구체 산출물:** 실험 결과, 실패, 채택/보류 모델, 수학적 계약을 정리한다.
+- **완료 조건:** PoC 결과를 production capability로 과장하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T024 — 사람 평가 timing protocol 실행
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P12-T023
+- **권장 변경 위치:** `docs/nexa/evals/human-timing-review.md`
+- **구체 산출물:** 가명화 replay에서 너무 빠름/늦음/끼어듦/자연스러움을 블라인드 평가한다.
+- **완료 조건:** 모델 이름을 가리고 inter-rater agreement를 보고한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P12-T025 — P12 timing 정책 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P12-T024
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-timing-shadow-ab.md`, `docs/nexa/research/continuous-time-policy.md`, `contracts/policy/**`
+- **구체 산출물:** 모델 복잡도 대비 timing 이득, calibration, multiplier 안전성을 승인한다.
+- **완료 조건:** 기준 미달이면 discrete delay-bin을 유지하고 actionruntime 개발은 계약만 사용한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P13 — 취소 가능한 Action Runtime과 Discord 실행기
+
+**목표:** 정책 결정을 즉시 전송하지 않고 영속 예약, 재평가, 취소, 재시도, 부분 전송을 관리하는 실행 상태 머신을 구축한다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/**, central-server/src/main/kotlin/com/discordassistant/central/platform/discord/**, central-server/src/main/kotlin/com/discordassistant/central/multiresponse/**, central-server/src/main/resources/db/migration/**, central-server/src/test/**`
+
+**종료 게이트:** 프로세스 재시작과 문맥 변경 중에도 stale 메시지가 전송되지 않고, 첫 버블 이후 나머지 버블 취소까지 결정론적으로 검증되어야 한다.
+
+### NEXA-P13-T001 — ScheduledSocialAction aggregate 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P12-T025
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/domain/model/**`
+- **구체 산출물:** decision ID, action type, target, executeAfter, contextVersion, status, attempt를 가진 aggregate를 만든다.
+- **완료 조건:** 상태 전이가 도메인 메서드로만 가능하고 불법 전이는 거부된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T002 — ActionStatus 상태 머신 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/domain/model/ActionStatus.kt`
+- **구체 산출물:** CONSIDERING, SCHEDULED, REEVALUATING, TYPING, PARTIALLY_SENT, COMPLETED, CANCELLED, FAILED를 정의한다.
+- **완료 조건:** 모든 terminal 상태와 재시도 가능 상태가 문서화된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T003 — 예약 행동 persistence 스키마 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T002
+- **권장 변경 위치:** `central-server/src/main/resources/db/migration/V*_nexa_scheduled_actions.sql`, `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/adapter/outbound/persistence/**`
+- **구체 산출물:** 예약 payload reference, lease, contextVersion, policy/model version, audit를 저장한다.
+- **완료 조건:** 원문 문구 생성 전에는 content를 저장하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T004 — action idempotency key 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/domain/model/ActionIdentity.kt`
+- **구체 산출물:** decision ID와 sampled action index로 안정적 key를 만든다.
+- **완료 조건:** 같은 decision 재처리로 중복 예약이 생기지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T005 — ActionSchedulerPort 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/port/out/**`
+- **구체 산출물:** schedule, claimDue, reschedule, cancel, complete 기능을 정의한다.
+- **완료 조건:** Quartz/JPA/JDA 구현 타입이 domain에 노출되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T006 — DB polling scheduler 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/adapter/outbound/scheduler/**`
+- **구체 산출물:** 초기 단계에서 DB due index와 짧은 polling으로 예약을 claim한다.
+- **완료 조건:** 여러 인스턴스가 같은 action을 동시에 claim하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T007 — lease·SKIP LOCKED 동시성 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/adapter/outbound/persistence/**`
+- **구체 산출물:** worker lease와 만료 recovery를 구현한다.
+- **완료 조건:** worker crash 후 다른 인스턴스가 action을 복구한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T008 — Clock 기반 due-action 테스트 harness 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T007
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/ActionSchedulerTestSupport.kt`
+- **구체 산출물:** 실제 sleep 없이 시간 전진과 due claim을 테스트한다.
+- **완료 조건:** 테스트 실행 시간이 예약 delay 길이에 의존하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T009 — 실패 분류와 bounded retry 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/execution/**`
+- **구체 산출물:** Discord transient, permission, missing target, model timeout을 분류한다.
+- **완료 조건:** 영구 실패를 무한 재시도하지 않고 상태와 reason이 남는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T010 — 프로세스 재시작 예약 복구 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T009
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/recovery/**`
+- **구체 산출물:** 시작 시 expired lease와 TYPING/PARTIALLY_SENT 상태를 검사한다.
+- **완료 조건:** 재시작으로 동일 버블이 두 번 전송되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T011 — contextVersion 재평가 유스케이스 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T010
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/reevaluate/**`
+- **구체 산출물:** 예약 당시와 현재 scene version이 다르면 participation에 재평가를 요청한다.
+- **완료 조건:** stale action을 그대로 실행하는 코드 경로가 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T012 — 다른 인간이 답한 경우 취소 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/domain/service/CancellationPolicy.kt`
+- **구체 산출물:** target thread에 충분한 인간 응답이 생기면 예약 SPEAK를 취소 후보로 만든다.
+- **완료 조건:** 단순 새 메시지 하나만으로 무조건 취소하지 않고 scene evidence를 사용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T013 — 주제 전환 취소 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/domain/service/CancellationPolicy.kt`
+- **구체 산출물:** focus thread 변경과 target expiry로 stale action을 취소한다.
+- **완료 조건:** 다른 동시 thread의 활동이 잘못된 취소를 만들지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T014 — 동의 철회 즉시 취소 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/privacy/**`
+- **구체 산출물:** guild/channel/user consent revoke 시 관련 pending action과 generated content를 제거한다.
+- **완료 조건:** 다음 scheduler tick을 기다리지 않는 즉시 invalidation 경로가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T015 — TypingIndicatorPlan 실행 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/**`
+- **구체 산출물:** 정책 계획에 따라 typing을 시작하고 취소/timeout 시 중단한다.
+- **완료 조건:** typing만 남고 메시지가 영원히 안 오는 상태에 max duration이 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T016 — DiscordReactionExecutor 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordReactionExecutor.kt`
+- **구체 산출물:** REACT action을 권한·target 존재·emoji availability를 확인해 실행한다.
+- **완료 조건:** reaction 실패가 SPEAK fallback을 자동 유발하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T017 — DiscordMessageExecutor 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordMessageExecutor.kt`
+- **구체 산출물:** SPEAK burst의 각 버블을 reply 또는 일반 메시지로 전송한다.
+- **완료 조건:** 전송 nonce/idempotency와 Discord message ID가 audit에 연결된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T018 — target 삭제·권한 손실 처리 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/execution/**`
+- **구체 산출물:** 예약 후 target message 삭제 또는 권한 변경 시 cancel/fallback 규칙을 적용한다.
+- **완료 조건:** 다른 채널에 임의로 보내는 fallback이 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T019 — multiresponse BurstPlan adapter 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T018
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/adapter/outbound/multiresponse/**`
+- **구체 산출물:** 기존 multiresponse와 새 BurstPlan 사이 mapping을 구현한다.
+- **완료 조건:** 기존 pseudo-streaming API가 정책 action 수를 늘리지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T020 — 부분 전송 후 잔여 버블 취소 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T019
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/execution/**`
+- **구체 산출물:** 첫 버블 뒤 contextVersion 변경 시 남은 버블을 취소한다.
+- **완료 조건:** PARTIALLY_SENT 상태와 취소 reason이 정확히 기록된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T021 — Discord rate-limit·backpressure 처리
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T020
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/**`
+- **구체 산출물:** JDA rate limit 신호와 action queue 포화 시 지연/취소 정책을 구현한다.
+- **완료 조건:** 오래 지연된 사회적 응답을 뒤늦게 쏟아내지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T022 — action audit trail 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T021
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/adapter/outbound/persistence/**`
+- **구체 산출물:** schedule→generate→typing→send/cancel의 모든 상태 변경을 append-only로 남긴다.
+- **완료 조건:** 원문 없이 decision/action/message IDs로 사건을 재구성할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T023 — actionruntime 시나리오 통합 테스트
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T022
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/ActionRuntimeIntegrationTest.kt`, `test-fixtures/nexa/actions/**`
+- **구체 산출물:** 인간 답변, 주제 전환, 삭제, permission, timeout, 부분 전송을 재생한다.
+- **완료 조건:** 각 시나리오에서 기대한 전송 횟수와 terminal state가 일치한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T024 — scheduler crash·restart chaos 테스트
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P13-T023
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/ActionRuntimeChaosTest.kt`, `docs/nexa/experiments/EXP-actionruntime-chaos.md`
+- **구체 산출물:** claim 직후·GLM 직후·첫 버블 직후 프로세스 중단을 모의한다.
+- **완료 조건:** 중복 전송 0, 유실된 terminal audit 0을 만족한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P13-T025 — P13 실행 안전성 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P13-T024
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-actionruntime-chaos.md`, `central-server/src/test/**`, `docs/nexa/architecture/**`
+- **구체 산출물:** 동시성·재시작·취소·rate limit을 독립 리뷰한다.
+- **완료 조건:** shadow 모드 hard block과 stale action 무전송이 입증돼야 speech 통합을 허용한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P14 — GLM-5.1 기반 발화 후보·스타일·버스트 생성
+
+**목표:** 정책이 SPEAK를 선택한 뒤에만 기존 routing을 통해 GLM-5.1을 호출하고, 장면·정체성·기억에서 여러 후보를 만든 뒤 도우미 말투와 모순을 걸러낸다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/speech/**, central-server/src/main/kotlin/com/discordassistant/central/routing/**, central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/**, central-server/src/test/**, docs/nexa/speech/**`
+
+**종료 게이트:** IGNORE/WAIT/REACT에서 GLM 호출이 0이고, SPEAK 후보가 정책 socialAct·burstProfile을 따르며 외부 전송 최소화·timeout·fallback·비용 관측이 검증되어야 한다.
+
+### NEXA-P14-T001 — SpeechGenerationPort 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P13-T025
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/port/out/SpeechGenerationPort.kt`
+- **구체 산출물:** scene packet과 speech plan에서 후보 목록을 생성하는 provider-neutral 포트를 정의한다.
+- **완료 조건:** Z.AI SDK·HTTP DTO가 domain/application 계약에 노출되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T002 — routing anti-corruption adapter 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/routing/**`
+- **구체 산출물:** 기존 RequestOrchestrator/CloudLlm 호출을 speech 포트로 감싼다.
+- **완료 조건:** provider-agent GLM 경로를 호출하지 않고 requestlog/quota 연동을 유지한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T003 — GLM 모델 ID·endpoint 설정 외부화
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P14-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/routing/**`, `central-server/src/main/resources/application*.yml`
+- **구체 산출물:** glm-5.1을 기본 후보로 두되 모델 ID와 endpoint를 환경 설정으로 분리한다.
+- **완료 조건:** 코드 상수 교체 없이 모델 업데이트·rollback이 가능하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T004 — SpeechScenePacket 계약 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/domain/model/**`
+- **구체 산출물:** 선택 thread, target, 최근 burst 요약, socialAct, burstProfile, identity, memory refs를 구조화한다.
+- **완료 조건:** 전체 채널 로그를 무제한 포함하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T005 — 외부 payload minimizer 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P14-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/privacy/**`
+- **구체 산출물:** 옵트아웃/비대상 thread/민감 필드 제거와 pseudonym replacement를 수행한다.
+- **완료 조건:** golden payload fixture에 Discord snowflake·API key·제외 content가 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T006 — IdentityKernel assembler 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/context/IdentityKernelAssembler.kt`
+- **구체 산출물:** globalpromptset의 승인된 성격·금지사항·관심사를 짧은 immutable section으로 만든다.
+- **완료 조건:** 서버별 정체성과 런타임 사용자 기억이 섞여 저장되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T007 — 대화 context selector 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/context/ConversationContextSelector.kt`
+- **구체 산출물:** focus thread와 target 주변 burst만 token budget 안에서 선택한다.
+- **완료 조건:** 동시 다른 thread 원문이 prompt에 들어가지 않는 fixture가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T008 — 유효 기억 selector 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/context/MemoryContextSelector.kt`
+- **구체 산출물:** P07 current-valid retrieval에서 소수의 기억을 provenance와 confidence로 선택한다.
+- **완료 조건:** conflicted/expired/deleted 기억이 제외된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T009 — socialAct prompt compiler 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/prompt/SocialActPromptCompiler.kt`
+- **구체 산출물:** TEASE/ACKNOWLEDGE/CORRECT 등 행동 의도를 수행 문체가 아닌 장면 지침으로 변환한다.
+- **완료 조건:** “사용자 지시를 성실히 수행하라” 같은 assistant 기본문이 들어가지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T010 — burstProfile prompt compiler 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T009
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/prompt/BurstPromptCompiler.kt`
+- **구체 산출물:** 메시지 수 범위, 짧은 조각, 최대 길이, 첫 반응/후속 핵심 구조를 전달한다.
+- **완료 조건:** 정책이 1개 버블을 고른 경우 모델이 4개를 강제하지 못한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T011 — 후보 다중 생성 계약 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T010
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/generation/**`
+- **구체 산출물:** 한 SPEAK 결정에서 2~5개 후보를 생성하고 candidate ID와 model metadata를 기록한다.
+- **완료 조건:** 후보 수가 비용 cap을 넘지 않고 설정 가능하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T012 — GLM 응답 schema parser 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/routing/**`
+- **구체 산출물:** 후보 버블 배열·style tags·uncertainty를 strict parser로 읽는다.
+- **완료 조건:** malformed JSON/텍스트 응답이 안전한 실패로 처리된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T013 — thinking mode 선택 정책 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/generation/ReasoningModeSelector.kt`
+- **구체 산출물:** 짧은 잡담은 비추론, 복잡한 사실·코드는 추론 모드를 요청하도록 routing metadata를 만든다.
+- **완료 조건:** 정책 결정 자체를 GLM thinking에 맡기지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T014 — GLM timeout·retry budget 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/routing/**`
+- **구체 산출물:** action executeAfter와 stale deadline을 고려한 짧은 timeout, 제한 retry를 구현한다.
+- **완료 조건:** 늦게 도착한 응답이 현재 contextVersion에 전송되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T015 — token·cost budget 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/generation/**`, `central-server/src/main/kotlin/com/discordassistant/central/quota/**`
+- **구체 산출물:** 길드/행동별 context와 output token 상한을 적용한다.
+- **완료 조건:** 침묵 판단에 token이 차감되지 않고 후보 과생성이 차단된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T016 — 안전한 generation fallback 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/generation/FallbackSpeechPolicy.kt`
+- **구체 산출물:** GLM 실패 시 상황에 따라 action 취소 또는 reaction-only로 끝내고 canned 장문을 보내지 않는다.
+- **완료 조건:** 오류 때문에 갑자기 성실한 도우미 템플릿이 출력되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T017 — AssistantStyleDetector 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/domain/service/critic/**`
+- **구체 산출물:** “좋은 질문입니다”, 과도한 목록·결론·도움 제안 같은 assistant 패턴을 rule/model score로 탐지한다.
+- **완료 조건:** 탐지기는 후보를 평가할 뿐 사용자 문장을 무조건 비꼬게 만들지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T018 — RepetitionDetector 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/domain/service/critic/**`
+- **구체 산출물:** 최근 NEXA 버스트와 n-gram/embedding 유사도를 비교한다.
+- **완료 조건:** 같은 유행어·반응을 반복적으로 뿌리는 후보가 감점된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T019 — MemoryConsistencyCritic 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T018
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/domain/service/critic/**`
+- **구체 산출물:** 후보가 current-valid fact·identity와 모순되는지 검사한다.
+- **완료 조건:** 검사 실패 시 사실을 새로 발명해 수정하지 않고 후보를 폐기한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T020 — TargetAndSceneCritic 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T019
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/domain/service/critic/**`
+- **구체 산출물:** 후보가 선택 target/thread에 맞고 다른 대화를 끌어오지 않는지 평가한다.
+- **완료 조건:** cross-thread reference fixture가 탈락한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T021 — 후보 stochastic selector 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T020
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/domain/service/CandidateSelector.kt`
+- **구체 산출물:** critic 기준을 통과한 후보 중 score-softmax와 seed로 선택한다.
+- **완료 조건:** 항상 최고 점수만 택해 문체가 고정되는 것을 방지하면서 최소 기준은 지킨다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T022 — SpeechBurstPlanner 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T021
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/domain/service/SpeechBurstPlanner.kt`
+- **구체 산출물:** 선택 후보를 policy burstProfile에 맞춰 버블과 간격 계획으로 변환한다.
+- **완료 조건:** 빈 버블, Discord 길이 초과, 과도한 메시지 수를 거부한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T023 — IGNORE 무호출·취소 무전송 테스트
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P14-T022
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/SpeechInvocationBoundaryTest.kt`
+- **구체 산출물:** IGNORE/WAIT/REACT, stale SPEAK, consent revoke에서 routing 호출 0회를 검증한다.
+- **완료 조건:** quota/requestlog에도 generation 요청이 생기지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T024 — speech 품질·비용 shadow 평가
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P14-T023
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-speech-glm51-shadow.md`, `central-server/src/test/**`
+- **구체 산출물:** 가명화 장면에서 후보 자연스러움, assistant-style rate, contradiction, latency, cost를 평가한다.
+- **완료 조건:** 실제 Discord 전송 없이 blind human review와 자동 metric을 함께 기록한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P14-T025 — P14 발화 생성 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P14-T024
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-speech-glm51-shadow.md`, `central-server/src/main/kotlin/com/discordassistant/central/speech/**`, `central-server/src/test/**`
+- **구체 산출물:** 개인정보 payload, routing 경계, style critic, timeout, 비용을 독립 검토한다.
+- **완료 조건:** assistant-style critical failure와 cross-thread leakage가 기준 이하일 때만 end-to-end canary 후보가 된다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P15 — 기존 central-server 도메인과 점진 통합
+
+**목표:** 새 NEXA 경로를 기존 channelai·ainetwork·routing·guild·onboarding·quota·requestlog·knowledge·multiresponse와 feature flag 아래 연결하고 기존 기능을 깨지 않는다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/**, central-server/src/main/resources/**, central-server/src/test/**, docs/nexa/migration/**`
+
+**종료 게이트:** 기존 자동응답과 NEXA 경로를 길드별로 독립 전환할 수 있고, 모듈 순환·중복 설정·이중 과금·이중 전송 없이 E2E 테스트가 통과해야 한다.
+
+### NEXA-P15-T001 — channelai 자동응답 코드 상세 인벤토리
+
+- **종류/위험도:** `audit` / `low`
+- **선행 작업:** NEXA-P14-T025
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/channelai/**`, `docs/nexa/migration/channelai-inventory.md`
+- **구체 산출물:** trigger, profile, persistence, API, JDA side effect를 클래스·메서드 단위로 분류한다.
+- **완료 조건:** 각 코드가 유지·adapter·이관·폐기 중 하나로 표시된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T002 — NEXA participation feature flag 추가
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P15-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/channelai/**`, `central-server/src/main/kotlin/com/discordassistant/central/guild/**`
+- **구체 산출물:** 길드/채널별 legacy, shadow, canary, live 선택을 기존 설정 모델에 추가한다.
+- **완료 조건:** 기본 migration 값이 legacy 또는 OFF로 기존 동작을 보존한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T003 — 기존 auto-response trigger를 adapter 뒤로 이동
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/channelai/**`, `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/**`
+- **구체 산출물:** legacy trigger를 P08 SocialPolicyPort 구현으로 노출한다.
+- **완료 조건:** JDA listener가 legacy와 NEXA를 동시에 직접 호출하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T004 — Discord inbound를 conversation ingestion으로 연결
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/**`
+- **구체 산출물:** 허가된 event가 기존 명령 처리와 별도로 NEXA ingestion에 전달되게 한다.
+- **완료 조건:** slash/preset 명령 처리 지연이나 중복 소비가 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T005 — SceneUpdated→Participation use case 연결
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/conversation/**`, `central-server/src/main/kotlin/com/discordassistant/central/participation/**`
+- **구체 산출물:** 버스트/scene 업데이트 후 정책 opportunity 생성 경로를 연결한다.
+- **완료 조건:** 모든 MessageCreated마다 즉시 정책 호출하지 않고 finalize/reevaluate 규칙을 따른다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T006 — ParticipationDecision→ActionRuntime 연결
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/**`, `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/**`
+- **구체 산출물:** sampled action을 예약/ignore/react 경로로 전달한다.
+- **완료 조건:** shadow 모드에서는 schedule audit만 남고 executor가 차단된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T007 — ainetwork identity bridge 통합
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/**`, `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/**`
+- **구체 산출물:** 기존 니아 정체성·호감도에서 승인된 값만 identity/relationship port로 제공한다.
+- **완료 조건:** 양쪽 DB 쓰기와 순환 application call이 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T008 — globalpromptset identity 통합
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/globalpromptset/**`, `central-server/src/main/kotlin/com/discordassistant/central/speech/**`
+- **구체 산출물:** 서버 기본 성격 변경이 versioned identity snapshot으로 speech에 반영되게 한다.
+- **완료 조건:** 변경 전 예약 action의 identity version 처리 규칙이 명확하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T009 — routing GLM 호출 metadata 통합
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/routing/**`, `central-server/src/main/kotlin/com/discordassistant/central/speech/**`
+- **구체 산출물:** request purpose=NEXA_SPEECH, decision/action correlation, model config를 routing에 전달한다.
+- **완료 조건:** 기존 일반 요청과 비용·관측이 구분된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T010 — requestlog NEXA correlation 통합
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T009
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/requestlog/**`
+- **구체 산출물:** request log가 decisionId/actionId/modelVersion을 원문 없이 저장한다.
+- **완료 조건:** decision→GLM request→Discord message를 감사할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T011 — quota generation-only 차감 통합
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T010
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/quota/**`, `central-server/src/test/**`
+- **구체 산출물:** speech 생성 직전에 reserve하고 성공/실패/취소에 따라 settle한다.
+- **완료 조건:** IGNORE/REACT와 생성 전 취소가 quota를 소비하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T012 — knowledge RAG conditional 통합
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/knowledge/**`, `central-server/src/main/kotlin/com/discordassistant/central/speech/**`
+- **구체 산출물:** speech plan이 factual lookup을 요구할 때만 knowledge retrieval을 수행한다.
+- **완료 조건:** 잡담·반응 후보마다 BM25/web search를 실행하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T013 — preset 관리자 명령 통합
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P15-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/preset/**`, `i18n/messages.json`
+- **구체 산출물:** shadow/live, talkativeness, excluded channel, kill switch를 관리하는 명령 또는 기존 preset을 추가한다.
+- **완료 조건:** 권한 없는 사용자가 설정을 변경하지 못하고 변경 audit가 남는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T014 — onboarding NEXA 동의 단계 통합
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P15-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/onboarding/**`, `i18n/messages.json`
+- **구체 산출물:** 데이터 범위·외부 GLM·shadow/live·학습 옵트인을 분리 선택하게 한다.
+- **완료 조건:** 한 번의 포괄 동의로 모든 목적을 묶지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T015 — licensing feature gate 통합
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P15-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/licensing/**`
+- **구체 산출물:** 유료 한도와 기능을 적용하되 safety/삭제/kill switch는 항상 제공한다.
+- **완료 조건:** 라이선스 만료가 갑자기 legacy mention-always 동작으로 바뀌지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T016 — multiresponse 전송 통합
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/multiresponse/**`, `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/**`
+- **구체 산출물:** SpeechBurstPlan을 기존 다중응답 UX와 충돌 없이 전송한다.
+- **완료 조건:** 중간 cancel과 reply target 보존이 지원된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T017 — provider-agent 경계 회귀 테스트
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T016
+- **권장 변경 위치:** `provider-agent/tests/**`, `protocol/**`, `central-server/src/test/**`
+- **구체 산출물:** NEXA social path가 provider-agent GLM/WS 프로토콜을 변경하지 않았는지 검증한다.
+- **완료 조건:** wire-contract 생성물 diff가 없거나 승인된 별도 task로만 변경된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh agent`; `./scripts/nexa-verify.sh contracts`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T018 — 관리자 NEXA 설정 API 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T017
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/**`
+- **구체 산출물:** mode, multiplier, model, channel scope, consent 상태를 조회/변경한다.
+- **완료 조건:** optimistic locking과 권한·audit가 적용된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T019 — 관리자 대시보드 NEXA 설정 UI 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P15-T018
+- **권장 변경 위치:** `central-server/src/main/resources/static/admin/dashboard/**`, `i18n/messages.json`
+- **구체 산출물:** shadow/live 상태, talkativeness, 데이터 처리, rollback을 한 화면에서 제어한다.
+- **완료 조건:** 위험한 LIVE 전환은 확인·설명·권한 검사를 요구한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T020 — NEXA Flyway migration 통합 검증
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T019
+- **권장 변경 위치:** `central-server/src/main/resources/db/migration/**`, `central-server/src/test/**`
+- **구체 산출물:** P02~P15 마이그레이션을 V49 기준 운영 스키마에 순서대로 적용한다.
+- **완료 조건:** 새 설치와 기존 업그레이드 모두 checksum/constraint가 통과한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T021 — 기존 channelai API 호환 테스트
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T020
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/ChannelAiCompatibilityTest.kt`
+- **구체 산출물:** 기존 클라이언트·대시보드가 feature flag OFF에서 동일 응답을 받는지 검증한다.
+- **완료 조건:** NEXA 필드 추가가 기존 JSON 계약을 깨지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T022 — 전체 모듈 ArchUnit·순환 검증
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T021
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/NexaArchitectureTest.kt`
+- **구체 산출물:** 통합 후 신규/기존 도메인의 forbidden dependency와 cycle을 검사한다.
+- **완료 조건:** adapter 우회 import가 없고 DAG 문서와 실제 그래프가 일치한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T023 — NEXA shadow E2E fixture 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T022
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/NexaShadowEndToEndTest.kt`, `test-fixtures/nexa/e2e/**`
+- **구체 산출물:** JDA fake→event store→burst→scene→policy→shadow log 전체를 재생한다.
+- **완료 조건:** Discord outbound와 GLM은 policy SPEAK 전까지 호출되지 않고 shadow에서는 전송 0회다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T024 — 점진 migration·rollback runbook 작성
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P15-T023
+- **권장 변경 위치:** `docs/nexa/migration/legacy-to-nexa.md`
+- **구체 산출물:** 길드별 legacy→shadow→canary→live와 역순 rollback 절차를 작성한다.
+- **완료 조건:** DB/설정/모델 각각 독립 rollback 방법이 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P15-T025 — P15 통합 회귀 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P15-T024
+- **권장 변경 위치:** `central-server/src/test/**`, `docs/nexa/migration/**`, `.github/workflows/**`
+- **구체 산출물:** 기존 기능·프로토콜·대시보드·quota·routing 회귀를 독립 검토한다.
+- **완료 조건:** feature flag OFF가 현재 운영과 동일하고 shadow E2E가 전송 0회를 증명해야 통과한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P16 — 행동 평가·시뮬레이션·적대적 시나리오
+
+**목표:** 짧은 성공 데모에 속지 않도록 실제 Discord 리듬, 장기 상태, 오류, 공격을 재생하는 평가 하네스를 만들고 release gate를 수치화한다.
+
+**주요 경로:** `ml/social-policy/**, central-server/src/test/**, test-fixtures/nexa/scenarios/**, scripts/**, docs/nexa/evals/**`
+
+**종료 게이트:** 각 모델·정책·런타임 버전을 같은 시나리오에서 비교할 수 있고, 사람다움·침묵·안전·장기 기억 실패가 단일 종합점수에 숨지 않아야 한다.
+
+### NEXA-P16-T001 — 이벤트 재생 시뮬레이터 CLI 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P15-T025
+- **권장 변경 위치:** `scripts/nexa-simulate.py`, `central-server/src/test/**`
+- **구체 산출물:** fixture를 virtual Clock과 seeded random으로 central pipeline에 재생한다.
+- **완료 조건:** 외부 Discord/GLM 없이 모든 action과 state transition을 artifact로 저장한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T002 — 시나리오 DSL schema 정의
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T001
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/schema.json`, `docs/nexa/evals/scenario-dsl.md`
+- **구체 산출물:** event, expected invariant, optional human labels, fault injection을 표현한다.
+- **완료 조건:** schema 오류와 존재하지 않는 message target이 검증에서 실패한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T003 — 짧은 메시지 조각 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T002
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/fragmented-nickname.yaml`
+- **구체 산출물:** 닉네임/바꿔/ㅃㄹ/헷갈리니까 흐름과 사람 답변을 재현한다.
+- **완료 조건:** NEXA가 fragment마다 판단·응답하지 않고 대부분 침묵하는 기대 invariant가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T004 — 두 사람 빠른 대화 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T003
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/rapid-dyad.yaml`
+- **구체 산출물:** 2명이 초단위로 대화하는 동안 NEXA가 불려도 context 변화로 취소되는 상황을 만든다.
+- **완료 조건:** 예약 행동이 stale 전송되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T005 — 반복 mention spam 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T004
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/mention-spam.yaml`
+- **구체 산출물:** 한 사용자가 @NEXA를 여러 번 연속 호출하는 상황을 만든다.
+- **완료 조건:** 호출 수와 응답 수가 1:1이 아니고 점유율 cap이 작동한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T006 — 진지한 직접 질문 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T005
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/serious-direct-question.yaml`
+- **구체 산출물:** 명확한 기술 질문과 충분한 pause를 제공한다.
+- **완료 조건:** 무작위 침묵만 하는 정책이 MIR에서 불리하고 생성 경로가 정확히 한 번 열린다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T007 — 이미 인간이 답한 질문 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T006
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/already-answered.yaml`
+- **구체 산출물:** NEXA 예약 후 다른 사용자가 충분히 답하는 상황을 만든다.
+- **완료 조건:** NEXA action이 취소되거나 reaction-only로 재평가된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T008 — 메시지 수정·삭제 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T007
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/edit-delete.yaml`
+- **구체 산출물:** 질문 내용이 수정되고 target이 삭제되는 경우를 만든다.
+- **완료 조건:** 기억·예약·prompt가 최신 revision과 deletion을 따른다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T009 — 닉네임 장기 변경 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T008
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/nickname-over-time.yaml`
+- **구체 산출물:** 수주 간 nickname 변경과 과거 회상을 가상 시간으로 재생한다.
+- **완료 조건:** 현재/과거 fact retrieval이 정확하고 stale nickname이 기본 답변에 나오지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T010 — AI 채팅 점유 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T009
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/bot-dominance.yaml`
+- **구체 산출물:** 낮은 인간 메시지 수와 높은 policy probability를 조합한다.
+- **완료 조건:** NEXA가 혼자 연속 발화하지 않고 share cap/energy decay가 작동한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T011 — 장기간 조용한 서버 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T010
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/silent-server.yaml`
+- **구체 산출물:** 사람 메시지가 거의 없는 30일을 재생한다.
+- **완료 조건:** NEXA가 자동 주제 방송을 시작하지 않고 호출/맥락 없는 자발 발화를 제한한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T012 — 고활성 대형 채널 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T011
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/high-traffic.yaml`
+- **구체 산출물:** 다수 화자와 동시 thread, rate limit을 재현한다.
+- **완료 조건:** 정책 latency와 queue가 안정적이며 cross-thread 응답이 기준 이하이다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T013 — 상충 기억 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T012
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/conflicting-memory.yaml`
+- **구체 산출물:** 동일 사실의 모순 언급과 정정·삭제를 재생한다.
+- **완료 조건:** speech가 conflict를 확정 사실로 사용하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T014 — 대화 내 prompt injection 시나리오 작성
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P16-T013
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/prompt-injection.yaml`
+- **구체 산출물:** 사용자가 시스템 지침·기억·비밀 공개를 요구하는 메시지를 넣는다.
+- **완료 조건:** 대화 content가 policy/speech 시스템 계약을 재정의하지 못한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T015 — 모욕·괴롭힘 경계 시나리오 작성
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P16-T014
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/banter-harassment.yaml`
+- **구체 산출물:** 친근한 장난과 불쾌 표시가 있는 상황을 구분한다.
+- **완료 조건:** 관찰된 거부 신호 후 tease 확률이 내려가고 공격적 반복이 차단된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T016 — 늦게 도착한 GLM 응답 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T015
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/late-generation.yaml`
+- **구체 산출물:** GLM 응답 전에 contextVersion이 여러 번 바뀌는 상황을 만든다.
+- **완료 조건:** 늦은 content가 Discord에 전송되지 않고 폐기 audit가 남는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T017 — policy/GLM timeout 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T016
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/model-timeout.yaml`
+- **구체 산출물:** 정책 서비스와 GLM 각각 timeout을 주입한다.
+- **완료 조건:** fallback chain이 always-silent 또는 cancel로 안전하게 끝난다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T018 — scheduler crash 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T017
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/scheduler-crash.yaml`
+- **구체 산출물:** claim, typing, first bubble 단계에서 crash를 주입한다.
+- **완료 조건:** 복구 후 duplicate message가 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T019 — Discord permission loss 시나리오 작성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T018
+- **권장 변경 위치:** `test-fixtures/nexa/scenarios/permission-loss.yaml`
+- **구체 산출물:** 채널 보기/메시지/반응 권한을 예약 중 제거한다.
+- **완료 조건:** 다른 채널 fallback 없이 action이 실패/취소된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T020 — 정책 평가 metric aggregator 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T019
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/eval/scenario_metrics.py`
+- **구체 산출물:** FIR, MIR, Brier, delay, dominance, stale memory, cross-thread, cancel을 시나리오별 집계한다.
+- **완료 조건:** 종합점수뿐 아니라 모든 원 metric과 confidence가 남는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T021 — 행동 분포 distance 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T020
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/eval/distribution_distance.py`
+- **구체 산출물:** 인간 burst count, delay, reaction ratio, mention non-response와 모델 분포 차이를 계산한다.
+- **완료 조건:** 평균만 비교하지 않고 quantile/KS/EMD 중 적절한 지표를 사용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T022 — 30일 가상 장기 시뮬레이션 구현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P16-T021
+- **권장 변경 위치:** `scripts/simulate-30day-member.py`, `docs/nexa/experiments/EXP-30day-simulation.md`
+- **구체 산출물:** 관계·기억·nickname·채널 tempo drift를 포함한 가상 시간을 재생한다.
+- **완료 조건:** 상태 크기, 반복 문구, stale memory, 점유율 drift가 보고된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T023 — 블라인드 인간 평가 프로토콜 작성
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P16-T022
+- **권장 변경 위치:** `docs/nexa/evals/blind-human-review.md`
+- **구체 산출물:** 사람/정책 A/B transcript를 가명화해 자연스러움·방해·일관성·불쾌감을 평가한다.
+- **완료 조건:** AI임을 속이는 제품 실험이 아니라 evaluator에게 연구 목적과 데이터 사용을 고지한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T024 — 적대적 평가 리포트 자동 생성
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P16-T023
+- **권장 변경 위치:** `scripts/generate-nexa-eval-report.py`, `docs/nexa/evals/report-template.md`
+- **구체 산출물:** 모델 버전별 모든 시나리오 결과와 회귀 diff를 HTML/Markdown으로 만든다.
+- **완료 조건:** critical invariant 하나 실패 시 PASS로 표시되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P16-T025 — P16 시뮬레이션 release gate
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P16-T024
+- **권장 변경 위치:** `docs/nexa/evals/**`, `docs/nexa/experiments/EXP-30day-simulation.md`, `test-fixtures/nexa/scenarios/**`
+- **구체 산출물:** critical 시나리오, 장기 drift, 인간 평가 준비도를 독립 검토한다.
+- **완료 조건:** 침묵·취소·privacy·stale memory critical 실패가 0이어야 canary 보안 작업으로 진행한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P17 — 보안·안전·데이터 오염 방어
+
+**목표:** 공개 채팅을 관찰하고 외부 모델을 호출하는 시스템의 prompt injection, 개인정보, 권한, 괴롭힘, 데이터 poisoning, 모델 공급망 위험을 방어한다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/global/**, central-server/src/main/kotlin/com/discordassistant/central/speech/**, central-server/src/main/kotlin/com/discordassistant/central/participation/**, ml/social-policy/**, docs/nexa/security/**, .github/workflows/**`
+
+**종료 게이트:** 대화 원문이 시스템 권한을 획득하지 못하고, 삭제·동의 철회·키 회전·artifact 검증·incident rollback이 실제 테스트와 runbook으로 입증되어야 한다.
+
+### NEXA-P17-T001 — NEXA 위협 모델 작성
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P16-T025
+- **권장 변경 위치:** `docs/nexa/security/threat-model.md`
+- **구체 산출물:** 자산, 신뢰 경계, 공격자, 데이터 흐름, STRIDE/LINDDUN 관점 위험을 정리한다.
+- **완료 조건:** Discord/JDA, central DB, Z.AI, ML artifact, admin dashboard 경계가 모두 포함된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T002 — 대화 content 지침 격리 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/prompt/**`
+- **구체 산출물:** 사용자 메시지를 instruction이 아닌 quoted scene data로 직렬화한다.
+- **완료 조건:** prompt injection fixture가 system/identity/policy section을 덮어쓰지 못한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T003 — system prompt·비밀 비노출 검사 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/domain/service/critic/**`, `central-server/src/test/**`
+- **구체 산출물:** 후보에 시스템 지침, API 키 패턴, 내부 schema, hidden IDs가 포함되면 폐기한다.
+- **완료 조건:** 가짜 비밀 fixture와 실제 환경 변수명이 모두 테스트된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T004 — GLM payload allowlist serializer 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/privacy/**`
+- **구체 산출물:** 허용 필드만 직렬화하고 객체 전체 serialization을 금지한다.
+- **완료 조건:** 새 필드는 명시적 승인 없이는 payload에 자동 추가되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T005 — 메시지 암호화 키 회전 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/global/crypto/**`, `docs/nexa/security/key-rotation.md`
+- **구체 산출물:** key version, lazy re-encryption, revoked key 처리와 복구 절차를 구현한다.
+- **완료 조건:** 구키 폐기 전 모든 활성 ciphertext 접근 가능성을 검증한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T006 — NEXA 관리자 RBAC 정의
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/global/security/**`, `specs/product-v2/nexa/admin-permissions.md`
+- **구체 산출물:** 조회, 설정, live 전환, 데이터 export, 삭제, 모델 승인 권한을 분리한다.
+- **완료 조건:** Discord 관리자 한 종류에 모든 고위험 권한을 자동 부여하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T007 — 설정 변경 optimistic lock·audit 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/channelai/**`, `central-server/src/main/kotlin/com/discordassistant/central/global/audit/**`
+- **구체 산출물:** 동시 관리자 변경 충돌과 before/after audit를 구현한다.
+- **완료 조건:** stale dashboard가 최신 live 설정을 덮어쓰지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T008 — 사용자 데이터 export 유스케이스 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/global/privacy/**`
+- **구체 산출물:** 가명 사용자에 연결된 source events, memory, relation state, training eligibility를 export한다.
+- **완료 조건:** 다른 사용자의 content와 내부 비밀이 포함되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T009 — 삭제 요청 orchestration 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/global/privacy/**`
+- **구체 산출물:** event redaction, projection invalidation, memory deletion, dataset tombstone를 하나의 추적 가능한 workflow로 연결한다.
+- **완료 조건:** 부분 실패 상태와 재시도·완료 증거가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T010 — 동의 철회 즉시 차단 테스트
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T009
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/ConsentRevocationEndToEndTest.kt`
+- **구체 산출물:** 진행 중 ingestion, pending action, GLM request 직전 각각 철회를 주입한다.
+- **완료 조건:** 철회 시점 이후 신규 외부 전송/발화/학습 export가 0이다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T011 — 학습 artifact 삭제 tombstone 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T010
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/deletion.py`, `docs/nexa/security/training-deletion.md`
+- **구체 산출물:** 삭제 대상 source가 포함된 dataset/model을 식별하고 재학습/폐기 상태를 관리한다.
+- **완료 조건:** 모델에서 개별 샘플을 제거할 수 없다는 한계와 재학습 기준이 명확하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T012 — 외부 GLM 요청 감사 hash 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/requestlog/**`
+- **구체 산출물:** payload canonical hash, field list, model, purpose, consent snapshot을 기록한다.
+- **완료 조건:** 원문 payload를 로그에 저장하지 않고 사후 범위 감사가 가능하다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T013 — 로그 redaction 자동 테스트 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T012
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/SensitiveLoggingTest.kt`, `scripts/scan-sensitive-logs.py`
+- **구체 산출물:** 대표 원문·snowflake·API key를 흘린 뒤 로그 파일에서 탐지한다.
+- **완료 조건:** 금지 문자열이 한 건이라도 있으면 CI가 실패한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T014 — 괴롭힘·모욕 안전 정책 정의
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T013
+- **권장 변경 위치:** `specs/product-v2/nexa/banter-safety.md`
+- **구체 산출물:** 친근한 장난, 직접 모욕, 반복 표적화, 사용자의 중단 신호에 대한 행동 제한을 정의한다.
+- **완료 조건:** “사람 같음”을 이유로 괴롭힘을 허용하지 않고 사용자별 opt-out이 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T015 — 안전 정책 override 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/domain/service/PolicySafetyConstraint.kt`, `central-server/src/main/kotlin/com/discordassistant/central/speech/domain/service/critic/**`
+- **구체 산출물:** 위험 socialAct/target 조합을 제거하거나 action을 cancel한다.
+- **완료 조건:** 안전 override가 raw policy와 함께 decision log에 기록된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T016 — 고위험 도움 요청 fallback 경계 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/speech/application/safety/**`
+- **구체 산출물:** 자해·의료·법률 등 고위험 맥락에서 장난성 캐릭터보다 안전한 응답/침묵 정책을 우선한다.
+- **완료 조건:** 고위험 분류 실패 시 과도한 확신이나 조롱이 나오지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T017 — AI 정체성 공개 원칙 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T016
+- **권장 변경 위치:** `specs/product-v2/nexa/disclosure.md`, `central-server/src/main/kotlin/com/discordassistant/central/onboarding/**`
+- **구체 산출물:** NEXA가 인간을 사칭하지 않고 프로필·온보딩·명령으로 AI임을 명확히 표시한다.
+- **완료 조건:** 사람 같음 평가를 위해 사용자에게 정체성을 속이는 production 실험을 금지한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T018 — engagement 조작 방지 보상 원칙 작성
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T017
+- **권장 변경 위치:** `docs/nexa/security/reward-safety.md`
+- **구체 산출물:** 대화량·멘션 수만 최적화해 도발·의존·갈등을 유도하지 못하도록 reward 금지사항을 정의한다.
+- **완료 조건:** 향후 RL 실험의 모든 reward가 다목적 안전 검토를 통과해야 한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T019 — 학습 데이터 poisoning 탐지 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T018
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/data/poisoning.py`
+- **구체 산출물:** 도배, coordinated mention, 비정상 반복, bot-generated data를 탐지·격리한다.
+- **완료 조건:** 자동 탐지 결과를 사람 검토 없이 사용자 제재로 사용하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T020 — 모델 artifact 서명·hash 검증 구현
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T019
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/export/signing.py`, `central-server/src/main/kotlin/com/discordassistant/central/participation/application/model/**`
+- **구체 산출물:** ONNX/model/config/calibration bundle의 hash와 서명을 검증한다.
+- **완료 조건:** 변조 artifact가 registry에서 ACTIVE가 되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T021 — dependency·container 보안 scan 추가
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T020
+- **권장 변경 위치:** `.github/workflows/**`, `central-server/**`, `ml/social-policy/**`
+- **구체 산출물:** Gradle/Python/container 취약점 검사를 CI에 추가하거나 기존 workflow와 통합한다.
+- **완료 조건:** critical 취약점의 예외는 만료일·소유자·근거 없이 허용되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T022 — SSRF·URL attachment 경계 테스트
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P17-T021
+- **권장 변경 위치:** `central-server/src/test/kotlin/**/NexaExternalContentSecurityTest.kt`
+- **구체 산출물:** 메시지 URL/attachment를 speech나 knowledge가 자동 fetch하지 않도록 검증한다.
+- **완료 조건:** 허용된 retrieval adapter만 네트워크 접근을 수행한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T023 — NEXA 보안 incident runbook 작성
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P17-T022
+- **권장 변경 위치:** `docs/nexa/security/incident-response.md`
+- **구체 산출물:** 데이터 누출, 과다 발화, prompt leak, 잘못된 기억, 모델 변조별 즉시 조치와 증거 보존을 작성한다.
+- **완료 조건:** kill switch, model rollback, consent freeze, 사용자 통지 책임자가 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T024 — 독립 red-team 실행
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P17-T023
+- **권장 변경 위치:** `docs/nexa/security/red-team-report.md`
+- **구체 산출물:** prompt injection, privacy extraction, harassment escalation, admin abuse, model poisoning을 공격한다.
+- **완료 조건:** 재현 단계·영향·수정·잔여 위험이 기록되고 critical finding은 닫힌다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P17-T025 — P17 보안·안전 승인 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P17-T024
+- **권장 변경 위치:** `docs/nexa/security/**`, `central-server/src/test/**`, `ml/social-policy/**`
+- **구체 산출물:** 보안/개인정보/제품 안전 담당이 threat model과 red-team 수정을 승인한다.
+- **완료 조건:** critical/high 미해결, 삭제 불완전, AI 비공개 상태에서는 canary를 금지한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P18 — 관측성·운영·Canary 롤아웃
+
+**목표:** 정책이 왜 침묵하거나 말했는지 원문 없이 관측하고, 길드별 canary·kill switch·모델/설정 rollback·용량 계획으로 안전하게 운영한다.
+
+**주요 경로:** `central-server/src/main/kotlin/com/discordassistant/central/global/observability/**, central-server/src/main/kotlin/com/discordassistant/central/participation/**, central-server/src/main/resources/static/admin/dashboard/**, deploy/**, .github/workflows/**, docs/nexa/operations/**`
+
+**종료 게이트:** 한 길드에서 시작해 즉시 중단·rollback할 수 있고, action 분포·점유율·오류·비용·stale memory를 실시간 탐지하며 운영자가 원문 없이 원인을 추적할 수 있어야 한다.
+
+### NEXA-P18-T001 — NEXA metric taxonomy 정의
+
+- **종류/위험도:** `documentation` / `low`
+- **선행 작업:** NEXA-P17-T025
+- **권장 변경 위치:** `docs/nexa/operations/metrics.md`
+- **구체 산출물:** ingestion, burst, scene, policy, action, speech, memory, privacy, cost 지표를 정의한다.
+- **완료 조건:** 고카디널리티 사용자/채널 ID와 원문을 metric label에서 금지한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T002 — end-to-end correlation ID 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T001
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/global/observability/**`
+- **구체 산출물:** event→burst→scene→decision→action→GLM→Discord message를 correlation ID로 연결한다.
+- **완료 조건:** 각 단계가 없을 때도 chain이 깨지지 않고 로그에 원문이 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T003 — OpenTelemetry trace instrumentation 추가
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T002
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/**`
+- **구체 산출물:** 주요 application 경계와 외부 routing/Discord 호출에 span을 추가한다.
+- **완료 조건:** IGNORE 경로와 SPEAK 경로의 비용 차이를 trace에서 확인할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T004 — 정책 action 분포 metric 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T003
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/**`
+- **구체 산출물:** IGNORE/WAIT/REACT/SPEAK/CANCEL raw·post-constraint 분포를 기록한다.
+- **완료 조건:** constraint가 action을 변경한 비율이 별도 지표다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T005 — NEXA 채팅 점유율 metric 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T004
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/**`
+- **구체 산출물:** 최근 5분/1시간 human burst 대비 NEXA burst share를 계산한다.
+- **완료 조건:** 메시지 조각 수가 아닌 burst 수와 토큰/문자 share를 함께 본다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T006 — 정책·GLM latency metric 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T005
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/global/observability/**`
+- **구체 산출물:** policy inference, scheduling wait, generation, first/last bubble latency를 분리한다.
+- **완료 조건:** 취소된 action도 취소까지 걸린 시간이 기록된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T007 — GLM 비용·token metric 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T006
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/routing/**`, `central-server/src/main/kotlin/com/discordassistant/central/requestlog/**`
+- **구체 산출물:** 길드/모델/purpose별 token과 추정 비용을 집계한다.
+- **완료 조건:** 개별 사용자 ID를 metric label로 사용하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T008 — FIR/MIR proxy 운영 metric 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/evaluation/**`
+- **구체 산출물:** shadow/canary outcome에서 false interruption·missed intervention proxy를 지연 집계한다.
+- **완료 조건:** proxy임을 dashboard에 명시하고 사용자 심리를 사실로 표시하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T009 — stale memory·conflict metric 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T008
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/**`
+- **구체 산출물:** invalid memory retrieval 차단, conflict rate, deletion backlog를 측정한다.
+- **완료 조건:** 실제 memory object를 metric에 노출하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T010 — NEXA 운영 dashboard 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T009
+- **권장 변경 위치:** `central-server/src/main/resources/static/admin/dashboard/**`, `i18n/messages.json`
+- **구체 산출물:** 모드, action distribution, share, latency, cost, errors, model version, rollback을 표시한다.
+- **완료 조건:** LIVE와 SHADOW 수치가 시각적으로 분리된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T011 — 과다 발화 alert 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P18-T010
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/global/observability/**`, `docs/nexa/operations/alerts.md`
+- **구체 산출물:** 점유율, 연속 burst, mention response spike, queue backlog 기준 alert를 만든다.
+- **완료 조건:** alert 발생 시 자동 downgrade/kill 조건과 사람 확인이 구분된다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T012 — 모델 오류·fallback alert 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T011
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/**`
+- **구체 산출물:** policy timeout, schema mismatch, fallback-to-silent 비율을 경보한다.
+- **완료 조건:** fallback 자체가 정상 안전 동작일 수 있어 지속 시간/비율 기준을 사용한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T013 — 길드별 kill switch 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P18-T012
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/guild/**`, `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/**`
+- **구체 산출물:** 관리자와 운영자가 즉시 신규 결정·예약·전송을 중단한다.
+- **완료 조건:** 이미 생성된 pending content까지 취소되고 audit가 남는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T014 — 채널별 mute와 관찰 중단 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P18-T013
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/channelai/**`
+- **구체 산출물:** 발화만 끄기와 관찰·저장까지 끄기를 분리한다.
+- **완료 조건:** 관찰 중단은 새 event store append부터 차단한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T015 — 정책 모델 rollback 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P18-T014
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/model/**`
+- **구체 산출물:** active→previous signed artifact로 원자적 전환한다.
+- **완료 조건:** in-flight decision은 사용 model version을 유지하거나 취소하는 규칙이 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T016 — 설정 rollback 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P18-T015
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/channelai/**`
+- **구체 산출물:** 길드 NEXA 설정의 version history와 이전값 복구를 구현한다.
+- **완료 조건:** 동의 철회 상태는 단순 설정 rollback으로 되돌릴 수 없다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T017 — DB backup·restore 검증
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P18-T016
+- **권장 변경 위치:** `docs/nexa/operations/backup-restore.md`, `scripts/**`
+- **구체 산출물:** event store, action queue, memory, decision log를 포함한 복원 훈련을 수행한다.
+- **완료 조건:** 복원 후 duplicate send 없이 scheduler가 시작된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T018 — actionruntime 부하 테스트
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P18-T017
+- **권장 변경 위치:** `scripts/load-test-nexa-actions.py`, `docs/nexa/experiments/EXP-action-load.md`
+- **구체 산출물:** 동시 guild/channel과 예약 action을 증가시켜 throughput·DB contention을 측정한다.
+- **완료 조건:** SLO 한계와 scale-out 기준이 수치화된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T019 — Discord rate-limit 부하 테스트
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P18-T018
+- **권장 변경 위치:** `scripts/load-test-discord-executor.py`, `docs/nexa/experiments/EXP-discord-rate-limit.md`
+- **구체 산출물:** fake JDA rate limits와 retry-after를 주입한다.
+- **완료 조건:** queue가 오래된 메시지를 폭발적으로 전송하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T020 — 정책 serving 장애 chaos 테스트
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P18-T019
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-policy-service-chaos.md`, `central-server/src/test/**`
+- **구체 산출물:** timeout, partial response, schema mismatch, network partition을 주입한다.
+- **완료 조건:** fallback-to-silent와 recovery가 SLO 내 작동한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T021 — NEXA SLO·error budget 정의
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P18-T020
+- **권장 변경 위치:** `docs/nexa/operations/slo.md`
+- **구체 산출물:** ingestion durability, duplicate send, stale send, policy latency, GLM availability, deletion SLA를 정의한다.
+- **완료 조건:** 사람다움 metric과 시스템 신뢰성 SLO를 혼합하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T022 — 1개 내부 길드 canary 계획 작성
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P18-T021
+- **권장 변경 위치:** `docs/nexa/operations/canary-plan.md`
+- **구체 산출물:** 대상, 기간, 시간대, max share, 모델, rollback, 연락 책임자를 정의한다.
+- **완료 조건:** 실제 사용자 동의와 AI 공개 상태가 확인된다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T023 — Canary 자동 중단 조건 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P18-T022
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/rollout/**`
+- **구체 산출물:** 과다 발화, complaint, stale send, privacy error, model mismatch 시 LIVE→SHADOW/OFF로 전환한다.
+- **완료 조건:** 중단 후 pending action도 취소되고 운영자 알림이 간다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T024 — release checklist·runbook 완성
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P18-T023
+- **권장 변경 위치:** `docs/nexa/operations/release-checklist.md`, `docs/nexa/operations/runbooks/**`
+- **구체 산출물:** 배포 전후 검증, dashboard, alert, rollback, 데이터 삭제, incident 절차를 작성한다.
+- **완료 조건:** 당직자가 코드 지식 없이 핵심 중단·복구를 수행할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P18-T025 — P18 canary 진입 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P18-T024
+- **권장 변경 위치:** `docs/nexa/operations/**`, `docs/nexa/experiments/**`, `central-server/src/test/**`
+- **구체 산출물:** SLO, alerts, kill switch, rollback, consent, canary 계획을 승인한다.
+- **완료 조건:** 자동 중단과 수동 kill switch를 실제 staging에서 시연해야 canary를 시작한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## P19 — 장기 적응·오프라인 강화학습·v1 출시 판단
+
+**목표:** 수주·수개월 사용에서 사람처럼 느껴지는지 검증하고, 서버별 적응은 제한된 파라미터부터 시작하며 engagement 조작 없이 다음 세대 정책 학습 루프를 만든다.
+
+**주요 경로:** `ml/social-policy/**, central-server/src/main/kotlin/com/discordassistant/central/**, docs/nexa/longitudinal/**, docs/nexa/models/**, docs/nexa/operations/**`
+
+**종료 게이트:** 30/90일 데이터로 일관성·침묵·관계·기억·불쾌감·차단률을 평가하고, 명시적 인간 승인 없이는 온라인 학습이나 다길드 LIVE 출시를 하지 않는다.
+
+### NEXA-P19-T001 — 30일·90일 longitudinal cohort 설계
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P18-T025
+- **권장 변경 위치:** `docs/nexa/longitudinal/cohort-design.md`
+- **구체 산출물:** 옵트인 길드, 비교군, 측정 기간, 중도 이탈, privacy, 설문 일정을 정의한다.
+- **완료 조건:** 제품 사용자를 속이지 않고 AI 정체성과 연구 참여를 고지한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T002 — 장기 identity consistency metric 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P19-T001
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/eval/identity_consistency.py`
+- **구체 산출물:** 시간에 따른 가치·취향·말투·금지사항 위반과 반복을 측정한다.
+- **완료 조건:** 단순 문장 유사도와 사실 모순을 분리한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T003 — 장기 relationship consistency metric 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P19-T002
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/eval/relationship_consistency.py`
+- **구체 산출물:** 관계 상태 변화가 실제 상호작용과 일치하고 갑작스런 친밀도 점프가 없는지 측정한다.
+- **완료 조건:** 사용자 심리를 정답으로 요구하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T004 — 서버 문화 embedding 실험
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P19-T003
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/server_context.py`, `docs/nexa/experiments/EXP-server-culture.md`
+- **구체 산출물:** tempo·burst·reaction 통계를 작은 culture representation으로 학습한다.
+- **완료 조건:** 원본 guild ID memorization 없이 unseen guild 적응을 평가한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T005 — adaptive talkativeness 보정 실험
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P19-T004
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/adaptation/talkativeness.py`, `docs/nexa/experiments/EXP-adaptive-talkativeness.md`
+- **구체 산출물:** 운영자가 정한 multiplier 주변에서 calibration만 천천히 조정한다.
+- **완료 조건:** 사용자 설정 범위를 넘지 않고 자동 변경 내역을 설명·rollback할 수 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T006 — delay personalization 실험
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P19-T005
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/adaptation/delay.py`, `docs/nexa/experiments/EXP-delay-adaptation.md`
+- **구체 산출물:** 길드 tempo와 사용자별 관찰 지연으로 time calibration을 조정한다.
+- **완료 조건:** 직접 호출에 대한 강제 응답률을 올리는 방식이 아니다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T007 — reaction/message 비율 적응 실험
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P19-T006
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/adaptation/action_mix.py`
+- **구체 산출물:** 서버 문화에 맞춰 REACT와 SPEAK mix를 제한 범위에서 조정한다.
+- **완료 조건:** 말을 줄이고 reaction을 늘린 것이 quality 개선인지 FIR/MIR와 함께 본다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T008 — 관계 상태 온라인 update 안정화
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P19-T007
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/**`
+- **구체 산출물:** 새 outcome이 state에 미치는 최대 변화량과 최소 표본을 설정한다.
+- **완료 조건:** 한 번의 부정/긍정 반응이 장기 관계를 뒤집지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T009 — 온라인 학습 허용 범위 ADR 작성
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P19-T008
+- **권장 변경 위치:** `docs/adr/0014-online-adaptation-boundary.md`
+- **구체 산출물:** 실시간 업데이트 가능한 calibration과 오프라인 승인 필요한 모델 weight/identity를 구분한다.
+- **완료 조건:** production feedback로 모델 전체를 자동 fine-tune하는 경로를 기본 금지한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T010 — 오프라인 trajectory dataset builder 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P19-T009
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/rl/trajectory.py`
+- **구체 산출물:** scene-state→action→delay→outcome의 구간 trajectory를 consent와 lineage와 함께 만든다.
+- **완료 조건:** 실제 생성 문구만으로 reward를 계산하지 않고 취소/침묵도 포함한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T011 — 대화 구간 reward 계약 정의
+
+- **종류/위험도:** `decision` / `high`
+- **선행 작업:** NEXA-P19-T010
+- **권장 변경 위치:** `docs/nexa/research/reward-contract.md`
+- **구체 산출물:** continuation, reciprocity, interruption, dominance, complaint, stale memory, safety를 다목적 reward로 정의한다.
+- **완료 조건:** 대화량·멘션 수 단일 reward를 금지한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T012 — reward proxy validation 구현
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P19-T011
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/rl/reward_validation.py`, `docs/nexa/experiments/EXP-reward-validation.md`
+- **구체 산출물:** proxy reward와 블라인드 인간 평가의 상관·불일치를 분석한다.
+- **완료 조건:** 상관이 낮은 proxy는 RL에 사용하지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T013 — offline policy evaluation baseline 구현
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P19-T012
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/rl/ope.py`
+- **구체 산출물:** importance weighting, doubly robust 등 가능한 OPE를 baseline 정책에 적용한다.
+- **완료 조건:** support 부족과 높은 분산을 숨기지 않고 confidence interval을 보고한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T014 — behavior cloning v2 학습
+
+- **종류/위험도:** `experiment` / `medium`
+- **선행 작업:** NEXA-P19-T013
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/models/policy_v2.py`, `docs/nexa/experiments/EXP-policy-v2-bc.md`
+- **구체 산출물:** 장기 state와 timing을 포함한 새 supervised policy를 학습한다.
+- **완료 조건:** v1 대비 장기 cohort holdout 이득과 비용을 비교한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T015 — 보수적 offline RL PoC
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P19-T014
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/rl/train_conservative.py`, `docs/nexa/experiments/EXP-offline-rl-poc.md`
+- **구체 산출물:** 행동 데이터 support 밖 action을 억제하는 보수적 방법을 PoC한다.
+- **완료 조건:** production 통합 없이 OPE·simulation·human review만 수행한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T016 — reward hacking 적대 평가
+
+- **종류/위험도:** `security` / `high`
+- **선행 작업:** NEXA-P19-T015
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-reward-hacking.md`, `test-fixtures/nexa/scenarios/**`
+- **구체 산출물:** 도발, 과다 mention, 감정적 의존, 갈등 유도로 reward를 높이는 정책을 탐지한다.
+- **완료 조건:** 한 사례라도 critical이면 해당 reward/RL 후보를 폐기한다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T017 — 정책 drift 탐지 구현
+
+- **종류/위험도:** `implementation` / `medium`
+- **선행 작업:** NEXA-P19-T016
+- **권장 변경 위치:** `central-server/src/main/kotlin/com/discordassistant/central/participation/application/monitoring/**`
+- **구체 산출물:** action distribution, calibration, feature distribution, server slice 성능 변화를 감지한다.
+- **완료 조건:** drift 시 자동 재학습 대신 shadow 재평가와 운영 알림을 시작한다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 아니오
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T018 — 기억 노화·압축 장기 실험
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P19-T017
+- **권장 변경 위치:** `docs/nexa/experiments/EXP-memory-aging.md`, `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/**`
+- **구체 산출물:** 90일 event volume에서 기억 TTL·consolidation·retrieval 품질을 측정한다.
+- **완료 조건:** 압축으로 provenance·삭제 가능성·현재성이 사라지지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T019 — 정기 재학습 파이프라인 설계
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P19-T018
+- **권장 변경 위치:** `ml/social-policy/src/nexa_policy/pipeline/**`, `.github/workflows/**`
+- **구체 산출물:** dataset 승인→train→eval→model card→signature→shadow 등록을 자동화한다.
+- **완료 조건:** 평가 실패 모델이 registry ACTIVE로 승격되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T020 — 모델·설정 human approval UI 구현
+
+- **종류/위험도:** `implementation` / `high`
+- **선행 작업:** NEXA-P19-T019
+- **권장 변경 위치:** `central-server/src/main/resources/static/admin/dashboard/**`, `central-server/src/main/kotlin/com/discordassistant/central/participation/adapter/inbound/web/**`
+- **구체 산출물:** 새 모델 지표·제한·artifact hash를 보고 승인/거절한다.
+- **완료 조건:** 승인 권한과 이중 확인, audit, rollback target이 있다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh central`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T021 — 장기 사용자 통제·탈퇴 UX 검증
+
+- **종류/위험도:** `experiment` / `high`
+- **선행 작업:** NEXA-P19-T020
+- **권장 변경 위치:** `docs/nexa/longitudinal/user-control-review.md`
+- **구체 산출물:** mute, opt-out, memory reset, 데이터 export/delete, complaint 흐름을 사용자 테스트한다.
+- **완료 조건:** 통제가 숨겨져 있거나 NEXA와 대화해야만 끌 수 있는 구조가 아니다.
+- **검증:** `./scripts/nexa-verify.sh docs`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T022 — 외부 benchmark·재현 패키지 작성
+
+- **종류/위험도:** `documentation` / `high`
+- **선행 작업:** NEXA-P19-T021
+- **권장 변경 위치:** `docs/nexa/research/benchmark-plan.md`, `ml/social-policy/README.md`
+- **구체 산출물:** 개인정보 없는 합성 fixture, metric 코드, contract를 외부 검토 가능한 형태로 정리한다.
+- **완료 조건:** 실제 Discord 원문·사용자 식별자는 공개 artifact에 포함되지 않는다.
+- **검증:** `./scripts/nexa-verify.sh docs`; `./scripts/nexa-verify.sh ml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T023 — 최종 아키텍처·코드 독립 감사
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P19-T022
+- **권장 변경 위치:** `docs/nexa/audits/final-architecture-audit.md`, `central-server/**`, `ml/social-policy/**`
+- **구체 산출물:** 모듈 경계, dead code, legacy 중복, test validity, security, operational readiness를 독립 감사한다.
+- **완료 조건:** P0/P1 발견이 닫히고 P2는 소유자·기한이 있다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T024 — NEXA v1 production readiness review
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P19-T023
+- **권장 변경 위치:** `docs/nexa/operations/v1-readiness.md`, `docs/nexa/longitudinal/**`, `docs/nexa/models/**`
+- **구체 산출물:** 30일 이상 canary 결과, SLO, complaint, kill switch, memory, 비용, privacy를 종합해 출시 여부를 판단한다.
+- **완료 조건:** GO/NO-GO/EXTEND-CANARY 중 하나를 근거와 함께 인간이 결정한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+### NEXA-P19-T025 — P19 v1 출시·후속 학습 게이트
+
+- **종류/위험도:** `review` / `high`
+- **선행 작업:** NEXA-P19-T024
+- **권장 변경 위치:** `docs/nexa/**`, `central-server/**`, `ml/social-policy/**`
+- **구체 산출물:** 승인된 길드 범위로만 v1을 출시하거나 NO-GO 결정을 기록하고 다음 연구 backlog를 만든다.
+- **완료 조건:** 500단계 완료가 자동 출시를 의미하지 않으며 실제 증거가 부족하면 정직하게 중단한다.
+- **검증:** `./scripts/nexa-verify.sh all`; `python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml`
+- **인간 승인 게이트:** 예 — 사람 승인 전 진행 금지
+- **Codex 실행 제한:** 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
+
+## Codex에 작업 하나를 줄 때 사용하는 공통 프롬프트
+
+```text
+작업 그래프의 `<TASK_ID>` 하나만 수행하라.
+
+1. 루트와 변경 경로에 적용되는 모든 AGENTS.md를 읽어라.
+2. PLANS.md, 해당 task node, 관련 ADR, 현재 코드를 읽어라.
+3. 선행 작업이 VERIFIED인지 확인하고 아니면 구현하지 말고 BLOCKED 보고하라.
+4. baseline 검증을 먼저 실행하고 결과를 ExecPlan에 기록하라.
+5. recommended_paths 밖 수정이 필요하면 먼저 범위 변경 근거를 ADR/ExecPlan에 기록하라.
+6. deliverable과 acceptance를 테스트로 입증하라.
+7. 테스트 삭제·assertion 약화·실패 숨기기를 금지한다.
+8. 구현 뒤 architecture/concurrency/test/privacy 관점의 읽기 전용 subagent 리뷰를 실행하라.
+9. P0/P1을 수정하고 verification 명령을 모두 다시 실행하라.
+10. 증거와 rollback을 기록하고 task를 REVIEW까지만 올려라. 인간 게이트 작업은 스스로 VERIFIED 처리하지 마라.
+11. 다음 작업을 자동으로 시작하지 마라.
+```
+
+## 계획을 수정해야 하는 경우
+
+다음 상황에서는 500개를 그대로 밀지 말고 영향 작업을 `BLOCKED`로 바꾼 뒤 ADR과 그래프 revision을 만든다.
+
+- 실제 저장소 구조가 사용자 인벤토리와 다름
+- P04 버스트 품질이 기준에 못 미침
+- P10 학습 동의 데이터가 충분하지 않음
+- 학습 정책이 단순 baseline을 못 넘음
+- 장기 기억 stale rate가 허용 기준을 못 넘음
+- canary에서 불쾌감·차단·과다 발화가 증가함
+- Z.AI 모델/API 계약이나 Discord 권한 정책이 변경됨
+
+## 참고 원칙
+
+- Codex 지침은 `AGENTS.md`에 짧게 유지하고 상세 지식은 저장소 문서와 task graph에 둔다.
+- 어려운 문제는 평가 스크립트와 점수화된 반복 루프를 먼저 만든다.
+- Discord message content 접근은 intent·승인 상태를 런타임에서 진단한다.
+- GLM 모델 ID와 endpoint는 코드 상수가 아니라 설정·모델 registry로 둔다.

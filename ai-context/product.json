@@ -1,0 +1,263 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-06-19",
+  "productName": "NEXA / Discord Assistant Provider Pool",
+  "oneLine": "디스코드 서버 운영자가 채널별 AI 도우미를 붙이고, 중앙 서버가 정책·지식·프리셋·라우팅을 관리하며, 로컬 Provider는 품질 주력이 아니라 저비용/배경/커뮤니티 용량 티어로 보태는 시스템.",
+  "plainDescription": "NEXA의 핵심은 “로컬 AI가 최고 답변을 한다”가 아니다. 핵심은 디스코드 서버에 AI 운영 레이어를 붙여 채널 정책, 지식공간, 프리셋, 안전 제한, 품질 피드백을 관리하고, 로컬 AI는 낮은 위험의 보조 작업이나 커뮤니티 기여 용량이 필요할 때만 활용하는 것이다.",
+  "publicPromise": [
+    "일반 유저는 Provider PC나 모델 서버를 몰라도 Discord /질문와 채널 AI로 질문한다.",
+    "서버 관리자는 채널·역할·프리셋·지식공간·안전 리포트·Provider 승인 정책을 운영한다.",
+    "중앙 서버는 정책, 지식 컨텍스트, 라우팅, 세션, 관측성, Discord 응답을 책임진다.",
+    "로컬 Provider는 고품질 답변 보장이 아니라 저비용/배경/낮은 위험 작업을 보태는 선택적 용량 티어다.",
+    "Provider는 자기 PC 자원을 명시적으로 기여하며 언제든 중지할 수 있다."
+  ],
+  "nonGoals": [
+    "로컬 LLM만으로 상용 frontier 모델 수준의 답변 품질을 보장하는 것",
+    "판매자/구매자/가격표/수수료/정산/프로바이더 수익 모델",
+    "여러 PC의 GPU/CPU를 합쳐 하나의 거대한 모델을 실행하는 분산 추론",
+    "Provider의 동의·한도·가용성을 우회하는 품질 향상",
+    "사용자가 Provider PC에 직접 접속하거나 임의 파일/쉘/URL을 실행하는 기능"
+  ],
+  "actors": [
+    {
+      "id": "user",
+      "name": "일반 유저",
+      "job": "/질문로 질문하고 답변을 받는다.",
+      "cannot": [
+        "Provider PC를 직접 선택하거나 접속할 수 없다.",
+        "정책 거부를 클라우드 폴백으로 우회할 수 없다."
+      ]
+    },
+    {
+      "id": "admin",
+      "name": "서버 관리자",
+      "job": "서버의 AI 정책, 채널 AI, Provider 승인, 프리셋, 지식공간, 안전 조치를 관리한다.",
+      "cannot": [
+        "NEXA 강제 안전 가드레일을 제거할 수 없다.",
+        "Provider 개인 한도와 중지 의사를 우회할 수 없다."
+      ]
+    },
+    {
+      "id": "provider",
+      "name": "프로바이더",
+      "job": "자기 PC의 Ollama/ComfyUI 자원을 커뮤니티에 기여한다.",
+      "cannot": [
+        "토큰이 묶이지 않은 다른 서버 질문을 처리할 수 없다.",
+        "자기 로컬 로그에 사용자 프롬프트 원문을 저장하면 안 된다."
+      ]
+    },
+    {
+      "id": "operator",
+      "name": "시스템 관리자",
+      "job": "central-server, 배포, Discord 봇, 결제/라이선스, 운영 보안과 장애 대응을 관리한다.",
+      "cannot": [
+        "운영에서 CENTRAL_DEV_ENABLED를 켜면 안 된다.",
+        "토큰/API 키를 커밋하면 안 된다."
+      ]
+    }
+  ],
+  "components": [
+    {
+      "id": "central-server",
+      "name": "central-server",
+      "stack": "Kotlin/Spring Boot/JDA",
+      "responsibility": "Discord 명령, Provider Pool, 정책, 라우팅, 세션, 대시보드, 관측성, 라이선스, 배포 단위를 담당한다."
+    },
+    {
+      "id": "provider-agent",
+      "name": "provider-agent",
+      "stack": "Python/aiohttp",
+      "responsibility": "Provider PC에서 로컬 UI를 제공하고, 중앙 서버와 outbound 연결로 Ollama/ComfyUI 요청을 처리한다."
+    },
+    {
+      "id": "desktop-prototype",
+      "name": "prototypes/desktop",
+      "stack": "HTML/CSS/JS prototype",
+      "responsibility": "Provider Agent 데스크톱 UI의 SSOT다. 실 webui_assets는 여기서 sync된다."
+    }
+  ],
+  "sourceRefs": [
+    "README.md:1-28",
+    "docs/adr/0003-community-provider-pool.md:16-47",
+    "docs/adr/0004-kotlin-spring-central-server.md:28-35",
+    "AGENTS.md"
+  ],
+  "viewerHero": {
+    "eyebrow": "Discord Assistant / NEXA",
+    "title": "NEXA는 디스코드 서버에 AI 운영 레이어를 붙이는 서비스다",
+    "lead": "서버 관리자가 봇을 추가하고 채널별 AI 성격·지식·정책을 정한다. 멤버는 Discord에서 /질문로 질문하고, 로컬 Provider는 품질 주력이 아니라 저비용/배경/커뮤니티 용량이 필요할 때 보조한다.",
+    "missionSource": "근거: README, ADR 0003, ADR 0004, ai-context/product.json"
+  },
+  "experienceStory": {
+    "title": "사용자가 실제로 겪는 흐름",
+    "subtitle": "API 이름 말고, 화면과 행동으로 보면 이렇게 움직인다.",
+    "steps": [
+      {
+        "id": "add-bot",
+        "number": "01",
+        "title": "디코 서버에 봇 추가",
+        "actor": "서버 관리자",
+        "visualType": "discord-install",
+        "body": "관리자가 NEXA 봇을 자기 Discord 서버에 초대한다. 이 순간 서버에는 AI 풀을 운영할 입구가 생긴다.",
+        "callouts": [
+          "서버 단위로 정책을 관리한다",
+          "봇 권한과 채널 접근이 필요하다"
+        ],
+        "sources": [
+          "README.md:39-48",
+          "central-server/docs/GO_LIVE.md"
+        ]
+      },
+      {
+        "id": "setup-channel",
+        "number": "02",
+        "title": "AI를 쓸 채널과 성격을 정한다",
+        "actor": "서버 관리자",
+        "visualType": "channel-policy",
+        "body": "관리자는 어느 채널에서 AI를 쓸지, 어떤 말투/프리셋/지식공간을 붙일지 정한다. 서버마다 다른 AI 캐릭터와 운영 규칙을 가질 수 있다.",
+        "callouts": [
+          "채널 AI",
+          "프리셋",
+          "지식공간",
+          "안전 정책"
+        ],
+        "sources": [
+          "ChannelAiCustomizationController.kt",
+          "PresetRegistryController.kt",
+          "KnowledgeIngestionController.kt"
+        ]
+      },
+      {
+        "id": "provider-join",
+        "number": "03",
+        "title": "멤버가 남는 PC 자원을 보조 용량으로 기여한다",
+        "actor": "프로바이더",
+        "visualType": "provider-laptop",
+        "body": "멤버는 Provider Agent를 설치하고, 자기 PC의 Ollama/ComfyUI를 서버 AI 풀에 연결한다. 이 용량은 고품질 주력 모델이 아니라 낮은 위험 작업, 배경 처리, 커뮤니티 실험, 무료/저비용 fallback을 보태는 역할이다.",
+        "callouts": [
+          "보조 용량",
+          "낮은 위험 작업",
+          "일일 한도",
+          "언제든 중지"
+        ],
+        "sources": [
+          "README.md:16-19",
+          "ProviderAgentSyncController.kt:30-65",
+          "docs/adr/0003-community-provider-pool.md:48-55"
+        ]
+      },
+      {
+        "id": "ask-discord",
+        "number": "04",
+        "title": "유저는 Discord에서 /질문만 친다",
+        "actor": "일반 유저",
+        "visualType": "ask-chat",
+        "body": "일반 유저는 모델 서버나 API를 몰라도 된다. Discord 채널에서 /질문 질문을 입력하면 NEXA가 뒤의 복잡한 라우팅을 처리한다.",
+        "callouts": [
+          "/질문",
+          "모델 선택",
+          "웹검색 옵션",
+          "응답 모드"
+        ],
+        "sources": [
+          "AskCommandHandler.kt:113-171",
+          "README.md:10-18"
+        ]
+      },
+      {
+        "id": "route-safely",
+        "number": "05",
+        "title": "NEXA가 작업 성격에 맞는 실행 경로를 고른다",
+        "actor": "central-server",
+        "visualType": "router",
+        "body": "중앙 서버는 채널 정책, 역할, 지식공간, 작업 위험도, 모델 요구 수준, Provider 온라인 상태와 남은 한도를 보고 실행 경로를 고른다. 품질이 중요한 질문은 로컬 AI를 무리하게 쓰지 않고, 로컬은 적합한 작업에만 제한적으로 시도한다.",
+        "callouts": [
+          "작업 적합도",
+          "정책 검사",
+          "Provider 보호",
+          "fallback"
+        ],
+        "sources": [
+          "docs/adr/0003-community-provider-pool.md:38-47",
+          "docs/PROVIDER_SAFETY_POLICY.md:58-80"
+        ]
+      },
+      {
+        "id": "answer-back",
+        "number": "06",
+        "title": "답변은 다시 Discord로 온다",
+        "actor": "NEXA 봇",
+        "visualType": "answer-chat",
+        "body": "선택된 실행 경로가 답을 만들고, NEXA 봇이 Discord 채널에 답변을 돌려준다. 사용자는 어떤 모델이 뒤에서 돌았는지 몰라도 되지만, 운영자는 품질 피드백과 실패 기록으로 라우팅을 개선한다.",
+        "callouts": [
+          "품질 피드백",
+          "출처 표시",
+          "실패 기록",
+          "라우팅 개선"
+        ],
+        "sources": [
+          "AskCommandHandler.kt:145-170",
+          "README.md:97-101"
+        ]
+      }
+    ]
+  },
+  "coreExperienceFlow": {
+    "title": "가장 중요한 흐름: /질문 한 번",
+    "steps": [
+      {
+        "title": "유저",
+        "text": "Discord에서 질문"
+      },
+      {
+        "title": "중앙 서버",
+        "text": "쿨다운·채널 정책·모델 선택"
+      },
+      {
+        "title": "라우터",
+        "text": "작업 위험도·품질 요구·Provider 한도 기준으로 경로 선택"
+      },
+      {
+        "title": "로컬 Provider",
+        "text": "적합한 저위험/저비용 작업만 제한 시도"
+      },
+      {
+        "title": "폴백",
+        "text": "품질/가용성 필요 시 클라우드 또는 거부/재시도"
+      },
+      {
+        "title": "Discord",
+        "text": "답변·출처·피드백 버튼"
+      }
+    ]
+  },
+  "misconceptions": {
+    "title": "이 서비스가 아닌 것",
+    "items": [
+      {
+        "title": "로컬 AI 품질을 주력으로 파는 서비스가 아님",
+        "text": "로컬 모델은 대부분 상용 frontier 모델보다 약하다. 그래서 NEXA는 로컬 AI 자체가 아니라 Discord 서버용 AI 운영, 정책, 지식, 프리셋, 품질 피드백을 제품 중심으로 둔다."
+      },
+      {
+        "title": "AI 판매 마켓이 아님",
+        "text": "Provider는 판매자가 아니라 커뮤니티에 감당 가능한 만큼 기여하는 사람이다."
+      },
+      {
+        "title": "여러 PC를 합쳐 큰 모델을 돌리는 게 아님",
+        "text": "성능을 합치는 분산 추론이 아니라, 가능한 Provider 중 안전하게 하나를 고르는 라우팅이다."
+      },
+      {
+        "title": "남의 PC에 직접 접속하는 앱이 아님",
+        "text": "Agent는 outbound 연결만 쓰고, 중앙 서버 요청 외 임의 파일/쉘/URL 실행을 허용하지 않는다."
+      },
+      {
+        "title": "니아가 유료·별도 계정 캐릭터가 아님",
+        "text": "니아는 NEXA의 기본 AI 정체성이다. 호감도는 관계 표현 장치일 뿐 XP·리더보드·과금이 아니고, 서버가 자기 채널 AI 페르소나를 만들면 그 성격으로 대체된다(안전 가드레일은 항상 우선)."
+      },
+      {
+        "title": "유료 구독 서비스가 아님",
+        "text": "기본 질문·채널 AI·Provider 풀 기여는 영구 무료다. 서버별 페르소나·RAG·프리셋 쓰기 같은 앱 관리 프리미엄만 3개월 체험 후 $10 영구 라이선스로 열린다(구독 아님, ADR 0005)."
+      }
+    ]
+  }
+}

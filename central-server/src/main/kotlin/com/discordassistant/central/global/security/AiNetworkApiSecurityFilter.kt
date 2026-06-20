@@ -3,6 +3,7 @@ package com.discordassistant.central.global.security
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.slf4j.MDC
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
@@ -33,10 +34,14 @@ class AiNetworkApiSecurityFilter(
             // 컨트롤러는 권한/신원을 body 가 아니라 이 주체에서 유도한다(클라이언트 isGuildAdmin/roleIds 불신).
             val actor = resolveAdminActor(request)
             if (actor == null) {
+                // 필터는 MVC 밖이라 GlobalExceptionHandler 를 못 탄다 → 같은 통일 모양의 JSON 을 직접 쓴다.
                 response.status = HttpServletResponse.SC_FORBIDDEN
                 response.contentType = "application/json;charset=UTF-8"
+                val requestId = MDC.get(RequestIdFilter.MDC_KEY)
+                val requestIdField = if (requestId != null) ""","requestId":"$requestId"""" else ""
                 response.writer.write(
-                    """{"error":"dashboard_admin_required","message":"AI 네트워크 관리자 작업에는 Discord OAuth 로그인 또는 X-Dashboard-Admin-Token 헤더가 필요합니다."}""",
+                    """{"success":false,"status":403,"error":{"code":"dashboard_admin_required",""" +
+                        """"message":"AI 네트워크 관리자 작업에는 Discord OAuth 로그인 또는 X-Dashboard-Admin-Token 헤더가 필요합니다."}$requestIdField}""",
                 )
                 return
             }

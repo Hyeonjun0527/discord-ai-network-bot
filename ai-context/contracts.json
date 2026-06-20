@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-06-19",
+  "contracts": [
+    {
+      "id": "CON-WIRE",
+      "name": "Provider wire protocol",
+      "ssot": "protocol/wire-contract.json",
+      "generated": [
+        "central-server/src/main/kotlin/com/discordassistant/central/relay/WireContractGenerated.kt",
+        "provider-agent/src/provider_agent/_wire_contract_generated.py"
+      ],
+      "commands": {
+        "generate": "make wire-gen",
+        "check": "make contract"
+      },
+      "rule": "frame type, protocol version, allowed option key 변경은 SSOT 수정 후 생성·양측 테스트를 같이 통과해야 한다."
+    },
+    {
+      "id": "CON-DESKTOP-UI",
+      "name": "Provider Agent desktop UI",
+      "ssot": "prototypes/desktop",
+      "generated": [
+        "provider-agent/src/provider_agent/webui_assets/"
+      ],
+      "commands": {
+        "generate": "make sync-desktop",
+        "check": "make desktop-check"
+      },
+      "rule": "webui_assets는 생성물이다. 새 화면/버튼은 prototype + real adapter + mock + webui handler를 같은 변경에서 맞춘다."
+    },
+    {
+      "id": "CON-DESKTOP-SHAPES",
+      "name": "Desktop API response shape",
+      "ssot": "prototypes/desktop/contract-shapes.json",
+      "generated": [
+        "prototypes/desktop/contract-shapes.json"
+      ],
+      "commands": {
+        "generate": "make desktop-shapes",
+        "check": "make desktop-check"
+      },
+      "rule": "mock shape 변경은 생성본을 갱신하고 real webui 응답이 mock 필드를 포함하는지 검증한다."
+    },
+    {
+      "id": "CON-I18N",
+      "name": "User visible copy",
+      "ssot": "i18n/messages.json",
+      "generated": [
+        "central-server/src/main/resources/i18n/messages.json",
+        "central-server/src/main/resources/static/i18n/web.json",
+        "provider-agent/src/provider_agent/i18n_messages.json"
+      ],
+      "commands": {
+        "generate": "make i18n-gen",
+        "check": "make i18n-check"
+      },
+      "rule": "사용자 노출 문구는 ko/en/ja를 모두 갖춰야 하며 생성본 직접 편집 금지."
+    },
+    {
+      "id": "CON-PACKAGING",
+      "name": "Release asset and package manager names",
+      "ssot": "packaging/assets.json",
+      "generated": [
+        "provider-agent/packaging/",
+        ".github/workflows/agent-build.yml",
+        "문서 설치 명령"
+      ],
+      "commands": {
+        "check": "make packaging-check"
+      },
+      "rule": "패키지 ID, 릴리스 자산명, 설치 명령은 packaging/assets.json을 기준으로 맞춘다."
+    },
+    {
+      "id": "CON-SSOT-VIEWER",
+      "name": "Human SSOT viewer",
+      "ssot": "ai-context/*.json",
+      "generated": [
+        "docs/ssot-viewer/prd-viewer/auto-generated-requirements-api-spec-navigation.html"
+      ],
+      "commands": {
+        "generate": "python3 scripts/gen_ssot_viewer.py",
+        "check": "python3 scripts/gen_ssot_viewer.py --check"
+      },
+      "rule": "사람용 요구사항/API/네비게이션 HTML은 ai-context JSON에서 생성한다. HTML 직접 편집 금지."
+    }
+  ],
+  "sourceRefs": [
+    "AGENTS.md",
+    "Makefile",
+    "protocol/wire-contract.json",
+    "i18n/messages.json",
+    "packaging/assets.json",
+    "prototypes/desktop/contract-shapes.json",
+    "scripts/gen_ssot_viewer.py"
+  ]
+}

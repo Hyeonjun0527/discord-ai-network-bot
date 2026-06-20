@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-06-19",
+  "purpose": "에이전트가 이 저장소를 작업하기 전에 읽는 제품/도메인/정책/계약 SSOT 매니페스트다. 사람은 HTML 지도를 보고, 에이전트는 이 JSON 묶음을 읽는다.",
+  "ssotBoundary": {
+    "agentContext": "ai-context/*.json",
+    "humanView": "docs/ssot-viewer/prd-viewer/auto-generated-requirements-api-spec-navigation.html",
+    "rule": "사람용 HTML 뷰어는 직접 정책을 소유하지 않는다. scripts/gen_ssot_viewer.py가 ai-context JSON에서 auto-generated HTML을 생성한다.",
+    "maxJsonFiles": 6
+  },
+  "loadOrder": [
+    "ai-context/product.json",
+    "ai-context/navigation.json",
+    "ai-context/domain.json",
+    "ai-context/policies.json",
+    "ai-context/contracts.json"
+  ],
+  "files": {
+    "product": {
+      "path": "ai-context/product.json",
+      "owns": [
+        "서비스 한 줄 정의",
+        "사용자 유형",
+        "비목표",
+        "컴포넌트 역할",
+        "사람용 첫 이해 스토리"
+      ]
+    },
+    "navigation": {
+      "path": "ai-context/navigation.json",
+      "owns": [
+        "surfaceGroups",
+        "screens",
+        "transitions"
+      ]
+    },
+    "domain": {
+      "path": "ai-context/domain.json",
+      "owns": [
+        "핵심 엔티티",
+        "상태",
+        "도메인 불변식",
+        "라우팅 결정 구조",
+        "도메인별 요구사항 그룹"
+      ]
+    },
+    "policies": {
+      "path": "ai-context/policies.json",
+      "owns": [
+        "Provider 보호",
+        "콘텐츠 안전",
+        "프라이버시",
+        "한도",
+        "에지케이스 처리 우선순위"
+      ]
+    },
+    "contracts": {
+      "path": "ai-context/contracts.json",
+      "owns": [
+        "wire/i18n/desktop/packaging 계약 위치",
+        "검증 명령",
+        "생성물 규칙"
+      ]
+    }
+  },
+  "loadByChange": {
+    "discordCommandOrAskFlow": [
+      "product",
+      "navigation",
+      "domain",
+      "policies",
+      "contracts"
+    ],
+    "providerAgentOrLocalUi": [
+      "product",
+      "navigation",
+      "domain",
+      "policies",
+      "contracts"
+    ],
+    "dashboardOrAdminUi": [
+      "product",
+      "navigation",
+      "policies",
+      "contracts"
+    ],
+    "wireProtocol": [
+      "domain",
+      "policies",
+      "contracts"
+    ],
+    "copyOrI18n": [
+      "product",
+      "policies",
+      "contracts"
+    ],
+    "packagingOrReleaseAsset": [
+      "contracts"
+    ]
+  },
+  "generatedViews": [
+    {
+      "path": "docs/ssot-viewer/prd-viewer/auto-generated-requirements-api-spec-navigation.html",
+      "source": "ai-context/index.json + product/navigation/domain/policies/contracts.json",
+      "command": "python3 scripts/gen_ssot_viewer.py",
+      "checkCommand": "python3 scripts/gen_ssot_viewer.py --check"
+    }
+  ]
+}

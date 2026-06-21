@@ -2227,7 +2227,7 @@ tasks:
   program: P03
   sequence: 13
   title: channelId 파티션 키 규칙 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2239,13 +2239,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "channelId 파티션 키 규칙 구현: 스레드/부모 채널 파티션 결정을 일관 규칙으로 고정"
+  - "acceptance 충족: 스레드·부모 채널 합치기/분리 결정이 일관되게 적용됨을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T014
   program: P03
   sequence: 14
   title: 채널 순서 번호 projector 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2257,13 +2261,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "채널 순서 번호 projector(V52 projection ledger): 채널별 sequence 부여·영속"
+  - "acceptance 충족: 재시작 후 sequence 역행 없음, 충돌 시 결정 규칙을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T015
   program: P03
   sequence: 15
   title: out-of-order 이벤트 버퍼 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2275,13 +2283,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "out-of-order 이벤트 버퍼: 늦게 도착한 이벤트를 sequence 경계까지 버퍼링 후 순서대로 방출"
+  - "acceptance 충족: 고정 Clock fixture로 경계 시각·최대 버퍼 크기 테스트(주입된 Clock)"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T016
   program: P03
   sequence: 16
   title: 중복 이벤트 dedup 처리 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2293,13 +2305,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "중복 이벤트 dedup: EventIdentity 기반으로 이미 처리된 이벤트 무시(projection ledger 추적)"
+  - "acceptance 충족: 동일 fixture 10회 재생해도 projection input 수가 1회와 같음을 테스트로 확인(idempotent)"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T017
   program: P03
   sequence: 17
   title: projection worker 재시도 정책 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2311,13 +2327,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "projection worker 재시도 정책: 백오프 + 상한 후 dead-letter 이동"
+  - "acceptance 충족: Clock 기반 테스트로 retry 횟수·간격 정확, 상한으로 무한 루프 없음(Fail Fast)을 확인"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T018
   program: P03
   sequence: 18
   title: dead-letter와 운영 재처리 도구 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2330,13 +2350,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "dead-letter + 운영 재처리 도구(내부용): 실패 이벤트를 dead-letter로 격리하고 event ID로 재처리"
+  - "acceptance 충족: 원문을 로그에 출력하지 않고 event ID로만 조사 가능(redaction 계약 준수)을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T019
   program: P03
   sequence: 19
   title: 내부 replay API 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2348,6 +2372,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "내부 replay API: event store에서 이벤트를 재생해 projection 재구성(내부용, 운영 비노출)"
+  - "acceptance 충족: replay 중 Discord 전송 side effect가 절대 실행되지 않음(전송 포트 미호출/차단)을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T020

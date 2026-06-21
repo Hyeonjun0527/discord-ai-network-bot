@@ -59,6 +59,20 @@ interface NexaEventRepository : JpaRepository<NexaEventEntity, Long> {
         from: Instant,
         to: Instant,
     ): List<NexaEventEntity>
+
+    // ── replay(T019): guild(+optional channel) + occurred 시각 범위, 채널 순서 → 시각 결정론적 정렬 ──
+    fun findByGuildIdAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByChannelIdAscSourceSequenceAscOccurredAtAsc(
+        guildId: Long,
+        from: Instant,
+        to: Instant,
+    ): List<NexaEventEntity>
+
+    fun findByGuildIdAndChannelIdAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderBySourceSequenceAscOccurredAtAsc(
+        guildId: Long,
+        channelId: Long,
+        from: Instant,
+        to: Instant,
+    ): List<NexaEventEntity>
 }
 
 /**

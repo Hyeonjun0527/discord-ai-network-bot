@@ -1913,7 +1913,7 @@ tasks:
   program: P02
   sequence: 24
   title: 동의 경계 통합 테스트 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1925,6 +1925,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "conversation/NexaConsentBoundaryTest.kt 신설: 미동의(guild 비활성)·옵트아웃 사용자·제외 채널 3가지 차단 시나리오를 ConsentPolicyPort/ConsentDecision로 검증(저장·외부 전송 후보 제외)"
+  - "acceptance 충족: 3가지 차단이 각각 고유 감사 코드/사유로 구분되고, 차단 경로에서 원문 메시지가 로그·감사에 남지 않음(가명/코드만)을 테스트로 증명"
+  - "검증: NexaConsentBoundaryTest tests=9 failures=0, NexaArchitectureTest 10/10(도메인 순수성), central BUILD SUCCESSFUL, package-graph 동기"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T025

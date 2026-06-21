@@ -148,3 +148,45 @@ class MultiHeadPolicyModel:
             "burst": self.burst_head.forward(h2),
             "act": self.act_head.forward(h2),
         }
+
+
+@dataclass
+class ScheduleCancelHead:
+    """예약 취소 확률 보조 head(NEXA-P12-T013).
+
+    SPEAK 가 미래 시각으로 **예약**된 뒤, 예정 시각 전에 새 event(맥락 변화)가 오면 그 예약을 취소/재평가할
+    확률을 예측한다(P08 CANCEL 과 일관). 입력은 trunk hidden(맥락) + 예약 후 변화 신호다.
+
+    **acceptance(T013) — 하드 contextVersion invalidation 은 학습 head 보다 우선한다**:
+    [should_cancel] 은 `hard_invalidated=True`(contextVersion 이 하드로 무효화됨)면 학습 확률과 무관하게
+    **무조건 취소**(확률 1.0)를 돌려준다 — 학습 head 는 하드 규칙을 덮을 수 없다(안전 우선).
+    학습 head 는 하드 무효화가 없을 때만 임계값 기반 보조 신호로 쓰인다.
+    """
+
+    in_dim: int
+    cancel_head: Linear
+
+    @classmethod
+    def build(cls, *, in_dim: int, seed: int = 20260622) -> ScheduleCancelHead:
+        cancel_head = Linear(in_dim, 1)
+        cancel_head.init(seed)
+        return cls(in_dim=in_dim, cancel_head=cancel_head)
+
+    def cancel_proba(self, hidden: np.ndarray) -> np.ndarray:
+        """예약 취소 확률(sigmoid), shape (n,). hidden 은 trunk/encoder hidden 상태."""
+        from nexa_policy.models.nn import sigmoid
+
+        return sigmoid(self.cancel_head.forward(hidden)).reshape(-1)
+
+    def should_cancel(
+        self, hidden: np.ndarray, hard_invalidated: np.ndarray, *, threshold: float = 0.5
+    ) -> np.ndarray:
+        """취소 결정(bool, shape (n,)). 하드 contextVersion invalidation 이 학습 head 보다 우선한다.
+
+        - hard_invalidated[i]=True → 무조건 취소(학습 확률 무시, acceptance T013).
+        - 아니면 학습 cancel 확률 >= threshold 일 때 취소.
+        """
+        import numpy as np
+
+        learned = self.cancel_proba(hidden) >= threshold
+        return np.asarray(hard_invalidated, dtype=bool) | learned

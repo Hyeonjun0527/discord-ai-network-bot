@@ -6799,7 +6799,7 @@ tasks:
   program: P12
   sequence: 1
   title: 이벤트 시간 원점 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -6810,13 +6810,17 @@ tasks:
   acceptance: 학습·Kotlin runtime·평가가 같은 원점을 사용한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "이벤트 시간 원점 계약(docs SSOT): t=0 기준·단위·right-censoring 정의"
+  - "acceptance 충족: 학습·Kotlin runtime·평가가 같은 원점을 사용함(cross-impl 일관)을 문서로 명시. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 시간 원점 계약 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T002
   program: P12
   sequence: 2
   title: right-censoring 데이터 처리 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6828,13 +6832,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "right-censoring 데이터 처리: '아직 응답 안 함'을 '응답 안 할 것'과 구분(검열 표시)"
+  - "acceptance 충족: 검열 샘플을 never 정답으로 잘못 학습하지 않음을 테스트로 검증. ml 221 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T003
   program: P12
   sequence: 3
   title: discrete hazard baseline 구현
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -6847,13 +6854,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "discrete hazard baseline: 이산 시간 bin별 hazard→survival 변환"
+  - "acceptance 충족: survival probability가 단조 감소하고 합계가 수학적으로 유효함을 테스트로 검증. ml 221 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T004
   program: P12
   sequence: 4
   title: 생존 분석 metric 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6865,13 +6875,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "생존 분석 metric: C-index/time-dependent AUC 등 censoring 지원 지표"
+  - "acceptance 충족: censoring을 지원하고 단순 delay accuracy와 함께 보고함(다축)을 테스트로 검증. ml 221 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T005
   program: P12
   sequence: 5
   title: Cox/parametric baseline 비교
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -6884,13 +6897,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "Cox/parametric baseline 비교: 비례위험·parametric survival baseline과 비교"
+  - "acceptance 충족: 복잡한 모델이 단순 baseline을 못 넘으면 채택하지 않음(증거 기반 선택)을 테스트로 검증. ml 221 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T006
   program: P12
   sequence: 6
   title: neural survival model 구현
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -6903,13 +6919,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "neural survival model(numpy 기반): 신경망 hazard 추정"
+  - "acceptance 충족: action head와 time head의 불일치가 정량화됨(joint 일관성)을 테스트로 검증. ml 221 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T007
   program: P12
   sequence: 7
   title: marked temporal point process PoC
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -6922,13 +6941,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "marked temporal point process PoC: 이벤트(행동+시점) 발생을 point process로 모델링하는 탐색"
+  - "acceptance 충족: PoC는 production 통합 없이 likelihood와 calibration 이득만 평가함(연구 범위 한정)을 검증. ml 221 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T008
   program: P12
   sequence: 8
   title: action-time joint sampler 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6940,13 +6962,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "action-time joint sampler: 행동(SPEAK 등)과 시점을 함께 샘플링(일관 결합)"
+  - "acceptance 충족: SPEAK 확률 0인데 SPEAK delay가 선택되는 불일치가 없음을 테스트로 검증. ml 221 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T009
   program: P12
   sequence: 9
   title: talkativeness hazard scaling 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -6960,6 +6985,10 @@ tasks:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "talkativeness hazard scaling(ml + central 적용 경계): 수다스러움 multiplier를 hazard에 적용"
+  - "acceptance 충족: 0.5/1.0/1.5/2.0에서 순서 보존과 cap(과증폭 방지)이 테스트됨을 검증. ml 221 passed, central BUILD SUCCESSFUL, NexaArchitectureTest 10/10. 기존 무변경"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 코드+테스트까지(운영 적용 안 함)"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T010
@@ -6983,7 +7012,7 @@ tasks:
   program: P12
   sequence: 11
   title: time calibration layer 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6995,13 +7024,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "time calibration layer: 예측 지연 분포 보정"
+  - "acceptance 충족: 보정 후 integrated Brier와 delay distribution distance가 악화되지 않음(보정 게이트)을 테스트로 검증. ml 221 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T012
   program: P12
   sequence: 12
   title: 버스트 내부 메시지 간격 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -7013,13 +7045,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "버스트 내부 메시지 간격 모델: 한 사람이 연속 메시지 보낼 때 간격 분포(P04 버스트와 일관)"
+  - "acceptance 충족: 긴 랜덤 sleep 대신 scheduler 계획으로 출력함(블로킹 없음·자원 효율)을 테스트로 검증. ml 221 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T013
   program: P12
   sequence: 13
   title: 예약 취소 확률 head 구현
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -7031,6 +7066,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "예약 취소 확률 head: SPEAK 예약 후 상황 변하면 취소(P08 CANCEL과 일관) 확률 예측"
+  - "acceptance 충족: 하드 contextVersion invalidation은 학습 head보다 우선함(안전 우선·stale 발화 방지)을 테스트로 검증. ml 221 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T014

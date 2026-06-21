@@ -7856,7 +7856,7 @@ tasks:
   program: P14
   sequence: 1
   title: SpeechGenerationPort 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7868,13 +7868,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "SpeechGenerationPort 정의(포트): 발화 생성 추상 경계"
+  - "acceptance 충족: Z.AI SDK·HTTP DTO가 domain/application 계약에 노출되지 않음(ADR 0006)을 ArchUnit으로 검증. NexaArchitectureTest 10/10(speechHasNoForbiddenBackendDependency 포함)"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T002
   program: P14
   sequence: 2
   title: routing anti-corruption adapter 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7886,13 +7889,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "routing anti-corruption adapter(ADR 0006): speech ↔ routing CloudLlm 포트 격리, GLM 구체 타입 미노출"
+  - "acceptance 충족: provider-agent GLM 경로를 직접 호출하지 않고 routing(requestlog/quota) 연동을 유지함을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T003
   program: P14
   sequence: 3
   title: GLM 모델 ID·endpoint 설정 외부화
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -7905,13 +7911,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "GLM 모델 ID·endpoint 설정 외부화: 설정으로 모델/endpoint 지정(코드 상수 아님)"
+  - "acceptance 충족: 코드 상수 교체 없이 모델 업데이트·rollback이 가능함(운영 유연성)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 모델 설정 외부화 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T004
   program: P14
   sequence: 4
   title: SpeechScenePacket 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7923,13 +7933,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "SpeechScenePacket 계약: 발화 생성에 필요한 최소 맥락(scene 요약·대상·기억 발췌)"
+  - "acceptance 충족: 전체 채널 로그를 무제한 포함하지 않음(최소 맥락)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T005
   program: P14
   sequence: 5
   title: 외부 payload minimizer 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -7941,13 +7954,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "외부 payload minimizer: GLM으로 보내는 payload에서 식별자·키·제외 content 제거(observable-state-policy)"
+  - "acceptance 충족: golden payload fixture에 Discord snowflake·API key·제외 content가 없음을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 외부 payload 최소화 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T006
   program: P14
   sequence: 6
   title: IdentityKernel assembler 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7959,13 +7976,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "IdentityKernel assembler: NexaIdentity SSOT(니아 페르소나)+서버별 정체성을 읽기로 조립(ADR 0010, 복제 금지)"
+  - "acceptance 충족: 서버별 정체성과 런타임 사용자 기억이 섞여 저장되지 않음(정적 정체성≠기억)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T007
   program: P14
   sequence: 7
   title: 대화 context selector 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7977,13 +7997,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "대화 context selector: 발화 대상 scene/thread의 관련 맥락만 선택(P05 thread/scene 일관)"
+  - "acceptance 충족: 동시 다른 thread 원문이 prompt에 들어가지 않는 fixture가 있음(thread 격리)을 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T008
   program: P14
   sequence: 8
   title: 유효 기억 selector 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7995,13 +8018,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "유효 기억 selector: P07 socialmemory에서 valid/decay 기억만 선택"
+  - "acceptance 충족: conflicted/expired/deleted 기억이 제외됨(시간 유효성·삭제 반영)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T009
   program: P14
   sequence: 9
   title: socialAct prompt compiler 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8013,13 +8039,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "socialAct prompt compiler: 사회적 행위(질문/동의/농담 등)를 발화 의도로 프롬프트화"
+  - "acceptance 충족: '사용자 지시를 성실히 수행하라' 같은 assistant 기본문이 들어가지 않음(니아는 도우미 아닌 멤버)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T010
   program: P14
   sequence: 10
   title: burstProfile prompt compiler 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8031,13 +8060,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "burstProfile prompt compiler: 정책이 정한 버블 수·형태를 프롬프트 제약으로 전달"
+  - "acceptance 충족: 정책이 1개 버블을 고른 경우 모델이 4개를 강제하지 못함(정책이 형태 결정)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T011
   program: P14
   sequence: 11
   title: 후보 다중 생성 계약 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8049,13 +8081,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "후보 다중 생성 계약: N개 발화 후보 생성(비평가가 거를 대상)"
+  - "acceptance 충족: 후보 수가 비용 cap을 넘지 않고 설정 가능함을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T012
   program: P14
   sequence: 12
   title: GLM 응답 schema parser 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8067,13 +8102,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "GLM 응답 schema parser: 구조화 응답 파싱·검증"
+  - "acceptance 충족: malformed JSON/텍스트 응답이 안전한 실패로 처리됨(파싱 실패→fallback)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T013
   program: P14
   sequence: 13
   title: thinking mode 선택 정책 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8085,13 +8123,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "thinking mode 선택 정책: GLM thinking on/off를 비용/품질 기준으로 선택"
+  - "acceptance 충족: 정책 결정(SPEAK/IGNORE 등) 자체를 GLM thinking에 맡기지 않음(판단은 participation, 생성만 GLM)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T014
   program: P14
   sequence: 14
   title: GLM timeout·retry budget 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8103,13 +8144,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "GLM timeout·retry budget: 생성 호출 timeout·재시도 상한"
+  - "acceptance 충족: 늦게 도착한 응답이 현재 contextVersion에 전송되지 않음(stale 차단, P13 contextVersion 일관)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T015
   program: P14
   sequence: 15
   title: token·cost budget 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8122,13 +8166,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "token·cost budget: 발화 생성 토큰·비용 상한"
+  - "acceptance 충족: 침묵(IGNORE) 판단에 token이 차감되지 않고(GLM 미호출) 후보 과생성이 차단됨을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T016
   program: P14
   sequence: 16
   title: 안전한 generation fallback 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8140,6 +8187,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "안전한 generation fallback: 생성 실패 시 무발화(IGNORE로 하강) — 잘못된 말 하느니 침묵"
+  - "acceptance 충족: 오류 때문에 갑자기 성실한 도우미 템플릿이 출력되지 않음(침묵 우선)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T017

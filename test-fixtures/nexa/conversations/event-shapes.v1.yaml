@@ -1,0 +1,76 @@
+schemaVersion: nexa.conversation-fixture.v1
+fixtureId: event-shapes
+title: Minimal Discord event shape coverage for edit, delete, typing, and reaction replay
+source:
+  document: docs/nexa/testing/conversation-fixtures.md
+  lineRange: 1-999
+  originalTimeKnown: false
+  note: Synthetic coverage fixture for the v1 format.
+time:
+  baseInstant: "2026-01-01T00:00:00Z"
+  zone: UTC
+  resolutionMs: 100
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: A
+    kind: human
+  - actorId: actor-b
+    label: B
+    displayName: B
+    kind: human
+events:
+  - seq: 1
+    eventId: evt-shape-001
+    type: typing_start
+    atOffsetMs: 0
+    actorId: actor-a
+    durationMs: 1200
+  - seq: 2
+    eventId: evt-shape-002
+    type: message_create
+    atOffsetMs: 1200
+    messageId: msg-shape-001
+    authorId: actor-a
+    content: "니키?"
+  - seq: 3
+    eventId: evt-shape-003
+    type: message_update
+    atOffsetMs: 1800
+    messageId: msg-shape-001
+    editorId: actor-a
+    previousContent: "니키?"
+    content: "니키"
+  - seq: 4
+    eventId: evt-shape-004
+    type: reaction_add
+    atOffsetMs: 2200
+    messageId: msg-shape-001
+    actorId: actor-b
+    emoji:
+      kind: unicode
+      value: "👍"
+      name: thumbs_up
+    reactionClass: acknowledgment
+  - seq: 5
+    eventId: evt-shape-005
+    type: reaction_remove
+    atOffsetMs: 2600
+    messageId: msg-shape-001
+    actorId: actor-b
+    emoji:
+      kind: unicode
+      value: "👍"
+      name: thumbs_up
+    reactionClass: acknowledgment
+  - seq: 6
+    eventId: evt-shape-006
+    type: message_delete
+    atOffsetMs: 3400
+    messageId: msg-shape-001
+    deletedByActorId: actor-a
+    contentAvailable: false
+    reason: author_removed_typo_message

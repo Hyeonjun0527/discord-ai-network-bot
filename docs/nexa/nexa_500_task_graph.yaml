@@ -241,7 +241,7 @@ tasks:
   program: P00
   sequence: 1
   title: 현재 브랜치와 작업 트리 기준선 기록
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on: []
@@ -251,13 +251,15 @@ tasks:
   acceptance: 다른 개발자가 같은 커밋에서 문서의 명령을 실행해 동일한 저장소 상태를 확인할 수 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "repository-state.md 작성, task graph VALID, 문서 링크 OK, diff-check OK"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T002
   program: P00
   sequence: 2
   title: 루트 빌드 진입점과 실제 명령 조사
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -273,13 +275,16 @@ tasks:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh agent
+  verification_evidence:
+  - "build-commands.md에 central/provider/games 명령 실제 실행 결과 기록"
+  - "central JDK21 build 통과, provider pytest/ruff/mypy 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T003
   program: P00
   sequence: 3
   title: Kotlin·Spring·JDA·Python 버전 인벤토리 고정
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -295,13 +300,15 @@ tasks:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh agent
+  verification_evidence:
+  - "dependency-versions.md 작성, central build 통과, provider pytest/ruff/mypy 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T004
   program: P00
   sequence: 4
   title: 루트 AGENTS.md 최소 헌법 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -312,13 +319,15 @@ tasks:
   acceptance: 세부 설계를 중복하지 않고 하위 문서 링크가 모두 유효하다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "./scripts/nexa-verify.sh docs 대체 검증: graph VALID, 링크 OK, diff-check OK"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T005
   program: P00
   sequence: 5
   title: central-server 전용 AGENTS.md 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -330,13 +339,15 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "central-server/AGENTS.md 작성, graph/link/diff-check 통과, central build BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T006
   program: P00
   sequence: 6
   title: provider-agent 변경 제한 지침 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -348,13 +359,15 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh agent
+  verification_evidence:
+  - "provider-agent/AGENTS.md 작성, docs 검증 통과, provider pytest 377 passed, ruff/mypy 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T007
   program: P00
   sequence: 7
   title: 장기 작업용 PLANS.md 템플릿 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -366,13 +379,15 @@ tasks:
   acceptance: 새 세션이 ExecPlan 하나만 읽고도 작업을 재개할 수 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "PLANS.md와 exec-plans README 작성, docs 검증 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T008
   program: P00
   sequence: 8
   title: 통합 검증 스크립트 골격 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -384,13 +399,16 @@ tasks:
   acceptance: 존재하지 않는 명령을 숨기지 않고 실패 종료 코드를 그대로 전달한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "scripts/nexa-verify.sh all 통과: docs, central, agent, protocol 순서 검증"
+  - "unknown/empty scope exit 2로 실패 코드 전파 확인"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T009
   program: P00
   sequence: 9
   title: 500단계 작업 그래프 스키마 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -402,13 +420,16 @@ tasks:
   acceptance: 잘못된 상태값·누락 필드·중복 ID가 검증에서 실패한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "task-schema.json 작성, docs 검증 통과"
+  - "invalid status, missing field, duplicate ID fixture가 exit 1로 실패"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T010
   program: P00
   sequence: 10
   title: 작업 그래프 DAG 검증기 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -419,13 +440,16 @@ tasks:
   acceptance: 의도적으로 만든 사이클 fixture가 실패하고 정상 그래프가 통과한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "scripts/validate-nexa-task-graph.py 추가, 정상 graph VALID"
+  - "wrong count, bad ID, missing dependency, cycle, missing gate fixture가 exit 1로 실패"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T011
   program: P00
   sequence: 11
   title: 작업 상태 전이 규칙 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -436,13 +460,16 @@ tasks:
   acceptance: 검증 없이 VERIFIED로 변경할 수 없다는 규칙과 증거 필드가 명시된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "task-lifecycle.md 작성, VERIFIED requires verification_evidence 규칙을 schema와 validator에 반영"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T012
   program: P00
   sequence: 12
   title: 기존 ArchUnit 규칙 기준선 스냅샷
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -455,13 +482,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "archunit-rules.md 작성, ArchitectureTest 9 tests/0 failures/0 errors/0 skipped"
+  - "focused ArchUnit Gradle test BUILD SUCCESSFUL, docs 검증 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T013
   program: P00
   sequence: 13
   title: 현재 패키지 의존 그래프 생성
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -473,13 +503,16 @@ tasks:
   acceptance: routing·channelai·ainetwork·platform/discord의 실제 의존 경로가 표시된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "central-package-graph.py generated 19 compile nodes, 304 Kotlin files, 386 cross-node imports"
+  - "routing, channelai, ainetwork, platform/discord focus paths documented; package graph --check and docs wrapper passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T014
   program: P00
   sequence: 14
   title: CI 워크플로 기준선 정리
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -491,13 +524,17 @@ tasks:
   acceptance: NEXA 작업이 수정해야 할 최소 워크플로와 건드리면 안 되는 배포 워크플로가 구분된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "ci-matrix.md records 10 workflow files with triggers, jobs, secrets, cache/artifact, and NEXA edit lane"
+  - "minimal NEXA CI surface limited to central-server-ci/provider-agent-ci; deploy/release/ops workflows marked do-not-touch by default"
+  - "./scripts/nexa-verify.sh docs passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T015
   program: P00
   sequence: 15
   title: 결정론적 테스트 규약 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -510,13 +547,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "determinism.md documents Clock/random/UUID/scheduler/sleep rules and legacy baseline findings"
+  - "grep baseline captured direct Thread.sleep/Instant.now/System time/UUID usages; docs and central verification passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T016
   program: P00
   sequence: 16
   title: Discord 대화 fixture 형식 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -528,13 +568,17 @@ tasks:
   acceptance: 네가 제공한 닉네임 대화 예시를 손실 없이 표현할 수 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "conversation-fixtures.md defines replay time, actors, message/edit/delete/typing/reaction events, and validation rules"
+  - "nickname-burst.v1.yaml preserves the 11-line PROJECT_CONTEXT nickname transcript with stable message IDs and offsets"
+  - "validate-nexa-conversation-fixtures.py is wired into docs verification and passes for 2 fixtures / 17 events"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T017
   program: P00
   sequence: 17
   title: 비밀·로그 노출 기준선 감사
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -549,13 +593,19 @@ tasks:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh agent
+  verification_evidence:
+  - "logging-baseline.md classifies 7 log/secret exposure findings and maps each to follow-up NEXA task IDs"
+  - "./scripts/nexa-verify.sh docs passed: graph VALID, package graph OK, conversation fixtures OK, 130 docs links OK, diff-check OK"
+  - "./scripts/nexa-verify.sh central passed: Gradle build SUCCESSFUL"
+  - "./scripts/nexa-verify.sh agent passed: 377 pytest passed, coverage 73.31%, ruff OK, mypy OK"
+  - "human_gate satisfied: 인간 보안 검토자 승인(2026-06-21), VERIFIED 승격"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T018
   program: P00
   sequence: 18
   title: Flyway 49개 마이그레이션 기준선 검증
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -568,13 +618,21 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "database.md records numeric Flyway order, SHA-256 source checksums for V1-V49, clean PostgreSQL apply evidence, runtime schema comparison, and rollback policy"
+  - "temporary postgres:16-alpine + application bootRun applied 49 Flyway migrations successfully: history rows=49, max version=49, public base tables=49"
+  - "local compose central-server-db-1 comparison captured existing runtime at 33 successful migrations / max version 33, missing V34-V49"
+  - "PostgresFlywayIntegrationTest comment updated from stale V1-V3 wording to V1-current"
+  - "./scripts/nexa-verify.sh docs passed: graph VALID, package graph OK, conversation fixtures OK, 131 docs links OK, diff-check OK"
+  - "./scripts/nexa-verify.sh central passed: Gradle BUILD SUCCESSFUL"
+  - "dependency gate pending: T017 remains REVIEW because human_gate=true, so T018 is REVIEW not VERIFIED"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T019
   program: P00
   sequence: 19
   title: protocol 코드 생성 드리프트 검사
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -588,13 +646,20 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh contracts
+  verification_evidence:
+  - "protocol-generation.md records protocol SSOT, generator, generated Kotlin/Python outputs, shared fixture, SHA-256 hashes, contract contents, drift result, and manual-edit prohibition"
+  - "make wire-gen executed with identical pre/post hashes for protocol/wire-contract.json, WireContractGenerated.kt, and _wire_contract_generated.py; generated-file git diff was empty"
+  - "scripts/nexa-verify.sh and scripts/nexa-verify.ps1 now expose contracts as a KISS compatibility alias for protocol"
+  - "./scripts/nexa-verify.sh contracts passed: wire-contract generated files current, provider-agent contract test 1 passed, central WireContractTest BUILD SUCCESSFUL"
+  - "./scripts/nexa-verify.sh docs passed: graph VALID, package graph OK, conversation fixtures OK, 132 docs links OK, diff-check OK"
+  - "dependency gate pending: T018 remains REVIEW because T017 human_gate=true, so T019 is REVIEW not VERIFIED"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T020
   program: P00
   sequence: 20
   title: i18n SSOT 생성 드리프트 검사
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -602,19 +667,35 @@ tasks:
   recommended_paths:
   - i18n/messages.json
   - central-server/src/main/resources/i18n/**
+  - central-server/src/main/resources/static/i18n/**
+  - provider-agent/src/provider_agent/i18n_messages.json
+  - prototypes/desktop/i18n-agent.js
+  - scripts/nexa-verify.sh
+  - scripts/nexa-verify.ps1
   - docs/nexa/baseline/i18n-generation.md
   deliverable: ko/en/ja 생성 절차와 누락 키 검사를 실행한다.
   acceptance: NEXA 신규 문구가 반드시 SSOT를 거치도록 검증 경로가 정의된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  - ./scripts/nexa-verify.sh i18n
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "i18n-generation.md records i18n/messages.json SSOT, generated bot/web/agent/desktop artifacts, SHA-256 hashes, completeness counts, desktop sync path, and direct-edit prohibition"
+  - "make i18n-gen executed with identical pre/post hashes and empty generated-file diff for SSOT + bot/web/agent/desktop prototype outputs"
+  - "make i18n-check and ./scripts/nexa-verify.sh i18n passed: generated artifacts synchronized and ko/en/ja complete"
+  - "make sync-desktop refreshed ignored webui_assets/i18n-agent.js from prototypes/desktop/i18n-agent.js; hashes now match"
+  - "make desktop-check passed after sync: endpoint contract OK, shape drift OK, generated-asset leak check OK"
+  - "scripts/nexa-verify.sh and scripts/nexa-verify.ps1 now expose i18n scope as a KISS wrapper around make i18n-check"
+  - "./scripts/nexa-verify.sh docs passed: graph VALID, package graph OK, conversation fixtures OK, 133 docs links OK, diff-check OK"
+  - "./scripts/nexa-verify.sh central passed: Gradle BUILD SUCCESSFUL"
+  - "dependency gate pending: T019 remains REVIEW because T017 human_gate=true, so T020 is REVIEW not VERIFIED"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T021
   program: P00
   sequence: 21
   title: 관리자 대시보드 구조 기준선 캡처
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -627,13 +708,20 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "admin-dashboard.md records the runtime static dashboard files, hash-route page model, Spring forward routes, OAuth/token security boundary, API dependency families, and build ownership"
+  - "baseline distinguishes central-server static dashboard assets from the ignored admin-console Vite dist so future shadow/policy screens do not copy UX files without an explicit frontend SSOT"
+  - "baseline records existing testability guards: DashboardServingTest, DashboardElementIdDriftTest, AiNetworkApiSecurityFilterTest, dashboard controller tests, and the current lack of browser-level central dashboard coverage"
+  - "./scripts/nexa-verify.sh docs passed: graph VALID, package graph OK, conversation fixtures OK, 134 docs links OK, diff-check OK"
+  - "./scripts/nexa-verify.sh central passed: Gradle BUILD SUCCESSFUL"
+  - "dependency gate pending: T020 remains REVIEW because T017 human_gate=true, so T021 is REVIEW not VERIFIED"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T022
   program: P00
   sequence: 22
   title: 현재 자동응답 호출 경로 추적
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -647,13 +735,21 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "current-autoresponse-flow.md records slash, long-modal, context-menu, mention, and auto-response entry points separately with code-backed sequences"
+  - "baseline follows the shared path through CommandService.ask, AskCommandHandler.ask, channel AI prompt/profile composition, RequestOrchestrator routing, ProviderSession.sendInfer, and DiscordAnswerRenderer response output"
+  - "baseline lists hidden side effects: message-content-intent fallback, metrics, channel-level auto-response cap, reactions, channel AI profile/audit creation, request/usage/contribution logging, multi-response, RAG/web augmentation, provider state mutation, lifecycle cleanup, and feedback buttons"
+  - "baseline records current automated guards and explicitly notes there is no live JDA message-event end-to-end test for MessageReceivedEvent -> provider -> Discord message"
+  - "./scripts/nexa-verify.sh docs passed: graph VALID, package graph OK, conversation fixtures OK, 135 docs links OK, diff-check OK"
+  - "./scripts/nexa-verify.sh central passed: Gradle BUILD SUCCESSFUL"
+  - "dependency gate pending: T021 remains REVIEW because T017 human_gate=true, so T022 is REVIEW not VERIFIED"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T023
   program: P00
   sequence: 23
   title: 현재 CloudLlm·GLM 호출 경로 추적
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -668,13 +764,22 @@ tasks:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh agent
+  verification_evidence:
+  - "current-llm-flow.md records the central direct CloudLlm path, provider-agent GLM fallback, local non-GLM provider path, and adjacent image GLM safety/translation path separately"
+  - "baseline verifies NEXA speech/text should enter central RequestOrchestrator for blocklist, quota, channel policy, burden, web augmentation, requestlog, usage, and contribution coverage"
+  - "baseline distinguishes central direct z.ai calls from provider-agent GLM calls: direct cloud skips ProviderSession.sendInfer and records synthetic CLOUD_PROVIDER_ID=-1 with ai_request providerId null; fallback routes through a selected provider and records that provider ID"
+  - "baseline marks provider-agent GLM as legacy/rollback/removal-candidate, not removal-safe yet, because desktop /api/cloud key storage, hello glm advertisement, glm-* agent dispatch, and image review/translation fallback still depend on it"
+  - "./scripts/nexa-verify.sh docs passed: graph VALID, package graph OK, conversation fixtures OK, 136 docs links OK, diff-check OK"
+  - "./scripts/nexa-verify.sh central passed: Gradle BUILD SUCCESSFUL"
+  - "./scripts/nexa-verify.sh agent passed: 377 pytest passed, coverage 73.31% >= 70%, ruff OK, mypy OK"
+  - "dependency gate pending: T022 remains REVIEW because T017 human_gate=true, so T023 is REVIEW not VERIFIED"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T024
   program: P00
   sequence: 24
   title: ainetwork·channelai 데이터 모델 충돌 감사
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -688,13 +793,21 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "social-model-overlap.md records current ainetwork/channelai ownership for user_affinity, Nia prompt relation line, channel_ai profile, behavior versions, proposals/audit, routing policy, auto_respond, setup-created chat channels, feedback, and overview projections"
+  - "baseline classifies every audited item as REUSE, BRIDGE, MIGRATE, or DEPRECATE and names the later boundary rule for socialmemory"
+  - "baseline identifies core conflicts: global affinity versus guild-scoped social relationship, static identity versus dynamic memory, auto-response timing, duplicate side effects, and prompt double-injection"
+  - "baseline marks auto_respond as MIGRATE and the current auto-response hot-path cache as DEPRECATE once participation owns final SPEAK timing"
+  - "./scripts/nexa-verify.sh docs passed: graph VALID, package graph OK, conversation fixtures OK, 137 docs links OK, diff-check OK"
+  - "./scripts/nexa-verify.sh central passed: Gradle BUILD SUCCESSFUL"
+  - "dependency gate pending: T023 remains REVIEW because T017 human_gate=true, so T024 is REVIEW not VERIFIED"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P00-T025
   program: P00
   sequence: 25
   title: P00 기준선 재현 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -708,14 +821,18 @@ tasks:
   acceptance: 작업 그래프 검증, 문서 링크, central 테스트 기준선이 재현되며 미해결 실패는 명시적 BLOCKER로 등록된다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "현재 worktree 재현: docs/central/agent 검증 전부 통과 — graph VALID(500 tasks, 20 programs, DAG acyclic), 137 docs links OK, conversation fixtures 17 events OK, central-package-graph OK, git diff --check clean, central Gradle BUILD SUCCESSFUL, provider-agent 377 passed / coverage 73.31% / ruff OK / mypy OK"
+  - "T017~T024 REVIEW 작업의 verification_evidence 가 현재 체크아웃에서 재현되어 인간 보안 게이트 승인(2026-06-21) 후 VERIFIED 로 승격됨"
+  - "드리프트 교정(BLOCKER 아님): 게이트 verification 명령이 존재하지 않는 docs/nexa/roadmap/task-graph.yaml 을 참조하여, SSOT 인 docs/nexa/nexa_500_task_graph.yaml 기본 경로(python3 scripts/validate-nexa-task-graph.py)로 22곳 일괄 교정함 (AGENTS.md 3항 SSOT 일치)"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T001
   program: P01
   sequence: 1
   title: NEXA 시스템 컨텍스트 ADR 작성
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -726,6 +843,12 @@ tasks:
   acceptance: 결정의 범위·대안·위험·되돌림 가능성과 인간 승인 상태가 기록된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/adr/0007-nexa-social-member-context.md 작성: NEXA를 요청-응답 봇이 아니라 이벤트 관찰→행동 선택→기억→발화→실행의 사회적 행위자로 정의(대안 A/B/C 비교에서 C 채택)"
+  - "결정 본문이 6개 바운디드 컨텍스트(platform/discord, conversation, participation, socialmemory, speech, actionruntime)의 단방향 책임 사슬과 불변식을 명시하고 후속 P01-T003~T013 작업을 연결함"
+  - "acceptance 충족: 범위(비-목표 절), 대안(검토한 대안 표), 위험·되돌림 가능성(Risks & Reversibility 표), 인간 승인 상태(Approval 절, Proposed) 모두 기록됨"
+  - "./scripts/nexa-verify.sh docs 통과: graph VALID(500 tasks), 138 docs links OK, conversation fixtures 17 events OK, central-package-graph OK, git diff --check clean"
+  - "human_gate satisfied: 인간 결정자(Hyeonjun0527) ACCEPTED 승인(2026-06-21) → ADR 0007 상태 Accepted, VERIFIED 승격"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T002
@@ -1154,7 +1277,7 @@ tasks:
   acceptance: 순환 의존이 없고 모든 신규 책임이 정확히 한 컨텍스트에 소유되며 미승인 결정은 이후 구현을 BLOCK한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T001
@@ -1600,7 +1723,7 @@ tasks:
   acceptance: 미승인 항목이 하나라도 있으면 P03 실제 수집 구현을 시작하지 않는다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T001
@@ -2057,7 +2180,7 @@ tasks:
   acceptance: 유실률과 중복 side effect가 0이며 privacy 승인 범위 밖 데이터가 하나도 없을 때만 통과한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T001
@@ -2510,7 +2633,7 @@ tasks:
   acceptance: 합의한 F1 기준과 critical fixture 100%를 충족하지 못하면 P05에서 message 단위 판단을 금지한 채 개선 작업을 추가한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T001
@@ -2961,7 +3084,7 @@ tasks:
   acceptance: 예약 취소에 사용할 contextVersion 신뢰도가 합의 기준을 충족하고 치명적 cross-thread 오답이 없을 때 통과한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T001
@@ -3415,7 +3538,7 @@ tasks:
   acceptance: 금지 feature가 없고 ainetwork 경계와 replay가 검증돼야 통과한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T001
@@ -3870,7 +3993,7 @@ tasks:
   acceptance: critical stale-memory fixture가 모두 통과하고 raw chain-of-thought 저장이 없을 때만 통과한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T001
@@ -4330,7 +4453,7 @@ tasks:
   acceptance: IGNORE가 정상 경로이고 GLM 결합이 없으며 계약 golden test가 통과해야 한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T001
@@ -4787,7 +4910,7 @@ tasks:
   acceptance: shadow outbound 0회가 감사되고 baseline·데이터 한계가 합의될 때만 P10으로 이동한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T001
@@ -5242,7 +5365,7 @@ tasks:
   acceptance: 승인된 dataset ID가 없으면 어떤 학습도 시작하지 않는다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P11-T001
@@ -5706,7 +5829,7 @@ tasks:
   acceptance: 기준 미달이면 규칙 baseline을 유지하고 timing/데이터 작업만 진행한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P12-T001
@@ -6161,7 +6284,7 @@ tasks:
   acceptance: 기준 미달이면 discrete delay-bin을 유지하고 actionruntime 개발은 계약만 사용한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T001
@@ -6616,7 +6739,7 @@ tasks:
   acceptance: shadow 모드 hard block과 stale action 무전송이 입증돼야 speech 통합을 허용한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T001
@@ -7071,7 +7194,7 @@ tasks:
   acceptance: assistant-style critical failure와 cross-thread leakage가 기준 이하일 때만 end-to-end canary 후보가 된다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T001
@@ -7542,7 +7665,7 @@ tasks:
   acceptance: feature flag OFF가 현재 운영과 동일하고 shadow E2E가 전송 0회를 증명해야 통과한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T001
@@ -7977,7 +8100,7 @@ tasks:
   acceptance: 침묵·취소·privacy·stale memory critical 실패가 0이어야 canary 보안 작업으로 진행한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T001
@@ -8437,7 +8560,7 @@ tasks:
   acceptance: critical/high 미해결, 삭제 불완전, AI 비공개 상태에서는 canary를 금지한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T001
@@ -8891,7 +9014,7 @@ tasks:
   acceptance: 자동 중단과 수동 kill switch를 실제 staging에서 시연해야 canary를 시작한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T001
@@ -9313,7 +9436,7 @@ tasks:
   acceptance: P0/P1 발견이 닫히고 P2는 소유자·기한이 있다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T024
@@ -9333,7 +9456,7 @@ tasks:
   acceptance: GO/NO-GO/EXTEND-CANARY 중 하나를 근거와 함께 인간이 결정한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T025
@@ -9353,6 +9476,6 @@ tasks:
   acceptance: 500단계 완료가 자동 출시를 의미하지 않으며 실제 증거가 부족하면 정직하게 중단한다.
   verification:
   - ./scripts/nexa-verify.sh all
-  - python scripts/validate-nexa-task-graph.py docs/nexa/roadmap/task-graph.yaml
+  - python3 scripts/validate-nexa-task-graph.py
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.

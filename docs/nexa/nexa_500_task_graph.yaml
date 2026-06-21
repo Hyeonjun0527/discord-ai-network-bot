@@ -1984,7 +1984,7 @@ tasks:
   program: P03
   sequence: 2
   title: DiscordEventMapper 포트 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1996,13 +1996,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "platform/discord/nexa/ 에 DiscordEventMapper 포트 신설: JDA 객체→NormalizedDiscordEvent 변환 인터페이스(매퍼는 어댑터 계층, JDA 의존 허용)"
+  - "acceptance 충족: 반환 도메인 이벤트가 순수(JDA 참조 없음), NexaArchitectureTest 10/10로 conversation domain JDA 비의존 강제"
+  - "central BUILD SUCCESSFUL, 단위 테스트 통과, package-graph 동기"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T003
   program: P03
   sequence: 3
   title: MessageCreated JDA 매핑 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2014,13 +2018,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "JdaMessageEventMapper.kt: MessageCreated 매핑(guild/channel/thread/reply/mention/attachment metadata/content availability)"
+  - "acceptance 충족: 봇 메시지·웹훅·시스템 메시지의 source type을 구분해 매핑함을 단위 테스트로 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T004
   program: P03
   sequence: 4
   title: 수정·삭제 JDA 매핑 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2032,13 +2040,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "message update/delete를 revision-aware 정규화 이벤트(MessageUpdated/MessageDeleted)로 매핑"
+  - "acceptance 충족: 캐시 미스(이전 내용 없음)에서도 최소 키로 이벤트 생성, 예외로 유실되지 않음을 단위 테스트로 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T005
   program: P03
   sequence: 5
   title: reaction·typing·member update 매핑 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2050,13 +2062,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "reaction add/remove, typing start, nickname/display change를 Reaction/TypingStarted/MemberIdentityChanged로 정규화"
+  - "acceptance 충족: 지원되지 않는 필드는 explicit unavailable 상태로 기록(null 뭉갬 금지)을 단위 테스트로 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T006
   program: P03
   sequence: 6
   title: 이벤트 ID 생성 규칙 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2068,13 +2084,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "conversation/domain/model/event/EventIdentity.kt(순수 도메인): Discord 고유 ID + event type/revision 조합 idempotency key"
+  - "acceptance 충족: EventIdentityTest로 동일 Gateway 이벤트 재수신 시 같은 ID, 다른 revision은 충돌하지 않음 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T007
   program: P03
   sequence: 7
   title: 수신 envelope 메타데이터 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2086,6 +2106,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "conversation/application/ingest/ 에 수신 envelope 메타데이터: receivedAt·shardId·sessionId·gatewaySequence·mapperVersion·consentSnapshot"
+  - "acceptance 충족: Clock과 mapperVersion이 주입(하드코딩 금지)돼 재생 시 원인 추적 가능함을 단위 테스트로 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T008

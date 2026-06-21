@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 20 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 317
-- Cross-node import edges: 386
+- Kotlin files scanned: 325
+- Cross-node import edges: 419
 
 ## Nodes
 
@@ -14,7 +14,7 @@
 | `<root>` | 1 |
 | `ainetwork` | 52 |
 | `channelai` | 18 |
-| `conversation` | 11 |
+| `conversation` | 14 |
 | `dev` | 1 |
 | `global` | 23 |
 | `globalpromptset` | 3 |
@@ -23,7 +23,7 @@
 | `licensing` | 18 |
 | `multiresponse` | 22 |
 | `onboarding` | 14 |
-| `platform` | 32 |
+| `platform` | 37 |
 | `preset` | 22 |
 | `provider` | 15 |
 | `quota` | 6 |
@@ -86,6 +86,7 @@
 | `onboarding` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.shared.RequestState` |
 | `platform` | `ainetwork` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AiNetworkCommandHandler.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkLaunchChecklistService` |
 | `platform` | `channelai` | 16 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/ChannelProfilePanelRenderer.kt` | `com.discordassistant.central.channelai.application.ChannelAiProfileService` |
+| `platform` | `conversation` | 33 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordEventMapper.kt` | `com.discordassistant.central.conversation.domain.model.event.NormalizedDiscordEvent` |
 | `platform` | `global` | 15 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.global.i18n.I18n` |
 | `platform` | `globalpromptset` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt` | `com.discordassistant.central.globalpromptset.application.GlobalPromptSetService` |
 | `platform` | `guild` | 9 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.guild.application.PolicyService` |
@@ -226,6 +227,7 @@ Outgoing imports from `com.discordassistant.central.platform.discord*`:
 | --- | --- | ---: | --- | --- |
 | `platform` | `ainetwork` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AiNetworkCommandHandler.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkLaunchChecklistService` |
 | `platform` | `channelai` | 16 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/ChannelProfilePanelRenderer.kt` | `com.discordassistant.central.channelai.application.ChannelAiProfileService` |
+| `platform` | `conversation` | 33 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordEventMapper.kt` | `com.discordassistant.central.conversation.domain.model.event.NormalizedDiscordEvent` |
 | `platform` | `global` | 15 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/DiscordBot.kt` | `com.discordassistant.central.global.i18n.I18n` |
 | `platform` | `globalpromptset` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt` | `com.discordassistant.central.globalpromptset.application.GlobalPromptSetService` |
 | `platform` | `guild` | 9 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.guild.application.PolicyService` |

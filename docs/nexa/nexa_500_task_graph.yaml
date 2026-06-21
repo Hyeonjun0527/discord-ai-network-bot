@@ -4658,7 +4658,7 @@ tasks:
   program: P08
   sequence: 1
   title: SocialAction taxonomy 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4670,13 +4670,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "SocialAction taxonomy(순수 sealed): IGNORE/WAIT/REACT/SPEAK/CANCEL, 각 행동 필요 payload만"
+  - "acceptance 충족: SPEAK에도 문장 필드가 존재하지 않음(문장 생성은 speech)을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T002
   program: P08
   sequence: 2
   title: SocialAct taxonomy 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4688,13 +4691,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "SocialAct taxonomy(enum): 발화 의도 분류(질문/공감/농담 등)를 안정 코드로"
+  - "acceptance 충족: 자유 텍스트 라벨이 아닌 안정적 코드와 unknown 처리 규칙이 있음을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T003
   program: P08
   sequence: 3
   title: ActionTarget 분포 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4706,13 +4712,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ActionTarget 분포 모델(값 객체): 누구에게 행동할지 확률분포"
+  - "acceptance 충족: 대상 확률 합(=1)과 존재하지 않는 ID 검증이 있음을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T004
   program: P08
   sequence: 4
   title: DelayDistribution 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4724,13 +4733,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "DelayDistribution 모델(값 객체): 언제 행동할지 지연 분포(즉시~never)"
+  - "acceptance 충족: never(영원히 안 함)와 IGNORE(이번 자극 무시)의 차이가 문서화·구분됨을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T005
   program: P08
   sequence: 5
   title: BurstProfile 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4742,13 +4754,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "BurstProfile 모델(값 객체): 발화를 몇 개 버블로 나눌지 형태(개수/간격)"
+  - "acceptance 충족: 정책이 실제 문구를 생성하지 않고 형태(버스트 구조)만 정함(문구는 speech)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T006
   program: P08
   sequence: 6
   title: PolicyDecisionRequest 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4762,13 +4777,17 @@ tasks:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh contracts
+  verification_evidence:
+  - "PolicyDecisionRequest 계약(순수): 행동 결정 입력(feature·장면 요약·정책)"
+  - "acceptance 충족: Discord 원문과 JPA entity가 계약에 직접 포함되지 않음(feature/요약만)을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ./scripts/nexa-verify.sh contracts EXIT=0(계약 일관)"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T007
   program: P08
   sequence: 7
   title: PolicyDecisionResponse 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4782,13 +4801,17 @@ tasks:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh contracts
+  verification_evidence:
+  - "PolicyDecisionResponse 계약(순수): 행동 결정 출력(action + 확률분포 + 근거)"
+  - "acceptance 충족: 단일 최종 답만 강제하지 않고 확률분포가 schema validation을 통과함을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, contracts EXIT=0"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T008
   program: P08
   sequence: 8
   title: 정책 계약 버전 협상 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4800,13 +4823,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "정책 계약 버전 협상: request/response 스키마 버전 협상"
+  - "acceptance 충족: 호환되지 않는 모델은 안전하게 shadow-only 또는 fallback(안전 기본=침묵)으로 전환됨을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T009
   program: P08
   sequence: 9
   title: FeatureVector schema 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4819,13 +4845,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh contracts
+  verification_evidence:
+  - "FeatureVector schema: participation 입력 feature의 ID/version 스키마(코드↔데이터셋 공유)"
+  - "acceptance 충족: 코드와 ML 데이터셋이 같은 feature ID/version을 사용(드리프트 방지)함을 확인"
+  - "./scripts/nexa-verify.sh docs + contracts EXIT=0"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T010
   program: P08
   sequence: 10
   title: burst feature builder 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4837,13 +4867,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "burst feature builder(순수): 버스트에서 정책 입력 feature 추출"
+  - "acceptance 충족: content unavailable에서도 missing flag를 보존(null 뭉갬 금지)함을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T011
   program: P08
   sequence: 11
   title: thread·addressee feature builder 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4855,13 +4888,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "thread·addressee feature builder(순수): 장면 스레드·수신자 정황을 feature로"
+  - "acceptance 충족: 특정 member ID 자체를 모델 feature로 직접 사용하지 않음(관계 신호로 추상화)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T012
   program: P08
   sequence: 12
   title: channel tempo feature builder 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4873,13 +4909,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "channel tempo feature builder(순수): 채널 대화 속도를 정책 feature로"
+  - "acceptance 충족: 봇/옵트아웃 제외 규칙이 P06(ChannelCultureState)과 동일함(일관성)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T013
   program: P08
   sequence: 13
   title: relationship feature builder 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4891,6 +4930,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "relationship feature builder(순수): 사회 상태/기억의 관계 신호를 정책 feature로"
+  - "acceptance 충족: 작은 표본 confidence가 별도 feature로 포함됨(저표본 과신 방지)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T014

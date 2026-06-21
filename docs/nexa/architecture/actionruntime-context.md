@@ -31,7 +31,10 @@ participation이 고른 행동을 **언제·어떻게 실제로 수행할지**�
 
 - 인바운드: `ScheduleAction(decision, payloadRef)`, `CancelAction(id)`(participation이 호출)
 - 아웃바운드:
-  - `ReEvaluate`(participation에 유효성 재확인)
+  - `ReEvaluate`(participation에 유효성 재확인) — **DIP로 순환 해소**: actionruntime이
+    `ReEvaluationPort` 인터페이스를 *소유*하고 participation이 이를 *구현*한다. 따라서 컴파일
+    의존은 participation→actionruntime 단방향이며 그래프가 비순환으로 유지된다([module-dag.md](./module-dag.md)).
+    대안으로 `ActionReEvaluated` 이벤트로 비동기화해도 동일하게 단방향이다.
   - `ResolveSpeech`(speech가 만든 발화 계획을 전송 직전 확정 조회)
   - `SendToDiscord`(platform/discord 아웃바운드 어댑터)
 

@@ -54,6 +54,21 @@ class NexaArchitectureTest {
     val speechHasNoForbiddenBackendDependency: ArchRule =
         speechHasNoForbiddenBackendDependencyRule("..central.speech..")
 
+    // T022: participation 은 speech 문장 생성·actionruntime 전송 **구현**(adapter 내부)·JDA 전송에
+    // 의존하지 않는다 — 공개 application port 만 호출한다(module-dag.md 금지 의존 #2, participation-context.md,
+    // ADR 0008).
+    @ArchTest
+    val participationDoesNotDependOnDownstreamImplementation: ArchRule =
+        participationDoesNotDependOnDownstreamImplementationRule(
+            sourcePackages = arrayOf("..central.participation.."),
+            forbiddenPackages =
+                arrayOf(
+                    "..central.speech.adapter..",
+                    "..central.actionruntime.adapter..",
+                    "net.dv8tion..",
+                ),
+        )
+
     // T023: 기존 도메인은 NEXA 를 모른다 — NEXA 신규 도메인의 adapter 내부 구현을 직접 참조하지 않는다.
     // 공개 application port/API 로만 소비해야 한다(module-dag.md 금지 의존 #4, 불변식 2).
     @ArchTest
@@ -101,6 +116,22 @@ class NexaArchitectureTest {
         assertThatThrownBy {
             speechHasNoForbiddenBackendDependencyRule("..nexafixture.speech..").check(fixture)
         }.isInstanceOf(AssertionError::class.java)
+    }
+
+    // 금지 의존 #2 acceptance: participation 이 하류 adapter 구현에 의존하면 탐지된다.
+    @Test
+    fun `participation rule fails when depending on downstream adapter implementation fixture`() {
+        val fixture =
+            importFixture(
+                "com.discordassistant.central.arch.nexafixture.participationsrc",
+                "com.discordassistant.central.arch.nexafixture.downstreamadapter",
+            )
+        val rule =
+            participationDoesNotDependOnDownstreamImplementationRule(
+                sourcePackages = arrayOf("..nexafixture.participationsrc.."),
+                forbiddenPackages = arrayOf("..nexafixture.downstreamadapter.."),
+            )
+        assertThatThrownBy { rule.check(fixture) }.isInstanceOf(AssertionError::class.java)
     }
 
     // T023 acceptance: "공개 application port/API를 우회한 import가 탐지된다".
@@ -188,6 +219,20 @@ class NexaArchitectureTest {
                 .orShould()
                 .dependOnClassesThat()
                 .haveNameMatching(".*([Gg]lm|[Zz]ai).*")
+                .allowEmptyShould(true)
+
+        // module-dag.md 금지 의존 #2 — participation 은 speech/actionruntime adapter 구현·JDA 전송에
+        // 의존하지 않는다(공개 application port 만 허용).
+        private fun participationDoesNotDependOnDownstreamImplementationRule(
+            sourcePackages: Array<String>,
+            forbiddenPackages: Array<String>,
+        ): ArchRule =
+            noClasses()
+                .that()
+                .resideInAnyPackage(*sourcePackages)
+                .should()
+                .dependOnClassesThat()
+                .resideInAnyPackage(*forbiddenPackages)
                 .allowEmptyShould(true)
 
         // module-dag.md 금지 의존 #4 / 불변식 2 — 기존 도메인은 NEXA adapter 내부를 직접 참조하지 않는다.

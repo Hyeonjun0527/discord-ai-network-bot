@@ -46,7 +46,7 @@ speech는 활성 채널 정체성·행동의 **읽기 모델**(`ChannelAiIdentit
 | 단계 | 내용 | 호환/제거 |
 | --- | --- | --- |
 | 0 (현재) | participation 미존재. `auto_respond` + 핫패스 캐시 현행 유지 | ArchUnit 가드만 추가: 새 코드가 `ChannelAiEntity`/`AutoRespondChannelRegistry`를 participation 밖에서 신규 의존하지 못하게 함 |
-| 1 (P06 participation 도입) | `auto_respond`를 NEXA 채널 모드(OFF/SHADOW/CANARY/LIVE)로 **매핑**. participation이 IGNORE/WAIT/REACT/SPEAK/CANCEL 타이밍을 결정 | `auto_respond` 컬럼은 **읽기 호환 유지**: `false`→mention/slash-only, `true`→LIVE 모드 seed. 기존 동작 무손상 |
+| 1 (P06 participation 도입) | `auto_respond`를 NEXA 채널 모드(ASSISTANT/MEMBER/OFF)로 **매핑**. participation이 IGNORE/WAIT/REACT/SPEAK/CANCEL 타이밍을 결정 | `auto_respond` 컬럼은 **읽기 호환 유지**: `false`→OFF(mention/slash-only), `true`→ASSISTANT(무조건 답변) seed. MEMBER(사람처럼)는 온보딩에서 명시 생성. 운영 롤아웃(shadow/canary/live)은 별개 축([guild-policy-boundary](../nexa/architecture/guild-policy-boundary.md)). 기존 동작 무손상 |
 | 2 (participation 안정화) | 핫패스 게이트(`onMessageReceived`의 `isAutoRespond`)를 participation의 channel-mode query로 교체 | `AutoRespondChannelRegistry` 캐시는 **DEPRECATE**(participation 자체 인덱스 대체 후 제거) |
 | 3 (후속 마이그레이션 ADR) | `auto_respond` 컬럼 최종 제거 여부 결정 | 별도 Flyway 마이그레이션 + ADR. 본 ADR은 컬럼을 **삭제하지 않는다** |
 
@@ -87,5 +87,6 @@ speech는 활성 채널 정체성·행동의 **읽기 모델**(`ChannelAiIdentit
 
 ## 미해결 질문
 
-- NEXA 채널 모드 enum(OFF/SHADOW/CANARY/LIVE)의 최종 정의와 저장 위치(channelai vs participation).
+- NEXA 채널 모드 enum(ASSISTANT/MEMBER/OFF — 채널 종류)과 운영 롤아웃(shadow/canary/live — 배포 축)의
+  최종 정의·저장 위치는 guild 정책이 소유한다([guild-policy-boundary](../nexa/architecture/guild-policy-boundary.md)).
 - 단계 2에서 핫패스 게이트를 교체할 때 participation channel-mode query의 캐시·무효화 전략.

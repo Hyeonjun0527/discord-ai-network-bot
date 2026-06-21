@@ -868,6 +868,7 @@
     "summary": "NEXA 사회적 행위자(ADR 0007)의 6개 바운디드 컨텍스트. 관찰→행동 선택→발화→실행 단방향 사슬이며, 경계는 ArchUnit(NexaArchitectureTest)로 강제하고 상세 계약은 docs/nexa/architecture가 소유한다.",
     "adr": [
       "docs/adr/0007-nexa-social-member-context.md",
+      "docs/adr/0008-spring-modulith-evaluation.md",
       "docs/adr/0009-channelai-responsibility.md",
       "docs/adr/0010-ainetwork-socialmemory-boundary.md"
     ],

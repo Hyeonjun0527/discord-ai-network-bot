@@ -35,6 +35,9 @@ SPEAK / CANCEL`. **말 자체를 만들거나 보내지 않는다.**
   - `SocialMemoryQuery`(socialmemory 읽기)
   - `RequestSpeech`(SPEAK일 때 speech에 후보 문구 계획 요청)
   - `ScheduleAction`/`CancelAction`(actionruntime에 실행 예약·취소 명령)
+  - `ReEvaluationPort` **구현**(actionruntime이 소유한 포트 인터페이스를 participation이 구현) —
+    전송 직전 재평가 요청을 받아 유효성을 답한다. 이 DIP로 participation→actionruntime 단방향이
+    유지되어 순환이 없다([module-dag.md](./module-dag.md))
 
 ## 금지 의존성 (ArchUnit으로 강제 — ADR 0008)
 

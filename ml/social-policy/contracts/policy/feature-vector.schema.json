@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://discord-ai.yeon.world/contracts/policy/feature-vector.schema.json",
+  "title": "FeatureVector",
+  "description": "NEXA-P08-T009 — 정책 feature 벡터 SSOT. feature 이름·type·범위·missing semantics·provenance·privacy class 를 정의해 코드(FeatureCatalog.kt)와 ML 데이터셋이 같은 feature ID/version 을 쓰게 한다. 사람이 읽는 카탈로그: docs/nexa/policy/features.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "features"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "feature 벡터 버전. FeatureCatalog.VERSION 과 일치해야 한다(코드·데이터셋 동기화)."
+    },
+    "features": {
+      "type": "object",
+      "description": "feature ID → 값(missing 보존). 키는 features.md 카탈로그의 안정 ID 여야 한다.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["value", "missing"],
+        "properties": {
+          "value": {
+            "type": "number",
+            "description": "정규화 수치. missing=true 면 무의미(관례상 0)."
+          },
+          "missing": {
+            "type": "boolean",
+            "description": "관측 불가(content unavailable·표본 부족 등). true 면 정책이 0 과 구분해 '모름'으로 다룬다."
+          }
+        }
+      }
+    }
+  },
+  "$comment": "feature type/provenance/privacyClass 의 SSOT 는 docs/nexa/policy/features.md 표다. 코드 미러는 FeatureCatalog.FeatureType / PrivacyClass.",
+  "x-feature-types": ["NORMALIZED", "COUNT", "DURATION", "RATE", "BOOLEAN", "CATEGORICAL"],
+  "x-privacy-classes": ["OBSERVABLE", "AGGREGATE"]
+}

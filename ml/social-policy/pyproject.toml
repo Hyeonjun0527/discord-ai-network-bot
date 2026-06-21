@@ -17,10 +17,22 @@ dependencies = []
 parquet = [
   "pyarrow>=15",
 ]
+# 정책 모델 학습/평가/ONNX export 의존(P11). torch 는 의도적으로 쓰지 않는다(footprint·결정론 이유):
+# numpy 기반 소형 신경망 + sklearn baseline + onnx/onnxruntime export·parity 로 모든 acceptance 를 충족한다.
+ml = [
+  "numpy>=2",
+  "scikit-learn>=1.5",
+  "onnx>=1.16",
+  "onnxruntime>=1.18",
+]
 dev = [
   "pytest>=8,<9",
   "ruff>=0.4",
   "mypy>=1.10",
+  "numpy>=2",
+  "scikit-learn>=1.5",
+  "onnx>=1.16",
+  "onnxruntime>=1.18",
 ]
 
 [tool.setuptools.packages.find]
@@ -43,6 +55,23 @@ warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
 ignore_missing_imports = true
+
+# numpy/onnx 표면은 대부분 Any 로 타입되어 warn_return_any 가 과도하게 운다(실제 버그 아님).
+# P11 ML 수치 모듈만 warn_return_any 를 끈다(나머지 P10 도메인 코드는 strict 유지). 타입 정의 강제
+# (disallow_untyped_defs)는 그대로 둔다 — 시그니처 타입은 계속 요구한다.
+[[tool.mypy.overrides]]
+module = [
+  "nexa_policy.datasets",
+  "nexa_policy.metrics",
+  "nexa_policy.reproducibility",
+  "nexa_policy.features.schema",
+  "nexa_policy.baselines.*",
+  "nexa_policy.models.*",
+  "nexa_policy.training.*",
+  "nexa_policy.calibration.*",
+  "nexa_policy.export.*",
+]
+warn_return_any = false
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

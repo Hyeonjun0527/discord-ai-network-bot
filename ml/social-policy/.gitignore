@@ -13,6 +13,16 @@ htmlcov/
 # Parquet 출력(합성 산출물 — 커밋 금지)
 *.parquet
 
+# 모델 artifact(학습 산출물 — 커밋 금지). ONNX export·가중치·메트릭 덤프·run 레코드.
+*.onnx
+*.npz
+*.npy
+*.pt
+*.ckpt
+*.run.json
+artifacts/
+runs/
+
 # builder CLI 산출물(manifest/dataset-card/stages — 합성 산출물, 커밋 금지)
 build/
 *.manifest.json

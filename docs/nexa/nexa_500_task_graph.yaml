@@ -1597,7 +1597,7 @@ tasks:
   program: P02
   sequence: 10
   title: 가명 식별자 규칙 정의
-  status: DRAFT
+  status: REVIEW
   kind: security
   risk: high
   depends_on:
@@ -1610,6 +1610,11 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "central-server/.../global/crypto/ScopedPseudonymizer.kt(+Config) 구현: HMAC-SHA256 기반 (purpose, guildId, snowflake, keyVersion) 스코프 가명. 키는 설정 주입(하드코딩 금지), 키 회전 시 버전 접두사 식별"
+  - "acceptance 충족: ScopedPseudonymizerTest 6/6 통과 — 길드 격리(같은 snowflake+다른 guildId→다른 가명, cross-guild linkage 차단), 용도 분리, 결정성, 역추적 불가(원본 snowflake 평문 미포함), 키 회전, 키 미설정 폴백도 격리 유지"
+  - "검증: ./scripts/nexa-verify.sh central BUILD SUCCESSFUL, ScopedPseudonymizerTest tests=6 failures=0, 기존 테스트 무회귀"
+  - "human_gate=true: 인간 보안 검토 전까지 REVIEW 유지"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T011

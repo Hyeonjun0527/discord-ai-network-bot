@@ -1644,7 +1644,7 @@ tasks:
   program: P02
   sequence: 12
   title: 애플리케이션 로그 redaction 계약 구현 계획
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -1655,6 +1655,11 @@ tasks:
   acceptance: 금지 필드 목록이 정적 검사 또는 테스트에 연결된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/security/redaction-contract.md 작성: 금지 필드(원문/프롬프트/응답/API키·토큰/Discord snowflake/HTTP body)와 허용(hash/correlation/scoped pseudonym/status/provider/requestId) 명시"
+  - "acceptance 충족: 금지 필드 목록을 4가지 강제 수단에 연결 — 중앙 redactor(전 핸들러+WebUI ring, LOG-004 보완), 회귀 테스트(PromptPrivacyTest/test_privacy 확장, sink별), 엔티티 금지 필드 가드, 금지 키 SSOT 목록(redactor·테스트 공유)"
+  - "scoped pseudonym은 T010 ScopedPseudonymizer 연계, logging-baseline(T017)·logging-boundary 정합"
+  - "./scripts/nexa-verify.sh docs 통과(172 문서, 링크 OK, package-graph 재생성 후 동기)"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T013

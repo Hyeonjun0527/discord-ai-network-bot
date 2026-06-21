@@ -4,7 +4,7 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 19 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 304
+- Kotlin files scanned: 306
 - Cross-node import edges: 386
 
 ## Nodes
@@ -15,7 +15,7 @@
 | `ainetwork` | 52 |
 | `channelai` | 18 |
 | `dev` | 1 |
-| `global` | 21 |
+| `global` | 23 |
 | `globalpromptset` | 3 |
 | `guild` | 6 |
 | `knowledge` | 30 |

@@ -59,6 +59,7 @@ function Verify-Docs {
     Invoke-External "python3" @("scripts/validate-nexa-task-graph.py")
     Invoke-External "python3" @("scripts/central-package-graph.py", "--check")
     Invoke-External "python3" @("scripts/validate-nexa-conversation-fixtures.py")
+    Invoke-External "python3" @("scripts/validate-nexa-architecture-ssot.py")
     Invoke-External "python3" @("scripts/check_links.py")
     Invoke-External "git" @("diff", "--check")
 }

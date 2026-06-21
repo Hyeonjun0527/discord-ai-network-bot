@@ -1348,7 +1348,7 @@ tasks:
   program: P01
   sequence: 24
   title: 아키텍처 문서와 ai-context SSOT 동기화
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -1360,6 +1360,11 @@ tasks:
   acceptance: 문서와 JSON의 모듈 목록·책임이 자동 검사로 동일하다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "ai-context/domain.json 에 nexaContexts 키 추가(중복 없이): 6개 컨텍스트(conversation/participation/socialmemory/speech/actionruntime/platform-discord)의 role·owns·forbids·contract 경로 + adr·moduleDag 참조. gen_ssot_viewer 는 이 키를 읽지 않아 HTML 무영향"
+  - "scripts/validate-nexa-architecture-ssot.py 신설: domain.json nexaContexts ↔ docs/nexa/architecture 컨텍스트 계약 문서의 양방향 일치(필수 필드·id 6개 집합·contract 파일 존재·고아/미선언 문서 금지·adr/moduleDag 존재)를 강제. nexa-verify.sh/.ps1 docs 스코프에 통합"
+  - "acceptance 충족(자동 검사로 동일): 정상 'OK: 6 contexts, 6 contracts 일치', 의도적 불일치(컨텍스트 1개 제거) 시 exit 1 + '누락된 컨텍스트 id'·'고아 계약 문서' 검출 확인"
+  - "검증: ./scripts/nexa-verify.sh docs 통과(158 문서 링크 OK, architecture-ssot OK), make ssot-viewer-check 'up to date'(HTML 동기 유지)"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T025

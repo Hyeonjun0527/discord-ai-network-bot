@@ -105,7 +105,10 @@ tasks.withType<Test> {
         // Cucumber BDD 스위트는 Testcontainers Postgres(실 DB) 필요 → 기본 빌드에서 클래스 단위 제외(실행: -PdockerTests).
         // (스위트는 태그 게이트가 자식 시나리오에 전파되지 않아 클래스 제외로 게이트한다.)
         exclude("**/RunCucumberBddTest.class")
-        maxHeapSize = "1024m"
+        // 단일 fork(maxParallelForks=1)로 전 스위트를 한 JVM 에서 돌린다. ArchUnit @AnalyzeClasses 가 central
+        // 전체 패키지 클래스 그래프를 메모리에 올리므로, NEXA actionruntime 실행/감사 클래스가 늘면서 1024m 로는
+        // ArchUnit 임포트 단계에서 heap 이 부족해진다(OOM). 헤드룸을 둔다(여전히 docker 모드 1536m 이하).
+        maxHeapSize = "1280m"
     }
     maxParallelForks = 1
     // Testcontainers 가 Docker 소켓을 찾도록 호스트 환경의 DOCKER_HOST 를 테스트 JVM 에 전달(있을 때만).

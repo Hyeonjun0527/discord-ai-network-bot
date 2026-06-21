@@ -7620,7 +7620,7 @@ tasks:
   program: P13
   sequence: 15
   title: TypingIndicatorPlan 실행 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7632,13 +7632,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "TypingIndicatorPlan 실행(outbound adapter): 계획된 typing 표시 실행, OBSERVE_ONLY 시 전송 0회"
+  - "acceptance 충족: typing만 남고 메시지가 영원히 안 오는 상태에 max duration이 있음(무한 typing 방지)을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T016
   program: P13
   sequence: 16
   title: DiscordReactionExecutor 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7650,13 +7653,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "DiscordReactionExecutor(outbound adapter): REACT 행동(이모지 반응) 실행, OBSERVE_ONLY 시 전송 0회"
+  - "acceptance 충족: reaction 실패가 SPEAK fallback을 자동 유발하지 않음(행동 격리)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T017
   program: P13
   sequence: 17
   title: DiscordMessageExecutor 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7668,13 +7674,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "DiscordMessageExecutor(outbound adapter): SPEAK 행동(메시지) 실행, OBSERVE_ONLY 시 전송 0회"
+  - "acceptance 충족: 전송 nonce/idempotency와 Discord message ID가 audit에 연결됨(추적·중복방지)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T018
   program: P13
   sequence: 18
   title: target 삭제·권한 손실 처리 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7686,13 +7695,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "target 삭제·권한 손실 처리: 대상 채널/메시지 삭제·권한 상실 시 우아한 실패(예약 취소·로그)"
+  - "acceptance 충족: 다른 채널에 임의로 보내는 fallback이 없음(잘못된 대상 전송 방지)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T019
   program: P13
   sequence: 19
   title: multiresponse BurstPlan adapter 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7704,13 +7716,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "multiresponse BurstPlan adapter: 여러 버블을 P04 버스트/P12 간격 모델대로 순차 전송"
+  - "acceptance 충족: 기존 pseudo-streaming API가 정책 action 수를 늘리지 않음(하나의 결정=하나의 버스트)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T020
   program: P13
   sequence: 20
   title: 부분 전송 후 잔여 버블 취소 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7722,13 +7737,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "부분 전송 후 잔여 버블 취소: 버스트 도중 취소 시 남은 버블 미전송"
+  - "acceptance 충족: PARTIALLY_SENT 상태와 취소 reason이 정확히 기록됨(중간 취소 일관성)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T021
   program: P13
   sequence: 21
   title: Discord rate-limit·backpressure 처리
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7740,13 +7758,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "Discord rate-limit·backpressure 처리: 429 백프레셔 존중, 큐 적체 시 stale 응답 폐기"
+  - "acceptance 충족: 오래 지연된 사회적 응답을 뒤늦게 쏟아내지 않음(backpressure·stale drop)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T022
   program: P13
   sequence: 22
   title: action audit trail 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7758,13 +7779,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "action audit trail: 모든 실행/취소/실패를 ID·시각·reason으로 감사 기록(원문 최소화)"
+  - "acceptance 충족: 원문 없이 decision/action/message IDs로 사건을 재구성할 수 있음(추적성+프라이버시)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T023
   program: P13
   sequence: 23
   title: actionruntime 시나리오 통합 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7777,13 +7801,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "actionruntime 시나리오 통합 테스트: 관찰→판단→예약→실행 end-to-end(mock JDA)"
+  - "acceptance 충족: 각 시나리오에서 기대한 전송 횟수와 terminal state가 일치함(OBSERVE_ONLY=0회)을 통합 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T024
   program: P13
   sequence: 24
   title: scheduler crash·restart chaos 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -7796,13 +7823,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "scheduler crash·restart chaos 테스트: 스케줄러 크래시/재시작 중 동작 검증"
+  - "acceptance 충족: 중복 전송 0, 유실된 terminal audit 0을 만족함(견고성)을 chaos 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T025
   program: P13
   sequence: 25
   title: P13 실행 안전성 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -7816,6 +7846,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "P13 실행 안전성 게이트: actionruntime 전체(예약·스케줄러·취소·executor·burst·rate-limit·audit·chaos) 완성"
+  - "acceptance 충족: shadow OBSERVE_ONLY hard block(전송 0회 통합테스트)과 stale action 무전송(contextVersion 재평가·취소 3종)이 입증됨. ./scripts/nexa-verify.sh all EXIT=0(central+agent+i18n+docs+contracts 전부 통과), validate VALID, NexaArchitectureTest 10/10"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — P13 실행 안전성 확정, speech(P14) 통합 허용"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T001

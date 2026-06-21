@@ -4,15 +4,15 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 23 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 542
-- Cross-node import edges: 435
+- Kotlin files scanned: 558
+- Cross-node import edges: 449
 
 ## Nodes
 
 | Node | Kotlin files |
 | --- | ---: |
 | `<root>` | 1 |
-| `actionruntime` | 20 |
+| `actionruntime` | 31 |
 | `ainetwork` | 52 |
 | `channelai` | 18 |
 | `conversation` | 77 |
@@ -25,7 +25,7 @@
 | `multiresponse` | 22 |
 | `onboarding` | 14 |
 | `participation` | 80 |
-| `platform` | 39 |
+| `platform` | 44 |
 | `preset` | 22 |
 | `provider` | 15 |
 | `quota` | 6 |
@@ -39,7 +39,7 @@
 
 | Source | Target | Imports | Sample path | Sample import |
 | --- | --- | ---: | --- | --- |
-| `actionruntime` | `participation` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/ShadowOutboundDispatcher.kt` | `com.discordassistant.central.participation.domain.model.shadow.ShadowMode` |
+| `actionruntime` | `participation` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/ShadowOutboundDispatcher.kt` | `com.discordassistant.central.participation.domain.model.shadow.ShadowMode` |
 | `ainetwork` | `channelai` | 12 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkDashboardMapper.kt` | `com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity` |
 | `ainetwork` | `guild` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/adapter/inbound/web/ChannelAiRoutingPolicyController.kt` | `com.discordassistant.central.guild.application.PolicyService` |
 | `ainetwork` | `knowledge` | 12 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkDashboardMapper.kt` | `com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity` |
@@ -89,6 +89,7 @@
 | `onboarding` | `provider` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/ProviderConnectOnboardingService.kt` | `com.discordassistant.central.provider.application.ProviderRegistrationService` |
 | `onboarding` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
 | `onboarding` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/onboarding/application/RequestOrchestratorOnboardingLlm.kt` | `com.discordassistant.central.shared.RequestState` |
+| `platform` | `actionruntime` | 12 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordMessageExecutor.kt` | `com.discordassistant.central.actionruntime.application.port.out.ExecutionResult` |
 | `platform` | `ainetwork` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AiNetworkCommandHandler.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkLaunchChecklistService` |
 | `platform` | `channelai` | 16 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/ChannelProfilePanelRenderer.kt` | `com.discordassistant.central.channelai.application.ChannelAiProfileService` |
 | `platform` | `conversation` | 40 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordEventMapper.kt` | `com.discordassistant.central.conversation.domain.model.event.NormalizedDiscordEvent` |
@@ -237,6 +238,7 @@ Outgoing imports from `com.discordassistant.central.platform.discord*`:
 
 | Source | Target | Imports | Sample path | Sample import |
 | --- | --- | ---: | --- | --- |
+| `platform` | `actionruntime` | 12 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordMessageExecutor.kt` | `com.discordassistant.central.actionruntime.application.port.out.ExecutionResult` |
 | `platform` | `ainetwork` | 11 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AiNetworkCommandHandler.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkLaunchChecklistService` |
 | `platform` | `channelai` | 16 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/ChannelProfilePanelRenderer.kt` | `com.discordassistant.central.channelai.application.ChannelAiProfileService` |
 | `platform` | `conversation` | 40 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/nexa/DiscordEventMapper.kt` | `com.discordassistant.central.conversation.domain.model.event.NormalizedDiscordEvent` |

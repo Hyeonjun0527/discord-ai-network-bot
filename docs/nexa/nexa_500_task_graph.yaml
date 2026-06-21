@@ -3583,7 +3583,7 @@ tasks:
   program: P06
   sequence: 1
   title: 사회 상태의 관찰 가능성 원칙 문서화
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -3594,6 +3594,11 @@ tasks:
   acceptance: 허용/금지 feature 예시와 코드 리뷰 체크리스트가 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/social-state/observable-state-policy.md 작성: 허용(응답률·상호작용 빈도·reciprocity·banter 수용·topic 참여 등 관찰 행동 신호)과 금지(기분·성격·정치·종교·성적지향·건강·인구통계 추론) feature 예시 + 7항목 코드 리뷰 체크리스트"
+  - "acceptance 충족: 허용/금지 예시와 체크리스트 제공. P06 모든 지표(T005~T015)가 이 가드레일을 통과해야 함을 명시(NEXA 윤리 핵심)"
+  - "./scripts/nexa-verify.sh docs 통과(graph VALID, 링크 OK)"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 사회 상태 프로파일링 금지 원칙 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T002

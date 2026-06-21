@@ -994,7 +994,7 @@ tasks:
   program: P01
   sequence: 8
   title: channelai 책임 재정의 ADR
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -1005,13 +1005,19 @@ tasks:
   acceptance: 기존 API 호환 기간과 제거 순서가 명시된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/adr/0009-channelai-responsibility.md 작성: channelai를 채널 AI 프로필·행동·승인/감사·라우팅의 SSOT로 존치(REUSE), auto_respond 타이밍만 participation으로 이관(MIGRATE)"
+  - "acceptance 충족: 단계 0(현행+ArchUnit 가드)→1(auto_respond→NEXA 모드 매핑, 읽기 호환)→2(핫패스 게이트 교체, 캐시 DEPRECATE)→3(컬럼 최종 제거는 별도 ADR) 이관·호환·제거 순서와 비가역 지점 명시"
+  - "social-model-overlap.md의 REUSE/MIGRATE/DEPRECATE 분류 근거 인용, Nia 셋업 자동생성 채널 의도 보존(MIGRATE) 포함"
+  - "./scripts/nexa-verify.sh docs 통과: graph VALID, 146 docs links OK, fixtures OK, package-graph OK"
+  - "human_gate satisfied: 인간 결정자(Hyeonjun0527) ACCEPTED 승인(2026-06-21) → ADR 0009 Accepted, VERIFIED 승격"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T009
   program: P01
   sequence: 9
   title: ainetwork 책임 재정의 ADR
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -1022,13 +1028,19 @@ tasks:
   acceptance: 각 필드의 소유자와 마이그레이션/브리지 전략이 표로 확정된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/adr/0010-ainetwork-socialmemory-boundary.md 작성: user_affinity 호감도(전역)와 socialmemory 관찰 관계(guild-스코프)를 중복 저장하지 않는 경계 확정"
+  - "acceptance 충족: 8개 필드/책임의 소유자와 전략(REUSE/BRIDGE/MIGRATE/NEW)·경계 규칙을 표로 확정. 호감도=BRIDGE(NiaAffinityView 읽기, 복제 금지), 정체성=REUSE(정적), 관찰 관계=socialmemory NEW"
+  - "마이그레이션 전략: 브리지 뷰 우선·dedup event ID 선행(이중 부작용 방지)·정체성 불변·legacy /ask 호환 기간 명시"
+  - "./scripts/nexa-verify.sh docs 통과: graph VALID, 146 docs links OK"
+  - "human_gate satisfied: 인간 결정자(Hyeonjun0527) ACCEPTED 승인(2026-06-21) → ADR 0010 Accepted, VERIFIED 승격"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T010
   program: P01
   sequence: 10
   title: routing 연동 포트 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -1041,13 +1053,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "docs/nexa/architecture/routing-integration.md 작성: speech가 SpeechModelPort→routing CloudLlm 유스케이스만 호출하는 anti-corruption port 정의"
+  - "acceptance 충족: speech.domain/application이 provider-agent glm.py·Z.AI SDK 타입·glm-* 식별자에 의존하지 않고 직접 HTTP 금지(ADR 0006 SSRF 경계) 명시"
+  - "./scripts/nexa-verify.sh docs(153 문서, 링크 OK) + central(BUILD SUCCESSFUL) 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T011
   program: P01
   sequence: 11
   title: platform/discord 정규화 이벤트 경계 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -1060,13 +1076,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "docs/nexa/architecture/discord-adapter-boundary.md 작성: JDA 이벤트를 DiscordEventEnvelope로 정규화하고 도메인이 JDA 타입을 보지 않게 하는 어댑터 경계 정의"
+  - "acceptance 충족: 수신(DiscordEventInbound)·전송(DiscordSendPort) 양방향 포트 분리, JDA 없이 테스트 대역 교체 가능, platform/discord 밖 net.dv8tion.jda import 금지(ArchUnit) 명시"
+  - "./scripts/nexa-verify.sh docs + central(BUILD SUCCESSFUL) 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T012
   program: P01
   sequence: 12
   title: requestlog와 정책 결정 로그 경계 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -1077,13 +1097,17 @@ tasks:
   acceptance: 원문 Discord 내용 없이 두 로그를 correlation ID로 연결할 수 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/architecture/logging-boundary.md 작성: 외부 모델 요청=requestlog(routing), 사회행동 결정=participation decision log로 소유 구분"
+  - "acceptance 충족: 두 로그를 correlation ID로 연결하되 원문 메시지/프롬프트/응답/키/snowflake 등 금지 필드를 저장하지 않음(logging-baseline.md redaction contract 준수), IGNORE도 decision log에 기록"
+  - "./scripts/nexa-verify.sh docs(153 문서, 링크 OK) 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T013
   program: P01
   sequence: 13
   title: quota 적용 시점 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -1094,13 +1118,17 @@ tasks:
   acceptance: 취소된 예약과 실패한 모델 호출의 과금/복구 정책이 명시된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/architecture/quota-boundary.md 작성: 관찰·IGNORE/WAIT/REACT는 quota 무차감, SPEAK generation 직전에만 차감하는 시점 고정"
+  - "acceptance 충족: 취소된 예약(generation 전=무차감, 후=유지)·실패한 모델 호출(부당 미차감/복구) 정책과 정책검사 우회 0(ADR 0006), correlation ID 중복 차감 금지 명시"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T014
   program: P01
   sequence: 14
   title: multiresponse와 버스트 계획 경계 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -1111,13 +1139,17 @@ tasks:
   acceptance: multiresponse가 정책을 재판단하거나 무제한 메시지를 생성하지 못한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/architecture/multiresponse-boundary.md 작성: 스트리밍(한 메시지 점진 표시)과 인간식 다중 버블(BurstPlan)을 구분, multiresponse는 BurstPlan 전달만"
+  - "acceptance 충족: multiresponse가 정책을 재판단하지 않고(말할지=participation, 내용=speech), BurstPlan 상한 내에서만 전송하며 버블별 actionruntime 재평가로 무제한 생성·늦은 끼어들기 차단 명시"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T015
   program: P01
   sequence: 15
   title: globalpromptset 정체성 커널 포트 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -1128,13 +1160,17 @@ tasks:
   acceptance: 정체성 프롬프트 원문이 여러 모듈에 복제되지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/architecture/identity-kernel-boundary.md 작성: globalpromptset/니아 기본 페르소나(정적)를 IdentityKernelPort 읽기 뷰로 speech에 제공, 런타임 관계·기억과 분리"
+  - "acceptance 충족: 정체성 SSOT 단일(globalpromptset/NexaIdentity), 원문 복제 저장 금지·socialmemory의 정체성 텍스트 변경 금지(ADR 0010 REUSE), 프롬프트 정체성·관계 블록 각 1회 명시"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T016
   program: P01
   sequence: 16
   title: knowledge RAG 호출 순서 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -1145,6 +1181,10 @@ tasks:
   acceptance: 침묵 판단을 위해 웹검색이나 RAG를 무조건 호출하지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/architecture/knowledge-boundary.md 작성: 관찰→행동선택(검색 없음)→SPEAK시에만 retrieval 필요 판단 후 knowledge 호출하는 순서 고정"
+  - "acceptance 충족: 침묵 판단(IGNORE/WAIT)에 웹검색/RAG 무조건 호출 금지, knowledge(외부 사실 근거)와 socialmemory(관찰 관계) 별개 포트 명시"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T017

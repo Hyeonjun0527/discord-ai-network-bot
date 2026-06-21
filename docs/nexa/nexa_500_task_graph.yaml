@@ -3052,7 +3052,7 @@ tasks:
   program: P05
   sequence: 1
   title: ConversationThreadId 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3064,13 +3064,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ConversationThreadId 모델(순수): Discord channel ID와 독립된 논리 스레드 식별자"
+  - "acceptance 충족: 부모 채널 내 여러 논리 대화가 같은 channel ID를 공유할 수 있음을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T002
   program: P05
   sequence: 2
   title: Burst reply 그래프 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3082,13 +3085,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "Burst reply 그래프: 버스트 간 reply edge 그래프, 삭제 target은 tombstone node"
+  - "acceptance 충족: 삭제된 target도 tombstone node로 유지해 그래프 연결이 깨지지 않음을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T003
   program: P05
   sequence: 3
   title: mention 그래프 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3100,13 +3106,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "mention 그래프: mention edge를 직접 addressee 후보와 단순 알림으로 분류"
+  - "acceptance 충족: 직접 addressee 후보와 단순 알림 mention을 구분함을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T004
   program: P05
   sequence: 4
   title: 시간 인접성 edge 계산 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3118,13 +3127,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "시간 인접성 edge 계산(순수): 시간 창 내 인접 버스트 edge"
+  - "acceptance 충족: 미래 burst 비참조, 설정된 최대 창 밖 edge를 만들지 않음을 테스트로 확인(결정론). central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T005
   program: P05
   sequence: 5
   title: 직접 reply 대상 resolver 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3136,13 +3148,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "직접 reply 대상 resolver: reply edge로 addressee 확정"
+  - "acceptance 충족: self-reply와 삭제된 target의 fallback이 명시됨을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T006
   program: P05
   sequence: 6
   title: 직접 mention 대상 resolver 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3154,13 +3169,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "직접 mention 대상 resolver: 실제 mention entity로만 addressee 확정"
+  - "acceptance 충족: 문자열 이름 일치만으로 확정 target을 만들지 않음(거짓 양성 방지)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T007
   program: P05
   sequence: 7
   title: 인접 턴 대상 resolver 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3172,13 +3190,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "인접 턴 대상 resolver: reply/mention 없을 때 시간 인접 턴 기반 addressee 추정"
+  - "acceptance 충족: 단일 정답 대신 none 포함 확률분포(AddresseeDistribution)를 반환함을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T008
   program: P05
   sequence: 8
   title: 그룹 전체 발화 판정 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3190,13 +3211,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "그룹 전체 발화 판정: 특정 수신자 없는 채널 전체 발화를 group으로 분류"
+  - "acceptance 충족: 모호한 경우 특정 사용자에게 과도하게 귀속하지 않음(group/none 분산)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T009
   program: P05
   sequence: 9
   title: AddresseeDistribution 값 객체 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3208,13 +3232,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "AddresseeDistribution 값 객체(불변): 수신자별 확률 + none, 근거(evidence) 참조"
+  - "acceptance 충족: 확률 합·최소/최대 값 검증, evidence에 원문 미저장(ID/근거 코드만)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T010
   program: P05
   sequence: 10
   title: 논리 스레드 생성 baseline 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3226,6 +3253,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "논리 스레드 생성 baseline: reply/mention/시간 인접 edge로 버스트를 논리 스레드로 묶음"
+  - "acceptance 충족: 동시 진행 두 대화 fixture가 하나로 합쳐지지 않음(스레드 분리)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T011

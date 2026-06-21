@@ -1259,7 +1259,7 @@ tasks:
   program: P01
   sequence: 20
   title: 도메인 간 이벤트 카탈로그 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -1271,13 +1271,17 @@ tasks:
   acceptance: 각 이벤트의 발행자·소비자·멱등성 키·개인정보 등급이 명시된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/architecture/domain-events.md 작성: EventIngested/BurstFinalized/SceneUpdated/InteractionObserved/ParticipationDecided/SpeechPlanned/ActionScheduled/ActionReEvaluated/ActionSent/ActionCancelled/MemorySuperseded 카탈로그"
+  - "acceptance 충족: 각 이벤트의 발행자·소비자·멱등성 키·PII 등급(high/medium/low) 표로 명시. dedupEventId로 단일 부작용(ADR 0010), correlationId 사슬로 원문 없이 로그 연결(logging-boundary)"
+  - "./scripts/nexa-verify.sh docs 통과(graph VALID, 링크 OK)"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T021
   program: P01
   sequence: 21
   title: NEXA 모듈 의존 DAG 확정
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -1288,6 +1292,12 @@ tasks:
   acceptance: 기존 19개 도메인을 포함한 전체 DAG에서 금지 의존이 식별된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/architecture/module-dag.md 작성: 관찰→선택→발화→실행 핵심 사슬 + 정책/정체성 읽기 의존 + socialmemory 구독을 단방향 화살표로 도식화"
+  - "acceptance 충족: participation⇄actionruntime 재평가·speech⇄actionruntime·conversation⇄socialmemory 등 잠재 순환을 DIP 포트/이벤트로 단방향화하여 전체 DAG 비순환 보장, 금지 의존 5종 식별(역의존·어댑터 참조·도메인 Spring/JPA/JDA 의존)"
+  - "기존 19개 도메인은 central-package-graph 스냅샷 따르며 NEXA는 읽기 포트로만 연결(T022/T023 ArchUnit 강제 연결)"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate satisfied: 인간 결정자 ACCEPTED 승인(2026-06-21) → ADR 결정 VERIFIED, T022/T023 ArchUnit 구현의 전제 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T022

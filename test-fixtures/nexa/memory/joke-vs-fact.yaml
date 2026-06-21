@@ -1,0 +1,66 @@
+# NEXA-P07-T022 농담과 사실 구분 fixture (synthetic; no real user data).
+#
+# 맥락성 발화("나 일베 아님" 같은 부정/농담/인용/가정)를 민감 사실로 영구 저장하지 않는 사례를 모은다.
+# 각 case 는 추출기가 줄 수 있는 후보(modality·sensitive)와 기대 결과(승격/폐기)를 라벨한다. 규칙(T016)이
+# 농담/부정/인용/가정을 단일 사실로 승격하지 않고, 민감 추론을 저장하지 않음을 단위 테스트로 증명한다.
+#
+# 원문/식별자 원문 없음 — 가명·닫힌 predicate·구조화 값·modality 라벨만(data-categories.md, observable-state-policy).
+schemaVersion: nexa.memory-fixture.v1
+fixtureId: joke-vs-fact
+title: 농담·부정·인용·가정을 사실로 승격하지 않는다
+guildPseudonym: g-joke-fixture
+cases:
+  # 단정: 본인이 직접 단정한 안정 사실 — 승격(저장) 후보(단, GLM 약한 근거라 확정은 아님).
+  - id: asserted-language
+    subject: p-a
+    predicate: uses_language
+    object: "python"
+    modality: ASSERTED
+    sensitive: false
+    expectOutcome: STORE
+    expectReason: PROVENANCE_OK
+  # 부정: "나 일베 아님" — 긍정 사실(political_affiliation)로 승격하지 않는다.
+  - id: negated-sensitive-claim
+    subject: p-a
+    predicate: political_affiliation
+    object: "ilbe"
+    modality: NEGATED
+    sensitive: true
+    expectOutcome: DISCARD
+    expectReason: NON_ASSERTION
+  # 농담/비꼼: "ㅋㅋ 나 일베지" — 농담을 사실로 영구 저장하지 않는다.
+  - id: joke-sensitive-claim
+    subject: p-a
+    predicate: political_affiliation
+    object: "ilbe"
+    modality: JOKE
+    sensitive: true
+    expectOutcome: DISCARD
+    expectReason: NON_ASSERTION
+  # 인용/전언: "걔가 ~래" — 주어 본인의 사실이 아니다.
+  - id: quoted-claim
+    subject: p-a
+    predicate: uses_language
+    object: "rust"
+    modality: QUOTED
+    sensitive: false
+    expectOutcome: DISCARD
+    expectReason: NON_ASSERTION
+  # 가정/조건: "내가 ~라면" — 사실이 아니다.
+  - id: hypothetical-claim
+    subject: p-a
+    predicate: uses_language
+    object: "go"
+    modality: HYPOTHETICAL
+    sensitive: false
+    expectOutcome: DISCARD
+    expectReason: NON_ASSERTION
+  # 단정이지만 민감 추론: 정치/종교/성적지향/건강 등은 단정이라도 저장하지 않는다(observable-state-policy 금지 목록).
+  - id: asserted-sensitive-inference
+    subject: p-a
+    predicate: religion
+    object: "x"
+    modality: ASSERTED
+    sensitive: true
+    expectOutcome: DISCARD
+    expectReason: SENSITIVE_INFERENCE

@@ -2730,7 +2730,7 @@ tasks:
   program: P04
   sequence: 11
   title: 한국어 짧은 조각 특징 추출
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2742,13 +2742,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "한국어 짧은 조각 특징 추출(순수): 종결어미·길이 등 feature 산출(보조 신호)"
+  - "acceptance 충족: 언어 규칙이 final 결정을 단독 강제하지 않고 corpus에서 값만 검증됨을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T012
   program: P04
   sequence: 12
   title: emoji·스티커·attachment-only fragment 처리
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2760,13 +2763,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "emoji·스티커·attachment-only fragment 처리: metadata만으로 분류"
+  - "acceptance 충족: attachment metadata만 사용하고 원문 파일을 다운로드하지 않음을 테스트로 확인(data-categories 준수). central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T013
   program: P04
   sequence: 13
   title: 봇·웹훅 메시지 분류 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2778,13 +2784,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "봇·웹훅 메시지 분류: source type으로 봇/웹훅 구분, 인간 버스트 통계에서 분리"
+  - "acceptance 충족: 봇 메시지가 인간 평균 버스트 길이를 오염시키지 않음을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T014
   program: P04
   sequence: 14
   title: MessageUpdated 버스트 교정 처리
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2796,13 +2805,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "MessageUpdated 버스트 교정: CORRECTED 상태 전이로 revision 반영"
+  - "acceptance 충족: 과거 burst ID 불변, revision provenance 보존을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T015
   program: P04
   sequence: 15
   title: MessageDeleted 버스트 교정 처리
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2814,13 +2826,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "MessageDeleted 버스트 교정: 삭제 fragment를 버스트 combined text에서 제거 + 계보 삭제 전파"
+  - "acceptance 충족: 삭제된 content가 combined text에 남지 않고 lineage 삭제 발생을 테스트로 확인(deletion-propagation 준수). central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T016
   program: P04
   sequence: 16
   title: late fragment 처리 정책 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2832,13 +2847,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "late fragment 처리 정책: finalize 후 도착한 fragment를 occurredAt/receivedAt 규칙으로 처리(교정 또는 신규)"
+  - "acceptance 충족: 결정이 occurredAt/receivedAt 규칙에 따라 결정론적임을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T017
   program: P04
   sequence: 17
   title: BurstFinalized 도메인 이벤트 발행
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2850,13 +2868,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "BurstFinalized 도메인 이벤트 발행(domain-events 계약, 멱등키=burstId)"
+  - "acceptance 충족: 동일 버스트에 finalize 이벤트가 한 번만 발행됨(멱등)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T018
   program: P04
   sequence: 18
   title: 버스트 projection persistence 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2869,13 +2890,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "버스트 projection persistence(V53 nexa_bursts, adapter/outbound/persistence): 버스트 읽기 모델 영속"
+  - "acceptance 충족: event store 재생으로 projection 삭제·재구축 가능함을 테스트로 확인. central BUILD SUCCESSFUL, 기존 마이그레이션 무변경"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T019
   program: P04
   sequence: 19
   title: 버스트 finalize 스케줄러 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2887,6 +2911,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "버스트 finalize 스케줄러(주입 Clock): gap/deadline 만료 시 OPEN 버스트를 finalize"
+  - "acceptance 충족: 실제 sleep 없이 주입 Clock 시간 이동 테스트 가능, 재시작 후 영속 deadline 복구를 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T020

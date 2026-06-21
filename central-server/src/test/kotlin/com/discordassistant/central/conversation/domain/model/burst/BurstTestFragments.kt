@@ -19,6 +19,7 @@ object BurstTestFragments {
         threadId: Long? = null,
         replyTo: Long? = null,
         type: FragmentType = FragmentType.NORMAL,
+        content: MessageContent = MessageContent.Available("text-$messageId"),
     ): MessageFragment =
         MessageFragment(
             messageId = MessageId(messageId),
@@ -26,7 +27,7 @@ object BurstTestFragments {
             channelId = ChannelId(channelId),
             sourceSequence = seq,
             occurredAt = at,
-            content = MessageContent.Available("text-$messageId"),
+            content = content,
             replyTo = replyTo?.let { MessageId(it) },
             threadId = threadId?.let { ChannelId(it) },
             type = type,

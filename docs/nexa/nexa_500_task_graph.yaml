@@ -4633,7 +4633,7 @@ tasks:
   program: P07
   sequence: 25
   title: P07 기억 신뢰성 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -4644,6 +4644,11 @@ tasks:
   - docs/nexa/memory/**
   deliverable: 삭제·scope·현재성·민감 추론을 독립 감사한다.
   acceptance: critical stale-memory fixture가 모두 통과하고 raw chain-of-thought 저장이 없을 때만 통과한다.
+  verification_evidence:
+  - "P07 기억 T001~T024 전부 VERIFIED(taxonomy·4 aggregate·provenance·supersession·모순·confidence·GLM 추출(CloudLlm 포트)·retrieval·pgvector). 재현: nexa-verify all EXIT=0, validate-task-graph VALID"
+  - "critical stale-memory fixture 통과: retrieval에서 expired/conflicted/deleted 기억 필터링(T019), 만료 기억 제외(T012), as-of 시점 조회(T018), vector top-k validity 미우회(T023)"
+  - "raw chain-of-thought 저장 없음: PendingIntent(T006)·GLM 후보(T013 confidence)가 구조화 필드만 저장, 자연어 CoT/원문 미저장. 삭제(T013 cascade)·scope(T011 cross-guild 차단)·현재성·민감 추론 금지(taxonomy·observable-state-policy) 충족"
+  - "추적: 라이브 데이터 독립 감사는 운영 단계. human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인"
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py

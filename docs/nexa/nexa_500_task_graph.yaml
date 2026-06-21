@@ -1748,6 +1748,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "conversation/domain/model/event/MessageCreated.kt 신설(NormalizedDiscordEvent 상속, 순수): 작성자·content reference·reply·mentions·attachments metadata·thread 정보"
+  - "acceptance 충족: MESSAGE_CONTENT 인텐트 미허용과 content unavailable을 별도 타입으로 구분(단일 null 뭉갬 금지), 단위 테스트로 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10(도메인 순수성), package-graph 동기"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T017
@@ -1766,6 +1770,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "MessageUpdated.kt 신설: 부분 업데이트·이전 버전 부재 표현, revision 유지"
+  - "acceptance 충족: 동일 revision 중복과 역순 revision 처리 규칙을 단위 테스트로 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T018
@@ -1784,6 +1792,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "MessageDeleted.kt 신설: 원문이 없어도 provenance를 무효화할 수 있는 최소 키(eventId/messageId 등)"
+  - "acceptance 충족: content를 요구하지 않고 idempotent하게 적용됨을 단위 테스트로 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T019
@@ -1802,6 +1814,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "Reaction.kt 신설: 추가·삭제·emoji identity·actor·target message 정규화"
+  - "acceptance 충족: 일반/버스트 리액션 차이 보존, 중복 변경 idempotent를 단위 테스트로 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T020
@@ -1820,6 +1836,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "TypingStarted.kt 신설: 작성자·채널·시작 시각·만료 시각을 추론 가능한 신호로만 정의"
+  - "acceptance 충족: typing이 메시지 내용·응답 의무가 아님을 주석과 단위 테스트로 명시"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T021
@@ -1838,6 +1858,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "MemberIdentityChanged.kt 신설: 닉네임·표시명 old/new 값(시간 유효 기억 출처)"
+  - "acceptance 충족: 닉네임 변경 사례를 표현하고, 순서가 뒤집혀 도착해도 occurredAt 기준 현재값 판정을 단위 테스트로 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T022
@@ -1856,6 +1880,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ConsentDenied.kt 신설: 옵트아웃·길드 비활성화·채널 제외를 내부 이벤트로 전달(projection·예약 행동 중단 신호)"
+  - "acceptance 충족: 동의 철회가 일반 메시지 이벤트보다 우선 적용되는 규칙(우선순위/타임스탬프)을 단위 테스트로 증명"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T023

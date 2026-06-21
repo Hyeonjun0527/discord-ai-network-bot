@@ -1509,7 +1509,7 @@ tasks:
   program: P02
   sequence: 6
   title: 외부 GLM 전송 최소화 계약 작성
-  status: DRAFT
+  status: REVIEW
   kind: security
   risk: high
   depends_on:
@@ -1520,13 +1520,18 @@ tasks:
   acceptance: speech 요청 payload를 필드 단위로 감사할 수 있고 API 키·내부 ID는 포함되지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "specs/product-v2/nexa/external-model-data.md 작성: speech payload allow-list(deny by default). 작성자 식별자·API 키·내부 ID·correlation ID·첨부 원본 전송 금지, 옵트아웃 사용자 제외"
+  - "acceptance 충족: payload가 허용 필드로만 구조화되어 필드 단위 감사 가능, 인증은 헤더로만(본문에 키·내부 ID 없음)"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate=true: 인간 보안 검토 전까지 REVIEW 유지"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T007
   program: P02
   sequence: 7
   title: 학습 데이터 적격성 규칙 작성
-  status: DRAFT
+  status: REVIEW
   kind: security
   risk: high
   depends_on:
@@ -1537,13 +1542,18 @@ tasks:
   acceptance: 단일 불충족 조건만 있어도 데이터셋 export에서 제외되는 규칙이 테스트 가능하다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "specs/product-v2/nexa/training-eligibility.md 작성: 6개 적격 조건(옵트인/옵트아웃 아님/연령·법적/삭제 상태/채널 범위/라이선스)의 AND 게이트(fail-closed)"
+  - "acceptance 충족: 각 조건이 boolean이고 AND 결합되어 단일 불충족이면 export 제외, 조건별 테스트 케이스로 검증 가능. 옵트아웃·삭제 상태는 export 시점 재평가"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate=true: 인간 보안 검토 전까지 REVIEW 유지"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T008
   program: P02
   sequence: 8
   title: 보존 등급과 TTL 결정
-  status: DRAFT
+  status: REVIEW
   kind: decision
   risk: high
   depends_on:
@@ -1554,13 +1564,18 @@ tasks:
   acceptance: TTL 종료 시 파생 데이터까지 삭제/무효화되는 책임자가 명시된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "specs/product-v2/nexa/retention-policy.md 작성: 5개 유형(원본 이벤트/projection/기억/로그/모델 산출물)별 TTL과 영구 보존 금지(전 유형), TTL 종료 책임자(소유 컨텍스트) 표로 지정"
+  - "acceptance 충족: 각 유형 TTL 종료 책임자 명시, 원본 만료가 파생(projection·임베딩) 만료를 강제(삭제 전파 연계)"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate=true: 인간 보안 검토 전까지 REVIEW 유지"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T009
   program: P02
   sequence: 9
   title: 삭제 전파 요구사항 정의
-  status: DRAFT
+  status: REVIEW
   kind: security
   risk: high
   depends_on:
@@ -1571,6 +1586,11 @@ tasks:
   acceptance: 삭제된 원문의 hash/provenance만 남길지 여부가 법적 검토 상태와 함께 명확하다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "specs/product-v2/nexa/deletion-propagation.md 작성: 4트리거(Discord 삭제/사용자 요청/길드 탈퇴/동의 철회)가 event store·memory·dataset에 미치는 효과를 표로 정의, 원본→파생 전파"
+  - "acceptance 충족: 기본 입장(비가역 hash+삭제 시각만 보존, 원문·식별자 미보존)과 법무 검토 상태(OPEN) 명시"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate=true: 인간 보안 검토 전까지 REVIEW 유지"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T010
@@ -1596,7 +1616,7 @@ tasks:
   program: P02
   sequence: 11
   title: 원문 저장 암호화 전략 ADR
-  status: DRAFT
+  status: REVIEW
   kind: decision
   risk: high
   depends_on:
@@ -1607,6 +1627,12 @@ tasks:
   acceptance: 검색 요구와 삭제·키 회전·백업 복원 위험이 비교되고 평문 저장은 명시적 거절 또는 승인된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/adr/0012-message-content-encryption.md 작성: 평문(거절)/DB컬럼TDE/애플리케이션 봉투암호화/별도 blob 4안을 검색·삭제/키회전·백업복원 4축으로 비교"
+  - "결정: 애플리케이션 레벨 봉투 암호화(AES-GCM + KEK/DEK 분리) 채택, 평문 저장 명시적 거절. 원문 검색은 임베딩이 담당, 삭제=행/DEK 폐기, 키 회전=KEK 회전"
+  - "acceptance 충족: 4축 비교 + 평문 저장 명시 거절"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate=true: 인간 보안 검토 전까지 REVIEW 유지"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T012

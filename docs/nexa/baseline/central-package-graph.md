@@ -3,15 +3,16 @@
 - Snapshot date: 2026-06-20 KST
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
-- Compile nodes: 22 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 477
-- Cross-node import edges: 433
+- Compile nodes: 23 (`<root>` plus top-level central packages)
+- Kotlin files scanned: 500
+- Cross-node import edges: 435
 
 ## Nodes
 
 | Node | Kotlin files |
 | --- | ---: |
 | `<root>` | 1 |
+| `actionruntime` | 3 |
 | `ainetwork` | 52 |
 | `channelai` | 18 |
 | `conversation` | 77 |
@@ -23,7 +24,7 @@
 | `licensing` | 18 |
 | `multiresponse` | 22 |
 | `onboarding` | 14 |
-| `participation` | 35 |
+| `participation` | 55 |
 | `platform` | 39 |
 | `preset` | 22 |
 | `provider` | 15 |
@@ -38,6 +39,7 @@
 
 | Source | Target | Imports | Sample path | Sample import |
 | --- | --- | ---: | --- | --- |
+| `actionruntime` | `participation` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/actionruntime/application/ShadowOutboundDispatcher.kt` | `com.discordassistant.central.participation.domain.model.shadow.ShadowMode` |
 | `ainetwork` | `channelai` | 12 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkDashboardMapper.kt` | `com.discordassistant.central.channelai.adapter.outbound.persistence.AiChangeProposalEntity` |
 | `ainetwork` | `guild` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/adapter/inbound/web/ChannelAiRoutingPolicyController.kt` | `com.discordassistant.central.guild.application.PolicyService` |
 | `ainetwork` | `knowledge` | 12 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/AiNetworkDashboardMapper.kt` | `com.discordassistant.central.knowledge.adapter.outbound.persistence.KnowledgeSourceEntity` |

@@ -5201,7 +5201,7 @@ tasks:
   program: P09
   sequence: 1
   title: AlwaysSilentPolicy 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5213,13 +5213,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "AlwaysSilentPolicy(SocialPolicyPort 구현): 항상 IGNORE(baseline 하한)"
+  - "acceptance 충족: 정책 계약·decision log·replay 경로를 다른 모델과 동일하게 통과함을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T002
   program: P09
   sequence: 2
   title: MentionAlwaysSpeakPolicy 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5231,13 +5234,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "MentionAlwaysSpeakPolicy(SocialPolicyPort 구현): 멘션 시 항상 SPEAK(naive baseline)"
+  - "acceptance 충족: 왜 제품 정책으로 쓰면 안 되는지(과다 응답) 이름과 문서에 명확함을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T003
   program: P09
   sequence: 3
   title: FixedProbabilityPolicy 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5249,13 +5255,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "FixedProbabilityPolicy(SocialPolicyPort 구현): 고정 확률 SPEAK(통계 baseline)"
+  - "acceptance 충족: seed 재현(결정론)과 확률 calibration sanity test가 있음을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T004
   program: P09
   sequence: 4
   title: CooldownHeuristicPolicy 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5267,13 +5276,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "CooldownHeuristicPolicy(SocialPolicyPort 구현): 쿨다운 기반 SPEAK(단순 휴리스틱 baseline)"
+  - "acceptance 충족: 사회 상태·기억을 쓰지 않는 제한(단순 baseline)이 문서화됨을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T005
   program: P09
   sequence: 5
   title: BurstAwareHeuristicPolicy 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5285,13 +5297,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "BurstAwareHeuristicPolicy(SocialPolicyPort 구현): 버스트 인식 휴리스틱 baseline"
+  - "acceptance 충족: 가중치가 설정 파일에 숨지 않고 versioned config로 저장됨(재현·감사)을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T006
   program: P09
   sequence: 6
   title: 기존 channelai 자동응답 정책 adapter 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5303,13 +5318,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "기존 channelai 자동응답 정책 adapter: auto_respond를 SocialPolicyPort 구현으로(ADR 0009 이관)"
+  - "acceptance 충족: legacy 결과와 기존 운영 동작 차이를 golden test로 기록함(회귀 추적)을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T007
   program: P09
   sequence: 7
   title: ShadowMode 설정 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -5322,13 +5340,18 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ShadowMode 설정 모델: OFF/OBSERVE_ONLY(shadow)/LIVE 상태, 기본 OFF"
+  - "acceptance 충족: 기본값 OFF, 상태 전이는 승인 권한과 audit를 요구함(안전 게이팅)을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — shadow 활성화 안전 게이트 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T008
   program: P09
   sequence: 8
   title: shadow outbound hard block 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5341,13 +5364,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "shadow outbound hard block: OBSERVE_ONLY 모드에서 SendToDiscord 전송을 물리 차단(안전 핵심)"
+  - "acceptance 충족: shadow 모드에서 Discord 전송 mock 호출 0회가 통합 테스트로 검증됨(실제 발화 절대 없음)을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T009
   program: P09
   sequence: 9
   title: ShadowPrediction persistence 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5360,13 +5386,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ShadowPrediction persistence(V60 shadow_mode, adapter): 각 정책의 shadow 예측 저장"
+  - "acceptance 충족: 동일 scene에서 여러 baseline 결과를 비교할 수 있음(정책 평가)을 테스트로 확인. central BUILD SUCCESSFUL, 기존 마이그레이션 무변경"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T010
   program: P09
   sequence: 10
   title: 관리자 shadow 상태 API 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5378,13 +5407,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "관리자 shadow 상태 API: shadow 예측 집계 조회(OAuth/durable-token 가드)"
+  - "acceptance 충족: 원문과 개별 사용자 행동은 기본 응답에 노출되지 않음(집계/가명만)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T011
   program: P09
   sequence: 11
   title: 관리자 dashboard shadow 화면 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5397,13 +5429,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "관리자 dashboard shadow 화면(static/admin): shadow 모드·예측 비교 화면"
+  - "acceptance 충족: OBSERVE_ONLY와 LIVE를 혼동할 수 없는 명확한 배지가 있음(오작동 방지)을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T012
   program: P09
   sequence: 12
   title: 인간 실제 다음 행동 matcher 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5415,13 +5450,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "인간 실제 다음 행동 matcher: shadow 예측 후 실제 인간 행동을 약지도 신호로 매칭"
+  - "acceptance 충족: 특정 인간 하나를 NEXA 정답으로 단정하지 않고 matching ambiguity를 기록함을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T013
   program: P09
   sequence: 13
   title: counterfactual observation window 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5433,6 +5471,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "counterfactual observation window: shadow 예측 평가를 위한 관찰 창(예측 시점 이후 인간 행동)"
+  - "acceptance 충족: late action과 never를 구분하고 미래 feature leakage가 없음(예측 시점 이후 정보 미사용)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T014

@@ -139,6 +139,7 @@ class AiNetworkApiSecurityFilter(
                 "/api/ai-network/multi-response",
                 "/api/ai-network/quality",
                 "/api/ai-network/safety",
+                "/api/ai-network/shadow",
                 "/api/ai-network/presets/guilds",
                 "/api/ai-network/presets/local",
                 "/api/ai-network/presets/moderation",

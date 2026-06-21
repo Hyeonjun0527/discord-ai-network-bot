@@ -12,3 +12,15 @@ htmlcov/
 
 # Parquet 출력(합성 산출물 — 커밋 금지)
 *.parquet
+
+# builder CLI 산출물(manifest/dataset-card/stages — 합성 산출물, 커밋 금지)
+build/
+*.manifest.json
+
+# 루트 .gitignore 의 `data/` 규칙(런타임 데이터 디렉터리용)이 소스 패키지 src/.../data/ 를 삼키므로
+# 소스 코드 패키지는 명시적으로 추적에 되돌린다(산출물은 build/ 만 무시).
+!src/nexa_policy/data/
+!src/nexa_policy/data/**
+# 단, 캐시는 다시 무시한다(위 negation 이 .pyc/__pycache__ 까지 되살리지 않도록).
+src/nexa_policy/data/**/__pycache__/
+src/nexa_policy/data/**/*.pyc

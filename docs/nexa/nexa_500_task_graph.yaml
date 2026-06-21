@@ -6007,7 +6007,7 @@ tasks:
   program: P10
   sequence: 14
   title: 사용자 pseudonym 변환 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -6019,13 +6019,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "사용자 pseudonym 변환: guild 스코프 결정론 가명, cross-guild 연결 불가, 실제 user id 미저장"
+  - "acceptance 충족: 운영 DB pseudonym과 학습 artifact pseudonym이 직접 연결되지 않음(별도 salt/스코프)을 테스트로 검증. ml 109 passed, ruff 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 가명화 경계 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T015
   program: P10
   sequence: 15
   title: 원문 redaction·minimization 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -6037,13 +6041,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "원문 redaction·minimization: 신호/카운트/시각만 보존, 원문·첨부 URL·snowflake 제거"
+  - "acceptance 충족: GLM prompt 원문·첨부 URL·Discord snowflake가 Parquet에 없음을 테스트로 검증. observable-state-policy 준수"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 최소화 경계 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T016
   program: P10
   sequence: 16
   title: 데이터셋 version hash 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6055,13 +6063,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "데이터셋 version hash: 입력 데이터+코드 버전 content-addressed hash"
+  - "acceptance 충족: 같은 입력과 코드에서 같은 ID가 생성됨(재현성)을 테스트로 검증. ml 109 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T017
   program: P10
   sequence: 17
   title: dataset manifest 생성기 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6073,13 +6084,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "dataset manifest 생성기: 데이터셋 구성·version hash·split·라벨 통계를 manifest로 기록"
+  - "acceptance 충족: 모델 run이 manifest ID 없이 시작되지 않음(추적성 강제)을 테스트로 검증. ml 109 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T018
   program: P10
   sequence: 18
   title: 재현 가능한 dataset builder CLI 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6091,13 +6105,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "재현 가능한 dataset builder CLI: fixture→Parquet→라벨→split→manifest 파이프라인(결정론)"
+  - "acceptance 충족: 중간 산출물이 content-addressed 경로에 저장되고 실패 지점부터 재개 가능함을 테스트로 검증. ml 109 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T019
   program: P10
   sequence: 19
   title: 소형 공개 불가 fixture dataset 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6109,13 +6126,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "소형 fixture dataset: 합성 데이터(실제 사용자 무관), 빌더·테스트용 최소 샘플"
+  - "acceptance 충족: 실제 사용자 원문이 저장소에 커밋되지 않음(합성 fixture만, 실제 PII 없음)을 확인. ml 109 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T020
   program: P10
   sequence: 20
   title: human annotation 지침 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -6126,13 +6146,17 @@ tasks:
   acceptance: 정답 강요 대신 복수 annotator 분포와 불확실성을 허용한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "human annotation 지침(docs): 행동/target/social-act 라벨링 가이드, 금지 추론·가명 규칙"
+  - "acceptance 충족: 정답 강요 대신 복수 annotator 분포와 불확실성을 허용함을 문서로 명시. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — annotation 지침 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T021
   program: P10
   sequence: 21
   title: 라벨 검수 export/import 도구 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -6144,13 +6168,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "라벨 검수 export/import 도구: 가명·최소 맥락만 export, 라벨 import 검증"
+  - "acceptance 충족: annotator가 불필요한 사용자 식별자나 전체 서버 로그를 보지 않음(최소 노출)을 테스트로 검증. ml 109 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 검수 도구 노출 경계 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T022
   program: P10
   sequence: 22
   title: inter-annotator agreement 계산 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6162,13 +6190,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "inter-annotator agreement 계산: Cohen's kappa 등 합의 지표(sanity test)"
+  - "acceptance 충족: 낮은 합의 항목은 gold에서 제외하거나 soft label로 유지됨을 테스트로 검증. ml 109 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T023
   program: P10
   sequence: 23
   title: 데이터 누출 자동 검사 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -6181,13 +6212,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "데이터 누출 자동 검사(leakage.py): group/temporal leakage·feature→label 누설 자동 탐지"
+  - "acceptance 충족: 의도적 leakage fixture가 검사에서 실패함(positive control)을 테스트로 검증. ml 109 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 누출 검사 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T024
   program: P10
   sequence: 24
   title: Dataset Card 작성·자동 생성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -6200,6 +6235,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "Dataset Card 자동 생성: 출처·한계·금지 추론·라이선스를 manifest 수치와 함께 생성"
+  - "acceptance 충족: 실제 manifest 수치가 자동 삽입되고 수동 수치 드리프트가 없음을 테스트로 검증. ml 109 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — Dataset Card 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T025

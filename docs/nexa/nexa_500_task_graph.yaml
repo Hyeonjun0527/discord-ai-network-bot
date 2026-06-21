@@ -6629,7 +6629,7 @@ tasks:
   program: P11
   sequence: 18
   title: ONNX Runtime JVM adapter 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6641,13 +6641,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ONNX Runtime JVM adapter(onnxruntime:1.20.0): ONNX 정책 모델을 central에서 추론, participation SocialPolicyPort 구현(shadow only, ADR 0006 경계)"
+  - "acceptance 충족: 모델 파일·schema·calibration version 검증 실패 시 fallback(휴리스틱 baseline)함을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P11-T019
   program: P11
   sequence: 19
   title: Python-JVM golden parity 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6663,13 +6666,16 @@ tasks:
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh contracts
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "Python-JVM golden parity: 같은 입력에 ml(onnxruntime Python) 추론 golden과 central(JVM) 추론이 허용오차 내 일치, category ordering 명시(contracts)"
+  - "acceptance 충족: 수치 허용오차와 category ordering이 명시되고 Python=JVM 일치함을 테스트로 검증. ml 194 passed, central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P11-T020
   program: P11
   sequence: 20
   title: shadow model registry 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -6681,6 +6687,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "shadow model registry(V62 shadow_model_registry, 기존 마이그레이션 무변경): 학습 모델 후보를 shadow로 등록·버전 관리"
+  - "acceptance 충족: 승인되지 않은 artifact는 LIVE 상태로 선택할 수 없음(자동 승격 금지·안전)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P11-T021
@@ -6704,7 +6713,7 @@ tasks:
   program: P11
   sequence: 22
   title: 서버 간 일반화 분석
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -6717,13 +6726,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "서버 간 일반화 분석: guild holdout별 성능 분산을 분석"
+  - "acceptance 충족: 평균만 좋아지고 특정 문화(서버)에서 붕괴하는 모델을 식별함(per-guild 최악 성능)을 테스트로 검증. ml 194 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P11-T023
   program: P11
   sequence: 23
   title: feature ablation 분석
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -6736,13 +6748,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "feature ablation 분석: feature 그룹별 제거 시 성능 영향 측정"
+  - "acceptance 충족: 민감하거나 비용 높은 feature가 실질 기여 없으면 제거함(최소 feature·프라이버시)을 테스트로 검증. ml 194 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P11-T024
   program: P11
   sequence: 24
   title: Policy v1 Model Card 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -6753,6 +6768,10 @@ tasks:
   acceptance: LIVE 승인 전제와 known limitations가 구체적이다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "Policy v1 Model Card: 출처·메트릭·금지 추론(observable-state-policy)·known limitations·LIVE 승인 전제를 manifest에서 자동 생성"
+  - "acceptance 충족: LIVE 승인 전제와 known limitations가 구체적임(서버 일반화·calibration 한계 명시)을 문서로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — Model Card 확정. 실제 LIVE 승격은 P11-T021/T025 운영 게이트(REVIEW)에서 별도 결정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P11-T025

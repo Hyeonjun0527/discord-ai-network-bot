@@ -55,6 +55,9 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     // Discord (ADR 0004: Kotlin 이 Discord 직접 처리)
     implementation("net.dv8tion:JDA:5.2.1")
+    // ONNX Runtime JVM 추론(NEXA-P11-T018) — participation 정책 ONNX 모델을 central 에서 추론(shadow only).
+    // CPU 전용. routing/GLM 과 무관(participation SocialPolicyPort 구현, ADR 0006 경계). 미설정 시 어댑터 미생성.
+    implementation("com.microsoft.onnxruntime:onnxruntime:1.20.0")
     // 에러 트래킹(차수 15 #223). DSN 미설정 시 no-op. 운영에서 SENTRY_DSN 로 활성.
     implementation("io.sentry:sentry-spring-boot-starter-jakarta:7.14.0")
     // 분산 추적(차수 15 #219). 기본 샘플링 0(미수집). OTLP 엔드포인트 설정 시 export.

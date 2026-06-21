@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://discord-ai.yeon.world/contracts/policy/policy-decision-response.schema.json",
+  "title": "PolicyDecisionResponse",
+  "description": "NEXA-P08-T007 — 결정 엔진이 돌려주는 출력 계약. 단일 최종 답을 강제하지 않고 행동·대상·delay·socialAct·burst 를 확률분포로, uncertainty 를 명시한다. 코드 SSOT 미러: PolicyDecisionResponse.kt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["actionWeights", "targetDistribution", "delayDistribution", "burstProfile", "uncertainty", "modelVersion"],
+  "properties": {
+    "actionWeights": {
+      "type": "object",
+      "description": "행동 종류별 확률(ignore/wait/react/speak/cancel_pending). 합 = 1.0.",
+      "minProperties": 1,
+      "propertyNames": { "enum": ["ignore", "wait", "react", "speak", "cancel_pending"] },
+      "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+    },
+    "targetDistribution": {
+      "type": "object",
+      "description": "행동 대상 확률분포(message/member/thread/none). 후보 확률 + noneProbability = 1.0.",
+      "additionalProperties": false,
+      "required": ["candidates", "noneProbability", "resolverVersion"],
+      "properties": {
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["target", "probability"],
+            "properties": {
+              "target": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "id"],
+                "properties": {
+                  "kind": { "enum": ["message", "member", "thread", "none"] },
+                  "id": { "type": "string", "minLength": 1 }
+                }
+              },
+              "probability": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "noneProbability": { "type": "number", "minimum": 0, "maximum": 1 },
+        "resolverVersion": { "type": "string", "minLength": 1 }
+      }
+    },
+    "delayDistribution": {
+      "type": "object",
+      "description": "발사 지연 구간 분포(immediate/short/medium/long/never). 합 = 1.0.",
+      "additionalProperties": false,
+      "required": ["weights"],
+      "properties": {
+        "weights": {
+          "type": "object",
+          "propertyNames": { "enum": ["IMMEDIATE", "SHORT", "MEDIUM", "LONG", "NEVER"] },
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "socialActWeights": {
+      "type": "object",
+      "description": "SPEAK 시 발화 종류 확률(social act 별). 비면 미정, 있으면 합 = 1.0. unknown 허용.",
+      "propertyNames": {
+        "enum": ["acknowledge", "agree", "disagree", "tease", "ask", "correct", "self_disclose", "change_topic", "unknown"]
+      },
+      "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+    },
+    "burstProfile": {
+      "type": "object",
+      "description": "SPEAK 시 발화 형태(텍스트 없음 — 형태만).",
+      "additionalProperties": false,
+      "required": ["fragmentCountWeights", "maxFragmentLength", "gapLowerBoundSeconds", "gapUpperBoundSeconds", "reactionOnlyProbability"],
+      "properties": {
+        "fragmentCountWeights": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "maxFragmentLength": { "type": "integer", "minimum": 1 },
+        "gapLowerBoundSeconds": { "type": "number", "minimum": 0 },
+        "gapUpperBoundSeconds": { "type": "number", "minimum": 0 },
+        "reactionOnlyProbability": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "uncertainty": { "type": "number", "minimum": 0, "maximum": 1 },
+    "modelVersion": { "type": "string", "minLength": 1 }
+  }
+}

@@ -50,6 +50,18 @@ participation 결정 엔진 입력 feature 의 **이름·type·범위·missing s
 | `relationship.reciprocity` | NORMALIZED | [0,1] | RelationshipFeatures (T013) | AGGREGATE | P06 집계 |
 | `relationship.banter_acceptance` | NORMALIZED | [0,1] | RelationshipFeatures (T013) | AGGREGATE | 관찰 비율(성격 라벨 아님) |
 | `relationship.sample_confidence` | NORMALIZED | [0,1] | RelationshipFeatures (T013) | AGGREGATE | 표본 confidence(별도 feature) |
+| `memory.relevant_present` | BOOLEAN | {0,1} | MemoryFeatures (T014) | AGGREGATE | 관련 기억 존재(원문 비포함) |
+| `memory.relevant_confidence` | NORMALIZED | [0,1] | MemoryFeatures (T014) | AGGREGATE | 최상 관련 기억 confidence, 미관측 면 missing |
+| `memory.relevant_age_seconds` | DURATION | ≥0 | MemoryFeatures (T014) | AGGREGATE | 최신 관련 기억 age, 미관측 면 missing |
+| `memory.pending_intent_active` | BOOLEAN | {0,1} | MemoryFeatures (T014) | AGGREGATE | 활성 pending intent 존재 |
+| `agent.recent_burst_count` | COUNT | ≥0 | AgentStateFeatures (T015) | OBSERVABLE | NEXA 최근 burst 수(메시지 수 아님) |
+| `agent.share` | NORMALIZED | [0,1] | AgentStateFeatures (T015) | OBSERVABLE | NEXA burst 점유율 |
+| `agent.last_spoke_age_seconds` | DURATION | ≥0 | AgentStateFeatures (T015) | OBSERVABLE | 마지막 발화 경과, 발화 전이면 missing |
+| `agent.pending_action_count` | COUNT | ≥0 | AgentStateFeatures (T015) | OBSERVABLE | 미해결 pending action 수 |
+
+> eligibility mask(관찰/반응/발화/외부 전송 허용 여부, T016)는 feature 벡터가 아니라 **별도 차원**이다(모델 입력
+> 신호가 아니라 후처리 하드 게이트) — 위 표에 싣지 않는다(EligibilityMask.kt). 모델 확률이 높아도 mask 가 막으면
+> 후처리(PolicySafetyConstraint, T021)가 제거한다.
 
 ## 불변식
 

@@ -4939,7 +4939,7 @@ tasks:
   program: P08
   sequence: 14
   title: memory feature builder 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4951,13 +4951,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "memory feature builder(순수): 기억(P07)을 정책 feature로 추출(요약 신호)"
+  - "acceptance 충족: 기억 원문이나 민감 object가 정책 모델 입력에 불필요하게 포함되지 않음을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T015
   program: P08
   sequence: 15
   title: agent saturation feature builder 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4969,13 +4972,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "agent saturation feature builder(순수): NEXA 최근 발화량을 정책 feature로"
+  - "acceptance 충족: 메시지 수와 burst 수를 혼동하지 않음(burst 단위)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T016
   program: P08
   sequence: 16
   title: consent·safety mask feature 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4987,13 +4993,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "consent·safety mask feature(순수): 동의·안전 제약을 마스크로"
+  - "acceptance 충족: 모델 확률이 높아도 금지 행동(미동의/안전위반)은 후처리(mask)에서 제거됨(fail-closed)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T017
   program: P08
   sequence: 17
   title: talkativeness multiplier 계약 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -5005,13 +5014,18 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "talkativeness multiplier 계약(순수): 길드 말많음 배수를 speak hazard/logit 보정으로"
+  - "acceptance 충족: 단순 메시지 개수 곱이 아니라 speak hazard/logit 보정에만 쓰임을 문서·테스트로 확인(과다 발화 폭주 방지)"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 발화 빈도 정책 보정 방식 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T018
   program: P08
   sequence: 18
   title: SocialPolicyPort 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5023,13 +5037,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "SocialPolicyPort 정의(application/port): PolicyDecisionRequest→Response 행동 결정 포트"
+  - "acceptance 충족: 정책 port가 routing/GLM API를 요구하지 않음(행동 선택은 모델 호출 불필요, quota-boundary)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T019
   program: P08
   sequence: 19
   title: 결정론적 SeededSampler 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5041,13 +5058,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "결정론적 SeededSampler(순수): 확률분포에서 seed 기반 결정론적 샘플링"
+  - "acceptance 충족: 같은 입력과 seed로 같은 결과, 분포 밖 값이 나오지 않음(결정론·replay)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T020
   program: P08
   sequence: 20
   title: calibration modifier 인터페이스 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5059,13 +5079,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "calibration modifier 인터페이스(순수): 모델 raw probability를 보정"
+  - "acceptance 충족: 하드 규칙이 모델 raw probability를 덮어쓴 사실이 decision log에 남음(감사 가능)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T021
   program: P08
   sequence: 21
   title: PolicySafetyConstraint 후처리 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5077,13 +5100,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "PolicySafetyConstraint 후처리(순수): 안전 제약만 강제하는 후처리(사회 판단과 분리)"
+  - "acceptance 충족: 사회적 판단 휴리스틱은 이 클래스에 들어가지 않음(안전만, SoC)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T022
   program: P08
   sequence: 22
   title: ParticipationDecision aggregate 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5095,13 +5121,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ParticipationDecision aggregate(순수): 최종 행동 결정(action·target·delay·burst·근거·seed)"
+  - "acceptance 충족: 모든 live 행동을 사후 재현할 정보(seed·feature·근거)가 있음을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T023
   program: P08
   sequence: 23
   title: decision log persistence 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5114,13 +5143,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "decision log persistence(V58 policy_decisions, adapter): 결정 로그 영속(원문 없이 근거 feature·correlation ID, logging-boundary)"
+  - "acceptance 충족: IGNORE도 저장되며(침묵도 추적) 보존/삭제 정책이 적용됨을 테스트로 확인. central BUILD SUCCESSFUL, 기존 마이그레이션 무변경"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T024
   program: P08
   sequence: 24
   title: 정책 계약 golden test 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5134,6 +5166,10 @@ tasks:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh contracts
+  verification_evidence:
+  - "정책 계약 golden test: PolicyDecision request/response 스키마 golden snapshot 테스트"
+  - "acceptance 충족: schema version 변경 시 golden diff가 명시적으로 실패함(의도치 않은 계약 변경 차단)을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ./scripts/nexa-verify.sh contracts EXIT=0"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P08-T025

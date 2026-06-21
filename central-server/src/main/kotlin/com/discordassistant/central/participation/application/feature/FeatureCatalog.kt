@@ -43,6 +43,18 @@ object FeatureCatalog {
     val REL_BANTER_ACCEPTANCE = define("relationship.banter_acceptance", FeatureType.NORMALIZED, PrivacyClass.AGGREGATE)
     val REL_SAMPLE_CONFIDENCE = define("relationship.sample_confidence", FeatureType.NORMALIZED, PrivacyClass.AGGREGATE)
 
+    // ── memory features (T014) ────────────────────────────────────────────────
+    val MEMORY_RELEVANT_PRESENT = define("memory.relevant_present", FeatureType.BOOLEAN, PrivacyClass.AGGREGATE)
+    val MEMORY_RELEVANT_CONFIDENCE = define("memory.relevant_confidence", FeatureType.NORMALIZED, PrivacyClass.AGGREGATE)
+    val MEMORY_RELEVANT_AGE_SECONDS = define("memory.relevant_age_seconds", FeatureType.DURATION, PrivacyClass.AGGREGATE)
+    val MEMORY_PENDING_INTENT_ACTIVE = define("memory.pending_intent_active", FeatureType.BOOLEAN, PrivacyClass.AGGREGATE)
+
+    // ── agent saturation features (T015) ──────────────────────────────────────
+    val AGENT_RECENT_BURST_COUNT = define("agent.recent_burst_count", FeatureType.COUNT, PrivacyClass.OBSERVABLE)
+    val AGENT_SHARE = define("agent.share", FeatureType.NORMALIZED, PrivacyClass.OBSERVABLE)
+    val AGENT_LAST_SPOKE_AGE_SECONDS = define("agent.last_spoke_age_seconds", FeatureType.DURATION, PrivacyClass.OBSERVABLE)
+    val AGENT_PENDING_ACTION_COUNT = define("agent.pending_action_count", FeatureType.COUNT, PrivacyClass.OBSERVABLE)
+
     /** 모든 정의된 feature(ID→메타). 데이터셋·schema 와의 drift 검증·문서 생성에 쓸 수 있다. */
     val all: Map<FeatureId, FeatureMeta> = REGISTRY.toMap()
 

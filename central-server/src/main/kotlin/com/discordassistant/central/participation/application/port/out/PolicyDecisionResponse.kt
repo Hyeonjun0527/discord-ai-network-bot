@@ -2,6 +2,7 @@ package com.discordassistant.central.participation.application.port.out
 
 import com.discordassistant.central.participation.domain.model.action.SocialAct
 import com.discordassistant.central.participation.domain.model.action.SocialActionKind
+import com.discordassistant.central.participation.domain.model.decision.ActionDistribution
 import com.discordassistant.central.participation.domain.model.decision.ActionTargetDistribution
 import com.discordassistant.central.participation.domain.model.decision.BurstProfile
 import com.discordassistant.central.participation.domain.model.decision.DelayDistribution
@@ -61,6 +62,21 @@ data class PolicyDecisionResponse(
     /** 가장 확률이 높은 행동 종류(동률이면 enum 선언 순서상 먼저). 분포를 단일 답으로 강제하진 않지만 argmax 편의. */
     val mostLikelyAction: SocialActionKind
         get() = SocialActionKind.entries.maxByOrNull { actionWeights[it] ?: 0.0 } ?: SocialActionKind.IGNORE
+
+    /**
+     * 도메인 분포 aggregate([ActionDistribution])로 변환한다 — 도메인 서비스(샘플러·calibration·안전 후처리)가
+     * application 에 의존하지 않고(module-dag.md: domain↛application) 다룰 수 있는 순수 표현이다. modelVersion 은
+     * 와이어 추적용이라 도메인 분포에는 싣지 않는다(필요 시 호출부가 별도로 보존).
+     */
+    fun toDomain(): ActionDistribution =
+        ActionDistribution(
+            actionWeights = actionWeights,
+            targetDistribution = targetDistribution,
+            delayDistribution = delayDistribution,
+            socialActWeights = socialActWeights,
+            burstProfile = burstProfile,
+            uncertainty = uncertainty,
+        )
 
     companion object {
         const val EPSILON: Double = 1e-9

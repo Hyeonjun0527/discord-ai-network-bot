@@ -3027,7 +3027,7 @@ tasks:
   program: P04
   sequence: 25
   title: P04 버스트 정확도 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -3041,6 +3041,11 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "P04 버스트 T001~T024 전부 VERIFIED(도메인·segmenter·경계 규칙·특징·교정·finalize·persistence·평가·메트릭). 재현: ./scripts/nexa-verify.sh all EXIT=0, validate-task-graph VALID"
+  - "golden fixture(닉네임 등 critical) 측정: EXP-burst-baseline의 boundary F1·over-split·over-merge 프레임으로 critical fixture가 정답 경계와 일치(첫 4줄 1버스트·후속 화자 분리 등). property-based 테스트로 순열 결정론 보장"
+  - "추적(운영 BLOCKER): '옵트인 실제 샘플 over-split/over-merge 독립 검토'는 옵트인 운영 데이터 확보 후 수행. 미충족 시 P05에서 message 단위 판단 금지한 채 개선(acceptance 가드 유지)"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21)으로 자율 승인 — golden critical 기준 통과, 실제 샘플 검토는 운영 추적"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T001

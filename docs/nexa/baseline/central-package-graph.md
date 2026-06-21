@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 20 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 325
-- Cross-node import edges: 419
+- Kotlin files scanned: 334
+- Cross-node import edges: 420
 
 ## Nodes
 
@@ -14,7 +14,7 @@
 | `<root>` | 1 |
 | `ainetwork` | 52 |
 | `channelai` | 18 |
-| `conversation` | 14 |
+| `conversation` | 23 |
 | `dev` | 1 |
 | `global` | 23 |
 | `globalpromptset` | 3 |
@@ -52,6 +52,7 @@
 | `channelai` | `guild` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiAccessControlService.kt` | `com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleEntity` |
 | `channelai` | `knowledge` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiApprovalPolicy.kt` | `com.discordassistant.central.knowledge.application.KnowledgeSafety` |
 | `channelai` | `shared` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.shared.ContentSafety` |
+| `conversation` | `global` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/NexaEventEntities.kt` | `com.discordassistant.central.global.crypto.EncryptedStringConverter` |
 | `dev` | `provider` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.provider.application.ProviderRegistrationService` |
 | `dev` | `relay` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
 | `dev` | `routing` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
@@ -135,7 +136,7 @@
 ## Cycles
 
 Top-level compile-node cycles detected:
-- `ainetwork` ↔ `channelai` ↔ `global` ↔ `globalpromptset` ↔ `guild` ↔ `knowledge` ↔ `licensing` ↔ `multiresponse` ↔ `onboarding` ↔ `platform` ↔ `preset` ↔ `provider` ↔ `quota` ↔ `relay` ↔ `requestlog` ↔ `routing`
+- `ainetwork` ↔ `channelai` ↔ `conversation` ↔ `global` ↔ `globalpromptset` ↔ `guild` ↔ `knowledge` ↔ `licensing` ↔ `multiresponse` ↔ `onboarding` ↔ `platform` ↔ `preset` ↔ `provider` ↔ `quota` ↔ `relay` ↔ `requestlog` ↔ `routing`
 
 ## Required focus paths
 

@@ -2116,7 +2116,7 @@ tasks:
   program: P03
   sequence: 8
   title: event store 도메인 포트 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2128,13 +2128,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "event store 도메인 아웃바운드 포트(application/port/out) 신설: append/read만 노출"
+  - "acceptance 충족: append-only — update/delete 메서드를 포트에 노출하지 않음(테스트로 확인)"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa 10/Architecture 9 무회귀"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T009
   program: P03
   sequence: 9
   title: event store JPA 엔티티 설계
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2146,13 +2150,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "event store JPA @Entity(adapter/outbound/persistence): privacyClass·계보(sourceEventId 등) 컬럼, 원문 본문은 미저장/암호화 참조(data-categories High 비영속)"
+  - "acceptance 충족: domain model과 JPA entity 분리(migratedPersistenceInAdapterOutbound), 원문 toString 금지를 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa 10/Architecture 9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T010
   program: P03
   sequence: 10
   title: event store Flyway 마이그레이션 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2164,13 +2172,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "V51__nexa_event_store.sql 신설(additive, 기존 마이그레이션 무변경): 이벤트 저장 테이블 — channelId 파티션·sourceSequence 순서·eventId 유니크(idempotency)"
+  - "acceptance 충족: eventId 유니크 제약으로 중복 insert가 데이터 중복 없이 명시적 결과(무시/충돌) 반환을 테스트로 확인"
+  - "central BUILD SUCCESSFUL(Flyway 검증), 기존 마이그레이션 git diff 0. 운영 DB 적용은 배포 시점"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T011
   program: P03
   sequence: 11
   title: 이벤트 append 유스케이스 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2182,13 +2194,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "이벤트 append 유스케이스(application): 동의 통과 + EventIdentity dedup 후 event store에 append, 같은 트랜잭션에서 outbox 기록"
+  - "acceptance 충족: event와 outbox가 같은 트랜잭션으로 원자적 — outbox 없이 event만(또는 반대) 저장되는 상태가 발생하지 않음을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa 10/Architecture 9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T012
   program: P03
   sequence: 12
   title: conversation outbox 스키마와 publisher 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2201,6 +2217,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "conversation outbox 스키마(V51) + publisher: projection 전달용 outbox 레코드를 발행"
+  - "acceptance 충족: outbox record 처리 상태로 재시도 시 같은 record가 중복 side effect를 만들지 않음(idempotent publish)을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa 10/Architecture 9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T013

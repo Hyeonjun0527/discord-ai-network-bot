@@ -1420,7 +1420,7 @@ tasks:
   program: P02
   sequence: 2
   title: 길드 관리자 동의 모델 결정
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -1432,13 +1432,18 @@ tasks:
   acceptance: 동의 전에는 shadow 관찰조차 시작하지 않는 기본값이 확정된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "specs/product-v2/nexa/consent-model.md 작성: 동의 단위(서버 활성화/채널 범위), 관리자 권한 증명(MANAGE_SERVER/MANAGE_CHANNELS), 웹 대시보드 전용 편집"
+  - "acceptance 충족: 서버 활성화 off(기본)면 conversation 관찰·이벤트 수집조차 안 함 — 동의 전 shadow 관찰 금지. 버튼/웹 활성화가 동의 시작점"
+  - "./scripts/nexa-verify.sh docs 통과(링크 OK)"
+  - "human_gate satisfied: 인간 결정자 ACCEPTED 승인(2026-06-21) → 프라이버시 우선 동의 모델 확정, VERIFIED"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T003
   program: P02
   sequence: 3
   title: 개별 사용자 옵트아웃 모델 결정
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -1449,13 +1454,18 @@ tasks:
   acceptance: 옵트아웃 후 신규 파생 데이터가 생성되지 않고 기존 파생 데이터 삭제가 추적된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "specs/product-v2/nexa/user-opt-out.md 작성: 개인 옵트아웃이 길드 동의보다 우선(거부가 이김), 본인 경로로 처리, 관찰 단계 즉시 배제"
+  - "acceptance 충족: 옵트아웃 후 임베딩·관계·학습 등 신규 파생 0, 기존 파생물은 삭제 전파(T009) 대상으로 등록·추적"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate satisfied: 인간 결정자 ACCEPTED 승인(2026-06-21) → 개인 거부 우선 옵트아웃 확정, VERIFIED"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T004
   program: P02
   sequence: 4
   title: 채널 제외 정책 정의
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -1466,13 +1476,18 @@ tasks:
   acceptance: 관찰 금지 채널에서는 메타데이터도 최소화되며 발화 금지와 관찰 금지가 구분된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "specs/product-v2/nexa/channel-scope.md 작성: 관찰(observe)과 발화(speak) 2축 독립, 카테고리→채널→스레드 상속(하위는 더 보수적으로만)"
+  - "acceptance 충족: 발화 금지≠관찰 금지로 각각 독립 설정 가능, 관찰 금지 채널은 이벤트·메타데이터 비수집(최소화)"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate satisfied: 인간 결정자 ACCEPTED 승인(2026-06-21) → 관찰/발화 2축 분리 채널 제외 확정, VERIFIED"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T005
   program: P02
   sequence: 5
   title: DM 처리 정책 확정
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -1483,6 +1498,11 @@ tasks:
   acceptance: DM 정보가 길드 관계 상태나 학습 데이터로 묵시적으로 합쳐지지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "specs/product-v2/nexa/dm-policy.md 작성: DM 기본 완전 제외(관찰·기억·학습 안 함), 확장은 그 DM 맥락의 별도 명시 동의+별도 ADR 필요"
+  - "acceptance 충족: DM 데이터가 guild 스코프 관계 projection·학습 산출물에 묵시 병합 안 됨(스코프 격리), DM과 공개 맥락을 같은 장면·프롬프트에 안 섞음"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate satisfied: 인간 결정자 ACCEPTED 승인(2026-06-21) → DM 기본 완전 제외·스코프 격리 확정, VERIFIED"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T006

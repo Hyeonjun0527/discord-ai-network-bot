@@ -2382,7 +2382,7 @@ tasks:
   program: P03
   sequence: 20
   title: 재연결·세션 경계 이벤트 기록
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2394,13 +2394,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "재연결·세션 경계 이벤트 기록: sessionId/재연결 전이를 envelope·ledger에 반영"
+  - "acceptance 충족: 세션 변경 후 gateway sequence 재사용이 내부 projection 순서를 깨지 않음을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T021
   program: P03
   sequence: 21
   title: Discord intent 설정 검증 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2413,13 +2417,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "Discord intent 설정 검증: 필수 GatewayIntent(MESSAGE_CONTENT 등) 부재를 부팅 시 검증·경고"
+  - "acceptance 충족: 필수 intent 부재 시 조용히 오작동하지 않고 기능 상태를 DEGRADED로 노출함을 테스트로 확인(운영 게이트웨이 미연결)"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T022
   program: P03
   sequence: 22
   title: event store redaction 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2431,13 +2439,18 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "event store redaction: 원문 본문·snowflake 원문·키가 event store에 평문 저장되지 않도록 강제(가명/암호화 참조/미저장, redaction-contract 준수)"
+  - "acceptance 충족: redacted 이벤트가 replay에서 content unavailable로 일관되게 보임 + 금지 필드 부재를 회귀 테스트로 증명"
+  - "BLOCKER 추적: T009 '삭제 후 비가역 hash 보존' 법적 적합성 법무 검토 OPEN — hash 보존은 비가역+시각만 보수적 구현, 법무 미확정 주석"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T023
   program: P03
   sequence: 23
   title: JDA fake 기반 ingestion 통합 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2450,13 +2463,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "JDA fake 기반 ingestion 통합 테스트: JDA→매퍼→append→outbox→projection 경로를 fake로 통합 검증"
+  - "acceptance 충족: 중복·역순·미동의 케이스가 DB 상태(event store)와 outbox 결과로 검증됨을 통합 테스트로 확인"
+  - "central BUILD SUCCESSFUL, ArchUnit Nexa10/Arch9"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T024
   program: P03
   sequence: 24
   title: event store 부하·보존 크기 측정
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -2468,6 +2485,10 @@ tasks:
   acceptance: 용량 추정과 TTL/파티셔닝 필요 시점이 수치로 기록된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "event store 부하·보존 크기 측정(experiment): 이벤트 행 크기·일일 증가량·보존 기간별 용량 추정 문서화"
+  - "acceptance 충족: 용량 추정과 TTL/파티셔닝 필요 시점을 수치로 기록(실제 운영 부하 테스트 없이 추정·소규모 측정)"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T025

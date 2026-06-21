@@ -54,4 +54,5 @@ enum class EventType(
     TYPING_STARTED("typing.started"),
     MEMBER_IDENTITY_CHANGED("member.identity"),
     CONSENT_DENIED("consent.denied"),
+    SESSION_BOUNDARY("session.boundary"),
 }

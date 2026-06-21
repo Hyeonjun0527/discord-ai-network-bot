@@ -175,3 +175,28 @@ data class MemberIdentitySnapshot(
     val nickname: IdentityFieldSnapshot,
     val displayName: IdentityFieldSnapshot,
 ) : IngestSnapshot
+
+/** Gateway 세션 경계 종류 스냅샷(T020) — 끊김/resume/새 세션. */
+enum class SessionBoundaryKindSnapshot {
+    DISCONNECTED,
+    RESUMED,
+    NEW_SESSION,
+}
+
+/**
+ * SessionBoundaryObserved 매퍼 입력 스냅샷(T020). JDA 세션 라이프사이클 콜백(onSessionDisconnect/Resume/Recreate)에서
+ * 추출한 JDA-free 메타다. 콘텐츠/식별자는 운반하지 않는다(인프라 관찰 사실). 세션 경계는 길드/채널 스코프가 아닌
+ * 연결 단위라 guildId/channelId 는 0(없음)으로 채워 채널 스코프 동의 검사만 받는다(actor 축 없음).
+ */
+data class SessionBoundarySnapshot(
+    val guildId: Long,
+    val channelId: Long,
+    val boundary: SessionBoundaryKindSnapshot,
+    /** 이 경계가 시작/종료한 게이트웨이 세션 식별자(모르면 null). */
+    val sessionId: String?,
+    /** 경계 직전까지 본 마지막 게이트웨이 시퀀스(resume 이어받기 기준; 모르면 null). */
+    val lastGatewaySequence: Long?,
+    val occurredAt: Instant,
+    override val receivedAt: Instant,
+    override val sourceSequence: Long,
+) : IngestSnapshot

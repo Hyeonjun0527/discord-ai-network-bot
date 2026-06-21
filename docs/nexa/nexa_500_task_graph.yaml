@@ -1666,7 +1666,7 @@ tasks:
   program: P02
   sequence: 13
   title: 데이터 계보 레코드 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -1679,6 +1679,11 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "specs/product-v2/nexa/data-lineage.md 작성: 모든 파생 레코드(기억·feature·학습·임베딩)가 sourceEventId·transformationVersion·derivedAt 계보 필드를 가짐. sourceEventId는 domain-events 이벤트 ID 체계와 일관"
+  - "acceptance 충족: sourceEventId 역인덱스로 한 이벤트의 모든 파생 레코드를 역추적해 삭제 전파(T009) 대상 수집, transformationVersion으로 선택적 재처리"
+  - "계보는 원문 미포함(ID·버전·시각만, data-categories 준수). 계약 문서이며 실제 필드 코드화는 후속(event/persistence 구현)"
+  - "./scripts/nexa-verify.sh docs 통과(링크 OK) + central BUILD SUCCESSFUL(코드 미변경 무회귀)"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T014

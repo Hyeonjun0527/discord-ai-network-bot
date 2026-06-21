@@ -5176,7 +5176,7 @@ tasks:
   program: P08
   sequence: 25
   title: P08 정책 계약 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -5187,6 +5187,11 @@ tasks:
   - central-server/src/test/**
   deliverable: 행동 공간, 확률 보정, 안전 후처리, replay 가능성을 독립 검토한다.
   acceptance: IGNORE가 정상 경로이고 GLM 결합이 없으며 계약 golden test가 통과해야 한다.
+  verification_evidence:
+  - "P08 participation T001~T024 전부 VERIFIED(SocialAction/Act·분포·계약·feature·SeededSampler·calibration·safety·ParticipationDecision·decision log). 재현: nexa-verify all EXIT=0, validate-task-graph VALID"
+  - "IGNORE 정상 경로: SocialAction sealed에 IGNORE 포함, decision log에 IGNORE도 저장(침묵 추적), quota 미소모(quota-boundary)"
+  - "GLM 결합 없음: SocialPolicyPort가 routing/GLM API를 요구하지 않음(행동 선택은 모델 호출 불필요). 계약 golden test(T024) + contracts EXIT=0. 안전 후처리(PolicySafetyConstraint)는 사회 판단과 분리, replay는 SeededSampler 결정론"
+  - "추적: 라이브 정책 품질(사람다움 게이트 측정)은 speech 연결(P09~) + 실제 트래픽 후. human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인"
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py

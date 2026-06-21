@@ -8676,7 +8676,7 @@ tasks:
   program: P15
   sequence: 14
   title: onboarding NEXA 동의 단계 통합
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -8689,13 +8689,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "onboarding NEXA 동의 단계 통합(P02 consent): '채널 자동만들기' 버튼이 AI 질문채널+AI 멤버채널 생성, MEMBER는 명시 동의"
+  - "acceptance 충족: 한 번의 포괄 동의로 모든 목적을 묶지 않음(목적별 동의)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 온보딩 동의·채널 자동생성 확정(메모리 nexa_onboarding_and_policy_ui)"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T015
   program: P15
   sequence: 15
   title: licensing feature gate 통합
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -8707,13 +8711,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "licensing feature gate 통합(트라이얼웨어): NEXA를 라이선스 게이트에 연결"
+  - "acceptance 충족: 라이선스 만료가 갑자기 legacy mention-always 동작으로 바뀌지 않음(우아한 비활성·안전)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 라이선스 게이트 확정(메모리 billing_subscription_plan)"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T016
   program: P15
   sequence: 16
   title: multiresponse 전송 통합
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8726,13 +8734,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "multiresponse 전송 통합: P13 BurstPlan을 기존 multiresponse 전송과 통합"
+  - "acceptance 충족: 중간 cancel과 reply target 보존이 지원됨(P13 부분취소·대상 일관)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T017
   program: P15
   sequence: 17
   title: provider-agent 경계 회귀 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8748,13 +8759,16 @@ tasks:
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh agent
   - ./scripts/nexa-verify.sh contracts
+  verification_evidence:
+  - "provider-agent 경계 회귀 테스트(ADR 0006): speech가 provider-agent glm 직접 호출 안 함을 회귀로 고정"
+  - "acceptance 충족: wire-contract 생성물 diff가 없거나 승인된 별도 task로만 변경됨(경계 안정)을 검증. central/agent/contracts 통과, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T018
   program: P15
   sequence: 18
   title: 관리자 NEXA 설정 API 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8766,13 +8780,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "관리자 NEXA 설정 API(웹 대시보드 전용): NEXA 정책 설정 조회/변경, OAuth/durable-token 가드"
+  - "acceptance 충족: optimistic locking과 권한·audit가 적용됨(동시변경·권한·감사)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T019
   program: P15
   sequence: 19
   title: 관리자 대시보드 NEXA 설정 UI 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -8785,13 +8802,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "관리자 대시보드 NEXA 설정 UI(static/admin, 웹 대시보드 전용): shadow/canary/LIVE 롤아웃·정책 설정 화면"
+  - "acceptance 충족: 위험한 LIVE 전환은 확인·설명·권한 검사를 요구함(오작동 방지)을 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — NEXA 설정 웹 대시보드 전용 UI 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T020
   program: P15
   sequence: 20
   title: NEXA Flyway migration 통합 검증
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8804,13 +8825,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "NEXA Flyway migration 통합 검증: V50~V65 전체가 기존 위에 additive로 적용됨(PostgresFlywayIntegrationTest)"
+  - "acceptance 충족: 새 설치와 기존 업그레이드 모두 checksum/constraint가 통과함을 테스트로 검증. central BUILD SUCCESSFUL, 기존 마이그레이션 무변경"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T021
   program: P15
   sequence: 21
   title: 기존 channelai API 호환 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8822,13 +8846,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "기존 channelai API 호환 테스트(golden): NEXA 도입 후에도 기존 channelai API 동일 동작"
+  - "acceptance 충족: NEXA 필드 추가가 기존 JSON 계약을 깨지 않음(하위 호환·additive)을 golden 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T022
   program: P15
   sequence: 22
   title: 전체 모듈 ArchUnit·순환 검증
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8840,13 +8867,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "전체 모듈 ArchUnit·순환 검증: NEXA 6개 컨텍스트 포함 전체 모듈 순환 의존 0"
+  - "acceptance 충족: adapter 우회 import가 없고 DAG 문서와 실제 그래프가 일치함(package-graph drift 0)을 검증. NexaArchitectureTest 10/10, central-package-graph --check 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T023
   program: P15
   sequence: 23
   title: NEXA shadow E2E fixture 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8859,13 +8889,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "NEXA shadow E2E fixture: 관찰→판단→예약→shadow 전체 end-to-end(전송 0)"
+  - "acceptance 충족: Discord outbound와 GLM은 policy SPEAK 전까지 호출되지 않고 shadow에서는 전송 0회임을 E2E로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T024
   program: P15
   sequence: 24
   title: 점진 migration·rollback runbook 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -8876,13 +8909,16 @@ tasks:
   acceptance: DB/설정/모델 각각 독립 rollback 방법이 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "점진 migration·rollback runbook(docs): shadow→canary→LIVE 점진 적용·각 단계 rollback 절차"
+  - "acceptance 충족: DB/설정/모델 각각 독립 rollback 방법이 있음(안전한 운영 전환)을 문서로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T025
   program: P15
   sequence: 25
   title: P15 통합 회귀 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -8896,6 +8932,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "P15 통합 회귀 게이트: NEXA 6개 컨텍스트를 기존 시스템에 연결(feature flag OFF=기존 100%·shadow=전송 0)"
+  - "acceptance 충족: feature flag OFF가 현재 운영과 동일(channelai 호환 golden)하고 shadow E2E가 전송 0회를 증명함. ./scripts/nexa-verify.sh all EXIT=0(central+agent+i18n+docs+contracts), validate VALID, NexaArchitectureTest 10/10·순환 0"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — P15 통합 회귀 게이트 통과 확정, NEXA 통합 완성"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T001

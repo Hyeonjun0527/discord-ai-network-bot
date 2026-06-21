@@ -309,6 +309,39 @@
           <div class="row"><button id="autoApproveOn">자동승인 ON</button><button id="autoApproveOff">자동승인 OFF</button></div>
           <div id="writeResult" class="muted"></div>
         </div>
+        <div class="section-title">NEXA 사회적 참여 (웹 대시보드 전용)</div>
+        <div class="action-card" id="nexaSettingsCard">
+          <h3>🌙 NEXA 참여 단계 · 데이터 처리 · 롤백</h3>
+          <p class="ac-desc">
+            NEXA는 사람처럼 끼어드는 AI 멤버 기능입니다. <strong>기본값은 LEGACY(꺼짐)</strong>이라 기존 채널 AI 자동응답만 동작합니다.
+            여기서 서버의 참여 단계(legacy→shadow→canary→live)와 데이터 처리 동의 상태를 한 화면에서 확인·변경합니다.
+            <strong>이 설정은 웹 대시보드에서만 바꿀 수 있습니다(디스코드 명령으로는 변경 불가).</strong>
+          </p>
+          <div class="form-grid">
+            <label>현재 단계
+              <select id="nexaLane">
+                <option value="LEGACY">LEGACY · NEXA 꺼짐(기존 자동응답만)</option>
+                <option value="SHADOW">SHADOW · 예측·기록만, 전송 0회</option>
+                <option value="CANARY">CANARY · 소수 채널 실제 발화</option>
+                <option value="LIVE">LIVE · 전면 실제 발화</option>
+              </select>
+            </label>
+            <label>변경 사유<input id="nexaLaneReason" type="text" placeholder="예: shadow 지표 안정 — canary 승급" /></label>
+          </div>
+          <p class="ac-desc" id="nexaLiveWarning" hidden>
+            ⚠️ <strong>CANARY/LIVE는 실제 Discord 발화를 켭니다.</strong> 잘못 켜면 서버 멤버에게 보이는 메시지가 전송됩니다.
+            아래 확인란을 체크해야만 적용됩니다(라이선스가 없으면 SHADOW로 자동 제한됩니다).
+          </p>
+          <label class="check" id="nexaConfirmRow" hidden>
+            <input id="nexaConfirmLiveSend" type="checkbox" /> 위 설명을 이해했고 실제 발화(CANARY/LIVE) 전환을 승인합니다
+          </label>
+          <div class="actions">
+            <button id="nexaRefresh" class="ghost">현재 상태 새로고침</button>
+            <button id="nexaApplyLane" class="primary">단계 적용</button>
+            <button id="nexaRollbackLegacy" class="danger">즉시 LEGACY로 롤백</button>
+          </div>
+          <ul id="nexaStatus" class="list"><li class="empty">서버를 선택한 뒤 ‘현재 상태 새로고침’을 누르세요.</li></ul>
+        </div>
         <div class="panel">
           <h2>관리자 접근 (토큰 방식)</h2>
           <p class="muted">OAuth를 아직 켜지 않은 환경이라면 ENV_FILE의 CENTRAL_DASHBOARD_ADMIN_TOKEN 값을 입력하세요. 이 값은 현재 브라우저 세션에만 저장됩니다.</p>

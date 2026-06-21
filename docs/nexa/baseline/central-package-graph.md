@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 24 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 606
-- Cross-node import edges: 466
+- Kotlin files scanned: 611
+- Cross-node import edges: 480
 
 ## Nodes
 
@@ -14,19 +14,19 @@
 | `<root>` | 1 |
 | `actionruntime` | 32 |
 | `ainetwork` | 52 |
-| `channelai` | 18 |
+| `channelai` | 19 |
 | `conversation` | 77 |
 | `dev` | 1 |
 | `global` | 24 |
 | `globalpromptset` | 3 |
 | `guild` | 6 |
 | `knowledge` | 30 |
-| `licensing` | 18 |
+| `licensing` | 19 |
 | `multiresponse` | 22 |
-| `onboarding` | 14 |
+| `onboarding` | 15 |
 | `participation` | 87 |
 | `platform` | 45 |
-| `preset` | 23 |
+| `preset` | 25 |
 | `provider` | 15 |
 | `quota` | 6 |
 | `relay` | 12 |
@@ -53,9 +53,11 @@
 | `ainetwork` | `routing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/application/ProviderSafetyService.kt` | `com.discordassistant.central.routing.application.port.ProviderSafetyChecker` |
 | `ainetwork` | `shared` | 16 | `central-server/src/main/kotlin/com/discordassistant/central/ainetwork/adapter/outbound/persistence/AiNetworkEntities.kt` | `com.discordassistant.central.shared.ModelBurden` |
 | `channelai` | `ainetwork` | 8 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiAccessControlService.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate` |
-| `channelai` | `global` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.global.security.AiNetworkApiSecurityFilter` |
+| `channelai` | `global` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.global.security.AiNetworkApiSecurityFilter` |
 | `channelai` | `guild` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiAccessControlService.kt` | `com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleEntity` |
 | `channelai` | `knowledge` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiApprovalPolicy.kt` | `com.discordassistant.central.knowledge.application.KnowledgeSafety` |
+| `channelai` | `participation` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.participation.domain.model.config.ParticipationLane` |
+| `channelai` | `preset` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.preset.application.NexaSettingsAdminService` |
 | `channelai` | `shared` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.shared.ContentSafety` |
 | `conversation` | `global` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/conversation/adapter/outbound/persistence/NexaEventEntities.kt` | `com.discordassistant.central.global.crypto.EncryptedStringConverter` |
 | `dev` | `provider` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/dev/DevController.kt` | `com.discordassistant.central.provider.application.ProviderRegistrationService` |
@@ -112,9 +114,11 @@
 | `platform` | `shared` | 10 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/CommandService.kt` | `com.discordassistant.central.shared.ModelBurden` |
 | `preset` | `ainetwork` | 9 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogQueryService.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate` |
 | `preset` | `channelai` | 14 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetChannelApplier.kt` | `com.discordassistant.central.channelai.adapter.outbound.persistence.AiBehaviorVersionEntity` |
-| `preset` | `global` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/preset/adapter/outbound/persistence/PresetEntities.kt` | `com.discordassistant.central.global.crypto.EncryptedStringConverter` |
+| `preset` | `global` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/preset/adapter/outbound/persistence/PresetEntities.kt` | `com.discordassistant.central.global.crypto.EncryptedStringConverter` |
 | `preset` | `knowledge` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogMapper.kt` | `com.discordassistant.central.knowledge.application.KnowledgeSafety` |
-| `preset` | `participation` | 5 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/NexaParticipationAdminService.kt` | `com.discordassistant.central.participation.application.port.out.NexaParticipationFlagPort` |
+| `preset` | `licensing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/NexaLicenseLaneGate.kt` | `com.discordassistant.central.licensing.application.LicenseService` |
+| `preset` | `onboarding` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/NexaSettingsAdminService.kt` | `com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingConsentRepository` |
+| `preset` | `participation` | 10 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/NexaLicenseLaneGate.kt` | `com.discordassistant.central.participation.domain.model.config.ParticipationLane` |
 | `preset` | `shared` | 7 | `central-server/src/main/kotlin/com/discordassistant/central/preset/application/PresetCatalogMapper.kt` | `com.discordassistant.central.shared.ContentSafety` |
 | `provider` | `channelai` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/provider/adapter/inbound/web/ProviderAdminController.kt` | `com.discordassistant.central.channelai.application.GuildChannelAiQuery` |
 | `provider` | `global` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/provider/application/ContributionPolicyService.kt` | `com.discordassistant.central.global.audit.AuditLog` |
@@ -191,9 +195,11 @@ Outgoing:
 | Source | Target | Imports | Sample path | Sample import |
 | --- | --- | ---: | --- | --- |
 | `channelai` | `ainetwork` | 8 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiAccessControlService.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkFeatureGate` |
-| `channelai` | `global` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.global.security.AiNetworkApiSecurityFilter` |
+| `channelai` | `global` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.global.security.AiNetworkApiSecurityFilter` |
 | `channelai` | `guild` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiAccessControlService.kt` | `com.discordassistant.central.guild.adapter.outbound.persistence.AiAdminRoleEntity` |
 | `channelai` | `knowledge` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/application/ChannelAiApprovalPolicy.kt` | `com.discordassistant.central.knowledge.application.KnowledgeSafety` |
+| `channelai` | `participation` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.participation.domain.model.config.ParticipationLane` |
+| `channelai` | `preset` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/NexaSettingsController.kt` | `com.discordassistant.central.preset.application.NexaSettingsAdminService` |
 | `channelai` | `shared` | 4 | `central-server/src/main/kotlin/com/discordassistant/central/channelai/adapter/inbound/web/ChannelAiCustomizationController.kt` | `com.discordassistant.central.shared.ContentSafety` |
 
 Incoming:

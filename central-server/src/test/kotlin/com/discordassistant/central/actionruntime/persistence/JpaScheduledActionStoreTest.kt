@@ -1,0 +1,153 @@
+package com.discordassistant.central.actionruntime.persistence
+
+import com.discordassistant.central.actionruntime.adapter.outbound.persistence.JpaScheduledActionStore
+import com.discordassistant.central.actionruntime.adapter.outbound.persistence.ScheduledActionContentEntity
+import com.discordassistant.central.actionruntime.adapter.outbound.persistence.ScheduledActionContentRepository
+import com.discordassistant.central.actionruntime.adapter.outbound.persistence.ScheduledActionRepository
+import com.discordassistant.central.actionruntime.application.port.inbound.RevocationScope
+import com.discordassistant.central.actionruntime.domain.model.ActionFailureReason
+import com.discordassistant.central.actionruntime.domain.model.ActionStatus
+import com.discordassistant.central.actionruntime.domain.model.ActionTarget
+import com.discordassistant.central.actionruntime.domain.model.ScheduledActionType
+import com.discordassistant.central.actionruntime.domain.model.ScheduledSocialAction
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest
+import java.time.Clock
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneOffset
+
+/**
+ * NEXA-P13-T003/T004/T006/T007/T014 — JpaScheduledActionStore: 실제 영속(Flyway V63)·due claim(SKIP LOCKED)·
+ * idempotency·lease 만료 회수·범위 취소를 H2(PostgreSQL 모드)에서 검증.
+ *
+ * @DataJpaTest 는 기본 빌드에서 H2 로 돈다(integration-docker 태그 아님 — 빠른 검증·커버리지 집계 포함).
+ * SELECT FOR UPDATE SKIP LOCKED 문법은 H2 PostgreSQL 모드가 파싱한다(단일 트랜잭션이라 잠금 충돌 자체는 없지만,
+ * 쿼리·due 필터·claim 전이의 정합성을 검증한다 — 실제 다중 인스턴스 잠금은 Postgres Testcontainers 책임).
+ */
+@DataJpaTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+class JpaScheduledActionStoreTest
+    @Autowired
+    constructor(
+        private val repo: ScheduledActionRepository,
+        private val contentRepo: ScheduledActionContentRepository,
+    ) {
+        private val now = Instant.parse("2026-01-01T00:00:00Z")
+        private val clock: Clock = Clock.fixed(now, ZoneOffset.UTC)
+        private val store = JpaScheduledActionStore(repo, contentRepo, workerId = "w1", clock = clock)
+
+        private fun action(
+            decision: String = "d1",
+            index: Int = 0,
+            executeAfter: Instant = now,
+            guild: String = "g1",
+            channel: String = "c1",
+        ) = ScheduledSocialAction.create(
+            decisionId = decision,
+            sampledActionIndex = index,
+            type = ScheduledActionType.SPEAK,
+            target = ActionTarget(guild, channel, "t1"),
+            executeAfter = executeAfter,
+            contextVersion = 7,
+        )
+
+        @Test
+        fun `schedule 은 행을 SCHEDULED 로 영속한다`() {
+            assertThat(store.schedule(action())).isTrue()
+            val persisted = store.find(action().identity)!!
+            assertThat(persisted.status).isEqualTo(ActionStatus.SCHEDULED)
+            assertThat(persisted.contextVersion).isEqualTo(7)
+        }
+
+        @Test
+        fun `같은 decision 재처리(같은 identity)는 중복 예약을 만들지 않는다(T004)`() {
+            assertThat(store.schedule(action())).isTrue()
+            assertThat(store.schedule(action())).isFalse() // 두 번째는 무시
+            assertThat(repo.findAll()).hasSize(1)
+        }
+
+        @Test
+        fun `claimDue 는 due 행만 REEVALUATING 으로 claim 하고 lease 를 건다(SKIP LOCKED)`() {
+            store.schedule(action(decision = "due", executeAfter = now.minusSeconds(1)))
+            store.schedule(action(decision = "future", index = 0, executeAfter = now.plusSeconds(3600)))
+
+            val claimed = store.claimDue(now = now, leaseExpiresAt = now.plus(Duration.ofSeconds(30)), limit = 10)
+
+            assertThat(claimed).hasSize(1)
+            assertThat(claimed[0].action.decisionId).isEqualTo("due")
+            assertThat(claimed[0].action.status).isEqualTo(ActionStatus.REEVALUATING)
+            // future 행은 아직 SCHEDULED.
+            assertThat(store.find(action(decision = "future").identity)!!.status).isEqualTo(ActionStatus.SCHEDULED)
+        }
+
+        @Test
+        fun `만료 lease 는 reclaim 으로 회수되어 다시 처리 가능하다(T007 T010)`() {
+            store.schedule(action(executeAfter = now.minusSeconds(1)))
+            store.claimDue(now = now, leaseExpiresAt = now.plus(Duration.ofSeconds(1)), limit = 10)
+
+            // lease 만료 후(now+10s) reclaim.
+            val reclaimed = store.reclaimExpiredLeases(now.plus(Duration.ofSeconds(10)))
+
+            assertThat(reclaimed).singleElement().isEqualTo(action().identity)
+            // lease 가 풀려 다시 회수 가능(만료 행 없음).
+            assertThat(store.reclaimExpiredLeases(now.plus(Duration.ofSeconds(10)))).isEmpty()
+        }
+
+        @Test
+        fun `complete fail cancel 이 상태와 lease 를 갱신한다`() {
+            store.schedule(action(decision = "a"))
+            store.schedule(action(decision = "b"))
+            store.schedule(action(decision = "c"))
+
+            store.complete(action(decision = "a").identity)
+            store.fail(action(decision = "b").identity, ActionFailureReason.PERMISSION_DENIED)
+            store.cancel(action(decision = "c").identity)
+
+            assertThat(store.find(action(decision = "a").identity)!!.status).isEqualTo(ActionStatus.COMPLETED)
+            val failed = store.find(action(decision = "b").identity)!!
+            assertThat(failed.status).isEqualTo(ActionStatus.FAILED)
+            assertThat(failed.failureReason).isEqualTo(ActionFailureReason.PERMISSION_DENIED)
+            assertThat(store.find(action(decision = "c").identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
+        }
+
+        @Test
+        fun `reschedule 은 SCHEDULED 로 되돌리고 attempt 를 갱신한다(T009)`() {
+            store.schedule(action(executeAfter = now.minusSeconds(1)))
+            store.claimDue(now, now.plus(Duration.ofSeconds(30)), 10)
+
+            store.reschedule(action().identity, executeAfter = now.plusSeconds(60), attempt = 1)
+
+            val rescheduled = store.find(action().identity)!!
+            assertThat(rescheduled.status).isEqualTo(ActionStatus.SCHEDULED)
+            assertThat(rescheduled.attempt).isEqualTo(1)
+        }
+
+        @Test
+        fun `findPendingIn 과 purge 는 범위의 pending 을 취소하고 content 를 제거한다(T014)`() {
+            store.schedule(action(decision = "keep", guild = "g1", channel = "c2"))
+            store.schedule(action(decision = "revoke", guild = "g1", channel = "c1"))
+            // 생성된 content 가 있는 상태(원문 생성 후).
+            contentRepo.save(
+                ScheduledActionContentEntity(
+                    actionIdentity = action(decision = "revoke").identity.value,
+                    content = "secret",
+                    createdAt = now,
+                ),
+            )
+
+            val scope = RevocationScope(guildPseudonym = "g1", channelId = "c1")
+            val pending = store.findPendingIn(scope)
+            assertThat(pending).singleElement().isEqualTo(action(decision = "revoke").identity)
+
+            store.purge(action(decision = "revoke").identity)
+
+            assertThat(store.find(action(decision = "revoke").identity)!!.status).isEqualTo(ActionStatus.CANCELLED)
+            assertThat(contentRepo.findByActionIdentity(action(decision = "revoke").identity.value)).isNull()
+            // 다른 채널은 보존.
+            assertThat(store.find(action(decision = "keep").identity)!!.status).isEqualTo(ActionStatus.SCHEDULED)
+        }
+    }

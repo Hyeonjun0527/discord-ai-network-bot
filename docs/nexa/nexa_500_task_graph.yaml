@@ -7325,7 +7325,7 @@ tasks:
   program: P13
   sequence: 1
   title: ScheduledSocialAction aggregate 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7337,13 +7337,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ScheduledSocialAction aggregate(도메인): 예약된 사회적 행동의 일관성 경계"
+  - "acceptance 충족: 상태 전이가 도메인 메서드로만 가능하고 불법 전이는 거부됨을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T002
   program: P13
   sequence: 2
   title: ActionStatus 상태 머신 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7355,13 +7358,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ActionStatus 상태 머신: PENDING/DUE/EXECUTING/DONE/CANCELLED/FAILED 등 전이 규칙"
+  - "acceptance 충족: 모든 terminal 상태와 재시도 가능 상태가 문서화됨을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T003
   program: P13
   sequence: 3
   title: 예약 행동 persistence 스키마 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7374,13 +7380,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "예약 행동 persistence 스키마(additive Flyway, 기존 마이그레이션 무변경): 예약 메타·상태 저장"
+  - "acceptance 충족: 원문 문구 생성 전에는 content를 저장하지 않음(지연 생성·최소화)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T004
   program: P13
   sequence: 4
   title: action idempotency key 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7392,13 +7401,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "action idempotency key: 같은 결정(decision)에 결정론적 키로 중복 예약 방지"
+  - "acceptance 충족: 같은 decision 재처리로 중복 예약이 생기지 않음(멱등)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T005
   program: P13
   sequence: 5
   title: ActionSchedulerPort 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7410,13 +7422,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ActionSchedulerPort 정의(포트): 예약 스케줄링 추상 경계"
+  - "acceptance 충족: Quartz/JPA/JDA 구현 타입이 domain에 노출되지 않음(헥사고날)을 ArchUnit으로 검증. NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T006
   program: P13
   sequence: 6
   title: DB polling scheduler 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7428,13 +7443,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "DB polling scheduler(adapter): due action을 주기적으로 조회·실행"
+  - "acceptance 충족: 여러 인스턴스가 같은 action을 동시에 claim하지 않음(SKIP LOCKED lease)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T007
   program: P13
   sequence: 7
   title: lease·SKIP LOCKED 동시성 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7446,13 +7464,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "lease·SKIP LOCKED 동시성: lease 만료 시 다른 worker가 재획득"
+  - "acceptance 충족: worker crash 후 다른 인스턴스가 action을 복구함(lease 만료 회수)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T008
   program: P13
   sequence: 8
   title: Clock 기반 due-action 테스트 harness 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7464,13 +7485,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "Clock 기반 due-action 테스트 harness: 가상 Clock 주입으로 시간 제어"
+  - "acceptance 충족: 테스트 실행 시간이 예약 delay 길이에 의존하지 않음(실제 sleep 없음·결정론)을 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T009
   program: P13
   sequence: 9
   title: 실패 분류와 bounded retry 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7482,13 +7506,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "실패 분류·bounded retry: transient(재시도)/permanent(중단) 구분, 재시도 횟수 상한"
+  - "acceptance 충족: 영구 실패를 무한 재시도하지 않고 상태와 reason이 남음(감사)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T010
   program: P13
   sequence: 10
   title: 프로세스 재시작 예약 복구 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7500,13 +7527,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "프로세스 재시작 예약 복구: 영속된 상태에서 due action 재개(유실/중복 없음)"
+  - "acceptance 충족: 재시작으로 동일 버블이 두 번 전송되지 않음(idempotency+상태 영속)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T011
   program: P13
   sequence: 11
   title: contextVersion 재평가 유스케이스 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7518,13 +7548,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "contextVersion 재평가 유스케이스: 실행 직전 맥락 버전 비교, 바뀌었으면 재평가/취소(P12 예약취소 head 일관)"
+  - "acceptance 충족: stale action을 그대로 실행하는 코드 경로가 없음(실행 직전 검증 강제)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T012
   program: P13
   sequence: 12
   title: 다른 인간이 답한 경우 취소 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7536,13 +7569,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "다른 인간이 답한 경우 취소: 예약된 SPEAK 대상 질문에 다른 사람이 답하면 취소(P05 scene 근거)"
+  - "acceptance 충족: 단순 새 메시지 하나만으로 무조건 취소하지 않고 scene evidence를 사용함(오취소 방지)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T013
   program: P13
   sequence: 13
   title: 주제 전환 취소 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7554,13 +7590,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "주제 전환 취소: 예약 후 대화 주제가 바뀌면 무의미해진 SPEAK 취소(P05 thread/scene 근거)"
+  - "acceptance 충족: 다른 동시 thread의 활동이 잘못된 취소를 만들지 않음(thread 격리)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T014
   program: P13
   sequence: 14
   title: 동의 철회 즉시 취소 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -7572,6 +7611,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "동의 철회 즉시 취소: 사용자 동의 철회(P02) 시 예약된 모든 행동 즉시 무효화"
+  - "acceptance 충족: 다음 scheduler tick을 기다리지 않는 즉시 invalidation 경로가 있음(프라이버시 즉시 반영)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P13-T015

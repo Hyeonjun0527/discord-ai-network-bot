@@ -3605,7 +3605,7 @@ tasks:
   program: P06
   sequence: 2
   title: AgentParticipationState 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3617,13 +3617,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "AgentParticipationState 모델(순수): NEXA 자신의 참여 상태(관찰 신호 집계)"
+  - "acceptance 충족: 감정으로 사용자에게 표현되지 않고 주입 Clock 갱신 가능(observable-state-policy 준수)을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T003
   program: P06
   sequence: 3
   title: ChannelCultureState 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3635,13 +3638,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ChannelCultureState 모델(순수): 채널 분위기(템포·banter 빈도 등 관찰 신호)"
+  - "acceptance 충족: 봇 발화와 옵트아웃 데이터가 통계에서 제외됨을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T004
   program: P06
   sequence: 4
   title: MemberInteractionState 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3653,13 +3659,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "MemberInteractionState 모델(순수): 멤버별 관찰된 상호작용 상태"
+  - "acceptance 충족: 전역 프로필이 아니라 guild-scoped key 사용(ADR 0010, cross-guild 연결 금지)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T005
   program: P06
   sequence: 5
   title: familiarity 지표 정의·구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3671,13 +3680,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "familiarity 지표(순수): 실제 상호작용 빈도·최근성 기반 친숙도(감쇠 있음)"
+  - "acceptance 충족: 단순 서버 체류 기간만으로 친밀함을 높이지 않음(실제 상호작용 필요)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T006
   program: P06
   sequence: 6
   title: interaction reciprocity 지표 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3689,13 +3701,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "interaction reciprocity 지표(순수): 주고받음 균형(스무딩 적용)"
+  - "acceptance 충족: 분모가 작은 초기 상태에 smoothing 적용(과민 반응 방지)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T007
   program: P06
   sequence: 7
   title: observed banter acceptance 지표 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -3707,13 +3722,18 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "observed banter acceptance 지표(순수): 농담에 농담으로 반응한 관찰 빈도(행동, 추론 아님)"
+  - "acceptance 충족: 사용자 성격으로 명명하지 않고(observable-state-policy 금지 준수), 낮은 표본에서는 정책에 강하게 쓰지 않음(신뢰도 가중)을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 윤리 가드레일(성격 명명 금지) 통과 확인"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T008
   program: P06
   sequence: 8
   title: response expectation 지표 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3725,13 +3745,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "response expectation 지표(순수): 질문/멘션 후 응답 기대 정황 신호"
+  - "acceptance 충족: NEXA 응답 의무가 아니라 participation timing feature로만 사용됨을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T009
   program: P06
   sequence: 9
   title: topic affinity 지표 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -3743,13 +3766,18 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "topic affinity 지표(순수): 특정 주제 대화 참여 빈도(관찰 신호)"
+  - "acceptance 충족: 민감 주제 자동 추론(정치·종교 등 금지)과 원문 장기 저장을 금지(observable-state-policy 준수)함을 테스트로 확인"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 민감 주제 추론 금지 윤리 가드레일 통과"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T010
   program: P06
   sequence: 10
   title: 최근 상호작용 결과 코드 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3761,13 +3789,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "최근 상호작용 결과 코드(enum): 결과를 자유 텍스트가 아닌 고정 코드로 + source event IDs"
+  - "acceptance 충족: 자유 텍스트 심리 판정 없이 source event IDs(provenance)를 가짐을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T011
   program: P06
   sequence: 11
   title: speaking saturation 계산 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3779,13 +3810,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "speaking saturation 계산(순수): NEXA가 최근 얼마나 말했는지(과다 발화 억제용)"
+  - "acceptance 충족: 사람 평균 메시지 수가 아니라 burst 수를 사용함(자연스러운 발화 단위)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T012
   program: P06
   sequence: 12
   title: social energy 잠재 상태 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3797,13 +3831,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "social energy 잠재 상태(순수): NEXA 자신의 발화 페이스 조절용 잠재 변수(결정론 seed)"
+  - "acceptance 충족: 실제 감정으로 저장·노출하지 않고 seed로 replay 가능함을 테스트로 확인(observable-state-policy 준수). central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T013
   program: P06
   sequence: 13
   title: current interest 상태 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3815,13 +3852,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "current interest 상태(순수): 최근 참여 주제 기반 관심 신호(구조화)"
+  - "acceptance 충족: GLM의 자유 텍스트 자기설명을 상태로 저장하지 않음(구조화 신호만)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T014
   program: P06
   sequence: 14
   title: response confidence 상태 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3833,13 +3873,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "response confidence 상태(순수): NEXA 응답 적절성 자신감 신호"
+  - "acceptance 충족: 낮은 confidence가 반드시 침묵은 아니며 participation 정책 입력으로만 제공됨을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T015
   program: P06
   sequence: 15
   title: unresolved interaction 상태 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3851,6 +3894,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "unresolved interaction 상태(순수): 보류 의도(답 약속 등) 추적, 만료/해결 이벤트"
+  - "acceptance 충족: 영구 미해결 상태가 쌓이지 않고 만료/해결 이벤트가 있음(TTL)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T016

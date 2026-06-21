@@ -1736,7 +1736,7 @@ tasks:
   program: P02
   sequence: 16
   title: MessageCreated 정규화 이벤트 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1754,7 +1754,7 @@ tasks:
   program: P02
   sequence: 17
   title: MessageUpdated 정규화 이벤트 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1772,7 +1772,7 @@ tasks:
   program: P02
   sequence: 18
   title: MessageDeleted 정규화 이벤트 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1790,7 +1790,7 @@ tasks:
   program: P02
   sequence: 19
   title: Reaction 이벤트 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1808,7 +1808,7 @@ tasks:
   program: P02
   sequence: 20
   title: TypingStarted 이벤트 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1826,7 +1826,7 @@ tasks:
   program: P02
   sequence: 21
   title: MemberIdentityChanged 이벤트 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1844,7 +1844,7 @@ tasks:
   program: P02
   sequence: 22
   title: 동의 거부 이벤트 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:

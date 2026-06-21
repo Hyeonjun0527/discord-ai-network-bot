@@ -1371,7 +1371,7 @@ tasks:
   program: P01
   sequence: 25
   title: P01 모듈 경계 검증 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -1385,6 +1385,12 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "독립 리뷰(critic, 자가승인 금지) 수행 → CHANGES_REQUIRED. 발견 4종: ArchUnit 금지의존 #2(participation→하류 구현) 미구현·채널모드 enum 분열·ADR 0008 SSOT 누락·ReEvaluate DIP 모호"
+  - "4종 전부 수정·재검증: NexaArchitectureTest에 participation 규칙+self-test 추가(tests=8→10, failures=0, 금지의존 5종 전부 강제), ADR 0009 채널모드 2축(ASSISTANT/MEMBER/OFF + shadow/canary/live) 정합, nexaContexts.adr에 0008 추가, actionruntime/participation 계약에 ReEvaluationPort DIP 명시"
+  - "acceptance 충족: 순환 의존 없음(module-dag DAG + DIP 단방향화, ArchUnit 강제), 신규 책임이 6개 컨텍스트에 단일 소유(critic 확인), ADR 0007~0010 전부 Accepted(미승인은 구현 BLOCK)"
+  - "재현 검증: ./scripts/nexa-verify.sh all EXIT=0(docs/central/agent/i18n/protocol 전부), NexaArchitectureTest tests=10 failures=0, ssot-viewer up to date, graph VALID(500 tasks)"
+  - "human_gate satisfied: 인간 결정자 PASS 승인(2026-06-21) → P01(아키텍처 정의) 25/25 완료"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T001

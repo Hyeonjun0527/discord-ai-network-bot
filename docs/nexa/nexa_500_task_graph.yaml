@@ -2519,7 +2519,7 @@ tasks:
   program: P04
   sequence: 1
   title: MessageFragment 도메인 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2531,13 +2531,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "MessageFragment 순수 도메인 모델: 동등성·정렬 규칙(JDA/JPA 의존 없음)"
+  - "acceptance 충족: 단위 테스트로 동등성·정렬 증명, NexaArchitectureTest 10/10(순수성). central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T002
   program: P04
   sequence: 2
   title: UtteranceBurst 식별자와 aggregate 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2549,13 +2552,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "UtteranceBurst 식별자·aggregate: OPEN/FINALIZED/CORRECTED 상태 머신"
+  - "acceptance 충족: 불법 상태 전이(순서)를 거부함을 단위 테스트로 증명. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T003
   program: P04
   sequence: 3
   title: 작성자별 BurstSession 상태 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2567,13 +2573,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "작성자별 BurstSession 상태: (author, channel/thread) 키로 세션 분리"
+  - "acceptance 충족: 서로 다른 채널·thread 세션이 섞이지 않음을 단위 테스트로 증명. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T004
   program: P04
   sequence: 4
   title: 고정 간격 baseline segmenter 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2585,13 +2594,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "고정 간격 baseline segmenter(순수 함수): gap 임계로 fragment를 버스트로 분할"
+  - "acceptance 충족: 경계 직전/직후 fixture가 예상대로 분리됨을 단위 테스트로 증명. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T005
   program: P04
   sequence: 5
   title: 채널별 burst gap 설정 모델 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2604,13 +2616,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "채널별 burst gap 설정 모델: 채널별 gap 임계 + 안전 기본값"
+  - "acceptance 충족: 설정 부재 시 안전 기본값 적용, 런타임 변경은 새 fragment부터 반영됨을 단위 테스트로 증명. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T006
   program: P04
   sequence: 6
   title: 동적 gap feature 계산기 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2622,13 +2637,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "동적 gap feature 계산기(순수): 과거 fragment만으로 gap feature 산출"
+  - "acceptance 충족: feature가 미래 이벤트를 참조하지 않고 replay에서 동일(결정론)함을 단위 테스트로 증명. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T007
   program: P04
   sequence: 7
   title: 다른 작성자 개입 종료 규칙 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2640,13 +2658,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "다른 작성자 개입 종료 규칙: 타 작성자 메시지로 현재 버스트 종료, 이모지/시스템 메시지는 type 규칙별 처리"
+  - "acceptance 충족: 이모지/시스템 메시지가 설정된 type 규칙에 따라 종료 여부가 다름을 단위 테스트로 증명. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T008
   program: P04
   sequence: 8
   title: reply 대상 변경 경계 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2658,13 +2679,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "reply 대상 변경 경계: reply target이 바뀌면 버스트 경계, 동일 target 연속은 유지"
+  - "acceptance 충족: 동일 reply target의 짧은 연속 메시지가 한 버스트로 유지됨을 단위 테스트로 증명. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T009
   program: P04
   sequence: 9
   title: thread 경계와 부모 채널 경계 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2676,13 +2700,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "thread 경계·부모 채널 경계: thread와 부모 채널을 별도 버스트 컨텍스트로 분리"
+  - "acceptance 충족: thread 이동 fixture에서 잘못된 병합이 없음을 단위 테스트로 증명. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T010
   program: P04
   sequence: 10
   title: typing 신호 기반 종료 연장 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2694,6 +2721,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "typing 신호 기반 종료 연장: typing 중이면 버스트 종료를 연장하되 hard deadline 상한"
+  - "acceptance 충족: typing 이벤트 유실 시 무한 연기되지 않고 hard deadline이 작동함을 주입 Clock 테스트로 증명. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T011

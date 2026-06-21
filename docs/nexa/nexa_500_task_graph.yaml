@@ -4395,7 +4395,7 @@ tasks:
   program: P07
   sequence: 14
   title: 비동기 기억 후보 추출 요청 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4407,13 +4407,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "비동기 기억 후보 추출 요청 모델: 추출을 비동기 큐로 분리(Discord hot-path 비차단)"
+  - "acceptance 충족: 추출 실패가 Discord 응답 시간을 막지 않음(비동기, fire-and-forget)을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T015
   program: P07
   sequence: 15
   title: GLM 기반 기억 후보 추출 adapter 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4425,13 +4428,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "GLM 기반 기억 후보 추출 adapter: routing CloudLlm 포트만 경유(ADR 0006 anti-corruption, socialmemory domain에 glm/Z.AI 타입 비노출)"
+  - "acceptance 충족: payload 최소화(외부 전송 금지 필드 제외)·timeout·결과 schema validation 적용을 fake CloudLlm 테스트로 확인(실제 API 미호출). central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T016
   program: P07
   sequence: 16
   title: 기억 후보 검증·승격 서비스 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4443,13 +4449,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "기억 후보 검증·승격 서비스: GLM 후보를 검증 후 낮은 confidence 기억으로 승격(또는 기각)"
+  - "acceptance 충족: 모든 승격 결과에 reason code가 남음(감사 가능)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T017
   program: P07
   sequence: 17
   title: 주기적 memory consolidation job 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4461,13 +4470,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "주기적 memory consolidation job(주입 Clock): 후보 정리·중복 병합·감쇠 적용"
+  - "acceptance 충족: 재시작·중복 실행에도 같은 기억이 중복 생성되지 않음(idempotent)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T018
   program: P07
   sequence: 18
   title: 현재 유효 기억 조회 포트 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4479,13 +4491,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "현재 유효 기억 조회 포트: as-of 시점 기준 유효 기억 조회(speech가 소비)"
+  - "acceptance 충족: 현재 조회와 과거 시점(as-of) 조회가 서로 다른 결과를 낼 수 있음(시간 버전)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T019
   program: P07
   sequence: 19
   title: 기억 retrieval ranking 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4497,13 +4512,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "기억 retrieval ranking: 관련성·최근성·confidence 순위(validity 필터 우선)"
+  - "acceptance 충족: expired/conflicted/deleted 기억은 점수와 무관하게 필터링됨을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T020
   program: P07
   sequence: 20
   title: retrieval 다양성·중복 억제 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4515,13 +4533,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "retrieval 다양성·중복 억제(MMR류): 유사 기억 중복을 억제해 다양한 top-k 선택"
+  - "acceptance 충족: top-k가 하나의 오래된 사건 복제본으로 채워지지 않음(다양성)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T021
   program: P07
   sequence: 21
   title: 닉네임 변경 temporal fact 처리 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4534,13 +4555,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "닉네임 변경 temporal fact 처리: MemberIdentityChanged를 TemporalFact 버전(닉네임 history)으로"
+  - "acceptance 충족: 현재 prompt에는 최신 닉네임만 기본 제공, 과거 회상 시 이전 닉네임을 사용할 수 있음(시간 버전)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T022
   program: P07
   sequence: 22
   title: 농담과 사실 구분 fixture·규칙 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -4553,13 +4577,18 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "농담과 사실 구분 fixture(합성) + 규칙: 농담·부정문·인용을 사실 후보에서 배제"
+  - "acceptance 충족: 농담/부정/인용을 단일 사실로 승격하지 않음(거짓 기억 방지)을 fixture·테스트로 확인"
+  - "central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 거짓 기억 방지 윤리 가드 통과"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T023
   program: P07
   sequence: 23
   title: pgvector 보조 인덱스 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4572,13 +4601,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "pgvector 보조 인덱스(V57 memory_vector, additive): 의미 검색 보조(없으면 fallback)"
+  - "acceptance 충족: vector top-k가 validity(만료/충돌/삭제) 필터를 우회하지 않음을 테스트로 확인. central BUILD SUCCESSFUL, 기존 마이그레이션 무변경"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T024
   program: P07
   sequence: 24
   title: stale memory 평가 스위트 작성
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -4591,6 +4623,10 @@ tasks:
   acceptance: 각 실패가 source와 retrieval decision으로 재현 가능하다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "stale memory 평가 스위트: 만료/충돌/잘못된 기억 retrieval을 측정하는 평가 fixture"
+  - "acceptance 충족: 각 실패가 source(provenance)와 retrieval decision으로 재현 가능함을 확인"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T025

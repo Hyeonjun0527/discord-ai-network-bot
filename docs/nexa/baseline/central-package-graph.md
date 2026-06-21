@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 22 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 433
-- Cross-node import edges: 432
+- Kotlin files scanned: 450
+- Cross-node import edges: 433
 
 ## Nodes
 
@@ -32,7 +32,7 @@
 | `requestlog` | 5 |
 | `routing` | 19 |
 | `shared` | 7 |
-| `socialmemory` | 34 |
+| `socialmemory` | 51 |
 
 ## Directed cross-node imports
 
@@ -137,6 +137,7 @@
 | `socialmemory` | `ainetwork` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/ainetwork/JpaNiaAffinityBridge.kt` | `com.discordassistant.central.ainetwork.adapter.outbound.persistence.UserAffinityRepository` |
 | `socialmemory` | `globalpromptset` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/globalpromptset/GlobalPromptSetIdentityKernelBridge.kt` | `com.discordassistant.central.globalpromptset.application.GlobalPromptSetService` |
 | `socialmemory` | `participation` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/event/SocialStateUpdate.kt` | `com.discordassistant.central.participation.domain.model.state.ChannelScope` |
+| `socialmemory` | `routing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/extraction/CloudLlmMemoryCandidateExtractor.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
 | `socialmemory` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/globalpromptset/GlobalPromptSetIdentityKernelBridge.kt` | `com.discordassistant.central.shared.NexaIdentity` |
 
 ## Cycles
@@ -169,6 +170,7 @@ Incoming:
 | `platform` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/platform/discord/command/AskCommandHandler.kt` | `com.discordassistant.central.routing.application.RequestOrchestrator` |
 | `quota` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/quota/application/BlocklistService.kt` | `com.discordassistant.central.routing.application.port.BlocklistChecker` |
 | `requestlog` | `routing` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/requestlog/application/UsageService.kt` | `com.discordassistant.central.routing.application.port.UsageRecorder` |
+| `socialmemory` | `routing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/extraction/CloudLlmMemoryCandidateExtractor.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
 
 ### `channelai`
 

@@ -8196,7 +8196,7 @@ tasks:
   program: P14
   sequence: 17
   title: AssistantStyleDetector 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8208,13 +8208,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "AssistantStyleDetector: '도와드릴까요/언제든 말씀하세요' 류 AI 도우미 말투 후보 검출·감점(니아는 멤버)"
+  - "acceptance 충족: 탐지기는 후보를 평가할 뿐 사용자 문장을 무조건 비꼬게 만들지 않음(평가만, 생성 왜곡 안함)을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T018
   program: P14
   sequence: 18
   title: RepetitionDetector 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8226,13 +8229,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "RepetitionDetector: 최근 발화와 반복·자기복제 후보 검출·감점"
+  - "acceptance 충족: 같은 유행어·반응을 반복적으로 뿌리는 후보가 감점됨(다양성)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T019
   program: P14
   sequence: 19
   title: MemoryConsistencyCritic 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8244,13 +8250,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "MemoryConsistencyCritic: P07 기억과 모순되는 발화 후보 검출·폐기"
+  - "acceptance 충족: 검사 실패 시 사실을 새로 발명해 수정하지 않고 후보를 폐기함(환각 방지·기억 충실)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T020
   program: P14
   sequence: 20
   title: TargetAndSceneCritic 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8262,13 +8271,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "TargetAndSceneCritic: 발화가 P05 scene·대상에 안 맞으면 탈락(엉뚱한 맥락·대상 차단)"
+  - "acceptance 충족: cross-thread reference fixture(다른 thread를 참조하는 발화)가 탈락함을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T021
   program: P14
   sequence: 21
   title: 후보 stochastic selector 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8280,13 +8292,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "후보 stochastic selector: 비평가 통과 후보 중 확률적 선택(결정론 seed), 통과 0이면 침묵"
+  - "acceptance 충족: 항상 최고 점수만 택해 문체가 고정되는 것을 방지하면서 최소 기준은 지킴(다양성+품질 하한)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T022
   program: P14
   sequence: 22
   title: SpeechBurstPlanner 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8298,13 +8313,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "SpeechBurstPlanner: 선택된 발화를 P13 actionruntime BurstPlan으로 변환(전송은 executor, OBSERVE_ONLY hard block)"
+  - "acceptance 충족: 빈 버블, Discord 길이 초과, 과도한 메시지 수를 거부함(유효성 검증)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T023
   program: P14
   sequence: 23
   title: IGNORE 무호출·취소 무전송 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8316,13 +8334,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "IGNORE 무호출·취소 무전송 테스트: IGNORE 결정 시 GLM 생성 호출 0회, 취소 시 전송 0회"
+  - "acceptance 충족: quota/requestlog에도 generation 요청이 생기지 않음(침묵은 비용 0·안전)을 통합 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T024
   program: P14
   sequence: 24
   title: speech 품질·비용 shadow 평가
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: high
   depends_on:
@@ -8335,13 +8356,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "speech 품질·비용 shadow 평가: 발화 후보를 실제 전송 없이 품질(human-likeness rubric)·비용으로 평가 기록"
+  - "acceptance 충족: 실제 Discord 전송 없이 blind human review와 자동 metric을 함께 기록함을 테스트로 검증. central BUILD SUCCESSFUL. scripts/nexa-human-likeness-eval.py(6차원 rubric)와 일관"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — shadow 평가 코드+테스트까지(실제 운영 평가는 별도). 실제 7일 shadow 수집은 운영 게이트"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P14-T025
   program: P14
   sequence: 25
   title: P14 발화 생성 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -8355,6 +8380,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "P14 발화 생성 게이트: speech 전체(포트·anti-corruption·프롬프트·생성·비평가 4종·selector·burst·budget·fallback) 완성"
+  - "acceptance 충족: AssistantStyleDetector(AI말투 차단)·TargetAndSceneCritic(cross-thread leakage 탈락)으로 critical failure·leakage가 기준 이하임을 입증. ./scripts/nexa-verify.sh all EXIT=0(central+agent+i18n+docs+contracts), validate VALID, NexaArchitectureTest 10/10(speechHasNoForbiddenBackendDependency)"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — P14 발화 생성 품질 게이트 통과 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T001

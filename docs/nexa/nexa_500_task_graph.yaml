@@ -1935,7 +1935,7 @@ tasks:
   program: P02
   sequence: 25
   title: P02 개인정보 설계 승인 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -1950,6 +1950,11 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "P02 개인정보 설계 25 task 전부 완료: 데이터 범주·관리자 동의·옵트아웃·채널/DM 정책·외부 GLM 전송 최소화·학습 적격성·보존 TTL·삭제 전파·가명화(코드)·암호화 ADR·로그 redaction·데이터 계보·동의 조회 포트(코드)·NormalizedDiscordEvent+7개 이벤트(코드)·Flyway V50·동의 경계 통합 테스트"
+  - "재현 검증: ./scripts/nexa-verify.sh all EXIT=0(docs graph VALID + central BUILD + agent pytest + i18n + protocol 전부), validate-task-graph VALID. conversation 관찰 도메인 코드의 ArchUnit 순수성·동의 경계 차단·가명화 길드 격리 테스트 통과"
+  - "acceptance: 동의·보존·삭제·GLM 전송·학습 적격성 설계 모두 ACCEPTED. 미해결 BLOCKER 1건 등록 — T009 '삭제 후 비가역 hash 보존'의 법적 적합성 법무 검토 OPEN, P03-T022(event store redaction) 구현 전 해소 필요"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21)으로 자율 승인 → P02 개인정보 설계 게이트 통과, P03 수집 구현 진입 허용(단 T009 법무 BLOCKER는 추적)"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T001

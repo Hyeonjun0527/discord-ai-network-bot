@@ -1690,7 +1690,7 @@ tasks:
   program: P02
   sequence: 14
   title: 동의 상태 조회 포트 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1702,6 +1702,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "central conversation/application/port/out/ConsentPolicyPort.kt + 순수 도메인 ConsentDecision 신설: guild/user/channel 동의 상태를 단일 포트로 조회(길드 활성화 AND 개인 옵트아웃 아님 AND 채널 관찰 허용 합성). consent-model/user-opt-out/channel-scope 정합"
+  - "acceptance 충족: 포트·반환 타입이 순수(guild adapter/JPA entity 미참조), NexaArchitectureTest 10/10 통과(conversation 첫 실제 코드 후에도 nexaDomainsArePure·conversation 규칙 유지), ConsentDecisionDomainTest 추가"
+  - "검증: ./scripts/nexa-verify.sh central BUILD SUCCESSFUL(기존 ArchitectureTest 9 + Nexa 10 무회귀), docs 통과, package-graph 동기"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T015

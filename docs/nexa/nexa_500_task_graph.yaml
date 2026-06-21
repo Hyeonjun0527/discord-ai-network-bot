@@ -2920,7 +2920,7 @@ tasks:
   program: P04
   sequence: 20
   title: 닉네임 대화 golden fixture 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2931,13 +2931,17 @@ tasks:
   acceptance: 첫 네 줄이 한 버스트이며 후속 화자 메시지는 별도 버스트로 정확히 재생된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "닉네임 대화 golden fixture(합성, boundary 라벨): 닉네임 버스트 시나리오를 정답 경계와 함께 기록"
+  - "acceptance 충족: 첫 네 줄이 한 버스트, 후속 화자 메시지가 별도 버스트로 정확 재생됨을 fixture 측정으로 확인"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T021
   program: P04
   sequence: 21
   title: 버스트 property-based 테스트 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -2949,13 +2953,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "버스트 property-based 테스트: 무작위 이벤트 순열에 대해 버스트 projection 불변식 검증"
+  - "acceptance 충족: 같은 이벤트 multiset+정렬 규칙으로 항상 동일 projection(결정론)을 property 테스트로 증명. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T022
   program: P04
   sequence: 22
   title: 버스트 평가 데이터셋 형식 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -2967,13 +2974,17 @@ tasks:
   acceptance: 경계 정답과 애매함 라벨을 분리할 수 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/conversation/burst-evaluation.md: 버스트 평가 데이터셋 형식(boundary 정답 + 애매함 라벨 분리 스키마)"
+  - "acceptance 충족: 경계 정답(boundary)과 애매함(ambiguous) 라벨을 분리 표현 가능함을 형식 정의로 확인"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T023
   program: P04
   sequence: 23
   title: baseline 버스트 정밀도·재현율 측정
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -2985,13 +2996,17 @@ tasks:
   acceptance: boundary F1, over-merge, over-split, 언어/채널별 오류가 보고된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/experiments/EXP-burst-baseline.md: fixed_gap vs dynamic_feature 기준선의 boundary precision/recall/F1·over-split·over-merge·언어/채널별 분해 측정 프레임"
+  - "acceptance 충족: boundary F1·over-merge·over-split·언어/채널별 오류가 라벨된 golden fixture 기준으로 보고됨(운영 품질 보증 아닌 baseline)"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T024
   program: P04
   sequence: 24
   title: 버스트 관측 메트릭 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3003,6 +3018,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "버스트 관측 메트릭(Micrometer): 버스트 생성·finalize·교정 카운트/지연 메트릭"
+  - "acceptance 충족: guild/channel 고카디널리티 ID를 metric label로 직접 노출하지 않음(카디널리티 폭발 방지)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T025

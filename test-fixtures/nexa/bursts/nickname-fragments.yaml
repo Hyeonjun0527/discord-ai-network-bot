@@ -1,0 +1,115 @@
+# NEXA-P04-T020 burst golden fixture (synthetic; no real user data).
+#
+# Records the nickname/koala chat from PROJECT_CONTEXT section 2.5 as fragment rows with
+# per-speaker burst ground truth. This is a *burst-segmentation* fixture (fragment -> burst
+# boundary labels), distinct from the conversation replay fixture under
+# test-fixtures/nexa/conversations/nickname-burst.v1.yaml. Both share the same synthetic
+# transcript so a regression in either layer is caught against the same ground truth.
+#
+# Acceptance (T020): the first four fragments form one burst; each later speaker change opens
+# a separate burst. C is interrupted by D, so C's first message is its own burst and C's
+# resumed messages form a new burst.
+schemaVersion: nexa.burst-fixture.v1
+fixtureId: nickname-fragments
+title: Fragmented nickname-change chat, fragment->burst ground truth
+source:
+  document: docs/nexa/PROJECT_CONTEXT.md
+  lineRange: 228-242
+  conversationFixture: test-fixtures/nexa/conversations/nickname-burst.v1.yaml
+  originalTimeKnown: false
+  note: Synthetic transcript with deterministic 1-second replay offsets; speaker labels only in source.
+time:
+  baseInstant: "2026-01-01T11:15:01Z"
+  resolutionMs: 1000
+channel:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  language: ko
+actors:
+  - actorId: actor-a
+    label: A
+  - actorId: actor-b
+    label: B
+  - actorId: actor-c
+    label: C
+  - actorId: actor-d
+    label: D
+# Fragments in deterministic source order. `atOffsetMs` is the only replay clock.
+fragments:
+  - seq: 1
+    messageId: msg-nickname-001
+    authorId: actor-a
+    atOffsetMs: 0
+    content: "닉네임"
+  - seq: 2
+    messageId: msg-nickname-002
+    authorId: actor-a
+    atOffsetMs: 1000
+    content: "바꿔"
+  - seq: 3
+    messageId: msg-nickname-003
+    authorId: actor-a
+    atOffsetMs: 2000
+    content: "ㅃㄹ"
+  - seq: 4
+    messageId: msg-nickname-004
+    authorId: actor-a
+    atOffsetMs: 3000
+    content: "헷갈리니까"
+  - seq: 5
+    messageId: msg-nickname-005
+    authorId: actor-b
+    atOffsetMs: 4000
+    content: "웅"
+  - seq: 6
+    messageId: msg-nickname-006
+    authorId: actor-b
+    atOffsetMs: 5000
+    content: "니키"
+  - seq: 7
+    messageId: msg-nickname-007
+    authorId: actor-c
+    atOffsetMs: 6000
+    content: "음 그래그래"
+  - seq: 8
+    messageId: msg-nickname-008
+    authorId: actor-d
+    atOffsetMs: 7000
+    content: "그래"
+  - seq: 9
+    messageId: msg-nickname-009
+    authorId: actor-c
+    atOffsetMs: 8000
+    content: "아니"
+  - seq: 10
+    messageId: msg-nickname-010
+    authorId: actor-c
+    atOffsetMs: 9000
+    content: "코알라였음??????"
+  - seq: 11
+    messageId: msg-nickname-011
+    authorId: actor-c
+    atOffsetMs: 10000
+    content: "누군가 했네"
+# Ground-truth bursts: ordered by first fragment seq. Each fragment belongs to exactly one burst.
+expectedBursts:
+  - burstId: burst-a-001
+    actorId: actor-a
+    messageIds: [msg-nickname-001, msg-nickname-002, msg-nickname-003, msg-nickname-004]
+    reason: same author, contiguous messages, short gaps
+  - burstId: burst-b-001
+    actorId: actor-b
+    messageIds: [msg-nickname-005, msg-nickname-006]
+    reason: same author, contiguous messages, short gaps
+  - burstId: burst-c-001
+    actorId: actor-c
+    messageIds: [msg-nickname-007]
+    reason: interrupted by actor D before next C message
+  - burstId: burst-d-001
+    actorId: actor-d
+    messageIds: [msg-nickname-008]
+    reason: single-message acknowledgment
+  - burstId: burst-c-002
+    actorId: actor-c
+    messageIds: [msg-nickname-009, msg-nickname-010, msg-nickname-011]
+    reason: same author resumes after D, forming a new burst

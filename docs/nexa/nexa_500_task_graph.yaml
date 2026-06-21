@@ -1712,7 +1712,7 @@ tasks:
   program: P02
   sequence: 15
   title: NormalizedDiscordEvent 공통 봉투 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1725,6 +1725,11 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "central conversation/domain/model/event/ 에 sealed NormalizedDiscordEvent 봉투 신설: eventId·guildId·channelId·occurredAt·receivedAt·sourceSequence·privacyClass(High/Medium/Low) + 순수 값 타입(EventId/GuildId/ChannelId/PrivacyClass), JDA 타입 없음"
+  - "acceptance 충족: NormalizedDiscordEventTest 7/7 통과 — 동등성(equals/hashCode)·순서 비교(sourceSequence/occurredAt 결정론적)·직렬화 round-trip"
+  - "도메인 순수성: NexaArchitectureTest 10/10(conversation domain이 Spring/JPA/JDA/하류 미참조), 기존 ArchitectureTest 9 무회귀"
+  - "검증: ./scripts/nexa-verify.sh central BUILD SUCCESSFUL, docs 통과, package-graph 동기"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T016

@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 22 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 407
-- Cross-node import edges: 427
+- Kotlin files scanned: 417
+- Cross-node import edges: 430
 
 ## Nodes
 
@@ -23,7 +23,7 @@
 | `licensing` | 18 |
 | `multiresponse` | 22 |
 | `onboarding` | 14 |
-| `participation` | 7 |
+| `participation` | 8 |
 | `platform` | 39 |
 | `preset` | 22 |
 | `provider` | 15 |
@@ -32,7 +32,7 @@
 | `requestlog` | 5 |
 | `routing` | 19 |
 | `shared` | 7 |
-| `socialmemory` | 9 |
+| `socialmemory` | 18 |
 
 ## Directed cross-node imports
 
@@ -134,6 +134,8 @@
 | `routing` | `provider` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt` | `com.discordassistant.central.provider.adapter.outbound.persistence.ProviderContributionPolicyEntity` |
 | `routing` | `relay` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/routing/application/RequestOrchestrator.kt` | `com.discordassistant.central.relay.ConnectionRegistry` |
 | `routing` | `shared` | 17 | `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt` | `com.discordassistant.central.shared.ModelBurden` |
+| `socialmemory` | `ainetwork` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/ainetwork/JpaNiaAffinityBridge.kt` | `com.discordassistant.central.ainetwork.adapter.outbound.persistence.UserAffinityRepository` |
+| `socialmemory` | `participation` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/event/SocialStateUpdate.kt` | `com.discordassistant.central.participation.domain.model.state.ChannelScope` |
 
 ## Cycles
 
@@ -221,6 +223,7 @@ Incoming:
 | `relay` | `ainetwork` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/relay/RelayWebSocketHandler.kt` | `com.discordassistant.central.ainetwork.application.AiNetworkGrowthService` |
 | `requestlog` | `ainetwork` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/requestlog/application/AnalyticsService.kt` | `com.discordassistant.central.ainetwork.adapter.outbound.persistence.AiNetworkEventRepository` |
 | `routing` | `ainetwork` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/routing/adapter/outbound/DbProviderProfileProvider.kt` | `com.discordassistant.central.ainetwork.adapter.outbound.persistence.ProviderCapabilityProfileEntity` |
+| `socialmemory` | `ainetwork` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/ainetwork/JpaNiaAffinityBridge.kt` | `com.discordassistant.central.ainetwork.adapter.outbound.persistence.UserAffinityRepository` |
 
 ### `platform/discord`
 

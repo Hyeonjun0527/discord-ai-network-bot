@@ -3903,7 +3903,7 @@ tasks:
   program: P06
   sequence: 16
   title: 사회 상태 update event 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3916,13 +3916,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "사회 상태 update event(domain-events 계약): 상태 갱신 이벤트"
+  - "acceptance 충족: 각 update가 idempotency key와 projection version을 가짐을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T017
   program: P06
   sequence: 17
   title: Clock 기반 감쇠 함수 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3935,13 +3938,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "Clock 기반 감쇠 함수(순수): 시간 경과로 사회 상태 신호 약화(영구 낙인 방지)"
+  - "acceptance 충족: 시스템 시각 직접 접근 없이 주입 Clock으로 시간 이동 테스트 가능함을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T018
   program: P06
   sequence: 18
   title: 사회 상태 persistence 스키마 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3954,13 +3960,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "V55__nexa_social_state.sql(additive, 기존 무변경): 사회 상태 snapshot + source watermark"
+  - "acceptance 충족: 원본 content 없이 재생용 source watermark만 보존(data-categories High 비영속)함을 확인. central BUILD SUCCESSFUL, 기존 마이그레이션 무변경"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T019
   program: P06
   sequence: 19
   title: 상태 snapshot 재구축 유스케이스 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3972,13 +3981,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "상태 snapshot 재구축 유스케이스: event store/감쇠 재생으로 사회 상태 재구축"
+  - "acceptance 충족: 현재 snapshot 삭제 후 같은 hash의 상태를 얻음(결정론적 재구축)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T020
   program: P06
   sequence: 20
   title: ainetwork 조회 브리지 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3990,13 +4002,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ainetwork 조회 브리지(읽기 전용 포트, ADR 0010): NiaAffinityView 등 매핑 읽기만, 복제 저장 안 함"
+  - "acceptance 충족: socialmemory domain이 ainetwork entity를 직접 import하지 않음(읽기 포트만)을 ArchUnit/테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T021
   program: P06
   sequence: 21
   title: ainetwork 중복 쓰기 방지 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4008,13 +4023,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ainetwork 중복 쓰기 방지 테스트: socialmemory가 ainetwork(호감도) 테이블에 쓰지 않음을 검증(ADR 0010)"
+  - "acceptance 충족: 한 이벤트가 호감도/관계 상태에 중복 side effect를 만들지 않음(dedup event ID)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T022
   program: P06
   sequence: 22
   title: 관리자용 상태 설명 DTO 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4026,13 +4044,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "관리자용 상태 설명 DTO: 사회 상태 값을 관찰 사실로 환원·설명(원문/금지 추론 없음)"
+  - "acceptance 충족: 숫자의 의미와 표본 부족(low-sample) 상태가 UI에 드러남(설명 가능성)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T023
   program: P06
   sequence: 23
   title: 사용자 삭제·reset 처리 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4044,13 +4065,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "사용자 삭제·reset 처리(deletion-propagation 준수): 사용자 요청 시 사회 상태 제거/초기화"
+  - "acceptance 충족: 삭제 후 정책 feature builder가 해당 사용자의 과거 상태를 읽지 못함을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T024
   program: P06
   sequence: 24
   title: 사회 상태 replay·감쇠 테스트 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -4062,6 +4086,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "사회 상태 replay·감쇠 테스트: 동일 seed·Clock·projection version 재생 시 동일 상태"
+  - "acceptance 충족: seed·Clock·projection version이 기록돼 flakiness가 없음(결정론)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P06-T025

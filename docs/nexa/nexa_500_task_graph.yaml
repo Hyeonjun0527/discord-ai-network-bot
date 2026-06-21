@@ -1191,7 +1191,7 @@ tasks:
   program: P01
   sequence: 17
   title: guild 정책 소유권 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -1202,13 +1202,19 @@ tasks:
   acceptance: 중복 설정 테이블이 생기지 않고 읽기 우선순위가 하나다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/architecture/guild-policy-boundary.md 작성: 활성화·채널 모드(ASSISTANT/MEMBER/OFF)·talkativeness·제외·운영 롤아웃은 guild 정책 소유, channelai는 채널 프로필만 소유로 확정"
+  - "사용자 결정 반영: 길드 정책 편집 입구는 웹 관리 대시보드가 유일(디스코드 명령으로 정책 변경 금지). 채널 모드(무엇처럼)와 롤아웃(얼마나 넓게)을 별개 축으로 구분"
+  - "acceptance 충족: 중복 저장 금지 + 단일 EffectiveGuildPolicyView 합성 읽기 우선순위 하나, ASSISTANT 채널=항상 SPEAK 명시"
+  - "./scripts/nexa-verify.sh docs 통과(graph VALID, 링크 OK)"
+  - "human_gate satisfied: 인간 결정자 ACCEPTED 승인(2026-06-21, 정책=웹 전용·2종 채널 정정 반영) → VERIFIED"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T018
   program: P01
   sequence: 18
   title: licensing 기능 게이트 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -1219,13 +1225,18 @@ tasks:
   acceptance: 안전·개인정보·무응답 기능은 결제 여부와 무관하게 유지된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/architecture/licensing-boundary.md 작성: 안전 가드레일·개인정보 보호·무응답(IGNORE/WAIT) 권리·동의 철회는 결제와 무관하게 항상 유지"
+  - "acceptance 충족: 라이선스 게이트는 부가 역량(긴 컨텍스트·고급 모델·고급 분석)만 토글하고 participation 결정 로직·안전 하한을 바꾸지 않음. FeatureGateView 읽기 포트만 사용(결제 로직 비포함) 명시"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate satisfied: 인간 결정자 ACCEPTED 승인(2026-06-21) → VERIFIED"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T019
   program: P01
   sequence: 19
   title: onboarding 동의·설정 경계 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -1236,6 +1247,12 @@ tasks:
   acceptance: 기본값이 자동 학습 또는 자동 발화가 아니며 되돌릴 수 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/architecture/onboarding-boundary.md 작성(사용자 결정 반영): 봇 초대 후 'AI 채널 자동 만들기' 버튼(기존 NiaChannelSetup 확장)으로 2종 AI 채널 생성 — AI 질문 채널(ASSISTANT, 무조건 답변)·AI 멤버 채널(MEMBER, 사람처럼)"
+  - "정책·설정 편집은 웹 관리 대시보드에서만(디스코드 명령으로 정책 변경 금지). 생성된 채널은 즉시 활성(질문=바로 답변, 멤버=바로 사람처럼)"
+  - "acceptance 충족: 봇 초대만으론 자동 발화 없음(버튼=명시 활성화/동의), 모든 활성·동의는 웹에서 개별 철회 가능·즉시 반영, 기억 삭제 경로(P03) 연계"
+  - "./scripts/nexa-verify.sh docs 통과"
+  - "human_gate satisfied: 인간 결정자 ACCEPTED 승인(2026-06-21, 2종 채널·웹 전용 정정 반영) → VERIFIED"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T020

@@ -5730,7 +5730,7 @@ tasks:
   program: P10
   sequence: 1
   title: ml/social-policy 프로젝트 골격 생성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5744,13 +5744,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "ml/social-policy 신규 Python 프로젝트(pyproject + src/nexa_policy + tests)"
+  - "acceptance 충족: central-server 런타임 의존 없이 독립 테스트 실행(54 passed, 1 skipped), ruff 통과. central/provider-agent 무변경"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T002
   program: P10
   sequence: 2
   title: 데이터 export 보안 경계 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -5762,13 +5765,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "데이터 export 보안 경계(test_export_boundary.py): 승인된 projection 조회 인터페이스만, 원문·실제 user id 미포함"
+  - "acceptance 충족: 운영 DB 직접 dump 금지·승인 projection 조회만 사용함을 테스트로 검증. 실제 운영 데이터 미접근(합성 fixture만)"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — export 보안 경계 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T003
   program: P10
   sequence: 3
   title: Parquet 이벤트 시퀀스 schema 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5781,13 +5788,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "Parquet 이벤트 시퀀스 schema(contracts/event_sequence.schema.json, test_schema.py)"
+  - "acceptance 충족: 원문 포함 여부가 명시(원문 미포함)되고 schema version이 고정됨을 테스트로 검증"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T004
   program: P10
   sequence: 4
   title: Masked Member 샘플 단위 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -5798,13 +5808,17 @@ tasks:
   acceptance: 정답이 문장 하나가 아니라 action/target/time/burst 분포임이 명확하다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "Masked Member 샘플 단위(test_masking.py): 가명·신호만, 실제 user id/원문 미포함"
+  - "acceptance 충족: 정답이 문장 하나가 아니라 action/target/time/burst 분포임이 명확함을 테스트로 검증"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — masking 단위 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T005
   program: P10
   sequence: 5
   title: 행동 label 생성기 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5816,13 +5830,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "행동 label 생성기(test_labels.py): IGNORE/REACT/SPEAK 등 행동 라벨"
+  - "acceptance 충족: 관찰 불확실한 샘플을 강제로 한 클래스에 넣지 않고 UNKNOWN mask를 둠을 테스트로 검증"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T006
   program: P10
   sequence: 6
   title: target label 생성기 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5834,13 +5851,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "target label 생성기(test_labels.py): 응답 대상(누구에게) 라벨"
+  - "acceptance 충족: 복수 타당 target과 none을 표현함을 테스트로 검증"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T007
   program: P10
   sequence: 7
   title: delay label 생성기 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5852,13 +5872,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "delay label 생성기(test_labels.py): 응답 지연 시간 라벨"
+  - "acceptance 충족: 세션 종료와 진짜 never를 동일시하지 않음(censored 구분)을 테스트로 검증"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T008
   program: P10
   sequence: 8
   title: burst shape label 생성기 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5870,13 +5893,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "burst shape label 생성기(test_labels.py): P04 버스트 정의와 일관된 메시지 묶음 형태 라벨"
+  - "acceptance 충족: 한 인간의 연속 메시지가 P04 버스트 기준으로 묶임을 테스트로 검증"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T009
   program: P10
   sequence: 9
   title: social act 약지도 라벨러 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5888,13 +5914,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "social act 약지도 라벨러(test_labels.py): 발화 사회적 기능(질문/동의/농담 등) weak label"
+  - "acceptance 충족: 약지도 confidence와 모델 version을 저장하고 gold label로 오인하지 않음을 테스트로 검증"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T010
   program: P10
   sequence: 10
   title: negative opportunity window 생성기 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5906,13 +5935,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "negative opportunity window 생성기(test_windows_and_sessionize.py): SILENT(미발화) 기회를 샘플링"
+  - "acceptance 충족: 모든 millisecond를 negative로 만들어 class imbalance를 폭발시키지 않음(샘플링)을 테스트로 검증"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T011
   program: P10
   sequence: 11
   title: 대화 세션 경계 생성기 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5924,13 +5956,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "대화 세션 경계 생성기(test_windows_and_sessionize.py): P05 장면/세션 정의와 일관된 경계화"
+  - "acceptance 충족: split 이후 미래 세션 정보가 이전 샘플 feature에 들어가지 않음(누출 방지)을 테스트로 검증"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T012
   program: P10
   sequence: 12
   title: guild-level train/validation/test split 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5942,13 +5977,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "guild-level split(test_split.py): guild 단위로 train/validation/test 분할(결정론 seed)"
+  - "acceptance 충족: 동일 길드와 파생 샘플이 둘 이상의 split에 나타나지 않음(group leakage 방지)을 테스트로 검증"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T013
   program: P10
   sequence: 13
   title: 시간 기반 holdout split 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5960,6 +5998,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "시간 기반 holdout split(test_split.py): cutoff 시각 기준 과거=train, 이후=holdout"
+  - "acceptance 충족: cutoff 이후 이벤트가 train feature/label에 들어가지 않음(temporal leakage 방지)을 테스트로 검증"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P10-T014

@@ -14,6 +14,7 @@ scope:
   docs      task graph, NEXA fixture, 문서 링크, diff 공백 검사
   central   central-server build
   agent     provider-agent pytest/ruff/mypy
+  ml        ml/social-policy pytest/ruff/mypy (학습 데이터셋 빌더)
   i18n      i18n SSOT completeness + generated artifact drift
   protocol  wire contract drift + 양측 contract 테스트
   contracts protocol 과 동일한 alias
@@ -55,6 +56,15 @@ verify_agent() {
   )
 }
 
+verify_ml() {
+  (
+    cd ml/social-policy
+    run_command ../../.venv/bin/python -m pytest -q
+    run_command ../../.venv/bin/ruff check src tests
+    run_command ../../.venv/bin/mypy src
+  )
+}
+
 verify_i18n() {
   run_command make i18n-check
 }
@@ -76,6 +86,7 @@ run_scope() {
     docs) verify_docs ;;
     central) verify_central ;;
     agent) verify_agent ;;
+    ml) verify_ml ;;
     i18n) verify_i18n ;;
     protocol|contracts) verify_protocol ;;
     all) verify_all ;;

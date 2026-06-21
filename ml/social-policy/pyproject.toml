@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexa-social-policy"
+version = "0.1.0"
+description = "NEXA participation 정책 지도학습용 데이터셋 빌더 — 합성 fixture 전용, 운영 데이터 미접근."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+# 의도적으로 런타임 필수 의존 0개(stdlib 전용). central-server/provider-agent 런타임을 끌어오지 않는다(T001 acceptance).
+dependencies = []
+
+[project.optional-dependencies]
+# Parquet 직렬화는 선택 어댑터다. 없으면 in-memory 레코드/JSON 만 쓰고 Parquet 쓰기는 명시적으로 거부한다.
+parquet = [
+  "pyarrow>=15",
+]
+dev = [
+  "pytest>=8,<9",
+  "ruff>=0.4",
+  "mypy>=1.10",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+nexa_policy = ["py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

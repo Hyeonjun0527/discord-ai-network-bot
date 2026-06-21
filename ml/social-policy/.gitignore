@@ -1,0 +1,14 @@
+# Python 빌드/캐시 산출물
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+
+# Parquet 출력(합성 산출물 — 커밋 금지)
+*.parquet

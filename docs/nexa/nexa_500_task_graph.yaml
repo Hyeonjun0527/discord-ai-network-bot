@@ -1304,7 +1304,7 @@ tasks:
   program: P01
   sequence: 22
   title: 신규 패키지 ArchUnit 규칙 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1316,13 +1316,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "central-server/src/test/kotlin/com/discordassistant/central/arch/NexaArchitectureTest.kt 신설: NEXA 5개 도메인 순수성(application/adapter/infra/Spring/JPA/JDA 의존 금지)·conversation 하류 무지·speech 백엔드(JDA·glm·zai) 비의존 production 규칙. 빈 패키지 vacuous pass(allowEmptyShould(true)), 규칙은 패키지 패턴 빌더로 추출(DRY)"
+  - "acceptance 충족: 의도적 위반 fixture(nexafixture/domain·conversation+downstream·speech)에 규칙 적용 시 AssertionError 검출하는 self-test @Test 3종 통과"
+  - "검증: ./scripts/nexa-verify.sh central BUILD SUCCESSFUL, NexaArchitectureTest tests=8 failures=0 errors=0, 기존 ArchitectureTest 9규칙 무변경(baseline separation rule 준수)"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T023
   program: P01
   sequence: 23
   title: 기존 도메인 역의존 금지 규칙 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -1334,6 +1338,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "NexaArchitectureTest.kt 의 existingDomainsDoNotReachIntoNexaAdapter production 규칙: 기존 13개 도메인(routing/platform/channelai/ainetwork/guild/knowledge/onboarding/multiresponse/preset/licensing/provider/quota/requestlog)이 NEXA 5개 도메인의 adapter 내부를 직접 참조 금지(공개 application port만 허용)"
+  - "acceptance 충족: 공개 port 우회 import self-test(existingdomain→nexaadapter fixture)가 AssertionError 검출하는 @Test 통과"
+  - "검증: ./scripts/nexa-verify.sh central BUILD SUCCESSFUL, NexaArchitectureTest tests=8 failures=0 (T022 규칙 4 + self-test 4 동일 파일), 기존 9규칙 무변경"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P01-T024

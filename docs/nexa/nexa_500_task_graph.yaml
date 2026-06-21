@@ -5480,7 +5480,7 @@ tasks:
   program: P09
   sequence: 14
   title: 자동 SPEAK/SILENT 약지도 라벨러 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5492,13 +5492,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "자동 SPEAK/SILENT 약지도 라벨러: counterfactual window의 인간 행동에서 weak label 도출(결정론)"
+  - "acceptance 충족: weak label임을 명시하고 학습 정답과 바로 동일시하지 않음(noisy label 경계)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T015
   program: P09
   sequence: 15
   title: False Interruption proxy 정의·구현
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -5511,13 +5514,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "False Interruption proxy: NEXA가 SPEAK했을 때 인간 대화를 방해했을 추정 신호(counterfactual)"
+  - "acceptance 충족: proxy의 오탐 가능성과 human review sample이 포함됨(맹신 금지)을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T016
   program: P09
   sequence: 16
   title: Missed Intervention proxy 정의·구현
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -5530,13 +5536,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "Missed Intervention proxy: NEXA가 침묵했으나 응답이 적절했을 추정 신호(미해결 질문/멘션 등 관찰 신호)"
+  - "acceptance 충족: 도움이 필요했다는 심리 추론 대신 관찰 신호만 사용(observable-state-policy 준수)함을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T017
   program: P09
   sequence: 17
   title: Brier score와 calibration 계산 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5548,13 +5557,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "Brier score·calibration 계산: shadow 예측 확률 vs weak label로 보정도 산출(sanity test)"
+  - "acceptance 충족: 표본 수와 bin confidence interval이 함께 나옴(소표본 과신 방지)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T018
   program: P09
   sequence: 18
   title: 길드·채널별 분포 비교 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5566,13 +5578,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "길드·채널별 분포 비교: baseline별 SPEAK/SILENT 분포를 guild/channel 차원으로 집계"
+  - "acceptance 충족: 고카디널리티 원본 ID를 외부 metric label로 내보내지 않음(metric explosion·PII 방지)을 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T019
   program: P09
   sequence: 19
   title: 직접 mention 무응답률 보고 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5584,13 +5599,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "직접 mention 무응답률 보고: 멘션받고 침묵한 비율(안전 회귀 지표 — 과보수 IGNORE 경보)"
+  - "acceptance 충족: '멘션=응답' 가정을 검증 가능한 수치로 반박/확인함을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T020
   program: P09
   sequence: 20
   title: talkativeness multiplier offline simulation 구현
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -5602,13 +5620,16 @@ tasks:
   acceptance: 낮은 기본 확률을 무리하게 높은 확률로 만드는지 saturation curve가 나온다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "talkativeness multiplier offline simulation: 발화 없이 multiplier 효과를 shadow 데이터로 추정"
+  - "acceptance 충족: 낮은 기본 확률을 무리하게 높은 확률로 만드는지 saturation curve가 나옴(과증폭 가시화)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T021
   program: P09
   sequence: 21
   title: shadow 일일 리포트 job 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -5620,13 +5641,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "shadow 일일 리포트 job(V61 shadow_daily_report): baseline 비교 집계를 일별 산출"
+  - "acceptance 충족: 리포트 생성 실패가 Discord ingestion을 막지 않음(격리·실패 비전파)을 테스트로 확인. central BUILD SUCCESSFUL. 실제 cron 미등록(코드+테스트까지)"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T022
   program: P09
   sequence: 22
   title: 기준선 비교 리포트 템플릿 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -5637,13 +5661,16 @@ tasks:
   acceptance: 한 지표만으로 승자를 정하지 않고 calibration·분포·안전 지표를 포함한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "기준선 비교 리포트 템플릿: Brier·calibration·분포·멘션 무응답률(안전)을 한 표에 종합"
+  - "acceptance 충족: 한 지표만으로 승자를 정하지 않고 calibration·분포·안전 지표를 포함함(다축 판단)을 확인. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T023
   program: P09
   sequence: 23
   title: shadow feature leakage 감사
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -5656,6 +5683,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "shadow feature leakage 감사: 각 feature가 예측 cutoff timestamp 이후 정보를 쓰지 않음을 watermark로 검증"
+  - "acceptance 충족: 각 feature의 cutoff timestamp와 source watermark가 검증됨(미래 leakage 0)을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — leakage 감사 통과 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P09-T024

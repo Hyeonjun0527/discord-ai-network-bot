@@ -2495,7 +2495,7 @@ tasks:
   program: P03
   sequence: 25
   title: P03 24시간 shadow 수집 게이트
-  status: DRAFT
+  status: REVIEW
   kind: review
   risk: high
   depends_on:
@@ -2509,6 +2509,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "P03 수집 구현 T001~T024 전부 VERIFIED(JDA 매핑·event store·projection·replay·redaction·통합테스트). 코드 재현: ./scripts/nexa-verify.sh all EXIT=0(docs/central/agent/i18n/protocol), validate-task-graph VALID"
+  - "REVIEW 보류 사유(운영 게이트): acceptance(유실률·중복 side effect 0, privacy 범위 밖 0)는 허가된 테스트 서버에서 실제 Discord 게이트웨이 연결 + 발화 없이 24시간 라이브 shadow 수집·감사로만 검증 가능. 코드·설계는 준비 완료이나 실제 운영 검증은 배포 단계 필요(자율 위임 예외 — 실제 라이브/배포)"
+  - "BLOCKER 추적: (1) 실제 24시간 shadow 수집·감사 미수행(운영 단계), (2) T009 삭제 후 hash 보존 법적 적합성 법무 검토 OPEN"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P04-T001

@@ -1,0 +1,187 @@
+// Policy serving protobuf 계약(NEXA-P12-T019, 옵션 경로).
+//
+// ADR 0013(정책 서빙 경계)은 현행 JVM in-process ONNX 를 유지하고 gRPC serving 을 **옵션**으로 둔다.
+// 이 .proto 는 그 옵션 경로의 SSOT 로, JSON 정책 계약(policy-decision-request/response.schema.json,
+// 그리고 Kotlin PolicyDecisionRequest/Response.kt)과 **의미가 일치**한다.
+//
+// acceptance(T019):
+//   - JSON 정책 계약과 의미 일치: 같은 field(actionWeights·targetDistribution·delayDistribution·
+//     socialActWeights·burstProfile·uncertainty·modelVersion / sceneSnapshotRef·features·config·
+//     schemaVersion·seed)를 동일 의미로 가진다.
+//   - raw Discord content 비요구: 어떤 message 도 원문 텍스트 필드를 두지 않는다. 식별 참조(가명·id)·
+//     정규화 feature(수치/플래그)·코드만 운반한다(logging-boundary 정신).
+//
+// 추가(serving 운영용): version(schema/model) · deadline(요청 마감) · trace(상관) · error(구조화 오류).
+//
+// 주: 이 파일은 옵션 경로 계약일 뿐 — 실제 gRPC 서버 기동/배포는 하지 않는다(ADR 0013 비-목표).
+//     계약 드리프트 가드는 JSON schema(코드 SSOT 미러)가 담당하며, 이 proto 는 동일 의미의 wire 정의다.
+
+syntax = "proto3";
+
+package nexa.policy.v1;
+
+option java_multiple_files = true;
+option java_package = "com.discordassistant.central.participation.adapter.outbound.policy.grpc.proto";
+
+// ── 서비스 ──────────────────────────────────────────────────────────────────
+
+// 사회 정책 결정 서비스(옵션 gRPC serving). SocialPolicyPort(비동기 predict)의 wire 대응.
+service SocialPolicyService {
+  // 행동 확률분포를 예측한다. deadline 초과·서비스 부재는 어댑터가 fallback 으로 처리한다(T020/T021).
+  rpc Predict(PolicyDecisionRequestProto) returns (PolicyDecisionResponseProto);
+
+  // 지원 (schema, model) 버전 능력 — 버전 협상(P08-T008)에 쓴다.
+  rpc Capabilities(CapabilitiesRequest) returns (PolicyEngineCapabilitiesProto);
+}
+
+// ── 공통: 버전·deadline·trace ────────────────────────────────────────────────
+
+// 요청 메타: 계약 schema 버전·요청 모델 버전·deadline·trace 상관.
+message RequestMeta {
+  // 계약 스키마 버전(요청 형태 버전). >= 1.
+  int32 schema_version = 1;
+  // 사용해야 할 모델 버전(빈 문자열 = 구현 기본). 버전 협상에 쓴다.
+  string model_version = 2;
+  // 요청 마감(epoch millis). 어댑터 deadline 강제 — 초과 시 fallback.
+  int64 deadline_epoch_ms = 3;
+  // 분산 trace 상관 id(원문 비포함 — decision log ↔ requestlog 연결 키).
+  string correlation_id = 4;
+}
+
+// ── 요청(= policy-decision-request.schema.json) ──────────────────────────────
+
+// 장면 snapshot 식별 참조(원문 비포함).
+message SceneSnapshotRefProto {
+  string guild_pseudonym = 1; // 길드 가명(snowflake 비포함).
+  string channel_id = 2;
+  int64 scene_seq = 3;        // >= 0.
+  int64 context_version = 4;  // >= 0, 정책 무효화 추적.
+}
+
+// 단일 정규화 feature 값(수치 + 결측 플래그). 원문 없음.
+message FeatureValueProto {
+  double value = 1;
+  bool missing = 2;
+}
+
+// 정규화 feature 벡터(이름 → 값). 원문 비포함.
+message FeatureVectorProto {
+  int32 version = 1;                          // feature schema 버전 >= 1.
+  map<string, FeatureValueProto> features = 2;
+}
+
+// 결정 설정(코드/플래그만 — 원문 없음).
+message PolicyConfigProto {
+  string channel_mode = 1;      // 안정 코드 문자열(off/mention/auto 등).
+  bool auto_respond_enabled = 2;
+  bool speech_allowed = 3;      // false 면 SPEAK 금지.
+}
+
+message PolicyDecisionRequestProto {
+  RequestMeta meta = 1;
+  SceneSnapshotRefProto scene_snapshot_ref = 2;
+  FeatureVectorProto features = 3;
+  PolicyConfigProto config = 4;
+  int64 seed = 5;               // 결정론 seed(재현·shadow 비교).
+}
+
+// ── 응답(= policy-decision-response.schema.json) ─────────────────────────────
+
+// 행동 종류(JSON actionWeights 키와 동일 의미).
+enum SocialActionKindProto {
+  SOCIAL_ACTION_KIND_UNSPECIFIED = 0;
+  IGNORE = 1;
+  WAIT = 2;
+  REACT = 3;
+  SPEAK = 4;
+  CANCEL_PENDING = 5;
+}
+
+// 대상 종류(JSON target.kind 와 동일 의미).
+enum TargetKindProto {
+  TARGET_KIND_UNSPECIFIED = 0;
+  MESSAGE = 1;
+  MEMBER = 2;
+  THREAD = 3;
+  NONE = 4;
+}
+
+// delay 구간(JSON delayDistribution.weights 키와 동일 의미).
+enum DelayBucketProto {
+  DELAY_BUCKET_UNSPECIFIED = 0;
+  IMMEDIATE = 1;
+  SHORT = 2;
+  MEDIUM = 3;
+  LONG = 4;
+  NEVER = 5;
+}
+
+message ActionTargetProto {
+  TargetKindProto kind = 1;
+  string id = 2; // 식별자(원문 비포함).
+}
+
+message TargetCandidateProto {
+  ActionTargetProto target = 1;
+  double probability = 2; // [0,1].
+}
+
+message ActionTargetDistributionProto {
+  repeated TargetCandidateProto candidates = 1;
+  double none_probability = 2;    // 후보 확률 + none = 1.0.
+  string resolver_version = 3;
+}
+
+message DelayDistributionProto {
+  // 구간 → 확률. 합 = 1.0.
+  map<int32, double> weights = 1; // key = DelayBucketProto enum 값.
+}
+
+message BurstProfileProto {
+  // 조각 수 → 확률(키 >= 1). 합 = 1.0. 텍스트 없음(형태만).
+  map<int32, double> fragment_count_weights = 1;
+  int32 max_fragment_length = 2;       // 길이 상한(내용 아님), >= 1.
+  double gap_lower_bound_seconds = 3;  // >= 0.
+  double gap_upper_bound_seconds = 4;  // >= gap_lower_bound.
+  double reaction_only_probability = 5; // [0,1].
+}
+
+message PolicyDecisionResponseProto {
+  // 행동 종류별 확률. 합 = 1.0(JSON actionWeights 와 동일 의미).
+  map<int32, double> action_weights = 1; // key = SocialActionKindProto enum 값.
+  ActionTargetDistributionProto target_distribution = 2;
+  DelayDistributionProto delay_distribution = 3;
+  // SPEAK 발화 종류 확률(키 = social act 코드 문자열). 비면 미정, 있으면 합 = 1.0. unknown 허용.
+  map<string, double> social_act_weights = 4;
+  BurstProfileProto burst_profile = 5;
+  double uncertainty = 6;   // [0,1].
+  string model_version = 7; // 이 응답을 만든 모델 버전(추적·shadow 비교).
+}
+
+// ── 버전 능력 ────────────────────────────────────────────────────────────────
+
+message CapabilitiesRequest {}
+
+message PolicyEngineCapabilitiesProto {
+  repeated int32 supported_schema_versions = 1;
+  // 빈 목록 = 모든 modelVersion 허용(baseline 의미와 동일).
+  repeated string supported_model_versions = 2;
+}
+
+// ── 구조화 오류(serving 운영) ────────────────────────────────────────────────
+
+// 정책 서빙 오류 코드. 어댑터는 어떤 코드든 fallback 으로 안전 하강한다(T021).
+enum PolicyErrorCode {
+  POLICY_ERROR_UNSPECIFIED = 0;
+  DEADLINE_EXCEEDED = 1;        // deadline 초과.
+  SCHEMA_INCOMPATIBLE = 2;      // 협상 실패(FALLBACK).
+  MODEL_UNAVAILABLE = 3;        // 모델 미적재/서비스 부재.
+  INTERNAL = 4;                 // 그 외 내부 오류.
+}
+
+// 구조화 오류 페이로드(gRPC status detail 에 실어 보낼 수 있는 형태). 원문 비포함.
+message PolicyError {
+  PolicyErrorCode code = 1;
+  string message = 2;        // 진단 문구(원문·PII 비포함).
+  string correlation_id = 3; // 요청 상관 id.
+}

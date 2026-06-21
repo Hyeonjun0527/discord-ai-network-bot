@@ -20,7 +20,7 @@ T = TypeVar("T")
 
 @dataclass(frozen=True)
 class LeakageViolation:
-    kind: str  # "group" | "temporal" | "label_feature".
+    kind: str  # "group" | "temporal" | "label_feature" | "feature_cutoff".
     detail: str
 
 
@@ -124,6 +124,47 @@ def check_label_feature_leakage[T](
                 "label_feature",
                 f"feature {pair.name!r} 가 label 과 1:1 결정적으로 일치한다(label 누설).",
             )
+    return report
+
+
+@dataclass(frozen=True)
+class FeatureTimestamp[T]:
+    """feature-cutoff 누출 검사 입력: 각 표본에서 feature 가 계산된 시각(ms) 추출기.
+
+    [computed_at_of] 는 이 feature 가 **실제로 관측·계산된** 시각을, [name] 은 feature 이름을 준다.
+    reply 가 온 뒤 계산되는 tempo·finalize reason 같은 feature 가 의심 대상이다(P12-T016 deliverable).
+    """
+
+    computed_at_of: Callable[[T], int]
+    name: str
+
+
+def check_feature_cutoff_leakage[T](
+    samples: Sequence[T],
+    *,
+    cutoff_of: Callable[[T], int],
+    features: Sequence[FeatureTimestamp[T]],
+) -> LeakageReport:
+    """각 tensor row 의 feature 가 그 row 의 **예측 시점(feature cutoff)** 이후에 계산됐는지 검사한다.
+
+    예측 시점 feature 는 cutoff(결정이 내려진 시각) **이전** 정보만 써야 한다. reply 도착 후 계산된
+    tempo 나 finalize reason 이 feature 로 들어가면 미래 누출이다(P09-T023·P10 leakage 와 일관).
+
+    각 표본(=tensor row)마다 [cutoff_of] 로 feature cutoff timestamp 를 얻고, 각 feature 의
+    [FeatureTimestamp.computed_at_of] 가 cutoff 이상(>=)이면 위반으로 보고한다 — acceptance(T016):
+    "각 tensor row 에 feature cutoff timestamp 가 검증된다".
+    """
+    report = LeakageReport()
+    for idx, sample in enumerate(samples):
+        cutoff = cutoff_of(sample)
+        for feat in features:
+            computed_at = feat.computed_at_of(sample)
+            if computed_at >= cutoff:
+                report.add(
+                    "feature_cutoff",
+                    f"row {idx}: feature {feat.name!r} 계산 시각 {computed_at} 가 "
+                    f"feature cutoff {cutoff} 이상이다(미래 누출).",
+                )
     return report
 
 

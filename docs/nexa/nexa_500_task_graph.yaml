@@ -3262,7 +3262,7 @@ tasks:
   program: P05
   sequence: 11
   title: 스레드 merge 규칙 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3274,13 +3274,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "스레드 merge 규칙: 분리됐던 논리 스레드를 증거로 병합하되 기존 ID·provenance 보존"
+  - "acceptance 충족: 기존 ID와 과거 decision provenance 보존을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T012
   program: P05
   sequence: 12
   title: 스레드 split 교정 규칙 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3292,13 +3295,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "스레드 split 교정 규칙: 잘못 병합된 스레드를 correction event로 분리"
+  - "acceptance 충족: event store 재생 없이 임의 mutation하지 않고 correction event가 남음을 테스트로 확인. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T013
   program: P05
   sequence: 13
   title: 주제 구간 baseline 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3310,13 +3316,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "주제 구간 baseline: 휴리스틱(시간/화자/키워드)으로 주제 구간 분할(LLM 비사용)"
+  - "acceptance 충족: 이 단계에서 GLM/외부 모델 호출이 발생하지 않음(순수 로직)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T014
   program: P05
   sequence: 14
   title: SceneParticipant 모델 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3328,13 +3337,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "SceneParticipant 모델: 장면 참여자(가명 식별 + 참여 신호)"
+  - "acceptance 충족: 옵트아웃 사용자의 content-derived feature가 포함되지 않음(user-opt-out 준수)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T015
   program: P05
   sequence: 15
   title: ConversationTempo 계산 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3346,13 +3358,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ConversationTempo 계산(순수): 메시지 빈도/간격으로 대화 속도 산출"
+  - "acceptance 충족: 조용한 채널과 빠른 난장판 fixture의 tempo 값이 구분됨을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T016
   program: P05
   sequence: 16
   title: 현재 대화 초점 계산 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3364,13 +3379,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "현재 대화 초점 계산: 최근 활성 스레드/주제를 초점으로 산출"
+  - "acceptance 충족: 활성 스레드가 없음(없음=정상 상태)을 명시적으로 표현함을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T017
   program: P05
   sequence: 17
   title: ConversationScene aggregate 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3382,13 +3400,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ConversationScene aggregate: 스레드·참여자·tempo·초점·주제를 합친 장면 읽기 모델"
+  - "acceptance 충족: 원문 전체를 복제하지 않고 event/burst ID로 provenance를 유지함(data-categories 준수)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T018
   program: P05
   sequence: 18
   title: contextVersion 증가 규칙 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3400,13 +3421,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "contextVersion 증가 규칙: 의미 있는 장면 변화(발화·주제 전환·삭제)에만 version 증가"
+  - "acceptance 충족: 사람 답함·주제 전환·삭제는 version 증가, metric 갱신만으로는 증가하지 않음을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T019
   program: P05
   sequence: 19
   title: SceneUpdated 이벤트 발행 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3418,13 +3442,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "SceneUpdated 이벤트 발행(domain-events 계약, 멱등키=channelId+sceneSeq)"
+  - "acceptance 충족: 동일 입력 재생에서 이벤트 순서와 version이 동일(결정론)함을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T020
   program: P05
   sequence: 20
   title: scene projection persistence 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3437,6 +3464,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "scene projection persistence(V54 nexa_scenes, adapter/outbound/persistence): 장면 읽기 모델 영속(snapshot)"
+  - "acceptance 충족: snapshot 삭제 후 event store 재생으로 재구축 가능함을 테스트로 확인. central BUILD SUCCESSFUL, 기존 마이그레이션 무변경"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T021

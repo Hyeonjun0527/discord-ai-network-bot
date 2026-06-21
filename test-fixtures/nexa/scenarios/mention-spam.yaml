@@ -1,0 +1,40 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: mention-spam
+title: 반복 mention spam — 호출 수와 응답 수가 1:1 이 아니고 점유율 cap 작동(NEXA-P16-T005)
+intent: 한 사용자가 @니아 를 여러 번 연속 호출해도 NEXA 는 호출마다 답하지 않는다(과반응 방지). share cap 이 작동한다.
+humanLikenessFocus: [over-conservative-ignore, plainness]
+seed: 16005
+time:
+  baseInstant: "2026-01-03T12:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 500
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-spammer
+    label: S
+    displayName: 도배유저
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  - { seq: 1, atOffsetMs: 0,    type: message_create, messageId: m-1, authorId: actor-spammer, content: "@니아", mentionsNexa: true }
+  - { seq: 2, atOffsetMs: 600,  type: message_create, messageId: m-2, authorId: actor-spammer, content: "@니아 야", mentionsNexa: true }
+  - { seq: 3, atOffsetMs: 1200, type: message_create, messageId: m-3, authorId: actor-spammer, content: "@니아 대답해", mentionsNexa: true }
+  - { seq: 4, atOffsetMs: 1800, type: message_create, messageId: m-4, authorId: actor-spammer, content: "@니아 @니아 @니아", mentionsNexa: true }
+  - { seq: 5, atOffsetMs: 2400, type: message_create, messageId: m-5, authorId: actor-spammer, content: "@니아 왜 무시함", mentionsNexa: true }
+  - { seq: 6, atOffsetMs: 3000, type: message_create, messageId: m-6, authorId: actor-spammer, content: "@니아", mentionsNexa: true }
+expected:
+  narrative: >-
+    같은 사람이 짧은 간격으로 6번 호명한다. 사람 멤버라면 도배에 매번 답하지 않는다.
+    첫 호명만 답을 준비하고(WAIT→발사), 이후 반복은 가벼운 REACT 한 번 뒤 IGNORE 로 접는다.
+    호출 6 vs 발화 0~1 — 1:1 이 아니고 점유율 cap 이 작동한다.
+  invariants:
+    - { kind: speak_to_mention_ratio_below, value: 0.5, note: "6 호출에 SPEAK 가 절반 미만" }
+    - { kind: max_speak_count, value: 1 }
+    - { kind: no_self_consecutive_speak }
+    - { kind: no_stale_send }

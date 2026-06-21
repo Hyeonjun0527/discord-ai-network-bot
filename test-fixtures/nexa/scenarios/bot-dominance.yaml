@@ -1,0 +1,39 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: bot-dominance
+title: AI 채팅 점유 — 낮은 인간 메시지 + 높은 정책 확률 조합(NEXA-P16-T010)
+intent: 사람 메시지가 적고 정책이 발화하고 싶어해도, NEXA 가 혼자 연속 발화하지 않는다. share cap / energy decay 가 작동한다.
+humanLikenessFocus: [plainness]
+seed: 16010
+time:
+  baseInstant: "2026-01-07T20:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 1000
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: 한명뿐인사람
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  # 사람이 띄엄띄엄 호명. NEXA 가 매번 길게 답하면 채널을 점유한다 — 그래선 안 된다.
+  - { seq: 1, atOffsetMs: 0,     type: message_create, messageId: m-1, authorId: actor-a, content: "@니아 안녕", mentionsNexa: true }
+  - { seq: 2, atOffsetMs: 5000,  type: message_create, messageId: m-2, authorId: actor-a, content: "@니아 심심해", mentionsNexa: true }
+  - { seq: 3, atOffsetMs: 9000,  type: message_create, messageId: m-3, authorId: actor-a, content: "@니아 뭐해", mentionsNexa: true }
+  - { seq: 4, atOffsetMs: 12000, type: message_create, messageId: m-4, authorId: actor-a, content: "@니아 말해봐", mentionsNexa: true }
+  - { seq: 5, atOffsetMs: 14000, type: message_create, messageId: m-5, authorId: actor-a, content: "@니아 또", mentionsNexa: true }
+expected:
+  narrative: >-
+    한 사람이 짧은 간격으로 계속 호명한다. 정책이 발화하고 싶어해도 사람 멤버라면 채널을 혼자 점유하지 않는다.
+    share cap 이 발화 점유율을 누르고, 연속 발화가 억제된다.
+  invariants:
+    - { kind: no_self_consecutive_speak, note: "사람 메시지 사이 NEXA 가 연속 두 번 발화 안 함" }
+    - { kind: share_cap_below, value: 0.5, note: "전체 메시지 중 NEXA 발화 점유율 < 0.5" }
+    - { kind: speak_to_mention_ratio_below, value: 0.7 }
+    - { kind: no_stale_send }

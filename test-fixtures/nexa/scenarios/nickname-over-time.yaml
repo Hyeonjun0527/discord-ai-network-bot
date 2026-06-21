@@ -1,0 +1,41 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: nickname-over-time
+title: 닉네임 장기 변경 — 가상 시간 수주에 걸친 변경과 과거 회상(NEXA-P16-T009)
+intent: 수주에 걸쳐 닉네임이 바뀐다. 닉네임 변경 자체는 발화 트리거가 아니며, 호명 시 NEXA 는 현재 닉을 쓰고 stale 닉을 기본 답변에 노출하지 않는다.
+humanLikenessFocus: [plainness, over-conservative-ignore]
+seed: 16009
+time:
+  baseInstant: "2026-01-01T00:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 1000
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: 민수
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  # 1주차: 닉 = 민수
+  - { seq: 1, atOffsetMs: 0,           type: nickname_change, actorId: actor-a, nickname: "민수" }
+  # 2주차: 닉을 '코딩하는민수' 로 변경 — 그 자체로 NEXA 가 먼저 나서지 않는다.
+  - { seq: 2, atOffsetMs: 604800000,   type: nickname_change, actorId: actor-a, nickname: "코딩하는민수", previousNickname: "민수" }
+  # 4주차: 닉을 'MS' 로 또 변경
+  - { seq: 3, atOffsetMs: 1814400000,  type: nickname_change, actorId: actor-a, nickname: "MS", previousNickname: "코딩하는민수" }
+  # 4주차 끝: 호명 — 현재 닉(MS) 기준으로 답한다.
+  - { seq: 4, atOffsetMs: 1900000000,  type: message_create, messageId: m-1, authorId: actor-a, content: "@니아 내 옛날 닉 기억나?", mentionsNexa: true }
+expected:
+  narrative: >-
+    닉네임 변경 이벤트는 30일 동안 발화를 유발하지 않는다(먼저 안 나섬). 마지막 호명에만 답하며,
+    이때 현재 닉(MS)을 기본으로 쓰고 과거 닉(민수/코딩하는민수)을 stale 사실로 단정해 노출하지 않는다.
+  invariants:
+    - { kind: no_unprompted_speak, note: "닉 변경만으로는 발화 안 함" }
+    - { kind: max_speak_count, value: 1, note: "호명된 1회만" }
+    - { kind: uses_current_fact_not_stale }
+    - { kind: no_stale_send }

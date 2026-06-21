@@ -8942,7 +8942,7 @@ tasks:
   program: P16
   sequence: 1
   title: 이벤트 재생 시뮬레이터 CLI 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8955,13 +8955,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "이벤트 재생 시뮬레이터 CLI(central): 시나리오 이벤트열을 NEXA 파이프라인에 mock 재생, 결정 기록(Clock 주입·결정론)"
+  - "acceptance 충족: 외부 Discord/GLM 없이 모든 action과 state transition을 artifact로 저장함을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T002
   program: P16
   sequence: 2
   title: 시나리오 DSL schema 정의
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8973,13 +8976,16 @@ tasks:
   acceptance: schema 오류와 존재하지 않는 message target이 검증에서 실패한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "시나리오 DSL schema 정의(docs): 시나리오를 선언적으로 기술(이벤트열·기대 행동)"
+  - "acceptance 충족: schema 오류와 존재하지 않는 message target이 검증에서 실패함(엄격 검증)을 확인. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T003
   program: P16
   sequence: 3
   title: 짧은 메시지 조각 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8990,13 +8996,16 @@ tasks:
   acceptance: NEXA가 fragment마다 판단·응답하지 않고 대부분 침묵하는 기대 invariant가 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "짧은 메시지 조각 시나리오: 한 사람이 짧게 끊어 보내는 메시지(P04 버스트)"
+  - "acceptance 충족: NEXA가 fragment마다 판단·응답하지 않고 대부분 침묵하는 기대 invariant가 있음(버스트 합침)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T004
   program: P16
   sequence: 4
   title: 두 사람 빠른 대화 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9007,13 +9016,16 @@ tasks:
   acceptance: 예약 행동이 stale 전송되지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "두 사람 빠른 대화 시나리오: 두 사람이 빠르게 주고받는 대화(NEXA 끼어들기 자제)"
+  - "acceptance 충족: 예약 행동이 stale 전송되지 않음(contextVersion 재평가·취소)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T005
   program: P16
   sequence: 5
   title: 반복 mention spam 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9024,13 +9036,16 @@ tasks:
   acceptance: 호출 수와 응답 수가 1:1이 아니고 점유율 cap이 작동한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "반복 mention spam 시나리오: 한 사람이 NEXA를 반복 멘션(과반응 유도)"
+  - "acceptance 충족: 호출 수와 응답 수가 1:1이 아니고 점유율 cap이 작동함(스팸 흡수)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T006
   program: P16
   sequence: 6
   title: 진지한 직접 질문 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9041,13 +9056,16 @@ tasks:
   acceptance: 무작위 침묵만 하는 정책이 MIR에서 불리하고 생성 경로가 정확히 한 번 열린다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "진지한 직접 질문 시나리오: NEXA에게 진지하게 직접 묻는 상황(응답 기대)"
+  - "acceptance 충족: 무작위 침묵만 하는 정책이 MIR(Missed Intervention)에서 불리하고 생성 경로가 정확히 한 번 열림(과보수 IGNORE 교정)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T007
   program: P16
   sequence: 7
   title: 이미 인간이 답한 질문 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9058,13 +9076,16 @@ tasks:
   acceptance: NEXA action이 취소되거나 reaction-only로 재평가된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "이미 인간이 답한 질문 시나리오: NEXA가 답하려는 사이 다른 사람이 먼저 답함"
+  - "acceptance 충족: NEXA action이 취소되거나 reaction-only로 재평가됨(P13 다른인간 답함 취소)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T008
   program: P16
   sequence: 8
   title: 메시지 수정·삭제 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9075,13 +9096,16 @@ tasks:
   acceptance: 기억·예약·prompt가 최신 revision과 deletion을 따른다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "메시지 수정·삭제 시나리오: 관찰한 메시지가 수정/삭제되는 상황"
+  - "acceptance 충족: 기억·예약·prompt가 최신 revision과 deletion을 따름(삭제 전파·stale 방지)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T009
   program: P16
   sequence: 9
   title: 닉네임 장기 변경 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9092,13 +9116,16 @@ tasks:
   acceptance: 현재/과거 fact retrieval이 정확하고 stale nickname이 기본 답변에 나오지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "닉네임 장기 변경 시나리오: 사용자가 시간에 걸쳐 닉네임을 바꿈(TemporalFact valid-from/until)"
+  - "acceptance 충족: 현재/과거 fact retrieval이 정확하고 stale nickname이 기본 답변에 나오지 않음(시간 유효성)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T010
   program: P16
   sequence: 10
   title: AI 채팅 점유 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9109,13 +9136,16 @@ tasks:
   acceptance: NEXA가 혼자 연속 발화하지 않고 share cap/energy decay가 작동한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "AI 채팅 점유 시나리오: NEXA가 대화를 독점할 위험 상황"
+  - "acceptance 충족: NEXA가 혼자 연속 발화하지 않고 share cap/energy decay가 작동함(대화 독점 방지·담백함)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T011
   program: P16
   sequence: 11
   title: 장기간 조용한 서버 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9126,13 +9156,16 @@ tasks:
   acceptance: NEXA가 자동 주제 방송을 시작하지 않고 호출/맥락 없는 자발 발화를 제한한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "장기간 조용한 서버 시나리오: 오랫동안 대화가 없는 서버"
+  - "acceptance 충족: NEXA가 자동 주제 방송을 시작하지 않고 호출/맥락 없는 자발 발화를 제한함(먼저 나서지 않음·침묵 존중)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T012
   program: P16
   sequence: 12
   title: 고활성 대형 채널 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9143,13 +9176,16 @@ tasks:
   acceptance: 정책 latency와 queue가 안정적이며 cross-thread 응답이 기준 이하이다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "고활성 대형 채널 시나리오: 많은 사람이 동시에 빠르게 대화하는 채널"
+  - "acceptance 충족: 정책 latency와 queue가 안정적이며 cross-thread 응답이 기준 이하임(부하·thread 격리)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T013
   program: P16
   sequence: 13
   title: 상충 기억 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9160,6 +9196,9 @@ tasks:
   acceptance: speech가 conflict를 확정 사실로 사용하지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "상충 기억 시나리오: 같은 사람에 대해 모순되는 기억이 있는 상황"
+  - "acceptance 충족: speech가 conflict를 확정 사실로 사용하지 않음(MemoryConsistencyCritic·불확실성 인정)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T014

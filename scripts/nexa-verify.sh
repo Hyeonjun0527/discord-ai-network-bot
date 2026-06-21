@@ -37,6 +37,7 @@ verify_docs() {
   run_command python3 scripts/validate-nexa-task-graph.py
   run_command python3 scripts/central-package-graph.py --check
   run_command python3 scripts/validate-nexa-conversation-fixtures.py
+  run_command python3 scripts/validate-nexa-scenarios.py
   run_command python3 scripts/validate-nexa-policy-fixtures.py
   run_command python3 scripts/validate-nexa-architecture-ssot.py
   run_command python3 scripts/check_links.py

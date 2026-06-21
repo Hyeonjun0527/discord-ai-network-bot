@@ -1,0 +1,41 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: fragmented-nickname
+title: 짧은 메시지 조각 — 닉네임/바꿔/ㅃㄹ/헷갈리니까 흐름과 사람 답변(NEXA-P16-T003)
+intent: 한 사람이 메시지를 잘게 쪼개 보내는 동안 NEXA 는 조각마다 판단·응답하지 않고 대부분 침묵한다.
+humanLikenessFocus: [over-conservative-ignore, plainness, timing]
+seed: 16003
+time:
+  baseInstant: "2026-01-01T11:15:01Z"
+  zone: Asia/Seoul
+  resolutionMs: 1000
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: 민수
+    kind: human
+  - actorId: actor-b
+    label: B
+    displayName: 지현
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  - { seq: 1, atOffsetMs: 0,    type: message_create, messageId: m-1, authorId: actor-a, content: "닉네임" }
+  - { seq: 2, atOffsetMs: 700,  type: message_create, messageId: m-2, authorId: actor-a, content: "바꿔" }
+  - { seq: 3, atOffsetMs: 1300, type: message_create, messageId: m-3, authorId: actor-a, content: "ㅃㄹ" }
+  - { seq: 4, atOffsetMs: 2100, type: message_create, messageId: m-4, authorId: actor-a, content: "헷갈리니까" }
+  - { seq: 5, atOffsetMs: 5200, type: message_create, messageId: m-5, authorId: actor-b, content: "내가 도와줄게, 닉 뭘로 바꿀건데?" }
+expected:
+  narrative: >-
+    조각난 메시지는 아직 끝나지 않은 한 문장이다. 사람 멤버라면 조각마다 끼어들지 않고 흐름이 끝나길 기다린다.
+    호명도 없으므로 NEXA 는 침묵한다(over-conservative 가 아니라 무례 회피). 다른 사람(B)이 먼저 답한다.
+  invariants:
+    - { kind: max_speak_count, value: 0, note: "조각마다 발화하면 과반응 — 발화 0" }
+    - { kind: no_unprompted_speak }
+    - { kind: no_stale_send }

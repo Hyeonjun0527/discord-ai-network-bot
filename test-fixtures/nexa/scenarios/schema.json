@@ -1,0 +1,259 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://discord-assistant/nexa/scenario-dsl.schema.json",
+  "title": "NEXA Scenario DSL v1",
+  "description": "Declarative NEXA behavior scenario: an ordered event stream replayed by scripts/nexa-simulate.py against a deterministic NEXA decision model (virtual Clock + seeded random), plus the expected NEXA behavior invariants. Synthetic only; no operational data, no real send, shadow mode (0 transmissions).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "scenarioId", "title", "time", "guild", "actors", "events", "expected"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "nexa.scenario.v1"
+    },
+    "scenarioId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intent": {
+      "type": "string",
+      "description": "사람이 읽는 시나리오 의도: NEXA 가 보여야 할 올바른 행동의 한 줄 요약."
+    },
+    "humanLikenessFocus": {
+      "type": "array",
+      "description": "이 시나리오가 점검하는 human-likeness gate 약점 차원(over-conservative-ignore / empathy-warmth / plainness / timing 등).",
+      "items": { "type": "string" }
+    },
+    "seed": {
+      "type": "integer",
+      "description": "결정론 seed — 같은 seed·이벤트열이면 같은 결정 궤적을 재현한다(determinism.md).",
+      "minimum": 0
+    },
+    "time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseInstant", "zone"],
+      "properties": {
+        "baseInstant": { "type": "string", "description": "ISO-8601 UTC virtual Clock 시작점." },
+        "zone": { "type": "string" },
+        "resolutionMs": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "guild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guildId", "channelId"],
+      "properties": {
+        "guildId": { "type": "string", "minLength": 1 },
+        "channelId": { "type": "string", "minLength": 1 },
+        "channelKind": {
+          "type": "string",
+          "description": "AI 멤버 채널(MEMBER, 사람처럼 NEXA participation) 또는 AI 질문 채널(ASSISTANT, 무조건 답변). 기본 MEMBER.",
+          "enum": ["MEMBER", "ASSISTANT"]
+        }
+      }
+    },
+    "actors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["actorId", "label", "kind"],
+        "properties": {
+          "actorId": { "type": "string", "minLength": 1 },
+          "label": { "type": "string", "minLength": 1 },
+          "displayName": { "type": "string" },
+          "kind": { "type": "string", "enum": ["human", "nexa", "bot"] }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/event" }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "NEXA 가 보여야 할 올바른 행동 invariant. 시뮬레이터가 결정열을 재생한 뒤 검증한다.",
+      "required": ["invariants"],
+      "properties": {
+        "narrative": { "type": "string" },
+        "invariants": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/invariant" }
+        },
+        "humanLabels": {
+          "type": "array",
+          "description": "선택적 사람 라벨: 특정 message target 에 사람이 기대하는 행동(over-conservative IGNORE 점검 등).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["messageId", "label"],
+            "properties": {
+              "messageId": { "type": "string", "minLength": 1 },
+              "label": { "type": "string", "enum": ["SPEAK", "REACT", "IGNORE", "WAIT"] },
+              "note": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "event": {
+      "type": "object",
+      "required": ["seq", "atOffsetMs", "type"],
+      "properties": {
+        "seq": { "type": "integer", "minimum": 1 },
+        "atOffsetMs": { "type": "integer", "minimum": 0 },
+        "type": {
+          "type": "string",
+          "enum": [
+            "message_create",
+            "message_update",
+            "message_delete",
+            "typing_start",
+            "reaction_add",
+            "reaction_remove",
+            "nickname_change",
+            "fault_inject"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "message_create" } } },
+          "then": {
+            "required": ["messageId", "authorId", "content"],
+            "properties": {
+              "messageId": { "type": "string", "minLength": 1 },
+              "authorId": { "type": "string", "minLength": 1 },
+              "content": { "type": "string" },
+              "mentionsNexa": { "type": "boolean" },
+              "replyToMessageId": { "type": "string" },
+              "threadId": { "type": "string" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "message_update" } } },
+          "then": {
+            "required": ["messageId", "editorId", "content"],
+            "properties": {
+              "messageId": { "type": "string", "minLength": 1 },
+              "editorId": { "type": "string", "minLength": 1 },
+              "content": { "type": "string" },
+              "mentionsNexa": { "type": "boolean" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "message_delete" } } },
+          "then": {
+            "required": ["messageId"],
+            "properties": {
+              "messageId": { "type": "string", "minLength": 1 },
+              "deletedByActorId": { "type": "string" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "typing_start" } } },
+          "then": {
+            "required": ["actorId"],
+            "properties": {
+              "actorId": { "type": "string", "minLength": 1 },
+              "durationMs": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["reaction_add", "reaction_remove"] } } },
+          "then": {
+            "required": ["messageId", "actorId", "emoji"],
+            "properties": {
+              "messageId": { "type": "string", "minLength": 1 },
+              "actorId": { "type": "string", "minLength": 1 },
+              "emoji": {
+                "type": "object",
+                "required": ["kind", "value"],
+                "properties": {
+                  "kind": { "type": "string" },
+                  "value": { "type": "string" },
+                  "name": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "nickname_change" } } },
+          "then": {
+            "required": ["actorId", "nickname"],
+            "properties": {
+              "actorId": { "type": "string", "minLength": 1 },
+              "nickname": { "type": "string", "minLength": 1 },
+              "previousNickname": { "type": "string" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "fault_inject" } } },
+          "then": {
+            "required": ["fault"],
+            "properties": {
+              "fault": {
+                "type": "string",
+                "description": "주입 결함(정책 평가 지연·rate limit·중복 이벤트 등). 시뮬레이터가 견고성 경로를 재생한다.",
+                "enum": ["policy_latency", "rate_limit", "duplicate_event", "send_failure"]
+              },
+              "detailMs": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      ]
+    },
+    "invariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "시뮬레이터가 결정 artifact 에 대해 검증하는 단일 불변식.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "max_speak_count",
+            "min_speak_count",
+            "max_react_count",
+            "speak_to_mention_ratio_below",
+            "no_speak_after_human_answer",
+            "no_stale_send",
+            "cancel_on_context_change",
+            "no_unprompted_speak",
+            "no_self_consecutive_speak",
+            "share_cap_below",
+            "decision_count_equals",
+            "speak_uses_latest_revision",
+            "no_speak_on_deleted_target",
+            "uses_current_fact_not_stale",
+            "no_conflict_as_fact",
+            "speak_target_message"
+          ]
+        },
+        "value": {
+          "description": "불변식 비교 값(정수/실수/문자열). kind 별 의미는 docs/nexa/evals/scenario-dsl.md 참조.",
+          "type": ["number", "string", "boolean"]
+        },
+        "messageId": { "type": "string", "description": "특정 message target 에 적용되는 불변식의 대상." },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

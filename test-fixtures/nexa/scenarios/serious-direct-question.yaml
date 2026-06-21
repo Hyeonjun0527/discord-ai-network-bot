@@ -1,0 +1,37 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: serious-direct-question
+title: 진지한 직접 질문 — 무작위 침묵 정책은 불리, 생성 경로가 정확히 한 번 열림(NEXA-P16-T006)
+intent: 명확한 기술 질문 + 충분한 pause 가 주어지면 NEXA 는 답한다. 항상 침묵만 하는 정책은 MIR(missed-intervention)에서 불리하다.
+humanLikenessFocus: [over-conservative-ignore, empathy-warmth]
+seed: 16006
+time:
+  baseInstant: "2026-01-04T15:30:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 1000
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-asker
+    label: Q
+    displayName: 민수
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  - { seq: 1, atOffsetMs: 0,    type: message_create, messageId: m-1, authorId: actor-asker, content: "@니아 파이썬에서 리스트 중복 제거 깔끔하게 어떻게 해?", mentionsNexa: true }
+  - { seq: 2, atOffsetMs: 8000, type: typing_start, actorId: actor-nexa, durationMs: 1200 }
+expected:
+  narrative: >-
+    직접 호명된 사실 질문이고, 아무도 답하지 않은 채 충분한 시간이 지난다. 사람 멤버라면 답한다.
+    여기서 침묵하면 missed-intervention(놓친 개입). 생성 경로(SPEAK)가 정확히 한 번 열린다.
+  invariants:
+    - { kind: min_speak_count, value: 1, note: "충분한 pause + 직접 질문 → 답해야 함" }
+    - { kind: max_speak_count, value: 1, note: "정확히 한 번만 — 도배 아님" }
+    - { kind: speak_target_message, messageId: m-1 }
+    - { kind: no_stale_send }
+  humanLabels:
+    - { messageId: m-1, label: SPEAK, note: "사람이라면 이 질문에 답한다(over-conservative IGNORE 점검)" }

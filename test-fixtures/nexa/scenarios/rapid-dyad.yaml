@@ -1,0 +1,41 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: rapid-dyad
+title: 두 사람 빠른 대화 — 호명돼도 맥락 변화로 예약이 취소(NEXA-P16-T004)
+intent: 2명이 초단위로 대화하는 동안 NEXA 가 한 번 불려도, 발사 전에 맥락이 바뀌면 예약 행동이 stale 전송되지 않고 취소된다.
+humanLikenessFocus: [timing]
+seed: 16004
+time:
+  baseInstant: "2026-01-02T09:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 500
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: 태우
+    kind: human
+  - actorId: actor-b
+    label: B
+    displayName: 서준
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  - { seq: 1, atOffsetMs: 0,    type: message_create, messageId: m-1, authorId: actor-a, content: "@니아 이 에러 뭐야?", mentionsNexa: true }
+  - { seq: 2, atOffsetMs: 1500, type: message_create, messageId: m-2, authorId: actor-b, content: "아 그거 포트 충돌이야" }
+  - { seq: 3, atOffsetMs: 2400, type: message_create, messageId: m-3, authorId: actor-a, content: "아 맞다 8080 두 번 띄웠네 ㅋㅋ" }
+  - { seq: 4, atOffsetMs: 3200, type: message_create, messageId: m-4, authorId: actor-b, content: "ㅇㅇ 하나 죽이면 됨" }
+expected:
+  narrative: >-
+    NEXA 가 m-1 에 호명돼 발화를 예약하지만, 발사 윈도(4s) 전에 사람 둘이 이미 답을 끝낸다.
+    예약 SPEAK 는 stale 해지므로 발사되지 않고 취소된다(no stale send).
+  invariants:
+    - { kind: no_speak_after_human_answer }
+    - { kind: cancel_on_context_change }
+    - { kind: max_speak_count, value: 0 }
+    - { kind: no_stale_send }

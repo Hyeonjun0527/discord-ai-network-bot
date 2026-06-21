@@ -1397,7 +1397,7 @@ tasks:
   program: P02
   sequence: 1
   title: NEXA 데이터 범주표 작성
-  status: DRAFT
+  status: REVIEW
   kind: security
   risk: high
   depends_on:
@@ -1408,6 +1408,12 @@ tasks:
   acceptance: 각 범주에 수집 목적·보존 기간·외부 전송 여부·삭제 방법이 하나씩 연결된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "specs/product-v2/nexa/data-categories.md 작성: 7개 범주(메시지 원문/임베딩/작성자 식별자/관계 상태/정책 결정/생성 응답/학습 산출물)를 개인정보 등급(High/Medium/Low)으로 분류"
+  - "acceptance 충족: 각 범주에 수집 목적·보존 기간·외부 전송 여부·삭제 방법을 표로 하나씩 연결. High(원문/학습)=비영속·옵트인, Medium=가명화·전송제한, Low=상관ID만"
+  - "경계 규칙: High 기본 비영속, 외부 전송 단일 경로(routing CloudLlm, ADR 0006), 로그 원문·snowflake 금지(logging-boundary), 삭제 전파 가능(T009), 학습 옵트인 전용(onboarding-boundary)"
+  - "./scripts/nexa-verify.sh docs 통과(graph VALID, architecture-ssot OK, 링크 OK)"
+  - "human_gate=true: 인간 보안 검토 전까지 REVIEW 유지"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T002

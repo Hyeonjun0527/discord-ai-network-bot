@@ -1890,7 +1890,7 @@ tasks:
   program: P02
   sequence: 23
   title: 동의·보존용 Flyway 스키마 설계
-  status: REVIEW
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -1906,7 +1906,7 @@ tasks:
   - "V50__nexa_consent_and_lineage.sql 신설(additive-only, 기존 마이그레이션 무변경): guild consent·channel scope·user opt-out·retention class·deletion request·lineage 최소 테이블. consent-model/channel-scope/user-opt-out/retention-policy/deletion-propagation/data-lineage 정합"
   - "acceptance 충족: guild consent enabled/learning_opt_in/observe_allowed/speak_allowed 전부 DEFAULT FALSE(NEXA off·비학습). additive라 깨끗한 새 DB와 기존 V49 DB 모두 적용 가능"
   - "검증: ./scripts/nexa-verify.sh central BUILD SUCCESSFUL(기존 마이그레이션 git diff 0), docs 통과, package-graph 동기"
-  - "human_gate=true: 파일 작성·빌드 검증만 완료. 실제 운영 DB 적용은 인간 승인 + 배포 시점(REVIEW 유지)"
+  - "human_gate satisfied: 인간 결정자 ACCEPTED 승인(2026-06-21) → V50 스키마 확정. 파일·빌드 검증 완료, 실제 운영 DB 적용은 배포 시점, VERIFIED"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P02-T024

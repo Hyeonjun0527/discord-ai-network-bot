@@ -8390,7 +8390,7 @@ tasks:
   program: P15
   sequence: 1
   title: channelai 자동응답 코드 상세 인벤토리
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -8403,13 +8403,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "channelai 자동응답 코드 상세 인벤토리(docs): 현행 동작·각 코드의 처분(유지/adapter/이관/폐기) 표기"
+  - "acceptance 충족: 각 코드가 유지·adapter·이관·폐기 중 하나로 표시됨(회귀 방지 기준선)을 문서로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T002
   program: P15
   sequence: 2
   title: NEXA participation feature flag 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -8422,13 +8425,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "NEXA participation feature flag(V65 participation_channel_flag, additive): 채널별 NEXA MEMBER 모드 on/off"
+  - "acceptance 충족: 기본 migration 값이 legacy/OFF로 기존 동작을 보존함(안전 기본값)을 테스트로 검증. central BUILD SUCCESSFUL, 기존 마이그레이션 무변경"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — feature flag 기본 OFF 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T003
   program: P15
   sequence: 3
   title: 기존 auto-response trigger를 adapter 뒤로 이동
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8441,13 +8448,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "기존 auto-response trigger를 adapter 뒤로 이동: legacy/NEXA 분기를 adapter로 격리(동작 보존 golden)"
+  - "acceptance 충족: JDA listener가 legacy와 NEXA를 동시에 직접 호출하지 않음(단일 경로·중복 없음)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T004
   program: P15
   sequence: 4
   title: Discord inbound를 conversation ingestion으로 연결
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8459,13 +8469,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "Discord inbound→conversation ingestion 연결(P03): 메시지 이벤트를 NEXA 관찰로 ingest"
+  - "acceptance 충족: slash/preset 명령 처리 지연이나 중복 소비가 없음(기존 명령 경로 무영향)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T005
   program: P15
   sequence: 5
   title: SceneUpdated→Participation use case 연결
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8478,13 +8491,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "SceneUpdated→Participation use case 연결(P05→P08): scene 갱신 시 정책 판단 호출"
+  - "acceptance 충족: 모든 MessageCreated마다 즉시 정책 호출하지 않고 finalize/reevaluate 규칙(P04 버스트·P05 scene)을 따름을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T006
   program: P15
   sequence: 6
   title: ParticipationDecision→ActionRuntime 연결
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8497,13 +8513,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ParticipationDecision→ActionRuntime 연결(P08→P13): SPEAK/REACT 결정을 예약 행동으로"
+  - "acceptance 충족: shadow 모드에서는 schedule audit만 남고 executor가 차단됨(OBSERVE_ONLY hard block)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T007
   program: P15
   sequence: 7
   title: ainetwork identity bridge 통합
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8516,13 +8535,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "ainetwork identity bridge 통합(ADR 0010): ainetwork 정체성을 IdentityKernel에 읽기 브리지"
+  - "acceptance 충족: 양쪽 DB 쓰기와 순환 application call이 없음(단방향 읽기·소유권 분리)을 ArchUnit으로 검증. NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T008
   program: P15
   sequence: 8
   title: globalpromptset identity 통합
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8535,13 +8557,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "globalpromptset identity 통합: 서버 기본 성격(globalpromptset)을 IdentityKernel에 반영"
+  - "acceptance 충족: 변경 전 예약 action의 identity version 처리 규칙이 명확함(정체성 변경 시 예약 처리)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T009
   program: P15
   sequence: 9
   title: routing GLM 호출 metadata 통합
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8554,13 +8579,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "routing GLM 호출 metadata 통합: NEXA 발화 생성 호출에 NEXA 메타데이터 태깅(ADR 0006 routing 경유)"
+  - "acceptance 충족: 기존 일반 요청과 비용·관측이 구분됨(NEXA vs /질문 분리 계측)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T010
   program: P15
   sequence: 10
   title: requestlog NEXA correlation 통합
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8572,13 +8600,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "requestlog NEXA correlation 통합: NEXA 결정→생성→행동을 correlation ID로 연결"
+  - "acceptance 충족: decision→GLM request→Discord message를 감사할 수 있음(end-to-end 추적)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T011
   program: P15
   sequence: 11
   title: quota generation-only 차감 통합
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8591,13 +8622,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "quota generation-only 차감 통합: GLM 발화 생성에만 quota 차감(판단·관찰은 무료)"
+  - "acceptance 충족: IGNORE/REACT와 생성 전 취소가 quota를 소비하지 않음(침묵은 비용 0)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T012
   program: P15
   sequence: 12
   title: knowledge RAG conditional 통합
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -8610,13 +8644,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "knowledge RAG conditional 통합: 사실 질의일 때만 조건부 RAG(잡담은 미실행, knowledge-boundary 일관)"
+  - "acceptance 충족: 잡담·반응 후보마다 BM25/web search를 실행하지 않음(비용·지연 절감)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T013
   program: P15
   sequence: 13
   title: preset 관리자 명령 통합
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -8629,6 +8666,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "preset 관리자 명령 통합: NEXA 정책 preset을 기존 관리자 경로(웹 대시보드 전용)와 통합"
+  - "acceptance 충족: 권한 없는 사용자가 설정을 변경하지 못하고 변경 audit가 남음(권한·감사)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 정책은 웹 대시보드 전용(메모리 nexa_onboarding_and_policy_ui)"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P15-T014

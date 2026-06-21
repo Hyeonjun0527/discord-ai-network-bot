@@ -4121,7 +4121,7 @@ tasks:
   program: P07
   sequence: 1
   title: 기억 유형 taxonomy 확정
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -4132,6 +4132,11 @@ tasks:
   acceptance: knowledge RAG 문서와 사회적 기억의 소유권이 겹치지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "docs/nexa/memory/taxonomy.md 작성: socialmemory 소유 4유형(EpisodicMemory·TemporalFact·RelationshipMemory·PendingIntent) + IdentityKernel(ainetwork/globalpromptset 소유, 읽기만)을 시간성·예와 함께 구분"
+  - "acceptance 충족: knowledge RAG(외부 문서 의미적 사실)와 사회적 기억(관찰된 일화·관계)의 소유권이 겹치지 않음을 축별 비교표로 명시"
+  - "./scripts/nexa-verify.sh docs 통과(graph VALID, 링크 OK)"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P07-T002

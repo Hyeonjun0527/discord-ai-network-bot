@@ -1,0 +1,98 @@
+# NEXA-P05-T021 addressee 라벨 fixture (합성 대화; 실제 사용자 데이터 없음).
+#
+# 한 burst 가 "누구에게 말하는가" 의 golden 정답을 라벨한다. 다섯 사례를 담는다:
+#   1) 직접 reply  — Discord reply 로 특정인을 가리킴 → target=specific(해당 author).
+#   2) nickname 호출 — 본문에 상대 닉네임을 부름(약한 신호) → target=specific 이지만 ambiguous.
+#   3) 그룹 질문    — 채널 전체에 던지는 질문, 특정 대상 없음 → target=group.
+#   4) 모호한 잡담  — reply/mention/호명 없는 자유 발화 → target=none, ambiguous.
+#   5) self-talk    — 자기 자신에게 중얼거림(self-reply 포함) → target=none(self), ambiguous.
+#
+# 정답은 코드가 아니라 데이터에 박혀, 평가 스크립트(scripts/evaluate-conversation-scene.py)와
+# 도메인 resolver(P05-T005~T009)의 회귀를 같은 정답으로 잡는다.
+#
+# acceptance(T021): 각 burst 라벨이 none/group/특정 사용자 정답(targetKind)과 ambiguity 를 함께 표현한다.
+schemaVersion: nexa.addressee-labels.v1
+fixtureId: addressee-labels
+title: Addressee target/ambiguity golden labels (synthetic)
+language: ko
+channelKind: text
+annotator: synthetic-gold
+source:
+  document: synthetic
+  note: 합성 대화 — 실제 Discord 사용자/메시지 ID 없음. fragment ID 는 fixture-local.
+channel:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+actors:
+  - actorId: actor-a
+    label: A
+  - actorId: actor-b
+    label: B
+  - actorId: actor-c
+    label: C
+# burst 단위 발화. atOffsetMs 는 결정론적 replay 클럭(1초 해상도).
+bursts:
+  # 1) 직접 reply: B 가 A 의 메시지에 Discord reply → A 가 특정 대상.
+  - burstId: burst-reply-001
+    speaker: actor-b
+    atOffsetMs: 0
+    messageIds: [msg-001]
+    content: "응 그거 맞아"
+    signals:
+      replyTo: actor-a
+    label:
+      targetKind: specific
+      target: actor-a
+      ambiguous: false
+      note: Discord reply 가 A 를 직접 가리킴(DIRECT_REPLY)
+  # 2) nickname 호출: 본문에 C 의 닉네임을 부름(약한 신호) → C 이지만 단독 확정 못 함(ambiguous).
+  - burstId: burst-nickname-001
+    speaker: actor-a
+    atOffsetMs: 5000
+    messageIds: [msg-002]
+    content: "니키 이거 봤어?"
+    signals:
+      nicknameCall: actor-c
+    label:
+      targetKind: specific
+      target: actor-c
+      ambiguous: true
+      note: 닉네임 문자열 호출은 약한 신호(NICKNAME_STRING) — 단독 확정 불가
+  # 3) 그룹 질문: 채널 전체에 던지는 질문, 특정 대상 없음 → group.
+  - burstId: burst-group-001
+    speaker: actor-c
+    atOffsetMs: 10000
+    messageIds: [msg-003]
+    content: "다들 점심 뭐 먹음?"
+    signals:
+      groupForm: true
+    label:
+      targetKind: group
+      target: null
+      ambiguous: false
+      note: 그룹 전체 질문(GROUP_ADDRESSED) — 특정인 귀속 없음
+  # 4) 모호한 잡담: reply/mention/호명 없는 자유 발화 → 특정 대상 없음, 모호.
+  - burstId: burst-chitchat-001
+    speaker: actor-b
+    atOffsetMs: 15000
+    messageIds: [msg-004]
+    content: "음 그러게"
+    signals: {}
+    label:
+      targetKind: none
+      target: null
+      ambiguous: true
+      note: 자유 발화 — 무표식이라 대상 모호(none 우세)
+  # 5) self-talk: 자기 메시지에 self-reply 하며 중얼거림 → 특정 대상 없음(self), 모호.
+  - burstId: burst-selftalk-001
+    speaker: actor-a
+    atOffsetMs: 20000
+    messageIds: [msg-005]
+    content: "아 맞다 그거 해야지"
+    signals:
+      selfReply: actor-a
+    label:
+      targetKind: none
+      target: null
+      ambiguous: true
+      note: self-talk(SELF_REPLY) — 남에게 말한 게 아님(none)

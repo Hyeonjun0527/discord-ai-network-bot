@@ -3473,7 +3473,7 @@ tasks:
   program: P05
   sequence: 21
   title: addressee 라벨 fixture 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3484,13 +3484,17 @@ tasks:
   acceptance: none/group/특정 사용자 정답과 ambiguity를 함께 표현한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "addressee 라벨 fixture(합성): 수신자 정답(none/group/특정 사용자)과 ambiguity 라벨"
+  - "acceptance 충족: none/group/특정 사용자 정답과 ambiguity를 함께 표현 가능함을 확인"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T022
   program: P05
   sequence: 22
   title: 동시 대화 scene fixture 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3501,13 +3505,17 @@ tasks:
   acceptance: 정책 context가 대상 스레드만 선택할 수 있도록 두 thread가 분리된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "동시 대화 scene fixture(합성): 한 채널에서 동시 진행되는 두 논리 스레드"
+  - "acceptance 충족: 정책 context가 대상 스레드만 선택 가능하도록 두 thread가 분리됨을 확인"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T023
   program: P05
   sequence: 23
   title: thread·addressee 평가 스크립트 작성
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -3519,13 +3527,17 @@ tasks:
   acceptance: 전체 평균뿐 아니라 reply/mention/무표식 상황별 오류가 나온다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "thread·addressee 평가 스크립트: golden fixture 기반 precision/recall 측정 + 상황별 분해"
+  - "acceptance 충족: 전체 평균뿐 아니라 reply/mention/무표식 상황별 오류가 보고됨을 확인"
+  - "./scripts/nexa-verify.sh docs 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T024
   program: P05
   sequence: 24
   title: scene replay 결정론 테스트 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -3537,6 +3549,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "scene replay 결정론 테스트: 같은 canonical event stream 재생 시 동일 scene projection"
+  - "acceptance 충족: 같은 canonical event stream이 byte-equivalent snapshot을 만듦(결정론)을 테스트로 확인. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P05-T025

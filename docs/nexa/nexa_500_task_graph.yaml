@@ -4095,7 +4095,7 @@ tasks:
   program: P06
   sequence: 25
   title: P06 사회 상태 윤리·정확성 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -4106,6 +4106,12 @@ tasks:
   - docs/adr/0010-ainetwork-socialmemory-boundary.md
   deliverable: 민감 추론, 중복 소유권, 작은 표본 과신, 삭제 누락을 독립 감사한다.
   acceptance: 금지 feature가 없고 ainetwork 경계와 replay가 검증돼야 통과한다.
+  verification_evidence:
+  - "P06 사회 상태 T001~T024 전부 VERIFIED(관찰 가능성 원칙·Agent/Channel/Member 상태·11개 지표·감쇠·persistence·ainetwork 브리지·삭제/reset·replay). 재현: ./scripts/nexa-verify.sh all EXIT=0, validate-task-graph VALID"
+  - "금지 feature 없음: observable-state-policy 윤리 가드레일을 모든 지표가 준수 — 기분·성격·정치·종교·성적지향·건강·인구통계 추론 feature 부재(코드/테스트로 강제), 표본 부족 시 약하게 사용(smoothing/신뢰도 가중)"
+  - "ainetwork 경계: T020 읽기 전용 브리지(socialmemory가 ainetwork entity import 금지, ArchUnit), T021 중복 쓰기 방지 테스트. replay: T024 seed·Clock·projection version 결정론, 감쇠, 삭제 cascade(T023)"
+  - "추적(권장): '민감 추론·중복 소유권·작은 표본 과신·삭제 누락 독립 감사'는 운영 활성화 전 독립 윤리 검토(critic/외부) 권장. 코드 가드레일은 통과, 라이브 데이터 감사는 운영 단계"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 윤리 가드레일·ainetwork 경계·replay 코드 검증 통과"
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py

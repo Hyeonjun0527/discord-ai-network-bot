@@ -1961,7 +1961,7 @@ tasks:
   program: P03
   sequence: 1
   title: 기존 JDA 리스너와 샤딩 동작 조사
-  status: DRAFT
+  status: VERIFIED
   kind: audit
   risk: low
   depends_on:
@@ -1974,6 +1974,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "docs/nexa/discord/jda-ingestion.md(144줄) 작성: 현재 platform/discord JDA 리스너(MessageReceived·reaction·typing·member update)를 코드 위치(file:line)와 함께 조사"
+  - "acceptance 충족: 이벤트별 실행 스레드·순서 보장·예외 처리·재연결/세션 경계·샤딩 동작을 코드 인용으로 기록, NEXA 수집이 어댑터 경계 위에 올라가는 방식 정리"
+  - "./scripts/nexa-verify.sh docs 통과(graph VALID, 링크 OK) + central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P03-T002

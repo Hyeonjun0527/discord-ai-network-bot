@@ -10005,7 +10005,7 @@ tasks:
   program: P18
   sequence: 1
   title: NEXA metric taxonomy 정의
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: low
   depends_on:
@@ -10016,13 +10016,16 @@ tasks:
   acceptance: 고카디널리티 사용자/채널 ID와 원문을 metric label에서 금지한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "NEXA metric taxonomy(docs): 관측 지표 분류·라벨 규칙"
+  - "acceptance 충족: 고카디널리티 사용자/채널 ID와 원문을 metric label에서 금지함(metric explosion·PII 방지)을 문서로 명시. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T002
   program: P18
   sequence: 2
   title: end-to-end correlation ID 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10034,13 +10037,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "end-to-end correlation ID(NexaCorrelationContext): 관찰→판단→생성→행동 전체 추적(P15-T010 확장)"
+  - "acceptance 충족: 각 단계가 없을 때도 chain이 깨지지 않고 로그에 원문이 없음을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T003
   program: P18
   sequence: 3
   title: OpenTelemetry trace instrumentation 추가
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10052,13 +10058,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "OpenTelemetry trace instrumentation(NexaTracer): NEXA 파이프라인 trace span"
+  - "acceptance 충족: IGNORE 경로와 SPEAK 경로의 비용 차이를 trace에서 확인할 수 있음(관측성)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T004
   program: P18
   sequence: 4
   title: 정책 action 분포 metric 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10070,13 +10079,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "정책 action 분포 metric(PolicyActionMetrics): IGNORE/WAIT/REACT/SPEAK/CANCEL 분포"
+  - "acceptance 충족: constraint(안전 override 등)가 action을 변경한 비율이 별도 지표임(원시 정책 vs 최종 구분)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T005
   program: P18
   sequence: 5
   title: NEXA 채팅 점유율 metric 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10088,13 +10100,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "NEXA 채팅 점유율 metric(NexaChatShareMetrics): NEXA 발화 share(burst·토큰·문자)"
+  - "acceptance 충족: 메시지 조각 수가 아닌 burst 수와 토큰/문자 share를 함께 봄(대화 독점 감시)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T006
   program: P18
   sequence: 6
   title: 정책·GLM latency metric 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10106,13 +10121,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "정책·GLM latency metric(NexaLatencyMetrics): 정책 판단·GLM 생성 지연"
+  - "acceptance 충족: 취소된 action도 취소까지 걸린 시간이 기록됨(전체 지연 가시화)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T007
   program: P18
   sequence: 7
   title: GLM 비용·token metric 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10125,13 +10143,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "GLM 비용·token metric(GlmCostMetrics): 발화 생성 토큰·비용 집계"
+  - "acceptance 충족: 개별 사용자 ID를 metric label로 사용하지 않음(집계·프라이버시)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T008
   program: P18
   sequence: 8
   title: FIR/MIR proxy 운영 metric 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10143,13 +10164,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "FIR/MIR proxy 운영 metric(FirMirProxyMetrics): False Interruption/Missed Intervention 운영 proxy"
+  - "acceptance 충족: proxy임을 dashboard에 명시하고 사용자 심리를 사실로 표시하지 않음(추정 한계 명시)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T009
   program: P18
   sequence: 9
   title: stale memory·conflict metric 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10161,13 +10185,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "stale memory·conflict metric(SocialMemoryHealthMetrics): 만료/충돌 기억 비율"
+  - "acceptance 충족: 실제 memory object를 metric에 노출하지 않음(집계 수치만)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T010
   program: P18
   sequence: 10
   title: NEXA 운영 dashboard 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10180,13 +10207,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "NEXA 운영 dashboard(static/admin·웹 전용): 관측 지표·shadow/live 종합"
+  - "acceptance 충족: LIVE와 SHADOW 수치가 시각적으로 분리됨(혼동 방지)을 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T011
   program: P18
   sequence: 11
   title: 과다 발화 alert 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -10199,13 +10229,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "과다 발화 alert(NexaOverTalkAlertEvaluator): NEXA 점유율 초과 시 경보"
+  - "acceptance 충족: alert 발생 시 자동 downgrade/kill 조건과 사람 확인이 구분됨(자동 vs 수동 분리)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 과다 발화 alert 확정. 실제 alert 발송은 운영"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T012
   program: P18
   sequence: 12
   title: 모델 오류·fallback alert 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10217,13 +10251,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "모델 오류·fallback alert: GLM 오류·fallback 빈도 경보"
+  - "acceptance 충족: fallback 자체가 정상 안전 동작일 수 있어 지속 시간/비율 기준을 사용함(단발 무시·지속 경보)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T013
   program: P18
   sequence: 13
   title: 길드별 kill switch 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -10236,6 +10273,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "길드별 kill switch(V67 guild_kill_switch, additive): 특정 길드 NEXA 즉시 차단"
+  - "acceptance 충족: 이미 생성된 pending content까지 취소되고 audit가 남음(즉시 발효·완전 차단)을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 길드별 kill switch 확정. 실제 발동은 운영"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T014

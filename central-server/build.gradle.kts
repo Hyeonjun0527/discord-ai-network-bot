@@ -4,7 +4,7 @@ plugins {
     kotlin("jvm") version "2.1.0"
     kotlin("plugin.spring") version "2.1.0"
     kotlin("plugin.jpa") version "2.1.0" // @Entity all-open + no-arg 생성자
-    id("org.springframework.boot") version "3.4.1"
+    id("org.springframework.boot") version "3.4.13" // 보안 패치(NEXA-P17 scan): spring-core/tomcat/security CVE 수정 BOM
     id("io.spring.dependency-management") version "1.1.7"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1" // 정적 분석/포맷(차수 7 #76)
     id("org.jetbrains.kotlinx.kover") version "0.9.1" // Kotlin 커버리지(차수 18, JaCoCo 대체)
@@ -30,7 +30,26 @@ repositories {
     mavenCentral()
 }
 
+// 보안 scan(NEXA-P17-T021) 강제 버전 오버라이드 — Spring Boot 3.4.13 BOM 이 끌어오는 취약 전이 의존을
+// 고정 패치 버전으로 끌어올린다(HIGH/CRITICAL CVE 제거). io.spring.dependency-management 는 BOM 프로퍼티를
+// 통해 버전을 강제하므로, Gradle constraints 가 아니라 이 BOM 프로퍼티를 덮어써야 실제 해석 버전이 바뀐다.
+// 같은 마이너 라인 패치 업그레이드(기능 변경 없음). 새 CVE 가 뜨면 이 목록을 갱신한다.
+extra["netty.version"] = "4.1.135.Final" // CVE-2025-24970, CVE-2026-42583/44249/45416/50010
+extra["tomcat.version"] = "10.1.55" // tomcat-coyote RCE/스머글링/인증우회 다수
+extra["postgresql.version"] = "42.7.11" // CVE-2025-49146, CVE-2026-42198
+extra["json-smart.version"] = "2.5.2" // CVE-2024-57699
+// spring-security CVE-2026-22732(web, CRITICAL)·CVE-2025-41232/41248 — 6.4.x 라인 미패치라 6.5.x 로 통일.
+// Spring Security 6.5 는 Spring Framework 6.2 호환(Boot 3.4.13 의 Framework 6.2.x 와 정합). 단일 프로퍼티로
+// 전 모듈 동일 버전 → split-version 방지.
+extra["spring-security.version"] = "6.5.11"
+
 dependencies {
+    // 보안 scan(NEXA-P17-T021) — Spring BOM 이 관리하지 않는 전이 의존(JDA→tink→protobuf)은 BOM 프로퍼티로
+    // 못 올리므로 Gradle constraint 로 최소 버전을 강제한다. CVE-2024-7254(protobuf StackOverflow) 수정.
+    constraints {
+        implementation("com.google.protobuf:protobuf-java:3.25.5")
+    }
+
     // Spring Boot 코어
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-websocket") // 에이전트 WS 릴레이

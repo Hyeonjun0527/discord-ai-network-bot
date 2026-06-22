@@ -8,5 +8,9 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir .
+# 비-root 실행(컨테이너 탈출 완화, Trivy DS-0002). UID 10001 의 시스템 계정으로 떨어뜨린다.
+RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin nexa \
+    && chown -R nexa:nexa /app
+USER nexa
 # 토큰/주소는 환경변수로 주입(AGENT_TOKEN, RELAY_URL, OLLAMA_BASE_URL).
 ENTRYPOINT ["nexa"]

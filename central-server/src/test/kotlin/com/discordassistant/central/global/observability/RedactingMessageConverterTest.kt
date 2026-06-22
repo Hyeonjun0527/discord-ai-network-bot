@@ -22,9 +22,10 @@ class RedactingMessageConverterTest {
         val layout =
             PatternLayout().apply {
                 this.context = context
-                // 운영 logback-spring.xml 의 <conversionRule conversionWord="redactedMsg" .../> 과 동치 바인딩
-                // (logback 이 conversion word 를 클래스명으로 해석해 컨버터를 인스턴스화한다).
-                instanceConverterMap["redactedMsg"] = RedactingMessageConverter::class.java.name
+                // 운영 logback-spring.xml 의 <conversionRule conversionWord="redactedMsg" .../> 과 동치 바인딩.
+                // logback 1.5.13+ 에서 instanceConverterMap 값 타입이 클래스명(String)→Supplier<DynamicConverter>
+                // 로 바뀌어, 컨버터 생성자를 supplier 로 등록한다(동일 바인딩, 동작 불변).
+                instanceConverterMap["redactedMsg"] = java.util.function.Supplier { RedactingMessageConverter() }
                 pattern = "%redactedMsg%n"
                 start()
             }

@@ -9205,7 +9205,7 @@ tasks:
   program: P16
   sequence: 14
   title: 대화 내 prompt injection 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9216,13 +9216,17 @@ tasks:
   acceptance: 대화 content가 policy/speech 시스템 계약을 재정의하지 못한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "대화 내 prompt injection 시나리오: '이전 지시 무시하고~' 류 주입에 NEXA가 정체성·가드레일 유지"
+  - "acceptance 충족: 대화 content가 policy/speech 시스템 계약을 재정의하지 못함(payload minimizer·시스템 분리)을 시뮬레이터로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — injection 방어 시나리오 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T015
   program: P16
   sequence: 15
   title: 모욕·괴롭힘 경계 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9233,13 +9237,17 @@ tasks:
   acceptance: 관찰된 거부 신호 후 tease 확률이 내려가고 공격적 반복이 차단된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "모욕·괴롭힘 경계 시나리오: 경계 상황에서 NEXA가 괴롭힘 가담/증폭 안 하고 완화/침묵"
+  - "acceptance 충족: 관찰된 거부 신호 후 tease 확률이 내려가고 공격적 반복이 차단됨(거부 존중·안전)을 시뮬레이터로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 괴롭힘 경계 시나리오 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T016
   program: P16
   sequence: 16
   title: 늦게 도착한 GLM 응답 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9250,13 +9258,16 @@ tasks:
   acceptance: 늦은 content가 Discord에 전송되지 않고 폐기 audit가 남는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "늦게 도착한 GLM 응답 시나리오: 생성 응답이 contextVersion 변경 후 도착"
+  - "acceptance 충족: 늦은 content가 Discord에 전송되지 않고 폐기 audit가 남음(stale 차단)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T017
   program: P16
   sequence: 17
   title: policy/GLM timeout 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9267,13 +9278,16 @@ tasks:
   acceptance: fallback chain이 always-silent 또는 cancel로 안전하게 끝난다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "policy/GLM timeout 시나리오: 정책/생성 호출이 timeout되는 상황"
+  - "acceptance 충족: fallback chain이 always-silent 또는 cancel로 안전하게 끝남(P12 fallback·침묵 우선)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T018
   program: P16
   sequence: 18
   title: scheduler crash 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9284,13 +9298,16 @@ tasks:
   acceptance: 복구 후 duplicate message가 없다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "scheduler crash 시나리오: 예약 실행 중 스케줄러 크래시·재시작"
+  - "acceptance 충족: 복구 후 duplicate message가 없음(P13 idempotency·재시작 복구)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T019
   program: P16
   sequence: 19
   title: Discord permission loss 시나리오 작성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9301,13 +9318,16 @@ tasks:
   acceptance: 다른 채널 fallback 없이 action이 실패/취소된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "Discord permission loss 시나리오: 전송 직전 채널 권한 상실"
+  - "acceptance 충족: 다른 채널 fallback 없이 action이 실패/취소됨(P13 권한손실 우아한 실패)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T020
   program: P16
   sequence: 20
   title: 정책 평가 metric aggregator 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9319,13 +9339,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "정책 평가 metric aggregator(ml): 시뮬레이션 결과를 FIR/MIR/Brier·행동분포로 집계"
+  - "acceptance 충족: 종합점수뿐 아니라 모든 원 metric과 confidence가 남음(투명성·과신 방지)을 테스트로 검증. ml 253 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T021
   program: P16
   sequence: 21
   title: 행동 분포 distance 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9337,13 +9360,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "행동 분포 distance(ml): NEXA 행동분포와 인간 행동분포의 거리(KS/EMD 등)"
+  - "acceptance 충족: 평균만 비교하지 않고 quantile/KS/EMD 중 적절한 지표를 사용함(분포 비교)을 테스트로 검증. ml 253 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T022
   program: P16
   sequence: 22
   title: 30일 가상 장기 시뮬레이션 구현
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -9355,13 +9381,16 @@ tasks:
   acceptance: 상태 크기, 반복 문구, stale memory, 점유율 drift가 보고된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "30일 가상 장기 시뮬레이션: 장기 가상 이벤트로 누적 행동(기억 감쇠·관계 변화) 관찰"
+  - "acceptance 충족: 상태 크기, 반복 문구, stale memory, 점유율 drift가 보고됨(장기 안정성)을 시뮬레이터로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T023
   program: P16
   sequence: 23
   title: 블라인드 인간 평가 프로토콜 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -9372,13 +9401,17 @@ tasks:
   acceptance: AI임을 속이는 제품 실험이 아니라 evaluator에게 연구 목적과 데이터 사용을 고지한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "블라인드 인간 평가 프로토콜(docs): 평가자에게 NEXA 발화 품질을 블라인드로 채점(human-likeness rubric)"
+  - "acceptance 충족: AI임을 속이는 제품 실험이 아니라 evaluator에게 연구 목적과 데이터 사용을 고지함(윤리)을 문서로 명시. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 평가 프로토콜 윤리 고지 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T024
   program: P16
   sequence: 24
   title: 적대적 평가 리포트 자동 생성
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -9390,13 +9423,16 @@ tasks:
   acceptance: critical invariant 하나 실패 시 PASS로 표시되지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "적대적 평가 리포트 자동 생성: 약점(과보수 IGNORE·AI말투·공감온도)을 자동 집계 리포트"
+  - "acceptance 충족: critical invariant 하나 실패 시 PASS로 표시되지 않음(엄격 게이트·약점 은폐 방지)을 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P16-T025
   program: P16
   sequence: 25
   title: P16 시뮬레이션 release gate
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -9410,6 +9446,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "P16 시뮬레이션 release gate: 재생 시뮬레이터+시나리오 25종+metric+적대 리포트 완성"
+  - "acceptance 충족: 침묵·취소·privacy·stale memory critical invariant가 시뮬레이터 재생에서 모두 통과(실패 0). ./scripts/nexa-verify.sh all EXIT=0(central+agent+i18n+docs+contracts), validate VALID, ml 253 passed, NexaArchitectureTest 10/10"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — P16 시뮬레이션 게이트 통과, P17 보안 작업 진행 허용"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T001

@@ -42,6 +42,17 @@ class NexaSimulatorVocabularyTest {
     }
 
     @Test
+    fun `시뮬레이터 FAULTS 가 scenario schema fault enum 과 정확히 일치한다`() {
+        // 견고성/장애 시나리오(P16-T016~T019)의 주입 결함 코드. central 도메인 enum 이 아니라
+        // scenario DSL(schema.json) 의 fault enum 이 SSOT 짝이므로 둘의 drift 를 막는다.
+        val pythonFaults = pythonTupleRefs("FAULTS").map { pythonStringConst(it) }.toSet()
+        val schemaFaults = schemaFaultEnum()
+        assertThat(pythonFaults)
+            .describedAs("nexa-simulate.py FAULTS 가 schema.json fault enum 과 drift 없음")
+            .isEqualTo(schemaFaults)
+    }
+
+    @Test
     fun `시뮬레이터 개별 action 상수가 안정 wireName 과 일치한다`() {
         // 안정 코드(quota-boundary.md: SPEAK 만 generation 소모) — 코드 변경 시 즉시 실패.
         assertThat(pythonStringConst("ACTION_IGNORE")).isEqualTo(SocialActionKind.IGNORE.wireName)
@@ -73,6 +84,15 @@ class NexaSimulatorVocabularyTest {
         val match = Regex("""^$name\s*=\s*"([^"]*)"""", RegexOption.MULTILINE).find(simulatorSource)
         return match?.groupValues?.get(1)
             ?: error("Python string constant $name not found in nexa-simulate.py")
+    }
+
+    /** scenario schema.json 의 `"fault": { ... "enum": [ ... ] }` 문자열 집합. */
+    private fun schemaFaultEnum(): Set<String> {
+        val schema = File("../test-fixtures/nexa/scenarios/schema.json").readText()
+        val faultEnumRegex = Regex(""""fault"\s*:\s*\{.*?"enum"\s*:\s*\[(.*?)]""", RegexOption.DOT_MATCHES_ALL)
+        val match = faultEnumRegex.find(schema) ?: error("fault enum not found in scenario schema.json")
+        val faultBlock = match.groupValues[1]
+        return STRING_LITERAL.findAll(faultBlock).map { it.groupValues[1] }.toSet()
     }
 
     private fun simulatorFile(): File = File("../scripts/nexa-simulate.py")

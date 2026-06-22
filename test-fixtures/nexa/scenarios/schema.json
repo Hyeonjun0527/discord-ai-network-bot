@@ -211,10 +211,21 @@
             "properties": {
               "fault": {
                 "type": "string",
-                "description": "주입 결함(정책 평가 지연·rate limit·중복 이벤트 등). 시뮬레이터가 견고성 경로를 재생한다.",
-                "enum": ["policy_latency", "rate_limit", "duplicate_event", "send_failure"]
+                "description": "주입 결함(정책 평가 지연·timeout·scheduler crash·권한 상실 등). 시뮬레이터가 fail-safe 경로(침묵/취소·중복 0·다른 채널 fallback 없음)를 재생한다. nexa-simulate.py FAULTS 와 일치해야 한다(drift 가드).",
+                "enum": [
+                  "policy_latency",
+                  "rate_limit",
+                  "duplicate_event",
+                  "send_failure",
+                  "policy_timeout",
+                  "glm_timeout",
+                  "glm_late",
+                  "scheduler_crash",
+                  "permission_loss"
+                ]
               },
-              "detailMs": { "type": "integer", "minimum": 0 }
+              "detailMs": { "type": "integer", "minimum": 0 },
+              "targetMessageId": { "type": "string", "description": "결함이 영향을 주는 대상 message(선택)." }
             }
           }
         }
@@ -244,7 +255,10 @@
             "no_speak_on_deleted_target",
             "uses_current_fact_not_stale",
             "no_conflict_as_fact",
-            "speak_target_message"
+            "speak_target_message",
+            "no_duplicate_speak",
+            "silent_after_fault",
+            "cancel_on_fault"
           ]
         },
         "value": {

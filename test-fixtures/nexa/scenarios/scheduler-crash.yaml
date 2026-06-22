@@ -1,0 +1,42 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: scheduler-crash
+title: scheduler crash — claim·typing·first bubble 단계 crash 후 중복 메시지 0(NEXA-P16-T018)
+intent: >-
+  발화 예약의 claim/typing/first-bubble 단계에서 crash 를 주입한다. 복구 경로는 멱등이라 같은 대상에 두 번
+  발화하지 않는다(duplicate message 0). crash 로 잃은 진행 중 예약은 폐기되고 중복을 만들지 않는다.
+humanLikenessFocus: [timing]
+seed: 16018
+time:
+  baseInstant: "2026-01-14T10:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 500
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: 민수
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  # 케이스 1: 정상 호명 → 발사까지 완료(대상 m-1 은 발화됨, _fired_targets 에 기록).
+  - { seq: 1, atOffsetMs: 0,     type: message_create, messageId: m-1, authorId: actor-a, content: "@니아 오늘 일정 알려줘", mentionsNexa: true }
+  # 케이스 2: 새 호명 후 발사 전(claim/typing 단계)에 crash → 진행 중 예약 폐기(중복 발화 없음).
+  - { seq: 2, atOffsetMs: 10000, type: message_create, messageId: m-2, authorId: actor-a, content: "@니아 내일은?", mentionsNexa: true }
+  - { seq: 3, atOffsetMs: 11000, type: fault_inject, fault: scheduler_crash, detailMs: 0, targetMessageId: m-2 }
+  # 복구 후 동일 트리거가 재전달되어도(duplicate_event) 같은 대상에 다시 발화하지 않는다(멱등).
+  - { seq: 4, atOffsetMs: 16000, type: fault_inject, fault: duplicate_event, detailMs: 0, targetMessageId: m-1 }
+expected:
+  narrative: >-
+    m-1 은 정상 발화한다. m-2 는 발사 전 단계에서 crash 가 나 진행 중 예약을 잃지만, 복구가 중복을 만들지
+    않는다(m-2 재발화 0). 이미 발화한 m-1 의 트리거가 재전달돼도 멱등으로 무시한다. 같은 대상 중복 발화 0.
+  invariants:
+    - { kind: no_duplicate_speak, note: "같은 대상에 두 번 발화 없음(crash 복구 멱등)" }
+    - { kind: max_speak_count, value: 1, note: "m-1 만 발화, crash 난 m-2 는 발화 0" }
+    - { kind: cancel_on_fault, note: "crash 시 진행 중 예약 폐기" }
+    - { kind: no_stale_send }

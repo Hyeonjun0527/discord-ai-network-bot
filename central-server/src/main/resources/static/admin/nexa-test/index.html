@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEXA 테스트 — shadow 시뮬레이션</title>
+  <!--
+    어드민 "NEXA 테스트" 페이지(자족 정적 — 기존 어드민 대시보드 디자인 토큰 재사용, 기존 SPA id 와 분리).
+    NEXA(소셜 멤버 AI)의 participation 행동을 **실제 Discord 전송 없이(shadow)** 시뮬레이션한다.
+    API: GET/POST /api/ai-network/nexa/sim/** (OAuth 허용목록 또는 X-Dashboard-Admin-Token 가드 — 웹 대시보드 전용).
+    실제 전송·실제 GLM 호출 0(시뮬레이터는 순수 함수). 입력은 가명·합성 시나리오만.
+  -->
+  <link rel="stylesheet" href="/admin/dashboard/style.css" />
+  <style>
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 24px; }
+    h2 { margin-top: 26px; }
+    .shadow-banner { display:flex; align-items:center; gap:12px; border:1px solid rgba(70,211,154,.45);
+      background: rgba(70,211,154,.08); border-radius:14px; padding:12px 16px; margin:14px 0 4px; }
+    .shadow-badge { display:inline-flex; align-items:center; gap:6px; font-weight:850; letter-spacing:.04em;
+      font-size:12px; padding:5px 11px; border-radius:999px; background: var(--ok); color:#04130c; }
+    .shadow-banner .desc { color: var(--muted); font-size:13px; line-height:1.5; }
+    .action-card { border:1px solid var(--line); border-radius:14px; background: var(--raise); padding:16px; margin-top:10px; }
+    .section-title { font-weight:800; letter-spacing:.01em; margin-top:22px; color: var(--text); }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    select, textarea, input { background: var(--panel); border:1px solid var(--line); border-radius:10px; padding:9px 11px; }
+    textarea { width:100%; min-height:180px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12.5px; line-height:1.5; }
+    button.primary { background: linear-gradient(90deg, var(--accent), var(--accent2)); color:#04130c; border:none;
+      border-radius:10px; padding:10px 18px; font-weight:800; cursor:pointer; }
+    button.ghost { background: transparent; border:1px solid var(--line); border-radius:10px; padding:9px 14px; color:var(--text); cursor:pointer; }
+    .timeline { margin-top:14px; }
+    .tl-item { display:grid; grid-template-columns: 64px 1fr; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); }
+    .tl-time { color: var(--faint); font-size:12px; font-variant-numeric: tabular-nums; padding-top:2px; }
+    .tl-body { display:flex; flex-direction:column; gap:5px; }
+    .act { display:inline-flex; align-items:center; gap:6px; font-weight:800; font-size:12px; padding:3px 10px; border-radius:999px; width:max-content; }
+    .act-speak { background: rgba(123,183,255,.16); color: var(--accent2); }
+    .act-react { background: rgba(248,217,138,.16); color: var(--gold); }
+    .act-wait  { background: rgba(157,174,198,.14); color: var(--muted); }
+    .act-ignore{ background: rgba(113,129,152,.14); color: var(--faint); }
+    .act-cancel_pending { background: rgba(251,113,133,.14); color: var(--bad); }
+    .tl-reason { color: var(--muted); font-size:13px; line-height:1.45; }
+    .tl-meta { color: var(--faint); font-size:11.5px; }
+    .kpis { display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; }
+    .kpi-mini { border:1px solid var(--line); border-radius:12px; background: var(--panel); padding:12px 16px; min-width:104px; text-align:center; }
+    .kpi-mini .n { font-size:22px; font-weight:850; }
+    .kpi-mini .l { color: var(--muted); font-size:11.5px; margin-top:3px; }
+    .err { color: var(--bad); font-size:13px; margin-top:8px; }
+    .muted { color: var(--muted); }
+    .hint { color: var(--faint); font-size:12px; margin-top:6px; line-height:1.5; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>NEXA 테스트 — shadow 시뮬레이션</h1>
+    <p class="muted">
+      NEXA(소셜 멤버 AI)가 메시지 흐름에서 무엇을 할지(IGNORE / WAIT / REACT / SPEAK / 예약취소)를
+      <strong>실제 Discord 전송 없이</strong> 재생합니다. 사전 정의 시나리오를 고르거나 직접 이벤트열을 입력하세요.
+    </p>
+
+    <div class="shadow-banner">
+      <span class="shadow-badge">● SHADOW</span>
+      <span class="desc">
+        이 페이지는 <strong>실제 전송을 하지 않습니다</strong>(시뮬레이터는 순수 함수 — Discord/GLM 호출 0).
+        모든 결과의 <code>sends</code> 는 항상 0 입니다. 입력은 가명·합성 시나리오만 사용하세요.
+      </span>
+    </div>
+
+    <div class="section-title">시나리오 선택</div>
+    <div class="action-card">
+      <div class="row">
+        <select id="scenarioSelect"><option value="">사전 정의 시나리오 불러오는 중…</option></select>
+        <button class="primary" id="runPredefinedBtn">시뮬레이션 실행</button>
+        <button class="ghost" id="loadIntoEditorBtn">아래 편집기로 가져오기</button>
+      </div>
+      <div class="hint">사전 정의 시나리오는 운영 데이터가 아니라 가명 합성 케이스입니다(원문/실 ID 미포함).</div>
+    </div>
+
+    <div class="section-title">직접 입력 (선택)</div>
+    <div class="action-card">
+      <textarea id="customJson" spellcheck="false" placeholder='{"scenarioId":"custom","channelKind":"MEMBER","seed":1,"actors":[...],"events":[...]}'></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="primary" id="runCustomBtn">직접 입력 실행</button>
+        <span class="hint" style="margin:0">JSON 형식. 잘못된 입력은 400 으로 거부됩니다.</span>
+      </div>
+    </div>
+
+    <div id="error" class="err" hidden></div>
+
+    <h2 id="resultHead" hidden>결과 타임라인</h2>
+    <div id="resultMeta" hidden>
+      <div class="shadow-banner" style="margin-top:8px">
+        <span class="shadow-badge">● SHADOW</span>
+        <span class="desc">실제 전송: <strong id="sendsVal">0</strong> 회 · shadow=<span id="shadowVal">true</span> · 채널: <span id="chanVal"></span></span>
+      </div>
+      <div class="kpis">
+        <div class="kpi-mini"><div class="n" id="kDecisions">–</div><div class="l">결정 수</div></div>
+        <div class="kpi-mini"><div class="n" id="kSpeak">–</div><div class="l">SPEAK</div></div>
+        <div class="kpi-mini"><div class="n" id="kReact">–</div><div class="l">REACT</div></div>
+        <div class="kpi-mini"><div class="n" id="kCancel">–</div><div class="l">예약취소</div></div>
+        <div class="kpi-mini"><div class="n" id="kSends">0</div><div class="l">실제 전송</div></div>
+      </div>
+      <div id="faultRow" class="hint" hidden></div>
+    </div>
+    <div class="timeline" id="timeline"></div>
+  </div>
+
+  <script>
+    const ACTION_LABEL = {
+      ignore: 'IGNORE (침묵)', wait: 'WAIT (대기)', react: 'REACT (반응)',
+      speak: 'SPEAK (발화)', cancel_pending: 'CANCEL (예약취소)'
+    };
+
+    function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    function showError(msg) { const e = document.getElementById('error'); e.textContent = msg; e.hidden = false; }
+    function clearError() { document.getElementById('error').hidden = true; }
+
+    async function api(path, opts) {
+      // 인증은 동일 출처 OAuth 세션 또는 X-Dashboard-Admin-Token 헤더(운영자). 비관리자는 403.
+      const res = await fetch(path, Object.assign({ credentials: 'same-origin', headers: { 'Content-Type': 'application/json' } }, opts || {}));
+      const text = await res.text();
+      let json = null; try { json = text ? JSON.parse(text) : null; } catch (_) {}
+      if (!res.ok) {
+        const m = json && json.error ? json.error.message : ('요청 실패 (' + res.status + ')');
+        throw new Error(m + (res.status === 403 ? ' — 운영자 로그인 또는 관리자 토큰이 필요합니다.' : ''));
+      }
+      return json;
+    }
+
+    async function loadScenarios() {
+      try {
+        const list = await api('/api/ai-network/nexa/sim/scenarios');
+        const sel = document.getElementById('scenarioSelect');
+        sel.innerHTML = '';
+        for (const s of list) {
+          const opt = document.createElement('option');
+          opt.value = s.scenarioId;
+          opt.textContent = s.title + ' [' + s.channelKind + ']';
+          sel.appendChild(opt);
+        }
+      } catch (e) { showError(e.message); }
+    }
+
+    function render(result) {
+      clearError();
+      document.getElementById('resultHead').hidden = false;
+      document.getElementById('resultMeta').hidden = false;
+      document.getElementById('sendsVal').textContent = result.sends;
+      document.getElementById('kSends').textContent = result.sends;
+      document.getElementById('shadowVal').textContent = String(result.shadow);
+      document.getElementById('chanVal').textContent = result.channelKind;
+      document.getElementById('kDecisions').textContent = result.summary.decisions;
+      document.getElementById('kSpeak').textContent = result.summary.speak;
+      document.getElementById('kReact').textContent = result.summary.react;
+      document.getElementById('kCancel').textContent = result.summary.cancel;
+      const faultRow = document.getElementById('faultRow');
+      if (result.faults && result.faults.length) {
+        faultRow.hidden = false;
+        faultRow.textContent = '주입된 결함: ' + result.faults.join(', ') + ' (모두 침묵/취소 fail-safe)';
+      } else { faultRow.hidden = true; }
+
+      const tl = document.getElementById('timeline');
+      tl.innerHTML = '';
+      for (const d of result.decisions) {
+        const item = document.createElement('div');
+        item.className = 'tl-item';
+        const sec = (d.atMs / 1000).toFixed(1);
+        const label = ACTION_LABEL[d.action] || d.action;
+        const meta = [];
+        if (d.triggerMessageId) meta.push('trigger=' + esc(d.triggerMessageId));
+        if (d.targetMessageId) meta.push('target=' + esc(d.targetMessageId));
+        meta.push('delay=' + esc(d.delayBucket));
+        if (d.consumesGenerationQuota) meta.push('생성 quota 소모');
+        item.innerHTML =
+          '<div class="tl-time">+' + sec + 's</div>' +
+          '<div class="tl-body">' +
+            '<span class="act act-' + esc(d.action) + '">' + esc(label) + '</span>' +
+            '<div class="tl-reason">' + esc(d.reason) + '</div>' +
+            '<div class="tl-meta">' + meta.map(esc).join(' · ') + '</div>' +
+          '</div>';
+        tl.appendChild(item);
+      }
+    }
+
+    document.getElementById('runPredefinedBtn').addEventListener('click', async () => {
+      const id = document.getElementById('scenarioSelect').value;
+      if (!id) { showError('시나리오를 선택하세요.'); return; }
+      try { render(await api('/api/ai-network/nexa/sim/scenarios/' + encodeURIComponent(id) + '/run', { method: 'POST' })); }
+      catch (e) { showError(e.message); }
+    });
+
+    document.getElementById('runCustomBtn').addEventListener('click', async () => {
+      const raw = document.getElementById('customJson').value.trim();
+      if (!raw) { showError('JSON 시나리오를 입력하세요.'); return; }
+      let body; try { body = JSON.parse(raw); } catch (e) { showError('JSON 파싱 오류: ' + e.message); return; }
+      try { render(await api('/api/ai-network/nexa/sim/run', { method: 'POST', body: JSON.stringify(body) })); }
+      catch (e) { showError(e.message); }
+    });
+
+    document.getElementById('loadIntoEditorBtn').addEventListener('click', () => {
+      const sel = document.getElementById('scenarioSelect');
+      const opt = sel.options[sel.selectedIndex];
+      if (!opt) return;
+      // 편집기에 최소 골격을 채워준다(사전 정의 본문은 서버에만 있으므로 템플릿 제공).
+      document.getElementById('customJson').value = JSON.stringify({
+        scenarioId: 'custom', title: '직접 입력', channelKind: 'MEMBER', seed: 1,
+        actors: [{ actorId: 'a', kind: 'HUMAN', displayName: '민수' }, { actorId: 'n', kind: 'NEXA', displayName: '니아' }],
+        events: [
+          { seq: 1, atOffsetMs: 0, type: 'MESSAGE_CREATE', messageId: 'm-1', authorId: 'a', content: '@니아 질문', mentionsNexa: true },
+          { seq: 2, atOffsetMs: 30000, type: 'MESSAGE_CREATE', messageId: 'm-2', authorId: 'a', content: '추가 메시지' }
+        ]
+      }, null, 2);
+    });
+
+    loadScenarios();
+  </script>
+</body>
+</html>

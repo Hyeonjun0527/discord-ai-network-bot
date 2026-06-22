@@ -9,7 +9,6 @@ import com.discordassistant.central.speech.application.port.out.SpeechCandidate
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationPort
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationRequest
 import com.discordassistant.central.speech.application.port.out.SpeechGenerationResult
-import com.discordassistant.central.speech.application.privacy.ExternalPayloadMinimizer
 import com.discordassistant.central.speech.application.prompt.BurstPromptCompiler
 import com.discordassistant.central.speech.application.prompt.SocialActPromptCompiler
 import com.discordassistant.central.speech.generation.SpeechGenerationFixtures
@@ -90,7 +89,6 @@ class NexaGenerationQuotaConnectorTest {
                 socialActCompiler = SocialActPromptCompiler(),
                 burstCompiler = BurstPromptCompiler(),
                 reasoningModeSelector = ReasoningModeSelector(),
-                payloadMinimizer = ExternalPayloadMinimizer(),
             )
         return Harness(NexaGenerationQuotaConnector(SpeechGenerationGate(service), quota), packet)
     }

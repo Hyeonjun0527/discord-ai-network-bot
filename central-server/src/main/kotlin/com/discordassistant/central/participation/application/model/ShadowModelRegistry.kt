@@ -24,6 +24,7 @@ import java.time.Instant
 class ShadowModelRegistry(
     private val store: ShadowModelRegistryPort,
     private val clock: Clock = Clock.systemUTC(),
+    private val integrityVerifier: ArtifactIntegrityVerifier = ArtifactIntegrityVerifier(),
 ) {
     /**
      * 새 모델 후보를 [ModelStatus.REGISTERED] 로 등록한다. 같은 modelId 가 이미 있으면 거부(불변 — 재등록 금지).
@@ -74,6 +75,10 @@ class ShadowModelRegistry(
     /**
      * LIVE 로 선택한다 — **[ModelStatus.APPROVED] 후보만** 허용(acceptance T020). 미승인/거부/등록/shadow 후보를
      * LIVE 로 고르면 [ShadowModelRegistryException].
+     *
+     * **주의**: 이 메서드는 *상태*(APPROVED)만 확인한다. 실제 LIVE 승격 경로는 변조 artifact 를 거르기 위해
+     * 반드시 [selectForLiveVerified] 로 서명·hash 무결성까지 검증해야 한다(NEXA-P17-T020 acceptance — 변조
+     * artifact 는 ACTIVE 가 되지 못한다). 상태만 확인하는 이 경로는 무결성 검증을 위한 전제(후보 조회)로만 쓴다.
      */
     fun selectForLive(modelId: String): ShadowModelCandidate {
         val candidate = require(modelId)
@@ -82,6 +87,49 @@ class ShadowModelRegistry(
                 "승인되지 않은 artifact 를 LIVE 로 선택할 수 없다: modelId=$modelId, status=${candidate.status}",
             )
         }
+        return candidate
+    }
+
+    /**
+     * LIVE 승격 경로(NEXA-P17-T020 enforcement). 상태(APPROVED) 확인에 더해 [ArtifactIntegrityVerifier] 로
+     * **서명·hash 무결성까지 검증**한 뒤에만 후보를 돌려준다. 다음 중 하나라도 어긋나면 거부한다:
+     *  - 후보가 APPROVED 가 아님([selectForLive] 위임) → 미승인 LIVE 금지.
+     *  - manifest 의 modelVersion 이 등록된 후보의 modelVersion 과 다름 → 다른 artifact 를 끼워넣는 swap.
+     *  - manifest 의 `model` 컴포넌트 sha256 이 등록된 [ShadowModelCandidate.artifactSha256] 와 다름 → artifact 변조.
+     *  - [ArtifactIntegrityVerifier.verify] 가 서명 불일치·hash 불일치·구성 누락을 발견 → 변조/미서명.
+     *
+     * 즉 APPROVED 라벨만으로는 LIVE 가 될 수 없고, 변조·미서명 artifact 는 [ArtifactIntegrityException] 으로 거부된다.
+     *
+     * @param signed ml 측이 봉인한 서명 manifest.
+     * @param actualDigests 검증 시점에 다시 계산한 컴포넌트별 현재 sha256(name → sha256 hex).
+     * @param signingKey 대칭 서명키(env 로만 주입 — 레지스트리는 키를 보관하지 않는다).
+     */
+    fun selectForLiveVerified(
+        modelId: String,
+        signed: SignedArtifactManifest,
+        actualDigests: Map<String, String>,
+        signingKey: ByteArray,
+    ): ShadowModelCandidate {
+        val candidate = selectForLive(modelId)
+        // 등록된 후보의 정체성(modelVersion·artifact hash)이 서명된 manifest 와 일치하는지 먼저 못박는다 —
+        // 서명이 유효해도 "다른 승인 후보의 서명을 미승인 artifact 에 붙이는" swap 을 차단한다.
+        if (signed.manifest.modelVersion != candidate.modelVersion) {
+            throw ArtifactIntegrityException(
+                "manifest modelVersion 불일치: registry=${candidate.modelVersion} signed=${signed.manifest.modelVersion}" +
+                    " — ACTIVE 자격 없음",
+            )
+        }
+        val signedModelDigest =
+            signed.manifest.components
+                .firstOrNull { it.name == MODEL_COMPONENT_NAME }
+                ?.sha256
+        if (signedModelDigest != candidate.artifactSha256) {
+            throw ArtifactIntegrityException(
+                "등록된 artifactSha256 과 manifest model digest 불일치(변조/swap) — ACTIVE 자격 없음",
+            )
+        }
+        // 서명·각 컴포넌트 hash 무결성(변조/미서명/누락 차단). 어긋나면 ArtifactIntegrityException.
+        integrityVerifier.verify(signed = signed, actualDigests = actualDigests, signingKey = signingKey)
         return candidate
     }
 
@@ -94,4 +142,9 @@ class ShadowModelRegistry(
 
     private fun require(modelId: String): ShadowModelCandidate =
         store.find(modelId) ?: throw ShadowModelRegistryException("등록되지 않은 modelId: $modelId")
+
+    companion object {
+        /** manifest 에서 ONNX 모델 본체 컴포넌트의 논리 이름(ml signing.py `sign_artifact` 의 "model" 키와 일치). */
+        const val MODEL_COMPONENT_NAME: String = "model"
+    }
 }

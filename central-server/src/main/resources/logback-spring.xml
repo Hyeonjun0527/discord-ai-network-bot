@@ -6,9 +6,17 @@
   로그 디렉터리는 LOG_DIR(기본 ./logs) 환경변수로 조정.
 -->
 <configuration>
+    <!--
+      NEXA-P17-T013: 로그 메시지 redaction 바인딩.
+      %redactedMsg 는 RedactingMessageConverter 로 매핑돼 snowflake/API key/Bearer 토큰을 마스킹한다
+      (SensitiveLogRedactor 와 동일 패턴 — scan-sensitive-logs.py 스캐너의 SSOT). 모든 appender 패턴이
+      %msg 대신 %redactedMsg 를 써서 PII·비밀이 콘솔/파일 어느 쪽에도 남지 않는다.
+    -->
+    <conversionRule conversionWord="redactedMsg"
+                    converterClass="com.discordassistant.central.global.observability.RedactingMessageConverter"/>
     <property name="LOG_DIR" value="${LOG_DIR:-logs}"/>
     <property name="PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{requestId:-}] %logger{36} - %msg%n"/>
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{requestId:-}] %logger{36} - %redactedMsg%n"/>
 
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>

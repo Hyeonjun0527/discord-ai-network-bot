@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 기본값은 **차단(deny-by-default)**: 명시 동의([grant]) 전에는 처리 불가(consent-model: 동의 전 어떤 관찰도 금지).
  * 스레드 안전(동시 철회/검사).
  */
-class ConsentGate {
+open class ConsentGate {
     private val granted = ConcurrentHashMap.newKeySet<String>()
 
     /** [subjectPseudonym] 의 동의를 부여한다(처리 허용). */
@@ -33,7 +33,7 @@ class ConsentGate {
      * [stage] 위험 지점에서 [subjectPseudonym] 처리가 허용되는지 확인한다. 미동의/철회면 [ConsentRevokedException]
      * 으로 fail-closed 차단한다(호출 성공 = 그 시점 동의 보장). 모든 위험 지점이 이 한 메서드로 게이트된다.
      */
-    fun checkAllowed(
+    open fun checkAllowed(
         subjectPseudonym: String,
         stage: ProcessingStage,
     ) {

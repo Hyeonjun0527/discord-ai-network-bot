@@ -74,12 +74,47 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: pip-audit(ml/social-policy 의존성 CVE)
+      # pip-audit 는 critical/high CVE 에서 **실패**해야 한다(M4 — `|| true` 비차단 제거). 임시 허용은
+      # docs/nexa/security/scan-exceptions.yaml 의 만료일·소유자·근거 있는 예외(T021 거버넌스)로만 한다.
+      - name: pip-audit(ml/social-policy 의존성 CVE — 차단)
         run: |
           pip install pip-audit
-          pip-audit --strict --desc ./ml/social-policy || true
-      - name: pip-audit(provider-agent 의존성 CVE)
-        run: pip-audit --strict --desc ./provider-agent || true
+          pip-audit --strict --desc ./ml/social-policy
+      - name: pip-audit(provider-agent 의존성 CVE — 차단)
+        run: pip-audit --strict --desc ./provider-agent
+
+  # 로그 redaction 스캔(NEXA-P17-T013) — central-server 테스트가 prod 프로파일로 파일 로그를 남기게 하고,
+  # scan-sensitive-logs.py 로 그 로그에 snowflake·API key·Bearer 토큰이 한 건도 없는지 검사한다(있으면 실패).
+  # 이로써 redactor 바인딩(logback-spring.xml %redactedMsg)이 실제 파일 출력에서 작동함을 CI 가 강제한다.
+  log-redaction-scan:
+    runs-on: ubuntu-latest
+    needs: exception-policy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: central-server 테스트 실행(prod 프로파일 파일 로그 생성)
+        working-directory: central-server
+        env:
+          SPRING_PROFILES_ACTIVE: prod
+          LOG_DIR: ${{ github.workspace }}/central-server/logs
+        run: ./gradlew test --no-daemon --console=plain
+      - name: 로그 금지 문자열 스캔(snowflake/API key/Bearer 토큰 0건 강제)
+        run: |
+          shopt -s nullglob
+          logs=(central-server/logs/*.log central-server/logs/*.log.gz)
+          if [ ${#logs[@]} -eq 0 ]; then
+            echo "스캔할 로그 파일 없음(파일 appender 미생성) — 스킵"
+            exit 0
+          fi
+          # .gz 도 펼쳐서 스캔.
+          for f in central-server/logs/*.log.gz; do [ -e "$f" ] && gunzip -kf "$f"; done
+          python3 scripts/scan-sensitive-logs.py central-server/logs/*.log
 
   # 컨테이너 이미지 취약점(빌드한 이미지 파일시스템·OS 패키지).
   container-scan:

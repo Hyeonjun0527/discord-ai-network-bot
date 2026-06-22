@@ -4,8 +4,8 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 24 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 642
-- Cross-node import edges: 480
+- Kotlin files scanned: 646
+- Cross-node import edges: 483
 
 ## Nodes
 
@@ -17,14 +17,14 @@
 | `channelai` | 19 |
 | `conversation` | 77 |
 | `dev` | 1 |
-| `global` | 43 |
+| `global` | 44 |
 | `globalpromptset` | 3 |
 | `guild` | 6 |
 | `knowledge` | 30 |
 | `licensing` | 19 |
 | `multiresponse` | 22 |
 | `onboarding` | 15 |
-| `participation` | 89 |
+| `participation` | 90 |
 | `platform` | 45 |
 | `preset` | 25 |
 | `provider` | 15 |
@@ -34,7 +34,7 @@
 | `routing` | 19 |
 | `shared` | 7 |
 | `socialmemory` | 51 |
-| `speech` | 42 |
+| `speech` | 44 |
 
 ## Directed cross-node imports
 
@@ -151,6 +151,7 @@
 | `socialmemory` | `participation` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/domain/event/SocialStateUpdate.kt` | `com.discordassistant.central.participation.domain.model.state.ChannelScope` |
 | `socialmemory` | `routing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/extraction/CloudLlmMemoryCandidateExtractor.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
 | `socialmemory` | `shared` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/socialmemory/adapter/outbound/globalpromptset/GlobalPromptSetIdentityKernelBridge.kt` | `com.discordassistant.central.shared.NexaIdentity` |
+| `speech` | `global` | 3 | `central-server/src/main/kotlin/com/discordassistant/central/speech/application/NexaSpeechPipelineService.kt` | `com.discordassistant.central.global.privacy.ConsentGate` |
 | `speech` | `globalpromptset` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/globalpromptset/SpeechIdentityKernelBridge.kt` | `com.discordassistant.central.globalpromptset.application.GlobalPromptSetService` |
 | `speech` | `routing` | 1 | `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/routing/RoutingCloudSpeechGenerationAdapter.kt` | `com.discordassistant.central.routing.application.CloudLlm` |
 | `speech` | `shared` | 2 | `central-server/src/main/kotlin/com/discordassistant/central/speech/adapter/outbound/globalpromptset/SpeechIdentityKernelBridge.kt` | `com.discordassistant.central.shared.NexaIdentity` |

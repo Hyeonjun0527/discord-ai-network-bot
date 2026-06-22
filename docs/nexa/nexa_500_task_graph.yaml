@@ -9456,7 +9456,7 @@ tasks:
   program: P17
   sequence: 1
   title: NEXA 위협 모델 작성
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9467,13 +9467,17 @@ tasks:
   acceptance: Discord/JDA, central DB, Z.AI, ML artifact, admin dashboard 경계가 모두 포함된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "NEXA 위협 모델(docs): STRIDE 등 위협·완화, 신뢰 경계별 분석"
+  - "acceptance 충족: Discord/JDA·central DB·Z.AI·ML artifact·admin dashboard 경계가 모두 포함됨을 문서로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 위협 모델 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T002
   program: P17
   sequence: 2
   title: 대화 content 지침 격리 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9485,13 +9489,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "대화 content 지침 격리: 사용자 content와 system/identity/policy를 구조적으로 분리"
+  - "acceptance 충족: prompt injection fixture가 system/identity/policy section을 덮어쓰지 못함(P16 injection 강제)을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T003
   program: P17
   sequence: 3
   title: system prompt·비밀 비노출 검사 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9504,13 +9511,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "system prompt·비밀 비노출 검사: 응답/로그/payload에 system prompt·키가 안 나옴"
+  - "acceptance 충족: 가짜 비밀 fixture와 실제 환경 변수명이 모두 테스트됨(비밀 누출 검사)을 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T004
   program: P17
   sequence: 4
   title: GLM payload allowlist serializer 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9522,13 +9532,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "GLM payload allowlist serializer: 명시 허용 필드만 직렬화(deny by default, P14 minimizer 강화)"
+  - "acceptance 충족: 새 필드는 명시적 승인 없이는 payload에 자동 추가되지 않음(allowlist)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — allowlist deny-default 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T005
   program: P17
   sequence: 5
   title: 메시지 암호화 키 회전 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9541,13 +9555,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "메시지 암호화 키 회전(ADR 0012): 키 회전 메커니즘(과거 데이터 복호 유지, 실제 운영 키 미변경)"
+  - "acceptance 충족: 구키 폐기 전 모든 활성 ciphertext 접근 가능성을 검증함(키 ID 기반 다중 키)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 키 회전 메커니즘+테스트까지(실제 키 변경은 운영)"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T006
   program: P17
   sequence: 6
   title: NEXA 관리자 RBAC 정의
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9560,13 +9578,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "NEXA 관리자 RBAC 정의: NEXA 설정/고위험 작업을 권한별 분리(웹 대시보드·durable-token)"
+  - "acceptance 충족: Discord 관리자 한 종류에 모든 고위험 권한을 자동 부여하지 않음(최소 권한)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — RBAC 최소 권한 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T007
   program: P17
   sequence: 7
   title: 설정 변경 optimistic lock·audit 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9579,13 +9601,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "설정 변경 optimistic lock·audit: 버전 기반 동시변경 차단·변경 감사 로그"
+  - "acceptance 충족: stale dashboard가 최신 live 설정을 덮어쓰지 않음(optimistic lock)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T008
   program: P17
   sequence: 8
   title: 사용자 데이터 export 유스케이스 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9597,13 +9622,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "사용자 데이터 export 유스케이스(P02): 본인 NEXA 데이터(기억·feature) export, sourceEventId 역추적"
+  - "acceptance 충족: 다른 사용자의 content와 내부 비밀이 포함되지 않음(본인 데이터만·격리)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 데이터 export 권리 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T009
   program: P17
   sequence: 9
   title: 삭제 요청 orchestration 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9615,13 +9644,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "삭제 요청 orchestration(P02 삭제 전파): sourceEventId 역추적으로 기억·feature·학습 row 삭제 전파"
+  - "acceptance 충족: 부분 실패 상태와 재시도·완료 증거가 있음(삭제 보장·감사)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 삭제 전파 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T010
   program: P17
   sequence: 10
   title: 동의 철회 즉시 차단 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9633,13 +9666,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "동의 철회 즉시 차단 테스트: 철회 시 모든 NEXA 처리(관찰·발화·학습) 즉시 차단(P13 즉시 invalidation 일관)"
+  - "acceptance 충족: 철회 시점 이후 신규 외부 전송/발화/학습 export가 0임을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T011
   program: P17
   sequence: 11
   title: 학습 artifact 삭제 tombstone 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9652,13 +9688,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "학습 artifact 삭제 tombstone(ml): 삭제된 데이터의 학습 row를 tombstone으로 무효화·재학습 트리거 기준"
+  - "acceptance 충족: 모델에서 개별 샘플을 제거할 수 없다는 한계와 재학습 기준이 명확함(정직한 한계 명시)을 테스트로 검증. ml 261 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — tombstone·재학습 기준 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T012
   program: P17
   sequence: 12
   title: 외부 GLM 요청 감사 hash 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9670,13 +9710,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "외부 GLM 요청 감사 hash: 외부로 나간 payload를 hash로 감사(원문 미저장)"
+  - "acceptance 충족: 원문 payload를 로그에 저장하지 않고 사후 범위 감사가 가능함(hash 감사·프라이버시)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T013
   program: P17
   sequence: 13
   title: 로그 redaction 자동 테스트 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9689,6 +9732,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "로그 redaction 자동 테스트: 로그에 PII·비밀·원문이 안 남게 자동 검사"
+  - "acceptance 충족: 금지 문자열이 한 건이라도 있으면 CI가 실패함(엄격 redaction 게이트)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T014

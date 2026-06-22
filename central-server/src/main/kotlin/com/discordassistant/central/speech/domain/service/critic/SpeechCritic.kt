@@ -87,4 +87,7 @@ enum class CriticReason {
 
     /** 대상·장면 불일치(T020 — cross-thread 끌어오기 등). */
     TARGET_OR_SCENE_MISMATCH,
+
+    /** 시스템 지침·API 키·내부 schema·hidden ID 등 비밀 노출(P17-T003). */
+    SECRET_DISCLOSURE,
 }

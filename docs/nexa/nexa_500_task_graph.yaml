@@ -5693,7 +5693,7 @@ tasks:
   program: P09
   sequence: 24
   title: 7일 shadow 관찰 실행
-  status: DRAFT
+  status: REVIEW
   kind: experiment
   risk: high
   depends_on:
@@ -5710,7 +5710,7 @@ tasks:
   program: P09
   sequence: 25
   title: P09 기준선 선택 게이트
-  status: DRAFT
+  status: REVIEW
   kind: review
   risk: high
   depends_on:
@@ -6245,7 +6245,7 @@ tasks:
   program: P10
   sequence: 25
   title: P10 데이터셋 승인 게이트
-  status: DRAFT
+  status: REVIEW
   kind: review
   risk: high
   depends_on:
@@ -6696,7 +6696,7 @@ tasks:
   program: P11
   sequence: 21
   title: 학습 모델 7일 shadow 비교
-  status: DRAFT
+  status: REVIEW
   kind: experiment
   risk: high
   depends_on:
@@ -6778,7 +6778,7 @@ tasks:
   program: P11
   sequence: 25
   title: P11 모델 후보 승인 게이트
-  status: DRAFT
+  status: REVIEW
   kind: review
   risk: high
   depends_on:
@@ -7251,7 +7251,7 @@ tasks:
   program: P12
   sequence: 22
   title: timing shadow A/B 실행
-  status: DRAFT
+  status: REVIEW
   kind: experiment
   risk: high
   depends_on:
@@ -7288,7 +7288,7 @@ tasks:
   program: P12
   sequence: 24
   title: 사람 평가 timing protocol 실행
-  status: DRAFT
+  status: REVIEW
   kind: experiment
   risk: high
   depends_on:
@@ -7305,7 +7305,7 @@ tasks:
   program: P12
   sequence: 25
   title: P12 timing 정책 게이트
-  status: DRAFT
+  status: REVIEW
   kind: review
   risk: high
   depends_on:
@@ -11024,7 +11024,7 @@ tasks:
   program: P19
   sequence: 23
   title: 최종 아키텍처·코드 독립 감사
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -11038,13 +11038,19 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "최종 독립 감사 2종(security-reviewer + critic, 2026-06-22): 모듈 경계·dead code·test validity·security·operational readiness"
+  - "security-reviewer 판정: NEXA v1 보안 게이트 통과 가능, CRITICAL/HIGH 0건. P17 H1~H3·M1~M4 갭이 seam 커밋 2b727120으로 실제로 닫힘(ArchUnit 우회금지 non-vacuous·통합테스트 실제 경로)"
+  - "critic 판정: ACCEPT-WITH-RESERVATIONS. 아키텍처 건강(헥사고날 경계 강제·도메인 순수성·ADR0006 GLM 격리·additive Flyway·zero stubs)"
+  - "P0/P1 닫힘: 보안 5갭 해소·아키텍처 결함 0. P2(소유자·기한): C1=NEXA live 파이프라인이 의도적 dormant(P15 dark-launch·flag OFF로 기존 channelai 100% 보존). 실제 wiring은 P19-T024 GO/NO-GO·T025 출시 게이트(운영)의 활성화 작업으로 추적([[nexa_security_orphaned_enforcement]] wiring 목록 6항목, 소유자=출시 담당, 기한=v1 canary 진입 시점)"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 + 독립 감사 2종 — 최종 아키텍처·코드 감사 완료"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T024
   program: P19
   sequence: 24
   title: NEXA v1 production readiness review
-  status: DRAFT
+  status: REVIEW
   kind: review
   risk: high
   depends_on:
@@ -11064,7 +11070,7 @@ tasks:
   program: P19
   sequence: 25
   title: P19 v1 출시·후속 학습 게이트
-  status: DRAFT
+  status: REVIEW
   kind: review
   risk: high
   depends_on:

@@ -10823,7 +10823,7 @@ tasks:
   program: P19
   sequence: 14
   title: behavior cloning v2 학습
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -10836,13 +10836,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "behavior cloning v2 학습(ml): 인간 행동 모방 학습 개선(v2)"
+  - "acceptance 충족: v1 대비 장기 cohort holdout 이득과 비용을 비교함(증거 기반 개선 판정)을 테스트로 검증. ml 353 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T015
   program: P19
   sequence: 15
   title: 보수적 offline RL PoC
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: high
   depends_on:
@@ -10855,13 +10858,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "보수적 offline RL PoC(ml): CQL 등 OOD 회피 보수적 offline RL"
+  - "acceptance 충족: production 통합 없이 OPE·simulation·human review만 수행함(안전한 연구 범위)을 테스트로 검증. ml 353 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 보수적 offline RL PoC 확정. production 통합 없음"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T016
   program: P19
   sequence: 16
   title: reward hacking 적대 평가
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -10873,13 +10880,17 @@ tasks:
   acceptance: 한 사례라도 critical이면 해당 reward/RL 후보를 폐기한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "reward hacking 적대 평가(docs): 과발화·점유 등으로 reward를 따먹는 악용 탐지"
+  - "acceptance 충족: 한 사례라도 critical이면 해당 reward/RL 후보를 폐기함(엄격 게이트)을 문서로 명시. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — reward hacking 적대평가 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T017
   program: P19
   sequence: 17
   title: 정책 drift 탐지 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10891,13 +10902,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "정책 drift 탐지(central): 행동 분포 drift 탐지(P18 metric 연동)"
+  - "acceptance 충족: drift 시 자동 재학습 대신 shadow 재평가와 운영 알림을 시작함(human-in-loop·자동 학습 금지)을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T018
   program: P19
   sequence: 18
   title: 기억 노화·압축 장기 실험
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: high
   depends_on:
@@ -10910,13 +10924,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "기억 노화·압축 장기 실험(central): socialmemory 장기 감쇠·요약·압축(P07 일관)"
+  - "acceptance 충족: 압축으로 provenance(sourceEventId)·삭제 가능성·현재성이 사라지지 않음(압축해도 권리 보존)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 기억 노화·압축 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T019
   program: P19
   sequence: 19
   title: 정기 재학습 파이프라인 설계
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -10929,13 +10947,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "정기 재학습 파이프라인 설계(ml): 정기 재학습 절차(human approval 필수·P19-T009 ADR 일관)"
+  - "acceptance 충족: 평가 실패 모델이 registry ACTIVE로 승격되지 않음(품질 게이트·human approval)을 테스트로 검증. ml 353 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 정기 재학습 파이프라인 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T020
   program: P19
   sequence: 20
   title: 모델·설정 human approval UI 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -10948,13 +10970,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "모델·설정 human approval UI(V69 model_approval_audit, additive·웹 대시보드 전용): 모델/설정 변경 human approval"
+  - "acceptance 충족: 승인 권한과 이중 확인, audit, rollback target이 있음(자동 배포 금지·거버넌스)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — human approval UI 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T021
   program: P19
   sequence: 21
   title: 장기 사용자 통제·탈퇴 UX 검증
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: high
   depends_on:
@@ -10965,13 +10991,17 @@ tasks:
   acceptance: 통제가 숨겨져 있거나 NEXA와 대화해야만 끌 수 있는 구조가 아니다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "장기 사용자 통제·탈퇴 UX(docs): NEXA 데이터·참여를 명확히 통제·탈퇴(P02·P17 권리)"
+  - "acceptance 충족: 통제가 숨겨져 있거나 NEXA와 대화해야만 끌 수 있는 구조가 아님(명시적·접근 가능한 통제)을 문서로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 탈퇴 UX 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T022
   program: P19
   sequence: 22
   title: 외부 benchmark·재현 패키지 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -10984,6 +11014,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "외부 benchmark·재현 패키지(ml): 합성 데이터·코드로 외부 재현 가능한 평가 패키지"
+  - "acceptance 충족: 실제 Discord 원문·사용자 식별자는 공개 artifact에 포함되지 않음(합성만·프라이버시)을 테스트로 검증. ml 353 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — benchmark 재현 패키지 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T023

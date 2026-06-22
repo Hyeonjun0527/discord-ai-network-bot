@@ -15,6 +15,12 @@ negative window) → 대화 세션 경계 → 길드/시간 split.
   [mlp](../../docs/nexa/experiments/EXP-policy-mlp.md),
   [temporal](../../docs/nexa/experiments/EXP-policy-temporal.md),
   [imbalance](../../docs/nexa/experiments/EXP-policy-imbalance.md)
+- 정책 v2·offline RL(P19): [BC v2](../../docs/nexa/experiments/EXP-policy-v2-bc.md),
+  [보수적 offline RL PoC](../../docs/nexa/experiments/EXP-offline-rl-poc.md),
+  [reward hacking 적대 평가](../../docs/nexa/experiments/EXP-reward-hacking.md),
+  [재학습 파이프라인](../../docs/nexa/operations/retrain-pipeline.md)
+- 외부 재현 패키지(P19-T022): [benchmark-plan](../../docs/nexa/research/benchmark-plan.md) — 개인정보 없는
+  합성 fixture·metric 코드·contract 로 외부 검토자가 같은 수치를 재현한다(공개 artifact 에 원문·user id 부재).
 
 ## 절대 규칙 — 개인정보·운영 데이터 (P10 게이트)
 
@@ -74,6 +80,14 @@ src/nexa_policy/
   calibration/calibrate.py  # P11-T015 temperature scaling(악화 시 미적용)
   experiments/tracking.py   # P11-T016 config·artifact·환경 run 레코드
   export/onnx.py         # P11-T017 ONNX export + 파이썬/ONNX parity 검증
+  models/policy_v2.py    # P19-T014 behavior cloning v2(장기 state+timing, v1 비교)
+  rl/
+    trajectory.py        # P19-T010 오프라인 trajectory(consent·lineage·침묵/취소)
+    ope.py               # P19-T013 offline policy evaluation(IPS/DR + CI·support)
+    reward_validation.py # P19-T012 reward proxy vs 블라인드 인간 상관 검증
+    train_conservative.py# P19-T015 보수적 offline RL PoC(OOD 억제·OPE·review)
+    reward_hacking.py    # P19-T016 reward hacking 적대 평가(critical→폐기)
+  pipeline/retrain.py    # P19-T019 재학습 파이프라인(eval 실패→ACTIVE 승격 차단)
 ```
 
 ## 검증

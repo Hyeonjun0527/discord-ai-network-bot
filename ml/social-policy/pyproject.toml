@@ -70,6 +70,9 @@ module = [
   "nexa_policy.training.*",
   "nexa_policy.calibration.*",
   "nexa_policy.export.*",
+  "nexa_policy.eval.*",
+  "nexa_policy.adaptation.*",
+  "nexa_policy.rl.*",
 ]
 warn_return_any = false
 

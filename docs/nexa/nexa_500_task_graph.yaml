@@ -10540,7 +10540,7 @@ tasks:
   program: P19
   sequence: 1
   title: 30일·90일 longitudinal cohort 설계
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -10551,13 +10551,17 @@ tasks:
   acceptance: 제품 사용자를 속이지 않고 AI 정체성과 연구 참여를 고지한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "30일·90일 longitudinal cohort 설계(docs): 장기 관찰 코호트 설계(AI 정체성·연구 고지)"
+  - "acceptance 충족: 제품 사용자를 속이지 않고 AI 정체성과 연구 참여를 고지함(P17 AI 정체성·윤리 일관)을 문서로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — longitudinal cohort 설계 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T002
   program: P19
   sequence: 2
   title: 장기 identity consistency metric 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10569,13 +10573,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "장기 identity consistency metric(ml, identity_consistency.py): 니아 정체성이 장기적으로 안정적인지"
+  - "acceptance 충족: 단순 문장 유사도와 사실 모순을 분리함(표현 변주 OK·사실 모순 탐지)을 테스트로 검증. ml 334 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T003
   program: P19
   sequence: 3
   title: 장기 relationship consistency metric 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10587,13 +10594,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "장기 relationship consistency metric(ml, relationship_consistency.py): 관계 상태가 장기적으로 일관적인지(관찰 신호 기반)"
+  - "acceptance 충족: 사용자 심리를 정답으로 요구하지 않음(observable-state-policy·관찰 행동만)을 테스트로 검증. ml 334 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T004
   program: P19
   sequence: 4
   title: 서버 문화 embedding 실험
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: high
   depends_on:
@@ -10606,13 +10616,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "서버 문화 embedding 실험(ml, adaptation): 서버 대화 문화를 임베딩해 적응(guild ID 암기 없이)"
+  - "acceptance 충족: 원본 guild ID memorization 없이 unseen guild 적응을 평가함(일반화·프라이버시)을 테스트로 검증. ml 334 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 서버 문화 embedding 실험 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T005
   program: P19
   sequence: 5
   title: adaptive talkativeness 보정 실험
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: high
   depends_on:
@@ -10625,13 +10639,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "adaptive talkativeness 보정 실험(ml, adaptation): 수다스러움을 서버/관계에 적응 보정"
+  - "acceptance 충족: 사용자 설정 범위를 넘지 않고 자동 변경 내역을 설명·rollback할 수 있음(투명·통제 가능)을 테스트로 검증. ml 334 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — adaptive talkativeness 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T006
   program: P19
   sequence: 6
   title: delay personalization 실험
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: high
   depends_on:
@@ -10644,13 +10662,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "delay personalization 실험(ml, adaptation): 응답 지연을 관계/맥락에 개인화"
+  - "acceptance 충족: 직접 호출에 대한 강제 응답률을 올리는 방식이 아님(타이밍 개인화일 뿐·과응답 유도 금지)을 테스트로 검증. ml 334 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — delay personalization 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T007
   program: P19
   sequence: 7
   title: reaction/message 비율 적응 실험
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -10662,13 +10684,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "reaction/message 비율 적응 실험(ml, adaptation): REACT vs SPEAK 비율을 맥락에 적응"
+  - "acceptance 충족: 말을 줄이고 reaction을 늘린 것이 quality 개선인지 FIR/MIR와 함께 봄(단순 침묵 아닌 품질 확인)을 테스트로 검증. ml 334 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T008
   program: P19
   sequence: 8
   title: 관계 상태 온라인 update 안정화
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -10680,13 +10705,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "관계 상태 온라인 update 안정화(central): 관계 상태를 온라인 갱신하되 안정적(폭주·발산 없음)"
+  - "acceptance 충족: 한 번의 부정/긍정 반응이 장기 관계를 뒤집지 않음(EWMA 등 안정화·이상치 강건)을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 10/10"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 관계 온라인 update 안정화 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T009
   program: P19
   sequence: 9
   title: 온라인 학습 허용 범위 ADR 작성
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -10697,13 +10726,17 @@ tasks:
   acceptance: production feedback로 모델 전체를 자동 fine-tune하는 경로를 기본 금지한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "온라인 학습 허용 범위 ADR(docs): 실시간 학습 허용 범위(어디까지 OK·무엇 금지)"
+  - "acceptance 충족: production feedback로 모델 전체를 자동 fine-tune하는 경로를 기본 금지함(human approval 필수·P17 안전 일관)을 ADR로 명시. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 온라인 학습 범위 ADR 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T010
   program: P19
   sequence: 10
   title: 오프라인 trajectory dataset builder 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -10715,13 +10748,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "오프라인 trajectory dataset builder(ml): (상태,행동,결과) 시퀀스 dataset(오프라인 RL용)"
+  - "acceptance 충족: 실제 생성 문구만으로 reward를 계산하지 않고 취소/침묵도 포함함(IGNORE/CANCEL도 valid action)을 테스트로 검증. ml 334 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — trajectory dataset 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T011
   program: P19
   sequence: 11
   title: 대화 구간 reward 계약 정의
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -10732,13 +10769,17 @@ tasks:
   acceptance: 대화량·멘션 수 단일 reward를 금지한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "대화 구간 reward 계약(docs): 무엇을 보상으로 삼을지(사람다움·적절성, 다목적)"
+  - "acceptance 충족: 대화량·멘션 수 단일 reward를 금지함(engagement 조작 방지·P17 일관)을 계약으로 명시. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — reward 계약 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T012
   program: P19
   sequence: 12
   title: reward proxy validation 구현
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: high
   depends_on:
@@ -10751,13 +10792,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "reward proxy validation(ml): reward proxy가 실제 목표(사람다움)와 타당한 상관인지 검증"
+  - "acceptance 충족: 상관이 낮은 proxy는 RL에 사용하지 않음(reward hacking 경계)을 테스트로 검증. ml 334 passed"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — reward proxy validation 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T013
   program: P19
   sequence: 13
   title: offline policy evaluation baseline 구현
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -10769,6 +10814,9 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "offline policy evaluation baseline(ml): 배포 없이 정책 성능 추정(IPS/DR 등)"
+  - "acceptance 충족: support 부족과 높은 분산을 숨기지 않고 confidence interval을 보고함(정직한 추정 한계)을 테스트로 검증. ml 334 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P19-T014

@@ -121,7 +121,11 @@ class AdminActionExecutor(
         val targetId =
             plan.arg("targetId")?.let { gateway.resolveMemberId(it) ?: it.filter(Char::isDigit).toLongOrNull() }
                 ?: return reject("권한 대상(역할/사용자)을 찾지 못했어요.")
+        // 대상 보호: 소유자·봇·요청자 본인의 채널 권한을 박탈/변경하지 못하도록 ban/kick 과 동일한 보호 적용.
+        protectTarget(targetId)?.let { return it }
         requireBotPermission(AdminPermission.MANAGE_PERMISSIONS)?.let { return it }
+        // 역할 계층: 봇 역할보다 높은 멤버의 권한을 바꾸려 하면 거부(역할 대상은 canInteract=true 로 통과).
+        requireHierarchy(targetId)?.let { return it }
         val allow = csv(plan.arg("allow"))
         val deny = csv(plan.arg("deny"))
         if (allow.isEmpty() && deny.isEmpty()) return reject("허용 또는 거부할 권한을 적어주세요.")

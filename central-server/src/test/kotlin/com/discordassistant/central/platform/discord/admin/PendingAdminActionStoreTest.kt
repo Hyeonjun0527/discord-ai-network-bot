@@ -1,10 +1,12 @@
 package com.discordassistant.central.platform.discord.admin
 
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-/** 확인 토큰 저장소: consume-once·TTL 만료·요청자 보존 검증(가짜 시계로 시간 제어). */
+/** 확인 토큰 저장소: consume-once·TTL 만료·요청자 보존·SecureRandom 토큰 형식 검증. */
 class PendingAdminActionStoreTest {
     private val plan = AdminActionPlan(AdminActionType.BAN_MEMBER, mapOf("userId" to "1"))
 
@@ -34,5 +36,22 @@ class PendingAdminActionStoreTest {
         assertNotNull(pending)
         assert(pending.requesterUserId == 42L)
         assert(pending.guildId == 99L)
+    }
+
+    @Test
+    fun `토큰은 URL-safe Base64 형식이고 예측 불가한 길이를 가진다`() {
+        val store = PendingAdminActionStore()
+        val token = store.put(plan, 9L, 7L)
+        // 16바이트 SecureRandom → Base64(no-padding) = 22자. URL-safe 문자만 포함(+/= 없음).
+        assertTrue(token.length >= 22, "토큰 길이(${ token.length })가 22자 미만")
+        assertTrue(token.all { it.isLetterOrDigit() || it == '-' || it == '_' }, "URL-safe 문자가 아닌 문자 포함: $token")
+    }
+
+    @Test
+    fun `연속으로 생성한 토큰은 서로 달라야 한다(unguessable)`() {
+        val store = PendingAdminActionStore()
+        val t1 = store.put(plan, 9L, 7L)
+        val t2 = store.put(plan, 9L, 7L)
+        assertNotEquals(t1, t2)
     }
 }

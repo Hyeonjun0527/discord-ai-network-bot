@@ -376,6 +376,9 @@ class DiscordBot(
             // 공개 명령만 비-ephemeral, 나머지는 ephemeral. defer 시점에 결정.
             val useWebhookProfile = event.name == "ask" && channelProfiles.get(ctx.guildId, ctx.channelId) != null
             val isPublic = event.name in PUBLIC_COMMANDS
+            // 어드민 /질문이 관리 액션 경로(AI 관리 비서)로 처리될 가능성이 있으면 반드시 ephemeral 로 defer 해야 한다.
+            // 차단 대상·관리 행위 결과가 채널에 공개되는 것을 방지. 일반(비어드민) /질문은 isPublic 경로 그대로.
+            val isAdminAskPath = event.name == "ask" && ctx.isAdmin && adminAssistant.isAvailable()
             // /그림 게시 확인 게이트: confirm 옵션이 주어지면 먼저 유저 설정을 갱신한 뒤, 그 설정대로 이번 요청을 처리한다.
             // 게이트 ON 이면 전 과정을 본인만 보이게(ephemeral) 진행하고 완성 후 게시 확인 버튼을 띄운다(아래 work 에서 분기).
             val imagineGateOn =
@@ -385,7 +388,16 @@ class DiscordBot(
                 } else {
                     false
                 }
-            event.deferReply(if (useWebhookProfile || imagineGateOn) true else !isPublic).queue()
+            event
+                .deferReply(
+                    if (useWebhookProfile || imagineGateOn) {
+                        true
+                    } else if (isAdminAskPath) {
+                        true
+                    } else {
+                        !isPublic
+                    },
+                ).queue()
             val work =
                 Runnable {
                     try {

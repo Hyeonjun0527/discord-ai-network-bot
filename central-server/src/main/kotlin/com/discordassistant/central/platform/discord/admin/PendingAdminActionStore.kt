@@ -1,8 +1,9 @@
 package com.discordassistant.central.platform.discord.admin
 
 import org.springframework.stereotype.Component
+import java.security.SecureRandom
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * 확인 게이트(CONFIRM 위험 액션)용 in-memory pending 저장소. 버튼 클릭 시 토큰으로 꺼내 실행한다.
@@ -23,16 +24,18 @@ class PendingAdminActionStore(
     )
 
     private val store = ConcurrentHashMap<String, Pending>()
-    private val seq = AtomicLong(0)
+    private val rng = SecureRandom()
 
-    /** pending 을 저장하고 버튼 componentId 에 실릴 토큰을 돌려준다. */
+    /** pending 을 저장하고 버튼 componentId 에 실릴 토큰을 돌려준다(128비트 SecureRandom, URL-safe). */
     fun put(
         plan: AdminActionPlan,
         requesterUserId: Long,
         guildId: Long,
     ): String {
         purgeExpired()
-        val token = "${clock()}-${seq.incrementAndGet()}"
+        val bytes = ByteArray(16)
+        rng.nextBytes(bytes)
+        val token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
         store[token] = Pending(plan, requesterUserId, guildId, clock())
         return token
     }

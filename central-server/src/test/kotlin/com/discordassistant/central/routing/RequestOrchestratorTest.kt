@@ -461,7 +461,6 @@ class RequestOrchestratorTest {
             model: String,
         ) = throw CloudLlmException("미사용")
 
-
         // 이미지 심사/번역은 이 테스트가 다루지 않는다(텍스트 라우팅 전용) — 호출되면 예외.
         override fun reviewImagePrompt(
             prompt: String,

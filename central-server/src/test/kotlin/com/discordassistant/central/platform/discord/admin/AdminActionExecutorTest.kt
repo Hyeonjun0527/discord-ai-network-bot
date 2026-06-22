@@ -182,4 +182,80 @@ class AdminActionExecutorTest {
         assertTrue(result is AdminActionResult.Done)
         assertEquals(listOf("ban:123"), gw.executed)
     }
+
+    // ── L1: set_channel_permission 계층·대상 보호 ─────────────────────────
+
+    @Test
+    fun `권한 액션 — 서버 소유자를 대상으로 하면 거부한다`() {
+        val gw = FakeGateway(ownerId = 77L)
+        val result =
+            exec(gw).execute(
+                AdminActionPlan(
+                    AdminActionType.SET_CHANNEL_PERMISSION,
+                    mapOf("channelId" to "5", "targetId" to "77", "deny" to "SEND_MESSAGES"),
+                ),
+            )
+        assertTrue(result is AdminActionResult.Rejected)
+        assertTrue((result as AdminActionResult.Rejected).message.contains("소유자"))
+        assertTrue(gw.executed.isEmpty())
+    }
+
+    @Test
+    fun `권한 액션 — 봇 자신을 대상으로 하면 거부한다`() {
+        val gw = FakeGateway(selfId = 88L)
+        val result =
+            exec(gw).execute(
+                AdminActionPlan(
+                    AdminActionType.SET_CHANNEL_PERMISSION,
+                    mapOf("channelId" to "5", "targetId" to "88", "deny" to "SEND_MESSAGES"),
+                ),
+            )
+        assertTrue(result is AdminActionResult.Rejected)
+        assertTrue((result as AdminActionResult.Rejected).message.contains("봇 자신"))
+        assertTrue(gw.executed.isEmpty())
+    }
+
+    @Test
+    fun `권한 액션 — 봇 역할이 대상보다 낮으면 거부한다`() {
+        val gw = FakeGateway(canInteract = false)
+        val result =
+            exec(gw).execute(
+                AdminActionPlan(
+                    AdminActionType.SET_CHANNEL_PERMISSION,
+                    mapOf("channelId" to "5", "targetId" to "55", "deny" to "SEND_MESSAGES"),
+                ),
+            )
+        assertTrue(result is AdminActionResult.Rejected)
+        assertTrue((result as AdminActionResult.Rejected).message.contains("역할"))
+        assertTrue(gw.executed.isEmpty())
+    }
+
+    @Test
+    fun `권한 액션 — 요청자 본인을 대상으로 하면 거부한다`() {
+        val gw = FakeGateway()
+        val result =
+            exec(gw, requesterId = 9L).execute(
+                AdminActionPlan(
+                    AdminActionType.SET_CHANNEL_PERMISSION,
+                    mapOf("channelId" to "5", "targetId" to "9", "deny" to "SEND_MESSAGES"),
+                ),
+            )
+        assertTrue(result is AdminActionResult.Rejected)
+        assertTrue((result as AdminActionResult.Rejected).message.contains("자기 자신"))
+        assertTrue(gw.executed.isEmpty())
+    }
+
+    @Test
+    fun `권한 액션 — 정상 대상은 모든 게이트 통과 후 실행된다`() {
+        val gw = FakeGateway()
+        val result =
+            exec(gw).execute(
+                AdminActionPlan(
+                    AdminActionType.SET_CHANNEL_PERMISSION,
+                    mapOf("channelId" to "5", "targetId" to "123", "deny" to "SEND_MESSAGES"),
+                ),
+            )
+        assertTrue(result is AdminActionResult.Done)
+        assertEquals(listOf("perm:5:123"), gw.executed)
+    }
 }

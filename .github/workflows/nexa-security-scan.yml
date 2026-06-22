@@ -57,7 +57,10 @@ jobs:
       - name: Gradle 의존성 목록(취약점 분석 입력)
         run: ./gradlew dependencies --no-daemon --console=plain || true
       - name: Trivy fs scan(Gradle 의존성 CVE)
-        uses: aquasecurity/trivy-action@v0.28.0  # 태그는 'v' 접두만 존재(무접두 0.24.0 은 미해결로 잡 실패했음)
+        # v0.28.0 은 내부적으로 yank 된 aquasecurity/setup-trivy@v0.2.1 을 참조해 더 이상 resolve 되지 않는다
+        # ("Unable to resolve action setup-trivy@v0.2.1"). v0.36.0 은 setup-trivy 를 commit SHA(v0.2.6)로 핀해
+        # 태그 삭제에 영향받지 않는다(번들 trivy v0.70.0). severity/exit-code/ignore-unfixed 등 게이트는 불변.
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: central-server
@@ -131,7 +134,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trivy config scan(Dockerfile 취약 설정·베이스 이미지)
-        uses: aquasecurity/trivy-action@v0.28.0  # 태그는 'v' 접두만 존재(무접두 0.24.0 은 미해결로 잡 실패했음)
+        # v0.28.0 은 yank 된 setup-trivy@v0.2.1 참조로 resolve 실패. v0.36.0 은 setup-trivy 를 commit SHA(v0.2.6)로
+        # 핀해 안정적이다(번들 trivy v0.70.0). scan-type/severity/exit-code 게이트는 그대로 유지.
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: ${{ matrix.image }}

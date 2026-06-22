@@ -85,6 +85,17 @@ class NexaArchitectureTest {
                 ),
         )
 
+    // P17 보안 enforcement seam: 발화 생성·전송은 **speech-emit seam 경유만** 허용한다 — 외부 GLM 생성 adapter
+    // (RoutingCloudSpeechGenerationAdapter)를 seam 밖에서 직접 호출하면 allowlist/critic/consent/고위험 fallback 을
+    // 우회할 수 있으므로 구조적으로 금지한다. 그 adapter 는 오직 자기 자신(어댑터 정의 패키지) 안에서만 참조될 수
+    // 있고, 다른 모든 코드는 SpeechGenerationPort(포트)·NexaSpeechEmitService(seam)를 거쳐야 한다.
+    @ArchTest
+    val speechEmitDoesNotBypassGenerationAdapter: ArchRule =
+        speechEmitDoesNotBypassGenerationAdapterRule(
+            forbiddenAdapterNamePattern = ".*RoutingCloudSpeechGenerationAdapter",
+            allowedPackages = arrayOf("..central.speech.adapter.outbound.routing.."),
+        )
+
     // ── self-test: 의도적 위반 fixture 가 규칙에서 실패하는지 검증 ───────────────────
 
     // T022 acceptance: "의도적 위반 fixture가 테스트에서 실패한다".
@@ -146,6 +157,19 @@ class NexaArchitectureTest {
             existingDomainsDoNotReachIntoNexaAdapterRule(
                 existingDomainPackages = arrayOf("..nexafixture.existingdomain.."),
                 nexaAdapterPackages = arrayOf("..nexafixture.nexaadapter.."),
+            )
+        assertThatThrownBy { rule.check(fixture) }.isInstanceOf(AssertionError::class.java)
+    }
+
+    // P17 acceptance: speech-emit seam 우회(외부 GLM 생성 adapter 직접 호출)가 탐지된다.
+    @Test
+    fun `speech emit bypass rule fails when calling generation adapter directly outside the seam`() {
+        val fixture = importFixture("com.discordassistant.central.arch.nexafixture.speechemit")
+        // fixture 패키지는 allowed 가 아니므로(어댑터 정의 패키지 밖) adapter 직접 참조가 위반으로 잡힌다.
+        val rule =
+            speechEmitDoesNotBypassGenerationAdapterRule(
+                forbiddenAdapterNamePattern = ".*RoutingCloudSpeechGenerationAdapter",
+                allowedPackages = arrayOf("..never.matches.this.package.."),
             )
         assertThatThrownBy { rule.check(fixture) }.isInstanceOf(AssertionError::class.java)
     }
@@ -246,6 +270,22 @@ class NexaArchitectureTest {
                 .should()
                 .dependOnClassesThat()
                 .resideInAnyPackage(*nexaAdapterPackages)
+                .allowEmptyShould(true)
+
+        // P17 보안 enforcement seam — 외부 GLM 생성 adapter([forbiddenAdapterNamePattern], 예:
+        // RoutingCloudSpeechGenerationAdapter)는 자기 정의 패키지([allowedPackages]) 안에서만 참조될 수 있다.
+        // 그 밖의 어떤 클래스가 이 adapter 를 직접 참조하면(= speech-emit seam·SpeechGenerationPort 우회) 위반이다 —
+        // allowlist/critic/consent/고위험 fallback 을 건너뛸 수 있기 때문. 우회를 구조적으로 차단한다.
+        private fun speechEmitDoesNotBypassGenerationAdapterRule(
+            forbiddenAdapterNamePattern: String,
+            allowedPackages: Array<String>,
+        ): ArchRule =
+            noClasses()
+                .that()
+                .resideOutsideOfPackages(*allowedPackages)
+                .should()
+                .dependOnClassesThat()
+                .haveNameMatching(forbiddenAdapterNamePattern)
                 .allowEmptyShould(true)
 
         // fixture 패키지는 test 소스라 @AnalyzeClasses(DoNotIncludeTests)에 안 잡힌다 — 명시 로드.

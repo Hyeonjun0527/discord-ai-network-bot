@@ -90,4 +90,7 @@ enum class CriticReason {
 
     /** 시스템 지침·API 키·내부 schema·hidden ID 등 비밀 노출(P17-T003). */
     SECRET_DISCLOSURE,
+
+    /** 인간 사칭 — AI 임을 부정하거나 사람인 척함(P17-T017). */
+    HUMAN_IMPERSONATION,
 }

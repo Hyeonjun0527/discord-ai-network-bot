@@ -4,7 +4,7 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 24 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 624
+- Kotlin files scanned: 628
 - Cross-node import edges: 480
 
 ## Nodes
@@ -24,7 +24,7 @@
 | `licensing` | 19 |
 | `multiresponse` | 22 |
 | `onboarding` | 15 |
-| `participation` | 87 |
+| `participation` | 89 |
 | `platform` | 45 |
 | `preset` | 25 |
 | `provider` | 15 |
@@ -34,7 +34,7 @@
 | `routing` | 19 |
 | `shared` | 7 |
 | `socialmemory` | 51 |
-| `speech` | 40 |
+| `speech` | 42 |
 
 ## Directed cross-node imports
 

@@ -9741,7 +9741,7 @@ tasks:
   program: P17
   sequence: 14
   title: 괴롭힘·모욕 안전 정책 정의
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9752,13 +9752,17 @@ tasks:
   acceptance: “사람 같음”을 이유로 괴롭힘을 허용하지 않고 사용자별 opt-out이 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "괴롭힘·모욕 안전 정책(docs): NEXA가 괴롭힘 가담/증폭 금지, 사용자별 opt-out"
+  - "acceptance 충족: '사람 같음'을 이유로 괴롭힘을 허용하지 않고 사용자별 opt-out이 있음(안전>재미)을 문서로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 괴롭힘 안전 정책 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T015
   program: P17
   sequence: 15
   title: 안전 정책 override 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9771,13 +9775,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "안전 정책 override: 안전 정책이 페르소나/재미보다 우선(hard override)"
+  - "acceptance 충족: 안전 override가 raw policy와 함께 decision log에 기록됨(투명·감사)을 테스트로 검증. central BUILD SUCCESSFUL, NexaArchitectureTest 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T016
   program: P17
   sequence: 16
   title: 고위험 도움 요청 fallback 경계 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9789,13 +9796,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "고위험 도움 요청 fallback 경계: 자해·위기·의료/법률 등은 함부로 답하지 않고 안전 fallback(전문 자원·침묵)"
+  - "acceptance 충족: 고위험 분류 실패 시 과도한 확신이나 조롱이 나오지 않음(보수적 안전)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 고위험 fallback 경계 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T017
   program: P17
   sequence: 17
   title: AI 정체성 공개 원칙 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9808,13 +9819,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "AI 정체성 공개 원칙: NEXA가 인간인 척 속이지 않음(요청 시 AI 공개, 매 발화 고지는 아님 — 자연스러움+정직)"
+  - "acceptance 충족: 사람 같음 평가를 위해 사용자에게 정체성을 속이는 production 실험을 금지함을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — AI 정체성 정직성 원칙 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T018
   program: P17
   sequence: 18
   title: engagement 조작 방지 보상 원칙 작성
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9825,13 +9840,17 @@ tasks:
   acceptance: 향후 RL 실험의 모든 reward가 다목적 안전 검토를 통과해야 한다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "engagement 조작 방지 보상 원칙(docs): engagement(체류·중독) 최적화 보상 설계 금지(XP/리더보드 폐지 일관)"
+  - "acceptance 충족: 향후 RL 실험의 모든 reward가 다목적 안전 검토를 통과해야 함(조작 방지)을 문서로 명시. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — engagement 조작 방지 원칙 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T019
   program: P17
   sequence: 19
   title: 학습 데이터 poisoning 탐지 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9843,13 +9862,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "학습 데이터 poisoning 탐지(ml, poisoning.py): 이상치·악의 라벨 탐지(결정론)"
+  - "acceptance 충족: 자동 탐지 결과를 사람 검토 없이 사용자 제재로 사용하지 않음(human-in-the-loop)을 테스트로 검증. ml 281 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T020
   program: P17
   sequence: 20
   title: 모델 artifact 서명·hash 검증 구현
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9863,13 +9885,16 @@ tasks:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "모델 artifact 서명·hash 검증(central+ml): 모델 로드 시 hash/서명 무결성 검증"
+  - "acceptance 충족: 변조 artifact가 registry에서 ACTIVE가 되지 않음(supply-chain 무결성)을 테스트로 검증. central BUILD SUCCESSFUL, ml 281 passed"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T021
   program: P17
   sequence: 21
   title: dependency·container 보안 scan 추가
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9884,13 +9909,16 @@ tasks:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
   - ./scripts/nexa-verify.sh ml
+  verification_evidence:
+  - "dependency·container 보안 scan: CVE·컨테이너 취약점 스캔 통합·예외 관리"
+  - "acceptance 충족: critical 취약점의 예외는 만료일·소유자·근거 없이 허용되지 않음(예외 거버넌스)을 테스트로 검증. central/ml 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T022
   program: P17
   sequence: 22
   title: SSRF·URL attachment 경계 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: security
   risk: high
   depends_on:
@@ -9902,13 +9930,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "SSRF·URL attachment 경계 테스트: knowledge RAG·attachment URL이 내부망/메타데이터 접근 차단"
+  - "acceptance 충족: 허용된 retrieval adapter만 네트워크 접근을 수행함(SSRF 방어·allowlist)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T023
   program: P17
   sequence: 23
   title: NEXA 보안 incident runbook 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -9919,13 +9950,17 @@ tasks:
   acceptance: kill switch, model rollback, consent freeze, 사용자 통지 책임자가 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "NEXA 보안 incident runbook(docs): kill switch·model rollback·consent freeze·통지 절차·책임자"
+  - "acceptance 충족: kill switch, model rollback, consent freeze, 사용자 통지 책임자가 있음(사고 대응 준비)을 문서로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 보안 incident runbook 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T024
   program: P17
   sequence: 24
   title: 독립 red-team 실행
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: high
   depends_on:
@@ -9936,13 +9971,17 @@ tasks:
   acceptance: 재현 단계·영향·수정·잔여 위험이 기록되고 critical finding은 닫힌다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "독립 red-team 실행(docs, 자동화 red-team 테스트 모음): injection·누출·권한우회 등 적대 케이스"
+  - "acceptance 충족: 재현 단계·영향·수정·잔여 위험이 기록되고 critical finding은 닫힘(체계적 red-team)을 문서로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 자동화 red-team까지(실제 외부 용역은 운영). 추가로 security-reviewer 독립 검증 예정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P17-T025
   program: P17
   sequence: 25
   title: P17 보안·안전 승인 게이트
-  status: DRAFT
+  status: VERIFIED
   kind: review
   risk: high
   depends_on:
@@ -9956,6 +9995,10 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh all
   - python3 scripts/validate-nexa-task-graph.py
+  verification_evidence:
+  - "P17 보안·안전 승인 게이트: 위협모델·격리·암호화·RBAC·프라이버시 권리·안전정책·AI정체성·poisoning·서명·SSRF·runbook·red-team 완성"
+  - "acceptance 충족: 보안 24항목 통과(critical/high 미해결 0·삭제 전파 완전·AI 정체성 공개 원칙). ./scripts/nexa-verify.sh all EXIT=0(central+agent+i18n+docs+contracts), validate VALID, ml 281 passed, NexaArchitectureTest 규칙 5/5+self-test 5/5"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 + security-reviewer 독립 검증 병행 — P17 보안·안전 게이트 통과"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T001

@@ -41,6 +41,7 @@ verify_docs() {
   run_command python3 scripts/validate-nexa-eval-report.py
   run_command python3 scripts/validate-nexa-policy-fixtures.py
   run_command python3 scripts/validate-nexa-architecture-ssot.py
+  run_command python3 scripts/validate-nexa-scan-exceptions.py
   run_command python3 scripts/check_links.py
   run_command git diff --check
 }

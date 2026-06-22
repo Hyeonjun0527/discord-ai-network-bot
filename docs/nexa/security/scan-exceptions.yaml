@@ -1,0 +1,16 @@
+# NEXA-P17-T021 — dependency·container 보안 scan 예외 레지스트리(SSOT).
+#
+# critical 취약점 예외는 **만료일(expires)·소유자(owner)·근거(justification) 없이 허용되지 않는다**(acceptance).
+# scripts/validate-nexa-scan-exceptions.py 가 이 파일을 검증하고, scan 워크플로(security-scan.yml)가 게이트한다.
+#
+# 각 예외 항목 필수 필드:
+#   id: 취약점 식별자(예: CVE-2024-xxxxx 또는 도구 advisory id)
+#   scope: gradle | python | container
+#   severity: low | medium | high | critical
+#   owner: 책임자(이메일/핸들) — 무기명 예외 금지
+#   justification: 왜 임시 허용하는가(영향 없음 근거·완화책)
+#   expires: 만료일(YYYY-MM-DD) — 무기한 예외 금지. 지나면 scan 이 다시 실패한다.
+#
+# 빈 목록이 정상(예외 없음 = 모든 critical/high 해결). 예외는 임시·추적 대상이다.
+
+exceptions: []

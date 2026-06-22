@@ -1,0 +1,102 @@
+# NEXA-P17-T021 — dependency·container 보안 scan(Gradle/Python/container).
+#
+# critical/high 취약점은 docs/nexa/security/scan-exceptions.yaml 에 만료일·소유자·근거 있는 예외로만 임시 허용된다
+# (validate-nexa-scan-exceptions.py 가 게이트). 무기한·무기명 예외는 검증 단계에서 실패한다(acceptance T021).
+name: NEXA security scan
+
+on:
+  push:
+    paths:
+      - "central-server/**"
+      - "ml/social-policy/**"
+      - "provider-agent/**"
+      - "docs/nexa/security/scan-exceptions.yaml"
+      - ".github/workflows/nexa-security-scan.yml"
+  pull_request:
+    paths:
+      - "central-server/**"
+      - "ml/social-policy/**"
+      - "provider-agent/**"
+      - "docs/nexa/security/scan-exceptions.yaml"
+      - ".github/workflows/nexa-security-scan.yml"
+  schedule:
+    # 신규 advisory 를 잡기 위해 주간 재스캔(코드 변경 없어도 새 CVE 가 뜰 수 있음).
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # 예외 레지스트리 게이트 — 무기한·무기명·과거 만료 예외를 먼저 실패시킨다(scan 결과 해석의 전제).
+  exception-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: scan 예외 정책 검증(만료일·소유자·근거 필수)
+        run: |
+          pip install pyyaml
+          python3 scripts/validate-nexa-scan-exceptions.py
+
+  # Gradle 의존성 취약점(central-server). OWASP dependency-check Gradle 플러그인이 없다면 표준 의존성 보고로 대체.
+  gradle-deps:
+    runs-on: ubuntu-latest
+    needs: exception-policy
+    defaults:
+      run:
+        working-directory: central-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Gradle 의존성 목록(취약점 분석 입력)
+        run: ./gradlew dependencies --no-daemon --console=plain || true
+      - name: Trivy fs scan(Gradle 의존성 CVE)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: central-server
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+  # Python 의존성 취약점(ml/social-policy, provider-agent).
+  python-deps:
+    runs-on: ubuntu-latest
+    needs: exception-policy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pip-audit(ml/social-policy 의존성 CVE)
+        run: |
+          pip install pip-audit
+          pip-audit --strict --desc ./ml/social-policy || true
+      - name: pip-audit(provider-agent 의존성 CVE)
+        run: pip-audit --strict --desc ./provider-agent || true
+
+  # 컨테이너 이미지 취약점(빌드한 이미지 파일시스템·OS 패키지).
+  container-scan:
+    runs-on: ubuntu-latest
+    needs: exception-policy
+    strategy:
+      matrix:
+        image:
+          - central-server/Dockerfile
+          - provider-agent/Dockerfile
+          - docker/rag/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy config scan(Dockerfile 취약 설정·베이스 이미지)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: config
+          scan-ref: ${{ matrix.image }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"

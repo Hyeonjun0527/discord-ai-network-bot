@@ -4,4 +4,6 @@ build/
 *.log
 .idea/
 *.iml
-out/
+# IDE/build output dir at module root only — must NOT match source packages named `out`
+# (e.g. hexagonal `application/port/out/`).
+/out/

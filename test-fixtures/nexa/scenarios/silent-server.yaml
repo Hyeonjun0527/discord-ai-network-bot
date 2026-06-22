@@ -1,0 +1,37 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: silent-server
+title: 장기간 조용한 서버 — 사람 메시지가 거의 없는 30일(NEXA-P16-T011)
+intent: 30일 동안 사람 메시지가 거의 없어도 NEXA 가 자동으로 주제를 방송하지 않는다. 호명/맥락 없는 자발 발화를 제한한다.
+humanLikenessFocus: [over-conservative-ignore, plainness]
+seed: 16011
+time:
+  baseInstant: "2026-02-01T00:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 1000
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: 가끔오는사람
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  # 30일에 걸친 드문 사람 메시지 — 호명 없음. 긴 침묵 구간이 핵심.
+  - { seq: 1, atOffsetMs: 0,           type: message_create, messageId: m-1, authorId: actor-a, content: "다들 잘 지내?" }
+  - { seq: 2, atOffsetMs: 864000000,   type: message_create, messageId: m-2, authorId: actor-a, content: "요즘 조용하네" }
+  - { seq: 3, atOffsetMs: 1728000000,  type: message_create, messageId: m-3, authorId: actor-a, content: "ㅎㅎ" }
+  - { seq: 4, atOffsetMs: 2592000000,  type: message_create, messageId: m-4, authorId: actor-a, content: "한 달 지났네" }
+expected:
+  narrative: >-
+    아무도 NEXA 를 호명하지 않고, 긴 침묵 동안 NEXA 의 energy 는 baseline 으로 회귀한다.
+    사람 멤버라면 조용한 서버에서 먼저 주제를 던지며 나서지 않는다. NEXA 는 침묵을 유지한다.
+  invariants:
+    - { kind: max_speak_count, value: 0, note: "먼저 안 나섬 — 자동 주제 방송 금지" }
+    - { kind: no_unprompted_speak }
+    - { kind: no_stale_send }

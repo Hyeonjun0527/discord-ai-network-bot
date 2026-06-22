@@ -1,0 +1,236 @@
+package com.discordassistant.central.speech.application
+
+import com.discordassistant.central.global.privacy.ConsentGate
+import com.discordassistant.central.global.privacy.ConsentRevokedException
+import com.discordassistant.central.global.privacy.ProcessingStage
+import com.discordassistant.central.speech.application.generation.CandidateSelector
+import com.discordassistant.central.speech.application.generation.FallbackSpeechPolicy
+import com.discordassistant.central.speech.application.generation.GenerationBudget
+import com.discordassistant.central.speech.application.generation.SelectionResult
+import com.discordassistant.central.speech.application.generation.SpeechGenerationGate
+import com.discordassistant.central.speech.application.generation.SpeechOutcome
+import com.discordassistant.central.speech.application.generation.SpeechTrigger
+import com.discordassistant.central.speech.application.port.out.SpeechCandidate
+import com.discordassistant.central.speech.application.port.out.SpeechDecisionLog
+import com.discordassistant.central.speech.application.port.out.SpeechDecisionLogPort
+import com.discordassistant.central.speech.application.port.out.SpeechDecisionOutcome
+import com.discordassistant.central.speech.application.safety.HighRiskDirective
+import com.discordassistant.central.speech.application.safety.HighRiskFallbackBoundary
+import com.discordassistant.central.speech.domain.model.SpeechScenePacket
+import com.discordassistant.central.speech.domain.service.critic.SpeechCritic
+
+/**
+ * NEXA 발화 파이프라인 오케스트레이터(NEXA-P17 보안 enforcement seam, application).
+ *
+ * participation 이 SPEAK 를 고른 뒤 speech 가 실제 후보를 생성·검열·선택해 **전송 직전** 결과를 내는 단일 실제
+ * 유스케이스 경로다. 흩어져 있던 보안 enforcement 클래스를 이 한 경로에 **모두 연결**해, 합성 테스트가 아니라
+ * 실제 서비스 호출에서 동의 철회·고위험 fallback·critic 차단·결정 로그가 작동하게 한다(security-reviewer H1/M2/M3 해소):
+ *
+ *  1. **동의 게이트(H1, T010)**: 생성 직전([ProcessingStage.SPEECH_GENERATION])과 외부 전송 직전
+ *     ([ProcessingStage.EXTERNAL_GLM_REQUEST])에 [ConsentGate.checkAllowed] 를 호출한다. 철회/미동의면
+ *     [SpeechDecisionOutcome.BLOCKED] 로 끝나고 **어떤 후보 생성/외부 전송도 일어나지 않는다**.
+ *  2. **후보 생성(T002/T004 payload 격리는 CandidateGenerationService 안에서 적용됨)**: [SpeechGenerationGate]
+ *     가 SPEAK·not stale 일 때만 generation 포트를 호출한다.
+ *  3. **고위험 fallback(M3, T016)**: [HighRiskFallbackBoundary] 가 자해/위기/의료/법률 맥락이면 안전 directive 로
+ *     하강한다 — 고위험/분류실패면 발화를 취소(BLOCKED→CANCEL)하고 조롱·확신을 차단한다.
+ *  4. **critic 차단(M2, T003/T017)**: [CandidateSelector] 가 비밀 노출·AI 정체성 사칭 critic 을 포함한 모든
+ *     critic 으로 후보를 검열한 뒤 하나를 고른다 — 전송될 후보에 대해 **전송 전** 실행된다.
+ *  5. **fallback 정책(T016)**: critic 통과 후보가 0 이면 [FallbackSpeechPolicy] 가 침묵/리액션으로 안전 하강한다.
+ *  6. **결정 로그(M3, T015/T016)**: 위 결정을 [SpeechDecisionLogPort] 로 원문 없이 기록한다(decision-log sink 소비).
+ *
+ * feature flag OFF(이 서비스 미호출)면 기존 channelai/기존 흐름은 100% 그대로다 — NEXA 경로에만 enforcement 가 붙는다.
+ *
+ * 순수성: application — speech application/domain 값 객체 + global.privacy 동의 게이트 + 표준 타입만. Spring/JPA/JDA·
+ * glm/zai·participation 타입 미참조(NexaArchitectureTest speech 규칙 준수).
+ */
+class NexaSpeechPipelineService(
+    private val consentGate: ConsentGate,
+    private val generationGate: SpeechGenerationGate,
+    private val candidateSelector: CandidateSelector,
+    private val highRiskBoundary: HighRiskFallbackBoundary = HighRiskFallbackBoundary(),
+    private val fallbackPolicy: FallbackSpeechPolicy = FallbackSpeechPolicy(),
+    private val decisionLog: SpeechDecisionLogPort = SpeechDecisionLogPort.Noop,
+) {
+    /**
+     * 한 SPEAK 결정에 대해 실제 발화 파이프라인을 구동한다. [subjectPseudonym] 의 동의가 살아 있을 때만 생성·전송하고,
+     * 고위험 맥락·critic 차단·동의 철회에서 안전하게 하강한다. 반환은 전송 직전 최종 결과다(전송 자체는 actionruntime 이 함).
+     */
+    fun run(
+        subjectPseudonym: String,
+        trigger: SpeechTrigger,
+        packet: SpeechScenePacket,
+        seed: Long,
+        stale: Boolean = false,
+        budget: GenerationBudget = GenerationBudget.DEFAULT,
+    ): PipelineResult {
+        // 1) 동의 게이트(생성 직전). 철회/미동의면 생성 포트를 한 번도 호출하지 않고 차단.
+        try {
+            consentGate.checkAllowed(subjectPseudonym, ProcessingStage.SPEECH_GENERATION)
+        } catch (e: ConsentRevokedException) {
+            return blocked(packet, consentStage = e.stage)
+        }
+
+        // 2) 고위험 fallback 평가 — 고위험/분류실패면 발화를 취소(조롱·확신 차단).
+        val directive = highRiskBoundary.evaluate(packet)
+        if (directive.suppressConfidence && !directive.isNormal) {
+            // 고위험 맥락: 안전쪽으로 발화 취소(canned 장문 금지 — 침묵). 결정 로그에 하강 기록.
+            return downgraded(packet, directive)
+        }
+
+        // 3) SPEAK·not stale·동의 유효일 때만 generation 포트 호출(SpeechGenerationGate 가 강제).
+        val gate = generationGate.generateIfSpeaking(trigger = trigger, packet = packet, stale = stale, budget = budget)
+        if (!gate.invokedGeneration) {
+            // SPEAK 아님/stale — 무발화로 마무리(외부 전송 0).
+            return cancel(packet, directive, generated = 0, criticReasons = emptySet())
+        }
+
+        // 4) 외부 전송 직전 동의 재확인(철회는 즉시 효력 — 늦은 전송 차단).
+        try {
+            consentGate.checkAllowed(subjectPseudonym, ProcessingStage.EXTERNAL_GLM_REQUEST)
+        } catch (e: ConsentRevokedException) {
+            return blocked(packet, consentStage = e.stage)
+        }
+
+        // 5) critic 검열 + 확률 선택(비밀/AI 정체성 critic 포함 — 전송될 후보에 대해 전송 전 실행).
+        val generated = gate.result.candidates
+        val criticReasons =
+            generated
+                .flatMap { candidateSelector.rejectionReasons(it, packet) }
+                .map { it.name }
+                .toSet()
+        val selection = candidateSelector.select(generated, packet, seed)
+
+        // 6) fallback 정책 — critic 통과 후보가 없으면 침묵/리액션으로 안전 하강.
+        return when (selection) {
+            is SelectionResult.Selected ->
+                speak(packet, directive, selection.candidate, generated.size, criticReasons)
+            SelectionResult.Silence ->
+                when (fallbackPolicy.decide(gate.result, packet)) {
+                    SpeechOutcome.ReactionOnly -> reactionOnly(packet, directive, generated.size, criticReasons)
+                    SpeechOutcome.Cancel -> cancel(packet, directive, generated.size, criticReasons)
+                    is SpeechOutcome.Speak -> cancel(packet, directive, generated.size, criticReasons) // critic 전원 탈락 → 침묵.
+                }
+        }
+    }
+
+    private fun blocked(
+        packet: SpeechScenePacket,
+        consentStage: ProcessingStage,
+    ): PipelineResult {
+        val log =
+            decisionFor(packet, SpeechDecisionOutcome.BLOCKED, highRisk = false, consentBlocked = true, 0, emptySet())
+        decisionLog.record(log)
+        return PipelineResult(SpeechDecisionOutcome.BLOCKED, selected = null, consentStage = consentStage)
+    }
+
+    private fun downgraded(
+        packet: SpeechScenePacket,
+        directive: HighRiskDirective,
+    ): PipelineResult {
+        val log = decisionFor(packet, SpeechDecisionOutcome.CANCEL, highRisk = true, consentBlocked = false, 0, emptySet())
+        decisionLog.record(log)
+        return PipelineResult(SpeechDecisionOutcome.CANCEL, selected = null, highRiskDirective = directive)
+    }
+
+    private fun speak(
+        packet: SpeechScenePacket,
+        directive: HighRiskDirective,
+        candidate: SpeechCandidate,
+        generated: Int,
+        criticReasons: Set<String>,
+    ): PipelineResult {
+        val log =
+            decisionFor(packet, SpeechDecisionOutcome.SPEAK, !directive.isNormal, consentBlocked = false, generated, criticReasons)
+        decisionLog.record(log)
+        return PipelineResult(SpeechDecisionOutcome.SPEAK, selected = candidate, highRiskDirective = directive)
+    }
+
+    private fun reactionOnly(
+        packet: SpeechScenePacket,
+        directive: HighRiskDirective,
+        generated: Int,
+        criticReasons: Set<String>,
+    ): PipelineResult {
+        val log =
+            decisionFor(
+                packet,
+                SpeechDecisionOutcome.REACTION_ONLY,
+                !directive.isNormal,
+                consentBlocked = false,
+                generated,
+                criticReasons,
+            )
+        decisionLog.record(log)
+        return PipelineResult(SpeechDecisionOutcome.REACTION_ONLY, selected = null, highRiskDirective = directive)
+    }
+
+    private fun cancel(
+        packet: SpeechScenePacket,
+        directive: HighRiskDirective,
+        generated: Int,
+        criticReasons: Set<String>,
+    ): PipelineResult {
+        val log =
+            decisionFor(packet, SpeechDecisionOutcome.CANCEL, !directive.isNormal, consentBlocked = false, generated, criticReasons)
+        decisionLog.record(log)
+        return PipelineResult(SpeechDecisionOutcome.CANCEL, selected = null, highRiskDirective = directive)
+    }
+
+    private fun decisionFor(
+        packet: SpeechScenePacket,
+        outcome: SpeechDecisionOutcome,
+        highRisk: Boolean,
+        consentBlocked: Boolean,
+        generated: Int,
+        criticReasons: Set<String>,
+    ): SpeechDecisionLog =
+        SpeechDecisionLog(
+            focusThreadKey = packet.focusThreadKey,
+            socialAct = packet.socialAct,
+            outcome = outcome,
+            highRiskDowngraded = highRisk,
+            consentBlocked = consentBlocked,
+            generatedCandidateCount = generated,
+            criticBlockReasons = criticReasons,
+        )
+
+    companion object {
+        /**
+         * 비밀/AI 정체성 critic 을 포함한 critic 목록으로 선택기를 만든다(M2 — 전송될 후보에 대해 전송 전 실행 보장).
+         * 호출부가 추가 critic(반복·기억 모순 등)을 합쳐 [CandidateSelector] 를 구성할 수도 있다.
+         */
+        fun securityCriticSelector(extraCritics: List<SpeechCritic> = emptyList()): CandidateSelector =
+            CandidateSelector(
+                critics =
+                    buildList {
+                        add(
+                            com.discordassistant.central.speech.domain.service.critic
+                                .SecretDisclosureCritic(),
+                        )
+                        add(
+                            com.discordassistant.central.speech.domain.service.critic
+                                .AiIdentityDisclosureCritic(),
+                        )
+                        addAll(extraCritics)
+                    },
+            )
+    }
+}
+
+/**
+ * 발화 파이프라인 최종 결과(전송 직전). [selected] 가 null 이면 발화하지 않는다(침묵/리액션/차단). 안전 enforcement 의
+ * 관찰 가능한 증거 — consentStage 가 채워지면 동의 차단으로 외부 전송이 0 임을 뜻한다.
+ */
+data class PipelineResult(
+    val outcome: SpeechDecisionOutcome,
+    /** 선택된 발화 후보(SPEAK 일 때만 non-null). */
+    val selected: SpeechCandidate?,
+    /** 동의 차단이 일어난 단계(BLOCKED 일 때만 non-null). */
+    val consentStage: ProcessingStage? = null,
+    /** 적용된 고위험 directive(평가됐을 때). */
+    val highRiskDirective: HighRiskDirective? = null,
+) {
+    /** 실제로 발화하는가(외부 전송 발생). */
+    val willSpeak: Boolean
+        get() = outcome == SpeechDecisionOutcome.SPEAK && selected != null
+}

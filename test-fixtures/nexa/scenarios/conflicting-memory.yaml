@@ -1,0 +1,44 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: conflicting-memory
+title: 상충 기억 — 동일 사실의 모순 언급과 정정·삭제(NEXA-P16-T013)
+intent: "같은 사실(예: 좋아하는 언어)에 대해 모순된 진술이 들어오고 일부는 정정·삭제된다. NEXA 의 speech 는 상충 사실을 확정 사실로 쓰지 않는다."
+humanLikenessFocus: [plainness, empathy-warmth]
+seed: 16013
+time:
+  baseInstant: "2026-01-09T13:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 1000
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: 민수
+    kind: human
+  - actorId: actor-b
+    label: B
+    displayName: 지현
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  # 상충 진술: A 는 파이썬, B 는 자바로 같은 사람을 묘사. 이후 A 가 자기 말을 정정.
+  - { seq: 1, atOffsetMs: 0,     type: message_create, messageId: m-1, authorId: actor-a, content: "민수는 파이썬 제일 좋아해" }
+  - { seq: 2, atOffsetMs: 3000,  type: message_create, messageId: m-2, authorId: actor-b, content: "아냐 민수 요즘 자바만 하던데?" }
+  - { seq: 3, atOffsetMs: 6000,  type: message_create, messageId: m-3, authorId: actor-a, content: "사실 둘 다 별로고 러스트로 갈아탔어" }
+  - { seq: 4, atOffsetMs: 6500,  type: message_delete, messageId: m-1, deletedByActorId: actor-a }
+  # 며칠 뒤 누군가 NEXA 에게 그 사실을 묻는다.
+  - { seq: 5, atOffsetMs: 90000, type: message_create, messageId: m-4, authorId: actor-b, content: "@니아 민수 무슨 언어 좋아한댔지?", mentionsNexa: true }
+expected:
+  narrative: >-
+    동일 사실에 대해 파이썬/자바/러스트가 충돌하고 최초 진술(m-1)은 삭제됐다. 사람 멤버라면 모순된 기억을
+    단정 사실로 말하지 않는다. NEXA 가 답하더라도 상충을 확정 사실로 쓰지 않는다(불확실성 인정).
+  invariants:
+    - { kind: no_conflict_as_fact, note: "충돌하는 사실을 단정으로 쓰지 않음" }
+    - { kind: no_speak_on_deleted_target, messageId: m-1, note: "삭제된 진술을 근거로 발화하지 않음" }
+    - { kind: max_speak_count, value: 1, note: "호명 1회에만 응답 가능" }
+    - { kind: no_stale_send }

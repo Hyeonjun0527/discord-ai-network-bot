@@ -1,0 +1,13 @@
+{
+  "_note": "builder CLI 입력 config(P10-T018). output_dir 은 테스트가 임시 경로로 덮어쓴다.",
+  "fixture_path": "tests/fixtures/synthetic_dataset.json",
+  "source_watermark": "synthetic_participation_projection_v1@2026-06-01",
+  "consent_snapshot_id": "consent-snapshot-synthetic-001",
+  "code_commit": "synthetic-commit-0000",
+  "purpose_salt": "synthetic-training-export-salt-DO-NOT-REUSE",
+  "output_dir": "build/out",
+  "seed": 7,
+  "train": 0.34,
+  "validation": 0.33,
+  "test": 0.33
+}

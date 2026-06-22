@@ -1,0 +1,46 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: late-generation
+title: 늦게 도착한 GLM 응답 — contextVersion 변경 후 stale content 미전송(NEXA-P16-T016)
+intent: >-
+  GLM 응답이 만들어지기 전에 대화 맥락(contextVersion)이 여러 번 바뀐다. 늦게 도착한 생성 content 는
+  Discord 로 전송되지 않고 폐기 audit 만 남는다(P13 stale-cancel). 다른 채널 fallback 없음.
+humanLikenessFocus: [timing]
+seed: 16016
+time:
+  baseInstant: "2026-01-12T11:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 500
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: 민수
+    kind: human
+  - actorId: actor-b
+    label: B
+    displayName: 지현
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  # 호명 → SPEAK 예약(생성 시작). 발사 전 fire window 안에서 맥락이 계속 바뀐다.
+  - { seq: 1, atOffsetMs: 0,    type: message_create, messageId: m-1, authorId: actor-a, content: "@니아 지금 회의 몇 시였지?", mentionsNexa: true }
+  - { seq: 2, atOffsetMs: 800,  type: message_update, messageId: m-1, editorId: actor-a, content: "@니아 아니 회의 말고 점심 약속 몇 시였지?", mentionsNexa: true }
+  - { seq: 3, atOffsetMs: 1600, type: message_create, messageId: m-2, authorId: actor-b, content: "12시 반이야 내가 잡았잖아" }
+  - { seq: 4, atOffsetMs: 2400, type: message_update, messageId: m-1, editorId: actor-a, content: "@니아 아 맞다 됐어 지현이가 답해줌", mentionsNexa: true }
+  # 생성이 늦게 끝나 도착했다고 가정 — 그 사이 맥락이 바뀌어 stale.
+  - { seq: 5, atOffsetMs: 3200, type: fault_inject, fault: glm_late, detailMs: 3000, targetMessageId: m-1 }
+expected:
+  narrative: >-
+    질문 m-1 이 발사 전에 두 번 수정되고 다른 사람(m-2)이 같은 thread 에서 먼저 답한다. 늦게 도착한 GLM content 는
+    더 이상 최신 맥락이 아니므로 전송되지 않는다. NEXA 는 취소(폐기 audit)로 끝나고 전송은 0 이다.
+  invariants:
+    - { kind: cancel_on_context_change, note: "맥락 변경 후 예약 취소" }
+    - { kind: silent_after_fault, note: "늦은 생성 도착(glm_late) 후 SPEAK 없음" }
+    - { kind: max_speak_count, value: 0, note: "stale content 전송 안 함" }
+    - { kind: no_stale_send }

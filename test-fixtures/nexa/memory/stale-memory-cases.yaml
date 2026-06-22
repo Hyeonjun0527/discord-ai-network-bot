@@ -1,0 +1,61 @@
+# NEXA-P07-T024 stale memory 평가 fixture (synthetic; no real user data).
+#
+# 변경(supersession)·삭제(invalidation)·모순(conflict)·농담(joke)·scope 누출 다섯 축에서 "이 시점 이 스코프
+# 에서 이 기억을 retrieval 이 써도 되는가"의 정답을 라벨한다. evaluate-social-memory.py 가 baseline retrieval
+# 규칙(validity·status·scope·modality 필터)을 적용해 stale usage rate(써선 안 되는 기억을 쓴 비율)를 측정한다.
+#
+# 각 case 는 source(어떤 기억·상태·구간·스코프·modality)와 retrieval decision(asOf·요청 스코프)을 분리해 담아,
+# 실패가 source 와 retrieval decision 으로 재현 가능하게 한다(acceptance T024). 원문/식별자 원문 없음.
+schemaVersion: nexa.memory-eval.v1
+fixtureId: stale-memory-cases
+baseInstant: "2026-01-01T00:00:00Z"
+cases:
+  # ── 변경(change/supersession): 닉네임을 바꿨다. 현재 조회에 옛 닉네임을 쓰면 stale. ──
+  - id: change-current-uses-new
+    axis: change
+    memory: { id: m1, guild: g1, scope: GUILD, predicate: nickname, object: "두두", status: ACTIVE, validFromSec: 3600, validToSec: null, modality: ASSERTED, sensitive: false }
+    retrieval: { asOfSec: 7200, requestGuild: g1, requestScope: GUILD }
+    shouldUse: true
+  - id: change-current-uses-old
+    axis: change
+    memory: { id: m2, guild: g1, scope: GUILD, predicate: nickname, object: "코알라", status: SUPERSEDED, validFromSec: 0, validToSec: 3600, modality: ASSERTED, sensitive: false }
+    retrieval: { asOfSec: 7200, requestGuild: g1, requestScope: GUILD }
+    shouldUse: false  # SUPERSEDED·validTo 지남 → 현재 조회에서 쓰면 stale.
+  - id: change-past-recall-old-ok
+    axis: change
+    memory: { id: m3, guild: g1, scope: GUILD, predicate: nickname, object: "코알라", status: ACTIVE, validFromSec: 0, validToSec: 3600, modality: ASSERTED, sensitive: false }
+    retrieval: { asOfSec: 1800, requestGuild: g1, requestScope: GUILD }
+    shouldUse: true   # 과거 회상 asOf 가 유효 구간 안 → 옛 닉네임을 써도 된다.
+
+  # ── 삭제(delete/invalidation): 출처가 redaction 돼 무효화됨. 쓰면 stale. ──
+  - id: delete-invalidated
+    axis: delete
+    memory: { id: m4, guild: g1, scope: GUILD, predicate: uses_language, object: "python", status: INVALIDATED, validFromSec: 0, validToSec: null, modality: ASSERTED, sensitive: false }
+    retrieval: { asOfSec: 60, requestGuild: g1, requestScope: GUILD }
+    shouldUse: false
+
+  # ── 모순(conflict): 근거 부족으로 CONFLICTED 보류. 임의로 쓰면 stale. ──
+  - id: conflict-held
+    axis: conflict
+    memory: { id: m5, guild: g1, scope: GUILD, predicate: uses_language, object: "java", status: CONFLICTED, validFromSec: 0, validToSec: null, modality: ASSERTED, sensitive: false }
+    retrieval: { asOfSec: 60, requestGuild: g1, requestScope: GUILD }
+    shouldUse: false
+
+  # ── 농담(joke): 비단정 발화는 애초에 사실로 저장되지 않는다(승격 단계에서 차단). 저장됐다 가정해도 쓰면 stale. ──
+  - id: joke-not-fact
+    axis: joke
+    memory: { id: m6, guild: g1, scope: GUILD, predicate: political_affiliation, object: "ilbe", status: ACTIVE, validFromSec: 0, validToSec: null, modality: JOKE, sensitive: true }
+    retrieval: { asOfSec: 60, requestGuild: g1, requestScope: GUILD }
+    shouldUse: false
+
+  # ── scope 누출(scope leak): 다른 guild 기억을 이 guild prompt 에 쓰면 stale(cross-guild 금지). ──
+  - id: scope-leak-cross-guild
+    axis: scope
+    memory: { id: m7, guild: g2, scope: GUILD, predicate: uses_language, object: "rust", status: ACTIVE, validFromSec: 0, validToSec: null, modality: ASSERTED, sensitive: false }
+    retrieval: { asOfSec: 60, requestGuild: g1, requestScope: GUILD }
+    shouldUse: false
+  - id: scope-same-guild-ok
+    axis: scope
+    memory: { id: m8, guild: g1, scope: GUILD, predicate: uses_language, object: "kotlin", status: ACTIVE, validFromSec: 0, validToSec: null, modality: ASSERTED, sensitive: false }
+    retrieval: { asOfSec: 60, requestGuild: g1, requestScope: GUILD }
+    shouldUse: true

@@ -1,0 +1,40 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: edit-delete
+title: 메시지 수정·삭제 — 기억·예약·prompt 가 최신 revision 과 deletion 을 따름(NEXA-P16-T008)
+intent: 질문 내용이 수정되거나 대상이 삭제되면 NEXA 는 옛 내용으로 발화하지 않는다(최신 revision 반영, 삭제 시 발화 금지).
+humanLikenessFocus: [timing, plainness]
+seed: 16008
+time:
+  baseInstant: "2026-01-06T10:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 500
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: 민수
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  # 케이스 1: 수정 — 발사 전에 질문 내용이 바뀌면 최신 revision 으로 답한다.
+  - { seq: 1, atOffsetMs: 0,    type: message_create, messageId: m-1, authorId: actor-a, content: "@니아 자바 버전 뭐 쓰면 돼?", mentionsNexa: true }
+  - { seq: 2, atOffsetMs: 1500, type: message_update, messageId: m-1, editorId: actor-a, content: "@니아 코틀린 버전 뭐 쓰면 돼?", mentionsNexa: true }
+  # 케이스 2: 삭제 — 발사 전에 대상이 삭제되면 발화하지 않는다.
+  - { seq: 3, atOffsetMs: 9000, type: message_create, messageId: m-2, authorId: actor-a, content: "@니아 아 이건 취소", mentionsNexa: true }
+  - { seq: 4, atOffsetMs: 9500, type: message_delete, messageId: m-2, deletedByActorId: actor-a }
+expected:
+  narrative: >-
+    m-1 은 발사 전 수정되므로 NEXA 는 최신(코틀린) 내용으로 답한다 — 옛(자바) 내용 발화 금지.
+    m-2 는 발사 전 삭제되므로 NEXA 는 그 대상에 발화하지 않는다(예약 취소).
+  invariants:
+    - { kind: speak_uses_latest_revision }
+    - { kind: no_speak_on_deleted_target, messageId: m-2 }
+    - { kind: cancel_on_context_change }
+    - { kind: max_speak_count, value: 1, note: "m-1 만 답, m-2 는 삭제로 취소" }
+    - { kind: no_stale_send }

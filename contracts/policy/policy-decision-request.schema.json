@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://discord-ai.yeon.world/contracts/policy/policy-decision-request.schema.json",
+  "title": "PolicyDecisionRequest",
+  "description": "NEXA-P08-T006 — participation 이 결정 엔진(JVM/ONNX/gRPC)에 보내는 입력 계약. Discord 원문과 JPA entity 를 직접 포함하지 않는다(식별 참조·feature·설정·버전·seed 만). 코드 SSOT 미러: PolicyDecisionRequest.kt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sceneSnapshotRef", "features", "config", "schemaVersion", "seed"],
+  "properties": {
+    "sceneSnapshotRef": {
+      "type": "object",
+      "description": "장면 snapshot 식별 참조(원문 비포함).",
+      "additionalProperties": false,
+      "required": ["guildPseudonym", "channelId", "sceneSeq", "contextVersion"],
+      "properties": {
+        "guildPseudonym": { "type": "string", "minLength": 1 },
+        "channelId": { "type": "string", "minLength": 1 },
+        "sceneSeq": { "type": "integer", "minimum": 0 },
+        "contextVersion": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "features": {
+      "type": "object",
+      "description": "정규화 feature 벡터(feature-vector.schema.json 참조). 원문 비포함.",
+      "additionalProperties": false,
+      "required": ["version", "features"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "features": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "missing"],
+            "properties": {
+              "value": { "type": "number" },
+              "missing": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "description": "결정 설정(코드/플래그만).",
+      "additionalProperties": false,
+      "required": ["channelMode", "autoRespondEnabled", "speechAllowed"],
+      "properties": {
+        "channelMode": { "type": "string", "minLength": 1 },
+        "autoRespondEnabled": { "type": "boolean" },
+        "speechAllowed": { "type": "boolean" }
+      }
+    },
+    "modelVersion": { "type": ["string", "null"] },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "seed": { "type": "integer" }
+  }
+}

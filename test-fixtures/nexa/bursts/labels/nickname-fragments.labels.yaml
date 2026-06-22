@@ -1,0 +1,60 @@
+# NEXA-P04-T022 burst boundary labels for the nickname golden fixture (synthetic gold).
+# One row per adjacent fragment pair in chronology order: 11 fragments -> 10 boundaries.
+# Bursts: A(1-4) | B(5-6) | C(7) | D(8) | C(9-11).
+schemaVersion: nexa.burst-labels.v1
+fixtureId: nickname-fragments
+fixtureRef: test-fixtures/nexa/bursts/nickname-fragments.yaml
+language: ko
+channelKind: text
+annotator: synthetic-gold
+boundaries:
+  - afterMessageId: msg-nickname-001
+    beforeMessageId: msg-nickname-002
+    label: join
+    ambiguous: false
+    note: same speaker A, contiguous
+  - afterMessageId: msg-nickname-002
+    beforeMessageId: msg-nickname-003
+    label: join
+    ambiguous: false
+    note: same speaker A, contiguous
+  - afterMessageId: msg-nickname-003
+    beforeMessageId: msg-nickname-004
+    label: join
+    ambiguous: false
+    note: same speaker A, contiguous
+  - afterMessageId: msg-nickname-004
+    beforeMessageId: msg-nickname-005
+    label: split
+    ambiguous: false
+    note: speaker change A -> B
+  - afterMessageId: msg-nickname-005
+    beforeMessageId: msg-nickname-006
+    label: join
+    ambiguous: false
+    note: same speaker B, contiguous
+  - afterMessageId: msg-nickname-006
+    beforeMessageId: msg-nickname-007
+    label: split
+    ambiguous: false
+    note: speaker change B -> C
+  - afterMessageId: msg-nickname-007
+    beforeMessageId: msg-nickname-008
+    label: split
+    ambiguous: false
+    note: speaker change C -> D (interruption of C)
+  - afterMessageId: msg-nickname-008
+    beforeMessageId: msg-nickname-009
+    label: split
+    ambiguous: false
+    note: speaker change D -> C (C resumes a new burst)
+  - afterMessageId: msg-nickname-009
+    beforeMessageId: msg-nickname-010
+    label: join
+    ambiguous: false
+    note: same speaker C, contiguous resumed burst
+  - afterMessageId: msg-nickname-010
+    beforeMessageId: msg-nickname-011
+    label: join
+    ambiguous: false
+    note: same speaker C, contiguous resumed burst

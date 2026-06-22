@@ -1,0 +1,40 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: already-answered
+title: 이미 인간이 답한 질문 — NEXA 예약 후 다른 사람이 답하면 취소/재평가(NEXA-P16-T007)
+intent: NEXA 가 발화를 예약한 뒤 다른 사용자가 충분히 답하면 NEXA action 은 취소되거나 reaction-only 로 재평가된다(중복 답변 침묵).
+humanLikenessFocus: [over-conservative-ignore, timing]
+seed: 16007
+time:
+  baseInstant: "2026-01-05T18:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 1000
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-asker
+    label: Q
+    displayName: 서준
+    kind: human
+  - actorId: actor-helper
+    label: H
+    displayName: 지현
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  - { seq: 1, atOffsetMs: 0,    type: message_create, messageId: m-1, authorId: actor-asker, content: "@니아 도커 컨테이너가 자꾸 죽는데 어디부터 봐?", mentionsNexa: true }
+  - { seq: 2, atOffsetMs: 2000, type: message_create, messageId: m-2, authorId: actor-helper, content: "로그부터 봐 docker logs <id> 로. 보통 OOM 이야" }
+  - { seq: 3, atOffsetMs: 6000, type: message_create, messageId: m-3, authorId: actor-asker, content: "오 고마워 helper, 그거였네" }
+expected:
+  narrative: >-
+    NEXA 가 m-1 호명에 답을 예약(WAIT)했지만, 발사 전에 사람(helper)이 충분히 답하고 질문자가 해결됐다.
+    사람 멤버라면 같은 답을 중복으로 또 하지 않는다 — NEXA 는 예약을 취소하고 침묵한다.
+  invariants:
+    - { kind: no_speak_after_human_answer, note: "이미 답해진 질문에 침묵" }
+    - { kind: cancel_on_context_change }
+    - { kind: max_speak_count, value: 0 }
+    - { kind: no_stale_send }

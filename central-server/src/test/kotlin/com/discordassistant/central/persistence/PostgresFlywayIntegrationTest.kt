@@ -17,7 +17,7 @@ import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 
 /**
- * 실제 Postgres(Testcontainers)에서 Flyway 마이그레이션(V1~V3)이 적용되는지 검증(차수 17 #261).
+ * 실제 Postgres(Testcontainers)에서 Flyway 마이그레이션(V1~현재)이 적용되는지 검증(차수 17 #261).
  * Docker 필요 → `integration-docker` 태그로 기본 빌드에서 제외. 실행: `./gradlew test -PdockerTests`.
  */
 @Tag("integration-docker")

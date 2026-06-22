@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEXA 운영 대시보드</title>
+  <!-- 기존 어드민 대시보드 디자인 토큰 재사용(자족 페이지 — 기존 SPA id 와 분리). NEXA-P18-T010. -->
+  <link rel="stylesheet" href="/admin/dashboard/style.css" />
+  <style>
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    h2 { margin-top: 28px; }
+    /* LIVE 와 SHADOW 수치를 시각적으로 분리(acceptance T010) — 좌우 컬럼 + 색대비. */
+    .lane-split { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .lane-card { border-radius:12px; padding:16px; border:1px solid var(--line); }
+    .lane-live { background: rgba(251,113,133,.07); border-color: rgba(251,113,133,.45); }
+    .lane-shadow { background: rgba(70,211,154,.07); border-color: rgba(70,211,154,.45); }
+    .lane-title { font-weight:800; letter-spacing:.02em; margin-bottom:8px; }
+    .lane-live .lane-title { color: var(--bad); }
+    .lane-shadow .lane-title { color: var(--ok); }
+    .metric-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px; }
+    .metric-row span:last-child { font-variant-numeric: tabular-nums; font-weight:700; }
+    .proxy-badge { display:inline-block; font-size:10px; font-weight:800; padding:2px 7px; border-radius:6px;
+                   background: rgba(246,162,60,.16); color: var(--warn); margin-left:6px; vertical-align:middle; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th, td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); font-size:13px; }
+    th { color: var(--muted); font-weight:700; }
+    .muted { color: var(--muted); }
+    .dist-bar { display:inline-block; height:8px; border-radius:4px; background: var(--accent, #6aa1ff); vertical-align:middle; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>NEXA 운영 대시보드</h1>
+    <p class="muted">
+      모드·action 분포·점유율·latency·비용·오류·모델 버전·rollback 을 한눈에 봅니다. 모든 수치는 <strong>집계</strong>이며
+      원문/개별 사용자를 노출하지 않습니다. <span class="proxy-badge">proxy(추정)</span> 배지가 붙은 지표는 사실이 아닌
+      <strong>약한 안전 신호</strong>입니다(과반응 FIR·과침묵 MIR).
+    </p>
+
+    <h2>모드·수집(LIVE / SHADOW 분리)</h2>
+    <p class="muted">길드별 모드·실제 전송 여부. <strong>SHADOW = 미발화 관찰</strong>, <strong>LIVE/CANARY = 실제 발화</strong>로
+      좌우/색을 분리합니다.</p>
+    <div class="lane-split">
+      <div class="lane-card lane-live">
+        <div class="lane-title">LIVE / CANARY — 실제 발화</div>
+        <table id="liveTable"><tbody><tr><td class="muted">불러오는 중…</td></tr></tbody></table>
+      </div>
+      <div class="lane-card lane-shadow">
+        <div class="lane-title">SHADOW — 미발화 관찰</div>
+        <table id="shadowTable"><tbody><tr><td class="muted">불러오는 중…</td></tr></tbody></table>
+      </div>
+    </div>
+
+    <h2>action 분포(raw / 제약 후 final)</h2>
+    <table id="actionTable">
+      <thead><tr><th>action</th><th>raw</th><th>final(제약 후)</th></tr></thead>
+      <tbody><tr><td colspan="3" class="muted">불러오는 중…</td></tr></tbody>
+    </table>
+    <p class="muted" id="constraintOverride">제약 override: —</p>
+
+    <h2>채팅 점유율(NEXA share)</h2>
+    <table id="shareTable">
+      <thead><tr><th>창</th><th>burst share</th><th>token/char share</th></tr></thead>
+      <tbody><tr><td colspan="3" class="muted">불러오는 중…</td></tr></tbody>
+    </table>
+
+    <h2>latency(단계별, 평균 ms)</h2>
+    <table id="latencyTable">
+      <thead><tr><th>단계</th><th>평균</th><th>표본</th></tr></thead>
+      <tbody><tr><td colspan="3" class="muted">불러오는 중…</td></tr></tbody>
+    </table>
+
+    <h2>비용·token(GLM)</h2>
+    <table id="costTable">
+      <thead><tr><th>지표</th><th>합계</th></tr></thead>
+      <tbody><tr><td colspan="2" class="muted">불러오는 중…</td></tr></tbody>
+    </table>
+
+    <h2>오류·fallback / FIR·MIR proxy</h2>
+    <table id="errorTable">
+      <thead><tr><th>지표</th><th>값</th></tr></thead>
+      <tbody><tr><td colspan="2" class="muted">불러오는 중…</td></tr></tbody>
+    </table>
+  </div>
+
+  <script>
+    // 집계 metric 은 /actuator/prometheus 에서, 길드 모드는 shadow status API 에서 읽는다(둘 다 관리자 가드).
+    const PROM = "/actuator/prometheus";
+    const SHADOW = "/api/ai-network/shadow";
+
+    // ── prometheus text 파싱(최소 — nexa_* 시리즈만). { name, labels{}, value } 목록. ──
+    function parseProm(text) {
+      const out = [];
+      for (const line of text.split("\n")) {
+        if (!line || line.startsWith("#")) continue;
+        if (!line.startsWith("nexa_")) continue;
+        const m = line.match(/^([a-zA-Z0-9_:]+)(\{([^}]*)\})?\s+(.+)$/);
+        if (!m) continue;
+        const labels = {};
+        if (m[3]) for (const pair of m[3].split(",")) {
+          const kv = pair.match(/^([a-zA-Z0-9_]+)="(.*)"$/);
+          if (kv) labels[kv[1]] = kv[2];
+        }
+        out.push({ name: m[1], labels, value: parseFloat(m[4]) });
+      }
+      return out;
+    }
+    const sumOf = (s, name, pred = () => true) =>
+      s.filter((x) => x.name === name && pred(x.labels)).reduce((a, x) => a + (isFinite(x.value) ? x.value : 0), 0);
+    const oneOf = (s, name, pred = () => true) => {
+      const f = s.find((x) => x.name === name && pred(x.labels));
+      return f ? f.value : null;
+    };
+
+    async function loadModes() {
+      const live = document.querySelector("#liveTable tbody");
+      const shadow = document.querySelector("#shadowTable tbody");
+      try {
+        const res = await fetch(`${SHADOW}/status`, { headers: { Accept: "application/json" } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const rows = await res.json();
+        const liveRows = rows.filter((r) => r.realSendActive);
+        const shadowRows = rows.filter((r) => !r.realSendActive);
+        const render = (rs) => rs.length
+          ? rs.map((r) => `<tr><td>${r.guildPseudonym}</td><td>${r.mode}</td><td>${r.predictionCount}</td></tr>`).join("")
+          : `<tr><td class="muted">없음</td></tr>`;
+        live.innerHTML = render(liveRows);
+        shadow.innerHTML = render(shadowRows);
+      } catch (e) {
+        live.innerHTML = shadow.innerHTML = `<tr><td class="muted">실패: ${e.message} (관리자 로그인/토큰 필요)</td></tr>`;
+      }
+    }
+
+    async function loadMetrics() {
+      let s;
+      try {
+        const res = await fetch(PROM, { headers: { Accept: "text/plain" } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        s = parseProm(await res.text());
+      } catch (e) {
+        document.querySelectorAll("table tbody").forEach((tb) => {
+          if (tb.closest("#liveTable") || tb.closest("#shadowTable")) return;
+          tb.innerHTML = `<tr><td colspan="3" class="muted">metric 불러오기 실패: ${e.message}</td></tr>`;
+        });
+        return;
+      }
+
+      // action 분포(raw / final).
+      const kinds = ["ignore", "wait", "react", "speak", "cancel_pending"];
+      const rawTotal = sumOf(s, "nexa_policy_action_total", (l) => l.stage === "raw") || 1;
+      document.querySelector("#actionTable tbody").innerHTML = kinds.map((k) => {
+        const raw = sumOf(s, "nexa_policy_action_total", (l) => l.stage === "raw" && l.kind === k);
+        const fin = sumOf(s, "nexa_policy_action_total", (l) => l.stage === "final" && l.kind === k);
+        const pct = Math.round((raw / rawTotal) * 100);
+        return `<tr><td>${k}</td><td><span class="dist-bar" style="width:${Math.max(2, pct)}px"></span> ${raw}</td><td>${fin}</td></tr>`;
+      }).join("");
+      const overridden = sumOf(s, "nexa_policy_constraint_overridden_total");
+      document.getElementById("constraintOverride").textContent =
+        `제약 override: ${overridden} / raw ${rawTotal} = ${Math.round((overridden / rawTotal) * 1000) / 10}%`;
+
+      // 점유율.
+      document.querySelector("#shareTable tbody").innerHTML = ["5m", "1h"].map((w) => {
+        const b = oneOf(s, "nexa_chat_share_burst_ratio", (l) => l.window === w);
+        const t = oneOf(s, "nexa_chat_share_token_ratio", (l) => l.window === w);
+        const pct = (v) => (v == null ? "—" : `${Math.round(v * 1000) / 10}%`);
+        return `<tr><td>${w}</td><td>${pct(b)}</td><td>${pct(t)}</td></tr>`;
+      }).join("");
+
+      // latency(summary: _sum/_count).
+      const lat = [
+        ["정책 추론", "nexa_latency_policy_inference_millis"],
+        ["스케줄 대기", "nexa_latency_schedule_wait_millis"],
+        ["생성", "nexa_latency_generation_millis"],
+        ["첫 bubble", "nexa_latency_first_bubble_millis"],
+        ["마지막 bubble", "nexa_latency_last_bubble_millis"],
+        ["취소까지", "nexa_latency_cancelled_millis"],
+      ];
+      document.querySelector("#latencyTable tbody").innerHTML = lat.map(([label, base]) => {
+        const sum = sumOf(s, `${base}_sum`);
+        const cnt = sumOf(s, `${base}_count`);
+        const avg = cnt > 0 ? Math.round(sum / cnt) : null;
+        return `<tr><td>${label}</td><td>${avg == null ? "—" : avg + " ms"}</td><td>${cnt}</td></tr>`;
+      }).join("");
+
+      // 비용·token.
+      const prompt = sumOf(s, "nexa_glm_tokens_total", (l) => l.direction === "prompt");
+      const completion = sumOf(s, "nexa_glm_tokens_total", (l) => l.direction === "completion");
+      const costMicros = sumOf(s, "nexa_glm_cost_micros_total");
+      document.querySelector("#costTable tbody").innerHTML = `
+        <tr><td>prompt token</td><td>${prompt}</td></tr>
+        <tr><td>completion token</td><td>${completion}</td></tr>
+        <tr><td>추정 비용(USD)</td><td>$${(costMicros / 1e6).toFixed(4)}</td></tr>`;
+
+      // 오류·fallback / FIR·MIR proxy.
+      const fir = oneOf(s, "nexa_fir_proxy_rate");
+      const mir = oneOf(s, "nexa_mir_proxy_rate");
+      const memConflict = sumOf(s, "nexa_memory_conflict_total");
+      const memRetr = sumOf(s, "nexa_memory_retrieval_total");
+      const memBacklog = oneOf(s, "nexa_memory_deletion_backlog");
+      const rate = (v) => (v == null ? "—" : `${Math.round(v * 1000) / 10}%`);
+      document.querySelector("#errorTable tbody").innerHTML = `
+        <tr><td>FIR(과반응) <span class="proxy-badge">proxy</span></td><td>${rate(fir)}</td></tr>
+        <tr><td>MIR(과침묵) <span class="proxy-badge">proxy</span></td><td>${rate(mir)}</td></tr>
+        <tr><td>memory conflict rate</td><td>${memRetr > 0 ? rate(memConflict / memRetr) : "—"}</td></tr>
+        <tr><td>memory 삭제 backlog</td><td>${memBacklog == null ? "—" : memBacklog}</td></tr>`;
+    }
+
+    loadModes();
+    loadMetrics();
+  </script>
+</body>
+</html>

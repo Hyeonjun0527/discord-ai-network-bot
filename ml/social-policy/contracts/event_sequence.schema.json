@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nexa/contracts/event_sequence.schema.json",
+  "title": "NEXA participation event-sequence columnar schema",
+  "description": "P10-T003. P03 정규화 이벤트를 columnar(Parquet) 학습 입력으로 정의한다. 원문(raw content) 미포함, 작성자는 guild-scope 가명만, schema version 고정. 한 row = 한 정규화 이벤트.",
+  "schema_version": 1,
+  "contains_raw_content": false,
+  "type": "object",
+  "required": [
+    "schema_version",
+    "guild_pseudonym",
+    "channel_pseudonym",
+    "event_id",
+    "event_time_ms",
+    "burst_id",
+    "scene_id",
+    "actor_pseudonym",
+    "event_kind",
+    "features",
+    "masks",
+    "training_eligible"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "스키마 버전 고정(T003 acceptance). 변경 시 마이그레이션 필요."
+    },
+    "guild_pseudonym": {
+      "type": "string",
+      "description": "길드 guild-scope 가명(실제 snowflake 금지, ADR 0010). split 키이기도 하다."
+    },
+    "channel_pseudonym": {
+      "type": "string",
+      "description": "채널 가명(실제 id 금지)."
+    },
+    "thread_pseudonym": {
+      "type": ["string", "null"],
+      "description": "스레드 가명(없으면 null)."
+    },
+    "event_id": {
+      "type": "string",
+      "description": "이벤트 가명 식별자(원본 메시지 id 금지). 결정론 순서 안정용."
+    },
+    "event_time_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "이벤트 시각(epoch millis). 시퀀스/세션/delay/holdout 기준."
+    },
+    "burst_id": {
+      "type": "string",
+      "description": "P04 버스트 묶음 id(한 인간의 연속 메시지가 같은 burst). 가명."
+    },
+    "scene_id": {
+      "type": "string",
+      "description": "장면(scene) id. 가명."
+    },
+    "actor_pseudonym": {
+      "type": "string",
+      "description": "작성자 guild-scope 가명. 실제 user id/snowflake 절대 금지(data-categories Medium)."
+    },
+    "event_kind": {
+      "type": "string",
+      "enum": ["message", "reaction", "mention", "reply", "join", "leave", "typing"],
+      "description": "정규화 이벤트 종류(안정 코드). 원문 텍스트가 아니라 종류만."
+    },
+    "features": {
+      "type": "object",
+      "description": "관찰 가능한 행동 신호만(observable-state-policy 허용 목록). 내면/정체성 추론 금지. 원문/파생 텍스트 금지.",
+      "additionalProperties": false,
+      "properties": {
+        "char_len_bucket": {
+          "type": ["integer", "null"],
+          "description": "메시지 길이 버킷(원문 아님, 길이 신호만)."
+        },
+        "is_question": {
+          "type": ["boolean", "null"],
+          "description": "물음표/의문 신호(어휘 신호, 내용 저장 아님)."
+        },
+        "mentions_nexa": {
+          "type": "boolean",
+          "description": "NEXA 를 직접 멘션했는가."
+        },
+        "reply_to_event_id": {
+          "type": ["string", "null"],
+          "description": "답장 대상 이벤트 가명(없으면 null)."
+        },
+        "mention_target_pseudonym": {
+          "type": ["string", "null"],
+          "description": "멘션 대상 작성자 가명(없으면 null). 실제 user id 금지."
+        },
+        "reaction_code": {
+          "type": ["string", "null"],
+          "description": "리액션 안정 코드(이모지 원문 아님)."
+        },
+        "gap_to_prev_ms": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "직전 이벤트와의 간격(템포 신호)."
+        }
+      }
+    },
+    "masks": {
+      "type": "object",
+      "description": "학습 마스킹/적격성 마스크. 관찰 불확실/금지 구간을 표시한다.",
+      "additionalProperties": false,
+      "properties": {
+        "is_observable": {
+          "type": "boolean",
+          "description": "이 이벤트의 결과 행동을 관찰할 수 있었는가(불확실하면 false → UNKNOWN 라벨)."
+        },
+        "consent_opt_in": {
+          "type": "boolean",
+          "description": "이 작성자가 학습 옵트인했는가(false 면 export 보안 경계가 제외)."
+        }
+      },
+      "required": ["is_observable", "consent_opt_in"]
+    },
+    "training_eligible": {
+      "type": "boolean",
+      "description": "T002 export 보안 경계 통과 표시. opt-in·관찰가능·정책통과 행만 true."
+    }
+  }
+}

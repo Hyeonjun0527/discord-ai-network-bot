@@ -1,0 +1,89 @@
+{
+  "_note": "공개 불가 표시이나 실제 PII 없음 — 전부 합성(P10-T019). 가명·신호만, 원문/실제 id/URL 없음.",
+  "records": [
+    {
+      "guild_pseudonym": "guild-alpha", "channel_pseudonym": "chan-1", "thread_pseudonym": null,
+      "event_id": "ev-a1", "event_time_ms": 1000, "burst_id": "b-a1", "scene_id": "s-a1",
+      "actor_pseudonym": "actor-a1", "event_kind": "message",
+      "features": {"is_question": true, "char_len_bucket": 2, "mentions_nexa": false},
+      "masks": {"is_observable": true, "consent_opt_in": true}, "training_eligible": true
+    },
+    {
+      "guild_pseudonym": "guild-alpha", "channel_pseudonym": "chan-1", "thread_pseudonym": null,
+      "event_id": "ev-a2", "event_time_ms": 3000, "burst_id": "b-a2", "scene_id": "s-a1",
+      "actor_pseudonym": "actor-a2", "event_kind": "reply",
+      "features": {"reply_to_event_id": "ev-a1", "char_len_bucket": 1, "mentions_nexa": false},
+      "masks": {"is_observable": true, "consent_opt_in": true}, "training_eligible": true
+    },
+    {
+      "guild_pseudonym": "guild-alpha", "channel_pseudonym": "chan-1", "thread_pseudonym": null,
+      "event_id": "ev-a3", "event_time_ms": 5000, "burst_id": "b-a3", "scene_id": "s-a1",
+      "actor_pseudonym": "actor-a2", "event_kind": "reaction",
+      "features": {"reaction_code": "thumbsup", "mentions_nexa": false},
+      "masks": {"is_observable": true, "consent_opt_in": true}, "training_eligible": true
+    },
+    {
+      "guild_pseudonym": "guild-alpha", "channel_pseudonym": "chan-2", "thread_pseudonym": "thr-x",
+      "event_id": "ev-a4", "event_time_ms": 7000, "burst_id": "b-a4", "scene_id": "s-a2",
+      "actor_pseudonym": "actor-a1", "event_kind": "mention",
+      "features": {"mention_target_pseudonym": "actor-a2", "char_len_bucket": 1, "mentions_nexa": false},
+      "masks": {"is_observable": false, "consent_opt_in": true}, "training_eligible": false
+    },
+    {
+      "guild_pseudonym": "guild-beta", "channel_pseudonym": "chan-9", "thread_pseudonym": null,
+      "event_id": "ev-b1", "event_time_ms": 2000, "burst_id": "b-b1", "scene_id": "s-b1",
+      "actor_pseudonym": "actor-b1", "event_kind": "message",
+      "features": {"char_len_bucket": 3, "is_question": false, "mentions_nexa": true},
+      "masks": {"is_observable": true, "consent_opt_in": true}, "training_eligible": true
+    },
+    {
+      "guild_pseudonym": "guild-beta", "channel_pseudonym": "chan-9", "thread_pseudonym": null,
+      "event_id": "ev-b2", "event_time_ms": 4000, "burst_id": "b-b1", "scene_id": "s-b1",
+      "actor_pseudonym": "actor-b1", "event_kind": "message",
+      "features": {"char_len_bucket": 1, "mentions_nexa": false},
+      "masks": {"is_observable": true, "consent_opt_in": true}, "training_eligible": true
+    },
+    {
+      "guild_pseudonym": "guild-beta", "channel_pseudonym": "chan-9", "thread_pseudonym": null,
+      "event_id": "ev-b3", "event_time_ms": 9000, "burst_id": "b-b2", "scene_id": "s-b1",
+      "actor_pseudonym": "actor-b2", "event_kind": "message",
+      "features": {"char_len_bucket": 2, "mentions_nexa": false},
+      "masks": {"is_observable": true, "consent_opt_in": false}, "training_eligible": false
+    },
+    {
+      "guild_pseudonym": "guild-gamma", "channel_pseudonym": "chan-3", "thread_pseudonym": null,
+      "event_id": "ev-g1", "event_time_ms": 60000, "burst_id": "b-g1", "scene_id": "s-g1",
+      "actor_pseudonym": "actor-g1", "event_kind": "message",
+      "features": {"is_question": true, "char_len_bucket": 2, "mentions_nexa": false},
+      "masks": {"is_observable": true, "consent_opt_in": true}, "training_eligible": true
+    },
+    {
+      "guild_pseudonym": "guild-gamma", "channel_pseudonym": "chan-3", "thread_pseudonym": null,
+      "event_id": "ev-g2", "event_time_ms": 62000, "burst_id": "b-g2", "scene_id": "s-g1",
+      "actor_pseudonym": "actor-g2", "event_kind": "reply",
+      "features": {"reply_to_event_id": "ev-g1", "char_len_bucket": 1, "mentions_nexa": false},
+      "masks": {"is_observable": true, "consent_opt_in": true}, "training_eligible": true
+    },
+    {
+      "guild_pseudonym": "guild-delta", "channel_pseudonym": "chan-4", "thread_pseudonym": null,
+      "event_id": "ev-d1", "event_time_ms": 120000, "burst_id": "b-d1", "scene_id": "s-d1",
+      "actor_pseudonym": "actor-d1", "event_kind": "message",
+      "features": {"char_len_bucket": 1, "mentions_nexa": false},
+      "masks": {"is_observable": true, "consent_opt_in": true}, "training_eligible": true
+    },
+    {
+      "guild_pseudonym": "guild-delta", "channel_pseudonym": "chan-4", "thread_pseudonym": null,
+      "event_id": "ev-d2", "event_time_ms": 124000, "burst_id": "b-d2", "scene_id": "s-d1",
+      "actor_pseudonym": "actor-d2", "event_kind": "reaction",
+      "features": {"reaction_code": "heart", "mentions_nexa": false},
+      "masks": {"is_observable": true, "consent_opt_in": true}, "training_eligible": true
+    },
+    {
+      "guild_pseudonym": "guild-epsilon", "channel_pseudonym": "chan-5", "thread_pseudonym": null,
+      "event_id": "ev-e1", "event_time_ms": 200000, "burst_id": "b-e1", "scene_id": "s-e1",
+      "actor_pseudonym": "actor-e1", "event_kind": "message",
+      "features": {"is_question": true, "char_len_bucket": 4, "mentions_nexa": false},
+      "masks": {"is_observable": true, "consent_opt_in": true}, "training_eligible": true
+    }
+  ]
+}

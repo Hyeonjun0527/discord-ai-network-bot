@@ -1,0 +1,43 @@
+# NEXA shadow E2E fixture(NEXA-P15-T023) — 관찰→판단→예약→shadow(전송 0) 전체 재생 시나리오.
+#
+# JDA fake 가 만든 메시지 이벤트를 event store→burst→scene→policy→shadow log 로 흘려보내는 한 장면을 기술한다.
+# 이 fixture 는 NexaShadowEndToEndTest 가 읽어 재생하며, 핵심 불변은:
+#  - Discord outbound 와 GLM(발화 생성)은 **policy SPEAK 전까지 호출되지 않는다**.
+#  - shadow 단계(SHADOW_PREDICT)에서는 실제 전송이 **0회**다(hard block).
+scenario: shadow-observe-to-shadow-log
+description: 한 채널의 짧은 대화 버스트를 관찰하고 정책이 IGNORE 로 판단하면 전송도 GLM 호출도 0회임을 검증한다.
+
+guild:
+  # 가명 키(원문 guild id 비저장 — pseudonym 만).
+  pseudonym: "g-shadow-e2e"
+  channelId: 700100
+  # 운영 lane: shadow(예측·기록만, 전송 hard block).
+  lane: SHADOW
+
+# JDA fake 가 방출하는 원시 메시지 이벤트(관찰 입력). content 는 가명/요약 참조만(원문 저장 금지 원칙).
+events:
+  - seq: 1
+    authorPseudonym: "u-alice"
+    contentRef: "msg-ref-1"
+    atMillis: 0
+  - seq: 2
+    authorPseudonym: "u-bob"
+    contentRef: "msg-ref-2"
+    atMillis: 1200
+  - seq: 3
+    authorPseudonym: "u-alice"
+    contentRef: "msg-ref-3"
+    atMillis: 1800
+
+# 정책이 낸 결정(shadow 예측). 이 시나리오는 IGNORE → SPEAK 도 전송도 없음.
+policyDecision:
+  action: IGNORE
+  # SPEAK 가 아니므로 발화 생성(GLM) 진입 자체가 없어야 한다.
+  reason: "관찰만 — 아직 끼어들 맥락 아님"
+
+expect:
+  # 핵심 불변(acceptance T023).
+  discordOutboundCalls: 0
+  glmGenerationCalls: 0
+  # shadow log 에는 예측/판단 기록은 남는다(관찰·예측은 0 이 아님).
+  shadowLogRecorded: true

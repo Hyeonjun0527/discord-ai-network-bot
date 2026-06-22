@@ -9,6 +9,7 @@ import com.discordassistant.central.onboarding.adapter.outbound.persistence.Guil
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingConsentRepository
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingRunEntity
 import com.discordassistant.central.onboarding.adapter.outbound.persistence.GuildOnboardingRunRepository
+import com.discordassistant.central.onboarding.domain.model.NexaMemberOnboardingConsent
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -90,6 +91,8 @@ class GuildOnboardingService(
         historyLimit: Int = 0,
         backfill: BackfillInput? = null,
         analysis: OnboardingAnalysis? = null,
+        // NEXA "AI 멤버 채널" 목적별 독립 동의(T014). 기본 NONE = 어떤 NEXA 목적도 켜지 않음(기존 동작 보존).
+        nexaMemberConsent: NexaMemberOnboardingConsent = NexaMemberOnboardingConsent.NONE,
     ): GuildOnboardingResult {
         featureGate.requireChannelAiEnabled()
         // 권한 게이트는 createFromWizard 안에서도 강제되지만, consent/run 행을 남기기 전에 먼저 확인한다.
@@ -112,6 +115,11 @@ class GuildOnboardingService(
                     actorUserId = actorUserId,
                     channelWhitelist = serializeWhitelist(channelWhitelist),
                     messageBackfillOptedIn = optedIn,
+                    // NEXA 멤버 채널 목적별 동의를 각 축에 그대로 기록한다(포괄 동의로 병합하지 않는다 — T014).
+                    nexaObserveScope = nexaMemberConsent.observeScope,
+                    nexaExternalGlmAllowed = nexaMemberConsent.externalGlmAllowed,
+                    nexaLiveSendAllowed = nexaMemberConsent.liveSendAllowed,
+                    nexaLearningOptIn = nexaMemberConsent.learningOptIn,
                     createdAt = now,
                 ),
             )

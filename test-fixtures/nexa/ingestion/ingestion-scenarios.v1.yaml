@@ -1,0 +1,44 @@
+# NEXA-P03-T023 JDA fake 기반 ingestion 통합 시나리오 fixture.
+#
+# 이 fixture 는 DiscordEventIngestionIntegrationTest 의 시나리오 SSOT 다. JDA-free 스냅샷(매퍼 입력)으로
+# 메시지 조각/수정/삭제/리액션/타이핑/재연결을 end-to-end 저장하고, 중복·역순·미동의 케이스를 DB 상태와
+# outbox 결과로 검증한다. conversation-fixture.schema.json(transcript replay)과 별개 포맷이라 별도 디렉터리에 둔다.
+fixtureId: ingestion-scenarios
+title: JDA fake ingestion end-to-end scenarios (fragment/edit/delete/reaction/typing/reconnect)
+guild:
+  guildId: 1001
+  channelId: 2002
+actors:
+  authorA: 3003
+  reactorB: 4004
+
+# end-to-end 저장 대상 이벤트 종류 — 각 매퍼가 JDA-free 스냅샷에서 정규화한다.
+shapes:
+  - fragment   # message_create (원문 조각)
+  - edit       # message_update
+  - delete     # message_delete
+  - reaction   # reaction add/remove
+  - typing     # typing_start
+  - reconnect  # session boundary(new session) — 시퀀스 갭 메타
+
+# 통합 테스트가 DB 상태/outbox 로 검증하는 케이스(acceptance T023).
+cases:
+  duplicate:
+    description: 같은 eventId 재수신 → event/ outbox 행이 중복되지 않고 DUPLICATE 결과.
+    expect:
+      eventRows: 1
+      outboxRows: 1
+  outOfOrder:
+    description: 역순(늦은 sourceSequence 먼저) 도착 → 저장은 받되 streamByChannel 이 sourceSequence 순서로 복원.
+    expect:
+      streamOrderBySourceSequence: true
+  nonConsent:
+    description: 동의 미허용(길드 비활성/옵트아웃/제외 채널) → 적재 안 함(REJECTED_CONSENT), event/ outbox 0.
+    expect:
+      eventRows: 0
+      outboxRows: 0
+  reconnect:
+    description: 새 세션 경계 메타가 저장되고 createsSequenceGap 으로 시퀀스 재시작을 표시.
+    expect:
+      sessionBoundaryStored: true
+      createsSequenceGap: true

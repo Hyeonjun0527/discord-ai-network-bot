@@ -1,0 +1,31 @@
+# NEXA-P17-T021 — dependency·container 보안 scan 예외 레지스트리(SSOT).
+#
+# critical 취약점 예외는 **만료일(expires)·소유자(owner)·근거(justification) 없이 허용되지 않는다**(acceptance).
+# scripts/validate-nexa-scan-exceptions.py 가 이 파일을 검증하고, scan 워크플로(security-scan.yml)가 게이트한다.
+#
+# 각 예외 항목 필수 필드:
+#   id: 취약점 식별자(예: CVE-2024-xxxxx 또는 도구 advisory id)
+#   scope: gradle | python | container
+#   severity: low | medium | high | critical
+#   owner: 책임자(이메일/핸들) — 무기명 예외 금지
+#   justification: 왜 임시 허용하는가(영향 없음 근거·완화책)
+#   expires: 만료일(YYYY-MM-DD) — 무기한 예외 금지. 지나면 scan 이 다시 실패한다.
+#
+# 빈 목록이 정상(예외 없음 = 모든 critical/high 해결). 예외는 임시·추적 대상이다.
+
+exceptions:
+  # Spring Boot 3.4.x 라인에 아직 패치 버전이 배포되지 않은 임시 예외.
+  # 본 advisory 의 3.4.x 수정 버전은 3.4.16 이며, Maven Central 최신 공개본은 3.4.13(미배포).
+  # 마이너 라인 bump(3.4→3.5)는 breaking 위험이라 패치(3.4.16) 배포 전까지만 한시적으로 허용한다.
+  # 영향 없음 근거: 본 취약점은 `server.servlet.session.persistent=true` + 동일 호스트 로컬 공격자 동시 충족이 전제.
+  #   central-server 는 persistent 세션을 켜지 않으며(설정 부재 = 기본 false), 컨테이너는 비-root(uid 10001)로
+  #   ApplicationTemp 디렉터리를 같은 호스트의 타 사용자가 선점하기 어렵다 → 실 익스플로잇 경로 없음.
+  # 완화책: 3.4.16(또는 안정 3.5.x) 배포 시 즉시 bump 하고 본 예외를 제거한다. 만료 시 scan 이 다시 실패해 재검토 강제.
+  - id: CVE-2026-40973
+    scope: gradle
+    severity: high
+    owner: Hyeonjun0527
+    justification: >-
+      Spring Boot 3.4.x 패치(3.4.16) 미배포 — 최신 공개본 3.4.13. persistent 세션 미사용(기본 false) +
+      컨테이너 비-root 실행으로 ApplicationTemp 선점 익스플로잇 불가. 3.4.16 배포 즉시 bump 후 예외 제거.
+    expires: "2026-09-20"

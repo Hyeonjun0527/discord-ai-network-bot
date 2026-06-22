@@ -1,0 +1,40 @@
+schemaVersion: nexa.scenario.v1
+scenarioId: permission-loss
+title: Discord permission loss — 예약 중 권한 상실 시 action 실패/취소·다른 채널 fallback 없음(NEXA-P16-T019)
+intent: >-
+  예약 도중 채널 보기/메시지/반응 권한이 제거된다. NEXA 의 action 은 다른 채널로 우회하지 않고 그 자리에서
+  실패/취소된다(우아한 실패). 권한 상실 후에는 어떤 발화도 시도하지 않는다.
+humanLikenessFocus: [timing]
+seed: 16019
+time:
+  baseInstant: "2026-01-15T13:00:00Z"
+  zone: Asia/Seoul
+  resolutionMs: 500
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+  channelKind: MEMBER
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: 민수
+    kind: human
+  - actorId: actor-nexa
+    label: NEXA
+    displayName: 니아
+    kind: nexa
+events:
+  # 호명 → SPEAK 예약. 발사 전에 채널 권한이 제거된다.
+  - { seq: 1, atOffsetMs: 0,    type: message_create, messageId: m-1, authorId: actor-a, content: "@니아 이거 어떻게 생각해?", mentionsNexa: true }
+  - { seq: 2, atOffsetMs: 1500, type: fault_inject, fault: permission_loss, detailMs: 0, targetMessageId: m-1 }
+  # 권한 상실 후 새 호명에도 다른 채널로 우회하지 않고 침묵한다.
+  - { seq: 3, atOffsetMs: 6000, type: message_create, messageId: m-2, authorId: actor-a, content: "@니아 아직 있어?", mentionsNexa: true }
+expected:
+  narrative: >-
+    m-1 호명 후 발사 전에 권한이 사라진다 — 예약을 취소하고(우아한 실패) 다른 채널로 우회하지 않는다. 권한이
+    없는 채널에서 m-2 호명에도 발화를 시도하지 않는다. 전송 0.
+  invariants:
+    - { kind: cancel_on_fault, note: "권한 상실 시 예약 취소(우아한 실패)" }
+    - { kind: silent_after_fault, note: "권한 상실 후 SPEAK·다른 채널 fallback 없음" }
+    - { kind: max_speak_count, value: 0 }
+    - { kind: no_stale_send }

@@ -2288,6 +2288,89 @@ $("safetyProviderPicker")?.addEventListener("change", (e) => {
   if (e.target.value) $("safetyProviderId").value = e.target.value;
 });
 
+// ── NEXA 사회적 참여 설정(T019, 웹 대시보드 전용) ──────────────────────────────
+// shadow/live 상태·데이터 처리 동의·롤백을 한 화면에서 제어한다. 위험한 LIVE 전환은 확인란을 요구한다.
+const NEXA_REAL_SEND_LANES = ["CANARY", "LIVE"];
+
+function nexaSelectedLane() {
+  return ($("nexaLane")?.value || "LEGACY").trim().toUpperCase();
+}
+
+// 선택한 단계가 실제 발화(CANARY/LIVE)면 경고·확인란을 노출한다(T019 위험 전환 확인 요구).
+function nexaUpdateLiveWarning() {
+  const needsConfirm = NEXA_REAL_SEND_LANES.includes(nexaSelectedLane());
+  const warn = $("nexaLiveWarning");
+  const row = $("nexaConfirmRow");
+  if (warn) warn.hidden = !needsConfirm;
+  if (row) row.hidden = !needsConfirm;
+  if (!needsConfirm && $("nexaConfirmLiveSend")) $("nexaConfirmLiveSend").checked = false;
+}
+
+async function nexaRefreshStatus() {
+  const gid = $("guildId").value.trim();
+  const list = $("nexaStatus");
+  if (!list) return;
+  if (!/^\d+$/.test(gid)) {
+    list.innerHTML = '<li class="empty">서버 ID를 먼저 선택/입력하세요.</li>';
+    return;
+  }
+  try {
+    const s = await getJson(`/api/ai-network/nexa/${gid}/settings`);
+    if ($("nexaLane")) $("nexaLane").value = s.guildLane || "LEGACY";
+    nexaUpdateLiveWarning();
+    const c = s.consent || {};
+    const yn = (v) => (v ? "동의함" : "—");
+    list.innerHTML = [
+      `<li>현재 단계: <strong>${esc(s.guildLane)}</strong> · 실제 발화 ${s.realSendActive ? "ON" : "OFF(전송 0)"}</li>`,
+      `<li>말 많음 후보값(승인 대기): ${esc(s.talkativenessCandidate)}</li>`,
+      `<li>데이터 처리 동의 — 관찰: ${yn(c.observeScope)} · 외부 GLM: ${yn(c.externalGlmAllowed)} · 실제 전송: ${yn(c.liveSendAllowed)} · 학습: ${yn(c.learningOptIn)}</li>`,
+    ].join("");
+  } catch (e) {
+    list.innerHTML = `<li class="empty">상태 조회 실패: ${esc(e.message)}</li>`;
+  }
+}
+
+async function nexaApplyLane() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) {
+    nexaRefreshStatus();
+    return;
+  }
+  const lane = nexaSelectedLane();
+  const confirmLiveSend = !!$("nexaConfirmLiveSend")?.checked;
+  if (NEXA_REAL_SEND_LANES.includes(lane) && !confirmLiveSend) {
+    $("nexaStatus").innerHTML = '<li class="empty">실제 발화(CANARY/LIVE) 전환은 확인란을 체크해야 합니다.</li>';
+    return;
+  }
+  try {
+    await postJson(`/api/ai-network/nexa/${gid}/lane`, {
+      lane,
+      confirmLiveSend,
+      reason: ($("nexaLaneReason")?.value || "").trim(),
+    });
+    await nexaRefreshStatus();
+  } catch (e) {
+    $("nexaStatus").innerHTML = `<li class="empty">적용 실패: ${esc(e.message)}</li>`;
+  }
+}
+
+async function nexaRollbackLegacy() {
+  const gid = $("guildId").value.trim();
+  if (!/^\d+$/.test(gid)) return;
+  try {
+    // 롤백(끄기)은 안전 방향이라 확인 불필요(confirmLiveSend=false).
+    await postJson(`/api/ai-network/nexa/${gid}/lane`, { lane: "LEGACY", confirmLiveSend: false, reason: "대시보드 롤백" });
+    await nexaRefreshStatus();
+  } catch (e) {
+    $("nexaStatus").innerHTML = `<li class="empty">롤백 실패: ${esc(e.message)}</li>`;
+  }
+}
+
+$("nexaLane")?.addEventListener("change", nexaUpdateLiveWarning);
+$("nexaRefresh")?.addEventListener("click", nexaRefreshStatus);
+$("nexaApplyLane")?.addEventListener("click", nexaApplyLane);
+$("nexaRollbackLegacy")?.addEventListener("click", nexaRollbackLegacy);
+
 showPage((location.hash || "#overview").slice(1));
 showServerTab("summary");
 loadAuth();

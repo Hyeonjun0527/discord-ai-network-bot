@@ -18,6 +18,11 @@ class GuildOnboardingConsentEntity(
     var actorUserId: Long? = null,
     @Column(name = "channel_whitelist") var channelWhitelist: String? = null,
     @Column(name = "message_backfill_opted_in") var messageBackfillOptedIn: Boolean = false,
+    // NEXA "AI 멤버 채널" 목적별 독립 동의(NEXA-P15-T014). 각 축은 따로 저장 — 포괄 동의로 묶지 않는다.
+    @Column(name = "nexa_observe_scope") var nexaObserveScope: Boolean = false,
+    @Column(name = "nexa_external_glm_allowed") var nexaExternalGlmAllowed: Boolean = false,
+    @Column(name = "nexa_live_send_allowed") var nexaLiveSendAllowed: Boolean = false,
+    @Column(name = "nexa_learning_opt_in") var nexaLearningOptIn: Boolean = false,
     var createdAt: Instant = Instant.EPOCH,
 )
 

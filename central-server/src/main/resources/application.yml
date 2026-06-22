@@ -105,6 +105,13 @@ central:
     runpod-endpoint-id: ${RUNPOD_ENDPOINT_ID:}
     runpod-timeout-seconds: ${RUNPOD_TIMEOUT_SECONDS:300}
     runpod-base-url: ${RUNPOD_BASE_URL:https://api.runpod.ai/v2}
+  speech:
+    # NEXA 발화 생성(SPEAK 이후 문장 생성, ADR 0006 anti-corruption) 모델·budget 외부화(P14-T003).
+    # endpoint/api-key 는 위 cloud.zai-* 가 SSOT — speech 는 모델 라벨·호출 budget 만 외부화한다.
+    # 모델 업데이트·rollback 은 코드 수정 없이 이 값(또는 환경변수)만 바꾸면 된다.
+    model: ${NEXA_SPEECH_MODEL:glm-5.1}
+    timeout-seconds: ${NEXA_SPEECH_TIMEOUT_SECONDS:8}
+    max-retries: ${NEXA_SPEECH_MAX_RETRIES:1}
   ai-network:
     enabled: ${AI_NETWORK_ENABLED:true}
     dashboard-enabled: ${AI_NETWORK_DASHBOARD_ENABLED:true}

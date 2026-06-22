@@ -1,0 +1,166 @@
+schemaVersion: nexa.conversation-fixture.v1
+fixtureId: nickname-burst
+title: Fragmented nickname-change chat from PROJECT_CONTEXT section 2.5
+source:
+  document: docs/nexa/PROJECT_CONTEXT.md
+  lineRange: 228-242
+  originalTimeKnown: false
+  note: Source transcript has speaker labels and text only; replay offsets below are deterministic fixture time.
+time:
+  baseInstant: "2026-01-01T11:15:01Z"
+  zone: Asia/Seoul
+  resolutionMs: 1000
+guild:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+actors:
+  - actorId: actor-a
+    label: A
+    displayName: A
+    kind: human
+  - actorId: actor-b
+    label: B
+    displayName: B
+    kind: human
+  - actorId: actor-c
+    label: C
+    displayName: C
+    kind: human
+  - actorId: actor-d
+    label: D
+    displayName: D
+    kind: human
+events:
+  - seq: 1
+    eventId: evt-nickname-001
+    type: message_create
+    atOffsetMs: 0
+    messageId: msg-nickname-001
+    authorId: actor-a
+    content: "닉네임"
+  - seq: 2
+    eventId: evt-nickname-002
+    type: message_create
+    atOffsetMs: 1000
+    messageId: msg-nickname-002
+    authorId: actor-a
+    content: "바꿔"
+  - seq: 3
+    eventId: evt-nickname-003
+    type: message_create
+    atOffsetMs: 2000
+    messageId: msg-nickname-003
+    authorId: actor-a
+    content: "ㅃㄹ"
+  - seq: 4
+    eventId: evt-nickname-004
+    type: message_create
+    atOffsetMs: 3000
+    messageId: msg-nickname-004
+    authorId: actor-a
+    content: "헷갈리니까"
+  - seq: 5
+    eventId: evt-nickname-005
+    type: message_create
+    atOffsetMs: 4000
+    messageId: msg-nickname-005
+    authorId: actor-b
+    content: "웅"
+  - seq: 6
+    eventId: evt-nickname-006
+    type: message_create
+    atOffsetMs: 5000
+    messageId: msg-nickname-006
+    authorId: actor-b
+    content: "니키"
+  - seq: 7
+    eventId: evt-nickname-007
+    type: message_create
+    atOffsetMs: 6000
+    messageId: msg-nickname-007
+    authorId: actor-c
+    content: "음 그래그래"
+  - seq: 8
+    eventId: evt-nickname-008
+    type: message_create
+    atOffsetMs: 7000
+    messageId: msg-nickname-008
+    authorId: actor-d
+    content: "그래"
+  - seq: 9
+    eventId: evt-nickname-009
+    type: message_create
+    atOffsetMs: 8000
+    messageId: msg-nickname-009
+    authorId: actor-c
+    content: "아니"
+  - seq: 10
+    eventId: evt-nickname-010
+    type: message_create
+    atOffsetMs: 9000
+    messageId: msg-nickname-010
+    authorId: actor-c
+    content: "코알라였음??????"
+  - seq: 11
+    eventId: evt-nickname-011
+    type: message_create
+    atOffsetMs: 10000
+    messageId: msg-nickname-011
+    authorId: actor-c
+    content: "누군가 했네"
+expected:
+  sourceTranscript:
+    - speakerLabel: A
+      text: "닉네임"
+    - speakerLabel: A
+      text: "바꿔"
+    - speakerLabel: A
+      text: "ㅃㄹ"
+    - speakerLabel: A
+      text: "헷갈리니까"
+    - speakerLabel: B
+      text: "웅"
+    - speakerLabel: B
+      text: "니키"
+    - speakerLabel: C
+      text: "음 그래그래"
+    - speakerLabel: D
+      text: "그래"
+    - speakerLabel: C
+      text: "아니"
+    - speakerLabel: C
+      text: "코알라였음??????"
+    - speakerLabel: C
+      text: "누군가 했네"
+  bursts:
+    - burstId: burst-a-001
+      actorId: actor-a
+      messageIds:
+        - msg-nickname-001
+        - msg-nickname-002
+        - msg-nickname-003
+        - msg-nickname-004
+      reason: same author, contiguous messages, short gaps
+    - burstId: burst-b-001
+      actorId: actor-b
+      messageIds:
+        - msg-nickname-005
+        - msg-nickname-006
+      reason: same author, contiguous messages, short gaps
+    - burstId: burst-c-001
+      actorId: actor-c
+      messageIds:
+        - msg-nickname-007
+      reason: interrupted by actor D before next C message
+    - burstId: burst-d-001
+      actorId: actor-d
+      messageIds:
+        - msg-nickname-008
+      reason: single-message acknowledgment
+    - burstId: burst-c-002
+      actorId: actor-c
+      messageIds:
+        - msg-nickname-009
+        - msg-nickname-010
+        - msg-nickname-011
+      reason: same author resumes after D, forming a new burst

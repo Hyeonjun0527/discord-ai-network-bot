@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "actionWeights": {
+    "ignore": 0.2,
+    "wait": 0.1,
+    "react": 0.1,
+    "speak": 0.6
+  },
+  "targetDistribution": {
+    "candidates": [
+      { "target": { "kind": "message", "id": "m-1" }, "probability": 0.7 }
+    ],
+    "noneProbability": 0.3,
+    "resolverVersion": "rules-1"
+  },
+  "delayDistribution": {
+    "weights": {
+      "IMMEDIATE": 0.5,
+      "SHORT": 0.5
+    }
+  },
+  "socialActWeights": {
+    "acknowledge": 0.4,
+    "ask": 0.6
+  },
+  "burstProfile": {
+    "fragmentCountWeights": { "1": 0.8, "2": 0.2 },
+    "maxFragmentLength": 280,
+    "gapLowerBoundSeconds": 0.0,
+    "gapUpperBoundSeconds": 2.0,
+    "reactionOnlyProbability": 0.1
+  },
+  "uncertainty": 0.3,
+  "modelVersion": "rules-1"
+}

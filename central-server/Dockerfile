@@ -4,6 +4,10 @@
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 COPY build/libs/app.jar app.jar
+# 비-root 실행(컨테이너 탈출 완화, Trivy DS-0002). UID 10001 의 시스템 계정으로 떨어뜨린다.
+RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin nexa \
+    && chown -R nexa:nexa /app
+USER nexa
 EXPOSE 8080
 # 토큰/DB 비밀은 환경변수로 주입(DISCORD_BOT_TOKEN, DB_URL/DB_USER/DB_PASSWORD 등)
 ENV JAVA_OPTS=""

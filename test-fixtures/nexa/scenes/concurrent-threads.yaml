@@ -1,0 +1,92 @@
+# NEXA-P05-T022 동시 대화 scene fixture (합성 대화; 실제 사용자 데이터 없음).
+#
+# 한 채널(channel-general)에서 두 쌍이 **다른 주제** 로 동시에 대화한다:
+#   thread-x: A↔C 가 "주말 등산" 이야기 (reply edge 로 자기들끼리만 연결).
+#   thread-y: B↔D 가 "빌드 깨짐" 이야기 (reply edge 로 자기들끼리만 연결).
+# 두 대화는 서로를 reply/mention 하지 않아 교차 신호가 없다 → LogicalThreadAssembler 가
+# 두 connected component(다른 ConversationThreadId)로 분리한다(P05-T010 acceptance).
+#
+# acceptance(T022): 정책 context 가 **대상 스레드만** 선택할 수 있도록 두 thread 가 분리된다.
+#   expected.threads 에 각 thread 의 burst·참여자 정답이, expected.policyContext 에 "주말 등산"
+#   메시지가 들어왔을 때 thread-x 만 선택돼야 함을 박아 둔다.
+schemaVersion: nexa.scene-fixture.v1
+fixtureId: concurrent-threads
+title: Two concurrent conversations in one channel, separated into threads (synthetic)
+language: ko
+channelKind: text
+source:
+  document: synthetic
+  note: 합성 대화 — 실제 Discord 사용자/메시지 ID 없음. fragment ID 는 fixture-local.
+time:
+  baseInstant: "2026-01-01T12:00:00Z"
+  resolutionMs: 1000
+channel:
+  guildId: guild-nexa-fixture
+  channelId: channel-general
+actors:
+  - actorId: actor-a
+    label: A
+  - actorId: actor-b
+    label: B
+  - actorId: actor-c
+    label: C
+  - actorId: actor-d
+    label: D
+# 인터리브된 발화(두 대화가 시간상 섞여 들어온다 — 분리는 reply 그래프가 결정).
+bursts:
+  # thread-x 시작: A 가 등산 화두.
+  - burstId: burst-x-001
+    speaker: actor-a
+    atOffsetMs: 0
+    messageIds: [msg-x-001]
+    content: "이번 주말에 등산 갈 사람?"
+    replyTo: null
+  # thread-y 시작: B 가 빌드 화두(교차 없음).
+  - burstId: burst-y-001
+    speaker: actor-b
+    atOffsetMs: 1000
+    messageIds: [msg-y-001]
+    content: "central 빌드 또 깨졌는데"
+    replyTo: null
+  # thread-x: C 가 A 에게 reply.
+  - burstId: burst-x-002
+    speaker: actor-c
+    atOffsetMs: 2000
+    messageIds: [msg-x-002]
+    content: "나 갈래 어디로?"
+    replyTo: burst-x-001
+  # thread-y: D 가 B 에게 reply.
+  - burstId: burst-y-002
+    speaker: actor-d
+    atOffsetMs: 3000
+    messageIds: [msg-y-002]
+    content: "flyway 마이그레이션 충돌이야"
+    replyTo: burst-y-001
+  # thread-x: A 가 C 에게 다시 reply.
+  - burstId: burst-x-003
+    speaker: actor-a
+    atOffsetMs: 4000
+    messageIds: [msg-x-003]
+    content: "북한산 어때"
+    replyTo: burst-x-002
+expected:
+  # 결정론적 스레드 배치(LogicalThreadAssembler 가 reply 그래프로 도출하는 정답).
+  threads:
+    - threadKey: thread-x
+      topic: 주말 등산
+      burstIds: [burst-x-001, burst-x-002, burst-x-003]
+      participants: [actor-a, actor-c]
+    - threadKey: thread-y
+      topic: 빌드 깨짐
+      burstIds: [burst-y-001, burst-y-002]
+      participants: [actor-b, actor-d]
+  # 정책 context 분리 정답: 등산 화두에 응답할 때 thread-x 만 선택돼야 한다(thread-y 무관).
+  policyContext:
+    - whenBurstId: burst-x-003
+      selectsThread: thread-x
+      excludesThread: thread-y
+      note: 등산 reply 체인은 thread-x — 빌드 대화(thread-y)는 정책 context 에서 제외
+    - whenBurstId: burst-y-002
+      selectsThread: thread-y
+      excludesThread: thread-x
+      note: 빌드 reply 체인은 thread-y — 등산 대화(thread-x)는 정책 context 에서 제외

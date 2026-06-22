@@ -35,6 +35,10 @@ object SlashCommandCatalog {
                     OptionData(OptionType.STRING, "mode", "응답 속도/품질 모드", false)
                         .choicePairs(ResponseMode.slashChoices()),
                     OptionData(OptionType.BOOLEAN, "web", "웹 검색으로 최신 정보를 찾아 답변(출처 표시)", false),
+                    // thinking 강제(on/off) — 프로젝트 운영자(admin-user-ids)만 적용, 그 외엔 무시(자동 라우팅).
+                    OptionData(OptionType.STRING, "thinking", "추론 모드 강제(운영자 전용·그 외 무시)", false)
+                        .addChoice("on", "on")
+                        .addChoice("off", "off"),
                 ),
             Commands
                 .slash("imagine", "이미지를 생성합니다 (무료 클라우드 Stable Diffusion 기본 · 로컬 연결 시 로컬)")

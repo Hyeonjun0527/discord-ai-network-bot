@@ -23,7 +23,9 @@ import com.discordassistant.central.quota.application.RateLimiter
 import com.discordassistant.central.relay.ConnectionRegistry
 import com.discordassistant.central.relay.ProviderSession
 import com.discordassistant.central.relay.RemoteCancelledException
+import com.discordassistant.central.routing.application.CloudThinkingOption
 import com.discordassistant.central.routing.application.RequestOrchestrator
+import com.discordassistant.central.routing.application.ThinkingRouter
 import com.discordassistant.central.routing.domain.model.AiRequestInput
 import com.discordassistant.central.shared.ContentSafety
 import com.discordassistant.central.shared.NexaIdentity
@@ -57,6 +59,10 @@ class AskCommandHandler(
     private val cloudImageBackend: com.discordassistant.central.routing.application.CloudImageBackend,
     // 무료 클라우드 폴백(로컬 프로바이더 부재 시 glm-5.1)의 인당 rate limit — 무료 자원 남용 방지.
     private val freeCloudRateLimiter: com.discordassistant.central.quota.application.FreeAskRateLimiter,
+    // /질문 전용 단기 멀티턴 대화 기억(채널+유저·인메모리·TTL). "방금 뭐라고 했지?" 맥락을 클라우드 직결에 제공.
+    private val askMemory: com.discordassistant.central.routing.application.AskConversationMemory,
+    // 어드민(프로젝트 운영자) 전용 모델/thinking 강제 지정 게이트(=central.dashboard.admin-user-ids). 비어드민은 무시.
+    private val projectAdmins: com.discordassistant.central.provider.adapter.inbound.web.ProjectAdmins,
     private val webSearchAugmenter: com.discordassistant.central.knowledge.application.WebSearchAugmenter =
         com.discordassistant.central.knowledge.application.NoWebSearch,
     private val guards: SharedCommandGuards,
@@ -120,11 +126,18 @@ class AskCommandHandler(
         requestedModel: String? = null,
         requestedResponseMode: String? = null,
         webSearch: Boolean = false,
+        requestedThinking: String? = null,
     ): Reply {
         // 요청 우선순위(#150): 관리자/긴급 요청은 분당 쿨다운을 우회한다.
         if (!ctx.isAdmin && !rateLimiter.tryAcquire("ask:${ctx.guildId}:${ctx.userId}")) {
             return Replies.cooldown(Messages.get(Messages.Key.COOLDOWN, guards.lang(ctx))) // 쿨다운 피드백(#191, i18n)
         }
+        // 어드민 전용 override: 프로젝트 운영자(admin-user-ids)만 thinking 을 강제 지정할 수 있다.
+        // 비어드민이 thinking 옵션을 줘도 무시되고 규칙 기반 라우터가 자동 결정한다(게이트 = ProjectAdmins 재사용).
+        // (model 옵션은 기존대로 채널/서버 모델 정책으로 검증·반영된다 — 동작 보존. 어드민이 cloud 모델을 고르면
+        //  아래 클라우드 경로에서 그 모델로 직결되어 "모델 강제"가 자연스럽게 적용된다.)
+        val isProjectAdmin = projectAdmins.isProjectAdmin(ctx.userId)
+        val adminThinkingOverride = if (isProjectAdmin) CloudThinkingOption.parse(requestedThinking) else null
         val guildDefaultModel = policy.guildDefaultModel(ctx.guildId) // 1회 조회 후 재사용(중복 SELECT 제거)
         val routingPolicy = channelRoutingPolicies.effective(ctx.guildId, ctx.channelId, guildDefaultModel)
         val modelChoice =
@@ -150,6 +163,7 @@ class AskCommandHandler(
         // 않았다면 로컬을 우선(🖥️) 시도하고, 로컬이 처리 못하면(FAILED) 무료 클라우드로 폴백한다.
         val preferLocal = !isCloudModel(selectedModel) && hasLocalProvider(ctx.guildId)
         if (preferLocal) {
+            // 로컬 에이전트 경로는 멀티턴 기억/thinking 을 쓰지 않는다(클라우드 직결 전용 기능).
             val local = runOrchestrator(ctx, prompt, selectedModel, responseMode, webSearch, routingPolicy.maxCandidates)
             if (local.state == RequestState.COMPLETED) {
                 return completedAskReply(
@@ -164,12 +178,33 @@ class AskCommandHandler(
             // 같은 결과를 내므로 우회가 되지 않는다(오케스트레이터가 모델과 무관하게 정책을 재적용).
         }
 
-        // 무료 클라우드 z.ai(glm-5.1) — 기본 경로이자 로컬 폴백. 무료 자원 인당 상한 적용.
+        // 무료 클라우드 z.ai — 기본 경로이자 로컬 폴백. 무료 자원 인당 상한 적용.
         freeCloudRateLimiter.check(ctx.userId)?.let { return Replies.reject(it) }
-        val cloud = runOrchestrator(ctx, prompt, FREE_CLOUD_MODEL, responseMode, webSearch, routingPolicy.maxCandidates, dedup = false)
+        // 선택 모델이 클라우드(glm-*)면 그 모델로 직결(어드민이 cloud 모델 지정 시 강제 적용), 아니면 기본 무료 클라우드 모델.
+        val cloudModel = selectedModel?.trim()?.takeIf { isCloudModel(it) } ?: FREE_CLOUD_MODEL
+        // thinking 속도 라우팅: 어드민 override 가 있으면 그 값, 없으면 규칙 기반 라우터(기본 disabled).
+        val thinking = adminThinkingOverride ?: ThinkingRouter.route(prompt)
+        // 멀티턴 단기 기억(채널+유저)을 z.ai messages 앞에 붙인다("방금 뭐라고 했지?" 맥락).
+        val history = askMemory.history(ctx.channelId, ctx.userId)
+        val cloud =
+            runOrchestrator(
+                ctx,
+                prompt,
+                cloudModel,
+                responseMode,
+                webSearch,
+                routingPolicy.maxCandidates,
+                dedup = false,
+                history = history,
+                thinking = thinking,
+            )
         return when (cloud.state) {
-            RequestState.COMPLETED ->
-                completedAskReply(cloud.text.orEmpty().withWebSources(cloud.sources), modelChoice, cloud.requestId, usedCloud = true)
+            RequestState.COMPLETED -> {
+                val answer = cloud.text.orEmpty()
+                // 이번 turn(원문 질문 + 원문 답)을 기억에 append — 다음 질문이 맥락을 이어가게.
+                askMemory.append(ctx.channelId, ctx.userId, prompt, answer)
+                completedAskReply(answer.withWebSources(cloud.sources), modelChoice, cloud.requestId, usedCloud = true)
+            }
             RequestState.REJECTED -> Replies.reject(cloud.failReason ?: Messages.get(Messages.Key.ASK_REJECTED, guards.lang(ctx)))
             else -> Replies.warn(cloud.failReason ?: Messages.get(Messages.Key.ASK_FAILED, guards.lang(ctx)))
         }
@@ -192,6 +227,8 @@ class AskCommandHandler(
         webSearch: Boolean,
         maxCandidates: Int,
         dedup: Boolean = true,
+        history: List<com.discordassistant.central.routing.application.CloudTurn> = emptyList(),
+        thinking: com.discordassistant.central.routing.application.CloudThinking? = null,
     ): com.discordassistant.central.routing.domain.model.OrchestrationResult {
         val run = startRuntimeMultiResponseObservation(ctx, prompt, responseMode, maxCandidates)
         val effectivePrompt = prompt.composeExecutionPrompt(ctx, responseMode)
@@ -213,6 +250,9 @@ class AskCommandHandler(
                 ),
                 // 클라우드 폴백(2차)은 dedup=false — 1차에서 이미 멱등성 통과했고, 같은 프롬프트라 중복으로 막히면 폴백이 영구 실패한다.
                 dedup = dedup,
+                // 멀티턴 기억·thinking 은 클라우드 직결(glm-*) 경로에서만 적용된다(로컬 경로는 빈 리스트/null).
+                history = history,
+                thinking = thinking,
             )
         run?.let {
             recordRuntimeMultiResponseResult(

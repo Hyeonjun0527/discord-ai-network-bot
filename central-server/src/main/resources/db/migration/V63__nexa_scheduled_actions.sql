@@ -59,7 +59,7 @@ CREATE TABLE nexa_scheduled_action_content (
     -- 어느 예약 행동의 content 인지(identity 참조 — FK 는 생략: 어댑터가 정합성 관리, additive 단순화).
     action_identity    VARCHAR(256) NOT NULL,
     -- 생성된 발화 본문(원문) — 이 행이 존재한다는 것 자체가 "생성됨" 을 뜻한다.
-    content            CLOB         NOT NULL,
+    content            TEXT         NOT NULL,
     created_at         TIMESTAMP    NOT NULL,
     CONSTRAINT uk_nexa_scheduled_action_content UNIQUE (action_identity)
 );

@@ -57,7 +57,7 @@ jobs:
       - name: Gradle 의존성 목록(취약점 분석 입력)
         run: ./gradlew dependencies --no-daemon --console=plain || true
       - name: Trivy fs scan(Gradle 의존성 CVE)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.28.0  # 태그는 'v' 접두만 존재(무접두 0.24.0 은 미해결로 잡 실패했음)
         with:
           scan-type: fs
           scan-ref: central-server
@@ -131,7 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trivy config scan(Dockerfile 취약 설정·베이스 이미지)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.28.0  # 태그는 'v' 접두만 존재(무접두 0.24.0 은 미해결로 잡 실패했음)
         with:
           scan-type: config
           scan-ref: ${{ matrix.image }}

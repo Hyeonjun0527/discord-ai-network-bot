@@ -29,6 +29,9 @@ jobs:
         run: ./gradlew build --no-daemon --console=plain
       - name: 테스트·커버리지·BDD 리포트 업로드(#77, 차수 18)
         if: always()
+        # 진단용 리포트 업로드일 뿐 게이트가 아니다. 계정 저장소 쿼터 초과 같은 환경 이슈로
+        # 그린 빌드가 빨갛게 되지 않도록 비차단(빌드/테스트가 실제 게이트).
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: central-test-reports
@@ -55,6 +58,9 @@ jobs:
         run: ./gradlew test -PdockerTests --no-daemon --console=plain
       - name: Cucumber 리포트 업로드(요구사항 시나리오 통과/실패 가시화)
         if: always()
+        # 진단용 리포트 업로드일 뿐 게이트가 아니다. 계정 저장소 쿼터 초과 같은 환경 이슈로
+        # 그린 테스트가 빨갛게 되지 않도록 비차단(테스트가 실제 게이트).
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: central-bdd-reports

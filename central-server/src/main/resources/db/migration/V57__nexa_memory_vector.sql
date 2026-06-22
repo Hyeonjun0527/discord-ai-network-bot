@@ -25,7 +25,7 @@ CREATE TABLE nexa_memory_embedding (
     embedding_version  VARCHAR(64)  NOT NULL DEFAULT 'none',
     -- 이식 가능한 임베딩 인코딩: 콤마구분 float 텍스트(H2/Postgres 공통). pgvector 가 있으면 운영에서 별도
     -- vector 컬럼·ANN 인덱스를 Postgres 전용 후속 마이그레이션으로 보조로 얹을 수 있다(이 행이 SSOT).
-    embedding_encoded  CLOB         NOT NULL,
+    embedding_encoded  TEXT         NOT NULL,
     -- (memory_id, embedding_version) 1행 — 같은 기억·같은 버전 임베딩 중복 금지(멱등).
     CONSTRAINT uk_nexa_memory_embedding UNIQUE (memory_id, embedding_version)
 );

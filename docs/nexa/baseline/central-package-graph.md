@@ -4,7 +4,7 @@
 - Source root: `central-server/src/main/kotlin/com/discordassistant/central`
 - Extraction: Kotlin `package` and `import com.discordassistant.central.*` declarations
 - Compile nodes: 24 (`<root>` plus top-level central packages)
-- Kotlin files scanned: 667
+- Kotlin files scanned: 671
 - Cross-node import edges: 520
 
 ## Nodes
@@ -24,7 +24,7 @@
 | `licensing` | 19 |
 | `multiresponse` | 22 |
 | `onboarding` | 15 |
-| `participation` | 100 |
+| `participation` | 104 |
 | `platform` | 48 |
 | `preset` | 25 |
 | `provider` | 15 |

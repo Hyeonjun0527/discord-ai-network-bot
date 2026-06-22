@@ -84,10 +84,15 @@ class RequestOrchestrator(
      * @param dedup 멱등성 중복 차단 적용 여부. 기본 true(유저 요청). /질문 의 무료 클라우드 폴백처럼 같은
      *   프롬프트로 **내부 재시도**할 때는 false 로 호출한다 — 첫 시도에서 이미 중복 검사를 통과했으므로
      *   2차(폴백)를 "동일 요청 중복"으로 막으면 폴백이 영구 실패한다.
+     * @param history /질문 멀티턴 단기 기억(채널+유저). **클라우드 직결(glm-*) 경로에서만** z.ai messages
+     *   앞에 붙는다(시간순). 로컬 에이전트 경로(sendInfer)는 영향 없음(빈 리스트 기본).
+     * @param thinking z.ai GLM thinking 속도 라우팅. 클라우드 직결 경로에서만 전달(null 이면 미전송 → 서버 기본).
      */
     fun handle(
         input: AiRequestInput,
         dedup: Boolean = true,
+        history: List<CloudTurn> = emptyList(),
+        thinking: CloudThinking? = null,
     ): OrchestrationResult {
         // 멱등성: 짧은 윈도우 내 동일 요청 중복은 라우팅 없이 막는다(#243). 내부 폴백 재시도는 제외(dedup=false).
         if (dedup && !idempotency.tryBegin(input.guildId, input.userId, input.prompt)) {
@@ -95,7 +100,7 @@ class RequestOrchestrator(
             recorder.recordRequest(input, dup.state, dup.providerId, dup.failReason, dup.requestId)
             return dup
         }
-        val result = route(input)
+        val result = route(input, history, thinking)
         recorder.recordRequest(input, result.state, result.providerId, result.failReason, result.requestId)
         return result
     }
@@ -168,7 +173,11 @@ class RequestOrchestrator(
         )
     }
 
-    private fun route(input: AiRequestInput): OrchestrationResult {
+    private fun route(
+        input: AiRequestInput,
+        history: List<CloudTurn>,
+        thinking: CloudThinking?,
+    ): OrchestrationResult {
         val routingRequestId = UUID.randomUUID().toString()
         val arrivalAtNanos = System.nanoTime()
         // 0) 차단 사용자 / 일일 쿼터
@@ -234,7 +243,8 @@ class RequestOrchestrator(
         //       기존 동작 그대로 — 에이전트 경유 glm-* 폴백(하위호환·롤백 안전).
         if (input.preferredModel?.lowercase()?.startsWith("glm") == true && cloudLlm.isEnabled()) {
             return try {
-                val cloud = cloudLlm.generate(effectivePrompt, input.preferredModel)
+                // 멀티턴 기억(history)을 messages 앞에 붙이고, thinking 속도 라우팅을 전달한다(둘 다 클라우드 직결 전용).
+                val cloud = cloudLlm.generate(effectivePrompt, input.preferredModel, history, thinking)
                 recorder.recordSuccess(input.guildId, input.userId, CLOUD_PROVIDER_ID, requestId = routingRequestId)
                 OrchestrationResult(
                     RequestState.COMPLETED,

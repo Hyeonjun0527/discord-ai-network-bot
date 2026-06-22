@@ -12,6 +12,8 @@ import com.discordassistant.central.relay.protocol.InferResult
 import com.discordassistant.central.routing.application.CloudLlm
 import com.discordassistant.central.routing.application.CloudLlmException
 import com.discordassistant.central.routing.application.CloudLlmResult
+import com.discordassistant.central.routing.application.CloudThinking
+import com.discordassistant.central.routing.application.CloudTurn
 import com.discordassistant.central.routing.application.RequestOrchestrator
 import com.discordassistant.central.routing.application.port.ALLOW_ALL_PROVIDER_SAFETY
 import com.discordassistant.central.routing.application.port.BlocklistChecker
@@ -425,6 +427,8 @@ class RequestOrchestratorTest {
         var generateCalls = 0
         var lastPrompt: String? = null
         var lastModel: String? = null
+        var lastHistory: List<CloudTurn> = emptyList()
+        var lastThinking: CloudThinking? = null
 
         override fun isEnabled() = enabled
 
@@ -436,6 +440,18 @@ class RequestOrchestratorTest {
             lastPrompt = prompt
             lastModel = model
             return CloudLlmResult("클라우드 답변")
+        }
+
+        // 멀티턴 기억(history)·thinking 라우팅을 받는 확장 호출 — 인자를 기록해 직결 경로가 둘을 전달하는지 검증.
+        override fun generate(
+            prompt: String,
+            model: String,
+            history: List<CloudTurn>,
+            thinking: CloudThinking?,
+        ): CloudLlmResult {
+            lastHistory = history
+            lastThinking = thinking
+            return generate(prompt, model)
         }
 
         // 이미지 심사/번역은 이 테스트가 다루지 않는다(텍스트 라우팅 전용) — 호출되면 예외.
@@ -495,6 +511,25 @@ class RequestOrchestratorTest {
         assertEquals("glm-5.1", cloud.lastModel)
         // sendInfer 경로(에이전트)는 타지 않았다 — 세션에 추론 요청이 전달되지 않음.
         assertNull((session.connection as EchoConnection).lastInfer)
+    }
+
+    @Test
+    fun `glm 직결 — 멀티턴 history 와 thinking 이 cloudLlm 으로 전달된다`() {
+        val reg = newRegistry()
+        register(reg, 1, "ok")
+        val cloud = FakeCloudLlm(enabled = true)
+        val history = listOf(CloudTurn("user", "안녕"), CloudTurn("assistant", "안녕! 반가워"))
+        val r =
+            orchestratorWithCloud(reg, cloud).handle(
+                input.copy(preferredModel = "glm-5.1", prompt = "방금 뭐라고 했지?"),
+                history = history,
+                thinking = CloudThinking.ENABLED,
+            )
+
+        assertEquals(RequestState.COMPLETED, r.state, r.failReason)
+        // "방금 뭐라고 했지?" 맥락: 직전 turn(안녕→반가워)이 messages 앞에 그대로 전달된다.
+        assertEquals(history, cloud.lastHistory)
+        assertEquals(CloudThinking.ENABLED, cloud.lastThinking)
     }
 
     @Test

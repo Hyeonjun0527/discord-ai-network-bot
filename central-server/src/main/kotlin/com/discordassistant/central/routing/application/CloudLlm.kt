@@ -22,6 +22,26 @@ data class CloudLlmResult(
     val usage: CloudLlmUsage = CloudLlmUsage(),
 )
 
+/**
+ * 멀티턴 대화 한 turn. [role] 은 OpenAI 호환 `user`/`assistant`(시스템 프롬프트는 prompt 본문에 합쳐 보낸다).
+ * /질문 의 채널+유저 단기 대화 기억(인메모리)을 z.ai messages 앞에 붙이는 데 쓴다.
+ */
+data class CloudTurn(
+    val role: String,
+    val content: String,
+)
+
+/**
+ * z.ai GLM thinking(추론) 속도 라우팅 파라미터(공식 형식 `{"thinking":{"type":"enabled"|"disabled"}}`).
+ * [ENABLED] = 깊은 추론(느림·정확), [DISABLED] = 즉답(빠름). null 이면 thinking 필드를 보내지 않는다(서버 기본).
+ */
+enum class CloudThinking(
+    val wire: String,
+) {
+    ENABLED("enabled"),
+    DISABLED("disabled"),
+}
+
 /** 클라우드 LLM 호출/응답 오류. */
 class CloudLlmException(
     message: String,
@@ -51,6 +71,19 @@ interface CloudLlm {
         prompt: String,
         model: String,
     ): CloudLlmResult
+
+    /**
+     * 멀티턴 대화 기억(/질문 채널+유저 단기 컨텍스트)과 thinking 속도 라우팅을 지원하는 확장 호출.
+     * [history] 는 messages 앞에 시간순으로 붙고(이번 [prompt] 는 마지막 user turn), [thinking] 은 z.ai
+     * GLM thinking 파라미터(null 이면 미전송 → 서버 기본). 기본 구현은 history/thinking 을 무시하고 단순
+     * [generate] 로 위임하므로 기존 구현(테스트 스텁·speech·socialmemory)은 무변경으로 호환된다 — z.ai 구현만 override.
+     */
+    fun generate(
+        prompt: String,
+        model: String,
+        history: List<CloudTurn>,
+        thinking: CloudThinking?,
+    ): CloudLlmResult = generate(prompt, model)
 
     /**
      * 이미지 프롬프트 안전 심사(ADR 0006 단계2). [systemPrompt] 는 central 소유 안전 정책(IMAGE_SAFETY).
@@ -220,6 +253,17 @@ class ZaiCloudLlm(
         model: String,
     ): CloudLlmResult = CloudLlmResponseParser.parse(postChat(listOf("user" to prompt), model), mapper)
 
+    override fun generate(
+        prompt: String,
+        model: String,
+        history: List<CloudTurn>,
+        thinking: CloudThinking?,
+    ): CloudLlmResult {
+        // 멀티턴: 히스토리(시간순)를 먼저, 이번 질문을 마지막 user turn 으로. thinking 은 z.ai GLM 형식으로 전달.
+        val messages = history.map { it.role to it.content } + ("user" to prompt)
+        return CloudLlmResponseParser.parse(postChat(messages, model, thinking), mapper)
+    }
+
     override fun reviewImagePrompt(
         prompt: String,
         systemPrompt: String,
@@ -243,6 +287,7 @@ class ZaiCloudLlm(
     private fun postChat(
         messages: List<Pair<String, String>>,
         model: String,
+        thinking: CloudThinking? = null,
     ): String {
         if (!isEnabled()) throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
         val base = baseUrl.trimEnd('/')
@@ -253,6 +298,8 @@ class ZaiCloudLlm(
                 .apply {
                     val arr = putArray("messages")
                     messages.forEach { (role, content) -> arr.addObject().put("role", role).put("content", content) }
+                    // z.ai GLM thinking 속도 라우팅: {"thinking":{"type":"enabled"|"disabled"}}. null 이면 미전송(서버 기본).
+                    thinking?.let { putObject("thinking").put("type", it.wire) }
                 }
         val req =
             HttpRequest

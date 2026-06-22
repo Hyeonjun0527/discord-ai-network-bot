@@ -102,7 +102,8 @@ class CommandService(
         requestedModel: String? = null,
         requestedResponseMode: String? = null,
         webSearch: Boolean = false,
-    ): Reply = askCommands.ask(ctx, prompt, requestedModel, requestedResponseMode, webSearch)
+        requestedThinking: String? = null,
+    ): Reply = askCommands.ask(ctx, prompt, requestedModel, requestedResponseMode, webSearch, requestedThinking)
 
     /** /그림(imagine) — 이미지 생성 가능한 프로바이더의 로컬 ComfyUI(Anima)로 이미지를 만든다. */
     fun imagine(

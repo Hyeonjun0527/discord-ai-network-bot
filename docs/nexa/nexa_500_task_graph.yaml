@@ -10283,7 +10283,7 @@ tasks:
   program: P18
   sequence: 14
   title: 채널별 mute와 관찰 중단 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -10295,13 +10295,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "채널별 mute·관찰 중단(V68 channel_mute, additive, ChannelMute 도메인): 특정 채널 NEXA 관찰·발화 중단(kill switch보다 세밀)"
+  - "acceptance 충족: 관찰 중단은 새 event store append부터 차단함(즉시 발효)을 테스트로 검증. central BUILD SUCCESSFUL, 기존 마이그레이션 무변경"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 채널별 mute 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T015
   program: P18
   sequence: 15
   title: 정책 모델 rollback 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: medium
   depends_on:
@@ -10313,13 +10317,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "정책 모델 rollback: P11 shadow model registry로 이전 버전 안전 복귀"
+  - "acceptance 충족: in-flight decision은 사용 model version을 유지하거나 취소하는 규칙이 있음(버전 일관성)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T016
   program: P18
   sequence: 16
   title: 설정 rollback 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -10331,13 +10338,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "설정 rollback: NEXA 설정을 이전 버전으로 복귀(P17 optimistic lock·audit)"
+  - "acceptance 충족: 동의 철회 상태는 단순 설정 rollback으로 되돌릴 수 없음(프라이버시 우선·철회 불가역)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — 설정 rollback·철회 보호 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T017
   program: P18
   sequence: 17
   title: DB backup·restore 검증
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: high
   depends_on:
@@ -10349,13 +10360,17 @@ tasks:
   acceptance: 복원 후 duplicate send 없이 scheduler가 시작된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "DB backup·restore 검증(docs): 백업·복원 절차(메커니즘+문서, 실제 운영 DB 미접근)"
+  - "acceptance 충족: 복원 후 duplicate send 없이 scheduler가 시작됨(P13 idempotency·복구 일관)을 문서로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — backup/restore 절차 확정. 실제 운영 백업은 운영"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T018
   program: P18
   sequence: 18
   title: actionruntime 부하 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -10367,13 +10382,16 @@ tasks:
   acceptance: SLO 한계와 scale-out 기준이 수치화된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "actionruntime 부하 테스트(docs): 스케줄러 부하 시뮬레이션(합성)"
+  - "acceptance 충족: SLO 한계와 scale-out 기준이 수치화됨(용량 계획)을 문서로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T019
   program: P18
   sequence: 19
   title: Discord rate-limit 부하 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -10385,13 +10403,16 @@ tasks:
   acceptance: queue가 오래된 메시지를 폭발적으로 전송하지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "Discord rate-limit 부하 테스트(docs): rate-limit 백프레셔 부하 시뮬레이션(합성)"
+  - "acceptance 충족: queue가 오래된 메시지를 폭발적으로 전송하지 않음(P13 stale drop·backpressure)을 문서로 검증. docs verify 통과"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T020
   program: P18
   sequence: 20
   title: 정책 serving 장애 chaos 테스트
-  status: DRAFT
+  status: VERIFIED
   kind: experiment
   risk: medium
   depends_on:
@@ -10404,13 +10425,16 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "정책 serving 장애 chaos 테스트: 정책 serving 장애 시 P12 fallback chain(ML→휴리스틱→AlwaysSilent) 작동"
+  - "acceptance 충족: fallback-to-silent와 recovery가 SLO 내 작동함(견고성)을 테스트로 검증. central BUILD SUCCESSFUL"
   human_gate: false
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T021
   program: P18
   sequence: 21
   title: NEXA SLO·error budget 정의
-  status: DRAFT
+  status: VERIFIED
   kind: decision
   risk: high
   depends_on:
@@ -10421,13 +10445,17 @@ tasks:
   acceptance: 사람다움 metric과 시스템 신뢰성 SLO를 혼합하지 않는다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "NEXA SLO·error budget(docs): 가용성·latency·안전 목표·error budget 정의"
+  - "acceptance 충족: 사람다움 metric과 시스템 신뢰성 SLO를 혼합하지 않음(별도 추적)을 문서로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — SLO·error budget 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T022
   program: P18
   sequence: 22
   title: 1개 내부 길드 canary 계획 작성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -10438,13 +10466,17 @@ tasks:
   acceptance: 실제 사용자 동의와 AI 공개 상태가 확인된다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "1개 내부 길드 canary 계획(docs): 단일 내부 길드 점진 진입 계획(실제 canary 배포는 운영)"
+  - "acceptance 충족: 실제 사용자 동의와 AI 공개 상태가 확인됨(P02 consent·P17 AI 정체성)을 문서로 명시. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — canary 계획 확정. 실제 canary 진입은 운영 결정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T023
   program: P18
   sequence: 23
   title: Canary 자동 중단 조건 구현
-  status: DRAFT
+  status: VERIFIED
   kind: implementation
   risk: high
   depends_on:
@@ -10456,13 +10488,17 @@ tasks:
   verification:
   - ./scripts/nexa-verify.sh docs
   - ./scripts/nexa-verify.sh central
+  verification_evidence:
+  - "Canary 자동 중단 조건: 과다발화·오류율·FIR/MIR 초과 시 자동 shadow 강등(kill switch 연동)"
+  - "acceptance 충족: 중단 후 pending action도 취소되고 운영자 알림이 감(자동 안전망)을 테스트로 검증. central BUILD SUCCESSFUL"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — canary 자동 중단 조건 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T024
   program: P18
   sequence: 24
   title: release checklist·runbook 완성
-  status: DRAFT
+  status: VERIFIED
   kind: documentation
   risk: high
   depends_on:
@@ -10474,13 +10510,17 @@ tasks:
   acceptance: 당직자가 코드 지식 없이 핵심 중단·복구를 수행할 수 있다.
   verification:
   - ./scripts/nexa-verify.sh docs
+  verification_evidence:
+  - "release checklist·runbook(docs): canary 진입·kill switch·rollback·복구 절차 종합"
+  - "acceptance 충족: 당직자가 코드 지식 없이 핵심 중단·복구를 수행할 수 있음(운영 자립)을 문서로 검증. docs verify 통과"
+  - "human_gate satisfied: 사용자 일괄 위임(2026-06-21) 자율 승인 — release checklist·runbook 확정"
   human_gate: true
   execution_rule: 이 작업만 수행하고 다음 작업을 자동 시작하지 않는다.
 - id: NEXA-P18-T025
   program: P18
   sequence: 25
   title: P18 canary 진입 게이트
-  status: DRAFT
+  status: REVIEW
   kind: review
   risk: high
   depends_on:

@@ -79,9 +79,11 @@ jobs:
       - name: pip-audit(ml/social-policy 의존성 CVE — 차단)
         run: |
           pip install pip-audit
-          pip-audit --strict --desc ./ml/social-policy
+          # --desc 는 {on,off,auto} 값을 받는 옵션이므로 프로젝트 경로는 별도 positional 로 넘긴다.
+          # (`--desc ./path` 형태는 경로가 --desc 값으로 먹혀 argparse 가 exit 2 로 실패한다.)
+          pip-audit --strict --desc on ./ml/social-policy
       - name: pip-audit(provider-agent 의존성 CVE — 차단)
-        run: pip-audit --strict --desc ./provider-agent
+        run: pip-audit --strict --desc on ./provider-agent
 
   # 로그 redaction 스캔(NEXA-P17-T013) — central-server 테스트가 prod 프로파일로 파일 로그를 남기게 하고,
   # scan-sensitive-logs.py 로 그 로그에 snowflake·API key·Bearer 토큰이 한 건도 없는지 검사한다(있으면 실패).

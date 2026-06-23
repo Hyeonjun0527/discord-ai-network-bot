@@ -322,9 +322,25 @@ class DiscordBot(
             // 인터랙티브 명령은 컴포넌트/모달로 응답(온보딩/설정 판).
             when (event.name) {
                 "menu" -> {
+                    // 관리자는 봇 입장 배너 외에 /메뉴 에서도 채널 자동 만들기 버튼을 상시 호출할 수 있다(이미 입장한
+                    // 서버 대응). 첫 행 버튼 수 초과를 피하려고 별도 ActionRow 로 붙인다.
+                    val rows =
+                        buildList {
+                            add(ActionRow.of(MenuFactory.mainButtons(ctx.isAdmin)))
+                            if (ctx.isAdmin) {
+                                add(
+                                    ActionRow.of(
+                                        Button.primary(
+                                            NiaChannelSetup.COMPONENT_ID,
+                                            I18n.get("niaSetupChannelsButton", I18n.DEFAULT),
+                                        ),
+                                    ),
+                                )
+                            }
+                        }
                     event
                         .replyEmbeds(EmbedFactory.mainMenuEmbed(ctx.isAdmin))
-                        .addComponents(ActionRow.of(MenuFactory.mainButtons(ctx.isAdmin)))
+                        .addComponents(rows)
                         .setEphemeral(true)
                         .queue()
                     return

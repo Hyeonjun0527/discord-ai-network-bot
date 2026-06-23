@@ -53,6 +53,13 @@ class CloudLlmMemoryCandidateExtractorTest {
             return CloudLlmResult(response)
         }
 
+        override fun generateWithTools(
+            systemPrompt: String,
+            userPrompt: String,
+            toolsJson: String,
+            model: String,
+        ): com.discordassistant.central.routing.application.CloudToolResponse = throw UnsupportedOperationException()
+
         override fun reviewImagePrompt(
             prompt: String,
             systemPrompt: String,
@@ -71,6 +78,13 @@ class CloudLlmMemoryCandidateExtractorTest {
             prompt: String,
             model: String,
         ): CloudLlmResult = throw CloudLlmException("upstream down")
+
+        override fun generateWithTools(
+            systemPrompt: String,
+            userPrompt: String,
+            toolsJson: String,
+            model: String,
+        ): com.discordassistant.central.routing.application.CloudToolResponse = throw CloudLlmException("upstream down")
 
         override fun reviewImagePrompt(
             prompt: String,

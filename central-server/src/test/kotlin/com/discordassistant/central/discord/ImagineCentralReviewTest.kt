@@ -64,6 +64,13 @@ class FakeCloudLlm : CloudLlm {
         model: String,
     ): CloudLlmResult = throw CloudLlmException("미사용")
 
+    override fun generateWithTools(
+        systemPrompt: String,
+        userPrompt: String,
+        toolsJson: String,
+        model: String,
+    ): com.discordassistant.central.routing.application.CloudToolResponse = throw CloudLlmException("미사용")
+
     override fun reviewImagePrompt(
         prompt: String,
         systemPrompt: String,

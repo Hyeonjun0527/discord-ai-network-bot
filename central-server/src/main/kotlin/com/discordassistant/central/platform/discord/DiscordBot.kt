@@ -122,6 +122,8 @@ class DiscordBot(
     // /그림 결과를 공개 채널에 올리기 전 본인 확인 게이트(설정 영속 + 완성 이미지 임시 보관).
     private val imaginePostConfirm: ImaginePostConfirmService,
     private val pendingImagePosts: PendingImagePostStore,
+    // AI 관리 비서: 어드민의 /질문 자연어 관리 명령을 GLM tool calling 으로 해석·실행(JDA 변경은 여기서 게이트웨이로).
+    private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
@@ -222,6 +224,7 @@ class DiscordBot(
                 rateLimiter,
                 imaginePostConfirm,
                 pendingImagePosts,
+                adminAssistant,
                 mentionAskEnabled = messageContentIntent,
                 messageContentIntentEnabled = messageContentIntent,
                 onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
@@ -292,6 +295,7 @@ class DiscordBot(
         private val rateLimiter: RateLimiter,
         private val imaginePostConfirm: ImaginePostConfirmService,
         private val pendingImagePosts: PendingImagePostStore,
+        private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
@@ -372,6 +376,9 @@ class DiscordBot(
             // 공개 명령만 비-ephemeral, 나머지는 ephemeral. defer 시점에 결정.
             val useWebhookProfile = event.name == "ask" && channelProfiles.get(ctx.guildId, ctx.channelId) != null
             val isPublic = event.name in PUBLIC_COMMANDS
+            // 어드민 /질문이 관리 액션 경로(AI 관리 비서)로 처리될 가능성이 있으면 반드시 ephemeral 로 defer 해야 한다.
+            // 차단 대상·관리 행위 결과가 채널에 공개되는 것을 방지. 일반(비어드민) /질문은 isPublic 경로 그대로.
+            val isAdminAskPath = event.name == "ask" && ctx.isAdmin && adminAssistant.isAvailable()
             // /그림 게시 확인 게이트: confirm 옵션이 주어지면 먼저 유저 설정을 갱신한 뒤, 그 설정대로 이번 요청을 처리한다.
             // 게이트 ON 이면 전 과정을 본인만 보이게(ephemeral) 진행하고 완성 후 게시 확인 버튼을 띄운다(아래 work 에서 분기).
             val imagineGateOn =
@@ -381,10 +388,21 @@ class DiscordBot(
                 } else {
                     false
                 }
-            event.deferReply(if (useWebhookProfile || imagineGateOn) true else !isPublic).queue()
+            event
+                .deferReply(
+                    if (useWebhookProfile || imagineGateOn) {
+                        true
+                    } else if (isAdminAskPath) {
+                        true
+                    } else {
+                        !isPublic
+                    },
+                ).queue()
             val work =
                 Runnable {
                     try {
+                        // 어드민 /질문: 자연어 관리 명령이면 GLM tool calling 으로 실행/확인(아니면 false → 일반 /질문).
+                        if (event.name == "ask" && ctx.isAdmin && handleAdminAsk(event, ctx)) return@Runnable
                         val reply =
                             if (event.name == "imagine") {
                                 // 이미지 생성 진행률을 '생각 중' 메시지에 N% 로 라이브 편집(SD progress 청크 → onProgress).
@@ -429,6 +447,79 @@ class DiscordBot(
                 }
             // 추론(ask/imagine)은 길어서 게이트웨이 스레드 밖에서. 나머지 빠른 명령은 그대로 실행.
             if (event.name in SLOW_COMMANDS) slowCommandExecutor.execute(work) else work.run()
+        }
+
+        /**
+         * AI 관리 비서(어드민 전용): 어드민의 /질문 자연어를 GLM tool calling 으로 해석한다. 관리 의도가 없으면
+         * false 를 돌려 호출자가 기존 /질문 으로 폴백한다(회귀 0). SAFE 면 즉시 실행 후 결과 보고, CONFIRM 이면
+         * 확인 버튼([실행]/[취소])을 단다(클릭 시 [onButtonInteraction] 에서 권한 재검증 후 실행).
+         */
+        private fun handleAdminAsk(
+            event: SlashCommandInteractionEvent,
+            ctx: CommandContext,
+        ): Boolean {
+            if (!adminAssistant.isAvailable()) return false
+            val guild = event.guild ?: return false
+            val prompt = event.getOption("prompt")?.asString.orEmpty()
+            val decision = adminAssistant.plan(ctx.guildId, ctx.userId, prompt)
+            return when (decision) {
+                is com.discordassistant.central.platform.discord.admin.AdminAssistantDecision.NotAdminAction -> false
+                is com.discordassistant.central.platform.discord.admin.AdminAssistantDecision.ReadyToRun -> {
+                    val result =
+                        adminAssistant.runSafe(
+                            ctx.guildId,
+                            ctx.userId,
+                            decision.plan,
+                            com.discordassistant.central.platform.discord.admin
+                                .JdaAdminGuildGateway(guild),
+                        )
+                    event.hook
+                        .editOriginal(result.message)
+                        .setComponents()
+                        .queue({}, {})
+                    true
+                }
+                is com.discordassistant.central.platform.discord.admin.AdminAssistantDecision.NeedsConfirm -> {
+                    event.hook
+                        .editOriginal(adminAssistant.confirmPrompt(decision.plan))
+                        .setActionRow(
+                            Button.danger("$ADMIN_ACT_RUN_PREFIX${decision.token}", "✅ 실행"),
+                            Button.secondary("$ADMIN_ACT_CANCEL_PREFIX${decision.token}", "✖️ 취소"),
+                        ).queue({}, {})
+                    true
+                }
+            }
+        }
+
+        /**
+         * AI 관리 비서 확인 버튼 처리: 클릭한 사용자가 어드민인지 **재검증**하고(다른 사람이 누르면 거부),
+         * 요청자 일치·토큰 만료까지 확인한 뒤 실행한다(안전장치 1·5). JDA 변경은 클릭 이벤트의 길드로 만든 게이트웨이로.
+         */
+        private fun handleAdminActionButton(
+            event: ButtonInteractionEvent,
+            ctx: CommandContext,
+        ) {
+            val isRun = event.componentId.startsWith(ADMIN_ACT_RUN_PREFIX)
+            val token = event.componentId.removePrefix(if (isRun) ADMIN_ACT_RUN_PREFIX else ADMIN_ACT_CANCEL_PREFIX)
+            if (!isRun) {
+                event.editMessage("✖️ 작업을 취소했어요.").setComponents().queue({}, {})
+                return
+            }
+            val guild = event.guild
+            if (guild == null) {
+                event.reply("이 작업은 서버에서만 실행할 수 있어요.").setEphemeral(true).queue()
+                return
+            }
+            event.deferEdit().queue({}, {})
+            val result =
+                adminAssistant.confirmAndRun(token, ctx.userId, ctx.isAdmin) {
+                    com.discordassistant.central.platform.discord.admin
+                        .JdaAdminGuildGateway(guild)
+                }
+            event.hook
+                .editOriginal(result.message)
+                .setComponents()
+                .queue({}, {})
         }
 
         /**
@@ -563,6 +654,10 @@ class DiscordBot(
             private const val ASK_FEEDBACK_PREFIX = "ask-feedback:"
             private const val ONBOARD_PREFIX = "onboard:"
 
+            // AI 관리 비서 확인 게이트 버튼 customId 접두사(뒤에 PendingAdminActionStore 토큰).
+            private const val ADMIN_ACT_RUN_PREFIX = "adminact:run:" // ✅ 실행
+            private const val ADMIN_ACT_CANCEL_PREFIX = "adminact:cancel:" // ✖️ 취소
+
             // 이미지 생성 취소 버튼 customId 접두사(뒤에 requestId). 누르면 ComfyUI /interrupt 유발.
             private const val IMG_CANCEL_PREFIX = "img-cancel:"
 
@@ -645,6 +740,10 @@ class DiscordBot(
             }
             if (event.componentId.startsWith(ASK_FEEDBACK_PREFIX)) {
                 handleAskFeedbackButton(event, ctx)
+                return
+            }
+            if (event.componentId.startsWith(ADMIN_ACT_RUN_PREFIX) || event.componentId.startsWith(ADMIN_ACT_CANCEL_PREFIX)) {
+                handleAdminActionButton(event, ctx)
                 return
             }
             if (event.componentId.startsWith(ONBOARD_PREFIX)) {

@@ -54,6 +54,13 @@ class RoutingCloudSpeechGenerationAdapterTest {
             return CloudLlmResult(response, CloudLlmUsage(promptTokens = 10, completionTokens = 5))
         }
 
+        override fun generateWithTools(
+            systemPrompt: String,
+            userPrompt: String,
+            toolsJson: String,
+            model: String,
+        ): com.discordassistant.central.routing.application.CloudToolResponse = throw UnsupportedOperationException()
+
         override fun reviewImagePrompt(
             prompt: String,
             systemPrompt: String,

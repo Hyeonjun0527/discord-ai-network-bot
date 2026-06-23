@@ -42,6 +42,28 @@ enum class CloudThinking(
     DISABLED("disabled"),
 }
 
+/**
+ * GLM 이 OpenAI 호환 tool calling 으로 돌려준 함수 호출 1건(AI 관리 비서용). [name] 은 호출 함수명,
+ * [argumentsJson] 은 GLM 이 만든 인자 JSON 문자열(파싱은 호출자/카탈로그가 담당), [id] 는 tool_call id(선택).
+ */
+data class CloudToolCall(
+    val name: String,
+    val argumentsJson: String,
+    val id: String? = null,
+)
+
+/**
+ * tool calling 응답: GLM 이 도구를 호출했으면 [toolCalls] 가 비어있지 않고, 아니면 [text] 만 채워진 일반 답변.
+ * 둘 다 비면 빈 응답이다(상위가 일반 처리). 순수 파서로 만들어 테스트 가능하게 한다.
+ */
+data class CloudToolResponse(
+    val text: String? = null,
+    val toolCalls: List<CloudToolCall> = emptyList(),
+    val usage: CloudLlmUsage = CloudLlmUsage(),
+) {
+    val hasToolCalls: Boolean get() = toolCalls.isNotEmpty()
+}
+
 /** 클라우드 LLM 호출/응답 오류. */
 class CloudLlmException(
     message: String,
@@ -86,6 +108,18 @@ interface CloudLlm {
     ): CloudLlmResult = generate(prompt, model)
 
     /**
+     * OpenAI 호환 tool calling 1회(AI 관리 비서). [systemPrompt]+[userPrompt] 로 대화를 만들고 [toolsJson]
+     * (OpenAI function schema 배열의 JSON 문자열)을 `tools`+`tool_choice:"auto"` 로 보낸다. GLM 이 도구를
+     * 호출하면 [CloudToolResponse.toolCalls], 아니면 [CloudToolResponse.text] 가 채워진다. 실패 시 [CloudLlmException].
+     */
+    fun generateWithTools(
+        systemPrompt: String,
+        userPrompt: String,
+        toolsJson: String,
+        model: String,
+    ): CloudToolResponse
+
+    /**
      * 이미지 프롬프트 안전 심사(ADR 0006 단계2). [systemPrompt] 는 central 소유 안전 정책(IMAGE_SAFETY).
      * 호출/파싱 실패는 [CloudLlmException] 으로 던져 상위가 fail-closed 차단하게 한다.
      */
@@ -112,6 +146,13 @@ object NoCloudLlm : CloudLlm {
         prompt: String,
         model: String,
     ): CloudLlmResult = throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
+
+    override fun generateWithTools(
+        systemPrompt: String,
+        userPrompt: String,
+        toolsJson: String,
+        model: String,
+    ): CloudToolResponse = throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
 
     override fun reviewImagePrompt(
         prompt: String,
@@ -169,6 +210,72 @@ object CloudLlmResponseParser {
 
     /** 사용자(디스코드)에게 노출되는 일반화 메시지. 업스트림 status·body 등 상세는 로그로만 남긴다. */
     const val USER_ERROR_MESSAGE = "클라우드 AI 일시 오류"
+
+    /**
+     * tool calling 응답(chat/completions)에서 `message.tool_calls[]`(OpenAI 호환)와 일반 `content` 를 추출한다.
+     * 도구 호출이 있으면 [CloudToolResponse.toolCalls], 없으면 일반 답변 [CloudToolResponse.text]. error/빈 응답은
+     * [CloudLlmException]. content 가 비어도 tool_calls 가 있으면 정상(도구만 호출하는 케이스)으로 본다.
+     */
+    fun parseToolResponse(
+        body: String,
+        mapper: ObjectMapper,
+    ): CloudToolResponse {
+        val root =
+            try {
+                mapper.readTree(body)
+            } catch (e: Exception) {
+                throw CloudLlmException("클라우드 AI 응답 파싱 실패", e)
+            }
+        val error = root.get("error")
+        if (error != null && !error.isNull) {
+            throw CloudLlmException(USER_ERROR_MESSAGE)
+        }
+        val message =
+            root
+                .get("choices")
+                ?.takeIf { it.isArray && it.size() > 0 }
+                ?.get(0)
+                ?.get("message")
+                ?: throw CloudLlmException("클라우드 AI 응답에 메시지가 없습니다.")
+        val toolCalls =
+            message
+                .get("tool_calls")
+                ?.takeIf { it.isArray }
+                ?.mapNotNull { call ->
+                    val fn = call.get("function") ?: return@mapNotNull null
+                    val name =
+                        fn
+                            .get("name")
+                            ?.takeIf { it.isTextual }
+                            ?.asText()
+                            ?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                    // arguments 는 OpenAI 규격상 JSON 문자열. 비정상이면 빈 객체로 안전 폴백(상위 인자 파싱이 거른다).
+                    val args =
+                        fn.get("arguments")?.let { if (it.isTextual) it.asText() else it.toString() }?.takeIf { it.isNotBlank() } ?: "{}"
+                    val id = call.get("id")?.takeIf { it.isTextual }?.asText()
+                    CloudToolCall(name = name, argumentsJson = args, id = id)
+                }.orEmpty()
+        val content =
+            message
+                .get("content")
+                ?.takeIf { it.isTextual }
+                ?.asText()
+                ?.takeIf { it.isNotBlank() }
+                ?.trim()
+        if (toolCalls.isEmpty() && content == null) {
+            throw CloudLlmException("클라우드 AI 응답에 텍스트가 없습니다(안전 필터 차단 또는 빈 응답).")
+        }
+        val usageNode = root.get("usage")
+        return CloudToolResponse(
+            text = content,
+            toolCalls = toolCalls,
+            usage =
+                CloudLlmUsage(
+                    promptTokens = usageNode?.get("prompt_tokens")?.asInt(0) ?: 0,
+                    completionTokens = usageNode?.get("completion_tokens")?.asInt(0) ?: 0,
+                ),
+        )
+    }
 
     /**
      * 이미지 안전 심사 응답(chat/completions)에서 GLM 이 돌려준 JSON 심사 결과를 추출한다(provider-agent
@@ -261,8 +368,19 @@ class ZaiCloudLlm(
     ): CloudLlmResult {
         // 멀티턴: 히스토리(시간순)를 먼저, 이번 질문을 마지막 user turn 으로. thinking 은 z.ai GLM 형식으로 전달.
         val messages = history.map { it.role to it.content } + ("user" to prompt)
-        return CloudLlmResponseParser.parse(postChat(messages, model, thinking), mapper)
+        return CloudLlmResponseParser.parse(postChat(messages, model, thinking = thinking), mapper)
     }
+
+    override fun generateWithTools(
+        systemPrompt: String,
+        userPrompt: String,
+        toolsJson: String,
+        model: String,
+    ): CloudToolResponse =
+        CloudLlmResponseParser.parseToolResponse(
+            postChat(listOf("system" to systemPrompt, "user" to userPrompt), model, toolsJson = toolsJson),
+            mapper,
+        )
 
     override fun reviewImagePrompt(
         prompt: String,
@@ -283,11 +401,16 @@ class ZaiCloudLlm(
                 mapper,
             ).text
 
-    /** chat/completions 한 번 호출 → 원시 응답 body. 연결/HTTP 오류는 일반화 [CloudLlmException]. */
+    /**
+     * chat/completions 한 번 호출 → 원시 응답 body. 연결/HTTP 오류는 일반화 [CloudLlmException].
+     * [thinking] 이 주어지면 z.ai GLM thinking 속도 라우팅 파라미터를 함께 보낸다.
+     * [toolsJson] 이 주어지면 OpenAI 호환 `tools` 배열 + `tool_choice:"auto"` 를 함께 보낸다(AI 관리 비서).
+     */
     private fun postChat(
         messages: List<Pair<String, String>>,
         model: String,
         thinking: CloudThinking? = null,
+        toolsJson: String? = null,
     ): String {
         if (!isEnabled()) throw CloudLlmException("클라우드 LLM 이 비활성 상태입니다.")
         val base = baseUrl.trimEnd('/')
@@ -300,6 +423,12 @@ class ZaiCloudLlm(
                     messages.forEach { (role, content) -> arr.addObject().put("role", role).put("content", content) }
                     // z.ai GLM thinking 속도 라우팅: {"thinking":{"type":"enabled"|"disabled"}}. null 이면 미전송(서버 기본).
                     thinking?.let { putObject("thinking").put("type", it.wire) }
+                    if (!toolsJson.isNullOrBlank()) {
+                        // tools 는 OpenAI function schema 배열(카탈로그 SSOT 가 만든 JSON). 파싱 실패는 호출자 책임이 아니라
+                        // 카탈로그 버그이므로 여기서 던져 빠르게 드러낸다(fail fast). tool_choice=auto 로 호출 여부는 GLM 이 결정.
+                        set<com.fasterxml.jackson.databind.JsonNode>("tools", mapper.readTree(toolsJson))
+                        put("tool_choice", "auto")
+                    }
                 }
         val req =
             HttpRequest

@@ -18,6 +18,27 @@ class CloudImageException(
 ) : RuntimeException(message, cause)
 
 /**
+ * Stability 생성 모델. env 가 아니라 코드 enum 으로 관리해 타입 안전하고 추가/변경이 한 곳에서 끝난다.
+ * core=빠름·저렴, ultra=고품질, sd3=SD3.5(form 에 model 명시 필요).
+ */
+enum class StabilityModel(
+    val label: String,
+    val path: String,
+    val apiModelName: String?,
+) {
+    CORE("core", "core", null),
+    ULTRA("ultra", "ultra", null),
+    SD3("sd3", "sd3", "sd3.5-large"),
+    ;
+
+    companion object {
+        val DEFAULT = CORE
+
+        fun fromLabel(label: String?): StabilityModel = entries.firstOrNull { it.label.equals(label?.trim(), ignoreCase = true) } ?: DEFAULT
+    }
+}
+
+/**
  * 클라우드 SD(Stability/RunPod) 이미지 픽셀을 **중앙 서버가 관리자 키 1개로 직접** 생성하는 백엔드 포트
  * (ADR 0006 단계4 — 완전 앱리스 이미지). 유저가 앱(provider-agent)을 설치하지 않아도, 또 에이전트 이미지
  * 프로바이더 풀이 비어 있어도 central 이 직접 픽셀까지 생성한다(CloudLlm 의 텍스트판 자매).
@@ -113,12 +134,14 @@ class CloudImageBackendSelector(
 @Component
 class StabilityImageBackend(
     @param:Value("\${central.cloud.stability-api-key:}") private val apiKey: String,
-    @param:Value("\${central.cloud.stability-model:core}") private val model: String,
     @param:Value("\${central.cloud.timeout-seconds:120}") private val timeoutSeconds: Long,
     @param:Value("\${central.cloud.stability-base-url:https://api.stability.ai}") private val baseUrl: String,
 ) : CloudImageSource {
     private val log = LoggerFactory.getLogger(StabilityImageBackend::class.java)
     private val http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()
+
+    // 모델은 env 가 아니라 코드 enum 으로 관리한다(StabilityModel SSOT). 변경은 enum 한 곳에서 끝난다.
+    private val model: StabilityModel = StabilityModel.DEFAULT
 
     override fun isEnabled() = apiKey.isNotBlank()
 
@@ -131,8 +154,7 @@ class StabilityImageBackend(
         negativePrompt: String,
     ): ByteArray {
         if (!isEnabled()) throw CloudImageException("Stability 백엔드가 비활성 상태입니다.")
-        val m = model.trim()
-        val path = MODEL_PATHS[m] ?: "core"
+        val path = model.path
         val boundary = "----central-stability-${java.util.UUID.randomUUID()}"
         val req =
             HttpRequest
@@ -141,7 +163,7 @@ class StabilityImageBackend(
                 .header("Authorization", "Bearer $apiKey")
                 .header("Accept", "image/*")
                 .header("Content-Type", "multipart/form-data; boundary=$boundary")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(multipartBody(boundary, buildFields(prompt, negativePrompt, m))))
+                .POST(HttpRequest.BodyPublishers.ofByteArray(multipartBody(boundary, buildFields(prompt, negativePrompt, model))))
                 .build()
         val resp =
             try {
@@ -159,22 +181,19 @@ class StabilityImageBackend(
     }
 
     companion object {
-        /** 모델 라벨 → /generate/<path>. core=빠르고 저렴, ultra=고품질, sd3=SD3.5. */
-        val MODEL_PATHS = mapOf("core" to "core", "ultra" to "ultra", "sd3" to "sd3")
-
         const val USER_ERROR_MESSAGE = "클라우드 이미지 생성 일시 오류"
 
-        /** Stability multipart form 필드(stability.py FormData 포팅). negative 가 비면 생략, sd3 는 model 명시. */
+        /** Stability multipart form 필드(stability.py FormData 포팅). negative 가 비면 생략, model 의 apiModelName 이 있으면 명시. */
         fun buildFields(
             prompt: String,
             negativePrompt: String,
-            model: String,
+            model: StabilityModel,
         ): List<Pair<String, String>> {
             val fields = mutableListOf("prompt" to prompt)
             if (negativePrompt.isNotBlank()) fields.add("negative_prompt" to negativePrompt)
             fields.add("aspect_ratio" to "1:1")
             fields.add("output_format" to "png")
-            if (model == "sd3") fields.add("model" to "sd3.5-large")
+            model.apiModelName?.let { fields.add("model" to it) }
             return fields
         }
 

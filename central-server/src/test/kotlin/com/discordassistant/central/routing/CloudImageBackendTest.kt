@@ -6,6 +6,7 @@ import com.discordassistant.central.routing.application.NoCloudImageBackend
 import com.discordassistant.central.routing.application.RunPodImageBackend
 import com.discordassistant.central.routing.application.RunPodResponseParser
 import com.discordassistant.central.routing.application.StabilityImageBackend
+import com.discordassistant.central.routing.application.StabilityModel
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.Assertions.assertArrayEquals
@@ -112,7 +113,7 @@ class CloudImageBackendTest {
 
     @Test
     fun `Stability 키 없으면 비활성(라우팅이 에이전트로 폴백)`() {
-        val backend = StabilityImageBackend(apiKey = "", model = "core", timeoutSeconds = 120, baseUrl = "https://api.stability.ai")
+        val backend = StabilityImageBackend(apiKey = "", timeoutSeconds = 120, baseUrl = "https://api.stability.ai")
         assertFalse(backend.isEnabled())
         assertEquals(1024 to 1024, backend.defaultResolution())
         // 비활성인데 호출하면 예외(라우팅은 isEnabled 로 먼저 분기하므로 도달하지 않음).
@@ -128,16 +129,35 @@ class CloudImageBackendTest {
 
     @Test
     fun `Stability buildFields - negative 비면 생략, sd3 면 model 명시`() {
-        val core = StabilityImageBackend.buildFields("a cat", "", "core").toMap()
+        val core = StabilityImageBackend.buildFields("a cat", "", StabilityModel.CORE).toMap()
         assertEquals("a cat", core["prompt"])
         assertFalse(core.containsKey("negative_prompt")) // 빈 negative 는 생략
         assertEquals("1:1", core["aspect_ratio"])
         assertEquals("png", core["output_format"])
         assertFalse(core.containsKey("model")) // core 는 model 미명시
 
-        val sd3 = StabilityImageBackend.buildFields("a dog", "blurry", "sd3").toMap()
+        val sd3 = StabilityImageBackend.buildFields("a dog", "blurry", StabilityModel.SD3).toMap()
         assertEquals("blurry", sd3["negative_prompt"])
         assertEquals("sd3.5-large", sd3["model"])
+    }
+
+    @Test
+    fun `StabilityModel enum - path·apiModelName·fromLabel 매핑이 SSOT`() {
+        // path: /generate/<path> 경로(예전 MODEL_PATHS 매핑을 enum 이 대체).
+        assertEquals("core", StabilityModel.CORE.path)
+        assertEquals("ultra", StabilityModel.ULTRA.path)
+        assertEquals("sd3", StabilityModel.SD3.path)
+        // apiModelName: form 에 명시할 model(없으면 미명시).
+        assertEquals(null, StabilityModel.CORE.apiModelName)
+        assertEquals(null, StabilityModel.ULTRA.apiModelName)
+        assertEquals("sd3.5-large", StabilityModel.SD3.apiModelName)
+        // fromLabel: 라벨(대소문자·공백 무관) 매칭, 미지정/미상은 DEFAULT(core).
+        assertEquals(StabilityModel.ULTRA, StabilityModel.fromLabel("ultra"))
+        assertEquals(StabilityModel.ULTRA, StabilityModel.fromLabel(" Ultra "))
+        assertEquals(StabilityModel.SD3, StabilityModel.fromLabel("sd3"))
+        assertEquals(StabilityModel.DEFAULT, StabilityModel.fromLabel(null))
+        assertEquals(StabilityModel.DEFAULT, StabilityModel.fromLabel("unknown"))
+        assertEquals(StabilityModel.CORE, StabilityModel.DEFAULT)
     }
 
     @Test
@@ -249,7 +269,7 @@ class CloudImageBackendTest {
         val server = stubServer(200, "image/png", png)
         try {
             val base = "http://127.0.0.1:${server.address.port}"
-            val stability = StabilityImageBackend(apiKey = "k", model = "core", timeoutSeconds = 10, baseUrl = base)
+            val stability = StabilityImageBackend(apiKey = "k", timeoutSeconds = 10, baseUrl = base)
             val runpod = RunPodImageBackend(apiKey = "", endpointId = "", timeoutSeconds = 10, baseUrl = base)
             val selector = CloudImageBackendSelector(stability, runpod)
             assertTrue(selector.isEnabled())
@@ -266,7 +286,7 @@ class CloudImageBackendTest {
         val server = stubServer(403, "application/json", """{"errors":["moderation"]}""".toByteArray())
         try {
             val base = "http://127.0.0.1:${server.address.port}"
-            val stability = StabilityImageBackend(apiKey = "k", model = "ultra", timeoutSeconds = 10, baseUrl = base)
+            val stability = StabilityImageBackend(apiKey = "k", timeoutSeconds = 10, baseUrl = base)
             assertThrows(CloudImageException::class.java) { stability.txt2img("x", 1024, 1024, "") }
         } finally {
             server.stop(0)
@@ -281,7 +301,7 @@ class CloudImageBackendTest {
         try {
             val base = "http://127.0.0.1:${server.address.port}"
             // stability 비활성 → 셀렉터가 runpod 로 위임.
-            val stability = StabilityImageBackend(apiKey = "", model = "core", timeoutSeconds = 10, baseUrl = base)
+            val stability = StabilityImageBackend(apiKey = "", timeoutSeconds = 10, baseUrl = base)
             val runpod = RunPodImageBackend(apiKey = "k", endpointId = "ep", timeoutSeconds = 10, baseUrl = base)
             val selector = CloudImageBackendSelector(stability, runpod)
             assertTrue(selector.isEnabled())
@@ -305,7 +325,7 @@ class CloudImageBackendTest {
 
     @Test
     fun `selector 둘 다 비활성이면 isEnabled=false 이고 호출 시 예외`() {
-        val stability = StabilityImageBackend(apiKey = "", model = "core", timeoutSeconds = 10, baseUrl = "http://x")
+        val stability = StabilityImageBackend(apiKey = "", timeoutSeconds = 10, baseUrl = "http://x")
         val runpod = RunPodImageBackend(apiKey = "", endpointId = "", timeoutSeconds = 10, baseUrl = "http://x")
         val selector = CloudImageBackendSelector(stability, runpod)
         assertFalse(selector.isEnabled())

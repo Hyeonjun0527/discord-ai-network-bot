@@ -28,7 +28,7 @@ on:
 
 jobs:
   agent:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     defaults:
       run:
         working-directory: provider-agent
@@ -46,7 +46,7 @@ jobs:
         run: python -m pytest -q --cov=provider_agent --cov-fail-under=70
 
   docs-links:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

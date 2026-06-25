@@ -15,7 +15,7 @@ on:
 jobs:
   # 단위/ArchUnit/요구사항 추적성/springdoc 스모크 + Kover 커버리지 게이트(빠름, Docker 불필요).
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     defaults:
       run:
         working-directory: central-server
@@ -44,7 +44,7 @@ jobs:
   # BDD(Cucumber) + Testcontainers 실 Postgres 로 핵심 흐름 검증(차수 18). GitHub 러너에 Docker 내장.
   # Docker 의존이라 build 잡과 분리(플레이키함 격리). 두 잡 모두 그린이어야 머지.
   integration:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     defaults:
       run:
         working-directory: central-server

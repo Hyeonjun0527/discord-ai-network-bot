@@ -30,7 +30,7 @@ permissions:
 jobs:
   # 예외 레지스트리 게이트 — 무기한·무기명·과거 만료 예외를 먼저 실패시킨다(scan 결과 해석의 전제).
   exception-policy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,7 +43,7 @@ jobs:
 
   # Gradle 의존성 취약점(central-server). OWASP dependency-check Gradle 플러그인이 없다면 표준 의존성 보고로 대체.
   gradle-deps:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     needs: exception-policy
     defaults:
       run:
@@ -70,7 +70,7 @@ jobs:
 
   # Python 의존성 취약점(ml/social-policy, provider-agent).
   python-deps:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     needs: exception-policy
     steps:
       - uses: actions/checkout@v4
@@ -92,7 +92,7 @@ jobs:
   # scan-sensitive-logs.py 로 그 로그에 snowflake·API key·Bearer 토큰이 한 건도 없는지 검사한다(있으면 실패).
   # 이로써 redactor 바인딩(logback-spring.xml %redactedMsg)이 실제 파일 출력에서 작동함을 CI 가 강제한다.
   log-redaction-scan:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     needs: exception-policy
     steps:
       - uses: actions/checkout@v4
@@ -123,7 +123,7 @@ jobs:
 
   # 컨테이너 이미지 취약점(빌드한 이미지 파일시스템·OS 패키지).
   container-scan:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, yeon-arm]
     needs: exception-policy
     strategy:
       matrix:

@@ -12,6 +12,7 @@ import com.discordassistant.central.participation.application.port.out.PolicyCon
 import com.discordassistant.central.participation.application.port.out.PolicyDecisionRequest
 import com.discordassistant.central.participation.application.port.out.SceneSnapshotRef
 import com.discordassistant.central.participation.domain.service.BanterSafetyContext
+import com.discordassistant.central.quota.application.RateLimitStore
 import com.discordassistant.central.shared.NexaIdentity
 import com.discordassistant.central.speech.domain.model.ConversationTurn
 import com.discordassistant.central.speech.domain.model.IdentityKernelSection
@@ -21,6 +22,7 @@ import com.discordassistant.central.speech.domain.model.SpeechSocialAct
 import com.discordassistant.central.speech.domain.model.SpeechTarget
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.time.Instant
 
@@ -39,10 +41,13 @@ import java.time.Instant
  *     ([com.discordassistant.central.actionruntime.application.ShadowOutboundDispatcher])가 ShadowMode 로 hard
  *     block 한다 — SHADOW_PREDICT 는 `allowsRealSend=false` 라 전송 port 가 **호출되지 않는다**. 즉 wiring 을 켜고
  *     SHADOW_PREDICT 로 두면 평가·기록은 되지만 사용자에게 메시지가 나가지 않는다. CANARY/LIVE 승격은 별도 단계.
- *  3. **보안 enforcement 내장**: emit → [com.discordassistant.central.speech.application.NexaSpeechPipelineService]
+ *  3. **rate limit 안전망(토큰 폭주 방지)**: SPEAK 확정 후 emit(GLM 발화 생성) 호출 직전에 채널별/전역 **이중**
+ *     분당 빈도 게이트를 둔다. 둘 중 하나라도 거부면 emit 를 **호출하지 않는다**(GLM 토큰 0). LIVE 로 실제 전송이
+ *     일어나도 이 게이트가 과발화·토큰 폭주를 hard cap 으로 막는다.
+ *  4. **보안 enforcement 내장**: emit → [com.discordassistant.central.speech.application.NexaSpeechPipelineService]
  *     경로가 ConsentGate(2단계 동의)·SpeechCritic·AiIdentityDisclosureCritic·LIVE 모델 검증을 **강제**한다. 이
  *     브리지는 emit 를 호출만 하며 **우회 경로를 만들지 않는다**.
- *  4. **graceful**: 평가/emit 실패는 흡수하고 로그만 남긴다(관찰 best-effort) — 기존 메시지 처리(autoRespond 등)에
+ *  5. **graceful**: 평가/emit 실패는 흡수하고 로그만 남긴다(관찰 best-effort) — 기존 메시지 처리(autoRespond 등)에
  *     영향 0.
  *
  * 순수성 경계: platform 어댑터 — participation/speech/actionruntime 의 공개 application 클래스·도메인 값 객체만
@@ -55,6 +60,10 @@ class NexaParticipationEmitBridge(
     // baseline 정책을 명시 선택한다(BaselineParticipationPolicyConfig.PARTICIPATION_EVAL_POLICY_BEAN).
     @param:Qualifier("participationEvalPolicy") private val policy: ParticipationPolicyPort,
     private val emit: NexaSpeechEmitService,
+    // 자발 발화 빈도 안전망(토큰 폭주 방지) — emit 직전 채널별/전역 이중 게이트. autoRespond 가 쓰는 같은 store(#242).
+    private val rateLimitStore: RateLimitStore,
+    @param:Value("\${central.nexa.participation.rate-limit.per-channel-per-min:6}") private val perChannelPerMin: Int,
+    @param:Value("\${central.nexa.participation.rate-limit.global-per-min:30}") private val globalPerMin: Int,
 ) {
     private val log = LoggerFactory.getLogger(NexaParticipationEmitBridge::class.java)
 
@@ -119,7 +128,14 @@ class NexaParticipationEmitBridge(
             return ParticipationEmitOutcome.NotSpeaking(response.mostLikelyAction)
         }
 
-        // 3) emit 입력 조립 — 이 시점까지의 최근 대화 turn 을 packet 으로(원문 비저장 가명 라벨), 동의 가명 키는
+        // 3) rate limit 안전망(토큰 폭주 방지 — 핵심). SPEAK 확정 후, GLM 발화 생성(emit.emit)을 부르기 직전에
+        //    채널별/전역 이중 게이트를 둔다. **둘 중 하나라도 거부면 emit 를 호출하지 않는다(GLM 토큰 0)**. LIVE 로
+        //    실제 전송이 일어나도 이 게이트가 분당 발화 수를 hard cap 으로 묶어 과발화·토큰 폭주를 막는다.
+        if (!withinRateLimit(channelKey)) {
+            return ParticipationEmitOutcome.RateLimited(channelKey)
+        }
+
+        // 4) emit 입력 조립 — 이 시점까지의 최근 대화 turn 을 packet 으로(원문 비저장 가명 라벨), 동의 가명 키는
         //    PolicyBackedConsentGate 형식(guild:user:channel)으로 맞춘다.
         val packet =
             SpeechScenePacket.of(
@@ -165,6 +181,21 @@ class NexaParticipationEmitBridge(
         return ParticipationEmitOutcome.Emitted(result)
     }
 
+    /**
+     * 자발 발화 빈도 이중 게이트(채널별 + 전역). **둘 다 통과해야** true. emit 호출 전에 평가하므로 거부면 GLM 토큰 0.
+     * 게이트 평가 자체가 실패(예외)해도 흡수해 발화를 막는다(fail-closed — 안전망이 오히려 폭주를 허용하지 않게).
+     */
+    private fun withinRateLimit(channelKey: String): Boolean =
+        try {
+            // 채널 한도 먼저, 통과하면 전역 한도. 둘 다 acquire 되어야 발화한다.
+            rateLimitStore.tryAcquire("nexa-speech:ch:$channelKey", perChannelPerMin, RATE_WINDOW_SECONDS) &&
+                rateLimitStore.tryAcquire("nexa-speech:global", globalPerMin, RATE_WINDOW_SECONDS)
+        } catch (e: Exception) {
+            // rate limit 체크 실패는 발화를 허용하지 않는다(토큰 폭주 안전망이 우선) — 흡수 후 로그.
+            log.warn("NEXA participation rate limit 체크 실패(channel={}) — 안전상 발화 skip: {}", channelKey, e.message)
+            false
+        }
+
     /** raw guildId → 저장 키 가명(MEMORY purpose, 길드 스코프). ShadowMode store/flag 와 같은 가명 공간. */
     private fun guildPseudonym(guildId: Long): String =
         ScopedPseudonymizer.pseudonymize(ScopedPseudonymizer.Purpose.MEMORY, guildId = guildId, snowflake = guildId)
@@ -178,6 +209,9 @@ class NexaParticipationEmitBridge(
     companion object {
         /** participation 정책 요청 스키마 버전(baseline 정책이 지원하는 schema 1). */
         private const val SCHEMA_VERSION: Int = 1
+
+        /** rate limit 고정 윈도우(초) — 분당 한도. */
+        private const val RATE_WINDOW_SECONDS: Long = 60
 
         /** 니아 정체성 immutable section(NexaIdentity SSOT 읽기 — 복제 금지, ADR 0010). */
         private val NIA_IDENTITY: IdentityKernelSection =
@@ -227,6 +261,14 @@ sealed interface ParticipationEmitOutcome {
     /** 정책이 SPEAK 가 아님(IGNORE/REACT/WAIT) — emit 미호출(발화 없음). */
     data class NotSpeaking(
         val action: com.discordassistant.central.participation.domain.model.action.SocialActionKind,
+    ) : ParticipationEmitOutcome
+
+    /**
+     * SPEAK 였지만 빈도 안전망(채널별/전역 분당 한도)에 막혀 emit 미호출 — GLM 토큰 0. 과발화·토큰 폭주 방지.
+     * [channelKey] 는 거부된 채널(관찰·테스트).
+     */
+    data class RateLimited(
+        val channelKey: String,
     ) : ParticipationEmitOutcome
 
     /** SPEAK 분포 → emit 호출됨. 그 결과(예약/안전 하강 등). 실제 전송 여부는 ShadowMode 전송 경계가 별도 결정. */

@@ -21,6 +21,7 @@ import com.discordassistant.central.participation.application.port.out.ShadowMod
 import com.discordassistant.central.participation.domain.model.config.ParticipationLane
 import com.discordassistant.central.participation.domain.model.shadow.ShadowMode
 import com.discordassistant.central.participation.domain.model.shadow.ShadowModeAudit
+import com.discordassistant.central.quota.application.InMemoryRateLimitStore
 import com.discordassistant.central.speech.application.NexaSpeechPipelineService
 import com.discordassistant.central.speech.application.generation.CandidateGenerationService
 import com.discordassistant.central.speech.application.generation.ReasoningModeSelector
@@ -60,6 +61,9 @@ class NexaParticipationEmitBridgeTest {
                 flags = flagService(ShadowMode.OFF),
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
             )
 
         val outcome = bridge.onMessage(signal(mentioned = true))
@@ -81,6 +85,9 @@ class NexaParticipationEmitBridgeTest {
                         consent = ConsentDecision.OBSERVE_AND_SPEAK,
                         scheduler = scheduler,
                     ),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
             )
 
         val outcome = bridge.onMessage(signal(mentioned = true))
@@ -101,6 +108,9 @@ class NexaParticipationEmitBridgeTest {
                 // cooldown 임계(기본 2.0) 이상으로 최근 발화량을 채워 멘션 없는 메시지는 IGNORE 로 접힌다.
                 policy = CooldownHeuristicPolicy(),
                 emit = emitSeam(consent = ConsentDecision.OBSERVE_AND_SPEAK, scheduler = scheduler),
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
             )
 
         val outcome = bridge.onMessage(signal(mentioned = false, recentAgentBurstCount = 5))
@@ -109,15 +119,83 @@ class NexaParticipationEmitBridgeTest {
         assertThat(scheduler.scheduled).isEmpty()
     }
 
+    @Test
+    fun `rate limit 한도 내면 SPEAK 가 emit 된다`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                perChannelPerMin = 6,
+                globalPerMin = 30,
+            )
+
+        val outcome = bridge.onMessage(signal(mentioned = true))
+
+        assertThat(outcome).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(emit.calls).isEqualTo(1) // 한도 내 — emit 정확히 1회
+        assertThat(scheduler.scheduled.any { it.type == ScheduledActionType.SPEAK }).isTrue()
+    }
+
+    @Test
+    fun `채널 한도 초과면 emit 을 호출하지 않고 RateLimited 를 돌려준다(토큰 0)`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                // 채널 한도 1 — 두 번째 SPEAK 는 채널 게이트에 막힌다.
+                perChannelPerMin = 1,
+                globalPerMin = 30,
+            )
+
+        val first = bridge.onMessage(signal(mentioned = true))
+        val second = bridge.onMessage(signal(mentioned = true))
+
+        assertThat(first).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(second).isInstanceOf(ParticipationEmitOutcome.RateLimited::class.java)
+        assertThat(emit.calls).isEqualTo(1) // 한도 초과분은 emit 미호출 — GLM 토큰 0
+    }
+
+    @Test
+    fun `전역 한도 초과면 다른 채널이라도 emit 을 호출하지 않는다(토큰 0)`() {
+        val scheduler = FakeScheduler()
+        val emit = countingEmitSeam(scheduler)
+        val bridge =
+            NexaParticipationEmitBridge(
+                flags = flagService(ShadowMode.LIVE),
+                policy = CooldownHeuristicPolicy(),
+                emit = emit.service,
+                rateLimitStore = InMemoryRateLimitStore(),
+                // 채널 한도는 넉넉, 전역 한도 1 — 다른 채널의 두 번째 SPEAK 는 전역 게이트에 막힌다.
+                perChannelPerMin = 10,
+                globalPerMin = 1,
+            )
+
+        val first = bridge.onMessage(signal(mentioned = true, channelId = 100L))
+        val second = bridge.onMessage(signal(mentioned = true, channelId = 200L))
+
+        assertThat(first).isInstanceOf(ParticipationEmitOutcome.Emitted::class.java)
+        assertThat(second).isInstanceOf(ParticipationEmitOutcome.RateLimited::class.java)
+        assertThat(emit.calls).isEqualTo(1) // 전역 초과분은 emit 미호출 — GLM 토큰 0
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private fun signal(
         mentioned: Boolean,
         recentAgentBurstCount: Int = 0,
+        channelId: Long = 3L,
     ): ParticipationMessageSignal =
         ParticipationMessageSignal(
             guildId = 1L,
-            channelId = 3L,
+            channelId = channelId,
             userId = 2L,
             mentioned = mentioned,
             recentAgentBurstCount = recentAgentBurstCount,
@@ -155,6 +233,56 @@ class NexaParticipationEmitBridgeTest {
             actionRouter = ParticipationActionRouter(scheduler),
             modelRegistry = ShadowModelRegistry(InMemoryRegistryStore(), clock),
         )
+    }
+
+    /**
+     * emit 호출 횟수를 세는 seam. [calls] = FakeGenerationPort.generate 호출 수 = emit 가 발화 파이프라인까지
+     * 진입한 횟수(= GLM 토큰을 쓰는 지점). rate limit 으로 skip 되면 emit.emit 자체가 안 불려 0 으로 남는다.
+     */
+    private fun countingEmitSeam(scheduler: FakeScheduler): CountingEmit {
+        val generationPort = CountingGenerationPort(listOf(SpeechCandidate("c1", listOf("좋아"))))
+        val consentPolicy = ConsentPolicyPort { _, _, _ -> ConsentDecision.OBSERVE_AND_SPEAK }
+        val generationService =
+            CandidateGenerationService(
+                generationPort = generationPort,
+                socialActCompiler = SocialActPromptCompiler(),
+                burstCompiler = BurstPromptCompiler(),
+                reasoningModeSelector = ReasoningModeSelector(),
+            )
+        val pipeline =
+            NexaSpeechPipelineService(
+                consentGate = PolicyBackedConsentGate(consentPolicy),
+                generationGate = SpeechGenerationGate(generationService),
+                candidateSelector = NexaSpeechPipelineService.securityCriticSelector(),
+                decisionLog = CapturingSpeechLog(),
+            )
+        val service =
+            NexaSpeechEmitService(
+                safetyDecision = BanterSafetyDecisionService(CapturingParticipationLog(), clock),
+                pipeline = pipeline,
+                actionRouter = ParticipationActionRouter(scheduler),
+                modelRegistry = ShadowModelRegistry(InMemoryRegistryStore(), clock),
+            )
+        return CountingEmit(service, generationPort)
+    }
+
+    private class CountingEmit(
+        val service: NexaSpeechEmitService,
+        private val port: CountingGenerationPort,
+    ) {
+        val calls: Int get() = port.calls
+    }
+
+    private class CountingGenerationPort(
+        private val candidates: List<SpeechCandidate>,
+    ) : SpeechGenerationPort {
+        var calls: Int = 0
+            private set
+
+        override fun generate(request: SpeechGenerationRequest): SpeechGenerationResult {
+            calls++
+            return SpeechGenerationResult(candidates, modelMetadata = "mock")
+        }
     }
 
     private class FakeGenerationPort(

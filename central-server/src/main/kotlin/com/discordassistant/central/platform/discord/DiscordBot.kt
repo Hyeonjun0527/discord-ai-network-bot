@@ -9,6 +9,7 @@ import com.discordassistant.central.onboarding.adapter.outbound.persistence.Guil
 import com.discordassistant.central.onboarding.application.GuildHistoryBackfillService
 import com.discordassistant.central.platform.discord.command.SettingsCommandHandler
 import com.discordassistant.central.quota.application.RateLimiter
+import com.discordassistant.central.socialmemory.application.niamind.NiaSocialMindService
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import net.dv8tion.jda.api.JDA
@@ -124,6 +125,8 @@ class DiscordBot(
     private val pendingImagePosts: PendingImagePostStore,
     // AI 관리 비서: 어드민의 /질문 자연어 관리 명령을 GLM tool calling 으로 해석·실행(JDA 변경은 여기서 게이트웨이로).
     private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
+    // 니아 사회기억/감정 — 채널AI 발화 경로에서 한 메시지 관찰 → 발화 톤 힌트(D2). 발화 전 호출만 연결(신규 로직 없음).
+    private val niaSocialMind: NiaSocialMindService,
     @param:Value("\${central.discord.enabled:false}") private val enabled: Boolean,
     @param:Value("\${central.discord.bot-token:}") private val token: String,
     // 설정 시 해당 길드(서버)에 명령 즉시 등록(전파 지연 없음). 비우면 글로벌 등록(최대 ~1h).
@@ -225,6 +228,7 @@ class DiscordBot(
                 imaginePostConfirm,
                 pendingImagePosts,
                 adminAssistant,
+                niaSocialMind,
                 mentionAskEnabled = messageContentIntent,
                 messageContentIntentEnabled = messageContentIntent,
                 onDisallowedIntents = { handleDisallowedIntents(messageContentIntent) },
@@ -296,6 +300,7 @@ class DiscordBot(
         private val imaginePostConfirm: ImaginePostConfirmService,
         private val pendingImagePosts: PendingImagePostStore,
         private val adminAssistant: com.discordassistant.central.platform.discord.admin.AdminAssistantService,
+        private val niaSocialMind: NiaSocialMindService,
         private val mentionAskEnabled: Boolean,
         private val messageContentIntentEnabled: Boolean,
         private val onDisallowedIntents: () -> Unit,
@@ -310,6 +315,9 @@ class DiscordBot(
         private val onboarding =
             OnboardingInteractionHandler(commands, historyBackfill, onboardingOptOuts, messageContentIntentEnabled)
         private val setupChannels = NiaChannelSetupHandler(channelProfiles, autoRespondChannels)
+
+        // 니아 톤 히스테리시스(I12): scope 별 직전 렌더 활성 여부. observe 의 wasToneActive 입력으로 재공급.
+        private val niaToneActive = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
         override fun onSlashCommandInteraction(event: SlashCommandInteractionEvent) {
             metrics.record(event.name) // 명령 사용 통계(#190)
@@ -1051,8 +1059,25 @@ class DiscordBot(
                 )
             val useWebhookProfile = channelProfiles.get(ctx.guildId, ctx.channelId) != null
             event.channel.sendTyping().queue({}, {})
+            // 니아 사회기억/감정 관찰 → 발화 톤 힌트(D2). 서버 격리 I7, 표시이름·원문 미저장(가명적) I10.
+            // 관찰 실패(getOrNull null)해도 발화는 그대로 진행 — graceful(톤 ""=평소 니아).
+            val scope = "discord:guild:${ctx.guildId}"
+            val speaker = "discord:${ctx.userId}"
+            val tone =
+                runCatching {
+                    niaSocialMind.observe(
+                        scope,
+                        speaker,
+                        listOf(prompt),
+                        java.time.Instant.now(),
+                        persist = true,
+                        wasToneActive = niaToneActive[scope] ?: false,
+                    )
+                }.getOrNull()
+            tone?.let { niaToneActive[scope] = it.tone.active }
+            val toneDirective = tone?.tone?.directive ?: ""
             try {
-                val reply = commands.ask(ctx, prompt)
+                val reply = commands.ask(ctx, prompt, toneDirective = toneDirective)
                 if (useWebhookProfile && answers.sendAnswerWebhook(event.channel, ctx, reply)) {
                     event.message
                         .addReaction(Emoji.fromUnicode("✅"))
